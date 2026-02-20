@@ -131,7 +131,8 @@ Published NetworkTables keys:
 ## Notes
 
 - The script maps device IDs from the lowest 6 bits of the CAN extended ID.
-- `RobotV2` prints `NT: no data` until a device has been seen at least once.
+- `RobotV2` prints a table and shows `status=NO_DATA`, `ageSec=-`, and `msgCount=-`
+  until a device has been seen at least once.
 - The `--device-ids` list should include the CANCoder CAN IDs to track them.
 - `msgCount/<deviceId>` reports the total number of frames seen for that ID.
 - `RobotV2` reads the composite `dev/<mfg>/<type>/<id>` keys.

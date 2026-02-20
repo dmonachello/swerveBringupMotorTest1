@@ -102,7 +102,7 @@ Steps:
 2. Power-cycle one CAN device so it drops off the bus and returns.
 Expected:
 - When it returns after timeout, a line prints:
-  `Device seen: id=XX count=YY`
+  `Device seen: mfg=XX type=YY id=ZZ count=NN`
 
 ### 6) Summary output formatting
 Steps:
