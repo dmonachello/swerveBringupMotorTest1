@@ -5,6 +5,8 @@ import edu.wpi.first.wpilibj.XboxController;
 
 public class Robot extends TimedRobot {
 
+  // Project repo: https://github.com/dmonachello/swerveBringupMotorTest1
+
   // CAN ID range - spark - 1 - 62, kracken 0 - 62
   // front right neo - 10
   // front left neo  -  1
