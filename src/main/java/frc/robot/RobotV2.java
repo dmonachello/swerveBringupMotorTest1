@@ -40,6 +40,7 @@ public class RobotV2 extends TimedRobot {
   public void teleopPeriodic() {
 
     core.handleAdd(controller.getAButton());
+    core.handleAddAll(controller.getStartButton());
     core.handlePrint(controller.getBButton());
     core.handleHealth(controller.getXButton());
     core.handleCANCoder(controller.getRightBumper());
@@ -64,6 +65,7 @@ public class RobotV2 extends TimedRobot {
   private void printStartupInfo() {
     System.out.println("=== Swerve Bringup V2 ===");
     System.out.println("A: add motor (alternates NEO/KRAKEN)");
+    System.out.println("Start: add all motors + CANCoders");
     System.out.println("B: print state");
     System.out.println("X: print health status");
     System.out.println("Right Bumper: print CANCoder absolute positions");

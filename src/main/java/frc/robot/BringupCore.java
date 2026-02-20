@@ -16,6 +16,7 @@ public final class BringupCore {
   private boolean addNeoNext = true;
 
   private boolean prevAdd = false;
+  private boolean prevAddAll = false;
   private boolean prevPrint = false;
   private boolean prevHealth = false;
   private boolean prevCANCoder = false;
@@ -25,6 +26,13 @@ public final class BringupCore {
       addNextMotor();
     }
     prevAdd = addNow;
+  }
+
+  public void handleAddAll(boolean addAllNow) {
+    if (addAllNow && !prevAddAll) {
+      addAllDevices();
+    }
+    prevAddAll = addAllNow;
   }
 
   public void handlePrint(boolean printNow) {
@@ -74,6 +82,7 @@ public final class BringupCore {
     addNeoNext = true;
 
     prevAdd = false;
+    prevAddAll = false;
     prevPrint = false;
     prevHealth = false;
     prevCANCoder = false;
@@ -112,6 +121,30 @@ public final class BringupCore {
       System.out.println("No more Krakens to add");
     }
     addNeoNext = true;
+  }
+
+  private void addAllDevices() {
+    for (int i = 0; i < neos.length; i++) {
+      if (neos[i] == null) {
+        neos[i] = new SparkMax(BringupUtil.NEO_CAN_IDS[i], MotorType.kBrushless);
+      }
+    }
+    for (int i = 0; i < krakens.length; i++) {
+      if (krakens[i] == null) {
+        krakens[i] = new TalonFX(BringupUtil.KRAKEN_CAN_IDS[i]);
+      }
+    }
+    for (int i = 0; i < cancoders.length; i++) {
+      if (cancoders[i] == null) {
+        cancoders[i] = new CANcoder(BringupUtil.CANCODER_CAN_IDS[i]);
+      }
+    }
+
+    nextNeo = neos.length;
+    nextKraken = krakens.length;
+    addNeoNext = true;
+
+    System.out.println("Added all NEOs, Krakens, and CANCoders.");
   }
 
   private void printState() {
