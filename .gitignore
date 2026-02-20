@@ -173,6 +173,9 @@ networktables.json
 simgui.json
 *-window.json
 
+# CAN sniffer logs
+tools/can_nt_log.csv
+
 # Simulation data log directory
 logs/
 
