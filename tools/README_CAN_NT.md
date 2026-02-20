@@ -45,8 +45,8 @@ Options:
 - `--bitrate` defaults to `1000000` (FRC CAN).
 - `--timeout` marks a device missing if no frames arrive in that many seconds.
 - `--verbose` prints each received device ID.
-- `--print-publish` prints a line each time NetworkTables is updated.
-- `--print-summary-period` prints per-device counts/missing every N seconds (0 disables).
+- `--print-publish` prints when a device is seen after being missing (uses `--timeout`).
+- `--print-summary-period` prints per-device counts/missing every N seconds with timestamps (0 disables).
 
 ## Notes
 

@@ -58,8 +58,8 @@ RobotV2 prints these diagnostics when you press `Y`.
 
 Useful run flags:
 - `--verbose` prints each received device ID.
-- `--print-publish` prints a line each time NetworkTables is updated.
-- `--print-summary-period` prints per-device counts/missing every N seconds (0 disables).
+- `--print-publish` prints when a device is seen after being missing (uses `--timeout`).
+- `--print-summary-period` prints per-device counts/missing every N seconds with timestamps (0 disables).
 
 ## CANCoder Test
 Press `Right Bumper` to print absolute position for the configured CANCoder IDs.

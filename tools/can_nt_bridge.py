@@ -192,8 +192,12 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     bus_error_count += 1
                 else:
                     device_id = _device_id_from_arb_id(msg.arbitration_id)
+                    prev_seen = last_seen.get(device_id)
+                    prev_missing = prev_seen is None or (now - prev_seen) > args.timeout
                     last_seen[device_id] = now
                     msg_count[device_id] = msg_count.get(device_id, 0) + 1
+                    if args.print_publish and prev_missing:
+                        print(f"Device seen: id={device_id} count={msg_count[device_id]}")
                     if args.verbose:
                         print(f"RX id={device_id} arb=0x{msg.arbitration_id:X}")
 
@@ -213,23 +217,22 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                         diag_table.getEntry(f"missing/{device_id}").setBoolean(True)
                         diag_table.getEntry(f"msgCount/{device_id}").setDouble(0.0)
 
-                if args.print_publish:
-                    print(
-                        f"NT publish: busErrorCount={bus_error_count} "
-                        f"tracked={len(device_ids)}"
-                    )
                 last_publish = now
 
             if args.print_summary_period > 0 and (now - last_summary) >= args.print_summary_period:
-                lines = []
+                timestamp = time.strftime("%H:%M:%S", time.localtime(now))
+                lines = [f"Summary @ {timestamp}"]
                 for device_id in device_ids:
                     count = msg_count.get(device_id, 0)
                     ts = last_seen.get(device_id)
                     missing = ts is None or (now - ts) > args.timeout
+                    age = None if ts is None else (now - ts)
+                    age_text = "n/a" if age is None else f"{age:.2f}s"
+                    missing_text = "YES" if missing else "NO"
                     lines.append(
-                        f"{device_id}: count={count} missing={missing}"
+                        f"  id {device_id:>2}  count={count:<6}  missing={missing_text:<3}  age={age_text}"
                     )
-                print("Summary: " + " | ".join(lines))
+                print("\n".join(lines))
                 last_summary = now
     except KeyboardInterrupt:
         print("Stopping.")
