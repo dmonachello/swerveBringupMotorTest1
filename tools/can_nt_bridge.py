@@ -150,6 +150,17 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         help="Print received device IDs",
     )
     parser.add_argument(
+        "--print-publish",
+        action="store_true",
+        help="Print a line each time NetworkTables is updated",
+    )
+    parser.add_argument(
+        "--print-summary-period",
+        type=float,
+        default=2.0,
+        help="Seconds between summary prints (0 to disable)",
+    )
+    parser.add_argument(
         "--debug-imports",
         action="store_true",
         help="Print sys.path and site-package locations when imports fail",
@@ -164,6 +175,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     msg_count: Dict[int, int] = {}
     bus_error_count = 0
     last_publish = 0.0
+    last_summary = 0.0
 
     print(f"NetworkTables: {nt_kind} -> {args.rio}")
     print(f"CAN: interface={args.interface} channel={args.channel} bitrate={args.bitrate}")
@@ -201,7 +213,24 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                         diag_table.getEntry(f"missing/{device_id}").setBoolean(True)
                         diag_table.getEntry(f"msgCount/{device_id}").setDouble(0.0)
 
+                if args.print_publish:
+                    print(
+                        f"NT publish: busErrorCount={bus_error_count} "
+                        f"tracked={len(device_ids)}"
+                    )
                 last_publish = now
+
+            if args.print_summary_period > 0 and (now - last_summary) >= args.print_summary_period:
+                lines = []
+                for device_id in device_ids:
+                    count = msg_count.get(device_id, 0)
+                    ts = last_seen.get(device_id)
+                    missing = ts is None or (now - ts) > args.timeout
+                    lines.append(
+                        f"{device_id}: count={count} missing={missing}"
+                    )
+                print("Summary: " + " | ".join(lines))
+                last_summary = now
     except KeyboardInterrupt:
         print("Stopping.")
     finally:

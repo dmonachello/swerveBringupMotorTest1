@@ -26,7 +26,7 @@ py -m pip install pyserial
 ## Run
 
 ```powershell
-py tools\can_nt_bridge.py --rio 172.22.11.2 --channel COM3 --device-ids 2,5,8,11,12,3,9,6
+C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --channel COM3 --device-ids 2,5,8,11,12,3,9,6
 ```
 
 Or use the helper script that pins the Python interpreter:
@@ -44,6 +44,9 @@ Options:
 - `--interface` defaults to `slcan`.
 - `--bitrate` defaults to `1000000` (FRC CAN).
 - `--timeout` marks a device missing if no frames arrive in that many seconds.
+- `--verbose` prints each received device ID.
+- `--print-publish` prints a line each time NetworkTables is updated.
+- `--print-summary-period` prints per-device counts/missing every N seconds (0 disables).
 
 ## Notes
 
