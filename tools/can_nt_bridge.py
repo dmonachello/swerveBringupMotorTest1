@@ -3,9 +3,13 @@
 CAN -> NetworkTables bridge for RobotV2 bringup diagnostics.
 
 Publishes:
-  bringup/diag/busErrorCount
-  bringup/diag/lastSeen/<deviceId>
-  bringup/diag/missing/<deviceId>
+    bringup/diag/busErrorCount
+    bringup/diag/lastSeen/<deviceId>
+    bringup/diag/missing/<deviceId>
+    bringup/diag/msgCount/<deviceId>
+    bringup/diag/type/<deviceId>
+    bringup/diag/status/<deviceId>
+    bringup/diag/ageSec/<deviceId>
 """
 
 from __future__ import annotations
@@ -134,6 +138,24 @@ def _nt_is_connected(kind: str, inst) -> Optional[bool]:
     return None
 
 
+def _nt_connection_info(kind: str, inst) -> str:
+    try:
+        if kind == "ntcore":
+            connections = inst.getConnections()
+            if connections:
+                addresses = ", ".join(conn.remote_id for conn in connections)
+                return f"connections: {addresses}"
+            return "connections: none"
+        if kind == "pynetworktables":
+            addr = inst.getRemoteAddress()
+            if addr:
+                return f"remote: {addr}"
+            return "remote: none"
+    except Exception:
+        return "connection info: unavailable"
+    return "connection info: unavailable"
+
+
 def _auto_channel(match_text: str, prompt: bool) -> Tuple[str, str]:
     try:
         import serial.tools.list_ports  # type: ignore
@@ -233,6 +255,133 @@ def _list_ports() -> List[Tuple[str, str]]:
     return ports
 
 
+def _coerce_groups(raw: Any) -> Dict[str, List[int]]:
+    if not isinstance(raw, dict):
+        return {}
+    groups: Dict[str, List[int]] = {}
+    for name, value in raw.items():
+        if not isinstance(name, str):
+            continue
+        if isinstance(value, list):
+            ids = []
+            for item in value:
+                try:
+                    ids.append(int(item))
+                except Exception:
+                    continue
+            if ids:
+                groups[name] = ids
+    return groups
+
+
+def _format_status(ts: Optional[float], now: float, timeout: float) -> Tuple[str, Optional[float], bool]:
+    if ts is None:
+        return ("MISSING", None, True)
+    age = now - ts
+    if age > timeout:
+        return ("STALE", age, True)
+    return ("OK", age, False)
+
+
+def _write_csv_header(handle, device_ids: List[int], groups: Dict[str, List[int]]) -> None:
+    base = ["timestamp", "busErrorCount", "framesPerSec", "errorsPerSec"]
+    per_id = []
+    for device_id in device_ids:
+        per_id.extend(
+            [
+                f"id{device_id}_count",
+                f"id{device_id}_ageSec",
+                f"id{device_id}_status",
+            ]
+        )
+    group_cols = []
+    for name in groups.keys():
+        group_cols.extend([f"group_{name}_seen", f"group_{name}_missing"])
+    handle.write(",".join(base + per_id + group_cols) + "\n")
+
+
+def _write_csv_row(
+    handle,
+    timestamp: float,
+    bus_error_count: int,
+    fps: float,
+    err_rate: float,
+    device_ids: List[int],
+    last_seen: Dict[int, float],
+    timeout: float,
+    groups: Dict[str, List[int]],
+    now: float,
+    msg_count: Dict[int, int],
+):
+    row = [f"{timestamp:.3f}", str(bus_error_count), f"{fps:.2f}", f"{err_rate:.2f}"]
+    for device_id in device_ids:
+        ts = last_seen.get(device_id)
+        status, age, _missing = _format_status(ts, now, timeout)
+        row.append(str(msg_count.get(device_id, 0)))
+        row.append("" if age is None else f"{age:.3f}")
+        row.append(status)
+    for name, ids in groups.items():
+        seen = 0
+        missing = 0
+        for device_id in ids:
+            ts = last_seen.get(device_id)
+            _status, _age, is_missing = _format_status(ts, now, timeout)
+            if is_missing:
+                missing += 1
+            else:
+                seen += 1
+        row.extend([str(seen), str(missing)])
+    handle.write(",".join(row) + "\n")
+
+
+def _build_summary_lines(
+    device_ids: List[int],
+    device_labels: Dict[int, str],
+    last_seen: Dict[int, float],
+    msg_count: Dict[int, int],
+    timeout: float,
+    fps: float,
+    err_rate: float,
+    groups: Dict[str, List[int]],
+    now: float,
+) -> List[str]:
+    timestamp = time.strftime("%H:%M:%S", time.localtime(now))
+    missing_count = 0
+    lines = [f"Summary @ {timestamp}"]
+    lines.append(
+        f"  Pit check: seen={len(device_ids) - missing_count}/{len(device_ids)} "
+        f"missing={missing_count} frames/s={fps:.1f} errors/s={err_rate:.2f}"
+    )
+    for device_id in device_ids:
+        count = msg_count.get(device_id, 0)
+        ts = last_seen.get(device_id)
+        status, age, is_missing = _format_status(ts, now, timeout)
+        if is_missing:
+            missing_count += 1
+        age_text = "n/a" if age is None else f"{age:.2f}s"
+        label = device_labels.get(device_id, "Unknown")
+        lines.append(
+            f"  id {device_id:>2}  label={label:<8}  count={count:<6}  status={status:<7}  age={age_text}"
+        )
+    lines[1] = (
+        f"  Pit check: seen={len(device_ids) - missing_count}/{len(device_ids)} "
+        f"missing={missing_count} frames/s={fps:.1f} errors/s={err_rate:.2f}"
+    )
+    if groups:
+        for name, ids in groups.items():
+            seen = 0
+            missing = 0
+            for device_id in ids:
+                ts = last_seen.get(device_id)
+                _status, _age, is_missing = _format_status(ts, now, timeout)
+                if is_missing:
+                    missing += 1
+                else:
+                    seen += 1
+            lines.append(f"  Group {name}: seen={seen}/{len(ids)} missing={missing}")
+    return lines
+
+
 def main(argv: Optional[Iterable[str]] = None) -> int:
     config_path = _get_config_path(argv)
     config = _load_config(config_path)
@@ -243,6 +392,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     default_labels = _device_type_labels(default_ids)
     default_labels.update(_coerce_labels(config.get("labels")))
+    default_groups = _coerce_groups(config.get("groups"))
 
     parser = argparse.ArgumentParser(description="CAN -> NetworkTables bridge")
     parser.add_argument("--config", default=config_path, help="Path to JSON config")
@@ -290,7 +440,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     parser.add_argument(
         "--print-publish",
         action="store_true",
-        help="Print a line each time NetworkTables is updated",
+        help="Print when a device is seen after being missing (uses --timeout)",
     )
     parser.add_argument(
         "--print-summary-period",
@@ -326,6 +476,28 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         help="List available serial ports and exit",
     )
     parser.add_argument(
+        "--log-csv",
+        default=config.get("log_csv", ""),
+        help="Path to CSV log file (empty to disable)",
+    )
+    parser.add_argument(
+        "--log-period",
+        type=float,
+        default=float(config.get("log_period", 1.0)),
+        help="Seconds between CSV log rows (0 to disable)",
+    )
+    parser.add_argument(
+        "--quick-check",
+        action="store_true",
+        help="Print one summary after a short wait and exit",
+    )
+    parser.add_argument(
+        "--quick-wait",
+        type=float,
+        default=float(config.get("quick_wait", 1.0)),
+        help="Seconds to wait before printing a quick check summary",
+    )
+    parser.add_argument(
         "--debug-imports",
         action="store_true",
         help="Print sys.path and site-package locations when imports fail",
@@ -352,6 +524,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     device_ids = list(args.device_ids)
     device_labels = _device_type_labels(device_ids)
     device_labels.update(default_labels)
+    groups = default_groups
     last_seen: Dict[int, float] = {}
     msg_count: Dict[int, int] = {}
     bus_error_count = 0
@@ -362,16 +535,29 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     total_frames = 0
     summary_frames = 0
     summary_errors = 0
+    last_log = 0.0
+    log_handle = None
+    csv_header_written = False
+    start_time = time.time()
+    quick_done = False
 
     default_rio = config.get("rio", "172.22.11.2")
     if args.rio != default_rio:
         print(f"RIO IP: {args.rio} (default {default_rio})")
     else:
-        print(f"RIO IP: {args.rio}")
+    print(f"RIO IP: {args.rio}")
     print(f"NetworkTables client: {nt_kind}")
     print(f"CAN: interface={args.interface} channel={channel} bitrate={args.bitrate}")
     print(f"Tracking device IDs: {', '.join(str(i) for i in device_ids)}")
     print("Press Ctrl+C to stop.")
+    if groups:
+        print("Groups: " + ", ".join(f"{name}({len(ids)})" for name, ids in groups.items()))
+    connected = _nt_is_connected(nt_kind, nt_inst)
+    if connected is False:
+        print("NT status: NOT connected to RIO")
+    elif connected is True:
+        print("NT status: connected to RIO")
+    print("NT details: " + _nt_connection_info(nt_kind, nt_inst))
 
     try:
         while True:
@@ -400,49 +586,37 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
                 for device_id in device_ids:
                     ts = last_seen.get(device_id)
+                    status, age, is_missing = _format_status(ts, now, args.timeout)
                     if ts is not None:
                         diag_table.getEntry(f"lastSeen/{device_id}").setDouble(ts)
-                        missing = (now - ts) > args.timeout
-                        diag_table.getEntry(f"missing/{device_id}").setBoolean(missing)
-                        diag_table.getEntry(f"msgCount/{device_id}").setDouble(
-                            float(msg_count.get(device_id, 0))
-                        )
-                        diag_table.getEntry(f"type/{device_id}").setString(
-                            device_labels.get(device_id, "Unknown")
-                        )
-                    else:
-                        diag_table.getEntry(f"missing/{device_id}").setBoolean(True)
-                        diag_table.getEntry(f"msgCount/{device_id}").setDouble(0.0)
-                        diag_table.getEntry(f"type/{device_id}").setString(
-                            device_labels.get(device_id, "Unknown")
-                        )
+                    diag_table.getEntry(f"missing/{device_id}").setBoolean(is_missing)
+                    diag_table.getEntry(f"msgCount/{device_id}").setDouble(
+                        float(msg_count.get(device_id, 0))
+                    )
+                    diag_table.getEntry(f"type/{device_id}").setString(
+                        device_labels.get(device_id, "Unknown")
+                    )
+                    diag_table.getEntry(f"status/{device_id}").setString(status)
+                    diag_table.getEntry(f"ageSec/{device_id}").setDouble(
+                        -1.0 if age is None else float(age)
+                    )
 
                 last_publish = now
 
             if args.print_summary_period > 0 and (now - last_summary) >= args.print_summary_period:
-                timestamp = time.strftime("%H:%M:%S", time.localtime(now))
                 period = now - last_summary if last_summary > 0 else args.print_summary_period
                 fps = (summary_frames / period) if period > 0 else 0.0
                 err_rate = (summary_errors / period) if period > 0 else 0.0
-                missing_count = 0
-                lines = [f"Summary @ {timestamp}"]
-                for device_id in device_ids:
-                    count = msg_count.get(device_id, 0)
-                    ts = last_seen.get(device_id)
-                    missing = ts is None or (now - ts) > args.timeout
-                    if missing:
-                        missing_count += 1
-                    age = None if ts is None else (now - ts)
-                    age_text = "n/a" if age is None else f"{age:.2f}s"
-                    missing_text = "YES" if missing else "NO"
-                    label = device_labels.get(device_id, "Unknown")
-                    lines.append(
-                        f"  id {device_id:>2}  label={label:<8}  count={count:<6}  missing={missing_text:<3}  age={age_text}"
-                    )
-                lines.insert(
-                    1,
-                    f"  Pit check: seen={len(device_ids) - missing_count}/{len(device_ids)} "
-                    f"missing={missing_count} frames/s={fps:.1f} errors/s={err_rate:.2f}",
+                lines = _build_summary_lines(
+                    device_ids,
+                    device_labels,
+                    last_seen,
+                    msg_count,
+                    args.timeout,
+                    fps,
+                    err_rate,
+                    groups,
+                    now,
                 )
                 print("\n".join(lines))
                 last_summary = now
@@ -461,6 +635,50 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     timestamp = time.strftime("%H:%M:%S", time.localtime(now))
                     print(f"Not connected to RIO NetworkTables as of {timestamp}.")
                 last_rio_warn = now
+
+            if args.log_csv and args.log_period > 0 and (now - last_log) >= args.log_period:
+                if log_handle is None:
+                    log_handle = open(args.log_csv, "a", encoding="utf-8")
+                if not csv_header_written:
+                    _write_csv_header(log_handle, device_ids, groups)
+                    csv_header_written = True
+                period = now - last_log if last_log > 0 else args.log_period
+                fps = (summary_frames / period) if period > 0 else 0.0
+                err_rate = (summary_errors / period) if period > 0 else 0.0
+                _write_csv_row(
+                    log_handle,
+                    now,
+                    bus_error_count,
+                    fps,
+                    err_rate,
+                    device_ids,
+                    last_seen,
+                    args.timeout,
+                    groups,
+                    now,
+                    msg_count,
+                )
+                log_handle.flush()
+                last_log = now
+
+            if args.quick_check and not quick_done and (now - start_time) >= args.quick_wait:
+                period = now - last_summary if last_summary > 0 else args.quick_wait
+                fps = (summary_frames / period) if period > 0 else 0.0
+                err_rate = (summary_errors / period) if period > 0 else 0.0
+                lines = _build_summary_lines(
+                    device_ids,
+                    device_labels,
+                    last_seen,
+                    msg_count,
+                    args.timeout,
+                    fps,
+                    err_rate,
+                    groups,
+                    now,
+                )
+                print("\n".join(lines))
+                quick_done = True
+                break
     except KeyboardInterrupt:
         print("Stopping.")
     finally:
@@ -468,6 +686,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             bus.shutdown()
         except Exception:
             pass
+        if log_handle is not None:
+            try:
+                log_handle.close()
+            except Exception:
+                pass
 
     return 0
 

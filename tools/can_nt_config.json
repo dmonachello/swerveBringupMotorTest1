@@ -8,8 +8,16 @@
   "print_summary_period": 2.0,
   "no_traffic_secs": 5.0,
   "no_rio_secs": 5.0,
+  "log_csv": "tools\\can_nt_log.csv",
+  "log_period": 1.0,
+  "quick_wait": 1.0,
   "auto_match": "USB Serial Device",
   "device_ids": [10, 1, 7, 4, 2, 5, 8, 11, 12, 3, 9, 6],
+  "groups": {
+    "neos": [10, 1, 7, 4],
+    "krakens": [11, 2, 8, 5],
+    "cancoders": [12, 3, 9, 6]
+  },
   "labels": {
     "10": "FR NEO",
     "1": "FL NEO",

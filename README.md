@@ -47,6 +47,8 @@ Config:
 - Default settings live in `tools/can_nt_config.json`.
 - Override with `--config path\to\file.json`.
 - The config supports a `labels` map to name devices by ID.
+- The config supports `groups` for summary rollups and `log_csv` defaults.
+- By default, `tools/can_nt_config.json` enables CSV logging to `tools\can_nt_log.csv`.
 
 Examples:
 ```cmd
@@ -58,6 +60,12 @@ C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_b
 
 # More output (summary + device seen messages)
 C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --print-summary-period 2 --print-publish
+
+# Quick check (print once and exit)
+C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --quick-check
+
+# Write CSV log
+C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --log-csv tools\can_nt_log.csv
 
 # Use a custom config
 C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --config tools\can_nt_config.json
@@ -72,6 +80,8 @@ Published NetworkTables keys:
 - `bringup/diag/missing/<deviceId>`
 - `bringup/diag/msgCount/<deviceId>`
 - `bringup/diag/type/<deviceId>` (label string: type or custom name)
+- `bringup/diag/status/<deviceId>` (OK/STALE/MISSING)
+- `bringup/diag/ageSec/<deviceId>` (-1 if missing)
 
 RobotV2 prints these diagnostics when you press `Y`.
 
@@ -81,6 +91,10 @@ Useful run flags:
 - `--print-summary-period` prints per-device counts/missing every N seconds with timestamps (0 disables).
 - `--no-traffic-secs` prints a warning if no CAN frames are seen for N seconds (0 disables).
 - `--no-rio-secs` prints a warning if not connected to the RIO for N seconds (0 disables).
+- `--log-csv` writes a CSV log file (empty disables).
+- `--log-period` sets seconds between CSV rows.
+- `--quick-check` prints one summary after `--quick-wait` seconds and exits.
+- `--quick-wait` sets the wait time before quick-check output.
 - `--list-ports` prints available serial ports and exits.
 - `--auto-match` sets the substring used to auto-detect the serial device.
 - `--no-prompt` disables the port selection prompt when multiple matches are found.
