@@ -28,7 +28,7 @@ def _parse_ids(value: str) -> Tuple[int, ...]:
     return tuple(items)
 
 
-def _init_nt(rio: str):
+def _init_nt(rio: str, debug: bool):
     try:
         from ntcore import NetworkTableInstance  # type: ignore
 
@@ -38,6 +38,41 @@ def _init_nt(rio: str):
         table = inst.getTable("bringup").getSubTable("diag")
         return ("ntcore", inst, table)
     except Exception:
+        # Ensure site-packages are on sys.path even if Python was started with -S
+        # or user site-packages are disabled.
+        try:
+            import site as _site  # type: ignore
+            import sysconfig as _sysconfig
+            import sys as _sys
+
+            _site.main()
+            paths = []
+            try:
+                paths.append(_site.getusersitepackages())
+            except Exception:
+                pass
+            try:
+                paths.extend(_site.getsitepackages())
+            except Exception:
+                pass
+            try:
+                paths.append(_sysconfig.get_paths().get("purelib"))
+            except Exception:
+                pass
+            for path in paths:
+                if path:
+                    _site.addsitedir(path)
+            if debug:
+                print("DEBUG: sys.executable =", _sys.executable)
+                print("DEBUG: sys.path:")
+                for entry in _sys.path:
+                    print("  ", entry)
+                print("DEBUG: candidate site-packages:")
+                for entry in paths:
+                    if entry:
+                        print("  ", entry)
+        except Exception:
+            pass
         try:
             from networktables import NetworkTables  # type: ignore
 
@@ -114,9 +149,14 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         action="store_true",
         help="Print received device IDs",
     )
+    parser.add_argument(
+        "--debug-imports",
+        action="store_true",
+        help="Print sys.path and site-package locations when imports fail",
+    )
     args = parser.parse_args(argv)
 
-    nt_kind, nt_inst, diag_table = _init_nt(args.rio)
+    nt_kind, nt_inst, diag_table = _init_nt(args.rio, args.debug_imports)
     bus = _init_can(args.interface, args.channel, args.bitrate)
 
     device_ids = list(args.device_ids)

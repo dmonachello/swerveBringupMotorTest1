@@ -28,13 +28,24 @@ This project includes a CAN -> NetworkTables bridge for diagnostics.
 
 Install:
 ```powershell
-py -m pip install ntcore
+py -m pip install pynetworktables
 py -m pip install python-can
+py -m pip install pyserial
 ```
 
 Run:
 ```powershell
 py tools\can_nt_bridge.py --rio 172.22.11.2 --channel COM3
+```
+
+Or use the helper script that pins the Python interpreter:
+```powershell
+.\tools\run_can_nt.ps1
+```
+
+If PowerShell blocks scripts, run:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\run_can_nt.ps1
 ```
 
 Published NetworkTables keys:
@@ -58,7 +69,7 @@ Ideas to consider:
 - Set explicit status frame periods for predictable CAN traffic.
 - Add a toggle for continuous CANCoder streaming.
 - Add per-device firmware/version reporting.
-- Add a pit-mode “quick check” summary line.
+- Add a pit-mode "quick check" summary line.
 - Add a UI dashboard to visualize NetworkTables diagnostics.
 
 ## Adding New Features
