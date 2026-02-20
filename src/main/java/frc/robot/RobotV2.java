@@ -32,7 +32,12 @@ public class RobotV2 extends TimedRobot {
   @Override
   public void robotInit() {
     printStartupInfo();
-    BringupUtil.validateCanIds(BringupUtil.NEO_CAN_IDS, BringupUtil.KRAKEN_CAN_IDS);
+    BringupUtil.validateCanIds(
+        BringupUtil.NEO_CAN_IDS,
+        BringupUtil.KRAKEN_CAN_IDS,
+        BringupUtil.CANCODER_CAN_IDS,
+        new int[] { PDH_CAN_ID },
+        new int[] { PIGEON_CAN_ID });
   }
 
   @Override

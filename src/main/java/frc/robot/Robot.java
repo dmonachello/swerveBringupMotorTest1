@@ -16,7 +16,10 @@ public class Robot extends TimedRobot {
   @Override
   public void robotInit() {
     printStartupInfo();
-    BringupUtil.validateCanIds(BringupUtil.NEO_CAN_IDS, BringupUtil.KRAKEN_CAN_IDS);
+    BringupUtil.validateCanIds(
+        BringupUtil.NEO_CAN_IDS,
+        BringupUtil.KRAKEN_CAN_IDS,
+        BringupUtil.CANCODER_CAN_IDS);
   }
 
   @Override
