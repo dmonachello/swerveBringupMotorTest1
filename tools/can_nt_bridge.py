@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""
+CAN -> NetworkTables bridge for RobotV2 bringup diagnostics.
+
+Publishes:
+  bringup/diag/busErrorCount
+  bringup/diag/lastSeen/<deviceId>
+  bringup/diag/missing/<deviceId>
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+import time
+from typing import Dict, Iterable, Optional, Tuple
+
+
+def _parse_ids(value: str) -> Tuple[int, ...]:
+    items = []
+    for part in value.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        items.append(int(part))
+    if not items:
+        raise argparse.ArgumentTypeError("Expected at least one CAN ID")
+    return tuple(items)
+
+
+def _init_nt(rio: str):
+    try:
+        from ntcore import NetworkTableInstance  # type: ignore
+
+        inst = NetworkTableInstance.getDefault()
+        inst.startClient4("can-nt-bridge")
+        inst.setServer(rio)
+        table = inst.getTable("bringup").getSubTable("diag")
+        return ("ntcore", inst, table)
+    except Exception:
+        try:
+            from networktables import NetworkTables  # type: ignore
+
+            NetworkTables.initialize(server=rio)
+            table = NetworkTables.getTable("bringup").getSubTable("diag")
+            return ("pynetworktables", NetworkTables, table)
+        except Exception as exc:
+            raise RuntimeError(
+                "Failed to import ntcore or pynetworktables. "
+                "Install one of them to use NetworkTables."
+            ) from exc
+
+
+def _init_can(interface: str, channel: str, bitrate: int):
+    try:
+        import can  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(
+            "python-can is not installed. Install it with: py -m pip install python-can"
+        ) from exc
+
+    try:
+        return can.Bus(interface=interface, channel=channel, bitrate=bitrate)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to open CAN bus (interface={interface}, channel={channel}, bitrate={bitrate})."
+        ) from exc
+
+
+def _device_id_from_arb_id(arb_id: int) -> int:
+    # FRC CAN device ID is carried in the lowest 6 bits of the extended ID.
+    return arb_id & 0x3F
+
+
+def main(argv: Optional[Iterable[str]] = None) -> int:
+    parser = argparse.ArgumentParser(description="CAN -> NetworkTables bridge")
+    parser.add_argument("--rio", default="172.22.11.2", help="RoboRIO IP/host")
+    parser.add_argument(
+        "--device-ids",
+        type=_parse_ids,
+        default=_parse_ids("2,5,8,11"),
+        help="Comma-separated CAN IDs to report",
+    )
+    parser.add_argument(
+        "--interface",
+        default="slcan",
+        help="python-can interface (default: slcan)",
+    )
+    parser.add_argument(
+        "--channel",
+        default="COM3",
+        help="CAN channel (for slcan, the COM port like COM3)",
+    )
+    parser.add_argument(
+        "--bitrate",
+        type=int,
+        default=1_000_000,
+        help="CAN bitrate (default: 1000000 for FRC)",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=1.0,
+        help="Seconds without frames before marking missing",
+    )
+    parser.add_argument(
+        "--publish-period",
+        type=float,
+        default=0.2,
+        help="Seconds between NetworkTables updates",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print received device IDs",
+    )
+    args = parser.parse_args(argv)
+
+    nt_kind, nt_inst, diag_table = _init_nt(args.rio)
+    bus = _init_can(args.interface, args.channel, args.bitrate)
+
+    device_ids = list(args.device_ids)
+    last_seen: Dict[int, float] = {}
+    bus_error_count = 0
+    last_publish = 0.0
+
+    print(f"NetworkTables: {nt_kind} -> {args.rio}")
+    print(f"CAN: interface={args.interface} channel={args.channel} bitrate={args.bitrate}")
+    print(f"Tracking device IDs: {', '.join(str(i) for i in device_ids)}")
+    print("Press Ctrl+C to stop.")
+
+    try:
+        while True:
+            now = time.time()
+            msg = bus.recv(timeout=0.05)
+
+            if msg is not None:
+                if getattr(msg, "is_error_frame", False):
+                    bus_error_count += 1
+                else:
+                    device_id = _device_id_from_arb_id(msg.arbitration_id)
+                    last_seen[device_id] = now
+                    if args.verbose:
+                        print(f"RX id={device_id} arb=0x{msg.arbitration_id:X}")
+
+            if now - last_publish >= args.publish_period:
+                diag_table.getEntry("busErrorCount").setDouble(bus_error_count)
+
+                for device_id in device_ids:
+                    ts = last_seen.get(device_id)
+                    if ts is not None:
+                        diag_table.getEntry(f"lastSeen/{device_id}").setDouble(ts)
+                        missing = (now - ts) > args.timeout
+                        diag_table.getEntry(f"missing/{device_id}").setBoolean(missing)
+                    else:
+                        diag_table.getEntry(f"missing/{device_id}").setBoolean(True)
+
+                last_publish = now
+    except KeyboardInterrupt:
+        print("Stopping.")
+    finally:
+        try:
+            bus.shutdown()
+        except Exception:
+            pass
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,174 @@
+package frc.robot;
+
+import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.hardware.TalonFX;
+import com.revrobotics.spark.SparkMax;
+import com.revrobotics.spark.SparkLowLevel.MotorType;
+
+public final class BringupCore {
+  private final SparkMax[] neos = new SparkMax[BringupUtil.NEO_CAN_IDS.length];
+  private final TalonFX[] krakens = new TalonFX[BringupUtil.KRAKEN_CAN_IDS.length];
+
+  private int nextNeo = 0;
+  private int nextKraken = 0;
+  private boolean addNeoNext = true;
+
+  private boolean prevAdd = false;
+  private boolean prevPrint = false;
+  private boolean prevHealth = false;
+
+  public void handleAdd(boolean addNow) {
+    if (addNow && !prevAdd) {
+      addNextMotor();
+    }
+    prevAdd = addNow;
+  }
+
+  public void handlePrint(boolean printNow) {
+    if (printNow && !prevPrint) {
+      printState();
+    }
+    prevPrint = printNow;
+  }
+
+  public void handleHealth(boolean healthNow) {
+    if (healthNow && !prevHealth) {
+      printHealthStatus();
+    }
+    prevHealth = healthNow;
+  }
+
+  public void setSpeeds(double neoSpeed, double krakenSpeed) {
+    BringupUtil.setAllNeos(neos, neoSpeed);
+    BringupUtil.setAllKrakens(krakens, krakenSpeed);
+  }
+
+  public void resetState() {
+    BringupUtil.stopAll(neos, krakens);
+
+    for (int i = 0; i < neos.length; i++) {
+      BringupUtil.closeIfPossible(neos[i]);
+      neos[i] = null;
+    }
+    for (int i = 0; i < krakens.length; i++) {
+      BringupUtil.closeIfPossible(krakens[i]);
+      krakens[i] = null;
+    }
+
+    nextNeo = 0;
+    nextKraken = 0;
+    addNeoNext = true;
+
+    prevAdd = false;
+    prevPrint = false;
+    prevHealth = false;
+
+    System.out.println("=== Bringup reset: no motors instantiated ===");
+  }
+
+  private void addNextMotor() {
+    if (addNeoNext) {
+      if (nextNeo < neos.length && neos[nextNeo] == null) {
+        neos[nextNeo] =
+            new SparkMax(BringupUtil.NEO_CAN_IDS[nextNeo], MotorType.kBrushless);
+
+        System.out.println(
+            "Added NEO index " + nextNeo +
+            " (CAN " + BringupUtil.NEO_CAN_IDS[nextNeo] + ")");
+
+        nextNeo++;
+      } else {
+        System.out.println("No more NEOs to add");
+      }
+      addNeoNext = false;
+      return;
+    }
+
+    if (nextKraken < krakens.length && krakens[nextKraken] == null) {
+      krakens[nextKraken] =
+          new TalonFX(BringupUtil.KRAKEN_CAN_IDS[nextKraken]);
+
+      System.out.println(
+          "Added KRAKEN index " + nextKraken +
+          " (CAN " + BringupUtil.KRAKEN_CAN_IDS[nextKraken] + ")");
+
+      nextKraken++;
+    } else {
+      System.out.println("No more Krakens to add");
+    }
+    addNeoNext = true;
+  }
+
+  private void printState() {
+    System.out.println("=== Bringup State ===");
+
+    System.out.println("NEOs:");
+    for (int i = 0; i < neos.length; i++) {
+      if (neos[i] != null) {
+        System.out.println("  index " + i +
+            " CAN " + BringupUtil.NEO_CAN_IDS[i] + " ACTIVE");
+      } else {
+        System.out.println("  index " + i +
+            " CAN " + BringupUtil.NEO_CAN_IDS[i] + " not added");
+      }
+    }
+
+    System.out.println("Krakens:");
+    for (int i = 0; i < krakens.length; i++) {
+      if (krakens[i] != null) {
+        System.out.println("  index " + i +
+            " CAN " + BringupUtil.KRAKEN_CAN_IDS[i] + " ACTIVE");
+      } else {
+        System.out.println("  index " + i +
+            " CAN " + BringupUtil.KRAKEN_CAN_IDS[i] + " not added");
+      }
+    }
+
+    System.out.println(
+        "Next add will be: " +
+        (addNeoNext ? "NEO" : "KRAKEN"));
+    System.out.println("=====================");
+  }
+
+  private void printHealthStatus() {
+    System.out.println("=== Bringup Health ===");
+    for (int i = 0; i < neos.length; i++) {
+      if (neos[i] == null) {
+        System.out.println("NEO index " + i +
+            " CAN " + BringupUtil.NEO_CAN_IDS[i] + " not added");
+        continue;
+      }
+      var faults = neos[i].getFaults();
+      var warnings = neos[i].getWarnings();
+      System.out.println(
+          "NEO index " + i +
+          " CAN " + BringupUtil.NEO_CAN_IDS[i] +
+          " faults=0x" + Integer.toHexString(faults.rawBits) +
+          " warnings=0x" + Integer.toHexString(warnings.rawBits));
+    }
+
+    for (int i = 0; i < krakens.length; i++) {
+      if (krakens[i] == null) {
+        System.out.println("KRAKEN index " + i +
+            " CAN " + BringupUtil.KRAKEN_CAN_IDS[i] + " not added");
+        continue;
+      }
+      var faultSignal = krakens[i].getFaultField();
+      var stickySignal = krakens[i].getStickyFaultField();
+      BaseStatusSignal.refreshAll(faultSignal, stickySignal);
+      int faultField = faultSignal.getValue();
+      int stickyField = stickySignal.getValue();
+      boolean faultOk = faultSignal.getStatus().isOK();
+      boolean stickyOk = stickySignal.getStatus().isOK();
+      System.out.println(
+          "KRAKEN index " + i +
+          " CAN " + BringupUtil.KRAKEN_CAN_IDS[i] +
+          " fault=0x" + Integer.toHexString(faultField) +
+          " sticky=0x" + Integer.toHexString(stickyField) +
+          (faultOk && stickyOk
+              ? ""
+              : " status=" + faultSignal.getStatus() + "/" + stickySignal.getStatus()));
+    }
+    System.out.println("======================");
+  }
+}

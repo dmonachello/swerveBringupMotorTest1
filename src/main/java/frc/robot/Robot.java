@@ -1,0 +1,77 @@
+package frc.robot;
+
+import edu.wpi.first.wpilibj.TimedRobot;
+import edu.wpi.first.wpilibj.XboxController;
+
+public class Robot extends TimedRobot {
+
+  // CAN ID range - spark - 1 - 62, kracken 0 - 62
+  // front right neo - 10
+  // front left neo  -  1
+  // back right neo  -  7
+  // back left neo   -  4
+
+  // front right kraken - 11
+  // front left kraken - 2
+  // back right kraken - 8
+  // back left kraken - 5
+
+  // front right cancoder - 12
+  // front left cancoder - 3 
+  // back right cancoder - 9
+  // back left cancoder - 6
+
+
+  // ---------------- CAN ID DEFINITIONS ----------------
+  private static final double DEADBAND = 0.08;
+  // ---------------------------------------------------
+
+  private final XboxController controller = new XboxController(0);
+  private final BringupCore core = new BringupCore();
+
+  @Override
+  public void robotInit() {
+    printStartupInfo();
+    BringupUtil.validateCanIds(BringupUtil.NEO_CAN_IDS, BringupUtil.KRAKEN_CAN_IDS);
+  }
+
+  @Override
+  public void teleopInit() {
+    core.resetState();
+  }
+
+  @Override
+  public void disabledInit() {
+    core.resetState();
+  }
+
+  @Override
+  public void teleopPeriodic() {
+
+    core.handleAdd(controller.getAButton());
+    core.handlePrint(controller.getBButton());
+    core.handleHealth(controller.getXButton());
+
+    double neoSpeed = BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
+    double krakenSpeed = BringupUtil.deadband(-controller.getRightY(), DEADBAND);
+
+    core.setSpeeds(neoSpeed, krakenSpeed);
+  }
+
+  // ---------------------------------------------------
+  // Diagnostics
+  // ---------------------------------------------------
+
+  private void printStartupInfo() {
+    System.out.println("=== Swerve Bringup ===");
+    System.out.println("A: add motor (alternates NEO/KRAKEN)");
+    System.out.println("B: print state");
+    System.out.println("X: print health status");
+    System.out.println("Left Y: NEO speed, Right Y: KRAKEN speed");
+    System.out.println("Deadband: " + DEADBAND);
+    System.out.println("NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
+    System.out.println("KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
+    System.out.println("======================");
+  }
+  // Shared behavior moved to BringupCore.
+}
