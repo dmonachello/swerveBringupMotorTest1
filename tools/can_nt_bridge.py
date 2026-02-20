@@ -78,7 +78,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     parser.add_argument(
         "--device-ids",
         type=_parse_ids,
-        default=_parse_ids("2,5,8,11"),
+        default=_parse_ids("2,5,8,11,12,3,9,6"),
         help="Comma-separated CAN IDs to report",
     )
     parser.add_argument(
@@ -121,6 +121,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     device_ids = list(args.device_ids)
     last_seen: Dict[int, float] = {}
+    msg_count: Dict[int, int] = {}
     bus_error_count = 0
     last_publish = 0.0
 
@@ -140,6 +141,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 else:
                     device_id = _device_id_from_arb_id(msg.arbitration_id)
                     last_seen[device_id] = now
+                    msg_count[device_id] = msg_count.get(device_id, 0) + 1
                     if args.verbose:
                         print(f"RX id={device_id} arb=0x{msg.arbitration_id:X}")
 
@@ -152,8 +154,12 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                         diag_table.getEntry(f"lastSeen/{device_id}").setDouble(ts)
                         missing = (now - ts) > args.timeout
                         diag_table.getEntry(f"missing/{device_id}").setBoolean(missing)
+                        diag_table.getEntry(f"msgCount/{device_id}").setDouble(
+                            float(msg_count.get(device_id, 0))
+                        )
                     else:
                         diag_table.getEntry(f"missing/{device_id}").setBoolean(True)
+                        diag_table.getEntry(f"msgCount/{device_id}").setDouble(0.0)
 
                 last_publish = now
     except KeyboardInterrupt:

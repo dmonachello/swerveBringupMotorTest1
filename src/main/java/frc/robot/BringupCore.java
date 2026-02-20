@@ -1,6 +1,7 @@
 package frc.robot;
 
 import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.revrobotics.spark.SparkMax;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
@@ -8,6 +9,7 @@ import com.revrobotics.spark.SparkLowLevel.MotorType;
 public final class BringupCore {
   private final SparkMax[] neos = new SparkMax[BringupUtil.NEO_CAN_IDS.length];
   private final TalonFX[] krakens = new TalonFX[BringupUtil.KRAKEN_CAN_IDS.length];
+  private final CANcoder[] cancoders = new CANcoder[BringupUtil.CANCODER_CAN_IDS.length];
 
   private int nextNeo = 0;
   private int nextKraken = 0;
@@ -16,6 +18,7 @@ public final class BringupCore {
   private boolean prevAdd = false;
   private boolean prevPrint = false;
   private boolean prevHealth = false;
+  private boolean prevCANCoder = false;
 
   public void handleAdd(boolean addNow) {
     if (addNow && !prevAdd) {
@@ -38,6 +41,13 @@ public final class BringupCore {
     prevHealth = healthNow;
   }
 
+  public void handleCANCoder(boolean printNow) {
+    if (printNow && !prevCANCoder) {
+      printCANCoderStatus();
+    }
+    prevCANCoder = printNow;
+  }
+
   public void setSpeeds(double neoSpeed, double krakenSpeed) {
     BringupUtil.setAllNeos(neos, neoSpeed);
     BringupUtil.setAllKrakens(krakens, krakenSpeed);
@@ -54,6 +64,10 @@ public final class BringupCore {
       BringupUtil.closeIfPossible(krakens[i]);
       krakens[i] = null;
     }
+    for (int i = 0; i < cancoders.length; i++) {
+      BringupUtil.closeIfPossible(cancoders[i]);
+      cancoders[i] = null;
+    }
 
     nextNeo = 0;
     nextKraken = 0;
@@ -62,6 +76,7 @@ public final class BringupCore {
     prevAdd = false;
     prevPrint = false;
     prevHealth = false;
+    prevCANCoder = false;
 
     System.out.println("=== Bringup reset: no motors instantiated ===");
   }
@@ -170,5 +185,24 @@ public final class BringupCore {
               : " status=" + faultSignal.getStatus() + "/" + stickySignal.getStatus()));
     }
     System.out.println("======================");
+  }
+
+  private void printCANCoderStatus() {
+    System.out.println("=== Bringup CANCoder ===");
+    for (int i = 0; i < cancoders.length; i++) {
+      if (cancoders[i] == null) {
+        cancoders[i] = new CANcoder(BringupUtil.CANCODER_CAN_IDS[i]);
+      }
+      var absolute = cancoders[i].getAbsolutePosition();
+      BaseStatusSignal.refreshAll(absolute);
+      double rotations = absolute.getValue();
+      double degrees = rotations * 360.0;
+      System.out.println(
+          "CANCoder index " + i +
+          " CAN " + BringupUtil.CANCODER_CAN_IDS[i] +
+          " absRot=" + String.format("%.4f", rotations) +
+          " absDeg=" + String.format("%.1f", degrees));
+    }
+    System.out.println("=======================");
   }
 }

@@ -8,6 +8,8 @@ public final class BringupUtil {
 
   public static final int[] NEO_CAN_IDS = { 10, 1, 7, 4 };
   public static final int[] KRAKEN_CAN_IDS = { 11, 2, 8, 5 };
+  public static final int[] CANCODER_CAN_IDS = { 12, 3, 9, 6 };
+  public static final double DEADBAND = 0.12;
 
   public static void setAllNeos(SparkMax[] neos, double speed) {
     for (int i = 0; i < neos.length; i++) {

@@ -9,7 +9,7 @@ import edu.wpi.first.networktables.NetworkTableInstance;
 public class RobotV2 extends TimedRobot {
 
   // ---------------- CAN ID DEFINITIONS ----------------
-  private static final double DEADBAND = 0.08;
+  private static final double DEADBAND = BringupUtil.DEADBAND;
   // ---------------------------------------------------
 
   private final XboxController controller = new XboxController(0);
@@ -42,6 +42,7 @@ public class RobotV2 extends TimedRobot {
     core.handleAdd(controller.getAButton());
     core.handlePrint(controller.getBButton());
     core.handleHealth(controller.getXButton());
+    core.handleCANCoder(controller.getRightBumper());
 
     // Y button: print NetworkTables diagnostics
     boolean diagNow = controller.getYButton();
@@ -65,6 +66,7 @@ public class RobotV2 extends TimedRobot {
     System.out.println("A: add motor (alternates NEO/KRAKEN)");
     System.out.println("B: print state");
     System.out.println("X: print health status");
+    System.out.println("Right Bumper: print CANCoder absolute positions");
     System.out.println("Y: print NetworkTables diagnostics");
     System.out.println("Left Y: NEO speed, Right Y: KRAKEN speed");
     System.out.println("Deadband: " + DEADBAND);

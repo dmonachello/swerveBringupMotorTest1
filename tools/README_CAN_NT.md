@@ -26,7 +26,7 @@ py -m pip install python-can
 ## Run
 
 ```powershell
-py tools\can_nt_bridge.py --rio 172.22.11.2 --channel COM3 --device-ids 2,5,8,11
+py tools\can_nt_bridge.py --rio 172.22.11.2 --channel COM3 --device-ids 2,5,8,11,12,3,9,6
 ```
 
 Options:
@@ -39,3 +39,5 @@ Options:
 
 - The script maps device IDs from the lowest 6 bits of the CAN extended ID.
 - `RobotV2` prints `NT: no data` until a device has been seen at least once.
+- The `--device-ids` list should include the CANCoder CAN IDs to track them.
+- `msgCount/<deviceId>` reports the total number of frames seen for that ID.
