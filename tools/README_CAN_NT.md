@@ -26,7 +26,7 @@ py -m pip install pyserial
 ## Run
 
 ```powershell
-C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --channel COM3 --device-ids 2,5,8,11,12,3,9,6
+C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --channel COM3
 ```
 
 Or use the helper script that pins the Python interpreter:
@@ -40,13 +40,22 @@ powershell -ExecutionPolicy Bypass -File .\tools\run_can_nt.ps1
 ```
 
 Options:
-- `--channel` is the CANable COM port (Device Manager shows it).
+- `--channel` is the CANable COM port (Device Manager shows it). If omitted, the
+  script auto-detects the first port whose description contains "USB Serial Device".
 - `--interface` defaults to `slcan`.
 - `--bitrate` defaults to `1000000` (FRC CAN).
 - `--timeout` marks a device missing if no frames arrive in that many seconds.
 - `--verbose` prints each received device ID.
 - `--print-publish` prints when a device is seen after being missing (uses `--timeout`).
 - `--print-summary-period` prints per-device counts/missing every N seconds with timestamps (0 disables).
+- `--no-traffic-secs` prints a warning if no CAN frames are seen for N seconds (0 disables).
+
+Published NetworkTables keys:
+- `bringup/diag/busErrorCount`
+- `bringup/diag/lastSeen/<deviceId>`
+- `bringup/diag/missing/<deviceId>`
+- `bringup/diag/msgCount/<deviceId>`
+- `bringup/diag/type/<deviceId>`
 
 ## Notes
 

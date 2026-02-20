@@ -28,6 +28,27 @@ def _parse_ids(value: str) -> Tuple[int, ...]:
     return tuple(items)
 
 
+def _default_device_ids() -> Tuple[int, ...]:
+    return _parse_ids("10,1,7,4,2,5,8,11,12,3,9,6")
+
+
+def _device_type_labels(device_ids: Iterable[int]) -> Dict[int, str]:
+    labels: Dict[int, str] = {}
+    neo_ids = {10, 1, 7, 4}
+    kraken_ids = {11, 2, 8, 5}
+    cancoder_ids = {12, 3, 9, 6}
+    for device_id in device_ids:
+        if device_id in cancoder_ids:
+            labels[device_id] = "CANCoder"
+        elif device_id in kraken_ids:
+            labels[device_id] = "KRAKEN"
+        elif device_id in neo_ids:
+            labels[device_id] = "NEO"
+        else:
+            labels[device_id] = "Unknown"
+    return labels
+
+
 def _init_nt(rio: str, debug: bool):
     try:
         from ntcore import NetworkTableInstance  # type: ignore
@@ -102,6 +123,37 @@ def _init_can(interface: str, channel: str, bitrate: int):
         ) from exc
 
 
+def _auto_channel(match_text: str) -> Tuple[str, str]:
+    try:
+        import serial.tools.list_ports  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(
+            "pyserial is required for auto-detecting the CANable port. "
+            "Install it with: py -m pip install pyserial"
+        ) from exc
+
+    matches = []
+    for port in serial.tools.list_ports.comports():
+        desc = port.description or ""
+        if match_text.lower() in desc.lower():
+            matches.append((port.device, desc))
+
+    if not matches:
+        raise RuntimeError(
+            f"No serial ports matched '{match_text}'. "
+            "Specify --channel explicitly (e.g., COM3)."
+        )
+
+    if len(matches) > 1:
+        raise RuntimeError(
+            "Multiple serial ports matched "
+            f"'{match_text}': {', '.join(dev for dev, _ in matches)}. "
+            "Specify --channel explicitly."
+        )
+
+    return matches[0]
+
+
 def _device_id_from_arb_id(arb_id: int) -> int:
     # FRC CAN device ID is carried in the lowest 6 bits of the extended ID.
     return arb_id & 0x3F
@@ -113,7 +165,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     parser.add_argument(
         "--device-ids",
         type=_parse_ids,
-        default=_parse_ids("2,5,8,11,12,3,9,6"),
+        default=_default_device_ids(),
         help="Comma-separated CAN IDs to report",
     )
     parser.add_argument(
@@ -123,8 +175,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     )
     parser.add_argument(
         "--channel",
-        default="COM3",
-        help="CAN channel (for slcan, the COM port like COM3)",
+        default="",
+        help="CAN channel (for slcan, the COM port like COM3). "
+        "If omitted, attempts auto-detect by description.",
     )
     parser.add_argument(
         "--bitrate",
@@ -161,6 +214,12 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         help="Seconds between summary prints (0 to disable)",
     )
     parser.add_argument(
+        "--no-traffic-secs",
+        type=float,
+        default=5.0,
+        help="Seconds with zero CAN frames before printing a warning (0 to disable)",
+    )
+    parser.add_argument(
         "--debug-imports",
         action="store_true",
         help="Print sys.path and site-package locations when imports fail",
@@ -168,17 +227,24 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     nt_kind, nt_inst, diag_table = _init_nt(args.rio, args.debug_imports)
-    bus = _init_can(args.interface, args.channel, args.bitrate)
+    channel = args.channel
+    if not channel:
+        channel, channel_desc = _auto_channel("USB Serial Device")
+        print(f"Auto-detected CAN channel: {channel} ({channel_desc})")
+    bus = _init_can(args.interface, channel, args.bitrate)
 
     device_ids = list(args.device_ids)
+    device_labels = _device_type_labels(device_ids)
     last_seen: Dict[int, float] = {}
     msg_count: Dict[int, int] = {}
     bus_error_count = 0
     last_publish = 0.0
     last_summary = 0.0
+    last_traffic_warn = 0.0
+    total_frames = 0
 
     print(f"NetworkTables: {nt_kind} -> {args.rio}")
-    print(f"CAN: interface={args.interface} channel={args.channel} bitrate={args.bitrate}")
+    print(f"CAN: interface={args.interface} channel={channel} bitrate={args.bitrate}")
     print(f"Tracking device IDs: {', '.join(str(i) for i in device_ids)}")
     print("Press Ctrl+C to stop.")
 
@@ -196,6 +262,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     prev_missing = prev_seen is None or (now - prev_seen) > args.timeout
                     last_seen[device_id] = now
                     msg_count[device_id] = msg_count.get(device_id, 0) + 1
+                    total_frames += 1
                     if args.print_publish and prev_missing:
                         print(f"Device seen: id={device_id} count={msg_count[device_id]}")
                     if args.verbose:
@@ -213,9 +280,15 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                         diag_table.getEntry(f"msgCount/{device_id}").setDouble(
                             float(msg_count.get(device_id, 0))
                         )
+                        diag_table.getEntry(f"type/{device_id}").setString(
+                            device_labels.get(device_id, "Unknown")
+                        )
                     else:
                         diag_table.getEntry(f"missing/{device_id}").setBoolean(True)
                         diag_table.getEntry(f"msgCount/{device_id}").setDouble(0.0)
+                        diag_table.getEntry(f"type/{device_id}").setString(
+                            device_labels.get(device_id, "Unknown")
+                        )
 
                 last_publish = now
 
@@ -229,11 +302,18 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     age = None if ts is None else (now - ts)
                     age_text = "n/a" if age is None else f"{age:.2f}s"
                     missing_text = "YES" if missing else "NO"
+                    label = device_labels.get(device_id, "Unknown")
                     lines.append(
-                        f"  id {device_id:>2}  count={count:<6}  missing={missing_text:<3}  age={age_text}"
+                        f"  id {device_id:>2}  type={label:<8}  count={count:<6}  missing={missing_text:<3}  age={age_text}"
                     )
                 print("\n".join(lines))
                 last_summary = now
+
+            if args.no_traffic_secs > 0 and (now - last_traffic_warn) >= args.no_traffic_secs:
+                if total_frames == 0:
+                    timestamp = time.strftime("%H:%M:%S", time.localtime(now))
+                    print(f"No CAN traffic detected as of {timestamp}.")
+                last_traffic_warn = now
     except KeyboardInterrupt:
         print("Stopping.")
     finally:

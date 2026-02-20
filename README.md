@@ -35,7 +35,7 @@ py -m pip install pyserial
 
 Run:
 ```powershell
-C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --channel COM3
+C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2
 ```
 
 Or use the helper script that pins the Python interpreter:
@@ -53,6 +53,7 @@ Published NetworkTables keys:
 - `bringup/diag/lastSeen/<deviceId>`
 - `bringup/diag/missing/<deviceId>`
 - `bringup/diag/msgCount/<deviceId>`
+- `bringup/diag/type/<deviceId>`
 
 RobotV2 prints these diagnostics when you press `Y`.
 
@@ -60,6 +61,7 @@ Useful run flags:
 - `--verbose` prints each received device ID.
 - `--print-publish` prints when a device is seen after being missing (uses `--timeout`).
 - `--print-summary-period` prints per-device counts/missing every N seconds with timestamps (0 disables).
+- `--no-traffic-secs` prints a warning if no CAN frames are seen for N seconds (0 disables).
 
 ## CANCoder Test
 Press `Right Bumper` to print absolute position for the configured CANCoder IDs.
