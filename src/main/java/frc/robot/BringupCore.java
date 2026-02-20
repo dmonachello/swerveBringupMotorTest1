@@ -3,6 +3,7 @@ package frc.robot;
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.TalonFX;
+import edu.wpi.first.units.Units;
 import com.revrobotics.spark.SparkMax;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
 
@@ -228,7 +229,7 @@ public final class BringupCore {
       }
       var absolute = cancoders[i].getAbsolutePosition();
       BaseStatusSignal.refreshAll(absolute);
-      double rotations = absolute.getValue();
+      double rotations = absolute.getValue().in(Units.Rotations);
       double degrees = rotations * 360.0;
       System.out.println(
           "CANCoder index " + i +

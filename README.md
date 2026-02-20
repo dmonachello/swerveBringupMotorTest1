@@ -54,10 +54,24 @@ Or pass the interpreter path as the first argument:
 tools\run_can_nt.cmd C:\Path\To\Python\python.exe
 ```
 
+Pass extra flags directly:
+```cmd
+tools\run_can_nt.cmd --verbose --print-summary-period 2
+```
+
+If you pass a Python path first, flags can follow:
+```cmd
+tools\run_can_nt.cmd C:\Path\To\Python\python.exe --verbose --quick-check
+```
+
+If neither is set, the script will:
+1. Use the first `python` found in `PATH`.
+2. Fall back to `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe`.
+
 Config:
 - Default settings live in `tools/can_nt_config.json`.
 - Override with `--config path\to\file.json`.
-- The config supports a `labels` map to name devices by ID.
+- The config supports a `devices` list with `manufacturer`, `device_type`, and `device_id`.
 - The config supports `groups` for summary rollups and `log_csv` defaults.
 - By default, `tools/can_nt_config.json` enables CSV logging to `tools\can_nt_log.csv`.
 
@@ -87,14 +101,25 @@ Examples:
 
 Published NetworkTables keys:
 - `bringup/diag/busErrorCount`
-- `bringup/diag/lastSeen/<deviceId>`
-- `bringup/diag/missing/<deviceId>`
-- `bringup/diag/msgCount/<deviceId>`
-- `bringup/diag/type/<deviceId>` (label string: type or custom name)
-- `bringup/diag/status/<deviceId>` (OK/STALE/MISSING)
-- `bringup/diag/ageSec/<deviceId>` (-1 if missing)
+- `bringup/diag/dev/<mfg>/<type>/<id>/label`
+- `bringup/diag/dev/<mfg>/<type>/<id>/status`
+- `bringup/diag/dev/<mfg>/<type>/<id>/ageSec`
+- `bringup/diag/dev/<mfg>/<type>/<id>/msgCount`
+- `bringup/diag/dev/<mfg>/<type>/<id>/lastSeen`
+- `bringup/diag/dev/<mfg>/<type>/<id>/manufacturer`
+- `bringup/diag/dev/<mfg>/<type>/<id>/deviceType`
+- `bringup/diag/dev/<mfg>/<type>/<id>/deviceId`
+- Legacy deviceId-only aggregate keys (for backward compatibility):
+  - `bringup/diag/lastSeen/<deviceId>`
+  - `bringup/diag/missing/<deviceId>`
+  - `bringup/diag/msgCount/<deviceId>`
+  - `bringup/diag/type/<deviceId>` (always `Mixed`)
+  - `bringup/diag/status/<deviceId>` (OK/STALE/MISSING)
+  - `bringup/diag/ageSec/<deviceId>` (-1 if missing)
 
 RobotV2 prints these diagnostics when you press `Y`.
+It now reads the composite keys under `bringup/diag/dev/<mfg>/<type>/<id>` so
+devices with the same numeric ID but different types are handled correctly.
 
 Useful run flags:
 - `--verbose` prints each received device ID.
@@ -106,6 +131,7 @@ Useful run flags:
 - `--log-period` sets seconds between CSV rows.
 - `--quick-check` prints one summary after `--quick-wait` seconds and exits.
 - `--quick-wait` sets the wait time before quick-check output.
+- `--device-ids` enables legacy deviceId-only tracking (not recommended for duplicate IDs).
 - `--list-ports` prints available serial ports and exits.
 - `--auto-match` sets the substring used to auto-detect the serial device.
 - `--no-prompt` disables the port selection prompt when multiple matches are found.

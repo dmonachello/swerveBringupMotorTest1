@@ -6,6 +6,25 @@ import com.revrobotics.spark.SparkMax;
 public final class BringupUtil {
   private BringupUtil() {}
 
+
+  // CAN ID (6 bits) range - spark - 1 - 62, kracken 0 - 62
+  // ---------------- CAN ID DEFINITIONS ----------------
+  // front right neo - 10
+  // front left neo  -  1
+  // back right neo  -  7
+  // back left neo   -  4
+
+  // front right kraken - 11
+  // front left kraken - 2
+  // back right kraken - 8
+  // back left kraken - 5
+
+  // front right cancoder - 12
+  // front left cancoder - 3 
+  // back right cancoder - 9
+  // back left cancoder - 6
+  // ---------------------------------------------------
+  
   public static final int[] NEO_CAN_IDS = { 10, 1, 7, 4 };
   public static final int[] KRAKEN_CAN_IDS = { 11, 2, 8, 5 };
   public static final int[] CANCODER_CAN_IDS = { 12, 3, 9, 6 };

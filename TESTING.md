@@ -87,12 +87,13 @@ Steps:
 Expected:
 - Periodic warning: `No CAN traffic detected as of HH:MM:SS.`
 
-### 4) Device IDs and labels
+### 4) Device IDs, manufacturer/type, and labels
 Steps:
 1. Ensure the CAN bus contains devices with IDs defined in `tools/can_nt_config.json`.
 2. Run with summaries enabled.
 Expected:
 - Each device prints its label (e.g., `FR NEO`, `FL KRAK`, `FR CANC`).
+- Same numeric IDs across different device types still show as separate entries.
 - `status` is `OK` when active; `STALE` after timeout; `MISSING` if never seen.
 
 ### 5) `--print-publish` behavior
@@ -124,12 +125,23 @@ Steps:
 1. Run tool and view NT values (e.g., NT client or RobotV2 Y button).
 Expected keys under `bringup/diag`:
 - `busErrorCount`
-- `lastSeen/<id>`
-- `missing/<id>`
-- `msgCount/<id>`
-- `type/<id>` (label string)
-- `status/<id>` (OK/STALE/MISSING)
-- `ageSec/<id>` (-1 if missing)
+- `dev/<mfg>/<type>/<id>/label`
+- `dev/<mfg>/<type>/<id>/status`
+- `dev/<mfg>/<type>/<id>/ageSec`
+- `dev/<mfg>/<type>/<id>/msgCount`
+- `dev/<mfg>/<type>/<id>/lastSeen`
+- `dev/<mfg>/<type>/<id>/manufacturer`
+- `dev/<mfg>/<type>/<id>/deviceType`
+- `dev/<mfg>/<type>/<id>/deviceId`
+RobotV2 uses the composite `dev/<mfg>/<type>/<id>` keys.
+
+Legacy deviceId-only aggregate keys:
+  - `lastSeen/<id>`
+  - `missing/<id>`
+  - `msgCount/<id>`
+  - `type/<id>` (always `Mixed`)
+  - `status/<id>` (OK/STALE/MISSING)
+  - `ageSec/<id>` (-1 if missing)
 
 ### 9) CSV logging
 Steps:
