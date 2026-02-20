@@ -1,0 +1,27 @@
+{
+  "rio": "172.22.11.2",
+  "interface": "slcan",
+  "channel": "",
+  "bitrate": 1000000,
+  "timeout": 1.0,
+  "publish_period": 0.2,
+  "print_summary_period": 2.0,
+  "no_traffic_secs": 5.0,
+  "no_rio_secs": 5.0,
+  "auto_match": "USB Serial Device",
+  "device_ids": [10, 1, 7, 4, 2, 5, 8, 11, 12, 3, 9, 6],
+  "labels": {
+    "10": "FR NEO",
+    "1": "FL NEO",
+    "7": "BR NEO",
+    "4": "BL NEO",
+    "11": "FR KRAK",
+    "2": "FL KRAK",
+    "8": "BR KRAK",
+    "5": "BL KRAK",
+    "12": "FR CANC",
+    "3": "FL CANC",
+    "9": "BR CANC",
+    "6": "BL CANC"
+  }
+}

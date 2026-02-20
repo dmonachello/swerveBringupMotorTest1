@@ -27,25 +27,43 @@ Robot and RobotV2 share the same bindings:
 This project includes a CAN -> NetworkTables bridge for diagnostics.
 
 Install:
-```powershell
+```cmd
 py -m pip install pynetworktables
 py -m pip install python-can
 py -m pip install pyserial
 ```
 
 Run:
-```powershell
+```cmd
 C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2
 ```
 
 Or use the helper script that pins the Python interpreter:
-```powershell
-.\tools\run_can_nt.ps1
+```cmd
+tools\run_can_nt.cmd
 ```
 
-If PowerShell blocks scripts, run:
-```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\run_can_nt.ps1
+Config:
+- Default settings live in `tools/can_nt_config.json`.
+- Override with `--config path\to\file.json`.
+- The config supports a `labels` map to name devices by ID.
+
+Examples:
+```cmd
+# Default (USB RIO, auto-detect COM port)
+C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2
+
+# Explicit COM port
+C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --channel COM21
+
+# More output (summary + device seen messages)
+C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --print-summary-period 2 --print-publish
+
+# Use a custom config
+C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --config tools\can_nt_config.json
+
+# List serial ports
+C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --list-ports
 ```
 
 Published NetworkTables keys:
@@ -53,7 +71,7 @@ Published NetworkTables keys:
 - `bringup/diag/lastSeen/<deviceId>`
 - `bringup/diag/missing/<deviceId>`
 - `bringup/diag/msgCount/<deviceId>`
-- `bringup/diag/type/<deviceId>`
+- `bringup/diag/type/<deviceId>` (label string: type or custom name)
 
 RobotV2 prints these diagnostics when you press `Y`.
 
@@ -62,6 +80,10 @@ Useful run flags:
 - `--print-publish` prints when a device is seen after being missing (uses `--timeout`).
 - `--print-summary-period` prints per-device counts/missing every N seconds with timestamps (0 disables).
 - `--no-traffic-secs` prints a warning if no CAN frames are seen for N seconds (0 disables).
+- `--no-rio-secs` prints a warning if not connected to the RIO for N seconds (0 disables).
+- `--list-ports` prints available serial ports and exits.
+- `--auto-match` sets the substring used to auto-detect the serial device.
+- `--no-prompt` disables the port selection prompt when multiple matches are found.
 
 ## CANCoder Test
 Press `Right Bumper` to print absolute position for the configured CANCoder IDs.
