@@ -30,11 +30,13 @@ public class RobotV2 extends TimedRobot {
   private final NetworkTable diagTable =
       NetworkTableInstance.getDefault().getTable("bringup").getSubTable("diag");
   private boolean prevDiag = false;
+  private boolean prevBindings = false;
 
   @Override
   public void robotInit() {
     printStartupInfo();
     BringupUtil.validateCanIds(
+        new String[] { "NEO", "KRAKEN", "CANCoder", "PDH", "Pigeon" },
         BringupUtil.NEO_CAN_IDS,
         BringupUtil.KRAKEN_CAN_IDS,
         BringupUtil.CANCODER_CAN_IDS,
@@ -46,12 +48,14 @@ public class RobotV2 extends TimedRobot {
   public void teleopInit() {
     core.resetState();
     prevDiag = false;
+    prevBindings = false;
   }
 
   @Override
   public void disabledInit() {
     core.resetState();
     prevDiag = false;
+    prevBindings = false;
   }
 
   @Override
@@ -69,6 +73,12 @@ public class RobotV2 extends TimedRobot {
       printNetworkDiagnostics();
     }
     prevDiag = diagNow;
+
+    boolean bindingsNow = controller.getBackButton();
+    if (bindingsNow && !prevBindings) {
+      printStartupInfo();
+    }
+    prevBindings = bindingsNow;
 
     double neoSpeed = BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
     double krakenSpeed = BringupUtil.deadband(-controller.getRightY(), DEADBAND);
@@ -88,6 +98,7 @@ public class RobotV2 extends TimedRobot {
     System.out.println("X: print health status");
     System.out.println("Right Bumper: print CANCoder absolute positions");
     System.out.println("Y: print NetworkTables diagnostics");
+    System.out.println("Back: reprint bindings");
     System.out.println("Left Y: NEO speed, Right Y: KRAKEN speed");
     System.out.println("Deadband: " + DEADBAND);
     System.out.println("NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
@@ -114,77 +125,55 @@ public class RobotV2 extends TimedRobot {
 
   private void printNetworkDeviceTable(java.util.List<DeviceSpec> specs, double nowSeconds) {
     java.util.ArrayList<DeviceRow> rows = new java.util.ArrayList<>();
-    int idWidth = 1;
-    int mfgIdWidth = 1;
-    int typeIdWidth = 1;
-    int labelWidth = 1;
-    int mfgLabelWidth = maxLabelWidth(MANUFACTURER_LABELS, "UNKNOWN");
-    int typeLabelWidth = maxLabelWidth(DEVICE_TYPE_LABELS, "UNKNOWN");
-    int statusWidth = "NO_DATA".length();
-    int ageWidth = "ageSec".length();
-    int msgWidth = "msgCount".length();
+    String idHeader = "id";
+    String labelHeader = "label";
+    String mfgHeader = "mfg";
+    String typeHeader = "type";
+    String statusHeader = "status";
+    String ageHeader = "ageSec";
+    String msgHeader = "msgCount";
+    String idHeaderLong = "id";
+    String labelHeaderLong = "label";
+    String mfgHeaderLong = "mfg";
+    String typeHeaderLong = "type";
+    String statusHeaderLong = "status";
+    String ageHeaderLong = "ageSec";
+    String msgHeaderLong = "msgCount";
+    int idWidth = 3;
+    int labelWidth = 20;
+    int mfgIdWidth = 3;
+    int typeIdWidth = 4;
+    int statusWidth = 8;
+    int ageWidth = 6;
+    int msgWidth = 16;
+    int maxLineWidth = 86;
 
     for (DeviceSpec spec : specs) {
       DeviceRow row = loadDeviceRow(spec, nowSeconds);
       rows.add(row);
 
-      idWidth = Math.max(idWidth, Integer.toString(spec.deviceId).length());
-      mfgIdWidth = Math.max(mfgIdWidth, Integer.toString(spec.manufacturer).length());
-      typeIdWidth = Math.max(typeIdWidth, Integer.toString(spec.deviceType).length());
-      labelWidth = Math.max(labelWidth, row.label.length());
-      statusWidth = Math.max(statusWidth, row.status.length());
-      ageWidth = Math.max(ageWidth, row.ageText.length());
-      msgWidth = Math.max(msgWidth, row.msgText.length());
     }
 
-    String format =
-        "  %" + idWidth + "d  " +
-        "%-" + labelWidth + "s  " +
-        "%" + mfgIdWidth + "d  " +
-        "%-" + mfgLabelWidth + "s  " +
-        "%" + typeIdWidth + "d  " +
-        "%-" + typeLabelWidth + "s  " +
-        "%-" + statusWidth + "s  " +
-        "%" + ageWidth + "s  " +
-        "%" + msgWidth + "s";
-
-    String headerFormat =
-        "  %" + idWidth + "s  " +
-        "%-" + labelWidth + "s  " +
-        "%" + mfgIdWidth + "s  " +
-        "%-" + mfgLabelWidth + "s  " +
-        "%" + typeIdWidth + "s  " +
-        "%-" + typeLabelWidth + "s  " +
-        "%-" + statusWidth + "s  " +
-        "%" + ageWidth + "s  " +
-        "%" + msgWidth + "s";
-
-    String header = String.format(
-        headerFormat,
-        "id",
-        "label",
-        "mfg",
-        "mfgName",
-        "type",
-        "typeName",
-        "status",
-        "ageSec",
-        "msgCount");
-    System.out.println(header);
-    System.out.println("  " + "-".repeat(header.length() - 2));
+    printWrappedHeaders(
+        new String[] { idHeaderLong, labelHeaderLong, mfgHeaderLong, typeHeaderLong,
+            statusHeaderLong, ageHeaderLong, msgHeaderLong },
+        null,
+        idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, ageWidth, msgWidth,
+        maxLineWidth);
 
     for (DeviceRow row : rows) {
-      System.out.println(String.format(
-          format,
-          row.spec.deviceId,
-          row.label,
-          row.spec.manufacturer,
-          row.mfgLabel,
-          row.spec.deviceType,
-          row.typeLabel,
-          row.status,
-          row.ageText,
-          row.msgText));
+      printWrappedRow(
+          new String[] {
+              Integer.toString(row.spec.deviceId),
+              row.label,
+              Integer.toString(row.spec.manufacturer),
+              Integer.toString(row.spec.deviceType),
+              row.status,
+              row.ageText,
+              row.msgText
+          },
+          idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, ageWidth, msgWidth,
+          maxLineWidth);
     }
   }
 
@@ -224,6 +213,169 @@ public class RobotV2 extends TimedRobot {
       width = Math.max(width, value.length());
     }
     return width;
+  }
+
+  private static void printWrappedHeaders(
+      String[] headerShort,
+      String[] headerLong,
+      int idWidth,
+      int labelWidth,
+      int mfgIdWidth,
+      int typeIdWidth,
+      int statusWidth,
+      int ageWidth,
+      int msgWidth,
+      int maxLineWidth) {
+    System.out.println(buildHeaderLine(
+        headerShort,
+        idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, ageWidth, msgWidth,
+        maxLineWidth));
+    if (headerLong != null) {
+      System.out.println(buildHeaderLine(
+          headerLong,
+          idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, ageWidth, msgWidth,
+          maxLineWidth));
+    }
+    System.out.println("-".repeat(maxLineWidth));
+  }
+
+  private static String buildHeaderLine(
+      String[] values,
+      int idWidth,
+      int labelWidth,
+      int mfgIdWidth,
+      int typeIdWidth,
+      int statusWidth,
+      int ageWidth,
+      int msgWidth,
+      int maxLineWidth) {
+    int[] widths = new int[] {
+        idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, ageWidth, msgWidth
+    };
+    StringBuilder row = new StringBuilder(maxLineWidth);
+    for (int col = 0; col < values.length; col++) {
+      String value = values[col] == null ? "" : values[col];
+      if (value.length() > widths[col]) {
+        value = truncate(value, widths[col]);
+      }
+      String padded = padRight(value, widths[col], '.');
+      if (col > 0) {
+        row.append(' ');
+      }
+      row.append(padded);
+    }
+    String rowText = row.toString();
+    if (rowText.length() > maxLineWidth) {
+      rowText = rowText.substring(0, maxLineWidth);
+    }
+    return rowText;
+  }
+
+  private static void printWrappedRow(
+      String[] values,
+      int idWidth,
+      int labelWidth,
+      int mfgIdWidth,
+      int typeIdWidth,
+      int statusWidth,
+      int ageWidth,
+      int msgWidth,
+      int maxLineWidth) {
+    int[] widths = new int[] {
+        idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, ageWidth, msgWidth
+    };
+    String[][] columns = new String[values.length][];
+    int maxLines = 1;
+    for (int i = 0; i < values.length; i++) {
+      columns[i] = wrapToLines(values[i], widths[i], 4);
+      maxLines = Math.max(maxLines, columns[i].length);
+    }
+
+    for (int line = 0; line < maxLines; line++) {
+      StringBuilder row = new StringBuilder(maxLineWidth);
+      for (int col = 0; col < columns.length; col++) {
+        String[] colLines = columns[col];
+        String value = line < colLines.length ? colLines[line] : "";
+        String padded = padRight(value, widths[col], '.');
+        if (col > 0) {
+          row.append(' ');
+        }
+        row.append(padded);
+      }
+      String rowText = row.toString();
+      if (rowText.length() > maxLineWidth) {
+        rowText = rowText.substring(0, maxLineWidth);
+      }
+      System.out.println(rowText);
+    }
+  }
+
+  private static String padLeft(String value, int width, char fill) {
+    if (value == null) {
+      value = "";
+    }
+    int missing = width - value.length();
+    if (missing <= 0) {
+      return value;
+    }
+    return repeatChar(fill, missing) + value;
+  }
+
+  private static String padRight(String value, int width, char fill) {
+    if (value == null) {
+      value = "";
+    }
+    int missing = width - value.length();
+    if (missing <= 0) {
+      return value;
+    }
+    return value + repeatChar(fill, missing);
+  }
+
+  private static String repeatChar(char fill, int count) {
+    if (count <= 0) {
+      return "";
+    }
+    return String.valueOf(fill).repeat(count);
+  }
+
+  private static String truncate(String value, int width) {
+    if (value == null) {
+      return "";
+    }
+    if (value.length() <= width) {
+      return value;
+    }
+    if (width <= 3) {
+      return value.substring(0, width);
+    }
+    return value.substring(0, width - 3) + "...";
+  }
+
+  private static String[] wrapToLines(String value, int width, int maxLines) {
+    if (value == null) {
+      value = "";
+    }
+    if (width <= 0) {
+      return new String[] { "" };
+    }
+    int maxChars = width * maxLines;
+    String trimmed = value.length() > maxChars
+        ? truncate(value, maxChars)
+        : value;
+    int lines = (int) Math.ceil(trimmed.length() / (double) width);
+    lines = Math.min(lines, maxLines);
+    String[] result = new String[lines == 0 ? 1 : lines];
+    if (trimmed.isEmpty()) {
+      result[0] = "";
+      return result;
+    }
+    for (int i = 0; i < lines; i++) {
+      int start = i * width;
+      int end = Math.min(start + width, trimmed.length());
+      result[i] = trimmed.substring(start, end);
+    }
+    return result;
   }
 
   private DeviceSpec[] findUnknownDeviceSpecs() {
@@ -266,19 +418,22 @@ public class RobotV2 extends TimedRobot {
   // Shared behavior moved to BringupCore.
 
   private static DeviceSpec[] buildDeviceSpecs() {
-    int total = BringupUtil.NEO_CAN_IDS.length
-        + BringupUtil.KRAKEN_CAN_IDS.length
-        + BringupUtil.CANCODER_CAN_IDS.length
+    int[] neoIds = BringupUtil.filterCanIds(BringupUtil.NEO_CAN_IDS);
+    int[] krakenIds = BringupUtil.filterCanIds(BringupUtil.KRAKEN_CAN_IDS);
+    int[] cancoderIds = BringupUtil.filterCanIds(BringupUtil.CANCODER_CAN_IDS);
+    int total = neoIds.length
+        + krakenIds.length
+        + cancoderIds.length
         + 2;
     DeviceSpec[] specs = new DeviceSpec[total];
     int i = 0;
-    for (int id : BringupUtil.NEO_CAN_IDS) {
+    for (int id : neoIds) {
       specs[i++] = new DeviceSpec("NEO", REV_MANUFACTURER, TYPE_MOTOR_CONTROLLER, id);
     }
-    for (int id : BringupUtil.KRAKEN_CAN_IDS) {
+    for (int id : krakenIds) {
       specs[i++] = new DeviceSpec("KRAKEN", CTRE_MANUFACTURER, TYPE_MOTOR_CONTROLLER, id);
     }
-    for (int id : BringupUtil.CANCODER_CAN_IDS) {
+    for (int id : cancoderIds) {
       specs[i++] = new DeviceSpec("CANCoder", CTRE_MANUFACTURER, TYPE_ENCODER, id);
     }
     specs[i++] = new DeviceSpec("PDH", REV_MANUFACTURER, TYPE_POWER_DISTRIBUTION_MODULE, PDH_CAN_ID);

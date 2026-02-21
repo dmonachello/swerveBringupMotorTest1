@@ -8,9 +8,13 @@ import com.revrobotics.spark.SparkMax;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
 
 public final class BringupCore {
-  private final SparkMax[] neos = new SparkMax[BringupUtil.NEO_CAN_IDS.length];
-  private final TalonFX[] krakens = new TalonFX[BringupUtil.KRAKEN_CAN_IDS.length];
-  private final CANcoder[] cancoders = new CANcoder[BringupUtil.CANCODER_CAN_IDS.length];
+  private final int[] neoIds = BringupUtil.filterCanIds(BringupUtil.NEO_CAN_IDS);
+  private final int[] krakenIds = BringupUtil.filterCanIds(BringupUtil.KRAKEN_CAN_IDS);
+  private final int[] cancoderIds = BringupUtil.filterCanIds(BringupUtil.CANCODER_CAN_IDS);
+
+  private final SparkMax[] neos = new SparkMax[neoIds.length];
+  private final TalonFX[] krakens = new TalonFX[krakenIds.length];
+  private final CANcoder[] cancoders = new CANcoder[cancoderIds.length];
 
   private int nextNeo = 0;
   private int nextKraken = 0;
@@ -94,12 +98,11 @@ public final class BringupCore {
   private void addNextMotor() {
     if (addNeoNext) {
       if (nextNeo < neos.length && neos[nextNeo] == null) {
-        neos[nextNeo] =
-            new SparkMax(BringupUtil.NEO_CAN_IDS[nextNeo], MotorType.kBrushless);
+        neos[nextNeo] = new SparkMax(neoIds[nextNeo], MotorType.kBrushless);
 
         System.out.println(
             "Added NEO index " + nextNeo +
-            " (CAN " + BringupUtil.NEO_CAN_IDS[nextNeo] + ")");
+            " (CAN " + neoIds[nextNeo] + ")");
 
         nextNeo++;
       } else {
@@ -110,12 +113,11 @@ public final class BringupCore {
     }
 
     if (nextKraken < krakens.length && krakens[nextKraken] == null) {
-      krakens[nextKraken] =
-          new TalonFX(BringupUtil.KRAKEN_CAN_IDS[nextKraken]);
+      krakens[nextKraken] = new TalonFX(krakenIds[nextKraken]);
 
       System.out.println(
           "Added KRAKEN index " + nextKraken +
-          " (CAN " + BringupUtil.KRAKEN_CAN_IDS[nextKraken] + ")");
+          " (CAN " + krakenIds[nextKraken] + ")");
 
       nextKraken++;
     } else {
@@ -127,17 +129,17 @@ public final class BringupCore {
   private void addAllDevices() {
     for (int i = 0; i < neos.length; i++) {
       if (neos[i] == null) {
-        neos[i] = new SparkMax(BringupUtil.NEO_CAN_IDS[i], MotorType.kBrushless);
+        neos[i] = new SparkMax(neoIds[i], MotorType.kBrushless);
       }
     }
     for (int i = 0; i < krakens.length; i++) {
       if (krakens[i] == null) {
-        krakens[i] = new TalonFX(BringupUtil.KRAKEN_CAN_IDS[i]);
+        krakens[i] = new TalonFX(krakenIds[i]);
       }
     }
     for (int i = 0; i < cancoders.length; i++) {
       if (cancoders[i] == null) {
-        cancoders[i] = new CANcoder(BringupUtil.CANCODER_CAN_IDS[i]);
+        cancoders[i] = new CANcoder(cancoderIds[i]);
       }
     }
 
@@ -155,10 +157,10 @@ public final class BringupCore {
     for (int i = 0; i < neos.length; i++) {
       if (neos[i] != null) {
         System.out.println("  index " + i +
-            " CAN " + BringupUtil.NEO_CAN_IDS[i] + " ACTIVE");
+            " CAN " + neoIds[i] + " ACTIVE");
       } else {
         System.out.println("  index " + i +
-            " CAN " + BringupUtil.NEO_CAN_IDS[i] + " not added");
+            " CAN " + neoIds[i] + " not added");
       }
     }
 
@@ -166,10 +168,10 @@ public final class BringupCore {
     for (int i = 0; i < krakens.length; i++) {
       if (krakens[i] != null) {
         System.out.println("  index " + i +
-            " CAN " + BringupUtil.KRAKEN_CAN_IDS[i] + " ACTIVE");
+            " CAN " + krakenIds[i] + " ACTIVE");
       } else {
         System.out.println("  index " + i +
-            " CAN " + BringupUtil.KRAKEN_CAN_IDS[i] + " not added");
+            " CAN " + krakenIds[i] + " not added");
       }
     }
 
@@ -184,14 +186,14 @@ public final class BringupCore {
     for (int i = 0; i < neos.length; i++) {
       if (neos[i] == null) {
         System.out.println("NEO index " + i +
-            " CAN " + BringupUtil.NEO_CAN_IDS[i] + " not added");
+            " CAN " + neoIds[i] + " not added");
         continue;
       }
       var faults = neos[i].getFaults();
       var warnings = neos[i].getWarnings();
       System.out.println(
           "NEO index " + i +
-          " CAN " + BringupUtil.NEO_CAN_IDS[i] +
+          " CAN " + neoIds[i] +
           " faults=0x" + Integer.toHexString(faults.rawBits) +
           " warnings=0x" + Integer.toHexString(warnings.rawBits));
     }
@@ -199,7 +201,7 @@ public final class BringupCore {
     for (int i = 0; i < krakens.length; i++) {
       if (krakens[i] == null) {
         System.out.println("KRAKEN index " + i +
-            " CAN " + BringupUtil.KRAKEN_CAN_IDS[i] + " not added");
+            " CAN " + krakenIds[i] + " not added");
         continue;
       }
       var faultSignal = krakens[i].getFaultField();
@@ -211,7 +213,7 @@ public final class BringupCore {
       boolean stickyOk = stickySignal.getStatus().isOK();
       System.out.println(
           "KRAKEN index " + i +
-          " CAN " + BringupUtil.KRAKEN_CAN_IDS[i] +
+          " CAN " + krakenIds[i] +
           " fault=0x" + Integer.toHexString(faultField) +
           " sticky=0x" + Integer.toHexString(stickyField) +
           (faultOk && stickyOk
@@ -225,7 +227,7 @@ public final class BringupCore {
     System.out.println("=== Bringup CANCoder ===");
     for (int i = 0; i < cancoders.length; i++) {
       if (cancoders[i] == null) {
-        cancoders[i] = new CANcoder(BringupUtil.CANCODER_CAN_IDS[i]);
+        cancoders[i] = new CANcoder(cancoderIds[i]);
       }
       var absolute = cancoders[i].getAbsolutePosition();
       BaseStatusSignal.refreshAll(absolute);
@@ -233,7 +235,7 @@ public final class BringupCore {
       double degrees = rotations * 360.0;
       System.out.println(
           "CANCoder index " + i +
-          " CAN " + BringupUtil.CANCODER_CAN_IDS[i] +
+          " CAN " + cancoderIds[i] +
           " absRot=" + String.format("%.4f", rotations) +
           " absDeg=" + String.format("%.1f", degrees));
     }

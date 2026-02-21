@@ -25,9 +25,14 @@ public final class BringupUtil {
   // back left cancoder - 6
   // ---------------------------------------------------
   
-  public static final int[] NEO_CAN_IDS = { 10, 1, 7, 4 };
-  public static final int[] KRAKEN_CAN_IDS = { 11, 2, 8, 5 };
-  public static final int[] CANCODER_CAN_IDS = { 12, 3, 9, 6 };
+  // public static final int[] NEO_CAN_IDS = { 10, 1, 7, 4 };
+  // public static final int[] KRAKEN_CAN_IDS = { 11, 2, 8, 5 };
+  // public static final int[] CANCODER_CAN_IDS = { 12, 3, 9, 6 };
+
+  public static final int[] NEO_CAN_IDS = { 25, 22, 10, -1 };
+  public static final int[] KRAKEN_CAN_IDS = { -1, -1, -1, -1 };
+  public static final int[] CANCODER_CAN_IDS = { -1, -1, -1, -1 };
+  public static final int DISABLED_CAN_ID = -1;
   public static final double DEADBAND = 0.12;
 
   public static void setAllNeos(SparkMax[] neos, double speed) {
@@ -53,11 +58,19 @@ public final class BringupUtil {
 
   public static String joinIds(int[] ids) {
     StringBuilder builder = new StringBuilder();
+    int count = 0;
     for (int i = 0; i < ids.length; i++) {
-      if (i > 0) {
+      if (!isEnabledCanId(ids[i])) {
+        continue;
+      }
+      if (count > 0) {
         builder.append(", ");
       }
       builder.append(ids[i]);
+      count++;
+    }
+    if (count == 0) {
+      return "(none)";
     }
     return builder.toString();
   }
@@ -67,21 +80,64 @@ public final class BringupUtil {
   }
 
   public static void validateCanIds(int[]... idGroups) {
+    validateCanIds(null, idGroups);
+  }
+
+  public static void validateCanIds(String[] groupLabels, int[]... idGroups) {
     java.util.HashSet<Integer> seen = new java.util.HashSet<>();
     boolean hasDuplicate = false;
 
-    for (int[] ids : idGroups) {
+    for (int groupIndex = 0; groupIndex < idGroups.length; groupIndex++) {
+      int[] ids = idGroups[groupIndex];
+      int enabledCount = 0;
       for (int id : ids) {
+        if (!isEnabledCanId(id)) {
+          continue;
+        }
+        enabledCount++;
         if (!seen.add(id)) {
           System.out.println("Warning: duplicate CAN ID: " + id);
           hasDuplicate = true;
         }
+      }
+      if (enabledCount == 0) {
+        String label = "group " + (groupIndex + 1);
+        if (groupLabels != null && groupIndex < groupLabels.length) {
+          label = groupLabels[groupIndex];
+        }
+        System.out.println("Warning: all CAN IDs disabled for " + label + ".");
       }
     }
 
     if (hasDuplicate) {
       System.out.println("Warning: duplicate CAN IDs can cause bringup confusion.");
     }
+  }
+
+  public static int[] filterCanIds(int[] ids) {
+    int enabledCount = countEnabledCanIds(ids);
+    int[] filtered = new int[enabledCount];
+    int index = 0;
+    for (int id : ids) {
+      if (isEnabledCanId(id)) {
+        filtered[index++] = id;
+      }
+    }
+    return filtered;
+  }
+
+  public static int countEnabledCanIds(int[] ids) {
+    int count = 0;
+    for (int id : ids) {
+      if (isEnabledCanId(id)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  public static boolean isEnabledCanId(int id) {
+    return id != DISABLED_CAN_ID;
   }
 
   public static void closeIfPossible(Object device) {

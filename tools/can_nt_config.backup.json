@@ -1,0 +1,31 @@
+{
+  "rio": "172.22.11.2",
+  "interface": "slcan",
+  "channel": "",
+  "bitrate": 1000000,
+  "timeout": 1.0,
+  "publish_period": 0.2,
+  "print_summary_period": 2.0,
+  "no_traffic_secs": 5.0,
+  "no_rio_secs": 5.0,
+  "log_csv": "tools\\can_nt_log.csv",
+  "log_period": 1.0,
+  "quick_wait": 1.0,
+  "auto_match": "USB Serial Device",
+  "devices": [
+    {"label": "FR NEO", "manufacturer": 5, "device_type": 2, "device_id": 10, "group": "neos"},
+    {"label": "FL NEO", "manufacturer": 5, "device_type": 2, "device_id": 1, "group": "neos"},
+    {"label": "BR NEO", "manufacturer": 5, "device_type": 2, "device_id": 7, "group": "neos"},
+    {"label": "BL NEO", "manufacturer": 5, "device_type": 2, "device_id": 4, "group": "neos"},
+    {"label": "FR KRAK", "manufacturer": 4, "device_type": 2, "device_id": 11, "group": "krakens"},
+    {"label": "FL KRAK", "manufacturer": 4, "device_type": 2, "device_id": 2, "group": "krakens"},
+    {"label": "BR KRAK", "manufacturer": 4, "device_type": 2, "device_id": 8, "group": "krakens"},
+    {"label": "BL KRAK", "manufacturer": 4, "device_type": 2, "device_id": 5, "group": "krakens"},
+    {"label": "FR CANC", "manufacturer": 4, "device_type": 7, "device_id": 12, "group": "cancoders"},
+    {"label": "FL CANC", "manufacturer": 4, "device_type": 7, "device_id": 3, "group": "cancoders"},
+    {"label": "BR CANC", "manufacturer": 4, "device_type": 7, "device_id": 9, "group": "cancoders"},
+    {"label": "BL CANC", "manufacturer": 4, "device_type": 7, "device_id": 6, "group": "cancoders"},
+    {"label": "PDH", "manufacturer": 5, "device_type": 8, "device_id": 1, "group": "power"},
+    {"label": "Pigeon", "manufacturer": 4, "device_type": 4, "device_id": 1, "group": "sensors"}
+  ]
+}
