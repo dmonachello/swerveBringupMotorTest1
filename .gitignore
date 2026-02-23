@@ -175,6 +175,11 @@ simgui.json
 
 # CAN sniffer logs
 tools/can_nt_log.csv
+tools/logs/
+*.blf
+*.asc
+*.pcap
+*.pcapng
 
 # Simulation data log directory
 logs/
@@ -188,3 +193,10 @@ compile_commands.json
 
 # Eclipse generated file for annotation processors
 .factorypath
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Tool scratch data
+tools/save/
