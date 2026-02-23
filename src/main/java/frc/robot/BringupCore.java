@@ -10,15 +10,19 @@ import com.revrobotics.spark.SparkLowLevel.MotorType;
 public final class BringupCore {
   private final int[] neoIds = BringupUtil.filterCanIds(BringupUtil.NEO_CAN_IDS);
   private final int[] krakenIds = BringupUtil.filterCanIds(BringupUtil.KRAKEN_CAN_IDS);
+  private final int[] falconIds = BringupUtil.filterCanIds(BringupUtil.FALCON_CAN_IDS);
   private final int[] cancoderIds = BringupUtil.filterCanIds(BringupUtil.CANCODER_CAN_IDS);
 
   private final SparkMax[] neos = new SparkMax[neoIds.length];
   private final TalonFX[] krakens = new TalonFX[krakenIds.length];
+  private final TalonFX[] falcons = new TalonFX[falconIds.length];
   private final CANcoder[] cancoders = new CANcoder[cancoderIds.length];
 
   private int nextNeo = 0;
   private int nextKraken = 0;
+  private int nextFalcon = 0;
   private boolean addNeoNext = true;
+  private boolean addKrakenNext = true;
 
   private boolean prevAdd = false;
   private boolean prevAddAll = false;
@@ -64,10 +68,11 @@ public final class BringupCore {
   public void setSpeeds(double neoSpeed, double krakenSpeed) {
     BringupUtil.setAllNeos(neos, neoSpeed);
     BringupUtil.setAllKrakens(krakens, krakenSpeed);
+    BringupUtil.setAllFalcons(falcons, krakenSpeed);
   }
 
   public void resetState() {
-    BringupUtil.stopAll(neos, krakens);
+    BringupUtil.stopAll(neos, krakens, falcons);
 
     for (int i = 0; i < neos.length; i++) {
       BringupUtil.closeIfPossible(neos[i]);
@@ -77,6 +82,10 @@ public final class BringupCore {
       BringupUtil.closeIfPossible(krakens[i]);
       krakens[i] = null;
     }
+    for (int i = 0; i < falcons.length; i++) {
+      BringupUtil.closeIfPossible(falcons[i]);
+      falcons[i] = null;
+    }
     for (int i = 0; i < cancoders.length; i++) {
       BringupUtil.closeIfPossible(cancoders[i]);
       cancoders[i] = null;
@@ -84,7 +93,9 @@ public final class BringupCore {
 
     nextNeo = 0;
     nextKraken = 0;
+    nextFalcon = 0;
     addNeoNext = true;
+    addKrakenNext = true;
 
     prevAdd = false;
     prevAddAll = false;
@@ -112,16 +123,42 @@ public final class BringupCore {
       return;
     }
 
-    if (nextKraken < krakens.length && krakens[nextKraken] == null) {
-      krakens[nextKraken] = new TalonFX(krakenIds[nextKraken]);
-
-      System.out.println(
-          "Added KRAKEN index " + nextKraken +
-          " (CAN " + krakenIds[nextKraken] + ")");
-
-      nextKraken++;
+    if (addKrakenNext) {
+      if (nextKraken < krakens.length && krakens[nextKraken] == null) {
+        krakens[nextKraken] = new TalonFX(krakenIds[nextKraken]);
+        System.out.println(
+            "Added KRAKEN index " + nextKraken +
+            " (CAN " + krakenIds[nextKraken] + ")");
+        nextKraken++;
+        addKrakenNext = false;
+      } else if (nextFalcon < falcons.length && falcons[nextFalcon] == null) {
+        falcons[nextFalcon] = new TalonFX(falconIds[nextFalcon]);
+        System.out.println(
+            "Added FALCON index " + nextFalcon +
+            " (CAN " + falconIds[nextFalcon] + ")");
+        nextFalcon++;
+        addKrakenNext = true;
+      } else {
+        System.out.println("No more CTRE motors to add");
+      }
     } else {
-      System.out.println("No more Krakens to add");
+      if (nextFalcon < falcons.length && falcons[nextFalcon] == null) {
+        falcons[nextFalcon] = new TalonFX(falconIds[nextFalcon]);
+        System.out.println(
+            "Added FALCON index " + nextFalcon +
+            " (CAN " + falconIds[nextFalcon] + ")");
+        nextFalcon++;
+        addKrakenNext = true;
+      } else if (nextKraken < krakens.length && krakens[nextKraken] == null) {
+        krakens[nextKraken] = new TalonFX(krakenIds[nextKraken]);
+        System.out.println(
+            "Added KRAKEN index " + nextKraken +
+            " (CAN " + krakenIds[nextKraken] + ")");
+        nextKraken++;
+        addKrakenNext = false;
+      } else {
+        System.out.println("No more CTRE motors to add");
+      }
     }
     addNeoNext = true;
   }
@@ -137,6 +174,11 @@ public final class BringupCore {
         krakens[i] = new TalonFX(krakenIds[i]);
       }
     }
+    for (int i = 0; i < falcons.length; i++) {
+      if (falcons[i] == null) {
+        falcons[i] = new TalonFX(falconIds[i]);
+      }
+    }
     for (int i = 0; i < cancoders.length; i++) {
       if (cancoders[i] == null) {
         cancoders[i] = new CANcoder(cancoderIds[i]);
@@ -145,9 +187,10 @@ public final class BringupCore {
 
     nextNeo = neos.length;
     nextKraken = krakens.length;
+    nextFalcon = falcons.length;
     addNeoNext = true;
 
-    System.out.println("Added all NEOs, Krakens, and CANCoders.");
+    System.out.println("Added all NEOs, Krakens, Falcons, and CANCoders.");
   }
 
   private void printState() {
@@ -175,9 +218,20 @@ public final class BringupCore {
       }
     }
 
+    System.out.println("Falcons:");
+    for (int i = 0; i < falcons.length; i++) {
+      if (falcons[i] != null) {
+        System.out.println("  index " + i +
+            " CAN " + falconIds[i] + " ACTIVE");
+      } else {
+        System.out.println("  index " + i +
+            " CAN " + falconIds[i] + " not added");
+      }
+    }
+
     System.out.println(
         "Next add will be: " +
-        (addNeoNext ? "NEO" : "KRAKEN"));
+        (addNeoNext ? "NEO" : (addKrakenNext ? "KRAKEN" : "FALCON")));
     System.out.println("=====================");
   }
 
@@ -214,6 +268,28 @@ public final class BringupCore {
       System.out.println(
           "KRAKEN index " + i +
           " CAN " + krakenIds[i] +
+          " fault=0x" + Integer.toHexString(faultField) +
+          " sticky=0x" + Integer.toHexString(stickyField) +
+          (faultOk && stickyOk
+              ? ""
+              : " status=" + faultSignal.getStatus() + "/" + stickySignal.getStatus()));
+    }
+    for (int i = 0; i < falcons.length; i++) {
+      if (falcons[i] == null) {
+        System.out.println("FALCON index " + i +
+            " CAN " + falconIds[i] + " not added");
+        continue;
+      }
+      var faultSignal = falcons[i].getFaultField();
+      var stickySignal = falcons[i].getStickyFaultField();
+      BaseStatusSignal.refreshAll(faultSignal, stickySignal);
+      int faultField = faultSignal.getValue();
+      int stickyField = stickySignal.getValue();
+      boolean faultOk = faultSignal.getStatus().isOK();
+      boolean stickyOk = stickySignal.getStatus().isOK();
+      System.out.println(
+          "FALCON index " + i +
+          " CAN " + falconIds[i] +
           " fault=0x" + Integer.toHexString(faultField) +
           " sticky=0x" + Integer.toHexString(stickyField) +
           (faultOk && stickyOk

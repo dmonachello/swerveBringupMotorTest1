@@ -2,6 +2,7 @@ package frc.robot;
 
 import edu.wpi.first.wpilibj.GenericHID;
 import edu.wpi.first.wpilibj.TimedRobot;
+import java.util.ArrayList;
 
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
@@ -19,11 +20,6 @@ public class RobotV2 extends TimedRobot {
   private static final int TYPE_GYRO_SENSOR = 4;
   private static final int TYPE_ENCODER = 7;
   private static final int TYPE_POWER_DISTRIBUTION_MODULE = 8;
-  private static final int PDH_CAN_ID = 1;
-  private static final int PIGEON_CAN_ID = 1;
-
-  private static final java.util.Map<Integer, String> MANUFACTURER_LABELS = buildManufacturerLabels();
-  private static final java.util.Map<Integer, String> DEVICE_TYPE_LABELS = buildDeviceTypeLabels();
 
   private final GenericHID keyboard = new GenericHID(0);
   private BringupCore core = new BringupCore();
@@ -35,14 +31,9 @@ public class RobotV2 extends TimedRobot {
 
   @Override
   public void robotInit() {
+    BringupUtil.applyProfileFromArgs();
     printStartupInfo();
-    BringupUtil.validateCanIds(
-        new String[] { "NEO", "KRAKEN", "CANCoder", "PDH", "Pigeon" },
-        BringupUtil.NEO_CAN_IDS,
-        BringupUtil.KRAKEN_CAN_IDS,
-        BringupUtil.CANCODER_CAN_IDS,
-        new int[] { PDH_CAN_ID },
-        new int[] { PIGEON_CAN_ID });
+    validateCanIds();
   }
 
   @Override
@@ -75,13 +66,7 @@ public class RobotV2 extends TimedRobot {
       BringupUtil.toggleCanProfile();
       core.resetState();
       core = new BringupCore();
-      BringupUtil.validateCanIds(
-          new String[] { "NEO", "KRAKEN", "CANCoder", "PDH", "Pigeon" },
-          BringupUtil.NEO_CAN_IDS,
-          BringupUtil.KRAKEN_CAN_IDS,
-          BringupUtil.CANCODER_CAN_IDS,
-          new int[] { PDH_CAN_ID },
-          new int[] { PIGEON_CAN_ID });
+      validateCanIds();
       printStartupInfo();
     }
     prevProfileToggle = profileToggleNow;
@@ -129,7 +114,7 @@ public class RobotV2 extends TimedRobot {
 
   private void printStartupInfo() {
     System.out.println("=== Swerve Bringup V2 ===");
-    System.out.println("A: add motor (alternates NEO/KRAKEN)");
+    System.out.println("A: add motor (alternates NEO/KRAKEN/FALCON)");
     System.out.println("Enter: add all motors + CANCoders");
     System.out.println("B: print state");
     System.out.println("X: print health status");
@@ -142,6 +127,7 @@ public class RobotV2 extends TimedRobot {
     System.out.println("CAN profile: " + BringupUtil.getActiveCanProfileLabel());
     System.out.println("NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
     System.out.println("KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
+    System.out.println("FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
     System.out.println("=========================");
   }
 
@@ -164,13 +150,6 @@ public class RobotV2 extends TimedRobot {
 
   private void printNetworkDeviceTable(java.util.List<DeviceSpec> specs, double nowSeconds) {
     java.util.ArrayList<DeviceRow> rows = new java.util.ArrayList<>();
-    String idHeader = "id";
-    String labelHeader = "label";
-    String mfgHeader = "mfg";
-    String typeHeader = "type";
-    String statusHeader = "status";
-    String ageHeader = "ageSec";
-    String msgHeader = "msgCount";
     String idHeaderLong = "id";
     String labelHeaderLong = "label";
     String mfgHeaderLong = "mfg";
@@ -234,24 +213,12 @@ public class RobotV2 extends TimedRobot {
       msgText = Double.isNaN(msgCount) ? "?" : String.format("%.0f", msgCount);
     }
 
-    String mfgLabel = MANUFACTURER_LABELS.getOrDefault(spec.manufacturer, "UNKNOWN");
-    String typeLabel = DEVICE_TYPE_LABELS.getOrDefault(spec.deviceType, "UNKNOWN");
     return new DeviceRow(
         spec,
         label,
-        mfgLabel,
-        typeLabel,
         finalStatus,
         ageText,
         msgText);
-  }
-
-  private static int maxLabelWidth(java.util.Map<Integer, String> labels, String fallback) {
-    int width = fallback.length();
-    for (String value : labels.values()) {
-      width = Math.max(width, value.length());
-    }
-    return width;
   }
 
   private static void printWrappedHeaders(
@@ -347,17 +314,6 @@ public class RobotV2 extends TimedRobot {
       }
       System.out.println(rowText);
     }
-  }
-
-  private static String padLeft(String value, int width, char fill) {
-    if (value == null) {
-      value = "";
-    }
-    int missing = width - value.length();
-    if (missing <= 0) {
-      return value;
-    }
-    return repeatChar(fill, missing) + value;
   }
 
   private static String padRight(String value, int width, char fill) {
@@ -459,11 +415,18 @@ public class RobotV2 extends TimedRobot {
   private static DeviceSpec[] buildDeviceSpecs() {
     int[] neoIds = BringupUtil.filterCanIds(BringupUtil.NEO_CAN_IDS);
     int[] krakenIds = BringupUtil.filterCanIds(BringupUtil.KRAKEN_CAN_IDS);
+    int[] falconIds = BringupUtil.filterCanIds(BringupUtil.FALCON_CAN_IDS);
     int[] cancoderIds = BringupUtil.filterCanIds(BringupUtil.CANCODER_CAN_IDS);
     int total = neoIds.length
         + krakenIds.length
-        + cancoderIds.length
-        + 2;
+        + falconIds.length
+        + cancoderIds.length;
+    if (BringupUtil.isEnabledCanId(BringupUtil.PDH_CAN_ID)) {
+      total += 1;
+    }
+    if (BringupUtil.isEnabledCanId(BringupUtil.PIGEON_CAN_ID)) {
+      total += 1;
+    }
     DeviceSpec[] specs = new DeviceSpec[total];
     int i = 0;
     for (int id : neoIds) {
@@ -472,60 +435,47 @@ public class RobotV2 extends TimedRobot {
     for (int id : krakenIds) {
       specs[i++] = new DeviceSpec("KRAKEN", CTRE_MANUFACTURER, TYPE_MOTOR_CONTROLLER, id);
     }
+    for (int id : falconIds) {
+      specs[i++] = new DeviceSpec("FALCON", CTRE_MANUFACTURER, TYPE_MOTOR_CONTROLLER, id);
+    }
     for (int id : cancoderIds) {
       specs[i++] = new DeviceSpec("CANCoder", CTRE_MANUFACTURER, TYPE_ENCODER, id);
     }
-    specs[i++] = new DeviceSpec("PDH", REV_MANUFACTURER, TYPE_POWER_DISTRIBUTION_MODULE, PDH_CAN_ID);
-    specs[i++] = new DeviceSpec("Pigeon", CTRE_MANUFACTURER, TYPE_GYRO_SENSOR, PIGEON_CAN_ID);
+    if (BringupUtil.isEnabledCanId(BringupUtil.PDH_CAN_ID)) {
+      specs[i++] =
+          new DeviceSpec("PDH", REV_MANUFACTURER, TYPE_POWER_DISTRIBUTION_MODULE, BringupUtil.PDH_CAN_ID);
+    }
+    if (BringupUtil.isEnabledCanId(BringupUtil.PIGEON_CAN_ID)) {
+      specs[i++] =
+          new DeviceSpec("Pigeon", CTRE_MANUFACTURER, TYPE_GYRO_SENSOR, BringupUtil.PIGEON_CAN_ID);
+    }
     return specs;
   }
 
-  private static java.util.Map<Integer, String> buildManufacturerLabels() {
-    java.util.HashMap<Integer, String> labels = new java.util.HashMap<>();
-    labels.put(0, "Broadcast");
-    labels.put(1, "NI");
-    labels.put(2, "LuminaryMicro");
-    labels.put(3, "DEKA");
-    labels.put(4, "CTRElectronics");
-    labels.put(5, "REVRobotics");
-    labels.put(6, "Grapple");
-    labels.put(7, "MindSensors");
-    labels.put(8, "TeamUse");
-    labels.put(9, "KauaiLabs");
-    labels.put(10, "Copperforge");
-    labels.put(11, "PlayingWithFusion");
-    labels.put(12, "Studica");
-    labels.put(13, "TheThriftyBot");
-    labels.put(14, "ReduxRobotics");
-    labels.put(15, "AndyMark");
-    labels.put(16, "VividHosting");
-    labels.put(17, "VertosRobotics");
-    labels.put(18, "SWYFTRobotics");
-    labels.put(19, "LumynLabs");
-    labels.put(20, "BrushlandLabs");
-    labels.put(REV_MANUFACTURER, "REV");
-    labels.put(CTRE_MANUFACTURER, "CTRE");
-    return labels;
-  }
+  private void validateCanIds() {
+    ArrayList<String> labels = new ArrayList<>();
+    ArrayList<int[]> groups = new ArrayList<>();
 
-  private static java.util.Map<Integer, String> buildDeviceTypeLabels() {
-    java.util.HashMap<Integer, String> labels = new java.util.HashMap<>();
-    labels.put(0, "BroadcastMessages");
-    labels.put(1, "RobotController");
-    labels.put(TYPE_MOTOR_CONTROLLER, "MotorController");
-    labels.put(3, "RelayController");
-    labels.put(TYPE_GYRO_SENSOR, "GyroSensor");
-    labels.put(5, "Accelerometer");
-    labels.put(6, "DistanceSensor");
-    labels.put(TYPE_ENCODER, "Encoder");
-    labels.put(TYPE_POWER_DISTRIBUTION_MODULE, "PowerDistributionModule");
-    labels.put(9, "PneumaticsController");
-    labels.put(10, "Miscellaneous");
-    labels.put(11, "IOBreakout");
-    labels.put(12, "ServoController");
-    labels.put(13, "ColorSensor");
-    labels.put(31, "FirmwareUpdate");
-    return labels;
+    labels.add("NEO");
+    groups.add(BringupUtil.NEO_CAN_IDS);
+    labels.add("KRAKEN");
+    groups.add(BringupUtil.KRAKEN_CAN_IDS);
+    labels.add("FALCON");
+    groups.add(BringupUtil.FALCON_CAN_IDS);
+    labels.add("CANCoder");
+    groups.add(BringupUtil.CANCODER_CAN_IDS);
+    if (BringupUtil.isEnabledCanId(BringupUtil.PDH_CAN_ID)) {
+      labels.add("PDH");
+      groups.add(new int[] { BringupUtil.PDH_CAN_ID });
+    }
+    if (BringupUtil.isEnabledCanId(BringupUtil.PIGEON_CAN_ID)) {
+      labels.add("Pigeon");
+      groups.add(new int[] { BringupUtil.PIGEON_CAN_ID });
+    }
+
+    BringupUtil.validateCanIds(
+        labels.toArray(new String[0]),
+        groups.toArray(new int[0][]));
   }
 
   private static final class DeviceSpec {
@@ -545,8 +495,6 @@ public class RobotV2 extends TimedRobot {
   private static final class DeviceRow {
     private final DeviceSpec spec;
     private final String label;
-    private final String mfgLabel;
-    private final String typeLabel;
     private final String status;
     private final String ageText;
     private final String msgText;
@@ -554,15 +502,11 @@ public class RobotV2 extends TimedRobot {
     private DeviceRow(
         DeviceSpec spec,
         String label,
-        String mfgLabel,
-        String typeLabel,
         String status,
         String ageText,
         String msgText) {
       this.spec = spec;
       this.label = label;
-      this.mfgLabel = mfgLabel;
-      this.typeLabel = typeLabel;
       this.status = status;
       this.ageText = ageText;
       this.msgText = msgText;

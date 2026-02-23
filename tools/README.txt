@@ -9,12 +9,12 @@ What this is
 
 Folder contents
 - can_nt_bridge.py        Main program (run this)
-- can_profiles.py         Demo/Robot device tables and expected arbitration IDs
+- can_profiles.py         Profile device tables loaded from src/main/deploy/bringup_profiles.json
 - can_analyzer.py         Tracks arbitration IDs: rates, stale/missing, changing bytes
 - can_logging.py          PCAP/PCAPNG logging wrapper
 - can_nt_publish.py       NetworkTables publishing helpers
 - run_can_robot.bat       Convenience runner (robot profile)
-- run_can_demo.bat        Convenience runner (demo profile)
+- run_can_demo.bat        Convenience runner (demo_club profile)
 - install_deps.bat        Installs Python dependencies via pip
 - VERSION                 Version stamp
 
@@ -34,8 +34,7 @@ Quick start
 1) Put this folder somewhere (example: C:\frc\can_tools)
 2) Run install_deps.bat once
 3) Plug in your CANable and note the COM port (Device Manager)
-4) Edit run_can_robot.bat and set COM port if needed
-5) Double-click run_can_robot.bat
+4) Double-click run_can_robot.bat (auto-detects COM port)
 
 Typical commands
 Robot run with capture:

@@ -9,7 +9,7 @@ from typing import Dict, Iterable, Optional, Tuple, List
 from can_analyzer import CanLiveAnalyzer
 from can_logging import PcapLogger
 from can_nt_publish import decode_frc_ext_id, publish_devices
-from can_profiles import get_profile
+from can_profiles import get_default_profile, get_profile
 
 
 def _dump_seen_ids(
@@ -93,7 +93,7 @@ def _auto_channel(match_text: str, prompt: bool) -> Tuple[str, str]:
 def main(argv: Optional[Iterable[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="FRC CAN bringup diagnostics")
 
-    parser.add_argument("--profile", choices=["demo", "robot"], default="robot")
+    parser.add_argument("--profile", default=get_default_profile())
 
     parser.add_argument("--interface", default="slcan")
     parser.add_argument(

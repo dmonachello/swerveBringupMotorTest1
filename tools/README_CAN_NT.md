@@ -65,6 +65,7 @@ Config:
 - The config supports a `devices` list with `manufacturer`, `device_type`, and `device_id`.
 - The config supports `groups` for summary rollups and `log_csv` defaults.
 - By default, `tools/can_nt_config.json` enables CSV logging to `tools\can_nt_log.csv`.
+- Device tables for `--profile` are loaded from `src/main/deploy/bringup_profiles.json`.
 
 Examples:
 ```cmd
@@ -85,6 +86,9 @@ Examples:
 
 # Use a custom config
 %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --config tools\can_nt_config.json
+
+# Choose a profile from bringup_profiles.json
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_club
 
 # List serial ports
 %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --list-ports

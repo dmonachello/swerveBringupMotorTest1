@@ -1,45 +1,142 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
 
 
-DEMO_DEVICES: List[Dict[str, Any]] = [
-    {"label": "NEO 22", "manufacturer": 5, "device_type": 2, "device_id": 22, "group": "neos"},
-    {"label": "NEO 25", "manufacturer": 5, "device_type": 2, "device_id": 25, "group": "neos"},
-    {"label": "NEO 10", "manufacturer": 5, "device_type": 2, "device_id": 10, "group": "neos"},
-]
-
-# Fill this in later using --dump-can-expected-ids on a known-good demo setup.
-DEMO_CAN_EXPECTED_IDS: List[int] = []
+DEFAULT_PROFILE_NAME = "robot"
+PROFILE_FILE = Path(__file__).resolve().parents[1] / "src" / "main" / "deploy" / "bringup_profiles.json"
 
 
-ROBOT_DEVICES: List[Dict[str, Any]] = [
-    # NEOs (REV)
-    {"label": "FR NEO", "manufacturer": 5, "device_type": 2, "device_id": 10, "group": "neos"},
-    {"label": "FL NEO", "manufacturer": 5, "device_type": 2, "device_id": 1,  "group": "neos"},
-    {"label": "BR NEO", "manufacturer": 5, "device_type": 2, "device_id": 7,  "group": "neos"},
-    {"label": "BL NEO", "manufacturer": 5, "device_type": 2, "device_id": 4,  "group": "neos"},
+def _device(label: str, manufacturer: int, device_type: int, device_id: int, group: str) -> Dict[str, Any]:
+    return {
+        "label": label,
+        "manufacturer": manufacturer,
+        "device_type": device_type,
+        "device_id": device_id,
+        "group": group,
+    }
 
-    # Krakens (CTRE Talon FX)
-    {"label": "FR KRAK", "manufacturer": 4, "device_type": 2, "device_id": 11, "group": "krakens"},
-    {"label": "FL KRAK", "manufacturer": 4, "device_type": 2, "device_id": 2,  "group": "krakens"},
-    {"label": "BR KRAK", "manufacturer": 4, "device_type": 2, "device_id": 8,  "group": "krakens"},
-    {"label": "BL KRAK", "manufacturer": 4, "device_type": 2, "device_id": 5,  "group": "krakens"},
 
-    # CANcoders (CTRE)
-    {"label": "FR CANC", "manufacturer": 4, "device_type": 7, "device_id": 12, "group": "cancoders"},
-    {"label": "FL CANC", "manufacturer": 4, "device_type": 7, "device_id": 3,  "group": "cancoders"},
-    {"label": "BR CANC", "manufacturer": 4, "device_type": 7, "device_id": 9,  "group": "cancoders"},
-    {"label": "BL CANC", "manufacturer": 4, "device_type": 7, "device_id": 6,  "group": "cancoders"},
-]
+def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
+    if not PROFILE_FILE.exists():
+        return (_fallback_default(), _fallback_profiles())
 
-# Fill this in later using --dump-can-expected-ids on a known-good full robot setup.
-ROBOT_CAN_EXPECTED_IDS: List[int] = []
+    try:
+        payload = json.loads(PROFILE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return (_fallback_default(), _fallback_profiles())
+
+    default_profile = payload.get("default_profile") or DEFAULT_PROFILE_NAME
+    raw_profiles = payload.get("profiles")
+    if not isinstance(raw_profiles, dict) or not raw_profiles:
+        return (_fallback_default(), _fallback_profiles())
+
+    profiles: Dict[str, List[Dict[str, Any]]] = {}
+    for name, raw in raw_profiles.items():
+        if not isinstance(raw, dict):
+            continue
+        profiles[name] = _profile_devices(raw)
+
+    if default_profile not in profiles:
+        default_profile = DEFAULT_PROFILE_NAME
+
+    if not profiles:
+        return (_fallback_default(), _fallback_profiles())
+
+    return (default_profile, profiles)
+
+
+def _profile_devices(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
+    devices: List[Dict[str, Any]] = []
+
+    for entry in raw.get("neos", []) or []:
+        if not isinstance(entry, dict) or "id" not in entry:
+            continue
+        label = entry.get("label") or f"NEO {entry.get('id')}"
+        device_id = int(entry.get("id"))
+        devices.append(_device(label, 5, 2, device_id, "neos"))
+
+    for entry in raw.get("krakens", []) or []:
+        if not isinstance(entry, dict) or "id" not in entry:
+            continue
+        label = entry.get("label") or f"KRAKEN {entry.get('id')}"
+        device_id = int(entry.get("id"))
+        devices.append(_device(label, 4, 2, device_id, "krakens"))
+
+    for entry in raw.get("falcons", []) or []:
+        if not isinstance(entry, dict) or "id" not in entry:
+            continue
+        label = entry.get("label") or f"FALCON {entry.get('id')}"
+        device_id = int(entry.get("id"))
+        devices.append(_device(label, 4, 2, device_id, "falcons"))
+
+    for entry in raw.get("cancoders", []) or []:
+        if not isinstance(entry, dict) or "id" not in entry:
+            continue
+        label = entry.get("label") or f"CANCoder {entry.get('id')}"
+        device_id = int(entry.get("id"))
+        devices.append(_device(label, 4, 7, device_id, "cancoders"))
+
+    pdh = raw.get("pdh")
+    if isinstance(pdh, dict) and "id" in pdh:
+        label = pdh.get("label") or "PDH"
+        devices.append(_device(label, 5, 8, int(pdh.get("id")), "power"))
+
+    pigeon = raw.get("pigeon")
+    if isinstance(pigeon, dict) and "id" in pigeon:
+        label = pigeon.get("label") or "Pigeon"
+        devices.append(_device(label, 4, 4, int(pigeon.get("id")), "sensors"))
+
+    return devices
+
+
+def _fallback_default() -> str:
+    return DEFAULT_PROFILE_NAME
+
+
+def _fallback_profiles() -> Dict[str, List[Dict[str, Any]]]:
+    robot_devices: List[Dict[str, Any]] = [
+        _device("FR NEO", 5, 2, 10, "neos"),
+        _device("FL NEO", 5, 2, 1, "neos"),
+        _device("BR NEO", 5, 2, 7, "neos"),
+        _device("BL NEO", 5, 2, 4, "neos"),
+        _device("FR KRAK", 4, 2, 11, "krakens"),
+        _device("FL KRAK", 4, 2, 2, "krakens"),
+        _device("BR KRAK", 4, 2, 8, "krakens"),
+        _device("BL KRAK", 4, 2, 5, "krakens"),
+        _device("FR CANC", 4, 7, 12, "cancoders"),
+        _device("FL CANC", 4, 7, 3, "cancoders"),
+        _device("BR CANC", 4, 7, 9, "cancoders"),
+        _device("BL CANC", 4, 7, 6, "cancoders"),
+        _device("PDH", 5, 8, 1, "power"),
+        _device("Pigeon", 4, 4, 1, "sensors"),
+    ]
+    demo_devices: List[Dict[str, Any]] = [
+        _device("NEO 22", 5, 2, 22, "neos"),
+        _device("NEO 25", 5, 2, 25, "neos"),
+        _device("NEO 10", 5, 2, 10, "neos"),
+    ]
+    return {
+        "robot": robot_devices,
+        "demo_club": demo_devices,
+        "demo_home": [],
+    }
+
+
+DEFAULT_PROFILE, PROFILE_DEVICES = _load_profiles()
+
+
+def get_default_profile() -> str:
+    return DEFAULT_PROFILE
+
+
+def list_profiles() -> List[str]:
+    return list(PROFILE_DEVICES.keys())
 
 
 def get_profile(profile: str) -> Tuple[List[Dict[str, Any]], Set[int]]:
-    if profile == "demo":
-        return (list(DEMO_DEVICES), set(DEMO_CAN_EXPECTED_IDS))
-    if profile == "robot":
-        return (list(ROBOT_DEVICES), set(ROBOT_CAN_EXPECTED_IDS))
-    raise ValueError(f"Unknown profile: {profile}")
+    if profile in PROFILE_DEVICES:
+        return (list(PROFILE_DEVICES[profile]), set())
+    raise ValueError(f"Unknown profile: {profile}. Available: {', '.join(PROFILE_DEVICES.keys())}")

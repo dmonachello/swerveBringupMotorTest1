@@ -1,0 +1,43 @@
+{
+  "default_profile": "robot",
+  "profiles": {
+    "robot": {
+      "neos": [
+        { "label": "FR NEO", "id": 10 },
+        { "label": "FL NEO", "id": 1 },
+        { "label": "BR NEO", "id": 7 },
+        { "label": "BL NEO", "id": 4 }
+      ],
+      "krakens": [
+        { "label": "FR KRAK", "id": 11 },
+        { "label": "FL KRAK", "id": 2 },
+        { "label": "BR KRAK", "id": 8 },
+        { "label": "BL KRAK", "id": 5 }
+      ],
+      "cancoders": [
+        { "label": "FR CANC", "id": 12 },
+        { "label": "FL CANC", "id": 3 },
+        { "label": "BR CANC", "id": 9 },
+        { "label": "BL CANC", "id": 6 }
+      ],
+      "pdh": { "label": "PDH", "id": 1 },
+      "pigeon": { "label": "Pigeon", "id": 1 }
+    },
+    "demo_club": {
+      "neos": [
+        { "label": "NEO 25", "id": 25 },
+        { "label": "NEO 22", "id": 22 },
+        { "label": "NEO 10", "id": 10 }
+      ]
+    },
+    "demo_home": {
+      "neos": [
+        { "label": "VORTEX/FLEX 10", "id": 10 },
+        { "label": "VORTEX/FLEX 20", "id": 20 }
+      ],
+      "falcons": [
+        { "label": "FALCON 30", "id": 30 }
+      ]
+    }
+  }
+}

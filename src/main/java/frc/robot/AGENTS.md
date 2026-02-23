@@ -27,3 +27,30 @@ Change discipline
 - Keep changes small and testable.
 - Prefer explicit code paths over abstract frameworks for bringup code.
 - Keep operator controls and printouts stable unless asked to redesign them.
+
+Reverse engineering support on robot side (new work)
+
+Purpose
+- Robot code provides controlled, repeatable stimuli to make CAN traffic meaning observable.
+- Reverse engineering depends on consistent "actions" whose start/stop times are clear.
+
+Guidelines
+- Keep bringup actions discrete and easy to repeat:
+  - one device at a time
+  - fixed setpoints (ex: +0.2, +0.4, -0.2)
+  - fixed durations (ex: 2 seconds run, 1 second stop)
+- Ensure there is always an immediate stop action that zeros outputs.
+- When adding new bringup actions, print a clear console marker:
+  - EXP_START <name>
+  - EXP_STOP <name>
+  Include device identity (NEO/Kraken/CANCoder + CAN ID) in the marker.
+
+Preferred additions (optional, additive)
+- Add a "scripted experiment mode" that runs a predefined sequence:
+  - spin one motor forward, stop, reverse, stop
+  - repeat for each device in the current profile
+- This mode should be triggered by a single operator action (one key/button).
+- Do not require Python to be running. If Python is present, it will capture; if not, robot still runs.
+
+Non-negotiable
+- Do not change CAN ID tables without updating the tools/ profile tables in the same change.

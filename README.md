@@ -5,23 +5,30 @@ Bringup and diagnostics project for swerve motors and other CAN devices.
 ## Purpose
 Use this project to:
 - Add motors incrementally or all at once.
-- Command NEO and KRAKEN motors from an Xbox controller.
+- Command NEO, KRAKEN, and FALCON motors from an Xbox controller.
 - Print health and CAN sniffer diagnostics.
 - Read and verify CANCoder absolute positions.
 
 ## Run
 Use the normal WPILib workflow to deploy and run the robot code.
 
+## CAN Profiles (JSON)
+Bringup hardware profiles are defined in `src/main/deploy/bringup_profiles.json`.
+
+- `default_profile` controls the startup profile.
+- Profiles are applied in the order they appear in the JSON when you press `P` to toggle.
+- Override at runtime with `--bringup-profile=<name>`.
+
 ## Controller Bindings
 Robot and RobotV2 share the same bindings:
-- `A`: add motor (alternates NEO/KRAKEN)
+- `A`: add motor (alternates NEO/KRAKEN/FALCON)
 - `Start`: add all motors + CANCoders
 - `B`: print state
 - `X`: print health status
 - `Y`: print NetworkTables diagnostics (RobotV2 only)
 - `Right Bumper`: print CANCoder absolute positions
 - `Left Y`: NEO speed
-- `Right Y`: KRAKEN speed
+- `Right Y`: KRAKEN/FALCON speed
 
 ## CAN Sniffer Bridge (CANable Pro V2)
 This project includes a CAN -> NetworkTables bridge for diagnostics.
@@ -141,8 +148,8 @@ Press `Right Bumper` to print absolute position for the configured CANCoder IDs.
 This test reads absolute position directly from the devices over CAN and prints
 rotations and degrees to the console.
 
-Configured CAN IDs live in:
-- `src/main/java/frc/robot/BringupUtil.java`
+Configured CAN profiles live in:
+- `src/main/deploy/bringup_profiles.json`
 
 ## Future Features
 Ideas to consider:
@@ -154,7 +161,7 @@ Ideas to consider:
 
 ## Adding New Features
 General workflow:
-1. Add or update constants in `src/main/java/frc/robot/BringupUtil.java`.
+1. Add or update profiles in `src/main/deploy/bringup_profiles.json`.
 2. Put shared behavior in `src/main/java/frc/robot/BringupCore.java`.
 3. Bind controls in both `src/main/java/frc/robot/Robot.java` and
    `src/main/java/frc/robot/RobotV2.java`.

@@ -37,3 +37,77 @@ Definition of done
 Where things live
 - Java bringup code: src/main/java/... (look for RobotV2 and BringupUtil)
 - Python CAN tool: tools/ (entrypoint can_nt_bridge.py)
+
+Reverse engineering features to implement in tools/ (new work)
+
+New CLI capabilities (additive)
+- --pcap <path> already exists: keep it working.
+- Add a capture session concept:
+  - --session <name> to tag outputs (pcap + json) with a common name.
+  - --session-dir <dir> default tools/logs or tools/captures.
+- Add inventory output:
+  - --dump-api-inventory <path> writes JSON inventory:
+    per device key (mfg,type,id) -> list of (apiClass, apiIndex) with counts and rates.
+- Add diff capability:
+  - --diff-inventory <a.json> <b.json> prints a short delta:
+    new pairs, missing pairs, biggest rate changes.
+- Add byte fingerprinting:
+  - For each (mfg,type,id,apiClass,apiIndex):
+    track which byte positions change and a simple entropy/variation score.
+
+Data products
+- PCAPNG capture: full fidelity frames.
+- inventory JSON: stable schema for comparison between runs.
+- optional "analysis JSON": top talkers, candidate command frames, byte fingerprints.
+
+Implementation constraints
+- Keep the core loop simple. Do analysis in lightweight accumulators.
+- No heavy dependencies beyond what we already use.
+- Analysis code must work both live and for offline replay if we add replay later.
+- All reverse engineering outputs must tolerate unknown devices and unknown message types.
+
+NetworkTables publishing (additive)
+- Add new keys under bringup/diag/can/...
+  Suggested keys:
+  - can/apiInventory/json  (compact JSON string)
+  - can/topTalkers/json
+  - can/candidates/json (suspected command-like frames + fingerprints)
+- Do not change existing bringup/diag/dev/... keys.
+
+CAN reverse engineering roadmap (new work)
+
+Goal
+- Build an evidence-based map of CAN traffic meaning, not just device presence.
+- Output should be useful for humans (Wireshark + summaries) and for code (decoder registry).
+- Treat all decoded meanings as hypotheses until verified by controlled experiments.
+
+Hard rules
+- Do not transmit CAN frames from the PC tool. Reverse engineering is passive capture + analysis only.
+- Do not assume vendor message layouts. Derive from observed arbitration IDs + controlled robot actions + diffs.
+- Prefer additive outputs: never remove existing logging/publishing; add new summaries and new keys.
+
+Method (stage gates)
+Stage 1: Inventory
+- For each device (mfg, type, deviceId), list all observed (apiClass, apiIndex) pairs.
+- Track per-pair rate (frames/sec) and first/last seen.
+- Persist this inventory to JSON for later comparison.
+
+Stage 2: Controlled experiments
+- Use robot-side bringup actions as the stimulus (enable one device, set a constant output, stop, reverse).
+- For each experiment, produce a PCAPNG capture and a JSON inventory snapshot.
+- Store captures with consistent names so they can be diffed.
+
+Stage 3: Diff and classify
+- Compare inventories between experiments to detect:
+  - command-like frames (appear/change rate when setpoint changes)
+  - status frames (always periodic)
+- For each candidate frame type, compute "byte change fingerprints" (which bytes change, how often).
+
+Stage 4: Hypothesis decoders
+- Maintain a decoder registry keyed by (manufacturer, deviceType, apiClass, apiIndex).
+- Each decoder can emit named fields with scaling guesses, but must mark confidence.
+- Unknown frames must still be surfaced with raw bytes, rate, and change fingerprints.
+
+Stage 5: Publish insights
+- Publish the inventory and key findings to NetworkTables under bringup/diag/can/... without breaking existing keys.
+- Java consumption is optional and must fail soft if the publisher is absent.

@@ -2,6 +2,7 @@ package frc.robot;
 
 import edu.wpi.first.wpilibj.GenericHID;
 import edu.wpi.first.wpilibj.TimedRobot;
+import java.util.ArrayList;
 
 public class Robot extends TimedRobot {
 
@@ -18,12 +19,9 @@ public class Robot extends TimedRobot {
 
   @Override
   public void robotInit() {
+    BringupUtil.applyProfileFromArgs();
     printStartupInfo();
-    BringupUtil.validateCanIds(
-        new String[] { "NEO", "KRAKEN", "CANCoder" },
-        BringupUtil.NEO_CAN_IDS,
-        BringupUtil.KRAKEN_CAN_IDS,
-        BringupUtil.CANCODER_CAN_IDS);
+    validateCanIds();
   }
 
   @Override
@@ -53,11 +51,7 @@ public class Robot extends TimedRobot {
       BringupUtil.toggleCanProfile();
       core.resetState();
       core = new BringupCore();
-      BringupUtil.validateCanIds(
-          new String[] { "NEO", "KRAKEN", "CANCoder" },
-          BringupUtil.NEO_CAN_IDS,
-          BringupUtil.KRAKEN_CAN_IDS,
-          BringupUtil.CANCODER_CAN_IDS);
+      validateCanIds();
       printStartupInfo();
     }
     prevProfileToggle = profileToggleNow;
@@ -98,7 +92,7 @@ public class Robot extends TimedRobot {
 
   private void printStartupInfo() {
     System.out.println("=== Swerve Bringup ===");
-    System.out.println("A: add motor (alternates NEO/KRAKEN)");
+    System.out.println("A: add motor (alternates NEO/KRAKEN/FALCON)");
     System.out.println("Enter: add all motors + CANCoders");
     System.out.println("B: print state");
     System.out.println("X: print health status");
@@ -109,7 +103,34 @@ public class Robot extends TimedRobot {
     System.out.println("CAN profile: " + BringupUtil.getActiveCanProfileLabel());
     System.out.println("NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
     System.out.println("KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
+    System.out.println("FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
     System.out.println("======================");
+  }
+
+  private void validateCanIds() {
+    ArrayList<String> labels = new ArrayList<>();
+    ArrayList<int[]> groups = new ArrayList<>();
+
+    labels.add("NEO");
+    groups.add(BringupUtil.NEO_CAN_IDS);
+    labels.add("KRAKEN");
+    groups.add(BringupUtil.KRAKEN_CAN_IDS);
+    labels.add("FALCON");
+    groups.add(BringupUtil.FALCON_CAN_IDS);
+    labels.add("CANCoder");
+    groups.add(BringupUtil.CANCODER_CAN_IDS);
+    if (BringupUtil.isEnabledCanId(BringupUtil.PDH_CAN_ID)) {
+      labels.add("PDH");
+      groups.add(new int[] { BringupUtil.PDH_CAN_ID });
+    }
+    if (BringupUtil.isEnabledCanId(BringupUtil.PIGEON_CAN_ID)) {
+      labels.add("Pigeon");
+      groups.add(new int[] { BringupUtil.PIGEON_CAN_ID });
+    }
+
+    BringupUtil.validateCanIds(
+        labels.toArray(new String[0]),
+        groups.toArray(new int[0][]));
   }
   // Shared behavior moved to BringupCore.
 }
