@@ -1,7 +1,7 @@
 package frc.robot;
 
+import edu.wpi.first.wpilibj.GenericHID;
 import edu.wpi.first.wpilibj.TimedRobot;
-import edu.wpi.first.wpilibj.XboxController;
 
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
@@ -10,6 +10,7 @@ public class RobotV2 extends TimedRobot {
 
   // ---------------- CAN ID DEFINITIONS ----------------
   private static final double DEADBAND = BringupUtil.DEADBAND;
+  private static final double KEYBOARD_SPEED = 0.4;
   // ---------------------------------------------------
 
   private static final int REV_MANUFACTURER = 5;
@@ -21,16 +22,16 @@ public class RobotV2 extends TimedRobot {
   private static final int PDH_CAN_ID = 1;
   private static final int PIGEON_CAN_ID = 1;
 
-  private static final DeviceSpec[] DEVICE_SPECS = buildDeviceSpecs();
   private static final java.util.Map<Integer, String> MANUFACTURER_LABELS = buildManufacturerLabels();
   private static final java.util.Map<Integer, String> DEVICE_TYPE_LABELS = buildDeviceTypeLabels();
 
-  private final XboxController controller = new XboxController(0);
-  private final BringupCore core = new BringupCore();
+  private final GenericHID keyboard = new GenericHID(0);
+  private BringupCore core = new BringupCore();
   private final NetworkTable diagTable =
       NetworkTableInstance.getDefault().getTable("bringup").getSubTable("diag");
   private boolean prevDiag = false;
   private boolean prevBindings = false;
+  private boolean prevProfileToggle = false;
 
   @Override
   public void robotInit() {
@@ -49,6 +50,7 @@ public class RobotV2 extends TimedRobot {
     core.resetState();
     prevDiag = false;
     prevBindings = false;
+    prevProfileToggle = false;
   }
 
   @Override
@@ -56,32 +58,67 @@ public class RobotV2 extends TimedRobot {
     core.resetState();
     prevDiag = false;
     prevBindings = false;
+    prevProfileToggle = false;
   }
 
   @Override
   public void teleopPeriodic() {
 
-    core.handleAdd(controller.getAButton());
-    core.handleAddAll(controller.getStartButton());
-    core.handlePrint(controller.getBButton());
-    core.handleHealth(controller.getXButton());
-    core.handleCANCoder(controller.getRightBumperButton());
+    core.handleAdd(BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.A));
+    core.handleAddAll(BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.ENTER));
+    core.handlePrint(BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.B));
+    core.handleHealth(BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.X));
+    core.handleCANCoder(BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.R));
+
+    boolean profileToggleNow = BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.P);
+    if (profileToggleNow && !prevProfileToggle) {
+      BringupUtil.toggleCanProfile();
+      core.resetState();
+      core = new BringupCore();
+      BringupUtil.validateCanIds(
+          new String[] { "NEO", "KRAKEN", "CANCoder", "PDH", "Pigeon" },
+          BringupUtil.NEO_CAN_IDS,
+          BringupUtil.KRAKEN_CAN_IDS,
+          BringupUtil.CANCODER_CAN_IDS,
+          new int[] { PDH_CAN_ID },
+          new int[] { PIGEON_CAN_ID });
+      printStartupInfo();
+    }
+    prevProfileToggle = profileToggleNow;
 
     // Y button: print NetworkTables diagnostics
-    boolean diagNow = controller.getYButton();
+    boolean diagNow = BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.Y);
     if (diagNow && !prevDiag) {
       printNetworkDiagnostics();
     }
     prevDiag = diagNow;
 
-    boolean bindingsNow = controller.getBackButton();
+    boolean bindingsNow = BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.H);
     if (bindingsNow && !prevBindings) {
       printStartupInfo();
     }
     prevBindings = bindingsNow;
 
-    double neoSpeed = BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
-    double krakenSpeed = BringupUtil.deadband(-controller.getRightY(), DEADBAND);
+    double neoInput = 0.0;
+    if (BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.W)) {
+      neoInput += 1.0;
+    }
+    if (BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.S)) {
+      neoInput -= 1.0;
+    }
+    double krakenInput = 0.0;
+    if (BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.I)) {
+      krakenInput += 1.0;
+    }
+    if (BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.K)) {
+      krakenInput -= 1.0;
+    }
+    double neoSpeed = neoInput * KEYBOARD_SPEED;
+    double krakenSpeed = krakenInput * KEYBOARD_SPEED;
+    if (BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.SPACE)) {
+      neoSpeed = 0.0;
+      krakenSpeed = 0.0;
+    }
 
     core.setSpeeds(neoSpeed, krakenSpeed);
   }
@@ -93,14 +130,16 @@ public class RobotV2 extends TimedRobot {
   private void printStartupInfo() {
     System.out.println("=== Swerve Bringup V2 ===");
     System.out.println("A: add motor (alternates NEO/KRAKEN)");
-    System.out.println("Start: add all motors + CANCoders");
+    System.out.println("Enter: add all motors + CANCoders");
     System.out.println("B: print state");
     System.out.println("X: print health status");
-    System.out.println("Right Bumper: print CANCoder absolute positions");
+    System.out.println("R: print CANCoder absolute positions");
+    System.out.println("P: toggle CAN profile");
     System.out.println("Y: print NetworkTables diagnostics");
-    System.out.println("Back: reprint bindings");
-    System.out.println("Left Y: NEO speed, Right Y: KRAKEN speed");
-    System.out.println("Deadband: " + DEADBAND);
+    System.out.println("H: reprint bindings");
+    System.out.println("W/S: NEO speed, I/K: KRAKEN speed, Space: stop");
+    System.out.println("Deadband (unused on keyboard): " + DEADBAND);
+    System.out.println("CAN profile: " + BringupUtil.getActiveCanProfileLabel());
     System.out.println("NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
     System.out.println("KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
     System.out.println("=========================");
@@ -117,7 +156,7 @@ public class RobotV2 extends TimedRobot {
 
     System.out.println("Devices:");
     java.util.ArrayList<DeviceSpec> allSpecs = new java.util.ArrayList<>();
-    java.util.Collections.addAll(allSpecs, DEVICE_SPECS);
+    java.util.Collections.addAll(allSpecs, buildDeviceSpecs());
     java.util.Collections.addAll(allSpecs, findUnknownDeviceSpecs());
     printNetworkDeviceTable(allSpecs, nowSeconds);
     System.out.println("=============================");
@@ -380,7 +419,7 @@ public class RobotV2 extends TimedRobot {
 
   private DeviceSpec[] findUnknownDeviceSpecs() {
     java.util.HashSet<String> known = new java.util.HashSet<>();
-    for (DeviceSpec spec : DEVICE_SPECS) {
+    for (DeviceSpec spec : buildDeviceSpecs()) {
       known.add(spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId);
     }
 

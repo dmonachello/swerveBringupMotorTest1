@@ -2,6 +2,7 @@ package frc.robot;
 
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.revrobotics.spark.SparkMax;
+import edu.wpi.first.wpilibj.GenericHID;
 
 public final class BringupUtil {
   private BringupUtil() {}
@@ -25,15 +26,74 @@ public final class BringupUtil {
   // back left cancoder - 6
   // ---------------------------------------------------
   
-  // public static final int[] NEO_CAN_IDS = { 10, 1, 7, 4 };
-  // public static final int[] KRAKEN_CAN_IDS = { 11, 2, 8, 5 };
-  // public static final int[] CANCODER_CAN_IDS = { 12, 3, 9, 6 };
+  public enum CanProfile {
+    ROBOT,
+    DEMO_BOARD
+  }
 
-  public static final int[] NEO_CAN_IDS = { 25, 22, 10, -1 };
-  public static final int[] KRAKEN_CAN_IDS = { -1, -1, -1, -1 };
-  public static final int[] CANCODER_CAN_IDS = { -1, -1, -1, -1 };
+  private static final int[] ROBOT_NEO_CAN_IDS = { 10, 1, 7, 4 };
+  private static final int[] ROBOT_KRAKEN_CAN_IDS = { 11, 2, 8, 5 };
+  private static final int[] ROBOT_CANCODER_CAN_IDS = { 12, 3, 9, 6 };
+
+  private static final int[] DEMO_NEO_CAN_IDS = { 25, 22, 10, -1 };
+  private static final int[] DEMO_KRAKEN_CAN_IDS = { -1, -1, -1, -1 };
+  private static final int[] DEMO_CANCODER_CAN_IDS = { -1, -1, -1, -1 };
+
+  private static CanProfile activeProfile = CanProfile.ROBOT;
+
+  public static int[] NEO_CAN_IDS = ROBOT_NEO_CAN_IDS;
+  public static int[] KRAKEN_CAN_IDS = ROBOT_KRAKEN_CAN_IDS;
+  public static int[] CANCODER_CAN_IDS = ROBOT_CANCODER_CAN_IDS;
   public static final int DISABLED_CAN_ID = -1;
   public static final double DEADBAND = 0.12;
+
+  public static final class KeyboardKeys {
+    private KeyboardKeys() {}
+
+    // USB HID usage IDs used by the Driver Station Keyboard; adjust if DS mapping differs.
+    public static final int A = 4;
+    public static final int B = 5;
+    public static final int H = 11;
+    public static final int I = 12;
+    public static final int K = 14;
+    public static final int P = 19;
+    public static final int R = 21;
+    public static final int S = 22;
+    public static final int W = 26;
+    public static final int X = 27;
+    public static final int Y = 28;
+    public static final int ENTER = 40;
+    public static final int SPACE = 44;
+
+    public static boolean isPressed(GenericHID keyboard, int keyUsageId) {
+      return keyboard.getRawButton(keyUsageId);
+    }
+  }
+
+  public static void setActiveCanProfile(CanProfile profile) {
+    activeProfile = profile;
+    if (profile == CanProfile.ROBOT) {
+      NEO_CAN_IDS = ROBOT_NEO_CAN_IDS;
+      KRAKEN_CAN_IDS = ROBOT_KRAKEN_CAN_IDS;
+      CANCODER_CAN_IDS = ROBOT_CANCODER_CAN_IDS;
+    } else {
+      NEO_CAN_IDS = DEMO_NEO_CAN_IDS;
+      KRAKEN_CAN_IDS = DEMO_KRAKEN_CAN_IDS;
+      CANCODER_CAN_IDS = DEMO_CANCODER_CAN_IDS;
+    }
+  }
+
+  public static void toggleCanProfile() {
+    setActiveCanProfile(activeProfile == CanProfile.DEMO_BOARD ? CanProfile.ROBOT : CanProfile.DEMO_BOARD);
+  }
+
+  public static CanProfile getActiveCanProfile() {
+    return activeProfile;
+  }
+
+  public static String getActiveCanProfileLabel() {
+    return activeProfile == CanProfile.ROBOT ? "Robot" : "Demo Board";
+  }
 
   public static void setAllNeos(SparkMax[] neos, double speed) {
     for (int i = 0; i < neos.length; i++) {
