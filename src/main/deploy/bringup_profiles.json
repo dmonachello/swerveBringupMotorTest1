@@ -21,14 +21,16 @@
         { "label": "BL CANC", "id": 6 }
       ],
       "pdh": { "label": "PDH", "id": 1 },
-      "pigeon": { "label": "Pigeon", "id": 1 }
+      "pigeon": { "label": "Pigeon", "id": 1 },
+      "roborio": { "label": "roboRIO", "id": 0 }
     },
     "demo_club": {
       "neos": [
         { "label": "NEO 25", "id": 25 },
         { "label": "NEO 22", "id": 22 },
         { "label": "NEO 10", "id": 10 }
-      ]
+      ],
+      "roborio": { "label": "roboRIO", "id": 0 }
     },
     "demo_home": {
       "neos": [
@@ -37,7 +39,8 @@
       ],
       "falcons": [
         { "label": "FALCON 30", "id": 30 }
-      ]
+      ],
+      "roborio": { "label": "roboRIO", "id": 0 }
     },
     "demo_home_022326": {
       "flexes": [

@@ -54,6 +54,7 @@ public final class BringupUtil {
 
   private static final int FALLBACK_PDH_CAN_ID = 1;
   private static final int FALLBACK_PIGEON_CAN_ID = 1;
+  private static final int FALLBACK_ROBORIO_CAN_ID = 0;
 
   private static final String DEFAULT_PROFILE_NAME = "robot";
   private static final String DEFAULT_PROFILE_FILE = "bringup_profiles.json";
@@ -73,6 +74,7 @@ public final class BringupUtil {
   public static int[] CANCODER_CAN_IDS = FALLBACK_ROBOT_CANCODER_CAN_IDS;
   public static int PDH_CAN_ID = FALLBACK_PDH_CAN_ID;
   public static int PIGEON_CAN_ID = FALLBACK_PIGEON_CAN_ID;
+  public static int ROBORIO_CAN_ID = FALLBACK_ROBORIO_CAN_ID;
   public static final int DISABLED_CAN_ID = -1;
   public static final double DEADBAND = 0.12;
 
@@ -145,6 +147,7 @@ public final class BringupUtil {
     CANCODER_CAN_IDS = toIdArray(config.cancoders);
     PDH_CAN_ID = config.pdh != null ? config.pdh.id : DISABLED_CAN_ID;
     PIGEON_CAN_ID = config.pigeon != null ? config.pigeon.id : DISABLED_CAN_ID;
+    ROBORIO_CAN_ID = config.roborio != null ? config.roborio.id : DISABLED_CAN_ID;
     activeProfile = profileName;
   }
 
@@ -384,7 +387,8 @@ public final class BringupUtil {
         Collections.emptyList(),
         toDevices(FALLBACK_ROBOT_CANCODER_CAN_IDS),
         new DeviceRef(FALLBACK_PDH_CAN_ID),
-        new DeviceRef(FALLBACK_PIGEON_CAN_ID)));
+        new DeviceRef(FALLBACK_PIGEON_CAN_ID),
+        new DeviceRef(FALLBACK_ROBORIO_CAN_ID)));
     profiles.put("demo_club", new CanProfileConfig(
         toDevices(FALLBACK_DEMO_NEO_CAN_IDS),
         Collections.emptyList(),
@@ -392,7 +396,8 @@ public final class BringupUtil {
         Collections.emptyList(),
         toDevices(FALLBACK_DEMO_CANCODER_CAN_IDS),
         null,
-        null));
+        null,
+        new DeviceRef(FALLBACK_ROBORIO_CAN_ID)));
     profiles.put("demo_home", new CanProfileConfig(
         Collections.emptyList(),
         Collections.emptyList(),
@@ -400,7 +405,8 @@ public final class BringupUtil {
         Collections.emptyList(),
         Collections.emptyList(),
         null,
-        null));
+        null,
+        new DeviceRef(FALLBACK_ROBORIO_CAN_ID)));
     profileOrder = new ArrayList<>(profiles.keySet());
     defaultProfile = DEFAULT_PROFILE_NAME;
     activeProfile = defaultProfile;
@@ -411,6 +417,7 @@ public final class BringupUtil {
     CANCODER_CAN_IDS = FALLBACK_ROBOT_CANCODER_CAN_IDS;
     PDH_CAN_ID = FALLBACK_PDH_CAN_ID;
     PIGEON_CAN_ID = FALLBACK_PIGEON_CAN_ID;
+    ROBORIO_CAN_ID = FALLBACK_ROBORIO_CAN_ID;
   }
 
   private static int[] toIdArray(List<DeviceRef> refs) {
@@ -448,6 +455,7 @@ public final class BringupUtil {
     List<DeviceRef> cancoders = Collections.emptyList();
     DeviceRef pdh;
     DeviceRef pigeon;
+    DeviceRef roborio;
 
     CanProfileConfig(
         List<DeviceRef> neos,
@@ -456,7 +464,8 @@ public final class BringupUtil {
         List<DeviceRef> falcons,
         List<DeviceRef> cancoders,
         DeviceRef pdh,
-        DeviceRef pigeon) {
+        DeviceRef pigeon,
+        DeviceRef roborio) {
       this.neos = neos != null ? neos : Collections.emptyList();
       this.flexes = flexes != null ? flexes : Collections.emptyList();
       this.krakens = krakens != null ? krakens : Collections.emptyList();
@@ -464,6 +473,7 @@ public final class BringupUtil {
       this.cancoders = cancoders != null ? cancoders : Collections.emptyList();
       this.pdh = pdh;
       this.pigeon = pigeon;
+      this.roborio = roborio;
     }
   }
 

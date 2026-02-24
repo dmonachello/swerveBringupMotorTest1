@@ -7,6 +7,8 @@ import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
+import edu.wpi.first.wpilibj.livewindow.LiveWindow;
+import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
@@ -30,10 +32,12 @@ public class RobotV2 extends TimedRobot {
 
   private static final int REV_MANUFACTURER = 5;
   private static final int CTRE_MANUFACTURER = 4;
+  private static final int NI_MANUFACTURER = 1;
   private static final int TYPE_MOTOR_CONTROLLER = 2;
   private static final int TYPE_GYRO_SENSOR = 4;
   private static final int TYPE_ENCODER = 7;
   private static final int TYPE_POWER_DISTRIBUTION_MODULE = 8;
+  private static final int TYPE_ROBOT_CONTROLLER = 1;
 
   private static final String CAN_MAP_FILE = "can_mappings.json";
   private static final Gson GSON = new Gson();
@@ -50,6 +54,8 @@ public class RobotV2 extends TimedRobot {
   private boolean prevSpeedPrint = false;
   private boolean prevNudge = false;
   private boolean prevCanDiag = false;
+  private boolean prevDashboardToggle = false;
+  private boolean dashboardUpdatesEnabled = false;
   private final Map<String, Double> prevMsgCount = new HashMap<>();
   private final Map<String, Double> prevMsgTime = new HashMap<>();
   private double lastPcHeartbeat = Double.NaN;
@@ -58,10 +64,15 @@ public class RobotV2 extends TimedRobot {
   private final Map<String, Integer> pcStatusFlaps = new HashMap<>();
   private final Map<String, Long> pcLastStatusChangeMs = new HashMap<>();
   private final CanHealthMonitor canHealth = new CanHealthMonitor();
+  private static final long MIN_PRINT_INTERVAL_MS = 1000;
+  private long lastStartupPrintMs = 0L;
+  private long lastNetworkPrintMs = 0L;
+  private long lastCanDiagPrintMs = 0L;
 
   @Override
   public void robotInit() {
     BringupUtil.applyProfileFromArgs();
+    applyDashboardUpdateState();
     printStartupInfo();
     validateCanIds();
   }
@@ -75,6 +86,7 @@ public class RobotV2 extends TimedRobot {
     prevSpeedPrint = false;
     prevNudge = false;
     prevCanDiag = false;
+    prevDashboardToggle = false;
   }
 
   @Override
@@ -86,6 +98,7 @@ public class RobotV2 extends TimedRobot {
     prevSpeedPrint = false;
     prevNudge = false;
     prevCanDiag = false;
+    prevDashboardToggle = false;
   }
 
   @Override
@@ -132,12 +145,21 @@ public class RobotV2 extends TimedRobot {
     }
     prevCanDiag = canDiagNow;
 
+    boolean dashboardToggleNow = controller.getYButton();
+    if (dashboardToggleNow && !prevDashboardToggle) {
+      dashboardUpdatesEnabled = !dashboardUpdatesEnabled;
+      applyDashboardUpdateState();
+      BringupPrinter.enqueue(
+          "Dashboard/Shuffleboard updates: " + (dashboardUpdatesEnabled ? "ON" : "OFF"));
+    }
+    prevDashboardToggle = dashboardToggleNow;
+
     double neoSpeed = BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
     double krakenSpeed = BringupUtil.deadband(-controller.getRightY(), DEADBAND);
 
     boolean speedPrintNow = controller.getPOV() == 90;
     if (speedPrintNow && !prevSpeedPrint) {
-      System.out.println(
+      BringupPrinter.enqueue(
           "Inputs: leftY=" + String.format("%.2f", neoSpeed) +
           " rightY=" + String.format("%.2f", krakenSpeed) +
           " (NEO/FLEX=" + String.format("%.2f", neoSpeed) +
@@ -148,7 +170,7 @@ public class RobotV2 extends TimedRobot {
     boolean nudgeNow = controller.getXButton();
     if (nudgeNow && !prevNudge) {
       core.triggerNudge(0.2, 0.5);
-      System.out.println("Nudge: 0.2 for 0.5s (all motors)");
+      BringupPrinter.enqueue("Nudge: 0.2 for 0.5s (all motors)");
     }
     prevNudge = nudgeNow;
 
@@ -160,56 +182,97 @@ public class RobotV2 extends TimedRobot {
   // ---------------------------------------------------
 
   private void printStartupInfo() {
-    System.out.println("=== Swerve Bringup V2 ===");
-    System.out.println("A: add motor (alternates SPARK/CTRE)");
-    System.out.println("Start: add all motors + CANCoders");
-    System.out.println("B: print state");
-    System.out.println("D-pad Left: print health status");
-    System.out.println("Right Bumper: print CANCoder absolute positions");
-    System.out.println("Back: toggle CAN profile");
-    System.out.println("D-pad Down: print NetworkTables diagnostics");
-    System.out.println("Left Bumper: reprint bindings");
-    System.out.println("D-pad Up: print CAN diagnostics report");
-    System.out.println("D-pad Right: print speed inputs");
-    System.out.println("X: nudge motors (0.2 for 0.5s)");
-    System.out.println("Left Y: NEO/FLEX speed, Right Y: KRAKEN/FALCON speed");
-    System.out.println("Deadband: " + DEADBAND);
-    System.out.println("CAN profile: " + BringupUtil.getActiveCanProfileLabel());
-    System.out.println("NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
-    System.out.println("FLEX CAN IDs: " + BringupUtil.joinIds(BringupUtil.FLEX_CAN_IDS));
-    System.out.println("KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
-    System.out.println("FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
-    System.out.println("=========================");
+    long nowMs = System.currentTimeMillis();
+    if (nowMs - lastStartupPrintMs < MIN_PRINT_INTERVAL_MS) {
+      return;
+    }
+    lastStartupPrintMs = nowMs;
+    StringBuilder sb = new StringBuilder(512);
+    appendLine(sb, "=== Swerve Bringup V2 ===");
+    appendLine(sb, "A: add motor (alternates SPARK/CTRE)");
+    appendLine(sb, "Start: add all motors + CANCoders");
+    appendLine(sb, "B: print state");
+    appendLine(sb, "D-pad Left: print health status");
+    appendLine(sb, "Right Bumper: print CANCoder absolute positions");
+    appendLine(sb, "Back: toggle CAN profile");
+    appendLine(sb, "D-pad Down: print NetworkTables diagnostics");
+    appendLine(sb, "Left Bumper: reprint bindings");
+    appendLine(sb, "D-pad Up: print CAN diagnostics report");
+    appendLine(sb, "D-pad Right: print speed inputs");
+    appendLine(sb, "X: nudge motors (0.2 for 0.5s)");
+    appendLine(sb, "Y: toggle dashboard/shuffleboard updates");
+    appendLine(sb, "Left Y: NEO/FLEX speed, Right Y: KRAKEN/FALCON speed");
+    appendLine(sb, "Deadband: " + DEADBAND);
+    appendLine(sb, "Dashboard updates: " + (dashboardUpdatesEnabled ? "ON" : "OFF"));
+    appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
+    appendLine(sb, "NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
+    appendLine(sb, "FLEX CAN IDs: " + BringupUtil.joinIds(BringupUtil.FLEX_CAN_IDS));
+    appendLine(sb, "KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
+    appendLine(sb, "FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
+    appendLine(sb, "=========================");
+    enqueueBlockChunked(sb, 12);
   }
 
   private void printNetworkDiagnostics() {
-    System.out.println("=== Bringup NetworkTables (CAN Bus via PC Tool) ===");
+    long nowMs = System.currentTimeMillis();
+    if (nowMs - lastNetworkPrintMs < MIN_PRINT_INTERVAL_MS) {
+      return;
+    }
+    lastNetworkPrintMs = nowMs;
+    BringupPrinter.enqueueTask(this::enqueueNetworkDiagnosticsReport);
+  }
+
+  private void printCanDiagnosticsReport() {
+    long nowMs = System.currentTimeMillis();
+    if (nowMs - lastCanDiagPrintMs < MIN_PRINT_INTERVAL_MS) {
+      return;
+    }
+    lastCanDiagPrintMs = nowMs;
+    BringupPrinter.enqueueTask(this::enqueueCanDiagnosticsReport);
+  }
+
+  private void applyDashboardUpdateState() {
+    setNetworkTablesFlushEnabled(dashboardUpdatesEnabled);
+    LiveWindow.setEnabled(dashboardUpdatesEnabled);
+    if (dashboardUpdatesEnabled) {
+      Shuffleboard.enableActuatorWidgets();
+    } else {
+      Shuffleboard.disableActuatorWidgets();
+    }
+  }
+
+  private void enqueueNetworkDiagnosticsReport() {
+    StringBuilder sb = new StringBuilder(1024);
+    appendLine(sb, "=== Bringup NetworkTables (CAN Bus via PC Tool) ===");
     double nowSeconds = System.currentTimeMillis() / 1000.0;
 
     double busErrors = diagTable.getEntry("busErrorCount").getDouble(Double.NaN);
     if (!Double.isNaN(busErrors)) {
-      System.out.println("Bus error count: " + (long) busErrors);
+      appendLine(sb, "Bus error count: " + (long) busErrors);
     }
 
-    System.out.println("Devices:");
+    appendLine(sb, "Devices:");
     java.util.ArrayList<DeviceSpec> allSpecs = new java.util.ArrayList<>();
     java.util.Collections.addAll(allSpecs, buildDeviceSpecs());
     java.util.Collections.addAll(allSpecs, findUnknownDeviceSpecs());
-    printNetworkDeviceTable(allSpecs, nowSeconds);
-    System.out.println("=============================");
+    printNetworkDeviceTable(sb, allSpecs, nowSeconds);
+    appendLine(sb, "=============================");
+    enqueueBlockChunked(sb, 12);
   }
 
-  private void printCanDiagnosticsReport() {
-    System.out.println("=== CAN Diagnostics Report ===");
-    canHealth.printSnapshot();
-    canHealth.printReportSection();
-    printPcToolSection();
-    core.printDeviceDiagnosticsReport();
-    System.out.println("==============================");
+  private void enqueueCanDiagnosticsReport() {
+    StringBuilder sb = new StringBuilder(1024);
+    appendLine(sb, "=== CAN Diagnostics Report ===");
+    canHealth.appendSnapshot(sb);
+    canHealth.appendReportSection(sb);
+    appendPcToolSection(sb);
+    core.appendDeviceDiagnosticsReport(sb);
+    appendLine(sb, "==============================");
+    enqueueBlockChunked(sb, 12);
   }
 
-  private void printPcToolSection() {
-    System.out.println("PC Tool:");
+  private void appendPcToolSection(StringBuilder sb) {
+    appendLine(sb, "PC Tool:");
     long nowMs = System.currentTimeMillis();
 
     NetworkTableEntry heartbeatEntry = diagTable.getEntry("can/pc/heartbeat");
@@ -234,17 +297,17 @@ public class RobotV2 extends TimedRobot {
     double readErrors = diagTable.getEntry("can/pc/readErrors").getDouble(Double.NaN);
     double lastFrameAge = diagTable.getEntry("can/pc/lastFrameAgeSec").getDouble(Double.NaN);
 
-    System.out.println("  Heartbeat age: " + heartbeatAgeText);
-    System.out.println("  Open OK: " + openOkText);
-    System.out.println("  Frames/sec: " + formatDoubleOrDash(fps, 1));
-    System.out.println("  Frames total: " + formatDoubleOrDash(total, 0));
-    System.out.println("  Read errors: " + formatDoubleOrDash(readErrors, 0));
-    System.out.println("  Last frame age: " + formatDoubleOrDash(lastFrameAge, 2) + "s");
+    appendLine(sb, "  Heartbeat age: " + heartbeatAgeText);
+    appendLine(sb, "  Open OK: " + openOkText);
+    appendLine(sb, "  Frames/sec: " + formatDoubleOrDash(fps, 1));
+    appendLine(sb, "  Frames total: " + formatDoubleOrDash(total, 0));
+    appendLine(sb, "  Read errors: " + formatDoubleOrDash(readErrors, 0));
+    appendLine(sb, "  Last frame age: " + formatDoubleOrDash(lastFrameAge, 2) + "s");
 
-    printPcDeviceSummary(nowMs);
+    appendPcDeviceSummary(sb, nowMs);
   }
 
-  private void printPcDeviceSummary(long nowMs) {
+  private void appendPcDeviceSummary(StringBuilder sb, long nowMs) {
     java.util.ArrayList<DeviceSpec> allSpecs = new java.util.ArrayList<>();
     java.util.Collections.addAll(allSpecs, buildDeviceSpecs());
     java.util.Collections.addAll(allSpecs, findUnknownDeviceSpecs());
@@ -284,10 +347,10 @@ public class RobotV2 extends TimedRobot {
       }
     }
 
-    System.out.println("  Missing devices (PC): " + missingCount);
-    System.out.println("  Flapping devices (PC): " + flappingCount);
+    appendLine(sb, "  Missing devices (PC): " + missingCount + " / " + allSpecs.size());
+    appendLine(sb, "  Flapping devices (PC): " + flappingCount);
     if (!seenNotLocal.isEmpty()) {
-      System.out.println("  Seen on wire, not local: " + String.join(", ", seenNotLocal));
+      appendLine(sb, "  Seen on wire, not local: " + String.join(", ", seenNotLocal));
     }
   }
 
@@ -313,7 +376,10 @@ public class RobotV2 extends TimedRobot {
     return String.format(fmt, value);
   }
 
-  private void printNetworkDeviceTable(java.util.List<DeviceSpec> specs, double nowSeconds) {
+  private void printNetworkDeviceTable(
+      StringBuilder sb,
+      java.util.List<DeviceSpec> specs,
+      double nowSeconds) {
     java.util.ArrayList<DeviceRow> rows = new java.util.ArrayList<>();
     String idHeaderLong = "id";
     String labelHeaderLong = "label";
@@ -339,7 +405,8 @@ public class RobotV2 extends TimedRobot {
 
     }
 
-    printWrappedHeaders(
+    appendWrappedHeaders(
+        sb,
         new String[] { idHeaderLong, labelHeaderLong, mfgHeaderLong, typeHeaderLong,
             statusHeaderLong, ageHeaderLong, fpsHeaderLong, msgHeaderLong },
         null,
@@ -347,7 +414,8 @@ public class RobotV2 extends TimedRobot {
         maxLineWidth);
 
     for (DeviceRow row : rows) {
-      printWrappedRow(
+      appendWrappedRow(
+          sb,
           new String[] {
               Integer.toString(row.spec.deviceId),
               row.label,
@@ -392,7 +460,8 @@ public class RobotV2 extends TimedRobot {
         msgText);
   }
 
-  private static void printWrappedHeaders(
+  private static void appendWrappedHeaders(
+      StringBuilder sb,
       String[] headerShort,
       String[] headerLong,
       int idWidth,
@@ -404,17 +473,17 @@ public class RobotV2 extends TimedRobot {
       int fpsWidth,
       int msgWidth,
       int maxLineWidth) {
-    System.out.println(buildHeaderLine(
+    appendLine(sb, buildHeaderLine(
         headerShort,
         idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, ageWidth, fpsWidth, msgWidth,
         maxLineWidth));
     if (headerLong != null) {
-      System.out.println(buildHeaderLine(
+      appendLine(sb, buildHeaderLine(
           headerLong,
           idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, ageWidth, fpsWidth, msgWidth,
           maxLineWidth));
     }
-    System.out.println("-".repeat(maxLineWidth));
+    appendLine(sb, "-".repeat(maxLineWidth));
   }
 
   private static String buildHeaderLine(
@@ -450,7 +519,8 @@ public class RobotV2 extends TimedRobot {
     return rowText;
   }
 
-  private static void printWrappedRow(
+  private static void appendWrappedRow(
+      StringBuilder sb,
       String[] values,
       int idWidth,
       int labelWidth,
@@ -486,7 +556,7 @@ public class RobotV2 extends TimedRobot {
       if (rowText.length() > maxLineWidth) {
         rowText = rowText.substring(0, maxLineWidth);
       }
-      System.out.println(rowText);
+      appendLine(sb, rowText);
     }
   }
 
@@ -546,6 +616,19 @@ public class RobotV2 extends TimedRobot {
     }
     return result;
   }
+
+  private static void appendLine(StringBuilder sb, String line) {
+    sb.append(line).append('\n');
+  }
+
+  private void enqueueBlock(StringBuilder sb) {
+    BringupPrinter.enqueue(sb.toString());
+  }
+
+  private void enqueueBlockChunked(StringBuilder sb, int maxLines) {
+    BringupPrinter.enqueueChunked(sb.toString(), maxLines);
+  }
+
 
   private String formatFps(DeviceSpec spec, double msgCount, double nowSeconds) {
     if (Double.isNaN(msgCount)) {
@@ -705,6 +788,9 @@ public class RobotV2 extends TimedRobot {
     if (BringupUtil.isEnabledCanId(BringupUtil.PIGEON_CAN_ID)) {
       total += 1;
     }
+    if (BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
+      total += 1;
+    }
     DeviceSpec[] specs = new DeviceSpec[total];
     int i = 0;
     for (int id : neoIds) {
@@ -730,6 +816,10 @@ public class RobotV2 extends TimedRobot {
       specs[i++] =
           new DeviceSpec("Pigeon", CTRE_MANUFACTURER, TYPE_GYRO_SENSOR, BringupUtil.PIGEON_CAN_ID);
     }
+    if (BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
+      specs[i++] =
+          new DeviceSpec("roboRIO", NI_MANUFACTURER, TYPE_ROBOT_CONTROLLER, BringupUtil.ROBORIO_CAN_ID);
+    }
     return specs;
   }
 
@@ -754,6 +844,10 @@ public class RobotV2 extends TimedRobot {
     if (BringupUtil.isEnabledCanId(BringupUtil.PIGEON_CAN_ID)) {
       labels.add("Pigeon");
       groups.add(new int[] { BringupUtil.PIGEON_CAN_ID });
+    }
+    if (BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
+      labels.add("roboRIO");
+      groups.add(new int[] { BringupUtil.ROBORIO_CAN_ID });
     }
 
     BringupUtil.validateCanIds(
@@ -840,21 +934,21 @@ public class RobotV2 extends TimedRobot {
       boolean logDue = (nowMs - lastLogMs) >= LOG_PERIOD_MS;
 
       if (busOffEvent) {
-        System.out.println("[CAN] BUS OFF event detected! Check wiring/termination/noise.");
+        BringupPrinter.enqueue("[CAN] BUS OFF event detected! Check wiring/termination/noise.");
         lastLogMs = nowMs;
       }
 
       if (nowHighUtil && (!wasHighUtil || logDue)) {
-        System.out.printf("[CAN] High utilization: %.1f%%%n", utilizationPct);
+        BringupPrinter.enqueue(String.format("[CAN] High utilization: %.1f%%", utilizationPct));
         lastLogMs = nowMs;
       } else if (wasHighUtil && recoveredUtil) {
-        System.out.printf("[CAN] Utilization recovered: %.1f%%%n", utilizationPct);
+        BringupPrinter.enqueue(String.format("[CAN] Utilization recovered: %.1f%%", utilizationPct));
         lastLogMs = nowMs;
       }
 
       if (errorSpike && logDue) {
-        System.out.printf("[CAN] Error spike: rx=%d tx=%d (delta rx=%d tx=%d)%n",
-            rxErrors, txErrors, rxDelta, txDelta);
+        BringupPrinter.enqueue(String.format("[CAN] Error spike: rx=%d tx=%d (delta rx=%d tx=%d)",
+            rxErrors, txErrors, rxDelta, txDelta));
         lastLogMs = nowMs;
       }
 
@@ -871,24 +965,24 @@ public class RobotV2 extends TimedRobot {
       wasHighUtil = nowHighUtil;
     }
 
-    void printReportSection() {
-      System.out.println("Bus Health: (see CAN Bus Diagnostics summary above)");
+    void appendReportSection(StringBuilder sb) {
+      appendLine(sb, "Bus Health: (see CAN Bus Diagnostics summary above)");
     }
 
-    void printSnapshot() {
+    void appendSnapshot(StringBuilder sb) {
       if (lastUpdateMs == 0) {
-        System.out.println("[CAN] No status samples yet.");
+        appendLine(sb, "[CAN] No status samples yet.");
         return;
       }
       double ageSec = (System.currentTimeMillis() - lastUpdateMs) / 1000.0;
-      System.out.println("=== CAN Bus Diagnostics ===");
-      System.out.printf("Utilization: %.1f%%%n", lastUtilizationPct);
-      System.out.printf("RX errors: %d (delta %d)%n", lastRxErrors, lastRxDelta);
-      System.out.printf("TX errors: %d (delta %d)%n", lastTxErrors, lastTxDelta);
-      System.out.printf("TX full: %d (delta %d)%n", lastTxFullCount, lastTxFullDelta);
-      System.out.printf("Bus off count: %d (delta %d)%n", lastBusOffCount, lastBusOffDelta);
-      System.out.printf("Sample age: %.2fs%n", ageSec);
-      System.out.println("===========================");
+      appendLine(sb, "=== CAN Bus Diagnostics ===");
+      appendLine(sb, String.format("Utilization: %.1f%%", lastUtilizationPct));
+      appendLine(sb, String.format("RX errors: %d (delta %d)", lastRxErrors, lastRxDelta));
+      appendLine(sb, String.format("TX errors: %d (delta %d)", lastTxErrors, lastTxDelta));
+      appendLine(sb, String.format("TX full: %d (delta %d)", lastTxFullCount, lastTxFullDelta));
+      appendLine(sb, String.format("Bus off count: %d (delta %d)", lastBusOffCount, lastBusOffDelta));
+      appendLine(sb, String.format("Sample age: %.2fs", ageSec));
+      appendLine(sb, "===========================");
     }
   }
 }

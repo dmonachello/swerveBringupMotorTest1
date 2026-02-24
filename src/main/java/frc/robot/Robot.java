@@ -71,7 +71,7 @@ public class Robot extends TimedRobot {
 
     boolean speedPrintNow = controller.getRightStickButton();
     if (speedPrintNow && !prevSpeedPrint) {
-      System.out.println(
+      BringupPrinter.enqueue(
           "Inputs: leftY=" + String.format("%.2f", neoSpeed) +
           " rightY=" + String.format("%.2f", krakenSpeed) +
           " (NEO/FLEX=" + String.format("%.2f", neoSpeed) +
@@ -82,7 +82,7 @@ public class Robot extends TimedRobot {
     boolean nudgeNow = controller.getLeftStickButton();
     if (nudgeNow && !prevNudge) {
       core.triggerNudge(0.2, 0.5);
-      System.out.println("Nudge: 0.2 for 0.5s (all motors)");
+      BringupPrinter.enqueue("Nudge: 0.2 for 0.5s (all motors)");
     }
     prevNudge = nudgeNow;
 
@@ -94,23 +94,29 @@ public class Robot extends TimedRobot {
   // ---------------------------------------------------
 
   private void printStartupInfo() {
-    System.out.println("=== Swerve Bringup ===");
-    System.out.println("A: add motor (alternates SPARK/CTRE)");
-    System.out.println("Start: add all motors + CANCoders");
-    System.out.println("B: print state");
-    System.out.println("X: print health status");
-    System.out.println("Back: toggle CAN profile");
-    System.out.println("Left Bumper: reprint bindings");
-    System.out.println("Right Stick: print speed inputs");
-    System.out.println("Left Stick: nudge motors (0.2 for 0.5s)");
-    System.out.println("Left Y: NEO/FLEX speed, Right Y: KRAKEN/FALCON speed");
-    System.out.println("Deadband: " + DEADBAND);
-    System.out.println("CAN profile: " + BringupUtil.getActiveCanProfileLabel());
-    System.out.println("NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
-    System.out.println("FLEX CAN IDs: " + BringupUtil.joinIds(BringupUtil.FLEX_CAN_IDS));
-    System.out.println("KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
-    System.out.println("FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
-    System.out.println("======================");
+    StringBuilder sb = new StringBuilder(512);
+    appendLine(sb, "=== Swerve Bringup ===");
+    appendLine(sb, "A: add motor (alternates SPARK/CTRE)");
+    appendLine(sb, "Start: add all motors + CANCoders");
+    appendLine(sb, "B: print state");
+    appendLine(sb, "X: print health status");
+    appendLine(sb, "Back: toggle CAN profile");
+    appendLine(sb, "Left Bumper: reprint bindings");
+    appendLine(sb, "Right Stick: print speed inputs");
+    appendLine(sb, "Left Stick: nudge motors (0.2 for 0.5s)");
+    appendLine(sb, "Left Y: NEO/FLEX speed, Right Y: KRAKEN/FALCON speed");
+    appendLine(sb, "Deadband: " + DEADBAND);
+    appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
+    appendLine(sb, "NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
+    appendLine(sb, "FLEX CAN IDs: " + BringupUtil.joinIds(BringupUtil.FLEX_CAN_IDS));
+    appendLine(sb, "KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
+    appendLine(sb, "FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
+    appendLine(sb, "======================");
+    BringupPrinter.enqueue(sb.toString());
+  }
+
+  private static void appendLine(StringBuilder sb, String line) {
+    sb.append(line).append('\n');
   }
 
   private void validateCanIds() {
