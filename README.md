@@ -256,6 +256,27 @@ Hardware profile schema (single source of truth):
 - `pdh`, `pigeon`, `roborio` as single objects `{ "label": "...", "id": <can_id> }`.
 - Omit any section you don’t use.
 
+JSON guide (specific to this app):
+- Lists use square brackets `[]` and are required for motor/encoder groups (`neos`, `flexes`, `krakens`, `falcons`, `cancoders`).
+- Single devices use curly braces `{}` for `pdh`, `pigeon`, and `roborio`.
+- Every device entry must include both `"label"` and `"id"`.
+- If you have only one device in a list, it still must be wrapped in `[]`.
+
+Correct examples:
+```json
+"krakens": [
+  { "label": "FR KRAK", "id": 11 }
+],
+"pdh": { "label": "PDH", "id": 1 }
+```
+
+Common mistakes:
+```json
+"krakens": { "label": "FR KRAK", "id": 11 }  // Wrong: must be a list [...]
+"pdh": [ { "label": "PDH", "id": 1 } ]       // Wrong: must be a single object {...}
+"neos": [ { "label": "NEO", "id": "10" } ]   // Wrong: id must be a number, not a string
+```
+
 Quick start template:
 - Copy `src/main/deploy/bringup_profiles.template.json` and edit it for your robot.
 
