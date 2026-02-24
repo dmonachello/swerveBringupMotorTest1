@@ -11,6 +11,7 @@ Hard rules
 - NetworkTables paths are an API contract. If any key path changes, update both sides in the same change and keep backward compatibility for at least one iteration.
 - Windows is the primary host for the Python tool (Driver Station laptop). Avoid Linux-only assumptions (SocketCAN, can0, etc) unless explicitly requested.
 - Prefer small, reversible diffs. No sweeping refactors unless asked.
+- Keep hardware configuration easy to customize: adding a team’s device list/profile should be data-driven and clearly documented, not code surgery.
 
 What to do first for any task that touches the Java-Python interface
 1) Inventory NetworkTables usage:

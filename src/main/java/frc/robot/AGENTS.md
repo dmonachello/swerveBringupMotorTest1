@@ -13,6 +13,7 @@ Hard rules
 - Do not change CAN IDs or device tables without updating the Python tool profile tables in tools/ in the same change.
 - Do not change NetworkTables paths without coordinated update with tools/ publisher.
 - If the Python publisher is not running, Java code must behave sensibly (no crashes, no blocking).
+- Keep hardware configuration easy to customize: prefer data-driven profiles and ensure changes are documented for teams to update their device list quickly.
 
 Interface contract discipline
 - Before altering any NT paths, search the codebase for all occurrences of:

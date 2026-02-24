@@ -249,6 +249,24 @@ Bringup hardware profiles are defined in `src/main/deploy/bringup_profiles.json`
 - Profiles are applied in the order they appear in the JSON when you press `Back` to toggle.
 - Override at runtime with `--bringup-profile=<name>`.
 
+Hardware profile schema (single source of truth):
+- This JSON is the shared, data-driven hardware configuration used by both robot code and the PC tool.
+- Each profile can include these sections:
+- `neos`, `flexes`, `krakens`, `falcons`, `cancoders` as arrays of `{ "label": "...", "id": <can_id> }`.
+- `pdh`, `pigeon`, `roborio` as single objects `{ "label": "...", "id": <can_id> }`.
+- Omit any section you don’t use.
+
+Quick start template:
+- Copy `src/main/deploy/bringup_profiles.template.json` and edit it for your robot.
+
+Step-by-step: Add your hardware
+1. Open `src/main/deploy/bringup_profiles.template.json`.
+2. Save a copy as `src/main/deploy/bringup_profiles.json` (or edit the existing file).
+3. Set `default_profile` to your profile name.
+4. Fill in your device lists and CAN IDs; keep labels short and unique.
+5. Deploy to the roboRIO.
+6. Use `Back` to cycle profiles and verify the device list is correct.
+
 Supported profile sections include:
 - `neos`, `flexes`, `krakens`, `falcons`, `cancoders`
 - `pdh`, `pdp`, `pigeon`, `roborio`

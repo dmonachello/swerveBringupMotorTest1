@@ -1,0 +1,17 @@
+{
+  "default_profile": "my_robot",
+  "profiles": {
+    "my_robot": {
+      "neos": [
+        { "label": "Example NEO", "id": 1 }
+      ],
+      "flexes": [],
+      "krakens": [],
+      "falcons": [],
+      "cancoders": [],
+      "pdh": { "label": "PDH", "id": 1 },
+      "pigeon": { "label": "Pigeon", "id": 1 },
+      "roborio": { "label": "roboRIO", "id": 0 }
+    }
+  }
+}

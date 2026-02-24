@@ -13,6 +13,7 @@ Hard rules
 - Preserve existing CLI flags and NT key paths unless explicitly asked to change them.
 - Keep profiles data-driven. Demo vs robot should be selectable by command line.
 - Keep Windows slcan workflow working.
+- Keep hardware configuration easy to customize: profiles and device lists should be simple to edit and documented for quick team updates.
 
 Entry points and usage
 - Main script: tools/can_nt_bridge.py
