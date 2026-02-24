@@ -105,6 +105,14 @@ def _print_or_dump_nt_keys(devices, print_keys: bool, dump_path: str) -> None:
             f"{base}/deviceId",
         ])
     keys.append("bringup/diag/can/summary/json")
+    keys.extend([
+        "bringup/diag/can/pc/heartbeat",
+        "bringup/diag/can/pc/openOk",
+        "bringup/diag/can/pc/framesPerSec",
+        "bringup/diag/can/pc/framesTotal",
+        "bringup/diag/can/pc/readErrors",
+        "bringup/diag/can/pc/lastFrameAgeSec",
+    ])
     payload = {
         "keys": keys,
         "count": len(keys),
@@ -295,6 +303,12 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     last_seen: Dict[Tuple[int, int, int], float] = {}
     msg_count: Dict[Tuple[int, int, int], int] = {}
     last_status: Dict[Tuple[int, int, int], str] = {}
+    total_frames = 0
+    period_frames = 0
+    read_errors = 0
+    last_frame_time = 0.0
+    heartbeat = 0
+    open_ok = True
 
     start = time.time()
     last_publish = 0.0
@@ -317,7 +331,14 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 print(f"Dumped observed arbitration IDs to {args.dump_can_expected_ids}")
                 return 0
 
-            msg = bus.recv(timeout=0.05)
+            try:
+                msg = bus.recv(timeout=0.05)
+                open_ok = True
+            except Exception:
+                read_errors += 1
+                open_ok = False
+                msg = None
+
             if msg is not None:
                 pcap.log(msg)
 
@@ -331,7 +352,15 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 last_seen[key] = now
                 msg_count[key] = msg_count.get(key, 0) + 1
 
+                total_frames += 1
+                period_frames += 1
+                last_frame_time = now
+
             if (now - last_publish) >= args.publish_period:
+                publish_dt = now - last_publish if last_publish > 0 else args.publish_period
+                frames_per_sec = (period_frames / publish_dt) if publish_dt > 0 else 0.0
+                last_frame_age = (now - last_frame_time) if last_frame_time > 0 else -1.0
+
                 publish_devices(
                     table=table,
                     devices=_merge_unknown_devices(devices, last_seen, args.publish_unknown),
@@ -356,6 +385,15 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                         json.dumps(summary, separators=(",", ":"))
                     )
 
+                table.getEntry("can/pc/heartbeat").setDouble(float(heartbeat))
+                table.getEntry("can/pc/openOk").setBoolean(open_ok)
+                table.getEntry("can/pc/framesPerSec").setDouble(float(frames_per_sec))
+                table.getEntry("can/pc/framesTotal").setDouble(float(total_frames))
+                table.getEntry("can/pc/readErrors").setDouble(float(read_errors))
+                table.getEntry("can/pc/lastFrameAgeSec").setDouble(float(last_frame_age))
+
+                period_frames = 0
+                heartbeat += 1
                 if args.print_summary_period and (now - last_summary) >= args.print_summary_period:
                     summary = analyzer.summary(now, stale_s=args.stale_s, top_n=args.top_n)
                     _print_summary(summary, now)

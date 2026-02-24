@@ -11,6 +11,7 @@ import com.revrobotics.spark.config.SparkFlexConfig;
 import com.revrobotics.spark.config.SparkMaxConfig;
 import com.revrobotics.ResetMode;
 import com.revrobotics.PersistMode;
+import com.revrobotics.REVLibError;
 import edu.wpi.first.wpilibj.Timer;
 
 public final class BringupCore {
@@ -425,6 +426,158 @@ public final class BringupCore {
     }
     System.out.println("=======================");
   }
+
+  public void printDeviceDiagnosticsReport() {
+    System.out.println("Device Health (local API):");
+
+    for (int i = 0; i < neos.length; i++) {
+      if (neos[i] == null) {
+        System.out.println("  NEO CAN " + neoIds[i] + ": present=NO (not added)");
+        continue;
+      }
+      var faults = neos[i].getFaults();
+      var stickyFaults = neos[i].getStickyFaults();
+      var warnings = neos[i].getWarnings();
+      var stickyWarnings = neos[i].getStickyWarnings();
+      REVLibError lastError = neos[i].getLastError();
+      double busVoltage = neos[i].getBusVoltage();
+      double outputCurrent = neos[i].getOutputCurrent();
+      double motorTemp = neos[i].getMotorTemperature();
+      boolean resetFlag = warnings.hasReset || stickyWarnings.hasReset;
+      System.out.println(
+          "  NEO CAN " + neoIds[i] +
+          ": present=YES faults=0x" + Integer.toHexString(faults.rawBits) +
+          " sticky=0x" + Integer.toHexString(stickyFaults.rawBits) +
+          " warnings=0x" + Integer.toHexString(warnings.rawBits) +
+          " stickyWarn=0x" + Integer.toHexString(stickyWarnings.rawBits) +
+          " lastErr=" + lastError +
+          " reset=" + (resetFlag ? "YES" : "NO") +
+          " busV=" + String.format("%.2f", busVoltage) +
+          " current=" + String.format("%.2f", outputCurrent) +
+          " tempC=" + String.format("%.1f", motorTemp));
+    }
+
+    for (int i = 0; i < flexes.length; i++) {
+      if (flexes[i] == null) {
+        System.out.println("  FLEX CAN " + flexIds[i] + ": present=NO (not added)");
+        continue;
+      }
+      var faults = flexes[i].getFaults();
+      var stickyFaults = flexes[i].getStickyFaults();
+      var warnings = flexes[i].getWarnings();
+      var stickyWarnings = flexes[i].getStickyWarnings();
+      REVLibError lastError = flexes[i].getLastError();
+      double busVoltage = flexes[i].getBusVoltage();
+      double outputCurrent = flexes[i].getOutputCurrent();
+      double motorTemp = flexes[i].getMotorTemperature();
+      boolean resetFlag = warnings.hasReset || stickyWarnings.hasReset;
+      System.out.println(
+          "  FLEX CAN " + flexIds[i] +
+          ": present=YES faults=0x" + Integer.toHexString(faults.rawBits) +
+          " sticky=0x" + Integer.toHexString(stickyFaults.rawBits) +
+          " warnings=0x" + Integer.toHexString(warnings.rawBits) +
+          " stickyWarn=0x" + Integer.toHexString(stickyWarnings.rawBits) +
+          " lastErr=" + lastError +
+          " reset=" + (resetFlag ? "YES" : "NO") +
+          " busV=" + String.format("%.2f", busVoltage) +
+          " current=" + String.format("%.2f", outputCurrent) +
+          " tempC=" + String.format("%.1f", motorTemp));
+    }
+
+    for (int i = 0; i < krakens.length; i++) {
+      if (krakens[i] == null) {
+        System.out.println("  KRAKEN CAN " + krakenIds[i] + ": present=NO (not added)");
+        continue;
+      }
+      var faultSignal = krakens[i].getFaultField();
+      var stickySignal = krakens[i].getStickyFaultField();
+      BaseStatusSignal.refreshAll(faultSignal, stickySignal);
+      int faultField = faultSignal.getValue();
+      int stickyField = stickySignal.getValue();
+      boolean faultOk = faultSignal.getStatus().isOK();
+      boolean stickyOk = stickySignal.getStatus().isOK();
+      System.out.println(
+          "  KRAKEN CAN " + krakenIds[i] +
+          ": present=YES fault=0x" + Integer.toHexString(faultField) +
+          " sticky=0x" + Integer.toHexString(stickyField) +
+          " lastErr=" + faultSignal.getStatus() +
+          (faultOk && stickyOk
+              ? ""
+              : " status=" + faultSignal.getStatus() + "/" + stickySignal.getStatus()));
+    }
+
+    for (int i = 0; i < falcons.length; i++) {
+      if (falcons[i] == null) {
+        System.out.println("  FALCON CAN " + falconIds[i] + ": present=NO (not added)");
+        continue;
+      }
+      var faultSignal = falcons[i].getFaultField();
+      var stickySignal = falcons[i].getStickyFaultField();
+      BaseStatusSignal.refreshAll(faultSignal, stickySignal);
+      int faultField = faultSignal.getValue();
+      int stickyField = stickySignal.getValue();
+      boolean faultOk = faultSignal.getStatus().isOK();
+      boolean stickyOk = stickySignal.getStatus().isOK();
+      System.out.println(
+          "  FALCON CAN " + falconIds[i] +
+          ": present=YES fault=0x" + Integer.toHexString(faultField) +
+          " sticky=0x" + Integer.toHexString(stickyField) +
+          " lastErr=" + faultSignal.getStatus() +
+          (faultOk && stickyOk
+              ? ""
+              : " status=" + faultSignal.getStatus() + "/" + stickySignal.getStatus()));
+    }
+
+    for (int i = 0; i < cancoders.length; i++) {
+      if (cancoders[i] == null) {
+        System.out.println("  CANCoder CAN " + cancoderIds[i] + ": present=NO (not added)");
+        continue;
+      }
+      var absolute = cancoders[i].getAbsolutePosition();
+      BaseStatusSignal.refreshAll(absolute);
+      double rotations = absolute.getValue().in(Units.Rotations);
+      double degrees = rotations * 360.0;
+      System.out.println(
+          "  CANCoder CAN " + cancoderIds[i] +
+          ": present=YES absDeg=" + String.format("%.1f", degrees) +
+          " lastErr=" + absolute.getStatus());
+    }
+  }
+
+  public boolean isDeviceInstantiated(int manufacturer, int deviceType, int deviceId) {
+    if (manufacturer == 5 && deviceType == 2) {
+      for (int i = 0; i < neoIds.length; i++) {
+        if (neoIds[i] == deviceId) {
+          return neos[i] != null;
+        }
+      }
+      for (int i = 0; i < flexIds.length; i++) {
+        if (flexIds[i] == deviceId) {
+          return flexes[i] != null;
+        }
+      }
+      return false;
+    }
+    if (manufacturer == 4 && deviceType == 2) {
+      for (int i = 0; i < krakenIds.length; i++) {
+        if (krakenIds[i] == deviceId) {
+          return krakens[i] != null;
+        }
+      }
+      for (int i = 0; i < falconIds.length; i++) {
+        if (falconIds[i] == deviceId) {
+          return falcons[i] != null;
+        }
+      }
+      return false;
+    }
+    if (manufacturer == 4 && deviceType == 7) {
+      for (int i = 0; i < cancoderIds.length; i++) {
+        if (cancoderIds[i] == deviceId) {
+          return cancoders[i] != null;
+        }
+      }
+    }
+    return false;
+  }
 }
-
-

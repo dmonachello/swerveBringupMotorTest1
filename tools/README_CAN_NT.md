@@ -121,6 +121,12 @@ Published NetworkTables keys:
 - `bringup/diag/dev/<mfg>/<type>/<id>/deviceType`
 - `bringup/diag/dev/<mfg>/<type>/<id>/deviceId`
 - `bringup/diag/can/summary/json` (when `--publish-can-summary` is enabled)
+- `bringup/diag/can/pc/heartbeat`
+- `bringup/diag/can/pc/openOk`
+- `bringup/diag/can/pc/framesPerSec`
+- `bringup/diag/can/pc/framesTotal`
+- `bringup/diag/can/pc/readErrors`
+- `bringup/diag/can/pc/lastFrameAgeSec`
 
 ## Notes
 
@@ -128,3 +134,5 @@ Published NetworkTables keys:
 - `RobotV2` prints a table and shows `status=NO_DATA`, `ageSec=-`, and `msgCount=-`
   until a device has been seen at least once.
 - `RobotV2` reads the composite `dev/<mfg>/<type>/<id>` keys.
+- `can/pc/heartbeat` increments once per publish; `can/pc/lastFrameAgeSec` is seconds since the last frame.
+- CANable Pro V2 ships with `slcan` firmware by default; an optional `candlelight` firmware enables `gs_usb` for native CAN on Linux (Cangaroo is a common Windows viewer for candlelight; cantact-app works with slcan).

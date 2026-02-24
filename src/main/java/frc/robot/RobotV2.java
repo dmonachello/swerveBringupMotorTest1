@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import edu.wpi.first.wpilibj.Filesystem;
+import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
 import java.io.IOException;
@@ -17,7 +18,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 import edu.wpi.first.networktables.NetworkTable;
+import edu.wpi.first.networktables.NetworkTableEntry;
 import edu.wpi.first.networktables.NetworkTableInstance;
+import edu.wpi.first.networktables.NetworkTableValue;
 
 public class RobotV2 extends TimedRobot {
 
@@ -46,8 +49,15 @@ public class RobotV2 extends TimedRobot {
   private boolean prevProfileToggle = false;
   private boolean prevSpeedPrint = false;
   private boolean prevNudge = false;
+  private boolean prevCanDiag = false;
   private final Map<String, Double> prevMsgCount = new HashMap<>();
   private final Map<String, Double> prevMsgTime = new HashMap<>();
+  private double lastPcHeartbeat = Double.NaN;
+  private long lastPcHeartbeatMs = 0L;
+  private final Map<String, String> pcLastStatus = new HashMap<>();
+  private final Map<String, Integer> pcStatusFlaps = new HashMap<>();
+  private final Map<String, Long> pcLastStatusChangeMs = new HashMap<>();
+  private final CanHealthMonitor canHealth = new CanHealthMonitor();
 
   @Override
   public void robotInit() {
@@ -64,6 +74,7 @@ public class RobotV2 extends TimedRobot {
     prevProfileToggle = false;
     prevSpeedPrint = false;
     prevNudge = false;
+    prevCanDiag = false;
   }
 
   @Override
@@ -74,6 +85,12 @@ public class RobotV2 extends TimedRobot {
     prevProfileToggle = false;
     prevSpeedPrint = false;
     prevNudge = false;
+    prevCanDiag = false;
+  }
+
+  @Override
+  public void robotPeriodic() {
+    canHealth.update();
   }
 
   @Override
@@ -82,7 +99,8 @@ public class RobotV2 extends TimedRobot {
     core.handleAdd(controller.getAButton());
     core.handleAddAll(controller.getStartButton());
     core.handlePrint(controller.getBButton());
-    core.handleHealth(controller.getXButton());
+    boolean healthNow = controller.getPOV() == 270;
+    core.handleHealth(healthNow);
     core.handleCANCoder(controller.getRightBumperButton());
 
     boolean profileToggleNow = controller.getBackButton();
@@ -95,8 +113,8 @@ public class RobotV2 extends TimedRobot {
     }
     prevProfileToggle = profileToggleNow;
 
-    // Y button: print NetworkTables diagnostics
-    boolean diagNow = controller.getYButton();
+    // D-pad Down: print NetworkTables diagnostics
+    boolean diagNow = controller.getPOV() == 180;
     if (diagNow && !prevDiag) {
       printNetworkDiagnostics();
     }
@@ -108,10 +126,16 @@ public class RobotV2 extends TimedRobot {
     }
     prevBindings = bindingsNow;
 
+    boolean canDiagNow = controller.getPOV() == 0;
+    if (canDiagNow && !prevCanDiag) {
+      printCanDiagnosticsReport();
+    }
+    prevCanDiag = canDiagNow;
+
     double neoSpeed = BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
     double krakenSpeed = BringupUtil.deadband(-controller.getRightY(), DEADBAND);
 
-    boolean speedPrintNow = controller.getRightStickButton();
+    boolean speedPrintNow = controller.getPOV() == 90;
     if (speedPrintNow && !prevSpeedPrint) {
       System.out.println(
           "Inputs: leftY=" + String.format("%.2f", neoSpeed) +
@@ -121,7 +145,7 @@ public class RobotV2 extends TimedRobot {
     }
     prevSpeedPrint = speedPrintNow;
 
-    boolean nudgeNow = controller.getLeftStickButton();
+    boolean nudgeNow = controller.getXButton();
     if (nudgeNow && !prevNudge) {
       core.triggerNudge(0.2, 0.5);
       System.out.println("Nudge: 0.2 for 0.5s (all motors)");
@@ -140,13 +164,14 @@ public class RobotV2 extends TimedRobot {
     System.out.println("A: add motor (alternates SPARK/CTRE)");
     System.out.println("Start: add all motors + CANCoders");
     System.out.println("B: print state");
-    System.out.println("X: print health status");
+    System.out.println("D-pad Left: print health status");
     System.out.println("Right Bumper: print CANCoder absolute positions");
     System.out.println("Back: toggle CAN profile");
-    System.out.println("Y: print NetworkTables diagnostics");
+    System.out.println("D-pad Down: print NetworkTables diagnostics");
     System.out.println("Left Bumper: reprint bindings");
-    System.out.println("Right Stick: print speed inputs");
-    System.out.println("Left Stick: nudge motors (0.2 for 0.5s)");
+    System.out.println("D-pad Up: print CAN diagnostics report");
+    System.out.println("D-pad Right: print speed inputs");
+    System.out.println("X: nudge motors (0.2 for 0.5s)");
     System.out.println("Left Y: NEO/FLEX speed, Right Y: KRAKEN/FALCON speed");
     System.out.println("Deadband: " + DEADBAND);
     System.out.println("CAN profile: " + BringupUtil.getActiveCanProfileLabel());
@@ -172,6 +197,120 @@ public class RobotV2 extends TimedRobot {
     java.util.Collections.addAll(allSpecs, findUnknownDeviceSpecs());
     printNetworkDeviceTable(allSpecs, nowSeconds);
     System.out.println("=============================");
+  }
+
+  private void printCanDiagnosticsReport() {
+    System.out.println("=== CAN Diagnostics Report ===");
+    canHealth.printSnapshot();
+    canHealth.printReportSection();
+    printPcToolSection();
+    core.printDeviceDiagnosticsReport();
+    System.out.println("==============================");
+  }
+
+  private void printPcToolSection() {
+    System.out.println("PC Tool:");
+    long nowMs = System.currentTimeMillis();
+
+    NetworkTableEntry heartbeatEntry = diagTable.getEntry("can/pc/heartbeat");
+    double heartbeat = heartbeatEntry.getDouble(Double.NaN);
+    String heartbeatAgeText;
+    if (Double.isNaN(heartbeat)) {
+      heartbeatAgeText = "STALE (no data)";
+    } else {
+      if (heartbeat != lastPcHeartbeat) {
+        lastPcHeartbeat = heartbeat;
+        lastPcHeartbeatMs = nowMs;
+      }
+      double ageSec = (nowMs - lastPcHeartbeatMs) / 1000.0;
+      heartbeatAgeText = String.format("%.2fs", ageSec);
+    }
+
+    NetworkTableEntry openEntry = diagTable.getEntry("can/pc/openOk");
+    String openOkText = formatPcBoolean(openEntry);
+
+    double fps = diagTable.getEntry("can/pc/framesPerSec").getDouble(Double.NaN);
+    double total = diagTable.getEntry("can/pc/framesTotal").getDouble(Double.NaN);
+    double readErrors = diagTable.getEntry("can/pc/readErrors").getDouble(Double.NaN);
+    double lastFrameAge = diagTable.getEntry("can/pc/lastFrameAgeSec").getDouble(Double.NaN);
+
+    System.out.println("  Heartbeat age: " + heartbeatAgeText);
+    System.out.println("  Open OK: " + openOkText);
+    System.out.println("  Frames/sec: " + formatDoubleOrDash(fps, 1));
+    System.out.println("  Frames total: " + formatDoubleOrDash(total, 0));
+    System.out.println("  Read errors: " + formatDoubleOrDash(readErrors, 0));
+    System.out.println("  Last frame age: " + formatDoubleOrDash(lastFrameAge, 2) + "s");
+
+    printPcDeviceSummary(nowMs);
+  }
+
+  private void printPcDeviceSummary(long nowMs) {
+    java.util.ArrayList<DeviceSpec> allSpecs = new java.util.ArrayList<>();
+    java.util.Collections.addAll(allSpecs, buildDeviceSpecs());
+    java.util.Collections.addAll(allSpecs, findUnknownDeviceSpecs());
+
+    int missingCount = 0;
+    int flappingCount = 0;
+    java.util.ArrayList<String> seenNotLocal = new java.util.ArrayList<>();
+
+    for (DeviceSpec spec : allSpecs) {
+      String key = spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
+      String base = "dev/" + spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
+      String status = diagTable.getEntry(base + "/status").getString("UNKNOWN");
+      double lastSeen = diagTable.getEntry(base + "/lastSeen").getDouble(Double.NaN);
+      double ageSec = diagTable.getEntry(base + "/ageSec").getDouble(Double.NaN);
+
+      if ("MISSING".equals(status) || "NO_DATA".equals(status)) {
+        missingCount++;
+      }
+
+      String prev = pcLastStatus.get(key);
+      if (prev != null && !prev.equals(status)) {
+        int flaps = pcStatusFlaps.getOrDefault(key, 0) + 1;
+        pcStatusFlaps.put(key, flaps);
+        pcLastStatusChangeMs.put(key, nowMs);
+      }
+      pcLastStatus.put(key, status);
+
+      int flaps = pcStatusFlaps.getOrDefault(key, 0);
+      if (flaps > 0) {
+        flappingCount++;
+      }
+
+      boolean localPresent = core.isDeviceInstantiated(spec.manufacturer, spec.deviceType, spec.deviceId);
+      if (!Double.isNaN(lastSeen) && lastSeen > 0 && !localPresent) {
+        String ageText = Double.isNaN(ageSec) ? "?" : String.format("%.2f", ageSec);
+        seenNotLocal.add(key + " age=" + ageText + "s");
+      }
+    }
+
+    System.out.println("  Missing devices (PC): " + missingCount);
+    System.out.println("  Flapping devices (PC): " + flappingCount);
+    if (!seenNotLocal.isEmpty()) {
+      System.out.println("  Seen on wire, not local: " + String.join(", ", seenNotLocal));
+    }
+  }
+
+  private static String formatPcBoolean(NetworkTableEntry entry) {
+    NetworkTableValue value = entry.getValue();
+    if (value == null) {
+      return "UNKNOWN";
+    }
+    if (value.isBoolean()) {
+      return value.getBoolean() ? "YES" : "NO";
+    }
+    if (value.isDouble()) {
+      return value.getDouble() != 0.0 ? "YES" : "NO";
+    }
+    return "UNKNOWN";
+  }
+
+  private static String formatDoubleOrDash(double value, int decimals) {
+    if (Double.isNaN(value) || Double.isInfinite(value) || value < 0.0) {
+      return "-";
+    }
+    String fmt = "%." + decimals + "f";
+    return String.format(fmt, value);
   }
 
   private void printNetworkDeviceTable(java.util.List<DeviceSpec> specs, double nowSeconds) {
@@ -659,6 +798,97 @@ public class RobotV2 extends TimedRobot {
       this.msgText = msgText;
     }
   }
+
+  private static final class CanHealthMonitor {
+    private static final double HIGH_UTILIZATION_PCT = 80.0;
+    private static final double RECOVER_UTILIZATION_PCT = 70.0;
+    private static final long LOG_PERIOD_MS = 2000;
+    private static final int ERROR_SPIKE_THRESHOLD = 5;
+
+    private long lastLogMs = 0;
+    private int lastRxErrors = 0;
+    private int lastTxErrors = 0;
+    private int lastRxDelta = 0;
+    private int lastTxDelta = 0;
+    private int lastBusOffCount = 0;
+    private int lastBusOffDelta = 0;
+    private int lastTxFullCount = 0;
+    private int lastTxFullDelta = 0;
+    private double lastUtilizationPct = 0.0;
+    private long lastUpdateMs = 0;
+    private boolean wasHighUtil = false;
+
+    void update() {
+      var status = RobotController.getCANStatus();
+      double utilizationPct = status.percentBusUtilization * 100.0;
+      int rxErrors = status.receiveErrorCount;
+      int txErrors = status.transmitErrorCount;
+      int busOffCount = status.busOffCount;
+      int txFullCount = status.txFullCount;
+
+      int rxDelta = rxErrors - lastRxErrors;
+      int txDelta = txErrors - lastTxErrors;
+      int busOffDelta = busOffCount - lastBusOffCount;
+      int txFullDelta = txFullCount - lastTxFullCount;
+      boolean errorSpike = rxDelta >= ERROR_SPIKE_THRESHOLD || txDelta >= ERROR_SPIKE_THRESHOLD;
+      boolean busOffEvent = busOffDelta > 0;
+
+      boolean nowHighUtil = utilizationPct >= HIGH_UTILIZATION_PCT;
+      boolean recoveredUtil = utilizationPct <= RECOVER_UTILIZATION_PCT;
+
+      long nowMs = System.currentTimeMillis();
+      boolean logDue = (nowMs - lastLogMs) >= LOG_PERIOD_MS;
+
+      if (busOffEvent) {
+        System.out.println("[CAN] BUS OFF event detected! Check wiring/termination/noise.");
+        lastLogMs = nowMs;
+      }
+
+      if (nowHighUtil && (!wasHighUtil || logDue)) {
+        System.out.printf("[CAN] High utilization: %.1f%%%n", utilizationPct);
+        lastLogMs = nowMs;
+      } else if (wasHighUtil && recoveredUtil) {
+        System.out.printf("[CAN] Utilization recovered: %.1f%%%n", utilizationPct);
+        lastLogMs = nowMs;
+      }
+
+      if (errorSpike && logDue) {
+        System.out.printf("[CAN] Error spike: rx=%d tx=%d (delta rx=%d tx=%d)%n",
+            rxErrors, txErrors, rxDelta, txDelta);
+        lastLogMs = nowMs;
+      }
+
+      lastRxErrors = rxErrors;
+      lastTxErrors = txErrors;
+      lastRxDelta = rxDelta;
+      lastTxDelta = txDelta;
+      lastBusOffCount = busOffCount;
+      lastBusOffDelta = busOffDelta;
+      lastTxFullCount = txFullCount;
+      lastTxFullDelta = txFullDelta;
+      lastUtilizationPct = utilizationPct;
+      lastUpdateMs = nowMs;
+      wasHighUtil = nowHighUtil;
+    }
+
+    void printReportSection() {
+      System.out.println("Bus Health: (see CAN Bus Diagnostics summary above)");
+    }
+
+    void printSnapshot() {
+      if (lastUpdateMs == 0) {
+        System.out.println("[CAN] No status samples yet.");
+        return;
+      }
+      double ageSec = (System.currentTimeMillis() - lastUpdateMs) / 1000.0;
+      System.out.println("=== CAN Bus Diagnostics ===");
+      System.out.printf("Utilization: %.1f%%%n", lastUtilizationPct);
+      System.out.printf("RX errors: %d (delta %d)%n", lastRxErrors, lastRxDelta);
+      System.out.printf("TX errors: %d (delta %d)%n", lastTxErrors, lastTxDelta);
+      System.out.printf("TX full: %d (delta %d)%n", lastTxFullCount, lastTxFullDelta);
+      System.out.printf("Bus off count: %d (delta %d)%n", lastBusOffCount, lastBusOffDelta);
+      System.out.printf("Sample age: %.2fs%n", ageSec);
+      System.out.println("===========================");
+    }
+  }
 }
-
-

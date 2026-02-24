@@ -30,18 +30,98 @@ What it does not do:
 
 Typical workflow:
 1. Bring up devices (add motor / add all).
-2. Check local health (X).
-3. Check CAN visibility (Y).
-4. Capture a PCAP and inspect in Wireshark when needed.
-5. Use vendor tools for firmware/config issues.
+2. Check local health (D-pad Left).
+3. Check CAN visibility (D-pad Down).
+4. Print the CAN diagnostics report (D-pad Up).
+5. Capture a PCAP and inspect in Wireshark when needed.
+6. Use vendor tools for firmware/config issues.
+
+## HOWTO: Debug CAN Bus Issues
+Use this checklist and the CAN Diagnostics Report (D-pad Up) to triage quickly.
+
+Report sections (D-pad Up):
+- CAN Bus Diagnostics summary (utilization, RX/TX errors, TX full, bus-off count, sample age)
+- PC Tool status + missing/flapping counts and “seen on wire, not local” list
+- Device Health (local API): faults/sticky faults, warnings/sticky warnings, lastErr, reset flag, voltage/current/temp
+
+Example report snippet (shortened):
+```
+=== CAN Diagnostics Report ===
+=== CAN Bus Diagnostics ===
+Utilization: 73.2%
+RX errors: 4 (delta 1)
+TX errors: 2 (delta 0)
+TX full: 3 (delta 1)
+Bus off count: 1 (delta 1)
+Sample age: 0.05s
+===========================
+Bus Health: (see CAN Bus Diagnostics summary above)
+PC Tool:
+  Heartbeat age: 0.21s
+  Open OK: YES
+  Frames/sec: 395.8
+  Frames total: 68124
+  Read errors: 0
+  Last frame age: 0.01s
+  Missing devices (PC): 1
+  Flapping devices (PC): 2
+  Seen on wire, not local: 5/2/31 age=0.27s
+Device Health (local API):
+  NEO CAN 10: present=YES faults=0x0 sticky=0x0 warnings=0x0 stickyWarn=0x0 lastErr=kOk reset=NO busV=11.8 current=6.3 tempC=33.9
+  FLEX CAN 3: present=YES faults=0x0 sticky=0x0 warnings=0x40 stickyWarn=0x40 lastErr=kTimeout reset=YES busV=10.9 current=8.1 tempC=38.2
+  KRAKEN CAN 11: present=YES fault=0x0 sticky=0x0 lastErr=OK status=OK/OK
+  FALCON CAN 5: present=YES fault=0x0 sticky=0x0 lastErr=OK status=OK/OK
+  CANCoder CAN 12: present=YES absDeg=187.2 lastErr=OK
+==============================
+```
+
+Step 1: Validate the bus is healthy (robot data).
+1. Press `D-pad Up` to print the CAN Diagnostics Report.
+2. If bus utilization is high, TX full is rising, or error counts are rising, fix wiring/termination before touching devices.
+3. If bus-off count increases, treat it as a hard wiring failure.
+
+Step 2: Validate the PC tool evidence (driver station data).
+1. Confirm the PC tool is running and connected.
+2. In the report, check `PC Tool` fields for stale heartbeat or `openOk=NO`.
+3. If PC tool is stale, fix the CANable/COM port/bitrate path first.
+
+Step 3: Validate device health (local API).
+1. In the report, scan every device row.
+2. If a device shows faults/warnings, sticky faults, or `lastErr` issues, fix power or configuration before debugging control.
+3. If a device is `present=NO (not added)`, add it in bringup before troubleshooting.
+
+Interpretation table (X = robot, Y = PC tool):
+Note: The report prints bus health, PC tool status, and local device health. Some rows below are vendor-tool-only or planned fields (for example last error code and reset flags).
+
+| Signal / Error | Source | Where it runs | What it tells you | Next check |
+| --- | --- | --- | --- | --- |
+| CAN bus utilization (%) | X | roboRIO CAN controller | High steady value indicates bus saturation or a device spamming frames | Reduce status frame rates; disable unused telemetry; bring up one subsystem at a time |
+| CAN transmit error count | X | roboRIO CAN controller | Rising count means the controller cannot transmit frames | Check termination, look for shorts, inspect CAN H/L continuity |
+| CAN TX full count | X | roboRIO CAN controller | TX buffer saturation (controller can’t queue more frames) | Reduce status frame rates; check for bus saturation |
+| CAN receive error count | X | roboRIO CAN controller | Rising count indicates noise or corruption | Inspect connectors, grounding, twisted pair integrity, crushed cables |
+| CAN bus-off count | X | roboRIO CAN controller | Hard failure; bus shut down | Fix wiring and termination before debugging any devices |
+| Local device present | X | Vendor API (REV / CTRE) | Robot successfully exchanged CAN frames with the device | Proceed to behavior or configuration debugging |
+| Local last error code | X | Vendor API | Timeouts, configuration mismatch, or API bind failures | Verify CAN ID, device type, vendor library version |
+| Device current faults | X | Vendor API | Active electrical, thermal, or current-related problems | Resolve the reported fault first; do not debug CAN |
+| Device sticky faults/warnings | X | Vendor API | Historical brownout, overcurrent, or reset evidence | Inspect power wiring and connectors even if currently OK |
+| Device reset / reboot flags | X | Vendor API | Power interruption or brownout | Measure voltage at device under load; check breakers and crimps |
+| Device supply voltage | X | Vendor API | Voltage sag under load | Check PDH channel, wiring gauge, connectors, breaker rating |
+| PC tool heartbeat age | Y | Python tool | Stale heartbeat means PC evidence is invalid | Restart Python tool; check NT connection and firewall |
+| PC tool open_ok | Y | Python tool | False means CAN interface not connected | Check USB cable, COM port, slcan attach, bitrate |
+| PC frames per second | Y | CAN sniffer | Zero means no traffic visible on wire | Verify sniffer wiring, H/L orientation, bitrate, tap location |
+| PC frames total | Y | CAN sniffer | Sanity check that traffic exists | If zero, treat as tooling or wiring issue |
+| PC read error count | Y | SLCAN / serial layer | Rising count indicates USB or driver issues | Replace USB cable; check drivers; move USB port |
+| CAN ID last_seen timestamp | Y | CAN sniffer | Seen on wire but not locally | Check robot config, CAN ID assignment, device type mismatch |
+| Missing device count | Derived | Robot logic | Many missing implies bus or tooling issue | Check bus health and PC tool before touching devices |
+| Seen / missing flapping rate | Derived | Robot logic | Intermittent wiring or unstable power | Wiggle test connectors; inspect pigtails; check power integrity |
 
 ## Debugging Procedures
 Use these repeatable procedures to isolate issues quickly. Keep local (roboRIO) data and CAN-bus (PC tool) data separate.
 
 ### Procedure A: No Motion
 1. Ensure the robot is enabled in teleop.
-2. Press `Right Stick` to print input values.
-3. Press `X` and check:
+2. Press `D-pad Right` to print input values.
+3. Press `D-pad Left` and check:
    - `set` and `applied` match your command.
    - `current` is > 0 when the motor should move.
 4. If `applied > 0` but `current = 0`, suspect wiring or motor output terminals.
@@ -49,31 +129,31 @@ Use these repeatable procedures to isolate issues quickly. Keep local (roboRIO) 
 
 ### Procedure B: Missing Device on CAN
 1. Run the PC tool with `--publish-unknown`.
-2. Press `Y` and check the device row:
+2. Press `D-pad Down` and check the device row:
    - `NO_DATA`/`MISSING` implies no frames seen.
 3. Verify CAN ID, wiring, termination, and power.
 4. Capture a PCAP and filter for `frccan.device_id == <id>`.
 
 ### Procedure C: Unexpected Device Seen
 1. Run the PC tool with `--publish-unknown`.
-2. Press `Y` and identify `label=UNKNOWN`.
+2. Press `D-pad Down` and identify `label=UNKNOWN`.
 3. Use Wireshark filter `frccan.manufacturer == X && frccan.device_type == Y && frccan.device_id == Z`.
 4. Update the profile JSON if the device is expected.
 
 ### Procedure D: Low/Zero fps
-1. Press `Y` twice, a second apart, and read the `fps` column.
+1. Press `D-pad Down` twice, a second apart, and read the `fps` column.
 2. If `fps` is 0 but `status=OK`, check that the PC tool is running and seeing traffic.
 3. Use Wireshark to confirm frames are present.
 
 ### Procedure E: Health vs CAN Mismatch
-1. `X` shows local device data; `Y` shows PC tool CAN data.
-2. If `X` is OK but `Y` is missing, the PC tool or CANable path is broken.
-3. If `Y` is OK but `X` is missing, the device is not instantiated in bringup.
+1. `D-pad Left` shows local device data; `D-pad Down` shows PC tool CAN data.
+2. If `D-pad Left` is OK but `D-pad Down` is missing, the PC tool or CANable path is broken.
+3. If `D-pad Down` is OK but `D-pad Left` is missing, the device is not instantiated in bringup.
 
 ## Debugging Scenarios
 - Motor does not move, LED changes.
 - Motor moves only after power cycle.
-- Device shows `NO_DATA` on `Y`.
+- Device shows `NO_DATA` on `D-pad Down`.
 - Device shows `MISSING` after a minute.
 - CAN bus is silent (no frames).
 - CAN bus has unexpected devices.
@@ -85,7 +165,7 @@ Use these repeatable procedures to isolate issues quickly. Keep local (roboRIO) 
 ## Q & A
 
 **Q: How can I see unexpected devices on the CAN bus?**  
-A: Run the PC tool with `--publish-unknown` and then press `Y` on the robot to view the table. Unknown devices will show as `label=UNKNOWN`. You can also capture a PCAP and inspect in Wireshark.
+A: Run the PC tool with `--publish-unknown` and then press `D-pad Down` on the robot to view the table. Unknown devices will show as `label=UNKNOWN`. You can also capture a PCAP and inspect in Wireshark.
 
 **Q: How do I switch CAN profiles at runtime?**  
 A: Press `Back` on the Xbox controller. Profiles rotate in the order they appear in `src/main/deploy/bringup_profiles.json`.
@@ -93,8 +173,8 @@ A: Press `Back` on the Xbox controller. Profiles rotate in the order they appear
 **Q: Why does a device show `NO_DATA` in the NetworkTables table?**  
 A: The PC tool has not published a valid `lastSeen` for that device yet. Check that the Python bridge is running and connected to the roboRIO, and that the device is on the CAN bus.
 
-**Q: What’s the difference between local health (X) and CAN diagnostics (Y)?**  
-A: `X` prints local roboRIO data pulled directly from device APIs (volt/current/temp/faults). `Y` prints CAN-bus data coming from the PC tool via NetworkTables.
+**Q: What’s the difference between local health (D-pad Left) and CAN diagnostics (D-pad Down)?**  
+A: `D-pad Left` prints local roboRIO data pulled directly from device APIs (volt/current/temp/faults). `D-pad Down` prints CAN-bus data coming from the PC tool via NetworkTables.
 
 **Q: How do I capture a PCAP and view it in Wireshark?**  
 A: Run the PC tool with `--pcap logs\run.pcapng`, then open that file in Wireshark. The Lua dissector lives at `tools/wireshark/frc_can_dissector.lua`.
@@ -103,7 +183,7 @@ A: Run the PC tool with `--pcap logs\run.pcapng`, then open that file in Wiresha
 A: The PC tool isn’t receiving frames for that ID (wiring/ID mismatch/termination), or it’s timing out based on `--timeout`. Verify the CAN ID and wiring.
 
 **Q: How do I see message rate (fps) per device?**  
-A: Press `Y` twice a second or two apart. The `fps` column is computed from `msgCount` deltas between prints.
+A: Press `D-pad Down` twice a second or two apart. The `fps` column is computed from `msgCount` deltas between prints.
 
 **Q: How do I add a new motor/controller type to a profile?**  
 A: Edit `src/main/deploy/bringup_profiles.json` and add entries under `neos`, `flexes`, `krakens`, `falcons`, `cancoders`, `pdh`, `pdp`, `pigeon`, or `roborio`, then redeploy.
@@ -176,22 +256,45 @@ Supported profile sections include:
 Manufacturer/type display names are loaded from `src/main/deploy/can_mappings.json`.
 
 ## Controller Bindings
-Robot and RobotV2 share the same bindings:
+Robot and RobotV2 share the same bindings, grouped by purpose.
+
+Operational controls:
 - `A`: add motor (alternates SPARK/CTRE)
 - `Start`: add all motors + CANCoders
-- `B`: print state
-- `X`: print health status
-- `Y`: print NetworkTables diagnostics (RobotV2 only)
-- `Right Bumper`: print CANCoder absolute positions
 - `Back`: toggle CAN profile
-- `Left Bumper`: reprint bindings
-- `Right Stick`: print speed inputs
-- `Left Stick`: nudge motors (0.2 for 0.5s)
 - `Left Y`: NEO/FLEX speed
 - `Right Y`: KRAKEN/FALCON speed
+- `X`: nudge motors (0.2 for 0.5s)
+
+Status printouts:
+- `B`: print state
+- `Left Bumper`: reprint bindings
+- `Right Bumper`: print CANCoder absolute positions
+- `D-pad Left`: print health status
+- `D-pad Down`: print NetworkTables diagnostics (RobotV2 only)
+- `D-pad Up`: print CAN diagnostics report
+- `D-pad Right`: print speed inputs
 
 ## CAN Sniffer Bridge (CANable Pro V2)
 This project includes a CAN -> NetworkTables bridge for diagnostics.
+
+### Hardware Notes (CANable Pro V2)
+- The CANable Pro is an isolated USB-to-CAN adapter with additional ESD protection and a bootloader button for firmware updates.
+- It includes a termination jumper and uses a 3‑pin terminal for CANH/CANL/GND; it supports CAN 2.0 A/B up to 1 Mbit/s.
+
+### Firmware / Driver Options
+CANable devices ship with **slcan** firmware by default (serial‑line CAN). This enumerates as a standard serial device on Windows, macOS, and Linux.
+
+There is an alternative **candlelight** firmware that exposes a native CAN interface using the `gs_usb` protocol (no `slcand` on Linux). It provides higher performance by bypassing the serial‑line path and is the recommended option for Linux SocketCAN workflows.
+
+On Windows, candlelight presents as a generic USB device; Cangaroo is a common viewer for candlelight, while the stock slcan firmware works with cantact‑app.
+
+### Possible Project Improvements (Non‑Breaking)
+These are additive ideas to support alternate drivers without changing current Windows‑first behavior:
+- Add a `--interface` preset for `gs_usb` (candlelight) and `socketcan` (Linux) alongside today’s `slcan`.
+- Provide a short OS‑specific quick‑start table (Windows slcan vs Linux candlelight).
+- Add a “firmware mode” note to the tool output (`slcan` vs `candlelight`) to reduce confusion in pits.
+- Add a small troubleshooting note when `openOk=NO` that suggests checking firmware mode/driver.
 
 Install:
 ```cmd
@@ -277,6 +380,13 @@ Published NetworkTables keys:
 - `bringup/diag/dev/<mfg>/<type>/<id>/manufacturer`
 - `bringup/diag/dev/<mfg>/<type>/<id>/deviceType`
 - `bringup/diag/dev/<mfg>/<type>/<id>/deviceId`
+- `bringup/diag/can/summary/json` (when `--publish-can-summary` is enabled)
+- `bringup/diag/can/pc/heartbeat`
+- `bringup/diag/can/pc/openOk`
+- `bringup/diag/can/pc/framesPerSec`
+- `bringup/diag/can/pc/framesTotal`
+- `bringup/diag/can/pc/readErrors`
+- `bringup/diag/can/pc/lastFrameAgeSec`
 - Legacy deviceId-only aggregate keys (for backward compatibility):
   - `bringup/diag/lastSeen/<deviceId>`
   - `bringup/diag/missing/<deviceId>`
@@ -285,7 +395,7 @@ Published NetworkTables keys:
   - `bringup/diag/status/<deviceId>` (OK/STALE/MISSING)
   - `bringup/diag/ageSec/<deviceId>` (-1 if missing)
 
-RobotV2 prints these diagnostics when you press `Y`.
+RobotV2 prints these diagnostics when you press `D-pad Down`.
 It now reads the composite keys under `bringup/diag/dev/<mfg>/<type>/<id>` so
 devices with the same numeric ID but different types are handled correctly.
 
