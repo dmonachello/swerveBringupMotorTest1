@@ -29,12 +29,18 @@ def publish_devices(
         if ts is None:
             age = -1.0
             status = "MISSING"
+            last_seen_value = -1.0
         else:
             age = now - ts
             status = "OK" if age < timeout_s else "MISSING"
+            last_seen_value = ts
 
         base = f"dev/{key[0]}/{key[1]}/{key[2]}"
         table.getEntry(f"{base}/label").setString(str(spec.get("label", "")))
         table.getEntry(f"{base}/status").setString(status)
         table.getEntry(f"{base}/ageSec").setDouble(float(age))
         table.getEntry(f"{base}/msgCount").setDouble(float(msg_count.get(key, 0)))
+        table.getEntry(f"{base}/lastSeen").setDouble(float(last_seen_value))
+        table.getEntry(f"{base}/manufacturer").setDouble(float(key[0]))
+        table.getEntry(f"{base}/deviceType").setDouble(float(key[1]))
+        table.getEntry(f"{base}/deviceId").setDouble(float(key[2]))

@@ -16,14 +16,18 @@ echo Starting CAN diagnostics (robot profile)...
 echo.
 
 set CHANNEL=
+set EXTRA_ARGS=
 if not "%~1"=="" (
   set CHANNEL=--channel %~1
+  shift
+  set EXTRA_ARGS=%*
 )
 
 python can_nt_bridge.py ^
   --profile robot ^
   --interface slcan ^
   %CHANNEL% ^
+  %EXTRA_ARGS% ^
   --bitrate 1000000 ^
   --rio 172.22.11.2 ^
   --publish-can-summary ^

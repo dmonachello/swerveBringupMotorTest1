@@ -1,10 +1,13 @@
 package frc.robot;
 
+import com.ctre.phoenix6.SignalLogger;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.google.gson.annotations.SerializedName;
+import com.revrobotics.spark.SparkFlex;
 import com.revrobotics.spark.SparkMax;
+import com.revrobotics.util.StatusLogger;
 import edu.wpi.first.wpilibj.GenericHID;
 import edu.wpi.first.wpilibj.Filesystem;
 import java.io.IOException;
@@ -64,6 +67,7 @@ public final class BringupUtil {
   private static String activeProfile = DEFAULT_PROFILE_NAME;
 
   public static int[] NEO_CAN_IDS = FALLBACK_ROBOT_NEO_CAN_IDS;
+  public static int[] FLEX_CAN_IDS = new int[0];
   public static int[] KRAKEN_CAN_IDS = FALLBACK_ROBOT_KRAKEN_CAN_IDS;
   public static int[] FALCON_CAN_IDS = new int[0];
   public static int[] CANCODER_CAN_IDS = FALLBACK_ROBOT_CANCODER_CAN_IDS;
@@ -73,8 +77,25 @@ public final class BringupUtil {
   public static final double DEADBAND = 0.12;
 
   static {
+    disableVendorLogging();
     loadProfilesFromJson();
     setActiveCanProfile(activeProfile);
+  }
+
+  private static void disableVendorLogging() {
+    // Disable vendor auto-logging to avoid writing .revlog/.hoot files on the roboRIO.
+    try {
+      StatusLogger.disableAutoLogging();
+      StatusLogger.stop();
+    } catch (Throwable ignored) {
+      // Ignore if REVLib is unavailable.
+    }
+    try {
+      SignalLogger.enableAutoLogging(false);
+      SignalLogger.stop();
+    } catch (Throwable ignored) {
+      // Ignore if Phoenix is unavailable.
+    }
   }
 
   public static final class KeyboardKeys {
@@ -118,6 +139,7 @@ public final class BringupUtil {
     }
 
     NEO_CAN_IDS = toIdArray(config.neos);
+    FLEX_CAN_IDS = toIdArray(config.flexes);
     KRAKEN_CAN_IDS = toIdArray(config.krakens);
     FALCON_CAN_IDS = toIdArray(config.falcons);
     CANCODER_CAN_IDS = toIdArray(config.cancoders);
@@ -151,6 +173,14 @@ public final class BringupUtil {
     }
   }
 
+  public static void setAllFlexes(SparkFlex[] flexes, double speed) {
+    for (int i = 0; i < flexes.length; i++) {
+      if (flexes[i] != null) {
+        flexes[i].set(speed);
+      }
+    }
+  }
+
   public static void setAllKrakens(TalonFX[] krakens, double speed) {
     for (int i = 0; i < krakens.length; i++) {
       if (krakens[i] != null) {
@@ -167,8 +197,13 @@ public final class BringupUtil {
     }
   }
 
-  public static void stopAll(SparkMax[] neos, TalonFX[] krakens, TalonFX[] falcons) {
+  public static void stopAll(
+      SparkMax[] neos,
+      SparkFlex[] flexes,
+      TalonFX[] krakens,
+      TalonFX[] falcons) {
     setAllNeos(neos, 0.0);
+    setAllFlexes(flexes, 0.0);
     setAllKrakens(krakens, 0.0);
     setAllFalcons(falcons, 0.0);
   }
@@ -344,6 +379,7 @@ public final class BringupUtil {
     profiles = new LinkedHashMap<>();
     profiles.put("robot", new CanProfileConfig(
         toDevices(FALLBACK_ROBOT_NEO_CAN_IDS),
+        Collections.emptyList(),
         toDevices(FALLBACK_ROBOT_KRAKEN_CAN_IDS),
         Collections.emptyList(),
         toDevices(FALLBACK_ROBOT_CANCODER_CAN_IDS),
@@ -351,6 +387,7 @@ public final class BringupUtil {
         new DeviceRef(FALLBACK_PIGEON_CAN_ID)));
     profiles.put("demo_club", new CanProfileConfig(
         toDevices(FALLBACK_DEMO_NEO_CAN_IDS),
+        Collections.emptyList(),
         toDevices(FALLBACK_DEMO_KRAKEN_CAN_IDS),
         Collections.emptyList(),
         toDevices(FALLBACK_DEMO_CANCODER_CAN_IDS),
@@ -361,12 +398,14 @@ public final class BringupUtil {
         Collections.emptyList(),
         Collections.emptyList(),
         Collections.emptyList(),
+        Collections.emptyList(),
         null,
         null));
     profileOrder = new ArrayList<>(profiles.keySet());
     defaultProfile = DEFAULT_PROFILE_NAME;
     activeProfile = defaultProfile;
     NEO_CAN_IDS = FALLBACK_ROBOT_NEO_CAN_IDS;
+    FLEX_CAN_IDS = new int[0];
     KRAKEN_CAN_IDS = FALLBACK_ROBOT_KRAKEN_CAN_IDS;
     FALCON_CAN_IDS = new int[0];
     CANCODER_CAN_IDS = FALLBACK_ROBOT_CANCODER_CAN_IDS;
@@ -403,6 +442,7 @@ public final class BringupUtil {
 
   private static final class CanProfileConfig {
     List<DeviceRef> neos = Collections.emptyList();
+    List<DeviceRef> flexes = Collections.emptyList();
     List<DeviceRef> krakens = Collections.emptyList();
     List<DeviceRef> falcons = Collections.emptyList();
     List<DeviceRef> cancoders = Collections.emptyList();
@@ -411,12 +451,14 @@ public final class BringupUtil {
 
     CanProfileConfig(
         List<DeviceRef> neos,
+        List<DeviceRef> flexes,
         List<DeviceRef> krakens,
         List<DeviceRef> falcons,
         List<DeviceRef> cancoders,
         DeviceRef pdh,
         DeviceRef pigeon) {
       this.neos = neos != null ? neos : Collections.emptyList();
+      this.flexes = flexes != null ? flexes : Collections.emptyList();
       this.krakens = krakens != null ? krakens : Collections.emptyList();
       this.falcons = falcons != null ? falcons : Collections.emptyList();
       this.cancoders = cancoders != null ? cancoders : Collections.emptyList();
@@ -433,3 +475,5 @@ public final class BringupUtil {
     }
   }
 }
+
+

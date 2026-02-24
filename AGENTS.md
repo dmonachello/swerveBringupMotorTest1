@@ -6,6 +6,7 @@ This repo is one system with two cooperating parts:
 
 Hard rules
 - The Python side must be read-only on CAN. Never transmit CAN frames.
+- Keep a strict separation between local robot data (read directly on the roboRIO) and CAN-bus data coming from the PC tool via NetworkTables. Do not mix or conflate the two in logging, diagnostics, or APIs.
 - Do not assume how the Java code uses NetworkTables. Before changing any NT keys, first inventory current usage in Java and Python and produce a short report.
 - NetworkTables paths are an API contract. If any key path changes, update both sides in the same change and keep backward compatibility for at least one iteration.
 - Windows is the primary host for the Python tool (Driver Station laptop). Avoid Linux-only assumptions (SocketCAN, can0, etc) unless explicitly requested.

@@ -14,6 +14,7 @@ local f_apic_name = ProtoField.string("frccan.api_class_name", "API Class Name (
 local f_apix = ProtoField.uint8("frccan.api_index", "API Index", base.DEC)
 local f_apix_name = ProtoField.string("frccan.api_index_name", "API Index Name (FRC Example)")
 local f_did = ProtoField.uint8("frccan.device_id", "Device ID", base.DEC)
+local f_rtr = ProtoField.bool("frccan.rtr", "Remote Transmission Request", base.NONE)
 
 frccan.fields = {
     f_ext,
@@ -26,48 +27,49 @@ frccan.fields = {
     f_apix,
     f_apix_name,
     f_did,
+    f_rtr,
 }
 
 local MFG_NAMES = {
     [0] = "Broadcast",
     [1] = "NI",
-    [2] = "LuminaryMicro",
+    [2] = "Luminary Micro",
     [3] = "DEKA",
-    [4] = "CTRE",
-    [5] = "REV",
+    [4] = "CTR Electronics",
+    [5] = "REV Robotics",
     [6] = "Grapple",
     [7] = "MindSensors",
-    [8] = "TeamUse",
-    [9] = "KauaiLabs",
+    [8] = "Team Use",
+    [9] = "Kauai Labs",
     [10] = "Copperforge",
-    [11] = "PlayingWithFusion",
+    [11] = "Playing With Fusion",
     [12] = "Studica",
-    [13] = "TheThriftyBot",
-    [14] = "ReduxRobotics",
+    [13] = "The Thrifty Bot",
+    [14] = "Redux Robotics",
     [15] = "AndyMark",
-    [16] = "VividHosting",
-    [17] = "VertosRobotics",
-    [18] = "SWYFTRobotics",
-    [19] = "LumynLabs",
-    [20] = "BrushlandLabs",
+    [16] = "Vivid Hosting",
+    [17] = "Vertos Robotics",
+    [18] = "SWYFT Robotics",
+    [19] = "Lumyn Labs",
+    [20] = "Brushland Labs",
 }
 
 local DEVICE_TYPE_NAMES = {
-    [0] = "BroadcastMessages",
-    [1] = "RobotController",
-    [2] = "MotorController",
-    [3] = "RelayController",
-    [4] = "GyroSensor",
+    [0] = "Broadcast Messages",
+    [1] = "Robot Controller",
+    [2] = "Motor Controller",
+    [3] = "Relay Controller",
+    [4] = "Gyro Sensor",
     [5] = "Accelerometer",
-    [6] = "DistanceSensor",
+    [6] = "Distance Sensor",
     [7] = "Encoder",
-    [8] = "PowerDistributionModule",
-    [9] = "PneumaticsController",
+    [8] = "Power Distribution Module",
+    [9] = "Pneumatics Controller",
     [10] = "Miscellaneous",
-    [11] = "IOBreakout",
-    [12] = "ServoController",
-    [13] = "ColorSensor",
-    [31] = "FirmwareUpdate",
+    [11] = "IO Breakout",
+    [12] = "Servo Controller",
+    [13] = "Color Sensor",
+    [31] = "Firmware Update",
 }
 
 -- FRC CAN documentation provides example API class/index meanings for motor controllers.
@@ -97,6 +99,20 @@ local API_INDEX_SPEED = {
     [11] = "Set Setpoint No Ack",
 }
 
+local BROADCAST_API_INDEX = {
+    [0] = "Disable",
+    [1] = "System Halt",
+    [2] = "System Reset",
+    [3] = "Device Assign",
+    [4] = "Device Query",
+    [5] = "Heartbeat",
+    [6] = "Sync",
+    [7] = "Update",
+    [8] = "Firmware Version",
+    [9] = "Enumerate",
+    [10] = "System Resume",
+}
+
 local function field_new(name)
     local ok, f = pcall(Field.new, name)
     if ok then
@@ -106,6 +122,7 @@ local function field_new(name)
 end
 
 local can_id_f = field_new("can.id") or field_new("can.arbitration_id")
+local can_rtr_f = field_new("can.flags.rtr") or field_new("can.rtr")
 
 function frccan.dissector(tvb, pinfo, tree)
     local can_id = can_id_f()
@@ -145,10 +162,25 @@ function frccan.dissector(tvb, pinfo, tree)
     if device_type == 2 and api_class == 1 then
         subtree:add(f_apix_name, API_INDEX_SPEED[api_index] or "Unknown")
     end
+    if device_type == 0 and manufacturer == 0 and api_class == 0 then
+        subtree:add(f_apix_name, BROADCAST_API_INDEX[api_index] or "Unknown")
+    end
     subtree:add(f_did, device_id)
+    if can_rtr_f then
+        local rtr_val = can_rtr_f()
+        if rtr_val then
+            subtree:add(f_rtr, rtr_val.value)
+        end
+    end
 
     -- Optional: add a brief hint in the Info column
     pinfo.cols.info:append(string.format("  FRC mfg=%d type=%d id=%d", manufacturer, device_type, device_id))
+    if can_rtr_f then
+        local rtr_val = can_rtr_f()
+        if rtr_val and rtr_val.value then
+            pinfo.cols.info:append(" [RTR]")
+        end
+    end
 end
 
 register_postdissector(frccan)

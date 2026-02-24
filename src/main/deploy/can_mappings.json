@@ -1,0 +1,42 @@
+{
+  "manufacturers": {
+    "0": "Broadcast",
+    "1": "NI",
+    "2": "LuminaryMicro",
+    "3": "DEKA",
+    "4": "CTRE",
+    "5": "REV",
+    "6": "Grapple",
+    "7": "MindSensors",
+    "8": "TeamUse",
+    "9": "KauaiLabs",
+    "10": "Copperforge",
+    "11": "PlayingWithFusion",
+    "12": "Studica",
+    "13": "TheThriftyBot",
+    "14": "ReduxRobotics",
+    "15": "AndyMark",
+    "16": "VividHosting",
+    "17": "VertosRobotics",
+    "18": "SWYFTRobotics",
+    "19": "LumynLabs",
+    "20": "BrushlandLabs"
+  },
+  "device_types": {
+    "0": "BroadcastMessages",
+    "1": "RobotController",
+    "2": "MotorController",
+    "3": "RelayController",
+    "4": "GyroSensor",
+    "5": "Accelerometer",
+    "6": "DistanceSensor",
+    "7": "Encoder",
+    "8": "PowerDistributionModule",
+    "9": "PneumaticsController",
+    "10": "Miscellaneous",
+    "11": "IOBreakout",
+    "12": "ServoController",
+    "13": "ColorSensor",
+    "31": "FirmwareUpdate"
+  }
+}

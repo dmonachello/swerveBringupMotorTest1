@@ -1,7 +1,7 @@
 package frc.robot;
 
-import edu.wpi.first.wpilibj.GenericHID;
 import edu.wpi.first.wpilibj.TimedRobot;
+import edu.wpi.first.wpilibj.XboxController;
 import java.util.ArrayList;
 
 public class Robot extends TimedRobot {
@@ -10,12 +10,12 @@ public class Robot extends TimedRobot {
 
 
   private static final double DEADBAND = BringupUtil.DEADBAND;
-  private static final double KEYBOARD_SPEED = 0.4;
-
-  private final GenericHID keyboard = new GenericHID(0);
+  private final XboxController controller = new XboxController(0);
   private BringupCore core = new BringupCore();
   private boolean prevBindings = false;
   private boolean prevProfileToggle = false;
+  private boolean prevSpeedPrint = false;
+  private boolean prevNudge = false;
 
   @Override
   public void robotInit() {
@@ -29,6 +29,8 @@ public class Robot extends TimedRobot {
     core.resetState();
     prevBindings = false;
     prevProfileToggle = false;
+    prevSpeedPrint = false;
+    prevNudge = false;
   }
 
   @Override
@@ -36,17 +38,19 @@ public class Robot extends TimedRobot {
     core.resetState();
     prevBindings = false;
     prevProfileToggle = false;
+    prevSpeedPrint = false;
+    prevNudge = false;
   }
 
   @Override
   public void teleopPeriodic() {
 
-    core.handleAdd(BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.A));
-    core.handleAddAll(BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.ENTER));
-    core.handlePrint(BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.B));
-    core.handleHealth(BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.X));
+    core.handleAdd(controller.getAButton());
+    core.handleAddAll(controller.getStartButton());
+    core.handlePrint(controller.getBButton());
+    core.handleHealth(controller.getXButton());
 
-    boolean profileToggleNow = BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.P);
+    boolean profileToggleNow = controller.getBackButton();
     if (profileToggleNow && !prevProfileToggle) {
       BringupUtil.toggleCanProfile();
       core.resetState();
@@ -56,32 +60,31 @@ public class Robot extends TimedRobot {
     }
     prevProfileToggle = profileToggleNow;
 
-    boolean bindingsNow = BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.H);
+    boolean bindingsNow = controller.getLeftBumperButton();
     if (bindingsNow && !prevBindings) {
       printStartupInfo();
     }
     prevBindings = bindingsNow;
 
-    double neoInput = 0.0;
-    if (BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.W)) {
-      neoInput += 1.0;
+    double neoSpeed = BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
+    double krakenSpeed = BringupUtil.deadband(-controller.getRightY(), DEADBAND);
+
+    boolean speedPrintNow = controller.getRightStickButton();
+    if (speedPrintNow && !prevSpeedPrint) {
+      System.out.println(
+          "Inputs: leftY=" + String.format("%.2f", neoSpeed) +
+          " rightY=" + String.format("%.2f", krakenSpeed) +
+          " (NEO/FLEX=" + String.format("%.2f", neoSpeed) +
+          ", KRAKEN/FALCON=" + String.format("%.2f", krakenSpeed) + ")");
     }
-    if (BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.S)) {
-      neoInput -= 1.0;
+    prevSpeedPrint = speedPrintNow;
+
+    boolean nudgeNow = controller.getLeftStickButton();
+    if (nudgeNow && !prevNudge) {
+      core.triggerNudge(0.2, 0.5);
+      System.out.println("Nudge: 0.2 for 0.5s (all motors)");
     }
-    double krakenInput = 0.0;
-    if (BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.I)) {
-      krakenInput += 1.0;
-    }
-    if (BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.K)) {
-      krakenInput -= 1.0;
-    }
-    double neoSpeed = neoInput * KEYBOARD_SPEED;
-    double krakenSpeed = krakenInput * KEYBOARD_SPEED;
-    if (BringupUtil.KeyboardKeys.isPressed(keyboard, BringupUtil.KeyboardKeys.SPACE)) {
-      neoSpeed = 0.0;
-      krakenSpeed = 0.0;
-    }
+    prevNudge = nudgeNow;
 
     core.setSpeeds(neoSpeed, krakenSpeed);
   }
@@ -92,16 +95,19 @@ public class Robot extends TimedRobot {
 
   private void printStartupInfo() {
     System.out.println("=== Swerve Bringup ===");
-    System.out.println("A: add motor (alternates NEO/KRAKEN/FALCON)");
-    System.out.println("Enter: add all motors + CANCoders");
+    System.out.println("A: add motor (alternates SPARK/CTRE)");
+    System.out.println("Start: add all motors + CANCoders");
     System.out.println("B: print state");
     System.out.println("X: print health status");
-    System.out.println("P: toggle CAN profile");
-    System.out.println("H: reprint bindings");
-    System.out.println("W/S: NEO speed, I/K: KRAKEN speed, Space: stop");
-    System.out.println("Deadband (unused on keyboard): " + DEADBAND);
+    System.out.println("Back: toggle CAN profile");
+    System.out.println("Left Bumper: reprint bindings");
+    System.out.println("Right Stick: print speed inputs");
+    System.out.println("Left Stick: nudge motors (0.2 for 0.5s)");
+    System.out.println("Left Y: NEO/FLEX speed, Right Y: KRAKEN/FALCON speed");
+    System.out.println("Deadband: " + DEADBAND);
     System.out.println("CAN profile: " + BringupUtil.getActiveCanProfileLabel());
     System.out.println("NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
+    System.out.println("FLEX CAN IDs: " + BringupUtil.joinIds(BringupUtil.FLEX_CAN_IDS));
     System.out.println("KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
     System.out.println("FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
     System.out.println("======================");
@@ -113,6 +119,8 @@ public class Robot extends TimedRobot {
 
     labels.add("NEO");
     groups.add(BringupUtil.NEO_CAN_IDS);
+    labels.add("FLEX");
+    groups.add(BringupUtil.FLEX_CAN_IDS);
     labels.add("KRAKEN");
     groups.add(BringupUtil.KRAKEN_CAN_IDS);
     labels.add("FALCON");
@@ -134,3 +142,5 @@ public class Robot extends TimedRobot {
   }
   // Shared behavior moved to BringupCore.
 }
+
+

@@ -30,6 +30,28 @@ Wireshark capture
 - Use --pcap logs\run.pcapng
 - Open the file in Wireshark
 
+Wireshark display filters (FRC CAN)
+- Extended CAN frames only:
+  can.flags.extended == 1
+- By device ID (example 11):
+  frccan.device_id == 11
+- By manufacturer (REV=5, CTRE=4):
+  frccan.manufacturer == 5
+  frccan.manufacturer == 4
+- By device type (Motor=2, Encoder=7, PDM=8):
+  frccan.device_type == 2
+  frccan.device_type == 7
+  frccan.device_type == 8
+- Full device match (mfg/type/id):
+  frccan.manufacturer == 5 && frccan.device_type == 2 && frccan.device_id == 11
+- Broadcast messages:
+  frccan.device_type == 0 && frccan.manufacturer == 0
+- Motor controller API class/index:
+  frccan.device_type == 2 && frccan.api_class == 1
+  frccan.device_type == 2 && frccan.api_class == 1 && frccan.api_index == 2
+- Specific arbitration ID:
+  can.id == 0x0205B80B
+
 Quick start
 1) Put this folder somewhere (example: C:\frc\can_tools)
 2) Run install_deps.bat once

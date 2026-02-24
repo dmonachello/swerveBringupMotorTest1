@@ -4,21 +4,30 @@ import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.TalonFX;
 import edu.wpi.first.units.Units;
+import com.revrobotics.spark.SparkFlex;
 import com.revrobotics.spark.SparkMax;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
+import com.revrobotics.spark.config.SparkFlexConfig;
+import com.revrobotics.spark.config.SparkMaxConfig;
+import com.revrobotics.ResetMode;
+import com.revrobotics.PersistMode;
+import edu.wpi.first.wpilibj.Timer;
 
 public final class BringupCore {
   private final int[] neoIds = BringupUtil.filterCanIds(BringupUtil.NEO_CAN_IDS);
+  private final int[] flexIds = BringupUtil.filterCanIds(BringupUtil.FLEX_CAN_IDS);
   private final int[] krakenIds = BringupUtil.filterCanIds(BringupUtil.KRAKEN_CAN_IDS);
   private final int[] falconIds = BringupUtil.filterCanIds(BringupUtil.FALCON_CAN_IDS);
   private final int[] cancoderIds = BringupUtil.filterCanIds(BringupUtil.CANCODER_CAN_IDS);
 
   private final SparkMax[] neos = new SparkMax[neoIds.length];
+  private final SparkFlex[] flexes = new SparkFlex[flexIds.length];
   private final TalonFX[] krakens = new TalonFX[krakenIds.length];
   private final TalonFX[] falcons = new TalonFX[falconIds.length];
   private final CANcoder[] cancoders = new CANcoder[cancoderIds.length];
 
   private int nextNeo = 0;
+  private int nextFlex = 0;
   private int nextKraken = 0;
   private int nextFalcon = 0;
   private boolean addNeoNext = true;
@@ -29,6 +38,9 @@ public final class BringupCore {
   private boolean prevPrint = false;
   private boolean prevHealth = false;
   private boolean prevCANCoder = false;
+  private boolean nudgeActive = false;
+  private double nudgeEndSec = 0.0;
+  private double nudgeSpeed = 0.2;
 
   public void handleAdd(boolean addNow) {
     if (addNow && !prevAdd) {
@@ -66,17 +78,40 @@ public final class BringupCore {
   }
 
   public void setSpeeds(double neoSpeed, double krakenSpeed) {
+    if (nudgeActive) {
+      double now = Timer.getFPGATimestamp();
+      if (now < nudgeEndSec) {
+        neoSpeed = nudgeSpeed;
+        krakenSpeed = nudgeSpeed;
+      } else {
+        nudgeActive = false;
+      }
+    }
     BringupUtil.setAllNeos(neos, neoSpeed);
+    BringupUtil.setAllFlexes(flexes, neoSpeed);
     BringupUtil.setAllKrakens(krakens, krakenSpeed);
     BringupUtil.setAllFalcons(falcons, krakenSpeed);
   }
 
+  public void triggerNudge(double speed, double seconds) {
+    if (seconds <= 0.0) {
+      return;
+    }
+    nudgeSpeed = Math.max(-1.0, Math.min(1.0, speed));
+    nudgeEndSec = Timer.getFPGATimestamp() + seconds;
+    nudgeActive = true;
+  }
+
   public void resetState() {
-    BringupUtil.stopAll(neos, krakens, falcons);
+    BringupUtil.stopAll(neos, flexes, krakens, falcons);
 
     for (int i = 0; i < neos.length; i++) {
       BringupUtil.closeIfPossible(neos[i]);
       neos[i] = null;
+    }
+    for (int i = 0; i < flexes.length; i++) {
+      BringupUtil.closeIfPossible(flexes[i]);
+      flexes[i] = null;
     }
     for (int i = 0; i < krakens.length; i++) {
       BringupUtil.closeIfPossible(krakens[i]);
@@ -92,6 +127,7 @@ public final class BringupCore {
     }
 
     nextNeo = 0;
+    nextFlex = 0;
     nextKraken = 0;
     nextFalcon = 0;
     addNeoNext = true;
@@ -108,16 +144,8 @@ public final class BringupCore {
 
   private void addNextMotor() {
     if (addNeoNext) {
-      if (nextNeo < neos.length && neos[nextNeo] == null) {
-        neos[nextNeo] = new SparkMax(neoIds[nextNeo], MotorType.kBrushless);
-
-        System.out.println(
-            "Added NEO index " + nextNeo +
-            " (CAN " + neoIds[nextNeo] + ")");
-
-        nextNeo++;
-      } else {
-        System.out.println("No more NEOs to add");
+      if (!addNextNeo() && !addNextFlex()) {
+        System.out.println("No more SPARK motors to add");
       }
       addNeoNext = false;
       return;
@@ -163,10 +191,51 @@ public final class BringupCore {
     addNeoNext = true;
   }
 
+  private boolean addNextNeo() {
+    if (nextNeo < neos.length && neos[nextNeo] == null) {
+      neos[nextNeo] = new SparkMax(neoIds[nextNeo], MotorType.kBrushless);
+      neos[nextNeo].pauseFollowerModeAsync();
+      neos[nextNeo].configureAsync(new SparkMaxConfig(), ResetMode.kResetSafeParameters, PersistMode.kNoPersistParameters);
+
+      System.out.println(
+          "Added NEO index " + nextNeo +
+          " (CAN " + neoIds[nextNeo] + ")");
+
+      nextNeo++;
+      return true;
+    }
+    return false;
+  }
+
+  private boolean addNextFlex() {
+    if (nextFlex < flexes.length && flexes[nextFlex] == null) {
+      flexes[nextFlex] = new SparkFlex(flexIds[nextFlex], MotorType.kBrushless);
+      flexes[nextFlex].pauseFollowerModeAsync();
+      flexes[nextFlex].configureAsync(new SparkFlexConfig(), ResetMode.kResetSafeParameters, PersistMode.kNoPersistParameters);
+
+      System.out.println(
+          "Added FLEX index " + nextFlex +
+          " (CAN " + flexIds[nextFlex] + ")");
+
+      nextFlex++;
+      return true;
+    }
+    return false;
+  }
+
   private void addAllDevices() {
     for (int i = 0; i < neos.length; i++) {
       if (neos[i] == null) {
         neos[i] = new SparkMax(neoIds[i], MotorType.kBrushless);
+        neos[i].pauseFollowerModeAsync();
+        neos[i].configureAsync(new SparkMaxConfig(), ResetMode.kResetSafeParameters, PersistMode.kNoPersistParameters);
+      }
+    }
+    for (int i = 0; i < flexes.length; i++) {
+      if (flexes[i] == null) {
+        flexes[i] = new SparkFlex(flexIds[i], MotorType.kBrushless);
+        flexes[i].pauseFollowerModeAsync();
+        flexes[i].configureAsync(new SparkFlexConfig(), ResetMode.kResetSafeParameters, PersistMode.kNoPersistParameters);
       }
     }
     for (int i = 0; i < krakens.length; i++) {
@@ -186,11 +255,12 @@ public final class BringupCore {
     }
 
     nextNeo = neos.length;
+    nextFlex = flexes.length;
     nextKraken = krakens.length;
     nextFalcon = falcons.length;
     addNeoNext = true;
 
-    System.out.println("Added all NEOs, Krakens, Falcons, and CANCoders.");
+    System.out.println("Added all SPARKs, Krakens, Falcons, and CANCoders.");
   }
 
   private void printState() {
@@ -204,6 +274,17 @@ public final class BringupCore {
       } else {
         System.out.println("  index " + i +
             " CAN " + neoIds[i] + " not added");
+      }
+    }
+
+    System.out.println("FLEX:");
+    for (int i = 0; i < flexes.length; i++) {
+      if (flexes[i] != null) {
+        System.out.println("  index " + i +
+            " CAN " + flexIds[i] + " ACTIVE");
+      } else {
+        System.out.println("  index " + i +
+            " CAN " + flexIds[i] + " not added");
       }
     }
 
@@ -231,12 +312,12 @@ public final class BringupCore {
 
     System.out.println(
         "Next add will be: " +
-        (addNeoNext ? "NEO" : (addKrakenNext ? "KRAKEN" : "FALCON")));
+        (addNeoNext ? "SPARK" : (addKrakenNext ? "KRAKEN" : "FALCON")));
     System.out.println("=====================");
   }
 
   private void printHealthStatus() {
-    System.out.println("=== Bringup Health ===");
+    System.out.println("=== Bringup Health (Local Robot Data) ===");
     for (int i = 0; i < neos.length; i++) {
       if (neos[i] == null) {
         System.out.println("NEO index " + i +
@@ -250,6 +331,33 @@ public final class BringupCore {
           " CAN " + neoIds[i] +
           " faults=0x" + Integer.toHexString(faults.rawBits) +
           " warnings=0x" + Integer.toHexString(warnings.rawBits));
+    }
+
+    for (int i = 0; i < flexes.length; i++) {
+      if (flexes[i] == null) {
+        System.out.println("FLEX index " + i +
+            " CAN " + flexIds[i] + " not added");
+        continue;
+      }
+      var faults = flexes[i].getFaults();
+      var warnings = flexes[i].getWarnings();
+      double busVoltage = flexes[i].getBusVoltage();
+      double appliedOutput = flexes[i].getAppliedOutput();
+      double outputCurrent = flexes[i].getOutputCurrent();
+      double motorTemp = flexes[i].getMotorTemperature();
+      double setpoint = flexes[i].get();
+      boolean follower = flexes[i].isFollower();
+      System.out.println(
+          "FLEX index " + i +
+          " CAN " + flexIds[i] +
+          " faults=0x" + Integer.toHexString(faults.rawBits) +
+          " warnings=0x" + Integer.toHexString(warnings.rawBits) +
+          " busV=" + String.format("%.2f", busVoltage) +
+          " applied=" + String.format("%.2f", appliedOutput) +
+          " current=" + String.format("%.2f", outputCurrent) +
+          " tempC=" + String.format("%.1f", motorTemp) +
+          " set=" + String.format("%.2f", setpoint) +
+          " follower=" + (follower ? "Y" : "N"));
     }
 
     for (int i = 0; i < krakens.length; i++) {
@@ -318,3 +426,5 @@ public final class BringupCore {
     System.out.println("=======================");
   }
 }
+
+

@@ -90,6 +90,99 @@ def _auto_channel(match_text: str, prompt: bool) -> Tuple[str, str]:
     return matches[0]
 
 
+def _print_or_dump_nt_keys(devices, print_keys: bool, dump_path: str) -> None:
+    keys = []
+    for spec in devices:
+        base = f"bringup/diag/dev/{spec['manufacturer']}/{spec['device_type']}/{spec['device_id']}"
+        keys.extend([
+            f"{base}/label",
+            f"{base}/status",
+            f"{base}/ageSec",
+            f"{base}/msgCount",
+            f"{base}/lastSeen",
+            f"{base}/manufacturer",
+            f"{base}/deviceType",
+            f"{base}/deviceId",
+        ])
+    keys.append("bringup/diag/can/summary/json")
+    payload = {
+        "keys": keys,
+        "count": len(keys),
+    }
+    if print_keys:
+        print("NetworkTables keys published by can_nt_bridge.py:")
+        for key in keys:
+            print(f"  {key}")
+    if dump_path:
+        with open(dump_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+        print(f"Wrote NT key inventory to {dump_path}")
+
+
+def _print_status_transitions(
+    devices,
+    last_seen: Dict[Tuple[int, int, int], float],
+    now: float,
+    timeout_s: float,
+    last_status: Dict[Tuple[int, int, int], str],
+) -> None:
+    for spec in devices:
+        key = (spec["manufacturer"], spec["device_type"], spec["device_id"])
+        ts = last_seen.get(key)
+        if ts is None:
+            status = "MISSING"
+        else:
+            status = "OK" if (now - ts) < timeout_s else "MISSING"
+        prev = last_status.get(key)
+        if prev is None:
+            last_status[key] = status
+            continue
+        if prev != status:
+            label = spec.get("label", "")
+            if status == "OK":
+                print(f"[seen] {label} mfg={key[0]} type={key[1]} id={key[2]}")
+            else:
+                print(f"[missing] {label} mfg={key[0]} type={key[1]} id={key[2]}")
+        last_status[key] = status
+
+
+def _print_summary(summary, now: float) -> None:
+    top = summary.get("topTalkers", [])
+    total = summary.get("totalFramesPerSec")
+    missing = summary.get("missing", [])
+    ts = time.strftime("%H:%M:%S", time.localtime(now))
+    print(f"[summary {ts}] fps={total} missing={len(missing)} top={len(top)}")
+    for row in top[:5]:
+        try:
+            print(
+                "  "
+                f"mfg={row.get('mfg')} type={row.get('type')} id={row.get('id')} "
+                f"fps={row.get('fps')}"
+            )
+        except Exception:
+            continue
+
+
+def _merge_unknown_devices(devices, last_seen: Dict[Tuple[int, int, int], float], enabled: bool):
+    if not enabled:
+        return devices
+    known_keys = {(d["manufacturer"], d["device_type"], d["device_id"]) for d in devices}
+    merged = list(devices)
+    for key in last_seen.keys():
+        if key in known_keys:
+            continue
+        mfg, dtype, did = key
+        merged.append(
+            {
+                "label": "UNKNOWN",
+                "manufacturer": mfg,
+                "device_type": dtype,
+                "device_id": did,
+                "group": "unknown",
+            }
+        )
+    return merged
+
 def main(argv: Optional[Iterable[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="FRC CAN bringup diagnostics")
 
@@ -125,11 +218,38 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     parser.add_argument("--publish-period", type=float, default=0.2)
 
     parser.add_argument("--publish-can-summary", action="store_true")
+    parser.add_argument(
+        "--print-summary-period",
+        type=float,
+        default=0.0,
+        help="Print CAN summary to console every N seconds (0 disables).",
+    )
+    parser.add_argument(
+        "--print-publish",
+        action="store_true",
+        help="Print when a device transitions from missing to seen.",
+    )
     parser.add_argument("--stale-s", type=float, default=0.75)
     parser.add_argument("--top-n", type=int, default=15)
 
     parser.add_argument("--dump-can-expected-ids", default="")
     parser.add_argument("--dump-after", type=float, default=3.0)
+
+    parser.add_argument(
+        "--list-keys",
+        action="store_true",
+        help="Print the NetworkTables keys this tool publishes and exit.",
+    )
+    parser.add_argument(
+        "--dump-nt",
+        default="",
+        help="Write a JSON description of published NetworkTables keys and exit.",
+    )
+    parser.add_argument(
+        "--publish-unknown",
+        action="store_true",
+        help="Publish devices seen on the bus that are not in the profile as UNKNOWN.",
+    )
 
     parser.add_argument("--pcap", default="", help="Write all CAN frames to a .pcapng/.pcap file")
 
@@ -147,20 +267,23 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     devices, expected_ids = get_profile(args.profile)
 
-    # Delayed imports so --help still works without packages installed
-    from ntcore import NetworkTableInstance
-    import can  # type: ignore
-
     channel = args.channel
     if not channel:
         channel, channel_desc = _auto_channel(args.auto_match, not args.no_prompt)
         print(f"Auto-detected CAN channel: {channel} ({channel_desc})")
 
+    if args.list_keys or args.dump_nt:
+        _print_or_dump_nt_keys(devices, args.list_keys, args.dump_nt)
+        return 0
+
+    # Delayed imports so --help still works without packages installed
+    from ntcore import NetworkTableInstance
+    import can  # type: ignore
+
     bus = can.Bus(interface=args.interface, channel=channel, bitrate=args.bitrate)
 
     pcap = PcapLogger(args.pcap)
-    if args.pcap:
-        pcap.start()
+    if args.pcap and pcap.start():
         print(f"PCAP logging enabled: {args.pcap}")
 
     nt = NetworkTableInstance.getDefault()
@@ -171,9 +294,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     analyzer = CanLiveAnalyzer(expected_ids=expected_ids)
     last_seen: Dict[Tuple[int, int, int], float] = {}
     msg_count: Dict[Tuple[int, int, int], int] = {}
+    last_status: Dict[Tuple[int, int, int], str] = {}
 
     start = time.time()
     last_publish = 0.0
+    last_summary = 0.0
 
     try:
         while True:
@@ -209,18 +334,32 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             if (now - last_publish) >= args.publish_period:
                 publish_devices(
                     table=table,
-                    devices=devices,
+                    devices=_merge_unknown_devices(devices, last_seen, args.publish_unknown),
                     last_seen=last_seen,
                     msg_count=msg_count,
                     now=now,
                     timeout_s=args.timeout,
                 )
 
+                if args.print_publish:
+                    _print_status_transitions(
+                        devices=devices,
+                        last_seen=last_seen,
+                        now=now,
+                        timeout_s=args.timeout,
+                        last_status=last_status,
+                    )
+
                 if args.publish_can_summary:
                     summary = analyzer.summary(now, stale_s=args.stale_s, top_n=args.top_n)
                     table.getEntry("can/summary/json").setString(
                         json.dumps(summary, separators=(",", ":"))
                     )
+
+                if args.print_summary_period and (now - last_summary) >= args.print_summary_period:
+                    summary = analyzer.summary(now, stale_s=args.stale_s, top_n=args.top_n)
+                    _print_summary(summary, now)
+                    last_summary = now
 
                 last_publish = now
 

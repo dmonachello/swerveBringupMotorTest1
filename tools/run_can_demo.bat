@@ -14,6 +14,7 @@ echo.
 python can_nt_bridge.py ^
   --profile demo_club ^
   --interface slcan ^
+  %* ^
   --bitrate 1000000 ^
   --rio 172.22.11.2 ^
   --publish-can-summary ^

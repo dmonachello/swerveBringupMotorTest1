@@ -5,7 +5,7 @@ Bringup and diagnostics project for swerve motors and other CAN devices.
 ## Purpose
 Use this project to:
 - Add motors incrementally or all at once.
-- Command NEO, KRAKEN, and FALCON motors from an Xbox controller.
+- Command NEO, FLEX/VORTEX, KRAKEN, and FALCON motors from an Xbox controller.
 - Print health and CAN sniffer diagnostics.
 - Read and verify CANCoder absolute positions.
 
@@ -16,18 +16,28 @@ Use the normal WPILib workflow to deploy and run the robot code.
 Bringup hardware profiles are defined in `src/main/deploy/bringup_profiles.json`.
 
 - `default_profile` controls the startup profile.
-- Profiles are applied in the order they appear in the JSON when you press `P` to toggle.
+- Profiles are applied in the order they appear in the JSON when you press `Back` to toggle.
 - Override at runtime with `--bringup-profile=<name>`.
+
+Supported profile sections include:
+- `neos`, `flexes`, `krakens`, `falcons`, `cancoders`
+- `pdh`, `pdp`, `pigeon`, `roborio`
+
+Manufacturer/type display names are loaded from `src/main/deploy/can_mappings.json`.
 
 ## Controller Bindings
 Robot and RobotV2 share the same bindings:
-- `A`: add motor (alternates NEO/KRAKEN/FALCON)
+- `A`: add motor (alternates SPARK/CTRE)
 - `Start`: add all motors + CANCoders
 - `B`: print state
 - `X`: print health status
 - `Y`: print NetworkTables diagnostics (RobotV2 only)
 - `Right Bumper`: print CANCoder absolute positions
-- `Left Y`: NEO speed
+- `Back`: toggle CAN profile
+- `Left Bumper`: reprint bindings
+- `Right Stick`: print speed inputs
+- `Left Stick`: nudge motors (0.2 for 0.5s)
+- `Left Y`: NEO/FLEX speed
 - `Right Y`: KRAKEN/FALCON speed
 
 ## CAN Sniffer Bridge (CANable Pro V2)
@@ -63,7 +73,7 @@ tools\run_can_nt.cmd C:\Path\To\Python\python.exe
 
 Pass extra flags directly:
 ```cmd
-tools\run_can_nt.cmd --verbose --print-summary-period 2
+tools\run_can_nt.cmd --print-summary-period 2 --print-publish
 ```
 
 If you pass a Python path first, flags can follow:
@@ -90,17 +100,18 @@ Examples:
 # Explicit COM port
 %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --channel COM21
 
-# More output (summary + device seen messages)
+# More output (summary + device seen/missing messages)
 %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --print-summary-period 2 --print-publish
-
-# Quick check (print once and exit)
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --quick-check
-
-# Write CSV log
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --log-csv tools\can_nt_log.csv
 
 # Use a custom config
 %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --config tools\can_nt_config.json
+
+# Publish unknown devices seen on the bus
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_home_022326 --publish-unknown
+
+# List or dump the published NT keys
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_home_022326 --list-keys
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_home_022326 --dump-nt tools\nt_keys.json
 
 # List serial ports
 %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --list-ports
@@ -129,16 +140,11 @@ It now reads the composite keys under `bringup/diag/dev/<mfg>/<type>/<id>` so
 devices with the same numeric ID but different types are handled correctly.
 
 Useful run flags:
-- `--verbose` prints each received device ID.
-- `--print-publish` prints when a device is seen after being missing (uses `--timeout`).
-- `--print-summary-period` prints per-device counts/missing every N seconds with timestamps (0 disables).
-- `--no-traffic-secs` prints a warning if no CAN frames are seen for N seconds (0 disables).
-- `--no-rio-secs` prints a warning if not connected to the RIO for N seconds (0 disables).
-- `--log-csv` writes a CSV log file (empty disables).
-- `--log-period` sets seconds between CSV rows.
-- `--quick-check` prints one summary after `--quick-wait` seconds and exits.
-- `--quick-wait` sets the wait time before quick-check output.
-- `--device-ids` enables legacy deviceId-only tracking (not recommended for duplicate IDs).
+- `--print-publish` prints when a device is seen or goes missing (uses `--timeout`).
+- `--print-summary-period` prints a CAN summary every N seconds (0 disables).
+- `--publish-unknown` publishes devices seen on the bus that are not in the profile.
+- `--list-keys` prints the NT keys this tool publishes and exits.
+- `--dump-nt` writes a JSON list of published NT keys and exits.
 - `--list-ports` prints available serial ports and exits.
 - `--auto-match` sets the substring used to auto-detect the serial device.
 - `--no-prompt` disables the port selection prompt when multiple matches are found.

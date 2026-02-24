@@ -58,6 +58,13 @@ def _profile_devices(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
         device_id = int(entry.get("id"))
         devices.append(_device(label, 5, 2, device_id, "neos"))
 
+    for entry in raw.get("flexes", []) or []:
+        if not isinstance(entry, dict) or "id" not in entry:
+            continue
+        label = entry.get("label") or f"FLEX {entry.get('id')}"
+        device_id = int(entry.get("id"))
+        devices.append(_device(label, 5, 2, device_id, "flexes"))
+
     for entry in raw.get("krakens", []) or []:
         if not isinstance(entry, dict) or "id" not in entry:
             continue
@@ -84,10 +91,20 @@ def _profile_devices(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
         label = pdh.get("label") or "PDH"
         devices.append(_device(label, 5, 8, int(pdh.get("id")), "power"))
 
+    pdp = raw.get("pdp")
+    if isinstance(pdp, dict) and "id" in pdp:
+        label = pdp.get("label") or "PDP"
+        devices.append(_device(label, 4, 8, int(pdp.get("id")), "power"))
+
     pigeon = raw.get("pigeon")
     if isinstance(pigeon, dict) and "id" in pigeon:
         label = pigeon.get("label") or "Pigeon"
         devices.append(_device(label, 4, 4, int(pigeon.get("id")), "sensors"))
+
+    roborio = raw.get("roborio")
+    if isinstance(roborio, dict) and "id" in roborio:
+        label = roborio.get("label") or "roboRIO"
+        devices.append(_device(label, 1, 1, int(roborio.get("id")), "controller"))
 
     return devices
 

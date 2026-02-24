@@ -38,6 +38,17 @@
       "falcons": [
         { "label": "FALCON 30", "id": 30 }
       ]
+    },
+    "demo_home_022326": {
+      "flexes": [
+        { "label": "VORTEX/FLEX 11", "id": 11 },
+        { "label": "VORTEX/FLEX 26", "id": 26 }
+      ],
+      "falcons": [
+        { "label": "FALCON 9", "id": 9 }
+      ],
+      "pdh": { "label": "PDH", "id": 1 },
+      "roborio": { "label": "roboRIO", "id": 0 }
     }
   }
 }

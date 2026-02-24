@@ -47,7 +47,7 @@ tools\run_can_nt.cmd C:\Path\To\Python\python.exe
 
 Pass extra flags directly:
 ```cmd
-tools\run_can_nt.cmd --verbose --print-summary-period 2
+tools\run_can_nt.cmd --print-summary-period 2 --print-publish
 ```
 
 If you pass a Python path first, flags can follow:
@@ -75,20 +75,21 @@ Examples:
 # Explicit COM port
 %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --channel COM21
 
-# More output (summary + device seen messages)
+# More output (summary + device seen/missing messages)
 %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --print-summary-period 2 --print-publish
-
-# Quick check (print once and exit)
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --quick-check
-
-# Write CSV log
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --log-csv tools\can_nt_log.csv
 
 # Use a custom config
 %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --config tools\can_nt_config.json
 
 # Choose a profile from bringup_profiles.json
 %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_club
+
+# Publish unknown devices seen on the bus
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_home_022326 --publish-unknown
+
+# List or dump the published NT keys
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_home_022326 --list-keys
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_home_022326 --dump-nt tools\nt_keys.json
 
 # List serial ports
 %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --list-ports
@@ -100,16 +101,11 @@ Options:
 - `--interface` defaults to `slcan`.
 - `--bitrate` defaults to `1000000` (FRC CAN).
 - `--timeout` marks a device missing if no frames arrive in that many seconds.
-- `--verbose` prints each received device ID.
-- `--print-publish` prints when a device is seen after being missing (uses `--timeout`).
-- `--print-summary-period` prints per-device counts/missing every N seconds with timestamps (0 disables).
-- `--no-traffic-secs` prints a warning if no CAN frames are seen for N seconds (0 disables).
-- `--no-rio-secs` prints a warning if not connected to the RIO for N seconds (0 disables).
-- `--log-csv` writes a CSV log file (empty disables).
-- `--log-period` sets seconds between CSV rows.
-- `--quick-check` prints one summary after `--quick-wait` seconds and exits.
-- `--quick-wait` sets the wait time before quick-check output.
-- `--device-ids` enables legacy deviceId-only tracking (not recommended for duplicate IDs).
+- `--print-publish` prints when a device is seen or goes missing (uses `--timeout`).
+- `--print-summary-period` prints a CAN summary every N seconds (0 disables).
+- `--publish-unknown` publishes devices seen on the bus that are not in the profile.
+- `--list-keys` prints the NT keys this tool publishes and exits.
+- `--dump-nt` writes a JSON list of published NT keys and exits.
 - `--auto-match` sets the substring used to auto-detect the serial device.
 - `--no-prompt` disables the port selection prompt when multiple matches are found.
 - `--list-ports` prints available serial ports and exits.
@@ -124,19 +120,11 @@ Published NetworkTables keys:
 - `bringup/diag/dev/<mfg>/<type>/<id>/manufacturer`
 - `bringup/diag/dev/<mfg>/<type>/<id>/deviceType`
 - `bringup/diag/dev/<mfg>/<type>/<id>/deviceId`
-- Legacy deviceId-only aggregate keys (for backward compatibility):
-  - `bringup/diag/lastSeen/<deviceId>`
-  - `bringup/diag/missing/<deviceId>`
-  - `bringup/diag/msgCount/<deviceId>`
-  - `bringup/diag/type/<deviceId>` (always `Mixed`)
-  - `bringup/diag/status/<deviceId>` (OK/STALE/MISSING)
-  - `bringup/diag/ageSec/<deviceId>` (-1 if missing)
+- `bringup/diag/can/summary/json` (when `--publish-can-summary` is enabled)
 
 ## Notes
 
 - The script maps device IDs from the lowest 6 bits of the CAN extended ID.
 - `RobotV2` prints a table and shows `status=NO_DATA`, `ageSec=-`, and `msgCount=-`
   until a device has been seen at least once.
-- The `--device-ids` list should include the CANCoder CAN IDs to track them.
-- `msgCount/<deviceId>` reports the total number of frames seen for that ID.
 - `RobotV2` reads the composite `dev/<mfg>/<type>/<id>` keys.
