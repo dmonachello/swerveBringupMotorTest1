@@ -15,13 +15,13 @@ You are diagnosing an FRC CAN bringup system. Analyze this JSON report and retur
 3) Next checks ordered by speed and confidence.
 4) Anything that looks healthy that rules out a CAN bus issue.
 
-Important context:
-- "bus" is roboRIO CAN controller health.
-- "pc" is optional CAN sniffer data; it may be missing.
-- "devices" are local API readings from roboRIO vendor libraries.
-- If applied > 0 and current = 0, suspect motor/output wiring.
-- If applied = 0 while set > 0, suspect config or follower mode.
-- If bus has errors/txFull/busOff, treat as wiring/termination first.
+Important context (plain language):
+- `bus` = the roboRIO’s own CAN controller health. This is the first place to check for wiring/termination problems.
+- `pc` = optional CAN sniffer data from the Driver Station PC. If it’s missing, ignore these fields.
+- `devices` = direct readings from robot-side vendor APIs (REV/CTRE). These are local, not sniffer data.
+- If `appliedDuty > 0` and `motorCurrentA = 0`: the controller is commanding output but the motor is not connected or not drawing current.
+- If `cmdDuty > 0` but `appliedDuty = 0`: the command is not reaching the output (config, disabled, follower mode, or limit).
+- If `bus` shows errors, `txFull`, or `busOff`: treat this as a wiring/termination issue before anything else.
 
 JSON report:
 <paste bringup_report.json here>
@@ -36,6 +36,6 @@ Symptom:
 - `bus.busOff`: any nonzero means hard bus failure.
 - `pc.openOk=false` or `pc.heartbeatAgeSec<0`: PC sniffer not connected (ignore PC data).
 - `devices[].present=false`: device not instantiated in bringup (not a CAN health issue).
-- `devices[].applied>0` and `devices[].currentA=0`: motor leads or motor itself not connected.
+- `devices[].appliedDuty>0` and `devices[].motorCurrentA=0`: motor leads or motor itself not connected.
 - `devices[].faultsRaw` or `devices[].warningsRaw` nonzero: address device-specific faults first.
 - `devices[].stickyWarningsRaw` with `reset=true`: device reboot/brownout occurred at some point.

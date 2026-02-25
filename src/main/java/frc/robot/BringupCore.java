@@ -366,10 +366,10 @@ public final class BringupCore {
           " CAN " + neoIds[i] +
           formatRevFaultSummary(faults, stickyFaults, warnings, stickyWarnings) +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
-          " applied=" + String.format("%.2f", appliedOutput) + "dc" +
-          " current=" + String.format("%.2f", outputCurrent) + "A" +
+          " appliedDuty=" + String.format("%.2f", appliedOutput) + "dc" +
+          " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C" +
-          " set=" + String.format("%.2f", setpoint) + "dc" +
+          " cmdDuty=" + String.format("%.2f", setpoint) + "dc" +
           " follower=" + (follower ? "Y" : "N"));
     }
 
@@ -394,10 +394,10 @@ public final class BringupCore {
           " CAN " + flexIds[i] +
           formatRevFaultSummary(faults, stickyFaults, warnings, stickyWarnings) +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
-          " applied=" + String.format("%.2f", appliedOutput) + "dc" +
-          " current=" + String.format("%.2f", outputCurrent) + "A" +
+          " appliedDuty=" + String.format("%.2f", appliedOutput) + "dc" +
+          " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C" +
-          " set=" + String.format("%.2f", setpoint) + "dc" +
+          " cmdDuty=" + String.format("%.2f", setpoint) + "dc" +
           " follower=" + (follower ? "Y" : "N"));
     }
 
@@ -542,7 +542,7 @@ public final class BringupCore {
           " lastErr=" + lastError +
           " reset=" + (resetFlag ? "YES" : "NO") +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
-          " current=" + String.format("%.2f", outputCurrent) + "A" +
+          " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C");
     }
 
@@ -566,7 +566,7 @@ public final class BringupCore {
           " lastErr=" + lastError +
           " reset=" + (resetFlag ? "YES" : "NO") +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
-          " current=" + String.format("%.2f", outputCurrent) + "A" +
+          " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C");
     }
 
@@ -708,8 +708,10 @@ public final class BringupCore {
       entry.addProperty("lastError", String.valueOf(lastError));
       entry.addProperty("reset", resetFlag);
       entry.addProperty("busV", busVoltage);
-      entry.addProperty("currentA", outputCurrent);
+      entry.addProperty("motorCurrentA", outputCurrent);
       entry.addProperty("tempC", motorTemp);
+      entry.addProperty("cmdDuty", neos[i].get());
+      entry.addProperty("appliedDuty", neos[i].getAppliedOutput());
       devices.add(entry);
     }
 
@@ -738,8 +740,10 @@ public final class BringupCore {
       entry.addProperty("lastError", String.valueOf(lastError));
       entry.addProperty("reset", resetFlag);
       entry.addProperty("busV", busVoltage);
-      entry.addProperty("currentA", outputCurrent);
+      entry.addProperty("motorCurrentA", outputCurrent);
       entry.addProperty("tempC", motorTemp);
+      entry.addProperty("cmdDuty", flexes[i].get());
+      entry.addProperty("appliedDuty", flexes[i].getAppliedOutput());
       devices.add(entry);
     }
 
@@ -779,8 +783,8 @@ public final class BringupCore {
       entry.addProperty("faultStatus", String.valueOf(faultSignal.getStatus()));
       entry.addProperty("stickyStatus", String.valueOf(stickySignal.getStatus()));
       entry.addProperty("busV", busVoltage);
-      entry.addProperty("applied", applied);
-      entry.addProperty("currentA", outputCurrent);
+      entry.addProperty("appliedDuty", applied);
+      entry.addProperty("motorCurrentA", outputCurrent);
       entry.addProperty("tempC", motorTemp);
       entry.addProperty("motorV", motorVolts);
       devices.add(entry);
@@ -822,8 +826,8 @@ public final class BringupCore {
       entry.addProperty("faultStatus", String.valueOf(faultSignal.getStatus()));
       entry.addProperty("stickyStatus", String.valueOf(stickySignal.getStatus()));
       entry.addProperty("busV", busVoltage);
-      entry.addProperty("applied", applied);
-      entry.addProperty("currentA", outputCurrent);
+      entry.addProperty("appliedDuty", applied);
+      entry.addProperty("motorCurrentA", outputCurrent);
       entry.addProperty("tempC", motorTemp);
       entry.addProperty("motorV", motorVolts);
       devices.add(entry);
@@ -1124,7 +1128,7 @@ public final class BringupCore {
     }
     return false;
   }
-}
+
   private static String formatRevFaultSummary(
       SparkBase.Faults faults,
       SparkBase.Faults stickyFaults,
@@ -1141,4 +1145,4 @@ public final class BringupCore {
     sb.append(formatRevWarnings(stickyWarnings));
     return sb.toString();
   }
-
+}
