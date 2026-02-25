@@ -61,6 +61,7 @@ public final class BringupUtil {
   // Default profile names and file location.
   private static final String DEFAULT_PROFILE_NAME = "robot";
   private static final String DEFAULT_PROFILE_FILE = "bringup_profiles.json";
+  private static final String MOTOR_SPECS_FILE = "motor_specs.json";
 
   // JSON parser for bringup_profiles.json.
   private static final Gson GSON = new Gson();
@@ -69,6 +70,7 @@ public final class BringupUtil {
   private static Map<String, CanProfileConfig> profiles = new LinkedHashMap<>();
   private static List<String> profileOrder = new ArrayList<>();
   private static String defaultProfile = DEFAULT_PROFILE_NAME;
+  private static final Map<String, MotorSpec> MOTOR_SPECS = loadMotorSpecs();
 
   // Currently active profile name.
   private static String activeProfile = DEFAULT_PROFILE_NAME;
@@ -79,6 +81,15 @@ public final class BringupUtil {
   public static int[] KRAKEN_CAN_IDS = FALLBACK_ROBOT_KRAKEN_CAN_IDS;
   public static int[] FALCON_CAN_IDS = new int[0];
   public static int[] CANCODER_CAN_IDS = FALLBACK_ROBOT_CANCODER_CAN_IDS;
+  public static String[] NEO_LABELS = new String[0];
+  public static String[] FLEX_LABELS = new String[0];
+  public static String[] KRAKEN_LABELS = new String[0];
+  public static String[] FALCON_LABELS = new String[0];
+  public static String[] CANCODER_LABELS = new String[0];
+  public static String[] NEO_MOTOR_MODELS = new String[0];
+  public static String[] FLEX_MOTOR_MODELS = new String[0];
+  public static String[] KRAKEN_MOTOR_MODELS = new String[0];
+  public static String[] FALCON_MOTOR_MODELS = new String[0];
   public static int PDH_CAN_ID = FALLBACK_PDH_CAN_ID;
   public static int PIGEON_CAN_ID = FALLBACK_PIGEON_CAN_ID;
   public static int ROBORIO_CAN_ID = FALLBACK_ROBORIO_CAN_ID;
@@ -156,6 +167,15 @@ public final class BringupUtil {
     KRAKEN_CAN_IDS = toIdArray(config.krakens);
     FALCON_CAN_IDS = toIdArray(config.falcons);
     CANCODER_CAN_IDS = toIdArray(config.cancoders);
+    NEO_LABELS = toLabelArray(config.neos, "NEO");
+    FLEX_LABELS = toLabelArray(config.flexes, "FLEX");
+    KRAKEN_LABELS = toLabelArray(config.krakens, "KRAKEN");
+    FALCON_LABELS = toLabelArray(config.falcons, "FALCON");
+    CANCODER_LABELS = toLabelArray(config.cancoders, "CANCoder");
+    NEO_MOTOR_MODELS = toMotorArray(config.neos);
+    FLEX_MOTOR_MODELS = toMotorArray(config.flexes);
+    KRAKEN_MOTOR_MODELS = toMotorArray(config.krakens);
+    FALCON_MOTOR_MODELS = toMotorArray(config.falcons);
     PDH_CAN_ID = config.pdh != null ? config.pdh.id : DISABLED_CAN_ID;
     PIGEON_CAN_ID = config.pigeon != null ? config.pigeon.id : DISABLED_CAN_ID;
     ROBORIO_CAN_ID = config.roborio != null ? config.roborio.id : DISABLED_CAN_ID;
@@ -446,6 +466,15 @@ public final class BringupUtil {
     KRAKEN_CAN_IDS = FALLBACK_ROBOT_KRAKEN_CAN_IDS;
     FALCON_CAN_IDS = new int[0];
     CANCODER_CAN_IDS = FALLBACK_ROBOT_CANCODER_CAN_IDS;
+    NEO_LABELS = toLabelArray(toDevices(FALLBACK_ROBOT_NEO_CAN_IDS), "NEO");
+    FLEX_LABELS = new String[0];
+    KRAKEN_LABELS = toLabelArray(toDevices(FALLBACK_ROBOT_KRAKEN_CAN_IDS), "KRAKEN");
+    FALCON_LABELS = new String[0];
+    CANCODER_LABELS = toLabelArray(toDevices(FALLBACK_ROBOT_CANCODER_CAN_IDS), "CANCoder");
+    NEO_MOTOR_MODELS = new String[NEO_LABELS.length];
+    FLEX_MOTOR_MODELS = new String[0];
+    KRAKEN_MOTOR_MODELS = new String[KRAKEN_LABELS.length];
+    FALCON_MOTOR_MODELS = new String[0];
     PDH_CAN_ID = FALLBACK_PDH_CAN_ID;
     PIGEON_CAN_ID = FALLBACK_PIGEON_CAN_ID;
     ROBORIO_CAN_ID = FALLBACK_ROBORIO_CAN_ID;
@@ -472,6 +501,158 @@ public final class BringupUtil {
       }
     }
     return refs;
+  }
+
+  private static String[] toLabelArray(List<DeviceRef> refs, String prefix) {
+    if (refs == null || refs.isEmpty()) {
+      return new String[0];
+    }
+    String[] labels = new String[refs.size()];
+    for (int i = 0; i < refs.size(); i++) {
+      DeviceRef ref = refs.get(i);
+      String label = ref.label;
+      if (label == null || label.isBlank()) {
+        label = prefix + " " + ref.id;
+      }
+      labels[i] = label;
+    }
+    return labels;
+  }
+
+  private static String[] toMotorArray(List<DeviceRef> refs) {
+    if (refs == null || refs.isEmpty()) {
+      return new String[0];
+    }
+    String[] motors = new String[refs.size()];
+    for (int i = 0; i < refs.size(); i++) {
+      motors[i] = refs.get(i).motor;
+    }
+    return motors;
+  }
+
+  public static String getNeoLabel(int index) {
+    return labelForIndex(NEO_LABELS, NEO_CAN_IDS, index, "NEO");
+  }
+
+  public static String getFlexLabel(int index) {
+    return labelForIndex(FLEX_LABELS, FLEX_CAN_IDS, index, "FLEX");
+  }
+
+  public static String getKrakenLabel(int index) {
+    return labelForIndex(KRAKEN_LABELS, KRAKEN_CAN_IDS, index, "KRAKEN");
+  }
+
+  public static String getFalconLabel(int index) {
+    return labelForIndex(FALCON_LABELS, FALCON_CAN_IDS, index, "FALCON");
+  }
+
+  public static String getNeoMotorModel(int index) {
+    return motorForIndex(NEO_MOTOR_MODELS, index);
+  }
+
+  public static String getFlexMotorModel(int index) {
+    return motorForIndex(FLEX_MOTOR_MODELS, index);
+  }
+
+  public static String getKrakenMotorModel(int index) {
+    return motorForIndex(KRAKEN_MOTOR_MODELS, index);
+  }
+
+  public static String getFalconMotorModel(int index) {
+    return motorForIndex(FALCON_MOTOR_MODELS, index);
+  }
+
+  private static String labelForIndex(String[] labels, int[] ids, int index, String prefix) {
+    if (labels == null || index < 0 || index >= labels.length) {
+      return prefix + " " + (index >= 0 && index < ids.length ? ids[index] : "?");
+    }
+    return labels[index];
+  }
+
+  private static String motorForIndex(String[] motors, int index) {
+    if (motors == null || index < 0 || index >= motors.length) {
+      return null;
+    }
+    String model = motors[index];
+    return (model == null || model.isBlank()) ? null : model;
+  }
+
+  public static MotorSpec getMotorSpecForDevice(String label, String modelOverride) {
+    String model = modelOverride;
+    if (model == null || model.isBlank()) {
+      model = inferMotorModelFromLabel(label);
+    }
+    if (model == null) {
+      return null;
+    }
+    return MOTOR_SPECS.get(model);
+  }
+
+  private static String inferMotorModelFromLabel(String label) {
+    if (label == null) {
+      return null;
+    }
+    String upper = label.toUpperCase();
+    if (upper.contains("VORTEX")) {
+      return "REV NEO Vortex";
+    }
+    if (upper.contains("NEO 550") || upper.contains("NEO550")) {
+      return "REV NEO 550";
+    }
+    if (upper.contains("NEO 2.0") || upper.contains("NEO2")) {
+      return "REV NEO 2.0";
+    }
+    if (upper.contains("NEO")) {
+      return "REV NEO";
+    }
+    if (upper.contains("KRAKEN")) {
+      return "CTRE Kraken X60";
+    }
+    if (upper.contains("FALCON")) {
+      return "CTRE Falcon 500";
+    }
+    return null;
+  }
+
+  private static Map<String, MotorSpec> loadMotorSpecs() {
+    Map<String, MotorSpec> fallback = new LinkedHashMap<>();
+    Path path = resolveDeployPath(MOTOR_SPECS_FILE);
+    if (path == null || !Files.exists(path)) {
+      return fallback;
+    }
+    try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+      MotorSpecRoot root = GSON.fromJson(reader, MotorSpecRoot.class);
+      if (root == null || root.motors == null) {
+        return fallback;
+      }
+      Map<String, MotorSpec> specs = new LinkedHashMap<>();
+      for (MotorSpec spec : root.motors) {
+        if (spec == null || spec.model == null || spec.model.isBlank()) {
+          continue;
+        }
+        specs.put(spec.model, spec);
+      }
+      return specs;
+    } catch (IOException | JsonParseException ex) {
+      System.out.println("Warning: failed to load motor specs: " + ex.getMessage());
+      return fallback;
+    }
+  }
+
+  private static Path resolveDeployPath(String fileName) {
+    try {
+      Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(fileName);
+      if (Files.exists(deployPath)) {
+        return deployPath;
+      }
+    } catch (Exception ex) {
+      // Fall through to local dev path.
+    }
+    Path devPath = Paths.get("src", "main", "deploy", fileName);
+    if (Files.exists(devPath)) {
+      return devPath;
+    }
+    return Paths.get(fileName);
   }
 
   // JSON root structure for bringup_profiles.json.
@@ -515,10 +696,24 @@ public final class BringupUtil {
   // JSON device reference (currently just a CAN ID).
   private static final class DeviceRef {
     int id;
+    String label;
+    String motor;
 
     DeviceRef(int id) {
       this.id = id;
     }
+  }
+
+  private static final class MotorSpecRoot {
+    List<MotorSpec> motors = Collections.emptyList();
+  }
+
+  static final class MotorSpec {
+    String model;
+    double nominalVoltage;
+    double freeCurrentA;
+    double stallCurrentA;
+    String source;
   }
 }
 

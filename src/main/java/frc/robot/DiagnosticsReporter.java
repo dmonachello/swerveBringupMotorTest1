@@ -36,6 +36,7 @@ final class DiagnosticsReporter {
   private static final Map<Integer, String> MANUFACTURER_NAMES = loadManufacturerNames();
   private static final Map<Integer, String> DEVICE_TYPE_NAMES = loadDeviceTypeNames();
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
+  private static final double PC_STALE_DEVICE_AGE_SEC = 2.0;
 
   // Core robot device access (local vendor APIs).
   private BringupCore core;
@@ -225,6 +226,9 @@ final class DiagnosticsReporter {
     int missingCount = 0;
     int flappingCount = 0;
     JsonArray seenNotLocal = new JsonArray();
+    JsonArray profileMismatch = new JsonArray();
+    JsonArray staleDevices = new JsonArray();
+    Map<String, ArrayList<Integer>> unknownByType = collectUnknownSeenIdsByType();
 
     for (DeviceSpec spec : allSpecs) {
       String key = spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
@@ -233,8 +237,17 @@ final class DiagnosticsReporter {
       double lastSeen = diagTable.getEntry(base + "/lastSeen").getDouble(Double.NaN);
       double ageSec = diagTable.getEntry(base + "/ageSec").getDouble(Double.NaN);
 
-      if ("MISSING".equals(status) || "NO_DATA".equals(status)) {
+      boolean missing = "MISSING".equals(status) || "NO_DATA".equals(status);
+      if (missing) {
         missingCount++;
+      }
+
+      boolean stale = !missing && !Double.isNaN(ageSec) && ageSec > PC_STALE_DEVICE_AGE_SEC;
+      if (stale) {
+        JsonObject entry = new JsonObject();
+        entry.addProperty("key", key);
+        entry.addProperty("ageSec", ageSec);
+        staleDevices.add(entry);
       }
 
       String prev = pcLastStatus.get(key);
@@ -259,6 +272,21 @@ final class DiagnosticsReporter {
         }
         seenNotLocal.add(entry);
       }
+
+      if (missing) {
+        String typeKey = spec.manufacturer + "/" + spec.deviceType;
+        ArrayList<Integer> candidates = unknownByType.get(typeKey);
+        if (candidates != null && !candidates.isEmpty()) {
+          JsonObject entry = new JsonObject();
+          entry.addProperty("expected", key);
+          JsonArray ids = new JsonArray();
+          for (int id : candidates) {
+            ids.add(id);
+          }
+          entry.add("seenIds", ids);
+          profileMismatch.add(entry);
+        }
+      }
     }
 
     JsonObject summary = new JsonObject();
@@ -266,6 +294,8 @@ final class DiagnosticsReporter {
     summary.addProperty("totalCount", allSpecs.size());
     summary.addProperty("flappingCount", flappingCount);
     summary.add("seenNotLocal", seenNotLocal);
+    summary.add("profileMismatch", profileMismatch);
+    summary.add("staleDevices", staleDevices);
     return summary;
   }
 
@@ -321,6 +351,9 @@ final class DiagnosticsReporter {
     int missingCount = 0;
     int flappingCount = 0;
     ArrayList<String> seenNotLocal = new ArrayList<>();
+    ArrayList<String> profileMismatch = new ArrayList<>();
+    ArrayList<String> staleDevices = new ArrayList<>();
+    Map<String, ArrayList<Integer>> unknownByType = collectUnknownSeenIdsByType();
 
     for (DeviceSpec spec : allSpecs) {
       String key = spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
@@ -329,8 +362,14 @@ final class DiagnosticsReporter {
       double lastSeen = diagTable.getEntry(base + "/lastSeen").getDouble(Double.NaN);
       double ageSec = diagTable.getEntry(base + "/ageSec").getDouble(Double.NaN);
 
-      if ("MISSING".equals(status) || "NO_DATA".equals(status)) {
+      boolean missing = "MISSING".equals(status) || "NO_DATA".equals(status);
+      if (missing) {
         missingCount++;
+      }
+
+      boolean stale = !missing && !Double.isNaN(ageSec) && ageSec > PC_STALE_DEVICE_AGE_SEC;
+      if (stale) {
+        staleDevices.add(key + " age=" + String.format("%.2f", ageSec) + "s");
       }
 
       String prev = pcLastStatus.get(key);
@@ -351,12 +390,30 @@ final class DiagnosticsReporter {
         String ageText = Double.isNaN(ageSec) ? "?" : String.format("%.2f", ageSec);
         seenNotLocal.add(key + " age=" + ageText + "s");
       }
+
+      if (missing) {
+        String typeKey = spec.manufacturer + "/" + spec.deviceType;
+        ArrayList<Integer> candidates = unknownByType.get(typeKey);
+        if (candidates != null && !candidates.isEmpty()) {
+          profileMismatch.add(
+              key + " missing, saw ids " + candidates + " on wire");
+        }
+      }
     }
 
     ReportTextUtil.appendLine(sb, "  Missing devices (PC): " + missingCount + " / " + allSpecs.size());
     ReportTextUtil.appendLine(sb, "  Flapping devices (PC): " + flappingCount);
     if (!seenNotLocal.isEmpty()) {
       ReportTextUtil.appendLine(sb, "  Seen on wire, not local: " + String.join(", ", seenNotLocal));
+    }
+    if (!profileMismatch.isEmpty()) {
+      ReportTextUtil.appendLine(sb, "  Profile mismatch candidates: " + String.join("; ", profileMismatch));
+    }
+    if (!staleDevices.isEmpty()) {
+      ReportTextUtil.appendLine(
+          sb,
+          "  Stale devices (PC): " + String.join(", ", staleDevices)
+              + " (age > " + PC_STALE_DEVICE_AGE_SEC + "s)");
     }
   }
 
@@ -580,6 +637,42 @@ final class DiagnosticsReporter {
       }
     }
     return unknowns.toArray(new DeviceSpec[0]);
+  }
+
+  private Map<String, ArrayList<Integer>> collectUnknownSeenIdsByType() {
+    // Collect unknown device IDs per (manufacturer/type) that the PC tool has seen on wire.
+    java.util.HashSet<String> known = new java.util.HashSet<>();
+    for (DeviceSpec spec : buildDeviceSpecs()) {
+      known.add(spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId);
+    }
+
+    Map<String, ArrayList<Integer>> unknownByType = new HashMap<>();
+    NetworkTable devTable = diagTable.getSubTable("dev");
+    for (String mfgName : devTable.getSubTables()) {
+      int mfg = parseIntOrDefault(mfgName, -1);
+      NetworkTable mfgTable = devTable.getSubTable(mfgName);
+      for (String typeName : mfgTable.getSubTables()) {
+        int type = parseIntOrDefault(typeName, -1);
+        NetworkTable typeTable = mfgTable.getSubTable(typeName);
+        for (String idName : typeTable.getSubTables()) {
+          int id = parseIntOrDefault(idName, -1);
+          if (mfg < 0 || type < 0 || id < 0) {
+            continue;
+          }
+          String key = mfg + "/" + type + "/" + id;
+          if (known.contains(key)) {
+            continue;
+          }
+          double lastSeen = typeTable.getSubTable(idName).getEntry("lastSeen").getDouble(Double.NaN);
+          if (Double.isNaN(lastSeen) || lastSeen <= 0) {
+            continue;
+          }
+          String typeKey = mfg + "/" + type;
+          unknownByType.computeIfAbsent(typeKey, k -> new ArrayList<>()).add(id);
+        }
+      }
+    }
+    return unknownByType;
   }
 
   private static int parseIntOrDefault(String value, int fallback) {

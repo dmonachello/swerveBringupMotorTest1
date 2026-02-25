@@ -25,6 +25,7 @@ What it gives you:
 - CAN-bus diagnostics from the PC tool (seen/missing, age, msgCount, fps).
 - Wire-level evidence via PCAP/PCAPNG + Wireshark dissector.
 - Unknown device detection (optional publish of unseen IDs).
+- Motor current sanity checks vs documented specs (free/stall).
 
 What it does not do:
 - Fix robot logic or tuning.
@@ -110,6 +111,7 @@ Note: The report prints bus health, PC tool status, and local device health. Som
 | Device sticky faults/warnings | X | Vendor API | Historical brownout, overcurrent, or reset evidence | Inspect power wiring and connectors even if currently OK |
 | Device reset / reboot flags | X | Vendor API | Power interruption or brownout | Measure voltage at device under load; check breakers and crimps |
 | Device supply voltage | X | Vendor API | Voltage sag under load | Check PDH channel, wiring gauge, connectors, breaker rating |
+| Device current vs spec | X | Vendor API + motor specs | Quick sanity check vs documented free/stall current | Verify motor model, load, wiring, and configuration |
 | PC tool heartbeat age | Y | Python tool | Stale heartbeat means PC evidence is invalid | Restart Python tool; check NT connection and firewall |
 | PC tool open_ok | Y | Python tool | False means CAN interface not connected | Check USB cable, COM port, slcan attach, bitrate |
 | PC frames per second | Y | CAN sniffer | Zero means no traffic visible on wire | Verify sniffer wiring, H/L orientation, bitrate, tap location |
@@ -229,6 +231,12 @@ Hardware profile schema (single source of truth):
 - `neos`, `flexes`, `krakens`, `falcons`, `cancoders` as arrays of `{ "label": "...", "id": <can_id> }`.
 - `pdh`, `pigeon`, `roborio` as single objects `{ "label": "...", "id": <can_id> }`.
 - Omit any section you don't use.
+Optional per-device fields:
+- `"motor"` to specify the motor model for current sanity checks. Example:
+```json
+{ "label": "NEO 25", "id": 25, "motor": "REV NEO 2.0" }
+```
+If omitted, the app infers the motor model from the label (e.g., `NEO`, `VORTEX`, `KRAKEN`, `FALCON`).
 JSON guide (specific to this app):
 - Lists use square brackets `[]` and are required for motor/encoder groups (`neos`, `flexes`, `krakens`, `falcons`, `cancoders`).
 - Single devices use curly braces `{}` for `pdh`, `pigeon`, and `roborio`.
@@ -260,6 +268,17 @@ Supported profile sections include:
 - `neos`, `flexes`, `krakens`, `falcons`, `cancoders`
 - `pdh`, `pdp`, `pigeon`, `roborio`
 Manufacturer/type display names are loaded from `src/main/deploy/can_mappings.json`.
+
+## Motor Specs (Current Sanity Checks)
+Motor current checks use `src/main/deploy/motor_specs.json` which defines:
+- `model`
+- `nominalVoltage`
+- `freeCurrentA`
+- `stallCurrentA`
+- `source` (doc reference string)
+The health print includes:
+- `specFree`, `specStall`, and `freeRatio` (measured current / free current)
+If you add new motors, update `motor_specs.json` and optionally set `"motor"` per device in `bringup_profiles.json`.
 ## Controller Bindings
 Robot and RobotV2 share the same bindings, grouped by purpose.
 Operational controls:

@@ -17,6 +17,7 @@ import com.revrobotics.ResetMode;
 import com.revrobotics.PersistMode;
 import com.revrobotics.REVLibError;
 import edu.wpi.first.wpilibj.Timer;
+import java.util.Arrays;
 
 // Core bringup logic: creates devices, commands outputs, and prints local health.
 // This class only uses robot-local vendor APIs (no PC sniffer data).
@@ -34,6 +35,8 @@ public final class BringupCore {
   private final TalonFX[] krakens = new TalonFX[krakenIds.length];
   private final TalonFX[] falcons = new TalonFX[falconIds.length];
   private final CANcoder[] cancoders = new CANcoder[cancoderIds.length];
+  private final double[] neoLowCurrentStartSec = new double[neoIds.length];
+  private final double[] flexLowCurrentStartSec = new double[flexIds.length];
 
   private int nextNeo = 0;
   private int nextFlex = 0;
@@ -51,6 +54,13 @@ public final class BringupCore {
   private double nudgeEndSec = 0.0;
   private double nudgeSpeed = 0.2;
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
+  private static final double LOW_CURRENT_APPLIED_V_MIN = 1.0;
+  private static final double LOW_CURRENT_A_MAX = 0.05;
+  private static final double LOW_CURRENT_MIN_SEC = 1.0;
+
+  public BringupCore() {
+    initLowCurrentTimers();
+  }
   private long lastStatePrintMs = 0L;
   private long lastHealthPrintMs = 0L;
   private long lastCANCoderPrintMs = 0L;
@@ -362,6 +372,7 @@ public final class BringupCore {
   private void printHealthStatus() {
     StringBuilder sb = new StringBuilder(768);
     appendLine(sb, "=== Bringup Health (Local Robot Data) ===");
+    double nowSec = Timer.getFPGATimestamp();
     // REV SPARK devices report their own faults, warnings, and telemetry.
     for (int i = 0; i < neos.length; i++) {
       if (neos[i] == null) {
@@ -373,6 +384,7 @@ public final class BringupCore {
       var stickyFaults = neos[i].getStickyFaults();
       var warnings = neos[i].getWarnings();
       var stickyWarnings = neos[i].getStickyWarnings();
+      REVLibError lastError = neos[i].getLastError();
       double busVoltage = neos[i].getBusVoltage();
       double appliedOutput = neos[i].getAppliedOutput();
       double appliedVolts = busVoltage * appliedOutput;
@@ -380,14 +392,25 @@ public final class BringupCore {
       double motorTemp = neos[i].getMotorTemperature();
       double setpoint = neos[i].get();
       boolean follower = neos[i].isFollower();
+      String healthNote = buildRevHealthNote(lastError, busVoltage);
+      String lowCurrentNote =
+          buildLowCurrentNote(neoLowCurrentStartSec, i, nowSec, appliedVolts, outputCurrent);
+      String label = BringupUtil.getNeoLabel(i);
+      String modelOverride = BringupUtil.getNeoMotorModel(i);
+      BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
+      String specNote = formatMotorSpecNote(spec, outputCurrent);
       appendLine(sb,
           "NEO index " + i +
           " CAN " + neoIds[i] +
           formatRevFaultSummary(faults, stickyFaults, warnings, stickyWarnings) +
+          " lastErr=" + lastError +
+          healthNote +
+          lowCurrentNote +
+          specNote +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
           " appliedDuty=" + String.format("%.2f", appliedOutput) + "dc" +
           " appliedV=" + String.format("%.2f", appliedVolts) + "V" +
-          " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
+          " motorCurrentA=" + String.format("%.4f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C" +
           " cmdDuty=" + String.format("%.2f", setpoint) + "dc" +
           " follower=" + (follower ? "Y" : "N"));
@@ -404,6 +427,7 @@ public final class BringupCore {
       var stickyFaults = flexes[i].getStickyFaults();
       var warnings = flexes[i].getWarnings();
       var stickyWarnings = flexes[i].getStickyWarnings();
+      REVLibError lastError = flexes[i].getLastError();
       double busVoltage = flexes[i].getBusVoltage();
       double appliedOutput = flexes[i].getAppliedOutput();
       double appliedVolts = busVoltage * appliedOutput;
@@ -411,14 +435,25 @@ public final class BringupCore {
       double motorTemp = flexes[i].getMotorTemperature();
       double setpoint = flexes[i].get();
       boolean follower = flexes[i].isFollower();
+      String healthNote = buildRevHealthNote(lastError, busVoltage);
+      String lowCurrentNote =
+          buildLowCurrentNote(flexLowCurrentStartSec, i, nowSec, appliedVolts, outputCurrent);
+      String label = BringupUtil.getFlexLabel(i);
+      String modelOverride = BringupUtil.getFlexMotorModel(i);
+      BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
+      String specNote = formatMotorSpecNote(spec, outputCurrent);
       appendLine(sb,
           "FLEX index " + i +
           " CAN " + flexIds[i] +
           formatRevFaultSummary(faults, stickyFaults, warnings, stickyWarnings) +
+          " lastErr=" + lastError +
+          healthNote +
+          lowCurrentNote +
+          specNote +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
           " appliedDuty=" + String.format("%.2f", appliedOutput) + "dc" +
           " appliedV=" + String.format("%.2f", appliedVolts) + "V" +
-          " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
+          " motorCurrentA=" + String.format("%.4f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C" +
           " cmdDuty=" + String.format("%.2f", setpoint) + "dc" +
           " follower=" + (follower ? "Y" : "N"));
@@ -455,6 +490,10 @@ public final class BringupCore {
       double outputCurrent = supplyCurrent.getValue().in(Units.Amps);
       double motorTemp = deviceTemp.getValue().in(Units.Celsius);
       double motorVolts = motorVoltage.getValue().in(Units.Volts);
+      String label = BringupUtil.getKrakenLabel(i);
+      String modelOverride = BringupUtil.getKrakenMotorModel(i);
+      BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
+      String specNote = formatMotorSpecNote(spec, outputCurrent);
       appendLine(sb,
           "KRAKEN index " + i +
           " CAN " + krakenIds[i] +
@@ -462,10 +501,11 @@ public final class BringupCore {
           formatCtreFaults(krakens[i]) +
           " sticky=0x" + Integer.toHexString(stickyField) +
           formatCtreStickyFaults(krakens[i]) +
+          specNote +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
           " appliedDuty=" + String.format("%.2f", applied) + "dc" +
           " appliedV=" + String.format("%.2f", motorVolts) + "V" +
-          " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
+          " motorCurrentA=" + String.format("%.4f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C" +
           (faultOk && stickyOk
               ? ""
@@ -501,6 +541,10 @@ public final class BringupCore {
       double outputCurrent = supplyCurrent.getValue().in(Units.Amps);
       double motorTemp = deviceTemp.getValue().in(Units.Celsius);
       double motorVolts = motorVoltage.getValue().in(Units.Volts);
+      String label = BringupUtil.getFalconLabel(i);
+      String modelOverride = BringupUtil.getFalconMotorModel(i);
+      BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
+      String specNote = formatMotorSpecNote(spec, outputCurrent);
       appendLine(sb,
           "FALCON index " + i +
           " CAN " + falconIds[i] +
@@ -508,10 +552,11 @@ public final class BringupCore {
           formatCtreFaults(falcons[i]) +
           " sticky=0x" + Integer.toHexString(stickyField) +
           formatCtreStickyFaults(falcons[i]) +
+          specNote +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
           " appliedDuty=" + String.format("%.2f", applied) + "dc" +
           " appliedV=" + String.format("%.2f", motorVolts) + "V" +
-          " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
+          " motorCurrentA=" + String.format("%.4f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C" +
           (faultOk && stickyOk
               ? ""
@@ -520,6 +565,67 @@ public final class BringupCore {
     appendVirtualDeviceHealth(sb);
     appendLine(sb, "======================");
     BringupPrinter.enqueueChunked(sb.toString(), 12);
+  }
+
+  private static String buildRevHealthNote(REVLibError lastError, double busVoltage) {
+    boolean timeout = lastError == REVLibError.kTimeout;
+    boolean noPower = busVoltage < 1.0;
+    if (!timeout && !noPower) {
+      return "";
+    }
+    StringBuilder sb = new StringBuilder();
+    sb.append(" !!");
+    if (timeout) {
+      sb.append(" TIMEOUT");
+    }
+    if (noPower) {
+      if (timeout) {
+        sb.append("/");
+      }
+      sb.append("LOW_VBUS");
+    }
+    sb.append(" (check CAN ID/profile/power)");
+    return sb.toString();
+  }
+
+  private void initLowCurrentTimers() {
+    Arrays.fill(neoLowCurrentStartSec, -1.0);
+    Arrays.fill(flexLowCurrentStartSec, -1.0);
+  }
+
+  private String buildLowCurrentNote(
+      double[] startTimes,
+      int index,
+      double nowSec,
+      double appliedVolts,
+      double outputCurrent) {
+    boolean lowCurrent = appliedVolts >= LOW_CURRENT_APPLIED_V_MIN
+        && outputCurrent <= LOW_CURRENT_A_MAX;
+    double start = startTimes[index];
+    if (!lowCurrent) {
+      startTimes[index] = -1.0;
+      return "";
+    }
+    if (start < 0.0) {
+      startTimes[index] = nowSec;
+      return "";
+    }
+    if (nowSec - start < LOW_CURRENT_MIN_SEC) {
+      return "";
+    }
+    return " !! LOW_CURRENT (check load/wiring)";
+  }
+
+  private static String formatMotorSpecNote(BringupUtil.MotorSpec spec, double outputCurrent) {
+    if (spec == null) {
+      return "";
+    }
+    double free = spec.freeCurrentA;
+    double stall = spec.stallCurrentA;
+    String ratio = free > 0.0 ? String.format("%.2fx", outputCurrent / free) : "?";
+    return " specFree=" + String.format("%.1f", free) + "A" +
+        " specStall=" + String.format("%.0f", stall) + "A" +
+        " freeRatio=" + ratio;
   }
 
   // Print absolute positions for all CANCoders (instantiates if needed).
@@ -566,14 +672,19 @@ public final class BringupCore {
       double outputCurrent = neos[i].getOutputCurrent();
       double motorTemp = neos[i].getMotorTemperature();
       boolean resetFlag = warnings.hasReset || stickyWarnings.hasReset;
+      String label = BringupUtil.getNeoLabel(i);
+      String modelOverride = BringupUtil.getNeoMotorModel(i);
+      BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
+      String specNote = formatMotorSpecNote(spec, outputCurrent);
       appendLine(sb,
           "  NEO CAN " + neoIds[i] +
           ": present=YES" + formatRevFaultSummary(faults, stickyFaults, warnings, stickyWarnings) +
           " lastErr=" + lastError +
           " reset=" + (resetFlag ? "YES" : "NO") +
+          specNote +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
           " appliedV=" + String.format("%.2f", appliedVolts) + "V" +
-          " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
+          " motorCurrentA=" + String.format("%.4f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C");
     }
 
@@ -593,14 +704,19 @@ public final class BringupCore {
       double outputCurrent = flexes[i].getOutputCurrent();
       double motorTemp = flexes[i].getMotorTemperature();
       boolean resetFlag = warnings.hasReset || stickyWarnings.hasReset;
+      String label = BringupUtil.getFlexLabel(i);
+      String modelOverride = BringupUtil.getFlexMotorModel(i);
+      BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
+      String specNote = formatMotorSpecNote(spec, outputCurrent);
       appendLine(sb,
           "  FLEX CAN " + flexIds[i] +
           ": present=YES" + formatRevFaultSummary(faults, stickyFaults, warnings, stickyWarnings) +
           " lastErr=" + lastError +
           " reset=" + (resetFlag ? "YES" : "NO") +
+          specNote +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
           " appliedV=" + String.format("%.2f", appliedVolts) + "V" +
-          " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
+          " motorCurrentA=" + String.format("%.4f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C");
     }
 
@@ -633,6 +749,10 @@ public final class BringupCore {
       double outputCurrent = supplyCurrent.getValue().in(Units.Amps);
       double motorTemp = deviceTemp.getValue().in(Units.Celsius);
       double motorVolts = motorVoltage.getValue().in(Units.Volts);
+      String label = BringupUtil.getKrakenLabel(i);
+      String modelOverride = BringupUtil.getKrakenMotorModel(i);
+      BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
+      String specNote = formatMotorSpecNote(spec, outputCurrent);
       appendLine(sb,
           "  KRAKEN CAN " + krakenIds[i] +
           ": present=YES fault=0x" + Integer.toHexString(faultField) +
@@ -640,10 +760,11 @@ public final class BringupCore {
           " sticky=0x" + Integer.toHexString(stickyField) +
           formatCtreStickyFaults(krakens[i]) +
           " lastErr=" + faultSignal.getStatus() +
+          specNote +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
           " appliedDuty=" + String.format("%.2f", applied) + "dc" +
           " appliedV=" + String.format("%.2f", motorVolts) + "V" +
-          " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
+          " motorCurrentA=" + String.format("%.4f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C" +
           (faultOk && stickyOk
               ? ""
@@ -679,6 +800,10 @@ public final class BringupCore {
       double outputCurrent = supplyCurrent.getValue().in(Units.Amps);
       double motorTemp = deviceTemp.getValue().in(Units.Celsius);
       double motorVolts = motorVoltage.getValue().in(Units.Volts);
+      String label = BringupUtil.getFalconLabel(i);
+      String modelOverride = BringupUtil.getFalconMotorModel(i);
+      BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
+      String specNote = formatMotorSpecNote(spec, outputCurrent);
       appendLine(sb,
           "  FALCON CAN " + falconIds[i] +
           ": present=YES fault=0x" + Integer.toHexString(faultField) +
@@ -686,10 +811,11 @@ public final class BringupCore {
           " sticky=0x" + Integer.toHexString(stickyField) +
           formatCtreStickyFaults(falcons[i]) +
           " lastErr=" + faultSignal.getStatus() +
+          specNote +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
           " appliedDuty=" + String.format("%.2f", applied) + "dc" +
           " appliedV=" + String.format("%.2f", motorVolts) + "V" +
-          " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
+          " motorCurrentA=" + String.format("%.4f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C" +
           (faultOk && stickyOk
               ? ""
@@ -738,6 +864,9 @@ public final class BringupCore {
       double outputCurrent = neos[i].getOutputCurrent();
       double motorTemp = neos[i].getMotorTemperature();
       boolean resetFlag = warnings.hasReset || stickyWarnings.hasReset;
+      String label = BringupUtil.getNeoLabel(i);
+      String modelOverride = BringupUtil.getNeoMotorModel(i);
+      BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
       entry.addProperty("present", true);
       entry.addProperty("faultsRaw", faults.rawBits);
       entry.addProperty("stickyFaultsRaw", stickyFaults.rawBits);
@@ -745,6 +874,12 @@ public final class BringupCore {
       entry.addProperty("stickyWarningsRaw", stickyWarnings.rawBits);
       entry.addProperty("lastError", String.valueOf(lastError));
       entry.addProperty("reset", resetFlag);
+      if (spec != null) {
+        entry.addProperty("specModel", spec.model);
+        entry.addProperty("specNominalV", spec.nominalVoltage);
+        entry.addProperty("specFreeA", spec.freeCurrentA);
+        entry.addProperty("specStallA", spec.stallCurrentA);
+      }
       entry.addProperty("busV", busVoltage);
       entry.addProperty("appliedV", appliedVolts);
       entry.addProperty("motorCurrentA", outputCurrent);
@@ -773,6 +908,9 @@ public final class BringupCore {
       double outputCurrent = flexes[i].getOutputCurrent();
       double motorTemp = flexes[i].getMotorTemperature();
       boolean resetFlag = warnings.hasReset || stickyWarnings.hasReset;
+      String label = BringupUtil.getFlexLabel(i);
+      String modelOverride = BringupUtil.getFlexMotorModel(i);
+      BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
       entry.addProperty("present", true);
       entry.addProperty("faultsRaw", faults.rawBits);
       entry.addProperty("stickyFaultsRaw", stickyFaults.rawBits);
@@ -780,6 +918,12 @@ public final class BringupCore {
       entry.addProperty("stickyWarningsRaw", stickyWarnings.rawBits);
       entry.addProperty("lastError", String.valueOf(lastError));
       entry.addProperty("reset", resetFlag);
+      if (spec != null) {
+        entry.addProperty("specModel", spec.model);
+        entry.addProperty("specNominalV", spec.nominalVoltage);
+        entry.addProperty("specFreeA", spec.freeCurrentA);
+        entry.addProperty("specStallA", spec.stallCurrentA);
+      }
       entry.addProperty("busV", busVoltage);
       entry.addProperty("appliedV", appliedVolts);
       entry.addProperty("motorCurrentA", outputCurrent);
@@ -819,11 +963,20 @@ public final class BringupCore {
       double outputCurrent = supplyCurrent.getValue().in(Units.Amps);
       double motorTemp = deviceTemp.getValue().in(Units.Celsius);
       double motorVolts = motorVoltage.getValue().in(Units.Volts);
+      String label = BringupUtil.getKrakenLabel(i);
+      String modelOverride = BringupUtil.getKrakenMotorModel(i);
+      BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
       entry.addProperty("present", true);
       entry.addProperty("faultsRaw", faultField);
       entry.addProperty("stickyFaultsRaw", stickyField);
       entry.addProperty("faultStatus", String.valueOf(faultSignal.getStatus()));
       entry.addProperty("stickyStatus", String.valueOf(stickySignal.getStatus()));
+      if (spec != null) {
+        entry.addProperty("specModel", spec.model);
+        entry.addProperty("specNominalV", spec.nominalVoltage);
+        entry.addProperty("specFreeA", spec.freeCurrentA);
+        entry.addProperty("specStallA", spec.stallCurrentA);
+      }
       entry.addProperty("busV", busVoltage);
       entry.addProperty("appliedDuty", applied);
       entry.addProperty("appliedV", motorVolts);
@@ -863,11 +1016,20 @@ public final class BringupCore {
       double outputCurrent = supplyCurrent.getValue().in(Units.Amps);
       double motorTemp = deviceTemp.getValue().in(Units.Celsius);
       double motorVolts = motorVoltage.getValue().in(Units.Volts);
+      String label = BringupUtil.getFalconLabel(i);
+      String modelOverride = BringupUtil.getFalconMotorModel(i);
+      BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
       entry.addProperty("present", true);
       entry.addProperty("faultsRaw", faultField);
       entry.addProperty("stickyFaultsRaw", stickyField);
       entry.addProperty("faultStatus", String.valueOf(faultSignal.getStatus()));
       entry.addProperty("stickyStatus", String.valueOf(stickySignal.getStatus()));
+      if (spec != null) {
+        entry.addProperty("specModel", spec.model);
+        entry.addProperty("specNominalV", spec.nominalVoltage);
+        entry.addProperty("specFreeA", spec.freeCurrentA);
+        entry.addProperty("specStallA", spec.stallCurrentA);
+      }
       entry.addProperty("busV", busVoltage);
       entry.addProperty("appliedDuty", applied);
       entry.addProperty("appliedV", motorVolts);
