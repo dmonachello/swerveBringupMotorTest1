@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+// Shared utilities for CAN bringup: profile loading, ID validation, and device helpers.
 public final class BringupUtil {
   private BringupUtil() {}
 
@@ -44,6 +45,7 @@ public final class BringupUtil {
   // back left cancoder - 6
   // ---------------------------------------------------
   
+  // Fallback profiles used when JSON is missing or invalid.
   private static final int[] FALLBACK_ROBOT_NEO_CAN_IDS = { 10, 1, 7, 4 };
   private static final int[] FALLBACK_ROBOT_KRAKEN_CAN_IDS = { 11, 2, 8, 5 };
   private static final int[] FALLBACK_ROBOT_CANCODER_CAN_IDS = { 12, 3, 9, 6 };
@@ -56,17 +58,22 @@ public final class BringupUtil {
   private static final int FALLBACK_PIGEON_CAN_ID = 1;
   private static final int FALLBACK_ROBORIO_CAN_ID = 0;
 
+  // Default profile names and file location.
   private static final String DEFAULT_PROFILE_NAME = "robot";
   private static final String DEFAULT_PROFILE_FILE = "bringup_profiles.json";
 
+  // JSON parser for bringup_profiles.json.
   private static final Gson GSON = new Gson();
 
+  // Profile registry as loaded from JSON (or fallback).
   private static Map<String, CanProfileConfig> profiles = new LinkedHashMap<>();
   private static List<String> profileOrder = new ArrayList<>();
   private static String defaultProfile = DEFAULT_PROFILE_NAME;
 
+  // Currently active profile name.
   private static String activeProfile = DEFAULT_PROFILE_NAME;
 
+  // Active CAN ID arrays used by BringupCore.
   public static int[] NEO_CAN_IDS = FALLBACK_ROBOT_NEO_CAN_IDS;
   public static int[] FLEX_CAN_IDS = new int[0];
   public static int[] KRAKEN_CAN_IDS = FALLBACK_ROBOT_KRAKEN_CAN_IDS;
@@ -78,12 +85,14 @@ public final class BringupUtil {
   public static final int DISABLED_CAN_ID = -1;
   public static final double DEADBAND = 0.12;
 
+  // Initialize logging suppression and load the profile JSON.
   static {
     disableVendorLogging();
     loadProfilesFromJson();
     setActiveCanProfile(activeProfile);
   }
 
+  // Disable vendor auto-logging to avoid extra files on the roboRIO.
   private static void disableVendorLogging() {
     // Disable vendor auto-logging to avoid writing .revlog/.hoot files on the roboRIO.
     try {
@@ -100,6 +109,7 @@ public final class BringupUtil {
     }
   }
 
+  // Driver Station keyboard HID mapping (unused in Xbox-only configs).
   public static final class KeyboardKeys {
     private KeyboardKeys() {}
 
@@ -124,6 +134,7 @@ public final class BringupUtil {
   }
 
   public static void setActiveCanProfile(String profileName) {
+    // Resolve profile name and apply its IDs to static arrays.
     if (profileName == null || profileName.isBlank()) {
       profileName = defaultProfile;
     }
@@ -152,6 +163,7 @@ public final class BringupUtil {
   }
 
   public static void toggleCanProfile() {
+    // Cycle through profiles in a stable order.
     if (profileOrder.isEmpty()) {
       return;
     }
@@ -161,14 +173,17 @@ public final class BringupUtil {
   }
 
   public static String getActiveCanProfile() {
+    // Raw profile name (used in logs and reports).
     return activeProfile;
   }
 
   public static String getActiveCanProfileLabel() {
+    // Label currently matches profile name, but can diverge later.
     return activeProfile;
   }
 
   public static void setAllNeos(SparkMax[] neos, double speed) {
+    // Apply output to all instantiated SPARK MAX devices.
     for (int i = 0; i < neos.length; i++) {
       if (neos[i] != null) {
         neos[i].set(speed);
@@ -177,6 +192,7 @@ public final class BringupUtil {
   }
 
   public static void setAllFlexes(SparkFlex[] flexes, double speed) {
+    // Apply output to all instantiated SPARK FLEX devices.
     for (int i = 0; i < flexes.length; i++) {
       if (flexes[i] != null) {
         flexes[i].set(speed);
@@ -185,6 +201,7 @@ public final class BringupUtil {
   }
 
   public static void setAllKrakens(TalonFX[] krakens, double speed) {
+    // Apply output to all instantiated CTRE Krakens.
     for (int i = 0; i < krakens.length; i++) {
       if (krakens[i] != null) {
         krakens[i].set(speed);
@@ -193,6 +210,7 @@ public final class BringupUtil {
   }
 
   public static void setAllFalcons(TalonFX[] falcons, double speed) {
+    // Apply output to all instantiated CTRE Falcons.
     for (int i = 0; i < falcons.length; i++) {
       if (falcons[i] != null) {
         falcons[i].set(speed);
@@ -205,6 +223,7 @@ public final class BringupUtil {
       SparkFlex[] flexes,
       TalonFX[] krakens,
       TalonFX[] falcons) {
+    // Stop every output with a zero command.
     setAllNeos(neos, 0.0);
     setAllFlexes(flexes, 0.0);
     setAllKrakens(krakens, 0.0);
@@ -212,6 +231,7 @@ public final class BringupUtil {
   }
 
   public static String joinIds(int[] ids) {
+    // Join enabled IDs into a friendly comma-separated list.
     StringBuilder builder = new StringBuilder();
     int count = 0;
     for (int i = 0; i < ids.length; i++) {
@@ -231,14 +251,17 @@ public final class BringupUtil {
   }
 
   public static double deadband(double value, double deadband) {
+    // Zero out small stick values to reduce noise.
     return Math.abs(value) < deadband ? 0.0 : value;
   }
 
   public static void validateCanIds(int[]... idGroups) {
+    // Convenience overload without labels.
     validateCanIds(null, idGroups);
   }
 
   public static void validateCanIds(String[] groupLabels, int[]... idGroups) {
+    // Warn on duplicates and empty groups to catch configuration issues early.
     java.util.HashSet<Integer> seen = new java.util.HashSet<>();
     boolean hasDuplicate = false;
 
@@ -270,6 +293,7 @@ public final class BringupUtil {
   }
 
   public static int[] filterCanIds(int[] ids) {
+    // Drop disabled IDs while preserving order.
     int enabledCount = countEnabledCanIds(ids);
     int[] filtered = new int[enabledCount];
     int index = 0;
@@ -282,6 +306,7 @@ public final class BringupUtil {
   }
 
   public static int countEnabledCanIds(int[] ids) {
+    // Count IDs that are not DISABLED_CAN_ID.
     int count = 0;
     for (int id : ids) {
       if (isEnabledCanId(id)) {
@@ -292,6 +317,7 @@ public final class BringupUtil {
   }
 
   public static boolean isEnabledCanId(int id) {
+    // Convention: -1 means "disabled" in JSON and code.
     return id != DISABLED_CAN_ID;
   }
 
@@ -310,6 +336,7 @@ public final class BringupUtil {
   }
 
   public static void applyProfileFromArgs() {
+    // Read profile name from JVM props, env var, or command-line flag.
     String profile = System.getProperty("bringup.profile");
     if (profile == null || profile.isBlank()) {
       profile = System.getenv("BRINGUP_PROFILE");
@@ -323,6 +350,7 @@ public final class BringupUtil {
   }
 
   private static String extractProfileFromCommand() {
+    // Parse --bringup-profile=... from the Java command line.
     String command = System.getProperty("sun.java.command");
     if (command == null || command.isBlank()) {
       return null;
@@ -337,6 +365,7 @@ public final class BringupUtil {
   }
 
   private static void loadProfilesFromJson() {
+    // Load bringup_profiles.json from deploy or dev path.
     Path path = resolveProfilePath();
     if (path == null || !Files.exists(path)) {
       System.out.println("Warning: CAN profile JSON not found. Using fallback IDs.");
@@ -363,6 +392,7 @@ public final class BringupUtil {
   }
 
   private static Path resolveProfilePath() {
+    // Use deploy folder on roboRIO, fallback to repo-relative path.
     try {
       Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(DEFAULT_PROFILE_FILE);
       if (Files.exists(deployPath)) {
@@ -379,6 +409,7 @@ public final class BringupUtil {
   }
 
   private static void applyFallbackProfile() {
+    // Populate default profiles in-memory when JSON is unavailable.
     profiles = new LinkedHashMap<>();
     profiles.put("robot", new CanProfileConfig(
         toDevices(FALLBACK_ROBOT_NEO_CAN_IDS),
@@ -421,6 +452,7 @@ public final class BringupUtil {
   }
 
   private static int[] toIdArray(List<DeviceRef> refs) {
+    // Convert JSON device objects into raw ID arrays.
     if (refs == null || refs.isEmpty()) {
       return new int[0];
     }
@@ -432,6 +464,7 @@ public final class BringupUtil {
   }
 
   private static List<DeviceRef> toDevices(int[] ids) {
+    // Convert raw IDs into JSON device objects for fallback profiles.
     List<DeviceRef> refs = new ArrayList<>();
     for (int id : ids) {
       if (isEnabledCanId(id)) {
@@ -441,12 +474,14 @@ public final class BringupUtil {
     return refs;
   }
 
+  // JSON root structure for bringup_profiles.json.
   private static final class ProfileRoot {
     @SerializedName("default_profile")
     String defaultProfile;
     LinkedHashMap<String, CanProfileConfig> profiles;
   }
 
+  // JSON profile structure: lists of device IDs by type.
   private static final class CanProfileConfig {
     List<DeviceRef> neos = Collections.emptyList();
     List<DeviceRef> flexes = Collections.emptyList();
@@ -477,6 +512,7 @@ public final class BringupUtil {
     }
   }
 
+  // JSON device reference (currently just a CAN ID).
   private static final class DeviceRef {
     int id;
 
@@ -485,5 +521,4 @@ public final class BringupUtil {
     }
   }
 }
-
 

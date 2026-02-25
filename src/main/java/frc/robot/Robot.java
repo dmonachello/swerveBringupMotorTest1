@@ -4,14 +4,19 @@ import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
 import java.util.ArrayList;
 
+// Legacy bringup robot program (simpler than RobotV2).
+// Uses BringupCore to instantiate devices and print local health.
 public class Robot extends TimedRobot {
 
   // Project repo: https://github.com/dmonachello/swerveBringupMotorTest1
 
 
   private static final double DEADBAND = BringupUtil.DEADBAND;
+  // Driver Station controller input.
   private final XboxController controller = new XboxController(0);
+  // Local bringup behaviors for device creation and health.
   private BringupCore core = new BringupCore();
+  // Edge-detect state for one-shot actions.
   private boolean prevBindings = false;
   private boolean prevProfileToggle = false;
   private boolean prevSpeedPrint = false;
@@ -19,6 +24,7 @@ public class Robot extends TimedRobot {
 
   @Override
   public void robotInit() {
+    // Load profile before devices are created.
     BringupUtil.applyProfileFromArgs();
     printStartupInfo();
     validateCanIds();
@@ -26,6 +32,7 @@ public class Robot extends TimedRobot {
 
   @Override
   public void teleopInit() {
+    // Reset local state whenever teleop starts.
     core.resetState();
     prevBindings = false;
     prevProfileToggle = false;
@@ -35,6 +42,7 @@ public class Robot extends TimedRobot {
 
   @Override
   public void disabledInit() {
+    // Keep behavior symmetric in disabled and teleop to avoid stale state.
     core.resetState();
     prevBindings = false;
     prevProfileToggle = false;
@@ -45,11 +53,13 @@ public class Robot extends TimedRobot {
   @Override
   public void teleopPeriodic() {
 
+    // --- Device instantiation / local prints ---
     core.handleAdd(controller.getAButton());
     core.handleAddAll(controller.getStartButton());
     core.handlePrint(controller.getBButton());
     core.handleHealth(controller.getXButton());
 
+    // --- Profile switching ---
     boolean profileToggleNow = controller.getBackButton();
     if (profileToggleNow && !prevProfileToggle) {
       BringupUtil.toggleCanProfile();
@@ -60,15 +70,18 @@ public class Robot extends TimedRobot {
     }
     prevProfileToggle = profileToggleNow;
 
+    // --- Reprint bindings ---
     boolean bindingsNow = controller.getLeftBumperButton();
     if (bindingsNow && !prevBindings) {
       printStartupInfo();
     }
     prevBindings = bindingsNow;
 
+    // --- Analog input to motor outputs ---
     double neoSpeed = BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
     double krakenSpeed = BringupUtil.deadband(-controller.getRightY(), DEADBAND);
 
+    // --- Print current stick inputs on demand ---
     boolean speedPrintNow = controller.getRightStickButton();
     if (speedPrintNow && !prevSpeedPrint) {
       BringupPrinter.enqueue(
@@ -79,6 +92,7 @@ public class Robot extends TimedRobot {
     }
     prevSpeedPrint = speedPrintNow;
 
+    // --- Timed nudge for all motors ---
     boolean nudgeNow = controller.getLeftStickButton();
     if (nudgeNow && !prevNudge) {
       core.triggerNudge(0.2, 0.5);
@@ -86,6 +100,7 @@ public class Robot extends TimedRobot {
     }
     prevNudge = nudgeNow;
 
+    // Apply speeds after any nudge overrides.
     core.setSpeeds(neoSpeed, krakenSpeed);
   }
 
@@ -93,6 +108,7 @@ public class Robot extends TimedRobot {
   // Diagnostics
   // ---------------------------------------------------
 
+  // Print the control bindings and active CAN profile.
   private void printStartupInfo() {
     StringBuilder sb = new StringBuilder(512);
     appendLine(sb, "=== Swerve Bringup ===");
@@ -115,10 +131,12 @@ public class Robot extends TimedRobot {
     BringupPrinter.enqueue(sb.toString());
   }
 
+  // Shared line-append helper to keep formatting consistent.
   private static void appendLine(StringBuilder sb, String line) {
     sb.append(line).append('\n');
   }
 
+  // Validate CAN IDs for duplicates and disabled groups.
   private void validateCanIds() {
     ArrayList<String> labels = new ArrayList<>();
     ArrayList<int[]> groups = new ArrayList<>();
@@ -148,5 +166,4 @@ public class Robot extends TimedRobot {
   }
   // Shared behavior moved to BringupCore.
 }
-
 

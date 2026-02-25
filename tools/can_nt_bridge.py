@@ -4,7 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 import time
-from typing import Dict, Iterable, Optional, Tuple, List
+from pathlib import Path
+from typing import Dict, Iterable, Optional, Tuple, List, Any
 
 from can_analyzer import CanLiveAnalyzer
 from can_logging import PcapLogger
@@ -32,6 +33,217 @@ def _dump_seen_ids(
     }
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
+
+
+def _build_profile_from_seen(
+    seen_keys: Iterable[Tuple[int, int, int]],
+    profile_name: str,
+    include_unknown: bool,
+) -> Dict[str, object]:
+    neos: List[Dict[str, int]] = []
+    flexes: List[Dict[str, int]] = []
+    krakens: List[Dict[str, int]] = []
+    falcons: List[Dict[str, int]] = []
+    cancoders: List[Dict[str, int]] = []
+    unknown: List[Dict[str, int]] = []
+    pdh_id: Optional[int] = None
+    pdp_id: Optional[int] = None
+    pigeon_id: Optional[int] = None
+    roborio_id: Optional[int] = None
+
+    for mfg, dtype, did in sorted(seen_keys):
+        if mfg == 5 and dtype == 2:
+            neos.append({"id": did})
+        elif mfg == 4 and dtype == 2:
+            krakens.append({"id": did})
+        elif mfg == 4 and dtype == 7:
+            cancoders.append({"id": did})
+        elif mfg == 5 and dtype == 8:
+            if pdh_id is None:
+                pdh_id = did
+            elif include_unknown:
+                unknown.append({"manufacturer": mfg, "device_type": dtype, "device_id": did})
+        elif mfg == 4 and dtype == 8:
+            if pdp_id is None:
+                pdp_id = did
+            elif include_unknown:
+                unknown.append({"manufacturer": mfg, "device_type": dtype, "device_id": did})
+        elif mfg == 4 and dtype == 4:
+            if pigeon_id is None:
+                pigeon_id = did
+            elif include_unknown:
+                unknown.append({"manufacturer": mfg, "device_type": dtype, "device_id": did})
+        elif mfg == 1 and dtype == 1:
+            if roborio_id is None:
+                roborio_id = did
+            elif include_unknown:
+                unknown.append({"manufacturer": mfg, "device_type": dtype, "device_id": did})
+        elif include_unknown:
+            unknown.append({"manufacturer": mfg, "device_type": dtype, "device_id": did})
+
+    profile: Dict[str, object] = {
+        "neos": neos,
+        "flexes": flexes,
+        "krakens": krakens,
+        "falcons": falcons,
+        "cancoders": cancoders,
+        "notes": {
+            "generated_by": "can_nt_bridge.py",
+            "profile_name": profile_name,
+            "assumptions": [
+                "REV mfg=5 type=2 mapped to 'neos' (cannot distinguish NEO vs FLEX).",
+                "CTRE mfg=4 type=2 mapped to 'krakens' (cannot distinguish Kraken vs Falcon).",
+            ],
+        },
+    }
+    if pdh_id is not None:
+        profile["pdh"] = {"id": pdh_id}
+    if pdp_id is not None:
+        profile["pdp"] = {"id": pdp_id}
+    if pigeon_id is not None:
+        profile["pigeon"] = {"id": pigeon_id}
+    if roborio_id is not None:
+        profile["roborio"] = {"id": roborio_id}
+    if include_unknown and unknown:
+        profile["unknown"] = unknown
+
+    return profile
+
+
+def _dump_profile(
+    path: str,
+    profile_name: str,
+    seen_keys: Iterable[Tuple[int, int, int]],
+    include_unknown: bool,
+) -> None:
+    payload = {
+        "default_profile": profile_name,
+        "profiles": {
+            profile_name: _build_profile_from_seen(seen_keys, profile_name, include_unknown),
+        },
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
+
+def _decode_frc_ext_id_full(arb_id: int) -> Tuple[int, int, int, int, int]:
+    # FRC extended CAN layout (common subset):
+    # manufacturer: bits 16..23
+    # device_type:  bits 24..28
+    # api_class:    bits 10..15
+    # api_index:    bits 6..9
+    # device_id:    bits 0..5
+    manufacturer = (arb_id >> 16) & 0xFF
+    device_type = (arb_id >> 24) & 0x1F
+    api_class = (arb_id >> 10) & 0x3F
+    api_index = (arb_id >> 6) & 0x0F
+    device_id = arb_id & 0x3F
+    return manufacturer, device_type, api_class, api_index, device_id
+
+
+def _dump_api_inventory(
+    path: str,
+    profile: str,
+    interface: str,
+    channel: str,
+    bitrate: int,
+    pairs: Dict[Tuple[int, int, int, int, int], Dict[str, float]],
+) -> None:
+    devices: Dict[Tuple[int, int, int], List[Dict[str, Any]]] = {}
+    for (mfg, dtype, did, api_class, api_index), stats in pairs.items():
+        key = (mfg, dtype, did)
+        duration = max(0.0, stats["last"] - stats["first"])
+        fps = (stats["count"] / duration) if duration > 0 else 0.0
+        entry = {
+            "apiClass": api_class,
+            "apiIndex": api_index,
+            "count": int(stats["count"]),
+            "firstSeen": stats["first"],
+            "lastSeen": stats["last"],
+            "fps": fps,
+        }
+        devices.setdefault(key, []).append(entry)
+
+    payload = {
+        "created": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time())),
+        "profile": profile,
+        "interface": interface,
+        "channel": channel,
+        "bitrate": bitrate,
+        "devices": [
+            {
+                "mfg": mfg,
+                "type": dtype,
+                "id": did,
+                "pairs": sorted(pairs, key=lambda p: (p["apiClass"], p["apiIndex"])),
+            }
+            for (mfg, dtype, did), pairs in sorted(devices.items())
+        ],
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
+
+def _load_inventory(path: str) -> Dict[Tuple[int, int, int, int, int], float]:
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    result: Dict[Tuple[int, int, int, int, int], float] = {}
+    for dev in payload.get("devices", []):
+        try:
+            mfg = int(dev.get("mfg"))
+            dtype = int(dev.get("type"))
+            did = int(dev.get("id"))
+        except Exception:
+            continue
+        for pair in dev.get("pairs", []):
+            try:
+                api_class = int(pair.get("apiClass"))
+                api_index = int(pair.get("apiIndex"))
+                fps = float(pair.get("fps", 0.0))
+            except Exception:
+                continue
+            result[(mfg, dtype, did, api_class, api_index)] = fps
+    return result
+
+
+def _print_inventory_diff(path_a: str, path_b: str, top_n: int) -> None:
+    a = _load_inventory(path_a)
+    b = _load_inventory(path_b)
+    keys_a = set(a.keys())
+    keys_b = set(b.keys())
+
+    new_pairs = sorted(keys_b - keys_a)
+    missing_pairs = sorted(keys_a - keys_b)
+    deltas = []
+    for key in sorted(keys_a & keys_b):
+        fps_a = a.get(key, 0.0)
+        fps_b = b.get(key, 0.0)
+        delta = fps_b - fps_a
+        deltas.append((abs(delta), delta, key, fps_a, fps_b))
+    deltas.sort(reverse=True)
+
+    print("=== Inventory Diff ===")
+    print(f"New pairs: {len(new_pairs)}")
+    for key in new_pairs[:top_n]:
+        mfg, dtype, did, api_class, api_index = key
+        print(f"  + mfg={mfg} type={dtype} id={did} apiClass={api_class} apiIndex={api_index}")
+    if len(new_pairs) > top_n:
+        print(f"  ... {len(new_pairs) - top_n} more")
+
+    print(f"Missing pairs: {len(missing_pairs)}")
+    for key in missing_pairs[:top_n]:
+        mfg, dtype, did, api_class, api_index = key
+        print(f"  - mfg={mfg} type={dtype} id={did} apiClass={api_class} apiIndex={api_index}")
+    if len(missing_pairs) > top_n:
+        print(f"  ... {len(missing_pairs) - top_n} more")
+
+    print(f"Biggest rate changes (top {top_n}):")
+    for _, delta, key, fps_a, fps_b in deltas[:top_n]:
+        mfg, dtype, did, api_class, api_index = key
+        print(
+            "  "
+            f"mfg={mfg} type={dtype} id={did} apiClass={api_class} apiIndex={api_index} "
+            f"fps={fps_a:.2f} -> {fps_b:.2f} (delta {delta:+.2f})"
+        )
 
 
 def _list_ports() -> List[Tuple[str, str]]:
@@ -258,6 +470,56 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         action="store_true",
         help="Publish devices seen on the bus that are not in the profile as UNKNOWN.",
     )
+    parser.add_argument(
+        "--dump-profile",
+        default="",
+        help=(
+            "Write a bringup_profiles.json file generated from observed CAN IDs "
+            "and exit."
+        ),
+    )
+    parser.add_argument(
+        "--dump-profile-name",
+        default="",
+        help=(
+            "Profile name to use when writing --dump-profile output. "
+            "If omitted, a timestamped name is generated."
+        ),
+    )
+    parser.add_argument(
+        "--dump-profile-after",
+        type=float,
+        default=3.0,
+        help="Seconds to wait before writing --dump-profile output.",
+    )
+    parser.add_argument(
+        "--dump-profile-include-unknown",
+        action="store_true",
+        help="Include unknown devices in the generated profile output.",
+    )
+    parser.add_argument(
+        "--dump-api-inventory",
+        default="",
+        help="Write a JSON inventory of apiClass/apiIndex counts and exit.",
+    )
+    parser.add_argument(
+        "--dump-api-inventory-after",
+        type=float,
+        default=3.0,
+        help="Seconds to wait before writing --dump-api-inventory output.",
+    )
+    parser.add_argument(
+        "--diff-inventory",
+        nargs=2,
+        metavar=("A.json", "B.json"),
+        help="Diff two inventory JSON files and print deltas.",
+    )
+    parser.add_argument(
+        "--diff-top",
+        type=int,
+        default=10,
+        help="Number of rows to show for new/missing/changed pairs.",
+    )
 
     parser.add_argument("--pcap", default="", help="Write all CAN frames to a .pcapng/.pcap file")
 
@@ -283,6 +545,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     if args.list_keys or args.dump_nt:
         _print_or_dump_nt_keys(devices, args.list_keys, args.dump_nt)
         return 0
+    if args.diff_inventory:
+        _print_inventory_diff(args.diff_inventory[0], args.diff_inventory[1], args.diff_top)
+        return 0
 
     # Delayed imports so --help still works without packages installed
     from ntcore import NetworkTableInstance
@@ -303,6 +568,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     last_seen: Dict[Tuple[int, int, int], float] = {}
     msg_count: Dict[Tuple[int, int, int], int] = {}
     last_status: Dict[Tuple[int, int, int], str] = {}
+    pair_stats: Dict[Tuple[int, int, int, int, int], Dict[str, float]] = {}
     total_frames = 0
     period_frames = 0
     read_errors = 0
@@ -330,6 +596,30 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 )
                 print(f"Dumped observed arbitration IDs to {args.dump_can_expected_ids}")
                 return 0
+            if args.dump_profile and (now - start) >= args.dump_profile_after:
+                seen_keys = sorted(last_seen.keys())
+                profile_name = args.dump_profile_name
+                if not profile_name:
+                    profile_name = time.strftime("sniffer_%Y%m%d_%H%M%S", time.localtime(now))
+                _dump_profile(
+                    args.dump_profile,
+                    profile_name,
+                    seen_keys,
+                    args.dump_profile_include_unknown,
+                )
+                print(f"Dumped profile to {args.dump_profile}")
+                return 0
+            if args.dump_api_inventory and (now - start) >= args.dump_api_inventory_after:
+                _dump_api_inventory(
+                    args.dump_api_inventory,
+                    args.profile,
+                    args.interface,
+                    args.channel,
+                    args.bitrate,
+                    pair_stats,
+                )
+                print(f"Dumped API inventory to {args.dump_api_inventory}")
+                return 0
 
             try:
                 msg = bus.recv(timeout=0.05)
@@ -348,9 +638,18 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 analyzer.ingest(now, arb_id, data)
 
                 mfg, dtype, did = decode_frc_ext_id(arb_id)
+                _, _, api_class, api_index, _ = _decode_frc_ext_id_full(arb_id)
                 key = (mfg, dtype, did)
                 last_seen[key] = now
                 msg_count[key] = msg_count.get(key, 0) + 1
+
+                pair_key = (mfg, dtype, did, api_class, api_index)
+                stats = pair_stats.get(pair_key)
+                if stats is None:
+                    stats = {"first": now, "last": now, "count": 0.0}
+                    pair_stats[pair_key] = stats
+                stats["last"] = now
+                stats["count"] += 1.0
 
                 total_frames += 1
                 period_frames += 1

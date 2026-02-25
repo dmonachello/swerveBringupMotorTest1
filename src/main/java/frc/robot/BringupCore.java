@@ -18,6 +18,8 @@ import com.revrobotics.PersistMode;
 import com.revrobotics.REVLibError;
 import edu.wpi.first.wpilibj.Timer;
 
+// Core bringup logic: creates devices, commands outputs, and prints local health.
+// This class only uses robot-local vendor APIs (no PC sniffer data).
 public final class BringupCore {
   private static final int NI_MANUFACTURER = 1;
   private static final int TYPE_ROBOT_CONTROLLER = 1;
@@ -53,6 +55,7 @@ public final class BringupCore {
   private long lastHealthPrintMs = 0L;
   private long lastCANCoderPrintMs = 0L;
 
+  // Edge-triggered: add the next motor in the alternating sequence.
   public void handleAdd(boolean addNow) {
     if (addNow && !prevAdd) {
       addNextMotor();
@@ -60,6 +63,7 @@ public final class BringupCore {
     prevAdd = addNow;
   }
 
+  // Edge-triggered: instantiate all configured devices at once.
   public void handleAddAll(boolean addAllNow) {
     if (addAllNow && !prevAddAll) {
       addAllDevices();
@@ -67,6 +71,7 @@ public final class BringupCore {
     prevAddAll = addAllNow;
   }
 
+  // Edge-triggered: print a concise state summary.
   public void handlePrint(boolean printNow) {
     if (printNow && !prevPrint) {
       long nowMs = System.currentTimeMillis();
@@ -78,6 +83,7 @@ public final class BringupCore {
     prevPrint = printNow;
   }
 
+  // Edge-triggered: print local health for all instantiated devices.
   public void handleHealth(boolean healthNow) {
     if (healthNow && !prevHealth) {
       long nowMs = System.currentTimeMillis();
@@ -89,6 +95,7 @@ public final class BringupCore {
     prevHealth = healthNow;
   }
 
+  // Edge-triggered: print CANCoder absolute position data.
   public void handleCANCoder(boolean printNow) {
     if (printNow && !prevCANCoder) {
       long nowMs = System.currentTimeMillis();
@@ -100,6 +107,7 @@ public final class BringupCore {
     prevCANCoder = printNow;
   }
 
+  // Apply requested speeds to all instantiated motors (with optional nudge override).
   public void setSpeeds(double neoSpeed, double krakenSpeed) {
     if (nudgeActive) {
       double now = Timer.getFPGATimestamp();
@@ -116,6 +124,7 @@ public final class BringupCore {
     BringupUtil.setAllFalcons(falcons, krakenSpeed);
   }
 
+  // Force a brief output at a fixed duty cycle for all motors.
   public void triggerNudge(double speed, double seconds) {
     if (seconds <= 0.0) {
       return;
@@ -125,6 +134,7 @@ public final class BringupCore {
     nudgeActive = true;
   }
 
+  // Stop all outputs, close devices, and reset internal state.
   public void resetState() {
     BringupUtil.stopAll(neos, flexes, krakens, falcons);
 
@@ -165,6 +175,7 @@ public final class BringupCore {
     BringupPrinter.enqueue("=== Bringup reset: no motors instantiated ===");
   }
 
+  // Alternates between REV and CTRE motors to keep bringup balanced.
   private void addNextMotor() {
     if (addNeoNext) {
       if (!addNextNeo() && !addNextFlex()) {
@@ -214,6 +225,7 @@ public final class BringupCore {
     addNeoNext = true;
   }
 
+  // Lazily instantiate the next available NEO.
   private boolean addNextNeo() {
     if (nextNeo < neos.length && neos[nextNeo] == null) {
       neos[nextNeo] = new SparkMax(neoIds[nextNeo], MotorType.kBrushless);
@@ -230,6 +242,7 @@ public final class BringupCore {
     return false;
   }
 
+  // Lazily instantiate the next available FLEX/Vortex.
   private boolean addNextFlex() {
     if (nextFlex < flexes.length && flexes[nextFlex] == null) {
       flexes[nextFlex] = new SparkFlex(flexIds[nextFlex], MotorType.kBrushless);
@@ -246,6 +259,7 @@ public final class BringupCore {
     return false;
   }
 
+  // Instantiate all configured devices (motors + CANCoders).
   private void addAllDevices() {
     for (int i = 0; i < neos.length; i++) {
       if (neos[i] == null) {
@@ -286,6 +300,7 @@ public final class BringupCore {
     BringupPrinter.enqueue("Added all SPARKs, Krakens, Falcons, and CANCoders.");
   }
 
+  // Print a compact list of which devices are instantiated.
   private void printState() {
     StringBuilder sb = new StringBuilder(512);
     appendLine(sb, "=== Bringup State ===");
@@ -342,9 +357,12 @@ public final class BringupCore {
     BringupPrinter.enqueueChunked(sb.toString(), 12);
   }
 
+  // Print detailed local health with faults, warnings, and key telemetry.
+  // Uses only local vendor APIs; no PC sniffer data is involved here.
   private void printHealthStatus() {
     StringBuilder sb = new StringBuilder(768);
     appendLine(sb, "=== Bringup Health (Local Robot Data) ===");
+    // REV SPARK devices report their own faults, warnings, and telemetry.
     for (int i = 0; i < neos.length; i++) {
       if (neos[i] == null) {
         appendLine(sb, "NEO index " + i +
@@ -357,6 +375,7 @@ public final class BringupCore {
       var stickyWarnings = neos[i].getStickyWarnings();
       double busVoltage = neos[i].getBusVoltage();
       double appliedOutput = neos[i].getAppliedOutput();
+      double appliedVolts = busVoltage * appliedOutput;
       double outputCurrent = neos[i].getOutputCurrent();
       double motorTemp = neos[i].getMotorTemperature();
       double setpoint = neos[i].get();
@@ -367,12 +386,14 @@ public final class BringupCore {
           formatRevFaultSummary(faults, stickyFaults, warnings, stickyWarnings) +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
           " appliedDuty=" + String.format("%.2f", appliedOutput) + "dc" +
+          " appliedV=" + String.format("%.2f", appliedVolts) + "V" +
           " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C" +
           " cmdDuty=" + String.format("%.2f", setpoint) + "dc" +
           " follower=" + (follower ? "Y" : "N"));
     }
 
+    // FLEX/Vortex uses the same REV SPARK API surface as NEOs.
     for (int i = 0; i < flexes.length; i++) {
       if (flexes[i] == null) {
         appendLine(sb, "FLEX index " + i +
@@ -385,6 +406,7 @@ public final class BringupCore {
       var stickyWarnings = flexes[i].getStickyWarnings();
       double busVoltage = flexes[i].getBusVoltage();
       double appliedOutput = flexes[i].getAppliedOutput();
+      double appliedVolts = busVoltage * appliedOutput;
       double outputCurrent = flexes[i].getOutputCurrent();
       double motorTemp = flexes[i].getMotorTemperature();
       double setpoint = flexes[i].get();
@@ -395,12 +417,14 @@ public final class BringupCore {
           formatRevFaultSummary(faults, stickyFaults, warnings, stickyWarnings) +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
           " appliedDuty=" + String.format("%.2f", appliedOutput) + "dc" +
+          " appliedV=" + String.format("%.2f", appliedVolts) + "V" +
           " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C" +
           " cmdDuty=" + String.format("%.2f", setpoint) + "dc" +
           " follower=" + (follower ? "Y" : "N"));
     }
 
+    // CTRE devices are read via Phoenix status signals. Refresh before reading.
     for (int i = 0; i < krakens.length; i++) {
       if (krakens[i] == null) {
         appendLine(sb, "KRAKEN index " + i +
@@ -439,10 +463,10 @@ public final class BringupCore {
           " sticky=0x" + Integer.toHexString(stickyField) +
           formatCtreStickyFaults(krakens[i]) +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
-          " applied=" + String.format("%.2f", applied) + "dc" +
-          " current=" + String.format("%.2f", outputCurrent) + "A" +
+          " appliedDuty=" + String.format("%.2f", applied) + "dc" +
+          " appliedV=" + String.format("%.2f", motorVolts) + "V" +
+          " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C" +
-          " motorV=" + String.format("%.2f", motorVolts) + "V" +
           (faultOk && stickyOk
               ? ""
               : " status=" + faultSignal.getStatus() + "/" + stickySignal.getStatus()));
@@ -485,10 +509,10 @@ public final class BringupCore {
           " sticky=0x" + Integer.toHexString(stickyField) +
           formatCtreStickyFaults(falcons[i]) +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
-          " applied=" + String.format("%.2f", applied) + "dc" +
-          " current=" + String.format("%.2f", outputCurrent) + "A" +
+          " appliedDuty=" + String.format("%.2f", applied) + "dc" +
+          " appliedV=" + String.format("%.2f", motorVolts) + "V" +
+          " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C" +
-          " motorV=" + String.format("%.2f", motorVolts) + "V" +
           (faultOk && stickyOk
               ? ""
               : " status=" + faultSignal.getStatus() + "/" + stickySignal.getStatus()));
@@ -498,9 +522,11 @@ public final class BringupCore {
     BringupPrinter.enqueueChunked(sb.toString(), 12);
   }
 
+  // Print absolute positions for all CANCoders (instantiates if needed).
   private void printCANCoderStatus() {
     StringBuilder sb = new StringBuilder(512);
     appendLine(sb, "=== Bringup CANCoder ===");
+    // CANCoder absolute position is useful for verifying sensor wiring.
     for (int i = 0; i < cancoders.length; i++) {
       if (cancoders[i] == null) {
         cancoders[i] = new CANcoder(cancoderIds[i]);
@@ -519,9 +545,11 @@ public final class BringupCore {
     BringupPrinter.enqueueChunked(sb.toString(), 12);
   }
 
+  // Append local device health lines to a shared report buffer.
   public void appendDeviceDiagnosticsReport(StringBuilder sb) {
     appendLine(sb, "Device Health (local API):");
 
+    // REV devices first, then CTRE, then sensors, then virtuals.
     for (int i = 0; i < neos.length; i++) {
       if (neos[i] == null) {
         appendLine(sb, "  NEO CAN " + neoIds[i] + ": present=NO (not added)");
@@ -533,6 +561,8 @@ public final class BringupCore {
       var stickyWarnings = neos[i].getStickyWarnings();
       REVLibError lastError = neos[i].getLastError();
       double busVoltage = neos[i].getBusVoltage();
+      double appliedDuty = neos[i].getAppliedOutput();
+      double appliedVolts = busVoltage * appliedDuty;
       double outputCurrent = neos[i].getOutputCurrent();
       double motorTemp = neos[i].getMotorTemperature();
       boolean resetFlag = warnings.hasReset || stickyWarnings.hasReset;
@@ -542,6 +572,7 @@ public final class BringupCore {
           " lastErr=" + lastError +
           " reset=" + (resetFlag ? "YES" : "NO") +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
+          " appliedV=" + String.format("%.2f", appliedVolts) + "V" +
           " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C");
     }
@@ -557,6 +588,8 @@ public final class BringupCore {
       var stickyWarnings = flexes[i].getStickyWarnings();
       REVLibError lastError = flexes[i].getLastError();
       double busVoltage = flexes[i].getBusVoltage();
+      double appliedDuty = flexes[i].getAppliedOutput();
+      double appliedVolts = busVoltage * appliedDuty;
       double outputCurrent = flexes[i].getOutputCurrent();
       double motorTemp = flexes[i].getMotorTemperature();
       boolean resetFlag = warnings.hasReset || stickyWarnings.hasReset;
@@ -566,6 +599,7 @@ public final class BringupCore {
           " lastErr=" + lastError +
           " reset=" + (resetFlag ? "YES" : "NO") +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
+          " appliedV=" + String.format("%.2f", appliedVolts) + "V" +
           " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C");
     }
@@ -607,10 +641,10 @@ public final class BringupCore {
           formatCtreStickyFaults(krakens[i]) +
           " lastErr=" + faultSignal.getStatus() +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
-          " applied=" + String.format("%.2f", applied) + "dc" +
-          " current=" + String.format("%.2f", outputCurrent) + "A" +
+          " appliedDuty=" + String.format("%.2f", applied) + "dc" +
+          " appliedV=" + String.format("%.2f", motorVolts) + "V" +
+          " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C" +
-          " motorV=" + String.format("%.2f", motorVolts) + "V" +
           (faultOk && stickyOk
               ? ""
               : " status=" + faultSignal.getStatus() + "/" + stickySignal.getStatus()));
@@ -653,10 +687,10 @@ public final class BringupCore {
           formatCtreStickyFaults(falcons[i]) +
           " lastErr=" + faultSignal.getStatus() +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
-          " applied=" + String.format("%.2f", applied) + "dc" +
-          " current=" + String.format("%.2f", outputCurrent) + "A" +
+          " appliedDuty=" + String.format("%.2f", applied) + "dc" +
+          " appliedV=" + String.format("%.2f", motorVolts) + "V" +
+          " motorCurrentA=" + String.format("%.2f", outputCurrent) + "A" +
           " tempC=" + String.format("%.1f", motorTemp) + "C" +
-          " motorV=" + String.format("%.2f", motorVolts) + "V" +
           (faultOk && stickyOk
               ? ""
               : " status=" + faultSignal.getStatus() + "/" + stickySignal.getStatus()));
@@ -679,10 +713,12 @@ public final class BringupCore {
     appendVirtualDeviceHealth(sb);
   }
 
+  // Append local device health into a JSON array for reports and AI analysis.
   public void appendDeviceDiagnosticsJson(JsonArray devices) {
     if (devices == null) {
       return;
     }
+    // Preserve device order for stable diffs between snapshots.
     for (int i = 0; i < neos.length; i++) {
       JsonObject entry = baseDeviceJson("NEO", neoIds[i]);
       if (neos[i] == null) {
@@ -697,6 +733,8 @@ public final class BringupCore {
       var stickyWarnings = neos[i].getStickyWarnings();
       REVLibError lastError = neos[i].getLastError();
       double busVoltage = neos[i].getBusVoltage();
+      double appliedDuty = neos[i].getAppliedOutput();
+      double appliedVolts = busVoltage * appliedDuty;
       double outputCurrent = neos[i].getOutputCurrent();
       double motorTemp = neos[i].getMotorTemperature();
       boolean resetFlag = warnings.hasReset || stickyWarnings.hasReset;
@@ -708,6 +746,7 @@ public final class BringupCore {
       entry.addProperty("lastError", String.valueOf(lastError));
       entry.addProperty("reset", resetFlag);
       entry.addProperty("busV", busVoltage);
+      entry.addProperty("appliedV", appliedVolts);
       entry.addProperty("motorCurrentA", outputCurrent);
       entry.addProperty("tempC", motorTemp);
       entry.addProperty("cmdDuty", neos[i].get());
@@ -729,6 +768,8 @@ public final class BringupCore {
       var stickyWarnings = flexes[i].getStickyWarnings();
       REVLibError lastError = flexes[i].getLastError();
       double busVoltage = flexes[i].getBusVoltage();
+      double appliedDuty = flexes[i].getAppliedOutput();
+      double appliedVolts = busVoltage * appliedDuty;
       double outputCurrent = flexes[i].getOutputCurrent();
       double motorTemp = flexes[i].getMotorTemperature();
       boolean resetFlag = warnings.hasReset || stickyWarnings.hasReset;
@@ -740,6 +781,7 @@ public final class BringupCore {
       entry.addProperty("lastError", String.valueOf(lastError));
       entry.addProperty("reset", resetFlag);
       entry.addProperty("busV", busVoltage);
+      entry.addProperty("appliedV", appliedVolts);
       entry.addProperty("motorCurrentA", outputCurrent);
       entry.addProperty("tempC", motorTemp);
       entry.addProperty("cmdDuty", flexes[i].get());
@@ -784,6 +826,7 @@ public final class BringupCore {
       entry.addProperty("stickyStatus", String.valueOf(stickySignal.getStatus()));
       entry.addProperty("busV", busVoltage);
       entry.addProperty("appliedDuty", applied);
+      entry.addProperty("appliedV", motorVolts);
       entry.addProperty("motorCurrentA", outputCurrent);
       entry.addProperty("tempC", motorTemp);
       entry.addProperty("motorV", motorVolts);
@@ -827,6 +870,7 @@ public final class BringupCore {
       entry.addProperty("stickyStatus", String.valueOf(stickySignal.getStatus()));
       entry.addProperty("busV", busVoltage);
       entry.addProperty("appliedDuty", applied);
+      entry.addProperty("appliedV", motorVolts);
       entry.addProperty("motorCurrentA", outputCurrent);
       entry.addProperty("tempC", motorTemp);
       entry.addProperty("motorV", motorVolts);
@@ -859,6 +903,7 @@ public final class BringupCore {
     }
   }
 
+  // Create the minimal JSON object for a device entry.
   private static JsonObject baseDeviceJson(String type, int id) {
     JsonObject entry = new JsonObject();
     entry.addProperty("type", type);
@@ -866,6 +911,7 @@ public final class BringupCore {
     return entry;
   }
 
+  // Append virtual device presence (currently the roboRIO) to state output.
   private void appendVirtualDevices(StringBuilder sb) {
     if (!BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
       return;
@@ -874,6 +920,7 @@ public final class BringupCore {
     appendLine(sb, "  roboRIO CAN " + BringupUtil.ROBORIO_CAN_ID + " PRESENT (no local API)");
   }
 
+  // Append virtual device presence to health output.
   private void appendVirtualDeviceHealth(StringBuilder sb) {
     if (!BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
       return;
@@ -881,6 +928,7 @@ public final class BringupCore {
     appendLine(sb, "  roboRIO CAN " + BringupUtil.ROBORIO_CAN_ID + ": present=YES (virtual, no API)");
   }
 
+  // Format REV fault bits into a compact list for console output.
   private static String formatRevFaults(SparkBase.Faults faults) {
     StringBuilder sb = new StringBuilder(64);
     appendFlag(sb, "other", faults.other);
@@ -894,6 +942,7 @@ public final class BringupCore {
     return formatFlagList(sb);
   }
 
+  // Format REV warnings into a compact list for console output.
   private static String formatRevWarnings(SparkBase.Warnings warnings) {
     StringBuilder sb = new StringBuilder(64);
     appendFlag(sb, "brownout", warnings.brownout);
@@ -907,6 +956,7 @@ public final class BringupCore {
     return formatFlagList(sb);
   }
 
+  // Expand CTRE fault StatusSignals into a readable list.
   private static String formatCtreFaults(TalonFX talon) {
     var bootDuringEnable = talon.getFault_BootDuringEnable();
     var bridgeBrownout = talon.getFault_BridgeBrownout();
@@ -985,6 +1035,7 @@ public final class BringupCore {
     return formatFlagList(sb);
   }
 
+  // Expand CTRE sticky fault StatusSignals into a readable list.
   private static String formatCtreStickyFaults(TalonFX talon) {
     var bootDuringEnable = talon.getStickyFault_BootDuringEnable();
     var bridgeBrownout = talon.getStickyFault_BridgeBrownout();
@@ -1063,10 +1114,12 @@ public final class BringupCore {
     return formatFlagList(sb);
   }
 
+  // Phoenix signals wrap Boolean values; normalize null to false.
   private static boolean isTrue(StatusSignal<Boolean> signal) {
     return Boolean.TRUE.equals(signal.getValue());
   }
 
+  // Append a flag name if its status is active.
   private static void appendFlag(StringBuilder sb, String name, boolean active) {
     if (!active) {
       return;
@@ -1077,6 +1130,7 @@ public final class BringupCore {
     sb.append(name);
   }
 
+  // Format a comma-separated list in square brackets, or empty if none.
   private static String formatFlagList(StringBuilder sb) {
     if (sb.length() == 0) {
       return "";
@@ -1084,10 +1138,12 @@ public final class BringupCore {
     return " [" + sb + "]";
   }
 
+  // Shared line-append helper to keep formatting consistent.
   private static void appendLine(StringBuilder sb, String line) {
     sb.append(line).append('\n');
   }
 
+  // Report whether a device is instantiated based on CAN metadata.
   public boolean isDeviceInstantiated(int manufacturer, int deviceType, int deviceId) {
     if (manufacturer == 5 && deviceType == 2) {
       for (int i = 0; i < neoIds.length; i++) {
@@ -1129,6 +1185,7 @@ public final class BringupCore {
     return false;
   }
 
+  // Summary line with raw bitfields + decoded REV flags.
   private static String formatRevFaultSummary(
       SparkBase.Faults faults,
       SparkBase.Faults stickyFaults,

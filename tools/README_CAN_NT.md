@@ -93,6 +93,15 @@ Examples:
 
 # List serial ports
 %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --list-ports
+
+# Generate a profile from observed CAN traffic (writes a bringup_profiles.json file)
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --dump-profile tools\sniffer_profile.json
+
+# Capture API class/index inventory for later diffing
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --dump-api-inventory tools\inventory_a.json --dump-api-inventory-after 5
+
+# Diff two inventories
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --diff-inventory tools\inventory_a.json tools\inventory_b.json
 ```
 
 Options:
@@ -109,6 +118,14 @@ Options:
 - `--auto-match` sets the substring used to auto-detect the serial device.
 - `--no-prompt` disables the port selection prompt when multiple matches are found.
 - `--list-ports` prints available serial ports and exits.
+- `--dump-profile` writes a bringup_profiles.json file generated from observed CAN IDs.
+- `--dump-profile-name` sets the profile name inside the generated file (default: `sniffer_YYYYMMDD_HHMMSS`).
+- `--dump-profile-after` seconds to wait before writing `--dump-profile` output (default: `3.0`).
+- `--dump-profile-include-unknown` includes unclassified devices in the output.
+- `--dump-api-inventory` writes a JSON inventory of apiClass/apiIndex counts and exits.
+- `--dump-api-inventory-after` seconds to wait before writing the inventory (default: `3.0`).
+- `--diff-inventory` diffs two inventory JSON files and prints new/missing/changed pairs.
+- `--diff-top` number of rows to print for each diff section (default: `10`).
 
 Published NetworkTables keys:
 - `bringup/diag/busErrorCount`
@@ -131,6 +148,11 @@ Published NetworkTables keys:
 ## Notes
 
 - The script maps device IDs from the lowest 6 bits of the CAN extended ID.
+- Inventory snapshots key on `(manufacturer, device_type, apiClass, apiIndex, device_id)` so
+  you can diff experiments and identify command-like vs status frames.
+- `--dump-profile` guesses device families from CAN manufacturer/type and cannot
+  distinguish NEO vs FLEX or Kraken vs Falcon; it puts those into `neos` and
+  `krakens` by default for easy hand edits.
 - `RobotV2` prints a table and shows `status=NO_DATA`, `ageSec=-`, and `msgCount=-`
   until a device has been seen at least once.
 - `RobotV2` reads the composite `dev/<mfg>/<type>/<id>` keys.

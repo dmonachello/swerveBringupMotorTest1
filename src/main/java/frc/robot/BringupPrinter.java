@@ -2,6 +2,8 @@ package frc.robot;
 
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+// Simple async printer to keep long console output from stalling the main loop.
+// NOTE: This class only handles output formatting/printing; it must not call vendor/robot APIs.
 public final class BringupPrinter {
   private static final ConcurrentLinkedQueue<String> QUEUE = new ConcurrentLinkedQueue<>();
   private static final Object START_LOCK = new Object();
@@ -10,6 +12,7 @@ public final class BringupPrinter {
   private BringupPrinter() {}
 
   public static void enqueue(String text) {
+    // Fast path: ignore empty messages to avoid queue churn.
     if (text == null || text.isEmpty()) {
       return;
     }
@@ -18,6 +21,7 @@ public final class BringupPrinter {
   }
 
   public static void enqueueChunked(String text, int maxLines) {
+    // Break large reports into smaller blocks so the console stays responsive.
     if (text == null || text.isEmpty()) {
       return;
     }
@@ -46,6 +50,7 @@ public final class BringupPrinter {
   }
 
   private static void startIfNeeded() {
+    // Lazy-start the background thread to avoid static init order issues.
     if (started) {
       return;
     }
@@ -62,6 +67,7 @@ public final class BringupPrinter {
   }
 
   private static void runLoop() {
+    // Poll continuously; sleep briefly when idle to reduce CPU usage.
     while (true) {
       String msg = QUEUE.poll();
       if (msg == null) {
@@ -72,11 +78,13 @@ public final class BringupPrinter {
       if (!msg.endsWith("\n")) {
         System.out.println();
       }
+      // Small delay to keep console spam from starving other threads.
       sleepMs(10);
     }
   }
 
   private static void sleepMs(long ms) {
+    // Best-effort delay; interrupt is reasserted if it happens.
     try {
       Thread.sleep(ms);
     } catch (InterruptedException ignored) {
