@@ -4,7 +4,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 public final class BringupPrinter {
   private static final ConcurrentLinkedQueue<String> QUEUE = new ConcurrentLinkedQueue<>();
-  private static final ConcurrentLinkedQueue<Runnable> TASKS = new ConcurrentLinkedQueue<>();
   private static final Object START_LOCK = new Object();
   private static volatile boolean started = false;
 
@@ -15,14 +14,6 @@ public final class BringupPrinter {
       return;
     }
     QUEUE.add(text);
-    startIfNeeded();
-  }
-
-  public static void enqueueTask(Runnable task) {
-    if (task == null) {
-      return;
-    }
-    TASKS.add(task);
     startIfNeeded();
   }
 
@@ -72,15 +63,6 @@ public final class BringupPrinter {
 
   private static void runLoop() {
     while (true) {
-      Runnable task = TASKS.poll();
-      if (task != null) {
-        try {
-          task.run();
-        } catch (Throwable ignored) {
-          // Keep printer thread alive even if a task fails.
-        }
-        continue;
-      }
       String msg = QUEUE.poll();
       if (msg == null) {
         sleepMs(20);

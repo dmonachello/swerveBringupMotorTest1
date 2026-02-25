@@ -1,5 +1,5 @@
 {
-  "default_profile": "robot",
+  "default_profile": "club_022426",
   "profiles": {
     "robot": {
       "neos": [
@@ -51,6 +51,16 @@
         { "label": "FALCON 9", "id": 9 }
       ],
       "pdh": { "label": "PDH", "id": 1 },
+      "roborio": { "label": "roboRIO", "id": 0 }
+    },
+    "club_022426": {
+      "neos": [
+        { "label": "SPARKMAX 10", "id": 10 },
+        { "label": "SPARKMAX 25", "id": 25 }
+      ],
+      "flexes": [
+        { "label": "VORTEX/FLEX 11", "id": 11 }
+      ],
       "roborio": { "label": "roboRIO", "id": 0 }
     }
   }

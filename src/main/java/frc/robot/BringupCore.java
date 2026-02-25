@@ -4,6 +4,8 @@ import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.TalonFX;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import edu.wpi.first.units.Units;
 import com.revrobotics.spark.SparkBase;
 import com.revrobotics.spark.SparkFlex;
@@ -350,14 +352,25 @@ public final class BringupCore {
         continue;
       }
       var faults = neos[i].getFaults();
+      var stickyFaults = neos[i].getStickyFaults();
       var warnings = neos[i].getWarnings();
+      var stickyWarnings = neos[i].getStickyWarnings();
+      double busVoltage = neos[i].getBusVoltage();
+      double appliedOutput = neos[i].getAppliedOutput();
+      double outputCurrent = neos[i].getOutputCurrent();
+      double motorTemp = neos[i].getMotorTemperature();
+      double setpoint = neos[i].get();
+      boolean follower = neos[i].isFollower();
       appendLine(sb,
           "NEO index " + i +
           " CAN " + neoIds[i] +
-          " faults=0x" + Integer.toHexString(faults.rawBits) +
-          formatRevFaults(faults) +
-          " warnings=0x" + Integer.toHexString(warnings.rawBits) +
-          formatRevWarnings(warnings));
+          formatRevFaultSummary(faults, stickyFaults, warnings, stickyWarnings) +
+          " busV=" + String.format("%.2f", busVoltage) + "V" +
+          " applied=" + String.format("%.2f", appliedOutput) + "dc" +
+          " current=" + String.format("%.2f", outputCurrent) + "A" +
+          " tempC=" + String.format("%.1f", motorTemp) + "C" +
+          " set=" + String.format("%.2f", setpoint) + "dc" +
+          " follower=" + (follower ? "Y" : "N"));
     }
 
     for (int i = 0; i < flexes.length; i++) {
@@ -367,7 +380,9 @@ public final class BringupCore {
         continue;
       }
       var faults = flexes[i].getFaults();
+      var stickyFaults = flexes[i].getStickyFaults();
       var warnings = flexes[i].getWarnings();
+      var stickyWarnings = flexes[i].getStickyWarnings();
       double busVoltage = flexes[i].getBusVoltage();
       double appliedOutput = flexes[i].getAppliedOutput();
       double outputCurrent = flexes[i].getOutputCurrent();
@@ -377,10 +392,7 @@ public final class BringupCore {
       appendLine(sb,
           "FLEX index " + i +
           " CAN " + flexIds[i] +
-          " faults=0x" + Integer.toHexString(faults.rawBits) +
-          formatRevFaults(faults) +
-          " warnings=0x" + Integer.toHexString(warnings.rawBits) +
-          formatRevWarnings(warnings) +
+          formatRevFaultSummary(faults, stickyFaults, warnings, stickyWarnings) +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
           " applied=" + String.format("%.2f", appliedOutput) + "dc" +
           " current=" + String.format("%.2f", outputCurrent) + "A" +
@@ -526,12 +538,7 @@ public final class BringupCore {
       boolean resetFlag = warnings.hasReset || stickyWarnings.hasReset;
       appendLine(sb,
           "  NEO CAN " + neoIds[i] +
-          ": present=YES faults=0x" + Integer.toHexString(faults.rawBits) +
-          formatRevFaults(faults) +
-          " sticky=0x" + Integer.toHexString(stickyFaults.rawBits) +
-          " warnings=0x" + Integer.toHexString(warnings.rawBits) +
-          formatRevWarnings(warnings) +
-          " stickyWarn=0x" + Integer.toHexString(stickyWarnings.rawBits) +
+          ": present=YES" + formatRevFaultSummary(faults, stickyFaults, warnings, stickyWarnings) +
           " lastErr=" + lastError +
           " reset=" + (resetFlag ? "YES" : "NO") +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
@@ -555,12 +562,7 @@ public final class BringupCore {
       boolean resetFlag = warnings.hasReset || stickyWarnings.hasReset;
       appendLine(sb,
           "  FLEX CAN " + flexIds[i] +
-          ": present=YES faults=0x" + Integer.toHexString(faults.rawBits) +
-          formatRevFaults(faults) +
-          " sticky=0x" + Integer.toHexString(stickyFaults.rawBits) +
-          " warnings=0x" + Integer.toHexString(warnings.rawBits) +
-          formatRevWarnings(warnings) +
-          " stickyWarn=0x" + Integer.toHexString(stickyWarnings.rawBits) +
+          ": present=YES" + formatRevFaultSummary(faults, stickyFaults, warnings, stickyWarnings) +
           " lastErr=" + lastError +
           " reset=" + (resetFlag ? "YES" : "NO") +
           " busV=" + String.format("%.2f", busVoltage) + "V" +
@@ -675,6 +677,189 @@ public final class BringupCore {
           " lastErr=" + absolute.getStatus());
     }
     appendVirtualDeviceHealth(sb);
+  }
+
+  public void appendDeviceDiagnosticsJson(JsonArray devices) {
+    if (devices == null) {
+      return;
+    }
+    for (int i = 0; i < neos.length; i++) {
+      JsonObject entry = baseDeviceJson("NEO", neoIds[i]);
+      if (neos[i] == null) {
+        entry.addProperty("present", false);
+        entry.addProperty("note", "not added");
+        devices.add(entry);
+        continue;
+      }
+      var faults = neos[i].getFaults();
+      var stickyFaults = neos[i].getStickyFaults();
+      var warnings = neos[i].getWarnings();
+      var stickyWarnings = neos[i].getStickyWarnings();
+      REVLibError lastError = neos[i].getLastError();
+      double busVoltage = neos[i].getBusVoltage();
+      double outputCurrent = neos[i].getOutputCurrent();
+      double motorTemp = neos[i].getMotorTemperature();
+      boolean resetFlag = warnings.hasReset || stickyWarnings.hasReset;
+      entry.addProperty("present", true);
+      entry.addProperty("faultsRaw", faults.rawBits);
+      entry.addProperty("stickyFaultsRaw", stickyFaults.rawBits);
+      entry.addProperty("warningsRaw", warnings.rawBits);
+      entry.addProperty("stickyWarningsRaw", stickyWarnings.rawBits);
+      entry.addProperty("lastError", String.valueOf(lastError));
+      entry.addProperty("reset", resetFlag);
+      entry.addProperty("busV", busVoltage);
+      entry.addProperty("currentA", outputCurrent);
+      entry.addProperty("tempC", motorTemp);
+      devices.add(entry);
+    }
+
+    for (int i = 0; i < flexes.length; i++) {
+      JsonObject entry = baseDeviceJson("FLEX", flexIds[i]);
+      if (flexes[i] == null) {
+        entry.addProperty("present", false);
+        entry.addProperty("note", "not added");
+        devices.add(entry);
+        continue;
+      }
+      var faults = flexes[i].getFaults();
+      var stickyFaults = flexes[i].getStickyFaults();
+      var warnings = flexes[i].getWarnings();
+      var stickyWarnings = flexes[i].getStickyWarnings();
+      REVLibError lastError = flexes[i].getLastError();
+      double busVoltage = flexes[i].getBusVoltage();
+      double outputCurrent = flexes[i].getOutputCurrent();
+      double motorTemp = flexes[i].getMotorTemperature();
+      boolean resetFlag = warnings.hasReset || stickyWarnings.hasReset;
+      entry.addProperty("present", true);
+      entry.addProperty("faultsRaw", faults.rawBits);
+      entry.addProperty("stickyFaultsRaw", stickyFaults.rawBits);
+      entry.addProperty("warningsRaw", warnings.rawBits);
+      entry.addProperty("stickyWarningsRaw", stickyWarnings.rawBits);
+      entry.addProperty("lastError", String.valueOf(lastError));
+      entry.addProperty("reset", resetFlag);
+      entry.addProperty("busV", busVoltage);
+      entry.addProperty("currentA", outputCurrent);
+      entry.addProperty("tempC", motorTemp);
+      devices.add(entry);
+    }
+
+    for (int i = 0; i < krakens.length; i++) {
+      JsonObject entry = baseDeviceJson("KRAKEN", krakenIds[i]);
+      if (krakens[i] == null) {
+        entry.addProperty("present", false);
+        entry.addProperty("note", "not added");
+        devices.add(entry);
+        continue;
+      }
+      var faultSignal = krakens[i].getFaultField();
+      var stickySignal = krakens[i].getStickyFaultField();
+      var supplyVoltage = krakens[i].getSupplyVoltage();
+      var dutyCycle = krakens[i].getDutyCycle();
+      var supplyCurrent = krakens[i].getSupplyCurrent();
+      var deviceTemp = krakens[i].getDeviceTemp();
+      var motorVoltage = krakens[i].getMotorVoltage();
+      BaseStatusSignal.refreshAll(
+          faultSignal,
+          stickySignal,
+          supplyVoltage,
+          dutyCycle,
+          supplyCurrent,
+          deviceTemp,
+          motorVoltage);
+      int faultField = faultSignal.getValue();
+      int stickyField = stickySignal.getValue();
+      double busVoltage = supplyVoltage.getValue().in(Units.Volts);
+      double applied = dutyCycle.getValue();
+      double outputCurrent = supplyCurrent.getValue().in(Units.Amps);
+      double motorTemp = deviceTemp.getValue().in(Units.Celsius);
+      double motorVolts = motorVoltage.getValue().in(Units.Volts);
+      entry.addProperty("present", true);
+      entry.addProperty("faultsRaw", faultField);
+      entry.addProperty("stickyFaultsRaw", stickyField);
+      entry.addProperty("faultStatus", String.valueOf(faultSignal.getStatus()));
+      entry.addProperty("stickyStatus", String.valueOf(stickySignal.getStatus()));
+      entry.addProperty("busV", busVoltage);
+      entry.addProperty("applied", applied);
+      entry.addProperty("currentA", outputCurrent);
+      entry.addProperty("tempC", motorTemp);
+      entry.addProperty("motorV", motorVolts);
+      devices.add(entry);
+    }
+
+    for (int i = 0; i < falcons.length; i++) {
+      JsonObject entry = baseDeviceJson("FALCON", falconIds[i]);
+      if (falcons[i] == null) {
+        entry.addProperty("present", false);
+        entry.addProperty("note", "not added");
+        devices.add(entry);
+        continue;
+      }
+      var faultSignal = falcons[i].getFaultField();
+      var stickySignal = falcons[i].getStickyFaultField();
+      var supplyVoltage = falcons[i].getSupplyVoltage();
+      var dutyCycle = falcons[i].getDutyCycle();
+      var supplyCurrent = falcons[i].getSupplyCurrent();
+      var deviceTemp = falcons[i].getDeviceTemp();
+      var motorVoltage = falcons[i].getMotorVoltage();
+      BaseStatusSignal.refreshAll(
+          faultSignal,
+          stickySignal,
+          supplyVoltage,
+          dutyCycle,
+          supplyCurrent,
+          deviceTemp,
+          motorVoltage);
+      int faultField = faultSignal.getValue();
+      int stickyField = stickySignal.getValue();
+      double busVoltage = supplyVoltage.getValue().in(Units.Volts);
+      double applied = dutyCycle.getValue();
+      double outputCurrent = supplyCurrent.getValue().in(Units.Amps);
+      double motorTemp = deviceTemp.getValue().in(Units.Celsius);
+      double motorVolts = motorVoltage.getValue().in(Units.Volts);
+      entry.addProperty("present", true);
+      entry.addProperty("faultsRaw", faultField);
+      entry.addProperty("stickyFaultsRaw", stickyField);
+      entry.addProperty("faultStatus", String.valueOf(faultSignal.getStatus()));
+      entry.addProperty("stickyStatus", String.valueOf(stickySignal.getStatus()));
+      entry.addProperty("busV", busVoltage);
+      entry.addProperty("applied", applied);
+      entry.addProperty("currentA", outputCurrent);
+      entry.addProperty("tempC", motorTemp);
+      entry.addProperty("motorV", motorVolts);
+      devices.add(entry);
+    }
+
+    for (int i = 0; i < cancoders.length; i++) {
+      JsonObject entry = baseDeviceJson("CANCoder", cancoderIds[i]);
+      if (cancoders[i] == null) {
+        entry.addProperty("present", false);
+        entry.addProperty("note", "not added");
+        devices.add(entry);
+        continue;
+      }
+      var absolute = cancoders[i].getAbsolutePosition();
+      BaseStatusSignal.refreshAll(absolute);
+      double rotations = absolute.getValue().in(Units.Rotations);
+      double degrees = rotations * 360.0;
+      entry.addProperty("present", true);
+      entry.addProperty("absDeg", degrees);
+      entry.addProperty("lastError", String.valueOf(absolute.getStatus()));
+      devices.add(entry);
+    }
+
+    if (BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
+      JsonObject entry = baseDeviceJson("roboRIO", BringupUtil.ROBORIO_CAN_ID);
+      entry.addProperty("present", true);
+      entry.addProperty("note", "virtual");
+      devices.add(entry);
+    }
+  }
+
+  private static JsonObject baseDeviceJson(String type, int id) {
+    JsonObject entry = new JsonObject();
+    entry.addProperty("type", type);
+    entry.addProperty("id", id);
+    return entry;
   }
 
   private void appendVirtualDevices(StringBuilder sb) {
@@ -940,6 +1125,20 @@ public final class BringupCore {
     return false;
   }
 }
-
-
+  private static String formatRevFaultSummary(
+      SparkBase.Faults faults,
+      SparkBase.Faults stickyFaults,
+      SparkBase.Warnings warnings,
+      SparkBase.Warnings stickyWarnings) {
+    StringBuilder sb = new StringBuilder(128);
+    sb.append(" faults=0x").append(Integer.toHexString(faults.rawBits));
+    sb.append(formatRevFaults(faults));
+    sb.append(" sticky=0x").append(Integer.toHexString(stickyFaults.rawBits));
+    sb.append(formatRevFaults(stickyFaults));
+    sb.append(" warnings=0x").append(Integer.toHexString(warnings.rawBits));
+    sb.append(formatRevWarnings(warnings));
+    sb.append(" stickyWarn=0x").append(Integer.toHexString(stickyWarnings.rawBits));
+    sb.append(formatRevWarnings(stickyWarnings));
+    return sb.toString();
+  }
 

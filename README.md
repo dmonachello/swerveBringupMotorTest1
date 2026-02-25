@@ -9,8 +9,10 @@ Use this project to:
 - Print health and CAN sniffer diagnostics.
 - Read and verify CANCoder absolute positions.
 
+This repository is almost entirely AI-created, including both code and documentation. See PROJECT_INTENT.md for details.
+
 ## Run
-Use the normal WPILib workflow to deploy and run the robot code.
+Use the normal FRC robot workflow to deploy and run the robot code.
 
 ## What This App Is For (Debugging)
 This project is a bringup and diagnostics harness. It does not fix your code bugs,
@@ -43,6 +45,8 @@ Report sections (D-pad Up):
 - CAN Bus Diagnostics summary (utilization, RX/TX errors, TX full, bus-off count, sample age)
 - PC Tool status + missing/flapping counts and “seen on wire, not local” list
 - Device Health (local API): faults/sticky faults, warnings/sticky warnings, lastErr, reset flag, voltage/current/temp
+JSON snapshot:
+- Press `Left Stick` to dump a machine-readable report to the console and `/home/lvuser/bringup_report.json`.
 
 Example report snippet (shortened):
 ```
@@ -303,7 +307,7 @@ Operational controls:
 - `Back`: toggle CAN profile
 - `Left Y`: NEO/FLEX speed
 - `Right Y`: KRAKEN/FALCON speed
-- `X`: nudge motors (0.2 for 0.5s)
+- `Left Stick`: nudge motors (0.2 for 0.5s)
 
 Status printouts:
 - `B`: print state
@@ -313,6 +317,7 @@ Status printouts:
 - `D-pad Down`: print NetworkTables diagnostics (RobotV2 only)
 - `D-pad Up`: print CAN diagnostics report
 - `D-pad Right`: print speed inputs
+- `X`: dump CAN report JSON (console + `/home/lvuser/bringup_report.json`)
 
 ## CAN Sniffer Bridge (CANable Pro V2)
 This project includes a CAN -> NetworkTables bridge for diagnostics.

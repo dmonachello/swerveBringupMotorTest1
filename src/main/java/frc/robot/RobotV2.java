@@ -1,6 +1,7 @@
 package frc.robot;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import edu.wpi.first.wpilibj.Filesystem;
@@ -37,6 +38,7 @@ public class RobotV2 extends TimedRobot {
   private static final int TYPE_GYRO_SENSOR = 4;
   private static final int TYPE_ENCODER = 7;
   private static final int TYPE_POWER_DISTRIBUTION_MODULE = 8;
+  private static final String REPORT_PATH = "/home/lvuser/bringup_report.json";
   private static final int TYPE_ROBOT_CONTROLLER = 1;
 
   private static final String CAN_MAP_FILE = "can_mappings.json";
@@ -54,6 +56,7 @@ public class RobotV2 extends TimedRobot {
   private boolean prevSpeedPrint = false;
   private boolean prevNudge = false;
   private boolean prevCanDiag = false;
+  private boolean prevReportDump = false;
   private boolean prevDashboardToggle = false;
   private boolean dashboardUpdatesEnabled = false;
   private final Map<String, Double> prevMsgCount = new HashMap<>();
@@ -86,6 +89,7 @@ public class RobotV2 extends TimedRobot {
     prevSpeedPrint = false;
     prevNudge = false;
     prevCanDiag = false;
+    prevReportDump = false;
     prevDashboardToggle = false;
   }
 
@@ -98,6 +102,7 @@ public class RobotV2 extends TimedRobot {
     prevSpeedPrint = false;
     prevNudge = false;
     prevCanDiag = false;
+    prevReportDump = false;
     prevDashboardToggle = false;
   }
 
@@ -167,12 +172,18 @@ public class RobotV2 extends TimedRobot {
     }
     prevSpeedPrint = speedPrintNow;
 
-    boolean nudgeNow = controller.getXButton();
+    boolean nudgeNow = controller.getLeftStickButton();
     if (nudgeNow && !prevNudge) {
       core.triggerNudge(0.2, 0.5);
       BringupPrinter.enqueue("Nudge: 0.2 for 0.5s (all motors)");
     }
     prevNudge = nudgeNow;
+
+    boolean reportDumpNow = controller.getXButton();
+    if (reportDumpNow && !prevReportDump) {
+      dumpReportJsonToConsoleAndFile();
+    }
+    prevReportDump = reportDumpNow;
 
     core.setSpeeds(neoSpeed, krakenSpeed);
   }
@@ -199,7 +210,8 @@ public class RobotV2 extends TimedRobot {
     appendLine(sb, "Left Bumper: reprint bindings");
     appendLine(sb, "D-pad Up: print CAN diagnostics report");
     appendLine(sb, "D-pad Right: print speed inputs");
-    appendLine(sb, "X: nudge motors (0.2 for 0.5s)");
+    appendLine(sb, "Left Stick: nudge motors (0.2 for 0.5s)");
+    appendLine(sb, "X: dump CAN report JSON");
     appendLine(sb, "Y: toggle dashboard/shuffleboard updates");
     appendLine(sb, "Left Y: NEO/FLEX speed, Right Y: KRAKEN/FALCON speed");
     appendLine(sb, "Deadband: " + DEADBAND);
@@ -219,7 +231,7 @@ public class RobotV2 extends TimedRobot {
       return;
     }
     lastNetworkPrintMs = nowMs;
-    BringupPrinter.enqueueTask(this::enqueueNetworkDiagnosticsReport);
+    enqueueNetworkDiagnosticsReport();
   }
 
   private void printCanDiagnosticsReport() {
@@ -228,7 +240,7 @@ public class RobotV2 extends TimedRobot {
       return;
     }
     lastCanDiagPrintMs = nowMs;
-    BringupPrinter.enqueueTask(this::enqueueCanDiagnosticsReport);
+    enqueueCanDiagnosticsReport();
   }
 
   private void applyDashboardUpdateState() {
@@ -263,6 +275,7 @@ public class RobotV2 extends TimedRobot {
   private void enqueueCanDiagnosticsReport() {
     StringBuilder sb = new StringBuilder(1024);
     appendLine(sb, "=== CAN Diagnostics Report ===");
+    appendLine(sb, buildSummaryLine());
     canHealth.appendSnapshot(sb);
     canHealth.appendReportSection(sb);
     appendPcToolSection(sb);
@@ -271,6 +284,131 @@ public class RobotV2 extends TimedRobot {
     enqueueBlockChunked(sb, 12);
   }
 
+  private void dumpReportJsonToConsoleAndFile() {
+    String json = buildReportJson();
+    BringupPrinter.enqueueChunked(wrapLongLine(json, 120), 12);
+    try {
+      java.nio.file.Files.writeString(java.nio.file.Path.of(REPORT_PATH), json);
+      BringupPrinter.enqueue("Wrote CAN report JSON to " + REPORT_PATH);
+    } catch (Exception ex) {
+      BringupPrinter.enqueue("Failed to write CAN report JSON: " + ex.getMessage());
+    }
+  }
+
+  private String buildSummaryLine() {
+    String bus = canHealth.summaryStatus();
+    String pc = buildPcSummaryStatus();
+    return "Summary: bus=" + bus + " pc=" + pc;
+  }
+
+  private String buildPcSummaryStatus() {
+    NetworkTableEntry heartbeatEntry = diagTable.getEntry("can/pc/heartbeat");
+    double heartbeat = heartbeatEntry.getDouble(Double.NaN);
+    NetworkTableEntry openEntry = diagTable.getEntry("can/pc/openOk");
+    String openOkText = formatPcBoolean(openEntry);
+    if (Double.isNaN(heartbeat) || !"YES".equals(openOkText)) {
+      return "PC_TOOL_MISSING";
+    }
+    return "OK";
+  }
+
+  private String buildReportJson() {
+    JsonObject root = new JsonObject();
+    root.addProperty("timestamp", System.currentTimeMillis() / 1000.0);
+
+    JsonObject bus = new JsonObject();
+    canHealth.appendSnapshotJson(bus);
+    root.add("bus", bus);
+
+    JsonObject pc = buildPcJson();
+    root.add("pc", pc);
+
+    JsonArray devices = new JsonArray();
+    core.appendDeviceDiagnosticsJson(devices);
+    root.add("devices", devices);
+
+    return GSON.toJson(root);
+  }
+
+  private JsonObject buildPcJson() {
+    JsonObject pc = new JsonObject();
+    long nowMs = System.currentTimeMillis();
+
+    NetworkTableEntry heartbeatEntry = diagTable.getEntry("can/pc/heartbeat");
+    double heartbeat = heartbeatEntry.getDouble(Double.NaN);
+    if (Double.isNaN(heartbeat)) {
+      pc.addProperty("heartbeatAgeSec", -1.0);
+    } else {
+      if (heartbeat != lastPcHeartbeat) {
+        lastPcHeartbeat = heartbeat;
+        lastPcHeartbeatMs = nowMs;
+      }
+      pc.addProperty("heartbeatAgeSec", (nowMs - lastPcHeartbeatMs) / 1000.0);
+    }
+
+    NetworkTableEntry openEntry = diagTable.getEntry("can/pc/openOk");
+    pc.addProperty("openOk", "YES".equals(formatPcBoolean(openEntry)));
+    pc.addProperty("framesPerSec", diagTable.getEntry("can/pc/framesPerSec").getDouble(Double.NaN));
+    pc.addProperty("framesTotal", diagTable.getEntry("can/pc/framesTotal").getDouble(Double.NaN));
+    pc.addProperty("readErrors", diagTable.getEntry("can/pc/readErrors").getDouble(Double.NaN));
+    pc.addProperty("lastFrameAgeSec", diagTable.getEntry("can/pc/lastFrameAgeSec").getDouble(Double.NaN));
+
+    JsonObject summary = buildPcDeviceSummaryJson(nowMs);
+    pc.add("deviceSummary", summary);
+    return pc;
+  }
+
+  private JsonObject buildPcDeviceSummaryJson(long nowMs) {
+    java.util.ArrayList<DeviceSpec> allSpecs = new java.util.ArrayList<>();
+    java.util.Collections.addAll(allSpecs, buildDeviceSpecs());
+    java.util.Collections.addAll(allSpecs, findUnknownDeviceSpecs());
+
+    int missingCount = 0;
+    int flappingCount = 0;
+    JsonArray seenNotLocal = new JsonArray();
+
+    for (DeviceSpec spec : allSpecs) {
+      String key = spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
+      String base = "dev/" + spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
+      String status = diagTable.getEntry(base + "/status").getString("UNKNOWN");
+      double lastSeen = diagTable.getEntry(base + "/lastSeen").getDouble(Double.NaN);
+      double ageSec = diagTable.getEntry(base + "/ageSec").getDouble(Double.NaN);
+
+      if ("MISSING".equals(status) || "NO_DATA".equals(status)) {
+        missingCount++;
+      }
+
+      String prev = pcLastStatus.get(key);
+      if (prev != null && !prev.equals(status)) {
+        int flaps = pcStatusFlaps.getOrDefault(key, 0) + 1;
+        pcStatusFlaps.put(key, flaps);
+        pcLastStatusChangeMs.put(key, nowMs);
+      }
+      pcLastStatus.put(key, status);
+
+      int flaps = pcStatusFlaps.getOrDefault(key, 0);
+      if (flaps > 0) {
+        flappingCount++;
+      }
+
+      boolean localPresent = core.isDeviceInstantiated(spec.manufacturer, spec.deviceType, spec.deviceId);
+      if (!Double.isNaN(lastSeen) && lastSeen > 0 && !localPresent) {
+        JsonObject entry = new JsonObject();
+        entry.addProperty("key", key);
+        if (!Double.isNaN(ageSec)) {
+          entry.addProperty("ageSec", ageSec);
+        }
+        seenNotLocal.add(entry);
+      }
+    }
+
+    JsonObject summary = new JsonObject();
+    summary.addProperty("missingCount", missingCount);
+    summary.addProperty("totalCount", allSpecs.size());
+    summary.addProperty("flappingCount", flappingCount);
+    summary.add("seenNotLocal", seenNotLocal);
+    return summary;
+  }
   private void appendPcToolSection(StringBuilder sb) {
     appendLine(sb, "PC Tool:");
     long nowMs = System.currentTimeMillis();
@@ -291,6 +429,12 @@ public class RobotV2 extends TimedRobot {
 
     NetworkTableEntry openEntry = diagTable.getEntry("can/pc/openOk");
     String openOkText = formatPcBoolean(openEntry);
+    boolean pcOk = !Double.isNaN(heartbeat) && "YES".equals(openOkText);
+    if (!pcOk) {
+      appendLine(sb, "  Status: PC tool not connected");
+    } else {
+      appendLine(sb, "  Status: OK");
+    }
 
     double fps = diagTable.getEntry("can/pc/framesPerSec").getDouble(Double.NaN);
     double total = diagTable.getEntry("can/pc/framesTotal").getDouble(Double.NaN);
@@ -621,9 +765,24 @@ public class RobotV2 extends TimedRobot {
     sb.append(line).append('\n');
   }
 
-  private void enqueueBlock(StringBuilder sb) {
-    BringupPrinter.enqueue(sb.toString());
+  private static String wrapLongLine(String value, int width) {
+    if (value == null) {
+      return "";
+    }
+    if (width <= 0 || value.length() <= width) {
+      return value;
+    }
+    StringBuilder sb = new StringBuilder(value.length() + (value.length() / width) + 2);
+    for (int i = 0; i < value.length(); i += width) {
+      int end = Math.min(i + width, value.length());
+      sb.append(value, i, end).append('\n');
+    }
+    return sb.toString();
   }
+
+  // private void enqueueBlock(StringBuilder sb) {
+  //   BringupPrinter.enqueue(sb.toString());
+  // }
 
   private void enqueueBlockChunked(StringBuilder sb, int maxLines) {
     BringupPrinter.enqueueChunked(sb.toString(), maxLines);
@@ -983,6 +1142,47 @@ public class RobotV2 extends TimedRobot {
       appendLine(sb, String.format("Bus off count: %d (delta %d)", lastBusOffCount, lastBusOffDelta));
       appendLine(sb, String.format("Sample age: %.2fs", ageSec));
       appendLine(sb, "===========================");
+    }
+
+    String summaryStatus() {
+      if (lastUpdateMs == 0) {
+        return "NO_DATA";
+      }
+      if (lastBusOffDelta > 0 || lastBusOffCount > 0) {
+        return "BUS_OFF";
+      }
+      if (lastTxFullDelta > 0 || lastTxFullCount > 0) {
+        return "TX_FULL";
+      }
+      if (lastRxDelta > 0 || lastTxDelta > 0) {
+        return "ERRORS";
+      }
+      if (lastUtilizationPct >= HIGH_UTILIZATION_PCT) {
+        return "HIGH_UTIL";
+      }
+      return "OK";
+    }
+
+    void appendSnapshotJson(JsonObject target) {
+      if (target == null) {
+        return;
+      }
+      if (lastUpdateMs == 0) {
+        target.addProperty("valid", false);
+        return;
+      }
+      double ageSec = (System.currentTimeMillis() - lastUpdateMs) / 1000.0;
+      target.addProperty("valid", true);
+      target.addProperty("utilizationPct", lastUtilizationPct);
+      target.addProperty("rxErrors", lastRxErrors);
+      target.addProperty("txErrors", lastTxErrors);
+      target.addProperty("rxDelta", lastRxDelta);
+      target.addProperty("txDelta", lastTxDelta);
+      target.addProperty("txFull", lastTxFullCount);
+      target.addProperty("txFullDelta", lastTxFullDelta);
+      target.addProperty("busOff", lastBusOffCount);
+      target.addProperty("busOffDelta", lastBusOffDelta);
+      target.addProperty("sampleAgeSec", ageSec);
     }
   }
 }
