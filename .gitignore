@@ -200,3 +200,5 @@ __pycache__/
 
 # Tool scratch data
 tools/save/
+# Microsoft Office temp files
+~$*.docx

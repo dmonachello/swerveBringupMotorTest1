@@ -14,6 +14,14 @@ Hard rules
 - Keep hardware configuration easy to customize: adding a team's device list/profile should be data-driven and clearly documented, not code surgery.
 - The JSON report uses `cmdDuty`, `appliedDuty`, and `motorCurrentA` (not `set`/`applied`/`current`).
 - AI diagnosis guidance lives in `AI_DIAGNOSIS.md`.
+- Documentation rules:
+  - Use short headings and clear section hierarchy.
+  - Prefer short paragraphs and bullet lists.
+  - Start layer sections with a one-line Purpose.
+  - Include concrete Examples where appropriate.
+  - Keep output schema and contracts stable and explicitly listed.
+  - Include Tradeoffs and Future Extensions sections in architecture docs.
+  - Printed docs rule: if a section or subsection would fit on one page, do not allow it to split across pages (keep heading and content together).
 
 What to do first for any task that touches the Java-Python interface
 1) Inventory NetworkTables usage:
