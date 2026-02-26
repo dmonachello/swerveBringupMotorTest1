@@ -29,15 +29,7 @@ public class RobotV2 extends TimedRobot {
           canHealth,
           NetworkTableInstance.getDefault().getTable("bringup").getSubTable("diag"));
   // Edge-detect state for buttons that should fire once per press.
-  private boolean prevDiag = false;
-  private boolean prevBindings = false;
-  private boolean prevProfileToggle = false;
-  private boolean prevSpeedPrint = false;
-  private boolean prevNudge = false;
-  private boolean prevCanDiag = false;
-  private boolean prevReportDump = false;
-  private boolean prevDashboardToggle = false;
-  private boolean prevClearFaults = false;
+  private final EdgeTrigger edge = new EdgeTrigger();
   // Disable dashboard chatter by default to reduce console lag.
   private boolean dashboardUpdatesEnabled = false;
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
@@ -58,15 +50,7 @@ public class RobotV2 extends TimedRobot {
     // Reset state whenever teleop is entered.
     core.resetState();
     diagnostics.resetState();
-    prevDiag = false;
-    prevBindings = false;
-    prevProfileToggle = false;
-    prevSpeedPrint = false;
-    prevNudge = false;
-    prevCanDiag = false;
-    prevReportDump = false;
-    prevDashboardToggle = false;
-    prevClearFaults = false;
+    edge.reset();
   }
 
   @Override
@@ -74,14 +58,7 @@ public class RobotV2 extends TimedRobot {
     // Keep behavior symmetric in disabled and teleop to avoid stale state.
     core.resetState();
     diagnostics.resetState();
-    prevDiag = false;
-    prevBindings = false;
-    prevProfileToggle = false;
-    prevSpeedPrint = false;
-    prevNudge = false;
-    prevCanDiag = false;
-    prevReportDump = false;
-    prevDashboardToggle = false;
+    edge.reset();
   }
 
   @Override
@@ -102,8 +79,7 @@ public class RobotV2 extends TimedRobot {
     core.handleCANCoder(controller.getRightBumperButton());
 
     // --- Profile switching ---
-    boolean profileToggleNow = controller.getBackButton();
-    if (profileToggleNow && !prevProfileToggle) {
+    if (edge.pressed("profileToggle", controller.getBackButton())) {
       BringupUtil.toggleCanProfile();
       core.resetState();
       core = new BringupCore();
@@ -112,76 +88,59 @@ public class RobotV2 extends TimedRobot {
       validateCanIds();
       printStartupInfo();
     }
-    prevProfileToggle = profileToggleNow;
 
     // --- Diagnostics / reporting ---
     // D-pad Down: print NetworkTables diagnostics.
-    boolean diagNow = controller.getPOV() == 180;
-    if (diagNow && !prevDiag) {
+    if (edge.pressed("ntDiag", controller.getPOV() == 180)) {
       diagnostics.printNetworkDiagnostics();
     }
-    prevDiag = diagNow;
 
-    boolean bindingsNow = controller.getLeftBumperButton();
-    if (bindingsNow && !prevBindings) {
+    if (edge.pressed("bindings", controller.getLeftBumperButton())) {
       printStartupInfo();
     }
-    prevBindings = bindingsNow;
 
     // D-pad Up: print CAN diagnostics report (local + optional PC tool data).
-    boolean canDiagNow = controller.getPOV() == 0;
-    if (canDiagNow && !prevCanDiag) {
+    if (edge.pressed("canDiag", controller.getPOV() == 0)) {
       diagnostics.printCanDiagnosticsReport();
     }
-    prevCanDiag = canDiagNow;
 
     // Toggle dashboard updates to reduce periodic spam.
-    boolean dashboardToggleNow = controller.getYButton();
-    if (dashboardToggleNow && !prevDashboardToggle) {
+    if (edge.pressed("dashboardToggle", controller.getYButton())) {
       dashboardUpdatesEnabled = !dashboardUpdatesEnabled;
       applyDashboardUpdateState();
       BringupPrinter.enqueue(
           "Dashboard/Shuffleboard updates: " + (dashboardUpdatesEnabled ? "ON" : "OFF"));
     }
-    prevDashboardToggle = dashboardToggleNow;
 
     // --- Analog input to motor outputs ---
     double neoSpeed = BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
     double krakenSpeed = BringupUtil.deadband(-controller.getRightY(), DEADBAND);
 
     // D-pad Right: print current stick inputs.
-    boolean speedPrintNow = controller.getPOV() == 90;
-    if (speedPrintNow && !prevSpeedPrint) {
+    if (edge.pressed("speedPrint", controller.getPOV() == 90)) {
       BringupPrinter.enqueue(
           "Inputs: leftY=" + String.format("%.2f", neoSpeed) +
           " rightY=" + String.format("%.2f", krakenSpeed) +
           " (NEO/FLEX=" + String.format("%.2f", neoSpeed) +
           ", KRAKEN/FALCON=" + String.format("%.2f", krakenSpeed) + ")");
     }
-    prevSpeedPrint = speedPrintNow;
 
     // Left Stick: short, timed nudge for all motors.
-    boolean nudgeNow = controller.getLeftStickButton();
-    if (nudgeNow && !prevNudge) {
+    if (edge.pressed("nudge", controller.getLeftStickButton())) {
       core.triggerNudge(0.2, 0.5);
       BringupPrinter.enqueue("Nudge: 0.2 for 0.5s (all motors)");
     }
-    prevNudge = nudgeNow;
 
     // X: dump JSON snapshot to console + file for offline analysis.
-    boolean reportDumpNow = controller.getXButton();
-    if (reportDumpNow && !prevReportDump) {
+    if (edge.pressed("reportDump", controller.getXButton())) {
       diagnostics.dumpReportJsonToConsoleAndFile();
     }
-    prevReportDump = reportDumpNow;
 
     // Right Stick: clear faults (current + sticky) on all devices.
-    boolean clearFaultsNow = controller.getRightStickButton();
-    if (clearFaultsNow && !prevClearFaults) {
+    if (edge.pressed("clearFaults", controller.getRightStickButton())) {
       core.clearAllFaults();
       BringupPrinter.enqueue("Cleared device faults (current + sticky).");
     }
-    prevClearFaults = clearFaultsNow;
 
     // Apply speeds after any nudge overrides.
     core.setSpeeds(neoSpeed, krakenSpeed);

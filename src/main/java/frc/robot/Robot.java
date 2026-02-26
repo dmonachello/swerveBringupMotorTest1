@@ -17,11 +17,7 @@ public class Robot extends TimedRobot {
   // Local bringup behaviors for device creation and health.
   private BringupCore core = new BringupCore();
   // Edge-detect state for one-shot actions.
-  private boolean prevBindings = false;
-  private boolean prevProfileToggle = false;
-  private boolean prevSpeedPrint = false;
-  private boolean prevNudge = false;
-  private boolean prevClearFaults = false;
+  private final EdgeTrigger edge = new EdgeTrigger();
 
   @Override
   public void robotInit() {
@@ -35,22 +31,14 @@ public class Robot extends TimedRobot {
   public void teleopInit() {
     // Reset local state whenever teleop starts.
     core.resetState();
-    prevBindings = false;
-    prevProfileToggle = false;
-    prevSpeedPrint = false;
-    prevNudge = false;
-    prevClearFaults = false;
+    edge.reset();
   }
 
   @Override
   public void disabledInit() {
     // Keep behavior symmetric in disabled and teleop to avoid stale state.
     core.resetState();
-    prevBindings = false;
-    prevProfileToggle = false;
-    prevSpeedPrint = false;
-    prevNudge = false;
-    prevClearFaults = false;
+    edge.reset();
   }
 
   @Override
@@ -63,52 +51,42 @@ public class Robot extends TimedRobot {
     core.handleHealth(controller.getXButton());
 
     // --- Profile switching ---
-    boolean profileToggleNow = controller.getBackButton();
-    if (profileToggleNow && !prevProfileToggle) {
+    if (edge.pressed("profileToggle", controller.getBackButton())) {
       BringupUtil.toggleCanProfile();
       core.resetState();
       core = new BringupCore();
       validateCanIds();
       printStartupInfo();
     }
-    prevProfileToggle = profileToggleNow;
 
     // --- Reprint bindings ---
-    boolean bindingsNow = controller.getLeftBumperButton();
-    if (bindingsNow && !prevBindings) {
+    if (edge.pressed("bindings", controller.getLeftBumperButton())) {
       printStartupInfo();
     }
-    prevBindings = bindingsNow;
 
     // --- Analog input to motor outputs ---
     double neoSpeed = BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
     double krakenSpeed = BringupUtil.deadband(-controller.getRightY(), DEADBAND);
 
     // --- Print current stick inputs on demand ---
-    boolean speedPrintNow = controller.getRightStickButton();
-    if (speedPrintNow && !prevSpeedPrint) {
+    if (edge.pressed("speedPrint", controller.getRightStickButton())) {
       BringupPrinter.enqueue(
           "Inputs: leftY=" + String.format("%.2f", neoSpeed) +
           " rightY=" + String.format("%.2f", krakenSpeed) +
           " (NEO/FLEX=" + String.format("%.2f", neoSpeed) +
           ", KRAKEN/FALCON=" + String.format("%.2f", krakenSpeed) + ")");
     }
-    prevSpeedPrint = speedPrintNow;
 
     // --- Timed nudge for all motors ---
-    boolean nudgeNow = controller.getLeftStickButton();
-    if (nudgeNow && !prevNudge) {
+    if (edge.pressed("nudge", controller.getLeftStickButton())) {
       core.triggerNudge(0.2, 0.5);
       BringupPrinter.enqueue("Nudge: 0.2 for 0.5s (all motors)");
     }
-    prevNudge = nudgeNow;
 
-    boolean clearFaultsNow = controller.getRightBumperButton();
-    if (clearFaultsNow && !prevClearFaults) {
+    if (edge.pressed("clearFaults", controller.getRightBumperButton())) {
       core.clearAllFaults();
       BringupPrinter.enqueue("Cleared device faults (current + sticky).");
     }
-    prevClearFaults = clearFaultsNow;
 
     // Apply speeds after any nudge overrides.
     core.setSpeeds(neoSpeed, krakenSpeed);
