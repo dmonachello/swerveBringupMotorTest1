@@ -27,6 +27,7 @@ public final class DeviceSnapshot {
   public Double cmdDuty;
   public Double motorV;
   public Double absDeg;
+  public boolean follower = false;
 
   public String label = "";
   public String model = "";

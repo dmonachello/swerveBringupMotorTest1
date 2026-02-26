@@ -11,7 +11,7 @@ Hard rules
 - NetworkTables paths are an API contract. If any key path changes, update both sides in the same change and keep backward compatibility for at least one iteration.
 - Windows is the primary host for the Python tool (Driver Station laptop). Avoid Linux-only assumptions (SocketCAN, can0, etc) unless explicitly requested.
 - Prefer small, reversible diffs. No sweeping refactors unless asked.
-- Keep hardware configuration easy to customize: adding a team’s device list/profile should be data-driven and clearly documented, not code surgery.
+- Keep hardware configuration easy to customize: adding a team's device list/profile should be data-driven and clearly documented, not code surgery.
 - The JSON report uses `cmdDuty`, `appliedDuty`, and `motorCurrentA` (not `set`/`applied`/`current`).
 - AI diagnosis guidance lives in `AI_DIAGNOSIS.md`.
 
@@ -115,3 +115,4 @@ Stage 4: Hypothesis decoders
 Stage 5: Publish insights
 - Publish the inventory and key findings to NetworkTables under bringup/diag/can/... without breaking existing keys.
 - Java consumption is optional and must fail soft if the publisher is absent.
+

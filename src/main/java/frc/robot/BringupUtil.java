@@ -582,6 +582,10 @@ public final class BringupUtil {
     return labelForIndex(FALCON_LABELS, FALCON_CAN_IDS, index, "FALCON");
   }
 
+  public static String getCANCoderLabel(int index) {
+    return labelForIndex(CANCODER_LABELS, CANCODER_CAN_IDS, index, "CANCoder");
+  }
+
   public static String getCandleLabel(int index) {
     return labelForIndex(CANDLE_LABELS, CANDLE_CAN_IDS, index, "CANdle");
   }
@@ -758,11 +762,11 @@ public final class BringupUtil {
     List<MotorSpec> motors = Collections.emptyList();
   }
 
-  static final class MotorSpec {
-    String model;
-    double nominalVoltage;
-    double freeCurrentA;
-    double stallCurrentA;
-    String source;
+  public static final class MotorSpec {
+    public String model;
+    public double nominalVoltage;
+    public double freeCurrentA;
+    public double stallCurrentA;
+    public String source;
   }
 }

@@ -41,6 +41,7 @@ public final class RevSparkFlexReader {
     snap.motorCurrentA = device.getOutputCurrent();
     snap.tempC = device.getMotorTemperature();
     snap.cmdDuty = device.get();
+    snap.follower = device.isFollower();
     return snap;
   }
 }

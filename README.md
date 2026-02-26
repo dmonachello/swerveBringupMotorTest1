@@ -5,9 +5,10 @@ Bringup and diagnostics project for swerve motors and other CAN devices.
 ## Purpose
 Use this project to:
 - Add motors incrementally or all at once.
-- Command NEO, FLEX/VORTEX, KRAKEN, and FALCON motors from an Xbox controller.
+- Command NEO, NEO 550, FLEX/VORTEX, KRAKEN, and FALCON motors from an Xbox controller.
 - Print health and CAN sniffer diagnostics.
 - Read and verify CANCoder absolute positions.
+- Confirm CANdle (LED controller) presence.
 
 This repository is almost entirely AI-created, including both code and documentation. See PROJECT_INTENT.md for details.
 
@@ -18,6 +19,8 @@ Use the normal FRC robot workflow to deploy and run the robot code.
 This project is a bringup and diagnostics harness. It does not fix your code bugs,
 but it does give you fast visibility into hardware and CAN bus behavior so you can
 isolate issues quickly.
+
+## Architecture\nSee ARCHITECTURE.md for the full layered design and interfaces.\n\nSee `ARCHITECTURE.md` for the layered design (device → manufacturer → testing) and how to add new hardware cleanly.
 
 What it gives you:
 - Controlled motor bringup (add one or all, known inputs).
@@ -129,7 +132,7 @@ Use these repeatable procedures to isolate issues quickly. Keep local (roboRIO) 
    - `cmdDuty` and `appliedDuty` match your command.
    - `motorCurrentA` is > 0 when the motor should move.
 4. If `appliedDuty > 0` but `motorCurrentA = 0`, suspect wiring or motor output terminals.
-5. If `set = 0`, inputs are not getting through (deadband, controller, or mode).
+5. If `cmdDuty = 0`, inputs are not getting through (deadband, controller, or mode).
 ### Procedure B: Missing Device on CAN
 1. Run the PC tool with `--publish-unknown`.
 2. Press `D-pad Down` and check the device row:
@@ -176,7 +179,7 @@ A: The PC tool isn't receiving frames for that ID (wiring/ID mismatch/terminatio
 **Q: How do I see message rate (fps) per device?**  
 A: Press `D-pad Down` twice a second or two apart. The `fps` column is computed from `msgCount` deltas between prints.
 **Q: How do I add a new motor/controller type to a profile?**  
-A: Edit `src/main/deploy/bringup_profiles.json` and add entries under `neos`, `flexes`, `krakens`, `falcons`, `cancoders`, `pdh`, `pdp`, `pigeon`, or `roborio`, then redeploy.
+A: Edit `src/main/deploy/bringup_profiles.json` and add entries under `neos`, `neo550s`, `flexes`, `krakens`, `falcons`, `cancoders`, `candles`, `pdh`, `pdp`, `pigeon`, or `roborio`, then redeploy.
 **Q: What do the `ageSec` and `msgCount` fields mean?**  
 A: `ageSec` is seconds since the last frame seen for that device. `msgCount` is total frames seen for that device.
 **Q: Why is one device's fps higher than another's?**  
@@ -228,7 +231,7 @@ Bringup hardware profiles are defined in `src/main/deploy/bringup_profiles.json`
 Hardware profile schema (single source of truth):
 - This JSON is the shared, data-driven hardware configuration used by both robot code and the PC tool.
 - Each profile can include these sections:
-- `neos`, `flexes`, `krakens`, `falcons`, `cancoders` as arrays of `{ "label": "...", "id": <can_id> }`.
+- `neos`, `neo550s`, `flexes`, `krakens`, `falcons`, `cancoders`, `candles` as arrays of `{ "label": "...", "id": <can_id> }`.
 - `pdh`, `pigeon`, `roborio` as single objects `{ "label": "...", "id": <can_id> }`.
 - Omit any section you don't use.
 Optional per-device fields:
@@ -238,7 +241,7 @@ Optional per-device fields:
 ```
 If omitted, the app infers the motor model from the label (e.g., `NEO`, `VORTEX`, `KRAKEN`, `FALCON`).
 JSON guide (specific to this app):
-- Lists use square brackets `[]` and are required for motor/encoder groups (`neos`, `flexes`, `krakens`, `falcons`, `cancoders`).
+- Lists use square brackets `[]` and are required for motor/encoder groups (`neos`, `neo550s`, `flexes`, `krakens`, `falcons`, `cancoders`, `candles`).
 - Single devices use curly braces `{}` for `pdh`, `pigeon`, and `roborio`.
 - Every device entry must include both `"label"` and `"id"`.
 - If you have only one device in a list, it still must be wrapped in `[]`.
@@ -265,7 +268,7 @@ Step-by-step: Add your hardware
 5. Deploy to the roboRIO.
 6. Use `Back` to cycle profiles and verify the device list is correct.
 Supported profile sections include:
-- `neos`, `flexes`, `krakens`, `falcons`, `cancoders`
+- `neos`, `neo550s`, `flexes`, `krakens`, `falcons`, `cancoders`, `candles`
 - `pdh`, `pdp`, `pigeon`, `roborio`
 Manufacturer/type display names are loaded from `src/main/deploy/can_mappings.json`.
 
@@ -301,15 +304,15 @@ Status printouts:
 This project includes a CAN -> NetworkTables bridge for diagnostics.
 ### Hardware Notes (CANable Pro V2)
 - The CANable Pro is an isolated USB-to-CAN adapter with additional ESD protection and a bootloader button for firmware updates.
-- It includes a termination jumper and uses a 3‑pin terminal for CANH/CANL/GND; it supports CAN 2.0 A/B up to 1 Mbit/s.
+- It includes a termination jumper and uses a 3-pin terminal for CANH/CANL/GND; it supports CAN 2.0 A/B up to 1 Mbit/s.
 ### Firmware / Driver Options
-CANable devices ship with **slcan** firmware by default (serial‑line CAN). This enumerates as a standard serial device on Windows, macOS, and Linux.
-There is an alternative **candlelight** firmware that exposes a native CAN interface using the `gs_usb` protocol (no `slcand` on Linux). It provides higher performance by bypassing the serial‑line path and is the recommended option for Linux SocketCAN workflows.
-On Windows, candlelight presents as a generic USB device; Cangaroo is a common viewer for candlelight, while the stock slcan firmware works with cantact‑app.
-### Possible Project Improvements (Non‑Breaking)
-These are additive ideas to support alternate drivers without changing current Windows‑first behavior:
+CANable devices ship with **slcan** firmware by default (serial-line CAN). This enumerates as a standard serial device on Windows, macOS, and Linux.
+There is an alternative **candlelight** firmware that exposes a native CAN interface using the `gs_usb` protocol (no `slcand` on Linux). It provides higher performance by bypassing the serial-line path and is the recommended option for Linux SocketCAN workflows.
+On Windows, candlelight presents as a generic USB device; Cangaroo is a common viewer for candlelight, while the stock slcan firmware works with cantact-app.
+### Possible Project Improvements (Non-Breaking)
+These are additive ideas to support alternate drivers without changing current Windows-first behavior:
 - Add a `--interface` preset for `gs_usb` (candlelight) and `socketcan` (Linux) alongside today's `slcan`.
-- Provide a short OS‑specific quick‑start table (Windows slcan vs Linux candlelight).
+- Provide a short OS-specific quick-start table (Windows slcan vs Linux candlelight).
 - Add a "firmware mode" note to the tool output (`slcan` vs `candlelight`) to reduce confusion in pits.
 - Add a small troubleshooting note when `openOk=NO` that suggests checking firmware mode/driver.
 Install:
@@ -428,4 +431,7 @@ General workflow:
 4. If you add CAN sniffer data, update `tools/can_nt_bridge.py` and
    `tools/README_CAN_NT.md`.
 5. Update this `README.md` with the new behavior and bindings.
+
+
+
 
