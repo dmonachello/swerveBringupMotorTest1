@@ -2,15 +2,15 @@ package frc.robot;
 
 // Shared text formatting helpers for console reports.
 // Keeps report formatting consistent across reporters.
-final class ReportTextUtil {
+public final class ReportTextUtil {
   private ReportTextUtil() {}
 
-  static void appendLine(StringBuilder sb, String line) {
+  public static void appendLine(StringBuilder sb, String line) {
     // Centralized line append to keep formatting uniform.
     sb.append(line).append('\n');
   }
 
-  static void appendWrappedHeaders(
+  public static void appendWrappedHeaders(
       StringBuilder sb,
       String[] headerShort,
       String[] headerLong,
@@ -36,7 +36,7 @@ final class ReportTextUtil {
     appendLine(sb, "-".repeat(maxLineWidth));
   }
 
-  static void appendWrappedRow(
+  public static void appendWrappedRow(
       StringBuilder sb,
       String[] values,
       int idWidth,
@@ -77,7 +77,7 @@ final class ReportTextUtil {
     }
   }
 
-  static String wrapLongLine(String value, int width) {
+  public static String wrapLongLine(String value, int width) {
     // Wrap a single long line (like JSON) for console-friendly output.
     if (value == null) {
       return "";

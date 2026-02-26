@@ -21,6 +21,7 @@ public class Robot extends TimedRobot {
   private boolean prevProfileToggle = false;
   private boolean prevSpeedPrint = false;
   private boolean prevNudge = false;
+  private boolean prevClearFaults = false;
 
   @Override
   public void robotInit() {
@@ -38,6 +39,7 @@ public class Robot extends TimedRobot {
     prevProfileToggle = false;
     prevSpeedPrint = false;
     prevNudge = false;
+    prevClearFaults = false;
   }
 
   @Override
@@ -48,6 +50,7 @@ public class Robot extends TimedRobot {
     prevProfileToggle = false;
     prevSpeedPrint = false;
     prevNudge = false;
+    prevClearFaults = false;
   }
 
   @Override
@@ -100,6 +103,13 @@ public class Robot extends TimedRobot {
     }
     prevNudge = nudgeNow;
 
+    boolean clearFaultsNow = controller.getRightBumperButton();
+    if (clearFaultsNow && !prevClearFaults) {
+      core.clearAllFaults();
+      BringupPrinter.enqueue("Cleared device faults (current + sticky).");
+    }
+    prevClearFaults = clearFaultsNow;
+
     // Apply speeds after any nudge overrides.
     core.setSpeeds(neoSpeed, krakenSpeed);
   }
@@ -118,12 +128,14 @@ public class Robot extends TimedRobot {
     appendLine(sb, "X: print health status");
     appendLine(sb, "Back: toggle CAN profile");
     appendLine(sb, "Left Bumper: reprint bindings");
+    appendLine(sb, "Right Bumper: clear device faults");
     appendLine(sb, "Right Stick: print speed inputs");
     appendLine(sb, "Left Stick: nudge motors (0.2 for 0.5s)");
     appendLine(sb, "Left Y: NEO/FLEX speed, Right Y: KRAKEN/FALCON speed");
     appendLine(sb, "Deadband: " + DEADBAND);
     appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
     appendLine(sb, "NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
+    appendLine(sb, "NEO 550 CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO550_CAN_IDS));
     appendLine(sb, "FLEX CAN IDs: " + BringupUtil.joinIds(BringupUtil.FLEX_CAN_IDS));
     appendLine(sb, "KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
     appendLine(sb, "FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
@@ -143,6 +155,8 @@ public class Robot extends TimedRobot {
 
     labels.add("NEO");
     groups.add(BringupUtil.NEO_CAN_IDS);
+    labels.add("NEO 550");
+    groups.add(BringupUtil.NEO550_CAN_IDS);
     labels.add("FLEX");
     groups.add(BringupUtil.FLEX_CAN_IDS);
     labels.add("KRAKEN");
@@ -166,4 +180,3 @@ public class Robot extends TimedRobot {
   }
   // Shared behavior moved to BringupCore.
 }
-

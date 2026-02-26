@@ -58,6 +58,13 @@ def _profile_devices(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
         device_id = int(entry.get("id"))
         devices.append(_device(label, 5, 2, device_id, "neos"))
 
+    for entry in raw.get("neo550s", []) or []:
+        if not isinstance(entry, dict) or "id" not in entry:
+            continue
+        label = entry.get("label") or f"NEO 550 {entry.get('id')}"
+        device_id = int(entry.get("id"))
+        devices.append(_device(label, 5, 2, device_id, "neo550s"))
+
     for entry in raw.get("flexes", []) or []:
         if not isinstance(entry, dict) or "id" not in entry:
             continue
@@ -85,6 +92,13 @@ def _profile_devices(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
         label = entry.get("label") or f"CANCoder {entry.get('id')}"
         device_id = int(entry.get("id"))
         devices.append(_device(label, 4, 7, device_id, "cancoders"))
+
+    for entry in raw.get("candles", []) or []:
+        if not isinstance(entry, dict) or "id" not in entry:
+            continue
+        label = entry.get("label") or f"CANdle {entry.get('id')}"
+        device_id = int(entry.get("id"))
+        devices.append(_device(label, 4, 10, device_id, "candles"))
 
     pdh = raw.get("pdh")
     if isinstance(pdh, dict) and "id" in pdh:

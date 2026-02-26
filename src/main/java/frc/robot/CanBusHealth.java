@@ -2,6 +2,7 @@ package frc.robot;
 
 import com.google.gson.JsonObject;
 import edu.wpi.first.wpilibj.RobotController;
+import frc.robot.diag.snapshots.BusSnapshot;
 
 // Samples and summarizes roboRIO CAN controller health.
 // This is robot-local data (not PC sniffer data).
@@ -144,5 +145,25 @@ final class CanBusHealth {
     target.addProperty("busOff", lastBusOffCount);
     target.addProperty("busOffDelta", lastBusOffDelta);
     target.addProperty("sampleAgeSec", ageSec);
+  }
+
+  BusSnapshot buildSnapshot() {
+    BusSnapshot snap = new BusSnapshot();
+    if (lastUpdateMs == 0) {
+      snap.valid = false;
+      return snap;
+    }
+    snap.valid = true;
+    snap.utilizationPct = lastUtilizationPct;
+    snap.rxErrors = lastRxErrors;
+    snap.txErrors = lastTxErrors;
+    snap.rxDelta = lastRxDelta;
+    snap.txDelta = lastTxDelta;
+    snap.txFull = lastTxFullCount;
+    snap.txFullDelta = lastTxFullDelta;
+    snap.busOff = lastBusOffCount;
+    snap.busOffDelta = lastBusOffDelta;
+    snap.sampleAgeSec = (System.currentTimeMillis() - lastUpdateMs) / 1000.0;
+    return snap;
   }
 }

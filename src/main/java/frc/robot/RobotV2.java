@@ -37,6 +37,7 @@ public class RobotV2 extends TimedRobot {
   private boolean prevCanDiag = false;
   private boolean prevReportDump = false;
   private boolean prevDashboardToggle = false;
+  private boolean prevClearFaults = false;
   // Disable dashboard chatter by default to reduce console lag.
   private boolean dashboardUpdatesEnabled = false;
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
@@ -65,6 +66,7 @@ public class RobotV2 extends TimedRobot {
     prevCanDiag = false;
     prevReportDump = false;
     prevDashboardToggle = false;
+    prevClearFaults = false;
   }
 
   @Override
@@ -173,6 +175,14 @@ public class RobotV2 extends TimedRobot {
     }
     prevReportDump = reportDumpNow;
 
+    // Right Stick: clear faults (current + sticky) on all devices.
+    boolean clearFaultsNow = controller.getRightStickButton();
+    if (clearFaultsNow && !prevClearFaults) {
+      core.clearAllFaults();
+      BringupPrinter.enqueue("Cleared device faults (current + sticky).");
+    }
+    prevClearFaults = clearFaultsNow;
+
     // Apply speeds after any nudge overrides.
     core.setSpeeds(neoSpeed, krakenSpeed);
   }
@@ -201,6 +211,7 @@ public class RobotV2 extends TimedRobot {
     ReportTextUtil.appendLine(sb, "D-pad Up: print CAN diagnostics report");
     ReportTextUtil.appendLine(sb, "D-pad Right: print speed inputs");
     ReportTextUtil.appendLine(sb, "Left Stick: nudge motors (0.2 for 0.5s)");
+    ReportTextUtil.appendLine(sb, "Right Stick: clear device faults");
     ReportTextUtil.appendLine(sb, "X: dump CAN report JSON");
     ReportTextUtil.appendLine(sb, "Y: toggle dashboard/shuffleboard updates");
     ReportTextUtil.appendLine(sb, "Left Y: NEO/FLEX speed, Right Y: KRAKEN/FALCON speed");
@@ -208,6 +219,7 @@ public class RobotV2 extends TimedRobot {
     ReportTextUtil.appendLine(sb, "Dashboard updates: " + (dashboardUpdatesEnabled ? "ON" : "OFF"));
     ReportTextUtil.appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
     ReportTextUtil.appendLine(sb, "NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
+    ReportTextUtil.appendLine(sb, "NEO 550 CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO550_CAN_IDS));
     ReportTextUtil.appendLine(sb, "FLEX CAN IDs: " + BringupUtil.joinIds(BringupUtil.FLEX_CAN_IDS));
     ReportTextUtil.appendLine(sb, "KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
     ReportTextUtil.appendLine(sb, "FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
@@ -215,7 +227,7 @@ public class RobotV2 extends TimedRobot {
     BringupPrinter.enqueueChunked(sb.toString(), 12);
   }
 
-  @SuppressWarnings("removal")
+  //@SuppressWarnings("removal")
   private void applyDashboardUpdateState() {
     // WPILib deprecated setNetworkTablesFlushEnabled; we keep it for our version.
     setNetworkTablesFlushEnabled(dashboardUpdatesEnabled);
@@ -234,6 +246,8 @@ public class RobotV2 extends TimedRobot {
 
     labels.add("NEO");
     groups.add(BringupUtil.NEO_CAN_IDS);
+    labels.add("NEO 550");
+    groups.add(BringupUtil.NEO550_CAN_IDS);
     labels.add("FLEX");
     groups.add(BringupUtil.FLEX_CAN_IDS);
     labels.add("KRAKEN");

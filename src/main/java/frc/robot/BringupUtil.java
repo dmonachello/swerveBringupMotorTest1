@@ -77,16 +77,21 @@ public final class BringupUtil {
 
   // Active CAN ID arrays used by BringupCore.
   public static int[] NEO_CAN_IDS = FALLBACK_ROBOT_NEO_CAN_IDS;
+  public static int[] NEO550_CAN_IDS = new int[0];
   public static int[] FLEX_CAN_IDS = new int[0];
   public static int[] KRAKEN_CAN_IDS = FALLBACK_ROBOT_KRAKEN_CAN_IDS;
   public static int[] FALCON_CAN_IDS = new int[0];
   public static int[] CANCODER_CAN_IDS = FALLBACK_ROBOT_CANCODER_CAN_IDS;
+  public static int[] CANDLE_CAN_IDS = new int[0];
   public static String[] NEO_LABELS = new String[0];
+  public static String[] NEO550_LABELS = new String[0];
   public static String[] FLEX_LABELS = new String[0];
   public static String[] KRAKEN_LABELS = new String[0];
   public static String[] FALCON_LABELS = new String[0];
   public static String[] CANCODER_LABELS = new String[0];
+  public static String[] CANDLE_LABELS = new String[0];
   public static String[] NEO_MOTOR_MODELS = new String[0];
+  public static String[] NEO550_MOTOR_MODELS = new String[0];
   public static String[] FLEX_MOTOR_MODELS = new String[0];
   public static String[] KRAKEN_MOTOR_MODELS = new String[0];
   public static String[] FALCON_MOTOR_MODELS = new String[0];
@@ -163,16 +168,21 @@ public final class BringupUtil {
     }
 
     NEO_CAN_IDS = toIdArray(config.neos);
+    NEO550_CAN_IDS = toIdArray(config.neo550s);
     FLEX_CAN_IDS = toIdArray(config.flexes);
     KRAKEN_CAN_IDS = toIdArray(config.krakens);
     FALCON_CAN_IDS = toIdArray(config.falcons);
     CANCODER_CAN_IDS = toIdArray(config.cancoders);
+    CANDLE_CAN_IDS = toIdArray(config.candles);
     NEO_LABELS = toLabelArray(config.neos, "NEO");
+    NEO550_LABELS = toLabelArray(config.neo550s, "NEO 550");
     FLEX_LABELS = toLabelArray(config.flexes, "FLEX");
     KRAKEN_LABELS = toLabelArray(config.krakens, "KRAKEN");
     FALCON_LABELS = toLabelArray(config.falcons, "FALCON");
     CANCODER_LABELS = toLabelArray(config.cancoders, "CANCoder");
+    CANDLE_LABELS = toLabelArray(config.candles, "CANdle");
     NEO_MOTOR_MODELS = toMotorArray(config.neos);
+    NEO550_MOTOR_MODELS = toMotorArray(config.neo550s);
     FLEX_MOTOR_MODELS = toMotorArray(config.flexes);
     KRAKEN_MOTOR_MODELS = toMotorArray(config.krakens);
     FALCON_MOTOR_MODELS = toMotorArray(config.falcons);
@@ -211,6 +221,15 @@ public final class BringupUtil {
     }
   }
 
+  public static void setAllNeo550s(SparkMax[] neo550s, double speed) {
+    // Apply output to all instantiated NEO 550 SPARK MAX devices.
+    for (int i = 0; i < neo550s.length; i++) {
+      if (neo550s[i] != null) {
+        neo550s[i].set(speed);
+      }
+    }
+  }
+
   public static void setAllFlexes(SparkFlex[] flexes, double speed) {
     // Apply output to all instantiated SPARK FLEX devices.
     for (int i = 0; i < flexes.length; i++) {
@@ -240,11 +259,13 @@ public final class BringupUtil {
 
   public static void stopAll(
       SparkMax[] neos,
+      SparkMax[] neo550s,
       SparkFlex[] flexes,
       TalonFX[] krakens,
       TalonFX[] falcons) {
     // Stop every output with a zero command.
     setAllNeos(neos, 0.0);
+    setAllNeo550s(neo550s, 0.0);
     setAllFlexes(flexes, 0.0);
     setAllKrakens(krakens, 0.0);
     setAllFalcons(falcons, 0.0);
@@ -434,22 +455,28 @@ public final class BringupUtil {
     profiles.put("robot", new CanProfileConfig(
         toDevices(FALLBACK_ROBOT_NEO_CAN_IDS),
         Collections.emptyList(),
+        Collections.emptyList(),
         toDevices(FALLBACK_ROBOT_KRAKEN_CAN_IDS),
         Collections.emptyList(),
         toDevices(FALLBACK_ROBOT_CANCODER_CAN_IDS),
+        Collections.emptyList(),
         new DeviceRef(FALLBACK_PDH_CAN_ID),
         new DeviceRef(FALLBACK_PIGEON_CAN_ID),
         new DeviceRef(FALLBACK_ROBORIO_CAN_ID)));
     profiles.put("demo_club", new CanProfileConfig(
         toDevices(FALLBACK_DEMO_NEO_CAN_IDS),
         Collections.emptyList(),
+        Collections.emptyList(),
         toDevices(FALLBACK_DEMO_KRAKEN_CAN_IDS),
         Collections.emptyList(),
         toDevices(FALLBACK_DEMO_CANCODER_CAN_IDS),
+        Collections.emptyList(),
         null,
         null,
         new DeviceRef(FALLBACK_ROBORIO_CAN_ID)));
     profiles.put("demo_home", new CanProfileConfig(
+        Collections.emptyList(),
+        Collections.emptyList(),
         Collections.emptyList(),
         Collections.emptyList(),
         Collections.emptyList(),
@@ -462,16 +489,21 @@ public final class BringupUtil {
     defaultProfile = DEFAULT_PROFILE_NAME;
     activeProfile = defaultProfile;
     NEO_CAN_IDS = FALLBACK_ROBOT_NEO_CAN_IDS;
+    NEO550_CAN_IDS = new int[0];
     FLEX_CAN_IDS = new int[0];
     KRAKEN_CAN_IDS = FALLBACK_ROBOT_KRAKEN_CAN_IDS;
     FALCON_CAN_IDS = new int[0];
     CANCODER_CAN_IDS = FALLBACK_ROBOT_CANCODER_CAN_IDS;
+    CANDLE_CAN_IDS = new int[0];
     NEO_LABELS = toLabelArray(toDevices(FALLBACK_ROBOT_NEO_CAN_IDS), "NEO");
+    NEO550_LABELS = new String[0];
     FLEX_LABELS = new String[0];
     KRAKEN_LABELS = toLabelArray(toDevices(FALLBACK_ROBOT_KRAKEN_CAN_IDS), "KRAKEN");
     FALCON_LABELS = new String[0];
     CANCODER_LABELS = toLabelArray(toDevices(FALLBACK_ROBOT_CANCODER_CAN_IDS), "CANCoder");
+    CANDLE_LABELS = new String[0];
     NEO_MOTOR_MODELS = new String[NEO_LABELS.length];
+    NEO550_MOTOR_MODELS = new String[0];
     FLEX_MOTOR_MODELS = new String[0];
     KRAKEN_MOTOR_MODELS = new String[KRAKEN_LABELS.length];
     FALCON_MOTOR_MODELS = new String[0];
@@ -534,6 +566,10 @@ public final class BringupUtil {
     return labelForIndex(NEO_LABELS, NEO_CAN_IDS, index, "NEO");
   }
 
+  public static String getNeo550Label(int index) {
+    return labelForIndex(NEO550_LABELS, NEO550_CAN_IDS, index, "NEO 550");
+  }
+
   public static String getFlexLabel(int index) {
     return labelForIndex(FLEX_LABELS, FLEX_CAN_IDS, index, "FLEX");
   }
@@ -546,8 +582,16 @@ public final class BringupUtil {
     return labelForIndex(FALCON_LABELS, FALCON_CAN_IDS, index, "FALCON");
   }
 
+  public static String getCandleLabel(int index) {
+    return labelForIndex(CANDLE_LABELS, CANDLE_CAN_IDS, index, "CANdle");
+  }
+
   public static String getNeoMotorModel(int index) {
     return motorForIndex(NEO_MOTOR_MODELS, index);
+  }
+
+  public static String getNeo550MotorModel(int index) {
+    return motorForIndex(NEO550_MOTOR_MODELS, index);
   }
 
   public static String getFlexMotorModel(int index) {
@@ -665,28 +709,34 @@ public final class BringupUtil {
   // JSON profile structure: lists of device IDs by type.
   private static final class CanProfileConfig {
     List<DeviceRef> neos = Collections.emptyList();
+    List<DeviceRef> neo550s = Collections.emptyList();
     List<DeviceRef> flexes = Collections.emptyList();
     List<DeviceRef> krakens = Collections.emptyList();
     List<DeviceRef> falcons = Collections.emptyList();
     List<DeviceRef> cancoders = Collections.emptyList();
+    List<DeviceRef> candles = Collections.emptyList();
     DeviceRef pdh;
     DeviceRef pigeon;
     DeviceRef roborio;
 
     CanProfileConfig(
         List<DeviceRef> neos,
+        List<DeviceRef> neo550s,
         List<DeviceRef> flexes,
         List<DeviceRef> krakens,
         List<DeviceRef> falcons,
         List<DeviceRef> cancoders,
+        List<DeviceRef> candles,
         DeviceRef pdh,
         DeviceRef pigeon,
         DeviceRef roborio) {
       this.neos = neos != null ? neos : Collections.emptyList();
+      this.neo550s = neo550s != null ? neo550s : Collections.emptyList();
       this.flexes = flexes != null ? flexes : Collections.emptyList();
       this.krakens = krakens != null ? krakens : Collections.emptyList();
       this.falcons = falcons != null ? falcons : Collections.emptyList();
       this.cancoders = cancoders != null ? cancoders : Collections.emptyList();
+      this.candles = candles != null ? candles : Collections.emptyList();
       this.pdh = pdh;
       this.pigeon = pigeon;
       this.roborio = roborio;
@@ -716,4 +766,3 @@ public final class BringupUtil {
     String source;
   }
 }
-

@@ -70,6 +70,18 @@
       "flexes": [
         { "label": "VORTEX/FLEX 11", "id": 11 }
       ],
+      "candles": [
+        { "label": "CANdle 30", "id": 30 }
+      ],
+      "roborio": { "label": "roboRIO", "id": 0 }
+    },
+    "club_022526": {
+      "neos": [
+        { "label": "SPARKMAX/NEO 22", "id": 22 }
+      ],
+      "neo550s": [
+        { "label": "SPARKMAX/NEO550 7", "id": 7 }
+      ],
       "roborio": { "label": "roboRIO", "id": 0 }
     }
   }

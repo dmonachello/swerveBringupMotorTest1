@@ -1,13 +1,17 @@
 package frc.robot;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableEntry;
 import edu.wpi.first.networktables.NetworkTableValue;
 import edu.wpi.first.wpilibj.Filesystem;
+import frc.robot.diag.report.ReportJsonBuilder;
+import frc.robot.diag.report.ReportTextBuilder;
+import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.diag.snapshots.PcSnapshot;
+import frc.robot.diag.snapshots.SnapshotBundle;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
@@ -37,6 +41,10 @@ final class DiagnosticsReporter {
   private static final Map<Integer, String> DEVICE_TYPE_NAMES = loadDeviceTypeNames();
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
   private static final double PC_STALE_DEVICE_AGE_SEC = 2.0;
+  private static final double PC_STALE_HEARTBEAT_SEC = 1.0;
+
+  private final ReportTextBuilder textBuilder = new ReportTextBuilder();
+  private final ReportJsonBuilder jsonBuilder = new ReportJsonBuilder();
 
   // Core robot device access (local vendor APIs).
   private BringupCore core;
@@ -121,7 +129,18 @@ final class DiagnosticsReporter {
     // NetworkTables snapshot: PC sniffer device visibility and rates.
     StringBuilder sb = new StringBuilder(1024);
     ReportTextUtil.appendLine(sb, "=== Bringup NetworkTables (CAN Bus via PC Tool) ===");
-    double nowSeconds = System.currentTimeMillis() / 1000.0;
+    long nowMs = System.currentTimeMillis();
+    double nowSeconds = nowMs / 1000.0;
+
+    double heartbeatAgeSec = getPcHeartbeatAgeSec(nowMs);
+    boolean openOk = "YES".equals(formatPcBoolean(diagTable.getEntry("can/pc/openOk")));
+    boolean pcConnected = openOk && heartbeatAgeSec >= 0.0 && heartbeatAgeSec <= PC_STALE_HEARTBEAT_SEC;
+    ReportTextUtil.appendLine(
+        sb,
+        "PC CAN Sniffer: " + (pcConnected ? "CONNECTED" : "DISCONNECTED"));
+    if (heartbeatAgeSec >= 0.0) {
+      ReportTextUtil.appendLine(sb, "PC heartbeat age: " + String.format("%.3f", heartbeatAgeSec) + "s");
+    }
 
     double busErrors = diagTable.getEntry("busErrorCount").getDouble(Double.NaN);
     if (!Double.isNaN(busErrors)) {
@@ -139,282 +158,119 @@ final class DiagnosticsReporter {
 
   private void enqueueCanDiagnosticsReport() {
     // Full text report with summary and device health.
-    StringBuilder sb = new StringBuilder(1024);
-    ReportTextUtil.appendLine(sb, "=== CAN Diagnostics Report ===");
-    ReportTextUtil.appendLine(sb, buildSummaryLine());
-    canHealth.appendSnapshot(sb);
-    canHealth.appendReportSection(sb);
-    appendPcToolSection(sb);
-    core.appendDeviceDiagnosticsReport(sb);
-    ReportTextUtil.appendLine(sb, "==============================");
-    BringupPrinter.enqueueChunked(sb.toString(), 12);
-  }
-
-  private String buildSummaryLine() {
-    // Single-line summary used at the top of the report.
-    String bus = canHealth.summaryStatus();
-    String pc = buildPcSummaryStatus();
-    return "Summary: bus=" + bus + " pc=" + pc;
-  }
-
-  private String buildPcSummaryStatus() {
-    // Treat missing heartbeat/openOk as "PC tool missing".
-    NetworkTableEntry heartbeatEntry = diagTable.getEntry("can/pc/heartbeat");
-    double heartbeat = heartbeatEntry.getDouble(Double.NaN);
-    NetworkTableEntry openEntry = diagTable.getEntry("can/pc/openOk");
-    String openOkText = formatPcBoolean(openEntry);
-    if (Double.isNaN(heartbeat) || !"YES".equals(openOkText)) {
-      return "PC_TOOL_MISSING";
-    }
-    return "OK";
+    SnapshotBundle bundle = buildSnapshotBundle();
+    String report = textBuilder.buildCanDiagnosticsReport(bundle);
+    BringupPrinter.enqueueChunked(report, 12);
   }
 
   private String buildReportJson() {
     // JSON payload includes: timestamp, bus, pc, devices.
-    JsonObject root = new JsonObject();
-    root.addProperty("timestamp", System.currentTimeMillis() / 1000.0);
-
-    JsonObject bus = new JsonObject();
-    canHealth.appendSnapshotJson(bus);
-    root.add("bus", bus);
-
-    JsonObject pc = buildPcJson();
-    root.add("pc", pc);
-
-    JsonArray devices = new JsonArray();
-    core.appendDeviceDiagnosticsJson(devices);
-    root.add("devices", devices);
-
-    return GSON.toJson(root);
+    SnapshotBundle bundle = buildSnapshotBundle();
+    return jsonBuilder.buildReportJson(bundle);
   }
 
-  private JsonObject buildPcJson() {
-    // PC tool section: heartbeat age and sniffer stats.
-    JsonObject pc = new JsonObject();
-    long nowMs = System.currentTimeMillis();
-
-    NetworkTableEntry heartbeatEntry = diagTable.getEntry("can/pc/heartbeat");
-    double heartbeat = heartbeatEntry.getDouble(Double.NaN);
-    if (Double.isNaN(heartbeat)) {
-      pc.addProperty("heartbeatAgeSec", -1.0);
-    } else {
-      if (heartbeat != lastPcHeartbeat) {
-        lastPcHeartbeat = heartbeat;
-        lastPcHeartbeatMs = nowMs;
-      }
-      pc.addProperty("heartbeatAgeSec", (nowMs - lastPcHeartbeatMs) / 1000.0);
+  private SnapshotBundle buildSnapshotBundle() {
+    SnapshotBundle bundle = new SnapshotBundle();
+    bundle.timestampSec = System.currentTimeMillis() / 1000.0;
+    bundle.bus = canHealth.buildSnapshot();
+    bundle.pc = buildPcSnapshot(System.currentTimeMillis());
+    for (DeviceSnapshot snap : core.captureSnapshots()) {
+      bundle.devices.add(snap);
     }
+    return bundle;
+  }
+
+  private PcSnapshot buildPcSnapshot(long nowMs) {
+    PcSnapshot pc = new PcSnapshot();
+    pc.heartbeatAgeSec = getPcHeartbeatAgeSec(nowMs);
 
     NetworkTableEntry openEntry = diagTable.getEntry("can/pc/openOk");
-    pc.addProperty("openOk", "YES".equals(formatPcBoolean(openEntry)));
-    pc.addProperty("framesPerSec", diagTable.getEntry("can/pc/framesPerSec").getDouble(Double.NaN));
-    pc.addProperty("framesTotal", diagTable.getEntry("can/pc/framesTotal").getDouble(Double.NaN));
-    pc.addProperty("readErrors", diagTable.getEntry("can/pc/readErrors").getDouble(Double.NaN));
-    pc.addProperty("lastFrameAgeSec", diagTable.getEntry("can/pc/lastFrameAgeSec").getDouble(Double.NaN));
+    pc.openOk = "YES".equals(formatPcBoolean(openEntry));
+    pc.framesPerSec = diagTable.getEntry("can/pc/framesPerSec").getDouble(Double.NaN);
+    pc.framesTotal = diagTable.getEntry("can/pc/framesTotal").getDouble(Double.NaN);
+    pc.readErrors = diagTable.getEntry("can/pc/readErrors").getDouble(Double.NaN);
+    pc.lastFrameAgeSec = diagTable.getEntry("can/pc/lastFrameAgeSec").getDouble(Double.NaN);
 
-    JsonObject summary = buildPcDeviceSummaryJson(nowMs);
-    pc.add("deviceSummary", summary);
+    ArrayList<DeviceSpec> allSpecs = new ArrayList<>();
+    Collections.addAll(allSpecs, buildDeviceSpecs());
+    Collections.addAll(allSpecs, findUnknownDeviceSpecs());
+    pc.totalCount = allSpecs.size();
+
+    int missingCount = 0;
+    int flappingCount = 0;
+    Map<String, ArrayList<Integer>> unknownByType = collectUnknownSeenIdsByType();
+
+    for (DeviceSpec spec : allSpecs) {
+      String key = spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
+      String base = "dev/" + spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
+      String status = diagTable.getEntry(base + "/status").getString("UNKNOWN");
+      double lastSeen = diagTable.getEntry(base + "/lastSeen").getDouble(Double.NaN);
+      double ageSec = diagTable.getEntry(base + "/ageSec").getDouble(Double.NaN);
+
+      boolean missing = "MISSING".equals(status) || "NO_DATA".equals(status);
+      if (missing) {
+        missingCount++;
+      }
+
+      boolean stale = !missing && !Double.isNaN(ageSec) && ageSec > PC_STALE_DEVICE_AGE_SEC;
+      if (stale) {
+        PcSnapshot.StaleDeviceEntry entry = new PcSnapshot.StaleDeviceEntry();
+        entry.key = key;
+        entry.ageSec = ageSec;
+        pc.staleDevices.add(entry);
+      }
+
+      String prev = pcLastStatus.get(key);
+      if (prev != null && !prev.equals(status)) {
+        int flaps = pcStatusFlaps.getOrDefault(key, 0) + 1;
+        pcStatusFlaps.put(key, flaps);
+        pcLastStatusChangeMs.put(key, nowMs);
+      }
+      pcLastStatus.put(key, status);
+
+      int flaps = pcStatusFlaps.getOrDefault(key, 0);
+      if (flaps > 0) {
+        flappingCount++;
+      }
+
+      boolean localPresent = core.isDeviceInstantiated(spec.manufacturer, spec.deviceType, spec.deviceId);
+      if (!Double.isNaN(lastSeen) && lastSeen > 0 && !localPresent) {
+        PcSnapshot.SeenNotLocalEntry entry = new PcSnapshot.SeenNotLocalEntry();
+        entry.key = key;
+        if (!Double.isNaN(ageSec)) {
+          entry.ageSec = ageSec;
+        }
+        pc.seenNotLocal.add(entry);
+      }
+
+      if (missing) {
+        String typeKey = spec.manufacturer + "/" + spec.deviceType;
+        ArrayList<Integer> candidates = unknownByType.get(typeKey);
+        if (candidates != null && !candidates.isEmpty()) {
+          PcSnapshot.ProfileMismatchEntry entry = new PcSnapshot.ProfileMismatchEntry();
+          entry.expected = key;
+          entry.seenIds.addAll(candidates);
+          pc.profileMismatch.add(entry);
+        }
+      }
+    }
+
+    pc.missingCount = missingCount;
+    pc.flappingCount = flappingCount;
     return pc;
   }
 
-  private JsonObject buildPcDeviceSummaryJson(long nowMs) {
-    // Derived summary: missing count, flapping count, seen-not-local.
-    ArrayList<DeviceSpec> allSpecs = new ArrayList<>();
-    Collections.addAll(allSpecs, buildDeviceSpecs());
-    Collections.addAll(allSpecs, findUnknownDeviceSpecs());
-
-    int missingCount = 0;
-    int flappingCount = 0;
-    JsonArray seenNotLocal = new JsonArray();
-    JsonArray profileMismatch = new JsonArray();
-    JsonArray staleDevices = new JsonArray();
-    Map<String, ArrayList<Integer>> unknownByType = collectUnknownSeenIdsByType();
-
-    for (DeviceSpec spec : allSpecs) {
-      String key = spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
-      String base = "dev/" + spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
-      String status = diagTable.getEntry(base + "/status").getString("UNKNOWN");
-      double lastSeen = diagTable.getEntry(base + "/lastSeen").getDouble(Double.NaN);
-      double ageSec = diagTable.getEntry(base + "/ageSec").getDouble(Double.NaN);
-
-      boolean missing = "MISSING".equals(status) || "NO_DATA".equals(status);
-      if (missing) {
-        missingCount++;
-      }
-
-      boolean stale = !missing && !Double.isNaN(ageSec) && ageSec > PC_STALE_DEVICE_AGE_SEC;
-      if (stale) {
-        JsonObject entry = new JsonObject();
-        entry.addProperty("key", key);
-        entry.addProperty("ageSec", ageSec);
-        staleDevices.add(entry);
-      }
-
-      String prev = pcLastStatus.get(key);
-      if (prev != null && !prev.equals(status)) {
-        int flaps = pcStatusFlaps.getOrDefault(key, 0) + 1;
-        pcStatusFlaps.put(key, flaps);
-        pcLastStatusChangeMs.put(key, nowMs);
-      }
-      pcLastStatus.put(key, status);
-
-      int flaps = pcStatusFlaps.getOrDefault(key, 0);
-      if (flaps > 0) {
-        flappingCount++;
-      }
-
-      boolean localPresent = core.isDeviceInstantiated(spec.manufacturer, spec.deviceType, spec.deviceId);
-      if (!Double.isNaN(lastSeen) && lastSeen > 0 && !localPresent) {
-        JsonObject entry = new JsonObject();
-        entry.addProperty("key", key);
-        if (!Double.isNaN(ageSec)) {
-          entry.addProperty("ageSec", ageSec);
-        }
-        seenNotLocal.add(entry);
-      }
-
-      if (missing) {
-        String typeKey = spec.manufacturer + "/" + spec.deviceType;
-        ArrayList<Integer> candidates = unknownByType.get(typeKey);
-        if (candidates != null && !candidates.isEmpty()) {
-          JsonObject entry = new JsonObject();
-          entry.addProperty("expected", key);
-          JsonArray ids = new JsonArray();
-          for (int id : candidates) {
-            ids.add(id);
-          }
-          entry.add("seenIds", ids);
-          profileMismatch.add(entry);
-        }
-      }
-    }
-
-    JsonObject summary = new JsonObject();
-    summary.addProperty("missingCount", missingCount);
-    summary.addProperty("totalCount", allSpecs.size());
-    summary.addProperty("flappingCount", flappingCount);
-    summary.add("seenNotLocal", seenNotLocal);
-    summary.add("profileMismatch", profileMismatch);
-    summary.add("staleDevices", staleDevices);
-    return summary;
-  }
-
-  private void appendPcToolSection(StringBuilder sb) {
-    // Human-readable PC tool status block.
-    ReportTextUtil.appendLine(sb, "PC Tool:");
-    long nowMs = System.currentTimeMillis();
-
+  private double getPcHeartbeatAgeSec(long nowMs) {
     NetworkTableEntry heartbeatEntry = diagTable.getEntry("can/pc/heartbeat");
     double heartbeat = heartbeatEntry.getDouble(Double.NaN);
-    String heartbeatAgeText;
     if (Double.isNaN(heartbeat)) {
-      heartbeatAgeText = "STALE (no data)";
-    } else {
-      if (heartbeat != lastPcHeartbeat) {
-        lastPcHeartbeat = heartbeat;
-        lastPcHeartbeatMs = nowMs;
-      }
-      double ageSec = (nowMs - lastPcHeartbeatMs) / 1000.0;
-      heartbeatAgeText = String.format("%.2fs", ageSec);
+      return -1.0;
     }
-
-    NetworkTableEntry openEntry = diagTable.getEntry("can/pc/openOk");
-    String openOkText = formatPcBoolean(openEntry);
-    boolean pcOk = !Double.isNaN(heartbeat) && "YES".equals(openOkText);
-    if (!pcOk) {
-      ReportTextUtil.appendLine(sb, "  Status: PC tool not connected");
-    } else {
-      ReportTextUtil.appendLine(sb, "  Status: OK");
+    if (heartbeat != lastPcHeartbeat) {
+      lastPcHeartbeat = heartbeat;
+      lastPcHeartbeatMs = nowMs;
     }
-
-    double fps = diagTable.getEntry("can/pc/framesPerSec").getDouble(Double.NaN);
-    double total = diagTable.getEntry("can/pc/framesTotal").getDouble(Double.NaN);
-    double readErrors = diagTable.getEntry("can/pc/readErrors").getDouble(Double.NaN);
-    double lastFrameAge = diagTable.getEntry("can/pc/lastFrameAgeSec").getDouble(Double.NaN);
-
-    ReportTextUtil.appendLine(sb, "  Heartbeat age: " + heartbeatAgeText);
-    ReportTextUtil.appendLine(sb, "  Open OK: " + openOkText);
-    ReportTextUtil.appendLine(sb, "  Frames/sec: " + formatDoubleOrDash(fps, 1));
-    ReportTextUtil.appendLine(sb, "  Frames total: " + formatDoubleOrDash(total, 0));
-    ReportTextUtil.appendLine(sb, "  Read errors: " + formatDoubleOrDash(readErrors, 0));
-    ReportTextUtil.appendLine(sb, "  Last frame age: " + formatDoubleOrDash(lastFrameAge, 2) + "s");
-
-    appendPcDeviceSummary(sb, nowMs);
-  }
-
-  private void appendPcDeviceSummary(StringBuilder sb, long nowMs) {
-    // Derived summary for console: missing, flapping, seen-not-local.
-    ArrayList<DeviceSpec> allSpecs = new ArrayList<>();
-    Collections.addAll(allSpecs, buildDeviceSpecs());
-    Collections.addAll(allSpecs, findUnknownDeviceSpecs());
-
-    int missingCount = 0;
-    int flappingCount = 0;
-    ArrayList<String> seenNotLocal = new ArrayList<>();
-    ArrayList<String> profileMismatch = new ArrayList<>();
-    ArrayList<String> staleDevices = new ArrayList<>();
-    Map<String, ArrayList<Integer>> unknownByType = collectUnknownSeenIdsByType();
-
-    for (DeviceSpec spec : allSpecs) {
-      String key = spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
-      String base = "dev/" + spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
-      String status = diagTable.getEntry(base + "/status").getString("UNKNOWN");
-      double lastSeen = diagTable.getEntry(base + "/lastSeen").getDouble(Double.NaN);
-      double ageSec = diagTable.getEntry(base + "/ageSec").getDouble(Double.NaN);
-
-      boolean missing = "MISSING".equals(status) || "NO_DATA".equals(status);
-      if (missing) {
-        missingCount++;
-      }
-
-      boolean stale = !missing && !Double.isNaN(ageSec) && ageSec > PC_STALE_DEVICE_AGE_SEC;
-      if (stale) {
-        staleDevices.add(key + " age=" + String.format("%.2f", ageSec) + "s");
-      }
-
-      String prev = pcLastStatus.get(key);
-      if (prev != null && !prev.equals(status)) {
-        int flaps = pcStatusFlaps.getOrDefault(key, 0) + 1;
-        pcStatusFlaps.put(key, flaps);
-        pcLastStatusChangeMs.put(key, nowMs);
-      }
-      pcLastStatus.put(key, status);
-
-      int flaps = pcStatusFlaps.getOrDefault(key, 0);
-      if (flaps > 0) {
-        flappingCount++;
-      }
-
-      boolean localPresent = core.isDeviceInstantiated(spec.manufacturer, spec.deviceType, spec.deviceId);
-      if (!Double.isNaN(lastSeen) && lastSeen > 0 && !localPresent) {
-        String ageText = Double.isNaN(ageSec) ? "?" : String.format("%.2f", ageSec);
-        seenNotLocal.add(key + " age=" + ageText + "s");
-      }
-
-      if (missing) {
-        String typeKey = spec.manufacturer + "/" + spec.deviceType;
-        ArrayList<Integer> candidates = unknownByType.get(typeKey);
-        if (candidates != null && !candidates.isEmpty()) {
-          profileMismatch.add(
-              key + " missing, saw ids " + candidates + " on wire");
-        }
-      }
-    }
-
-    ReportTextUtil.appendLine(sb, "  Missing devices (PC): " + missingCount + " / " + allSpecs.size());
-    ReportTextUtil.appendLine(sb, "  Flapping devices (PC): " + flappingCount);
-    if (!seenNotLocal.isEmpty()) {
-      ReportTextUtil.appendLine(sb, "  Seen on wire, not local: " + String.join(", ", seenNotLocal));
-    }
-    if (!profileMismatch.isEmpty()) {
-      ReportTextUtil.appendLine(sb, "  Profile mismatch candidates: " + String.join("; ", profileMismatch));
-    }
-    if (!staleDevices.isEmpty()) {
-      ReportTextUtil.appendLine(
-          sb,
-          "  Stale devices (PC): " + String.join(", ", staleDevices)
-              + " (age > " + PC_STALE_DEVICE_AGE_SEC + "s)");
-    }
+    return (nowMs - lastPcHeartbeatMs) / 1000.0;
   }
 
   private void printNetworkDeviceTable(
@@ -686,11 +542,13 @@ final class DiagnosticsReporter {
   private static DeviceSpec[] buildDeviceSpecs() {
     // Build the expected device list from the active profile.
     int[] neoIds = BringupUtil.filterCanIds(BringupUtil.NEO_CAN_IDS);
+    int[] neo550Ids = BringupUtil.filterCanIds(BringupUtil.NEO550_CAN_IDS);
     int[] flexIds = BringupUtil.filterCanIds(BringupUtil.FLEX_CAN_IDS);
     int[] krakenIds = BringupUtil.filterCanIds(BringupUtil.KRAKEN_CAN_IDS);
     int[] falconIds = BringupUtil.filterCanIds(BringupUtil.FALCON_CAN_IDS);
     int[] cancoderIds = BringupUtil.filterCanIds(BringupUtil.CANCODER_CAN_IDS);
     int total = neoIds.length
+        + neo550Ids.length
         + flexIds.length
         + krakenIds.length
         + falconIds.length
@@ -708,6 +566,9 @@ final class DiagnosticsReporter {
     int i = 0;
     for (int id : neoIds) {
       specs[i++] = new DeviceSpec("NEO", REV_MANUFACTURER, TYPE_MOTOR_CONTROLLER, id);
+    }
+    for (int id : neo550Ids) {
+      specs[i++] = new DeviceSpec("NEO 550", REV_MANUFACTURER, TYPE_MOTOR_CONTROLLER, id);
     }
     for (int id : flexIds) {
       specs[i++] = new DeviceSpec("FLEX", REV_MANUFACTURER, TYPE_MOTOR_CONTROLLER, id);
@@ -751,14 +612,14 @@ final class DiagnosticsReporter {
     return "UNKNOWN";
   }
 
-  private static String formatDoubleOrDash(double value, int decimals) {
-    // Normalize invalid values for a cleaner table.
-    if (Double.isNaN(value) || Double.isInfinite(value) || value < 0.0) {
-      return "-";
-    }
-    String fmt = "%." + decimals + "f";
-    return String.format(fmt, value);
-  }
+  // private static String formatDoubleOrDash(double value, int decimals) {
+  //   // Normalize invalid values for a cleaner table.
+  //   if (Double.isNaN(value) || Double.isInfinite(value) || value < 0.0) {
+  //     return "-";
+  //   }
+  //   String fmt = "%." + decimals + "f";
+  //   return String.format(fmt, value);
+  // }
 
   private static final class DeviceSpec {
     private final String label;
