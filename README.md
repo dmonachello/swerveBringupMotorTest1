@@ -15,12 +15,29 @@ This repository is almost entirely AI-created, including both code and documenta
 ## Run
 Use the normal FRC robot workflow to deploy and run the robot code.
 
+## Documentation Index
+- `ARCHITECTURE.md` - layered design, interfaces, and snapshot flow.
+- `CAN_BACKGROUND.md` - CAN bus basics, failure modes, and troubleshooting.
+- `AI_DIAGNOSIS.md` - how to interpret `bringup_report.json` with an AI assistant.
+- `PROJECT_INTENT.md` - project goals and motivation.
+- `TESTING.md` - testing notes and expected behaviors.
+- `tools/README_CAN_NT.md` - PC CAN sniffer bridge usage and CLI reference.
+
 ## What This App Is For (Debugging)
 This project is a bringup and diagnostics harness. It does not fix your code bugs,
 but it does give you fast visibility into hardware and CAN bus behavior so you can
 isolate issues quickly.
 
-## Architecture\nSee ARCHITECTURE.md for the full layered design and interfaces.\n\nSee `ARCHITECTURE.md` for the layered design (device → manufacturer → testing) and how to add new hardware cleanly.
+## Debugging Quick Start
+Use this short checklist in the pit before diving deeper.
+1. Press `D-pad Left` for local health. Fix any faults/warnings first.
+2. Press `D-pad Up` for the CAN Diagnostics Report. If bus errors or TX full rise, fix wiring/termination before anything else.
+3. If the PC tool is running, press `D-pad Down` to verify the sniffer sees traffic and devices.
+4. Press `X` to dump `bringup_report.json` and use `AI_DIAGNOSIS.md` for a guided interpretation.
+5. Only after bus + device health look good, debug behavior/tuning.
+
+## Architecture
+See `ARCHITECTURE.md` for the layered design (device -> manufacturer -> testing) and the `ManufacturerGroup` interface.
 
 What it gives you:
 - Controlled motor bringup (add one or all, known inputs).
@@ -102,7 +119,7 @@ Step 3: Validate device health (local API).
 Interpretation table (X = robot, Y = PC tool):
 Note: The report prints bus health, PC tool status, and local device health. Some rows below are vendor-tool-only or planned fields (for example last error code and reset flags).
 | Signal / Error | Source | Where it runs | What it tells you | Next check |
-| --- | --- | --- | --- | --- |
+| - | - | - | - | - |
 | CAN bus utilization (%) | X | roboRIO CAN controller | High steady value indicates bus saturation or a device spamming frames | Reduce status frame rates; disable unused telemetry; bring up one subsystem at a time |
 | CAN transmit error count | X | roboRIO CAN controller | Rising count means the controller cannot transmit frames | Check termination, look for shorts, inspect CAN H/L continuity |
 | CAN TX full count | X | roboRIO CAN controller | TX buffer saturation (controller can't queue more frames) | Reduce status frame rates; check for bus saturation |
@@ -431,6 +448,8 @@ General workflow:
 4. If you add CAN sniffer data, update `tools/can_nt_bridge.py` and
    `tools/README_CAN_NT.md`.
 5. Update this `README.md` with the new behavior and bindings.
+
+
 
 
 
