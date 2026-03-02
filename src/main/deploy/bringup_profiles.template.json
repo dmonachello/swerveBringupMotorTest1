@@ -3,12 +3,16 @@
   "profiles": {
     "my_robot": {
       "neos": [
-        { "label": "Example NEO", "id": 1 }
+        { "label": "Example NEO", "id": 1, "limits": { "fwdDio": 0, "revDio": 1, "invert": false } }
       ],
       "flexes": [],
       "krakens": [],
       "falcons": [],
       "cancoders": [],
+      "devices": [
+        { "vendor": "REV", "type": "NEO", "label": "Example NEO (generic)", "id": 2 },
+        { "vendor": "CTRE", "type": "CANdle", "label": "Example CANdle (generic)", "id": 33 }
+      ],
       "pdh": { "label": "PDH", "id": 1 },
       "pigeon": { "label": "Pigeon", "id": 1 },
       "roborio": { "label": "roboRIO", "id": 0 }

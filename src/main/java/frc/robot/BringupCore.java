@@ -1,15 +1,14 @@
 package frc.robot;
 
 import edu.wpi.first.wpilibj.Timer;
-import frc.robot.BringupUtil;
-import frc.robot.devices.ctre.CtreCANCoderDevice;
-import frc.robot.devices.ctre.CtreCANdleDevice;
-import frc.robot.devices.ctre.CtreTalonFxDevice;
-import frc.robot.devices.rev.RevFlexVortexDevice;
-import frc.robot.devices.rev.RevSparkMaxNeoDevice;
-import frc.robot.devices.rev.RevSparkMaxNeo550Device;
+import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.diag.snapshots.EncoderAttachment;
 import frc.robot.manufacturers.CtreDeviceGroup;
+import frc.robot.manufacturers.DeviceAddResult;
+import frc.robot.manufacturers.DeviceRole;
+import frc.robot.manufacturers.DeviceTypeBucket;
+import frc.robot.manufacturers.ManufacturerGroup;
 import frc.robot.manufacturers.RevDeviceGroup;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,8 +23,7 @@ public final class BringupCore {
   private final RevDeviceGroup revDevices = new RevDeviceGroup();
   private final CtreDeviceGroup ctreDevices = new CtreDeviceGroup();
 
-  private boolean addNeoNext = true;
-  private boolean addKrakenNext = true;
+  private boolean addRevNext = true;
 
   private boolean prevAdd = false;
   private boolean prevAddAll = false;
@@ -39,8 +37,11 @@ public final class BringupCore {
   private long lastStatePrintMs = 0L;
   private long lastHealthPrintMs = 0L;
   private long lastCANCoderPrintMs = 0L;
+  private final List<DeviceUnit> testDevices = new ArrayList<>();
+  private int nextTestIndex = 0;
 
   public BringupCore() {
+    refreshTestDevices();
   }
 
   // Edge-triggered: add the next motor in the alternating sequence.
@@ -132,10 +133,9 @@ public final class BringupCore {
     ctreDevices.stopAll();
     revDevices.closeAll();
     ctreDevices.closeAll();
-    revDevices.initLowCurrentTimers();
+    revDevices.resetLowCurrentTimers();
 
-    addNeoNext = true;
-    addKrakenNext = true;
+    addRevNext = true;
 
     prevAdd = false;
     prevAddAll = false;
@@ -146,191 +146,89 @@ public final class BringupCore {
     BringupPrinter.enqueue("=== Bringup reset: no motors instantiated ===");
   }
 
-  // Alternates between REV and CTRE motors to keep bringup balanced.
-  private void addNextMotor() {
-    if (addNeoNext) {
-      int neoIndex = revDevices.addNextNeo();
-      if (neoIndex >= 0) {
-        RevSparkMaxNeoDevice[] neos = revDevices.getNeos();
-        BringupPrinter.enqueue(
-            "Added NEO index " + neoIndex +
-            " (CAN " + neos[neoIndex].getCanId() + ")");
-        addNeoNext = false;
-        return;
-      }
-
-      int neo550Index = revDevices.addNextNeo550();
-      if (neo550Index >= 0) {
-        RevSparkMaxNeo550Device[] neo550s = revDevices.getNeo550s();
-        BringupPrinter.enqueue(
-            "Added NEO 550 index " + neo550Index +
-            " (CAN " + neo550s[neo550Index].getCanId() + ")");
-        addNeoNext = false;
-        return;
-      }
-
-      int flexIndex = revDevices.addNextFlex();
-      if (flexIndex >= 0) {
-        RevFlexVortexDevice[] flexes = revDevices.getFlexes();
-        BringupPrinter.enqueue(
-            "Added FLEX index " + flexIndex +
-            " (CAN " + flexes[flexIndex].getCanId() + ")");
-        addNeoNext = false;
-        return;
-      }
-
-      BringupPrinter.enqueue("No more SPARK motors to add");
-      addNeoNext = false;
+  public void runNextNonMotorTest() {
+    if (testDevices.isEmpty()) {
+      BringupPrinter.enqueue("No non-motor test devices configured.");
       return;
     }
-
-    if (addKrakenNext) {
-      int krakenIndex = ctreDevices.addNextKraken();
-      if (krakenIndex >= 0) {
-        CtreTalonFxDevice[] krakens = ctreDevices.getKrakens();
-        BringupPrinter.enqueue(
-            "Added KRAKEN index " + krakenIndex +
-            " (CAN " + krakens[krakenIndex].getCanId() + ")");
-        addKrakenNext = false;
-        addNeoNext = true;
-        return;
+    int attempts = testDevices.size();
+    while (attempts-- > 0) {
+      DeviceUnit device = testDevices.get(nextTestIndex);
+      nextTestIndex = (nextTestIndex + 1) % testDevices.size();
+      if (!device.hasTest()) {
+        continue;
       }
-
-      int falconIndex = ctreDevices.addNextFalcon();
-      if (falconIndex >= 0) {
-        CtreTalonFxDevice[] falcons = ctreDevices.getFalcons();
-        BringupPrinter.enqueue(
-            "Added FALCON index " + falconIndex +
-            " (CAN " + falcons[falconIndex].getCanId() + ")");
-        addKrakenNext = true;
-        addNeoNext = true;
-        return;
-      }
-
-      BringupPrinter.enqueue("No more CTRE motors to add");
-      addNeoNext = true;
-      return;
-    }
-
-    int falconIndex = ctreDevices.addNextFalcon();
-    if (falconIndex >= 0) {
-      CtreTalonFxDevice[] falcons = ctreDevices.getFalcons();
+      device.runTest();
+      String testName = device.getTestName();
       BringupPrinter.enqueue(
-          "Added FALCON index " + falconIndex +
-          " (CAN " + falcons[falconIndex].getCanId() + ")");
-      addKrakenNext = true;
-      addNeoNext = true;
+          "Test: " + device.getLabel() +
+          " (" + device.getDeviceType() + ")" +
+          (testName.isEmpty() ? "" : " [" + testName + "]"));
       return;
     }
-
-    int krakenIndex = ctreDevices.addNextKraken();
-    if (krakenIndex >= 0) {
-      CtreTalonFxDevice[] krakens = ctreDevices.getKrakens();
-      BringupPrinter.enqueue(
-          "Added KRAKEN index " + krakenIndex +
-          " (CAN " + krakens[krakenIndex].getCanId() + ")");
-      addKrakenNext = false;
-      addNeoNext = true;
-      return;
-    }
-
-    BringupPrinter.enqueue("No more CTRE motors to add");
-    addNeoNext = true;
+    BringupPrinter.enqueue("No testable non-motor devices found.");
   }
 
-  // Instantiate all configured devices (motors + CANCoders + CANdles).
+  private void refreshTestDevices() {
+    testDevices.clear();
+    testDevices.addAll(ctreDevices.getTestDevices());
+    testDevices.addAll(revDevices.getTestDevices());
+    nextTestIndex = 0;
+  }
+
+  // Alternates between REV and CTRE motors to keep bringup balanced.
+  private void addNextMotor() {
+    if (addRevNext) {
+      DeviceAddResult result = revDevices.addNextMotor();
+      if (result != null) {
+        BringupPrinter.enqueue(
+            "Added " + result.registration().displayName() +
+            " index " + result.index() +
+            " (CAN " + result.device().getCanId() + ")");
+        addRevNext = false;
+        return;
+      }
+    }
+
+    DeviceAddResult ctreResult = ctreDevices.addNextMotor();
+    if (ctreResult != null) {
+      BringupPrinter.enqueue(
+          "Added " + ctreResult.registration().displayName() +
+          " index " + ctreResult.index() +
+          " (CAN " + ctreResult.device().getCanId() + ")");
+      addRevNext = true;
+      return;
+    }
+
+    DeviceAddResult revResult = revDevices.addNextMotor();
+    if (revResult != null) {
+      BringupPrinter.enqueue(
+          "Added " + revResult.registration().displayName() +
+          " index " + revResult.index() +
+          " (CAN " + revResult.device().getCanId() + ")");
+      addRevNext = false;
+      return;
+    }
+
+    BringupPrinter.enqueue("No more motors to add");
+    addRevNext = true;
+  }
+
+  // Instantiate all configured devices (motors + sensors + misc).
   private void addAllDevices() {
     revDevices.addAll();
     ctreDevices.addAll();
-    addNeoNext = true;
-    addKrakenNext = true;
-    BringupPrinter.enqueue("Added all SPARKs, Krakens, Falcons, CANCoders, and CANdles.");
+    addRevNext = true;
+    BringupPrinter.enqueue("Added all REV and CTRE devices.");
   }
 
   // Print a compact list of which devices are instantiated.
   private void printState() {
     StringBuilder sb = new StringBuilder(512);
     appendLine(sb, "=== Bringup State ===");
-
-    RevSparkMaxNeoDevice[] neos = revDevices.getNeos();
-    appendLine(sb, "NEOs:");
-    for (int i = 0; i < neos.length; i++) {
-      if (neos[i].isCreated()) {
-        appendLine(sb, "  index " + i +
-            " CAN " + neos[i].getCanId() + " ACTIVE");
-      } else {
-        appendLine(sb, "  index " + i +
-            " CAN " + neos[i].getCanId() + " not added");
-      }
-    }
-
-    RevSparkMaxNeo550Device[] neo550s = revDevices.getNeo550s();
-    if (neo550s.length > 0) {
-      appendLine(sb, "NEO 550:");
-      for (int i = 0; i < neo550s.length; i++) {
-        if (neo550s[i].isCreated()) {
-          appendLine(sb, "  index " + i +
-              " CAN " + neo550s[i].getCanId() + " ACTIVE");
-        } else {
-          appendLine(sb, "  index " + i +
-              " CAN " + neo550s[i].getCanId() + " not added");
-        }
-      }
-    }
-
-    RevFlexVortexDevice[] flexes = revDevices.getFlexes();
-    appendLine(sb, "FLEX:");
-    for (int i = 0; i < flexes.length; i++) {
-      if (flexes[i].isCreated()) {
-        appendLine(sb, "  index " + i +
-            " CAN " + flexes[i].getCanId() + " ACTIVE");
-      } else {
-        appendLine(sb, "  index " + i +
-            " CAN " + flexes[i].getCanId() + " not added");
-      }
-    }
-
-    CtreTalonFxDevice[] krakens = ctreDevices.getKrakens();
-    appendLine(sb, "Krakens:");
-    for (int i = 0; i < krakens.length; i++) {
-      if (krakens[i].isCreated()) {
-        appendLine(sb, "  index " + i +
-            " CAN " + krakens[i].getCanId() + " ACTIVE");
-      } else {
-        appendLine(sb, "  index " + i +
-            " CAN " + krakens[i].getCanId() + " not added");
-      }
-    }
-
-    CtreTalonFxDevice[] falcons = ctreDevices.getFalcons();
-    appendLine(sb, "Falcons:");
-    for (int i = 0; i < falcons.length; i++) {
-      if (falcons[i].isCreated()) {
-        appendLine(sb, "  index " + i +
-            " CAN " + falcons[i].getCanId() + " ACTIVE");
-      } else {
-        appendLine(sb, "  index " + i +
-            " CAN " + falcons[i].getCanId() + " not added");
-      }
-    }
-
-    CtreCANdleDevice[] candles = ctreDevices.getCANdles();
-    if (candles.length > 0) {
-      appendLine(sb, "CANdles:");
-      for (int i = 0; i < candles.length; i++) {
-        if (candles[i].isCreated()) {
-          appendLine(sb, "  index " + i +
-              " CAN " + candles[i].getCanId() + " ACTIVE");
-        } else {
-          appendLine(sb, "  index " + i +
-              " CAN " + candles[i].getCanId() + " not added");
-        }
-      }
-    }
-
-    appendLine(sb,
-        "Next add will be: " +
-        (addNeoNext ? "SPARK" : (addKrakenNext ? "KRAKEN" : "FALCON")));
+    revDevices.appendState(sb);
+    ctreDevices.appendState(sb);
+    appendLine(sb, "Next add will be: " + (addRevNext ? "REV motor" : "CTRE motor"));
     appendVirtualDevices(sb);
     appendLine(sb, "=====================");
     BringupPrinter.enqueueChunked(sb.toString(), 12);
@@ -342,142 +240,8 @@ public final class BringupCore {
     StringBuilder sb = new StringBuilder(768);
     appendLine(sb, "=== Bringup Health (Local Robot Data) ===");
     double nowSec = Timer.getFPGATimestamp();
-
-    RevSparkMaxNeoDevice[] neos = revDevices.getNeos();
-    for (int i = 0; i < neos.length; i++) {
-      DeviceSnapshot snap = revDevices.snapshotNeo(i, nowSec);
-      if (!snap.present) {
-        appendLine(sb, "NEO index " + i +
-            " CAN " + neos[i].getCanId() + " not added");
-        continue;
-      }
-      appendLine(sb,
-          "NEO index " + i +
-          " CAN " + neos[i].getCanId() +
-          formatRevFaultSummary(snap) +
-          " lastErr=" + snap.lastError +
-          snap.healthNote +
-          snap.lowCurrentNote +
-          formatMotorSpecNote(snap) +
-          " busV=" + String.format("%.2f", safeDouble(snap.busV)) + "V" +
-          " appliedDuty=" + String.format("%.2f", safeDouble(snap.appliedDuty)) + "dc" +
-          " appliedV=" + String.format("%.2f", safeDouble(snap.appliedV)) + "V" +
-          " motorCurrentA=" + String.format("%.4f", safeDouble(snap.motorCurrentA)) + "A" +
-          " tempC=" + String.format("%.1f", safeDouble(snap.tempC)) + "C" +
-          " cmdDuty=" + String.format("%.2f", safeDouble(snap.cmdDuty)) + "dc" +
-          " follower=" + (snap.follower ? "Y" : "N"));
-    }
-
-    RevSparkMaxNeo550Device[] neo550s = revDevices.getNeo550s();
-    for (int i = 0; i < neo550s.length; i++) {
-      DeviceSnapshot snap = revDevices.snapshotNeo550(i, nowSec);
-      if (!snap.present) {
-        appendLine(sb, "NEO 550 index " + i +
-            " CAN " + neo550s[i].getCanId() + " not added");
-        continue;
-      }
-      appendLine(sb,
-          "NEO 550 index " + i +
-          " CAN " + neo550s[i].getCanId() +
-          formatRevFaultSummary(snap) +
-          " lastErr=" + snap.lastError +
-          snap.healthNote +
-          snap.lowCurrentNote +
-          formatMotorSpecNote(snap) +
-          " busV=" + String.format("%.2f", safeDouble(snap.busV)) + "V" +
-          " appliedDuty=" + String.format("%.2f", safeDouble(snap.appliedDuty)) + "dc" +
-          " appliedV=" + String.format("%.2f", safeDouble(snap.appliedV)) + "V" +
-          " motorCurrentA=" + String.format("%.4f", safeDouble(snap.motorCurrentA)) + "A" +
-          " tempC=" + String.format("%.1f", safeDouble(snap.tempC)) + "C" +
-          " cmdDuty=" + String.format("%.2f", safeDouble(snap.cmdDuty)) + "dc" +
-          " follower=" + (snap.follower ? "Y" : "N"));
-    }
-
-    RevFlexVortexDevice[] flexes = revDevices.getFlexes();
-    for (int i = 0; i < flexes.length; i++) {
-      DeviceSnapshot snap = revDevices.snapshotFlex(i, nowSec);
-      if (!snap.present) {
-        appendLine(sb, "FLEX index " + i +
-            " CAN " + flexes[i].getCanId() + " not added");
-        continue;
-      }
-      appendLine(sb,
-          "FLEX index " + i +
-          " CAN " + flexes[i].getCanId() +
-          formatRevFaultSummary(snap) +
-          " lastErr=" + snap.lastError +
-          snap.healthNote +
-          snap.lowCurrentNote +
-          formatMotorSpecNote(snap) +
-          " busV=" + String.format("%.2f", safeDouble(snap.busV)) + "V" +
-          " appliedDuty=" + String.format("%.2f", safeDouble(snap.appliedDuty)) + "dc" +
-          " appliedV=" + String.format("%.2f", safeDouble(snap.appliedV)) + "V" +
-          " motorCurrentA=" + String.format("%.4f", safeDouble(snap.motorCurrentA)) + "A" +
-          " tempC=" + String.format("%.1f", safeDouble(snap.tempC)) + "C" +
-          " cmdDuty=" + String.format("%.2f", safeDouble(snap.cmdDuty)) + "dc" +
-          " follower=" + (snap.follower ? "Y" : "N"));
-    }
-
-    CtreTalonFxDevice[] krakens = ctreDevices.getKrakens();
-    for (int i = 0; i < krakens.length; i++) {
-      DeviceSnapshot snap = ctreDevices.snapshotKraken(i);
-      if (!snap.present) {
-        appendLine(sb, "KRAKEN index " + i +
-            " CAN " + krakens[i].getCanId() + " not added");
-        continue;
-      }
-      appendLine(sb,
-          "KRAKEN index " + i +
-          " CAN " + krakens[i].getCanId() +
-          formatCtreFaultSummary(snap) +
-          formatMotorSpecNote(snap) +
-          " busV=" + String.format("%.2f", safeDouble(snap.busV)) + "V" +
-          " appliedDuty=" + String.format("%.2f", safeDouble(snap.appliedDuty)) + "dc" +
-          " appliedV=" + String.format("%.2f", safeDouble(snap.appliedV)) + "V" +
-          " motorCurrentA=" + String.format("%.4f", safeDouble(snap.motorCurrentA)) + "A" +
-          " tempC=" + String.format("%.1f", safeDouble(snap.tempC)) + "C" +
-          (snap.faultStatus.isBlank() && snap.stickyStatus.isBlank()
-              ? ""
-              : " status=" + snap.faultStatus + "/" + snap.stickyStatus));
-    }
-
-    CtreTalonFxDevice[] falcons = ctreDevices.getFalcons();
-    for (int i = 0; i < falcons.length; i++) {
-      DeviceSnapshot snap = ctreDevices.snapshotFalcon(i);
-      if (!snap.present) {
-        appendLine(sb, "FALCON index " + i +
-            " CAN " + falcons[i].getCanId() + " not added");
-        continue;
-      }
-      appendLine(sb,
-          "FALCON index " + i +
-          " CAN " + falcons[i].getCanId() +
-          formatCtreFaultSummary(snap) +
-          formatMotorSpecNote(snap) +
-          " busV=" + String.format("%.2f", safeDouble(snap.busV)) + "V" +
-          " appliedDuty=" + String.format("%.2f", safeDouble(snap.appliedDuty)) + "dc" +
-          " appliedV=" + String.format("%.2f", safeDouble(snap.appliedV)) + "V" +
-          " motorCurrentA=" + String.format("%.4f", safeDouble(snap.motorCurrentA)) + "A" +
-          " tempC=" + String.format("%.1f", safeDouble(snap.tempC)) + "C" +
-          (snap.faultStatus.isBlank() && snap.stickyStatus.isBlank()
-              ? ""
-              : " status=" + snap.faultStatus + "/" + snap.stickyStatus));
-    }
-
-    CtreCANdleDevice[] candles = ctreDevices.getCANdles();
-    for (int i = 0; i < candles.length; i++) {
-      DeviceSnapshot snap = ctreDevices.snapshotCANdle(i);
-      if (!snap.present) {
-        appendLine(sb, "CANdle index " + i +
-            " CAN " + candles[i].getCanId() + " not added");
-        continue;
-      }
-      appendLine(sb,
-          "CANdle index " + i +
-          " CAN " + candles[i].getCanId() +
-          " present=YES");
-    }
-
+    revDevices.appendHealth(sb, nowSec);
+    ctreDevices.appendHealth(sb, nowSec);
     appendVirtualDeviceHealth(sb);
     appendLine(sb, "======================");
     BringupPrinter.enqueueChunked(sb.toString(), 12);
@@ -487,20 +251,32 @@ public final class BringupCore {
   private void printCANCoderStatus() {
     StringBuilder sb = new StringBuilder(512);
     appendLine(sb, "=== Bringup CANCoder ===");
-    CtreCANCoderDevice[] cancoders = ctreDevices.getCANCoders();
-    for (int i = 0; i < cancoders.length; i++) {
-      cancoders[i].ensureCreated();
-      DeviceSnapshot snap = ctreDevices.snapshotCANCoder(i);
-      double degrees = safeDouble(snap.absDeg);
-      double rotations = degrees / 360.0;
-      appendLine(sb,
-          "CANCoder index " + i +
-          " CAN " + cancoders[i].getCanId() +
-          " absRot=" + String.format("%.4f", rotations) +
-          " absDeg=" + String.format("%.1f", degrees));
-    }
+    appendEncoderStatus(sb, revDevices);
+    appendEncoderStatus(sb, ctreDevices);
     appendLine(sb, "=======================");
     BringupPrinter.enqueueChunked(sb.toString(), 12);
+  }
+
+  private void appendEncoderStatus(StringBuilder sb, ManufacturerGroup group) {
+    for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
+      if (bucket.getRegistration().role() != DeviceRole.ENCODER) {
+        continue;
+      }
+      List<DeviceUnit> devices = bucket.getDevices();
+      for (int i = 0; i < devices.size(); i++) {
+        DeviceUnit device = devices.get(i);
+        device.ensureCreated();
+        DeviceSnapshot snap = device.snapshot();
+        EncoderAttachment encoder = snap.getAttachment(EncoderAttachment.class);
+        double degrees = BringupHealthFormat.safeDouble(encoder != null ? encoder.absDeg : null);
+        double rotations = degrees / 360.0;
+        appendLine(sb,
+            bucket.getRegistration().displayName() + " index " + i +
+            " CAN " + device.getCanId() +
+            " absRot=" + String.format("%.4f", rotations) +
+            " absDeg=" + String.format("%.1f", degrees));
+      }
+    }
   }
 
   // Capture local device data into snapshot objects (no formatting here).
@@ -508,7 +284,7 @@ public final class BringupCore {
     List<DeviceSnapshot> devices = new ArrayList<>();
     double nowSec = Timer.getFPGATimestamp();
     devices.addAll(revDevices.captureSnapshots(nowSec));
-    devices.addAll(ctreDevices.captureSnapshots());
+    devices.addAll(ctreDevices.captureSnapshots(nowSec));
 
     if (BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
       DeviceSnapshot snap = new DeviceSnapshot();
@@ -542,76 +318,59 @@ public final class BringupCore {
 
   // Report whether a device is instantiated based on CAN metadata.
   public boolean isDeviceInstantiated(int manufacturer, int deviceType, int deviceId) {
-    if (manufacturer == 5 && deviceType == 2) {
-      return revDevices.isNeoInstantiated(deviceId)
-          || revDevices.isNeo550Instantiated(deviceId)
-          || revDevices.isFlexInstantiated(deviceId);
-    }
-    if (manufacturer == 4 && deviceType == 2) {
-      return ctreDevices.isKrakenInstantiated(deviceId)
-          || ctreDevices.isFalconInstantiated(deviceId);
-    }
-    if (manufacturer == 4 && deviceType == 7) {
-      return ctreDevices.isCANCoderInstantiated(deviceId);
-    }
-    if (manufacturer == 4 && deviceType == 10) {
-      return ctreDevices.isCANdleInstantiated(deviceId);
-    }
     if (manufacturer == NI_MANUFACTURER && deviceType == TYPE_ROBOT_CONTROLLER) {
       return BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)
           && deviceId == BringupUtil.ROBORIO_CAN_ID;
     }
+
+    String vendor = BringupUtil.getCanManufacturerName(manufacturer);
+    String category = BringupUtil.getCanDeviceTypeName(deviceType);
+    if (vendor == null || category == null) {
+      return false;
+    }
+
+    DeviceRole role = mapRoleFromCategory(category);
+    if (role == null) {
+      return false;
+    }
+
+    if ("REV".equalsIgnoreCase(vendor)) {
+      return isInstantiatedByRole(revDevices, role, deviceId);
+    }
+    if ("CTRE".equalsIgnoreCase(vendor)) {
+      return isInstantiatedByRole(ctreDevices, role, deviceId);
+    }
     return false;
   }
 
-  private static String formatRevFaultSummary(DeviceSnapshot snap) {
-    StringBuilder sb = new StringBuilder(128);
-    sb.append(" faults=0x").append(Integer.toHexString(snap.faultsRaw));
-    sb.append(formatFlagList(snap.faultFlags));
-    sb.append(" sticky=0x").append(Integer.toHexString(snap.stickyFaultsRaw));
-    sb.append(formatFlagList(snap.stickyFaultFlags));
-    sb.append(" warnings=0x").append(Integer.toHexString(snap.warningsRaw));
-    sb.append(formatFlagList(snap.warningFlags));
-    sb.append(" stickyWarn=0x").append(Integer.toHexString(snap.stickyWarningsRaw));
-    sb.append(formatFlagList(snap.stickyWarningFlags));
-    return sb.toString();
-  }
-
-  private static String formatCtreFaultSummary(DeviceSnapshot snap) {
-    StringBuilder sb = new StringBuilder(128);
-    sb.append(" fault=0x").append(Integer.toHexString(snap.faultsRaw));
-    sb.append(formatFlagList(snap.faultFlags));
-    sb.append(" sticky=0x").append(Integer.toHexString(snap.stickyFaultsRaw));
-    sb.append(formatFlagList(snap.stickyFaultFlags));
-    return sb.toString();
-  }
-
-  private static String formatMotorSpecNote(DeviceSnapshot snap) {
-    if (snap.specFreeA == null || snap.specStallA == null) {
-      return "";
+  private boolean isInstantiatedByRole(ManufacturerGroup group, DeviceRole role, int deviceId) {
+    for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
+      if (bucket.getRegistration().role() != role) {
+        continue;
+      }
+      for (DeviceUnit device : bucket.getDevices()) {
+        if (device.getCanId() == deviceId) {
+          return device.isCreated();
+        }
+      }
     }
-    double free = snap.specFreeA;
-    double stall = snap.specStallA;
-    double current = snap.motorCurrentA != null ? snap.motorCurrentA : 0.0;
-    String ratio = free > 0.0 ? String.format("%.2fx", current / free) : "?";
-    return " specFree=" + String.format("%.1f", free) + "A" +
-        " specStall=" + String.format("%.0f", stall) + "A" +
-        " freeRatio=" + ratio;
+    return false;
   }
 
-  private static String formatFlagList(List<String> flags) {
-    if (flags == null || flags.isEmpty()) {
-      return "";
+  private DeviceRole mapRoleFromCategory(String category) {
+    if ("MotorController".equalsIgnoreCase(category)) {
+      return DeviceRole.MOTOR;
     }
-    return " [" + String.join(",", flags) + "]";
-  }
-
-  private static double safeDouble(Double value) {
-    return value == null ? 0.0 : value;
+    if ("Encoder".equalsIgnoreCase(category)) {
+      return DeviceRole.ENCODER;
+    }
+    if ("Miscellaneous".equalsIgnoreCase(category)) {
+      return DeviceRole.MISC;
+    }
+    return null;
   }
 
   private static void appendLine(StringBuilder sb, String line) {
     sb.append(line).append('\n');
   }
 }
-

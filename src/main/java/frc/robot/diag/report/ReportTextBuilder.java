@@ -2,8 +2,13 @@ package frc.robot.diag.report;
 
 import frc.robot.ReportTextUtil;
 import frc.robot.diag.snapshots.BusSnapshot;
+import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.diag.snapshots.EncoderAttachment;
+import frc.robot.diag.snapshots.LimitsAttachment;
+import frc.robot.diag.snapshots.MotorSpecAttachment;
 import frc.robot.diag.snapshots.PcSnapshot;
+import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 import frc.robot.diag.snapshots.SnapshotBundle;
 import java.util.List;
 
@@ -145,18 +150,22 @@ public final class ReportTextBuilder {
           "  " + snap.deviceType + " CAN " + snap.canId + ": present=NO (not added)");
       return;
     }
-    String specNote = formatMotorSpecNote(snap);
+    RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
+    MotorSpecAttachment spec = snap.getAttachment(MotorSpecAttachment.class);
+    LimitsAttachment limits = snap.getAttachment(LimitsAttachment.class);
+    String specNote = formatMotorSpecNote(spec, rev != null ? rev.motorCurrentA : null);
     ReportTextUtil.appendLine(
         sb,
         "  " + snap.deviceType + " CAN " + snap.canId +
-        ": present=YES" + formatRevFaultSummary(snap) +
-        " lastErr=" + snap.lastError +
-        " reset=" + (snap.reset ? "YES" : "NO") +
+        ": present=YES" + formatRevFaultSummary(rev) +
+        " lastErr=" + safeText(rev != null ? rev.lastError : "") +
+        " reset=" + (rev != null && rev.reset ? "YES" : "NO") +
         specNote +
-        " busV=" + formatDouble(snap.busV, 2) + "V" +
-        " appliedV=" + formatDouble(snap.appliedV, 2) + "V" +
-        " motorCurrentA=" + formatDouble(snap.motorCurrentA, 4) + "A" +
-        " tempC=" + formatDouble(snap.tempC, 1) + "C");
+        formatLimitSummary(limits) +
+        " busV=" + formatDouble(rev != null ? rev.busV : null, 2) + "V" +
+        " appliedV=" + formatDouble(rev != null ? rev.appliedV : null, 2) + "V" +
+        " motorCurrentA=" + formatDouble(rev != null ? rev.motorCurrentA : null, 4) + "A" +
+        " tempC=" + formatDouble(rev != null ? rev.tempC : null, 1) + "C");
   }
 
   private void appendCtreDevice(StringBuilder sb, DeviceSnapshot snap) {
@@ -166,24 +175,31 @@ public final class ReportTextBuilder {
           "  " + snap.deviceType + " CAN " + snap.canId + ": present=NO (not added)");
       return;
     }
-    String specNote = formatMotorSpecNote(snap);
-    boolean faultOk = "OK".equals(snap.faultStatus);
-    boolean stickyOk = "OK".equals(snap.stickyStatus);
+    CtreMotorAttachment ctre = snap.getAttachment(CtreMotorAttachment.class);
+    MotorSpecAttachment spec = snap.getAttachment(MotorSpecAttachment.class);
+    LimitsAttachment limits = snap.getAttachment(LimitsAttachment.class);
+    String specNote = formatMotorSpecNote(spec, ctre != null ? ctre.motorCurrentA : null);
+    boolean faultOk = ctre != null && "OK".equals(ctre.faultStatus);
+    boolean stickyOk = ctre != null && "OK".equals(ctre.stickyStatus);
     ReportTextUtil.appendLine(
         sb,
         "  " + snap.deviceType + " CAN " + snap.canId +
-        ": present=YES fault=0x" + Integer.toHexString(snap.faultsRaw) +
-        formatFlagList(snap.faultFlags) +
-        " sticky=0x" + Integer.toHexString(snap.stickyFaultsRaw) +
-        formatFlagList(snap.stickyFaultFlags) +
-        " lastErr=" + snap.faultStatus +
+        ": present=YES fault=0x" + Integer.toHexString(ctre != null ? ctre.faultsRaw : 0) +
+        formatFlagList(ctre != null ? ctre.faultFlags : null) +
+        " sticky=0x" + Integer.toHexString(ctre != null ? ctre.stickyFaultsRaw : 0) +
+        formatFlagList(ctre != null ? ctre.stickyFaultFlags : null) +
+        " lastErr=" + safeText(ctre != null ? ctre.faultStatus : "") +
         specNote +
-        " busV=" + formatDouble(snap.busV, 2) + "V" +
-        " appliedDuty=" + formatDouble(snap.appliedDuty, 2) + "dc" +
-        " appliedV=" + formatDouble(snap.appliedV, 2) + "V" +
-        " motorCurrentA=" + formatDouble(snap.motorCurrentA, 4) + "A" +
-        " tempC=" + formatDouble(snap.tempC, 1) + "C" +
-        (faultOk && stickyOk ? "" : " status=" + snap.faultStatus + "/" + snap.stickyStatus));
+        formatLimitSummary(limits) +
+        " busV=" + formatDouble(ctre != null ? ctre.busV : null, 2) + "V" +
+        " appliedDuty=" + formatDouble(ctre != null ? ctre.appliedDuty : null, 2) + "dc" +
+        " appliedV=" + formatDouble(ctre != null ? ctre.appliedV : null, 2) + "V" +
+        " motorCurrentA=" + formatDouble(ctre != null ? ctre.motorCurrentA : null, 4) + "A" +
+        " tempC=" + formatDouble(ctre != null ? ctre.tempC : null, 1) + "C" +
+        (faultOk && stickyOk
+            ? ""
+            : " status=" + safeText(ctre != null ? ctre.faultStatus : "")
+                + "/" + safeText(ctre != null ? ctre.stickyStatus : "")));
   }
 
   private void appendCANCoder(StringBuilder sb, DeviceSnapshot snap) {
@@ -193,11 +209,14 @@ public final class ReportTextBuilder {
           "  CANCoder CAN " + snap.canId + ": present=NO (not added)");
       return;
     }
+    EncoderAttachment encoder = snap.getAttachment(EncoderAttachment.class);
+    LimitsAttachment limits = snap.getAttachment(LimitsAttachment.class);
     ReportTextUtil.appendLine(
         sb,
         "  CANCoder CAN " + snap.canId +
-        ": present=YES absDeg=" + formatDouble(snap.absDeg, 1) +
-        " lastErr=" + snap.lastError);
+        ": present=YES absDeg=" + formatDouble(encoder != null ? encoder.absDeg : null, 1) +
+        " lastErr=" + safeText(encoder != null ? encoder.lastError : "") +
+        formatLimitSummary(limits));
   }
 
   private void appendCANdle(StringBuilder sb, DeviceSnapshot snap) {
@@ -207,31 +226,65 @@ public final class ReportTextBuilder {
           "  CANdle CAN " + snap.canId + ": present=NO (not added)");
       return;
     }
+    LimitsAttachment limits = snap.getAttachment(LimitsAttachment.class);
     ReportTextUtil.appendLine(
         sb,
-        "  CANdle CAN " + snap.canId + ": present=YES");
+        "  CANdle CAN " + snap.canId + ": present=YES" + formatLimitSummary(limits));
   }
 
-  private String formatRevFaultSummary(DeviceSnapshot snap) {
-    StringBuilder sb = new StringBuilder(128);
-    sb.append(" faults=0x").append(Integer.toHexString(snap.faultsRaw));
-    sb.append(formatFlagList(snap.faultFlags));
-    sb.append(" sticky=0x").append(Integer.toHexString(snap.stickyFaultsRaw));
-    sb.append(formatFlagList(snap.stickyFaultFlags));
-    sb.append(" warnings=0x").append(Integer.toHexString(snap.warningsRaw));
-    sb.append(formatFlagList(snap.warningFlags));
-    sb.append(" stickyWarn=0x").append(Integer.toHexString(snap.stickyWarningsRaw));
-    sb.append(formatFlagList(snap.stickyWarningFlags));
+  private String formatLimitSummary(LimitsAttachment limits) {
+    if (limits == null || (limits.fwdDio < 0 && limits.revDio < 0)) {
+      return "";
+    }
+    StringBuilder sb = new StringBuilder(64);
+    sb.append(" limits=");
+    if (limits.fwdDio >= 0) {
+      sb.append("fwd:DIO").append(limits.fwdDio)
+          .append("=").append(formatLimitState(limits.fwdClosed));
+    }
+    if (limits.revDio >= 0) {
+      if (limits.fwdDio >= 0) {
+        sb.append(",");
+      }
+      sb.append("rev:DIO").append(limits.revDio)
+          .append("=").append(formatLimitState(limits.revClosed));
+    }
+    if (limits.invert) {
+      sb.append(" inv");
+    }
     return sb.toString();
   }
 
-  private String formatMotorSpecNote(DeviceSnapshot snap) {
-    if (snap.specFreeA == null || snap.specStallA == null) {
+  private String formatLimitState(Boolean closed) {
+    if (closed == null) {
+      return "?";
+    }
+    return closed ? "CLOSED" : "OPEN";
+  }
+
+  private String formatRevFaultSummary(RevMotorAttachment rev) {
+    if (rev == null) {
       return "";
     }
-    double free = snap.specFreeA;
-    double stall = snap.specStallA;
-    double current = snap.motorCurrentA != null ? snap.motorCurrentA : 0.0;
+    StringBuilder sb = new StringBuilder(128);
+    sb.append(" faults=0x").append(Integer.toHexString(rev.faultsRaw));
+    sb.append(formatFlagList(rev.faultFlags));
+    sb.append(" sticky=0x").append(Integer.toHexString(rev.stickyFaultsRaw));
+    sb.append(formatFlagList(rev.stickyFaultFlags));
+    sb.append(" warnings=0x").append(Integer.toHexString(rev.warningsRaw));
+    sb.append(formatFlagList(rev.warningFlags));
+    sb.append(" stickyWarn=0x").append(Integer.toHexString(rev.stickyWarningsRaw));
+    sb.append(formatFlagList(rev.stickyWarningFlags));
+    return sb.toString();
+  }
+
+  private String formatMotorSpecNote(MotorSpecAttachment spec, Double motorCurrent) {
+    if (spec == null || spec.freeCurrentA == null || spec.stallCurrentA == null) {
+      return "";
+    }
+    double free = spec.freeCurrentA;
+    double stall = spec.stallCurrentA;
+    double current = motorCurrent != null ? motorCurrent : 0.0;
     String ratio = free > 0.0 ? String.format("%.2fx", current / free) : "?";
     return " specFree=" + String.format("%.1f", free) + "A" +
         " specStall=" + String.format("%.0f", stall) + "A" +
@@ -260,6 +313,10 @@ public final class ReportTextBuilder {
       return "NaN";
     }
     return String.format("%." + decimals + "f", value);
+  }
+
+  private String safeText(String value) {
+    return value == null ? "" : value;
   }
 
   private List<String> formatSeenNotLocal(List<PcSnapshot.SeenNotLocalEntry> entries) {

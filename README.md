@@ -17,6 +17,7 @@ Use the normal FRC robot workflow to deploy and run the robot code.
 
 ## Documentation Index
 - `ARCHITECTURE.md` - layered design, interfaces, and snapshot flow.
+- `ADDING_HARDWARE.md` - step-by-step guide for adding a new motor/controller type.
 - `CAN_BACKGROUND.md` - CAN bus basics, failure modes, and troubleshooting.
 - `AI_DIAGNOSIS.md` - how to interpret `bringup_report.json` with an AI assistant.
 - `PROJECT_INTENT.md` - project goals and motivation.
@@ -195,8 +196,8 @@ A: Run the PC tool with `--pcap logs\run.pcapng`, then open that file in Wiresha
 A: The PC tool isn't receiving frames for that ID (wiring/ID mismatch/termination), or it's timing out based on `--timeout`. Verify the CAN ID and wiring.
 **Q: How do I see message rate (fps) per device?**  
 A: Press `D-pad Down` twice a second or two apart. The `fps` column is computed from `msgCount` deltas between prints.
-**Q: How do I add a new motor/controller type to a profile?**  
-A: Edit `src/main/deploy/bringup_profiles.json` and add entries under `neos`, `neo550s`, `flexes`, `krakens`, `falcons`, `cancoders`, `candles`, `pdh`, `pdp`, `pigeon`, or `roborio`, then redeploy.
+**Q: How do I add a new motor/controller type (new hardware)?**  
+A: Follow the step-by-step guide in `ADDING_HARDWARE.md`.
 **Q: What do the `ageSec` and `msgCount` fields mean?**  
 A: `ageSec` is seconds since the last frame seen for that device. `msgCount` is total frames seen for that device.
 **Q: Why is one device's fps higher than another's?**  
@@ -249,6 +250,7 @@ Hardware profile schema (single source of truth):
 - This JSON is the shared, data-driven hardware configuration used by both robot code and the PC tool.
 - Each profile can include these sections:
 - `neos`, `neo550s`, `flexes`, `krakens`, `falcons`, `cancoders`, `candles` as arrays of `{ "label": "...", "id": <can_id> }`.
+- `devices` as a generic array of `{ "vendor": "...", "type": "...", "label": "...", "id": <can_id> }`.
 - `pdh`, `pigeon`, `roborio` as single objects `{ "label": "...", "id": <can_id> }`.
 - Omit any section you don't use.
 Optional per-device fields:
@@ -256,11 +258,17 @@ Optional per-device fields:
 ```json
 { "label": "NEO 25", "id": 25, "motor": "REV NEO 2.0" }
 ```
+- `"limits"` to attach DIO limit switches. Example:
+```json
+{ "label": "FL KRAK", "id": 2, "limits": { "fwdDio": 0, "revDio": 1, "invert": false } }
+```
+When a limit is closed, motor output in that direction is clamped to 0.0.
+Use `"invert": true` for normally-closed switches (so CLOSED/OPEN reads correctly).
 If omitted, the app infers the motor model from the label (e.g., `NEO`, `VORTEX`, `KRAKEN`, `FALCON`).
 JSON guide (specific to this app):
 - Lists use square brackets `[]` and are required for motor/encoder groups (`neos`, `neo550s`, `flexes`, `krakens`, `falcons`, `cancoders`, `candles`).
 - Single devices use curly braces `{}` for `pdh`, `pigeon`, and `roborio`.
-- Every device entry must include both `"label"` and `"id"`.
+- Every device entry must include `"id"`; `"label"` is recommended.
 - If you have only one device in a list, it still must be wrapped in `[]`.
 Correct examples:
 ```json
@@ -286,6 +294,7 @@ Step-by-step: Add your hardware
 6. Use `Back` to cycle profiles and verify the device list is correct.
 Supported profile sections include:
 - `neos`, `neo550s`, `flexes`, `krakens`, `falcons`, `cancoders`, `candles`
+- `devices` (generic vendor/type list)
 - `pdh`, `pdp`, `pigeon`, `roborio`
 Manufacturer/type display names are loaded from `src/main/deploy/can_mappings.json`.
 
@@ -303,7 +312,7 @@ If you add new motors, update `motor_specs.json` and optionally set `"motor"` pe
 Robot and RobotV2 share the same bindings, grouped by purpose.
 Operational controls:
 - `A`: add motor (alternates SPARK/CTRE)
-- `Start`: add all motors + CANCoders
+- `Start`: add all configured devices
 - `Back`: toggle CAN profile
 - `Left Y`: NEO/FLEX speed
 - `Right Y`: KRAKEN/FALCON speed
@@ -312,6 +321,7 @@ Status printouts:
 - `B`: print state
 - `Left Bumper`: reprint bindings
 - `Right Bumper`: print CANCoder absolute positions
+- `Left+Right Bumper`: run non-motor test (e.g., CANdle LED toggle)
 - `D-pad Left`: print health status
 - `D-pad Down`: print NetworkTables diagnostics (RobotV2 only)
 - `D-pad Up`: print CAN diagnostics report

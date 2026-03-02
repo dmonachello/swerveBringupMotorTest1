@@ -1,4 +1,4 @@
-package frc.robot.diag.readers;
+package frc.robot.manufacturers.ctre.diag;
 
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.hardware.TalonFX;
@@ -16,6 +16,8 @@ public final class CtreTalonFxReader {
     snap.canId = canId;
     snap.present = true;
 
+    CtreMotorAttachment ctre = new CtreMotorAttachment();
+
     var faultSignal = device.getFaultField();
     var stickySignal = device.getStickyFaultField();
     var supplyVoltage = device.getSupplyVoltage();
@@ -32,21 +34,22 @@ public final class CtreTalonFxReader {
         deviceTemp,
         motorVoltage);
 
-    snap.faultsRaw = faultSignal.getValue();
-    snap.stickyFaultsRaw = stickySignal.getValue();
-    snap.faultStatus = String.valueOf(faultSignal.getStatus());
-    snap.stickyStatus = String.valueOf(stickySignal.getStatus());
+    ctre.faultsRaw = faultSignal.getValue();
+    ctre.stickyFaultsRaw = stickySignal.getValue();
+    ctre.faultStatus = String.valueOf(faultSignal.getStatus());
+    ctre.stickyStatus = String.valueOf(stickySignal.getStatus());
 
-    snap.busV = supplyVoltage.getValue().in(Units.Volts);
-    snap.appliedDuty = dutyCycle.getValue();
-    snap.motorCurrentA = supplyCurrent.getValue().in(Units.Amps);
-    snap.tempC = deviceTemp.getValue().in(Units.Celsius);
-    snap.motorV = motorVoltage.getValue().in(Units.Volts);
-    snap.appliedV = snap.motorV;
+    ctre.busV = supplyVoltage.getValue().in(Units.Volts);
+    ctre.appliedDuty = dutyCycle.getValue();
+    ctre.motorCurrentA = supplyCurrent.getValue().in(Units.Amps);
+    ctre.tempC = deviceTemp.getValue().in(Units.Celsius);
+    ctre.motorV = motorVoltage.getValue().in(Units.Volts);
+    ctre.appliedV = ctre.motorV;
 
-    CtreReaderUtil.collectFaultFlags(device, snap.faultFlags);
-    CtreReaderUtil.collectStickyFaultFlags(device, snap.stickyFaultFlags);
+    CtreReaderUtil.collectFaultFlags(device, ctre.faultFlags);
+    CtreReaderUtil.collectStickyFaultFlags(device, ctre.stickyFaultFlags);
 
+    snap.addAttachment(ctre);
     return snap;
   }
 }

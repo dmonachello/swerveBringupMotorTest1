@@ -1,38 +1,38 @@
-package frc.robot.devices.ctre;
+package frc.robot.devices.template;
 
-import com.ctre.phoenix6.controls.SolidColor;
-import com.ctre.phoenix6.hardware.CANdle;
-import com.ctre.phoenix6.signals.RGBWColor;
-import frc.robot.BringupUtil;
 import frc.robot.devices.DeviceUnit;
-import frc.robot.manufacturers.ctre.diag.CtreCandleReader;
 import frc.robot.diag.snapshots.DeviceSnapshot;
-import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.registry.RegistrationHeader;
+import frc.robot.diag.snapshots.LimitsAttachment;
+import frc.robot.BringupUtil;
 import edu.wpi.first.wpilibj.DigitalInput;
 
-// Device wrapper for a CTRE CANdle LED controller.
-public final class CtreCANdleDevice implements DeviceUnit {
+// Template device wrapper for new vendor integrations.
+public final class TemplateMotorDevice implements DeviceUnit {
   public static final RegistrationHeader HEADER = new RegistrationHeader(
-      "CANdle",
-      "CTRE",
-      "CANdle",
-      "Phoenix 6",
+      "Template Motor",
+      "TEMPLATE",
+      "TEMPLATE_MOTOR",
+      "Template SDK",
       "Team",
       "2026-03-02",
-      "CTRE CANdle LED controller.");
+      "Clone this device when adding a new vendor.");
   private final int canId;
   private final String label;
+  private final String deviceType;
   private final BringupUtil.LimitConfig limitConfig;
   private DigitalInput fwdLimit;
   private DigitalInput revLimit;
-  private CANdle device;
-  private boolean testOn = false;
-  private final SolidColor testColor = new SolidColor(0, 7);
+  private boolean created = false;
 
-  public CtreCANdleDevice(int canId, String label, BringupUtil.LimitConfig limitConfig) {
+  public TemplateMotorDevice(
+      int canId,
+      String label,
+      String deviceType,
+      BringupUtil.LimitConfig limitConfig) {
     this.canId = canId;
     this.label = label;
+    this.deviceType = deviceType;
     this.limitConfig = limitConfig != null ? limitConfig : new BringupUtil.LimitConfig();
     initLimitInputs();
   }
@@ -44,7 +44,7 @@ public final class CtreCANdleDevice implements DeviceUnit {
 
   @Override
   public String getDeviceType() {
-    return "CANdle";
+    return deviceType;
   }
 
   @Override
@@ -59,21 +59,17 @@ public final class CtreCANdleDevice implements DeviceUnit {
 
   @Override
   public boolean isCreated() {
-    return device != null;
+    return created;
   }
 
   @Override
   public void ensureCreated() {
-    if (device != null) {
-      return;
-    }
-    device = new CANdle(canId);
+    created = true;
   }
 
   @Override
   public void close() {
-    BringupUtil.closeIfPossible(device);
-    device = null;
+    created = false;
     BringupUtil.closeIfPossible(fwdLimit);
     BringupUtil.closeIfPossible(revLimit);
     fwdLimit = null;
@@ -82,9 +78,14 @@ public final class CtreCANdleDevice implements DeviceUnit {
 
   @Override
   public void clearFaults() {
-    if (device != null) {
-      device.clearStickyFaults();
-    }
+  }
+
+  @Override
+  public void setDuty(double duty) {
+  }
+
+  @Override
+  public void stop() {
   }
 
   @Override
@@ -93,41 +94,24 @@ public final class CtreCANdleDevice implements DeviceUnit {
   }
 
   @Override
-  public boolean hasTest() {
-    return true;
-  }
-
-  @Override
-  public String getTestName() {
-    return "toggle_led";
-  }
-
-  @Override
-  public void runTest() {
-    ensureCreated();
-    if (device == null) {
-      return;
-    }
-    RGBWColor color = testOn ? new RGBWColor(0, 0, 0) : new RGBWColor(0, 128, 255);
-    device.setControl(testColor.withColor(color));
-    testOn = !testOn;
+  public void deactivate() {
+    stop();
   }
 
   @Override
   public DeviceSnapshot snapshot() {
-    if (device == null) {
-      DeviceSnapshot snap = new DeviceSnapshot();
-      snap.vendor = "CTRE";
-      snap.deviceType = getDeviceType();
-      snap.canId = canId;
+    DeviceSnapshot snap = new DeviceSnapshot();
+    snap.vendor = "TEMPLATE";
+    snap.deviceType = deviceType;
+    snap.canId = canId;
+    snap.label = label;
+    if (created) {
+      snap.present = true;
+      snap.note = "template device (no SDK)";
+    } else {
       snap.present = false;
       snap.note = "not added";
-      snap.label = label;
-      addLimitAttachment(snap);
-      return snap;
     }
-    DeviceSnapshot snap = CtreCandleReader.read(device, canId);
-    snap.label = label;
     addLimitAttachment(snap);
     return snap;
   }

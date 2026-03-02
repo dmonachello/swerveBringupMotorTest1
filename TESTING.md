@@ -159,6 +159,28 @@ Expected:
 - Tool waits for `--quick-wait` seconds (default 1.0).
 - Prints a single summary and exits.
 
+### 11) DIO limit switch reporting
+Steps:
+1. Add `limits` to a device entry in `src/main/deploy/bringup_profiles.json`, for example:
+   `{ "label": "FL KRAK", "id": 2, "limits": { "fwdDio": 0, "revDio": 1, "invert": false } }`
+2. Wire limit switches to the specified DIO ports.
+3. Deploy and run the robot code.
+4. Press `D-pad Left` to print health status.
+Expected:
+- The device row includes `limits=fwd:DIO0=OPEN/ CLOSED,rev:DIO1=OPEN/ CLOSED`.
+- Toggling the limit switch updates the reported state.
+- When a limit is CLOSED, motor output in that direction is clamped to 0.0.
+- If your switch is normally closed, set `"invert": true` in the profile entry.
+
+### 12) Non-motor device test action
+Steps:
+1. Ensure a CANdle is in the profile (`candles` list).
+2. Deploy and run the robot code.
+3. Press `Left+Right Bumper` to run the non-motor test action.
+Expected:
+- The CANdle toggles between OFF and BLUE.
+- Console prints `Test: <label> (CANdle) [toggle_led]`.
+
 ## Troubleshooting
 
 If no frames are received:

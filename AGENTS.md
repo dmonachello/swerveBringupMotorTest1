@@ -12,7 +12,7 @@ Hard rules
 - Windows is the primary host for the Python tool (Driver Station laptop). Avoid Linux-only assumptions (SocketCAN, can0, etc) unless explicitly requested.
 - Prefer small, reversible diffs. No sweeping refactors unless asked.
 - Keep hardware configuration easy to customize: adding a team's device list/profile should be data-driven and clearly documented, not code surgery.
-- The JSON report uses `cmdDuty`, `appliedDuty`, and `motorCurrentA` (not `set`/`applied`/`current`).
+- The JSON report exposes telemetry under `devices[].attachments` (e.g., `type=revMotor` / `ctreMotor`) with fields such as `cmdDuty`, `appliedDuty`, and `motorCurrentA`.
 - AI diagnosis guidance lives in `AI_DIAGNOSIS.md`.
 - Documentation rules:
   - Use short headings and clear section hierarchy.

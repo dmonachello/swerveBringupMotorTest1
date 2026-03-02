@@ -70,10 +70,10 @@ File handling notes:
    - Expected: Prints current bindings list.
    - Example output:
      ```
-     Bindings (Operational):
-       A: add motor (alternates SPARK/CTRE)
-       Start: add all motors + CANCoders
-       Back: toggle CAN profile
+      Bindings (Operational):
+        A: add motor (alternates SPARK/CTRE)
+        Start: add all configured devices
+        Back: toggle CAN profile
        Left Y: NEO/FLEX speed
        Right Y: KRAKEN/FALCON speed
        Left Stick: nudge motors (0.2 for 0.5s)
@@ -139,8 +139,8 @@ File handling notes:
    - Verify: file exists on roboRIO after test.
    - Example output:
      ```
-     {"timestamp":1.772000000000E9,"bus":{"valid":true,"utilizationPct":10.5,"rxErrors":0,"txErrors":0,"busOff":0},"pc":{"openOk":false,"heartbeatAgeSec":-1.0},"devices":[{"type":"NEO","id":10,"present":true,"faultsRaw":0,"warningsRaw":0,"busV":12.61,"motorCurrentA":0.0,"tempC":26.0}]}
-     ```
+    {"timestamp":1.772000000000E9,"bus":{"valid":true,"utilizationPct":10.5,"rxErrors":0,"txErrors":0,"busOff":0},"pc":{"openOk":false,"heartbeatAgeSec":-1.0},"devices":[{"type":"NEO","id":10,"present":true,"attachments":[{"type":"revMotor","faultsRaw":0,"warningsRaw":0,"busV":12.61,"motorCurrentA":0.0,"tempC":26.0}]}]}
+    ```
 
 6. Nudge motors
    - Action: Press `Left Stick`.

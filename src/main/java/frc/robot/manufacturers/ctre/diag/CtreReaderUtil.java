@@ -1,4 +1,4 @@
-package frc.robot.diag.readers;
+package frc.robot.manufacturers.ctre.diag;
 
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.StatusSignal;

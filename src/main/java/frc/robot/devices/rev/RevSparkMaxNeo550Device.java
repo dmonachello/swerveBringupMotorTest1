@@ -7,20 +7,40 @@ import com.revrobotics.spark.SparkMax;
 import com.revrobotics.spark.config.SparkMaxConfig;
 import frc.robot.BringupUtil;
 import frc.robot.devices.DeviceUnit;
-import frc.robot.diag.readers.RevSparkMaxReader;
+import frc.robot.manufacturers.rev.diag.RevSparkMaxReader;
 import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.diag.snapshots.LimitsAttachment;
+import frc.robot.registry.RegistrationHeader;
+import edu.wpi.first.wpilibj.DigitalInput;
 
 // Device wrapper for a REV Spark Max controlling a NEO 550.
 public final class RevSparkMaxNeo550Device implements DeviceUnit {
+  public static final RegistrationHeader HEADER = new RegistrationHeader(
+      "SparkMax NEO 550",
+      "REV",
+      "NEO 550",
+      "REVLib",
+      "Team",
+      "2026-03-02",
+      "Spark Max controlling a NEO 550 motor.");
   private final int canId;
   private final String label;
   private final String motorModelOverride;
+  private final BringupUtil.LimitConfig limitConfig;
+  private DigitalInput fwdLimit;
+  private DigitalInput revLimit;
   private SparkMax device;
 
-  public RevSparkMaxNeo550Device(int canId, String label, String motorModelOverride) {
+  public RevSparkMaxNeo550Device(
+      int canId,
+      String label,
+      String motorModelOverride,
+      BringupUtil.LimitConfig limitConfig) {
     this.canId = canId;
     this.label = label;
     this.motorModelOverride = motorModelOverride;
+    this.limitConfig = limitConfig != null ? limitConfig : new BringupUtil.LimitConfig();
+    initLimitInputs();
   }
 
   @Override
@@ -36,6 +56,11 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
   @Override
   public String getLabel() {
     return label;
+  }
+
+  @Override
+  public RegistrationHeader getHeader() {
+    return HEADER;
   }
 
   public String getMotorModelOverride() {
@@ -64,6 +89,10 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
   public void close() {
     BringupUtil.closeIfPossible(device);
     device = null;
+    BringupUtil.closeIfPossible(fwdLimit);
+    BringupUtil.closeIfPossible(revLimit);
+    fwdLimit = null;
+    revLimit = null;
   }
 
   @Override
@@ -76,7 +105,7 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
   @Override
   public void setDuty(double duty) {
     if (device != null) {
-      device.set(duty);
+      device.set(applyLimit(duty));
     }
   }
 
@@ -85,6 +114,16 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     if (device != null) {
       device.stopMotor();
     }
+  }
+
+  @Override
+  public void activate() {
+    ensureCreated();
+  }
+
+  @Override
+  public void deactivate() {
+    stop();
   }
 
   @Override
@@ -97,12 +136,60 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
       snap.present = false;
       snap.note = "not added";
       snap.label = label;
+      addLimitAttachment(snap);
       return snap;
     }
     DeviceSnapshot snap = RevSparkMaxReader.read(device, canId);
     snap.deviceType = getDeviceType();
     snap.label = label;
+    addLimitAttachment(snap);
     return snap;
+  }
+
+  private void initLimitInputs() {
+    if (limitConfig.hasForward()) {
+      fwdLimit = new DigitalInput(limitConfig.fwdDio);
+    }
+    if (limitConfig.hasReverse()) {
+      revLimit = new DigitalInput(limitConfig.revDio);
+    }
+  }
+
+  private void addLimitAttachment(DeviceSnapshot snap) {
+    if (!limitConfig.hasForward() && !limitConfig.hasReverse()) {
+      return;
+    }
+    LimitsAttachment limits = new LimitsAttachment();
+    limits.invert = limitConfig.invert;
+    if (limitConfig.hasForward()) {
+      limits.fwdDio = limitConfig.fwdDio;
+      limits.fwdClosed = readLimit(fwdLimit);
+    }
+    if (limitConfig.hasReverse()) {
+      limits.revDio = limitConfig.revDio;
+      limits.revClosed = readLimit(revLimit);
+    }
+    snap.addAttachment(limits);
+  }
+
+  private Boolean readLimit(DigitalInput input) {
+    if (input == null) {
+      return null;
+    }
+    boolean raw = input.get();
+    return limitConfig.invert ? !raw : raw;
+  }
+
+  private double applyLimit(double duty) {
+    Boolean fwdClosed = readLimit(fwdLimit);
+    if (Boolean.TRUE.equals(fwdClosed) && duty > 0.0) {
+      return 0.0;
+    }
+    Boolean revClosed = readLimit(revLimit);
+    if (Boolean.TRUE.equals(revClosed) && duty < 0.0) {
+      return 0.0;
+    }
+    return duty;
   }
 }
 

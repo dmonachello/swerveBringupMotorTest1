@@ -19,8 +19,9 @@ Important context (plain language):
 - `bus` = the roboRIO's own CAN controller health. This is the first place to check for wiring/termination problems.
 - `pc` = optional CAN sniffer data from the Driver Station PC. If it's missing, ignore these fields.
 - `devices` = direct readings from robot-side vendor APIs (REV/CTRE). These are local, not sniffer data.
-- If `appliedDuty > 0` and `motorCurrentA = 0`: the controller is commanding output but the motor is not connected or not drawing current.
-- If `cmdDuty > 0` but `appliedDuty = 0`: the command is not reaching the output (config, disabled, follower mode, or limit).
+- Device telemetry lives under `devices[].attachments` with `type=revMotor` or `type=ctreMotor`.
+- If `appliedDuty > 0` and `motorCurrentA = 0` (revMotor/ctreMotor): the controller is commanding output but the motor is not connected or not drawing current.
+- If `cmdDuty > 0` but `appliedDuty = 0` (revMotor only): the command is not reaching the output (config, disabled, follower mode, or limit).
 - If `bus` shows errors, `txFull`, or `busOff`: treat this as a wiring/termination issue before anything else.
 
 JSON report:
@@ -36,7 +37,7 @@ Symptom:
 - `bus.busOff`: any nonzero means hard bus failure.
 - `pc.openOk=false` or `pc.heartbeatAgeSec<0`: PC sniffer not connected (ignore PC data).
 - `devices[].present=false`: device not instantiated in bringup (not a CAN health issue).
-- `devices[].appliedDuty>0` and `devices[].motorCurrentA=0`: motor leads or motor itself not connected.
-- `devices[].faultsRaw` or `devices[].warningsRaw` nonzero: address device-specific faults first.
-- `devices[].stickyWarningsRaw` with `reset=true`: device reboot/brownout occurred at some point.
+- `devices[].attachments[type=revMotor|ctreMotor].appliedDuty>0` and `motorCurrentA=0`: motor leads or motor itself not connected.
+- `devices[].attachments[type=revMotor].faultsRaw` or `warningsRaw` nonzero: address device-specific faults first.
+- `devices[].attachments[type=revMotor].stickyWarningsRaw` with `reset=true`: device reboot/brownout occurred at some point.
 

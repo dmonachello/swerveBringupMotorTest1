@@ -14,7 +14,7 @@ Hard rules
 - Do not change NetworkTables paths without coordinated update with tools/ publisher.
 - If the Python publisher is not running, Java code must behave sensibly (no crashes, no blocking).
 - Keep hardware configuration easy to customize: prefer data-driven profiles and ensure changes are documented for teams to update their device list quickly.
-- The JSON report uses `cmdDuty`, `appliedDuty`, and `motorCurrentA` (not `set`/`applied`/`current`).
+- The JSON report exposes telemetry under `devices[].attachments` (e.g., `type=revMotor` / `ctreMotor`) with fields such as `cmdDuty`, `appliedDuty`, and `motorCurrentA`.
 - AI diagnosis guidance lives in `AI_DIAGNOSIS.md`.
 
 Interface contract discipline

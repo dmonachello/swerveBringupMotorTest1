@@ -24,6 +24,7 @@ Purpose: isolate vendor SDK calls and device-specific behavior.
 - Each device type has a small wrapper class that only talks to the vendor API.
 - The wrapper exposes a consistent API: create, stop, clear faults, snapshot, set duty.
 - The wrapper never formats output and never knows about reports.
+- Each wrapper supplies a required `RegistrationHeader` (metadata and provenance).
 
 Examples:
 - REV:
@@ -41,6 +42,10 @@ Purpose: group device types by vendor and centralize shared vendor logic.
 - Provides shared helpers (spec lookup, health notes, low-current tracking).
 - Exposes simple operations: add next, add all, set duty, stop, snapshot.
 - All manufacturer groups implement `ManufacturerGroup`.
+- Vendor-specific diagnostics (readers + attachments) live under
+  `src/main/java/frc/robot/manufacturers/<vendor>/diag/`.
+- Device registration is data-driven via `DeviceRegistration` entries; adding a new
+  device type only requires adding a new registration entry.
 
 Examples:
 - `ManufacturerGroup` (interface)
@@ -70,13 +75,8 @@ This keeps all reporting consistent, even if device implementations change.
 - Profile JSON schema (`bringup_profiles.json`).
 
 ## Adding New Hardware
-Add new devices in this order:
-1. Add a device wrapper class for the new hardware.
-2. Register it in the correct manufacturer group.
-3. Add profile support in `bringup_profiles.json` (and update labels/mappings if needed).
-4. Verify reports show the new device type.
-
-This keeps the rest of the system stable and avoids spreading vendor logic across the codebase.
+For a step-by-step guide (new motor/controller types), see:
+- `ADDING_HARDWARE.md`
 
 ## Tradeoffs
 - More classes than a single-file approach, but each class is smaller and easier to reason about.

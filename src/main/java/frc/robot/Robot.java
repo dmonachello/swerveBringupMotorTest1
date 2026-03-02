@@ -49,6 +49,12 @@ public class Robot extends TimedRobot {
     core.handleAddAll(controller.getStartButton());
     core.handlePrint(controller.getBButton());
     core.handleHealth(controller.getXButton());
+    boolean leftBumper = controller.getLeftBumperButton();
+    boolean rightBumper = controller.getRightBumperButton();
+    boolean nonMotorTest = leftBumper && rightBumper;
+    if (edge.pressed("nonMotorTest", nonMotorTest)) {
+      core.runNextNonMotorTest();
+    }
 
     // --- Profile switching ---
     if (edge.pressed("profileToggle", controller.getBackButton())) {
@@ -60,7 +66,7 @@ public class Robot extends TimedRobot {
     }
 
     // --- Reprint bindings ---
-    if (edge.pressed("bindings", controller.getLeftBumperButton())) {
+    if (edge.pressed("bindings", leftBumper && !rightBumper)) {
       printStartupInfo();
     }
 
@@ -83,7 +89,7 @@ public class Robot extends TimedRobot {
       BringupPrinter.enqueue("Nudge: 0.2 for 0.5s (all motors)");
     }
 
-    if (edge.pressed("clearFaults", controller.getRightBumperButton())) {
+    if (edge.pressed("clearFaults", rightBumper && !leftBumper)) {
       core.clearAllFaults();
       BringupPrinter.enqueue("Cleared device faults (current + sticky).");
     }
@@ -101,12 +107,13 @@ public class Robot extends TimedRobot {
     StringBuilder sb = new StringBuilder(512);
     appendLine(sb, "=== Swerve Bringup ===");
     appendLine(sb, "A: add motor (alternates SPARK/CTRE)");
-    appendLine(sb, "Start: add all motors + CANCoders");
+    appendLine(sb, "Start: add all configured devices");
     appendLine(sb, "B: print state");
     appendLine(sb, "X: print health status");
     appendLine(sb, "Back: toggle CAN profile");
     appendLine(sb, "Left Bumper: reprint bindings");
     appendLine(sb, "Right Bumper: clear device faults");
+    appendLine(sb, "Left+Right Bumper: run non-motor test");
     appendLine(sb, "Right Stick: print speed inputs");
     appendLine(sb, "Left Stick: nudge motors (0.2 for 0.5s)");
     appendLine(sb, "Left Y: NEO/FLEX speed, Right Y: KRAKEN/FALCON speed");

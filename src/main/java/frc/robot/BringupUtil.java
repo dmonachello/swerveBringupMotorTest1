@@ -62,6 +62,7 @@ public final class BringupUtil {
   private static final String DEFAULT_PROFILE_NAME = "robot";
   private static final String DEFAULT_PROFILE_FILE = "bringup_profiles.json";
   private static final String MOTOR_SPECS_FILE = "motor_specs.json";
+  private static final String CAN_MAPPINGS_FILE = "can_mappings.json";
 
   // JSON parser for bringup_profiles.json.
   private static final Gson GSON = new Gson();
@@ -71,6 +72,8 @@ public final class BringupUtil {
   private static List<String> profileOrder = new ArrayList<>();
   private static String defaultProfile = DEFAULT_PROFILE_NAME;
   private static final Map<String, MotorSpec> MOTOR_SPECS = loadMotorSpecs();
+  private static final CanMappings CAN_MAPPINGS = loadCanMappings();
+  private static final Map<DeviceKey, List<DeviceConfig>> DEVICE_CONFIGS = new LinkedHashMap<>();
 
   // Currently active profile name.
   private static String activeProfile = DEFAULT_PROFILE_NAME;
@@ -95,6 +98,13 @@ public final class BringupUtil {
   public static String[] FLEX_MOTOR_MODELS = new String[0];
   public static String[] KRAKEN_MOTOR_MODELS = new String[0];
   public static String[] FALCON_MOTOR_MODELS = new String[0];
+  public static LimitConfig[] NEO_LIMITS = new LimitConfig[0];
+  public static LimitConfig[] NEO550_LIMITS = new LimitConfig[0];
+  public static LimitConfig[] FLEX_LIMITS = new LimitConfig[0];
+  public static LimitConfig[] KRAKEN_LIMITS = new LimitConfig[0];
+  public static LimitConfig[] FALCON_LIMITS = new LimitConfig[0];
+  public static LimitConfig[] CANCODER_LIMITS = new LimitConfig[0];
+  public static LimitConfig[] CANDLE_LIMITS = new LimitConfig[0];
   public static int PDH_CAN_ID = FALLBACK_PDH_CAN_ID;
   public static int PIGEON_CAN_ID = FALLBACK_PIGEON_CAN_ID;
   public static int ROBORIO_CAN_ID = FALLBACK_ROBORIO_CAN_ID;
@@ -186,10 +196,18 @@ public final class BringupUtil {
     FLEX_MOTOR_MODELS = toMotorArray(config.flexes);
     KRAKEN_MOTOR_MODELS = toMotorArray(config.krakens);
     FALCON_MOTOR_MODELS = toMotorArray(config.falcons);
+    NEO_LIMITS = toLimitArray(config.neos);
+    NEO550_LIMITS = toLimitArray(config.neo550s);
+    FLEX_LIMITS = toLimitArray(config.flexes);
+    KRAKEN_LIMITS = toLimitArray(config.krakens);
+    FALCON_LIMITS = toLimitArray(config.falcons);
+    CANCODER_LIMITS = toLimitArray(config.cancoders);
+    CANDLE_LIMITS = toLimitArray(config.candles);
     PDH_CAN_ID = config.pdh != null ? config.pdh.id : DISABLED_CAN_ID;
     PIGEON_CAN_ID = config.pigeon != null ? config.pigeon.id : DISABLED_CAN_ID;
     ROBORIO_CAN_ID = config.roborio != null ? config.roborio.id : DISABLED_CAN_ID;
     activeProfile = profileName;
+    buildDeviceConfigs(config);
   }
 
   public static void toggleCanProfile() {
@@ -460,6 +478,7 @@ public final class BringupUtil {
         Collections.emptyList(),
         toDevices(FALLBACK_ROBOT_CANCODER_CAN_IDS),
         Collections.emptyList(),
+        Collections.emptyList(),
         new DeviceRef(FALLBACK_PDH_CAN_ID),
         new DeviceRef(FALLBACK_PIGEON_CAN_ID),
         new DeviceRef(FALLBACK_ROBORIO_CAN_ID)));
@@ -471,10 +490,12 @@ public final class BringupUtil {
         Collections.emptyList(),
         toDevices(FALLBACK_DEMO_CANCODER_CAN_IDS),
         Collections.emptyList(),
+        Collections.emptyList(),
         null,
         null,
         new DeviceRef(FALLBACK_ROBORIO_CAN_ID)));
     profiles.put("demo_home", new CanProfileConfig(
+        Collections.emptyList(),
         Collections.emptyList(),
         Collections.emptyList(),
         Collections.emptyList(),
@@ -507,9 +528,72 @@ public final class BringupUtil {
     FLEX_MOTOR_MODELS = new String[0];
     KRAKEN_MOTOR_MODELS = new String[KRAKEN_LABELS.length];
     FALCON_MOTOR_MODELS = new String[0];
+    NEO_LIMITS = toLimitArray(toDevices(FALLBACK_ROBOT_NEO_CAN_IDS));
+    NEO550_LIMITS = new LimitConfig[0];
+    FLEX_LIMITS = new LimitConfig[0];
+    KRAKEN_LIMITS = toLimitArray(toDevices(FALLBACK_ROBOT_KRAKEN_CAN_IDS));
+    FALCON_LIMITS = new LimitConfig[0];
+    CANCODER_LIMITS = toLimitArray(toDevices(FALLBACK_ROBOT_CANCODER_CAN_IDS));
+    CANDLE_LIMITS = new LimitConfig[0];
     PDH_CAN_ID = FALLBACK_PDH_CAN_ID;
     PIGEON_CAN_ID = FALLBACK_PIGEON_CAN_ID;
     ROBORIO_CAN_ID = FALLBACK_ROBORIO_CAN_ID;
+    buildDeviceConfigs(profiles.get(DEFAULT_PROFILE_NAME));
+  }
+
+  public static List<DeviceConfig> getDeviceConfigs(String vendor, String deviceType) {
+    if (vendor == null || deviceType == null) {
+      return Collections.emptyList();
+    }
+    List<DeviceConfig> configs = DEVICE_CONFIGS.get(new DeviceKey(vendor, deviceType));
+    return configs != null ? configs : Collections.emptyList();
+  }
+
+  private static void buildDeviceConfigs(CanProfileConfig config) {
+    DEVICE_CONFIGS.clear();
+    if (config == null) {
+      return;
+    }
+    registerDeviceConfigs("REV", "NEO", config.neos, "NEO");
+    registerDeviceConfigs("REV", "NEO 550", config.neo550s, "NEO 550");
+    registerDeviceConfigs("REV", "FLEX", config.flexes, "FLEX");
+    registerDeviceConfigs("CTRE", "KRAKEN", config.krakens, "KRAKEN");
+    registerDeviceConfigs("CTRE", "FALCON", config.falcons, "FALCON");
+    registerDeviceConfigs("CTRE", "CANCoder", config.cancoders, "CANCoder");
+    registerDeviceConfigs("CTRE", "CANdle", config.candles, "CANdle");
+    registerGenericDeviceConfigs(config.devices);
+  }
+
+  private static void registerDeviceConfigs(
+      String vendor,
+      String deviceType,
+      List<DeviceRef> refs,
+      String defaultLabelPrefix) {
+    List<DeviceConfig> configs = toDeviceConfigs(refs, defaultLabelPrefix);
+    if (!configs.isEmpty()) {
+      DEVICE_CONFIGS.put(new DeviceKey(vendor, deviceType), configs);
+    }
+  }
+
+  private static void registerGenericDeviceConfigs(List<DeviceRef> refs) {
+    if (refs == null || refs.isEmpty()) {
+      return;
+    }
+    for (DeviceRef ref : refs) {
+      if (ref == null || ref.vendor == null || ref.type == null) {
+        System.out.println("Warning: generic device entry missing vendor/type.");
+        continue;
+      }
+      String vendor = ref.vendor.trim();
+      String type = ref.type.trim();
+      if (vendor.isBlank() || type.isBlank()) {
+        System.out.println("Warning: generic device entry missing vendor/type.");
+        continue;
+      }
+      DeviceConfig config = toDeviceConfig(ref, type + " " + ref.id);
+      DeviceKey key = new DeviceKey(vendor, type);
+      DEVICE_CONFIGS.computeIfAbsent(key, ignored -> new ArrayList<>()).add(config);
+    }
   }
 
   private static int[] toIdArray(List<DeviceRef> refs) {
@@ -551,6 +635,32 @@ public final class BringupUtil {
     return labels;
   }
 
+  private static List<DeviceConfig> toDeviceConfigs(List<DeviceRef> refs, String defaultLabelPrefix) {
+    if (refs == null || refs.isEmpty()) {
+      return Collections.emptyList();
+    }
+    List<DeviceConfig> configs = new ArrayList<>(refs.size());
+    for (DeviceRef ref : refs) {
+      if (ref == null) {
+        continue;
+      }
+      String label = ref.label;
+      if (label == null || label.isBlank()) {
+        label = defaultLabelPrefix + " " + ref.id;
+      }
+      configs.add(new DeviceConfig(ref.id, label, ref.motor, ref.limits));
+    }
+    return configs;
+  }
+
+  private static DeviceConfig toDeviceConfig(DeviceRef ref, String fallbackLabel) {
+    String label = ref.label;
+    if (label == null || label.isBlank()) {
+      label = fallbackLabel;
+    }
+    return new DeviceConfig(ref.id, label, ref.motor, ref.limits);
+  }
+
   private static String[] toMotorArray(List<DeviceRef> refs) {
     if (refs == null || refs.isEmpty()) {
       return new String[0];
@@ -560,6 +670,18 @@ public final class BringupUtil {
       motors[i] = refs.get(i).motor;
     }
     return motors;
+  }
+
+  private static LimitConfig[] toLimitArray(List<DeviceRef> refs) {
+    if (refs == null || refs.isEmpty()) {
+      return new LimitConfig[0];
+    }
+    LimitConfig[] limits = new LimitConfig[refs.size()];
+    for (int i = 0; i < refs.size(); i++) {
+      DeviceRef ref = refs.get(i);
+      limits[i] = ref.limits != null ? ref.limits : new LimitConfig();
+    }
+    return limits;
   }
 
   public static String getNeoLabel(int index) {
@@ -610,6 +732,34 @@ public final class BringupUtil {
     return motorForIndex(FALCON_MOTOR_MODELS, index);
   }
 
+  public static LimitConfig getNeoLimitConfig(int index) {
+    return limitForIndex(NEO_LIMITS, index);
+  }
+
+  public static LimitConfig getNeo550LimitConfig(int index) {
+    return limitForIndex(NEO550_LIMITS, index);
+  }
+
+  public static LimitConfig getFlexLimitConfig(int index) {
+    return limitForIndex(FLEX_LIMITS, index);
+  }
+
+  public static LimitConfig getKrakenLimitConfig(int index) {
+    return limitForIndex(KRAKEN_LIMITS, index);
+  }
+
+  public static LimitConfig getFalconLimitConfig(int index) {
+    return limitForIndex(FALCON_LIMITS, index);
+  }
+
+  public static LimitConfig getCANCoderLimitConfig(int index) {
+    return limitForIndex(CANCODER_LIMITS, index);
+  }
+
+  public static LimitConfig getCandleLimitConfig(int index) {
+    return limitForIndex(CANDLE_LIMITS, index);
+  }
+
   private static String labelForIndex(String[] labels, int[] ids, int index, String prefix) {
     if (labels == null || index < 0 || index >= labels.length) {
       return prefix + " " + (index >= 0 && index < ids.length ? ids[index] : "?");
@@ -625,6 +775,13 @@ public final class BringupUtil {
     return (model == null || model.isBlank()) ? null : model;
   }
 
+  private static LimitConfig limitForIndex(LimitConfig[] limits, int index) {
+    if (limits == null || index < 0 || index >= limits.length) {
+      return new LimitConfig();
+    }
+    return limits[index] != null ? limits[index] : new LimitConfig();
+  }
+
   public static MotorSpec getMotorSpecForDevice(String label, String modelOverride) {
     String model = modelOverride;
     if (model == null || model.isBlank()) {
@@ -634,6 +791,20 @@ public final class BringupUtil {
       return null;
     }
     return MOTOR_SPECS.get(model);
+  }
+
+  public static String getCanManufacturerName(int id) {
+    if (CAN_MAPPINGS == null || CAN_MAPPINGS.manufacturers == null) {
+      return null;
+    }
+    return CAN_MAPPINGS.manufacturers.get(String.valueOf(id));
+  }
+
+  public static String getCanDeviceTypeName(int id) {
+    if (CAN_MAPPINGS == null || CAN_MAPPINGS.deviceTypes == null) {
+      return null;
+    }
+    return CAN_MAPPINGS.deviceTypes.get(String.valueOf(id));
   }
 
   private static String inferMotorModelFromLabel(String label) {
@@ -687,6 +858,20 @@ public final class BringupUtil {
     }
   }
 
+  private static CanMappings loadCanMappings() {
+    Path path = resolveDeployPath(CAN_MAPPINGS_FILE);
+    if (path == null || !Files.exists(path)) {
+      return new CanMappings();
+    }
+    try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+      CanMappings mappings = GSON.fromJson(reader, CanMappings.class);
+      return mappings != null ? mappings : new CanMappings();
+    } catch (IOException | JsonParseException ex) {
+      System.out.println("Warning: failed to load CAN mappings: " + ex.getMessage());
+      return new CanMappings();
+    }
+  }
+
   private static Path resolveDeployPath(String fileName) {
     try {
       Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(fileName);
@@ -719,6 +904,7 @@ public final class BringupUtil {
     List<DeviceRef> falcons = Collections.emptyList();
     List<DeviceRef> cancoders = Collections.emptyList();
     List<DeviceRef> candles = Collections.emptyList();
+    List<DeviceRef> devices = Collections.emptyList();
     DeviceRef pdh;
     DeviceRef pigeon;
     DeviceRef roborio;
@@ -731,6 +917,7 @@ public final class BringupUtil {
         List<DeviceRef> falcons,
         List<DeviceRef> cancoders,
         List<DeviceRef> candles,
+        List<DeviceRef> devices,
         DeviceRef pdh,
         DeviceRef pigeon,
         DeviceRef roborio) {
@@ -741,6 +928,7 @@ public final class BringupUtil {
       this.falcons = falcons != null ? falcons : Collections.emptyList();
       this.cancoders = cancoders != null ? cancoders : Collections.emptyList();
       this.candles = candles != null ? candles : Collections.emptyList();
+      this.devices = devices != null ? devices : Collections.emptyList();
       this.pdh = pdh;
       this.pigeon = pigeon;
       this.roborio = roborio;
@@ -750,16 +938,99 @@ public final class BringupUtil {
   // JSON device reference (currently just a CAN ID).
   private static final class DeviceRef {
     int id;
+    String vendor;
+    String type;
     String label;
     String motor;
+    LimitConfig limits;
 
     DeviceRef(int id) {
       this.id = id;
     }
   }
 
+  public static final class DeviceKey {
+    private final String vendor;
+    private final String type;
+
+    public DeviceKey(String vendor, String type) {
+      this.vendor = vendor == null ? "" : vendor.trim().toUpperCase();
+      this.type = type == null ? "" : type.trim().toUpperCase();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) {
+        return true;
+      }
+      if (obj == null || getClass() != obj.getClass()) {
+        return false;
+      }
+      DeviceKey other = (DeviceKey) obj;
+      return vendor.equals(other.vendor) && type.equals(other.type);
+    }
+
+    @Override
+    public int hashCode() {
+      return 31 * vendor.hashCode() + type.hashCode();
+    }
+  }
+
+  public static final class DeviceConfig {
+    private final int id;
+    private final String label;
+    private final String motor;
+    private final LimitConfig limits;
+
+    public DeviceConfig(int id, String label, String motor, LimitConfig limits) {
+      this.id = id;
+      this.label = label;
+      this.motor = motor;
+      this.limits = limits != null ? limits : new LimitConfig();
+    }
+
+    public int getId() {
+      return id;
+    }
+
+    public String getLabel() {
+      return label;
+    }
+
+    public String getMotor() {
+      return motor;
+    }
+
+    public LimitConfig getLimits() {
+      return limits;
+    }
+  }
+
+  public static final class LimitConfig {
+    @SerializedName("fwdDio")
+    public int fwdDio = -1;
+    @SerializedName("revDio")
+    public int revDio = -1;
+    @SerializedName("invert")
+    public boolean invert = false;
+
+    public boolean hasForward() {
+      return fwdDio >= 0;
+    }
+
+    public boolean hasReverse() {
+      return revDio >= 0;
+    }
+  }
+
   private static final class MotorSpecRoot {
     List<MotorSpec> motors = Collections.emptyList();
+  }
+
+  private static final class CanMappings {
+    Map<String, String> manufacturers = Collections.emptyMap();
+    @SerializedName("device_types")
+    Map<String, String> deviceTypes = Collections.emptyMap();
   }
 
   public static final class MotorSpec {

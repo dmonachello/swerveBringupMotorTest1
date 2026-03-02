@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import frc.robot.diag.snapshots.BusSnapshot;
+import frc.robot.diag.snapshots.DeviceAttachment;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.PcSnapshot;
 import frc.robot.diag.snapshots.SnapshotBundle;
@@ -115,11 +116,15 @@ public final class ReportJsonBuilder {
       JsonObject entry = new JsonObject();
       entry.addProperty("type", snap.deviceType);
       entry.addProperty("id", snap.canId);
+      if (snap.label != null && !snap.label.isBlank()) {
+        entry.addProperty("label", snap.label);
+      }
       if (!snap.present) {
         entry.addProperty("present", false);
         if (snap.note != null && !snap.note.isBlank()) {
           entry.addProperty("note", snap.note);
         }
+        appendAttachments(entry, snap.attachments);
         out.add(entry);
         continue;
       }
@@ -128,57 +133,21 @@ public final class ReportJsonBuilder {
       if (snap.note != null && !snap.note.isBlank()) {
         entry.addProperty("note", snap.note);
       }
-      boolean isRev = "NEO".equals(snap.deviceType) || "FLEX".equals(snap.deviceType);
-      boolean isCtre = "KRAKEN".equals(snap.deviceType) || "FALCON".equals(snap.deviceType);
-      if (isRev || isCtre) {
-        entry.addProperty("faultsRaw", snap.faultsRaw);
-        entry.addProperty("stickyFaultsRaw", snap.stickyFaultsRaw);
-      }
-      if (isRev) {
-        entry.addProperty("warningsRaw", snap.warningsRaw);
-        entry.addProperty("stickyWarningsRaw", snap.stickyWarningsRaw);
-        entry.addProperty("lastError", snap.lastError == null ? "" : snap.lastError);
-        entry.addProperty("reset", snap.reset);
-      }
-      if (isCtre) {
-        entry.addProperty("faultStatus", snap.faultStatus == null ? "" : snap.faultStatus);
-        entry.addProperty("stickyStatus", snap.stickyStatus == null ? "" : snap.stickyStatus);
-      }
-      if (snap.model != null && !snap.model.isBlank()) {
-        entry.addProperty("specModel", snap.model);
-      }
-      if (snap.specNominalV != null) {
-        entry.addProperty("specNominalV", snap.specNominalV);
-      }
-      if (snap.specFreeA != null) {
-        entry.addProperty("specFreeA", snap.specFreeA);
-      }
-      if (snap.specStallA != null) {
-        entry.addProperty("specStallA", snap.specStallA);
-      }
-      if (isRev || isCtre) {
-        entry.addProperty("busV", safeDouble(snap.busV));
-        entry.addProperty("appliedDuty", safeDouble(snap.appliedDuty));
-        entry.addProperty("appliedV", safeDouble(snap.appliedV));
-        entry.addProperty("motorCurrentA", safeDouble(snap.motorCurrentA));
-        entry.addProperty("tempC", safeDouble(snap.tempC));
-      }
-      if (isRev) {
-        entry.addProperty("cmdDuty", safeDouble(snap.cmdDuty));
-      }
-      if (isCtre) {
-        entry.addProperty("motorV", safeDouble(snap.motorV));
-      }
-      if ("CANCoder".equals(snap.deviceType)) {
-        entry.addProperty("absDeg", safeDouble(snap.absDeg));
-        entry.addProperty("lastError", snap.lastError == null ? "" : snap.lastError);
-      }
-      if ("CANdle".equals(snap.deviceType)) {
-        // No additional fields yet beyond presence.
-      }
+      appendAttachments(entry, snap.attachments);
       out.add(entry);
     }
     return out;
+  }
+
+  private void appendAttachments(JsonObject entry, List<DeviceAttachment> attachments) {
+    if (attachments == null || attachments.isEmpty()) {
+      return;
+    }
+    JsonArray array = new JsonArray();
+    for (DeviceAttachment attachment : attachments) {
+      array.add(GSON.toJsonTree(attachment));
+    }
+    entry.add("attachments", array);
   }
 
   private double safeDouble(Double value) {

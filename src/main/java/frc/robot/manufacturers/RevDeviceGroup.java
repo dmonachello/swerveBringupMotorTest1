@@ -1,274 +1,279 @@
 package frc.robot.manufacturers;
 
+import frc.robot.BringupHealthFormat;
 import frc.robot.BringupUtil;
+import frc.robot.BringupUtil.DeviceConfig;
+import frc.robot.devices.DeviceUnit;
 import frc.robot.devices.rev.RevFlexVortexDevice;
 import frc.robot.devices.rev.RevSparkMaxNeoDevice;
 import frc.robot.devices.rev.RevSparkMaxNeo550Device;
 import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.diag.snapshots.LimitsAttachment;
+import frc.robot.diag.snapshots.MotorSpecAttachment;
+import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
+import frc.robot.registry.RegistrationHeader;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 // Manufacturer layer for REV devices: owns device slots and shared logic.
 public final class RevDeviceGroup implements ManufacturerGroup {
-  private final RevSparkMaxNeoDevice[] neos;
-  private final RevSparkMaxNeo550Device[] neo550s;
-  private final RevFlexVortexDevice[] flexes;
-  private final double[] neoLowCurrentStartSec;
-  private final double[] neo550LowCurrentStartSec;
-  private final double[] flexLowCurrentStartSec;
-  private int nextNeo = 0;
-  private int nextNeo550 = 0;
-  private int nextFlex = 0;
+  public static final RegistrationHeader HEADER = new RegistrationHeader(
+      "REV",
+      "REV",
+      "Manufacturer",
+      "REVLib",
+      "Team",
+      "2026-03-02",
+      "Vendor-specific diagnostics and motor wrappers.");
+
+  private static final DeviceRegistration NEO_REGISTRATION = new DeviceRegistration(
+      RevSparkMaxNeoDevice.HEADER,
+      "REV",
+      "NEO",
+      "NEO",
+      DeviceRole.MOTOR,
+      true,
+      config -> new RevSparkMaxNeoDevice(
+          config.getId(),
+          config.getLabel(),
+          config.getMotor(),
+          config.getLimits()));
+
+  private static final DeviceRegistration NEO550_REGISTRATION = new DeviceRegistration(
+      RevSparkMaxNeo550Device.HEADER,
+      "REV",
+      "NEO 550",
+      "NEO 550",
+      DeviceRole.MOTOR,
+      true,
+      config -> new RevSparkMaxNeo550Device(
+          config.getId(),
+          config.getLabel(),
+          config.getMotor(),
+          config.getLimits()));
+
+  private static final DeviceRegistration FLEX_REGISTRATION = new DeviceRegistration(
+      RevFlexVortexDevice.HEADER,
+      "REV",
+      "FLEX",
+      "FLEX",
+      DeviceRole.MOTOR,
+      true,
+      config -> new RevFlexVortexDevice(
+          config.getId(),
+          config.getLabel(),
+          config.getMotor(),
+          config.getLimits()));
+
+  private final List<DeviceTypeBucket> buckets = new ArrayList<>();
+  private final List<DeviceTypeBucket> motorBuckets = new ArrayList<>();
 
   public RevDeviceGroup() {
-    int[] neoIds = BringupUtil.filterCanIds(BringupUtil.NEO_CAN_IDS);
-    int[] neo550Ids = BringupUtil.filterCanIds(BringupUtil.NEO550_CAN_IDS);
-    int[] flexIds = BringupUtil.filterCanIds(BringupUtil.FLEX_CAN_IDS);
-
-    neos = new RevSparkMaxNeoDevice[neoIds.length];
-    for (int i = 0; i < neoIds.length; i++) {
-      neos[i] = new RevSparkMaxNeoDevice(
-          neoIds[i],
-          BringupUtil.getNeoLabel(i),
-          BringupUtil.getNeoMotorModel(i));
-    }
-
-    neo550s = new RevSparkMaxNeo550Device[neo550Ids.length];
-    for (int i = 0; i < neo550Ids.length; i++) {
-      neo550s[i] = new RevSparkMaxNeo550Device(
-          neo550Ids[i],
-          BringupUtil.getNeo550Label(i),
-          BringupUtil.getNeo550MotorModel(i));
-    }
-
-    flexes = new RevFlexVortexDevice[flexIds.length];
-    for (int i = 0; i < flexIds.length; i++) {
-      flexes[i] = new RevFlexVortexDevice(
-          flexIds[i],
-          BringupUtil.getFlexLabel(i),
-          BringupUtil.getFlexMotorModel(i));
-    }
-
-    neoLowCurrentStartSec = new double[neoIds.length];
-    neo550LowCurrentStartSec = new double[neo550Ids.length];
-    flexLowCurrentStartSec = new double[flexIds.length];
-    initLowCurrentTimers();
+    register(NEO_REGISTRATION, true);
+    register(NEO550_REGISTRATION, true);
+    register(FLEX_REGISTRATION, true);
   }
 
-  public void initLowCurrentTimers() {
-    for (int i = 0; i < neoLowCurrentStartSec.length; i++) {
-      neoLowCurrentStartSec[i] = -1.0;
+  @Override
+  public RegistrationHeader getHeader() {
+    return HEADER;
+  }
+
+  @Override
+  public List<DeviceTypeBucket> getDeviceBuckets() {
+    return Collections.unmodifiableList(buckets);
+  }
+
+  @Override
+  public DeviceAddResult addNextMotor() {
+    for (DeviceTypeBucket bucket : motorBuckets) {
+      DeviceAddResult result = bucket.addNext();
+      if (result != null) {
+        return result;
+      }
     }
-    for (int i = 0; i < neo550LowCurrentStartSec.length; i++) {
-      neo550LowCurrentStartSec[i] = -1.0;
-    }
-    for (int i = 0; i < flexLowCurrentStartSec.length; i++) {
-      flexLowCurrentStartSec[i] = -1.0;
+    return null;
+  }
+
+  @Override
+  public void resetLowCurrentTimers() {
+    for (DeviceTypeBucket bucket : motorBuckets) {
+      bucket.resetLowCurrentTimers();
     }
   }
 
-  public int addNextNeo() {
-    if (nextNeo < neos.length && !neos[nextNeo].isCreated()) {
-      int index = nextNeo;
-      neos[nextNeo].ensureCreated();
-      nextNeo++;
-      return index;
-    }
-    return -1;
-  }
-
-  public int addNextNeo550() {
-    if (nextNeo550 < neo550s.length && !neo550s[nextNeo550].isCreated()) {
-      int index = nextNeo550;
-      neo550s[nextNeo550].ensureCreated();
-      nextNeo550++;
-      return index;
-    }
-    return -1;
-  }
-
-  public int addNextFlex() {
-    if (nextFlex < flexes.length && !flexes[nextFlex].isCreated()) {
-      int index = nextFlex;
-      flexes[nextFlex].ensureCreated();
-      nextFlex++;
-      return index;
-    }
-    return -1;
+  @Override
+  public List<DeviceUnit> getTestDevices() {
+    return new ArrayList<>();
   }
 
   @Override
   public void addAll() {
-    for (RevSparkMaxNeoDevice neo : neos) {
-      neo.ensureCreated();
+    for (DeviceTypeBucket bucket : buckets) {
+      bucket.addAll();
     }
-    for (RevSparkMaxNeo550Device neo550 : neo550s) {
-      neo550.ensureCreated();
-    }
-    for (RevFlexVortexDevice flex : flexes) {
-      flex.ensureCreated();
-    }
-    nextNeo = neos.length;
-    nextNeo550 = neo550s.length;
-    nextFlex = flexes.length;
   }
 
   @Override
   public void setDuty(double duty) {
-    for (RevSparkMaxNeoDevice neo : neos) {
-      neo.setDuty(duty);
-    }
-    for (RevSparkMaxNeo550Device neo550 : neo550s) {
-      neo550.setDuty(duty);
-    }
-    for (RevFlexVortexDevice flex : flexes) {
-      flex.setDuty(duty);
+    for (DeviceTypeBucket bucket : motorBuckets) {
+      for (DeviceUnit device : bucket.getDevices()) {
+        device.setDuty(duty);
+      }
     }
   }
 
   @Override
   public void stopAll() {
-    for (RevSparkMaxNeoDevice neo : neos) {
-      neo.stop();
-    }
-    for (RevSparkMaxNeo550Device neo550 : neo550s) {
-      neo550.stop();
-    }
-    for (RevFlexVortexDevice flex : flexes) {
-      flex.stop();
+    for (DeviceTypeBucket bucket : motorBuckets) {
+      for (DeviceUnit device : bucket.getDevices()) {
+        device.stop();
+      }
     }
   }
 
   @Override
   public void clearFaults() {
-    for (RevSparkMaxNeoDevice neo : neos) {
-      neo.clearFaults();
-    }
-    for (RevSparkMaxNeo550Device neo550 : neo550s) {
-      neo550.clearFaults();
-    }
-    for (RevFlexVortexDevice flex : flexes) {
-      flex.clearFaults();
+    for (DeviceTypeBucket bucket : buckets) {
+      for (DeviceUnit device : bucket.getDevices()) {
+        device.clearFaults();
+      }
     }
   }
 
   @Override
   public void closeAll() {
-    for (RevSparkMaxNeoDevice neo : neos) {
-      neo.close();
+    for (DeviceTypeBucket bucket : buckets) {
+      for (DeviceUnit device : bucket.getDevices()) {
+        device.close();
+      }
+      bucket.resetAddPointer();
     }
-    for (RevSparkMaxNeo550Device neo550 : neo550s) {
-      neo550.close();
-    }
-    for (RevFlexVortexDevice flex : flexes) {
-      flex.close();
-    }
-    nextNeo = 0;
-    nextNeo550 = 0;
-    nextFlex = 0;
   }
 
+  @Override
   public List<DeviceSnapshot> captureSnapshots(double nowSec) {
     List<DeviceSnapshot> devices = new ArrayList<>();
-    for (int i = 0; i < neos.length; i++) {
-      devices.add(snapshotNeo(i, nowSec));
-    }
-    for (int i = 0; i < neo550s.length; i++) {
-      devices.add(snapshotNeo550(i, nowSec));
-    }
-    for (int i = 0; i < flexes.length; i++) {
-      devices.add(snapshotFlex(i, nowSec));
+    for (DeviceTypeBucket bucket : buckets) {
+      List<DeviceUnit> bucketDevices = bucket.getDevices();
+      for (int i = 0; i < bucketDevices.size(); i++) {
+        devices.add(snapshotDevice(bucket, i, nowSec));
+      }
     }
     return devices;
   }
 
-  @Override
-  public List<DeviceSnapshot> captureSnapshots() {
-    return captureSnapshots(edu.wpi.first.wpilibj.Timer.getFPGATimestamp());
+  public void appendState(StringBuilder sb) {
+    for (DeviceTypeBucket bucket : buckets) {
+      List<DeviceUnit> bucketDevices = bucket.getDevices();
+      if (bucketDevices.isEmpty()) {
+        continue;
+      }
+      sb.append(bucket.getRegistration().displayName()).append(":\n");
+      for (int i = 0; i < bucketDevices.size(); i++) {
+        DeviceUnit device = bucketDevices.get(i);
+        sb.append("  index ").append(i)
+            .append(" CAN ").append(device.getCanId())
+            .append(device.isCreated() ? " ACTIVE" : " not added")
+            .append('\n');
+      }
+    }
   }
 
-  public DeviceSnapshot snapshotNeo(int index, double nowSec) {
-    DeviceSnapshot snap = neos[index].snapshot();
-    fillSpecForRev(snap, neos[index].getLabel(), neos[index].getMotorModelOverride());
-    if (snap.present) {
-      snap.healthNote = buildRevHealthNote(snap.lastError, safeDouble(snap.busV));
-      snap.lowCurrentNote = buildLowCurrentNote(
-          neoLowCurrentStartSec,
-          index,
-          nowSec,
-          safeDouble(snap.appliedV),
-          safeDouble(snap.motorCurrentA));
+  public void appendHealth(StringBuilder sb, double nowSec) {
+    for (DeviceTypeBucket bucket : buckets) {
+      if (bucket.getRegistration().role() != DeviceRole.MOTOR) {
+        continue;
+      }
+      List<DeviceUnit> bucketDevices = bucket.getDevices();
+      for (int i = 0; i < bucketDevices.size(); i++) {
+        DeviceUnit device = bucketDevices.get(i);
+        DeviceSnapshot snap = snapshotDevice(bucket, i, nowSec);
+        if (!snap.present) {
+          sb.append(bucket.getRegistration().displayName())
+              .append(" index ").append(i)
+              .append(" CAN ").append(device.getCanId())
+              .append(" not added\n");
+          continue;
+        }
+        RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
+        MotorSpecAttachment spec = snap.getAttachment(MotorSpecAttachment.class);
+        LimitsAttachment limits = snap.getAttachment(LimitsAttachment.class);
+        sb.append(bucket.getRegistration().displayName())
+            .append(" index ").append(i)
+            .append(" CAN ").append(device.getCanId())
+            .append(BringupHealthFormat.formatRevFaultSummary(rev))
+            .append(" lastErr=").append(BringupHealthFormat.safeText(rev != null ? rev.lastError : ""))
+            .append(BringupHealthFormat.safeText(rev != null ? rev.healthNote : ""))
+            .append(BringupHealthFormat.safeText(rev != null ? rev.lowCurrentNote : ""))
+            .append(BringupHealthFormat.formatMotorSpecNote(spec, rev != null ? rev.motorCurrentA : null))
+            .append(BringupHealthFormat.formatLimitSummary(limits))
+            .append(" busV=").append(String.format("%.2f", BringupHealthFormat.safeDouble(rev != null ? rev.busV : null))).append("V")
+            .append(" appliedDuty=").append(String.format("%.2f", BringupHealthFormat.safeDouble(rev != null ? rev.appliedDuty : null))).append("dc")
+            .append(" appliedV=").append(String.format("%.2f", BringupHealthFormat.safeDouble(rev != null ? rev.appliedV : null))).append("V")
+            .append(" motorCurrentA=").append(String.format("%.4f", BringupHealthFormat.safeDouble(rev != null ? rev.motorCurrentA : null))).append("A")
+            .append(" tempC=").append(String.format("%.1f", BringupHealthFormat.safeDouble(rev != null ? rev.tempC : null))).append("C")
+            .append(" cmdDuty=").append(String.format("%.2f", BringupHealthFormat.safeDouble(rev != null ? rev.cmdDuty : null))).append("dc")
+            .append(" follower=").append(rev != null && rev.follower ? "Y" : "N")
+            .append('\n');
+      }
+    }
+  }
+
+  private void register(DeviceRegistration registration, boolean trackLowCurrent) {
+    requireRegistrationHeader(registration);
+    List<DeviceConfig> configs = BringupUtil.getDeviceConfigs(
+        registration.vendor(),
+        registration.deviceType());
+    List<DeviceUnit> devices = new ArrayList<>();
+    for (DeviceConfig config : configs) {
+      if (registration.requiresMotorSpec()) {
+        warnIfMissingMotorSpec(config.getLabel(), config.getMotor());
+      }
+      devices.add(registration.factory().create(config));
+    }
+    DeviceTypeBucket bucket = new DeviceTypeBucket(registration, devices, trackLowCurrent);
+    buckets.add(bucket);
+    if (registration.role() == DeviceRole.MOTOR) {
+      motorBuckets.add(bucket);
+    }
+  }
+
+  private DeviceSnapshot snapshotDevice(DeviceTypeBucket bucket, int index, double nowSec) {
+    DeviceUnit device = bucket.getDevices().get(index);
+    DeviceSnapshot snap = device.snapshot();
+    if (bucket.getRegistration().role() == DeviceRole.MOTOR) {
+      fillSpecForRev(snap, device.getLabel(), device.getMotorModelOverride());
+      if (snap.present) {
+        RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
+        if (rev != null) {
+          rev.healthNote = buildRevHealthNote(rev.lastError, BringupHealthFormat.safeDouble(rev.busV));
+          if (bucket.tracksLowCurrent()) {
+            rev.lowCurrentNote = buildLowCurrentNote(
+                bucket.getLowCurrentStartSec(),
+                index,
+                nowSec,
+                BringupHealthFormat.safeDouble(rev.appliedV),
+                BringupHealthFormat.safeDouble(rev.motorCurrentA));
+          }
+        }
+      }
     }
     return snap;
   }
 
-  public DeviceSnapshot snapshotNeo550(int index, double nowSec) {
-    DeviceSnapshot snap = neo550s[index].snapshot();
-    fillSpecForRev(snap, neo550s[index].getLabel(), neo550s[index].getMotorModelOverride());
-    if (snap.present) {
-      snap.healthNote = buildRevHealthNote(snap.lastError, safeDouble(snap.busV));
-      snap.lowCurrentNote = buildLowCurrentNote(
-          neo550LowCurrentStartSec,
-          index,
-          nowSec,
-          safeDouble(snap.appliedV),
-          safeDouble(snap.motorCurrentA));
+  private void requireRegistrationHeader(DeviceRegistration registration) {
+    if (registration == null || registration.header() == null) {
+      throw new IllegalStateException("Device registration missing required header.");
     }
-    return snap;
   }
 
-  public DeviceSnapshot snapshotFlex(int index, double nowSec) {
-    DeviceSnapshot snap = flexes[index].snapshot();
-    fillSpecForRev(snap, flexes[index].getLabel(), flexes[index].getMotorModelOverride());
-    if (snap.present) {
-      snap.healthNote = buildRevHealthNote(snap.lastError, safeDouble(snap.busV));
-      snap.lowCurrentNote = buildLowCurrentNote(
-          flexLowCurrentStartSec,
-          index,
-          nowSec,
-          safeDouble(snap.appliedV),
-          safeDouble(snap.motorCurrentA));
+  private void warnIfMissingMotorSpec(String label, String modelOverride) {
+    BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
+    if (spec == null) {
+      System.out.println("Warning: missing motor spec for " + label);
     }
-    return snap;
-  }
-
-  public boolean isNeoInstantiated(int deviceId) {
-    for (RevSparkMaxNeoDevice neo : neos) {
-      if (neo.getCanId() == deviceId) {
-        return neo.isCreated();
-      }
-    }
-    return false;
-  }
-
-  public boolean isNeo550Instantiated(int deviceId) {
-    for (RevSparkMaxNeo550Device neo : neo550s) {
-      if (neo.getCanId() == deviceId) {
-        return neo.isCreated();
-      }
-    }
-    return false;
-  }
-
-  public boolean isFlexInstantiated(int deviceId) {
-    for (RevFlexVortexDevice flex : flexes) {
-      if (flex.getCanId() == deviceId) {
-        return flex.isCreated();
-      }
-    }
-    return false;
-  }
-
-  public RevSparkMaxNeoDevice[] getNeos() {
-    return neos;
-  }
-
-  public RevSparkMaxNeo550Device[] getNeo550s() {
-    return neo550s;
-  }
-
-  public RevFlexVortexDevice[] getFlexes() {
-    return flexes;
   }
 
   private void fillSpecForRev(DeviceSnapshot snap, String label, String modelOverride) {
@@ -277,10 +282,12 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     if (spec == null) {
       return;
     }
-    snap.model = spec.model;
-    snap.specNominalV = spec.nominalVoltage;
-    snap.specFreeA = spec.freeCurrentA;
-    snap.specStallA = spec.stallCurrentA;
+    MotorSpecAttachment motorSpec = new MotorSpecAttachment();
+    motorSpec.model = spec.model;
+    motorSpec.nominalV = spec.nominalVoltage;
+    motorSpec.freeCurrentA = spec.freeCurrentA;
+    motorSpec.stallCurrentA = spec.stallCurrentA;
+    snap.addAttachment(motorSpec);
   }
 
   private String buildRevHealthNote(String lastError, double busVoltage) {
@@ -325,4 +332,3 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     return value == null ? 0.0 : value;
   }
 }
-

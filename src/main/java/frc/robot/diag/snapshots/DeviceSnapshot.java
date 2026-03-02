@@ -9,38 +9,35 @@ public final class DeviceSnapshot {
   public String deviceType = "";
   public int canId = -1;
   public boolean present = false;
-
-  public int faultsRaw = 0;
-  public int stickyFaultsRaw = 0;
-  public int warningsRaw = 0;
-  public int stickyWarningsRaw = 0;
-  public String lastError = "";
-  public String faultStatus = "";
-  public String stickyStatus = "";
-  public boolean reset = false;
-
-  public Double busV;
-  public Double appliedDuty;
-  public Double appliedV;
-  public Double motorCurrentA;
-  public Double tempC;
-  public Double cmdDuty;
-  public Double motorV;
-  public Double absDeg;
-  public boolean follower = false;
-
   public String label = "";
-  public String model = "";
-  public Double specNominalV;
-  public Double specFreeA;
-  public Double specStallA;
-
-  public String healthNote = "";
-  public String lowCurrentNote = "";
   public String note = "";
 
-  public final List<String> faultFlags = new ArrayList<>();
-  public final List<String> stickyFaultFlags = new ArrayList<>();
-  public final List<String> warningFlags = new ArrayList<>();
-  public final List<String> stickyWarningFlags = new ArrayList<>();
+  public final List<DeviceAttachment> attachments = new ArrayList<>();
+
+  public void addAttachment(DeviceAttachment attachment) {
+    if (attachment != null) {
+      attachments.add(attachment);
+    }
+  }
+
+  public <T extends DeviceAttachment> T getAttachment(Class<T> type) {
+    for (DeviceAttachment attachment : attachments) {
+      if (type.isInstance(attachment)) {
+        return type.cast(attachment);
+      }
+    }
+    return null;
+  }
+
+  public DeviceAttachment getAttachment(String type) {
+    if (type == null || type.isBlank()) {
+      return null;
+    }
+    for (DeviceAttachment attachment : attachments) {
+      if (type.equals(attachment.type)) {
+        return attachment;
+      }
+    }
+    return null;
+  }
 }

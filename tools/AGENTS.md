@@ -14,7 +14,7 @@ Hard rules
 - Keep profiles data-driven. Demo vs robot should be selectable by command line.
 - Keep Windows slcan workflow working.
 - Keep hardware configuration easy to customize: profiles and device lists should be simple to edit and documented for quick team updates.
-- The JSON report uses `cmdDuty`, `appliedDuty`, and `motorCurrentA` (not `set`/`applied`/`current`).
+- The JSON report exposes telemetry under `devices[].attachments` (e.g., `type=revMotor` / `ctreMotor`) with fields such as `cmdDuty`, `appliedDuty`, and `motorCurrentA`.
 - AI diagnosis guidance lives in `AI_DIAGNOSIS.md`.
 
 Entry points and usage

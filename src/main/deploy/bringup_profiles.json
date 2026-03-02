@@ -83,6 +83,18 @@
         { "label": "SPARKMAX/NEO550 7", "id": 7 }
       ],
       "roborio": { "label": "roboRIO", "id": 0 }
+    },
+    "home_030226": {
+      "neos": [
+        { "label": "SPARKMAX/NEO 25", "id": 25 }
+      ],
+      "neo550s": [
+        { "label": "SPARKMAX/NEO550 7", "id": 7, "limits": { "fwdDio": 0, "revDio": -1, "invert": true } }
+      ],
+      "falcons": [
+        { "label": "FALCON 9", "id": 9 }
+      ],
+      "roborio": { "label": "roboRIO", "id": 0 }
     }
   }
 }

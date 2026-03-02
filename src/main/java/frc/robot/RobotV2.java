@@ -76,7 +76,13 @@ public class RobotV2 extends TimedRobot {
     core.handlePrint(controller.getBButton());
     boolean healthNow = controller.getPOV() == 270;
     core.handleHealth(healthNow);
-    core.handleCANCoder(controller.getRightBumperButton());
+    boolean leftBumper = controller.getLeftBumperButton();
+    boolean rightBumper = controller.getRightBumperButton();
+    boolean nonMotorTest = leftBumper && rightBumper;
+    core.handleCANCoder(nonMotorTest ? false : rightBumper);
+    if (edge.pressed("nonMotorTest", nonMotorTest)) {
+      core.runNextNonMotorTest();
+    }
 
     // --- Profile switching ---
     if (edge.pressed("profileToggle", controller.getBackButton())) {
@@ -95,7 +101,7 @@ public class RobotV2 extends TimedRobot {
       diagnostics.printNetworkDiagnostics();
     }
 
-    if (edge.pressed("bindings", controller.getLeftBumperButton())) {
+    if (edge.pressed("bindings", leftBumper && !rightBumper)) {
       printStartupInfo();
     }
 
@@ -160,10 +166,11 @@ public class RobotV2 extends TimedRobot {
     StringBuilder sb = new StringBuilder(512);
     ReportTextUtil.appendLine(sb, "=== Swerve Bringup V2 ===");
     ReportTextUtil.appendLine(sb, "A: add motor (alternates SPARK/CTRE)");
-    ReportTextUtil.appendLine(sb, "Start: add all motors + CANCoders");
+    ReportTextUtil.appendLine(sb, "Start: add all configured devices");
     ReportTextUtil.appendLine(sb, "B: print state");
     ReportTextUtil.appendLine(sb, "D-pad Left: print health status");
     ReportTextUtil.appendLine(sb, "Right Bumper: print CANCoder absolute positions");
+    ReportTextUtil.appendLine(sb, "Left+Right Bumper: run non-motor test");
     ReportTextUtil.appendLine(sb, "Back: toggle CAN profile");
     ReportTextUtil.appendLine(sb, "D-pad Down: print NetworkTables diagnostics");
     ReportTextUtil.appendLine(sb, "Left Bumper: reprint bindings");

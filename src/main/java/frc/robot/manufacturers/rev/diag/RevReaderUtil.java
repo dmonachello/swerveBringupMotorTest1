@@ -1,4 +1,4 @@
-package frc.robot.diag.readers;
+package frc.robot.manufacturers.rev.diag;
 
 import com.revrobotics.spark.SparkBase;
 import java.util.List;
