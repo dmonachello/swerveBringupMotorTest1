@@ -150,7 +150,7 @@ public final class ReportJsonBuilder {
     entry.add("attachments", array);
   }
 
-  private double safeDouble(Double value) {
-    return value == null ? 0.0 : value;
-  }
+  // private double safeDouble(Double value) {
+  //   return value == null ? 0.0 : value;
+  // }
 }
