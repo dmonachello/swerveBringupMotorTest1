@@ -104,6 +104,9 @@ Examples:
 %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --diff-inventory tools\inventory_a.json tools\inventory_b.json
 ```
 
+Marker capture (pcapng):
+- See `reverse_eng.md` for marker usage, key map, and Wireshark filtering.
+
 Options:
 - `--channel` is the CANable COM port (Device Manager shows it). If omitted, the
   script auto-detects the first port whose description contains "USB Serial Device".
@@ -126,6 +129,11 @@ Options:
 - `--dump-api-inventory-after` seconds to wait before writing the inventory (default: `3.0`).
 - `--diff-inventory` diffs two inventory JSON files and prints new/missing/changed pairs.
 - `--diff-top` number of rows to print for each diff section (default: `10`).
+- `--pcap <path>` writes a capture file (use `.pcapng` to enable markers).
+- `--enable-markers` or `--disable-markers` toggles keyboard marker injection.
+- `--marker-id 0x1FFC0D00` sets the marker arbitration ID (extended).
+- `--capture-note "text"` adds a pcapng section header comment.
+- `--no-nt` disables all NetworkTables publishing (capture/logging only).
 
 Published NetworkTables keys:
 - `bringup/diag/busErrorCount`

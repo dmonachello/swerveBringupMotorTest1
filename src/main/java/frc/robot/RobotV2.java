@@ -1,9 +1,11 @@
 package frc.robot;
 
+import edu.wpi.first.cameraserver.CameraServer;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj.livewindow.LiveWindow;
 import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
+import edu.wpi.first.wpilibj.DriverStation;
 import java.util.ArrayList;
 
 import edu.wpi.first.networktables.NetworkTableInstance;
@@ -18,6 +20,8 @@ public class RobotV2 extends TimedRobot {
 
   // Driver Station controller input.
   private final XboxController controller = new XboxController(0);
+  // Optional second controller for fixed-speed test buttons.
+  private final XboxController controller2 = new XboxController(1);
   // Local bringup behaviors for device creation and health.
   private BringupCore core = new BringupCore();
   // Samples roboRIO CAN controller health.
@@ -43,6 +47,7 @@ public class RobotV2 extends TimedRobot {
     // Print bindings and validate IDs once at startup.
     printStartupInfo();
     validateCanIds();
+    //CameraServer.startAutomaticCapture();
   }
 
   @Override
@@ -122,6 +127,24 @@ public class RobotV2 extends TimedRobot {
     double neoSpeed = BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
     double krakenSpeed = BringupUtil.deadband(-controller.getRightY(), DEADBAND);
 
+    boolean controller2Connected = DriverStation.isJoystickConnected(1);
+    if (controller2Connected) {
+      double fixedSpeed = Double.NaN;
+      if (controller2.getAButton()) {
+        fixedSpeed = 0.25;
+      } else if (controller2.getBButton()) {
+        fixedSpeed = 0.50;
+      } else if (controller2.getXButton()) {
+        fixedSpeed = 0.75;
+      } else if (controller2.getYButton()) {
+        fixedSpeed = 1.00;
+      }
+      if (!Double.isNaN(fixedSpeed)) {
+        neoSpeed = fixedSpeed;
+        krakenSpeed = fixedSpeed;
+      }
+    }
+
     // D-pad Right: print current stick inputs.
     if (edge.pressed("speedPrint", controller.getPOV() == 90)) {
       BringupPrinter.enqueue(
@@ -129,6 +152,21 @@ public class RobotV2 extends TimedRobot {
           " rightY=" + String.format("%.2f", krakenSpeed) +
           " (NEO/FLEX=" + String.format("%.2f", neoSpeed) +
           ", KRAKEN/FALCON=" + String.format("%.2f", krakenSpeed) + ")");
+    }
+
+    if (controller2Connected) {
+      if (edge.pressed("fixedA", controller2.getAButton())) {
+        BringupPrinter.enqueue("Fixed speed: 0.25 (Controller 2 A)");
+      }
+      if (edge.pressed("fixedB", controller2.getBButton())) {
+        BringupPrinter.enqueue("Fixed speed: 0.50 (Controller 2 B)");
+      }
+      if (edge.pressed("fixedX", controller2.getXButton())) {
+        BringupPrinter.enqueue("Fixed speed: 0.75 (Controller 2 X)");
+      }
+      if (edge.pressed("fixedY", controller2.getYButton())) {
+        BringupPrinter.enqueue("Fixed speed: 1.00 (Controller 2 Y)");
+      }
     }
 
     // Left Stick: short, timed nudge for all motors.
@@ -181,6 +219,7 @@ public class RobotV2 extends TimedRobot {
     ReportTextUtil.appendLine(sb, "X: dump CAN report JSON");
     ReportTextUtil.appendLine(sb, "Y: toggle dashboard/shuffleboard updates");
     ReportTextUtil.appendLine(sb, "Left Y: NEO/FLEX speed, Right Y: KRAKEN/FALCON speed");
+    ReportTextUtil.appendLine(sb, "Controller 2 A/B/X/Y: fixed speed 0.25/0.50/0.75/1.00");
     ReportTextUtil.appendLine(sb, "Deadband: " + DEADBAND);
     ReportTextUtil.appendLine(sb, "Dashboard updates: " + (dashboardUpdatesEnabled ? "ON" : "OFF"));
     ReportTextUtil.appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());

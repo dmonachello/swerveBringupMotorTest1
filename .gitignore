@@ -202,3 +202,5 @@ __pycache__/
 tools/save/
 # Microsoft Office temp files
 ~$*.docx
+*.docx
+*.pdf

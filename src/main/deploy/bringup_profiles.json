@@ -95,6 +95,13 @@
         { "label": "FALCON 9", "id": 9 }
       ],
       "roborio": { "label": "roboRIO", "id": 0 }
+    },
+    "reverse_eng_min1": {
+      "neos": [
+        { "label": "SPARKMAX/NEO 11", "id": 11 }
+      ],
+      "pdp": { "label": "PDP", "id": 0 },
+      "roborio": { "label": "roboRIO", "id": 0 }
     }
   }
 }

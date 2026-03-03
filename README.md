@@ -233,6 +233,8 @@ Optional flags:
 - `--print-publish` for seen/missing transitions.
 - `--publish-unknown` to publish unknown devices on the bus.
 - `--pcap <path>` to write a capture file.
+Reverse engineering captures:
+- Marker capture, key map, and filtering live in `reverse_eng.md`.
 ### Wireshark + Dissector
 1. Install Wireshark.
 2. Copy `tools/wireshark/frc_can_dissector.lua` to:

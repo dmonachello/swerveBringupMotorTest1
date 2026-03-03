@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import queue
+import threading
 import time
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Tuple, List, Any
@@ -433,6 +435,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     )
 
     parser.add_argument("--rio", default="172.22.11.2")
+    parser.add_argument(
+        "--no-nt",
+        action="store_true",
+        help="Disable NetworkTables publishing (capture/logging only).",
+    )
 
     parser.add_argument("--timeout", type=float, default=1.0)
     parser.add_argument("--publish-period", type=float, default=0.2)
@@ -522,6 +529,30 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     )
 
     parser.add_argument("--pcap", default="", help="Write all CAN frames to a .pcapng/.pcap file")
+    parser.add_argument(
+        "--marker-id",
+        type=lambda s: int(s, 0),
+        default=0x1FFC0D00,
+        help="Arbitration ID for synthetic marker frames (29-bit extended).",
+    )
+    parser.add_argument(
+        "--enable-markers",
+        dest="enable_markers",
+        action="store_true",
+        default=True,
+        help="Enable keyboard marker injection into pcapng captures.",
+    )
+    parser.add_argument(
+        "--disable-markers",
+        dest="enable_markers",
+        action="store_false",
+        help="Disable keyboard marker injection.",
+    )
+    parser.add_argument(
+        "--capture-note",
+        default="",
+        help="Optional note to embed in the pcapng section header comment.",
+    )
 
     args = parser.parse_args(argv)
 
@@ -555,14 +586,32 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     bus = can.Bus(interface=args.interface, channel=channel, bitrate=args.bitrate)
 
-    pcap = PcapLogger(args.pcap)
+    pcap_comment = ""
+    if args.pcap and args.pcap.lower().endswith(".pcapng"):
+        start_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+        parts = [
+            f"start={start_str}",
+            f"interface={args.interface}",
+            f"channel={channel}",
+            f"bitrate={args.bitrate}",
+        ]
+        if args.capture_note:
+            parts.append(f"note={args.capture_note}")
+        pcap_comment = " | ".join(parts)
+    pcap = PcapLogger(args.pcap, pcap_comment)
     if args.pcap and pcap.start():
         print(f"PCAP logging enabled: {args.pcap}")
+    if args.enable_markers and args.pcap and not args.pcap.lower().endswith(".pcapng"):
+        print("ERROR: Marker injection requires a .pcapng output file.")
+        return 2
 
-    nt = NetworkTableInstance.getDefault()
-    nt.startClient4("can-nt-bridge")
-    nt.setServer(args.rio)
-    table = nt.getTable("bringup").getSubTable("diag")
+    nt = None
+    table = None
+    if not args.no_nt:
+        nt = NetworkTableInstance.getDefault()
+        nt.startClient4("can-nt-bridge")
+        nt.setServer(args.rio)
+        table = nt.getTable("bringup").getSubTable("diag")
 
     analyzer = CanLiveAnalyzer(expected_ids=expected_ids)
     last_seen: Dict[Tuple[int, int, int], float] = {}
@@ -575,6 +624,43 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     last_frame_time = 0.0
     heartbeat = 0
     open_ok = True
+    marker_counter = 0
+    stop_requested = False
+    last_marker_ts = 0.0
+    marker_keys = {"0", "1", "2", "3", "4", "m", "q", "h"}
+    key_queue: queue.Queue[Tuple[str, float]] = queue.Queue()
+    key_thread = None
+    key_stop = threading.Event()
+
+    def _print_marker_banner() -> None:
+        print("Marker keys: [1]=0.25 [2]=0.50 [3]=0.75 [4]=1.00 [0]=stop [m]=mark [q]=quit [h]=help")
+        print(f"Marker ID: 0x{args.marker_id:08X} (extended)")
+
+    def _keyboard_worker() -> None:
+        try:
+            import msvcrt  # type: ignore
+        except Exception:
+            print("WARNING: marker input requires msvcrt (Windows). Markers disabled.")
+            return
+        while not key_stop.is_set():
+            if msvcrt.kbhit():
+                raw = msvcrt.getch()
+                if raw in (b"\x00", b"\xe0"):
+                    _ = msvcrt.getch()
+                    continue
+                try:
+                    key = raw.decode("utf-8", errors="ignore")
+                except Exception:
+                    key = ""
+                if key:
+                    key_queue.put((key, time.time()))
+            else:
+                time.sleep(0.01)
+
+    if args.enable_markers and args.pcap:
+        key_thread = threading.Thread(target=_keyboard_worker, daemon=True)
+        key_thread.start()
+        _print_marker_banner()
 
     start = time.time()
     last_publish = 0.0
@@ -583,6 +669,35 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     try:
         while True:
             now = time.time()
+
+            while True:
+                try:
+                    key, key_ts = key_queue.get_nowait()
+                except queue.Empty:
+                    break
+                if key not in marker_keys:
+                    continue
+                if key == "h":
+                    _print_marker_banner()
+                    continue
+                if args.enable_markers and args.pcap:
+                    if key_ts <= last_marker_ts:
+                        key_ts = last_marker_ts + 0.000001
+                    wrote = pcap.write_marker(
+                        timestamp_s=key_ts,
+                        marker_id=args.marker_id,
+                        key_char=key,
+                        counter=marker_counter,
+                        extra=0,
+                    )
+                    if wrote:
+                        marker_counter = (marker_counter + 1) & 0xFF
+                        last_marker_ts = key_ts
+                if key == "q":
+                    stop_requested = True
+                    break
+            if stop_requested:
+                break
 
             if args.dump_can_expected_ids and (now - start) >= args.dump_after:
                 seen_sorted = sorted(analyzer.seen_ids())
@@ -630,7 +745,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 msg = None
 
             if msg is not None:
-                pcap.log(msg)
+                pcap.log(msg, timestamp_s=now)
 
                 arb_id = int(msg.arbitration_id)
                 data = bytes(getattr(msg, "data", b"") or b"")
@@ -660,14 +775,15 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 frames_per_sec = (period_frames / publish_dt) if publish_dt > 0 else 0.0
                 last_frame_age = (now - last_frame_time) if last_frame_time > 0 else -1.0
 
-                publish_devices(
-                    table=table,
-                    devices=_merge_unknown_devices(devices, last_seen, args.publish_unknown),
-                    last_seen=last_seen,
-                    msg_count=msg_count,
-                    now=now,
-                    timeout_s=args.timeout,
-                )
+                if table is not None:
+                    publish_devices(
+                        table=table,
+                        devices=_merge_unknown_devices(devices, last_seen, args.publish_unknown),
+                        last_seen=last_seen,
+                        msg_count=msg_count,
+                        now=now,
+                        timeout_s=args.timeout,
+                    )
 
                 if args.print_publish:
                     _print_status_transitions(
@@ -678,18 +794,19 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                         last_status=last_status,
                     )
 
-                if args.publish_can_summary:
+                if args.publish_can_summary and table is not None:
                     summary = analyzer.summary(now, stale_s=args.stale_s, top_n=args.top_n)
                     table.getEntry("can/summary/json").setString(
                         json.dumps(summary, separators=(",", ":"))
                     )
 
-                table.getEntry("can/pc/heartbeat").setDouble(float(heartbeat))
-                table.getEntry("can/pc/openOk").setBoolean(open_ok)
-                table.getEntry("can/pc/framesPerSec").setDouble(float(frames_per_sec))
-                table.getEntry("can/pc/framesTotal").setDouble(float(total_frames))
-                table.getEntry("can/pc/readErrors").setDouble(float(read_errors))
-                table.getEntry("can/pc/lastFrameAgeSec").setDouble(float(last_frame_age))
+                if table is not None:
+                    table.getEntry("can/pc/heartbeat").setDouble(float(heartbeat))
+                    table.getEntry("can/pc/openOk").setBoolean(open_ok)
+                    table.getEntry("can/pc/framesPerSec").setDouble(float(frames_per_sec))
+                    table.getEntry("can/pc/framesTotal").setDouble(float(total_frames))
+                    table.getEntry("can/pc/readErrors").setDouble(float(read_errors))
+                    table.getEntry("can/pc/lastFrameAgeSec").setDouble(float(last_frame_age))
 
                 period_frames = 0
                 heartbeat += 1
@@ -703,6 +820,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     except KeyboardInterrupt:
         pass
     finally:
+        key_stop.set()
         pcap.stop()
         try:
             bus.shutdown()

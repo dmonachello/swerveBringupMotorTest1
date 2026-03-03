@@ -1,5 +1,6 @@
 package frc.robot;
 
+import edu.wpi.first.cameraserver.CameraServer;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
 import java.util.ArrayList;
@@ -25,6 +26,8 @@ public class Robot extends TimedRobot {
     BringupUtil.applyProfileFromArgs();
     printStartupInfo();
     validateCanIds();
+    CameraServer.startAutomaticCapture();
+
   }
 
   @Override
@@ -117,6 +120,7 @@ public class Robot extends TimedRobot {
     appendLine(sb, "Right Stick: print speed inputs");
     appendLine(sb, "Left Stick: nudge motors (0.2 for 0.5s)");
     appendLine(sb, "Left Y: NEO/FLEX speed, Right Y: KRAKEN/FALCON speed");
+    appendLine(sb, "Controller 2 A/B/X/Y: fixed speed 0.25/0.50/0.75/1.00");
     appendLine(sb, "Deadband: " + DEADBAND);
     appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
     appendLine(sb, "NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
