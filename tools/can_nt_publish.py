@@ -18,22 +18,57 @@ def publish_devices(
     table,
     devices: List[Dict[str, Any]],
     last_seen: Dict[Tuple[int, int, int], float],
+    status_last_seen: Dict[Tuple[int, int, int], float],
+    control_last_seen: Dict[Tuple[int, int, int], float],
+    uses_status_presence,
     msg_count: Dict[Tuple[int, int, int], int],
     now: float,
     timeout_s: float,
 ) -> None:
     for spec in devices:
         key = (spec["manufacturer"], spec["device_type"], spec["device_id"])
-        ts = last_seen.get(key)
+        traffic_ts = last_seen.get(key)
+        status_ts = status_last_seen.get(key)
+        control_ts = control_last_seen.get(key)
+        prefer_status = uses_status_presence(key[0], key[1])
 
-        if ts is None:
-            age = -1.0
-            status = "MISSING"
-            last_seen_value = -1.0
+        traffic_age = -1.0 if traffic_ts is None else (now - traffic_ts)
+        status_age = -1.0 if status_ts is None else (now - status_ts)
+
+        if prefer_status:
+            if status_ts is not None and status_age < timeout_s:
+                presence_source = "STATUS"
+                confidence = "HIGH"
+                status = "OK"
+                age = status_age
+            elif control_ts is not None and traffic_ts is not None:
+                presence_source = "CONTROL_ONLY"
+                confidence = "LOW"
+                status = "CONTROL_ONLY"
+                age = traffic_age
+            elif traffic_ts is not None:
+                presence_source = "TRAFFIC"
+                confidence = "LOW"
+                status = "MISSING"
+                age = traffic_age
+            else:
+                presence_source = "NONE"
+                confidence = "NONE"
+                status = "MISSING"
+                age = -1.0
         else:
-            age = now - ts
-            status = "OK" if age < timeout_s else "MISSING"
-            last_seen_value = ts
+            if traffic_ts is not None and traffic_age < timeout_s:
+                presence_source = "TRAFFIC"
+                confidence = "LOW"
+                status = "OK"
+                age = traffic_age
+            else:
+                presence_source = "NONE"
+                confidence = "NONE"
+                status = "MISSING"
+                age = -1.0
+
+        last_seen_value = traffic_ts if traffic_ts is not None else -1.0
 
         base = f"dev/{key[0]}/{key[1]}/{key[2]}"
         table.getEntry(f"{base}/label").setString(str(spec.get("label", "")))
@@ -44,3 +79,7 @@ def publish_devices(
         table.getEntry(f"{base}/manufacturer").setDouble(float(key[0]))
         table.getEntry(f"{base}/deviceType").setDouble(float(key[1]))
         table.getEntry(f"{base}/deviceId").setDouble(float(key[2]))
+        table.getEntry(f"{base}/presenceSource").setString(presence_source)
+        table.getEntry(f"{base}/presenceConfidence").setString(confidence)
+        table.getEntry(f"{base}/trafficAgeSec").setDouble(float(traffic_age))
+        table.getEntry(f"{base}/statusAgeSec").setDouble(float(status_age))

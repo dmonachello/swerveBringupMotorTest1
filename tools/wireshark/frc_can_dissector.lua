@@ -450,6 +450,14 @@ function frccan.dissector(tvb, pinfo, tree)
             pinfo.cols.info:append(" [RTR]")
         end
     end
+
+    -- Append payload data bytes for quick inspection.
+    if tvb:len() > 0 then
+        local data_text = tvb(0, tvb:len()):bytes():tohex(true, " ")
+        pinfo.cols.info:append(" data=" .. data_text)
+    else
+        pinfo.cols.info:append(" data=")
+    end
 end
 
 register_postdissector(frccan)

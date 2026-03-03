@@ -139,7 +139,11 @@ Published NetworkTables keys:
 - `bringup/diag/busErrorCount`
 - `bringup/diag/dev/<mfg>/<type>/<id>/label`
 - `bringup/diag/dev/<mfg>/<type>/<id>/status`
+- `bringup/diag/dev/<mfg>/<type>/<id>/presenceSource` (STATUS/TRAFFIC/CONTROL_ONLY/NONE)
+- `bringup/diag/dev/<mfg>/<type>/<id>/presenceConfidence` (HIGH/LOW/NONE)
 - `bringup/diag/dev/<mfg>/<type>/<id>/ageSec`
+- `bringup/diag/dev/<mfg>/<type>/<id>/trafficAgeSec`
+- `bringup/diag/dev/<mfg>/<type>/<id>/statusAgeSec`
 - `bringup/diag/dev/<mfg>/<type>/<id>/msgCount`
 - `bringup/diag/dev/<mfg>/<type>/<id>/lastSeen`
 - `bringup/diag/dev/<mfg>/<type>/<id>/manufacturer`
@@ -158,6 +162,10 @@ Published NetworkTables keys:
 - The script maps device IDs from the lowest 6 bits of the CAN extended ID.
 - Inventory snapshots key on `(manufacturer, device_type, apiClass, apiIndex, device_id)` so
   you can diff experiments and identify command-like vs status frames.
+- Presence is derived from vendor-specific status-frame heuristics when available:
+  - REV motor controllers: `api_class=6` (periodic status).
+  - CTRE devices: PF/PS `0xFF/0x00..0x07` (status), `0xEF` (control-only).
+  These are unverified heuristics aligned with the Wireshark dissector.
 - `--dump-profile` guesses device families from CAN manufacturer/type and cannot
   distinguish NEO vs FLEX or Kraken vs Falcon; it puts those into `neos` and
   `krakens` by default for easy hand edits.

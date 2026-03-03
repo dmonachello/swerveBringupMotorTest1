@@ -19,18 +19,21 @@ public final class ReportTextUtil {
       int mfgIdWidth,
       int typeIdWidth,
       int statusWidth,
+      int confWidth,
       int ageWidth,
       int fpsWidth,
       int msgWidth,
       int maxLineWidth) {
     appendLine(sb, buildHeaderLine(
         headerShort,
-        idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, ageWidth, fpsWidth, msgWidth,
+        idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, confWidth, ageWidth, fpsWidth,
+        msgWidth,
         maxLineWidth));
     if (headerLong != null) {
       appendLine(sb, buildHeaderLine(
           headerLong,
-          idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, ageWidth, fpsWidth, msgWidth,
+          idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, confWidth, ageWidth, fpsWidth,
+          msgWidth,
           maxLineWidth));
     }
     appendLine(sb, "-".repeat(maxLineWidth));
@@ -44,12 +47,14 @@ public final class ReportTextUtil {
       int mfgIdWidth,
       int typeIdWidth,
       int statusWidth,
+      int confWidth,
       int ageWidth,
       int fpsWidth,
       int msgWidth,
       int maxLineWidth) {
     int[] widths = new int[] {
-        idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, ageWidth, fpsWidth, msgWidth
+        idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, confWidth, ageWidth, fpsWidth,
+        msgWidth
     };
     String[][] columns = new String[values.length][];
     int maxLines = 1;
@@ -100,12 +105,14 @@ public final class ReportTextUtil {
       int mfgIdWidth,
       int typeIdWidth,
       int statusWidth,
+      int confWidth,
       int ageWidth,
       int fpsWidth,
       int msgWidth,
       int maxLineWidth) {
     int[] widths = new int[] {
-        idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, ageWidth, fpsWidth, msgWidth
+        idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, confWidth, ageWidth, fpsWidth,
+        msgWidth
     };
     StringBuilder row = new StringBuilder(maxLineWidth);
     for (int col = 0; col < values.length; col++) {

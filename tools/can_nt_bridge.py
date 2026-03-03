@@ -15,6 +15,95 @@ from can_nt_publish import decode_frc_ext_id, publish_devices
 from can_profiles import get_default_profile, get_profile
 
 
+def _parse_tx_sequence(path: str) -> List[Tuple[float, int, bytes]]:
+    entries: List[Tuple[float, int, bytes]] = []
+    for raw in Path(path).read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "\t" in line:
+            parts = [p.strip() for p in line.split("\t")]
+            if len(parts) < 4:
+                continue
+            try:
+                t = float(parts[0])
+                can_id = int(parts[1], 0)
+                length = int(parts[2])
+                data_hex = parts[3].replace(" ", "")
+                data = bytes.fromhex(data_hex)
+            except Exception:
+                continue
+            if length >= 0:
+                if len(data) < length:
+                    data = data + bytes(length - len(data))
+                elif len(data) > length:
+                    data = data[:length]
+            entries.append((t, can_id, data))
+            continue
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) < 3:
+            continue
+        try:
+            t = float(parts[0])
+            can_id = int(parts[1], 0)
+            data_hex = parts[2].replace(" ", "")
+            data = bytes.fromhex(data_hex)
+        except Exception:
+            continue
+        entries.append((t, can_id, data))
+    entries.sort(key=lambda r: r[0])
+    return entries
+
+
+def _tx_worker(
+    bus,
+    can_module,
+    sequence: List[Tuple[float, int, bytes]],
+    stop_event: threading.Event,
+    scale: float,
+    loop: bool,
+    verbose: bool,
+) -> None:
+    if not sequence:
+        print("TX sequence is empty. Nothing to send.")
+        return
+    sent = 0
+    start_time = sequence[0][0]
+    start_wall = time.monotonic()
+    while True:
+        t0 = time.monotonic()
+        for ts, can_id, data in sequence:
+            if stop_event.is_set():
+                break
+            delay = max(0.0, (ts - start_time) * scale)
+            while not stop_event.is_set():
+                now = time.monotonic()
+                remaining = (t0 + delay) - now
+                if remaining <= 0:
+                    break
+                time.sleep(min(0.01, remaining))
+            if stop_event.is_set():
+                break
+            try:
+                msg = can_module.Message(
+                    arbitration_id=can_id,
+                    data=data,
+                    is_extended_id=(can_id > 0x7FF),
+                )
+                bus.send(msg)
+                sent += 1
+                if verbose and (sent <= 5 or sent % 100 == 0):
+                    print(f"TX sent #{sent} id=0x{can_id:X} len={len(data)} data={data.hex()}")
+            except Exception as exc:
+                print(f"TX error sending id=0x{can_id:X}: {exc}")
+                stop_event.set()
+                break
+        if stop_event.is_set() or not loop:
+            break
+    elapsed = time.monotonic() - start_wall
+    print(f"TX sequence finished. Sent {sent} frames in {elapsed:.2f}s.")
+
+
 def _dump_seen_ids(
     path: str,
     profile: str,
@@ -141,6 +230,37 @@ def _decode_frc_ext_id_full(arb_id: int) -> Tuple[int, int, int, int, int]:
     api_index = (arb_id >> 6) & 0x0F
     device_id = arb_id & 0x3F
     return manufacturer, device_type, api_class, api_index, device_id
+
+
+def _classify_frame(
+    arb_id: int,
+    manufacturer: int,
+    device_type: int,
+    api_class: int,
+    api_index: int,
+) -> Tuple[bool, bool]:
+    # Heuristics aligned with the Wireshark dissector (unverified).
+    # REV: api_class 6 appears to be periodic status for motor controllers.
+    is_status = (manufacturer == 5 and device_type == 2 and api_class == 6)
+    # REV: api_class 46 observed as control frames for motor controllers.
+    is_control = (manufacturer == 5 and device_type == 2 and api_class == 46)
+
+    # CTRE: Phoenix frames often use J1939-style PF/PS fields.
+    pf = (arb_id >> 16) & 0xFF
+    ps = (arb_id >> 8) & 0xFF
+    is_control = is_control or (manufacturer == 4 and pf == 0xEF)
+    if manufacturer == 4 and pf == 0xFF and ps <= 0x07:
+        is_status = True
+
+    return is_status, is_control
+
+
+def _uses_status_presence(manufacturer: int, device_type: int) -> bool:
+    if manufacturer == 5 and device_type == 2:
+        return True
+    if manufacturer == 4:
+        return True
+    return False
 
 
 def _dump_api_inventory(
@@ -314,6 +434,10 @@ def _print_or_dump_nt_keys(devices, print_keys: bool, dump_path: str) -> None:
             f"{base}/ageSec",
             f"{base}/msgCount",
             f"{base}/lastSeen",
+            f"{base}/presenceSource",
+            f"{base}/presenceConfidence",
+            f"{base}/trafficAgeSec",
+            f"{base}/statusAgeSec",
             f"{base}/manufacturer",
             f"{base}/deviceType",
             f"{base}/deviceId",
@@ -344,15 +468,20 @@ def _print_or_dump_nt_keys(devices, print_keys: bool, dump_path: str) -> None:
 def _print_status_transitions(
     devices,
     last_seen: Dict[Tuple[int, int, int], float],
+    status_last_seen: Dict[Tuple[int, int, int], float],
+    control_last_seen: Dict[Tuple[int, int, int], float],
     now: float,
     timeout_s: float,
     last_status: Dict[Tuple[int, int, int], str],
 ) -> None:
     for spec in devices:
         key = (spec["manufacturer"], spec["device_type"], spec["device_id"])
-        ts = last_seen.get(key)
+        traffic_ts = last_seen.get(key)
+        status_ts = status_last_seen.get(key)
+        control_ts = control_last_seen.get(key)
+        ts = status_ts if _uses_status_presence(key[0], key[1]) else traffic_ts
         if ts is None:
-            status = "MISSING"
+            status = "CONTROL_ONLY" if control_ts is not None else "MISSING"
         else:
             status = "OK" if (now - ts) < timeout_s else "MISSING"
         prev = last_status.get(key)
@@ -364,7 +493,7 @@ def _print_status_transitions(
             if status == "OK":
                 print(f"[seen] {label} mfg={key[0]} type={key[1]} id={key[2]}")
             else:
-                print(f"[missing] {label} mfg={key[0]} type={key[1]} id={key[2]}")
+                print(f"[missing] {label} mfg={key[0]} type={key[1]} id={key[2]} ({status})")
         last_status[key] = status
 
 
@@ -553,6 +682,53 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         default="",
         help="Optional note to embed in the pcapng section header comment.",
     )
+    parser.add_argument(
+        "--tx-seq",
+        default="",
+        help=(
+            "Transmit a CAN sequence from a text file. "
+            "Supported formats: "
+            "TSV (time\\tcan_id\\tlen\\tdata_hex) or "
+            "CSV (time,can_id,data_hex)."
+        ),
+    )
+    parser.add_argument(
+        "--tx-allow",
+        action="store_true",
+        help="Allow transmitting CAN frames (required when using --tx-seq).",
+    )
+    parser.add_argument(
+        "--tx-scale",
+        type=float,
+        default=1.0,
+        help="Scale the TX timing (1.0 = realtime).",
+    )
+    parser.add_argument(
+        "--tx-loop",
+        action="store_true",
+        help="Loop the TX sequence until stopped.",
+    )
+    parser.add_argument(
+        "--tx-verbose",
+        action="store_true",
+        help="Print TX progress (first few frames and every 100 frames).",
+    )
+    parser.add_argument(
+        "--print-status",
+        action="store_true",
+        help="Print status frames as they are received.",
+    )
+    parser.add_argument(
+        "--print-control",
+        action="store_true",
+        help="Print control frames as they are received.",
+    )
+    parser.add_argument(
+        "--print-can-id",
+        type=lambda s: int(s, 0),
+        default=-1,
+        help="Only print frames matching this arbitration ID (hex or dec).",
+    )
 
     args = parser.parse_args(argv)
 
@@ -579,6 +755,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     if args.diff_inventory:
         _print_inventory_diff(args.diff_inventory[0], args.diff_inventory[1], args.diff_top)
         return 0
+    if args.tx_seq and not args.tx_allow:
+        print("ERROR: --tx-seq requires --tx-allow for safety.")
+        return 2
 
     # Delayed imports so --help still works without packages installed
     from ntcore import NetworkTableInstance
@@ -615,6 +794,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     analyzer = CanLiveAnalyzer(expected_ids=expected_ids)
     last_seen: Dict[Tuple[int, int, int], float] = {}
+    status_last_seen: Dict[Tuple[int, int, int], float] = {}
+    control_last_seen: Dict[Tuple[int, int, int], float] = {}
     msg_count: Dict[Tuple[int, int, int], int] = {}
     last_status: Dict[Tuple[int, int, int], str] = {}
     pair_stats: Dict[Tuple[int, int, int, int, int], Dict[str, float]] = {}
@@ -631,6 +812,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     key_queue: queue.Queue[Tuple[str, float]] = queue.Queue()
     key_thread = None
     key_stop = threading.Event()
+    tx_stop = threading.Event()
+    tx_thread = None
 
     def _print_marker_banner() -> None:
         print("Marker keys: [1]=0.25 [2]=0.50 [3]=0.75 [4]=1.00 [0]=stop [m]=mark [q]=quit [h]=help")
@@ -657,14 +840,25 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             else:
                 time.sleep(0.01)
 
-    if args.enable_markers and args.pcap:
+    if (args.enable_markers and args.pcap) or args.tx_seq:
         key_thread = threading.Thread(target=_keyboard_worker, daemon=True)
         key_thread.start()
-        _print_marker_banner()
+        if args.enable_markers and args.pcap:
+            _print_marker_banner()
+        if args.tx_seq:
+            print("TX control: press [space] to stop transmission.")
 
     start = time.time()
     last_publish = 0.0
     last_summary = 0.0
+    if args.tx_seq:
+        sequence = _parse_tx_sequence(args.tx_seq)
+        tx_thread = threading.Thread(
+            target=_tx_worker,
+            args=(bus, can, sequence, tx_stop, args.tx_scale, args.tx_loop, args.tx_verbose),
+            daemon=True,
+        )
+        tx_thread.start()
 
     try:
         while True:
@@ -676,6 +870,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 except queue.Empty:
                     break
                 if key not in marker_keys:
+                    if key == " ":
+                        tx_stop.set()
+                        print("TX stopped by user.")
                     continue
                 if key == "h":
                     _print_marker_banner()
@@ -758,6 +955,25 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 last_seen[key] = now
                 msg_count[key] = msg_count.get(key, 0) + 1
 
+                is_status, is_control = _classify_frame(
+                    arb_id=arb_id,
+                    manufacturer=mfg,
+                    device_type=dtype,
+                    api_class=api_class,
+                    api_index=api_index,
+                )
+                if is_status:
+                    status_last_seen[key] = now
+                if is_control:
+                    control_last_seen[key] = now
+
+                if args.print_status and is_status:
+                    if args.print_can_id == -1 or arb_id == args.print_can_id:
+                        print(f"[status] id=0x{arb_id:X} len={len(data)} data={data.hex()}")
+                if args.print_control and is_control:
+                    if args.print_can_id == -1 or arb_id == args.print_can_id:
+                        print(f"[control] id=0x{arb_id:X} len={len(data)} data={data.hex()}")
+
                 pair_key = (mfg, dtype, did, api_class, api_index)
                 stats = pair_stats.get(pair_key)
                 if stats is None:
@@ -780,6 +996,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                         table=table,
                         devices=_merge_unknown_devices(devices, last_seen, args.publish_unknown),
                         last_seen=last_seen,
+                        status_last_seen=status_last_seen,
+                        control_last_seen=control_last_seen,
+                        uses_status_presence=_uses_status_presence,
                         msg_count=msg_count,
                         now=now,
                         timeout_s=args.timeout,
@@ -789,6 +1008,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     _print_status_transitions(
                         devices=devices,
                         last_seen=last_seen,
+                        status_last_seen=status_last_seen,
+                        control_last_seen=control_last_seen,
                         now=now,
                         timeout_s=args.timeout,
                         last_status=last_status,
@@ -821,6 +1042,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         pass
     finally:
         key_stop.set()
+        tx_stop.set()
         pcap.stop()
         try:
             bus.shutdown()

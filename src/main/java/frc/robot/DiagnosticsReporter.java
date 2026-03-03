@@ -207,7 +207,8 @@ final class DiagnosticsReporter {
       double lastSeen = diagTable.getEntry(base + "/lastSeen").getDouble(Double.NaN);
       double ageSec = diagTable.getEntry(base + "/ageSec").getDouble(Double.NaN);
 
-      boolean missing = "MISSING".equals(status) || "NO_DATA".equals(status);
+      boolean missing =
+          "MISSING".equals(status) || "NO_DATA".equals(status) || "CONTROL_ONLY".equals(status);
       if (missing) {
         missingCount++;
       }
@@ -234,11 +235,14 @@ final class DiagnosticsReporter {
       }
 
       boolean localPresent = core.isDeviceInstantiated(spec.manufacturer, spec.deviceType, spec.deviceId);
-      if (!Double.isNaN(lastSeen) && lastSeen > 0 && !localPresent) {
+      String presenceSource = diagTable.getEntry(base + "/presenceSource").getString("NONE");
+      double statusAge = diagTable.getEntry(base + "/statusAgeSec").getDouble(Double.NaN);
+      boolean statusSeen = "STATUS".equals(presenceSource) && !Double.isNaN(statusAge) && statusAge >= 0;
+      if (statusSeen && !localPresent) {
         PcSnapshot.SeenNotLocalEntry entry = new PcSnapshot.SeenNotLocalEntry();
         entry.key = key;
-        if (!Double.isNaN(ageSec)) {
-          entry.ageSec = ageSec;
+        if (!Double.isNaN(statusAge)) {
+          entry.ageSec = statusAge;
         }
         pc.seenNotLocal.add(entry);
       }
@@ -283,6 +287,7 @@ final class DiagnosticsReporter {
     String mfgHeaderLong = "mfg";
     String typeHeaderLong = "type";
     String statusHeaderLong = "status";
+    String confHeaderLong = "conf";
     String ageHeaderLong = "ageSec";
     String fpsHeaderLong = "fps";
     String msgHeaderLong = "msgCount";
@@ -291,6 +296,7 @@ final class DiagnosticsReporter {
     int mfgIdWidth = 12;
     int typeIdWidth = 16;
     int statusWidth = 8;
+    int confWidth = 8;
     int ageWidth = 6;
     int fpsWidth = 6;
     int msgWidth = 16;
@@ -305,10 +311,10 @@ final class DiagnosticsReporter {
     ReportTextUtil.appendWrappedHeaders(
         sb,
         new String[] { idHeaderLong, labelHeaderLong, mfgHeaderLong, typeHeaderLong,
-            statusHeaderLong, ageHeaderLong, fpsHeaderLong, msgHeaderLong },
+            statusHeaderLong, confHeaderLong, ageHeaderLong, fpsHeaderLong, msgHeaderLong },
         null,
-        idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, ageWidth, fpsWidth, msgWidth,
-        maxLineWidth);
+        idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, confWidth, ageWidth, fpsWidth,
+        msgWidth, maxLineWidth);
 
     for (DeviceRow row : rows) {
       ReportTextUtil.appendWrappedRow(
@@ -319,12 +325,13 @@ final class DiagnosticsReporter {
               formatManufacturer(row.spec.manufacturer),
               formatDeviceType(row.spec.deviceType),
               row.status,
+              row.confidence,
               row.ageText,
               row.fpsText,
               row.msgText
           },
-          idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, ageWidth, fpsWidth, msgWidth,
-          maxLineWidth);
+          idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, confWidth, ageWidth, fpsWidth,
+          msgWidth, maxLineWidth);
     }
   }
 
@@ -333,18 +340,29 @@ final class DiagnosticsReporter {
     String base = "dev/" + spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
     String label = diagTable.getEntry(base + "/label").getString(spec.label);
     String status = diagTable.getEntry(base + "/status").getString("UNKNOWN");
+    String confidence = diagTable.getEntry(base + "/presenceConfidence").getString("-");
+    String presenceSource = diagTable.getEntry(base + "/presenceSource").getString("NONE");
     double age = diagTable.getEntry(base + "/ageSec").getDouble(Double.NaN);
     double msgCount = diagTable.getEntry(base + "/msgCount").getDouble(Double.NaN);
-    double lastSeen = diagTable.getEntry(base + "/lastSeen").getDouble(Double.NaN);
+    double trafficAge = diagTable.getEntry(base + "/trafficAgeSec").getDouble(Double.NaN);
+    double statusAge = diagTable.getEntry(base + "/statusAgeSec").getDouble(Double.NaN);
 
-    boolean hasData = !(Double.isNaN(lastSeen) || lastSeen < 0);
+    boolean hasData =
+        !"NONE".equals(presenceSource)
+        || !(Double.isNaN(trafficAge) || trafficAge < 0)
+        || !(Double.isNaN(statusAge) || statusAge < 0);
     String ageText = "-";
     String fpsText = "-";
     String msgText = "-";
     String finalStatus = hasData ? status : "NO_DATA";
     if (hasData) {
-      double ageValue = Double.isNaN(age) ? (nowSeconds - lastSeen) : age;
-      ageText = String.format("%.3f", ageValue);
+      double ageValue = age;
+      if (Double.isNaN(ageValue)) {
+        ageValue = !Double.isNaN(trafficAge) ? trafficAge : statusAge;
+      }
+      if (!Double.isNaN(ageValue)) {
+        ageText = String.format("%.3f", ageValue);
+      }
       msgText = Double.isNaN(msgCount) ? "?" : String.format("%.0f", msgCount);
       fpsText = formatFps(spec, msgCount, nowSeconds);
     }
@@ -353,6 +371,7 @@ final class DiagnosticsReporter {
         spec,
         label,
         finalStatus,
+        confidence,
         ageText,
         fpsText,
         msgText);
@@ -639,6 +658,7 @@ final class DiagnosticsReporter {
     private final DeviceSpec spec;
     private final String label;
     private final String status;
+    private final String confidence;
     private final String ageText;
     private final String fpsText;
     private final String msgText;
@@ -647,12 +667,14 @@ final class DiagnosticsReporter {
         DeviceSpec spec,
         String label,
         String status,
+        String confidence,
         String ageText,
         String fpsText,
         String msgText) {
       this.spec = spec;
       this.label = label;
       this.status = status;
+      this.confidence = confidence;
       this.ageText = ageText;
       this.fpsText = fpsText;
       this.msgText = msgText;
