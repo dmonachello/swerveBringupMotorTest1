@@ -1,6 +1,7 @@
 package frc.robot.manufacturers;
 
 import frc.robot.devices.DeviceUnit;
+import frc.robot.BringupPrinter;
 import java.util.List;
 
 // Holds per-device-type state and devices for a manufacturer.
@@ -52,6 +53,10 @@ public final class DeviceTypeBucket {
       int index = nextIndex;
       DeviceUnit device = devices.get(nextIndex);
       device.ensureCreated();
+      BringupPrinter.enqueue(
+          "Device created: " + registration.displayName() +
+          " index " + index +
+          " CAN " + device.getCanId());
       nextIndex++;
       return new DeviceAddResult(device, index, registration);
     }
@@ -59,8 +64,13 @@ public final class DeviceTypeBucket {
   }
 
   public void addAll() {
-    for (DeviceUnit device : devices) {
+    for (int i = 0; i < devices.size(); i++) {
+      DeviceUnit device = devices.get(i);
       device.ensureCreated();
+      BringupPrinter.enqueue(
+          "Device created: " + registration.displayName() +
+          " index " + i +
+          " CAN " + device.getCanId());
     }
     nextIndex = devices.size();
   }

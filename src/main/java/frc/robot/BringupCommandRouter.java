@@ -12,8 +12,18 @@ public final class BringupCommandRouter {
       Runnable printBindings,
       boolean runHeld) {
 
-    core.handleAdd(bind.pressed("addMotor"));
-    core.handleAddAll(bind.pressed("addAll"));
+    if (bind.pressed("addMotor")) {
+      BringupPrinter.enqueue("Command: addMotor");
+      core.handleAdd(true);
+    } else {
+      core.handleAdd(false);
+    }
+    if (bind.pressed("addAll")) {
+      BringupPrinter.enqueue("Command: addAll");
+      core.handleAddAll(true);
+    } else {
+      core.handleAddAll(false);
+    }
     core.handlePrint(bind.pressed("printState"));
     core.handleHealth(bind.pressed("printHealth"));
     core.handleCANCoder(runHeld ? false : bind.pressed("printCANcoder"));
@@ -28,9 +38,11 @@ public final class BringupCommandRouter {
       core.toggleSelectedBringupTestEnabled();
     }
     if (bind.pressed("runTest")) {
+      BringupPrinter.enqueue("Command: runTest");
       core.runSelectedBringupTest();
     }
     if (bind.pressed("runAllTests")) {
+      BringupPrinter.enqueue("Command: runAllTests");
       core.runAllBringupTests();
     }
 
@@ -51,6 +63,7 @@ public final class BringupCommandRouter {
     }
 
     if (bind.pressed("clearFaults")) {
+      BringupPrinter.enqueue("Command: clearFaults");
       core.clearAllFaults();
       BringupPrinter.enqueue("Cleared device faults (current + sticky).");
     }

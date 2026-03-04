@@ -242,8 +242,17 @@ def _classify_frame(
     # Heuristics aligned with the Wireshark dissector (unverified).
     # REV: api_class 6 appears to be periodic status for motor controllers.
     is_status = (manufacturer == 5 and device_type == 2 and api_class == 6)
-    # REV: api_class 46 observed as control frames for motor controllers.
-    is_control = (manufacturer == 5 and device_type == 2 and api_class == 46)
+    # REV: api_class 46 carries multiple status frames (api_index 0..6 are common).
+    # Treat those as status; only other indices are considered control-like.
+    is_rev_mc = (manufacturer == 5 and device_type == 2)
+    if is_rev_mc and api_class == 46:
+        if 0 <= api_index <= 6:
+            is_status = True
+            is_control = False
+        else:
+            is_control = True
+    else:
+        is_control = False
 
     # CTRE: Phoenix frames often use J1939-style PF/PS fields.
     pf = (arb_id >> 16) & 0xFF
@@ -257,8 +266,6 @@ def _classify_frame(
 
 def _uses_status_presence(manufacturer: int, device_type: int) -> bool:
     if manufacturer == 5 and device_type == 2:
-        return True
-    if manufacturer == 4:
         return True
     return False
 
@@ -757,10 +764,21 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         help="Print control frames as they are received.",
     )
     parser.add_argument(
+        "--print-any",
+        action="store_true",
+        help="Print all frames (ignores status/control classification).",
+    )
+    parser.add_argument(
         "--print-can-id",
         type=lambda s: int(s, 0),
         default=-1,
         help="Only print frames matching this arbitration ID (hex or dec).",
+    )
+    parser.add_argument(
+        "--print-device-id",
+        type=int,
+        default=-1,
+        help="Only print frames matching this device ID (low 6 bits of arbitration ID).",
     )
 
     args = parser.parse_args(argv)
@@ -1014,12 +1032,19 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 if is_control:
                     control_last_seen[key] = now
 
-                if args.print_status and is_status:
-                    if args.print_can_id == -1 or arb_id == args.print_can_id:
-                        print(f"[status] id=0x{arb_id:X} len={len(data)} data={data.hex()}")
-                if args.print_control and is_control:
-                    if args.print_can_id == -1 or arb_id == args.print_can_id:
-                        print(f"[control] id=0x{arb_id:X} len={len(data)} data={data.hex()}")
+                print_id_match = (args.print_can_id == -1 or arb_id == args.print_can_id)
+                print_dev_match = (args.print_device_id == -1 or did == args.print_device_id)
+
+                if args.print_any and print_id_match and print_dev_match:
+                    print(
+                        f"[frame] id=0x{arb_id:X} "
+                        f"mfg={mfg} type={dtype} apiClass={api_class} apiIndex={api_index} "
+                        f"len={len(data)} data={data.hex()}"
+                    )
+                if args.print_status and is_status and print_id_match and print_dev_match:
+                    print(f"[status] id=0x{arb_id:X} len={len(data)} data={data.hex()}")
+                if args.print_control and is_control and print_id_match and print_dev_match:
+                    print(f"[control] id=0x{arb_id:X} len={len(data)} data={data.hex()}")
 
                 pair_key = (mfg, dtype, did, api_class, api_index)
                 stats = pair_stats.get(pair_key)

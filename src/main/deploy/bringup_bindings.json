@@ -131,28 +131,28 @@
       "controller": "secondary",
       "input": "dpad",
       "id": "UP",
-      "mode": "edge"
+      "mode": "hold"
     },
     {
       "command": "fixedSpeed50",
       "controller": "secondary",
       "input": "dpad",
       "id": "RIGHT",
-      "mode": "edge"
+      "mode": "hold"
     },
     {
       "command": "fixedSpeed75",
       "controller": "secondary",
       "input": "dpad",
       "id": "DOWN",
-      "mode": "edge"
+      "mode": "hold"
     },
     {
       "command": "fixedSpeed100",
       "controller": "secondary",
       "input": "dpad",
       "id": "LEFT",
-      "mode": "edge"
+      "mode": "hold"
     }
   ],
   "axes": [

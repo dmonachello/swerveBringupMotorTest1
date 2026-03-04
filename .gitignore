@@ -204,3 +204,5 @@ tools/save/
 ~$*.docx
 *.docx
 *.pdf
+# Local saved artifacts
+saved/

@@ -140,10 +140,10 @@ public final class BindingsManager {
     bindings.add(BindingSpec.hold("runTest", "secondary", "button", "A"));
     bindings.add(BindingSpec.edge("runAllTests", "secondary", "button", "B"));
 
-    bindings.add(BindingSpec.edge("fixedSpeed25", "secondary", "dpad", "UP"));
-    bindings.add(BindingSpec.edge("fixedSpeed50", "secondary", "dpad", "RIGHT"));
-    bindings.add(BindingSpec.edge("fixedSpeed75", "secondary", "dpad", "DOWN"));
-    bindings.add(BindingSpec.edge("fixedSpeed100", "secondary", "dpad", "LEFT"));
+    bindings.add(BindingSpec.hold("fixedSpeed25", "secondary", "dpad", "UP"));
+    bindings.add(BindingSpec.hold("fixedSpeed50", "secondary", "dpad", "RIGHT"));
+    bindings.add(BindingSpec.hold("fixedSpeed75", "secondary", "dpad", "DOWN"));
+    bindings.add(BindingSpec.hold("fixedSpeed100", "secondary", "dpad", "LEFT"));
 
     axes.add(AxisSpec.axis("leftDrive", "primary", "LY", true, 0.12));
     axes.add(AxisSpec.axis("rightDrive", "primary", "RY", true, 0.12));

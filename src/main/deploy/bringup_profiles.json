@@ -3,23 +3,23 @@
   "profiles": {
     "example_default": {
       "neos": [
-        { "label": "SPARKMAX 10", "id": 10 },
-        { "label": "SPARKMAX 25", "id": 25 }
+        { "label": "SPARKMAX 10", "id": 10, "motor": "REV NEO" },
+        { "label": "SPARKMAX 25", "id": 25, "motor": "REV NEO" }
       ],
       "roborio": { "label": "roboRIO", "id": 0 }
     },
     "robot": {
       "neos": [
-        { "label": "FR NEO", "id": 10 },
-        { "label": "FL NEO", "id": 1 },
-        { "label": "BR NEO", "id": 7 },
-        { "label": "BL NEO", "id": 4 }
+        { "label": "FR NEO", "id": 10, "motor": "REV NEO" },
+        { "label": "FL NEO", "id": 1, "motor": "REV NEO" },
+        { "label": "BR NEO", "id": 7, "motor": "REV NEO" },
+        { "label": "BL NEO", "id": 4, "motor": "REV NEO" }
       ],
       "krakens": [
-        { "label": "FR KRAK", "id": 11 },
-        { "label": "FL KRAK", "id": 2 },
-        { "label": "BR KRAK", "id": 8 },
-        { "label": "BL KRAK", "id": 5 }
+        { "label": "FR KRAK", "id": 11, "motor": "CTRE Kraken X60" },
+        { "label": "FL KRAK", "id": 2, "motor": "CTRE Kraken X60" },
+        { "label": "BR KRAK", "id": 8, "motor": "CTRE Kraken X60" },
+        { "label": "BL KRAK", "id": 5, "motor": "CTRE Kraken X60" }
       ],
       "cancoders": [
         { "label": "FR CANC", "id": 12 },
@@ -33,49 +33,49 @@
     },
     "demo_club": {
       "neos": [
-        { "label": "NEO 25", "id": 25 },
-        { "label": "NEO 22", "id": 22 },
-        { "label": "NEO 10", "id": 10 }
+        { "label": "NEO 25", "id": 25, "motor": "REV NEO" },
+        { "label": "NEO 22", "id": 22, "motor": "REV NEO" },
+        { "label": "NEO 10", "id": 10, "motor": "REV NEO" }
       ],
       "roborio": { "label": "roboRIO", "id": 0 }
     },
     "demo_home": {
       "neos": [
-        { "label": "VORTEX/FLEX 10", "id": 10 },
-        { "label": "VORTEX/FLEX 20", "id": 20 }
+        { "label": "VORTEX/FLEX 10", "id": 10, "motor": "REV NEO Vortex" },
+        { "label": "VORTEX/FLEX 20", "id": 20, "motor": "REV NEO Vortex" }
       ],
       "falcons": [
-        { "label": "FALCON 30", "id": 30 }
+        { "label": "FALCON 30", "id": 30, "motor": "CTRE Falcon 500" }
       ],
       "roborio": { "label": "roboRIO", "id": 0 }
     },
     "demo_home_022326": {
       "flexes": [
-        { "label": "VORTEX/FLEX 11", "id": 11 },
-        { "label": "VORTEX/FLEX 26", "id": 26 }
+        { "label": "VORTEX/FLEX 11", "id": 11, "motor": "REV NEO Vortex" },
+        { "label": "VORTEX/FLEX 26", "id": 26, "motor": "REV NEO Vortex" }
       ],
       "falcons": [
-        { "label": "FALCON 9", "id": 9 }
+        { "label": "FALCON 9", "id": 9, "motor": "CTRE Falcon 500" }
       ],
       "pdh": { "label": "PDH", "id": 1 },
       "roborio": { "label": "roboRIO", "id": 0 }
     },
     "demo_home_022526": {
       "neos": [
-        { "label": "NEO 25", "id": 25 }
+        { "label": "NEO 25", "id": 25, "motor": "REV NEO" }
       ],
       "falcons": [
-        { "label": "FALCON 9", "id": 9 }
+        { "label": "FALCON 9", "id": 9, "motor": "CTRE Falcon 500" }
       ],
       "roborio": { "label": "roboRIO", "id": 0 }
     },
     "club_022426": {
       "neos": [
-        { "label": "SPARKMAX 10", "id": 10 },
-        { "label": "SPARKMAX 25", "id": 25 }
+        { "label": "SPARKMAX 10", "id": 10, "motor": "REV NEO" },
+        { "label": "SPARKMAX 25", "id": 25, "motor": "REV NEO" }
       ],
       "flexes": [
-        { "label": "VORTEX/FLEX 11", "id": 11 }
+        { "label": "VORTEX/FLEX 11", "id": 11, "motor": "REV NEO Vortex" }
       ],
       "candles": [
         { "label": "CANdle 30", "id": 30 }
@@ -84,28 +84,28 @@
     },
     "club_022526": {
       "neos": [
-        { "label": "SPARKMAX/NEO 22", "id": 22 }
+        { "label": "SPARKMAX/NEO 22", "id": 22, "motor": "REV NEO" }
       ],
       "neo550s": [
-        { "label": "SPARKMAX/NEO550 7", "id": 7 }
+        { "label": "SPARKMAX/NEO550 7", "id": 7, "motor": "REV NEO 550" }
       ],
       "roborio": { "label": "roboRIO", "id": 0 }
     },
     "home_030226": {
       "neos": [
-        { "label": "SPARKMAX/NEO 25", "id": 25 }
+        { "label": "SPARKMAX/NEO 25", "id": 25, "motor": "REV NEO" }
       ],
       "neo550s": [
-        { "label": "SPARKMAX/NEO550 7", "id": 7, "limits": { "fwdDio": 0, "revDio": -1, "invert": true } }
+        { "label": "SPARKMAX/NEO550 7", "id": 7, "motor": "REV NEO 550", "limits": { "fwdDio": 0, "revDio": -1, "invert": true } }
       ],
       "falcons": [
-        { "label": "FALCON 9", "id": 9 }
+        { "label": "FALCON 9", "id": 9, "motor": "CTRE Falcon 500" }
       ],
       "roborio": { "label": "roboRIO", "id": 0 }
     },
     "reverse_eng_min1": {
       "neos": [
-        { "label": "SPARKMAX/NEO 11", "id": 11 }
+        { "label": "SPARKMAX/NEO 11", "id": 11, "motor": "REV NEO" }
       ],
       "pdp": { "label": "PDP", "id": 0 },
       "roborio": { "label": "roboRIO", "id": 0 }

@@ -130,13 +130,13 @@ public class RobotV2 extends TimedRobot {
     boolean controller2Connected = controller2 != null && DriverStation.isJoystickConnected(1);
     if (controller2Connected) {
       double fixedSpeed = Double.NaN;
-      if (bind.pressed("fixedSpeed25")) {
+      if (bind.held("fixedSpeed25")) {
         fixedSpeed = 0.25;
-      } else if (bind.pressed("fixedSpeed50")) {
+      } else if (bind.held("fixedSpeed50")) {
         fixedSpeed = 0.50;
-      } else if (bind.pressed("fixedSpeed75")) {
+      } else if (bind.held("fixedSpeed75")) {
         fixedSpeed = 0.75;
-      } else if (bind.pressed("fixedSpeed100")) {
+      } else if (bind.held("fixedSpeed100")) {
         fixedSpeed = 1.00;
       }
       if (!Double.isNaN(fixedSpeed)) {
