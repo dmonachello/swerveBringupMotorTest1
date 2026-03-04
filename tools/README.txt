@@ -29,6 +29,9 @@ Requirements (Windows Driver Station)
 Wireshark capture
 - Use --pcap logs\run.pcapng
 - Open the file in Wireshark
+- Live capture (Windows named pipe):
+  1) Start Wireshark with `-k -i \\.\pipe\FRC_CAN`
+  2) Run the tool with `--pcap-pipe FRC_CAN`
 
 Wireshark display filters (FRC CAN)
 - Extended CAN frames only:
@@ -61,6 +64,8 @@ Quick start
 Typical commands
 Robot run with capture:
   python can_nt_bridge.py --profile robot --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --publish-can-summary --pcap logs\robot_run.pcapng
+Robot run with live Wireshark pipe:
+  python can_nt_bridge.py --profile robot --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --publish-can-summary --pcap-pipe FRC_CAN
 
 Dump observed arbitration IDs and exit:
   python can_nt_bridge.py --profile robot --interface slcan --channel COM3 --bitrate 1000000 --dump-can-expected-ids robot_seen_ids.json --dump-after 3.0 --pcap logs\seen_ids.pcapng

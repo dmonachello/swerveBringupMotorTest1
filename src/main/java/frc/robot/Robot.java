@@ -3,6 +3,8 @@ package frc.robot;
 import edu.wpi.first.cameraserver.CameraServer;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
+import frc.robot.input.BindingsManager;
+import frc.robot.input.ControllerManager;
 import java.util.ArrayList;
 
 // Legacy bringup robot program (simpler than RobotV2).
@@ -14,7 +16,9 @@ public class Robot extends TimedRobot {
 
   private static final double DEADBAND = BringupUtil.DEADBAND;
   // Driver Station controller input.
-  private final XboxController controller = new XboxController(0);
+  private final ControllerManager controllers = new ControllerManager();
+  private final XboxController controller = controllers.getXbox(0);
+  private final BindingsManager bindings = new BindingsManager();
   // Local bringup behaviors for device creation and health.
   private BringupCore core = new BringupCore();
   // Edge-detect state for one-shot actions.
@@ -48,19 +52,20 @@ public class Robot extends TimedRobot {
   public void teleopPeriodic() {
 
     // --- Device instantiation / local prints ---
-    core.handleAdd(controller.getAButton());
-    core.handleAddAll(controller.getStartButton());
-    core.handlePrint(controller.getBButton());
-    core.handleHealth(controller.getXButton());
-    boolean leftBumper = controller.getLeftBumperButton();
-    boolean rightBumper = controller.getRightBumperButton();
-    boolean nonMotorTest = leftBumper && rightBumper;
-    if (edge.pressed("nonMotorTest", nonMotorTest)) {
-      core.runNextNonMotorTest();
+    if (controller == null) {
+      return;
     }
+    BindingsManager.BindingState bind = bindings.sample(controller, null, edge);
+
+    BringupCommandRouter.applyCommon(
+        bind,
+        core,
+        null,
+        this::printStartupInfo,
+        bind.held("runTest"));
 
     // --- Profile switching ---
-    if (edge.pressed("profileToggle", controller.getBackButton())) {
+    if (bind.pressed("profileToggle")) {
       BringupUtil.toggleCanProfile();
       core.resetState();
       core = new BringupCore();
@@ -68,17 +73,16 @@ public class Robot extends TimedRobot {
       printStartupInfo();
     }
 
-    // --- Reprint bindings ---
-    if (edge.pressed("bindings", leftBumper && !rightBumper)) {
-      printStartupInfo();
-    }
-
     // --- Analog input to motor outputs ---
-    double neoSpeed = BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
-    double krakenSpeed = BringupUtil.deadband(-controller.getRightY(), DEADBAND);
+    double neoSpeed = bind.hasAxis("leftDrive")
+        ? bind.axis("leftDrive")
+        : BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
+    double krakenSpeed = bind.hasAxis("rightDrive")
+        ? bind.axis("rightDrive")
+        : BringupUtil.deadband(-controller.getRightY(), DEADBAND);
 
     // --- Print current stick inputs on demand ---
-    if (edge.pressed("speedPrint", controller.getRightStickButton())) {
+    if (bind.pressed("printInputs")) {
       BringupPrinter.enqueue(
           "Inputs: leftY=" + String.format("%.2f", neoSpeed) +
           " rightY=" + String.format("%.2f", krakenSpeed) +
@@ -86,18 +90,12 @@ public class Robot extends TimedRobot {
           ", KRAKEN/FALCON=" + String.format("%.2f", krakenSpeed) + ")");
     }
 
-    // --- Timed nudge for all motors ---
-    if (edge.pressed("nudge", controller.getLeftStickButton())) {
-      core.triggerNudge(0.2, 0.5);
-      BringupPrinter.enqueue("Nudge: 0.2 for 0.5s (all motors)");
-    }
+    // core update handled by BringupCommandRouter
 
-    if (edge.pressed("clearFaults", rightBumper && !leftBumper)) {
-      core.clearAllFaults();
-      BringupPrinter.enqueue("Cleared device faults (current + sticky).");
-    }
+    // Feed test inputs (used by joystick-mode tests).
+    core.setTestInputs(neoSpeed, krakenSpeed);
 
-    // Apply speeds after any nudge overrides.
+    // Apply speeds after inputs are processed.
     core.setSpeeds(neoSpeed, krakenSpeed);
   }
 
@@ -109,18 +107,13 @@ public class Robot extends TimedRobot {
   private void printStartupInfo() {
     StringBuilder sb = new StringBuilder(512);
     appendLine(sb, "=== Swerve Bringup ===");
-    appendLine(sb, "A: add motor (alternates SPARK/CTRE)");
-    appendLine(sb, "Start: add all configured devices");
-    appendLine(sb, "B: print state");
-    appendLine(sb, "X: print health status");
-    appendLine(sb, "Back: toggle CAN profile");
-    appendLine(sb, "Left Bumper: reprint bindings");
-    appendLine(sb, "Right Bumper: clear device faults");
-    appendLine(sb, "Left+Right Bumper: run non-motor test");
-    appendLine(sb, "Right Stick: print speed inputs");
-    appendLine(sb, "Left Stick: nudge motors (0.2 for 0.5s)");
-    appendLine(sb, "Left Y: NEO/FLEX speed, Right Y: KRAKEN/FALCON speed");
-    appendLine(sb, "Controller 2 A/B/X/Y: fixed speed 0.25/0.50/0.75/1.00");
+    appendLine(sb, "Bindings (from bringup_bindings.json):");
+    for (String line : bindings.describeBindings()) {
+      appendLine(sb, "  " + line);
+    }
+    for (String line : bindings.describeAxes()) {
+      appendLine(sb, "  " + line);
+    }
     appendLine(sb, "Deadband: " + DEADBAND);
     appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
     appendLine(sb, "NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));

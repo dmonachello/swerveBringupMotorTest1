@@ -146,6 +146,18 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     return snap;
   }
 
+  @Override
+  public Double getPositionRotations() {
+    if (device == null) {
+      return null;
+    }
+    try {
+      return device.getEncoder().getPosition();
+    } catch (Exception ex) {
+      return null;
+    }
+  }
+
   private void initLimitInputs() {
     if (limitConfig.hasForward()) {
       fwdLimit = new DigitalInput(limitConfig.fwdDio);

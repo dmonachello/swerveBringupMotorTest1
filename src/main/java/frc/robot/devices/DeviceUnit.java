@@ -37,4 +37,9 @@ public interface DeviceUnit extends HasRegistrationHeader {
   }
 
   default void runTest() {}
+
+  // Optional encoder position in rotations (internal or external sensor).
+  default Double getPositionRotations() {
+    return null;
+  }
 }

@@ -1,6 +1,7 @@
 package frc.robot.devices.ctre;
 
 import com.ctre.phoenix6.hardware.TalonFX;
+import edu.wpi.first.units.Units;
 import frc.robot.BringupUtil;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.manufacturers.ctre.diag.CtreTalonFxReader;
@@ -137,6 +138,18 @@ public final class CtreTalonFxDevice implements DeviceUnit {
     snap.label = label;
     addLimitAttachment(snap);
     return snap;
+  }
+
+  @Override
+  public Double getPositionRotations() {
+    if (device == null) {
+      return null;
+    }
+    try {
+      return device.getPosition().getValue().in(Units.Rotations);
+    } catch (Exception ex) {
+      return null;
+    }
   }
 
   private void initLimitInputs() {

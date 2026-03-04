@@ -1,0 +1,17 @@
+{
+  "tests": [
+    {
+      "type": "composite",
+      "name": "Hold to run",
+      "enabled": false,
+      "duty": 0.2,
+      "hold": {
+        "enabled": true,
+        "onRelease": "pass"
+      },
+      "motorKeys": [
+        "CTRE:KRAKEN:11"
+      ]
+    }
+  ]
+}

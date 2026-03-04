@@ -81,7 +81,7 @@ Purpose: Drive controlled robot stimuli that produce observable CAN changes.
 - `D-pad Right`: print speed inputs
 - `Left Bumper`: reprint bindings
 - `Right Bumper`: print CANCoder absolute positions
-- `Left+Right Bumper`: run non-motor test
+- (Secondary) `A`: run non-motor test
 - `Left Stick`: nudge motors (0.2 for 0.5s)
 - `Right Stick`: clear device faults
 - `X`: dump CAN report JSON

@@ -306,6 +306,24 @@ def _dump_api_inventory(
         json.dump(payload, f, indent=2)
 
 
+def _dump_can_config(path: str, args: argparse.Namespace, devices: List[Dict[str, Any]]) -> None:
+    payload = {
+        "created": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time())),
+        "generated_from_profile": args.profile,
+        "rio": args.rio,
+        "interface": args.interface,
+        "channel": args.channel,
+        "bitrate": args.bitrate,
+        "timeout": args.timeout,
+        "publish_period": args.publish_period,
+        "print_summary_period": args.print_summary_period,
+        "auto_match": args.auto_match,
+        "devices": devices,
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
+
 def _load_inventory(path: str) -> Dict[Tuple[int, int, int, int, int], float]:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     result: Dict[Tuple[int, int, int, int, int], float] = {}
@@ -645,6 +663,13 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         help="Seconds to wait before writing --dump-api-inventory output.",
     )
     parser.add_argument(
+        "--dump-can-config",
+        default="",
+        help=(
+            "Write a can_nt_config.json-style file from the selected profile and exit."
+        ),
+    )
+    parser.add_argument(
         "--diff-inventory",
         nargs=2,
         metavar=("A.json", "B.json"),
@@ -658,6 +683,14 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     )
 
     parser.add_argument("--pcap", default="", help="Write all CAN frames to a .pcapng/.pcap file")
+    parser.add_argument(
+        "--pcap-pipe",
+        default="",
+        help=(
+            "Write live pcapng to a Windows named pipe for Wireshark. "
+            "Example: FRC_CAN or \\\\.\\pipe\\FRC_CAN"
+        ),
+    )
     parser.add_argument(
         "--marker-id",
         type=lambda s: int(s, 0),
@@ -752,6 +785,10 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     if args.list_keys or args.dump_nt:
         _print_or_dump_nt_keys(devices, args.list_keys, args.dump_nt)
         return 0
+    if args.dump_can_config:
+        _dump_can_config(args.dump_can_config, args, devices)
+        print(f"Wrote config to {args.dump_can_config}")
+        return 0
     if args.diff_inventory:
         _print_inventory_diff(args.diff_inventory[0], args.diff_inventory[1], args.diff_top)
         return 0
@@ -765,8 +802,12 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     bus = can.Bus(interface=args.interface, channel=channel, bitrate=args.bitrate)
 
+    if args.pcap and args.pcap_pipe:
+        print("ERROR: Use --pcap or --pcap-pipe, not both.")
+        return 2
+
     pcap_comment = ""
-    if args.pcap and args.pcap.lower().endswith(".pcapng"):
+    if (args.pcap and args.pcap.lower().endswith(".pcapng")) or args.pcap_pipe:
         start_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
         parts = [
             f"start={start_str}",
@@ -777,12 +818,18 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         if args.capture_note:
             parts.append(f"note={args.capture_note}")
         pcap_comment = " | ".join(parts)
-    pcap = PcapLogger(args.pcap, pcap_comment)
-    if args.pcap and pcap.start():
-        print(f"PCAP logging enabled: {args.pcap}")
-    if args.enable_markers and args.pcap and not args.pcap.lower().endswith(".pcapng"):
-        print("ERROR: Marker injection requires a .pcapng output file.")
-        return 2
+    if args.pcap_pipe:
+        print(f"Waiting for Wireshark to connect to pipe: {args.pcap_pipe}")
+    pcap = PcapLogger(args.pcap, pcap_comment, pipe_name=args.pcap_pipe)
+    if (args.pcap or args.pcap_pipe) and pcap.start():
+        if args.pcap:
+            print(f"PCAP logging enabled: {args.pcap}")
+        else:
+            print(f"PCAP live pipe enabled: {pcap.pipe_name}")
+    if args.enable_markers:
+        if args.pcap and not args.pcap.lower().endswith(".pcapng"):
+            print("ERROR: Marker injection requires a .pcapng output file.")
+            return 2
 
     nt = None
     table = None

@@ -1,0 +1,174 @@
+{
+  "bindings": [
+    {
+      "command": "addMotor",
+      "controller": "primary",
+      "input": "button",
+      "id": "A",
+      "mode": "edge"
+    },
+    {
+      "command": "addAll",
+      "controller": "primary",
+      "input": "button",
+      "id": "START",
+      "mode": "edge"
+    },
+    {
+      "command": "printState",
+      "controller": "primary",
+      "input": "button",
+      "id": "B",
+      "mode": "edge"
+    },
+    {
+      "command": "printHealth",
+      "controller": "primary",
+      "input": "dpad",
+      "id": "LEFT",
+      "mode": "edge"
+    },
+    {
+      "command": "printCANcoder",
+      "controller": "primary",
+      "input": "button",
+      "id": "RB",
+      "mode": "edge"
+    },
+    {
+      "command": "printNTdiag",
+      "controller": "primary",
+      "input": "dpad",
+      "id": "DOWN",
+      "mode": "edge"
+    },
+    {
+      "command": "printCANdiag",
+      "controller": "primary",
+      "input": "dpad",
+      "id": "UP",
+      "mode": "edge"
+    },
+    {
+      "command": "printInputs",
+      "controller": "primary",
+      "input": "dpad",
+      "id": "RIGHT",
+      "mode": "edge"
+    },
+    {
+      "command": "printBindings",
+      "controller": "primary",
+      "input": "button",
+      "id": "LB",
+      "mode": "edge"
+    },
+    {
+      "command": "clearFaults",
+      "controller": "primary",
+      "input": "button",
+      "id": "RS",
+      "mode": "edge"
+    },
+    {
+      "command": "dumpReport",
+      "controller": "primary",
+      "input": "button",
+      "id": "X",
+      "mode": "edge"
+    },
+    {
+      "command": "toggleDashboard",
+      "controller": "primary",
+      "input": "button",
+      "id": "Y",
+      "mode": "edge"
+    },
+    {
+      "command": "profileToggle",
+      "controller": "primary",
+      "input": "button",
+      "id": "BACK",
+      "mode": "edge"
+    },
+    {
+      "command": "selectTestPrev",
+      "controller": "secondary",
+      "input": "button",
+      "id": "LB",
+      "mode": "edge"
+    },
+    {
+      "command": "selectTestNext",
+      "controller": "secondary",
+      "input": "button",
+      "id": "RB",
+      "mode": "edge"
+    },
+    {
+      "command": "toggleTest",
+      "controller": "secondary",
+      "input": "button",
+      "id": "X",
+      "mode": "edge"
+    },
+    {
+      "command": "runTest",
+      "controller": "secondary",
+      "input": "button",
+      "id": "A",
+      "mode": "hold"
+    },
+    {
+      "command": "runAllTests",
+      "controller": "secondary",
+      "input": "button",
+      "id": "B",
+      "mode": "edge"
+    },
+    {
+      "command": "fixedSpeed25",
+      "controller": "secondary",
+      "input": "dpad",
+      "id": "UP",
+      "mode": "edge"
+    },
+    {
+      "command": "fixedSpeed50",
+      "controller": "secondary",
+      "input": "dpad",
+      "id": "RIGHT",
+      "mode": "edge"
+    },
+    {
+      "command": "fixedSpeed75",
+      "controller": "secondary",
+      "input": "dpad",
+      "id": "DOWN",
+      "mode": "edge"
+    },
+    {
+      "command": "fixedSpeed100",
+      "controller": "secondary",
+      "input": "dpad",
+      "id": "LEFT",
+      "mode": "edge"
+    }
+  ],
+  "axes": [
+    {
+      "command": "leftDrive",
+      "controller": "primary",
+      "id": "LY",
+      "invert": true,
+      "deadband": 0.12
+    },
+    {
+      "command": "rightDrive",
+      "controller": "primary",
+      "id": "RY",
+      "invert": true,
+      "deadband": 0.12
+    }
+  ]
+}

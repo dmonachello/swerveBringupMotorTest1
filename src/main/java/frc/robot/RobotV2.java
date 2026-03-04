@@ -1,6 +1,6 @@
 package frc.robot;
 
-import edu.wpi.first.cameraserver.CameraServer;
+//import edu.wpi.first.cameraserver.CameraServer;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj.livewindow.LiveWindow;
@@ -9,6 +9,8 @@ import edu.wpi.first.wpilibj.DriverStation;
 import java.util.ArrayList;
 
 import edu.wpi.first.networktables.NetworkTableInstance;
+import frc.robot.input.BindingsManager;
+import frc.robot.input.ControllerManager;
 
 // Primary bringup robot program with CAN diagnostics, JSON reporting, and controller bindings.
 // This class wires controller inputs to BringupCore and DiagnosticsReporter behaviors.
@@ -19,9 +21,11 @@ public class RobotV2 extends TimedRobot {
   // ---------------------------------------------------
 
   // Driver Station controller input.
-  private final XboxController controller = new XboxController(0);
+  private final ControllerManager controllers = new ControllerManager();
+  private final XboxController controller = controllers.getXbox(0);
   // Optional second controller for fixed-speed test buttons.
-  private final XboxController controller2 = new XboxController(1);
+  private final XboxController controller2 = controllers.getXbox(1);
+  private final BindingsManager bindings = new BindingsManager();
   // Local bringup behaviors for device creation and health.
   private BringupCore core = new BringupCore();
   // Samples roboRIO CAN controller health.
@@ -76,21 +80,21 @@ public class RobotV2 extends TimedRobot {
   public void teleopPeriodic() {
 
     // --- Device instantiation / local prints ---
-    core.handleAdd(controller.getAButton());
-    core.handleAddAll(controller.getStartButton());
-    core.handlePrint(controller.getBButton());
-    boolean healthNow = controller.getPOV() == 270;
-    core.handleHealth(healthNow);
-    boolean leftBumper = controller.getLeftBumperButton();
-    boolean rightBumper = controller.getRightBumperButton();
-    boolean nonMotorTest = leftBumper && rightBumper;
-    core.handleCANCoder(nonMotorTest ? false : rightBumper);
-    if (edge.pressed("nonMotorTest", nonMotorTest)) {
-      core.runNextNonMotorTest();
+    if (controller == null) {
+      return;
     }
+    BindingsManager.BindingState bind = bindings.sample(controller, controller2, edge);
+
+    boolean runHeld = bind.held("runTest");
+    BringupCommandRouter.applyCommon(
+        bind,
+        core,
+        diagnostics,
+        this::printStartupInfo,
+        runHeld);
 
     // --- Profile switching ---
-    if (edge.pressed("profileToggle", controller.getBackButton())) {
+    if (bind.pressed("profileToggle")) {
       BringupUtil.toggleCanProfile();
       core.resetState();
       core = new BringupCore();
@@ -101,22 +105,9 @@ public class RobotV2 extends TimedRobot {
     }
 
     // --- Diagnostics / reporting ---
-    // D-pad Down: print NetworkTables diagnostics.
-    if (edge.pressed("ntDiag", controller.getPOV() == 180)) {
-      diagnostics.printNetworkDiagnostics();
-    }
-
-    if (edge.pressed("bindings", leftBumper && !rightBumper)) {
-      printStartupInfo();
-    }
-
-    // D-pad Up: print CAN diagnostics report (local + optional PC tool data).
-    if (edge.pressed("canDiag", controller.getPOV() == 0)) {
-      diagnostics.printCanDiagnosticsReport();
-    }
 
     // Toggle dashboard updates to reduce periodic spam.
-    if (edge.pressed("dashboardToggle", controller.getYButton())) {
+    if (bind.pressed("toggleDashboard")) {
       dashboardUpdatesEnabled = !dashboardUpdatesEnabled;
       applyDashboardUpdateState();
       BringupPrinter.enqueue(
@@ -124,19 +115,23 @@ public class RobotV2 extends TimedRobot {
     }
 
     // --- Analog input to motor outputs ---
-    double neoSpeed = BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
-    double krakenSpeed = BringupUtil.deadband(-controller.getRightY(), DEADBAND);
+    double neoSpeed = bind.hasAxis("leftDrive")
+        ? bind.axis("leftDrive")
+        : BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
+    double krakenSpeed = bind.hasAxis("rightDrive")
+        ? bind.axis("rightDrive")
+        : BringupUtil.deadband(-controller.getRightY(), DEADBAND);
 
-    boolean controller2Connected = DriverStation.isJoystickConnected(1);
+    boolean controller2Connected = controller2 != null && DriverStation.isJoystickConnected(1);
     if (controller2Connected) {
       double fixedSpeed = Double.NaN;
-      if (controller2.getAButton()) {
+      if (bind.pressed("fixedSpeed25")) {
         fixedSpeed = 0.25;
-      } else if (controller2.getBButton()) {
+      } else if (bind.pressed("fixedSpeed50")) {
         fixedSpeed = 0.50;
-      } else if (controller2.getXButton()) {
+      } else if (bind.pressed("fixedSpeed75")) {
         fixedSpeed = 0.75;
-      } else if (controller2.getYButton()) {
+      } else if (bind.pressed("fixedSpeed100")) {
         fixedSpeed = 1.00;
       }
       if (!Double.isNaN(fixedSpeed)) {
@@ -146,7 +141,7 @@ public class RobotV2 extends TimedRobot {
     }
 
     // D-pad Right: print current stick inputs.
-    if (edge.pressed("speedPrint", controller.getPOV() == 90)) {
+    if (bind.pressed("printInputs")) {
       BringupPrinter.enqueue(
           "Inputs: leftY=" + String.format("%.2f", neoSpeed) +
           " rightY=" + String.format("%.2f", krakenSpeed) +
@@ -155,38 +150,26 @@ public class RobotV2 extends TimedRobot {
     }
 
     if (controller2Connected) {
-      if (edge.pressed("fixedA", controller2.getAButton())) {
+      if (bind.pressed("fixedSpeed25")) {
         BringupPrinter.enqueue("Fixed speed: 0.25 (Controller 2 A)");
       }
-      if (edge.pressed("fixedB", controller2.getBButton())) {
+      if (bind.pressed("fixedSpeed50")) {
         BringupPrinter.enqueue("Fixed speed: 0.50 (Controller 2 B)");
       }
-      if (edge.pressed("fixedX", controller2.getXButton())) {
+      if (bind.pressed("fixedSpeed75")) {
         BringupPrinter.enqueue("Fixed speed: 0.75 (Controller 2 X)");
       }
-      if (edge.pressed("fixedY", controller2.getYButton())) {
+      if (bind.pressed("fixedSpeed100")) {
         BringupPrinter.enqueue("Fixed speed: 1.00 (Controller 2 Y)");
       }
     }
 
-    // Left Stick: short, timed nudge for all motors.
-    if (edge.pressed("nudge", controller.getLeftStickButton())) {
-      core.triggerNudge(0.2, 0.5);
-      BringupPrinter.enqueue("Nudge: 0.2 for 0.5s (all motors)");
-    }
+    // core update and diagnostics handled by BringupCommandRouter
 
-    // X: dump JSON snapshot to console + file for offline analysis.
-    if (edge.pressed("reportDump", controller.getXButton())) {
-      diagnostics.dumpReportJsonToConsoleAndFile();
-    }
+    // Feed test inputs (used by joystick-mode tests).
+    core.setTestInputs(neoSpeed, krakenSpeed);
 
-    // Right Stick: clear faults (current + sticky) on all devices.
-    if (edge.pressed("clearFaults", controller.getRightStickButton())) {
-      core.clearAllFaults();
-      BringupPrinter.enqueue("Cleared device faults (current + sticky).");
-    }
-
-    // Apply speeds after any nudge overrides.
+    // Apply speeds after inputs are processed.
     core.setSpeeds(neoSpeed, krakenSpeed);
   }
 
@@ -203,23 +186,13 @@ public class RobotV2 extends TimedRobot {
     lastStartupPrintMs = nowMs;
     StringBuilder sb = new StringBuilder(512);
     ReportTextUtil.appendLine(sb, "=== Swerve Bringup V2 ===");
-    ReportTextUtil.appendLine(sb, "A: add motor (alternates SPARK/CTRE)");
-    ReportTextUtil.appendLine(sb, "Start: add all configured devices");
-    ReportTextUtil.appendLine(sb, "B: print state");
-    ReportTextUtil.appendLine(sb, "D-pad Left: print health status");
-    ReportTextUtil.appendLine(sb, "Right Bumper: print CANCoder absolute positions");
-    ReportTextUtil.appendLine(sb, "Left+Right Bumper: run non-motor test");
-    ReportTextUtil.appendLine(sb, "Back: toggle CAN profile");
-    ReportTextUtil.appendLine(sb, "D-pad Down: print NetworkTables diagnostics");
-    ReportTextUtil.appendLine(sb, "Left Bumper: reprint bindings");
-    ReportTextUtil.appendLine(sb, "D-pad Up: print CAN diagnostics report");
-    ReportTextUtil.appendLine(sb, "D-pad Right: print speed inputs");
-    ReportTextUtil.appendLine(sb, "Left Stick: nudge motors (0.2 for 0.5s)");
-    ReportTextUtil.appendLine(sb, "Right Stick: clear device faults");
-    ReportTextUtil.appendLine(sb, "X: dump CAN report JSON");
-    ReportTextUtil.appendLine(sb, "Y: toggle dashboard/shuffleboard updates");
-    ReportTextUtil.appendLine(sb, "Left Y: NEO/FLEX speed, Right Y: KRAKEN/FALCON speed");
-    ReportTextUtil.appendLine(sb, "Controller 2 A/B/X/Y: fixed speed 0.25/0.50/0.75/1.00");
+    ReportTextUtil.appendLine(sb, "Bindings (from bringup_bindings.json):");
+    for (String line : bindings.describeBindings()) {
+      ReportTextUtil.appendLine(sb, "  " + line);
+    }
+    for (String line : bindings.describeAxes()) {
+      ReportTextUtil.appendLine(sb, "  " + line);
+    }
     ReportTextUtil.appendLine(sb, "Deadband: " + DEADBAND);
     ReportTextUtil.appendLine(sb, "Dashboard updates: " + (dashboardUpdatesEnabled ? "ON" : "OFF"));
     ReportTextUtil.appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
@@ -234,8 +207,7 @@ public class RobotV2 extends TimedRobot {
 
   //@SuppressWarnings("removal")
   private void applyDashboardUpdateState() {
-    // WPILib deprecated setNetworkTablesFlushEnabled; we keep it for our version.
-    setNetworkTablesFlushEnabled(dashboardUpdatesEnabled);
+    // WPILib deprecated setNetworkTablesFlushEnabled; no-op in newer versions.
     LiveWindow.setEnabled(dashboardUpdatesEnabled);
     if (dashboardUpdatesEnabled) {
       Shuffleboard.enableActuatorWidgets();

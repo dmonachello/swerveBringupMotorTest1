@@ -10,6 +10,10 @@ import frc.robot.manufacturers.DeviceRole;
 import frc.robot.manufacturers.DeviceTypeBucket;
 import frc.robot.manufacturers.ManufacturerGroup;
 import frc.robot.manufacturers.RevDeviceGroup;
+import frc.robot.tests.BringupTest;
+import frc.robot.tests.BringupTestContext;
+import frc.robot.tests.BringupTestRegistry;
+import frc.robot.tests.BringupTestResult;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -30,17 +34,28 @@ public final class BringupCore {
   private boolean prevPrint = false;
   private boolean prevHealth = false;
   private boolean prevCANCoder = false;
-  private boolean nudgeActive = false;
-  private double nudgeEndSec = 0.0;
-  private double nudgeSpeed = 0.2;
-
   private long lastStatePrintMs = 0L;
   private long lastHealthPrintMs = 0L;
   private long lastCANCoderPrintMs = 0L;
   private final List<DeviceUnit> testDevices = new ArrayList<>();
   private int nextTestIndex = 0;
+  private final List<BringupTest> bringupTests = new ArrayList<>();
+  private final List<BringupTest> selectableTests = new ArrayList<>();
+  private int nextBringupTestIndex = 0;
+  private int selectedTestIndex = -1;
+  private BringupTest activeTest = null;
+  private boolean runAllActive = false;
+  private final BringupTestContext testContext;
+  private double primaryInput = 0.0;
+  private double secondaryInput = 0.0;
 
   public BringupCore() {
+    List<ManufacturerGroup> groups = new ArrayList<>();
+    groups.add(revDevices);
+    groups.add(ctreDevices);
+    testContext = new BringupTestContext(groups);
+    bringupTests.addAll(BringupTestRegistry.loadTests());
+    refreshSelectableTests();
     refreshTestDevices();
   }
 
@@ -96,29 +111,23 @@ public final class BringupCore {
     prevCANCoder = printNow;
   }
 
-  // Apply requested speeds to all instantiated motors (with optional nudge override).
+  // Apply requested speeds to all instantiated motors.
   public void setSpeeds(double neoSpeed, double krakenSpeed) {
-    if (nudgeActive) {
-      double now = Timer.getFPGATimestamp();
-      if (now < nudgeEndSec) {
-        neoSpeed = nudgeSpeed;
-        krakenSpeed = nudgeSpeed;
-      } else {
-        nudgeActive = false;
-      }
+    if (activeTest != null && activeTest.isRunning()) {
+      return;
     }
     revDevices.setDuty(neoSpeed);
     ctreDevices.setDuty(krakenSpeed);
   }
 
-  // Force a brief output at a fixed duty cycle for all motors.
-  public void triggerNudge(double speed, double seconds) {
-    if (seconds <= 0.0) {
-      return;
+  public void setTestInputs(double primary, double secondary) {
+    primaryInput = primary;
+    secondaryInput = secondary;
+    if (activeTest instanceof frc.robot.tests.JoystickTest joystick) {
+      String axis = joystick.getInputAxis();
+      double value = "secondary".equalsIgnoreCase(axis) ? secondaryInput : primaryInput;
+      joystick.setInputValue(value);
     }
-    nudgeSpeed = Math.max(-1.0, Math.min(1.0, speed));
-    nudgeEndSec = Timer.getFPGATimestamp() + seconds;
-    nudgeActive = true;
   }
 
   // Clear current and sticky faults on all instantiated devices where supported.
@@ -129,6 +138,11 @@ public final class BringupCore {
 
   // Stop all outputs, close devices, and reset internal state.
   public void resetState() {
+    if (activeTest != null && activeTest.isRunning()) {
+      activeTest.stop(testContext);
+    }
+    activeTest = null;
+    refreshSelectableTests();
     revDevices.stopAll();
     ctreDevices.stopAll();
     revDevices.closeAll();
@@ -147,6 +161,13 @@ public final class BringupCore {
   }
 
   public void runNextNonMotorTest() {
+    if (activeTest != null && activeTest.isRunning()) {
+      BringupPrinter.enqueue("Test already running: " + activeTest.getName());
+      return;
+    }
+    if (startNextBringupTest()) {
+      return;
+    }
     if (testDevices.isEmpty()) {
       BringupPrinter.enqueue("No non-motor test devices configured.");
       return;
@@ -169,11 +190,186 @@ public final class BringupCore {
     BringupPrinter.enqueue("No testable non-motor devices found.");
   }
 
+  public void selectNextBringupTest() {
+    if (selectableTests.isEmpty()) {
+      BringupPrinter.enqueue("No enabled bringup tests.");
+      return;
+    }
+    if (selectedTestIndex < 0) {
+      selectedTestIndex = 0;
+    } else {
+      selectedTestIndex = (selectedTestIndex + 1) % selectableTests.size();
+    }
+    BringupTest test = selectableTests.get(selectedTestIndex);
+    BringupPrinter.enqueue("Selected test: " + test.getName());
+  }
+
+  public void selectPrevBringupTest() {
+    if (selectableTests.isEmpty()) {
+      BringupPrinter.enqueue("No enabled bringup tests.");
+      return;
+    }
+    if (selectedTestIndex < 0) {
+      selectedTestIndex = selectableTests.size() - 1;
+    } else {
+      selectedTestIndex = (selectedTestIndex - 1 + selectableTests.size()) % selectableTests.size();
+    }
+    BringupTest test = selectableTests.get(selectedTestIndex);
+    BringupPrinter.enqueue("Selected test: " + test.getName());
+  }
+
+  public void runSelectedBringupTest() {
+    if (activeTest != null && activeTest.isRunning()) {
+      BringupPrinter.enqueue("Test already running: " + activeTest.getName());
+      return;
+    }
+    BringupTest test = getSelectedBringupTest();
+    if (test == null) {
+      runNextNonMotorTest();
+      return;
+    }
+    if (!test.isEnabled()) {
+      BringupPrinter.enqueue("Test disabled: " + test.getName());
+      return;
+    }
+    runAllActive = false;
+    boolean started = test.start(testContext, Timer.getFPGATimestamp());
+    if (started) {
+      activeTest = test;
+      BringupPrinter.enqueue("Test: " + test.getName());
+      return;
+    }
+    BringupPrinter.enqueue("Test skipped: " + test.getName() + " (" + test.getStatus() + ")");
+  }
+
+  public void updateTests(boolean holdSignal) {
+    if (activeTest == null || !activeTest.isRunning()) {
+      return;
+    }
+    activeTest.onHoldSignal(holdSignal);
+    double now = Timer.getFPGATimestamp();
+    activeTest.update(testContext, now);
+    if (activeTest.isFinished()) {
+      BringupTestResult result = activeTest.getResult();
+      BringupPrinter.enqueue(
+          "Test result: " + activeTest.getName() + " = " + result + " (" + activeTest.getStatus() + ")");
+      activeTest = null;
+      if (runAllActive) {
+        if (!startNextEnabledSelectedTest()) {
+          runAllActive = false;
+          BringupPrinter.enqueue("Run-all complete.");
+        }
+      }
+    }
+  }
+
+  public void updateTests() {
+    updateTests(false);
+  }
+
+  public void runAllBringupTests() {
+    if (activeTest != null && activeTest.isRunning()) {
+      BringupPrinter.enqueue("Test already running: " + activeTest.getName());
+      return;
+    }
+    runAllActive = true;
+    if (!startNextEnabledSelectedTest()) {
+      runAllActive = false;
+      BringupPrinter.enqueue("No enabled bringup tests.");
+    }
+  }
+
   private void refreshTestDevices() {
     testDevices.clear();
     testDevices.addAll(ctreDevices.getTestDevices());
     testDevices.addAll(revDevices.getTestDevices());
     nextTestIndex = 0;
+  }
+
+  private void refreshSelectableTests() {
+    selectableTests.clear();
+    for (BringupTest test : bringupTests) {
+      if (test != null) {
+        selectableTests.add(test);
+      }
+    }
+    selectedTestIndex = selectableTests.isEmpty() ? -1 : 0;
+  }
+
+  private BringupTest getSelectedBringupTest() {
+    if (selectableTests.isEmpty() || selectedTestIndex < 0) {
+      return null;
+    }
+    if (selectedTestIndex >= selectableTests.size()) {
+      selectedTestIndex = 0;
+    }
+    return selectableTests.get(selectedTestIndex);
+  }
+
+  public void toggleSelectedBringupTestEnabled() {
+    BringupTest test = getSelectedBringupTest();
+    if (test == null) {
+      BringupPrinter.enqueue("No bringup tests available.");
+      return;
+    }
+    boolean newValue = !test.isEnabled();
+    test.setEnabled(newValue);
+    BringupPrinter.enqueue(
+        "Test " + (newValue ? "enabled: " : "disabled: ") + test.getName());
+    boolean saved = BringupTestRegistry.saveTests(bringupTests);
+    if (!saved) {
+      BringupPrinter.enqueue("Warning: failed to persist bringup test enable state.");
+    }
+  }
+
+  private boolean startNextEnabledSelectedTest() {
+    if (selectableTests.isEmpty()) {
+      return false;
+    }
+    if (selectedTestIndex < 0) {
+      selectedTestIndex = 0;
+    } else {
+      selectedTestIndex = selectedTestIndex % selectableTests.size();
+    }
+    int attempts = selectableTests.size();
+    while (attempts-- > 0) {
+      BringupTest test = selectableTests.get(selectedTestIndex);
+      selectedTestIndex = (selectedTestIndex + 1) % selectableTests.size();
+      if (!test.isEnabled()) {
+        continue;
+      }
+      boolean started = test.start(testContext, Timer.getFPGATimestamp());
+      if (started) {
+        activeTest = test;
+        BringupPrinter.enqueue("Test: " + test.getName());
+        return true;
+      }
+      BringupPrinter.enqueue("Test skipped: " + test.getName() + " (" + test.getStatus() + ")");
+    }
+    return false;
+  }
+
+  private boolean startNextBringupTest() {
+    if (bringupTests.isEmpty()) {
+      return false;
+    }
+    int attempts = bringupTests.size();
+    while (attempts-- > 0) {
+      BringupTest test = bringupTests.get(nextBringupTestIndex);
+      nextBringupTestIndex = (nextBringupTestIndex + 1) % bringupTests.size();
+      if (!test.isEnabled()) {
+        continue;
+      }
+      boolean started = test.start(testContext, Timer.getFPGATimestamp());
+      if (started) {
+        activeTest = test;
+        BringupPrinter.enqueue("Test: " + test.getName());
+        return true;
+      }
+      BringupPrinter.enqueue("Test skipped: " + test.getName() + " (" + test.getStatus() + ")");
+    }
+    BringupPrinter.enqueue("No enabled bringup tests.");
+    return false;
   }
 
   // Alternates between REV and CTRE motors to keep bringup balanced.

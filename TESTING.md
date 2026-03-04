@@ -2,6 +2,141 @@
 
 This document provides a step-by-step checklist to verify the CAN -> NetworkTables bridge end-to-end with a real CAN bus and RoboRIO.
 
+## Full Functional Test Plan (End-to-End)
+Purpose: verify all major robot + PC tool functionality after large changes.
+
+## Smoke Test (Pit-Friendly)
+Purpose: run the minimum set of checks to confirm the system is healthy.
+
+1. Deploy robot code and enter teleop.
+2. Press `Start` to add all configured devices.
+3. Press `B` to print state and confirm devices are present.
+4. Move `Left Y` and `Right Y`, then press `D-pad Right` to confirm inputs.
+5. Run one enabled test with secondary `A` and confirm PASS/FAIL prints.
+6. If the PC tool is running, press `D-pad Down` and confirm `openOk=YES`.
+7. If Wireshark is needed, run a quick capture and confirm frames appear.
+
+### A) Robot Bringup Core
+Purpose: ensure base robot bringup actions still work.
+
+1. Deploy robot code and enter teleop.
+2. Press `Start` to add all configured devices.
+3. Press `B` to print state.
+Expected:
+- All configured devices show `present=YES`.
+- No exceptions or missing device errors.
+
+### B) Controller + Bindings (Config-Driven)
+Purpose: verify command bindings resolve from JSON and edge/hold works.
+
+1. Confirm the startup prints the bindings list (LB).
+2. Press `LB` to reprint bindings.
+3. Press `A`, `Start`, `B`, `X`, `Y`, `Back`.
+Expected:
+- Each command prints the expected action.
+- No missing/unknown command warnings.
+
+### C) Speed Inputs
+Purpose: verify axis inputs map to left/right drive commands.
+
+1. Move `Left Y` and `Right Y`.
+2. Press `D-pad Right` to print inputs.
+Expected:
+- Values match stick movement and deadband/invert settings.
+
+### D) Joystick Motor Control (Non-Test Mode)
+Purpose: verify the standard joystick-driven motor output still works.
+
+1. Add one REV motor and one CTRE motor.
+2. Move `Left Y` and `Right Y`.
+Expected:
+- Motors respond to their respective axes.
+- Output stops when stick returns to center.
+
+### E) Bringup Test Selection + Run
+Purpose: verify test list, selection, run, and run-all.
+
+1. Enable 2+ tests in `bringup_tests.json`, deploy.
+2. Press secondary `LB`/`RB` to cycle tests.
+3. Press secondary `A` to run the selected test.
+4. Press secondary `B` to run all enabled tests.
+Expected:
+- Test names print on selection.
+- PASS/FAIL prints after each run.
+- Run-all prints `Run-all complete.`.
+
+### F) Composite Test Checks
+Purpose: verify rotation/time/limit/hold checks independently and combined.
+
+1. Rotation only: `rotation` set with `encoderKey=internal`.
+2. Time only: `time.timeoutSec` + `onTimeout`.
+3. Limit only: `limitSwitch.enabled=true`.
+4. Hold only: `hold.enabled=true`.
+5. Combined: rotation + time + limit + hold.
+Expected:
+- Each check terminates the test per its condition.
+- Combined test stops on the first triggered condition.
+
+### G) External Encoder Tests
+Purpose: verify `encoderKey` external device selection.
+
+1. Use a test with `encoderKey=CTRE:CANCoder:<id>`.
+2. Run the test and confirm rotation tracking.
+Expected:
+- Encoder output changes and test terminates at `limitRot`.
+
+### H) Multi-Motor Tests
+Purpose: verify `motorKeys` list drives multiple motors.
+
+1. Use a composite or joystick test with 2+ `motorKeys`.
+2. Run it.
+Expected:
+- All motors respond together; stop together on test end.
+
+### I) Limit Switch Integration
+Purpose: verify limit switches clamp motion and can terminate tests.
+
+1. Configure `limits` for a motor in `bringup_profiles.json`.
+2. Run a test with `limitSwitch.enabled=true`.
+Expected:
+- Motor output clamps on closed limit.
+- Test ends and reports PASS/FAIL per `onHit`.
+
+### J) PC CAN Tool – Basic
+Purpose: verify the PC sniffer runs and publishes NT.
+
+1. Run the PC tool with `--profile`.
+2. Press `D-pad Down` on robot.
+Expected:
+- `openOk=YES`, heartbeat updates, and device table matches CAN traffic.
+
+### K) PC CAN Tool – Wireshark
+Purpose: verify live pipe and file captures.
+
+1. Live pipe: start Wireshark `-k -i \\.\pipe\FRC_CAN`.
+2. Run the tool with `--pcap-pipe FRC_CAN`.
+3. File: run `--pcap tools\logs\run.pcapng`.
+Expected:
+- Wireshark shows live frames via pipe.
+- PCAPNG opens and decodes.
+
+### L) PC CAN Tool – Inventory + Diff
+Purpose: verify reverse engineering outputs.
+
+1. Run `--dump-api-inventory tools\inv_a.json --dump-api-inventory-after 5`.
+2. Run again after a different stimulus into `inv_b.json`.
+3. Run `--diff-inventory tools\inv_a.json tools\inv_b.json`.
+Expected:
+- Inventory files are created.
+- Diff prints new/missing pairs and rate deltas.
+
+### M) PC Tool Config Auto-Gen
+Purpose: verify can_nt_config.json generation from profile.
+
+1. Run `--profile demo_club --dump-can-config tools\can_nt_config.json`.
+Expected:
+- File is created and lists devices matching the selected profile.
+
 ## Test Setup
 
 Hardware:
@@ -176,10 +311,24 @@ Expected:
 Steps:
 1. Ensure a CANdle is in the profile (`candles` list).
 2. Deploy and run the robot code.
-3. Press `Left+Right Bumper` to run the non-motor test action.
+3. Press secondary `A` to run the non-motor test action.
 Expected:
 - The CANdle toggles between OFF and BLUE.
 - Console prints `Test: <label> (CANdle) [toggle_led]`.
+
+## Runtime Verification Checklist (Robot Tests)
+Purpose: verify the bringup test framework behaves correctly on real hardware.
+
+- Confirm controller detection prints at startup (controller name and type).
+- Press `B` to print state and verify devices are instantiated.
+- Use secondary `LB`/`RB` to change the selected test and confirm the name updates.
+- Run the selected test with secondary `A` and confirm PASS/FAIL and reason.
+- Hold secondary `A` during a test that has `hold.enabled=true`; release to trigger the hold action.
+- Press secondary `B` to run all enabled tests in order; verify `Run-all complete.` prints at the end.
+- If a joystick test is enabled, confirm the listed `motorKeys` move together and stop when the test ends.
+- If a rotation test uses `encoderKey: internal`, confirm it uses the motor index given by `encoderMotorIndex`.
+- If a limit switch check is enabled, verify the test ends on switch activation and the result matches `onHit`.
+- If the PC tool is running, press `D-pad Down` and confirm PC diagnostics show `openOk=YES`.
 
 ## Troubleshooting
 

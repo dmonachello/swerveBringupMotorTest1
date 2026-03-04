@@ -1,176 +1,211 @@
-# CAN -> NetworkTables bridge (RobotV2)
+# CAN-NT-BRIDGE(1)
 
-This script listens to CAN traffic from a CANable PRO (SLCAN mode) and publishes
-`bringup/diag` diagnostics for `RobotV2`.
+NAME
+    can_nt_bridge.py - CAN -> NetworkTables bridge for RobotV2
 
-## Install
+SYNOPSIS
+    python tools\can_nt_bridge.py [options]
+    tools\run_can_nt.cmd [python.exe] [options]
 
-Use the pure-Python NetworkTables library:
+DESCRIPTION
+    Reads FRC CAN traffic from a CANable (SLCAN) and publishes diagnostics
+    under bringup/diag for RobotV2. Can optionally write PCAP/PCAPNG or
+    stream live PCAPNG into Wireshark via a Windows named pipe.
 
-```cmd
-py -m pip install pynetworktables
-```
+INSTALL
+    py -m pip install pynetworktables
+    py -m pip install python-can
+    py -m pip install pyserial
 
-Install python-can for the CAN interface:
+RUN
+    python tools\can_nt_bridge.py --rio 172.22.11.2
 
-```cmd
-py -m pip install python-can
-```
+    tools\run_can_nt.cmd
 
-Install pyserial for the slcan interface:
+    set CAN_NT_PYTHON=C:\Path\To\Python\python.exe
+    tools\run_can_nt.cmd
 
-```cmd
-py -m pip install pyserial
-```
+    tools\run_can_nt.cmd C:\Path\To\Python\python.exe
 
-## Run
+    tools\run_can_nt.cmd --print-summary-period 2 --print-publish
 
-```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2
-```
+    tools\run_can_nt.cmd C:\Path\To\Python\python.exe --verbose --quick-check
 
-Or use the helper script that pins the Python interpreter:
-```cmd
-tools\run_can_nt.cmd
-```
+    If neither is set, the helper script:
+    1) uses the first python in PATH
+    2) falls back to %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe
 
-Override Python for the helper script:
-```cmd
-set CAN_NT_PYTHON=C:\Path\To\Python\python.exe
-tools\run_can_nt.cmd
-```
+CONFIG
+    Device lists are loaded from src\main\deploy\bringup_profiles.json via --profile.
+    This keeps the PC tool aligned with robot profiles.
 
-Or pass the interpreter path as the first argument:
-```cmd
-tools\run_can_nt.cmd C:\Path\To\Python\python.exe
-```
+    If you need a standalone can_nt_config.json-style file for reference or
+    external tooling, generate one from a profile:
+        python tools\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt_config.json
 
-Pass extra flags directly:
-```cmd
-tools\run_can_nt.cmd --print-summary-period 2 --print-publish
-```
+    The legacy tools\can_nt_config.json is kept as a sample only.
 
-If you pass a Python path first, flags can follow:
-```cmd
-tools\run_can_nt.cmd C:\Path\To\Python\python.exe --verbose --quick-check
-```
+EXAMPLES
+    Default (USB RIO, auto-detect COM port):
+        python tools\can_nt_bridge.py --rio 172.22.11.2
 
-If neither is set, the script will:
-1. Use the first `python` found in `PATH`.
-2. Fall back to `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe`.
+    Explicit COM port:
+        python tools\can_nt_bridge.py --rio 172.22.11.2 --channel COM21
 
-Config:
-- Default settings live in `tools/can_nt_config.json`.
-- Override with `--config path\to\file.json`.
-- The config supports a `devices` list with `manufacturer`, `device_type`, and `device_id`.
-- The config supports `groups` for summary rollups and `log_csv` defaults.
-- By default, `tools/can_nt_config.json` enables CSV logging to `tools\can_nt_log.csv`.
-- Device tables for `--profile` are loaded from `src/main/deploy/bringup_profiles.json`.
+    More output (summary + device seen/missing messages):
+        python tools\can_nt_bridge.py --rio 172.22.11.2 --print-summary-period 2 --print-publish
 
-Examples:
-```cmd
-# Default (USB RIO, auto-detect COM port)
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2
+    Use a custom config:
+        python tools\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt_config.json
 
-# Explicit COM port
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --channel COM21
+    Choose a profile from bringup_profiles.json:
+        python tools\can_nt_bridge.py --profile demo_club
 
-# More output (summary + device seen/missing messages)
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --print-summary-period 2 --print-publish
+    Publish unknown devices seen on the bus:
+        python tools\can_nt_bridge.py --profile demo_home_022326 --publish-unknown
 
-# Use a custom config
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --config tools\can_nt_config.json
+    List or dump the published NT keys:
+        python tools\can_nt_bridge.py --profile demo_home_022326 --list-keys
+        python tools\can_nt_bridge.py --profile demo_home_022326 --dump-nt tools\nt_keys.json
 
-# Choose a profile from bringup_profiles.json
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_club
+    List serial ports:
+        python tools\can_nt_bridge.py --list-ports
 
-# Publish unknown devices seen on the bus
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_home_022326 --publish-unknown
+    Generate a profile from observed CAN traffic:
+        python tools\can_nt_bridge.py --dump-profile tools\sniffer_profile.json
 
-# List or dump the published NT keys
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_home_022326 --list-keys
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_home_022326 --dump-nt tools\nt_keys.json
+    Capture API class/index inventory for later diffing:
+        python tools\can_nt_bridge.py --dump-api-inventory tools\inventory_a.json --dump-api-inventory-after 5
 
-# List serial ports
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --list-ports
+    Diff two inventories:
+        python tools\can_nt_bridge.py --diff-inventory tools\inventory_a.json tools\inventory_b.json
 
-# Generate a profile from observed CAN traffic (writes a bringup_profiles.json file)
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --dump-profile tools\sniffer_profile.json
+    Live Wireshark capture (Windows named pipe):
+        wireshark -k -i \\.\pipe\FRC_CAN
+        python tools\can_nt_bridge.py --pcap-pipe FRC_CAN
 
-# Capture API class/index inventory for later diffing
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --dump-api-inventory tools\inventory_a.json --dump-api-inventory-after 5
+    PCAP/PCAPNG file capture:
+        python tools\can_nt_bridge.py --pcap tools\logs\robot_run.pcapng
 
-# Diff two inventories
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --diff-inventory tools\inventory_a.json tools\inventory_b.json
-```
+COMMON COMMANDS
+    Explicit COM port:
+        python tools\can_nt_bridge.py --channel COM21 --rio 172.22.11.2
 
-Marker capture (pcapng):
-- See `reverse_eng.md` for marker usage, key map, and Wireshark filtering.
+    Live Wireshark (named pipe):
+        wireshark -k -i \\.\pipe\FRC_CAN
+        python tools\can_nt_bridge.py --pcap-pipe FRC_CAN
 
-Options:
-- `--channel` is the CANable COM port (Device Manager shows it). If omitted, the
-  script auto-detects the first port whose description contains "USB Serial Device".
-- `--interface` defaults to `slcan`.
-- `--bitrate` defaults to `1000000` (FRC CAN).
-- `--timeout` marks a device missing if no frames arrive in that many seconds.
-- `--print-publish` prints when a device is seen or goes missing (uses `--timeout`).
-- `--print-summary-period` prints a CAN summary every N seconds (0 disables).
-- `--publish-unknown` publishes devices seen on the bus that are not in the profile.
-- `--list-keys` prints the NT keys this tool publishes and exits.
-- `--dump-nt` writes a JSON list of published NT keys and exits.
-- `--auto-match` sets the substring used to auto-detect the serial device.
-- `--no-prompt` disables the port selection prompt when multiple matches are found.
-- `--list-ports` prints available serial ports and exits.
-- `--dump-profile` writes a bringup_profiles.json file generated from observed CAN IDs.
-- `--dump-profile-name` sets the profile name inside the generated file (default: `sniffer_YYYYMMDD_HHMMSS`).
-- `--dump-profile-after` seconds to wait before writing `--dump-profile` output (default: `3.0`).
-- `--dump-profile-include-unknown` includes unclassified devices in the output.
-- `--dump-api-inventory` writes a JSON inventory of apiClass/apiIndex counts and exits.
-- `--dump-api-inventory-after` seconds to wait before writing the inventory (default: `3.0`).
-- `--diff-inventory` diffs two inventory JSON files and prints new/missing/changed pairs.
-- `--diff-top` number of rows to print for each diff section (default: `10`).
-- `--pcap <path>` writes a capture file (use `.pcapng` to enable markers).
-- `--enable-markers` or `--disable-markers` toggles keyboard marker injection.
-- `--marker-id 0x1FFC0D00` sets the marker arbitration ID (extended).
-- `--capture-note "text"` adds a pcapng section header comment.
-- `--no-nt` disables all NetworkTables publishing (capture/logging only).
+    PCAP/PCAPNG file capture:
+        python tools\can_nt_bridge.py --pcap tools\logs\robot_run.pcapng
 
-Published NetworkTables keys:
-- `bringup/diag/busErrorCount`
-- `bringup/diag/dev/<mfg>/<type>/<id>/label`
-- `bringup/diag/dev/<mfg>/<type>/<id>/status`
-- `bringup/diag/dev/<mfg>/<type>/<id>/presenceSource` (STATUS/TRAFFIC/CONTROL_ONLY/NONE)
-- `bringup/diag/dev/<mfg>/<type>/<id>/presenceConfidence` (HIGH/LOW/NONE)
-- `bringup/diag/dev/<mfg>/<type>/<id>/ageSec`
-- `bringup/diag/dev/<mfg>/<type>/<id>/trafficAgeSec`
-- `bringup/diag/dev/<mfg>/<type>/<id>/statusAgeSec`
-- `bringup/diag/dev/<mfg>/<type>/<id>/msgCount`
-- `bringup/diag/dev/<mfg>/<type>/<id>/lastSeen`
-- `bringup/diag/dev/<mfg>/<type>/<id>/manufacturer`
-- `bringup/diag/dev/<mfg>/<type>/<id>/deviceType`
-- `bringup/diag/dev/<mfg>/<type>/<id>/deviceId`
-- `bringup/diag/can/summary/json` (when `--publish-can-summary` is enabled)
-- `bringup/diag/can/pc/heartbeat`
-- `bringup/diag/can/pc/openOk`
-- `bringup/diag/can/pc/framesPerSec`
-- `bringup/diag/can/pc/framesTotal`
-- `bringup/diag/can/pc/readErrors`
-- `bringup/diag/can/pc/lastFrameAgeSec`
+    Summary JSON + console summary prints:
+        python tools\can_nt_bridge.py --publish-can-summary --print-summary-period 2
 
-## Notes
+    Print device seen/missing transitions:
+        python tools\can_nt_bridge.py --print-publish
 
-- The script maps device IDs from the lowest 6 bits of the CAN extended ID.
-- Inventory snapshots key on `(manufacturer, device_type, apiClass, apiIndex, device_id)` so
-  you can diff experiments and identify command-like vs status frames.
-- Presence is derived from vendor-specific status-frame heuristics when available:
-  - REV motor controllers: `api_class=6` (periodic status).
-  - CTRE devices: PF/PS `0xFF/0x00..0x07` (status), `0xEF` (control-only).
-  These are unverified heuristics aligned with the Wireshark dissector.
-- `--dump-profile` guesses device families from CAN manufacturer/type and cannot
-  distinguish NEO vs FLEX or Kraken vs Falcon; it puts those into `neos` and
-  `krakens` by default for easy hand edits.
-- `RobotV2` prints a table and shows `status=NO_DATA`, `ageSec=-`, and `msgCount=-`
-  until a device has been seen at least once.
-- `RobotV2` reads the composite `dev/<mfg>/<type>/<id>` keys.
-- `can/pc/heartbeat` increments once per publish; `can/pc/lastFrameAgeSec` is seconds since the last frame.
-- CANable Pro V2 ships with `slcan` firmware by default; an optional `candlelight` firmware enables `gs_usb` for native CAN on Linux (Cangaroo is a common Windows viewer for candlelight; cantact-app works with slcan).
+    Capture only (no NetworkTables):
+        python tools\can_nt_bridge.py --no-nt --pcap tools\logs\capture.pcapng
+
+    List serial ports:
+        python tools\can_nt_bridge.py --list-ports
+
+    List NT keys it publishes:
+        python tools\can_nt_bridge.py --list-keys
+
+    Dump NT key inventory to JSON:
+        python tools\can_nt_bridge.py --dump-nt tools\nt_keys.json
+
+    Publish unknown devices seen on bus:
+        python tools\can_nt_bridge.py --publish-unknown
+
+    Dump observed arbitration IDs:
+        python tools\can_nt_bridge.py --dump-can-expected-ids tools\seen_ids.json --dump-after 3.0
+
+    Generate a profile from observed traffic:
+        python tools\can_nt_bridge.py --dump-profile tools\sniffer_profile.json
+
+    Dump API inventory for later diff:
+        python tools\can_nt_bridge.py --dump-api-inventory tools\inventory_a.json --dump-api-inventory-after 5
+
+    Dump a can_nt_config.json-style file from a profile:
+        python tools\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt_config.json
+
+    Diff two inventories:
+        python tools\can_nt_bridge.py --diff-inventory tools\inventory_a.json tools\inventory_b.json
+
+    Use a specific profile from bringup_profiles.json:
+        python tools\can_nt_bridge.py --profile demo_club
+
+WIRESHARK
+    Marker capture (pcapng):
+        See reverse_eng.md for marker usage, key map, and filters.
+
+    Live pipe (Windows):
+        Start Wireshark with -k -i \\.\pipe\FRC_CAN before running --pcap-pipe FRC_CAN.
+
+OPTIONS
+    --channel COMx            CANable COM port. If omitted, auto-detects the
+                              first port whose description contains "USB Serial Device".
+    --interface slcan         CAN interface (default slcan).
+    --bitrate 1000000         Bitrate (default 1000000 for FRC CAN).
+    --timeout SECONDS         Device missing timeout.
+    --print-publish           Print when a device is seen or goes missing.
+    --print-summary-period N  Print CAN summary every N seconds (0 disables).
+    --publish-unknown         Publish devices not in profile as UNKNOWN.
+    --list-keys               Print published NT keys and exit.
+    --dump-nt PATH            Write JSON list of published NT keys and exit.
+    --auto-match TEXT         Substring used to auto-detect the serial device.
+    --no-prompt               Disable port selection prompt when multiple matches.
+    --list-ports              Print available serial ports and exit.
+    --dump-profile PATH       Write a bringup_profiles.json from observed CAN IDs.
+    --dump-profile-name NAME  Profile name inside generated file (default sniffer_YYYYMMDD_HHMMSS).
+    --dump-profile-after SEC  Delay before writing --dump-profile (default 3.0).
+    --dump-profile-include-unknown  Include unknown devices in generated profile.
+    --dump-api-inventory PATH Write apiClass/apiIndex inventory JSON and exit.
+    --dump-api-inventory-after SEC  Delay before writing inventory (default 3.0).
+    --dump-can-config PATH    Write a can_nt_config.json-style file from --profile and exit.
+    --diff-inventory A B      Diff two inventory JSON files.
+    --diff-top N              Rows to show for each diff section (default 10).
+    --pcap PATH               Write capture file (.pcapng enables markers).
+    --pcap-pipe NAME          Write live pcapng to Windows named pipe.
+                              Wireshark can open \\.\pipe\<NAME>.
+    --enable-markers          Enable keyboard marker injection (pcapng only).
+    --disable-markers         Disable keyboard marker injection.
+    --marker-id 0x1FFC0D00    Marker arbitration ID (extended).
+    --capture-note TEXT       Pcapng section header comment.
+    --no-nt                   Disable NetworkTables publishing (capture only).
+
+PUBLISHED KEYS
+    bringup/diag/busErrorCount
+    bringup/diag/dev/<mfg>/<type>/<id>/label
+    bringup/diag/dev/<mfg>/<type>/<id>/status
+    bringup/diag/dev/<mfg>/<type>/<id>/presenceSource
+    bringup/diag/dev/<mfg>/<type>/<id>/presenceConfidence
+    bringup/diag/dev/<mfg>/<type>/<id>/ageSec
+    bringup/diag/dev/<mfg>/<type>/<id>/trafficAgeSec
+    bringup/diag/dev/<mfg>/<type>/<id>/statusAgeSec
+    bringup/diag/dev/<mfg>/<type>/<id>/msgCount
+    bringup/diag/dev/<mfg>/<type>/<id>/lastSeen
+    bringup/diag/dev/<mfg>/<type>/<id>/manufacturer
+    bringup/diag/dev/<mfg>/<type>/<id>/deviceType
+    bringup/diag/dev/<mfg>/<type>/<id>/deviceId
+    bringup/diag/can/summary/json
+    bringup/diag/can/pc/heartbeat
+    bringup/diag/can/pc/openOk
+    bringup/diag/can/pc/framesPerSec
+    bringup/diag/can/pc/framesTotal
+    bringup/diag/can/pc/readErrors
+    bringup/diag/can/pc/lastFrameAgeSec
+
+NOTES
+    - Device IDs use the lowest 6 bits of the CAN extended ID.
+    - Inventory snapshots key on (manufacturer, device_type, apiClass, apiIndex, device_id).
+    - Presence is derived from vendor-specific status-frame heuristics when available:
+      - REV motor controllers: api_class=6 (periodic status).
+      - CTRE devices: PF/PS 0xFF/0x00..0x07 (status), 0xEF (control-only).
+      These are unverified heuristics aligned with the Wireshark dissector.
+    - --dump-profile cannot distinguish NEO vs FLEX or Kraken vs Falcon.
+    - RobotV2 prints status=NO_DATA, ageSec=-, msgCount=- until a device is seen.
+    - can/pc/heartbeat increments once per publish; can/pc/lastFrameAgeSec is seconds since last frame.
+    - CANable Pro V2 ships with slcan firmware by default.

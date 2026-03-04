@@ -6,17 +6,32 @@ import time
 
 
 class PcapLogger:
-    def __init__(self, path: str, pcapng_comment: str = ""):
+    def __init__(self, path: str, pcapng_comment: str = "", pipe_name: str = ""):
         self.path = path
+        self.pipe_name = pipe_name
         self._logger = None
         self._pcapng_comment = pcapng_comment
 
     def start(self) -> bool:
         if not self.path:
-            return False
+            if not self.pipe_name:
+                return False
         from can.io import Logger  # type: ignore
         try:
-            if self._path_is_pcapng():
+            if self.pipe_name:
+                if os.name != "nt":
+                    raise RuntimeError("Named pipes are only supported on Windows.")
+                pipe_path = _normalize_pipe_name(self.pipe_name)
+                self.pipe_name = pipe_path
+                pipe_file = _open_named_pipe_writer(pipe_path)
+                self._logger = _PcapngWriter(
+                    path=None,
+                    comment=self._pcapng_comment,
+                    file_obj=pipe_file,
+                    flush_each_block=True,
+                )
+                self._logger.start()
+            elif self._path_is_pcapng():
                 self._logger = _PcapngWriter(self.path, self._pcapng_comment)
                 self._logger.start()
             else:
@@ -110,13 +125,22 @@ class _PcapngWriter:
     _CANFD_ESI = 0x02
     _CANFD_FDF = 0x04
 
-    def __init__(self, path: str, comment: str = ""):
+    def __init__(
+        self,
+        path: str | None,
+        comment: str = "",
+        file_obj=None,
+        flush_each_block: bool = False,
+    ):
         self._path = path
-        self._file = None
+        self._file = file_obj
         self._comment = comment
+        self._flush_each_block = flush_each_block
+        self._close_on_stop = file_obj is None
 
     def start(self) -> None:
-        self._file = open(self._path, "wb")
+        if self._file is None:
+            self._file = open(self._path, "wb")
         self._write_shb(self._comment)
         self._write_idb()
 
@@ -129,8 +153,15 @@ class _PcapngWriter:
     def stop(self) -> None:
         if self._file is None:
             return
-        self._file.flush()
-        self._file.close()
+        try:
+            self._file.flush()
+        except Exception:
+            pass
+        if self._close_on_stop:
+            try:
+                self._file.close()
+            except Exception:
+                pass
         self._file = None
 
     def write_can_frame(
@@ -199,10 +230,15 @@ class _PcapngWriter:
         header = struct.pack("<II", block_type, total_len)
         footer = struct.pack("<I", total_len)
         padding = b"\x00" * ((total_len - 12) - len(block_body))
-        self._file.write(header)
-        self._file.write(block_body)
-        self._file.write(padding)
-        self._file.write(footer)
+        try:
+            self._file.write(header)
+            self._file.write(block_body)
+            self._file.write(padding)
+            self._file.write(footer)
+            if self._flush_each_block:
+                self._file.flush()
+        except Exception:
+            pass
 
     def _pad4(self, payload: bytes) -> bytes:
         pad = (-len(payload)) % 4
@@ -271,3 +307,64 @@ class _PcapngWriter:
         header = struct.pack(">IBBB", can_id, dlc & 0xFF, 0, 0)
         header += b"\x00"
         return header + data_bytes
+
+
+def _normalize_pipe_name(name: str) -> str:
+    if name.startswith("\\\\.\\pipe\\"):
+        return name
+    trimmed = name.strip().lstrip("\\")
+    return f"\\\\.\\pipe\\{trimmed}"
+
+
+def _open_named_pipe_writer(pipe_name: str):
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+    PIPE_ACCESS_OUTBOUND = 0x00000002
+    PIPE_TYPE_BYTE = 0x00000000
+    PIPE_READMODE_BYTE = 0x00000000
+    PIPE_WAIT = 0x00000000
+
+    INVALID_HANDLE_VALUE = wintypes.HANDLE(-1).value
+    ERROR_PIPE_CONNECTED = 535
+
+    kernel32.CreateNamedPipeW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+    ]
+    kernel32.CreateNamedPipeW.restype = wintypes.HANDLE
+    kernel32.ConnectNamedPipe.argtypes = [wintypes.HANDLE, wintypes.LPVOID]
+    kernel32.ConnectNamedPipe.restype = wintypes.BOOL
+    kernel32.GetLastError.argtypes = []
+    kernel32.GetLastError.restype = wintypes.DWORD
+
+    handle = kernel32.CreateNamedPipeW(
+        pipe_name,
+        PIPE_ACCESS_OUTBOUND,
+        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+        1,
+        65536,
+        65536,
+        0,
+        None,
+    )
+    if handle == INVALID_HANDLE_VALUE:
+        raise RuntimeError(f"CreateNamedPipe failed for {pipe_name}")
+
+    connected = kernel32.ConnectNamedPipe(handle, None)
+    if not connected:
+        err = kernel32.GetLastError()
+        if err != ERROR_PIPE_CONNECTED:
+            raise RuntimeError(f"ConnectNamedPipe failed (err={err}) for {pipe_name}")
+
+    fd = msvcrt.open_osfhandle(handle, os.O_WRONLY)
+    return os.fdopen(fd, "wb", buffering=0)

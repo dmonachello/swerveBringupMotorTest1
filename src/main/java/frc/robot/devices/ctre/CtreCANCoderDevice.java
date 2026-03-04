@@ -1,6 +1,7 @@
 package frc.robot.devices.ctre;
 
 import com.ctre.phoenix6.hardware.CANcoder;
+import edu.wpi.first.units.Units;
 import frc.robot.BringupUtil;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.manufacturers.ctre.diag.CtreCANCoderReader;
@@ -105,6 +106,18 @@ public final class CtreCANCoderDevice implements DeviceUnit {
     snap.label = label;
     addLimitAttachment(snap);
     return snap;
+  }
+
+  @Override
+  public Double getPositionRotations() {
+    if (device == null) {
+      return null;
+    }
+    try {
+      return device.getAbsolutePosition().getValue().in(Units.Rotations);
+    } catch (Exception ex) {
+      return null;
+    }
   }
 
   private void initLimitInputs() {

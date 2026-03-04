@@ -22,6 +22,7 @@ Use the normal FRC robot workflow to deploy and run the robot code.
 - `AI_DIAGNOSIS.md` - how to interpret `bringup_report.json` with an AI assistant.
 - `PROJECT_INTENT.md` - project goals and motivation.
 - `TESTING.md` - testing notes and expected behaviors.
+- `TESTING.md` includes a runtime verification checklist for the bringup test framework.
 - `tools/README_CAN_NT.md` - PC CAN sniffer bridge usage and CLI reference.
 
 ## What This App Is For (Debugging)
@@ -36,6 +37,18 @@ Use this short checklist in the pit before diving deeper.
 3. If the PC tool is running, press `D-pad Down` to verify the sniffer sees traffic and devices.
 4. Press `X` to dump `bringup_report.json` and use `AI_DIAGNOSIS.md` for a guided interpretation.
 5. Only after bus + device health look good, debug behavior/tuning.
+
+## Quick Runtime Checklist (Bringup Tests)
+Use this to validate the bringup test framework on real hardware.
+1. Confirm controller detection prints at startup (controller name and type).
+2. Press `B` to print state and verify devices are instantiated.
+3. Use the secondary `LB`/`RB` to change the selected test and confirm the name updates.
+4. Run the selected test with secondary `A` and confirm PASS/FAIL and reason.
+5. Press secondary `B` to run all enabled tests in order; verify `Run-all complete.` prints at the end.
+6. If a joystick test is enabled, confirm the listed `motorKeys` move together and stop when the test ends.
+7. If a rotation test uses `encoderKey: internal`, confirm it uses the motor index given by `encoderMotorIndex`.
+8. If a limit switch check is enabled, verify the test ends on switch activation and the result matches `onHit`.
+9. If the PC tool is running, press `D-pad Down` and confirm PC diagnostics show `openOk=YES`.
 
 ## Architecture
 See `ARCHITECTURE.md` for the layered design (device -> manufacturer -> testing) and the `ManufacturerGroup` interface.
@@ -312,23 +325,35 @@ The health print includes:
 If you add new motors, update `motor_specs.json` and optionally set `"motor"` per device in `bringup_profiles.json`.
 ## Controller Bindings
 Robot and RobotV2 share the same bindings, grouped by purpose.
+Input controller config:
+- File: `src/main/deploy/bringup_controllers.json`
+- Default uses two Xbox controllers on ports 0 and 1.
+- Additional controllers can be added later by extending controller types.
+Binding config:
+- File: `src/main/deploy/bringup_bindings.json`
+- Controls button/axis to command mapping (printed by the help command).
 Operational controls:
 - `A`: add motor (alternates SPARK/CTRE)
 - `Start`: add all configured devices
 - `Back`: toggle CAN profile
 - `Left Y`: NEO/FLEX speed
 - `Right Y`: KRAKEN/FALCON speed
-- `Left Stick`: nudge motors (0.2 for 0.5s)
 Status printouts:
 - `B`: print state
 - `Left Bumper`: reprint bindings
 - `Right Bumper`: print CANCoder absolute positions
-- `Left+Right Bumper`: run non-motor test (e.g., CANdle LED toggle)
 - `D-pad Left`: print health status
 - `D-pad Down`: print NetworkTables diagnostics (RobotV2 only)
 - `D-pad Up`: print CAN diagnostics report
 - `D-pad Right`: print speed inputs
 - `X`: dump CAN report JSON (console + `/home/lvuser/bringup_report.json`)
+Test controls (secondary controller):
+- `LB`: select previous test
+- `RB`: select next test
+- `A`: run selected test (hold to satisfy hold-based tests)
+- `B`: run all enabled tests
+- `X`: toggle selected test enabled
+- `D-pad Up/Right/Down/Left`: fixed speed 25/50/75/100
 ## CAN Sniffer Bridge (CANable Pro V2)
 This project includes a CAN -> NetworkTables bridge for diagnostics.
 ### Hardware Notes (CANable Pro V2)
@@ -379,11 +404,11 @@ If neither is set, the script will:
 1. Use the first `python` found in `PATH`.
 2. Fall back to `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe`.
 Config:
-- Default settings live in `tools/can_nt_config.json`.
-- Override with `--config path\to\file.json`.
-- The config supports a `devices` list with `manufacturer`, `device_type`, and `device_id`.
-- The config supports `groups` for summary rollups and `log_csv` defaults.
-- By default, `tools/can_nt_config.json` enables CSV logging to `tools\can_nt_log.csv`.
+- Device lists come from `src/main/deploy/bringup_profiles.json` via `--profile`.
+- This keeps the PC tool aligned with robot profiles without duplicating IDs.
+- If you need a standalone can_nt_config.json-style file, generate one:
+  - `python tools\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt_config.json`
+- The legacy `tools/can_nt_config.json` is kept as a sample only.
 Examples:
 ```cmd
 # Default (USB RIO, auto-detect COM port)
@@ -392,8 +417,8 @@ Examples:
 %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --channel COM21
 # More output (summary + device seen/missing messages)
 %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --print-summary-period 2 --print-publish
-# Use a custom config
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --config tools\can_nt_config.json
+# Dump a can_nt_config.json-style file from a profile
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt_config.json
 # Publish unknown devices seen on the bus
 %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_home_022326 --publish-unknown
 # List or dump the published NT keys
@@ -438,6 +463,59 @@ Useful run flags:
 - `--list-ports` prints available serial ports and exits.
 - `--auto-match` sets the substring used to auto-detect the serial device.
 - `--no-prompt` disables the port selection prompt when multiple matches are found.
+## Bringup Tests
+Purpose: run manual, data-driven tests defined in JSON (including encoder rotation limits).
+
+Test definitions:
+- File: `src/main/deploy/bringup_tests.json`
+- Helper: `tools/run_bringup_test_wizard.bat` (interactive test entry wizard)
+ - Template helper: `tools/run_test_template_wizard.bat` (copy and customize a template)
+- Each entry is a test object with a `type` and configuration fields.
+
+Current test types:
+- `composite`: run one motor with multiple checks (rotation, time, limit switch).
+- `joystick`: drive a single motor from live joystick input via the test framework.
+
+Composite test schema (compact form):
+```json
+{
+  "type": "composite",
+  "name": "Rotation + time + limit",
+  "enabled": true,
+  "motorKeys": ["CTRE:KRAKEN:11"],
+  "duty": 0.2,
+  "rotation": { "limitRot": 10.0, "encoderKey": "CTRE:CANCoder:12", "encoderMotorIndex": 0 },
+  "time": { "timeoutSec": 2.0, "onTimeout": "pass" },
+  "limitSwitch": { "enabled": true, "onHit": "pass" }
+}
+```
+
+Notes:
+ - `motorKeys` is a list of `VENDOR:TYPE:ID`.
+ - `rotation.encoderMotorIndex` selects which motor's internal encoder is used when `encoderKey` is `internal` (0-based).
+- `duty` is a percent output from `-1.0` to `1.0`.
+- When a test is running, joystick motor output is ignored for safety.
+- Limit switch checks use limit switches configured in `bringup_profiles.json`.
+- Hold checks use the current test-run button (secondary `A` in hold mode). Releasing it triggers the hold action.
+
+Joystick test schema:
+```json
+{
+  "type": "joystick",
+  "name": "Joystick motor (primary axis)",
+  "enabled": true,
+  "motorKeys": ["REV:NEO:10", "CTRE:FALCON:11"],
+  "deadband": 0.12,
+  "inputAxis": "primary"
+}
+```
+
+Controls (secondary controller):
+- `LB` / `RB`: select test
+- `A`: run selected test (hold for hold-based tests)
+- `B`: run all enabled tests in order
+- `X`: toggle selected test enabled
+
 ## CANCoder Test
 Press `Right Bumper` to print absolute position for the configured CANCoder IDs.
 This test reads absolute position directly from the devices over CAN and prints
