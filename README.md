@@ -259,6 +259,7 @@ Reverse engineering captures:
 ## CAN Profiles (JSON)
 Bringup hardware profiles are defined in `src/main/deploy/bringup_profiles.json`.
 - `default_profile` controls the startup profile.
+- The repo includes a stable `example_default` profile (two SparkMax/NEO) for always-on testing.
 - Profiles are applied in the order they appear in the JSON when you press `Back` to toggle.
 - Override at runtime with `--bringup-profile=<name>`.
 Hardware profile schema (single source of truth):
@@ -468,6 +469,7 @@ Purpose: run manual, data-driven tests defined in JSON (including encoder rotati
 
 Test definitions:
 - File: `src/main/deploy/bringup_tests.json`
+- Override at runtime with `--bringup-tests=bringup_tests_smoke.json` (or another JSON in deploy).
 - Helper: `tools/run_bringup_test_wizard.bat` (interactive test entry wizard)
  - Template helper: `tools/run_test_template_wizard.bat` (copy and customize a template)
 - Each entry is a test object with a `type` and configuration fields.
@@ -484,7 +486,12 @@ Composite test schema (compact form):
   "enabled": true,
   "motorKeys": ["CTRE:KRAKEN:11"],
   "duty": 0.2,
-  "rotation": { "limitRot": 10.0, "encoderKey": "CTRE:CANCoder:12", "encoderMotorIndex": 0 },
+  "rotation": {
+    "limitRot": 10.0,
+    "encoderKey": "CTRE:CANCoder:12",
+    "encoderSource": "external",
+    "encoderMotorIndex": 0
+  },
   "time": { "timeoutSec": 2.0, "onTimeout": "pass" },
   "limitSwitch": { "enabled": true, "onHit": "pass" }
 }
@@ -492,11 +499,15 @@ Composite test schema (compact form):
 
 Notes:
  - `motorKeys` is a list of `VENDOR:TYPE:ID`.
- - `rotation.encoderMotorIndex` selects which motor's internal encoder is used when `encoderKey` is `internal` (0-based).
-- `duty` is a percent output from `-1.0` to `1.0`.
-- When a test is running, joystick motor output is ignored for safety.
-- Limit switch checks use limit switches configured in `bringup_profiles.json`.
-- Hold checks use the current test-run button (secondary `A` in hold mode). Releasing it triggers the hold action.
+ - `rotation.encoderMotorIndex` selects which motor's encoder is used when `encoderKey` is `internal` or `through_bore` (0-based).
+ - For REV Through-Bore via SPARK MAX data port, set:
+   - `encoderKey: "through_bore"`
+   - `encoderSource: "sparkmax_alt"`
+   - `encoderCountsPerRev: 8192`
+ - `duty` is a percent output from `-1.0` to `1.0`.
+ - When a test is running, joystick motor output is ignored for safety.
+ - Limit switch checks use limit switches configured in `bringup_profiles.json`.
+ - Hold checks use the current test-run button (secondary `A` in hold mode). Releasing it triggers the hold action.
 
 Joystick test schema:
 ```json

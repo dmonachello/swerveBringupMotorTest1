@@ -22,6 +22,8 @@ public final class CompositeTest implements BringupTest {
   public static final class RotationCheck {
     public double limitRot = 1.0;
     public String encoderKey = "internal"; // internal or VENDOR:TYPE:ID
+    public String encoderSource = "internal"; // internal | sparkmax_alt | external
+    public Integer encoderCountsPerRev = null;
     public int encoderMotorIndex = 0;
   }
 
@@ -44,6 +46,8 @@ public final class CompositeTest implements BringupTest {
   private BringupTestResult result = BringupTestResult.NOT_RUN;
   private final java.util.List<DeviceUnit> motors = new java.util.ArrayList<>();
   private DeviceUnit encoder;
+  private String encoderSource = "internal";
+  private Integer encoderCountsPerRev = null;
   private double startRot = 0.0;
   private double startTime = 0.0;
   private String status = "";
@@ -128,7 +132,7 @@ public final class CompositeTest implements BringupTest {
         return false;
       }
       encoder.ensureCreated();
-      Double rot = encoder.getPositionRotations();
+      Double rot = encoder.getPositionRotations(encoderSource, encoderCountsPerRev);
       if (rot == null) {
         status = "Encoder position unavailable";
         result = BringupTestResult.FAIL;
@@ -168,7 +172,7 @@ public final class CompositeTest implements BringupTest {
     }
 
     if (isRotationCheckEnabled()) {
-      Double rot = encoder != null ? encoder.getPositionRotations() : null;
+      Double rot = encoder != null ? encoder.getPositionRotations(encoderSource, encoderCountsPerRev) : null;
       if (rot == null) {
         status = "Encoder read failed";
         result = BringupTestResult.FAIL;
@@ -210,7 +214,20 @@ public final class CompositeTest implements BringupTest {
       return null;
     }
     String key = config.rotation.encoderKey != null ? config.rotation.encoderKey.trim() : "";
-    if (key.isBlank() || "internal".equalsIgnoreCase(key)) {
+    String source = config.rotation.encoderSource != null ? config.rotation.encoderSource.trim() : "";
+    if (source.isBlank()) {
+      source = "internal";
+    }
+    if (!key.isBlank() && isAltEncoderKey(key) && "internal".equalsIgnoreCase(source)) {
+      source = "sparkmax_alt";
+    }
+    if (!key.isBlank() && !isAltEncoderKey(key) && !"internal".equalsIgnoreCase(key)
+        && "internal".equalsIgnoreCase(source)) {
+      source = "external";
+    }
+    encoderSource = source;
+    encoderCountsPerRev = config.rotation.encoderCountsPerRev;
+    if (key.isBlank() || "internal".equalsIgnoreCase(key) || isAltEncoderKey(key)) {
       if (motors.isEmpty()) {
         return null;
       }
@@ -225,6 +242,17 @@ public final class CompositeTest implements BringupTest {
       return null;
     }
     return context.findDevice(ref.vendor, ref.type, ref.id);
+  }
+
+  private boolean isAltEncoderKey(String key) {
+    if (key == null) {
+      return false;
+    }
+    String normalized = key.trim().toLowerCase();
+    return normalized.equals("sparkmax_alt")
+        || normalized.equals("sparkmax_alternate")
+        || normalized.equals("alternate")
+        || normalized.equals("through_bore");
   }
 
   private boolean isRotationCheckEnabled() {
@@ -300,6 +328,11 @@ public final class CompositeTest implements BringupTest {
       java.util.Map<String, Object> rotation = new java.util.LinkedHashMap<>();
       rotation.put("limitRot", config.rotation.limitRot);
       rotation.put("encoderKey", config.rotation.encoderKey);
+      rotation.put("encoderSource", config.rotation.encoderSource);
+      rotation.put("encoderMotorIndex", config.rotation.encoderMotorIndex);
+      if (config.rotation.encoderCountsPerRev != null) {
+        rotation.put("encoderCountsPerRev", config.rotation.encoderCountsPerRev);
+      }
       entry.put("rotation", rotation);
     }
     if (config.time != null) {

@@ -2,141 +2,6 @@
 
 This document provides a step-by-step checklist to verify the CAN -> NetworkTables bridge end-to-end with a real CAN bus and RoboRIO.
 
-## Full Functional Test Plan (End-to-End)
-Purpose: verify all major robot + PC tool functionality after large changes.
-
-## Smoke Test (Pit-Friendly)
-Purpose: run the minimum set of checks to confirm the system is healthy.
-
-1. Deploy robot code and enter teleop.
-2. Press `Start` to add all configured devices.
-3. Press `B` to print state and confirm devices are present.
-4. Move `Left Y` and `Right Y`, then press `D-pad Right` to confirm inputs.
-5. Run one enabled test with secondary `A` and confirm PASS/FAIL prints.
-6. If the PC tool is running, press `D-pad Down` and confirm `openOk=YES`.
-7. If Wireshark is needed, run a quick capture and confirm frames appear.
-
-### A) Robot Bringup Core
-Purpose: ensure base robot bringup actions still work.
-
-1. Deploy robot code and enter teleop.
-2. Press `Start` to add all configured devices.
-3. Press `B` to print state.
-Expected:
-- All configured devices show `present=YES`.
-- No exceptions or missing device errors.
-
-### B) Controller + Bindings (Config-Driven)
-Purpose: verify command bindings resolve from JSON and edge/hold works.
-
-1. Confirm the startup prints the bindings list (LB).
-2. Press `LB` to reprint bindings.
-3. Press `A`, `Start`, `B`, `X`, `Y`, `Back`.
-Expected:
-- Each command prints the expected action.
-- No missing/unknown command warnings.
-
-### C) Speed Inputs
-Purpose: verify axis inputs map to left/right drive commands.
-
-1. Move `Left Y` and `Right Y`.
-2. Press `D-pad Right` to print inputs.
-Expected:
-- Values match stick movement and deadband/invert settings.
-
-### D) Joystick Motor Control (Non-Test Mode)
-Purpose: verify the standard joystick-driven motor output still works.
-
-1. Add one REV motor and one CTRE motor.
-2. Move `Left Y` and `Right Y`.
-Expected:
-- Motors respond to their respective axes.
-- Output stops when stick returns to center.
-
-### E) Bringup Test Selection + Run
-Purpose: verify test list, selection, run, and run-all.
-
-1. Enable 2+ tests in `bringup_tests.json`, deploy.
-2. Press secondary `LB`/`RB` to cycle tests.
-3. Press secondary `A` to run the selected test.
-4. Press secondary `B` to run all enabled tests.
-Expected:
-- Test names print on selection.
-- PASS/FAIL prints after each run.
-- Run-all prints `Run-all complete.`.
-
-### F) Composite Test Checks
-Purpose: verify rotation/time/limit/hold checks independently and combined.
-
-1. Rotation only: `rotation` set with `encoderKey=internal`.
-2. Time only: `time.timeoutSec` + `onTimeout`.
-3. Limit only: `limitSwitch.enabled=true`.
-4. Hold only: `hold.enabled=true`.
-5. Combined: rotation + time + limit + hold.
-Expected:
-- Each check terminates the test per its condition.
-- Combined test stops on the first triggered condition.
-
-### G) External Encoder Tests
-Purpose: verify `encoderKey` external device selection.
-
-1. Use a test with `encoderKey=CTRE:CANCoder:<id>`.
-2. Run the test and confirm rotation tracking.
-Expected:
-- Encoder output changes and test terminates at `limitRot`.
-
-### H) Multi-Motor Tests
-Purpose: verify `motorKeys` list drives multiple motors.
-
-1. Use a composite or joystick test with 2+ `motorKeys`.
-2. Run it.
-Expected:
-- All motors respond together; stop together on test end.
-
-### I) Limit Switch Integration
-Purpose: verify limit switches clamp motion and can terminate tests.
-
-1. Configure `limits` for a motor in `bringup_profiles.json`.
-2. Run a test with `limitSwitch.enabled=true`.
-Expected:
-- Motor output clamps on closed limit.
-- Test ends and reports PASS/FAIL per `onHit`.
-
-### J) PC CAN Tool – Basic
-Purpose: verify the PC sniffer runs and publishes NT.
-
-1. Run the PC tool with `--profile`.
-2. Press `D-pad Down` on robot.
-Expected:
-- `openOk=YES`, heartbeat updates, and device table matches CAN traffic.
-
-### K) PC CAN Tool – Wireshark
-Purpose: verify live pipe and file captures.
-
-1. Live pipe: start Wireshark `-k -i \\.\pipe\FRC_CAN`.
-2. Run the tool with `--pcap-pipe FRC_CAN`.
-3. File: run `--pcap tools\logs\run.pcapng`.
-Expected:
-- Wireshark shows live frames via pipe.
-- PCAPNG opens and decodes.
-
-### L) PC CAN Tool – Inventory + Diff
-Purpose: verify reverse engineering outputs.
-
-1. Run `--dump-api-inventory tools\inv_a.json --dump-api-inventory-after 5`.
-2. Run again after a different stimulus into `inv_b.json`.
-3. Run `--diff-inventory tools\inv_a.json tools\inv_b.json`.
-Expected:
-- Inventory files are created.
-- Diff prints new/missing pairs and rate deltas.
-
-### M) PC Tool Config Auto-Gen
-Purpose: verify can_nt_config.json generation from profile.
-
-1. Run `--profile demo_club --dump-can-config tools\can_nt_config.json`.
-Expected:
-- File is created and lists devices matching the selected profile.
-
 ## Test Setup
 
 Hardware:
@@ -146,7 +11,7 @@ Hardware:
 - Laptop connected to RIO (USB or network).
 
 Software on laptop:
-- Python 3.12 installed at `C:\Users\dmona\AppData\Local\Programs\Python\Python312\python.exe`
+- Python 3.12 installed at `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe`
 - Packages installed:
   - `pynetworktables`
   - `python-can`
@@ -155,6 +20,363 @@ Software on laptop:
 Helpful tools:
 - Driver Station or a way to confirm RIO is powered and reachable.
 - Device Manager to view COM ports.
+
+## Smoke Test (Pit-Friendly)
+Purpose: run the minimum set of checks to confirm the system is healthy.
+
+1. Deploy robot code and enter teleop.
+2. Confirm controller detection prints at startup (controller name and type).
+3. Primary controller: press `Start` to add all configured devices.
+4. Primary controller: press `B` to print state and confirm devices are present.
+5. Primary controller: move `Left Y`/`Right Y`, then press `D-pad Right` to confirm inputs.
+6. Start the PC tool (default test profile):
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile example_default --rio 172.22.11.2`
+7. Use the smoke test config override:
+   - Start the robot with `--bringup-tests=bringup_tests_smoke.json` (loads from deploy dir).
+8. Primary controller: press `D-pad Down` and confirm `openOk=YES`.
+9. Secondary controller: press `LB`/`RB` to select a test and confirm the name updates.
+10. Secondary controller: run one enabled test with `A` and confirm PASS/FAIL prints.
+11. Secondary controller: hold `A` during a test with `hold.enabled=true`, then release to confirm the hold termination path.
+12. Secondary controller: press `B` to run all enabled tests and confirm `Run-all complete.` prints.
+13. If a joystick test is enabled, confirm its `motorKeys` move together and stop when the test ends.
+14. If a rotation test uses `encoderKey: internal`, confirm it uses `encoderMotorIndex`.
+15. If a limit switch check is enabled, verify it terminates on switch activation.
+16. If Wireshark is needed, run a quick capture and confirm frames appear.
+
+## Full Functional Test Plan (End-to-End)
+Purpose: verify all major robot + PC tool functionality after large changes.
+
+### A) Robot Bringup Core
+Purpose: ensure base robot bringup actions still work.
+
+1. Deploy robot code and enter teleop.
+2. Primary controller: press `Start` to add all configured devices.
+3. Primary controller: press `B` to print state.
+Expected:
+- All configured devices show `present=YES`.
+- No exceptions or missing device errors.
+
+### B) Controller + Bindings (Config-Driven)
+Purpose: verify command bindings resolve from JSON and edge/hold works.
+
+Config excerpt (bindings + controllers):
+```json
+// src/main/deploy/bringup_controllers.json
+{
+  "controllers": [
+    { "type": "XBOX", "port": 0, "role": "primary" },
+    { "type": "XBOX", "port": 1, "role": "secondary" }
+  ]
+}
+```
+
+```json
+// src/main/deploy/bringup_bindings.json
+{
+  "bindings": [
+    { "command": "addMotor", "controller": "primary", "input": "button", "id": "A", "mode": "edge" },
+    { "command": "addAll", "controller": "primary", "input": "button", "id": "START", "mode": "edge" },
+    { "command": "printState", "controller": "primary", "input": "button", "id": "B", "mode": "edge" },
+    { "command": "printBindings", "controller": "primary", "input": "button", "id": "LB", "mode": "edge" },
+    { "command": "selectTestPrev", "controller": "secondary", "input": "button", "id": "LB", "mode": "edge" },
+    { "command": "selectTestNext", "controller": "secondary", "input": "button", "id": "RB", "mode": "edge" },
+    { "command": "runTest", "controller": "secondary", "input": "button", "id": "A", "mode": "hold" },
+    { "command": "runAllTests", "controller": "secondary", "input": "button", "id": "B", "mode": "edge" }
+  ],
+  "axes": [
+    { "command": "leftDrive", "controller": "primary", "id": "LY", "invert": true, "deadband": 0.12 },
+    { "command": "rightDrive", "controller": "primary", "id": "RY", "invert": true, "deadband": 0.12 }
+  ]
+}
+```
+
+1. Primary controller: confirm startup prints the bindings list, then press `LB` to reprint.
+2. Primary controller: press `A`, `Start`, `B`, `X`, `Y`, `Back`.
+3. Secondary controller: press `LB`, `RB`, `A`, `B`, `X`, `D-pad` (any direction).
+Expected:
+- Each command prints the expected action.
+- No missing/unknown command warnings.
+
+### C) Speed Inputs
+Purpose: verify axis inputs map to left/right drive commands.
+
+Config excerpt (axis bindings):
+```json
+// src/main/deploy/bringup_bindings.json
+{
+  "axes": [
+    { "command": "leftDrive", "controller": "primary", "id": "LY", "invert": true, "deadband": 0.12 },
+    { "command": "rightDrive", "controller": "primary", "id": "RY", "invert": true, "deadband": 0.12 }
+  ]
+}
+```
+
+1. Primary controller: move `Left Y` and `Right Y`.
+2. Primary controller: press `D-pad Right` to print inputs.
+Expected:
+- Values match stick movement and deadband/invert settings.
+
+### D) Joystick Motor Control (Non-Test Mode)
+Purpose: verify the standard joystick-driven motor output still works.
+
+Config excerpt (motors in the active profile):
+```json
+// src/main/deploy/bringup_profiles.json
+{
+  "default_profile": "example_default",
+  "profiles": {
+    "example_default": {
+      "neos": [
+        { "label": "SPARKMAX 10", "id": 10 },
+        { "label": "SPARKMAX 25", "id": 25 }
+      ],
+      "roborio": { "label": "roboRIO", "id": 0 }
+    }
+  }
+}
+```
+
+1. Primary controller: add one REV motor and one CTRE motor.
+2. Primary controller: move `Left Y` and `Right Y`.
+Expected:
+- Motors respond to their respective axes.
+- Output stops when stick returns to center.
+
+### E) Bringup Test Selection + Run
+Purpose: verify test list, selection, run, and run-all.
+
+Existing tests in `bringup_tests.json` (or the active `--bringup-tests=...` override):
+- Rotation only (internal)
+- Rotation + Time
+- Time only
+- Nudge (0.2 for 0.5s)
+- Limit switch only
+- Hold to run
+- Rotation + Time + Limit
+- All checks
+- Joystick motor (primary axis)
+
+Test bindings (secondary controller):
+- `LB` / `RB`: select previous/next test
+- `A` (hold): run selected test / hold signal
+- `B`: run all enabled tests
+- `X`: toggle selected test enabled
+
+Example configs (match the test titles above):
+- See sections F–I for per-test JSON examples and run sequences.
+
+Steps:
+1. Enable 2+ tests in `bringup_tests.json` (or the active override), deploy.
+2. Secondary controller: press `LB`/`RB` to cycle tests.
+3. Secondary controller: press `A` to run the selected test.
+4. Secondary controller: press `B` to run all enabled tests.
+Expected:
+- Test names print on selection.
+- PASS/FAIL prints after each run.
+- Run-all prints `Run-all complete.`.
+
+### F) Composite Test Checks
+Purpose: verify rotation/time/limit/hold checks independently and combined.
+
+Rotation only (internal):
+```json
+{
+  "type": "composite",
+  "name": "Rotation only (internal)",
+  "enabled": true,
+  "motorKeys": ["REV:NEO:10"],
+  "duty": 0.2,
+  "rotation": { "limitRot": 5.0, "encoderKey": "internal", "encoderMotorIndex": 0 }
+}
+```
+Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
+
+Time only:
+```json
+{
+  "type": "composite",
+  "name": "Time only",
+  "enabled": true,
+  "motorKeys": ["REV:NEO:10"],
+  "duty": 0.3,
+  "time": { "timeoutSec": 1.5, "onTimeout": "pass" }
+}
+```
+Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
+
+Limit switch only:
+```json
+{
+  "type": "composite",
+  "name": "Limit switch only",
+  "enabled": true,
+  "motorKeys": ["REV:NEO:10"],
+  "duty": 0.2,
+  "limitSwitch": { "enabled": true, "onHit": "pass" }
+}
+```
+Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
+
+Hold to run:
+```json
+{
+  "type": "composite",
+  "name": "Hold to run",
+  "enabled": true,
+  "motorKeys": ["REV:NEO:10"],
+  "duty": 0.2,
+  "hold": { "enabled": true, "onRelease": "pass" }
+}
+```
+Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
+
+Combined (rotation + time + limit + hold):
+```json
+{
+  "type": "composite",
+  "name": "All checks",
+  "enabled": true,
+  "motorKeys": ["REV:NEO:10"],
+  "duty": 0.2,
+  "rotation": { "limitRot": 8.0, "encoderKey": "internal", "encoderMotorIndex": 0 },
+  "time": { "timeoutSec": 3.0, "onTimeout": "pass" },
+  "limitSwitch": { "enabled": true, "onHit": "pass" },
+  "hold": { "enabled": true, "onRelease": "pass" }
+}
+```
+Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
+Expected:
+- Each check terminates the test per its condition.
+- Combined test stops on the first triggered condition.
+
+### G) External Encoder Tests
+Purpose: verify `encoderKey` external device selection.
+
+CTRE reference (external CAN encoder):
+```json
+{
+  "type": "composite",
+  "name": "CTRE rotation (CANCoder)",
+  "enabled": true,
+  "motorKeys": ["CTRE:FALCON:11"],
+  "duty": 0.2,
+  "rotation": { "limitRot": 5.0, "encoderKey": "CTRE:CANCoder:12", "encoderSource": "external", "encoderMotorIndex": 0 }
+}
+```
+Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
+
+REV Through-Bore via SPARK MAX data port:
+```json
+{
+  "type": "composite",
+  "name": "Through-bore rotation (SparkMax)",
+  "enabled": true,
+  "motorKeys": ["REV:NEO:10"],
+  "duty": 0.2,
+  "rotation": {
+    "limitRot": 5.0,
+    "encoderKey": "through_bore",
+    "encoderSource": "sparkmax_alt",
+    "encoderCountsPerRev": 8192,
+    "encoderMotorIndex": 0
+  }
+}
+```
+Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
+Expected:
+- Encoder output changes and test terminates at `limitRot`.
+
+### H) Multi-Motor Tests
+Purpose: verify `motorKeys` list drives multiple motors.
+
+Joystick motor (primary axis):
+```json
+{
+  "type": "joystick",
+  "name": "Joystick motor (primary axis)",
+  "enabled": true,
+  "motorKeys": ["REV:NEO:10", "REV:NEO550:7"],
+  "deadband": 0.12,
+  "inputAxis": "primary"
+}
+```
+Run: secondary `LB`/`RB` select, secondary `A` (hold) run. Control: primary `Left Y`.
+Expected:
+- All motors respond together; stop together on test end.
+
+### I) Limit Switch Integration
+Purpose: verify limit switches clamp motion and can terminate tests.
+
+Limit switch test:
+```json
+{
+  "type": "composite",
+  "name": "Limit switch only",
+  "enabled": true,
+  "motorKeys": ["REV:NEO:10"],
+  "duty": 0.2,
+  "limitSwitch": { "enabled": true, "onHit": "pass" }
+}
+```
+Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
+
+Steps:
+1. Configure `limits` for a motor in `bringup_profiles.json`.
+2. Run the test above with `limitSwitch.enabled=true`.
+Expected:
+- Motor output clamps on closed limit.
+- Test ends and reports PASS/FAIL per `onHit`.
+
+### J) PC CAN Tool - Basic
+Purpose: verify the PC sniffer runs and publishes NT.
+
+1. Run the PC tool:
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile <profile> --rio 172.22.11.2`
+2. Primary controller: press `D-pad Down`.
+Expected:
+- `openOk=YES`, heartbeat updates, and device table matches CAN traffic.
+
+### K) PC CAN Tool - Wireshark
+Purpose: verify live pipe and file captures.
+
+1. Live pipe: start Wireshark `-k -i \\.\pipe\FRC_CAN`.
+2. Run the tool with `--pcap-pipe FRC_CAN`:
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile <profile> --rio 172.22.11.2 --pcap-pipe FRC_CAN`
+3. File: run `--pcap tools\logs\run.pcapng`:
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile <profile> --rio 172.22.11.2 --pcap tools\logs\run.pcapng`
+Expected:
+- Wireshark shows live frames via pipe.
+- PCAPNG opens and decodes.
+
+### L) PC CAN Tool - Inventory + Diff
+Purpose: verify reverse engineering outputs.
+
+1. Run:
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile <profile> --rio 172.22.11.2 --dump-api-inventory tools\inv_a.json --dump-api-inventory-after 5`
+2. Run again after a different stimulus into `inv_b.json`.
+3. Run:
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --diff-inventory tools\inv_a.json tools\inv_b.json`
+Expected:
+- Inventory files are created.
+- Diff prints new/missing pairs and rate deltas.
+
+### M) PC Tool Config Auto-Gen
+Purpose: verify can_nt_config.json generation from profile.
+
+1. Run:
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile <profile> --dump-can-config tools\can_nt_config.json`
+Expected:
+- File is created and lists devices matching the selected profile.
+
+## Dashboard (Realtime - Implement Later)
+Purpose: define the minimal runtime info to display on a dashboard.
+
+- PC tool status: `openOk`, `heartbeat`, `framesPerSec`, `lastFrameAgeSec`
+- CAN summary: `bringup/diag/can/summary/json`
+- Missing devices count (PC tool)
+- Selected test name + enabled state
+- Active test status (RUNNING/PASS/FAIL + reason)
+- Local device health rollup (fault/warn counts)
 
 ## Preflight Checklist
 
@@ -224,7 +446,7 @@ Expected:
 
 ### 4) Device IDs, manufacturer/type, and labels
 Steps:
-1. Ensure the CAN bus contains devices with IDs defined in `tools/can_nt_config.json`.
+1. Ensure the CAN bus contains devices with IDs defined in the selected bringup profile.
 2. Run with summaries enabled.
 Expected:
 - Each device prints its label (e.g., `FR NEO`, `FL KRAK`, `FR CANC`).
@@ -249,7 +471,7 @@ Expected:
 
 ### 7) Groups rollup
 Steps:
-1. Check `tools/can_nt_config.json` `groups` section.
+1. Check the selected bringup profile device groups or group defaults.
 2. Run with summary enabled.
 Expected:
 - Lines like `Group neos: seen=4/4 missing=0`.
@@ -300,7 +522,7 @@ Steps:
    `{ "label": "FL KRAK", "id": 2, "limits": { "fwdDio": 0, "revDio": 1, "invert": false } }`
 2. Wire limit switches to the specified DIO ports.
 3. Deploy and run the robot code.
-4. Press `D-pad Left` to print health status.
+4. Primary controller: press `D-pad Left` to print health status.
 Expected:
 - The device row includes `limits=fwd:DIO0=OPEN/ CLOSED,rev:DIO1=OPEN/ CLOSED`.
 - Toggling the limit switch updates the reported state.
@@ -311,24 +533,10 @@ Expected:
 Steps:
 1. Ensure a CANdle is in the profile (`candles` list).
 2. Deploy and run the robot code.
-3. Press secondary `A` to run the non-motor test action.
+3. Secondary controller: press `A` to run the non-motor test action.
 Expected:
 - The CANdle toggles between OFF and BLUE.
 - Console prints `Test: <label> (CANdle) [toggle_led]`.
-
-## Runtime Verification Checklist (Robot Tests)
-Purpose: verify the bringup test framework behaves correctly on real hardware.
-
-- Confirm controller detection prints at startup (controller name and type).
-- Press `B` to print state and verify devices are instantiated.
-- Use secondary `LB`/`RB` to change the selected test and confirm the name updates.
-- Run the selected test with secondary `A` and confirm PASS/FAIL and reason.
-- Hold secondary `A` during a test that has `hold.enabled=true`; release to trigger the hold action.
-- Press secondary `B` to run all enabled tests in order; verify `Run-all complete.` prints at the end.
-- If a joystick test is enabled, confirm the listed `motorKeys` move together and stop when the test ends.
-- If a rotation test uses `encoderKey: internal`, confirm it uses the motor index given by `encoderMotorIndex`.
-- If a limit switch check is enabled, verify the test ends on switch activation and the result matches `onHit`.
-- If the PC tool is running, press `D-pad Down` and confirm PC diagnostics show `openOk=YES`.
 
 ## Troubleshooting
 

@@ -30,6 +30,8 @@ public final class RevSparkMaxNeoDevice implements DeviceUnit {
   private DigitalInput fwdLimit;
   private DigitalInput revLimit;
   private SparkMax device;
+  private boolean altEncoderConfigured = false;
+  private int altEncoderCpr = 8192;
 
   public RevSparkMaxNeoDevice(
       int canId,
@@ -158,6 +160,14 @@ public final class RevSparkMaxNeoDevice implements DeviceUnit {
     }
   }
 
+  @Override
+  public Double getPositionRotations(String encoderSource, Integer countsPerRev) {
+    if (isAltEncoder(encoderSource)) {
+      return readAlternateEncoder(countsPerRev);
+    }
+    return getPositionRotations();
+  }
+
   private void initLimitInputs() {
     if (limitConfig.hasForward()) {
       fwdLimit = new DigitalInput(limitConfig.fwdDio);
@@ -190,6 +200,36 @@ public final class RevSparkMaxNeoDevice implements DeviceUnit {
     }
     boolean raw = input.get();
     return limitConfig.invert ? !raw : raw;
+  }
+
+  private boolean isAltEncoder(String encoderSource) {
+    if (encoderSource == null) {
+      return false;
+    }
+    String normalized = encoderSource.trim().toLowerCase();
+    return normalized.equals("sparkmax_alt")
+        || normalized.equals("sparkmax_alternate")
+        || normalized.equals("alternate")
+        || normalized.equals("through_bore");
+  }
+
+  private Double readAlternateEncoder(Integer countsPerRev) {
+    if (device == null) {
+      return null;
+    }
+    int cpr = countsPerRev != null && countsPerRev > 0 ? countsPerRev.intValue() : 8192;
+    if (!altEncoderConfigured || altEncoderCpr != cpr) {
+      SparkMaxConfig config = new SparkMaxConfig();
+      config.alternateEncoder.setSparkMaxDataPortConfig().countsPerRevolution(cpr);
+      device.configureAsync(config, ResetMode.kNoResetSafeParameters, PersistMode.kNoPersistParameters);
+      altEncoderConfigured = true;
+      altEncoderCpr = cpr;
+    }
+    try {
+      return device.getAlternateEncoder().getPosition();
+    } catch (Exception ex) {
+      return null;
+    }
   }
 
   private double applyLimit(double duty) {

@@ -423,6 +423,21 @@ public final class BringupUtil {
     return null;
   }
 
+  public static String extractBringupTestsFromCommand() {
+    // Parse --bringup-tests=... from the Java command line.
+    String command = System.getProperty("sun.java.command");
+    if (command == null || command.isBlank()) {
+      return null;
+    }
+    String[] parts = command.split("\\s+");
+    for (String part : parts) {
+      if (part.startsWith("--bringup-tests=")) {
+        return part.substring("--bringup-tests=".length());
+      }
+    }
+    return null;
+  }
+
   private static void loadProfilesFromJson() {
     // Load bringup_profiles.json from deploy or dev path.
     Path path = resolveProfilePath();

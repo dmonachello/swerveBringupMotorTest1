@@ -17,6 +17,7 @@ import java.util.Map;
 public final class BringupTestRegistry {
   private static final String TESTS_FILE = "bringup_tests.json";
   private static final Gson GSON = new Gson();
+  private static String overrideTestsPath = null;
 
   private BringupTestRegistry() {}
 
@@ -41,6 +42,14 @@ public final class BringupTestRegistry {
     } catch (IOException | JsonParseException ex) {
       System.out.println("Warning: failed to read bringup tests JSON: " + ex.getMessage());
       return Collections.emptyList();
+    }
+  }
+
+  public static void setOverrideTestsPath(String path) {
+    if (path == null || path.isBlank()) {
+      overrideTestsPath = null;
+    } else {
+      overrideTestsPath = path.trim();
     }
   }
 
@@ -106,6 +115,12 @@ public final class BringupTestRegistry {
       if (config.rotation.encoderKey == null && entry.encoderKey != null) {
         config.rotation.encoderKey = entry.encoderKey;
       }
+      if (config.rotation.encoderSource == null && entry.encoderSource != null) {
+        config.rotation.encoderSource = entry.encoderSource;
+      }
+      if (config.rotation.encoderCountsPerRev == null && entry.encoderCountsPerRev != null) {
+        config.rotation.encoderCountsPerRev = entry.encoderCountsPerRev;
+      }
       if (config.rotation.encoderMotorIndex < 0) {
         config.rotation.encoderMotorIndex = 0;
       }
@@ -113,6 +128,8 @@ public final class BringupTestRegistry {
       CompositeTest.RotationCheck rotation = new CompositeTest.RotationCheck();
       rotation.limitRot = entry.limitRot != null ? entry.limitRot.doubleValue() : rotation.limitRot;
       rotation.encoderKey = entry.encoderKey != null ? entry.encoderKey : rotation.encoderKey;
+      rotation.encoderSource = entry.encoderSource != null ? entry.encoderSource : rotation.encoderSource;
+      rotation.encoderCountsPerRev = entry.encoderCountsPerRev;
       rotation.encoderMotorIndex = entry.encoderMotorIndex != null ? entry.encoderMotorIndex.intValue() : 0;
       config.rotation = rotation;
     }
@@ -163,6 +180,13 @@ public final class BringupTestRegistry {
   }
 
   private static Path resolveTestsPath() {
+    if (overrideTestsPath != null && !overrideTestsPath.isBlank()) {
+      Path override = resolveOverridePath(overrideTestsPath);
+      if (override != null && Files.exists(override)) {
+        return override;
+      }
+      System.out.println("Warning: bringup tests override not found: " + overrideTestsPath);
+    }
     try {
       Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(TESTS_FILE);
       if (Files.exists(deployPath)) {
@@ -176,6 +200,30 @@ public final class BringupTestRegistry {
       return devPath;
     }
     return Paths.get(TESTS_FILE);
+  }
+
+  private static Path resolveOverridePath(String path) {
+    try {
+      Path candidate = Paths.get(path);
+      if (candidate.isAbsolute()) {
+        return candidate;
+      }
+      try {
+        Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(candidate);
+        if (Files.exists(deployPath)) {
+          return deployPath;
+        }
+      } catch (Exception ex) {
+        // Fall through to dev path.
+      }
+      Path devPath = Paths.get("src", "main", "deploy").resolve(candidate);
+      if (Files.exists(devPath)) {
+        return devPath;
+      }
+      return candidate;
+    } catch (Exception ex) {
+      return null;
+    }
   }
 
   private static final class TestRootLoad {
@@ -197,6 +245,7 @@ public final class BringupTestRegistry {
     List<String> motorKeys;
     String encoderKey;
     String encoderSource;
+    Integer encoderCountsPerRev;
     CompositeTest.RotationCheck rotation;
     CompositeTest.TimeCheck time;
     CompositeTest.LimitSwitchCheck limitSwitch;

@@ -1,0 +1,68 @@
+{
+  "tests": [
+    {
+      "type": "composite",
+      "name": "Rotation only (internal)",
+      "enabled": true,
+      "duty": 0.2,
+      "rotation": {
+        "limitRot": 2.0,
+        "encoderKey": "internal",
+        "encoderMotorIndex": 0
+      },
+      "motorKeys": [
+        "REV:NEO:10"
+      ]
+    },
+    {
+      "type": "composite",
+      "name": "Time only",
+      "enabled": true,
+      "duty": 0.3,
+      "time": {
+        "timeoutSec": 1.5,
+        "onTimeout": "pass"
+      },
+      "motorKeys": [
+        "REV:NEO:25"
+      ]
+    },
+    {
+      "type": "composite",
+      "name": "Nudge (0.2 for 0.5s)",
+      "enabled": true,
+      "duty": 0.2,
+      "time": {
+        "timeoutSec": 0.5,
+        "onTimeout": "pass"
+      },
+      "motorKeys": [
+        "REV:NEO:10"
+      ]
+    },
+    {
+      "type": "composite",
+      "name": "Hold to run",
+      "enabled": true,
+      "duty": 0.2,
+      "hold": {
+        "enabled": true,
+        "onRelease": "pass"
+      },
+      "motorKeys": [
+        "REV:NEO:10"
+      ]
+    },
+    {
+      "type": "joystick",
+      "name": "Joystick motor (primary axis)",
+      "enabled": true,
+      "motorKeys": [
+        "REV:NEO:10",
+        "REV:NEO:25"
+      ],
+      "deadband": 0.12,
+      "inputAxis": "primary"
+    }
+  ]
+}

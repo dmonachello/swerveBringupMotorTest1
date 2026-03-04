@@ -11,6 +11,7 @@ This document focuses on robot-side tests and the PC CAN tool usage needed to va
 Purpose: ensure the robot and tooling are ready before testing.
 
 - Robot code deployed with the correct `bringup_profiles.json` and `bringup_tests.json`.
+- Optional: override tests at runtime with `--bringup-tests=bringup_tests_smoke.json`.
 - Xbox controller connected and mapped.
 - CAN devices powered and on the bus.
 - (Optional) PC CAN tool running if you want NetworkTables diagnostics.
@@ -45,6 +46,8 @@ Binding config:
 Purpose: explain how bringup tests are defined and selected.
 
 File: `src/main/deploy/bringup_tests.json`
+Override:
+- `--bringup-tests=bringup_tests_smoke.json` (loads from deploy dir).
 
 Helper:
 - `tools/run_bringup_test_wizard.bat` launches an interactive wizard to append a test entry.
@@ -56,7 +59,8 @@ Each test entry includes:
 - `enabled`: whether the test is selectable and runnable.
 - `motorKeys`: list of `VENDOR:TYPE:ID` for the device(s) under test.
 - `duty`: motor command (-1.0..1.0).
-- `rotation`: optional object with `limitRot`, `encoderKey` (`internal` or `VENDOR:TYPE:ID`), and `encoderMotorIndex` (0-based).
+- `rotation`: optional object with `limitRot`, `encoderKey` (`internal`, `through_bore`, or `VENDOR:TYPE:ID`),
+  `encoderSource` (`internal`, `sparkmax_alt`, or `external`), `encoderCountsPerRev` (optional), and `encoderMotorIndex` (0-based).
 - `time`: optional object with `timeoutSec` and `onTimeout` (`pass` or `fail`).
 - `limitSwitch`: optional object with `enabled` and `onHit` (`pass` or `fail`).
 - `hold`: optional object with `enabled` and `onRelease` (`pass` or `fail`).
@@ -81,18 +85,100 @@ Example (rotation only):
   "type": "composite",
   "name": "CANCoder external 1 rotation",
   "enabled": true,
-  "motorKeys": ["CTRE:KRAKEN:11"],
+  "motorKeys": ["REV:NEO:10"],
   "duty": 0.2,
-  "rotation": { "limitRot": 1.0, "encoderKey": "CTRE:CANCoder:12", "encoderMotorIndex": 0 }
+  "rotation": { "limitRot": 1.0, "encoderKey": "internal", "encoderMotorIndex": 0 }
 }
 ```
+Run:
+- Secondary `LB`/`RB` select the test by name.
+- Secondary `A` (hold) runs the selected test.
+
+CTRE reference (external CAN encoder):
+```json
+{
+  "type": "composite",
+  "name": "CTRE rotation (CANCoder)",
+  "enabled": true,
+  "motorKeys": ["CTRE:FALCON:11"],
+  "duty": 0.2,
+  "rotation": { "limitRot": 1.0, "encoderKey": "CTRE:CANCoder:12", "encoderSource": "external", "encoderMotorIndex": 0 }
+}
+```
+Run:
+- Secondary `LB`/`RB` select the test by name.
+- Secondary `A` (hold) runs the selected test.
+
+Example (REV Through-Bore via SPARK MAX data port):
+```json
+{
+  "type": "composite",
+  "name": "Through-bore rotation (SparkMax)",
+  "enabled": true,
+  "motorKeys": ["REV:NEO:10"],
+  "duty": 0.2,
+  "rotation": {
+    "limitRot": 5.0,
+    "encoderKey": "through_bore",
+    "encoderSource": "sparkmax_alt",
+    "encoderCountsPerRev": 8192,
+    "encoderMotorIndex": 0
+  }
+}
+```
+Run:
+- Secondary `LB`/`RB` select the test by name.
+- Secondary `A` (hold) runs the selected test.
 
 Notes:
 - While a test runs, joystick motor output is ignored for safety.
 - Limit switch checks use limit switches configured in `bringup_profiles.json`.
 - Hold checks use the current test-run button (secondary `A` in hold mode). Releasing it triggers the hold action.
-- Using secondary `X` toggles a test enabled/disabled and persists it to `bringup_tests.json`.
+- Using secondary `X` toggles a test enabled/disabled and persists it to `bringup_tests.json` (the active tests file).
 - The former "nudge" action is now a time-only composite test; adjust `duty` and `time.timeoutSec`.
+
+Additional composite examples (each is selectable/run the same way: secondary `LB`/`RB` to select, secondary `A` to run):
+
+Rotation + time + limit:
+```json
+{
+  "type": "composite",
+  "name": "Rotation + time + limit",
+  "enabled": true,
+  "motorKeys": ["REV:NEO:10"],
+  "duty": 0.2,
+  "rotation": { "limitRot": 10.0, "encoderKey": "internal", "encoderMotorIndex": 0 },
+  "time": { "timeoutSec": 2.0, "onTimeout": "fail" },
+  "limitSwitch": { "enabled": true, "onHit": "pass" }
+}
+```
+
+Hold to run:
+```json
+{
+  "type": "composite",
+  "name": "Hold to run",
+  "enabled": true,
+  "motorKeys": ["REV:NEO:10"],
+  "duty": 0.2,
+  "hold": { "enabled": true, "onRelease": "pass" }
+}
+```
+
+All checks (rotation + time + limit + hold):
+```json
+{
+  "type": "composite",
+  "name": "All checks",
+  "enabled": true,
+  "motorKeys": ["REV:NEO:10"],
+  "duty": 0.2,
+  "rotation": { "limitRot": 8.0, "encoderKey": "internal", "encoderMotorIndex": 0 },
+  "time": { "timeoutSec": 3.0, "onTimeout": "pass" },
+  "limitSwitch": { "enabled": true, "onHit": "pass" },
+  "hold": { "enabled": true, "onRelease": "pass" }
+}
+```
 
 Example (time only):
 ```json
@@ -105,6 +191,9 @@ Example (time only):
   "time": { "timeoutSec": 1.5, "onTimeout": "pass" }
 }
 ```
+Run:
+- Secondary `LB`/`RB` select the test by name.
+- Secondary `A` (hold) runs the selected test.
 
 Example (joystick test):
 ```json
@@ -112,11 +201,16 @@ Example (joystick test):
   "type": "joystick",
   "name": "Joystick motor (primary axis)",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10", "CTRE:FALCON:11"],
+  "motorKeys": ["REV:NEO:10", "REV:NEO550:7"],
   "deadband": 0.12,
   "inputAxis": "primary"
 }
 ```
+Run:
+- Secondary `LB`/`RB` select the test by name.
+- Secondary `A` (hold) runs the selected test.
+Control:
+- Primary `Left Y` (primary axis) drives the joystick test output.
 
 ## Procedure A: Basic Bringup (Add + Health)
 Purpose: verify the bus and devices before motion tests.
@@ -129,7 +223,7 @@ Purpose: verify the bus and devices before motion tests.
 ## Procedure B: Rotation Limit Test (Single)
 Purpose: confirm encoder feedback and basic motion with a fixed rotation target.
 
-1. Enable the desired test in `bringup_tests.json` and deploy.
+1. Enable the desired test in `bringup_tests.json` (or use `--bringup-tests=...`) and deploy.
 2. Press secondary `LB`/`RB` until the test name prints.
 3. Press secondary `A` to run it.
 4. Confirm the console shows PASS/FAIL and the reason.
@@ -137,7 +231,7 @@ Purpose: confirm encoder feedback and basic motion with a fixed rotation target.
 ## Procedure C: Rotation Limit Tests (Run All)
 Purpose: execute multiple tests in a defined order.
 
-1. Enable multiple tests in `bringup_tests.json`.
+1. Enable multiple tests in `bringup_tests.json` (or use `--bringup-tests=...`).
 2. Press secondary `B` to run all enabled tests in order.
 3. Watch for `Test result` lines after each test and `Run-all complete.` at the end.
 
@@ -192,6 +286,6 @@ Purpose: record where test artifacts are produced.
 ## Change Checklist
 Purpose: keep test configuration and code in sync.
 
-- Update `bringup_tests.json` when adding/removing tests.
+- Update `bringup_tests.json` when adding/removing tests (or your override file).
 - Keep `bringup_profiles.json` aligned with device IDs in tests.
 - Update this document when bindings or test types change.

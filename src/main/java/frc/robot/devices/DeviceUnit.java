@@ -42,4 +42,9 @@ public interface DeviceUnit extends HasRegistrationHeader {
   default Double getPositionRotations() {
     return null;
   }
+
+  // Optional encoder position in rotations with source-specific handling.
+  default Double getPositionRotations(String encoderSource, Integer countsPerRev) {
+    return getPositionRotations();
+  }
 }

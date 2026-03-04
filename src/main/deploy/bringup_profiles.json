@@ -1,6 +1,13 @@
 {
-  "default_profile": "club_022426",
+  "default_profile": "example_default",
   "profiles": {
+    "example_default": {
+      "neos": [
+        { "label": "SPARKMAX 10", "id": 10 },
+        { "label": "SPARKMAX 25", "id": 25 }
+      ],
+      "roborio": { "label": "roboRIO", "id": 0 }
+    },
     "robot": {
       "neos": [
         { "label": "FR NEO", "id": 10 },

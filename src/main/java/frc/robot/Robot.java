@@ -5,6 +5,7 @@ import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.ControllerManager;
+import frc.robot.tests.BringupTestRegistry;
 import java.util.ArrayList;
 
 // Legacy bringup robot program (simpler than RobotV2).
@@ -28,6 +29,9 @@ public class Robot extends TimedRobot {
   public void robotInit() {
     // Load profile before devices are created.
     BringupUtil.applyProfileFromArgs();
+    String testsOverride = BringupUtil.extractBringupTestsFromCommand();
+    BringupTestRegistry.setOverrideTestsPath(testsOverride);
+    core = new BringupCore();
     printStartupInfo();
     validateCanIds();
     CameraServer.startAutomaticCapture();

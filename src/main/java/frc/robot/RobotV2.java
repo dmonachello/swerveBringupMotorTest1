@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.ControllerManager;
+import frc.robot.tests.BringupTestRegistry;
 
 // Primary bringup robot program with CAN diagnostics, JSON reporting, and controller bindings.
 // This class wires controller inputs to BringupCore and DiagnosticsReporter behaviors.
@@ -47,6 +48,10 @@ public class RobotV2 extends TimedRobot {
   public void robotInit() {
     // Load profile before anything instantiates devices.
     BringupUtil.applyProfileFromArgs();
+    String testsOverride = BringupUtil.extractBringupTestsFromCommand();
+    BringupTestRegistry.setOverrideTestsPath(testsOverride);
+    core = new BringupCore();
+    diagnostics.setCore(core);
     applyDashboardUpdateState();
     // Print bindings and validate IDs once at startup.
     printStartupInfo();
