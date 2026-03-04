@@ -61,7 +61,6 @@ public final class JoystickTest implements BringupTest {
 
   @Override
   public boolean start(BringupTestContext context, double nowSec) {
-    DeviceUnit motor = null;
     if (config.motors == null || config.motors.isEmpty()) {
       status = "Motor not found";
       result = BringupTestResult.FAIL;

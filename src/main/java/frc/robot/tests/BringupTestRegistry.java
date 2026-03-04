@@ -231,6 +231,7 @@ public final class BringupTestRegistry {
   }
 
   private static final class TestRootSave {
+    @SuppressWarnings("unused")
     List<Map<String, Object>> tests = Collections.emptyList();
   }
 

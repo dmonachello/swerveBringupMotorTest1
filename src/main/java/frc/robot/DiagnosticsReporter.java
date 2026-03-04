@@ -204,7 +204,6 @@ final class DiagnosticsReporter {
       String key = spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
       String base = "dev/" + spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
       String status = diagTable.getEntry(base + "/status").getString("UNKNOWN");
-      double lastSeen = diagTable.getEntry(base + "/lastSeen").getDouble(Double.NaN);
       double ageSec = diagTable.getEntry(base + "/ageSec").getDouble(Double.NaN);
 
       boolean missing =
