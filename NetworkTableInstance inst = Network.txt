@@ -1,5 +1,0 @@
-NetworkTableInstance inst = NetworkTableInstance.getDefault();
-NetworkTableEntry rpm =
-    inst.getTable("Diag").getEntry("ShooterRPM");
-
-rpm.setDouble(currentRPM);
