@@ -1,0 +1,26 @@
+{
+  "patterns": {
+    "LED off": "No power or device not added.",
+    "Off/Orange": "Disabled or neutral output.",
+    "Off/Red": "Limit or soft limit active.",
+    "Red/Orange": "Fault or hardware issue."
+  },
+  "devices": {
+    "FALCON": {
+      "Green blink": "Forward output applied.",
+      "Red blink": "Reverse output applied."
+    },
+    "KRAKEN": {
+      "Green blink": "Forward output applied.",
+      "Red blink": "Reverse output applied."
+    },
+    "CANCoder": {
+      "Rapid green blink": "CAN present; magnet in range.",
+      "Red blink": "CAN or magnet issue."
+    },
+    "Pigeon": {
+      "Green blink": "CAN present; robot enabled.",
+      "Yellow/Green blink": "CAN present; enable state unknown."
+    }
+  }
+}

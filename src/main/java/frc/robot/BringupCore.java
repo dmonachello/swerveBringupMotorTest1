@@ -427,7 +427,7 @@ public final class BringupCore {
     appendLine(sb, "Next add will be: " + (addRevNext ? "REV motor" : "CTRE motor"));
     appendVirtualDevices(sb);
     appendLine(sb, "=====================");
-    BringupPrinter.enqueueChunked(sb.toString(), 12);
+    BringupPrinter.enqueueChunked(sb.toString(), 4);
   }
 
   // Print detailed local health with faults, warnings, and key telemetry.
@@ -440,7 +440,7 @@ public final class BringupCore {
     ctreDevices.appendHealth(sb, nowSec);
     appendVirtualDeviceHealth(sb);
     appendLine(sb, "======================");
-    BringupPrinter.enqueueChunked(sb.toString(), 12);
+    BringupPrinter.enqueueChunked(sb.toString(), 4);
   }
 
   // Print absolute positions for all CANCoders (instantiates if needed).
@@ -450,7 +450,7 @@ public final class BringupCore {
     appendEncoderStatus(sb, revDevices);
     appendEncoderStatus(sb, ctreDevices);
     appendLine(sb, "=======================");
-    BringupPrinter.enqueueChunked(sb.toString(), 12);
+    BringupPrinter.enqueueChunked(sb.toString(), 4);
   }
 
   private void appendEncoderStatus(StringBuilder sb, ManufacturerGroup group) {

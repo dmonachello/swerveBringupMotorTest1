@@ -2,6 +2,8 @@ package frc.robot.diag.report;
 
 import frc.robot.ReportTextUtil;
 import frc.robot.diag.snapshots.BusSnapshot;
+import frc.robot.diag.snapshots.CanSuspicionAttachment;
+import frc.robot.diag.snapshots.LedStatusAttachment;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.EncoderAttachment;
@@ -10,6 +12,8 @@ import frc.robot.diag.snapshots.MotorSpecAttachment;
 import frc.robot.diag.snapshots.PcSnapshot;
 import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 import frc.robot.diag.snapshots.SnapshotBundle;
+import frc.robot.diag.app.AppStatusTracker;
+import frc.robot.BringupPrinter;
 import java.util.List;
 
 // Formats snapshot bundles into the human-readable console report.
@@ -25,6 +29,8 @@ public final class ReportTextBuilder {
     ReportTextUtil.appendLine(sb, "Bus Health: (see CAN Bus Diagnostics summary above)");
     appendPcToolSection(sb, bundle.pc);
     appendDeviceHealth(sb, bundle.devices);
+    appendLedLegend(sb, bundle.devices);
+    appendAppStatus(sb);
     ReportTextUtil.appendLine(sb, "==============================");
     return sb.toString();
   }
@@ -148,6 +154,8 @@ public final class ReportTextBuilder {
       ReportTextUtil.appendLine(
           sb,
           "  " + snap.deviceType + " CAN " + snap.canId + ": present=NO (not added)");
+      appendCanSuspicionLines(sb, snap);
+      appendLedLines(sb, snap);
       return;
     }
     RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
@@ -166,6 +174,8 @@ public final class ReportTextBuilder {
         " appliedV=" + formatDouble(rev != null ? rev.appliedV : null, 2) + "V" +
         " motorCurrentA=" + formatDouble(rev != null ? rev.motorCurrentA : null, 4) + "A" +
         " tempC=" + formatDouble(rev != null ? rev.tempC : null, 1) + "C");
+    appendCanSuspicionLines(sb, snap);
+    appendLedLines(sb, snap);
   }
 
   private void appendCtreDevice(StringBuilder sb, DeviceSnapshot snap) {
@@ -173,6 +183,8 @@ public final class ReportTextBuilder {
       ReportTextUtil.appendLine(
           sb,
           "  " + snap.deviceType + " CAN " + snap.canId + ": present=NO (not added)");
+      appendCanSuspicionLines(sb, snap);
+      appendLedLines(sb, snap);
       return;
     }
     CtreMotorAttachment ctre = snap.getAttachment(CtreMotorAttachment.class);
@@ -200,6 +212,8 @@ public final class ReportTextBuilder {
             ? ""
             : " status=" + safeText(ctre != null ? ctre.faultStatus : "")
                 + "/" + safeText(ctre != null ? ctre.stickyStatus : "")));
+    appendCanSuspicionLines(sb, snap);
+    appendLedLines(sb, snap);
   }
 
   private void appendCANCoder(StringBuilder sb, DeviceSnapshot snap) {
@@ -207,6 +221,8 @@ public final class ReportTextBuilder {
       ReportTextUtil.appendLine(
           sb,
           "  CANCoder CAN " + snap.canId + ": present=NO (not added)");
+      appendCanSuspicionLines(sb, snap);
+      appendLedLines(sb, snap);
       return;
     }
     EncoderAttachment encoder = snap.getAttachment(EncoderAttachment.class);
@@ -217,6 +233,8 @@ public final class ReportTextBuilder {
         ": present=YES absDeg=" + formatDouble(encoder != null ? encoder.absDeg : null, 1) +
         " lastErr=" + safeText(encoder != null ? encoder.lastError : "") +
         formatLimitSummary(limits));
+    appendCanSuspicionLines(sb, snap);
+    appendLedLines(sb, snap);
   }
 
   private void appendCANdle(StringBuilder sb, DeviceSnapshot snap) {
@@ -224,12 +242,133 @@ public final class ReportTextBuilder {
       ReportTextUtil.appendLine(
           sb,
           "  CANdle CAN " + snap.canId + ": present=NO (not added)");
+      appendCanSuspicionLines(sb, snap);
+      appendLedLines(sb, snap);
       return;
     }
     LimitsAttachment limits = snap.getAttachment(LimitsAttachment.class);
     ReportTextUtil.appendLine(
         sb,
         "  CANdle CAN " + snap.canId + ": present=YES" + formatLimitSummary(limits));
+    appendCanSuspicionLines(sb, snap);
+    appendLedLines(sb, snap);
+  }
+
+  private void appendCanSuspicionLines(StringBuilder sb, DeviceSnapshot snap) {
+    CanSuspicionAttachment can = snap.getAttachment(CanSuspicionAttachment.class);
+    if (can == null) {
+      return;
+    }
+    String expected = formatStateMeaning(can.expectedState, can.expectedMeaning);
+    String likely = formatStateMeaning(can.likelyState, can.likelyMeaning);
+    if (!expected.isBlank()) {
+      ReportTextUtil.appendLine(sb, "    CAN expected: " + expected);
+    }
+    if (!likely.isBlank()) {
+      String confidence = can.confidence != null && !can.confidence.isBlank()
+          ? " (confidence=" + can.confidence + ")"
+          : "";
+      ReportTextUtil.appendLine(sb, "    CAN likely: " + likely + confidence);
+    }
+    if (can.note != null && !can.note.isBlank()) {
+      ReportTextUtil.appendLine(sb, "    CAN note: " + can.note);
+    }
+  }
+
+  private void appendLedLines(StringBuilder sb, DeviceSnapshot snap) {
+    LedStatusAttachment led = snap.getAttachment(LedStatusAttachment.class);
+    if (led == null) {
+      return;
+    }
+    String expected = formatPatternMeaning(led.expectedPattern, led.expectedMeaning);
+    String likely = formatPatternMeaning(led.likelyPattern, led.likelyMeaning);
+    if (!expected.isBlank()) {
+      ReportTextUtil.appendLine(sb, "    LED expected: " + expected);
+    }
+    if (!likely.isBlank()) {
+      String confidence = led.confidence != null && !led.confidence.isBlank()
+          ? " (confidence=" + led.confidence + ")"
+          : "";
+      ReportTextUtil.appendLine(sb, "    LED likely: " + likely + confidence);
+    }
+    if (led.note != null && !led.note.isBlank()) {
+      ReportTextUtil.appendLine(sb, "    LED note: " + led.note);
+    }
+  }
+
+  private void appendLedLegend(StringBuilder sb, List<DeviceSnapshot> devices) {
+    if (devices == null || devices.isEmpty()) {
+      return;
+    }
+    java.util.LinkedHashMap<String, String> legend = new java.util.LinkedHashMap<>();
+    for (DeviceSnapshot snap : devices) {
+      LedStatusAttachment led = snap.getAttachment(LedStatusAttachment.class);
+      if (led == null) {
+        continue;
+      }
+      addLegend(legend, led.expectedPattern, led.expectedMeaning);
+      addLegend(legend, led.likelyPattern, led.likelyMeaning);
+    }
+    if (legend.isEmpty()) {
+      return;
+    }
+    ReportTextUtil.appendLine(sb, "LED Legend (best-effort):");
+    for (java.util.Map.Entry<String, String> entry : legend.entrySet()) {
+      ReportTextUtil.appendLine(sb, "  " + entry.getKey() + " = " + entry.getValue());
+    }
+  }
+
+  private void addLegend(java.util.Map<String, String> legend, String pattern, String meaning) {
+    if (pattern == null || pattern.isBlank() || meaning == null || meaning.isBlank()) {
+      return;
+    }
+    legend.putIfAbsent(pattern, meaning);
+  }
+
+  private String formatPatternMeaning(String pattern, String meaning) {
+    if (pattern == null || pattern.isBlank()) {
+      return "";
+    }
+    if (meaning == null || meaning.isBlank()) {
+      return pattern;
+    }
+    return pattern + " — " + meaning;
+  }
+
+  private String formatStateMeaning(String state, String meaning) {
+    if (state == null || state.isBlank()) {
+      return "";
+    }
+    if (meaning == null || meaning.isBlank()) {
+      return state;
+    }
+    return state + " — " + meaning;
+  }
+
+  private void appendAppStatus(StringBuilder sb) {
+    AppStatusTracker.AppStatusSnapshot snap = AppStatusTracker.snapshot();
+    ReportTextUtil.appendLine(sb, "App Status:");
+    ReportTextUtil.appendLine(
+        sb,
+        "  Loop ms: last=" + String.format("%.2f", snap.lastLoopMs) +
+        " avg=" + String.format("%.2f", snap.avgLoopMs) +
+        " max=" + String.format("%.2f", snap.maxLoopMs) +
+        " (overrun> " + String.format("%.1f", snap.overrunThresholdMs) + "ms)" +
+        " totalOverruns=" + snap.overrunCount);
+    ReportTextUtil.appendLine(
+        sb,
+        "  Loop window (60s): samples=" + snap.windowSamples +
+        " overruns=" + snap.windowOverruns);
+    ReportTextUtil.appendLine(
+        sb,
+        "  Print queue: queuedBytes=" + BringupPrinter.getQueuedBytes() +
+        " droppedMsgs=" + BringupPrinter.getDroppedMessages() +
+        " droppedBytes=" + BringupPrinter.getDroppedBytes());
+    ReportTextUtil.appendLine(
+        sb,
+        "  Print throttle: maxBytesPerSec=" + BringupPrinter.getMaxBytesPerSec() +
+        " windowMs=" + BringupPrinter.getThrottleWindowMs() +
+        " maxQueueBytes=" + BringupPrinter.getMaxQueueBytes());
   }
 
   private String formatLimitSummary(LimitsAttachment limits) {

@@ -9,9 +9,13 @@ import edu.wpi.first.networktables.NetworkTableValue;
 import edu.wpi.first.wpilibj.Filesystem;
 import frc.robot.diag.report.ReportJsonBuilder;
 import frc.robot.diag.report.ReportTextBuilder;
+import frc.robot.diag.snapshots.LedStatusAttachment;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.PcSnapshot;
 import frc.robot.diag.snapshots.SnapshotBundle;
+import frc.robot.diag.led.LedStatusInference;
+import frc.robot.diag.can.CanSuspicionInference;
+import frc.robot.diag.snapshots.CanSuspicionAttachment;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
@@ -116,7 +120,7 @@ final class DiagnosticsReporter {
   void dumpReportJsonToConsoleAndFile() {
     // JSON report is for machine parsing and AI diagnostics.
     String json = buildReportJson();
-    BringupPrinter.enqueueChunked(ReportTextUtil.wrapLongLine(json, 120), 12);
+    BringupPrinter.enqueueChunked(ReportTextUtil.wrapLongLine(json, 120), 4);
     try {
       Files.writeString(Path.of(REPORT_PATH), json);
       BringupPrinter.enqueue("Wrote CAN report JSON to " + REPORT_PATH);
@@ -153,14 +157,14 @@ final class DiagnosticsReporter {
     Collections.addAll(allSpecs, findUnknownDeviceSpecs());
     printNetworkDeviceTable(sb, allSpecs, nowSeconds);
     ReportTextUtil.appendLine(sb, "=============================");
-    BringupPrinter.enqueueChunked(sb.toString(), 12);
+    BringupPrinter.enqueueChunked(sb.toString(), 4);
   }
 
   private void enqueueCanDiagnosticsReport() {
     // Full text report with summary and device health.
     SnapshotBundle bundle = buildSnapshotBundle();
     String report = textBuilder.buildCanDiagnosticsReport(bundle);
-    BringupPrinter.enqueueChunked(report, 12);
+    BringupPrinter.enqueueChunked(report, 4);
   }
 
   private String buildReportJson() {
@@ -175,6 +179,14 @@ final class DiagnosticsReporter {
     bundle.bus = canHealth.buildSnapshot();
     bundle.pc = buildPcSnapshot(System.currentTimeMillis());
     for (DeviceSnapshot snap : core.captureSnapshots()) {
+      LedStatusAttachment led = LedStatusInference.infer(snap);
+      if (led != null) {
+        snap.addAttachment(led);
+      }
+      CanSuspicionAttachment canSuspicion = CanSuspicionInference.infer(snap, bundle.bus);
+      if (canSuspicion != null) {
+        snap.addAttachment(canSuspicion);
+      }
       bundle.devices.add(snap);
     }
     return bundle;

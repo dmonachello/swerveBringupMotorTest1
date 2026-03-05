@@ -60,6 +60,8 @@ What it gives you:
 - Wire-level evidence via PCAP/PCAPNG + Wireshark dissector.
 - Unknown device detection (optional publish of unseen IDs).
 - Motor current sanity checks vs documented specs (free/stall).
+- Best-effort LED status inference (expected vs likely) per device.
+- Best-effort CAN suspicion inference (expected vs likely) per device.
 
 What it does not do:
 - Fix robot logic or tuning.
@@ -80,8 +82,12 @@ Report sections (D-pad Up):
 - CAN Bus Diagnostics summary (utilization, RX/TX errors, TX full, bus-off count, sample age)
 - PC Tool status + missing/flapping counts and "seen on wire, not local" list
 - Device Health (local API): faults/sticky faults, warnings/sticky warnings, lastErr, reset flag, voltage/motorCurrent/temp/cmdDuty/appliedDuty
+- LED status (expected vs likely) and CAN suspicion (expected vs likely) per device
+- App Status (loop timing overruns and printer backpressure)
 JSON snapshot:
 - Press `X` to dump a machine-readable report to the console and `/home/lvuser/bringup_report.json`.
+  - Each device may include `attachments` with `type=ledStatus` and `type=canSuspicion`
+    for best-effort LED and CAN-issue inference.
 
 ### AI Diagnosis Using `bringup_report.json`
 Use `AI_DIAGNOSIS.md` for a ready-to-paste prompt and a plain-language interpretation guide.
@@ -317,6 +323,10 @@ Supported profile sections include:
 - `devices` (generic vendor/type list)
 - `pdh`, `pdp`, `pigeon`, `roborio`
 Manufacturer/type display names are loaded from `src/main/deploy/can_mappings.json`.
+LED status meanings are loaded from:
+- `src/main/deploy/led_status_rev.json` (REV SPARK MAX/FLEX)
+- `src/main/deploy/led_status_ctre.json` (CTRE Talon FX / CANcoder / Pigeon)
+These files map LED pattern strings to human-readable meanings. They do not change device behavior.
 
 ## Motor Specs (Current Sanity Checks)
 Motor current checks use `src/main/deploy/motor_specs.json` which defines:

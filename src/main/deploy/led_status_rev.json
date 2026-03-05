@@ -1,0 +1,10 @@
+{
+  "patterns": {
+    "LED off": "No power, recovery mode, or device not added.",
+    "Cyan/Magenta solid": "Valid signal (brushless); brake/coast mode unknown.",
+    "Cyan/Magenta blink": "No signal or disabled (brushless).",
+    "Green blink/solid": "Forward output applied.",
+    "Red blink/solid": "Reverse output applied.",
+    "Orange/Yellow slow blink": "CAN fault or device fault."
+  }
+}

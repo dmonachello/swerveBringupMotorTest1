@@ -79,6 +79,7 @@ public class RobotV2 extends TimedRobot {
   public void robotPeriodic() {
     // Sample and publish CAN health every loop.
     diagnostics.update();
+    frc.robot.diag.app.AppStatusTracker.recordLoop();
   }
 
   @Override
@@ -207,7 +208,7 @@ public class RobotV2 extends TimedRobot {
     ReportTextUtil.appendLine(sb, "KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
     ReportTextUtil.appendLine(sb, "FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
     ReportTextUtil.appendLine(sb, "=========================");
-    BringupPrinter.enqueueChunked(sb.toString(), 12);
+    BringupPrinter.enqueueChunked(sb.toString(), 4);
   }
 
   //@SuppressWarnings("removal")
