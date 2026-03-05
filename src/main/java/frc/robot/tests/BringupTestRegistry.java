@@ -2,6 +2,7 @@ package frc.robot.tests;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
+import com.google.gson.annotations.SerializedName;
 import edu.wpi.first.wpilibj.Filesystem;
 import java.io.IOException;
 import java.io.Reader;
@@ -18,6 +19,8 @@ public final class BringupTestRegistry {
   private static final String TESTS_FILE = "bringup_tests.json";
   private static final Gson GSON = new Gson();
   private static String overrideTestsPath = null;
+  private static boolean usingTestSets = false;
+  private static String activeTestSetName = null;
 
   private BringupTestRegistry() {}
 
@@ -28,11 +31,15 @@ public final class BringupTestRegistry {
     }
     try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
       TestRootLoad root = GSON.fromJson(reader, TestRootLoad.class);
-      if (root == null || root.tests == null || root.tests.isEmpty()) {
+      if (root == null) {
+        return Collections.emptyList();
+      }
+      List<TestEntry> entries = selectTestEntries(root);
+      if (entries == null || entries.isEmpty()) {
         return Collections.emptyList();
       }
       List<BringupTest> tests = new ArrayList<>();
-      for (TestEntry entry : root.tests) {
+      for (TestEntry entry : entries) {
         BringupTest test = buildTest(entry);
         if (test != null) {
           tests.add(test);
@@ -65,13 +72,25 @@ public final class BringupTestRegistry {
         entries.add(joystick.toEntry());
       }
     }
-    TestRootSave root = new TestRootSave();
-    root.tests = entries;
     Path path = resolveTestsPath();
     if (path == null) {
       return false;
     }
     try {
+      TestRootSave root = new TestRootSave();
+      if (usingTestSets) {
+        TestRootLoad existing = readRoot(path);
+        String setName = resolveSaveSetName(existing);
+        Map<String, List<TestEntry>> sets = new java.util.LinkedHashMap<>();
+        if (existing != null && existing.testSets != null && !existing.testSets.isEmpty()) {
+          sets.putAll(existing.testSets);
+        }
+        sets.put(setName, toTestEntries(entries));
+        root.testSets = sets;
+        root.defaultTestSet = resolveDefaultTestSet(existing, setName);
+      } else {
+        root.tests = entries;
+      }
       String json = GSON.toJson(root);
       Files.writeString(path, json + System.lineSeparator(), StandardCharsets.UTF_8);
       return true;
@@ -93,6 +112,81 @@ public final class BringupTestRegistry {
     }
     System.out.println("Warning: unknown test type '" + entry.type + "'.");
     return null;
+  }
+
+  private static List<TestEntry> selectTestEntries(TestRootLoad root) {
+    if (root.testSets != null && !root.testSets.isEmpty()) {
+      usingTestSets = true;
+      String setName = resolveActiveSetName(root);
+      activeTestSetName = setName;
+      List<TestEntry> entries = root.testSets.get(setName);
+      if (entries != null) {
+        return entries;
+      }
+      for (List<TestEntry> fallback : root.testSets.values()) {
+        if (fallback != null && !fallback.isEmpty()) {
+          return fallback;
+        }
+      }
+      return Collections.emptyList();
+    }
+    usingTestSets = false;
+    activeTestSetName = null;
+    return root.tests != null ? root.tests : Collections.emptyList();
+  }
+
+  private static String resolveActiveSetName(TestRootLoad root) {
+    if (root == null || root.testSets == null || root.testSets.isEmpty()) {
+      return null;
+    }
+    if (root.defaultTestSet != null && root.testSets.containsKey(root.defaultTestSet)) {
+      return root.defaultTestSet;
+    }
+    if (root.testSets.containsKey("default")) {
+      return "default";
+    }
+    return root.testSets.keySet().iterator().next();
+  }
+
+  private static String resolveSaveSetName(TestRootLoad root) {
+    if (activeTestSetName != null && !activeTestSetName.isBlank()) {
+      return activeTestSetName;
+    }
+    String resolved = resolveActiveSetName(root);
+    if (resolved != null && !resolved.isBlank()) {
+      return resolved;
+    }
+    return "default";
+  }
+
+  private static String resolveDefaultTestSet(TestRootLoad root, String fallback) {
+    if (root != null && root.defaultTestSet != null && !root.defaultTestSet.isBlank()) {
+      return root.defaultTestSet;
+    }
+    return fallback;
+  }
+
+  private static TestRootLoad readRoot(Path path) {
+    try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+      return GSON.fromJson(reader, TestRootLoad.class);
+    } catch (IOException | JsonParseException ex) {
+      return null;
+    }
+  }
+
+  private static List<TestEntry> toTestEntries(List<Map<String, Object>> entries) {
+    if (entries == null) {
+      return Collections.emptyList();
+    }
+    List<TestEntry> converted = new ArrayList<>();
+    for (Map<String, Object> entry : entries) {
+      String json = GSON.toJson(entry);
+      TestEntry parsed = GSON.fromJson(json, TestEntry.class);
+      if (parsed != null) {
+        converted.add(parsed);
+      }
+    }
+    return converted;
   }
 
   private static BringupTest buildComposite(TestEntry entry) {
@@ -227,12 +321,20 @@ public final class BringupTestRegistry {
   }
 
   private static final class TestRootLoad {
+    @SerializedName(value = "default_test_set", alternate = {"defaultTestSet"})
+    String defaultTestSet;
+    @SerializedName(value = "test_sets", alternate = {"testSets"})
+    Map<String, List<TestEntry>> testSets;
     List<TestEntry> tests = Collections.emptyList();
   }
 
   private static final class TestRootSave {
     @SuppressWarnings("unused")
     List<Map<String, Object>> tests = Collections.emptyList();
+    @SerializedName(value = "default_test_set", alternate = {"defaultTestSet"})
+    String defaultTestSet;
+    @SerializedName(value = "test_sets", alternate = {"testSets"})
+    Map<String, List<TestEntry>> testSets = Collections.emptyMap();
   }
 
   private static final class TestEntry {

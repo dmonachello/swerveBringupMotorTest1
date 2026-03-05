@@ -1,17 +1,20 @@
 {
-  "tests": [
-    {
-      "type": "composite",
-      "name": "Hold to run",
-      "enabled": false,
-      "duty": 0.2,
-      "hold": {
-        "enabled": true,
-        "onRelease": "pass"
-      },
-      "motorKeys": [
-        "CTRE:KRAKEN:11"
-      ]
-    }
-  ]
+  "default_test_set": "default",
+  "test_sets": {
+    "default": [
+      {
+        "type": "composite",
+        "name": "Hold to run",
+        "enabled": false,
+        "duty": 0.2,
+        "hold": {
+          "enabled": true,
+          "onRelease": "pass"
+        },
+        "motorKeys": [
+          "CTRE:KRAKEN:11"
+        ]
+      }
+    ]
+  }
 }

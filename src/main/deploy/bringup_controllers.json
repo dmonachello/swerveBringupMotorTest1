@@ -1,6 +1,0 @@
-{
-  "controllers": [
-    { "type": "XBOX", "port": 0, "role": "primary" },
-    { "type": "XBOX", "port": 1, "role": "secondary" }
-  ]
-}

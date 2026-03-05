@@ -1,14 +1,17 @@
 {
-  "tests": [
-    {
-      "type": "joystick",
-      "name": "Joystick motor (primary axis)",
-      "enabled": false,
-      "deadband": 0.12,
-      "inputAxis": "primary",
-      "motorKeys": [
-        "REV:NEO:10"
-      ]
-    }
-  ]
+  "default_test_set": "default",
+  "test_sets": {
+    "default": [
+      {
+        "type": "joystick",
+        "name": "Joystick motor (primary axis)",
+        "enabled": false,
+        "deadband": 0.12,
+        "inputAxis": "primary",
+        "motorKeys": [
+          "REV:NEO:10"
+        ]
+      }
+    ]
+  }
 }

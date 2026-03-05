@@ -37,9 +37,13 @@ def _choose_template(templates):
 
 
 def _edit_tests(payload):
-    tests = payload.get("tests", [])
+    set_name = payload.get("default_test_set") or "default"
+    test_sets = payload.get("test_sets", {})
+    if not isinstance(test_sets, dict):
+        test_sets = {}
+    tests = test_sets.get(set_name, [])
     if not isinstance(tests, list):
-        return payload
+        tests = []
     for idx, test in enumerate(tests, start=1):
         name = test.get("name", f"Test {idx}")
         print(f"\nTest {idx}: {name}")
@@ -57,7 +61,26 @@ def _edit_tests(payload):
                 new_encoder = _prompt("Encoder (internal or VENDOR:TYPE:ID)", encoder_key)
                 rotation["encoderKey"] = new_encoder
         tests[idx - 1] = test
-    payload["tests"] = tests
+    test_sets[set_name] = tests
+    payload["test_sets"] = test_sets
+    return payload
+
+
+def _ensure_test_sets(payload):
+    if not isinstance(payload, dict):
+        payload = {}
+    test_sets = payload.get("test_sets")
+    if isinstance(test_sets, dict):
+        if "default_test_set" not in payload:
+            payload["default_test_set"] = "default"
+        return payload
+    tests = payload.get("tests", [])
+    if not isinstance(tests, list):
+        tests = []
+    payload = {
+        "default_test_set": payload.get("default_test_set", "default"),
+        "test_sets": {"default": tests},
+    }
     return payload
 
 
@@ -68,6 +91,7 @@ def main():
         return 1
     tpl_path = _choose_template(templates)
     payload = json.loads(tpl_path.read_text(encoding="utf-8"))
+    payload = _ensure_test_sets(payload)
     payload = _edit_tests(payload)
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")

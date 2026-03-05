@@ -31,8 +31,8 @@ Purpose: run the minimum set of checks to confirm the system is healthy.
 5. Primary controller: move `Left Y`/`Right Y`, then press `D-pad Right` to confirm inputs.
 6. Start the PC tool (default test profile):
    - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile example_default --rio 172.22.11.2`
-7. Use the smoke test config override:
-   - Start the robot with `--bringup-tests=bringup_tests_smoke.json` (loads from deploy dir).
+7. Use the smoke test set:
+   - In `src/main/deploy/bringup_tests.json`, set `"default_test_set": "smoke"` and deploy.
 8. Primary controller: press `D-pad Down` and confirm `openOk=YES`.
 9. Secondary controller: press `LB`/`RB` to select a test and confirm the name updates.
 10. Secondary controller: run one enabled test with `A` and confirm PASS/FAIL prints.
@@ -61,18 +61,12 @@ Purpose: verify command bindings resolve from JSON and edge/hold works.
 
 Config excerpt (bindings + controllers):
 ```json
-// src/main/deploy/bringup_controllers.json
+// src/main/deploy/bringup_bindings.json
 {
   "controllers": [
     { "type": "XBOX", "port": 0, "role": "primary" },
     { "type": "XBOX", "port": 1, "role": "secondary" }
-  ]
-}
-```
-
-```json
-// src/main/deploy/bringup_bindings.json
-{
+  ],
   "bindings": [
     { "command": "addMotor", "controller": "primary", "input": "button", "id": "A", "mode": "edge" },
     { "command": "addAll", "controller": "primary", "input": "button", "id": "START", "mode": "edge" },
@@ -145,7 +139,7 @@ Expected:
 ### E) Bringup Test Selection + Run
 Purpose: verify test list, selection, run, and run-all.
 
-Existing tests in `bringup_tests.json` (or the active `--bringup-tests=...` override):
+Existing tests in the active test set (`default_test_set` in `bringup_tests.json`, or in the override file):
 - Rotation only (internal)
 - Rotation + Time
 - Time only
@@ -163,7 +157,7 @@ Test bindings (secondary controller):
 - `X`: toggle selected test enabled
 
 Example configs (match the test titles above):
-- See sections F–I for per-test JSON examples and run sequences.
+- See sections F-I for per-test JSON examples and run sequences.
 
 Steps:
 1. Enable 2+ tests in `bringup_tests.json` (or the active override), deploy.

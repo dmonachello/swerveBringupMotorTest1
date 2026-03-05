@@ -1,26 +1,29 @@
 {
-  "tests": [
-    {
-      "type": "composite",
-      "name": "Rotation + Time + Limit",
-      "enabled": false,
-      "duty": 0.2,
-      "rotation": {
-        "limitRot": 10.0,
-        "encoderKey": "internal",
-        "encoderMotorIndex": 0
-      },
-      "time": {
-        "timeoutSec": 2.0,
-        "onTimeout": "fail"
-      },
-      "limitSwitch": {
-        "enabled": true,
-        "onHit": "pass"
-      },
-      "motorKeys": [
-        "CTRE:FALCON:11"
-      ]
-    }
-  ]
+  "default_test_set": "default",
+  "test_sets": {
+    "default": [
+      {
+        "type": "composite",
+        "name": "Rotation + Time + Limit",
+        "enabled": false,
+        "duty": 0.2,
+        "rotation": {
+          "limitRot": 10.0,
+          "encoderKey": "internal",
+          "encoderMotorIndex": 0
+        },
+        "time": {
+          "timeoutSec": 2.0,
+          "onTimeout": "fail"
+        },
+        "limitSwitch": {
+          "enabled": true,
+          "onHit": "pass"
+        },
+        "motorKeys": [
+          "CTRE:FALCON:11"
+        ]
+      }
+    ]
+  }
 }

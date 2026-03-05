@@ -38,16 +38,34 @@ def _prompt_bool(text, default):
 
 def _load_tests():
     if not TESTS_FILE.exists():
-        return {"tests": []}
+        return {"default_test_set": "default", "test_sets": {"default": []}}
     try:
         return json.loads(TESTS_FILE.read_text(encoding="utf-8"))
     except Exception:
-        return {"tests": []}
+        return {"default_test_set": "default", "test_sets": {"default": []}}
 
 
 def _save_tests(payload):
     TESTS_FILE.parent.mkdir(parents=True, exist_ok=True)
     TESTS_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _ensure_test_sets(payload):
+    if not isinstance(payload, dict):
+        payload = {}
+    test_sets = payload.get("test_sets")
+    if isinstance(test_sets, dict):
+        if "default_test_set" not in payload:
+            payload["default_test_set"] = "default"
+        return payload
+    tests = payload.get("tests", [])
+    if not isinstance(tests, list):
+        tests = []
+    payload = {
+        "default_test_set": payload.get("default_test_set", "default"),
+        "test_sets": {"default": tests},
+    }
+    return payload
 
 
 def _pick_type():
@@ -178,8 +196,12 @@ def _build_joystick():
 
 def main():
     print("Bringup Test Wizard")
-    payload = _load_tests()
-    tests = payload.get("tests", [])
+    payload = _ensure_test_sets(_load_tests())
+    set_name = payload.get("default_test_set") or "default"
+    test_sets = payload.get("test_sets", {})
+    if not isinstance(test_sets, dict):
+        test_sets = {}
+    tests = test_sets.get(set_name, [])
     if not isinstance(tests, list):
         tests = []
     test_type = _pick_type()
@@ -191,7 +213,8 @@ def main():
         print("Unknown test type.")
         return 1
     tests.append(entry)
-    payload["tests"] = tests
+    test_sets[set_name] = tests
+    payload["test_sets"] = test_sets
     _save_tests(payload)
     print(f"Wrote {TESTS_FILE}")
     return 0

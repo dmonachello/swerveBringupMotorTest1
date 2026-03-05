@@ -11,7 +11,7 @@ This document focuses on robot-side tests and the PC CAN tool usage needed to va
 Purpose: ensure the robot and tooling are ready before testing.
 
 - Robot code deployed with the correct `bringup_profiles.json` and `bringup_tests.json`.
-- Optional: override tests at runtime with `--bringup-tests=bringup_tests_smoke.json`.
+- Optional: select a different test set by changing `default_test_set` in `bringup_tests.json`.
 - Xbox controller connected and mapped.
 - CAN devices powered and on the bus.
 - (Optional) PC CAN tool running if you want NetworkTables diagnostics.
@@ -36,7 +36,7 @@ Purpose: list the standard controller bindings used during test procedures.
 - `X`: dump CAN report JSON
 
 Controller config:
-- File: `src/main/deploy/bringup_controllers.json`
+- File: `src/main/deploy/bringup_bindings.json` (controllers + bindings).
 - Add more controllers by appending entries (currently Xbox only).
 Binding config:
 - File: `src/main/deploy/bringup_bindings.json`
@@ -47,7 +47,8 @@ Purpose: explain how bringup tests are defined and selected.
 
 File: `src/main/deploy/bringup_tests.json`
 Override:
-- `--bringup-tests=bringup_tests_smoke.json` (loads from deploy dir).
+- Set `"default_test_set"` inside `bringup_tests.json` to choose the active set.
+- Optional: `--bringup-tests=...` loads an alternate JSON file.
 
 Helper:
 - `tools/run_bringup_test_wizard.bat` launches an interactive wizard to append a test entry.
@@ -64,6 +65,17 @@ Each test entry includes:
 - `time`: optional object with `timeoutSec` and `onTimeout` (`pass` or `fail`).
 - `limitSwitch`: optional object with `enabled` and `onHit` (`pass` or `fail`).
 - `hold`: optional object with `enabled` and `onRelease` (`pass` or `fail`).
+
+Test set wrapper:
+```json
+{
+  "default_test_set": "default",
+  "test_sets": {
+    "default": [ { "...": "..." } ],
+    "smoke": [ { "...": "..." } ]
+  }
+}
+```
 
 Example (rotation + time + limit):
 ```json

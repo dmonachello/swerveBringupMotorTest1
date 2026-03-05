@@ -1,147 +1,216 @@
 {
-  "tests": [
-    {
-      "type": "composite",
-      "name": "Rotation only (internal)",
-      "enabled": false,
-      "duty": 0.2,
-      "rotation": {
-        "limitRot": 5.0,
-        "encoderKey": "internal",
-        "encoderMotorIndex": 0
+  "default_test_set": "default",
+  "test_sets": {
+    "default": [
+      {
+        "type": "composite",
+        "name": "Rotation only (internal)",
+        "enabled": false,
+        "duty": 0.2,
+        "rotation": {
+          "limitRot": 5.0,
+          "encoderKey": "internal",
+          "encoderMotorIndex": 0
+        },
+        "motorKeys": [
+          "REV:NEO:10"
+        ]
       },
-      "motorKeys": [
-        "REV:NEO:10"
-      ]
-    },
-    {
-      "type": "composite",
-      "name": "Rotation + Time",
-      "enabled": false,
-      "duty": 0.2,
-      "rotation": {
-        "limitRot": 10.0,
-        "encoderKey": "CTRE:CANCoder:12",
-        "encoderMotorIndex": 0
+      {
+        "type": "composite",
+        "name": "Rotation + Time",
+        "enabled": false,
+        "duty": 0.2,
+        "rotation": {
+          "limitRot": 10.0,
+          "encoderKey": "CTRE:CANCoder:12",
+          "encoderMotorIndex": 0
+        },
+        "time": {
+          "timeoutSec": 2.0,
+          "onTimeout": "fail"
+        },
+        "motorKeys": [
+          "CTRE:FALCON:11"
+        ]
       },
-      "time": {
-        "timeoutSec": 2.0,
-        "onTimeout": "fail"
+      {
+        "type": "composite",
+        "name": "Time only",
+        "enabled": false,
+        "duty": 0.3,
+        "time": {
+          "timeoutSec": 1.5,
+          "onTimeout": "pass"
+        },
+        "motorKeys": [
+          "REV:FLEX:11"
+        ]
       },
-      "motorKeys": [
-        "CTRE:FALCON:11"
-      ]
-    },
-    {
-      "type": "composite",
-      "name": "Time only",
-      "enabled": false,
-      "duty": 0.3,
-      "time": {
-        "timeoutSec": 1.5,
-        "onTimeout": "pass"
+      {
+        "type": "composite",
+        "name": "Nudge (0.2 for 0.5s)",
+        "enabled": false,
+        "duty": 0.2,
+        "time": {
+          "timeoutSec": 0.5,
+          "onTimeout": "pass"
+        },
+        "motorKeys": [
+          "REV:NEO:10"
+        ]
       },
-      "motorKeys": [
-        "REV:FLEX:11"
-      ]
-    },
-    {
-      "type": "composite",
-      "name": "Nudge (0.2 for 0.5s)",
-      "enabled": false,
-      "duty": 0.2,
-      "time": {
-        "timeoutSec": 0.5,
-        "onTimeout": "pass"
+      {
+        "type": "composite",
+        "name": "Limit switch only",
+        "enabled": false,
+        "duty": 0.2,
+        "limitSwitch": {
+          "enabled": true,
+          "onHit": "pass"
+        },
+        "motorKeys": [
+          "REV:NEO:10"
+        ]
       },
-      "motorKeys": [
-        "REV:NEO:10"
-      ]
-    },
-    {
-      "type": "composite",
-      "name": "Limit switch only",
-      "enabled": false,
-      "duty": 0.2,
-      "limitSwitch": {
+      {
+        "type": "composite",
+        "name": "Hold to run",
+        "enabled": false,
+        "duty": 0.2,
+        "hold": {
+          "enabled": true,
+          "onRelease": "pass"
+        },
+        "motorKeys": [
+          "CTRE:KRAKEN:11"
+        ]
+      },
+      {
+        "type": "composite",
+        "name": "Rotation + Time + Limit",
+        "enabled": false,
+        "duty": 0.2,
+        "rotation": {
+          "limitRot": 10.0,
+          "encoderKey": "internal",
+          "encoderMotorIndex": 0
+        },
+        "time": {
+          "timeoutSec": 2.0,
+          "onTimeout": "fail"
+        },
+        "limitSwitch": {
+          "enabled": true,
+          "onHit": "pass"
+        },
+        "motorKeys": [
+          "CTRE:KRAKEN:11"
+        ]
+      },
+      {
+        "type": "composite",
+        "name": "All checks",
+        "enabled": false,
+        "duty": 0.2,
+        "rotation": {
+          "limitRot": 8.0,
+          "encoderKey": "internal",
+          "encoderMotorIndex": 0
+        },
+        "time": {
+          "timeoutSec": 3.0,
+          "onTimeout": "pass"
+        },
+        "limitSwitch": {
+          "enabled": true,
+          "onHit": "pass"
+        },
+        "hold": {
+          "enabled": true,
+          "onRelease": "pass"
+        },
+        "motorKeys": [
+          "CTRE:FALCON:11"
+        ]
+      },
+      {
+        "type": "joystick",
+        "name": "Joystick motor (primary axis)",
+        "enabled": false,
+        "motorKeys": [
+          "REV:NEO:10",
+          "CTRE:FALCON:11"
+        ],
+        "deadband": 0.12,
+        "inputAxis": "primary"
+      }
+    ],
+    "smoke": [
+      {
+        "type": "composite",
+        "name": "Rotation only (internal)",
         "enabled": true,
-        "onHit": "pass"
+        "duty": 0.2,
+        "rotation": {
+          "limitRot": 2.0,
+          "encoderKey": "internal",
+          "encoderMotorIndex": 0
+        },
+        "motorKeys": [
+          "REV:NEO:10"
+        ]
       },
-      "motorKeys": [
-        "REV:NEO:10"
-      ]
-    },
-    {
-      "type": "composite",
-      "name": "Hold to run",
-      "enabled": false,
-      "duty": 0.2,
-      "hold": {
+      {
+        "type": "composite",
+        "name": "Time only",
         "enabled": true,
-        "onRelease": "pass"
+        "duty": 0.3,
+        "time": {
+          "timeoutSec": 1.5,
+          "onTimeout": "pass"
+        },
+        "motorKeys": [
+          "REV:NEO:25"
+        ]
       },
-      "motorKeys": [
-        "CTRE:KRAKEN:11"
-      ]
-    },
-    {
-      "type": "composite",
-      "name": "Rotation + Time + Limit",
-      "enabled": false,
-      "duty": 0.2,
-      "rotation": {
-        "limitRot": 10.0,
-        "encoderKey": "internal",
-        "encoderMotorIndex": 0
-      },
-      "time": {
-        "timeoutSec": 2.0,
-        "onTimeout": "fail"
-      },
-      "limitSwitch": {
+      {
+        "type": "composite",
+        "name": "Nudge (0.2 for 0.5s)",
         "enabled": true,
-        "onHit": "pass"
+        "duty": 0.2,
+        "time": {
+          "timeoutSec": 0.5,
+          "onTimeout": "pass"
+        },
+        "motorKeys": [
+          "REV:NEO:10"
+        ]
       },
-      "motorKeys": [
-        "CTRE:KRAKEN:11"
-      ]
-    },
-    {
-      "type": "composite",
-      "name": "All checks",
-      "enabled": false,
-      "duty": 0.2,
-      "rotation": {
-        "limitRot": 8.0,
-        "encoderKey": "internal",
-        "encoderMotorIndex": 0
-      },
-      "time": {
-        "timeoutSec": 3.0,
-        "onTimeout": "pass"
-      },
-      "limitSwitch": {
+      {
+        "type": "composite",
+        "name": "Hold to run",
         "enabled": true,
-        "onHit": "pass"
+        "duty": 0.2,
+        "hold": {
+          "enabled": true,
+          "onRelease": "pass"
+        },
+        "motorKeys": [
+          "REV:NEO:10"
+        ]
       },
-      "hold": {
+      {
+        "type": "joystick",
+        "name": "Joystick motor (primary axis)",
         "enabled": true,
-        "onRelease": "pass"
-      },
-      "motorKeys": [
-        "CTRE:FALCON:11"
-      ]
-    },
-    {
-      "type": "joystick",
-      "name": "Joystick motor (primary axis)",
-      "enabled": false,
-      "motorKeys": [
-        "REV:NEO:10",
-        "CTRE:FALCON:11"
-      ],
-      "deadband": 0.12,
-      "inputAxis": "primary"
-    }
-  ]
+        "motorKeys": [
+          "REV:NEO:10",
+          "REV:NEO:25"
+        ],
+        "deadband": 0.12,
+        "inputAxis": "primary"
+      }
+    ]
+  }
 }

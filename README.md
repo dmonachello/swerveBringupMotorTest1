@@ -253,6 +253,10 @@ Reverse engineering captures:
 2. Copy `tools/wireshark/frc_can_dissector.lua` to:
    - `%APPDATA%\Wireshark\plugins\frc_can_dissector.lua`
 3. Restart Wireshark.
+4. Live capture interface (Windows named pipe):
+   - Start Wireshark with `-k -i \\.\pipe\FRC_CAN`
+   - Run the PC tool with `--pcap-pipe FRC_CAN`
+   - More detail lives in `tools/README_CAN_NT.md` (CAN bridge CLI) and `ARCHITECTURE.md` (data flow).
 ### Firmware / Diagnostics Tools
 - CTRE Tuner X (Phoenix) for firmware updates and Signal Logger (hoot logs).
 - REV Hardware Client for SPARK MAX/Flex firmware/config and diagnostics.
@@ -327,9 +331,9 @@ If you add new motors, update `motor_specs.json` and optionally set `"motor"` pe
 ## Controller Bindings
 Robot and RobotV2 share the same bindings, grouped by purpose.
 Input controller config:
-- File: `src/main/deploy/bringup_controllers.json`
-- Default uses two Xbox controllers on ports 0 and 1.
-- Additional controllers can be added later by extending controller types.
+- File: `src/main/deploy/bringup_bindings.json` (controllers + bindings in one file).
+- Default uses two Xbox controllers on ports 0 and 1 with roles `primary` and `secondary`.
+- Additional controller types can be added later by extending controller types.
 Binding config:
 - File: `src/main/deploy/bringup_bindings.json`
 - Controls button/axis to command mapping (printed by the help command).
@@ -469,10 +473,22 @@ Purpose: run manual, data-driven tests defined in JSON (including encoder rotati
 
 Test definitions:
 - File: `src/main/deploy/bringup_tests.json`
-- Override at runtime with `--bringup-tests=bringup_tests_smoke.json` (or another JSON in deploy).
+- Select active set with `default_test_set` inside `bringup_tests.json`.
+- Override at runtime with `--bringup-tests=...` (loads another JSON file from deploy or disk).
 - Helper: `tools/run_bringup_test_wizard.bat` (interactive test entry wizard)
  - Template helper: `tools/run_test_template_wizard.bat` (copy and customize a template)
-- Each entry is a test object with a `type` and configuration fields.
+- Test sets live under `test_sets` and each entry is a test object with a `type` and configuration fields.
+
+Test set wrapper:
+```json
+{
+  "default_test_set": "default",
+  "test_sets": {
+    "default": [ { "...": "..." } ],
+    "smoke": [ { "...": "..." } ]
+  }
+}
+```
 
 Current test types:
 - `composite`: run one motor with multiple checks (rotation, time, limit switch).

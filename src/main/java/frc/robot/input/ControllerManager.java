@@ -16,6 +16,7 @@ import java.util.List;
 
 public final class ControllerManager {
   private static final String CONTROLLERS_FILE = "bringup_controllers.json";
+  private static final String BINDINGS_FILE = "bringup_bindings.json";
   private static final Gson GSON = new Gson();
 
   private final List<ControllerSpec> specs = new ArrayList<>();
@@ -39,21 +40,17 @@ public final class ControllerManager {
 
   private void loadSpecs() {
     specs.clear();
-    Path path = resolvePath();
-    if (path == null || !Files.exists(path)) {
-      addDefaultSpecs();
+    List<ControllerSpec> fromBindings = loadControllersFromBindings();
+    if (!fromBindings.isEmpty()) {
+      specs.addAll(fromBindings);
       return;
     }
-    try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-      ControllerRoot root = GSON.fromJson(reader, ControllerRoot.class);
-      if (root == null || root.controllers == null || root.controllers.isEmpty()) {
-        addDefaultSpecs();
-        return;
-      }
-      specs.addAll(root.controllers);
-    } catch (IOException | JsonParseException ex) {
-      addDefaultSpecs();
+    List<ControllerSpec> fromControllers = loadControllersFromFile();
+    if (!fromControllers.isEmpty()) {
+      specs.addAll(fromControllers);
+      return;
     }
+    addDefaultSpecs();
   }
 
   private void addDefaultSpecs() {
@@ -81,23 +78,59 @@ public final class ControllerManager {
     }
   }
 
-  private Path resolvePath() {
+  private List<ControllerSpec> loadControllersFromBindings() {
+    Path path = resolvePath(BINDINGS_FILE);
+    if (path == null || !Files.exists(path)) {
+      return Collections.emptyList();
+    }
+    try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+      BindingRoot root = GSON.fromJson(reader, BindingRoot.class);
+      if (root == null || root.controllers == null || root.controllers.isEmpty()) {
+        return Collections.emptyList();
+      }
+      return new ArrayList<>(root.controllers);
+    } catch (IOException | JsonParseException ex) {
+      return Collections.emptyList();
+    }
+  }
+
+  private List<ControllerSpec> loadControllersFromFile() {
+    Path path = resolvePath(CONTROLLERS_FILE);
+    if (path == null || !Files.exists(path)) {
+      return Collections.emptyList();
+    }
+    try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+      ControllerRoot root = GSON.fromJson(reader, ControllerRoot.class);
+      if (root == null || root.controllers == null || root.controllers.isEmpty()) {
+        return Collections.emptyList();
+      }
+      return new ArrayList<>(root.controllers);
+    } catch (IOException | JsonParseException ex) {
+      return Collections.emptyList();
+    }
+  }
+
+  private Path resolvePath(String fileName) {
     try {
-      Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(CONTROLLERS_FILE);
+      Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(fileName);
       if (Files.exists(deployPath)) {
         return deployPath;
       }
     } catch (Exception ex) {
       // Fall through to local dev path.
     }
-    Path devPath = Paths.get("src", "main", "deploy", CONTROLLERS_FILE);
+    Path devPath = Paths.get("src", "main", "deploy", fileName);
     if (Files.exists(devPath)) {
       return devPath;
     }
-    return Paths.get(CONTROLLERS_FILE);
+    return Paths.get(fileName);
   }
 
   private static final class ControllerRoot {
+    List<ControllerSpec> controllers = Collections.emptyList();
+  }
+
+  private static final class BindingRoot {
     List<ControllerSpec> controllers = Collections.emptyList();
   }
 }

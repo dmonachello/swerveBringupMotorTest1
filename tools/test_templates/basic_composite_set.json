@@ -1,70 +1,73 @@
 {
-  "tests": [
-    {
-      "type": "composite",
-      "name": "Rotation only (internal)",
-      "enabled": false,
-      "duty": 0.2,
-      "rotation": {
-        "limitRot": 5.0,
-        "encoderKey": "internal",
-        "encoderMotorIndex": 0
+  "default_test_set": "default",
+  "test_sets": {
+    "default": [
+      {
+        "type": "composite",
+        "name": "Rotation only (internal)",
+        "enabled": false,
+        "duty": 0.2,
+        "rotation": {
+          "limitRot": 5.0,
+          "encoderKey": "internal",
+          "encoderMotorIndex": 0
+        },
+        "motorKeys": [
+          "REV:NEO:10"
+        ]
       },
-      "motorKeys": [
-        "REV:NEO:10"
-      ]
-    },
-    {
-      "type": "composite",
-      "name": "Time only",
-      "enabled": false,
-      "duty": 0.2,
-      "time": {
-        "timeoutSec": 1.5,
-        "onTimeout": "pass"
+      {
+        "type": "composite",
+        "name": "Time only",
+        "enabled": false,
+        "duty": 0.2,
+        "time": {
+          "timeoutSec": 1.5,
+          "onTimeout": "pass"
+        },
+        "motorKeys": [
+          "REV:NEO:10"
+        ]
       },
-      "motorKeys": [
-        "REV:NEO:10"
-      ]
-    },
-    {
-      "type": "composite",
-      "name": "Limit switch only",
-      "enabled": false,
-      "duty": 0.2,
-      "limitSwitch": {
-        "enabled": true,
-        "onHit": "pass"
+      {
+        "type": "composite",
+        "name": "Limit switch only",
+        "enabled": false,
+        "duty": 0.2,
+        "limitSwitch": {
+          "enabled": true,
+          "onHit": "pass"
+        },
+        "motorKeys": [
+          "REV:NEO:10"
+        ]
       },
-      "motorKeys": [
-        "REV:NEO:10"
-      ]
-    },
-    {
-      "type": "composite",
-      "name": "All checks",
-      "enabled": false,
-      "duty": 0.2,
-      "rotation": {
-        "limitRot": 5.0,
-        "encoderKey": "internal",
-        "encoderMotorIndex": 0
-      },
-      "time": {
-        "timeoutSec": 2.0,
-        "onTimeout": "pass"
-      },
-      "limitSwitch": {
-        "enabled": true,
-        "onHit": "pass"
-      },
-      "hold": {
-        "enabled": true,
-        "onRelease": "pass"
-      },
-      "motorKeys": [
-        "REV:NEO:10"
-      ]
-    }
-  ]
+      {
+        "type": "composite",
+        "name": "All checks",
+        "enabled": false,
+        "duty": 0.2,
+        "rotation": {
+          "limitRot": 5.0,
+          "encoderKey": "internal",
+          "encoderMotorIndex": 0
+        },
+        "time": {
+          "timeoutSec": 2.0,
+          "onTimeout": "pass"
+        },
+        "limitSwitch": {
+          "enabled": true,
+          "onHit": "pass"
+        },
+        "hold": {
+          "enabled": true,
+          "onRelease": "pass"
+        },
+        "motorKeys": [
+          "REV:NEO:10"
+        ]
+      }
+    ]
+  }
 }
