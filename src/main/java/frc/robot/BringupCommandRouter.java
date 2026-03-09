@@ -10,6 +10,8 @@ public final class BringupCommandRouter {
       BringupCore core,
       DiagnosticsReporter diagnostics,
       Runnable printBindings,
+      Runnable printTestsInfo,
+      Runnable printTestsOverview,
       boolean runHeld) {
 
     if (bind.pressed("addMotor")) {
@@ -30,12 +32,21 @@ public final class BringupCommandRouter {
 
     if (bind.pressed("selectTestPrev")) {
       core.selectPrevBringupTest();
+      if (printTestsOverview != null) {
+        printTestsOverview.run();
+      }
     }
     if (bind.pressed("selectTestNext")) {
       core.selectNextBringupTest();
+      if (printTestsOverview != null) {
+        printTestsOverview.run();
+      }
     }
     if (bind.pressed("toggleTest")) {
       core.toggleSelectedBringupTestEnabled();
+      if (printTestsOverview != null) {
+        printTestsOverview.run();
+      }
     }
     if (bind.pressed("runTest")) {
       BringupPrinter.enqueue("Command: runTest");
@@ -48,6 +59,12 @@ public final class BringupCommandRouter {
 
     if (bind.pressed("printBindings") && printBindings != null) {
       printBindings.run();
+    }
+    if (bind.pressed("printTestsInfo") && printTestsInfo != null) {
+      printTestsInfo.run();
+    }
+    if (bind.pressed("printTestsOverview") && printTestsOverview != null) {
+      printTestsOverview.run();
     }
 
     if (diagnostics != null) {

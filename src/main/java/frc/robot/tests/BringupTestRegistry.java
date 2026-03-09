@@ -4,12 +4,15 @@ import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.google.gson.annotations.SerializedName;
 import edu.wpi.first.wpilibj.Filesystem;
+import java.io.InputStream;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -58,6 +61,42 @@ public final class BringupTestRegistry {
     } else {
       overrideTestsPath = path.trim();
     }
+  }
+
+  public static TestsInfo getTestsInfo() {
+    TestsInfo info = new TestsInfo();
+    info.overridePath = overrideTestsPath;
+    Path path = resolveTestsPath();
+    info.path = path;
+    if (path == null) {
+      return info;
+    }
+    info.exists = Files.exists(path);
+    if (!info.exists) {
+      return info;
+    }
+    try {
+      info.sizeBytes = Files.size(path);
+      info.lastModifiedMs = Files.getLastModifiedTime(path).toMillis();
+      info.sha256 = hashFile(path);
+    } catch (IOException ex) {
+      info.readError = ex.getMessage();
+    }
+    TestRootLoad root = readRoot(path);
+    if (root != null && root.testSets != null && !root.testSets.isEmpty()) {
+      info.usingTestSets = true;
+      info.activeTestSetName = resolveActiveSetName(root);
+      info.defaultTestSetName = root.defaultTestSet;
+      info.testSetCount = root.testSets.size();
+      List<TestEntry> entries = root.testSets.get(info.activeTestSetName);
+      if (entries != null) {
+        info.testCount = entries.size();
+      }
+    } else if (root != null && root.tests != null) {
+      info.usingTestSets = false;
+      info.testCount = root.tests.size();
+    }
+    return info;
   }
 
   public static boolean saveTests(List<BringupTest> tests) {
@@ -318,6 +357,45 @@ public final class BringupTestRegistry {
     } catch (Exception ex) {
       return null;
     }
+  }
+
+  private static String hashFile(Path path) throws IOException {
+    MessageDigest digest;
+    try {
+      digest = MessageDigest.getInstance("SHA-256");
+    } catch (NoSuchAlgorithmException ex) {
+      return "unavailable";
+    }
+    try (InputStream input = Files.newInputStream(path)) {
+      byte[] buffer = new byte[8192];
+      int read;
+      while ((read = input.read(buffer)) > 0) {
+        digest.update(buffer, 0, read);
+      }
+    }
+    byte[] hash = digest.digest();
+    StringBuilder sb = new StringBuilder(hash.length * 2);
+    for (byte b : hash) {
+      sb.append(String.format("%02x", b));
+    }
+    return sb.toString();
+  }
+
+  public static final class TestsInfo {
+    public Path path;
+    public String overridePath;
+    public boolean exists;
+    public boolean usingTestSets;
+    public String activeTestSetName;
+    public String defaultTestSetName;
+    public int testSetCount;
+    public int testCount;
+    public long sizeBytes;
+    public long lastModifiedMs;
+    public String sha256;
+    public String readError;
+
+    private TestsInfo() {}
   }
 
   private static final class TestRootLoad {

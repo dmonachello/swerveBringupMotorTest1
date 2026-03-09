@@ -8,10 +8,12 @@ import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
 import edu.wpi.first.wpilibj.DriverStation;
 import java.util.ArrayList;
 
+import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.ControllerManager;
 import frc.robot.tests.BringupTestRegistry;
+import java.time.Instant;
 
 // Primary bringup robot program with CAN diagnostics, JSON reporting, and controller bindings.
 // This class wires controller inputs to BringupCore and DiagnosticsReporter behaviors.
@@ -28,21 +30,22 @@ public class RobotV2 extends TimedRobot {
   private final XboxController controller2 = controllers.getXbox(1);
   private final BindingsManager bindings = new BindingsManager();
   // Local bringup behaviors for device creation and health.
-  private BringupCore core = new BringupCore();
+  private BringupCore core;
   // Samples roboRIO CAN controller health.
   private final CanBusHealth canHealth = new CanBusHealth();
   // Builds reports, JSON snapshots, and optional NT telemetry.
-  private final DiagnosticsReporter diagnostics =
-      new DiagnosticsReporter(
-          core,
-          canHealth,
-          NetworkTableInstance.getDefault().getTable("bringup").getSubTable("diag"));
+  private final NetworkTable diagTable =
+      NetworkTableInstance.getDefault().getTable("bringup").getSubTable("diag");
+  private DiagnosticsReporter diagnostics;
+  private final NetworkTable testsTable =
+      NetworkTableInstance.getDefault().getTable("bringup").getSubTable("tests");
   // Edge-detect state for buttons that should fire once per press.
   private final EdgeTrigger edge = new EdgeTrigger();
   // Disable dashboard chatter by default to reduce console lag.
   private boolean dashboardUpdatesEnabled = false;
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
   private long lastStartupPrintMs = 0L;
+  private int lastTestsCount = 0;
 
   @Override
   public void robotInit() {
@@ -51,7 +54,7 @@ public class RobotV2 extends TimedRobot {
     String testsOverride = BringupUtil.extractBringupTestsFromCommand();
     BringupTestRegistry.setOverrideTestsPath(testsOverride);
     core = new BringupCore();
-    diagnostics.setCore(core);
+    diagnostics = new DiagnosticsReporter(core, canHealth, diagTable);
     applyDashboardUpdateState();
     // Print bindings and validate IDs once at startup.
     printStartupInfo();
@@ -62,23 +65,30 @@ public class RobotV2 extends TimedRobot {
   @Override
   public void teleopInit() {
     // Reset state whenever teleop is entered.
-    core.resetState();
-    diagnostics.resetState();
+    core.resetState("teleopInit");
+    if (diagnostics != null) {
+      diagnostics.resetState();
+    }
     edge.reset();
   }
 
   @Override
   public void disabledInit() {
     // Keep behavior symmetric in disabled and teleop to avoid stale state.
-    core.resetState();
-    diagnostics.resetState();
+    core.disableAllBringupTests(true);
+    core.resetState("disabledInit");
+    if (diagnostics != null) {
+      diagnostics.resetState();
+    }
     edge.reset();
   }
 
   @Override
   public void robotPeriodic() {
     // Sample and publish CAN health every loop.
-    diagnostics.update();
+    if (diagnostics != null) {
+      diagnostics.update();
+    }
     frc.robot.diag.app.AppStatusTracker.recordLoop();
   }
 
@@ -97,17 +107,21 @@ public class RobotV2 extends TimedRobot {
         core,
         diagnostics,
         this::printStartupInfo,
+        this::printTestsInfo,
+        this::printTestsOverview,
         runHeld);
 
     // --- Profile switching ---
     if (bind.pressed("profileToggle")) {
       BringupUtil.toggleCanProfile();
-      core.resetState();
+      core.resetState("profileToggle");
       core = new BringupCore();
-      diagnostics.setCore(core);
-      diagnostics.resetState();
+      if (diagnostics != null) {
+        diagnostics.setCore(core);
+        diagnostics.resetState();
+      }
       validateCanIds();
-      printStartupInfo();
+      printProfileInfo();
     }
 
     // --- Diagnostics / reporting ---
@@ -209,6 +223,111 @@ public class RobotV2 extends TimedRobot {
     ReportTextUtil.appendLine(sb, "FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
     ReportTextUtil.appendLine(sb, "=========================");
     BringupPrinter.enqueueChunked(sb.toString(), 4);
+  }
+
+  private void printProfileInfo() {
+    long nowMs = System.currentTimeMillis();
+    if (nowMs - lastStartupPrintMs < MIN_PRINT_INTERVAL_MS) {
+      return;
+    }
+    lastStartupPrintMs = nowMs;
+    StringBuilder sb = new StringBuilder(256);
+    ReportTextUtil.appendLine(sb, "=== Profile Updated ===");
+    ReportTextUtil.appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
+    ReportTextUtil.appendLine(sb, "NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
+    ReportTextUtil.appendLine(sb, "NEO 550 CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO550_CAN_IDS));
+    ReportTextUtil.appendLine(sb, "FLEX CAN IDs: " + BringupUtil.joinIds(BringupUtil.FLEX_CAN_IDS));
+    ReportTextUtil.appendLine(sb, "KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
+    ReportTextUtil.appendLine(sb, "FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
+    ReportTextUtil.appendLine(sb, "========================");
+    BringupPrinter.enqueueChunked(sb.toString(), 4);
+  }
+
+  private void printTestsInfo() {
+    BringupTestRegistry.TestsInfo info = BringupTestRegistry.getTestsInfo();
+    StringBuilder sb = new StringBuilder(256);
+    ReportTextUtil.appendLine(sb, "=== Bringup Tests Info ===");
+    ReportTextUtil.appendLine(
+        sb,
+        "Override path: " + (info.overridePath != null ? info.overridePath : "(none)"));
+    ReportTextUtil.appendLine(
+        sb,
+        "Resolved path: " + (info.path != null ? info.path.toString() : "(none)"));
+    ReportTextUtil.appendLine(sb, "Exists: " + info.exists);
+    if (info.exists) {
+      if (info.sizeBytes > 0) {
+        ReportTextUtil.appendLine(sb, "Size: " + info.sizeBytes + " bytes");
+      }
+      if (info.lastModifiedMs > 0) {
+        ReportTextUtil.appendLine(sb, "Last modified: " + Instant.ofEpochMilli(info.lastModifiedMs));
+      }
+      if (info.sha256 != null && !info.sha256.isBlank()) {
+        ReportTextUtil.appendLine(sb, "SHA-256: " + info.sha256);
+      }
+      if (info.readError != null) {
+        ReportTextUtil.appendLine(sb, "Read warning: " + info.readError);
+      }
+      if (info.usingTestSets) {
+        String active = info.activeTestSetName != null ? info.activeTestSetName : "(none)";
+        String def = info.defaultTestSetName != null ? info.defaultTestSetName : "(none)";
+        ReportTextUtil.appendLine(
+            sb,
+            "Test sets: yes (active=" + active + ", default=" + def + ", count=" + info.testSetCount + ")");
+      } else {
+        ReportTextUtil.appendLine(sb, "Test sets: no");
+      }
+      if (info.testCount > 0) {
+        ReportTextUtil.appendLine(sb, "Test count: " + info.testCount);
+      }
+    }
+    ReportTextUtil.appendLine(sb, "==========================");
+    BringupPrinter.enqueueChunked(sb.toString(), 4);
+  }
+
+  private void printTestsOverview() {
+    BringupCore.TestsOverview overview = core.buildTestsOverview();
+    String text = core.formatTestsOverview(overview);
+    BringupPrinter.enqueueChunked(text, 6);
+    publishTestsOverview(overview);
+  }
+
+  private void publishTestsOverview(BringupCore.TestsOverview overview) {
+    if (overview == null) {
+      return;
+    }
+    testsTable.getEntry("activeSet")
+        .setString(overview.activeTestSet != null ? overview.activeTestSet : "");
+    testsTable.getEntry("defaultSet")
+        .setString(overview.defaultTestSet != null ? overview.defaultTestSet : "");
+    testsTable.getEntry("usingTestSets").setBoolean(overview.usingTestSets);
+    testsTable.getEntry("totalCount").setNumber(overview.totalCount);
+    testsTable.getEntry("enabledCount").setNumber(overview.enabledCount);
+    NetworkTable rowsTable = testsTable.getSubTable("rows");
+    int count = overview.rows.size();
+    for (int i = 0; i < count; i++) {
+      BringupCore.TestRow row = overview.rows.get(i);
+      NetworkTable rowTable = rowsTable.getSubTable(String.valueOf(i));
+      rowTable.getEntry("index").setNumber(row.index);
+      rowTable.getEntry("name").setString(row.name != null ? row.name : "");
+      rowTable.getEntry("enabled").setBoolean(row.enabled);
+      rowTable.getEntry("selected").setBoolean(row.selected);
+      rowTable.getEntry("type").setString(row.type != null ? row.type : "");
+      rowTable.getEntry("status").setString(row.status != null ? row.status : "");
+      String motors =
+          (row.motors == null || row.motors.isEmpty()) ? "" : String.join(", ", row.motors);
+      rowTable.getEntry("motors").setString(motors);
+    }
+    for (int i = count; i < lastTestsCount; i++) {
+      NetworkTable rowTable = rowsTable.getSubTable(String.valueOf(i));
+      rowTable.getEntry("index").setNumber(-1);
+      rowTable.getEntry("name").setString("");
+      rowTable.getEntry("enabled").setBoolean(false);
+      rowTable.getEntry("selected").setBoolean(false);
+      rowTable.getEntry("type").setString("");
+      rowTable.getEntry("status").setString("");
+      rowTable.getEntry("motors").setString("");
+    }
+    lastTestsCount = count;
   }
 
   //@SuppressWarnings("removal")

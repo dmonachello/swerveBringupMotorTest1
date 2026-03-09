@@ -14,6 +14,8 @@ import frc.robot.tests.BringupTest;
 import frc.robot.tests.BringupTestContext;
 import frc.robot.tests.BringupTestRegistry;
 import frc.robot.tests.BringupTestResult;
+import frc.robot.tests.CompositeTest;
+import frc.robot.tests.JoystickTest;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -45,6 +47,8 @@ public final class BringupCore {
   private int selectedTestIndex = -1;
   private BringupTest activeTest = null;
   private boolean runAllActive = false;
+  private final List<BringupTest> runAllQueue = new ArrayList<>();
+  private int runAllIndex = 0;
   private final BringupTestContext testContext;
   private double primaryInput = 0.0;
   private double secondaryInput = 0.0;
@@ -138,6 +142,10 @@ public final class BringupCore {
 
   // Stop all outputs, close devices, and reset internal state.
   public void resetState() {
+    resetState("reset");
+  }
+
+  public void resetState(String reason) {
     if (activeTest != null && activeTest.isRunning()) {
       activeTest.stop(testContext);
     }
@@ -157,7 +165,9 @@ public final class BringupCore {
     prevHealth = false;
     prevCANCoder = false;
 
-    BringupPrinter.enqueue("=== Bringup reset: no motors instantiated ===");
+    String label = reason != null && !reason.isBlank() ? reason : "reset";
+    BringupPrinter.enqueue(
+        "=== Bringup reset (" + label + " @ " + System.currentTimeMillis() + "): no motors instantiated ===");
   }
 
   public void runNextNonMotorTest() {
@@ -255,8 +265,10 @@ public final class BringupCore {
           "Test result: " + activeTest.getName() + " = " + result + " (" + activeTest.getStatus() + ")");
       activeTest = null;
       if (runAllActive) {
-        if (!startNextEnabledSelectedTest()) {
+        if (!startNextRunAllTest()) {
           runAllActive = false;
+          runAllQueue.clear();
+          runAllIndex = 0;
           BringupPrinter.enqueue("Run-all complete.");
         }
       }
@@ -272,9 +284,16 @@ public final class BringupCore {
       BringupPrinter.enqueue("Test already running: " + activeTest.getName());
       return;
     }
+    buildRunAllQueue();
+    if (runAllQueue.isEmpty()) {
+      BringupPrinter.enqueue("No enabled bringup tests.");
+      return;
+    }
     runAllActive = true;
-    if (!startNextEnabledSelectedTest()) {
+    if (!startNextRunAllTest()) {
       runAllActive = false;
+      runAllQueue.clear();
+      runAllIndex = 0;
       BringupPrinter.enqueue("No enabled bringup tests.");
     }
   }
@@ -322,22 +341,133 @@ public final class BringupCore {
     }
   }
 
-  private boolean startNextEnabledSelectedTest() {
-    if (selectableTests.isEmpty()) {
-      return false;
+  public void disableAllBringupTests(boolean persist) {
+    if (bringupTests.isEmpty()) {
+      BringupPrinter.enqueue("No bringup tests available.");
+      return;
     }
-    if (selectedTestIndex < 0) {
-      selectedTestIndex = 0;
-    } else {
-      selectedTestIndex = selectedTestIndex % selectableTests.size();
+    int changed = 0;
+    for (BringupTest test : bringupTests) {
+      if (test != null && test.isEnabled()) {
+        test.setEnabled(false);
+        changed++;
+      }
     }
-    int attempts = selectableTests.size();
-    while (attempts-- > 0) {
-      BringupTest test = selectableTests.get(selectedTestIndex);
-      selectedTestIndex = (selectedTestIndex + 1) % selectableTests.size();
-      if (!test.isEnabled()) {
+    BringupPrinter.enqueue("Disabled bringup tests: " + changed);
+    if (persist) {
+      boolean saved = BringupTestRegistry.saveTests(bringupTests);
+      if (!saved) {
+        BringupPrinter.enqueue("Warning: failed to persist bringup test enable state.");
+      }
+    }
+  }
+
+  public TestsOverview buildTestsOverview() {
+    TestsOverview overview = new TestsOverview();
+    BringupTestRegistry.TestsInfo info = BringupTestRegistry.getTestsInfo();
+    if (info != null) {
+      overview.activeTestSet = info.activeTestSetName;
+      overview.defaultTestSet = info.defaultTestSetName;
+      overview.usingTestSets = info.usingTestSets;
+    }
+    overview.totalCount = bringupTests.size();
+    int enabledCount = 0;
+    for (int i = 0; i < bringupTests.size(); i++) {
+      BringupTest test = bringupTests.get(i);
+      if (test == null) {
         continue;
       }
+      TestRow row = new TestRow();
+      row.index = i;
+      row.name = test.getDisplayName();
+      row.enabled = test.isEnabled();
+      row.selected = (i == selectedTestIndex);
+      row.type = resolveTestType(test);
+      row.status = test.getStatus();
+      row.motors = test.getMotorKeys();
+      if (row.enabled) {
+        enabledCount++;
+      }
+      overview.rows.add(row);
+    }
+    overview.enabledCount = enabledCount;
+    return overview;
+  }
+
+  public String formatTestsOverview(TestsOverview overview) {
+    if (overview == null) {
+      return "=== Bringup Tests ===\nNo tests loaded.\n=====================";
+    }
+    StringBuilder sb = new StringBuilder(1024);
+    appendLine(sb, "=== Bringup Tests ===");
+    if (overview.usingTestSets) {
+      String active = overview.activeTestSet != null ? overview.activeTestSet : "(none)";
+      String def = overview.defaultTestSet != null ? overview.defaultTestSet : "(none)";
+      appendLine(sb, "Active set: " + active + " (default: " + def + ")");
+    }
+    appendLine(
+        sb,
+        "Total: " + overview.totalCount +
+        " Enabled: " + overview.enabledCount);
+    appendLine(sb, "Idx Sel En Type       Name                         Motors");
+    for (TestRow row : overview.rows) {
+      String sel = row.selected ? "*" : " ";
+      String en = row.enabled ? "Y" : "N";
+      String type = row.type != null ? row.type : "?";
+      String name = row.name != null ? row.name : "(unnamed)";
+      String motors = (row.motors == null || row.motors.isEmpty())
+          ? "-"
+          : String.join(", ", row.motors);
+      appendLine(
+          sb,
+          String.format(
+              "%3d  %s  %s  %-9s %-28s %s",
+              row.index,
+              sel,
+              en,
+              type,
+              name,
+              motors));
+    }
+    appendLine(sb, "=====================");
+    return sb.toString();
+  }
+
+  private static String resolveTestType(BringupTest test) {
+    if (test instanceof CompositeTest) {
+      return CompositeTest.TYPE;
+    }
+    if (test instanceof JoystickTest) {
+      return JoystickTest.TYPE;
+    }
+    return test != null ? test.getClass().getSimpleName() : "?";
+  }
+
+  public static final class TestsOverview {
+    public String activeTestSet;
+    public String defaultTestSet;
+    public boolean usingTestSets;
+    public int totalCount;
+    public int enabledCount;
+    public final List<TestRow> rows = new ArrayList<>();
+  }
+
+  public static final class TestRow {
+    public int index;
+    public String name;
+    public boolean enabled;
+    public boolean selected;
+    public String type;
+    public String status;
+    public List<String> motors = new ArrayList<>();
+  }
+
+  private boolean startNextRunAllTest() {
+    if (runAllQueue.isEmpty()) {
+      return false;
+    }
+    while (runAllIndex < runAllQueue.size()) {
+      BringupTest test = runAllQueue.get(runAllIndex++);
       boolean started = test.start(testContext, Timer.getFPGATimestamp());
       if (started) {
         activeTest = test;
@@ -347,6 +477,24 @@ public final class BringupCore {
       BringupPrinter.enqueue("Test skipped: " + test.getName() + " (" + test.getStatus() + ")");
     }
     return false;
+  }
+
+  private void buildRunAllQueue() {
+    runAllQueue.clear();
+    runAllIndex = 0;
+    if (selectableTests.isEmpty()) {
+      return;
+    }
+    int startIndex = selectedTestIndex < 0 ? 0 : selectedTestIndex;
+    int attempts = selectableTests.size();
+    int index = startIndex;
+    while (attempts-- > 0) {
+      BringupTest test = selectableTests.get(index);
+      if (test != null && test.isEnabled()) {
+        runAllQueue.add(test);
+      }
+      index = (index + 1) % selectableTests.size();
+    }
   }
 
   private boolean startNextBringupTest() {

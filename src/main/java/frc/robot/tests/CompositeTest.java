@@ -63,6 +63,15 @@ public final class CompositeTest implements BringupTest {
   }
 
   @Override
+  public String getDisplayName() {
+    String base = getName();
+    if (config.time != null && config.time.timeoutSec > 0.0) {
+      return base + " (t=" + String.format("%.2f", config.time.timeoutSec) + "s)";
+    }
+    return base;
+  }
+
+  @Override
   public boolean isEnabled() {
     return config.enabled;
   }
@@ -90,6 +99,21 @@ public final class CompositeTest implements BringupTest {
   @Override
   public String getStatus() {
     return status;
+  }
+
+  @Override
+  public java.util.List<String> getMotorKeys() {
+    if (config.motors == null || config.motors.isEmpty()) {
+      return java.util.Collections.emptyList();
+    }
+    java.util.List<String> keys = new java.util.ArrayList<>();
+    for (BringupTestRegistry.MotorRef ref : config.motors) {
+      String key = buildMotorKey(ref);
+      if (!key.isBlank()) {
+        keys.add(key);
+      }
+    }
+    return keys;
   }
 
   @Override

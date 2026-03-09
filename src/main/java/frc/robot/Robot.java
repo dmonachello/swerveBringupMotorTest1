@@ -6,6 +6,7 @@ import edu.wpi.first.wpilibj.XboxController;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.ControllerManager;
 import frc.robot.tests.BringupTestRegistry;
+import java.time.Instant;
 import java.util.ArrayList;
 
 // Legacy bringup robot program (simpler than RobotV2).
@@ -21,7 +22,7 @@ public class Robot extends TimedRobot {
   private final XboxController controller = controllers.getXbox(0);
   private final BindingsManager bindings = new BindingsManager();
   // Local bringup behaviors for device creation and health.
-  private BringupCore core = new BringupCore();
+  private BringupCore core;
   // Edge-detect state for one-shot actions.
   private final EdgeTrigger edge = new EdgeTrigger();
 
@@ -41,14 +42,15 @@ public class Robot extends TimedRobot {
   @Override
   public void teleopInit() {
     // Reset local state whenever teleop starts.
-    core.resetState();
+    core.resetState("teleopInit");
     edge.reset();
   }
 
   @Override
   public void disabledInit() {
     // Keep behavior symmetric in disabled and teleop to avoid stale state.
-    core.resetState();
+    core.disableAllBringupTests(true);
+    core.resetState("disabledInit");
     edge.reset();
   }
 
@@ -66,15 +68,17 @@ public class Robot extends TimedRobot {
         core,
         null,
         this::printStartupInfo,
+        this::printTestsInfo,
+        this::printTestsOverview,
         bind.held("runTest"));
 
     // --- Profile switching ---
     if (bind.pressed("profileToggle")) {
       BringupUtil.toggleCanProfile();
-      core.resetState();
+      core.resetState("profileToggle");
       core = new BringupCore();
       validateCanIds();
-      printStartupInfo();
+      printProfileInfo();
     }
 
     // --- Analog input to motor outputs ---
@@ -127,6 +131,62 @@ public class Robot extends TimedRobot {
     appendLine(sb, "FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
     appendLine(sb, "======================");
     BringupPrinter.enqueue(sb.toString());
+  }
+
+  private void printProfileInfo() {
+    StringBuilder sb = new StringBuilder(256);
+    appendLine(sb, "=== Profile Updated ===");
+    appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
+    appendLine(sb, "NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
+    appendLine(sb, "NEO 550 CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO550_CAN_IDS));
+    appendLine(sb, "FLEX CAN IDs: " + BringupUtil.joinIds(BringupUtil.FLEX_CAN_IDS));
+    appendLine(sb, "KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
+    appendLine(sb, "FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
+    appendLine(sb, "======================");
+    BringupPrinter.enqueue(sb.toString());
+  }
+
+  private void printTestsInfo() {
+    BringupTestRegistry.TestsInfo info = BringupTestRegistry.getTestsInfo();
+    StringBuilder sb = new StringBuilder(256);
+    appendLine(sb, "=== Bringup Tests Info ===");
+    appendLine(sb, "Override path: " + (info.overridePath != null ? info.overridePath : "(none)"));
+    appendLine(sb, "Resolved path: " + (info.path != null ? info.path.toString() : "(none)"));
+    appendLine(sb, "Exists: " + info.exists);
+    if (info.exists) {
+      if (info.sizeBytes > 0) {
+        appendLine(sb, "Size: " + info.sizeBytes + " bytes");
+      }
+      if (info.lastModifiedMs > 0) {
+        appendLine(sb, "Last modified: " + Instant.ofEpochMilli(info.lastModifiedMs));
+      }
+      if (info.sha256 != null && !info.sha256.isBlank()) {
+        appendLine(sb, "SHA-256: " + info.sha256);
+      }
+      if (info.readError != null) {
+        appendLine(sb, "Read warning: " + info.readError);
+      }
+      if (info.usingTestSets) {
+        String active = info.activeTestSetName != null ? info.activeTestSetName : "(none)";
+        String def = info.defaultTestSetName != null ? info.defaultTestSetName : "(none)";
+        appendLine(
+            sb,
+            "Test sets: yes (active=" + active + ", default=" + def + ", count=" + info.testSetCount + ")");
+      } else {
+        appendLine(sb, "Test sets: no");
+      }
+      if (info.testCount > 0) {
+        appendLine(sb, "Test count: " + info.testCount);
+      }
+    }
+    appendLine(sb, "==========================");
+    BringupPrinter.enqueue(sb.toString());
+  }
+
+  private void printTestsOverview() {
+    BringupCore.TestsOverview overview = core.buildTestsOverview();
+    String text = core.formatTestsOverview(overview);
+    BringupPrinter.enqueueChunked(text, 6);
   }
 
   // Shared line-append helper to keep formatting consistent.

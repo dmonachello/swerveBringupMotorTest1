@@ -60,6 +60,21 @@ public final class JoystickTest implements BringupTest {
   }
 
   @Override
+  public java.util.List<String> getMotorKeys() {
+    if (config.motors == null || config.motors.isEmpty()) {
+      return java.util.Collections.emptyList();
+    }
+    java.util.List<String> keys = new java.util.ArrayList<>();
+    for (BringupTestRegistry.MotorRef ref : config.motors) {
+      String key = buildMotorKey(ref);
+      if (!key.isBlank()) {
+        keys.add(key);
+      }
+    }
+    return keys;
+  }
+
+  @Override
   public boolean start(BringupTestContext context, double nowSec) {
     if (config.motors == null || config.motors.isEmpty()) {
       status = "Motor not found";

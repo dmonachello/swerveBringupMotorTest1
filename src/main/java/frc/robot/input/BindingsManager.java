@@ -129,6 +129,8 @@ public final class BindingsManager {
     bindings.add(BindingSpec.edge("printCANdiag", "primary", "dpad", "UP"));
     bindings.add(BindingSpec.edge("printInputs", "primary", "dpad", "RIGHT"));
     bindings.add(BindingSpec.edge("printBindings", "primary", "button", "LB"));
+    bindings.add(BindingSpec.edge("printTestsInfo", "primary", "combo", "LB+RB"));
+    bindings.add(BindingSpec.edge("printTestsOverview", "primary", "button", "LS"));
     bindings.add(BindingSpec.edge("clearFaults", "primary", "button", "RS"));
     bindings.add(BindingSpec.edge("dumpReport", "primary", "button", "X"));
     bindings.add(BindingSpec.edge("toggleDashboard", "primary", "button", "Y"));
@@ -160,6 +162,8 @@ public final class BindingsManager {
         "printCANdiag",
         "printInputs",
         "printBindings",
+        "printTestsInfo",
+        "printTestsOverview",
         "clearFaults",
         "dumpReport",
         "toggleDashboard",

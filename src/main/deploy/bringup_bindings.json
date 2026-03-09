@@ -68,6 +68,20 @@
       "mode": "edge"
     },
     {
+      "command": "printTestsInfo",
+      "controller": "primary",
+      "input": "combo",
+      "id": "LB+RB",
+      "mode": "edge"
+    },
+    {
+      "command": "printTestsOverview",
+      "controller": "primary",
+      "input": "button",
+      "id": "LS",
+      "mode": "edge"
+    },
+    {
       "command": "clearFaults",
       "controller": "primary",
       "input": "button",

@@ -13,7 +13,7 @@
           "encoderMotorIndex": 0
         },
         "motorKeys": [
-          "REV:NEO:10"
+          "REV:NEO:25"
         ]
       },
       {
@@ -23,7 +23,7 @@
         "duty": 0.2,
         "rotation": {
           "limitRot": 10.0,
-          "encoderKey": "CTRE:CANCoder:12",
+          "encoderKey": "internal",
           "encoderMotorIndex": 0
         },
         "time": {
@@ -31,7 +31,7 @@
           "onTimeout": "fail"
         },
         "motorKeys": [
-          "CTRE:FALCON:11"
+          "CTRE:FALCON:9"
         ]
       },
       {
@@ -44,7 +44,7 @@
           "onTimeout": "pass"
         },
         "motorKeys": [
-          "REV:FLEX:11"
+          "REV:NEO 550:7"
         ]
       },
       {
@@ -57,7 +57,7 @@
           "onTimeout": "pass"
         },
         "motorKeys": [
-          "REV:NEO:10"
+          "REV:NEO:25"
         ]
       },
       {
@@ -70,7 +70,7 @@
           "onHit": "pass"
         },
         "motorKeys": [
-          "REV:NEO:10"
+          "REV:NEO 550:7"
         ]
       },
       {
@@ -83,7 +83,7 @@
           "onRelease": "pass"
         },
         "motorKeys": [
-          "CTRE:KRAKEN:11"
+          "CTRE:FALCON:9"
         ]
       },
       {
@@ -105,7 +105,7 @@
           "onHit": "pass"
         },
         "motorKeys": [
-          "CTRE:KRAKEN:11"
+          "REV:NEO 550:7"
         ]
       },
       {
@@ -131,7 +131,7 @@
           "onRelease": "pass"
         },
         "motorKeys": [
-          "CTRE:FALCON:11"
+          "REV:NEO 550:7"
         ]
       },
       {
@@ -139,8 +139,8 @@
         "name": "Joystick motor (primary axis)",
         "enabled": false,
         "motorKeys": [
-          "REV:NEO:10",
-          "CTRE:FALCON:11"
+          "REV:NEO:25",
+          "CTRE:FALCON:9"
         ],
         "deadband": 0.12,
         "inputAxis": "primary"
@@ -158,7 +158,7 @@
           "encoderMotorIndex": 0
         },
         "motorKeys": [
-          "REV:NEO:10"
+          "REV:NEO:25"
         ]
       },
       {
@@ -184,7 +184,7 @@
           "onTimeout": "pass"
         },
         "motorKeys": [
-          "REV:NEO:10"
+          "REV:NEO:25"
         ]
       },
       {
@@ -197,7 +197,7 @@
           "onRelease": "pass"
         },
         "motorKeys": [
-          "REV:NEO:10"
+          "REV:NEO:25"
         ]
       },
       {
@@ -205,7 +205,7 @@
         "name": "Joystick motor (primary axis)",
         "enabled": true,
         "motorKeys": [
-          "REV:NEO:10",
+          "REV:NEO:25",
           "REV:NEO:25"
         ],
         "deadband": 0.12,
