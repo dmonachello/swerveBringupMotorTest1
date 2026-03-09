@@ -49,9 +49,9 @@ class PcapLogger:
     def _path_is_pcapng(self) -> bool:
         return os.path.splitext(self.path)[1].lower() == ".pcapng"
 
-    def log(self, msg, timestamp_s: float | None = None) -> None:
+    def log(self, msg, timestamp_s: float | None = None) -> bool:
         if self._logger is None:
-            return
+            return False
         if timestamp_s is not None:
             try:
                 msg.timestamp = float(timestamp_s)
@@ -59,8 +59,9 @@ class PcapLogger:
                 pass
         try:
             self._logger.on_message_received(msg)
+            return True
         except Exception:
-            pass
+            return False
 
     def write_can_frame(
         self,

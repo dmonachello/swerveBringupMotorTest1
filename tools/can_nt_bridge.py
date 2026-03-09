@@ -6,6 +6,7 @@ import json
 import queue
 import threading
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Tuple, List, Any
 
@@ -15,9 +16,33 @@ from can_nt_publish import decode_frc_ext_id, publish_devices
 from can_profiles import get_default_profile, get_profile
 
 
+@dataclass
+class SnifferState:
+    last_seen: Dict[Tuple[int, int, int], float] = field(default_factory=dict)
+    status_last_seen: Dict[Tuple[int, int, int], float] = field(default_factory=dict)
+    control_last_seen: Dict[Tuple[int, int, int], float] = field(default_factory=dict)
+    msg_count: Dict[Tuple[int, int, int], int] = field(default_factory=dict)
+    pair_stats: Dict[Tuple[int, int, int, int, int], Dict[str, float]] = field(default_factory=dict)
+    last_status: Dict[Tuple[int, int, int], str] = field(default_factory=dict)
+    total_frames: int = 0
+    period_frames: int = 0
+    read_errors: int = 0
+    pcap_errors: int = 0
+    last_frame_time: float = 0.0
+    heartbeat: int = 0
+    open_ok: bool = True
+    marker_counter: int = 0
+    last_marker_ts: float = 0.0
+
+
 def _parse_tx_sequence(path: str) -> List[Tuple[float, int, bytes]]:
     entries: List[Tuple[float, int, bytes]] = []
-    for raw in Path(path).read_text(encoding="utf-8").splitlines():
+    try:
+        raw_lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except Exception as exc:
+        print(f"ERROR: Failed to read TX sequence file '{path}': {exc}")
+        return entries
+    for raw in raw_lines:
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -122,8 +147,11 @@ def _dump_seen_ids(
         "seen_ids_int": seen_ids,
         "seen_ids_hex": [hex(x) for x in seen_ids],
     }
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+    except Exception as exc:
+        print(f"ERROR: Failed to write seen-IDs dump '{path}': {exc}")
 
 
 def _build_profile_from_seen(
@@ -213,8 +241,11 @@ def _dump_profile(
             profile_name: _build_profile_from_seen(seen_keys, profile_name, include_unknown),
         },
     }
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+    except Exception as exc:
+        print(f"ERROR: Failed to write profile dump '{path}': {exc}")
 
 
 def _decode_frc_ext_id_full(arb_id: int) -> Tuple[int, int, int, int, int]:
@@ -254,18 +285,31 @@ def _classify_frame(
     else:
         is_control = False
 
-    # CTRE: Phoenix frames often use J1939-style PF/PS fields.
-    pf = (arb_id >> 16) & 0xFF
-    ps = (arb_id >> 8) & 0xFF
-    is_control = is_control or (manufacturer == 4 and pf == 0xEF)
-    if manufacturer == 4 and pf == 0xFF and ps <= 0x07:
-        is_status = True
+    # CTRE: Phoenix frames can appear as J1939-style PF/PS or FRC extended.
+    if manufacturer == 4:
+        pf = (arb_id >> 16) & 0xFF
+        ps = (arb_id >> 8) & 0xFF
+        # J1939-style control/status
+        if pf == 0xEF:
+            is_control = True
+        if pf == 0xFF and ps <= 0x07:
+            is_status = True
+
+        # FRC-extended CTRE status (conservative to avoid flooding):
+        # type=2: api_class 11 (status groups)
+        # type=8: api_class 5 (status groups)
+        if device_type == 2 and api_class in {11}:
+            is_status = True
+        if device_type == 8 and api_class in {5}:
+            is_status = True
 
     return is_status, is_control
 
 
 def _uses_status_presence(manufacturer: int, device_type: int) -> bool:
     if manufacturer == 5 and device_type == 2:
+        return True
+    if manufacturer == 4 and device_type in {2, 8}:
         return True
     return False
 
@@ -309,8 +353,11 @@ def _dump_api_inventory(
             for (mfg, dtype, did), pairs in sorted(devices.items())
         ],
     }
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+    except Exception as exc:
+        print(f"ERROR: Failed to write API inventory '{path}': {exc}")
 
 
 def _dump_can_config(path: str, args: argparse.Namespace, devices: List[Dict[str, Any]]) -> None:
@@ -327,12 +374,19 @@ def _dump_can_config(path: str, args: argparse.Namespace, devices: List[Dict[str
         "auto_match": args.auto_match,
         "devices": devices,
     }
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+    except Exception as exc:
+        print(f"ERROR: Failed to write CAN config '{path}': {exc}")
 
 
 def _load_inventory(path: str) -> Dict[Tuple[int, int, int, int, int], float]:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"ERROR: Failed to load inventory file '{path}': {exc}")
+        return {}
     result: Dict[Tuple[int, int, int, int, int], float] = {}
     for dev in payload.get("devices", []):
         try:
@@ -402,8 +456,11 @@ def _list_ports() -> List[Tuple[str, str]]:
             "Install it with: py -m pip install pyserial"
         ) from exc
     ports: List[Tuple[str, str]] = []
-    for port in serial.tools.list_ports.comports():
-        ports.append((port.device, port.description or ""))
+    try:
+        for port in serial.tools.list_ports.comports():
+            ports.append((port.device, port.description or ""))
+    except Exception as exc:
+        raise RuntimeError(f"Failed to enumerate serial ports: {exc}") from exc
     return ports
 
 
@@ -417,10 +474,13 @@ def _auto_channel(match_text: str, prompt: bool) -> Tuple[str, str]:
         ) from exc
 
     matches: List[Tuple[str, str]] = []
-    for port in serial.tools.list_ports.comports():
-        desc = port.description or ""
-        if match_text.lower() in desc.lower():
-            matches.append((port.device, desc))
+    try:
+        for port in serial.tools.list_ports.comports():
+            desc = port.description or ""
+            if match_text.lower() in desc.lower():
+                matches.append((port.device, desc))
+    except Exception as exc:
+        raise RuntimeError(f"Failed to enumerate serial ports: {exc}") from exc
 
     if not matches:
         raise RuntimeError(
@@ -485,8 +545,11 @@ def _print_or_dump_nt_keys(devices, print_keys: bool, dump_path: str) -> None:
         for key in keys:
             print(f"  {key}")
     if dump_path:
-        with open(dump_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
+        try:
+            with open(dump_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2)
+        except Exception as exc:
+            print(f"ERROR: Failed to write NT keys dump '{dump_path}': {exc}")
         print(f"Wrote NT key inventory to {dump_path}")
 
 
@@ -522,18 +585,138 @@ def _print_status_transitions(
         last_status[key] = status
 
 
-def _print_summary(summary, now: float) -> None:
-    top = summary.get("topTalkers", [])
-    total = summary.get("totalFramesPerSec")
-    missing = summary.get("missing", [])
+def _build_device_label_map(devices: List[Dict[str, Any]]) -> Dict[Tuple[int, int, int], str]:
+    labels: Dict[Tuple[int, int, int], str] = {}
+    for dev in devices:
+        try:
+            key = (int(dev["manufacturer"]), int(dev["device_type"]), int(dev["device_id"]))
+            label = str(dev.get("label", "")).strip()
+            if label:
+                labels[key] = label
+        except Exception:
+            continue
+    return labels
+
+
+def _format_frame_line(
+    kind: str,
+    arb_id: int,
+    mfg: int,
+    dtype: int,
+    device_id: int,
+    api_class: int,
+    api_index: int,
+    data: bytes,
+    label: str,
+) -> str:
+    mfg_names = {
+        1: "NI",
+        4: "CTRE",
+        5: "REV",
+    }
+    type_names = {
+        2: "MotorController",
+        8: "Pneumatics",
+    }
+    mfg_name = mfg_names.get(mfg)
+    type_name = type_names.get(dtype)
+
+    label_text = f" {label}" if label else ""
+    mfg_text = f" mfgName={mfg_name}" if mfg_name else ""
+    type_text = f" typeName={type_name}" if type_name else ""
+    return (
+        f"[{kind}] id=0x{arb_id:X}"
+        f"{label_text} mfg={mfg}{mfg_text} type={dtype}{type_text} "
+        f"devId={device_id} apiClass={api_class} apiIndex={api_index} "
+        f"len={len(data)} data={data.hex()}"
+    )
+
+
+def _format_can_id(can_id_hex: str, labels: Dict[Tuple[int, int, int], str]) -> str:
+    try:
+        can_id = int(can_id_hex, 16)
+    except Exception:
+        return f"id={can_id_hex}"
+    mfg, dtype, did = decode_frc_ext_id(can_id)
+    label = labels.get((mfg, dtype, did), "")
+    label_part = f"{label} " if label else ""
+    mfg_names = {
+        1: "NI",
+        4: "CTRE",
+        5: "REV",
+    }
+    type_names = {
+        2: "MotorController",
+        8: "Pneumatics",
+    }
+    mfg_name = mfg_names.get(mfg)
+    type_name = type_names.get(dtype)
+    mfg_text = f" mfgName={mfg_name}" if mfg_name else ""
+    type_text = f" typeName={type_name}" if type_name else ""
+    return f"{label_part}mfg={mfg}{mfg_text} type={dtype}{type_text} id={did} can={can_id_hex}"
+
+
+def _get_bus_dropped(bus) -> Optional[int]:
+    for attr in ("dropped_frames", "drop_count", "rx_overflow", "rx_dropped"):
+        value = getattr(bus, attr, None)
+        if isinstance(value, int):
+            return value
+    return None
+
+
+def _build_summary_extra(
+    summary: Dict[str, Any],
+    devices: List[Dict[str, Any]],
+    analyzer: CanLiveAnalyzer,
+    state: SnifferState,
+    bus,
+    bitrate: int,
+) -> Dict[str, Any]:
+    bytes_per_s = summary.get("bus", {}).get("bytes_per_s", 0.0)
+    bus_load_pct = None
+    if isinstance(bytes_per_s, (int, float)) and bitrate > 0:
+        bus_load_pct = (bytes_per_s * 8.0 / float(bitrate)) * 100.0
+    known_keys = {(d["manufacturer"], d["device_type"], d["device_id"]) for d in devices}
+    seen_keys = {decode_frc_ext_id(cid) for cid in analyzer.seen_ids()}
+    unknown_keys = seen_keys - known_keys
+    return {
+        "bus_load_pct": bus_load_pct,
+        "read_errors": state.read_errors,
+        "pcap_errors": state.pcap_errors,
+        "dropped": _get_bus_dropped(bus),
+        "seen_devices": len(seen_keys),
+        "unknown_devices": len(unknown_keys),
+    }
+
+
+def _print_summary(
+    summary,
+    now: float,
+    labels: Dict[Tuple[int, int, int], str],
+    extra: Dict[str, Any],
+) -> None:
+    bus = summary.get("bus", {})
+    health = summary.get("health", {})
+    top = summary.get("top", [])
+    total = bus.get("fps")
+    missing = health.get("missing", [])
     ts = time.strftime("%H:%M:%S", time.localtime(now))
-    print(f"[summary {ts}] fps={total} missing={len(missing)} top={len(top)}")
+    bus_load = extra.get("bus_load_pct")
+    bus_load_text = f"{bus_load:.1f}%" if isinstance(bus_load, (int, float)) else "n/a"
+    dropped = extra.get("dropped")
+    dropped_text = str(dropped) if isinstance(dropped, int) else "n/a"
+    print(
+        f"[summary {ts}] fps={total} missing={len(missing)} top={len(top)} "
+        f"busLoad={bus_load_text} readErr={extra.get('read_errors', 0)} "
+        f"pcapErr={extra.get('pcap_errors', 0)} dropped={dropped_text} "
+        f"seen={extra.get('seen_devices', 0)} unknown={extra.get('unknown_devices', 0)}"
+    )
     for row in top[:5]:
         try:
             print(
                 "  "
-                f"mfg={row.get('mfg')} type={row.get('type')} id={row.get('id')} "
-                f"fps={row.get('fps')}"
+                f"{_format_can_id(row.get('id', ''), labels)} "
+                f"hz={row.get('hz')}"
             )
         except Exception:
             continue
@@ -559,7 +742,7 @@ def _merge_unknown_devices(devices, last_seen: Dict[Tuple[int, int, int], float]
         )
     return merged
 
-def main(argv: Optional[Iterable[str]] = None) -> int:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="FRC CAN bringup diagnostics")
 
     parser.add_argument("--profile", default=get_default_profile())
@@ -604,6 +787,15 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         type=float,
         default=0.0,
         help="Print CAN summary to console every N seconds (0 disables).",
+    )
+    parser.add_argument(
+        "--startup-summary-after",
+        type=float,
+        default=0.0,
+        help=(
+            "Print a one-time startup confirmation and summary after N seconds "
+            "(0 disables)."
+        ),
     )
     parser.add_argument(
         "--print-publish",
@@ -708,8 +900,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         "--enable-markers",
         dest="enable_markers",
         action="store_true",
-        default=True,
-        help="Enable keyboard marker injection into pcapng captures.",
+        help="Enable keyboard marker injection (PCAPNG only).",
     )
     parser.add_argument(
         "--disable-markers",
@@ -717,25 +908,22 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         action="store_false",
         help="Disable keyboard marker injection.",
     )
+    parser.set_defaults(enable_markers=True)
     parser.add_argument(
         "--capture-note",
         default="",
-        help="Optional note to embed in the pcapng section header comment.",
+        help="Append a note to the PCAPNG section header comment.",
     )
+
     parser.add_argument(
         "--tx-seq",
         default="",
-        help=(
-            "Transmit a CAN sequence from a text file. "
-            "Supported formats: "
-            "TSV (time\\tcan_id\\tlen\\tdata_hex) or "
-            "CSV (time,can_id,data_hex)."
-        ),
+        help="Replay CAN frames from a captured sequence file.",
     )
     parser.add_argument(
         "--tx-allow",
         action="store_true",
-        help="Allow transmitting CAN frames (required when using --tx-seq).",
+        help="Allow --tx-seq transmission (safety interlock).",
     )
     parser.add_argument(
         "--tx-scale",
@@ -781,6 +969,248 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         help="Only print frames matching this device ID (low 6 bits of arbitration ID).",
     )
 
+    return parser
+
+
+def _maybe_auto_channel(args: argparse.Namespace) -> Tuple[Optional[str], Optional[str], int]:
+    channel = args.channel
+    if channel:
+        return channel, None, 0
+    try:
+        channel, channel_desc = _auto_channel(args.auto_match, not args.no_prompt)
+    except Exception as exc:
+        print(f"ERROR: Failed to auto-detect CAN channel: {exc}")
+        return None, None, 2
+    print(f"Auto-detected CAN channel: {channel} ({channel_desc})")
+    return channel, channel_desc, 0
+
+
+def _build_pcap_comment(args: argparse.Namespace, channel: str) -> str:
+    if (args.pcap and args.pcap.lower().endswith(".pcapng")) or args.pcap_pipe:
+        start_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+        parts = [
+            f"start={start_str}",
+            f"interface={args.interface}",
+            f"channel={channel}",
+            f"bitrate={args.bitrate}",
+        ]
+        if args.capture_note:
+            parts.append(f"note={args.capture_note}")
+        return " | ".join(parts)
+    return ""
+
+
+def _setup_pcap(args: argparse.Namespace, pcap_comment: str) -> PcapLogger:
+    if args.pcap_pipe:
+        print(f"Waiting for Wireshark to connect to pipe: {args.pcap_pipe}")
+    pcap = PcapLogger(args.pcap, pcap_comment, pipe_name=args.pcap_pipe)
+    if args.pcap or args.pcap_pipe:
+        try:
+            if pcap.start():
+                if args.pcap:
+                    print(f"PCAP logging enabled: {args.pcap}")
+                else:
+                    print(f"PCAP live pipe enabled: {pcap.pipe_name}")
+        except Exception as exc:
+            print(f"ERROR: Failed to start PCAP logging: {exc}")
+            pcap = PcapLogger(None, "")
+    return pcap
+
+
+def _setup_nt(args: argparse.Namespace):
+    if args.no_nt:
+        return None, None
+    # Local import so --help works without NT dependencies.
+    from ntcore import NetworkTableInstance
+    nt = NetworkTableInstance.getDefault()
+    nt.startClient4("can-nt-bridge")
+    nt.setServer(args.rio)
+    table = nt.getTable("bringup").getSubTable("diag")
+    return nt, table
+
+
+def _start_tx_if_requested(
+    args: argparse.Namespace,
+    bus,
+    can_module,
+    tx_stop: threading.Event,
+) -> Optional[threading.Thread]:
+    if not args.tx_seq:
+        return None
+    sequence = _parse_tx_sequence(args.tx_seq)
+    tx_thread = threading.Thread(
+        target=_tx_worker,
+        args=(bus, can_module, sequence, tx_stop, args.tx_scale, args.tx_loop, args.tx_verbose),
+        daemon=True,
+    )
+    tx_thread.start()
+    return tx_thread
+
+
+def _handle_marker_keys(
+    args: argparse.Namespace,
+    key_queue: "queue.Queue[Tuple[str, float]]",
+    marker_keys: set[str],
+    pcap: PcapLogger,
+    tx_stop: threading.Event,
+    state: SnifferState,
+    print_banner,
+) -> bool:
+    stop_requested = False
+    while True:
+        try:
+            key, key_ts = key_queue.get_nowait()
+        except queue.Empty:
+            break
+        if key not in marker_keys:
+            if key == " ":
+                tx_stop.set()
+                print("TX stopped by user.")
+            continue
+        if key == "h":
+            print_banner()
+            continue
+        if args.enable_markers and args.pcap:
+            if key_ts <= state.last_marker_ts:
+                key_ts = state.last_marker_ts + 0.000001
+            try:
+                wrote = pcap.write_marker(
+                    timestamp_s=key_ts,
+                    marker_id=args.marker_id,
+                    key_char=key,
+                    counter=state.marker_counter,
+                    extra=0,
+                )
+            except Exception as exc:
+                print(f"ERROR: Failed to write PCAP marker: {exc}")
+                wrote = False
+            if wrote:
+                state.marker_counter = (state.marker_counter + 1) & 0xFF
+                state.last_marker_ts = key_ts
+        if key == "q":
+            stop_requested = True
+            break
+    return stop_requested
+
+
+def _maybe_handle_dumps(
+    args: argparse.Namespace,
+    now: float,
+    start: float,
+    analyzer: CanLiveAnalyzer,
+    state: SnifferState,
+    devices: List[Dict[str, Any]],
+) -> bool:
+    if args.dump_can_expected_ids and (now - start) >= args.dump_after:
+        seen_sorted = sorted(analyzer.seen_ids())
+        _dump_seen_ids(
+            args.dump_can_expected_ids,
+            args.profile,
+            args.interface,
+            args.channel,
+            args.bitrate,
+            seen_sorted,
+        )
+        print(f"Dumped observed arbitration IDs to {args.dump_can_expected_ids}")
+        return True
+    if args.dump_profile and (now - start) >= args.dump_profile_after:
+        seen_keys = sorted(state.last_seen.keys())
+        profile_name = args.dump_profile_name
+        if not profile_name:
+            profile_name = time.strftime("sniffer_%Y%m%d_%H%M%S", time.localtime(now))
+        _dump_profile(
+            args.dump_profile,
+            profile_name,
+            seen_keys,
+            args.dump_profile_include_unknown,
+        )
+        print(f"Dumped profile to {args.dump_profile}")
+        return True
+    if args.dump_api_inventory and (now - start) >= args.dump_api_inventory_after:
+        _dump_api_inventory(
+            args.dump_api_inventory,
+            args.profile,
+            args.interface,
+            args.channel,
+            args.bitrate,
+            state.pair_stats,
+        )
+        print(f"Dumped API inventory to {args.dump_api_inventory}")
+        return True
+    return False
+
+
+def _publish_updates(
+    args: argparse.Namespace,
+    now: float,
+    last_publish: float,
+    last_summary: float,
+    analyzer: CanLiveAnalyzer,
+    state: SnifferState,
+    devices: List[Dict[str, Any]],
+    labels: Dict[Tuple[int, int, int], str],
+    table,
+    bus,
+) -> Tuple[float, float]:
+    if (now - last_publish) < args.publish_period:
+        return last_publish, last_summary
+
+    publish_dt = now - last_publish if last_publish > 0 else args.publish_period
+    frames_per_sec = (state.period_frames / publish_dt) if publish_dt > 0 else 0.0
+    last_frame_age = (now - state.last_frame_time) if state.last_frame_time > 0 else -1.0
+
+    if table is not None:
+        publish_devices(
+            table=table,
+            devices=_merge_unknown_devices(devices, state.last_seen, args.publish_unknown),
+            last_seen=state.last_seen,
+            status_last_seen=state.status_last_seen,
+            control_last_seen=state.control_last_seen,
+            uses_status_presence=_uses_status_presence,
+            msg_count=state.msg_count,
+            now=now,
+            timeout_s=args.timeout,
+        )
+
+    if args.print_publish:
+        _print_status_transitions(
+            devices=devices,
+            last_seen=state.last_seen,
+            status_last_seen=state.status_last_seen,
+            control_last_seen=state.control_last_seen,
+            now=now,
+            timeout_s=args.timeout,
+            last_status=state.last_status,
+        )
+
+    if args.publish_can_summary and table is not None:
+        summary = analyzer.summary(now, stale_s=args.stale_s, top_n=args.top_n)
+        table.getEntry("can/summary/json").setString(
+            json.dumps(summary, separators=(",", ":"))
+        )
+
+    if table is not None:
+        table.getEntry("can/pc/heartbeat").setDouble(float(state.heartbeat))
+        table.getEntry("can/pc/openOk").setBoolean(state.open_ok)
+        table.getEntry("can/pc/framesPerSec").setDouble(float(frames_per_sec))
+        table.getEntry("can/pc/framesTotal").setDouble(float(state.total_frames))
+        table.getEntry("can/pc/readErrors").setDouble(float(state.read_errors))
+        table.getEntry("can/pc/lastFrameAgeSec").setDouble(float(last_frame_age))
+
+    state.period_frames = 0
+    state.heartbeat += 1
+    if args.print_summary_period and (now - last_summary) >= args.print_summary_period:
+        summary = analyzer.summary(now, stale_s=args.stale_s, top_n=args.top_n)
+        extra = _build_summary_extra(summary, devices, analyzer, state, bus, args.bitrate)
+        _print_summary(summary, now, labels, extra)
+        last_summary = now
+
+    last_publish = now
+    return last_publish, last_summary
+
+
+def main(argv: Optional[Iterable[str]] = None) -> int:
+    parser = _build_parser()
     args = parser.parse_args(argv)
 
     if args.list_ports:
@@ -794,11 +1224,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         return 0
 
     devices, expected_ids = get_profile(args.profile)
+    device_labels = _build_device_label_map(devices)
 
-    channel = args.channel
-    if not channel:
-        channel, channel_desc = _auto_channel(args.auto_match, not args.no_prompt)
-        print(f"Auto-detected CAN channel: {channel} ({channel_desc})")
+    channel, _, channel_status = _maybe_auto_channel(args)
+    if channel_status != 0 or not channel:
+        return channel_status
 
     if args.list_keys or args.dump_nt:
         _print_or_dump_nt_keys(devices, args.list_keys, args.dump_nt)
@@ -818,61 +1248,29 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     from ntcore import NetworkTableInstance
     import can  # type: ignore
 
-    bus = can.Bus(interface=args.interface, channel=channel, bitrate=args.bitrate)
+    try:
+        bus = can.Bus(interface=args.interface, channel=channel, bitrate=args.bitrate)
+    except Exception as exc:
+        print(f"ERROR: Failed to open CAN bus (interface={args.interface}, channel={channel}, bitrate={args.bitrate}): {exc}")
+        return 2
 
     if args.pcap and args.pcap_pipe:
         print("ERROR: Use --pcap or --pcap-pipe, not both.")
         return 2
 
-    pcap_comment = ""
-    if (args.pcap and args.pcap.lower().endswith(".pcapng")) or args.pcap_pipe:
-        start_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
-        parts = [
-            f"start={start_str}",
-            f"interface={args.interface}",
-            f"channel={channel}",
-            f"bitrate={args.bitrate}",
-        ]
-        if args.capture_note:
-            parts.append(f"note={args.capture_note}")
-        pcap_comment = " | ".join(parts)
-    if args.pcap_pipe:
-        print(f"Waiting for Wireshark to connect to pipe: {args.pcap_pipe}")
-    pcap = PcapLogger(args.pcap, pcap_comment, pipe_name=args.pcap_pipe)
-    if (args.pcap or args.pcap_pipe) and pcap.start():
-        if args.pcap:
-            print(f"PCAP logging enabled: {args.pcap}")
-        else:
-            print(f"PCAP live pipe enabled: {pcap.pipe_name}")
+    pcap_comment = _build_pcap_comment(args, channel)
+    pcap = _setup_pcap(args, pcap_comment)
     if args.enable_markers:
         if args.pcap and not args.pcap.lower().endswith(".pcapng"):
             print("ERROR: Marker injection requires a .pcapng output file.")
             return 2
 
-    nt = None
-    table = None
-    if not args.no_nt:
-        nt = NetworkTableInstance.getDefault()
-        nt.startClient4("can-nt-bridge")
-        nt.setServer(args.rio)
-        table = nt.getTable("bringup").getSubTable("diag")
+    nt, table = _setup_nt(args)
 
     analyzer = CanLiveAnalyzer(expected_ids=expected_ids)
-    last_seen: Dict[Tuple[int, int, int], float] = {}
-    status_last_seen: Dict[Tuple[int, int, int], float] = {}
-    control_last_seen: Dict[Tuple[int, int, int], float] = {}
-    msg_count: Dict[Tuple[int, int, int], int] = {}
-    last_status: Dict[Tuple[int, int, int], str] = {}
-    pair_stats: Dict[Tuple[int, int, int, int, int], Dict[str, float]] = {}
-    total_frames = 0
-    period_frames = 0
-    read_errors = 0
-    last_frame_time = 0.0
-    heartbeat = 0
-    open_ok = True
-    marker_counter = 0
+    state = SnifferState()
     stop_requested = False
-    last_marker_ts = 0.0
+    state.last_marker_ts = 0.0
     marker_keys = {"0", "1", "2", "3", "4", "m", "q", "h"}
     key_queue: queue.Queue[Tuple[str, float]] = queue.Queue()
     key_thread = None
@@ -916,98 +1314,51 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     start = time.time()
     last_publish = 0.0
     last_summary = 0.0
-    if args.tx_seq:
-        sequence = _parse_tx_sequence(args.tx_seq)
-        tx_thread = threading.Thread(
-            target=_tx_worker,
-            args=(bus, can, sequence, tx_stop, args.tx_scale, args.tx_loop, args.tx_verbose),
-            daemon=True,
-        )
-        tx_thread.start()
+    startup_summary_done = False
+    _start_tx_if_requested(args, bus, can, tx_stop)
 
     try:
         while True:
             now = time.time()
 
-            while True:
-                try:
-                    key, key_ts = key_queue.get_nowait()
-                except queue.Empty:
-                    break
-                if key not in marker_keys:
-                    if key == " ":
-                        tx_stop.set()
-                        print("TX stopped by user.")
-                    continue
-                if key == "h":
-                    _print_marker_banner()
-                    continue
-                if args.enable_markers and args.pcap:
-                    if key_ts <= last_marker_ts:
-                        key_ts = last_marker_ts + 0.000001
-                    wrote = pcap.write_marker(
-                        timestamp_s=key_ts,
-                        marker_id=args.marker_id,
-                        key_char=key,
-                        counter=marker_counter,
-                        extra=0,
-                    )
-                    if wrote:
-                        marker_counter = (marker_counter + 1) & 0xFF
-                        last_marker_ts = key_ts
-                if key == "q":
-                    stop_requested = True
-                    break
+            stop_requested = _handle_marker_keys(
+                args=args,
+                key_queue=key_queue,
+                marker_keys=marker_keys,
+                pcap=pcap,
+                tx_stop=tx_stop,
+                state=state,
+                print_banner=_print_marker_banner,
+            ) or stop_requested
             if stop_requested:
                 break
 
-            if args.dump_can_expected_ids and (now - start) >= args.dump_after:
-                seen_sorted = sorted(analyzer.seen_ids())
-                _dump_seen_ids(
-                    args.dump_can_expected_ids,
-                    args.profile,
-                    args.interface,
-                    args.channel,
-                    args.bitrate,
-                    seen_sorted,
-                )
-                print(f"Dumped observed arbitration IDs to {args.dump_can_expected_ids}")
+            if _maybe_handle_dumps(args, now, start, analyzer, state, devices):
                 return 0
-            if args.dump_profile and (now - start) >= args.dump_profile_after:
-                seen_keys = sorted(last_seen.keys())
-                profile_name = args.dump_profile_name
-                if not profile_name:
-                    profile_name = time.strftime("sniffer_%Y%m%d_%H%M%S", time.localtime(now))
-                _dump_profile(
-                    args.dump_profile,
-                    profile_name,
-                    seen_keys,
-                    args.dump_profile_include_unknown,
-                )
-                print(f"Dumped profile to {args.dump_profile}")
-                return 0
-            if args.dump_api_inventory and (now - start) >= args.dump_api_inventory_after:
-                _dump_api_inventory(
-                    args.dump_api_inventory,
-                    args.profile,
-                    args.interface,
-                    args.channel,
-                    args.bitrate,
-                    pair_stats,
-                )
-                print(f"Dumped API inventory to {args.dump_api_inventory}")
-                return 0
+
+            if (
+                not startup_summary_done
+                and args.startup_summary_after > 0.0
+                and (now - start) >= args.startup_summary_after
+            ):
+                startup_summary_done = True
+                print("Startup OK.")
+                summary = analyzer.summary(now, args.stale_s, top_n=args.top_n)
+                extra = _build_summary_extra(summary, devices, analyzer, state, bus, args.bitrate)
+                _print_summary(summary, now, device_labels, extra)
 
             try:
                 msg = bus.recv(timeout=0.05)
-                open_ok = True
+                state.open_ok = True
             except Exception:
-                read_errors += 1
-                open_ok = False
+                state.read_errors += 1
+                state.open_ok = False
                 msg = None
 
             if msg is not None:
-                pcap.log(msg, timestamp_s=now)
+                if args.pcap or args.pcap_pipe:
+                    if not pcap.log(msg, timestamp_s=now):
+                        state.pcap_errors += 1
 
                 arb_id = int(msg.arbitration_id)
                 data = bytes(getattr(msg, "data", b"") or b"")
@@ -1017,8 +1368,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 mfg, dtype, did = decode_frc_ext_id(arb_id)
                 _, _, api_class, api_index, _ = _decode_frc_ext_id_full(arb_id)
                 key = (mfg, dtype, did)
-                last_seen[key] = now
-                msg_count[key] = msg_count.get(key, 0) + 1
+                state.last_seen[key] = now
+                state.msg_count[key] = state.msg_count.get(key, 0) + 1
 
                 is_status, is_control = _classify_frame(
                     arb_id=arb_id,
@@ -1028,98 +1379,106 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     api_index=api_index,
                 )
                 if is_status:
-                    status_last_seen[key] = now
+                    state.status_last_seen[key] = now
                 if is_control:
-                    control_last_seen[key] = now
+                    state.control_last_seen[key] = now
 
                 print_id_match = (args.print_can_id == -1 or arb_id == args.print_can_id)
                 print_dev_match = (args.print_device_id == -1 or did == args.print_device_id)
 
+                label = device_labels.get((mfg, dtype, did), "")
                 if args.print_any and print_id_match and print_dev_match:
                     print(
-                        f"[frame] id=0x{arb_id:X} "
-                        f"mfg={mfg} type={dtype} apiClass={api_class} apiIndex={api_index} "
-                        f"len={len(data)} data={data.hex()}"
+                        _format_frame_line(
+                            "frame",
+                            arb_id,
+                            mfg,
+                            dtype,
+                            did,
+                            api_class,
+                            api_index,
+                            data,
+                            label,
+                        )
                     )
                 if args.print_status and is_status and print_id_match and print_dev_match:
-                    print(f"[status] id=0x{arb_id:X} len={len(data)} data={data.hex()}")
+                    print(
+                        _format_frame_line(
+                            "status",
+                            arb_id,
+                            mfg,
+                            dtype,
+                            did,
+                            api_class,
+                            api_index,
+                            data,
+                            label,
+                        )
+                    )
                 if args.print_control and is_control and print_id_match and print_dev_match:
-                    print(f"[control] id=0x{arb_id:X} len={len(data)} data={data.hex()}")
+                    print(
+                        _format_frame_line(
+                            "control",
+                            arb_id,
+                            mfg,
+                            dtype,
+                            did,
+                            api_class,
+                            api_index,
+                            data,
+                            label,
+                        )
+                    )
 
                 pair_key = (mfg, dtype, did, api_class, api_index)
-                stats = pair_stats.get(pair_key)
+                stats = state.pair_stats.get(pair_key)
                 if stats is None:
                     stats = {"first": now, "last": now, "count": 0.0}
-                    pair_stats[pair_key] = stats
+                    state.pair_stats[pair_key] = stats
                 stats["last"] = now
                 stats["count"] += 1.0
 
-                total_frames += 1
-                period_frames += 1
-                last_frame_time = now
+                state.total_frames += 1
+                state.period_frames += 1
+                state.last_frame_time = now
 
-            if (now - last_publish) >= args.publish_period:
-                publish_dt = now - last_publish if last_publish > 0 else args.publish_period
-                frames_per_sec = (period_frames / publish_dt) if publish_dt > 0 else 0.0
-                last_frame_age = (now - last_frame_time) if last_frame_time > 0 else -1.0
-
-                if table is not None:
-                    publish_devices(
-                        table=table,
-                        devices=_merge_unknown_devices(devices, last_seen, args.publish_unknown),
-                        last_seen=last_seen,
-                        status_last_seen=status_last_seen,
-                        control_last_seen=control_last_seen,
-                        uses_status_presence=_uses_status_presence,
-                        msg_count=msg_count,
-                        now=now,
-                        timeout_s=args.timeout,
-                    )
-
-                if args.print_publish:
-                    _print_status_transitions(
-                        devices=devices,
-                        last_seen=last_seen,
-                        status_last_seen=status_last_seen,
-                        control_last_seen=control_last_seen,
-                        now=now,
-                        timeout_s=args.timeout,
-                        last_status=last_status,
-                    )
-
-                if args.publish_can_summary and table is not None:
-                    summary = analyzer.summary(now, stale_s=args.stale_s, top_n=args.top_n)
-                    table.getEntry("can/summary/json").setString(
-                        json.dumps(summary, separators=(",", ":"))
-                    )
-
-                if table is not None:
-                    table.getEntry("can/pc/heartbeat").setDouble(float(heartbeat))
-                    table.getEntry("can/pc/openOk").setBoolean(open_ok)
-                    table.getEntry("can/pc/framesPerSec").setDouble(float(frames_per_sec))
-                    table.getEntry("can/pc/framesTotal").setDouble(float(total_frames))
-                    table.getEntry("can/pc/readErrors").setDouble(float(read_errors))
-                    table.getEntry("can/pc/lastFrameAgeSec").setDouble(float(last_frame_age))
-
-                period_frames = 0
-                heartbeat += 1
-                if args.print_summary_period and (now - last_summary) >= args.print_summary_period:
-                    summary = analyzer.summary(now, stale_s=args.stale_s, top_n=args.top_n)
-                    _print_summary(summary, now)
-                    last_summary = now
-
-                last_publish = now
+            last_publish, last_summary = _publish_updates(
+                args=args,
+                now=now,
+                last_publish=last_publish,
+                last_summary=last_summary,
+                analyzer=analyzer,
+                state=state,
+                devices=devices,
+                labels=device_labels,
+                table=table,
+                bus=bus,
+            )
 
     except KeyboardInterrupt:
-        pass
+        print("Stopping (Ctrl+C)...")
     finally:
+        now = time.time()
+        try:
+            summary = analyzer.summary(now, stale_s=args.stale_s, top_n=args.top_n)
+            print("=== Final Summary ===")
+            extra = _build_summary_extra(summary, devices, analyzer, state, bus, args.bitrate)
+            _print_summary(summary, now, device_labels, extra)
+        except Exception as exc:
+            print(f"WARNING: Failed to print summary on exit: {exc}")
+
         key_stop.set()
         tx_stop.set()
-        pcap.stop()
+        try:
+            pcap.stop()
+            print("PCAP logger stopped.")
+        except Exception as exc:
+            print(f"WARNING: Failed to stop PCAP logger: {exc}")
         try:
             bus.shutdown()
-        except Exception:
-            pass
+            print("CAN bus closed.")
+        except Exception as exc:
+            print(f"WARNING: Failed to close CAN bus: {exc}")
 
     return 0
 
