@@ -93,6 +93,14 @@ JSON snapshot:
 WPILib runs robot code on a 20ms periodic loop. Overruns reduce control responsiveness and can break behaviors.
 Console printing is slow and blocking, so any report-like output is queued and printed incrementally across
 multiple loops (shared report runner). This keeps reports readable without stalling motor control.
+
+### Dashboard Migration (Shuffleboard Deprecation)
+We currently use Shuffleboard. It is being deprecated upstream, so the plan is to move to a supported dashboard:
+- Elastic for the driver dashboard (uses the same NetworkTables keys).
+- AdvantageScope for debugging/visualization workflows.
+We will port the current Shuffleboard layout (presenceConfidence tiles + bringup tree) into Elastic.
+
+Reminder: We will work on the migration tomorrow.
 ### AI Diagnosis Using `bringup_report.json`
 Use `AI_DIAGNOSIS.md` for a ready-to-paste prompt and a plain-language interpretation guide.
 
