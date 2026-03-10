@@ -136,6 +136,8 @@ public final class BindingsManager {
     bindings.add(BindingSpec.edge("toggleDashboard", "primary", "button", "Y"));
     bindings.add(BindingSpec.edge("profileToggle", "primary", "button", "BACK"));
 
+    bindings.add(BindingSpec.edge("canSweep", "secondary", "button", "Y"));
+
     bindings.add(BindingSpec.edge("selectTestPrev", "secondary", "button", "LB"));
     bindings.add(BindingSpec.edge("selectTestNext", "secondary", "button", "RB"));
     bindings.add(BindingSpec.edge("toggleTest", "secondary", "button", "X"));
@@ -168,6 +170,7 @@ public final class BindingsManager {
         "dumpReport",
         "toggleDashboard",
         "profileToggle",
+        "canSweep",
         "selectTestPrev",
         "selectTestNext",
         "toggleTest",

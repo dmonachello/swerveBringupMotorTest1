@@ -1,0 +1,64 @@
+{
+  "rules": [
+    {
+      "name": "CAN_BUS_UTIL_HIGH",
+      "regex": "\\[CAN\\]\\s*High utilization[:]?\\s*([0-9.]+)%",
+      "severity": "WARN",
+      "scope": "system",
+      "event_type": "CAN_BUS_UTIL_HIGH"
+    },
+    {
+      "name": "CAN_BUS_UTIL_RECOVER",
+      "regex": "\\[CAN\\]\\s*Utilization recovered[:]?\\s*([0-9.]+)%",
+      "severity": "INFO",
+      "scope": "system",
+      "event_type": "CAN_BUS_UTIL_RECOVER"
+    },
+    {
+      "name": "CAN_TIMEOUT",
+      "regex": "CAN.*timeout.*device\\s+(\\d+)",
+      "severity": "WARN",
+      "scope": "device",
+      "event_type": "CAN_TIMEOUT",
+      "device_id_group": 1
+    },
+    {
+      "name": "LOOP_OVERRUN",
+      "regex": "Loop time of\\s+\\d+\\.\\d+s overrun",
+      "severity": "WARN",
+      "scope": "system",
+      "event_type": "LOOP_OVERRUN"
+    },
+    {
+      "name": "CAN_ERROR_SPIKE",
+      "regex": "\\[CAN\\]\\s*Error spike: rx=(\\d+) tx=(\\d+)\\s*\\(delta rx=(\\d+) tx=(\\d+)\\)",
+      "severity": "WARN",
+      "scope": "system",
+      "event_type": "CAN_ERROR_SPIKE"
+    },
+    {
+      "name": "SPARK_STATUS_TIMEOUT",
+      "regex": "\\[Spark Max\\] IDs: (\\d+), timed out while waiting for (Frame Mgr: )?Period Status 0",
+      "severity": "WARN",
+      "scope": "device",
+      "event_type": "SPARK_STATUS_TIMEOUT",
+      "device_id_group": 1
+    },
+    {
+      "name": "SPARK_FW_QUERY_FAIL",
+      "regex": "\\[Spark Max\\] IDs: (\\d+), Unable to retrieve SPARK firmware version",
+      "severity": "WARN",
+      "scope": "device",
+      "event_type": "SPARK_FW_QUERY_FAIL",
+      "device_id_group": 1
+    },
+    {
+      "name": "SPARK_WRONG_DEVICE",
+      "regex": "CANSparkMax object created for CAN ID (\\d+), which is not a SPARK MAX",
+      "severity": "WARN",
+      "scope": "device",
+      "event_type": "SPARK_WRONG_DEVICE",
+      "device_id_group": 1
+    }
+  ]
+}

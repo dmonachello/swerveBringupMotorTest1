@@ -1,6 +1,7 @@
 package frc.robot;
 
 import frc.robot.input.BindingsManager;
+import frc.robot.diag.report.ReportTextUtil;
 
 public final class BringupCommandRouter {
   private BringupCommandRouter() {}
@@ -69,13 +70,26 @@ public final class BringupCommandRouter {
 
     if (diagnostics != null) {
       if (bind.pressed("printNTdiag")) {
-        diagnostics.printNetworkDiagnostics();
+        String report = diagnostics.buildNetworkDiagnosticsReportIfReady();
+        if (report != null) {
+          core.requestTextReport(report, 4);
+        }
       }
       if (bind.pressed("printCANdiag")) {
-        diagnostics.printCanDiagnosticsReport();
+        String report = diagnostics.buildCanDiagnosticsReportIfReady();
+        if (report != null) {
+          core.requestTextReport(report, 4);
+        }
       }
       if (bind.pressed("dumpReport")) {
-        diagnostics.dumpReportJsonToConsoleAndFile();
+        String json = diagnostics.buildReportJsonForDump();
+        String wrapped = ReportTextUtil.wrapLongLine(json, 120);
+        core.requestTextReport(wrapped, 4);
+        if (diagnostics.writeReportJsonToFile(json)) {
+          core.requestTextReport("Wrote CAN report JSON to " + diagnostics.getReportPath(), 4);
+        } else {
+          core.requestTextReport("Failed to write CAN report JSON.", 4);
+        }
       }
     }
 
@@ -84,7 +98,12 @@ public final class BringupCommandRouter {
       core.clearAllFaults();
       BringupPrinter.enqueue("Cleared device faults (current + sticky).");
     }
+    if (bind.pressed("canSweep")) {
+      BringupPrinter.enqueue("Command: canSweep");
+      core.runCanPingSweep();
+    }
 
+    core.updateReports();
     core.updateTests(runHeld || bind.held("runTest"));
   }
 }

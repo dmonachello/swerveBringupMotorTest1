@@ -4,6 +4,18 @@ This repo is one system with two cooperating parts:
 - Robot-side WPILib Java bringup harness that actively runs motors/sensors on the roboRIO.
 - PC-side Python tool that passively listens to the robot CAN bus via CANable (slcan over COM port) and publishes diagnostics to NetworkTables for the robot code and dashboards.
 
+Real-time structure (20ms loop + scheduler)
+Purpose: Explain why console output is throttled and how long reports are produced safely.
+- WPILib runs robot code on a 20ms periodic loop (teleop/disabled/auto).
+- The command scheduler and motor control live inside that 20ms budget.
+- Loop overruns degrade control responsiveness and can cause missed behaviors.
+- Console printing is slow and blocking; large dumps can easily exceed 20ms.
+- Therefore, all report-like output is routed through a shared report runner:
+  - Reports are queued and printed incrementally across multiple cycles.
+  - The runner limits work per cycle (batch size) and chunk size per print.
+  - This keeps output readable without stalling robot control loops.
+- Any new report must use the shared report runner (no direct print bursts).
+
 Hard rules
 - The Python side must be read-only on CAN. Never transmit CAN frames.
 - Keep a strict separation between local robot data (read directly on the roboRIO) and CAN-bus data coming from the PC tool via NetworkTables. Do not mix or conflate the two in logging, diagnostics, or APIs.
@@ -49,6 +61,27 @@ Definition of done
 Where things live
 - Java bringup code: src/main/java/... (look for RobotV2 and BringupUtil)
 - Python CAN tool: tools/ (entrypoint can_nt_bridge.py)
+
+Shuffleboard layouts (profile-specific)
+Purpose: Provide a default dashboard layout that includes per-device presenceConfidence tiles and a scrolling bringup tree.
+- Layout files are profile-specific because device CAN IDs differ by configuration.
+- Save layouts under src/main/deploy/ with a profile-specific name:
+  - Example: bringup_shuffleboard_home_030226.json
+- Workflow for a new profile:
+  - Open Shuffleboard and arrange tiles (presenceConfidence + bringup tree).
+  - File -> Save Layout As... to src/main/deploy/bringup_shuffleboard_<profile>.json
+  - Load with File -> Open when using that profile.
+
+Data-driven CAN profile mapping (Python tool)
+Purpose: Add new manufacturers/devices by editing rule tables instead of code logic.
+- File: tools/can_nt_bridge.py
+- Tables:
+  - STATUS_RULES / CONTROL_RULES for frame classification
+  - PROFILE_MAP_RULES for --dump-profile mapping
+- To add a new device mapping, append a rule to PROFILE_MAP_RULES:
+  - bucket: list-based devices (e.g., "neos", "krakens", "cancoders")
+  - singleton: single-ID devices (e.g., "pdh", "pdp", "pigeon", "roborio")
+  - note: optional assumption string included in generated profile notes
 
 Reverse engineering features to implement in tools/ (new work)
 

@@ -110,6 +110,13 @@
       "mode": "edge"
     },
     {
+      "command": "canSweep",
+      "controller": "secondary",
+      "input": "button",
+      "id": "Y",
+      "mode": "edge"
+    },
+    {
       "command": "selectTestPrev",
       "controller": "secondary",
       "input": "button",

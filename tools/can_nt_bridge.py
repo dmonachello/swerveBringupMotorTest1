@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import queue
 import threading
 import time
 from dataclasses import dataclass, field
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Tuple, List, Any
 
@@ -14,6 +16,527 @@ from can_analyzer import CanLiveAnalyzer
 from can_logging import PcapLogger
 from can_nt_publish import decode_frc_ext_id, publish_devices
 from can_profiles import get_default_profile, get_profile
+
+NI_MANUFACTURER = 1
+CTRE_MANUFACTURER = 4
+REV_MANUFACTURER = 5
+
+DEVICE_TYPE_MOTOR_CONTROLLER = 2
+DEVICE_TYPE_PNEUMATICS = 8
+DEVICE_TYPE_ROBORIO = 1
+
+NI_ROBORIO_STATUS_API_CLASS = 6
+REV_MC_STATUS_API_CLASS = 6
+REV_MC_STATUS_API_CLASS_EXT = 46
+CTRE_MC_STATUS_API_CLASS = 11
+CTRE_PNEU_STATUS_API_CLASS = 5
+
+CTRE_J1939_CONTROL_PF = 0xEF
+CTRE_J1939_STATUS_PF = 0xFF
+CTRE_J1939_STATUS_PS_MAX = 0x07
+
+STATUS_RULES = [
+    {
+        "name": "NI_ROBORIO_STATUS",
+        "mfg": NI_MANUFACTURER,
+        "type": DEVICE_TYPE_ROBORIO,
+        "api_class": NI_ROBORIO_STATUS_API_CLASS,
+    },
+    {
+        "name": "REV_MC_STATUS",
+        "mfg": REV_MANUFACTURER,
+        "type": DEVICE_TYPE_MOTOR_CONTROLLER,
+        "api_class": REV_MC_STATUS_API_CLASS,
+    },
+    {
+        "name": "REV_MC_STATUS_EXT",
+        "mfg": REV_MANUFACTURER,
+        "type": DEVICE_TYPE_MOTOR_CONTROLLER,
+        "api_class": REV_MC_STATUS_API_CLASS_EXT,
+        "api_index_min": 0,
+        "api_index_max": 6,
+    },
+    {
+        "name": "CTRE_J1939_STATUS",
+        "mfg": CTRE_MANUFACTURER,
+        "pf": CTRE_J1939_STATUS_PF,
+        "ps_max": CTRE_J1939_STATUS_PS_MAX,
+    },
+    {
+        "name": "CTRE_FRC_STATUS_MC",
+        "mfg": CTRE_MANUFACTURER,
+        "type": DEVICE_TYPE_MOTOR_CONTROLLER,
+        "api_class": CTRE_MC_STATUS_API_CLASS,
+    },
+    {
+        "name": "CTRE_FRC_STATUS_PNEU",
+        "mfg": CTRE_MANUFACTURER,
+        "type": DEVICE_TYPE_PNEUMATICS,
+        "api_class": CTRE_PNEU_STATUS_API_CLASS,
+    },
+]
+
+CONTROL_RULES = [
+    {
+        "name": "CTRE_J1939_CONTROL",
+        "mfg": CTRE_MANUFACTURER,
+        "pf": CTRE_J1939_CONTROL_PF,
+    },
+    {
+        "name": "REV_MC_CONTROL_EXT",
+        "mfg": REV_MANUFACTURER,
+        "type": DEVICE_TYPE_MOTOR_CONTROLLER,
+        "api_class": REV_MC_STATUS_API_CLASS_EXT,
+        "api_index_min": 7,
+    },
+]
+
+PROFILE_MAP_RULES = [
+    {
+        "name": "REV_MC_TO_NEOS",
+        "mfg": REV_MANUFACTURER,
+        "type": DEVICE_TYPE_MOTOR_CONTROLLER,
+        "bucket": "neos",
+        "note": "REV mfg=5 type=2 mapped to 'neos' (cannot distinguish NEO vs FLEX).",
+    },
+    {
+        "name": "CTRE_MC_TO_KRAKENS",
+        "mfg": CTRE_MANUFACTURER,
+        "type": DEVICE_TYPE_MOTOR_CONTROLLER,
+        "bucket": "krakens",
+        "note": "CTRE mfg=4 type=2 mapped to 'krakens' (cannot distinguish Kraken vs Falcon).",
+    },
+    {
+        "name": "CTRE_CANCODER",
+        "mfg": CTRE_MANUFACTURER,
+        "type": 7,
+        "bucket": "cancoders",
+    },
+    {
+        "name": "REV_PDH",
+        "mfg": REV_MANUFACTURER,
+        "type": DEVICE_TYPE_PNEUMATICS,
+        "singleton": "pdh",
+    },
+    {
+        "name": "CTRE_PDP",
+        "mfg": CTRE_MANUFACTURER,
+        "type": DEVICE_TYPE_PNEUMATICS,
+        "singleton": "pdp",
+    },
+    {
+        "name": "CTRE_PIGEON",
+        "mfg": CTRE_MANUFACTURER,
+        "type": 4,
+        "singleton": "pigeon",
+    },
+    {
+        "name": "NI_ROBORIO",
+        "mfg": NI_MANUFACTURER,
+        "type": DEVICE_TYPE_ROBORIO,
+        "singleton": "roborio",
+    },
+]
+
+
+@dataclass
+class ConsoleRule:
+    name: str
+    regex: Any
+    severity: str
+    scope: str
+    event_type: str
+    device_id_group: Optional[int] = None
+
+
+@dataclass
+class ConsoleEntry:
+    key: str
+    event_type: str
+    device_id: Optional[int]
+    severity: str
+    active: bool
+    count: int
+    first_seen: float
+    last_seen: float
+    last_message: str
+    rule_name: str
+
+
+class ConsoleMonitor:
+    def __init__(
+        self,
+        rules_path: str,
+        inactivity_timeout: float,
+        publish_rate_hz: float,
+        debug_log_path: str,
+        debug_log_max_mb: int,
+        debug_log_max_files: int,
+        transport: str,
+        host: str,
+        port: int,
+    ) -> None:
+        self._rules_path = rules_path
+        self._rules: List[ConsoleRule] = []
+        self._entries: Dict[str, ConsoleEntry] = {}
+        self._lock = threading.Lock()
+        self._timeout_s = max(0.1, inactivity_timeout)
+        self._publish_period = 0.5 if publish_rate_hz <= 0 else 1.0 / publish_rate_hz
+        self._last_publish = 0.0
+        self._lines_received = 0
+        self._lines_matched = 0
+        self._packets_received = 0
+        self._last_addr: Optional[str] = None
+        self._logger: Optional[logging.Logger] = None
+        self._transport = transport.lower()
+        self._host = host
+        self._port = port
+        self._udp_sock = None
+        self._tcp_sock = None
+        self._tcp_buf = bytearray()
+        self._last_connect_attempt = 0.0
+        self._recent_timeouts: Dict[int, float] = {}
+        self._bus_fault_window_s = 5.0
+        self._bus_fault_min_devices = 2
+        self._published_keys: set[Tuple[Optional[int], str]] = set()
+        self._reset_requested = False
+        self._init_logger(debug_log_path, debug_log_max_mb, debug_log_max_files)
+        self._load_rules()
+        self._init_sockets()
+
+    def _init_logger(self, path: str, max_mb: int, max_files: int) -> None:
+        if not path:
+            return
+        try:
+            Path(path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            print(f"WARNING: Failed to create console log directory for '{path}': {exc}")
+            return
+        logger = logging.getLogger("console_monitor")
+        logger.setLevel(logging.INFO)
+        try:
+            handler = RotatingFileHandler(
+                path,
+                maxBytes=max(1, max_mb) * 1024 * 1024,
+                backupCount=max(1, max_files),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            print(f"WARNING: Failed to open console debug log '{path}': {exc}")
+            return
+        formatter = logging.Formatter("%(asctime)s %(message)s")
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.propagate = False
+        self._logger = logger
+
+    def _load_rules(self) -> None:
+        self._rules.clear()
+        try:
+            raw = Path(self._rules_path).read_text(encoding="utf-8")
+            payload = json.loads(raw)
+        except Exception as exc:
+            print(f"WARNING: Failed to load console rules '{self._rules_path}': {exc}")
+            return
+        rules = payload.get("rules", []) if isinstance(payload, dict) else []
+        import re
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            name = str(rule.get("name", "")).strip()
+            regex_text = rule.get("regex")
+            if not name or not regex_text:
+                continue
+            try:
+                flags = re.IGNORECASE if rule.get("ignore_case", True) else 0
+                compiled = re.compile(regex_text, flags)
+            except Exception as exc:
+                print(f"WARNING: Invalid console regex '{name}': {exc}")
+                continue
+            severity = str(rule.get("severity", "INFO")).upper()
+            scope = str(rule.get("scope", "system")).lower()
+            event_type = str(rule.get("event_type", name)).strip()
+            device_group = rule.get("device_id_group")
+            if isinstance(device_group, int):
+                group = device_group
+            else:
+                group = None
+            self._rules.append(
+                ConsoleRule(
+                    name=name,
+                    regex=compiled,
+                    severity=severity,
+                    scope=scope,
+                    event_type=event_type,
+                    device_id_group=group,
+                )
+            )
+
+    def stop(self) -> None:
+        if self._udp_sock is not None:
+            try:
+                self._udp_sock.close()
+            except Exception:
+                pass
+            self._udp_sock = None
+        if self._tcp_sock is not None:
+            try:
+                self._tcp_sock.close()
+            except Exception:
+                pass
+            self._tcp_sock = None
+
+    def _init_sockets(self) -> None:
+        import socket
+        if self._transport == "udp":
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                sock.bind(("0.0.0.0", self._port))
+                sock.setblocking(False)
+                self._udp_sock = sock
+            except Exception as exc:
+                print(f"WARNING: Failed to bind NetConsole UDP {self._port}: {exc}")
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+                self._udp_sock = None
+
+    def poll(self, now: float) -> None:
+        if self._transport == "udp":
+            self._poll_udp(now)
+        else:
+            self._poll_tcp(now)
+
+    def request_reset(self) -> None:
+        self._reset_requested = True
+
+    def _poll_udp(self, now: float) -> None:
+        import socket
+        if self._udp_sock is None:
+            return
+        while True:
+            try:
+                data, addr = self._udp_sock.recvfrom(65535)
+            except BlockingIOError:
+                break
+            except socket.error:
+                break
+            if not data:
+                continue
+            self._packets_received += 1
+            try:
+                self._last_addr = f"{addr[0]}:{addr[1]}"
+            except Exception:
+                self._last_addr = None
+            self._handle_payload(data, now)
+
+    def _poll_tcp(self, now: float) -> None:
+        import socket
+        if self._tcp_sock is None:
+            if (now - self._last_connect_attempt) < 1.0:
+                return
+            self._last_connect_attempt = now
+            try:
+                sock = socket.create_connection((self._host, self._port), timeout=0.5)
+                sock.setblocking(False)
+                self._tcp_sock = sock
+                self._last_addr = f"{self._host}:{self._port}"
+            except Exception:
+                self._tcp_sock = None
+                return
+        while True:
+            try:
+                data = self._tcp_sock.recv(65535)
+            except BlockingIOError:
+                break
+            except Exception:
+                try:
+                    self._tcp_sock.close()
+                except Exception:
+                    pass
+                self._tcp_sock = None
+                self._tcp_buf.clear()
+                break
+            if not data:
+                try:
+                    self._tcp_sock.close()
+                except Exception:
+                    pass
+                self._tcp_sock = None
+                self._tcp_buf.clear()
+                break
+            self._packets_received += 1
+            self._tcp_buf.extend(data)
+            self._drain_tcp_buffer(now)
+
+    def _drain_tcp_buffer(self, now: float) -> None:
+        # NetConsole TCP frames are 2-byte big-endian length-prefixed records.
+        # Payloads contain binary metadata plus the printable log text.
+        while len(self._tcp_buf) >= 2:
+            length = int.from_bytes(self._tcp_buf[:2], "big")
+            if length <= 0:
+                del self._tcp_buf[:2]
+                continue
+            if len(self._tcp_buf) < 2 + length:
+                break
+            payload = bytes(self._tcp_buf[2 : 2 + length])
+            del self._tcp_buf[: 2 + length]
+            self._handle_payload(payload, now)
+
+    def _handle_payload(self, payload: bytes, ts: float) -> None:
+        try:
+            text = payload.decode("utf-8", errors="ignore")
+        except Exception:
+            return
+        lines = text.splitlines() or [text]
+        for line in lines:
+            if not line:
+                continue
+            self._lines_received += 1
+            if self._logger is not None:
+                self._logger.info(line.rstrip())
+            if self._process_line(line, ts):
+                self._lines_matched += 1
+
+    def _process_line(self, line: str, ts: float) -> bool:
+        for rule in self._rules:
+            match = rule.regex.search(line)
+            if not match:
+                continue
+            device_id = None
+            if rule.scope == "device" and rule.device_id_group is not None:
+                try:
+                    device_id = int(match.group(rule.device_id_group))
+                except Exception:
+                    device_id = None
+            if rule.scope == "device" and device_id is not None:
+                key = f"device:{rule.event_type}:{device_id}"
+            else:
+                key = f"system:{rule.event_type}"
+            with self._lock:
+                entry = self._entries.get(key)
+                if entry is None:
+                    self._entries[key] = ConsoleEntry(
+                        key=key,
+                        event_type=rule.event_type,
+                        device_id=device_id,
+                        severity=rule.severity,
+                        active=True,
+                        count=1,
+                        first_seen=ts,
+                        last_seen=ts,
+                        last_message=line.strip(),
+                        rule_name=rule.name,
+                    )
+                else:
+                    entry.count += 1
+                    entry.last_seen = ts
+                    entry.last_message = line.strip()
+                    entry.active = True
+            if rule.scope == "device" and device_id is not None:
+                if rule.event_type in {"SPARK_STATUS_TIMEOUT", "CAN_TIMEOUT"}:
+                    self._note_timeout(device_id, ts)
+            break
+        else:
+            return False
+        return True
+
+    def _note_timeout(self, device_id: int, ts: float) -> None:
+        cutoff = ts - self._bus_fault_window_s
+        self._recent_timeouts[device_id] = ts
+        stale = [key for key, last in self._recent_timeouts.items() if last < cutoff]
+        for key in stale:
+            self._recent_timeouts.pop(key, None)
+        if len(self._recent_timeouts) < self._bus_fault_min_devices:
+            return
+        self._set_derived_bus_fault(ts, len(self._recent_timeouts))
+
+    def _set_derived_bus_fault(self, ts: float, devices: int) -> None:
+        key = "system:BUS_FAULT_SUSPECTED"
+        message = f"DERIVED: {devices} devices timed out within {self._bus_fault_window_s:.0f}s"
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                self._entries[key] = ConsoleEntry(
+                    key=key,
+                    event_type="BUS_FAULT_SUSPECTED",
+                    device_id=None,
+                    severity="WARN",
+                    active=True,
+                    count=1,
+                    first_seen=ts,
+                    last_seen=ts,
+                    last_message=message,
+                    rule_name="DERIVED_BUS_FAULT_SUSPECTED",
+                )
+                return
+            if not entry.active:
+                entry.count += 1
+            entry.last_seen = ts
+            entry.last_message = message
+            entry.active = True
+
+    def publish(self, table, now: float) -> None:
+        if (now - self._last_publish) < self._publish_period:
+            return
+        self._last_publish = now
+        if table is None:
+            return
+        with self._lock:
+            entries = list(self._entries.values())
+        for entry in entries:
+            if entry.active and (now - entry.last_seen) > self._timeout_s:
+                entry.active = False
+        console_table = table.getSubTable("console")
+        console_table.getEntry("reset").setBoolean(False)
+        reset_entry = console_table.getEntry("reset")
+        if reset_entry.getBoolean(False) or self._reset_requested:
+            self._reset_requested = False
+            self._reset_console_state(console_table)
+            reset_entry.setBoolean(False)
+        active_count = sum(1 for e in entries if e.active)
+        console_table.getEntry("lastPublish").setDouble(float(now))
+        console_table.getEntry("activeCount").setDouble(float(active_count))
+        console_table.getEntry("totalCount").setDouble(float(len(entries)))
+        console_table.getEntry("rulesLoaded").setDouble(float(len(self._rules)))
+        console_table.getEntry("linesReceived").setDouble(float(self._lines_received))
+        console_table.getEntry("linesMatched").setDouble(float(self._lines_matched))
+        console_table.getEntry("packetsReceived").setDouble(float(self._packets_received))
+        console_table.getEntry("lastSource").setString(self._last_addr or "")
+        for entry in entries:
+            if entry.device_id is not None:
+                base = console_table.getSubTable("devices").getSubTable(str(entry.device_id)).getSubTable(entry.event_type)
+            else:
+                base = console_table.getSubTable("system").getSubTable(entry.event_type)
+            base.getEntry("Active").setBoolean(entry.active)
+            base.getEntry("Count").setDouble(float(entry.count))
+            base.getEntry("LastSeen").setDouble(float(entry.last_seen))
+            base.getEntry("Message").setString(entry.last_message)
+            base.getEntry("Severity").setString(entry.severity)
+            self._published_keys.add((entry.device_id, entry.event_type))
+
+    def _reset_console_state(self, console_table) -> None:
+        with self._lock:
+            self._entries.clear()
+        for device_id, event_type in list(self._published_keys):
+            if device_id is not None:
+                base = console_table.getSubTable("devices").getSubTable(str(device_id)).getSubTable(event_type)
+            else:
+                base = console_table.getSubTable("system").getSubTable(event_type)
+            base.getEntry("Active").setBoolean(False)
+            base.getEntry("Count").setDouble(0.0)
+            base.getEntry("LastSeen").setDouble(0.0)
+            base.getEntry("Message").setString("")
+            base.getEntry("Severity").setString("")
+        self._published_keys.clear()
+        self._lines_received = 0
+        self._lines_matched = 0
+        self._packets_received = 0
+        self._last_addr = None
+        self._recent_timeouts.clear()
 
 
 @dataclass
@@ -159,70 +682,64 @@ def _build_profile_from_seen(
     profile_name: str,
     include_unknown: bool,
 ) -> Dict[str, object]:
-    neos: List[Dict[str, int]] = []
-    flexes: List[Dict[str, int]] = []
-    krakens: List[Dict[str, int]] = []
-    falcons: List[Dict[str, int]] = []
-    cancoders: List[Dict[str, int]] = []
+    buckets: Dict[str, List[Dict[str, int]]] = {
+        "neos": [],
+        "flexes": [],
+        "krakens": [],
+        "falcons": [],
+        "cancoders": [],
+    }
+    singletons: Dict[str, Optional[int]] = {
+        "pdh": None,
+        "pdp": None,
+        "pigeon": None,
+        "roborio": None,
+    }
     unknown: List[Dict[str, int]] = []
-    pdh_id: Optional[int] = None
-    pdp_id: Optional[int] = None
-    pigeon_id: Optional[int] = None
-    roborio_id: Optional[int] = None
+    assumptions: List[str] = []
 
     for mfg, dtype, did in sorted(seen_keys):
-        if mfg == 5 and dtype == 2:
-            neos.append({"id": did})
-        elif mfg == 4 and dtype == 2:
-            krakens.append({"id": did})
-        elif mfg == 4 and dtype == 7:
-            cancoders.append({"id": did})
-        elif mfg == 5 and dtype == 8:
-            if pdh_id is None:
-                pdh_id = did
-            elif include_unknown:
-                unknown.append({"manufacturer": mfg, "device_type": dtype, "device_id": did})
-        elif mfg == 4 and dtype == 8:
-            if pdp_id is None:
-                pdp_id = did
-            elif include_unknown:
-                unknown.append({"manufacturer": mfg, "device_type": dtype, "device_id": did})
-        elif mfg == 4 and dtype == 4:
-            if pigeon_id is None:
-                pigeon_id = did
-            elif include_unknown:
-                unknown.append({"manufacturer": mfg, "device_type": dtype, "device_id": did})
-        elif mfg == 1 and dtype == 1:
-            if roborio_id is None:
-                roborio_id = did
-            elif include_unknown:
-                unknown.append({"manufacturer": mfg, "device_type": dtype, "device_id": did})
-        elif include_unknown:
+        matched = False
+        for rule in PROFILE_MAP_RULES:
+            if "mfg" in rule and mfg != rule["mfg"]:
+                continue
+            if "type" in rule and dtype != rule["type"]:
+                continue
+            bucket = rule.get("bucket")
+            singleton = rule.get("singleton")
+            note = rule.get("note")
+            if bucket:
+                buckets.setdefault(bucket, []).append({"id": did})
+                matched = True
+            elif singleton:
+                if singletons.get(singleton) is None:
+                    singletons[singleton] = did
+                    matched = True
+                elif include_unknown:
+                    unknown.append({"manufacturer": mfg, "device_type": dtype, "device_id": did})
+                    matched = True
+            if note and note not in assumptions:
+                assumptions.append(note)
+            if matched:
+                break
+        if not matched and include_unknown:
             unknown.append({"manufacturer": mfg, "device_type": dtype, "device_id": did})
 
     profile: Dict[str, object] = {
-        "neos": neos,
-        "flexes": flexes,
-        "krakens": krakens,
-        "falcons": falcons,
-        "cancoders": cancoders,
+        "neos": buckets["neos"],
+        "flexes": buckets["flexes"],
+        "krakens": buckets["krakens"],
+        "falcons": buckets["falcons"],
+        "cancoders": buckets["cancoders"],
         "notes": {
             "generated_by": "can_nt_bridge.py",
             "profile_name": profile_name,
-            "assumptions": [
-                "REV mfg=5 type=2 mapped to 'neos' (cannot distinguish NEO vs FLEX).",
-                "CTRE mfg=4 type=2 mapped to 'krakens' (cannot distinguish Kraken vs Falcon).",
-            ],
+            "assumptions": assumptions,
         },
     }
-    if pdh_id is not None:
-        profile["pdh"] = {"id": pdh_id}
-    if pdp_id is not None:
-        profile["pdp"] = {"id": pdp_id}
-    if pigeon_id is not None:
-        profile["pigeon"] = {"id": pigeon_id}
-    if roborio_id is not None:
-        profile["roborio"] = {"id": roborio_id}
+    for key, value in singletons.items():
+        if value is not None:
+            profile[key] = {"id": value}
     if include_unknown and unknown:
         profile["unknown"] = unknown
 
@@ -263,6 +780,34 @@ def _decode_frc_ext_id_full(arb_id: int) -> Tuple[int, int, int, int, int]:
     return manufacturer, device_type, api_class, api_index, device_id
 
 
+def _rule_matches(
+    rule: Dict[str, Any],
+    manufacturer: int,
+    device_type: int,
+    api_class: int,
+    api_index: int,
+    pf: int,
+    ps: int,
+) -> bool:
+    if "mfg" in rule and manufacturer != rule["mfg"]:
+        return False
+    if "type" in rule and device_type != rule["type"]:
+        return False
+    if "api_class" in rule and api_class != rule["api_class"]:
+        return False
+    if "api_index_min" in rule and api_index < rule["api_index_min"]:
+        return False
+    if "api_index_max" in rule and api_index > rule["api_index_max"]:
+        return False
+    if "pf" in rule and pf != rule["pf"]:
+        return False
+    if "ps_max" in rule and ps > rule["ps_max"]:
+        return False
+    if "ps_min" in rule and ps < rule["ps_min"]:
+        return False
+    return True
+
+
 def _classify_frame(
     arb_id: int,
     manufacturer: int,
@@ -271,47 +816,21 @@ def _classify_frame(
     api_index: int,
 ) -> Tuple[bool, bool]:
     # Heuristics aligned with the Wireshark dissector (unverified).
-    # REV: api_class 6 appears to be periodic status for motor controllers.
-    is_status = (manufacturer == 5 and device_type == 2 and api_class == 6)
-    # REV: api_class 46 carries multiple status frames (api_index 0..6 are common).
-    # Treat those as status; only other indices are considered control-like.
-    is_rev_mc = (manufacturer == 5 and device_type == 2)
-    if is_rev_mc and api_class == 46:
-        if 0 <= api_index <= 6:
-            is_status = True
-            is_control = False
-        else:
-            is_control = True
-    else:
-        is_control = False
-
-    # CTRE: Phoenix frames can appear as J1939-style PF/PS or FRC extended.
-    if manufacturer == 4:
-        pf = (arb_id >> 16) & 0xFF
-        ps = (arb_id >> 8) & 0xFF
-        # J1939-style control/status
-        if pf == 0xEF:
-            is_control = True
-        if pf == 0xFF and ps <= 0x07:
-            is_status = True
-
-        # FRC-extended CTRE status (conservative to avoid flooding):
-        # type=2: api_class 11 (status groups)
-        # type=8: api_class 5 (status groups)
-        if device_type == 2 and api_class in {11}:
-            is_status = True
-        if device_type == 8 and api_class in {5}:
-            is_status = True
-
+    pf = (arb_id >> 16) & 0xFF
+    ps = (arb_id >> 8) & 0xFF
+    is_status = any(
+        _rule_matches(rule, manufacturer, device_type, api_class, api_index, pf, ps)
+        for rule in STATUS_RULES
+    )
+    is_control = any(
+        _rule_matches(rule, manufacturer, device_type, api_class, api_index, pf, ps)
+        for rule in CONTROL_RULES
+    )
     return is_status, is_control
 
 
 def _uses_status_presence(manufacturer: int, device_type: int) -> bool:
-    if manufacturer == 5 and device_type == 2:
-        return True
-    if manufacturer == 4 and device_type in {2, 8}:
-        return True
-    return False
+    return True
 
 
 def _dump_api_inventory(
@@ -535,6 +1054,8 @@ def _print_or_dump_nt_keys(devices, print_keys: bool, dump_path: str) -> None:
         "bringup/diag/can/pc/framesTotal",
         "bringup/diag/can/pc/readErrors",
         "bringup/diag/can/pc/lastFrameAgeSec",
+        "bringup/diag/console/(dynamic keys per rule/device)",
+        "bringup/diag/console/reset",
     ])
     payload = {
         "keys": keys,
@@ -789,6 +1310,67 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Print CAN summary to console every N seconds (0 disables).",
     )
     parser.add_argument(
+        "--console-monitor",
+        action="store_true",
+        help="Enable roboRIO NetConsole monitoring and NT publish.",
+    )
+    parser.add_argument(
+        "--console-transport",
+        default="tcp",
+        choices=["tcp", "udp"],
+        help="NetConsole transport to use (default: tcp).",
+    )
+    parser.add_argument(
+        "--console-port",
+        type=int,
+        default=1740,
+        help="NetConsole port (default: 1740 for tcp, 6666 for udp).",
+    )
+    parser.add_argument(
+        "--console-host",
+        default="",
+        help="Override NetConsole host (default: --rio).",
+    )
+    parser.add_argument(
+        "--console-rules",
+        default=str(Path(__file__).with_name("console_rules.json")),
+        help="Path to console_rules.json for NetConsole regex matching.",
+    )
+    parser.add_argument(
+        "--console-timeout",
+        type=float,
+        default=10.0,
+        help="Seconds of inactivity before console entries go inactive.",
+    )
+    parser.add_argument(
+        "--console-rate",
+        type=float,
+        default=2.0,
+        help="Console NT publish rate (Hz).",
+    )
+    parser.add_argument(
+        "--console-debug-log",
+        default="",
+        help="Optional path to log raw NetConsole lines (rotating file).",
+    )
+    parser.add_argument(
+        "--console-reset-on-start",
+        action="store_true",
+        help="Clear console counters and entries on startup.",
+    )
+    parser.add_argument(
+        "--console-log-max-mb",
+        type=int,
+        default=5,
+        help="Max size (MB) per console debug log file.",
+    )
+    parser.add_argument(
+        "--console-log-max-files",
+        type=int,
+        default=5,
+        help="Max number of rotated console debug log files.",
+    )
+    parser.add_argument(
         "--startup-summary-after",
         type=float,
         default=0.0,
@@ -967,6 +1549,18 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=-1,
         help="Only print frames matching this device ID (low 6 bits of arbitration ID).",
+    )
+    parser.add_argument(
+        "--print-mfg",
+        type=int,
+        default=-1,
+        help="Only print frames matching this manufacturer ID.",
+    )
+    parser.add_argument(
+        "--print-type",
+        type=int,
+        default=-1,
+        help="Only print frames matching this device type.",
     )
 
     return parser
@@ -1151,6 +1745,7 @@ def _publish_updates(
     labels: Dict[Tuple[int, int, int], str],
     table,
     bus,
+    console_monitor: Optional[ConsoleMonitor],
 ) -> Tuple[float, float]:
     if (now - last_publish) < args.publish_period:
         return last_publish, last_summary
@@ -1196,6 +1791,8 @@ def _publish_updates(
         table.getEntry("can/pc/framesTotal").setDouble(float(state.total_frames))
         table.getEntry("can/pc/readErrors").setDouble(float(state.read_errors))
         table.getEntry("can/pc/lastFrameAgeSec").setDouble(float(last_frame_age))
+    if console_monitor is not None:
+        console_monitor.publish(table, now)
 
     state.period_frames = 0
     state.heartbeat += 1
@@ -1266,6 +1863,33 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             return 2
 
     nt, table = _setup_nt(args)
+
+    console_monitor = None
+    if args.console_monitor:
+        transport = args.console_transport.lower()
+        host = args.console_host or args.rio
+        port = args.console_port
+        if transport == "udp" and port == 1740:
+            port = 6666
+        console_monitor = ConsoleMonitor(
+            rules_path=args.console_rules,
+            inactivity_timeout=args.console_timeout,
+            publish_rate_hz=args.console_rate,
+            debug_log_path=args.console_debug_log,
+            debug_log_max_mb=args.console_log_max_mb,
+            debug_log_max_files=args.console_log_max_files,
+            transport=transport,
+            host=host,
+            port=port,
+        )
+        if args.console_reset_on_start:
+            console_monitor.request_reset()
+        if transport == "udp":
+            print(f"ConsoleMonitor: listening on UDP {port} for NetConsole.")
+        else:
+            print(f"ConsoleMonitor: connecting to TCP {host}:{port} for NetConsole.")
+        if args.console_reset_on_start and table is not None:
+            console_monitor.publish(table, time.time())
 
     analyzer = CanLiveAnalyzer(expected_ids=expected_ids)
     state = SnifferState()
@@ -1385,9 +2009,17 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
                 print_id_match = (args.print_can_id == -1 or arb_id == args.print_can_id)
                 print_dev_match = (args.print_device_id == -1 or did == args.print_device_id)
+                print_mfg_match = (args.print_mfg == -1 or mfg == args.print_mfg)
+                print_type_match = (args.print_type == -1 or dtype == args.print_type)
 
                 label = device_labels.get((mfg, dtype, did), "")
-                if args.print_any and print_id_match and print_dev_match:
+                if (
+                    args.print_any
+                    and print_id_match
+                    and print_dev_match
+                    and print_mfg_match
+                    and print_type_match
+                ):
                     print(
                         _format_frame_line(
                             "frame",
@@ -1401,7 +2033,14 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                             label,
                         )
                     )
-                if args.print_status and is_status and print_id_match and print_dev_match:
+                if (
+                    args.print_status
+                    and is_status
+                    and print_id_match
+                    and print_dev_match
+                    and print_mfg_match
+                    and print_type_match
+                ):
                     print(
                         _format_frame_line(
                             "status",
@@ -1415,7 +2054,14 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                             label,
                         )
                     )
-                if args.print_control and is_control and print_id_match and print_dev_match:
+                if (
+                    args.print_control
+                    and is_control
+                    and print_id_match
+                    and print_dev_match
+                    and print_mfg_match
+                    and print_type_match
+                ):
                     print(
                         _format_frame_line(
                             "control",
@@ -1442,6 +2088,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 state.period_frames += 1
                 state.last_frame_time = now
 
+            if console_monitor is not None:
+                console_monitor.poll(now)
+
             last_publish, last_summary = _publish_updates(
                 args=args,
                 now=now,
@@ -1453,12 +2102,15 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 labels=device_labels,
                 table=table,
                 bus=bus,
+                console_monitor=console_monitor,
             )
 
     except KeyboardInterrupt:
         print("Stopping (Ctrl+C)...")
     finally:
         now = time.time()
+        if console_monitor is not None:
+            console_monitor.stop()
         try:
             summary = analyzer.summary(now, stale_s=args.stale_s, top_n=args.top_n)
             print("=== Final Summary ===")

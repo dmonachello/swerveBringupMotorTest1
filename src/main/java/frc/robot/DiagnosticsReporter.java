@@ -97,39 +97,44 @@ final class DiagnosticsReporter {
     canHealth.update();
   }
 
-  void printNetworkDiagnostics() {
-    // Prints the NetworkTables table of PC tool CAN visibility.
+  String buildNetworkDiagnosticsReportIfReady() {
+    // Returns a NetworkTables report snapshot when rate limiting allows.
     long nowMs = System.currentTimeMillis();
     if (nowMs - lastNetworkPrintMs < MIN_PRINT_INTERVAL_MS) {
-      return;
+      return null;
     }
     lastNetworkPrintMs = nowMs;
-    enqueueNetworkDiagnosticsReport();
+    return buildNetworkDiagnosticsReport();
   }
 
-  void printCanDiagnosticsReport() {
-    // Prints the combined bus + PC tool + local device report.
+  String buildCanDiagnosticsReportIfReady() {
+    // Returns a combined bus + PC tool + local device report when allowed.
     long nowMs = System.currentTimeMillis();
     if (nowMs - lastCanDiagPrintMs < MIN_PRINT_INTERVAL_MS) {
-      return;
+      return null;
     }
     lastCanDiagPrintMs = nowMs;
-    enqueueCanDiagnosticsReport();
+    return buildCanDiagnosticsReport();
   }
 
-  void dumpReportJsonToConsoleAndFile() {
-    // JSON report is for machine parsing and AI diagnostics.
-    String json = buildReportJson();
-    BringupPrinter.enqueueChunked(ReportTextUtil.wrapLongLine(json, 120), 4);
+  String buildReportJsonForDump() {
+    return buildReportJson();
+  }
+
+  boolean writeReportJsonToFile(String json) {
     try {
       Files.writeString(Path.of(REPORT_PATH), json);
-      BringupPrinter.enqueue("Wrote CAN report JSON to " + REPORT_PATH);
+      return true;
     } catch (Exception ex) {
-      BringupPrinter.enqueue("Failed to write CAN report JSON: " + ex.getMessage());
+      return false;
     }
   }
 
-  private void enqueueNetworkDiagnosticsReport() {
+  String getReportPath() {
+    return REPORT_PATH;
+  }
+
+  private String buildNetworkDiagnosticsReport() {
     // NetworkTables snapshot: PC sniffer device visibility and rates.
     StringBuilder sb = new StringBuilder(1024);
     ReportTextUtil.appendLine(sb, "=== Bringup NetworkTables (CAN Bus via PC Tool) ===");
@@ -157,14 +162,13 @@ final class DiagnosticsReporter {
     Collections.addAll(allSpecs, findUnknownDeviceSpecs());
     printNetworkDeviceTable(sb, allSpecs, nowSeconds);
     ReportTextUtil.appendLine(sb, "=============================");
-    BringupPrinter.enqueueChunked(sb.toString(), 4);
+    return sb.toString();
   }
 
-  private void enqueueCanDiagnosticsReport() {
+  private String buildCanDiagnosticsReport() {
     // Full text report with summary and device health.
     SnapshotBundle bundle = buildSnapshotBundle();
-    String report = textBuilder.buildCanDiagnosticsReport(bundle);
-    BringupPrinter.enqueueChunked(report, 4);
+    return textBuilder.buildCanDiagnosticsReport(bundle);
   }
 
   private String buildReportJson() {

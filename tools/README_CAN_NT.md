@@ -107,6 +107,11 @@ COMMON COMMANDS
     Capture only (no NetworkTables):
         python tools\can_nt_bridge.py --no-nt --pcap tools\logs\capture.pcapng
 
+REAL-TIME NOTES (WHY OUTPUT IS THROTTLED)
+    The robot runs a 20ms periodic loop. Console printing is slow and can cause overruns.
+    Report-like output is intentionally paced and chunked to avoid stalling robot control.
+    Expect longer reports to stream over multiple cycles rather than printing all at once.
+
     List serial ports:
         python tools\can_nt_bridge.py --list-ports
 

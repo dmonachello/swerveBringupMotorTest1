@@ -91,11 +91,12 @@ public class Robot extends TimedRobot {
 
     // --- Print current stick inputs on demand ---
     if (bind.pressed("printInputs")) {
-      BringupPrinter.enqueue(
+      core.requestTextReport(
           "Inputs: leftY=" + String.format("%.2f", neoSpeed) +
           " rightY=" + String.format("%.2f", krakenSpeed) +
           " (NEO/FLEX=" + String.format("%.2f", neoSpeed) +
-          ", KRAKEN/FALCON=" + String.format("%.2f", krakenSpeed) + ")");
+          ", KRAKEN/FALCON=" + String.format("%.2f", krakenSpeed) + ")",
+          4);
     }
 
     // core update handled by BringupCommandRouter
@@ -130,7 +131,7 @@ public class Robot extends TimedRobot {
     appendLine(sb, "KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
     appendLine(sb, "FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
     appendLine(sb, "======================");
-    BringupPrinter.enqueue(sb.toString());
+    core.requestTextReport(sb.toString(), 4);
   }
 
   private void printProfileInfo() {
@@ -143,7 +144,7 @@ public class Robot extends TimedRobot {
     appendLine(sb, "KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
     appendLine(sb, "FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
     appendLine(sb, "======================");
-    BringupPrinter.enqueue(sb.toString());
+    core.requestTextReport(sb.toString(), 4);
   }
 
   private void printTestsInfo() {
@@ -180,13 +181,13 @@ public class Robot extends TimedRobot {
       }
     }
     appendLine(sb, "==========================");
-    BringupPrinter.enqueue(sb.toString());
+    core.requestTextReport(sb.toString(), 4);
   }
 
   private void printTestsOverview() {
     BringupCore.TestsOverview overview = core.buildTestsOverview();
     String text = core.formatTestsOverview(overview);
-    BringupPrinter.enqueueChunked(text, 6);
+    core.requestTextReport(text, 6);
   }
 
   // Shared line-append helper to keep formatting consistent.

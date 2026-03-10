@@ -9,6 +9,8 @@ import frc.robot.manufacturers.DeviceAddResult;
 import frc.robot.manufacturers.DeviceRole;
 import frc.robot.manufacturers.DeviceTypeBucket;
 import frc.robot.manufacturers.ManufacturerGroup;
+import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
+import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 import frc.robot.manufacturers.RevDeviceGroup;
 import frc.robot.tests.BringupTest;
 import frc.robot.tests.BringupTestContext;
@@ -16,7 +18,9 @@ import frc.robot.tests.BringupTestRegistry;
 import frc.robot.tests.BringupTestResult;
 import frc.robot.tests.CompositeTest;
 import frc.robot.tests.JoystickTest;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 
 // Core bringup logic: creates devices, commands outputs, and prints local health.
@@ -25,6 +29,7 @@ public final class BringupCore {
   private static final int NI_MANUFACTURER = 1;
   private static final int TYPE_ROBOT_CONTROLLER = 1;
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
+  private static final int REPORT_BATCH = 2;
 
   private final RevDeviceGroup revDevices = new RevDeviceGroup();
   private final CtreDeviceGroup ctreDevices = new CtreDeviceGroup();
@@ -39,6 +44,8 @@ public final class BringupCore {
   private long lastStatePrintMs = 0L;
   private long lastHealthPrintMs = 0L;
   private long lastCANCoderPrintMs = 0L;
+  private final Deque<ReportJobBase> reportQueue = new ArrayDeque<>();
+  private ReportJobBase activeReport = null;
   private final List<DeviceUnit> testDevices = new ArrayList<>();
   private int nextTestIndex = 0;
   private final List<BringupTest> bringupTests = new ArrayList<>();
@@ -85,7 +92,7 @@ public final class BringupCore {
       long nowMs = System.currentTimeMillis();
       if (nowMs - lastStatePrintMs >= MIN_PRINT_INTERVAL_MS) {
         lastStatePrintMs = nowMs;
-        printState();
+        requestStateReport();
       }
     }
     prevPrint = printNow;
@@ -97,7 +104,7 @@ public final class BringupCore {
       long nowMs = System.currentTimeMillis();
       if (nowMs - lastHealthPrintMs >= MIN_PRINT_INTERVAL_MS) {
         lastHealthPrintMs = nowMs;
-        printHealthStatus();
+        requestHealthReport();
       }
     }
     prevHealth = healthNow;
@@ -109,7 +116,7 @@ public final class BringupCore {
       long nowMs = System.currentTimeMillis();
       if (nowMs - lastCANCoderPrintMs >= MIN_PRINT_INTERVAL_MS) {
         lastCANCoderPrintMs = nowMs;
-        printCANCoderStatus();
+        requestCANCoderReport();
       }
     }
     prevCANCoder = printNow;
@@ -138,6 +145,18 @@ public final class BringupCore {
   public void clearAllFaults() {
     revDevices.clearFaults();
     ctreDevices.clearFaults();
+  }
+
+  public void runCanPingSweep() {
+    StringBuilder sb = new StringBuilder(1024);
+    appendLine(sb, "=== CAN Ping Sweep (Local Vendor API) ===");
+    appendLine(sb, "Note: Devices must be added to be probed (use addAll).");
+    appendLine(sb, "--- REV ---");
+    appendSweepGroup(sb, revDevices);
+    appendLine(sb, "--- CTRE ---");
+    appendSweepGroup(sb, ctreDevices);
+    appendLine(sb, "==============================");
+    BringupPrinter.enqueueChunked(sb.toString(), 6);
   }
 
   // Stop all outputs, close devices, and reset internal state.
@@ -581,14 +600,406 @@ public final class BringupCore {
   // Print detailed local health with faults, warnings, and key telemetry.
   // Uses only local vendor APIs; no PC sniffer data is involved here.
   private void printHealthStatus() {
-    StringBuilder sb = new StringBuilder(768);
-    appendLine(sb, "=== Bringup Health (Local Robot Data) ===");
-    double nowSec = Timer.getFPGATimestamp();
-    revDevices.appendHealth(sb, nowSec);
-    ctreDevices.appendHealth(sb, nowSec);
-    appendVirtualDeviceHealth(sb);
-    appendLine(sb, "======================");
-    BringupPrinter.enqueueChunked(sb.toString(), 4);
+    requestHealthReport();
+  }
+
+  public void updateReports() {
+    if (activeReport == null) {
+      activeReport = reportQueue.pollFirst();
+      if (activeReport == null) {
+        return;
+      }
+      activeReport.start();
+    }
+    if (activeReport.step(REPORT_BATCH)) {
+      BringupPrinter.enqueueChunked(activeReport.getBuffer().toString(), activeReport.getChunkSize());
+      activeReport = null;
+    }
+  }
+
+  public void requestStateReport() {
+    reportQueue.addLast(buildStateReport());
+  }
+
+  public void requestHealthReport() {
+    reportQueue.addLast(buildHealthReport());
+  }
+
+  public void requestCANCoderReport() {
+    reportQueue.addLast(buildCANCoderReport());
+  }
+
+  public void requestSweepReport() {
+    reportQueue.addLast(buildSweepReport());
+  }
+
+  public void requestTextReport(String text, int chunkSize) {
+    if (text == null || text.isBlank()) {
+      return;
+    }
+    reportQueue.addLast(new TextReportJob(text, chunkSize));
+  }
+
+  public void requestTextReportLines(
+      String header,
+      List<String> lines,
+      String footer,
+      int chunkSize) {
+    reportQueue.addLast(new TextReportJob(header, lines, footer, chunkSize));
+  }
+
+  private void collectHealthItems(List<DevicePrintItem> out, ManufacturerGroup group) {
+    for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
+      if (bucket.getRegistration().role() != DeviceRole.MOTOR) {
+        continue;
+      }
+      List<DeviceUnit> bucketDevices = bucket.getDevices();
+      for (int i = 0; i < bucketDevices.size(); i++) {
+        out.add(new DevicePrintItem(bucket, bucketDevices.get(i), i));
+      }
+    }
+  }
+
+  private void appendHealthDevice(StringBuilder sb, DevicePrintItem item, double nowSec) {
+    DeviceTypeBucket bucket = item.bucket;
+    DeviceUnit device = item.device;
+    DeviceSnapshot snap = snapshotDevice(bucket, item.index, nowSec);
+    if (!snap.present) {
+      sb.append(bucket.getRegistration().displayName())
+          .append(" index ").append(item.index)
+          .append(" CAN ").append(device.getCanId())
+          .append(" not added\n");
+      return;
+    }
+    RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
+    CtreMotorAttachment ctre = snap.getAttachment(CtreMotorAttachment.class);
+    MotorSpecAttachment spec = snap.getAttachment(MotorSpecAttachment.class);
+    LimitsAttachment limits = snap.getAttachment(LimitsAttachment.class);
+    if (rev != null) {
+      sb.append(bucket.getRegistration().displayName())
+          .append(" index ").append(item.index)
+          .append(" CAN ").append(device.getCanId())
+          .append(BringupHealthFormat.formatRevFaultSummary(rev))
+          .append(" lastErr=").append(BringupHealthFormat.safeText(rev.lastError))
+          .append(BringupHealthFormat.safeText(rev.healthNote))
+          .append(BringupHealthFormat.safeText(rev.lowCurrentNote))
+          .append(BringupHealthFormat.formatMotorSpecNote(spec, rev.motorCurrentA))
+          .append(BringupHealthFormat.formatLimitSummary(limits))
+          .append(" busV=").append(String.format("%.2f", BringupHealthFormat.safeDouble(rev.busV))).append("V")
+          .append(" appliedDuty=").append(String.format("%.2f", BringupHealthFormat.safeDouble(rev.appliedDuty))).append("dc")
+          .append(" appliedV=").append(String.format("%.2f", BringupHealthFormat.safeDouble(rev.appliedV))).append("V")
+          .append(" motorCurrentA=").append(String.format("%.4f", BringupHealthFormat.safeDouble(rev.motorCurrentA))).append("A")
+          .append(" tempC=").append(String.format("%.1f", BringupHealthFormat.safeDouble(rev.tempC))).append("C")
+          .append(" cmdDuty=").append(String.format("%.2f", BringupHealthFormat.safeDouble(rev.cmdDuty))).append("dc")
+          .append(" follower=").append(rev.follower ? "Y" : "N")
+          .append('\n');
+      return;
+    }
+    if (ctre != null) {
+      sb.append(bucket.getRegistration().displayName())
+          .append(" index ").append(item.index)
+          .append(" CAN ").append(device.getCanId())
+          .append(BringupHealthFormat.formatCtreFaultSummary(ctre))
+          .append(BringupHealthFormat.formatMotorSpecNote(spec, ctre.motorCurrentA))
+          .append(BringupHealthFormat.formatLimitSummary(limits))
+          .append(" busV=").append(String.format("%.2f", BringupHealthFormat.safeDouble(ctre.busV))).append("V")
+          .append(" appliedDuty=").append(String.format("%.2f", BringupHealthFormat.safeDouble(ctre.appliedDuty))).append("dc")
+          .append(" appliedV=").append(String.format("%.2f", BringupHealthFormat.safeDouble(ctre.appliedV))).append("V")
+          .append(" motorCurrentA=").append(String.format("%.4f", BringupHealthFormat.safeDouble(ctre.motorCurrentA))).append("A")
+          .append(" tempC=").append(String.format("%.1f", BringupHealthFormat.safeDouble(ctre.tempC))).append("C")
+          .append(ctre.faultStatus.isBlank() && ctre.stickyStatus.isBlank()
+              ? ""
+              : " status=" + ctre.faultStatus + "/" + ctre.stickyStatus)
+          .append('\n');
+      return;
+    }
+    sb.append(bucket.getRegistration().displayName())
+        .append(" index ").append(item.index)
+        .append(" CAN ").append(device.getCanId())
+        .append(" present=YES")
+        .append(BringupHealthFormat.formatLimitSummary(limits))
+        .append('\n');
+  }
+
+  private void appendStateDevice(StringBuilder sb, DevicePrintItem item) {
+    DeviceTypeBucket bucket = item.bucket;
+    if (item.firstInBucket) {
+      sb.append(bucket.getRegistration().displayName()).append(":\n");
+    }
+    sb.append("  index ").append(item.index)
+        .append(" CAN ").append(item.device.getCanId())
+        .append(item.device.isCreated() ? " ACTIVE" : " not added")
+        .append('\n');
+  }
+
+  private void appendSweepDevice(StringBuilder sb, DevicePrintItem item, double nowSec) {
+    DeviceTypeBucket bucket = item.bucket;
+    if (item.firstInBucket) {
+      sb.append(bucket.getRegistration().displayName()).append(":\n");
+    }
+    DeviceUnit device = item.device;
+    if (!device.isCreated()) {
+      sb.append("  index ").append(item.index)
+          .append(" CAN ").append(device.getCanId())
+          .append(" NOT_ADDED\n");
+      return;
+    }
+    DeviceSnapshot snap = snapshotDevice(bucket, item.index, nowSec);
+    sb.append("  index ").append(item.index)
+        .append(" CAN ").append(device.getCanId())
+        .append(" ").append(buildSweepStatus(snap))
+        .append('\n');
+  }
+
+  private void appendCANCoderDevice(StringBuilder sb, DevicePrintItem item) {
+    DeviceUnit device = item.device;
+    device.ensureCreated();
+    DeviceSnapshot snap = device.snapshot();
+    EncoderAttachment encoder = snap.getAttachment(EncoderAttachment.class);
+    double degrees = BringupHealthFormat.safeDouble(encoder != null ? encoder.absDeg : null);
+    double rotations = degrees / 360.0;
+    sb.append(item.bucket.getRegistration().displayName())
+        .append(" index ").append(item.index)
+        .append(" CAN ").append(device.getCanId())
+        .append(" absRot=").append(String.format("%.4f", rotations))
+        .append(" absDeg=").append(String.format("%.1f", degrees))
+        .append('\n');
+  }
+
+  private DeviceReportJob buildStateReport() {
+    List<DevicePrintItem> items = collectDeviceItems();
+    DeviceReportJob job = new DeviceReportJob(
+        "=== Bringup State ===",
+        "=====================",
+        4,
+        items,
+        (sb, item) -> appendStateDevice(sb, item));
+    job.onComplete = () -> {
+      StringBuilder sb = job.buffer;
+      appendLine(sb, "Next add will be: " + (addRevNext ? "REV motor" : "CTRE motor"));
+      appendVirtualDevices(sb);
+    };
+    return job;
+  }
+
+  private DeviceReportJob buildHealthReport() {
+    List<DevicePrintItem> items = new ArrayList<>();
+    collectHealthItems(items, revDevices);
+    collectHealthItems(items, ctreDevices);
+    DeviceReportJob job = new DeviceReportJob(
+        "=== Bringup Health (Local Robot Data) ===",
+        "======================",
+        4,
+        items,
+        (sb, item) -> appendHealthDevice(sb, item, job.nowSec));
+    job.onComplete = () -> appendVirtualDeviceHealth(job.buffer);
+    return job;
+  }
+
+  private DeviceReportJob buildCANCoderReport() {
+    List<DevicePrintItem> items = collectDeviceItems(DeviceRole.ENCODER);
+    DeviceReportJob job = new DeviceReportJob(
+        "=== Bringup CANCoder ===",
+        "=======================",
+        4,
+        items,
+        (sb, item) -> appendCANCoderDevice(sb, item));
+    return job;
+  }
+
+  private DeviceReportJob buildSweepReport() {
+    List<DevicePrintItem> items = collectDeviceItems();
+    DeviceReportJob job = new DeviceReportJob(
+        "=== CAN Ping Sweep (Local Vendor API) ===",
+        "==============================",
+        6,
+        items,
+        (sb, item) -> appendSweepDevice(sb, item, job.nowSec));
+    job.onComplete = () -> appendLine(job.buffer, "Note: Devices must be added to be probed (use addAll).");
+    return job;
+  }
+
+  private List<DevicePrintItem> collectDeviceItems() {
+    List<DevicePrintItem> items = new ArrayList<>();
+    collectDeviceItems(items, revDevices, null);
+    collectDeviceItems(items, ctreDevices, null);
+    return items;
+  }
+
+  private List<DevicePrintItem> collectDeviceItems(DeviceRole role) {
+    List<DevicePrintItem> items = new ArrayList<>();
+    collectDeviceItems(items, revDevices, role);
+    collectDeviceItems(items, ctreDevices, role);
+    return items;
+  }
+
+  private void collectDeviceItems(List<DevicePrintItem> out, ManufacturerGroup group, DeviceRole role) {
+    for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
+      if (role != null && bucket.getRegistration().role() != role) {
+        continue;
+      }
+      List<DeviceUnit> bucketDevices = bucket.getDevices();
+      for (int i = 0; i < bucketDevices.size(); i++) {
+        out.add(new DevicePrintItem(bucket, bucketDevices.get(i), i));
+      }
+    }
+  }
+
+  private static final class DevicePrintItem {
+    private final DeviceTypeBucket bucket;
+    private final DeviceUnit device;
+    private final int index;
+    private boolean firstInBucket;
+
+    private DevicePrintItem(DeviceTypeBucket bucket, DeviceUnit device, int index) {
+      this.bucket = bucket;
+      this.device = device;
+      this.index = index;
+      this.firstInBucket = false;
+    }
+  }
+
+  private interface ReportJobBase {
+    void start();
+    boolean step(int batch);
+    int getChunkSize();
+    StringBuilder getBuffer();
+  }
+
+  private static final class DeviceReportJob implements ReportJobBase {
+    private final String header;
+    private final String footer;
+    private final int chunkSize;
+    private final List<DevicePrintItem> items;
+    private final java.util.function.BiConsumer<StringBuilder, DevicePrintItem> appender;
+    private final StringBuilder buffer = new StringBuilder(768);
+    private int index = 0;
+    private double nowSec = 0.0;
+    private Runnable onComplete = null;
+
+    private DeviceReportJob(
+        String header,
+        String footer,
+        int chunkSize,
+        List<DevicePrintItem> items,
+        java.util.function.BiConsumer<StringBuilder, DevicePrintItem> appender) {
+      this.header = header;
+      this.footer = footer;
+      this.chunkSize = chunkSize;
+      this.items = items;
+      this.appender = appender;
+    }
+
+    public void start() {
+      buffer.setLength(0);
+      appendLine(buffer, header);
+      nowSec = Timer.getFPGATimestamp();
+      markFirstInBuckets();
+    }
+
+    public boolean step(int batch) {
+      int processed = 0;
+      while (index < items.size() && processed < batch) {
+        appender.accept(buffer, items.get(index++));
+        processed++;
+      }
+      if (index < items.size()) {
+        return false;
+      }
+      if (onComplete != null) {
+        onComplete.run();
+      }
+      appendLine(buffer, footer);
+      return true;
+    }
+
+    private void markFirstInBuckets() {
+      DeviceTypeBucket last = null;
+      for (DevicePrintItem item : items) {
+        if (item.bucket != last) {
+          item.firstInBucket = true;
+          last = item.bucket;
+        }
+      }
+    }
+
+    public int getChunkSize() {
+      return chunkSize;
+    }
+
+    public StringBuilder getBuffer() {
+      return buffer;
+    }
+  }
+
+  private static final class TextReportJob implements ReportJobBase {
+    private final String header;
+    private final String footer;
+    private final int chunkSize;
+    private final List<String> lines;
+    private final StringBuilder buffer = new StringBuilder(512);
+    private int index = 0;
+
+    private TextReportJob(String text, int chunkSize) {
+      this.header = null;
+      this.footer = null;
+      this.chunkSize = chunkSize;
+      this.lines = splitLines(text);
+    }
+
+    private TextReportJob(String header, List<String> lines, String footer, int chunkSize) {
+      this.header = header;
+      this.footer = footer;
+      this.chunkSize = chunkSize;
+      this.lines = lines != null ? lines : List.of();
+    }
+
+    public void start() {
+      buffer.setLength(0);
+      index = 0;
+      if (header != null && !header.isBlank()) {
+        appendLine(buffer, header);
+      }
+    }
+
+    public boolean step(int batch) {
+      int processed = 0;
+      while (index < lines.size() && processed < batch) {
+        appendLine(buffer, lines.get(index++));
+        processed++;
+      }
+      if (index < lines.size()) {
+        return false;
+      }
+      if (footer != null && !footer.isBlank()) {
+        appendLine(buffer, footer);
+      }
+      return true;
+    }
+
+    public int getChunkSize() {
+      return chunkSize;
+    }
+
+    public StringBuilder getBuffer() {
+      return buffer;
+    }
+  }
+
+  private static List<String> splitLines(String text) {
+    if (text == null || text.isEmpty()) {
+      return List.of();
+    }
+    String[] raw = text.split("\\R", -1);
+    int end = raw.length;
+    while (end > 0 && raw[end - 1].isEmpty()) {
+      end--;
+    }
+    List<String> lines = new ArrayList<>(end);
+    for (int i = 0; i < end; i++) {
+      lines.add(raw[i]);
+    }
+    return lines;
   }
 
   // Print absolute positions for all CANCoders (instantiates if needed).
@@ -599,6 +1010,53 @@ public final class BringupCore {
     appendEncoderStatus(sb, ctreDevices);
     appendLine(sb, "=======================");
     BringupPrinter.enqueueChunked(sb.toString(), 4);
+  }
+
+  private void appendSweepGroup(StringBuilder sb, ManufacturerGroup group) {
+    for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
+      List<DeviceUnit> devices = bucket.getDevices();
+      if (devices.isEmpty()) {
+        continue;
+      }
+      sb.append(bucket.getRegistration().displayName()).append(":\n");
+      for (int i = 0; i < devices.size(); i++) {
+        DeviceUnit device = devices.get(i);
+        if (!device.isCreated()) {
+          sb.append("  index ").append(i)
+              .append(" CAN ").append(device.getCanId())
+              .append(" NOT_ADDED\n");
+          continue;
+        }
+        DeviceSnapshot snap = device.snapshot();
+        sb.append("  index ").append(i)
+            .append(" CAN ").append(device.getCanId())
+            .append(" ").append(buildSweepStatus(snap))
+            .append('\n');
+      }
+    }
+  }
+
+  private String buildSweepStatus(DeviceSnapshot snap) {
+    if (snap == null) {
+      return "NO_DATA";
+    }
+    RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
+    if (rev != null) {
+      String lastErr = BringupHealthFormat.safeText(rev.lastError);
+      if (lastErr.isBlank() || "kOk".equals(lastErr)) {
+        return "OK";
+      }
+      return "WARN lastErr=" + lastErr;
+    }
+    CtreMotorAttachment ctre = snap.getAttachment(CtreMotorAttachment.class);
+    if (ctre != null) {
+      String status = BringupHealthFormat.safeText(ctre.faultStatus);
+      if (!status.isBlank() && status.toUpperCase().contains("OK")) {
+        return "OK";
+      }
+      return status.isBlank() ? "WARN status=UNKNOWN" : "WARN status=" + status;
+    }
+    return snap.present ? "OK" : "NO_DATA";
   }
 
   private void appendEncoderStatus(StringBuilder sb, ManufacturerGroup group) {
