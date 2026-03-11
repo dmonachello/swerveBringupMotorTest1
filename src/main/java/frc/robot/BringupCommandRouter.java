@@ -1,7 +1,6 @@
 package frc.robot;
 
 import frc.robot.input.BindingsManager;
-import frc.robot.diag.report.ReportTextUtil;
 
 /**
  * NAME

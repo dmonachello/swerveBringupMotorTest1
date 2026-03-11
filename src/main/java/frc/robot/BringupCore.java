@@ -4,6 +4,8 @@ import edu.wpi.first.wpilibj.Timer;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.EncoderAttachment;
+import frc.robot.diag.snapshots.LimitsAttachment;
+import frc.robot.diag.snapshots.MotorSpecAttachment;
 import frc.robot.manufacturers.CtreDeviceGroup;
 import frc.robot.manufacturers.DeviceAddResult;
 import frc.robot.manufacturers.DeviceRole;
@@ -1063,6 +1065,129 @@ public final class BringupCore {
 
   /**
    * NAME
+   *   snapshotDevice - Capture a snapshot with shared motor spec enrichment.
+   *
+   * PARAMETERS
+   *   bucket - Device bucket containing the device.
+   *   index - Index within the bucket.
+   *   nowSec - Current time in seconds for timestamping.
+   *
+   * RETURNS
+   *   Populated DeviceSnapshot for reporting.
+   */
+  private DeviceSnapshot snapshotDevice(DeviceTypeBucket bucket, int index, double nowSec) {
+    DeviceUnit device = bucket.getDevices().get(index);
+    DeviceSnapshot snap = device.snapshot();
+    if (bucket.getRegistration().role() == DeviceRole.MOTOR) {
+      fillSpecForMotor(snap, device.getLabel(), device.getMotorModelOverride());
+      if ("REV".equalsIgnoreCase(bucket.getRegistration().vendor()) && snap.present) {
+        RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
+        if (rev != null) {
+          rev.healthNote = buildRevHealthNote(
+              rev.lastError,
+              BringupHealthFormat.safeDouble(rev.busV));
+          if (bucket.tracksLowCurrent()) {
+            rev.lowCurrentNote = buildLowCurrentNote(
+                bucket.getLowCurrentStartSec(),
+                index,
+                nowSec,
+                BringupHealthFormat.safeDouble(rev.appliedV),
+                BringupHealthFormat.safeDouble(rev.motorCurrentA));
+          }
+        }
+      }
+    }
+    return snap;
+  }
+
+  /**
+   * NAME
+   *   fillSpecForMotor - Attach motor specification data to a snapshot.
+   *
+   * PARAMETERS
+   *   snap - Snapshot to enrich.
+   *   label - Device label used for spec lookup.
+   *   modelOverride - Optional motor model override.
+   */
+  private void fillSpecForMotor(DeviceSnapshot snap, String label, String modelOverride) {
+    snap.label = label;
+    BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
+    if (spec == null) {
+      return;
+    }
+    MotorSpecAttachment motorSpec = new MotorSpecAttachment();
+    motorSpec.model = spec.model;
+    motorSpec.nominalV = spec.nominalVoltage;
+    motorSpec.freeCurrentA = spec.freeCurrentA;
+    motorSpec.stallCurrentA = spec.stallCurrentA;
+    snap.addAttachment(motorSpec);
+  }
+
+  /**
+   * NAME
+   *   buildRevHealthNote - Produce a short REV health note.
+   *
+   * PARAMETERS
+   *   lastError - Last reported REV error string.
+   *   busVoltage - Current bus voltage.
+   *
+   * RETURNS
+   *   Short note string or empty when no note applies.
+   */
+  private String buildRevHealthNote(String lastError, double busVoltage) {
+    if (lastError == null || lastError.isBlank()) {
+      return "";
+    }
+    if (!"kOk".equals(lastError) && busVoltage < 7.0) {
+      return " lowBusV";
+    }
+    if (!"kOk".equals(lastError)) {
+      return " lastErr=" + lastError;
+    }
+    return "";
+  }
+
+  /**
+   * NAME
+   *   buildLowCurrentNote - Detect sustained low-current behavior.
+   *
+   * PARAMETERS
+   *   lowCurrentStart - Per-device start times for low-current tracking.
+   *   index - Device index in the bucket.
+   *   nowSec - Current time in seconds.
+   *   appliedVolts - Applied motor voltage.
+   *   currentA - Measured motor current.
+   *
+   * RETURNS
+   *   Short note string or empty when no note applies.
+   */
+  private String buildLowCurrentNote(
+      double[] lowCurrentStart,
+      int index,
+      double nowSec,
+      double appliedVolts,
+      double currentA) {
+    final double lowCurrentAppliedVMin = 1.0;
+    final double lowCurrentAMax = 0.05;
+    final double lowCurrentMinSec = 1.0;
+    boolean lowCurrentNow =
+        Math.abs(appliedVolts) >= lowCurrentAppliedVMin && Math.abs(currentA) <= lowCurrentAMax;
+    if (!lowCurrentNow) {
+      lowCurrentStart[index] = -1.0;
+      return "";
+    }
+    if (lowCurrentStart[index] < 0.0) {
+      lowCurrentStart[index] = nowSec;
+      return "";
+    }
+    if (nowSec - lowCurrentStart[index] < lowCurrentMinSec) {
+      return "";
+    }
+    return " lowCurrent";
+  }
+
+  /**
+   * NAME
    *   buildStateReport - Build a queued state report job.
    */
   private DeviceReportJob buildStateReport() {
@@ -1089,12 +1214,14 @@ public final class BringupCore {
     List<DevicePrintItem> items = new ArrayList<>();
     collectHealthItems(items, revDevices);
     collectHealthItems(items, ctreDevices);
+    final DeviceReportJob[] jobRef = new DeviceReportJob[1];
     DeviceReportJob job = new DeviceReportJob(
         "=== Bringup Health (Local Robot Data) ===",
         "======================",
         4,
         items,
-        (sb, item) -> appendHealthDevice(sb, item, job.nowSec));
+        (sb, item) -> appendHealthDevice(sb, item, jobRef[0].nowSec));
+    jobRef[0] = job;
     job.onComplete = () -> appendVirtualDeviceHealth(job.buffer);
     return job;
   }
@@ -1120,12 +1247,14 @@ public final class BringupCore {
    */
   private DeviceReportJob buildSweepReport() {
     List<DevicePrintItem> items = collectDeviceItems();
+    final DeviceReportJob[] jobRef = new DeviceReportJob[1];
     DeviceReportJob job = new DeviceReportJob(
         "=== CAN Ping Sweep (Local Vendor API) ===",
         "==============================",
         6,
         items,
-        (sb, item) -> appendSweepDevice(sb, item, job.nowSec));
+        (sb, item) -> appendSweepDevice(sb, item, jobRef[0].nowSec));
+    jobRef[0] = job;
     job.onComplete = () -> appendLine(job.buffer, "Note: Devices must be added to be probed (use addAll).");
     return job;
   }
