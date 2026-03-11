@@ -8,8 +8,6 @@
   "print_summary_period": 2.0,
   "no_traffic_secs": 5.0,
   "no_rio_secs": 5.0,
-  "log_csv": "tools\\can_nt_log.csv",
-  "log_period": 1.0,
   "quick_wait": 1.0,
   "auto_match": "USB Serial Device",
   "devices": [
