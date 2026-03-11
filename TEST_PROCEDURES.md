@@ -1,14 +1,14 @@
 # Test Procedures
 
-Purpose: provide step-by-step, repeatable bringup tests for motors, encoders, and CAN diagnostics.
+Purpose: step-by-step bringup tests cover motors, encoders, and CAN diagnostics.
 
 ## Scope
-Purpose: describe the tests that can be run during teleop using the existing bringup controls and JSON-driven tests.
+Purpose: teleop tests run via bringup controls and JSON-driven definitions.
 
 This document focuses on robot-side tests and the PC CAN tool usage needed to validate CAN traffic.
 
 ## Prerequisites
-Purpose: ensure the robot and tooling are ready before testing.
+Purpose: the robot and tooling are ready before testing begins.
 
 - Robot code deployed with the correct `bringup_profiles.json` and `bringup_tests.json`.
 - Optional: select a different test set by changing `default_test_set` in `bringup_tests.json`.
@@ -17,7 +17,7 @@ Purpose: ensure the robot and tooling are ready before testing.
 - (Optional) PC CAN tool running if you want NetworkTables diagnostics.
 
 ## Test Controls
-Purpose: list the standard controller bindings used during test procedures.
+Purpose: standard controller bindings are documented for test procedures.
 
 - `A`: add motor (alternates SPARK/CTRE)
 - `Start`: add all configured devices
@@ -43,7 +43,7 @@ Binding config:
 - Controls button/axis to command mapping.
 
 ## Test Definitions (JSON)
-Purpose: explain how bringup tests are defined and selected.
+Purpose: bringup tests are defined and selected via JSON.
 
 File: `src/main/deploy/bringup_tests.json`
 Override:
@@ -225,7 +225,7 @@ Control:
 - Primary `Left Y` (primary axis) drives the joystick test output.
 
 ## Procedure A: Basic Bringup (Add + Health)
-Purpose: verify the bus and devices before motion tests.
+Purpose: bus and devices are verified before motion tests.
 
 1. Press `Start` to add all configured devices.
 2. Press `B` to print state and confirm devices are instantiated.
@@ -233,7 +233,7 @@ Purpose: verify the bus and devices before motion tests.
 4. If faults or missing devices appear, stop and fix wiring/config.
 
 ## Procedure B: Rotation Limit Test (Single)
-Purpose: confirm encoder feedback and basic motion with a fixed rotation target.
+Purpose: encoder feedback and basic motion are confirmed with a fixed rotation target.
 
 1. Enable the desired test in `bringup_tests.json` (or use `--bringup-tests=...`) and deploy.
 2. Press secondary `LB`/`RB` until the test name prints.
@@ -241,34 +241,34 @@ Purpose: confirm encoder feedback and basic motion with a fixed rotation target.
 4. Confirm the console shows PASS/FAIL and the reason.
 
 ## Procedure C: Rotation Limit Tests (Run All)
-Purpose: execute multiple tests in a defined order.
+Purpose: multiple tests run in a defined order.
 
 1. Enable multiple tests in `bringup_tests.json` (or use `--bringup-tests=...`).
 2. Press secondary `B` to run all enabled tests in order.
 3. Watch for `Test result` lines after each test and `Run-all complete.` at the end.
 
 ## Procedure D: CANCoder Absolute Position Print
-Purpose: verify absolute encoder reads without moving the robot.
+Purpose: absolute encoder reads are verified without moving the robot.
 
 1. Press `Right Bumper`.
 2. Verify `absRot` and `absDeg` values print for each configured CANCoder.
 
 ## Procedure E: CAN Diagnostics Report
-Purpose: cross-check local device health and CAN bus status.
+Purpose: local device health and CAN bus status are cross-checked.
 
 1. Press `D-pad Up` for the CAN diagnostics report.
 2. Check bus utilization, error counts, and device health rows.
 3. If the PC tool is running, verify the PC tool section is present and healthy.
 
 ## Procedure F: NetworkTables Diagnostics (RobotV2)
-Purpose: confirm the PC CAN tool is publishing to NetworkTables.
+Purpose: the PC CAN tool publishes to NetworkTables.
 
 1. Run the PC tool on the Driver Station.
 2. Press `D-pad Down` to print NetworkTables diagnostics.
 3. Check for stale heartbeat, missing devices, or `openOk=NO`.
 
 ## Runtime Verification Checklist
-Purpose: validate that the bringup test system and bindings behave correctly on real hardware.
+Purpose: bringup tests and bindings behave correctly on real hardware.
 
 - Confirm controller detection prints at startup (controller name and type).
 - Press `B` to print state and verify devices are instantiated.
@@ -282,21 +282,21 @@ Purpose: validate that the bringup test system and bindings behave correctly on 
 - If the PC tool is running, press `D-pad Down` and confirm PC diagnostics show `openOk=YES`.
 
 ## Failure Interpretation
-Purpose: define common outcomes and the next corrective action.
+Purpose: common outcomes map to the next corrective action.
 
 - `Timeout`: encoder not changing or motor not moving. Check wiring, CAN ID, and sensor source.
 - `Encoder read failed`: wrong encoder config or device not present/instantiated.
 - `Motor not found`: profile/test mismatch for vendor/type/id.
 
 ## Data Products
-Purpose: record where test artifacts are produced.
+Purpose: test artifacts are recorded with known locations.
 
 - Console: pass/fail and status text.
 - JSON report: `bringup_report.json` (when `X` is pressed).
 - PCAP/PCAPNG: from the PC tool when enabled.
 
 ## Change Checklist
-Purpose: keep test configuration and code in sync.
+Purpose: test configuration stays in sync with code.
 
 - Update `bringup_tests.json` when adding/removing tests (or your override file).
 - Keep `bringup_profiles.json` aligned with device IDs in tests.

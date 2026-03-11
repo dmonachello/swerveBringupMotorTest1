@@ -74,7 +74,7 @@ EXAMPLES
     Generate a profile from observed CAN traffic:
         python -m tools.can_nt.can_nt_bridge --dump-profile tools\can_nt\sniffer_profile.json
 
-    Capture API class/index inventory for later diffing:
+    Capture CAN device inventory for later diffing:
         python -m tools.can_nt.can_nt_bridge --dump-api-inventory tools\can_nt\inventory_a.json --dump-api-inventory-after 5
 
     Diff two inventories:
@@ -130,7 +130,7 @@ REAL-TIME NOTES (WHY OUTPUT IS THROTTLED)
     Generate a profile from observed traffic:
         python -m tools.can_nt.can_nt_bridge --dump-profile tools\can_nt\sniffer_profile.json
 
-    Dump API inventory for later diff:
+    Dump CAN inventory for later diff:
         python -m tools.can_nt.can_nt_bridge --dump-api-inventory tools\can_nt\inventory_a.json --dump-api-inventory-after 5
 
     Dump a can_nt_config.json-style file from a profile:
@@ -167,7 +167,7 @@ OPTIONS
     --dump-profile-name NAME  Profile name inside generated file (default sniffer_YYYYMMDD_HHMMSS).
     --dump-profile-after SEC  Delay before writing --dump-profile (default 3.0).
     --dump-profile-include-unknown  Include unknown devices in generated profile.
-    --dump-api-inventory PATH Write apiClass/apiIndex inventory JSON and exit.
+    --dump-api-inventory PATH Write CAN device inventory JSON and exit.
     --dump-api-inventory-after SEC  Delay before writing inventory (default 3.0).
     --dump-can-config PATH    Write a can_nt_config.json-style file from --profile and exit.
     --diff-inventory A B      Diff two inventory JSON files.
@@ -205,7 +205,8 @@ PUBLISHED KEYS
 
 NOTES
     - Device IDs use the lowest 6 bits of the CAN extended ID.
-    - Inventory snapshots key on (manufacturer, device_type, apiClass, apiIndex, device_id).
+    - Inventory snapshots list devices keyed by (manufacturer_id, device_type_id, can_id) and
+      per-device frame_data entries keyed by apiClass/apiIndex derived from arbitration IDs.
     - Presence is derived from vendor-specific status-frame heuristics when available:
       - REV motor controllers: api_class=6 (periodic status).
       - CTRE devices: PF/PS 0xFF/0x00..0x07 (status), 0xEF (control-only).

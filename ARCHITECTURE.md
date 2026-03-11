@@ -1,19 +1,49 @@
 # Architecture
 
-Purpose: describe the system structure, data flow, and stable contracts for the robot bringup harness and PC CAN tool.
+Purpose: the system architecture defines structure, data flow, and stable contracts for the robot bringup harness and PC CAN tool.
 
 ## System Overview
-Purpose: summarize the two cooperating parts and how they interact.
+Purpose: the system has two cooperating parts with a defined interaction boundary.
 
 - Robot-side WPILib Java bringup harness runs motors/sensors and produces local health + reports.
 - PC-side Python tool passively listens on the CAN bus and publishes diagnostics to NetworkTables.
 - The robot consumes PC diagnostics via NetworkTables under `bringup/diag/...` and must fail soft if the PC tool is absent.
 
+## 1000-Foot View
+Purpose: the system has a high-level map of components, data sources, and safety boundaries.
+
+The system is a two-part bringup stack: robot code that actively drives hardware and a PC tool that passively observes the CAN bus. The robot side is authoritative for actuation and local health, while the PC side is observational and augments diagnostics.
+
+Key roles:
+- Robot (roboRIO, Java): creates devices, runs tests, commands outputs, and reports local health using vendor APIs.
+- PC tool (laptop, Python): listens to CAN traffic via CANable, publishes diagnostics to NetworkTables, and records evidence (PCAP, inventory, diffs).
+
+Data sources and trust boundaries:
+- Robot-local telemetry comes only from vendor APIs on the roboRIO.
+- CAN-bus telemetry comes only from the PC tool via NetworkTables.
+- The two data sources are kept distinct in reporting and APIs.
+
+Control flow summary:
+1. Operators select a profile and tests via JSON files and controller inputs.
+2. Robot code instantiates devices and runs tests inside the 20ms loop.
+3. PC tool listens on CAN, classifies frames, and publishes `bringup/diag/...` keys.
+4. Robot reads PC diagnostics separately and fails soft if the PC tool is absent.
+
+Outputs:
+- Console reports with throttled, chunked printing.
+- Robot JSON report (`bringup_report.json`).
+- PC evidence artifacts (PCAP/PCAPNG, inventory JSON, inventory diffs).
+
+Safety invariants:
+- PC tool is read-only on CAN and must never transmit frames.
+- NetworkTables keys are a stable API contract across robot and PC.
+- Large console output is throttled to protect the 20ms control loop.
+
 ## Layered Design (Robot)
-Purpose: show the internal layers and their responsibilities.
+Purpose: the robot architecture uses internal layers with clear responsibilities.
 
 ### 1) Device-Specific Layer (lowest)
-Purpose: isolate vendor SDK calls and device-specific behavior.
+Purpose: vendor SDK calls and device-specific behavior are isolated in this layer.
 
 - Each device type has a wrapper that only talks to vendor APIs.
 - The wrapper exposes a small API: create, stop, clear faults, snapshot, set duty, optional encoder read.
@@ -24,7 +54,7 @@ Examples:
 - CTRE: `CtreTalonFxDevice`, `CtreCANCoderDevice`, `CtreCANdleDevice`
 
 ### 2) Manufacturer Layer (middle)
-Purpose: group device types by vendor and centralize shared logic.
+Purpose: vendor grouping centralizes shared logic across device types.
 
 - Owns lists of device wrappers for the vendor.
 - Adds shared helpers (spec lookup, health notes, low-current checks).
@@ -36,7 +66,7 @@ Examples:
 - `CtreDeviceGroup`
 
 ### 3) Bringup Core + Test Orchestration (top)
-Purpose: orchestrate input actions, testing, and reporting without vendor coupling.
+Purpose: input actions, testing, and reporting are orchestrated without vendor coupling.
 
 - `BringupCore` handles add/add-all, test selection/run-all, and local prints.
 - `BringupTestRegistry` loads tests from JSON and supports a runtime override path.
@@ -44,13 +74,13 @@ Purpose: orchestrate input actions, testing, and reporting without vendor coupli
 - `BringupCommandRouter` maps bindings to core actions.
 
 ## Input + Bindings
-Purpose: keep controller bindings data-driven and stable.
+Purpose: controller bindings remain data-driven and stable.
 
 - `bringup_bindings.json` defines controllers (type/port/role) plus command bindings/axes.
 - `BindingsManager` resolves bindings and axes each loop.
 
 ## Configuration Layer
-Purpose: document the JSON inputs that define behavior.
+Purpose: JSON inputs define behavior and runtime configuration.
 
 - `bringup_profiles.json`: hardware profiles (devices + IDs). Includes stable `example_default`.
 - `bringup_tests.json`: test definitions (composite/joystick) grouped into test sets.
@@ -58,7 +88,7 @@ Purpose: document the JSON inputs that define behavior.
 - `can_mappings.json`: manufacturer/device type names for CAN decoding.
 
 ## PC CAN Tool (tools/)
-Purpose: describe passive CAN capture + diagnostics publishing.
+Purpose: passive CAN capture feeds diagnostics publishing.
 
 - `tools/can_nt/can_nt_bridge.py` listens on CANable (SLCAN) and publishes `bringup/diag` keys.
 - PC tool output includes PCAP/PCAPNG capture, inventory JSON, and diffs.
@@ -68,10 +98,10 @@ Purpose: describe passive CAN capture + diagnostics publishing.
 - The PC tool must remain read-only on CAN (no frame transmission).
 
 ## Data Flow
-Purpose: explain how data moves through the system.
+Purpose: data moves through defined stages from inputs to reports.
 
 ### A) Startup + Configuration Load
-Purpose: show how profiles, bindings, and tests are loaded.
+Purpose: profiles, bindings, and tests load in a predictable order.
 
 1. Robot starts (`Robot` or `RobotV2`) and applies the active CAN profile:
    - `bringup_profiles.json` is loaded via `BringupUtil`.
@@ -84,7 +114,7 @@ Purpose: show how profiles, bindings, and tests are loaded.
    - `bringup_bindings.json` defines controller roles, bindings, and axes.
 
 ### B) Input -> Action -> Device Command
-Purpose: show how controller inputs become actions.
+Purpose: controller inputs translate into bringup actions each loop.
 
 1. Each loop, `BindingsManager` samples controller inputs.
 2. `BringupCommandRouter` maps bindings to actions:
@@ -95,7 +125,7 @@ Purpose: show how controller inputs become actions.
    - For tests, starts and updates the active test state.
 
 ### C) Local Device Telemetry (Robot-only)
-Purpose: show how device health and snapshots are produced.
+Purpose: device health and snapshots are produced from vendor APIs and enrichments.
 
 1. Device wrappers read vendor APIs into `DeviceSnapshot` objects.
 2. Manufacturer groups enrich snapshots with:
@@ -104,7 +134,7 @@ Purpose: show how device health and snapshots are produced.
 3. `BringupCore` formats and prints local summaries and JSON.
 
 ### D) Test Execution Loop
-Purpose: show how tests run and terminate.
+Purpose: tests run in a loop and terminate on explicit conditions.
 
 1. Composite or joystick tests start from `BringupTestRegistry` configs.
 2. Each loop:
@@ -113,7 +143,7 @@ Purpose: show how tests run and terminate.
 3. When a condition triggers, the test stops motors and records PASS/FAIL.
 
 ### E) PC Tool Capture + NetworkTables Publish
-Purpose: show how CAN bus traffic becomes diagnostics.
+Purpose: CAN bus traffic becomes diagnostics through classification and publishing.
 
 1. `tools/can_nt/can_nt_bridge.py` reads frames from CANable (SLCAN).
 2. It writes optional PCAP/PCAPNG, and builds inventory statistics.
@@ -122,14 +152,14 @@ Purpose: show how CAN bus traffic becomes diagnostics.
 4. The PC tool never transmits CAN frames (passive only).
 
 ### F) Robot Consumption of PC Diagnostics
-Purpose: show how the robot uses PC tool data safely.
+Purpose: the robot consumes PC tool data safely and fails soft when absent.
 
 1. Robot reads `bringup/diag/...` NetworkTables keys.
 2. PC diagnostics are displayed separately from local telemetry.
 3. The system fails soft if PC tool is absent (stale or missing keys).
 
 ### G) Reports + Outputs
-Purpose: show what outputs are produced and where.
+Purpose: outputs are produced as console reports, JSON, and capture artifacts.
 
 - Console prints: local health, test status, and PC diagnostics summaries.
 - JSON report: `bringup_report.json` (robot-local snapshot + PC diagnostics).
@@ -137,14 +167,14 @@ Purpose: show what outputs are produced and where.
 - Inventory and diff JSON files (PC tool).
 
 ## Stable Contracts
-Purpose: list the interfaces that must not change without coordination.
+Purpose: stable interfaces are identified to prevent uncoordinated changes.
 
 - NetworkTables keys under `bringup/diag/...` (robot and PC tool must stay in sync).
 - JSON schemas for `bringup_profiles.json` and `bringup_tests.json`.
 - Report output fields in `bringup_report.json`.
 
 ## Examples
-Purpose: provide concrete, minimal examples.
+Purpose: concrete examples anchor the JSON patterns.
 
 Composite test (rotation + time):
 ```json
@@ -178,7 +208,7 @@ Through-bore via SparkMax alternate encoder:
 ```
 
 ## What Stays Stable
-Purpose: highlight outputs and contracts that should not change lightly.
+Purpose: outputs and contracts are highlighted as stability targets.
 
 - Console output ordering and field names.
 - JSON report schema and field names.
@@ -186,14 +216,14 @@ Purpose: highlight outputs and contracts that should not change lightly.
 - Profile JSON schema.
 
 ## Tradeoffs
-Purpose: show known costs of the design.
+Purpose: known design costs are acknowledged explicitly.
 
 - More classes than a monolith, but isolation is stronger and safer.
 - Some duplication across wrappers, but vendor API changes stay localized.
 - Data-driven tests add JSON complexity, but reduce code churn and keep behavior stable.
 
 ## Future Extensions
-Purpose: list likely next steps without breaking contracts.
+Purpose: future extensions are identified without breaking contracts.
 
 - Add decoder registry for CAN reverse engineering outputs.
 - Add more controller types in `bringup_bindings.json` (beyond Xbox).

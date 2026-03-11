@@ -1,63 +1,120 @@
-# CAN Sniffer Utility Test Plan
+# Bringup Diagnostics System Test Plan
 
-This document provides a step-by-step checklist to verify the CAN -> NetworkTables bridge end-to-end with a real CAN bus and RoboRIO.
+This document provides a step-by-step checklist to verify the complete bringup diagnostics system:
+robot code, CAN sniffer tool, NetworkTables publishing, and config generation.
 
 ## Test Setup
 
 Hardware:
 - RoboRIO powered and reachable (USB or network).
-- CAN bus wired with at least one NEO (SparkMax), one Kraken (TalonFX), and one CANCoder.
-- CANable Pro V2 connected to the CAN bus (CANH, CANL, GND).
+- CAN bus wired with a PDP (minimum) and optional devices.
 - Laptop connected to RIO (USB or network).
+- CANable Pro V2 connected to the CAN bus (CANH, CANL, GND) when using the PC sniffer.
+- Xbox controllers are optional for boot, but required for full bringup workflows.
+
+Bare minimum (robot-only bringup):
+- RoboRIO + PDP on the CAN bus.
+- No CANable required.
+
+Usable minimum (robot + PC diagnostics):
+- RoboRIO + PDP on the CAN bus.
+- At least one motor controller (REV or CTRE) on the CAN bus.
+- CANable Pro V2 connected for the PC sniffer and inventory tooling.
+- Two Xbox controllers connected for full bringup/test workflows.
 
 Software on laptop:
-- Python 3.12 installed at `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe`
+- Python 3.12 installed and reachable from the command line (`python` or `py`).
 - Packages installed:
   - `pynetworktables`
   - `python-can`
   - `pyserial`
+- Driver Station installed and available to enable the robot.
 
 Helpful tools:
-- Driver Station or a way to confirm RIO is powered and reachable.
-- Device Manager to view COM ports.
+- Device Manager to verify COM ports if auto-detect selects the wrong device.
+- Driver Station USB tab to confirm which Xbox controller is primary vs secondary (port 0 vs port 1).
 
-## Smoke Test (Pit-Friendly)
-Purpose: run the minimum set of checks to confirm the system is healthy.
+## Fast Test Plan
+Purpose: the fast test plan confirms minimum health checks for the system.
 
 1. Deploy robot code and enter teleop.
 2. Confirm controller detection prints at startup (controller name and type).
-3. Primary controller: press `Start` to add all configured devices.
-4. Primary controller: press `B` to print state and confirm devices are present.
-5. Primary controller: move `Left Y`/`Right Y`, then press `D-pad Right` to confirm inputs.
-6. Start the PC tool (default test profile):
+3. Scroll through available test configs to choose the desired test config.
+4. Primary controller: press `Start` to add all configured devices.
+5. Primary controller: press `B` to print state and confirm devices are present.
+6. Primary controller: move `Left Y`/`Right Y` to run connected motors, then press `D-pad Right` to confirm inputs.
+7. Start the PC tool (default test profile):
    - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile example_default --rio 172.22.11.2`
-7. Use the smoke test set:
+8. Use the smoke test set:
    - In `src/main/deploy/bringup_tests.json`, set `"default_test_set": "smoke"` and deploy.
-8. Primary controller: press `D-pad Down` and confirm `openOk=YES`.
-9. Secondary controller: press `LB`/`RB` to select a test and confirm the name updates.
-10. Secondary controller: run one enabled test with `A` and confirm PASS/FAIL prints.
-11. Secondary controller: hold `A` during a test with `hold.enabled=true`, then release to confirm the hold termination path.
-12. Secondary controller: press `B` to run all enabled tests and confirm `Run-all complete.` prints.
-13. If a joystick test is enabled, confirm its `motorKeys` move together and stop when the test ends.
-14. If a rotation test uses `encoderKey: internal`, confirm it uses `encoderMotorIndex`.
-15. If a limit switch check is enabled, verify it terminates on switch activation.
-16. If Wireshark is needed, run a quick capture and confirm frames appear.
+   - Scroll through tests with the secondary controller (`LB`/`RB`).
+   - Select which tests run by toggling enable on the secondary controller (`X`) while the test is highlighted.
+9. Primary controller: press `D-pad Down` and confirm `openOk=YES` (PC tool has an active CAN interface and is publishing).
+10. Secondary controller: press `LB`/`RB` to select a test and confirm the name updates.
+11. Secondary controller: run one enabled test with `A` and confirm PASS/FAIL prints.
+12. Secondary controller: hold `A` during a test with `hold.enabled=true`, then release to confirm the hold termination path.
+13. Secondary controller: press `B` to run all enabled tests and confirm `Run-all complete.` prints.
+14. If a joystick test is enabled, confirm its `motorKeys` move together and stop when the test ends.
+15. If a rotation test uses `encoderKey: internal`, confirm it uses `encoderMotorIndex`.
+16. If a limit switch check is enabled, verify it terminates on switch activation.
+17. If Wireshark is needed, run a quick capture and confirm frames appear.
+18. Inventory + config generation (quick check):
+    - `--profileName` is the label stored in the config metadata (it should match your bringup profile name).
+    
+    - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile example_default --rio 172.22.11.2 --dump-api-inventory tools\can_nt\inv_fast.json --dump-api-inventory-after 5`
+    - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_inventory.can_inventory --generate --input tools\can_nt\inv_fast.json --output tools\can_nt\robot_config_fast.json --profileName example_default`
+    - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_inventory.can_inventory --validate --input tools\can_nt\robot_config_fast.json --inventory tools\can_nt\inv_fast.json`
 
-## Full Functional Test Plan (End-to-End)
-Purpose: verify all major robot + PC tool functionality after large changes.
+## Complete Test Plan
+Purpose: the complete test plan verifies major robot and PC tool functionality after large changes.
+
+### Profiles (Required Setup)
+Purpose: profiles match the hardware under test to avoid false diagnostics.
+
+1. Confirm `src/main/deploy/bringup_profiles.json` matches the CAN IDs on the bus.
+2. If you need a new profile:
+   - Start from `src/main/deploy/bringup_profiles.template.json`.
+   - Add a new profile entry with unique name and device IDs.
+   - Set `default_profile` to the profile you want at startup.
+   - Deploy to the roboRIO.
+Notes:
+- Profiles are deployed with robot code; edits require redeploy.
+- Devices become active only when explicitly added (single or add-all).
+
+### Build and Deploy
+Purpose: builds and deploys succeed before hardware testing begins.
+
+1. Open a terminal in the repo root:
+   - `%USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1`
+2. Ensure JAVA_HOME points at the 2026 WPILib JDK:
+   - CMD: `set "JAVA_HOME=C:\Users\Public\wpilib\2026\jdk"`
+   - PowerShell: `$env:JAVA_HOME="C:\Users\Public\wpilib\2026\jdk"`
+3. Optional clean build:
+   - `gradlew clean build -Dorg.gradle.java.home="C:\Users\Public\wpilib\2026\jdk"`
+4. Build robot code:
+   - `gradlew build -Dorg.gradle.java.home="C:\Users\Public\wpilib\2026\jdk"`
+5. Deploy robot code to the RoboRIO:
+   - `gradlew deploy -Dorg.gradle.java.home="C:\Users\Public\wpilib\2026\jdk"`
+   - These steps can also be run via the VS Code WPILib plugin menu.
+Expected:
+- Build completes with no errors.
+- Deploy reports success and robot code starts.
 
 ### A) Robot Bringup Core
-Purpose: ensure base robot bringup actions still work.
+Purpose: base robot bringup actions still work under teleop.
 
 1. Deploy robot code and enter teleop.
-2. Primary controller: press `Start` to add all configured devices.
-3. Primary controller: press `B` to print state.
+2. Profile toggle (cycle):
+   - Action: Press `Back`.
+   - Expected: Profile name changes; the known device list updates.
+3. Primary controller: press `Start` to add all configured devices.
+4. Primary controller: press `B` to print state.
 Expected:
 - All configured devices show `present=YES`.
 - No exceptions or missing device errors.
 
 ### B) Controller + Bindings (Config-Driven)
-Purpose: verify command bindings resolve from JSON and edge/hold works.
+Purpose: command bindings resolve from JSON and edge/hold behavior is correct.
 
 Config excerpt (bindings + controllers):
 ```json
@@ -92,7 +149,7 @@ Expected:
 - No missing/unknown command warnings.
 
 ### C) Speed Inputs
-Purpose: verify axis inputs map to left/right drive commands.
+Purpose: axis inputs map to left/right drive commands as configured.
 
 Config excerpt (axis bindings):
 ```json
@@ -111,7 +168,7 @@ Expected:
 - Values match stick movement and deadband/invert settings.
 
 ### D) Joystick Motor Control (Non-Test Mode)
-Purpose: verify the standard joystick-driven motor output still works.
+Purpose: joystick-driven motor output still works outside tests.
 
 Config excerpt (motors in the active profile):
 ```json
@@ -137,7 +194,7 @@ Expected:
 - Output stops when stick returns to center.
 
 ### E) Bringup Test Selection + Run
-Purpose: verify test list, selection, run, and run-all.
+Purpose: test selection, run, and run-all behave correctly.
 
 Existing tests in the active test set (`default_test_set` in `bringup_tests.json`, or in the override file):
 - Rotation only (internal)
@@ -170,7 +227,7 @@ Expected:
 - Run-all prints `Run-all complete.`.
 
 ### F) Composite Test Checks
-Purpose: verify rotation/time/limit/hold checks independently and combined.
+Purpose: rotation/time/limit/hold checks work independently and combined.
 
 Rotation only (internal):
 ```json
@@ -244,7 +301,7 @@ Expected:
 - Combined test stops on the first triggered condition.
 
 ### G) External Encoder Tests
-Purpose: verify `encoderKey` external device selection.
+Purpose: external encoders are selected correctly via `encoderKey`.
 
 CTRE reference (external CAN encoder):
 ```json
@@ -281,7 +338,7 @@ Expected:
 - Encoder output changes and test terminates at `limitRot`.
 
 ### H) Multi-Motor Tests
-Purpose: verify `motorKeys` list drives multiple motors.
+Purpose: `motorKeys` drives multiple motors together.
 
 Joystick motor (primary axis):
 ```json
@@ -299,7 +356,7 @@ Expected:
 - All motors respond together; stop together on test end.
 
 ### I) Limit Switch Integration
-Purpose: verify limit switches clamp motion and can terminate tests.
+Purpose: limit switches clamp motion and terminate tests as configured.
 
 Limit switch test:
 ```json
@@ -322,7 +379,7 @@ Expected:
 - Test ends and reports PASS/FAIL per `onHit`.
 
 ### J) PC CAN Tool - Basic
-Purpose: verify the PC sniffer runs and publishes NT.
+Purpose: the PC sniffer runs and publishes NetworkTables diagnostics.
 
 1. Run the PC tool:
    - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile <profile> --rio 172.22.11.2`
@@ -331,7 +388,7 @@ Expected:
 - `openOk=YES`, heartbeat updates, and device table matches CAN traffic.
 
 ### K) PC CAN Tool - Wireshark
-Purpose: verify live pipe and file captures.
+Purpose: live pipe and file captures produce valid PCAP/PCAPNG.
 
 1. Live pipe: start Wireshark `-k -i \\.\pipe\FRC_CAN`.
 2. Run the tool with `--pcap-pipe FRC_CAN`:
@@ -343,7 +400,7 @@ Expected:
 - PCAPNG opens and decodes.
 
 ### L) PC CAN Tool - Inventory + Diff
-Purpose: verify reverse engineering outputs.
+Purpose: inventory capture and diff outputs are correct.
 
 1. Run:
    - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile <profile> --rio 172.22.11.2 --dump-api-inventory tools\can_nt\inv_a.json --dump-api-inventory-after 5`
@@ -354,8 +411,26 @@ Expected:
 - Inventory files are created.
 - Diff prints new/missing pairs and rate deltas.
 
-### M) PC Tool Config Auto-Gen
-Purpose: verify can_nt_config.json generation from profile.
+### M) Config Generator + Validator
+Purpose: config generation, validation, and hash update workflow is correct.
+
+1. Capture inventory:
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile <profile> --rio 172.22.11.2 --dump-api-inventory tools\can_nt\inv_gen.json --dump-api-inventory-after 5`
+2. Generate config:
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_inventory.can_inventory --generate --input tools\can_nt\inv_gen.json --output tools\can_nt\robot_config.json --profileName <profile>`
+3. Validate config against the inventory:
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_inventory.can_inventory --validate --input tools\can_nt\robot_config.json --inventory tools\can_nt\inv_gen.json`
+4. Edit the config and leave one placeholder name or a missing required parameter to trigger errors.
+5. Validate again and confirm errors are reported.
+6. Update hash after manual review:
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_inventory.can_inventory --validate --input tools\can_nt\robot_config.json --inventory tools\can_nt\inv_gen.json --update-hash`
+Expected:
+- Generated device names use `UNNAMED_<type>_<can_id>`.
+- Validation fails on placeholder names or missing required parameters.
+- Hash update rewrites `metadata.inventory_hash` and `metadata.inventory_source`.
+
+### N) PC Tool Config Auto-Gen
+Purpose: can_nt_config.json generation matches the active profile.
 
 1. Run:
    - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile <profile> --dump-can-config tools\can_nt\can_nt_config.json`
@@ -363,7 +438,7 @@ Expected:
 - File is created and lists devices matching the selected profile.
 
 ## Dashboard (Realtime - Implement Later)
-Purpose: define the minimal runtime info to display on a dashboard.
+Purpose: dashboard runtime info is defined for future display.
 
 - PC tool status: `openOk`, `heartbeat`, `framesPerSec`, `lastFrameAgeSec`
 - CAN summary: `bringup/diag/can/summary/json`
@@ -485,6 +560,15 @@ Expected keys under `bringup/diag`:
 - `dev/<mfg>/<type>/<id>/deviceType`
 - `dev/<mfg>/<type>/<id>/deviceId`
 RobotV2 uses the composite `dev/<mfg>/<type>/<id>` keys.
+
+### 8a) NT Contract Sanity (Robot <-> PC)
+Purpose: RobotV2 consumes bringup/diag keys without missing data.
+
+1. Run the PC tool with NT publishing enabled.
+2. On the robot, trigger the diagnostics print (`printNTdiag` binding).
+Expected:
+- The diagnostics report prints without key-not-found errors.
+- The PC tool status block shows heartbeat, frames/sec, and last frame age.
 
 Legacy deviceId-only aggregate keys:
   - `lastSeen/<id>`

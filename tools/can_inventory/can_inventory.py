@@ -2,20 +2,20 @@ from __future__ import annotations
 
 """
 NAME
-    can_inventory.py - API inventory snapshot and diff helpers.
+    can_inventory.py - CAN inventory snapshot, config generation, and diff helpers.
 
 SYNOPSIS
     from tools.can_inventory.can_inventory import dump_api_inventory, print_inventory_diff
 
 DESCRIPTION
-    Builds a stable JSON inventory of observed (apiClass, apiIndex) pairs per
-    device and compares inventories between runs.
+    Builds a JSON inventory of observed CAN devices and frame timing data,
+    generates a robot config template, validates configs, and compares
+    inventories between runs.
 """
 
 import hashlib
 import json
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -26,8 +26,8 @@ DEVICE_REGISTRY: Dict[Tuple[int, int], Dict[str, Any]] = {
         "required_params": ["gear_ratio", "inverted"],
         "optional_params": ["current_limit"],
         "expected_frames": {
-            "status_1": 10,
-            "status_2": 20,
+            "apiClass_11_apiIndex_0": 10,
+            "apiClass_11_apiIndex_1": 20,
         },
     },
     (9, 1): {
@@ -35,8 +35,28 @@ DEVICE_REGISTRY: Dict[Tuple[int, int], Dict[str, Any]] = {
         "required_params": [],
         "optional_params": [],
         "expected_frames": {
-            "position": 20,
+            "apiClass_6_apiIndex_0": 20,
         },
+    },
+    (5, 2): {
+        "device_name": "REV_MOTOR",
+        "required_params": ["gear_ratio", "inverted"],
+        "optional_params": ["current_limit"],
+    },
+    (4, 10): {
+        "device_name": "CANdle",
+        "required_params": [],
+        "optional_params": [],
+    },
+    (4, 8): {
+        "device_name": "PDP",
+        "required_params": [],
+        "optional_params": [],
+    },
+    (1, 1): {
+        "device_name": "roboRIO",
+        "required_params": [],
+        "optional_params": [],
     },
 }
 
@@ -48,10 +68,12 @@ def dump_api_inventory(
     channel: str,
     bitrate: int,
     pairs: Dict[Tuple[int, int, int, int, int], Dict[str, float]],
+    source: str = "can_nt_bridge",
+    robot_ip: Optional[str] = None,
 ) -> None:
     """
     NAME
-        dump_api_inventory - Persist per-device API pair statistics.
+        dump_api_inventory - Persist per-device inventory with frame timing.
 
     PARAMETERS
         path: Output JSON file path.
@@ -60,40 +82,42 @@ def dump_api_inventory(
         channel: CAN channel (e.g., COM port).
         bitrate: CAN bitrate in bps.
         pairs: Observed pair stats keyed by (mfg,type,id,apiClass,apiIndex).
+        source: Inventory source label.
+        robot_ip: Robot IP address string.
 
     SIDE EFFECTS
         Writes a JSON file to disk.
     """
-    devices: Dict[Tuple[int, int, int], List[Dict[str, Any]]] = {}
+    devices: Dict[Tuple[int, int, int], Dict[str, Any]] = {}
     for (mfg, dtype, did, api_class, api_index), stats in pairs.items():
         key = (mfg, dtype, did)
         duration = max(0.0, stats["last"] - stats["first"])
         fps = (stats["count"] / duration) if duration > 0 else 0.0
-        entry = {
-            "apiClass": api_class,
-            "apiIndex": api_index,
-            "count": int(stats["count"]),
-            "firstSeen": stats["first"],
-            "lastSeen": stats["last"],
-            "fps": fps,
+        period_ms = (1000.0 / fps) if fps > 0 else None
+        frame_name = build_frame_name(api_class, api_index)
+        frame_entry = {
+            "frame_id": int(stats.get("arb_id")) if stats.get("arb_id") is not None else None,
+            "period_ms": period_ms,
         }
-        devices.setdefault(key, []).append(entry)
+        if key not in devices:
+            registry = lookup_registry_by_ids(mfg, dtype)
+            device_name = (registry.get("device_name") if registry else None) or "UNKNOWN"
+            devices[key] = {
+                "can_id": did,
+                "manufacturer_id": mfg,
+                "device_type_id": dtype,
+                "device_name": device_name,
+                "frame_data": {},
+            }
+        devices[key]["frame_data"][frame_name] = frame_entry
 
     payload = {
-        "created": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time())),
-        "profile": profile,
-        "interface": interface,
-        "channel": channel,
-        "bitrate": bitrate,
-        "devices": [
-            {
-                "mfg": mfg,
-                "type": dtype,
-                "id": did,
-                "pairs": sorted(pairs, key=lambda p: (p["apiClass"], p["apiIndex"])),
-            }
-            for (mfg, dtype, did), pairs in sorted(devices.items())
-        ],
+        "metadata": {
+            "capture_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": source,
+            "robot_ip": robot_ip,
+        },
+        "devices": [devices[key] for key in sorted(devices.keys())],
     }
     try:
         with open(path, "w", encoding="utf-8") as f:
@@ -124,18 +148,23 @@ def load_inventory(path: str) -> Dict[Tuple[int, int, int, int, int], float]:
     result: Dict[Tuple[int, int, int, int, int], float] = {}
     for dev in payload.get("devices", []):
         try:
-            mfg = int(dev.get("mfg"))
-            dtype = int(dev.get("type"))
-            did = int(dev.get("id"))
+            mfg = int(dev.get("manufacturer_id"))
+            dtype = int(dev.get("device_type_id"))
+            did = int(dev.get("can_id"))
         except Exception:
             continue
-        for pair in dev.get("pairs", []):
-            try:
-                api_class = int(pair.get("apiClass"))
-                api_index = int(pair.get("apiIndex"))
-                fps = float(pair.get("fps", 0.0))
-            except Exception:
+        frame_data = dev.get("frame_data", {})
+        if not isinstance(frame_data, dict):
+            continue
+        for frame_name, frame in frame_data.items():
+            api_class, api_index = parse_frame_name(frame_name)
+            if api_class is None or api_index is None:
                 continue
+            try:
+                period_ms = float(frame.get("period_ms"))
+                fps = 1000.0 / period_ms if period_ms > 0 else 0.0
+            except Exception:
+                fps = 0.0
             result[(mfg, dtype, did, api_class, api_index)] = fps
     return result
 
@@ -250,6 +279,47 @@ def normalize_device_type_name(name: str) -> str:
     return "".join(out).strip("_") or "UNKNOWN"
 
 
+def build_frame_name(api_class: int, api_index: int) -> str:
+    """
+    NAME
+        build_frame_name - Build a stable frame name for inventory JSON.
+
+    PARAMETERS
+        api_class: API class identifier.
+        api_index: API index identifier.
+
+    RETURNS
+        Frame name string.
+    """
+    return f"apiClass_{api_class}_apiIndex_{api_index}"
+
+
+def parse_frame_name(frame_name: str) -> Tuple[Optional[int], Optional[int]]:
+    """
+    NAME
+        parse_frame_name - Extract apiClass/apiIndex from a frame name.
+
+    PARAMETERS
+        frame_name: Frame key string.
+
+    RETURNS
+        (api_class, api_index) tuple or (None, None) on failure.
+    """
+    if not isinstance(frame_name, str):
+        return None, None
+    parts = frame_name.split("_")
+    if len(parts) != 4:
+        return None, None
+    if parts[0] != "apiClass" or parts[2] != "apiIndex":
+        return None, None
+    try:
+        api_class = int(parts[1])
+        api_index = int(parts[3])
+    except Exception:
+        return None, None
+    return api_class, api_index
+
+
 def discover_devices(inventory: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     NAME
@@ -336,17 +406,18 @@ def generate_config(
             int(manufacturer_id) if manufacturer_id is not None else None,
             int(device_type_id) if device_type_id is not None else None,
         )
-        device_name = dev.get("device_name") or (registry.get("device_name") if registry else None) or "UNKNOWN"
-        normalized = normalize_device_type_name(device_name)
+        device_type = (registry.get("device_name") if registry else None) or dev.get("device_name") or "UNKNOWN"
         config_entry = {
             "can_id": can_id,
-            "type": device_name,
-            "name": f"UNNAMED_{normalized}_{can_id}" if can_id is not None else f"UNNAMED_{normalized}",
+            "type": device_type,
+            "name": f"UNNAMED_{device_type}_{can_id}" if can_id is not None else f"UNNAMED_{device_type}",
             "parameters": {},
             "frame_data": dev.get("frame_data", {}) if isinstance(dev, dict) else {},
         }
         if registry:
             for param in registry.get("required_params", []):
+                config_entry["parameters"][param] = None
+            for param in registry.get("optional_params", []):
                 config_entry["parameters"][param] = None
         else:
             unrecognized.append(dev)
@@ -357,14 +428,28 @@ def generate_config(
         "generated_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "inventory_source": inventory_path,
         "inventory_hash": compute_inventory_hash(inventory_path),
-        "inventory_metadata": inventory.get("metadata", {}),
     }
 
     return {
         "metadata": metadata,
         "devices": config_devices,
-        "subsystems": {},
-        "unrecognized_devices": unrecognized,
+        "dio_devices": [
+            {
+                "name": "limit_switch_example",
+                "port": None,
+                "inverted": None,
+                "linked_device": None,
+            }
+        ],
+        "external_encoders": [
+            {
+                "name": "encoder_example",
+                "type": "through_bore",
+                "port": None,
+                "offset": None,
+                "linked_device": None,
+            }
+        ],
     }
 
 
@@ -431,7 +516,8 @@ def compare_inventories(current: Dict[str, Any], previous: Dict[str, Any]) -> No
 def validate_config(
     config: Dict[str, Any],
     tolerance_percent: float,
-) -> Tuple[bool, List[str], List[str], List[Dict[str, Any]]]:
+    inventory_path: Optional[str],
+) -> Tuple[bool, List[str], List[str]]:
     """
     NAME
         validate_config - Validate a robot configuration dict.
@@ -439,18 +525,18 @@ def validate_config(
     PARAMETERS
         config: Parsed config dict to validate.
         tolerance_percent: Frame timing tolerance as percentage.
+        inventory_path: Optional inventory file path for hash validation.
 
     RETURNS
-        (is_valid, errors, warnings, unrecognized_devices).
+        (is_valid, errors, warnings).
     """
     errors: List[str] = []
     warnings: List[str] = []
-    unrecognized: List[Dict[str, Any]] = []
 
     devices = config.get("devices", [])
     if not isinstance(devices, list):
         errors.append("Config devices must be a list.")
-        return False, errors, warnings, unrecognized
+        return False, errors, warnings
 
     seen_can_ids = set()
     for device in devices:
@@ -473,9 +559,11 @@ def validate_config(
         if isinstance(name, str) and name.startswith("UNNAMED_"):
             errors.append(f"Device '{name}' has placeholder name.")
 
+        if not isinstance(device_type, str) or not device_type:
+            errors.append(f"Device '{name}' missing type.")
+
         registry = lookup_registry_by_name(device_type)
         if registry is None:
-            unrecognized.append(device)
             warnings.append(f"Unrecognized device type '{device_type}'.")
             continue
 
@@ -507,8 +595,44 @@ def validate_config(
                         f"{deviation:.1f}% (expected {expected_val}ms, got {actual_val}ms)."
                     )
 
+    for device in config.get("dio_devices", []) or []:
+        if not isinstance(device, dict):
+            errors.append("DIO device entry must be an object.")
+            continue
+        linked = device.get("linked_device")
+        if linked is not None and linked not in seen_can_ids:
+            errors.append(f"DIO device '{device.get('name')}' links to unknown CAN ID {linked}.")
+
+    for device in config.get("external_encoders", []) or []:
+        if not isinstance(device, dict):
+            errors.append("External encoder entry must be an object.")
+            continue
+        linked = device.get("linked_device")
+        if linked is not None and linked not in seen_can_ids:
+            errors.append(f"External encoder '{device.get('name')}' links to unknown CAN ID {linked}.")
+
+    if inventory_path:
+        try:
+            current_hash = compute_inventory_hash(inventory_path)
+            config_meta = config.get("metadata") or {}
+            config_hash = config_meta.get("inventory_hash")
+            if not config_hash:
+                warnings.append("Config metadata missing inventory_hash.")
+            elif config_hash != current_hash:
+                warnings.append(
+                    "Inventory hash does not match provided inventory file "
+                    f"({config_hash} != {current_hash})."
+                )
+            config_source = config_meta.get("inventory_source")
+            if config_source and config_source != inventory_path:
+                warnings.append(
+                    f"inventory_source '{config_source}' does not match provided inventory path '{inventory_path}'."
+                )
+        except Exception as exc:
+            warnings.append(f"Failed to compute inventory hash: {exc}")
+
     is_valid = len(errors) == 0
-    return is_valid, errors, warnings, unrecognized
+    return is_valid, errors, warnings
 
 
 def write_config(path: str, config: Dict[str, Any]) -> bool:
@@ -558,6 +682,7 @@ def print_help() -> None:
     print("  python -m tools.can_inventory.can_inventory --generate --input <inventory.json> --output <config.json> --profileName <name>")
     print("       [--compare <inventory.json>] [--timing-tolerance-percent <percent>]")
     print("  python -m tools.can_inventory.can_inventory --validate --input <config.json> [--timing-tolerance-percent <percent>]")
+    print("       [--inventory <inventory.json>] [--update-hash]")
     print("  python -m tools.can_inventory.can_inventory --interactive")
     print("  python -m tools.can_inventory.can_inventory --help")
 
@@ -574,6 +699,8 @@ def parse_args(argv: List[str]) -> Dict[str, Any]:
         "profileName": None,
         "compare": None,
         "timing_tolerance_percent": 10.0,
+        "inventory": None,
+        "update_hash": False,
     }
     it = iter(argv)
     for token in it:
@@ -593,6 +720,10 @@ def parse_args(argv: List[str]) -> Dict[str, Any]:
             args["profileName"] = next(it, None)
         elif token == "--compare":
             args["compare"] = next(it, None)
+        elif token == "--inventory":
+            args["inventory"] = next(it, None)
+        elif token == "--update-hash":
+            args["update_hash"] = True
         elif token == "--timing-tolerance-percent":
             value = next(it, None)
             try:
@@ -633,11 +764,14 @@ def run_generate(args: Dict[str, Any]) -> int:
     if not write_config(output_path, config):
         return 2
 
-    recognized = len(config["devices"]) - len(config["unrecognized_devices"])
+    recognized = len(config["devices"]) - len(
+        [d for d in config["devices"] if lookup_registry_by_name(d.get("type", "")) is None]
+    )
     print("Inventory scan complete")
     print(f"Devices detected: {len(config['devices'])}")
     print(f"Recognized: {recognized}")
-    print(f"Unrecognized: {len(config['unrecognized_devices'])}")
+    print(f"Unrecognized: {len(config['devices']) - recognized}")
+    print("NOTE: Device types are best-guess from IDs; review and rename as needed.")
     print(f"Config file written to {output_path}")
     return 0
 
@@ -649,6 +783,8 @@ def run_validate(args: Dict[str, Any]) -> int:
     """
     config_path = args.get("input")
     tolerance = args.get("timing_tolerance_percent")
+    inventory_path = args.get("inventory")
+    update_hash = args.get("update_hash", False)
     if tolerance is None:
         return 2
     if config_path is None:
@@ -657,9 +793,10 @@ def run_validate(args: Dict[str, Any]) -> int:
     config = read_config(config_path)
     if config is None:
         return 2
-    is_valid, errors, warnings, unrecognized = validate_config(config, tolerance)
-    if unrecognized:
-        config["unrecognized_devices"] = unrecognized
+    if update_hash and not inventory_path:
+        print("ERROR: --update-hash requires --inventory.")
+        return 2
+    is_valid, errors, warnings = validate_config(config, tolerance, inventory_path)
     if warnings:
         print("Warnings:")
         for warning in warnings:
@@ -670,6 +807,17 @@ def run_validate(args: Dict[str, Any]) -> int:
         for error in errors:
             print(f"  - {error}")
         return 2
+    if update_hash and inventory_path:
+        try:
+            config.setdefault("metadata", {})
+            config["metadata"]["inventory_hash"] = compute_inventory_hash(inventory_path)
+            config["metadata"]["inventory_source"] = inventory_path
+            if not write_config(config_path, config):
+                return 2
+            print("Updated inventory hash in config.")
+        except Exception as exc:
+            print(f"ERROR: Failed to update inventory hash: {exc}")
+            return 2
     print("Validation passed")
     return 0
 
@@ -677,19 +825,10 @@ def run_validate(args: Dict[str, Any]) -> int:
 def run_interactive(args: Dict[str, Any]) -> int:
     """
     NAME
-        run_interactive - Prompt for inputs and run generate + validate.
+        run_interactive - Stub interactive workflow.
     """
-    inventory_path = input("Inventory file path: ").strip()
-    output_path = input("Output config path: ").strip()
-    profile_name = input("Robot profile name: ").strip()
-    args["input"] = inventory_path
-    args["output"] = output_path
-    args["profileName"] = profile_name
-    result = run_generate(args)
-    if result != 0:
-        return result
-    args["input"] = output_path
-    return run_validate(args)
+    print("Interactive mode is not implemented yet.")
+    return 2
 
 
 def main(argv: List[str]) -> int:

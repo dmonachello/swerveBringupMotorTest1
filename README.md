@@ -51,7 +51,7 @@ Use this to validate the bringup test framework on real hardware.
 9. If the PC tool is running, press `D-pad Down` and confirm PC diagnostics show `openOk=YES`.
 
 ## Architecture
-See `ARCHITECTURE.md` for the layered design (device -> manufacturer -> testing) and the `ManufacturerGroup` interface.
+See `ARCHITECTURE.md` for the 1000-foot view, layered design (device -> manufacturer -> testing), and the `ManufacturerGroup` interface.
 
 What it gives you:
 - Controlled motor bringup (add one or all, known inputs).
@@ -491,7 +491,7 @@ Useful run flags:
 - `--auto-match` sets the substring used to auto-detect the serial device.
 - `--no-prompt` disables the port selection prompt when multiple matches are found.
 ## Bringup Tests
-Purpose: run manual, data-driven tests defined in JSON (including encoder rotation limits).
+Purpose: manual, data-driven tests run from JSON (including encoder rotation limits).
 
 Test definitions:
 - File: `src/main/deploy/bringup_tests.json`

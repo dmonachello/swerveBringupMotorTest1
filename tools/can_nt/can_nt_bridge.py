@@ -112,6 +112,8 @@ def _maybe_handle_dumps(
             args.channel,
             args.bitrate,
             state.pair_stats,
+            source="can_nt_bridge",
+            robot_ip=args.rio,
         )
         print(f"Dumped API inventory to {args.dump_api_inventory}")
         return True
@@ -413,7 +415,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 pair_key = (mfg, dtype, did, api_class, api_index)
                 stats = state.pair_stats.get(pair_key)
                 if stats is None:
-                    stats = {"first": now, "last": now, "count": 0.0}
+                    stats = {"first": now, "last": now, "count": 0.0, "arb_id": arb_id}
                     state.pair_stats[pair_key] = stats
                 stats["last"] = now
                 stats["count"] += 1.0

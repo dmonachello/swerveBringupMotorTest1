@@ -204,7 +204,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dump-api-inventory",
         default="",
-        help="Write a JSON inventory of apiClass/apiIndex counts and exit.",
+        help="Write a JSON inventory of CAN devices and frame timing data and exit.",
     )
     parser.add_argument(
         "--dump-api-inventory-after",
