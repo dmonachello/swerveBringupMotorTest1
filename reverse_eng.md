@@ -51,7 +51,7 @@ Purpose: Customize marker behavior from the command line for repeatable runs.
 
 2.1.2.2 Example run:
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --pcap tools\logs\run_with_markers.pcapng --rio 172.22.11.2
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --pcap tools\can_nt\logs\run_with_markers.pcapng --rio 172.22.11.2
 ```
 
 2.2 Py Script Controls
@@ -99,7 +99,7 @@ Purpose: Review capture data, isolate markers, and decode known FRC CAN fields.
 - Works alongside raw CAN bytes for unknown frames.
 
 4.2 Dissector:
-- Lua dissector path: `tools/wireshark/frc_can_dissector.lua`
+- Lua dissector path: `tools/can_nt/wireshark/frc_can_dissector.lua`
 - Install location: `%APPDATA%\Wireshark\plugins\frc_can_dissector.lua`
 - Reload via `Analyze` -> `Reload Lua Plugins` after copying.
 - Verify it is active by selecting a CAN frame and checking the packet details tree for decoded FRC CAN fields.
@@ -139,7 +139,7 @@ Setup:
 - Select profile on the robot (`Back` until it shows `reverse_eng_min1`).
 - Start the bridge with capture enabled:
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --pcap tools\logs\reveng_min1.pcapng --publish-can-summary
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --pcap tools\can_nt\logs\reveng_min1.pcapng --publish-can-summary
 ```
 - Replace `COM3` with your CANable port.
 - Press `D-pad Right` to print speed inputs so you can see the live `Left Y` value.
@@ -208,7 +208,7 @@ Setup:
 - Start the bridge with capture enabled and disable NT publishing: add `--no-nt`.
   Example:
   ```cmd
-  %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --pcap tools\logs\reveng_min1.pcapng --no-nt
+  %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --pcap tools\can_nt\logs\reveng_min1.pcapng --no-nt
   ```
 - Use marker keys to annotate each vendor action (set output, stop, reverse).
 - Do not use the robot command interface for this mode; the vendor apps are the sole stimulus source.
@@ -223,22 +223,22 @@ Setup:
 - Start the bridge with capture enabled and disable NT publishing: add `--no-nt`.
   Example:
   ```cmd
-  %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --pcap tools\logs\reveng_min1.pcapng --no-nt
+  %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --pcap tools\can_nt\logs\reveng_min1.pcapng --no-nt
   ```
 - Use marker keys to annotate each vendor action (set output, stop, reverse).
 
 Optional inventory diff:
 - Idle:
   ```cmd
-  %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --dump-api-inventory tools\inventory_idle.json --dump-api-inventory-after 5
+  %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --dump-api-inventory tools\can_nt\inventory_idle.json --dump-api-inventory-after 5
   ```
 - Running:
   ```cmd
-  %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --dump-api-inventory tools\inventory_run.json --dump-api-inventory-after 5
+  %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --dump-api-inventory tools\can_nt\inventory_run.json --dump-api-inventory-after 5
   ```
 - Diff:
   ```cmd
-  %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --diff-inventory tools\inventory_idle.json tools\inventory_run.json
+  %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --diff-inventory tools\can_nt\inventory_idle.json tools\can_nt\inventory_run.json
   ```
 Explanation:
 - `--dump-api-inventory` writes a snapshot of observed `(mfg,type,id,apiClass,apiIndex)` pairs with counts and computed fps.
@@ -255,7 +255,7 @@ Purpose: Call out limitations that affect capture fidelity and portability.
 - Keyboard input is Windows-only (`msvcrt`), aligned with Driver Station usage.
 - Markers require `.pcapng` to avoid mixing formats and to keep metadata available.
 - Synthetic frames can be filtered easily but are not real bus traffic.
-- Doc export: `powershell -ExecutionPolicy Bypass -File tools\md_to_docx.ps1 -Input reverse_eng.md`
+- Doc export: `powershell -ExecutionPolicy Bypass -File tools\md_to_docx\md_to_docx.ps1 -Input reverse_eng.md`
 
 7. Future Extensions
 Purpose: Outline next steps that extend capability without breaking the workflow.

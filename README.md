@@ -23,7 +23,7 @@ Use the normal FRC robot workflow to deploy and run the robot code.
 - `PROJECT_INTENT.md` - project goals and motivation.
 - `TESTING.md` - testing notes and expected behaviors.
 - `TESTING.md` includes a runtime verification checklist for the bringup test framework.
-- `tools/README_CAN_NT.md` - PC CAN sniffer bridge usage and CLI reference.
+- `tools/can_nt/README_CAN_NT.md` - PC CAN sniffer bridge usage and CLI reference.
 
 ## What This App Is For (Debugging)
 This project is a bringup and diagnostics harness. It does not fix your code bugs,
@@ -222,7 +222,7 @@ A: The PC tool has not published a valid `lastSeen` for that device yet. Check t
 **Q: What's the difference between local health (D-pad Left) and CAN diagnostics (D-pad Down)?**  
 A: `D-pad Left` prints local roboRIO data pulled directly from device APIs (volt/motorCurrent/temp/cmdDuty/appliedDuty/faults). `D-pad Down` prints CAN-bus data coming from the PC tool via NetworkTables.
 **Q: How do I capture a PCAP and view it in Wireshark?**  
-A: Run the PC tool with `--pcap logs\run.pcapng`, then open that file in Wireshark. The Lua dissector lives at `tools/wireshark/frc_can_dissector.lua`.
+A: Run the PC tool with `--pcap tools\can_nt\logs\run.pcapng`, then open that file in Wireshark. The Lua dissector lives at `tools/can_nt/wireshark/frc_can_dissector.lua`.
 **Q: Why is a device showing `MISSING` even though it's powered?**  
 A: The PC tool isn't receiving frames for that ID (wiring/ID mismatch/termination), or it's timing out based on `--timeout`. Verify the CAN ID and wiring.
 **Q: How do I see message rate (fps) per device?**  
@@ -234,7 +234,7 @@ A: `ageSec` is seconds since the last frame seen for that device. `msgCount` is 
 **Q: Why is one device's fps higher than another's?**  
 A: Different devices publish status frames at different default rates. Higher fps just means more CAN traffic from that device.
 **Q: How do I update the Wireshark dissector?**  
-A: Update `tools/wireshark/frc_can_dissector.lua` and copy it to `%APPDATA%\Wireshark\plugins\frc_can_dissector.lua`, then restart Wireshark.
+A: Update `tools/can_nt/wireshark/frc_can_dissector.lua` and copy it to `%APPDATA%\Wireshark\plugins\frc_can_dissector.lua`, then restart Wireshark.
 ## Install (All Features)
 ### Required Software
 - WPILib 2026 (Java) for build/deploy to roboRIO.
@@ -257,7 +257,7 @@ py -m pip install --upgrade python-can pyserial pynetworktables pyntcore
 ```
 Run the bridge:
 ```cmd
-python tools\can_nt_bridge.py --profile demo_home_022326 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --publish-can-summary
+python -m tools.can_nt.can_nt_bridge --profile demo_home_022326 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --publish-can-summary
 ```
 Optional flags:
 - `--print-summary-period N` for console summaries.
@@ -268,13 +268,13 @@ Reverse engineering captures:
 - Marker capture, key map, and filtering live in `reverse_eng.md`.
 ### Wireshark + Dissector
 1. Install Wireshark.
-2. Copy `tools/wireshark/frc_can_dissector.lua` to:
+2. Copy `tools/can_nt/wireshark/frc_can_dissector.lua` to:
    - `%APPDATA%\Wireshark\plugins\frc_can_dissector.lua`
 3. Restart Wireshark.
 4. Live capture interface (Windows named pipe):
    - Start Wireshark with `-k -i \\.\pipe\FRC_CAN`
    - Run the PC tool with `--pcap-pipe FRC_CAN`
-   - More detail lives in `tools/README_CAN_NT.md` (CAN bridge CLI) and `ARCHITECTURE.md` (data flow).
+   - More detail lives in `tools/can_nt/README_CAN_NT.md` (CAN bridge CLI) and `ARCHITECTURE.md` (data flow).
 ### Firmware / Diagnostics Tools
 - CTRE Tuner X (Phoenix) for firmware updates and Signal Logger (hoot logs).
 - REV Hardware Client for SPARK MAX/Flex firmware/config and diagnostics.
@@ -404,28 +404,28 @@ py -m pip install pyserial
 ```
 Run:
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2
 ```
 Or use the helper script that pins the Python interpreter:
 ```cmd
-tools\run_can_nt.cmd
+tools\can_nt\run_can_nt.cmd
 ```
 Override Python for the helper script:
 ```cmd
 set CAN_NT_PYTHON=C:\Path\To\Python\python.exe
-tools\run_can_nt.cmd
+tools\can_nt\run_can_nt.cmd
 ```
 Or pass the interpreter path as the first argument:
 ```cmd
-tools\run_can_nt.cmd C:\Path\To\Python\python.exe
+tools\can_nt\run_can_nt.cmd C:\Path\To\Python\python.exe
 ```
 Pass extra flags directly:
 ```cmd
-tools\run_can_nt.cmd --print-summary-period 2 --print-publish
+tools\can_nt\run_can_nt.cmd --print-summary-period 2 --print-publish
 ```
 If you pass a Python path first, flags can follow:
 ```cmd
-tools\run_can_nt.cmd C:\Path\To\Python\python.exe --verbose --quick-check
+tools\can_nt\run_can_nt.cmd C:\Path\To\Python\python.exe --verbose --quick-check
 ```
 If neither is set, the script will:
 1. Use the first `python` found in `PATH`.
@@ -434,25 +434,25 @@ Config:
 - Device lists come from `src/main/deploy/bringup_profiles.json` via `--profile`.
 - This keeps the PC tool aligned with robot profiles without duplicating IDs.
 - If you need a standalone can_nt_config.json-style file, generate one:
-  - `python tools\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt_config.json`
-- The legacy `tools/can_nt_config.json` is kept as a sample only.
+  - `python -m tools.can_nt.can_nt_bridge --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json`
+- The legacy `tools/can_nt/can_nt_config.json` is kept as a sample only.
 Examples:
 ```cmd
 # Default (USB RIO, auto-detect COM port)
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2
 # Explicit COM port
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --channel COM21
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2 --channel COM21
 # More output (summary + device seen/missing messages)
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --print-summary-period 2 --print-publish
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2 --print-summary-period 2 --print-publish
 # Dump a can_nt_config.json-style file from a profile
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt_config.json
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json
 # Publish unknown devices seen on the bus
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_home_022326 --publish-unknown
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile demo_home_022326 --publish-unknown
 # List or dump the published NT keys
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_home_022326 --list-keys
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile demo_home_022326 --dump-nt tools\nt_keys.json
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile demo_home_022326 --list-keys
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile demo_home_022326 --dump-nt tools\can_nt\nt_keys.json
 # List serial ports
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --list-ports
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --list-ports
 ```
 Published NetworkTables keys:
 - `bringup/diag/busErrorCount`
@@ -497,8 +497,8 @@ Test definitions:
 - File: `src/main/deploy/bringup_tests.json`
 - Select active set with `default_test_set` inside `bringup_tests.json`.
 - Override at runtime with `--bringup-tests=...` (loads another JSON file from deploy or disk).
-- Helper: `tools/run_bringup_test_wizard.bat` (interactive test entry wizard)
- - Template helper: `tools/run_test_template_wizard.bat` (copy and customize a template)
+- Helper: `tools/bringup_test_wizard/run_bringup_test_wizard.bat` (interactive test entry wizard)
+ - Template helper: `tools/test_template_wizard/run_test_template_wizard.bat` (copy and customize a template)
 - Test sets live under `test_sets` and each entry is a test object with a `type` and configuration fields.
 
 Test set wrapper:
@@ -584,8 +584,8 @@ General workflow:
 2. Put shared behavior in `src/main/java/frc/robot/BringupCore.java`.
 3. Bind controls in both `src/main/java/frc/robot/Robot.java` and
    `src/main/java/frc/robot/RobotV2.java`.
-4. If you add CAN sniffer data, update `tools/can_nt_bridge.py` and
-   `tools/README_CAN_NT.md`.
+4. If you add CAN sniffer data, update `tools/can_nt/can_nt_bridge.py` and
+   `tools/can_nt/README_CAN_NT.md`.
 5. Update this `README.md` with the new behavior and bindings.
 
 

@@ -60,10 +60,10 @@ Purpose: document the JSON inputs that define behavior.
 ## PC CAN Tool (tools/)
 Purpose: describe passive CAN capture + diagnostics publishing.
 
-- `tools/can_nt_bridge.py` listens on CANable (SLCAN) and publishes `bringup/diag` keys.
+- `tools/can_nt/can_nt_bridge.py` listens on CANable (SLCAN) and publishes `bringup/diag` keys.
 - PC tool output includes PCAP/PCAPNG capture, inventory JSON, and diffs.
 - Live Wireshark capture uses a Windows named pipe (`\\.\pipe\FRC_CAN`) via `--pcap-pipe`.
-  - Details live in `tools/README_CAN_NT.md` and the Wireshark section in `README.md`.
+  - Details live in `tools/can_nt/README_CAN_NT.md` and the Wireshark section in `README.md`.
 - NetworkTables publishing is additive; existing keys must remain stable.
 - The PC tool must remain read-only on CAN (no frame transmission).
 
@@ -115,7 +115,7 @@ Purpose: show how tests run and terminate.
 ### E) PC Tool Capture + NetworkTables Publish
 Purpose: show how CAN bus traffic becomes diagnostics.
 
-1. `tools/can_nt_bridge.py` reads frames from CANable (SLCAN).
+1. `tools/can_nt/can_nt_bridge.py` reads frames from CANable (SLCAN).
 2. It writes optional PCAP/PCAPNG, and builds inventory statistics.
 3. It publishes `bringup/diag/...` keys to NetworkTables:
    - Device presence, age, counts, and PC tool health.

@@ -30,7 +30,7 @@ Purpose: run the minimum set of checks to confirm the system is healthy.
 4. Primary controller: press `B` to print state and confirm devices are present.
 5. Primary controller: move `Left Y`/`Right Y`, then press `D-pad Right` to confirm inputs.
 6. Start the PC tool (default test profile):
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile example_default --rio 172.22.11.2`
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile example_default --rio 172.22.11.2`
 7. Use the smoke test set:
    - In `src/main/deploy/bringup_tests.json`, set `"default_test_set": "smoke"` and deploy.
 8. Primary controller: press `D-pad Down` and confirm `openOk=YES`.
@@ -325,7 +325,7 @@ Expected:
 Purpose: verify the PC sniffer runs and publishes NT.
 
 1. Run the PC tool:
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile <profile> --rio 172.22.11.2`
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile <profile> --rio 172.22.11.2`
 2. Primary controller: press `D-pad Down`.
 Expected:
 - `openOk=YES`, heartbeat updates, and device table matches CAN traffic.
@@ -335,9 +335,9 @@ Purpose: verify live pipe and file captures.
 
 1. Live pipe: start Wireshark `-k -i \\.\pipe\FRC_CAN`.
 2. Run the tool with `--pcap-pipe FRC_CAN`:
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile <profile> --rio 172.22.11.2 --pcap-pipe FRC_CAN`
-3. File: run `--pcap tools\logs\run.pcapng`:
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile <profile> --rio 172.22.11.2 --pcap tools\logs\run.pcapng`
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile <profile> --rio 172.22.11.2 --pcap-pipe FRC_CAN`
+3. File: run `--pcap tools\can_nt\logs\run.pcapng`:
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile <profile> --rio 172.22.11.2 --pcap tools\can_nt\logs\run.pcapng`
 Expected:
 - Wireshark shows live frames via pipe.
 - PCAPNG opens and decodes.
@@ -346,10 +346,10 @@ Expected:
 Purpose: verify reverse engineering outputs.
 
 1. Run:
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile <profile> --rio 172.22.11.2 --dump-api-inventory tools\inv_a.json --dump-api-inventory-after 5`
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile <profile> --rio 172.22.11.2 --dump-api-inventory tools\can_nt\inv_a.json --dump-api-inventory-after 5`
 2. Run again after a different stimulus into `inv_b.json`.
 3. Run:
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --diff-inventory tools\inv_a.json tools\inv_b.json`
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --diff-inventory tools\can_nt\inv_a.json tools\can_nt\inv_b.json`
 Expected:
 - Inventory files are created.
 - Diff prints new/missing pairs and rate deltas.
@@ -358,7 +358,7 @@ Expected:
 Purpose: verify can_nt_config.json generation from profile.
 
 1. Run:
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --profile <profile> --dump-can-config tools\can_nt_config.json`
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile <profile> --dump-can-config tools\can_nt\can_nt_config.json`
 Expected:
 - File is created and lists devices matching the selected profile.
 
@@ -382,27 +382,27 @@ Purpose: define the minimal runtime info to display on a dashboard.
 
 Default run:
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2
 ```
 
 Verbose + summary:
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --print-summary-period 2 --print-publish --verbose
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2 --print-summary-period 2 --print-publish --verbose
 ```
 
 Quick check:
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --quick-check
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2 --quick-check
 ```
 
 CSV logging:
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --rio 172.22.11.2 --log-csv tools\can_nt_log.csv
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2 --log-csv tools\can_nt\can_nt_log.csv
 ```
 
 List ports:
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_nt_bridge.py --list-ports
+%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --list-ports
 ```
 
 ## Functional Tests
@@ -496,10 +496,10 @@ Legacy deviceId-only aggregate keys:
 
 ### 9) CSV logging
 Steps:
-1. Run with `--log-csv tools\can_nt_log.csv`.
+1. Run with `--log-csv tools\can_nt\can_nt_log.csv`.
 2. Let it run for at least 5 seconds, then stop.
 Expected:
-- File `tools\can_nt_log.csv` exists and has a header row.
+- File `tools\can_nt\can_nt_log.csv` exists and has a header row.
 - Each subsequent row has timestamp, busErrorCount, framesPerSec, errorsPerSec.
 - Per-ID columns include count, ageSec, and status.
 

@@ -51,8 +51,8 @@ Override:
 - Optional: `--bringup-tests=...` loads an alternate JSON file.
 
 Helper:
-- `tools/run_bringup_test_wizard.bat` launches an interactive wizard to append a test entry.
-- `tools/run_test_template_wizard.bat` copies a template set and prompts for motor/encoder IDs.
+- `tools/bringup_test_wizard/run_bringup_test_wizard.bat` launches an interactive wizard to append a test entry.
+- `tools/test_template_wizard/run_test_template_wizard.bat` copies a template set and prompts for motor/encoder IDs.
 
 Each test entry includes:
 - `type`: test type string (`composite` or `joystick`).

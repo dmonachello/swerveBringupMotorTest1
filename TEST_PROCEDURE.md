@@ -180,7 +180,7 @@ File handling notes:
 Preconditions: CANable connected, slcan configured, PC tool installed.
 
 1. Start PC bridge
-   - Command: `python tools/can_nt_bridge.py --rio <robot_ip> --profile <profile> --publish-can-summary --publish-unknown`
+   - Command: `python -m tools.can_nt.can_nt_bridge --rio <robot_ip> --profile <profile> --publish-can-summary --publish-unknown`
    - Expected: Bridge connects and prints a summary.
 
 2. Print PC diagnostics

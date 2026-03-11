@@ -88,7 +88,7 @@ Definition of done
 
 Where things live
 - Java bringup code: src/main/java/... (look for RobotV2 and BringupUtil)
-- Python CAN tool: tools/ (entrypoint can_nt_bridge.py)
+- Python CAN tool: tools/can_nt/ (entrypoint can_nt_bridge.py)
 
 Shuffleboard layouts (profile-specific)
 Purpose: Provide a default dashboard layout that includes per-device presenceConfidence tiles and a scrolling bringup tree.
@@ -102,7 +102,7 @@ Purpose: Provide a default dashboard layout that includes per-device presenceCon
 
 Data-driven CAN profile mapping (Python tool)
 Purpose: Add new manufacturers/devices by editing rule tables instead of code logic.
-- File: tools/can_nt_bridge.py
+- File: tools/can_nt/can_nt_bridge.py
 - Tables:
   - STATUS_RULES / CONTROL_RULES for frame classification
   - PROFILE_MAP_RULES for --dump-profile mapping
@@ -117,7 +117,7 @@ New CLI capabilities (additive)
 - --pcap <path> already exists: keep it working.
 - Add a capture session concept:
   - --session <name> to tag outputs (pcap + json) with a common name.
-  - --session-dir <dir> default tools/logs or tools/captures.
+  - --session-dir <dir> default tools/can_nt/logs or tools/captures.
 - Add inventory output:
   - --dump-api-inventory <path> writes JSON inventory:
     per device key (mfg,type,id) -> list of (apiClass, apiIndex) with counts and rates.

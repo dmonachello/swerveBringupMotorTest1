@@ -165,7 +165,7 @@ If you add telemetry fields, include them under `devices[].attachments` in the J
 ## Step 10: Update the PC CAN Tool (optional)
 Purpose: add optional PC-side tracking for the new device.
 If you want the PC tool to track the new device by default:
-- `tools/can_nt_config.json` (recommended)
+- `tools/can_nt/can_nt_config.json` (recommended)
 - `tools/can_profiles.py` bucket mapping (if you add a new profile bucket)
 
 This is not required for robot-side bringup, but helps with CAN visibility.
@@ -176,7 +176,7 @@ Purpose: keep user-facing documentation consistent.
 Update any relevant docs:
 - `README.md`
 - `ARCHITECTURE.md`
-- `tools/README_CAN_NT.md`
+- `tools/can_nt/README_CAN_NT.md`
 - `TESTING.md`
 
 ## Step 12: Sanity Checks
@@ -191,7 +191,7 @@ Optional:
   - JVM property: `-Dbringup.profile=<name>`
   - Env var: `BRINGUP_PROFILE=<name>`
   - CLI flag: `--bringup-profile=<name>`
-- Update `tools/can_nt_config.json` and verify PC tool output includes the device.
+- Update `tools/can_nt/can_nt_config.json` and verify PC tool output includes the device.
 
 ## Common Pitfalls
 Purpose: avoid common integration mistakes.
