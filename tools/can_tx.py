@@ -1,5 +1,20 @@
 from __future__ import annotations
 
+"""
+NAME
+    can_tx.py - CAN transmit replay helper (offline analysis aid).
+
+SYNOPSIS
+    from can_tx import start_tx_if_requested
+
+DESCRIPTION
+    Parses a timestamped CAN sequence file and replays frames on a live bus.
+    Intended for controlled lab use only.
+
+SIDE EFFECTS
+    Transmits CAN frames when enabled.
+"""
+
 import threading
 import time
 from pathlib import Path
@@ -7,6 +22,19 @@ from typing import List, Tuple
 
 
 def parse_tx_sequence(path: str) -> List[Tuple[float, int, bytes]]:
+    """
+    NAME
+        parse_tx_sequence - Load timestamped CAN frames from a file.
+
+    PARAMETERS
+        path: Sequence file path.
+
+    RETURNS
+        List of (timestamp, arbitration_id, data) tuples sorted by time.
+
+    ERRORS
+        Prints warnings and returns partial data on parse failures.
+    """
     entries: List[Tuple[float, int, bytes]] = []
     try:
         raw_lines = Path(path).read_text(encoding="utf-8").splitlines()
@@ -60,6 +88,22 @@ def tx_worker(
     loop: bool,
     verbose: bool,
 ) -> None:
+    """
+    NAME
+        tx_worker - Replay a sequence of CAN frames with timing control.
+
+    PARAMETERS
+        bus: CAN bus object with send() support.
+        can_module: python-can module for Message construction.
+        sequence: Ordered frame list from parse_tx_sequence.
+        stop_event: Event to terminate replay.
+        scale: Timing scale factor (1.0 = realtime).
+        loop: Whether to loop until stopped.
+        verbose: Whether to print periodic send status.
+
+    SIDE EFFECTS
+        Sends CAN frames on the bus.
+    """
     if not sequence:
         print("TX sequence is empty. Nothing to send.")
         return
@@ -106,6 +150,19 @@ def start_tx_if_requested(
     can_module,
     tx_stop: threading.Event,
 ):
+    """
+    NAME
+        start_tx_if_requested - Launch the TX replay thread when configured.
+
+    PARAMETERS
+        args: Parsed CLI args with tx settings.
+        bus: CAN bus object.
+        can_module: python-can module.
+        tx_stop: Stop event shared with the main loop.
+
+    RETURNS
+        Thread object when started, otherwise None.
+    """
     if not args.tx_seq:
         return None
     sequence = parse_tx_sequence(args.tx_seq)

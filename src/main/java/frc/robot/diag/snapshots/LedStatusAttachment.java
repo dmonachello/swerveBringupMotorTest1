@@ -1,6 +1,9 @@
 package frc.robot.diag.snapshots;
 
-// Best-effort LED status inference (expected vs likely).
+/**
+ * NAME
+ *   LedStatusAttachment - LED status inference attachment.
+ */
 public final class LedStatusAttachment extends DeviceAttachment {
   public String expectedPattern = "";
   public String expectedMeaning = "";
@@ -9,6 +12,10 @@ public final class LedStatusAttachment extends DeviceAttachment {
   public String confidence = "";
   public String note = "";
 
+  /**
+   * NAME
+   *   LedStatusAttachment - Construct with attachment type name.
+   */
   public LedStatusAttachment() {
     super("ledStatus");
   }

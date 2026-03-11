@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+"""
+NAME
+    can_analyzer.py - Live CAN traffic analyzer.
+
+SYNOPSIS
+    from can_analyzer import CanLiveAnalyzer
+
+DESCRIPTION
+    Tracks per-arbitration-ID counters, rates, and byte-change masks to
+    summarize bus activity.
+"""
+
 from dataclasses import dataclass, field
 from collections import Counter, deque
 from typing import Any, Deque, Dict, Optional, Set
@@ -7,6 +19,10 @@ from typing import Any, Deque, Dict, Optional, Set
 
 @dataclass
 class _IdLiveState:
+    """
+    NAME
+        _IdLiveState - Per-CAN-ID tracking state for live analysis.
+    """
     can_id: int
     first_t: float
     last_t: float
@@ -17,6 +33,10 @@ class _IdLiveState:
     ts_window: Deque[float] = field(default_factory=lambda: deque(maxlen=200))
 
     def ingest(self, t: float, data: bytes) -> None:
+        """
+        NAME
+            ingest - Update counters and change mask with a new frame.
+        """
         if self.count > 0:
             for i in range(min(8, len(self.last_data), len(data))):
                 if self.last_data[i] != data[i]:
@@ -28,6 +48,10 @@ class _IdLiveState:
         self.ts_window.append(t)
 
     def hz(self) -> float:
+        """
+        NAME
+            hz - Estimate frame rate from the sliding timestamp window.
+        """
         if len(self.ts_window) < 2:
             return 0.0
         dt = self.ts_window[-1] - self.ts_window[0]
@@ -35,6 +59,13 @@ class _IdLiveState:
 
 
 class CanLiveAnalyzer:
+    """
+    NAME
+        CanLiveAnalyzer - Aggregate and summarize live CAN traffic.
+
+    DESCRIPTION
+        Maintains per-ID live state and computes bus-level summary metrics.
+    """
     def __init__(self, expected_ids: Optional[Set[int]] = None):
         self.states: Dict[int, _IdLiveState] = {}
         self.expected_ids: Set[int] = expected_ids or set()
@@ -43,6 +74,15 @@ class CanLiveAnalyzer:
         self.byte_count = 0
 
     def ingest(self, t: float, can_id: int, data: bytes) -> None:
+        """
+        NAME
+            ingest - Record a received frame for analysis.
+
+        PARAMETERS
+            t: Timestamp in seconds.
+            can_id: Arbitration ID.
+            data: Frame payload bytes.
+        """
         if self.t0 is None:
             self.t0 = t
 
@@ -56,9 +96,25 @@ class CanLiveAnalyzer:
         st.ingest(t, data)
 
     def seen_ids(self) -> Set[int]:
+        """
+        NAME
+            seen_ids - Return the set of observed arbitration IDs.
+        """
         return set(self.states.keys())
 
     def summary(self, now: float, stale_s: float, top_n: int) -> Dict[str, Any]:
+        """
+        NAME
+            summary - Build a summary snapshot of bus health and top talkers.
+
+        PARAMETERS
+            now: Current wall-clock time (seconds).
+            stale_s: Age threshold for stale IDs.
+            top_n: Number of top IDs to include by rate.
+
+        RETURNS
+            Dictionary with bus metrics, health lists, and top talkers.
+        """
         uptime = (now - self.t0) if self.t0 else 0.0
         fps = self.frame_count / uptime if uptime > 0 else 0.0
         bps = self.byte_count / uptime if uptime > 0 else 0.0

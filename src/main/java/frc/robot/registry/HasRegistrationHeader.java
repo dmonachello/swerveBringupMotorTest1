@@ -1,6 +1,13 @@
 package frc.robot.registry;
 
-// Marker for classes that must supply a registration header.
+/**
+ * NAME
+ *   HasRegistrationHeader - Interface for registration metadata.
+ */
 public interface HasRegistrationHeader {
+  /**
+   * NAME
+   *   getHeader - Return the registration header.
+   */
   RegistrationHeader getHeader();
 }

@@ -1,6 +1,9 @@
 package frc.robot.diag.snapshots;
 
-// Best-effort CAN health suspicion per device (expected vs likely).
+/**
+ * NAME
+ *   CanSuspicionAttachment - Suspicion summary for CAN device behavior.
+ */
 public final class CanSuspicionAttachment extends DeviceAttachment {
   public String expectedState = "";
   public String expectedMeaning = "";
@@ -9,6 +12,10 @@ public final class CanSuspicionAttachment extends DeviceAttachment {
   public String confidence = "";
   public String note = "";
 
+  /**
+   * NAME
+   *   CanSuspicionAttachment - Construct with the attachment type name.
+   */
   public CanSuspicionAttachment() {
     super("canSuspicion");
   }

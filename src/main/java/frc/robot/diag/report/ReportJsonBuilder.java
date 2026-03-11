@@ -10,10 +10,26 @@ import frc.robot.diag.snapshots.PcSnapshot;
 import frc.robot.diag.snapshots.SnapshotBundle;
 import java.util.List;
 
-// Formats snapshot bundles into the machine-readable JSON report.
+/**
+ * NAME
+ *   ReportJsonBuilder - Build machine-readable JSON reports.
+ *
+ * DESCRIPTION
+ *   Formats snapshot bundles into the bringup diagnostics JSON structure.
+ */
 public final class ReportJsonBuilder {
   private static final Gson GSON = new Gson();
 
+  /**
+   * NAME
+   *   buildReportJson - Serialize a SnapshotBundle to JSON.
+   *
+   * PARAMETERS
+   *   bundle - Snapshot data to serialize.
+   *
+   * RETURNS
+   *   JSON string.
+   */
   public String buildReportJson(SnapshotBundle bundle) {
     JsonObject root = new JsonObject();
     root.addProperty("timestamp", bundle != null ? bundle.timestampSec : 0.0);
@@ -23,6 +39,10 @@ public final class ReportJsonBuilder {
     return GSON.toJson(root);
   }
 
+  /**
+   * NAME
+   *   buildBusJson - Build the bus section JSON.
+   */
   private JsonObject buildBusJson(BusSnapshot bus) {
     JsonObject out = new JsonObject();
     if (bus == null || !bus.valid) {
@@ -43,6 +63,10 @@ public final class ReportJsonBuilder {
     return out;
   }
 
+  /**
+   * NAME
+   *   buildPcJson - Build the PC sniffer section JSON.
+   */
   private JsonObject buildPcJson(PcSnapshot pc) {
     JsonObject out = new JsonObject();
     if (pc == null) {
@@ -107,6 +131,10 @@ public final class ReportJsonBuilder {
     return out;
   }
 
+  /**
+   * NAME
+   *   buildDevicesJson - Build the devices array JSON.
+   */
   private JsonArray buildDevicesJson(List<DeviceSnapshot> devices) {
     JsonArray out = new JsonArray();
     if (devices == null) {
@@ -139,6 +167,10 @@ public final class ReportJsonBuilder {
     return out;
   }
 
+  /**
+   * NAME
+   *   appendAttachments - Append attachment array to a device entry.
+   */
   private void appendAttachments(JsonObject entry, List<DeviceAttachment> attachments) {
     if (attachments == null || attachments.isEmpty()) {
       return;

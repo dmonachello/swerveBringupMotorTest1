@@ -4,10 +4,33 @@ import com.revrobotics.REVLibError;
 import com.revrobotics.spark.SparkMax;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 
-// Reader for REV SPARK MAX (NEO) devices.
+/**
+ * NAME
+ * RevSparkMaxReader
+ *
+ * SYNOPSIS
+ * Reader for REV SPARK MAX (NEO) devices.
+ *
+ * DESCRIPTION
+ * Samples REV telemetry and packages it into device snapshots.
+ */
 public final class RevSparkMaxReader {
   private RevSparkMaxReader() {}
 
+  /**
+   * NAME
+   * read
+   *
+   * SYNOPSIS
+   * Capture a snapshot from a Spark Max device.
+   *
+   * PARAMETERS
+   * device - Spark Max instance to read.
+   * canId - CAN ID of the device.
+   *
+   * RETURNS
+   * A populated device snapshot with REV motor telemetry.
+   */
   public static DeviceSnapshot read(SparkMax device, int canId) {
     DeviceSnapshot snap = new DeviceSnapshot();
     snap.vendor = "REV";

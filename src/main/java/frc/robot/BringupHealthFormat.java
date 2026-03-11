@@ -6,10 +6,27 @@ import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 import java.util.List;
 
-// Shared formatting helpers for bringup health output.
+/**
+ * NAME
+ *   BringupHealthFormat - Formatting helpers for health output.
+ *
+ * DESCRIPTION
+ *   Provides concise formatting utilities for fault summaries, limits, and
+ *   numeric formatting used in bringup reports.
+ */
 public final class BringupHealthFormat {
   private BringupHealthFormat() {}
 
+  /**
+   * NAME
+   *   formatRevFaultSummary - Format REV fault/warning summary text.
+   *
+   * PARAMETERS
+   *   rev - REV motor attachment.
+   *
+   * RETURNS
+   *   Summary string or empty string when unavailable.
+   */
   public static String formatRevFaultSummary(RevMotorAttachment rev) {
     if (rev == null) {
       return "";
@@ -26,6 +43,16 @@ public final class BringupHealthFormat {
     return sb.toString();
   }
 
+  /**
+   * NAME
+   *   formatCtreFaultSummary - Format CTRE fault summary text.
+   *
+   * PARAMETERS
+   *   ctre - CTRE motor attachment.
+   *
+   * RETURNS
+   *   Summary string or empty string when unavailable.
+   */
   public static String formatCtreFaultSummary(CtreMotorAttachment ctre) {
     if (ctre == null) {
       return "";
@@ -38,6 +65,17 @@ public final class BringupHealthFormat {
     return sb.toString();
   }
 
+  /**
+   * NAME
+   *   formatMotorSpecNote - Format motor spec/current comparison note.
+   *
+   * PARAMETERS
+   *   spec - Motor spec attachment.
+   *   motorCurrent - Current in amps.
+   *
+   * RETURNS
+   *   Summary string or empty string when unavailable.
+   */
   public static String formatMotorSpecNote(MotorSpecAttachment spec, Double motorCurrent) {
     if (spec == null || spec.freeCurrentA == null || spec.stallCurrentA == null) {
       return "";
@@ -51,6 +89,16 @@ public final class BringupHealthFormat {
         " freeRatio=" + ratio;
   }
 
+  /**
+   * NAME
+   *   formatLimitSummary - Format limit switch summary text.
+   *
+   * PARAMETERS
+   *   limits - Limits attachment.
+   *
+   * RETURNS
+   *   Summary string or empty string when no limits are configured.
+   */
   public static String formatLimitSummary(LimitsAttachment limits) {
     if (limits == null || (limits.fwdDio < 0 && limits.revDio < 0)) {
       return "";
@@ -74,6 +122,10 @@ public final class BringupHealthFormat {
     return sb.toString();
   }
 
+  /**
+   * NAME
+   *   formatLimitState - Format a single limit state.
+   */
   private static String formatLimitState(Boolean closed) {
     if (closed == null) {
       return "?";
@@ -81,6 +133,10 @@ public final class BringupHealthFormat {
     return closed ? "CLOSED" : "OPEN";
   }
 
+  /**
+   * NAME
+   *   formatFlagList - Format a list of fault/warning flags.
+   */
   private static String formatFlagList(List<String> flags) {
     if (flags == null || flags.isEmpty()) {
       return "";
@@ -88,10 +144,18 @@ public final class BringupHealthFormat {
     return " [" + String.join(",", flags) + "]";
   }
 
+  /**
+   * NAME
+   *   safeDouble - Replace null with 0.0 for formatting.
+   */
   public static double safeDouble(Double value) {
     return value == null ? 0.0 : value;
   }
 
+  /**
+   * NAME
+   *   safeText - Replace null with empty string for formatting.
+   */
   public static String safeText(String value) {
     return value == null ? "" : value;
   }

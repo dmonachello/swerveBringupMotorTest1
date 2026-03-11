@@ -11,7 +11,17 @@ import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.registry.RegistrationHeader;
 import edu.wpi.first.wpilibj.DigitalInput;
 
-// Device wrapper for a CTRE CANdle LED controller.
+/**
+ * NAME
+ * CtreCANdleDevice
+ *
+ * SYNOPSIS
+ * Device wrapper for a CTRE CANdle LED controller.
+ *
+ * DESCRIPTION
+ * Provides bringup lifecycle, LED test toggling, and limit switch handling for
+ * CANdle devices.
+ */
 public final class CtreCANdleDevice implements DeviceUnit {
   public static final RegistrationHeader HEADER = new RegistrationHeader(
       "CANdle",
@@ -30,6 +40,21 @@ public final class CtreCANdleDevice implements DeviceUnit {
   private boolean testOn = false;
   private final SolidColor testColor = new SolidColor(0, 7);
 
+  /**
+   * NAME
+   * CtreCANdleDevice
+   *
+   * SYNOPSIS
+   * Construct a CANdle device wrapper.
+   *
+   * PARAMETERS
+   * canId - CAN ID of the CANdle.
+   * label - human-readable label for reporting.
+   * limitConfig - optional limit switch configuration.
+   *
+   * SIDE EFFECTS
+   * Initializes DIO inputs when limit switches are configured.
+   */
   public CtreCANdleDevice(int canId, String label, BringupUtil.LimitConfig limitConfig) {
     this.canId = canId;
     this.label = label;
@@ -62,6 +87,16 @@ public final class CtreCANdleDevice implements DeviceUnit {
     return device != null;
   }
 
+  /**
+   * NAME
+   * ensureCreated
+   *
+   * SYNOPSIS
+   * Construct the CANdle device if not already created.
+   *
+   * SIDE EFFECTS
+   * Allocates a vendor device and starts CAN communication.
+   */
   @Override
   public void ensureCreated() {
     if (device != null) {
@@ -70,6 +105,16 @@ public final class CtreCANdleDevice implements DeviceUnit {
     device = new CANdle(canId);
   }
 
+  /**
+   * NAME
+   * close
+   *
+   * SYNOPSIS
+   * Release vendor and DIO resources.
+   *
+   * SIDE EFFECTS
+   * Closes device handles and limit switch inputs.
+   */
   @Override
   public void close() {
     BringupUtil.closeIfPossible(device);
@@ -80,6 +125,16 @@ public final class CtreCANdleDevice implements DeviceUnit {
     revLimit = null;
   }
 
+  /**
+   * NAME
+   * clearFaults
+   *
+   * SYNOPSIS
+   * Clear sticky faults on the CANdle.
+   *
+   * SIDE EFFECTS
+   * Sends vendor fault-clear commands.
+   */
   @Override
   public void clearFaults() {
     if (device != null) {
@@ -87,21 +142,58 @@ public final class CtreCANdleDevice implements DeviceUnit {
     }
   }
 
+  /**
+   * NAME
+   * activate
+   *
+   * SYNOPSIS
+   * Activate the device by ensuring it is created.
+   */
   @Override
   public void activate() {
     ensureCreated();
   }
 
+  /**
+   * NAME
+   * hasTest
+   *
+   * SYNOPSIS
+   * Indicate that the device exposes a LED toggle test.
+   *
+   * RETURNS
+   * True for CANdle devices.
+   */
   @Override
   public boolean hasTest() {
     return true;
   }
 
+  /**
+   * NAME
+   * getTestName
+   *
+   * SYNOPSIS
+   * Return the test command name for the LED toggle.
+   *
+   * RETURNS
+   * "toggle_led".
+   */
   @Override
   public String getTestName() {
     return "toggle_led";
   }
 
+  /**
+   * NAME
+   * runTest
+   *
+   * SYNOPSIS
+   * Toggle the CANdle LED color.
+   *
+   * SIDE EFFECTS
+   * Sends a control command to change LED output.
+   */
   @Override
   public void runTest() {
     ensureCreated();
@@ -113,6 +205,16 @@ public final class CtreCANdleDevice implements DeviceUnit {
     testOn = !testOn;
   }
 
+  /**
+   * NAME
+   * snapshot
+   *
+   * SYNOPSIS
+   * Capture a diagnostic snapshot of the device.
+   *
+   * RETURNS
+   * A snapshot containing vendor telemetry and limit switch state.
+   */
   @Override
   public DeviceSnapshot snapshot() {
     if (device == null) {
@@ -132,6 +234,16 @@ public final class CtreCANdleDevice implements DeviceUnit {
     return snap;
   }
 
+  /**
+   * NAME
+   * initLimitInputs
+   *
+   * SYNOPSIS
+   * Initialize DIO inputs for configured limit switches.
+   *
+   * SIDE EFFECTS
+   * Allocates DigitalInput instances when DIO channels are configured.
+   */
   private void initLimitInputs() {
     if (limitConfig.hasForward()) {
       fwdLimit = new DigitalInput(limitConfig.fwdDio);
@@ -141,6 +253,16 @@ public final class CtreCANdleDevice implements DeviceUnit {
     }
   }
 
+  /**
+   * NAME
+   * addLimitAttachment
+   *
+   * SYNOPSIS
+   * Attach limit switch telemetry to a device snapshot.
+   *
+   * PARAMETERS
+   * snap - snapshot to populate with limit data.
+   */
   private void addLimitAttachment(DeviceSnapshot snap) {
     if (!limitConfig.hasForward() && !limitConfig.hasReverse()) {
       return;
@@ -158,6 +280,19 @@ public final class CtreCANdleDevice implements DeviceUnit {
     snap.addAttachment(limits);
   }
 
+  /**
+   * NAME
+   * readLimit
+   *
+   * SYNOPSIS
+   * Read a limit input and apply inversion if configured.
+   *
+   * PARAMETERS
+   * input - DIO input to sample.
+   *
+   * RETURNS
+   * True if closed, false if open, or null when input is absent.
+   */
   private Boolean readLimit(DigitalInput input) {
     if (input == null) {
       return null;

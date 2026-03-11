@@ -26,8 +26,14 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-// Builds and emits diagnostics reports (console + JSON) using robot-local data
-// and optional PC sniffer data from NetworkTables.
+/**
+ * NAME
+ *   DiagnosticsReporter - Build console and JSON diagnostics reports.
+ *
+ * DESCRIPTION
+ *   Aggregates robot-local data and optional PC sniffer data from NetworkTables
+ *   to produce human-readable reports and JSON snapshots.
+ */
 final class DiagnosticsReporter {
   private static final int REV_MANUFACTURER = 5;
   private static final int CTRE_MANUFACTURER = 4;
@@ -68,17 +74,34 @@ final class DiagnosticsReporter {
   private long lastCanDiagPrintMs = 0L;
 
   // Wire all dependencies explicitly to keep data flow obvious.
+  /**
+   * NAME
+   *   DiagnosticsReporter - Construct a diagnostics reporter.
+   *
+   * PARAMETERS
+   *   core - BringupCore for local device snapshots.
+   *   canHealth - CAN controller health sampler.
+   *   diagTable - NetworkTables bringup/diag subtable.
+   */
   DiagnosticsReporter(BringupCore core, CanBusHealth canHealth, NetworkTable diagTable) {
     this.core = core;
     this.canHealth = canHealth;
     this.diagTable = diagTable;
   }
 
+  /**
+   * NAME
+   *   setCore - Swap the BringupCore instance after profile changes.
+   */
   void setCore(BringupCore core) {
     // Called when profiles reset and a new BringupCore is constructed.
     this.core = core;
   }
 
+  /**
+   * NAME
+   *   resetState - Clear internal counters and cached state.
+   */
   void resetState() {
     // Clear derived counters and previous samples between runs.
     prevMsgCount.clear();
@@ -92,11 +115,22 @@ final class DiagnosticsReporter {
     lastCanDiagPrintMs = 0L;
   }
 
+  /**
+   * NAME
+   *   update - Sample CAN controller health.
+   */
   void update() {
     // Periodic sampling from the CAN controller.
     canHealth.update();
   }
 
+  /**
+   * NAME
+   *   buildNetworkDiagnosticsReportIfReady - Build NT report when rate-limited.
+   *
+   * RETURNS
+   *   Report string or null when not ready.
+   */
   String buildNetworkDiagnosticsReportIfReady() {
     // Returns a NetworkTables report snapshot when rate limiting allows.
     long nowMs = System.currentTimeMillis();
@@ -107,6 +141,13 @@ final class DiagnosticsReporter {
     return buildNetworkDiagnosticsReport();
   }
 
+  /**
+   * NAME
+   *   buildCanDiagnosticsReportIfReady - Build CAN report when rate-limited.
+   *
+   * RETURNS
+   *   Report string or null when not ready.
+   */
   String buildCanDiagnosticsReportIfReady() {
     // Returns a combined bus + PC tool + local device report when allowed.
     long nowMs = System.currentTimeMillis();
@@ -117,10 +158,24 @@ final class DiagnosticsReporter {
     return buildCanDiagnosticsReport();
   }
 
+  /**
+   * NAME
+   *   buildReportJsonForDump - Build a JSON report payload.
+   */
   String buildReportJsonForDump() {
     return buildReportJson();
   }
 
+  /**
+   * NAME
+   *   writeReportJsonToFile - Write report JSON to the roboRIO filesystem.
+   *
+   * PARAMETERS
+   *   json - JSON payload.
+   *
+   * RETURNS
+   *   True on success.
+   */
   boolean writeReportJsonToFile(String json) {
     try {
       Files.writeString(Path.of(REPORT_PATH), json);
@@ -130,10 +185,18 @@ final class DiagnosticsReporter {
     }
   }
 
+  /**
+   * NAME
+   *   getReportPath - Return the report output path.
+   */
   String getReportPath() {
     return REPORT_PATH;
   }
 
+  /**
+   * NAME
+   *   buildNetworkDiagnosticsReport - Build a NetworkTables diagnostics report.
+   */
   private String buildNetworkDiagnosticsReport() {
     // NetworkTables snapshot: PC sniffer device visibility and rates.
     StringBuilder sb = new StringBuilder(1024);
@@ -165,18 +228,30 @@ final class DiagnosticsReporter {
     return sb.toString();
   }
 
+  /**
+   * NAME
+   *   buildCanDiagnosticsReport - Build a combined CAN diagnostics report.
+   */
   private String buildCanDiagnosticsReport() {
     // Full text report with summary and device health.
     SnapshotBundle bundle = buildSnapshotBundle();
     return textBuilder.buildCanDiagnosticsReport(bundle);
   }
 
+  /**
+   * NAME
+   *   buildReportJson - Build the JSON diagnostics payload.
+   */
   private String buildReportJson() {
     // JSON payload includes: timestamp, bus, pc, devices.
     SnapshotBundle bundle = buildSnapshotBundle();
     return jsonBuilder.buildReportJson(bundle);
   }
 
+  /**
+   * NAME
+   *   buildSnapshotBundle - Assemble snapshot data for reports.
+   */
   private SnapshotBundle buildSnapshotBundle() {
     SnapshotBundle bundle = new SnapshotBundle();
     bundle.timestampSec = System.currentTimeMillis() / 1000.0;
@@ -196,6 +271,10 @@ final class DiagnosticsReporter {
     return bundle;
   }
 
+  /**
+   * NAME
+   *   buildPcSnapshot - Build a snapshot from PC sniffer NetworkTables data.
+   */
   private PcSnapshot buildPcSnapshot(long nowMs) {
     PcSnapshot pc = new PcSnapshot();
     pc.heartbeatAgeSec = getPcHeartbeatAgeSec(nowMs);
@@ -279,6 +358,10 @@ final class DiagnosticsReporter {
     return pc;
   }
 
+  /**
+   * NAME
+   *   getPcHeartbeatAgeSec - Compute age of PC heartbeat.
+   */
   private double getPcHeartbeatAgeSec(long nowMs) {
     NetworkTableEntry heartbeatEntry = diagTable.getEntry("can/pc/heartbeat");
     double heartbeat = heartbeatEntry.getDouble(Double.NaN);
@@ -292,6 +375,10 @@ final class DiagnosticsReporter {
     return (nowMs - lastPcHeartbeatMs) / 1000.0;
   }
 
+  /**
+   * NAME
+   *   printNetworkDeviceTable - Append a formatted device table.
+   */
   private void printNetworkDeviceTable(
       StringBuilder sb,
       java.util.List<DeviceSpec> specs,
@@ -350,6 +437,10 @@ final class DiagnosticsReporter {
     }
   }
 
+  /**
+   * NAME
+   *   loadDeviceRow - Load per-device row data from NetworkTables.
+   */
   private DeviceRow loadDeviceRow(DeviceSpec spec, double nowSeconds) {
     // Pull PC tool data for each device and compute age/fps values.
     String base = "dev/" + spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
@@ -392,6 +483,10 @@ final class DiagnosticsReporter {
         msgText);
   }
 
+  /**
+   * NAME
+   *   formatFps - Compute message rate from deltas.
+   */
   private String formatFps(DeviceSpec spec, double msgCount, double nowSeconds) {
     // Compute fps from message count deltas between prints.
     if (Double.isNaN(msgCount)) {
@@ -413,6 +508,10 @@ final class DiagnosticsReporter {
     return String.format("%.1f", delta / dt);
   }
 
+  /**
+   * NAME
+   *   formatManufacturer - Format manufacturer ID with display name.
+   */
   private static String formatManufacturer(int manufacturer) {
     String name = MANUFACTURER_NAMES.get(manufacturer);
     if (name == null) {
@@ -421,6 +520,10 @@ final class DiagnosticsReporter {
     return name + " (" + manufacturer + ")";
   }
 
+  /**
+   * NAME
+   *   formatDeviceType - Format device type ID with display name.
+   */
   private static String formatDeviceType(int deviceType) {
     String name = DEVICE_TYPE_NAMES.get(deviceType);
     if (name == null) {
@@ -429,6 +532,10 @@ final class DiagnosticsReporter {
     return name + " (" + deviceType + ")";
   }
 
+  /**
+   * NAME
+   *   loadManufacturerNames - Load manufacturer name map with fallback.
+   */
   private static Map<Integer, String> loadManufacturerNames() {
     // Load friendly names from can_mappings.json with a fallback map.
     Map<Integer, String> fallback = new HashMap<>();
@@ -440,6 +547,10 @@ final class DiagnosticsReporter {
     return loadCanMapSection("manufacturers", fallback);
   }
 
+  /**
+   * NAME
+   *   loadDeviceTypeNames - Load device type name map with fallback.
+   */
   private static Map<Integer, String> loadDeviceTypeNames() {
     // Load friendly names from can_mappings.json with a fallback map.
     Map<Integer, String> fallback = new HashMap<>();
@@ -450,6 +561,10 @@ final class DiagnosticsReporter {
     return loadCanMapSection("device_types", fallback);
   }
 
+  /**
+   * NAME
+   *   loadCanMapSection - Load a named section from can_mappings.json.
+   */
   private static Map<Integer, String> loadCanMapSection(String key, Map<Integer, String> fallback) {
     // Read can_mappings.json (deploy or local) for display names.
     Path path = resolveCanMapPath();
@@ -482,6 +597,10 @@ final class DiagnosticsReporter {
     }
   }
 
+  /**
+   * NAME
+   *   resolveCanMapPath - Resolve can_mappings.json path.
+   */
   private static Path resolveCanMapPath() {
     // Prefer deploy directory; fall back to repo path for local dev.
     try {
@@ -499,6 +618,10 @@ final class DiagnosticsReporter {
     return Path.of(CAN_MAP_FILE);
   }
 
+  /**
+   * NAME
+   *   findUnknownDeviceSpecs - Enumerate devices seen by PC tool but not local.
+   */
   private DeviceSpec[] findUnknownDeviceSpecs() {
     // Any device published by the PC tool but not in our profile is "unknown".
     java.util.HashSet<String> known = new java.util.HashSet<>();
@@ -529,6 +652,10 @@ final class DiagnosticsReporter {
     return unknowns.toArray(new DeviceSpec[0]);
   }
 
+  /**
+   * NAME
+   *   collectUnknownSeenIdsByType - Group unknown IDs by manufacturer/type.
+   */
   private Map<String, ArrayList<Integer>> collectUnknownSeenIdsByType() {
     // Collect unknown device IDs per (manufacturer/type) that the PC tool has seen on wire.
     java.util.HashSet<String> known = new java.util.HashSet<>();
@@ -565,6 +692,10 @@ final class DiagnosticsReporter {
     return unknownByType;
   }
 
+  /**
+   * NAME
+   *   parseIntOrDefault - Parse an integer with fallback.
+   */
   private static int parseIntOrDefault(String value, int fallback) {
     try {
       return Integer.parseInt(value);
@@ -573,6 +704,10 @@ final class DiagnosticsReporter {
     }
   }
 
+  /**
+   * NAME
+   *   buildDeviceSpecs - Build expected devices from active profile.
+   */
   private static DeviceSpec[] buildDeviceSpecs() {
     // Build the expected device list from the active profile.
     int[] neoIds = BringupUtil.filterCanIds(BringupUtil.NEO_CAN_IDS);
@@ -631,6 +766,10 @@ final class DiagnosticsReporter {
     return specs;
   }
 
+  /**
+   * NAME
+   *   formatPcBoolean - Normalize boolean values from NetworkTables.
+   */
   private static String formatPcBoolean(NetworkTableEntry entry) {
     // PC tool boolean values may arrive as bool or numeric.
     NetworkTableValue value = entry.getValue();
@@ -655,6 +794,10 @@ final class DiagnosticsReporter {
   //   return String.format(fmt, value);
   // }
 
+  /**
+   * NAME
+   *   DeviceSpec - Expected device metadata for report rendering.
+   */
   private static final class DeviceSpec {
     private final String label;
     private final int manufacturer;
@@ -669,6 +812,10 @@ final class DiagnosticsReporter {
     }
   }
 
+  /**
+   * NAME
+   *   DeviceRow - Row data for NetworkTables device report.
+   */
   private static final class DeviceRow {
     private final DeviceSpec spec;
     private final String label;

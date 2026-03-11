@@ -1,11 +1,31 @@
 from __future__ import annotations
 
+"""
+NAME
+    can_logging.py - PCAP/PCAPNG logging utilities for CAN traffic.
+
+SYNOPSIS
+    from can_logging import PcapLogger
+
+DESCRIPTION
+    Wraps python-can logging and provides a lightweight PCAPNG writer that
+    supports named pipes and marker frames.
+"""
+
 import os
 import struct
 import time
 
 
 class PcapLogger:
+    """
+    NAME
+        PcapLogger - Adapter for file/pipe PCAP logging.
+
+    DESCRIPTION
+        Chooses python-can Logger or a custom PCAPNG writer based on output
+        path and options.
+    """
     def __init__(self, path: str, pcapng_comment: str = "", pipe_name: str = ""):
         self.path = path
         self.pipe_name = pipe_name
@@ -13,6 +33,16 @@ class PcapLogger:
         self._pcapng_comment = pcapng_comment
 
     def start(self) -> bool:
+        """
+        NAME
+            start - Open the logging destination.
+
+        RETURNS
+            True if logging was successfully started.
+
+        ERRORS
+            Prints warnings and disables logging on failures.
+        """
         if not self.path:
             if not self.pipe_name:
                 return False
@@ -47,9 +77,24 @@ class PcapLogger:
             return False
 
     def _path_is_pcapng(self) -> bool:
+        """
+        NAME
+            _path_is_pcapng - Check for a .pcapng output path.
+        """
         return os.path.splitext(self.path)[1].lower() == ".pcapng"
 
     def log(self, msg, timestamp_s: float | None = None) -> bool:
+        """
+        NAME
+            log - Write a python-can message to the logger.
+
+        PARAMETERS
+            msg: python-can Message object.
+            timestamp_s: Optional override timestamp in seconds.
+
+        RETURNS
+            True on success, False on failure or when disabled.
+        """
         if self._logger is None:
             return False
         if timestamp_s is not None:
@@ -72,6 +117,13 @@ class PcapLogger:
         is_rtr: bool,
         is_error: bool = False,
     ) -> bool:
+        """
+        NAME
+            write_can_frame - Write a raw CAN frame into PCAPNG output.
+
+        RETURNS
+            True when the underlying logger accepts the frame.
+        """
         if self._logger is None:
             return False
         writer = getattr(self._logger, "write_can_frame", None)
@@ -91,6 +143,13 @@ class PcapLogger:
         counter: int,
         extra: int = 0,
     ) -> bool:
+        """
+        NAME
+            write_marker - Emit a synthetic marker frame for correlation.
+
+        DESCRIPTION
+            Encodes marker metadata into 8 bytes with ASCII "MARK" header.
+        """
         if not key_char:
             return False
         key_byte = ord(key_char[0]) & 0xFF
@@ -101,6 +160,10 @@ class PcapLogger:
         return self.write_can_frame(timestamp_s, marker_id, payload, True, False)
 
     def stop(self) -> None:
+        """
+        NAME
+            stop - Close the logging destination.
+        """
         if self._logger is None:
             return
         try:
@@ -111,6 +174,14 @@ class PcapLogger:
 
 
 class _PcapngWriter:
+    """
+    NAME
+        _PcapngWriter - Minimal PCAPNG writer for CAN frames.
+
+    DESCRIPTION
+        Emits Section Header, Interface, and Enhanced Packet blocks with a
+        SocketCAN-compatible payload format.
+    """
     _BLOCK_SHB = 0x0A0D0D0A
     _BLOCK_IDB = 0x00000001
     _BLOCK_EPB = 0x00000006
@@ -140,18 +211,30 @@ class _PcapngWriter:
         self._close_on_stop = file_obj is None
 
     def start(self) -> None:
+        """
+        NAME
+            start - Open file/stream and write header blocks.
+        """
         if self._file is None:
             self._file = open(self._path, "wb")
         self._write_shb(self._comment)
         self._write_idb()
 
     def on_message_received(self, msg) -> None:
+        """
+        NAME
+            on_message_received - Log a python-can message.
+        """
         if self._file is None:
             return
         payload = self._build_socketcan_payload(msg)
         self._write_epb(payload, self._timestamp_us(msg))
 
     def stop(self) -> None:
+        """
+        NAME
+            stop - Flush and close the PCAPNG output.
+        """
         if self._file is None:
             return
         try:
@@ -174,6 +257,10 @@ class _PcapngWriter:
         is_rtr: bool,
         is_error: bool,
     ) -> None:
+        """
+        NAME
+            write_can_frame - Log a raw CAN frame payload.
+        """
         if self._file is None:
             return
         payload = self._build_socketcan_payload_raw(
@@ -186,6 +273,10 @@ class _PcapngWriter:
         self._write_epb(payload, self._timestamp_us_from_seconds(timestamp_s))
 
     def _write_shb(self, comment: str) -> None:
+        """
+        NAME
+            _write_shb - Write the Section Header Block.
+        """
         block_body = struct.pack(
             "<IHHq",
             0x1A2B3C4D,  # byte-order magic
@@ -198,6 +289,10 @@ class _PcapngWriter:
         self._write_block(self._BLOCK_SHB, block_body)
 
     def _build_shb_options(self, comment: str) -> bytes:
+        """
+        NAME
+            _build_shb_options - Encode SHB options with optional comment.
+        """
         if not comment:
             return struct.pack("<HH", 0, 0)
         value = comment.encode("utf-8", errors="replace")
@@ -206,6 +301,10 @@ class _PcapngWriter:
         return opt + struct.pack("<HH", 0, 0)
 
     def _write_idb(self) -> None:
+        """
+        NAME
+            _write_idb - Write the Interface Description Block.
+        """
         block_body = struct.pack(
             "<HHI",
             self._LINKTYPE_CAN_SOCKETCAN,
@@ -215,6 +314,10 @@ class _PcapngWriter:
         self._write_block(self._BLOCK_IDB, block_body)
 
     def _write_epb(self, packet_data: bytes, ts_us: int) -> None:
+        """
+        NAME
+            _write_epb - Write an Enhanced Packet Block with timestamp.
+        """
         ts_high = (ts_us >> 32) & 0xFFFFFFFF
         ts_low = ts_us & 0xFFFFFFFF
         cap_len = len(packet_data)
@@ -224,6 +327,10 @@ class _PcapngWriter:
         self._write_block(self._BLOCK_EPB, block_body)
 
     def _write_block(self, block_type: int, block_body: bytes) -> None:
+        """
+        NAME
+            _write_block - Emit a generic PCAPNG block with padding.
+        """
         if self._file is None:
             return
         total_len = 12 + len(block_body)
@@ -242,21 +349,37 @@ class _PcapngWriter:
             pass
 
     def _pad4(self, payload: bytes) -> bytes:
+        """
+        NAME
+            _pad4 - Pad a payload to 32-bit alignment.
+        """
         pad = (-len(payload)) % 4
         if pad:
             return payload + (b"\x00" * pad)
         return payload
 
     def _timestamp_us(self, msg) -> int:
+        """
+        NAME
+            _timestamp_us - Convert python-can timestamp to microseconds.
+        """
         ts = getattr(msg, "timestamp", None)
         if ts is None:
             ts = time.time()
         return int(ts * 1_000_000)
 
     def _timestamp_us_from_seconds(self, ts: float) -> int:
+        """
+        NAME
+            _timestamp_us_from_seconds - Convert seconds to microseconds.
+        """
         return int(float(ts) * 1_000_000)
 
     def _build_socketcan_payload(self, msg) -> bytes:
+        """
+        NAME
+            _build_socketcan_payload - Encode a python-can Message to SocketCAN.
+        """
         can_id = int(getattr(msg, "arbitration_id", 0))
         if getattr(msg, "is_extended_id", False):
             can_id |= self._CAN_EFF_FLAG
@@ -292,6 +415,10 @@ class _PcapngWriter:
         is_rtr: bool,
         is_error: bool,
     ) -> bytes:
+        """
+        NAME
+            _build_socketcan_payload_raw - Build a raw SocketCAN frame payload.
+        """
         can_id = int(arb_id)
         if is_extended:
             can_id |= self._CAN_EFF_FLAG
@@ -311,6 +438,10 @@ class _PcapngWriter:
 
 
 def _normalize_pipe_name(name: str) -> str:
+    """
+    NAME
+        _normalize_pipe_name - Normalize a Windows named pipe path.
+    """
     if name.startswith("\\\\.\\pipe\\"):
         return name
     trimmed = name.strip().lstrip("\\")
@@ -318,6 +449,13 @@ def _normalize_pipe_name(name: str) -> str:
 
 
 def _open_named_pipe_writer(pipe_name: str):
+    """
+    NAME
+        _open_named_pipe_writer - Open a Windows named pipe for writing.
+
+    SIDE EFFECTS
+        Blocks until a reader connects to the named pipe.
+    """
     import ctypes
     import msvcrt
     from ctypes import wintypes

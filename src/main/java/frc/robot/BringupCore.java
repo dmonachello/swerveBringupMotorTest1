@@ -23,8 +23,14 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 
-// Core bringup logic: creates devices, commands outputs, and prints local health.
-// This class only uses robot-local vendor APIs (no PC sniffer data).
+/**
+ * NAME
+ *   BringupCore - Core bringup logic and test coordination.
+ *
+ * DESCRIPTION
+ *   Creates devices, commands outputs, manages bringup tests, and queues
+ *   report output using robot-local vendor APIs only.
+ */
 public final class BringupCore {
   private static final int NI_MANUFACTURER = 1;
   private static final int TYPE_ROBOT_CONTROLLER = 1;
@@ -60,6 +66,13 @@ public final class BringupCore {
   private double primaryInput = 0.0;
   private double secondaryInput = 0.0;
 
+  /**
+   * NAME
+   *   BringupCore - Construct and initialize bringup state.
+   *
+   * SIDE EFFECTS
+   *   Loads bringup tests and initializes device groups.
+   */
   public BringupCore() {
     List<ManufacturerGroup> groups = new ArrayList<>();
     groups.add(revDevices);
@@ -71,6 +84,13 @@ public final class BringupCore {
   }
 
   // Edge-triggered: add the next motor in the alternating sequence.
+  /**
+   * NAME
+   *   handleAdd - Edge-triggered add-next-motor handler.
+   *
+   * PARAMETERS
+   *   addNow - Current button state.
+   */
   public void handleAdd(boolean addNow) {
     if (addNow && !prevAdd) {
       addNextMotor();
@@ -79,6 +99,13 @@ public final class BringupCore {
   }
 
   // Edge-triggered: instantiate all configured devices at once.
+  /**
+   * NAME
+   *   handleAddAll - Edge-triggered add-all-devices handler.
+   *
+   * PARAMETERS
+   *   addAllNow - Current button state.
+   */
   public void handleAddAll(boolean addAllNow) {
     if (addAllNow && !prevAddAll) {
       addAllDevices();
@@ -87,6 +114,13 @@ public final class BringupCore {
   }
 
   // Edge-triggered: print a concise state summary.
+  /**
+   * NAME
+   *   handlePrint - Edge-triggered state report request.
+   *
+   * PARAMETERS
+   *   printNow - Current button state.
+   */
   public void handlePrint(boolean printNow) {
     if (printNow && !prevPrint) {
       long nowMs = System.currentTimeMillis();
@@ -99,6 +133,13 @@ public final class BringupCore {
   }
 
   // Edge-triggered: print local health for all instantiated devices.
+  /**
+   * NAME
+   *   handleHealth - Edge-triggered health report request.
+   *
+   * PARAMETERS
+   *   healthNow - Current button state.
+   */
   public void handleHealth(boolean healthNow) {
     if (healthNow && !prevHealth) {
       long nowMs = System.currentTimeMillis();
@@ -111,6 +152,13 @@ public final class BringupCore {
   }
 
   // Edge-triggered: print CANCoder absolute position data.
+  /**
+   * NAME
+   *   handleCANCoder - Edge-triggered CANCoder report request.
+   *
+   * PARAMETERS
+   *   printNow - Current button state.
+   */
   public void handleCANCoder(boolean printNow) {
     if (printNow && !prevCANCoder) {
       long nowMs = System.currentTimeMillis();
@@ -123,6 +171,17 @@ public final class BringupCore {
   }
 
   // Apply requested speeds to all instantiated motors.
+  /**
+   * NAME
+   *   setSpeeds - Apply output commands to motor groups.
+   *
+   * PARAMETERS
+   *   neoSpeed - REV motor duty cycle (-1..1).
+   *   krakenSpeed - CTRE motor duty cycle (-1..1).
+   *
+   * NOTES
+   *   Suppressed while an active test is running.
+   */
   public void setSpeeds(double neoSpeed, double krakenSpeed) {
     if (activeTest != null && activeTest.isRunning()) {
       return;
@@ -131,6 +190,14 @@ public final class BringupCore {
     ctreDevices.setDuty(krakenSpeed);
   }
 
+  /**
+   * NAME
+   *   setTestInputs - Provide joystick inputs to test logic.
+   *
+   * PARAMETERS
+   *   primary - Primary axis input.
+   *   secondary - Secondary axis input.
+   */
   public void setTestInputs(double primary, double secondary) {
     primaryInput = primary;
     secondaryInput = secondary;
@@ -142,11 +209,22 @@ public final class BringupCore {
   }
 
   // Clear current and sticky faults on all instantiated devices where supported.
+  /**
+   * NAME
+   *   clearAllFaults - Clear sticky and current faults where supported.
+   */
   public void clearAllFaults() {
     revDevices.clearFaults();
     ctreDevices.clearFaults();
   }
 
+  /**
+   * NAME
+   *   runCanPingSweep - Emit a local-vendor CAN presence sweep.
+   *
+   * SIDE EFFECTS
+   *   Enqueues a report for console output.
+   */
   public void runCanPingSweep() {
     StringBuilder sb = new StringBuilder(1024);
     appendLine(sb, "=== CAN Ping Sweep (Local Vendor API) ===");
@@ -160,10 +238,24 @@ public final class BringupCore {
   }
 
   // Stop all outputs, close devices, and reset internal state.
+  /**
+   * NAME
+   *   resetState - Reset bringup state with a default reason.
+   */
   public void resetState() {
     resetState("reset");
   }
 
+  /**
+   * NAME
+   *   resetState - Reset bringup state and stop active tests.
+   *
+   * PARAMETERS
+   *   reason - Label for the reset report.
+   *
+   * SIDE EFFECTS
+   *   Stops tests, closes devices, and enqueues a reset report.
+   */
   public void resetState(String reason) {
     if (activeTest != null && activeTest.isRunning()) {
       activeTest.stop(testContext);
@@ -189,6 +281,13 @@ public final class BringupCore {
         "=== Bringup reset (" + label + " @ " + System.currentTimeMillis() + "): no motors instantiated ===");
   }
 
+  /**
+   * NAME
+   *   runNextNonMotorTest - Run the next available non-motor device test.
+   *
+   * SIDE EFFECTS
+   *   Starts a device test and enqueues a status message.
+   */
   public void runNextNonMotorTest() {
     if (activeTest != null && activeTest.isRunning()) {
       BringupPrinter.enqueue("Test already running: " + activeTest.getName());
@@ -219,6 +318,10 @@ public final class BringupCore {
     BringupPrinter.enqueue("No testable non-motor devices found.");
   }
 
+  /**
+   * NAME
+   *   selectNextBringupTest - Advance selection through bringup tests.
+   */
   public void selectNextBringupTest() {
     if (selectableTests.isEmpty()) {
       BringupPrinter.enqueue("No enabled bringup tests.");
@@ -233,6 +336,10 @@ public final class BringupCore {
     BringupPrinter.enqueue("Selected test: " + test.getName());
   }
 
+  /**
+   * NAME
+   *   selectPrevBringupTest - Move selection backward through bringup tests.
+   */
   public void selectPrevBringupTest() {
     if (selectableTests.isEmpty()) {
       BringupPrinter.enqueue("No enabled bringup tests.");
@@ -247,6 +354,13 @@ public final class BringupCore {
     BringupPrinter.enqueue("Selected test: " + test.getName());
   }
 
+  /**
+   * NAME
+   *   runSelectedBringupTest - Start the selected bringup test.
+   *
+   * SIDE EFFECTS
+   *   Starts a test and enqueues a status message.
+   */
   public void runSelectedBringupTest() {
     if (activeTest != null && activeTest.isRunning()) {
       BringupPrinter.enqueue("Test already running: " + activeTest.getName());
@@ -271,6 +385,16 @@ public final class BringupCore {
     BringupPrinter.enqueue("Test skipped: " + test.getName() + " (" + test.getStatus() + ")");
   }
 
+  /**
+   * NAME
+   *   updateTests - Advance the active test state machine.
+   *
+   * PARAMETERS
+   *   holdSignal - Whether the hold-to-run signal is active.
+   *
+   * SIDE EFFECTS
+   *   Updates test state and may enqueue completion messages.
+   */
   public void updateTests(boolean holdSignal) {
     if (activeTest == null || !activeTest.isRunning()) {
       return;
@@ -294,10 +418,21 @@ public final class BringupCore {
     }
   }
 
+  /**
+   * NAME
+   *   updateTests - Update tests with no hold signal.
+   */
   public void updateTests() {
     updateTests(false);
   }
 
+  /**
+   * NAME
+   *   runAllBringupTests - Run enabled bringup tests sequentially.
+   *
+   * SIDE EFFECTS
+   *   Starts tests and enqueues status updates.
+   */
   public void runAllBringupTests() {
     if (activeTest != null && activeTest.isRunning()) {
       BringupPrinter.enqueue("Test already running: " + activeTest.getName());
@@ -317,6 +452,10 @@ public final class BringupCore {
     }
   }
 
+  /**
+   * NAME
+   *   refreshTestDevices - Rebuild the list of non-motor test devices.
+   */
   private void refreshTestDevices() {
     testDevices.clear();
     testDevices.addAll(ctreDevices.getTestDevices());
@@ -324,6 +463,10 @@ public final class BringupCore {
     nextTestIndex = 0;
   }
 
+  /**
+   * NAME
+   *   refreshSelectableTests - Rebuild the selectable test list.
+   */
   private void refreshSelectableTests() {
     selectableTests.clear();
     for (BringupTest test : bringupTests) {
@@ -334,6 +477,13 @@ public final class BringupCore {
     selectedTestIndex = selectableTests.isEmpty() ? -1 : 0;
   }
 
+  /**
+   * NAME
+   *   getSelectedBringupTest - Return the currently selected test.
+   *
+   * RETURNS
+   *   Selected BringupTest or null if none are available.
+   */
   private BringupTest getSelectedBringupTest() {
     if (selectableTests.isEmpty() || selectedTestIndex < 0) {
       return null;
@@ -344,6 +494,13 @@ public final class BringupCore {
     return selectableTests.get(selectedTestIndex);
   }
 
+  /**
+   * NAME
+   *   toggleSelectedBringupTestEnabled - Toggle enable state for selected test.
+   *
+   * SIDE EFFECTS
+   *   Updates test metadata and attempts to persist to JSON.
+   */
   public void toggleSelectedBringupTestEnabled() {
     BringupTest test = getSelectedBringupTest();
     if (test == null) {
@@ -360,6 +517,16 @@ public final class BringupCore {
     }
   }
 
+  /**
+   * NAME
+   *   disableAllBringupTests - Disable all bringup tests.
+   *
+   * PARAMETERS
+   *   persist - Whether to save changes to disk.
+   *
+   * SIDE EFFECTS
+   *   Updates test enable flags and may write bringup_tests.json.
+   */
   public void disableAllBringupTests(boolean persist) {
     if (bringupTests.isEmpty()) {
       BringupPrinter.enqueue("No bringup tests available.");
@@ -381,6 +548,13 @@ public final class BringupCore {
     }
   }
 
+  /**
+   * NAME
+   *   buildTestsOverview - Build a snapshot of tests for display/publish.
+   *
+   * RETURNS
+   *   TestsOverview with row entries and counts.
+   */
   public TestsOverview buildTestsOverview() {
     TestsOverview overview = new TestsOverview();
     BringupTestRegistry.TestsInfo info = BringupTestRegistry.getTestsInfo();
@@ -413,6 +587,16 @@ public final class BringupCore {
     return overview;
   }
 
+  /**
+   * NAME
+   *   formatTestsOverview - Render a tests overview as text.
+   *
+   * PARAMETERS
+   *   overview - Snapshot to format.
+   *
+   * RETURNS
+   *   Multiline string for console output.
+   */
   public String formatTestsOverview(TestsOverview overview) {
     if (overview == null) {
       return "=== Bringup Tests ===\nNo tests loaded.\n=====================";
@@ -452,6 +636,10 @@ public final class BringupCore {
     return sb.toString();
   }
 
+  /**
+   * NAME
+   *   resolveTestType - Resolve a human-readable test type name.
+   */
   private static String resolveTestType(BringupTest test) {
     if (test instanceof CompositeTest) {
       return CompositeTest.TYPE;
@@ -462,6 +650,10 @@ public final class BringupCore {
     return test != null ? test.getClass().getSimpleName() : "?";
   }
 
+  /**
+   * NAME
+   *   TestsOverview - Snapshot of bringup tests for UI/reporting.
+   */
   public static final class TestsOverview {
     public String activeTestSet;
     public String defaultTestSet;
@@ -471,6 +663,10 @@ public final class BringupCore {
     public final List<TestRow> rows = new ArrayList<>();
   }
 
+  /**
+   * NAME
+   *   TestRow - Single test row within a TestsOverview.
+   */
   public static final class TestRow {
     public int index;
     public String name;
@@ -481,6 +677,13 @@ public final class BringupCore {
     public List<String> motors = new ArrayList<>();
   }
 
+  /**
+   * NAME
+   *   startNextRunAllTest - Start the next test in the run-all queue.
+   *
+   * RETURNS
+   *   True when a test is started.
+   */
   private boolean startNextRunAllTest() {
     if (runAllQueue.isEmpty()) {
       return false;
@@ -498,6 +701,10 @@ public final class BringupCore {
     return false;
   }
 
+  /**
+   * NAME
+   *   buildRunAllQueue - Build the run-all queue from enabled tests.
+   */
   private void buildRunAllQueue() {
     runAllQueue.clear();
     runAllIndex = 0;
@@ -516,6 +723,13 @@ public final class BringupCore {
     }
   }
 
+  /**
+   * NAME
+   *   startNextBringupTest - Start the next enabled bringup test.
+   *
+   * RETURNS
+   *   True when a test is started.
+   */
   private boolean startNextBringupTest() {
     if (bringupTests.isEmpty()) {
       return false;
@@ -540,6 +754,13 @@ public final class BringupCore {
   }
 
   // Alternates between REV and CTRE motors to keep bringup balanced.
+  /**
+   * NAME
+   *   addNextMotor - Instantiate the next motor, alternating vendors.
+   *
+   * SIDE EFFECTS
+   *   Creates devices and enqueues status messages.
+   */
   private void addNextMotor() {
     if (addRevNext) {
       DeviceAddResult result = revDevices.addNextMotor();
@@ -578,6 +799,10 @@ public final class BringupCore {
   }
 
   // Instantiate all configured devices (motors + sensors + misc).
+  /**
+   * NAME
+   *   addAllDevices - Instantiate all configured devices.
+   */
   private void addAllDevices() {
     revDevices.addAll();
     ctreDevices.addAll();
@@ -586,6 +811,10 @@ public final class BringupCore {
   }
 
   // Print a compact list of which devices are instantiated.
+  /**
+   * NAME
+   *   printState - Enqueue a compact state report of instantiated devices.
+   */
   private void printState() {
     StringBuilder sb = new StringBuilder(512);
     appendLine(sb, "=== Bringup State ===");
@@ -597,12 +826,24 @@ public final class BringupCore {
     BringupPrinter.enqueueChunked(sb.toString(), 4);
   }
 
-  // Print detailed local health with faults, warnings, and key telemetry.
-  // Uses only local vendor APIs; no PC sniffer data is involved here.
+  /**
+   * NAME
+   *   printHealthStatus - Enqueue a detailed local health report.
+   *
+   * NOTES
+   *   Uses only robot-local vendor APIs (no PC sniffer data).
+   */
   private void printHealthStatus() {
     requestHealthReport();
   }
 
+  /**
+   * NAME
+   *   updateReports - Advance queued report printing.
+   *
+   * DESCRIPTION
+   *   Processes one report chunk per call to avoid blocking the main loop.
+   */
   public void updateReports() {
     if (activeReport == null) {
       activeReport = reportQueue.pollFirst();
@@ -617,22 +858,46 @@ public final class BringupCore {
     }
   }
 
+  /**
+   * NAME
+   *   requestStateReport - Queue a state report.
+   */
   public void requestStateReport() {
     reportQueue.addLast(buildStateReport());
   }
 
+  /**
+   * NAME
+   *   requestHealthReport - Queue a health report.
+   */
   public void requestHealthReport() {
     reportQueue.addLast(buildHealthReport());
   }
 
+  /**
+   * NAME
+   *   requestCANCoderReport - Queue a CANCoder report.
+   */
   public void requestCANCoderReport() {
     reportQueue.addLast(buildCANCoderReport());
   }
 
+  /**
+   * NAME
+   *   requestSweepReport - Queue a CAN sweep report.
+   */
   public void requestSweepReport() {
     reportQueue.addLast(buildSweepReport());
   }
 
+  /**
+   * NAME
+   *   requestTextReport - Queue a raw text report.
+   *
+   * PARAMETERS
+   *   text - Report content.
+   *   chunkSize - Lines per print chunk.
+   */
   public void requestTextReport(String text, int chunkSize) {
     if (text == null || text.isBlank()) {
       return;
@@ -640,6 +905,16 @@ public final class BringupCore {
     reportQueue.addLast(new TextReportJob(text, chunkSize));
   }
 
+  /**
+   * NAME
+   *   requestTextReportLines - Queue a report with header and footer.
+   *
+   * PARAMETERS
+   *   header - Optional header line.
+   *   lines - Body lines.
+   *   footer - Optional footer line.
+   *   chunkSize - Lines per print chunk.
+   */
   public void requestTextReportLines(
       String header,
       List<String> lines,
@@ -648,6 +923,10 @@ public final class BringupCore {
     reportQueue.addLast(new TextReportJob(header, lines, footer, chunkSize));
   }
 
+  /**
+   * NAME
+   *   collectHealthItems - Collect motor devices for health reporting.
+   */
   private void collectHealthItems(List<DevicePrintItem> out, ManufacturerGroup group) {
     for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
       if (bucket.getRegistration().role() != DeviceRole.MOTOR) {
@@ -660,6 +939,10 @@ public final class BringupCore {
     }
   }
 
+  /**
+   * NAME
+   *   appendHealthDevice - Append health status for a single device.
+   */
   private void appendHealthDevice(StringBuilder sb, DevicePrintItem item, double nowSec) {
     DeviceTypeBucket bucket = item.bucket;
     DeviceUnit device = item.device;
@@ -721,6 +1004,10 @@ public final class BringupCore {
         .append('\n');
   }
 
+  /**
+   * NAME
+   *   appendStateDevice - Append state row for a single device.
+   */
   private void appendStateDevice(StringBuilder sb, DevicePrintItem item) {
     DeviceTypeBucket bucket = item.bucket;
     if (item.firstInBucket) {
@@ -732,6 +1019,10 @@ public final class BringupCore {
         .append('\n');
   }
 
+  /**
+   * NAME
+   *   appendSweepDevice - Append sweep status for a single device.
+   */
   private void appendSweepDevice(StringBuilder sb, DevicePrintItem item, double nowSec) {
     DeviceTypeBucket bucket = item.bucket;
     if (item.firstInBucket) {
@@ -751,6 +1042,10 @@ public final class BringupCore {
         .append('\n');
   }
 
+  /**
+   * NAME
+   *   appendCANCoderDevice - Append absolute position for a CANCoder device.
+   */
   private void appendCANCoderDevice(StringBuilder sb, DevicePrintItem item) {
     DeviceUnit device = item.device;
     device.ensureCreated();
@@ -766,6 +1061,10 @@ public final class BringupCore {
         .append('\n');
   }
 
+  /**
+   * NAME
+   *   buildStateReport - Build a queued state report job.
+   */
   private DeviceReportJob buildStateReport() {
     List<DevicePrintItem> items = collectDeviceItems();
     DeviceReportJob job = new DeviceReportJob(
@@ -782,6 +1081,10 @@ public final class BringupCore {
     return job;
   }
 
+  /**
+   * NAME
+   *   buildHealthReport - Build a queued health report job.
+   */
   private DeviceReportJob buildHealthReport() {
     List<DevicePrintItem> items = new ArrayList<>();
     collectHealthItems(items, revDevices);
@@ -796,6 +1099,10 @@ public final class BringupCore {
     return job;
   }
 
+  /**
+   * NAME
+   *   buildCANCoderReport - Build a queued CANCoder report job.
+   */
   private DeviceReportJob buildCANCoderReport() {
     List<DevicePrintItem> items = collectDeviceItems(DeviceRole.ENCODER);
     DeviceReportJob job = new DeviceReportJob(
@@ -807,6 +1114,10 @@ public final class BringupCore {
     return job;
   }
 
+  /**
+   * NAME
+   *   buildSweepReport - Build a queued sweep report job.
+   */
   private DeviceReportJob buildSweepReport() {
     List<DevicePrintItem> items = collectDeviceItems();
     DeviceReportJob job = new DeviceReportJob(
@@ -819,6 +1130,10 @@ public final class BringupCore {
     return job;
   }
 
+  /**
+   * NAME
+   *   collectDeviceItems - Collect device items across all roles.
+   */
   private List<DevicePrintItem> collectDeviceItems() {
     List<DevicePrintItem> items = new ArrayList<>();
     collectDeviceItems(items, revDevices, null);
@@ -826,6 +1141,10 @@ public final class BringupCore {
     return items;
   }
 
+  /**
+   * NAME
+   *   collectDeviceItems - Collect device items for a specific role.
+   */
   private List<DevicePrintItem> collectDeviceItems(DeviceRole role) {
     List<DevicePrintItem> items = new ArrayList<>();
     collectDeviceItems(items, revDevices, role);
@@ -833,6 +1152,10 @@ public final class BringupCore {
     return items;
   }
 
+  /**
+   * NAME
+   *   collectDeviceItems - Add devices from a group, optionally filtered by role.
+   */
   private void collectDeviceItems(List<DevicePrintItem> out, ManufacturerGroup group, DeviceRole role) {
     for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
       if (role != null && bucket.getRegistration().role() != role) {
@@ -845,6 +1168,10 @@ public final class BringupCore {
     }
   }
 
+  /**
+   * NAME
+   *   DevicePrintItem - Helper container for report rendering.
+   */
   private static final class DevicePrintItem {
     private final DeviceTypeBucket bucket;
     private final DeviceUnit device;
@@ -859,6 +1186,10 @@ public final class BringupCore {
     }
   }
 
+  /**
+   * NAME
+   *   ReportJobBase - Interface for queued report jobs.
+   */
   private interface ReportJobBase {
     void start();
     boolean step(int batch);
@@ -866,6 +1197,10 @@ public final class BringupCore {
     StringBuilder getBuffer();
   }
 
+  /**
+   * NAME
+   *   DeviceReportJob - Report job that iterates device items.
+   */
   private static final class DeviceReportJob implements ReportJobBase {
     private final String header;
     private final String footer;
@@ -890,6 +1225,10 @@ public final class BringupCore {
       this.appender = appender;
     }
 
+    /**
+     * NAME
+     *   start - Initialize the report buffer and timestamps.
+     */
     public void start() {
       buffer.setLength(0);
       appendLine(buffer, header);
@@ -897,6 +1236,10 @@ public final class BringupCore {
       markFirstInBuckets();
     }
 
+    /**
+     * NAME
+     *   step - Append up to batch items and indicate completion.
+     */
     public boolean step(int batch) {
       int processed = 0;
       while (index < items.size() && processed < batch) {
@@ -913,6 +1256,10 @@ public final class BringupCore {
       return true;
     }
 
+    /**
+     * NAME
+     *   markFirstInBuckets - Flag the first item for each bucket.
+     */
     private void markFirstInBuckets() {
       DeviceTypeBucket last = null;
       for (DevicePrintItem item : items) {
@@ -923,15 +1270,27 @@ public final class BringupCore {
       }
     }
 
+    /**
+     * NAME
+     *   getChunkSize - Return preferred output chunk size.
+     */
     public int getChunkSize() {
       return chunkSize;
     }
 
+    /**
+     * NAME
+     *   getBuffer - Return the report buffer.
+     */
     public StringBuilder getBuffer() {
       return buffer;
     }
   }
 
+  /**
+   * NAME
+   *   TextReportJob - Report job for text-only output.
+   */
   private static final class TextReportJob implements ReportJobBase {
     private final String header;
     private final String footer;
@@ -954,6 +1313,10 @@ public final class BringupCore {
       this.lines = lines != null ? lines : List.of();
     }
 
+    /**
+     * NAME
+     *   start - Initialize the text report buffer.
+     */
     public void start() {
       buffer.setLength(0);
       index = 0;
@@ -962,6 +1325,10 @@ public final class BringupCore {
       }
     }
 
+    /**
+     * NAME
+     *   step - Append up to batch lines and indicate completion.
+     */
     public boolean step(int batch) {
       int processed = 0;
       while (index < lines.size() && processed < batch) {
@@ -977,15 +1344,27 @@ public final class BringupCore {
       return true;
     }
 
+    /**
+     * NAME
+     *   getChunkSize - Return preferred output chunk size.
+     */
     public int getChunkSize() {
       return chunkSize;
     }
 
+    /**
+     * NAME
+     *   getBuffer - Return the report buffer.
+     */
     public StringBuilder getBuffer() {
       return buffer;
     }
   }
 
+  /**
+   * NAME
+   *   splitLines - Split text into lines, trimming trailing blanks.
+   */
   private static List<String> splitLines(String text) {
     if (text == null || text.isEmpty()) {
       return List.of();
@@ -1002,7 +1381,10 @@ public final class BringupCore {
     return lines;
   }
 
-  // Print absolute positions for all CANCoders (instantiates if needed).
+  /**
+   * NAME
+   *   printCANCoderStatus - Enqueue absolute position report for CANCoders.
+   */
   private void printCANCoderStatus() {
     StringBuilder sb = new StringBuilder(512);
     appendLine(sb, "=== Bringup CANCoder ===");
@@ -1012,6 +1394,10 @@ public final class BringupCore {
     BringupPrinter.enqueueChunked(sb.toString(), 4);
   }
 
+  /**
+   * NAME
+   *   appendSweepGroup - Append sweep output for a manufacturer group.
+   */
   private void appendSweepGroup(StringBuilder sb, ManufacturerGroup group) {
     for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
       List<DeviceUnit> devices = bucket.getDevices();
@@ -1036,6 +1422,10 @@ public final class BringupCore {
     }
   }
 
+  /**
+   * NAME
+   *   buildSweepStatus - Build a short status string for sweep output.
+   */
   private String buildSweepStatus(DeviceSnapshot snap) {
     if (snap == null) {
       return "NO_DATA";
@@ -1059,6 +1449,10 @@ public final class BringupCore {
     return snap.present ? "OK" : "NO_DATA";
   }
 
+  /**
+   * NAME
+   *   appendEncoderStatus - Append absolute encoder positions for a group.
+   */
   private void appendEncoderStatus(StringBuilder sb, ManufacturerGroup group) {
     for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
       if (bucket.getRegistration().role() != DeviceRole.ENCODER) {
@@ -1081,7 +1475,13 @@ public final class BringupCore {
     }
   }
 
-  // Capture local device data into snapshot objects (no formatting here).
+  /**
+   * NAME
+   *   captureSnapshots - Capture local device snapshots.
+   *
+   * RETURNS
+   *   List of DeviceSnapshot objects for report generation.
+   */
   public List<DeviceSnapshot> captureSnapshots() {
     List<DeviceSnapshot> devices = new ArrayList<>();
     double nowSec = Timer.getFPGATimestamp();
@@ -1101,7 +1501,10 @@ public final class BringupCore {
     return devices;
   }
 
-  // Append virtual device presence (currently the roboRIO) to state output.
+  /**
+   * NAME
+   *   appendVirtualDevices - Append virtual device entries to state output.
+   */
   private void appendVirtualDevices(StringBuilder sb) {
     if (!BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
       return;
@@ -1110,7 +1513,10 @@ public final class BringupCore {
     appendLine(sb, "  roboRIO CAN " + BringupUtil.ROBORIO_CAN_ID + " PRESENT (no local API)");
   }
 
-  // Append virtual device presence to health output.
+  /**
+   * NAME
+   *   appendVirtualDeviceHealth - Append virtual device entries to health output.
+   */
   private void appendVirtualDeviceHealth(StringBuilder sb) {
     if (!BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
       return;
@@ -1118,7 +1524,18 @@ public final class BringupCore {
     appendLine(sb, "  roboRIO CAN " + BringupUtil.ROBORIO_CAN_ID + ": present=YES (virtual, no API)");
   }
 
-  // Report whether a device is instantiated based on CAN metadata.
+  /**
+   * NAME
+   *   isDeviceInstantiated - Check if a device is instantiated locally.
+   *
+   * PARAMETERS
+   *   manufacturer - CAN manufacturer ID.
+   *   deviceType - CAN device type ID.
+   *   deviceId - CAN device ID.
+   *
+   * RETURNS
+   *   True when the device is created in local vendor APIs.
+   */
   public boolean isDeviceInstantiated(int manufacturer, int deviceType, int deviceId) {
     if (manufacturer == NI_MANUFACTURER && deviceType == TYPE_ROBOT_CONTROLLER) {
       return BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)
@@ -1145,6 +1562,10 @@ public final class BringupCore {
     return false;
   }
 
+  /**
+   * NAME
+   *   isInstantiatedByRole - Check instantiation for a role within a group.
+   */
   private boolean isInstantiatedByRole(ManufacturerGroup group, DeviceRole role, int deviceId) {
     for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
       if (bucket.getRegistration().role() != role) {
@@ -1159,6 +1580,10 @@ public final class BringupCore {
     return false;
   }
 
+  /**
+   * NAME
+   *   mapRoleFromCategory - Map CAN category strings to DeviceRole.
+   */
   private DeviceRole mapRoleFromCategory(String category) {
     if ("MotorController".equalsIgnoreCase(category)) {
       return DeviceRole.MOTOR;
@@ -1172,6 +1597,10 @@ public final class BringupCore {
     return null;
   }
 
+  /**
+   * NAME
+   *   appendLine - Append a line with newline termination.
+   */
   private static void appendLine(StringBuilder sb, String line) {
     sb.append(line).append('\n');
   }

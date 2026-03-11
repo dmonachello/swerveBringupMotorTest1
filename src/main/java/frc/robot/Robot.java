@@ -9,8 +9,17 @@ import frc.robot.tests.BringupTestRegistry;
 import java.time.Instant;
 import java.util.ArrayList;
 
-// Legacy bringup robot program (simpler than RobotV2).
-// Uses BringupCore to instantiate devices and print local health.
+/**
+ * NAME
+ *   Robot - Legacy bringup robot program.
+ *
+ * DESCRIPTION
+ *   Provides a simplified bringup loop that drives BringupCore without the
+ *   extended diagnostics in RobotV2.
+ *
+ * SIDE EFFECTS
+ *   Instantiates devices and drives motors via vendor APIs.
+ */
 public class Robot extends TimedRobot {
 
   // Project repo: https://github.com/dmonachello/swerveBringupMotorTest1
@@ -26,6 +35,13 @@ public class Robot extends TimedRobot {
   // Edge-detect state for one-shot actions.
   private final EdgeTrigger edge = new EdgeTrigger();
 
+  /**
+   * NAME
+   *   robotInit - One-time robot initialization.
+   *
+   * DESCRIPTION
+   *   Loads the active profile, creates BringupCore, and prints startup info.
+   */
   @Override
   public void robotInit() {
     // Load profile before devices are created.
@@ -39,6 +55,13 @@ public class Robot extends TimedRobot {
 
   }
 
+  /**
+   * NAME
+   *   teleopInit - Teleop mode entry hook.
+   *
+   * DESCRIPTION
+   *   Resets bringup state and edge-trigger state for teleop.
+   */
   @Override
   public void teleopInit() {
     // Reset local state whenever teleop starts.
@@ -46,6 +69,13 @@ public class Robot extends TimedRobot {
     edge.reset();
   }
 
+  /**
+   * NAME
+   *   disabledInit - Disabled mode entry hook.
+   *
+   * DESCRIPTION
+   *   Disables tests and clears state for safety in disabled mode.
+   */
   @Override
   public void disabledInit() {
     // Keep behavior symmetric in disabled and teleop to avoid stale state.
@@ -54,6 +84,14 @@ public class Robot extends TimedRobot {
     edge.reset();
   }
 
+  /**
+   * NAME
+   *   teleopPeriodic - Teleop periodic loop.
+   *
+   * DESCRIPTION
+   *   Processes controller bindings, updates bringup commands, and applies
+   *   motor outputs within the 20ms loop.
+   */
   @Override
   public void teleopPeriodic() {
 
@@ -112,7 +150,13 @@ public class Robot extends TimedRobot {
   // Diagnostics
   // ---------------------------------------------------
 
-  // Print the control bindings and active CAN profile.
+  /**
+   * NAME
+   *   printStartupInfo - Emit bindings and profile diagnostics.
+   *
+   * SIDE EFFECTS
+   *   Enqueues a text report for throttled console output.
+   */
   private void printStartupInfo() {
     StringBuilder sb = new StringBuilder(512);
     appendLine(sb, "=== Swerve Bringup ===");
@@ -134,6 +178,13 @@ public class Robot extends TimedRobot {
     core.requestTextReport(sb.toString(), 4);
   }
 
+  /**
+   * NAME
+   *   printProfileInfo - Emit CAN profile details after a switch.
+   *
+   * SIDE EFFECTS
+   *   Enqueues a text report for throttled console output.
+   */
   private void printProfileInfo() {
     StringBuilder sb = new StringBuilder(256);
     appendLine(sb, "=== Profile Updated ===");
@@ -147,6 +198,13 @@ public class Robot extends TimedRobot {
     core.requestTextReport(sb.toString(), 4);
   }
 
+  /**
+   * NAME
+   *   printTestsInfo - Emit bringup test file diagnostics.
+   *
+   * SIDE EFFECTS
+   *   Enqueues a text report for throttled console output.
+   */
   private void printTestsInfo() {
     BringupTestRegistry.TestsInfo info = BringupTestRegistry.getTestsInfo();
     StringBuilder sb = new StringBuilder(256);
@@ -184,18 +242,38 @@ public class Robot extends TimedRobot {
     core.requestTextReport(sb.toString(), 4);
   }
 
+  /**
+   * NAME
+   *   printTestsOverview - Emit a tests overview snapshot.
+   *
+   * SIDE EFFECTS
+   *   Enqueues a text report for throttled console output.
+   */
   private void printTestsOverview() {
     BringupCore.TestsOverview overview = core.buildTestsOverview();
     String text = core.formatTestsOverview(overview);
     core.requestTextReport(text, 6);
   }
 
-  // Shared line-append helper to keep formatting consistent.
+  /**
+   * NAME
+   *   appendLine - Append a line with newline termination.
+   *
+   * PARAMETERS
+   *   sb - Target StringBuilder.
+   *   line - Line content to append.
+   */
   private static void appendLine(StringBuilder sb, String line) {
     sb.append(line).append('\n');
   }
 
-  // Validate CAN IDs for duplicates and disabled groups.
+  /**
+   * NAME
+   *   validateCanIds - Check for duplicate or invalid CAN IDs.
+   *
+   * DESCRIPTION
+   *   Builds labeled groups for clearer warning output from BringupUtil.
+   */
   private void validateCanIds() {
     ArrayList<String> labels = new ArrayList<>();
     ArrayList<int[]> groups = new ArrayList<>();

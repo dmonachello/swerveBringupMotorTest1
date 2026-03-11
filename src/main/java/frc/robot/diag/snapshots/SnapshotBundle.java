@@ -3,7 +3,10 @@ package frc.robot.diag.snapshots;
 import java.util.ArrayList;
 import java.util.List;
 
-// Bundle of all snapshot data for a single diagnostics report.
+/**
+ * NAME
+ *   SnapshotBundle - Aggregated snapshot data for diagnostics reports.
+ */
 public final class SnapshotBundle {
   public double timestampSec = 0.0;
   public BusSnapshot bus;

@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+"""
+NAME
+    can_profiles.py - Load and expose CAN device profiles.
+
+SYNOPSIS
+    from can_profiles import get_profile, list_profiles
+
+DESCRIPTION
+    Reads bringup_profiles.json from deploy resources and provides default
+    device lists for the CAN diagnostics tool.
+"""
+
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
@@ -10,6 +22,10 @@ PROFILE_FILE = Path(__file__).resolve().parents[1] / "src" / "main" / "deploy" /
 
 
 def _device(label: str, manufacturer: int, device_type: int, device_id: int, group: str) -> Dict[str, Any]:
+    """
+    NAME
+        _device - Build a normalized device dictionary.
+    """
     return {
         "label": label,
         "manufacturer": manufacturer,
@@ -20,6 +36,13 @@ def _device(label: str, manufacturer: int, device_type: int, device_id: int, gro
 
 
 def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
+    """
+    NAME
+        _load_profiles - Load profiles from JSON with fallbacks.
+
+    RETURNS
+        (default_profile_name, profiles_map).
+    """
     if not PROFILE_FILE.exists():
         return (_fallback_default(), _fallback_profiles())
 
@@ -49,6 +72,10 @@ def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
 
 
 def _profile_devices(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    NAME
+        _profile_devices - Convert a profile JSON section into device entries.
+    """
     devices: List[Dict[str, Any]] = []
 
     for entry in raw.get("neos", []) or []:
@@ -124,10 +151,18 @@ def _profile_devices(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def _fallback_default() -> str:
+    """
+    NAME
+        _fallback_default - Provide a default profile name.
+    """
     return DEFAULT_PROFILE_NAME
 
 
 def _fallback_profiles() -> Dict[str, List[Dict[str, Any]]]:
+    """
+    NAME
+        _fallback_profiles - Provide fallback profiles when JSON is missing.
+    """
     robot_devices: List[Dict[str, Any]] = [
         _device("FR NEO", 5, 2, 10, "neos"),
         _device("FL NEO", 5, 2, 1, "neos"),
@@ -160,14 +195,35 @@ DEFAULT_PROFILE, PROFILE_DEVICES = _load_profiles()
 
 
 def get_default_profile() -> str:
+    """
+    NAME
+        get_default_profile - Return the default profile name.
+    """
     return DEFAULT_PROFILE
 
 
 def list_profiles() -> List[str]:
+    """
+    NAME
+        list_profiles - Return available profile names.
+    """
     return list(PROFILE_DEVICES.keys())
 
 
 def get_profile(profile: str) -> Tuple[List[Dict[str, Any]], Set[int]]:
+    """
+    NAME
+        get_profile - Retrieve devices for a named profile.
+
+    PARAMETERS
+        profile: Profile name.
+
+    RETURNS
+        (device_list, expected_ids_set).
+
+    ERRORS
+        Raises ValueError when the profile is unknown.
+    """
     if profile in PROFILE_DEVICES:
         return (list(PROFILE_DEVICES[profile]), set())
     raise ValueError(f"Unknown profile: {profile}. Available: {', '.join(PROFILE_DEVICES.keys())}")

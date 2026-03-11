@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+"""
+NAME
+    can_cli.py - CLI definition for the CAN bringup diagnostics tool.
+
+SYNOPSIS
+    from can_cli import build_parser
+
+DESCRIPTION
+    Defines the argument parser for the Python CAN sniffer/bridge. Keeps
+    options centralized so other modules can import consistent defaults.
+"""
+
 import argparse
 from pathlib import Path
 
@@ -7,6 +19,20 @@ from can_profiles import get_default_profile
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """
+    NAME
+        build_parser - Construct the argparse parser for the tool.
+
+    SYNOPSIS
+        parser = build_parser()
+
+    DESCRIPTION
+        Returns a fully configured ArgumentParser with all CLI flags used by
+        the CAN diagnostics runner.
+
+    RETURNS
+        argparse.ArgumentParser instance with bringup options.
+    """
     parser = argparse.ArgumentParser(description="FRC CAN bringup diagnostics")
 
     parser.add_argument("--profile", default=get_default_profile())

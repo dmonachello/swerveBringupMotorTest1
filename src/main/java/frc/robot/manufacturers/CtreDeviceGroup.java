@@ -16,7 +16,16 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-// Manufacturer layer for CTRE devices: owns device slots and shared logic.
+/**
+ * NAME
+ * CtreDeviceGroup
+ *
+ * SYNOPSIS
+ * Manufacturer layer for CTRE devices.
+ *
+ * DESCRIPTION
+ * Owns CTRE device slots, registration, and shared reporting utilities.
+ */
 public final class CtreDeviceGroup implements ManufacturerGroup {
   public static final RegistrationHeader HEADER = new RegistrationHeader(
       "CTRE",
@@ -82,6 +91,16 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
   private final List<DeviceTypeBucket> buckets = new ArrayList<>();
   private final List<DeviceTypeBucket> motorBuckets = new ArrayList<>();
 
+  /**
+   * NAME
+   * CtreDeviceGroup
+   *
+   * SYNOPSIS
+   * Construct and register CTRE device buckets.
+   *
+   * SIDE EFFECTS
+   * Instantiates device wrappers based on configuration.
+   */
   public CtreDeviceGroup() {
     register(KRAKEN_REGISTRATION, false);
     register(FALCON_REGISTRATION, false);
@@ -99,6 +118,19 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
     return Collections.unmodifiableList(buckets);
   }
 
+  /**
+   * NAME
+   * addNextMotor
+   *
+   * SYNOPSIS
+   * Create the next motor device in CTRE buckets.
+   *
+   * RETURNS
+   * A result describing the created device, or null if none was added.
+   *
+   * SIDE EFFECTS
+   * Constructs hardware objects and emits report output.
+   */
   @Override
   public DeviceAddResult addNextMotor() {
     for (DeviceTypeBucket bucket : motorBuckets) {
@@ -110,11 +142,31 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
     return null;
   }
 
+  /**
+   * NAME
+   * resetLowCurrentTimers
+   *
+   * SYNOPSIS
+   * Reset low-current tracking, if present.
+   *
+   * DESCRIPTION
+   * CTRE devices currently do not track low-current timers.
+   */
   @Override
   public void resetLowCurrentTimers() {
     // No CTRE low-current tracking yet.
   }
 
+  /**
+   * NAME
+   * getTestDevices
+   *
+   * SYNOPSIS
+   * Collect CTRE devices that expose custom tests.
+   *
+   * RETURNS
+   * List of devices with test hooks.
+   */
   @Override
   public List<DeviceUnit> getTestDevices() {
     List<DeviceUnit> devices = new ArrayList<>();
@@ -128,6 +180,16 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
     return devices;
   }
 
+  /**
+   * NAME
+   * addAll
+   *
+   * SYNOPSIS
+   * Create all CTRE devices.
+   *
+   * SIDE EFFECTS
+   * Constructs hardware objects and emits report output.
+   */
   @Override
   public void addAll() {
     for (DeviceTypeBucket bucket : buckets) {
@@ -135,6 +197,16 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * setDuty
+   *
+   * SYNOPSIS
+   * Apply an open-loop duty request to all CTRE motors.
+   *
+   * PARAMETERS
+   * duty - requested output in [-1, 1].
+   */
   @Override
   public void setDuty(double duty) {
     for (DeviceTypeBucket bucket : motorBuckets) {
@@ -144,6 +216,13 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * stopAll
+   *
+   * SYNOPSIS
+   * Stop all CTRE motor outputs.
+   */
   @Override
   public void stopAll() {
     for (DeviceTypeBucket bucket : motorBuckets) {
@@ -153,6 +232,16 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * clearFaults
+   *
+   * SYNOPSIS
+   * Clear fault status on all CTRE devices.
+   *
+   * SIDE EFFECTS
+   * Sends vendor fault-clear commands.
+   */
   @Override
   public void clearFaults() {
     for (DeviceTypeBucket bucket : buckets) {
@@ -162,6 +251,16 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * closeAll
+   *
+   * SYNOPSIS
+   * Close all CTRE devices and reset add pointers.
+   *
+   * SIDE EFFECTS
+   * Releases vendor resources and resets device creation state.
+   */
   @Override
   public void closeAll() {
     for (DeviceTypeBucket bucket : buckets) {
@@ -172,6 +271,19 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * captureSnapshots
+   *
+   * SYNOPSIS
+   * Capture snapshots for all CTRE devices.
+   *
+   * PARAMETERS
+   * nowSec - current time in seconds for timestamping.
+   *
+   * RETURNS
+   * List of device snapshots.
+   */
   @Override
   public List<DeviceSnapshot> captureSnapshots(double nowSec) {
     List<DeviceSnapshot> devices = new ArrayList<>();
@@ -184,6 +296,16 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
     return devices;
   }
 
+  /**
+   * NAME
+   * appendState
+   *
+   * SYNOPSIS
+   * Append a short CTRE device state listing.
+   *
+   * PARAMETERS
+   * sb - builder to append text into.
+   */
   public void appendState(StringBuilder sb) {
     for (DeviceTypeBucket bucket : buckets) {
       List<DeviceUnit> bucketDevices = bucket.getDevices();
@@ -201,6 +323,17 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * appendHealth
+   *
+   * SYNOPSIS
+   * Append CTRE health status lines for motors and misc devices.
+   *
+   * PARAMETERS
+   * sb - builder to append text into.
+   * nowSec - current time in seconds for timestamping.
+   */
   public void appendHealth(StringBuilder sb, double nowSec) {
     for (DeviceTypeBucket bucket : buckets) {
       if (bucket.getRegistration().role() == DeviceRole.ENCODER) {
@@ -249,6 +382,20 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * register
+   *
+   * SYNOPSIS
+   * Register devices of a specific CTRE type into buckets.
+   *
+   * PARAMETERS
+   * registration - device registration to instantiate.
+   * trackLowCurrent - whether to track low-current timers for this type.
+   *
+   * SIDE EFFECTS
+   * Constructs device units from configuration and stores them.
+   */
   private void register(DeviceRegistration registration, boolean trackLowCurrent) {
     requireRegistrationHeader(registration);
     List<DeviceConfig> configs = BringupUtil.getDeviceConfigs(
@@ -268,6 +415,21 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * snapshotDevice
+   *
+   * SYNOPSIS
+   * Capture a snapshot for a CTRE device in a bucket.
+   *
+   * PARAMETERS
+   * bucket - device bucket containing the device.
+   * index - index within the bucket.
+   * nowSec - current time in seconds for timestamping.
+   *
+   * RETURNS
+   * A populated device snapshot.
+   */
   private DeviceSnapshot snapshotDevice(DeviceTypeBucket bucket, int index, double nowSec) {
     DeviceUnit device = bucket.getDevices().get(index);
     DeviceSnapshot snap = device.snapshot();
@@ -277,12 +439,39 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
     return snap;
   }
 
+  /**
+   * NAME
+   * requireRegistrationHeader
+   *
+   * SYNOPSIS
+   * Enforce that a registration contains required metadata.
+   *
+   * PARAMETERS
+   * registration - registration to validate.
+   *
+   * ERRORS
+   * Throws IllegalStateException when the header is missing.
+   */
   private void requireRegistrationHeader(DeviceRegistration registration) {
     if (registration == null || registration.header() == null) {
       throw new IllegalStateException("Device registration missing required header.");
     }
   }
 
+  /**
+   * NAME
+   * warnIfMissingMotorSpec
+   *
+   * SYNOPSIS
+   * Emit a warning when a motor spec is missing.
+   *
+   * PARAMETERS
+   * label - device label used for spec lookup.
+   * modelOverride - optional motor model override.
+   *
+   * SIDE EFFECTS
+   * Writes a warning to standard output.
+   */
   private void warnIfMissingMotorSpec(String label, String modelOverride) {
     BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
     if (spec == null) {
@@ -290,6 +479,18 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * fillSpecForCtre
+   *
+   * SYNOPSIS
+   * Attach motor specification data to a CTRE snapshot.
+   *
+   * PARAMETERS
+   * snap - snapshot to enrich with motor spec data.
+   * label - device label used for spec lookup.
+   * modelOverride - optional motor model override.
+   */
   private void fillSpecForCtre(DeviceSnapshot snap, String label, String modelOverride) {
     snap.label = label;
     BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);

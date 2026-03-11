@@ -7,12 +7,34 @@ import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 
-// Best-effort inference of device status LED meanings.
+/**
+ * NAME
+ * LedStatusInference
+ *
+ * SYNOPSIS
+ * Best-effort inference of device status LED meanings.
+ *
+ * DESCRIPTION
+ * Infers likely LED patterns from device telemetry without direct LED reads.
+ */
 public final class LedStatusInference {
   private static final double DUTY_THRESHOLD = 0.02;
 
   private LedStatusInference() {}
 
+  /**
+   * NAME
+   * infer
+   *
+   * SYNOPSIS
+   * Infer a LED status attachment for a device snapshot.
+   *
+   * PARAMETERS
+   * snap - device snapshot containing vendor telemetry.
+   *
+   * RETURNS
+   * A LED status attachment, or null when the device type is not recognized.
+   */
   public static LedStatusAttachment infer(DeviceSnapshot snap) {
     if (snap == null || snap.deviceType == null || snap.deviceType.isBlank()) {
       return null;
@@ -33,6 +55,13 @@ public final class LedStatusInference {
     return null;
   }
 
+  /**
+   * NAME
+   * inferRevMotor
+   *
+   * SYNOPSIS
+   * Infer LED patterns for REV motor devices.
+   */
   private static LedStatusAttachment inferRevMotor(DeviceSnapshot snap) {
     LedStatusAttachment led = baseAttachment(snap);
     if (!snap.present) {
@@ -74,6 +103,13 @@ public final class LedStatusInference {
     return led;
   }
 
+  /**
+   * NAME
+   * hasRevFault
+   *
+   * SYNOPSIS
+   * Determine whether REV telemetry indicates a fault.
+   */
   private static boolean hasRevFault(RevMotorAttachment rev) {
     if (rev == null) {
       return false;
@@ -85,6 +121,13 @@ public final class LedStatusInference {
     return rev.lastError != null && !rev.lastError.isBlank() && !"kOk".equalsIgnoreCase(rev.lastError);
   }
 
+  /**
+   * NAME
+   * inferCtreMotor
+   *
+   * SYNOPSIS
+   * Infer LED patterns for CTRE motor devices.
+   */
   private static LedStatusAttachment inferCtreMotor(DeviceSnapshot snap) {
     LedStatusAttachment led = baseAttachment(snap);
     if (!snap.present) {
@@ -133,6 +176,13 @@ public final class LedStatusInference {
     return led;
   }
 
+  /**
+   * NAME
+   * hasCtreFault
+   *
+   * SYNOPSIS
+   * Determine whether CTRE telemetry indicates a fault.
+   */
   private static boolean hasCtreFault(CtreMotorAttachment ctre) {
     if (ctre == null) {
       return false;
@@ -148,6 +198,13 @@ public final class LedStatusInference {
         && !"OK".equalsIgnoreCase(ctre.stickyStatus);
   }
 
+  /**
+   * NAME
+   * inferCANCoder
+   *
+   * SYNOPSIS
+   * Infer LED patterns for CTRE CANCoder devices.
+   */
   private static LedStatusAttachment inferCANCoder(DeviceSnapshot snap) {
     LedStatusAttachment led = baseAttachment(snap);
     if (!snap.present) {
@@ -169,6 +226,13 @@ public final class LedStatusInference {
     return led;
   }
 
+  /**
+   * NAME
+   * inferPigeon
+   *
+   * SYNOPSIS
+   * Infer LED patterns for Pigeon IMU devices.
+   */
   private static LedStatusAttachment inferPigeon(DeviceSnapshot snap) {
     LedStatusAttachment led = baseAttachment(snap);
     if (!snap.present) {
@@ -181,21 +245,49 @@ public final class LedStatusInference {
     return led;
   }
 
+  /**
+   * NAME
+   * baseAttachment
+   *
+   * SYNOPSIS
+   * Create a base LED attachment with common notes.
+   */
   private static LedStatusAttachment baseAttachment(DeviceSnapshot snap) {
     LedStatusAttachment led = new LedStatusAttachment();
     led.note = "Best-effort inference from telemetry; not a direct LED read.";
     return led;
   }
 
+  /**
+   * NAME
+   * setExpected
+   *
+   * SYNOPSIS
+   * Populate expected LED pattern fields.
+   */
   private static void setExpected(LedStatusAttachment led, String pattern) {
     led.expectedPattern = safe(pattern);
   }
 
+  /**
+   * NAME
+   * setLikely
+   *
+   * SYNOPSIS
+   * Populate likely LED pattern fields and confidence.
+   */
   private static void setLikely(LedStatusAttachment led, String pattern, String confidence) {
     led.likelyPattern = safe(pattern);
     led.confidence = safe(confidence);
   }
 
+  /**
+   * NAME
+   * applyMeaning
+   *
+   * SYNOPSIS
+   * Resolve pattern meanings using the vendor catalog.
+   */
   private static LedStatusAttachment applyMeaning(DeviceSnapshot snap, LedStatusAttachment led) {
     if (led == null || snap == null) {
       return led;
@@ -207,10 +299,24 @@ public final class LedStatusInference {
     return led;
   }
 
+  /**
+   * NAME
+   * safe
+   *
+   * SYNOPSIS
+   * Normalize null strings to empty strings.
+   */
   private static String safe(String value) {
     return value == null ? "" : value;
   }
 
+  /**
+   * NAME
+   * isClosed
+   *
+   * SYNOPSIS
+   * Interpret a nullable limit switch state.
+   */
   private static boolean isClosed(Boolean closed) {
     return closed != null && closed.booleanValue();
   }

@@ -5,13 +5,39 @@ import frc.robot.manufacturers.ManufacturerGroup;
 import frc.robot.manufacturers.DeviceTypeBucket;
 import java.util.List;
 
+/**
+ * NAME
+ *   BringupTestContext - Device lookup context for tests.
+ *
+ * DESCRIPTION
+ *   Provides access to instantiated devices grouped by manufacturer.
+ */
 public final class BringupTestContext {
   private final List<ManufacturerGroup> groups;
 
+  /**
+   * NAME
+   *   BringupTestContext - Construct a test context.
+   *
+   * PARAMETERS
+   *   groups - Manufacturer groups to search.
+   */
   public BringupTestContext(List<ManufacturerGroup> groups) {
     this.groups = groups;
   }
 
+  /**
+   * NAME
+   *   findDevice - Locate a device by vendor/type/id.
+   *
+   * PARAMETERS
+   *   vendor - Vendor name.
+   *   deviceType - Device type name.
+   *   canId - CAN ID.
+   *
+   * RETURNS
+   *   Matching DeviceUnit or null if not found.
+   */
   public DeviceUnit findDevice(String vendor, String deviceType, int canId) {
     if (vendor == null || deviceType == null) {
       return null;

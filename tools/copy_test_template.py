@@ -1,3 +1,18 @@
+"""
+NAME
+    copy_test_template.py - Interactive test template copier/editor.
+
+SYNOPSIS
+    python copy_test_template.py
+
+DESCRIPTION
+    Prompts for a test template, lets the user edit key fields, and writes
+    bringup_tests.json to the deploy directory.
+
+SIDE EFFECTS
+    Reads template files, prompts on stdin, writes JSON output.
+"""
+
 import json
 from pathlib import Path
 
@@ -6,6 +21,10 @@ OUTPUT_FILE = Path(__file__).resolve().parents[1] / "src" / "main" / "deploy" / 
 
 
 def _prompt(text, default=None):
+    """
+    NAME
+        _prompt - Prompt for a value with an optional default.
+    """
     if default is None:
         prompt = f"{text}: "
     else:
@@ -15,12 +34,23 @@ def _prompt(text, default=None):
 
 
 def _list_templates():
+    """
+    NAME
+        _list_templates - Return available JSON templates.
+    """
     if not TEMPLATE_DIR.exists():
         return []
     return sorted([p for p in TEMPLATE_DIR.glob("*.json") if p.is_file()])
 
 
 def _choose_template(templates):
+    """
+    NAME
+        _choose_template - Prompt for a template selection.
+
+    RETURNS
+        Path to the chosen template.
+    """
     print("Available templates:")
     for idx, tpl in enumerate(templates, start=1):
         print(f"  {idx}. {tpl.name}")
@@ -37,6 +67,13 @@ def _choose_template(templates):
 
 
 def _edit_tests(payload):
+    """
+    NAME
+        _edit_tests - Interactive editing of test entries.
+
+    DESCRIPTION
+        Updates motor keys and encoder keys in-place based on user input.
+    """
     set_name = payload.get("default_test_set") or "default"
     test_sets = payload.get("test_sets", {})
     if not isinstance(test_sets, dict):
@@ -67,6 +104,10 @@ def _edit_tests(payload):
 
 
 def _ensure_test_sets(payload):
+    """
+    NAME
+        _ensure_test_sets - Normalize legacy payloads to test_sets format.
+    """
     if not isinstance(payload, dict):
         payload = {}
     test_sets = payload.get("test_sets")
@@ -85,6 +126,10 @@ def _ensure_test_sets(payload):
 
 
 def main():
+    """
+    NAME
+        main - CLI entry point for template copying.
+    """
     templates = _list_templates()
     if not templates:
         print("No templates found.")

@@ -1,9 +1,31 @@
 from __future__ import annotations
 
+"""
+NAME
+    can_ports.py - Serial port discovery for CANable slcan.
+
+SYNOPSIS
+    from can_ports import list_ports, maybe_auto_channel
+
+DESCRIPTION
+    Enumerates serial ports via pyserial and selects a matching CANable
+    interface, optionally prompting the user.
+"""
+
 from typing import List, Tuple
 
 
 def list_ports() -> List[Tuple[str, str]]:
+    """
+    NAME
+        list_ports - Return available serial ports and descriptions.
+
+    RETURNS
+        List of (device, description) tuples.
+
+    ERRORS
+        Raises RuntimeError when pyserial is missing or enumeration fails.
+    """
     try:
         import serial.tools.list_ports  # type: ignore
     except Exception as exc:
@@ -21,6 +43,20 @@ def list_ports() -> List[Tuple[str, str]]:
 
 
 def auto_channel(match_text: str, prompt: bool) -> Tuple[str, str]:
+    """
+    NAME
+        auto_channel - Select a serial port matching a description substring.
+
+    PARAMETERS
+        match_text: Substring to match in port descriptions.
+        prompt: Whether to prompt when multiple matches exist.
+
+    RETURNS
+        (device, description) tuple for the selected port.
+
+    ERRORS
+        Raises RuntimeError when no matches or ambiguous matches are found.
+    """
     try:
         import serial.tools.list_ports  # type: ignore
     except Exception as exc:
@@ -66,6 +102,16 @@ def auto_channel(match_text: str, prompt: bool) -> Tuple[str, str]:
 
 
 def maybe_auto_channel(args) -> Tuple[str | None, str | None, int]:
+    """
+    NAME
+        maybe_auto_channel - Resolve a CAN channel from args or auto-detect.
+
+    PARAMETERS
+        args: Parsed CLI args containing channel and auto-match settings.
+
+    RETURNS
+        (channel, description, status_code) where status_code is 0 on success.
+    """
     channel = args.channel
     if channel:
         return channel, None, 0

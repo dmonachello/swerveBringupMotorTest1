@@ -15,8 +15,18 @@ import frc.robot.input.ControllerManager;
 import frc.robot.tests.BringupTestRegistry;
 import java.time.Instant;
 
-// Primary bringup robot program with CAN diagnostics, JSON reporting, and controller bindings.
-// This class wires controller inputs to BringupCore and DiagnosticsReporter behaviors.
+/**
+ * NAME
+ *   RobotV2 - Primary bringup robot program.
+ *
+ * DESCRIPTION
+ *   Wires controller inputs to BringupCore behaviors and coordinates
+ *   diagnostics reporting, JSON snapshots, and CAN health sampling.
+ *
+ * SIDE EFFECTS
+ *   Drives motors/sensors through vendor APIs and publishes NetworkTables
+ *   telemetry for diagnostics.
+ */
 public class RobotV2 extends TimedRobot {
 
   // ---------------- CAN ID DEFINITIONS ----------------
@@ -47,6 +57,14 @@ public class RobotV2 extends TimedRobot {
   private long lastStartupPrintMs = 0L;
   private int lastTestsCount = 0;
 
+  /**
+   * NAME
+   *   robotInit - One-time robot initialization.
+   *
+   * DESCRIPTION
+   *   Loads the active profile, constructs core subsystems, and prints startup
+   *   diagnostics.
+   */
   @Override
   public void robotInit() {
     // Load profile before anything instantiates devices.
@@ -62,6 +80,13 @@ public class RobotV2 extends TimedRobot {
     //CameraServer.startAutomaticCapture();
   }
 
+  /**
+   * NAME
+   *   teleopInit - Teleop mode entry hook.
+   *
+   * DESCRIPTION
+   *   Resets bringup state and diagnostic counters for a fresh teleop run.
+   */
   @Override
   public void teleopInit() {
     // Reset state whenever teleop is entered.
@@ -72,6 +97,13 @@ public class RobotV2 extends TimedRobot {
     edge.reset();
   }
 
+  /**
+   * NAME
+   *   disabledInit - Disabled mode entry hook.
+   *
+   * DESCRIPTION
+   *   Disables tests and clears state to avoid stale outputs while disabled.
+   */
   @Override
   public void disabledInit() {
     // Keep behavior symmetric in disabled and teleop to avoid stale state.
@@ -83,6 +115,13 @@ public class RobotV2 extends TimedRobot {
     edge.reset();
   }
 
+  /**
+   * NAME
+   *   robotPeriodic - Periodic loop for all modes.
+   *
+   * DESCRIPTION
+   *   Samples CAN health and records loop timing metrics each cycle.
+   */
   @Override
   public void robotPeriodic() {
     // Sample and publish CAN health every loop.
@@ -92,6 +131,14 @@ public class RobotV2 extends TimedRobot {
     frc.robot.diag.app.AppStatusTracker.recordLoop();
   }
 
+  /**
+   * NAME
+   *   teleopPeriodic - Teleop periodic loop.
+   *
+   * DESCRIPTION
+   *   Reads controller inputs, applies bringup commands, and updates motor
+   *   outputs within the 20ms loop budget.
+   */
   @Override
   public void teleopPeriodic() {
 
@@ -199,6 +246,16 @@ public class RobotV2 extends TimedRobot {
   // ---------------------------------------------------
 
   // Print the control bindings and active CAN profile.
+  /**
+   * NAME
+   *   printStartupInfo - Emit bindings and profile diagnostics.
+   *
+   * DESCRIPTION
+   *   Builds a multi-line report of control bindings and active CAN IDs.
+   *
+   * SIDE EFFECTS
+   *   Enqueues a text report for throttled console output.
+   */
   private void printStartupInfo() {
     long nowMs = System.currentTimeMillis();
     if (nowMs - lastStartupPrintMs < MIN_PRINT_INTERVAL_MS) {
@@ -226,6 +283,13 @@ public class RobotV2 extends TimedRobot {
     core.requestTextReport(sb.toString(), 4);
   }
 
+  /**
+   * NAME
+   *   printProfileInfo - Emit CAN profile details after a switch.
+   *
+   * SIDE EFFECTS
+   *   Enqueues a text report for throttled console output.
+   */
   private void printProfileInfo() {
     long nowMs = System.currentTimeMillis();
     if (nowMs - lastStartupPrintMs < MIN_PRINT_INTERVAL_MS) {
@@ -244,6 +308,16 @@ public class RobotV2 extends TimedRobot {
     core.requestTextReport(sb.toString(), 4);
   }
 
+  /**
+   * NAME
+   *   printTestsInfo - Emit bringup test file diagnostics.
+   *
+   * DESCRIPTION
+   *   Reports resolved test file path, metadata, and active test set info.
+   *
+   * SIDE EFFECTS
+   *   Enqueues a text report for throttled console output.
+   */
   private void printTestsInfo() {
     BringupTestRegistry.TestsInfo info = BringupTestRegistry.getTestsInfo();
     StringBuilder sb = new StringBuilder(256);
@@ -285,6 +359,13 @@ public class RobotV2 extends TimedRobot {
     core.requestTextReport(sb.toString(), 4);
   }
 
+  /**
+   * NAME
+   *   printTestsOverview - Emit and publish a tests overview snapshot.
+   *
+   * SIDE EFFECTS
+   *   Enqueues a text report and updates NetworkTables.
+   */
   private void printTestsOverview() {
     BringupCore.TestsOverview overview = core.buildTestsOverview();
     String text = core.formatTestsOverview(overview);
@@ -292,6 +373,16 @@ public class RobotV2 extends TimedRobot {
     publishTestsOverview(overview);
   }
 
+  /**
+   * NAME
+   *   publishTestsOverview - Publish test rows to NetworkTables.
+   *
+   * PARAMETERS
+   *   overview - Snapshot of current test sets and rows.
+   *
+   * SIDE EFFECTS
+   *   Writes NetworkTables entries under bringup/tests.
+   */
   private void publishTestsOverview(BringupCore.TestsOverview overview) {
     if (overview == null) {
       return;
@@ -332,6 +423,13 @@ public class RobotV2 extends TimedRobot {
   }
 
   //@SuppressWarnings("removal")
+  /**
+   * NAME
+   *   applyDashboardUpdateState - Enable/disable dashboard widgets.
+   *
+   * DESCRIPTION
+   *   Toggles LiveWindow and Shuffleboard actuator widgets to reduce chatter.
+   */
   private void applyDashboardUpdateState() {
     // WPILib deprecated setNetworkTablesFlushEnabled; no-op in newer versions.
     LiveWindow.setEnabled(dashboardUpdatesEnabled);
@@ -342,6 +440,13 @@ public class RobotV2 extends TimedRobot {
     }
   }
 
+  /**
+   * NAME
+   *   validateCanIds - Check for duplicate or invalid CAN IDs.
+   *
+   * DESCRIPTION
+   *   Builds labeled groups for clearer warning output from BringupUtil.
+   */
   private void validateCanIds() {
     // Build labeled groups for clearer warnings on duplicates/disabled IDs.
     ArrayList<String> labels = new ArrayList<>();

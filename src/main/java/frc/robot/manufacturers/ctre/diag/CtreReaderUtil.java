@@ -5,10 +5,33 @@ import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.hardware.TalonFX;
 import java.util.List;
 
-// CTRE-specific helpers for extracting fault flags from status signals.
+/**
+ * NAME
+ * CtreReaderUtil
+ *
+ * SYNOPSIS
+ * CTRE-specific helpers for extracting fault flags from status signals.
+ *
+ * DESCRIPTION
+ * Refreshes Phoenix status signals and maps active faults into string lists.
+ */
 public final class CtreReaderUtil {
   private CtreReaderUtil() {}
 
+  /**
+   * NAME
+   * collectFaultFlags
+   *
+   * SYNOPSIS
+   * Collect active fault flags from a TalonFX.
+   *
+   * PARAMETERS
+   * talon - TalonFX instance to sample.
+   * out - list to append active fault names into.
+   *
+   * SIDE EFFECTS
+   * Refreshes Phoenix status signals.
+   */
   public static void collectFaultFlags(TalonFX talon, List<String> out) {
     var bootDuringEnable = talon.getFault_BootDuringEnable();
     var bridgeBrownout = talon.getFault_BridgeBrownout();
@@ -87,6 +110,20 @@ public final class CtreReaderUtil {
     appendIf(out, "UsingFusedCANcoderWhileUnlicensed", isTrue(usingFusedCancoderUnlicensed));
   }
 
+  /**
+   * NAME
+   * collectStickyFaultFlags
+   *
+   * SYNOPSIS
+   * Collect sticky fault flags from a TalonFX.
+   *
+   * PARAMETERS
+   * talon - TalonFX instance to sample.
+   * out - list to append active fault names into.
+   *
+   * SIDE EFFECTS
+   * Refreshes Phoenix status signals.
+   */
   public static void collectStickyFaultFlags(TalonFX talon, List<String> out) {
     var bootDuringEnable = talon.getStickyFault_BootDuringEnable();
     var bridgeBrownout = talon.getStickyFault_BridgeBrownout();
@@ -165,10 +202,24 @@ public final class CtreReaderUtil {
     appendIf(out, "UsingFusedCANcoderWhileUnlicensed", isTrue(usingFusedCancoderUnlicensed));
   }
 
+  /**
+   * NAME
+   * isTrue
+   *
+   * SYNOPSIS
+   * Interpret a status signal as a boolean flag.
+   */
   private static boolean isTrue(StatusSignal<Boolean> signal) {
     return Boolean.TRUE.equals(signal.getValue());
   }
 
+  /**
+   * NAME
+   * appendIf
+   *
+   * SYNOPSIS
+   * Append a fault name when its flag is active.
+   */
   private static void appendIf(List<String> out, String name, boolean active) {
     if (!active) {
       return;

@@ -3,7 +3,10 @@ package frc.robot.diag.snapshots;
 import java.util.ArrayList;
 import java.util.List;
 
-// Plain data snapshot for a single device at a moment in time.
+/**
+ * NAME
+ *   DeviceSnapshot - Snapshot of a single device at a moment in time.
+ */
 public final class DeviceSnapshot {
   public String vendor = "";
   public String deviceType = "";
@@ -14,12 +17,20 @@ public final class DeviceSnapshot {
 
   public final List<DeviceAttachment> attachments = new ArrayList<>();
 
+  /**
+   * NAME
+   *   addAttachment - Attach additional typed data.
+   */
   public void addAttachment(DeviceAttachment attachment) {
     if (attachment != null) {
       attachments.add(attachment);
     }
   }
 
+  /**
+   * NAME
+   *   getAttachment - Retrieve an attachment by class.
+   */
   public <T extends DeviceAttachment> T getAttachment(Class<T> type) {
     for (DeviceAttachment attachment : attachments) {
       if (type.isInstance(attachment)) {
@@ -29,6 +40,10 @@ public final class DeviceSnapshot {
     return null;
   }
 
+  /**
+   * NAME
+   *   getAttachment - Retrieve an attachment by type string.
+   */
   public DeviceAttachment getAttachment(String type) {
     if (type == null || type.isBlank()) {
       return null;

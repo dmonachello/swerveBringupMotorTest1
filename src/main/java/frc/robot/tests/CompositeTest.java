@@ -5,9 +5,21 @@ import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.LimitsAttachment;
 
+/**
+ * NAME
+ *   CompositeTest - Bringup test with multiple checks.
+ *
+ * DESCRIPTION
+ *   Runs a motor duty test with optional rotation, time, limit, and hold
+ *   checks, producing a combined result.
+ */
 public final class CompositeTest implements BringupTest {
   public static final String TYPE = "composite";
 
+  /**
+   * NAME
+   *   Config - Configuration payload for CompositeTest.
+   */
   public static final class Config {
     public String name = "Composite Test";
     public boolean enabled = true;
@@ -19,6 +31,10 @@ public final class CompositeTest implements BringupTest {
     public HoldCheck hold;
   }
 
+  /**
+   * NAME
+   *   RotationCheck - Optional rotation/encoder check configuration.
+   */
   public static final class RotationCheck {
     public double limitRot = 1.0;
     public String encoderKey = "internal"; // internal or VENDOR:TYPE:ID
@@ -27,16 +43,28 @@ public final class CompositeTest implements BringupTest {
     public int encoderMotorIndex = 0;
   }
 
+  /**
+   * NAME
+   *   TimeCheck - Optional time-based check configuration.
+   */
   public static final class TimeCheck {
     public double timeoutSec = 2.0;
     public String onTimeout = "pass"; // pass | fail
   }
 
+  /**
+   * NAME
+   *   LimitSwitchCheck - Optional limit switch check configuration.
+   */
   public static final class LimitSwitchCheck {
     public boolean enabled = true;
     public String onHit = "pass"; // pass | fail
   }
 
+  /**
+   * NAME
+   *   HoldCheck - Optional hold-to-run check configuration.
+   */
   public static final class HoldCheck {
     public boolean enabled = false;
     public String onRelease = "pass"; // pass | fail
@@ -53,15 +81,27 @@ public final class CompositeTest implements BringupTest {
   private String status = "";
   private boolean holdSignal = false;
 
+  /**
+   * NAME
+   *   CompositeTest - Construct from config.
+   */
   public CompositeTest(Config config) {
     this.config = config;
   }
 
+  /**
+   * NAME
+   *   getName - Return test name.
+   */
   @Override
   public String getName() {
     return config.name != null && !config.name.isBlank() ? config.name : "Composite Test";
   }
 
+  /**
+   * NAME
+   *   getDisplayName - Return display name for UI.
+   */
   @Override
   public String getDisplayName() {
     String base = getName();
@@ -71,36 +111,64 @@ public final class CompositeTest implements BringupTest {
     return base;
   }
 
+  /**
+   * NAME
+   *   isEnabled - Return enabled state.
+   */
   @Override
   public boolean isEnabled() {
     return config.enabled;
   }
 
+  /**
+   * NAME
+   *   setEnabled - Enable or disable the test.
+   */
   @Override
   public void setEnabled(boolean enabled) {
     config.enabled = enabled;
   }
 
+  /**
+   * NAME
+   *   isRunning - Return running state.
+   */
   @Override
   public boolean isRunning() {
     return result == BringupTestResult.RUNNING;
   }
 
+  /**
+   * NAME
+   *   isFinished - Return finished state.
+   */
   @Override
   public boolean isFinished() {
     return result == BringupTestResult.PASS || result == BringupTestResult.FAIL;
   }
 
+  /**
+   * NAME
+   *   getResult - Return result state.
+   */
   @Override
   public BringupTestResult getResult() {
     return result;
   }
 
+  /**
+   * NAME
+   *   getStatus - Return status message.
+   */
   @Override
   public String getStatus() {
     return status;
   }
 
+  /**
+   * NAME
+   *   getMotorKeys - Return motor keys used by this test.
+   */
   @Override
   public java.util.List<String> getMotorKeys() {
     if (config.motors == null || config.motors.isEmpty()) {
@@ -116,6 +184,10 @@ public final class CompositeTest implements BringupTest {
     return keys;
   }
 
+  /**
+   * NAME
+   *   start - Start the composite test.
+   */
   @Override
   public boolean start(BringupTestContext context, double nowSec) {
     if (config.motors == null || config.motors.isEmpty()) {
@@ -175,6 +247,10 @@ public final class CompositeTest implements BringupTest {
     return true;
   }
 
+  /**
+   * NAME
+   *   update - Update test checks and motor outputs.
+   */
   @Override
   public void update(BringupTestContext context, double nowSec) {
     if (result != BringupTestResult.RUNNING) {
@@ -221,6 +297,10 @@ public final class CompositeTest implements BringupTest {
     }
   }
 
+  /**
+   * NAME
+   *   stop - Stop the test and set motors to zero.
+   */
   @Override
   public void stop(BringupTestContext context) {
     for (DeviceUnit device : motors) {
@@ -228,11 +308,19 @@ public final class CompositeTest implements BringupTest {
     }
   }
 
+  /**
+   * NAME
+   *   onHoldSignal - Update hold-to-run state.
+   */
   @Override
   public void onHoldSignal(boolean held) {
     holdSignal = held;
   }
 
+  /**
+   * NAME
+   *   resolveEncoder - Resolve encoder device for rotation checks.
+   */
   private DeviceUnit resolveEncoder(BringupTestContext context) {
     if (!isRotationCheckEnabled()) {
       return null;
@@ -268,6 +356,10 @@ public final class CompositeTest implements BringupTest {
     return context.findDevice(ref.vendor, ref.type, ref.id);
   }
 
+  /**
+   * NAME
+   *   isAltEncoderKey - Check if an encoder key targets an alternate encoder.
+   */
   private boolean isAltEncoderKey(String key) {
     if (key == null) {
       return false;
@@ -279,22 +371,42 @@ public final class CompositeTest implements BringupTest {
         || normalized.equals("through_bore");
   }
 
+  /**
+   * NAME
+   *   isRotationCheckEnabled - Return whether rotation check is enabled.
+   */
   private boolean isRotationCheckEnabled() {
     return config.rotation != null && config.rotation.limitRot != 0.0;
   }
 
+  /**
+   * NAME
+   *   isTimeCheckEnabled - Return whether time check is enabled.
+   */
   private boolean isTimeCheckEnabled() {
     return config.time != null && config.time.timeoutSec > 0.0;
   }
 
+  /**
+   * NAME
+   *   isLimitCheckEnabled - Return whether limit check is enabled.
+   */
   private boolean isLimitCheckEnabled() {
     return config.limitSwitch != null && config.limitSwitch.enabled;
   }
 
+  /**
+   * NAME
+   *   isHoldCheckEnabled - Return whether hold-to-run check is enabled.
+   */
   private boolean isHoldCheckEnabled() {
     return config.hold != null && config.hold.enabled;
   }
 
+  /**
+   * NAME
+   *   passOrFail - Resolve a pass/fail action string.
+   */
   private BringupTestResult passOrFail(String mode) {
     if (mode != null && mode.trim().equalsIgnoreCase("fail")) {
       return BringupTestResult.FAIL;
@@ -302,6 +414,10 @@ public final class CompositeTest implements BringupTest {
     return BringupTestResult.PASS;
   }
 
+  /**
+   * NAME
+   *   isLimitClosed - Determine if the limit switch is closed.
+   */
   private boolean isLimitClosed() {
     if (motors.isEmpty()) {
       return false;
@@ -322,6 +438,10 @@ public final class CompositeTest implements BringupTest {
     return false;
   }
 
+  /**
+   * NAME
+   *   clampDuty - Clamp duty cycle to [-1, 1].
+   */
   private double clampDuty(double duty) {
     if (duty > 1.0) {
       return 1.0;
@@ -332,6 +452,10 @@ public final class CompositeTest implements BringupTest {
     return duty;
   }
 
+  /**
+   * NAME
+   *   toEntry - Serialize this test to a JSON-friendly map.
+   */
   public java.util.Map<String, Object> toEntry() {
     java.util.Map<String, Object> entry = new java.util.LinkedHashMap<>();
     entry.put("type", TYPE);
@@ -380,6 +504,10 @@ public final class CompositeTest implements BringupTest {
     return entry;
   }
 
+  /**
+   * NAME
+   *   buildMotorKey - Build a vendor/type/id motor key string.
+   */
   private String buildMotorKey(BringupTestRegistry.MotorRef motorRef) {
     if (motorRef == null || motorRef.vendor == null || motorRef.type == null) {
       return "";

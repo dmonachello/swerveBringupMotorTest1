@@ -14,6 +14,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/**
+ * NAME
+ *   ControllerManager - Load controller specs and instantiate devices.
+ *
+ * DESCRIPTION
+ *   Reads controller configuration from deploy JSON and builds controller
+ *   instances for use in bindings.
+ */
 public final class ControllerManager {
   private static final String CONTROLLERS_FILE = "bringup_controllers.json";
   private static final String BINDINGS_FILE = "bringup_bindings.json";
@@ -22,11 +30,22 @@ public final class ControllerManager {
   private final List<ControllerSpec> specs = new ArrayList<>();
   private final List<XboxController> xboxControllers = new ArrayList<>();
 
+  /**
+   * NAME
+   *   ControllerManager - Construct and load controller specs.
+   */
   public ControllerManager() {
     loadSpecs();
     initControllers();
   }
 
+  /**
+   * NAME
+   *   getXbox - Return the Xbox controller at index.
+   *
+   * RETURNS
+   *   XboxController or null if out of range.
+   */
   public XboxController getXbox(int index) {
     if (index < 0 || index >= xboxControllers.size()) {
       return null;
@@ -34,10 +53,18 @@ public final class ControllerManager {
     return xboxControllers.get(index);
   }
 
+  /**
+   * NAME
+   *   getSpecs - Return the configured controller specs.
+   */
   public List<ControllerSpec> getSpecs() {
     return Collections.unmodifiableList(specs);
   }
 
+  /**
+   * NAME
+   *   loadSpecs - Load controller specs from bindings/controllers JSON.
+   */
   private void loadSpecs() {
     specs.clear();
     List<ControllerSpec> fromBindings = loadControllersFromBindings();
@@ -53,6 +80,10 @@ public final class ControllerManager {
     addDefaultSpecs();
   }
 
+  /**
+   * NAME
+   *   addDefaultSpecs - Add default primary/secondary Xbox specs.
+   */
   private void addDefaultSpecs() {
     ControllerSpec primary = new ControllerSpec();
     primary.type = ControllerType.XBOX;
@@ -66,6 +97,10 @@ public final class ControllerManager {
     specs.add(secondary);
   }
 
+  /**
+   * NAME
+   *   initControllers - Instantiate controller objects from specs.
+   */
   private void initControllers() {
     xboxControllers.clear();
     for (ControllerSpec spec : specs) {
@@ -78,6 +113,10 @@ public final class ControllerManager {
     }
   }
 
+  /**
+   * NAME
+   *   loadControllersFromBindings - Load controller specs from bindings JSON.
+   */
   private List<ControllerSpec> loadControllersFromBindings() {
     Path path = resolvePath(BINDINGS_FILE);
     if (path == null || !Files.exists(path)) {
@@ -94,6 +133,10 @@ public final class ControllerManager {
     }
   }
 
+  /**
+   * NAME
+   *   loadControllersFromFile - Load controller specs from controllers JSON.
+   */
   private List<ControllerSpec> loadControllersFromFile() {
     Path path = resolvePath(CONTROLLERS_FILE);
     if (path == null || !Files.exists(path)) {
@@ -110,6 +153,10 @@ public final class ControllerManager {
     }
   }
 
+  /**
+   * NAME
+   *   resolvePath - Resolve deploy path with dev fallback.
+   */
   private Path resolvePath(String fileName) {
     try {
       Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(fileName);
@@ -126,10 +173,18 @@ public final class ControllerManager {
     return Paths.get(fileName);
   }
 
+  /**
+   * NAME
+   *   ControllerRoot - JSON root for controller file.
+   */
   private static final class ControllerRoot {
     List<ControllerSpec> controllers = Collections.emptyList();
   }
 
+  /**
+   * NAME
+   *   BindingRoot - JSON root for bindings file.
+   */
   private static final class BindingRoot {
     List<ControllerSpec> controllers = Collections.emptyList();
   }

@@ -35,6 +35,34 @@ Hard rules
   - Include Tradeoffs and Future Extensions sections in architecture docs.
   - Printed docs rule: if a section or subsection would fit on one page, do not allow it to split across pages (keep heading and content together).
 
+Documentation Rules (Code)
+Purpose: Keep man-page style documentation consistent in Java and Python sources.
+- Use concise man-page style documentation blocks for important code elements.
+- Document these:
+  - Java: all classes, all public methods, and private methods with non-trivial logic.
+  - Python: all modules, all top-level functions, and complex helper functions.
+- Do NOT document trivial code such as:
+  - getters/setters
+  - simple pass-through wrappers
+  - obvious one-line helpers
+- Documentation sections should include when relevant:
+  - NAME
+  - SYNOPSIS
+  - DESCRIPTION
+  - PARAMETERS
+  - RETURNS
+  - SIDE EFFECTS
+  - ERRORS
+  - NOTES
+  - EXAMPLE (optional)
+- Guidelines:
+  - Documentation must add information that the code does not already express.
+  - Avoid repeating the function signature in prose.
+  - Prefer concise technical language.
+  - When modifying a function, update the documentation if behavior changes.
+  - If an undocumented file is modified and contains meaningful logic, add documentation.
+- Never change program behavior when enforcing documentation rules.
+
 What to do first for any task that touches the Java-Python interface
 1) Inventory NetworkTables usage:
    - List every path written and read on the Java side.

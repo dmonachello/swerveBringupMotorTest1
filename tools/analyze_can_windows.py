@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+"""
+NAME
+    analyze_can_windows.py - Windowed CAN log summary helper.
+
+SYNOPSIS
+    python analyze_can_windows.py <log> --window start,duration,label [--window ...]
+
+DESCRIPTION
+    Parses python-can text logs or BLF files and summarizes API class/index
+    counts within specified time windows.
+
+SIDE EFFECTS
+    Reads log files and prints window summaries to stdout.
+"""
 from __future__ import annotations
 
 import argparse
@@ -16,6 +30,10 @@ LINE_RX = re.compile(
 
 @dataclass(frozen=True)
 class DecodedId:
+    """
+    NAME
+        DecodedId - Parsed fields from an FRC extended arbitration ID.
+    """
     manufacturer: int
     device_type: int
     api_class: int
@@ -24,6 +42,16 @@ class DecodedId:
 
 
 def decode_ext_id(arb: int) -> DecodedId:
+    """
+    NAME
+        decode_ext_id - Decode a 29-bit FRC arbitration ID.
+
+    PARAMETERS
+        arb: Arbitration ID as integer.
+
+    RETURNS
+        DecodedId with manufacturer, device type, API class/index, and device ID.
+    """
     device_type = (arb >> 24) & 0x1F
     manufacturer = (arb >> 16) & 0xFF
     api_class = (arb >> 10) & 0x3F
@@ -39,6 +67,10 @@ def decode_ext_id(arb: int) -> DecodedId:
 
 
 def iter_frames_from_log(path: Path) -> Iterable[Tuple[float, int]]:
+    """
+    NAME
+        iter_frames_from_log - Yield (timestamp, arb_id) from text logs.
+    """
     with path.open("r", encoding="utf-8", errors="ignore") as handle:
         for line in handle:
             line = line.strip()
@@ -53,6 +85,10 @@ def iter_frames_from_log(path: Path) -> Iterable[Tuple[float, int]]:
 
 
 def iter_frames_from_blf(path: Path) -> Iterable[Tuple[float, int]]:
+    """
+    NAME
+        iter_frames_from_blf - Yield (timestamp, arb_id) from BLF logs.
+    """
     import can  # type: ignore
 
     with can.io.BLFReader(str(path)) as reader:
@@ -63,16 +99,31 @@ def iter_frames_from_blf(path: Path) -> Iterable[Tuple[float, int]]:
 
 
 def iter_frames(path: Path) -> Iterable[Tuple[float, int]]:
+    """
+    NAME
+        iter_frames - Select log reader based on file suffix.
+    """
     if path.suffix.lower() == ".blf":
         return iter_frames_from_blf(path)
     return iter_frames_from_log(path)
 
 
 def within_window(ts: float, start: float, duration: float) -> bool:
+    """
+    NAME
+        within_window - Test if a timestamp falls inside a window.
+    """
     return ts >= start and ts < (start + duration)
 
 
 def parse_windows(raw: List[str]) -> List[Tuple[float, float, str]]:
+    """
+    NAME
+        parse_windows - Parse window strings into tuples.
+
+    ERRORS
+        Raises ValueError on invalid window syntax.
+    """
     windows: List[Tuple[float, float, str]] = []
     for entry in raw:
         parts = entry.split(",", 2)
@@ -86,6 +137,16 @@ def parse_windows(raw: List[str]) -> List[Tuple[float, float, str]]:
 
 
 def main() -> int:
+    """
+    NAME
+        main - CLI entry point for windowed log analysis.
+
+    RETURNS
+        Process exit code (0 on success).
+
+    SIDE EFFECTS
+        Reads logs and prints summaries to stdout.
+    """
     parser = argparse.ArgumentParser(
         description="Summarize API class/index counts per time window from python-can text logs."
     )

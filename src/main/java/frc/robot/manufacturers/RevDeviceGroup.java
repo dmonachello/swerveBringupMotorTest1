@@ -16,7 +16,16 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-// Manufacturer layer for REV devices: owns device slots and shared logic.
+/**
+ * NAME
+ * RevDeviceGroup
+ *
+ * SYNOPSIS
+ * Manufacturer layer for REV devices.
+ *
+ * DESCRIPTION
+ * Owns REV device slots, registration, and shared reporting utilities.
+ */
 public final class RevDeviceGroup implements ManufacturerGroup {
   public static final RegistrationHeader HEADER = new RegistrationHeader(
       "REV",
@@ -69,6 +78,16 @@ public final class RevDeviceGroup implements ManufacturerGroup {
   private final List<DeviceTypeBucket> buckets = new ArrayList<>();
   private final List<DeviceTypeBucket> motorBuckets = new ArrayList<>();
 
+  /**
+   * NAME
+   * RevDeviceGroup
+   *
+   * SYNOPSIS
+   * Construct and register REV device buckets.
+   *
+   * SIDE EFFECTS
+   * Instantiates device wrappers based on configuration.
+   */
   public RevDeviceGroup() {
     register(NEO_REGISTRATION, true);
     register(NEO550_REGISTRATION, true);
@@ -85,6 +104,19 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     return Collections.unmodifiableList(buckets);
   }
 
+  /**
+   * NAME
+   * addNextMotor
+   *
+   * SYNOPSIS
+   * Create the next motor device in REV buckets.
+   *
+   * RETURNS
+   * A result describing the created device, or null if none was added.
+   *
+   * SIDE EFFECTS
+   * Constructs hardware objects and emits report output.
+   */
   @Override
   public DeviceAddResult addNextMotor() {
     for (DeviceTypeBucket bucket : motorBuckets) {
@@ -96,6 +128,13 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     return null;
   }
 
+  /**
+   * NAME
+   * resetLowCurrentTimers
+   *
+   * SYNOPSIS
+   * Reset low-current timers for REV motor devices.
+   */
   @Override
   public void resetLowCurrentTimers() {
     for (DeviceTypeBucket bucket : motorBuckets) {
@@ -103,11 +142,31 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * getTestDevices
+   *
+   * SYNOPSIS
+   * Return devices that expose custom tests.
+   *
+   * RETURNS
+   * Empty list for REV devices (no custom tests).
+   */
   @Override
   public List<DeviceUnit> getTestDevices() {
     return new ArrayList<>();
   }
 
+  /**
+   * NAME
+   * addAll
+   *
+   * SYNOPSIS
+   * Create all REV devices.
+   *
+   * SIDE EFFECTS
+   * Constructs hardware objects and emits report output.
+   */
   @Override
   public void addAll() {
     for (DeviceTypeBucket bucket : buckets) {
@@ -115,6 +174,16 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * setDuty
+   *
+   * SYNOPSIS
+   * Apply an open-loop duty request to all REV motors.
+   *
+   * PARAMETERS
+   * duty - requested output in [-1, 1].
+   */
   @Override
   public void setDuty(double duty) {
     for (DeviceTypeBucket bucket : motorBuckets) {
@@ -124,6 +193,13 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * stopAll
+   *
+   * SYNOPSIS
+   * Stop all REV motor outputs.
+   */
   @Override
   public void stopAll() {
     for (DeviceTypeBucket bucket : motorBuckets) {
@@ -133,6 +209,16 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * clearFaults
+   *
+   * SYNOPSIS
+   * Clear fault status on all REV devices.
+   *
+   * SIDE EFFECTS
+   * Sends vendor fault-clear commands.
+   */
   @Override
   public void clearFaults() {
     for (DeviceTypeBucket bucket : buckets) {
@@ -142,6 +228,16 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * closeAll
+   *
+   * SYNOPSIS
+   * Close all REV devices and reset add pointers.
+   *
+   * SIDE EFFECTS
+   * Releases vendor resources and resets device creation state.
+   */
   @Override
   public void closeAll() {
     for (DeviceTypeBucket bucket : buckets) {
@@ -152,6 +248,19 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * captureSnapshots
+   *
+   * SYNOPSIS
+   * Capture snapshots for all REV devices.
+   *
+   * PARAMETERS
+   * nowSec - current time in seconds for timestamping.
+   *
+   * RETURNS
+   * List of device snapshots.
+   */
   @Override
   public List<DeviceSnapshot> captureSnapshots(double nowSec) {
     List<DeviceSnapshot> devices = new ArrayList<>();
@@ -164,6 +273,16 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     return devices;
   }
 
+  /**
+   * NAME
+   * appendState
+   *
+   * SYNOPSIS
+   * Append a short REV device state listing.
+   *
+   * PARAMETERS
+   * sb - builder to append text into.
+   */
   public void appendState(StringBuilder sb) {
     for (DeviceTypeBucket bucket : buckets) {
       List<DeviceUnit> bucketDevices = bucket.getDevices();
@@ -181,6 +300,17 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * appendHealth
+   *
+   * SYNOPSIS
+   * Append REV motor health status lines.
+   *
+   * PARAMETERS
+   * sb - builder to append text into.
+   * nowSec - current time in seconds for timestamping.
+   */
   public void appendHealth(StringBuilder sb, double nowSec) {
     for (DeviceTypeBucket bucket : buckets) {
       if (bucket.getRegistration().role() != DeviceRole.MOTOR) {
@@ -221,6 +351,20 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * register
+   *
+   * SYNOPSIS
+   * Register devices of a specific REV type into buckets.
+   *
+   * PARAMETERS
+   * registration - device registration to instantiate.
+   * trackLowCurrent - whether to track low-current timers for this type.
+   *
+   * SIDE EFFECTS
+   * Constructs device units from configuration and stores them.
+   */
   private void register(DeviceRegistration registration, boolean trackLowCurrent) {
     requireRegistrationHeader(registration);
     List<DeviceConfig> configs = BringupUtil.getDeviceConfigs(
@@ -240,6 +384,21 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * snapshotDevice
+   *
+   * SYNOPSIS
+   * Capture a snapshot for a REV device in a bucket.
+   *
+   * PARAMETERS
+   * bucket - device bucket containing the device.
+   * index - index within the bucket.
+   * nowSec - current time in seconds for timestamping.
+   *
+   * RETURNS
+   * A populated device snapshot.
+   */
   private DeviceSnapshot snapshotDevice(DeviceTypeBucket bucket, int index, double nowSec) {
     DeviceUnit device = bucket.getDevices().get(index);
     DeviceSnapshot snap = device.snapshot();
@@ -263,12 +422,39 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     return snap;
   }
 
+  /**
+   * NAME
+   * requireRegistrationHeader
+   *
+   * SYNOPSIS
+   * Enforce that a registration contains required metadata.
+   *
+   * PARAMETERS
+   * registration - registration to validate.
+   *
+   * ERRORS
+   * Throws IllegalStateException when the header is missing.
+   */
   private void requireRegistrationHeader(DeviceRegistration registration) {
     if (registration == null || registration.header() == null) {
       throw new IllegalStateException("Device registration missing required header.");
     }
   }
 
+  /**
+   * NAME
+   * warnIfMissingMotorSpec
+   *
+   * SYNOPSIS
+   * Emit a warning when a motor spec is missing.
+   *
+   * PARAMETERS
+   * label - device label used for spec lookup.
+   * modelOverride - optional motor model override.
+   *
+   * SIDE EFFECTS
+   * Writes a warning to standard output.
+   */
   private void warnIfMissingMotorSpec(String label, String modelOverride) {
     BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
     if (spec == null) {
@@ -276,6 +462,18 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     }
   }
 
+  /**
+   * NAME
+   * fillSpecForRev
+   *
+   * SYNOPSIS
+   * Attach motor specification data to a REV snapshot.
+   *
+   * PARAMETERS
+   * snap - snapshot to enrich with motor spec data.
+   * label - device label used for spec lookup.
+   * modelOverride - optional motor model override.
+   */
   private void fillSpecForRev(DeviceSnapshot snap, String label, String modelOverride) {
     snap.label = label;
     BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
@@ -290,6 +488,20 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     snap.addAttachment(motorSpec);
   }
 
+  /**
+   * NAME
+   * buildRevHealthNote
+   *
+   * SYNOPSIS
+   * Produce a short health note based on REV error state and bus voltage.
+   *
+   * PARAMETERS
+   * lastError - last reported REV error string.
+   * busVoltage - current bus voltage.
+   *
+   * RETURNS
+   * A short note string or empty when no note applies.
+   */
   private String buildRevHealthNote(String lastError, double busVoltage) {
     if (lastError == null || lastError.isBlank()) {
       return "";
@@ -303,6 +515,23 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     return "";
   }
 
+  /**
+   * NAME
+   * buildLowCurrentNote
+   *
+   * SYNOPSIS
+   * Detect sustained low-current behavior for a motor.
+   *
+   * PARAMETERS
+   * lowCurrentStart - per-device start times for low-current tracking.
+   * index - device index in the bucket.
+   * nowSec - current time in seconds.
+   * appliedVolts - applied motor voltage.
+   * currentA - measured motor current.
+   *
+   * RETURNS
+   * A short note string or empty when no note applies.
+   */
   private String buildLowCurrentNote(
       double[] lowCurrentStart,
       int index,

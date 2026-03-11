@@ -13,7 +13,17 @@ import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.registry.RegistrationHeader;
 import edu.wpi.first.wpilibj.DigitalInput;
 
-// Device wrapper for a REV Spark Max controlling a NEO 550.
+/**
+ * NAME
+ * RevSparkMaxNeo550Device
+ *
+ * SYNOPSIS
+ * Device wrapper for a REV Spark Max controlling a NEO 550.
+ *
+ * DESCRIPTION
+ * Provides bringup lifecycle, telemetry, limit switch handling, and optional
+ * alternate encoder access for Spark Max devices.
+ */
 public final class RevSparkMaxNeo550Device implements DeviceUnit {
   public static final RegistrationHeader HEADER = new RegistrationHeader(
       "SparkMax NEO 550",
@@ -33,6 +43,22 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
   private boolean altEncoderConfigured = false;
   private int altEncoderCpr = 8192;
 
+  /**
+   * NAME
+   * RevSparkMaxNeo550Device
+   *
+   * SYNOPSIS
+   * Construct a Spark Max NEO 550 device wrapper.
+   *
+   * PARAMETERS
+   * canId - CAN ID of the motor controller.
+   * label - human-readable label for reporting.
+   * motorModelOverride - optional motor model override for spec lookup.
+   * limitConfig - optional limit switch configuration.
+   *
+   * SIDE EFFECTS
+   * Initializes DIO inputs when limit switches are configured.
+   */
   public RevSparkMaxNeo550Device(
       int canId,
       String label,
@@ -64,7 +90,6 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
   public RegistrationHeader getHeader() {
     return HEADER;
   }
-
   public String getMotorModelOverride() {
     return motorModelOverride;
   }
@@ -74,6 +99,16 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     return device != null;
   }
 
+  /**
+   * NAME
+   * ensureCreated
+   *
+   * SYNOPSIS
+   * Construct and configure the Spark Max device if needed.
+   *
+   * SIDE EFFECTS
+   * Allocates a vendor device and configures it asynchronously.
+   */
   @Override
   public void ensureCreated() {
     if (device != null) {
@@ -87,6 +122,16 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
         PersistMode.kNoPersistParameters);
   }
 
+  /**
+   * NAME
+   * close
+   *
+   * SYNOPSIS
+   * Release vendor and DIO resources.
+   *
+   * SIDE EFFECTS
+   * Closes device handles and limit switch inputs.
+   */
   @Override
   public void close() {
     BringupUtil.closeIfPossible(device);
@@ -97,6 +142,16 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     revLimit = null;
   }
 
+  /**
+   * NAME
+   * clearFaults
+   *
+   * SYNOPSIS
+   * Clear faults on the Spark Max.
+   *
+   * SIDE EFFECTS
+   * Sends vendor fault-clear commands.
+   */
   @Override
   public void clearFaults() {
     if (device != null) {
@@ -104,6 +159,19 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     }
   }
 
+  /**
+   * NAME
+   * setDuty
+   *
+   * SYNOPSIS
+   * Apply open-loop duty with limit switch enforcement.
+   *
+   * PARAMETERS
+   * duty - requested output in [-1, 1].
+   *
+   * SIDE EFFECTS
+   * Commands motor output via the vendor API.
+   */
   @Override
   public void setDuty(double duty) {
     if (device != null) {
@@ -111,6 +179,13 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     }
   }
 
+  /**
+   * NAME
+   * stop
+   *
+   * SYNOPSIS
+   * Stop the motor output.
+   */
   @Override
   public void stop() {
     if (device != null) {
@@ -118,16 +193,40 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     }
   }
 
+  /**
+   * NAME
+   * activate
+   *
+   * SYNOPSIS
+   * Activate the device by ensuring it is created.
+   */
   @Override
   public void activate() {
     ensureCreated();
   }
 
+  /**
+   * NAME
+   * deactivate
+   *
+   * SYNOPSIS
+   * Deactivate the device by stopping output.
+   */
   @Override
   public void deactivate() {
     stop();
   }
 
+  /**
+   * NAME
+   * snapshot
+   *
+   * SYNOPSIS
+   * Capture a diagnostic snapshot of the device.
+   *
+   * RETURNS
+   * A snapshot containing vendor telemetry and limit switch state.
+   */
   @Override
   public DeviceSnapshot snapshot() {
     if (device == null) {
@@ -148,6 +247,16 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     return snap;
   }
 
+  /**
+   * NAME
+   * getPositionRotations
+   *
+   * SYNOPSIS
+   * Return the integrated encoder position in rotations.
+   *
+   * RETURNS
+   * Position in rotations, or null on read error or when not created.
+   */
   @Override
   public Double getPositionRotations() {
     if (device == null) {
@@ -160,6 +269,20 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     }
   }
 
+  /**
+   * NAME
+   * getPositionRotations
+   *
+   * SYNOPSIS
+   * Return position from the selected encoder source.
+   *
+   * PARAMETERS
+   * encoderSource - encoder source selector string.
+   * countsPerRev - optional counts per revolution for alternate encoders.
+   *
+   * RETURNS
+   * Position in rotations, or null when unavailable.
+   */
   @Override
   public Double getPositionRotations(String encoderSource, Integer countsPerRev) {
     if (isAltEncoder(encoderSource)) {
@@ -168,6 +291,16 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     return getPositionRotations();
   }
 
+  /**
+   * NAME
+   * initLimitInputs
+   *
+   * SYNOPSIS
+   * Initialize DIO inputs for configured limit switches.
+   *
+   * SIDE EFFECTS
+   * Allocates DigitalInput instances when DIO channels are configured.
+   */
   private void initLimitInputs() {
     if (limitConfig.hasForward()) {
       fwdLimit = new DigitalInput(limitConfig.fwdDio);
@@ -177,6 +310,16 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     }
   }
 
+  /**
+   * NAME
+   * addLimitAttachment
+   *
+   * SYNOPSIS
+   * Attach limit switch telemetry to a device snapshot.
+   *
+   * PARAMETERS
+   * snap - snapshot to populate with limit data.
+   */
   private void addLimitAttachment(DeviceSnapshot snap) {
     if (!limitConfig.hasForward() && !limitConfig.hasReverse()) {
       return;
@@ -194,6 +337,19 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     snap.addAttachment(limits);
   }
 
+  /**
+   * NAME
+   * readLimit
+   *
+   * SYNOPSIS
+   * Read a limit input and apply inversion if configured.
+   *
+   * PARAMETERS
+   * input - DIO input to sample.
+   *
+   * RETURNS
+   * True if closed, false if open, or null when input is absent.
+   */
   private Boolean readLimit(DigitalInput input) {
     if (input == null) {
       return null;
@@ -202,6 +358,19 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     return limitConfig.invert ? !raw : raw;
   }
 
+  /**
+   * NAME
+   * isAltEncoder
+   *
+   * SYNOPSIS
+   * Determine whether the requested source targets the alternate encoder.
+   *
+   * PARAMETERS
+   * encoderSource - encoder source selector string.
+   *
+   * RETURNS
+   * True when the alternate encoder should be used.
+   */
   private boolean isAltEncoder(String encoderSource) {
     if (encoderSource == null) {
       return false;
@@ -213,6 +382,22 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
         || normalized.equals("through_bore");
   }
 
+  /**
+   * NAME
+   * readAlternateEncoder
+   *
+   * SYNOPSIS
+   * Read the alternate encoder position, configuring CPR if needed.
+   *
+   * PARAMETERS
+   * countsPerRev - optional counts per revolution for the alternate encoder.
+   *
+   * RETURNS
+   * Position in rotations, or null on read error or when not created.
+   *
+   * SIDE EFFECTS
+   * Reconfigures the alternate encoder CPR when it changes.
+   */
   private Double readAlternateEncoder(Integer countsPerRev) {
     if (device == null) {
       return null;
@@ -232,6 +417,19 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     }
   }
 
+  /**
+   * NAME
+   * applyLimit
+   *
+   * SYNOPSIS
+   * Enforce limit switches by clamping duty to zero when tripped.
+   *
+   * PARAMETERS
+   * duty - requested output in [-1, 1].
+   *
+   * RETURNS
+   * Duty command after limit switch enforcement.
+   */
   private double applyLimit(double duty) {
     Boolean fwdClosed = readLimit(fwdLimit);
     if (Boolean.TRUE.equals(fwdClosed) && duty > 0.0) {

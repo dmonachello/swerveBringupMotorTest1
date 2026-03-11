@@ -2,5 +2,15 @@ package frc.robot.manufacturers;
 
 import frc.robot.devices.DeviceUnit;
 
-// Result of adding the next device in a bucket.
+/**
+ * NAME
+ * DeviceAddResult
+ *
+ * SYNOPSIS
+ * Record describing the outcome of adding a device from a bucket.
+ *
+ * DESCRIPTION
+ * Captures the constructed device, its index within the bucket, and the
+ * registration that produced it.
+ */
 public record DeviceAddResult(DeviceUnit device, int index, DeviceRegistration registration) {}

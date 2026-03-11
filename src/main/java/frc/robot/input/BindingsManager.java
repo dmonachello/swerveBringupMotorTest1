@@ -18,6 +18,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+/**
+ * NAME
+ *   BindingsManager - Load and evaluate controller bindings.
+ *
+ * DESCRIPTION
+ *   Parses bringup_bindings.json and provides runtime sampling of buttons
+ *   and axes into named commands.
+ */
 public final class BindingsManager {
   private static final String BINDINGS_FILE = "bringup_bindings.json";
   private static final Gson GSON = new Gson();
@@ -25,10 +33,26 @@ public final class BindingsManager {
   private final List<BindingSpec> bindings = new ArrayList<>();
   private final List<AxisSpec> axes = new ArrayList<>();
 
+  /**
+   * NAME
+   *   BindingsManager - Construct and load bindings.
+   */
   public BindingsManager() {
     loadBindings();
   }
 
+  /**
+   * NAME
+   *   sample - Sample controller inputs into a BindingState.
+   *
+   * PARAMETERS
+   *   primary - Primary Xbox controller.
+   *   secondary - Secondary Xbox controller (optional).
+   *   edge - EdgeTrigger for rising-edge detection.
+   *
+   * RETURNS
+   *   BindingState snapshot for this cycle.
+   */
   public BindingState sample(XboxController primary, XboxController secondary, EdgeTrigger edge) {
     BindingState state = new BindingState();
     for (int i = 0; i < bindings.size(); i++) {
@@ -70,6 +94,10 @@ public final class BindingsManager {
     return state;
   }
 
+  /**
+   * NAME
+   *   describeBindings - Return human-readable binding descriptions.
+   */
   public List<String> describeBindings() {
     List<String> lines = new ArrayList<>();
     for (BindingSpec spec : bindings) {
@@ -79,6 +107,10 @@ public final class BindingsManager {
     return lines;
   }
 
+  /**
+   * NAME
+   *   describeAxes - Return human-readable axis descriptions.
+   */
   public List<String> describeAxes() {
     List<String> lines = new ArrayList<>();
     for (AxisSpec spec : axes) {
@@ -305,23 +337,43 @@ public final class BindingsManager {
     return Paths.get(BINDINGS_FILE);
   }
 
+  /**
+   * NAME
+   *   BindingState - Snapshot of button/axis states.
+   */
   public static final class BindingState {
     private final Map<String, Boolean> pressed = new HashMap<>();
     private final Map<String, Boolean> holds = new HashMap<>();
     private final Map<String, Double> axes = new HashMap<>();
 
+    /**
+     * NAME
+     *   pressed - Return rising-edge state for a command.
+     */
     public boolean pressed(String command) {
       return pressed.getOrDefault(command, false);
     }
 
+    /**
+     * NAME
+     *   held - Return current held state for a command.
+     */
     public boolean held(String command) {
       return holds.getOrDefault(command, false);
     }
 
+    /**
+     * NAME
+     *   axis - Return axis value for a command.
+     */
     public double axis(String command) {
       return axes.getOrDefault(command, 0.0);
     }
 
+    /**
+     * NAME
+     *   hasAxis - Return whether an axis binding exists for a command.
+     */
     public boolean hasAxis(String command) {
       return axes.containsKey(command);
     }
@@ -332,6 +384,10 @@ public final class BindingsManager {
     List<AxisSpec> axes = Collections.emptyList();
   }
 
+  /**
+   * NAME
+   *   BindingSpec - JSON binding specification.
+   */
   public static final class BindingSpec {
     String command;
     String controller;
@@ -364,6 +420,10 @@ public final class BindingsManager {
     }
   }
 
+  /**
+   * NAME
+   *   AxisSpec - JSON axis specification.
+   */
   public static final class AxisSpec {
     String command;
     String controller;

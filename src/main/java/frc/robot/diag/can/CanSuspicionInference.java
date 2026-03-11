@@ -8,10 +8,34 @@ import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 import java.util.List;
 
-// Best-effort inference of CAN health issues from device telemetry.
+/**
+ * NAME
+ * CanSuspicionInference
+ *
+ * SYNOPSIS
+ * Best-effort inference of CAN health issues from device telemetry.
+ *
+ * DESCRIPTION
+ * Infers likely CAN-related problems using device-specific diagnostics and
+ * bus-level counters, without direct CAN bus reads.
+ */
 public final class CanSuspicionInference {
   private CanSuspicionInference() {}
 
+  /**
+   * NAME
+   * infer
+   *
+   * SYNOPSIS
+   * Infer a CAN suspicion attachment for a device snapshot.
+   *
+   * PARAMETERS
+   * snap - device snapshot containing vendor telemetry.
+   * bus - bus snapshot with controller health counters.
+   *
+   * RETURNS
+   * A suspicion attachment, or null when the device type is not recognized.
+   */
   public static CanSuspicionAttachment infer(DeviceSnapshot snap, BusSnapshot bus) {
     if (snap == null || snap.deviceType == null || snap.deviceType.isBlank()) {
       return null;
@@ -29,6 +53,13 @@ public final class CanSuspicionInference {
     return null;
   }
 
+  /**
+   * NAME
+   * inferRev
+   *
+   * SYNOPSIS
+   * Infer CAN suspicion state for REV motor devices.
+   */
   private static CanSuspicionAttachment inferRev(DeviceSnapshot snap, BusSnapshot bus) {
     CanSuspicionAttachment out = baseAttachment();
     setExpected(out, "OK", "No CAN errors expected during normal operation.");
@@ -54,6 +85,13 @@ public final class CanSuspicionInference {
     return out;
   }
 
+  /**
+   * NAME
+   * inferCtreMotor
+   *
+   * SYNOPSIS
+   * Infer CAN suspicion state for CTRE motor devices.
+   */
   private static CanSuspicionAttachment inferCtreMotor(DeviceSnapshot snap, BusSnapshot bus) {
     CanSuspicionAttachment out = baseAttachment();
     setExpected(out, "OK", "No CAN errors expected during normal operation.");
@@ -74,6 +112,13 @@ public final class CanSuspicionInference {
     return out;
   }
 
+  /**
+   * NAME
+   * inferCANCoder
+   *
+   * SYNOPSIS
+   * Infer CAN suspicion state for CTRE CANCoder devices.
+   */
   private static CanSuspicionAttachment inferCANCoder(DeviceSnapshot snap, BusSnapshot bus) {
     CanSuspicionAttachment out = baseAttachment();
     setExpected(out, "OK", "No CAN errors expected during normal operation.");
@@ -94,23 +139,54 @@ public final class CanSuspicionInference {
     return out;
   }
 
+  /**
+   * NAME
+   * baseAttachment
+   *
+   * SYNOPSIS
+   * Create a base attachment with common notes.
+   *
+   * RETURNS
+   * A new attachment with shared metadata filled in.
+   */
   private static CanSuspicionAttachment baseAttachment() {
     CanSuspicionAttachment out = new CanSuspicionAttachment();
     out.note = "Best-effort inference from telemetry; not a direct CAN bus read.";
     return out;
   }
 
+  /**
+   * NAME
+   * setExpected
+   *
+   * SYNOPSIS
+   * Populate expected state fields.
+   */
   private static void setExpected(CanSuspicionAttachment out, String state, String meaning) {
     out.expectedState = safe(state);
     out.expectedMeaning = safe(meaning);
   }
 
+  /**
+   * NAME
+   * setLikely
+   *
+   * SYNOPSIS
+   * Populate likely state fields and confidence.
+   */
   private static void setLikely(CanSuspicionAttachment out, String state, String meaning, String confidence) {
     out.likelyState = safe(state);
     out.likelyMeaning = safe(meaning);
     out.confidence = safe(confidence);
   }
 
+  /**
+   * NAME
+   * hasAnyRaw
+   *
+   * SYNOPSIS
+   * Check whether any raw fault counters are non-zero.
+   */
   private static boolean hasAnyRaw(int... values) {
     if (values == null) {
       return false;
@@ -123,6 +199,13 @@ public final class CanSuspicionInference {
     return false;
   }
 
+  /**
+   * NAME
+   * hasAnyFlags
+   *
+   * SYNOPSIS
+   * Check whether any fault/warning flag lists are non-empty.
+   */
   @SafeVarargs
   private static boolean hasAnyFlags(List<String>... flags) {
     if (flags == null) {
@@ -136,6 +219,13 @@ public final class CanSuspicionInference {
     return false;
   }
 
+  /**
+   * NAME
+   * hasAnyFlags
+   *
+   * SYNOPSIS
+   * Check whether any flag lists or raw counters indicate faults.
+   */
   private static boolean hasAnyFlags(
       List<String> f1,
       List<String> f2,
@@ -148,6 +238,13 @@ public final class CanSuspicionInference {
     return hasAnyFlags(f1, f2, f3, f4) || hasAnyRaw(raw1, raw2, raw3, raw4);
   }
 
+  /**
+   * NAME
+   * hasNonOk
+   *
+   * SYNOPSIS
+   * Determine whether a vendor status string indicates an error.
+   */
   private static boolean hasNonOk(String value) {
     if (value == null || value.isBlank()) {
       return false;
@@ -155,6 +252,13 @@ public final class CanSuspicionInference {
     return !"OK".equalsIgnoreCase(value) && !"kOk".equalsIgnoreCase(value);
   }
 
+  /**
+   * NAME
+   * hasBusIssues
+   *
+   * SYNOPSIS
+   * Detect bus-level health counter activity.
+   */
   private static boolean hasBusIssues(BusSnapshot bus) {
     if (bus == null || !bus.valid) {
       return false;
@@ -164,6 +268,13 @@ public final class CanSuspicionInference {
         || bus.rxDelta > 0 || bus.txDelta > 0;
   }
 
+  /**
+   * NAME
+   * safe
+   *
+   * SYNOPSIS
+   * Normalize null strings to empty strings.
+   */
   private static String safe(String value) {
     return value == null ? "" : value;
   }

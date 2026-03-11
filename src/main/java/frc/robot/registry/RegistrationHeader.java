@@ -1,6 +1,9 @@
 package frc.robot.registry;
 
-// Required metadata for any registered manufacturer or device.
+/**
+ * NAME
+ *   RegistrationHeader - Metadata for registered manufacturers/devices.
+ */
 public record RegistrationHeader(
     String name,
     String vendor,

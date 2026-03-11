@@ -1,9 +1,31 @@
 from __future__ import annotations
 
+"""
+NAME
+    can_nt_publish.py - NetworkTables publishing helpers for CAN devices.
+
+SYNOPSIS
+    from can_nt_publish import publish_devices
+
+DESCRIPTION
+    Encodes per-device presence/age metrics into NetworkTables keys under
+    bringup/diag/dev.
+"""
+
 from typing import Any, Dict, List, Tuple
 
 
 def decode_frc_ext_id(arb_id: int) -> Tuple[int, int, int]:
+    """
+    NAME
+        decode_frc_ext_id - Decode manufacturer/type/device ID from arb ID.
+
+    PARAMETERS
+        arb_id: 29-bit arbitration ID (extended frame).
+
+    RETURNS
+        (manufacturer, device_type, device_id).
+    """
     # FRC extended CAN layout (common subset):
     # manufacturer: bits 16..23
     # device_type:  bits 24..28
@@ -25,6 +47,24 @@ def publish_devices(
     now: float,
     timeout_s: float,
 ) -> None:
+    """
+    NAME
+        publish_devices - Write per-device presence metrics to NetworkTables.
+
+    PARAMETERS
+        table: NetworkTables base table (bringup/diag).
+        devices: Profile device list with metadata.
+        last_seen: Last traffic timestamp per device.
+        status_last_seen: Last status-frame timestamp per device.
+        control_last_seen: Last control-frame timestamp per device.
+        uses_status_presence: Predicate for status-based presence confidence.
+        msg_count: Total message counts per device.
+        now: Current wall-clock time (seconds).
+        timeout_s: Presence timeout threshold in seconds.
+
+    SIDE EFFECTS
+        Writes multiple NetworkTables entries under dev/<mfg>/<type>/<id>.
+    """
     for spec in devices:
         key = (spec["manufacturer"], spec["device_type"], spec["device_id"])
         traffic_ts = last_seen.get(key)

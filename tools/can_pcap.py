@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+"""
+NAME
+    can_pcap.py - PCAP/PCAPNG capture helpers for the CAN tool.
+
+SYNOPSIS
+    from can_pcap import setup_pcap, handle_marker_keys
+
+DESCRIPTION
+    Builds PCAPNG comments, configures logging outputs, and supports keyboard
+    marker injection for capture correlation.
+"""
+
 import queue
 import time
 from typing import Iterable
@@ -9,6 +21,17 @@ from can_state import SnifferState
 
 
 def build_pcap_comment(args, channel: str) -> str:
+    """
+    NAME
+        build_pcap_comment - Build a PCAPNG section comment string.
+
+    PARAMETERS
+        args: Parsed CLI args with capture metadata.
+        channel: CAN channel description.
+
+    RETURNS
+        Comment string for PCAPNG captures or empty string.
+    """
     if (args.pcap and args.pcap.lower().endswith(".pcapng")) or args.pcap_pipe:
         start_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
         parts = [
@@ -24,6 +47,20 @@ def build_pcap_comment(args, channel: str) -> str:
 
 
 def setup_pcap(args, pcap_comment: str) -> PcapLogger:
+    """
+    NAME
+        setup_pcap - Initialize the PCAP logger or pipe.
+
+    PARAMETERS
+        args: Parsed CLI args containing pcap options.
+        pcap_comment: Section comment for PCAPNG outputs.
+
+    RETURNS
+        PcapLogger instance (inactive if setup failed).
+
+    SIDE EFFECTS
+        Opens files or named pipes and prints status messages.
+    """
     if args.pcap_pipe:
         print(f"Waiting for Wireshark to connect to pipe: {args.pcap_pipe}")
     pcap = PcapLogger(args.pcap, pcap_comment, pipe_name=args.pcap_pipe)
@@ -49,6 +86,25 @@ def handle_marker_keys(
     state: SnifferState,
     print_banner,
 ) -> bool:
+    """
+    NAME
+        handle_marker_keys - Consume keyboard markers and write PCAP events.
+
+    PARAMETERS
+        args: Parsed CLI args controlling marker behavior.
+        key_queue: Queue of (key, timestamp) events.
+        marker_keys: Allowed marker keys.
+        pcap: Active PcapLogger.
+        tx_stop: Event to stop TX playback.
+        state: SnifferState with marker counters.
+        print_banner: Callback to print marker help.
+
+    RETURNS
+        True when a quit key requests loop termination.
+
+    SIDE EFFECTS
+        Writes marker frames to PCAPNG and prints user feedback.
+    """
     stop_requested = False
     while True:
         try:

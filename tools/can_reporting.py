@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+"""
+NAME
+    can_reporting.py - Console/summary reporting helpers.
+
+SYNOPSIS
+    from can_reporting import print_summary, format_frame_line
+
+DESCRIPTION
+    Formats NetworkTables key inventories, status transitions, and summary
+    lines for human-readable diagnostics.
+"""
+
 import json
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -10,6 +22,18 @@ from can_state import SnifferState
 
 
 def print_or_dump_nt_keys(devices, print_keys: bool, dump_path: str) -> None:
+    """
+    NAME
+        print_or_dump_nt_keys - Emit or persist the published NT key list.
+
+    PARAMETERS
+        devices: Profile device list used to expand per-device keys.
+        print_keys: Whether to print to stdout.
+        dump_path: Optional JSON output path.
+
+    SIDE EFFECTS
+        Prints to stdout and/or writes a JSON file.
+    """
     keys = []
     for spec in devices:
         base = f"bringup/diag/dev/{spec['manufacturer']}/{spec['device_type']}/{spec['device_id']}"
@@ -69,6 +93,17 @@ def print_status_transitions(
     last_status: Dict[Tuple[int, int, int], str],
     uses_status_presence,
 ) -> None:
+    """
+    NAME
+        print_status_transitions - Print device seen/missing transitions.
+
+    DESCRIPTION
+        Compares current presence against cached status and prints transitions
+        when a device crosses the timeout threshold.
+
+    SIDE EFFECTS
+        Writes to stdout.
+    """
     for spec in devices:
         key = (spec["manufacturer"], spec["device_type"], spec["device_id"])
         traffic_ts = last_seen.get(key)
@@ -93,6 +128,13 @@ def print_status_transitions(
 
 
 def build_device_label_map(devices: List[Dict[str, Any]]) -> Dict[Tuple[int, int, int], str]:
+    """
+    NAME
+        build_device_label_map - Map (mfg,type,id) to human labels.
+
+    RETURNS
+        Dictionary keyed by (manufacturer, device_type, device_id).
+    """
     labels: Dict[Tuple[int, int, int], str] = {}
     for dev in devices:
         try:
@@ -116,6 +158,13 @@ def format_frame_line(
     data: bytes,
     label: str,
 ) -> str:
+    """
+    NAME
+        format_frame_line - Format a single CAN frame for console output.
+
+    RETURNS
+        A one-line string with identifiers, label, and data bytes.
+    """
     mfg_names = {
         1: "NI",
         4: "CTRE",
@@ -140,6 +189,17 @@ def format_frame_line(
 
 
 def format_can_id(can_id_hex: str, labels: Dict[Tuple[int, int, int], str]) -> str:
+    """
+    NAME
+        format_can_id - Render a CAN ID with decoded labels and names.
+
+    PARAMETERS
+        can_id_hex: Hex string of the arbitration ID (no 0x required).
+        labels: Optional device label map.
+
+    RETURNS
+        String containing decoded manufacturer/type/id and label.
+    """
     try:
         can_id = int(can_id_hex, 16)
     except Exception:
@@ -164,6 +224,13 @@ def format_can_id(can_id_hex: str, labels: Dict[Tuple[int, int, int], str]) -> s
 
 
 def get_bus_dropped(bus) -> Optional[int]:
+    """
+    NAME
+        get_bus_dropped - Extract dropped-frame counters from a bus object.
+
+    RETURNS
+        Integer drop count when available, otherwise None.
+    """
     for attr in ("dropped_frames", "drop_count", "rx_overflow", "rx_dropped"):
         value = getattr(bus, attr, None)
         if isinstance(value, int):
@@ -179,6 +246,16 @@ def build_summary_extra(
     bus,
     bitrate: int,
 ) -> Dict[str, Any]:
+    """
+    NAME
+        build_summary_extra - Compute derived summary fields for printing.
+
+    DESCRIPTION
+        Adds bus-load percentage and counts of seen/unknown devices.
+
+    RETURNS
+        Dictionary of extra summary values.
+    """
     bytes_per_s = summary.get("bus", {}).get("bytes_per_s", 0.0)
     bus_load_pct = None
     if isinstance(bytes_per_s, (int, float)) and bitrate > 0:
@@ -202,6 +279,19 @@ def print_summary(
     labels: Dict[Tuple[int, int, int], str],
     extra: Dict[str, Any],
 ) -> None:
+    """
+    NAME
+        print_summary - Print a compact periodic summary line.
+
+    PARAMETERS
+        summary: Analyzer summary payload.
+        now: Current wall-clock time (seconds).
+        labels: Device label map.
+        extra: Derived summary fields.
+
+    SIDE EFFECTS
+        Writes to stdout.
+    """
     bus = summary.get("bus", {})
     health = summary.get("health", {})
     top = summary.get("top", [])

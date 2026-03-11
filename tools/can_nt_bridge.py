@@ -1,4 +1,22 @@
 #!/usr/bin/env python3
+"""
+NAME
+    can_nt_bridge.py - FRC CAN bringup diagnostics runner.
+
+SYNOPSIS
+    python can_nt_bridge.py [options]
+
+DESCRIPTION
+    Runs the PC-side CAN sniffer, optional NetworkTables publishing, optional
+    PCAP logging, and console monitoring. Designed for Windows + CANable slcan.
+
+SIDE EFFECTS
+    Opens the CAN interface, optional NetworkTables client, optional PCAP file
+    or pipe, optional NetConsole sockets, and emits console output.
+
+ERRORS
+    Exits nonzero when CAN bus open or incompatible options fail.
+"""
 from __future__ import annotations
 
 import queue
@@ -36,6 +54,31 @@ def _maybe_handle_dumps(
     state: SnifferState,
     devices: List[Dict[str, Any]],
 ) -> bool:
+    """
+    NAME
+        _maybe_handle_dumps - Emit one-shot dump outputs when timers elapse.
+
+    SYNOPSIS
+        handled = _maybe_handle_dumps(args, now, start, analyzer, state, devices)
+
+    DESCRIPTION
+        Checks configured dump flags and their delays, writes outputs once, and
+        signals the caller to exit when a dump completes.
+
+    PARAMETERS
+        args: Parsed CLI arguments with dump settings.
+        now: Current wall-clock time (seconds).
+        start: Process start time (seconds).
+        analyzer: Live analyzer for seen IDs.
+        state: SnifferState carrying observed pairs and timestamps.
+        devices: Profile device list for context.
+
+    RETURNS
+        True when a dump was produced and the caller should exit.
+
+    SIDE EFFECTS
+        Writes JSON or profile outputs to disk and prints status lines.
+    """
     if args.dump_can_expected_ids and (now - start) >= args.dump_after:
         seen_sorted = sorted(analyzer.seen_ids())
         dump_seen_ids(
@@ -76,6 +119,26 @@ def _maybe_handle_dumps(
 
 
 def main(argv: Optional[Iterable[str]] = None) -> int:
+    """
+    NAME
+        main - Entry point for the CAN bringup diagnostics tool.
+
+    SYNOPSIS
+        exit_code = main(argv=None)
+
+    DESCRIPTION
+        Parses CLI arguments, opens the CAN bus, configures optional outputs,
+        and runs the sniffer loop with NT publishing and summary printing.
+
+    PARAMETERS
+        argv: Optional argument list; defaults to sys.argv when None.
+
+    RETURNS
+        Process exit code (0 on success, nonzero on error).
+
+    SIDE EFFECTS
+        Opens hardware interfaces, sockets, files, and writes NT/PCAP outputs.
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
 

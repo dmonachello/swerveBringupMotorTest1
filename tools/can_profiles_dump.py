@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+"""
+NAME
+    can_profiles_dump.py - Helpers to emit profiles and config snapshots.
+
+SYNOPSIS
+    from can_profiles_dump import dump_seen_ids, dump_profile, dump_can_config
+
+DESCRIPTION
+    Serializes observed IDs into JSON artifacts for profile generation and
+    reproducible configuration files.
+"""
+
 import json
 import time
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -15,6 +27,21 @@ def dump_seen_ids(
     bitrate: int,
     seen_ids: list[int],
 ) -> None:
+    """
+    NAME
+        dump_seen_ids - Write a snapshot of observed arbitration IDs.
+
+    PARAMETERS
+        path: Output JSON file path.
+        profile: Active profile name.
+        interface: CAN interface type.
+        channel: CAN channel identifier.
+        bitrate: CAN bitrate in bps.
+        seen_ids: Sorted list of observed arbitration IDs.
+
+    SIDE EFFECTS
+        Writes JSON to disk.
+    """
     now = time.time()
     payload = {
         "created": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)),
@@ -37,6 +64,18 @@ def _build_profile_from_seen(
     profile_name: str,
     include_unknown: bool,
 ) -> Dict[str, object]:
+    """
+    NAME
+        _build_profile_from_seen - Generate a profile mapping from observed IDs.
+
+    PARAMETERS
+        seen_keys: Iterable of (mfg, type, id) tuples.
+        profile_name: Name to embed in metadata.
+        include_unknown: Whether to include unknown devices.
+
+    RETURNS
+        Profile dictionary compatible with bringup_profiles.json.
+    """
     buckets: Dict[str, List[Dict[str, int]]] = {
         "neos": [],
         "flexes": [],
@@ -107,6 +146,19 @@ def dump_profile(
     seen_keys: Iterable[Tuple[int, int, int]],
     include_unknown: bool,
 ) -> None:
+    """
+    NAME
+        dump_profile - Write a bringup_profiles.json file from observations.
+
+    PARAMETERS
+        path: Output JSON file path.
+        profile_name: Profile key to create in output.
+        seen_keys: Observed (mfg, type, id) tuples.
+        include_unknown: Whether to include unknown devices.
+
+    SIDE EFFECTS
+        Writes JSON to disk.
+    """
     payload = {
         "default_profile": profile_name,
         "profiles": {
@@ -121,6 +173,18 @@ def dump_profile(
 
 
 def dump_can_config(path: str, args, devices: List[Dict[str, object]]) -> None:
+    """
+    NAME
+        dump_can_config - Emit a can_nt_config.json-style snapshot.
+
+    PARAMETERS
+        path: Output JSON file path.
+        args: Parsed CLI args for metadata.
+        devices: Device list from the active profile.
+
+    SIDE EFFECTS
+        Writes JSON to disk.
+    """
     payload = {
         "created": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time())),
         "generated_from_profile": args.profile,

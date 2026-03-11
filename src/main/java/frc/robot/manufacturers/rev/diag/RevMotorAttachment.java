@@ -4,7 +4,16 @@ import frc.robot.diag.snapshots.DeviceAttachment;
 import java.util.ArrayList;
 import java.util.List;
 
-// REV motor telemetry + fault data.
+/**
+ * NAME
+ * RevMotorAttachment
+ *
+ * SYNOPSIS
+ * REV motor telemetry and fault data attachment.
+ *
+ * DESCRIPTION
+ * Carries REV motor diagnostics for inclusion in device snapshots.
+ */
 public final class RevMotorAttachment extends DeviceAttachment {
   public int faultsRaw = 0;
   public int stickyFaultsRaw = 0;
@@ -26,6 +35,13 @@ public final class RevMotorAttachment extends DeviceAttachment {
   public final List<String> warningFlags = new ArrayList<>();
   public final List<String> stickyWarningFlags = new ArrayList<>();
 
+  /**
+   * NAME
+   * RevMotorAttachment
+   *
+   * SYNOPSIS
+   * Construct a REV motor attachment with the standard type tag.
+   */
   public RevMotorAttachment() {
     super("revMotor");
   }

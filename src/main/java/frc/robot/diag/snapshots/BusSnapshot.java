@@ -1,6 +1,9 @@
 package frc.robot.diag.snapshots;
 
-// Plain data snapshot for roboRIO CAN controller health.
+/**
+ * NAME
+ *   BusSnapshot - Snapshot of roboRIO CAN controller health.
+ */
 public final class BusSnapshot {
   public boolean valid = false;
   public double utilizationPct = 0.0;

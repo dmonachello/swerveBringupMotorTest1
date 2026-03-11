@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+"""
+NAME
+    can_frc_defs.py - FRC CAN ID helpers and classification rules.
+
+SYNOPSIS
+    from can_frc_defs import decode_frc_ext_id_full, classify_frame
+
+DESCRIPTION
+    Defines common FRC CAN ID constants and rule tables to classify frames as
+    status or control for bringup diagnostics.
+"""
+
 from typing import Any, Dict, Tuple
 
 NI_MANUFACTURER = 1
@@ -125,6 +137,16 @@ PROFILE_MAP_RULES = [
 
 
 def decode_frc_ext_id_full(arb_id: int) -> Tuple[int, int, int, int, int]:
+    """
+    NAME
+        decode_frc_ext_id_full - Decode an FRC extended CAN arbitration ID.
+
+    PARAMETERS
+        arb_id: 29-bit arbitration ID (extended frame).
+
+    RETURNS
+        Tuple of (manufacturer, device_type, api_class, api_index, device_id).
+    """
     # FRC extended CAN layout (common subset):
     # manufacturer: bits 16..23
     # device_type:  bits 24..28
@@ -148,6 +170,13 @@ def _rule_matches(
     pf: int,
     ps: int,
 ) -> bool:
+    """
+    NAME
+        _rule_matches - Check rule table entry against a decoded frame.
+
+    RETURNS
+        True when all specified fields match the given identifiers.
+    """
     if "mfg" in rule and manufacturer != rule["mfg"]:
         return False
     if "type" in rule and device_type != rule["type"]:
@@ -174,6 +203,20 @@ def classify_frame(
     api_class: int,
     api_index: int,
 ) -> Tuple[bool, bool]:
+    """
+    NAME
+        classify_frame - Heuristically label a frame as status/control.
+
+    PARAMETERS
+        arb_id: Arbitration ID for PF/PS decoding.
+        manufacturer, device_type, api_class, api_index: Decoded identifiers.
+
+    RETURNS
+        (is_status, is_control) booleans based on rule tables.
+
+    NOTES
+        Classification is heuristic and aligned with the dissector rules.
+    """
     # Heuristics aligned with the Wireshark dissector (unverified).
     pf = (arb_id >> 16) & 0xFF
     ps = (arb_id >> 8) & 0xFF
@@ -189,4 +232,12 @@ def classify_frame(
 
 
 def uses_status_presence(manufacturer: int, device_type: int) -> bool:
+    """
+    NAME
+        uses_status_presence - Indicate if status frames drive presence.
+
+    DESCRIPTION
+        Allows vendors/device types to prefer status frames for presence
+        confidence.
+    """
     return True

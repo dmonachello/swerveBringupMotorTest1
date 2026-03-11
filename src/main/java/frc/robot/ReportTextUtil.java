@@ -1,15 +1,41 @@
 package frc.robot;
 
-// Shared text formatting helpers for console reports.
-// Keeps report formatting consistent across reporters.
+/**
+ * NAME
+ *   ReportTextUtil - Shared console report formatting helpers.
+ *
+ * DESCRIPTION
+ *   Provides reusable formatting helpers for text-based reports to keep
+ *   alignment and wrapping consistent across diagnostics outputs.
+ */
 public final class ReportTextUtil {
   private ReportTextUtil() {}
 
+  /**
+   * NAME
+   *   appendLine - Append a line with newline termination.
+   *
+   * PARAMETERS
+   *   sb - Target StringBuilder.
+   *   line - Line content to append.
+   */
   public static void appendLine(StringBuilder sb, String line) {
     // Centralized line append to keep formatting uniform.
     sb.append(line).append('\n');
   }
 
+  /**
+   * NAME
+   *   appendWrappedHeaders - Append header rows with wrapping.
+   *
+   * PARAMETERS
+   *   sb - Target StringBuilder.
+   *   headerShort - Primary header labels.
+   *   headerLong - Optional secondary header labels.
+   *   idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, confWidth,
+   *   ageWidth, fpsWidth, msgWidth - Column widths.
+   *   maxLineWidth - Maximum line width for truncation.
+   */
   public static void appendWrappedHeaders(
       StringBuilder sb,
       String[] headerShort,
@@ -39,6 +65,17 @@ public final class ReportTextUtil {
     appendLine(sb, "-".repeat(maxLineWidth));
   }
 
+  /**
+   * NAME
+   *   appendWrappedRow - Append one or more wrapped table rows.
+   *
+   * PARAMETERS
+   *   sb - Target StringBuilder.
+   *   values - Column values to wrap.
+   *   idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, confWidth,
+   *   ageWidth, fpsWidth, msgWidth - Column widths.
+   *   maxLineWidth - Maximum line width for truncation.
+   */
   public static void appendWrappedRow(
       StringBuilder sb,
       String[] values,
@@ -82,6 +119,17 @@ public final class ReportTextUtil {
     }
   }
 
+  /**
+   * NAME
+   *   wrapLongLine - Wrap a long string at fixed width.
+   *
+   * PARAMETERS
+   *   value - Source string.
+   *   width - Maximum line width.
+   *
+   * RETURNS
+   *   Wrapped string with newline separators.
+   */
   public static String wrapLongLine(String value, int width) {
     // Wrap a single long line (like JSON) for console-friendly output.
     if (value == null) {
@@ -98,6 +146,10 @@ public final class ReportTextUtil {
     return sb.toString();
   }
 
+  /**
+   * NAME
+   *   buildHeaderLine - Build a single header line with padding.
+   */
   private static String buildHeaderLine(
       String[] values,
       int idWidth,
@@ -133,6 +185,10 @@ public final class ReportTextUtil {
     return rowText;
   }
 
+  /**
+   * NAME
+   *   padRight - Pad a value to a fixed width.
+   */
   private static String padRight(String value, int width, char fill) {
     // Pad a column to a fixed width using the provided fill character.
     if (value == null) {
@@ -145,6 +201,10 @@ public final class ReportTextUtil {
     return value + repeatChar(fill, missing);
   }
 
+  /**
+   * NAME
+   *   repeatChar - Produce a repeated character string.
+   */
   private static String repeatChar(char fill, int count) {
     // Simple helper to avoid string builder noise at callsites.
     if (count <= 0) {
@@ -153,6 +213,10 @@ public final class ReportTextUtil {
     return String.valueOf(fill).repeat(count);
   }
 
+  /**
+   * NAME
+   *   truncate - Truncate a value for column display.
+   */
   private static String truncate(String value, int width) {
     // Truncate long values to fit a column while preserving readability.
     if (value == null) {
@@ -167,6 +231,10 @@ public final class ReportTextUtil {
     return value.substring(0, width - 3) + "...";
   }
 
+  /**
+   * NAME
+   *   wrapToLines - Wrap a value into fixed-width column lines.
+   */
   private static String[] wrapToLines(String value, int width, int maxLines) {
     // Wrap a string into fixed-width columns for table output.
     if (value == null) {

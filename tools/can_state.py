@@ -1,11 +1,31 @@
 from __future__ import annotations
 
+"""
+NAME
+    can_state.py - Shared runtime state for the CAN sniffer.
+
+SYNOPSIS
+    from can_state import SnifferState
+
+DESCRIPTION
+    Defines the mutable counters and timestamps used across analysis and NT
+    publishing.
+"""
+
 from dataclasses import dataclass, field
 from typing import Dict, Tuple
 
 
 @dataclass
 class SnifferState:
+    """
+    NAME
+        SnifferState - Aggregated counters and timestamps for a run.
+
+    DESCRIPTION
+        Holds per-device timestamps, message counts, and error totals used by
+        reporting and publishing.
+    """
     last_seen: Dict[Tuple[int, int, int], float] = field(default_factory=dict)
     status_last_seen: Dict[Tuple[int, int, int], float] = field(default_factory=dict)
     control_last_seen: Dict[Tuple[int, int, int], float] = field(default_factory=dict)
@@ -24,6 +44,18 @@ class SnifferState:
 
 
 def merge_unknown_devices(devices, last_seen: Dict[Tuple[int, int, int], float], enabled: bool):
+    """
+    NAME
+        merge_unknown_devices - Optionally include unprofiled devices.
+
+    PARAMETERS
+        devices: Profile device list.
+        last_seen: Map of observed devices to last-seen timestamps.
+        enabled: Whether to add unknown entries.
+
+    RETURNS
+        A list including UNKNOWN entries for unprofiled devices when enabled.
+    """
     if not enabled:
         return devices
     known_keys = {(d["manufacturer"], d["device_type"], d["device_id"]) for d in devices}

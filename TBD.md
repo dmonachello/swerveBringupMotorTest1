@@ -33,3 +33,5 @@ Purpose: Consolidate all planned or future work discussed so far.
 ## Documentation Gaps / Planned Fields
 - Some report rows are vendor-tool-only or planned fields (e.g., last error codes, reset flags); complete or remove as appropriate.
 
+## NetworkTables Contract Follow-ups
+- Align `bringup/diag/busErrorCount` publishing: Java reads it, current Python tool does not publish it.

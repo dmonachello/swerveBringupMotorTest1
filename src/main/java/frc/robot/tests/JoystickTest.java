@@ -3,9 +3,20 @@ package frc.robot.tests;
 import frc.robot.BringupPrinter;
 import frc.robot.devices.DeviceUnit;
 
+/**
+ * NAME
+ *   JoystickTest - Manual joystick-driven motor test.
+ *
+ * DESCRIPTION
+ *   Maps joystick input to a set of motors with deadband filtering.
+ */
 public final class JoystickTest implements BringupTest {
   public static final String TYPE = "joystick";
 
+  /**
+   * NAME
+   *   Config - Configuration payload for JoystickTest.
+   */
   public static final class Config {
     public String name = "Joystick";
     public boolean enabled = true;
@@ -20,45 +31,81 @@ public final class JoystickTest implements BringupTest {
   private double inputValue = 0.0;
   private String status = "";
 
+  /**
+   * NAME
+   *   JoystickTest - Construct from config.
+   */
   public JoystickTest(Config config) {
     this.config = config;
   }
 
+  /**
+   * NAME
+   *   getName - Return test name.
+   */
   @Override
   public String getName() {
     return config.name != null && !config.name.isBlank() ? config.name : "Joystick";
   }
 
+  /**
+   * NAME
+   *   isEnabled - Return enabled state.
+   */
   @Override
   public boolean isEnabled() {
     return config.enabled;
   }
 
+  /**
+   * NAME
+   *   setEnabled - Enable or disable the test.
+   */
   @Override
   public void setEnabled(boolean enabled) {
     config.enabled = enabled;
   }
 
+  /**
+   * NAME
+   *   isRunning - Return running state.
+   */
   @Override
   public boolean isRunning() {
     return result == BringupTestResult.RUNNING;
   }
 
+  /**
+   * NAME
+   *   isFinished - Return finished state.
+   */
   @Override
   public boolean isFinished() {
     return result == BringupTestResult.PASS || result == BringupTestResult.FAIL;
   }
 
+  /**
+   * NAME
+   *   getResult - Return result state.
+   */
   @Override
   public BringupTestResult getResult() {
     return result;
   }
 
+  /**
+   * NAME
+   *   getStatus - Return status message.
+   */
   @Override
   public String getStatus() {
     return status;
   }
 
+  /**
+   * NAME
+   *   getMotorKeys - Return motor keys used by this test.
+   */
   @Override
   public java.util.List<String> getMotorKeys() {
     if (config.motors == null || config.motors.isEmpty()) {
@@ -74,6 +121,10 @@ public final class JoystickTest implements BringupTest {
     return keys;
   }
 
+  /**
+   * NAME
+   *   start - Start the joystick test.
+   */
   @Override
   public boolean start(BringupTestContext context, double nowSec) {
     if (config.motors == null || config.motors.isEmpty()) {
@@ -107,6 +158,10 @@ public final class JoystickTest implements BringupTest {
     return true;
   }
 
+  /**
+   * NAME
+   *   update - Apply joystick input to motors.
+   */
   @Override
   public void update(BringupTestContext context, double nowSec) {
     if (result != BringupTestResult.RUNNING) {
@@ -118,6 +173,10 @@ public final class JoystickTest implements BringupTest {
     }
   }
 
+  /**
+   * NAME
+   *   stop - Stop the test and set motors to zero.
+   */
   @Override
   public void stop(BringupTestContext context) {
     for (DeviceUnit device : motors) {
@@ -129,10 +188,18 @@ public final class JoystickTest implements BringupTest {
     }
   }
 
+  /**
+   * NAME
+   *   setInputValue - Update current joystick input.
+   */
   public void setInputValue(double value) {
     inputValue = value;
   }
 
+  /**
+   * NAME
+   *   getInputAxis - Return configured input axis name.
+   */
   public String getInputAxis() {
     return config.inputAxis != null ? config.inputAxis : "primary";
   }
@@ -141,6 +208,10 @@ public final class JoystickTest implements BringupTest {
     return Math.abs(value) < deadband ? 0.0 : value;
   }
 
+  /**
+   * NAME
+   *   toEntry - Serialize this test to a JSON-friendly map.
+   */
   public java.util.Map<String, Object> toEntry() {
     java.util.Map<String, Object> entry = new java.util.LinkedHashMap<>();
     entry.put("type", TYPE);

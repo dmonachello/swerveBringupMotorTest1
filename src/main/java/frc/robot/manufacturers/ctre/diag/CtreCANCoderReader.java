@@ -6,10 +6,36 @@ import edu.wpi.first.units.Units;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.EncoderAttachment;
 
-// Reader for CTRE CANCoder devices.
+/**
+ * NAME
+ * CtreCANCoderReader
+ *
+ * SYNOPSIS
+ * Reader for CTRE CANCoder devices.
+ *
+ * DESCRIPTION
+ * Samples absolute position status signals and packages telemetry into snapshots.
+ */
 public final class CtreCANCoderReader {
   private CtreCANCoderReader() {}
 
+  /**
+   * NAME
+   * read
+   *
+   * SYNOPSIS
+   * Capture a snapshot from a CANCoder device.
+   *
+   * PARAMETERS
+   * device - CANCoder instance to read.
+   * canId - CAN ID of the device.
+   *
+   * RETURNS
+   * A populated device snapshot with encoder telemetry.
+   *
+   * SIDE EFFECTS
+   * Refreshes Phoenix status signals.
+   */
   public static DeviceSnapshot read(CANcoder device, int canId) {
     DeviceSnapshot snap = new DeviceSnapshot();
     snap.vendor = "CTRE";

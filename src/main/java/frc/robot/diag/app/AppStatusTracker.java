@@ -1,6 +1,15 @@
 package frc.robot.diag.app;
 
-// Tracks periodic loop timing to detect overruns.
+/**
+ * NAME
+ * AppStatusTracker
+ *
+ * SYNOPSIS
+ * Static tracker for robot periodic loop timing statistics.
+ *
+ * DESCRIPTION
+ * Maintains rolling and windowed loop timing metrics to flag 20 ms overruns.
+ */
 public final class AppStatusTracker {
   private static final double OVERRUN_THRESHOLD_MS = 20.0;
   private static long lastLoopNs = 0L;
@@ -16,6 +25,20 @@ public final class AppStatusTracker {
 
   private AppStatusTracker() {}
 
+  /**
+   * NAME
+   * recordLoop
+   *
+   * SYNOPSIS
+   * Record the elapsed time since the previous loop call.
+   *
+   * DESCRIPTION
+   * Updates rolling averages, maximums, and overrun counters using a 20 ms
+   * threshold.
+   *
+   * SIDE EFFECTS
+   * Updates static timing state and window counters.
+   */
   public static void recordLoop() {
     long nowNs = System.nanoTime();
     if (lastLoopNs > 0L) {
@@ -35,6 +58,19 @@ public final class AppStatusTracker {
     rotateWindowIfNeeded();
   }
 
+  /**
+   * NAME
+   * rotateWindowIfNeeded
+   *
+   * SYNOPSIS
+   * Reset the 60-second window counters when the window expires.
+   *
+   * DESCRIPTION
+   * Uses wall-clock time to bound the window for overrun rate reporting.
+   *
+   * SIDE EFFECTS
+   * Resets window counters and window start time.
+   */
   private static void rotateWindowIfNeeded() {
     long nowMs = System.currentTimeMillis();
     if (nowMs - windowStartMs >= 60_000) {
@@ -44,6 +80,16 @@ public final class AppStatusTracker {
     }
   }
 
+  /**
+   * NAME
+   * snapshot
+   *
+   * SYNOPSIS
+   * Capture the current loop timing metrics.
+   *
+   * RETURNS
+   * A populated snapshot with rolling and windowed timing values.
+   */
   public static AppStatusSnapshot snapshot() {
     AppStatusSnapshot snap = new AppStatusSnapshot();
     snap.lastLoopMs = lastLoopMs;
@@ -57,6 +103,16 @@ public final class AppStatusTracker {
     return snap;
   }
 
+  /**
+   * NAME
+   * AppStatusSnapshot
+   *
+   * SYNOPSIS
+   * Plain data carrier for loop timing statistics.
+   *
+   * DESCRIPTION
+   * Intended for reporting without exposing mutable tracker internals.
+   */
   public static final class AppStatusSnapshot {
     public double lastLoopMs;
     public double avgLoopMs;

@@ -3,9 +3,33 @@ package frc.robot;
 import frc.robot.input.BindingsManager;
 import frc.robot.diag.report.ReportTextUtil;
 
+/**
+ * NAME
+ *   BringupCommandRouter - Map bindings to bringup actions.
+ *
+ * DESCRIPTION
+ *   Applies controller bindings to core actions, report requests, and
+ *   diagnostics outputs.
+ */
 public final class BringupCommandRouter {
   private BringupCommandRouter() {}
 
+  /**
+   * NAME
+   *   applyCommon - Apply common binding-driven actions.
+   *
+   * PARAMETERS
+   *   bind - Current binding state snapshot.
+   *   core - BringupCore instance.
+   *   diagnostics - Optional DiagnosticsReporter.
+   *   printBindings - Callback to print bindings.
+   *   printTestsInfo - Callback to print tests info.
+   *   printTestsOverview - Callback to print tests overview.
+   *   runHeld - Whether run is currently held.
+   *
+   * SIDE EFFECTS
+   *   Enqueues prints, triggers device actions, and updates reports/tests.
+   */
   public static void applyCommon(
       BindingsManager.BindingState bind,
       BringupCore core,

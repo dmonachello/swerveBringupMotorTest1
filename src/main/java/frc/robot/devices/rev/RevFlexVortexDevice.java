@@ -13,7 +13,17 @@ import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.registry.RegistrationHeader;
 import edu.wpi.first.wpilibj.DigitalInput;
 
-// Device wrapper for a REV Spark Flex controlling a Vortex/FLEX.
+/**
+ * NAME
+ * RevFlexVortexDevice
+ *
+ * SYNOPSIS
+ * Device wrapper for a REV Spark Flex controlling a Vortex/FLEX.
+ *
+ * DESCRIPTION
+ * Provides bringup lifecycle, telemetry, and limit switch handling for Spark
+ * Flex devices.
+ */
 public final class RevFlexVortexDevice implements DeviceUnit {
   public static final RegistrationHeader HEADER = new RegistrationHeader(
       "SparkFlex Vortex",
@@ -31,6 +41,22 @@ public final class RevFlexVortexDevice implements DeviceUnit {
   private DigitalInput revLimit;
   private SparkFlex device;
 
+  /**
+   * NAME
+   * RevFlexVortexDevice
+   *
+   * SYNOPSIS
+   * Construct a Spark Flex device wrapper.
+   *
+   * PARAMETERS
+   * canId - CAN ID of the motor controller.
+   * label - human-readable label for reporting.
+   * motorModelOverride - optional motor model override for spec lookup.
+   * limitConfig - optional limit switch configuration.
+   *
+   * SIDE EFFECTS
+   * Initializes DIO inputs when limit switches are configured.
+   */
   public RevFlexVortexDevice(
       int canId,
       String label,
@@ -62,7 +88,6 @@ public final class RevFlexVortexDevice implements DeviceUnit {
   public RegistrationHeader getHeader() {
     return HEADER;
   }
-
   public String getMotorModelOverride() {
     return motorModelOverride;
   }
@@ -72,6 +97,16 @@ public final class RevFlexVortexDevice implements DeviceUnit {
     return device != null;
   }
 
+  /**
+   * NAME
+   * ensureCreated
+   *
+   * SYNOPSIS
+   * Construct and configure the Spark Flex device if needed.
+   *
+   * SIDE EFFECTS
+   * Allocates a vendor device and configures it asynchronously.
+   */
   @Override
   public void ensureCreated() {
     if (device != null) {
@@ -85,6 +120,16 @@ public final class RevFlexVortexDevice implements DeviceUnit {
         PersistMode.kNoPersistParameters);
   }
 
+  /**
+   * NAME
+   * close
+   *
+   * SYNOPSIS
+   * Release vendor and DIO resources.
+   *
+   * SIDE EFFECTS
+   * Closes device handles and limit switch inputs.
+   */
   @Override
   public void close() {
     BringupUtil.closeIfPossible(device);
@@ -95,6 +140,16 @@ public final class RevFlexVortexDevice implements DeviceUnit {
     revLimit = null;
   }
 
+  /**
+   * NAME
+   * clearFaults
+   *
+   * SYNOPSIS
+   * Clear faults on the Spark Flex.
+   *
+   * SIDE EFFECTS
+   * Sends vendor fault-clear commands.
+   */
   @Override
   public void clearFaults() {
     if (device != null) {
@@ -102,6 +157,19 @@ public final class RevFlexVortexDevice implements DeviceUnit {
     }
   }
 
+  /**
+   * NAME
+   * setDuty
+   *
+   * SYNOPSIS
+   * Apply open-loop duty with limit switch enforcement.
+   *
+   * PARAMETERS
+   * duty - requested output in [-1, 1].
+   *
+   * SIDE EFFECTS
+   * Commands motor output via the vendor API.
+   */
   @Override
   public void setDuty(double duty) {
     if (device != null) {
@@ -109,6 +177,13 @@ public final class RevFlexVortexDevice implements DeviceUnit {
     }
   }
 
+  /**
+   * NAME
+   * stop
+   *
+   * SYNOPSIS
+   * Stop the motor output.
+   */
   @Override
   public void stop() {
     if (device != null) {
@@ -116,16 +191,40 @@ public final class RevFlexVortexDevice implements DeviceUnit {
     }
   }
 
+  /**
+   * NAME
+   * activate
+   *
+   * SYNOPSIS
+   * Activate the device by ensuring it is created.
+   */
   @Override
   public void activate() {
     ensureCreated();
   }
 
+  /**
+   * NAME
+   * deactivate
+   *
+   * SYNOPSIS
+   * Deactivate the device by stopping output.
+   */
   @Override
   public void deactivate() {
     stop();
   }
 
+  /**
+   * NAME
+   * snapshot
+   *
+   * SYNOPSIS
+   * Capture a diagnostic snapshot of the device.
+   *
+   * RETURNS
+   * A snapshot containing vendor telemetry and limit switch state.
+   */
   @Override
   public DeviceSnapshot snapshot() {
     if (device == null) {
@@ -146,6 +245,16 @@ public final class RevFlexVortexDevice implements DeviceUnit {
     return snap;
   }
 
+  /**
+   * NAME
+   * getPositionRotations
+   *
+   * SYNOPSIS
+   * Return the integrated encoder position in rotations.
+   *
+   * RETURNS
+   * Position in rotations, or null on read error or when not created.
+   */
   @Override
   public Double getPositionRotations() {
     if (device == null) {
@@ -158,6 +267,16 @@ public final class RevFlexVortexDevice implements DeviceUnit {
     }
   }
 
+  /**
+   * NAME
+   * initLimitInputs
+   *
+   * SYNOPSIS
+   * Initialize DIO inputs for configured limit switches.
+   *
+   * SIDE EFFECTS
+   * Allocates DigitalInput instances when DIO channels are configured.
+   */
   private void initLimitInputs() {
     if (limitConfig.hasForward()) {
       fwdLimit = new DigitalInput(limitConfig.fwdDio);
@@ -167,6 +286,16 @@ public final class RevFlexVortexDevice implements DeviceUnit {
     }
   }
 
+  /**
+   * NAME
+   * addLimitAttachment
+   *
+   * SYNOPSIS
+   * Attach limit switch telemetry to a device snapshot.
+   *
+   * PARAMETERS
+   * snap - snapshot to populate with limit data.
+   */
   private void addLimitAttachment(DeviceSnapshot snap) {
     if (!limitConfig.hasForward() && !limitConfig.hasReverse()) {
       return;
@@ -184,6 +313,19 @@ public final class RevFlexVortexDevice implements DeviceUnit {
     snap.addAttachment(limits);
   }
 
+  /**
+   * NAME
+   * readLimit
+   *
+   * SYNOPSIS
+   * Read a limit input and apply inversion if configured.
+   *
+   * PARAMETERS
+   * input - DIO input to sample.
+   *
+   * RETURNS
+   * True if closed, false if open, or null when input is absent.
+   */
   private Boolean readLimit(DigitalInput input) {
     if (input == null) {
       return null;
@@ -192,6 +334,19 @@ public final class RevFlexVortexDevice implements DeviceUnit {
     return limitConfig.invert ? !raw : raw;
   }
 
+  /**
+   * NAME
+   * applyLimit
+   *
+   * SYNOPSIS
+   * Enforce limit switches by clamping duty to zero when tripped.
+   *
+   * PARAMETERS
+   * duty - requested output in [-1, 1].
+   *
+   * RETURNS
+   * Duty command after limit switch enforcement.
+   */
   private double applyLimit(double duty) {
     Boolean fwdClosed = readLimit(fwdLimit);
     if (Boolean.TRUE.equals(fwdClosed) && duty > 0.0) {

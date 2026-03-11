@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+"""
+NAME
+    can_inventory.py - API inventory snapshot and diff helpers.
+
+SYNOPSIS
+    from can_inventory import dump_api_inventory, print_inventory_diff
+
+DESCRIPTION
+    Builds a stable JSON inventory of observed (apiClass, apiIndex) pairs per
+    device and compares inventories between runs.
+"""
+
 import json
 import time
 from pathlib import Path
@@ -14,6 +26,21 @@ def dump_api_inventory(
     bitrate: int,
     pairs: Dict[Tuple[int, int, int, int, int], Dict[str, float]],
 ) -> None:
+    """
+    NAME
+        dump_api_inventory - Persist per-device API pair statistics.
+
+    PARAMETERS
+        path: Output JSON file path.
+        profile: Active profile name.
+        interface: CAN interface type (e.g., slcan).
+        channel: CAN channel (e.g., COM port).
+        bitrate: CAN bitrate in bps.
+        pairs: Observed pair stats keyed by (mfg,type,id,apiClass,apiIndex).
+
+    SIDE EFFECTS
+        Writes a JSON file to disk.
+    """
     devices: Dict[Tuple[int, int, int], List[Dict[str, Any]]] = {}
     for (mfg, dtype, did, api_class, api_index), stats in pairs.items():
         key = (mfg, dtype, did)
@@ -53,6 +80,19 @@ def dump_api_inventory(
 
 
 def load_inventory(path: str) -> Dict[Tuple[int, int, int, int, int], float]:
+    """
+    NAME
+        load_inventory - Load inventory JSON into a keyed fps map.
+
+    PARAMETERS
+        path: Inventory JSON file path.
+
+    RETURNS
+        Mapping of (mfg,type,id,apiClass,apiIndex) -> fps.
+
+    ERRORS
+        Prints a warning and returns empty map on read/parse failures.
+    """
     try:
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
     except Exception as exc:
@@ -78,6 +118,18 @@ def load_inventory(path: str) -> Dict[Tuple[int, int, int, int, int], float]:
 
 
 def print_inventory_diff(path_a: str, path_b: str, top_n: int) -> None:
+    """
+    NAME
+        print_inventory_diff - Print a concise diff between inventories.
+
+    PARAMETERS
+        path_a: Baseline inventory JSON.
+        path_b: Comparison inventory JSON.
+        top_n: Number of rows to print for each section.
+
+    SIDE EFFECTS
+        Writes a human-readable diff to stdout.
+    """
     a = load_inventory(path_a)
     b = load_inventory(path_b)
     keys_a = set(a.keys())

@@ -4,10 +4,33 @@ import com.revrobotics.REVLibError;
 import com.revrobotics.spark.SparkFlex;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 
-// Reader for REV SPARK FLEX (Vortex) devices.
+/**
+ * NAME
+ * RevSparkFlexReader
+ *
+ * SYNOPSIS
+ * Reader for REV SPARK FLEX (Vortex) devices.
+ *
+ * DESCRIPTION
+ * Samples REV telemetry and packages it into device snapshots.
+ */
 public final class RevSparkFlexReader {
   private RevSparkFlexReader() {}
 
+  /**
+   * NAME
+   * read
+   *
+   * SYNOPSIS
+   * Capture a snapshot from a Spark Flex device.
+   *
+   * PARAMETERS
+   * device - Spark Flex instance to read.
+   * canId - CAN ID of the device.
+   *
+   * RETURNS
+   * A populated device snapshot with REV motor telemetry.
+   */
   public static DeviceSnapshot read(SparkFlex device, int canId) {
     DeviceSnapshot snap = new DeviceSnapshot();
     snap.vendor = "REV";

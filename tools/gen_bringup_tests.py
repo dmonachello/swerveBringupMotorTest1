@@ -1,3 +1,18 @@
+"""
+NAME
+    gen_bringup_tests.py - Interactive bringup test generator.
+
+SYNOPSIS
+    python gen_bringup_tests.py
+
+DESCRIPTION
+    Prompts for a test definition (composite or joystick) and appends it to
+    bringup_tests.json under the active test set.
+
+SIDE EFFECTS
+    Reads and writes JSON files and prompts on stdin.
+"""
+
 import json
 from pathlib import Path
 
@@ -5,6 +20,10 @@ TESTS_FILE = Path(__file__).resolve().parents[1] / "src" / "main" / "deploy" / "
 
 
 def _prompt(text, default=None):
+    """
+    NAME
+        _prompt - Prompt for a value with an optional default.
+    """
     if default is None:
         prompt = f"{text}: "
     else:
@@ -14,6 +33,10 @@ def _prompt(text, default=None):
 
 
 def _prompt_float(text, default):
+    """
+    NAME
+        _prompt_float - Prompt until a float is entered.
+    """
     while True:
         raw = _prompt(text, str(default))
         try:
@@ -23,6 +46,10 @@ def _prompt_float(text, default):
 
 
 def _prompt_bool(text, default):
+    """
+    NAME
+        _prompt_bool - Prompt for a boolean with y/n responses.
+    """
     default_str = "y" if default else "n"
     while True:
         raw = _prompt(text, default_str)
@@ -37,6 +64,10 @@ def _prompt_bool(text, default):
 
 
 def _load_tests():
+    """
+    NAME
+        _load_tests - Load bringup_tests.json or return defaults.
+    """
     if not TESTS_FILE.exists():
         return {"default_test_set": "default", "test_sets": {"default": []}}
     try:
@@ -46,11 +77,19 @@ def _load_tests():
 
 
 def _save_tests(payload):
+    """
+    NAME
+        _save_tests - Persist bringup_tests.json.
+    """
     TESTS_FILE.parent.mkdir(parents=True, exist_ok=True)
     TESTS_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _ensure_test_sets(payload):
+    """
+    NAME
+        _ensure_test_sets - Normalize legacy payloads to test_sets format.
+    """
     if not isinstance(payload, dict):
         payload = {}
     test_sets = payload.get("test_sets")
@@ -69,6 +108,10 @@ def _ensure_test_sets(payload):
 
 
 def _pick_type():
+    """
+    NAME
+        _pick_type - Prompt for the test type.
+    """
     types = ["composite", "joystick"]
     print("Available test types:")
     for idx, name in enumerate(types, start=1):
@@ -86,6 +129,10 @@ def _pick_type():
 
 
 def _prompt_device_keys(label):
+    """
+    NAME
+        _prompt_device_keys - Prompt for comma-separated device keys.
+    """
     while True:
         raw = _prompt(label)
         if not raw:
@@ -98,6 +145,10 @@ def _prompt_device_keys(label):
 
 
 def _prompt_encoder_key():
+    """
+    NAME
+        _prompt_encoder_key - Prompt for an encoder key.
+    """
     while True:
         raw = _prompt("Encoder (internal or VENDOR:TYPE:ID)", "internal")
         if raw and raw.lower() == "internal":
@@ -108,6 +159,10 @@ def _prompt_encoder_key():
 
 
 def _prompt_action(label, default):
+    """
+    NAME
+        _prompt_action - Prompt for pass/fail action selection.
+    """
     while True:
         raw = _prompt(label, default).strip().lower()
         if raw in ("pass", "fail"):
@@ -116,6 +171,10 @@ def _prompt_action(label, default):
 
 
 def _build_composite():
+    """
+    NAME
+        _build_composite - Create a composite test entry.
+    """
     name = _prompt("Test name", "Composite test")
     enabled = _prompt_bool("Enabled", False)
     motor_keys = _prompt_device_keys("Motor keys (comma-separated VENDOR:TYPE:ID)")
@@ -178,6 +237,10 @@ def _build_composite():
 
 
 def _build_joystick():
+    """
+    NAME
+        _build_joystick - Create a joystick test entry.
+    """
     name = _prompt("Test name", "Joystick motor")
     enabled = _prompt_bool("Enabled", False)
     motor_keys = _prompt_device_keys("Motor keys (comma-separated VENDOR:TYPE:ID)")
@@ -195,6 +258,10 @@ def _build_joystick():
     }
 
 def main():
+    """
+    NAME
+        main - CLI entry point for the test generator.
+    """
     print("Bringup Test Wizard")
     payload = _ensure_test_sets(_load_tests())
     set_name = payload.get("default_test_set") or "default"

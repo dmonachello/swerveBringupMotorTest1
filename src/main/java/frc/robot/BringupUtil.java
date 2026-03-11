@@ -22,7 +22,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-// Shared utilities for CAN bringup: profile loading, ID validation, and device helpers.
+/**
+ * NAME
+ *   BringupUtil - Shared CAN bringup utilities and profile handling.
+ *
+ * DESCRIPTION
+ *   Loads CAN profiles, validates IDs, provides device helpers, and exposes
+ *   constants used across the bringup system.
+ */
 public final class BringupUtil {
   private BringupUtil() {}
 
@@ -135,7 +142,10 @@ public final class BringupUtil {
     }
   }
 
-  // Driver Station keyboard HID mapping (unused in Xbox-only configs).
+  /**
+   * NAME
+   *   KeyboardKeys - Driver Station keyboard HID usage IDs.
+   */
   public static final class KeyboardKeys {
     private KeyboardKeys() {}
 
@@ -154,11 +164,32 @@ public final class BringupUtil {
     public static final int ENTER = 40;
     public static final int SPACE = 44;
 
+    /**
+     * NAME
+     *   isPressed - Check a keyboard key state by usage ID.
+     *
+     * PARAMETERS
+     *   keyboard - GenericHID for the Driver Station keyboard.
+     *   keyUsageId - USB HID usage ID.
+     *
+     * RETURNS
+     *   True if the key is pressed.
+     */
     public static boolean isPressed(GenericHID keyboard, int keyUsageId) {
       return keyboard.getRawButton(keyUsageId);
     }
   }
 
+  /**
+   * NAME
+   *   setActiveCanProfile - Apply a named CAN profile.
+   *
+   * PARAMETERS
+   *   profileName - Profile name to load.
+   *
+   * SIDE EFFECTS
+   *   Updates static CAN ID arrays and label metadata.
+   */
   public static void setActiveCanProfile(String profileName) {
     // Resolve profile name and apply its IDs to static arrays.
     if (profileName == null || profileName.isBlank()) {
@@ -210,6 +241,10 @@ public final class BringupUtil {
     buildDeviceConfigs(config);
   }
 
+  /**
+   * NAME
+   *   toggleCanProfile - Cycle to the next profile in order.
+   */
   public static void toggleCanProfile() {
     // Cycle through profiles in a stable order.
     if (profileOrder.isEmpty()) {
@@ -230,6 +265,14 @@ public final class BringupUtil {
     return activeProfile;
   }
 
+  /**
+   * NAME
+   *   setAllNeos - Apply a duty cycle to all SPARK MAX devices.
+   *
+   * PARAMETERS
+   *   neos - Array of SparkMax devices.
+   *   speed - Duty cycle (-1..1).
+   */
   public static void setAllNeos(SparkMax[] neos, double speed) {
     // Apply output to all instantiated SPARK MAX devices.
     for (int i = 0; i < neos.length; i++) {
@@ -239,6 +282,14 @@ public final class BringupUtil {
     }
   }
 
+  /**
+   * NAME
+   *   setAllNeo550s - Apply a duty cycle to all NEO 550 devices.
+   *
+   * PARAMETERS
+   *   neo550s - Array of SparkMax devices.
+   *   speed - Duty cycle (-1..1).
+   */
   public static void setAllNeo550s(SparkMax[] neo550s, double speed) {
     // Apply output to all instantiated NEO 550 SPARK MAX devices.
     for (int i = 0; i < neo550s.length; i++) {
@@ -248,6 +299,14 @@ public final class BringupUtil {
     }
   }
 
+  /**
+   * NAME
+   *   setAllFlexes - Apply a duty cycle to all SPARK FLEX devices.
+   *
+   * PARAMETERS
+   *   flexes - Array of SparkFlex devices.
+   *   speed - Duty cycle (-1..1).
+   */
   public static void setAllFlexes(SparkFlex[] flexes, double speed) {
     // Apply output to all instantiated SPARK FLEX devices.
     for (int i = 0; i < flexes.length; i++) {
@@ -257,6 +316,14 @@ public final class BringupUtil {
     }
   }
 
+  /**
+   * NAME
+   *   setAllKrakens - Apply a duty cycle to all TalonFX devices.
+   *
+   * PARAMETERS
+   *   krakens - Array of TalonFX devices.
+   *   speed - Duty cycle (-1..1).
+   */
   public static void setAllKrakens(TalonFX[] krakens, double speed) {
     // Apply output to all instantiated CTRE Krakens.
     for (int i = 0; i < krakens.length; i++) {
@@ -266,6 +333,14 @@ public final class BringupUtil {
     }
   }
 
+  /**
+   * NAME
+   *   setAllFalcons - Apply a duty cycle to all Falcon devices.
+   *
+   * PARAMETERS
+   *   falcons - Array of TalonFX devices.
+   *   speed - Duty cycle (-1..1).
+   */
   public static void setAllFalcons(TalonFX[] falcons, double speed) {
     // Apply output to all instantiated CTRE Falcons.
     for (int i = 0; i < falcons.length; i++) {
@@ -275,6 +350,10 @@ public final class BringupUtil {
     }
   }
 
+  /**
+   * NAME
+   *   stopAll - Stop all device arrays by setting duty to zero.
+   */
   public static void stopAll(
       SparkMax[] neos,
       SparkMax[] neo550s,
@@ -289,6 +368,16 @@ public final class BringupUtil {
     setAllFalcons(falcons, 0.0);
   }
 
+  /**
+   * NAME
+   *   joinIds - Build a comma-separated list of enabled CAN IDs.
+   *
+   * PARAMETERS
+   *   ids - CAN ID array.
+   *
+   * RETURNS
+   *   String list or "(none)" when empty.
+   */
   public static String joinIds(int[] ids) {
     // Join enabled IDs into a friendly comma-separated list.
     StringBuilder builder = new StringBuilder();
@@ -309,16 +398,39 @@ public final class BringupUtil {
     return builder.toString();
   }
 
+  /**
+   * NAME
+   *   deadband - Zero small inputs below a threshold.
+   *
+   * PARAMETERS
+   *   value - Input value.
+   *   deadband - Threshold magnitude.
+   *
+   * RETURNS
+   *   Zero when within deadband, otherwise the original value.
+   */
   public static double deadband(double value, double deadband) {
     // Zero out small stick values to reduce noise.
     return Math.abs(value) < deadband ? 0.0 : value;
   }
 
+  /**
+   * NAME
+   *   validateCanIds - Validate CAN ID groups without labels.
+   */
   public static void validateCanIds(int[]... idGroups) {
     // Convenience overload without labels.
     validateCanIds(null, idGroups);
   }
 
+  /**
+   * NAME
+   *   validateCanIds - Warn on duplicates and empty groups.
+   *
+   * PARAMETERS
+   *   groupLabels - Optional labels for groups.
+   *   idGroups - CAN ID groups to validate.
+   */
   public static void validateCanIds(String[] groupLabels, int[]... idGroups) {
     // Warn on duplicates and empty groups to catch configuration issues early.
     java.util.HashSet<Integer> seen = new java.util.HashSet<>();
@@ -351,6 +463,16 @@ public final class BringupUtil {
     }
   }
 
+  /**
+   * NAME
+   *   filterCanIds - Remove disabled IDs while preserving order.
+   *
+   * PARAMETERS
+   *   ids - CAN ID array.
+   *
+   * RETURNS
+   *   Filtered array with only enabled IDs.
+   */
   public static int[] filterCanIds(int[] ids) {
     // Drop disabled IDs while preserving order.
     int enabledCount = countEnabledCanIds(ids);
@@ -364,6 +486,10 @@ public final class BringupUtil {
     return filtered;
   }
 
+  /**
+   * NAME
+   *   countEnabledCanIds - Count enabled IDs in an array.
+   */
   public static int countEnabledCanIds(int[] ids) {
     // Count IDs that are not DISABLED_CAN_ID.
     int count = 0;
@@ -375,11 +501,19 @@ public final class BringupUtil {
     return count;
   }
 
+  /**
+   * NAME
+   *   isEnabledCanId - Check if an ID is not disabled.
+   */
   public static boolean isEnabledCanId(int id) {
     // Convention: -1 means "disabled" in JSON and code.
     return id != DISABLED_CAN_ID;
   }
 
+  /**
+   * NAME
+   *   closeIfPossible - Close a device if it implements AutoCloseable.
+   */
   public static void closeIfPossible(Object device) {
     // CTRE Phoenix 6 WPI TalonFX implements AutoCloseable (wpiapi-java 26.1.1+),
     // so this will clean up Sendables and sim resources when present.
@@ -394,6 +528,13 @@ public final class BringupUtil {
     }
   }
 
+  /**
+   * NAME
+   *   applyProfileFromArgs - Resolve and apply profile from CLI/env/system props.
+   *
+   * SIDE EFFECTS
+   *   Updates active profile and logs selection.
+   */
   public static void applyProfileFromArgs() {
     // Read profile name from JVM props, env var, or command-line flag.
     String profile = System.getProperty("bringup.profile");
@@ -423,6 +564,13 @@ public final class BringupUtil {
     return null;
   }
 
+  /**
+   * NAME
+   *   extractBringupTestsFromCommand - Parse bringup test path from JVM args.
+   *
+   * RETURNS
+   *   Test path string or null when not present.
+   */
   public static String extractBringupTestsFromCommand() {
     // Parse --bringup-tests=... from the Java command line.
     String command = System.getProperty("sun.java.command");
@@ -438,6 +586,10 @@ public final class BringupUtil {
     return null;
   }
 
+  /**
+   * NAME
+   *   loadProfilesFromJson - Load bringup_profiles.json into memory.
+   */
   private static void loadProfilesFromJson() {
     // Load bringup_profiles.json from deploy or dev path.
     Path path = resolveProfilePath();
@@ -465,6 +617,10 @@ public final class BringupUtil {
     }
   }
 
+  /**
+   * NAME
+   *   resolveProfilePath - Resolve the profile JSON path.
+   */
   private static Path resolveProfilePath() {
     // Use deploy folder on roboRIO, fallback to repo-relative path.
     try {
@@ -482,6 +638,10 @@ public final class BringupUtil {
     return Paths.get(DEFAULT_PROFILE_FILE);
   }
 
+  /**
+   * NAME
+   *   applyFallbackProfile - Populate built-in fallback profiles.
+   */
   private static void applyFallbackProfile() {
     // Populate default profiles in-memory when JSON is unavailable.
     profiles = new LinkedHashMap<>();
@@ -556,6 +716,17 @@ public final class BringupUtil {
     buildDeviceConfigs(profiles.get(DEFAULT_PROFILE_NAME));
   }
 
+  /**
+   * NAME
+   *   getDeviceConfigs - Return device configs for a vendor/type.
+   *
+   * PARAMETERS
+   *   vendor - Vendor name (e.g., REV, CTRE).
+   *   deviceType - Device type label.
+   *
+   * RETURNS
+   *   List of DeviceConfig entries or empty list.
+   */
   public static List<DeviceConfig> getDeviceConfigs(String vendor, String deviceType) {
     if (vendor == null || deviceType == null) {
       return Collections.emptyList();
@@ -564,6 +735,10 @@ public final class BringupUtil {
     return configs != null ? configs : Collections.emptyList();
   }
 
+  /**
+   * NAME
+   *   buildDeviceConfigs - Build device config lookup tables.
+   */
   private static void buildDeviceConfigs(CanProfileConfig config) {
     DEVICE_CONFIGS.clear();
     if (config == null) {
@@ -579,6 +754,10 @@ public final class BringupUtil {
     registerGenericDeviceConfigs(config.devices);
   }
 
+  /**
+   * NAME
+   *   registerDeviceConfigs - Register device configs for a vendor/type.
+   */
   private static void registerDeviceConfigs(
       String vendor,
       String deviceType,
@@ -590,6 +769,10 @@ public final class BringupUtil {
     }
   }
 
+  /**
+   * NAME
+   *   registerGenericDeviceConfigs - Register generic device configs.
+   */
   private static void registerGenericDeviceConfigs(List<DeviceRef> refs) {
     if (refs == null || refs.isEmpty()) {
       return;
@@ -611,6 +794,10 @@ public final class BringupUtil {
     }
   }
 
+  /**
+   * NAME
+   *   toIdArray - Convert device refs to raw ID array.
+   */
   private static int[] toIdArray(List<DeviceRef> refs) {
     // Convert JSON device objects into raw ID arrays.
     if (refs == null || refs.isEmpty()) {
@@ -623,6 +810,10 @@ public final class BringupUtil {
     return ids;
   }
 
+  /**
+   * NAME
+   *   toDevices - Convert raw IDs to device refs.
+   */
   private static List<DeviceRef> toDevices(int[] ids) {
     // Convert raw IDs into JSON device objects for fallback profiles.
     List<DeviceRef> refs = new ArrayList<>();
@@ -634,6 +825,10 @@ public final class BringupUtil {
     return refs;
   }
 
+  /**
+   * NAME
+   *   toLabelArray - Build label array with defaults.
+   */
   private static String[] toLabelArray(List<DeviceRef> refs, String prefix) {
     if (refs == null || refs.isEmpty()) {
       return new String[0];
@@ -650,6 +845,10 @@ public final class BringupUtil {
     return labels;
   }
 
+  /**
+   * NAME
+   *   toDeviceConfigs - Convert refs to DeviceConfig entries.
+   */
   private static List<DeviceConfig> toDeviceConfigs(List<DeviceRef> refs, String defaultLabelPrefix) {
     if (refs == null || refs.isEmpty()) {
       return Collections.emptyList();
@@ -668,6 +867,10 @@ public final class BringupUtil {
     return configs;
   }
 
+  /**
+   * NAME
+   *   toDeviceConfig - Convert a single ref to DeviceConfig.
+   */
   private static DeviceConfig toDeviceConfig(DeviceRef ref, String fallbackLabel) {
     String label = ref.label;
     if (label == null || label.isBlank()) {
@@ -676,6 +879,10 @@ public final class BringupUtil {
     return new DeviceConfig(ref.id, label, ref.motor, ref.limits);
   }
 
+  /**
+   * NAME
+   *   toMotorArray - Build motor model array from refs.
+   */
   private static String[] toMotorArray(List<DeviceRef> refs) {
     if (refs == null || refs.isEmpty()) {
       return new String[0];
@@ -687,6 +894,10 @@ public final class BringupUtil {
     return motors;
   }
 
+  /**
+   * NAME
+   *   toLimitArray - Build limit config array from refs.
+   */
   private static LimitConfig[] toLimitArray(List<DeviceRef> refs) {
     if (refs == null || refs.isEmpty()) {
       return new LimitConfig[0];
@@ -699,82 +910,162 @@ public final class BringupUtil {
     return limits;
   }
 
+  /**
+   * NAME
+   *   getNeoLabel - Return the label for a NEO at index.
+   */
   public static String getNeoLabel(int index) {
     return labelForIndex(NEO_LABELS, NEO_CAN_IDS, index, "NEO");
   }
 
+  /**
+   * NAME
+   *   getNeo550Label - Return the label for a NEO 550 at index.
+   */
   public static String getNeo550Label(int index) {
     return labelForIndex(NEO550_LABELS, NEO550_CAN_IDS, index, "NEO 550");
   }
 
+  /**
+   * NAME
+   *   getFlexLabel - Return the label for a FLEX at index.
+   */
   public static String getFlexLabel(int index) {
     return labelForIndex(FLEX_LABELS, FLEX_CAN_IDS, index, "FLEX");
   }
 
+  /**
+   * NAME
+   *   getKrakenLabel - Return the label for a Kraken at index.
+   */
   public static String getKrakenLabel(int index) {
     return labelForIndex(KRAKEN_LABELS, KRAKEN_CAN_IDS, index, "KRAKEN");
   }
 
+  /**
+   * NAME
+   *   getFalconLabel - Return the label for a Falcon at index.
+   */
   public static String getFalconLabel(int index) {
     return labelForIndex(FALCON_LABELS, FALCON_CAN_IDS, index, "FALCON");
   }
 
+  /**
+   * NAME
+   *   getCANCoderLabel - Return the label for a CANCoder at index.
+   */
   public static String getCANCoderLabel(int index) {
     return labelForIndex(CANCODER_LABELS, CANCODER_CAN_IDS, index, "CANCoder");
   }
 
+  /**
+   * NAME
+   *   getCandleLabel - Return the label for a CANdle at index.
+   */
   public static String getCandleLabel(int index) {
     return labelForIndex(CANDLE_LABELS, CANDLE_CAN_IDS, index, "CANdle");
   }
 
+  /**
+   * NAME
+   *   getNeoMotorModel - Return motor model override for NEO index.
+   */
   public static String getNeoMotorModel(int index) {
     return motorForIndex(NEO_MOTOR_MODELS, index);
   }
 
+  /**
+   * NAME
+   *   getNeo550MotorModel - Return motor model override for NEO 550 index.
+   */
   public static String getNeo550MotorModel(int index) {
     return motorForIndex(NEO550_MOTOR_MODELS, index);
   }
 
+  /**
+   * NAME
+   *   getFlexMotorModel - Return motor model override for FLEX index.
+   */
   public static String getFlexMotorModel(int index) {
     return motorForIndex(FLEX_MOTOR_MODELS, index);
   }
 
+  /**
+   * NAME
+   *   getKrakenMotorModel - Return motor model override for Kraken index.
+   */
   public static String getKrakenMotorModel(int index) {
     return motorForIndex(KRAKEN_MOTOR_MODELS, index);
   }
 
+  /**
+   * NAME
+   *   getFalconMotorModel - Return motor model override for Falcon index.
+   */
   public static String getFalconMotorModel(int index) {
     return motorForIndex(FALCON_MOTOR_MODELS, index);
   }
 
+  /**
+   * NAME
+   *   getNeoLimitConfig - Return limit config for NEO index.
+   */
   public static LimitConfig getNeoLimitConfig(int index) {
     return limitForIndex(NEO_LIMITS, index);
   }
 
+  /**
+   * NAME
+   *   getNeo550LimitConfig - Return limit config for NEO 550 index.
+   */
   public static LimitConfig getNeo550LimitConfig(int index) {
     return limitForIndex(NEO550_LIMITS, index);
   }
 
+  /**
+   * NAME
+   *   getFlexLimitConfig - Return limit config for FLEX index.
+   */
   public static LimitConfig getFlexLimitConfig(int index) {
     return limitForIndex(FLEX_LIMITS, index);
   }
 
+  /**
+   * NAME
+   *   getKrakenLimitConfig - Return limit config for Kraken index.
+   */
   public static LimitConfig getKrakenLimitConfig(int index) {
     return limitForIndex(KRAKEN_LIMITS, index);
   }
 
+  /**
+   * NAME
+   *   getFalconLimitConfig - Return limit config for Falcon index.
+   */
   public static LimitConfig getFalconLimitConfig(int index) {
     return limitForIndex(FALCON_LIMITS, index);
   }
 
+  /**
+   * NAME
+   *   getCANCoderLimitConfig - Return limit config for CANCoder index.
+   */
   public static LimitConfig getCANCoderLimitConfig(int index) {
     return limitForIndex(CANCODER_LIMITS, index);
   }
 
+  /**
+   * NAME
+   *   getCandleLimitConfig - Return limit config for CANdle index.
+   */
   public static LimitConfig getCandleLimitConfig(int index) {
     return limitForIndex(CANDLE_LIMITS, index);
   }
 
+  /**
+   * NAME
+   *   labelForIndex - Resolve label with bounds and fallback.
+   */
   private static String labelForIndex(String[] labels, int[] ids, int index, String prefix) {
     if (labels == null || index < 0 || index >= labels.length) {
       return prefix + " " + (index >= 0 && index < ids.length ? ids[index] : "?");
@@ -782,6 +1073,10 @@ public final class BringupUtil {
     return labels[index];
   }
 
+  /**
+   * NAME
+   *   motorForIndex - Resolve motor model for an index.
+   */
   private static String motorForIndex(String[] motors, int index) {
     if (motors == null || index < 0 || index >= motors.length) {
       return null;
@@ -790,6 +1085,10 @@ public final class BringupUtil {
     return (model == null || model.isBlank()) ? null : model;
   }
 
+  /**
+   * NAME
+   *   limitForIndex - Resolve limit config for an index.
+   */
   private static LimitConfig limitForIndex(LimitConfig[] limits, int index) {
     if (limits == null || index < 0 || index >= limits.length) {
       return new LimitConfig();
@@ -797,6 +1096,17 @@ public final class BringupUtil {
     return limits[index] != null ? limits[index] : new LimitConfig();
   }
 
+  /**
+   * NAME
+   *   getMotorSpecForDevice - Resolve motor specs for a device label/model.
+   *
+   * PARAMETERS
+   *   label - Device label.
+   *   modelOverride - Optional explicit motor model name.
+   *
+   * RETURNS
+   *   MotorSpec or null when unknown.
+   */
   public static MotorSpec getMotorSpecForDevice(String label, String modelOverride) {
     String model = modelOverride;
     if (model == null || model.isBlank()) {
@@ -808,6 +1118,10 @@ public final class BringupUtil {
     return MOTOR_SPECS.get(model);
   }
 
+  /**
+   * NAME
+   *   getCanManufacturerName - Resolve manufacturer ID to name.
+   */
   public static String getCanManufacturerName(int id) {
     if (CAN_MAPPINGS == null || CAN_MAPPINGS.manufacturers == null) {
       return null;
@@ -815,6 +1129,10 @@ public final class BringupUtil {
     return CAN_MAPPINGS.manufacturers.get(String.valueOf(id));
   }
 
+  /**
+   * NAME
+   *   getCanDeviceTypeName - Resolve device type ID to name.
+   */
   public static String getCanDeviceTypeName(int id) {
     if (CAN_MAPPINGS == null || CAN_MAPPINGS.deviceTypes == null) {
       return null;
@@ -822,6 +1140,10 @@ public final class BringupUtil {
     return CAN_MAPPINGS.deviceTypes.get(String.valueOf(id));
   }
 
+  /**
+   * NAME
+   *   inferMotorModelFromLabel - Guess motor model from a label.
+   */
   private static String inferMotorModelFromLabel(String label) {
     if (label == null) {
       return null;
@@ -848,6 +1170,10 @@ public final class BringupUtil {
     return null;
   }
 
+  /**
+   * NAME
+   *   loadMotorSpecs - Load motor_specs.json from deploy.
+   */
   private static Map<String, MotorSpec> loadMotorSpecs() {
     Map<String, MotorSpec> fallback = new LinkedHashMap<>();
     Path path = resolveDeployPath(MOTOR_SPECS_FILE);
@@ -873,6 +1199,10 @@ public final class BringupUtil {
     }
   }
 
+  /**
+   * NAME
+   *   loadCanMappings - Load CAN manufacturer/type mappings.
+   */
   private static CanMappings loadCanMappings() {
     Path path = resolveDeployPath(CAN_MAPPINGS_FILE);
     if (path == null || !Files.exists(path)) {
@@ -887,6 +1217,10 @@ public final class BringupUtil {
     }
   }
 
+  /**
+   * NAME
+   *   resolveDeployPath - Resolve a deploy file path with dev fallback.
+   */
   private static Path resolveDeployPath(String fileName) {
     try {
       Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(fileName);
@@ -903,14 +1237,20 @@ public final class BringupUtil {
     return Paths.get(fileName);
   }
 
-  // JSON root structure for bringup_profiles.json.
+  /**
+   * NAME
+   *   ProfileRoot - JSON root for bringup_profiles.json.
+   */
   private static final class ProfileRoot {
     @SerializedName("default_profile")
     String defaultProfile;
     LinkedHashMap<String, CanProfileConfig> profiles;
   }
 
-  // JSON profile structure: lists of device IDs by type.
+  /**
+   * NAME
+   *   CanProfileConfig - JSON profile entry for device lists.
+   */
   private static final class CanProfileConfig {
     List<DeviceRef> neos = Collections.emptyList();
     List<DeviceRef> neo550s = Collections.emptyList();
@@ -924,6 +1264,10 @@ public final class BringupUtil {
     DeviceRef pigeon;
     DeviceRef roborio;
 
+    /**
+     * NAME
+     *   CanProfileConfig - Construct a profile entry with device lists.
+     */
     CanProfileConfig(
         List<DeviceRef> neos,
         List<DeviceRef> neo550s,
@@ -950,7 +1294,10 @@ public final class BringupUtil {
     }
   }
 
-  // JSON device reference (currently just a CAN ID).
+  /**
+   * NAME
+   *   DeviceRef - JSON device reference entry.
+   */
   private static final class DeviceRef {
     int id;
     String vendor;
@@ -959,20 +1306,40 @@ public final class BringupUtil {
     String motor;
     LimitConfig limits;
 
+    /**
+     * NAME
+     *   DeviceRef - Construct a device ref with ID only.
+     */
     DeviceRef(int id) {
       this.id = id;
     }
   }
 
+  /**
+   * NAME
+   *   DeviceKey - Normalized key for vendor/type lookup.
+   */
   public static final class DeviceKey {
     private final String vendor;
     private final String type;
 
+    /**
+     * NAME
+     *   DeviceKey - Construct a normalized key.
+     *
+     * PARAMETERS
+     *   vendor - Vendor name.
+     *   type - Device type label.
+     */
     public DeviceKey(String vendor, String type) {
       this.vendor = vendor == null ? "" : vendor.trim().toUpperCase();
       this.type = type == null ? "" : type.trim().toUpperCase();
     }
 
+    /**
+     * NAME
+     *   equals - Compare vendor/type keys.
+     */
     @Override
     public boolean equals(Object obj) {
       if (this == obj) {
@@ -985,18 +1352,36 @@ public final class BringupUtil {
       return vendor.equals(other.vendor) && type.equals(other.type);
     }
 
+    /**
+     * NAME
+     *   hashCode - Hash vendor/type key.
+     */
     @Override
     public int hashCode() {
       return 31 * vendor.hashCode() + type.hashCode();
     }
   }
 
+  /**
+   * NAME
+   *   DeviceConfig - Resolved device configuration entry.
+   */
   public static final class DeviceConfig {
     private final int id;
     private final String label;
     private final String motor;
     private final LimitConfig limits;
 
+    /**
+     * NAME
+     *   DeviceConfig - Construct a device config entry.
+     *
+     * PARAMETERS
+     *   id - CAN device ID.
+     *   label - Display label.
+     *   motor - Optional motor model override.
+     *   limits - Optional limit config.
+     */
     public DeviceConfig(int id, String label, String motor, LimitConfig limits) {
       this.id = id;
       this.label = label;
@@ -1021,6 +1406,10 @@ public final class BringupUtil {
     }
   }
 
+  /**
+   * NAME
+   *   LimitConfig - Limit switch configuration for a device.
+   */
   public static final class LimitConfig {
     @SerializedName("fwdDio")
     public int fwdDio = -1;
@@ -1029,25 +1418,45 @@ public final class BringupUtil {
     @SerializedName("invert")
     public boolean invert = false;
 
+    /**
+     * NAME
+     *   hasForward - Return true when a forward limit is configured.
+     */
     public boolean hasForward() {
       return fwdDio >= 0;
     }
 
+    /**
+     * NAME
+     *   hasReverse - Return true when a reverse limit is configured.
+     */
     public boolean hasReverse() {
       return revDio >= 0;
     }
   }
 
+  /**
+   * NAME
+   *   MotorSpecRoot - JSON root for motor specs.
+   */
   private static final class MotorSpecRoot {
     List<MotorSpec> motors = Collections.emptyList();
   }
 
+  /**
+   * NAME
+   *   CanMappings - JSON mapping of CAN IDs to names.
+   */
   private static final class CanMappings {
     Map<String, String> manufacturers = Collections.emptyMap();
     @SerializedName("device_types")
     Map<String, String> deviceTypes = Collections.emptyMap();
   }
 
+  /**
+   * NAME
+   *   MotorSpec - Motor specification data from JSON.
+   */
   public static final class MotorSpec {
     public String model;
     public double nominalVoltage;

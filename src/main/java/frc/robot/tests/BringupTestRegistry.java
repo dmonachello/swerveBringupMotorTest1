@@ -18,6 +18,14 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * NAME
+ *   BringupTestRegistry - Load and persist bringup tests from JSON.
+ *
+ * DESCRIPTION
+ *   Handles reading bringup_tests.json, selecting test sets, and saving test
+ *   enable state.
+ */
 public final class BringupTestRegistry {
   private static final String TESTS_FILE = "bringup_tests.json";
   private static final Gson GSON = new Gson();
@@ -27,6 +35,13 @@ public final class BringupTestRegistry {
 
   private BringupTestRegistry() {}
 
+  /**
+   * NAME
+   *   loadTests - Load bringup tests from JSON.
+   *
+   * RETURNS
+   *   List of BringupTest instances.
+   */
   public static List<BringupTest> loadTests() {
     Path path = resolveTestsPath();
     if (path == null || !Files.exists(path)) {
@@ -55,6 +70,10 @@ public final class BringupTestRegistry {
     }
   }
 
+  /**
+   * NAME
+   *   setOverrideTestsPath - Override the path to bringup_tests.json.
+   */
   public static void setOverrideTestsPath(String path) {
     if (path == null || path.isBlank()) {
       overrideTestsPath = null;
@@ -63,6 +82,10 @@ public final class BringupTestRegistry {
     }
   }
 
+  /**
+   * NAME
+   *   getTestsInfo - Gather metadata about the tests file.
+   */
   public static TestsInfo getTestsInfo() {
     TestsInfo info = new TestsInfo();
     info.overridePath = overrideTestsPath;
@@ -99,6 +122,16 @@ public final class BringupTestRegistry {
     return info;
   }
 
+  /**
+   * NAME
+   *   saveTests - Persist bringup tests to JSON.
+   *
+   * PARAMETERS
+   *   tests - List of tests to serialize.
+   *
+   * RETURNS
+   *   True on successful write.
+   */
   public static boolean saveTests(List<BringupTest> tests) {
     if (tests == null) {
       return false;
@@ -139,6 +172,10 @@ public final class BringupTestRegistry {
     }
   }
 
+  /**
+   * NAME
+   *   buildTest - Instantiate a test from a JSON entry.
+   */
   private static BringupTest buildTest(TestEntry entry) {
     if (entry == null || entry.type == null) {
       return null;
@@ -153,6 +190,10 @@ public final class BringupTestRegistry {
     return null;
   }
 
+  /**
+   * NAME
+   *   selectTestEntries - Select test entries from the active set.
+   */
   private static List<TestEntry> selectTestEntries(TestRootLoad root) {
     if (root.testSets != null && !root.testSets.isEmpty()) {
       usingTestSets = true;
@@ -174,6 +215,10 @@ public final class BringupTestRegistry {
     return root.tests != null ? root.tests : Collections.emptyList();
   }
 
+  /**
+   * NAME
+   *   resolveActiveSetName - Resolve which test set to use.
+   */
   private static String resolveActiveSetName(TestRootLoad root) {
     if (root == null || root.testSets == null || root.testSets.isEmpty()) {
       return null;
@@ -187,6 +232,10 @@ public final class BringupTestRegistry {
     return root.testSets.keySet().iterator().next();
   }
 
+  /**
+   * NAME
+   *   resolveSaveSetName - Resolve which set name to save into.
+   */
   private static String resolveSaveSetName(TestRootLoad root) {
     if (activeTestSetName != null && !activeTestSetName.isBlank()) {
       return activeTestSetName;
@@ -198,6 +247,10 @@ public final class BringupTestRegistry {
     return "default";
   }
 
+  /**
+   * NAME
+   *   resolveDefaultTestSet - Resolve the default test set name to save.
+   */
   private static String resolveDefaultTestSet(TestRootLoad root, String fallback) {
     if (root != null && root.defaultTestSet != null && !root.defaultTestSet.isBlank()) {
       return root.defaultTestSet;
@@ -205,6 +258,10 @@ public final class BringupTestRegistry {
     return fallback;
   }
 
+  /**
+   * NAME
+   *   readRoot - Read and parse the tests JSON file.
+   */
   private static TestRootLoad readRoot(Path path) {
     try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
       return GSON.fromJson(reader, TestRootLoad.class);
@@ -213,6 +270,10 @@ public final class BringupTestRegistry {
     }
   }
 
+  /**
+   * NAME
+   *   toTestEntries - Convert raw map entries into typed TestEntry list.
+   */
   private static List<TestEntry> toTestEntries(List<Map<String, Object>> entries) {
     if (entries == null) {
       return Collections.emptyList();
@@ -228,6 +289,10 @@ public final class BringupTestRegistry {
     return converted;
   }
 
+  /**
+   * NAME
+   *   buildComposite - Build a CompositeTest from a JSON entry.
+   */
   private static BringupTest buildComposite(TestEntry entry) {
     CompositeTest.Config config = new CompositeTest.Config();
     config.name = entry.name != null ? entry.name : config.name;
@@ -293,6 +358,10 @@ public final class BringupTestRegistry {
     return new CompositeTest(config);
   }
 
+  /**
+   * NAME
+   *   buildJoystick - Build a JoystickTest from a JSON entry.
+   */
   private static BringupTest buildJoystick(TestEntry entry) {
     JoystickTest.Config config = new JoystickTest.Config();
     config.name = entry.name != null ? entry.name : config.name;
@@ -312,6 +381,10 @@ public final class BringupTestRegistry {
     return new JoystickTest(config);
   }
 
+  /**
+   * NAME
+   *   resolveTestsPath - Resolve the tests JSON path.
+   */
   private static Path resolveTestsPath() {
     if (overrideTestsPath != null && !overrideTestsPath.isBlank()) {
       Path override = resolveOverridePath(overrideTestsPath);
@@ -335,6 +408,10 @@ public final class BringupTestRegistry {
     return Paths.get(TESTS_FILE);
   }
 
+  /**
+   * NAME
+   *   resolveOverridePath - Resolve an override path into an absolute path.
+   */
   private static Path resolveOverridePath(String path) {
     try {
       Path candidate = Paths.get(path);
@@ -359,6 +436,10 @@ public final class BringupTestRegistry {
     }
   }
 
+  /**
+   * NAME
+   *   hashFile - Compute SHA-256 for a file.
+   */
   private static String hashFile(Path path) throws IOException {
     MessageDigest digest;
     try {
@@ -381,6 +462,10 @@ public final class BringupTestRegistry {
     return sb.toString();
   }
 
+  /**
+   * NAME
+   *   TestsInfo - Summary metadata for bringup_tests.json.
+   */
   public static final class TestsInfo {
     public Path path;
     public String overridePath;
@@ -398,6 +483,10 @@ public final class BringupTestRegistry {
     private TestsInfo() {}
   }
 
+  /**
+   * NAME
+   *   TestRootLoad - JSON root for loading tests.
+   */
   private static final class TestRootLoad {
     @SerializedName(value = "default_test_set", alternate = {"defaultTestSet"})
     String defaultTestSet;
@@ -406,6 +495,10 @@ public final class BringupTestRegistry {
     List<TestEntry> tests = Collections.emptyList();
   }
 
+  /**
+   * NAME
+   *   TestRootSave - JSON root for saving tests.
+   */
   private static final class TestRootSave {
     @SuppressWarnings("unused")
     List<Map<String, Object>> tests = Collections.emptyList();
@@ -415,6 +508,10 @@ public final class BringupTestRegistry {
     Map<String, List<TestEntry>> testSets = Collections.emptyMap();
   }
 
+  /**
+   * NAME
+   *   TestEntry - JSON test entry schema.
+   */
   private static final class TestEntry {
     String type;
     String name;
@@ -436,6 +533,10 @@ public final class BringupTestRegistry {
     Integer encoderMotorIndex;
   }
 
+  /**
+   * NAME
+   *   parseDeviceRef - Parse a VENDOR:TYPE:ID key into a MotorRef.
+   */
   static MotorRef parseDeviceRef(String value) {
     if (value == null || value.isBlank()) {
       return null;
@@ -484,6 +585,10 @@ public final class BringupTestRegistry {
     return ref;
   }
 
+  /**
+   * NAME
+   *   MotorRef - Parsed motor key reference.
+   */
   static final class MotorRef {
     String vendor;
     String type;

@@ -1,5 +1,20 @@
 from __future__ import annotations
 
+"""
+NAME
+    can_console_monitor.py - roboRIO NetConsole monitor and NT publisher.
+
+SYNOPSIS
+    from can_console_monitor import ConsoleMonitor
+
+DESCRIPTION
+    Listens to NetConsole over TCP or UDP, matches lines against regex rules,
+    aggregates events, and publishes a compact diagnostic view to NetworkTables.
+
+SIDE EFFECTS
+    Opens sockets, optional rotating log files, and publishes to NT.
+"""
+
 import json
 import logging
 import threading
@@ -34,6 +49,14 @@ class ConsoleEntry:
 
 
 class ConsoleMonitor:
+    """
+    NAME
+        ConsoleMonitor - Monitor roboRIO NetConsole and publish event summaries.
+
+    DESCRIPTION
+        Tracks matched console events with timeouts and exposes counts and
+        latest messages via NetworkTables for diagnostics.
+    """
     def __init__(
         self,
         rules_path: str,
@@ -75,6 +98,17 @@ class ConsoleMonitor:
         self._init_sockets()
 
     def _init_logger(self, path: str, max_mb: int, max_files: int) -> None:
+        """
+        NAME
+            _init_logger - Configure optional rotating log output.
+
+        DESCRIPTION
+            Creates a rotating file handler for raw NetConsole lines when a
+            log path is supplied.
+
+        SIDE EFFECTS
+            Creates directories and opens files on disk.
+        """
         if not path:
             return
         try:
@@ -101,6 +135,17 @@ class ConsoleMonitor:
         self._logger = logger
 
     def _load_rules(self) -> None:
+        """
+        NAME
+            _load_rules - Load regex rules from JSON.
+
+        DESCRIPTION
+            Parses rule entries, compiles regexes, and builds the in-memory
+            rule list used for event matching.
+
+        ERRORS
+            Prints warnings on invalid files or regex syntax.
+        """
         self._rules.clear()
         try:
             raw = Path(self._rules_path).read_text(encoding="utf-8")
@@ -143,6 +188,13 @@ class ConsoleMonitor:
             )
 
     def stop(self) -> None:
+        """
+        NAME
+            stop - Close any open sockets and release resources.
+
+        SIDE EFFECTS
+            Closes UDP/TCP sockets if they were opened.
+        """
         if self._udp_sock is not None:
             try:
                 self._udp_sock.close()
@@ -157,6 +209,13 @@ class ConsoleMonitor:
             self._tcp_sock = None
 
     def _init_sockets(self) -> None:
+        """
+        NAME
+            _init_sockets - Initialize UDP listener when configured.
+
+        DESCRIPTION
+            Binds a non-blocking UDP socket for NetConsole broadcast reception.
+        """
         import socket
         if self._transport == "udp":
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -175,15 +234,36 @@ class ConsoleMonitor:
                 self._udp_sock = None
 
     def poll(self, now: float) -> None:
+        """
+        NAME
+            poll - Service the console transport and update state.
+
+        PARAMETERS
+            now: Current wall-clock time (seconds).
+        """
         if self._transport == "udp":
             self._poll_udp(now)
         else:
             self._poll_tcp(now)
 
     def request_reset(self) -> None:
+        """
+        NAME
+            request_reset - Schedule a reset of published console state.
+
+        DESCRIPTION
+            Triggers clearing of counters and entries at next publish cycle.
+        """
         self._reset_requested = True
 
     def _poll_udp(self, now: float) -> None:
+        """
+        NAME
+            _poll_udp - Read and process UDP NetConsole packets.
+
+        PARAMETERS
+            now: Current wall-clock time (seconds).
+        """
         import socket
         if self._udp_sock is None:
             return
@@ -204,6 +284,13 @@ class ConsoleMonitor:
             self._handle_payload(data, now)
 
     def _poll_tcp(self, now: float) -> None:
+        """
+        NAME
+            _poll_tcp - Read and process TCP NetConsole stream.
+
+        DESCRIPTION
+            Maintains a reconnect loop and drains length-prefixed frames.
+        """
         import socket
         if self._tcp_sock is None:
             if (now - self._last_connect_attempt) < 1.0:
@@ -243,6 +330,14 @@ class ConsoleMonitor:
             self._drain_tcp_buffer(now)
 
     def _drain_tcp_buffer(self, now: float) -> None:
+        """
+        NAME
+            _drain_tcp_buffer - Parse length-prefixed NetConsole frames.
+
+        DESCRIPTION
+            Decodes the 2-byte big-endian length header and forwards payloads
+            for line processing.
+        """
         # NetConsole TCP frames are 2-byte big-endian length-prefixed records.
         # Payloads contain binary metadata plus the printable log text.
         while len(self._tcp_buf) >= 2:
@@ -257,6 +352,14 @@ class ConsoleMonitor:
             self._handle_payload(payload, now)
 
     def _handle_payload(self, payload: bytes, ts: float) -> None:
+        """
+        NAME
+            _handle_payload - Decode payload bytes into lines for matching.
+
+        PARAMETERS
+            payload: Raw NetConsole payload bytes.
+            ts: Timestamp for line attribution.
+        """
         try:
             text = payload.decode("utf-8", errors="ignore")
         except Exception:
@@ -272,6 +375,13 @@ class ConsoleMonitor:
                 self._lines_matched += 1
 
     def _process_line(self, line: str, ts: float) -> bool:
+        """
+        NAME
+            _process_line - Match a line to a rule and update aggregates.
+
+        RETURNS
+            True if any rule matched and state was updated.
+        """
         for rule in self._rules:
             match = rule.regex.search(line)
             if not match:
@@ -315,6 +425,14 @@ class ConsoleMonitor:
         return True
 
     def _note_timeout(self, device_id: int, ts: float) -> None:
+        """
+        NAME
+            _note_timeout - Track timeout clusters for derived bus faults.
+
+        DESCRIPTION
+            Records recent device timeouts and emits a derived event when the
+            window exceeds the configured threshold.
+        """
         cutoff = ts - self._bus_fault_window_s
         self._recent_timeouts[device_id] = ts
         stale = [key for key, last in self._recent_timeouts.items() if last < cutoff]
@@ -325,6 +443,10 @@ class ConsoleMonitor:
         self._set_derived_bus_fault(ts, len(self._recent_timeouts))
 
     def _set_derived_bus_fault(self, ts: float, devices: int) -> None:
+        """
+        NAME
+            _set_derived_bus_fault - Create or refresh derived fault entry.
+        """
         key = "system:BUS_FAULT_SUSPECTED"
         message = f"DERIVED: {devices} devices timed out within {self._bus_fault_window_s:.0f}s"
         with self._lock:
@@ -350,6 +472,21 @@ class ConsoleMonitor:
             entry.active = True
 
     def publish(self, table, now: float) -> None:
+        """
+        NAME
+            publish - Push console summary state to NetworkTables.
+
+        DESCRIPTION
+            Applies inactivity timeouts, handles reset requests, and writes
+            summary counters plus per-event entries.
+
+        PARAMETERS
+            table: NetworkTables base table (bringup/diag).
+            now: Current wall-clock time (seconds).
+
+        SIDE EFFECTS
+            Writes NetworkTables entries.
+        """
         if (now - self._last_publish) < self._publish_period:
             return
         self._last_publish = now
@@ -389,6 +526,13 @@ class ConsoleMonitor:
             self._published_keys.add((entry.device_id, entry.event_type))
 
     def _reset_console_state(self, console_table) -> None:
+        """
+        NAME
+            _reset_console_state - Clear published entries in NetworkTables.
+
+        SIDE EFFECTS
+            Writes zeros/empty values to previously published keys.
+        """
         with self._lock:
             self._entries.clear()
         for device_id, event_type in list(self._published_keys):

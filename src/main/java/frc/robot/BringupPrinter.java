@@ -3,8 +3,17 @@ package frc.robot;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
-// Simple async printer to keep long console output from stalling the main loop.
-// NOTE: This class only handles output formatting/printing; it must not call vendor/robot APIs.
+/**
+ * NAME
+ *   BringupPrinter - Throttled async console printer.
+ *
+ * DESCRIPTION
+ *   Queues text and prints it in a background thread to avoid stalling the
+ *   real-time robot loop.
+ *
+ * NOTES
+ *   This class must remain free of vendor/robot API calls.
+ */
 public final class BringupPrinter {
   private static final ConcurrentLinkedQueue<String> QUEUE = new ConcurrentLinkedQueue<>();
   private static final AtomicLong QUEUED_BYTES = new AtomicLong(0);
@@ -18,6 +27,16 @@ public final class BringupPrinter {
 
   private BringupPrinter() {}
 
+  /**
+   * NAME
+   *   enqueue - Queue a string for throttled console output.
+   *
+   * PARAMETERS
+   *   text - Message to print.
+   *
+   * SIDE EFFECTS
+   *   Starts the printer thread and enqueues output.
+   */
   public static void enqueue(String text) {
     // Fast path: ignore empty messages to avoid queue churn.
     if (text == null || text.isEmpty()) {
@@ -36,6 +55,17 @@ public final class BringupPrinter {
     startIfNeeded();
   }
 
+  /**
+   * NAME
+   *   enqueueChunked - Queue a long report in line-limited chunks.
+   *
+   * PARAMETERS
+   *   text - Report text to split.
+   *   maxLines - Maximum lines per chunk.
+   *
+   * SIDE EFFECTS
+   *   Enqueues one or more chunks for printing.
+   */
   public static void enqueueChunked(String text, int maxLines) {
     // Break large reports into smaller blocks so the console stays responsive.
     if (text == null || text.isEmpty()) {
@@ -65,6 +95,10 @@ public final class BringupPrinter {
     }
   }
 
+  /**
+   * NAME
+   *   startIfNeeded - Lazily start the printer thread.
+   */
   private static void startIfNeeded() {
     // Lazy-start the background thread to avoid static init order issues.
     if (started) {
@@ -82,6 +116,13 @@ public final class BringupPrinter {
     }
   }
 
+  /**
+   * NAME
+   *   runLoop - Background print loop with throttling.
+   *
+   * SIDE EFFECTS
+   *   Writes to stdout.
+   */
   private static void runLoop() {
     // Poll continuously; sleep briefly when idle to reduce CPU usage.
     long windowStartMs = System.currentTimeMillis();
@@ -143,6 +184,10 @@ public final class BringupPrinter {
     return THROTTLE_WINDOW_MS;
   }
 
+  /**
+   * NAME
+   *   sleepMs - Best-effort sleep with interrupt reassertion.
+   */
   private static void sleepMs(long ms) {
     // Best-effort delay; interrupt is reasserted if it happens.
     try {

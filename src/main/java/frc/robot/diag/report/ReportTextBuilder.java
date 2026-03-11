@@ -16,11 +16,22 @@ import frc.robot.diag.app.AppStatusTracker;
 import frc.robot.BringupPrinter;
 import java.util.List;
 
-// Formats snapshot bundles into the human-readable console report.
+/**
+ * NAME
+ *   ReportTextBuilder - Build human-readable diagnostics reports.
+ *
+ * DESCRIPTION
+ *   Formats snapshot bundles into a console-friendly report with device and
+ *   bus summaries.
+ */
 public final class ReportTextBuilder {
   private static final double HIGH_UTILIZATION_PCT = 80.0;
   private static final double PC_STALE_DEVICE_AGE_SEC = 2.0;
 
+  /**
+   * NAME
+   *   buildCanDiagnosticsReport - Build the CAN diagnostics report.
+   */
   public String buildCanDiagnosticsReport(SnapshotBundle bundle) {
     StringBuilder sb = new StringBuilder(1024);
     ReportTextUtil.appendLine(sb, "=== CAN Diagnostics Report ===");
@@ -35,12 +46,20 @@ public final class ReportTextBuilder {
     return sb.toString();
   }
 
+  /**
+   * NAME
+   *   buildSummaryLine - Build the summary status line.
+   */
   private String buildSummaryLine(SnapshotBundle bundle) {
     String bus = summaryBusStatus(bundle.bus);
     String pc = summaryPcStatus(bundle.pc);
     return "Summary: bus=" + bus + " pc=" + pc;
   }
 
+  /**
+   * NAME
+   *   summaryBusStatus - Summarize bus health into a status token.
+   */
   private String summaryBusStatus(BusSnapshot bus) {
     if (bus == null || !bus.valid) {
       return "NO_DATA";
@@ -60,6 +79,10 @@ public final class ReportTextBuilder {
     return "OK";
   }
 
+  /**
+   * NAME
+   *   summaryPcStatus - Summarize PC sniffer health into a status token.
+   */
   private String summaryPcStatus(PcSnapshot pc) {
     if (pc == null || pc.heartbeatAgeSec < 0 || !pc.openOk) {
       return "PC_TOOL_MISSING";
@@ -67,6 +90,10 @@ public final class ReportTextBuilder {
     return "OK";
   }
 
+  /**
+   * NAME
+   *   appendBusSnapshot - Append bus diagnostics section.
+   */
   private void appendBusSnapshot(StringBuilder sb, BusSnapshot bus) {
     if (bus == null || !bus.valid) {
       ReportTextUtil.appendLine(sb, "[CAN] No status samples yet.");
@@ -82,6 +109,10 @@ public final class ReportTextBuilder {
     ReportTextUtil.appendLine(sb, "===========================");
   }
 
+  /**
+   * NAME
+   *   appendPcToolSection - Append PC tool diagnostics section.
+   */
   private void appendPcToolSection(StringBuilder sb, PcSnapshot pc) {
     ReportTextUtil.appendLine(sb, "PC Tool:");
     if (pc == null) {
@@ -127,6 +158,10 @@ public final class ReportTextBuilder {
     }
   }
 
+  /**
+   * NAME
+   *   appendDeviceHealth - Append per-device health section.
+   */
   private void appendDeviceHealth(StringBuilder sb, List<DeviceSnapshot> devices) {
     ReportTextUtil.appendLine(sb, "Device Health (local API):");
     if (devices == null) {
@@ -149,6 +184,10 @@ public final class ReportTextBuilder {
     }
   }
 
+  /**
+   * NAME
+   *   appendRevDevice - Append REV device line.
+   */
   private void appendRevDevice(StringBuilder sb, DeviceSnapshot snap) {
     if (!snap.present) {
       ReportTextUtil.appendLine(
@@ -178,6 +217,10 @@ public final class ReportTextBuilder {
     appendLedLines(sb, snap);
   }
 
+  /**
+   * NAME
+   *   appendCtreDevice - Append CTRE device line.
+   */
   private void appendCtreDevice(StringBuilder sb, DeviceSnapshot snap) {
     if (!snap.present) {
       ReportTextUtil.appendLine(
@@ -216,6 +259,10 @@ public final class ReportTextBuilder {
     appendLedLines(sb, snap);
   }
 
+  /**
+   * NAME
+   *   appendCANCoder - Append CANCoder device line.
+   */
   private void appendCANCoder(StringBuilder sb, DeviceSnapshot snap) {
     if (!snap.present) {
       ReportTextUtil.appendLine(
@@ -237,6 +284,10 @@ public final class ReportTextBuilder {
     appendLedLines(sb, snap);
   }
 
+  /**
+   * NAME
+   *   appendCANdle - Append CANdle device line.
+   */
   private void appendCANdle(StringBuilder sb, DeviceSnapshot snap) {
     if (!snap.present) {
       ReportTextUtil.appendLine(
@@ -254,6 +305,10 @@ public final class ReportTextBuilder {
     appendLedLines(sb, snap);
   }
 
+  /**
+   * NAME
+   *   appendCanSuspicionLines - Append CAN suspicion annotations.
+   */
   private void appendCanSuspicionLines(StringBuilder sb, DeviceSnapshot snap) {
     CanSuspicionAttachment can = snap.getAttachment(CanSuspicionAttachment.class);
     if (can == null) {
@@ -275,6 +330,10 @@ public final class ReportTextBuilder {
     }
   }
 
+  /**
+   * NAME
+   *   appendLedLines - Append LED status annotations.
+   */
   private void appendLedLines(StringBuilder sb, DeviceSnapshot snap) {
     LedStatusAttachment led = snap.getAttachment(LedStatusAttachment.class);
     if (led == null) {
@@ -296,6 +355,10 @@ public final class ReportTextBuilder {
     }
   }
 
+  /**
+   * NAME
+   *   appendLedLegend - Append a legend for observed LED patterns.
+   */
   private void appendLedLegend(StringBuilder sb, List<DeviceSnapshot> devices) {
     if (devices == null || devices.isEmpty()) {
       return;
@@ -318,6 +381,10 @@ public final class ReportTextBuilder {
     }
   }
 
+  /**
+   * NAME
+   *   addLegend - Add a legend entry if not already present.
+   */
   private void addLegend(java.util.Map<String, String> legend, String pattern, String meaning) {
     if (pattern == null || pattern.isBlank() || meaning == null || meaning.isBlank()) {
       return;
@@ -325,6 +392,10 @@ public final class ReportTextBuilder {
     legend.putIfAbsent(pattern, meaning);
   }
 
+  /**
+   * NAME
+   *   formatPatternMeaning - Format LED pattern with meaning.
+   */
   private String formatPatternMeaning(String pattern, String meaning) {
     if (pattern == null || pattern.isBlank()) {
       return "";
@@ -335,6 +406,10 @@ public final class ReportTextBuilder {
     return pattern + " — " + meaning;
   }
 
+  /**
+   * NAME
+   *   formatStateMeaning - Format state with meaning.
+   */
   private String formatStateMeaning(String state, String meaning) {
     if (state == null || state.isBlank()) {
       return "";
@@ -345,6 +420,10 @@ public final class ReportTextBuilder {
     return state + " — " + meaning;
   }
 
+  /**
+   * NAME
+   *   appendAppStatus - Append app loop health metrics.
+   */
   private void appendAppStatus(StringBuilder sb) {
     AppStatusTracker.AppStatusSnapshot snap = AppStatusTracker.snapshot();
     ReportTextUtil.appendLine(sb, "App Status:");
@@ -371,6 +450,10 @@ public final class ReportTextBuilder {
         " maxQueueBytes=" + BringupPrinter.getMaxQueueBytes());
   }
 
+  /**
+   * NAME
+   *   formatLimitSummary - Format limit switch summary.
+   */
   private String formatLimitSummary(LimitsAttachment limits) {
     if (limits == null || (limits.fwdDio < 0 && limits.revDio < 0)) {
       return "";
@@ -394,6 +477,10 @@ public final class ReportTextBuilder {
     return sb.toString();
   }
 
+  /**
+   * NAME
+   *   formatLimitState - Format a limit switch state.
+   */
   private String formatLimitState(Boolean closed) {
     if (closed == null) {
       return "?";
@@ -401,6 +488,10 @@ public final class ReportTextBuilder {
     return closed ? "CLOSED" : "OPEN";
   }
 
+  /**
+   * NAME
+   *   formatRevFaultSummary - Format REV fault summary.
+   */
   private String formatRevFaultSummary(RevMotorAttachment rev) {
     if (rev == null) {
       return "";
@@ -417,6 +508,10 @@ public final class ReportTextBuilder {
     return sb.toString();
   }
 
+  /**
+   * NAME
+   *   formatMotorSpecNote - Format motor spec/current note.
+   */
   private String formatMotorSpecNote(MotorSpecAttachment spec, Double motorCurrent) {
     if (spec == null || spec.freeCurrentA == null || spec.stallCurrentA == null) {
       return "";
@@ -430,6 +525,10 @@ public final class ReportTextBuilder {
         " freeRatio=" + ratio;
   }
 
+  /**
+   * NAME
+   *   formatFlagList - Format a list of flags.
+   */
   private String formatFlagList(List<String> flags) {
     if (flags == null || flags.isEmpty()) {
       return "";
@@ -437,6 +536,10 @@ public final class ReportTextBuilder {
     return " [" + String.join(",", flags) + "]";
   }
 
+  /**
+   * NAME
+   *   formatDoubleOrDash - Format double or return dash when NaN.
+   */
   private String formatDoubleOrDash(double value, int decimals) {
     if (Double.isNaN(value)) {
       return "-";
@@ -444,6 +547,10 @@ public final class ReportTextBuilder {
     return String.format("%." + decimals + "f", value);
   }
 
+  /**
+   * NAME
+   *   formatDouble - Format a Double with fixed decimals.
+   */
   private String formatDouble(Double value, int decimals) {
     if (value == null) {
       value = 0.0;
@@ -454,10 +561,18 @@ public final class ReportTextBuilder {
     return String.format("%." + decimals + "f", value);
   }
 
+  /**
+   * NAME
+   *   safeText - Replace null with empty string.
+   */
   private String safeText(String value) {
     return value == null ? "" : value;
   }
 
+  /**
+   * NAME
+   *   formatSeenNotLocal - Format entries for seen-not-local devices.
+   */
   private List<String> formatSeenNotLocal(List<PcSnapshot.SeenNotLocalEntry> entries) {
     List<String> out = new java.util.ArrayList<>();
     for (PcSnapshot.SeenNotLocalEntry entry : entries) {
@@ -467,6 +582,10 @@ public final class ReportTextBuilder {
     return out;
   }
 
+  /**
+   * NAME
+   *   formatProfileMismatch - Format profile mismatch entries.
+   */
   private List<String> formatProfileMismatch(List<PcSnapshot.ProfileMismatchEntry> entries) {
     List<String> out = new java.util.ArrayList<>();
     for (PcSnapshot.ProfileMismatchEntry entry : entries) {
@@ -475,6 +594,10 @@ public final class ReportTextBuilder {
     return out;
   }
 
+  /**
+   * NAME
+   *   formatStaleDevices - Format stale device entries.
+   */
   private List<String> formatStaleDevices(List<PcSnapshot.StaleDeviceEntry> entries) {
     List<String> out = new java.util.ArrayList<>();
     for (PcSnapshot.StaleDeviceEntry entry : entries) {

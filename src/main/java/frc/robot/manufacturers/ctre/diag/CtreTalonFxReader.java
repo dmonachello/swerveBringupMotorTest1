@@ -5,10 +5,37 @@ import com.ctre.phoenix6.hardware.TalonFX;
 import edu.wpi.first.units.Units;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 
-// Reader for CTRE TalonFX-based devices (Kraken/Falcon).
+/**
+ * NAME
+ * CtreTalonFxReader
+ *
+ * SYNOPSIS
+ * Reader for CTRE TalonFX-based devices (Kraken/Falcon).
+ *
+ * DESCRIPTION
+ * Samples Phoenix status signals and packages telemetry into snapshots.
+ */
 public final class CtreTalonFxReader {
   private CtreTalonFxReader() {}
 
+  /**
+   * NAME
+   * read
+   *
+   * SYNOPSIS
+   * Capture a snapshot from a TalonFX device.
+   *
+   * PARAMETERS
+   * device - TalonFX instance to read.
+   * deviceType - device type token (e.g., KRAKEN/FALCON).
+   * canId - CAN ID of the device.
+   *
+   * RETURNS
+   * A populated device snapshot with CTRE motor telemetry.
+   *
+   * SIDE EFFECTS
+   * Refreshes Phoenix status signals.
+   */
   public static DeviceSnapshot read(TalonFX device, String deviceType, int canId) {
     DeviceSnapshot snap = new DeviceSnapshot();
     snap.vendor = "CTRE";

@@ -1,5 +1,20 @@
 from __future__ import annotations
 
+"""
+NAME
+    md_to_docx.py - Markdown to DOCX converter with TOC support.
+
+SYNOPSIS
+    python md_to_docx.py --input README.md [--output out.docx]
+
+DESCRIPTION
+    Converts markdown headings and bullet lists into a DOCX file with a title
+    page, table of contents, and optional page breaks for top-level sections.
+
+SIDE EFFECTS
+    Reads markdown files and writes DOCX output.
+"""
+
 import argparse
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +27,10 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 
 def _add_toc_field(paragraph) -> None:
+    """
+    NAME
+        _add_toc_field - Insert a Word TOC field into a paragraph.
+    """
     run = paragraph.add_run()
     fld_begin = OxmlElement("w:fldChar")
     fld_begin.set(qn("w:fldCharType"), "begin")
@@ -29,6 +48,10 @@ def _add_toc_field(paragraph) -> None:
 
 
 def _add_page_number(paragraph) -> None:
+    """
+    NAME
+        _add_page_number - Insert a centered page number field.
+    """
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = paragraph.add_run()
     fld_begin = OxmlElement("w:fldChar")
@@ -44,6 +67,10 @@ def _add_page_number(paragraph) -> None:
 
 
 def _parse_title_and_purpose(lines: list[str]) -> tuple[str, str]:
+    """
+    NAME
+        _parse_title_and_purpose - Extract title and Purpose line from markdown.
+    """
     title = ""
     purpose = ""
     idx = 0
@@ -65,6 +92,18 @@ def _parse_title_and_purpose(lines: list[str]) -> tuple[str, str]:
 
 
 def build_docx(input_path: Path, output_path: Path, title: str | None) -> None:
+    """
+    NAME
+        build_docx - Convert markdown content into a DOCX document.
+
+    PARAMETERS
+        input_path: Markdown file path.
+        output_path: DOCX file path to write.
+        title: Optional title override.
+
+    SIDE EFFECTS
+        Writes a DOCX file to disk.
+    """
     lines = input_path.read_text(encoding="utf-8").splitlines()
     detected_title, purpose = _parse_title_and_purpose(lines)
     if not title:
@@ -137,6 +176,10 @@ def build_docx(input_path: Path, output_path: Path, title: str | None) -> None:
 
 
 def main() -> int:
+    """
+    NAME
+        main - CLI entry point for markdown conversion.
+    """
     parser = argparse.ArgumentParser(description="Convert markdown to docx with title, TOC, and page breaks.")
     parser.add_argument("--input", required=True, help="Input markdown file.")
     parser.add_argument("--output", default="", help="Output docx file (default: input name).")

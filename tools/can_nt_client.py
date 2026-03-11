@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+"""
+NAME
+    can_nt_client.py - NetworkTables client setup and publish loop helpers.
+
+SYNOPSIS
+    from can_nt_client import setup_nt, publish_updates
+
+DESCRIPTION
+    Encapsulates NT client creation and periodic publishing of device/summary
+    data for the CAN diagnostics tool.
+"""
+
 import json
 from typing import Dict, List, Tuple
 
@@ -11,6 +23,19 @@ from can_state import SnifferState, merge_unknown_devices
 
 
 def setup_nt(args):
+    """
+    NAME
+        setup_nt - Initialize the NetworkTables client.
+
+    PARAMETERS
+        args: Parsed CLI args with NT configuration.
+
+    RETURNS
+        (nt_instance, diag_table) or (None, None) when NT is disabled.
+
+    SIDE EFFECTS
+        Starts an NT client and attempts to connect to the roboRIO server.
+    """
     if args.no_nt:
         return None, None
     # Local import so --help works without NT dependencies.
@@ -36,6 +61,30 @@ def publish_updates(
     console_monitor: ConsoleMonitor | None,
     uses_status_presence,
 ) -> Tuple[float, float]:
+    """
+    NAME
+        publish_updates - Emit periodic NT updates and optional summaries.
+
+    PARAMETERS
+        args: Parsed CLI args controlling publish cadence and features.
+        now: Current wall-clock time (seconds).
+        last_publish: Last publish timestamp (seconds).
+        last_summary: Last summary print timestamp (seconds).
+        analyzer: Live analyzer for summary data.
+        state: SnifferState with counters and timestamps.
+        devices: Profile device list.
+        labels: Device label map.
+        table: NetworkTables base table (bringup/diag) or None.
+        bus: CAN bus instance for extra summary context.
+        console_monitor: Optional NetConsole monitor.
+        uses_status_presence: Predicate for presence source selection.
+
+    RETURNS
+        Updated (last_publish, last_summary) timestamps.
+
+    SIDE EFFECTS
+        Writes NetworkTables keys and optionally prints summaries.
+    """
     if (now - last_publish) < args.publish_period:
         return last_publish, last_summary
 

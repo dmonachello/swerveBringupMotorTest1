@@ -12,13 +12,38 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-// Loads per-vendor LED pattern meanings from deploy JSON files.
+/**
+ * NAME
+ * LedStatusCatalog
+ *
+ * SYNOPSIS
+ * Loads per-vendor LED pattern meanings from deploy JSON files.
+ *
+ * DESCRIPTION
+ * Resolves vendor pattern catalogs from deploy or local paths and caches them
+ * for quick lookup during diagnostics.
+ */
 public final class LedStatusCatalog {
   private static final Gson GSON = new Gson();
   private static final Map<String, VendorCatalog> CACHE = new HashMap<>();
 
   private LedStatusCatalog() {}
 
+  /**
+   * NAME
+   * lookup
+   *
+   * SYNOPSIS
+   * Lookup a human-readable meaning for a vendor LED pattern.
+   *
+   * PARAMETERS
+   * vendor - vendor name (e.g., REV, CTRE).
+   * deviceType - optional device type key for device-specific patterns.
+   * pattern - vendor-reported pattern identifier.
+   *
+   * RETURNS
+   * A meaning string, or empty string when no mapping is available.
+   */
   public static String lookup(String vendor, String deviceType, String pattern) {
     if (vendor == null || vendor.isBlank() || pattern == null || pattern.isBlank()) {
       return "";
@@ -37,6 +62,19 @@ public final class LedStatusCatalog {
     return meaning != null ? meaning : "";
   }
 
+  /**
+   * NAME
+   * loadVendor
+   *
+   * SYNOPSIS
+   * Load or retrieve a cached vendor catalog.
+   *
+   * PARAMETERS
+   * vendor - vendor name to load.
+   *
+   * RETURNS
+   * A vendor catalog (possibly empty).
+   */
   private static VendorCatalog loadVendor(String vendor) {
     String key = vendor.trim().toUpperCase();
     if (CACHE.containsKey(key)) {
@@ -47,6 +85,22 @@ public final class LedStatusCatalog {
     return loaded;
   }
 
+  /**
+   * NAME
+   * loadFromFile
+   *
+   * SYNOPSIS
+   * Load a vendor catalog from a JSON file.
+   *
+   * PARAMETERS
+   * vendor - vendor name used to pick the catalog file.
+   *
+   * RETURNS
+   * A populated catalog, or an empty catalog on error.
+   *
+   * ERRORS
+   * Swallows parsing and I/O exceptions and returns an empty catalog.
+   */
   private static VendorCatalog loadFromFile(String vendor) {
     String fileName;
     if ("REV".equals(vendor)) {
@@ -104,6 +158,19 @@ public final class LedStatusCatalog {
     }
   }
 
+  /**
+   * NAME
+   * resolvePath
+   *
+   * SYNOPSIS
+   * Resolve a deploy or development path for a catalog file.
+   *
+   * PARAMETERS
+   * fileName - catalog file name.
+   *
+   * RETURNS
+   * A path candidate, even if it does not exist.
+   */
   private static Path resolvePath(String fileName) {
     try {
       Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(fileName);
@@ -120,6 +187,13 @@ public final class LedStatusCatalog {
     return Path.of(fileName);
   }
 
+  /**
+   * NAME
+   * VendorCatalog
+   *
+   * SYNOPSIS
+   * In-memory catalog of vendor and device-specific patterns.
+   */
   private static final class VendorCatalog {
     final Map<String, String> patterns = new HashMap<>();
     final Map<String, Map<String, String>> devices = new HashMap<>();

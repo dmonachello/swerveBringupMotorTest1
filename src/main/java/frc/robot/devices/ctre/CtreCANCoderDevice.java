@@ -10,7 +10,17 @@ import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.registry.RegistrationHeader;
 import edu.wpi.first.wpilibj.DigitalInput;
 
-// Device wrapper for a CTRE CANCoder.
+/**
+ * NAME
+ * CtreCANCoderDevice
+ *
+ * SYNOPSIS
+ * Device wrapper for a CTRE CANCoder.
+ *
+ * DESCRIPTION
+ * Provides bringup lifecycle, telemetry, and limit switch handling for CTRE
+ * CAN-based encoders.
+ */
 public final class CtreCANCoderDevice implements DeviceUnit {
   public static final RegistrationHeader HEADER = new RegistrationHeader(
       "CANCoder",
@@ -27,6 +37,21 @@ public final class CtreCANCoderDevice implements DeviceUnit {
   private DigitalInput revLimit;
   private CANcoder device;
 
+  /**
+   * NAME
+   * CtreCANCoderDevice
+   *
+   * SYNOPSIS
+   * Construct a CANCoder device wrapper.
+   *
+   * PARAMETERS
+   * canId - CAN ID of the encoder.
+   * label - human-readable label for reporting.
+   * limitConfig - optional limit switch configuration.
+   *
+   * SIDE EFFECTS
+   * Initializes DIO inputs when limit switches are configured.
+   */
   public CtreCANCoderDevice(int canId, String label, BringupUtil.LimitConfig limitConfig) {
     this.canId = canId;
     this.label = label;
@@ -59,6 +84,16 @@ public final class CtreCANCoderDevice implements DeviceUnit {
     return device != null;
   }
 
+  /**
+   * NAME
+   * ensureCreated
+   *
+   * SYNOPSIS
+   * Construct the CANCoder device if not already created.
+   *
+   * SIDE EFFECTS
+   * Allocates a vendor device and starts CAN communication.
+   */
   @Override
   public void ensureCreated() {
     if (device != null) {
@@ -67,6 +102,16 @@ public final class CtreCANCoderDevice implements DeviceUnit {
     device = new CANcoder(canId);
   }
 
+  /**
+   * NAME
+   * close
+   *
+   * SYNOPSIS
+   * Release vendor and DIO resources.
+   *
+   * SIDE EFFECTS
+   * Closes device handles and limit switch inputs.
+   */
   @Override
   public void close() {
     BringupUtil.closeIfPossible(device);
@@ -77,6 +122,16 @@ public final class CtreCANCoderDevice implements DeviceUnit {
     revLimit = null;
   }
 
+  /**
+   * NAME
+   * clearFaults
+   *
+   * SYNOPSIS
+   * Clear sticky faults on the CANCoder.
+   *
+   * SIDE EFFECTS
+   * Sends vendor fault-clear commands.
+   */
   @Override
   public void clearFaults() {
     if (device != null) {
@@ -84,11 +139,28 @@ public final class CtreCANCoderDevice implements DeviceUnit {
     }
   }
 
+  /**
+   * NAME
+   * activate
+   *
+   * SYNOPSIS
+   * Activate the device by ensuring it is created.
+   */
   @Override
   public void activate() {
     ensureCreated();
   }
 
+  /**
+   * NAME
+   * snapshot
+   *
+   * SYNOPSIS
+   * Capture a diagnostic snapshot of the device.
+   *
+   * RETURNS
+   * A snapshot containing vendor telemetry and limit switch state.
+   */
   @Override
   public DeviceSnapshot snapshot() {
     if (device == null) {
@@ -108,6 +180,16 @@ public final class CtreCANCoderDevice implements DeviceUnit {
     return snap;
   }
 
+  /**
+   * NAME
+   * getPositionRotations
+   *
+   * SYNOPSIS
+   * Return the absolute position in rotations.
+   *
+   * RETURNS
+   * Absolute position in rotations, or null on read error or when not created.
+   */
   @Override
   public Double getPositionRotations() {
     if (device == null) {
@@ -120,6 +202,16 @@ public final class CtreCANCoderDevice implements DeviceUnit {
     }
   }
 
+  /**
+   * NAME
+   * initLimitInputs
+   *
+   * SYNOPSIS
+   * Initialize DIO inputs for configured limit switches.
+   *
+   * SIDE EFFECTS
+   * Allocates DigitalInput instances when DIO channels are configured.
+   */
   private void initLimitInputs() {
     if (limitConfig.hasForward()) {
       fwdLimit = new DigitalInput(limitConfig.fwdDio);
@@ -129,6 +221,16 @@ public final class CtreCANCoderDevice implements DeviceUnit {
     }
   }
 
+  /**
+   * NAME
+   * addLimitAttachment
+   *
+   * SYNOPSIS
+   * Attach limit switch telemetry to a device snapshot.
+   *
+   * PARAMETERS
+   * snap - snapshot to populate with limit data.
+   */
   private void addLimitAttachment(DeviceSnapshot snap) {
     if (!limitConfig.hasForward() && !limitConfig.hasReverse()) {
       return;
@@ -146,6 +248,19 @@ public final class CtreCANCoderDevice implements DeviceUnit {
     snap.addAttachment(limits);
   }
 
+  /**
+   * NAME
+   * readLimit
+   *
+   * SYNOPSIS
+   * Read a limit input and apply inversion if configured.
+   *
+   * PARAMETERS
+   * input - DIO input to sample.
+   *
+   * RETURNS
+   * True if closed, false if open, or null when input is absent.
+   */
   private Boolean readLimit(DigitalInput input) {
     if (input == null) {
       return null;

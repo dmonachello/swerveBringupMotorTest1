@@ -4,8 +4,14 @@ import com.google.gson.JsonObject;
 import edu.wpi.first.wpilibj.RobotController;
 import frc.robot.diag.snapshots.BusSnapshot;
 
-// Samples and summarizes roboRIO CAN controller health.
-// This is robot-local data (not PC sniffer data).
+/**
+ * NAME
+ *   CanBusHealth - Sample and summarize roboRIO CAN controller health.
+ *
+ * DESCRIPTION
+ *   Reads robot-local CAN controller counters and emits summarized health
+ *   signals for reporting and JSON snapshots.
+ */
 final class CanBusHealth {
   private static final double HIGH_UTILIZATION_PCT = 80.0;
   private static final double RECOVER_UTILIZATION_PCT = 70.0;
@@ -25,6 +31,13 @@ final class CanBusHealth {
   private long lastUpdateMs = 0;
   private boolean wasHighUtil = false;
 
+  /**
+   * NAME
+   *   update - Sample current CAN controller counters.
+   *
+   * SIDE EFFECTS
+   *   Reads hardware status and may enqueue warning prints.
+   */
   void update() {
     // Read current CAN controller counters and utilization.
     var status = RobotController.getCANStatus();
@@ -82,11 +95,25 @@ final class CanBusHealth {
     wasHighUtil = nowHighUtil;
   }
 
+  /**
+   * NAME
+   *   appendReportSection - Append a brief report marker line.
+   *
+   * PARAMETERS
+   *   sb - Target report buffer.
+   */
   void appendReportSection(StringBuilder sb) {
     // Summary line in the report to avoid duplicating the snapshot block.
     ReportTextUtil.appendLine(sb, "Bus Health: (see CAN Bus Diagnostics summary above)");
   }
 
+  /**
+   * NAME
+   *   appendSnapshot - Append a detailed CAN health snapshot.
+   *
+   * PARAMETERS
+   *   sb - Target report buffer.
+   */
   void appendSnapshot(StringBuilder sb) {
     // Full snapshot for human-readable report output.
     if (lastUpdateMs == 0) {
@@ -104,6 +131,13 @@ final class CanBusHealth {
     ReportTextUtil.appendLine(sb, "===========================");
   }
 
+  /**
+   * NAME
+   *   summaryStatus - Return a high-level bus health label.
+   *
+   * RETURNS
+   *   Status string such as OK, HIGH_UTIL, or BUS_OFF.
+   */
   String summaryStatus() {
     // High-level state for the top-line summary.
     if (lastUpdateMs == 0) {
@@ -124,6 +158,13 @@ final class CanBusHealth {
     return "OK";
   }
 
+  /**
+   * NAME
+   *   appendSnapshotJson - Append JSON fields for bus health.
+   *
+   * PARAMETERS
+   *   target - JsonObject to populate.
+   */
   void appendSnapshotJson(JsonObject target) {
     // JSON payload for machine-readable report.
     if (target == null) {
@@ -147,6 +188,13 @@ final class CanBusHealth {
     target.addProperty("sampleAgeSec", ageSec);
   }
 
+  /**
+   * NAME
+   *   buildSnapshot - Build a structured bus snapshot.
+   *
+   * RETURNS
+   *   BusSnapshot with current counters and age.
+   */
   BusSnapshot buildSnapshot() {
     BusSnapshot snap = new BusSnapshot();
     if (lastUpdateMs == 0) {
