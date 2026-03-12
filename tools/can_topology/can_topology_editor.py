@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox
 
 
@@ -110,6 +111,7 @@ class Node:
     x: float = 0.0
     row: int = 0
     bus_index: int = 0
+    scale: float = 1.0
 
     def display_text(self) -> str:
         """
@@ -335,6 +337,7 @@ class Callout:
     target_node_key: Optional[int] = None
     x: float = 120.0
     y: float = 80.0
+    scale: float = 1.0
 
 
 class CalloutDialog(tk.Toplevel):
@@ -472,6 +475,7 @@ class TopologyEditor(tk.Tk):
         self._next_callout = 1
         self._selected_callout: Optional[int] = None
         self._callout_drag: Optional[Tuple[int, float, float]] = None
+        self._callout_scale_var = tk.StringVar(value="1.00")
         self._layout_width = 0.0
         self._box_w = 140
         self._box_h = 60
@@ -557,6 +561,7 @@ class TopologyEditor(tk.Tk):
         file_menu.add_command(label="Open Profile...", command=self._open_profile)
         file_menu.add_command(label="Save Profile As...", command=self._save_profile_as)
         file_menu.add_command(label="Save to Deploy", command=self._on_save_to_deploy)
+        file_menu.add_command(label="Export PDF...", command=self._on_export_pdf)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.destroy)
         menu.add_cascade(label="File", menu=file_menu)
@@ -584,6 +589,7 @@ class TopologyEditor(tk.Tk):
             "motor": tk.StringVar(value="—"),
             "limits": tk.StringVar(value="—"),
             "terminator": tk.StringVar(value="—"),
+            "scale": tk.StringVar(value="1.00"),
         }
 
         rows = [
@@ -595,12 +601,37 @@ class TopologyEditor(tk.Tk):
             ("Motor", "motor"),
             ("Limits", "limits"),
             ("Terminator", "terminator"),
+            ("Scale", "scale"),
         ]
         for idx, (title, key) in enumerate(rows):
             ttk.Label(panel, text=f"{title}:").grid(row=idx, column=0, sticky="w", padx=(0, 6))
             ttk.Label(panel, textvariable=self.detail_vars[key]).grid(
                 row=idx, column=1, sticky="w"
             )
+        scale_row = len(rows)
+        scale_controls = ttk.Frame(panel)
+        scale_controls.grid(row=scale_row, column=1, sticky="w", pady=(4, 0))
+        ttk.Button(scale_controls, text="-", width=3, command=lambda: self._nudge_scale(-0.1)).pack(
+            side="left"
+        )
+        ttk.Button(scale_controls, text="+", width=3, command=lambda: self._nudge_scale(0.1)).pack(
+            side="left", padx=(4, 0)
+        )
+
+        callout_panel = ttk.LabelFrame(parent, text="Callout Details", padding=8)
+        callout_panel.pack(fill="x", pady=(8, 0))
+        ttk.Label(callout_panel, text="Scale:").grid(row=0, column=0, sticky="w", padx=(0, 6))
+        ttk.Label(callout_panel, textvariable=self._callout_scale_var).grid(
+            row=0, column=1, sticky="w"
+        )
+        callout_controls = ttk.Frame(callout_panel)
+        callout_controls.grid(row=1, column=1, sticky="w", pady=(4, 0))
+        ttk.Button(
+            callout_controls, text="-", width=3, command=lambda: self._nudge_callout_scale(-0.1)
+        ).pack(side="left")
+        ttk.Button(
+            callout_controls, text="+", width=3, command=lambda: self._nudge_callout_scale(0.1)
+        ).pack(side="left", padx=(4, 0))
 
     def _update_details_panel(self, node: Optional[Node]) -> None:
         """
@@ -610,6 +641,7 @@ class TopologyEditor(tk.Tk):
         if node is None:
             for key in self.detail_vars:
                 self.detail_vars[key].set("—")
+            self._callout_scale_var.set("—")
             return
 
         limits_text = "—"
@@ -629,6 +661,33 @@ class TopologyEditor(tk.Tk):
         self.detail_vars["motor"].set(node.motor or "—")
         self.detail_vars["limits"].set(limits_text)
         self.detail_vars["terminator"].set(term_text)
+        self.detail_vars["scale"].set(f"{node.scale:.2f}")
+        if self._selected_callout is None:
+            self._callout_scale_var.set("—")
+
+    def _nudge_scale(self, delta: float) -> None:
+        """
+        NAME
+            _nudge_scale - Adjust the selected node scale.
+        """
+        node = self._get_selected_node()
+        if node is None:
+            return
+        node.scale = max(0.6, min(2.0, node.scale + delta))
+        self._update_details_panel(node)
+        self._redraw_canvas()
+
+    def _nudge_callout_scale(self, delta: float) -> None:
+        """
+        NAME
+            _nudge_callout_scale - Adjust the selected callout scale.
+        """
+        callout = self._get_selected_callout()
+        if callout is None:
+            return
+        callout.scale = max(0.6, min(2.0, callout.scale + delta))
+        self._callout_scale_var.set(f"{callout.scale:.2f}")
+        self._redraw_canvas()
     def _new_diagram(self) -> None:
         """
         NAME
@@ -643,6 +702,7 @@ class TopologyEditor(tk.Tk):
         self._next_callout = 1
         self._selected_callout = None
         self._callout_drag = None
+        self._callout_scale_var.set("—")
         self._layout_width = 0.0
         self._pan_y = 0.0
         self._zoom = 1.0
@@ -705,6 +765,7 @@ class TopologyEditor(tk.Tk):
         self._next_callout = 1
         self._selected_callout = None
         self._callout_drag = None
+        self._callout_scale_var.set("—")
         self._layout_width = 0.0
         self._pan_y = 0.0
         self._zoom = 1.0
@@ -974,6 +1035,7 @@ class TopologyEditor(tk.Tk):
                 terminator=bool(terminator) if isinstance(terminator, bool) else None,
                 x=0.0,
                 row=0,
+                scale=1.0,
             )
             self._next_key += 1
             nodes.append(node)
@@ -1013,6 +1075,7 @@ class TopologyEditor(tk.Tk):
                     "bus": node.bus_index,
                     "row": node.row,
                     "x": node.x,
+                    "scale": node.scale,
                 }
             )
         return {
@@ -1029,6 +1092,7 @@ class TopologyEditor(tk.Tk):
                     "targetNodeKey": c.target_node_key,
                     "x": c.x,
                     "y": c.y,
+                    "scale": c.scale,
                 }
                 for c in self._callouts
             ],
@@ -1071,6 +1135,9 @@ class TopologyEditor(tk.Tk):
                             node.row = row
                         if isinstance(x, (int, float)):
                             node.x = float(x)
+                        scale = entry.get("scale")
+                        if isinstance(scale, (int, float)):
+                            node.scale = max(0.6, min(2.0, float(scale)))
         callouts = diagram.get("callouts")
         if isinstance(callouts, list):
             for entry in callouts:
@@ -1092,6 +1159,9 @@ class TopologyEditor(tk.Tk):
                     target_node_key=target_node_key if isinstance(target_node_key, int) else None,
                     x=float(x) if isinstance(x, (int, float)) else 120.0,
                     y=float(y) if isinstance(y, (int, float)) else 80.0,
+                    scale=float(entry.get("scale", 1.0))
+                    if isinstance(entry.get("scale"), (int, float))
+                    else 1.0,
                 )
                 self._next_callout += 1
                 self._callouts.append(callout)
@@ -1138,6 +1208,7 @@ class TopologyEditor(tk.Tk):
             x=self._next_x_position(),
             row=len(self._nodes) % 2,
             bus_index=len(self._nodes) % max(len(self._bus_offsets), 1),
+            scale=1.0,
         )
         self._next_key += 1
         self._nodes.append(node)
@@ -1227,6 +1298,7 @@ class TopologyEditor(tk.Tk):
             node.x = left + spacing * idx
             node.row = idx % 2
             node.bus_index = idx % max(len(self._bus_offsets), 1)
+            node.scale = max(0.6, min(2.0, node.scale))
         self._redraw_canvas()
 
     def _next_x_position(self) -> float:
@@ -1270,6 +1342,18 @@ class TopologyEditor(tk.Tk):
         for node in self._nodes:
             if node.key == self._selected_key:
                 return node
+        return None
+
+    def _get_selected_callout(self) -> Optional[Callout]:
+        """
+        NAME
+            _get_selected_callout - Return the currently selected callout.
+        """
+        if self._selected_callout is None:
+            return None
+        for callout in self._callouts:
+            if callout.key == self._selected_callout:
+                return callout
         return None
 
     def _redraw_canvas(self) -> None:
@@ -1331,25 +1415,32 @@ class TopologyEditor(tk.Tk):
             bus_index = min(max(node.bus_index, 0), max(len(bus_ys) - 1, 0))
             node.bus_index = bus_index
             bus_y = bus_ys[bus_index] if bus_ys else base_y
-            x0 = node_x - box_w / 2
-            x1 = node_x + box_w / 2
+            node_scale = max(0.6, min(2.0, node.scale))
+            node_box_w = box_w * node_scale
+            node_box_h = box_h * node_scale
+            x0 = node_x - node_box_w / 2
+            x1 = node_x + node_box_w / 2
             if node.row == 1:
                 y0 = bus_y + 30 * scale
-                y1 = y0 + box_h
+                y1 = y0 + node_box_h
                 self.canvas.create_line(node_x, bus_y, node_x, y0, width=2, fill="#444444")
             else:
                 y1 = bus_y - 30 * scale
-                y0 = y1 - box_h
+                y0 = y1 - node_box_h
                 self.canvas.create_line(node_x, y1, node_x, bus_y, width=2, fill="#444444")
             outline = "#1f6feb" if node.key == self._selected_key else "#222222"
             rect = self.canvas.create_rectangle(x0, y0, x1, y1, fill="#f7f7f7", outline=outline, width=2)
+            text = node.display_text()
+            font_size = self._fit_font_size(
+                text, node_box_w - 10, node_box_h - 10, int(9 * scale * node_scale)
+            )
             text = self.canvas.create_text(
                 node_x,
                 (y0 + y1) / 2,
-                text=node.display_text(),
-                font=("Segoe UI", max(8, int(9 * scale))),
+                text=text,
+                font=("Segoe UI", font_size),
                 justify="center",
-                width=max(40, int(box_w - 10)),
+                width=max(40, int(node_box_w - 10)),
             )
             self.canvas.addtag_withtag(f"node_{node.key}", rect)
             self.canvas.addtag_withtag(f"node_{node.key}", text)
@@ -1361,8 +1452,9 @@ class TopologyEditor(tk.Tk):
         for callout in self._callouts:
             cx = callout.x * scale
             cy = callout.y * scale
-            box_w = 180 * scale
-            box_h = 50 * scale
+            callout_scale = max(0.6, min(2.0, callout.scale))
+            box_w = 180 * scale * callout_scale
+            box_h = 50 * scale * callout_scale
             x0 = cx - box_w / 2
             y0 = cy - box_h / 2
             x1 = cx + box_w / 2
@@ -1381,7 +1473,7 @@ class TopologyEditor(tk.Tk):
                 cx,
                 cy,
                 text=callout.text,
-                font=("Segoe UI", max(8, int(9 * scale))),
+                font=("Segoe UI", max(8, int(9 * scale * callout_scale))),
                 justify="center",
                 width=max(60, int(box_w - 10)),
             )
@@ -1406,6 +1498,9 @@ class TopologyEditor(tk.Tk):
             self._selected_key = None
             offset_x, offset_y = self._callout_drag_offset(callout_key, cx, cy)
             self._callout_drag = (callout_key, offset_x, offset_y)
+            callout = self._get_selected_callout()
+            if callout is not None:
+                self._callout_scale_var.set(f"{callout.scale:.2f}")
             self._redraw_canvas()
             return
         if key is None:
@@ -1434,12 +1529,12 @@ class TopologyEditor(tk.Tk):
             callout = next((c for c in self._callouts if c.key == key), None)
             if callout is None:
                 return
-        scale = max(self._zoom, 0.01)
-        callout.x = (cx - offset_x) / scale
-        callout.y = (cy - offset_y) / scale
-        self._callout_drag = (key, offset_x, offset_y)
-        self._redraw_canvas()
-        return
+            scale = max(self._zoom, 0.01)
+            callout.x = (cx - offset_x) / scale
+            callout.y = (cy - offset_y) / scale
+            self._callout_drag = (key, offset_x, offset_y)
+            self._redraw_canvas()
+            return
         if not self._drag_state:
             return
         key, last_x, _last_y = self._drag_state
@@ -1496,11 +1591,191 @@ class TopologyEditor(tk.Tk):
             target_node_key=data.get("target_node_key"),
             x=140.0,
             y=80.0,
+            scale=1.0,
         )
         self._next_callout += 1
         self._callouts.append(callout)
         self._selected_callout = callout.key
         self._redraw_canvas()
+
+    def _on_export_pdf(self) -> None:
+        """
+        NAME
+            _on_export_pdf - Export the current diagram to a PDF file.
+        """
+        try:
+            from reportlab.pdfgen import canvas as pdfcanvas  # type: ignore
+            from reportlab.lib.colors import Color  # type: ignore
+        except Exception:
+            messagebox.showerror(
+                "Missing Dependency",
+                "PDF export requires the 'reportlab' package.\n\n"
+                "Install with: pip install reportlab",
+            )
+            return
+        path = filedialog.asksaveasfilename(
+            title="Export PDF",
+            defaultextension=".pdf",
+            filetypes=[("PDF", "*.pdf"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+
+        # Ensure draw state is up to date
+        self._redraw_canvas()
+
+        width = max(self.canvas.winfo_width(), 1)
+        height = max(self.canvas.winfo_height(), 1)
+        scale = self._zoom
+        max_node_x = max((n.x for n in self._nodes), default=0.0)
+        total_width = max(
+            width,
+            int((self._layout_width or (max_node_x + 200)) * scale),
+            int((max_node_x + 200) * scale),
+        )
+        base_y = height * 0.5 + self._pan_y
+        bus_ys = [base_y + offset * scale for offset in self._bus_offsets]
+        box_w = self._box_w * scale
+        box_h = self._box_h * scale
+        span = box_h + 60 * scale
+        min_y = min((y - span for y in bus_ys), default=0.0)
+        max_y = max((y + span for y in bus_ys), default=height)
+        callout_ys = [c.y * scale for c in self._callouts]
+        if callout_ys:
+            min_y = min(min_y, min(callout_ys) - 40 * scale)
+            max_y = max(max_y, max(callout_ys) + 40 * scale)
+        margin = 20.0
+        min_y -= margin
+        max_y += margin
+        # Fit to 9x11 inch page (in points)
+        page_w = 9 * 72
+        page_h = 11 * 72
+        margin = 36.0
+        content_w = max(total_width, 1)
+        content_h = max(max_y - min_y, 1)
+        fit_scale = min(
+            (page_w - margin * 2) / content_w,
+            (page_h - margin * 2) / content_h,
+        )
+
+        def _to_pdf(x: float, y: float) -> Tuple[float, float]:
+            px = margin + (x - 0.0) * fit_scale
+            py = margin + (y - min_y) * fit_scale
+            return px, page_h - py
+
+        c = pdfcanvas.Canvas(path, pagesize=(page_w, page_h))
+        gray = Color(0.27, 0.27, 0.27)
+        light = Color(0.97, 0.97, 0.97)
+        callout_fill = Color(1.0, 0.98, 0.90)
+
+        bridge_x = 50
+        c.setStrokeColor(gray)
+        c.setLineWidth(4 * fit_scale)
+        for idx, bus_y in enumerate(bus_ys):
+            x0, y0 = _to_pdf(40, bus_y)
+            x1, y1 = _to_pdf(total_width - 40, bus_y)
+            c.line(x0, y0, x1, y1)
+            if idx + 1 < len(bus_ys):
+                next_y = bus_ys[idx + 1]
+                x0, y0 = _to_pdf(bridge_x, bus_y)
+                x1, y1 = _to_pdf(bridge_x, next_y)
+                c.setLineWidth(5 * fit_scale)
+                c.line(x0, y0, x1, y1)
+                for y in (bus_y, next_y):
+                    r = 5 * scale * fit_scale
+                    cx, cy = _to_pdf(bridge_x, y)
+                    c.circle(cx, cy, r, stroke=1, fill=1)
+                c.setLineWidth(4 * fit_scale)
+
+        node_centers = {}
+        for node in self._nodes:
+            node_x = min(max(node.x * scale, 60), total_width - 60)
+            bus_index = min(max(node.bus_index, 0), max(len(bus_ys) - 1, 0))
+            bus_y = bus_ys[bus_index] if bus_ys else base_y
+            node_scale = max(0.6, min(2.0, node.scale))
+            node_box_w = box_w * node_scale
+            node_box_h = box_h * node_scale
+            x0 = node_x - node_box_w / 2
+            x1 = node_x + node_box_w / 2
+            if node.row == 1:
+                y0 = bus_y + 30 * scale
+                y1 = y0 + node_box_h
+                x0l, y0l = _to_pdf(node_x, bus_y)
+                x1l, y1l = _to_pdf(node_x, y0)
+            else:
+                y1 = bus_y - 30 * scale
+                y0 = y1 - node_box_h
+                x0l, y0l = _to_pdf(node_x, y1)
+                x1l, y1l = _to_pdf(node_x, bus_y)
+            c.setLineWidth(2 * fit_scale)
+            c.line(x0l, y0l, x1l, y1l)
+
+            rx0, ry0 = _to_pdf(x0, y0)
+            rx1, ry1 = _to_pdf(x1, y1)
+            c.setFillColor(light)
+            c.setStrokeColor(Color(0.13, 0.13, 0.13))
+            c.rect(min(rx0, rx1), min(ry0, ry1), abs(rx1 - rx0), abs(ry1 - ry0), fill=1)
+
+            text = node.display_text()
+            lines = text.splitlines()
+            avail_w = max(1.0, node_box_w - 10)
+            avail_h = max(1.0, node_box_h - 10)
+            font_size = self._fit_font_size(text, avail_w, avail_h, int(9 * scale * node_scale))
+            pdf_font = max(6, int(font_size * fit_scale))
+            line_h = pdf_font * 1.2
+            total_h = line_h * len(lines)
+            # Enforce hard fit in PDF space.
+            if total_h > avail_h * fit_scale:
+                shrink = (avail_h * fit_scale) / total_h
+                pdf_font = max(6, int(pdf_font * shrink))
+                line_h = pdf_font * 1.2
+                total_h = line_h * len(lines)
+            c.setFillColor(Color(0, 0, 0))
+            c.setFont("Helvetica", pdf_font)
+            for i, line in enumerate(lines):
+                tx, ty = _to_pdf(
+                    node_x,
+                    (y0 + y1) / 2 + (total_h / 2) - (i + 1) * line_h + line_h * 0.2,
+                )
+                c.drawCentredString(tx, ty, line)
+
+            node_centers[node.key] = (node_x, bus_y)
+
+        for callout in self._callouts:
+            cx = callout.x * scale
+            cy = callout.y * scale
+            callout_scale = max(0.6, min(2.0, callout.scale))
+            box_w = 180 * scale * callout_scale
+            box_h = 50 * scale * callout_scale
+            x0 = cx - box_w / 2
+            y0 = cy - box_h / 2
+            x1 = cx + box_w / 2
+            y1 = cy + box_h / 2
+            if callout.target_type == "node" and callout.target_node_key in node_centers:
+                tx, ty = node_centers[callout.target_node_key]
+            else:
+                bus_index = min(max(callout.target_bus, 0), max(len(bus_ys) - 1, 0))
+                ty = bus_ys[bus_index] if bus_ys else base_y
+                tx = cx
+            x0l, y0l = _to_pdf(cx, cy)
+            x1l, y1l = _to_pdf(tx, ty)
+            c.setStrokeColor(Color(0.4, 0.4, 0.4))
+            c.setLineWidth(2 * fit_scale)
+            c.line(x0l, y0l, x1l, y1l)
+            rx0, ry0 = _to_pdf(x0, y0)
+            rx1, ry1 = _to_pdf(x1, y1)
+            c.setFillColor(callout_fill)
+            c.setStrokeColor(Color(0.4, 0.4, 0.4))
+            c.rect(min(rx0, rx1), min(ry0, ry1), abs(rx1 - rx0), abs(ry1 - ry0), fill=1)
+            font_size = max(8, int(9 * scale * callout_scale))
+            pdf_font = max(6, int(font_size * fit_scale))
+            c.setFillColor(Color(0, 0, 0))
+            c.setFont("Helvetica", pdf_font)
+            c.drawCentredString(*_to_pdf(cx, cy - pdf_font * 0.3), callout.text)
+
+        c.showPage()
+        c.save()
+        messagebox.showinfo("Exported", f"Wrote PDF to {path}")
 
     def _nearest_bus_and_row(self, y: float) -> Tuple[int, int]:
         """
@@ -1524,6 +1799,24 @@ class TopologyEditor(tk.Tk):
                 nearest = idx
         row = 0 if y < bus_ys[nearest] else 1
         return nearest, row
+
+    def _fit_font_size(self, text: str, max_w: float, max_h: float, base_size: int) -> int:
+        """
+        NAME
+            _fit_font_size - Shrink font size until text fits inside a box.
+        """
+        size = max(6, base_size)
+        lines = text.splitlines() or [text]
+        while size >= 6:
+            font = tkfont.Font(family="Segoe UI", size=size)
+            line_h = font.metrics("linespace")
+            total_h = line_h * len(lines)
+            if total_h <= max_h:
+                widest = max(font.measure(line) for line in lines)
+                if widest <= max_w:
+                    return size
+            size -= 1
+        return 6
 
     def _on_zoom_wheel(self, event: tk.Event) -> None:
         """

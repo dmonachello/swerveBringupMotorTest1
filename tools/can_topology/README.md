@@ -23,6 +23,7 @@ Purpose: Describe the shortest path from sketch to JSON.
 4. File -> Save Profile As...
 5. Or use File -> `Save to Deploy` to append/replace directly in `src/main/deploy/bringup_profiles.json`.
 6. Use `Set As Default` to update `default_profile` on save.
+7. Use File -> `Export PDF...` to write a printable PDF (requires `reportlab`).
 
 ## Details Panel
 Purpose: Show fields not displayed on the boxes.
@@ -47,6 +48,9 @@ Purpose: Document limitations up front.
 - Diagram layout metadata is saved under `diagram.profiles.<profileName>` and
   ignored by the robot and PC tools.
 - Use `Add Callout` to create a text label with a leader line to a bus or node.
+- Select a node and use the Scale controls to resize that node’s box; scale is saved
+  in the diagram metadata.
+- Select a callout and use the Callout Scale controls to resize it; scale is saved.
 - Singletons (`pdh`, `pdp`, `pigeon`, `roborio`) allow only one node each.
 - `devices` entries require `vendor` and `type`.
 - `terminator` is an optional per-node flag (true/false) to mark a bus end.
