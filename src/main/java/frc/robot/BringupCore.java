@@ -800,10 +800,9 @@ public final class BringupCore {
     addRevNext = true;
   }
 
-  // Instantiate all configured devices (motors + sensors + misc).
   /**
    * NAME
-   *   addAllDevices - Instantiate all configured devices.
+   *   addAllDevices - Instantiate all configured devices. (motors + sensors + misc).
    */
   private void addAllDevices() {
     revDevices.addAll();

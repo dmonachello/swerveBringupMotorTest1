@@ -250,3 +250,8 @@ Purpose: future extensions are identified without breaking contracts.
 - Add more controller types in `bringup_bindings.json` (beyond Xbox).
 - Add new test check types without changing existing JSON fields.
 - Add dashboard widgets for live test status and PC tool health.
+- Add support for additional device families:
+  - CTRE Pigeon 2, CANrange, CANdi, and legacy TalonSRX/VictorSPX.
+  - REV PDH, PH, and SparkMax alternate encoder paths.
+  - WPILib I/O (DIO, analog input, relay) and roboRIO health signals.
+  - Third-party CAN encoders and IMUs (WCP CANandmag, navX, etc.).
