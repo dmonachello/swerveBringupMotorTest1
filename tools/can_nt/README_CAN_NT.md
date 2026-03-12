@@ -202,6 +202,14 @@ PUBLISHED KEYS
     bringup/diag/can/pc/framesTotal
     bringup/diag/can/pc/readErrors
     bringup/diag/can/pc/lastFrameAgeSec
+    bringup/diag/console/(dynamic keys per rule/device)
+    bringup/diag/console/reset
+    bringup/diag/console/system/warnCount
+    bringup/diag/console/system/errorCount
+    bringup/diag/console/system/fatalCount
+    bringup/diag/console/devices/<id>/warnCount
+    bringup/diag/console/devices/<id>/errorCount
+    bringup/diag/console/devices/<id>/fatalCount
 
 NOTES
     - Device IDs use the lowest 6 bits of the CAN extended ID.
@@ -211,6 +219,8 @@ NOTES
       - REV motor controllers: api_class=6 (periodic status).
       - CTRE devices: PF/PS 0xFF/0x00..0x07 (status), 0xEF (control-only).
       These are unverified heuristics aligned with the Wireshark dissector.
+    - presenceConfidence values: HIGH, LOW, NONE (PC tool). The roboRIO report may compute a separate
+      score/label using console warn/error/fatal counters.
     - --dump-profile cannot distinguish NEO vs FLEX or Kraken vs Falcon.
     - RobotV2 prints status=NO_DATA, ageSec=-, msgCount=- until a device is seen.
     - can/pc/heartbeat increments once per publish; can/pc/lastFrameAgeSec is seconds since last frame.

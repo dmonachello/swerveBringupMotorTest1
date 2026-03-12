@@ -513,6 +513,8 @@ class ConsoleMonitor:
         console_table.getEntry("linesMatched").setDouble(float(self._lines_matched))
         console_table.getEntry("packetsReceived").setDouble(float(self._packets_received))
         console_table.getEntry("lastSource").setString(self._last_addr or "")
+        device_counts: Dict[int, Dict[str, int]] = {}
+        system_counts = {"WARN": 0, "ERROR": 0, "FATAL": 0}
         for entry in entries:
             if entry.device_id is not None:
                 base = console_table.getSubTable("devices").getSubTable(str(entry.device_id)).getSubTable(entry.event_type)
@@ -524,6 +526,36 @@ class ConsoleMonitor:
             base.getEntry("Message").setString(entry.last_message)
             base.getEntry("Severity").setString(entry.severity)
             self._published_keys.add((entry.device_id, entry.event_type))
+            if entry.active:
+                severity = entry.severity.upper()
+                if entry.device_id is not None:
+                    counts = device_counts.setdefault(entry.device_id, {"WARN": 0, "ERROR": 0, "FATAL": 0})
+                    if severity in counts:
+                        counts[severity] += max(1, entry.count)
+                else:
+                    if severity in system_counts:
+                        system_counts[severity] += max(1, entry.count)
+        devices_table = console_table.getSubTable("devices")
+        for device_id, counts in device_counts.items():
+            base = devices_table.getSubTable(str(device_id))
+            base.getEntry("warnCount").setDouble(float(counts["WARN"]))
+            base.getEntry("errorCount").setDouble(float(counts["ERROR"]))
+            base.getEntry("fatalCount").setDouble(float(counts["FATAL"]))
+        system_table = console_table.getSubTable("system")
+        system_table.getEntry("warnCount").setDouble(float(system_counts["WARN"]))
+        system_table.getEntry("errorCount").setDouble(float(system_counts["ERROR"]))
+        system_table.getEntry("fatalCount").setDouble(float(system_counts["FATAL"]))
+
+    def snapshot_entries(self) -> List[ConsoleEntry]:
+        """
+        NAME
+            snapshot_entries - Return a snapshot list of console entries.
+
+        RETURNS
+            List of ConsoleEntry copies for read-only aggregation.
+        """
+        with self._lock:
+            return list(self._entries.values())
 
     def _reset_console_state(self, console_table) -> None:
         """

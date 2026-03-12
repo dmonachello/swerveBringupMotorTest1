@@ -16,7 +16,8 @@ The system is a two-part bringup stack: robot code that actively drives hardware
 
 Key roles:
 - Robot (roboRIO, Java): creates devices, runs tests, commands outputs, and reports local health using vendor APIs.
-- PC tool (laptop, Python): listens to CAN traffic via CANable, publishes diagnostics to NetworkTables, and records evidence (PCAP, inventory, diffs).
+- PC tool (Windows PC, Python): listens to CAN traffic via CANable, publishes diagnostics to NetworkTables, and records evidence (PCAP, inventory, diffs).
+- PC tool (Windows PC, Python): listens to the roboRIO TCP console stream (NetConsole) to extract warnings/errors.
 
 Data sources and trust boundaries:
 - Robot-local telemetry comes only from vendor APIs on the roboRIO.
@@ -31,6 +32,7 @@ Control flow summary:
 
 Outputs:
 - Console reports with throttled, chunked printing.
+- Console report tables are fixed-width, right-justified, and dot-padded; values truncate to column width.
 - Robot JSON report (`bringup_report.json`).
 - PC evidence artifacts (PCAP/PCAPNG, inventory JSON, inventory diffs).
 
@@ -38,6 +40,24 @@ Safety invariants:
 - PC tool is read-only on CAN and must never transmit frames.
 - NetworkTables keys are a stable API contract across robot and PC.
 - Large console output is throttled to protect the 20ms control loop.
+
+### Console Error/Warning Signals (TCP Console)
+Purpose: the robot console stream is a primary source of warnings and errors for DUTs.
+
+The roboRIO console can be consumed over the TCP console service, and the PC tool can
+parse console output to surface warnings/errors from the device under test (DUT).
+Use this channel to catch vendor SDK faults, watchdog warnings, and other runtime
+messages that are not on the CAN bus.
+
+Notes:
+- TCP console port: 1740.
+- Treat console-derived signals as supplemental to CAN and local API telemetry.
+- Console parsing should never block the 20ms loop; it belongs on the PC tool.
+
+Message format:
+- NetConsole TCP frames are 2-byte big-endian length-prefixed records.
+- Payloads contain binary metadata plus printable text; text is decoded as UTF-8 (errors ignored).
+- The parser splits payloads into lines and matches each line against regex rules.
 
 ## Layered Design (Robot)
 Purpose: the robot architecture uses internal layers with clear responsibilities.
@@ -91,6 +111,7 @@ Purpose: JSON inputs define behavior and runtime configuration.
 Purpose: passive CAN capture feeds diagnostics publishing.
 
 - `tools/can_nt/can_nt_bridge.py` listens on CANable (SLCAN) and publishes `bringup/diag` keys.
+- `tools/can_nt/can_console_monitor.py` listens to the roboRIO NetConsole TCP stream and publishes console-derived warning/error counters.
 - PC tool output includes PCAP/PCAPNG capture, inventory JSON, and diffs.
 - Live Wireshark capture uses a Windows named pipe (`\\.\pipe\FRC_CAN`) via `--pcap-pipe`.
   - Details live in `tools/can_nt/README_CAN_NT.md` and the Wireshark section in `README.md`.

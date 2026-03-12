@@ -57,6 +57,7 @@ What it gives you:
 - Controlled motor bringup (add one or all, known inputs).
 - Local roboRIO health checks (bus voltage, cmd/applied duty, motor current, temperature, faults).
 - CAN-bus diagnostics from the PC tool (seen/missing, age, msgCount, fps).
+- Robot TCP console parsing (PC tool) to surface warnings and errors from DUTs.
 - Wire-level evidence via PCAP/PCAPNG + Wireshark dissector.
 - Unknown device detection (optional publish of unseen IDs).
 - Motor current sanity checks vs documented specs (free/stall).
@@ -75,6 +76,27 @@ Typical workflow:
 5. Capture a PCAP and inspect in Wireshark when needed.
 6. Use vendor tools for firmware/config issues.
 
+### TCP Console Messages (Warnings/Errors)
+Purpose: the TCP console stream is a primary source of warnings and errors for DUTs.
+
+The PC tool can connect to the roboRIO NetConsole service (TCP port 1740) and
+parse console output to surface warnings and errors.
+
+Message format:
+- NetConsole TCP frames are 2-byte big-endian length-prefixed records.
+- Payloads contain binary metadata plus printable text; text is decoded as UTF-8 (errors ignored).
+- The parser splits payloads into lines and matches each line against regex rules.
+
+Regex rules (from `tools/can_nt/console_rules.json`):
+- `CAN_BUS_UTIL_HIGH`: `\[CAN\]\s*High utilization[:]?\s*([0-9.]+)%`
+- `CAN_BUS_UTIL_RECOVER`: `\[CAN\]\s*Utilization recovered[:]?\s*([0-9.]+)%`
+- `CAN_TIMEOUT`: `CAN.*timeout.*device\s+(\d+)`
+- `LOOP_OVERRUN`: `Loop time of\s+\d+\.\d+s overrun`
+- `CAN_ERROR_SPIKE`: `\[CAN\]\s*Error spike: rx=(\d+) tx=(\d+)\s*\(delta rx=(\d+) tx=(\d+)\)`
+- `SPARK_STATUS_TIMEOUT`: `\[Spark Max\] IDs: (\d+), timed out while waiting for (Frame Mgr: )?Period Status 0`
+- `SPARK_FW_QUERY_FAIL`: `\[Spark Max\] IDs: (\d+), Unable to retrieve SPARK firmware version`
+- `SPARK_WRONG_DEVICE`: `CANSparkMax object created for CAN ID (\d+), which is not a SPARK MAX`
+
 ## HOWTO: Debug CAN Bus Issues
 Use this checklist and the CAN Diagnostics Report (D-pad Up) to triage quickly.
 
@@ -84,6 +106,18 @@ Report sections (D-pad Up):
 - Device Health (local API): faults/sticky faults, warnings/sticky warnings, lastErr, reset flag, voltage/motorCurrent/temp/cmdDuty/appliedDuty
 - LED status (expected vs likely) and CAN suspicion (expected vs likely) per device
 - App Status (loop timing overruns and printer backpressure)
+### NetworkTables Device Table (D-pad Down)
+Purpose: verify PC tool visibility and console-derived warnings/errors per device.
+
+Columns:
+- `id`, `label`, `mfg`, `type`, `status`, `conf`, `score`, `warn`, `err`, `fatal`, `ageSec`, `fps`, `msgCount`
+
+Notes:
+- `mfg` and `type` are text names (from `can_mappings.json` with fallback values).
+- `warn`, `err`, `fatal` come from the PC tool console parser (TCP console rules).
+- `conf`/`score` are computed on the roboRIO using presence, age/fps, and console counts.
+- `msgCount` is the PC tool's total frame count for the device.
+- Table formatting is fixed-width, right-justified, and dot-padded; values truncate to column width.
 JSON snapshot:
 - Press `X` to dump a machine-readable report to the console and `/home/lvuser/bringup_report.json`.
   - Each device may include `attachments` with `type=ledStatus` and `type=canSuspicion`
@@ -241,7 +275,7 @@ A: Update `tools/can_nt/wireshark/frc_can_dissector.lua` and copy it to `%APPDAT
 - Vendor libraries:
   - CTRE Phoenix 6
   - REVLib (Spark MAX / Spark Flex)
-- Python 3.10+ on the Driver Station laptop for the CAN bridge.
+- Python 3.10+ on the Driver Station Windows PC for the CAN bridge.
 - Wireshark (for PCAP/PCAPNG inspection).
 - CTRE Tuner X and REV Hardware Client (firmware/config/diagnostics).
 ### WPILib + Vendor Libraries

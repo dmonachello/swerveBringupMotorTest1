@@ -6,7 +6,7 @@ package frc.robot;
  *
  * DESCRIPTION
  *   Provides reusable formatting helpers for text-based reports to keep
- *   alignment and wrapping consistent across diagnostics outputs.
+ *   fixed-width, dot-padded, right-justified alignment consistent across diagnostics outputs.
  */
 public final class ReportTextUtil {
   private ReportTextUtil() {}
@@ -32,35 +32,18 @@ public final class ReportTextUtil {
    *   sb - Target StringBuilder.
    *   headerShort - Primary header labels.
    *   headerLong - Optional secondary header labels.
-   *   idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, confWidth,
-   *   ageWidth, fpsWidth, msgWidth - Column widths.
+   *   widths - Column widths in order of the header array.
    *   maxLineWidth - Maximum line width for truncation.
    */
   public static void appendWrappedHeaders(
       StringBuilder sb,
       String[] headerShort,
       String[] headerLong,
-      int idWidth,
-      int labelWidth,
-      int mfgIdWidth,
-      int typeIdWidth,
-      int statusWidth,
-      int confWidth,
-      int ageWidth,
-      int fpsWidth,
-      int msgWidth,
+      int[] widths,
       int maxLineWidth) {
-    appendLine(sb, buildHeaderLine(
-        headerShort,
-        idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, confWidth, ageWidth, fpsWidth,
-        msgWidth,
-        maxLineWidth));
+    appendLine(sb, buildHeaderLine(headerShort, widths, maxLineWidth));
     if (headerLong != null) {
-      appendLine(sb, buildHeaderLine(
-          headerLong,
-          idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, confWidth, ageWidth, fpsWidth,
-          msgWidth,
-          maxLineWidth));
+      appendLine(sb, buildHeaderLine(headerLong, widths, maxLineWidth));
     }
     appendLine(sb, "-".repeat(maxLineWidth));
   }
@@ -72,27 +55,14 @@ public final class ReportTextUtil {
    * PARAMETERS
    *   sb - Target StringBuilder.
    *   values - Column values to wrap.
-   *   idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, confWidth,
-   *   ageWidth, fpsWidth, msgWidth - Column widths.
+   *   widths - Column widths in order of the values array.
    *   maxLineWidth - Maximum line width for truncation.
    */
   public static void appendWrappedRow(
       StringBuilder sb,
       String[] values,
-      int idWidth,
-      int labelWidth,
-      int mfgIdWidth,
-      int typeIdWidth,
-      int statusWidth,
-      int confWidth,
-      int ageWidth,
-      int fpsWidth,
-      int msgWidth,
+      int[] widths,
       int maxLineWidth) {
-    int[] widths = new int[] {
-        idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, confWidth, ageWidth, fpsWidth,
-        msgWidth
-    };
     String[][] columns = new String[values.length][];
     int maxLines = 1;
     for (int i = 0; i < values.length; i++) {
@@ -105,11 +75,7 @@ public final class ReportTextUtil {
       for (int col = 0; col < columns.length; col++) {
         String[] colLines = columns[col];
         String value = line < colLines.length ? colLines[line] : "";
-        String padded = padRight(value, widths[col], '.');
-        if (col > 0) {
-          row.append(' ');
-        }
-        row.append(padded);
+        row.append(padRight(value, widths[col], '.'));
       }
       String rowText = row.toString();
       if (rowText.length() > maxLineWidth) {
@@ -152,31 +118,12 @@ public final class ReportTextUtil {
    */
   private static String buildHeaderLine(
       String[] values,
-      int idWidth,
-      int labelWidth,
-      int mfgIdWidth,
-      int typeIdWidth,
-      int statusWidth,
-      int confWidth,
-      int ageWidth,
-      int fpsWidth,
-      int msgWidth,
+      int[] widths,
       int maxLineWidth) {
-    int[] widths = new int[] {
-        idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, confWidth, ageWidth, fpsWidth,
-        msgWidth
-    };
     StringBuilder row = new StringBuilder(maxLineWidth);
     for (int col = 0; col < values.length; col++) {
       String value = values[col] == null ? "" : values[col];
-      if (value.length() > widths[col]) {
-        value = truncate(value, widths[col]);
-      }
-      String padded = padRight(value, widths[col], '.');
-      if (col > 0) {
-        row.append(' ');
-      }
-      row.append(padded);
+      row.append(padRight(value, widths[col], '.'));
     }
     String rowText = row.toString();
     if (rowText.length() > maxLineWidth) {
@@ -190,15 +137,21 @@ public final class ReportTextUtil {
    *   padRight - Pad a value to a fixed width.
    */
   private static String padRight(String value, int width, char fill) {
-    // Pad a column to a fixed width using the provided fill character.
+    // Right-justify a column to a fixed width using the provided fill character.
     if (value == null) {
       value = "";
+    }
+    if (width <= 0) {
+      return "";
+    }
+    if (value.length() > width) {
+      return value.substring(0, width);
     }
     int missing = width - value.length();
     if (missing <= 0) {
       return value;
     }
-    return value + repeatChar(fill, missing);
+    return repeatChar(fill, missing) + value;
   }
 
   /**
@@ -218,17 +171,14 @@ public final class ReportTextUtil {
    *   truncate - Truncate a value for column display.
    */
   private static String truncate(String value, int width) {
-    // Truncate long values to fit a column while preserving readability.
-    if (value == null) {
+    // Truncate long values to fit a column.
+    if (value == null || width <= 0) {
       return "";
     }
     if (value.length() <= width) {
       return value;
     }
-    if (width <= 3) {
-      return value.substring(0, width);
-    }
-    return value.substring(0, width - 3) + "...";
+    return value.substring(0, width);
   }
 
   /**
@@ -245,7 +195,7 @@ public final class ReportTextUtil {
     }
     int maxChars = width * maxLines;
     String trimmed = value.length() > maxChars
-        ? truncate(value, maxChars)
+        ? value.substring(0, maxChars)
         : value;
     int lines = (int) Math.ceil(trimmed.length() / (double) width);
     lines = Math.min(lines, maxLines);

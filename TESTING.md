@@ -8,7 +8,7 @@ robot code, CAN sniffer tool, NetworkTables publishing, and config generation.
 Hardware:
 - RoboRIO powered and reachable (USB or network).
 - CAN bus wired with a PDP (minimum) and optional devices.
-- Laptop connected to RIO (USB or network).
+- Windows PC connected to RIO (USB or network).
 - CANable Pro V2 connected to the CAN bus (CANH, CANL, GND) when using the PC sniffer.
 - Xbox controllers are optional for boot, but required for full bringup workflows.
 
@@ -22,7 +22,7 @@ Usable minimum (robot + PC diagnostics):
 - CANable Pro V2 connected for the PC sniffer and inventory tooling.
 - Two Xbox controllers connected for full bringup/test workflows.
 
-Software on laptop:
+Software on Windows PC:
 - Python 3.12 installed and reachable from the command line (`python` or `py`).
 - Packages installed:
   - `pynetworktables`
@@ -49,7 +49,7 @@ Purpose: the fast test plan confirms minimum health checks for the system.
    - In `src/main/deploy/bringup_tests.json`, set `"default_test_set": "smoke"` and deploy.
    - Scroll through tests with the secondary controller (`LB`/`RB`).
    - Select which tests run by toggling enable on the secondary controller (`X`) while the test is highlighted.
-9. Primary controller: press `D-pad Down` and confirm `openOk=YES` (PC tool has an active CAN interface and is publishing).
+9. Primary controller: press `D-pad Down` and confirm `openOk=YES` (PC tool has an active CAN interface and is publishing). Verify the table includes `conf`, `score`, `warn`, `err`, and `fatal` columns and uses dot-padded right-justified formatting.
 10. Secondary controller: press `LB`/`RB` to select a test and confirm the name updates.
 11. Secondary controller: run one enabled test with `A` and confirm PASS/FAIL prints.
 12. Secondary controller: hold `A` during a test with `hold.enabled=true`, then release to confirm the hold termination path.
@@ -386,6 +386,7 @@ Purpose: the PC sniffer runs and publishes NetworkTables diagnostics.
 2. Primary controller: press `D-pad Down`.
 Expected:
 - `openOk=YES`, heartbeat updates, and device table matches CAN traffic.
+- Device table columns include `conf`, `score`, `warn`, `err`, and `fatal` with dot-padded right-justified formatting.
 
 ### K) PC CAN Tool - Wireshark
 Purpose: live pipe and file captures produce valid PCAP/PCAPNG.
