@@ -66,3 +66,23 @@ Purpose: Document limitations up front.
 - `terminator` is an optional per-node flag (true/false) to mark a bus end.
 - Vendor and device type fields use dropdowns populated from `src/main/deploy/can_mappings.json`
   (you can also type a custom value).
+
+## Architecture
+Purpose: Explain the post-refactor code layout and responsibilities.
+- `tools/can_topology/can_top_editor.py`: Entry point and UI controller (TopologyEditor).
+- `tools/can_topology/can_top_models.py`: Data model + constants (Node, category lists).
+- `tools/can_topology/can_top_dialogs.py`: Modal dialogs for adding/editing nodes/callouts.
+
+Data flow
+- User action -> TopologyEditor handler
+- Dialog returns values -> TopologyEditor updates Node data
+- Editor redraws + serializes layout metadata
+
+Tradeoffs
+- The split keeps behavior stable but still leaves rendering, IO, and event logic
+  in the main editor for now.
+
+Future Extensions
+- Move file IO and export helpers into a dedicated module.
+- Extract canvas rendering and hit-testing into a drawing helper module.
+- Add automated sanity checks for profiles before save.
