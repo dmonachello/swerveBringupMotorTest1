@@ -42,12 +42,15 @@ Purpose: Document limitations up front.
 - The canvas supports horizontal and vertical scrolling for large layouts.
 - Box width shrinks when space is tight to reduce overlap.
 - Drag empty space to move the bus line and connected nodes up or down.
-- Use `Add Bus` to create another parallel bus segment connected by a bridge.
+- Use `Add Bus` and then click on the canvas to place a new bus segment (it will not shift existing buses).
+- File -> `Undo` restores the last change (nodes, buses, callouts, and drag moves).
 - Drag a node near a bus segment to move it to that bus (nearest bus wins).
+- Drag a bus line to move it; connected nodes move with it.
 - Hold `Ctrl` and use the mouse wheel to zoom in/out (View menu also works).
 - Diagram layout metadata is saved under `diagram.profiles.<profileName>` and
   ignored by the robot and PC tools.
 - Use `Add Callout` to create a text label with a leader line to a bus or node.
+- Use `Edit Callout` to retarget or rename a callout, and `Remove Callout` to delete it.
 - Select a node and use the Scale controls to resize that node’s box; scale is saved
   in the diagram metadata.
 - Select a callout and use the Callout Scale controls to resize it; scale is saved.

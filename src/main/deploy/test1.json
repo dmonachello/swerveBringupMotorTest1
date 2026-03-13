@@ -1,0 +1,297 @@
+{
+  "default_profile": "robot_test1",
+  "profiles": {
+    "robot_test1": {
+      "neos": [
+        {
+          "label": "SPARKMAX/NEO 25",
+          "id": 25,
+          "motor": "REV NEO"
+        },
+        {
+          "label": "intake neo",
+          "id": 18,
+          "limits": {
+            "fwdDio": 1,
+            "revDio": 2
+          },
+          "terminator": false
+        },
+        {
+          "label": "SPARKMAX/NEO550 7",
+          "id": 17,
+          "motor": "REV NEO",
+          "limits": {
+            "fwdDio": 0,
+            "revDio": -1,
+            "invert": true
+          },
+          "terminator": false
+        },
+        {
+          "label": "neo 41",
+          "id": 41,
+          "terminator": false
+        }
+      ],
+      "krakens": [
+        {
+          "label": "kracken 12",
+          "id": 12,
+          "terminator": false
+        },
+        {
+          "label": "kracken 42",
+          "id": 42,
+          "terminator": false
+        },
+        {
+          "label": "kracken 22",
+          "id": 22,
+          "terminator": false
+        }
+      ],
+      "cancoders": [
+        {
+          "label": "cancoder 1",
+          "id": 14,
+          "terminator": false
+        },
+        {
+          "label": "cancoder 2",
+          "id": 35,
+          "terminator": false
+        },
+        {
+          "label": "cancoder 25",
+          "id": 25,
+          "terminator": false
+        }
+      ],
+      "candles": [
+        {
+          "label": "candle",
+          "id": 2,
+          "terminator": false
+        }
+      ],
+      "pdh": {
+        "label": "pdh",
+        "id": 1,
+        "terminator": true
+      },
+      "roborio": {
+        "label": "roboRIO",
+        "id": 0,
+        "terminator": true
+      }
+    }
+  },
+  "diagram": {
+    "profiles": {
+      "robot_test1": {
+        "busCount": 4,
+        "busSpacing": 160.0,
+        "panY": -133.25,
+        "zoom": 0.6,
+        "nodes": [
+          {
+            "nodeType": "device",
+            "category": "neos",
+            "label": "SPARKMAX/NEO 25",
+            "id": 25,
+            "bus": 3,
+            "row": 0,
+            "x": 738.3333333333399,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "device",
+            "category": "neos",
+            "label": "intake neo",
+            "id": 18,
+            "bus": 0,
+            "row": 0,
+            "x": 655.6666666666665,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "device",
+            "category": "neos",
+            "label": "SPARKMAX/NEO550 7",
+            "id": 17,
+            "bus": 1,
+            "row": 0,
+            "x": 726.0,
+            "scale": 0.9
+          },
+          {
+            "nodeType": "device",
+            "category": "krakens",
+            "label": "kracken 12",
+            "id": 12,
+            "bus": 1,
+            "row": 0,
+            "x": 495.6666666666672,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "device",
+            "category": "krakens",
+            "label": "kracken 42",
+            "id": 42,
+            "bus": 2,
+            "row": 0,
+            "x": 493.9999999999997,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "device",
+            "category": "krakens",
+            "label": "kracken 22",
+            "id": 22,
+            "bus": 3,
+            "row": 0,
+            "x": 473.99999999999966,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "device",
+            "category": "cancoders",
+            "label": "cancoder 1",
+            "id": 14,
+            "bus": 1,
+            "row": 0,
+            "x": 987.3333333333333,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "device",
+            "category": "cancoders",
+            "label": "cancoder 2",
+            "id": 35,
+            "bus": 2,
+            "row": 0,
+            "x": 989.0000000000056,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "device",
+            "category": "cancoders",
+            "label": "cancoder 25",
+            "id": 25,
+            "bus": 3,
+            "row": 0,
+            "x": 997.3333333333387,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "device",
+            "category": "candles",
+            "label": "candle",
+            "id": 2,
+            "bus": 0,
+            "row": 0,
+            "x": 1045.6666666666617,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "device",
+            "category": "pdh",
+            "label": "pdh",
+            "id": 1,
+            "bus": 3,
+            "row": 1,
+            "x": 1496.0952380952433,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "device",
+            "category": "roborio",
+            "label": "roboRIO",
+            "id": 0,
+            "bus": 0,
+            "row": 0,
+            "x": 305.6666666666651,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "callout",
+            "text": "intake segment",
+            "targetType": "bus",
+            "targetBus": 0,
+            "targetNodeKey": null,
+            "targetCategory": "",
+            "targetLabel": "",
+            "targetId": null,
+            "x": 94.28571428571455,
+            "y": 246.78571428571522,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "callout",
+            "text": "LED Controller",
+            "targetType": "node",
+            "targetBus": 0,
+            "targetNodeKey": 11,
+            "targetCategory": "",
+            "targetLabel": "",
+            "targetId": null,
+            "x": 1239.9999999999975,
+            "y": 122.50000000000101,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "callout",
+            "text": "swerve 2",
+            "targetType": "bus",
+            "targetBus": 2,
+            "targetNodeKey": null,
+            "targetCategory": "",
+            "targetLabel": "",
+            "targetId": null,
+            "x": 166.66666666666657,
+            "y": 483.98809523809547,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "callout",
+            "text": "swerve 1",
+            "targetType": "bus",
+            "targetBus": 1,
+            "targetNodeKey": null,
+            "targetCategory": "",
+            "targetLabel": "",
+            "targetId": null,
+            "x": 156.42857142857136,
+            "y": 338.8095238095237,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "callout",
+            "text": "swerve 3",
+            "targetType": "bus",
+            "targetBus": 3,
+            "targetNodeKey": null,
+            "targetCategory": "",
+            "targetLabel": "",
+            "targetId": null,
+            "x": 173.8095238095239,
+            "y": 657.4999999999989,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "device",
+            "category": "neos",
+            "label": "neo 41",
+            "id": 41,
+            "bus": 2,
+            "row": 0,
+            "x": 732.7619047619094,
+            "scale": 1.0
+          }
+        ]
+      }
+    }
+  }
+}

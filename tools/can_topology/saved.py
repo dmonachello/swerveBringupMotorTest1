@@ -22,7 +22,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import faulthandler
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -527,11 +526,13 @@ class TopologyEditor(tk.Tk):
         right.pack(side="right", fill="both", expand=True)
 
         ttk.Label(left, text="Nodes").pack(anchor="w")
+        list_frame = ttk.Frame(left)
+        list_frame.pack(fill="both", expand=True, pady=(4, 6))
         self.node_list = ttk.Treeview(
-            left,
+            list_frame,
             columns=("can_id", "type", "label"),
             show="headings",
-            height=18,
+            height=12,
             selectmode="browse",
         )
         self.node_list.heading("can_id", text="CAN ID")
@@ -540,7 +541,10 @@ class TopologyEditor(tk.Tk):
         self.node_list.column("can_id", width=60, anchor="center")
         self.node_list.column("type", width=80, anchor="w")
         self.node_list.column("label", width=160, anchor="w")
-        self.node_list.pack(fill="both", expand=True, pady=(4, 6))
+        self.node_list.pack(side="left", fill="both", expand=True)
+        node_scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.node_list.yview)
+        node_scroll.pack(side="right", fill="y")
+        self.node_list.configure(yscrollcommand=node_scroll.set)
         self.node_list.bind("<<TreeviewSelect>>", self._on_list_select)
 
         bottom = ttk.Frame(left)
@@ -738,7 +742,19 @@ class TopologyEditor(tk.Tk):
         NAME
             _preserve_canvas_view - Run an action without shifting canvas view.
         """
+        try:
+            xview = self.canvas.xview()
+            yview = self.canvas.yview()
+        except Exception:
+            action()
+            return
         action()
+        try:
+            self.update_idletasks()
+            self.canvas.xview_moveto(xview[0])
+            self.canvas.yview_moveto(yview[0])
+        except Exception:
+            pass
 
     def _nudge_callout_scale(self, delta: float) -> None:
         """
@@ -2265,6 +2281,7 @@ class TopologyEditor(tk.Tk):
         self._bus_drag = None
         self._multi_drag = None
         self._drag_undo_pending = False
+        self._dragging_active = False
         if self._selected_key is not None:
             self._update_details_panel(self._get_selected_node())
         self._redraw_canvas()
@@ -2291,6 +2308,8 @@ class TopologyEditor(tk.Tk):
         # Preserve insertion order; do not sort so existing buses don't shift.
         if offset not in self._bus_offsets:
             self._bus_offsets.append(offset)
+            default_len = self._default_bus_length()
+            self._bus_lengths.append(default_len)
         self._redraw_canvas()
 
     def _on_add_callout(self) -> None:
@@ -2546,10 +2565,17 @@ class TopologyEditor(tk.Tk):
         width = max(self.canvas.winfo_width(), 1)
         height = max(self.canvas.winfo_height(), 1)
         scale = self._zoom
-        max_node_x = max((n.x for n in self._device_nodes()), default=0.0)
+        default_bus_len = self._default_bus_length()
+        if len(self._bus_lengths) < len(self._bus_offsets):
+            self._bus_lengths.extend(
+                [default_bus_len] * (len(self._bus_offsets) - len(self._bus_lengths))
+            )
+        if len(self._bus_lengths) > len(self._bus_offsets):
+            self._bus_lengths = self._bus_lengths[: len(self._bus_offsets)]
+        max_bus_len = max(self._bus_lengths, default=default_bus_len)
         total_width = max(
             width,
-            int((self._layout_width or (max_node_x + 200)) * scale),
+            int((max(max_bus_len, max_node_x + 200)) * scale),
             int((max_node_x + 200) * scale),
         )
         base_y = height * 0.5 + self._pan_y
@@ -2670,15 +2696,17 @@ class TopologyEditor(tk.Tk):
         callout_fill = Color(1.0, 0.98, 0.90)
 
         x_left = 40
-        x_right = total_width - 40
+        x_right = x_left + max_bus_len * scale
         turn_radius = max(8.0, 18 * scale)
         c.setStrokeColor(gray)
         c.setLineWidth(4 * fit_scale)
         for idx, bus_y in enumerate(bus_ys):
+            bus_len = self._bus_lengths[idx] if idx < len(self._bus_lengths) else max_bus_len
+            seg_right = x_left + bus_len * scale
             if idx % 2 == 0:
-                start_x, end_x = x_left, x_right
+                start_x, end_x = x_left, seg_right
             else:
-                start_x, end_x = x_right, x_left
+                start_x, end_x = seg_right, x_left
             x0, y0 = _to_pdf(start_x, bus_y)
             x1, y1 = _to_pdf(end_x, bus_y)
             c.line(x0, y0, x1, y1)
@@ -2959,6 +2987,38 @@ class TopologyEditor(tk.Tk):
                 return idx
         return None
 
+    def _bus_resize_hit_test(self, bus_index: int, cx: float, cy: float) -> bool:
+        """
+        NAME
+            _bus_resize_hit_test - Return True when near the resize handle.
+        """
+        if bus_index < 0 or bus_index >= len(self._bus_offsets):
+            return False
+        bus_ys = list(self._draw_state.get("bus_ys", []))
+        if not bus_ys:
+            return False
+        scale = max(self._zoom, 0.01)
+        bus_y = bus_ys[bus_index]
+        default_len = self._default_bus_length()
+        if len(self._bus_lengths) < len(self._bus_offsets):
+            self._bus_lengths.extend(
+                [default_len] * (len(self._bus_offsets) - len(self._bus_lengths))
+            )
+        handle_x = 40 + self._bus_lengths[bus_index] * scale
+        if abs(cy - bus_y) > 10:
+            return False
+        return abs(cx - handle_x) <= 10
+
+    def _default_bus_length(self) -> float:
+        """
+        NAME
+            _default_bus_length - Choose a bus length that fits the current window.
+        """
+        width = max(self.canvas.winfo_width(), 1)
+        scale = max(self._zoom, 0.01)
+        usable = max(400.0, (width - 80.0) / scale)
+        return usable
+
     def _reorder_buses_by_y(self) -> None:
         """
         NAME
@@ -2971,6 +3031,13 @@ class TopologyEditor(tk.Tk):
         if ordering == list(range(len(bus_ys))):
             return
         new_offsets = [self._bus_offsets[idx] for idx in ordering]
+        if self._bus_lengths:
+            last_len = self._bus_lengths[-1]
+            new_lengths = [
+                self._bus_lengths[idx] if idx < len(self._bus_lengths) else last_len
+                for idx in ordering
+            ]
+            self._bus_lengths = new_lengths
         index_map = {old: new for new, old in enumerate(ordering)}
         for node in self._nodes:
             node.bus_index = index_map.get(node.bus_index, node.bus_index)
@@ -3000,6 +3067,26 @@ class TopologyEditor(tk.Tk):
             size -= 1
         return 6
 
+    def _schedule_redraw(self) -> None:
+        """
+        NAME
+            _schedule_redraw - Coalesce redraws during drag operations.
+        """
+        if self._dragging_active:
+            return
+        if self._redraw_pending:
+            return
+        self._redraw_pending = True
+        self.after(16, self._flush_redraw)
+
+    def _flush_redraw(self) -> None:
+        """
+        NAME
+            _flush_redraw - Execute a queued redraw.
+        """
+        self._redraw_pending = False
+        self._redraw_canvas()
+
     def _on_zoom_wheel(self, event: tk.Event) -> None:
         """
         NAME
@@ -3027,6 +3114,81 @@ class TopologyEditor(tk.Tk):
         self._dirty = True
         self._zoom_label_var.set("Zoom: 100%")
         self._redraw_canvas()
+
+    def _fit_to_window(self) -> None:
+        """
+        NAME
+            _fit_to_window - Fit the diagram to the current canvas size.
+        """
+        width = max(self.canvas.winfo_width(), 1)
+        height = max(self.canvas.winfo_height(), 1)
+        margin = 24.0
+        device_nodes = self._device_nodes()
+        callouts = self._callout_nodes()
+        if not device_nodes and not callouts and not self._bus_offsets:
+            return
+
+        min_x = float("inf")
+        max_x = float("-inf")
+        min_y = float("inf")
+        max_y = float("-inf")
+
+        for node in device_nodes:
+            node_scale = max(0.6, min(2.0, node.scale))
+            half_w = (self._box_w * node_scale) / 2.0
+            bus_offset = self._bus_offsets[node.bus_index] if self._bus_offsets else 0.0
+            if node.row == 1:
+                y0 = bus_offset + 30.0
+                y1 = y0 + self._box_h * node_scale
+            else:
+                y1 = bus_offset - 30.0
+                y0 = y1 - self._box_h * node_scale
+            min_x = min(min_x, node.x - half_w)
+            max_x = max(max_x, node.x + half_w)
+            min_y = min(min_y, y0)
+            max_y = max(max_y, y1)
+
+        for callout in callouts:
+            callout_scale = max(0.6, min(2.0, callout.scale))
+            half_w = (180 * callout_scale) / 2.0
+            half_h = (50 * callout_scale) / 2.0
+            min_x = min(min_x, callout.x - half_w)
+            max_x = max(max_x, callout.x + half_w)
+            min_y = min(min_y, callout.callout_y - half_h)
+            max_y = max(max_y, callout.callout_y + half_h)
+
+        if self._bus_offsets:
+            bus_min = min(self._bus_offsets) - (self._box_h + 60.0)
+            bus_max = max(self._bus_offsets) + (self._box_h + 60.0)
+            min_y = min(min_y, bus_min)
+            max_y = max(max_y, bus_max)
+
+        left_margin = 40.0
+        max_node_x = max((n.x for n in device_nodes), default=0.0)
+        max_x = max(max_x, max_node_x + 200.0)
+        if self._bus_lengths:
+            max_x = max(max_x, max(self._bus_lengths) + left_margin)
+        min_x = min(min_x, 0.0)
+
+        if min_x == float("inf") or max_x == float("-inf"):
+            min_x, max_x = 0.0, 400.0
+        if min_y == float("inf") or max_y == float("-inf"):
+            min_y, max_y = -200.0, 200.0
+
+        content_w = max(1.0, max_x - min_x)
+        content_h = max(1.0, max_y - min_y)
+
+        zoom_x = (width - margin * 2) / content_w
+        zoom_y = (height - margin * 2) / content_h
+        self._zoom = max(0.1, min(2.0, min(zoom_x, zoom_y)))
+        self._zoom_label_var.set(f"Zoom: {int(self._zoom * 100)}%")
+
+        center_y = (min_y + max_y) / 2.0
+        self._pan_y = -center_y * self._zoom
+        self._dirty = True
+        self._redraw_canvas()
+        self.update_idletasks()
+        self.canvas.xview_moveto(0.0)
 
     @staticmethod
     def _tag_to_key(tags: Tuple[str, ...]) -> Optional[int]:
