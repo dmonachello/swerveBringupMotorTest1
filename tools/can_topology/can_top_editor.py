@@ -1403,7 +1403,7 @@ class TopologyEditor(tk.Tk):
                         free_val = float(free_y)
                         if self._bus_offsets:
                             bus_offset = self._bus_offsets[min(max(int(bus_index), 0), len(self._bus_offsets) - 1)]
-                            if abs(free_val) > 200.0:
+                            if abs(free_val) > 200.0 or abs(free_val - callout_y) < 0.5:
                                 free_val = free_val - bus_offset
                     callout = Node(
                         key=self._next_key,
@@ -1520,7 +1520,7 @@ class TopologyEditor(tk.Tk):
                     free_val = float(free_y)
                     if self._bus_offsets:
                         bus_offset = self._bus_offsets[min(max(int(bus_index), 0), len(self._bus_offsets) - 1)]
-                        if abs(free_val) > 200.0:
+                        if abs(free_val) > 200.0 or abs(free_val - callout_y) < 0.5:
                             free_val = free_val - bus_offset
                 callout = Node(
                     key=self._next_key,
@@ -2493,10 +2493,6 @@ class TopologyEditor(tk.Tk):
                 self._pan_drag = (cy, self._pan_y)
             if bus_index is None:
                 self._clear_selection()
-            if hasattr(self, "_node_details_panel"):
-                self._preserve_canvas_view(self._node_details_panel.pack_forget)
-            if hasattr(self, "_callout_details_panel"):
-                self._preserve_canvas_view(self._callout_details_panel.pack_forget)
             return
         if key in self._selected_nodes and total_selected > 1:
             self._start_multi_drag(cx, cy)
@@ -2505,8 +2501,6 @@ class TopologyEditor(tk.Tk):
             self._push_undo()
             self._drag_undo_pending = True
             self._drag_state = (key, cx, cy)
-        if hasattr(self, "_node_details_panel"):
-            self._preserve_canvas_view(self._node_details_panel.pack_forget)
 
     def _on_canvas_drag(self, event: tk.Event) -> None:
         """
@@ -2515,6 +2509,10 @@ class TopologyEditor(tk.Tk):
         """
         cx = self.canvas.canvasx(event.x)
         cy = self.canvas.canvasy(event.y)
+        if not self._dragging_active:
+            self._dragging_active = True
+            if hasattr(self, "_node_details_panel"):
+                self._preserve_canvas_view(self._node_details_panel.pack_forget)
         if self._selection_start is not None and self._selection_rect is not None:
             x0, y0 = self._selection_start
             self.canvas.coords(self._selection_rect, x0, y0, cx, cy)
