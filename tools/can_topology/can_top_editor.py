@@ -486,9 +486,12 @@ class TopologyEditor(tk.Tk):
         self._pan_y = 0.0
         self._pan_drag: Optional[Tuple[float, float]] = None
         self._bus_offsets: List[float] = [0.0]
+        self._bus_lefts: List[float] = []
+        self._bus_rights: List[float] = []
         self._bus_spacing = 160.0
         self._add_bus_mode = False
         self._bus_drag: Optional[Tuple[int, float, float, Dict[int, float]]] = None
+        self._bus_resize: Optional[Tuple[int, str, float, float, float]] = None
         self._undo_stack: List[Dict[str, object]] = []
         self._undo_limit = 20
         self._drag_undo_pending = False
@@ -793,6 +796,8 @@ class TopologyEditor(tk.Tk):
                 for n in self._nodes
             ],
             "bus_offsets": list(self._bus_offsets),
+            "bus_lefts": list(self._bus_lefts),
+            "bus_rights": list(self._bus_rights),
             "layout_width": self._layout_width,
             "pan_y": self._pan_y,
             "zoom": self._zoom,
@@ -836,6 +841,8 @@ class TopologyEditor(tk.Tk):
             for n in snap["nodes"]
         ]
         self._bus_offsets = snap["bus_offsets"]
+        self._bus_lefts = snap.get("bus_lefts", [])
+        self._bus_rights = snap.get("bus_rights", [])
         self._layout_width = snap["layout_width"]
         self._pan_y = snap["pan_y"]
         self._zoom = snap["zoom"]
@@ -868,6 +875,8 @@ class TopologyEditor(tk.Tk):
         self._zoom = 1.0
         self._zoom_label_var.set("Zoom: 100%")
         self._bus_offsets = [0.0]
+        self._bus_lefts = []
+        self._bus_rights = []
         self._last_base_y = None
         self._details_layout_shift = False
         self._dirty = False
@@ -936,6 +945,8 @@ class TopologyEditor(tk.Tk):
         self._zoom = 1.0
         self._zoom_label_var.set("Zoom: 100%")
         self._bus_offsets = [0.0]
+        self._bus_lefts = []
+        self._bus_rights = []
         self._last_base_y = None
         self._details_layout_shift = False
         diagram_applied = False
@@ -1275,6 +1286,8 @@ class TopologyEditor(tk.Tk):
         return {
             "busCount": len(self._bus_offsets),
             "busSpacing": self._bus_spacing,
+            "busLefts": list(self._bus_lefts),
+            "busRights": list(self._bus_rights),
             "panY": self._pan_y,
             "zoom": self._zoom,
             "nodes": nodes,
@@ -1292,6 +1305,12 @@ class TopologyEditor(tk.Tk):
         if isinstance(spacing, (int, float)) and spacing > 0:
             self._bus_spacing = float(spacing)
             self._bus_offsets = [i * self._bus_spacing for i in range(len(self._bus_offsets))]
+        bus_lefts = diagram.get("busLefts")
+        bus_rights = diagram.get("busRights")
+        if isinstance(bus_lefts, list):
+            self._bus_lefts = [float(x) for x in bus_lefts if isinstance(x, (int, float))]
+        if isinstance(bus_rights, list):
+            self._bus_rights = [float(x) for x in bus_rights if isinstance(x, (int, float))]
         pan_y = diagram.get("panY")
         if isinstance(pan_y, (int, float)):
             self._pan_y = float(pan_y)
@@ -1658,6 +1677,10 @@ class TopologyEditor(tk.Tk):
         self._push_undo()
         for idx in reversed(indices):
             del self._bus_offsets[idx]
+            if idx < len(self._bus_lefts):
+                del self._bus_lefts[idx]
+            if idx < len(self._bus_rights):
+                del self._bus_rights[idx]
         def _shift_index(old: int) -> int:
             return old - sum(1 for removed in indices if removed < old)
         for node in device_nodes:
@@ -2003,10 +2026,20 @@ class TopologyEditor(tk.Tk):
         height = max(self.canvas.winfo_height(), 1)
         scale = self._zoom
         max_node_x = max((n.x for n in self._nodes), default=0.0)
+        if len(self._bus_lefts) < len(self._bus_offsets):
+            self._bus_lefts.extend([40.0] * (len(self._bus_offsets) - len(self._bus_lefts)))
+        if len(self._bus_rights) < len(self._bus_offsets):
+            self._bus_rights.extend([max_node_x + 200.0] * (len(self._bus_offsets) - len(self._bus_rights)))
+        if len(self._bus_lefts) > len(self._bus_offsets):
+            self._bus_lefts = self._bus_lefts[: len(self._bus_offsets)]
+        if len(self._bus_rights) > len(self._bus_offsets):
+            self._bus_rights = self._bus_rights[: len(self._bus_offsets)]
+        min_left = min(self._bus_lefts, default=40.0)
+        max_right = max(self._bus_rights, default=max_node_x + 200.0)
         total_width = max(
             width,
-            int((self._layout_width or (max_node_x + 200)) * scale),
-            int((max_node_x + 200) * scale),
+            int((self._layout_width or max_right) * scale),
+            int((max_right) * scale),
         )
         base_y = height * 0.5 + self._pan_y
         if (
@@ -2035,17 +2068,19 @@ class TopologyEditor(tk.Tk):
         total_height = max(height, int(max_y - min_y + margin * 2))
         self.canvas.configure(scrollregion=(0, min_y - margin, total_width, max_y + margin))
         self._draw_state = {"bus_ys": bus_ys, "scale": scale}
-        x_left = 40
-        x_right = total_width - 40
+        x_left = min_left * scale
+        x_right = max_right * scale
         turn_radius = max(8.0, 18 * scale)
         self._bus_ys = list(bus_ys)
         for idx, bus_y in enumerate(bus_ys):
             bus_color = "#1f6feb" if idx in self._selected_buses else "#444444"
             bus_width = 5 if idx in self._selected_buses else 4
+            seg_left = self._bus_lefts[idx] * scale
+            seg_right = self._bus_rights[idx] * scale
             if idx % 2 == 0:
-                start_x, end_x = x_left, x_right
+                start_x, end_x = seg_left, seg_right
             else:
-                start_x, end_x = x_right, x_left
+                start_x, end_x = seg_right, seg_left
             self.canvas.create_line(
                 start_x, bus_y, end_x, bus_y, width=bus_width, fill=bus_color
             )
@@ -2081,6 +2116,9 @@ class TopologyEditor(tk.Tk):
             node_scale = max(0.6, min(2.0, node.scale))
             node_box_w = box_w * node_scale
             node_box_h = box_h * node_scale
+            seg_left = self._bus_lefts[bus_index] * scale
+            seg_right = self._bus_rights[bus_index] * scale
+            node_x = min(max(node.x * scale, seg_left + 20), seg_right - 20)
             x0 = node_x - node_box_w / 2
             x1 = node_x + node_box_w / 2
             if node.row == 1:
@@ -2112,13 +2150,14 @@ class TopologyEditor(tk.Tk):
             self.canvas.addtag_withtag(f"node_{node.key}", rect)
             self.canvas.addtag_withtag(f"node_{node.key}", text)
 
-        node_centers = {
-            n.key: (
-                min(max(n.x * scale, x_left + 20), x_right - 20),
+        node_centers = {}
+        for n in self._device_nodes():
+            seg_left = self._bus_lefts[n.bus_index] * scale
+            seg_right = self._bus_rights[n.bus_index] * scale
+            node_centers[n.key] = (
+                min(max(n.x * scale, seg_left + 20), seg_right - 20),
                 bus_ys[n.bus_index] if bus_ys else base_y,
             )
-            for n in self._device_nodes()
-        }
         for callout in self._callout_nodes():
             cx = callout.x * scale
             cy = callout.callout_y * scale
@@ -2195,6 +2234,18 @@ class TopologyEditor(tk.Tk):
             # Check if we clicked near a bus line to drag it.
             bus_index = self._bus_hit_test(cy)
             if bus_index is not None:
+                end = self._bus_end_hit_test(bus_index, cx, cy)
+                if end:
+                    self._push_undo()
+                    self._drag_undo_pending = True
+                    self._bus_resize = (
+                        bus_index,
+                        end,
+                        self._bus_lefts[bus_index],
+                        self._bus_rights[bus_index],
+                        cx,
+                    )
+                    return
                 self._selected_buses = {bus_index}
                 self._selected_nodes = set()
                 self._sync_selection_state()
@@ -2298,6 +2349,74 @@ class TopologyEditor(tk.Tk):
                     callout.callout_y = callout_start[callout.key] + delta
             self._redraw_canvas()
             return
+        if self._bus_resize is not None:
+            bus_index, end, start_left, start_right, start_cx = self._bus_resize
+            scale = max(self._zoom, 0.01)
+            dx = (cx - start_cx) / scale
+            left = start_left
+            right = start_right
+            min_len = 120.0
+
+            is_even = bus_index % 2 == 0
+            connector_with_next = (end == "right" and is_even) or (end == "left" and not is_even)
+            connector_with_prev = (end == "left" and is_even) or (end == "right" and not is_even)
+
+            new_pos = (start_left + dx) if end == "left" else (start_right + dx)
+            min_allowed = float("-inf")
+            max_allowed = float("inf")
+
+            # Clamp for the current segment.
+            if end == "left":
+                max_allowed = min(max_allowed, right - min_len)
+            else:
+                min_allowed = max(min_allowed, left + min_len)
+
+            # If we are dragging a connector, also clamp against the neighbor segment.
+            if connector_with_next and bus_index + 1 < len(self._bus_offsets):
+                next_left = self._bus_lefts[bus_index + 1]
+                next_right = self._bus_rights[bus_index + 1]
+                if (bus_index + 1) % 2 == 0:
+                    # Next segment starts on the left.
+                    max_allowed = min(max_allowed, next_right - min_len)
+                else:
+                    # Next segment starts on the right.
+                    min_allowed = max(min_allowed, next_left + min_len)
+            if connector_with_prev and bus_index - 1 >= 0:
+                prev_left = self._bus_lefts[bus_index - 1]
+                prev_right = self._bus_rights[bus_index - 1]
+                if (bus_index - 1) % 2 == 0:
+                    # Previous segment ends on the right.
+                    min_allowed = max(min_allowed, prev_left + min_len)
+                else:
+                    # Previous segment ends on the left.
+                    max_allowed = min(max_allowed, prev_right - min_len)
+
+            if min_allowed != float("-inf") or max_allowed != float("inf"):
+                new_pos = max(min_allowed, min(max_allowed, new_pos))
+
+            if end == "left":
+                left = new_pos
+            else:
+                right = new_pos
+
+            # Apply to neighbors when dragging a connector end.
+            if connector_with_next and bus_index + 1 < len(self._bus_offsets):
+                if (bus_index + 1) % 2 == 0:
+                    self._bus_lefts[bus_index + 1] = new_pos
+                else:
+                    self._bus_rights[bus_index + 1] = new_pos
+            if connector_with_prev and bus_index - 1 >= 0:
+                if (bus_index - 1) % 2 == 0:
+                    self._bus_rights[bus_index - 1] = new_pos
+                else:
+                    self._bus_lefts[bus_index - 1] = new_pos
+
+            self._bus_lefts[bus_index] = left
+            self._bus_rights[bus_index] = right
+            self._layout_width = max(self._layout_width, right + 200)
+            self._dirty = True
+            self._redraw_canvas()
+            return
         if not self._drag_state:
             return
         key, last_x, last_y = self._drag_state
@@ -2342,6 +2461,7 @@ class TopologyEditor(tk.Tk):
         self._drag_state = None
         self._pan_drag = None
         self._bus_drag = None
+        self._bus_resize = None
         self._multi_drag = None
         self._drag_undo_pending = False
         self._dragging_active = False
@@ -2371,8 +2491,9 @@ class TopologyEditor(tk.Tk):
         # Preserve insertion order; do not sort so existing buses don't shift.
         if offset not in self._bus_offsets:
             self._bus_offsets.append(offset)
-            default_len = self._default_bus_length()
-            self._bus_lengths.append(default_len)
+            self._bus_lefts.append(40.0)
+            max_node_x = max((n.x for n in self._nodes), default=0.0)
+            self._bus_rights.append(max(max_node_x + 200.0, 400.0))
         self._redraw_canvas()
 
     def _on_add_callout(self) -> None:
@@ -2628,18 +2749,22 @@ class TopologyEditor(tk.Tk):
         width = max(self.canvas.winfo_width(), 1)
         height = max(self.canvas.winfo_height(), 1)
         scale = self._zoom
-        default_bus_len = self._default_bus_length()
-        if len(self._bus_lengths) < len(self._bus_offsets):
-            self._bus_lengths.extend(
-                [default_bus_len] * (len(self._bus_offsets) - len(self._bus_lengths))
+        max_node_x = max((n.x for n in self._nodes), default=0.0)
+        if len(self._bus_lefts) < len(self._bus_offsets):
+            self._bus_lefts.extend([40.0] * (len(self._bus_offsets) - len(self._bus_lefts)))
+        if len(self._bus_rights) < len(self._bus_offsets):
+            self._bus_rights.extend(
+                [max_node_x + 200.0] * (len(self._bus_offsets) - len(self._bus_rights))
             )
-        if len(self._bus_lengths) > len(self._bus_offsets):
-            self._bus_lengths = self._bus_lengths[: len(self._bus_offsets)]
-        max_bus_len = max(self._bus_lengths, default=default_bus_len)
+        if len(self._bus_lefts) > len(self._bus_offsets):
+            self._bus_lefts = self._bus_lefts[: len(self._bus_offsets)]
+        if len(self._bus_rights) > len(self._bus_offsets):
+            self._bus_rights = self._bus_rights[: len(self._bus_offsets)]
+        min_left = min(self._bus_lefts, default=40.0)
+        max_right = max(self._bus_rights, default=max_node_x + 200.0)
         total_width = max(
             width,
-            int((max(max_bus_len, max_node_x + 200)) * scale),
-            int((max_node_x + 200) * scale),
+            int(max(max_right, max_node_x + 200.0) * scale),
         )
         base_y = height * 0.5 + self._pan_y
         bus_ys = [base_y + offset * scale for offset in self._bus_offsets]
@@ -2758,18 +2883,18 @@ class TopologyEditor(tk.Tk):
         light = Color(0.97, 0.97, 0.97)
         callout_fill = Color(1.0, 0.98, 0.90)
 
-        x_left = 40
-        x_right = x_left + max_bus_len * scale
+        x_left = min_left * scale
+        x_right = max_right * scale
         turn_radius = max(8.0, 18 * scale)
         c.setStrokeColor(gray)
         c.setLineWidth(4 * fit_scale)
         for idx, bus_y in enumerate(bus_ys):
-            bus_len = self._bus_lengths[idx] if idx < len(self._bus_lengths) else max_bus_len
-            seg_right = x_left + bus_len * scale
+            seg_left = self._bus_lefts[idx] * scale
+            seg_right = self._bus_rights[idx] * scale
             if idx % 2 == 0:
-                start_x, end_x = x_left, seg_right
+                start_x, end_x = seg_left, seg_right
             else:
-                start_x, end_x = seg_right, x_left
+                start_x, end_x = seg_right, seg_left
             x0, y0 = _to_pdf(start_x, bus_y)
             x1, y1 = _to_pdf(end_x, bus_y)
             c.line(x0, y0, x1, y1)
@@ -2790,12 +2915,14 @@ class TopologyEditor(tk.Tk):
 
         node_centers = {}
         for node in self._device_nodes():
-            node_x = min(max(node.x * scale, x_left + 20), x_right - 20)
             bus_index = min(max(node.bus_index, 0), max(len(bus_ys) - 1, 0))
             bus_y = bus_ys[bus_index] if bus_ys else base_y
             node_scale = max(0.6, min(2.0, node.scale))
             node_box_w = box_w * node_scale
             node_box_h = box_h * node_scale
+            seg_left = self._bus_lefts[bus_index] * scale
+            seg_right = self._bus_rights[bus_index] * scale
+            node_x = min(max(node.x * scale, seg_left + 20), seg_right - 20)
             x0 = node_x - node_box_w / 2
             x1 = node_x + node_box_w / 2
             if node.row == 1:
@@ -3050,37 +3177,29 @@ class TopologyEditor(tk.Tk):
                 return idx
         return None
 
-    def _bus_resize_hit_test(self, bus_index: int, cx: float, cy: float) -> bool:
+    def _bus_end_hit_test(self, bus_index: int, cx: float, cy: float) -> Optional[str]:
         """
         NAME
-            _bus_resize_hit_test - Return True when near the resize handle.
+            _bus_end_hit_test - Return "left" or "right" when near a segment end.
         """
         if bus_index < 0 or bus_index >= len(self._bus_offsets):
-            return False
+            return None
         bus_ys = list(self._draw_state.get("bus_ys", []))
         if not bus_ys:
-            return False
+            return None
         scale = max(self._zoom, 0.01)
         bus_y = bus_ys[bus_index]
-        default_len = self._default_bus_length()
-        if len(self._bus_lengths) < len(self._bus_offsets):
-            self._bus_lengths.extend(
-                [default_len] * (len(self._bus_offsets) - len(self._bus_lengths))
-            )
-        handle_x = 40 + self._bus_lengths[bus_index] * scale
+        if bus_index >= len(self._bus_lefts) or bus_index >= len(self._bus_rights):
+            return None
+        left_x = self._bus_lefts[bus_index] * scale
+        right_x = self._bus_rights[bus_index] * scale
         if abs(cy - bus_y) > 10:
-            return False
-        return abs(cx - handle_x) <= 10
-
-    def _default_bus_length(self) -> float:
-        """
-        NAME
-            _default_bus_length - Choose a bus length that fits the current window.
-        """
-        width = max(self.canvas.winfo_width(), 1)
-        scale = max(self._zoom, 0.01)
-        usable = max(400.0, (width - 80.0) / scale)
-        return usable
+            return None
+        if abs(cx - left_x) <= 10:
+            return "left"
+        if abs(cx - right_x) <= 10:
+            return "right"
+        return None
 
     def _reorder_buses_by_y(self) -> None:
         """
@@ -3094,13 +3213,10 @@ class TopologyEditor(tk.Tk):
         if ordering == list(range(len(bus_ys))):
             return
         new_offsets = [self._bus_offsets[idx] for idx in ordering]
-        if self._bus_lengths:
-            last_len = self._bus_lengths[-1]
-            new_lengths = [
-                self._bus_lengths[idx] if idx < len(self._bus_lengths) else last_len
-                for idx in ordering
-            ]
-            self._bus_lengths = new_lengths
+        if self._bus_lefts:
+            self._bus_lefts = [self._bus_lefts[idx] for idx in ordering if idx < len(self._bus_lefts)]
+        if self._bus_rights:
+            self._bus_rights = [self._bus_rights[idx] for idx in ordering if idx < len(self._bus_rights)]
         index_map = {old: new for new, old in enumerate(ordering)}
         for node in self._nodes:
             node.bus_index = index_map.get(node.bus_index, node.bus_index)
@@ -3227,6 +3343,21 @@ class TopologyEditor(tk.Tk):
             max_y = max(max_y, bus_max)
 
         max_node_x = max((n.x for n in device_nodes), default=0.0)
+        if len(self._bus_lefts) < len(self._bus_offsets):
+            self._bus_lefts.extend([40.0] * (len(self._bus_offsets) - len(self._bus_lefts)))
+        if len(self._bus_rights) < len(self._bus_offsets):
+            self._bus_rights.extend(
+                [max_node_x + 200.0] * (len(self._bus_offsets) - len(self._bus_rights))
+            )
+        if len(self._bus_lefts) > len(self._bus_offsets):
+            self._bus_lefts = self._bus_lefts[: len(self._bus_offsets)]
+        if len(self._bus_rights) > len(self._bus_offsets):
+            self._bus_rights = self._bus_rights[: len(self._bus_offsets)]
+        if self._bus_offsets:
+            min_left = min(self._bus_lefts, default=40.0)
+            max_right = max(self._bus_rights, default=max_node_x + 200.0)
+            min_x = min(min_x, min_left)
+            max_x = max(max_x, max_right)
         max_x = max(max_x, max_node_x + 200.0)
         min_x = min(min_x, 0.0)
 
