@@ -520,8 +520,8 @@
       "robot_test1": {
         "busCount": 4,
         "busSpacing": 160.0,
-        "panY": -144.0,
-        "zoom": 0.6,
+        "panY": -113.83879334223015,
+        "zoom": 0.4743283055926256,
         "nodes": [
           {
             "nodeType": "device",

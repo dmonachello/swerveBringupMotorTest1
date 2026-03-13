@@ -22,7 +22,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import faulthandler
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -503,6 +502,9 @@ class TopologyEditor(tk.Tk):
         self._bus_ys: List[float] = []
         self._clipboard: Optional[Dict[str, object]] = None
         self._multi_drag: Optional[Dict[str, object]] = None
+        self._last_base_y: Optional[float] = None
+        self._details_layout_shift = False
+        self._last_canvas_height: Optional[int] = None
         self._suppress_list_select = False
         self._syncing_selection = False
         self._zoom = 1.0
@@ -527,11 +529,13 @@ class TopologyEditor(tk.Tk):
         right.pack(side="right", fill="both", expand=True)
 
         ttk.Label(left, text="Nodes").pack(anchor="w")
+        list_frame = ttk.Frame(left)
+        list_frame.pack(fill="both", expand=True, pady=(4, 6))
         self.node_list = ttk.Treeview(
-            left,
+            list_frame,
             columns=("can_id", "type", "label"),
             show="headings",
-            height=18,
+            height=12,
             selectmode="browse",
         )
         self.node_list.heading("can_id", text="CAN ID")
@@ -540,7 +544,10 @@ class TopologyEditor(tk.Tk):
         self.node_list.column("can_id", width=60, anchor="center")
         self.node_list.column("type", width=80, anchor="w")
         self.node_list.column("label", width=160, anchor="w")
-        self.node_list.pack(fill="both", expand=True, pady=(4, 6))
+        self.node_list.pack(side="left", fill="both", expand=True)
+        node_scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.node_list.yview)
+        node_scroll.pack(side="right", fill="y")
+        self.node_list.configure(yscrollcommand=node_scroll.set)
         self.node_list.bind("<<TreeviewSelect>>", self._on_list_select)
 
         bottom = ttk.Frame(left)
@@ -861,6 +868,8 @@ class TopologyEditor(tk.Tk):
         self._zoom = 1.0
         self._zoom_label_var.set("Zoom: 100%")
         self._bus_offsets = [0.0]
+        self._last_base_y = None
+        self._details_layout_shift = False
         self._dirty = False
         self._refresh_list()
         self._update_details_panel(None)
@@ -927,6 +936,8 @@ class TopologyEditor(tk.Tk):
         self._zoom = 1.0
         self._zoom_label_var.set("Zoom: 100%")
         self._bus_offsets = [0.0]
+        self._last_base_y = None
+        self._details_layout_shift = False
         diagram_applied = False
         diagram_profiles = {}
         diagram = data.get("diagram")
@@ -1334,12 +1345,37 @@ class TopologyEditor(tk.Tk):
                                     break
                             if resolved is not None:
                                 callout.callout_target_node_key = resolved.key
+                                callout.callout_target_category = resolved.category
+                                callout.callout_target_label = resolved.label
+                                callout.callout_target_id = resolved.can_id
                             else:
-                                callout.callout_target_type = "bus"
-                                callout.callout_target_bus = int(
-                                    entry.get("targetBus", entry.get("callout_target_bus", 0)) or 0
-                                )
-                                callout.callout_target_node_key = None
+                                # Fallback: snap to nearest node on the same bus (or overall).
+                                nearest = None
+                                best = float("inf")
+                                target_bus = int(entry.get("targetBus", entry.get("callout_target_bus", 0)) or 0)
+                                for node in self._device_nodes():
+                                    if node.bus_index != target_bus:
+                                        continue
+                                    dist = abs(node.x - callout.x)
+                                    if dist < best:
+                                        best = dist
+                                        nearest = node
+                                if nearest is None:
+                                    for node in self._device_nodes():
+                                        dist = abs(node.x - callout.x)
+                                        if dist < best:
+                                            best = dist
+                                            nearest = node
+                                if nearest is not None:
+                                    callout.callout_target_type = "node"
+                                    callout.callout_target_node_key = nearest.key
+                                    callout.callout_target_category = nearest.category
+                                    callout.callout_target_label = nearest.label
+                                    callout.callout_target_id = nearest.can_id
+                                else:
+                                    callout.callout_target_type = "bus"
+                                    callout.callout_target_bus = target_bus
+                                    callout.callout_target_node_key = None
                     self._next_key += 1
                     self._nodes.append(callout)
                     loaded_callouts = True
@@ -1402,12 +1438,37 @@ class TopologyEditor(tk.Tk):
                                 break
                         if resolved is not None:
                             callout.callout_target_node_key = resolved.key
+                            callout.callout_target_category = resolved.category
+                            callout.callout_target_label = resolved.label
+                            callout.callout_target_id = resolved.can_id
                         else:
-                            callout.callout_target_type = "bus"
-                            callout.callout_target_bus = int(
-                                entry.get("targetBus", entry.get("target_bus", 0)) or 0
-                            )
-                            callout.callout_target_node_key = None
+                            # Fallback: snap to nearest node on the same bus (or overall).
+                            nearest = None
+                            best = float("inf")
+                            target_bus = int(entry.get("targetBus", entry.get("target_bus", 0)) or 0)
+                            for node in self._device_nodes():
+                                if node.bus_index != target_bus:
+                                    continue
+                                dist = abs(node.x - callout.x)
+                                if dist < best:
+                                    best = dist
+                                    nearest = node
+                            if nearest is None:
+                                for node in self._device_nodes():
+                                    dist = abs(node.x - callout.x)
+                                    if dist < best:
+                                        best = dist
+                                        nearest = node
+                            if nearest is not None:
+                                callout.callout_target_type = "node"
+                                callout.callout_target_node_key = nearest.key
+                                callout.callout_target_category = nearest.category
+                                callout.callout_target_label = nearest.label
+                                callout.callout_target_id = nearest.can_id
+                            else:
+                                callout.callout_target_type = "bus"
+                                callout.callout_target_bus = target_bus
+                                callout.callout_target_node_key = None
                 self._next_key += 1
                 self._nodes.append(callout)
 
@@ -1849,13 +1910,16 @@ class TopologyEditor(tk.Tk):
             if node is not None and node.node_type == "callout":
                 self._callout_scale_var.set(f"{node.scale:.2f}")
                 if hasattr(self, "_callout_details_panel"):
+                    self._details_layout_shift = True
                     self._preserve_canvas_view(
                         lambda: self._callout_details_panel.pack(fill="x", pady=(8, 0))
                     )
                 if hasattr(self, "_node_details_panel"):
+                    self._details_layout_shift = True
                     self._preserve_canvas_view(self._node_details_panel.pack_forget)
             else:
                 if hasattr(self, "_callout_details_panel"):
+                    self._details_layout_shift = True
                     self._preserve_canvas_view(self._callout_details_panel.pack_forget)
                 self._callout_scale_var.set("?")
                 self._update_details_panel(self._get_selected_node())
@@ -1870,8 +1934,10 @@ class TopologyEditor(tk.Tk):
             finally:
                 self._suppress_list_select = False
             if hasattr(self, "_node_details_panel"):
+                self._details_layout_shift = True
                 self._preserve_canvas_view(self._node_details_panel.pack_forget)
             if hasattr(self, "_callout_details_panel"):
+                self._details_layout_shift = True
                 self._preserve_canvas_view(self._callout_details_panel.pack_forget)
         self._redraw_canvas()
         self._syncing_selection = False
@@ -1943,6 +2009,18 @@ class TopologyEditor(tk.Tk):
             int((max_node_x + 200) * scale),
         )
         base_y = height * 0.5 + self._pan_y
+        if (
+            self._details_layout_shift
+            and self._last_base_y is not None
+            and (self._last_canvas_height is None or height != self._last_canvas_height)
+        ):
+            delta = (base_y - self._last_base_y) / max(scale, 0.01)
+            if abs(delta) > 0.0001:
+                for callout in self._callout_nodes():
+                    callout.callout_y += delta
+            self._details_layout_shift = False
+        self._last_base_y = base_y
+        self._last_canvas_height = height
         bus_ys = [base_y + offset * scale for offset in self._bus_offsets]
         box_w = self._box_w * scale
         box_h = self._box_h * scale
@@ -2266,6 +2344,7 @@ class TopologyEditor(tk.Tk):
         self._bus_drag = None
         self._multi_drag = None
         self._drag_undo_pending = False
+        self._dragging_active = False
         if self._selected_key is not None:
             self._update_details_panel(self._get_selected_node())
         self._redraw_canvas()
@@ -2292,6 +2371,8 @@ class TopologyEditor(tk.Tk):
         # Preserve insertion order; do not sort so existing buses don't shift.
         if offset not in self._bus_offsets:
             self._bus_offsets.append(offset)
+            default_len = self._default_bus_length()
+            self._bus_lengths.append(default_len)
         self._redraw_canvas()
 
     def _on_add_callout(self) -> None:
@@ -2547,10 +2628,17 @@ class TopologyEditor(tk.Tk):
         width = max(self.canvas.winfo_width(), 1)
         height = max(self.canvas.winfo_height(), 1)
         scale = self._zoom
-        max_node_x = max((n.x for n in self._device_nodes()), default=0.0)
+        default_bus_len = self._default_bus_length()
+        if len(self._bus_lengths) < len(self._bus_offsets):
+            self._bus_lengths.extend(
+                [default_bus_len] * (len(self._bus_offsets) - len(self._bus_lengths))
+            )
+        if len(self._bus_lengths) > len(self._bus_offsets):
+            self._bus_lengths = self._bus_lengths[: len(self._bus_offsets)]
+        max_bus_len = max(self._bus_lengths, default=default_bus_len)
         total_width = max(
             width,
-            int((self._layout_width or (max_node_x + 200)) * scale),
+            int((max(max_bus_len, max_node_x + 200)) * scale),
             int((max_node_x + 200) * scale),
         )
         base_y = height * 0.5 + self._pan_y
@@ -2671,15 +2759,17 @@ class TopologyEditor(tk.Tk):
         callout_fill = Color(1.0, 0.98, 0.90)
 
         x_left = 40
-        x_right = total_width - 40
+        x_right = x_left + max_bus_len * scale
         turn_radius = max(8.0, 18 * scale)
         c.setStrokeColor(gray)
         c.setLineWidth(4 * fit_scale)
         for idx, bus_y in enumerate(bus_ys):
+            bus_len = self._bus_lengths[idx] if idx < len(self._bus_lengths) else max_bus_len
+            seg_right = x_left + bus_len * scale
             if idx % 2 == 0:
-                start_x, end_x = x_left, x_right
+                start_x, end_x = x_left, seg_right
             else:
-                start_x, end_x = x_right, x_left
+                start_x, end_x = seg_right, x_left
             x0, y0 = _to_pdf(start_x, bus_y)
             x1, y1 = _to_pdf(end_x, bus_y)
             c.line(x0, y0, x1, y1)
@@ -2960,6 +3050,38 @@ class TopologyEditor(tk.Tk):
                 return idx
         return None
 
+    def _bus_resize_hit_test(self, bus_index: int, cx: float, cy: float) -> bool:
+        """
+        NAME
+            _bus_resize_hit_test - Return True when near the resize handle.
+        """
+        if bus_index < 0 or bus_index >= len(self._bus_offsets):
+            return False
+        bus_ys = list(self._draw_state.get("bus_ys", []))
+        if not bus_ys:
+            return False
+        scale = max(self._zoom, 0.01)
+        bus_y = bus_ys[bus_index]
+        default_len = self._default_bus_length()
+        if len(self._bus_lengths) < len(self._bus_offsets):
+            self._bus_lengths.extend(
+                [default_len] * (len(self._bus_offsets) - len(self._bus_lengths))
+            )
+        handle_x = 40 + self._bus_lengths[bus_index] * scale
+        if abs(cy - bus_y) > 10:
+            return False
+        return abs(cx - handle_x) <= 10
+
+    def _default_bus_length(self) -> float:
+        """
+        NAME
+            _default_bus_length - Choose a bus length that fits the current window.
+        """
+        width = max(self.canvas.winfo_width(), 1)
+        scale = max(self._zoom, 0.01)
+        usable = max(400.0, (width - 80.0) / scale)
+        return usable
+
     def _reorder_buses_by_y(self) -> None:
         """
         NAME
@@ -2972,6 +3094,13 @@ class TopologyEditor(tk.Tk):
         if ordering == list(range(len(bus_ys))):
             return
         new_offsets = [self._bus_offsets[idx] for idx in ordering]
+        if self._bus_lengths:
+            last_len = self._bus_lengths[-1]
+            new_lengths = [
+                self._bus_lengths[idx] if idx < len(self._bus_lengths) else last_len
+                for idx in ordering
+            ]
+            self._bus_lengths = new_lengths
         index_map = {old: new for new, old in enumerate(ordering)}
         for node in self._nodes:
             node.bus_index = index_map.get(node.bus_index, node.bus_index)
@@ -3000,6 +3129,26 @@ class TopologyEditor(tk.Tk):
                     return size
             size -= 1
         return 6
+
+    def _schedule_redraw(self) -> None:
+        """
+        NAME
+            _schedule_redraw - Coalesce redraws during drag operations.
+        """
+        if self._dragging_active:
+            return
+        if self._redraw_pending:
+            return
+        self._redraw_pending = True
+        self.after(16, self._flush_redraw)
+
+    def _flush_redraw(self) -> None:
+        """
+        NAME
+            _flush_redraw - Execute a queued redraw.
+        """
+        self._redraw_pending = False
+        self._redraw_canvas()
 
     def _on_zoom_wheel(self, event: tk.Event) -> None:
         """
