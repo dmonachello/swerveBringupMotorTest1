@@ -340,14 +340,8 @@
     "robot_test1": {
       "neos": [
         {
-          "label": "SPARKMAX/NEO 25",
-          "id": 25,
-          "motor": "REV NEO",
-          "terminator": false
-        },
-        {
-          "label": "intake neo",
-          "id": 18,
+          "label": "intake neo 51",
+          "id": 51,
           "limits": {
             "fwdDio": 1,
             "revDio": 2
@@ -355,8 +349,8 @@
           "terminator": false
         },
         {
-          "label": "SPARKMAX/NEO550 7",
-          "id": 17,
+          "label": "SPARKMAX/NEO 11",
+          "id": 11,
           "motor": "REV NEO",
           "limits": {
             "fwdDio": 0,
@@ -366,8 +360,20 @@
           "terminator": false
         },
         {
-          "label": "neo 41",
+          "label": "neo 21",
+          "id": 21,
+          "terminator": false
+        },
+        {
+          "label": "SPARKMAX/NEO 31",
+          "id": 31,
+          "motor": "REV NEO",
+          "terminator": false
+        },
+        {
+          "label": "SPARKMAX/NEO 41",
           "id": 41,
+          "motor": "REV NEO",
           "terminator": false
         }
       ],
@@ -378,30 +384,40 @@
           "terminator": false
         },
         {
-          "label": "kracken 42",
-          "id": 42,
+          "label": "kracken 22",
+          "id": 22,
           "terminator": false
         },
         {
-          "label": "kracken 22",
-          "id": 22,
+          "label": "kracken 32",
+          "id": 32,
+          "terminator": false
+        },
+        {
+          "label": "kracken 42",
+          "id": 42,
           "terminator": false
         }
       ],
       "cancoders": [
         {
-          "label": "cancoder 1",
-          "id": 14,
+          "label": "cancoder 13",
+          "id": 13,
           "terminator": false
         },
         {
-          "label": "cancoder 2",
-          "id": 35,
+          "label": "cancoder 23",
+          "id": 23,
           "terminator": false
         },
         {
-          "label": "cancoder 27",
-          "id": 27,
+          "label": "cancoder 33",
+          "id": 33,
+          "terminator": false
+        },
+        {
+          "label": "cancoder 43",
+          "id": 43,
           "terminator": false
         }
       ],
@@ -518,38 +534,32 @@
         ]
       },
       "robot_test1": {
-        "busCount": 4,
+        "busCount": 6,
         "busSpacing": 160.0,
         "busLefts": [
+          40.0,
+          40.0,
           40.0,
           40.0,
           40.0,
           40.0
         ],
         "busRights": [
-          1273.3796252057161,
-          1273.3796252057161,
+          1364.9999999999957,
+          1366.6666666666629,
           1328.1939799331144,
-          1328.1939799331144
+          1387.333333333333,
+          1328.1939799331144,
+          1446.6666666666629
         ],
-        "panY": -199.43846476439447,
+        "panY": -191.15384615384616,
         "zoom": 0.6,
         "nodes": [
           {
             "nodeType": "device",
             "category": "neos",
-            "label": "SPARKMAX/NEO 25",
-            "id": 25,
-            "bus": 3,
-            "row": 0,
-            "x": 738.3333333333399,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "neos",
-            "label": "intake neo",
-            "id": 18,
+            "label": "intake neo 51",
+            "id": 51,
             "bus": 0,
             "row": 0,
             "x": 655.6666666666665,
@@ -558,8 +568,8 @@
           {
             "nodeType": "device",
             "category": "neos",
-            "label": "SPARKMAX/NEO550 7",
-            "id": 17,
+            "label": "SPARKMAX/NEO 11",
+            "id": 11,
             "bus": 1,
             "row": 0,
             "x": 726.0,
@@ -568,11 +578,31 @@
           {
             "nodeType": "device",
             "category": "neos",
-            "label": "neo 41",
-            "id": 41,
+            "label": "neo 21",
+            "id": 21,
             "bus": 2,
             "row": 0,
-            "x": 732.7619047619094,
+            "x": 776.0952380952422,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "device",
+            "category": "neos",
+            "label": "SPARKMAX/NEO 31",
+            "id": 31,
+            "bus": 3,
+            "row": 0,
+            "x": 732.333333333333,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "device",
+            "category": "neos",
+            "label": "SPARKMAX/NEO 41",
+            "id": 41,
+            "bus": 4,
+            "row": 0,
+            "x": 781.6666666666732,
             "scale": 1.0
           },
           {
@@ -588,28 +618,38 @@
           {
             "nodeType": "device",
             "category": "krakens",
-            "label": "kracken 42",
-            "id": 42,
+            "label": "kracken 22",
+            "id": 22,
             "bus": 2,
             "row": 0,
-            "x": 493.9999999999997,
+            "x": 560.6666666666665,
             "scale": 1.0
           },
           {
             "nodeType": "device",
             "category": "krakens",
-            "label": "kracken 22",
-            "id": 22,
+            "label": "kracken 32",
+            "id": 32,
             "bus": 3,
             "row": 0,
-            "x": 473.99999999999966,
+            "x": 497.3333333333331,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "device",
+            "category": "krakens",
+            "label": "kracken 42",
+            "id": 42,
+            "bus": 4,
+            "row": 0,
+            "x": 517.333333333333,
             "scale": 1.0
           },
           {
             "nodeType": "device",
             "category": "cancoders",
-            "label": "cancoder 1",
-            "id": 14,
+            "label": "cancoder 13",
+            "id": 13,
             "bus": 1,
             "row": 0,
             "x": 987.3333333333333,
@@ -618,21 +658,31 @@
           {
             "nodeType": "device",
             "category": "cancoders",
-            "label": "cancoder 2",
-            "id": 35,
+            "label": "cancoder 23",
+            "id": 23,
             "bus": 2,
             "row": 0,
-            "x": 989.0000000000056,
+            "x": 1032.333333333339,
             "scale": 1.0
           },
           {
             "nodeType": "device",
             "category": "cancoders",
-            "label": "cancoder 27",
-            "id": 27,
+            "label": "cancoder 33",
+            "id": 33,
             "bus": 3,
             "row": 0,
-            "x": 997.3333333333387,
+            "x": 1267.333333333333,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "device",
+            "category": "cancoders",
+            "label": "cancoder 43",
+            "id": 43,
+            "bus": 4,
+            "row": 0,
+            "x": 1040.666666666672,
             "scale": 1.0
           },
           {
@@ -650,9 +700,9 @@
             "category": "pdh",
             "label": "pdh",
             "id": 1,
-            "bus": 3,
+            "bus": 5,
             "row": 0,
-            "x": 1199.8742899612475,
+            "x": 1209.0225126305972,
             "scale": 1.0
           },
           {
@@ -674,8 +724,10 @@
             "targetCategory": "",
             "targetLabel": "",
             "targetId": null,
-            "x": 128.29010485912792,
-            "y": 183.60376609073376,
+            "x": 114.9567715257946,
+            "y": -55.0,
+            "bus": 0,
+            "row": 0,
             "scale": 1.0
           },
           {
@@ -683,12 +735,14 @@
             "text": "LED Controller",
             "targetType": "node",
             "targetBus": 0,
-            "targetNodeKey": 11,
-            "targetCategory": "",
-            "targetLabel": "",
-            "targetId": null,
-            "x": 1279.9999999999977,
-            "y": 60.61626055104523,
+            "targetNodeKey": 14,
+            "targetCategory": "candles",
+            "targetLabel": "candle",
+            "targetId": 2,
+            "x": 1244.9999999999957,
+            "y": -55.0,
+            "bus": 0,
+            "row": 0,
             "scale": 1.0
           },
           {
@@ -700,8 +754,10 @@
             "targetCategory": "",
             "targetLabel": "",
             "targetId": null,
-            "x": 128.89620651124463,
-            "y": 493.3602390741987,
+            "x": 128.8962065112447,
+            "y": 265.0,
+            "bus": 2,
+            "row": 0,
             "scale": 1.0
           },
           {
@@ -713,8 +769,25 @@
             "targetCategory": "",
             "targetLabel": "",
             "targetId": null,
-            "x": 142.77068590873196,
-            "y": 340.62757561454214,
+            "x": 141.14090723669977,
+            "y": 105.0,
+            "bus": 1,
+            "row": 0,
+            "scale": 1.0
+          },
+          {
+            "nodeType": "callout",
+            "text": "swerve 4",
+            "targetType": "bus",
+            "targetBus": 4,
+            "targetNodeKey": null,
+            "targetCategory": "",
+            "targetLabel": "",
+            "targetId": null,
+            "x": 124.5590193970931,
+            "y": 585.0,
+            "bus": 4,
+            "row": 0,
             "scale": 1.0
           },
           {
@@ -726,8 +799,10 @@
             "targetCategory": "",
             "targetLabel": "",
             "targetId": null,
-            "x": 106.90453615145276,
-            "y": 652.3659978664787,
+            "x": 131.90453615145273,
+            "y": 425.0,
+            "bus": 3,
+            "row": 0,
             "scale": 1.0
           }
         ]

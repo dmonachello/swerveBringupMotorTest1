@@ -1,4 +1,4 @@
-# CAN Topology Editor
+﻿# CAN Topology Editor
 
 ## Purpose
 Create a bringup profile JSON by sketching CAN nodes on a shared bus line.
@@ -12,7 +12,7 @@ Purpose: Turn a diagram into a `bringup_profiles.json` file.
 ## How To Run
 Purpose: Launch the editor without extra dependencies.
 ```cmd
-python -m tools.can_topology.can_topology_editor
+python -m tools.can_topology.can_top_editor
 ```
 
 ## Workflow
@@ -28,6 +28,7 @@ Purpose: Describe the shortest path from sketch to JSON.
 ## Details Panel
 Purpose: Show fields not displayed on the boxes.
 - Select any node to view full metadata (motor, limits, terminator, vendor/type).
+- Diagram boxes show `label (id X)` only; type remains in the left list.
 
 ## Auto-Load
 Purpose: Start with your existing profile if present.
@@ -35,14 +36,20 @@ Purpose: Start with your existing profile if present.
   its `default_profile` automatically.
 - Use File -> Open Profile... to pick a different profile.
 
+## Legacy File
+Purpose: Keep the previous editor available for reference without accidental use.
+- The old script has been moved to `tools/can_topology/legacy/can_topology_editor_OLD.py`.
+- The active editor is `tools/can_topology/can_top_editor.py`.
+
 ## Notes
 Purpose: Document limitations up front.
-- Positions are for display only and are not saved in JSON.
-- Nodes can be placed above or below the bus line; layout alternates rows.
+- Diagram positions are saved under `diagram.profiles.<profileName>` only.
+- Nodes snap to the nearest bus segment and appear above or below the bus line (row 0/1).
 - The canvas supports horizontal and vertical scrolling for large layouts.
 - Box width shrinks when space is tight to reduce overlap.
 - Drag empty space to move the bus line and connected nodes up or down.
 - Use `Add Bus` and then click on the canvas to place a new bus segment (it will not shift existing buses).
+- Drag either curved end of a bus segment to resize it; connected segments stay aligned.
 - File -> `Undo` restores the last change (nodes, buses, callouts, and drag moves).
 - Drag a node near a bus segment to move it to that bus (nearest bus wins).
 - Drag a bus line to move it; connected nodes move with it.
@@ -50,8 +57,8 @@ Purpose: Document limitations up front.
 - Diagram layout metadata is saved under `diagram.profiles.<profileName>` and
   ignored by the robot and PC tools.
 - Use `Add Callout` to create a text label with a leader line to a bus or node.
-- Use `Edit Callout` to retarget or rename a callout, and `Remove Callout` to delete it.
-- Select a node and use the Scale controls to resize that node’s box; scale is saved
+- Callouts are stored as nodes and follow the same drag/selection rules as devices.
+- Select a node and use the Scale controls to resize that node's box; scale is saved
   in the diagram metadata.
 - Select a callout and use the Callout Scale controls to resize it; scale is saved.
 - Singletons (`pdh`, `pdp`, `pigeon`, `roborio`) allow only one node each.

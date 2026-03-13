@@ -133,9 +133,7 @@ class Node:
         """
         if self.node_type == "callout":
             return self.callout_text
-        if self.category == GENERIC_CATEGORY and self.vendor and self.device_type:
-            return f"{self.vendor} {self.device_type}\n{self.label} (id {self.can_id})"
-        return f"{self.category}\n{self.label} (id {self.can_id})"
+        return f"{self.label} (id {self.can_id})"
 
     def display_text_pdf(self) -> str:
         """
@@ -490,7 +488,7 @@ class TopologyEditor(tk.Tk):
         self._bus_rights: List[float] = []
         self._bus_spacing = 160.0
         self._add_bus_mode = False
-        self._bus_drag: Optional[Tuple[int, float, float, Dict[int, float]]] = None
+        self._bus_drag: Optional[Tuple[int, float, float]] = None
         self._bus_resize: Optional[Tuple[int, str, float, float, float]] = None
         self._undo_stack: List[Dict[str, object]] = []
         self._undo_limit = 20
@@ -650,6 +648,8 @@ class TopologyEditor(tk.Tk):
             "terminator": tk.StringVar(value="—"),
             "scale": tk.StringVar(value="1.00"),
         }
+        self._terminator_status_var = tk.StringVar(value="???")
+
 
         rows = [
             ("Category", "category"),
@@ -676,6 +676,13 @@ class TopologyEditor(tk.Tk):
         ttk.Button(scale_controls, text="+", width=3, command=lambda: self._nudge_scale(0.1)).pack(
             side="left", padx=(4, 0)
         )
+        status_row = scale_row + 1
+        self._terminator_status_label = ttk.Label(
+            panel, textvariable=self._terminator_status_var
+        )
+        self._terminator_status_label.grid(
+            row=status_row, column=0, columnspan=2, sticky="w", pady=(6, 0)
+        )
 
         callout_panel = ttk.LabelFrame(parent, text="Callout Details", padding=8)
         self._callout_details_panel = callout_panel
@@ -699,6 +706,7 @@ class TopologyEditor(tk.Tk):
         NAME
             _update_details_panel - Refresh the details panel fields.
         """
+        self._refresh_terminator_status()
         if node is None:
             for key in self.detail_vars:
                 self.detail_vars[key].set("—")
@@ -731,6 +739,45 @@ class TopologyEditor(tk.Tk):
         self.detail_vars["scale"].set(f"{node.scale:.2f}")
         if hasattr(self, "_node_details_panel"):
             self._preserve_canvas_view(lambda: self._node_details_panel.pack(fill="x", pady=(8, 0)))
+
+    def _terminator_count(self) -> int:
+        """
+        NAME
+            _terminator_count - Count nodes marked as CAN bus terminators.
+        """
+        return sum(1 for n in self._nodes if n.terminator is True)
+
+    def _refresh_terminator_status(self) -> None:
+        """
+        NAME
+            _refresh_terminator_status - Update the terminator count warning text.
+        """
+        count = self._terminator_count()
+        if count == 2:
+            text = "Terminator nodes: 2 (ok)"
+            color = "#1a7f37"
+        else:
+            text = f"Terminator nodes: {count} (expected 2)"
+            color = "#b42318"
+        self._terminator_status_var.set(text)
+        if hasattr(self, "_terminator_status_label"):
+            try:
+                self._terminator_status_label.configure(foreground=color)
+            except tk.TclError:
+                pass
+
+    def _confirm_terminators(self) -> bool:
+        """
+        NAME
+            _confirm_terminators - Warn when terminator count is not two.
+        """
+        count = self._terminator_count()
+        if count == 2:
+            return True
+        return messagebox.askyesno(
+            "Terminator Warning",
+            f"Terminator nodes: {count} (expected 2).\n\nSave anyway?",
+        )
 
     def _nudge_scale(self, delta: float) -> None:
         """
@@ -791,7 +838,9 @@ class TopologyEditor(tk.Tk):
                     "callout_target_type": n.callout_target_type,
                     "callout_target_bus": n.callout_target_bus,
                     "callout_target_node_key": n.callout_target_node_key,
-                    "callout_y": n.callout_y,
+                    "callout_y": self._node_center_y_unscaled(n)
+                    if n.node_type == "callout"
+                    else n.callout_y,
                 }
                 for n in self._nodes
             ],
@@ -1045,6 +1094,8 @@ class TopologyEditor(tk.Tk):
             return
         if not self._confirm_can_id_collisions():
             return
+        if not self._confirm_terminators():
+            return
         path = filedialog.asksaveasfilename(
             title="Save Bringup Profiles JSON",
             defaultextension=".json",
@@ -1087,6 +1138,8 @@ class TopologyEditor(tk.Tk):
             messagebox.showerror("Invalid", validation_error)
             return
         if not self._confirm_can_id_collisions():
+            return
+        if not self._confirm_terminators():
             return
         root = Path(__file__).resolve().parents[2]
         path = root / "src" / "main" / "deploy" / "bringup_profiles.json"
@@ -1266,7 +1319,9 @@ class TopologyEditor(tk.Tk):
                         "targetLabel": node.callout_target_label,
                         "targetId": node.callout_target_id,
                         "x": node.x,
-                        "y": node.callout_y,
+                        "y": self._node_center_y_unscaled(node),
+                        "bus": node.bus_index,
+                        "row": node.row,
                         "scale": node.scale,
                     }
                 )
@@ -1330,6 +1385,11 @@ class TopologyEditor(tk.Tk):
                     continue
                 node_type = entry.get("nodeType") or entry.get("node_type") or "device"
                 if node_type == "callout" or ("text" in entry and "targetType" in entry):
+                    callout_y = float(entry.get("y", entry.get("callout_y", 0.0)))
+                    bus_index = entry.get("bus")
+                    row = entry.get("row")
+                    if not isinstance(bus_index, int) or not isinstance(row, int):
+                        bus_index, row = self._nearest_bus_and_row_from_offset(callout_y)
                     callout = Node(
                         key=self._next_key,
                         category="callout",
@@ -1337,8 +1397,8 @@ class TopologyEditor(tk.Tk):
                         can_id=-1,
                         node_type="callout",
                         x=float(entry.get("x", 0.0)),
-                        row=0,
-                        bus_index=0,
+                        row=int(row),
+                        bus_index=int(bus_index),
                         scale=float(entry.get("scale", 1.0)),
                         callout_text=str(entry.get("text", "")),
                         callout_target_type=str(entry.get("targetType", entry.get("callout_target_type", "node"))),
@@ -1347,7 +1407,7 @@ class TopologyEditor(tk.Tk):
                         callout_target_category=str(entry.get("targetCategory", "")),
                         callout_target_label=str(entry.get("targetLabel", "")),
                         callout_target_id=entry.get("targetId"),
-                        callout_y=float(entry.get("y", entry.get("callout_y", 0.0))),
+                        callout_y=callout_y,
                     )
                     if callout.callout_target_type == "node":
                         if callout.callout_target_node_key not in device_keys:
@@ -1423,6 +1483,11 @@ class TopologyEditor(tk.Tk):
             for entry in callouts:
                 if not isinstance(entry, dict):
                     continue
+                callout_y = float(entry.get("y", 0.0))
+                bus_index = entry.get("bus")
+                row = entry.get("row")
+                if not isinstance(bus_index, int) or not isinstance(row, int):
+                    bus_index, row = self._nearest_bus_and_row_from_offset(callout_y)
                 callout = Node(
                     key=self._next_key,
                     category="callout",
@@ -1430,8 +1495,8 @@ class TopologyEditor(tk.Tk):
                     can_id=-1,
                     node_type="callout",
                     x=float(entry.get("x", 0.0)),
-                    row=0,
-                    bus_index=0,
+                    row=int(row),
+                    bus_index=int(bus_index),
                     scale=float(entry.get("scale", 1.0)),
                     callout_text=str(entry.get("text", "")),
                     callout_target_type=str(entry.get("targetType", entry.get("target_type", "node"))),
@@ -1440,7 +1505,7 @@ class TopologyEditor(tk.Tk):
                     callout_target_category=str(entry.get("targetCategory", "")),
                     callout_target_label=str(entry.get("targetLabel", "")),
                     callout_target_id=entry.get("targetId"),
-                    callout_y=float(entry.get("y", 0.0)),
+                    callout_y=callout_y,
                 )
                 if callout.callout_target_type == "node":
                     if callout.callout_target_node_key not in device_keys:
@@ -1490,6 +1555,8 @@ class TopologyEditor(tk.Tk):
                                 callout.callout_target_node_key = None
                 self._next_key += 1
                 self._nodes.append(callout)
+
+        self._resolve_overlaps()
 
     def _confirm_discard(self) -> bool:
         """
@@ -1866,6 +1933,101 @@ class TopologyEditor(tk.Tk):
         """
         return [n for n in self._nodes if n.node_type == "callout"]
 
+    def _node_box_dims(self, node: Node, scale: float) -> Tuple[float, float]:
+        """
+        NAME
+            _node_box_dims - Return box width/height for a node at a scale.
+        """
+        node_scale = max(0.6, min(2.0, node.scale))
+        if node.node_type == "callout":
+            return 180 * scale * node_scale, 50 * scale * node_scale
+        return self._box_w * scale * node_scale, self._box_h * scale * node_scale
+
+    def _node_box_y(self, node: Node, bus_y: float, box_h: float, scale: float) -> Tuple[float, float]:
+        """
+        NAME
+            _node_box_y - Return top/bottom Y coordinates for a node box.
+        """
+        if node.row == 1:
+            y0 = bus_y + 30 * scale
+            y1 = y0 + box_h
+        else:
+            y1 = bus_y - 30 * scale
+            y0 = y1 - box_h
+        return y0, y1
+
+    def _node_center_y_unscaled(self, node: Node) -> float:
+        """
+        NAME
+            _node_center_y_unscaled - Compute unscaled center Y for a node.
+        """
+        if not self._bus_offsets:
+            bus_offset = 0.0
+        else:
+            bus_index = min(max(node.bus_index, 0), max(len(self._bus_offsets) - 1, 0))
+            bus_offset = self._bus_offsets[bus_index]
+        node_scale = max(0.6, min(2.0, node.scale))
+        if node.node_type == "callout":
+            box_h = 50.0 * node_scale
+        else:
+            box_h = float(self._box_h) * node_scale
+        if node.row == 1:
+            return bus_offset + 30.0 + box_h / 2.0
+        return bus_offset - 30.0 - box_h / 2.0
+
+    def _nearest_bus_and_row_from_offset(self, y_offset: float) -> Tuple[int, int]:
+        """
+        NAME
+            _nearest_bus_and_row_from_offset - Pick nearest bus/row from an offset.
+        """
+        if not self._bus_offsets:
+            return 0, 0
+        nearest = 0
+        best = float("inf")
+        for idx, bus_offset in enumerate(self._bus_offsets):
+            dist = abs(y_offset - bus_offset)
+            if dist < best:
+                best = dist
+                nearest = idx
+        row = 0 if y_offset < self._bus_offsets[nearest] else 1
+        return nearest, row
+
+    def _resolve_overlaps(self) -> None:
+        """
+        NAME
+            _resolve_overlaps - Nudge overlapping nodes so they render distinctly.
+        """
+        if not self._nodes:
+            return
+        if len(self._bus_lefts) < len(self._bus_offsets):
+            self._bus_lefts.extend([40.0] * (len(self._bus_offsets) - len(self._bus_lefts)))
+        if len(self._bus_rights) < len(self._bus_offsets):
+            max_node_x = max((n.x for n in self._nodes), default=0.0)
+            self._bus_rights.extend(
+                [max_node_x + 200.0] * (len(self._bus_offsets) - len(self._bus_rights))
+            )
+        min_gap = 10.0
+        groups: Dict[Tuple[int, int], List[Node]] = {}
+        for node in self._nodes:
+            groups.setdefault((node.bus_index, node.row), []).append(node)
+        for (bus_index, _row), nodes in groups.items():
+            nodes.sort(key=lambda n: (n.x, n.key))
+            prev_x = None
+            prev_w = 0.0
+            for node in nodes:
+                node_scale = max(0.6, min(2.0, node.scale))
+                base_w = 180.0 if node.node_type == "callout" else float(self._box_w)
+                cur_w = base_w * node_scale
+                if prev_x is not None:
+                    min_spacing = prev_w / 2 + cur_w / 2 + min_gap
+                    if node.x - prev_x < min_spacing:
+                        node.x = prev_x + min_spacing
+                prev_x = node.x
+                prev_w = cur_w
+            if 0 <= bus_index < len(self._bus_rights):
+                max_x = max(n.x for n in nodes)
+                self._bus_rights[bus_index] = max(self._bus_rights[bus_index], max_x + 120.0)
+
     def _set_single_node_selection(self, key: int) -> None:
         """
         NAME
@@ -1998,20 +2160,15 @@ class TopologyEditor(tk.Tk):
         NAME
             _start_multi_drag - Begin dragging all selected nodes/callouts together.
         """
-        device_start: Dict[int, Tuple[float, int, int, float]] = {}
-        callout_start: Dict[int, Tuple[float, float]] = {}
-        for node in self._device_nodes():
+        node_start: Dict[int, Tuple[float, int, int, float]] = {}
+        for node in self._nodes:
             if node.key in self._selected_nodes:
-                if node.node_type == "callout":
-                    callout_start[node.key] = (node.x, node.callout_y)
-                else:
-                    device_start[node.key] = (node.x, node.bus_index, node.row, node.scale)
+                node_start[node.key] = (node.x, node.bus_index, node.row, node.scale)
         self._push_undo()
         self._drag_undo_pending = True
         self._multi_drag = {
             "start": (cx, cy),
-            "device_nodes": device_start,
-            "callout_nodes": callout_start,
+            "nodes": node_start,
             "last": (cx, cy),
         }
     def _redraw_canvas(self) -> None:
@@ -2034,8 +2191,17 @@ class TopologyEditor(tk.Tk):
             self._bus_lefts = self._bus_lefts[: len(self._bus_offsets)]
         if len(self._bus_rights) > len(self._bus_offsets):
             self._bus_rights = self._bus_rights[: len(self._bus_offsets)]
-        min_left = min(self._bus_lefts, default=40.0)
-        max_right = max(self._bus_rights, default=max_node_x + 200.0)
+        eff_lefts = list(self._bus_lefts)
+        eff_rights = list(self._bus_rights)
+        for idx in range(len(eff_lefts) - 1):
+            if idx % 2 == 0:
+                shared = eff_rights[idx]
+                eff_rights[idx + 1] = shared
+            else:
+                shared = eff_lefts[idx]
+                eff_lefts[idx + 1] = shared
+        min_left = min(eff_lefts, default=40.0)
+        max_right = max(eff_rights, default=max_node_x + 200.0)
         total_width = max(
             width,
             int((self._layout_width or max_right) * scale),
@@ -2047,10 +2213,6 @@ class TopologyEditor(tk.Tk):
             and self._last_base_y is not None
             and (self._last_canvas_height is None or height != self._last_canvas_height)
         ):
-            delta = (base_y - self._last_base_y) / max(scale, 0.01)
-            if abs(delta) > 0.0001:
-                for callout in self._callout_nodes():
-                    callout.callout_y += delta
             self._details_layout_shift = False
         self._last_base_y = base_y
         self._last_canvas_height = height
@@ -2060,14 +2222,24 @@ class TopologyEditor(tk.Tk):
         span = box_h + 60 * scale
         min_y = min((y - span for y in bus_ys), default=0.0)
         max_y = max((y + span for y in bus_ys), default=height)
-        callout_ys = [c.callout_y * scale for c in self._callout_nodes()]
-        if callout_ys:
-            min_y = min(min_y, min(callout_ys) - 40 * scale)
-            max_y = max(max_y, max(callout_ys) + 40 * scale)
+        for node in self._nodes:
+            if not bus_ys:
+                break
+            bus_index = min(max(node.bus_index, 0), max(len(bus_ys) - 1, 0))
+            bus_y = bus_ys[bus_index]
+            _, node_box_h = self._node_box_dims(node, scale)
+            y0, y1 = self._node_box_y(node, bus_y, node_box_h, scale)
+            min_y = min(min_y, y0)
+            max_y = max(max_y, y1)
         margin = 20.0
         total_height = max(height, int(max_y - min_y + margin * 2))
         self.canvas.configure(scrollregion=(0, min_y - margin, total_width, max_y + margin))
-        self._draw_state = {"bus_ys": bus_ys, "scale": scale}
+        self._draw_state = {
+            "bus_ys": bus_ys,
+            "scale": scale,
+            "bus_lefts": eff_lefts,
+            "bus_rights": eff_rights,
+        }
         x_left = min_left * scale
         x_right = max_right * scale
         turn_radius = max(8.0, 18 * scale)
@@ -2075,8 +2247,8 @@ class TopologyEditor(tk.Tk):
         for idx, bus_y in enumerate(bus_ys):
             bus_color = "#1f6feb" if idx in self._selected_buses else "#444444"
             bus_width = 5 if idx in self._selected_buses else 4
-            seg_left = self._bus_lefts[idx] * scale
-            seg_right = self._bus_rights[idx] * scale
+            seg_left = eff_lefts[idx] * scale
+            seg_right = eff_rights[idx] * scale
             if idx % 2 == 0:
                 start_x, end_x = seg_left, seg_right
             else:
@@ -2116,8 +2288,8 @@ class TopologyEditor(tk.Tk):
             node_scale = max(0.6, min(2.0, node.scale))
             node_box_w = box_w * node_scale
             node_box_h = box_h * node_scale
-            seg_left = self._bus_lefts[bus_index] * scale
-            seg_right = self._bus_rights[bus_index] * scale
+            seg_left = eff_lefts[bus_index] * scale
+            seg_right = eff_rights[bus_index] * scale
             node_x = min(max(node.x * scale, seg_left + 20), seg_right - 20)
             x0 = node_x - node_box_w / 2
             x1 = node_x + node_box_w / 2
@@ -2152,22 +2324,21 @@ class TopologyEditor(tk.Tk):
 
         node_centers = {}
         for n in self._device_nodes():
-            seg_left = self._bus_lefts[n.bus_index] * scale
-            seg_right = self._bus_rights[n.bus_index] * scale
+            seg_left = eff_lefts[n.bus_index] * scale
+            seg_right = eff_rights[n.bus_index] * scale
             node_centers[n.key] = (
                 min(max(n.x * scale, seg_left + 20), seg_right - 20),
                 bus_ys[n.bus_index] if bus_ys else base_y,
             )
         for callout in self._callout_nodes():
             cx = callout.x * scale
-            cy = callout.callout_y * scale
-            callout_scale = max(0.6, min(2.0, callout.scale))
-            box_w = 180 * scale * callout_scale
-            box_h = 50 * scale * callout_scale
+            bus_index = min(max(callout.bus_index, 0), max(len(bus_ys) - 1, 0))
+            bus_y = bus_ys[bus_index] if bus_ys else base_y
+            box_w, box_h = self._node_box_dims(callout, scale)
+            y0, y1 = self._node_box_y(callout, bus_y, box_h, scale)
+            cy = (y0 + y1) / 2.0
             x0 = cx - box_w / 2
-            y0 = cy - box_h / 2
             x1 = cx + box_w / 2
-            y1 = cy + box_h / 2
             if (
                 callout.callout_target_type == "node"
                 and callout.callout_target_node_key in node_centers
@@ -2188,7 +2359,7 @@ class TopologyEditor(tk.Tk):
                 cx,
                 cy,
                 text=callout.callout_text,
-                font=("Segoe UI", max(8, int(9 * scale * callout_scale))),
+                font=("Segoe UI", max(8, int(9 * scale * max(0.6, min(2.0, callout.scale))))),
                 justify="center",
                 width=max(60, int(box_w - 10)),
             )
@@ -2252,22 +2423,7 @@ class TopologyEditor(tk.Tk):
                 self._push_undo()
                 bus_ys = list(self._draw_state.get("bus_ys", []))
                 bus_y = bus_ys[bus_index] if bus_ys else cy
-                # Snapshot callouts attached to this bus (or its nodes).
-                callout_start: Dict[int, float] = {}
-                for callout in self._callout_nodes():
-                    if (
-                        callout.callout_target_type == "bus"
-                        and callout.callout_target_bus == bus_index
-                    ):
-                        callout_start[callout.key] = callout.callout_y
-                    elif callout.callout_target_type == "node":
-                        node = next(
-                            (n for n in self._nodes if n.key == callout.callout_target_node_key),
-                            None,
-                        )
-                        if node is not None and node.bus_index == bus_index:
-                            callout_start[callout.key] = callout.callout_y
-                self._bus_drag = (bus_index, bus_y, self._bus_offsets[bus_index], callout_start)
+                self._bus_drag = (bus_index, bus_y, self._bus_offsets[bus_index])
             else:
                 self._pan_drag = (cy, self._pan_y)
             if bus_index is None:
@@ -2303,8 +2459,7 @@ class TopologyEditor(tk.Tk):
             dx = cx - start_cx
             dy = cy - start_cy
             scale = max(self._zoom, 0.01)
-            nodes_start = self._multi_drag.get("device_nodes", {})
-            callout_start = self._multi_drag.get("callout_nodes", {})
+            nodes_start = self._multi_drag.get("nodes", {})
             bus_ys = list(self._draw_state.get("bus_ys", []))
             for node in self._nodes:
                 if node.key not in nodes_start:
@@ -2315,18 +2470,16 @@ class TopologyEditor(tk.Tk):
                     bus_index = min(max(start_bus, 0), max(len(bus_ys) - 1, 0))
                     bus_y = bus_ys[bus_index]
                     node_scale = max(0.6, min(2.0, start_scale))
-                    node_box_h = self._box_h * scale * node_scale
+                    if node.node_type == "callout":
+                        node_box_h = 50 * scale * node_scale
+                    else:
+                        node_box_h = self._box_h * scale * node_scale
                     if start_row == 1:
                         center_y = bus_y + 30 * scale + node_box_h / 2
                     else:
                         center_y = bus_y - 30 * scale - node_box_h / 2
                     new_center_y = center_y + dy
                     node.bus_index, node.row = self._nearest_bus_and_row(new_center_y)
-            for callout in self._callout_nodes():
-                if callout.key in callout_start:
-                    start_x, start_y = callout_start[callout.key]
-                    callout.x = start_x + dx / scale
-                    callout.callout_y = start_y + dy / scale
             self._redraw_canvas()
             return
         if self._pan_drag is not None:
@@ -2339,14 +2492,11 @@ class TopologyEditor(tk.Tk):
             self._redraw_canvas()
             return
         if self._bus_drag is not None:
-            bus_index, start_bus_y, start_offset, callout_start = self._bus_drag
+            bus_index, start_bus_y, start_offset = self._bus_drag
             scale = max(self._zoom, 0.01)
             dy_canvas = cy - start_bus_y
             delta = dy_canvas / scale
             self._bus_offsets[bus_index] = start_offset + delta
-            for callout in self._callout_nodes():
-                if callout.key in callout_start:
-                    callout.callout_y = callout_start[callout.key] + delta
             self._redraw_canvas()
             return
         if self._bus_resize is not None:
@@ -2426,21 +2576,9 @@ class TopologyEditor(tk.Tk):
         dx = cx - last_x
         dy = cy - last_y
         scale = max(self._zoom, 0.01)
-        if node.node_type == "callout":
-            node.x += dx / scale
-            node.callout_y += dy / scale
-            self._drag_state = (key, cx, cy)
-            self._redraw_canvas()
-            return
         node.x += dx / scale
         self._layout_width = max(self._layout_width, node.x + 200)
         node.bus_index, node.row = self._nearest_bus_and_row(cy)
-        for callout in self._callout_nodes():
-            if (
-                callout.callout_target_type == "node"
-                and callout.callout_target_node_key == node.key
-            ):
-                callout.x += dx / scale
         self._drag_state = (key, cx, cy)
         self._redraw_canvas()
 
@@ -2491,9 +2629,22 @@ class TopologyEditor(tk.Tk):
         # Preserve insertion order; do not sort so existing buses don't shift.
         if offset not in self._bus_offsets:
             self._bus_offsets.append(offset)
-            self._bus_lefts.append(40.0)
             max_node_x = max((n.x for n in self._nodes), default=0.0)
-            self._bus_rights.append(max(max_node_x + 200.0, 400.0))
+            default_right = max(max_node_x + 200.0, 400.0)
+            default_left = 40.0
+            new_index = len(self._bus_offsets) - 1
+            if new_index > 0 and new_index - 1 < len(self._bus_lefts):
+                prev_index = new_index - 1
+                if prev_index % 2 == 0:
+                    connector_x = self._bus_rights[prev_index]
+                else:
+                    connector_x = self._bus_lefts[prev_index]
+                if new_index % 2 == 0:
+                    default_left = connector_x
+                else:
+                    default_right = connector_x
+            self._bus_lefts.append(default_left)
+            self._bus_rights.append(default_right)
         self._redraw_canvas()
 
     def _on_add_callout(self) -> None:
@@ -2512,15 +2663,25 @@ class TopologyEditor(tk.Tk):
             return
         self._push_undo()
         data = dialog.result
+        bus_index = int(data.get("target_bus", 0))
+        row = 1
+        x_pos = self._next_x_position()
+        if str(data.get("target_type")) == "node":
+            target_key = data.get("target_node_key")
+            target_node = next((n for n in self._nodes if n.key == target_key), None)
+            if target_node is not None:
+                bus_index = target_node.bus_index
+                row = target_node.row
+                x_pos = target_node.x
         node = Node(
             key=self._next_key,
             category="callout",
             label=str(data["text"]),
             can_id=-1,
             node_type="callout",
-            x=140.0,
-            row=0,
-            bus_index=0,
+            x=x_pos,
+            row=row,
+            bus_index=bus_index,
             scale=1.0,
             callout_text=str(data["text"]),
             callout_target_type=str(data["target_type"]),
@@ -2529,8 +2690,9 @@ class TopologyEditor(tk.Tk):
             callout_target_category=str(data.get("target_node_category", "")),
             callout_target_label=str(data.get("target_node_label", "")),
             callout_target_id=data.get("target_node_id"),
-            callout_y=80.0,
+            callout_y=0.0,
         )
+        node.callout_y = self._node_center_y_unscaled(node)
         self._next_key += 1
         self._nodes.append(node)
         self._set_single_node_selection(node.key)
@@ -2666,9 +2828,10 @@ class TopologyEditor(tk.Tk):
                 callout_target_type=str(data.get("callout_target_type", "node")),
                 callout_target_bus=int(data.get("callout_target_bus", 0)),
                 callout_target_node_key=data.get("callout_target_node_key"),
-                callout_y=float(data.get("callout_y", 0.0)) + delta,
+                callout_y=float(data.get("callout_y", 0.0)),
             )
             if node.node_type == "callout":
+                node.callout_y = self._node_center_y_unscaled(node)
                 if node.callout_target_type == "bus" and node.callout_target_bus in bus_map:
                     node.callout_target_bus = bus_map[node.callout_target_bus]
                 pending_callout_targets.append((node, node.callout_target_node_key))
@@ -2716,7 +2879,9 @@ class TopologyEditor(tk.Tk):
             "callout_target_category": node.callout_target_category,
             "callout_target_label": node.callout_target_label,
             "callout_target_id": node.callout_target_id,
-            "callout_y": node.callout_y,
+            "callout_y": self._node_center_y_unscaled(node)
+            if node.node_type == "callout"
+            else node.callout_y,
         }
 
     def _on_export_pdf(self) -> None:
@@ -2760,8 +2925,17 @@ class TopologyEditor(tk.Tk):
             self._bus_lefts = self._bus_lefts[: len(self._bus_offsets)]
         if len(self._bus_rights) > len(self._bus_offsets):
             self._bus_rights = self._bus_rights[: len(self._bus_offsets)]
-        min_left = min(self._bus_lefts, default=40.0)
-        max_right = max(self._bus_rights, default=max_node_x + 200.0)
+        eff_lefts = list(self._bus_lefts)
+        eff_rights = list(self._bus_rights)
+        for idx in range(len(eff_lefts) - 1):
+            if idx % 2 == 0:
+                shared = eff_rights[idx]
+                eff_rights[idx + 1] = shared
+            else:
+                shared = eff_lefts[idx]
+                eff_lefts[idx + 1] = shared
+        min_left = min(eff_lefts, default=40.0)
+        max_right = max(eff_rights, default=max_node_x + 200.0)
         total_width = max(
             width,
             int(max(max_right, max_node_x + 200.0) * scale),
@@ -2773,10 +2947,15 @@ class TopologyEditor(tk.Tk):
         span = box_h + 60 * scale
         min_y = min((y - span for y in bus_ys), default=0.0)
         max_y = max((y + span for y in bus_ys), default=height)
-        callout_ys = [c.callout_y * scale for c in self._callout_nodes()]
-        if callout_ys:
-            min_y = min(min_y, min(callout_ys) - 40 * scale)
-            max_y = max(max_y, max(callout_ys) + 40 * scale)
+        for node in self._nodes:
+            if not bus_ys:
+                break
+            bus_index = min(max(node.bus_index, 0), max(len(bus_ys) - 1, 0))
+            bus_y = bus_ys[bus_index]
+            _, node_box_h = self._node_box_dims(node, scale)
+            y0, y1 = self._node_box_y(node, bus_y, node_box_h, scale)
+            min_y = min(min_y, y0)
+            max_y = max(max_y, y1)
         margin = 20.0
         min_y -= margin
         max_y += margin
@@ -2889,8 +3068,8 @@ class TopologyEditor(tk.Tk):
         c.setStrokeColor(gray)
         c.setLineWidth(4 * fit_scale)
         for idx, bus_y in enumerate(bus_ys):
-            seg_left = self._bus_lefts[idx] * scale
-            seg_right = self._bus_rights[idx] * scale
+            seg_left = eff_lefts[idx] * scale
+            seg_right = eff_rights[idx] * scale
             if idx % 2 == 0:
                 start_x, end_x = seg_left, seg_right
             else:
@@ -2920,8 +3099,8 @@ class TopologyEditor(tk.Tk):
             node_scale = max(0.6, min(2.0, node.scale))
             node_box_w = box_w * node_scale
             node_box_h = box_h * node_scale
-            seg_left = self._bus_lefts[bus_index] * scale
-            seg_right = self._bus_rights[bus_index] * scale
+            seg_left = eff_lefts[bus_index] * scale
+            seg_right = eff_rights[bus_index] * scale
             node_x = min(max(node.x * scale, seg_left + 20), seg_right - 20)
             x0 = node_x - node_box_w / 2
             x1 = node_x + node_box_w / 2
@@ -2965,14 +3144,13 @@ class TopologyEditor(tk.Tk):
 
         for callout in self._callout_nodes():
             cx = callout.x * scale
-            cy = callout.callout_y * scale
-            callout_scale = max(0.6, min(2.0, callout.scale))
-            box_w = 180 * scale * callout_scale
-            box_h = 50 * scale * callout_scale
+            bus_index = min(max(callout.bus_index, 0), max(len(bus_ys) - 1, 0))
+            bus_y = bus_ys[bus_index] if bus_ys else base_y
+            box_w, box_h = self._node_box_dims(callout, scale)
+            y0, y1 = self._node_box_y(callout, bus_y, box_h, scale)
+            cy = (y0 + y1) / 2.0
             x0 = cx - box_w / 2
-            y0 = cy - box_h / 2
             x1 = cx + box_w / 2
-            y1 = cy + box_h / 2
             if (
                 callout.callout_target_type == "node"
                 and callout.callout_target_node_key in node_centers
@@ -3000,8 +3178,9 @@ class TopologyEditor(tk.Tk):
             bottom = min(ry0, ry1) + 3
             avail_w = max(1.0, right - left)
             avail_h = max(1.0, top - bottom)
+            node_scale = max(0.6, min(2.0, callout.scale))
             pdf_font, line_h, ascent, lines = _fit_lines_exact(
-                callout.callout_text, avail_w, avail_h, 9 * scale * callout_scale * fit_scale
+                callout.callout_text, avail_w, avail_h, 9 * scale * node_scale * fit_scale
             )
             c.setFillColor(Color(0, 0, 0))
             c.setFont("Helvetica", pdf_font)
@@ -3189,10 +3368,12 @@ class TopologyEditor(tk.Tk):
             return None
         scale = max(self._zoom, 0.01)
         bus_y = bus_ys[bus_index]
-        if bus_index >= len(self._bus_lefts) or bus_index >= len(self._bus_rights):
+        bus_lefts = self._draw_state.get("bus_lefts", self._bus_lefts)
+        bus_rights = self._draw_state.get("bus_rights", self._bus_rights)
+        if bus_index >= len(bus_lefts) or bus_index >= len(bus_rights):
             return None
-        left_x = self._bus_lefts[bus_index] * scale
-        right_x = self._bus_rights[bus_index] * scale
+        left_x = bus_lefts[bus_index] * scale
+        right_x = bus_rights[bus_index] * scale
         if abs(cy - bus_y) > 10:
             return None
         if abs(cx - left_x) <= 10:
@@ -3333,8 +3514,9 @@ class TopologyEditor(tk.Tk):
             half_h = (50 * callout_scale) / 2.0
             min_x = min(min_x, callout.x - half_w)
             max_x = max(max_x, callout.x + half_w)
-            min_y = min(min_y, callout.callout_y - half_h)
-            max_y = max(max_y, callout.callout_y + half_h)
+            center_y = self._node_center_y_unscaled(callout)
+            min_y = min(min_y, center_y - half_h)
+            max_y = max(max_y, center_y + half_h)
 
         if self._bus_offsets:
             bus_min = min(self._bus_offsets) - (self._box_h + 60.0)
