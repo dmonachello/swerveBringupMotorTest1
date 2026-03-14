@@ -291,7 +291,7 @@ py -m pip install --upgrade python-can pyserial pynetworktables pyntcore
 ```
 Run the bridge:
 ```cmd
-python -m tools.can_nt.can_nt_bridge --profile demo_home_022326 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --publish-can-summary
+python tools\\can_nt\\can_nt_bridge.py --profile demo_home_022326 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --publish-can-summary
 ```
 Optional flags:
 - `--print-summary-period N` for console summaries.
@@ -438,7 +438,7 @@ py -m pip install pyserial
 ```
 Run:
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2
 ```
 Or use the helper script that pins the Python interpreter:
 ```cmd
@@ -468,25 +468,25 @@ Config:
 - Device lists come from `src/main/deploy/bringup_profiles.json` via `--profile`.
 - This keeps the PC tool aligned with robot profiles without duplicating IDs.
 - If you need a standalone can_nt_config.json-style file, generate one:
-  - `python -m tools.can_nt.can_nt_bridge --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json`
+  - `python tools\\can_nt\\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json`
 - The legacy `tools/can_nt/can_nt_config.json` is kept as a sample only.
 Examples:
 ```cmd
 # Default (USB RIO, auto-detect COM port)
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2
 # Explicit COM port
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2 --channel COM21
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2 --channel COM21
 # More output (summary + device seen/missing messages)
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2 --print-summary-period 2 --print-publish
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2 --print-summary-period 2 --print-publish
 # Dump a can_nt_config.json-style file from a profile
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json
 # Publish unknown devices seen on the bus
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile demo_home_022326 --publish-unknown
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile demo_home_022326 --publish-unknown
 # List or dump the published NT keys
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile demo_home_022326 --list-keys
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile demo_home_022326 --dump-nt tools\can_nt\nt_keys.json
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile demo_home_022326 --list-keys
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile demo_home_022326 --dump-nt tools\can_nt\nt_keys.json
 # List serial ports
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --list-ports
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --list-ports
 ```
 Published NetworkTables keys:
 - `bringup/diag/busErrorCount`
@@ -621,9 +621,4 @@ General workflow:
 4. If you add CAN sniffer data, update `tools/can_nt/can_nt_bridge.py` and
    `tools/can_nt/README_CAN_NT.md`.
 5. Update this `README.md` with the new behavior and bindings.
-
-
-
-
-
 

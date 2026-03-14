@@ -24,3 +24,4 @@ This repository is almost entirely AI-created, including both code and documenta
 - A compact one-line "pit mode" summary.
 - Optional dashboard view of key diagnostics.
 - A small "experiment mode" for automated, repeatable traffic generation.
+

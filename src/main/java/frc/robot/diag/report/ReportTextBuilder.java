@@ -9,6 +9,7 @@ import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.EncoderAttachment;
 import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.diag.snapshots.MotorSpecAttachment;
+import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
 import frc.robot.diag.snapshots.PcSnapshot;
 import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 import frc.robot.diag.snapshots.SnapshotBundle;
@@ -176,6 +177,8 @@ public final class ReportTextBuilder {
         appendCANCoder(sb, snap);
       } else if ("CANdle".equals(snap.deviceType)) {
         appendCANdle(sb, snap);
+      } else if ("PDH".equals(snap.deviceType)) {
+        appendPdhDevice(sb, snap);
       } else if ("roboRIO".equals(snap.deviceType)) {
         ReportTextUtil.appendLine(
             sb,
@@ -303,6 +306,62 @@ public final class ReportTextBuilder {
         "  CANdle CAN " + snap.canId + ": present=YES" + formatLimitSummary(limits));
     appendCanSuspicionLines(sb, snap);
     appendLedLines(sb, snap);
+  }
+
+  /**
+   * NAME
+   *   appendPdhDevice - Append PDH status section.
+   */
+  private void appendPdhDevice(StringBuilder sb, DeviceSnapshot snap) {
+    if (!snap.present) {
+      ReportTextUtil.appendLine(
+          sb,
+          "  PDH CAN " + snap.canId + ": present=NO" + formatNote(snap.note));
+      return;
+    }
+    PdhStatusAttachment pdh = snap.getAttachment(PdhStatusAttachment.class);
+    if (pdh == null) {
+      ReportTextUtil.appendLine(
+          sb,
+          "  PDH CAN " + snap.canId + ": present=YES (no status attachment)");
+      return;
+    }
+    ReportTextUtil.appendLine(
+        sb,
+        "  PDH CAN " + snap.canId +
+        ": present=YES" +
+        " voltage=" + formatDouble(pdh.voltage, 2) + "V" +
+        " totalCurrent=" + formatDouble(pdh.totalCurrent, 2) + "A" +
+        " switchable=" + (pdh.switchableEnabled ? "ON" : "OFF") +
+        " tempC=" + formatDouble(pdh.temperature, 1));
+
+    ReportTextUtil.appendLine(
+        sb,
+        "    Faults: brownout=" + formatBoolean(pdh.brownout) +
+        " canWarn=" + formatBoolean(pdh.canWarning) +
+        " hwFault=" + formatBoolean(pdh.hardwareFault));
+    ReportTextUtil.appendLine(
+        sb,
+        "    Sticky: brownout=" + formatBoolean(pdh.stickyBrownout) +
+        " canWarn=" + formatBoolean(pdh.stickyCanWarning) +
+        " busOff=" + formatBoolean(pdh.stickyCanBusOff) +
+        " hasReset=" + formatBoolean(pdh.stickyHasReset));
+
+    if (pdh.channelCurrentA != null) {
+      for (int ch = 0; ch < pdh.channelCurrentA.length; ch++) {
+        boolean active = pdh.channelFault != null && ch < pdh.channelFault.length && pdh.channelFault[ch];
+        boolean sticky = pdh.channelStickyFault != null && ch < pdh.channelStickyFault.length
+            && pdh.channelStickyFault[ch];
+        String status = sticky ? "STICKY_FAULT" : (active ? "ACTIVE_FAULT" : "OK");
+        ReportTextUtil.appendLine(
+            sb,
+            "    Ch " + String.format("%02d", ch) +
+            " current=" + String.format("%6.2f", pdh.channelCurrentA[ch]) + "A" +
+            " activeFault=" + formatBoolean(active) +
+            " stickyFault=" + formatBoolean(sticky) +
+            " status=" + status);
+      }
+    }
   }
 
   /**
@@ -563,6 +622,25 @@ public final class ReportTextBuilder {
 
   /**
    * NAME
+   *   formatBoolean - Format boolean values for report output.
+   */
+  private String formatBoolean(boolean value) {
+    return value ? "YES" : "NO";
+  }
+
+  /**
+   * NAME
+   *   formatNote - Format a note suffix when present.
+   */
+  private String formatNote(String note) {
+    if (note == null || note.isBlank()) {
+      return "";
+    }
+    return " (" + note + ")";
+  }
+
+  /**
+   * NAME
    *   safeText - Replace null with empty string.
    */
   private String safeText(String value) {
@@ -606,3 +684,4 @@ public final class ReportTextBuilder {
     return out;
   }
 }
+

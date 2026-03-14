@@ -4,7 +4,7 @@ NAME
     can_nt_bridge.py - CAN -> NetworkTables bridge for RobotV2
 
 SYNOPSIS
-    python -m tools.can_nt.can_nt_bridge [options]
+    python tools\\can_nt\\can_nt_bridge.py [options]
     tools\can_nt\run_can_nt.cmd [python.exe] [options]
 
 DESCRIPTION
@@ -18,7 +18,7 @@ INSTALL
     py -m pip install pyserial
 
 RUN
-    python -m tools.can_nt.can_nt_bridge --rio 172.22.11.2
+    python tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2
 
     tools\can_nt\run_can_nt.cmd
 
@@ -41,71 +41,71 @@ CONFIG
 
     If you need a standalone can_nt_config.json-style file for reference or
     external tooling, generate one from a profile:
-        python -m tools.can_nt.can_nt_bridge --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json
+        python tools\\can_nt\\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json
 
     The legacy tools\can_nt\can_nt_config.json is kept as a sample only.
 
 EXAMPLES
     Default (USB RIO, auto-detect COM port):
-        python -m tools.can_nt.can_nt_bridge --rio 172.22.11.2
+        python tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2
 
     Explicit COM port:
-        python -m tools.can_nt.can_nt_bridge --rio 172.22.11.2 --channel COM21
+        python tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2 --channel COM21
 
     More output (summary + device seen/missing messages):
-        python -m tools.can_nt.can_nt_bridge --rio 172.22.11.2 --print-summary-period 2 --print-publish
+        python tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2 --print-summary-period 2 --print-publish
 
     Use a custom config:
-        python -m tools.can_nt.can_nt_bridge --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json
+        python tools\\can_nt\\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json
 
     Choose a profile from bringup_profiles.json:
-        python -m tools.can_nt.can_nt_bridge --profile demo_club
+        python tools\\can_nt\\can_nt_bridge.py --profile demo_club
 
     Publish unknown devices seen on the bus:
-        python -m tools.can_nt.can_nt_bridge --profile demo_home_022326 --publish-unknown
+        python tools\\can_nt\\can_nt_bridge.py --profile demo_home_022326 --publish-unknown
 
     List or dump the published NT keys:
-        python -m tools.can_nt.can_nt_bridge --profile demo_home_022326 --list-keys
-        python -m tools.can_nt.can_nt_bridge --profile demo_home_022326 --dump-nt tools\can_nt\nt_keys.json
+        python tools\\can_nt\\can_nt_bridge.py --profile demo_home_022326 --list-keys
+        python tools\\can_nt\\can_nt_bridge.py --profile demo_home_022326 --dump-nt tools\can_nt\nt_keys.json
 
     List serial ports:
-        python -m tools.can_nt.can_nt_bridge --list-ports
+        python tools\\can_nt\\can_nt_bridge.py --list-ports
 
     Generate a profile from observed CAN traffic:
-        python -m tools.can_nt.can_nt_bridge --dump-profile tools\can_nt\sniffer_profile.json
+        python tools\\can_nt\\can_nt_bridge.py --dump-profile tools\can_nt\sniffer_profile.json
 
     Capture CAN device inventory for later diffing:
-        python -m tools.can_nt.can_nt_bridge --dump-api-inventory tools\can_nt\inventory_a.json --dump-api-inventory-after 5
+        python tools\\can_nt\\can_nt_bridge.py --dump-api-inventory tools\can_nt\inventory_a.json --dump-api-inventory-after 5
 
     Diff two inventories:
-        python -m tools.can_nt.can_nt_bridge --diff-inventory tools\can_nt\inventory_a.json tools\can_nt\inventory_b.json
+        python tools\\can_nt\\can_nt_bridge.py --diff-inventory tools\can_nt\inventory_a.json tools\can_nt\inventory_b.json
 
     Live Wireshark capture (Windows named pipe):
         wireshark -k -i \\.\pipe\FRC_CAN
-        python -m tools.can_nt.can_nt_bridge --pcap-pipe FRC_CAN
+        python tools\\can_nt\\can_nt_bridge.py --pcap-pipe FRC_CAN
 
     PCAP/PCAPNG file capture:
-        python -m tools.can_nt.can_nt_bridge --pcap tools\can_nt\logs\robot_run.pcapng
+        python tools\\can_nt\\can_nt_bridge.py --pcap tools\can_nt\logs\robot_run.pcapng
 
 COMMON COMMANDS
     Explicit COM port:
-        python -m tools.can_nt.can_nt_bridge --channel COM21 --rio 172.22.11.2
+        python tools\\can_nt\\can_nt_bridge.py --channel COM21 --rio 172.22.11.2
 
     Live Wireshark (named pipe):
         wireshark -k -i \\.\pipe\FRC_CAN
-        python -m tools.can_nt.can_nt_bridge --pcap-pipe FRC_CAN
+        python tools\\can_nt\\can_nt_bridge.py --pcap-pipe FRC_CAN
 
     PCAP/PCAPNG file capture:
-        python -m tools.can_nt.can_nt_bridge --pcap tools\can_nt\logs\robot_run.pcapng
+        python tools\\can_nt\\can_nt_bridge.py --pcap tools\can_nt\logs\robot_run.pcapng
 
     Summary JSON + console summary prints:
-        python -m tools.can_nt.can_nt_bridge --publish-can-summary --print-summary-period 2
+        python tools\\can_nt\\can_nt_bridge.py --publish-can-summary --print-summary-period 2
 
     Print device seen/missing transitions:
-        python -m tools.can_nt.can_nt_bridge --print-publish
+        python tools\\can_nt\\can_nt_bridge.py --print-publish
 
     Capture only (no NetworkTables):
-        python -m tools.can_nt.can_nt_bridge --no-nt --pcap tools\can_nt\logs\capture.pcapng
+        python tools\\can_nt\\can_nt_bridge.py --no-nt --pcap tools\can_nt\logs\capture.pcapng
 
 REAL-TIME NOTES (WHY OUTPUT IS THROTTLED)
     The robot runs a 20ms periodic loop. Console printing is slow and can cause overruns.
@@ -113,34 +113,34 @@ REAL-TIME NOTES (WHY OUTPUT IS THROTTLED)
     Expect longer reports to stream over multiple cycles rather than printing all at once.
 
     List serial ports:
-        python -m tools.can_nt.can_nt_bridge --list-ports
+        python tools\\can_nt\\can_nt_bridge.py --list-ports
 
     List NT keys it publishes:
-        python -m tools.can_nt.can_nt_bridge --list-keys
+        python tools\\can_nt\\can_nt_bridge.py --list-keys
 
     Dump NT key inventory to JSON:
-        python -m tools.can_nt.can_nt_bridge --dump-nt tools\can_nt\nt_keys.json
+        python tools\\can_nt\\can_nt_bridge.py --dump-nt tools\can_nt\nt_keys.json
 
     Publish unknown devices seen on bus:
-        python -m tools.can_nt.can_nt_bridge --publish-unknown
+        python tools\\can_nt\\can_nt_bridge.py --publish-unknown
 
     Dump observed arbitration IDs:
-        python -m tools.can_nt.can_nt_bridge --dump-can-expected-ids tools\can_nt\seen_ids.json --dump-after 3.0
+        python tools\\can_nt\\can_nt_bridge.py --dump-can-expected-ids tools\can_nt\seen_ids.json --dump-after 3.0
 
     Generate a profile from observed traffic:
-        python -m tools.can_nt.can_nt_bridge --dump-profile tools\can_nt\sniffer_profile.json
+        python tools\\can_nt\\can_nt_bridge.py --dump-profile tools\can_nt\sniffer_profile.json
 
     Dump CAN inventory for later diff:
-        python -m tools.can_nt.can_nt_bridge --dump-api-inventory tools\can_nt\inventory_a.json --dump-api-inventory-after 5
+        python tools\\can_nt\\can_nt_bridge.py --dump-api-inventory tools\can_nt\inventory_a.json --dump-api-inventory-after 5
 
     Dump a can_nt_config.json-style file from a profile:
-        python -m tools.can_nt.can_nt_bridge --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json
+        python tools\\can_nt\\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json
 
     Diff two inventories:
-        python -m tools.can_nt.can_nt_bridge --diff-inventory tools\can_nt\inventory_a.json tools\can_nt\inventory_b.json
+        python tools\\can_nt\\can_nt_bridge.py --diff-inventory tools\can_nt\inventory_a.json tools\can_nt\inventory_b.json
 
     Use a specific profile from bringup_profiles.json:
-        python -m tools.can_nt.can_nt_bridge --profile demo_club
+        python tools\\can_nt\\can_nt_bridge.py --profile demo_club
 
 WIRESHARK
     Marker capture (pcapng):
@@ -225,3 +225,4 @@ NOTES
     - RobotV2 prints status=NO_DATA, ageSec=-, msgCount=- until a device is seen.
     - can/pc/heartbeat increments once per publish; can/pc/lastFrameAgeSec is seconds since last frame.
     - CANable Pro V2 ships with slcan firmware by default.
+

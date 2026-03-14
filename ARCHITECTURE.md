@@ -255,3 +255,4 @@ Purpose: future extensions are identified without breaking contracts.
   - REV PDH, PH, and SparkMax alternate encoder paths.
   - WPILib I/O (DIO, analog input, relay) and roboRIO health signals.
   - Third-party CAN encoders and IMUs (WCP CANandmag, navX, etc.).
+

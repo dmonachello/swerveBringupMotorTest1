@@ -210,3 +210,4 @@ Purpose: choose the smallest viable change set.
 
 - New **vendor**?  
   Code changes: new manufacturer group + new device wrappers + can_mappings.json.
+

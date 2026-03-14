@@ -1,4 +1,4 @@
-﻿# CAN Topology Editor
+# CAN Topology Editor
 
 ## Purpose
 Create a bringup profile JSON by sketching CAN nodes on a shared bus line.
@@ -12,7 +12,7 @@ Purpose: Turn a diagram into a `bringup_profiles.json` file.
 ## How To Run
 Purpose: Launch the editor without extra dependencies.
 ```cmd
-python -m tools.can_topology.can_top_editor
+python tools\\can_topology\\can_top_editor.py
 ```
 
 ## Workflow
@@ -86,3 +86,4 @@ Future Extensions
 - Move file IO and export helpers into a dedicated module.
 - Extract canvas rendering and hit-testing into a drawing helper module.
 - Add automated sanity checks for profiles before save.
+

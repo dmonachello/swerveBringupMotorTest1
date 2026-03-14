@@ -293,4 +293,3 @@ These are paraphrased notes extracted from the FRC CAN specifications. They are 
 - If 100 ms has passed since this packet was received, devices should assume the robot program is hung and act as disabled.
 - Fields other than Enabled, Autonomous, Test, and System watchdog are invalid until some time after the Driver Station connects.
 
-

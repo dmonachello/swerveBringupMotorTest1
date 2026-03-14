@@ -6,6 +6,7 @@ import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.EncoderAttachment;
 import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.diag.snapshots.MotorSpecAttachment;
+import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
 import frc.robot.manufacturers.CtreDeviceGroup;
 import frc.robot.manufacturers.DeviceAddResult;
 import frc.robot.manufacturers.DeviceRole;
@@ -20,6 +21,7 @@ import frc.robot.tests.BringupTestRegistry;
 import frc.robot.tests.BringupTestResult;
 import frc.robot.tests.CompositeTest;
 import frc.robot.tests.JoystickTest;
+import frc.robot.manufacturers.rev.util.PdhStatusReader;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -41,6 +43,8 @@ public final class BringupCore {
 
   private final RevDeviceGroup revDevices = new RevDeviceGroup();
   private final CtreDeviceGroup ctreDevices = new CtreDeviceGroup();
+  private PdhStatusReader pdhReader;
+  private int pdhReaderCanId = BringupUtil.DISABLED_CAN_ID;
 
   private boolean addRevNext = true;
 
@@ -1616,6 +1620,28 @@ public final class BringupCore {
     devices.addAll(revDevices.captureSnapshots(nowSec));
     devices.addAll(ctreDevices.captureSnapshots(nowSec));
 
+    if (BringupUtil.isEnabledCanId(BringupUtil.PDH_CAN_ID)) {
+      DeviceSnapshot snap = new DeviceSnapshot();
+      snap.vendor = "REV";
+      snap.deviceType = "PDH";
+      snap.canId = BringupUtil.PDH_CAN_ID;
+      ensurePdhReader();
+      if (pdhReader != null) {
+        try {
+          PdhStatusAttachment pdhStatus = pdhReader.snapshot();
+          snap.present = true;
+          snap.addAttachment(pdhStatus);
+        } catch (RuntimeException ex) {
+          snap.present = false;
+          snap.note = "PDH read failed: " + ex.getMessage();
+        }
+      } else {
+        snap.present = false;
+        snap.note = "PDH not initialized";
+      }
+      devices.add(snap);
+    }
+
     if (BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
       DeviceSnapshot snap = new DeviceSnapshot();
       snap.vendor = "NI";
@@ -1627,6 +1653,23 @@ public final class BringupCore {
     }
 
     return devices;
+  }
+
+  /**
+   * NAME
+   *   ensurePdhReader - Ensure PDH reader matches current CAN ID.
+   */
+  private void ensurePdhReader() {
+    int canId = BringupUtil.PDH_CAN_ID;
+    if (!BringupUtil.isEnabledCanId(canId)) {
+      pdhReader = null;
+      pdhReaderCanId = BringupUtil.DISABLED_CAN_ID;
+      return;
+    }
+    if (pdhReader == null || pdhReaderCanId != canId) {
+      pdhReader = new PdhStatusReader(canId);
+      pdhReaderCanId = canId;
+    }
   }
 
   /**
@@ -1733,3 +1776,4 @@ public final class BringupCore {
     sb.append(line).append('\n');
   }
 }
+

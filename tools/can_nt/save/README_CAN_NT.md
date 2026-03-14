@@ -26,7 +26,7 @@ py -m pip install pyserial
 ## Run
 
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2
 ```
 
 Or use the helper script that pins the Python interpreter:
@@ -69,25 +69,25 @@ Config:
 Examples:
 ```cmd
 # Default (USB RIO, auto-detect COM port)
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2
 
 # Explicit COM port
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2 --channel COM21
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2 --channel COM21
 
 # More output (summary + device seen messages)
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2 --print-summary-period 2 --print-publish
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2 --print-summary-period 2 --print-publish
 
 # Quick check (print once and exit)
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2 --quick-check
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2 --quick-check
 
 # Write CSV log
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2 --log-csv tools\can_nt\can_nt_log.csv
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2 --log-csv tools\can_nt\can_nt_log.csv
 
 # Use a custom config
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --config tools\can_nt\can_nt_config.json
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --config tools\can_nt\can_nt_config.json
 
 # List serial ports
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --list-ports
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --list-ports
 ```
 
 Options:
@@ -136,3 +136,4 @@ Published NetworkTables keys:
 - The `--device-ids` list should include the CANCoder CAN IDs to track them.
 - `msgCount/<deviceId>` reports the total number of frames seen for that ID.
 - `RobotV2` reads the composite `dev/<mfg>/<type>/<id>` keys.
+

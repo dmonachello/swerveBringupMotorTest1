@@ -301,3 +301,4 @@ Purpose: test configuration stays in sync with code.
 - Update `bringup_tests.json` when adding/removing tests (or your override file).
 - Keep `bringup_profiles.json` aligned with device IDs in tests.
 - Update this document when bindings or test types change.
+

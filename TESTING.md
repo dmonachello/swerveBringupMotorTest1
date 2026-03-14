@@ -44,7 +44,7 @@ Purpose: the fast test plan confirms minimum health checks for the system.
 5. Primary controller: press `B` to print state and confirm devices are present.
 6. Primary controller: move `Left Y`/`Right Y` to run connected motors, then press `D-pad Right` to confirm inputs.
 7. Start the PC tool (default test profile):
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile example_default --rio 172.22.11.2`
+   - `%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile example_default --rio 172.22.11.2`
 8. Use the smoke test set:
    - In `src/main/deploy/bringup_tests.json`, set `"default_test_set": "smoke"` and deploy.
    - Scroll through tests with the secondary controller (`LB`/`RB`).
@@ -61,9 +61,9 @@ Purpose: the fast test plan confirms minimum health checks for the system.
 18. Inventory + config generation (quick check):
     - `--profileName` is the label stored in the config metadata (it should match your bringup profile name).
     
-    - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile example_default --rio 172.22.11.2 --dump-api-inventory tools\can_nt\inv_fast.json --dump-api-inventory-after 5`
-    - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_inventory.can_inventory --generate --input tools\can_nt\inv_fast.json --output tools\can_nt\robot_config_fast.json --profileName example_default`
-    - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_inventory.can_inventory --validate --input tools\can_nt\robot_config_fast.json --inventory tools\can_nt\inv_fast.json`
+    - `%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile example_default --rio 172.22.11.2 --dump-api-inventory tools\can_nt\inv_fast.json --dump-api-inventory-after 5`
+    - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_inventory\can_inventory.py --generate --input tools\can_nt\inv_fast.json --output tools\can_nt\robot_config_fast.json --profileName example_default`
+    - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_inventory\can_inventory.py --validate --input tools\can_nt\robot_config_fast.json --inventory tools\can_nt\inv_fast.json`
 
 ## Complete Test Plan
 Purpose: the complete test plan verifies major robot and PC tool functionality after large changes.
@@ -81,21 +81,26 @@ Notes:
 - Profiles are deployed with robot code; edits require redeploy.
 - Devices become active only when explicitly added (single or add-all).
 
+### Profiles Using CAN Topology Editor
+Purpose: generate or edit profiles with the topology editor before testing.
+
+1. Launch the editor:
+   - `python tools\can_topology\can_top_editor.py`
+2. Load an existing profile or create a new diagram.
+3. Add/edit nodes and callouts to match the physical CAN bus.
+4. Save the diagram to the active profile.
+5. Use **Save to Deploy** to append/replace the profile in `src/main/deploy/bringup_profiles.json`.
+6. If needed, check **Set As Default** so the new profile is selected on startup.
+7. Deploy robot code so the updated profile is on the roboRIO.
+
 ### Build and Deploy
 Purpose: builds and deploys succeed before hardware testing begins.
 
-1. Open a terminal in the repo root:
-   - `%USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1`
-2. Ensure JAVA_HOME points at the 2026 WPILib JDK:
-   - CMD: `set "JAVA_HOME=C:\Users\Public\wpilib\2026\jdk"`
-   - PowerShell: `$env:JAVA_HOME="C:\Users\Public\wpilib\2026\jdk"`
-3. Optional clean build:
-   - `gradlew clean build -Dorg.gradle.java.home="C:\Users\Public\wpilib\2026\jdk"`
-4. Build robot code:
-   - `gradlew build -Dorg.gradle.java.home="C:\Users\Public\wpilib\2026\jdk"`
-5. Deploy robot code to the RoboRIO:
-   - `gradlew deploy -Dorg.gradle.java.home="C:\Users\Public\wpilib\2026\jdk"`
-   - These steps can also be run via the VS Code WPILib plugin menu.
+1. Open the project in VS Code with the WPILib extension installed.
+2. Build robot code:
+   - Use **WPILib: Build Robot Code** from the command palette.
+3. Deploy robot code to the RoboRIO:
+   - Use **WPILib: Deploy Robot Code** from the command palette.
 Expected:
 - Build completes with no errors.
 - Deploy reports success and robot code starts.
@@ -112,6 +117,42 @@ Purpose: base robot bringup actions still work under teleop.
 Expected:
 - All configured devices show `present=YES`.
 - No exceptions or missing device errors.
+
+### A1) Device Health Output (Example)
+Purpose: provide a reference for expected device health formatting.
+
+Simulated example (based on `robot_test1` profile):
+```text
+Device Health (local API):
+  NEO CAN 51: present=YES faults=0x0 warnings=0x0 sticky=0x0 stickyWarn=0x0 lastErr=OK reset=NO specFree=1.3A specStall=105A freeRatio=0.46x busV=12.32V appliedV=5.90V motorCurrentA=0.60A tempC=31.9C
+  NEO CAN 11: present=YES faults=0x0 warnings=0x0 sticky=0x0 stickyWarn=0x0 lastErr=OK reset=NO specFree=1.3A specStall=105A freeRatio=0.55x busV=12.30V appliedV=6.10V motorCurrentA=0.72A tempC=33.2C
+  NEO CAN 21: present=YES faults=0x0 warnings=0x0 sticky=0x0 stickyWarn=0x0 lastErr=OK reset=NO specFree=1.3A specStall=105A freeRatio=0.41x busV=12.29V appliedV=5.60V motorCurrentA=0.53A tempC=32.1C
+  NEO CAN 31: present=YES faults=0x0 warnings=0x0 sticky=0x0 stickyWarn=0x0 lastErr=OK reset=NO specFree=1.3A specStall=105A freeRatio=0.49x busV=12.28V appliedV=5.80V motorCurrentA=0.63A tempC=32.8C
+  NEO CAN 41: present=YES faults=0x0 warnings=0x0 sticky=0x0 stickyWarn=0x0 lastErr=OK reset=NO specFree=1.3A specStall=105A freeRatio=0.52x busV=12.27V appliedV=6.00V motorCurrentA=0.68A tempC=34.0C
+
+  KRAKEN CAN 12: present=YES fault=0x0 sticky=0x0 lastErr=OK specFree=2.0A specStall=105A freeRatio=0.48x busV=12.31V appliedDuty=0.45dc appliedV=5.60V motorCurrentA=0.96A tempC=35.2C
+  KRAKEN CAN 22: present=YES fault=0x0 sticky=0x0 lastErr=OK specFree=2.0A specStall=105A freeRatio=0.51x busV=12.30V appliedDuty=0.47dc appliedV=5.75V motorCurrentA=1.02A tempC=36.1C
+  KRAKEN CAN 32: present=YES fault=0x0 sticky=0x0 lastErr=OK specFree=2.0A specStall=105A freeRatio=0.46x busV=12.29V appliedDuty=0.43dc appliedV=5.40V motorCurrentA=0.92A tempC=34.8C
+  KRAKEN CAN 42: present=YES fault=0x0 sticky=0x0 lastErr=OK specFree=2.0A specStall=105A freeRatio=0.50x busV=12.28V appliedDuty=0.46dc appliedV=5.70V motorCurrentA=1.00A tempC=35.6C
+
+  CANCoder CAN 13: present=YES absDeg=182.4 lastErr=OK
+  CANCoder CAN 23: present=YES absDeg=91.7 lastErr=OK
+  CANCoder CAN 33: present=YES absDeg=275.0 lastErr=OK
+  CANCoder CAN 43: present=YES absDeg=44.2 lastErr=OK
+
+  CANdle CAN 2: present=YES
+
+  PDH CAN 1: present=YES voltage=12.38V totalCurrent=64.27A switchable=ON tempC=33.4
+    Faults: brownout=NO canWarn=NO hwFault=NO
+    Sticky: brownout=NO canWarn=NO busOff=NO hasReset=NO
+    Ch 00 current=  1.25A activeFault=NO stickyFault=NO status=OK
+    Ch 01 current=  0.00A activeFault=NO stickyFault=NO status=OK
+    Ch 02 current=  3.42A activeFault=NO stickyFault=NO status=OK
+    Ch 03 current= 12.10A activeFault=NO stickyFault=NO status=OK
+    ...
+
+  roboRIO CAN 0: present=YES (virtual, no API)
+```
 
 ### B) Controller + Bindings (Config-Driven)
 Purpose: command bindings resolve from JSON and edge/hold behavior is correct.
@@ -382,7 +423,7 @@ Expected:
 Purpose: the PC sniffer runs and publishes NetworkTables diagnostics.
 
 1. Run the PC tool:
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile <profile> --rio 172.22.11.2`
+   - `%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile <profile> --rio 172.22.11.2`
 2. Primary controller: press `D-pad Down`.
 Expected:
 - `openOk=YES`, heartbeat updates, and device table matches CAN traffic.
@@ -393,9 +434,9 @@ Purpose: live pipe and file captures produce valid PCAP/PCAPNG.
 
 1. Live pipe: start Wireshark `-k -i \\.\pipe\FRC_CAN`.
 2. Run the tool with `--pcap-pipe FRC_CAN`:
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile <profile> --rio 172.22.11.2 --pcap-pipe FRC_CAN`
+   - `%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile <profile> --rio 172.22.11.2 --pcap-pipe FRC_CAN`
 3. File: run `--pcap tools\can_nt\logs\run.pcapng`:
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile <profile> --rio 172.22.11.2 --pcap tools\can_nt\logs\run.pcapng`
+   - `%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile <profile> --rio 172.22.11.2 --pcap tools\can_nt\logs\run.pcapng`
 Expected:
 - Wireshark shows live frames via pipe.
 - PCAPNG opens and decodes.
@@ -404,10 +445,10 @@ Expected:
 Purpose: inventory capture and diff outputs are correct.
 
 1. Run:
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile <profile> --rio 172.22.11.2 --dump-api-inventory tools\can_nt\inv_a.json --dump-api-inventory-after 5`
+   - `%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile <profile> --rio 172.22.11.2 --dump-api-inventory tools\can_nt\inv_a.json --dump-api-inventory-after 5`
 2. Run again after a different stimulus into `inv_b.json`.
 3. Run:
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --diff-inventory tools\can_nt\inv_a.json tools\can_nt\inv_b.json`
+   - `%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --diff-inventory tools\can_nt\inv_a.json tools\can_nt\inv_b.json`
 Expected:
 - Inventory files are created.
 - Diff prints new/missing pairs and rate deltas.
@@ -416,15 +457,15 @@ Expected:
 Purpose: config generation, validation, and hash update workflow is correct.
 
 1. Capture inventory:
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile <profile> --rio 172.22.11.2 --dump-api-inventory tools\can_nt\inv_gen.json --dump-api-inventory-after 5`
+   - `%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile <profile> --rio 172.22.11.2 --dump-api-inventory tools\can_nt\inv_gen.json --dump-api-inventory-after 5`
 2. Generate config:
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_inventory.can_inventory --generate --input tools\can_nt\inv_gen.json --output tools\can_nt\robot_config.json --profileName <profile>`
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_inventory\can_inventory.py --generate --input tools\can_nt\inv_gen.json --output tools\can_nt\robot_config.json --profileName <profile>`
 3. Validate config against the inventory:
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_inventory.can_inventory --validate --input tools\can_nt\robot_config.json --inventory tools\can_nt\inv_gen.json`
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_inventory\can_inventory.py --validate --input tools\can_nt\robot_config.json --inventory tools\can_nt\inv_gen.json`
 4. Edit the config and leave one placeholder name or a missing required parameter to trigger errors.
 5. Validate again and confirm errors are reported.
 6. Update hash after manual review:
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_inventory.can_inventory --validate --input tools\can_nt\robot_config.json --inventory tools\can_nt\inv_gen.json --update-hash`
+   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_inventory\can_inventory.py --validate --input tools\can_nt\robot_config.json --inventory tools\can_nt\inv_gen.json --update-hash`
 Expected:
 - Generated device names use `UNNAMED_<type>_<can_id>`.
 - Validation fails on placeholder names or missing required parameters.
@@ -434,7 +475,7 @@ Expected:
 Purpose: can_nt_config.json generation matches the active profile.
 
 1. Run:
-   - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile <profile> --dump-can-config tools\can_nt\can_nt_config.json`
+   - `%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile <profile> --dump-can-config tools\can_nt\can_nt_config.json`
 Expected:
 - File is created and lists devices matching the selected profile.
 
@@ -458,27 +499,27 @@ Purpose: dashboard runtime info is defined for future display.
 
 Default run:
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2
 ```
 
 Verbose + summary:
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2 --print-summary-period 2 --print-publish --verbose
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2 --print-summary-period 2 --print-publish --verbose
 ```
 
 Quick check:
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2 --quick-check
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2 --quick-check
 ```
 
 CSV logging:
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2 --log-csv tools\can_nt\can_nt_log.csv
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2 --log-csv tools\can_nt\can_nt_log.csv
 ```
 
 List ports:
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --list-ports
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --list-ports
 ```
 
 ## Functional Tests
@@ -646,3 +687,4 @@ Use this section to record test outcomes:
 - NetworkTables keys: PASS / FAIL
 - CSV logging: PASS / FAIL
 - Quick check: PASS / FAIL
+

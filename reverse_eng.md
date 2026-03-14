@@ -1,4 +1,4 @@
-﻿**Reverse Engineering Guide**
+**Reverse Engineering Guide**
 
 1. Introduction
 Use the full bringup system (robot + PC tool + captures) to reverse engineer FRC CAN protocols with repeatable experiments, in-stream markers, and analyzable outputs.
@@ -51,7 +51,7 @@ Purpose: Customize marker behavior from the command line for repeatable runs.
 
 2.1.2.2 Example run:
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --pcap tools\can_nt\logs\run_with_markers.pcapng --rio 172.22.11.2
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --pcap tools\can_nt\logs\run_with_markers.pcapng --rio 172.22.11.2
 ```
 
 2.2 Py Script Controls
@@ -111,18 +111,18 @@ Purpose: Isolate marker frames and then zoom in on CAN traffic around each stimu
 How to use:
 - Start with a marker filter to find the exact timeline points you annotated.
 - Click a marker, then clear the filter to inspect neighboring frames.
-- Use narrow filters to compare “before” and “after” ranges for the same arbitration IDs.
+- Use narrow filters to compare "before" and "after" ranges for the same arbitration IDs.
 
 Examples:
 - Marker frames by ID:
   `can.id == 0x1FFC0D00`
 - Marker frames by payload prefix:
   `can.data contains 4d:41:52:4b`
-- Experiment window around the first forward step (select marker, then filter by the motor’s CAN ID):
+- Experiment window around the first forward step (select marker, then filter by the motor's CAN ID):
   `can.id == 0x0B` 
-- Focus on a single device’s status frames while you vary `Left Y`:
+- Focus on a single device's status frames while you vary `Left Y`:
   `can.id == 0x0B || can.id == 0x0C`
-- Find frames with any payload changes between markers (use with “Analyze -> Compare Packet Lists”):
+- Find frames with any payload changes between markers (use with "Analyze -> Compare Packet Lists"):
   `can.data`
 
 5. Test Procedures
@@ -139,7 +139,7 @@ Setup:
 - Select profile on the robot (`Back` until it shows `reverse_eng_min1`).
 - Start the bridge with capture enabled:
 ```cmd
-%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --pcap tools\can_nt\logs\reveng_min1.pcapng --publish-can-summary
+%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --pcap tools\can_nt\logs\reveng_min1.pcapng --publish-can-summary
 ```
 - Replace `COM3` with your CANable port.
 - Press `D-pad Right` to print speed inputs so you can see the live `Left Y` value.
@@ -208,7 +208,7 @@ Setup:
 - Start the bridge with capture enabled and disable NT publishing: add `--no-nt`.
   Example:
   ```cmd
-  %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --pcap tools\can_nt\logs\reveng_min1.pcapng --no-nt
+  %USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --pcap tools\can_nt\logs\reveng_min1.pcapng --no-nt
   ```
 - Use marker keys to annotate each vendor action (set output, stop, reverse).
 - Do not use the robot command interface for this mode; the vendor apps are the sole stimulus source.
@@ -223,22 +223,22 @@ Setup:
 - Start the bridge with capture enabled and disable NT publishing: add `--no-nt`.
   Example:
   ```cmd
-  %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --pcap tools\can_nt\logs\reveng_min1.pcapng --no-nt
+  %USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --pcap tools\can_nt\logs\reveng_min1.pcapng --no-nt
   ```
 - Use marker keys to annotate each vendor action (set output, stop, reverse).
 
 Optional inventory diff:
 - Idle:
   ```cmd
-  %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --dump-api-inventory tools\can_nt\inventory_idle.json --dump-api-inventory-after 5
+  %USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --dump-api-inventory tools\can_nt\inventory_idle.json --dump-api-inventory-after 5
   ```
 - Running:
   ```cmd
-  %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --dump-api-inventory tools\can_nt\inventory_run.json --dump-api-inventory-after 5
+  %USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile reverse_eng_min1 --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --dump-api-inventory tools\can_nt\inventory_run.json --dump-api-inventory-after 5
   ```
 - Diff:
   ```cmd
-  %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe -m tools.can_nt.can_nt_bridge --diff-inventory tools\can_nt\inventory_idle.json tools\can_nt\inventory_run.json
+  %USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --diff-inventory tools\can_nt\inventory_idle.json tools\can_nt\inventory_run.json
   ```
 Explanation:
 - `--dump-api-inventory` writes a snapshot of observed `(mfg,type,id,apiClass,apiIndex)` pairs with counts and computed fps.
@@ -263,3 +263,4 @@ Purpose: Outline next steps that extend capability without breaking the workflow
 - Add optional label indices in marker bytes `6..7`.
 - Add a replay mode that re-emits markers during offline analysis.
 - Add a decoder registry with confidence scoring for inferred fields.
+
