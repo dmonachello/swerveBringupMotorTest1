@@ -29,6 +29,7 @@ Purpose: Consolidate all planned or future work discussed so far.
 - Add new test check types without changing existing JSON fields.
 - Add dashboard widgets for live test status and PC tool health.
 - Maintain decoder registry for CAN reverse engineering outputs.
+- Topology app: add a feature to break up a selected long segment into multiple segments and distribute the nodes across all segments.
 
 ## Documentation Gaps / Planned Fields
 - Some report rows are vendor-tool-only or planned fields (e.g., last error codes, reset flags); complete or remove as appropriate.

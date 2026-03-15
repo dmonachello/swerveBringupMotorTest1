@@ -15,11 +15,27 @@ Purpose: Launch the editor without extra dependencies.
 python tools\\can_topology\\can_top_editor.py
 ```
 
+## Profile Validation
+Purpose: Validate `bringup_profiles.json` for compatibility.
+```cmd
+python tools\\can_topology\\validate_profiles.py
+python tools\\can_topology\\validate_profiles.py --path src\\main\\deploy\\bringup_profiles.json
+python tools\\can_topology\\validate_profiles.py --strict
+python tools\\can_topology\\validate_profiles.py --verbose
+```
+Checks:
+- JSON parses and contains a `profiles` object.
+- Allowed categories only (buckets, singletons, `devices`).
+- Each entry has integer `id` in range -1 or 0-62.
+- `devices` entries include `vendor` and `type`.
+- `limits` entries use integer `fwdDio`/`revDio` and boolean `invert`.
+- Duplicate CAN IDs are reported per profile.
+
 ## Workflow
 Purpose: Describe the shortest path from sketch to JSON.
 1. Click `Add` and enter device details.
 2. Drag boxes to arrange them on the bus line.
-3. Set the profile name.
+3. Set the profile name (dropdown lists profiles from the loaded file).
 4. File -> Save Profile As...
 5. Or use File -> `Save to Deploy` to append/replace directly in `src/main/deploy/bringup_profiles.json`.
 6. Use `Set As Default` to update `default_profile` on save.
@@ -54,6 +70,22 @@ Purpose: Document limitations up front.
 - Drag a node near a bus segment to move it to that bus (nearest bus wins).
 - Drag a bus line to move it; connected nodes move with it.
 - Hold `Ctrl` and use the mouse wheel to zoom in/out (View menu also works).
+- Keyboard shortcuts:
+  - `Ctrl+A`: select all nodes (devices + callouts).
+  - `Ctrl+C`: copy selection.
+  - `Ctrl+D`: duplicate selection.
+  - `Ctrl+V`: paste.
+  - `Delete` / `Backspace`: remove selected nodes/callouts.
+  - `Ctrl+Z`: undo.
+  - `Ctrl+L`: tidy selection (layout within bus bounds).
+  - `Ctrl+Shift+L`: reset layout (reassigns rows/buses).
+  - `Layout -> Tidy All`: align all buses into shared columns.
+  - `Ctrl+0`: reset zoom.
+  - `Ctrl++` / `Ctrl+=`: zoom in.
+  - `Ctrl+-` / `Ctrl+_`: zoom out.
+  - `Ctrl+G`: toggle snap-to-grid.
+  - `Ctrl+Shift+G`: toggle smart guides.
+  - `Ctrl+S`: save to deploy.
 - Diagram layout metadata is saved under `diagram.profiles.<profileName>` and
   ignored by the robot and PC tools.
 - Use `Add Callout` to create a text label with a leader line to a bus or node.

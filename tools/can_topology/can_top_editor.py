@@ -71,6 +71,9 @@ class TopologyEditor(tk.Tk):
         self._drag_state: Optional[Tuple[int, float, float]] = None
         self._drag_free_y: Dict[int, float] = {}
         self._profile_name = "drawn_profile"
+        self._profile_source_path: Optional[str] = None
+        self._suppress_profile_select = False
+        self._profile_names: List[str] = []
         self._callout_scale_var = tk.StringVar(value="1.00")
         self._layout_width = 0.0
         self._box_w = 140
@@ -95,6 +98,8 @@ class TopologyEditor(tk.Tk):
         self._selection_start: Optional[Tuple[float, float]] = None
         self._node_bounds: Dict[int, Tuple[float, float, float, float]] = {}
         self._bus_ys: List[float] = []
+        self._dragging_active = False
+        self._redraw_pending = False
         self._clipboard: Optional[Dict[str, object]] = None
         self._multi_drag: Optional[Dict[str, object]] = None
         self._last_base_y: Optional[float] = None
@@ -104,6 +109,12 @@ class TopologyEditor(tk.Tk):
         self._syncing_selection = False
         self._zoom = 1.0
         self._draw_state = {"bus_ys": [], "y_shift": 0.0, "scale": 1.0}
+        self._snap_to_grid_var = tk.BooleanVar(value=True)
+        self._smart_guides_var = tk.BooleanVar(value=False)
+        self._grid_size_var = tk.IntVar(value=20)
+        self._guide_x: Optional[float] = None
+        self._guide_bus: Optional[int] = None
+        self._guide_snap_px = 6.0
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._build_ui()
         self._load_default_profile_if_present()
@@ -150,9 +161,10 @@ class TopologyEditor(tk.Tk):
 
         ttk.Separator(bottom, orient="horizontal").pack(fill="x", pady=(0, 6))
         ttk.Label(bottom, text="Profile Name").pack(anchor="w")
-        self.entry_profile = ttk.Entry(bottom)
-        self.entry_profile.insert(0, self._profile_name)
+        self.entry_profile = ttk.Combobox(bottom, values=self._profile_names, state="normal")
+        self.entry_profile.set(self._profile_name)
         self.entry_profile.pack(fill="x", pady=(2, 0))
+        self.entry_profile.bind("<<ComboboxSelected>>", self._on_profile_select)
         self.var_set_default = tk.BooleanVar(value=False)
         ttk.Checkbutton(bottom, text="Set As Default", variable=self.var_set_default).pack(
             anchor="w", pady=(4, 8)
@@ -168,7 +180,7 @@ class TopologyEditor(tk.Tk):
         ttk.Button(button_row, text="Remove Selected", command=self._on_remove_selected).pack(
             fill="x", pady=2
         )
-        ttk.Button(button_row, text="Layout", command=self._layout_even).pack(fill="x", pady=2)
+        ttk.Button(button_row, text="Tidy All", command=self._tidy_all).pack(fill="x", pady=2)
         ttk.Button(button_row, text="Add Bus", command=self._on_add_bus).pack(fill="x", pady=2)
         ttk.Button(button_row, text="Add Callout", command=self._on_add_callout).pack(
             fill="x", pady=2
@@ -189,6 +201,29 @@ class TopologyEditor(tk.Tk):
         self.canvas.bind("<ButtonRelease-1>", self._on_canvas_release)
         self.canvas.bind("<Control-c>", lambda _e: self._on_copy())
         self.canvas.bind("<Control-v>", lambda _e: self._on_paste())
+        self.bind_all("<Control-z>", lambda _e: self._undo_last())
+        self.bind_all("<Control-Z>", lambda _e: self._undo_last())
+        self.bind_all("<Control-a>", lambda _e: self._select_all_nodes())
+        self.bind_all("<Control-A>", lambda _e: self._select_all_nodes())
+        self.bind_all("<Control-plus>", lambda _e: self._zoom_step(0.1))
+        self.bind_all("<Control-minus>", lambda _e: self._zoom_step(-0.1))
+        self.bind_all("<Control-underscore>", lambda _e: self._zoom_step(-0.1))
+        self.bind_all("<Control-equal>", lambda _e: self._zoom_step(0.1))
+        self.bind_all("<Control-0>", lambda _e: self._zoom_reset())
+        self.bind_all("<Control-Shift-L>", lambda _e: self._layout_even())
+        self.bind_all("<Control-Shift-l>", lambda _e: self._layout_even())
+        self.bind_all("<Control-l>", lambda _e: self._tidy_selection())
+        self.bind_all("<Control-L>", lambda _e: self._tidy_selection())
+        self.bind_all("<Control-d>", lambda _e: self._duplicate_selection())
+        self.bind_all("<Control-D>", lambda _e: self._duplicate_selection())
+        self.bind_all("<Control-g>", lambda _e: self._toggle_snap_to_grid())
+        self.bind_all("<Control-G>", lambda _e: self._toggle_snap_to_grid())
+        self.bind_all("<Control-Shift-G>", lambda _e: self._toggle_smart_guides())
+        self.bind_all("<Control-Shift-g>", lambda _e: self._toggle_smart_guides())
+        self.bind_all("<Control-s>", lambda _e: self._save_shortcut())
+        self.bind_all("<Control-S>", lambda _e: self._save_shortcut())
+        self.bind_all("<Delete>", lambda _e: self._on_remove_selected())
+        self.bind_all("<BackSpace>", lambda _e: self._on_remove_selected())
         self.canvas.bind("<Configure>", lambda _e: self._redraw_canvas())
         self.canvas.bind("<Control-MouseWheel>", self._on_zoom_wheel)
 
@@ -215,12 +250,40 @@ class TopologyEditor(tk.Tk):
         edit_menu.add_command(label="Copy", command=self._on_copy)
         edit_menu.add_command(label="Paste", command=self._on_paste)
         menu.add_cascade(label="Edit", menu=edit_menu)
+        layout_menu = tk.Menu(menu, tearoff=False)
+        layout_menu.add_command(label="Align Left", command=lambda: self._align_selected("left"))
+        layout_menu.add_command(label="Align Center", command=lambda: self._align_selected("center"))
+        layout_menu.add_command(label="Align Right", command=lambda: self._align_selected("right"))
+        layout_menu.add_separator()
+        layout_menu.add_command(
+            label="Distribute Horizontally", command=self._distribute_selected_horizontally
+        )
+        layout_menu.add_separator()
+        layout_menu.add_command(label="Tidy All", command=self._tidy_all)
+        layout_menu.add_command(label="Tidy Selection", command=self._tidy_selection)
+        layout_menu.add_separator()
+        layout_menu.add_command(label="Reset Layout", command=self._layout_even)
+        menu.add_cascade(label="Layout", menu=layout_menu)
         view_menu = tk.Menu(menu, tearoff=False)
         view_menu.add_command(label="Zoom In", command=lambda: self._zoom_step(0.1))
         view_menu.add_command(label="Zoom Out", command=lambda: self._zoom_step(-0.1))
         view_menu.add_command(label="Zoom Reset", command=self._zoom_reset)
         view_menu.add_command(label="Fit to Window", command=self._fit_to_window)
+        view_menu.add_separator()
+        view_menu.add_checkbutton(label="Snap to Grid", variable=self._snap_to_grid_var)
+        view_menu.add_checkbutton(label="Smart Guides", variable=self._smart_guides_var)
+        grid_menu = tk.Menu(view_menu, tearoff=False)
+        for size in (10, 20, 40):
+            grid_menu.add_radiobutton(
+                label=f"{size}px", value=size, variable=self._grid_size_var
+            )
+        view_menu.add_cascade(label="Grid Size", menu=grid_menu)
+        view_menu.add_command(label="Legend...", command=self._show_legend_dialog)
         menu.add_cascade(label="View", menu=view_menu)
+        help_menu = tk.Menu(menu, tearoff=False)
+        help_menu.add_command(label="Help...", command=self._show_help_dialog)
+        help_menu.add_command(label="Keyboard Shortcuts...", command=self._show_shortcuts_dialog)
+        menu.add_cascade(label="Help", menu=help_menu)
         self.config(menu=menu)
 
     def _build_details_panel(self, parent: tk.Widget) -> None:
@@ -543,7 +606,11 @@ class TopologyEditor(tk.Tk):
         self._load_profile_from_path(path, ask_profile=True, confirm_discard=True)
 
     def _load_profile_from_path(
-        self, path: str, ask_profile: bool, confirm_discard: bool
+        self,
+        path: str,
+        ask_profile: bool,
+        confirm_discard: bool,
+        selected_name: Optional[str] = None,
     ) -> None:
         """
         NAME
@@ -553,6 +620,7 @@ class TopologyEditor(tk.Tk):
             path: Path to bringup_profiles.json.
             ask_profile: Whether to prompt for which profile to load.
             confirm_discard: Whether to prompt before discarding current nodes.
+            selected_name: Optional profile name to load.
         """
         try:
             with open(path, "r", encoding="utf-8") as handle:
@@ -566,7 +634,12 @@ class TopologyEditor(tk.Tk):
             return
         names = sorted(profiles.keys())
         default_name = data.get("default_profile")
-        if ask_profile:
+        if selected_name:
+            if selected_name not in profiles:
+                messagebox.showerror("Error", f"Profile '{selected_name}' not found in JSON.")
+                return
+            name = selected_name
+        elif ask_profile:
             name = self._choose_profile_name(names, default_name)
             if not name:
                 return
@@ -607,8 +680,11 @@ class TopologyEditor(tk.Tk):
                 self._zoom_label_var.set(f"Zoom: {int(self._zoom * 100)}%")
         self._next_key = 1 + max([n.key for n in self._nodes], default=0)
         self._profile_name = name
-        self.entry_profile.delete(0, tk.END)
-        self.entry_profile.insert(0, name)
+        self._profile_source_path = path
+        self._set_profile_names(names)
+        self._suppress_profile_select = True
+        self.entry_profile.set(name)
+        self._suppress_profile_select = False
         self._refresh_list()
         self._update_details_panel(None)
         if not diagram_applied:
@@ -675,6 +751,35 @@ class TopologyEditor(tk.Tk):
         self.wait_window(dialog)
         return result[0]
 
+    def _on_profile_select(self, _event: tk.Event) -> None:
+        """
+        NAME
+            _on_profile_select - Load the selected profile from the dropdown.
+        """
+        if self._suppress_profile_select:
+            return
+        selected = self.entry_profile.get().strip()
+        if not selected or selected == self._profile_name:
+            return
+        path = self._profile_source_path
+        if not path:
+            root = Path(__file__).resolve().parents[2]
+            path = str(root / "src" / "main" / "deploy" / "bringup_profiles.json")
+        self._load_profile_from_path(path, ask_profile=False, confirm_discard=True, selected_name=selected)
+
+    def _set_profile_names(self, names: List[str]) -> None:
+        """
+        NAME
+            _set_profile_names - Update the profile dropdown values.
+        """
+        unique = sorted({name for name in names if name})
+        self._profile_names = unique
+        if hasattr(self, "entry_profile"):
+            try:
+                self.entry_profile.configure(values=self._profile_names)
+            except tk.TclError:
+                pass
+
     def _save_profile_as(self) -> None:
         """
         NAME
@@ -718,6 +823,7 @@ class TopologyEditor(tk.Tk):
             messagebox.showerror("Error", f"Failed to write file: {exc}")
             return
         self._dirty = False
+        self._set_profile_names(self._profile_names + [profile_name])
         messagebox.showinfo("Saved", f"Wrote profile to {path}")
 
     def _on_save_to_deploy(self) -> None:
@@ -782,6 +888,7 @@ class TopologyEditor(tk.Tk):
             messagebox.showerror("Error", f"Failed to write {path}: {exc}")
             return
         self._dirty = False
+        self._set_profile_names(sorted(profiles.keys()))
         messagebox.showinfo("Saved", f"Updated {path} with profile '{profile_name}'.")
 
     def _validate_nodes(self) -> Optional[str]:
@@ -793,6 +900,7 @@ class TopologyEditor(tk.Tk):
             Error message or None when valid.
         """
         seen_singletons = {}
+        seen_strict: Dict[Tuple[str, str, int], Node] = {}
         for node in self._device_nodes():
             if node.category in SINGLETON_CATEGORIES:
                 if node.category in seen_singletons:
@@ -801,6 +909,24 @@ class TopologyEditor(tk.Tk):
             if node.category == GENERIC_CATEGORY:
                 if not node.vendor or not node.device_type:
                     return "Generic devices require vendor and device type."
+            if not self._is_valid_can_id(node.can_id):
+                return f"Invalid CAN ID {node.can_id} for {node.label}."
+            strict_key = self._dup_key_for_node(node)
+            if strict_key is not None:
+                vendor, dev_type, can_id = strict_key
+                strict_key = (vendor, dev_type, can_id)
+                if strict_key in seen_strict:
+                    other = seen_strict[strict_key]
+                    return (
+                        f"Duplicate CAN address (vendor/type/id) {can_id} "
+                        f"({other.label}, {node.label})."
+                    )
+                seen_strict[strict_key] = node
+            if node.limits is not None:
+                try:
+                    self._normalize_limits(node.limits)
+                except ValueError as exc:
+                    return f"Invalid limits for {node.label}: {exc}"
         return None
 
     def _profile_from_nodes(self) -> Dict[str, object]:
@@ -837,10 +963,57 @@ class TopologyEditor(tk.Tk):
         if node.motor:
             entry["motor"] = node.motor
         if node.limits:
-            entry["limits"] = node.limits
+            entry["limits"] = self._normalize_limits(node.limits)
         if node.terminator is not None:
             entry["terminator"] = node.terminator
         return entry
+
+    @staticmethod
+    def _is_valid_can_id(value: int) -> bool:
+        """
+        NAME
+            _is_valid_can_id - Validate a CAN ID for compatibility.
+
+        RETURNS
+            True when the ID is -1 or in the 0-62 range.
+        """
+        return isinstance(value, int) and value >= -1 and value <= 62
+
+    @staticmethod
+    def _normalize_limits(limits: Dict[str, object]) -> Dict[str, object]:
+        """
+        NAME
+            _normalize_limits - Normalize limit switch fields for JSON output.
+
+        RETURNS
+            Limits dict with integer DIO values and boolean invert.
+        """
+        if not isinstance(limits, dict):
+            raise ValueError("limits must be an object")
+        fwd = limits.get("fwdDio", -1)
+        rev = limits.get("revDio", -1)
+        invert = bool(limits.get("invert", False))
+
+        def _coerce_dio(value: object, label: str) -> int:
+            if value is None or value == "":
+                return -1
+            if isinstance(value, bool):
+                raise ValueError(f"{label} must be an integer")
+            if isinstance(value, (int,)):
+                dio = int(value)
+            elif isinstance(value, str) and re.fullmatch(r"-?\d+", value.strip()):
+                dio = int(value.strip())
+            else:
+                raise ValueError(f"{label} must be an integer")
+            if dio < -1:
+                raise ValueError(f"{label} must be -1 or greater")
+            return dio
+
+        return {
+            "fwdDio": _coerce_dio(fwd, "fwdDio"),
+            "revDio": _coerce_dio(rev, "revDio"),
+            "invert": invert,
+        }
 
     def _nodes_from_profile(self, profile: Dict[str, object]) -> List[Node]:
         """
@@ -937,6 +1110,7 @@ class TopologyEditor(tk.Tk):
                 }
                 )
         return {
+            "busOffsets": list(self._bus_offsets),
             "busCount": len(self._bus_offsets),
             "busSpacing": self._bus_spacing,
             "busLefts": list(self._bus_lefts),
@@ -951,9 +1125,13 @@ class TopologyEditor(tk.Tk):
         NAME
             _apply_diagram_snapshot - Restore editor layout metadata.
         """
-        bus_count = diagram.get("busCount")
-        if isinstance(bus_count, int) and bus_count > 0:
-            self._bus_offsets = [i * self._bus_spacing for i in range(bus_count)]
+        bus_offsets = diagram.get("busOffsets")
+        if isinstance(bus_offsets, list) and bus_offsets:
+            self._bus_offsets = [float(x) for x in bus_offsets if isinstance(x, (int, float))]
+        else:
+            bus_count = diagram.get("busCount")
+            if isinstance(bus_count, int) and bus_count > 0:
+                self._bus_offsets = [i * self._bus_spacing for i in range(bus_count)]
         spacing = diagram.get("busSpacing")
         if isinstance(spacing, (int, float)) and spacing > 0:
             self._bus_spacing = float(spacing)
@@ -1411,7 +1589,7 @@ class TopologyEditor(tk.Tk):
     def _layout_even(self) -> None:
         """
         NAME
-            _layout_even - Spread nodes evenly across the canvas.
+            _layout_even - Reset layout per bus without reassigning buses/rows.
         """
         if not self._nodes:
             self._redraw_canvas()
@@ -1421,19 +1599,344 @@ class TopologyEditor(tk.Tk):
         if width < 200:
             self.after(80, self._layout_even)
             return
-        left = 80
-        desired_spacing = 180.0
-        count = len(self._nodes)
-        total_width = max(width, left * 2 + desired_spacing * max(count - 1, 1))
-        spacing = (total_width - left * 2) / max(count - 1, 1)
-        self._layout_width = total_width
-        self._box_w = max(110, min(160, int(spacing - 30)))
-        for idx, node in enumerate(self._nodes):
-            node.x = left + spacing * idx
-            node.row = idx % 2
-            node.bus_index = idx % max(len(self._bus_offsets), 1)
-            node.scale = max(0.6, min(2.0, node.scale))
+        eff_lefts, eff_rights = self._effective_bus_bounds()
+        groups: Dict[int, List[Node]] = {}
+        for node in self._device_nodes():
+            groups.setdefault(node.bus_index, []).append(node)
+        margin = 12.0
+        for bus_index, group in groups.items():
+            if not group:
+                continue
+            group.sort(key=lambda n: n.x)
+            left = eff_lefts[bus_index] if bus_index < len(eff_lefts) else 40.0
+            right = eff_rights[bus_index] if bus_index < len(eff_rights) else left + 400.0
+            avail_left = left + margin
+            avail_right = right - margin
+            count = len(group)
+            if count == 1:
+                pos = (avail_left + avail_right) / 2.0
+                node = group[0]
+                half_w = self._node_half_width(node)
+                node.x = max(left + half_w + margin, min(right - half_w - margin, pos))
+                if self._snap_to_grid_var.get():
+                    node.x = self._snap_value(node.x)
+                continue
+            spacing = (avail_right - avail_left) / max(count - 1, 1)
+            for idx, node in enumerate(group):
+                target = avail_left + spacing * idx
+                half_w = self._node_half_width(node)
+                min_bound = left + half_w + margin
+                max_bound = right - half_w - margin
+                if min_bound > max_bound:
+                    min_bound = max_bound = (left + right) / 2.0
+                node.x = max(min_bound, min(max_bound, target))
+                if self._snap_to_grid_var.get():
+                    node.x = self._snap_value(node.x)
+        max_x = max((n.x for n in self._nodes), default=0.0)
+        self._layout_width = max(self._layout_width, max_x + 200)
+        self._clear_guides()
         self._redraw_canvas()
+
+    def _selected_device_nodes(self) -> List[Node]:
+        """
+        NAME
+            _selected_device_nodes - Return selected device nodes only.
+        """
+        return [n for n in self._device_nodes() if n.key in self._selected_nodes]
+
+    def _effective_bus_bounds(self) -> Tuple[List[float], List[float]]:
+        """
+        NAME
+            _effective_bus_bounds - Compute bus left/right bounds with connectors.
+
+        RETURNS
+            Tuple of (effective_lefts, effective_rights) per bus segment.
+        """
+        max_node_x = max((n.x for n in self._nodes), default=0.0)
+        if len(self._bus_lefts) < len(self._bus_offsets):
+            self._bus_lefts.extend([40.0] * (len(self._bus_offsets) - len(self._bus_lefts)))
+        if len(self._bus_rights) < len(self._bus_offsets):
+            self._bus_rights.extend(
+                [max_node_x + 200.0] * (len(self._bus_offsets) - len(self._bus_rights))
+            )
+        if len(self._bus_lefts) > len(self._bus_offsets):
+            self._bus_lefts = self._bus_lefts[: len(self._bus_offsets)]
+        if len(self._bus_rights) > len(self._bus_offsets):
+            self._bus_rights = self._bus_rights[: len(self._bus_offsets)]
+        eff_lefts = list(self._bus_lefts)
+        eff_rights = list(self._bus_rights)
+        for idx in range(len(eff_lefts) - 1):
+            if idx % 2 == 0:
+                eff_rights[idx + 1] = eff_rights[idx]
+            else:
+                eff_lefts[idx + 1] = eff_lefts[idx]
+        return eff_lefts, eff_rights
+
+    def _node_half_width(self, node: Node) -> float:
+        """
+        NAME
+            _node_half_width - Compute half the node width in diagram units.
+        """
+        node_scale = max(0.6, min(2.0, node.scale))
+        base_w = 180.0 if node.node_type == "callout" else float(self._box_w)
+        return base_w * node_scale / 2.0
+
+    def _snap_value(self, value: float) -> float:
+        """
+        NAME
+            _snap_value - Snap a value to the current grid size.
+        """
+        size = max(1, int(self._grid_size_var.get() or 1))
+        return round(value / size) * size
+
+    def _clear_guides(self) -> None:
+        """
+        NAME
+            _clear_guides - Clear any active smart guide lines.
+        """
+        self._guide_x = None
+        self._guide_bus = None
+
+    def _apply_smart_guides(
+        self,
+        node: Node,
+        candidate_x: float,
+        exclude_keys: set[int],
+    ) -> Tuple[float, Optional[float]]:
+        """
+        NAME
+            _apply_smart_guides - Snap to nearby node centers on the same bus.
+
+        RETURNS
+            Tuple of (new_x, guide_x or None).
+        """
+        if not self._smart_guides_var.get():
+            return candidate_x, None
+        scale = max(self._zoom, 0.01)
+        threshold = self._guide_snap_px / scale
+        nearest: Optional[float] = None
+        nearest_score = float("inf")
+        for other in self._device_nodes():
+            if other.key in exclude_keys:
+                continue
+            dist = abs(other.x - candidate_x)
+            if dist <= threshold:
+                same_bus = 0.0 if other.bus_index == node.bus_index else 0.5
+                score = dist + same_bus
+                if score < nearest_score:
+                    nearest = other.x
+                    nearest_score = score
+        if nearest is None:
+            return candidate_x, None
+        return nearest, nearest
+
+    def _align_selected(self, mode: str) -> None:
+        """
+        NAME
+            _align_selected - Align selected nodes horizontally.
+
+        PARAMETERS
+            mode - "left", "center", or "right".
+        """
+        nodes = self._selected_device_nodes()
+        if not nodes:
+            messagebox.showinfo("Align", "Select one or more device nodes to align.")
+            return
+        eff_lefts, eff_rights = self._effective_bus_bounds()
+        grouped: Dict[int, List[Node]] = {}
+        for node in nodes:
+            grouped.setdefault(node.bus_index, []).append(node)
+        self._push_undo()
+        margin = 10.0
+        for bus_index, group in grouped.items():
+            if not group:
+                continue
+            xs = [n.x for n in group]
+            if mode == "left":
+                target = min(xs)
+            elif mode == "right":
+                target = max(xs)
+            else:
+                target = (min(xs) + max(xs)) / 2.0
+            left = eff_lefts[bus_index] if bus_index < len(eff_lefts) else 40.0
+            right = eff_rights[bus_index] if bus_index < len(eff_rights) else target + 200.0
+            for node in group:
+                half_w = self._node_half_width(node)
+                min_x = left + half_w + margin
+                max_x = right - half_w - margin
+                if min_x > max_x:
+                    min_x = max_x = (left + right) / 2.0
+                node.x = max(min_x, min(max_x, target))
+                if self._snap_to_grid_var.get():
+                    node.x = self._snap_value(node.x)
+        max_x = max((n.x for n in self._nodes), default=0.0)
+        self._layout_width = max(self._layout_width, max_x + 200)
+        self._clear_guides()
+        self._redraw_canvas()
+
+    def _distribute_selected_horizontally(self) -> None:
+        """
+        NAME
+            _distribute_selected_horizontally - Evenly space selected nodes.
+        """
+        nodes = self._selected_device_nodes()
+        if len(nodes) < 3:
+            messagebox.showinfo(
+                "Distribute",
+                "Select at least three device nodes to distribute.",
+            )
+            return
+        eff_lefts, eff_rights = self._effective_bus_bounds()
+        grouped: Dict[int, List[Node]] = {}
+        for node in nodes:
+            grouped.setdefault(node.bus_index, []).append(node)
+        self._push_undo()
+        margin = 10.0
+        for bus_index, group in grouped.items():
+            if len(group) < 3:
+                continue
+            group.sort(key=lambda n: n.x)
+            left = eff_lefts[bus_index] if bus_index < len(eff_lefts) else 40.0
+            right = eff_rights[bus_index] if bus_index < len(eff_rights) else group[-1].x + 200.0
+            min_x = max(left + margin, group[0].x)
+            max_x = min(right - margin, group[-1].x)
+            spacing = (max_x - min_x) / max(len(group) - 1, 1)
+            for idx, node in enumerate(group):
+                target = min_x + spacing * idx
+                half_w = self._node_half_width(node)
+                min_bound = left + half_w + margin
+                max_bound = right - half_w - margin
+                if min_bound > max_bound:
+                    min_bound = max_bound = (left + right) / 2.0
+                node.x = max(min_bound, min(max_bound, target))
+                if self._snap_to_grid_var.get():
+                    node.x = self._snap_value(node.x)
+        max_x = max((n.x for n in self._nodes), default=0.0)
+        self._layout_width = max(self._layout_width, max_x + 200)
+        self._clear_guides()
+        self._redraw_canvas()
+
+    def _tidy_selection(self) -> None:
+        """
+        NAME
+            _tidy_selection - Tidy selected nodes within bus bounds.
+        """
+        nodes = self._selected_device_nodes()
+        if not nodes:
+            messagebox.showinfo("Tidy Selection", "Select one or more device nodes to tidy.")
+            return
+        eff_lefts, eff_rights = self._effective_bus_bounds()
+        grouped: Dict[int, List[Node]] = {}
+        for node in nodes:
+            grouped.setdefault(node.bus_index, []).append(node)
+        self._push_undo()
+        margin = 12.0
+        bus_indices = [idx for idx in grouped.keys() if 0 <= idx < len(eff_lefts)]
+        max_columns = max((len(group) for group in grouped.values()), default=0)
+        use_columns = len(bus_indices) > 1 and max_columns >= 2
+        shared_left = max((eff_lefts[idx] for idx in bus_indices), default=40.0)
+        shared_right = min(
+            (eff_rights[idx] for idx in bus_indices),
+            default=max((n.x for n in nodes), default=0.0) + 200.0,
+        )
+        max_half = max((self._node_half_width(n) for n in nodes), default=0.0)
+        if use_columns:
+            left_bound = shared_left + max_half + margin
+            right_bound = shared_right - max_half - margin
+            if right_bound - left_bound < 40.0:
+                use_columns = False
+        for bus_index, group in grouped.items():
+            if not group:
+                continue
+            group.sort(key=lambda n: n.x)
+            left = eff_lefts[bus_index] if bus_index < len(eff_lefts) else 40.0
+            right = eff_rights[bus_index] if bus_index < len(eff_rights) else group[-1].x + 200.0
+            if use_columns:
+                left_bound = shared_left + max_half + margin
+                right_bound = shared_right - max_half - margin
+                columns = max_columns
+                if columns <= 1 or right_bound <= left_bound:
+                    use_columns = False
+                else:
+                    spacing = (right_bound - left_bound) / max(columns - 1, 1)
+                    col_positions = [left_bound + spacing * idx for idx in range(columns)]
+                    count = len(group)
+                    for idx, node in enumerate(group):
+                        if count <= 1:
+                            col_idx = (columns - 1) // 2
+                        else:
+                            col_idx = int(round(idx * (columns - 1) / (count - 1)))
+                        col_idx = max(0, min(columns - 1, col_idx))
+                        pos = col_positions[col_idx]
+                        half_w = self._node_half_width(node)
+                        min_bound = left + half_w + margin
+                        max_bound = right - half_w - margin
+                        if min_bound > max_bound:
+                            min_bound = max_bound = (left + right) / 2.0
+                        node.x = max(min_bound, min(max_bound, pos))
+                        if self._snap_to_grid_var.get():
+                            node.x = self._snap_value(node.x)
+                    continue
+            left_bound = left + margin
+            right_bound = right - margin
+            widths = [self._node_half_width(n) * 2 for n in group]
+            total_width = sum(widths)
+            count = len(group)
+            available = max(1.0, right_bound - left_bound)
+            gap = 20.0
+            if count > 1:
+                gap = max(0.0, (available - total_width) / (count - 1))
+            positions: List[float] = []
+            cursor = left_bound
+            for node, width in zip(group, widths):
+                half_w = width / 2.0
+                cursor = cursor + half_w
+                positions.append(cursor)
+                cursor = cursor + half_w + gap
+            if positions:
+                first_half = widths[0] / 2.0
+                last_half = widths[-1] / 2.0
+                min_edge = positions[0] - first_half
+                max_edge = positions[-1] + last_half
+                if max_edge > right_bound:
+                    shift = max_edge - right_bound
+                    positions = [p - shift for p in positions]
+                if positions[0] - first_half < left_bound:
+                    shift = left_bound - (positions[0] - first_half)
+                    positions = [p + shift for p in positions]
+            for node, pos in zip(group, positions):
+                half_w = self._node_half_width(node)
+                min_bound = left + half_w + margin
+                max_bound = right - half_w - margin
+                if min_bound > max_bound:
+                    min_bound = max_bound = (left + right) / 2.0
+                node.x = max(min_bound, min(max_bound, pos))
+                if self._snap_to_grid_var.get():
+                    node.x = self._snap_value(node.x)
+        max_x = max((n.x for n in self._nodes), default=0.0)
+        self._layout_width = max(self._layout_width, max_x + 200)
+        self._clear_guides()
+        self._redraw_canvas()
+
+    def _tidy_all(self) -> None:
+        """
+        NAME
+            _tidy_all - Tidy all device nodes while preserving bus assignments.
+        """
+        device_nodes = self._device_nodes()
+        if not device_nodes:
+            messagebox.showinfo("Tidy All", "No device nodes to tidy.")
+            return
+        prior_nodes = set(self._selected_nodes)
+        prior_buses = set(self._selected_buses)
+        try:
+            self._selected_nodes = {n.key for n in device_nodes}
+            self._selected_buses = set()
+            self._tidy_selection()
+        finally:
+            self._selected_nodes = prior_nodes
+            self._selected_buses = prior_buses
+            self._sync_selection_state()
 
     def _next_x_position(self) -> float:
         """
@@ -1491,13 +1994,15 @@ class TopologyEditor(tk.Tk):
         """
         nodes = self._device_nodes()
         by_loose: Dict[int, List[Node]] = {}
-        by_strict: Dict[Tuple[str, str, str, int], List[Node]] = {}
+        by_strict: Dict[Tuple[str, str, int], List[Node]] = {}
         for node in nodes:
+            if not isinstance(node.can_id, int) or node.can_id < 0:
+                continue
             can_id = int(node.can_id)
             by_loose.setdefault(can_id, []).append(node)
-            vendor = node.vendor or ""
-            dev_type = node.device_type or ""
-            key = (node.category, vendor, dev_type, can_id)
+            vendor = self._vendor_key_for_node(node) or ""
+            dev_type = self._device_type_key_for_node(node) or ""
+            key = (vendor, dev_type, can_id)
             by_strict.setdefault(key, []).append(node)
         loose = {cid: items for cid, items in by_loose.items() if len(items) > 1}
         strict = {key: items for key, items in by_strict.items() if len(items) > 1}
@@ -1511,15 +2016,15 @@ class TopologyEditor(tk.Tk):
                 lines.append(f"  ID {cid}: {names}")
             lines.append("")
         if strict:
-            lines.append("Strict collisions (same CAN ID + category/vendor/type):")
+            lines.append("Strict collisions (same vendor + type + CAN ID):")
             for key, items in sorted(strict.items(), key=lambda item: item[0]):
-                _, vendor, dev_type, cid = key
-                details = self._format_strict_descriptor(items[0])
+                vendor, dev_type, cid = key
+                details = f"{vendor}/{dev_type}"
                 names = ", ".join(self._format_node_identity(n) for n in items)
                 lines.append(f"  ID {cid} {details}: {names}")
             lines.append("")
         if loose and not strict:
-            lines.append("Loose collisions may be intentional if manufacturer/type disambiguates IDs.")
+            lines.append("Loose collisions may be intentional if vendor/type disambiguates IDs.")
         if strict:
             lines.append("Strict collisions indicate exact ID conflicts for the same device type.")
         lines.append("")
@@ -1678,6 +2183,49 @@ class TopologyEditor(tk.Tk):
         self._selected_buses = set()
         self._sync_selection_state()
 
+    def _select_all_nodes(self) -> None:
+        """
+        NAME
+            _select_all_nodes - Select all nodes (devices + callouts), no buses.
+        """
+        self._selected_nodes = {n.key for n in self._nodes}
+        self._selected_buses = set()
+        self._sync_selection_state()
+
+    def _duplicate_selection(self) -> None:
+        """
+        NAME
+            _duplicate_selection - Duplicate the current selection.
+        """
+        self._on_copy()
+        self._on_paste()
+
+    def _toggle_snap_to_grid(self) -> None:
+        """
+        NAME
+            _toggle_snap_to_grid - Toggle snap-to-grid behavior.
+        """
+        current = bool(self._snap_to_grid_var.get())
+        self._snap_to_grid_var.set(not current)
+
+    def _toggle_smart_guides(self) -> None:
+        """
+        NAME
+            _toggle_smart_guides - Toggle smart guide display.
+        """
+        current = bool(self._smart_guides_var.get())
+        self._smart_guides_var.set(not current)
+        if not self._smart_guides_var.get():
+            self._clear_guides()
+            self._redraw_canvas()
+
+    def _save_shortcut(self) -> None:
+        """
+        NAME
+            _save_shortcut - Save using the default flow for the editor.
+        """
+        self._on_save_to_deploy()
+
     def _toggle_node_selection(self, key: int) -> None:
         """
         NAME
@@ -1803,6 +2351,7 @@ class TopologyEditor(tk.Tk):
             "start": (cx, cy),
             "nodes": node_start,
             "last": (cx, cy),
+            "anchor": min(self._selected_nodes) if self._selected_nodes else None,
         }
     def _redraw_canvas(self) -> None:
         """
@@ -1908,11 +2457,17 @@ class TopologyEditor(tk.Tk):
                     splinesteps=12,
                 )
 
-        dup_ids: set[int] = set()
-        id_counts: Dict[int, int] = {}
+        dup_keys: set[Tuple[str, str, int]] = set()
+        key_counts: Dict[Tuple[str, str, int], int] = {}
+        numeric_counts: Dict[int, int] = {}
         for node in self._device_nodes():
-            id_counts[int(node.can_id)] = id_counts.get(int(node.can_id), 0) + 1
-        dup_ids = {cid for cid, count in id_counts.items() if count > 1}
+            key = self._dup_key_for_node(node)
+            if key is None:
+                continue
+            key_counts[key] = key_counts.get(key, 0) + 1
+            numeric_counts[key[2]] = numeric_counts.get(key[2], 0) + 1
+        dup_keys = {key for key, count in key_counts.items() if count > 1}
+        warn_ids = {can_id for can_id, count in numeric_counts.items() if count > 1}
         for node in self._device_nodes():
             node_x = min(max(node.x * scale, x_left + 20), x_right - 20)
             bus_index = min(max(node.bus_index, 0), max(len(bus_ys) - 1, 0))
@@ -1948,11 +2503,13 @@ class TopologyEditor(tk.Tk):
                         y1 = bus_y - 30 * scale
                         y0 = y1 - node_box_h
                         self.canvas.create_line(node_x, y1, node_x, bus_y, width=2, fill="#444444")
-            if node.can_id in dup_ids:
-                outline = "#cc0000"
-            else:
-                outline = "#1f6feb" if node.key in self._selected_nodes else "#222222"
-            rect = self.canvas.create_rectangle(x0, y0, x1, y1, fill="#f7f7f7", outline=outline, width=2)
+            outline = "#1f6feb" if node.key in self._selected_nodes else "#222222"
+            shape_kind = self._shape_kind_for_node(node)
+            fill = self._fill_color_for_node(node)
+            text_color = self._text_color_for_fill(fill)
+            shape_ids = self._draw_device_shape_on(
+                self.canvas, x0, y0, x1, y1, shape_kind, fill=fill, outline=outline, width=2
+            )
             text = node.display_text()
             font_size = self._fit_font_size(
                 text, node_box_w - 10, node_box_h - 10, int(9 * scale * node_scale)
@@ -1962,12 +2519,23 @@ class TopologyEditor(tk.Tk):
                 (y0 + y1) / 2,
                 text=text,
                 font=("Segoe UI", font_size),
+                fill=text_color,
                 justify="center",
                 width=max(40, int(node_box_w - 10)),
             )
             self._node_bounds[node.key] = (x0, y0, x1, y1)
-            self.canvas.addtag_withtag(f"node_{node.key}", rect)
+            for shape_id in shape_ids:
+                self.canvas.addtag_withtag(f"node_{node.key}", shape_id)
             self.canvas.addtag_withtag(f"node_{node.key}", text)
+            dup_key = self._dup_key_for_node(node)
+            if dup_key in dup_keys:
+                badge = self._draw_error_badge(x1 - 12, y0 + 12)
+                for badge_id in badge:
+                    self.canvas.addtag_withtag(f"node_{node.key}", badge_id)
+            elif dup_key and dup_key[2] in warn_ids:
+                badge = self._draw_warning_badge(x1 - 12, y0 + 12)
+                for badge_id in badge:
+                    self.canvas.addtag_withtag(f"node_{node.key}", badge_id)
 
         node_centers = {}
         for n in self._device_nodes():
@@ -2024,6 +2592,707 @@ class TopologyEditor(tk.Tk):
             self.canvas.addtag_withtag(f"node_{callout.key}", rect)
             self.canvas.addtag_withtag(f"node_{callout.key}", text_id)
 
+        if self._guide_x is not None and self._smart_guides_var.get():
+            guide_x = self._guide_x * scale
+            self.canvas.create_line(
+                guide_x,
+                min_y - margin,
+                guide_x,
+                max_y + margin,
+                fill="#1f6feb",
+                dash=(4, 4),
+                width=1,
+            )
+
+        # Legend is optional via View -> Legend.
+
+    def _shape_kind_for_node(self, node: Node) -> str:
+        """
+        NAME
+            _shape_kind_for_node - Map node categories to a shape kind.
+        """
+        category = (node.category or "").lower()
+        if category in ("neos", "neo550s", "flexes", "krakens", "falcons"):
+            return "motor"
+        if category in ("cancoders", "pigeon"):
+            return "sensor"
+        if category in ("pdh", "pdp"):
+            return "power"
+        if category in ("roborio",):
+            return "controller"
+        if category in ("candles",):
+            return "misc"
+        if category == GENERIC_CATEGORY:
+            return "misc"
+        return "misc"
+
+    def _fill_color_for_node(self, node: Node) -> str:
+        """
+        NAME
+            _fill_color_for_node - Resolve fill color based on manufacturer.
+        """
+        vendor = self._vendor_key_for_node(node)
+        if not vendor:
+            category = (node.category or "").lower()
+            if category in ("neos", "neo550s", "flexes", "pdh"):
+                vendor = "REV"
+            elif category in ("krakens", "falcons", "cancoders", "candles", "pdp", "pigeon"):
+                vendor = "CTRE"
+            elif category in ("roborio",):
+                vendor = "NI"
+        palette = {
+            "CTRE": "#b7e1b2",  # green
+            "REV": "#ffd5a6",  # orange
+            "KAUAILABS": "#bfe7ff",
+            "PLAYINGWITHFUSION": "#c8f2c3",
+            "ANDYMARK": "#c9d2ff",
+            "NI": "#e7e7e7",
+        }
+        return palette.get(vendor, "#f7f7f7")
+
+    def _outline_color_for_node(self, node: Node) -> str:
+        """
+        NAME
+            _outline_color_for_node - Resolve outline color by manufacturer.
+        """
+        vendor = self._vendor_key_for_node(node)
+        palette = {
+            "CTRE": "#1d6b1a",
+            "REV": "#b26200",
+            "KAUAILABS": "#1c6ba8",
+            "PLAYINGWITHFUSION": "#2f7a2f",
+            "ANDYMARK": "#3b4aa0",
+            "NI": "#6a6a6a",
+        }
+        return palette.get(vendor, "#222222")
+
+    def _vendor_key_for_node(self, node: Node) -> str:
+        """
+        NAME
+            _vendor_key_for_node - Normalize vendor key for a node.
+        """
+        vendor = (node.vendor or "").strip().upper().replace(" ", "")
+        if vendor:
+            return vendor
+        category = (node.category or "").lower()
+        if category in ("neos", "neo550s", "flexes", "pdh"):
+            return "REV"
+        if category in ("krakens", "falcons", "cancoders", "candles", "pdp", "pigeon"):
+            return "CTRE"
+        if category in ("roborio",):
+            return "NI"
+        return ""
+
+    def _device_type_key_for_node(self, node: Node) -> str:
+        """
+        NAME
+            _device_type_key_for_node - Normalize device type key for a node.
+        """
+        category = (node.category or "").lower()
+        if category in ("neos", "neo550s", "flexes", "krakens", "falcons"):
+            return "MOTORCONTROLLER"
+        if category in ("cancoders",):
+            return "ENCODER"
+        if category in ("pigeon",):
+            return "GYROSENSOR"
+        if category in ("pdh", "pdp"):
+            return "POWERDISTRIBUTIONMODULE"
+        if category in ("candles",):
+            return "MISCELLANEOUS"
+        if category in ("roborio",):
+            return "ROBOTCONTROLLER"
+        if category == GENERIC_CATEGORY:
+            return (node.device_type or "").strip().upper().replace(" ", "") or "UNKNOWN"
+        return "UNKNOWN"
+
+    def _dup_key_for_node(self, node: Node) -> Optional[Tuple[str, str, int]]:
+        """
+        NAME
+            _dup_key_for_node - Build a duplicate-detection key.
+        """
+        if not isinstance(node.can_id, int) or node.can_id < 0:
+            return None
+        vendor = self._vendor_key_for_node(node) or "UNKNOWN"
+        dev_type = self._device_type_key_for_node(node)
+        return (vendor, dev_type, int(node.can_id))
+
+    @staticmethod
+    def _text_color_for_fill(fill: str) -> str:
+        """
+        NAME
+            _text_color_for_fill - Choose readable text color for a fill.
+        """
+        if not fill.startswith("#") or len(fill) != 7:
+            return "#111111"
+        try:
+            r = int(fill[1:3], 16)
+            g = int(fill[3:5], 16)
+            b = int(fill[5:7], 16)
+        except ValueError:
+            return "#111111"
+        luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        return "#111111" if luminance > 150 else "#ffffff"
+
+    def _draw_legend(self, x: float, y: float) -> None:
+        """
+        NAME
+            _draw_legend - Draw a shape/color legend in the top-left.
+        """
+        padding = 8
+        line_h = 16
+        shape_h = 14
+        shape_w = 24
+        text_x = x + padding + shape_w + 8
+        legend_items = [
+            ("Motors", "motor"),
+            ("Sensors", "sensor"),
+            ("Power", "power"),
+            ("Controller", "controller"),
+            ("Misc", "misc"),
+        ]
+        color_items = [
+            ("CTRE", "CTRE"),
+            ("REV", "REV"),
+            ("KauaiLabs", "KAUAILABS"),
+            ("PlayingWithFusion", "PLAYINGWITHFUSION"),
+            ("AndyMark", "ANDYMARK"),
+            ("NI", "NI"),
+        ]
+        height = padding * 2 + line_h * (len(legend_items) + len(color_items) + 2)
+        width = 220
+        self.canvas.create_rectangle(
+            x,
+            y,
+            x + width,
+            y + height,
+            fill="#ffffff",
+            outline="#d0d0d0",
+            width=1,
+        )
+        cy = y + padding
+        self.canvas.create_text(
+            x + padding,
+            cy,
+            text="Legend",
+            anchor="nw",
+            font=("Segoe UI", 9, "bold"),
+            fill="#333333",
+        )
+        cy += line_h
+        for label, kind in legend_items:
+            sx0 = x + padding
+            sy0 = cy + 2
+            sx1 = sx0 + shape_w
+            sy1 = sy0 + shape_h
+            self._draw_device_shape(sx0, sy0, sx1, sy1, kind, "#f7f7f7", "#555555", 1)
+            self.canvas.create_text(
+                text_x,
+                cy,
+                text=label,
+                anchor="nw",
+                font=("Segoe UI", 9),
+                fill="#333333",
+            )
+            cy += line_h
+        cy += 4
+        for label, vendor in color_items:
+            sx0 = x + padding
+            sy0 = cy + 2
+            sx1 = sx0 + shape_w
+            sy1 = sy0 + shape_h
+            fill = self._fill_color_for_vendor(vendor)
+            outline = self._outline_color_for_vendor(vendor)
+            self.canvas.create_rectangle(
+                sx0, sy0, sx1, sy1, fill=fill, outline=outline, width=1
+            )
+            self.canvas.create_text(
+                text_x,
+                cy,
+                text=label,
+                anchor="nw",
+                font=("Segoe UI", 9),
+                fill="#333333",
+            )
+            cy += line_h
+
+    def _draw_error_badge(self, cx: float, cy: float) -> List[int]:
+        """
+        NAME
+            _draw_error_badge - Draw a red exclamation badge.
+        """
+        r = 7
+        badge = self.canvas.create_oval(
+            cx - r,
+            cy - r,
+            cx + r,
+            cy + r,
+            fill="#cc0000",
+            outline="#aa0000",
+            width=1,
+        )
+        text = self.canvas.create_text(
+            cx,
+            cy - 0.5,
+            text="!",
+            font=("Segoe UI", 9, "bold"),
+            fill="#ffffff",
+        )
+        return [badge, text]
+
+    def _draw_warning_badge(self, cx: float, cy: float) -> List[int]:
+        """
+        NAME
+            _draw_warning_badge - Draw a yellow warning triangle badge.
+        """
+        r = 8
+        points = [
+            cx,
+            cy - r,
+            cx + r,
+            cy + r,
+            cx - r,
+            cy + r,
+        ]
+        badge = self.canvas.create_polygon(
+            points,
+            fill="#f5c542",
+            outline="#c28b00",
+            width=1,
+        )
+        text = self.canvas.create_text(
+            cx,
+            cy + 1,
+            text="!",
+            font=("Segoe UI", 9, "bold"),
+            fill="#5a3b00",
+        )
+        return [badge, text]
+
+    def _show_legend_dialog(self) -> None:
+        """
+        NAME
+            _show_legend_dialog - Show a legend popup dialog.
+        """
+        if getattr(self, "_legend_window", None):
+            try:
+                self._legend_window.lift()
+                return
+            except tk.TclError:
+                self._legend_window = None
+        dialog = tk.Toplevel(self)
+        self._legend_window = dialog
+        dialog.title("Legend")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+
+        canvas = tk.Canvas(dialog, width=260, height=280, background="#ffffff")
+        canvas.pack(padx=8, pady=8)
+
+        def _draw_on(canvas_obj: tk.Canvas) -> None:
+            padding = 8
+            line_h = 18
+            shape_h = 14
+            shape_w = 24
+            text_x = padding + shape_w + 8
+            legend_items = [
+                ("Motors", "motor"),
+                ("Sensors", "sensor"),
+                ("Power", "power"),
+                ("Controller", "controller"),
+                ("Misc", "misc"),
+            ]
+            color_items = [
+                ("CTRE", "CTRE"),
+                ("REV", "REV"),
+                ("KauaiLabs", "KAUAILABS"),
+                ("PlayingWithFusion", "PLAYINGWITHFUSION"),
+                ("AndyMark", "ANDYMARK"),
+                ("NI", "NI"),
+            ]
+            cy = padding
+            canvas_obj.create_text(
+                padding,
+                cy,
+                text="Legend",
+                anchor="nw",
+                font=("Segoe UI", 10, "bold"),
+                fill="#333333",
+            )
+            cy += line_h
+            for label, kind in legend_items:
+                sx0 = padding
+                sy0 = cy + 2
+                sx1 = sx0 + shape_w
+                sy1 = sy0 + shape_h
+                self._draw_device_shape_on(
+                    canvas_obj, sx0, sy0, sx1, sy1, kind, "#f7f7f7", "#555555", 1
+                )
+                canvas_obj.create_text(
+                    text_x,
+                    cy,
+                    text=label,
+                    anchor="nw",
+                    font=("Segoe UI", 9),
+                    fill="#333333",
+                )
+                cy += line_h
+            cy += 6
+            for label, vendor in color_items:
+                sx0 = padding
+                sy0 = cy + 2
+                sx1 = sx0 + shape_w
+                sy1 = sy0 + shape_h
+                fill = self._fill_color_for_vendor(vendor)
+                outline = self._outline_color_for_vendor(vendor)
+                canvas_obj.create_rectangle(
+                    sx0, sy0, sx1, sy1, fill=fill, outline=outline, width=1
+                )
+                canvas_obj.create_text(
+                    text_x,
+                    cy,
+                    text=label,
+                    anchor="nw",
+                    font=("Segoe UI", 9),
+                    fill="#333333",
+                )
+                cy += line_h
+
+        _draw_on(canvas)
+
+        button_row = ttk.Frame(dialog)
+        button_row.pack(pady=(0, 8))
+        ttk.Button(button_row, text="Close", command=dialog.destroy).pack()
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        dialog.bind(
+            "<Destroy>",
+            lambda _e: setattr(self, "_legend_window", None),
+        )
+
+    def _help_topics(self) -> Dict[str, str]:
+        """
+        NAME
+            _help_topics - Build help topic text blocks.
+        """
+        return {
+            "Overview": (
+                "Purpose: Sketch CAN nodes on a shared bus and export a bringup profile.\n"
+                "\n"
+                "Quick steps:\n"
+                "1) Add nodes and labels.\n"
+                "2) Drag nodes onto bus segments.\n"
+                "3) Save profile or export.\n"
+            ),
+            "Keyboard Shortcuts": (
+                "Purpose: Speed up common actions.\n"
+                "\n"
+                "Selection:\n"
+                "- Ctrl+A: Select all nodes (devices + callouts).\n"
+                "- Shift+Click: Multi-select nodes or buses.\n"
+                "\n"
+                "Edit:\n"
+                "- Ctrl+C: Copy selection.\n"
+                "- Ctrl+D: Duplicate selection.\n"
+                "- Ctrl+V: Paste.\n"
+                "- Delete / Backspace: Remove selected nodes/callouts.\n"
+                "- Ctrl+Z: Undo.\n"
+                "\n"
+                "Layout:\n"
+                "- Ctrl+L: Tidy selection within bus bounds.\n"
+                "- Ctrl+Shift+L: Reset layout (reassigns rows/buses).\n"
+                "- Layout -> Tidy All: Align all buses into shared columns.\n"
+                "\n"
+                "View:\n"
+                "- Ctrl+0: Reset zoom.\n"
+                "- Ctrl++ / Ctrl+=: Zoom in.\n"
+                "- Ctrl+- / Ctrl+_: Zoom out.\n"
+                "- Ctrl+MouseWheel: Zoom.\n"
+                "- Ctrl+G: Toggle snap-to-grid.\n"
+                "- Ctrl+Shift+G: Toggle smart guides.\n"
+                "\n"
+                "Save:\n"
+                "- Ctrl+S: Save to deploy.\n"
+            ),
+            "Layout Tips": (
+                "Purpose: Keep diagrams tidy and readable.\n"
+                "\n"
+                "- Use Snap to Grid for consistent spacing.\n"
+                "- Use Smart Guides to align nodes on a bus segment.\n"
+                "- Tidy Selection spreads selected nodes within segment bounds.\n"
+                "- Align/Distribute tools are under the Layout menu.\n"
+            ),
+            "Bus Segments": (
+                "Purpose: Understand bus segment editing.\n"
+                "\n"
+                "- Add Bus, then click to place a new segment.\n"
+                "- Drag a bus line to move it; nodes follow.\n"
+                "- Drag the curved end of a segment to resize it.\n"
+            ),
+            "Profiles & Export": (
+                "Purpose: Save or export diagram data.\n"
+                "\n"
+                "- Save to Deploy writes to src/main/deploy/bringup_profiles.json.\n"
+                "- Save Profile As... exports a single profile JSON.\n"
+                "- Export PDF requires reportlab.\n"
+            ),
+        }
+
+    def _show_help_dialog(self) -> None:
+        """
+        NAME
+            _show_help_dialog - Show the help topics dialog.
+        """
+        if getattr(self, "_help_window", None):
+            try:
+                self._help_window.lift()
+                return
+            except tk.TclError:
+                self._help_window = None
+        dialog = tk.Toplevel(self)
+        self._help_window = dialog
+        dialog.title("Help")
+        dialog.geometry("640x420")
+        dialog.minsize(520, 320)
+        dialog.transient(self)
+
+        container = ttk.Frame(dialog, padding=8)
+        container.pack(fill="both", expand=True)
+
+        left = ttk.Frame(container)
+        left.pack(side="left", fill="y")
+        right = ttk.Frame(container)
+        right.pack(side="right", fill="both", expand=True)
+
+        ttk.Label(left, text="Topics").pack(anchor="w")
+        topics = list(self._help_topics().keys())
+        listbox = tk.Listbox(left, height=12, exportselection=False)
+        for item in topics:
+            listbox.insert("end", item)
+        listbox.pack(fill="y", expand=True, pady=(4, 0))
+
+        text = tk.Text(right, wrap="word", height=12)
+        text.pack(fill="both", expand=True)
+        text.configure(state="disabled")
+
+        def _set_topic(name: str) -> None:
+            content = self._help_topics().get(name, "")
+            text.configure(state="normal")
+            text.delete("1.0", "end")
+            text.insert("1.0", content)
+            text.configure(state="disabled")
+
+        def _on_select(_event: tk.Event) -> None:
+            selection = listbox.curselection()
+            if not selection:
+                return
+            _set_topic(topics[selection[0]])
+
+        listbox.bind("<<ListboxSelect>>", _on_select)
+        if topics:
+            listbox.selection_set(0)
+            _set_topic(topics[0])
+
+    def _show_shortcuts_dialog(self) -> None:
+        """
+        NAME
+            _show_shortcuts_dialog - Show keyboard shortcuts only.
+        """
+        text = self._help_topics().get("Keyboard Shortcuts", "")
+        messagebox.showinfo("Keyboard Shortcuts", text)
+
+    def _fill_color_for_vendor(self, vendor: str) -> str:
+        """
+        NAME
+            _fill_color_for_vendor - Resolve fill color for a vendor key.
+        """
+        palette = {
+            "CTRE": "#b7e1b2",
+            "REV": "#ffd5a6",
+            "KAUAILABS": "#bfe7ff",
+            "PLAYINGWITHFUSION": "#c8f2c3",
+            "ANDYMARK": "#c9d2ff",
+            "NI": "#e7e7e7",
+        }
+        return palette.get(vendor, "#f7f7f7")
+
+    def _outline_color_for_vendor(self, vendor: str) -> str:
+        """
+        NAME
+            _outline_color_for_vendor - Resolve outline color for a vendor key.
+        """
+        palette = {
+            "CTRE": "#1d6b1a",
+            "REV": "#b26200",
+            "KAUAILABS": "#1c6ba8",
+            "PLAYINGWITHFUSION": "#2f7a2f",
+            "ANDYMARK": "#3b4aa0",
+            "NI": "#6a6a6a",
+        }
+        return palette.get(vendor, "#222222")
+
+    def _draw_device_shape_on(
+        self,
+        canvas: tk.Canvas,
+        x0: float,
+        y0: float,
+        x1: float,
+        y1: float,
+        kind: str,
+        fill: str,
+        outline: str,
+        width: int,
+    ) -> List[int]:
+        """
+        NAME
+            _draw_device_shape - Draw a device shape for the given kind.
+
+        RETURNS
+            List of canvas item ids.
+        """
+        if kind == "motor":
+            return [self._draw_chamfer_rect(canvas, x0, y0, x1, y1, fill, outline, width)]
+        if kind == "sensor":
+            return [self._draw_hexagon(canvas, x0, y0, x1, y1, fill, outline, width)]
+        if kind == "power":
+            return [self._draw_diamond(canvas, x0, y0, x1, y1, fill, outline, width)]
+        if kind == "controller":
+            return [self._draw_tabbed_rect(canvas, x0, y0, x1, y1, fill, outline, width)]
+        return [canvas.create_rectangle(x0, y0, x1, y1, fill=fill, outline=outline, width=width)]
+
+    def _draw_chamfer_rect(
+        self,
+        canvas: tk.Canvas,
+        x0: float,
+        y0: float,
+        x1: float,
+        y1: float,
+        fill: str,
+        outline: str,
+        width: int,
+    ) -> int:
+        """
+        NAME
+            _draw_chamfer_rect - Draw a rectangle with chamfered corners.
+        """
+        inset = max(6.0, min(14.0, (x1 - x0) * 0.08, (y1 - y0) * 0.25))
+        points = [
+            x0 + inset,
+            y0,
+            x1 - inset,
+            y0,
+            x1,
+            y0 + inset,
+            x1,
+            y1 - inset,
+            x1 - inset,
+            y1,
+            x0 + inset,
+            y1,
+            x0,
+            y1 - inset,
+            x0,
+            y0 + inset,
+        ]
+        return canvas.create_polygon(
+            points, fill=fill, outline=outline, width=width, joinstyle="round"
+        )
+
+    def _draw_hexagon(
+        self,
+        canvas: tk.Canvas,
+        x0: float,
+        y0: float,
+        x1: float,
+        y1: float,
+        fill: str,
+        outline: str,
+        width: int,
+    ) -> int:
+        """
+        NAME
+            _draw_hexagon - Draw a horizontally stretched hexagon.
+        """
+        inset = max(8.0, min(18.0, (x1 - x0) * 0.18))
+        yc = (y0 + y1) / 2.0
+        points = [
+            x0 + inset,
+            y0,
+            x1 - inset,
+            y0,
+            x1,
+            yc,
+            x1 - inset,
+            y1,
+            x0 + inset,
+            y1,
+            x0,
+            yc,
+        ]
+        return canvas.create_polygon(
+            points, fill=fill, outline=outline, width=width, joinstyle="round"
+        )
+
+    def _draw_diamond(
+        self,
+        canvas: tk.Canvas,
+        x0: float,
+        y0: float,
+        x1: float,
+        y1: float,
+        fill: str,
+        outline: str,
+        width: int,
+    ) -> int:
+        """
+        NAME
+            _draw_diamond - Draw a diamond shape.
+        """
+        xc = (x0 + x1) / 2.0
+        yc = (y0 + y1) / 2.0
+        points = [xc, y0, x1, yc, xc, y1, x0, yc]
+        return canvas.create_polygon(
+            points, fill=fill, outline=outline, width=width, joinstyle="round"
+        )
+
+    def _draw_tabbed_rect(
+        self,
+        canvas: tk.Canvas,
+        x0: float,
+        y0: float,
+        x1: float,
+        y1: float,
+        fill: str,
+        outline: str,
+        width: int,
+    ) -> int:
+        """
+        NAME
+            _draw_tabbed_rect - Draw a rectangle with a top-center tab.
+        """
+        tab_w = max(18.0, min(42.0, (x1 - x0) * 0.35))
+        tab_h = max(10.0, min(18.0, (y1 - y0) * 0.25))
+        xc = (x0 + x1) / 2.0
+        points = [
+            x0,
+            y1,
+            x1,
+            y1,
+            x1,
+            y0 + tab_h,
+            xc + tab_w / 2.0,
+            y0 + tab_h,
+            xc + tab_w / 2.0,
+            y0,
+            xc - tab_w / 2.0,
+            y0,
+            xc - tab_w / 2.0,
+            y0 + tab_h,
+            x0,
+            y0 + tab_h,
+        ]
+        return canvas.create_polygon(
+            points, fill=fill, outline=outline, width=width, joinstyle="round"
+        )
+
     def _on_canvas_press(self, event: tk.Event) -> None:
         """
         NAME
@@ -2032,6 +3301,7 @@ class TopologyEditor(tk.Tk):
         cx = self.canvas.canvasx(event.x)
         cy = self.canvas.canvasy(event.y)
         self.canvas.focus_set()
+        self._clear_guides()
         if self._selection_rect is not None:
             self.canvas.delete(self._selection_rect)
             self._selection_rect = None
@@ -2115,13 +3385,31 @@ class TopologyEditor(tk.Tk):
             dy = cy - start_cy
             scale = max(self._zoom, 0.01)
             nodes_start = self._multi_drag.get("nodes", {})
-            bus_ys = list(self._draw_state.get("bus_ys", []))
             base_y = max(self.canvas.winfo_height(), 1) * 0.5 + self._pan_y
+            dx_unscaled = dx / scale
+            anchor_key = self._multi_drag.get("anchor")
+            if anchor_key in nodes_start:
+                anchor_start_x = nodes_start[anchor_key][0]
+                if self._snap_to_grid_var.get():
+                    dx_unscaled = self._snap_value(anchor_start_x + dx_unscaled) - anchor_start_x
+                anchor_node = next((n for n in self._nodes if n.key == anchor_key), None)
+                if anchor_node is not None:
+                    candidate_x = anchor_start_x + dx_unscaled
+                    candidate_x, guide_x = self._apply_smart_guides(
+                        anchor_node, candidate_x, self._selected_nodes
+                    )
+                    dx_unscaled = candidate_x - anchor_start_x
+                    self._guide_x = guide_x
+                    self._guide_bus = anchor_node.bus_index if guide_x is not None else None
+                else:
+                    self._clear_guides()
+            else:
+                self._clear_guides()
             for node in self._nodes:
                 if node.key not in nodes_start:
                     continue
                 start_x, start_bus, start_row, start_scale, start_center = nodes_start[node.key]
-                node.x = start_x + dx / scale
+                node.x = start_x + dx_unscaled
                 self._drag_free_y[node.key] = start_center + dy / scale
             self._redraw_canvas()
             return
@@ -2219,7 +3507,13 @@ class TopologyEditor(tk.Tk):
         dx = cx - last_x
         dy = cy - last_y
         scale = max(self._zoom, 0.01)
-        node.x += dx / scale
+        candidate_x = node.x + dx / scale
+        if self._snap_to_grid_var.get():
+            candidate_x = self._snap_value(candidate_x)
+        candidate_x, guide_x = self._apply_smart_guides(node, candidate_x, self._selected_nodes)
+        node.x = candidate_x
+        self._guide_x = guide_x
+        self._guide_bus = node.bus_index if guide_x is not None else None
         self._layout_width = max(self._layout_width, node.x + 200)
         base_y = max(self.canvas.winfo_height(), 1) * 0.5 + self._pan_y
         self._drag_free_y[key] = (cy - base_y) / scale
@@ -2259,6 +3553,7 @@ class TopologyEditor(tk.Tk):
         self._multi_drag = None
         self._drag_undo_pending = False
         self._dragging_active = False
+        self._clear_guides()
         if self._selected_key is not None:
             self._update_details_panel(self._get_selected_node())
         self._redraw_canvas()
@@ -2487,6 +3782,8 @@ class TopologyEditor(tk.Tk):
                 callout_y=float(data.get("callout_y", 0.0)),
                 free_y=data.get("free_y"),
             )
+            if self._snap_to_grid_var.get():
+                node.x = self._snap_value(node.x)
             if node.node_type == "callout":
                 node.callout_y = self._node_center_y_unscaled(node)
                 if node.callout_target_type == "bus" and node.callout_target_bus in bus_map:

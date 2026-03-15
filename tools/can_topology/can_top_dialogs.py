@@ -10,6 +10,7 @@ DESCRIPTION
 """
 from __future__ import annotations
 
+import re
 from typing import Dict, List, Optional
 
 import tkinter as tk
@@ -124,20 +125,25 @@ class NodeDialog(tk.Toplevel):
             _on_ok - Validate and commit dialog data.
         """
         label = self.var_label.get().strip()
-        can_id = self.var_can_id.get().strip()
+        can_id_text = self.var_can_id.get().strip()
         if not label:
             messagebox.showerror("Invalid", "Label is required.")
             return
-        if not can_id.isdigit():
-            messagebox.showerror("Invalid", "CAN ID must be an integer.")
+        try:
+            can_id = self._parse_can_id(can_id_text)
+        except ValueError as exc:
+            messagebox.showerror("Invalid", str(exc))
             return
         limits = None
-        if self.var_fwd.get().strip() or self.var_rev.get().strip() or self.var_invert.get():
+        fwd_text = self.var_fwd.get().strip()
+        rev_text = self.var_rev.get().strip()
+        invert = bool(self.var_invert.get())
+        if fwd_text or rev_text or invert:
             try:
                 limits = {
-                    "fwdDio": int(self.var_fwd.get()) if self.var_fwd.get().strip() else "",
-                    "revDio": int(self.var_rev.get()) if self.var_rev.get().strip() else "",
-                    "invert": bool(self.var_invert.get()),
+                    "fwdDio": self._parse_dio_value(fwd_text, "Forward DIO"),
+                    "revDio": self._parse_dio_value(rev_text, "Reverse DIO"),
+                    "invert": invert,
                 }
             except ValueError:
                 messagebox.showerror("Invalid", "Limit inputs must be integers.")
@@ -145,7 +151,7 @@ class NodeDialog(tk.Toplevel):
         self.result = {
             "category": self.var_category.get(),
             "label": label,
-            "can_id": int(can_id),
+            "can_id": can_id,
             "vendor": self.var_vendor.get().strip(),
             "device_type": self.var_type.get().strip(),
             "motor": self.var_motor.get().strip(),
@@ -161,6 +167,42 @@ class NodeDialog(tk.Toplevel):
         """
         self.result = None
         self.destroy()
+
+    @staticmethod
+    def _parse_can_id(value: str) -> int:
+        """
+        NAME
+            _parse_can_id - Parse and validate a CAN ID entry.
+
+        RETURNS
+            Parsed CAN ID value.
+        """
+        if not value:
+            raise ValueError("CAN ID is required.")
+        if not re.fullmatch(r"-?\d+", value):
+            raise ValueError("CAN ID must be an integer.")
+        can_id = int(value)
+        if can_id < -1 or can_id > 62:
+            raise ValueError("CAN ID must be -1 or in the range 0-62.")
+        return can_id
+
+    @staticmethod
+    def _parse_dio_value(value: str, label: str) -> int:
+        """
+        NAME
+            _parse_dio_value - Normalize a DIO entry for limit switches.
+
+        RETURNS
+            Parsed DIO value, or -1 when left blank.
+        """
+        if not value:
+            return -1
+        if not re.fullmatch(r"-?\d+", value):
+            raise ValueError(f"{label} must be an integer.")
+        dio = int(value)
+        if dio < -1:
+            raise ValueError(f"{label} must be -1 or greater.")
+        return dio
 
 
 class CalloutDialog(tk.Toplevel):
