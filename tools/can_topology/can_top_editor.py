@@ -33,9 +33,29 @@ try:
         BUCKET_CATEGORIES,
         GENERIC_CATEGORY,
         SINGLETON_CATEGORIES,
+        SUPPORTED_DEVICE_TYPES,
+        SUPPORTED_MANUFACTURERS,
         Node,
     )
     from .can_top_dialogs import CalloutDialog, NodeDialog
+    from .can_top_layout import (
+        align_selected,
+        distribute_selected_horizontally,
+        effective_bus_bounds,
+        node_half_width,
+        reset_layout_per_bus,
+        snap_value,
+        tidy_selection,
+    )
+    from .can_top_selection import (
+        collect_tags,
+        compile_tag_filter,
+        match_tag,
+        normalize_tag,
+        normalize_tags,
+        sort_nodes,
+        tags_to_string,
+    )
 except ImportError:  # Allow running as a script from this folder.
     import sys
     from pathlib import Path as _Path
@@ -45,9 +65,29 @@ except ImportError:  # Allow running as a script from this folder.
         BUCKET_CATEGORIES,
         GENERIC_CATEGORY,
         SINGLETON_CATEGORIES,
+        SUPPORTED_DEVICE_TYPES,
+        SUPPORTED_MANUFACTURERS,
         Node,
     )
     from can_topology.can_top_dialogs import CalloutDialog, NodeDialog  # type: ignore
+    from can_topology.can_top_layout import (  # type: ignore
+        align_selected,
+        distribute_selected_horizontally,
+        effective_bus_bounds,
+        node_half_width,
+        reset_layout_per_bus,
+        snap_value,
+        tidy_selection,
+    )
+    from can_topology.can_top_selection import (  # type: ignore
+        collect_tags,
+        compile_tag_filter,
+        match_tag,
+        normalize_tag,
+        normalize_tags,
+        sort_nodes,
+        tags_to_string,
+    )
 
 
 class TopologyEditor(tk.Tk):
@@ -109,7 +149,7 @@ class TopologyEditor(tk.Tk):
         self._syncing_selection = False
         self._zoom = 1.0
         self._draw_state = {"bus_ys": [], "y_shift": 0.0, "scale": 1.0}
-        self._snap_to_grid_var = tk.BooleanVar(value=True)
+        self._snap_to_grid_var = tk.BooleanVar(value=False)
         self._smart_guides_var = tk.BooleanVar(value=False)
         self._grid_size_var = tk.IntVar(value=20)
         self._guide_x: Optional[float] = None
@@ -236,9 +276,11 @@ class TopologyEditor(tk.Tk):
         self.bind_all("<Control-Shift-g>", lambda _e: self._toggle_smart_guides())
         self.bind_all("<Control-s>", lambda _e: self._save_shortcut())
         self.bind_all("<Control-S>", lambda _e: self._save_shortcut())
+        self.bind_all("<Control-p>", lambda _e: self._print_pdf_shortcut())
+        self.bind_all("<Control-P>", lambda _e: self._print_pdf_shortcut())
         self.bind_all("<Delete>", lambda _e: self._on_remove_selected())
         self.bind_all("<BackSpace>", lambda _e: self._on_remove_selected())
-        self.canvas.bind("<Configure>", lambda _e: self._redraw_canvas())
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
         self.canvas.bind("<Control-MouseWheel>", self._on_zoom_wheel)
 
         self._build_details_panel(right)
@@ -256,7 +298,12 @@ class TopologyEditor(tk.Tk):
         file_menu.add_command(label="Save Profile As...", command=self._save_profile_as)
         file_menu.add_command(label="Save Selection As...", command=self._save_selection_as)
         file_menu.add_command(label="Save to Deploy", command=self._on_save_to_deploy)
+        file_menu.add_command(
+            label="Write Minimal Diagram Metadata...",
+            command=self._write_minimal_diagram_metadata,
+        )
         file_menu.add_command(label="Export PDF...", command=self._on_export_pdf)
+        file_menu.add_command(label="Print Node List...", command=self._print_node_list)
         file_menu.add_command(label="Export Java Constants...", command=self._on_export_java_constants)
         file_menu.add_command(label="Undo", command=self._undo_last)
         file_menu.add_separator()
@@ -740,6 +787,12 @@ class TopologyEditor(tk.Tk):
             max_node_x = max((n.x for n in self._nodes), default=0.0)
             self._layout_width = max(self._layout_width, max_node_x + 200)
             self._redraw_canvas()
+        try:
+            self.state("zoomed")
+        except tk.TclError:
+            pass
+        self.update_idletasks()
+        self._pending_fit_to_window = True
         self._dirty = False
         self.update_idletasks()
         self.canvas.xview_moveto(0.0)
@@ -949,6 +1002,25 @@ class TopologyEditor(tk.Tk):
         NAME
             _on_save_to_deploy - Append or replace a profile in bringup_profiles.json.
         """
+        root = Path(__file__).resolve().parents[2]
+        path = root / "src" / "main" / "deploy" / "bringup_profiles.json"
+        self._save_profile_to_path(path, prompt_replace=True, update_source=False)
+
+    def _save_profile_to_path(
+        self,
+        path: Path,
+        prompt_replace: bool,
+        update_source: bool,
+    ) -> None:
+        """
+        NAME
+            _save_profile_to_path - Write profile+diagram data into a JSON file.
+
+        PARAMETERS
+            path: Target JSON file path.
+            prompt_replace: Whether to prompt before replacing an existing profile.
+            update_source: Whether to update the current source path to this file.
+        """
         profile_name = self.entry_profile.get().strip()
         if not profile_name:
             messagebox.showerror("Invalid", "Profile name is required.")
@@ -961,8 +1033,6 @@ class TopologyEditor(tk.Tk):
             return
         if not self._confirm_terminators():
             return
-        root = Path(__file__).resolve().parents[2]
-        path = root / "src" / "main" / "deploy" / "bringup_profiles.json"
         data = {}
         if path.exists():
             try:
@@ -983,7 +1053,7 @@ class TopologyEditor(tk.Tk):
         if not isinstance(diagram_profiles, dict):
             diagram_profiles = {}
 
-        if profile_name in profiles:
+        if prompt_replace and profile_name in profiles:
             replace = messagebox.askyesno(
                 "Replace Profile",
                 f"Profile '{profile_name}' exists. Replace it?",
@@ -1006,6 +1076,8 @@ class TopologyEditor(tk.Tk):
             messagebox.showerror("Error", f"Failed to write {path}: {exc}")
             return
         self._dirty = False
+        if update_source:
+            self._profile_source_path = str(path)
         self._set_profile_names(sorted(profiles.keys()))
         messagebox.showinfo("Saved", f"Updated {path} with profile '{profile_name}'.")
 
@@ -1206,6 +1278,96 @@ class TopologyEditor(tk.Tk):
         """
         return self._diagram_snapshot_from_nodes(self._nodes)
 
+    def _diagram_snapshot_minimal(self) -> Dict[str, object]:
+        """
+        NAME
+            _diagram_snapshot_minimal - Capture a minimal diagram snapshot.
+
+        DESCRIPTION
+            Emits just enough diagram metadata to keep node positions stable
+            without baking in custom bus offsets or callouts.
+        """
+        devices = [n for n in self._nodes if n.node_type == "device"]
+        bus_count = max((n.bus_index for n in devices), default=0) + 1
+        snapshot = {
+            "busCount": max(1, bus_count),
+            "busSpacing": float(self._bus_spacing),
+            "panY": 0.0,
+            "zoom": 1.0,
+            "nodes": [
+                {
+                    "nodeType": "device",
+                    "category": n.category,
+                    "label": n.label,
+                    "id": n.can_id,
+                    "bus": n.bus_index,
+                    "row": n.row,
+                    "x": n.x,
+                    "scale": n.scale,
+                    "freeY": n.free_y,
+                    "freeYRelative": n.free_y is not None,
+                    "tags": list(n.tags) if n.tags else [],
+                }
+                for n in devices
+            ],
+        }
+        return snapshot
+
+    def _write_minimal_diagram_metadata(self) -> None:
+        """
+        NAME
+            _write_minimal_diagram_metadata - Save a minimal diagram snapshot.
+
+        DESCRIPTION
+            Writes diagram metadata for the current profile back into the
+            loaded JSON file, leaving profile device data untouched.
+        """
+        profile_name = self.entry_profile.get().strip()
+        if not profile_name:
+            messagebox.showerror("Invalid", "Profile name is required.")
+            return
+        path = self._profile_source_path
+        if not path:
+            messagebox.showerror(
+                "No Source File",
+                "Open a bringup_profiles.json file first, then retry.",
+            )
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except Exception as exc:
+            messagebox.showerror("Error", f"Failed to open file: {exc}")
+            return
+        profiles = data.get("profiles")
+        if not isinstance(profiles, dict) or profile_name not in profiles:
+            messagebox.showerror(
+                "Missing Profile",
+                f"Profile '{profile_name}' not found in the source file.",
+            )
+            return
+        diagram = data.get("diagram")
+        if not isinstance(diagram, dict):
+            diagram = {}
+        diagram_profiles = diagram.get("profiles")
+        if not isinstance(diagram_profiles, dict):
+            diagram_profiles = {}
+        diagram_profiles[profile_name] = self._diagram_snapshot_minimal()
+        data["diagram"] = {"profiles": diagram_profiles}
+        try:
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(data, handle, indent=2)
+                handle.write("\n")
+        except Exception as exc:
+            messagebox.showerror("Error", f"Failed to save file: {exc}")
+            return
+        self._dirty = False
+        self._load_profile_from_path(path, ask_profile=False, confirm_discard=False, selected_name=profile_name)
+        messagebox.showinfo(
+            "Diagram Metadata",
+            f"Minimal diagram metadata written for '{profile_name}'.",
+        )
+
     def _diagram_snapshot_from_nodes(self, nodes_list: List[Node]) -> Dict[str, object]:
         """
         NAME
@@ -1226,7 +1388,8 @@ class TopologyEditor(tk.Tk):
                         "targetId": node.callout_target_id,
                         "x": node.x,
                         "y": self._node_center_y_unscaled(node),
-                        "freeY": self._node_center_y_unscaled(node),
+                        "freeY": node.free_y,
+                        "freeYRelative": node.free_y is not None,
                         "bus": node.bus_index,
                         "row": node.row,
                         "scale": node.scale,
@@ -1243,7 +1406,8 @@ class TopologyEditor(tk.Tk):
                         "bus": node.bus_index,
                         "row": node.row,
                         "x": node.x,
-                        "freeY": self._node_center_y_unscaled(node),
+                        "freeY": node.free_y,
+                        "freeYRelative": node.free_y is not None,
                         "scale": node.scale,
                         "tags": list(node.tags or []),
                     }
@@ -1302,6 +1466,7 @@ class TopologyEditor(tk.Tk):
                 if node_type == "callout" or ("text" in entry and "targetType" in entry):
                     callout_y = float(entry.get("y", entry.get("callout_y", 0.0)))
                     free_y = entry.get("freeY")
+                    free_rel = entry.get("freeYRelative")
                     bus_index = entry.get("bus")
                     row = entry.get("row")
                     if not isinstance(bus_index, int) or not isinstance(row, int):
@@ -1312,7 +1477,9 @@ class TopologyEditor(tk.Tk):
                         free_val = float(free_y)
                         if self._bus_offsets:
                             bus_offset = self._bus_offsets[min(max(int(bus_index), 0), len(self._bus_offsets) - 1)]
-                            if abs(free_val) > 200.0 or abs(free_val - callout_y) < 0.5:
+                            if free_rel is True:
+                                free_val = float(free_y)
+                            elif abs(free_val) > 200.0 or abs(free_val - callout_y) < 0.5:
                                 free_val = free_val - bus_offset
                     callout = Node(
                         key=self._next_key,
@@ -1405,12 +1572,15 @@ class TopologyEditor(tk.Tk):
                         if isinstance(scale, (int, float)):
                             node.scale = max(0.6, min(2.0, float(scale)))
                         free_y = entry.get("freeY")
+                        free_rel = entry.get("freeYRelative")
                         if isinstance(free_y, (int, float)):
                             # TODO(major-refactor): Remove legacy freeY absolute->relative migration after re-saving profiles.
                             free_val = float(free_y)
                             if self._bus_offsets:
                                 bus_offset = self._bus_offsets[min(max(node.bus_index, 0), len(self._bus_offsets) - 1)]
-                                if abs(free_val) > 200.0:
+                                if free_rel is True:
+                                    free_val = float(free_y)
+                                elif abs(free_val) > 200.0 or abs(free_val - bus_offset) < abs(free_val):
                                     free_val = free_val - bus_offset
                             node.free_y = free_val
                         node.tags = tags
@@ -1424,6 +1594,7 @@ class TopologyEditor(tk.Tk):
                     continue
                 callout_y = float(entry.get("y", 0.0))
                 free_y = entry.get("freeY")
+                free_rel = entry.get("freeYRelative")
                 bus_index = entry.get("bus")
                 row = entry.get("row")
                 if not isinstance(bus_index, int) or not isinstance(row, int):
@@ -1434,7 +1605,9 @@ class TopologyEditor(tk.Tk):
                     free_val = float(free_y)
                     if self._bus_offsets:
                         bus_offset = self._bus_offsets[min(max(int(bus_index), 0), len(self._bus_offsets) - 1)]
-                        if abs(free_val) > 200.0 or abs(free_val - callout_y) < 0.5:
+                        if free_rel is True:
+                            free_val = float(free_y)
+                        elif abs(free_val) > 200.0 or abs(free_val - callout_y) < 0.5:
                             free_val = free_val - bus_offset
                 callout = Node(
                     key=self._next_key,
@@ -1727,14 +1900,7 @@ class TopologyEditor(tk.Tk):
         nodes = list(self._device_nodes())
         if self._tag_filter_fn is not None:
             nodes = [n for n in nodes if self._tag_filter_fn(n)]
-        sort_mode = self._list_sort_var.get()
-        if sort_mode == "tag":
-            def _tag_key(node: Node) -> Tuple[str, str, int]:
-                primary = node.tags[0] if node.tags else ""
-                return (self._normalize_tag(primary), node.label.lower(), int(node.can_id))
-            nodes = sorted(nodes, key=_tag_key)
-        else:
-            nodes = sorted(nodes, key=lambda n: int(n.can_id))
+        nodes = sort_nodes(nodes, self._list_sort_var.get())
         for node in nodes:
             tags = self._tags_to_string(node.tags)
             self.node_list.insert(
@@ -1753,43 +1919,15 @@ class TopologyEditor(tk.Tk):
             self._redraw_canvas()
             return
         self._push_undo()
-        width = max(self.canvas.winfo_width(), 1)
-        if width < 200:
-            self.after(80, self._layout_even)
-            return
         eff_lefts, eff_rights = self._effective_bus_bounds()
-        groups: Dict[int, List[Node]] = {}
-        for node in self._device_nodes():
-            groups.setdefault(node.bus_index, []).append(node)
-        margin = 12.0
-        for bus_index, group in groups.items():
-            if not group:
-                continue
-            group.sort(key=lambda n: n.x)
-            left = eff_lefts[bus_index] if bus_index < len(eff_lefts) else 40.0
-            right = eff_rights[bus_index] if bus_index < len(eff_rights) else left + 400.0
-            avail_left = left + margin
-            avail_right = right - margin
-            count = len(group)
-            if count == 1:
-                pos = (avail_left + avail_right) / 2.0
-                node = group[0]
-                half_w = self._node_half_width(node)
-                node.x = max(left + half_w + margin, min(right - half_w - margin, pos))
-                if self._snap_to_grid_var.get():
-                    node.x = self._snap_value(node.x)
-                continue
-            spacing = (avail_right - avail_left) / max(count - 1, 1)
-            for idx, node in enumerate(group):
-                target = avail_left + spacing * idx
-                half_w = self._node_half_width(node)
-                min_bound = left + half_w + margin
-                max_bound = right - half_w - margin
-                if min_bound > max_bound:
-                    min_bound = max_bound = (left + right) / 2.0
-                node.x = max(min_bound, min(max_bound, target))
-                if self._snap_to_grid_var.get():
-                    node.x = self._snap_value(node.x)
+        reset_layout_per_bus(
+            self._device_nodes(),
+            eff_lefts,
+            eff_rights,
+            self._box_w,
+            bool(self._snap_to_grid_var.get()),
+            int(self._grid_size_var.get() or 1),
+        )
         max_x = max((n.x for n in self._nodes), default=0.0)
         self._layout_width = max(self._layout_width, max_x + 200)
         self._clear_guides()
@@ -1811,23 +1949,9 @@ class TopologyEditor(tk.Tk):
             Tuple of (effective_lefts, effective_rights) per bus segment.
         """
         max_node_x = max((n.x for n in self._nodes), default=0.0)
-        if len(self._bus_lefts) < len(self._bus_offsets):
-            self._bus_lefts.extend([40.0] * (len(self._bus_offsets) - len(self._bus_lefts)))
-        if len(self._bus_rights) < len(self._bus_offsets):
-            self._bus_rights.extend(
-                [max_node_x + 200.0] * (len(self._bus_offsets) - len(self._bus_rights))
-            )
-        if len(self._bus_lefts) > len(self._bus_offsets):
-            self._bus_lefts = self._bus_lefts[: len(self._bus_offsets)]
-        if len(self._bus_rights) > len(self._bus_offsets):
-            self._bus_rights = self._bus_rights[: len(self._bus_offsets)]
-        eff_lefts = list(self._bus_lefts)
-        eff_rights = list(self._bus_rights)
-        for idx in range(len(eff_lefts) - 1):
-            if idx % 2 == 0:
-                eff_rights[idx + 1] = eff_rights[idx]
-            else:
-                eff_lefts[idx + 1] = eff_lefts[idx]
+        self._bus_lefts, self._bus_rights, eff_lefts, eff_rights = effective_bus_bounds(
+            self._bus_offsets, self._bus_lefts, self._bus_rights, max_node_x
+        )
         return eff_lefts, eff_rights
 
     def _node_half_width(self, node: Node) -> float:
@@ -1835,17 +1959,14 @@ class TopologyEditor(tk.Tk):
         NAME
             _node_half_width - Compute half the node width in diagram units.
         """
-        node_scale = max(0.6, min(2.0, node.scale))
-        base_w = 180.0 if node.node_type == "callout" else float(self._box_w)
-        return base_w * node_scale / 2.0
+        return node_half_width(node, self._box_w)
 
     def _snap_value(self, value: float) -> float:
         """
         NAME
             _snap_value - Snap a value to the current grid size.
         """
-        size = max(1, int(self._grid_size_var.get() or 1))
-        return round(value / size) * size
+        return snap_value(value, int(self._grid_size_var.get() or 1))
 
     def _clear_guides(self) -> None:
         """
@@ -1900,33 +2021,18 @@ class TopologyEditor(tk.Tk):
         if not nodes:
             messagebox.showinfo("Align", "Select one or more device nodes to align.")
             return
-        eff_lefts, eff_rights = self._effective_bus_bounds()
-        grouped: Dict[int, List[Node]] = {}
-        for node in nodes:
-            grouped.setdefault(node.bus_index, []).append(node)
         self._push_undo()
-        margin = 10.0
-        for bus_index, group in grouped.items():
-            if not group:
-                continue
-            xs = [n.x for n in group]
-            if mode == "left":
-                target = min(xs)
-            elif mode == "right":
-                target = max(xs)
-            else:
-                target = (min(xs) + max(xs)) / 2.0
-            left = eff_lefts[bus_index] if bus_index < len(eff_lefts) else 40.0
-            right = eff_rights[bus_index] if bus_index < len(eff_rights) else target + 200.0
-            for node in group:
-                half_w = self._node_half_width(node)
-                min_x = left + half_w + margin
-                max_x = right - half_w - margin
-                if min_x > max_x:
-                    min_x = max_x = (left + right) / 2.0
-                node.x = max(min_x, min(max_x, target))
-                if self._snap_to_grid_var.get():
-                    node.x = self._snap_value(node.x)
+        eff_lefts, eff_rights = self._effective_bus_bounds()
+        align_selected(
+            nodes,
+            self._selected_nodes,
+            eff_lefts,
+            eff_rights,
+            mode,
+            self._box_w,
+            bool(self._snap_to_grid_var.get()),
+            int(self._grid_size_var.get() or 1),
+        )
         max_x = max((n.x for n in self._nodes), default=0.0)
         self._layout_width = max(self._layout_width, max_x + 200)
         self._clear_guides()
@@ -1944,31 +2050,17 @@ class TopologyEditor(tk.Tk):
                 "Select at least three device nodes to distribute.",
             )
             return
-        eff_lefts, eff_rights = self._effective_bus_bounds()
-        grouped: Dict[int, List[Node]] = {}
-        for node in nodes:
-            grouped.setdefault(node.bus_index, []).append(node)
         self._push_undo()
-        margin = 10.0
-        for bus_index, group in grouped.items():
-            if len(group) < 3:
-                continue
-            group.sort(key=lambda n: n.x)
-            left = eff_lefts[bus_index] if bus_index < len(eff_lefts) else 40.0
-            right = eff_rights[bus_index] if bus_index < len(eff_rights) else group[-1].x + 200.0
-            min_x = max(left + margin, group[0].x)
-            max_x = min(right - margin, group[-1].x)
-            spacing = (max_x - min_x) / max(len(group) - 1, 1)
-            for idx, node in enumerate(group):
-                target = min_x + spacing * idx
-                half_w = self._node_half_width(node)
-                min_bound = left + half_w + margin
-                max_bound = right - half_w - margin
-                if min_bound > max_bound:
-                    min_bound = max_bound = (left + right) / 2.0
-                node.x = max(min_bound, min(max_bound, target))
-                if self._snap_to_grid_var.get():
-                    node.x = self._snap_value(node.x)
+        eff_lefts, eff_rights = self._effective_bus_bounds()
+        distribute_selected_horizontally(
+            nodes,
+            self._selected_nodes,
+            eff_lefts,
+            eff_rights,
+            self._box_w,
+            bool(self._snap_to_grid_var.get()),
+            int(self._grid_size_var.get() or 1),
+        )
         max_x = max((n.x for n in self._nodes), default=0.0)
         self._layout_width = max(self._layout_width, max_x + 200)
         self._clear_guides()
@@ -1984,93 +2076,16 @@ class TopologyEditor(tk.Tk):
             messagebox.showinfo("Tidy Selection", "Select one or more device nodes to tidy.")
             return
         eff_lefts, eff_rights = self._effective_bus_bounds()
-        grouped: Dict[int, List[Node]] = {}
-        for node in nodes:
-            grouped.setdefault(node.bus_index, []).append(node)
         self._push_undo()
-        margin = 12.0
-        bus_indices = [idx for idx in grouped.keys() if 0 <= idx < len(eff_lefts)]
-        max_columns = max((len(group) for group in grouped.values()), default=0)
-        use_columns = len(bus_indices) > 1 and max_columns >= 2
-        shared_left = max((eff_lefts[idx] for idx in bus_indices), default=40.0)
-        shared_right = min(
-            (eff_rights[idx] for idx in bus_indices),
-            default=max((n.x for n in nodes), default=0.0) + 200.0,
+        tidy_selection(
+            self._device_nodes(),
+            self._selected_nodes,
+            eff_lefts,
+            eff_rights,
+            self._box_w,
+            bool(self._snap_to_grid_var.get()),
+            int(self._grid_size_var.get() or 1),
         )
-        max_half = max((self._node_half_width(n) for n in nodes), default=0.0)
-        if use_columns:
-            left_bound = shared_left + max_half + margin
-            right_bound = shared_right - max_half - margin
-            if right_bound - left_bound < 40.0:
-                use_columns = False
-        for bus_index, group in grouped.items():
-            if not group:
-                continue
-            group.sort(key=lambda n: n.x)
-            left = eff_lefts[bus_index] if bus_index < len(eff_lefts) else 40.0
-            right = eff_rights[bus_index] if bus_index < len(eff_rights) else group[-1].x + 200.0
-            if use_columns:
-                left_bound = shared_left + max_half + margin
-                right_bound = shared_right - max_half - margin
-                columns = max_columns
-                if columns <= 1 or right_bound <= left_bound:
-                    use_columns = False
-                else:
-                    spacing = (right_bound - left_bound) / max(columns - 1, 1)
-                    col_positions = [left_bound + spacing * idx for idx in range(columns)]
-                    count = len(group)
-                    for idx, node in enumerate(group):
-                        if count <= 1:
-                            col_idx = (columns - 1) // 2
-                        else:
-                            col_idx = int(round(idx * (columns - 1) / (count - 1)))
-                        col_idx = max(0, min(columns - 1, col_idx))
-                        pos = col_positions[col_idx]
-                        half_w = self._node_half_width(node)
-                        min_bound = left + half_w + margin
-                        max_bound = right - half_w - margin
-                        if min_bound > max_bound:
-                            min_bound = max_bound = (left + right) / 2.0
-                        node.x = max(min_bound, min(max_bound, pos))
-                        if self._snap_to_grid_var.get():
-                            node.x = self._snap_value(node.x)
-                    continue
-            left_bound = left + margin
-            right_bound = right - margin
-            widths = [self._node_half_width(n) * 2 for n in group]
-            total_width = sum(widths)
-            count = len(group)
-            available = max(1.0, right_bound - left_bound)
-            gap = 20.0
-            if count > 1:
-                gap = max(0.0, (available - total_width) / (count - 1))
-            positions: List[float] = []
-            cursor = left_bound
-            for node, width in zip(group, widths):
-                half_w = width / 2.0
-                cursor = cursor + half_w
-                positions.append(cursor)
-                cursor = cursor + half_w + gap
-            if positions:
-                first_half = widths[0] / 2.0
-                last_half = widths[-1] / 2.0
-                min_edge = positions[0] - first_half
-                max_edge = positions[-1] + last_half
-                if max_edge > right_bound:
-                    shift = max_edge - right_bound
-                    positions = [p - shift for p in positions]
-                if positions[0] - first_half < left_bound:
-                    shift = left_bound - (positions[0] - first_half)
-                    positions = [p + shift for p in positions]
-            for node, pos in zip(group, positions):
-                half_w = self._node_half_width(node)
-                min_bound = left + half_w + margin
-                max_bound = right - half_w - margin
-                if min_bound > max_bound:
-                    min_bound = max_bound = (left + right) / 2.0
-                node.x = max(min_bound, min(max_bound, pos))
-                if self._snap_to_grid_var.get():
-                    node.x = self._snap_value(node.x)
         max_x = max((n.x for n in self._nodes), default=0.0)
         self._layout_width = max(self._layout_width, max_x + 200)
         self._clear_guides()
@@ -2346,48 +2361,28 @@ class TopologyEditor(tk.Tk):
         NAME
             _normalize_tag - Normalize a tag string for comparisons.
         """
-        return (value or "").strip().lower()
+        return normalize_tag(value)
 
     def _normalize_tags(self, value: object) -> List[str]:
         """
         NAME
             _normalize_tags - Normalize tags into a cleaned list.
         """
-        tags: List[str] = []
-        if isinstance(value, str):
-            tags = [tag.strip() for tag in value.split(",")]
-        elif isinstance(value, list):
-            tags = [str(tag).strip() for tag in value]
-        seen: set[str] = set()
-        normalized: List[str] = []
-        for tag in tags:
-            if not tag:
-                continue
-            norm = self._normalize_tag(tag)
-            if norm in seen:
-                continue
-            seen.add(norm)
-            normalized.append(norm)
-        return normalized
+        return normalize_tags(value)
 
     def _tags_to_string(self, tags: List[str]) -> str:
         """
         NAME
             _tags_to_string - Format tag list for display.
         """
-        return ", ".join(tags) if tags else ""
+        return tags_to_string(tags)
 
     def _collect_tags(self) -> List[str]:
         """
         NAME
             _collect_tags - Gather all known tags for prompts.
         """
-        tags: set[str] = set()
-        for node in self._nodes:
-            for tag in getattr(node, "tags", []) or []:
-                if tag:
-                    tags.add(self._normalize_tag(tag))
-        return sorted(tags)
+        return collect_tags(self._nodes)
 
     def _set_tag_filter(self, tag: Optional[str]) -> None:
         """
@@ -2429,10 +2424,7 @@ class TopologyEditor(tk.Tk):
         NAME
             _match_tag - Return True if a node has the given tag.
         """
-        target = self._normalize_tag(tag)
-        if not target:
-            return False
-        return target in {self._normalize_tag(t) for t in (node.tags or [])}
+        return match_tag(node, tag)
 
     def _prompt_for_tag(self, title: str) -> Optional[str]:
         """
@@ -2565,123 +2557,7 @@ class TopologyEditor(tk.Tk):
         NAME
             _compile_tag_filter - Compile a tag filter expression.
         """
-        text = expr.strip()
-        if not text:
-            raise ValueError("Filter expression is empty.")
-        text = re.sub(r"\\bAND\\b", "&&", text, flags=re.IGNORECASE)
-        text = re.sub(r"\\bOR\\b", "||", text, flags=re.IGNORECASE)
-
-        tokens: List[str] = []
-        i = 0
-        while i < len(text):
-            ch = text[i]
-            if ch.isspace():
-                i += 1
-                continue
-            if text.startswith("&&", i):
-                tokens.append("&&")
-                i += 2
-                continue
-            if text.startswith("||", i):
-                tokens.append("||")
-                i += 2
-                continue
-            if ch == "&":
-                tokens.append("&&")
-                i += 1
-                continue
-            if ch == "|":
-                tokens.append("||")
-                i += 1
-                continue
-            if ch == ",":
-                tokens.append("||")
-                i += 1
-                continue
-            if ch in ("(", ")"):
-                tokens.append(ch)
-                i += 1
-                continue
-            j = i
-            while j < len(text):
-                if text[j].isspace():
-                    break
-                if text.startswith("&&", j) or text.startswith("||", j):
-                    break
-                if text[j] in ("(", ")", "&", "|", ","):
-                    break
-                j += 1
-            token = text[i:j].strip()
-            if token:
-                tokens.append(token)
-            i = j
-
-        if not tokens:
-            raise ValueError("Filter expression is empty.")
-
-        # Insert implicit OR between adjacent terms/paren groups.
-        expanded: List[str] = []
-        prev_type = None  # term, op, lparen, rparen
-        for token in tokens:
-            cur_type = None
-            if token in ("&&", "||"):
-                cur_type = "op"
-            elif token == "(":
-                cur_type = "lparen"
-            elif token == ")":
-                cur_type = "rparen"
-            else:
-                cur_type = "term"
-            if prev_type in ("term", "rparen") and cur_type in ("term", "lparen"):
-                expanded.append("||")
-            expanded.append(token)
-            prev_type = cur_type
-
-        precedence = {"&&": 2, "||": 1}
-        output: List[str] = []
-        ops: List[str] = []
-
-        for token in expanded:
-            if token in ("&&", "||"):
-                while ops and ops[-1] in precedence and precedence[ops[-1]] >= precedence[token]:
-                    output.append(ops.pop())
-                ops.append(token)
-            elif token == "(":
-                ops.append(token)
-            elif token == ")":
-                while ops and ops[-1] != "(":
-                    output.append(ops.pop())
-                if not ops or ops[-1] != "(":
-                    raise ValueError("Mismatched parentheses in filter.")
-                ops.pop()
-            else:
-                output.append(token)
-
-        while ops:
-            if ops[-1] in ("(", ")"):
-                raise ValueError("Mismatched parentheses in filter.")
-            output.append(ops.pop())
-
-        def _eval(node: Node) -> bool:
-            stack: List[bool] = []
-            for token in output:
-                if token == "&&":
-                    if len(stack) < 2:
-                        return False
-                    b = stack.pop()
-                    a = stack.pop()
-                    stack.append(a and b)
-                elif token == "||":
-                    if len(stack) < 2:
-                        return False
-                    b = stack.pop()
-                    a = stack.pop()
-                    stack.append(a or b)
-                else:
-                    stack.append(self._match_tag(node, token))
-            return bool(stack[-1]) if stack else False
-
-        return _eval
+        return compile_tag_filter(expr)
 
     def _select_by_tag(self) -> None:
         """
@@ -2861,14 +2737,28 @@ class TopologyEditor(tk.Tk):
         _row("Vendor", row)
         ttk.Checkbutton(container, variable=var_apply_vendor).grid(row=row, column=1, sticky="w")
         vendor_value = tk.StringVar()
-        ttk.Entry(container, textvariable=vendor_value, width=24).grid(row=row, column=2, sticky="w")
+        vendor_combo = ttk.Combobox(
+            container,
+            values=SUPPORTED_MANUFACTURERS,
+            textvariable=vendor_value,
+            state="normal",
+            width=24,
+        )
+        vendor_combo.grid(row=row, column=2, sticky="w")
         row += 1
 
         var_apply_type = tk.BooleanVar(value=False)
         _row("Device Type", row)
         ttk.Checkbutton(container, variable=var_apply_type).grid(row=row, column=1, sticky="w")
         type_value = tk.StringVar()
-        ttk.Entry(container, textvariable=type_value, width=24).grid(row=row, column=2, sticky="w")
+        type_combo = ttk.Combobox(
+            container,
+            values=SUPPORTED_DEVICE_TYPES,
+            textvariable=type_value,
+            state="normal",
+            width=24,
+        )
+        type_combo.grid(row=row, column=2, sticky="w")
         row += 1
 
         var_apply_motor = tk.BooleanVar(value=False)
@@ -3098,11 +2988,29 @@ class TopologyEditor(tk.Tk):
             self._clear_guides()
             self._redraw_canvas()
 
+    def _on_canvas_configure(self, _event: tk.Event) -> None:
+        """
+        NAME
+            _on_canvas_configure - Handle canvas resize events.
+        """
+        self._redraw_canvas()
+        if self._pending_fit_to_window:
+            self._pending_fit_to_window = False
+            self.after_idle(self._fit_to_window)
+
     def _save_shortcut(self) -> None:
         """
         NAME
             _save_shortcut - Save using the default flow for the editor.
         """
+        if self._profile_source_path:
+            try:
+                path = Path(self._profile_source_path)
+            except Exception:
+                path = None
+            if path:
+                self._save_profile_to_path(path, prompt_replace=False, update_source=True)
+                return
         self._on_save_to_deploy()
 
     def _toggle_node_selection(self, key: int) -> None:
@@ -3407,12 +3315,21 @@ class TopologyEditor(tk.Tk):
                 self.canvas.addtag_withtag(f"node_{node.key}", shape_id)
             self.canvas.addtag_withtag(f"node_{node.key}", text)
             dup_key = self._dup_key_for_node(node)
-            if dup_key in dup_keys:
-                badge = self._draw_error_badge(x1 - 12, y0 + 12)
-                for badge_id in badge:
-                    self.canvas.addtag_withtag(f"node_{node.key}", badge_id)
-            elif dup_key and dup_key[2] in warn_ids:
-                badge = self._draw_warning_badge(x1 - 12, y0 + 12)
+            if dup_key in dup_keys or (dup_key and dup_key[2] in warn_ids):
+                badge_x = min(x1 + 12, x_right - 8)
+                badge_y = max(y0 - 12, min_y + 8)
+                self.canvas.create_line(
+                    x1,
+                    y0,
+                    badge_x - 6,
+                    badge_y + 6,
+                    width=1,
+                    fill="#444444",
+                )
+                if dup_key in dup_keys:
+                    badge = self._draw_error_badge(badge_x, badge_y)
+                else:
+                    badge = self._draw_warning_badge(badge_x, badge_y)
                 for badge_id in badge:
                     self.canvas.addtag_withtag(f"node_{node.key}", badge_id)
 
@@ -4739,6 +4656,24 @@ class TopologyEditor(tk.Tk):
         NAME
             _on_export_pdf - Export the current diagram to a PDF file.
         """
+        self._export_pdf(print_after=False, path_override=None)
+
+    def _print_pdf_shortcut(self) -> None:
+        """
+        NAME
+            _print_pdf_shortcut - Export and queue the diagram PDF for printing.
+        """
+        self._export_pdf(print_after=True, path_override="")
+
+    def _export_pdf(self, print_after: bool, path_override: Optional[str]) -> None:
+        """
+        NAME
+            _export_pdf - Export the current diagram to a PDF file.
+
+        PARAMETERS
+            print_after: When true, queue the exported PDF for printing.
+            path_override: If set, use this path. Empty string means temp file.
+        """
         try:
             from reportlab.pdfgen import canvas as pdfcanvas  # type: ignore
             from reportlab.lib.colors import Color  # type: ignore
@@ -4750,11 +4685,24 @@ class TopologyEditor(tk.Tk):
                 "Install with: pip install reportlab",
             )
             return
-        path = filedialog.asksaveasfilename(
-            title="Export PDF",
-            defaultextension=".pdf",
-            filetypes=[("PDF", "*.pdf"), ("All files", "*.*")],
-        )
+        path = None
+        if path_override is None:
+            path = filedialog.asksaveasfilename(
+                title="Export PDF",
+                defaultextension=".pdf",
+                filetypes=[("PDF", "*.pdf"), ("All files", "*.*")],
+            )
+        elif path_override == "":
+            import tempfile
+
+            fd, temp_path = tempfile.mkstemp(prefix="can_topology_", suffix=".pdf")
+            try:
+                Path(temp_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+            path = temp_path
+        else:
+            path = path_override
         if not path:
             return
 
@@ -4907,10 +4855,131 @@ class TopologyEditor(tk.Tk):
             descent = abs(pdfmetrics.getDescent("Helvetica") * 6 / 1000.0)
             return 6, (ascent + descent) * 1.2, ascent, _wrap_pdf_lines(text, 6, max_w)
 
+        def _pdf_color(hex_color: str) -> Color:
+            if not hex_color.startswith("#") or len(hex_color) != 7:
+                return Color(0.0, 0.0, 0.0)
+            try:
+                r = int(hex_color[1:3], 16) / 255.0
+                g = int(hex_color[3:5], 16) / 255.0
+                b = int(hex_color[5:7], 16) / 255.0
+            except ValueError:
+                return Color(0.0, 0.0, 0.0)
+            return Color(r, g, b)
+
+        def _draw_pdf_polygon(points: List[Tuple[float, float]], fill: str, outline: str) -> None:
+            path_obj = c.beginPath()
+            px0, py0 = _to_pdf(points[0][0], points[0][1])
+            path_obj.moveTo(px0, py0)
+            for x, y in points[1:]:
+                px, py = _to_pdf(x, y)
+                path_obj.lineTo(px, py)
+            path_obj.close()
+            c.setFillColor(_pdf_color(fill))
+            c.setStrokeColor(_pdf_color(outline))
+            c.drawPath(path_obj, fill=1, stroke=1)
+
+        def _draw_pdf_chamfer_rect(
+            x0: float, y0: float, x1: float, y1: float, fill: str, outline: str
+        ) -> None:
+            chamfer = min(6.0, abs(x1 - x0) * 0.2, abs(y1 - y0) * 0.2)
+            points = [
+                (x0 + chamfer, y0),
+                (x1 - chamfer, y0),
+                (x1, y0 + chamfer),
+                (x1, y1 - chamfer),
+                (x1 - chamfer, y1),
+                (x0 + chamfer, y1),
+                (x0, y1 - chamfer),
+                (x0, y0 + chamfer),
+            ]
+            _draw_pdf_polygon(points, fill, outline)
+
+        def _draw_pdf_hexagon(
+            x0: float, y0: float, x1: float, y1: float, fill: str, outline: str
+        ) -> None:
+            inset = min(10.0, abs(x1 - x0) * 0.25)
+            points = [
+                (x0 + inset, y0),
+                (x1 - inset, y0),
+                (x1, (y0 + y1) / 2),
+                (x1 - inset, y1),
+                (x0 + inset, y1),
+                (x0, (y0 + y1) / 2),
+            ]
+            _draw_pdf_polygon(points, fill, outline)
+
+        def _draw_pdf_diamond(
+            x0: float, y0: float, x1: float, y1: float, fill: str, outline: str
+        ) -> None:
+            cx = (x0 + x1) / 2.0
+            cy = (y0 + y1) / 2.0
+            points = [
+                (cx, y0),
+                (x1, cy),
+                (cx, y1),
+                (x0, cy),
+            ]
+            _draw_pdf_polygon(points, fill, outline)
+
+        def _draw_pdf_tabbed_rect(
+            x0: float, y0: float, x1: float, y1: float, fill: str, outline: str
+        ) -> None:
+            tab_w = min(40.0, abs(x1 - x0) * 0.5)
+            tab_h = min(10.0, abs(y1 - y0) * 0.2)
+            cx = (x0 + x1) / 2.0
+            points = [
+                (x0, y0),
+                (x1, y0),
+                (x1, y1),
+                (cx + tab_w / 2.0, y1),
+                (cx + tab_w / 2.0, y1 + tab_h),
+                (cx - tab_w / 2.0, y1 + tab_h),
+                (cx - tab_w / 2.0, y1),
+                (x0, y1),
+            ]
+            _draw_pdf_polygon(points, fill, outline)
+
+        def _draw_pdf_device_shape(
+            kind: str, x0: float, y0: float, x1: float, y1: float, fill: str, outline: str
+        ) -> None:
+            if kind == "motor":
+                _draw_pdf_chamfer_rect(x0, y0, x1, y1, fill, outline)
+            elif kind == "sensor":
+                _draw_pdf_hexagon(x0, y0, x1, y1, fill, outline)
+            elif kind == "power":
+                _draw_pdf_diamond(x0, y0, x1, y1, fill, outline)
+            elif kind == "controller":
+                _draw_pdf_tabbed_rect(x0, y0, x1, y1, fill, outline)
+            else:
+                _draw_pdf_chamfer_rect(x0, y0, x1, y1, fill, outline)
+
+        def _draw_pdf_error_badge(cx: float, cy: float) -> None:
+            r = 7.0
+            x0, y0 = _to_pdf(cx - r, cy - r)
+            x1, y1 = _to_pdf(cx + r, cy + r)
+            c.setFillColor(_pdf_color("#cc0000"))
+            c.setStrokeColor(_pdf_color("#aa0000"))
+            c.ellipse(min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1), fill=1, stroke=1)
+            c.setFillColor(_pdf_color("#ffffff"))
+            c.setFont("Helvetica-Bold", 9 * fit_scale)
+            tx, ty = _to_pdf(cx, cy - 0.5)
+            c.drawCentredString(tx, ty, "!")
+
+        def _draw_pdf_warning_badge(cx: float, cy: float) -> None:
+            r = 8.0
+            points = [
+                (cx, cy - r),
+                (cx + r, cy + r),
+                (cx - r, cy + r),
+            ]
+            _draw_pdf_polygon(points, "#f5c542", "#c28b00")
+            c.setFillColor(_pdf_color("#5a3b00"))
+            c.setFont("Helvetica-Bold", 9 * fit_scale)
+            tx, ty = _to_pdf(cx, cy + 1)
+            c.drawCentredString(tx, ty, "!")
+
         c = pdfcanvas.Canvas(path, pagesize=(page_w, page_h))
         gray = Color(0.27, 0.27, 0.27)
-        light = Color(0.97, 0.97, 0.97)
-        callout_fill = Color(1.0, 0.98, 0.90)
 
         x_left = min_left * scale
         x_right = max_right * scale
@@ -4942,6 +5011,18 @@ class TopologyEditor(tk.Tk):
                 c.drawPath(path_obj)
                 c.setLineWidth(4 * fit_scale)
 
+        dup_keys: set[Tuple[str, str, int]] = set()
+        key_counts: Dict[Tuple[str, str, int], int] = {}
+        numeric_counts: Dict[int, int] = {}
+        for node in self._device_nodes():
+            key = self._dup_key_for_node(node)
+            if key is None:
+                continue
+            key_counts[key] = key_counts.get(key, 0) + 1
+            numeric_counts[key[2]] = numeric_counts.get(key[2], 0) + 1
+        dup_keys = {key for key, count in key_counts.items() if count > 1}
+        warn_ids = {can_id for can_id, count in numeric_counts.items() if count > 1}
+
         node_centers = {}
         for node in self._device_nodes():
             bus_index = min(max(node.bus_index, 0), max(len(bus_ys) - 1, 0))
@@ -4967,13 +5048,14 @@ class TopologyEditor(tk.Tk):
             c.setLineWidth(2 * fit_scale)
             c.line(x0l, y0l, x1l, y1l)
 
-            rx0, ry0 = _to_pdf(x0, y0)
-            rx1, ry1 = _to_pdf(x1, y1)
-            c.setFillColor(light)
-            c.setStrokeColor(Color(0.13, 0.13, 0.13))
-            c.rect(min(rx0, rx1), min(ry0, ry1), abs(rx1 - rx0), abs(ry1 - ry0), fill=1)
+            shape_kind = self._shape_kind_for_node(node)
+            fill = self._fill_color_for_node(node)
+            outline = self._outline_color_for_node(node)
+            _draw_pdf_device_shape(shape_kind, x0, y0, x1, y1, fill, outline)
 
             text = node.display_text_pdf()
+            rx0, ry0 = _to_pdf(x0, y0)
+            rx1, ry1 = _to_pdf(x1, y1)
             left = min(rx0, rx1) + 3
             right = max(rx0, rx1) - 3
             top = max(ry0, ry1) - 3
@@ -4983,12 +5065,26 @@ class TopologyEditor(tk.Tk):
             pdf_font, line_h, ascent, lines = _fit_lines_exact(
                 text, avail_w, avail_h, 9 * scale * node_scale * fit_scale
             )
-            c.setFillColor(Color(0, 0, 0))
+            c.setFillColor(_pdf_color(self._text_color_for_fill(fill)))
             c.setFont("Helvetica", pdf_font)
             y = bottom + avail_h - ascent
             for line in lines:
                 c.drawCentredString((left + right) / 2, y, line)
                 y -= line_h
+
+            dup_key = self._dup_key_for_node(node)
+            if dup_key in dup_keys or (dup_key and dup_key[2] in warn_ids):
+                badge_x = min(x1 + 12, max_right - 8)
+                badge_y = max(y0 - 12, min_y + 8)
+                p0 = _to_pdf(x1, y0)
+                p1 = _to_pdf(badge_x - 6, badge_y + 6)
+                c.setStrokeColor(_pdf_color("#444444"))
+                c.setLineWidth(1 * fit_scale)
+                c.line(p0[0], p0[1], p1[0], p1[1])
+                if dup_key in dup_keys:
+                    _draw_pdf_error_badge(badge_x, badge_y)
+                else:
+                    _draw_pdf_warning_badge(badge_x, badge_y)
 
             node_centers[node.key] = (node_x, bus_y)
 
@@ -5019,8 +5115,8 @@ class TopologyEditor(tk.Tk):
             c.line(x0l, y0l, x1l, y1l)
             rx0, ry0 = _to_pdf(x0, y0)
             rx1, ry1 = _to_pdf(x1, y1)
-            c.setFillColor(callout_fill)
-            c.setStrokeColor(Color(0.4, 0.4, 0.4))
+            c.setFillColor(_pdf_color("#fffbe6"))
+            c.setStrokeColor(_pdf_color("#666666"))
             c.rect(min(rx0, rx1), min(ry0, ry1), abs(rx1 - rx0), abs(ry1 - ry0), fill=1)
             left = min(rx0, rx1) + 3
             right = max(rx0, rx1) - 3
@@ -5041,7 +5137,249 @@ class TopologyEditor(tk.Tk):
 
         c.showPage()
         c.save()
-        messagebox.showinfo("Exported", f"Wrote PDF to {path}")
+        if print_after:
+            try:
+                import os
+
+                os.startfile(path, "print")
+                messagebox.showinfo(
+                    "Printed",
+                    f"Queued PDF for printing: {path}",
+                )
+
+                def _cleanup() -> None:
+                    try:
+                        Path(path).unlink()
+                    except Exception:
+                        pass
+
+                # Best-effort cleanup after spooler has likely consumed the file.
+                self.after(30000, _cleanup)
+            except OSError as exc:
+                if getattr(exc, "winerror", None) == 1155:
+                    try:
+                        os.startfile(path)
+                        messagebox.showinfo(
+                            "Print",
+                            "No default PDF print handler is associated.\n\n"
+                            "Opened the PDF so you can print manually.",
+                        )
+                        return
+                    except Exception:
+                        pass
+                messagebox.showerror(
+                    "Print Failed",
+                    f"Saved PDF but failed to print:\n{exc}",
+                )
+            except Exception as exc:
+                messagebox.showerror(
+                    "Print Failed",
+                    f"Saved PDF but failed to print:\n{exc}",
+                )
+        else:
+            messagebox.showinfo("Exported", f"Wrote PDF to {path}")
+
+    def _print_node_list(self) -> None:
+        """
+        NAME
+            _print_node_list - Print the node list as a PDF table.
+        """
+        self._export_node_list_pdf(print_after=True, path_override="")
+
+    def _export_node_list_pdf(self, print_after: bool, path_override: Optional[str]) -> None:
+        """
+        NAME
+            _export_node_list_pdf - Export the node list as a PDF table.
+
+        PARAMETERS
+            print_after: When true, queue the exported PDF for printing.
+            path_override: If set, use this path. Empty string means temp file.
+        """
+        try:
+            from reportlab.pdfgen import canvas as pdfcanvas  # type: ignore
+            from reportlab.lib.colors import Color  # type: ignore
+        except Exception:
+            messagebox.showerror(
+                "Missing Dependency",
+                "PDF export requires the 'reportlab' package.\n\n"
+                "Install with: pip install reportlab",
+            )
+            return
+
+        path = None
+        if path_override is None:
+            path = filedialog.asksaveasfilename(
+                title="Export Node List PDF",
+                defaultextension=".pdf",
+                filetypes=[("PDF", "*.pdf"), ("All files", "*.*")],
+            )
+        elif path_override == "":
+            import tempfile
+
+            fd, temp_path = tempfile.mkstemp(prefix="can_topology_nodes_", suffix=".pdf")
+            try:
+                Path(temp_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+            path = temp_path
+        else:
+            path = path_override
+        if not path:
+            return
+
+        nodes = list(self._device_nodes())
+        if self._tag_filter_fn is not None:
+            nodes = [n for n in nodes if self._tag_filter_fn(n)]
+        nodes = sort_nodes(nodes, self._list_sort_var.get())
+
+        key_counts: Dict[Tuple[str, str, int], int] = {}
+        numeric_counts: Dict[int, int] = {}
+        for node in nodes:
+            key = self._dup_key_for_node(node)
+            if key is None:
+                continue
+            key_counts[key] = key_counts.get(key, 0) + 1
+            numeric_counts[key[2]] = numeric_counts.get(key[2], 0) + 1
+        dup_keys = {key for key, count in key_counts.items() if count > 1}
+        warn_ids = {can_id for can_id, count in numeric_counts.items() if count > 1}
+
+        page_w = 11 * 72
+        page_h = 8.5 * 72
+        margin = 36
+        c = pdfcanvas.Canvas(path, pagesize=(page_w, page_h))
+        c.setTitle("CAN Topology Node List")
+
+        header_font = "Helvetica-Bold"
+        body_font = "Helvetica"
+        font_size = 9
+        row_h = 14
+        table_top = page_h - margin - 20
+        x = margin
+
+        def _status(node: Node) -> str:
+            key = self._dup_key_for_node(node)
+            if key in dup_keys:
+                return "ERROR"
+            if key and key[2] in warn_ids:
+                return "WARN"
+            return ""
+
+        cols = [
+            ("CAN ID", 50),
+            ("Type", 90),
+            ("Label", 210),
+            ("Tags", 170),
+            ("Status", 60),
+        ]
+
+        def _draw_header(y: float) -> float:
+            c.setFont(header_font, font_size)
+            c.setFillColor(Color(0, 0, 0))
+            col_x = x
+            for title, width in cols:
+                c.drawString(col_x, y, title)
+                col_x += width
+            y -= row_h
+            c.setLineWidth(1)
+            c.setStrokeColor(Color(0.2, 0.2, 0.2))
+            c.line(x, y + row_h * 0.3, page_w - margin, y + row_h * 0.3)
+            return y
+
+        def _wrap(text: str, max_w: float) -> List[str]:
+            if not text:
+                return [""]
+            words = text.split()
+            lines: List[str] = []
+            current = words[0]
+            for word in words[1:]:
+                test = f"{current} {word}"
+                if c.stringWidth(test, body_font, font_size) <= max_w:
+                    current = test
+                else:
+                    lines.append(current)
+                    current = word
+            lines.append(current)
+            return lines
+
+        y = table_top
+        y = _draw_header(y)
+        c.setFont(body_font, font_size)
+
+        for node in nodes:
+            tags = self._tags_to_string(node.tags)
+            values = [
+                str(node.can_id),
+                node.category,
+                node.label,
+                tags,
+                _status(node),
+            ]
+            lines_per_row = 1
+            wrapped: List[List[str]] = []
+            col_x = x
+            for (title, width), value in zip(cols, values):
+                lines = _wrap(value, width - 4)
+                wrapped.append(lines)
+                lines_per_row = max(lines_per_row, len(lines))
+                col_x += width
+            needed_h = row_h * lines_per_row
+            if y - needed_h < margin:
+                c.showPage()
+                y = table_top
+                y = _draw_header(y)
+                c.setFont(body_font, font_size)
+            col_x = x
+            for (title, width), lines in zip(cols, wrapped):
+                line_y = y
+                for line in lines:
+                    c.drawString(col_x, line_y, line)
+                    line_y -= row_h
+                col_x += width
+            y -= needed_h
+
+        c.showPage()
+        c.save()
+
+        if print_after:
+            try:
+                import os
+
+                os.startfile(path, "print")
+                messagebox.showinfo(
+                    "Printed",
+                    f"Queued node list for printing: {path}",
+                )
+
+                def _cleanup() -> None:
+                    try:
+                        Path(path).unlink()
+                    except Exception:
+                        pass
+
+                self.after(30000, _cleanup)
+            except OSError as exc:
+                if getattr(exc, "winerror", None) == 1155:
+                    try:
+                        os.startfile(path)
+                        messagebox.showinfo(
+                            "Print",
+                            "No default PDF print handler is associated.\n\n"
+                            "Opened the PDF so you can print manually.",
+                        )
+                        return
+                    except Exception:
+                        pass
+                messagebox.showerror(
+                    "Print Failed",
+                    f"Saved PDF but failed to print:\n{exc}",
+                )
+            except Exception as exc:
+                messagebox.showerror(
+                    "Print Failed",
+                    f"Saved PDF but failed to print:\n{exc}",
+                )
+        else:
+            messagebox.showinfo("Exported", f"Wrote PDF to {path}")
 
     def _on_export_java_constants(self) -> None:
         """
@@ -5295,6 +5633,7 @@ class TopologyEditor(tk.Tk):
             _flush_redraw - Execute a queued redraw.
         """
         self._redraw_pending = False
+        self._pending_fit_to_window = False
         self._redraw_canvas()
 
     def _on_zoom_wheel(self, event: tk.Event) -> None:

@@ -1,0 +1,509 @@
+{
+  "default_profile": "robot_2026",
+  "profiles": {
+    "robot_2026": {
+      "devices": [
+        {
+          "label": "Climb Motor",
+          "id": 60,
+          "tags": [
+            "climb"
+          ],
+          "vendor": "Unknown",
+          "type": "MotorController"
+        },
+        {
+          "label": "Fuel Intake Motor",
+          "id": 24,
+          "tags": [
+            "intake"
+          ],
+          "vendor": "Unknown",
+          "type": "MotorController"
+        },
+        {
+          "label": "Pivot Intake Motor",
+          "id": 22,
+          "tags": [
+            "intake",
+            "pivot"
+          ],
+          "vendor": "Unknown",
+          "type": "MotorController"
+        },
+        {
+          "label": "Pivot Intake Follower",
+          "id": 11,
+          "tags": [
+            "intake",
+            "pivot"
+          ],
+          "vendor": "Unknown",
+          "type": "Miscellaneous"
+        },
+        {
+          "label": "Feeder Motor",
+          "id": 28,
+          "tags": [
+            "feeder",
+            "shooter"
+          ],
+          "vendor": "Unknown",
+          "type": "MotorController"
+        },
+        {
+          "label": "Flywheel Motor (Leader)",
+          "id": 27,
+          "tags": [
+            "flywheel",
+            "shooter"
+          ],
+          "vendor": "Unknown",
+          "type": "MotorController"
+        },
+        {
+          "label": "Flywheel Motor (Follower)",
+          "id": 23,
+          "tags": [
+            "flywheel",
+            "shooter"
+          ],
+          "vendor": "Unknown",
+          "type": "MotorController"
+        },
+        {
+          "label": "Drive Motor",
+          "id": 5,
+          "tags": [
+            "drive",
+            "swerve-back-left"
+          ],
+          "vendor": "Unknown",
+          "type": "MotorController"
+        },
+        {
+          "label": "Angle Motor",
+          "id": 4,
+          "tags": [
+            "angle",
+            "swerve-back-left"
+          ],
+          "vendor": "Unknown",
+          "type": "MotorController"
+        },
+        {
+          "label": "Drive Motor",
+          "id": 8,
+          "tags": [
+            "drive",
+            "swerve-back-right"
+          ],
+          "vendor": "Unknown",
+          "type": "MotorController"
+        },
+        {
+          "label": "Angle Motor",
+          "id": 7,
+          "tags": [
+            "angle",
+            "swerve-back-right"
+          ],
+          "vendor": "Unknown",
+          "type": "MotorController"
+        },
+        {
+          "label": "Drive Motor",
+          "id": 2,
+          "tags": [
+            "drive",
+            "swerve-front-left"
+          ],
+          "vendor": "Unknown",
+          "type": "MotorController"
+        },
+        {
+          "label": "Angle Motor",
+          "id": 1,
+          "tags": [
+            "angle",
+            "swerve-front-left"
+          ],
+          "vendor": "Unknown",
+          "type": "MotorController"
+        },
+        {
+          "label": "Drive Motor",
+          "id": 11,
+          "tags": [
+            "drive",
+            "swerve-front-right"
+          ],
+          "vendor": "Unknown",
+          "type": "MotorController"
+        },
+        {
+          "label": "Angle Motor",
+          "id": 10,
+          "tags": [
+            "angle",
+            "swerve-front-right"
+          ],
+          "vendor": "Unknown",
+          "type": "MotorController"
+        }
+      ],
+      "cancoders": [
+        {
+          "label": "Encoder (CANCoder)",
+          "id": 6,
+          "tags": [
+            "encoder",
+            "swerve-back-left"
+          ]
+        },
+        {
+          "label": "Encoder (CANCoder)",
+          "id": 9,
+          "tags": [
+            "encoder",
+            "swerve-back-right"
+          ]
+        },
+        {
+          "label": "Encoder (CANCoder)",
+          "id": 3,
+          "tags": [
+            "encoder",
+            "swerve-front-left"
+          ]
+        },
+        {
+          "label": "Encoder (CANCoder)",
+          "id": 12,
+          "tags": [
+            "encoder",
+            "swerve-front-right"
+          ]
+        }
+      ],
+      "pigeon": {
+        "label": "IMU (Pigeon2)",
+        "id": 19,
+        "tags": [
+          "imu",
+          "swerve"
+        ]
+      }
+    }
+  },
+  "diagram": {
+    "profiles": {
+      "robot_2026": {
+        "busCount": 1,
+        "busSpacing": 160.0,
+        "panY": 0.0,
+        "zoom": 1.0,
+        "nodes": [
+          {
+            "nodeType": "device",
+            "category": "cancoders",
+            "label": "Encoder (CANCoder)",
+            "id": 6,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "encoder",
+              "swerve-back-left"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "cancoders",
+            "label": "Encoder (CANCoder)",
+            "id": 9,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "encoder",
+              "swerve-back-right"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "cancoders",
+            "label": "Encoder (CANCoder)",
+            "id": 3,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "encoder",
+              "swerve-front-left"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "cancoders",
+            "label": "Encoder (CANCoder)",
+            "id": 12,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "encoder",
+              "swerve-front-right"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "pigeon",
+            "label": "IMU (Pigeon2)",
+            "id": 19,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "imu",
+              "swerve"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "devices",
+            "label": "Climb Motor",
+            "id": 60,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "climb"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "devices",
+            "label": "Fuel Intake Motor",
+            "id": 24,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "intake"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "devices",
+            "label": "Pivot Intake Motor",
+            "id": 22,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "intake",
+              "pivot"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "devices",
+            "label": "Pivot Intake Follower",
+            "id": 11,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "intake",
+              "pivot"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "devices",
+            "label": "Feeder Motor",
+            "id": 28,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "feeder",
+              "shooter"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "devices",
+            "label": "Flywheel Motor (Leader)",
+            "id": 27,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "flywheel",
+              "shooter"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "devices",
+            "label": "Flywheel Motor (Follower)",
+            "id": 23,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "flywheel",
+              "shooter"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "devices",
+            "label": "Drive Motor",
+            "id": 5,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "drive",
+              "swerve-back-left"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "devices",
+            "label": "Angle Motor",
+            "id": 4,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "angle",
+              "swerve-back-left"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "devices",
+            "label": "Drive Motor",
+            "id": 8,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "drive",
+              "swerve-back-right"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "devices",
+            "label": "Angle Motor",
+            "id": 7,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "angle",
+              "swerve-back-right"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "devices",
+            "label": "Drive Motor",
+            "id": 2,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "drive",
+              "swerve-front-left"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "devices",
+            "label": "Angle Motor",
+            "id": 1,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "angle",
+              "swerve-front-left"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "devices",
+            "label": "Drive Motor",
+            "id": 11,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "drive",
+              "swerve-front-right"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "devices",
+            "label": "Angle Motor",
+            "id": 10,
+            "bus": 0,
+            "row": 0,
+            "x": 120,
+            "scale": 1.0,
+            "freeY": null,
+            "tags": [
+              "angle",
+              "swerve-front-right"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

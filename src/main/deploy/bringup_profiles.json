@@ -1,5 +1,5 @@
 {
-  "default_profile": "robot_test1",
+  "default_profile": "robot_2026",
   "profiles": {
     "example_default": {
       "neos": [
@@ -477,6 +477,186 @@
       },
       "roborio": {
         "label": "roboRIO",
+        "id": 0,
+        "terminator": true
+      }
+    },
+    "robot_2026": {
+      "neos": [
+        {
+          "label": "Climb Motor",
+          "id": 60,
+          "tags": [
+            "climb"
+          ]
+        },
+        {
+          "label": "Fuel Intake Motor",
+          "id": 24,
+          "tags": [
+            "intake"
+          ]
+        },
+        {
+          "label": "Pivot Intake Motor",
+          "id": 22,
+          "tags": [
+            "intake",
+            "pivot"
+          ]
+        },
+        {
+          "label": "Pivot Intake Follower",
+          "id": 11,
+          "tags": [
+            "intake",
+            "pivot"
+          ]
+        },
+        {
+          "label": "Feeder Motor",
+          "id": 28,
+          "tags": [
+            "feeder",
+            "shooter"
+          ]
+        },
+        {
+          "label": "Angle Motor",
+          "id": 4,
+          "tags": [
+            "angle",
+            "swerve-back-left"
+          ]
+        },
+        {
+          "label": "Angle Motor",
+          "id": 7,
+          "tags": [
+            "angle",
+            "swerve-back-right"
+          ]
+        },
+        {
+          "label": "Angle Motor",
+          "id": 1,
+          "tags": [
+            "angle",
+            "swerve-front-left"
+          ]
+        },
+        {
+          "label": "Angle Motor",
+          "id": 10,
+          "terminator": false,
+          "tags": [
+            "angle",
+            "swerve-front-right"
+          ]
+        }
+      ],
+      "flexes": [
+        {
+          "label": "Flywheel Motor (Leader)",
+          "id": 27,
+          "tags": [
+            "flywheel",
+            "shooter"
+          ]
+        },
+        {
+          "label": "Flywheel Motor (Follower)",
+          "id": 23,
+          "tags": [
+            "flywheel",
+            "shooter"
+          ]
+        }
+      ],
+      "krakens": [
+        {
+          "label": "Drive Motor",
+          "id": 5,
+          "tags": [
+            "drive",
+            "swerve-back-left"
+          ]
+        },
+        {
+          "label": "Drive Motor",
+          "id": 8,
+          "tags": [
+            "drive",
+            "swerve-back-right"
+          ]
+        },
+        {
+          "label": "Drive Motor",
+          "id": 2,
+          "tags": [
+            "drive",
+            "swerve-front-left"
+          ]
+        },
+        {
+          "label": "Drive Motor",
+          "id": 11,
+          "terminator": false,
+          "tags": [
+            "drive",
+            "swerve-front-right"
+          ]
+        }
+      ],
+      "cancoders": [
+        {
+          "label": "Encoder (CANCoder)",
+          "id": 6,
+          "tags": [
+            "encoder",
+            "swerve-back-left"
+          ]
+        },
+        {
+          "label": "Encoder (CANCoder)",
+          "id": 9,
+          "tags": [
+            "encoder",
+            "swerve-back-right"
+          ]
+        },
+        {
+          "label": "Encoder (CANCoder)",
+          "id": 3,
+          "tags": [
+            "encoder",
+            "swerve-front-left"
+          ]
+        },
+        {
+          "label": "Encoder (CANCoder)",
+          "id": 12,
+          "tags": [
+            "encoder",
+            "swerve-front-right"
+          ]
+        }
+      ],
+      "pdh": {
+        "label": "pdh",
+        "id": 1,
+        "terminator": true
+      },
+      "pigeon": {
+        "label": "IMU (Pigeon2)",
+        "id": 19,
+        "tags": [
+          "imu",
+          "swerve"
+        ]
+      },
+      "roborio": {
+        "label": "roborio",
         "id": 0,
         "terminator": true
       }
@@ -1168,6 +1348,382 @@
             "x": 190.61872909699082,
             "freeY": -90.82775919732441,
             "scale": 1.0
+          }
+        ]
+      },
+      "robot_2026": {
+        "busOffsets": [
+          0.0,
+          160.0,
+          320.0,
+          480.0,
+          640.0,
+          800.0
+        ],
+        "busCount": 6,
+        "busSpacing": 160.0,
+        "busLefts": [
+          40.0,
+          40.0,
+          40.0,
+          40.0,
+          40.0,
+          40.0
+        ],
+        "busRights": [
+          939.1561984519731,
+          939.1561984519731,
+          949.6189751119329,
+          949.6189751119329,
+          954.9698189134808,
+          954.9698189134808
+        ],
+        "panY": -191.15384615384616,
+        "zoom": 0.4778846153846154,
+        "nodes": [
+          {
+            "nodeType": "device",
+            "category": "neos",
+            "label": "Climb Motor",
+            "id": 60,
+            "bus": 0,
+            "row": 0,
+            "x": 280.0,
+            "freeY": -75.0,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "climb"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "neos",
+            "label": "Fuel Intake Motor",
+            "id": 24,
+            "bus": 0,
+            "row": 0,
+            "x": 440.0,
+            "freeY": -75.0,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "intake"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "neos",
+            "label": "Pivot Intake Motor",
+            "id": 22,
+            "bus": 1,
+            "row": 0,
+            "x": 220.0,
+            "freeY": -45.633802816901394,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "intake",
+              "pivot"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "neos",
+            "label": "Pivot Intake Follower",
+            "id": 11,
+            "bus": 1,
+            "row": 0,
+            "x": 460.0,
+            "freeY": -49.8189134808853,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "intake",
+              "pivot"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "neos",
+            "label": "Feeder Motor",
+            "id": 28,
+            "bus": 0,
+            "row": 0,
+            "x": 605.0000000000016,
+            "freeY": -71.46288681087574,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "feeder",
+              "shooter"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "neos",
+            "label": "Angle Motor",
+            "id": 4,
+            "bus": 3,
+            "row": 0,
+            "x": 125.71428571428606,
+            "freeY": -61.92307692307685,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "angle",
+              "swerve-back-left"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "neos",
+            "label": "Angle Motor",
+            "id": 7,
+            "bus": 4,
+            "row": 0,
+            "x": 113.33333333333358,
+            "freeY": -53.75,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "angle",
+              "swerve-back-right"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "neos",
+            "label": "Angle Motor",
+            "id": 1,
+            "bus": 2,
+            "row": 0,
+            "x": 134.2857142857145,
+            "freeY": -69.06593406593404,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "angle",
+              "swerve-front-left"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "neos",
+            "label": "Angle Motor",
+            "id": 10,
+            "bus": 5,
+            "row": 0,
+            "x": 125.47283702213319,
+            "freeY": -68.32997987927558,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "angle",
+              "swerve-front-right"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "flexes",
+            "label": "Flywheel Motor (Leader)",
+            "id": 27,
+            "bus": 1,
+            "row": 0,
+            "x": 620.0,
+            "freeY": -58.18913480885311,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "flywheel",
+              "shooter"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "flexes",
+            "label": "Flywheel Motor (Follower)",
+            "id": 23,
+            "bus": 1,
+            "row": 0,
+            "x": 800.0,
+            "freeY": -66.55935613682091,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "flywheel",
+              "shooter"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "krakens",
+            "label": "Drive Motor",
+            "id": 5,
+            "bus": 3,
+            "row": 0,
+            "x": 300.95238095238085,
+            "freeY": -63.351648351648294,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "drive",
+              "swerve-back-left"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "krakens",
+            "label": "Drive Motor",
+            "id": 8,
+            "bus": 4,
+            "row": 0,
+            "x": 297.142857142857,
+            "freeY": -50.41666666666663,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "drive",
+              "swerve-back-right"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "krakens",
+            "label": "Drive Motor",
+            "id": 2,
+            "bus": 2,
+            "row": 0,
+            "x": 300.0,
+            "freeY": -67.52515090543258,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "drive",
+              "swerve-front-left"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "krakens",
+            "label": "Drive Motor",
+            "id": 11,
+            "bus": 5,
+            "row": 0,
+            "x": 293.3333333333331,
+            "freeY": -38.75,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "drive",
+              "swerve-front-right"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "cancoders",
+            "label": "Encoder (CANCoder)",
+            "id": 6,
+            "bus": 3,
+            "row": 0,
+            "x": 485.7142857142844,
+            "freeY": -63.351648351648294,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "encoder",
+              "swerve-back-left"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "cancoders",
+            "label": "Encoder (CANCoder)",
+            "id": 9,
+            "bus": 4,
+            "row": 0,
+            "x": 473.5714285714288,
+            "freeY": -63.75,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "encoder",
+              "swerve-back-right"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "cancoders",
+            "label": "Encoder (CANCoder)",
+            "id": 3,
+            "bus": 2,
+            "row": 0,
+            "x": 471.4285714285707,
+            "freeY": -63.35164835164835,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "encoder",
+              "swerve-front-left"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "cancoders",
+            "label": "Encoder (CANCoder)",
+            "id": 12,
+            "bus": 5,
+            "row": 0,
+            "x": 473.3333333333333,
+            "freeY": -42.08333333333326,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "encoder",
+              "swerve-front-right"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "pdh",
+            "label": "pdh",
+            "id": 1,
+            "bus": 5,
+            "row": 0,
+            "x": 665.4728370221324,
+            "freeY": -55.77464788732391,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": []
+          },
+          {
+            "nodeType": "device",
+            "category": "pigeon",
+            "label": "IMU (Pigeon2)",
+            "id": 19,
+            "bus": 0,
+            "row": 0,
+            "x": 816.8209255533184,
+            "freeY": -67.6861167002012,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "imu",
+              "swerve"
+            ]
+          },
+          {
+            "nodeType": "device",
+            "category": "roborio",
+            "label": "roborio",
+            "id": 0,
+            "bus": 0,
+            "row": 0,
+            "x": 109.97987927565205,
+            "freeY": -80.2414486921529,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": []
           }
         ]
       }

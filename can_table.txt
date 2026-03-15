@@ -1,0 +1,24 @@
+
+Complete CAN ID Table (Sorted by Subsystem)
+
+Subsystem	Device	CAN ID	Source
+Climb	Climb Motor	60	Constants.java
+Intake	Fuel Intake Motor	24	Constants.java
+Intake	Pivot Intake Motor	22	Constants.java
+Intake	Pivot Intake Follower	11	Constants.java
+Shooter	Feeder Motor	28	Constants.java
+Shooter	Flywheel Motor (Leader)	27	Constants.java
+Shooter	Flywheel Motor (Follower)	23	Constants.java
+Swerve	IMU (Pigeon2)	19	swervedrive.json
+Swerve Back Left	Drive Motor	5	backleft.json
+Swerve Back Left	Angle Motor	4	backleft.json
+Swerve Back Left	Encoder (CANCoder)	6	backleft.json
+Swerve Back Right	Drive Motor	8	backright.json
+Swerve Back Right	Angle Motor	7	backright.json
+Swerve Back Right	Encoder (CANCoder)	9	backright.json
+Swerve Front Left	Drive Motor	2	frontleft.json
+Swerve Front Left	Angle Motor	1	frontleft.json
+Swerve Front Left	Encoder (CANCoder)	3	frontleft.json
+Swerve Front Right	Drive Motor	11	frontright.json
+Swerve Front Right	Angle Motor	10	frontright.json
+Swerve Front Right	Encoder (CANCoder)	12	frontright.json
