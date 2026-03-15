@@ -2998,7 +2998,7 @@ class TopologyEditor(tk.Tk):
                 "\n"
                 "Layout:\n"
                 "- Ctrl+L: Tidy selection within bus bounds.\n"
-                "- Ctrl+Shift+L: Reset layout (reassigns rows/buses).\n"
+                "- Ctrl+Shift+L: Reset layout (per-bus even spacing).\n"
                 "- Layout -> Tidy All: Align all buses into shared columns.\n"
                 "\n"
                 "View:\n"
@@ -3017,7 +3017,8 @@ class TopologyEditor(tk.Tk):
                 "\n"
                 "- Use Snap to Grid for consistent spacing.\n"
                 "- Use Smart Guides to align nodes on a bus segment.\n"
-                "- Tidy Selection spreads selected nodes within segment bounds.\n"
+                "- Tidy Selection aligns selected nodes into shared columns.\n"
+                "- Reset Layout preserves bus/row and evens per-bus spacing.\n"
                 "- Align/Distribute tools are under the Layout menu.\n"
             ),
             "Bus Segments": (

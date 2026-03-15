@@ -70,22 +70,7 @@ Purpose: Document limitations up front.
 - Drag a node near a bus segment to move it to that bus (nearest bus wins).
 - Drag a bus line to move it; connected nodes move with it.
 - Hold `Ctrl` and use the mouse wheel to zoom in/out (View menu also works).
-- Keyboard shortcuts:
-  - `Ctrl+A`: select all nodes (devices + callouts).
-  - `Ctrl+C`: copy selection.
-  - `Ctrl+D`: duplicate selection.
-  - `Ctrl+V`: paste.
-  - `Delete` / `Backspace`: remove selected nodes/callouts.
-  - `Ctrl+Z`: undo.
-  - `Ctrl+L`: tidy selection (layout within bus bounds).
-  - `Ctrl+Shift+L`: reset layout (reassigns rows/buses).
-  - `Layout -> Tidy All`: align all buses into shared columns.
-  - `Ctrl+0`: reset zoom.
-  - `Ctrl++` / `Ctrl+=`: zoom in.
-  - `Ctrl+-` / `Ctrl+_`: zoom out.
-  - `Ctrl+G`: toggle snap-to-grid.
-  - `Ctrl+Shift+G`: toggle smart guides.
-  - `Ctrl+S`: save to deploy.
+- Help -> Help... provides a topic list (overview, layout tips, profiles, shortcuts).
 - Diagram layout metadata is saved under `diagram.profiles.<profileName>` and
   ignored by the robot and PC tools.
 - Use `Add Callout` to create a text label with a leader line to a bus or node.
@@ -98,6 +83,37 @@ Purpose: Document limitations up front.
 - `terminator` is an optional per-node flag (true/false) to mark a bus end.
 - Vendor and device type fields use dropdowns populated from `src/main/deploy/can_mappings.json`
   (you can also type a custom value).
+
+## Keyboard Shortcuts
+Purpose: Keep shortcuts documented in one place.
+- `Ctrl+A`: select all nodes (devices + callouts).
+- `Shift+Click`: multi-select nodes or buses (drag for marquee).
+- `Ctrl+C`: copy selection.
+- `Ctrl+D`: duplicate selection.
+- `Ctrl+V`: paste.
+- `Delete` / `Backspace`: remove selected nodes/callouts.
+- `Ctrl+Z`: undo.
+- `Ctrl+L`: tidy selection within bus bounds.
+- `Ctrl+Shift+L`: reset layout (per-bus even spacing, preserves bus/row).
+- `Ctrl+0`: reset zoom.
+- `Ctrl++` / `Ctrl+=`: zoom in.
+- `Ctrl+-` / `Ctrl+_`: zoom out.
+- `Ctrl+MouseWheel`: zoom.
+- `Ctrl+G`: toggle snap-to-grid.
+- `Ctrl+Shift+G`: toggle smart guides.
+- `Ctrl+S`: save to deploy.
+
+## Layout Actions
+Purpose: Define what layout operations do.
+- `Tidy Selection`: align selected nodes into shared columns across buses.
+- `Tidy All`: align all device nodes into shared columns across buses.
+- `Reset Layout`: evenly spreads nodes per bus segment (no bus/row reassignment).
+- `Align` / `Distribute`: horizontal alignment tools for selected nodes.
+
+## Help Menu
+Purpose: Show where to find built-in help.
+- Help -> Help... shows topic-based guidance.
+- Help -> Keyboard Shortcuts... shows the shortcut list.
 
 ## Architecture
 Purpose: Explain the post-refactor code layout and responsibilities.

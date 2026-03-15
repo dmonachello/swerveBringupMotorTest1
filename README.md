@@ -314,6 +314,8 @@ Reverse engineering captures:
 - REV Hardware Client for SPARK MAX/Flex firmware/config and diagnostics.
 ## CAN Profiles (JSON)
 Bringup hardware profiles are defined in `src/main/deploy/bringup_profiles.json`.
+- GUI editor: `tools/can_topology/can_top_editor.py` (usage in `tools/can_topology/README.md`).
+- Validator: `tools/can_topology/validate_profiles.py` for schema and CAN ID checks.
 - `default_profile` controls the startup profile.
 - The repo includes a stable `example_default` profile (two SparkMax/NEO) for always-on testing.
 - Profiles are applied in the order they appear in the JSON when you press `Back` to toggle.
