@@ -37,7 +37,9 @@ Purpose: Describe the shortest path from sketch to JSON.
 2. Drag boxes to arrange them on the bus line.
 3. Set the profile name (dropdown lists profiles from the loaded file).
 4. File -> Save Profile As...
-5. Or use File -> `Save to Deploy` to append/replace directly in `src/main/deploy/bringup_profiles.json`.
+5. File -> Save Selection As... writes only selected nodes/callouts.
+6. Or use File -> `Save to Deploy` to append/replace directly in `src/main/deploy/bringup_profiles.json`.
+7. Save Selection As... never overwrites an existing file; it auto-suffixes `_1`, `_2`, etc.
 6. Use `Set As Default` to update `default_profile` on save.
 7. Use File -> `Export PDF...` to write a printable PDF (requires `reportlab`).
 
@@ -45,6 +47,7 @@ Purpose: Describe the shortest path from sketch to JSON.
 Purpose: Show fields not displayed on the boxes.
 - Select any node to view full metadata (motor, limits, terminator, vendor/type).
 - Diagram boxes show `label (id X)` only; type remains in the left list.
+- Tags appear in the details panel for quick reference.
 
 ## Auto-Load
 Purpose: Start with your existing profile if present.
@@ -71,6 +74,7 @@ Purpose: Document limitations up front.
 - Drag a bus line to move it; connected nodes move with it.
 - Hold `Ctrl` and use the mouse wheel to zoom in/out (View menu also works).
 - Help -> Help... provides a topic list (overview, layout tips, profiles, shortcuts).
+- Tags are freeform labels saved on device entries and diagram metadata.
 - Diagram layout metadata is saved under `diagram.profiles.<profileName>` and
   ignored by the robot and PC tools.
 - Use `Add Callout` to create a text label with a leader line to a bus or node.
@@ -109,6 +113,22 @@ Purpose: Define what layout operations do.
 - `Tidy All`: align all device nodes into shared columns across buses.
 - `Reset Layout`: evenly spreads nodes per bus segment (no bus/row reassignment).
 - `Align` / `Distribute`: horizontal alignment tools for selected nodes.
+
+## Tags
+Purpose: Group and sort nodes with freeform labels.
+- Tags are comma-separated strings (e.g., `swerve`, `front-left`).
+- Tags are stored on device entries in `bringup_profiles.json`.
+- Use `Tags` menu actions to select, filter, tidy, or sort by tag.
+- Use `Apply Tag to Selection` / `Remove Tag from Selection` to bulk edit tags.
+- Tag filters accept expressions with `AND`/`OR`, `&&`/`||`, commas, or implicit OR (parentheses supported).
+- `Select Filtered Nodes` converts the active filter into a selection.
+- Filter dialog supports OR/AND append toggles and a scrollable tag list.
+
+## Bulk Edit
+Purpose: Apply changes across many nodes at once.
+- Edit -> Bulk Edit... applies changes to all selected nodes/callouts.
+- Use Apply checkboxes to control which fields are updated.
+- Label supports replace/prefix/suffix; tags support replace/add/remove.
 
 ## Help Menu
 Purpose: Show where to find built-in help.

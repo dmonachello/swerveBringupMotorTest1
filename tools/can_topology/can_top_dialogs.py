@@ -61,6 +61,9 @@ class NodeDialog(tk.Toplevel):
         self.var_vendor = tk.StringVar(value=initial.vendor if initial else "")
         self.var_type = tk.StringVar(value=initial.device_type if initial else "")
         self.var_motor = tk.StringVar(value=initial.motor if initial else "")
+        self.var_tags = tk.StringVar(
+            value=", ".join(initial.tags) if initial and initial.tags else ""
+        )
         self.var_fwd = tk.StringVar(
             value=str(initial.limits.get("fwdDio")) if initial and initial.limits else ""
         )
@@ -114,8 +117,11 @@ class NodeDialog(tk.Toplevel):
             row=9, column=0, columnspan=2, sticky="w"
         )
 
+        ttk.Label(frame, text="Tags").grid(row=10, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_tags, width=24).grid(row=10, column=1, sticky="w")
+
         button_row = ttk.Frame(frame)
-        button_row.grid(row=10, column=0, columnspan=2, sticky="e", pady=(8, 0))
+        button_row.grid(row=11, column=0, columnspan=2, sticky="e", pady=(8, 0))
         ttk.Button(button_row, text="Cancel", command=self._on_cancel).pack(side="right", padx=(4, 0))
         ttk.Button(button_row, text="OK", command=self._on_ok).pack(side="right")
 
@@ -157,6 +163,7 @@ class NodeDialog(tk.Toplevel):
             "motor": self.var_motor.get().strip(),
             "limits": limits,
             "terminator": self.var_terminator.get(),
+            "tags": self._parse_tags(self.var_tags.get()),
         }
         self.destroy()
 
@@ -204,6 +211,17 @@ class NodeDialog(tk.Toplevel):
             raise ValueError(f"{label} must be -1 or greater.")
         return dio
 
+    @staticmethod
+    def _parse_tags(value: str) -> List[str]:
+        """
+        NAME
+            _parse_tags - Parse a comma-separated tag string.
+        """
+        if not value:
+            return []
+        tags = [tag.strip() for tag in value.split(",")]
+        return [tag for tag in tags if tag]
+
 
 class CalloutDialog(tk.Toplevel):
     """
@@ -246,6 +264,9 @@ class CalloutDialog(tk.Toplevel):
         self.var_target_type = tk.StringVar(value=target_type)
         self.var_target_bus = tk.StringVar(value=str(initial.callout_target_bus if initial else 0))
         self.var_target_node = tk.StringVar()
+        self.var_tags = tk.StringVar(
+            value=", ".join(initial.tags) if initial and initial.tags else ""
+        )
 
         if initial and initial.callout_target_node_key is not None:
             for node in self._nodes:
@@ -276,8 +297,11 @@ class CalloutDialog(tk.Toplevel):
         self.combo_bus = ttk.Combobox(frame, textvariable=self.var_target_bus, values=bus_values, width=10)
         self.combo_bus.grid(row=3, column=1, sticky="w")
 
+        ttk.Label(frame, text="Tags").grid(row=4, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_tags, width=28).grid(row=4, column=1, sticky="w")
+
         button_row = ttk.Frame(frame)
-        button_row.grid(row=4, column=0, columnspan=2, sticky="e", pady=(8, 0))
+        button_row.grid(row=5, column=0, columnspan=2, sticky="e", pady=(8, 0))
         ttk.Button(button_row, text="Cancel", command=self._on_cancel).pack(side="right", padx=(4, 0))
         ttk.Button(button_row, text="OK", command=self._on_ok).pack(side="right")
 
@@ -328,6 +352,7 @@ class CalloutDialog(tk.Toplevel):
             "target_node_category": target_node_category,
             "target_node_label": target_node_label,
             "target_node_id": target_node_id,
+            "tags": NodeDialog._parse_tags(self.var_tags.get()),
         }
         self.destroy()
 

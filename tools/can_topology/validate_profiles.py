@@ -309,6 +309,15 @@ def validate_entry(
     elif terminator is not None:
         reporter.pass_(f"Profile '{profile_name}' entry id {can_id} terminator is boolean.")
 
+    tags = entry.get("tags")
+    if tags is not None:
+        if not isinstance(tags, list) or not all(isinstance(tag, str) and tag.strip() for tag in tags):
+            msg = f"Profile '{profile_name}' entry id {can_id} tags must be a list of non-empty strings."
+            errors.append(msg)
+            reporter.fail(msg)
+        else:
+            reporter.pass_(f"Profile '{profile_name}' entry id {can_id} tags are valid.")
+
     return errors, warnings, can_id
 
 

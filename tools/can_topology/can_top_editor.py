@@ -115,6 +115,11 @@ class TopologyEditor(tk.Tk):
         self._guide_x: Optional[float] = None
         self._guide_bus: Optional[int] = None
         self._guide_snap_px = 6.0
+        self._tag_filter: Optional[str] = None
+        self._tag_filter_fn: Optional[object] = None
+        self._tag_filter_var = tk.StringVar(value="Filter: All")
+        self._tag_filter_button: Optional[ttk.Button] = None
+        self._list_sort_var = tk.StringVar(value="can_id")
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._build_ui()
         self._load_default_profile_if_present()
@@ -135,11 +140,18 @@ class TopologyEditor(tk.Tk):
         right.pack(side="right", fill="both", expand=True)
 
         ttk.Label(left, text="Nodes").pack(anchor="w")
+        tag_filter = ttk.Frame(left)
+        tag_filter.pack(fill="x", pady=(2, 4))
+        ttk.Label(tag_filter, textvariable=self._tag_filter_var).pack(side="left", anchor="w")
+        self._tag_filter_button = ttk.Button(
+            tag_filter, text="Clear", command=self._clear_tag_filter
+        )
+        self._tag_filter_button.pack(side="right")
         list_frame = ttk.Frame(left)
         list_frame.pack(fill="both", expand=True, pady=(4, 6))
         self.node_list = ttk.Treeview(
             list_frame,
-            columns=("can_id", "type", "label"),
+            columns=("can_id", "type", "label", "tags"),
             show="headings",
             height=12,
             selectmode="browse",
@@ -147,9 +159,11 @@ class TopologyEditor(tk.Tk):
         self.node_list.heading("can_id", text="CAN ID")
         self.node_list.heading("type", text="Type")
         self.node_list.heading("label", text="Label")
+        self.node_list.heading("tags", text="Tags")
         self.node_list.column("can_id", width=60, anchor="center")
         self.node_list.column("type", width=80, anchor="w")
         self.node_list.column("label", width=160, anchor="w")
+        self.node_list.column("tags", width=120, anchor="w")
         self.node_list.pack(side="left", fill="both", expand=True)
         node_scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.node_list.yview)
         node_scroll.pack(side="right", fill="y")
@@ -228,6 +242,7 @@ class TopologyEditor(tk.Tk):
         self.canvas.bind("<Control-MouseWheel>", self._on_zoom_wheel)
 
         self._build_details_panel(right)
+        self._set_tag_filter(self._tag_filter)
 
     def _build_menu(self) -> None:
         """
@@ -239,6 +254,7 @@ class TopologyEditor(tk.Tk):
         file_menu.add_command(label="New", command=self._new_diagram)
         file_menu.add_command(label="Open Profile...", command=self._open_profile)
         file_menu.add_command(label="Save Profile As...", command=self._save_profile_as)
+        file_menu.add_command(label="Save Selection As...", command=self._save_selection_as)
         file_menu.add_command(label="Save to Deploy", command=self._on_save_to_deploy)
         file_menu.add_command(label="Export PDF...", command=self._on_export_pdf)
         file_menu.add_command(label="Export Java Constants...", command=self._on_export_java_constants)
@@ -249,7 +265,34 @@ class TopologyEditor(tk.Tk):
         edit_menu = tk.Menu(menu, tearoff=False)
         edit_menu.add_command(label="Copy", command=self._on_copy)
         edit_menu.add_command(label="Paste", command=self._on_paste)
+        edit_menu.add_command(label="Bulk Edit...", command=self._bulk_edit_selection)
         menu.add_cascade(label="Edit", menu=edit_menu)
+        tags_menu = tk.Menu(menu, tearoff=False)
+        tags_menu.add_command(label="Select by Tag...", command=self._select_by_tag)
+        tags_menu.add_command(label="Filter List by Tag...", command=self._filter_list_by_tag)
+        tags_menu.add_command(label="Select Filtered Nodes", command=self._select_filtered_nodes)
+        tags_menu.add_command(label="Clear Tag Filter", command=self._clear_tag_filter)
+        tags_menu.add_separator()
+        tags_menu.add_command(label="Apply Tag to Selection...", command=self._apply_tag_to_selection)
+        tags_menu.add_command(
+            label="Remove Tag from Selection...", command=self._remove_tag_from_selection
+        )
+        tags_menu.add_separator()
+        tags_menu.add_command(label="Tidy by Tag...", command=self._tidy_by_tag)
+        tags_menu.add_separator()
+        tags_menu.add_radiobutton(
+            label="Sort List by CAN ID",
+            variable=self._list_sort_var,
+            value="can_id",
+            command=self._refresh_list,
+        )
+        tags_menu.add_radiobutton(
+            label="Sort List by Tag",
+            variable=self._list_sort_var,
+            value="tag",
+            command=self._refresh_list,
+        )
+        menu.add_cascade(label="Tags", menu=tags_menu)
         layout_menu = tk.Menu(menu, tearoff=False)
         layout_menu.add_command(label="Align Left", command=lambda: self._align_selected("left"))
         layout_menu.add_command(label="Align Center", command=lambda: self._align_selected("center"))
@@ -295,15 +338,16 @@ class TopologyEditor(tk.Tk):
         self._node_details_panel = panel
 
         self.detail_vars = {
-            "category": tk.StringVar(value="—"),
-            "label": tk.StringVar(value="—"),
-            "can_id": tk.StringVar(value="—"),
-            "vendor": tk.StringVar(value="—"),
-            "type": tk.StringVar(value="—"),
-            "motor": tk.StringVar(value="—"),
-            "limits": tk.StringVar(value="—"),
-            "terminator": tk.StringVar(value="—"),
+            "category": tk.StringVar(value="--"),
+            "label": tk.StringVar(value="--"),
+            "can_id": tk.StringVar(value="--"),
+            "vendor": tk.StringVar(value="--"),
+            "type": tk.StringVar(value="--"),
+            "motor": tk.StringVar(value="--"),
+            "limits": tk.StringVar(value="--"),
+            "terminator": tk.StringVar(value="--"),
             "scale": tk.StringVar(value="1.00"),
+            "tags": tk.StringVar(value="--"),
         }
         self._terminator_status_var = tk.StringVar(value="???")
 
@@ -317,6 +361,7 @@ class TopologyEditor(tk.Tk):
             ("Motor", "motor"),
             ("Limits", "limits"),
             ("Terminator", "terminator"),
+            ("Tags", "tags"),
             ("Scale", "scale"),
         ]
         for idx, (title, key) in enumerate(rows):
@@ -366,8 +411,8 @@ class TopologyEditor(tk.Tk):
         self._refresh_terminator_status()
         if node is None:
             for key in self.detail_vars:
-                self.detail_vars[key].set("—")
-            self._callout_scale_var.set("—")
+                self.detail_vars[key].set("--")
+            self._callout_scale_var.set("--")
             if hasattr(self, "_node_details_panel"):
                 self._preserve_canvas_view(self._node_details_panel.pack_forget)
             return
@@ -376,33 +421,35 @@ class TopologyEditor(tk.Tk):
         if node.node_type == "callout":
             return
 
-        limits_text = "—"
+        limits_text = "--"
         if node.limits:
-            fwd = node.limits.get("fwdDio", "—")
-            rev = node.limits.get("revDio", "—")
+            fwd = node.limits.get("fwdDio", "--")
+            rev = node.limits.get("revDio", "--")
             inv = node.limits.get("invert", False)
             limits_text = f"fwd={fwd}, rev={rev}, invert={inv}"
 
-        term_text = "—" if node.terminator is None else ("on" if node.terminator else "off")
+        term_text = "--" if node.terminator is None else ("on" if node.terminator else "off")
 
         self.detail_vars["category"].set(node.category)
         self.detail_vars["label"].set(node.label)
         self.detail_vars["can_id"].set(str(node.can_id))
-        self.detail_vars["vendor"].set(node.vendor or "—")
-        self.detail_vars["type"].set(node.device_type or "—")
-        self.detail_vars["motor"].set(node.motor or "—")
+        self.detail_vars["vendor"].set(node.vendor or "--")
+        self.detail_vars["type"].set(node.device_type or "--")
+        self.detail_vars["motor"].set(node.motor or "--")
         self.detail_vars["limits"].set(limits_text)
         self.detail_vars["terminator"].set(term_text)
         self.detail_vars["scale"].set(f"{node.scale:.2f}")
+        self.detail_vars["tags"].set(self._tags_to_string(node.tags) or "--")
         if hasattr(self, "_node_details_panel"):
             self._preserve_canvas_view(lambda: self._node_details_panel.pack(fill="x", pady=(8, 0)))
 
-    def _terminator_count(self) -> int:
+    def _terminator_count(self, nodes: Optional[List[Node]] = None) -> int:
         """
         NAME
             _terminator_count - Count nodes marked as CAN bus terminators.
         """
-        return sum(1 for n in self._nodes if n.terminator is True)
+        targets = nodes if nodes is not None else self._nodes
+        return sum(1 for n in targets if n.terminator is True)
 
     def _refresh_terminator_status(self) -> None:
         """
@@ -423,12 +470,12 @@ class TopologyEditor(tk.Tk):
             except tk.TclError:
                 pass
 
-    def _confirm_terminators(self) -> bool:
+    def _confirm_terminators(self, nodes: Optional[List[Node]] = None) -> bool:
         """
         NAME
             _confirm_terminators - Warn when terminator count is not two.
         """
-        count = self._terminator_count()
+        count = self._terminator_count(nodes)
         if count == 2:
             return True
         return messagebox.askyesno(
@@ -573,7 +620,7 @@ class TopologyEditor(tk.Tk):
         self._nodes.clear()
         self._next_key = 1
         self._selected_key = None
-        self._callout_scale_var.set("—")
+        self._callout_scale_var.set("--")
         if hasattr(self, "_node_details_panel"):
             self._preserve_canvas_view(self._node_details_panel.pack_forget)
         if hasattr(self, "_callout_details_panel"):
@@ -653,7 +700,7 @@ class TopologyEditor(tk.Tk):
             return
         self._nodes = self._nodes_from_profile(profile)
         self._next_callout = 1
-        self._callout_scale_var.set("—")
+        self._callout_scale_var.set("--")
         if hasattr(self, "_node_details_panel"):
             self._preserve_canvas_view(self._node_details_panel.pack_forget)
         if hasattr(self, "_callout_details_panel"):
@@ -826,6 +873,77 @@ class TopologyEditor(tk.Tk):
         self._set_profile_names(self._profile_names + [profile_name])
         messagebox.showinfo("Saved", f"Wrote profile to {path}")
 
+    def _save_selection_as(self) -> None:
+        """
+        NAME
+            _save_selection_as - Export selected nodes into a profile JSON.
+        """
+        if not self._selected_nodes:
+            messagebox.showinfo("Save Selection", "Select one or more nodes or callouts.")
+            return
+        profile_name = self.entry_profile.get().strip()
+        if not profile_name:
+            messagebox.showerror("Invalid", "Profile name is required.")
+            return
+        selected_nodes = [n for n in self._nodes if n.key in self._selected_nodes]
+        selected_devices = [n for n in selected_nodes if n.node_type == "device"]
+        if not selected_devices:
+            messagebox.showinfo("Save Selection", "Selection contains no device nodes.")
+            return
+        validation_error = self._validate_nodes(nodes=selected_devices)
+        if validation_error:
+            messagebox.showerror("Invalid", validation_error)
+            return
+        if not self._confirm_can_id_collisions(nodes=selected_devices):
+            return
+        if not self._confirm_terminators(nodes=selected_devices):
+            return
+        path = filedialog.asksaveasfilename(
+            title="Save Bringup Profiles JSON",
+            defaultextension=".json",
+            filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        path_obj = Path(path)
+        if path_obj.exists():
+            base = path_obj.stem
+            suffix = path_obj.suffix or ".json"
+            parent = path_obj.parent
+            index = 1
+            while True:
+                candidate = parent / f"{base}_{index}{suffix}"
+                if not candidate.exists():
+                    path_obj = candidate
+                    break
+                index += 1
+            messagebox.showinfo(
+                "Save Selection",
+                f"File exists. Saving as {path_obj.name} instead.",
+            )
+        path = str(path_obj)
+        data = {
+            "default_profile": profile_name,
+            "profiles": {
+                profile_name: self._profile_from_nodes_list(selected_devices),
+            },
+            "diagram": {
+                "profiles": {
+                    profile_name: self._diagram_snapshot_from_nodes(selected_nodes),
+                }
+            },
+        }
+        try:
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(data, handle, indent=2)
+                handle.write("\n")
+        except Exception as exc:
+            messagebox.showerror("Error", f"Failed to write file: {exc}")
+            return
+        self._dirty = False
+        self._set_profile_names(self._profile_names + [profile_name])
+        messagebox.showinfo("Saved", f"Wrote selection profile to {path}")
+
     def _on_save_to_deploy(self) -> None:
         """
         NAME
@@ -891,7 +1009,7 @@ class TopologyEditor(tk.Tk):
         self._set_profile_names(sorted(profiles.keys()))
         messagebox.showinfo("Saved", f"Updated {path} with profile '{profile_name}'.")
 
-    def _validate_nodes(self) -> Optional[str]:
+    def _validate_nodes(self, nodes: Optional[List[Node]] = None) -> Optional[str]:
         """
         NAME
             _validate_nodes - Enforce category constraints before save.
@@ -901,7 +1019,8 @@ class TopologyEditor(tk.Tk):
         """
         seen_singletons = {}
         seen_strict: Dict[Tuple[str, str, int], Node] = {}
-        for node in self._device_nodes():
+        nodes_to_check = nodes if nodes is not None else self._device_nodes()
+        for node in nodes_to_check:
             if node.category in SINGLETON_CATEGORIES:
                 if node.category in seen_singletons:
                     return f"Only one {node.category} is allowed."
@@ -937,16 +1056,23 @@ class TopologyEditor(tk.Tk):
         RETURNS
             Dict compatible with bringup_profiles.json.
         """
+        return self._profile_from_nodes_list(self._device_nodes())
+
+    def _profile_from_nodes_list(self, nodes: List[Node]) -> Dict[str, object]:
+        """
+        NAME
+            _profile_from_nodes_list - Build a bringup profile from a node list.
+        """
         profile: Dict[str, object] = {}
         for category in BUCKET_CATEGORIES:
-            entries = [self._node_to_entry(n) for n in self._device_nodes() if n.category == category]
+            entries = [self._node_to_entry(n) for n in nodes if n.category == category]
             if entries:
                 profile[category] = entries
         for category in SINGLETON_CATEGORIES:
-            entries = [self._node_to_entry(n) for n in self._device_nodes() if n.category == category]
+            entries = [self._node_to_entry(n) for n in nodes if n.category == category]
             if entries:
                 profile[category] = entries[0]
-        generic_entries = [self._node_to_entry(n) for n in self._device_nodes() if n.category == GENERIC_CATEGORY]
+        generic_entries = [self._node_to_entry(n) for n in nodes if n.category == GENERIC_CATEGORY]
         if generic_entries:
             profile[GENERIC_CATEGORY] = generic_entries
         return profile
@@ -966,6 +1092,8 @@ class TopologyEditor(tk.Tk):
             entry["limits"] = self._normalize_limits(node.limits)
         if node.terminator is not None:
             entry["terminator"] = node.terminator
+        if node.tags:
+            entry["tags"] = list(node.tags)
         return entry
 
     @staticmethod
@@ -1032,6 +1160,7 @@ class TopologyEditor(tk.Tk):
             if isinstance(limits, dict):
                 limits = dict(limits)
             terminator = entry.get("terminator")
+            tags = self._normalize_tags(entry.get("tags", []))
             node = Node(
                 key=self._next_key,
                 category=category,
@@ -1045,6 +1174,7 @@ class TopologyEditor(tk.Tk):
                 x=0.0,
                 row=0,
                 scale=1.0,
+                tags=tags,
             )
             self._next_key += 1
             nodes.append(node)
@@ -1074,8 +1204,15 @@ class TopologyEditor(tk.Tk):
         RETURNS
             Diagram metadata dict stored under the profile name.
         """
+        return self._diagram_snapshot_from_nodes(self._nodes)
+
+    def _diagram_snapshot_from_nodes(self, nodes_list: List[Node]) -> Dict[str, object]:
+        """
+        NAME
+            _diagram_snapshot_from_nodes - Capture diagram metadata for a node subset.
+        """
         nodes: List[Dict[str, object]] = []
-        for node in self._nodes:
+        for node in nodes_list:
             if node.node_type == "callout":
                 nodes.append(
                     {
@@ -1093,21 +1230,23 @@ class TopologyEditor(tk.Tk):
                         "bus": node.bus_index,
                         "row": node.row,
                         "scale": node.scale,
+                        "tags": list(node.tags or []),
                     }
                 )
             else:
                 nodes.append(
                     {
                         "nodeType": "device",
-                    "category": node.category,
-                    "label": node.label,
-                    "id": node.can_id,
-                    "bus": node.bus_index,
-                    "row": node.row,
-                    "x": node.x,
-                    "freeY": self._node_center_y_unscaled(node),
-                    "scale": node.scale,
-                }
+                        "category": node.category,
+                        "label": node.label,
+                        "id": node.can_id,
+                        "bus": node.bus_index,
+                        "row": node.row,
+                        "x": node.x,
+                        "freeY": self._node_center_y_unscaled(node),
+                        "scale": node.scale,
+                        "tags": list(node.tags or []),
+                    }
                 )
         return {
             "busOffsets": list(self._bus_offsets),
@@ -1194,6 +1333,7 @@ class TopologyEditor(tk.Tk):
                         callout_target_id=entry.get("targetId"),
                         callout_y=callout_y,
                         free_y=free_val,
+                        tags=self._normalize_tags(entry.get("tags", [])),
                     )
                     if callout.callout_target_type == "node":
                         if callout.callout_target_node_key not in device_keys:
@@ -1250,6 +1390,8 @@ class TopologyEditor(tk.Tk):
                 node_id = entry.get("id")
                 for node in self._device_nodes():
                     if node.category == cat and node.label == label and node.can_id == node_id:
+                        tags_raw = entry.get("tags", None)
+                        tags = node.tags if tags_raw is None else self._normalize_tags(tags_raw)
                         bus = entry.get("bus")
                         row = entry.get("row")
                         x = entry.get("x")
@@ -1260,17 +1402,19 @@ class TopologyEditor(tk.Tk):
                         if isinstance(x, (int, float)):
                             node.x = float(x)
                         scale = entry.get("scale")
-                    if isinstance(scale, (int, float)):
-                        node.scale = max(0.6, min(2.0, float(scale)))
-                    free_y = entry.get("freeY")
-                    if isinstance(free_y, (int, float)):
-                        # TODO(major-refactor): Remove legacy freeY absolute->relative migration after re-saving profiles.
-                        free_val = float(free_y)
-                        if self._bus_offsets:
-                            bus_offset = self._bus_offsets[min(max(node.bus_index, 0), len(self._bus_offsets) - 1)]
-                            if abs(free_val) > 200.0:
-                                free_val = free_val - bus_offset
-                        node.free_y = free_val
+                        if isinstance(scale, (int, float)):
+                            node.scale = max(0.6, min(2.0, float(scale)))
+                        free_y = entry.get("freeY")
+                        if isinstance(free_y, (int, float)):
+                            # TODO(major-refactor): Remove legacy freeY absolute->relative migration after re-saving profiles.
+                            free_val = float(free_y)
+                            if self._bus_offsets:
+                                bus_offset = self._bus_offsets[min(max(node.bus_index, 0), len(self._bus_offsets) - 1)]
+                                if abs(free_val) > 200.0:
+                                    free_val = free_val - bus_offset
+                            node.free_y = free_val
+                        node.tags = tags
+                        break
 
         # Legacy format: convert callouts list into callout nodes.
         callouts = diagram.get("callouts")
@@ -1311,6 +1455,7 @@ class TopologyEditor(tk.Tk):
                     callout_target_id=entry.get("targetId"),
                     callout_y=callout_y,
                     free_y=free_val,
+                    tags=self._normalize_tags(entry.get("tags", [])),
                 )
                 if callout.callout_target_type == "node":
                     if callout.callout_target_node_key not in device_keys:
@@ -1416,6 +1561,7 @@ class TopologyEditor(tk.Tk):
             row=len(self._nodes) % 2,
             bus_index=len(self._nodes) % max(len(self._bus_offsets), 1),
             scale=1.0,
+            tags=self._normalize_tags(data.get("tags", [])),
         )
         self._next_key += 1
         self._nodes.append(node)
@@ -1454,6 +1600,7 @@ class TopologyEditor(tk.Tk):
         node.terminator = (
             bool(data.get("terminator")) if data.get("terminator") is not None else None
         )
+        node.tags = self._normalize_tags(data.get("tags", []))
         self._refresh_list()
         self._redraw_canvas()
         self._select_node(node.key)
@@ -1577,13 +1724,24 @@ class TopologyEditor(tk.Tk):
         """
         for item in self.node_list.get_children():
             self.node_list.delete(item)
-        nodes = sorted(self._device_nodes(), key=lambda n: int(n.can_id))
+        nodes = list(self._device_nodes())
+        if self._tag_filter_fn is not None:
+            nodes = [n for n in nodes if self._tag_filter_fn(n)]
+        sort_mode = self._list_sort_var.get()
+        if sort_mode == "tag":
+            def _tag_key(node: Node) -> Tuple[str, str, int]:
+                primary = node.tags[0] if node.tags else ""
+                return (self._normalize_tag(primary), node.label.lower(), int(node.can_id))
+            nodes = sorted(nodes, key=_tag_key)
+        else:
+            nodes = sorted(nodes, key=lambda n: int(n.can_id))
         for node in nodes:
+            tags = self._tags_to_string(node.tags)
             self.node_list.insert(
                 "",
                 "end",
                 iid=str(node.key),
-                values=(str(node.can_id), node.category, node.label),
+                values=(str(node.can_id), node.category, node.label, tags),
             )
 
     def _layout_even(self) -> None:
@@ -1984,7 +2142,7 @@ class TopologyEditor(tk.Tk):
                 return node
         return None
 
-    def _confirm_can_id_collisions(self) -> bool:
+    def _confirm_can_id_collisions(self, nodes: Optional[List[Node]] = None) -> bool:
         """
         NAME
             _confirm_can_id_collisions - Warn about duplicate CAN IDs.
@@ -1992,7 +2150,7 @@ class TopologyEditor(tk.Tk):
         RETURNS
             True when ok to proceed, False to cancel save.
         """
-        nodes = self._device_nodes()
+        nodes = nodes if nodes is not None else self._device_nodes()
         by_loose: Dict[int, List[Node]] = {}
         by_strict: Dict[Tuple[str, str, int], List[Node]] = {}
         for node in nodes:
@@ -2182,6 +2340,727 @@ class TopologyEditor(tk.Tk):
         self._selected_nodes = set()
         self._selected_buses = set()
         self._sync_selection_state()
+
+    def _normalize_tag(self, value: str) -> str:
+        """
+        NAME
+            _normalize_tag - Normalize a tag string for comparisons.
+        """
+        return (value or "").strip().lower()
+
+    def _normalize_tags(self, value: object) -> List[str]:
+        """
+        NAME
+            _normalize_tags - Normalize tags into a cleaned list.
+        """
+        tags: List[str] = []
+        if isinstance(value, str):
+            tags = [tag.strip() for tag in value.split(",")]
+        elif isinstance(value, list):
+            tags = [str(tag).strip() for tag in value]
+        seen: set[str] = set()
+        normalized: List[str] = []
+        for tag in tags:
+            if not tag:
+                continue
+            norm = self._normalize_tag(tag)
+            if norm in seen:
+                continue
+            seen.add(norm)
+            normalized.append(norm)
+        return normalized
+
+    def _tags_to_string(self, tags: List[str]) -> str:
+        """
+        NAME
+            _tags_to_string - Format tag list for display.
+        """
+        return ", ".join(tags) if tags else ""
+
+    def _collect_tags(self) -> List[str]:
+        """
+        NAME
+            _collect_tags - Gather all known tags for prompts.
+        """
+        tags: set[str] = set()
+        for node in self._nodes:
+            for tag in getattr(node, "tags", []) or []:
+                if tag:
+                    tags.add(self._normalize_tag(tag))
+        return sorted(tags)
+
+    def _set_tag_filter(self, tag: Optional[str]) -> None:
+        """
+        NAME
+            _set_tag_filter - Apply a tag filter to the node list.
+        """
+        expr = (tag or "").strip()
+        if not expr:
+            self._tag_filter = None
+            self._tag_filter_fn = None
+            self._tag_filter_var.set("Filter: All")
+            if self._tag_filter_button is not None:
+                self._tag_filter_button.configure(state="disabled")
+            self._refresh_list()
+            return
+        try:
+            fn = self._compile_tag_filter(expr)
+        except ValueError as exc:
+            messagebox.showerror("Invalid Filter", str(exc))
+            return
+        self._tag_filter = expr
+        self._tag_filter_fn = fn
+        label = f"Filter: {self._tag_filter}" if self._tag_filter else "Filter: All"
+        self._tag_filter_var.set(label)
+        if self._tag_filter_button is not None:
+            state = "normal" if self._tag_filter else "disabled"
+            self._tag_filter_button.configure(state=state)
+        self._refresh_list()
+
+    def _clear_tag_filter(self) -> None:
+        """
+        NAME
+            _clear_tag_filter - Clear the active tag filter.
+        """
+        self._set_tag_filter(None)
+
+    def _match_tag(self, node: Node, tag: str) -> bool:
+        """
+        NAME
+            _match_tag - Return True if a node has the given tag.
+        """
+        target = self._normalize_tag(tag)
+        if not target:
+            return False
+        return target in {self._normalize_tag(t) for t in (node.tags or [])}
+
+    def _prompt_for_tag(self, title: str) -> Optional[str]:
+        """
+        NAME
+            _prompt_for_tag - Prompt for a tag value.
+        """
+        dialog = tk.Toplevel(self)
+        dialog.title(title)
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+
+        ttk.Label(dialog, text="Tag").pack(anchor="w", padx=10, pady=(10, 2))
+        var = tk.StringVar()
+        entry = ttk.Entry(dialog, textvariable=var, width=30)
+        entry.pack(padx=10, pady=4, fill="x")
+        entry.focus_set()
+        values = self._collect_tags()
+        if values:
+            ttk.Label(dialog, text="Existing Tags").pack(anchor="w", padx=10, pady=(6, 2))
+            listbox = tk.Listbox(dialog, height=min(6, len(values)), exportselection=False)
+            for item in values:
+                listbox.insert("end", item)
+            listbox.pack(padx=10, pady=(0, 6), fill="x")
+
+            def _use_selected(_event: tk.Event) -> None:
+                selection = listbox.curselection()
+                if not selection:
+                    return
+                var.set(values[selection[0]])
+
+            listbox.bind("<<ListboxSelect>>", _use_selected)
+
+        result: List[Optional[str]] = [None]
+
+        def _ok() -> None:
+            result[0] = var.get()
+            dialog.destroy()
+
+        def _cancel() -> None:
+            dialog.destroy()
+
+        button_row = ttk.Frame(dialog)
+        button_row.pack(padx=10, pady=(6, 10), anchor="e")
+        ttk.Button(button_row, text="Cancel", command=_cancel).pack(side="left", padx=4)
+        ttk.Button(button_row, text="OK", command=_ok).pack(side="left", padx=4)
+        self.wait_window(dialog)
+        return result[0]
+
+    def _prompt_for_tag_filter(self, title: str) -> Optional[str]:
+        """
+        NAME
+            _prompt_for_tag_filter - Prompt for a tag filter expression.
+        """
+        dialog = tk.Toplevel(self)
+        dialog.title(title)
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+
+        ttk.Label(dialog, text="Filter Expression").pack(anchor="w", padx=10, pady=(10, 2))
+        var = tk.StringVar(value=self._tag_filter or "")
+        entry = ttk.Entry(dialog, textvariable=var, width=36)
+        entry.pack(padx=10, pady=4, fill="x")
+        entry.focus_set()
+
+        ttk.Label(dialog, text="Use AND/OR, &&/||, or commas in filters.").pack(
+            anchor="w", padx=10, pady=(0, 4)
+        )
+
+        values = self._collect_tags()
+        if values:
+            op_frame = ttk.Frame(dialog)
+            op_frame.pack(anchor="w", padx=10, pady=(0, 4))
+            ttk.Label(op_frame, text="Append with").pack(side="left")
+            append_op = tk.StringVar(value="||")
+            ttk.Radiobutton(op_frame, text="OR", variable=append_op, value="||").pack(
+                side="left", padx=(6, 0)
+            )
+            ttk.Radiobutton(op_frame, text="AND", variable=append_op, value="&&").pack(
+                side="left", padx=(6, 0)
+            )
+            ttk.Label(dialog, text="Existing Tags").pack(anchor="w", padx=10, pady=(6, 2))
+            list_frame = ttk.Frame(dialog)
+            list_frame.pack(padx=10, pady=(0, 6), fill="x")
+            listbox = tk.Listbox(
+                list_frame, height=min(8, len(values)), exportselection=False
+            )
+            for item in values:
+                listbox.insert("end", item)
+            listbox.pack(side="left", fill="x", expand=True)
+            list_scroll = ttk.Scrollbar(list_frame, orient="vertical", command=listbox.yview)
+            list_scroll.pack(side="right", fill="y")
+            listbox.configure(yscrollcommand=list_scroll.set)
+
+            def _use_selected(_event: tk.Event) -> None:
+                selection = listbox.curselection()
+                if not selection:
+                    return
+                tag = values[selection[0]]
+                current = var.get().strip()
+                if not current:
+                    var.set(tag)
+                else:
+                    if " " in tag:
+                        tag = f"({tag})"
+                    var.set(f"{current} {append_op.get()} {tag}")
+
+            listbox.bind("<<ListboxSelect>>", _use_selected)
+            listbox.bind("<Double-Button-1>", _use_selected)
+
+        result: List[Optional[str]] = [None]
+
+        def _ok() -> None:
+            result[0] = var.get()
+            dialog.destroy()
+
+        def _cancel() -> None:
+            dialog.destroy()
+
+        button_row = ttk.Frame(dialog)
+        button_row.pack(padx=10, pady=(6, 10), anchor="e")
+        ttk.Button(button_row, text="Cancel", command=_cancel).pack(side="left", padx=4)
+        ttk.Button(button_row, text="OK", command=_ok).pack(side="left", padx=4)
+        self.wait_window(dialog)
+        return result[0]
+
+    def _compile_tag_filter(self, expr: str):
+        """
+        NAME
+            _compile_tag_filter - Compile a tag filter expression.
+        """
+        text = expr.strip()
+        if not text:
+            raise ValueError("Filter expression is empty.")
+        text = re.sub(r"\\bAND\\b", "&&", text, flags=re.IGNORECASE)
+        text = re.sub(r"\\bOR\\b", "||", text, flags=re.IGNORECASE)
+
+        tokens: List[str] = []
+        i = 0
+        while i < len(text):
+            ch = text[i]
+            if ch.isspace():
+                i += 1
+                continue
+            if text.startswith("&&", i):
+                tokens.append("&&")
+                i += 2
+                continue
+            if text.startswith("||", i):
+                tokens.append("||")
+                i += 2
+                continue
+            if ch == "&":
+                tokens.append("&&")
+                i += 1
+                continue
+            if ch == "|":
+                tokens.append("||")
+                i += 1
+                continue
+            if ch == ",":
+                tokens.append("||")
+                i += 1
+                continue
+            if ch in ("(", ")"):
+                tokens.append(ch)
+                i += 1
+                continue
+            j = i
+            while j < len(text):
+                if text[j].isspace():
+                    break
+                if text.startswith("&&", j) or text.startswith("||", j):
+                    break
+                if text[j] in ("(", ")", "&", "|", ","):
+                    break
+                j += 1
+            token = text[i:j].strip()
+            if token:
+                tokens.append(token)
+            i = j
+
+        if not tokens:
+            raise ValueError("Filter expression is empty.")
+
+        # Insert implicit OR between adjacent terms/paren groups.
+        expanded: List[str] = []
+        prev_type = None  # term, op, lparen, rparen
+        for token in tokens:
+            cur_type = None
+            if token in ("&&", "||"):
+                cur_type = "op"
+            elif token == "(":
+                cur_type = "lparen"
+            elif token == ")":
+                cur_type = "rparen"
+            else:
+                cur_type = "term"
+            if prev_type in ("term", "rparen") and cur_type in ("term", "lparen"):
+                expanded.append("||")
+            expanded.append(token)
+            prev_type = cur_type
+
+        precedence = {"&&": 2, "||": 1}
+        output: List[str] = []
+        ops: List[str] = []
+
+        for token in expanded:
+            if token in ("&&", "||"):
+                while ops and ops[-1] in precedence and precedence[ops[-1]] >= precedence[token]:
+                    output.append(ops.pop())
+                ops.append(token)
+            elif token == "(":
+                ops.append(token)
+            elif token == ")":
+                while ops and ops[-1] != "(":
+                    output.append(ops.pop())
+                if not ops or ops[-1] != "(":
+                    raise ValueError("Mismatched parentheses in filter.")
+                ops.pop()
+            else:
+                output.append(token)
+
+        while ops:
+            if ops[-1] in ("(", ")"):
+                raise ValueError("Mismatched parentheses in filter.")
+            output.append(ops.pop())
+
+        def _eval(node: Node) -> bool:
+            stack: List[bool] = []
+            for token in output:
+                if token == "&&":
+                    if len(stack) < 2:
+                        return False
+                    b = stack.pop()
+                    a = stack.pop()
+                    stack.append(a and b)
+                elif token == "||":
+                    if len(stack) < 2:
+                        return False
+                    b = stack.pop()
+                    a = stack.pop()
+                    stack.append(a or b)
+                else:
+                    stack.append(self._match_tag(node, token))
+            return bool(stack[-1]) if stack else False
+
+        return _eval
+
+    def _select_by_tag(self) -> None:
+        """
+        NAME
+            _select_by_tag - Select nodes and callouts matching a tag.
+        """
+        tag = self._prompt_for_tag("Select by Tag")
+        if not tag:
+            return
+        normalized = self._normalize_tag(tag)
+        matched = {n.key for n in self._nodes if self._match_tag(n, normalized)}
+        if not matched:
+            messagebox.showinfo("Select by Tag", f"No nodes matched tag '{normalized}'.")
+            return
+        self._selected_nodes = matched
+        self._selected_buses = set()
+        self._sync_selection_state()
+
+    def _filter_list_by_tag(self) -> None:
+        """
+        NAME
+            _filter_list_by_tag - Filter the node list by tag.
+        """
+        expr = self._prompt_for_tag_filter("Filter List by Tag")
+        if expr is None:
+            return
+        expr = expr.strip()
+        if not expr:
+            return
+        self._set_tag_filter(expr)
+
+    def _select_filtered_nodes(self) -> None:
+        """
+        NAME
+            _select_filtered_nodes - Select nodes matching the current filter.
+        """
+        if self._tag_filter_fn is None:
+            messagebox.showinfo("Select Filtered", "No tag filter is active.")
+            return
+        matched = {n.key for n in self._device_nodes() if self._tag_filter_fn(n)}
+        if not matched:
+            messagebox.showinfo("Select Filtered", "No nodes match the current filter.")
+            return
+        self._selected_nodes = matched
+        self._selected_buses = set()
+        self._sync_selection_state()
+
+    def _tidy_by_tag(self) -> None:
+        """
+        NAME
+            _tidy_by_tag - Tidy nodes matching a specific tag.
+        """
+        tag = self._prompt_for_tag("Tidy by Tag")
+        if not tag:
+            return
+        normalized = self._normalize_tag(tag)
+        matches = [n for n in self._device_nodes() if self._match_tag(n, normalized)]
+        if not matches:
+            messagebox.showinfo("Tidy by Tag", f"No device nodes matched tag '{normalized}'.")
+            return
+        prior_nodes = set(self._selected_nodes)
+        prior_buses = set(self._selected_buses)
+        try:
+            self._selected_nodes = {n.key for n in matches}
+            self._selected_buses = set()
+            self._tidy_selection()
+        finally:
+            self._selected_nodes = prior_nodes
+            self._selected_buses = prior_buses
+            self._sync_selection_state()
+
+    def _apply_tag_to_selection(self) -> None:
+        """
+        NAME
+            _apply_tag_to_selection - Add a tag to all selected nodes/callouts.
+        """
+        if not self._selected_nodes:
+            messagebox.showinfo("Apply Tag", "Select one or more nodes or callouts.")
+            return
+        tag = self._prompt_for_tag("Apply Tag to Selection")
+        if not tag:
+            return
+        normalized = self._normalize_tag(tag)
+        if not normalized:
+            return
+        self._push_undo()
+        for node in self._nodes:
+            if node.key not in self._selected_nodes:
+                continue
+            tags = self._normalize_tags(node.tags)
+            if normalized not in tags:
+                tags.append(normalized)
+            node.tags = tags
+        self._refresh_list()
+        self._redraw_canvas()
+
+    def _remove_tag_from_selection(self) -> None:
+        """
+        NAME
+            _remove_tag_from_selection - Remove a tag from selected nodes/callouts.
+        """
+        if not self._selected_nodes:
+            messagebox.showinfo("Remove Tag", "Select one or more nodes or callouts.")
+            return
+        tag = self._prompt_for_tag("Remove Tag from Selection")
+        if not tag:
+            return
+        normalized = self._normalize_tag(tag)
+        if not normalized:
+            return
+        self._push_undo()
+        for node in self._nodes:
+            if node.key not in self._selected_nodes:
+                continue
+            tags = [t for t in self._normalize_tags(node.tags) if t != normalized]
+            node.tags = tags
+        self._refresh_list()
+        self._redraw_canvas()
+
+    def _bulk_edit_selection(self) -> None:
+        """
+        NAME
+            _bulk_edit_selection - Apply edits across selected nodes/callouts.
+        """
+        if not self._selected_nodes:
+            messagebox.showinfo("Bulk Edit", "Select one or more nodes or callouts.")
+            return
+
+        dialog = tk.Toplevel(self)
+        dialog.title("Bulk Edit")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+
+        container = ttk.Frame(dialog, padding=10)
+        container.grid(row=0, column=0, sticky="nsew")
+
+        def _row(label: str, row: int) -> ttk.Label:
+            lbl = ttk.Label(container, text=label)
+            lbl.grid(row=row, column=0, sticky="w", padx=(0, 6), pady=2)
+            return lbl
+
+        apply_label = ttk.Label(container, text="Apply")
+        apply_label.grid(row=0, column=1, sticky="w")
+        value_label = ttk.Label(container, text="Value")
+        value_label.grid(row=0, column=2, sticky="w")
+
+        row = 1
+
+        var_apply_category = tk.BooleanVar(value=False)
+        _row("Category", row)
+        ttk.Checkbutton(container, variable=var_apply_category).grid(row=row, column=1, sticky="w")
+        combo_category = ttk.Combobox(
+            container,
+            values=BUCKET_CATEGORIES + [GENERIC_CATEGORY] + SINGLETON_CATEGORIES,
+            state="readonly",
+            width=20,
+        )
+        combo_category.grid(row=row, column=2, sticky="w")
+        row += 1
+
+        var_apply_label = tk.BooleanVar(value=False)
+        _row("Label", row)
+        ttk.Checkbutton(container, variable=var_apply_label).grid(row=row, column=1, sticky="w")
+        label_frame = ttk.Frame(container)
+        label_frame.grid(row=row, column=2, sticky="w")
+        combo_label_mode = ttk.Combobox(
+            label_frame, values=["replace", "prefix", "suffix"], state="readonly", width=8
+        )
+        combo_label_mode.set("replace")
+        combo_label_mode.pack(side="left")
+        label_value = tk.StringVar()
+        ttk.Entry(label_frame, textvariable=label_value, width=18).pack(side="left", padx=(6, 0))
+        row += 1
+
+        var_apply_vendor = tk.BooleanVar(value=False)
+        _row("Vendor", row)
+        ttk.Checkbutton(container, variable=var_apply_vendor).grid(row=row, column=1, sticky="w")
+        vendor_value = tk.StringVar()
+        ttk.Entry(container, textvariable=vendor_value, width=24).grid(row=row, column=2, sticky="w")
+        row += 1
+
+        var_apply_type = tk.BooleanVar(value=False)
+        _row("Device Type", row)
+        ttk.Checkbutton(container, variable=var_apply_type).grid(row=row, column=1, sticky="w")
+        type_value = tk.StringVar()
+        ttk.Entry(container, textvariable=type_value, width=24).grid(row=row, column=2, sticky="w")
+        row += 1
+
+        var_apply_motor = tk.BooleanVar(value=False)
+        _row("Motor", row)
+        ttk.Checkbutton(container, variable=var_apply_motor).grid(row=row, column=1, sticky="w")
+        motor_value = tk.StringVar()
+        ttk.Entry(container, textvariable=motor_value, width=24).grid(row=row, column=2, sticky="w")
+        row += 1
+
+        var_apply_limits = tk.BooleanVar(value=False)
+        _row("Limits", row)
+        ttk.Checkbutton(container, variable=var_apply_limits).grid(row=row, column=1, sticky="w")
+        limits_frame = ttk.Frame(container)
+        limits_frame.grid(row=row, column=2, sticky="w")
+        fwd_value = tk.StringVar()
+        rev_value = tk.StringVar()
+        invert_value = tk.BooleanVar(value=False)
+        ttk.Label(limits_frame, text="Fwd").pack(side="left")
+        ttk.Entry(limits_frame, textvariable=fwd_value, width=5).pack(side="left", padx=(2, 6))
+        ttk.Label(limits_frame, text="Rev").pack(side="left")
+        ttk.Entry(limits_frame, textvariable=rev_value, width=5).pack(side="left", padx=(2, 6))
+        ttk.Checkbutton(limits_frame, text="Invert", variable=invert_value).pack(side="left")
+        row += 1
+
+        var_apply_term = tk.BooleanVar(value=False)
+        _row("Terminator", row)
+        ttk.Checkbutton(container, variable=var_apply_term).grid(row=row, column=1, sticky="w")
+        term_combo = ttk.Combobox(
+            container, values=["on", "off", "clear"], state="readonly", width=8
+        )
+        term_combo.set("off")
+        term_combo.grid(row=row, column=2, sticky="w")
+        row += 1
+
+        var_apply_tags = tk.BooleanVar(value=False)
+        _row("Tags", row)
+        ttk.Checkbutton(container, variable=var_apply_tags).grid(row=row, column=1, sticky="w")
+        tags_frame = ttk.Frame(container)
+        tags_frame.grid(row=row, column=2, sticky="w")
+        combo_tags_mode = ttk.Combobox(
+            tags_frame, values=["replace", "add", "remove"], state="readonly", width=8
+        )
+        combo_tags_mode.set("replace")
+        combo_tags_mode.pack(side="left")
+        tags_value = tk.StringVar()
+        ttk.Entry(tags_frame, textvariable=tags_value, width=18).pack(side="left", padx=(6, 0))
+        row += 1
+
+        result: Dict[str, object] = {}
+
+        def _ok() -> None:
+            result["apply_category"] = var_apply_category.get()
+            result["category"] = combo_category.get().strip()
+            result["apply_label"] = var_apply_label.get()
+            result["label_mode"] = combo_label_mode.get().strip()
+            result["label_value"] = label_value.get().strip()
+            result["apply_vendor"] = var_apply_vendor.get()
+            result["vendor"] = vendor_value.get().strip()
+            result["apply_type"] = var_apply_type.get()
+            result["device_type"] = type_value.get().strip()
+            result["apply_motor"] = var_apply_motor.get()
+            result["motor"] = motor_value.get().strip()
+            result["apply_limits"] = var_apply_limits.get()
+            result["limits_fwd"] = fwd_value.get().strip()
+            result["limits_rev"] = rev_value.get().strip()
+            result["limits_invert"] = invert_value.get()
+            result["apply_term"] = var_apply_term.get()
+            result["terminator"] = term_combo.get().strip()
+            result["apply_tags"] = var_apply_tags.get()
+            result["tags_mode"] = combo_tags_mode.get().strip()
+            result["tags_value"] = tags_value.get().strip()
+            dialog.destroy()
+
+        def _cancel() -> None:
+            dialog.destroy()
+
+        button_row = ttk.Frame(container)
+        button_row.grid(row=row, column=0, columnspan=3, sticky="e", pady=(8, 0))
+        ttk.Button(button_row, text="Cancel", command=_cancel).pack(side="right", padx=4)
+        ttk.Button(button_row, text="OK", command=_ok).pack(side="right")
+
+        self.wait_window(dialog)
+        if not result:
+            return
+
+        selected = [n for n in self._nodes if n.key in self._selected_nodes]
+        if not selected:
+            return
+
+        apply_category = bool(result.get("apply_category"))
+        new_category = str(result.get("category", "")).strip()
+
+        if apply_category and new_category in SINGLETON_CATEGORIES:
+            existing = [n for n in self._device_nodes() if n.category == new_category]
+            target_nodes = [n for n in selected if n.node_type == "device"]
+            if len(target_nodes) > 1:
+                messagebox.showerror("Bulk Edit", f"Only one {new_category} is allowed.")
+                return
+            if existing and existing[0] not in target_nodes:
+                messagebox.showerror("Bulk Edit", f"{new_category} already exists.")
+                return
+
+        self._push_undo()
+        for node in selected:
+            if node.node_type == "callout":
+                if result.get("apply_label"):
+                    mode = result.get("label_mode", "replace")
+                    val = result.get("label_value", "")
+                    if mode == "prefix":
+                        node.label = f"{val}{node.label}"
+                        node.callout_text = node.label
+                    elif mode == "suffix":
+                        node.label = f"{node.label}{val}"
+                        node.callout_text = node.label
+                    else:
+                        node.label = val or node.label
+                        node.callout_text = node.label
+                if result.get("apply_tags"):
+                    mode = result.get("tags_mode", "replace")
+                    tags = self._normalize_tags(result.get("tags_value", ""))
+                    if mode == "add":
+                        current = self._normalize_tags(node.tags)
+                        node.tags = sorted({*current, *tags})
+                    elif mode == "remove":
+                        current = self._normalize_tags(node.tags)
+                        node.tags = [t for t in current if t not in set(tags)]
+                    else:
+                        node.tags = tags
+                continue
+
+            if apply_category and new_category:
+                node.category = new_category
+            if result.get("apply_label"):
+                mode = result.get("label_mode", "replace")
+                val = result.get("label_value", "")
+                if mode == "prefix":
+                    node.label = f"{val}{node.label}"
+                elif mode == "suffix":
+                    node.label = f"{node.label}{val}"
+                else:
+                    if val:
+                        node.label = val
+            if result.get("apply_vendor"):
+                node.vendor = str(result.get("vendor", "")).strip()
+            if result.get("apply_type"):
+                node.device_type = str(result.get("device_type", "")).strip()
+            if result.get("apply_motor"):
+                node.motor = str(result.get("motor", "")).strip()
+            if result.get("apply_limits"):
+                limits = {
+                    "fwdDio": result.get("limits_fwd", ""),
+                    "revDio": result.get("limits_rev", ""),
+                    "invert": bool(result.get("limits_invert")),
+                }
+                if not limits["fwdDio"] and not limits["revDio"] and not limits["invert"]:
+                    node.limits = None
+                else:
+                    try:
+                        node.limits = self._normalize_limits(limits)
+                    except ValueError as exc:
+                        messagebox.showerror("Bulk Edit", f"Invalid limits: {exc}")
+                        return
+            if result.get("apply_term"):
+                term = result.get("terminator", "off")
+                if term == "clear":
+                    node.terminator = None
+                elif term == "on":
+                    node.terminator = True
+                else:
+                    node.terminator = False
+            if result.get("apply_tags"):
+                mode = result.get("tags_mode", "replace")
+                tags = self._normalize_tags(result.get("tags_value", ""))
+                if mode == "add":
+                    current = self._normalize_tags(node.tags)
+                    node.tags = sorted({*current, *tags})
+                elif mode == "remove":
+                    current = self._normalize_tags(node.tags)
+                    node.tags = [t for t in current if t not in set(tags)]
+                else:
+                    node.tags = tags
+
+            if node.category == GENERIC_CATEGORY:
+                if not node.vendor or not node.device_type:
+                    messagebox.showerror(
+                        "Bulk Edit",
+                        "Generic devices require vendor and device type.",
+                    )
+                    return
+
+        self._refresh_list()
+        self._redraw_canvas()
 
     def _select_all_nodes(self) -> None:
         """
@@ -3021,6 +3900,17 @@ class TopologyEditor(tk.Tk):
                 "- Reset Layout preserves bus/row and evens per-bus spacing.\n"
                 "- Align/Distribute tools are under the Layout menu.\n"
             ),
+            "Tags": (
+                "Purpose: Group and organize nodes with freeform tags.\n"
+                "\n"
+                "- Tags are comma-separated values on nodes and callouts.\n"
+                "- Tags are saved into bringup_profiles.json for devices.\n"
+                "- Use Tags -> Select by Tag to multi-select.\n"
+                "- Use Tags -> Filter List by Tag to narrow the list.\n"
+                "  Expression supports AND/OR, &&/||, commas, and implicit OR.\n"
+                "- Use Tags -> Tidy by Tag to align a tag group.\n"
+                "- Sort the list by tag from the Tags menu.\n"
+            ),
             "Bus Segments": (
                 "Purpose: Understand bus segment editing.\n"
                 "\n"
@@ -3643,6 +4533,7 @@ class TopologyEditor(tk.Tk):
             callout_target_label=str(data.get("target_node_label", "")),
             callout_target_id=data.get("target_node_id"),
             callout_y=0.0,
+            tags=self._normalize_tags(data.get("tags", [])),
         )
         node.callout_y = self._node_center_y_unscaled(node)
         self._next_key += 1
@@ -3679,6 +4570,7 @@ class TopologyEditor(tk.Tk):
         node.callout_target_category = str(data.get("target_node_category", ""))
         node.callout_target_label = str(data.get("target_node_label", ""))
         node.callout_target_id = data.get("target_node_id")
+        node.tags = self._normalize_tags(data.get("tags", []))
         self._redraw_canvas()
 
     def _on_remove_callout(self) -> None:
@@ -3782,6 +4674,7 @@ class TopologyEditor(tk.Tk):
                 callout_target_node_key=data.get("callout_target_node_key"),
                 callout_y=float(data.get("callout_y", 0.0)),
                 free_y=data.get("free_y"),
+                tags=self._normalize_tags(data.get("tags", [])),
             )
             if self._snap_to_grid_var.get():
                 node.x = self._snap_value(node.x)
@@ -3838,6 +4731,7 @@ class TopologyEditor(tk.Tk):
             if node.node_type == "callout"
             else node.callout_y,
             "free_y": self._node_center_y_unscaled(node),
+            "tags": list(node.tags or []),
         }
 
     def _on_export_pdf(self) -> None:

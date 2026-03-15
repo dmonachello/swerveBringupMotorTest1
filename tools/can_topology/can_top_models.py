@@ -12,7 +12,7 @@ DESCRIPTION
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -83,6 +83,7 @@ class Node:
     DESCRIPTION
         Holds diagram data and profile fields for one CAN device. The x
         coordinate is only used for display and is not saved into the profile.
+        Tags are freeform labels stored as a string list.
     """
 
     key: int
@@ -108,6 +109,7 @@ class Node:
     callout_target_id: Optional[int] = None
     callout_y: float = 0.0
     free_y: Optional[float] = None
+    tags: List[str] = field(default_factory=list)
 
     def display_text(self) -> str:
         """

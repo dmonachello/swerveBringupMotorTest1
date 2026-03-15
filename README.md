@@ -336,6 +336,10 @@ Optional per-device fields:
 ```json
 { "label": "FL KRAK", "id": 2, "limits": { "fwdDio": 0, "revDio": 1, "invert": false } }
 ```
+- `"tags"` to attach freeform labels used by the topology editor. Example:
+```json
+{ "label": "FL KRAK", "id": 2, "tags": ["swerve", "front-left"] }
+```
 When a limit is closed, motor output in that direction is clamped to 0.0.
 Use `"invert": true` for normally-closed switches (so CLOSED/OPEN reads correctly).
 If omitted, the app infers the motor model from the label (e.g., `NEO`, `VORTEX`, `KRAKEN`, `FALCON`).
