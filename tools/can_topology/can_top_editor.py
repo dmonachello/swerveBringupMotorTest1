@@ -110,11 +110,23 @@ class TopologyEditor(tk.Tk):
         self._selected_key: Optional[int] = None
         self._drag_state: Optional[Tuple[int, float, float]] = None
         self._drag_free_y: Dict[int, float] = {}
+        self._ethernet_links: List[Tuple[int, int]] = []
+        self._can_bus_links: List[Dict[str, int]] = []
+        self._cannect_device_links: List[Dict[str, int]] = []
         self._profile_name = "drawn_profile"
         self._profile_source_path: Optional[str] = None
         self._suppress_profile_select = False
         self._profile_names: List[str] = []
         self._callout_scale_var = tk.StringVar(value="1.00")
+        self._callout_debug_vars = {
+            "target_type": tk.StringVar(value="--"),
+            "target_key": tk.StringVar(value="--"),
+            "target_label": tk.StringVar(value="--"),
+            "target_category": tk.StringVar(value="--"),
+            "target_id": tk.StringVar(value="--"),
+            "target_bus": tk.StringVar(value="--"),
+            "target_exists": tk.StringVar(value="--"),
+        }
         self._layout_width = 0.0
         self._box_w = 140
         self._box_h = 60
@@ -160,6 +172,8 @@ class TopologyEditor(tk.Tk):
         self._tag_filter_var = tk.StringVar(value="Filter: All")
         self._tag_filter_button: Optional[ttk.Button] = None
         self._list_sort_var = tk.StringVar(value="can_id")
+        self._inline_editor: Optional[tk.Widget] = None
+        self._inline_edit_info: Optional[Dict[str, object]] = None
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._build_ui()
         self._load_default_profile_if_present()
@@ -174,10 +188,13 @@ class TopologyEditor(tk.Tk):
         container = ttk.Frame(self, padding=8)
         container.pack(fill="both", expand=True)
 
-        left = ttk.Frame(container)
-        left.pack(side="left", fill="y")
-        right = ttk.Frame(container)
-        right.pack(side="right", fill="both", expand=True)
+        splitter = ttk.Panedwindow(container, orient="horizontal")
+        splitter.pack(fill="both", expand=True)
+
+        left = ttk.Frame(splitter)
+        right = ttk.Frame(splitter)
+        splitter.add(left, weight=1)
+        splitter.add(right, weight=4)
 
         ttk.Label(left, text="Nodes").pack(anchor="w")
         tag_filter = ttk.Frame(left)
@@ -194,7 +211,7 @@ class TopologyEditor(tk.Tk):
             columns=("can_id", "type", "label", "tags"),
             show="headings",
             height=12,
-            selectmode="browse",
+            selectmode="extended",
         )
         self.node_list.heading("can_id", text="CAN ID")
         self.node_list.heading("type", text="Type")
@@ -209,6 +226,8 @@ class TopologyEditor(tk.Tk):
         node_scroll.pack(side="right", fill="y")
         self.node_list.configure(yscrollcommand=node_scroll.set)
         self.node_list.bind("<<TreeviewSelect>>", self._on_list_select)
+        self.node_list.bind("<Double-1>", self._on_list_edit_start)
+        self.node_list.bind("<F2>", self._on_list_edit_start)
 
         bottom = ttk.Frame(left)
         bottom.pack(fill="x", side="bottom", pady=(6, 0))
@@ -278,10 +297,14 @@ class TopologyEditor(tk.Tk):
         self.bind_all("<Control-S>", lambda _e: self._save_shortcut())
         self.bind_all("<Control-p>", lambda _e: self._print_pdf_shortcut())
         self.bind_all("<Control-P>", lambda _e: self._print_pdf_shortcut())
-        self.bind_all("<Delete>", lambda _e: self._on_remove_selected())
-        self.bind_all("<BackSpace>", lambda _e: self._on_remove_selected())
+        self.bind_all("<Delete>", self._on_delete_key)
+        self.bind_all("<BackSpace>", self._on_delete_key)
         self.canvas.bind("<Configure>", self._on_canvas_configure)
         self.canvas.bind("<Control-MouseWheel>", self._on_zoom_wheel)
+        self.canvas.bind("<Left>", lambda e: self._nudge_selection("left", e))
+        self.canvas.bind("<Right>", lambda e: self._nudge_selection("right", e))
+        self.canvas.bind("<Up>", lambda e: self._nudge_selection("up", e))
+        self.canvas.bind("<Down>", lambda e: self._nudge_selection("down", e))
 
         self._build_details_panel(right)
         self._set_tag_filter(self._tag_filter)
@@ -313,6 +336,21 @@ class TopologyEditor(tk.Tk):
         edit_menu.add_command(label="Copy", command=self._on_copy)
         edit_menu.add_command(label="Paste", command=self._on_paste)
         edit_menu.add_command(label="Bulk Edit...", command=self._bulk_edit_selection)
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Add CANnect Inject", command=self._add_cannect_inject)
+        edit_menu.add_command(label="Add CANnect Direct", command=self._add_cannect_direct)
+        edit_menu.add_command(label="Add Ethernet Link", command=self._add_ethernet_link)
+        edit_menu.add_command(label="Remove Ethernet Link", command=self._remove_ethernet_link)
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Link Device to CANnect", command=self._link_selected_devices_to_cannect)
+        edit_menu.add_command(
+            label="Fix CANnect Conflicts", command=lambda: self._fix_cannect_conflicts(notify=True)
+        )
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Add CAN Bus Link", command=self._add_can_bus_link)
+        edit_menu.add_command(label="Remove CAN Bus Link", command=self._remove_can_bus_link)
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Remove CANnect Device Link", command=self._remove_cannect_device_link)
         menu.add_cascade(label="Edit", menu=edit_menu)
         tags_menu = tk.Menu(menu, tearoff=False)
         tags_menu.add_command(label="Select by Tag...", command=self._select_by_tag)
@@ -447,6 +485,22 @@ class TopologyEditor(tk.Tk):
         ttk.Button(
             callout_controls, text="+", width=3, command=lambda: self._nudge_callout_scale(0.1)
         ).pack(side="left", padx=(4, 0))
+        debug_rows = [
+            ("Target Type", "target_type"),
+            ("Target Key", "target_key"),
+            ("Target Label", "target_label"),
+            ("Target Category", "target_category"),
+            ("Target ID", "target_id"),
+            ("Target Bus", "target_bus"),
+            ("Target Exists", "target_exists"),
+        ]
+        for idx, (title, key) in enumerate(debug_rows, start=2):
+            ttk.Label(callout_panel, text=f"{title}:").grid(
+                row=idx, column=0, sticky="w", padx=(0, 6)
+            )
+            ttk.Label(callout_panel, textvariable=self._callout_debug_vars[key]).grid(
+                row=idx, column=1, sticky="w"
+            )
         self._node_details_panel.pack_forget()
         self._callout_details_panel.pack_forget()
 
@@ -460,6 +514,8 @@ class TopologyEditor(tk.Tk):
             for key in self.detail_vars:
                 self.detail_vars[key].set("--")
             self._callout_scale_var.set("--")
+            for key in self._callout_debug_vars:
+                self._callout_debug_vars[key].set("--")
             if hasattr(self, "_node_details_panel"):
                 self._preserve_canvas_view(self._node_details_panel.pack_forget)
             return
@@ -479,13 +535,39 @@ class TopologyEditor(tk.Tk):
 
         self.detail_vars["category"].set(node.category)
         self.detail_vars["label"].set(node.label)
-        self.detail_vars["can_id"].set(str(node.can_id))
+        if isinstance(node.can_id, int) and node.can_id >= 0:
+            self.detail_vars["can_id"].set(str(node.can_id))
+        else:
+            self.detail_vars["can_id"].set("--")
         self.detail_vars["vendor"].set(node.vendor or "--")
         self.detail_vars["type"].set(node.device_type or "--")
         self.detail_vars["motor"].set(node.motor or "--")
         self.detail_vars["limits"].set(limits_text)
         self.detail_vars["terminator"].set(term_text)
         self.detail_vars["scale"].set(f"{node.scale:.2f}")
+
+    def _update_callout_details(self, callout: Node) -> None:
+        """
+        NAME
+            _update_callout_details - Refresh callout debug fields.
+        """
+        self._callout_scale_var.set(f"{callout.scale:.2f}")
+        self._callout_debug_vars["target_type"].set(callout.callout_target_type or "--")
+        self._callout_debug_vars["target_key"].set(
+            "--" if callout.callout_target_node_key is None else str(callout.callout_target_node_key)
+        )
+        self._callout_debug_vars["target_label"].set(callout.callout_target_label or "--")
+        self._callout_debug_vars["target_category"].set(callout.callout_target_category or "--")
+        self._callout_debug_vars["target_id"].set(
+            "--" if callout.callout_target_id is None else str(callout.callout_target_id)
+        )
+        self._callout_debug_vars["target_bus"].set(str(callout.callout_target_bus))
+        exists = False
+        if callout.callout_target_type == "node" and callout.callout_target_node_key is not None:
+            exists = any(
+                n.key == callout.callout_target_node_key for n in self._device_nodes()
+            )
+        self._callout_debug_vars["target_exists"].set("yes" if exists else "no")
         self.detail_vars["tags"].set(self._tags_to_string(node.tags) or "--")
         if hasattr(self, "_node_details_panel"):
             self._preserve_canvas_view(lambda: self._node_details_panel.pack(fill="x", pady=(8, 0)))
@@ -495,7 +577,7 @@ class TopologyEditor(tk.Tk):
         NAME
             _terminator_count - Count nodes marked as CAN bus terminators.
         """
-        targets = nodes if nodes is not None else self._nodes
+        targets = nodes if nodes is not None else self._profile_device_nodes()
         return sum(1 for n in targets if n.terminator is True)
 
     def _refresh_terminator_status(self) -> None:
@@ -593,9 +675,13 @@ class TopologyEditor(tk.Tk):
                     if n.node_type == "callout"
                     else n.callout_y,
                     "free_y": n.free_y,
+                    "profile_visible": getattr(n, "profile_visible", True),
                 }
                 for n in self._nodes
             ],
+            "ethernet_links": list(self._ethernet_links),
+            "can_bus_links": list(self._can_bus_links),
+            "cannect_device_links": list(self._cannect_device_links),
             "bus_offsets": list(self._bus_offsets),
             "bus_lefts": list(self._bus_lefts),
             "bus_rights": list(self._bus_rights),
@@ -639,8 +725,32 @@ class TopologyEditor(tk.Tk):
                 callout_target_node_key=n.get("callout_target_node_key"),
                 callout_y=n.get("callout_y", 0.0),
                 free_y=n.get("free_y"),
+                profile_visible=bool(n.get("profile_visible", True)),
             )
             for n in snap["nodes"]
+        ]
+        self._ethernet_links = [
+            (int(a), int(b))
+            for a, b in snap.get("ethernet_links", [])
+            if isinstance(a, int) and isinstance(b, int)
+        ]
+        self._can_bus_links = [
+            {"node": int(link.get("node")), "bus": int(link.get("bus")), "port": int(link.get("port", 1))}
+            for link in snap.get("can_bus_links", [])
+            if isinstance(link, dict)
+            and isinstance(link.get("node"), int)
+            and isinstance(link.get("bus"), int)
+        ]
+        self._cannect_device_links = [
+            {
+                "node": int(link.get("node")),
+                "device": int(link.get("device")),
+                "port": int(link.get("port", 1)),
+            }
+            for link in snap.get("cannect_device_links", [])
+            if isinstance(link, dict)
+            and isinstance(link.get("node"), int)
+            and isinstance(link.get("device"), int)
         ]
         self._bus_offsets = snap["bus_offsets"]
         self._bus_lefts = snap.get("bus_lefts", [])
@@ -665,6 +775,9 @@ class TopologyEditor(tk.Tk):
         if not self._confirm_discard():
             return
         self._nodes.clear()
+        self._ethernet_links = []
+        self._can_bus_links = []
+        self._cannect_device_links = []
         self._next_key = 1
         self._selected_key = None
         self._callout_scale_var.set("--")
@@ -761,6 +874,9 @@ class TopologyEditor(tk.Tk):
         self._bus_rights = []
         self._last_base_y = None
         self._details_layout_shift = False
+        self._ethernet_links = []
+        self._can_bus_links = []
+        self._cannect_device_links = []
         diagram_applied = False
         diagram_profiles = {}
         diagram = data.get("diagram")
@@ -986,6 +1102,27 @@ class TopologyEditor(tk.Tk):
                 }
             },
         }
+        selected_keys = {n.key for n in selected_nodes}
+        diag_profile = data["diagram"]["profiles"][profile_name]
+        diag_profile["ethernetLinks"] = [
+            {"a": a, "b": b}
+            for a, b in self._ethernet_links
+            if a in selected_keys and b in selected_keys
+        ]
+        diag_profile["canLinks"] = [
+            {"node": link["node"], "bus": link["bus"], "port": link.get("port", 1)}
+            for link in self._can_bus_links
+            if link.get("node") in selected_keys
+        ]
+        diag_profile["deviceLinks"] = [
+            {
+                "node": link["node"],
+                "device": link["device"],
+                "port": link.get("port", 1),
+            }
+            for link in self._cannect_device_links
+            if link.get("node") in selected_keys and link.get("device") in selected_keys
+        ]
         try:
             with open(path, "w", encoding="utf-8") as handle:
                 json.dump(data, handle, indent=2)
@@ -1091,7 +1228,7 @@ class TopologyEditor(tk.Tk):
         """
         seen_singletons = {}
         seen_strict: Dict[Tuple[str, str, int], Node] = {}
-        nodes_to_check = nodes if nodes is not None else self._device_nodes()
+        nodes_to_check = nodes if nodes is not None else self._profile_device_nodes()
         for node in nodes_to_check:
             if node.category in SINGLETON_CATEGORIES:
                 if node.category in seen_singletons:
@@ -1128,13 +1265,14 @@ class TopologyEditor(tk.Tk):
         RETURNS
             Dict compatible with bringup_profiles.json.
         """
-        return self._profile_from_nodes_list(self._device_nodes())
+        return self._profile_from_nodes_list(self._profile_device_nodes())
 
     def _profile_from_nodes_list(self, nodes: List[Node]) -> Dict[str, object]:
         """
         NAME
             _profile_from_nodes_list - Build a bringup profile from a node list.
         """
+        nodes = [n for n in nodes if getattr(n, "profile_visible", True)]
         profile: Dict[str, object] = {}
         for category in BUCKET_CATEGORIES:
             entries = [self._node_to_entry(n) for n in nodes if n.category == category]
@@ -1287,7 +1425,7 @@ class TopologyEditor(tk.Tk):
             Emits just enough diagram metadata to keep node positions stable
             without baking in custom bus offsets or callouts.
         """
-        devices = [n for n in self._nodes if n.node_type == "device"]
+        devices = [n for n in self._nodes if n.node_type != "callout"]
         bus_count = max((n.bus_index for n in devices), default=0) + 1
         snapshot = {
             "busCount": max(1, bus_count),
@@ -1296,7 +1434,8 @@ class TopologyEditor(tk.Tk):
             "zoom": 1.0,
             "nodes": [
                 {
-                    "nodeType": "device",
+                    "nodeType": n.node_type,
+                    "key": n.key,
                     "category": n.category,
                     "label": n.label,
                     "id": n.can_id,
@@ -1307,9 +1446,12 @@ class TopologyEditor(tk.Tk):
                     "freeY": n.free_y,
                     "freeYRelative": n.free_y is not None,
                     "tags": list(n.tags) if n.tags else [],
+                    "profileVisible": getattr(n, "profile_visible", True),
                 }
                 for n in devices
             ],
+            "ethernetLinks": [{"a": a, "b": b} for a, b in self._ethernet_links],
+            "canLinks": list(self._can_bus_links),
         }
         return snapshot
 
@@ -1379,6 +1521,7 @@ class TopologyEditor(tk.Tk):
                 nodes.append(
                     {
                         "nodeType": "callout",
+                        "key": node.key,
                         "text": node.callout_text,
                         "targetType": node.callout_target_type,
                         "targetBus": node.callout_target_bus,
@@ -1394,12 +1537,14 @@ class TopologyEditor(tk.Tk):
                         "row": node.row,
                         "scale": node.scale,
                         "tags": list(node.tags or []),
+                        "profileVisible": getattr(node, "profile_visible", True),
                     }
                 )
             else:
                 nodes.append(
                     {
-                        "nodeType": "device",
+                        "nodeType": node.node_type,
+                        "key": node.key,
                         "category": node.category,
                         "label": node.label,
                         "id": node.can_id,
@@ -1410,6 +1555,7 @@ class TopologyEditor(tk.Tk):
                         "freeYRelative": node.free_y is not None,
                         "scale": node.scale,
                         "tags": list(node.tags or []),
+                        "profileVisible": getattr(node, "profile_visible", True),
                     }
                 )
         return {
@@ -1421,6 +1567,9 @@ class TopologyEditor(tk.Tk):
             "panY": self._pan_y,
             "zoom": self._zoom,
             "nodes": nodes,
+            "ethernetLinks": [{"a": a, "b": b} for a, b in self._ethernet_links],
+            "canLinks": list(self._can_bus_links),
+            "deviceLinks": list(self._cannect_device_links),
         }
 
     def _apply_diagram_snapshot(self, diagram: Dict[str, object]) -> None:
@@ -1450,19 +1599,63 @@ class TopologyEditor(tk.Tk):
             self._pan_y = float(pan_y)
         zoom = diagram.get("zoom")
         if isinstance(zoom, (int, float)):
-            self._zoom = max(0.6, min(2.0, float(zoom)))
+            self._zoom = max(0.1, min(2.0, float(zoom)))
 
-        # Drop existing callout nodes before applying snapshot data.
-        self._nodes = [n for n in self._nodes if n.node_type == "device"]
+        # Drop existing callout/diagram-only nodes before applying snapshot data.
+        self._nodes = [
+            n for n in self._nodes if n.node_type == "device" and getattr(n, "profile_visible", True)
+        ]
         device_keys = {n.key for n in self._nodes}
 
         nodes = diagram.get("nodes")
+        device_key_remap: Dict[int, int] = {}
         loaded_callouts = False
+        pending_callout_resolve: List[Node] = []
+        if isinstance(nodes, list):
+            reserved_keys: set[int] = set()
+            device_entries: List[Dict[str, object]] = []
+            for entry in nodes:
+                if not isinstance(entry, dict):
+                    continue
+                node_type = entry.get("nodeType") or entry.get("node_type") or "device"
+                if node_type == "callout" or ("text" in entry and "targetType" in entry):
+                    key = entry.get("key")
+                    if isinstance(key, int):
+                        reserved_keys.add(key)
+                    continue
+                if node_type == "diagram" or entry.get("profileVisible", True) is False:
+                    key = entry.get("key")
+                    if isinstance(key, int):
+                        reserved_keys.add(key)
+                    continue
+                device_entries.append(entry)
+            device_by_tuple = {
+                (n.category, n.label, n.can_id): n for n in self._device_nodes()
+            }
+            used_keys: set[int] = set()
+            for entry in device_entries:
+                key = entry.get("key")
+                if not isinstance(key, int):
+                    continue
+                cat = entry.get("category")
+                label = entry.get("label")
+                node_id = entry.get("id")
+                match = device_by_tuple.get((cat, label, node_id))
+                if match is None:
+                    continue
+                if key not in reserved_keys and key not in used_keys:
+                    match.key = key
+                device_key_remap[key] = match.key
+                used_keys.add(match.key)
+            if self._nodes:
+                self._next_key = max(self._next_key, max(n.key for n in self._nodes) + 1)
+            device_keys = {n.key for n in self._nodes}
         if isinstance(nodes, list):
             for entry in nodes:
                 if not isinstance(entry, dict):
                     continue
                 node_type = entry.get("nodeType") or entry.get("node_type") or "device"
+                profile_visible = entry.get("profileVisible", True)
                 if node_type == "callout" or ("text" in entry and "targetType" in entry):
                     callout_y = float(entry.get("y", entry.get("callout_y", 0.0)))
                     free_y = entry.get("freeY")
@@ -1502,55 +1695,55 @@ class TopologyEditor(tk.Tk):
                         free_y=free_val,
                         tags=self._normalize_tags(entry.get("tags", [])),
                     )
-                    if callout.callout_target_type == "node":
-                        if callout.callout_target_node_key not in device_keys:
-                            resolved = None
-                            if callout.callout_target_category or callout.callout_target_label:
-                                for node in self._device_nodes():
-                                    if callout.callout_target_category and node.category != callout.callout_target_category:
-                                        continue
-                                    if callout.callout_target_id is not None and node.can_id != callout.callout_target_id:
-                                        continue
-                                    if callout.callout_target_label and node.label != callout.callout_target_label:
-                                        continue
-                                    resolved = node
-                                    break
-                            if resolved is not None:
-                                callout.callout_target_node_key = resolved.key
-                                callout.callout_target_category = resolved.category
-                                callout.callout_target_label = resolved.label
-                                callout.callout_target_id = resolved.can_id
-                            else:
-                                # Fallback: snap to nearest node on the same bus (or overall).
-                                nearest = None
-                                best = float("inf")
-                                target_bus = int(entry.get("targetBus", entry.get("callout_target_bus", 0)) or 0)
-                                for node in self._device_nodes():
-                                    if node.bus_index != target_bus:
-                                        continue
-                                    dist = abs(node.x - callout.x)
-                                    if dist < best:
-                                        best = dist
-                                        nearest = node
-                                if nearest is None:
-                                    for node in self._device_nodes():
-                                        dist = abs(node.x - callout.x)
-                                        if dist < best:
-                                            best = dist
-                                            nearest = node
-                                if nearest is not None:
-                                    callout.callout_target_type = "node"
-                                    callout.callout_target_node_key = nearest.key
-                                    callout.callout_target_category = nearest.category
-                                    callout.callout_target_label = nearest.label
-                                    callout.callout_target_id = nearest.can_id
-                                else:
-                                    callout.callout_target_type = "bus"
-                                    callout.callout_target_bus = target_bus
-                                    callout.callout_target_node_key = None
-                    self._next_key += 1
+                    self._next_key = max(self._next_key, callout.key + 1)
                     self._nodes.append(callout)
+                    pending_callout_resolve.append(callout)
                     loaded_callouts = True
+                    continue
+                if node_type == "diagram" or profile_visible is False:
+                    bus = entry.get("bus")
+                    row = entry.get("row")
+                    x = entry.get("x")
+                    scale = entry.get("scale")
+                    free_y = entry.get("freeY")
+                    free_rel = entry.get("freeYRelative")
+                    key = entry.get("key")
+                    if not isinstance(key, int):
+                        key = self._next_key
+                    node = Node(
+                        key=key,
+                        category=str(entry.get("category", "cannect_direct")),
+                        label=str(entry.get("label", "CANnect Direct")),
+                        can_id=int(entry.get("id", -1)) if str(entry.get("id", "")).strip() != "" else -1,
+                        node_type="diagram",
+                        vendor=str(entry.get("vendor", "SWYFT")),
+                        device_type=str(entry.get("device_type", "")),
+                        motor=str(entry.get("motor", "")),
+                        limits=entry.get("limits") if isinstance(entry.get("limits"), dict) else None,
+                        terminator=entry.get("terminator") if isinstance(entry.get("terminator"), bool) else None,
+                        x=float(x) if isinstance(x, (int, float)) else 0.0,
+                        row=int(row) if isinstance(row, int) else 0,
+                        bus_index=int(bus) if isinstance(bus, int) else 0,
+                        scale=max(0.6, min(2.0, float(scale)))
+                        if isinstance(scale, (int, float))
+                        else 1.0,
+                        free_y=None,
+                        tags=self._normalize_tags(entry.get("tags", [])),
+                        profile_visible=False,
+                    )
+                    if isinstance(free_y, (int, float)):
+                        free_val = float(free_y)
+                        if self._bus_offsets:
+                            bus_offset = self._bus_offsets[
+                                min(max(node.bus_index, 0), len(self._bus_offsets) - 1)
+                            ]
+                            if free_rel is True:
+                                free_val = float(free_y)
+                            elif abs(free_val) > 200.0 or abs(free_val - bus_offset) < abs(free_val):
+                                free_val = free_val - bus_offset
+                        node.free_y = free_val
+                    self._next_key = max(self._next_key, int(key) + 1)
+                    self._nodes.append(node)
                     continue
                 cat = entry.get("category")
                 label = entry.get("label")
@@ -1584,6 +1777,10 @@ class TopologyEditor(tk.Tk):
                                     free_val = free_val - bus_offset
                             node.free_y = free_val
                         node.tags = tags
+                        node.profile_visible = bool(entry.get("profileVisible", True))
+                        key = entry.get("key")
+                        if isinstance(key, int) and key in device_key_remap:
+                            node.key = device_key_remap[key]
                         break
 
         # Legacy format: convert callouts list into callout nodes.
@@ -1630,55 +1827,134 @@ class TopologyEditor(tk.Tk):
                     free_y=free_val,
                     tags=self._normalize_tags(entry.get("tags", [])),
                 )
-                if callout.callout_target_type == "node":
-                    if callout.callout_target_node_key not in device_keys:
-                        resolved = None
-                        if callout.callout_target_category or callout.callout_target_label:
-                            for node in self._device_nodes():
-                                if callout.callout_target_category and node.category != callout.callout_target_category:
-                                    continue
-                                if callout.callout_target_id is not None and node.can_id != callout.callout_target_id:
-                                    continue
-                                if callout.callout_target_label and node.label != callout.callout_target_label:
-                                    continue
-                                resolved = node
-                                break
-                        if resolved is not None:
-                            callout.callout_target_node_key = resolved.key
-                            callout.callout_target_category = resolved.category
-                            callout.callout_target_label = resolved.label
-                            callout.callout_target_id = resolved.can_id
-                        else:
-                            # Fallback: snap to nearest node on the same bus (or overall).
-                            nearest = None
-                            best = float("inf")
-                            target_bus = int(entry.get("targetBus", entry.get("target_bus", 0)) or 0)
-                            for node in self._device_nodes():
-                                if node.bus_index != target_bus:
-                                    continue
-                                dist = abs(node.x - callout.x)
-                                if dist < best:
-                                    best = dist
-                                    nearest = node
-                            if nearest is None:
-                                for node in self._device_nodes():
-                                    dist = abs(node.x - callout.x)
-                                    if dist < best:
-                                        best = dist
-                                        nearest = node
-                            if nearest is not None:
-                                callout.callout_target_type = "node"
-                                callout.callout_target_node_key = nearest.key
-                                callout.callout_target_category = nearest.category
-                                callout.callout_target_label = nearest.label
-                                callout.callout_target_id = nearest.can_id
-                            else:
-                                callout.callout_target_type = "bus"
-                                callout.callout_target_bus = target_bus
-                                callout.callout_target_node_key = None
                 self._next_key += 1
                 self._nodes.append(callout)
+                pending_callout_resolve.append(callout)
 
+        if pending_callout_resolve:
+            node_by_key = {n.key: n for n in self._device_nodes()}
+            for callout in pending_callout_resolve:
+                if callout.callout_target_type != "node":
+                    continue
+                target_key = callout.callout_target_node_key
+                if isinstance(target_key, int) and target_key in device_key_remap:
+                    target_key = device_key_remap[target_key]
+                    callout.callout_target_node_key = target_key
+                if isinstance(target_key, int) and target_key in node_by_key:
+                    target = node_by_key[target_key]
+                    callout.callout_target_category = target.category
+                    callout.callout_target_label = target.label
+                    callout.callout_target_id = target.can_id
+                    continue
+                resolved = None
+                if callout.callout_target_category or callout.callout_target_label:
+                    for node in self._device_nodes():
+                        if callout.callout_target_category and node.category != callout.callout_target_category:
+                            continue
+                        if (
+                            callout.callout_target_id is not None
+                            and node.can_id != callout.callout_target_id
+                        ):
+                            continue
+                        if callout.callout_target_label and node.label != callout.callout_target_label:
+                            continue
+                        resolved = node
+                        break
+                if resolved is None:
+                    nearest = None
+                    best = float("inf")
+                    target_bus = int(callout.callout_target_bus or 0)
+                    for node in self._device_nodes():
+                        if node.bus_index != target_bus:
+                            continue
+                        dist = abs(node.x - callout.x)
+                        if dist < best:
+                            best = dist
+                            nearest = node
+                    if nearest is None:
+                        for node in self._device_nodes():
+                            dist = abs(node.x - callout.x)
+                            if dist < best:
+                                best = dist
+                                nearest = node
+                    resolved = nearest
+                if resolved is not None:
+                    callout.callout_target_type = "node"
+                    callout.callout_target_node_key = resolved.key
+                    callout.callout_target_category = resolved.category
+                    callout.callout_target_label = resolved.label
+                    callout.callout_target_id = resolved.can_id
+                else:
+                    callout.callout_target_type = "bus"
+                    callout.callout_target_bus = int(callout.callout_target_bus or 0)
+                    callout.callout_target_node_key = None
+        links = diagram.get("ethernetLinks")
+        self._ethernet_links = []
+        if isinstance(links, list):
+            node_keys = {n.key for n in self._nodes}
+            for entry in links:
+                if isinstance(entry, dict):
+                    a = entry.get("a")
+                    b = entry.get("b")
+                elif isinstance(entry, (list, tuple)) and len(entry) == 2:
+                    a, b = entry
+                else:
+                    continue
+                if not isinstance(a, int) or not isinstance(b, int):
+                    continue
+                if a == b:
+                    continue
+                if a not in node_keys or b not in node_keys:
+                    continue
+                link = (min(a, b), max(a, b))
+                if link not in self._ethernet_links:
+                    self._ethernet_links.append(link)
+
+        self._can_bus_links = []
+        can_links = diagram.get("canLinks")
+        if isinstance(can_links, list):
+            node_keys = {n.key for n in self._nodes}
+            for entry in can_links:
+                if not isinstance(entry, dict):
+                    continue
+                node_key = entry.get("node")
+                bus_index = entry.get("bus")
+                port = entry.get("port", 1)
+                if not isinstance(node_key, int) or not isinstance(bus_index, int):
+                    continue
+                if node_key not in node_keys:
+                    continue
+                if bus_index < 0 or bus_index >= len(self._bus_offsets):
+                    continue
+                if not isinstance(port, int) or port < 1:
+                    port = 1
+                self._can_bus_links.append(
+                    {"node": int(node_key), "bus": int(bus_index), "port": int(port)}
+                )
+
+        self._cannect_device_links = []
+        device_links = diagram.get("deviceLinks")
+        if isinstance(device_links, list):
+            node_keys = {n.key for n in self._nodes}
+            for entry in device_links:
+                if not isinstance(entry, dict):
+                    continue
+                node_key = entry.get("node")
+                device_key = entry.get("device")
+                port = entry.get("port", 1)
+                if not isinstance(node_key, int) or not isinstance(device_key, int):
+                    continue
+                if device_key not in node_keys and device_key in device_key_remap:
+                    device_key = device_key_remap[device_key]
+                if node_key not in node_keys or device_key not in node_keys:
+                    continue
+                if not isinstance(port, int) or port < 1:
+                    port = 1
+                self._cannect_device_links.append(
+                    {"node": int(node_key), "device": int(device_key), "port": int(port)}
+                )
+
+        self._fix_cannect_conflicts(notify=False)
         self._resolve_overlaps()
 
     def _confirm_discard(self) -> bool:
@@ -1743,6 +2019,436 @@ class TopologyEditor(tk.Tk):
         self._redraw_canvas()
         self._select_node(node.key)
 
+    def _add_cannect_inject(self) -> None:
+        """
+        NAME
+            _add_cannect_inject - Add a CANnect Inject diagram node.
+        """
+        self._add_cannect_node(kind="inject")
+
+    def _add_cannect_direct(self) -> None:
+        """
+        NAME
+            _add_cannect_direct - Add a CANnect Direct diagram node.
+        """
+        self._add_cannect_node(kind="direct")
+
+    def _add_cannect_node(self, kind: str) -> None:
+        """
+        NAME
+            _add_cannect_node - Create a diagram-only SWYFT CANnect node.
+        """
+        label = "CANnect Inject" if kind == "inject" else "CANnect Direct"
+        category = "cannect_inject" if kind == "inject" else "cannect_direct"
+        self._push_undo()
+        node = Node(
+            key=self._next_key,
+            category=category,
+            label=label,
+            can_id=-1,
+            node_type="diagram",
+            vendor="SWYFT",
+            device_type="Wiring",
+            x=self._next_x_position(),
+            row=len(self._nodes) % 2,
+            bus_index=len(self._nodes) % max(len(self._bus_offsets), 1),
+            scale=1.0,
+            tags=self._normalize_tags(["swyft", "cannect", kind]),
+            profile_visible=False,
+        )
+        self._next_key += 1
+        self._nodes.append(node)
+        self._layout_width = max(self._layout_width, node.x + 200)
+        self._refresh_list()
+        self._redraw_canvas()
+        self._select_node(node.key)
+
+    @staticmethod
+    def _max_cannect_ports(node: Node) -> int:
+        """
+        NAME
+            _max_cannect_ports - Return CAN bus port count for a CANnect node.
+        """
+        category = (node.category or "").lower()
+        if category == "cannect_inject":
+            return 1
+        if category == "cannect_direct":
+            return 3
+        return 0
+
+    def _add_ethernet_link(self) -> None:
+        """
+        NAME
+            _add_ethernet_link - Create an Ethernet link between SWYFT nodes.
+        """
+        selected = [n for n in self._device_nodes() if n.key in self._selected_nodes]
+        swyft = [n for n in selected if self._is_swyft_node(n)]
+        if len(swyft) != 2:
+            messagebox.showinfo(
+                "Add Ethernet Link",
+                "Select exactly two CANnect nodes to link.",
+            )
+            return
+        a, b = swyft[0].key, swyft[1].key
+        link = (min(a, b), max(a, b))
+        if link in self._ethernet_links:
+            messagebox.showinfo(
+                "Add Ethernet Link",
+                "An Ethernet link already exists between the selected nodes.",
+            )
+            return
+        self._push_undo()
+        self._ethernet_links.append(link)
+        before_can_links = len(self._can_bus_links)
+        self._can_bus_links = [
+            l for l in self._can_bus_links if l.get("node") not in (a, b)
+        ]
+        if len(self._can_bus_links) != before_can_links:
+            self._dirty = True
+        self._redraw_canvas()
+
+    def _remove_ethernet_link(self) -> None:
+        """
+        NAME
+            _remove_ethernet_link - Remove Ethernet links for selected SWYFT nodes.
+        """
+        selected_keys = {
+            n.key
+            for n in self._device_nodes()
+            if n.key in self._selected_nodes and self._is_swyft_node(n)
+        }
+        if not selected_keys:
+            messagebox.showinfo(
+                "Remove Ethernet Link",
+                "Select one or more CANnect nodes to remove links.",
+            )
+            return
+        before = len(self._ethernet_links)
+        self._push_undo()
+        self._ethernet_links = [
+            link for link in self._ethernet_links if link[0] not in selected_keys and link[1] not in selected_keys
+        ]
+        if len(self._ethernet_links) == before:
+            messagebox.showinfo(
+                "Remove Ethernet Link",
+                "No Ethernet links were removed.",
+            )
+        self._redraw_canvas()
+
+    def _add_can_bus_link(self) -> None:
+        """
+        NAME
+            _add_can_bus_link - Link a CANnect node to a bus segment.
+        """
+        selected_nodes = [n for n in self._device_nodes() if n.key in self._selected_nodes]
+        swyft = [n for n in selected_nodes if self._is_swyft_node(n)]
+        if len(swyft) != 1:
+            messagebox.showinfo(
+                "Add CAN Bus Link",
+                "Select exactly one CANnect node.",
+            )
+            return
+        if len(self._selected_buses) != 1:
+            messagebox.showinfo(
+                "Add CAN Bus Link",
+                "Select exactly one bus segment.",
+            )
+            return
+        node = swyft[0]
+        bus_index = list(self._selected_buses)[0]
+        max_ports = self._max_cannect_ports(node)
+        if max_ports <= 0:
+            messagebox.showinfo("Add CAN Bus Link", "Selected node is not a CANnect node.")
+            return
+        existing_ports = [
+            link["port"]
+            for link in self._can_bus_links
+            if link.get("node") == node.key
+        ]
+        if len(existing_ports) >= max_ports:
+            messagebox.showinfo(
+                "Add CAN Bus Link",
+                f"{node.label} already has {max_ports} CAN bus links.",
+            )
+            return
+        for link in self._can_bus_links:
+            if link.get("node") == node.key and link.get("bus") == bus_index:
+                messagebox.showinfo(
+                    "Add CAN Bus Link",
+                    "A CAN bus link to this segment already exists.",
+                )
+                return
+        port = next((p for p in range(1, max_ports + 1) if p not in existing_ports), 1)
+        self._push_undo()
+        self._can_bus_links.append({"node": node.key, "bus": bus_index, "port": port})
+        self._redraw_canvas()
+
+    def _link_selected_devices_to_cannect(self) -> None:
+        """
+        NAME
+            _link_selected_devices_to_cannect - Link selected devices to one CANnect node.
+        """
+        selected_nodes = [n for n in self._device_nodes() if n.key in self._selected_nodes]
+        swyft = [n for n in selected_nodes if self._is_swyft_node(n)]
+        if len(swyft) != 1:
+            messagebox.showinfo(
+                "Link Device to CANnect",
+                "Select exactly one CANnect node and one or more device nodes.",
+            )
+            return
+        cannect = swyft[0]
+        devices = [
+            n
+            for n in selected_nodes
+            if n.key != cannect.key
+            and n.node_type != "callout"
+            and not self._is_swyft_node(n)
+            and getattr(n, "profile_visible", True)
+        ]
+        if not devices:
+            messagebox.showinfo(
+                "Link Device to CANnect",
+                "Select one or more device nodes to link.",
+            )
+            return
+        max_ports = self._max_cannect_ports(cannect)
+        if max_ports <= 0:
+            messagebox.showinfo(
+                "Link Device to CANnect",
+                "Selected node is not a CANnect node.",
+            )
+            return
+        used_ports = {
+            int(link.get("port", 0))
+            for link in self._cannect_device_links
+            if link.get("node") == cannect.key
+        }
+        available_ports = [p for p in range(1, max_ports + 1) if p not in used_ports]
+        if not available_ports:
+            messagebox.showinfo(
+                "Link Device to CANnect",
+                f"{cannect.label} has no free device ports.",
+            )
+            return
+        self._push_undo()
+        device_keys = {n.key for n in devices}
+        self._cannect_device_links = [
+            link
+            for link in self._cannect_device_links
+            if link.get("device") not in device_keys
+        ]
+        linked = 0
+        for device in devices:
+            if not available_ports:
+                break
+            port = available_ports.pop(0)
+            self._cannect_device_links.append(
+                {"node": cannect.key, "device": device.key, "port": port}
+            )
+            linked += 1
+        self._dirty = True
+        self._redraw_canvas()
+        if linked < len(devices):
+            messagebox.showinfo(
+                "Link Device to CANnect",
+                f"Linked {linked} of {len(devices)} devices. {cannect.label} has only {max_ports} ports.",
+            )
+
+    def _remove_can_bus_link(self) -> None:
+        """
+        NAME
+            _remove_can_bus_link - Remove CAN bus links for selected nodes/buses.
+        """
+        selected_nodes = {n.key for n in self._device_nodes() if n.key in self._selected_nodes}
+        selected_buses = set(self._selected_buses)
+        if not selected_nodes and not selected_buses:
+            messagebox.showinfo(
+                "Remove CAN Bus Link",
+                "Select a CANnect node and/or a bus segment.",
+            )
+            return
+        before = len(self._can_bus_links)
+        self._push_undo()
+        if selected_nodes and selected_buses:
+            self._can_bus_links = [
+                link
+                for link in self._can_bus_links
+                if not (link.get("node") in selected_nodes and link.get("bus") in selected_buses)
+            ]
+        elif selected_nodes:
+            self._can_bus_links = [
+                link for link in self._can_bus_links if link.get("node") not in selected_nodes
+            ]
+        else:
+            self._can_bus_links = [
+                link for link in self._can_bus_links if link.get("bus") not in selected_buses
+            ]
+        if len(self._can_bus_links) == before:
+            messagebox.showinfo(
+                "Remove CAN Bus Link",
+                "No CAN bus links were removed.",
+            )
+        self._redraw_canvas()
+
+    def _remove_cannect_device_link(self) -> None:
+        """
+        NAME
+            _remove_cannect_device_link - Remove CANnect device links for selected nodes.
+        """
+        selected_nodes = {n.key for n in self._device_nodes() if n.key in self._selected_nodes}
+        if not selected_nodes:
+            messagebox.showinfo(
+                "Remove CANnect Device Link",
+                "Select one or more nodes to remove links.",
+            )
+            return
+        before = len(self._cannect_device_links)
+        self._push_undo()
+        self._cannect_device_links = [
+            link
+            for link in self._cannect_device_links
+            if link.get("node") not in selected_nodes and link.get("device") not in selected_nodes
+        ]
+        if len(self._cannect_device_links) == before:
+            messagebox.showinfo(
+                "Remove CANnect Device Link",
+                "No CANnect links were removed.",
+            )
+        self._redraw_canvas()
+
+    def _fix_cannect_conflicts(self, notify: bool = False) -> bool:
+        """
+        NAME
+            _fix_cannect_conflicts - Remove CAN trunk links from Ethernet-linked CANnect nodes.
+
+        PARAMETERS
+            notify: When true, show a summary dialog.
+
+        RETURNS
+            True when any links were removed, False otherwise.
+        """
+        ethernet_nodes: set[int] = set()
+        for a, b in self._ethernet_links:
+            ethernet_nodes.add(a)
+            ethernet_nodes.add(b)
+        if not ethernet_nodes:
+            if notify:
+                messagebox.showinfo(
+                    "Fix CANnect Conflicts",
+                    "No Ethernet-linked CANnect nodes found.",
+                )
+            return False
+        before = len(self._can_bus_links)
+        self._can_bus_links = [
+            link for link in self._can_bus_links if link.get("node") not in ethernet_nodes
+        ]
+        removed = before - len(self._can_bus_links)
+        if removed > 0:
+            self._dirty = True
+            self._redraw_canvas()
+        if notify:
+            if removed > 0:
+                messagebox.showinfo(
+                    "Fix CANnect Conflicts",
+                    f"Removed {removed} CAN trunk link(s) from Ethernet-linked CANnect nodes.",
+                )
+            else:
+                messagebox.showinfo(
+                    "Fix CANnect Conflicts",
+                    "No CAN trunk links needed removal.",
+                )
+        return removed > 0
+
+    def _maybe_link_dragged_device_to_cannect(self, dragged_key: int) -> None:
+        """
+        NAME
+            _maybe_link_dragged_device_to_cannect - Link a dragged device to a CANnect node.
+        """
+        node = next((n for n in self._nodes if n.key == dragged_key), None)
+        if node is None or not getattr(node, "profile_visible", True):
+            return
+        if node.node_type == "callout" or self._is_swyft_node(node):
+            return
+        bounds = self._node_bounds.get(node.key)
+        if not bounds:
+            return
+        cx = (bounds[0] + bounds[2]) / 2.0
+        cy = (bounds[1] + bounds[3]) / 2.0
+        target = None
+        for other in self._nodes:
+            if not self._is_swyft_node(other):
+                continue
+            ob = self._node_bounds.get(other.key)
+            if not ob:
+                continue
+            pad = 12.0 * max(self._zoom, 0.5)
+            if (ob[0] - pad) <= cx <= (ob[2] + pad) and (ob[1] - pad) <= cy <= (ob[3] + pad):
+                target = other
+                break
+        if target is None:
+            return
+        self._link_device_to_cannect(target, node)
+
+    def _link_device_to_cannect(self, cannect: Node, device: Node) -> None:
+        """
+        NAME
+            _link_device_to_cannect - Attach a device to a CANnect node.
+        """
+        if not self._is_swyft_node(cannect):
+            return
+        if not getattr(device, "profile_visible", True) or device.node_type == "callout":
+            return
+        max_ports = self._max_cannect_ports(cannect)
+        if max_ports <= 0:
+            return
+        if any(
+            link.get("node") == cannect.key and link.get("device") == device.key
+            for link in self._cannect_device_links
+        ):
+            return
+        used_ports = [
+            link.get("port")
+            for link in self._cannect_device_links
+            if link.get("node") == cannect.key
+        ]
+        if len(used_ports) >= max_ports:
+            return
+        port = next((p for p in range(1, max_ports + 1) if p not in used_ports), 1)
+        self._push_undo()
+        self._cannect_device_links = [
+            link for link in self._cannect_device_links if link.get("device") != device.key
+        ]
+        self._cannect_device_links.append(
+            {"node": cannect.key, "device": device.key, "port": port}
+        )
+        self._redraw_canvas()
+
+    def _link_bus_to_cannect(self, cannect: Node, bus_index: int) -> None:
+        """
+        NAME
+            _link_bus_to_cannect - Create a CAN bus link for a CANnect node.
+        """
+        if not self._is_swyft_node(cannect):
+            return
+        max_ports = self._max_cannect_ports(cannect)
+        if max_ports <= 0:
+            return
+        if bus_index < 0 or bus_index >= len(self._bus_offsets):
+            return
+        existing_ports = [
+            link["port"]
+            for link in self._can_bus_links
+            if link.get("node") == cannect.key
+        ]
+        if len(existing_ports) >= max_ports:
+            return
+        for link in self._can_bus_links:
+            if link.get("node") == cannect.key and link.get("bus") == bus_index:
+                return
+        port = next((p for p in range(1, max_ports + 1) if p not in existing_ports), 1)
+        self._push_undo()
+        self._can_bus_links.append({"node": cannect.key, "bus": bus_index, "port": port})
+        self._redraw_canvas()
     def _on_edit(self) -> None:
         """
         NAME
@@ -1751,6 +2457,9 @@ class TopologyEditor(tk.Tk):
         node = self._get_selected_node()
         if node is None:
             messagebox.showinfo("Edit", "Select a node to edit.")
+            return
+        if self._is_swyft_node(node):
+            self._edit_diagram_node(node)
             return
         dialog = NodeDialog(self, "Edit Node", initial=node)
         self.wait_window(dialog)
@@ -1777,6 +2486,54 @@ class TopologyEditor(tk.Tk):
         self._refresh_list()
         self._redraw_canvas()
         self._select_node(node.key)
+
+    def _edit_diagram_node(self, node: Node) -> None:
+        """
+        NAME
+            _edit_diagram_node - Edit label/tags for a diagram-only node.
+        """
+        dialog = tk.Toplevel(self)
+        dialog.title("Edit Diagram Node")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+
+        frame = ttk.Frame(dialog, padding=12)
+        frame.grid(row=0, column=0, sticky="nsew")
+
+        ttk.Label(frame, text="Label").grid(row=0, column=0, sticky="w")
+        label_var = tk.StringVar(value=node.label)
+        ttk.Entry(frame, textvariable=label_var, width=26).grid(row=0, column=1, sticky="w")
+
+        ttk.Label(frame, text="Tags").grid(row=1, column=0, sticky="w")
+        tags_var = tk.StringVar(value=", ".join(node.tags or []))
+        ttk.Entry(frame, textvariable=tags_var, width=26).grid(row=1, column=1, sticky="w")
+
+        result = {"ok": False}
+
+        def _ok() -> None:
+            if not label_var.get().strip():
+                messagebox.showerror("Invalid", "Label is required.")
+                return
+            result["ok"] = True
+            dialog.destroy()
+
+        def _cancel() -> None:
+            dialog.destroy()
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=2, column=0, columnspan=2, sticky="e", pady=(8, 0))
+        ttk.Button(buttons, text="Cancel", command=_cancel).pack(side="right", padx=4)
+        ttk.Button(buttons, text="OK", command=_ok).pack(side="right")
+
+        self.wait_window(dialog)
+        if not result["ok"]:
+            return
+        self._push_undo()
+        node.label = label_var.get().strip()
+        node.tags = self._normalize_tags(tags_var.get())
+        self._refresh_list()
+        self._redraw_canvas()
 
     def _on_remove(self) -> None:
         """
@@ -1855,14 +2612,31 @@ class TopologyEditor(tk.Tk):
         device_nodes = self._device_nodes()
         callouts = self._callout_nodes()
         for idx in indices:
-            if any(node.bus_index == idx for node in device_nodes):
-                messagebox.showinfo("Remove", "Bus segment has nodes attached and cannot be removed.")
-                return False
-            if any(
-                callout.callout_target_type == "bus" and callout.callout_target_bus == idx
+            blocking_nodes = [node for node in device_nodes if node.bus_index == idx]
+            blocking_callouts = [
+                callout
                 for callout in callouts
-            ):
-                messagebox.showinfo("Remove", "Bus segment has callouts attached and cannot be removed.")
+                if callout.callout_target_type == "bus" and callout.callout_target_bus == idx
+            ]
+            if any(node.bus_index == idx for node in device_nodes):
+                labels = [n.label for n in blocking_nodes if n.label]
+                if not labels:
+                    labels = [f"Node {n.key}" for n in blocking_nodes]
+                messagebox.showinfo(
+                    "Remove",
+                    "Bus segment has nodes attached and cannot be removed.\n\n"
+                    "Blocking nodes:\n- " + "\n- ".join(labels),
+                )
+                return False
+            if blocking_callouts:
+                labels = [c.callout_text or c.label for c in blocking_callouts]
+                if not labels:
+                    labels = [f"Callout {c.key}" for c in blocking_callouts]
+                messagebox.showinfo(
+                    "Remove",
+                    "Bus segment has callouts attached and cannot be removed.\n\n"
+                    "Blocking callouts:\n- " + "\n- ".join(labels),
+                )
                 return False
         if not messagebox.askyesno("Remove", "Remove selected empty bus segments?"):
             return False
@@ -1895,6 +2669,7 @@ class TopologyEditor(tk.Tk):
         NAME
             _refresh_list - Update the listbox contents.
         """
+        self._destroy_inline_editor()
         for item in self.node_list.get_children():
             self.node_list.delete(item)
         nodes = list(self._device_nodes())
@@ -1902,13 +2677,201 @@ class TopologyEditor(tk.Tk):
             nodes = [n for n in nodes if self._tag_filter_fn(n)]
         nodes = sort_nodes(nodes, self._list_sort_var.get())
         for node in nodes:
+            can_id = "" if not isinstance(node.can_id, int) or node.can_id < 0 else str(node.can_id)
             tags = self._tags_to_string(node.tags)
             self.node_list.insert(
                 "",
                 "end",
                 iid=str(node.key),
-                values=(str(node.can_id), node.category, node.label, tags),
+                values=(can_id, node.category, node.label, tags),
             )
+
+    def _on_list_edit_start(self, event: tk.Event) -> None:
+        """
+        NAME
+            _on_list_edit_start - Begin inline editing in the node list.
+        """
+        if self._inline_editor is not None:
+            self._destroy_inline_editor()
+        region = self.node_list.identify("region", event.x, event.y)
+        if region != "cell":
+            return
+        row_id = self.node_list.identify_row(event.y)
+        if not row_id:
+            return
+        column_id = self.node_list.identify_column(event.x)
+        if not column_id:
+            return
+        try:
+            col_index = int(column_id.lstrip("#")) - 1
+        except ValueError:
+            return
+        columns = list(self.node_list["columns"])
+        if col_index < 0 or col_index >= len(columns):
+            return
+        column_name = columns[col_index]
+        if column_name not in ("can_id", "type", "label", "tags"):
+            return
+        node = next((n for n in self._nodes if str(n.key) == row_id), None)
+        if node is None:
+            return
+        bbox = self.node_list.bbox(row_id, column=column_id)
+        if not bbox:
+            return
+        x, y, w, h = bbox
+        value = self.node_list.set(row_id, column_name)
+        self._inline_edit_info = {
+            "node": node,
+            "column": column_name,
+            "row_id": row_id,
+        }
+
+        if column_name == "type":
+            categories = (
+                BUCKET_CATEGORIES
+                + SINGLETON_CATEGORIES
+                + [GENERIC_CATEGORY, "cannect_inject", "cannect_direct"]
+            )
+            categories = list(dict.fromkeys(categories))
+            editor: tk.Widget = ttk.Combobox(
+                self.node_list, values=categories, state="normal"
+            )
+            if value in categories:
+                editor.set(value)
+            else:
+                editor.set(node.category)
+            editor.bind("<<ComboboxSelected>>", self._on_list_edit_commit)
+        else:
+            editor = ttk.Entry(self.node_list)
+            editor.insert(0, value)
+            editor.select_range(0, "end")
+            editor.bind("<Return>", self._on_list_edit_commit)
+
+        editor.bind("<Escape>", self._on_list_edit_cancel)
+        editor.bind("<FocusOut>", self._on_list_edit_commit)
+        editor.place(x=x, y=y, width=w, height=h)
+        editor.focus_set()
+        self._inline_editor = editor
+
+    def _on_list_edit_cancel(self, _event: tk.Event) -> None:
+        """
+        NAME
+            _on_list_edit_cancel - Cancel inline list editing.
+        """
+        self._destroy_inline_editor()
+
+    def _on_delete_key(self, _event: tk.Event) -> None:
+        """
+        NAME
+            _on_delete_key - Handle delete/backspace without breaking text edits.
+        """
+        widget = self.focus_get()
+        if isinstance(widget, (tk.Entry, ttk.Entry, ttk.Combobox)):
+            return
+        self._on_remove_selected()
+
+    def _on_list_edit_commit(self, _event: tk.Event) -> None:
+        """
+        NAME
+            _on_list_edit_commit - Commit inline list edits to the node.
+        """
+        if self._inline_editor is None or self._inline_edit_info is None:
+            return
+        node = self._inline_edit_info.get("node")
+        column = self._inline_edit_info.get("column")
+        if not isinstance(node, Node) or not isinstance(column, str):
+            self._destroy_inline_editor()
+            return
+        if isinstance(self._inline_editor, ttk.Combobox):
+            new_value = self._inline_editor.get().strip()
+        else:
+            new_value = str(self._inline_editor.get()).strip()
+
+        selected_items = list(self.node_list.selection())
+        if selected_items:
+            target_keys = []
+            for item in selected_items:
+                try:
+                    target_keys.append(int(item))
+                except ValueError:
+                    continue
+        else:
+            target_keys = [node.key]
+        targets = [n for n in self._nodes if n.key in target_keys]
+
+        if column == "can_id":
+            if new_value == "":
+                can_id = -1
+            else:
+                try:
+                    can_id = int(new_value)
+                except ValueError:
+                    self._reject_inline_edit(f"CAN ID must be an integer: '{new_value}'.")
+                    return
+            if not self._is_valid_can_id(can_id):
+                self._reject_inline_edit(f"Invalid CAN ID {can_id}.")
+                return
+            for target in targets:
+                target.can_id = can_id
+        elif column == "type":
+            category = new_value
+            if not category:
+                self._reject_inline_edit("Type is required.")
+                return
+            if category in SINGLETON_CATEGORIES:
+                if len(targets) > 1:
+                    self._reject_inline_edit(f"Only one {category} is allowed.")
+                    return
+                if any(n.category == category and n.key != targets[0].key for n in self._nodes):
+                    self._reject_inline_edit(f"Only one {category} is allowed.")
+                    return
+            for target in targets:
+                target.category = category
+        elif column == "label":
+            if not new_value:
+                self._reject_inline_edit("Label is required.")
+                return
+            for target in targets:
+                target.label = new_value
+        elif column == "tags":
+            tags = self._normalize_tags(new_value)
+            for target in targets:
+                target.tags = tags
+
+        self._dirty = True
+        self._destroy_inline_editor()
+        self._refresh_list()
+        self._redraw_canvas()
+
+    def _destroy_inline_editor(self) -> None:
+        """
+        NAME
+            _destroy_inline_editor - Tear down any active inline editor widget.
+        """
+        if self._inline_editor is not None:
+            try:
+                self._inline_editor.destroy()
+            except tk.TclError:
+                pass
+        self._inline_editor = None
+        self._inline_edit_info = None
+
+    def _reject_inline_edit(self, message: str) -> None:
+        """
+        NAME
+            _reject_inline_edit - Show validation error and keep editor active.
+        """
+        messagebox.showerror("Invalid", message)
+        if self._inline_editor is None:
+            return
+        try:
+            self._inline_editor.focus_set()
+            if isinstance(self._inline_editor, ttk.Entry):
+                self._inline_editor.select_range(0, "end")
+            elif isinstance(self._inline_editor, ttk.Combobox):
+                self._inline_editor.selection_range(0, "end")
+        except tk.TclError:
+            pass
 
     def _layout_even(self) -> None:
         """
@@ -1967,6 +2930,67 @@ class TopologyEditor(tk.Tk):
             _snap_value - Snap a value to the current grid size.
         """
         return snap_value(value, int(self._grid_size_var.get() or 1))
+
+    def _nudge_step(self, event: tk.Event) -> float:
+        """
+        NAME
+            _nudge_step - Determine nudge step size for keyboard moves.
+        """
+        if self._snap_to_grid_var.get():
+            base = int(self._grid_size_var.get() or 1)
+        else:
+            base = 5
+        if base < 1:
+            base = 1
+        if event.state & 0x0001:
+            base *= 5
+        return float(base)
+
+    def _nudge_selection(self, direction: str, event: tk.Event) -> str:
+        """
+        NAME
+            _nudge_selection - Nudge selected nodes with arrow keys.
+        """
+        if not self._selected_nodes:
+            return "break"
+        nodes = [n for n in self._nodes if n.key in self._selected_nodes]
+        if not nodes:
+            return "break"
+        step = self._nudge_step(event)
+        dx = 0.0
+        dy = 0.0
+        if direction == "left":
+            dx = -step
+        elif direction == "right":
+            dx = step
+        elif direction == "up":
+            dy = -step
+        elif direction == "down":
+            dy = step
+        if dx == 0.0 and dy == 0.0:
+            return "break"
+        self._push_undo()
+        for node in nodes:
+            if dx:
+                node.x += dx
+                if self._snap_to_grid_var.get():
+                    node.x = self._snap_value(node.x)
+            if dy:
+                bus_index = min(
+                    max(node.bus_index, 0), max(len(self._bus_offsets) - 1, 0)
+                )
+                bus_offset = self._bus_offsets[bus_index] if self._bus_offsets else 0.0
+                if node.free_y is None:
+                    node.free_y = self._node_center_y_unscaled(node) - bus_offset
+                node.free_y = (node.free_y or 0.0) + dy
+                if self._snap_to_grid_var.get():
+                    node.free_y = self._snap_value(node.free_y)
+        max_x = max((n.x for n in self._nodes), default=0.0)
+        self._layout_width = max(self._layout_width, max_x + 200)
+        self._dirty = True
+        self._clear_guides()
+        self._redraw_canvas()
+        return "break"
 
     def _clear_guides(self) -> None:
         """
@@ -2132,11 +3156,17 @@ class TopologyEditor(tk.Tk):
         selection = self.node_list.selection()
         if not selection:
             return
-        try:
-            key = int(selection[0])
-        except ValueError:
+        selected_keys: set[int] = set()
+        for item in selection:
+            try:
+                selected_keys.add(int(item))
+            except ValueError:
+                continue
+        if not selected_keys:
             return
-        self._set_single_node_selection(key)
+        self._selected_nodes = selected_keys
+        self._selected_buses = set()
+        self._sync_selection_state()
 
     def _select_node(self, key: int) -> None:
         """
@@ -2165,7 +3195,7 @@ class TopologyEditor(tk.Tk):
         RETURNS
             True when ok to proceed, False to cancel save.
         """
-        nodes = nodes if nodes is not None else self._device_nodes()
+        nodes = nodes if nodes is not None else self._profile_device_nodes()
         by_loose: Dict[int, List[Node]] = {}
         by_strict: Dict[Tuple[str, str, int], List[Node]] = {}
         for node in nodes:
@@ -2227,9 +3257,16 @@ class TopologyEditor(tk.Tk):
     def _device_nodes(self) -> List[Node]:
         """
         NAME
-            _device_nodes - Return device nodes only.
+            _device_nodes - Return non-callout nodes.
         """
-        return [n for n in self._nodes if n.node_type == "device"]
+        return [n for n in self._nodes if n.node_type != "callout"]
+
+    def _profile_device_nodes(self) -> List[Node]:
+        """
+        NAME
+            _profile_device_nodes - Return nodes that belong in bringup profiles.
+        """
+        return [n for n in self._device_nodes() if getattr(n, "profile_visible", True)]
 
     def _callout_nodes(self) -> List[Node]:
         """
@@ -2247,6 +3284,17 @@ class TopologyEditor(tk.Tk):
         if node.node_type == "callout":
             return 180 * scale * node_scale, 50 * scale * node_scale
         return self._box_w * scale * node_scale, self._box_h * scale * node_scale
+
+    def _should_clamp_node_to_bus(self, node: Node) -> bool:
+        """
+        NAME
+            _should_clamp_node_to_bus - Decide whether to clamp a node to bus bounds.
+        """
+        if node.node_type == "callout":
+            return False
+        if node.node_type == "diagram" or not getattr(node, "profile_visible", True):
+            return False
+        return True
 
     def _node_box_y(self, node: Node, bus_y: float, box_h: float, scale: float) -> Tuple[float, float]:
         """
@@ -3060,7 +4108,7 @@ class TopologyEditor(tk.Tk):
                 self._suppress_list_select = False
             node = self._get_selected_node()
             if node is not None and node.node_type == "callout":
-                self._callout_scale_var.set(f"{node.scale:.2f}")
+                self._update_callout_details(node)
                 if hasattr(self, "_callout_details_panel"):
                     self._details_layout_shift = True
                     self._preserve_canvas_view(
@@ -3079,10 +4127,12 @@ class TopologyEditor(tk.Tk):
             self._selected_key = None
             self._suppress_list_select = True
             try:
-                current = self.node_list.selection()
-                if current:
-                    for item in current:
-                        self.node_list.selection_remove(item)
+                current = set(self.node_list.selection())
+                desired = {str(k) for k in self._selected_nodes if self.node_list.exists(str(k))}
+                for item in current - desired:
+                    self.node_list.selection_remove(item)
+                for item in desired - current:
+                    self.node_list.selection_add(item)
             finally:
                 self._suppress_list_select = False
             if hasattr(self, "_node_details_panel"):
@@ -3255,8 +4305,11 @@ class TopologyEditor(tk.Tk):
             numeric_counts[key[2]] = numeric_counts.get(key[2], 0) + 1
         dup_keys = {key for key, count in key_counts.items() if count > 1}
         warn_ids = {can_id for can_id, count in numeric_counts.items() if count > 1}
+        ethernet_ports: Dict[int, Dict[str, Tuple[float, float]]] = {}
+        can_ports: Dict[int, Dict[int, Tuple[float, float]]] = {}
+        linked_devices = {link.get("device") for link in self._cannect_device_links}
         for node in self._device_nodes():
-            node_x = min(max(node.x * scale, x_left + 20), x_right - 20)
+            node_x = node.x * scale
             bus_index = min(max(node.bus_index, 0), max(len(bus_ys) - 1, 0))
             node.bus_index = bus_index
             bus_y = bus_ys[bus_index] if bus_ys else base_y
@@ -3265,31 +4318,40 @@ class TopologyEditor(tk.Tk):
             node_box_h = box_h * node_scale
             seg_left = eff_lefts[bus_index] * scale
             seg_right = eff_rights[bus_index] * scale
-            node_x = min(max(node.x * scale, seg_left + 20), seg_right - 20)
+            if self._should_clamp_node_to_bus(node):
+                node_x = min(max(node_x, seg_left + 20), seg_right - 20)
             x0 = node_x - node_box_w / 2
             x1 = node_x + node_box_w / 2
             if node.key in self._drag_free_y:
                 center_y = base_y + self._drag_free_y[node.key] * scale
                 y0 = center_y - node_box_h / 2
                 y1 = center_y + node_box_h / 2
-                line_y = y0 if center_y > bus_y else y1
-                self.canvas.create_line(node_x, bus_y, node_x, line_y, width=2, fill="#444444")
+                allow_trunk = (not self._is_swyft_node(node)) or node.category == "cannect_inject"
+                if node.key not in linked_devices and allow_trunk:
+                    line_y = y0 if center_y > bus_y else y1
+                    self.canvas.create_line(node_x, bus_y, node_x, line_y, width=2, fill="#444444")
             else:
                 if node.free_y is not None:
                     center_y = base_y + self._node_center_y_unscaled(node) * scale
                     y0 = center_y - node_box_h / 2
                     y1 = center_y + node_box_h / 2
-                    line_y = y0 if center_y > bus_y else y1
-                    self.canvas.create_line(node_x, bus_y, node_x, line_y, width=2, fill="#444444")
+                    allow_trunk = (not self._is_swyft_node(node)) or node.category == "cannect_inject"
+                    if node.key not in linked_devices and allow_trunk:
+                        line_y = y0 if center_y > bus_y else y1
+                        self.canvas.create_line(node_x, bus_y, node_x, line_y, width=2, fill="#444444")
                 else:
                     if node.row == 1:
                         y0 = bus_y + 30 * scale
                         y1 = y0 + node_box_h
-                        self.canvas.create_line(node_x, bus_y, node_x, y0, width=2, fill="#444444")
+                        allow_trunk = (not self._is_swyft_node(node)) or node.category == "cannect_inject"
+                        if node.key not in linked_devices and allow_trunk:
+                            self.canvas.create_line(node_x, bus_y, node_x, y0, width=2, fill="#444444")
                     else:
                         y1 = bus_y - 30 * scale
                         y0 = y1 - node_box_h
-                        self.canvas.create_line(node_x, y1, node_x, bus_y, width=2, fill="#444444")
+                        allow_trunk = (not self._is_swyft_node(node)) or node.category == "cannect_inject"
+                        if node.key not in linked_devices and allow_trunk:
+                            self.canvas.create_line(node_x, y1, node_x, bus_y, width=2, fill="#444444")
             outline = "#1f6feb" if node.key in self._selected_nodes else "#222222"
             shape_kind = self._shape_kind_for_node(node)
             fill = self._fill_color_for_node(node)
@@ -3297,6 +4359,66 @@ class TopologyEditor(tk.Tk):
             shape_ids = self._draw_device_shape_on(
                 self.canvas, x0, y0, x1, y1, shape_kind, fill=fill, outline=outline, width=2
             )
+            if self._is_swyft_node(node):
+                cy = (y0 + y1) / 2.0
+                ports: Dict[str, Tuple[float, float]] = {}
+                if node.category == "cannect_inject":
+                    ports["out"] = (x1, cy)
+                else:
+                    ports["in"] = (x0, cy)
+                    ports["out"] = (x1, cy)
+                ethernet_ports[node.key] = ports
+                port_w = 6 * scale
+                port_h = 10 * scale
+                for _, (px, py) in ports.items():
+                    self.canvas.create_rectangle(
+                        px - port_w / 2,
+                        py - port_h / 2,
+                        px + port_w / 2,
+                        py + port_h / 2,
+                        fill="#4aa3df",
+                        outline="#1c6ba8",
+                        width=1,
+                    )
+                can_count = 1 if node.category == "cannect_inject" else 3
+                can_ports[node.key] = {}
+                if can_count > 0:
+                    inset = 12 * scale
+                    step = (node_box_w - inset * 2) / max(can_count, 1)
+                    for idx in range(can_count):
+                        px = x0 + inset + step * (idx + 0.5)
+                        can_ports[node.key][idx + 1] = (px, y0 - 10 * scale)
+                        self.canvas.create_line(
+                            px - 3 * scale,
+                            y0,
+                            px - 3 * scale,
+                            y0 - 10 * scale,
+                            width=2,
+                            fill="#2f7a2f",
+                        )
+                        self.canvas.create_line(
+                            px + 3 * scale,
+                            y0,
+                            px + 3 * scale,
+                            y0 - 10 * scale,
+                            width=2,
+                            fill="#2f7a2f",
+                        )
+                        self.canvas.create_text(
+                            px,
+                            y0 - 12 * scale,
+                            text=f"C{idx + 1}",
+                            font=("Segoe UI", max(7, int(7 * scale))),
+                            fill="#2f7a2f",
+                        )
+                power_text = "Power In" if node.category == "cannect_inject" else "Power Out"
+                self.canvas.create_text(
+                    node_x,
+                    y1 + 10 * scale,
+                    text=power_text,
+                    font=("Segoe UI", max(7, int(7 * scale))),
+                    fill="#555555",
+                )
             text = node.display_text()
             font_size = self._fit_font_size(
                 text, node_box_w - 10, node_box_h - 10, int(9 * scale * node_scale)
@@ -3341,6 +4463,87 @@ class TopologyEditor(tk.Tk):
                 min(max(n.x * scale, seg_left + 20), seg_right - 20),
                 bus_ys[n.bus_index] if bus_ys else base_y,
             )
+        linked_devices = {link.get("device") for link in self._cannect_device_links}
+        for link in self._can_bus_links:
+            node_key = link.get("node")
+            bus_index = link.get("bus")
+            port = link.get("port", 1)
+            if node_key not in can_ports:
+                continue
+            if not isinstance(bus_index, int) or bus_index < 0 or bus_index >= len(bus_ys):
+                continue
+            if any(
+                n.bus_index == bus_index and n.key in linked_devices
+                for n in self._device_nodes()
+            ):
+                continue
+            port_pos = can_ports[node_key].get(int(port))
+            if not port_pos:
+                continue
+            px, py = port_pos
+            bus_y = bus_ys[bus_index]
+            line = self.canvas.create_line(
+                px,
+                py,
+                px,
+                bus_y,
+                width=2,
+                fill="#2f7a2f",
+            )
+            self.canvas.tag_lower(line)
+
+        for link in self._cannect_device_links:
+            node_key = link.get("node")
+            device_key = link.get("device")
+            port = link.get("port", 1)
+            if node_key not in can_ports or device_key not in self._node_bounds:
+                continue
+            port_pos = can_ports[node_key].get(int(port))
+            if not port_pos:
+                continue
+            px, py = port_pos
+            dx0, dy0, dx1, dy1 = self._node_bounds[device_key]
+            tx = (dx0 + dx1) / 2.0
+            ty = dy0
+            line = self.canvas.create_line(
+                px,
+                py,
+                tx,
+                ty,
+                width=2,
+                fill="#2f7a2f",
+            )
+            self.canvas.tag_lower(line)
+
+        for a, b in self._ethernet_links:
+            if a not in ethernet_ports or b not in ethernet_ports:
+                continue
+            if a not in node_centers or b not in node_centers:
+                continue
+            ax, _ = node_centers[a]
+            bx, _ = node_centers[b]
+            ports_a = ethernet_ports[a]
+            ports_b = ethernet_ports[b]
+            if "in" in ports_a and "out" in ports_a:
+                pa = ports_a["in"] if bx < ax else ports_a["out"]
+            else:
+                pa = ports_a.get("out") or ports_a.get("in")
+            if "in" in ports_b and "out" in ports_b:
+                pb = ports_b["in"] if ax < bx else ports_b["out"]
+            else:
+                pb = ports_b.get("out") or ports_b.get("in")
+            if not pa or not pb:
+                continue
+            line = self.canvas.create_line(
+                pa[0],
+                pa[1],
+                pb[0],
+                pb[1],
+                width=2,
+                fill="#1c6ba8",
+                dash=(6, 4),
+            )
+            self.canvas.tag_lower(line)
         for callout in self._callout_nodes():
             cx = callout.x * scale
             bus_index = min(max(callout.bus_index, 0), max(len(bus_ys) - 1, 0))
@@ -3360,11 +4563,56 @@ class TopologyEditor(tk.Tk):
                     cy = (y0 + y1) / 2.0
             x0 = cx - box_w / 2
             x1 = cx + box_w / 2
-            if (
-                callout.callout_target_type == "node"
-                and callout.callout_target_node_key in node_centers
-            ):
-                tx, ty = node_centers[callout.callout_target_node_key]
+            if callout.callout_target_type == "node":
+                target_key = callout.callout_target_node_key
+                if isinstance(target_key, str) and target_key.isdigit():
+                    target_key = int(target_key)
+                    callout.callout_target_node_key = target_key
+                if target_key not in node_centers:
+                    resolved = None
+                    for node in self._device_nodes():
+                        if callout.callout_target_category and node.category != callout.callout_target_category:
+                            continue
+                        if (
+                            callout.callout_target_id is not None
+                            and node.can_id != callout.callout_target_id
+                        ):
+                            continue
+                        if callout.callout_target_label and node.label != callout.callout_target_label:
+                            continue
+                        resolved = node
+                        break
+                    if resolved is None and callout.callout_target_label:
+                        label_matches = [
+                            node
+                            for node in self._device_nodes()
+                            if node.label == callout.callout_target_label
+                            and (
+                                not callout.callout_target_category
+                                or node.category == callout.callout_target_category
+                            )
+                        ]
+                        if len(label_matches) == 1:
+                            resolved = label_matches[0]
+                        elif label_matches and callout.callout_target_id is not None:
+                            for node in label_matches:
+                                if node.can_id == callout.callout_target_id:
+                                    resolved = node
+                                    break
+                    if resolved is not None:
+                        callout.callout_target_node_key = resolved.key
+                        callout.callout_target_category = resolved.category
+                        callout.callout_target_label = resolved.label
+                        callout.callout_target_id = resolved.can_id
+                        target_key = resolved.key
+                if target_key in node_centers:
+                    tx, ty = node_centers[target_key]
+                else:
+                    bus_index = min(
+                        max(callout.callout_target_bus, 0), max(len(bus_ys) - 1, 0)
+                    )
+                    ty = bus_ys[bus_index] if bus_ys else base_y
+                    tx = cx
             else:
                 bus_index = min(
                     max(callout.callout_target_bus, 0), max(len(bus_ys) - 1, 0)
@@ -3416,11 +4664,24 @@ class TopologyEditor(tk.Tk):
             return "power"
         if category in ("roborio",):
             return "controller"
+        if category in ("cannect_inject", "cannect_direct"):
+            return "controller"
         if category in ("candles",):
             return "misc"
         if category == GENERIC_CATEGORY:
             return "misc"
         return "misc"
+
+    @staticmethod
+    def _is_swyft_node(node: Node) -> bool:
+        """
+        NAME
+            _is_swyft_node - Identify CANnect diagram nodes.
+        """
+        category = (node.category or "").lower()
+        return category in ("cannect_inject", "cannect_direct") and not getattr(
+            node, "profile_visible", True
+        )
 
     def _fill_color_for_node(self, node: Node) -> str:
         """
@@ -3443,6 +4704,7 @@ class TopologyEditor(tk.Tk):
             "PLAYINGWITHFUSION": "#c8f2c3",
             "ANDYMARK": "#c9d2ff",
             "NI": "#e7e7e7",
+            "SWYFT": "#e0d7ff",
         }
         return palette.get(vendor, "#f7f7f7")
 
@@ -3459,6 +4721,7 @@ class TopologyEditor(tk.Tk):
             "PLAYINGWITHFUSION": "#2f7a2f",
             "ANDYMARK": "#3b4aa0",
             "NI": "#6a6a6a",
+            "SWYFT": "#5b4aa0",
         }
         return palette.get(vendor, "#222222")
 
@@ -3477,6 +4740,8 @@ class TopologyEditor(tk.Tk):
             return "CTRE"
         if category in ("roborio",):
             return "NI"
+        if category in ("cannect_inject", "cannect_direct"):
+            return "SWYFT"
         return ""
 
     def _device_type_key_for_node(self, node: Node) -> str:
@@ -3497,6 +4762,8 @@ class TopologyEditor(tk.Tk):
             return "MISCELLANEOUS"
         if category in ("roborio",):
             return "ROBOTCONTROLLER"
+        if category in ("cannect_inject", "cannect_direct"):
+            return "MISCELLANEOUS"
         if category == GENERIC_CATEGORY:
             return (node.device_type or "").strip().upper().replace(" ", "") or "UNKNOWN"
         return "UNKNOWN"
@@ -3776,7 +5043,8 @@ class TopologyEditor(tk.Tk):
                 "Quick steps:\n"
                 "1) Add nodes and labels.\n"
                 "2) Drag nodes onto bus segments.\n"
-                "3) Save profile or export.\n"
+                "3) Drag devices onto CANnect nodes (or use Edit -> Link Device to CANnect).\n"
+                "4) Save profile or export.\n"
             ),
             "Keyboard Shortcuts": (
                 "Purpose: Speed up common actions.\n"
@@ -3796,6 +5064,7 @@ class TopologyEditor(tk.Tk):
                 "- Ctrl+L: Tidy selection within bus bounds.\n"
                 "- Ctrl+Shift+L: Reset layout (per-bus even spacing).\n"
                 "- Layout -> Tidy All: Align all buses into shared columns.\n"
+                "- Arrow keys: Nudge selected nodes (Shift = faster).\n"
                 "\n"
                 "View:\n"
                 "- Ctrl+0: Reset zoom.\n"
@@ -3813,6 +5082,7 @@ class TopologyEditor(tk.Tk):
                 "\n"
                 "- Use Snap to Grid for consistent spacing.\n"
                 "- Use Smart Guides to align nodes on a bus segment.\n"
+                "- Use arrow keys to nudge selections without re-dragging.\n"
                 "- Tidy Selection aligns selected nodes into shared columns.\n"
                 "- Reset Layout preserves bus/row and evens per-bus spacing.\n"
                 "- Align/Distribute tools are under the Layout menu.\n"
@@ -3919,6 +5189,7 @@ class TopologyEditor(tk.Tk):
             "PLAYINGWITHFUSION": "#c8f2c3",
             "ANDYMARK": "#c9d2ff",
             "NI": "#e7e7e7",
+            "SWYFT": "#e0d7ff",
         }
         return palette.get(vendor, "#f7f7f7")
 
@@ -3934,6 +5205,7 @@ class TopologyEditor(tk.Tk):
             "PLAYINGWITHFUSION": "#2f7a2f",
             "ANDYMARK": "#3b4aa0",
             "NI": "#6a6a6a",
+            "SWYFT": "#5b4aa0",
         }
         return palette.get(vendor, "#222222")
 
@@ -4354,6 +5626,7 @@ class TopologyEditor(tk.Tk):
                 else:
                     node.free_y = free_y
             self._drag_free_y.clear()
+        dragged_key = self._drag_state[0] if self._drag_state else None
         self._drag_state = None
         self._pan_drag = None
         self._bus_drag = None
@@ -4365,6 +5638,8 @@ class TopologyEditor(tk.Tk):
         if self._selected_key is not None:
             self._update_details_panel(self._get_selected_node())
         self._redraw_canvas()
+        if dragged_key is not None:
+            self._maybe_link_dragged_device_to_cannect(dragged_key)
 
     def _on_add_bus(self) -> None:
         """
@@ -4535,7 +5810,7 @@ class TopologyEditor(tk.Tk):
         if not (clip_nodes or clip_buses):
             return
 
-        existing_ids = {(n.category, n.can_id) for n in self._device_nodes()}
+        existing_ids = {(n.category, n.can_id) for n in self._profile_device_nodes()}
         pending_ids = {
             (n["category"], n["can_id"])
             for n in clip_nodes
@@ -4550,11 +5825,19 @@ class TopologyEditor(tk.Tk):
                 return
 
         self._push_undo()
-        delta = 40.0
+        delta_y = 40.0
+        scale = max(self._zoom, 0.01)
+        view_center_x = self.canvas.canvasx(max(self.canvas.winfo_width(), 1) / 2) / scale
+        clip_xs = [float(n.get("x", 0.0)) for n in clip_nodes if isinstance(n, dict)]
+        if clip_xs:
+            clip_center_x = (min(clip_xs) + max(clip_xs)) / 2.0
+            delta_x = view_center_x - clip_center_x
+        else:
+            delta_x = 40.0
         bus_map: Dict[int, int] = {}
         new_bus_indices: List[int] = []
         for old_index, offset in clip_buses:
-            new_offset = offset + delta
+            new_offset = offset + delta_y
             self._bus_offsets.append(new_offset)
             new_index = len(self._bus_offsets) - 1
             bus_map[old_index] = new_index
@@ -4581,7 +5864,7 @@ class TopologyEditor(tk.Tk):
                 motor=str(data.get("motor", "")),
                 limits=data.get("limits"),
                 terminator=data.get("terminator"),
-                x=float(data.get("x", 0.0)) + delta,
+                x=float(data.get("x", 0.0)) + delta_x,
                 row=int(data.get("row", 0)),
                 bus_index=bus_index,
                 scale=float(data.get("scale", 1.0)),
@@ -5023,7 +6306,10 @@ class TopologyEditor(tk.Tk):
         dup_keys = {key for key, count in key_counts.items() if count > 1}
         warn_ids = {can_id for can_id, count in numeric_counts.items() if count > 1}
 
+        ethernet_ports: Dict[int, Dict[str, Tuple[float, float]]] = {}
+        can_ports: Dict[int, Dict[int, Tuple[float, float]]] = {}
         node_centers = {}
+        linked_devices = {link.get("device") for link in self._cannect_device_links}
         for node in self._device_nodes():
             bus_index = min(max(node.bus_index, 0), max(len(bus_ys) - 1, 0))
             bus_y = bus_ys[bus_index] if bus_ys else base_y
@@ -5038,15 +6324,18 @@ class TopologyEditor(tk.Tk):
             if node.row == 1:
                 y0 = bus_y + 30 * scale
                 y1 = y0 + node_box_h
-                x0l, y0l = _to_pdf(node_x, bus_y)
-                x1l, y1l = _to_pdf(node_x, y0)
+                if node.key not in linked_devices:
+                    x0l, y0l = _to_pdf(node_x, bus_y)
+                    x1l, y1l = _to_pdf(node_x, y0)
             else:
                 y1 = bus_y - 30 * scale
                 y0 = y1 - node_box_h
-                x0l, y0l = _to_pdf(node_x, y1)
-                x1l, y1l = _to_pdf(node_x, bus_y)
-            c.setLineWidth(2 * fit_scale)
-            c.line(x0l, y0l, x1l, y1l)
+                if node.key not in linked_devices:
+                    x0l, y0l = _to_pdf(node_x, y1)
+                    x1l, y1l = _to_pdf(node_x, bus_y)
+            if node.key not in linked_devices:
+                c.setLineWidth(2 * fit_scale)
+                c.line(x0l, y0l, x1l, y1l)
 
             shape_kind = self._shape_kind_for_node(node)
             fill = self._fill_color_for_node(node)
@@ -5072,6 +6361,56 @@ class TopologyEditor(tk.Tk):
                 c.drawCentredString((left + right) / 2, y, line)
                 y -= line_h
 
+            if self._is_swyft_node(node):
+                cy = (y0 + y1) / 2.0
+                ports: Dict[str, Tuple[float, float]] = {}
+                if node.category == "cannect_inject":
+                    ports["out"] = (x1, cy)
+                else:
+                    ports["in"] = (x0, cy)
+                    ports["out"] = (x1, cy)
+                ethernet_ports[node.key] = ports
+                port_w = 6 * scale
+                port_h = 10 * scale
+                for _, (px, py) in ports.items():
+                    r0 = _to_pdf(px - port_w / 2, py - port_h / 2)
+                    r1 = _to_pdf(px + port_w / 2, py + port_h / 2)
+                    c.setFillColor(_pdf_color("#4aa3df"))
+                    c.setStrokeColor(_pdf_color("#1c6ba8"))
+                    c.rect(
+                        min(r0[0], r1[0]),
+                        min(r0[1], r1[1]),
+                        abs(r1[0] - r0[0]),
+                        abs(r1[1] - r0[1]),
+                        fill=1,
+                        stroke=1,
+                    )
+                can_count = 1 if node.category == "cannect_inject" else 3
+                can_ports[node.key] = {}
+                if can_count > 0:
+                    inset = 12 * scale
+                    step = (node_box_w - inset * 2) / max(can_count, 1)
+                    for idx in range(can_count):
+                        px = x0 + inset + step * (idx + 0.5)
+                        can_ports[node.key][idx + 1] = (px, y0 - 10 * scale)
+                        p0 = _to_pdf(px - 3 * scale, y0)
+                        p1 = _to_pdf(px - 3 * scale, y0 - 10 * scale)
+                        p2 = _to_pdf(px + 3 * scale, y0)
+                        p3 = _to_pdf(px + 3 * scale, y0 - 10 * scale)
+                        c.setStrokeColor(_pdf_color("#2f7a2f"))
+                        c.setLineWidth(2 * fit_scale)
+                        c.line(p0[0], p0[1], p1[0], p1[1])
+                        c.line(p2[0], p2[1], p3[0], p3[1])
+                        c.setFillColor(_pdf_color("#2f7a2f"))
+                        c.setFont("Helvetica", max(6, int(7 * scale * fit_scale)))
+                        tpos = _to_pdf(px, y0 - 12 * scale)
+                        c.drawCentredString(tpos[0], tpos[1], f"C{idx + 1}")
+                power_text = "Power In" if node.category == "cannect_inject" else "Power Out"
+                c.setFillColor(_pdf_color("#555555"))
+                c.setFont("Helvetica", max(6, int(7 * scale * fit_scale)))
+                tpos = _to_pdf(node_x, y1 + 10 * scale)
+                c.drawCentredString(tpos[0], tpos[1], power_text)
+
             dup_key = self._dup_key_for_node(node)
             if dup_key in dup_keys or (dup_key and dup_key[2] in warn_ids):
                 badge_x = min(x1 + 12, max_right - 8)
@@ -5087,6 +6426,83 @@ class TopologyEditor(tk.Tk):
                     _draw_pdf_warning_badge(badge_x, badge_y)
 
             node_centers[node.key] = (node_x, bus_y)
+
+        linked_devices = {link.get("device") for link in self._cannect_device_links}
+        for link in self._can_bus_links:
+            node_key = link.get("node")
+            bus_index = link.get("bus")
+            port = link.get("port", 1)
+            if node_key not in can_ports:
+                continue
+            if not isinstance(bus_index, int) or bus_index < 0 or bus_index >= len(bus_ys):
+                continue
+            if any(
+                n.bus_index == bus_index and n.key in linked_devices
+                for n in self._device_nodes()
+            ):
+                continue
+            port_pos = can_ports[node_key].get(int(port))
+            if not port_pos:
+                continue
+            px, py = port_pos
+            bus_y = bus_ys[bus_index]
+            p0 = _to_pdf(px, py)
+            p1 = _to_pdf(px, bus_y)
+            c.setStrokeColor(_pdf_color("#2f7a2f"))
+            c.setLineWidth(2 * fit_scale)
+            c.line(p0[0], p0[1], p1[0], p1[1])
+
+        for link in self._cannect_device_links:
+            node_key = link.get("node")
+            device_key = link.get("device")
+            port = link.get("port", 1)
+            if node_key not in can_ports or device_key not in self._node_bounds:
+                continue
+            port_pos = can_ports[node_key].get(int(port))
+            if not port_pos:
+                continue
+            px, py = port_pos
+            dx0, dy0, dx1, dy1 = self._node_bounds[device_key]
+            tx = (dx0 + dx1) / 2.0
+            ty = dy0
+            p0 = _to_pdf(px, py)
+            p1 = _to_pdf(tx, ty)
+            c.setStrokeColor(_pdf_color("#2f7a2f"))
+            c.setLineWidth(2 * fit_scale)
+            c.line(p0[0], p0[1], p1[0], p1[1])
+
+        for a, b in self._ethernet_links:
+            if a not in ethernet_ports or b not in ethernet_ports:
+                continue
+            if a not in node_centers or b not in node_centers:
+                continue
+            ax, _ = node_centers[a]
+            bx, _ = node_centers[b]
+            ports_a = ethernet_ports[a]
+            ports_b = ethernet_ports[b]
+            if "in" in ports_a and "out" in ports_a:
+                pa = ports_a["in"] if bx < ax else ports_a["out"]
+            else:
+                pa = ports_a.get("out") or ports_a.get("in")
+            if "in" in ports_b and "out" in ports_b:
+                pb = ports_b["in"] if ax < bx else ports_b["out"]
+            else:
+                pb = ports_b.get("out") or ports_b.get("in")
+            if not pa or not pb:
+                continue
+            p0 = _to_pdf(pa[0], pa[1])
+            p1 = _to_pdf(pb[0], pb[1])
+            c.setStrokeColor(_pdf_color("#1c6ba8"))
+            c.setLineWidth(2 * fit_scale)
+            try:
+                c.setDash(6 * fit_scale, 4 * fit_scale)
+            except Exception:
+                pass
+            c.line(p0[0], p0[1], p1[0], p1[1])
+            try:
+                c.setDash()
+            except Exception:
+                pass
 
         for callout in self._callout_nodes():
             cx = callout.x * scale
@@ -5264,12 +6680,21 @@ class TopologyEditor(tk.Tk):
                 return "WARN"
             return ""
 
+        def _status_cause(node: Node) -> str:
+            key = self._dup_key_for_node(node)
+            if key in dup_keys:
+                return "Duplicate CAN ID (vendor+type)"
+            if key and key[2] in warn_ids:
+                return "Duplicate CAN ID (numeric)"
+            return ""
+
         cols = [
             ("CAN ID", 50),
             ("Type", 90),
             ("Label", 210),
             ("Tags", 170),
             ("Status", 60),
+            ("Cause", 170),
         ]
 
         def _draw_header(y: float) -> float:
@@ -5313,6 +6738,7 @@ class TopologyEditor(tk.Tk):
                 node.label,
                 tags,
                 _status(node),
+                _status_cause(node),
             ]
             lines_per_row = 1
             wrapped: List[List[str]] = []
@@ -5649,7 +7075,7 @@ class TopologyEditor(tk.Tk):
         NAME
             _zoom_step - Apply a zoom increment within bounds.
         """
-        self._zoom = max(0.6, min(2.0, self._zoom + delta))
+        self._zoom = max(0.1, min(2.0, self._zoom + delta))
         self._dirty = True
         self._zoom_label_var.set(f"Zoom: {int(self._zoom * 100)}%")
         self._redraw_canvas()

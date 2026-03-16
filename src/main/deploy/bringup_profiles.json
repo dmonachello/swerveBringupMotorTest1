@@ -1,5 +1,5 @@
 {
-  "default_profile": "robot_2026",
+  "default_profile": "cannectTests1",
   "profiles": {
     "example_default": {
       "neos": [
@@ -485,161 +485,87 @@
       "neos": [
         {
           "label": "Climb Motor",
-          "id": 60,
-          "tags": [
-            "climb"
-          ]
+          "id": 60
         },
         {
           "label": "Fuel Intake Motor",
-          "id": 24,
-          "tags": [
-            "intake"
-          ]
+          "id": 24
         },
         {
           "label": "Pivot Intake Motor",
-          "id": 22,
-          "tags": [
-            "intake",
-            "pivot"
-          ]
+          "id": 22
         },
         {
           "label": "Pivot Intake Follower",
-          "id": 11,
-          "tags": [
-            "intake",
-            "pivot"
-          ]
+          "id": 11
         },
         {
           "label": "Feeder Motor",
-          "id": 28,
-          "tags": [
-            "feeder",
-            "shooter"
-          ]
+          "id": 28
         },
         {
           "label": "Angle Motor",
-          "id": 4,
-          "tags": [
-            "angle",
-            "swerve-back-left"
-          ]
+          "id": 4
         },
         {
           "label": "Angle Motor",
-          "id": 7,
-          "tags": [
-            "angle",
-            "swerve-back-right"
-          ]
+          "id": 7
         },
         {
           "label": "Angle Motor",
-          "id": 1,
-          "tags": [
-            "angle",
-            "swerve-front-left"
-          ]
+          "id": 1
         },
         {
           "label": "Angle Motor",
           "id": 10,
-          "terminator": false,
-          "tags": [
-            "angle",
-            "swerve-front-right"
-          ]
+          "terminator": false
         }
       ],
       "flexes": [
         {
           "label": "Flywheel Motor (Leader)",
-          "id": 27,
-          "tags": [
-            "flywheel",
-            "shooter"
-          ]
+          "id": 27
         },
         {
           "label": "Flywheel Motor (Follower)",
-          "id": 23,
-          "tags": [
-            "flywheel",
-            "shooter"
-          ]
+          "id": 23
         }
       ],
       "krakens": [
         {
           "label": "Drive Motor",
-          "id": 5,
-          "tags": [
-            "drive",
-            "swerve-back-left"
-          ]
+          "id": 5
         },
         {
           "label": "Drive Motor",
-          "id": 8,
-          "tags": [
-            "drive",
-            "swerve-back-right"
-          ]
+          "id": 8
         },
         {
           "label": "Drive Motor",
-          "id": 2,
-          "tags": [
-            "drive",
-            "swerve-front-left"
-          ]
+          "id": 2
         },
         {
           "label": "Drive Motor",
           "id": 11,
-          "terminator": false,
-          "tags": [
-            "drive",
-            "swerve-front-right"
-          ]
+          "terminator": false
         }
       ],
       "cancoders": [
         {
           "label": "Encoder (CANCoder)",
-          "id": 6,
-          "tags": [
-            "encoder",
-            "swerve-back-left"
-          ]
+          "id": 6
         },
         {
           "label": "Encoder (CANCoder)",
-          "id": 9,
-          "tags": [
-            "encoder",
-            "swerve-back-right"
-          ]
+          "id": 9
         },
         {
           "label": "Encoder (CANCoder)",
-          "id": 3,
-          "tags": [
-            "encoder",
-            "swerve-front-left"
-          ]
+          "id": 3
         },
         {
           "label": "Encoder (CANCoder)",
-          "id": 12,
-          "tags": [
-            "encoder",
-            "swerve-front-right"
-          ]
+          "id": 12
         }
       ],
       "pdh": {
@@ -649,11 +575,102 @@
       },
       "pigeon": {
         "label": "IMU (Pigeon2)",
-        "id": 19,
-        "tags": [
-          "imu",
-          "swerve"
-        ]
+        "id": 19
+      },
+      "roborio": {
+        "label": "roborio",
+        "id": 0,
+        "terminator": true
+      }
+    },
+    "cannectTests1": {
+      "neos": [
+        {
+          "label": "neo 11",
+          "id": 11,
+          "terminator": false
+        },
+        {
+          "label": "neo 1",
+          "id": 1,
+          "terminator": false
+        },
+        {
+          "label": "neo 21",
+          "id": 21,
+          "terminator": false
+        },
+        {
+          "label": "neo 31",
+          "id": 31,
+          "terminator": false
+        },
+        {
+          "label": "neo feeder 53",
+          "id": 52,
+          "terminator": false
+        }
+      ],
+      "flexes": [
+        {
+          "label": "flex 50 flywheel left",
+          "id": 50,
+          "terminator": false
+        },
+        {
+          "label": "flex 52  flywheel right",
+          "id": 51,
+          "terminator": false
+        }
+      ],
+      "krakens": [
+        {
+          "label": "kracken 12",
+          "id": 12,
+          "terminator": false
+        },
+        {
+          "label": "kracken 2",
+          "id": 2,
+          "terminator": false
+        },
+        {
+          "label": "kracken 22",
+          "id": 22,
+          "terminator": false
+        },
+        {
+          "label": "kracken 32",
+          "id": 32,
+          "terminator": false
+        }
+      ],
+      "cancoders": [
+        {
+          "label": "cancoder 3",
+          "id": 3,
+          "terminator": false
+        },
+        {
+          "label": "cancoder 13",
+          "id": 13,
+          "terminator": false
+        },
+        {
+          "label": "cancoder 23",
+          "id": 23,
+          "terminator": false
+        },
+        {
+          "label": "cancoder 33",
+          "id": 33,
+          "terminator": false
+        }
+      ],
+      "pdh": {
+        "label": "pdh",
+        "id": 62,
+        "terminator": true
       },
       "roborio": {
         "label": "roborio",
@@ -1355,7 +1372,7 @@
         "busOffsets": [
           0.0,
           160.0,
-          320.0,
+          319.4366197183098,
           480.0,
           640.0,
           800.0
@@ -1373,357 +1390,1028 @@
         "busRights": [
           939.1561984519731,
           939.1561984519731,
-          949.6189751119329,
-          949.6189751119329,
-          954.9698189134808,
-          954.9698189134808
+          1004.1725352112685,
+          1004.1725352112685,
+          1148.822865118639,
+          1218.6476471441256
         ],
         "panY": -191.15384615384616,
         "zoom": 0.4778846153846154,
         "nodes": [
           {
             "nodeType": "device",
+            "key": 1,
             "category": "neos",
             "label": "Climb Motor",
             "id": 60,
             "bus": 0,
             "row": 0,
-            "x": 280.0,
+            "x": 272.0,
             "freeY": -75.0,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "climb"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 2,
             "category": "neos",
             "label": "Fuel Intake Motor",
             "id": 24,
             "bus": 0,
             "row": 0,
-            "x": 440.0,
+            "x": 422.0,
             "freeY": -75.0,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "intake"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 3,
             "category": "neos",
             "label": "Pivot Intake Motor",
             "id": 22,
             "bus": 1,
             "row": 0,
-            "x": 220.0,
+            "x": 97.0,
             "freeY": -45.633802816901394,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "intake",
-              "pivot"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 4,
             "category": "neos",
             "label": "Pivot Intake Follower",
             "id": 11,
             "bus": 1,
             "row": 0,
-            "x": 460.0,
+            "x": 416.0624793807892,
             "freeY": -49.8189134808853,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "intake",
-              "pivot"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 5,
             "category": "neos",
             "label": "Feeder Motor",
             "id": 28,
             "bus": 0,
             "row": 0,
-            "x": 605.0000000000016,
-            "freeY": -71.46288681087574,
+            "x": 572.0,
+            "freeY": -73.75,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "feeder",
-              "shooter"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 6,
             "category": "neos",
             "label": "Angle Motor",
             "id": 4,
-            "bus": 3,
-            "row": 0,
-            "x": 125.71428571428606,
-            "freeY": -61.92307692307685,
+            "bus": 2,
+            "row": 1,
+            "x": 789.5421810140125,
+            "freeY": 115.48205902079144,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "angle",
-              "swerve-back-left"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 7,
             "category": "neos",
             "label": "Angle Motor",
             "id": 7,
-            "bus": 4,
-            "row": 0,
-            "x": 113.33333333333358,
-            "freeY": -53.75,
+            "bus": 3,
+            "row": 1,
+            "x": 577.3114108071852,
+            "freeY": 44.956405097250126,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "angle",
-              "swerve-back-right"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 8,
             "category": "neos",
             "label": "Angle Motor",
             "id": 1,
-            "bus": 2,
-            "row": 0,
-            "x": 134.2857142857145,
-            "freeY": -69.06593406593404,
+            "bus": 1,
+            "row": 1,
+            "x": 600.1249587615785,
+            "freeY": 92.51221615406723,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "angle",
-              "swerve-front-left"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 9,
             "category": "neos",
             "label": "Angle Motor",
             "id": 10,
             "bus": 5,
             "row": 0,
-            "x": 125.47283702213319,
-            "freeY": -68.32997987927558,
+            "x": 798.6476471441256,
+            "freeY": -161.23910127431282,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "angle",
-              "swerve-front-right"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 10,
             "category": "flexes",
             "label": "Flywheel Motor (Leader)",
             "id": 27,
             "bus": 1,
             "row": 0,
-            "x": 620.0,
-            "freeY": -58.18913480885311,
+            "x": 626.4270524045163,
+            "freeY": -50.41666666666666,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "flywheel",
-              "shooter"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 11,
             "category": "flexes",
             "label": "Flywheel Motor (Follower)",
             "id": 23,
             "bus": 1,
             "row": 0,
-            "x": 800.0,
-            "freeY": -66.55935613682091,
+            "x": 800.489531785307,
+            "freeY": -55.41666666666666,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "flywheel",
-              "shooter"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 12,
             "category": "krakens",
             "label": "Drive Motor",
             "id": 5,
-            "bus": 3,
-            "row": 0,
-            "x": 300.95238095238085,
-            "freeY": -63.351648351648294,
+            "bus": 2,
+            "row": 1,
+            "x": 876.5352012978781,
+            "freeY": 39.758551307847085,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "drive",
-              "swerve-back-left"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 13,
             "category": "krakens",
             "label": "Drive Motor",
             "id": 8,
-            "bus": 4,
-            "row": 0,
-            "x": 297.142857142857,
-            "freeY": -50.41666666666663,
+            "bus": 3,
+            "row": 1,
+            "x": 727.3114108071852,
+            "freeY": 119.03923541247468,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "drive",
-              "swerve-back-right"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 14,
             "category": "krakens",
             "label": "Drive Motor",
             "id": 2,
-            "bus": 2,
-            "row": 0,
-            "x": 300.0,
-            "freeY": -67.52515090543258,
+            "bus": 1,
+            "row": 1,
+            "x": 119.03123969039461,
+            "freeY": 49.18776238922467,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "drive",
-              "swerve-front-left"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 15,
             "category": "krakens",
             "label": "Drive Motor",
             "id": 11,
             "bus": 5,
             "row": 0,
-            "x": 293.3333333333331,
-            "freeY": -38.75,
+            "x": 948.6476471441256,
+            "freeY": -84.8172367538566,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "drive",
-              "swerve-front-right"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 16,
             "category": "cancoders",
             "label": "Encoder (CANCoder)",
             "id": 6,
             "bus": 3,
-            "row": 0,
-            "x": 485.7142857142844,
-            "freeY": -63.351648351648294,
+            "row": 1,
+            "x": 877.3114108071852,
+            "freeY": 42.77749832327288,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "encoder",
-              "swerve-back-left"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 17,
             "category": "cancoders",
             "label": "Encoder (CANCoder)",
             "id": 9,
             "bus": 4,
             "row": 0,
-            "x": 473.5714285714288,
-            "freeY": -63.75,
+            "x": 577.3915157612337,
+            "freeY": -50.11485580147553,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "encoder",
-              "swerve-back-right"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 18,
             "category": "cancoders",
             "label": "Encoder (CANCoder)",
             "id": 3,
             "bus": 2,
             "row": 0,
-            "x": 471.4285714285707,
-            "freeY": -63.35164835164835,
+            "x": 234.99798792756516,
+            "freeY": -54.40643863179071,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "encoder",
-              "swerve-front-left"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 19,
             "category": "cancoders",
             "label": "Encoder (CANCoder)",
             "id": 12,
             "bus": 5,
             "row": 0,
-            "x": 473.3333333333333,
-            "freeY": -42.08333333333326,
+            "x": 1098.6476471441256,
+            "freeY": -8.715627095908758,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "encoder",
-              "swerve-front-right"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 20,
             "category": "pdh",
             "label": "pdh",
             "id": 1,
-            "bus": 5,
-            "row": 0,
-            "x": 665.4728370221324,
-            "freeY": -55.77464788732391,
+            "bus": 4,
+            "row": 1,
+            "x": 1028.822865118639,
+            "freeY": 67.91666666666674,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": []
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 21,
             "category": "pigeon",
             "label": "IMU (Pigeon2)",
             "id": 19,
             "bus": 0,
             "row": 0,
-            "x": 816.8209255533184,
-            "freeY": -67.6861167002012,
+            "x": 722.1561984519734,
+            "freeY": -73.75,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "imu",
-              "swerve"
-            ]
+            "tags": [],
+            "profileVisible": true
           },
           {
             "nodeType": "device",
+            "key": 22,
             "category": "roborio",
             "label": "roborio",
             "id": 0,
             "bus": 0,
             "row": 0,
-            "x": 109.97987927565205,
+            "x": 122.0,
             "freeY": -80.2414486921529,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": []
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "diagram",
+            "key": 23,
+            "category": "cannect_direct",
+            "label": "CANnect Direct",
+            "id": -1,
+            "bus": 4,
+            "row": 0,
+            "x": 396.0624793807892,
+            "freeY": -75.33199195171028,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": false
+          },
+          {
+            "nodeType": "diagram",
+            "key": 24,
+            "category": "cannect_direct",
+            "label": "CANnect Direct",
+            "id": -1,
+            "bus": 2,
+            "row": 0,
+            "x": 386.4145920568456,
+            "freeY": -71.7102615694165,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": false
+          },
+          {
+            "nodeType": "diagram",
+            "key": 25,
+            "category": "cannect_direct",
+            "label": "CANnect Direct",
+            "id": -1,
+            "bus": 3,
+            "row": 0,
+            "x": 576.6062319865138,
+            "freeY": -77.06237424547288,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": false
+          },
+          {
+            "nodeType": "diagram",
+            "key": 26,
+            "category": "cannect_direct",
+            "label": "CANnect Direct",
+            "id": -1,
+            "bus": 5,
+            "row": 0,
+            "x": 564.9851822647596,
+            "freeY": -95.7117706237425,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": false
+          },
+          {
+            "nodeType": "diagram",
+            "key": 27,
+            "category": "cannect_inject",
+            "label": "CANnect Inject",
+            "id": -1,
+            "bus": 0,
+            "row": 1,
+            "x": 247.1285324559966,
+            "freeY": 68.32997987927567,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "swyft",
+              "cannect",
+              "inject"
+            ],
+            "profileVisible": false
+          }
+        ],
+        "ethernetLinks": [
+          {
+            "a": 24,
+            "b": 25
+          },
+          {
+            "a": 23,
+            "b": 25
+          },
+          {
+            "a": 23,
+            "b": 26
+          },
+          {
+            "a": 24,
+            "b": 27
+          }
+        ],
+        "canLinks": [],
+        "deviceLinks": [
+          {
+            "node": 23,
+            "device": 17,
+            "port": 1
+          },
+          {
+            "node": 23,
+            "device": 13,
+            "port": 2
+          },
+          {
+            "node": 23,
+            "device": 7,
+            "port": 3
+          },
+          {
+            "node": 24,
+            "device": 18,
+            "port": 1
+          },
+          {
+            "node": 24,
+            "device": 14,
+            "port": 2
+          },
+          {
+            "node": 24,
+            "device": 8,
+            "port": 3
+          },
+          {
+            "node": 25,
+            "device": 16,
+            "port": 1
+          },
+          {
+            "node": 25,
+            "device": 12,
+            "port": 2
+          },
+          {
+            "node": 25,
+            "device": 6,
+            "port": 3
+          },
+          {
+            "node": 26,
+            "device": 19,
+            "port": 1
+          },
+          {
+            "node": 26,
+            "device": 15,
+            "port": 2
+          },
+          {
+            "node": 26,
+            "device": 9,
+            "port": 3
+          }
+        ]
+      },
+      "cannectTests1": {
+        "busOffsets": [
+          0.0
+        ],
+        "busCount": 1,
+        "busSpacing": 160.0,
+        "busLefts": [
+          531.3962534287241
+        ],
+        "busRights": [
+          3462.982405411556
+        ],
+        "panY": -136.25,
+        "zoom": 0.39305769031064264,
+        "nodes": [
+          {
+            "nodeType": "device",
+            "key": 3,
+            "category": "neos",
+            "label": "neo 11",
+            "id": 11,
+            "bus": 0,
+            "row": 1,
+            "x": 1802.982405411556,
+            "freeY": 216.9581022287129,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 18,
+            "category": "neos",
+            "label": "neo 1",
+            "id": 1,
+            "bus": 0,
+            "row": 1,
+            "x": 3192.982405411556,
+            "freeY": 207.30735835840474,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 22,
+            "category": "neos",
+            "label": "neo 21",
+            "id": 21,
+            "bus": 0,
+            "row": 1,
+            "x": 562.982405411556,
+            "freeY": 593.8515836668405,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 31,
+            "category": "neos",
+            "label": "neo 31",
+            "id": 31,
+            "bus": 0,
+            "row": 1,
+            "x": 1952.982405411556,
+            "freeY": 570.175794426755,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 40,
+            "category": "neos",
+            "label": "neo feeder 53",
+            "id": 52,
+            "bus": 0,
+            "row": 0,
+            "x": 1423.365787562752,
+            "freeY": -169.54554137531332,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 36,
+            "category": "flexes",
+            "label": "flex 50 flywheel left",
+            "id": 50,
+            "bus": 0,
+            "row": 0,
+            "x": 1723.365787562752,
+            "freeY": -173.55240811347073,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 37,
+            "category": "flexes",
+            "label": "flex 52  flywheel right",
+            "id": 51,
+            "bus": 0,
+            "row": 0,
+            "x": 1873.365787562752,
+            "freeY": -173.55240811347073,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 4,
+            "category": "krakens",
+            "label": "kracken 12",
+            "id": 12,
+            "bus": 0,
+            "row": 1,
+            "x": 712.982405411556,
+            "freeY": 219.46126648752096,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 5,
+            "category": "krakens",
+            "label": "kracken 2",
+            "id": 2,
+            "bus": 0,
+            "row": 1,
+            "x": 2102.982405411556,
+            "freeY": 214.8471095514544,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 23,
+            "category": "krakens",
+            "label": "kracken 22",
+            "id": 22,
+            "bus": 0,
+            "row": 1,
+            "x": 1202.982405411556,
+            "freeY": 575.6259221414322,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 32,
+            "category": "krakens",
+            "label": "kracken 32",
+            "id": 32,
+            "bus": 0,
+            "row": 1,
+            "x": 2402.982405411556,
+            "freeY": 570.175794426755,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 6,
+            "category": "cancoders",
+            "label": "cancoder 3",
+            "id": 3,
+            "bus": 0,
+            "row": 1,
+            "x": 2892.982405411556,
+            "freeY": 207.30735835840474,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 7,
+            "category": "cancoders",
+            "label": "cancoder 13",
+            "id": 13,
+            "bus": 0,
+            "row": 1,
+            "x": 1502.982405411556,
+            "freeY": 212.30735835840474,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 24,
+            "category": "cancoders",
+            "label": "cancoder 23",
+            "id": 23,
+            "bus": 0,
+            "row": 1,
+            "x": 1652.982405411556,
+            "freeY": 584.9274098820486,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 33,
+            "category": "cancoders",
+            "label": "cancoder 33",
+            "id": 33,
+            "bus": 0,
+            "row": 1,
+            "x": 3042.982405411556,
+            "freeY": 570.175794426755,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 35,
+            "category": "pdh",
+            "label": "pdh",
+            "id": 62,
+            "bus": 0,
+            "row": 0,
+            "x": 933.7273505087999,
+            "freeY": -151.14525006326383,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 21,
+            "category": "roborio",
+            "label": "roborio",
+            "id": 0,
+            "bus": 0,
+            "row": 0,
+            "x": 609.339824820515,
+            "freeY": -66.6645512988411,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "diagram",
+            "key": 11,
+            "category": "cannect_direct",
+            "label": "front right swerve",
+            "id": -1,
+            "bus": 0,
+            "row": 1,
+            "x": 1352.982405411556,
+            "freeY": 119.09479196680346,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": false
+          },
+          {
+            "nodeType": "diagram",
+            "key": 16,
+            "category": "cannect_direct",
+            "label": "front left swerve",
+            "id": -1,
+            "bus": 0,
+            "row": 1,
+            "x": 2552.982405411556,
+            "freeY": 120.21570363008854,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": false
+          },
+          {
+            "nodeType": "diagram",
+            "key": 17,
+            "category": "cannect_inject",
+            "label": "CANnect Inject",
+            "id": -1,
+            "bus": 0,
+            "row": 1,
+            "x": 3342.982405411556,
+            "freeY": 120.70196045752904,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": false
+          },
+          {
+            "nodeType": "diagram",
+            "key": 19,
+            "category": "cannect_direct",
+            "label": "back right swerve",
+            "id": -1,
+            "bus": 0,
+            "row": 1,
+            "x": 862.982405411556,
+            "freeY": 431.4795004328456,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": false
+          },
+          {
+            "nodeType": "diagram",
+            "key": 30,
+            "category": "cannect_direct",
+            "label": "back left swerve",
+            "id": -1,
+            "bus": 0,
+            "row": 1,
+            "x": 2252.982405411556,
+            "freeY": 433.00409520595633,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": false
+          },
+          {
+            "nodeType": "diagram",
+            "key": 34,
+            "category": "cannect_direct",
+            "label": "CANnect Direct",
+            "id": -1,
+            "bus": 0,
+            "row": 0,
+            "x": 1573.365787562752,
+            "freeY": -280.52369607056534,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": false
+          },
+          {
+            "nodeType": "diagram",
+            "key": 38,
+            "category": "cannect_direct",
+            "label": "CANnect Direct",
+            "id": -1,
+            "bus": 0,
+            "row": 0,
+            "x": 1233.7273505087999,
+            "freeY": -277.3186762030319,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": false
+          },
+          {
+            "nodeType": "diagram",
+            "key": 39,
+            "category": "cannect_direct",
+            "label": "CANnect Direct",
+            "id": -1,
+            "bus": 0,
+            "row": 0,
+            "x": 1083.7273505087999,
+            "freeY": -276.94874580785796,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": false
+          },
+          {
+            "nodeType": "callout",
+            "key": 42,
+            "text": "left front swerve",
+            "targetType": "node",
+            "targetBus": 0,
+            "targetNodeKey": 16,
+            "targetCategory": "cannect_direct",
+            "targetLabel": "front left swerve",
+            "targetId": -1,
+            "x": 2722.982405411556,
+            "y": 55.0,
+            "freeY": null,
+            "freeYRelative": false,
+            "bus": 0,
+            "row": 1,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          }
+        ],
+        "ethernetLinks": [
+          {
+            "a": 11,
+            "b": 16
+          },
+          {
+            "a": 16,
+            "b": 17
+          },
+          {
+            "a": 11,
+            "b": 19
+          },
+          {
+            "a": 19,
+            "b": 30
+          },
+          {
+            "a": 30,
+            "b": 34
+          },
+          {
+            "a": 34,
+            "b": 38
+          },
+          {
+            "a": 38,
+            "b": 39
+          }
+        ],
+        "canLinks": [],
+        "deviceLinks": [
+          {
+            "node": 11,
+            "device": 4,
+            "port": 1
+          },
+          {
+            "node": 11,
+            "device": 7,
+            "port": 2
+          },
+          {
+            "node": 11,
+            "device": 3,
+            "port": 3
+          },
+          {
+            "node": 16,
+            "device": 5,
+            "port": 1
+          },
+          {
+            "node": 16,
+            "device": 6,
+            "port": 2
+          },
+          {
+            "node": 16,
+            "device": 18,
+            "port": 3
+          },
+          {
+            "node": 19,
+            "device": 22,
+            "port": 1
+          },
+          {
+            "node": 19,
+            "device": 23,
+            "port": 2
+          },
+          {
+            "node": 19,
+            "device": 24,
+            "port": 3
+          },
+          {
+            "node": 30,
+            "device": 31,
+            "port": 1
+          },
+          {
+            "node": 30,
+            "device": 32,
+            "port": 2
+          },
+          {
+            "node": 30,
+            "device": 33,
+            "port": 3
+          },
+          {
+            "node": 34,
+            "device": 36,
+            "port": 2
+          },
+          {
+            "node": 34,
+            "device": 37,
+            "port": 3
+          },
+          {
+            "node": 39,
+            "device": 35,
+            "port": 1
+          },
+          {
+            "node": 34,
+            "device": 40,
+            "port": 1
           }
         ]
       }

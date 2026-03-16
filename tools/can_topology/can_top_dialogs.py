@@ -267,11 +267,14 @@ class CalloutDialog(tk.Toplevel):
         self.var_tags = tk.StringVar(
             value=", ".join(initial.tags) if initial and initial.tags else ""
         )
+        self._node_label_map: Dict[str, int] = {}
 
         if initial and initial.callout_target_node_key is not None:
             for node in self._nodes:
                 if node.key == initial.callout_target_node_key:
-                    self.var_target_node.set(f"{node.label} (id {node.can_id})")
+                    self.var_target_node.set(
+                        f"{node.label} (id {node.can_id}) [key {node.key}]"
+                    )
                     break
 
         ttk.Label(frame, text="Text").grid(row=0, column=0, sticky="w")
@@ -288,7 +291,11 @@ class CalloutDialog(tk.Toplevel):
         ).pack(side="left", padx=(4, 0))
 
         ttk.Label(frame, text="Node").grid(row=2, column=0, sticky="w")
-        node_values = [f"{n.label} (id {n.can_id})" for n in self._nodes]
+        node_values = []
+        for n in self._nodes:
+            label = f"{n.label} (id {n.can_id}) [key {n.key}]"
+            self._node_label_map[label] = n.key
+            node_values.append(label)
         self.combo_node = ttk.Combobox(frame, textvariable=self.var_target_node, values=node_values, width=28)
         self.combo_node.grid(row=2, column=1, sticky="w")
 
@@ -324,13 +331,23 @@ class CalloutDialog(tk.Toplevel):
             if not label:
                 messagebox.showerror("Invalid", "Choose a node target.")
                 return
-            for node in self._nodes:
-                if f"{node.label} (id {node.can_id})" == label:
-                    target_node_key = node.key
-                    target_node_category = node.category
-                    target_node_label = node.label
-                    target_node_id = node.can_id
-                    break
+            if label in self._node_label_map:
+                key = self._node_label_map[label]
+                for node in self._nodes:
+                    if node.key == key:
+                        target_node_key = node.key
+                        target_node_category = node.category
+                        target_node_label = node.label
+                        target_node_id = node.can_id
+                        break
+            else:
+                for node in self._nodes:
+                    if f"{node.label} (id {node.can_id})" == label:
+                        target_node_key = node.key
+                        target_node_category = node.category
+                        target_node_label = node.label
+                        target_node_id = node.can_id
+                        break
             if target_node_key is None:
                 messagebox.showerror("Invalid", "Target node not found.")
                 return

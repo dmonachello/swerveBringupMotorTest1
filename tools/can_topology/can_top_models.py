@@ -110,6 +110,7 @@ class Node:
     callout_y: float = 0.0
     free_y: Optional[float] = None
     tags: List[str] = field(default_factory=list)
+    profile_visible: bool = True
 
     def display_text(self) -> str:
         """
@@ -121,6 +122,8 @@ class Node:
         """
         if self.node_type == "callout":
             return self.callout_text
+        if not isinstance(self.can_id, int) or self.can_id < 0:
+            return self.label
         return f"{self.label} (id {self.can_id})"
 
     def display_text_pdf(self) -> str:
@@ -130,4 +133,6 @@ class Node:
         """
         if self.node_type == "callout":
             return self.callout_text
+        if not isinstance(self.can_id, int) or self.can_id < 0:
+            return self.label
         return f"{self.label} (id {self.can_id})"

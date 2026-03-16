@@ -31,6 +31,10 @@ Purpose: Author and maintain device profiles and layouts.
 - Location: `tools/can_topology/` (entry: `can_top_editor.py`).
 - Edits `bringup_profiles.json` plus editor-only diagram metadata.
 - Supports tags, filters, layout tools, and bulk edits to keep diagrams organized.
+- Link devices to CANnect nodes by dragging onto them or using Edit -> `Link Device to CANnect`.
+- Inline edit the node list (double-click or `F2`) and multi-select for bulk edits.
+- Left list and canvas are separated by a draggable splitter.
+- Zoom range is 10% to 200%.
 
 ## Data Flow
 Purpose: Describe how data moves between parts.

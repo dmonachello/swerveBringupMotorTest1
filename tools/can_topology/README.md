@@ -48,6 +48,7 @@ Purpose: Show fields not displayed on the boxes.
 - Select any node to view full metadata (motor, limits, terminator, vendor/type).
 - Diagram boxes show `label (id X)` only; type remains in the left list.
 - Tags appear in the details panel for quick reference.
+- Callout selections show a callout details panel (including target debug fields).
 
 ## Auto-Load
 Purpose: Start with your existing profile if present.
@@ -72,7 +73,12 @@ Purpose: Document limitations up front.
 - File -> `Undo` restores the last change (nodes, buses, callouts, and drag moves).
 - Drag a node near a bus segment to move it to that bus (nearest bus wins).
 - Drag a bus line to move it; connected nodes move with it.
+- Drag a device onto a CANnect node (or use Edit -> `Link Device to CANnect`) to attach it.
+- `Edit -> Fix CANnect Conflicts` removes CAN trunk links from Ethernet-linked CANnect nodes.
 - Hold `Ctrl` and use the mouse wheel to zoom in/out (View menu also works).
+- Zoom range is 10% to 200%.
+- Paste drops selection near the current viewport (not original coordinates).
+- Left list and right canvas are separated by a draggable splitter.
 - Help -> Help... provides a topic list (overview, layout tips, profiles, shortcuts).
 - Tags are freeform labels saved on device entries and diagram metadata.
 - Diagram layout metadata is saved under `diagram.profiles.<profileName>` and
@@ -106,6 +112,8 @@ Purpose: Keep shortcuts documented in one place.
 - `Ctrl+G`: toggle snap-to-grid.
 - `Ctrl+Shift+G`: toggle smart guides.
 - `Ctrl+S`: save to deploy.
+- `Arrow keys`: nudge selected nodes (`Shift` = faster).
+- `F2` or double-click: edit the selected cell in the node list.
 
 ## Layout Actions
 Purpose: Define what layout operations do.
@@ -123,6 +131,13 @@ Purpose: Group and sort nodes with freeform labels.
 - Tag filters accept expressions with `AND`/`OR`, `&&`/`||`, commas, or implicit OR (parentheses supported).
 - `Select Filtered Nodes` converts the active filter into a selection.
 - Filter dialog supports OR/AND append toggles and a scrollable tag list.
+
+## Node List Editing
+Purpose: Edit displayed fields directly in the left list.
+- Double-click (or press `F2`) to edit `CAN ID`, `Type`, `Label`, or `Tags`.
+- Multi-select rows, then edit a cell to apply that value to all selected rows.
+- Validation runs on commit (Enter or click away).
+- `Type` uses a dropdown (still accepts custom text).
 
 ## Bulk Edit
 Purpose: Apply changes across many nodes at once.
