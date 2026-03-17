@@ -390,6 +390,43 @@ public final class BringupCore {
 
   /**
    * NAME
+   *   selectBringupTestByName - Select a bringup test by name.
+   *
+   * PARAMETERS
+   *   name - Test name or display name to select.
+   *
+   * RETURNS
+   *   True when a matching test was selected.
+   */
+  public boolean selectBringupTestByName(String name) {
+    if (name == null || name.isBlank()) {
+      BringupPrinter.enqueue("No test name provided.");
+      return false;
+    }
+    if (selectableTests.isEmpty()) {
+      BringupPrinter.enqueue("No bringup tests available.");
+      return false;
+    }
+    String target = name.trim();
+    for (int i = 0; i < bringupTests.size(); i++) {
+      BringupTest test = bringupTests.get(i);
+      if (test == null) {
+        continue;
+      }
+      String display = test.getDisplayName();
+      String raw = test.getName();
+      if (target.equalsIgnoreCase(display) || target.equalsIgnoreCase(raw)) {
+        selectedTestIndex = i;
+        BringupPrinter.enqueue("Selected test: " + test.getName());
+        return true;
+      }
+    }
+    BringupPrinter.enqueue("Test not found: " + target);
+    return false;
+  }
+
+  /**
+   * NAME
    *   runSelectedBringupTest - Start the selected bringup test.
    *
    * SIDE EFFECTS
@@ -495,6 +532,22 @@ public final class BringupCore {
 
   /**
    * NAME
+   *   addNextMotorCommand - Instantiate the next motor (UI/command entry point).
+   */
+  public void addNextMotorCommand() {
+    addNextMotor();
+  }
+
+  /**
+   * NAME
+   *   addAllDevicesCommand - Instantiate all configured devices (UI/command entry point).
+   */
+  public void addAllDevicesCommand() {
+    addAllDevices();
+  }
+
+  /**
+   * NAME
    *   refreshTestDevices - Rebuild the list of non-motor test devices.
    */
   private void refreshTestDevices() {
@@ -533,6 +586,70 @@ public final class BringupCore {
       selectedTestIndex = 0;
     }
     return selectableTests.get(selectedTestIndex);
+  }
+
+  /**
+   * NAME
+   *   getSelectedBringupTestIndex - Return the selected test index.
+   *
+   * RETURNS
+   *   Index of the selected test or -1 when none is selected.
+   */
+  public int getSelectedBringupTestIndex() {
+    BringupTest test = getSelectedBringupTest();
+    return test == null ? -1 : selectedTestIndex;
+  }
+
+  /**
+   * NAME
+   *   getSelectedBringupTestName - Return the selected test display name.
+   *
+   * RETURNS
+   *   Selected test display name or empty string.
+   */
+  public String getSelectedBringupTestName() {
+    BringupTest test = getSelectedBringupTest();
+    if (test == null) {
+      return "";
+    }
+    String display = test.getDisplayName();
+    return display != null ? display : "";
+  }
+
+  /**
+   * NAME
+   *   getActiveBringupTestName - Return the currently running test name.
+   *
+   * RETURNS
+   *   Active test name or empty string.
+   */
+  public String getActiveBringupTestName() {
+    if (activeTest != null && activeTest.isRunning()) {
+      return activeTest.getName();
+    }
+    return "";
+  }
+
+  /**
+   * NAME
+   *   getActiveBringupTestStatus - Return status for the running test.
+   *
+   * RETURNS
+   *   Status string or empty string.
+   */
+  public String getActiveBringupTestStatus() {
+    if (activeTest != null && activeTest.isRunning()) {
+      return activeTest.getStatus();
+    }
+    return "";
+  }
+
+  /**
+   * NAME
+   *   isRunAllActive - Return whether run-all is active.
+   */
+  public boolean isRunAllActive() {
+    return runAllActive;
   }
 
   /**

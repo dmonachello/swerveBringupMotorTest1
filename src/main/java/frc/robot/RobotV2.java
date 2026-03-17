@@ -7,6 +7,9 @@ import edu.wpi.first.wpilibj.livewindow.LiveWindow;
 import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
 import edu.wpi.first.wpilibj.DriverStation;
 import java.util.ArrayList;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
@@ -49,6 +52,8 @@ public class RobotV2 extends TimedRobot {
   private DiagnosticsReporter diagnostics;
   private final NetworkTable testsTable =
       NetworkTableInstance.getDefault().getTable("bringup").getSubTable("tests");
+  private final NetworkTable uiTable =
+      NetworkTableInstance.getDefault().getTable("bringup").getSubTable("ui");
   // Edge-detect state for buttons that should fire once per press.
   private final EdgeTrigger edge = new EdgeTrigger();
   // Disable dashboard chatter by default to reduce console lag.
@@ -56,6 +61,11 @@ public class RobotV2 extends TimedRobot {
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
   private long lastStartupPrintMs = 0L;
   private int lastTestsCount = 0;
+  private long lastUiSeq = -1;
+  private double uiFixedSpeed = Double.NaN;
+  private double lastNeoSpeed = 0.0;
+  private double lastKrakenSpeed = 0.0;
+  private static final Gson GSON = new Gson();
 
   /**
    * NAME
@@ -161,14 +171,7 @@ public class RobotV2 extends TimedRobot {
     // --- Profile switching ---
     if (bind.pressed("profileToggle")) {
       BringupUtil.toggleCanProfile();
-      core.resetState("profileToggle");
-      core = new BringupCore();
-      if (diagnostics != null) {
-        diagnostics.setCore(core);
-        diagnostics.resetState();
-      }
-      validateCanIds();
-      printProfileInfo();
+      resetCoreForProfile("profileToggle");
     }
 
     // --- Diagnostics / reporting ---
@@ -206,6 +209,14 @@ public class RobotV2 extends TimedRobot {
         krakenSpeed = fixedSpeed;
       }
     }
+    if (!Double.isNaN(uiFixedSpeed)) {
+      neoSpeed = uiFixedSpeed;
+      krakenSpeed = uiFixedSpeed;
+    }
+    lastNeoSpeed = neoSpeed;
+    lastKrakenSpeed = krakenSpeed;
+
+    handleUiCommands();
 
     // D-pad Right: print current stick inputs.
     if (bind.pressed("printInputs")) {
@@ -239,6 +250,261 @@ public class RobotV2 extends TimedRobot {
 
     // Apply speeds after inputs are processed.
     core.setSpeeds(neoSpeed, krakenSpeed);
+
+    publishTestsSelectionStatus();
+  }
+
+  /**
+   * NAME
+   *   handleUiCommands - Consume bringup/ui commands from NetworkTables.
+   *
+   * DESCRIPTION
+   *   Applies UI-driven commands using the same core actions as controller
+   *   bindings, then emits ack status back over NetworkTables.
+   */
+  private void handleUiCommands() {
+    long seq = (long) uiTable.getEntry("cmd/seq").getInteger(-1);
+    if (seq <= lastUiSeq) {
+      return;
+    }
+    lastUiSeq = seq;
+    String name = uiTable.getEntry("cmd/name").getString("");
+    String argsJson = uiTable.getEntry("cmd/args/json").getString("");
+    boolean ok = true;
+    String message = "OK";
+
+    if (name == null || name.isBlank()) {
+      ok = false;
+      message = "Missing command name.";
+    } else {
+      switch (name) {
+        case "profileToggle":
+          BringupUtil.toggleCanProfile();
+          resetCoreForProfile("profileToggle");
+          message = "Profile toggled.";
+          break;
+        case "addMotor":
+          core.addNextMotorCommand();
+          message = "Add motor.";
+          break;
+        case "addAll":
+          core.addAllDevicesCommand();
+          message = "Add all motors.";
+          break;
+        case "printState":
+          core.requestStateReport();
+          break;
+        case "printHealth":
+          core.requestHealthReport();
+          break;
+        case "printCANcoder":
+          core.requestCANCoderReport();
+          break;
+        case "printInputs":
+          core.requestTextReport(
+              "Inputs: leftY=" + String.format("%.2f", lastNeoSpeed) +
+              " rightY=" + String.format("%.2f", lastKrakenSpeed) +
+              " (NEO/FLEX=" + String.format("%.2f", lastNeoSpeed) +
+              ", KRAKEN/FALCON=" + String.format("%.2f", lastKrakenSpeed) + ")",
+              4);
+          break;
+        case "toggleTest":
+          core.toggleSelectedBringupTestEnabled();
+          printTestsOverview();
+          break;
+        case "runTest":
+          BringupPrinter.enqueue("Command: runTest (UI)");
+          core.runSelectedBringupTest();
+          break;
+        case "runAllTests":
+          BringupPrinter.enqueue("Command: runAllTests (UI)");
+          core.runAllBringupTests();
+          break;
+        case "printNextTest":
+          core.printNextTestReport();
+          break;
+        case "printBindings":
+          printBindings();
+          break;
+        case "printTestsInfo":
+          printTestsInfo();
+          break;
+        case "printTestsOverview":
+          printTestsOverview();
+          break;
+        case "selectTestByName":
+          String testName = parseUiArgName(argsJson);
+          if (testName == null || testName.isBlank()) {
+            ok = false;
+            message = "selectTestByName requires args.name.";
+          } else {
+            boolean selected = core.selectBringupTestByName(testName);
+            if (!selected) {
+              ok = false;
+              message = "Test not found: " + testName;
+            } else {
+              message = "Selected test: " + testName;
+              printTestsOverview();
+            }
+          }
+          break;
+        case "toggleDashboard":
+          dashboardUpdatesEnabled = !dashboardUpdatesEnabled;
+          applyDashboardUpdateState();
+          BringupPrinter.enqueue(
+              "Dashboard/Shuffleboard updates: " + (dashboardUpdatesEnabled ? "ON" : "OFF"));
+          break;
+        case "clearFaults":
+          core.clearAllFaults();
+          BringupPrinter.enqueue("Cleared device faults (current + sticky).");
+          break;
+        case "canSweep":
+          BringupPrinter.enqueue("Command: canSweep (UI)");
+          core.runCanPingSweep();
+          break;
+        case "fixedSpeed25":
+          uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 0.25);
+          message = uiFixedSpeedActiveMessage();
+          break;
+        case "fixedSpeed50":
+          uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 0.50);
+          message = uiFixedSpeedActiveMessage();
+          break;
+        case "fixedSpeed75":
+          uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 0.75);
+          message = uiFixedSpeedActiveMessage();
+          break;
+        case "fixedSpeed100":
+          uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 1.00);
+          message = uiFixedSpeedActiveMessage();
+          break;
+        case "printNTdiag":
+          if (diagnostics != null) {
+            String report = diagnostics.buildNetworkDiagnosticsReportIfReady();
+            if (report != null) {
+              core.requestTextReport(report, 4);
+            }
+          } else {
+            ok = false;
+            message = "Diagnostics unavailable.";
+          }
+          break;
+        case "printCANdiag":
+          if (diagnostics != null) {
+            String report = diagnostics.buildCanDiagnosticsReportIfReady();
+            if (report != null) {
+              core.requestTextReport(report, 4);
+            }
+          } else {
+            ok = false;
+            message = "Diagnostics unavailable.";
+          }
+          break;
+        case "dumpReport":
+          if (diagnostics != null) {
+            String json = diagnostics.buildReportJsonForDump();
+            String wrapped = ReportTextUtil.wrapLongLine(json, 120);
+            core.requestTextReport(wrapped, 4);
+            if (diagnostics.writeReportJsonToFile(json)) {
+              core.requestTextReport("Wrote CAN report JSON to " + diagnostics.getReportPath(), 4);
+            } else {
+              core.requestTextReport("Failed to write CAN report JSON.", 4);
+            }
+          } else {
+            ok = false;
+            message = "Diagnostics unavailable.";
+          }
+          break;
+        default:
+          ok = false;
+          message = "Unknown command: " + name;
+          break;
+      }
+    }
+    publishUiAck(seq, ok, message);
+    publishUiOut(seq, name, message);
+  }
+
+  /**
+   * NAME
+   *   publishUiAck - Publish UI command acknowledgements to NetworkTables.
+   */
+  private void publishUiAck(long seq, boolean ok, String message) {
+    uiTable.getEntry("ack/seq").setInteger(seq);
+    uiTable.getEntry("ack/status").setString(ok ? "ok" : "error");
+    uiTable.getEntry("ack/message").setString(message != null ? message : "");
+  }
+
+  /**
+   * NAME
+   *   publishUiOut - Publish UI command output to NetworkTables.
+   *
+   * DESCRIPTION
+   *   Emits at least one output entry per command to release the UI.
+   */
+  private void publishUiOut(long seq, String name, String text) {
+    uiTable.getEntry("out/seq").setInteger(seq);
+    uiTable.getEntry("out/name").setString(name != null ? name : "");
+    uiTable.getEntry("out/text").setString(text != null ? text : "");
+  }
+
+  /**
+   * NAME
+   *   parseUiArgName - Parse args JSON for a name field.
+   */
+  private String parseUiArgName(String argsJson) {
+    if (argsJson == null || argsJson.isBlank()) {
+      return null;
+    }
+    try {
+      JsonObject obj = GSON.fromJson(argsJson, JsonObject.class);
+      if (obj != null && obj.has("name")) {
+        return obj.get("name").getAsString();
+      }
+    } catch (JsonParseException ex) {
+      return null;
+    }
+    return null;
+  }
+
+  /**
+   * NAME
+   *   toggleUiFixedSpeed - Toggle a fixed-speed override.
+   */
+  private double toggleUiFixedSpeed(double current, double value) {
+    if (Double.isNaN(current)) {
+      return value;
+    }
+    if (Math.abs(current - value) < 1e-6) {
+      return Double.NaN;
+    }
+    return value;
+  }
+
+  /**
+   * NAME
+   *   uiFixedSpeedActiveMessage - Build a status message for fixed speed state.
+   */
+  private String uiFixedSpeedActiveMessage() {
+    if (Double.isNaN(uiFixedSpeed)) {
+      return "Fixed speed: OFF.";
+    }
+    return "Fixed speed: " + String.format("%.2f", uiFixedSpeed);
+  }
+
+  /**
+   * NAME
+   *   resetCoreForProfile - Rebuild core and diagnostics after profile changes.
+   */
+  private void resetCoreForProfile(String reason) {
+    core.resetState(reason);
+    core = new BringupCore();
+    if (diagnostics != null) {
+      diagnostics.setCore(core);
+      diagnostics.resetState();
+    }
+    validateCanIds();
+    printProfileInfo();
   }
 
   // ---------------------------------------------------
@@ -413,6 +679,11 @@ public class RobotV2 extends TimedRobot {
     testsTable.getEntry("usingTestSets").setBoolean(overview.usingTestSets);
     testsTable.getEntry("totalCount").setNumber(overview.totalCount);
     testsTable.getEntry("enabledCount").setNumber(overview.enabledCount);
+    testsTable.getEntry("selectedIndex").setNumber(core.getSelectedBringupTestIndex());
+    testsTable.getEntry("selectedName").setString(core.getSelectedBringupTestName());
+    testsTable.getEntry("activeName").setString(core.getActiveBringupTestName());
+    testsTable.getEntry("activeStatus").setString(core.getActiveBringupTestStatus());
+    testsTable.getEntry("runAllActive").setBoolean(core.isRunAllActive());
     NetworkTable rowsTable = testsTable.getSubTable("rows");
     int count = overview.rows.size();
     for (int i = 0; i < count; i++) {
@@ -439,6 +710,21 @@ public class RobotV2 extends TimedRobot {
       rowTable.getEntry("motors").setString("");
     }
     lastTestsCount = count;
+  }
+
+  /**
+   * NAME
+   *   publishTestsSelectionStatus - Publish lightweight test selection/running status.
+   *
+   * SIDE EFFECTS
+   *   Writes selected and active test info to NetworkTables.
+   */
+  private void publishTestsSelectionStatus() {
+    testsTable.getEntry("selectedIndex").setNumber(core.getSelectedBringupTestIndex());
+    testsTable.getEntry("selectedName").setString(core.getSelectedBringupTestName());
+    testsTable.getEntry("activeName").setString(core.getActiveBringupTestName());
+    testsTable.getEntry("activeStatus").setString(core.getActiveBringupTestStatus());
+    testsTable.getEntry("runAllActive").setBoolean(core.isRunAllActive());
   }
 
   //@SuppressWarnings("removal")

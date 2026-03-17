@@ -19,6 +19,7 @@ ERRORS
 """
 from __future__ import annotations
 
+import json
 import queue
 import threading
 import time
@@ -143,6 +144,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     """
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.ui_only:
+        args.ui = True
+        args.no_can = True
 
     if args.list_ports:
         ports = list_ports()
@@ -157,9 +161,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     devices, expected_ids = get_profile(args.profile)
     device_labels = build_device_label_map(devices)
 
-    channel, _, channel_status = maybe_auto_channel(args)
-    if channel_status != 0 or not channel:
-        return channel_status
+    channel = ""
+    if not args.no_can:
+        channel, _, channel_status = maybe_auto_channel(args)
+        if channel_status != 0 or not channel:
+            return channel_status
 
     if args.list_keys or args.dump_nt:
         print_or_dump_nt_keys(devices, args.list_keys, args.dump_nt)
@@ -175,17 +181,20 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         print("ERROR: --tx-seq requires --tx-allow for safety.")
         return 2
 
-    # Delayed imports so --help still works without packages installed
-    import can  # type: ignore
+    bus = None
+    can = None
+    if not args.no_can:
+        # Delayed imports so --help still works without packages installed
+        import can  # type: ignore
 
-    try:
-        bus = can.Bus(interface=args.interface, channel=channel, bitrate=args.bitrate)
-    except Exception as exc:
-        print(
-            "ERROR: Failed to open CAN bus "
-            f"(interface={args.interface}, channel={channel}, bitrate={args.bitrate}): {exc}"
-        )
-        return 2
+        try:
+            bus = can.Bus(interface=args.interface, channel=channel, bitrate=args.bitrate)
+        except Exception as exc:
+            print(
+                "ERROR: Failed to open CAN bus "
+                f"(interface={args.interface}, channel={channel}, bitrate={args.bitrate}): {exc}"
+            )
+            return 2
 
     if args.pcap and args.pcap_pipe:
         print("ERROR: Use --pcap or --pcap-pipe, not both.")
@@ -199,6 +208,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             return 2
 
     nt, table = setup_nt(args)
+    ui_table = None
+    tests_table = None
+    if nt is not None:
+        ui_table = nt.getTable("bringup").getSubTable("ui")
+        tests_table = nt.getTable("bringup").getSubTable("tests")
 
     console_monitor = None
     if args.console_monitor:
@@ -275,201 +289,269 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     last_publish = 0.0
     last_summary = 0.0
     startup_summary_done = False
-    tx_thread = start_tx_if_requested(args, bus, can, tx_stop)
+    tx_thread = None
+    if bus is not None and can is not None:
+        tx_thread = start_tx_if_requested(args, bus, can, tx_stop)
 
-    try:
-        while True:
+    def _send_ui_command(
+        name: str, args_payload: Optional[Dict[str, Any]] = None
+    ) -> Optional[int]:
+        """
+        NAME
+            _send_ui_command - Emit a bringup UI command over NetworkTables.
+        """
+        if ui_table is None:
+            return None
+        if not hasattr(_send_ui_command, "_seq"):
+            _send_ui_command._seq = 0  # type: ignore[attr-defined]
+        _send_ui_command._seq += 1  # type: ignore[attr-defined]
+        seq = int(_send_ui_command._seq)  # type: ignore[attr-defined]
+        ui_table.getEntry("cmd/name").setString(str(name))
+        ui_table.getEntry("cmd/args/json").setString(
+            json.dumps(args_payload) if args_payload else ""
+        )
+        ui_table.getEntry("cmd/ts").setDouble(float(time.time()))
+        ui_table.getEntry("cmd/seq").setInteger(seq)
+        return seq
+
+    def _run_sniffer(stop_event: Optional[threading.Event]) -> int:
+        """
+        NAME
+            _run_sniffer - Run the CAN sniffer loop until stopped.
+        """
+        nonlocal stop_requested, last_publish, last_summary, startup_summary_done
+        try:
+            while True:
+                if stop_event is not None and stop_event.is_set():
+                    break
+                now = time.time()
+
+                stop_requested = handle_marker_keys(
+                    args=args,
+                    key_queue=key_queue,
+                    marker_keys=marker_keys,
+                    pcap=pcap,
+                    tx_stop=tx_stop,
+                    state=state,
+                    print_banner=_print_marker_banner,
+                ) or stop_requested
+                if stop_requested:
+                    break
+
+                if _maybe_handle_dumps(args, now, start, analyzer, state, devices):
+                    return 0
+
+                if (
+                    not startup_summary_done
+                    and args.startup_summary_after > 0.0
+                    and (now - start) >= args.startup_summary_after
+                ):
+                    startup_summary_done = True
+                    print("Startup OK.")
+                    summary = analyzer.summary(now, args.stale_s, top_n=args.top_n)
+                    extra = build_summary_extra(summary, devices, analyzer, state, bus, args.bitrate)
+                    print_summary(summary, now, device_labels, extra)
+
+                msg = None
+                if bus is not None:
+                    try:
+                        msg = bus.recv(timeout=0.05)
+                        state.open_ok = True
+                    except Exception:
+                        state.read_errors += 1
+                        state.open_ok = False
+                        msg = None
+
+                if msg is not None:
+                    if args.pcap or args.pcap_pipe:
+                        if not pcap.log(msg, timestamp_s=now):
+                            state.pcap_errors += 1
+
+                    arb_id = int(msg.arbitration_id)
+                    data = bytes(getattr(msg, "data", b"") or b"")
+
+                    analyzer.ingest(now, arb_id, data)
+
+                    mfg, dtype, did = decode_frc_ext_id(arb_id)
+                    _, _, api_class, api_index, _ = decode_frc_ext_id_full(arb_id)
+                    key = (mfg, dtype, did)
+                    state.last_seen[key] = now
+                    state.msg_count[key] = state.msg_count.get(key, 0) + 1
+
+                    is_status, is_control = classify_frame(
+                        arb_id=arb_id,
+                        manufacturer=mfg,
+                        device_type=dtype,
+                        api_class=api_class,
+                        api_index=api_index,
+                    )
+                    if is_status:
+                        state.status_last_seen[key] = now
+                    if is_control:
+                        state.control_last_seen[key] = now
+
+                    print_id_match = (args.print_can_id == -1 or arb_id == args.print_can_id)
+                    print_dev_match = (args.print_device_id == -1 or did == args.print_device_id)
+                    print_mfg_match = (args.print_mfg == -1 or mfg == args.print_mfg)
+                    print_type_match = (args.print_type == -1 or dtype == args.print_type)
+
+                    label = device_labels.get((mfg, dtype, did), "")
+                    if (
+                        args.print_any
+                        and print_id_match
+                        and print_dev_match
+                        and print_mfg_match
+                        and print_type_match
+                    ):
+                        print(
+                            format_frame_line(
+                                "frame",
+                                arb_id,
+                                mfg,
+                                dtype,
+                                did,
+                                api_class,
+                                api_index,
+                                data,
+                                label,
+                            )
+                        )
+                    if (
+                        args.print_status
+                        and is_status
+                        and print_id_match
+                        and print_dev_match
+                        and print_mfg_match
+                        and print_type_match
+                    ):
+                        print(
+                            format_frame_line(
+                                "status",
+                                arb_id,
+                                mfg,
+                                dtype,
+                                did,
+                                api_class,
+                                api_index,
+                                data,
+                                label,
+                            )
+                        )
+                    if (
+                        args.print_control
+                        and is_control
+                        and print_id_match
+                        and print_dev_match
+                        and print_mfg_match
+                        and print_type_match
+                    ):
+                        print(
+                            format_frame_line(
+                                "control",
+                                arb_id,
+                                mfg,
+                                dtype,
+                                did,
+                                api_class,
+                                api_index,
+                                data,
+                                label,
+                            )
+                        )
+
+                    pair_key = (mfg, dtype, did, api_class, api_index)
+                    stats = state.pair_stats.get(pair_key)
+                    if stats is None:
+                        stats = {"first": now, "last": now, "count": 0.0, "arb_id": arb_id}
+                        state.pair_stats[pair_key] = stats
+                    stats["last"] = now
+                    stats["count"] += 1.0
+
+                    state.total_frames += 1
+                    state.period_frames += 1
+                    state.last_frame_time = now
+
+                if console_monitor is not None:
+                    console_monitor.poll(now)
+
+                last_publish, last_summary = publish_updates(
+                    args=args,
+                    now=now,
+                    last_publish=last_publish,
+                    last_summary=last_summary,
+                    analyzer=analyzer,
+                    state=state,
+                    devices=devices,
+                    labels=device_labels,
+                    table=table,
+                    bus=bus,
+                    console_monitor=console_monitor,
+                    uses_status_presence=uses_status_presence,
+                )
+
+        except KeyboardInterrupt:
+            print("Stopping (Ctrl+C)...")
+        finally:
             now = time.time()
-
-            stop_requested = handle_marker_keys(
-                args=args,
-                key_queue=key_queue,
-                marker_keys=marker_keys,
-                pcap=pcap,
-                tx_stop=tx_stop,
-                state=state,
-                print_banner=_print_marker_banner,
-            ) or stop_requested
-            if stop_requested:
-                break
-
-            if _maybe_handle_dumps(args, now, start, analyzer, state, devices):
-                return 0
-
-            if (
-                not startup_summary_done
-                and args.startup_summary_after > 0.0
-                and (now - start) >= args.startup_summary_after
-            ):
-                startup_summary_done = True
-                print("Startup OK.")
-                summary = analyzer.summary(now, args.stale_s, top_n=args.top_n)
+            if console_monitor is not None:
+                console_monitor.stop()
+            try:
+                summary = analyzer.summary(now, stale_s=args.stale_s, top_n=args.top_n)
+                print("=== Final Summary ===")
                 extra = build_summary_extra(summary, devices, analyzer, state, bus, args.bitrate)
                 print_summary(summary, now, device_labels, extra)
+            except Exception as exc:
+                print(f"WARNING: Failed to print summary on exit: {exc}")
 
+            key_stop.set()
+            tx_stop.set()
             try:
-                msg = bus.recv(timeout=0.05)
-                state.open_ok = True
+                pcap.stop()
+                print("PCAP logger stopped.")
+            except Exception as exc:
+                print(f"WARNING: Failed to stop PCAP logger: {exc}")
+            if bus is not None:
+                try:
+                    bus.shutdown()
+                    print("CAN bus closed.")
+                except Exception as exc:
+                    print(f"WARNING: Failed to close CAN bus: {exc}")
+
+        return 0
+
+    if args.ui:
+        if nt is None or ui_table is None:
+            print("ERROR: --ui requires NetworkTables (remove --no-nt).")
+            return 2
+        from .bringup_ui import BringupControlUI
+
+        def _nt_is_connected() -> bool:
+            """
+            NAME
+                _nt_is_connected - Return current NT connection state.
+            """
+            try:
+                return bool(nt.isConnected())
             except Exception:
-                state.read_errors += 1
-                state.open_ok = False
-                msg = None
+                return False
 
-            if msg is not None:
-                if args.pcap or args.pcap_pipe:
-                    if not pcap.log(msg, timestamp_s=now):
-                        state.pcap_errors += 1
+        stop_event = threading.Event()
+        thread = threading.Thread(target=_run_sniffer, args=(stop_event,), daemon=True)
+        thread.start()
+        ui = BringupControlUI(
+            command_sender=_send_ui_command,
+            ui_table=ui_table,
+            tests_table=tests_table,
+            rio_host=args.rio,
+            is_connected=_nt_is_connected,
+            on_close=stop_event.set,
+        )
+        ui.mainloop()
+        stop_event.set()
+        thread.join(timeout=2.0)
+        return 0
 
-                arb_id = int(msg.arbitration_id)
-                data = bytes(getattr(msg, "data", b"") or b"")
-
-                analyzer.ingest(now, arb_id, data)
-
-                mfg, dtype, did = decode_frc_ext_id(arb_id)
-                _, _, api_class, api_index, _ = decode_frc_ext_id_full(arb_id)
-                key = (mfg, dtype, did)
-                state.last_seen[key] = now
-                state.msg_count[key] = state.msg_count.get(key, 0) + 1
-
-                is_status, is_control = classify_frame(
-                    arb_id=arb_id,
-                    manufacturer=mfg,
-                    device_type=dtype,
-                    api_class=api_class,
-                    api_index=api_index,
-                )
-                if is_status:
-                    state.status_last_seen[key] = now
-                if is_control:
-                    state.control_last_seen[key] = now
-
-                print_id_match = (args.print_can_id == -1 or arb_id == args.print_can_id)
-                print_dev_match = (args.print_device_id == -1 or did == args.print_device_id)
-                print_mfg_match = (args.print_mfg == -1 or mfg == args.print_mfg)
-                print_type_match = (args.print_type == -1 or dtype == args.print_type)
-
-                label = device_labels.get((mfg, dtype, did), "")
-                if (
-                    args.print_any
-                    and print_id_match
-                    and print_dev_match
-                    and print_mfg_match
-                    and print_type_match
-                ):
-                    print(
-                        format_frame_line(
-                            "frame",
-                            arb_id,
-                            mfg,
-                            dtype,
-                            did,
-                            api_class,
-                            api_index,
-                            data,
-                            label,
-                        )
-                    )
-                if (
-                    args.print_status
-                    and is_status
-                    and print_id_match
-                    and print_dev_match
-                    and print_mfg_match
-                    and print_type_match
-                ):
-                    print(
-                        format_frame_line(
-                            "status",
-                            arb_id,
-                            mfg,
-                            dtype,
-                            did,
-                            api_class,
-                            api_index,
-                            data,
-                            label,
-                        )
-                    )
-                if (
-                    args.print_control
-                    and is_control
-                    and print_id_match
-                    and print_dev_match
-                    and print_mfg_match
-                    and print_type_match
-                ):
-                    print(
-                        format_frame_line(
-                            "control",
-                            arb_id,
-                            mfg,
-                            dtype,
-                            did,
-                            api_class,
-                            api_index,
-                            data,
-                            label,
-                        )
-                    )
-
-                pair_key = (mfg, dtype, did, api_class, api_index)
-                stats = state.pair_stats.get(pair_key)
-                if stats is None:
-                    stats = {"first": now, "last": now, "count": 0.0, "arb_id": arb_id}
-                    state.pair_stats[pair_key] = stats
-                stats["last"] = now
-                stats["count"] += 1.0
-
-                state.total_frames += 1
-                state.period_frames += 1
-                state.last_frame_time = now
-
-            if console_monitor is not None:
-                console_monitor.poll(now)
-
-            last_publish, last_summary = publish_updates(
-                args=args,
-                now=now,
-                last_publish=last_publish,
-                last_summary=last_summary,
-                analyzer=analyzer,
-                state=state,
-                devices=devices,
-                labels=device_labels,
-                table=table,
-                bus=bus,
-                console_monitor=console_monitor,
-                uses_status_presence=uses_status_presence,
-            )
-
-    except KeyboardInterrupt:
-        print("Stopping (Ctrl+C)...")
-    finally:
-        now = time.time()
-        if console_monitor is not None:
-            console_monitor.stop()
-        try:
-            summary = analyzer.summary(now, stale_s=args.stale_s, top_n=args.top_n)
-            print("=== Final Summary ===")
-            extra = build_summary_extra(summary, devices, analyzer, state, bus, args.bitrate)
-            print_summary(summary, now, device_labels, extra)
-        except Exception as exc:
-            print(f"WARNING: Failed to print summary on exit: {exc}")
-
-        key_stop.set()
-        tx_stop.set()
-        try:
-            pcap.stop()
-            print("PCAP logger stopped.")
-        except Exception as exc:
-            print(f"WARNING: Failed to stop PCAP logger: {exc}")
-        try:
-            bus.shutdown()
-            print("CAN bus closed.")
-        except Exception as exc:
-            print(f"WARNING: Failed to close CAN bus: {exc}")
-
-    return 0
+    return _run_sniffer(None)
 
 
 if __name__ == "__main__":

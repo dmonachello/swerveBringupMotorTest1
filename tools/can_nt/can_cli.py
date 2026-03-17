@@ -60,6 +60,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="List available serial ports and exit",
     )
+    parser.add_argument(
+        "--no-can",
+        action="store_true",
+        help="Disable CAN bus access (UI/NT only).",
+    )
 
     parser.add_argument("--rio", default="172.22.11.2")
     parser.add_argument(
@@ -70,6 +75,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--timeout", type=float, default=1.0)
     parser.add_argument("--publish-period", type=float, default=0.2)
+    parser.add_argument(
+        "--ui",
+        action="store_true",
+        help="Launch the bringup control UI alongside the sniffer.",
+    )
+    parser.add_argument(
+        "--ui-only",
+        action="store_true",
+        help="Alias for --ui --no-can.",
+    )
 
     parser.add_argument("--publish-can-summary", action="store_true")
     parser.add_argument(
