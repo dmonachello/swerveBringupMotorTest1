@@ -7,6 +7,8 @@ import edu.wpi.first.wpilibj.livewindow.LiveWindow;
 import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
 import edu.wpi.first.wpilibj.DriverStation;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
@@ -534,11 +536,7 @@ public class RobotV2 extends TimedRobot {
     ReportTextUtil.appendLine(sb, "Deadband: " + DEADBAND);
     ReportTextUtil.appendLine(sb, "Dashboard updates: " + (dashboardUpdatesEnabled ? "ON" : "OFF"));
     ReportTextUtil.appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
-    ReportTextUtil.appendLine(sb, "NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
-    ReportTextUtil.appendLine(sb, "NEO 550 CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO550_CAN_IDS));
-    ReportTextUtil.appendLine(sb, "FLEX CAN IDs: " + BringupUtil.joinIds(BringupUtil.FLEX_CAN_IDS));
-    ReportTextUtil.appendLine(sb, "KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
-    ReportTextUtil.appendLine(sb, "FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
+    appendDeviceSummary(sb);
     ReportTextUtil.appendLine(sb, "=========================");
     core.requestTextReport(sb.toString(), 4);
   }
@@ -584,13 +582,48 @@ public class RobotV2 extends TimedRobot {
     ReportTextUtil.appendLine(sb, "=== Profile Updated ===");
     ReportTextUtil.appendLine(sb, "Build: " + BringupCore.getBuildMarker());
     ReportTextUtil.appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
-    ReportTextUtil.appendLine(sb, "NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
-    ReportTextUtil.appendLine(sb, "NEO 550 CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO550_CAN_IDS));
-    ReportTextUtil.appendLine(sb, "FLEX CAN IDs: " + BringupUtil.joinIds(BringupUtil.FLEX_CAN_IDS));
-    ReportTextUtil.appendLine(sb, "KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
-    ReportTextUtil.appendLine(sb, "FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
+    appendDeviceSummary(sb);
     ReportTextUtil.appendLine(sb, "========================");
     core.requestTextReport(sb.toString(), 4);
+  }
+
+  /**
+   * NAME
+   *   appendDeviceSummary - Append active devices grouped by vendor/type.
+   *
+   * PARAMETERS
+   *   sb - Target StringBuilder.
+   */
+  private void appendDeviceSummary(StringBuilder sb) {
+    List<BringupUtil.DeviceEntry> devices = BringupUtil.getActiveDevicesSorted();
+    if (devices.isEmpty()) {
+      ReportTextUtil.appendLine(sb, "Devices: (none)");
+      return;
+    }
+    Map<String, List<Integer>> groups = new java.util.LinkedHashMap<>();
+    for (BringupUtil.DeviceEntry entry : devices) {
+      if (entry == null || !BringupUtil.isEnabledCanId(entry.id)) {
+        continue;
+      }
+      String vendor = entry.vendor != null ? entry.vendor.trim() : "";
+      String type = entry.type != null ? entry.type.trim() : "";
+      String key = (vendor.isEmpty() ? "UNKNOWN" : vendor) + " " + (type.isEmpty() ? "Device" : type);
+      groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(entry.id);
+    }
+    for (Map.Entry<String, List<Integer>> entry : groups.entrySet()) {
+      List<Integer> ids = entry.getValue();
+      if (ids.isEmpty()) {
+        continue;
+      }
+      StringBuilder line = new StringBuilder();
+      for (int i = 0; i < ids.size(); i++) {
+        if (i > 0) {
+          line.append(", ");
+        }
+        line.append(ids.get(i));
+      }
+      ReportTextUtil.appendLine(sb, entry.getKey() + " CAN IDs: " + line);
+    }
   }
 
   /**
@@ -753,38 +786,8 @@ public class RobotV2 extends TimedRobot {
    *   Builds labeled groups for clearer warning output from BringupUtil.
    */
   private void validateCanIds() {
-    // Build labeled groups for clearer warnings on duplicates/disabled IDs.
-    ArrayList<String> labels = new ArrayList<>();
-    ArrayList<int[]> groups = new ArrayList<>();
-
-    labels.add("NEO");
-    groups.add(BringupUtil.NEO_CAN_IDS);
-    labels.add("NEO 550");
-    groups.add(BringupUtil.NEO550_CAN_IDS);
-    labels.add("FLEX");
-    groups.add(BringupUtil.FLEX_CAN_IDS);
-    labels.add("KRAKEN");
-    groups.add(BringupUtil.KRAKEN_CAN_IDS);
-    labels.add("FALCON");
-    groups.add(BringupUtil.FALCON_CAN_IDS);
-    labels.add("CANCoder");
-    groups.add(BringupUtil.CANCODER_CAN_IDS);
-    if (BringupUtil.isEnabledCanId(BringupUtil.PDH_CAN_ID)) {
-      labels.add("PDH");
-      groups.add(new int[] { BringupUtil.PDH_CAN_ID });
-    }
-    if (BringupUtil.isEnabledCanId(BringupUtil.PIGEON_CAN_ID)) {
-      labels.add("Pigeon");
-      groups.add(new int[] { BringupUtil.PIGEON_CAN_ID });
-    }
-    if (BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
-      labels.add("roboRIO");
-      groups.add(new int[] { BringupUtil.ROBORIO_CAN_ID });
-    }
-
-    BringupUtil.validateCanIds(
-        labels.toArray(new String[0]),
-        groups.toArray(new int[0][]));
+    // Warn on duplicate CAN IDs in the active profile.
+    BringupUtil.validateCanIds(BringupUtil.getActiveDevices());
   }
 
 }

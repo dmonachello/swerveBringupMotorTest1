@@ -81,38 +81,15 @@ public final class BringupUtil {
   private static String defaultProfile = DEFAULT_PROFILE_NAME;
   private static final Map<String, MotorSpec> MOTOR_SPECS = loadMotorSpecs();
   private static final CanMappings CAN_MAPPINGS = loadCanMappings();
+  private static final Map<String, Integer> MANUFACTURER_NAME_TO_ID = buildManufacturerNameToId();
+  private static final Map<String, Integer> DEVICE_TYPE_NAME_TO_ID = buildDeviceTypeNameToId();
   private static final Map<DeviceKey, List<DeviceConfig>> DEVICE_CONFIGS = new LinkedHashMap<>();
 
   // Currently active profile name.
   private static String activeProfile = DEFAULT_PROFILE_NAME;
 
-  // Active CAN ID arrays used by BringupCore.
-  public static int[] NEO_CAN_IDS = FALLBACK_ROBOT_NEO_CAN_IDS;
-  public static int[] NEO550_CAN_IDS = new int[0];
-  public static int[] FLEX_CAN_IDS = new int[0];
-  public static int[] KRAKEN_CAN_IDS = FALLBACK_ROBOT_KRAKEN_CAN_IDS;
-  public static int[] FALCON_CAN_IDS = new int[0];
-  public static int[] CANCODER_CAN_IDS = FALLBACK_ROBOT_CANCODER_CAN_IDS;
-  public static int[] CANDLE_CAN_IDS = new int[0];
-  public static String[] NEO_LABELS = new String[0];
-  public static String[] NEO550_LABELS = new String[0];
-  public static String[] FLEX_LABELS = new String[0];
-  public static String[] KRAKEN_LABELS = new String[0];
-  public static String[] FALCON_LABELS = new String[0];
-  public static String[] CANCODER_LABELS = new String[0];
-  public static String[] CANDLE_LABELS = new String[0];
-  public static String[] NEO_MOTOR_MODELS = new String[0];
-  public static String[] NEO550_MOTOR_MODELS = new String[0];
-  public static String[] FLEX_MOTOR_MODELS = new String[0];
-  public static String[] KRAKEN_MOTOR_MODELS = new String[0];
-  public static String[] FALCON_MOTOR_MODELS = new String[0];
-  public static LimitConfig[] NEO_LIMITS = new LimitConfig[0];
-  public static LimitConfig[] NEO550_LIMITS = new LimitConfig[0];
-  public static LimitConfig[] FLEX_LIMITS = new LimitConfig[0];
-  public static LimitConfig[] KRAKEN_LIMITS = new LimitConfig[0];
-  public static LimitConfig[] FALCON_LIMITS = new LimitConfig[0];
-  public static LimitConfig[] CANCODER_LIMITS = new LimitConfig[0];
-  public static LimitConfig[] CANDLE_LIMITS = new LimitConfig[0];
+  // Active device list built from the selected profile.
+  private static final List<DeviceEntry> ACTIVE_DEVICES = new ArrayList<>();
   public static int PDH_CAN_ID = FALLBACK_PDH_CAN_ID;
   public static int PIGEON_CAN_ID = FALLBACK_PIGEON_CAN_ID;
   public static int ROBORIO_CAN_ID = FALLBACK_ROBORIO_CAN_ID;
@@ -209,37 +186,12 @@ public final class BringupUtil {
       return;
     }
 
-    NEO_CAN_IDS = toIdArray(config.neos);
-    NEO550_CAN_IDS = toIdArray(config.neo550s);
-    FLEX_CAN_IDS = toIdArray(config.flexes);
-    KRAKEN_CAN_IDS = toIdArray(config.krakens);
-    FALCON_CAN_IDS = toIdArray(config.falcons);
-    CANCODER_CAN_IDS = toIdArray(config.cancoders);
-    CANDLE_CAN_IDS = toIdArray(config.candles);
-    NEO_LABELS = toLabelArray(config.neos, "NEO");
-    NEO550_LABELS = toLabelArray(config.neo550s, "NEO 550");
-    FLEX_LABELS = toLabelArray(config.flexes, "FLEX");
-    KRAKEN_LABELS = toLabelArray(config.krakens, "KRAKEN");
-    FALCON_LABELS = toLabelArray(config.falcons, "FALCON");
-    CANCODER_LABELS = toLabelArray(config.cancoders, "CANCoder");
-    CANDLE_LABELS = toLabelArray(config.candles, "CANdle");
-    NEO_MOTOR_MODELS = toMotorArray(config.neos);
-    NEO550_MOTOR_MODELS = toMotorArray(config.neo550s);
-    FLEX_MOTOR_MODELS = toMotorArray(config.flexes);
-    KRAKEN_MOTOR_MODELS = toMotorArray(config.krakens);
-    FALCON_MOTOR_MODELS = toMotorArray(config.falcons);
-    NEO_LIMITS = toLimitArray(config.neos);
-    NEO550_LIMITS = toLimitArray(config.neo550s);
-    FLEX_LIMITS = toLimitArray(config.flexes);
-    KRAKEN_LIMITS = toLimitArray(config.krakens);
-    FALCON_LIMITS = toLimitArray(config.falcons);
-    CANCODER_LIMITS = toLimitArray(config.cancoders);
-    CANDLE_LIMITS = toLimitArray(config.candles);
-    PDH_CAN_ID = config.pdh != null ? config.pdh.id : DISABLED_CAN_ID;
-    PIGEON_CAN_ID = config.pigeon != null ? config.pigeon.id : DISABLED_CAN_ID;
-    ROBORIO_CAN_ID = config.roborio != null ? config.roborio.id : DISABLED_CAN_ID;
+    List<DeviceRef> merged = mergeDevices(config);
+    buildDeviceConfigs(merged);
+    PDH_CAN_ID = resolveSingletonId(merged, "REV", "PDH", config.pdh);
+    PIGEON_CAN_ID = resolveSingletonId(merged, "CTRE", "Pigeon", config.pigeon);
+    ROBORIO_CAN_ID = resolveSingletonId(merged, "NI", "roboRIO", config.roborio);
     activeProfile = profileName;
-    buildDeviceConfigs(config);
   }
 
   /**
@@ -264,6 +216,134 @@ public final class BringupUtil {
   public static String getActiveCanProfileLabel() {
     // Label currently matches profile name, but can diverge later.
     return activeProfile;
+  }
+
+  /**
+   * NAME
+   *   getActiveDevices - Return the active device list.
+   *
+   * RETURNS
+   *   Unmodifiable list of active device entries.
+   */
+  public static List<DeviceEntry> getActiveDevices() {
+    return Collections.unmodifiableList(ACTIVE_DEVICES);
+  }
+
+  /**
+   * NAME
+   *   getActiveDevicesSorted - Return active devices sorted by vendor/type/id.
+   */
+  public static List<DeviceEntry> getActiveDevicesSorted() {
+    List<DeviceEntry> devices = new ArrayList<>(ACTIVE_DEVICES);
+    devices.sort((a, b) -> {
+      int vendor = safeText(a.vendor).compareToIgnoreCase(safeText(b.vendor));
+      if (vendor != 0) {
+        return vendor;
+      }
+      int type = safeText(a.type).compareToIgnoreCase(safeText(b.type));
+      if (type != 0) {
+        return type;
+      }
+      return Integer.compare(a.id, b.id);
+    });
+    return devices;
+  }
+
+  /**
+   * NAME
+   *   validateCanIds - Warn on duplicate CAN IDs.
+   *
+   * PARAMETERS
+   *   devices - Active device entries.
+   */
+  public static void validateCanIds(List<DeviceEntry> devices) {
+    java.util.HashSet<Integer> seen = new java.util.HashSet<>();
+    boolean hasDuplicate = false;
+    if (devices != null) {
+      for (DeviceEntry entry : devices) {
+        if (entry == null || !isEnabledCanId(entry.id)) {
+          continue;
+        }
+        if (!seen.add(entry.id)) {
+          System.out.println("Warning: duplicate CAN ID: " + entry.id);
+          hasDuplicate = true;
+        }
+      }
+    }
+    if (hasDuplicate) {
+      System.out.println("Warning: duplicate CAN IDs can cause bringup confusion.");
+    }
+  }
+
+  /**
+   * NAME
+   *   getExpectedDevices - Return expected devices with CAN identity data.
+   *
+   * RETURNS
+   *   List of ExpectedDevice entries for diagnostics reporting.
+   */
+  public static List<ExpectedDevice> getExpectedDevices() {
+    List<ExpectedDevice> devices = new ArrayList<>();
+    for (DeviceEntry entry : ACTIVE_DEVICES) {
+      if (entry == null || !isEnabledCanId(entry.id)) {
+        continue;
+      }
+      int manufacturer = resolveCanManufacturerId(entry.vendor);
+      int deviceType = resolveCanDeviceTypeId(entry.type);
+      if (manufacturer < 0 || deviceType < 0) {
+        System.out.println(
+            "Warning: unable to map device to CAN identity (vendor="
+                + entry.vendor + ", type=" + entry.type + ", id=" + entry.id + ").");
+        continue;
+      }
+      devices.add(new ExpectedDevice(entry.label, manufacturer, deviceType, entry.id));
+    }
+    return devices;
+  }
+
+  private static int resolveCanManufacturerId(String vendor) {
+    String key = normalizeKey(vendor);
+    if (key.isEmpty()) {
+      return -1;
+    }
+    Integer id = MANUFACTURER_NAME_TO_ID.get(key);
+    if (id != null) {
+      return id;
+    }
+    try {
+      return Integer.parseInt(vendor.trim());
+    } catch (NumberFormatException ignored) {
+      return -1;
+    }
+  }
+
+  private static int resolveCanDeviceTypeId(String type) {
+    String key = normalizeKey(type);
+    if (key.isEmpty()) {
+      return -1;
+    }
+    if (key.equals("NEO") || key.equals("NEO550") || key.equals("NEO550S")
+        || key.equals("FLEX") || key.equals("KRAKEN") || key.equals("FALCON")) {
+      return 2; // MotorController
+    }
+    if (key.equals("CANCODER") || key.equals("ENCODER")) {
+      return 7; // Encoder
+    }
+    if (key.equals("CANDLE")) {
+      return 10; // Miscellaneous
+    }
+    if (key.equals("PDH") || key.equals("PDP") || key.equals("PDM")
+        || key.equals("POWERDISTRIBUTIONMODULE")) {
+      return 8; // PowerDistributionModule
+    }
+    if (key.equals("PIGEON") || key.equals("IMU") || key.equals("GYROSENSOR")) {
+      return 4; // GyroSensor
+    }
+    if (key.equals("ROBORIO") || key.equals("ROBOTCONTROLLER")) {
+      return 1; // RobotController
+    }
+    Integer id = DEVICE_TYPE_NAME_TO_ID.get(key);
+    return id != null ? id : -1;
   }
 
   /**
@@ -466,44 +546,6 @@ public final class BringupUtil {
 
   /**
    * NAME
-   *   filterCanIds - Remove disabled IDs while preserving order.
-   *
-   * PARAMETERS
-   *   ids - CAN ID array.
-   *
-   * RETURNS
-   *   Filtered array with only enabled IDs.
-   */
-  public static int[] filterCanIds(int[] ids) {
-    // Drop disabled IDs while preserving order.
-    int enabledCount = countEnabledCanIds(ids);
-    int[] filtered = new int[enabledCount];
-    int index = 0;
-    for (int id : ids) {
-      if (isEnabledCanId(id)) {
-        filtered[index++] = id;
-      }
-    }
-    return filtered;
-  }
-
-  /**
-   * NAME
-   *   countEnabledCanIds - Count enabled IDs in an array.
-   */
-  public static int countEnabledCanIds(int[] ids) {
-    // Count IDs that are not DISABLED_CAN_ID.
-    int count = 0;
-    for (int id : ids) {
-      if (isEnabledCanId(id)) {
-        count++;
-      }
-    }
-    return count;
-  }
-
-  /**
-   * NAME
    *   isEnabledCanId - Check if an ID is not disabled.
    */
   public static boolean isEnabledCanId(int id) {
@@ -646,30 +688,46 @@ public final class BringupUtil {
   private static void applyFallbackProfile() {
     // Populate default profiles in-memory when JSON is unavailable.
     profiles = new LinkedHashMap<>();
+    List<DeviceRef> robotDevices = new ArrayList<>();
+    robotDevices.addAll(toDevices(FALLBACK_ROBOT_NEO_CAN_IDS, "REV", "NEO"));
+    robotDevices.addAll(toDevices(FALLBACK_ROBOT_KRAKEN_CAN_IDS, "CTRE", "KRAKEN"));
+    robotDevices.addAll(toDevices(FALLBACK_ROBOT_CANCODER_CAN_IDS, "CTRE", "CANCoder"));
+    robotDevices.add(new DeviceRef(FALLBACK_PDH_CAN_ID, "REV", "PDH"));
+    robotDevices.add(new DeviceRef(FALLBACK_PIGEON_CAN_ID, "CTRE", "Pigeon"));
+    robotDevices.add(new DeviceRef(FALLBACK_ROBORIO_CAN_ID, "NI", "roboRIO"));
     profiles.put("robot", new CanProfileConfig(
-        toDevices(FALLBACK_ROBOT_NEO_CAN_IDS),
         Collections.emptyList(),
         Collections.emptyList(),
-        toDevices(FALLBACK_ROBOT_KRAKEN_CAN_IDS),
-        Collections.emptyList(),
-        toDevices(FALLBACK_ROBOT_CANCODER_CAN_IDS),
         Collections.emptyList(),
         Collections.emptyList(),
-        new DeviceRef(FALLBACK_PDH_CAN_ID),
-        new DeviceRef(FALLBACK_PIGEON_CAN_ID),
-        new DeviceRef(FALLBACK_ROBORIO_CAN_ID)));
+        Collections.emptyList(),
+        Collections.emptyList(),
+        Collections.emptyList(),
+        robotDevices,
+        new DeviceRef(FALLBACK_PDH_CAN_ID, "REV", "PDH"),
+        null,
+        new DeviceRef(FALLBACK_PIGEON_CAN_ID, "CTRE", "Pigeon"),
+        new DeviceRef(FALLBACK_ROBORIO_CAN_ID, "NI", "roboRIO")));
+    List<DeviceRef> demoDevices = new ArrayList<>();
+    demoDevices.addAll(toDevices(FALLBACK_DEMO_NEO_CAN_IDS, "REV", "NEO"));
+    demoDevices.addAll(toDevices(FALLBACK_DEMO_KRAKEN_CAN_IDS, "CTRE", "KRAKEN"));
+    demoDevices.addAll(toDevices(FALLBACK_DEMO_CANCODER_CAN_IDS, "CTRE", "CANCoder"));
+    demoDevices.add(new DeviceRef(FALLBACK_ROBORIO_CAN_ID, "NI", "roboRIO"));
     profiles.put("demo_club", new CanProfileConfig(
-        toDevices(FALLBACK_DEMO_NEO_CAN_IDS),
         Collections.emptyList(),
         Collections.emptyList(),
-        toDevices(FALLBACK_DEMO_KRAKEN_CAN_IDS),
-        Collections.emptyList(),
-        toDevices(FALLBACK_DEMO_CANCODER_CAN_IDS),
         Collections.emptyList(),
         Collections.emptyList(),
+        Collections.emptyList(),
+        Collections.emptyList(),
+        Collections.emptyList(),
+        demoDevices,
         null,
         null,
-        new DeviceRef(FALLBACK_ROBORIO_CAN_ID)));
+        null,
+        new DeviceRef(FALLBACK_ROBORIO_CAN_ID, "NI", "roboRIO")));
+    List<DeviceRef> homeDevices = new ArrayList<>();
+    homeDevices.add(new DeviceRef(FALLBACK_ROBORIO_CAN_ID, "NI", "roboRIO"));
     profiles.put("demo_home", new CanProfileConfig(
         Collections.emptyList(),
         Collections.emptyList(),
@@ -678,43 +736,19 @@ public final class BringupUtil {
         Collections.emptyList(),
         Collections.emptyList(),
         Collections.emptyList(),
-        Collections.emptyList(),
+        homeDevices,
         null,
         null,
-        new DeviceRef(FALLBACK_ROBORIO_CAN_ID)));
+        null,
+        new DeviceRef(FALLBACK_ROBORIO_CAN_ID, "NI", "roboRIO")));
     profileOrder = new ArrayList<>(profiles.keySet());
     defaultProfile = DEFAULT_PROFILE_NAME;
     activeProfile = defaultProfile;
-    NEO_CAN_IDS = FALLBACK_ROBOT_NEO_CAN_IDS;
-    NEO550_CAN_IDS = new int[0];
-    FLEX_CAN_IDS = new int[0];
-    KRAKEN_CAN_IDS = FALLBACK_ROBOT_KRAKEN_CAN_IDS;
-    FALCON_CAN_IDS = new int[0];
-    CANCODER_CAN_IDS = FALLBACK_ROBOT_CANCODER_CAN_IDS;
-    CANDLE_CAN_IDS = new int[0];
-    NEO_LABELS = toLabelArray(toDevices(FALLBACK_ROBOT_NEO_CAN_IDS), "NEO");
-    NEO550_LABELS = new String[0];
-    FLEX_LABELS = new String[0];
-    KRAKEN_LABELS = toLabelArray(toDevices(FALLBACK_ROBOT_KRAKEN_CAN_IDS), "KRAKEN");
-    FALCON_LABELS = new String[0];
-    CANCODER_LABELS = toLabelArray(toDevices(FALLBACK_ROBOT_CANCODER_CAN_IDS), "CANCoder");
-    CANDLE_LABELS = new String[0];
-    NEO_MOTOR_MODELS = new String[NEO_LABELS.length];
-    NEO550_MOTOR_MODELS = new String[0];
-    FLEX_MOTOR_MODELS = new String[0];
-    KRAKEN_MOTOR_MODELS = new String[KRAKEN_LABELS.length];
-    FALCON_MOTOR_MODELS = new String[0];
-    NEO_LIMITS = toLimitArray(toDevices(FALLBACK_ROBOT_NEO_CAN_IDS));
-    NEO550_LIMITS = new LimitConfig[0];
-    FLEX_LIMITS = new LimitConfig[0];
-    KRAKEN_LIMITS = toLimitArray(toDevices(FALLBACK_ROBOT_KRAKEN_CAN_IDS));
-    FALCON_LIMITS = new LimitConfig[0];
-    CANCODER_LIMITS = toLimitArray(toDevices(FALLBACK_ROBOT_CANCODER_CAN_IDS));
-    CANDLE_LIMITS = new LimitConfig[0];
-    PDH_CAN_ID = FALLBACK_PDH_CAN_ID;
-    PIGEON_CAN_ID = FALLBACK_PIGEON_CAN_ID;
-    ROBORIO_CAN_ID = FALLBACK_ROBORIO_CAN_ID;
-    buildDeviceConfigs(profiles.get(DEFAULT_PROFILE_NAME));
+    List<DeviceRef> merged = mergeDevices(profiles.get(DEFAULT_PROFILE_NAME));
+    buildDeviceConfigs(merged);
+    PDH_CAN_ID = resolveSingletonId(merged, "REV", "PDH", new DeviceRef(FALLBACK_PDH_CAN_ID, "REV", "PDH"));
+    PIGEON_CAN_ID = resolveSingletonId(merged, "CTRE", "Pigeon", new DeviceRef(FALLBACK_PIGEON_CAN_ID, "CTRE", "Pigeon"));
+    ROBORIO_CAN_ID = resolveSingletonId(merged, "NI", "roboRIO", new DeviceRef(FALLBACK_ROBORIO_CAN_ID, "NI", "roboRIO"));
   }
 
   /**
@@ -740,361 +774,176 @@ public final class BringupUtil {
    * NAME
    *   buildDeviceConfigs - Build device config lookup tables.
    */
-  private static void buildDeviceConfigs(CanProfileConfig config) {
+  private static void buildDeviceConfigs(List<DeviceRef> refs) {
     DEVICE_CONFIGS.clear();
-    if (config == null) {
-      return;
-    }
-    registerDeviceConfigs("REV", "NEO", config.neos, "NEO");
-    registerDeviceConfigs("REV", "NEO 550", config.neo550s, "NEO 550");
-    registerDeviceConfigs("REV", "FLEX", config.flexes, "FLEX");
-    registerDeviceConfigs("CTRE", "KRAKEN", config.krakens, "KRAKEN");
-    registerDeviceConfigs("CTRE", "FALCON", config.falcons, "FALCON");
-    registerDeviceConfigs("CTRE", "CANCoder", config.cancoders, "CANCoder");
-    registerDeviceConfigs("CTRE", "CANdle", config.candles, "CANdle");
-    registerGenericDeviceConfigs(config.devices);
-  }
-
-  /**
-   * NAME
-   *   registerDeviceConfigs - Register device configs for a vendor/type.
-   */
-  private static void registerDeviceConfigs(
-      String vendor,
-      String deviceType,
-      List<DeviceRef> refs,
-      String defaultLabelPrefix) {
-    List<DeviceConfig> configs = toDeviceConfigs(refs, defaultLabelPrefix);
-    if (!configs.isEmpty()) {
-      DEVICE_CONFIGS.put(new DeviceKey(vendor, deviceType), configs);
-    }
-  }
-
-  /**
-   * NAME
-   *   registerGenericDeviceConfigs - Register generic device configs.
-   */
-  private static void registerGenericDeviceConfigs(List<DeviceRef> refs) {
+    ACTIVE_DEVICES.clear();
     if (refs == null || refs.isEmpty()) {
       return;
     }
     for (DeviceRef ref : refs) {
-      if (ref == null || ref.vendor == null || ref.type == null) {
-        System.out.println("Warning: generic device entry missing vendor/type.");
+      if (ref == null) {
         continue;
       }
-      String vendor = ref.vendor.trim();
-      String type = ref.type.trim();
-      if (vendor.isBlank() || type.isBlank()) {
-        System.out.println("Warning: generic device entry missing vendor/type.");
+      String vendor = safeText(ref.vendor);
+      String type = safeText(ref.type);
+      String label = safeText(ref.label);
+      if (label.isEmpty()) {
+        String fallback = !type.isEmpty() ? type : "Device";
+        label = fallback + " " + ref.id;
+      }
+      DeviceEntry entry = new DeviceEntry(
+          ref.id,
+          vendor,
+          type,
+          label,
+          safeText(ref.motor),
+          ref.limits,
+          ref.tags,
+          ref.terminator);
+      ACTIVE_DEVICES.add(entry);
+      if (vendor.isEmpty() || type.isEmpty()) {
+        System.out.println("Warning: device entry missing vendor/type for CAN ID " + ref.id);
         continue;
       }
-      DeviceConfig config = toDeviceConfig(ref, type + " " + ref.id);
       DeviceKey key = new DeviceKey(vendor, type);
+      DeviceConfig config = new DeviceConfig(ref.id, label, ref.motor, ref.limits);
       DEVICE_CONFIGS.computeIfAbsent(key, ignored -> new ArrayList<>()).add(config);
     }
   }
 
   /**
    * NAME
-   *   toIdArray - Convert device refs to raw ID array.
+   *   mergeDevices - Build a merged device list from legacy and new schema.
+   *
+   * DESCRIPTION
+   *   Prefers explicit devices[] entries when both schemas are present.
    */
-  private static int[] toIdArray(List<DeviceRef> refs) {
-    // Convert JSON device objects into raw ID arrays.
+  private static List<DeviceRef> mergeDevices(CanProfileConfig config) {
+    if (config == null) {
+      return Collections.emptyList();
+    }
+    LinkedHashMap<String, DeviceRef> merged = new LinkedHashMap<>();
+    addDeviceRefs(merged, config.devices);
+    addLegacyDeviceRefs(merged, "REV", "NEO", config.neos);
+    addLegacyDeviceRefs(merged, "REV", "NEO 550", config.neo550s);
+    addLegacyDeviceRefs(merged, "REV", "FLEX", config.flexes);
+    addLegacyDeviceRefs(merged, "CTRE", "KRAKEN", config.krakens);
+    addLegacyDeviceRefs(merged, "CTRE", "FALCON", config.falcons);
+    addLegacyDeviceRefs(merged, "CTRE", "CANCoder", config.cancoders);
+    addLegacyDeviceRefs(merged, "CTRE", "CANdle", config.candles);
+    addSingletonRef(merged, "REV", "PDH", config.pdh);
+    addSingletonRef(merged, "CTRE", "PDP", config.pdp);
+    addSingletonRef(merged, "CTRE", "Pigeon", config.pigeon);
+    addSingletonRef(merged, "NI", "roboRIO", config.roborio);
+    return new ArrayList<>(merged.values());
+  }
+
+  private static void addDeviceRefs(Map<String, DeviceRef> merged, List<DeviceRef> refs) {
     if (refs == null || refs.isEmpty()) {
-      return new int[0];
+      return;
     }
-    int[] ids = new int[refs.size()];
-    for (int i = 0; i < refs.size(); i++) {
-      ids[i] = refs.get(i).id;
+    for (DeviceRef ref : refs) {
+      if (ref == null) {
+        continue;
+      }
+      String key = deviceKey(ref.vendor, ref.type, ref.id);
+      if (!merged.containsKey(key)) {
+        merged.put(key, normalizeRef(ref));
+      }
     }
-    return ids;
+  }
+
+  private static void addLegacyDeviceRefs(
+      Map<String, DeviceRef> merged,
+      String vendor,
+      String type,
+      List<DeviceRef> refs) {
+    if (refs == null || refs.isEmpty()) {
+      return;
+    }
+    for (DeviceRef ref : refs) {
+      if (ref == null) {
+        continue;
+      }
+      DeviceRef copy = normalizeRef(ref);
+      copy.vendor = vendor;
+      copy.type = type;
+      String key = deviceKey(copy.vendor, copy.type, copy.id);
+      merged.putIfAbsent(key, copy);
+    }
+  }
+
+  private static void addSingletonRef(
+      Map<String, DeviceRef> merged,
+      String vendor,
+      String type,
+      DeviceRef ref) {
+    if (ref == null) {
+      return;
+    }
+    DeviceRef copy = normalizeRef(ref);
+    copy.vendor = vendor;
+    copy.type = type;
+    String key = deviceKey(copy.vendor, copy.type, copy.id);
+    merged.putIfAbsent(key, copy);
+  }
+
+  private static DeviceRef normalizeRef(DeviceRef ref) {
+    DeviceRef copy = new DeviceRef(ref.id, ref.vendor, ref.type);
+    copy.label = ref.label;
+    copy.motor = ref.motor;
+    copy.limits = ref.limits;
+    copy.tags = ref.tags;
+    copy.terminator = ref.terminator;
+    return copy;
+  }
+
+  private static String deviceKey(String vendor, String type, int id) {
+    String v = safeText(vendor).toUpperCase();
+    String t = safeText(type).toUpperCase();
+    return v + "|" + t + "|" + id;
+  }
+
+  private static int resolveSingletonId(
+      List<DeviceRef> refs,
+      String vendor,
+      String type,
+      DeviceRef fallback) {
+    if (refs != null) {
+      for (DeviceRef ref : refs) {
+        if (ref == null) {
+          continue;
+        }
+        String v = safeText(ref.vendor);
+        String t = safeText(ref.type);
+        if (v.equalsIgnoreCase(vendor) && t.equalsIgnoreCase(type) && isEnabledCanId(ref.id)) {
+          return ref.id;
+        }
+      }
+    }
+    if (fallback != null && isEnabledCanId(fallback.id)) {
+      return fallback.id;
+    }
+    return DISABLED_CAN_ID;
+  }
+
+  private static String safeText(String value) {
+    return value == null ? "" : value.trim();
   }
 
   /**
    * NAME
    *   toDevices - Convert raw IDs to device refs.
    */
-  private static List<DeviceRef> toDevices(int[] ids) {
+  private static List<DeviceRef> toDevices(int[] ids, String vendor, String type) {
     // Convert raw IDs into JSON device objects for fallback profiles.
     List<DeviceRef> refs = new ArrayList<>();
     for (int id : ids) {
       if (isEnabledCanId(id)) {
-        refs.add(new DeviceRef(id));
+        refs.add(new DeviceRef(id, vendor, type));
       }
     }
     return refs;
-  }
-
-  /**
-   * NAME
-   *   toLabelArray - Build label array with defaults.
-   */
-  private static String[] toLabelArray(List<DeviceRef> refs, String prefix) {
-    if (refs == null || refs.isEmpty()) {
-      return new String[0];
-    }
-    String[] labels = new String[refs.size()];
-    for (int i = 0; i < refs.size(); i++) {
-      DeviceRef ref = refs.get(i);
-      String label = ref.label;
-      if (label == null || label.isBlank()) {
-        label = prefix + " " + ref.id;
-      }
-      labels[i] = label;
-    }
-    return labels;
-  }
-
-  /**
-   * NAME
-   *   toDeviceConfigs - Convert refs to DeviceConfig entries.
-   */
-  private static List<DeviceConfig> toDeviceConfigs(List<DeviceRef> refs, String defaultLabelPrefix) {
-    if (refs == null || refs.isEmpty()) {
-      return Collections.emptyList();
-    }
-    List<DeviceConfig> configs = new ArrayList<>(refs.size());
-    for (DeviceRef ref : refs) {
-      if (ref == null) {
-        continue;
-      }
-      String label = ref.label;
-      if (label == null || label.isBlank()) {
-        label = defaultLabelPrefix + " " + ref.id;
-      }
-      configs.add(new DeviceConfig(ref.id, label, ref.motor, ref.limits));
-    }
-    return configs;
-  }
-
-  /**
-   * NAME
-   *   toDeviceConfig - Convert a single ref to DeviceConfig.
-   */
-  private static DeviceConfig toDeviceConfig(DeviceRef ref, String fallbackLabel) {
-    String label = ref.label;
-    if (label == null || label.isBlank()) {
-      label = fallbackLabel;
-    }
-    return new DeviceConfig(ref.id, label, ref.motor, ref.limits);
-  }
-
-  /**
-   * NAME
-   *   toMotorArray - Build motor model array from refs.
-   */
-  private static String[] toMotorArray(List<DeviceRef> refs) {
-    if (refs == null || refs.isEmpty()) {
-      return new String[0];
-    }
-    String[] motors = new String[refs.size()];
-    for (int i = 0; i < refs.size(); i++) {
-      motors[i] = refs.get(i).motor;
-    }
-    return motors;
-  }
-
-  /**
-   * NAME
-   *   toLimitArray - Build limit config array from refs.
-   */
-  private static LimitConfig[] toLimitArray(List<DeviceRef> refs) {
-    if (refs == null || refs.isEmpty()) {
-      return new LimitConfig[0];
-    }
-    LimitConfig[] limits = new LimitConfig[refs.size()];
-    for (int i = 0; i < refs.size(); i++) {
-      DeviceRef ref = refs.get(i);
-      limits[i] = ref.limits != null ? ref.limits : new LimitConfig();
-    }
-    return limits;
-  }
-
-  /**
-   * NAME
-   *   getNeoLabel - Return the label for a NEO at index.
-   */
-  public static String getNeoLabel(int index) {
-    return labelForIndex(NEO_LABELS, NEO_CAN_IDS, index, "NEO");
-  }
-
-  /**
-   * NAME
-   *   getNeo550Label - Return the label for a NEO 550 at index.
-   */
-  public static String getNeo550Label(int index) {
-    return labelForIndex(NEO550_LABELS, NEO550_CAN_IDS, index, "NEO 550");
-  }
-
-  /**
-   * NAME
-   *   getFlexLabel - Return the label for a FLEX at index.
-   */
-  public static String getFlexLabel(int index) {
-    return labelForIndex(FLEX_LABELS, FLEX_CAN_IDS, index, "FLEX");
-  }
-
-  /**
-   * NAME
-   *   getKrakenLabel - Return the label for a Kraken at index.
-   */
-  public static String getKrakenLabel(int index) {
-    return labelForIndex(KRAKEN_LABELS, KRAKEN_CAN_IDS, index, "KRAKEN");
-  }
-
-  /**
-   * NAME
-   *   getFalconLabel - Return the label for a Falcon at index.
-   */
-  public static String getFalconLabel(int index) {
-    return labelForIndex(FALCON_LABELS, FALCON_CAN_IDS, index, "FALCON");
-  }
-
-  /**
-   * NAME
-   *   getCANCoderLabel - Return the label for a CANCoder at index.
-   */
-  public static String getCANCoderLabel(int index) {
-    return labelForIndex(CANCODER_LABELS, CANCODER_CAN_IDS, index, "CANCoder");
-  }
-
-  /**
-   * NAME
-   *   getCandleLabel - Return the label for a CANdle at index.
-   */
-  public static String getCandleLabel(int index) {
-    return labelForIndex(CANDLE_LABELS, CANDLE_CAN_IDS, index, "CANdle");
-  }
-
-  /**
-   * NAME
-   *   getNeoMotorModel - Return motor model override for NEO index.
-   */
-  public static String getNeoMotorModel(int index) {
-    return motorForIndex(NEO_MOTOR_MODELS, index);
-  }
-
-  /**
-   * NAME
-   *   getNeo550MotorModel - Return motor model override for NEO 550 index.
-   */
-  public static String getNeo550MotorModel(int index) {
-    return motorForIndex(NEO550_MOTOR_MODELS, index);
-  }
-
-  /**
-   * NAME
-   *   getFlexMotorModel - Return motor model override for FLEX index.
-   */
-  public static String getFlexMotorModel(int index) {
-    return motorForIndex(FLEX_MOTOR_MODELS, index);
-  }
-
-  /**
-   * NAME
-   *   getKrakenMotorModel - Return motor model override for Kraken index.
-   */
-  public static String getKrakenMotorModel(int index) {
-    return motorForIndex(KRAKEN_MOTOR_MODELS, index);
-  }
-
-  /**
-   * NAME
-   *   getFalconMotorModel - Return motor model override for Falcon index.
-   */
-  public static String getFalconMotorModel(int index) {
-    return motorForIndex(FALCON_MOTOR_MODELS, index);
-  }
-
-  /**
-   * NAME
-   *   getNeoLimitConfig - Return limit config for NEO index.
-   */
-  public static LimitConfig getNeoLimitConfig(int index) {
-    return limitForIndex(NEO_LIMITS, index);
-  }
-
-  /**
-   * NAME
-   *   getNeo550LimitConfig - Return limit config for NEO 550 index.
-   */
-  public static LimitConfig getNeo550LimitConfig(int index) {
-    return limitForIndex(NEO550_LIMITS, index);
-  }
-
-  /**
-   * NAME
-   *   getFlexLimitConfig - Return limit config for FLEX index.
-   */
-  public static LimitConfig getFlexLimitConfig(int index) {
-    return limitForIndex(FLEX_LIMITS, index);
-  }
-
-  /**
-   * NAME
-   *   getKrakenLimitConfig - Return limit config for Kraken index.
-   */
-  public static LimitConfig getKrakenLimitConfig(int index) {
-    return limitForIndex(KRAKEN_LIMITS, index);
-  }
-
-  /**
-   * NAME
-   *   getFalconLimitConfig - Return limit config for Falcon index.
-   */
-  public static LimitConfig getFalconLimitConfig(int index) {
-    return limitForIndex(FALCON_LIMITS, index);
-  }
-
-  /**
-   * NAME
-   *   getCANCoderLimitConfig - Return limit config for CANCoder index.
-   */
-  public static LimitConfig getCANCoderLimitConfig(int index) {
-    return limitForIndex(CANCODER_LIMITS, index);
-  }
-
-  /**
-   * NAME
-   *   getCandleLimitConfig - Return limit config for CANdle index.
-   */
-  public static LimitConfig getCandleLimitConfig(int index) {
-    return limitForIndex(CANDLE_LIMITS, index);
-  }
-
-  /**
-   * NAME
-   *   labelForIndex - Resolve label with bounds and fallback.
-   */
-  private static String labelForIndex(String[] labels, int[] ids, int index, String prefix) {
-    if (labels == null || index < 0 || index >= labels.length) {
-      return prefix + " " + (index >= 0 && index < ids.length ? ids[index] : "?");
-    }
-    return labels[index];
-  }
-
-  /**
-   * NAME
-   *   motorForIndex - Resolve motor model for an index.
-   */
-  private static String motorForIndex(String[] motors, int index) {
-    if (motors == null || index < 0 || index >= motors.length) {
-      return null;
-    }
-    String model = motors[index];
-    return (model == null || model.isBlank()) ? null : model;
-  }
-
-  /**
-   * NAME
-   *   limitForIndex - Resolve limit config for an index.
-   */
-  private static LimitConfig limitForIndex(LimitConfig[] limits, int index) {
-    if (limits == null || index < 0 || index >= limits.length) {
-      return new LimitConfig();
-    }
-    return limits[index] != null ? limits[index] : new LimitConfig();
   }
 
   /**
@@ -1262,6 +1111,7 @@ public final class BringupUtil {
     List<DeviceRef> candles = Collections.emptyList();
     List<DeviceRef> devices = Collections.emptyList();
     DeviceRef pdh;
+    DeviceRef pdp;
     DeviceRef pigeon;
     DeviceRef roborio;
 
@@ -1279,6 +1129,7 @@ public final class BringupUtil {
         List<DeviceRef> candles,
         List<DeviceRef> devices,
         DeviceRef pdh,
+        DeviceRef pdp,
         DeviceRef pigeon,
         DeviceRef roborio) {
       this.neos = neos != null ? neos : Collections.emptyList();
@@ -1290,9 +1141,58 @@ public final class BringupUtil {
       this.candles = candles != null ? candles : Collections.emptyList();
       this.devices = devices != null ? devices : Collections.emptyList();
       this.pdh = pdh;
+      this.pdp = pdp;
       this.pigeon = pigeon;
       this.roborio = roborio;
     }
+  }
+
+  private static Map<String, Integer> buildManufacturerNameToId() {
+    Map<String, Integer> map = new LinkedHashMap<>();
+    if (CAN_MAPPINGS != null && CAN_MAPPINGS.manufacturers != null) {
+      for (Map.Entry<String, String> entry : CAN_MAPPINGS.manufacturers.entrySet()) {
+        String name = normalizeKey(entry.getValue());
+        if (name.isEmpty()) {
+          continue;
+        }
+        try {
+          int id = Integer.parseInt(entry.getKey());
+          map.put(name, id);
+        } catch (NumberFormatException ignored) {
+          // skip invalid id
+        }
+      }
+    }
+    map.putIfAbsent("NI", 1);
+    map.putIfAbsent("CTRE", 4);
+    map.putIfAbsent("REV", 5);
+    return map;
+  }
+
+  private static Map<String, Integer> buildDeviceTypeNameToId() {
+    Map<String, Integer> map = new LinkedHashMap<>();
+    if (CAN_MAPPINGS != null && CAN_MAPPINGS.deviceTypes != null) {
+      for (Map.Entry<String, String> entry : CAN_MAPPINGS.deviceTypes.entrySet()) {
+        String name = normalizeKey(entry.getValue());
+        if (name.isEmpty()) {
+          continue;
+        }
+        try {
+          int id = Integer.parseInt(entry.getKey());
+          map.put(name, id);
+        } catch (NumberFormatException ignored) {
+          // skip invalid id
+        }
+      }
+    }
+    return map;
+  }
+
+  private static String normalizeKey(String value) {
+    if (value == null) {
+      return "";
+    }
+    return value.trim().toUpperCase().replaceAll("[^A-Z0-9]+", "");
   }
 
   /**
@@ -1306,6 +1206,8 @@ public final class BringupUtil {
     String label;
     String motor;
     LimitConfig limits;
+    List<String> tags;
+    Boolean terminator;
 
     /**
      * NAME
@@ -1313,6 +1215,12 @@ public final class BringupUtil {
      */
     DeviceRef(int id) {
       this.id = id;
+    }
+
+    DeviceRef(int id, String vendor, String type) {
+      this.id = id;
+      this.vendor = vendor;
+      this.type = type;
     }
   }
 
@@ -1433,6 +1341,58 @@ public final class BringupUtil {
      */
     public boolean hasReverse() {
       return revDio >= 0;
+    }
+  }
+
+  /**
+   * NAME
+   *   DeviceEntry - Active device entry loaded from profiles.
+   */
+  public static final class DeviceEntry {
+    public final int id;
+    public final String vendor;
+    public final String type;
+    public final String label;
+    public final String motor;
+    public final LimitConfig limits;
+    public final List<String> tags;
+    public final Boolean terminator;
+
+    public DeviceEntry(
+        int id,
+        String vendor,
+        String type,
+        String label,
+        String motor,
+        LimitConfig limits,
+        List<String> tags,
+        Boolean terminator) {
+      this.id = id;
+      this.vendor = vendor;
+      this.type = type;
+      this.label = label;
+      this.motor = motor;
+      this.limits = limits != null ? limits : new LimitConfig();
+      this.tags = tags != null ? tags : Collections.emptyList();
+      this.terminator = terminator;
+    }
+  }
+
+  /**
+   * NAME
+   *   ExpectedDevice - CAN identity view for diagnostics.
+   */
+  public static final class ExpectedDevice {
+    public final String label;
+    public final int manufacturer;
+    public final int deviceType;
+    public final int deviceId;
+
+    public ExpectedDevice(String label, int manufacturer, int deviceType, int deviceId) {
+      this.label = label;
+      this.manufacturer = manufacturer;
+      this.deviceType = deviceType;
+      this.deviceId = deviceId;
     }
   }
 

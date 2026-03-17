@@ -35,15 +35,6 @@ import java.util.Map;
  *   to produce human-readable reports and JSON snapshots.
  */
 final class DiagnosticsReporter {
-  private static final int REV_MANUFACTURER = 5;
-  private static final int CTRE_MANUFACTURER = 4;
-  private static final int NI_MANUFACTURER = 1;
-  private static final int TYPE_MOTOR_CONTROLLER = 2;
-  private static final int TYPE_GYRO_SENSOR = 4;
-  private static final int TYPE_ENCODER = 7;
-  private static final int TYPE_POWER_DISTRIBUTION_MODULE = 8;
-  private static final int TYPE_ROBOT_CONTROLLER = 1;
-
   private static final String REPORT_PATH = "/home/lvuser/bringup_report.json";
   private static final String CAN_MAP_FILE = "can_mappings.json";
   private static final Gson GSON = new Gson();
@@ -979,58 +970,11 @@ final class DiagnosticsReporter {
    */
   private static DeviceSpec[] buildDeviceSpecs() {
     // Build the expected device list from the active profile.
-    int[] neoIds = BringupUtil.filterCanIds(BringupUtil.NEO_CAN_IDS);
-    int[] neo550Ids = BringupUtil.filterCanIds(BringupUtil.NEO550_CAN_IDS);
-    int[] flexIds = BringupUtil.filterCanIds(BringupUtil.FLEX_CAN_IDS);
-    int[] krakenIds = BringupUtil.filterCanIds(BringupUtil.KRAKEN_CAN_IDS);
-    int[] falconIds = BringupUtil.filterCanIds(BringupUtil.FALCON_CAN_IDS);
-    int[] cancoderIds = BringupUtil.filterCanIds(BringupUtil.CANCODER_CAN_IDS);
-    int total = neoIds.length
-        + neo550Ids.length
-        + flexIds.length
-        + krakenIds.length
-        + falconIds.length
-        + cancoderIds.length;
-    if (BringupUtil.isEnabledCanId(BringupUtil.PDH_CAN_ID)) {
-      total += 1;
-    }
-    if (BringupUtil.isEnabledCanId(BringupUtil.PIGEON_CAN_ID)) {
-      total += 1;
-    }
-    if (BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
-      total += 1;
-    }
-    DeviceSpec[] specs = new DeviceSpec[total];
+    java.util.List<BringupUtil.ExpectedDevice> expected = BringupUtil.getExpectedDevices();
+    DeviceSpec[] specs = new DeviceSpec[expected.size()];
     int i = 0;
-    for (int id : neoIds) {
-      specs[i++] = new DeviceSpec("NEO", REV_MANUFACTURER, TYPE_MOTOR_CONTROLLER, id);
-    }
-    for (int id : neo550Ids) {
-      specs[i++] = new DeviceSpec("NEO 550", REV_MANUFACTURER, TYPE_MOTOR_CONTROLLER, id);
-    }
-    for (int id : flexIds) {
-      specs[i++] = new DeviceSpec("FLEX", REV_MANUFACTURER, TYPE_MOTOR_CONTROLLER, id);
-    }
-    for (int id : krakenIds) {
-      specs[i++] = new DeviceSpec("KRAKEN", CTRE_MANUFACTURER, TYPE_MOTOR_CONTROLLER, id);
-    }
-    for (int id : falconIds) {
-      specs[i++] = new DeviceSpec("FALCON", CTRE_MANUFACTURER, TYPE_MOTOR_CONTROLLER, id);
-    }
-    for (int id : cancoderIds) {
-      specs[i++] = new DeviceSpec("CANCoder", CTRE_MANUFACTURER, TYPE_ENCODER, id);
-    }
-    if (BringupUtil.isEnabledCanId(BringupUtil.PDH_CAN_ID)) {
-      specs[i++] =
-          new DeviceSpec("PDH", REV_MANUFACTURER, TYPE_POWER_DISTRIBUTION_MODULE, BringupUtil.PDH_CAN_ID);
-    }
-    if (BringupUtil.isEnabledCanId(BringupUtil.PIGEON_CAN_ID)) {
-      specs[i++] =
-          new DeviceSpec("Pigeon", CTRE_MANUFACTURER, TYPE_GYRO_SENSOR, BringupUtil.PIGEON_CAN_ID);
-    }
-    if (BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
-      specs[i++] =
-          new DeviceSpec("roboRIO", NI_MANUFACTURER, TYPE_ROBOT_CONTROLLER, BringupUtil.ROBORIO_CAN_ID);
+    for (BringupUtil.ExpectedDevice entry : expected) {
+      specs[i++] = new DeviceSpec(entry.label, entry.manufacturer, entry.deviceType, entry.deviceId);
     }
     return specs;
   }

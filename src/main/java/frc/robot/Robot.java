@@ -8,6 +8,8 @@ import frc.robot.input.ControllerManager;
 import frc.robot.tests.BringupTestRegistry;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * NAME
@@ -169,11 +171,7 @@ public class Robot extends TimedRobot {
     }
     appendLine(sb, "Deadband: " + DEADBAND);
     appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
-    appendLine(sb, "NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
-    appendLine(sb, "NEO 550 CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO550_CAN_IDS));
-    appendLine(sb, "FLEX CAN IDs: " + BringupUtil.joinIds(BringupUtil.FLEX_CAN_IDS));
-    appendLine(sb, "KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
-    appendLine(sb, "FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
+    appendDeviceSummary(sb);
     appendLine(sb, "======================");
     core.requestTextReport(sb.toString(), 4);
   }
@@ -189,11 +187,7 @@ public class Robot extends TimedRobot {
     StringBuilder sb = new StringBuilder(256);
     appendLine(sb, "=== Profile Updated ===");
     appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
-    appendLine(sb, "NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
-    appendLine(sb, "NEO 550 CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO550_CAN_IDS));
-    appendLine(sb, "FLEX CAN IDs: " + BringupUtil.joinIds(BringupUtil.FLEX_CAN_IDS));
-    appendLine(sb, "KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
-    appendLine(sb, "FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
+    appendDeviceSummary(sb);
     appendLine(sb, "======================");
     core.requestTextReport(sb.toString(), 4);
   }
@@ -257,6 +251,45 @@ public class Robot extends TimedRobot {
 
   /**
    * NAME
+   *   appendDeviceSummary - Append active devices grouped by vendor/type.
+   *
+   * PARAMETERS
+   *   sb - Target StringBuilder.
+   */
+  private void appendDeviceSummary(StringBuilder sb) {
+    List<BringupUtil.DeviceEntry> devices = BringupUtil.getActiveDevicesSorted();
+    if (devices.isEmpty()) {
+      appendLine(sb, "Devices: (none)");
+      return;
+    }
+    Map<String, List<Integer>> groups = new java.util.LinkedHashMap<>();
+    for (BringupUtil.DeviceEntry entry : devices) {
+      if (entry == null || !BringupUtil.isEnabledCanId(entry.id)) {
+        continue;
+      }
+      String vendor = entry.vendor != null ? entry.vendor.trim() : "";
+      String type = entry.type != null ? entry.type.trim() : "";
+      String key = (vendor.isEmpty() ? "UNKNOWN" : vendor) + " " + (type.isEmpty() ? "Device" : type);
+      groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(entry.id);
+    }
+    for (Map.Entry<String, List<Integer>> entry : groups.entrySet()) {
+      List<Integer> ids = entry.getValue();
+      if (ids.isEmpty()) {
+        continue;
+      }
+      StringBuilder line = new StringBuilder();
+      for (int i = 0; i < ids.size(); i++) {
+        if (i > 0) {
+          line.append(", ");
+        }
+        line.append(ids.get(i));
+      }
+      appendLine(sb, entry.getKey() + " CAN IDs: " + line);
+    }
+  }
+
+  /**
+   * NAME
    *   appendLine - Append a line with newline termination.
    *
    * PARAMETERS
@@ -275,33 +308,7 @@ public class Robot extends TimedRobot {
    *   Builds labeled groups for clearer warning output from BringupUtil.
    */
   private void validateCanIds() {
-    ArrayList<String> labels = new ArrayList<>();
-    ArrayList<int[]> groups = new ArrayList<>();
-
-    labels.add("NEO");
-    groups.add(BringupUtil.NEO_CAN_IDS);
-    labels.add("NEO 550");
-    groups.add(BringupUtil.NEO550_CAN_IDS);
-    labels.add("FLEX");
-    groups.add(BringupUtil.FLEX_CAN_IDS);
-    labels.add("KRAKEN");
-    groups.add(BringupUtil.KRAKEN_CAN_IDS);
-    labels.add("FALCON");
-    groups.add(BringupUtil.FALCON_CAN_IDS);
-    labels.add("CANCoder");
-    groups.add(BringupUtil.CANCODER_CAN_IDS);
-    if (BringupUtil.isEnabledCanId(BringupUtil.PDH_CAN_ID)) {
-      labels.add("PDH");
-      groups.add(new int[] { BringupUtil.PDH_CAN_ID });
-    }
-    if (BringupUtil.isEnabledCanId(BringupUtil.PIGEON_CAN_ID)) {
-      labels.add("Pigeon");
-      groups.add(new int[] { BringupUtil.PIGEON_CAN_ID });
-    }
-
-    BringupUtil.validateCanIds(
-        labels.toArray(new String[0]),
-        groups.toArray(new int[0][]));
+    BringupUtil.validateCanIds(BringupUtil.getActiveDevices());
   }
   // Shared behavior moved to BringupCore.
 }
