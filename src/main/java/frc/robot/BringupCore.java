@@ -25,7 +25,9 @@ import frc.robot.manufacturers.rev.util.PdhStatusReader;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * NAME
@@ -36,6 +38,7 @@ import java.util.List;
  *   report output using robot-local vendor APIs only.
  */
 public final class BringupCore {
+  private static final String BUILD_MARKER = "bringup-core-state-v3";
   private static final int NI_MANUFACTURER = 1;
   private static final int TYPE_ROBOT_CONTROLLER = 1;
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
@@ -68,6 +71,8 @@ public final class BringupCore {
   private boolean runAllActive = false;
   private final List<BringupTest> runAllQueue = new ArrayList<>();
   private int runAllIndex = 0;
+  private final Map<String, Double> warningLastSec = new HashMap<>();
+  private static final double WARNING_COOLDOWN_SEC = 1.0;
   private final BringupTestContext testContext;
   private double primaryInput = 0.0;
   private double secondaryInput = 0.0;
@@ -87,6 +92,17 @@ public final class BringupCore {
     bringupTests.addAll(BringupTestRegistry.loadTests());
     refreshSelectableTests();
     refreshTestDevices();
+  }
+
+  /**
+   * NAME
+   *   getBuildMarker - Return the build marker string.
+   *
+   * RETURNS
+   *   Stable marker string for verifying deployed code.
+   */
+  public static String getBuildMarker() {
+    return BUILD_MARKER;
   }
 
   // Edge-triggered: add the next motor in the alternating sequence.
@@ -132,7 +148,7 @@ public final class BringupCore {
       long nowMs = System.currentTimeMillis();
       if (nowMs - lastStatePrintMs >= MIN_PRINT_INTERVAL_MS) {
         lastStatePrintMs = nowMs;
-        requestStateReport();
+        printState();
       }
     }
     prevPrint = printNow;
@@ -264,12 +280,17 @@ public final class BringupCore {
    */
   public void resetState(String reason) {
     if (activeTest != null && activeTest.isRunning()) {
+      String message =
+          "Warning: stopping active test '" + activeTest.getName() + "' due to reset (" + reason + ").";
+      BringupPrinter.enqueue(message);
+      System.out.println(message);
       activeTest.stop(testContext);
     }
     activeTest = null;
     refreshSelectableTests();
     revDevices.stopAll();
     ctreDevices.stopAll();
+    forceStopAllMotorOutputs();
     revDevices.closeAll();
     ctreDevices.closeAll();
     revDevices.resetLowCurrentTimers();
@@ -306,11 +327,18 @@ public final class BringupCore {
       BringupPrinter.enqueue("No non-motor test devices configured.");
       return;
     }
+    if (!hasInstantiatedDevices()) {
+      logWarningThrottled("noDevices", "Warning: test blocked (no devices instantiated).");
+      return;
+    }
     int attempts = testDevices.size();
     while (attempts-- > 0) {
       DeviceUnit device = testDevices.get(nextTestIndex);
       nextTestIndex = (nextTestIndex + 1) % testDevices.size();
       if (!device.hasTest()) {
+        continue;
+      }
+      if (!device.isCreated()) {
         continue;
       }
       device.runTest();
@@ -381,6 +409,9 @@ public final class BringupCore {
       BringupPrinter.enqueue("Test disabled: " + test.getName());
       return;
     }
+    if (!ensureTestDevicesInstantiated(test)) {
+      return;
+    }
     runAllActive = false;
     boolean started = test.start(testContext, Timer.getFPGATimestamp());
     if (started) {
@@ -447,6 +478,10 @@ public final class BringupCore {
     buildRunAllQueue();
     if (runAllQueue.isEmpty()) {
       BringupPrinter.enqueue("No enabled bringup tests.");
+      return;
+    }
+    if (!hasInstantiatedDevices()) {
+      logWarningThrottled("noDevices", "Warning: test blocked (no devices instantiated).");
       return;
     }
     runAllActive = true;
@@ -653,6 +688,9 @@ public final class BringupCore {
     if (test instanceof JoystickTest) {
       return JoystickTest.TYPE;
     }
+    if (test instanceof frc.robot.tests.DeadbandSweepTest) {
+      return frc.robot.tests.DeadbandSweepTest.TYPE;
+    }
     return test != null ? test.getClass().getSimpleName() : "?";
   }
 
@@ -696,6 +734,9 @@ public final class BringupCore {
     }
     while (runAllIndex < runAllQueue.size()) {
       BringupTest test = runAllQueue.get(runAllIndex++);
+      if (!ensureTestDevicesInstantiated(test)) {
+        continue;
+      }
       boolean started = test.start(testContext, Timer.getFPGATimestamp());
       if (started) {
         activeTest = test;
@@ -745,6 +786,9 @@ public final class BringupCore {
       BringupTest test = bringupTests.get(nextBringupTestIndex);
       nextBringupTestIndex = (nextBringupTestIndex + 1) % bringupTests.size();
       if (!test.isEnabled()) {
+        continue;
+      }
+      if (!ensureTestDevicesInstantiated(test)) {
         continue;
       }
       boolean started = test.start(testContext, Timer.getFPGATimestamp());
@@ -821,14 +865,7 @@ public final class BringupCore {
    *   printState - Enqueue a compact state report of instantiated devices.
    */
   private void printState() {
-    StringBuilder sb = new StringBuilder(512);
-    appendLine(sb, "=== Bringup State ===");
-    revDevices.appendState(sb);
-    ctreDevices.appendState(sb);
-    appendLine(sb, "Next add will be: " + (addRevNext ? "REV motor" : "CTRE motor"));
-    appendVirtualDevices(sb);
-    appendLine(sb, "=====================");
-    BringupPrinter.enqueueChunked(sb.toString(), 4);
+    requestStateReport();
   }
 
   /**
@@ -926,6 +963,37 @@ public final class BringupCore {
       String footer,
       int chunkSize) {
     reportQueue.addLast(new TextReportJob(header, lines, footer, chunkSize));
+  }
+
+  /**
+   * NAME
+   *   printNextTestReport - Print details for the selected and run-all next tests.
+   *
+   * DESCRIPTION
+   *   Emits a report describing the currently selected test and the next test
+   *   that would run in the run-all sequence.
+   *
+   * SIDE EFFECTS
+   *   Enqueues a report for throttled console output.
+   */
+  public void printNextTestReport() {
+    List<String> lines = new ArrayList<>();
+    lines.add("Build: " + BUILD_MARKER);
+    if (activeTest != null && activeTest.isRunning()) {
+      lines.add("Active test: " + activeTest.getName() + " (" + activeTest.getStatus() + ")");
+    } else {
+      lines.add("Active test: (none)");
+    }
+
+    BringupTest selected = getSelectedBringupTest();
+    lines.add("Selected test:");
+    appendTestDetails(lines, selected);
+
+    BringupTest runAllNext = getNextRunAllTest();
+    lines.add("Run-all next test:");
+    appendTestDetails(lines, runAllNext);
+
+    requestTextReportLines("=== Bringup Next Test ===", lines, "==========================", 4);
   }
 
   /**
@@ -1195,8 +1263,12 @@ public final class BringupCore {
    */
   private DeviceReportJob buildStateReport() {
     List<DevicePrintItem> items = collectDeviceItems();
+    String header =
+        "=== Bringup State ===\n"
+            + "Build: " + BUILD_MARKER + "\n"
+            + "CAN profile: " + BringupUtil.getActiveCanProfileLabel();
     DeviceReportJob job = new DeviceReportJob(
-        "=== Bringup State ===",
+        header,
         "=====================",
         4,
         items,
@@ -1207,6 +1279,252 @@ public final class BringupCore {
       appendVirtualDevices(sb);
     };
     return job;
+  }
+
+  /**
+   * NAME
+   *   getNextRunAllTest - Determine the next run-all test without starting it.
+   *
+   * RETURNS
+   *   Next BringupTest in the run-all order, or null if none are enabled.
+   */
+  private BringupTest getNextRunAllTest() {
+    if (runAllActive && runAllIndex < runAllQueue.size()) {
+      return runAllQueue.get(runAllIndex);
+    }
+    if (selectableTests.isEmpty()) {
+      return null;
+    }
+    int startIndex = selectedTestIndex < 0 ? 0 : selectedTestIndex;
+    int attempts = selectableTests.size();
+    int index = startIndex;
+    while (attempts-- > 0) {
+      BringupTest test = selectableTests.get(index);
+      if (test != null && test.isEnabled()) {
+        return test;
+      }
+      index = (index + 1) % selectableTests.size();
+    }
+    return null;
+  }
+
+  /**
+   * NAME
+   *   appendTestDetails - Append detailed test information to a report.
+   *
+   * PARAMETERS
+   *   lines - Output line list to append to.
+   *   test - Test instance to describe.
+   */
+  private void appendTestDetails(List<String> lines, BringupTest test) {
+    if (test == null) {
+      lines.add("  (none)");
+      return;
+    }
+    lines.add("  name: " + test.getName());
+    lines.add("  type: " + resolveTestType(test));
+    lines.add("  enabled: " + (test.isEnabled() ? "YES" : "NO"));
+    lines.add("  status: " + test.getStatus());
+    List<String> motors = test.getMotorKeys();
+    lines.add("  motors: " + (motors == null || motors.isEmpty() ? "-" : String.join(", ", motors)));
+
+    if (test instanceof CompositeTest composite) {
+      Map<String, Object> entry = composite.toEntry();
+      appendCompositeDetails(lines, entry);
+      return;
+    }
+    if (test instanceof JoystickTest joystick) {
+      Map<String, Object> entry = joystick.toEntry();
+      appendJoystickDetails(lines, entry);
+      return;
+    }
+    if (test instanceof frc.robot.tests.DeadbandSweepTest sweep) {
+      Map<String, Object> entry = sweep.toEntry();
+      appendDeadbandDetails(lines, entry);
+    }
+  }
+
+  /**
+   * NAME
+   *   appendDeadbandDetails - Append deadband sweep config details.
+   *
+   * PARAMETERS
+   *   lines - Output line list to append to.
+   *   entry - Deadband sweep entry map.
+   */
+  private void appendDeadbandDetails(List<String> lines, Map<String, Object> entry) {
+    if (entry == null) {
+      return;
+    }
+    Object sweep = entry.get("deadbandSweep");
+    if (sweep instanceof Map<?, ?> sweepMap) {
+      lines.add("  sweep: " + formatMapInline(sweepMap));
+    } else {
+      lines.add("  sweep: (none)");
+    }
+    Object found = entry.get("foundDuty");
+    if (found != null) {
+      lines.add("  foundDuty: " + found);
+    } else {
+      lines.add("  foundDuty: (none)");
+    }
+    lines.add("  checks: deadbandSweep");
+  }
+
+  /**
+   * NAME
+   *   appendCompositeDetails - Append composite test config details.
+   *
+   * PARAMETERS
+   *   lines - Output line list to append to.
+   *   entry - Composite test entry map.
+   */
+  private void appendCompositeDetails(List<String> lines, Map<String, Object> entry) {
+    if (entry == null) {
+      return;
+    }
+    List<String> checks = new ArrayList<>();
+    Object duty = entry.get("duty");
+    if (duty != null) {
+      lines.add("  duty: " + duty);
+    }
+    Object rotation = entry.get("rotation");
+    if (rotation instanceof Map<?, ?> rotationMap) {
+      lines.add("  rotation: " + formatMapInline(rotationMap));
+      lines.add("  encoderMotor: " + resolveEncoderMotorLabel(test, rotationMap));
+      checks.add("rotation");
+    } else {
+      lines.add("  rotation: (none)");
+    }
+    Object time = entry.get("time");
+    if (time instanceof Map<?, ?> timeMap) {
+      lines.add("  time: " + formatMapInline(timeMap));
+      checks.add("time");
+    } else {
+      lines.add("  time: (none)");
+    }
+    Object limit = entry.get("limitSwitch");
+    if (limit instanceof Map<?, ?> limitMap) {
+      lines.add("  limitSwitch: " + formatMapInline(limitMap));
+      checks.add("limit");
+    } else {
+      lines.add("  limitSwitch: (none)");
+    }
+    Object hold = entry.get("hold");
+    if (hold instanceof Map<?, ?> holdMap) {
+      lines.add("  hold: " + formatMapInline(holdMap));
+      checks.add("hold");
+    } else {
+      lines.add("  hold: (none)");
+    }
+    lines.add("  checks: " + (checks.isEmpty() ? "(none)" : String.join(" + ", checks)));
+  }
+
+  /**
+   * NAME
+   *   appendJoystickDetails - Append joystick test config details.
+   *
+   * PARAMETERS
+   *   lines - Output line list to append to.
+   *   entry - Joystick test entry map.
+   */
+  private void appendJoystickDetails(List<String> lines, Map<String, Object> entry) {
+    if (entry == null) {
+      return;
+    }
+    Object deadband = entry.get("deadband");
+    if (deadband != null) {
+      lines.add("  deadband: " + deadband);
+    } else {
+      lines.add("  deadband: (none)");
+    }
+    Object inputAxis = entry.get("inputAxis");
+    if (inputAxis != null) {
+      lines.add("  inputAxis: " + inputAxis);
+    } else {
+      lines.add("  inputAxis: (none)");
+    }
+    lines.add("  checks: joystick");
+  }
+
+  /**
+   * NAME
+   *   formatMapInline - Format a simple map as a comma-delimited line.
+   *
+   * PARAMETERS
+   *   map - Map to format.
+   *
+   * RETURNS
+   *   Single-line key=value list, or "(none)" when empty.
+   */
+  private String formatMapInline(Map<?, ?> map) {
+    if (map == null || map.isEmpty()) {
+      return "(none)";
+    }
+    List<String> parts = new ArrayList<>();
+    for (Map.Entry<?, ?> entry : map.entrySet()) {
+      String key = String.valueOf(entry.getKey());
+      String value = String.valueOf(entry.getValue());
+      parts.add(key + "=" + value);
+    }
+    return String.join(", ", parts);
+  }
+
+  /**
+   * NAME
+   *   resolveEncoderMotorLabel - Resolve encoder motor label for reports.
+   *
+   * PARAMETERS
+   *   test - Test instance to inspect.
+   *   rotationMap - Rotation config map.
+   *
+   * RETURNS
+   *   Motor key string or descriptive fallback.
+   */
+  private String resolveEncoderMotorLabel(BringupTest test, Map<?, ?> rotationMap) {
+    if (test == null) {
+      return "(unknown)";
+    }
+    Object key = rotationMap != null ? rotationMap.get("encoderKey") : null;
+    if (key instanceof String keyStr && "internal".equalsIgnoreCase(keyStr.trim())) {
+      int index = 0;
+      Object idx = rotationMap.get("encoderMotorIndex");
+      if (idx instanceof Number num) {
+        index = Math.max(0, num.intValue());
+      }
+      List<String> motors = test.getMotorKeys();
+      if (motors != null && index < motors.size()) {
+        return motors.get(index);
+      }
+      return "(internal, index " + index + ")";
+    }
+    if (key != null) {
+      return String.valueOf(key);
+    }
+    return "(none)";
+  }
+
+  private String resolveEncoderMotorLabel(BringupTest test, Map<?, ?> rotationMap) {
+    if (test == null) {
+      return "(unknown)";
+    }
+    Object key = rotationMap != null ? rotationMap.get("encoderKey") : null;
+    if (key instanceof String keyStr && "internal".equalsIgnoreCase(keyStr.trim())) {
+      int index = 0;
+      Object idx = rotationMap.get("encoderMotorIndex");
+      if (idx instanceof Number num) {
+        index = Math.max(0, num.intValue());
+      }
+      List<String> motors = test.getMotorKeys();
+      if (motors != null && index < motors.size()) {
+        return motors.get(index);
+      }
+      return "(internal, index " + index + ")";
+    }
+    if (key != null) {
+      return String.valueOf(key);
+    }
+    return "(none)";
   }
 
   /**
@@ -1735,6 +2053,226 @@ public final class BringupCore {
 
   /**
    * NAME
+   *   hasInstantiatedDevices - Return whether any devices are created.
+   *
+   * RETURNS
+   *   True when at least one device is created in local vendor APIs.
+   */
+  private boolean hasInstantiatedDevices() {
+    return hasInstantiatedDevices(revDevices) || hasInstantiatedDevices(ctreDevices);
+  }
+
+  /**
+   * NAME
+   *   hasInstantiatedDevices - Return whether a group has created devices.
+   *
+   * PARAMETERS
+   *   group - Manufacturer group to scan.
+   *
+   * RETURNS
+   *   True when any device within the group is created.
+   */
+  private boolean hasInstantiatedDevices(ManufacturerGroup group) {
+    if (group == null) {
+      return false;
+    }
+    for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
+      for (DeviceUnit device : bucket.getDevices()) {
+        if (device != null && device.isCreated()) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * NAME
+   *   ensureTestDevicesInstantiated - Block tests when devices are not created.
+   *
+   * PARAMETERS
+   *   test - Bringup test to validate.
+   *
+   * RETURNS
+   *   True when required devices are already instantiated.
+   *
+   * SIDE EFFECTS
+   *   Enqueues a status message when devices are missing.
+   */
+  private boolean ensureTestDevicesInstantiated(BringupTest test) {
+    if (test == null) {
+      return false;
+    }
+    List<String> keys = test.getMotorKeys();
+    if (keys == null || keys.isEmpty()) {
+      if (hasInstantiatedDevices()) {
+        return true;
+      }
+      logWarningThrottled("noDevices", "Warning: test blocked (no devices instantiated).");
+      return false;
+    }
+    List<String> missing = new ArrayList<>();
+    for (String key : keys) {
+      MotorKey motorKey = parseMotorKey(key);
+      if (motorKey == null) {
+        missing.add(key);
+        continue;
+      }
+      DeviceUnit device = testContext.findDevice(motorKey.vendor, motorKey.type, motorKey.id);
+      if (device == null || !device.isCreated()) {
+        missing.add(key);
+      }
+    }
+    if (!missing.isEmpty()) {
+      logWarningThrottled(
+          "missingMotors:" + String.join(",", missing),
+          "Warning: test blocked (motor(s) not instantiated): " + String.join(", ", missing));
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * NAME
+   *   MotorKey - Parsed vendor/type/id key for test devices.
+   */
+  private static final class MotorKey {
+    final String vendor;
+    final String type;
+    final int id;
+
+    private MotorKey(String vendor, String type, int id) {
+      this.vendor = vendor;
+      this.type = type;
+      this.id = id;
+    }
+  }
+
+  /**
+   * NAME
+   *   parseMotorKey - Parse a VENDOR:TYPE:ID key string.
+   *
+   * RETURNS
+   *   MotorKey on success or null when invalid.
+   */
+  private static MotorKey parseMotorKey(String value) {
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+    String[] parts = value.split(":");
+    if (parts.length != 3) {
+      return null;
+    }
+    String vendor = parts[0].trim();
+    String type = parts[1].trim();
+    if (vendor.isEmpty() || type.isEmpty()) {
+      return null;
+    }
+    int id;
+    try {
+      id = Integer.parseInt(parts[2].trim());
+    } catch (NumberFormatException ex) {
+      return null;
+    }
+    return new MotorKey(vendor, type, id);
+  }
+
+  /**
+   * NAME
+   *   forceStopAllMotorOutputs - Ensure all motor devices receive a stop command.
+   *
+   * DESCRIPTION
+   *   Instantiates each configured motor device, issues a stop, and closes it.
+   *   This is a safety backstop for controllers that retain the last command.
+   *
+   * SIDE EFFECTS
+   *   Allocates vendor device objects and sends stop commands.
+   */
+  private void forceStopAllMotorOutputs() {
+    StopCounts counts = new StopCounts();
+    forceStopAllMotorOutputs(revDevices, counts);
+    forceStopAllMotorOutputs(ctreDevices, counts);
+    if (counts.stopped > 0) {
+      String message =
+          "Safety: forced stop on " + counts.stopped + " motor(s) (created " + counts.created + ").";
+      BringupPrinter.enqueue(message);
+      System.out.println(message);
+    }
+  }
+
+  /**
+   * NAME
+   *   forceStopAllMotorOutputs - Force-stop motors within a manufacturer group.
+   *
+   * PARAMETERS
+   *   group - Manufacturer group to scan.
+   *   counts - Accumulator for created/stopped devices.
+   */
+  private void forceStopAllMotorOutputs(ManufacturerGroup group, StopCounts counts) {
+    if (group == null || counts == null) {
+      return;
+    }
+    for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
+      if (bucket.getRegistration().role() != DeviceRole.MOTOR) {
+        continue;
+      }
+      for (DeviceUnit device : bucket.getDevices()) {
+        if (device == null) {
+          continue;
+        }
+        try {
+          if (!device.isCreated()) {
+            device.ensureCreated();
+            counts.created++;
+          }
+          device.stop();
+          device.close();
+          counts.stopped++;
+        } catch (Exception ex) {
+          String message =
+              "Warning: failed to force-stop motor CAN " + device.getCanId() + " (" + ex.getMessage() + ").";
+          logWarningThrottled("forceStop:" + device.getCanId(), message);
+        }
+      }
+    }
+  }
+
+  /**
+   * NAME
+   *   StopCounts - Accumulator for force-stop stats.
+   */
+  private static final class StopCounts {
+    int stopped = 0;
+    int created = 0;
+  }
+
+  /**
+   * NAME
+   *   logWarningThrottled - Emit a warning with simple rate limiting.
+   *
+   * PARAMETERS
+   *   key - Unique warning key for rate limiting.
+   *   message - Message to print.
+   *
+   * SIDE EFFECTS
+   *   Enqueues a warning and writes to stdout at most once per cooldown window.
+   */
+  private void logWarningThrottled(String key, String message) {
+    if (key == null || message == null) {
+      return;
+    }
+    double now = Timer.getFPGATimestamp();
+    Double last = warningLastSec.get(key);
+    if (last != null && (now - last) < WARNING_COOLDOWN_SEC) {
+      return;
+    }
+    warningLastSec.put(key, now);
+    BringupPrinter.enqueue(message);
+    System.out.println(message);
+  }
+
+  /**
+   * NAME
    *   isInstantiatedByRole - Check instantiation for a role within a group.
    */
   private boolean isInstantiatedByRole(ManufacturerGroup group, DeviceRole role, int deviceId) {
@@ -1776,4 +2314,3 @@ public final class BringupCore {
     sb.append(line).append('\n');
   }
 }
-

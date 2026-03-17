@@ -8,8 +8,9 @@ import com.google.gson.annotations.SerializedName;
 import com.revrobotics.spark.SparkFlex;
 import com.revrobotics.spark.SparkMax;
 import com.revrobotics.util.StatusLogger;
-import edu.wpi.first.wpilibj.GenericHID;
+import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.Filesystem;
+import edu.wpi.first.wpilibj.GenericHID;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
@@ -1433,6 +1434,49 @@ public final class BringupUtil {
     public boolean hasReverse() {
       return revDio >= 0;
     }
+  }
+
+  /**
+   * NAME
+   *   ensureDioInput - Lazily create a DigitalInput for a DIO channel.
+   *
+   * PARAMETERS
+   *   input - Current DigitalInput (may be null).
+   *   channel - DIO channel number (>=0 to create).
+   *
+   * RETURNS
+   *   Existing input or a newly created DigitalInput when configured.
+   *
+   * SIDE EFFECTS
+   *   Allocates a DigitalInput when the channel is valid.
+   */
+  public static DigitalInput ensureDioInput(DigitalInput input, int channel) {
+    if (channel < 0) {
+      return input;
+    }
+    if (input != null) {
+      return input;
+    }
+    return new DigitalInput(channel);
+  }
+
+  /**
+   * NAME
+   *   readLimitInput - Read a DIO input with optional inversion.
+   *
+   * PARAMETERS
+   *   input - DigitalInput to sample (may be null).
+   *   invert - Whether to invert the raw signal.
+   *
+   * RETURNS
+   *   True if closed, false if open, or null when input is absent.
+   */
+  public static Boolean readLimitInput(DigitalInput input, boolean invert) {
+    if (input == null) {
+      return null;
+    }
+    boolean raw = input.get();
+    return invert ? !raw : raw;
   }
 
   /**

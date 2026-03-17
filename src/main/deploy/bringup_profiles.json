@@ -1,5 +1,5 @@
 {
-  "default_profile": "cannectTests1",
+  "default_profile": "home_030226",
   "profiles": {
     "example_default": {
       "neos": [
@@ -256,7 +256,10 @@
         {
           "label": "SPARKMAX/NEO 25",
           "id": 25,
-          "motor": "REV NEO"
+          "motor": "REV NEO",
+          "tags": [
+            "motor"
+          ]
         }
       ],
       "neo550s": [
@@ -268,19 +271,31 @@
             "fwdDio": 0,
             "revDio": -1,
             "invert": true
-          }
+          },
+          "tags": [
+            "motor"
+          ]
         }
       ],
       "falcons": [
         {
           "label": "FALCON 9",
           "id": 9,
-          "motor": "CTRE Falcon 500"
+          "motor": "CTRE Falcon 500",
+          "tags": [
+            "motor"
+          ]
         }
       ],
+      "pdp": {
+        "label": "pdp",
+        "id": 1,
+        "terminator": true
+      },
       "roborio": {
         "label": "roboRIO",
-        "id": 0
+        "id": 0,
+        "terminator": true
       }
     },
     "reverse_eng_min1": {
@@ -799,8 +814,8 @@
           1360.0,
           1446.6666666666629
         ],
-        "panY": -191.15384615384616,
-        "zoom": 0.4778846153846154,
+        "panY": -239.23076923076923,
+        "zoom": 0.5980769230769231,
         "nodes": [
           {
             "nodeType": "device",
@@ -853,7 +868,7 @@
             "id": 41,
             "bus": 4,
             "row": 1,
-            "x": 700.0,
+            "x": 480.79109753175766,
             "freeY": 698.5897435897436,
             "scale": 1.0
           },
@@ -864,7 +879,7 @@
             "id": 12,
             "bus": 1,
             "row": 1,
-            "x": 122.0,
+            "x": 472.33333333333377,
             "freeY": 218.5897435897436,
             "scale": 1.0
           },
@@ -886,7 +901,7 @@
             "id": 32,
             "bus": 3,
             "row": 1,
-            "x": 122.0,
+            "x": 400.66666666666646,
             "freeY": 538.5897435897436,
             "scale": 1.0
           },
@@ -897,7 +912,7 @@
             "id": 42,
             "bus": 4,
             "row": 1,
-            "x": 122.0,
+            "x": 645.666666666666,
             "freeY": 698.5897435897436,
             "scale": 1.0
           },
@@ -941,8 +956,8 @@
             "id": 43,
             "bus": 4,
             "row": 1,
-            "x": 1278.0,
-            "freeY": 698.5897435897436,
+            "x": 855.666666666673,
+            "freeY": 704.1666666666667,
             "scale": 1.0
           },
           {
@@ -2414,6 +2429,107 @@
             "port": 1
           }
         ]
+      },
+      "home_030226": {
+        "busOffsets": [
+          0.0
+        ],
+        "busCount": 1,
+        "busSpacing": 160.0,
+        "busLefts": [
+          40.0
+        ],
+        "busRights": [
+          1388.0
+        ],
+        "panY": 0.0,
+        "zoom": 1.0,
+        "nodes": [
+          {
+            "nodeType": "device",
+            "key": 74,
+            "category": "neos",
+            "label": "SPARKMAX/NEO 25",
+            "id": 25,
+            "bus": 0,
+            "row": 0,
+            "x": 870.0,
+            "freeY": -62.5,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "motor"
+            ],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 75,
+            "category": "neo550s",
+            "label": "SPARKMAX/NEO550 7",
+            "id": 7,
+            "bus": 0,
+            "row": 0,
+            "x": 674.0,
+            "freeY": -64.5,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "motor"
+            ],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 76,
+            "category": "falcons",
+            "label": "FALCON 9",
+            "id": 9,
+            "bus": 0,
+            "row": 0,
+            "x": 482.0,
+            "freeY": -62.5,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "motor"
+            ],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 77,
+            "category": "roborio",
+            "label": "roboRIO",
+            "id": 0,
+            "bus": 0,
+            "row": 0,
+            "x": 210.0,
+            "freeY": -66.5,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 78,
+            "category": "pdp",
+            "label": "pdp",
+            "id": 1,
+            "bus": 0,
+            "row": 0,
+            "x": 1050.0,
+            "freeY": null,
+            "freeYRelative": false,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          }
+        ],
+        "ethernetLinks": [],
+        "canLinks": [],
+        "deviceLinks": []
       }
     }
   }

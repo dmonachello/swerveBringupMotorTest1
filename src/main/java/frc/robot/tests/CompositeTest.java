@@ -74,6 +74,7 @@ public final class CompositeTest implements BringupTest {
   private BringupTestResult result = BringupTestResult.NOT_RUN;
   private final java.util.List<DeviceUnit> motors = new java.util.ArrayList<>();
   private DeviceUnit encoder;
+  private DeviceUnit lastLimitDevice = null;
   private String encoderSource = "internal";
   private Integer encoderCountsPerRev = null;
   private double startRot = 0.0;
@@ -215,7 +216,7 @@ public final class CompositeTest implements BringupTest {
     }
 
     if (isLimitClosed() && isLimitCheckEnabled()) {
-      status = "Limit switch already closed";
+      status = buildLimitStatus("Limit switch already closed");
       result = BringupTestResult.FAIL;
       return false;
     }
@@ -265,7 +266,7 @@ public final class CompositeTest implements BringupTest {
     }
 
     if (isLimitCheckEnabled() && isLimitClosed()) {
-      status = "Limit switch hit";
+      status = buildLimitStatus("Limit switch hit");
       result = passOrFail(config.limitSwitch.onHit);
       stop(context);
       return;
@@ -281,7 +282,7 @@ public final class CompositeTest implements BringupTest {
       }
       double delta = Math.abs(rot - startRot);
       if (delta >= Math.abs(config.rotation.limitRot)) {
-        status = "Reached rotation limit";
+        status = buildRotationStatus("Reached rotation limit");
         result = BringupTestResult.PASS;
         stop(context);
         return;
@@ -422,6 +423,7 @@ public final class CompositeTest implements BringupTest {
     if (motors.isEmpty()) {
       return false;
     }
+    lastLimitDevice = null;
     for (DeviceUnit device : motors) {
       DeviceSnapshot snap = device.snapshot();
       if (snap == null) {
@@ -432,10 +434,34 @@ public final class CompositeTest implements BringupTest {
         continue;
       }
       if (Boolean.TRUE.equals(limits.fwdClosed) || Boolean.TRUE.equals(limits.revClosed)) {
+        lastLimitDevice = device;
         return true;
       }
     }
     return false;
+  }
+
+  private String buildLimitStatus(String base) {
+    if (lastLimitDevice == null) {
+      return base;
+    }
+    return base + " (" + formatDeviceLabel(lastLimitDevice) + ")";
+  }
+
+  private String buildRotationStatus(String base) {
+    if (encoder == null) {
+      return base;
+    }
+    return base + " (" + formatDeviceLabel(encoder) + ")";
+  }
+
+  private String formatDeviceLabel(DeviceUnit device) {
+    if (device == null) {
+      return "unknown";
+    }
+    String type = device.getDeviceType();
+    String label = type != null ? type : "device";
+    return label + " CAN " + device.getCanId();
   }
 
   /**

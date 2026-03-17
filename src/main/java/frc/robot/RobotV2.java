@@ -153,7 +153,7 @@ public class RobotV2 extends TimedRobot {
         bind,
         core,
         diagnostics,
-        this::printStartupInfo,
+        this::printBindings,
         this::printTestsInfo,
         this::printTestsOverview,
         runHeld);
@@ -264,13 +264,7 @@ public class RobotV2 extends TimedRobot {
     lastStartupPrintMs = nowMs;
     StringBuilder sb = new StringBuilder(512);
     ReportTextUtil.appendLine(sb, "=== Swerve Bringup V2 ===");
-    ReportTextUtil.appendLine(sb, "Bindings (from bringup_bindings.json):");
-    for (String line : bindings.describeBindings()) {
-      ReportTextUtil.appendLine(sb, "  " + line);
-    }
-    for (String line : bindings.describeAxes()) {
-      ReportTextUtil.appendLine(sb, "  " + line);
-    }
+    ReportTextUtil.appendLine(sb, "Build: " + BringupCore.getBuildMarker());
     ReportTextUtil.appendLine(sb, "Deadband: " + DEADBAND);
     ReportTextUtil.appendLine(sb, "Dashboard updates: " + (dashboardUpdatesEnabled ? "ON" : "OFF"));
     ReportTextUtil.appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
@@ -280,6 +274,30 @@ public class RobotV2 extends TimedRobot {
     ReportTextUtil.appendLine(sb, "KRAKEN CAN IDs: " + BringupUtil.joinIds(BringupUtil.KRAKEN_CAN_IDS));
     ReportTextUtil.appendLine(sb, "FALCON CAN IDs: " + BringupUtil.joinIds(BringupUtil.FALCON_CAN_IDS));
     ReportTextUtil.appendLine(sb, "=========================");
+    core.requestTextReport(sb.toString(), 4);
+  }
+
+  /**
+   * NAME
+   *   printBindings - Emit the command list on demand.
+   *
+   * DESCRIPTION
+   *   Prints the current controller bindings and axis mappings.
+   *
+   * SIDE EFFECTS
+   *   Enqueues a text report for throttled console output.
+   */
+  private void printBindings() {
+    StringBuilder sb = new StringBuilder(384);
+    ReportTextUtil.appendLine(sb, "=== Bringup Bindings ===");
+    ReportTextUtil.appendLine(sb, "Build: " + BringupCore.getBuildMarker());
+    for (String line : bindings.describeBindings()) {
+      ReportTextUtil.appendLine(sb, "  " + line);
+    }
+    for (String line : bindings.describeAxes()) {
+      ReportTextUtil.appendLine(sb, "  " + line);
+    }
+    ReportTextUtil.appendLine(sb, "========================");
     core.requestTextReport(sb.toString(), 4);
   }
 
@@ -298,6 +316,7 @@ public class RobotV2 extends TimedRobot {
     lastStartupPrintMs = nowMs;
     StringBuilder sb = new StringBuilder(256);
     ReportTextUtil.appendLine(sb, "=== Profile Updated ===");
+    ReportTextUtil.appendLine(sb, "Build: " + BringupCore.getBuildMarker());
     ReportTextUtil.appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
     ReportTextUtil.appendLine(sb, "NEO CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO_CAN_IDS));
     ReportTextUtil.appendLine(sb, "NEO 550 CAN IDs: " + BringupUtil.joinIds(BringupUtil.NEO550_CAN_IDS));

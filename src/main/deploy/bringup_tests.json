@@ -8,13 +8,31 @@
         "enabled": false,
         "duty": 0.2,
         "rotation": {
-          "limitRot": 5.0,
+          "limitRot": 15.0,
           "encoderKey": "internal",
           "encoderMotorIndex": 0
         },
         "motorKeys": [
           "REV:NEO:25"
         ]
+      },
+      {
+        "type": "deadbandSweep",
+        "name": "Deadband sweep (internal)",
+        "enabled": false,
+        "motorKeys": [
+          "REV:NEO:25"
+        ],
+        "deadbandSweep": {
+          "startDuty": 0.0,
+          "maxDuty": 0.2,
+          "stepDuty": 0.01,
+          "stepHoldSec": 0.25,
+          "motionThresholdRot": 0.02,
+          "requiredSamples": 3,
+          "encoderKey": "internal",
+          "encoderMotorIndex": 0
+        }
       },
       {
         "type": "composite",
@@ -105,7 +123,9 @@
           "onHit": "pass"
         },
         "motorKeys": [
-          "REV:NEO 550:7"
+          "REV:NEO 550:7",
+          "REV:NEO:25",
+          "CTRE:FALCON:9"
         ]
       },
       {

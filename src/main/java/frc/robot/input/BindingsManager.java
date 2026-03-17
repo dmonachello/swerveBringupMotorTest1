@@ -175,6 +175,7 @@ public final class BindingsManager {
     bindings.add(BindingSpec.edge("toggleTest", "secondary", "button", "X"));
     bindings.add(BindingSpec.hold("runTest", "secondary", "button", "A"));
     bindings.add(BindingSpec.edge("runAllTests", "secondary", "button", "B"));
+    bindings.add(BindingSpec.edge("printNextTest", "secondary", "button", "START"));
 
     bindings.add(BindingSpec.hold("fixedSpeed25", "secondary", "dpad", "UP"));
     bindings.add(BindingSpec.hold("fixedSpeed50", "secondary", "dpad", "RIGHT"));
@@ -198,6 +199,7 @@ public final class BindingsManager {
         "printBindings",
         "printTestsInfo",
         "printTestsOverview",
+        "printNextTest",
         "clearFaults",
         "dumpReport",
         "toggleDashboard",

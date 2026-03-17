@@ -90,6 +90,9 @@ public final class BringupCommandRouter {
     if (bind.pressed("printTestsOverview") && printTestsOverview != null) {
       printTestsOverview.run();
     }
+    if (bind.pressed("printNextTest")) {
+      core.printNextTestReport();
+    }
 
     if (diagnostics != null) {
       if (bind.pressed("printNTdiag")) {

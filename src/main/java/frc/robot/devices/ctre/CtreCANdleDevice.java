@@ -100,8 +100,10 @@ public final class CtreCANdleDevice implements DeviceUnit {
   @Override
   public void ensureCreated() {
     if (device != null) {
+      initLimitInputs();
       return;
     }
+    initLimitInputs();
     device = new CANdle(canId);
   }
 
@@ -245,12 +247,8 @@ public final class CtreCANdleDevice implements DeviceUnit {
    * Allocates DigitalInput instances when DIO channels are configured.
    */
   private void initLimitInputs() {
-    if (limitConfig.hasForward()) {
-      fwdLimit = new DigitalInput(limitConfig.fwdDio);
-    }
-    if (limitConfig.hasReverse()) {
-      revLimit = new DigitalInput(limitConfig.revDio);
-    }
+    fwdLimit = BringupUtil.ensureDioInput(fwdLimit, limitConfig.fwdDio);
+    revLimit = BringupUtil.ensureDioInput(revLimit, limitConfig.revDio);
   }
 
   /**
@@ -294,10 +292,6 @@ public final class CtreCANdleDevice implements DeviceUnit {
    * True if closed, false if open, or null when input is absent.
    */
   private Boolean readLimit(DigitalInput input) {
-    if (input == null) {
-      return null;
-    }
-    boolean raw = input.get();
-    return limitConfig.invert ? !raw : raw;
+    return BringupUtil.readLimitInput(input, limitConfig.invert);
   }
 }

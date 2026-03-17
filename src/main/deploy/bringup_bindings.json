@@ -152,6 +152,13 @@
       "mode": "edge"
     },
     {
+      "command": "printNextTest",
+      "controller": "secondary",
+      "input": "button",
+      "id": "START",
+      "mode": "edge"
+    },
+    {
       "command": "fixedSpeed25",
       "controller": "secondary",
       "input": "dpad",

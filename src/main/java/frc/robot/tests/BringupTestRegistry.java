@@ -142,6 +142,8 @@ public final class BringupTestRegistry {
         entries.add(composite.toEntry());
       } else if (test instanceof JoystickTest joystick) {
         entries.add(joystick.toEntry());
+      } else if (test instanceof DeadbandSweepTest sweep) {
+        entries.add(sweep.toEntry());
       }
     }
     Path path = resolveTestsPath();
@@ -185,6 +187,9 @@ public final class BringupTestRegistry {
     }
     if (JoystickTest.TYPE.equalsIgnoreCase(entry.type)) {
       return buildJoystick(entry);
+    }
+    if (DeadbandSweepTest.TYPE.equalsIgnoreCase(entry.type)) {
+      return buildDeadbandSweep(entry);
     }
     System.out.println("Warning: unknown test type '" + entry.type + "'.");
     return null;
@@ -360,6 +365,40 @@ public final class BringupTestRegistry {
 
   /**
    * NAME
+   *   buildDeadbandSweep - Build a DeadbandSweepTest from a JSON entry.
+   */
+  private static BringupTest buildDeadbandSweep(TestEntry entry) {
+    DeadbandSweepTest.Config config = new DeadbandSweepTest.Config();
+    config.name = entry.name != null ? entry.name : config.name;
+    config.enabled = entry.enabled != null ? entry.enabled.booleanValue() : config.enabled;
+    if (entry.motorKeys != null && !entry.motorKeys.isEmpty()) {
+      List<MotorRef> refs = new ArrayList<>();
+      for (String key : entry.motorKeys) {
+        MotorRef ref = parseDeviceRef(key);
+        if (ref != null) {
+          refs.add(ref);
+        }
+      }
+      config.motors = refs;
+    }
+    if (entry.deadbandSweep != null) {
+      DeadbandSweepTest.SweepConfig sweep = entry.deadbandSweep;
+      config.startDuty = sweep.startDuty;
+      config.maxDuty = sweep.maxDuty;
+      config.stepDuty = sweep.stepDuty;
+      config.stepHoldSec = sweep.stepHoldSec;
+      config.motionThresholdRot = sweep.motionThresholdRot;
+      config.requiredSamples = sweep.requiredSamples;
+      config.encoderKey = sweep.encoderKey != null ? sweep.encoderKey : config.encoderKey;
+      config.encoderSource = sweep.encoderSource;
+      config.encoderCountsPerRev = sweep.encoderCountsPerRev;
+      config.encoderMotorIndex = sweep.encoderMotorIndex;
+    }
+    return new DeadbandSweepTest(config);
+  }
+
+  /**
+   * NAME
    *   buildJoystick - Build a JoystickTest from a JSON entry.
    */
   private static BringupTest buildJoystick(TestEntry entry) {
@@ -528,6 +567,7 @@ public final class BringupTestRegistry {
     CompositeTest.TimeCheck time;
     CompositeTest.LimitSwitchCheck limitSwitch;
     CompositeTest.HoldCheck hold;
+    DeadbandSweepTest.SweepConfig deadbandSweep;
     Double deadband;
     String inputAxis;
     Integer encoderMotorIndex;

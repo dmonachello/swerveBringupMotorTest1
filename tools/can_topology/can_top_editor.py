@@ -117,6 +117,7 @@ class TopologyEditor(tk.Tk):
         self._profile_source_path: Optional[str] = None
         self._suppress_profile_select = False
         self._profile_names: List[str] = []
+        self._profile_pick_var = tk.StringVar(value="")
         self._callout_scale_var = tk.StringVar(value="1.00")
         self._callout_debug_vars = {
             "target_type": tk.StringVar(value="--"),
@@ -177,6 +178,7 @@ class TopologyEditor(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._build_ui()
         self._load_default_profile_if_present()
+        self._refresh_profile_choices()
         self._redraw_canvas()
 
     def _build_ui(self) -> None:
@@ -238,6 +240,20 @@ class TopologyEditor(tk.Tk):
         self.entry_profile.set(self._profile_name)
         self.entry_profile.pack(fill="x", pady=(2, 0))
         self.entry_profile.bind("<<ComboboxSelected>>", self._on_profile_select)
+        ttk.Label(bottom, text="Profiles").pack(anchor="w", pady=(6, 0))
+        profile_row = ttk.Frame(bottom)
+        profile_row.pack(fill="x", pady=(2, 0))
+        self.profile_combo = ttk.Combobox(
+            profile_row,
+            textvariable=self._profile_pick_var,
+            values=[],
+            state="readonly",
+        )
+        self.profile_combo.pack(side="left", fill="x", expand=True)
+        self.profile_combo.bind("<<ComboboxSelected>>", self._on_profile_pick)
+        ttk.Button(profile_row, text="Load", command=self._on_load_selected_profile).pack(
+            side="left", padx=(6, 0)
+        )
         self.var_set_default = tk.BooleanVar(value=False)
         ttk.Checkbutton(bottom, text="Set As Default", variable=self.var_set_default).pack(
             anchor="w", pady=(4, 8)
@@ -893,8 +909,19 @@ class TopologyEditor(tk.Tk):
         self._profile_source_path = path
         self._set_profile_names(names)
         self._suppress_profile_select = True
-        self.entry_profile.set(name)
+        try:
+            self.entry_profile.set(name)
+        except tk.TclError:
+            self.entry_profile.delete(0, tk.END)
+            self.entry_profile.insert(0, name)
         self._suppress_profile_select = False
+        if hasattr(self, "profile_combo"):
+            try:
+                values = self.profile_combo["values"]
+            except tk.TclError:
+                values = []
+            if name in values:
+                self._profile_pick_var.set(name)
         self._refresh_list()
         self._update_details_panel(None)
         if not diagram_applied:
@@ -934,6 +961,63 @@ class TopologyEditor(tk.Tk):
                 )
         except Exception:
             return
+
+    def _default_profiles_path(self) -> Path:
+        return Path(__file__).resolve().parents[2] / "src" / "main" / "deploy" / "bringup_profiles.json"
+
+    def _read_profile_index(self) -> Tuple[List[str], Optional[str]]:
+        try:
+            path = self._default_profiles_path()
+            if not path.exists():
+                return [], None
+            data = json.loads(path.read_text(encoding="utf-8"))
+            profiles = data.get("profiles")
+            if not isinstance(profiles, dict) or not profiles:
+                return [], None
+            names = sorted(profiles.keys())
+            default_name = data.get("default_profile")
+            return names, default_name if isinstance(default_name, str) else None
+        except Exception:
+            return [], None
+
+    def _refresh_profile_choices(self, keep_selection: bool = True) -> None:
+        names, default_name = self._read_profile_index()
+        self.profile_combo["values"] = names
+        if not names:
+            self._profile_pick_var.set("")
+            return
+        current = self._profile_pick_var.get()
+        if keep_selection and current in names:
+            return
+        if self._profile_name in names:
+            self._profile_pick_var.set(self._profile_name)
+            return
+        if default_name in names:
+            self._profile_pick_var.set(default_name)
+            return
+        self._profile_pick_var.set(names[0])
+
+    def _on_profile_pick(self, _event: tk.Event) -> None:
+        name = self._profile_pick_var.get().strip()
+        if name:
+            self.entry_profile.delete(0, tk.END)
+            self.entry_profile.insert(0, name)
+
+    def _on_load_selected_profile(self) -> None:
+        name = self._profile_pick_var.get().strip()
+        if not name:
+            messagebox.showerror("Invalid", "Select a profile first.")
+            return
+        path = self._default_profiles_path()
+        if not path.exists():
+            messagebox.showerror("Missing", f"No profiles file found at {path}.")
+            return
+        self._load_profile_from_path(
+            str(path),
+            ask_profile=False,
+            confirm_discard=True,
+            selected_name=name,
+        )
 
     def _choose_profile_name(self, names: List[str], default_name: Optional[str]) -> Optional[str]:
         """
@@ -1216,6 +1300,7 @@ class TopologyEditor(tk.Tk):
         if update_source:
             self._profile_source_path = str(path)
         self._set_profile_names(sorted(profiles.keys()))
+        self._refresh_profile_choices(keep_selection=False)
         messagebox.showinfo("Saved", f"Updated {path} with profile '{profile_name}'.")
 
     def _validate_nodes(self, nodes: Optional[List[Node]] = None) -> Optional[str]:
