@@ -9,8 +9,9 @@ import edu.wpi.first.networktables.NetworkTableValue;
 import edu.wpi.first.wpilibj.Filesystem;
 import frc.robot.diag.report.ReportJsonBuilder;
 import frc.robot.diag.report.ReportTextBuilder;
-import frc.robot.diag.snapshots.LedStatusAttachment;
+import frc.robot.diag.snapshots.BusSnapshot;
 import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.diag.snapshots.LedStatusAttachment;
 import frc.robot.diag.snapshots.PcSnapshot;
 import frc.robot.diag.snapshots.SnapshotBundle;
 import frc.robot.diag.led.LedStatusInference;
@@ -147,6 +148,105 @@ final class DiagnosticsReporter {
     }
     lastCanDiagPrintMs = nowMs;
     return buildCanDiagnosticsReport();
+  }
+
+  /**
+   * NAME
+   *   buildQuickSummary - Build a concise status summary.
+   *
+   * RETURNS
+   *   Multi-line summary of bus, PC tool, and device health.
+   */
+  String buildQuickSummary() {
+    SnapshotBundle bundle = buildSnapshotBundle();
+    StringBuilder sb = new StringBuilder(256);
+    ReportTextUtil.appendLine(sb, "=== Bringup Summary ===");
+    appendQuickBus(sb, bundle.bus);
+    appendQuickPc(sb, bundle.pc);
+    appendQuickDevices(sb, bundle.devices);
+    ReportTextUtil.appendLine(sb, "=======================");
+    return sb.toString();
+  }
+
+  /**
+   * NAME
+   *   appendQuickBus - Append concise bus status.
+   */
+  private void appendQuickBus(StringBuilder sb, BusSnapshot bus) {
+    if (bus == null || !bus.valid) {
+      ReportTextUtil.appendLine(sb, "Bus: NO_DATA");
+      return;
+    }
+    String util = String.format("%.1f%%", bus.utilizationPct);
+    ReportTextUtil.appendLine(
+        sb,
+        "Bus: util=" + util +
+        " rxErr=" + bus.rxErrors +
+        " txErr=" + bus.txErrors +
+        " busOff=" + bus.busOff);
+  }
+
+  /**
+   * NAME
+   *   appendQuickPc - Append concise PC tool status.
+   */
+  private void appendQuickPc(StringBuilder sb, PcSnapshot pc) {
+    if (pc == null) {
+      ReportTextUtil.appendLine(sb, "PC: NOT CONNECTED");
+      return;
+    }
+    String status = (pc.openOk && pc.heartbeatAgeSec >= 0.0 && pc.heartbeatAgeSec <= PC_STALE_HEARTBEAT_SEC)
+        ? "OK"
+        : "STALE";
+    String hb = pc.heartbeatAgeSec < 0 ? "-" : String.format("%.2fs", pc.heartbeatAgeSec);
+    ReportTextUtil.appendLine(
+        sb,
+        "PC: " + status +
+        " hb=" + hb +
+        " fps=" + formatDoubleOrDash(pc.framesPerSec, 1) +
+        " missing=" + pc.missingCount + "/" + pc.totalCount);
+  }
+
+  /**
+   * NAME
+   *   appendQuickDevices - Append device health counts.
+   */
+  private void appendQuickDevices(StringBuilder sb, java.util.List<DeviceSnapshot> devices) {
+    if (devices == null || devices.isEmpty()) {
+      ReportTextUtil.appendLine(sb, "Devices: none");
+      return;
+    }
+    int present = 0;
+    int missing = 0;
+    int suspicious = 0;
+    for (DeviceSnapshot snap : devices) {
+      if (snap.present) {
+        present++;
+      } else {
+        missing++;
+      }
+      CanSuspicionAttachment suspicion = snap.getAttachment(CanSuspicionAttachment.class);
+      if (suspicion != null && suspicion.likelyState != null && !suspicion.likelyState.isBlank()
+          && !"OK".equalsIgnoreCase(suspicion.likelyState)) {
+        suspicious++;
+      }
+    }
+    ReportTextUtil.appendLine(
+        sb,
+        "Devices: present=" + present + " missing=" + missing + " suspicious=" + suspicious);
+  }
+
+  /**
+   * NAME
+   *   getCanDiagCooldownRemainingMs - Return remaining cooldown for CAN reports.
+   *
+   * RETURNS
+   *   Milliseconds remaining before CAN diagnostics can print again (0 if ready).
+   */
+  long getCanDiagCooldownRemainingMs() {
+    long nowMs = System.currentTimeMillis();
+    long remaining = MIN_PRINT_INTERVAL_MS - (nowMs - lastCanDiagPrintMs);
+    return Math.max(0L, remaining);
   }
 
   /**

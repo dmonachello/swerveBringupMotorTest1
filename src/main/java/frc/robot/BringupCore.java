@@ -246,6 +246,28 @@ public final class BringupCore {
    *   Enqueues a report for console output.
    */
   public void runCanPingSweep() {
+    BringupPrinter.enqueueChunked(buildCanPingSweepText(), 6);
+  }
+
+  /**
+   * NAME
+   *   buildCanPingSweepReportText - Build the CAN ping sweep report text.
+   *
+   * RETURNS
+   *   Fully formatted CAN ping sweep report text.
+   */
+  public String buildCanPingSweepReportText() {
+    return buildCanPingSweepText();
+  }
+
+  /**
+   * NAME
+   *   buildCanPingSweepText - Build the CAN ping sweep report body.
+   *
+   * RETURNS
+   *   Report text describing local vendor CAN probe results.
+   */
+  private String buildCanPingSweepText() {
     StringBuilder sb = new StringBuilder(1024);
     appendLine(sb, "=== CAN Ping Sweep (Local Vendor API) ===");
     appendLine(sb, "Note: Devices must be added to be probed (use addAll).");
@@ -254,7 +276,7 @@ public final class BringupCore {
       appendSweepGroup(sb, group);
     }
     appendLine(sb, "==============================");
-    BringupPrinter.enqueueChunked(sb.toString(), 6);
+    return sb.toString();
   }
 
   // Stop all outputs, close devices, and reset internal state.
@@ -1074,6 +1096,34 @@ public final class BringupCore {
 
   /**
    * NAME
+   *   buildTextFromLines - Build a report string from header/body/footer.
+   *
+   * PARAMETERS
+   *   header - Optional header line.
+   *   lines - Body lines.
+   *   footer - Optional footer line.
+   *
+   * RETURNS
+   *   Joined report string.
+   */
+  private String buildTextFromLines(String header, List<String> lines, String footer) {
+    StringBuilder sb = new StringBuilder(256);
+    if (header != null && !header.isBlank()) {
+      appendLine(sb, header);
+    }
+    if (lines != null) {
+      for (String line : lines) {
+        appendLine(sb, line);
+      }
+    }
+    if (footer != null && !footer.isBlank()) {
+      appendLine(sb, footer);
+    }
+    return sb.toString();
+  }
+
+  /**
+   * NAME
    *   printNextTestReport - Print details for the selected and run-all next tests.
    *
    * DESCRIPTION
@@ -1084,6 +1134,18 @@ public final class BringupCore {
    *   Enqueues a report for throttled console output.
    */
   public void printNextTestReport() {
+    String report = buildNextTestReportText();
+    requestTextReport(report, 4);
+  }
+
+  /**
+   * NAME
+   *   buildNextTestReportText - Build the next test report text.
+   *
+   * RETURNS
+   *   Fully formatted next-test report text.
+   */
+  public String buildNextTestReportText() {
     List<String> lines = new ArrayList<>();
     lines.add("Build: " + BUILD_MARKER);
     if (activeTest != null && activeTest.isRunning()) {
@@ -1100,7 +1162,7 @@ public final class BringupCore {
     lines.add("Run-all next test:");
     appendTestDetails(lines, runAllNext);
 
-    requestTextReportLines("=== Bringup Next Test ===", lines, "==========================", 4);
+    return buildTextFromLines("=== Bringup Next Test ===", lines, "==========================");
   }
 
   /**
@@ -1390,6 +1452,37 @@ public final class BringupCore {
 
   /**
    * NAME
+   *   buildReportText - Build a full report text from a report job.
+   *
+   * PARAMETERS
+   *   job - Report job to execute.
+   *
+   * RETURNS
+   *   Fully formatted report text.
+   */
+  private String buildReportText(DeviceReportJob job) {
+    if (job == null) {
+      return "";
+    }
+    job.start();
+    job.step(Integer.MAX_VALUE);
+    return job.getBuffer().toString();
+  }
+
+  /**
+   * NAME
+   *   buildStateReportText - Build a full state report string.
+   *
+   * RETURNS
+   *   Fully formatted bringup state report.
+   */
+  public String buildStateReportText() {
+    return buildReportText(buildStateReport());
+  }
+
+
+  /**
+   * NAME
    *   getNextAddLabel - Build a short label for the next add target.
    *
    * RETURNS
@@ -1658,6 +1751,17 @@ public final class BringupCore {
 
   /**
    * NAME
+   *   buildHealthReportText - Build a full health report string.
+   *
+   * RETURNS
+   *   Fully formatted bringup health report.
+   */
+  public String buildHealthReportText() {
+    return buildReportText(buildHealthReport());
+  }
+
+  /**
+   * NAME
    *   buildCANCoderReport - Build a queued CANCoder report job.
    */
   private DeviceReportJob buildCANCoderReport() {
@@ -1669,6 +1773,17 @@ public final class BringupCore {
         items,
         (sb, item) -> appendCANCoderDevice(sb, item));
     return job;
+  }
+
+  /**
+   * NAME
+   *   buildCANCoderReportText - Build a full CANCoder report string.
+   *
+   * RETURNS
+   *   Fully formatted bringup CANCoder report.
+   */
+  public String buildCANCoderReportText() {
+    return buildReportText(buildCANCoderReport());
   }
 
   /**
@@ -1687,6 +1802,17 @@ public final class BringupCore {
     jobRef[0] = job;
     job.onComplete = () -> appendLine(job.buffer, "Note: Devices must be added to be probed (use addAll).");
     return job;
+  }
+
+  /**
+   * NAME
+   *   buildSweepReportText - Build a full CAN sweep report string.
+   *
+   * RETURNS
+   *   Fully formatted bringup sweep report.
+   */
+  public String buildSweepReportText() {
+    return buildReportText(buildSweepReport());
   }
 
   /**

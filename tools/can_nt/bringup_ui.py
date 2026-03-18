@@ -98,6 +98,8 @@ def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
             "Reports",
             [
                 ("State", "printState"),
+                ("Summary", "printSummary"),
+                ("Profile Devices", "printProfileDevices"),
                 ("CAN Bus", "printCANdiag"),
                 ("NT Diagnostics", "printNTdiag"),
                 ("Inputs", "printInputs"),
@@ -166,6 +168,7 @@ class TcpCommandClient:
         self._reader: Optional[threading.Thread] = None
         self._queue: "queue.Queue[Dict[str, Any]]" = queue.Queue()
         self._nt_connected = False
+        self._connected = False
         self._lock = threading.Lock()
 
     def is_connected(self) -> bool:
@@ -185,6 +188,7 @@ class TcpCommandClient:
         try:
             sock = socket.create_connection((self._host, self._port), timeout=timeout)
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            sock.settimeout(None)
             self._sock = sock
             self._connected = True
             self._reader = threading.Thread(target=self._read_loop, daemon=True)
@@ -262,8 +266,17 @@ class TcpCommandClient:
                             self._queue.put(payload)
                     except Exception:
                         continue
+        except Exception:
+            pass
         finally:
             self._connected = False
+            with self._lock:
+                if self._sock is sock:
+                    try:
+                        self._sock.close()
+                    except Exception:
+                        pass
+                    self._sock = None
 
 
 class BringupControlUI(tk.Tk):
@@ -314,6 +327,17 @@ class BringupControlUI(tk.Tk):
         self._session_id: Optional[str] = None
         self._handshake_done = False
         self._handshake_inflight = False
+        self._last_handshake_attempt = 0.0
+        self._handshake_min_interval = 2.0
+        self._ui_fail_interval = 5.0
+        self._ui_failures: Dict[str, Dict[str, Any]] = {}
+        self._prev_tcp_connected = False
+        self._log_poll_interval = 0.5
+        self._last_log_poll = 0.0
+        self._log_poll_inflight = False
+        self._log_poll_seq: Optional[int] = None
+        self._out_dedupe_window = 2.0
+        self._recent_out_lines: Dict[str, float] = {}
         self._seq_seeded = False
         self._last_cmd: Optional[Tuple[str, Optional[Dict[str, Any]]]] = None
         self._retry_pending = False
@@ -482,6 +506,8 @@ class BringupControlUI(tk.Tk):
             "addMotor": "Add the next motor from the active profile.",
             "addAll": "Add all motors from the active profile.",
             "printState": "Print current bringup state summary.",
+            "printSummary": "Print a concise system summary.",
+            "printProfileDevices": "Print active profile devices.",
             "printCANdiag": "Print local vendor API CAN diagnostics.",
             "printNTdiag": "Print PC tool NetworkTables diagnostics.",
             "printInputs": "Print controller and input status.",
@@ -797,6 +823,70 @@ class BringupControlUI(tk.Tk):
         self._output.insert("end", "\n".join(self._lines) + "\n")
         self._output.see("end")
         self._output.configure(state="disabled")
+
+    def _remember_out_line(self, line: str) -> None:
+        """
+        NAME
+            _remember_out_line - Record an OUT line for deduplication.
+        """
+        if not line:
+            return
+        now = time.time()
+        self._recent_out_lines[line] = now
+        self._purge_out_lines(now)
+
+    def _should_skip_out_line(self, line: str) -> bool:
+        """
+        NAME
+            _should_skip_out_line - Return true if line should be deduped.
+        """
+        if not line:
+            return True
+        now = time.time()
+        self._purge_out_lines(now)
+        seen = self._recent_out_lines.get(line)
+        if seen is None:
+            return False
+        return (now - seen) <= self._out_dedupe_window
+
+    def _purge_out_lines(self, now: float) -> None:
+        """
+        NAME
+            _purge_out_lines - Drop expired OUT lines from dedupe cache.
+        """
+        if not self._recent_out_lines:
+            return
+        cutoff = now - self._out_dedupe_window
+        stale = [line for line, ts in self._recent_out_lines.items() if ts < cutoff]
+        for line in stale:
+            self._recent_out_lines.pop(line, None)
+
+    def _notify_ui_failure(
+        self,
+        key: str,
+        is_failing: bool,
+        fail_message: str,
+        recovery_message: str,
+    ) -> None:
+        """
+        NAME
+            _notify_ui_failure - Log throttled failure/recovery messages.
+        """
+        now = time.time()
+        state = self._ui_failures.get(key)
+        if state is None:
+            state = {"active": False, "last_log": 0.0}
+            self._ui_failures[key] = state
+        if is_failing:
+            if not state["active"] or (now - state["last_log"]) >= self._ui_fail_interval:
+                self._append_output(f"{time.strftime('%H:%M:%S')} {fail_message}")
+                state["last_log"] = now
+            state["active"] = True
+        else:
+            if state["active"]:
+                self._append_output(f"{time.strftime('%H:%M:%S')} {recovery_message}")
+                state["active"] = False
+                state["last_log"] = now
     
     def _clear_output(self) -> None:
         """
@@ -838,7 +928,7 @@ class BringupControlUI(tk.Tk):
             return None
         return seq
 
-    def _send_handshake(self, reset: bool, force: bool = False) -> None:
+    def _send_handshake(self, reset: bool, force: bool = False, log: bool = True) -> None:
         """
         NAME
             _send_handshake - Send a UI handshake command.
@@ -855,9 +945,10 @@ class BringupControlUI(tk.Tk):
             self._pending_out = False
             self._pending_since = None
         payload = {"clientId": self._client_id, "reset": reset}
-        ts = time.strftime("%H:%M:%S")
-        label = "uiHandshake (reset)" if reset else "uiHandshake"
-        self._append_output(f"{ts} CMD {label}")
+        if log:
+            ts = time.strftime("%H:%M:%S")
+            label = "uiHandshake (reset)" if reset else "uiHandshake"
+            self._append_output(f"{ts} CMD {label}")
         seq = self._send_tcp_command("uiHandshake", payload)
         if seq is not None:
             self._pending = True
@@ -866,6 +957,7 @@ class BringupControlUI(tk.Tk):
             self._pending_out = True
             self._pending_since = time.time()
             self._handshake_inflight = True
+            self._last_handshake_attempt = time.time()
             self._last_cmd = ("uiHandshake", payload)
 
     def _send_disconnect(self, force: bool = False) -> None:
@@ -961,7 +1053,7 @@ class BringupControlUI(tk.Tk):
         if not command:
             return
         if command == "uiHandshakeReset":
-            self._send_handshake(reset=True, force=True)
+            self._send_handshake(reset=True, force=True, log=True)
             return
         if command == "uiDisconnect":
             self._send_disconnect()
@@ -1033,6 +1125,22 @@ class BringupControlUI(tk.Tk):
             self._last_connect_attempt = now
             self._tcp_connected = self._tcp.connect()
         self._tcp_connected = self._tcp.is_connected()
+        if self._tcp_connected != self._prev_tcp_connected:
+            if self._tcp_connected:
+                self._notify_ui_failure(
+                    "tcp",
+                    False,
+                    "TCP disconnected.",
+                    "TCP reconnected.",
+                )
+            else:
+                self._notify_ui_failure(
+                    "tcp",
+                    True,
+                    "TCP disconnected.",
+                    "TCP reconnected.",
+                )
+            self._prev_tcp_connected = self._tcp_connected
         if not self._tcp_connected:
             self._handshake_done = False
             self._handshake_inflight = False
@@ -1044,6 +1152,8 @@ class BringupControlUI(tk.Tk):
             if session_id and session_id != self._session_id:
                 self._session_id = session_id
                 self._handshake_done = False
+                self._handshake_inflight = False
+                self._last_handshake_attempt = 0.0
             enabled = self._ui_table.getEntry("state/enabled").getBoolean(True)
             estopped = self._ui_table.getEntry("state/estopped").getBoolean(False)
             mode = self._ui_table.getEntry("state/mode").getString("disabled")
@@ -1081,8 +1191,12 @@ class BringupControlUI(tk.Tk):
         self._pending = self._pending_ack or self._pending_out
         if self._pending and self._pending_since is not None:
             if (time.time() - self._pending_since) > self._timeout_sec:
-                ts = time.strftime("%H:%M:%S")
-                self._append_output(f"{ts} TIMEOUT waiting for ACK/OUT.")
+                self._notify_ui_failure(
+                    "cmd_timeout",
+                    True,
+                    "TIMEOUT waiting for ACK/OUT.",
+                    "Recovered: command responses received.",
+                )
                 self._pending = False
                 self._pending_ack = False
                 self._pending_out = False
@@ -1133,8 +1247,21 @@ class BringupControlUI(tk.Tk):
             and not self._handshake_done
             and not self._handshake_inflight
             and not self._pending
+            and (time.time() - self._last_handshake_attempt) >= self._handshake_min_interval
         ):
-            self._send_handshake(reset=False)
+            self._send_handshake(reset=False, log=False)
+        if (
+            self._tcp_connected
+            and self._handshake_done
+            and not self._pending
+            and not self._log_poll_inflight
+            and (now - self._last_log_poll) >= self._log_poll_interval
+        ):
+            seq = self._send_tcp_command("uiPollLog", None)
+            if seq is not None:
+                self._log_poll_inflight = True
+                self._log_poll_seq = seq
+                self._last_log_poll = now
         self._update_action_enabled()
         self.after(250, self._poll_nt)
 
@@ -1144,6 +1271,30 @@ class BringupControlUI(tk.Tk):
             _handle_tcp_response - Handle an inbound TCP response payload.
         """
         msg_type = str(payload.get("type", "")).lower()
+        name = str(payload.get("name", "")).strip()
+        seq = payload.get("seq")
+        seq_match = isinstance(seq, (int, float)) and self._log_poll_seq is not None and int(seq) == int(self._log_poll_seq)
+        if msg_type in ("ack", "out") and (name.lower() == "uipolllog" or seq_match):
+            if msg_type == "out":
+                text = str(payload.get("text", ""))
+                if text:
+                    for line in text.splitlines():
+                        if self._should_skip_out_line(line):
+                            continue
+                        self._append_output(line)
+                self._log_poll_inflight = False
+                self._log_poll_seq = None
+            elif msg_type == "ack":
+                self._log_poll_inflight = False
+                self._log_poll_seq = None
+            return
+        if msg_type in ("ack", "out"):
+            self._notify_ui_failure(
+                "cmd_timeout",
+                False,
+                "TIMEOUT waiting for ACK/OUT.",
+                "Recovered: command responses received.",
+            )
         if msg_type == "ack":
             seq = int(payload.get("seq", -1))
             name = str(payload.get("name", ""))
@@ -1165,6 +1316,7 @@ class BringupControlUI(tk.Tk):
             self._append_output(header)
             if text:
                 for line in text.splitlines():
+                    self._remember_out_line(line)
                     self._append_output(f"  {line}")
             if json_payload:
                 if isinstance(json_payload, dict):

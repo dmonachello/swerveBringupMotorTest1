@@ -23,6 +23,7 @@ public final class BringupPrinter {
   private static final AtomicLong DROPPED_MESSAGES = new AtomicLong(0);
   private static final AtomicLong DROPPED_BYTES = new AtomicLong(0);
   private static final Object START_LOCK = new Object();
+  private static volatile LineListener LINE_LISTENER = null;
   private static volatile boolean started = false;
 
   private BringupPrinter() {}
@@ -41,6 +42,10 @@ public final class BringupPrinter {
     // Fast path: ignore empty messages to avoid queue churn.
     if (text == null || text.isEmpty()) {
       return;
+    }
+    LineListener listener = LINE_LISTENER;
+    if (listener != null) {
+      listener.onLine(text);
     }
     int bytes = text.length();
     long queued = QUEUED_BYTES.addAndGet(bytes);
@@ -93,6 +98,25 @@ public final class BringupPrinter {
     if (chunk.length() > 0) {
       enqueue(chunk.toString());
     }
+  }
+
+  /**
+   * NAME
+   *   LineListener - Callback for queued console lines.
+   */
+  public interface LineListener {
+    void onLine(String text);
+  }
+
+  /**
+   * NAME
+   *   setLineListener - Register a listener for queued output.
+   *
+   * PARAMETERS
+   *   listener - Callback to invoke when output is enqueued (null disables).
+   */
+  public static void setLineListener(LineListener listener) {
+    LINE_LISTENER = listener;
   }
 
   /**

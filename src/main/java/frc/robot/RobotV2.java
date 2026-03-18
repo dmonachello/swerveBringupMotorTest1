@@ -25,6 +25,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * NAME
@@ -77,6 +78,9 @@ public class RobotV2 extends TimedRobot {
   private long lastTcpSeq = -1;
   private static final long TCP_CMD_TIMEOUT_MS = 1000;
   private final ConcurrentLinkedQueue<TcpPendingCommand> tcpCommandQueue = new ConcurrentLinkedQueue<>();
+  private static final int UI_LOG_MAX_LINES = 200;
+  private final ConcurrentLinkedQueue<String> uiLogQueue = new ConcurrentLinkedQueue<>();
+  private final AtomicInteger uiLogCount = new AtomicInteger(0);
   private static final int UI_TCP_PORT = 5809;
   private TcpUiServer uiTcpServer;
   private boolean uiProtocolMonitorEnabled = false;
@@ -103,6 +107,7 @@ public class RobotV2 extends TimedRobot {
     BringupTestRegistry.setOverrideTestsPath(testsOverride);
     core = new BringupCore();
     diagnostics = new DiagnosticsReporter(core, canHealth, diagTable);
+    BringupPrinter.setLineListener(this::onBringupLine);
     uiTcpServer = new TcpUiServer(
         UI_TCP_PORT,
         this::handleTcpUiCommand,
@@ -469,6 +474,8 @@ public class RobotV2 extends TimedRobot {
     boolean locked = activeUiClientId != null && !activeUiClientId.isBlank();
     boolean isHandshake = "uiHandshake".equals(name);
     boolean isDisconnect = "uiDisconnect".equals(name);
+    boolean allowWhenDisabled =
+        "printProfileDevices".equals(name) || "printSummary".equals(name) || "uiPollLog".equals(name);
     boolean isEnabled = DriverStation.isEnabled();
     boolean isEStopped = DriverStation.isEStopped();
 
@@ -481,7 +488,7 @@ public class RobotV2 extends TimedRobot {
     } else if (!locked && !isHandshake && !isDisconnect) {
       result.ok = false;
       result.message = "UI handshake required before commands.";
-    } else if (!isHandshake && !isDisconnect && !isEnabled) {
+    } else if (!isHandshake && !isDisconnect && !allowWhenDisabled && !isEnabled) {
       result.ok = false;
       result.message = isEStopped ? "Robot disabled (E-Stop)." : "Robot disabled.";
     }
@@ -533,6 +540,9 @@ public class RobotV2 extends TimedRobot {
         uiTcpTable.getEntry("connected").setBoolean(false);
         result.message = "Protocol monitor disabled.";
         break;
+      case "uiPollLog":
+        result.outText = drainUiLog();
+        break;
       case "profileToggle":
         BringupUtil.toggleCanProfile();
         resetCoreForProfile("profileToggle");
@@ -547,21 +557,38 @@ public class RobotV2 extends TimedRobot {
         result.message = "Add all motors.";
         break;
       case "printState":
-        core.requestStateReport();
+        String stateReport = core.buildStateReportText();
+        core.requestTextReport(stateReport, 4);
+        result.outText = stateReport;
+        break;
+      case "printSummary":
+        if (diagnostics != null) {
+          String summary = diagnostics.buildQuickSummary();
+          core.requestTextReport(summary, 4);
+          result.outText = summary;
+        } else {
+          result.ok = false;
+          result.message = "Diagnostics unavailable.";
+        }
         break;
       case "printHealth":
-        core.requestHealthReport();
+        String healthReport = core.buildHealthReportText();
+        core.requestTextReport(healthReport, 4);
+        result.outText = healthReport;
         break;
       case "printCANcoder":
-        core.requestCANCoderReport();
+        String canCoderReport = core.buildCANCoderReportText();
+        core.requestTextReport(canCoderReport, 4);
+        result.outText = canCoderReport;
         break;
       case "printInputs":
-        core.requestTextReport(
+        String inputsReport =
             "Inputs: leftY=" + String.format("%.2f", lastNeoSpeed) +
             " rightY=" + String.format("%.2f", lastKrakenSpeed) +
             " (NEO/FLEX=" + String.format("%.2f", lastNeoSpeed) +
-            ", KRAKEN/FALCON=" + String.format("%.2f", lastKrakenSpeed) + ")",
-            4);
+            ", KRAKEN/FALCON=" + String.format("%.2f", lastKrakenSpeed) + ")";
+        core.requestTextReport(inputsReport, 4);
+        result.outText = inputsReport;
         break;
       case "toggleTest":
         core.toggleSelectedBringupTestEnabled();
@@ -576,16 +603,21 @@ public class RobotV2 extends TimedRobot {
         core.runAllBringupTests();
         break;
       case "printNextTest":
-        core.printNextTestReport();
+        String nextTestReport = core.buildNextTestReportText();
+        core.requestTextReport(nextTestReport, 4);
+        result.outText = nextTestReport;
         break;
       case "printBindings":
-        printBindings();
+        result.outText = printBindings();
+        break;
+      case "printProfileDevices":
+        result.outText = printProfileDevices();
         break;
       case "printTestsInfo":
-        printTestsInfo();
+        result.outText = printTestsInfo();
         break;
       case "printTestsOverview":
-        printTestsOverview();
+        result.outText = printTestsOverview();
         break;
       case "selectTestByName":
         String testName = parseUiArgName(args);
@@ -615,7 +647,9 @@ public class RobotV2 extends TimedRobot {
         break;
       case "canSweep":
         BringupPrinter.enqueue("Command: canSweep (UI)");
-        core.runCanPingSweep();
+        String sweepReport = core.buildCanPingSweepReportText();
+        core.requestTextReport(sweepReport, 6);
+        result.outText = sweepReport;
         break;
       case "fixedSpeed25":
         uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 0.25);
@@ -638,6 +672,11 @@ public class RobotV2 extends TimedRobot {
           String report = diagnostics.buildNetworkDiagnosticsReportIfReady();
           if (report != null) {
             core.requestTextReport(report, 4);
+            result.outText = report;
+          } else {
+            String message = "Network diagnostics rate-limited; try again shortly.";
+            core.requestTextReport(message, 4);
+            result.outText = message;
           }
         } else {
           result.ok = false;
@@ -649,6 +688,18 @@ public class RobotV2 extends TimedRobot {
           String report = diagnostics.buildCanDiagnosticsReportIfReady();
           if (report != null) {
             core.requestTextReport(report, 4);
+            result.outText = report;
+          } else {
+            long remainingMs = diagnostics.getCanDiagCooldownRemainingMs();
+            String message;
+            if (remainingMs > 0) {
+              double remainingSec = remainingMs / 1000.0;
+              message = String.format("CAN diagnostics rate-limited, try again in %.1fs.", remainingSec);
+            } else {
+              message = "CAN diagnostics not ready yet.";
+            }
+            core.requestTextReport(message, 4);
+            result.outText = message;
           }
         } else {
           result.ok = false;
@@ -660,11 +711,17 @@ public class RobotV2 extends TimedRobot {
           String json = diagnostics.buildReportJsonForDump();
           String wrapped = ReportTextUtil.wrapLongLine(json, 120);
           core.requestTextReport(wrapped, 4);
+          StringBuilder dumpOut = new StringBuilder(wrapped);
           if (diagnostics.writeReportJsonToFile(json)) {
             core.requestTextReport("Wrote CAN report JSON to " + diagnostics.getReportPath(), 4);
+            dumpOut.append('\n')
+                .append("Wrote CAN report JSON to ")
+                .append(diagnostics.getReportPath());
           } else {
             core.requestTextReport("Failed to write CAN report JSON.", 4);
+            dumpOut.append('\n').append("Failed to write CAN report JSON.");
           }
+          result.outText = dumpOut.toString();
         } else {
           result.ok = false;
           result.message = "Diagnostics unavailable.";
@@ -676,7 +733,13 @@ public class RobotV2 extends TimedRobot {
         break;
     }
 
-    result.outText = result.message;
+    if (result.outText == null || result.outText.isBlank()) {
+      if (!result.ok) {
+        result.outText = result.message;
+      } else {
+        result.outText = "";
+      }
+    }
     return result;
   }
 
@@ -879,10 +942,13 @@ public class RobotV2 extends TimedRobot {
    * DESCRIPTION
    *   Prints the current controller bindings and axis mappings.
    *
+   * RETURNS
+   *   Full bindings report text.
+   *
    * SIDE EFFECTS
    *   Enqueues a text report for throttled console output.
    */
-  private void printBindings() {
+  private String printBindings() {
     StringBuilder sb = new StringBuilder(384);
     ReportTextUtil.appendLine(sb, "=== Bringup Bindings ===");
     ReportTextUtil.appendLine(sb, "Build: " + BringupCore.getBuildMarker());
@@ -893,7 +959,9 @@ public class RobotV2 extends TimedRobot {
       ReportTextUtil.appendLine(sb, "  " + line);
     }
     ReportTextUtil.appendLine(sb, "========================");
-    core.requestTextReport(sb.toString(), 4);
+    String report = sb.toString();
+    core.requestTextReport(report, 4);
+    return report;
   }
 
   /**
@@ -916,6 +984,88 @@ public class RobotV2 extends TimedRobot {
     appendDeviceSummary(sb);
     ReportTextUtil.appendLine(sb, "========================");
     core.requestTextReport(sb.toString(), 4);
+  }
+
+  /**
+   * NAME
+   *   onBringupLine - Mirror queued console output into the UI log.
+   *
+   * PARAMETERS
+   *   text - Console output chunk to store for UI polling.
+   *
+   * SIDE EFFECTS
+   *   Appends to the UI log queue, trimming old entries.
+   */
+  private void onBringupLine(String text) {
+    if (text == null || text.isBlank()) {
+      return;
+    }
+    String[] lines = text.split("\\R");
+    for (String line : lines) {
+      if (line == null || line.isBlank()) {
+        continue;
+      }
+      uiLogQueue.add(line);
+      int count = uiLogCount.incrementAndGet();
+      while (count > UI_LOG_MAX_LINES) {
+        String dropped = uiLogQueue.poll();
+        if (dropped == null) {
+          count = uiLogCount.get();
+          break;
+        }
+        count = uiLogCount.decrementAndGet();
+      }
+    }
+  }
+
+  /**
+   * NAME
+   *   drainUiLog - Drain buffered UI log lines into a single payload.
+   *
+   * RETURNS
+   *   Newline-joined UI log text, or an empty string if none.
+   */
+  private String drainUiLog() {
+    if (uiLogQueue.isEmpty()) {
+      return "";
+    }
+    StringBuilder sb = new StringBuilder(256);
+    String line;
+    boolean first = true;
+    while ((line = uiLogQueue.poll()) != null) {
+      uiLogCount.decrementAndGet();
+      if (!first) {
+        sb.append('\n');
+      }
+      sb.append(line);
+      first = false;
+    }
+    return sb.toString();
+  }
+
+  /**
+   * NAME
+   *   printProfileDevices - Emit active profile devices on demand.
+   *
+   * DESCRIPTION
+   *   Prints the active CAN profile label and configured device list.
+   *
+   * RETURNS
+   *   Full profile device report text.
+   *
+   * SIDE EFFECTS
+   *   Enqueues a text report for throttled console output.
+   */
+  private String printProfileDevices() {
+    StringBuilder sb = new StringBuilder(256);
+    ReportTextUtil.appendLine(sb, "=== Active Profile Devices ===");
+    ReportTextUtil.appendLine(sb, "Build: " + BringupCore.getBuildMarker());
+    ReportTextUtil.appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
+    appendDeviceSummary(sb);
+    ReportTextUtil.appendLine(sb, "===============================");
+    String report = sb.toString();
+    core.requestTextReport(report, 4);
+    return report;
   }
 
   /**
@@ -964,10 +1114,13 @@ public class RobotV2 extends TimedRobot {
    * DESCRIPTION
    *   Reports resolved test file path, metadata, and active test set info.
    *
+   * RETURNS
+   *   Full tests info report text.
+   *
    * SIDE EFFECTS
    *   Enqueues a text report for throttled console output.
    */
-  private void printTestsInfo() {
+  private String printTestsInfo() {
     BringupTestRegistry.TestsInfo info = BringupTestRegistry.getTestsInfo();
     StringBuilder sb = new StringBuilder(256);
     ReportTextUtil.appendLine(sb, "=== Bringup Tests Info ===");
@@ -1005,21 +1158,27 @@ public class RobotV2 extends TimedRobot {
       }
     }
     ReportTextUtil.appendLine(sb, "==========================");
-    core.requestTextReport(sb.toString(), 4);
+    String report = sb.toString();
+    core.requestTextReport(report, 4);
+    return report;
   }
 
   /**
    * NAME
    *   printTestsOverview - Emit and publish a tests overview snapshot.
    *
+   * RETURNS
+   *   Full tests overview report text.
+   *
    * SIDE EFFECTS
    *   Enqueues a text report and updates NetworkTables.
    */
-  private void printTestsOverview() {
+  private String printTestsOverview() {
     BringupCore.TestsOverview overview = core.buildTestsOverview();
     String text = core.formatTestsOverview(overview);
     core.requestTextReport(text, 6);
     publishTestsOverview(overview);
+    return text;
   }
 
   /**
