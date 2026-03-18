@@ -407,6 +407,7 @@ class TopologyEditor(tk.Tk):
         layout_menu.add_command(label="Tidy Selection", command=self._tidy_selection)
         layout_menu.add_separator()
         layout_menu.add_command(label="Reset Layout", command=self._layout_even)
+        layout_menu.add_command(label="Single Bus Layout", command=self._layout_single_bus)
         menu.add_cascade(label="Layout", menu=layout_menu)
         view_menu = tk.Menu(menu, tearoff=False)
         view_menu.add_command(label="Zoom In", command=lambda: self._zoom_step(0.1))
@@ -2981,6 +2982,40 @@ class TopologyEditor(tk.Tk):
         self._clear_guides()
         self._redraw_canvas()
 
+    def _layout_single_bus(self) -> None:
+        """
+        NAME
+            _layout_single_bus - Arrange all device nodes on one bus segment.
+        """
+        if not self._nodes:
+            self._redraw_canvas()
+            return
+        self._push_undo()
+        self._bus_offsets = [0.0]
+        self._bus_lefts = self._bus_lefts[:1] if self._bus_lefts else [40.0]
+        self._bus_rights = self._bus_rights[:1] if self._bus_rights else []
+        devices = self._device_nodes()
+        for node in devices:
+            node.bus_index = 0
+            node.row = 0
+            node.free_y = 0.0
+        max_x = max((n.x for n in devices), default=0.0)
+        if not self._bus_rights:
+            self._bus_rights = [max_x + 400.0]
+        eff_lefts, eff_rights = self._effective_bus_bounds()
+        reset_layout_per_bus(
+            devices,
+            eff_lefts,
+            eff_rights,
+            self._box_w,
+            bool(self._snap_to_grid_var.get()),
+            int(self._grid_size_var.get() or 1),
+        )
+        max_x = max((n.x for n in self._nodes), default=0.0)
+        self._layout_width = max(self._layout_width, max_x + 200)
+        self._clear_guides()
+        self._redraw_canvas()
+
     def _selected_device_nodes(self) -> List[Node]:
         """
         NAME
@@ -5170,6 +5205,7 @@ class TopologyEditor(tk.Tk):
                 "- Use arrow keys to nudge selections without re-dragging.\n"
                 "- Tidy Selection aligns selected nodes into shared columns.\n"
                 "- Reset Layout preserves bus/row and evens per-bus spacing.\n"
+                "- Single Bus Layout puts all devices on one bus line.\n"
                 "- Align/Distribute tools are under the Layout menu.\n"
             ),
             "Tags": (
