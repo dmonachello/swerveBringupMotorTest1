@@ -85,6 +85,19 @@ Examples:
 - `RevDeviceGroup`
 - `CtreDeviceGroup`
 
+### Adding a Manufacturer
+Purpose: document the single edit point and the required implementation pattern.
+
+Steps:
+1. Implement a new `ManufacturerGroup` in `src/main/java/frc/robot/manufacturers/` (or vendor package).
+2. Register it in `src/main/java/frc/robot/manufacturers/ManufacturerRegistry.java`.
+3. Use standard `DeviceRegistration` + `DeviceTypeBucket` APIs inside the group.
+
+Example registry entry:
+```java
+new ManufacturerFactory("ACME", AcmeDeviceGroup::new)
+```
+
 ### 3) Bringup Core + Test Orchestration (top)
 Purpose: input actions, testing, and reporting are orchestrated without vendor coupling.
 
@@ -120,6 +133,21 @@ Purpose: passive CAN capture feeds diagnostics publishing.
 
 ## Data Flow
 Purpose: data moves through defined stages from inputs to reports.
+
+### H) Initialization Flow (Robot)
+Purpose: document the one-time startup sequence and core object construction.
+
+1. `Main` calls `RobotBase.startRobot(RobotV2::new)` to launch the active harness.
+2. `RobotV2.robotInit()` runs once:
+   - Applies the active CAN profile (`BringupUtil.applyProfileFromArgs()`).
+   - Applies optional test file override (`BringupTestRegistry.setOverrideTestsPath(...)`).
+   - Constructs `BringupCore` (see below) and `DiagnosticsReporter`.
+   - Applies dashboard state, prints startup info, and validates CAN IDs.
+3. `BringupCore` construction:
+   - Builds manufacturer groups via `ManufacturerRegistry.buildGroups()`.
+   - Builds `BringupTestContext` from the group list.
+   - Loads tests via `BringupTestRegistry.loadTests()`.
+   - Initializes selectable tests and test device lists.
 
 ### A) Startup + Configuration Load
 Purpose: profiles, bindings, and tests load in a predictable order.

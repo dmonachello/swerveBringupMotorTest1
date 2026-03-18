@@ -7,14 +7,13 @@ import frc.robot.diag.snapshots.EncoderAttachment;
 import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.diag.snapshots.MotorSpecAttachment;
 import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
-import frc.robot.manufacturers.CtreDeviceGroup;
 import frc.robot.manufacturers.DeviceAddResult;
 import frc.robot.manufacturers.DeviceRole;
 import frc.robot.manufacturers.DeviceTypeBucket;
 import frc.robot.manufacturers.ManufacturerGroup;
+import frc.robot.manufacturers.ManufacturerRegistry;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
-import frc.robot.manufacturers.RevDeviceGroup;
 import frc.robot.tests.BringupTest;
 import frc.robot.tests.BringupTestContext;
 import frc.robot.tests.BringupTestRegistry;
@@ -44,12 +43,13 @@ public final class BringupCore {
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
   private static final int REPORT_BATCH = 2;
 
-  private final RevDeviceGroup revDevices = new RevDeviceGroup();
-  private final CtreDeviceGroup ctreDevices = new CtreDeviceGroup();
+  private final List<ManufacturerGroup> manufacturerGroups = ManufacturerRegistry.buildGroups();
+  private final Map<String, ManufacturerGroup> manufacturerByVendor =
+      ManufacturerRegistry.indexByVendor(manufacturerGroups);
   private PdhStatusReader pdhReader;
   private int pdhReaderCanId = BringupUtil.DISABLED_CAN_ID;
 
-  private boolean addRevNext = true;
+  private int nextMotorGroupIndex = 0;
 
   private boolean prevAdd = false;
   private boolean prevAddAll = false;
@@ -85,10 +85,7 @@ public final class BringupCore {
    *   Loads bringup tests and initializes device groups.
    */
   public BringupCore() {
-    List<ManufacturerGroup> groups = new ArrayList<>();
-    groups.add(revDevices);
-    groups.add(ctreDevices);
-    testContext = new BringupTestContext(groups);
+    testContext = new BringupTestContext(manufacturerGroups);
     bringupTests.addAll(BringupTestRegistry.loadTests());
     refreshSelectableTests();
     refreshTestDevices();
@@ -208,8 +205,8 @@ public final class BringupCore {
     if (activeTest != null && activeTest.isRunning()) {
       return;
     }
-    revDevices.setDuty(neoSpeed);
-    ctreDevices.setDuty(krakenSpeed);
+    setDutyByVendor("REV", neoSpeed);
+    setDutyByVendor("CTRE", krakenSpeed);
   }
 
   /**
@@ -236,8 +233,9 @@ public final class BringupCore {
    *   clearAllFaults - Clear sticky and current faults where supported.
    */
   public void clearAllFaults() {
-    revDevices.clearFaults();
-    ctreDevices.clearFaults();
+    for (ManufacturerGroup group : manufacturerGroups) {
+      group.clearFaults();
+    }
   }
 
   /**
@@ -251,10 +249,10 @@ public final class BringupCore {
     StringBuilder sb = new StringBuilder(1024);
     appendLine(sb, "=== CAN Ping Sweep (Local Vendor API) ===");
     appendLine(sb, "Note: Devices must be added to be probed (use addAll).");
-    appendLine(sb, "--- REV ---");
-    appendSweepGroup(sb, revDevices);
-    appendLine(sb, "--- CTRE ---");
-    appendSweepGroup(sb, ctreDevices);
+    for (ManufacturerGroup group : manufacturerGroups) {
+      appendLine(sb, "--- " + group.getHeader().vendor() + " ---");
+      appendSweepGroup(sb, group);
+    }
     appendLine(sb, "==============================");
     BringupPrinter.enqueueChunked(sb.toString(), 6);
   }
@@ -288,14 +286,16 @@ public final class BringupCore {
     }
     activeTest = null;
     refreshSelectableTests();
-    revDevices.stopAll();
-    ctreDevices.stopAll();
+    for (ManufacturerGroup group : manufacturerGroups) {
+      group.stopAll();
+    }
     forceStopAllMotorOutputs();
-    revDevices.closeAll();
-    ctreDevices.closeAll();
-    revDevices.resetLowCurrentTimers();
+    for (ManufacturerGroup group : manufacturerGroups) {
+      group.closeAll();
+    }
+    resetLowCurrentTimers();
 
-    addRevNext = true;
+    nextMotorGroupIndex = 0;
 
     prevAdd = false;
     prevAddAll = false;
@@ -552,8 +552,9 @@ public final class BringupCore {
    */
   private void refreshTestDevices() {
     testDevices.clear();
-    testDevices.addAll(ctreDevices.getTestDevices());
-    testDevices.addAll(revDevices.getTestDevices());
+    for (ManufacturerGroup group : manufacturerGroups) {
+      testDevices.addAll(group.getTestDevices());
+    }
     nextTestIndex = 0;
   }
 
@@ -920,49 +921,37 @@ public final class BringupCore {
     return false;
   }
 
-  // Alternates between REV and CTRE motors to keep bringup balanced.
+  // Round-robins across manufacturer groups to keep bringup balanced.
   /**
    * NAME
-   *   addNextMotor - Instantiate the next motor, alternating vendors.
+   *   addNextMotor - Instantiate the next motor, rotating vendors.
    *
    * SIDE EFFECTS
    *   Creates devices and enqueues status messages.
    */
   private void addNextMotor() {
-    if (addRevNext) {
-      DeviceAddResult result = revDevices.addNextMotor();
+    int count = manufacturerGroups.size();
+    if (count == 0) {
+      BringupPrinter.enqueue("No manufacturers registered.");
+      return;
+    }
+    int attempts = count;
+    int index = nextMotorGroupIndex;
+    while (attempts-- > 0) {
+      ManufacturerGroup group = manufacturerGroups.get(index);
+      DeviceAddResult result = group.addNextMotor();
       if (result != null) {
         BringupPrinter.enqueue(
             "Added " + result.registration().displayName() +
             " index " + result.index() +
             " (CAN " + result.device().getCanId() + ")");
-        addRevNext = false;
+        nextMotorGroupIndex = (index + 1) % count;
         return;
       }
+      index = (index + 1) % count;
     }
-
-    DeviceAddResult ctreResult = ctreDevices.addNextMotor();
-    if (ctreResult != null) {
-      BringupPrinter.enqueue(
-          "Added " + ctreResult.registration().displayName() +
-          " index " + ctreResult.index() +
-          " (CAN " + ctreResult.device().getCanId() + ")");
-      addRevNext = true;
-      return;
-    }
-
-    DeviceAddResult revResult = revDevices.addNextMotor();
-    if (revResult != null) {
-      BringupPrinter.enqueue(
-          "Added " + revResult.registration().displayName() +
-          " index " + revResult.index() +
-          " (CAN " + revResult.device().getCanId() + ")");
-      addRevNext = false;
-      return;
-    }
-
     BringupPrinter.enqueue("No more motors to add");
-    addRevNext = true;
+    nextMotorGroupIndex = 0;
   }
 
   /**
@@ -970,10 +959,11 @@ public final class BringupCore {
    *   addAllDevices - Instantiate all configured devices. (motors + sensors + misc).
    */
   private void addAllDevices() {
-    revDevices.addAll();
-    ctreDevices.addAll();
-    addRevNext = true;
-    BringupPrinter.enqueue("Added all REV and CTRE devices.");
+    for (ManufacturerGroup group : manufacturerGroups) {
+      group.addAll();
+    }
+    nextMotorGroupIndex = 0;
+    BringupPrinter.enqueue("Added all configured devices.");
   }
 
   // Print a compact list of which devices are instantiated.
@@ -1392,10 +1382,33 @@ public final class BringupCore {
         (sb, item) -> appendStateDevice(sb, item));
     job.onComplete = () -> {
       StringBuilder sb = job.buffer;
-      appendLine(sb, "Next add will be: " + (addRevNext ? "REV motor" : "CTRE motor"));
+      appendLine(sb, "Next add will be: " + getNextAddLabel());
       appendVirtualDevices(sb);
     };
     return job;
+  }
+
+  /**
+   * NAME
+   *   getNextAddLabel - Build a short label for the next add target.
+   *
+   * RETURNS
+   *   Vendor label or a fallback when no manufacturers are registered.
+   */
+  private String getNextAddLabel() {
+    if (manufacturerGroups.isEmpty()) {
+      return "none";
+    }
+    int index = nextMotorGroupIndex;
+    if (index < 0 || index >= manufacturerGroups.size()) {
+      index = 0;
+    }
+    ManufacturerGroup group = manufacturerGroups.get(index);
+    String vendor = group != null && group.getHeader() != null ? group.getHeader().vendor() : null;
+    if (vendor == null || vendor.isBlank()) {
+      return "unknown";
+    }
+    return vendor + " motor";
   }
 
   /**
@@ -1628,8 +1641,9 @@ public final class BringupCore {
    */
   private DeviceReportJob buildHealthReport() {
     List<DevicePrintItem> items = new ArrayList<>();
-    collectHealthItems(items, revDevices);
-    collectHealthItems(items, ctreDevices);
+    for (ManufacturerGroup group : manufacturerGroups) {
+      collectHealthItems(items, group);
+    }
     final DeviceReportJob[] jobRef = new DeviceReportJob[1];
     DeviceReportJob job = new DeviceReportJob(
         "=== Bringup Health (Local Robot Data) ===",
@@ -1681,8 +1695,9 @@ public final class BringupCore {
    */
   private List<DevicePrintItem> collectDeviceItems() {
     List<DevicePrintItem> items = new ArrayList<>();
-    collectDeviceItems(items, revDevices, null);
-    collectDeviceItems(items, ctreDevices, null);
+    for (ManufacturerGroup group : manufacturerGroups) {
+      collectDeviceItems(items, group, null);
+    }
     return items;
   }
 
@@ -1692,8 +1707,9 @@ public final class BringupCore {
    */
   private List<DevicePrintItem> collectDeviceItems(DeviceRole role) {
     List<DevicePrintItem> items = new ArrayList<>();
-    collectDeviceItems(items, revDevices, role);
-    collectDeviceItems(items, ctreDevices, role);
+    for (ManufacturerGroup group : manufacturerGroups) {
+      collectDeviceItems(items, group, role);
+    }
     return items;
   }
 
@@ -1933,8 +1949,9 @@ public final class BringupCore {
   private void printCANCoderStatus() {
     StringBuilder sb = new StringBuilder(512);
     appendLine(sb, "=== Bringup CANCoder ===");
-    appendEncoderStatus(sb, revDevices);
-    appendEncoderStatus(sb, ctreDevices);
+    for (ManufacturerGroup group : manufacturerGroups) {
+      appendEncoderStatus(sb, group);
+    }
     appendLine(sb, "=======================");
     BringupPrinter.enqueueChunked(sb.toString(), 4);
   }
@@ -2030,8 +2047,9 @@ public final class BringupCore {
   public List<DeviceSnapshot> captureSnapshots() {
     List<DeviceSnapshot> devices = new ArrayList<>();
     double nowSec = Timer.getFPGATimestamp();
-    devices.addAll(revDevices.captureSnapshots(nowSec));
-    devices.addAll(ctreDevices.captureSnapshots(nowSec));
+    for (ManufacturerGroup group : manufacturerGroups) {
+      devices.addAll(group.captureSnapshots(nowSec));
+    }
 
     if (BringupUtil.isEnabledCanId(BringupUtil.PDH_CAN_ID)) {
       DeviceSnapshot snap = new DeviceSnapshot();
@@ -2137,13 +2155,7 @@ public final class BringupCore {
       return false;
     }
 
-    if ("REV".equalsIgnoreCase(vendor)) {
-      return isInstantiatedByRole(revDevices, role, deviceId);
-    }
-    if ("CTRE".equalsIgnoreCase(vendor)) {
-      return isInstantiatedByRole(ctreDevices, role, deviceId);
-    }
-    return false;
+    return isInstantiatedByRole(findGroupByVendor(vendor), role, deviceId);
   }
 
   /**
@@ -2154,7 +2166,12 @@ public final class BringupCore {
    *   True when at least one device is created in local vendor APIs.
    */
   private boolean hasInstantiatedDevices() {
-    return hasInstantiatedDevices(revDevices) || hasInstantiatedDevices(ctreDevices);
+    for (ManufacturerGroup group : manufacturerGroups) {
+      if (hasInstantiatedDevices(group)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -2285,8 +2302,9 @@ public final class BringupCore {
    */
   private void forceStopAllMotorOutputs() {
     StopCounts counts = new StopCounts();
-    forceStopAllMotorOutputs(revDevices, counts);
-    forceStopAllMotorOutputs(ctreDevices, counts);
+    for (ManufacturerGroup group : manufacturerGroups) {
+      forceStopAllMotorOutputs(group, counts);
+    }
     if (counts.stopped > 0) {
       String message =
           "Safety: forced stop on " + counts.stopped + " motor(s) (created " + counts.created + ").";
@@ -2371,6 +2389,9 @@ public final class BringupCore {
    *   isInstantiatedByRole - Check instantiation for a role within a group.
    */
   private boolean isInstantiatedByRole(ManufacturerGroup group, DeviceRole role, int deviceId) {
+    if (group == null) {
+      return false;
+    }
     for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
       if (bucket.getRegistration().role() != role) {
         continue;
@@ -2407,5 +2428,47 @@ public final class BringupCore {
    */
   private static void appendLine(StringBuilder sb, String line) {
     sb.append(line).append('\n');
+  }
+
+  /**
+   * NAME
+   *   setDutyByVendor - Apply duty to a specific manufacturer group.
+   *
+   * PARAMETERS
+   *   vendor - vendor string (case-insensitive).
+   *   duty - requested output in [-1, 1].
+   */
+  private void setDutyByVendor(String vendor, double duty) {
+    ManufacturerGroup group = findGroupByVendor(vendor);
+    if (group != null) {
+      group.setDuty(duty);
+    }
+  }
+
+  /**
+   * NAME
+   *   findGroupByVendor - Return a group by vendor name.
+   *
+   * PARAMETERS
+   *   vendor - vendor string (case-insensitive).
+   *
+   * RETURNS
+   *   ManufacturerGroup or null when not registered.
+   */
+  private ManufacturerGroup findGroupByVendor(String vendor) {
+    if (vendor == null || vendor.isBlank()) {
+      return null;
+    }
+    return manufacturerByVendor.get(vendor.toLowerCase());
+  }
+
+  /**
+   * NAME
+   *   resetLowCurrentTimers - Reset low-current timers across all groups.
+   */
+  private void resetLowCurrentTimers() {
+    for (ManufacturerGroup group : manufacturerGroups) {
+      group.resetLowCurrentTimers();
+    }
   }
 }
