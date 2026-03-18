@@ -190,6 +190,27 @@ UI HELP
     - Each tab is scrollable for long descriptions.
     - Command buttons show short hover tooltips for quick reminders.
 
+UI SCREENSHOT
+    Purpose: Provide a visual reference for the Bringup Control UI layout.
+    - Screenshot: ![Bringup Control UI](../docs/images/bringup_ui_tests.png)
+
+UI OUTPUT EXAMPLES
+    Purpose: Show typical UI output blocks (shortened).
+    Example (Tests Info):
+        15:57:32 CMD printTestsInfo
+        15:57:32 ACK 470 printTestsInfo ok OK
+        15:57:32 OUT 470 printTestsInfo
+        === Bringup Tests Info ===
+        Resolved path: /home/lvuser/deploy/bringup_tests.json
+        Test count: 10
+        ==========================
+
+    Example (Run Selected Test):
+        Command: runTest (UI)
+        Test started: Rotation only (internal)
+        Test: Rotation only (internal)
+        Test result: Rotation only (internal) = PASS (Reached rotation limit (NEO CAN 25))
+
     List serial ports:
         python tools\\can_nt\\can_nt_bridge.py --list-ports
 

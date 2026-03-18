@@ -29,6 +29,29 @@ Purpose: Passively observe CAN traffic and publish bus diagnostics.
   - Uses TCP (port 5809 default) for command transport; set with `--ui-tcp-port`.
 - The UI includes a Help menu with tabbed, scrollable command reference and tooltips.
 
+### Bringup Control UI
+Purpose: Provide a clickable command surface and live output pane.
+
+Screenshot:
+![Bringup Control UI](docs/images/bringup_ui_tests.png)
+
+Example outputs:
+```text
+15:57:39 CMD printTestsOverview
+15:57:40 ACK 471 printTestsOverview ok OK
+15:57:40 OUT 471 printTestsOverview
+=== Bringup Tests ===
+Active set: default (default: default)
+Total: 10 Enabled: 0
+```
+
+```text
+Command: runTest (UI)
+Test started: Rotation only (internal)
+Test: Rotation only (internal)
+Test result: Rotation only (internal) = PASS (Reached rotation limit (NEO CAN 25))
+```
+
 ### Topology Editor (Python/Tkinter)
 Purpose: Author and maintain device profiles and layouts.
 - Location: `tools/can_topology/` (entry: `can_top_editor.py`).

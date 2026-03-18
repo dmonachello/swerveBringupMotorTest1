@@ -25,6 +25,30 @@ Use the normal FRC robot workflow to deploy and run the robot code.
 - `TESTING.md` includes a runtime verification checklist for the bringup test framework.
 - `tools/can_nt/README_CAN_NT.md` - PC CAN sniffer bridge usage and CLI reference.
 
+## Bringup Control UI
+Purpose: The PC-side UI mirrors bringup commands and shows outputs from the roboRIO.
+
+Screenshot:
+![Bringup Control UI](docs/images/bringup_ui_tests.png)
+
+Example outputs (shortened):
+```text
+15:57:32 CMD printTestsInfo
+15:57:32 ACK 470 printTestsInfo ok OK
+15:57:32 OUT 470 printTestsInfo
+=== Bringup Tests Info ===
+Resolved path: /home/lvuser/deploy/bringup_tests.json
+Test count: 10
+==========================
+```
+
+```text
+Command: runTest (UI)
+Test started: Rotation only (internal)
+Test: Rotation only (internal)
+Test result: Rotation only (internal) = PASS (Reached rotation limit (NEO CAN 25))
+```
+
 ## What This App Is For (Debugging)
 This project is a bringup and diagnostics harness. It does not fix your code bugs,
 but it does give you fast visibility into hardware and CAN bus behavior so you can
