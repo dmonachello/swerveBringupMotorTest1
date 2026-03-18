@@ -17,7 +17,7 @@ import json
 import time
 import tkinter as tk
 from pathlib import Path
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from typing import Callable, Dict, List, Optional, Tuple, Any
 
 
@@ -180,9 +180,23 @@ class BringupControlUI(tk.Tk):
         self._pending = False
         self._pending_ack = False
         self._pending_out = False
+        self._build_menu()
         self._build_ui()
         self._poll_nt()
         self.protocol("WM_DELETE_WINDOW", self._handle_close)
+
+    def _build_menu(self) -> None:
+        """
+        NAME
+            _build_menu - Create the main menubar with a Help menu.
+        """
+        menubar = tk.Menu(self)
+        help_menu = tk.Menu(menubar, tearoff=False)
+        help_menu.add_command(label="Help", command=self._show_help)
+        help_menu.add_separator()
+        help_menu.add_command(label="About", command=self._show_about)
+        menubar.add_cascade(label="Help", menu=help_menu)
+        self.config(menu=menubar)
 
     def _build_ui(self) -> None:
         """
@@ -257,6 +271,7 @@ class BringupControlUI(tk.Tk):
                     btn.state(["disabled"])
                 else:
                     self._action_buttons.append(btn)
+                    self._attach_tooltip(btn, self._tooltip_text(command))
                 btn.pack(fill="x", pady=2)
 
         def _on_actions_configure(_event=None) -> None:
@@ -277,6 +292,349 @@ class BringupControlUI(tk.Tk):
         scroll = ttk.Scrollbar(output_panel, command=self._output.yview)
         scroll.pack(side="right", fill="y")
         self._output.configure(yscrollcommand=scroll.set)
+
+    def _attach_tooltip(self, widget: tk.Widget, text: str) -> None:
+        """
+        NAME
+            _attach_tooltip - Attach a hover tooltip to a widget.
+        """
+        if not text:
+            return
+        tip = tk.Toplevel(self)
+        tip.withdraw()
+        tip.overrideredirect(True)
+        tip.attributes("-topmost", True)
+        label = ttk.Label(
+            tip,
+            text=text,
+            justify="left",
+            padding=6,
+            background="#f9fafb",
+            foreground="#111827",
+            relief="solid",
+            borderwidth=1,
+        )
+        label.pack()
+
+        def _show(_event=None) -> None:
+            x = widget.winfo_rootx() + 18
+            y = widget.winfo_rooty() + widget.winfo_height() + 6
+            tip.geometry(f"+{x}+{y}")
+            tip.deiconify()
+
+        def _hide(_event=None) -> None:
+            tip.withdraw()
+
+        widget.bind("<Enter>", _show)
+        widget.bind("<Leave>", _hide)
+
+    def _tooltip_text(self, command: str) -> str:
+        """
+        NAME
+            _tooltip_text - Return a short tooltip for a command.
+        """
+        tooltips = {
+            "profileToggle": "Switch to the next bringup profile.",
+            "addMotor": "Add the next motor from the active profile.",
+            "addAll": "Add all motors from the active profile.",
+            "printState": "Print current bringup state summary.",
+            "printCANdiag": "Print local vendor API CAN diagnostics.",
+            "printNTdiag": "Print PC tool NetworkTables diagnostics.",
+            "printInputs": "Print controller and input status.",
+            "printHealth": "Print local device health snapshot.",
+            "dumpReport": "Print full bringup report (long).",
+            "printBindings": "Print controller bindings and UI mappings.",
+            "printCANcoder": "Print encoder status and readings.",
+            "printTestsInfo": "Print details for selected test.",
+            "printTestsOverview": "Print test list and enabled status.",
+            "toggleTest": "Enable/disable the selected test.",
+            "runTest": "Run the selected test once.",
+            "runAllTests": "Run all enabled tests.",
+            "printNextTest": "Print the next test that would run.",
+            "canSweep": "Run a vendor API device sweep.",
+            "fixedSpeed25": "Run motors at 25% output.",
+            "fixedSpeed50": "Run motors at 50% output.",
+            "fixedSpeed75": "Run motors at 75% output.",
+            "fixedSpeed100": "Run motors at 100% output.",
+            "toggleDashboard": "Toggle dashboard reporting output.",
+            "clearFaults": "Clear latched device faults.",
+        }
+        return tooltips.get(command, "")
+
+    def _show_help(self) -> None:
+        """
+        NAME
+            _show_help - Display the bringup UI help window.
+        """
+        if hasattr(self, "_help_window") and self._help_window.winfo_exists():
+            self._help_window.deiconify()
+            self._help_window.lift()
+            self._help_window.focus_set()
+            return
+        self._help_window = self._build_help_window()
+        self._help_window.lift()
+        self._help_window.focus_set()
+
+    def _show_about(self) -> None:
+        """
+        NAME
+            _show_about - Display the about dialog.
+        """
+        messagebox.showinfo(
+            "About Bringup Control",
+            "Bringup Control UI\n"
+            "PC-side NetworkTables command panel for RobotV2 bringup.\n"
+            "Launch via tools/can_nt/run_can_nt.cmd --ui",
+        )
+
+    def _build_help_window(self) -> tk.Toplevel:
+        """
+        NAME
+            _build_help_window - Build the tabbed help window.
+        """
+        window = tk.Toplevel(self)
+        window.title("Bringup Control Help")
+        window.geometry("860x620")
+        window.minsize(720, 520)
+
+        notebook = ttk.Notebook(window)
+        notebook.pack(fill="both", expand=True, padx=10, pady=10)
+
+        tabs = [
+            ("Overview", self._build_help_text()),
+            ("Profiles", self._build_profiles_help()),
+            ("Reports", self._build_reports_help()),
+            ("Tests", self._build_tests_help()),
+            ("System", self._build_system_help()),
+            ("Troubleshooting", self._build_troubleshooting_help()),
+        ]
+        for title, text in tabs:
+            frame = ttk.Frame(notebook)
+            notebook.add(frame, text=title)
+            text_widget = tk.Text(frame, wrap="word", state="normal")
+            text_widget.insert("end", text)
+            text_widget.configure(state="disabled")
+            text_widget.pack(side="left", fill="both", expand=True, padx=6, pady=6)
+            scroll = ttk.Scrollbar(frame, command=text_widget.yview)
+            scroll.pack(side="right", fill="y")
+            text_widget.configure(yscrollcommand=scroll.set)
+        return window
+
+    def _build_help_text(self) -> str:
+        """
+        NAME
+            _build_help_text - Build the Overview tab text.
+        """
+        lines = [
+            "Purpose:",
+            "  Send bringup commands to the roboRIO via NetworkTables (bringup/ui).",
+            "",
+            "Basics:",
+            "  - Select a test from the dropdown to send selectTestByName.",
+            "  - Use Actions to print reports or run tests.",
+            "  - Output shows ACK/OUT messages from the robot.",
+            "",
+            "Connection:",
+            "  - Status shows NetworkTables link to the RIO.",
+            "  - If disconnected, commands are blocked.",
+            "",
+            "Launch examples:",
+            "  tools\\can_nt\\run_can_nt.cmd --ui",
+            "  python tools\\can_nt\\can_nt_bridge.py --ui --rio 172.22.11.2",
+        ]
+        return "\n".join(lines)
+
+    def _build_profiles_help(self) -> str:
+        """
+        NAME
+            _build_profiles_help - Build the Profiles tab text.
+        """
+        lines = [
+            "Purpose:",
+            "  Manage which device profile is active and which motors are added.",
+            "",
+            "Toggle Profile:",
+            "  Switches to the next profile defined in bringup_profiles.json.",
+            "  The active profile controls which CAN IDs and labels the robot expects.",
+            "  Use this before adding motors so commands target the correct devices.",
+            "  If a profile has no devices, Add Motor/Add All will do nothing.",
+            "  Output: ACK + OUT with the new profile name and device count.",
+            "",
+            "Add Motor:",
+            "  Adds the next motor from the active profile to the bringup list.",
+            "  The bringup list is the set of devices that tests and reports use.",
+            "  Use this to step through devices one at a time and confirm behavior.",
+            "  If the same motor is already added, it will be skipped.",
+            "  Output: ACK + OUT showing the device label and ID that was added.",
+            "",
+            "Add All Motors:",
+            "  Adds every motor from the active profile to the bringup list.",
+            "  This is convenient but can start many devices at once during tests.",
+            "  Prefer Add Motor for first bringup or when hardware is unverified.",
+            "  Output: ACK + OUT listing all added devices (may stream in batches).",
+        ]
+        return "\n".join(lines)
+
+    def _build_reports_help(self) -> str:
+        """
+        NAME
+            _build_reports_help - Build the Reports tab text.
+        """
+        lines = [
+            "Purpose:",
+            "  Print robot-side summaries to the console output panel.",
+            "  Reports are queued and streamed to avoid slowing the 20ms loop.",
+            "",
+            "State:",
+            "  Prints current bringup state, active profile, selected test,",
+            "  enabled/disabled status, and the current device list.",
+            "  Use this as a quick sanity check before running tests.",
+            "  Output: local robot data only.",
+            "",
+            "CAN Bus:",
+            "  Prints local vendor API CAN status and recent frame activity.",
+            "  This is robot-side vendor API data (not the PC sniffer).",
+            "  Output: vendor API status, seen/missing device notes.",
+            "",
+            "NT Diagnostics:",
+            "  Prints diagnostics from the PC CAN tool via bringup/diag.",
+            "  Requires the PC sniffer to be running and connected.",
+            "  Use this to verify CAN traffic when the robot can’t see it.",
+            "  Output: PC sniffer status + per-device presence/age/count.",
+            "",
+            "Inputs:",
+            "  Prints controller status and input bindings state.",
+            "  Helpful to confirm button mappings and axis directions.",
+            "  Output: detected controllers, raw axes/buttons, bind summary.",
+            "",
+            "Health:",
+            "  Prints local device health summary (faults, temps, currents).",
+            "  Uses vendor APIs for on-robot readings.",
+            "  If a device is missing, it will be called out explicitly.",
+            "  Output: per-device health rows and fault summaries.",
+            "",
+            "Dump:",
+            "  Prints a full bringup report with device and test details.",
+            "  This is the most verbose report and will stream in batches.",
+            "  Output: full device list, test config, and status sections.",
+            "",
+            "Bindings:",
+            "  Prints controller bindings and UI command mappings.",
+            "  Use when you need to verify what each button triggers.",
+            "  Output: button/axis mapping with command names.",
+            "",
+            "CANcoder:",
+            "  Prints encoder details and health for configured encoders.",
+            "  Includes device IDs, presence status, and recent readings.",
+            "  Output: encoder IDs, absolute position, and health notes.",
+            "",
+            "Tests Info:",
+            "  Prints details for the currently selected test.",
+            "  Includes parameters like duty, time, and encoder settings.",
+            "  Output: test parameters and resolved encoder/motor labels.",
+            "",
+            "Tests Overview:",
+            "  Prints the test list with enabled/disabled status.",
+            "  Also shows which test is selected and which is active.",
+            "  Output: test index, name, enabled flag, status.",
+        ]
+        return "\n".join(lines)
+
+    def _build_tests_help(self) -> str:
+        """
+        NAME
+            _build_tests_help - Build the Tests tab text.
+        """
+        lines = [
+            "Purpose:",
+            "  Run scripted or fixed-output tests against added motors.",
+            "  Tests act only on devices in the bringup list.",
+            "",
+            "Select Test Dropdown:",
+            "  Sends selectTestByName when the selection changes.",
+            "  The selected test is the one affected by Toggle Enabled and Run Selected.",
+            "  Output: ACK + OUT confirming selected test.",
+            "",
+            "Toggle Enabled:",
+            "  Enable or disable the selected scripted test.",
+            "  Enabled tests are included when you run all tests.",
+            "  Output: ACK + OUT indicating new enabled state.",
+            "",
+            "Run Selected:",
+            "  Run the selected scripted test once.",
+            "  Output will show ACK/OUT when the robot accepts and completes it.",
+            "  Notes: test may take time; UI shows pending until OUT is received.",
+            "",
+            "Run All:",
+            "  Run all enabled scripted tests in order.",
+            "  Use this after verifying individual devices with Add Motor.",
+            "  Output: streaming results per test; use Print Next to preview order.",
+            "",
+            "Print Next:",
+            "  Prints the next test that would run in sequence.",
+            "  Useful for confirming ordering and enabled/disabled state.",
+            "  Output: next test name and index.",
+            "",
+            "CAN Sweep:",
+            "  Uses vendor APIs to probe devices and report visibility.",
+            "  This does not use the PC sniffer; it is robot-side polling.",
+            "  Output: per-device seen/missing results.",
+            "",
+            "Fixed Speed 25/50/75/100:",
+            "  Runs motors at a fixed output for quick verification.",
+            "  Use with caution: ensure the mechanism is safe to spin.",
+            "  Output: ACK + OUT with the duty and duration.",
+        ]
+        return "\n".join(lines)
+
+    def _build_system_help(self) -> str:
+        """
+        NAME
+            _build_system_help - Build the System tab text.
+        """
+        lines = [
+            "Purpose:",
+            "  System-wide controls not tied to a specific test.",
+            "",
+            "Toggle Dashboard:",
+            "  Enables or disables dashboard reporting output.",
+            "  Use to reduce console noise during focused testing.",
+            "  Output: ACK + OUT confirming new dashboard mode.",
+            "",
+            "Clear Faults:",
+            "  Clears latched motor faults using vendor APIs.",
+            "  If faults reappear immediately, inspect wiring and power.",
+            "  Output: ACK + OUT listing devices cleared or failures.",
+            "",
+            "Drive Axes Labels:",
+            "  Left Drive (LY Axis) and Right Drive (RY Axis) are labels only.",
+            "  They indicate which joystick axes are bound; no command is sent.",
+        ]
+        return "\n".join(lines)
+
+    def _build_troubleshooting_help(self) -> str:
+        """
+        NAME
+            _build_troubleshooting_help - Build the Troubleshooting tab text.
+        """
+        lines = [
+            "Purpose:",
+            "  Common issues and quick checks.",
+            "",
+            "No connection:",
+            "  Verify --rio matches the roboRIO IP and the robot is powered.",
+            "  Check that the driver station can see the robot on the network.",
+            "",
+            "Commands blocked:",
+            "  The UI blocks commands when disconnected or waiting on ACK/OUT.",
+            "  Wait for pending output or clear the robot state.",
+            "  If the robot is disabled, enable to allow commands to run.",
+            "",
+            "NT Diagnostics empty:",
+            "  Start the PC tool: tools\\can_nt\\run_can_nt.cmd --profile <profile>",
+            "  Use --channel COMx if auto-detect fails.",
+        ]
+        return "\n".join(lines)
 
     def _append_output(self, line: str) -> None:
         """

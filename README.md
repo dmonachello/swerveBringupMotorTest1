@@ -450,6 +450,11 @@ Or use the helper script that pins the Python interpreter:
 ```cmd
 tools\can_nt\run_can_nt.cmd
 ```
+Optional Bringup Control UI:
+```cmd
+tools\can_nt\run_can_nt.cmd --ui
+```
+Use Help -> Help inside the UI for the tabbed, scrollable command reference and tooltips.
 Override Python for the helper script:
 ```cmd
 set CAN_NT_PYTHON=C:\Path\To\Python\python.exe

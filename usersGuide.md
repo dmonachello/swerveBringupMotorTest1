@@ -25,6 +25,8 @@ Purpose: Passively observe CAN traffic and publish bus diagnostics.
 - Uses slcan on a Windows COM port at 1,000,000 bps.
 - Hard rule: read-only on CAN (no frame transmit).
 - Can emit PCAPNG captures and inventory JSON for offline analysis.
+- Optional Bringup Control UI: run with `--ui` (or `tools\can_nt\run_can_nt.cmd --ui`).
+- The UI includes a Help menu with tabbed, scrollable command reference and tooltips.
 
 ### Topology Editor (Python/Tkinter)
 Purpose: Author and maintain device profiles and layouts.
@@ -67,6 +69,7 @@ Purpose: Independently verify bus traffic.
 - Run `tools/can_nt/can_nt_bridge.py` with a CANable.
 - Passively capture and publish CAN diagnostics to NetworkTables.
 - Optionally save PCAPNG and inventory JSON for later diffing.
+- Optional: add `--ui` for the Bringup Control UI and use Help -> Help for command details.
 
 ### 4) Troubleshoot Issues
 Purpose: Isolate wiring, configuration, and device problems.

@@ -1447,7 +1447,7 @@ public final class BringupCore {
 
     if (test instanceof CompositeTest composite) {
       Map<String, Object> entry = composite.toEntry();
-      appendCompositeDetails(lines, entry);
+      appendCompositeDetails(lines, test, entry);
       return;
     }
     if (test instanceof JoystickTest joystick) {
@@ -1494,9 +1494,10 @@ public final class BringupCore {
    *
    * PARAMETERS
    *   lines - Output line list to append to.
+   *   test - Test instance to inspect.
    *   entry - Composite test entry map.
    */
-  private void appendCompositeDetails(List<String> lines, Map<String, Object> entry) {
+  private void appendCompositeDetails(List<String> lines, BringupTest test, Map<String, Object> entry) {
     if (entry == null) {
       return;
     }
@@ -1598,29 +1599,6 @@ public final class BringupCore {
    * RETURNS
    *   Motor key string or descriptive fallback.
    */
-  private String resolveEncoderMotorLabel(BringupTest test, Map<?, ?> rotationMap) {
-    if (test == null) {
-      return "(unknown)";
-    }
-    Object key = rotationMap != null ? rotationMap.get("encoderKey") : null;
-    if (key instanceof String keyStr && "internal".equalsIgnoreCase(keyStr.trim())) {
-      int index = 0;
-      Object idx = rotationMap.get("encoderMotorIndex");
-      if (idx instanceof Number num) {
-        index = Math.max(0, num.intValue());
-      }
-      List<String> motors = test.getMotorKeys();
-      if (motors != null && index < motors.size()) {
-        return motors.get(index);
-      }
-      return "(internal, index " + index + ")";
-    }
-    if (key != null) {
-      return String.valueOf(key);
-    }
-    return "(none)";
-  }
-
   private String resolveEncoderMotorLabel(BringupTest test, Map<?, ?> rotationMap) {
     if (test == null) {
       return "(unknown)";

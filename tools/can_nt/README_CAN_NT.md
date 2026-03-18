@@ -112,6 +112,49 @@ REAL-TIME NOTES (WHY OUTPUT IS THROTTLED)
     Report-like output is intentionally paced and chunked to avoid stalling robot control.
     Expect longer reports to stream over multiple cycles rather than printing all at once.
 
+UI COMMAND PROTOCOL
+    Purpose: Define the NetworkTables command/ack/output flow between the PC UI and the roboRIO.
+
+    Transport + keys:
+    - NetworkTables table: bringup/ui
+    - Commands (PC -> roboRIO):
+      - cmd/seq (int, monotonic)
+      - cmd/name (string)
+      - cmd/args/json (string, JSON or empty)
+      - cmd/ts (double, seconds)
+    - Acknowledgement (roboRIO -> PC):
+      - ack/seq (int)
+      - ack/status ("ok" or "error")
+      - ack/message (string)
+    - Output (roboRIO -> PC):
+      - out/seq (int)
+      - out/name (string)
+      - out/text (string)
+
+    Send/receive rules:
+    - PC writes cmd/name, cmd/args/json, cmd/ts, then cmd/seq last to publish a complete command.
+    - roboRIO processes a command only when cmd/seq increases (seq <= last is ignored).
+    - Every command produces:
+      - one ACK with status + message
+      - one OUT entry (even for 1-line confirmations)
+
+    UI gating (half-duplex):
+    - UI allows only one outstanding command at a time.
+    - A command is "done" when both ACK and OUT arrive for its seq.
+    - UI shows a visible indicator: Waiting for ACK, OUT, or both.
+    - UI blocks commands when NT is disconnected.
+
+    Notes:
+    - The OUT message is a short per-command status, not the full report text.
+    - Full reports still print via the roboRIO report runner and console.
+
+UI HELP
+    Purpose: Describe the in-app Help content for the Bringup Control UI.
+    - Use Help -> Help to open the tabbed reference window.
+    - Tabs include Overview, Profiles, Reports, Tests, System, and Troubleshooting.
+    - Each tab is scrollable for long descriptions.
+    - Command buttons show short hover tooltips for quick reminders.
+
     List serial ports:
         python tools\\can_nt\\can_nt_bridge.py --list-ports
 
