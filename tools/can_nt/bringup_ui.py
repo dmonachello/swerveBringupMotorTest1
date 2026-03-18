@@ -14,8 +14,12 @@ DESCRIPTION
 """
 
 import json
+import queue
+import socket
+import threading
 import time
 import tkinter as tk
+import uuid
 from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Callable, Dict, List, Optional, Tuple, Any
@@ -129,6 +133,10 @@ def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
             [
                 ("Toggle Dashboard", "toggleDashboard"),
                 ("Clear Faults", "clearFaults"),
+                ("Reset UI Session", "uiHandshakeReset"),
+                ("Release UI Lock", "uiDisconnect"),
+                ("Protocol Monitor ON", "uiMonitorEnable"),
+                ("Protocol Monitor OFF", "uiMonitorDisable"),
             ],
         ),
         (
@@ -139,6 +147,123 @@ def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
             ],
         ),
     ]
+
+
+class TcpCommandClient:
+    """
+    NAME
+        TcpCommandClient - Simple line-delimited JSON TCP client for UI commands.
+
+    DESCRIPTION
+        Connects to the roboRIO TCP UI server, sends JSON commands, and yields
+        JSON responses via a thread-safe queue.
+    """
+
+    def __init__(self, host: str, port: int) -> None:
+        self._host = host
+        self._port = port
+        self._sock: Optional[socket.socket] = None
+        self._reader: Optional[threading.Thread] = None
+        self._queue: "queue.Queue[Dict[str, Any]]" = queue.Queue()
+        self._nt_connected = False
+        self._lock = threading.Lock()
+
+    def is_connected(self) -> bool:
+        """
+        NAME
+            is_connected - Return whether the TCP socket is connected.
+        """
+        return self._connected
+
+    def connect(self, timeout: float = 0.5) -> bool:
+        """
+        NAME
+            connect - Attempt to connect to the TCP server.
+        """
+        if self._connected:
+            return True
+        try:
+            sock = socket.create_connection((self._host, self._port), timeout=timeout)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            self._sock = sock
+            self._connected = True
+            self._reader = threading.Thread(target=self._read_loop, daemon=True)
+            self._reader.start()
+            return True
+        except Exception:
+            self._connected = False
+            self._sock = None
+            return False
+
+    def close(self) -> None:
+        """
+        NAME
+            close - Close the TCP connection.
+        """
+        with self._lock:
+            if self._sock is not None:
+                try:
+                    self._sock.shutdown(socket.SHUT_RDWR)
+                except Exception:
+                    pass
+                try:
+                    self._sock.close()
+                except Exception:
+                    pass
+            self._sock = None
+            self._connected = False
+
+    def send(self, payload: Dict[str, Any]) -> bool:
+        """
+        NAME
+            send - Send a JSON command payload to the server.
+        """
+        if not self._connected or self._sock is None:
+            return False
+        data = (json.dumps(payload) + "\n").encode("utf-8")
+        with self._lock:
+            try:
+                self._sock.sendall(data)
+                return True
+            except Exception:
+                self._connected = False
+                return False
+
+    def poll(self) -> List[Dict[str, Any]]:
+        """
+        NAME
+            poll - Drain queued responses.
+        """
+        items: List[Dict[str, Any]] = []
+        while True:
+            try:
+                items.append(self._queue.get_nowait())
+            except queue.Empty:
+                break
+        return items
+
+    def _read_loop(self) -> None:
+        """
+        NAME
+            _read_loop - Background reader for JSON lines.
+        """
+        sock = self._sock
+        if sock is None:
+            return
+        try:
+            with sock.makefile("r", encoding="utf-8") as reader:
+                for line in reader:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        payload = json.loads(line)
+                        if isinstance(payload, dict):
+                            self._queue.put(payload)
+                    except Exception:
+                        continue
+        finally:
+            self._connected = False
 
 
 class BringupControlUI(tk.Tk):
@@ -153,10 +278,10 @@ class BringupControlUI(tk.Tk):
 
     def __init__(
         self,
-        command_sender: Callable[[str, Optional[Dict[str, Any]]], Optional[int]],
         ui_table,
         tests_table,
         rio_host: str,
+        tcp_port: int,
         is_connected: Optional[Callable[[], bool]] = None,
         on_close: Optional[Callable[[], None]] = None,
     ) -> None:
@@ -164,22 +289,38 @@ class BringupControlUI(tk.Tk):
         self.title("Bringup Control")
         self.geometry("1100x720")
         self.minsize(900, 600)
-        self._command_sender = command_sender
         self._ui_table = ui_table
         self._tests_table = tests_table
         self._on_close = on_close
         self._rio_host = rio_host
         self._is_connected = is_connected
+        self._tcp = TcpCommandClient(rio_host, tcp_port)
+        self._tcp_connected = False
+        self._last_connect_attempt = 0.0
+        self._seq = 0
         self._max_lines = 500
         self._lines: List[str] = []
         self._last_ack_seq = None
         self._last_out_seq = None
         self._last_selected_test = None
         self._last_sent_seq: Optional[int] = None
-        self._connected = False
+        self._nt_connected = False
         self._pending = False
         self._pending_ack = False
         self._pending_out = False
+        self._pending_since: Optional[float] = None
+        self._timeout_sec = 1.5
+        self._client_id = str(uuid.uuid4())
+        self._session_id: Optional[str] = None
+        self._handshake_done = False
+        self._handshake_inflight = False
+        self._seq_seeded = False
+        self._last_cmd: Optional[Tuple[str, Optional[Dict[str, Any]]]] = None
+        self._retry_pending = False
+        self._retry_count = 0
+        self._max_retries = 1
+        self._state_stale_sec = 2.0
+        self._state_stale = False
         self._build_menu()
         self._build_ui()
         self._poll_nt()
@@ -257,6 +398,7 @@ class BringupControlUI(tk.Tk):
         actions_canvas.create_window((0, 0), window=action_panel, anchor="nw")
 
         self._action_buttons: List[ttk.Button] = []
+        self._reset_button: Optional[ttk.Button] = None
         for section, items in _action_sections():
             ttk.Label(action_panel, text=section, foreground="#5b6672").pack(
                 anchor="w", pady=(8, 2)
@@ -272,6 +414,8 @@ class BringupControlUI(tk.Tk):
                 else:
                     self._action_buttons.append(btn)
                     self._attach_tooltip(btn, self._tooltip_text(command))
+                    if command == "uiHandshakeReset":
+                        self._reset_button = btn
                 btn.pack(fill="x", pady=2)
 
         def _on_actions_configure(_event=None) -> None:
@@ -358,6 +502,10 @@ class BringupControlUI(tk.Tk):
             "fixedSpeed100": "Run motors at 100% output.",
             "toggleDashboard": "Toggle dashboard reporting output.",
             "clearFaults": "Clear latched device faults.",
+            "uiHandshakeReset": "Reset the UI session and resync seq.",
+            "uiDisconnect": "Release the UI lock for this client.",
+            "uiMonitorEnable": "Enable protocol status publishing to NT.",
+            "uiMonitorDisable": "Disable protocol status publishing to NT.",
         }
         return tooltips.get(command, "")
 
@@ -660,6 +808,151 @@ class BringupControlUI(tk.Tk):
         self._output.delete("1.0", "end")
         self._output.configure(state="disabled")
 
+    def _next_seq(self) -> int:
+        """
+        NAME
+            _next_seq - Increment and return the command sequence.
+        """
+        self._seq += 1
+        return self._seq
+
+    def _send_tcp_command(self, name: str, args: Optional[Dict[str, Any]]) -> Optional[int]:
+        """
+        NAME
+            _send_tcp_command - Send a command over the TCP protocol.
+        """
+        if not self._tcp_connected:
+            return None
+        seq = self._next_seq()
+        payload: Dict[str, Any] = {
+            "type": "cmd",
+            "seq": seq,
+            "name": name,
+            "clientId": self._client_id,
+            "ts": time.time(),
+        }
+        if args:
+            payload["args"] = args
+        if not self._tcp.send(payload):
+            self._tcp_connected = False
+            return None
+        return seq
+
+    def _send_handshake(self, reset: bool, force: bool = False) -> None:
+        """
+        NAME
+            _send_handshake - Send a UI handshake command.
+        """
+        if not self._tcp_connected:
+            return
+        if self._pending and not force:
+            self._append_output("Busy: wait for current command to finish.")
+            return
+        if force and self._pending:
+            self._append_output("Forcing UI session reset (clearing pending state).")
+            self._pending = False
+            self._pending_ack = False
+            self._pending_out = False
+            self._pending_since = None
+        payload = {"clientId": self._client_id, "reset": reset}
+        ts = time.strftime("%H:%M:%S")
+        label = "uiHandshake (reset)" if reset else "uiHandshake"
+        self._append_output(f"{ts} CMD {label}")
+        seq = self._send_tcp_command("uiHandshake", payload)
+        if seq is not None:
+            self._pending = True
+            self._last_sent_seq = seq
+            self._pending_ack = True
+            self._pending_out = True
+            self._pending_since = time.time()
+            self._handshake_inflight = True
+            self._last_cmd = ("uiHandshake", payload)
+
+    def _send_disconnect(self, force: bool = False) -> None:
+        """
+        NAME
+            _send_disconnect - Release the UI lock on the robot.
+        """
+        if not self._tcp_connected:
+            return
+        if self._pending and not force:
+            self._append_output("Busy: wait for current command to finish.")
+            return
+        if force and self._pending:
+            self._append_output("Forcing UI disconnect (clearing pending state).")
+            self._pending = False
+            self._pending_ack = False
+            self._pending_out = False
+            self._pending_since = None
+        ts = time.strftime("%H:%M:%S")
+        self._append_output(f"{ts} CMD uiDisconnect")
+        self._last_cmd = ("uiDisconnect", None)
+        self._retry_pending = False
+        self._retry_count = 0
+        seq = self._send_tcp_command("uiDisconnect", None)
+        if seq is not None:
+            self._pending = True
+            self._last_sent_seq = seq
+            self._pending_ack = True
+            self._pending_out = True
+            self._pending_since = time.time()
+
+    def _send_monitor(self, enabled: bool) -> None:
+        """
+        NAME
+            _send_monitor - Toggle protocol monitor publishing on the robot.
+        """
+        if not self._tcp_connected:
+            return
+        if self._pending:
+            self._append_output("Busy: wait for current command to finish.")
+            return
+        label = "uiMonitorEnable" if enabled else "uiMonitorDisable"
+        ts = time.strftime("%H:%M:%S")
+        self._append_output(f"{ts} CMD {label}")
+        args = {"enabled": enabled}
+        self._last_cmd = (label, args)
+        self._retry_pending = False
+        self._retry_count = 0
+        seq = self._send_tcp_command(label, args)
+        if seq is not None:
+            self._pending = True
+            self._last_sent_seq = seq
+            self._pending_ack = True
+            self._pending_out = True
+            self._pending_since = time.time()
+
+    def _retry_last_command(self) -> None:
+        """
+        NAME
+            _retry_last_command - Retry the last command after recovery.
+        """
+        if not self._retry_pending:
+            return
+        if self._retry_count >= self._max_retries:
+            self._append_output("Retry limit reached; command dropped.")
+            self._retry_pending = False
+            return
+        if self._pending:
+            return
+        if not self._last_cmd:
+            self._retry_pending = False
+            return
+        name, args = self._last_cmd
+        if name in ("uiHandshake", "uiDisconnect"):
+            self._retry_pending = False
+            return
+        self._retry_count += 1
+        ts = time.strftime("%H:%M:%S")
+        self._append_output(f"{ts} RETRY {name}")
+        seq = self._send_tcp_command(name, args)
+        if seq is not None:
+            self._pending = True
+            self._last_sent_seq = seq
+            self._pending_ack = True
+            self._pending_out = True
+            self._pending_since = time.time()
+            self._retry_pending = False
     def _on_action(self, command: Optional[str]) -> None:
         """
         NAME
@@ -667,7 +960,19 @@ class BringupControlUI(tk.Tk):
         """
         if not command:
             return
-        if not self._connected:
+        if command == "uiHandshakeReset":
+            self._send_handshake(reset=True, force=True)
+            return
+        if command == "uiDisconnect":
+            self._send_disconnect()
+            return
+        if command == "uiMonitorEnable":
+            self._send_monitor(True)
+            return
+        if command == "uiMonitorDisable":
+            self._send_monitor(False)
+            return
+        if not self._tcp_connected:
             self._append_output("Not connected: command blocked.")
             return
         if self._pending:
@@ -675,12 +980,16 @@ class BringupControlUI(tk.Tk):
             return
         ts = time.strftime("%H:%M:%S")
         self._append_output(f"{ts} CMD {command}")
-        seq = self._command_sender(command, None)
+        self._last_cmd = (command, None)
+        self._retry_pending = False
+        self._retry_count = 0
+        seq = self._send_tcp_command(command, None)
         if seq is not None:
             self._pending = True
             self._last_sent_seq = seq
             self._pending_ack = True
             self._pending_out = True
+            self._pending_since = time.time()
 
     def _on_test_selected(self, _event=None) -> None:
         """
@@ -689,7 +998,7 @@ class BringupControlUI(tk.Tk):
         """
         if not hasattr(self, "_test_box"):
             return
-        if not self._connected:
+        if not self._tcp_connected:
             self._append_output("Not connected: selection blocked.")
             return
         if self._pending:
@@ -703,45 +1012,49 @@ class BringupControlUI(tk.Tk):
         self._last_selected_test = name
         ts = time.strftime("%H:%M:%S")
         self._append_output(f"{ts} CMD selectTestByName \"{name}\"")
-        seq = self._command_sender("selectTestByName", {"name": name})
+        self._last_cmd = ("selectTestByName", {"name": name})
+        self._retry_pending = False
+        self._retry_count = 0
+        seq = self._send_tcp_command("selectTestByName", {"name": name})
         if seq is not None:
             self._pending = True
             self._last_sent_seq = seq
             self._pending_ack = True
             self._pending_out = True
+            self._pending_since = time.time()
 
     def _poll_nt(self) -> None:
         """
         NAME
-            _poll_nt - Poll NT ack/out entries and update output log.
+            _poll_nt - Poll TCP/NT inputs and update output log.
         """
-        if self._ui_table is not None:
-            ack_seq = self._ui_table.getEntry("ack/seq").getInteger(-1)
-            if ack_seq != self._last_ack_seq and ack_seq >= 0:
-                status = self._ui_table.getEntry("ack/status").getString("")
-                message = self._ui_table.getEntry("ack/message").getString("")
-                ts = time.strftime("%H:%M:%S")
-                self._append_output(f"{ts} ACK {ack_seq} {status} {message}".rstrip())
-                self._last_ack_seq = ack_seq
-                if self._last_sent_seq is not None and ack_seq >= self._last_sent_seq:
-                    self._pending_ack = False
-            out_seq = self._ui_table.getEntry("out/seq").getInteger(-1)
-            if out_seq != self._last_out_seq and out_seq >= 0:
-                name = self._ui_table.getEntry("out/name").getString("")
-                text = self._ui_table.getEntry("out/text").getString("")
-                ts = time.strftime("%H:%M:%S")
-                header = f"{ts} OUT {out_seq} {name}".rstrip()
-                self._append_output(header)
-                if text:
-                    for line in text.splitlines():
-                        self._append_output(f"  {line}")
-                self._last_out_seq = out_seq
-                if self._last_sent_seq is not None and out_seq >= self._last_sent_seq:
-                    self._pending_out = False
+        now = time.time()
+        if not self._tcp_connected and (now - self._last_connect_attempt) > 1.0:
+            self._last_connect_attempt = now
+            self._tcp_connected = self._tcp.connect()
+        self._tcp_connected = self._tcp.is_connected()
+        if not self._tcp_connected:
+            self._handshake_done = False
+            self._handshake_inflight = False
+        for payload in self._tcp.poll():
+            self._handle_tcp_response(payload)
 
-            connected = True
+        if self._ui_table is not None:
+            session_id = self._ui_table.getEntry("state/sessionId").getString("")
+            if session_id and session_id != self._session_id:
+                self._session_id = session_id
+                self._handshake_done = False
+            enabled = self._ui_table.getEntry("state/enabled").getBoolean(True)
+            estopped = self._ui_table.getEntry("state/estopped").getBoolean(False)
+            mode = self._ui_table.getEntry("state/mode").getString("disabled")
+            last_ack_ms = self._ui_table.getEntry("state/lastAckMs").getDouble(0.0)
+            nt_connected = True
         else:
-            connected = False
+            enabled = True
+            estopped = False
+            mode = "disabled"
+            last_ack_ms = 0.0
+            nt_connected = False
         if self._tests_table is not None:
             selected_name = self._tests_table.getEntry("selectedName").getString("")
             if not selected_name:
@@ -761,11 +1074,24 @@ class BringupControlUI(tk.Tk):
             self._running_label.configure(text=f"Running: {running}")
         if self._is_connected is not None:
             try:
-                connected = bool(self._is_connected())
+                nt_connected = bool(self._is_connected())
             except Exception:
-                connected = False
-        self._connected = connected
+                nt_connected = False
+        self._nt_connected = nt_connected
         self._pending = self._pending_ack or self._pending_out
+        if self._pending and self._pending_since is not None:
+            if (time.time() - self._pending_since) > self._timeout_sec:
+                ts = time.strftime("%H:%M:%S")
+                self._append_output(f"{ts} TIMEOUT waiting for ACK/OUT.")
+                self._pending = False
+                self._pending_ack = False
+                self._pending_out = False
+                self._pending_since = None
+                self._handshake_inflight = False
+                if self._last_cmd is not None and not self._retry_pending:
+                    self._retry_pending = True
+        if not self._pending:
+            self._pending_since = None
         if self._pending:
             if self._pending_ack and self._pending_out:
                 pending_text = "Waiting: ACK + OUT"
@@ -776,29 +1102,113 @@ class BringupControlUI(tk.Tk):
         else:
             pending_text = ""
         self._pending_label.configure(text=pending_text)
+        stale_state = False
+        if nt_connected:
+            now_ms = time.time() * 1000.0
+            if last_ack_ms > 0.0 and (now_ms - last_ack_ms) > (self._state_stale_sec * 1000.0):
+                stale_state = True
+        self._state_stale = stale_state
+        nt_label = "NT OK" if nt_connected else "NT Disconnected"
         label = (
-            f"NT Connected (rio={self._rio_host})"
-            if connected
-            else f"NT Disconnected (rio={self._rio_host})"
+            f"TCP Connected ({nt_label}, rio={self._rio_host})"
+            if self._tcp_connected
+            else f"TCP Disconnected ({nt_label}, rio={self._rio_host})"
         )
         self._status_label.configure(
             text=label,
-            foreground="#2f7a2f" if connected else "#b32323",
+            foreground="#2f7a2f" if self._tcp_connected else "#b32323",
         )
+        if nt_connected and not self._pending:
+            if stale_state:
+                self._pending_label.configure(text="Robot state stale (code not running?)")
+            elif estopped:
+                self._pending_label.configure(text="Robot E-Stop (disabled)")
+            elif not enabled:
+                self._pending_label.configure(text="Robot Disabled")
+            elif mode:
+                self._pending_label.configure(text=f"Robot: {mode}")
+        if (
+            self._tcp_connected
+            and not stale_state
+            and not self._handshake_done
+            and not self._handshake_inflight
+            and not self._pending
+        ):
+            self._send_handshake(reset=False)
         self._update_action_enabled()
         self.after(250, self._poll_nt)
+
+    def _handle_tcp_response(self, payload: Dict[str, Any]) -> None:
+        """
+        NAME
+            _handle_tcp_response - Handle an inbound TCP response payload.
+        """
+        msg_type = str(payload.get("type", "")).lower()
+        if msg_type == "ack":
+            seq = int(payload.get("seq", -1))
+            name = str(payload.get("name", ""))
+            status = str(payload.get("status", ""))
+            message = str(payload.get("message", ""))
+            ts = time.strftime("%H:%M:%S")
+            header = f"{ts} ACK {seq} {name} {status} {message}".rstrip()
+            self._append_output(header)
+            self._last_ack_seq = seq
+            if self._last_sent_seq is not None and seq >= self._last_sent_seq:
+                self._pending_ack = False
+        elif msg_type == "out":
+            seq = int(payload.get("seq", -1))
+            name = str(payload.get("name", ""))
+            text = str(payload.get("text", ""))
+            json_payload = payload.get("json")
+            ts = time.strftime("%H:%M:%S")
+            header = f"{ts} OUT {seq} {name}".rstrip()
+            self._append_output(header)
+            if text:
+                for line in text.splitlines():
+                    self._append_output(f"  {line}")
+            if json_payload:
+                if isinstance(json_payload, dict):
+                    data = json_payload
+                    self._append_output("  json: " + json.dumps(data))
+                elif isinstance(json_payload, str):
+                    self._append_output("  json: " + json_payload)
+                    try:
+                        data = json.loads(json_payload)
+                    except Exception:
+                        data = None
+                else:
+                    data = None
+                if name == "uiHandshake" and isinstance(data, dict):
+                    min_next = data.get("minNextSeq")
+                    if isinstance(min_next, (int, float)):
+                        self._seq = int(min_next) - 1
+                        self._seq_seeded = True
+            self._last_out_seq = seq
+            if self._last_sent_seq is not None and seq >= self._last_sent_seq:
+                self._pending_out = False
+            if name == "uiHandshake":
+                self._handshake_done = True
+                self._handshake_inflight = False
+                self._retry_last_command()
 
     def _update_action_enabled(self) -> None:
         """
         NAME
             _update_action_enabled - Enable/disable UI actions based on state.
         """
-        allow = self._connected and not self._pending
+        allow = (
+            self._tcp_connected
+            and self._handshake_done
+            and not self._pending
+            and not self._state_stale
+        )
         state = "normal" if allow else "disabled"
         for btn in getattr(self, "_action_buttons", []):
             btn.state(["!disabled"] if allow else ["disabled"])
         if hasattr(self, "_test_box"):
             self._test_box.configure(state=state)
+        if self._reset_button is not None:
+            self._reset_button.state(["!disabled"] if self._tcp_connected else ["disabled"])
 
     def _resolve_selected_from_rows(self) -> str:
         """
@@ -836,6 +1246,16 @@ class BringupControlUI(tk.Tk):
         NAME
             _handle_close - Handle UI close and notify caller.
         """
+        self.release_lock()
         if self._on_close:
             self._on_close()
         self.destroy()
+
+    def release_lock(self) -> None:
+        """
+        NAME
+            release_lock - Release the UI lock if connected.
+        """
+        if self._tcp_connected:
+            self._send_disconnect(force=True)
+            self._tcp.close()

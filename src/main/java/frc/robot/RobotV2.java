@@ -12,13 +12,19 @@ import java.util.Map;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
+import java.util.UUID;
 
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.ControllerManager;
 import frc.robot.tests.BringupTestRegistry;
+import frc.robot.ui.TcpUiServer;
 import java.time.Instant;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * NAME
@@ -64,6 +70,18 @@ public class RobotV2 extends TimedRobot {
   private long lastStartupPrintMs = 0L;
   private int lastTestsCount = 0;
   private long lastUiSeq = -1;
+  private long lastUiAckMs = 0L;
+  private static final int UI_PROTOCOL_VERSION = 1;
+  private String uiSessionId = UUID.randomUUID().toString();
+  private String activeUiClientId = null;
+  private long lastTcpSeq = -1;
+  private static final long TCP_CMD_TIMEOUT_MS = 1000;
+  private final ConcurrentLinkedQueue<TcpPendingCommand> tcpCommandQueue = new ConcurrentLinkedQueue<>();
+  private static final int UI_TCP_PORT = 5809;
+  private TcpUiServer uiTcpServer;
+  private boolean uiProtocolMonitorEnabled = false;
+  private final NetworkTable uiTcpTable =
+      NetworkTableInstance.getDefault().getTable("bringup").getSubTable("ui_tcp");
   private double uiFixedSpeed = Double.NaN;
   private double lastNeoSpeed = 0.0;
   private double lastKrakenSpeed = 0.0;
@@ -85,6 +103,21 @@ public class RobotV2 extends TimedRobot {
     BringupTestRegistry.setOverrideTestsPath(testsOverride);
     core = new BringupCore();
     diagnostics = new DiagnosticsReporter(core, canHealth, diagTable);
+    uiTcpServer = new TcpUiServer(
+        UI_TCP_PORT,
+        this::handleTcpUiCommand,
+        new TcpUiServer.ConnectionListener() {
+          @Override
+          public void onConnect(java.net.Socket socket) {
+            onTcpConnect(socket);
+          }
+
+          @Override
+          public void onDisconnect() {
+            onTcpDisconnect();
+          }
+        });
+    uiTcpServer.start();
     applyDashboardUpdateState();
     // Print bindings and validate IDs once at startup.
     printStartupInfo();
@@ -140,6 +173,8 @@ public class RobotV2 extends TimedRobot {
     if (diagnostics != null) {
       diagnostics.update();
     }
+    processTcpCommands();
+    publishUiRobotState();
     frc.robot.diag.app.AppStatusTracker.recordLoop();
   }
 
@@ -272,169 +307,418 @@ public class RobotV2 extends TimedRobot {
     lastUiSeq = seq;
     String name = uiTable.getEntry("cmd/name").getString("");
     String argsJson = uiTable.getEntry("cmd/args/json").getString("");
-    boolean ok = true;
-    String message = "OK";
+    double cmdTs = uiTable.getEntry("cmd/ts").getDouble(0.0);
+    String clientId = uiTable.getEntry("cmd/clientId").getString("");
+    UiCommandResult result = processUiCommand(name, argsJson, cmdTs, clientId);
+    publishUiAck(seq, result.ok, result.message, name, cmdTs);
+    publishUiOut(seq, name, result.outText, cmdTs, result.outJson);
+  }
 
-    if (name == null || name.isBlank()) {
-      ok = false;
-      message = "Missing command name.";
-    } else {
-      switch (name) {
-        case "profileToggle":
-          BringupUtil.toggleCanProfile();
-          resetCoreForProfile("profileToggle");
-          message = "Profile toggled.";
-          break;
-        case "addMotor":
-          core.addNextMotorCommand();
-          message = "Add motor.";
-          break;
-        case "addAll":
-          core.addAllDevicesCommand();
-          message = "Add all motors.";
-          break;
-        case "printState":
-          core.requestStateReport();
-          break;
-        case "printHealth":
-          core.requestHealthReport();
-          break;
-        case "printCANcoder":
-          core.requestCANCoderReport();
-          break;
-        case "printInputs":
-          core.requestTextReport(
-              "Inputs: leftY=" + String.format("%.2f", lastNeoSpeed) +
-              " rightY=" + String.format("%.2f", lastKrakenSpeed) +
-              " (NEO/FLEX=" + String.format("%.2f", lastNeoSpeed) +
-              ", KRAKEN/FALCON=" + String.format("%.2f", lastKrakenSpeed) + ")",
-              4);
-          break;
-        case "toggleTest":
-          core.toggleSelectedBringupTestEnabled();
-          printTestsOverview();
-          break;
-        case "runTest":
-          BringupPrinter.enqueue("Command: runTest (UI)");
-          core.runSelectedBringupTest();
-          break;
-        case "runAllTests":
-          BringupPrinter.enqueue("Command: runAllTests (UI)");
-          core.runAllBringupTests();
-          break;
-        case "printNextTest":
-          core.printNextTestReport();
-          break;
-        case "printBindings":
-          printBindings();
-          break;
-        case "printTestsInfo":
-          printTestsInfo();
-          break;
-        case "printTestsOverview":
-          printTestsOverview();
-          break;
-        case "selectTestByName":
-          String testName = parseUiArgName(argsJson);
-          if (testName == null || testName.isBlank()) {
-            ok = false;
-            message = "selectTestByName requires args.name.";
-          } else {
-            boolean selected = core.selectBringupTestByName(testName);
-            if (!selected) {
-              ok = false;
-              message = "Test not found: " + testName;
-            } else {
-              message = "Selected test: " + testName;
-              printTestsOverview();
-            }
-          }
-          break;
-        case "toggleDashboard":
-          dashboardUpdatesEnabled = !dashboardUpdatesEnabled;
-          applyDashboardUpdateState();
-          BringupPrinter.enqueue(
-              "Dashboard/Shuffleboard updates: " + (dashboardUpdatesEnabled ? "ON" : "OFF"));
-          break;
-        case "clearFaults":
-          core.clearAllFaults();
-          BringupPrinter.enqueue("Cleared device faults (current + sticky).");
-          break;
-        case "canSweep":
-          BringupPrinter.enqueue("Command: canSweep (UI)");
-          core.runCanPingSweep();
-          break;
-        case "fixedSpeed25":
-          uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 0.25);
-          message = uiFixedSpeedActiveMessage();
-          break;
-        case "fixedSpeed50":
-          uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 0.50);
-          message = uiFixedSpeedActiveMessage();
-          break;
-        case "fixedSpeed75":
-          uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 0.75);
-          message = uiFixedSpeedActiveMessage();
-          break;
-        case "fixedSpeed100":
-          uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 1.00);
-          message = uiFixedSpeedActiveMessage();
-          break;
-        case "printNTdiag":
-          if (diagnostics != null) {
-            String report = diagnostics.buildNetworkDiagnosticsReportIfReady();
-            if (report != null) {
-              core.requestTextReport(report, 4);
-            }
-          } else {
-            ok = false;
-            message = "Diagnostics unavailable.";
-          }
-          break;
-        case "printCANdiag":
-          if (diagnostics != null) {
-            String report = diagnostics.buildCanDiagnosticsReportIfReady();
-            if (report != null) {
-              core.requestTextReport(report, 4);
-            }
-          } else {
-            ok = false;
-            message = "Diagnostics unavailable.";
-          }
-          break;
-        case "dumpReport":
-          if (diagnostics != null) {
-            String json = diagnostics.buildReportJsonForDump();
-            String wrapped = ReportTextUtil.wrapLongLine(json, 120);
-            core.requestTextReport(wrapped, 4);
-            if (diagnostics.writeReportJsonToFile(json)) {
-              core.requestTextReport("Wrote CAN report JSON to " + diagnostics.getReportPath(), 4);
-            } else {
-              core.requestTextReport("Failed to write CAN report JSON.", 4);
-            }
-          } else {
-            ok = false;
-            message = "Diagnostics unavailable.";
-          }
-          break;
-        default:
-          ok = false;
-          message = "Unknown command: " + name;
-          break;
+  /**
+   * NAME
+   *   handleTcpUiCommand - Handle a TCP UI command and build responses.
+   */
+  private TcpUiServer.UiResponse handleTcpUiCommand(TcpUiServer.UiCommand command) {
+    if (command == null) {
+      return null;
+    }
+    TcpPendingCommand pending = new TcpPendingCommand(command);
+    tcpCommandQueue.add(pending);
+    try {
+      return pending.future.get(TCP_CMD_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    } catch (TimeoutException ex) {
+      pending.cancelled = true;
+      UiCommandResult result = new UiCommandResult();
+      result.ok = false;
+      result.message = "Robot loop timeout.";
+      result.outText = result.message;
+      return buildTcpResponse(command, result);
+    } catch (Exception ex) {
+      pending.cancelled = true;
+      UiCommandResult result = new UiCommandResult();
+      result.ok = false;
+      result.message = "UI command failed: " + ex.getMessage();
+      result.outText = result.message;
+      return buildTcpResponse(command, result);
+    }
+  }
+
+  /**
+   * NAME
+   *   onTcpConnect - Handle TCP UI client connect events.
+   */
+  private void onTcpConnect(java.net.Socket socket) {
+    if (uiProtocolMonitorEnabled) {
+      uiTcpTable.getEntry("connected").setBoolean(true);
+      if (socket != null && socket.getRemoteSocketAddress() != null) {
+        uiTcpTable.getEntry("remote").setString(socket.getRemoteSocketAddress().toString());
       }
     }
-    publishUiAck(seq, ok, message);
-    publishUiOut(seq, name, message);
+  }
+
+  /**
+   * NAME
+   *   onTcpDisconnect - Handle TCP UI client disconnect events.
+   */
+  private void onTcpDisconnect() {
+    activeUiClientId = null;
+    if (uiProtocolMonitorEnabled) {
+      uiTcpTable.getEntry("connected").setBoolean(false);
+    }
+  }
+
+  /**
+   * NAME
+   *   processTcpCommands - Drain queued TCP commands on the main loop.
+   */
+  private void processTcpCommands() {
+    TcpPendingCommand pending;
+    while ((pending = tcpCommandQueue.poll()) != null) {
+      TcpUiServer.UiCommand command = pending.command;
+      if (command == null || pending.cancelled) {
+        continue;
+      }
+      lastTcpSeq = command.seq;
+      UiCommandResult result = processUiCommand(
+          command.name,
+          command.argsJson,
+          command.ts,
+          command.clientId);
+      TcpUiServer.UiResponse response = buildTcpResponse(command, result);
+      pending.future.complete(response);
+    }
+  }
+
+  /**
+   * NAME
+   *   buildTcpResponse - Build ACK/OUT payloads for TCP responses.
+   */
+  private TcpUiServer.UiResponse buildTcpResponse(TcpUiServer.UiCommand command, UiCommandResult result) {
+    JsonObject state = buildUiStateJson();
+    JsonObject ack = new JsonObject();
+    ack.addProperty("type", "ack");
+    ack.addProperty("seq", command.seq);
+    ack.addProperty("name", command.name != null ? command.name : "");
+    ack.addProperty("status", result.ok ? "ok" : "error");
+    ack.addProperty("message", result.message != null ? result.message : "");
+    ack.addProperty("ts", command.ts);
+    ack.addProperty("sessionId", uiSessionId);
+    ack.add("state", state);
+
+    JsonObject out = new JsonObject();
+    out.addProperty("type", "out");
+    out.addProperty("seq", command.seq);
+    out.addProperty("name", command.name != null ? command.name : "");
+    out.addProperty("text", result.outText != null ? result.outText : "");
+    out.addProperty("ts", command.ts);
+    out.addProperty("sessionId", uiSessionId);
+    if (result.outJson != null && !result.outJson.isBlank()) {
+      out.addProperty("json", result.outJson);
+    }
+    out.add("state", state);
+
+    if (uiProtocolMonitorEnabled) {
+      publishUiTcpMonitor(command.seq, command.name, command.clientId, result);
+    }
+
+    return new TcpUiServer.UiResponse(ack.toString(), out.toString());
+  }
+
+  /**
+   * NAME
+   *   TcpPendingCommand - Pending TCP command for the main loop.
+   */
+  private static final class TcpPendingCommand {
+    private final TcpUiServer.UiCommand command;
+    private final CompletableFuture<TcpUiServer.UiResponse> future;
+    private volatile boolean cancelled;
+
+    private TcpPendingCommand(TcpUiServer.UiCommand command) {
+      this.command = command;
+      this.future = new CompletableFuture<>();
+      this.cancelled = false;
+    }
+  }
+
+  /**
+   * NAME
+   *   UiCommandResult - Result bundle for UI command handling.
+   */
+  private static final class UiCommandResult {
+    private boolean ok = true;
+    private String message = "OK";
+    private String outText = "OK";
+    private String outJson = "";
+  }
+
+  /**
+   * NAME
+   *   processUiCommand - Execute a UI command and return the result.
+   */
+  private UiCommandResult processUiCommand(String name, String argsJson, double cmdTs, String clientId) {
+    UiCommandResult result = new UiCommandResult();
+    if (name == null || name.isBlank()) {
+      result.ok = false;
+      result.message = "Missing command name.";
+      result.outText = result.message;
+      return result;
+    }
+    JsonObject args = parseUiArgs(argsJson);
+    String client = clientId != null ? clientId.trim() : "";
+    boolean hasClient = !client.isEmpty();
+    boolean locked = activeUiClientId != null && !activeUiClientId.isBlank();
+    boolean isHandshake = "uiHandshake".equals(name);
+    boolean isDisconnect = "uiDisconnect".equals(name);
+    boolean isEnabled = DriverStation.isEnabled();
+    boolean isEStopped = DriverStation.isEStopped();
+
+    if (!hasClient) {
+      result.ok = false;
+      result.message = "Missing clientId.";
+    } else if (locked && !activeUiClientId.equals(client)) {
+      result.ok = false;
+      result.message = "UI locked by another client. Disconnect or reboot to switch.";
+    } else if (!locked && !isHandshake && !isDisconnect) {
+      result.ok = false;
+      result.message = "UI handshake required before commands.";
+    } else if (!isHandshake && !isDisconnect && !isEnabled) {
+      result.ok = false;
+      result.message = isEStopped ? "Robot disabled (E-Stop)." : "Robot disabled.";
+    }
+
+    if (!result.ok) {
+      result.outText = result.message;
+      return result;
+    }
+
+    switch (name) {
+      case "uiHandshake":
+        if (!locked) {
+          activeUiClientId = client;
+        }
+        boolean reset = args != null && args.has("reset") && args.get("reset").getAsBoolean();
+        if (reset) {
+          uiSessionId = UUID.randomUUID().toString();
+        }
+        long baseSeq = Math.max(lastUiSeq, lastTcpSeq);
+        JsonObject payload = new JsonObject();
+        payload.addProperty("sessionId", uiSessionId);
+        payload.addProperty("lastAckSeq", baseSeq);
+        payload.addProperty("minNextSeq", baseSeq + 1);
+        payload.addProperty("protocolVersion", UI_PROTOCOL_VERSION);
+        result.outJson = payload.toString();
+        result.message = reset ? "UI session reset." : "UI handshake OK.";
+        break;
+      case "uiDisconnect":
+        if (locked && activeUiClientId.equals(client)) {
+          activeUiClientId = null;
+          result.message = "UI lock released.";
+          if (uiProtocolMonitorEnabled) {
+            uiTcpTable.getEntry("connected").setBoolean(false);
+          }
+        } else if (!locked) {
+          result.message = "No active UI lock.";
+        } else {
+          result.ok = false;
+          result.message = "UI lock held by another client.";
+        }
+        break;
+      case "uiMonitorEnable":
+        uiProtocolMonitorEnabled = true;
+        result.message = "Protocol monitor enabled.";
+        break;
+      case "uiMonitorDisable":
+        uiProtocolMonitorEnabled = false;
+        uiTcpTable.getEntry("enabled").setBoolean(false);
+        uiTcpTable.getEntry("connected").setBoolean(false);
+        result.message = "Protocol monitor disabled.";
+        break;
+      case "profileToggle":
+        BringupUtil.toggleCanProfile();
+        resetCoreForProfile("profileToggle");
+        result.message = "Profile toggled.";
+        break;
+      case "addMotor":
+        core.addNextMotorCommand();
+        result.message = "Add motor.";
+        break;
+      case "addAll":
+        core.addAllDevicesCommand();
+        result.message = "Add all motors.";
+        break;
+      case "printState":
+        core.requestStateReport();
+        break;
+      case "printHealth":
+        core.requestHealthReport();
+        break;
+      case "printCANcoder":
+        core.requestCANCoderReport();
+        break;
+      case "printInputs":
+        core.requestTextReport(
+            "Inputs: leftY=" + String.format("%.2f", lastNeoSpeed) +
+            " rightY=" + String.format("%.2f", lastKrakenSpeed) +
+            " (NEO/FLEX=" + String.format("%.2f", lastNeoSpeed) +
+            ", KRAKEN/FALCON=" + String.format("%.2f", lastKrakenSpeed) + ")",
+            4);
+        break;
+      case "toggleTest":
+        core.toggleSelectedBringupTestEnabled();
+        printTestsOverview();
+        break;
+      case "runTest":
+        BringupPrinter.enqueue("Command: runTest (UI)");
+        core.runSelectedBringupTest();
+        break;
+      case "runAllTests":
+        BringupPrinter.enqueue("Command: runAllTests (UI)");
+        core.runAllBringupTests();
+        break;
+      case "printNextTest":
+        core.printNextTestReport();
+        break;
+      case "printBindings":
+        printBindings();
+        break;
+      case "printTestsInfo":
+        printTestsInfo();
+        break;
+      case "printTestsOverview":
+        printTestsOverview();
+        break;
+      case "selectTestByName":
+        String testName = parseUiArgName(args);
+        if (testName == null || testName.isBlank()) {
+          result.ok = false;
+          result.message = "selectTestByName requires args.name.";
+        } else {
+          boolean selected = core.selectBringupTestByName(testName);
+          if (!selected) {
+            result.ok = false;
+            result.message = "Test not found: " + testName;
+          } else {
+            result.message = "Selected test: " + testName;
+            printTestsOverview();
+          }
+        }
+        break;
+      case "toggleDashboard":
+        dashboardUpdatesEnabled = !dashboardUpdatesEnabled;
+        applyDashboardUpdateState();
+        BringupPrinter.enqueue(
+            "Dashboard/Shuffleboard updates: " + (dashboardUpdatesEnabled ? "ON" : "OFF"));
+        break;
+      case "clearFaults":
+        core.clearAllFaults();
+        BringupPrinter.enqueue("Cleared device faults (current + sticky).");
+        break;
+      case "canSweep":
+        BringupPrinter.enqueue("Command: canSweep (UI)");
+        core.runCanPingSweep();
+        break;
+      case "fixedSpeed25":
+        uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 0.25);
+        result.message = uiFixedSpeedActiveMessage();
+        break;
+      case "fixedSpeed50":
+        uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 0.50);
+        result.message = uiFixedSpeedActiveMessage();
+        break;
+      case "fixedSpeed75":
+        uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 0.75);
+        result.message = uiFixedSpeedActiveMessage();
+        break;
+      case "fixedSpeed100":
+        uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 1.00);
+        result.message = uiFixedSpeedActiveMessage();
+        break;
+      case "printNTdiag":
+        if (diagnostics != null) {
+          String report = diagnostics.buildNetworkDiagnosticsReportIfReady();
+          if (report != null) {
+            core.requestTextReport(report, 4);
+          }
+        } else {
+          result.ok = false;
+          result.message = "Diagnostics unavailable.";
+        }
+        break;
+      case "printCANdiag":
+        if (diagnostics != null) {
+          String report = diagnostics.buildCanDiagnosticsReportIfReady();
+          if (report != null) {
+            core.requestTextReport(report, 4);
+          }
+        } else {
+          result.ok = false;
+          result.message = "Diagnostics unavailable.";
+        }
+        break;
+      case "dumpReport":
+        if (diagnostics != null) {
+          String json = diagnostics.buildReportJsonForDump();
+          String wrapped = ReportTextUtil.wrapLongLine(json, 120);
+          core.requestTextReport(wrapped, 4);
+          if (diagnostics.writeReportJsonToFile(json)) {
+            core.requestTextReport("Wrote CAN report JSON to " + diagnostics.getReportPath(), 4);
+          } else {
+            core.requestTextReport("Failed to write CAN report JSON.", 4);
+          }
+        } else {
+          result.ok = false;
+          result.message = "Diagnostics unavailable.";
+        }
+        break;
+      default:
+        result.ok = false;
+        result.message = "Unknown command: " + name;
+        break;
+    }
+
+    result.outText = result.message;
+    return result;
+  }
+
+  /**
+   * NAME
+   *   buildUiStateJson - Build a small state payload for UI responses.
+   */
+  private JsonObject buildUiStateJson() {
+    JsonObject state = new JsonObject();
+    state.addProperty("enabled", DriverStation.isEnabled());
+    state.addProperty("estopped", DriverStation.isEStopped());
+    state.addProperty("mode", DriverStation.isAutonomous() ? "auto"
+        : DriverStation.isTeleop() ? "teleop"
+        : DriverStation.isTest() ? "test" : "disabled");
+    return state;
+  }
+
+  /**
+   * NAME
+   *   publishUiTcpMonitor - Publish TCP protocol monitor entries to NT.
+   */
+  private void publishUiTcpMonitor(long seq, String name, String clientId, UiCommandResult result) {
+    uiTcpTable.getEntry("enabled").setBoolean(uiProtocolMonitorEnabled);
+    uiTcpTable.getEntry("connected").setBoolean(true);
+    uiTcpTable.getEntry("lastSeq").setInteger(seq);
+    uiTcpTable.getEntry("lastName").setString(name != null ? name : "");
+    uiTcpTable.getEntry("lastStatus").setString(result.ok ? "ok" : "error");
+    uiTcpTable.getEntry("lastMessage").setString(result.message != null ? result.message : "");
+    uiTcpTable.getEntry("activeClientId").setString(clientId != null ? clientId : "");
   }
 
   /**
    * NAME
    *   publishUiAck - Publish UI command acknowledgements to NetworkTables.
    */
-  private void publishUiAck(long seq, boolean ok, String message) {
+  private void publishUiAck(long seq, boolean ok, String message, String name, double cmdTs) {
     uiTable.getEntry("ack/seq").setInteger(seq);
     uiTable.getEntry("ack/status").setString(ok ? "ok" : "error");
     uiTable.getEntry("ack/message").setString(message != null ? message : "");
+    uiTable.getEntry("ack/name").setString(name != null ? name : "");
+    uiTable.getEntry("ack/ts").setDouble(cmdTs);
+    publishUiState(seq);
   }
 
   /**
@@ -444,29 +728,76 @@ public class RobotV2 extends TimedRobot {
    * DESCRIPTION
    *   Emits at least one output entry per command to release the UI.
    */
-  private void publishUiOut(long seq, String name, String text) {
+  private void publishUiOut(long seq, String name, String text, double cmdTs, String jsonText) {
     uiTable.getEntry("out/seq").setInteger(seq);
     uiTable.getEntry("out/name").setString(name != null ? name : "");
     uiTable.getEntry("out/text").setString(text != null ? text : "");
+    uiTable.getEntry("out/ts").setDouble(cmdTs);
+    uiTable.getEntry("out/json").setString(jsonText != null ? jsonText : "");
+  }
+
+  /**
+   * NAME
+   *   publishUiState - Publish UI command state/heartbeat.
+   *
+   * PARAMETERS
+   *   seq - Most recent processed command sequence.
+   */
+  private void publishUiState(long seq) {
+    lastUiAckMs = System.currentTimeMillis();
+    uiTable.getEntry("state/lastAckSeq").setInteger(seq);
+    uiTable.getEntry("state/lastAckMs").setDouble(lastUiAckMs);
+    uiTable.getEntry("state/sessionId").setString(uiSessionId);
+    uiTable.getEntry("state/protocolVersion").setInteger(UI_PROTOCOL_VERSION);
+    uiTable.getEntry("state/activeClientId").setString(
+        activeUiClientId != null ? activeUiClientId : "");
+  }
+
+  /**
+   * NAME
+   *   publishUiRobotState - Publish driver station state for UI feedback.
+   */
+  private void publishUiRobotState() {
+    boolean enabled = DriverStation.isEnabled();
+    boolean estopped = DriverStation.isEStopped();
+    String mode = "disabled";
+    if (DriverStation.isAutonomous()) {
+      mode = "auto";
+    } else if (DriverStation.isTeleop()) {
+      mode = "teleop";
+    } else if (DriverStation.isTest()) {
+      mode = "test";
+    }
+    uiTable.getEntry("state/enabled").setBoolean(enabled);
+    uiTable.getEntry("state/estopped").setBoolean(estopped);
+    uiTable.getEntry("state/mode").setString(mode);
+    uiTable.getEntry("state/lastAckMs").setDouble(System.currentTimeMillis());
   }
 
   /**
    * NAME
    *   parseUiArgName - Parse args JSON for a name field.
    */
-  private String parseUiArgName(String argsJson) {
+  private String parseUiArgName(JsonObject args) {
+    if (args == null || !args.has("name")) {
+      return null;
+    }
+    return args.get("name").getAsString();
+  }
+
+  /**
+   * NAME
+   *   parseUiArgs - Parse args JSON for UI commands.
+   */
+  private JsonObject parseUiArgs(String argsJson) {
     if (argsJson == null || argsJson.isBlank()) {
       return null;
     }
     try {
-      JsonObject obj = GSON.fromJson(argsJson, JsonObject.class);
-      if (obj != null && obj.has("name")) {
-        return obj.get("name").getAsString();
-      }
+      return GSON.fromJson(argsJson, JsonObject.class);
     } catch (JsonParseException ex) {
       return null;
     }
-    return null;
   }
 
   /**

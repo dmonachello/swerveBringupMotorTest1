@@ -81,6 +81,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Launch the bringup control UI alongside the sniffer.",
     )
     parser.add_argument(
+        "--ui-tcp-port",
+        type=int,
+        default=5809,
+        help="TCP port for the bringup UI command channel (default: 5809).",
+    )
+    parser.add_argument(
         "--ui-only",
         action="store_true",
         help="Alias for --ui --no-can.",

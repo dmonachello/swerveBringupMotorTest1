@@ -20,6 +20,7 @@ ERRORS
 from __future__ import annotations
 
 import json
+import signal
 import queue
 import threading
 import time
@@ -314,6 +315,17 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         ui_table.getEntry("cmd/seq").setInteger(seq)
         return seq
 
+    def _set_ui_command_seq(value: int) -> None:
+        """
+        NAME
+            _set_ui_command_seq - Seed the UI command sequence counter.
+        """
+        if value < 0:
+            value = 0
+        _send_ui_command._seq = int(value)  # type: ignore[attr-defined]
+
+    _send_ui_command.set_seq = _set_ui_command_seq  # type: ignore[attr-defined]
+
     def _run_sniffer(stop_event: Optional[threading.Event]) -> int:
         """
         NAME
@@ -539,16 +551,36 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         thread = threading.Thread(target=_run_sniffer, args=(stop_event,), daemon=True)
         thread.start()
         ui = BringupControlUI(
-            command_sender=_send_ui_command,
             ui_table=ui_table,
             tests_table=tests_table,
             rio_host=args.rio,
+            tcp_port=args.ui_tcp_port,
             is_connected=_nt_is_connected,
             on_close=stop_event.set,
         )
-        ui.mainloop()
-        stop_event.set()
-        thread.join(timeout=2.0)
+        def _release_ui_lock() -> None:
+            try:
+                ui.release_lock()
+            except Exception:
+                pass
+
+        def _handle_signal(_signum, _frame) -> None:
+            _release_ui_lock()
+            stop_event.set()
+            raise SystemExit(0)
+
+        original_sigint = signal.getsignal(signal.SIGINT)
+        original_sigterm = signal.getsignal(signal.SIGTERM)
+        signal.signal(signal.SIGINT, _handle_signal)
+        signal.signal(signal.SIGTERM, _handle_signal)
+        try:
+            ui.mainloop()
+        finally:
+            _release_ui_lock()
+            stop_event.set()
+            thread.join(timeout=2.0)
+            signal.signal(signal.SIGINT, original_sigint)
+            signal.signal(signal.SIGTERM, original_sigterm)
         return 0
 
     return _run_sniffer(None)

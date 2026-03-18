@@ -1,15 +1,16 @@
-# Adding New Motor Hardware (New Device Type)
+# Adding Hardware (New Manufacturer or Device Type)
 
-Step-by-step guide for adding a **new motor type** (not just a new CAN ID list) to this project.
+Step-by-step guide for adding a **new manufacturer**, a **new device type**, or a **new motor model** (not just a new CAN ID list) to this project.
 
 Scope: this document covers changes in the Java robot code, profile JSON, and optional PC tool updates.
 
 ## Before You Start
 Purpose: decide scope, bucket, and whether you need code changes.
-- Identify the vendor SDK you will use (REV, CTRE, other?).
-- Decide which existing device category this most closely matches:
-  - REV: Spark Max (NEO, NEO 550), Spark Flex (Vortex)
-  - CTRE: Talon FX (Kraken, Falcon), CANdle, CANCoder
+- Identify the vendor SDK you will use (REV, CTRE, or a new manufacturer).
+- Decide whether this is:
+  - New **manufacturer** (new vendor folder + new group), or
+  - New **device type** under an existing manufacturer, or
+  - New **motor model** for an existing device wrapper (data-only).
 - Decide whether you need a new **device wrapper** (new class) or just a new **motor model** (data-only).
 
 If you are only adding a new motor model for an existing wrapper, skip to **Step 6**.
@@ -36,9 +37,14 @@ If this is a **new vendor** (not REV or CTRE), add a manufacturer group that own
 1. Create a new group class:
    - `src/main/java/frc/robot/manufacturers/<Vendor>DeviceGroup.java`
 2. Implement the `ManufacturerGroup` interface.
-3. Wire it into the bringup flow (see Step 3).
+3. Register the group in `src/main/java/frc/robot/manufacturers/ManufacturerRegistry.java`.
 
 If the vendor already exists (REV/CTRE), skip this step.
+
+Example registry entry:
+```java
+new ManufacturerFactory("ACME", AcmeDeviceGroup::new)
+```
 
 ## Step 2: Add a Device Wrapper (if the motor needs new SDK calls)
 Purpose: implement the SDK-specific device wrapper and diagnostics.
@@ -77,12 +83,12 @@ Typical changes:
 - Set `requiresMotorSpec` if you want warnings for missing motor specs.
 
 ## Step 4: BringupCore Integration
-Purpose: decide whether BringupCore needs updates for new manufacturer behavior.
-BringupCore no longer needs per-device edits once the device is registered in the
-manufacturer group. It consumes the registered device list generically.
+Purpose: confirm that core logic stays vendor-agnostic after registration.
+BringupCore consumes the `ManufacturerRegistry` list generically, so adding devices
+to an existing manufacturer group does not require any core edits.
 
-Only update `src/main/java/frc/robot/BringupCore.java` if you add a new **manufacturer**
-group or want custom output (e.g., a new encoder-specific status printout).
+Only update `src/main/java/frc/robot/BringupCore.java` if you need custom output
+(e.g., a new encoder-specific status printout).
 
 ## Step 5: Extend Profile Schema in BringupUtil
 Purpose: add profile parsing and runtime wiring for the new device bucket.
@@ -94,6 +100,9 @@ Add:
 - Parsing support in the `CanProfileConfig` JSON model.
 - `setActiveCanProfile()` wiring to populate arrays/labels/motor models/limits.
 - `buildDeviceConfigs()` registration for the new bucket or generic type.
+
+Tip: if the new device does not fit an existing bucket, prefer the generic
+`devices` list to avoid schema churn.
 
 ## Step 6: Add Manufacturer and Device Type Names
 Purpose: keep printed tables readable with human names.
@@ -138,11 +147,11 @@ Example pattern:
 For new device types that do not fit an existing bucket, prefer the generic `devices` list:
 ```json
 {
-  "vendor": "REV",
-  "type": "NEO",
-  "label": "Example NEO",
+  "vendor": "ACME",
+  "type": "AcmeMotor",
+  "label": "Example Acme Motor",
   "id": 1,
-  "motor": "REV NEO",
+  "motor": "Acme Model X",
   "limits": { "fwdDio": 0, "revDio": 1, "invert": false }
 }
 ```
@@ -206,8 +215,8 @@ Purpose: choose the smallest viable change set.
   Data-only: `motor_specs.json` + profile entry.
 
 - New **controller type** or different SDK calls?  
-  Code changes: new wrapper + manufacturer group + BringupCore + profile schema.
+  Code changes: new wrapper + manufacturer group (if needed) + profile schema.
 
 - New **vendor**?  
-  Code changes: new manufacturer group + new device wrappers + can_mappings.json.
+  Code changes: new manufacturer group + new device wrappers + can_mappings.json + registry entry.
 

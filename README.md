@@ -455,6 +455,9 @@ Optional Bringup Control UI:
 tools\can_nt\run_can_nt.cmd --ui
 ```
 Use Help -> Help inside the UI for the tabbed, scrollable command reference and tooltips.
+Notes:
+- UI commands use TCP (port 5809 default). Override with `--ui-tcp-port`.
+- NetworkTables still provides state/diagnostics visibility.
 Override Python for the helper script:
 ```cmd
 set CAN_NT_PYTHON=C:\Path\To\Python\python.exe

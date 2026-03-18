@@ -113,40 +113,75 @@ REAL-TIME NOTES (WHY OUTPUT IS THROTTLED)
     Expect longer reports to stream over multiple cycles rather than printing all at once.
 
 UI COMMAND PROTOCOL
-    Purpose: Define the NetworkTables command/ack/output flow between the PC UI and the roboRIO.
+    Purpose: Define the TCP command/ack/output flow between the PC UI and the roboRIO.
 
-    Transport + keys:
-    - NetworkTables table: bringup/ui
-    - Commands (PC -> roboRIO):
-      - cmd/seq (int, monotonic)
-      - cmd/name (string)
-      - cmd/args/json (string, JSON or empty)
-      - cmd/ts (double, seconds)
-    - Acknowledgement (roboRIO -> PC):
-      - ack/seq (int)
-      - ack/status ("ok" or "error")
-      - ack/message (string)
-    - Output (roboRIO -> PC):
-      - out/seq (int)
-      - out/name (string)
-      - out/text (string)
+    Transport:
+    - TCP, line-delimited JSON over port 5809 by default (set with --ui-tcp-port).
+    - NetworkTables remains in use for state/diagnostics visibility.
+
+    TCP command payload (PC -> roboRIO):
+    - type = "cmd"
+    - seq (int, monotonic)
+    - name (string)
+    - args (object, optional)
+    - ts (double, seconds)
+    - clientId (string, required; unique per UI instance)
+
+    TCP ack payload (roboRIO -> PC):
+    - type = "ack"
+    - seq (int)
+    - name (string)
+    - status ("ok" or "error")
+    - message (string)
+    - ts (double, echo cmd/ts)
+    - sessionId (string)
+    - state (object: enabled/estopped/mode)
+
+    TCP out payload (roboRIO -> PC):
+    - type = "out"
+    - seq (int)
+    - name (string)
+    - text (string)
+    - ts (double, echo cmd/ts)
+    - json (string, optional structured payload)
+    - sessionId (string)
+    - state (object: enabled/estopped/mode)
+
+    State/heartbeat (NT, roboRIO -> PC):
+    - bringup/ui/state/enabled (bool)
+    - bringup/ui/state/estopped (bool)
+    - bringup/ui/state/mode (string)
+    - bringup/ui/state/lastAckMs (double)
+    - bringup/ui_tcp/enabled (bool, when protocol monitor is enabled)
+    - bringup/ui_tcp/connected (bool)
+    - bringup/ui_tcp/lastSeq (int)
+    - bringup/ui_tcp/lastName (string)
+    - bringup/ui_tcp/lastStatus (string)
+    - bringup/ui_tcp/lastMessage (string)
+    - bringup/ui_tcp/activeClientId (string)
 
     Send/receive rules:
-    - PC writes cmd/name, cmd/args/json, cmd/ts, then cmd/seq last to publish a complete command.
-    - roboRIO processes a command only when cmd/seq increases (seq <= last is ignored).
-    - Every command produces:
-      - one ACK with status + message
-      - one OUT entry (even for 1-line confirmations)
+    - Commands are half-duplex: send one, wait for ACK + OUT.
+    - Every command produces one ACK and one OUT response.
 
     UI gating (half-duplex):
     - UI allows only one outstanding command at a time.
-    - A command is "done" when both ACK and OUT arrive for its seq.
-    - UI shows a visible indicator: Waiting for ACK, OUT, or both.
-    - UI blocks commands when NT is disconnected.
+    - UI enforces a tight timeout and will retry the last command once after recovery.
+    - UI blocks commands when TCP is disconnected.
+    - To switch PCs, the active UI must send uiDisconnect or the robot must reboot.
 
     Notes:
     - The OUT message is a short per-command status, not the full report text.
     - Full reports still print via the roboRIO report runner and console.
+
+    Handshake:
+    - Use name = uiHandshake to establish session and seed seq after reconnect.
+    - UI may send {"reset": true} to request a session reset.
+    - The OUT json payload includes sessionId, lastAckSeq, minNextSeq, protocolVersion.
+    - The roboRIO remains authoritative for seq; UI should always use minNextSeq.
+    - uiDisconnect releases the active client lock (same clientId only).
+    - If state/lastAckMs goes stale, the UI reports \"Robot state stale (code not running?)\".
+    - uiMonitorEnable / uiMonitorDisable toggle NT protocol monitoring under bringup/ui_tcp.
 
 UI HELP
     Purpose: Describe the in-app Help content for the Bringup Control UI.
