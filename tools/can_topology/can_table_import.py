@@ -13,14 +13,16 @@ DESCRIPTION
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
-import time
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
+from tools.common.cli_helpers import add_input_arg, add_output_arg
+from tools.common.profile_io import compute_profiles_hash
+from tools.common.text_io import read_lines
+from tools.common.time_utils import timestamp_version
 
 @dataclass
 class TableRow:
@@ -215,7 +217,7 @@ def _load_text(path: Optional[str]) -> List[str]:
         _load_text - Load input lines from a path or stdin.
     """
     if path:
-        return Path(path).read_text(encoding="utf-8").splitlines()
+        return read_lines(Path(path))
     return sys.stdin.read().splitlines()
 
 
@@ -236,10 +238,7 @@ def _compute_data_hash(payload: Dict[str, object]) -> str:
     NAME
         _compute_data_hash - Compute a stable hash for profile payloads.
     """
-    normalized = dict(payload)
-    normalized["data_hash"] = ""
-    blob = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+    return compute_profiles_hash(payload)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -261,13 +260,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         required=True,
         help="Profile name to emit under 'profiles'.",
     )
-    parser.add_argument(
-        "--input",
-        help="Path to table text (defaults to stdin).",
+    add_input_arg(
+        parser,
+        default=None,
+        help_text="Path to table text (defaults to stdin).",
     )
-    parser.add_argument(
-        "--output",
-        help="Write JSON to this path (defaults to stdout).",
+    add_output_arg(
+        parser,
+        default=None,
+        help_text="Write JSON to this path (defaults to stdout).",
     )
     parser.add_argument(
         "--warn-duplicates",
@@ -280,7 +281,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     profile = build_profile(rows)
     payload = {
         "schema_version": 1,
-        "data_version": time.strftime("%Y-%m-%d_%H%M%S", time.localtime()),
+        "data_version": timestamp_version(),
         "default_profile": args.profile,
         "profiles": {args.profile: profile},
     }

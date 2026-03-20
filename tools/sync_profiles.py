@@ -23,11 +23,11 @@ ERRORS
 """
 
 import argparse
-import hashlib
-import json
-import time
 from pathlib import Path
 
+from tools.common.json_io import read_json, write_json
+from tools.common.profile_io import compute_profiles_hash, validate_profiles_schema
+from tools.common.time_utils import timestamp_version
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Sync bringup_profiles.json into deploy.")
@@ -44,17 +44,6 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _compute_data_hash(payload: dict) -> str:
-    """
-    NAME
-        _compute_data_hash - Compute a stable hash for profile payloads.
-    """
-    normalized = dict(payload)
-    normalized["data_hash"] = ""
-    blob = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
-
-
 def main() -> int:
     args = _parse_args()
     source = Path(args.source)
@@ -63,20 +52,24 @@ def main() -> int:
         print(f"ERROR: source file not found: {source}")
         return 2
     try:
-        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload = read_json(source)
     except Exception as exc:
         print(f"ERROR: failed to read source JSON: {exc}")
         return 2
-    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+    if not isinstance(payload, dict):
         print("ERROR: source schema_version mismatch (expected 1).")
         return 2
-    payload["data_version"] = time.strftime("%Y-%m-%d_%H%M%S", time.localtime())
+    ok, _err = validate_profiles_schema(payload, 1)
+    if not ok:
+        print("ERROR: source schema_version mismatch (expected 1).")
+        return 2
+    payload["data_version"] = timestamp_version()
     data_version = payload["data_version"]
-    payload["data_hash"] = _compute_data_hash(payload)
+    payload["data_hash"] = compute_profiles_hash(payload)
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
-        source.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-        dest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        write_json(source, payload)
+        write_json(dest, payload)
     except Exception as exc:
         print(f"ERROR: failed to copy profiles: {exc}")
         return 2

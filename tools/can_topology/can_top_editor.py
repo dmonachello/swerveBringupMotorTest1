@@ -22,13 +22,21 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox, simpledialog
+
+from tools.common.json_io import read_json
+try:
+    from tools.common.paths import profiles_canonical_path, profiles_deploy_path
+    from tools.common.profile_io import compute_profiles_hash
+except ImportError:
+    profiles_canonical_path = None
+    profiles_deploy_path = None
+    compute_profiles_hash = None
 
 try:
     from .can_top_models import (
@@ -90,6 +98,8 @@ except ImportError:  # Allow running as a script from this folder.
         sort_nodes,
         tags_to_string,
     )
+
+from tools.common.time_utils import timestamp_version
 
 
 class TopologyEditor(tk.Tk):
@@ -847,7 +857,7 @@ class TopologyEditor(tk.Tk):
         """
         if not path.exists():
             return
-        stamp = time.strftime("%Y-%m-%d_%H%M%S", time.localtime())
+        stamp = timestamp_version()
         backup = path.with_name(f"{path.stem}.bak_{stamp}{path.suffix}")
         try:
             backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
@@ -860,7 +870,7 @@ class TopologyEditor(tk.Tk):
             _load_profiles_payload - Load bringup_profiles.json with repair prompts.
         """
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = read_json(path)
         except Exception as exc:
             messagebox.showerror("Error", f"Failed to open file: {exc}")
             return None
@@ -908,7 +918,7 @@ class TopologyEditor(tk.Tk):
             _write_profiles_payload - Write bringup_profiles.json with fresh hash.
         """
         data["schema_version"] = self._expected_schema_version()
-        data["data_version"] = time.strftime("%Y-%m-%d_%H%M%S", time.localtime())
+        data["data_version"] = timestamp_version()
         data["data_hash"] = self._compute_data_hash(data)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -1289,6 +1299,8 @@ class TopologyEditor(tk.Tk):
         NAME
             _compute_data_hash - Compute a stable hash for profile payloads.
         """
+        if compute_profiles_hash is not None:
+            return compute_profiles_hash(payload)
         normalized = dict(payload)
         normalized["data_hash"] = ""
         blob = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
@@ -1303,10 +1315,14 @@ class TopologyEditor(tk.Tk):
 
     @staticmethod
     def _canonical_profiles_path() -> Path:
+        if profiles_canonical_path is not None:
+            return profiles_canonical_path()
         return Path(__file__).resolve().parents[2] / "data" / "bringup_profiles.json"
 
     @staticmethod
     def _deploy_profiles_path() -> Path:
+        if profiles_deploy_path is not None:
+            return profiles_deploy_path()
         return Path(__file__).resolve().parents[2] / "src" / "main" / "deploy" / "bringup_profiles.json"
 
     def _read_profile_index(self) -> Tuple[List[str], Optional[str]]:
@@ -1314,7 +1330,7 @@ class TopologyEditor(tk.Tk):
             path = self._default_profiles_path()
             if not path.exists():
                 return [], None
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = read_json(path)
             profiles = data.get("profiles")
             if not isinstance(profiles, dict) or not profiles:
                 return [], None
@@ -1450,7 +1466,7 @@ class TopologyEditor(tk.Tk):
         data = {
             "default_profile": profile_name,
             "schema_version": self._expected_schema_version(),
-            "data_version": time.strftime("%Y-%m-%d_%H%M%S", time.localtime()),
+            "data_version": timestamp_version(),
             "profiles": {
                 profile_name: self._profile_from_nodes(),
             },
@@ -1524,7 +1540,7 @@ class TopologyEditor(tk.Tk):
         data = {
             "default_profile": profile_name,
             "schema_version": self._expected_schema_version(),
-            "data_version": time.strftime("%Y-%m-%d_%H%M%S", time.localtime()),
+            "data_version": timestamp_version(),
             "profiles": {
                 profile_name: self._profile_from_nodes_list(selected_devices),
             },
@@ -1629,7 +1645,7 @@ class TopologyEditor(tk.Tk):
             data = {}
         if data.get("schema_version") != self._expected_schema_version():
             data["schema_version"] = self._expected_schema_version()
-        data["data_version"] = time.strftime("%Y-%m-%d_%H%M%S", time.localtime())
+        data["data_version"] = timestamp_version()
         profiles = data.get("profiles")
         if not isinstance(profiles, dict):
             profiles = {}

@@ -19,6 +19,7 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
+from tools.common.cli_helpers import add_input_arg, add_output_arg
 from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -181,8 +182,8 @@ def main() -> int:
         main - CLI entry point for markdown conversion.
     """
     parser = argparse.ArgumentParser(description="Convert markdown to docx with title, TOC, and page breaks.")
-    parser.add_argument("--input", required=True, help="Input markdown file.")
-    parser.add_argument("--output", default="", help="Output docx file (default: input name).")
+    add_input_arg(parser, default=None, help_text="Input markdown file.", required=True)
+    add_output_arg(parser, default="", help_text="Output docx file (default: input name).")
     parser.add_argument("--title", default="", help="Override document title.")
     args = parser.parse_args()
 

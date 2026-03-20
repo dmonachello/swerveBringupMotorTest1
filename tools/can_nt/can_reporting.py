@@ -13,9 +13,9 @@ DESCRIPTION
 """
 
 import json
-import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from tools.common.time_utils import timestamp_hms
 from .can_analyzer import CanLiveAnalyzer
 from .can_nt_publish import decode_frc_ext_id
 from .can_state import SnifferState
@@ -297,7 +297,7 @@ def print_summary(
     top = summary.get("top", [])
     total = bus.get("fps")
     missing = health.get("missing", [])
-    ts = time.strftime("%H:%M:%S", time.localtime(now))
+    ts = timestamp_hms(now)
     bus_load = extra.get("bus_load_pct")
     bus_load_text = f"{bus_load:.1f}%" if isinstance(bus_load, (int, float)) else "n/a"
     dropped = extra.get("dropped")

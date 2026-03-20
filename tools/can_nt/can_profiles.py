@@ -12,34 +12,19 @@ DESCRIPTION
     fallback) and provides default device lists for the CAN diagnostics tool.
 """
 
-import hashlib
-import json
-from pathlib import Path
+from tools.common.json_io import read_json
+from tools.common.paths import profiles_canonical_path, profiles_deploy_path
+from tools.common.profile_io import compute_profiles_hash, validate_profiles_schema
 from typing import Any, Dict, List, Set, Tuple
 
 
 DEFAULT_PROFILE_NAME = "robot"
 PROFILE_SCHEMA_VERSION = 1
-CANONICAL_PROFILE_FILE = Path(__file__).resolve().parents[2] / "data" / "bringup_profiles.json"
-DEPLOY_PROFILE_FILE = Path(__file__).resolve().parents[2] / "src" / "main" / "deploy" / "bringup_profiles.json"
+CANONICAL_PROFILE_FILE = profiles_canonical_path()
+DEPLOY_PROFILE_FILE = profiles_deploy_path()
 _LOAD_ERROR: str = ""
 _DATA_VERSION: str = ""
 _DATA_HASH: str = ""
-
-
-def _compute_data_hash(payload: Dict[str, Any]) -> str:
-    """
-    NAME
-        _compute_data_hash - Compute a stable hash for profile payloads.
-
-    DESCRIPTION
-        Hashes the JSON with data_hash set to an empty string and sorted keys,
-        so formatting differences do not affect the checksum.
-    """
-    normalized = dict(payload)
-    normalized["data_hash"] = ""
-    blob = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
 def _device(label: str, manufacturer: int, device_type: int, device_id: int, group: str) -> Dict[str, Any]:
@@ -76,17 +61,14 @@ def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
         return (_fallback_default(), _fallback_profiles())
 
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = read_json(path)
     except Exception:
         _LOAD_ERROR = f"Failed to parse profiles JSON at {path}"
         return (_fallback_default(), _fallback_profiles())
 
-    schema_version = payload.get("schema_version")
-    if schema_version != PROFILE_SCHEMA_VERSION:
-        _LOAD_ERROR = (
-            "Profile schema_version mismatch: "
-            f"expected {PROFILE_SCHEMA_VERSION}, got {schema_version}"
-        )
+    ok, err = validate_profiles_schema(payload, PROFILE_SCHEMA_VERSION)
+    if not ok:
+        _LOAD_ERROR = err
         return (_fallback_default(), _fallback_profiles())
 
     data_version = payload.get("data_version")
@@ -99,7 +81,7 @@ def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
     if not isinstance(data_hash, str) or not data_hash.strip():
         _LOAD_ERROR = "Profile data_hash missing or empty"
         return (_fallback_default(), _fallback_profiles())
-    computed_hash = _compute_data_hash(payload)
+    computed_hash = compute_profiles_hash(payload)
     if data_hash != computed_hash:
         _LOAD_ERROR = "Profile data_hash mismatch (run tools/sync_profiles.py)"
         return (_fallback_default(), _fallback_profiles())

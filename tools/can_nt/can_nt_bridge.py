@@ -52,6 +52,7 @@ from .can_reporting import (
 )
 from .can_state import SnifferState
 from .can_tx import start_tx_if_requested
+from tools.common.time_utils import timestamp_compact
 
 
 def _maybe_handle_dumps(
@@ -103,7 +104,7 @@ def _maybe_handle_dumps(
         seen_keys = sorted(state.last_seen.keys())
         profile_name = args.dump_profile_name
         if not profile_name:
-            profile_name = time.strftime("sniffer_%Y%m%d_%H%M%S", time.localtime(now))
+            profile_name = timestamp_compact("sniffer", now)
         dump_profile(
             args.dump_profile,
             profile_name,

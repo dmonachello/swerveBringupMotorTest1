@@ -20,10 +20,13 @@ import threading
 import time
 import tkinter as tk
 import uuid
-from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Callable, Dict, List, Optional, Tuple, Any
 
+from tools.common.json_io import read_json
+from tools.common.paths import tests_deploy_path
+from tools.common.tests_io import extract_test_names
+from tools.common.time_utils import timestamp_hms
 from .can_profiles import get_profiles_load_error, list_profiles, reload_profiles
 
 
@@ -47,33 +50,9 @@ def _load_tests() -> List[str]:
         _load_tests - Load test names from bringup_tests.json.
     """
     try:
-        root = Path(__file__).resolve().parents[2]
-        path = root / "src" / "main" / "deploy" / "bringup_tests.json"
-        data = json.loads(path.read_text(encoding="utf-8"))
-        tests = data.get("tests")
-        if isinstance(tests, list):
-            names = []
-            for entry in tests:
-                if isinstance(entry, dict):
-                    name = entry.get("name")
-                    if isinstance(name, str) and name:
-                        names.append(name)
-            return names
-        test_sets = data.get("test_sets")
-        if isinstance(test_sets, dict):
-            default_set = data.get("default_test_set")
-            if isinstance(default_set, str) and default_set in test_sets:
-                tests = test_sets.get(default_set, [])
-            else:
-                tests = next(iter(test_sets.values()), [])
-            if isinstance(tests, list):
-                names = []
-                for entry in tests:
-                    if isinstance(entry, dict):
-                        name = entry.get("name")
-                        if isinstance(name, str) and name:
-                            names.append(name)
-                return names
+        path = tests_deploy_path()
+        data = read_json(path)
+        return extract_test_names(data)
     except Exception:
         pass
     return []
@@ -898,12 +877,12 @@ class BringupControlUI(tk.Tk):
             self._ui_failures[key] = state
         if is_failing:
             if not state["active"] or (now - state["last_log"]) >= self._ui_fail_interval:
-                self._append_output(f"{time.strftime('%H:%M:%S')} {fail_message}")
+                self._append_output(f"{timestamp_hms()} {fail_message}")
                 state["last_log"] = now
             state["active"] = True
         else:
             if state["active"]:
-                self._append_output(f"{time.strftime('%H:%M:%S')} {recovery_message}")
+                self._append_output(f"{timestamp_hms()} {recovery_message}")
                 state["active"] = False
                 state["last_log"] = now
     
@@ -965,7 +944,7 @@ class BringupControlUI(tk.Tk):
             self._pending_since = None
         payload = {"clientId": self._client_id, "reset": reset}
         if log:
-            ts = time.strftime("%H:%M:%S")
+            ts = timestamp_hms()
             label = "uiHandshake (reset)" if reset else "uiHandshake"
             self._append_output(f"{ts} CMD {label}")
         seq = self._send_tcp_command("uiHandshake", payload)
@@ -995,7 +974,7 @@ class BringupControlUI(tk.Tk):
             self._pending_ack = False
             self._pending_out = False
             self._pending_since = None
-        ts = time.strftime("%H:%M:%S")
+        ts = timestamp_hms()
         self._append_output(f"{ts} CMD uiDisconnect")
         self._last_cmd = ("uiDisconnect", None)
         self._retry_pending = False
@@ -1019,7 +998,7 @@ class BringupControlUI(tk.Tk):
             self._append_output("Busy: wait for current command to finish.")
             return
         label = "uiMonitorEnable" if enabled else "uiMonitorDisable"
-        ts = time.strftime("%H:%M:%S")
+        ts = timestamp_hms()
         self._append_output(f"{ts} CMD {label}")
         args = {"enabled": enabled}
         self._last_cmd = (label, args)
@@ -1054,7 +1033,7 @@ class BringupControlUI(tk.Tk):
             self._retry_pending = False
             return
         self._retry_count += 1
-        ts = time.strftime("%H:%M:%S")
+        ts = timestamp_hms()
         self._append_output(f"{ts} RETRY {name}")
         seq = self._send_tcp_command(name, args)
         if seq is not None:
@@ -1089,7 +1068,7 @@ class BringupControlUI(tk.Tk):
         if self._pending:
             self._append_output("Busy: wait for current command to finish.")
             return
-        ts = time.strftime("%H:%M:%S")
+        ts = timestamp_hms()
         self._append_output(f"{ts} CMD {command}")
         self._last_cmd = (command, None)
         self._retry_pending = False
@@ -1121,7 +1100,7 @@ class BringupControlUI(tk.Tk):
         if name == self._last_selected_test:
             return
         self._last_selected_test = name
-        ts = time.strftime("%H:%M:%S")
+        ts = timestamp_hms()
         self._append_output(f"{ts} CMD selectTestByName \"{name}\"")
         self._last_cmd = ("selectTestByName", {"name": name})
         self._retry_pending = False
@@ -1319,7 +1298,7 @@ class BringupControlUI(tk.Tk):
             name = str(payload.get("name", ""))
             status = str(payload.get("status", ""))
             message = str(payload.get("message", ""))
-            ts = time.strftime("%H:%M:%S")
+            ts = timestamp_hms()
             header = f"{ts} ACK {seq} {name} {status} {message}".rstrip()
             self._append_output(header)
             self._last_ack_seq = seq
@@ -1330,7 +1309,7 @@ class BringupControlUI(tk.Tk):
             name = str(payload.get("name", ""))
             text = str(payload.get("text", ""))
             json_payload = payload.get("json")
-            ts = time.strftime("%H:%M:%S")
+            ts = timestamp_hms()
             header = f"{ts} OUT {seq} {name}".rstrip()
             self._append_output(header)
             if text:

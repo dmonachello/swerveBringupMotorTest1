@@ -12,11 +12,12 @@ DESCRIPTION
     reproducible configuration files.
 """
 
-import hashlib
 import json
 import time
 from typing import Dict, Iterable, List, Optional, Tuple
 
+from tools.common.profile_io import compute_profiles_hash
+from tools.common.time_utils import timestamp_human, timestamp_version
 from .can_frc_defs import PROFILE_MAP_RULES
 
 
@@ -25,10 +26,7 @@ def _compute_data_hash(payload: Dict[str, object]) -> str:
     NAME
         _compute_data_hash - Compute a stable hash for profile payloads.
     """
-    normalized = dict(payload)
-    normalized["data_hash"] = ""
-    blob = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+    return compute_profiles_hash(payload)
 
 
 def dump_seen_ids(
@@ -56,7 +54,7 @@ def dump_seen_ids(
     """
     now = time.time()
     payload = {
-        "created": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)),
+        "created": timestamp_human(now),
         "profile": profile,
         "interface": interface,
         "channel": channel,
@@ -173,7 +171,7 @@ def dump_profile(
     """
     payload = {
         "schema_version": 1,
-        "data_version": time.strftime("%Y-%m-%d_%H%M%S", time.localtime()),
+        "data_version": timestamp_version(),
         "default_profile": profile_name,
         "profiles": {
             profile_name: _build_profile_from_seen(seen_keys, profile_name, include_unknown),
@@ -201,7 +199,7 @@ def dump_can_config(path: str, args, devices: List[Dict[str, object]]) -> None:
         Writes JSON to disk.
     """
     payload = {
-        "created": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time())),
+        "created": timestamp_human(),
         "generated_from_profile": args.profile,
         "rio": args.rio,
         "interface": args.interface,

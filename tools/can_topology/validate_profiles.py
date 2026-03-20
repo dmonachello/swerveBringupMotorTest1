@@ -13,11 +13,12 @@ DESCRIPTION
 """
 
 import argparse
-import hashlib
-import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from tools.common.cli_helpers import add_path_arg
+from tools.common.json_io import read_json
+from tools.common.profile_io import compute_profiles_hash
 
 BUCKET_CATEGORIES = [
     "neos",
@@ -36,10 +37,7 @@ def _compute_data_hash(payload: Dict[str, Any]) -> str:
     NAME
         _compute_data_hash - Compute a stable hash for profile payloads.
     """
-    normalized = dict(payload)
-    normalized["data_hash"] = ""
-    blob = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+    return compute_profiles_hash(payload)
 SINGLETON_CATEGORIES = ["pdh", "pdp", "pigeon", "roborio"]
 GENERIC_CATEGORY = "devices"
 ALLOWED_PROFILE_KEYS = set(BUCKET_CATEGORIES + SINGLETON_CATEGORIES + [GENERIC_CATEGORY, "notes", "unknown"])
@@ -54,10 +52,10 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         argparse.Namespace with parsed args.
     """
     parser = argparse.ArgumentParser(description="Validate bringup_profiles.json compatibility.")
-    parser.add_argument(
-        "--path",
+    add_path_arg(
+        parser,
         default=str(Path("data") / "bringup_profiles.json"),
-        help="Path to bringup_profiles.json",
+        help_text="Path to bringup_profiles.json",
     )
     parser.add_argument(
         "--strict",
@@ -86,7 +84,7 @@ def load_profiles_json(path: Path) -> Dict[str, Any]:
     if not path.exists():
         raise ValueError(f"File not found: {path}")
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return read_json(path)
     except Exception as exc:
         raise ValueError(f"Failed to parse JSON: {exc}") from exc
 

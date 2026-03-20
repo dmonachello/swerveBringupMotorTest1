@@ -11,11 +11,11 @@ DESCRIPTION
 """
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from tools.common.json_io import read_json
+from tools.common.paths import can_mappings_path
 BUCKET_CATEGORIES = [
     "neos",
     "neo550s",
@@ -58,10 +58,8 @@ def load_can_mappings() -> Tuple[List[str], List[str]]:
         Tuple of (manufacturers, device_types) lists.
     """
     try:
-        root = Path(__file__).resolve().parents[2]
-        path = root / "src" / "main" / "deploy" / "can_mappings.json"
-        with path.open("r", encoding="utf-8") as handle:
-            data = json.load(handle)
+        path = can_mappings_path()
+        data = read_json(path)
         manufacturers = sorted(set(str(v) for v in data.get("manufacturers", {}).values()))
         device_types = sorted(set(str(v) for v in data.get("device_types", {}).values()))
         if manufacturers and device_types:

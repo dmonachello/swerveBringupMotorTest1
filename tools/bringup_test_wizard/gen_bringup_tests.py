@@ -13,10 +13,12 @@ SIDE EFFECTS
     Reads and writes JSON files and prompts on stdin.
 """
 
-import json
 from pathlib import Path
 
-TESTS_FILE = Path(__file__).resolve().parents[2] / "src" / "main" / "deploy" / "bringup_tests.json"
+from tools.common.paths import tests_deploy_path
+from tools.common.tests_io import load_tests_payload, write_tests_payload
+
+TESTS_FILE = tests_deploy_path()
 
 
 def _prompt(text, default=None):
@@ -71,7 +73,7 @@ def _load_tests():
     if not TESTS_FILE.exists():
         return {"default_test_set": "default", "test_sets": {"default": []}}
     try:
-        return json.loads(TESTS_FILE.read_text(encoding="utf-8"))
+        return load_tests_payload(TESTS_FILE)
     except Exception:
         return {"default_test_set": "default", "test_sets": {"default": []}}
 
@@ -82,7 +84,7 @@ def _save_tests(payload):
         _save_tests - Persist bringup_tests.json.
     """
     TESTS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    TESTS_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_tests_payload(TESTS_FILE, payload)
 
 
 def _ensure_test_sets(payload):

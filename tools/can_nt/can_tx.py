@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 from typing import List, Tuple
 
+from tools.common.text_io import read_lines
 
 def parse_tx_sequence(path: str) -> List[Tuple[float, int, bytes]]:
     """
@@ -37,7 +38,7 @@ def parse_tx_sequence(path: str) -> List[Tuple[float, int, bytes]]:
     """
     entries: List[Tuple[float, int, bytes]] = []
     try:
-        raw_lines = Path(path).read_text(encoding="utf-8").splitlines()
+        raw_lines = read_lines(Path(path))
     except Exception as exc:
         print(f"ERROR: Failed to read TX sequence file '{path}': {exc}")
         return entries

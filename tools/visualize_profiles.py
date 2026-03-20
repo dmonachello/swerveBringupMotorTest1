@@ -15,23 +15,24 @@ DESCRIPTION
 
 import argparse
 import html
-import json
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+from tools.common.cli_helpers import add_input_arg, add_output_arg
+from tools.common.json_io import read_json
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Visualize bringup profiles.")
-    parser.add_argument(
-        "--input",
+    add_input_arg(
+        parser,
         default=str(Path("data") / "bringup_profiles.json"),
-        help="Path to bringup_profiles.json",
+        help_text="Path to bringup_profiles.json",
     )
-    parser.add_argument(
-        "--output",
+    add_output_arg(
+        parser,
         default=str(Path("docs") / "bringup_profiles_diagram.html"),
-        help="Output HTML path",
+        help_text="Output HTML path",
     )
     return parser.parse_args()
 
@@ -273,7 +274,7 @@ def main() -> int:
     if not path.exists():
         print(f"ERROR: input not found: {path}")
         return 2
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = read_json(path)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(_html(payload), encoding="utf-8")

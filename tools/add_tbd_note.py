@@ -14,16 +14,18 @@ DESCRIPTION
 
 import argparse
 from pathlib import Path
+
+from tools.common.cli_helpers import add_path_arg
 from datetime import datetime
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Append a note to TBD.md.")
     parser.add_argument("--text", required=True, help="TBD note text.")
-    parser.add_argument(
-        "--path",
+    add_path_arg(
+        parser,
         default=str(Path("notes") / "planning" / "TBD.md"),
-        help="Path to TBD list file.",
+        help_text="Path to TBD list file.",
     )
     parser.add_argument(
         "--section",

@@ -13,11 +13,13 @@ SIDE EFFECTS
     Reads template files, prompts on stdin, writes JSON output.
 """
 
-import json
 from pathlib import Path
 
+from tools.common.paths import tests_deploy_path
+from tools.common.tests_io import load_tests_payload, write_tests_payload
+
 TEMPLATE_DIR = Path(__file__).resolve().parent / "test_templates"
-OUTPUT_FILE = Path(__file__).resolve().parents[2] / "src" / "main" / "deploy" / "bringup_tests.json"
+OUTPUT_FILE = tests_deploy_path()
 
 
 def _prompt(text, default=None):
@@ -135,11 +137,11 @@ def main():
         print("No templates found.")
         return 1
     tpl_path = _choose_template(templates)
-    payload = json.loads(tpl_path.read_text(encoding="utf-8"))
+    payload = load_tests_payload(tpl_path)
     payload = _ensure_test_sets(payload)
     payload = _edit_tests(payload)
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_tests_payload(OUTPUT_FILE, payload)
     print(f"Wrote {OUTPUT_FILE}")
     return 0
 

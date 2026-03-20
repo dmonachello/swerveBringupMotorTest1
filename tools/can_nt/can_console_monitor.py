@@ -15,7 +15,6 @@ SIDE EFFECTS
     Opens sockets, optional rotating log files, and publishes to NT.
 """
 
-import json
 import logging
 import threading
 from dataclasses import dataclass
@@ -23,6 +22,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from tools.common.json_io import read_json
 
 @dataclass
 class ConsoleRule:
@@ -148,8 +148,7 @@ class ConsoleMonitor:
         """
         self._rules.clear()
         try:
-            raw = Path(self._rules_path).read_text(encoding="utf-8")
-            payload = json.loads(raw)
+            payload = read_json(Path(self._rules_path))
         except Exception as exc:
             print(f"WARNING: Failed to load console rules '{self._rules_path}': {exc}")
             return

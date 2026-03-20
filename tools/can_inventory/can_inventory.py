@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from tools.common.json_io import read_json, write_json
 DEVICE_REGISTRY: Dict[Tuple[int, int], Dict[str, Any]] = {
     (4, 2): {
         "device_name": "TalonFX",
@@ -141,7 +142,7 @@ def load_inventory(path: str) -> Dict[Tuple[int, int, int, int, int], float]:
         Prints a warning and returns empty map on read/parse failures.
     """
     try:
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        payload = read_json(Path(path))
     except Exception as exc:
         print(f"ERROR: Failed to load inventory file '{path}': {exc}")
         return {}
@@ -237,7 +238,7 @@ def load_inventory_snapshot(path: str) -> Optional[Dict[str, Any]]:
         Prints a concise error and returns None on load/parse failure.
     """
     try:
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        payload = read_json(Path(path))
     except Exception as exc:
         print(f"ERROR: Failed to load inventory file '{path}': {exc}")
         return None
@@ -648,7 +649,7 @@ def write_config(path: str, config: Dict[str, Any]) -> bool:
         True on success, False on failure.
     """
     try:
-        Path(path).write_text(json.dumps(config, indent=2), encoding="utf-8")
+        write_json(Path(path), config, indent=2, trailing_newline=False)
         return True
     except Exception as exc:
         print(f"ERROR: Failed to write config '{path}': {exc}")
@@ -667,7 +668,7 @@ def read_config(path: str) -> Optional[Dict[str, Any]]:
         Parsed config dict, or None on failure.
     """
     try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
+        return read_json(Path(path))
     except Exception as exc:
         print(f"ERROR: Failed to load config file '{path}': {exc}")
         return None

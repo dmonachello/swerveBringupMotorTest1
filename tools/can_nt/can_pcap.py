@@ -13,9 +13,9 @@ DESCRIPTION
 """
 
 import queue
-import time
 from typing import Iterable
 
+from tools.common.time_utils import timestamp_human
 from .can_logging import PcapLogger
 from .can_state import SnifferState
 
@@ -33,7 +33,7 @@ def build_pcap_comment(args, channel: str) -> str:
         Comment string for PCAPNG captures or empty string.
     """
     if (args.pcap and args.pcap.lower().endswith(".pcapng")) or args.pcap_pipe:
-        start_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+        start_str = timestamp_human()
         parts = [
             f"start={start_str}",
             f"interface={args.interface}",

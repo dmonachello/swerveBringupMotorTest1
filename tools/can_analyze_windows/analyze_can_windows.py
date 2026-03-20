@@ -18,52 +18,23 @@ from __future__ import annotations
 import argparse
 import re
 from collections import Counter
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Tuple
 
+
+from tools.common.can_id import DecodedFrcId, decode_frc_ext_id
 
 LINE_RX = re.compile(
     r"^\((?P<ts>[0-9]+\.[0-9]+)\)\s+(?P<chan>\S+)\s+(?P<id>[0-9A-Fa-f]{1,8})#(?P<data>[0-9A-Fa-f]*)\s*(?P<dir>[RT])\s*$"
 )
 
 
-@dataclass(frozen=True)
-class DecodedId:
-    """
-    NAME
-        DecodedId - Parsed fields from an FRC extended arbitration ID.
-    """
-    manufacturer: int
-    device_type: int
-    api_class: int
-    api_index: int
-    device_id: int
-
-
-def decode_ext_id(arb: int) -> DecodedId:
+def decode_ext_id(arb: int) -> DecodedFrcId:
     """
     NAME
         decode_ext_id - Decode a 29-bit FRC arbitration ID.
-
-    PARAMETERS
-        arb: Arbitration ID as integer.
-
-    RETURNS
-        DecodedId with manufacturer, device type, API class/index, and device ID.
     """
-    device_type = (arb >> 24) & 0x1F
-    manufacturer = (arb >> 16) & 0xFF
-    api_class = (arb >> 10) & 0x3F
-    api_index = (arb >> 6) & 0x0F
-    device_id = arb & 0x3F
-    return DecodedId(
-        manufacturer=manufacturer,
-        device_type=device_type,
-        api_class=api_class,
-        api_index=api_index,
-        device_id=device_id,
-    )
+    return decode_frc_ext_id(arb)
 
 
 def iter_frames_from_log(path: Path) -> Iterable[Tuple[float, int]]:
