@@ -30,6 +30,14 @@ import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox, simpledialog
 
 from tools.common.json_io import read_json
+from tools.common.topology_render import (
+    device_type_key_for_category,
+    fill_color_for_vendor,
+    outline_color_for_vendor,
+    shape_kind_for_category,
+    text_color_for_fill,
+    vendor_key_for_category,
+)
 try:
     from tools.common.paths import profiles_canonical_path, profiles_deploy_path
     from tools.common.profile_io import compute_profiles_hash
@@ -429,6 +437,8 @@ class TopologyEditor(tk.Tk):
         layout_menu.add_separator()
         layout_menu.add_command(label="Reset Layout", command=self._layout_even)
         layout_menu.add_command(label="Single Bus Layout", command=self._layout_single_bus)
+        layout_menu.add_separator()
+        layout_menu.add_command(label="Auto Layout (Readable)", command=self._auto_layout_readable)
         menu.add_cascade(label="Layout", menu=layout_menu)
         view_menu = tk.Menu(menu, tearoff=False)
         view_menu.add_command(label="Zoom In", command=lambda: self._zoom_step(0.1))
@@ -4256,6 +4266,199 @@ class TopologyEditor(tk.Tk):
         self._refresh_list()
         self._redraw_canvas()
 
+    def _auto_layout_readable(self) -> None:
+        """
+        NAME
+            _auto_layout_readable - Auto-arrange nodes into readable rows.
+
+        DESCRIPTION
+            Groups nodes per bus, assigns rows by category, and spaces nodes
+            into shared columns to reduce overlap and link crossings. Updates
+            bus bounds to fit the new layout.
+        """
+        device_nodes = [n for n in self._nodes if n.node_type != "callout"]
+        if not device_nodes:
+            messagebox.showinfo("Auto Layout", "No device nodes to layout.")
+            return
+
+        self._push_undo()
+        self._drag_undo_pending = False
+
+        nodes_by_key: Dict[int, Node] = {n.key: n for n in self._nodes if isinstance(n.key, int)}
+        # Resolve CANnect device buses from the specific CAN port -> bus mapping.
+        cannect_bus_by_port: Dict[int, Dict[int, int]] = {}
+        for link in self._can_bus_links:
+            node_key = link.get("node")
+            bus_index = link.get("bus")
+            port = link.get("port", 1)
+            if isinstance(node_key, int) and isinstance(bus_index, int):
+                cannect_bus_by_port.setdefault(node_key, {})[int(port)] = bus_index
+        # Anchor CANnect nodes to their port-1 bus (or the only bus link).
+        for cannect_key, port_map in cannect_bus_by_port.items():
+            cannect = nodes_by_key.get(cannect_key)
+            if cannect is None:
+                continue
+            if 1 in port_map:
+                cannect.bus_index = port_map[1]
+            elif len(port_map) == 1:
+                cannect.bus_index = next(iter(port_map.values()))
+        # Devices linked to CANnect must live on the bus segment for that port.
+        # If the port-to-bus mapping is missing, fall back to the CANnect node bus
+        # to avoid cross-bus link drawings.
+        device_forced_bus: Dict[int, int] = {}
+        for link in self._cannect_device_links:
+            cannect_key = link.get("node")
+            device_key = link.get("device")
+            port = int(link.get("port", 1))
+            if not isinstance(cannect_key, int) or not isinstance(device_key, int):
+                continue
+            device = nodes_by_key.get(device_key)
+            if device is None:
+                continue
+            port_map = cannect_bus_by_port.get(cannect_key, {})
+            target_bus = port_map.get(port)
+            if target_bus is None and len(port_map) == 1:
+                target_bus = next(iter(port_map.values()))
+            if target_bus is None:
+                cannect = nodes_by_key.get(cannect_key)
+                if cannect is not None:
+                    target_bus = cannect.bus_index
+            if target_bus is not None:
+                device.bus_index = target_bus
+                device_forced_bus[device_key] = target_bus
+
+        motor_cats = {"neos", "neo550s", "flexes", "krakens", "falcons"}
+        sensor_cats = {"cancoders", "pigeon"}
+        power_cats = {"pdh", "pdp"}
+        controller_cats = {"roborio", "cannect_inject", "cannect_direct"}
+
+        def _category_group(node: Node) -> Tuple[int, str]:
+            cat = (node.category or "").lower()
+            if cat in controller_cats:
+                return (0, cat)
+            if cat in power_cats:
+                return (1, cat)
+            if cat in motor_cats:
+                return (2, cat)
+            if cat in sensor_cats:
+                return (3, cat)
+            return (4, cat)
+
+        by_bus: Dict[int, List[Node]] = {}
+        for node in device_nodes:
+            bus_index = max(0, int(node.bus_index))
+            by_bus.setdefault(bus_index, []).append(node)
+
+        # Group CANnect device links by bus segment.
+        cannect_devices_by_bus: Dict[int, Dict[int, List[Node]]] = {}
+        for link in self._cannect_device_links:
+            cannect_key = link.get("node")
+            device_key = link.get("device")
+            port = int(link.get("port", 1))
+            if not isinstance(cannect_key, int) or not isinstance(device_key, int):
+                continue
+            device = nodes_by_key.get(device_key)
+            if device is None:
+                continue
+            target_bus = device_forced_bus.get(device_key)
+            if target_bus is None:
+                continue
+            cannect_devices_by_bus.setdefault(target_bus, {}).setdefault(cannect_key, []).append(device)
+
+        for bus_index, nodes in sorted(by_bus.items()):
+            while len(self._bus_lefts) <= bus_index:
+                self._bus_lefts.append(40.0)
+            while len(self._bus_rights) <= bus_index:
+                self._bus_rights.append(400.0)
+
+            left_bound = self._bus_lefts[bus_index]
+            right_bound = self._bus_rights[bus_index]
+            usable_left = left_bound + 80.0
+            usable_right = right_bound - 80.0
+            if usable_right <= usable_left:
+                usable_left = left_bound + 40.0
+                usable_right = right_bound - 40.0
+
+            # Assign rows.
+            for node in nodes:
+                cat = (node.category or "").lower()
+                if cat in sensor_cats or cat in controller_cats:
+                    node.row = 1
+                else:
+                    node.row = 0
+                node.free_y = None
+                node.free_y_relative = False
+            # Place CANnect nodes at the left edge of this bus.
+            cannect_nodes = [
+                n for n in nodes if (n.category or "").lower() in {"cannect_inject", "cannect_direct"}
+            ]
+            cannect_nodes = sorted(cannect_nodes, key=lambda n: (n.label or "", n.can_id or 0))
+            cannect_x = usable_left
+            for idx, cannect in enumerate(cannect_nodes):
+                cannect.x = cannect_x
+                cannect.row = 1
+                if idx > 0:
+                    cannect.x = cannect_x + idx * 20.0
+
+            # Place CANnect-linked devices next to their CANnect in CAN ID order.
+            used = set()
+            linked_group = cannect_devices_by_bus.get(bus_index, {})
+            cluster_end = cannect_x
+            for cannect_key, devices in sorted(
+                linked_group.items(),
+                key=lambda item: (
+                    nodes_by_key[item[0]].x if item[0] in nodes_by_key else cannect_x
+                ),
+            ):
+                cannect_node = nodes_by_key.get(cannect_key)
+                cannect_row = cannect_node.row if cannect_node is not None else 1
+                devices_sorted = sorted(
+                    devices,
+                    key=lambda n: (
+                        n.can_id if n.can_id is not None else 1_000_000,
+                        n.label or "",
+                    ),
+                )
+                start_x = (nodes_by_key[cannect_key].x if cannect_key in nodes_by_key else cannect_x) + 160.0
+                min_spacing = max(160.0, float(self._box_w) * 1.25)
+                needed_width = start_x + min_spacing * max(0, len(devices_sorted) - 1)
+                if needed_width > usable_right:
+                    self._bus_rights[bus_index] = max(self._bus_rights[bus_index], needed_width + 120.0)
+                    usable_right = self._bus_rights[bus_index] - 80.0
+                for idx, device in enumerate(devices_sorted):
+                    device.x = start_x + idx * min_spacing
+                    device.row = cannect_row
+                    used.add(device.key)
+                if devices_sorted:
+                    cluster_end = max(cluster_end, devices_sorted[-1].x)
+
+            # Place remaining nodes across the rest of the span without condensing.
+            remaining = [n for n in nodes if n.key not in used and n not in cannect_nodes]
+            if remaining:
+                remaining_sorted = sorted(
+                    remaining,
+                    key=lambda n: (_category_group(n), n.can_id or 0, n.label),
+                )
+                start_x = max(cluster_end + 140.0, usable_left)
+                span = max(1.0, usable_right - start_x)
+                min_spacing = max(140.0, float(self._box_w) * 1.2)
+                spacing = max(min_spacing, span / max(len(remaining_sorted) - 1, 1))
+                for idx, node in enumerate(remaining_sorted):
+                    node.x = start_x + idx * spacing
+
+            all_nodes = [n for n in nodes if isinstance(n.x, (int, float))]
+            if all_nodes:
+                min_x = min(n.x for n in all_nodes)
+                max_x = max(n.x for n in all_nodes)
+                existing_left = self._bus_lefts[bus_index]
+                existing_right = self._bus_rights[bus_index]
+                new_left = min_x - 80.0
+                new_right = max_x + 120.0
+                # Never shorten bus segments; only expand if needed.
+                self._bus_lefts[bus_index] = min(existing_left, new_left)
+                self._bus_rights[bus_index] = max(existing_right, new_right)
+
+        self._redraw_canvas()
     def _bulk_edit_selection(self) -> None:
         """
         NAME
@@ -5186,22 +5389,7 @@ class TopologyEditor(tk.Tk):
         NAME
             _shape_kind_for_node - Map node categories to a shape kind.
         """
-        category = (node.category or "").lower()
-        if category in ("neos", "neo550s", "flexes", "krakens", "falcons"):
-            return "motor"
-        if category in ("cancoders", "pigeon"):
-            return "sensor"
-        if category in ("pdh", "pdp"):
-            return "power"
-        if category in ("roborio",):
-            return "controller"
-        if category in ("cannect_inject", "cannect_direct"):
-            return "controller"
-        if category in ("candles",):
-            return "misc"
-        if category == GENERIC_CATEGORY:
-            return "misc"
-        return "misc"
+        return shape_kind_for_category(node.category or "")
 
     @staticmethod
     def _is_swyft_node(node: Node) -> bool:
@@ -5220,24 +5408,7 @@ class TopologyEditor(tk.Tk):
             _fill_color_for_node - Resolve fill color based on manufacturer.
         """
         vendor = self._vendor_key_for_node(node)
-        if not vendor:
-            category = (node.category or "").lower()
-            if category in ("neos", "neo550s", "flexes", "pdh"):
-                vendor = "REV"
-            elif category in ("krakens", "falcons", "cancoders", "candles", "pdp", "pigeon"):
-                vendor = "CTRE"
-            elif category in ("roborio",):
-                vendor = "NI"
-        palette = {
-            "CTRE": "#b7e1b2",  # green
-            "REV": "#ffd5a6",  # orange
-            "KAUAILABS": "#bfe7ff",
-            "PLAYINGWITHFUSION": "#c8f2c3",
-            "ANDYMARK": "#c9d2ff",
-            "NI": "#e7e7e7",
-            "SWYFT": "#e0d7ff",
-        }
-        return palette.get(vendor, "#f7f7f7")
+        return fill_color_for_vendor(vendor)
 
     def _outline_color_for_node(self, node: Node) -> str:
         """
@@ -5245,59 +5416,21 @@ class TopologyEditor(tk.Tk):
             _outline_color_for_node - Resolve outline color by manufacturer.
         """
         vendor = self._vendor_key_for_node(node)
-        palette = {
-            "CTRE": "#1d6b1a",
-            "REV": "#b26200",
-            "KAUAILABS": "#1c6ba8",
-            "PLAYINGWITHFUSION": "#2f7a2f",
-            "ANDYMARK": "#3b4aa0",
-            "NI": "#6a6a6a",
-            "SWYFT": "#5b4aa0",
-        }
-        return palette.get(vendor, "#222222")
+        return outline_color_for_vendor(vendor)
 
     def _vendor_key_for_node(self, node: Node) -> str:
         """
         NAME
             _vendor_key_for_node - Normalize vendor key for a node.
         """
-        vendor = (node.vendor or "").strip().upper().replace(" ", "")
-        if vendor:
-            return vendor
-        category = (node.category or "").lower()
-        if category in ("neos", "neo550s", "flexes", "pdh"):
-            return "REV"
-        if category in ("krakens", "falcons", "cancoders", "candles", "pdp", "pigeon"):
-            return "CTRE"
-        if category in ("roborio",):
-            return "NI"
-        if category in ("cannect_inject", "cannect_direct"):
-            return "SWYFT"
-        return ""
+        return vendor_key_for_category(node.category or "", node.vendor or "")
 
     def _device_type_key_for_node(self, node: Node) -> str:
         """
         NAME
             _device_type_key_for_node - Normalize device type key for a node.
         """
-        category = (node.category or "").lower()
-        if category in ("neos", "neo550s", "flexes", "krakens", "falcons"):
-            return "MOTORCONTROLLER"
-        if category in ("cancoders",):
-            return "ENCODER"
-        if category in ("pigeon",):
-            return "GYROSENSOR"
-        if category in ("pdh", "pdp"):
-            return "POWERDISTRIBUTIONMODULE"
-        if category in ("candles",):
-            return "MISCELLANEOUS"
-        if category in ("roborio",):
-            return "ROBOTCONTROLLER"
-        if category in ("cannect_inject", "cannect_direct"):
-            return "MISCELLANEOUS"
-        if category == GENERIC_CATEGORY:
-            return (node.device_type or "").strip().upper().replace(" ", "") or "UNKNOWN"
-        return "UNKNOWN"
+        return device_type_key_for_category(node.category or "", node.device_type or "")
 
     def _dup_key_for_node(self, node: Node) -> Optional[Tuple[str, str, int]]:
         """
@@ -5316,16 +5449,7 @@ class TopologyEditor(tk.Tk):
         NAME
             _text_color_for_fill - Choose readable text color for a fill.
         """
-        if not fill.startswith("#") or len(fill) != 7:
-            return "#111111"
-        try:
-            r = int(fill[1:3], 16)
-            g = int(fill[3:5], 16)
-            b = int(fill[5:7], 16)
-        except ValueError:
-            return "#111111"
-        luminance = 0.299 * r + 0.587 * g + 0.114 * b
-        return "#111111" if luminance > 150 else "#ffffff"
+        return text_color_for_fill(fill)
 
     def _draw_legend(self, x: float, y: float) -> None:
         """
@@ -5617,6 +5741,7 @@ class TopologyEditor(tk.Tk):
                 "- Tidy Selection aligns selected nodes into shared columns.\n"
                 "- Reset Layout preserves bus/row and evens per-bus spacing.\n"
                 "- Single Bus Layout puts all devices on one bus line.\n"
+                "- Auto Layout (Readable) groups nodes by type and rows.\n"
                 "- Align/Distribute tools are under the Layout menu.\n"
             ),
             "Tags": (
@@ -5714,32 +5839,14 @@ class TopologyEditor(tk.Tk):
         NAME
             _fill_color_for_vendor - Resolve fill color for a vendor key.
         """
-        palette = {
-            "CTRE": "#b7e1b2",
-            "REV": "#ffd5a6",
-            "KAUAILABS": "#bfe7ff",
-            "PLAYINGWITHFUSION": "#c8f2c3",
-            "ANDYMARK": "#c9d2ff",
-            "NI": "#e7e7e7",
-            "SWYFT": "#e0d7ff",
-        }
-        return palette.get(vendor, "#f7f7f7")
+        return fill_color_for_vendor(vendor)
 
     def _outline_color_for_vendor(self, vendor: str) -> str:
         """
         NAME
             _outline_color_for_vendor - Resolve outline color for a vendor key.
         """
-        palette = {
-            "CTRE": "#1d6b1a",
-            "REV": "#b26200",
-            "KAUAILABS": "#1c6ba8",
-            "PLAYINGWITHFUSION": "#2f7a2f",
-            "ANDYMARK": "#3b4aa0",
-            "NI": "#6a6a6a",
-            "SWYFT": "#5b4aa0",
-        }
-        return palette.get(vendor, "#222222")
+        return outline_color_for_vendor(vendor)
 
     def _draw_device_shape_on(
         self,

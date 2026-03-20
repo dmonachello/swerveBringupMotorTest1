@@ -1,5 +1,5 @@
 {
-  "default_profile": "home_030226",
+  "default_profile": "robot_2026",
   "profiles": {
     "example_default": {
       "neos": [
@@ -1390,7 +1390,7 @@
           320.0,
           480.0,
           640.0,
-          932.5553319919516
+          800.0
         ],
         "busCount": 6,
         "busSpacing": 160.0,
@@ -2534,6 +2534,6 @@
     }
   },
   "schema_version": 1,
-  "data_version": "2026-03-19_232415",
-  "data_hash": "ca5fb581a89bae3118fe8c1c3b9e6df023b3c2f304f83222a6d0814184d9a900"
+  "data_version": "2026-03-20_121939",
+  "data_hash": "f800c851b7f89cdbe63d27ab3f9cf0ba764c19316d7b77f51d63c66349c36186"
 }

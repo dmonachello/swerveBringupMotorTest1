@@ -89,6 +89,17 @@ Examples:
 - `decoded = decode_frc_ext_id(arb_id)`
 - `decoded.manufacturer`, `decoded.device_type`, `decoded.api_class`, `decoded.api_index`, `decoded.device_id`
 
+### tools/common/topology_render.py
+Purpose: Shared topology rendering mappings and SVG shapes.
+
+Use to keep category-to-shape and vendor color logic consistent between the topology editor and HTML visualization.
+
+Examples:
+- `shape_kind_for_category("neos")`
+- `vendor_key_for_category("krakens")`
+- `fill_color_for_vendor("CTRE")`
+- `svg_shape_for_kind("motor", x0, y0, x1, y1, fill, outline)`
+
 ## Usage Guidelines
 Purpose: Keep shared utilities small, stable, and low-risk.
 
