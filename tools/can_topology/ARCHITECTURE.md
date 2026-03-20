@@ -59,7 +59,12 @@ Purpose: Define the JSON structures written by the editor.
 
 ### bringup_profiles.json
 Purpose: Stable device configuration consumed by robot and PC tools.
+- Canonical location: `data/bringup_profiles.json`.
+- RoboRIO deploy copy: `src/main/deploy/bringup_profiles.json` (synced from `data/`).
 - Root fields:
+- `schema_version` (int)
+- `data_version` (string)
+- `data_hash` (string)
 - `default_profile` (string)
 - `profiles` (object of named profiles)
 - Optional `diagram` (editor-only layout metadata)
@@ -119,7 +124,7 @@ Purpose: Capture UI structure.
 
 ## Contracts
 Purpose: Declare stable API contracts.
-- `bringup_profiles.json` schema must remain backward compatible.
+- `bringup_profiles.json` is the single source of truth; deploy copies must be synced from `data/`.
 - Diagram metadata is editor-only and must not be consumed by robot/PC tools.
 - Tags are optional and must not break existing tools when absent.
 

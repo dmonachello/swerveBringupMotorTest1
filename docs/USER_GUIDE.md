@@ -55,7 +55,7 @@ Test result: Rotation only (internal) = PASS (Reached rotation limit (NEO CAN 25
 ### Topology Editor (Python/Tkinter)
 Purpose: Author and maintain device profiles and layouts.
 - Location: `tools/can_topology/` (entry: `can_top_editor.py`).
-- Edits `bringup_profiles.json` plus editor-only diagram metadata.
+- Edits `data/bringup_profiles.json` plus editor-only diagram metadata.
 - Supports tags, filters, layout tools, and bulk edits to keep diagrams organized.
 - Link devices to CANnect nodes by dragging onto them or using Edit -> `Link Device to CANnect`.
 - Inline edit the node list (double-click or `F2`) and multi-select for bulk edits.
@@ -64,7 +64,8 @@ Purpose: Author and maintain device profiles and layouts.
 
 ## Data Flow
 Purpose: Describe how data moves between parts.
-- `bringup_profiles.json` is the shared configuration source.
+- `data/bringup_profiles.json` is the shared configuration source (sync to deploy for roboRIO).
+- `schema_version`, `data_version` (`YYYY-MM-DD_HHMMSS`), and `data_hash` must be present and consistent across copies.
 - The editor writes it; robot and PC tools consume it.
 - Diagram metadata is editor-only and ignored by robot/PC tools.
 - The robot publishes local diagnostics; the PC publishes CAN-bus diagnostics.
@@ -76,7 +77,7 @@ Purpose: Show how a user plans, brings up, and troubleshoots a robot.
 ### 1) Plan the Robot (Offline)
 Purpose: Define a clear, shareable device layout.
 - Open the topology editor: `tools/can_topology/can_top_editor.py`.
-- Build or update the team profile in `bringup_profiles.json`.
+- Build or update the team profile in `data/bringup_profiles.json`.
 - Use tags to group devices (e.g., `swerve`, `intake`, `left`, `right`).
 - Use tidy/align tools to keep columns clean and readable.
 

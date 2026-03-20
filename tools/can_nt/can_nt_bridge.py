@@ -35,7 +35,13 @@ from .can_nt_client import publish_updates, setup_nt
 from .can_nt_publish import decode_frc_ext_id
 from .can_pcap import build_pcap_comment, setup_pcap, handle_marker_keys
 from .can_ports import list_ports, maybe_auto_channel
-from .can_profiles import get_profile
+from .can_profiles import (
+    get_profile,
+    get_profiles_load_error,
+    get_profiles_data_version,
+    get_profiles_data_hash,
+    reload_profiles,
+)
 from .can_profiles_dump import dump_seen_ids, dump_profile, dump_can_config
 from .can_reporting import (
     build_device_label_map,
@@ -159,6 +165,17 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 print(f"  {dev} ({desc})")
         return 0
 
+    load_error = get_profiles_load_error()
+    if load_error:
+        print(f"ERROR: bringup_profiles.json load failed: {load_error}")
+        return 2
+    data_version = get_profiles_data_version()
+    if data_version:
+        print(f"Profiles data_version: {data_version}")
+    data_hash = get_profiles_data_hash()
+    if data_hash:
+        print(f"Profiles data_hash: {data_hash}")
+
     devices, expected_ids = get_profile(args.profile)
     device_labels = build_device_label_map(devices)
 
@@ -248,6 +265,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     state.last_marker_ts = 0.0
     marker_keys = {"0", "1", "2", "3", "4", "m", "q", "h"}
     key_queue: queue.Queue[Tuple[str, float]] = queue.Queue()
+    reload_queue: queue.Queue[Tuple[str, float]] = queue.Queue()
     key_thread = None
     key_stop = threading.Event()
     tx_stop = threading.Event()
@@ -255,6 +273,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     def _print_marker_banner() -> None:
         print("Marker keys: [1]=0.25 [2]=0.50 [3]=0.75 [4]=1.00 [0]=stop [m]=mark [q]=quit [h]=help")
+        print("Other keys: [r]=reload profiles")
         print(f"Marker ID: 0x{args.marker_id:08X} (extended)")
 
     def _keyboard_worker() -> None:
@@ -274,11 +293,14 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 except Exception:
                     key = ""
                 if key:
-                    key_queue.put((key, time.time()))
+                    if key.lower() == "r":
+                        reload_queue.put((key, time.time()))
+                    else:
+                        key_queue.put((key, time.time()))
             else:
                 time.sleep(0.01)
 
-    if (args.enable_markers and args.pcap) or args.tx_seq:
+    if True:
         key_thread = threading.Thread(target=_keyboard_worker, daemon=True)
         key_thread.start()
         if args.enable_markers and args.pcap:
@@ -349,6 +371,33 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 ) or stop_requested
                 if stop_requested:
                     break
+
+                while True:
+                    try:
+                        _key, _ts = reload_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    print("Reloading profiles...")
+                    ok, err = reload_profiles()
+                    if not ok:
+                        print(f"ERROR: reload failed: {err}")
+                        continue
+                    try:
+                        new_devices, new_expected = get_profile(args.profile)
+                    except Exception as exc:
+                        print(f"ERROR: reload failed: {exc}")
+                        continue
+                    devices.clear()
+                    devices.extend(new_devices)
+                    device_labels.clear()
+                    device_labels.update(build_device_label_map(devices))
+                    analyzer.expected_ids = set(new_expected or [])
+                    dv = get_profiles_data_version()
+                    dh = get_profiles_data_hash()
+                    if dv:
+                        print(f"Profiles data_version: {dv}")
+                    if dh:
+                        print(f"Profiles data_hash: {dh}")
 
                 if _maybe_handle_dumps(args, now, start, analyzer, state, devices):
                     return 0

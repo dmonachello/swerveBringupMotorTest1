@@ -132,7 +132,7 @@ Then reference that motor model in your profile entry (see Step 8).
 ## Step 8: Add Profile Entries
 Purpose: define the device IDs and labels for a profile.
 Update:
-- `src/main/deploy/bringup_profiles.json`
+- `data/bringup_profiles.json` (sync to `src/main/deploy/bringup_profiles.json`)
 
 Add the new device list under the correct profile name.
 Example pattern:

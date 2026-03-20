@@ -116,7 +116,8 @@ Purpose: controller bindings remain data-driven and stable.
 ## Configuration Layer
 Purpose: JSON inputs define behavior and runtime configuration.
 
-- `bringup_profiles.json`: hardware profiles (devices + IDs). Includes stable `example_default`.
+- `bringup_profiles.json`: hardware profiles (devices + IDs). Stored in `data/` and synced to deploy.
+  - Requires `schema_version`, `data_version`, and `data_hash` at the root.
 - `bringup_tests.json`: test definitions (composite/joystick) grouped into test sets.
 - `motor_specs.json`: motor current specs for health checks.
 - `can_mappings.json`: manufacturer/device type names for CAN decoding.
@@ -154,7 +155,7 @@ Purpose: document the one-time startup sequence and core object construction.
 Purpose: profiles, bindings, and tests load in a predictable order.
 
 1. Robot starts (`Robot` or `RobotV2`) and applies the active CAN profile:
-   - `bringup_profiles.json` is loaded via `BringupUtil`.
+   - `bringup_profiles.json` is loaded via `BringupUtil` (deploy copy; data is canonical).
    - `default_profile` is selected unless `--bringup-profile=...` is provided.
 2. Tests are loaded by `BringupTestRegistry`:
    - Default: `bringup_tests.json` from deploy dir.
@@ -222,6 +223,12 @@ Purpose: stable interfaces are identified to prevent uncoordinated changes.
 - NetworkTables keys under `bringup/diag/...` (robot and PC tool must stay in sync).
 - JSON schemas for `bringup_profiles.json` and `bringup_tests.json`.
 - Report output fields in `bringup_report.json`.
+
+## Data Integrity Rules
+Purpose: define how runtime and offline tools enforce profile integrity.
+- Runtime tools (roboRIO + CAN bridge) must hard-fail on `schema_version`, `data_version`, or `data_hash` mismatch.
+- Offline tools (topology editor) may open mismatched files for repair after prompting the user.
+- The topology editor always recomputes `data_hash` on save.
 
 ## Examples
 Purpose: concrete examples anchor the JSON patterns.

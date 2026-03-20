@@ -8,17 +8,38 @@ SYNOPSIS
     from tools.can_nt.can_profiles import get_profile, list_profiles
 
 DESCRIPTION
-    Reads bringup_profiles.json from deploy resources and provides default
-    device lists for the CAN diagnostics tool.
+    Reads bringup_profiles.json from the central data repository (with deploy
+    fallback) and provides default device lists for the CAN diagnostics tool.
 """
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
 
 
 DEFAULT_PROFILE_NAME = "robot"
-PROFILE_FILE = Path(__file__).resolve().parents[2] / "src" / "main" / "deploy" / "bringup_profiles.json"
+PROFILE_SCHEMA_VERSION = 1
+CANONICAL_PROFILE_FILE = Path(__file__).resolve().parents[2] / "data" / "bringup_profiles.json"
+DEPLOY_PROFILE_FILE = Path(__file__).resolve().parents[2] / "src" / "main" / "deploy" / "bringup_profiles.json"
+_LOAD_ERROR: str = ""
+_DATA_VERSION: str = ""
+_DATA_HASH: str = ""
+
+
+def _compute_data_hash(payload: Dict[str, Any]) -> str:
+    """
+    NAME
+        _compute_data_hash - Compute a stable hash for profile payloads.
+
+    DESCRIPTION
+        Hashes the JSON with data_hash set to an empty string and sorted keys,
+        so formatting differences do not affect the checksum.
+    """
+    normalized = dict(payload)
+    normalized["data_hash"] = ""
+    blob = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
 def _device(label: str, manufacturer: int, device_type: int, device_id: int, group: str) -> Dict[str, Any]:
@@ -43,17 +64,51 @@ def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
     RETURNS
         (default_profile_name, profiles_map).
     """
-    if not PROFILE_FILE.exists():
+    global _LOAD_ERROR
+    global _DATA_VERSION
+    global _DATA_HASH
+    _LOAD_ERROR = ""
+    _DATA_VERSION = ""
+    _DATA_HASH = ""
+    path = CANONICAL_PROFILE_FILE if CANONICAL_PROFILE_FILE.exists() else DEPLOY_PROFILE_FILE
+    if not path.exists():
+        _LOAD_ERROR = f"Profiles file not found at {path}"
         return (_fallback_default(), _fallback_profiles())
 
     try:
-        payload = json.loads(PROFILE_FILE.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
+        _LOAD_ERROR = f"Failed to parse profiles JSON at {path}"
         return (_fallback_default(), _fallback_profiles())
+
+    schema_version = payload.get("schema_version")
+    if schema_version != PROFILE_SCHEMA_VERSION:
+        _LOAD_ERROR = (
+            "Profile schema_version mismatch: "
+            f"expected {PROFILE_SCHEMA_VERSION}, got {schema_version}"
+        )
+        return (_fallback_default(), _fallback_profiles())
+
+    data_version = payload.get("data_version")
+    if not isinstance(data_version, str) or not data_version.strip():
+        _LOAD_ERROR = "Profile data_version missing or empty"
+        return (_fallback_default(), _fallback_profiles())
+    _DATA_VERSION = data_version.strip()
+
+    data_hash = payload.get("data_hash")
+    if not isinstance(data_hash, str) or not data_hash.strip():
+        _LOAD_ERROR = "Profile data_hash missing or empty"
+        return (_fallback_default(), _fallback_profiles())
+    computed_hash = _compute_data_hash(payload)
+    if data_hash != computed_hash:
+        _LOAD_ERROR = "Profile data_hash mismatch (run tools/sync_profiles.py)"
+        return (_fallback_default(), _fallback_profiles())
+    _DATA_HASH = data_hash
 
     default_profile = payload.get("default_profile") or DEFAULT_PROFILE_NAME
     raw_profiles = payload.get("profiles")
     if not isinstance(raw_profiles, dict) or not raw_profiles:
+        _LOAD_ERROR = "Profiles payload missing 'profiles' map"
         return (_fallback_default(), _fallback_profiles())
 
     profiles: Dict[str, List[Dict[str, Any]]] = {}
@@ -66,6 +121,12 @@ def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
         default_profile = DEFAULT_PROFILE_NAME
 
     if not profiles:
+        _LOAD_ERROR = "Profiles map is empty"
+        return (_fallback_default(), _fallback_profiles())
+
+    dup_error = _check_duplicate_ids(profiles)
+    if dup_error:
+        _LOAD_ERROR = dup_error
         return (_fallback_default(), _fallback_profiles())
 
     return (default_profile, profiles)
@@ -150,6 +211,29 @@ def _profile_devices(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
     return devices
 
 
+def _check_duplicate_ids(profiles: Dict[str, List[Dict[str, Any]]]) -> str:
+    """
+    NAME
+        _check_duplicate_ids - Validate duplicate CAN IDs across profiles.
+
+    RETURNS
+        Error string when duplicates are found, otherwise empty string.
+    """
+    for name, devices in profiles.items():
+        seen: set[int] = set()
+        for entry in devices:
+            try:
+                device_id = int(entry.get("device_id"))
+            except Exception:
+                continue
+            if device_id < 0:
+                continue
+            if device_id in seen:
+                return f"Profile '{name}' duplicate CAN ID {device_id}"
+            seen.add(device_id)
+    return ""
+
+
 def _fallback_default() -> str:
     """
     NAME
@@ -200,6 +284,52 @@ def get_default_profile() -> str:
         get_default_profile - Return the default profile name.
     """
     return DEFAULT_PROFILE
+
+
+def get_profile_schema_version() -> int:
+    """
+    NAME
+        get_profile_schema_version - Return the expected profiles schema version.
+    """
+    return PROFILE_SCHEMA_VERSION
+
+
+def get_profiles_load_error() -> str:
+    """
+    NAME
+        get_profiles_load_error - Return the last profiles load error, if any.
+    """
+    return _LOAD_ERROR
+
+
+def get_profiles_data_version() -> str:
+    """
+    NAME
+        get_profiles_data_version - Return the loaded profile data_version.
+    """
+    return _DATA_VERSION
+
+
+def get_profiles_data_hash() -> str:
+    """
+    NAME
+        get_profiles_data_hash - Return the loaded profile data_hash.
+    """
+    return _DATA_HASH
+
+
+def reload_profiles() -> Tuple[bool, str]:
+    """
+    NAME
+        reload_profiles - Reload profiles from disk and refresh globals.
+    """
+    global DEFAULT_PROFILE, PROFILE_DEVICES
+    default_profile, profiles = _load_profiles()
+    if _LOAD_ERROR:
+        return False, _LOAD_ERROR
+    DEFAULT_PROFILE = default_profile
+    PROFILE_DEVICES = profiles
+    return True, ""
 
 
 def list_profiles() -> List[str]:

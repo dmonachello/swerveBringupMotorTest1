@@ -13,7 +13,9 @@ DESCRIPTION
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import time
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -229,6 +231,17 @@ def _write_json(path: Optional[str], payload: Dict[str, object]) -> None:
         print(data)
 
 
+def _compute_data_hash(payload: Dict[str, object]) -> str:
+    """
+    NAME
+        _compute_data_hash - Compute a stable hash for profile payloads.
+    """
+    normalized = dict(payload)
+    normalized["data_hash"] = ""
+    blob = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """
     NAME
@@ -266,9 +279,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     rows = parse_table(_load_text(args.input))
     profile = build_profile(rows)
     payload = {
+        "schema_version": 1,
+        "data_version": time.strftime("%Y-%m-%d_%H%M%S", time.localtime()),
         "default_profile": args.profile,
         "profiles": {args.profile: profile},
     }
+    payload["data_hash"] = _compute_data_hash(payload)
     _write_json(args.output, payload)
 
     if args.warn_duplicates:

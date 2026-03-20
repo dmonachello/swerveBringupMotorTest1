@@ -293,5 +293,8 @@
         ]
       }
     }
-  }
+  },
+  "schema_version": 1,
+  "data_version": "2026-03-19",
+  "data_hash": "ad293ef0336abb4810a00d7b08d48b671facde2a2a9c3de738b93c40ed7e664a"
 }

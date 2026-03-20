@@ -13,6 +13,7 @@ DESCRIPTION
 """
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -27,6 +28,18 @@ BUCKET_CATEGORIES = [
     "cancoders",
     "candles",
 ]
+PROFILE_SCHEMA_VERSION = 1
+
+
+def _compute_data_hash(payload: Dict[str, Any]) -> str:
+    """
+    NAME
+        _compute_data_hash - Compute a stable hash for profile payloads.
+    """
+    normalized = dict(payload)
+    normalized["data_hash"] = ""
+    blob = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 SINGLETON_CATEGORIES = ["pdh", "pdp", "pigeon", "roborio"]
 GENERIC_CATEGORY = "devices"
 ALLOWED_PROFILE_KEYS = set(BUCKET_CATEGORIES + SINGLETON_CATEGORIES + [GENERIC_CATEGORY, "notes", "unknown"])
@@ -43,7 +56,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate bringup_profiles.json compatibility.")
     parser.add_argument(
         "--path",
-        default=str(Path("src") / "main" / "deploy" / "bringup_profiles.json"),
+        default=str(Path("data") / "bringup_profiles.json"),
         help="Path to bringup_profiles.json",
     )
     parser.add_argument(
@@ -88,6 +101,39 @@ def validate_profiles(payload: Dict[str, Any], reporter: "Reporter") -> Tuple[Li
     """
     errors: List[str] = []
     warnings: List[str] = []
+
+    schema_version = payload.get("schema_version")
+    if schema_version != PROFILE_SCHEMA_VERSION:
+        msg = (
+            "Root 'schema_version' mismatch: "
+            f"expected {PROFILE_SCHEMA_VERSION}, got {schema_version}"
+        )
+        errors.append(msg)
+        reporter.fail(msg)
+        return errors, warnings
+    reporter.pass_("Root 'schema_version' matches expected version.")
+
+    data_version = payload.get("data_version")
+    if not isinstance(data_version, str) or not data_version.strip():
+        msg = "Root 'data_version' missing or empty."
+        errors.append(msg)
+        reporter.fail(msg)
+        return errors, warnings
+    reporter.pass_("Root 'data_version' is present.")
+
+    data_hash = payload.get("data_hash")
+    if not isinstance(data_hash, str) or not data_hash.strip():
+        msg = "Root 'data_hash' missing or empty."
+        errors.append(msg)
+        reporter.fail(msg)
+        return errors, warnings
+    computed_hash = _compute_data_hash(payload)
+    if data_hash != computed_hash:
+        msg = "Root 'data_hash' mismatch (run tools/sync_profiles.py)."
+        errors.append(msg)
+        reporter.fail(msg)
+        return errors, warnings
+    reporter.pass_("Root 'data_hash' matches computed value.")
 
     profiles = payload.get("profiles")
     if not isinstance(profiles, dict) or not profiles:

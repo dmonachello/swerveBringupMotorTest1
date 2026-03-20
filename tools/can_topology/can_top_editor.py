@@ -19,14 +19,16 @@ ERRORS
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import tkinter as tk
 import tkinter.font as tkfont
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, simpledialog
 
 try:
     from .can_top_models import (
@@ -334,6 +336,7 @@ class TopologyEditor(tk.Tk):
         file_menu = tk.Menu(menu, tearoff=False)
         file_menu.add_command(label="New", command=self._new_diagram)
         file_menu.add_command(label="Open Profile...", command=self._open_profile)
+        file_menu.add_command(label="Reload Canonical", command=self._reload_canonical_profile)
         file_menu.add_command(label="Save Profile As...", command=self._save_profile_as)
         file_menu.add_command(label="Save Selection As...", command=self._save_selection_as)
         file_menu.add_command(label="Save to Deploy", command=self._on_save_to_deploy)
@@ -348,6 +351,14 @@ class TopologyEditor(tk.Tk):
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self._on_close)
         menu.add_cascade(label="File", menu=file_menu)
+
+        profiles_menu = tk.Menu(menu, tearoff=False)
+        profiles_menu.add_command(label="Import Profile...", command=self._import_profile)
+        profiles_menu.add_command(label="Export Profile...", command=self._export_profile)
+        profiles_menu.add_separator()
+        profiles_menu.add_command(label="Rename Profile...", command=self._rename_profile)
+        profiles_menu.add_command(label="Delete Profile...", command=self._delete_profile)
+        menu.add_cascade(label="Profiles", menu=profiles_menu)
         edit_menu = tk.Menu(menu, tearoff=False)
         edit_menu.add_command(label="Copy", command=self._on_copy)
         edit_menu.add_command(label="Paste", command=self._on_paste)
@@ -829,6 +840,312 @@ class TopologyEditor(tk.Tk):
             return
         self._load_profile_from_path(path, ask_profile=True, confirm_discard=True)
 
+    def _backup_profiles_file(self, path: Path) -> None:
+        """
+        NAME
+            _backup_profiles_file - Write a timestamped backup copy.
+        """
+        if not path.exists():
+            return
+        stamp = time.strftime("%Y-%m-%d_%H%M%S", time.localtime())
+        backup = path.with_name(f"{path.stem}.bak_{stamp}{path.suffix}")
+        try:
+            backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        except Exception:
+            return
+
+    def _load_profiles_payload(self, path: Path) -> Optional[Dict[str, object]]:
+        """
+        NAME
+            _load_profiles_payload - Load bringup_profiles.json with repair prompts.
+        """
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            messagebox.showerror("Error", f"Failed to open file: {exc}")
+            return None
+        if not isinstance(data, dict):
+            messagebox.showerror("Error", "Profiles JSON root must be an object.")
+            return None
+        schema_version = data.get("schema_version")
+        if schema_version is not None and schema_version != self._expected_schema_version():
+            proceed = messagebox.askyesno(
+                "Schema Mismatch",
+                "Profile schema_version mismatch. Open anyway to repair?",
+            )
+            if not proceed:
+                return None
+        data_version = data.get("data_version")
+        if not isinstance(data_version, str) or not data_version.strip():
+            proceed = messagebox.askyesno(
+                "Version Missing",
+                "Profile data_version missing or empty. Open anyway to repair?",
+            )
+            if not proceed:
+                return None
+        data_hash = data.get("data_hash")
+        if not isinstance(data_hash, str) or not data_hash.strip():
+            proceed = messagebox.askyesno(
+                "Hash Missing",
+                "Profile data_hash missing or empty. Open anyway to repair?",
+            )
+            if not proceed:
+                return None
+        else:
+            computed_hash = self._compute_data_hash(data)
+            if data_hash != computed_hash:
+                proceed = messagebox.askyesno(
+                    "Hash Mismatch",
+                    "Profile data_hash mismatch. Open anyway to repair?",
+                )
+                if not proceed:
+                    return None
+        return data
+
+    def _write_profiles_payload(self, path: Path, data: Dict[str, object]) -> None:
+        """
+        NAME
+            _write_profiles_payload - Write bringup_profiles.json with fresh hash.
+        """
+        data["schema_version"] = self._expected_schema_version()
+        data["data_version"] = time.strftime("%Y-%m-%d_%H%M%S", time.localtime())
+        data["data_hash"] = self._compute_data_hash(data)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        except Exception as exc:
+            messagebox.showerror("Error", f"Failed to write {path}: {exc}")
+
+    def _import_profile(self) -> None:
+        """
+        NAME
+            _import_profile - Import a profile from an external JSON file.
+        """
+        src = filedialog.askopenfilename(
+            title="Import Bringup Profile",
+            filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+        )
+        if not src:
+            return
+        src_path = Path(src)
+        incoming = self._load_profiles_payload(src_path)
+        if incoming is None:
+            return
+        incoming_profiles = incoming.get("profiles")
+        if not isinstance(incoming_profiles, dict) or not incoming_profiles:
+            messagebox.showerror("Error", "No profiles found in import file.")
+            return
+        names = sorted(incoming_profiles.keys())
+        name = self._choose_profile_name(names, incoming.get("default_profile"))
+        if not name:
+            return
+        profile = incoming_profiles.get(name)
+        if not isinstance(profile, dict):
+            messagebox.showerror("Error", "Selected profile is not an object.")
+            return
+        incoming_diagram = None
+        diagram = incoming.get("diagram")
+        if isinstance(diagram, dict):
+            diagram_profiles = diagram.get("profiles")
+            if isinstance(diagram_profiles, dict):
+                incoming_diagram = diagram_profiles.get(name)
+
+        dest_path = self._canonical_profiles_path()
+        dest = self._load_profiles_payload(dest_path) if dest_path.exists() else {
+            "default_profile": name,
+            "profiles": {},
+            "diagram": {"profiles": {}},
+        }
+        if dest is None:
+            return
+        profiles = dest.get("profiles")
+        if not isinstance(profiles, dict):
+            profiles = {}
+        diagram = dest.get("diagram")
+        if not isinstance(diagram, dict):
+            diagram = {}
+        diagram_profiles = diagram.get("profiles")
+        if not isinstance(diagram_profiles, dict):
+            diagram_profiles = {}
+
+        target_name = name
+        if target_name in profiles:
+            choice = messagebox.askyesnocancel(
+                "Profile Exists",
+                f"Profile '{target_name}' exists. Replace it?",
+            )
+            if choice is None:
+                return
+            if choice is False:
+                new_name = simpledialog.askstring("Rename", "New profile name:")
+                if not new_name:
+                    return
+                if new_name in profiles:
+                    messagebox.showerror("Error", "That profile name already exists.")
+                    return
+                target_name = new_name
+
+        self._backup_profiles_file(dest_path)
+        profiles[target_name] = profile
+        if incoming_diagram is not None:
+            diagram_profiles[target_name] = incoming_diagram
+        dest["profiles"] = profiles
+        dest["diagram"] = {"profiles": diagram_profiles}
+        if dest.get("default_profile") is None:
+            dest["default_profile"] = target_name
+        self._write_profiles_payload(dest_path, dest)
+        self._refresh_profile_choices(keep_selection=False)
+        if messagebox.askyesno("Imported", "Import complete. Load the imported profile now?"):
+            self._load_profile_from_path(str(dest_path), ask_profile=False, confirm_discard=True, selected_name=target_name)
+
+    def _export_profile(self) -> None:
+        """
+        NAME
+            _export_profile - Export a single profile to an external JSON file.
+        """
+        src_path = self._canonical_profiles_path()
+        src = self._load_profiles_payload(src_path)
+        if src is None:
+            return
+        profiles = src.get("profiles")
+        if not isinstance(profiles, dict) or not profiles:
+            messagebox.showerror("Error", "No profiles found to export.")
+            return
+        names = sorted(profiles.keys())
+        name = self._choose_profile_name(names, src.get("default_profile"))
+        if not name:
+            return
+        profile = profiles.get(name)
+        if not isinstance(profile, dict):
+            messagebox.showerror("Error", "Selected profile is not an object.")
+            return
+        diag = None
+        diagram = src.get("diagram")
+        if isinstance(diagram, dict):
+            diagram_profiles = diagram.get("profiles")
+            if isinstance(diagram_profiles, dict):
+                diag = diagram_profiles.get(name)
+
+        path = filedialog.asksaveasfilename(
+            title="Export Profile",
+            defaultextension=".json",
+            filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        payload: Dict[str, object] = {
+            "default_profile": name,
+            "profiles": {name: profile},
+        }
+        if diag is not None:
+            payload["diagram"] = {"profiles": {name: diag}}
+        self._write_profiles_payload(Path(path), payload)
+        messagebox.showinfo("Exported", f"Wrote {path}")
+
+    def _rename_profile(self) -> None:
+        """
+        NAME
+            _rename_profile - Rename a non-default profile in the canonical file.
+        """
+        path = self._canonical_profiles_path()
+        data = self._load_profiles_payload(path)
+        if data is None:
+            return
+        profiles = data.get("profiles")
+        if not isinstance(profiles, dict) or not profiles:
+            messagebox.showerror("Error", "No profiles available to rename.")
+            return
+        default_name = data.get("default_profile")
+        names = sorted(profiles.keys())
+        old_name = self._choose_profile_name(names, default_name if isinstance(default_name, str) else None)
+        if not old_name:
+            return
+        if isinstance(default_name, str) and old_name == default_name:
+            messagebox.showerror("Error", "Default profile cannot be renamed.")
+            return
+        new_name = simpledialog.askstring("Rename Profile", "New profile name:")
+        if not new_name:
+            return
+        new_name = new_name.strip()
+        if not new_name:
+            messagebox.showerror("Error", "Profile name is required.")
+            return
+        if new_name in profiles:
+            messagebox.showerror("Error", "That profile name already exists.")
+            return
+        self._backup_profiles_file(path)
+        profiles[new_name] = profiles.pop(old_name)
+        diagram = data.get("diagram")
+        if isinstance(diagram, dict):
+            diagram_profiles = diagram.get("profiles")
+            if isinstance(diagram_profiles, dict) and old_name in diagram_profiles:
+                diagram_profiles[new_name] = diagram_profiles.pop(old_name)
+                data["diagram"] = {"profiles": diagram_profiles}
+        data["profiles"] = profiles
+        self._write_profiles_payload(path, data)
+        if self._profile_name == old_name:
+            self._profile_name = new_name
+            self.entry_profile.set(new_name)
+        self._refresh_profile_choices(keep_selection=False)
+        messagebox.showinfo("Renamed", f"Renamed '{old_name}' to '{new_name}'.")
+
+    def _delete_profile(self) -> None:
+        """
+        NAME
+            _delete_profile - Delete a non-default profile in the canonical file.
+        """
+        path = self._canonical_profiles_path()
+        data = self._load_profiles_payload(path)
+        if data is None:
+            return
+        profiles = data.get("profiles")
+        if not isinstance(profiles, dict) or not profiles:
+            messagebox.showerror("Error", "No profiles available to delete.")
+            return
+        default_name = data.get("default_profile")
+        names = sorted(profiles.keys())
+        if len(names) <= 1:
+            messagebox.showerror("Error", "Cannot delete the last remaining profile.")
+            return
+        target = self._choose_profile_name(names, default_name if isinstance(default_name, str) else None)
+        if not target:
+            return
+        if isinstance(default_name, str) and target == default_name:
+            messagebox.showerror("Error", "Default profile cannot be deleted.")
+            return
+        if not messagebox.askyesno("Delete Profile", f"Delete profile '{target}'?"):
+            return
+        self._backup_profiles_file(path)
+        profiles.pop(target, None)
+        diagram = data.get("diagram")
+        if isinstance(diagram, dict):
+            diagram_profiles = diagram.get("profiles")
+            if isinstance(diagram_profiles, dict):
+                diagram_profiles.pop(target, None)
+                data["diagram"] = {"profiles": diagram_profiles}
+        data["profiles"] = profiles
+        self._write_profiles_payload(path, data)
+        if self._profile_name == target:
+            new_active = default_name if isinstance(default_name, str) and default_name in profiles else names[0]
+            self._load_profile_from_path(str(path), ask_profile=False, confirm_discard=True, selected_name=new_active)
+        self._refresh_profile_choices(keep_selection=False)
+        messagebox.showinfo("Deleted", f"Deleted profile '{target}'.")
+
+    def _reload_canonical_profile(self) -> None:
+        """
+        NAME
+            _reload_canonical_profile - Reload the canonical profiles file.
+        """
+        path = self._default_profiles_path()
+        if not path.exists():
+            messagebox.showerror("Missing", f"No profiles file found at {path}.")
+            return
+        self._load_profile_from_path(
+            str(path),
+            ask_profile=False,
+            confirm_discard=True,
+        )
+
     def _load_profile_from_path(
         self,
         path: str,
@@ -948,12 +1265,11 @@ class TopologyEditor(tk.Tk):
             _load_default_profile_if_present - Auto-load default profile on startup.
 
         DESCRIPTION
-            Reads src/main/deploy/bringup_profiles.json and loads its
+            Reads the canonical bringup_profiles.json and loads its
             default_profile into the diagram when available.
         """
         try:
-            root = Path(__file__).resolve().parents[2]
-            path = root / "src" / "main" / "deploy" / "bringup_profiles.json"
+            path = self._default_profiles_path()
             if path.exists():
                 self._load_profile_from_path(
                     str(path),
@@ -963,7 +1279,34 @@ class TopologyEditor(tk.Tk):
         except Exception:
             return
 
+    @staticmethod
+    def _expected_schema_version() -> int:
+        return 1
+
+    @staticmethod
+    def _compute_data_hash(payload: Dict[str, object]) -> str:
+        """
+        NAME
+            _compute_data_hash - Compute a stable hash for profile payloads.
+        """
+        normalized = dict(payload)
+        normalized["data_hash"] = ""
+        blob = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
     def _default_profiles_path(self) -> Path:
+        canonical = self._canonical_profiles_path()
+        if canonical.exists():
+            return canonical
+        deploy = self._deploy_profiles_path()
+        return deploy if deploy.exists() else canonical
+
+    @staticmethod
+    def _canonical_profiles_path() -> Path:
+        return Path(__file__).resolve().parents[2] / "data" / "bringup_profiles.json"
+
+    @staticmethod
+    def _deploy_profiles_path() -> Path:
         return Path(__file__).resolve().parents[2] / "src" / "main" / "deploy" / "bringup_profiles.json"
 
     def _read_profile_index(self) -> Tuple[List[str], Optional[str]]:
@@ -1064,8 +1407,7 @@ class TopologyEditor(tk.Tk):
             return
         path = self._profile_source_path
         if not path:
-            root = Path(__file__).resolve().parents[2]
-            path = str(root / "src" / "main" / "deploy" / "bringup_profiles.json")
+            path = str(self._default_profiles_path())
         self._load_profile_from_path(path, ask_profile=False, confirm_discard=True, selected_name=selected)
 
     def _set_profile_names(self, names: List[str]) -> None:
@@ -1107,6 +1449,8 @@ class TopologyEditor(tk.Tk):
             return
         data = {
             "default_profile": profile_name,
+            "schema_version": self._expected_schema_version(),
+            "data_version": time.strftime("%Y-%m-%d_%H%M%S", time.localtime()),
             "profiles": {
                 profile_name: self._profile_from_nodes(),
             },
@@ -1116,6 +1460,7 @@ class TopologyEditor(tk.Tk):
                 }
             },
         }
+        data["data_hash"] = self._compute_data_hash(data)
         try:
             with open(path, "w", encoding="utf-8") as handle:
                 json.dump(data, handle, indent=2)
@@ -1178,6 +1523,8 @@ class TopologyEditor(tk.Tk):
         path = str(path_obj)
         data = {
             "default_profile": profile_name,
+            "schema_version": self._expected_schema_version(),
+            "data_version": time.strftime("%Y-%m-%d_%H%M%S", time.localtime()),
             "profiles": {
                 profile_name: self._profile_from_nodes_list(selected_devices),
             },
@@ -1187,6 +1534,7 @@ class TopologyEditor(tk.Tk):
                 }
             },
         }
+        data["data_hash"] = self._compute_data_hash(data)
         selected_keys = {n.key for n in selected_nodes}
         diag_profile = data["diagram"]["profiles"][profile_name]
         diag_profile["ethernetLinks"] = [
@@ -1224,9 +1572,23 @@ class TopologyEditor(tk.Tk):
         NAME
             _on_save_to_deploy - Append or replace a profile in bringup_profiles.json.
         """
-        root = Path(__file__).resolve().parents[2]
-        path = root / "src" / "main" / "deploy" / "bringup_profiles.json"
-        self._save_profile_to_path(path, prompt_replace=True, update_source=False)
+        canonical = self._canonical_profiles_path()
+        deploy = self._deploy_profiles_path()
+        self._save_profile_to_path(canonical, prompt_replace=True, update_source=True)
+        self._sync_profiles_to_deploy(canonical, deploy)
+
+    @staticmethod
+    def _sync_profiles_to_deploy(source: Path, deploy: Path) -> None:
+        """
+        NAME
+            _sync_profiles_to_deploy - Copy canonical profiles into deploy path.
+        """
+        try:
+            deploy.parent.mkdir(parents=True, exist_ok=True)
+            deploy.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        except Exception:
+            # Best-effort sync; report via UI only if needed.
+            pass
 
     def _save_profile_to_path(
         self,
@@ -1265,6 +1627,9 @@ class TopologyEditor(tk.Tk):
                 return
         if not isinstance(data, dict):
             data = {}
+        if data.get("schema_version") != self._expected_schema_version():
+            data["schema_version"] = self._expected_schema_version()
+        data["data_version"] = time.strftime("%Y-%m-%d_%H%M%S", time.localtime())
         profiles = data.get("profiles")
         if not isinstance(profiles, dict):
             profiles = {}
@@ -1289,6 +1654,7 @@ class TopologyEditor(tk.Tk):
         data["diagram"] = {"profiles": diagram_profiles}
         if self.var_set_default.get() or "default_profile" not in data:
             data["default_profile"] = profile_name
+        data["data_hash"] = self._compute_data_hash(data)
 
         try:
             with path.open("w", encoding="utf-8") as handle:
@@ -1564,6 +1930,35 @@ class TopologyEditor(tk.Tk):
         try:
             with open(path, "r", encoding="utf-8") as handle:
                 data = json.load(handle)
+            schema_version = data.get("schema_version")
+            if schema_version != self._expected_schema_version():
+                messagebox.showerror(
+                    "Invalid",
+                    "Profile schema_version mismatch "
+                    f"(expected {self._expected_schema_version()}, got {schema_version}).",
+                )
+                return
+            data_version = data.get("data_version")
+            if not isinstance(data_version, str) or not data_version.strip():
+                messagebox.showerror("Invalid", "Profile data_version missing or empty.")
+                return
+            data_hash = data.get("data_hash")
+            if not isinstance(data_hash, str) or not data_hash.strip():
+                proceed = messagebox.askyesno(
+                    "Hash Missing",
+                    "Profile data_hash is missing or empty. Open anyway to repair?",
+                )
+                if not proceed:
+                    return
+            else:
+                computed_hash = self._compute_data_hash(data)
+                if data_hash != computed_hash:
+                    proceed = messagebox.askyesno(
+                        "Hash Mismatch",
+                        "Profile data_hash mismatch. Open anyway to repair?",
+                    )
+                    if not proceed:
+                        return
         except Exception as exc:
             messagebox.showerror("Error", f"Failed to open file: {exc}")
             return
@@ -5229,7 +5624,7 @@ class TopologyEditor(tk.Tk):
             "Profiles & Export": (
                 "Purpose: Save or export diagram data.\n"
                 "\n"
-                "- Save to Deploy writes to src/main/deploy/bringup_profiles.json.\n"
+                "- Save to Deploy writes to data/bringup_profiles.json and syncs to src/main/deploy.\n"
                 "- Save Profile As... exports a single profile JSON.\n"
                 "- Export PDF requires reportlab.\n"
             ),

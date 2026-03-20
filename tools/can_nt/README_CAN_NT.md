@@ -36,8 +36,8 @@ RUN
     2) falls back to %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe
 
 CONFIG
-    Device lists are loaded from src\main\deploy\bringup_profiles.json via --profile.
-    This keeps the PC tool aligned with robot profiles.
+    Device lists are loaded from data\bringup_profiles.json via --profile
+    (deploy fallback). This keeps the PC tool aligned with robot profiles.
 
     If you need a standalone can_nt_config.json-style file for reference or
     external tooling, generate one from a profile:
@@ -86,6 +86,9 @@ EXAMPLES
 
     PCAP/PCAPNG file capture:
         python tools\\can_nt\\can_nt_bridge.py --pcap tools\can_nt\logs\robot_run.pcapng
+
+    Reload profiles during a run:
+        Press `r` to reload bringup_profiles.json and refresh labels.
 
 COMMON COMMANDS
     Explicit COM port:

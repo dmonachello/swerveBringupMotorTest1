@@ -24,22 +24,21 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Callable, Dict, List, Optional, Tuple, Any
 
+from .can_profiles import get_profiles_load_error, list_profiles, reload_profiles
+
 
 def _load_profiles() -> List[str]:
     """
     NAME
         _load_profiles - Load profile names from bringup_profiles.json.
     """
-    try:
-        root = Path(__file__).resolve().parents[2]
-        path = root / "src" / "main" / "deploy" / "bringup_profiles.json"
-        data = json.loads(path.read_text(encoding="utf-8"))
-        profiles = data.get("profiles", {})
-        if isinstance(profiles, dict):
-            return sorted(name for name in profiles.keys() if name)
-    except Exception:
-        pass
-    return []
+    ok, _err = reload_profiles()
+    if not ok:
+        err = get_profiles_load_error()
+        if err:
+            print(f"ERROR: bringup_profiles.json load failed: {err}")
+        return []
+    return sorted(name for name in list_profiles() if name)
 
 
 def _load_tests() -> List[str]:
@@ -379,8 +378,12 @@ class BringupControlUI(tk.Tk):
 
         profile_box = ttk.Combobox(header, values=profiles, state="readonly", width=18)
         profile_box.set(profiles[0])
+        self._profile_box = profile_box
         ttk.Label(header, text="Profile").pack(side="left", padx=(16, 4))
         profile_box.pack(side="left")
+        ttk.Button(header, text="Refresh", command=self._refresh_profiles).pack(
+            side="left", padx=(6, 0)
+        )
 
         test_box = ttk.Combobox(header, values=tests, state="readonly", width=26)
         test_box.set(tests[0])
@@ -646,8 +649,24 @@ class BringupControlUI(tk.Tk):
             "  This is convenient but can start many devices at once during tests.",
             "  Prefer Add Motor for first bringup or when hardware is unverified.",
             "  Output: ACK + OUT listing all added devices (may stream in batches).",
+            "",
+            "Refresh:",
+            "  Reloads bringup_profiles.json and updates the dropdown list.",
         ]
         return "\n".join(lines)
+
+    def _refresh_profiles(self) -> None:
+        """
+        NAME
+            _refresh_profiles - Reload profile names from bringup_profiles.json.
+        """
+        profiles = _load_profiles() or ["(none)"]
+        current = self._profile_box.get()
+        self._profile_box["values"] = profiles
+        if current in profiles:
+            self._profile_box.set(current)
+        else:
+            self._profile_box.set(profiles[0])
 
     def _build_reports_help(self) -> str:
         """

@@ -37,3 +37,5 @@ Purpose: Consolidate all planned or future work discussed so far.
 ## NetworkTables Contract Follow-ups
 - Align `bringup/diag/busErrorCount` publishing: Java reads it, current Python tool does not publish it.
 
+## Tests
+- The first test tbd idea.

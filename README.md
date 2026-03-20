@@ -16,14 +16,19 @@ This repository is almost entirely AI-created, including both code and documenta
 Use the normal FRC robot workflow to deploy and run the robot code.
 
 ## Documentation Index
-- `ARCHITECTURE.md` - layered design, interfaces, and snapshot flow.
-- `ADDING_HARDWARE.md` - step-by-step guide for adding a new motor/controller type.
-- `CAN_BACKGROUND.md` - CAN bus basics, failure modes, and troubleshooting.
-- `AI_DIAGNOSIS.md` - how to interpret `bringup_report.json` with an AI assistant.
-- `PROJECT_INTENT.md` - project goals and motivation.
-- `TESTING.md` - testing notes and expected behaviors.
-- `TESTING.md` includes a runtime verification checklist for the bringup test framework.
-- `tools/can_nt/README_CAN_NT.md` - PC CAN sniffer bridge usage and CLI reference.
+Documentation:
+- docs/ARCHITECTURE.md
+- docs/SETUP.md
+- docs/USER_GUIDE.md
+- docs/TESTING.md
+- docs/AI_DIAGNOSIS.md
+- docs/CAN_BACKGROUND.md
+
+Notes:
+- notes/planning/PROJECT_INTENT.md
+
+Tools:
+- tools/can_nt/README_CAN_NT.md
 
 ## Bringup Control UI
 Purpose: The PC-side UI mirrors bringup commands and shows outputs from the roboRIO.
@@ -274,7 +279,7 @@ Use these repeatable procedures to isolate issues quickly. Keep local (roboRIO) 
 **Q: How can I see unexpected devices on the CAN bus?**  
 A: Run the PC tool with `--publish-unknown` and then press `D-pad Down` on the robot to view the table. Unknown devices will show as `label=UNKNOWN`. You can also capture a PCAP and inspect in Wireshark.
 **Q: How do I switch CAN profiles at runtime?**  
-A: Press `Back` on the Xbox controller. Profiles rotate in the order they appear in `src/main/deploy/bringup_profiles.json`.
+A: Press `Back` on the Xbox controller. Profiles rotate in the order they appear in `data/bringup_profiles.json`.
 **Q: Why does a device show `NO_DATA` in the NetworkTables table?**  
 A: The PC tool has not published a valid `lastSeen` for that device yet. Check that the Python bridge is running and connected to the roboRIO, and that the device is on the CAN bus.
 **Q: What's the difference between local health (D-pad Left) and CAN diagnostics (D-pad Down)?**  
@@ -337,7 +342,9 @@ Reverse engineering captures:
 - CTRE Tuner X (Phoenix) for firmware updates and Signal Logger (hoot logs).
 - REV Hardware Client for SPARK MAX/Flex firmware/config and diagnostics.
 ## CAN Profiles (JSON)
-Bringup hardware profiles are defined in `src/main/deploy/bringup_profiles.json`.
+Bringup hardware profiles are defined in `data/bringup_profiles.json`.
+The roboRIO consumes a synced copy at `src/main/deploy/bringup_profiles.json`.
+Run `python tools/sync_profiles.py` after edits to refresh the deploy copy.
 - GUI editor: `tools/can_topology/can_top_editor.py` (usage in `tools/can_topology/README.md`).
 - Validator: `tools/can_topology/validate_profiles.py` for schema and CAN ID checks.
 - `default_profile` controls the startup profile.
@@ -347,6 +354,9 @@ Bringup hardware profiles are defined in `src/main/deploy/bringup_profiles.json`
 Hardware profile schema (single source of truth):
 - This JSON is the shared, data-driven hardware configuration used by both robot code and the PC tool.
 - Each profile can include these sections:
+- `schema_version` is required at the root (current: `1`).
+- `data_version` is required at the root (string, format `YYYY-MM-DD_HHMMSS`).
+- `data_hash` is required at the root (SHA-256 of canonical data; updated by `tools/sync_profiles.py`).
 - `neos`, `neo550s`, `flexes`, `krakens`, `falcons`, `cancoders`, `candles` as arrays of `{ "label": "...", "id": <can_id> }`.
 - `devices` as a generic array of `{ "vendor": "...", "type": "...", "label": "...", "id": <can_id> }`.
 - `pdh`, `pigeon`, `roborio` as single objects `{ "label": "...", "id": <can_id> }`.
@@ -389,11 +399,12 @@ Quick start template:
 - Copy `src/main/deploy/bringup_profiles.template.json` and edit it for your robot.
 Step-by-step: Add your hardware
 1. Open `src/main/deploy/bringup_profiles.template.json`.
-2. Save a copy as `src/main/deploy/bringup_profiles.json` (or edit the existing file).
+2. Save a copy as `data/bringup_profiles.json` (or edit the existing file).
 3. Set `default_profile` to your profile name.
 4. Fill in your device lists and CAN IDs; keep labels short and unique.
-5. Deploy to the roboRIO.
-6. Use `Back` to cycle profiles and verify the device list is correct.
+5. Run `python tools/sync_profiles.py` to refresh the deploy copy.
+6. Deploy to the roboRIO.
+7. Use `Back` to cycle profiles and verify the device list is correct.
 Supported profile sections include:
 - `neos`, `neo550s`, `flexes`, `krakens`, `falcons`, `cancoders`, `candles`
 - `devices` (generic vendor/type list)
@@ -503,7 +514,7 @@ If neither is set, the script will:
 1. Use the first `python` found in `PATH`.
 2. Fall back to `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe`.
 Config:
-- Device lists come from `src/main/deploy/bringup_profiles.json` via `--profile`.
+- Device lists come from `data/bringup_profiles.json` via `--profile`.
 - This keeps the PC tool aligned with robot profiles without duplicating IDs.
 - If you need a standalone can_nt_config.json-style file, generate one:
   - `python tools\\can_nt\\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json`
@@ -642,7 +653,7 @@ Press `Right Bumper` to print absolute position for the configured CANCoder IDs.
 This test reads absolute position directly from the devices over CAN and prints
 rotations and degrees to the console.
 Configured CAN profiles live in:
-- `src/main/deploy/bringup_profiles.json`
+- `data/bringup_profiles.json`
 ## Future Features
 Ideas to consider:
 - Set explicit status frame periods for predictable CAN traffic.
@@ -652,7 +663,7 @@ Ideas to consider:
 - Add a UI dashboard to visualize NetworkTables diagnostics.
 ## Adding New Features
 General workflow:
-1. Add or update profiles in `src/main/deploy/bringup_profiles.json`.
+1. Add or update profiles in `data/bringup_profiles.json`.
 2. Put shared behavior in `src/main/java/frc/robot/BringupCore.java`.
 3. Bind controls in both `src/main/java/frc/robot/Robot.java` and
    `src/main/java/frc/robot/RobotV2.java`.

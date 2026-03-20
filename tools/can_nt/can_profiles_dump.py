@@ -12,11 +12,23 @@ DESCRIPTION
     reproducible configuration files.
 """
 
+import hashlib
 import json
 import time
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from .can_frc_defs import PROFILE_MAP_RULES
+
+
+def _compute_data_hash(payload: Dict[str, object]) -> str:
+    """
+    NAME
+        _compute_data_hash - Compute a stable hash for profile payloads.
+    """
+    normalized = dict(payload)
+    normalized["data_hash"] = ""
+    blob = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
 def dump_seen_ids(
@@ -160,11 +172,14 @@ def dump_profile(
         Writes JSON to disk.
     """
     payload = {
+        "schema_version": 1,
+        "data_version": time.strftime("%Y-%m-%d_%H%M%S", time.localtime()),
         "default_profile": profile_name,
         "profiles": {
             profile_name: _build_profile_from_seen(seen_keys, profile_name, include_unknown),
         },
     }
+    payload["data_hash"] = _compute_data_hash(payload)
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)

@@ -19,12 +19,15 @@ python tools\\can_topology\\can_top_editor.py
 Purpose: Validate `bringup_profiles.json` for compatibility.
 ```cmd
 python tools\\can_topology\\validate_profiles.py
-python tools\\can_topology\\validate_profiles.py --path src\\main\\deploy\\bringup_profiles.json
+python tools\\can_topology\\validate_profiles.py --path data\\bringup_profiles.json
 python tools\\can_topology\\validate_profiles.py --strict
 python tools\\can_topology\\validate_profiles.py --verbose
 ```
 Checks:
 - JSON parses and contains a `profiles` object.
+- Root `schema_version` matches the expected value.
+- Root `data_version` is present and non-empty.
+- Root `data_hash` is present and matches the computed value.
 - Allowed categories only (buckets, singletons, `devices`).
 - Each entry has integer `id` in range -1 or 0-62.
 - `devices` entries include `vendor` and `type`.
@@ -38,8 +41,14 @@ Purpose: Describe the shortest path from sketch to JSON.
 3. Set the profile name (dropdown lists profiles from the loaded file).
 4. File -> Save Profile As...
 5. File -> Save Selection As... writes only selected nodes/callouts.
-6. Or use File -> `Save to Deploy` to append/replace directly in `src/main/deploy/bringup_profiles.json`.
+6. Or use File -> `Save to Deploy` to append/replace in `data/bringup_profiles.json` and sync to deploy.
 7. Save Selection As... never overwrites an existing file; it auto-suffixes `_1`, `_2`, etc.
+8. File -> `Reload Canonical` reloads `data/bringup_profiles.json` into the editor.
+9. Profiles menu: Import Profile... (external file -> canonical, with diagram metadata if present).
+10. Profiles menu: Export Profile... (single profile to external file).
+11. Profiles menu: Rename Profile... (non-default only).
+12. Profiles menu: Delete Profile... (non-default only; last profile protected).
+13. Destructive profile actions write a timestamped backup alongside the canonical file.
 6. Use `Set As Default` to update `default_profile` on save.
 7. Use File -> `Export PDF...` to write a printable PDF (requires `reportlab`).
 
@@ -52,9 +61,10 @@ Purpose: Show fields not displayed on the boxes.
 
 ## Auto-Load
 Purpose: Start with your existing profile if present.
-- On startup, the editor reads `src/main/deploy/bringup_profiles.json` and loads
+- On startup, the editor reads `data/bringup_profiles.json` (deploy fallback) and loads
   its `default_profile` automatically.
 - Use File -> Open Profile... to pick a different profile.
+- If `data_hash` is missing or mismatched, the editor can still open the file for repair.
 
 ## Legacy File
 Purpose: Keep the previous editor available for reference without accidental use.

@@ -3,7 +3,14 @@ package frc.robot;
 import com.ctre.phoenix6.SignalLogger;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import com.google.gson.annotations.SerializedName;
 import com.revrobotics.spark.SparkFlex;
 import com.revrobotics.spark.SparkMax;
@@ -17,6 +24,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -69,11 +78,13 @@ public final class BringupUtil {
   // Default profile names and file location.
   private static final String DEFAULT_PROFILE_NAME = "robot";
   private static final String DEFAULT_PROFILE_FILE = "bringup_profiles.json";
+  private static final int PROFILE_SCHEMA_VERSION = 1;
   private static final String MOTOR_SPECS_FILE = "motor_specs.json";
   private static final String CAN_MAPPINGS_FILE = "can_mappings.json";
 
   // JSON parser for bringup_profiles.json.
   private static final Gson GSON = new Gson();
+  private static final Gson CANONICAL_GSON = new GsonBuilder().disableHtmlEscaping().create();
 
   // Profile registry as loaded from JSON (or fallback).
   private static Map<String, CanProfileConfig> profiles = new LinkedHashMap<>();
@@ -641,12 +652,33 @@ public final class BringupUtil {
       applyFallbackProfile();
       return;
     }
-    try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-      ProfileRoot root = GSON.fromJson(reader, ProfileRoot.class);
+    try {
+      String rawJson = Files.readString(path, StandardCharsets.UTF_8);
+      ProfileRoot root = GSON.fromJson(rawJson, ProfileRoot.class);
       if (root == null || root.profiles == null || root.profiles.isEmpty()) {
         throw new JsonParseException("No profiles found");
       }
+      if (root.schemaVersion != PROFILE_SCHEMA_VERSION) {
+        throw new JsonParseException(
+            "schema_version mismatch: expected "
+                + PROFILE_SCHEMA_VERSION
+                + ", got "
+                + root.schemaVersion);
+      }
+      if (root.dataVersion == null || root.dataVersion.isBlank()) {
+        throw new JsonParseException("data_version missing or empty");
+      }
+      if (root.dataHash == null || root.dataHash.isBlank()) {
+        throw new JsonParseException("data_hash missing or empty");
+      }
+      String computedHash = computeDataHash(rawJson);
+      if (!root.dataHash.equals(computedHash)) {
+        throw new JsonParseException("data_hash mismatch (run tools/sync_profiles.py)");
+      }
       profiles = new LinkedHashMap<>(root.profiles);
+      for (Map.Entry<String, CanProfileConfig> entry : profiles.entrySet()) {
+        validateProfileCanIdsStrict(entry.getKey(), entry.getValue());
+      }
       profileOrder = new ArrayList<>(profiles.keySet());
       defaultProfile = root.defaultProfile != null ? root.defaultProfile : DEFAULT_PROFILE_NAME;
       if (!profiles.containsKey(defaultProfile)) {
@@ -655,8 +687,9 @@ public final class BringupUtil {
       }
       activeProfile = defaultProfile;
     } catch (IOException | JsonParseException ex) {
-      System.out.println("Warning: failed to read CAN profile JSON: " + ex.getMessage());
-      applyFallbackProfile();
+      System.out.println("ERROR: bringup_profiles.json invalid: " + ex.getMessage());
+      System.out.println("ERROR: Redeploy required. Robot code will stop.");
+      throw new RuntimeException("Invalid bringup_profiles.json", ex);
     }
   }
 
@@ -673,6 +706,10 @@ public final class BringupUtil {
       }
     } catch (Exception ex) {
       // Fall through to local dev path.
+    }
+    Path dataPath = Paths.get("data", DEFAULT_PROFILE_FILE);
+    if (Files.exists(dataPath)) {
+      return dataPath;
     }
     Path devPath = Paths.get("src", "main", "deploy", DEFAULT_PROFILE_FILE);
     if (Files.exists(devPath)) {
@@ -749,6 +786,76 @@ public final class BringupUtil {
     PDH_CAN_ID = resolveSingletonId(merged, "REV", "PDH", new DeviceRef(FALLBACK_PDH_CAN_ID, "REV", "PDH"));
     PIGEON_CAN_ID = resolveSingletonId(merged, "CTRE", "Pigeon", new DeviceRef(FALLBACK_PIGEON_CAN_ID, "CTRE", "Pigeon"));
     ROBORIO_CAN_ID = resolveSingletonId(merged, "NI", "roboRIO", new DeviceRef(FALLBACK_ROBORIO_CAN_ID, "NI", "roboRIO"));
+  }
+
+  /**
+   * NAME
+   *   validateProfileCanIdsStrict - Fail fast on duplicate CAN IDs in a profile.
+   *
+   * PARAMETERS
+   *   profileName - Profile key being validated.
+   *   config - Profile configuration entry.
+   *
+   * ERRORS
+   *   Throws JsonParseException when duplicates are found.
+   */
+  private static void validateProfileCanIdsStrict(String profileName, CanProfileConfig config) {
+    if (config == null) {
+      return;
+    }
+    Map<Integer, List<String>> seen = new LinkedHashMap<>();
+    addDeviceRefIds(seen, config.neos, "NEO");
+    addDeviceRefIds(seen, config.neo550s, "NEO 550");
+    addDeviceRefIds(seen, config.flexes, "FLEX");
+    addDeviceRefIds(seen, config.krakens, "KRAKEN");
+    addDeviceRefIds(seen, config.falcons, "FALCON");
+    addDeviceRefIds(seen, config.cancoders, "CANCoder");
+    addDeviceRefIds(seen, config.candles, "CANdle");
+    addDeviceRefIds(seen, config.devices, "Device");
+    addDeviceRefId(seen, config.pdh, "PDH");
+    addDeviceRefId(seen, config.pdp, "PDP");
+    addDeviceRefId(seen, config.pigeon, "Pigeon");
+    addDeviceRefId(seen, config.roborio, "roboRIO");
+
+    for (Map.Entry<Integer, List<String>> entry : seen.entrySet()) {
+      if (entry.getValue().size() > 1) {
+        throw new JsonParseException(
+            "Profile '"
+                + profileName
+                + "' duplicate CAN ID "
+                + entry.getKey()
+                + " ("
+                + String.join(", ", entry.getValue())
+                + ")");
+      }
+    }
+  }
+
+  private static void addDeviceRefIds(
+      Map<Integer, List<String>> seen,
+      List<DeviceRef> refs,
+      String fallbackLabel) {
+    if (refs == null) {
+      return;
+    }
+    for (DeviceRef ref : refs) {
+      addDeviceRefId(seen, ref, fallbackLabel);
+    }
+  }
+
+  private static void addDeviceRefId(
+      Map<Integer, List<String>> seen,
+      DeviceRef ref,
+      String fallbackLabel) {
+    if (ref == null || !isEnabledCanId(ref.id)) {
+      return;
+    }
+    String label = ref.label;
+    if (label == null || label.isBlank()) {
+      label = fallbackLabel + " " + ref.id;
+    }
+    List<String> labels = seen.computeIfAbsent(ref.id, ignored -> new ArrayList<>());
+    labels.add(label);
   }
 
   /**
@@ -1094,7 +1201,87 @@ public final class BringupUtil {
   private static final class ProfileRoot {
     @SerializedName("default_profile")
     String defaultProfile;
+    @SerializedName("schema_version")
+    int schemaVersion;
+    @SerializedName("data_version")
+    String dataVersion;
+    @SerializedName("data_hash")
+    String dataHash;
     LinkedHashMap<String, CanProfileConfig> profiles;
+  }
+
+  private static String computeDataHash(String rawJson) {
+    JsonElement parsed = JsonParser.parseString(rawJson);
+    if (!parsed.isJsonObject()) {
+      throw new JsonParseException("profiles JSON root is not an object");
+    }
+    JsonObject root = parsed.getAsJsonObject();
+    root.addProperty("data_hash", "");
+    String canonical = canonicalizeJson(root);
+    return sha256Hex(canonical);
+  }
+
+  private static String canonicalizeJson(JsonElement element) {
+    if (element == null || element instanceof JsonNull || element.isJsonNull()) {
+      return "null";
+    }
+    if (element.isJsonPrimitive()) {
+      JsonPrimitive prim = element.getAsJsonPrimitive();
+      return CANONICAL_GSON.toJson(prim);
+    }
+    if (element.isJsonArray()) {
+      JsonArray array = element.getAsJsonArray();
+      StringBuilder builder = new StringBuilder();
+      builder.append("[");
+      boolean first = true;
+      for (JsonElement item : array) {
+        if (!first) {
+          builder.append(",");
+        }
+        builder.append(canonicalizeJson(item));
+        first = false;
+      }
+      builder.append("]");
+      return builder.toString();
+    }
+    if (element.isJsonObject()) {
+      JsonObject obj = element.getAsJsonObject();
+      List<String> keys = new ArrayList<>(obj.keySet());
+      Collections.sort(keys);
+      StringBuilder builder = new StringBuilder();
+      builder.append("{");
+      boolean first = true;
+      for (String key : keys) {
+        if (!first) {
+          builder.append(",");
+        }
+        builder.append(CANONICAL_GSON.toJson(key));
+        builder.append(":");
+        builder.append(canonicalizeJson(obj.get(key)));
+        first = false;
+      }
+      builder.append("}");
+      return builder.toString();
+    }
+    return "null";
+  }
+
+  private static String sha256Hex(String input) {
+    try {
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+      StringBuilder hex = new StringBuilder();
+      for (byte b : hash) {
+        String h = Integer.toHexString(0xff & b);
+        if (h.length() == 1) {
+          hex.append('0');
+        }
+        hex.append(h);
+      }
+      return hex.toString();
+    } catch (NoSuchAlgorithmException ex) {
+      throw new RuntimeException("SHA-256 unavailable", ex);
+    }
   }
 
   /**
