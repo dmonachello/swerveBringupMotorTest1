@@ -47,6 +47,8 @@ Provide a live operator console with:
 - CLI Front End
   - must call same shared operations
 
+- CLI may exist in a separate module, but must remain a thin front end over shared core logic
+
 ## CLI Module Separation
 
 The CLI must be implemented as a separate module from the main bridge code and invoked from the existing bridge application.
