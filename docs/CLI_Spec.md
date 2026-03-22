@@ -1,607 +1,366 @@
-Add an interactive Cisco-style CLI mode to the bridge app. This is not a separate tool. It is a second operator surface inside the bridge app, alongside the Windows UI. The CLI and GUI must share the same core command/send/receive logic and runtime state handling. Do not duplicate business logic.
+# Bridge CLI Feature Specification
 
-Goal
+## Purpose
 
-Provide a live, prompt-based operator console for the bridge app with:
+Add an interactive Cisco-style CLI mode to the bridge app.
 
-contextual prompts
+This CLI is not a separate tool. It is a second operator surface inside the bridge app, alongside the Windows UI.
 
-hierarchical modes
+The CLI and GUI must:
+- share the same core command/send/receive logic
+- share the same runtime state
+- not duplicate business logic
 
-command parsing
+## Goals
 
-shared bridge command execution
+Provide a live operator console with:
+- contextual prompts
+- hierarchical modes
+- command parsing
+- shared bridge command execution
+- shared response parsing
+- scriptable batch operation
+- no prompts in batch mode
 
-shared response parsing
+## Architecture
 
-scriptable batch operation
+### Required layers
 
-no prompt noise in batch mode
+- Bridge Core / Session Layer
+  - connect / disconnect
+  - send command
+  - receive ACK / OUT
+  - stream output
+  - maintain runtime state snapshot
 
+- Shared Operations Layer
+  - group operations
+  - device membership operations
+  - binding operations
+  - selected-device operations
+  - show/query operations
+  - merge/import/export operations
 
-Architecture
+- GUI Front End
+  - must call shared operations
 
-Implement the CLI as a front end over shared bridge core logic.
+- CLI Front End
+  - must call same shared operations
 
-Required layers:
+### Constraint
 
-bridge core/session layer
+Do not:
+- duplicate logic in CLI
+- create a separate command path
 
-connect/disconnect
+## CLI Style
 
-send command
+Use a Cisco-like CLI:
+- hierarchical modes
+- contextual prompts
+- `show ...` for inspection
+- `configure terminal` for config mode
+- `group <name>` to enter/create group mode
+- `no ...` for removal
+- `exit` / `end` for navigation
 
-receive ACK/OUT
+Do not implement:
+- privilege levels
+- fuzzy abbreviations
 
-collect streamed output
+## Modes
 
-maintain latest runtime state snapshot
+### Exec Mode
 
-
-shared operations layer
-
-create/select/delete/rename group
-
-add/remove device
-
-enable/disable group
-
-enable/disable/toggle member
-
-bind/unbind group
-
-selected-device operations
-
-show/query operations
-
-merge/import/export operations
-
-
-GUI front end
-
-must call the shared operations layer
-
-
-CLI front end
-
-must call the same shared operations layer
-
-
-
-Do not implement separate command formatting or response interpretation logic in the CLI.
-
-CLI style
-
-Use a Cisco-like CLI style with:
-
-hierarchical modes
-
-context-sensitive prompts
-
-show ... inspection commands
-
-configure terminal to enter config mode
-
-group <name> to enter or create group config mode
-
-no ... for removal/clearing
-
-exit to go up one level
-
-end to return to exec mode
-
-
-Do not implement Cisco privilege levels or loose abbreviation parsing. Keep this version explicit and predictable.
-
-Modes
-
-Support these modes:
-
-1. exec mode Prompt: bridge>
-
-
+Prompt:
+`bridge>`
 
 Purpose:
+- inspection
+- connection status
+- enter config mode
 
-inspection
+### Config Mode
 
-connection/control status
-
-entering config mode
-
-
-2. config mode Prompt: bridge(config)#
-
-
+Prompt:
+`bridge(config)#`
 
 Purpose:
+- structural edits
+- group entry/creation
+- selected-device config
+- merge/import/export
 
-structural edits
+### Group Config Mode
 
-entering group config mode
-
-selected-device control setup
-
-config merge/import/export operations
-
-
-3. group config mode Prompt: bridge(config-group-<groupName>)#
-
-
+Prompt:
+`bridge(config-group-<name>)#`
 
 Purpose:
+- edit one group
+- membership
+- bindings
+- enable/disable
+- run tests
 
-edit one group
+### Batch Mode
 
-add/remove devices
+Entered via:
+`bridge.py --batch`
 
-enable/disable members
-
-bind/unbind group control
-
-enable/disable group
-
-run tests on current group
-
-
-4. batch mode This is a non-interactive execution mode, not a fourth prompt hierarchy level in normal interactive use. It may be entered either:
-
-
-
-from startup, e.g. bridge.py --batch
-
-or via script execution mode
-
-
-Batch mode requirements:
-
-no prompts
-
-deterministic behavior
-
-operations that would prompt in interactive mode must follow a configured batch conflict policy
-
-
-Batch conflict policy
-
-Support batch conflict handling for operations that would otherwise prompt, especially when moving a device from one group to another.
-
-Provide a batch conflict policy with at least:
-
-error
-
-move
-
-
-Meaning:
-
-error: emit warning/error and do not perform the action
-
-move: emit warning and perform the move automatically
-
-
-Default batch policy:
-
-error
-
-
-Allow configuration by startup option and/or explicit CLI setting in batch context.
-
-Do not require per-command --force flags. Use batch mode and batch policy instead.
-
-Interactive prompting
-
-In normal interactive CLI mode, operations that would silently alter ownership or delete structure must warn and prompt y/n.
-
-Example cases:
-
-adding a device to a new group when it already belongs to another group
-
-deleting a group
-
-clearing a group
-
-destructive merge/import cases if applicable
-
-
-Requirements:
-
-default selection should be effectively “no”
-
-if user declines, state must remain unchanged
-
-moves must be atomic when accepted
-
-
-No prompting is allowed in batch mode.
-
-Command grammar style
-
-The CLI is mode-based. Commands are interpreted according to current mode.
-
-Common commands
-
-Available where sensible:
-
-exit
-
-end
-
-help
-
-ping
-
-quit
-
-
-Exec mode commands
-
-Support:
-
-show status
-
-show groups
-
-show group <name>
-
-show devices
-
-show device <name>
-
-show bindings
-
-show selected-device
-
-show runtime-state
-
-configure terminal
-
-connect
-
-disconnect
-
-
-Config mode commands
-
-Support:
-
-all appropriate show ... commands
-
-group <name>
-
-if group exists, enter its group config mode
-
-if group does not exist, create it and enter its group config mode
-
-
-no group <name>
-
-selected-device <device>
-
-selected-mode on
-
-selected-mode off
-
-merge config <file>
-
-import config <file>
-
-export runtime-groups <file>
-
-save config <file>
-
-
-Group config mode commands
-
-Current group is implied by the mode.
-
-Support:
-
-show
-
-show members
-
-show binding
-
-add device <device>
-
-no device <device>
-
-member <device> enable
-
-member <device> disable
-
-member <device> toggle
-
-bind <input> analog
-
-bind <input> hold <value>
-
-bind <input> toggle <value>
-
-bind <input> jog-forward <value>
-
-bind <input> jog-reverse <value>
-
-no bind
-
-enable
-
-disable
-
-run test
-
-run test <name>
-
-
-Control identifiers
-
-Use normalized control identifiers in the CLI. Examples:
-
-driver.left.y
-
-driver.right.y
-
-operator.left.y
-
-operator.right.y
-
-driver.a
-
-driver.b
-
-driver.x
-
-driver.y
-
-driver.lb
-
-driver.rb
-
-operator.a
-
-operator.b
-
-operator.x
-
-operator.y
-
-operator.lb
-
-operator.rb
-
-ui.slider1
-
-ui.slider2
-
-ui.button1
-
-ui.button2
-
-
-These identifiers must map into the shared normalized input abstraction already planned for group bindings.
-
-Binding behavior rules
-
-Support these binding behaviors:
-
-analog
-
-hold
-
-toggle
-
-jog-forward
-
-jog-reverse
-
+or script execution.
 
 Rules:
+- no prompts
+- deterministic behavior
+- uses conflict policy
 
-analog bindings use live analog value from axis/slider and do not take a fixed numeric output value
+## Batch Conflict Policy
 
-button-based bindings must explicitly specify a fixed output value
+Supported:
+- `error` (default)
+- `move`
 
-fixed output value belongs to the binding, not the device and not the group membership
+Behavior:
 
+- error
+  - warn
+  - do not perform action
 
-Lock in these semantics:
+- move
+  - warn
+  - perform action automatically
 
-hold: output = configured value while pressed, else 0
+No per-command `--force`. Batch mode replaces it.
 
-toggle: each press toggles configured value on/off
+## Interactive Prompting
 
-jog-forward: output = +configured value while pressed, else 0
+In interactive mode, prompt user for:
+- device move between groups
+- deleting groups
+- clearing groups
 
-jog-reverse: output = -configured value while pressed, else 0
+Rules:
+- default = no
+- no partial state changes
+- moves must be atomic
 
+No prompting allowed in batch mode.
 
-Validation:
+## Commands
 
-bind <input> analog is valid only for analog-capable inputs
+### Common Commands
 
-bind <input> hold|toggle|jog-forward|jog-reverse <value> requires a numeric value
+- `exit`
+- `end`
+- `help`
+- `ping`
+- `quit`
 
-invalid combinations must produce clear errors
+### Exec Mode Commands
 
+- `show status`
+- `show groups`
+- `show group <name>`
+- `show devices`
+- `show device <name>`
+- `show bindings`
+- `show selected-device`
+- `show runtime-state`
+- `configure terminal`
+- `connect`
+- `disconnect`
 
-Device ownership rule
+### Config Mode Commands
 
-A device may belong to only one runtime group at a time.
+- `group <name>`
+- `no group <name>`
+- `selected-device <device>`
+- `selected-mode on`
+- `selected-mode off`
+- `merge config <file>`
+- `import config <file>`
+- `export runtime-groups <file>`
+- `save config <file>`
 
-When adding a device to a group:
+### Group Config Mode Commands
 
-if device is not already in any group, add normally
+- `show`
+- `show members`
+- `show binding`
+- `add device <device>`
+- `no device <device>`
+- `member <device> enable`
+- `member <device> disable`
+- `member <device> toggle`
+- `bind <input> analog`
+- `bind <input> hold <value>`
+- `bind <input> toggle <value>`
+- `bind <input> jog-forward <value>`
+- `bind <input> jog-reverse <value>`
+- `no bind`
+- `enable`
+- `disable`
+- `run test`
+- `run test <name>`
 
-if device is already in another group:
+## Control Identifiers
 
-interactive mode: warn and prompt y/n before moving
+Examples:
+- `driver.left.y`
+- `driver.right.y`
+- `operator.left.y`
+- `operator.right.y`
+- `driver.a`
+- `driver.b`
+- `driver.x`
+- `driver.y`
+- `driver.lb`
+- `driver.rb`
+- `operator.a`
+- `operator.b`
+- `operator.x`
+- `operator.y`
+- `operator.lb`
+- `operator.rb`
+- `ui.slider1`
+- `ui.slider2`
+- `ui.button1`
+- `ui.button2`
 
-batch mode with policy error: warn/error and do not move
+## Binding Rules
 
-batch mode with policy move: warn and move automatically
+### Behaviors
 
+- `analog`
+- `hold`
+- `toggle`
+- `jog-forward`
+- `jog-reverse`
 
+### Rules
 
-Do not allow a device to belong to multiple groups simultaneously.
+- analog
+  - uses live value
+  - no fixed value
 
-Per-member enable rule
+- button-based
+  - must specify value
 
-A device may remain in a group but be disabled within that group.
+### Semantics
 
-CLI must support:
+- hold
+  - output = value while pressed, else 0
 
-member <device> enable
+- toggle
+  - toggles value on/off
 
-member <device> disable
+- jog-forward
+  - +value while pressed
 
-member <device> toggle
+- jog-reverse
+  - -value while pressed
 
+Value belongs to the binding, not device or group.
 
-This affects participation in control, not membership.
+## Device Ownership Rule
 
-Group execution is not implemented in the CLI itself, but CLI commands must manipulate the shared state used by execution logic.
+A device belongs to one group only.
 
-Selected-device override support
+When adding:
 
-CLI must expose selected-device mode control.
+### Interactive mode
+- warn
+- prompt y/n
+
+### Batch mode
+- error -> fail
+- move -> auto move
+
+Never allow multiple group membership.
+
+## Per-Member Enable
+
+Commands:
+- `member <device> enable`
+- `member <device> disable`
+- `member <device> toggle`
+
+Effects:
+- controls participation
+- does not change membership
+
+## Selected Device Mode
+
+Commands:
+- `selected-device <device>`
+- `selected-mode on`
+- `selected-mode off`
+
+Rules:
+- overrides group control for that device
+- group output suppressed for selected device
+
+## Response Handling
+
+CLI must use same logic as GUI.
+
+Display:
+- `CMD`
+- `ACK`
+- `OUT`
+- `CONSOLE`
+
+No separate protocol.
+
+## Help System
 
 Support:
+- `help`
+- `help <command>`
 
-selected-device <device> in config mode
+Later:
+- optional `?`
 
-selected-mode on
+## Error Handling
 
-selected-mode off
+Errors must be specific.
 
-show selected-device state via show selected-device
+Good:
+- `unknown device FL_DRIEV, did you mean FL_DRIVE?`
+- `hold binding requires value`
+- `device already in group swerve_drive`
 
+Bad:
+- `syntax error`
 
-This must operate through the shared bridge operations layer, not bespoke CLI logic.
+## Batch / Script Support
 
-Response handling
+### Execution
 
-CLI must use the same command send/receive and response parsing logic as the GUI.
+`bridge.py --batch --script setup.txt`
 
-CLI must display:
+### Rules
+- no prompts
+- deterministic behavior
+- uses conflict policy
 
-short command response flow
+### Example Script
 
-streamed output when applicable
-
-
-Suggested display tags:
-
-CMD
-
-ACK
-
-OUT
-
-CONSOLE
-
-
-Do not invent a separate protocol or output path for CLI.
-
-Help system
-
-Add a command help system.
-
-Minimum requirements:
-
-help
-
-command-specific usage help
-
-clear usage errors
-
-
-Preferred later enhancement:
-
-? support for next-token help and contextual help
-
-
-Do not block initial implementation on full ? support. help is enough for v1.
-
-Error behavior
-
-Error messages must be specific.
-
-Good examples:
-
-unknown device FL_DRIEV; did you mean FL_DRIVE?
-
-hold binding requires an output value
-
-no current group selected
-
-input driver.left.y is not valid for toggle binding
-
-device FL_DRIVE already belongs to group swerve_drive
-
-
-Bad example:
-
-syntax error
-
-
-Batch/script support
-
-Support non-interactive execution.
-
-Required capabilities:
-
-run a script file
-
-optional single-command execution if easy
-
-no prompts in batch/script mode
-
-deterministic conflict policy
-
-
-Examples of desired use:
-
-bridge.py --batch --script setup.txt
-
-bridge.py --batch --conflict-policy move --script setup.txt
-
-
-Do not create a separate scripting language. Scripts are plain CLI command lines.
-
-Batch/script commands may still use Cisco-style mode navigation:
-
+```text
 configure terminal
-
 group swerve_drive
-
 add device FL_DRIVE
-
+add device FR_DRIVE
 bind driver.left.y analog
-
 enable
-
 end
 
+Structured Output
 
-Scriptability requirements
+Support machine-readable output: --json
 
-To make the Cisco-style CLI usable in scripts:
-
-support batch mode
-
-support deterministic conflict policy
-
-avoid hanging on prompts
-
-provide structured output option for inspection commands
-
-
-Structured output
-
-Add structured output support for inspection commands, at least for scripting/batch use.
-
-Support a machine-readable output mode such as JSON for:
+For:
 
 show status
 
@@ -620,94 +379,56 @@ show selected-device
 show runtime-state
 
 
-Do not require scripts to parse human-formatted output.
+Do not require parsing human text.
 
-Non-goals
+Non-Goals
 
 Do not implement:
 
-a separate standalone CLI app for the bridge
+separate CLI application
 
-privilege levels
+privilege system
 
-fuzzy abbreviations like Cisco IOS
+fuzzy parsing
 
-drag-and-drop or fancy terminal UI
+DSL / scripting language
 
-a second scripting language
+duplicated logic
 
-duplicate bridge logic in the CLI
-
-per-command --force flag clutter as the primary non-interactive mechanism
+per-command --force flags
 
 
-Implementation constraints
+Implementation Plan
 
-the CLI is part of the bridge app
+1. Core Layer
 
-CLI and GUI must share common send/receive routines
-
-CLI and GUI must share common command operations
-
-preserve the existing bridge command path
-
-keep the parser simple and maintainable
-
-a hand-written mode-aware dispatcher is preferred over overbuilt parser-generator complexity unless there is a compelling reason otherwise
-
-
-Suggested implementation approach
-
-1. Build shared bridge session/core APIs first
-
-
-
-connection/session handling
+session
 
 send/receive
 
-response parsing
-
-state snapshot access
+state snapshot
 
 
-2. Build shared operations layer
+2. Operations Layer
+
+all domain logic
 
 
-
-group operations
-
-member operations
-
-binding operations
-
-selected-device operations
-
-show/query operations
-
-merge/import/export operations
-
-
-3. Build CLI shell on top
-
-
+3. CLI Shell
 
 prompt loop
 
-mode stack/state
+mode tracking
 
-parser/dispatcher
-
-help
-
-batch/script execution
+command dispatch
 
 
-4. Keep GUI wired to the same operations
+4. GUI Integration
+
+reuse operations
 
 
-
-Prompt examples
+Prompts
 
 bridge>
 
@@ -716,13 +437,12 @@ bridge(config)#
 bridge(config-group-swerve_drive)#
 
 
-Example interactive session
+Example Session
 
 bridge> show groups
 bridge> configure terminal
 bridge(config)# group swerve_drive
 bridge(config-group-swerve_drive)# add device FL_DRIVE
-bridge(config-group-swerve_drive)# add device FR_DRIVE
 bridge(config-group-swerve_drive)# member FR_DRIVE disable
 bridge(config-group-swerve_drive)# bind driver.left.y analog
 bridge(config-group-swerve_drive)# enable
@@ -732,17 +452,16 @@ bridge(config)# selected-mode on
 bridge(config)# end
 bridge> show group swerve_drive
 
-Example batch script
+Summary
 
-configure terminal
-group swerve_drive
-add device FL_DRIVE
-add device FR_DRIVE
-bind driver.left.y analog
-enable
-end
-show group swerve_drive
+Implement a Cisco-style CLI inside the bridge app that:
 
-Summary intent
+shares all logic with the GUI
 
-Implement a Cisco-style, mode-based CLI inside the bridge app that acts as a live alternate operator surface to the GUI, shares all core bridge logic with the GUI, supports batch/script execution without prompts, and provides structured output for automation.
+supports interactive and batch modes
+
+avoids prompts in batch mode
+
+uses structured output for automation
+
+remains simple, predictable, and operator-friendly
