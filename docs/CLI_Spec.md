@@ -47,6 +47,34 @@ Provide a live operator console with:
 - CLI Front End
   - must call same shared operations
 
+## CLI Module Separation
+
+The CLI must be implemented as a separate module from the main bridge code and invoked from the existing bridge application.
+
+### Structure
+
+- The CLI module is responsible for:
+  - prompt loop
+  - mode management (exec/config/group)
+  - command parsing and dispatch
+  - batch/script execution handling
+
+- The CLI module must invoke the shared operations layer for all functionality.
+
+- The CLI module must use the same bridge session and response-handling logic as the GUI.
+
+### Constraints
+
+The CLI module must not reimplement bridge logic.
+
+Do not:
+- duplicate command send/receive logic
+- duplicate response parsing
+- duplicate runtime state management
+- create a parallel bridge implementation inside the CLI module
+
+The CLI is a front end only, not a separate system.
+
 ### Constraint
 
 Do not:
