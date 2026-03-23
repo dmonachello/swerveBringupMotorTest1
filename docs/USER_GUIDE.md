@@ -61,6 +61,11 @@ Purpose: Author and maintain device profiles and layouts.
 - Inline edit the node list (double-click or `F2`) and multi-select for bulk edits.
 - Left list and canvas are separated by a draggable splitter.
 - Zoom range is 10% to 200%.
+- Layout -> `Auto Layout (Readable)` groups nodes per bus and keeps CANnect clusters readable.
+- View -> `Show Warnings/Errors` toggles duplicate-ID badges.
+- File -> `Print Diagram...` prints the current diagram (PDF handler required).
+- Node boxes show the label with a separate `ID` line instead of `(id X)` inline.
+- For Windows installs, use `install_windows.cmd` to install Python deps (includes `reportlab`).
 
 ## Data Flow
 Purpose: Describe how data moves between parts.

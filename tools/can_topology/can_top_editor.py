@@ -363,6 +363,7 @@ class TopologyEditor(tk.Tk):
             command=self._write_minimal_diagram_metadata,
         )
         file_menu.add_command(label="Export PDF...", command=self._on_export_pdf)
+        file_menu.add_command(label="Print Diagram...", command=self._print_pdf_shortcut)
         file_menu.add_command(label="Print Node List...", command=self._print_node_list)
         file_menu.add_command(label="Export Java Constants...", command=self._on_export_java_constants)
         file_menu.add_command(label="Undo", command=self._undo_last)
@@ -446,6 +447,12 @@ class TopologyEditor(tk.Tk):
         view_menu.add_command(label="Zoom Reset", command=self._zoom_reset)
         view_menu.add_command(label="Fit to Window", command=self._fit_to_window)
         view_menu.add_separator()
+        self._show_warn_badges_var = tk.BooleanVar(value=True)
+        view_menu.add_checkbutton(
+            label="Show Warnings/Errors",
+            variable=self._show_warn_badges_var,
+            command=self._redraw_canvas,
+        )
         view_menu.add_checkbutton(label="Snap to Grid", variable=self._snap_to_grid_var)
         view_menu.add_checkbutton(label="Smart Guides", variable=self._smart_guides_var)
         grid_menu = tk.Menu(view_menu, tearoff=False)
@@ -5153,25 +5160,63 @@ class TopologyEditor(tk.Tk):
                     font=("Segoe UI", max(7, int(7 * scale))),
                     fill="#555555",
                 )
-            text = node.display_text()
-            font_size = self._fit_font_size(
-                text, node_box_w - 10, node_box_h - 10, int(9 * scale * node_scale)
-            )
-            text = self.canvas.create_text(
-                node_x,
-                (y0 + y1) / 2,
-                text=text,
-                font=("Segoe UI", font_size),
-                fill=text_color,
-                justify="center",
-                width=max(40, int(node_box_w - 10)),
-            )
+            label_text = node.display_text()
+            if node.node_type != "callout" and isinstance(node.can_id, int) and node.can_id >= 0:
+                # Reserve space for a smaller ID line at the bottom of the node.
+                id_font_size = max(6, int(8 * scale * node_scale))
+                id_font = tkfont.Font(family="Segoe UI", size=id_font_size)
+                id_line_h = id_font.metrics("linespace")
+                label_max_h = max(8.0, node_box_h - id_line_h - 6 * scale)
+                label_font_size = max(6, int(9 * scale * node_scale))
+                label_font = tkfont.Font(family="Segoe UI", size=label_font_size)
+                label_lines = self._wrap_label_lines(label_text, label_font, node_box_w - 12)
+                label_text_wrapped = "\n".join(label_lines)
+                label_font_size = self._fit_font_size(
+                    label_text_wrapped,
+                    node_box_w - 12,
+                    label_max_h,
+                    label_font_size,
+                )
+                label_y = (y0 + y1) / 2 - id_line_h * 0.4
+                text = self.canvas.create_text(
+                    node_x,
+                    label_y,
+                    text=label_text_wrapped,
+                    font=("Segoe UI", label_font_size),
+                    fill=text_color,
+                    justify="center",
+                    width=max(40, int(node_box_w - 12)),
+                )
+                id_text = f"ID {node.can_id}"
+                self.canvas.create_text(
+                    node_x,
+                    y1 - id_line_h * 0.6,
+                    text=id_text,
+                    font=("Segoe UI", id_font_size),
+                    fill=text_color,
+                    justify="center",
+                )
+            else:
+                font_size = self._fit_font_size(
+                    label_text, node_box_w - 10, node_box_h - 10, int(9 * scale * node_scale)
+                )
+                text = self.canvas.create_text(
+                    node_x,
+                    (y0 + y1) / 2,
+                    text=label_text,
+                    font=("Segoe UI", font_size),
+                    fill=text_color,
+                    justify="center",
+                    width=max(40, int(node_box_w - 10)),
+                )
             self._node_bounds[node.key] = (x0, y0, x1, y1)
             for shape_id in shape_ids:
                 self.canvas.addtag_withtag(f"node_{node.key}", shape_id)
             self.canvas.addtag_withtag(f"node_{node.key}", text)
             dup_key = self._dup_key_for_node(node)
-            if dup_key in dup_keys or (dup_key and dup_key[2] in warn_ids):
+            if self._show_warn_badges_var.get() and (
+                dup_key in dup_keys or (dup_key and dup_key[2] in warn_ids)
+            ):
                 badge_x = min(x1 + 12, x_right - 8)
                 badge_y = max(y0 - 12, min_y + 8)
                 self.canvas.create_line(
@@ -7051,7 +7096,9 @@ class TopologyEditor(tk.Tk):
                 c.drawCentredString(tpos[0], tpos[1], power_text)
 
             dup_key = self._dup_key_for_node(node)
-            if dup_key in dup_keys or (dup_key and dup_key[2] in warn_ids):
+            if self._show_warn_badges_var.get() and (
+                dup_key in dup_keys or (dup_key and dup_key[2] in warn_ids)
+            ):
                 badge_x = min(x1 + 12, max_right - 8)
                 badge_y = max(y0 - 12, min_y + 8)
                 p0 = _to_pdf(x1, y0)
@@ -7679,6 +7726,52 @@ class TopologyEditor(tk.Tk):
                     return size
             size -= 1
         return 6
+
+    def _truncate_to_width(self, text: str, font: tkfont.Font, max_w: float) -> str:
+        """
+        NAME
+            _truncate_to_width - Trim text to fit a max pixel width.
+        """
+        if font.measure(text) <= max_w:
+            return text
+        if max_w <= 0:
+            return ""
+        trimmed = text
+        while trimmed and font.measure(trimmed + "...") > max_w:
+            trimmed = trimmed[:-1]
+        return (trimmed + "...") if trimmed else ""
+
+    def _wrap_label_lines(self, text: str, font: tkfont.Font, max_w: float) -> List[str]:
+        """
+        NAME
+            _wrap_label_lines - Wrap label text into at most two lines.
+        """
+        words = text.split()
+        if not words:
+            return [text]
+        lines: List[str] = []
+        current = ""
+        idx = 0
+        while idx < len(words) and len(lines) < 1:
+            word = words[idx]
+            cand = word if not current else f"{current} {word}"
+            if font.measure(cand) <= max_w or not current:
+                current = cand
+                idx += 1
+            else:
+                lines.append(current)
+                current = ""
+        if not lines:
+            lines.append(current or words[0])
+        remaining = words[idx:]
+        if remaining:
+            second = " ".join(remaining)
+        else:
+            second = ""
+        if second:
+            second = self._truncate_to_width(second, font, max_w)
+            lines.append(second)
+        return lines[:2]
 
     def _schedule_redraw(self) -> None:
         """
