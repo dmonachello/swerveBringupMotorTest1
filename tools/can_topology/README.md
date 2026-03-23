@@ -32,7 +32,8 @@ Checks:
 - Each entry has integer `id` in range -1 or 0-62.
 - `devices` entries include `vendor` and `type`.
 - `limits` entries use integer `fwdDio`/`revDio` and boolean `invert`.
-- Duplicate CAN IDs are reported per profile.
+- Duplicate full CAN identifiers (vendor + type + CAN ID) are errors.
+- Duplicate numeric CAN IDs (0-62) across different vendor/type are warnings.
 
 ## Workflow
 Purpose: Describe the shortest path from sketch to JSON.

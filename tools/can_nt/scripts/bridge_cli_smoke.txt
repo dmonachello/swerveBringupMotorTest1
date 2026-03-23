@@ -1,0 +1,6 @@
+# Bridge CLI smoke script (safe, read-mostly).
+
+show status
+show groups --json
+show devices
+show runtime-state --json

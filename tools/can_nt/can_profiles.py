@@ -202,17 +202,23 @@ def _check_duplicate_ids(profiles: Dict[str, List[Dict[str, Any]]]) -> str:
         Error string when duplicates are found, otherwise empty string.
     """
     for name, devices in profiles.items():
-        seen: set[int] = set()
+        seen: set[tuple[int, int, int]] = set()
         for entry in devices:
             try:
                 device_id = int(entry.get("device_id"))
+                manufacturer = int(entry.get("manufacturer"))
+                device_type = int(entry.get("device_type"))
             except Exception:
                 continue
             if device_id < 0:
                 continue
-            if device_id in seen:
-                return f"Profile '{name}' duplicate CAN ID {device_id}"
-            seen.add(device_id)
+            key = (manufacturer, device_type, device_id)
+            if key in seen:
+                return (
+                    f"Profile '{name}' duplicate full CAN ID "
+                    f"mfg={manufacturer} type={device_type} id={device_id}"
+                )
+            seen.add(key)
     return ""
 
 

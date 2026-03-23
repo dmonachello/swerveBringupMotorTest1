@@ -96,3 +96,33 @@ Purpose: validate the TCP UI command channel, single-client lock, error handling
 - TCP port defaults to 5809 (override with `--ui-tcp-port`).
 - NetworkTables still provides state/diagnostic visibility.
 - If a command is missed, UI retries the last command once after recovery.
+
+
+### I) Bridge CLI (Interactive)
+23) Launch CLI:
+    - `python tools\can_nt\can_nt_bridge.py --cli --rio 172.22.11.2 --no-can`
+24) Run `show status` and `show groups`:
+    - Expect ACK/OUT with text output.
+25) Configure a group:
+    - `configure terminal`
+    - `group swerve_drive`
+    - `add device FL_DRIVE`
+    - `bind driver.left.y analog`
+    - `enable`
+    - `end`
+26) Verify `show group swerve_drive` prints members + bindings.
+
+### J) Bridge CLI (Batch + Config Files)
+27) Export runtime groups:
+    - `configure terminal`
+    - `export runtime-groups tools\can_nt\logs\runtime_groups.json`
+    - Verify file exists with schemaVersion + groups.
+28) Run smoke script (read-only):
+    - `python tools\can_nt\can_nt_bridge.py --batch --script tools\can_nt\scripts\bridge_cli_smoke.txt --no-can`
+    - Expect ACK/OUT text or JSON for each command.
+29) Import config (replace):
+    - `import config tools\can_nt\logs\runtime_groups.json`
+    - Expect groups recreated from file (batch mode should not prompt).
+30) Merge config (additive):
+    - `merge config tools\can_nt\logs\runtime_groups.json`
+    - Expect groups/members appended without clearing.

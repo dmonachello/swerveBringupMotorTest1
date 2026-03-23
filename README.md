@@ -490,6 +490,10 @@ Optional Bringup Control UI:
 tools\can_nt\run_can_nt.cmd --ui
 ```
 Use Help -> Help inside the UI for the tabbed, scrollable command reference and tooltips.
+Optional Bridge CLI:
+```cmd
+python tools\\can_nt\\can_nt_bridge.py --cli --rio 172.22.11.2 --no-can
+```
 Notes:
 - UI commands use TCP (port 5809 default). Override with `--ui-tcp-port`.
 - NetworkTables still provides state/diagnostics visibility.

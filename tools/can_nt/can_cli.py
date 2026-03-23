@@ -91,6 +91,27 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Alias for --ui --no-can.",
     )
+    parser.add_argument(
+        "--cli",
+        action="store_true",
+        help="Launch the interactive bridge CLI.",
+    )
+    parser.add_argument(
+        "--batch",
+        action="store_true",
+        help="Run the bridge CLI in batch mode (requires --script).",
+    )
+    parser.add_argument(
+        "--script",
+        default="",
+        help="Script file to execute in batch mode.",
+    )
+    parser.add_argument(
+        "--conflict-policy",
+        default="error",
+        choices=["error", "move"],
+        help="Batch conflict policy for group device ownership.",
+    )
 
     parser.add_argument("--publish-can-summary", action="store_true")
     parser.add_argument(

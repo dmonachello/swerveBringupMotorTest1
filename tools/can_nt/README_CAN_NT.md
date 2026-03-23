@@ -35,6 +35,28 @@ RUN
     1) uses the first python in PATH
     2) falls back to %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe
 
+BRIDGE CLI
+    Purpose: Run the Cisco-style CLI front end inside the bridge app.
+
+    Interactive:
+        python tools\\can_nt\\can_nt_bridge.py --cli --rio 172.22.11.2
+
+    Batch script:
+        python tools\\can_nt\\can_nt_bridge.py --batch --script tools\\can_nt\\scripts\\setup.txt
+
+    Quick smoke (read-only commands):
+        python tools\\can_nt\\can_nt_bridge.py --batch --script tools\\can_nt\\scripts\\bridge_cli_smoke.txt
+
+    Help:
+        help
+        help show
+        help group
+        help batch
+
+    Notes:
+    - CLI uses the TCP UI channel (port 5809 by default).
+    - CLI does not require CAN access; use --no-can when running CLI only.
+
 CONFIG
     Device lists are loaded from data\bringup_profiles.json via --profile
     (deploy fallback). This keeps the PC tool aligned with robot profiles.
@@ -282,6 +304,10 @@ OPTIONS
     --marker-id 0x1FFC0D00    Marker arbitration ID (extended).
     --capture-note TEXT       Pcapng section header comment.
     --no-nt                   Disable NetworkTables publishing (capture only).
+    --cli                     Launch the interactive bridge CLI.
+    --batch                   Run the bridge CLI in batch mode (requires --script).
+    --script PATH             Script file to execute in batch mode.
+    --conflict-policy POLICY  Device ownership policy: error (default) or move.
 
 PUBLISHED KEYS
     bringup/diag/busErrorCount

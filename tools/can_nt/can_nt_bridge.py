@@ -25,34 +25,73 @@ import queue
 import threading
 import time
 from typing import Iterable, Optional, Tuple, List, Dict, Any
+import os
+import sys
 
-from .can_analyzer import CanLiveAnalyzer
-from .can_cli import build_parser
-from .can_console_monitor import ConsoleMonitor
-from .can_frc_defs import decode_frc_ext_id_full, classify_frame, uses_status_presence
-from ..can_inventory.can_inventory import dump_api_inventory, print_inventory_diff
-from .can_nt_client import publish_updates, setup_nt
-from .can_nt_publish import decode_frc_ext_id
-from .can_pcap import build_pcap_comment, setup_pcap, handle_marker_keys
-from .can_ports import list_ports, maybe_auto_channel
-from .can_profiles import (
-    get_profile,
-    get_profiles_load_error,
-    get_profiles_data_version,
-    get_profiles_data_hash,
-    reload_profiles,
-)
-from .can_profiles_dump import dump_seen_ids, dump_profile, dump_can_config
-from .can_reporting import (
-    build_device_label_map,
-    build_summary_extra,
-    format_frame_line,
-    print_or_dump_nt_keys,
-    print_summary,
-)
-from .can_state import SnifferState
-from .can_tx import start_tx_if_requested
-from tools.common.time_utils import timestamp_compact
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+
+try:
+    from tools.can_nt.can_analyzer import CanLiveAnalyzer
+    from tools.can_nt.can_cli import build_parser
+    from tools.can_nt.can_console_monitor import ConsoleMonitor
+    from tools.can_nt.can_frc_defs import decode_frc_ext_id_full, classify_frame, uses_status_presence
+    from tools.can_inventory.can_inventory import dump_api_inventory, print_inventory_diff
+    from tools.can_nt.can_nt_client import publish_updates, setup_nt
+    from tools.can_nt.can_nt_publish import decode_frc_ext_id
+    from tools.can_nt.can_pcap import build_pcap_comment, setup_pcap, handle_marker_keys
+    from tools.can_nt.can_ports import list_ports, maybe_auto_channel
+    from tools.can_nt.can_profiles import (
+        get_profile,
+        get_profiles_load_error,
+        get_profiles_data_version,
+        get_profiles_data_hash,
+        reload_profiles,
+    )
+    from tools.can_nt.can_profiles_dump import dump_seen_ids, dump_profile, dump_can_config
+    from tools.can_nt.can_reporting import (
+        build_device_label_map,
+        build_summary_extra,
+        format_frame_line,
+        print_or_dump_nt_keys,
+        print_summary,
+    )
+    from tools.can_nt.can_state import SnifferState
+    from tools.can_nt.can_tx import start_tx_if_requested
+    from tools.common.time_utils import timestamp_compact
+    from tools.can_nt.bridge_cli import BridgeCli
+    from tools.can_nt.bridge_session import BridgeSession
+except ModuleNotFoundError:
+    if _ROOT not in sys.path:
+        sys.path.insert(0, _ROOT)
+    from tools.can_nt.can_analyzer import CanLiveAnalyzer
+    from tools.can_nt.can_cli import build_parser
+    from tools.can_nt.can_console_monitor import ConsoleMonitor
+    from tools.can_nt.can_frc_defs import decode_frc_ext_id_full, classify_frame, uses_status_presence
+    from tools.can_inventory.can_inventory import dump_api_inventory, print_inventory_diff
+    from tools.can_nt.can_nt_client import publish_updates, setup_nt
+    from tools.can_nt.can_nt_publish import decode_frc_ext_id
+    from tools.can_nt.can_pcap import build_pcap_comment, setup_pcap, handle_marker_keys
+    from tools.can_nt.can_ports import list_ports, maybe_auto_channel
+    from tools.can_nt.can_profiles import (
+        get_profile,
+        get_profiles_load_error,
+        get_profiles_data_version,
+        get_profiles_data_hash,
+        reload_profiles,
+    )
+    from tools.can_nt.can_profiles_dump import dump_seen_ids, dump_profile, dump_can_config
+    from tools.can_nt.can_reporting import (
+        build_device_label_map,
+        build_summary_extra,
+        format_frame_line,
+        print_or_dump_nt_keys,
+        print_summary,
+    )
+    from tools.can_nt.can_state import SnifferState
+    from tools.can_nt.can_tx import start_tx_if_requested
+    from tools.common.time_utils import timestamp_compact
+    from tools.can_nt.bridge_cli import BridgeCli
+    from tools.can_nt.bridge_session import BridgeSession
 
 
 def _maybe_handle_dumps(
@@ -155,6 +194,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     if args.ui_only:
         args.ui = True
         args.no_can = True
+    if args.batch and not args.script:
+        print("ERROR: --batch requires --script <file>.")
+        return 2
 
     if args.list_ports:
         ports = list_ports()
@@ -199,6 +241,35 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     if args.tx_seq and not args.tx_allow:
         print("ERROR: --tx-seq requires --tx-allow for safety.")
         return 2
+
+    if args.cli or args.batch:
+        nt, _ = setup_nt(args)
+        ui_table = None
+        if nt is not None:
+            ui_table = nt.getTable("bringup").getSubTable("ui")
+
+        def _read_nt_state() -> Dict[str, Any]:
+            if ui_table is None:
+                return {}
+            return {
+                "enabled": ui_table.getEntry("state/enabled").getBoolean(False),
+                "estopped": ui_table.getEntry("state/estopped").getBoolean(False),
+                "mode": ui_table.getEntry("state/mode").getString("disabled"),
+                "lastAckMs": ui_table.getEntry("state/lastAckMs").getDouble(0.0),
+                "sessionId": ui_table.getEntry("state/sessionId").getString(""),
+            }
+
+        session = BridgeSession(args.rio, args.ui_tcp_port, nt_state_reader=_read_nt_state)
+        cli = BridgeCli(session, batch=bool(args.batch), conflict_policy=args.conflict_policy)
+        if args.batch:
+            try:
+                with open(args.script, "r", encoding="utf-8") as handle:
+                    lines = handle.readlines()
+            except Exception as exc:
+                print(f"ERROR: Failed to read script: {exc}")
+                return 2
+            return cli.run_batch(lines)
+        return cli.run_interactive()
 
     bus = None
     can = None

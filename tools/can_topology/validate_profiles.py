@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+import os
+import sys
+
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
 """
 NAME
     validate_profiles.py - Validate bringup_profiles.json compatibility.
@@ -41,6 +48,19 @@ def _compute_data_hash(payload: Dict[str, Any]) -> str:
 SINGLETON_CATEGORIES = ["pdh", "pdp", "pigeon", "roborio"]
 GENERIC_CATEGORY = "devices"
 ALLOWED_PROFILE_KEYS = set(BUCKET_CATEGORIES + SINGLETON_CATEGORIES + [GENERIC_CATEGORY, "notes", "unknown"])
+CATEGORY_IDENTITY = {
+    "neos": ("REV", "NEO"),
+    "neo550s": ("REV", "NEO 550"),
+    "flexes": ("REV", "FLEX"),
+    "krakens": ("CTRE", "KRAKEN"),
+    "falcons": ("CTRE", "FALCON"),
+    "cancoders": ("CTRE", "CANCoder"),
+    "candles": ("CTRE", "CANdle"),
+    "pdh": ("REV", "PDH"),
+    "pdp": ("CTRE", "PDP"),
+    "pigeon": ("CTRE", "Pigeon"),
+    "roborio": ("NI", "roboRIO"),
+}
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
@@ -185,7 +205,8 @@ def validate_profile(name: str, profile: Any, reporter: "Reporter") -> Tuple[Lis
             warnings.append(msg)
             reporter.warn(msg)
 
-    seen_ids: Dict[int, str] = {}
+    seen_full: Dict[Tuple[str, str, int], str] = {}
+    seen_numeric: Dict[int, List[str]] = {}
 
     for category in BUCKET_CATEGORIES:
         entries = profile.get(category, [])
@@ -204,7 +225,17 @@ def validate_profile(name: str, profile: Any, reporter: "Reporter") -> Tuple[Lis
             errors.extend(entry_errors)
             warnings.extend(entry_warnings)
             if can_id is not None and can_id >= 0:
-                register_can_id(seen_ids, errors, reporter, name, can_id, entry)
+                register_can_id(
+                    seen_full,
+                    seen_numeric,
+                    errors,
+                    warnings,
+                    reporter,
+                    name,
+                    can_id,
+                    category,
+                    entry,
+                )
 
     for category in SINGLETON_CATEGORIES:
         entry = profile.get(category)
@@ -222,7 +253,17 @@ def validate_profile(name: str, profile: Any, reporter: "Reporter") -> Tuple[Lis
         errors.extend(entry_errors)
         warnings.extend(entry_warnings)
         if can_id is not None and can_id >= 0:
-            register_can_id(seen_ids, errors, reporter, name, can_id, entry)
+            register_can_id(
+                seen_full,
+                seen_numeric,
+                errors,
+                warnings,
+                reporter,
+                name,
+                can_id,
+                category,
+                entry,
+            )
 
     entries = profile.get(GENERIC_CATEGORY, [])
     if entries is not None:
@@ -243,17 +284,30 @@ def validate_profile(name: str, profile: Any, reporter: "Reporter") -> Tuple[Lis
                 errors.extend(entry_errors)
                 warnings.extend(entry_warnings)
                 if can_id is not None and can_id >= 0:
-                    register_can_id(seen_ids, errors, reporter, name, can_id, entry)
+                    register_can_id(
+                        seen_full,
+                        seen_numeric,
+                        errors,
+                        warnings,
+                        reporter,
+                        name,
+                        can_id,
+                        GENERIC_CATEGORY,
+                        entry,
+                    )
 
     return errors, warnings
 
 
 def register_can_id(
-    seen_ids: Dict[int, str],
+    seen_full: Dict[Tuple[str, str, int], str],
+    seen_numeric: Dict[int, List[str]],
     errors: List[str],
+    warnings: List[str],
     reporter: "Reporter",
     profile_name: str,
     can_id: int,
+    category: str,
     entry: Dict[str, Any],
 ) -> None:
     """
@@ -261,14 +315,54 @@ def register_can_id(
         register_can_id - Track CAN IDs and flag duplicates.
     """
     label = entry.get("label") or f"id {can_id}"
-    if can_id in seen_ids:
-        other = seen_ids[can_id]
-        msg = f"Profile '{profile_name}' duplicate CAN ID {can_id} ({other}, {label})."
-        errors.append(msg)
-        reporter.fail(msg)
-        return
-    seen_ids[can_id] = str(label)
-    reporter.pass_(f"Profile '{profile_name}' CAN ID {can_id} unique.")
+    vendor, device_type = resolve_identity(category, entry)
+    if vendor and device_type:
+        key = (vendor, device_type, can_id)
+        if key in seen_full:
+            other = seen_full[key]
+            msg = (
+                f"Profile '{profile_name}' duplicate CAN ID {can_id} "
+                f"({vendor} {device_type}) ({other}, {label})."
+            )
+            errors.append(msg)
+            reporter.fail(msg)
+            return
+        seen_full[key] = str(label)
+        reporter.pass_(
+            f"Profile '{profile_name}' CAN ID {can_id} unique for {vendor} {device_type}."
+        )
+    else:
+        msg = f"Profile '{profile_name}' entry id {can_id} missing vendor/type context."
+        warnings.append(msg)
+        reporter.warn(msg)
+
+    if can_id in seen_numeric:
+        others = seen_numeric[can_id] + [str(label)]
+        msg = (
+            f"Profile '{profile_name}' duplicate numeric CAN ID {can_id} "
+            f"({', '.join(others)})."
+        )
+        warnings.append(msg)
+        reporter.warn(msg)
+        seen_numeric[can_id].append(str(label))
+    else:
+        seen_numeric[can_id] = [str(label)]
+        reporter.pass_(f"Profile '{profile_name}' CAN ID {can_id} unique (numeric).")
+
+
+def resolve_identity(category: str, entry: Dict[str, Any]) -> Tuple[str, str]:
+    """
+    NAME
+        resolve_identity - Resolve vendor/type for a profile entry.
+    """
+    if category == GENERIC_CATEGORY:
+        vendor = entry.get("vendor")
+        device_type = entry.get("type")
+        if isinstance(vendor, str) and isinstance(device_type, str):
+            return vendor.strip(), device_type.strip()
+        return "", ""
+    vendor, device_type = CATEGORY_IDENTITY.get(category, ("", ""))
+    return vendor, device_type
 
 
 def validate_entry(

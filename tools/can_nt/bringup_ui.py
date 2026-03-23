@@ -14,15 +14,13 @@ DESCRIPTION
 """
 
 import json
-import queue
-import socket
-import threading
 import time
 import tkinter as tk
 import uuid
 from tkinter import messagebox, ttk
 from typing import Callable, Dict, List, Optional, Tuple, Any
 
+from .bridge_session import BridgeEvent, BridgeSession
 from tools.common.json_io import read_json
 from tools.common.paths import tests_deploy_path
 from tools.common.tests_io import extract_test_names
@@ -129,134 +127,6 @@ def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
     ]
 
 
-class TcpCommandClient:
-    """
-    NAME
-        TcpCommandClient - Simple line-delimited JSON TCP client for UI commands.
-
-    DESCRIPTION
-        Connects to the roboRIO TCP UI server, sends JSON commands, and yields
-        JSON responses via a thread-safe queue.
-    """
-
-    def __init__(self, host: str, port: int) -> None:
-        self._host = host
-        self._port = port
-        self._sock: Optional[socket.socket] = None
-        self._reader: Optional[threading.Thread] = None
-        self._queue: "queue.Queue[Dict[str, Any]]" = queue.Queue()
-        self._nt_connected = False
-        self._connected = False
-        self._lock = threading.Lock()
-
-    def is_connected(self) -> bool:
-        """
-        NAME
-            is_connected - Return whether the TCP socket is connected.
-        """
-        return self._connected
-
-    def connect(self, timeout: float = 0.5) -> bool:
-        """
-        NAME
-            connect - Attempt to connect to the TCP server.
-        """
-        if self._connected:
-            return True
-        try:
-            sock = socket.create_connection((self._host, self._port), timeout=timeout)
-            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            sock.settimeout(None)
-            self._sock = sock
-            self._connected = True
-            self._reader = threading.Thread(target=self._read_loop, daemon=True)
-            self._reader.start()
-            return True
-        except Exception:
-            self._connected = False
-            self._sock = None
-            return False
-
-    def close(self) -> None:
-        """
-        NAME
-            close - Close the TCP connection.
-        """
-        with self._lock:
-            if self._sock is not None:
-                try:
-                    self._sock.shutdown(socket.SHUT_RDWR)
-                except Exception:
-                    pass
-                try:
-                    self._sock.close()
-                except Exception:
-                    pass
-            self._sock = None
-            self._connected = False
-
-    def send(self, payload: Dict[str, Any]) -> bool:
-        """
-        NAME
-            send - Send a JSON command payload to the server.
-        """
-        if not self._connected or self._sock is None:
-            return False
-        data = (json.dumps(payload) + "\n").encode("utf-8")
-        with self._lock:
-            try:
-                self._sock.sendall(data)
-                return True
-            except Exception:
-                self._connected = False
-                return False
-
-    def poll(self) -> List[Dict[str, Any]]:
-        """
-        NAME
-            poll - Drain queued responses.
-        """
-        items: List[Dict[str, Any]] = []
-        while True:
-            try:
-                items.append(self._queue.get_nowait())
-            except queue.Empty:
-                break
-        return items
-
-    def _read_loop(self) -> None:
-        """
-        NAME
-            _read_loop - Background reader for JSON lines.
-        """
-        sock = self._sock
-        if sock is None:
-            return
-        try:
-            with sock.makefile("r", encoding="utf-8") as reader:
-                for line in reader:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        payload = json.loads(line)
-                        if isinstance(payload, dict):
-                            self._queue.put(payload)
-                    except Exception:
-                        continue
-        except Exception:
-            pass
-        finally:
-            self._connected = False
-            with self._lock:
-                if self._sock is sock:
-                    try:
-                        self._sock.close()
-                    except Exception:
-                        pass
-                    self._sock = None
-
-
 class BringupControlUI(tk.Tk):
     """
     NAME
@@ -285,7 +155,7 @@ class BringupControlUI(tk.Tk):
         self._on_close = on_close
         self._rio_host = rio_host
         self._is_connected = is_connected
-        self._tcp = TcpCommandClient(rio_host, tcp_port)
+        self._session = BridgeSession(rio_host, tcp_port, auto_handshake=False)
         self._tcp_connected = False
         self._last_connect_attempt = 0.0
         self._seq = 0
@@ -911,19 +781,10 @@ class BringupControlUI(tk.Tk):
         """
         if not self._tcp_connected:
             return None
-        seq = self._next_seq()
-        payload: Dict[str, Any] = {
-            "type": "cmd",
-            "seq": seq,
-            "name": name,
-            "clientId": self._client_id,
-            "ts": time.time(),
-        }
-        if args:
-            payload["args"] = args
-        if not self._tcp.send(payload):
+        self._session.set_client_id(self._client_id)
+        seq = self._session.send_command(name, args or {})
+        if seq is None:
             self._tcp_connected = False
-            return None
         return seq
 
     def _send_handshake(self, reset: bool, force: bool = False, log: bool = True) -> None:
@@ -1121,8 +982,9 @@ class BringupControlUI(tk.Tk):
         now = time.time()
         if not self._tcp_connected and (now - self._last_connect_attempt) > 1.0:
             self._last_connect_attempt = now
-            self._tcp_connected = self._tcp.connect()
-        self._tcp_connected = self._tcp.is_connected()
+        self._tcp_connected = self._session.connect()
+        if self._tcp_connected:
+            self._handshake_done = self._session.handshake_done()
         if self._tcp_connected != self._prev_tcp_connected:
             if self._tcp_connected:
                 self._notify_ui_failure(
@@ -1142,8 +1004,9 @@ class BringupControlUI(tk.Tk):
         if not self._tcp_connected:
             self._handshake_done = False
             self._handshake_inflight = False
-        for payload in self._tcp.poll():
-            self._handle_tcp_response(payload)
+            self._session.reset_handshake()
+        for event in self._session.poll_events():
+            self._handle_tcp_response(event)
 
         if self._ui_table is not None:
             session_id = self._ui_table.getEntry("state/sessionId").getString("")
@@ -1152,6 +1015,7 @@ class BringupControlUI(tk.Tk):
                 self._handshake_done = False
                 self._handshake_inflight = False
                 self._last_handshake_attempt = 0.0
+                self._session.reset_handshake()
             enabled = self._ui_table.getEntry("state/enabled").getBoolean(True)
             estopped = self._ui_table.getEntry("state/estopped").getBoolean(False)
             mode = self._ui_table.getEntry("state/mode").getString("disabled")
@@ -1263,18 +1127,18 @@ class BringupControlUI(tk.Tk):
         self._update_action_enabled()
         self.after(250, self._poll_nt)
 
-    def _handle_tcp_response(self, payload: Dict[str, Any]) -> None:
+    def _handle_tcp_response(self, event: BridgeEvent) -> None:
         """
         NAME
             _handle_tcp_response - Handle an inbound TCP response payload.
         """
-        msg_type = str(payload.get("type", "")).lower()
-        name = str(payload.get("name", "")).strip()
-        seq = payload.get("seq")
-        seq_match = isinstance(seq, (int, float)) and self._log_poll_seq is not None and int(seq) == int(self._log_poll_seq)
+        msg_type = event.type
+        name = event.name.strip()
+        seq = event.seq
+        seq_match = self._log_poll_seq is not None and int(seq) == int(self._log_poll_seq)
         if msg_type in ("ack", "out") and (name.lower() == "uipolllog" or seq_match):
             if msg_type == "out":
-                text = str(payload.get("text", ""))
+                text = event.text
                 if text:
                     for line in text.splitlines():
                         if self._should_skip_out_line(line):
@@ -1294,10 +1158,10 @@ class BringupControlUI(tk.Tk):
                 "Recovered: command responses received.",
             )
         if msg_type == "ack":
-            seq = int(payload.get("seq", -1))
-            name = str(payload.get("name", ""))
-            status = str(payload.get("status", ""))
-            message = str(payload.get("message", ""))
+            seq = int(event.seq)
+            name = event.name
+            status = event.status
+            message = event.message
             ts = timestamp_hms()
             header = f"{ts} ACK {seq} {name} {status} {message}".rstrip()
             self._append_output(header)
@@ -1305,10 +1169,10 @@ class BringupControlUI(tk.Tk):
             if self._last_sent_seq is not None and seq >= self._last_sent_seq:
                 self._pending_ack = False
         elif msg_type == "out":
-            seq = int(payload.get("seq", -1))
-            name = str(payload.get("name", ""))
-            text = str(payload.get("text", ""))
-            json_payload = payload.get("json")
+            seq = int(event.seq)
+            name = event.name
+            text = event.text
+            json_payload = event.json_text
             ts = timestamp_hms()
             header = f"{ts} OUT {seq} {name}".rstrip()
             self._append_output(header)
@@ -1317,22 +1181,20 @@ class BringupControlUI(tk.Tk):
                     self._remember_out_line(line)
                     self._append_output(f"  {line}")
             if json_payload:
-                if isinstance(json_payload, dict):
-                    data = json_payload
-                    self._append_output("  json: " + json.dumps(data))
-                elif isinstance(json_payload, str):
-                    self._append_output("  json: " + json_payload)
-                    try:
-                        data = json.loads(json_payload)
-                    except Exception:
-                        data = None
-                else:
+                self._append_output("  json: " + str(json_payload))
+                try:
+                    data = json.loads(json_payload)
+                except Exception:
                     data = None
-                if name == "uiHandshake" and isinstance(data, dict):
-                    min_next = data.get("minNextSeq")
-                    if isinstance(min_next, (int, float)):
-                        self._seq = int(min_next) - 1
-                        self._seq_seeded = True
+            if name == "uiHandshake" and isinstance(data, dict):
+                min_next = data.get("minNextSeq")
+                if isinstance(min_next, (int, float)):
+                    self._seq = int(min_next) - 1
+                    self._seq_seeded = True
+                session_id = data.get("sessionId")
+                session_id_value = session_id if isinstance(session_id, str) else ""
+                min_seq = int(min_next) if isinstance(min_next, (int, float)) else None
+                self._session.mark_handshake_done(session_id_value, min_seq)
             self._last_out_seq = seq
             if self._last_sent_seq is not None and seq >= self._last_sent_seq:
                 self._pending_out = False
@@ -1408,4 +1270,4 @@ class BringupControlUI(tk.Tk):
         """
         if self._tcp_connected:
             self._send_disconnect(force=True)
-            self._tcp.close()
+            self._session.disconnect()

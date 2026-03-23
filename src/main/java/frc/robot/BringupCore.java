@@ -211,6 +211,74 @@ public final class BringupCore {
 
   /**
    * NAME
+   *   isTestRunning - Return whether a bringup test is actively running.
+   *
+   * RETURNS
+   *   True when a test is running and outputs are controlled by the test.
+   */
+  public boolean isTestRunning() {
+    return activeTest != null && activeTest.isRunning();
+  }
+
+  /**
+   * NAME
+   *   setDutyByDeviceLabel - Apply duty to a single device by label.
+   *
+   * PARAMETERS
+   *   label - Device label from bringup_profiles.json.
+   *   duty - Requested output in [-1, 1].
+   *
+   * RETURNS
+   *   True when a matching device is found and updated.
+   */
+  public boolean setDutyByDeviceLabel(String label, double duty) {
+    DeviceUnit device = findDeviceByLabel(label);
+    if (device == null) {
+      return false;
+    }
+    device.ensureCreated();
+    device.setDuty(duty);
+    return true;
+  }
+
+  /**
+   * NAME
+   *   findDeviceByLabel - Find a device instance by label.
+   *
+   * PARAMETERS
+   *   label - Device label from bringup_profiles.json.
+   *
+   * RETURNS
+   *   DeviceUnit instance or null when not found.
+   */
+  public DeviceUnit findDeviceByLabel(String label) {
+    if (label == null || label.isBlank()) {
+      return null;
+    }
+    String needle = label.trim();
+    for (ManufacturerGroup group : manufacturerGroups) {
+      if (group == null) {
+        continue;
+      }
+      for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
+        if (bucket == null) {
+          continue;
+        }
+        for (DeviceUnit device : bucket.getDevices()) {
+          if (device == null) {
+            continue;
+          }
+          if (needle.equalsIgnoreCase(device.getLabel())) {
+            return device;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * NAME
    *   setTestInputs - Provide joystick inputs to test logic.
    *
    * PARAMETERS
