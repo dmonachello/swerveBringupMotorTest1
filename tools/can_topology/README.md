@@ -51,11 +51,12 @@ Purpose: Describe the shortest path from sketch to JSON.
 13. Destructive profile actions write a timestamped backup alongside the canonical file.
 6. Use `Set As Default` to update `default_profile` on save.
 7. Use File -> `Export PDF...` to write a printable PDF (requires `reportlab`).
+8. Use File -> `Print Diagram...` to print without a manual export step.
 
 ## Details Panel
 Purpose: Show fields not displayed on the boxes.
 - Select any node to view full metadata (motor, limits, terminator, vendor/type).
-- Diagram boxes show `label (id X)` only; type remains in the left list.
+- Diagram boxes show the label with a separate `ID` line; type remains in the left list.
 - Tags appear in the details panel for quick reference.
 - Callout selections show a callout details panel (including target debug fields).
 
@@ -87,6 +88,7 @@ Purpose: Document limitations up front.
 - `Edit -> Fix CANnect Conflicts` removes CAN trunk links from Ethernet-linked CANnect nodes.
 - Hold `Ctrl` and use the mouse wheel to zoom in/out (View menu also works).
 - Zoom range is 10% to 200%.
+- View -> `Show Warnings/Errors` toggles duplicate-ID badges.
 - Paste drops selection near the current viewport (not original coordinates).
 - Left list and right canvas are separated by a draggable splitter.
 - Help -> Help... provides a topic list (overview, layout tips, profiles, shortcuts).
@@ -131,6 +133,7 @@ Purpose: Define what layout operations do.
 - `Tidy All`: align all device nodes into shared columns across buses.
 - `Reset Layout`: evenly spreads nodes per bus segment (no bus/row reassignment).
 - `Align` / `Distribute`: horizontal alignment tools for selected nodes.
+- `Auto Layout (Readable)`: groups nodes per bus and keeps CANnect clusters readable.
 
 ## Tags
 Purpose: Group and sort nodes with freeform labels.

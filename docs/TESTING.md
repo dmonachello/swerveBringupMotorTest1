@@ -28,6 +28,10 @@ Software on Windows PC:
   - `pynetworktables`
   - `python-can`
   - `pyserial`
+- Optional (for PDF/printing from the topology editor):
+  - `reportlab`
+- Recommended install helper:
+  - `.\install_windows.cmd` (installs all Python dependencies).
 - Driver Station installed and available to enable the robot.
 
 Helpful tools:

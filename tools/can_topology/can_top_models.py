@@ -120,9 +120,7 @@ class Node:
         """
         if self.node_type == "callout":
             return self.callout_text
-        if not isinstance(self.can_id, int) or self.can_id < 0:
-            return self.label
-        return f"{self.label} (id {self.can_id})"
+        return self.label
 
     def display_text_pdf(self) -> str:
         """
