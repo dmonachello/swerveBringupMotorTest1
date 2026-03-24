@@ -23,6 +23,7 @@ import uuid
 from tkinter import messagebox, ttk
 from typing import Callable, Dict, List, Optional, Tuple, Any
 
+from .bridge_cmd_tracker import CommandTracker
 from .bridge_ops import (
     connect,
     disconnect,
@@ -179,10 +180,6 @@ class BringupControlUI(tk.Tk):
         self._last_selected_test = None
         self._last_sent_seq: Optional[int] = None
         self._nt_connected = False
-        self._pending = False
-        self._pending_ack = False
-        self._pending_out = False
-        self._pending_since: Optional[float] = None
         self._timeout_sec = 1.5
         self._client_id = str(uuid.uuid4())
         self._session_id: Optional[str] = None
@@ -201,11 +198,10 @@ class BringupControlUI(tk.Tk):
         self._recent_out_lines: Dict[str, float] = {}
         self._seq_seeded = False
         self._last_cmd: Optional[Tuple[str, Optional[Dict[str, Any]]]] = None
-        self._retry_pending = False
-        self._retry_count = 0
         self._max_retries = 1
         self._state_stale_sec = 2.0
         self._state_stale = False
+        self._tracker = CommandTracker(timeout_sec=self._timeout_sec, max_retries=self._max_retries)
         self._build_menu()
         self._build_ui()
         self._poll_nt()
@@ -807,15 +803,12 @@ class BringupControlUI(tk.Tk):
         """
         if not self._tcp_connected:
             return
-        if self._pending and not force:
+        if self._tracker.is_pending() and not force:
             self._append_output("Busy: wait for current command to finish.")
             return
-        if force and self._pending:
+        if force and self._tracker.is_pending():
             self._append_output("Forcing UI session reset (clearing pending state).")
-            self._pending = False
-            self._pending_ack = False
-            self._pending_out = False
-            self._pending_since = None
+            self._tracker.clear_pending()
         payload = {"clientId": self._client_id, "reset": reset}
         if log:
             ts = timestamp_hms()
@@ -824,11 +817,8 @@ class BringupControlUI(tk.Tk):
         self._session.set_client_id(self._client_id)
         seq = ui_handshake(self._session, self._client_id, reset)
         if seq is not None:
-            self._pending = True
             self._last_sent_seq = seq
-            self._pending_ack = True
-            self._pending_out = True
-            self._pending_since = time.time()
+            self._tracker.start("uiHandshake", payload, seq, now=time.time(), retryable=False)
             self._handshake_inflight = True
             self._last_handshake_attempt = time.time()
             self._last_cmd = ("uiHandshake", payload)
@@ -840,27 +830,19 @@ class BringupControlUI(tk.Tk):
         """
         if not self._tcp_connected:
             return
-        if self._pending and not force:
+        if self._tracker.is_pending() and not force:
             self._append_output("Busy: wait for current command to finish.")
             return
-        if force and self._pending:
+        if force and self._tracker.is_pending():
             self._append_output("Forcing UI disconnect (clearing pending state).")
-            self._pending = False
-            self._pending_ack = False
-            self._pending_out = False
-            self._pending_since = None
+            self._tracker.clear_pending()
         ts = timestamp_hms()
         self._append_output(f"{ts} CMD uiDisconnect")
         self._last_cmd = ("uiDisconnect", None)
-        self._retry_pending = False
-        self._retry_count = 0
         seq = ui_disconnect(self._session)
         if seq is not None:
-            self._pending = True
             self._last_sent_seq = seq
-            self._pending_ack = True
-            self._pending_out = True
-            self._pending_since = time.time()
+            self._tracker.start("uiDisconnect", None, seq, now=time.time(), retryable=False)
 
     def _send_monitor(self, enabled: bool) -> None:
         """
@@ -869,7 +851,7 @@ class BringupControlUI(tk.Tk):
         """
         if not self._tcp_connected:
             return
-        if self._pending:
+        if self._tracker.is_pending():
             self._append_output("Busy: wait for current command to finish.")
             return
         label = "uiMonitorEnable" if enabled else "uiMonitorDisable"
@@ -877,47 +859,29 @@ class BringupControlUI(tk.Tk):
         self._append_output(f"{ts} CMD {label}")
         args = {"enabled": enabled}
         self._last_cmd = (label, args)
-        self._retry_pending = False
-        self._retry_count = 0
         seq = ui_monitor(self._session, enabled)
         if seq is not None:
-            self._pending = True
             self._last_sent_seq = seq
-            self._pending_ack = True
-            self._pending_out = True
-            self._pending_since = time.time()
+            self._tracker.start(label, args, seq, now=time.time())
 
     def _retry_last_command(self) -> None:
         """
         NAME
             _retry_last_command - Retry the last command after recovery.
         """
-        if not self._retry_pending:
+        cmd = self._tracker.take_retry()
+        if cmd is None:
             return
-        if self._retry_count >= self._max_retries:
-            self._append_output("Retry limit reached; command dropped.")
-            self._retry_pending = False
+        name, args = cmd
+        if not name or name in ("uiHandshake", "uiDisconnect"):
             return
-        if self._pending:
-            return
-        if not self._last_cmd:
-            self._retry_pending = False
-            return
-        name, args = self._last_cmd
-        if name in ("uiHandshake", "uiDisconnect"):
-            self._retry_pending = False
-            return
-        self._retry_count += 1
         ts = timestamp_hms()
         self._append_output(f"{ts} RETRY {name}")
         seq = self._send_tcp_command(name, args)
         if seq is not None:
-            self._pending = True
             self._last_sent_seq = seq
-            self._pending_ack = True
-            self._pending_out = True
-            self._pending_since = time.time()
-            self._retry_pending = False
+            self._tracker.start(name, args, seq, now=time.time())
+
     def _on_action(self, command: Optional[str]) -> None:
         """
         NAME
@@ -940,21 +904,16 @@ class BringupControlUI(tk.Tk):
         if not self._tcp_connected:
             self._append_output("Not connected: command blocked.")
             return
-        if self._pending:
+        if self._tracker.is_pending():
             self._append_output("Busy: wait for current command to finish.")
             return
         ts = timestamp_hms()
         self._append_output(f"{ts} CMD {command}")
         self._last_cmd = (command, None)
-        self._retry_pending = False
-        self._retry_count = 0
         seq = send_command(self._session, command, None)
         if seq is not None:
-            self._pending = True
             self._last_sent_seq = seq
-            self._pending_ack = True
-            self._pending_out = True
-            self._pending_since = time.time()
+            self._tracker.start(command, None, seq, now=time.time())
 
     def _on_test_selected(self, _event=None) -> None:
         """
@@ -966,7 +925,7 @@ class BringupControlUI(tk.Tk):
         if not self._tcp_connected:
             self._append_output("Not connected: selection blocked.")
             return
-        if self._pending:
+        if self._tracker.is_pending():
             self._append_output("Busy: wait for current command to finish.")
             return
         name = self._test_box.get().strip()
@@ -978,15 +937,10 @@ class BringupControlUI(tk.Tk):
         ts = timestamp_hms()
         self._append_output(f"{ts} CMD selectTestByName \"{name}\"")
         self._last_cmd = ("selectTestByName", {"name": name})
-        self._retry_pending = False
-        self._retry_count = 0
         seq = select_test_by_name(self._session, name)
         if seq is not None:
-            self._pending = True
             self._last_sent_seq = seq
-            self._pending_ack = True
-            self._pending_out = True
-            self._pending_since = time.time()
+            self._tracker.start("selectTestByName", {"name": name}, seq, now=time.time())
 
     def _poll_nt(self) -> None:
         """
@@ -1064,34 +1018,15 @@ class BringupControlUI(tk.Tk):
             except Exception:
                 nt_connected = False
         self._nt_connected = nt_connected
-        self._pending = self._pending_ack or self._pending_out
-        if self._pending and self._pending_since is not None:
-            if (time.time() - self._pending_since) > self._timeout_sec:
-                self._notify_ui_failure(
-                    "cmd_timeout",
-                    True,
-                    "TIMEOUT waiting for ACK/OUT.",
-                    "Recovered: command responses received.",
-                )
-                self._pending = False
-                self._pending_ack = False
-                self._pending_out = False
-                self._pending_since = None
-                self._handshake_inflight = False
-                if self._last_cmd is not None and not self._retry_pending:
-                    self._retry_pending = True
-        if not self._pending:
-            self._pending_since = None
-        if self._pending:
-            if self._pending_ack and self._pending_out:
-                pending_text = "Waiting: ACK + OUT"
-            elif self._pending_ack:
-                pending_text = "Waiting: ACK"
-            else:
-                pending_text = "Waiting: OUT"
-        else:
-            pending_text = ""
-        self._pending_label.configure(text=pending_text)
+        if self._tracker.check_timeout(time.time()):
+            self._notify_ui_failure(
+                "cmd_timeout",
+                True,
+                "TIMEOUT waiting for ACK/OUT.",
+                "Recovered: command responses received.",
+            )
+            self._handshake_inflight = False
+        self._pending_label.configure(text=self._tracker.pending_text())
         stale_state = False
         if nt_connected:
             now_ms = time.time() * 1000.0
@@ -1108,7 +1043,7 @@ class BringupControlUI(tk.Tk):
             text=label,
             foreground="#2f7a2f" if self._tcp_connected else "#b32323",
         )
-        if nt_connected and not self._pending:
+        if nt_connected and not self._tracker.is_pending():
             if stale_state:
                 self._pending_label.configure(text="Robot state stale (code not running?)")
             elif estopped:
@@ -1122,14 +1057,14 @@ class BringupControlUI(tk.Tk):
             and not stale_state
             and not self._handshake_done
             and not self._handshake_inflight
-            and not self._pending
+            and not self._tracker.is_pending()
             and (time.time() - self._last_handshake_attempt) >= self._handshake_min_interval
         ):
             self._send_handshake(reset=False, log=False)
         if (
             self._tcp_connected
             and self._handshake_done
-            and not self._pending
+            and not self._tracker.is_pending()
             and not self._log_poll_inflight
             and (now - self._last_log_poll) >= self._log_poll_interval
         ):
@@ -1180,8 +1115,6 @@ class BringupControlUI(tk.Tk):
             header = f"{ts} ACK {seq} {name} {status} {message}".rstrip()
             self._append_output(header)
             self._last_ack_seq = seq
-            if self._last_sent_seq is not None and seq >= self._last_sent_seq:
-                self._pending_ack = False
         elif msg_type == "out":
             seq = int(event.seq)
             name = event.name
@@ -1210,12 +1143,12 @@ class BringupControlUI(tk.Tk):
                 min_seq = int(min_next) if isinstance(min_next, (int, float)) else None
                 self._session.mark_handshake_done(session_id_value, min_seq)
             self._last_out_seq = seq
-            if self._last_sent_seq is not None and seq >= self._last_sent_seq:
-                self._pending_out = False
             if name == "uiHandshake":
                 self._handshake_done = True
                 self._handshake_inflight = False
                 self._retry_last_command()
+        if msg_type in ("ack", "out"):
+            self._tracker.handle_event(event)
 
     def _update_action_enabled(self) -> None:
         """
@@ -1225,7 +1158,7 @@ class BringupControlUI(tk.Tk):
         allow = (
             self._tcp_connected
             and self._handshake_done
-            and not self._pending
+            and not self._tracker.is_pending()
             and not self._state_stale
         )
         state = "normal" if allow else "disabled"

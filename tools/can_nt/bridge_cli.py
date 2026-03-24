@@ -20,6 +20,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+from tools.can_nt.bridge_cmd_tracker import CommandTracker
 from tools.can_nt.bridge_ops import (
     connect,
     disconnect,
@@ -97,6 +98,7 @@ class BridgeCli:
         self._can_mfg_name_to_id: Dict[str, int] = {}
         self._can_type_id_to_name: Dict[int, str] = {}
         self._can_type_name_to_id: Dict[str, int] = {}
+        self._tracker = CommandTracker(timeout_sec=2.0, max_retries=0)
         self._load_can_mappings()
 
     def run_interactive(self) -> int:
@@ -650,6 +652,7 @@ class BridgeCli:
         if seq is None:
             print("ERROR: Command failed to send.")
             return None
+        self._tracker.start("cli", None, seq, now=time.time(), retryable=False)
         self._last_seq = seq
         deadline = time.time() + timeout_sec
         ack_status = ""
@@ -662,6 +665,8 @@ class BridgeCli:
             for event in events:
                 if print_events:
                     self._print_event(event)
+                if event.type in ("ack", "out"):
+                    self._tracker.handle_event(event)
                 if event.seq == seq and event.type == "ack":
                     ack_status = event.status
                     ack_message = event.message
