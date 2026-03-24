@@ -19,6 +19,7 @@ Purpose: Clarify what is out of scope.
 
 - Separate standalone bridge implementation.
 - Privilege levels.
+
 - Fuzzy abbreviations.
 - DSL or scripting language.
 - Per-command force flags.
@@ -54,7 +55,6 @@ Purpose: Centralize connect/send/receive and runtime state.
 
 ### Shared Operations Layer
 Purpose: Centralize domain logic for all front ends.
-
 - Group operations.
 - Device membership operations.
 - Binding operations.

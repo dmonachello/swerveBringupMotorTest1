@@ -89,6 +89,54 @@ def disconnect(session: BridgeSession) -> None:
     session.disconnect()
 
 
+def send_command(session: BridgeSession, name: str, args: Optional[Dict[str, Any]] = None) -> Optional[int]:
+    """
+    NAME
+        send_command - Send an arbitrary UI command through BridgeSession.
+    """
+    return _send(session, name, args)
+
+
+def ui_handshake(session: BridgeSession, client_id: str, reset: bool) -> Optional[int]:
+    """
+    NAME
+        ui_handshake - Send the UI handshake command.
+    """
+    return _send(session, "uiHandshake", {"clientId": client_id, "reset": bool(reset)})
+
+
+def ui_disconnect(session: BridgeSession) -> Optional[int]:
+    """
+    NAME
+        ui_disconnect - Release the UI lock on the robot.
+    """
+    return _send(session, "uiDisconnect", {})
+
+
+def ui_monitor(session: BridgeSession, enabled: bool) -> Optional[int]:
+    """
+    NAME
+        ui_monitor - Toggle UI protocol monitor publishing.
+    """
+    name = "uiMonitorEnable" if enabled else "uiMonitorDisable"
+    return _send(session, name, {"enabled": bool(enabled)})
+
+
+def ui_poll_log(session: BridgeSession) -> Optional[int]:
+    """
+    NAME
+        ui_poll_log - Request UI log polling output.
+    """
+    return _send(session, "uiPollLog", {})
+
+
+def select_test_by_name(session: BridgeSession, name: str) -> Optional[int]:
+    """
+    NAME
+        select_test_by_name - Select a scripted test by name.
+    """
+    return _send(session, "selectTestByName", {"name": name})
+
 def show_status(session: BridgeSession, json_output: bool = False) -> Optional[int]:
     """
     NAME

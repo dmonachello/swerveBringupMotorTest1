@@ -11,6 +11,9 @@ DESCRIPTION
     Provides a Windows-friendly Tk UI that mirrors bringup commands with
     labeled on-screen buttons. Commands are sent over NetworkTables under
     bringup/ui, and output is displayed in a single scrolling panel.
+
+NOTES
+    All UI command sends must go through tools.can_nt.bridge_ops wrappers.
 """
 
 import json
@@ -20,6 +23,16 @@ import uuid
 from tkinter import messagebox, ttk
 from typing import Callable, Dict, List, Optional, Tuple, Any
 
+from .bridge_ops import (
+    connect,
+    disconnect,
+    send_command,
+    select_test_by_name,
+    ui_disconnect,
+    ui_handshake,
+    ui_monitor,
+    ui_poll_log,
+)
 from .bridge_session import BridgeEvent, BridgeSession
 from tools.common.json_io import read_json
 from tools.common.paths import tests_deploy_path
@@ -782,7 +795,7 @@ class BringupControlUI(tk.Tk):
         if not self._tcp_connected:
             return None
         self._session.set_client_id(self._client_id)
-        seq = self._session.send_command(name, args or {})
+        seq = send_command(self._session, name, args or {})
         if seq is None:
             self._tcp_connected = False
         return seq
@@ -808,7 +821,8 @@ class BringupControlUI(tk.Tk):
             ts = timestamp_hms()
             label = "uiHandshake (reset)" if reset else "uiHandshake"
             self._append_output(f"{ts} CMD {label}")
-        seq = self._send_tcp_command("uiHandshake", payload)
+        self._session.set_client_id(self._client_id)
+        seq = ui_handshake(self._session, self._client_id, reset)
         if seq is not None:
             self._pending = True
             self._last_sent_seq = seq
@@ -840,7 +854,7 @@ class BringupControlUI(tk.Tk):
         self._last_cmd = ("uiDisconnect", None)
         self._retry_pending = False
         self._retry_count = 0
-        seq = self._send_tcp_command("uiDisconnect", None)
+        seq = ui_disconnect(self._session)
         if seq is not None:
             self._pending = True
             self._last_sent_seq = seq
@@ -865,7 +879,7 @@ class BringupControlUI(tk.Tk):
         self._last_cmd = (label, args)
         self._retry_pending = False
         self._retry_count = 0
-        seq = self._send_tcp_command(label, args)
+        seq = ui_monitor(self._session, enabled)
         if seq is not None:
             self._pending = True
             self._last_sent_seq = seq
@@ -934,7 +948,7 @@ class BringupControlUI(tk.Tk):
         self._last_cmd = (command, None)
         self._retry_pending = False
         self._retry_count = 0
-        seq = self._send_tcp_command(command, None)
+        seq = send_command(self._session, command, None)
         if seq is not None:
             self._pending = True
             self._last_sent_seq = seq
@@ -966,7 +980,7 @@ class BringupControlUI(tk.Tk):
         self._last_cmd = ("selectTestByName", {"name": name})
         self._retry_pending = False
         self._retry_count = 0
-        seq = self._send_tcp_command("selectTestByName", {"name": name})
+        seq = select_test_by_name(self._session, name)
         if seq is not None:
             self._pending = True
             self._last_sent_seq = seq
@@ -982,7 +996,7 @@ class BringupControlUI(tk.Tk):
         now = time.time()
         if not self._tcp_connected and (now - self._last_connect_attempt) > 1.0:
             self._last_connect_attempt = now
-        self._tcp_connected = self._session.connect()
+        self._tcp_connected = connect(self._session)
         if self._tcp_connected:
             self._handshake_done = self._session.handshake_done()
         if self._tcp_connected != self._prev_tcp_connected:
@@ -1119,7 +1133,7 @@ class BringupControlUI(tk.Tk):
             and not self._log_poll_inflight
             and (now - self._last_log_poll) >= self._log_poll_interval
         ):
-            seq = self._send_tcp_command("uiPollLog", None)
+            seq = ui_poll_log(self._session)
             if seq is not None:
                 self._log_poll_inflight = True
                 self._log_poll_seq = seq
@@ -1270,4 +1284,4 @@ class BringupControlUI(tk.Tk):
         """
         if self._tcp_connected:
             self._send_disconnect(force=True)
-            self._session.disconnect()
+            disconnect(self._session)
