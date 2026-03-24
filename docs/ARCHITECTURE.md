@@ -9,6 +9,7 @@ Purpose: the system has two cooperating parts with a defined interaction boundar
 - PC-side Python tool passively listens on the CAN bus and publishes diagnostics to NetworkTables.
 - The robot consumes PC diagnostics via NetworkTables under `bringup/diag/...` and must fail soft if the PC tool is absent.
 - The Bringup Control UI uses a TCP command channel to the robot for UI actions; NetworkTables remains for state/diagnostics visibility.
+- See OPERATOR_SURFACES.md for a focused view of CLI/GUI/topology surface responsibilities.
 
 ## 1000-Foot View
 Purpose: the system has a high-level map of components, data sources, and safety boundaries.

@@ -233,6 +233,144 @@ def selected_mode_set(session: BridgeSession, enabled: bool) -> Optional[int]:
     return _send(session, "selectedModeSet", {"enabled": bool(enabled)})
 
 
+def local_show_data(
+    target: str, tokens: List[str], config: Dict[str, Any]
+) -> Tuple[bool, Optional[str], Dict[str, Any]]:
+    """
+    NAME
+        local_show_data - Build local show payloads from bridgeConfig.
+    """
+    if not isinstance(config, dict):
+        return (False, "Local config missing or invalid.", {})
+    groups = list(config.get("groups", [])) if isinstance(config.get("groups"), list) else []
+    selected = config.get("selectedDevice") if isinstance(config.get("selectedDevice"), dict) else {}
+    selected_device = str(selected.get("device", "")).strip()
+    selected_enabled = bool(selected.get("enabled", False))
+
+    if target == "status":
+        payload = {
+            "source": "local",
+            "groupCount": len(groups),
+            "selectedDevice": {"device": selected_device, "enabled": selected_enabled},
+        }
+        return (True, None, payload)
+
+    if target == "groups":
+        return (True, None, {"source": "local", "groups": groups})
+
+    if target == "group":
+        name = tokens[1] if len(tokens) >= 2 else ""
+        match = None
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            if str(group.get("name", "")).strip().lower() == name.lower():
+                match = group
+                break
+        if match is None:
+            return (False, "Local group not found.", {})
+        return (True, None, {"source": "local", "group": match})
+
+    if target == "devices":
+        devices_raw = config.get("devices") if isinstance(config.get("devices"), list) else None
+        if isinstance(devices_raw, list) and devices_raw:
+            return (True, None, {"source": "local", "devices": devices_raw})
+        devices: List[str] = []
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            for member in group.get("members", []) or []:
+                if isinstance(member, dict):
+                    name = str(member.get("device", "")).strip()
+                else:
+                    name = str(member).strip()
+                if name and name not in devices:
+                    devices.append(name)
+        if selected_device and selected_device not in devices:
+            devices.append(selected_device)
+        return (True, None, {"source": "local", "devices": devices})
+
+    if target == "device":
+        name = tokens[1] if len(tokens) >= 2 else ""
+        devices_raw = config.get("devices") if isinstance(config.get("devices"), list) else None
+        if isinstance(devices_raw, list):
+            for device in devices_raw:
+                if not isinstance(device, dict):
+                    continue
+                device_name = str(device.get("name", "")).strip()
+                if device_name.lower() != name.lower():
+                    continue
+                group_name = ""
+                enabled = None
+                for group in groups:
+                    if not isinstance(group, dict):
+                        continue
+                    for member in group.get("members", []) or []:
+                        if isinstance(member, dict):
+                            member_name = str(member.get("device", "")).strip()
+                            if member_name.lower() == name.lower():
+                                group_name = str(group.get("name", ""))
+                                enabled = bool(member.get("enabled", True))
+                                break
+                        else:
+                            if str(member).strip().lower() == name.lower():
+                                group_name = str(group.get("name", ""))
+                                enabled = True
+                                break
+                    if group_name:
+                        break
+                return (
+                    True,
+                    None,
+                    {"source": "local", "device": device, "group": group_name, "enabled": enabled},
+                )
+        found_group = ""
+        enabled = None
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            for member in group.get("members", []) or []:
+                if isinstance(member, dict):
+                    device_name = str(member.get("device", "")).strip()
+                    if device_name.lower() == name.lower():
+                        found_group = str(group.get("name", ""))
+                        enabled = bool(member.get("enabled", True))
+                        break
+                else:
+                    if str(member).strip().lower() == name.lower():
+                        found_group = str(group.get("name", ""))
+                        enabled = True
+                        break
+            if found_group:
+                break
+        if not found_group:
+            return (False, "Local device not found.", {})
+        return (True, None, {"source": "local", "device": name, "group": found_group, "enabled": enabled})
+
+    if target == "bindings":
+        return (True, None, {"source": "local", "groups": groups})
+
+    if target == "selected-device":
+        return (
+            True,
+            None,
+            {"source": "local", "selectedDevice": {"device": selected_device, "enabled": selected_enabled}},
+        )
+
+    if target == "runtime-state":
+        devices = config.get("devices") if isinstance(config.get("devices"), list) else None
+        payload = {
+            "source": "local",
+            "schemaVersion": config.get("schemaVersion", CONFIG_SCHEMA_VERSION),
+            "generatedAt": config.get("generatedAt"),
+            "groups": groups,
+            "selectedDevice": {"device": selected_device, "enabled": selected_enabled},
+            "devices": devices if isinstance(devices, list) else None,
+        }
+        return (True, None, payload)
+
+    return (False, "Unknown show command.", {})
+
 def merge_config(path: str, conflict_policy: str = "error") -> ConfigPlan:
     """
     NAME

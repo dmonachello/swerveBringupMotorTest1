@@ -18,6 +18,7 @@ Use the normal FRC robot workflow to deploy and run the robot code.
 ## Documentation Index
 Documentation:
 - docs/ARCHITECTURE.md
+- docs/OPERATOR_SURFACES.md
 - docs/SETUP.md
 - docs/USER_GUIDE.md
 - docs/TESTING.md

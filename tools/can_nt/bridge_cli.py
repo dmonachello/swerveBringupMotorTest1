@@ -24,6 +24,7 @@ from tools.can_nt.bridge_cmd_tracker import CommandTracker
 from tools.can_nt.bridge_ops import (
     connect,
     disconnect,
+    local_show_data,
     export_runtime_groups,
     BridgeCommand,
     ConfigPlan,
@@ -901,14 +902,14 @@ class BridgeCli:
         if not self._local_config:
             print("WARNING: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return False
-        config = self._local_config
-        groups = list(config.get("groups", [])) if isinstance(config, dict) else []
-        selected = config.get("selectedDevice") if isinstance(config, dict) else {}
-        selected_device = ""
-        selected_enabled = False
-        if isinstance(selected, dict):
-            selected_device = str(selected.get("device", "")).strip()
-            selected_enabled = bool(selected.get("enabled", False))
+        ok, error, payload = local_show_data(target, tokens, self._local_config)
+        if not ok:
+            print(f"ERROR: {error}")
+            return False
+        groups = payload.get("groups", []) if isinstance(payload.get("groups"), list) else []
+        selected = payload.get("selectedDevice") if isinstance(payload.get("selectedDevice"), dict) else {}
+        selected_device = str(selected.get("device", "")).strip()
+        selected_enabled = bool(selected.get("enabled", False))
 
         def _print_local(payload_text: str, payload_json: Optional[Dict[str, object]]) -> None:
             print("SOURCE: local")
@@ -920,14 +921,9 @@ class BridgeCli:
         if target == "status":
             text = (
                 "Local status:\n"
-                f"  groups={len(groups)}\n"
+                f"  groups={payload.get('groupCount', len(groups))}\n"
                 f"  selectedDevice={selected_device or '(none)'} ({'on' if selected_enabled else 'off'})"
             )
-            payload = {
-                "source": "local",
-                "groupCount": len(groups),
-                "selectedDevice": {"device": selected_device, "enabled": selected_enabled},
-            }
             _print_local(text, payload)
             return True
 
@@ -941,22 +937,12 @@ class BridgeCli:
                 lines.append(f"  {name} ({'enabled' if enabled else 'disabled'})")
             if len(lines) == 1:
                 lines.append("  (none)")
-            payload = {"source": "local", "groups": groups}
             _print_local("\n".join(lines), payload)
             return True
 
         if target == "group" and len(tokens) >= 2:
             name = tokens[1]
-            match = None
-            for group in groups:
-                if not isinstance(group, dict):
-                    continue
-                if str(group.get("name", "")).strip().lower() == name.lower():
-                    match = group
-                    break
-            if match is None:
-                print("ERROR: Local group not found.")
-                return False
+            match = payload.get("group") if isinstance(payload.get("group"), dict) else {}
             members = match.get("members", []) or []
             bindings = match.get("bindings", []) or []
             lines = [
@@ -978,12 +964,11 @@ class BridgeCli:
                         lines.append(f"    {device} ({'enabled' if enabled else 'disabled'})")
             else:
                 lines.append("  members: (none)")
-            payload = {"source": "local", "group": match}
             _print_local("\n".join(lines), payload)
             return True
 
         if target == "devices":
-            devices_raw = config.get("devices") if isinstance(config, dict) else None
+            devices_raw = payload.get("devices")
             lines = ["Local devices:"]
             if isinstance(devices_raw, list) and devices_raw:
                 for device in devices_raw:
@@ -1001,103 +986,44 @@ class BridgeCli:
                         details.append(f"id {device.get('deviceId')}")
                     suffix = f" ({', '.join(details)})" if details else ""
                     lines.append(f"  {name}{suffix}")
-                payload = {"source": "local", "devices": devices_raw}
             else:
-                devices: List[str] = []
-                for group in groups:
-                    if not isinstance(group, dict):
-                        continue
-                    for member in group.get("members", []) or []:
-                        if isinstance(member, dict):
-                            name = str(member.get("device", "")).strip()
-                        else:
-                            name = str(member).strip()
-                        if name and name not in devices:
-                            devices.append(name)
-                if selected_device and selected_device not in devices:
-                    devices.append(selected_device)
-                if devices:
-                    lines.extend(f"  {name}" for name in devices)
+                if isinstance(devices_raw, list) and devices_raw:
+                    lines.extend(f"  {name}" for name in devices_raw if isinstance(name, str))
                 else:
                     lines.append("  (none)")
-                payload = {"source": "local", "devices": devices}
             _print_local("\n".join(lines), payload)
             return True
 
         if target == "device" and len(tokens) >= 2:
             name = tokens[1]
-            devices_raw = config.get("devices") if isinstance(config, dict) else None
-            if isinstance(devices_raw, list):
-                for device in devices_raw:
-                    if not isinstance(device, dict):
-                        continue
-                    device_name = str(device.get("name", "")).strip()
-                    if not device_name or device_name.lower() != name.lower():
-                        continue
-                    group_name = ""
-                    enabled = None
-                    for group in groups:
-                        if not isinstance(group, dict):
-                            continue
-                        for member in group.get("members", []) or []:
-                            if isinstance(member, dict):
-                                member_name = str(member.get("device", "")).strip()
-                                if member_name.lower() == name.lower():
-                                    group_name = str(group.get("name", ""))
-                                    enabled = bool(member.get("enabled", True))
-                                    break
-                            else:
-                                if str(member).strip().lower() == name.lower():
-                                    group_name = str(group.get("name", ""))
-                                    enabled = True
-                                    break
-                        if group_name:
-                            break
-                    details: List[str] = []
-                    if "manufacturer" in device:
-                        details.append(
-                            f"manufacturer={self._format_can_meta('mfg', device.get('manufacturer'))}"
-                        )
-                    if "deviceType" in device:
-                        details.append(
-                            f"deviceType={self._format_can_meta('type', device.get('deviceType'))}"
-                        )
-                    if "deviceId" in device:
-                        details.append(f"deviceId={device.get('deviceId')}")
-                    detail_text = " ".join(details)
-                    if group_name:
-                        text = f"Local device {name}: group={group_name} enabled={enabled} {detail_text}".rstrip()
-                    else:
-                        text = f"Local device {name}: {detail_text}".rstrip()
-                    payload = {"source": "local", "device": device, "group": group_name, "enabled": enabled}
-                    _print_local(text, payload)
-                    return True
-            found_group = ""
-            enabled = None
-            for group in groups:
-                if not isinstance(group, dict):
-                    continue
-                for member in group.get("members", []) or []:
-                    if isinstance(member, dict):
-                        device = str(member.get("device", "")).strip()
-                        if device.lower() == name.lower():
-                            found_group = str(group.get("name", ""))
-                            enabled = bool(member.get("enabled", True))
-                            break
-                    else:
-                        if str(member).strip().lower() == name.lower():
-                            found_group = str(group.get("name", ""))
-                            enabled = True
-                            break
-                if found_group:
-                    break
-            if not found_group:
-                print("ERROR: Local device not found.")
-                return False
-            text = f"Local device {name}: group={found_group} enabled={enabled}"
-            payload = {"source": "local", "device": name, "group": found_group, "enabled": enabled}
-            _print_local(text, payload)
-            return True
+            device_payload = payload.get("device")
+            group_name = payload.get("group", "")
+            enabled = payload.get("enabled", None)
+            if isinstance(device_payload, dict):
+                details: List[str] = []
+                if "manufacturer" in device_payload:
+                    details.append(
+                        f"manufacturer={self._format_can_meta('mfg', device_payload.get('manufacturer'))}"
+                    )
+                if "deviceType" in device_payload:
+                    details.append(
+                        f"deviceType={self._format_can_meta('type', device_payload.get('deviceType'))}"
+                    )
+                if "deviceId" in device_payload:
+                    details.append(f"deviceId={device_payload.get('deviceId')}")
+                detail_text = " ".join(details)
+                if group_name:
+                    text = f"Local device {name}: group={group_name} enabled={enabled} {detail_text}".rstrip()
+                else:
+                    text = f"Local device {name}: {detail_text}".rstrip()
+                _print_local(text, payload)
+                return True
+            if isinstance(device_payload, str):
+                text = f"Local device {name}: group={group_name} enabled={enabled}"
+                _print_local(text, payload)
+                return True
+            print("ERROR: Local device not found.")
+            return False
 
         if target == "bindings":
             lines = ["Local bindings:"]
@@ -1115,7 +1041,6 @@ class BridgeCli:
                     lines.append(line)
             if len(lines) == 1:
                 lines.append("  (none)")
-            payload = {"source": "local", "groups": groups}
             _print_local("\n".join(lines), payload)
             return True
 
@@ -1124,27 +1049,16 @@ class BridgeCli:
                 "Local selected device: "
                 f"{selected_device or '(none)'} ({'on' if selected_enabled else 'off'})"
             )
-            payload = {
-                "source": "local",
-                "selectedDevice": {"device": selected_device, "enabled": selected_enabled},
-            }
             _print_local(text, payload)
             return True
 
         if target == "runtime-state":
-            payload = {
-                "source": "local",
-                "schemaVersion": config.get("schemaVersion", 1) if isinstance(config, dict) else 1,
-                "generatedAt": config.get("generatedAt") if isinstance(config, dict) else None,
-                "groups": groups,
-                "selectedDevice": {"device": selected_device, "enabled": selected_enabled},
-            }
             lines = [
                 "Local runtime-state:",
                 f"  selectedDevice={selected_device or '(none)'} ({'on' if selected_enabled else 'off'})",
                 f"  groups={len(groups)}",
             ]
-            devices = config.get("devices") if isinstance(config, dict) else None
+            devices = payload.get("devices") if isinstance(payload, dict) else None
             grouped_devices = set()
             for group in groups:
                 if not isinstance(group, dict):
