@@ -1,18 +1,22 @@
-# Bringup Profiles ER Diagram
+# Bringup System ER Diagram
 
 Purpose: Show a database-style ERD view of the bringup profiles JSON structure.
 
 ```mermaid
 erDiagram
-    BRINGUP_PROFILES ||--o{ PROFILE : contains
+    BRINGUP_SYSTEM ||--o{ PROFILE : contains
     PROFILE ||--o{ DEVICE_ENTRY : has
     DEVICE_ENTRY ||--o| LIMIT_CONFIG : uses
-    BRINGUP_PROFILES ||--o| DIAGRAM : includes
+    BRINGUP_SYSTEM ||--o| DIAGRAM : includes
     DIAGRAM ||--o{ DIAGRAM_PROFILE : contains
     DIAGRAM_PROFILE ||--o{ NODE : has
+    BRINGUP_SYSTEM ||--o| BRIDGE_CONFIG : includes
+    BRIDGE_CONFIG ||--o{ GROUP : contains
+    GROUP ||--o{ MEMBER : has
+    GROUP ||--o{ BINDING : has
 
-    BRINGUP_PROFILES {
-        int schema_version (2)
+    BRINGUP_SYSTEM {
+        int schema_version (3)
         string data_version
         string data_hash
         string default_profile
@@ -60,6 +64,27 @@ erDiagram
         float x
         float freeY
         float scale
+    }
+
+    BRIDGE_CONFIG {
+        int schemaVersion
+        string generatedAt
+    }
+
+    GROUP {
+        string name
+        bool enabled
+    }
+
+    MEMBER {
+        string device
+        bool enabled
+    }
+
+    BINDING {
+        string input
+        string kind
+        float value
     }
 ```
 

@@ -117,7 +117,7 @@ class TopologyEditor(tk.Tk):
 
     DESCRIPTION
         Manages the node list, canvas rendering, and file export of a bringup
-        profile JSON.
+        system JSON.
     """
 
     def __init__(self) -> None:
@@ -193,6 +193,8 @@ class TopologyEditor(tk.Tk):
         self._tag_filter_var = tk.StringVar(value="Filter: All")
         self._tag_filter_button: Optional[ttk.Button] = None
         self._list_sort_var = tk.StringVar(value="can_id")
+        self._root_extras: Dict[str, object] = {}
+        self._show_group_overlays_var = tk.BooleanVar(value=True)
         self._inline_editor: Optional[tk.Widget] = None
         self._inline_edit_info: Optional[Dict[str, object]] = None
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -424,6 +426,18 @@ class TopologyEditor(tk.Tk):
             command=self._refresh_list,
         )
         menu.add_cascade(label="Tags", menu=tags_menu)
+
+        groups_menu = tk.Menu(menu, tearoff=False)
+        groups_menu.add_command(
+            label="Create Group from Selection...",
+            command=self._create_group_from_selection,
+        )
+        groups_menu.add_command(
+            label="Remove Group...",
+            command=self._remove_bridge_group,
+        )
+        menu.add_cascade(label="Groups", menu=groups_menu)
+
         layout_menu = tk.Menu(menu, tearoff=False)
         layout_menu.add_command(label="Align Left", command=lambda: self._align_selected("left"))
         layout_menu.add_command(label="Align Center", command=lambda: self._align_selected("center"))
@@ -451,6 +465,11 @@ class TopologyEditor(tk.Tk):
         view_menu.add_checkbutton(
             label="Show Warnings/Errors",
             variable=self._show_warn_badges_var,
+            command=self._redraw_canvas,
+        )
+        view_menu.add_checkbutton(
+            label="Show Group Overlays",
+            variable=self._show_group_overlays_var,
             command=self._redraw_canvas,
         )
         view_menu.add_checkbutton(label="Snap to Grid", variable=self._snap_to_grid_var)
@@ -850,6 +869,7 @@ class TopologyEditor(tk.Tk):
         self._last_base_y = None
         self._details_layout_shift = False
         self._dirty = False
+        self._root_extras = {}
         self._refresh_list()
         self._update_details_panel(None)
         self._redraw_canvas()
@@ -884,7 +904,7 @@ class TopologyEditor(tk.Tk):
     def _load_profiles_payload(self, path: Path) -> Optional[Dict[str, object]]:
         """
         NAME
-            _load_profiles_payload - Load bringup_profiles.json with repair prompts.
+            _load_profiles_payload - Load bringup_system.json with repair prompts.
         """
         try:
             data = read_json(path)
@@ -895,7 +915,7 @@ class TopologyEditor(tk.Tk):
             messagebox.showerror("Error", "Profiles JSON root must be an object.")
             return None
         schema_version = data.get("schema_version")
-        if schema_version is not None and schema_version != self._expected_schema_version():
+        if schema_version is not None and schema_version not in (self._expected_schema_version(), 2):
             proceed = messagebox.askyesno(
                 "Schema Mismatch",
                 "Profile schema_version mismatch. Open anyway to repair?",
@@ -927,13 +947,27 @@ class TopologyEditor(tk.Tk):
                 )
                 if not proceed:
                     return None
+        self._stash_root_extras(data)
         return data
 
-    def _write_profiles_payload(self, path: Path, data: Dict[str, object]) -> None:
+    def _write_profiles_payload(
+        self,
+        path: Path,
+        data: Dict[str, object],
+        include_extras: bool = True,
+    ) -> bool:
         """
         NAME
-            _write_profiles_payload - Write bringup_profiles.json with fresh hash.
+            _write_profiles_payload - Write bringup_system.json with fresh hash.
         """
+        if include_extras:
+            for key, value in self._root_extras.items():
+                if key == "bridgeConfig":
+                    # Always persist the latest bridgeConfig (groups/selectedDevice).
+                    data[key] = value
+                    continue
+                if key not in data:
+                    data[key] = value
         data["schema_version"] = self._expected_schema_version()
         data["data_version"] = timestamp_version()
         data["data_hash"] = self._compute_data_hash(data)
@@ -942,6 +976,8 @@ class TopologyEditor(tk.Tk):
             path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
         except Exception as exc:
             messagebox.showerror("Error", f"Failed to write {path}: {exc}")
+            return False
+        return True
 
     def _import_profile(self) -> None:
         """
@@ -1020,7 +1056,8 @@ class TopologyEditor(tk.Tk):
         dest["diagram"] = {"profiles": diagram_profiles}
         if dest.get("default_profile") is None:
             dest["default_profile"] = target_name
-        self._write_profiles_payload(dest_path, dest)
+        if not self._write_profiles_payload(dest_path, dest, include_extras=True):
+            return
         self._refresh_profile_choices(keep_selection=False)
         if messagebox.askyesno("Imported", "Import complete. Load the imported profile now?"):
             self._load_profile_from_path(str(dest_path), ask_profile=False, confirm_discard=True, selected_name=target_name)
@@ -1066,7 +1103,8 @@ class TopologyEditor(tk.Tk):
         }
         if diag is not None:
             payload["diagram"] = {"profiles": {name: diag}}
-        self._write_profiles_payload(Path(path), payload)
+        if not self._write_profiles_payload(Path(path), payload, include_extras=False):
+            return
         messagebox.showinfo("Exported", f"Wrote {path}")
 
     def _rename_profile(self) -> None:
@@ -1109,7 +1147,8 @@ class TopologyEditor(tk.Tk):
                 diagram_profiles[new_name] = diagram_profiles.pop(old_name)
                 data["diagram"] = {"profiles": diagram_profiles}
         data["profiles"] = profiles
-        self._write_profiles_payload(path, data)
+        if not self._write_profiles_payload(path, data, include_extras=True):
+            return
         if self._profile_name == old_name:
             self._profile_name = new_name
             self.entry_profile.set(new_name)
@@ -1151,7 +1190,8 @@ class TopologyEditor(tk.Tk):
                 diagram_profiles.pop(target, None)
                 data["diagram"] = {"profiles": diagram_profiles}
         data["profiles"] = profiles
-        self._write_profiles_payload(path, data)
+        if not self._write_profiles_payload(path, data, include_extras=True):
+            return
         if self._profile_name == target:
             new_active = default_name if isinstance(default_name, str) and default_name in profiles else names[0]
             self._load_profile_from_path(str(path), ask_profile=False, confirm_discard=True, selected_name=new_active)
@@ -1185,7 +1225,7 @@ class TopologyEditor(tk.Tk):
             _load_profile_from_path - Load a profile JSON and populate nodes.
 
         PARAMETERS
-            path: Path to bringup_profiles.json.
+            path: Path to bringup_system.json.
             ask_profile: Whether to prompt for which profile to load.
             confirm_discard: Whether to prompt before discarding current nodes.
             selected_name: Optional profile name to load.
@@ -1196,6 +1236,7 @@ class TopologyEditor(tk.Tk):
         except Exception as exc:
             messagebox.showerror("Error", f"Failed to open file: {exc}")
             return
+        self._stash_root_extras(data)
         profiles = data.get("profiles")
         if not isinstance(profiles, dict) or not profiles:
             messagebox.showerror("Error", "No profiles found in JSON.")
@@ -1292,7 +1333,7 @@ class TopologyEditor(tk.Tk):
             _load_default_profile_if_present - Auto-load default profile on startup.
 
         DESCRIPTION
-            Reads the canonical bringup_profiles.json and loads its
+            Reads the canonical bringup_system.json and loads its
             default_profile into the diagram when available.
         """
         try:
@@ -1308,7 +1349,7 @@ class TopologyEditor(tk.Tk):
 
     @staticmethod
     def _expected_schema_version() -> int:
-        return 2
+        return 3
 
     @staticmethod
     def _compute_data_hash(payload: Dict[str, object]) -> str:
@@ -1323,24 +1364,44 @@ class TopologyEditor(tk.Tk):
         blob = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
+    @staticmethod
+    def _root_known_keys() -> set[str]:
+        return {"schema_version", "data_version", "data_hash", "default_profile", "profiles", "diagram"}
+
+    def _stash_root_extras(self, payload: Dict[str, object]) -> None:
+        """
+        NAME
+            _stash_root_extras - Preserve non-profile root keys (e.g., bridgeConfig).
+        """
+        known = self._root_known_keys()
+        self._root_extras = {key: value for key, value in payload.items() if key not in known}
+
     def _default_profiles_path(self) -> Path:
         canonical = self._canonical_profiles_path()
         if canonical.exists():
             return canonical
         deploy = self._deploy_profiles_path()
-        return deploy if deploy.exists() else canonical
+        if deploy.exists():
+            return deploy
+        # LEGACY (remove after v3 unified file adoption).
+        legacy = Path(__file__).resolve().parents[2] / "data" / "bringup_profiles.json"
+        if legacy.exists():
+            return legacy
+        # LEGACY (remove after v3 unified file adoption).
+        legacy_deploy = Path(__file__).resolve().parents[2] / "src" / "main" / "deploy" / "bringup_profiles.json"
+        return legacy_deploy if legacy_deploy.exists() else canonical
 
     @staticmethod
     def _canonical_profiles_path() -> Path:
         if profiles_canonical_path is not None:
             return profiles_canonical_path()
-        return Path(__file__).resolve().parents[2] / "data" / "bringup_profiles.json"
+        return Path(__file__).resolve().parents[2] / "data" / "bringup_system.json"
 
     @staticmethod
     def _deploy_profiles_path() -> Path:
         if profiles_deploy_path is not None:
             return profiles_deploy_path()
-        return Path(__file__).resolve().parents[2] / "src" / "main" / "deploy" / "bringup_profiles.json"
+        return Path(__file__).resolve().parents[2] / "src" / "main" / "deploy" / "bringup_system.json"
 
     def _read_profile_index(self) -> Tuple[List[str], Optional[str]]:
         try:
@@ -1603,7 +1664,7 @@ class TopologyEditor(tk.Tk):
     def _on_save_to_deploy(self) -> None:
         """
         NAME
-            _on_save_to_deploy - Append or replace a profile in bringup_profiles.json.
+            _on_save_to_deploy - Append or replace a profile in bringup_system.json.
         """
         canonical = self._canonical_profiles_path()
         deploy = self._deploy_profiles_path()
@@ -1662,7 +1723,6 @@ class TopologyEditor(tk.Tk):
             data = {}
         if data.get("schema_version") != self._expected_schema_version():
             data["schema_version"] = self._expected_schema_version()
-        data["data_version"] = timestamp_version()
         profiles = data.get("profiles")
         if not isinstance(profiles, dict):
             profiles = {}
@@ -1687,14 +1747,7 @@ class TopologyEditor(tk.Tk):
         data["diagram"] = {"profiles": diagram_profiles}
         if self.var_set_default.get() or "default_profile" not in data:
             data["default_profile"] = profile_name
-        data["data_hash"] = self._compute_data_hash(data)
-
-        try:
-            with path.open("w", encoding="utf-8") as handle:
-                json.dump(data, handle, indent=2)
-                handle.write("\n")
-        except Exception as exc:
-            messagebox.showerror("Error", f"Failed to write {path}: {exc}")
+        if not self._write_profiles_payload(path, data, include_extras=True):
             return
         self._dirty = False
         if update_source:
@@ -1748,7 +1801,7 @@ class TopologyEditor(tk.Tk):
             _profile_from_nodes - Build a bringup profile object.
 
         RETURNS
-            Dict compatible with bringup_profiles.json.
+            Dict compatible with bringup_system.json.
         """
         return self._profile_from_nodes_list(self._profile_device_nodes())
 
@@ -1957,7 +2010,7 @@ class TopologyEditor(tk.Tk):
         if not path:
             messagebox.showerror(
                 "No Source File",
-                "Open a bringup_profiles.json file first, then retry.",
+                "Open a bringup_system.json file first, then retry.",
             )
             return
         try:
@@ -4273,6 +4326,119 @@ class TopologyEditor(tk.Tk):
         self._refresh_list()
         self._redraw_canvas()
 
+    def _ensure_bridge_config(self) -> Dict[str, object]:
+        """
+        NAME
+            _ensure_bridge_config - Ensure bridgeConfig exists in the root payload.
+        """
+        existing = self._root_extras.get("bridgeConfig")
+        if isinstance(existing, dict):
+            config = existing
+        else:
+            config = {
+                "schemaVersion": 1,
+                "generatedAt": None,
+                "groups": [],
+                "selectedDevice": {"device": "", "enabled": False},
+            }
+            self._root_extras["bridgeConfig"] = config
+        if not isinstance(config.get("groups"), list):
+            config["groups"] = []
+        if not isinstance(config.get("selectedDevice"), dict):
+            config["selectedDevice"] = {"device": "", "enabled": False}
+        return config
+
+    def _bridge_groups(self) -> List[Dict[str, object]]:
+        """
+        NAME
+            _bridge_groups - Return the bridgeConfig groups list (may be empty).
+        """
+        config = self._root_extras.get("bridgeConfig")
+        if not isinstance(config, dict):
+            return []
+        groups = config.get("groups")
+        return groups if isinstance(groups, list) else []
+
+    def _create_group_from_selection(self) -> None:
+        """
+        NAME
+            _create_group_from_selection - Create/update a group from selected devices.
+        """
+        selected = [n for n in self._nodes if n.key in self._selected_nodes and n.node_type == "device"]
+        if not selected:
+            messagebox.showinfo("Create Group", "Select one or more device nodes.")
+            return
+        name = simpledialog.askstring("Create Group", "Group name:")
+        if not name:
+            return
+        name = name.strip()
+        if not name:
+            return
+        config = self._ensure_bridge_config()
+        groups = config.get("groups")
+        if not isinstance(groups, list):
+            groups = []
+            config["groups"] = groups
+        existing = None
+        for group in groups:
+            if isinstance(group, dict) and str(group.get("name", "")).strip().lower() == name.lower():
+                existing = group
+                break
+        if existing is not None:
+            replace = messagebox.askyesno(
+                "Group Exists",
+                f"Group '{name}' exists. Replace its members with the current selection?",
+            )
+            if not replace:
+                return
+            target = existing
+        else:
+            target = {"name": name, "enabled": True, "members": [], "bindings": []}
+            groups.append(target)
+        members = [{"device": n.label, "enabled": True} for n in selected]
+        target["members"] = members
+        if "bindings" not in target:
+            target["bindings"] = []
+        if "enabled" not in target:
+            target["enabled"] = True
+        self._dirty = True
+        self._redraw_canvas()
+
+    def _remove_bridge_group(self) -> None:
+        """
+        NAME
+            _remove_bridge_group - Remove a group from bridgeConfig.
+        """
+        groups = [g for g in self._bridge_groups() if isinstance(g, dict) and g.get("name")]
+        if not groups:
+            messagebox.showinfo("Remove Group", "No groups found in bridgeConfig.")
+            return
+        names = [str(g.get("name")) for g in groups]
+        prompt = "Group name to remove:\n" + ", ".join(names)
+        name = simpledialog.askstring("Remove Group", prompt)
+        if not name:
+            return
+        name = name.strip()
+        if not name:
+            return
+        config = self._ensure_bridge_config()
+        new_groups = []
+        removed = False
+        for group in config.get("groups", []) if isinstance(config.get("groups"), list) else []:
+            if not isinstance(group, dict):
+                continue
+            group_name = str(group.get("name", "")).strip()
+            if group_name.lower() == name.lower():
+                removed = True
+                continue
+            new_groups.append(group)
+        if not removed:
+            messagebox.showinfo("Remove Group", f"Group '{name}' not found.")
+            return
+        config["groups"] = new_groups
+        self._dirty = True
+        self._redraw_canvas()
+
     def _auto_layout_readable(self) -> None:
         """
         NAME
@@ -5415,6 +5581,9 @@ class TopologyEditor(tk.Tk):
             self.canvas.addtag_withtag(f"node_{callout.key}", rect)
             self.canvas.addtag_withtag(f"node_{callout.key}", text_id)
 
+        if self._show_group_overlays_var.get():
+            self._draw_group_overlays()
+
         if self._guide_x is not None and self._smart_guides_var.get():
             guide_x = self._guide_x * scale
             self.canvas.create_line(
@@ -5428,6 +5597,67 @@ class TopologyEditor(tk.Tk):
             )
 
         # Legend is optional via View -> Legend.
+
+    def _draw_group_overlays(self) -> None:
+        """
+        NAME
+            _draw_group_overlays - Draw bounding boxes for bridgeConfig groups.
+        """
+        groups = self._bridge_groups()
+        if not groups:
+            return
+        label_bounds: Dict[str, Tuple[float, float, float, float]] = {}
+        for node in self._device_nodes():
+            bounds = self._node_bounds.get(node.key)
+            if bounds:
+                label_bounds[node.label] = bounds
+        if not label_bounds:
+            return
+        palette = ["#1f6feb", "#f97316", "#16a34a", "#a855f7", "#0ea5e9", "#e11d48"]
+        pad = 10.0
+        for idx, group in enumerate(groups):
+            if not isinstance(group, dict):
+                continue
+            name = str(group.get("name", "")).strip()
+            if not name:
+                continue
+            members = group.get("members", []) or []
+            bounds_list = []
+            for member in members:
+                if isinstance(member, dict):
+                    label = member.get("device")
+                else:
+                    label = member
+                if not isinstance(label, str):
+                    continue
+                bounds = label_bounds.get(label.strip())
+                if bounds:
+                    bounds_list.append(bounds)
+            if not bounds_list:
+                continue
+            x0 = min(b[0] for b in bounds_list) - pad
+            y0 = min(b[1] for b in bounds_list) - pad
+            x1 = max(b[2] for b in bounds_list) + pad
+            y1 = max(b[3] for b in bounds_list) + pad
+            color = palette[idx % len(palette)]
+            rect = self.canvas.create_rectangle(
+                x0,
+                y0,
+                x1,
+                y1,
+                outline=color,
+                width=2,
+                dash=(6, 4),
+            )
+            self.canvas.tag_lower(rect)
+            self.canvas.create_text(
+                x0 + 6,
+                y0 + 6,
+                text=name,
+                anchor="nw",
+                fill=color,
+                font=("Segoe UI", max(8, int(10 * self._zoom))),
+            )
 
     def _shape_kind_for_node(self, node: Node) -> str:
         """
@@ -5793,12 +6023,19 @@ class TopologyEditor(tk.Tk):
                 "Purpose: Group and organize nodes with freeform tags.\n"
                 "\n"
                 "- Tags are comma-separated values on nodes and callouts.\n"
-                "- Tags are saved into bringup_profiles.json for devices.\n"
+                "- Tags are saved into bringup_system.json for devices.\n"
                 "- Use Tags -> Select by Tag to multi-select.\n"
                 "- Use Tags -> Filter List by Tag to narrow the list.\n"
                 "  Expression supports AND/OR, &&/||, commas, and implicit OR.\n"
                 "- Use Tags -> Tidy by Tag to align a tag group.\n"
                 "- Sort the list by tag from the Tags menu.\n"
+            ),
+            "Groups": (
+                "Purpose: Store CLI groups and visualize them in the diagram.\n"
+                "\n"
+                "- Use Groups -> Create Group from Selection... after multi-selecting nodes.\n"
+                "- Groups are stored under bridgeConfig.groups in bringup_system.json.\n"
+                "- View -> Show Group Overlays toggles dashed group boxes.\n"
             ),
             "Bus Segments": (
                 "Purpose: Understand bus segment editing.\n"
@@ -5810,7 +6047,7 @@ class TopologyEditor(tk.Tk):
             "Profiles & Export": (
                 "Purpose: Save or export diagram data.\n"
                 "\n"
-                "- Save to Deploy writes to data/bringup_profiles.json and syncs to src/main/deploy.\n"
+                "- Save to Deploy writes to data/bringup_system.json and syncs to src/main/deploy.\n"
                 "- Save Profile As... exports a single profile JSON.\n"
                 "- Export PDF requires reportlab.\n"
             ),

@@ -6,40 +6,40 @@ Overview
 Purpose: Summarize what the CLI does.
 - Manages bringup groups, device membership, bindings, and metadata.
 - Supports local-only editing (no robot/CAN) or robot-connected runtime control.
-- Reads and writes bridgeConfig-only files (non-redundant).
-- Device labels are unique and shared across profiles and bridgeConfig.
+- Reads and writes unified bringup_system.json (profiles + bridgeConfig).
+- Device labels are unique and shared across tools via bringup_system.json.
 
 Configuration Paths
 Purpose: Explain the multiple ways to build and edit configs.
 There is more than one valid path to configure the system. You can start
-from profiles, from a CLI-only config, from the topology tool, or from the
-sniffer. Many paths can feed into each other.
+from the topology tool, from the CLI, or from the sniffer. Many paths can
+feed into each other.
 
 Path A: Topology Tool (profiles-first)
 Purpose: Use the topology UI to define devices and layout.
 Workflow:
-- Edit bringup_profiles.json (device lists + diagram).
+- Edit bringup_system.json (device lists + diagram).
 - Ensure labels are unique.
 - Load in CLI with merge config and create groups.
-- Save groups-only config.
+- Save unified config with groups.
 
-Path B: CLI-Only (no profiles)
-Purpose: Build a standalone bridgeConfig with devices and groups.
+Path B: CLI-Only (no topology tool)
+Purpose: Build a unified bringup_system.json with devices and groups.
 Workflow:
 - Create devices in CLI (device <name>).
 - Create groups and bindings.
-- Save full bridgeConfig JSON.
+- Save unified config.
 
 Path C: Sniffer Bootstrap
-Purpose: Use observed CAN traffic to seed a profiles file.
+Purpose: Use observed CAN traffic to seed bringup_system.json.
 Workflow:
 - Run sniffer and dump a profile.
 - Rename labels to be unique and meaningful.
 - (Optional) edit topology diagram.
-- Load profiles in CLI and add groups.
+- Load bringup_system.json in CLI and add groups.
 
 Path D: Manual JSON Edit
-Purpose: Edit bringup_profiles.json or bridgeConfig directly.
+Purpose: Edit bringup_system.json directly.
 Workflow:
 - Edit JSON by hand (labels, IDs, tags, limits).
 - Validate.
@@ -47,22 +47,24 @@ Workflow:
 
 Cross-Editing (mixing paths)
 Purpose: Describe how data flows between tools.
-- Topology edits → CLI groups (profiles are canonical).
-- Sniffer profile → manual rename → topology refine → CLI groups.
-- CLI-only config → export script → manual tweaks → re-run script.
-- Robot runtime groups → save config → edit in CLI.
+- Topology edits -> CLI groups (profiles are canonical).
+- Sniffer profile -> manual rename -> topology refine -> CLI groups.
+- CLI-only config -> export script -> manual tweaks -> re-run script.
+- Robot runtime groups -> save config -> edit in CLI.
 
 Quick Start (Local-Only)
 Purpose: Run the CLI without robot or CANable.
 Example:
   python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
-  merge config x.json
+  merge config data/bringup_system.json
   show groups local
   configure terminal
   group swerve_front_left
   add device "Drive Motor (swerve-front-left)"
   exit
-  save local-config x.json
+  save unified-config data/bringup_system.json
+Notes:
+- Windows paths accept either / or \\. Use quotes if the path contains spaces.
 
 Quick Start (Robot-Connected)
 Purpose: Use live robot runtime groups.
@@ -79,6 +81,7 @@ Purpose: Explain prompt modes and how to enter/exit.
 - Group mode: bridge(config-group-<name>)#
 - Device mode: bridge(config-device-<name>)#
 - exit pops one mode; end returns to exec.
+- Windows EOF: Ctrl+Z then Enter behaves like exit (Ctrl+D on POSIX shells).
 
 Core Commands (Exec)
 Purpose: High-level control.
@@ -95,6 +98,10 @@ Purpose: Inspect state.
 - show device <name> [local|robot|both] [--json]
 - show bindings [local|robot|both] [--json]
 - show runtime-state [local|robot|both] [--json]
+Notes:
+- show group prints member names and binding details in text mode.
+- show devices (local) lists the full profile-derived device inventory, not just group members.
+- show device includes manufacturer/deviceType names when mappings are available.
 
 Config Commands
 Purpose: Build and edit groups.
@@ -105,8 +112,10 @@ Purpose: Build and edit groups.
 - merge config <path>
 - import config <path>
 - validate config [path]
+- save unified-config <path>
 - save local-config <path>
 - save config <path>
+- save profiles <path>
 
 Group Mode Commands
 Purpose: Manage devices and bindings in a group.
@@ -139,11 +148,26 @@ Purpose: Edit device metadata in local config.
 Note:
 - manufacturer and deviceType accept numeric IDs or names from can_mappings.json.
   Examples: set manufacturer CTRE, set deviceType MotorController.
-- When a profiles file is loaded, device edits write back to profiles and require save profiles.
+- When bringup_system.json is loaded, device edits write back to profiles and require save profiles or save unified-config.
 
 Config Files
 Purpose: Define inputs/outputs and expected shape.
-bridgeConfig-only file (when not using profiles):
+Unified bringup_system.json:
+  {
+    "schema_version": 3,
+    "data_version": "...",
+    "data_hash": "...",
+    "default_profile": "robot",
+    "profiles": { ... },
+    "diagram": { "profiles": { ... } },
+    "bridgeConfig": {
+      "schemaVersion": 1,
+      "generatedAt": null,
+      "groups": [...],
+      "selectedDevice": { "device": "", "enabled": false }
+    }
+  }
+bridgeConfig-only file (legacy local-only):
   {
     "schemaVersion": 1,
     "generatedAt": null,
@@ -151,36 +175,33 @@ bridgeConfig-only file (when not using profiles):
     "groups": [...],
     "selectedDevice": { "device": "", "enabled": false }
   }
-groups-only file (profiles-backed sessions):
-  {
-    "schemaVersion": 1,
-    "generatedAt": null,
-    "groups": [...],
-    "selectedDevice": { "device": "", "enabled": false }
-  }
+Note:
+- bridgeConfig-only files are legacy and will be removed after the unified workflow is adopted.
 Note:
 - When writing configs, devices are listed before groups for consistency.
 - Device names must be unique. Duplicate labels are invalid.
 
-Profiles and bridgeConfig
+Unified Config (bringup_system.json)
 Purpose: Clarify source of truth.
-- Profiles (bringup_profiles.json) are the single source of truth for device labels.
-- bridgeConfig.devices are auto-generated from profiles when loading a profiles file.
-- Groups reference the same labels, so labels remain consistent across tools.
-- The default_profile is used when generating bridgeConfig.devices.
-- Profiles schema_version is 2 (see docs/PROFILE_SCHEMA_REFACTOR.md).
+- bringup_system.json is the single source of truth for device labels and groups.
+- The profiles section defines the device catalog and labels.
+- bridgeConfig stores groups/bindings/selectedDevice that reference those labels.
+- The default_profile is used when generating local device metadata.
+- schema_version is 3 (see docs/PROFILE_SCHEMA_REFACTOR.md).
 
 Config Save Formats
 Purpose: Explain which files to save and why.
-- Groups JSON (authoritative): save local-config <path>
-  Use as the primary source of truth for groups and selectedDevice.
+- Unified JSON (authoritative): save unified-config <path>
+  Use as the primary source of truth for devices + groups.
+- Groups-only JSON (local use): save local-config <path>
+  Use for quick local group edits without changing profiles.
 - Runtime bridgeConfig JSON (from robot): save config <path>
   Captures live runtime groups from the robot for later review or reuse.
 - CLI script (derived): export cli-script <path>
   Convenience batch script generated from the current local config.
   Regenerate from JSON; do not hand-edit.
-- Profiles JSON (authoritative for devices): save profiles <path>
-  Writes bringup_profiles.json after device edits.
+- Profiles JSON (devices only): save profiles <path>
+  Writes bringup_system.json after device edits and preserves bridgeConfig.
 
 Usage Guidance
 Purpose: Recommend a stable workflow.
@@ -188,7 +209,7 @@ Purpose: Recommend a stable workflow.
 - Generate scripts from JSON for quick rebuild or demos.
 - Recreate a config by running the script, then save JSON:
   python tools\can_nt\can_nt_bridge.py --batch --script x_rebuild.txt --no-can --no-nt
-  save local-config x.json
+  save unified-config data\bringup_system.json
 
 Manual CLI Batch Scripts
 Purpose: Explain when and how to hand-write a batch script.
@@ -197,7 +218,7 @@ human-readable sequence of steps, but the preferred flow is to export a script
 from JSON and treat scripts as derived artifacts.
 Guidance:
 - Put all device definitions before any add device commands.
-- If you are profiles-backed, start with: merge config <bringup_profiles.json>.
+- If you are using bringup_system.json profiles, start with: merge config <bringup_system.json>.
 - Keep one command per line; avoid extra prompts or output lines.
 Example:
   configure terminal
@@ -214,8 +235,8 @@ Run:
   python tools\can_nt\can_nt_bridge.py --batch --script arm_rebuild.txt --no-can --no-nt
 
 Guided Walkthrough: Build a Full Config From Scratch
-Purpose: Step-by-step guide to create a complete bridgeConfig.
-This assumes a bridgeConfig-only session (no profiles loaded).
+Purpose: Step-by-step guide to create a complete unified config.
+This assumes a local-only session (no topology tool).
 
 Step 1: Start the CLI
 Purpose: Launch in local-only mode.
@@ -263,12 +284,12 @@ Example:
 Step 5: Validate the config
 Purpose: Ensure all group members exist in devices.
 Example:
-  validate config x.json
+  validate config
 
 Step 6: Save the config
-Purpose: Write a non-redundant bridgeConfig file.
+Purpose: Write a unified bringup_system.json file.
 Example:
-  save local-config x.json
+  save unified-config data\bringup_system.json
 
 Step 7: Export a rebuild script (optional)
 Purpose: Generate a replayable script for future rebuilds.
@@ -278,22 +299,22 @@ Example:
 Step 8: Reuse the config
 Purpose: Load and reuse in a future session.
 Example:
-  merge config x.json
+  merge config data\bringup_system.json
 
-Profiles-Backed Workflow (Canonical Labels)
-Purpose: Use bringup_profiles.json as the single source of truth.
+Unified Workflow (Topology + CLI)
+Purpose: Use bringup_system.json as the single source of truth.
 1) Edit profiles (labels must be unique). Use the topology tool or edit JSON.
-2) Load profiles in the CLI:
-   merge config data\bringup_profiles.json
+2) Load bringup_system.json in the CLI:
+   merge config data\bringup_system.json
 3) Create groups using those labels.
-4) Save groups-only config:
-   save local-config groups.json
+4) Save unified config:
+   save unified-config data\bringup_system.json
 Notes:
-- Device edits update the loaded profiles data and require save profiles to persist.
+- Device edits update the loaded profiles data and require save profiles or save unified-config.
 - The CLI derives devices from the default_profile.
 
 Device Mode Examples
-Purpose: Show how to create and fully define device entries (bridgeConfig-only sessions).
+Purpose: Show how to create and fully define device entries in local sessions.
 
 Example: Create a new device entry with all attributes
 Purpose: Create a new device and set CAN identity fields.
@@ -520,14 +541,14 @@ Example: Minimal Bench Test (Single Motor)
 Purpose: Quick bench setup with one device.
 Example:
   configure terminal
-  group bench
-  add device "Test Motor 1"
-  bind LY analog
-  exit
   device "Test Motor 1"
   set manufacturer 5
   set deviceType 2
   set deviceId 3
+  exit
+  group bench
+  add device "Test Motor 1"
+  bind LY analog
   exit
 
 Example: Mixed Vendors (REV + CTRE)
@@ -565,8 +586,8 @@ Example:
 Example: Save and Reuse
 Purpose: Save a config and reload it later.
 Example:
-  save local-config x.json
-  merge config x.json
+  save unified-config data\bringup_system.json
+  merge config data\bringup_system.json
 
 Appendix: Full Example Script (2026 Robot-Style)
 Purpose: Provide a complete batch script that recreates a full config.
@@ -689,16 +710,16 @@ Example:
 
 Troubleshooting
 Purpose: Common errors and fixes.
-- Invalid config: file is not bridgeConfig or full profiles schema.
+- Invalid config: file is not bridgeConfig-only or unified bringup_system.json.
 - Paths with backslashes: use quotes or forward slashes.
 - No CAN IDs shown: set deviceId in device mode.
 
 Tradeoffs
 Purpose: Explain design choices.
 - bridgeConfig-only outputs are compact but do not carry profiles or topology.
-- Full profiles files preserve shared data but are larger.
+- Unified bringup_system.json preserves shared data but is larger.
 
 Future Extensions
 Purpose: Planned improvements.
 - Batch command to set manufacturer/deviceType/deviceId in one line.
-- Optional full profiles output mode on save/export.
+- Optional shorthand to set vendor/type/deviceId in one line.

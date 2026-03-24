@@ -11,7 +11,7 @@ Purpose: Define what this document covers and does not cover.
 
 ## Context
 Purpose: Explain where the editor fits in the system.
-- The editor produces `bringup_profiles.json` and diagram metadata.
+- The editor produces `bringup_system.json` and diagram metadata.
 - The profiles are consumed by robot code and the PC tool.
 - Diagram metadata is editor-only and ignored by robot/PC tools.
 
@@ -57,21 +57,23 @@ Purpose: Define the core node representation.
 ## Persistence
 Purpose: Define the JSON structures written by the editor.
 
-### bringup_profiles.json
+### bringup_system.json
 Purpose: Stable device configuration consumed by robot and PC tools.
-- Canonical location: `data/bringup_profiles.json`.
-- RoboRIO deploy copy: `src/main/deploy/bringup_profiles.json` (synced from `data/`).
+- Canonical location: `data/bringup_system.json`.
+- RoboRIO deploy copy: `src/main/deploy/bringup_system.json` (synced from `data/`).
 - Root fields:
-- `schema_version` (int, 2)
+- `schema_version` (int, 3)
 - `data_version` (string)
 - `data_hash` (string)
 - `default_profile` (string)
 - `profiles` (object of named profiles)
 - Optional `diagram` (editor-only layout metadata)
+- Optional `bridgeConfig` (groups/bindings metadata)
 
 Profile sections:
 - Lists: `neos`, `neo550s`, `flexes`, `krakens`, `falcons`, `cancoders`, `candles`, `devices`
 - Singletons: `pdh`, `pdp`, `pigeon`, `roborio`
+ - Optional: `bridgeConfig` (groups/bindings used by CLI)
 
 Device entry schema:
 - Required: `label`, `id`
@@ -124,14 +126,14 @@ Purpose: Capture UI structure.
 
 ## Contracts
 Purpose: Declare stable API contracts.
-- `bringup_profiles.json` is the single source of truth; deploy copies must be synced from `data/`.
+- `bringup_system.json` is the single source of truth; deploy copies must be synced from `data/`.
 - Diagram metadata is editor-only and must not be consumed by robot/PC tools.
 - Tags are optional and must not break existing tools when absent.
 
 ## Tradeoffs
 Purpose: Document key architectural tradeoffs.
 - Tkinter keeps dependencies minimal but limits richer UI widgets.
-- Storing diagram metadata inside `bringup_profiles.json` simplifies user workflow.
+- Storing diagram metadata inside `bringup_system.json` simplifies user workflow.
 - Shared profile JSON means editor must be conservative about schema changes.
 
 ## Future Extensions

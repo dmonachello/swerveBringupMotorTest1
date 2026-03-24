@@ -4,7 +4,7 @@
 Create a bringup profile JSON by sketching CAN nodes on a shared bus line.
 
 ## What It Does
-Purpose: Turn a diagram into a `bringup_profiles.json` file.
+Purpose: Turn a diagram into a `bringup_system.json` file.
 - Add nodes (motors, sensors, PDH, etc.).
 - Edit labels, CAN IDs, and optional fields.
 - Export a single profile JSON ready for deploy.
@@ -16,16 +16,16 @@ python tools\\can_topology\\can_top_editor.py
 ```
 
 ## Profile Validation
-Purpose: Validate `bringup_profiles.json` for compatibility.
+Purpose: Validate `bringup_system.json` for compatibility.
 ```cmd
 python tools\\can_topology\\validate_profiles.py
-python tools\\can_topology\\validate_profiles.py --path data\\bringup_profiles.json
+python tools\\can_topology\\validate_profiles.py --path data\\bringup_system.json
 python tools\\can_topology\\validate_profiles.py --strict
 python tools\\can_topology\\validate_profiles.py --verbose
 ```
 Checks:
 - JSON parses and contains a `profiles` object.
-- Root `schema_version` matches the expected value (2).
+- Root `schema_version` matches the expected value (3).
 - Root `data_version` is present and non-empty.
 - Root `data_hash` is present and matches the computed value.
 - Allowed categories only (buckets, singletons, `devices`).
@@ -42,9 +42,9 @@ Purpose: Describe the shortest path from sketch to JSON.
 3. Set the profile name (dropdown lists profiles from the loaded file).
 4. File -> Save Profile As...
 5. File -> Save Selection As... writes only selected nodes/callouts.
-6. Or use File -> `Save to Deploy` to append/replace in `data/bringup_profiles.json` and sync to deploy.
+6. Or use File -> `Save to Deploy` to append/replace in `data/bringup_system.json` and sync to deploy.
 7. Save Selection As... never overwrites an existing file; it auto-suffixes `_1`, `_2`, etc.
-8. File -> `Reload Canonical` reloads `data/bringup_profiles.json` into the editor.
+8. File -> `Reload Canonical` reloads `data/bringup_system.json` into the editor.
 9. Profiles menu: Import Profile... (external file -> canonical, with diagram metadata if present).
 10. Profiles menu: Export Profile... (single profile to external file).
 11. Profiles menu: Rename Profile... (non-default only).
@@ -63,7 +63,7 @@ Purpose: Show fields not displayed on the boxes.
 
 ## Auto-Load
 Purpose: Start with your existing profile if present.
-- On startup, the editor reads `data/bringup_profiles.json` (deploy fallback) and loads
+- On startup, the editor reads `data/bringup_system.json` (deploy fallback) and loads
   its `default_profile` automatically.
 - Use File -> Open Profile... to pick a different profile.
 - If `data_hash` is missing or mismatched, the editor can still open the file for repair.
@@ -106,6 +106,14 @@ Purpose: Document limitations up front.
 - `terminator` is an optional per-node flag (true/false) to mark a bus end.
 - Vendor and device type fields use dropdowns populated from `src/main/deploy/can_mappings.json`
   (you can also type a custom value).
+- Group overlays (from bridgeConfig) can be toggled via View -> Show Group Overlays.
+
+## Groups (BridgeConfig)
+Purpose: Use the topology editor to create and visualize groups.
+- Multi-select device nodes, then use Groups -> Create Group from Selection...
+- Groups are stored under `bridgeConfig.groups` in `bringup_system.json`.
+- The editor draws dashed boxes around grouped devices (toggle in View menu).
+- Groups are optional and ignored by the robot code.
 
 ## Keyboard Shortcuts
 Purpose: Keep shortcuts documented in one place.
@@ -139,7 +147,7 @@ Purpose: Define what layout operations do.
 ## Tags
 Purpose: Group and sort nodes with freeform labels.
 - Tags are comma-separated strings (e.g., `swerve`, `front-left`).
-- Tags are stored on device entries in `bringup_profiles.json`.
+- Tags are stored on device entries in `bringup_system.json`.
 - Use `Tags` menu actions to select, filter, tidy, or sort by tag.
 - Use `Apply Tag to Selection` / `Remove Tag from Selection` to bulk edit tags.
 - Tag filters accept expressions with `AND`/`OR`, `&&`/`||`, commas, or implicit OR (parentheses supported).

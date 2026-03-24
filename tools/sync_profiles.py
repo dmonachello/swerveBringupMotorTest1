@@ -2,21 +2,21 @@ from __future__ import annotations
 
 """
 NAME
-    sync_profiles.py - Copy canonical bringup_profiles.json into deploy.
+    sync_profiles.py - Copy canonical bringup_system.json into deploy.
 
 SYNOPSIS
     python tools\\sync_profiles.py [--source PATH] [--dest PATH]
 
 DESCRIPTION
-    Copies the canonical bringup profiles JSON (stored under data/) into
+    Copies the canonical bringup system JSON (stored under data/) into
     the roboRIO deploy folder so the Java code can load it on the robot.
 
 PARAMETERS
-    --source: Path to canonical bringup_profiles.json (default: data/bringup_profiles.json).
-    --dest: Path to deploy bringup_profiles.json (default: src/main/deploy/bringup_profiles.json).
+    --source: Path to canonical bringup_system.json (default: data/bringup_system.json).
+    --dest: Path to deploy bringup_system.json (default: src/main/deploy/bringup_system.json).
 
 SIDE EFFECTS
-    Writes the deploy bringup_profiles.json file.
+    Writes the deploy bringup_system.json file.
 
 ERRORS
     Exits nonzero on missing source or copy failure.
@@ -30,16 +30,16 @@ from tools.common.profile_io import compute_profiles_hash, validate_profiles_sch
 from tools.common.time_utils import timestamp_version
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Sync bringup_profiles.json into deploy.")
+    parser = argparse.ArgumentParser(description="Sync bringup_system.json into deploy.")
     parser.add_argument(
         "--source",
-        default=str(Path("data") / "bringup_profiles.json"),
-        help="Canonical bringup_profiles.json path",
+        default=str(Path("data") / "bringup_system.json"),
+        help="Canonical bringup_system.json path",
     )
     parser.add_argument(
         "--dest",
-        default=str(Path("src") / "main" / "deploy" / "bringup_profiles.json"),
-        help="Deploy bringup_profiles.json path",
+        default=str(Path("src") / "main" / "deploy" / "bringup_system.json"),
+        help="Deploy bringup_system.json path",
     )
     return parser.parse_args()
 
@@ -57,11 +57,11 @@ def main() -> int:
         print(f"ERROR: failed to read source JSON: {exc}")
         return 2
     if not isinstance(payload, dict):
-        print("ERROR: source schema_version mismatch (expected 1).")
+        print("ERROR: source schema_version mismatch (expected 3).")
         return 2
-    ok, _err = validate_profiles_schema(payload, 1)
+    ok, _err = validate_profiles_schema(payload, 3)
     if not ok:
-        print("ERROR: source schema_version mismatch (expected 1).")
+        print("ERROR: source schema_version mismatch (expected 3).")
         return 2
     payload["data_version"] = timestamp_version()
     data_version = payload["data_version"]

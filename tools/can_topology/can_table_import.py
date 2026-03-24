@@ -8,7 +8,7 @@ SYNOPSIS
 DESCRIPTION
     Parses a simple text table (tab or multi-space columns) describing
     subsystem, device name, and CAN ID. Produces a first-pass
-    bringup_profiles.json payload suitable for loading into the topology editor.
+    bringup_system.json payload suitable for loading into the topology editor.
 """
 from __future__ import annotations
 
@@ -286,7 +286,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     rows = parse_table(_load_text(args.input))
     profile = build_profile(rows)
     payload = {
-        "schema_version": 1,
+        "schema_version": 3,
         "data_version": timestamp_version(),
         "default_profile": args.profile,
         "profiles": {args.profile: profile},

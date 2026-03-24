@@ -279,7 +279,7 @@ Use these repeatable procedures to isolate issues quickly. Keep local (roboRIO) 
 **Q: How can I see unexpected devices on the CAN bus?**  
 A: Run the PC tool with `--publish-unknown` and then press `D-pad Down` on the robot to view the table. Unknown devices will show as `label=UNKNOWN`. You can also capture a PCAP and inspect in Wireshark.
 **Q: How do I switch CAN profiles at runtime?**  
-A: Press `Back` on the Xbox controller. Profiles rotate in the order they appear in `data/bringup_profiles.json`.
+A: Press `Back` on the Xbox controller. Profiles rotate in the order they appear in `data/bringup_system.json`.
 **Q: Why does a device show `NO_DATA` in the NetworkTables table?**  
 A: The PC tool has not published a valid `lastSeen` for that device yet. Check that the Python bridge is running and connected to the roboRIO, and that the device is on the CAN bus.
 **Q: What's the difference between local health (D-pad Left) and CAN diagnostics (D-pad Down)?**  
@@ -342,9 +342,10 @@ Reverse engineering captures:
 - CTRE Tuner X (Phoenix) for firmware updates and Signal Logger (hoot logs).
 - REV Hardware Client for SPARK MAX/Flex firmware/config and diagnostics.
 ## CAN Profiles (JSON)
-Bringup hardware profiles are defined in `data/bringup_profiles.json`.
-The roboRIO consumes a synced copy at `src/main/deploy/bringup_profiles.json`.
+Bringup hardware profiles are defined in `data/bringup_system.json`.
+The roboRIO consumes a synced copy at `src/main/deploy/bringup_system.json`.
 Run `python tools/sync_profiles.py` after edits to refresh the deploy copy.
+- Legacy file `data/bringup_profiles.json` is still accepted for transition and will be removed.
 - GUI editor: `tools/can_topology/can_top_editor.py` (usage in `tools/can_topology/README.md`).
 - Validator: `tools/can_topology/validate_profiles.py` for schema and CAN ID checks.
 - `default_profile` controls the startup profile.
@@ -353,8 +354,9 @@ Run `python tools/sync_profiles.py` after edits to refresh the deploy copy.
 - Override at runtime with `--bringup-profile=<name>`.
 Hardware profile schema (single source of truth):
 - This JSON is the shared, data-driven hardware configuration used by both robot code and the PC tool.
+- Optional `bridgeConfig` stores CLI groups/bindings and is ignored by robot code.
 - Each profile can include these sections:
-- `schema_version` is required at the root (current: `1`).
+- `schema_version` is required at the root (current: `3`).
 - `data_version` is required at the root (string, format `YYYY-MM-DD_HHMMSS`).
 - `data_hash` is required at the root (SHA-256 of canonical data; updated by `tools/sync_profiles.py`).
 - `neos`, `neo550s`, `flexes`, `krakens`, `falcons`, `cancoders`, `candles` as arrays of `{ "label": "...", "id": <can_id> }`.
@@ -396,10 +398,10 @@ Common mistakes:
 "neos": [ { "label": "NEO", "id": "10" } ]   // Wrong: id must be a number, not a string
 ```
 Quick start template:
-- Copy `src/main/deploy/bringup_profiles.template.json` and edit it for your robot.
+- Copy `src/main/deploy/bringup_system.template.json` and edit it for your robot.
 Step-by-step: Add your hardware
-1. Open `src/main/deploy/bringup_profiles.template.json`.
-2. Save a copy as `data/bringup_profiles.json` (or edit the existing file).
+1. Open `src/main/deploy/bringup_system.template.json`.
+2. Save a copy as `data/bringup_system.json` (or edit the existing file).
 3. Set `default_profile` to your profile name.
 4. Fill in your device lists and CAN IDs; keep labels short and unique.
 5. Run `python tools/sync_profiles.py` to refresh the deploy copy.
@@ -424,7 +426,7 @@ Motor current checks use `src/main/deploy/motor_specs.json` which defines:
 - `source` (doc reference string)
 The health print includes:
 - `specFree`, `specStall`, and `freeRatio` (measured current / free current)
-If you add new motors, update `motor_specs.json` and optionally set `"motor"` per device in `bringup_profiles.json`.
+If you add new motors, update `motor_specs.json` and optionally set `"motor"` per device in `bringup_system.json`.
 ## Controller Bindings
 Robot and RobotV2 share the same bindings, grouped by purpose.
 Input controller config:
@@ -518,7 +520,7 @@ If neither is set, the script will:
 1. Use the first `python` found in `PATH`.
 2. Fall back to `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe`.
 Config:
-- Device lists come from `data/bringup_profiles.json` via `--profile`.
+- Device lists come from `data/bringup_system.json` via `--profile`.
 - This keeps the PC tool aligned with robot profiles without duplicating IDs.
 - If you need a standalone can_nt_config.json-style file, generate one:
   - `python tools\\can_nt\\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json`
@@ -631,7 +633,7 @@ Notes:
    - `encoderCountsPerRev: 8192`
  - `duty` is a percent output from `-1.0` to `1.0`.
  - When a test is running, joystick motor output is ignored for safety.
- - Limit switch checks use limit switches configured in `bringup_profiles.json`.
+ - Limit switch checks use limit switches configured in `bringup_system.json`.
  - Hold checks use the current test-run button (secondary `A` in hold mode). Releasing it triggers the hold action.
 
 Joystick test schema:
@@ -657,7 +659,7 @@ Press `Right Bumper` to print absolute position for the configured CANCoder IDs.
 This test reads absolute position directly from the devices over CAN and prints
 rotations and degrees to the console.
 Configured CAN profiles live in:
-- `data/bringup_profiles.json`
+- `data/bringup_system.json`
 ## Future Features
 Ideas to consider:
 - Set explicit status frame periods for predictable CAN traffic.
@@ -667,7 +669,7 @@ Ideas to consider:
 - Add a UI dashboard to visualize NetworkTables diagnostics.
 ## Adding New Features
 General workflow:
-1. Add or update profiles in `data/bringup_profiles.json`.
+1. Add or update profiles in `data/bringup_system.json`.
 2. Put shared behavior in `src/main/java/frc/robot/BringupCore.java`.
 3. Bind controls in both `src/main/java/frc/robot/Robot.java` and
    `src/main/java/frc/robot/RobotV2.java`.

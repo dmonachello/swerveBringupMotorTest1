@@ -61,16 +61,19 @@ BRIDGE CLI
     - manufacturer/deviceType accept numeric IDs or names from src/main/deploy/can_mappings.json.
     - validate config [path] checks for group members missing from devices (file or local).
     - batch scripts are linted to ensure devices are defined before add device.
+    - show group text output includes members and bindings.
+    - show devices (local) lists the full profile-derived device inventory, not only group members.
+    - Windows EOF uses Ctrl+Z then Enter (Ctrl+D on POSIX shells).
 
 CONFIG
-    Device lists are loaded from data\bringup_profiles.json via --profile
+    Device lists are loaded from data\bringup_system.json via --profile
     (deploy fallback). This keeps the PC tool aligned with robot profiles.
 
     Labels in profiles must be unique. bridgeConfig devices are derived from
     profiles so labels stay consistent across tools and CLI groups.
     When loading a profiles file, bridgeConfig.devices are regenerated from the
     selected default_profile device list.
-    Profiles schema_version is 2 (see docs/PROFILE_SCHEMA_REFACTOR.md).
+    Profiles schema_version is 3 (see docs/PROFILE_SCHEMA_REFACTOR.md).
     Device edits update profiles when a profiles file is loaded; use save profiles.
     save local-config writes groups-only output when profiles are loaded.
 
@@ -78,7 +81,7 @@ CONFIG
     external tooling, generate one from a profile:
         python tools\\can_nt\\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json
 
-    The legacy tools\can_nt\can_nt_config.json is kept as a sample only.
+    The legacy tools\can_nt\can_nt_config.json is kept as a sample only (remove after unified config adoption).
 
 EXAMPLES
     Default (USB RIO, auto-detect COM port):
@@ -93,7 +96,7 @@ EXAMPLES
     Use a custom config:
         python tools\\can_nt\\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json
 
-    Choose a profile from bringup_profiles.json:
+    Choose a profile from bringup_system.json:
         python tools\\can_nt\\can_nt_bridge.py --profile demo_club
 
     Publish unknown devices seen on the bus:
@@ -123,7 +126,7 @@ EXAMPLES
         python tools\\can_nt\\can_nt_bridge.py --pcap tools\can_nt\logs\robot_run.pcapng
 
     Reload profiles during a run:
-        Press `r` to reload bringup_profiles.json and refresh labels.
+        Press `r` to reload bringup_system.json and refresh labels.
 
 COMMON COMMANDS
     Explicit COM port:
@@ -276,7 +279,7 @@ UI OUTPUT EXAMPLES
     Diff two inventories:
         python tools\\can_nt\\can_nt_bridge.py --diff-inventory tools\can_nt\inventory_a.json tools\can_nt\inventory_b.json
 
-    Use a specific profile from bringup_profiles.json:
+    Use a specific profile from bringup_system.json:
         python tools\\can_nt\\can_nt_bridge.py --profile demo_club
 
 WIRESHARK
@@ -300,7 +303,7 @@ OPTIONS
     --auto-match TEXT         Substring used to auto-detect the serial device.
     --no-prompt               Disable port selection prompt when multiple matches.
     --list-ports              Print available serial ports and exit.
-    --dump-profile PATH       Write a bringup_profiles.json from observed CAN IDs.
+    --dump-profile PATH       Write a bringup_system.json from observed CAN IDs.
     --dump-profile-name NAME  Profile name inside generated file (default sniffer_YYYYMMDD_HHMMSS).
     --dump-profile-after SEC  Delay before writing --dump-profile (default 3.0).
     --dump-profile-include-unknown  Include unknown devices in generated profile.

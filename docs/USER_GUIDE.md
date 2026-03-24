@@ -55,7 +55,7 @@ Test result: Rotation only (internal) = PASS (Reached rotation limit (NEO CAN 25
 ### Topology Editor (Python/Tkinter)
 Purpose: Author and maintain device profiles and layouts.
 - Location: `tools/can_topology/` (entry: `can_top_editor.py`).
-- Edits `data/bringup_profiles.json` plus editor-only diagram metadata.
+- Edits `data/bringup_system.json` plus editor-only diagram metadata.
 - Supports tags, filters, layout tools, and bulk edits to keep diagrams organized.
 - Link devices to CANnect nodes by dragging onto them or using Edit -> `Link Device to CANnect`.
 - Inline edit the node list (double-click or `F2`) and multi-select for bulk edits.
@@ -69,15 +69,15 @@ Purpose: Author and maintain device profiles and layouts.
 
 ## Data Flow
 Purpose: Describe how data moves between parts.
-- `data/bringup_profiles.json` is the shared configuration source (sync to deploy for roboRIO).
-- `schema_version` (2), `data_version` (`YYYY-MM-DD_HHMMSS`), and `data_hash` must be present and consistent across copies.
+- `data/bringup_system.json` is the shared configuration source (sync to deploy for roboRIO).
+- `schema_version` (3), `data_version` (`YYYY-MM-DD_HHMMSS`), and `data_hash` must be present and consistent across copies.
 
-Profiles Migration (Schema v2)
-Purpose: Update bringup_profiles.json to schema v2 with unique labels.
+Profiles Migration (Schema v3)
+Purpose: Update bringup_system.json to schema v3 with unique labels.
 Example:
-  python tools\migrate_profiles.py --source data\bringup_profiles.json --dest data\bringup_profiles.json --report migrate_report.json
+  python tools\migrate_profiles.py --source data\bringup_system.json --dest data\bringup_system.json --report migrate_report.json
   python tools\sync_profiles.py
-  python tools\can_topology\validate_profiles.py --path data\bringup_profiles.json --strict
+  python tools\can_topology\validate_profiles.py --path data\bringup_system.json --strict
 - The editor writes it; robot and PC tools consume it.
 - Diagram metadata is editor-only and ignored by robot/PC tools.
 - The robot publishes local diagnostics; the PC publishes CAN-bus diagnostics.
@@ -89,7 +89,7 @@ Purpose: Show how a user plans, brings up, and troubleshoots a robot.
 ### 1) Plan the Robot (Offline)
 Purpose: Define a clear, shareable device layout.
 - Open the topology editor: `tools/can_topology/can_top_editor.py`.
-- Build or update the team profile in `data/bringup_profiles.json`.
+- Build or update the team profile in `data/bringup_system.json`.
 - Use tags to group devices (e.g., `swerve`, `intake`, `left`, `right`).
 - Use tidy/align tools to keep columns clean and readable.
 

@@ -30,16 +30,34 @@ def repo_root() -> Path:
 def profiles_canonical_path() -> Path:
     """
     NAME
-        profiles_canonical_path - Path to data/bringup_profiles.json.
+        profiles_canonical_path - Path to data/bringup_system.json.
     """
-    return repo_root() / "data" / "bringup_profiles.json"
+    return repo_root() / "data" / "bringup_system.json"
 
 
 def profiles_deploy_path() -> Path:
     """
     NAME
-        profiles_deploy_path - Path to src/main/deploy/bringup_profiles.json.
+        profiles_deploy_path - Path to src/main/deploy/bringup_system.json.
     """
+    return repo_root() / "src" / "main" / "deploy" / "bringup_system.json"
+
+
+def legacy_profiles_canonical_path() -> Path:
+    """
+    NAME
+        legacy_profiles_canonical_path - Path to data/bringup_profiles.json.
+    """
+    # LEGACY (remove after v3 unified file adoption).
+    return repo_root() / "data" / "bringup_profiles.json"
+
+
+def legacy_profiles_deploy_path() -> Path:
+    """
+    NAME
+        legacy_profiles_deploy_path - Path to src/main/deploy/bringup_profiles.json.
+    """
+    # LEGACY (remove after v3 unified file adoption).
     return repo_root() / "src" / "main" / "deploy" / "bringup_profiles.json"
 
 

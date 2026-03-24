@@ -9,7 +9,7 @@ if _ROOT not in sys.path:
 
 """
 NAME
-    validate_profiles.py - Validate bringup_profiles.json compatibility.
+    validate_profiles.py - Validate bringup_system.json compatibility.
 
 SYNOPSIS
     python tools\\can_topology\\validate_profiles.py [--path PATH] [--strict]
@@ -36,7 +36,7 @@ BUCKET_CATEGORIES = [
     "cancoders",
     "candles",
 ]
-PROFILE_SCHEMA_VERSION = 2
+PROFILE_SCHEMA_VERSION = 3
 
 
 def _compute_data_hash(payload: Dict[str, Any]) -> str:
@@ -71,11 +71,11 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     RETURNS
         argparse.Namespace with parsed args.
     """
-    parser = argparse.ArgumentParser(description="Validate bringup_profiles.json compatibility.")
+    parser = argparse.ArgumentParser(description="Validate bringup_system.json compatibility.")
     add_path_arg(
         parser,
-        default=str(Path("data") / "bringup_profiles.json"),
-        help_text="Path to bringup_profiles.json",
+        default=str(Path("data") / "bringup_system.json"),
+        help_text="Path to bringup_system.json",
     )
     parser.add_argument(
         "--strict",
@@ -122,14 +122,20 @@ def validate_profiles(payload: Dict[str, Any], reporter: "Reporter") -> Tuple[Li
 
     schema_version = payload.get("schema_version")
     if schema_version != PROFILE_SCHEMA_VERSION:
-        msg = (
-            "Root 'schema_version' mismatch: "
-            f"expected {PROFILE_SCHEMA_VERSION}, got {schema_version}"
-        )
-        errors.append(msg)
-        reporter.fail(msg)
-        return errors, warnings
-    reporter.pass_("Root 'schema_version' matches expected version.")
+        if schema_version == 2:
+            msg = "Root 'schema_version' is legacy v2 (temporary); migrate to v3."
+            warnings.append(msg)
+            reporter.warn(msg)
+        else:
+            msg = (
+                "Root 'schema_version' mismatch: "
+                f"expected {PROFILE_SCHEMA_VERSION}, got {schema_version}"
+            )
+            errors.append(msg)
+            reporter.fail(msg)
+            return errors, warnings
+    else:
+        reporter.pass_("Root 'schema_version' matches expected version.")
 
     data_version = payload.get("data_version")
     if not isinstance(data_version, str) or not data_version.strip():

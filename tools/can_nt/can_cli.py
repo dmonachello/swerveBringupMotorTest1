@@ -220,7 +220,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--dump-profile",
         default="",
         help=(
-            "Write a bringup_profiles.json file generated from observed CAN IDs "
+            "Write a bringup_system.json file generated from observed CAN IDs "
             "and exit."
         ),
     )

@@ -8,20 +8,28 @@ SYNOPSIS
     from tools.can_nt.can_profiles import get_profile, list_profiles
 
 DESCRIPTION
-    Reads bringup_profiles.json from the central data repository (with deploy
-    fallback) and provides default device lists for the CAN diagnostics tool.
+    Reads bringup_system.json from the central data repository (with deploy
+    and legacy bringup_profiles.json fallback) and provides default device
+    lists for the CAN diagnostics tool.
 """
 
 from tools.common.json_io import read_json
-from tools.common.paths import profiles_canonical_path, profiles_deploy_path
-from tools.common.profile_io import compute_profiles_hash, validate_profiles_schema
+from tools.common.paths import (
+    legacy_profiles_canonical_path,
+    legacy_profiles_deploy_path,
+    profiles_canonical_path,
+    profiles_deploy_path,
+)
+from tools.common.profile_io import compute_profiles_hash
 from typing import Any, Dict, List, Set, Tuple
 
 
 DEFAULT_PROFILE_NAME = "robot"
-PROFILE_SCHEMA_VERSION = 2
+PROFILE_SCHEMA_VERSION = 3
 CANONICAL_PROFILE_FILE = profiles_canonical_path()
 DEPLOY_PROFILE_FILE = profiles_deploy_path()
+LEGACY_CANONICAL_PROFILE_FILE = legacy_profiles_canonical_path()
+LEGACY_DEPLOY_PROFILE_FILE = legacy_profiles_deploy_path()
 _LOAD_ERROR: str = ""
 _DATA_VERSION: str = ""
 _DATA_HASH: str = ""
@@ -57,7 +65,17 @@ def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
     _DATA_HASH = ""
     path = CANONICAL_PROFILE_FILE if CANONICAL_PROFILE_FILE.exists() else DEPLOY_PROFILE_FILE
     if not path.exists():
-        _LOAD_ERROR = f"Profiles file not found at {path}"
+        # LEGACY (remove after v3 unified file adoption).
+        legacy_path = (
+            LEGACY_CANONICAL_PROFILE_FILE
+            if LEGACY_CANONICAL_PROFILE_FILE.exists()
+            else LEGACY_DEPLOY_PROFILE_FILE
+        )
+        if legacy_path.exists():
+            path = legacy_path
+        else:
+            _LOAD_ERROR = f"Profiles file not found at {path}"
+            return (_fallback_default(), _fallback_profiles())
         return (_fallback_default(), _fallback_profiles())
 
     try:
@@ -66,9 +84,12 @@ def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
         _LOAD_ERROR = f"Failed to parse profiles JSON at {path}"
         return (_fallback_default(), _fallback_profiles())
 
-    ok, err = validate_profiles_schema(payload, PROFILE_SCHEMA_VERSION)
-    if not ok:
-        _LOAD_ERROR = err
+    schema_version = payload.get("schema_version")
+    if schema_version not in (PROFILE_SCHEMA_VERSION, 2):
+        _LOAD_ERROR = (
+            "Profile schema_version mismatch: "
+            f"expected {PROFILE_SCHEMA_VERSION} or 2, got {schema_version}"
+        )
         return (_fallback_default(), _fallback_profiles())
 
     data_version = payload.get("data_version")

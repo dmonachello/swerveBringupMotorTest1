@@ -1,16 +1,17 @@
-# Bringup Profiles Schema Diagram
+# Bringup System Schema Diagram
 
-Purpose: Visualize the structure of `data/bringup_profiles.json` without showing live data.
+Purpose: Visualize the structure of `data/bringup_system.json` without showing live data.
 
 ```mermaid
 classDiagram
-    class BringupProfiles {
-        int schema_version (2)
+    class BringupSystem {
+        int schema_version (3)
         string data_version
         string data_hash
         string default_profile
         Map~string, Profile~ profiles
         Diagram? diagram
+        BridgeConfig? bridgeConfig
     }
 
     class Profile {
@@ -75,15 +76,44 @@ classDiagram
         string[]? tags
     }
 
-    BringupProfiles "1" --> "many" Profile : profiles
+    BringupSystem "1" --> "many" Profile : profiles
     Profile "1" --> "many" DeviceEntry : lists/singletons
     DeviceEntry "0..1" --> LimitConfig
-    BringupProfiles "0..1" --> Diagram : diagram
+    BringupSystem "0..1" --> Diagram : diagram
     Diagram "1" --> "many" DiagramProfile : profiles
     DiagramProfile "1" --> "many" Node : nodes
+    BringupSystem "0..1" --> BridgeConfig : bridgeConfig
+    BridgeConfig "1" --> "many" Group : groups
+    Group "1" --> "many" Member : members
+    Group "1" --> "many" Binding : bindings
 ```
 
 Notes:
-- `schema_version`, `data_version`, and `data_hash` are required at the root (schema_version=2).
+- `schema_version`, `data_version`, and `data_hash` are required at the root (schema_version=3).
 - `devices` entries require `vendor` and `type`.
 - `diagram` is editor-only and ignored by robot/PC tools.
+- `bridgeConfig` is optional and ignored by the topology editor.
+    class BridgeConfig {
+        int schemaVersion
+        string? generatedAt
+        Group[] groups
+        object selectedDevice
+    }
+
+    class Group {
+        string name
+        bool enabled
+        Member[] members
+        Binding[] bindings
+    }
+
+    class Member {
+        string device
+        bool enabled
+    }
+
+    class Binding {
+        string input
+        string kind
+        float? value
+    }

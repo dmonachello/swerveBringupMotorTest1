@@ -149,6 +149,7 @@ Common:
 - `help`
 - `ping`
 - `quit`
+- Windows EOF: Ctrl+Z then Enter behaves like `exit` (Ctrl+D on POSIX shells).
 
 Exec:
 - `show status [robot|local|both]`
@@ -170,12 +171,19 @@ Config:
 - `selected-device <device>`
 - `selected-mode on`
 - `selected-mode off`
-- `merge config <bringup_profiles.json>`
-- `import config <bringup_profiles.json>`
-- `export runtime-groups <bringup_profiles.json>`
-- `save config <bringup_profiles.json>`
+- `merge config <bringup_system.json>`
+- `import config <bringup_system.json>`
+- `export runtime-groups <bridgeConfig.json>`
+- `save config <bridgeConfig.json>`
 - `save local-config <path>` (local-only; writes groups-only when profiles are loaded)
-- `rename device <old> <new>` (local-only; disabled when profiles are loaded)
+- `save profiles <path>` (profiles-only; preserves bridgeConfig)
+- `save unified-config <path>`
+- `rename device <old> <new>` (local-only; updates profiles when loaded)
+
+Show Output Notes:
+- `show group` text output includes members and bindings.
+- `show devices` (local) lists the full profile-derived device inventory, not only group members.
+- `show device` text output includes manufacturer/deviceType names when mappings are available.
 - `validate config [path]`
 
 Group:
@@ -317,18 +325,18 @@ Commands:
 
 JSON is one blob per command.
 
-## Shared Config (bringup_profiles.json)
+## Shared Config (bringup_system.json)
 Purpose: Store bridge group config inside the single shared data file.
 
-- The shared file is `data/bringup_profiles.json`.
+- The shared file is `data/bringup_system.json`.
 - The bridge CLI reads/writes a top-level `bridgeConfig` object.
 - Other tools ignore unknown fields; `bridgeConfig` is optional.
-- `data_hash` is recomputed whenever `bridgeConfig` is saved.
+- `data_hash` is computed from profiles + diagram; `bridgeConfig` changes do not affect it.
 
 `bridgeConfig` object:
 - `schemaVersion` (required, current: 1)
 - `groups` (list of group objects)
-- `devices` (optional list of device metadata for local use)
+- `devices` (optional list of device metadata for local-only configs)
 - `selectedDevice` (selected-device override)
 - `generatedAt` (optional timestamp)
 
@@ -347,9 +355,9 @@ Device object (optional, local-only):
 Example:
 ```
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "data_version": "2026-03-20_143148",
-  "data_hash": "…",
+  "data_hash": "...",
   "default_profile": "robot",
   "profiles": {
     "robot": { "neos": [], "krakens": [] }
@@ -357,9 +365,6 @@ Example:
   "bridgeConfig": {
     "schemaVersion": 1,
     "generatedAt": "2026-03-23T14:02:00Z",
-    "devices": [
-      {"name": "FL_DRIVE", "manufacturer": "REV", "deviceType": "neo", "deviceId": 10}
-    ],
     "groups": [
       {
         "name": "swerve_drive",
@@ -413,6 +418,8 @@ Config:
 - `import config <file>` -> local: delete groups, then emit group commands
 - `export runtime-groups <file>` -> local: `showRuntimeState --json`, write file
 - `save config <file>` -> local: `showRuntimeState --json`, write file
+- `save profiles <file>` -> local: write bringup_system.json (profiles + diagram only)
+- `save unified-config <file>` -> local: write bringup_system.json (profiles + bridgeConfig)
 
 Group:
 - `add device <device>` -> `groupAddDevice` `{group, device, conflictPolicy, forceMove}`

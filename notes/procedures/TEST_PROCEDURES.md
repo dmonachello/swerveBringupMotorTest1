@@ -10,7 +10,7 @@ This document focuses on robot-side tests and the PC CAN tool usage needed to va
 ## Prerequisites
 Purpose: the robot and tooling are ready before testing begins.
 
-- Robot code deployed with the correct `bringup_profiles.json` and `bringup_tests.json`.
+- Robot code deployed with the correct `bringup_system.json` and `bringup_tests.json`.
 - Optional: select a different test set by changing `default_test_set` in `bringup_tests.json`.
 - Xbox controller connected and mapped.
 - CAN devices powered and on the bus.
@@ -144,7 +144,7 @@ Run:
 
 Notes:
 - While a test runs, joystick motor output is ignored for safety.
-- Limit switch checks use limit switches configured in `bringup_profiles.json`.
+- Limit switch checks use limit switches configured in `bringup_system.json`.
 - Hold checks use the current test-run button (secondary `A` in hold mode). Releasing it triggers the hold action.
 - Using secondary `X` toggles a test enabled/disabled and persists it to `bringup_tests.json` (the active tests file).
 - The former "nudge" action is now a time-only composite test; adjust `duty` and `time.timeoutSec`.
@@ -299,6 +299,6 @@ Purpose: test artifacts are recorded with known locations.
 Purpose: test configuration stays in sync with code.
 
 - Update `bringup_tests.json` when adding/removing tests (or your override file).
-- Keep `bringup_profiles.json` aligned with device IDs in tests.
+- Keep `bringup_system.json` aligned with device IDs in tests.
 - Update this document when bindings or test types change.
 

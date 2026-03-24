@@ -225,7 +225,7 @@ public final class BringupCore {
    *   setDutyByDeviceLabel - Apply duty to a single device by label.
    *
    * PARAMETERS
-   *   label - Device label from bringup_profiles.json.
+   *   label - Device label from bringup_system.json.
    *   duty - Requested output in [-1, 1].
    *
    * RETURNS
@@ -246,7 +246,7 @@ public final class BringupCore {
    *   findDeviceByLabel - Find a device instance by label.
    *
    * PARAMETERS
-   *   label - Device label from bringup_profiles.json.
+   *   label - Device label from bringup_system.json.
    *
    * RETURNS
    *   DeviceUnit instance or null when not found.

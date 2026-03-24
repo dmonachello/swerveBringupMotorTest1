@@ -84,7 +84,7 @@ def _build_profile_from_seen(
         include_unknown: Whether to include unknown devices.
 
     RETURNS
-        Profile dictionary compatible with bringup_profiles.json.
+        Profile dictionary compatible with bringup_system.json.
     """
     buckets: Dict[str, List[Dict[str, int]]] = {
         "neos": [],
@@ -158,7 +158,7 @@ def dump_profile(
 ) -> None:
     """
     NAME
-        dump_profile - Write a bringup_profiles.json file from observations.
+        dump_profile - Write a bringup_system.json file from observations.
 
     PARAMETERS
         path: Output JSON file path.
@@ -170,7 +170,7 @@ def dump_profile(
         Writes JSON to disk.
     """
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "data_version": timestamp_version(),
         "default_profile": profile_name,
         "profiles": {

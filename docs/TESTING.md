@@ -75,9 +75,9 @@ Purpose: the complete test plan verifies major robot and PC tool functionality a
 ### Profiles (Required Setup)
 Purpose: profiles match the hardware under test to avoid false diagnostics.
 
-1. Confirm `data/bringup_profiles.json` matches the CAN IDs on the bus.
+1. Confirm `data/bringup_system.json` matches the CAN IDs on the bus.
 2. If you need a new profile:
-   - Start from `src/main/deploy/bringup_profiles.template.json`.
+   - Start from `src/main/deploy/bringup_system.template.json`.
    - Add a new profile entry with unique name and device IDs.
    - Set `default_profile` to the profile you want at startup.
    - Deploy to the roboRIO.
@@ -93,7 +93,7 @@ Purpose: generate or edit profiles with the topology editor before testing.
 2. Load an existing profile or create a new diagram.
 3. Add/edit nodes and callouts to match the physical CAN bus.
 4. Save the diagram to the active profile.
-5. Use **Save to Deploy** to append/replace the profile in `data/bringup_profiles.json` (syncs to deploy).
+5. Use **Save to Deploy** to append/replace the profile in `data/bringup_system.json` (syncs to deploy).
 6. If needed, check **Set As Default** so the new profile is selected on startup.
 7. Deploy robot code so the updated profile is on the roboRIO.
 
@@ -217,7 +217,7 @@ Purpose: joystick-driven motor output still works outside tests.
 
 Config excerpt (motors in the active profile):
 ```json
-// data/bringup_profiles.json
+// data/bringup_system.json
 {
   "default_profile": "example_default",
   "profiles": {
@@ -417,7 +417,7 @@ Limit switch test:
 Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
 
 Steps:
-1. Configure `limits` for a motor in `bringup_profiles.json`.
+1. Configure `limits` for a motor in `bringup_system.json`.
 2. Run the test above with `limitSwitch.enabled=true`.
 Expected:
 - Motor output clamps on closed limit.
@@ -642,7 +642,7 @@ Expected:
 
 ### 11) DIO limit switch reporting
 Steps:
-1. Add `limits` to a device entry in `data/bringup_profiles.json`, for example:
+1. Add `limits` to a device entry in `data/bringup_system.json`, for example:
    `{ "label": "FL KRAK", "id": 2, "limits": { "fwdDio": 0, "revDio": 1, "invert": false } }`
 2. Wire limit switches to the specified DIO ports.
 3. Deploy and run the robot code.

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 """
 NAME
-    migrate_profiles.py - Migrate bringup_profiles.json to schema v2.
+    migrate_profiles.py - Migrate bringup_system.json to schema v3.
 
 SYNOPSIS
-    python tools\\migrate_profiles.py --source data\\bringup_profiles.json --dest data\\bringup_profiles.json
+    python tools\\migrate_profiles.py --source data\\bringup_system.json --dest data\\bringup_system.json
 
 DESCRIPTION
-    Normalizes bringup_profiles.json so device labels are unique within each
-    profile, updates schema_version to 2, syncs diagram labels, and refreshes
+    Normalizes bringup_system.json so device labels are unique within each
+    profile, updates schema_version to 3, syncs diagram labels, and refreshes
     data_hash. Writes a JSON report with any renames performed.
 """
 
@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Tuple
 
 from tools.common.json_io import read_json, write_json
 from tools.common.profile_io import compute_profiles_hash
+from tools.common.time_utils import timestamp_version
 
 
 BUCKET_CATEGORIES = [
@@ -40,8 +41,8 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     NAME
         parse_args - Parse CLI arguments.
     """
-    parser = argparse.ArgumentParser(description="Migrate bringup_profiles.json to schema v2.")
-    parser.add_argument("--source", required=True, help="Source bringup_profiles.json path")
+    parser = argparse.ArgumentParser(description="Migrate bringup_system.json to schema v3.")
+    parser.add_argument("--source", required=True, help="Source bringup_system.json path")
     parser.add_argument("--dest", required=True, help="Destination path for migrated JSON")
     parser.add_argument("--report", default="", help="Optional path for a JSON rename report")
     parser.add_argument(
@@ -136,7 +137,7 @@ def _rewrite_diagram(payload: Dict[str, Any], label_maps: Dict[str, Dict[Tuple[s
 def migrate(payload: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[str, str]]]:
     """
     NAME
-        migrate - Perform schema v2 migration in memory.
+        migrate - Perform schema v3 migration in memory.
     """
     profiles = payload.get("profiles")
     if not isinstance(profiles, dict):
@@ -148,7 +149,8 @@ def migrate(payload: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[str, str
             continue
         label_maps[name] = _rewrite_profile(profile, rename_report)
     _rewrite_diagram(payload, label_maps)
-    payload["schema_version"] = 2
+    payload["schema_version"] = 3
+    payload["data_version"] = timestamp_version()
     payload["data_hash"] = compute_profiles_hash(payload)
     return payload, rename_report
 

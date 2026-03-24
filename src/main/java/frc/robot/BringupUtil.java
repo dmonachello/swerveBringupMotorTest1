@@ -77,12 +77,14 @@ public final class BringupUtil {
 
   // Default profile names and file location.
   private static final String DEFAULT_PROFILE_NAME = "robot";
-  private static final String DEFAULT_PROFILE_FILE = "bringup_profiles.json";
-  private static final int PROFILE_SCHEMA_VERSION = 1;
+  private static final String DEFAULT_PROFILE_FILE = "bringup_system.json";
+  // LEGACY (remove after v3 unified file adoption).
+  private static final String LEGACY_PROFILE_FILE = "bringup_profiles.json";
+  private static final int PROFILE_SCHEMA_VERSION = 3;
   private static final String MOTOR_SPECS_FILE = "motor_specs.json";
   private static final String CAN_MAPPINGS_FILE = "can_mappings.json";
 
-  // JSON parser for bringup_profiles.json.
+  // JSON parser for bringup_system.json.
   private static final Gson GSON = new Gson();
   private static final Gson CANONICAL_GSON = new GsonBuilder().disableHtmlEscaping().create();
 
@@ -642,10 +644,10 @@ public final class BringupUtil {
 
   /**
    * NAME
-   *   loadProfilesFromJson - Load bringup_profiles.json into memory.
+   *   loadProfilesFromJson - Load bringup_system.json into memory.
    */
   private static void loadProfilesFromJson() {
-    // Load bringup_profiles.json from deploy or dev path.
+    // Load bringup_system.json from deploy or dev path.
     Path path = resolveProfilePath();
     if (path == null || !Files.exists(path)) {
       System.out.println("Warning: CAN profile JSON not found. Using fallback IDs.");
@@ -658,11 +660,11 @@ public final class BringupUtil {
       if (root == null || root.profiles == null || root.profiles.isEmpty()) {
         throw new JsonParseException("No profiles found");
       }
-      if (root.schemaVersion != PROFILE_SCHEMA_VERSION) {
+      if (root.schemaVersion != PROFILE_SCHEMA_VERSION && root.schemaVersion != 2) {
         throw new JsonParseException(
             "schema_version mismatch: expected "
                 + PROFILE_SCHEMA_VERSION
-                + ", got "
+                + " or 2, got "
                 + root.schemaVersion);
       }
       if (root.dataVersion == null || root.dataVersion.isBlank()) {
@@ -687,9 +689,9 @@ public final class BringupUtil {
       }
       activeProfile = defaultProfile;
     } catch (IOException | JsonParseException ex) {
-      System.out.println("ERROR: bringup_profiles.json invalid: " + ex.getMessage());
+      System.out.println("ERROR: bringup_system.json invalid: " + ex.getMessage());
       System.out.println("ERROR: Redeploy required. Robot code will stop.");
-      throw new RuntimeException("Invalid bringup_profiles.json", ex);
+      throw new RuntimeException("Invalid bringup_system.json", ex);
     }
   }
 
@@ -704,6 +706,11 @@ public final class BringupUtil {
       if (Files.exists(deployPath)) {
         return deployPath;
       }
+      // LEGACY (remove after v3 unified file adoption).
+      Path legacyDeploy = Filesystem.getDeployDirectory().toPath().resolve(LEGACY_PROFILE_FILE);
+      if (Files.exists(legacyDeploy)) {
+        return legacyDeploy;
+      }
     } catch (Exception ex) {
       // Fall through to local dev path.
     }
@@ -711,9 +718,19 @@ public final class BringupUtil {
     if (Files.exists(dataPath)) {
       return dataPath;
     }
+    // LEGACY (remove after v3 unified file adoption).
+    Path legacyDataPath = Paths.get("data", LEGACY_PROFILE_FILE);
+    if (Files.exists(legacyDataPath)) {
+      return legacyDataPath;
+    }
     Path devPath = Paths.get("src", "main", "deploy", DEFAULT_PROFILE_FILE);
     if (Files.exists(devPath)) {
       return devPath;
+    }
+    // LEGACY (remove after v3 unified file adoption).
+    Path legacyDevPath = Paths.get("src", "main", "deploy", LEGACY_PROFILE_FILE);
+    if (Files.exists(legacyDevPath)) {
+      return legacyDevPath;
     }
     return Paths.get(DEFAULT_PROFILE_FILE);
   }
@@ -1196,7 +1213,7 @@ public final class BringupUtil {
 
   /**
    * NAME
-   *   ProfileRoot - JSON root for bringup_profiles.json.
+   *   ProfileRoot - JSON root for bringup_system.json.
    */
   private static final class ProfileRoot {
     @SerializedName("default_profile")
@@ -1217,6 +1234,9 @@ public final class BringupUtil {
     }
     JsonObject root = parsed.getAsJsonObject();
     root.addProperty("data_hash", "");
+    if (root.has("bridgeConfig")) {
+      root.remove("bridgeConfig");
+    }
     String canonical = canonicalizeJson(root);
     return sha256Hex(canonical);
   }

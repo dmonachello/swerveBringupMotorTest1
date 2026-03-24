@@ -31,13 +31,13 @@ from .can_profiles import get_profiles_load_error, list_profiles, reload_profile
 def _load_profiles() -> List[str]:
     """
     NAME
-        _load_profiles - Load profile names from bringup_profiles.json.
+        _load_profiles - Load profile names from bringup_system.json.
     """
     ok, _err = reload_profiles()
     if not ok:
         err = get_profiles_load_error()
         if err:
-            print(f"ERROR: bringup_profiles.json load failed: {err}")
+            print(f"ERROR: bringup_system.json load failed: {err}")
         return []
     return sorted(name for name in list_profiles() if name)
 
@@ -480,7 +480,7 @@ class BringupControlUI(tk.Tk):
             "  Manage which device profile is active and which motors are added.",
             "",
             "Toggle Profile:",
-            "  Switches to the next profile defined in bringup_profiles.json.",
+            "  Switches to the next profile defined in bringup_system.json.",
             "  The active profile controls which CAN IDs and labels the robot expects.",
             "  Use this before adding motors so commands target the correct devices.",
             "  If a profile has no devices, Add Motor/Add All will do nothing.",
@@ -500,14 +500,14 @@ class BringupControlUI(tk.Tk):
             "  Output: ACK + OUT listing all added devices (may stream in batches).",
             "",
             "Refresh:",
-            "  Reloads bringup_profiles.json and updates the dropdown list.",
+            "  Reloads bringup_system.json and updates the dropdown list.",
         ]
         return "\n".join(lines)
 
     def _refresh_profiles(self) -> None:
         """
         NAME
-            _refresh_profiles - Reload profile names from bringup_profiles.json.
+            _refresh_profiles - Reload profile names from bringup_system.json.
         """
         profiles = _load_profiles() or ["(none)"]
         current = self._profile_box.get()

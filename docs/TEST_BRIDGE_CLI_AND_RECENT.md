@@ -21,11 +21,11 @@ Purpose: Capture required environment and safety checks.
 Purpose: Validate CLI parsing, profiles, and tooling without the robot.
 
 1) Validate profiles schema + CAN ID rules
-   - `python tools\can_topology\validate_profiles.py --path data\bringup_profiles.json --verbose`
+   - `python tools\can_topology\validate_profiles.py --path data\bringup_system.json --verbose`
    - Expect: schema/hash checks pass; numeric ID collisions show WARN; full CAN ID collisions show FAIL.
 
 2) Visualize profiles
-   - `python tools\visualize_profiles.py --input data\bringup_profiles.json --output docs\bringup_profiles_diagram.html`
+   - `python tools\visualize_profiles.py --input data\bringup_system.json --output docs\bringup_system_diagram.html`
    - Expect: HTML generated with per-profile diagrams.
 
 3) Dump CAN config from profile (no CAN, no robot)

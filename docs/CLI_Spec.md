@@ -93,6 +93,7 @@ Use a Cisco-like CLI:
 - `group <name>` to enter/create group mode
 - `no ...` for removal
 - `exit` / `end` for navigation
+- Windows EOF: Ctrl+Z then Enter behaves like `exit` (Ctrl+D on POSIX shells).
 
 Do not implement:
 - privilege levels
@@ -208,11 +209,13 @@ No prompting allowed in batch mode.
 - `selected-device <device>`
 - `selected-mode on`
 - `selected-mode off`
-- `merge config <bringup_profiles.json>`
-- `import config <bringup_profiles.json>`
-- `export runtime-groups <bringup_profiles.json>`
-- `save config <bringup_profiles.json>`
-- `save local-config <bringup_profiles.json>`
+- `merge config <bringup_system.json>`
+- `import config <bringup_system.json>`
+- `export runtime-groups <bridgeConfig.json>`
+- `save config <bridgeConfig.json>`
+- `save local-config <path>`
+- `save profiles <path>`
+- `save unified-config <path>`
 - `rename device <old> <new>`
 
 ### Group Config Mode Commands
@@ -235,6 +238,12 @@ No prompting allowed in batch mode.
 - `disable`
 - `run test`
 - `run test <name>`
+
+### Output Notes
+
+- `show group` text output includes member names and bindings.
+- `show devices` (local) lists the full profile-derived device inventory, not only group members.
+- `show device` text output includes manufacturer/deviceType names when mappings are available.
 
 ## Control Identifiers
 

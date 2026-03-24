@@ -35,8 +35,8 @@ Purpose: Centralized repo path resolution.
 Use for shared file locations so tools stay aligned.
 
 Examples:
-- `profiles_canonical_path()` -> `data/bringup_profiles.json`
-- `profiles_deploy_path()` -> `src/main/deploy/bringup_profiles.json`
+- `profiles_canonical_path()` -> `data/bringup_system.json`
+- `profiles_deploy_path()` -> `src/main/deploy/bringup_system.json`
 - `tests_deploy_path()` -> `src/main/deploy/bringup_tests.json`
 - `can_mappings_path()` -> `src/main/deploy/can_mappings.json`
 - `logs_dir()` -> `tools/can_nt/logs`
@@ -48,7 +48,7 @@ Use to keep `data_hash` calculation and schema validation consistent.
 
 Examples:
 - `compute_profiles_hash(payload)`
-- `validate_profiles_schema(payload, schema_version=2)`
+- `validate_profiles_schema(payload, schema_version=3)`
 
 ### tools/common/tests_io.py
 Purpose: Shared bringup_tests.json handling.

@@ -58,6 +58,7 @@ Purpose: Define operator contexts and prompts.
 - Exec: `bridge>`
 - Config: `bridge(config)#`
 - Group: `bridge(config-group-<name>)#`
+- Windows EOF: Ctrl+Z then Enter behaves like `exit` (Ctrl+D on POSIX shells).
 
 Batch mode:
 - Invoked via `bridge.py --batch --script <file>`
@@ -112,20 +113,25 @@ Exec / Show:
 Show sources:
 - `show <...> robot|local|both` selects data source.
 - Default is `robot` when connected, otherwise `local`.
-- Local source reads `bridgeConfig` from `data/bringup_profiles.json`.
+- Local source reads `bridgeConfig` from `data/bringup_system.json` plus profile-derived devices.
 - Each show output is prefixed with `SOURCE: robot|local`.
+- `show group` text output includes members and bindings.
+- `show devices` (local) lists the full profile-derived device inventory, not only group members.
+- `show device` text output includes manufacturer/deviceType names when mappings are available.
 
 Config:
 - `group <name>` -> `groupCreate` `{name}`
 - `no group <name>` -> `groupDelete` `{name, confirm}`
 - `selected-device <device>` -> `selectedDeviceSet` `{name}`
 - `selected-mode on|off` -> `selectedModeSet` `{enabled}`
-- `merge config <bringup_profiles.json>` -> local: read bridgeConfig, emit group commands
-- `import config <bringup_profiles.json>` -> local: delete groups, then emit group commands
-- `export runtime-groups <bringup_profiles.json>` -> local: update bridgeConfig
-- `save config <bringup_profiles.json>` -> local: update bridgeConfig
-- `save local-config <bringup_profiles.json>` -> local: update bridgeConfig only
-- `rename device <old> <new>` -> local: rename device in config only
+- `merge config <bringup_system.json>` -> local: read bridgeConfig, emit group commands
+- `import config <bringup_system.json>` -> local: delete groups, then emit group commands
+- `export runtime-groups <bridgeConfig.json>` -> local: update bridgeConfig
+- `save config <bridgeConfig.json>` -> local: update bridgeConfig
+- `save local-config <path>` -> local: update bridgeConfig only
+- `save profiles <path>` -> local: update profiles/diagram only
+- `save unified-config <path>` -> local: update shared bringup_system.json
+- `rename device <old> <new>` -> local: rename device in profiles when loaded, update bridgeConfig references
 
 Group:
 - `add device <device>` -> `groupAddDevice` `{group, device, conflictPolicy, forceMove}`

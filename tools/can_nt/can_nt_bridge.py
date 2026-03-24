@@ -210,7 +210,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     load_error = get_profiles_load_error()
     if load_error:
-        print(f"ERROR: bringup_profiles.json load failed: {load_error}")
+        print(f"ERROR: bringup_system.json load failed: {load_error}")
         return 2
     data_version = get_profiles_data_version()
     if data_version:

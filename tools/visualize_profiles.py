@@ -9,7 +9,7 @@ if _ROOT not in sys.path:
 
 """
 NAME
-    visualize_profiles.py - Render bringup_profiles.json into an HTML diagram.
+    visualize_profiles.py - Render bringup_system.json into an HTML diagram.
 
 SYNOPSIS
     python tools\\visualize_profiles.py [--input PATH] [--output PATH]
@@ -41,12 +41,12 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Visualize bringup profiles.")
     add_input_arg(
         parser,
-        default=str(Path("data") / "bringup_profiles.json"),
-        help_text="Path to bringup_profiles.json",
+        default=str(Path("data") / "bringup_system.json"),
+        help_text="Path to bringup_system.json",
     )
     add_output_arg(
         parser,
-        default=str(Path("docs") / "bringup_profiles_diagram.html"),
+        default=str(Path("docs") / "bringup_system_diagram.html"),
         help_text="Output HTML path",
     )
     return parser.parse_args()

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """
 NAME
-    profile_io.py - bringup_profiles.json helpers.
+    profile_io.py - bringup_system.json helpers.
 
 SYNOPSIS
     from tools.common.profile_io import compute_profiles_hash
@@ -24,10 +24,13 @@ def compute_profiles_hash(payload: Dict[str, Any]) -> str:
 
     DESCRIPTION
         Hashes the JSON with data_hash set to an empty string and sorted keys,
-        so formatting differences do not affect the checksum.
+        so formatting differences do not affect the checksum. bridgeConfig is
+        excluded so local group edits do not invalidate profiles integrity.
     """
     normalized = dict(payload)
     normalized["data_hash"] = ""
+    if "bridgeConfig" in normalized:
+        normalized.pop("bridgeConfig", None)
     blob = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 

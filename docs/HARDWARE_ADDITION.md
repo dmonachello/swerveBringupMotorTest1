@@ -15,7 +15,7 @@ Purpose: decide scope, bucket, and whether you need code changes.
 
 If you are only adding a new motor model for an existing wrapper, skip to **Step 6**.
 
-Current profile buckets (bringup_profiles.json):
+Current profile buckets (bringup_system.json):
 - REV: `neos`, `neo550s`, `flexes`
 - CTRE: `krakens`, `falcons`, `cancoders`, `candles`
 - Singletons: `pdh`, `pigeon`, `roborio`
@@ -132,7 +132,7 @@ Then reference that motor model in your profile entry (see Step 8).
 ## Step 8: Add Profile Entries
 Purpose: define the device IDs and labels for a profile.
 Update:
-- `data/bringup_profiles.json` (sync to `src/main/deploy/bringup_profiles.json`)
+- `data/bringup_system.json` (sync to `src/main/deploy/bringup_system.json`)
 
 Add the new device list under the correct profile name.
 Example pattern:
@@ -158,7 +158,7 @@ For new device types that do not fit an existing bucket, prefer the generic `dev
 Set `"invert": true` for normally-closed limit switches so CLOSED/OPEN reads correctly.
 
 If this is a new device category, also update:
-- `src/main/deploy/bringup_profiles.template.json`
+- `src/main/deploy/bringup_system.template.json`
 
 ## Step 9: Update Diagnostics Reporting (if needed)
 Purpose: include the new device in text/JSON reporting when required.
@@ -178,7 +178,7 @@ If you want the PC tool to track the new device by default:
 - `tools/can_profiles.py` bucket mapping (if you add a new profile bucket)
 
 This is not required for robot-side bringup, but helps with CAN visibility.
-The PC tool uses `bringup_profiles.json` when `--profile` is specified.
+The PC tool uses `bringup_system.json` when `--profile` is specified.
 
 ## Step 11: Update Docs
 Purpose: keep user-facing documentation consistent.
