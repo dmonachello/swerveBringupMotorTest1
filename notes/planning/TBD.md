@@ -38,4 +38,6 @@ Purpose: Consolidate all planned or future work discussed so far.
 - Align `bringup/diag/busErrorCount` publishing: Java reads it, current Python tool does not publish it.
 
 ## Tests
+- If performance is an issue, consider moving the CANable sniffer capture loop to a dedicated C program and keep Python for analysis/publishing.
+- Add runtime counters (frames received vs processed, max queue depth, processing lag) to verify Python CAN sniffer keeps up with CANable traffic.
 - The first test tbd idea.

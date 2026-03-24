@@ -5,7 +5,7 @@ Purpose: Visualize the structure of `data/bringup_profiles.json` without showing
 ```mermaid
 classDiagram
     class BringupProfiles {
-        int schema_version
+        int schema_version (2)
         string data_version
         string data_hash
         string default_profile
@@ -84,6 +84,6 @@ classDiagram
 ```
 
 Notes:
-- `schema_version`, `data_version`, and `data_hash` are required at the root.
+- `schema_version`, `data_version`, and `data_hash` are required at the root (schema_version=2).
 - `devices` entries require `vendor` and `type`.
 - `diagram` is editor-only and ignored by robot/PC tools.

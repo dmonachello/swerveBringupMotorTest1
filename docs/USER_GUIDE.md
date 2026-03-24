@@ -70,7 +70,14 @@ Purpose: Author and maintain device profiles and layouts.
 ## Data Flow
 Purpose: Describe how data moves between parts.
 - `data/bringup_profiles.json` is the shared configuration source (sync to deploy for roboRIO).
-- `schema_version`, `data_version` (`YYYY-MM-DD_HHMMSS`), and `data_hash` must be present and consistent across copies.
+- `schema_version` (2), `data_version` (`YYYY-MM-DD_HHMMSS`), and `data_hash` must be present and consistent across copies.
+
+Profiles Migration (Schema v2)
+Purpose: Update bringup_profiles.json to schema v2 with unique labels.
+Example:
+  python tools\migrate_profiles.py --source data\bringup_profiles.json --dest data\bringup_profiles.json --report migrate_report.json
+  python tools\sync_profiles.py
+  python tools\can_topology\validate_profiles.py --path data\bringup_profiles.json --strict
 - The editor writes it; robot and PC tools consume it.
 - Diagram metadata is editor-only and ignored by robot/PC tools.
 - The robot publishes local diagnostics; the PC publishes CAN-bus diagnostics.

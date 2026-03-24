@@ -25,7 +25,7 @@ python tools\\can_topology\\validate_profiles.py --verbose
 ```
 Checks:
 - JSON parses and contains a `profiles` object.
-- Root `schema_version` matches the expected value.
+- Root `schema_version` matches the expected value (2).
 - Root `data_version` is present and non-empty.
 - Root `data_hash` is present and matches the computed value.
 - Allowed categories only (buckets, singletons, `devices`).

@@ -107,16 +107,25 @@ Exec / Show:
 - `show bindings` -> `showBindings`
 - `show selected-device` -> `showSelectedDevice`
 - `show runtime-state` -> `showRuntimeState`
+- `show config` -> `showRuntimeState`
+
+Show sources:
+- `show <...> robot|local|both` selects data source.
+- Default is `robot` when connected, otherwise `local`.
+- Local source reads `bridgeConfig` from `data/bringup_profiles.json`.
+- Each show output is prefixed with `SOURCE: robot|local`.
 
 Config:
 - `group <name>` -> `groupCreate` `{name}`
 - `no group <name>` -> `groupDelete` `{name, confirm}`
 - `selected-device <device>` -> `selectedDeviceSet` `{name}`
 - `selected-mode on|off` -> `selectedModeSet` `{enabled}`
-- `merge config <file>` -> local: read config, emit group commands
-- `import config <file>` -> local: delete groups, then emit group commands
-- `export runtime-groups <file>` -> local: `showRuntimeState --json`, write file
-- `save config <file>` -> local: `showRuntimeState --json`, write file
+- `merge config <bringup_profiles.json>` -> local: read bridgeConfig, emit group commands
+- `import config <bringup_profiles.json>` -> local: delete groups, then emit group commands
+- `export runtime-groups <bringup_profiles.json>` -> local: update bridgeConfig
+- `save config <bringup_profiles.json>` -> local: update bridgeConfig
+- `save local-config <bringup_profiles.json>` -> local: update bridgeConfig only
+- `rename device <old> <new>` -> local: rename device in config only
 
 Group:
 - `add device <device>` -> `groupAddDevice` `{group, device, conflictPolicy, forceMove}`

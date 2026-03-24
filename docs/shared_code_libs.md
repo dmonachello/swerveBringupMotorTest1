@@ -48,7 +48,7 @@ Use to keep `data_hash` calculation and schema validation consistent.
 
 Examples:
 - `compute_profiles_hash(payload)`
-- `validate_profiles_schema(payload, schema_version=1)`
+- `validate_profiles_schema(payload, schema_version=2)`
 
 ### tools/common/tests_io.py
 Purpose: Shared bringup_tests.json handling.

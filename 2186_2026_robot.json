@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "default_profile": "robot_2026",
   "profiles": {
     "robot_2026": {
@@ -525,6 +526,199 @@
           }
         ]
       }
+    }
+  },
+  "bridgeConfig": {
+    "schemaVersion": 1,
+    "groups": [
+      {
+        "name": "swerve_front_left",
+        "enabled": true,
+        "members": [
+          {
+            "device": "Drive Motor (swerve-front-left)",
+            "enabled": true
+          },
+          {
+            "device": "Angle Motor (swerve-front-left)",
+            "enabled": true
+          },
+          {
+            "device": "Encoder (CANCoder) (swerve-front-left)",
+            "enabled": true
+          }
+        ],
+        "bindings": []
+      },
+      {
+        "name": "swerve_front_right",
+        "enabled": true,
+        "members": [
+          {
+            "device": "Drive Motor (swerve-front-right)",
+            "enabled": true
+          },
+          {
+            "device": "Angle Motor (swerve-front-right)",
+            "enabled": true
+          },
+          {
+            "device": "Encoder (CANCoder) (swerve-front-right)",
+            "enabled": true
+          }
+        ],
+        "bindings": []
+      },
+      {
+        "name": "swerve_back_left",
+        "enabled": true,
+        "members": [
+          {
+            "device": "Drive Motor (swerve-back-left)",
+            "enabled": true
+          },
+          {
+            "device": "Angle Motor (swerve-back-left)",
+            "enabled": true
+          },
+          {
+            "device": "Encoder (CANCoder) (swerve-back-left)",
+            "enabled": true
+          }
+        ],
+        "bindings": []
+      },
+      {
+        "name": "swerve_back_right",
+        "enabled": true,
+        "members": [
+          {
+            "device": "Drive Motor (swerve-back-right)",
+            "enabled": true
+          },
+          {
+            "device": "Angle Motor (swerve-back-right)",
+            "enabled": true
+          },
+          {
+            "device": "Encoder (CANCoder) (swerve-back-right)",
+            "enabled": true
+          }
+        ],
+        "bindings": []
+      }
+    ],
+    "devices": [
+      {
+        "name": "Encoder (CANCoder) (swerve-back-left)",
+        "manufacturer": 4,
+        "deviceType": 7,
+        "deviceId": 6
+      },
+      {
+        "name": "Encoder (CANCoder) (swerve-back-right)",
+        "manufacturer": 4,
+        "deviceType": 7,
+        "deviceId": 9
+      },
+      {
+        "name": "Encoder (CANCoder) (swerve-front-left)",
+        "manufacturer": 4,
+        "deviceType": 7,
+        "deviceId": 3
+      },
+      {
+        "name": "Encoder (CANCoder) (swerve-front-right)",
+        "manufacturer": 4,
+        "deviceType": 7,
+        "deviceId": 12
+      },
+      {
+        "name": "IMU (Pigeon2)",
+        "manufacturer": 4,
+        "deviceType": 4,
+        "deviceId": 19
+      },
+      {
+        "name": "Climb Motor",
+        "deviceId": 60
+      },
+      {
+        "name": "Fuel Intake Motor",
+        "deviceId": 24
+      },
+      {
+        "name": "Pivot Intake Motor",
+        "deviceId": 22
+      },
+      {
+        "name": "Pivot Intake Follower",
+        "deviceId": 11
+      },
+      {
+        "name": "Feeder Motor",
+        "deviceId": 28
+      },
+      {
+        "name": "Flywheel Motor (Leader)",
+        "deviceId": 27
+      },
+      {
+        "name": "Flywheel Motor (Follower)",
+        "deviceId": 23
+      },
+      {
+        "name": "Drive Motor (swerve-back-left)",
+        "manufacturer": 4,
+        "deviceType": 2,
+        "deviceId": 5
+      },
+      {
+        "name": "Angle Motor (swerve-back-left)",
+        "manufacturer": 5,
+        "deviceType": 2,
+        "deviceId": 4
+      },
+      {
+        "name": "Drive Motor (swerve-back-right)",
+        "manufacturer": 4,
+        "deviceType": 2,
+        "deviceId": 8
+      },
+      {
+        "name": "Angle Motor (swerve-back-right)",
+        "manufacturer": 5,
+        "deviceType": 2,
+        "deviceId": 7
+      },
+      {
+        "name": "Drive Motor (swerve-front-left)",
+        "manufacturer": 4,
+        "deviceType": 2,
+        "deviceId": 2
+      },
+      {
+        "name": "Angle Motor (swerve-front-left)",
+        "manufacturer": 5,
+        "deviceType": 2,
+        "deviceId": 1
+      },
+      {
+        "name": "Drive Motor (swerve-front-right)",
+        "manufacturer": 4,
+        "deviceType": 2,
+        "deviceId": 11
+      },
+      {
+        "name": "Angle Motor (swerve-front-right)",
+        "manufacturer": 5,
+        "deviceType": 2,
+        "deviceId": 10
+      }
+    ],
+    "selectedDevice": {
+      "device": "",
+      "enabled": false
     }
   }
 }

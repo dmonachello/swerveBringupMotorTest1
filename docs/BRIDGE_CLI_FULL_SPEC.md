@@ -151,14 +151,15 @@ Common:
 - `quit`
 
 Exec:
-- `show status`
-- `show groups`
-- `show group <name>`
-- `show devices`
-- `show device <name>`
-- `show bindings`
-- `show selected-device`
-- `show runtime-state`
+- `show status [robot|local|both]`
+- `show groups [robot|local|both]`
+- `show group <name> [robot|local|both]`
+- `show devices [robot|local|both]`
+- `show device <name> [robot|local|both]`
+- `show bindings [robot|local|both]`
+- `show selected-device [robot|local|both]`
+- `show runtime-state [robot|local|both]`
+- `show config [robot|local|both]` (alias for runtime-state)
 - `configure terminal`
 - `connect`
 - `disconnect`
@@ -169,10 +170,13 @@ Config:
 - `selected-device <device>`
 - `selected-mode on`
 - `selected-mode off`
-- `merge config <file>`
-- `import config <file>`
-- `export runtime-groups <file>`
-- `save config <file>`
+- `merge config <bringup_profiles.json>`
+- `import config <bringup_profiles.json>`
+- `export runtime-groups <bringup_profiles.json>`
+- `save config <bringup_profiles.json>`
+- `save local-config <path>` (local-only; writes groups-only when profiles are loaded)
+- `rename device <old> <new>` (local-only; disabled when profiles are loaded)
+- `validate config [path]`
 
 Group:
 - `show`
@@ -282,6 +286,21 @@ Pipeline:
 
 All output is printed directly.
 
+## Show Sources
+Purpose: Choose whether show commands read from robot, local config, or both.
+
+Sources:
+- `robot` (live from roboRIO)
+- `local` (Windows-side config snapshot from merge/import)
+- `both` (local first, then robot)
+
+Defaults:
+- robot if connected
+- local if not connected
+
+Output labeling:
+- each show output includes a `SOURCE: <robot|local>` line before its payload.
+
 ## Structured Output
 Purpose: Define JSON output rules.
 
@@ -294,18 +313,24 @@ Commands:
 - `show bindings --json`
 - `show selected-device --json`
 - `show runtime-state --json`
+- `show config --json`
 
 JSON is one blob per command.
 
-## Config File Schema
-Purpose: Define the Windows-side config file format for merge/import/export/save.
+## Shared Config (bringup_profiles.json)
+Purpose: Store bridge group config inside the single shared data file.
 
-- JSON file stored on the Windows host.
-- `schemaVersion` is required (current: 1).
-- `groups` is a list of group objects.
-- `selectedDevice` stores the selected-device override state.
-- `generatedAt` is included on export/save.
-- Device names must match the labels used on all sides.
+- The shared file is `data/bringup_profiles.json`.
+- The bridge CLI reads/writes a top-level `bridgeConfig` object.
+- Other tools ignore unknown fields; `bridgeConfig` is optional.
+- `data_hash` is recomputed whenever `bridgeConfig` is saved.
+
+`bridgeConfig` object:
+- `schemaVersion` (required, current: 1)
+- `groups` (list of group objects)
+- `devices` (optional list of device metadata for local use)
+- `selectedDevice` (selected-device override)
+- `generatedAt` (optional timestamp)
 
 Group object:
 - `name` (string, required)
@@ -313,27 +338,45 @@ Group object:
 - `members` (list of `{device, enabled}`)
 - `bindings` (list of `{input, kind, value?}`)
 
+Device object (optional, local-only):
+- `name` (string, required)
+- `manufacturer` (string or int, optional)
+- `deviceType` (string or int, optional)
+- `deviceId` (int, optional)
+
 Example:
 ```
 {
-  "schemaVersion": 1,
-  "generatedAt": "2026-03-23T14:02:00Z",
-  "groups": [
-    {
-      "name": "swerve_drive",
-      "enabled": true,
-      "members": [
-        {"device": "FL_DRIVE", "enabled": true},
-        {"device": "FR_DRIVE", "enabled": true}
-      ],
-      "bindings": [
-        {"input": "driver.left.y", "kind": "analog"}
-      ]
+  "schema_version": 2,
+  "data_version": "2026-03-20_143148",
+  "data_hash": "…",
+  "default_profile": "robot",
+  "profiles": {
+    "robot": { "neos": [], "krakens": [] }
+  },
+  "bridgeConfig": {
+    "schemaVersion": 1,
+    "generatedAt": "2026-03-23T14:02:00Z",
+    "devices": [
+      {"name": "FL_DRIVE", "manufacturer": "REV", "deviceType": "neo", "deviceId": 10}
+    ],
+    "groups": [
+      {
+        "name": "swerve_drive",
+        "enabled": true,
+        "members": [
+          {"device": "FL_DRIVE", "enabled": true},
+          {"device": "FR_DRIVE", "enabled": true}
+        ],
+        "bindings": [
+          {"input": "driver.left.y", "kind": "analog"}
+        ]
+      }
+    ],
+    "selectedDevice": {
+      "device": "FL_DRIVE",
+      "enabled": false
     }
-  ],
-  "selectedDevice": {
-    "device": "FL_DRIVE",
-    "enabled": false
   }
 }
 ```

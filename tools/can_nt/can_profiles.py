@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Set, Tuple
 
 
 DEFAULT_PROFILE_NAME = "robot"
-PROFILE_SCHEMA_VERSION = 1
+PROFILE_SCHEMA_VERSION = 2
 CANONICAL_PROFILE_FILE = profiles_canonical_path()
 DEPLOY_PROFILE_FILE = profiles_deploy_path()
 _LOAD_ERROR: str = ""
@@ -109,6 +109,10 @@ def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
     dup_error = _check_duplicate_ids(profiles)
     if dup_error:
         _LOAD_ERROR = dup_error
+        return (_fallback_default(), _fallback_profiles())
+    label_error = _check_duplicate_labels(profiles)
+    if label_error:
+        _LOAD_ERROR = label_error
         return (_fallback_default(), _fallback_profiles())
 
     return (default_profile, profiles)
@@ -219,6 +223,24 @@ def _check_duplicate_ids(profiles: Dict[str, List[Dict[str, Any]]]) -> str:
                     f"mfg={manufacturer} type={device_type} id={device_id}"
                 )
             seen.add(key)
+    return ""
+
+
+def _check_duplicate_labels(profiles: Dict[str, List[Dict[str, Any]]]) -> str:
+    """
+    NAME
+        _check_duplicate_labels - Validate duplicate labels across profiles.
+    """
+    for name, devices in profiles.items():
+        seen = {}
+        for device in devices:
+            label = str(device.get("label", "")).strip()
+            if not label:
+                continue
+            key = label.lower()
+            seen[key] = seen.get(key, 0) + 1
+            if seen[key] > 1:
+                return f"Duplicate label in profile '{name}': {label}"
     return ""
 
 

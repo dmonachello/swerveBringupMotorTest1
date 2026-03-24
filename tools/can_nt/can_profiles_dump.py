@@ -170,7 +170,7 @@ def dump_profile(
         Writes JSON to disk.
     """
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "data_version": timestamp_version(),
         "default_profile": profile_name,
         "profiles": {

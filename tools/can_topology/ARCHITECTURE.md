@@ -62,7 +62,7 @@ Purpose: Stable device configuration consumed by robot and PC tools.
 - Canonical location: `data/bringup_profiles.json`.
 - RoboRIO deploy copy: `src/main/deploy/bringup_profiles.json` (synced from `data/`).
 - Root fields:
-- `schema_version` (int)
+- `schema_version` (int, 2)
 - `data_version` (string)
 - `data_hash` (string)
 - `default_profile` (string)

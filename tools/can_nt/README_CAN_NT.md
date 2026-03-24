@@ -56,10 +56,23 @@ BRIDGE CLI
     Notes:
     - CLI uses the TCP UI channel (port 5809 by default).
     - CLI does not require CAN access; use --no-can when running CLI only.
+    - add device requires the device to exist in local config (create with device <name> first).
+    - device set supports manufacturer, deviceType, deviceId, vendor, role, notes, bus, tags, limits.
+    - manufacturer/deviceType accept numeric IDs or names from src/main/deploy/can_mappings.json.
+    - validate config [path] checks for group members missing from devices (file or local).
+    - batch scripts are linted to ensure devices are defined before add device.
 
 CONFIG
     Device lists are loaded from data\bringup_profiles.json via --profile
     (deploy fallback). This keeps the PC tool aligned with robot profiles.
+
+    Labels in profiles must be unique. bridgeConfig devices are derived from
+    profiles so labels stay consistent across tools and CLI groups.
+    When loading a profiles file, bridgeConfig.devices are regenerated from the
+    selected default_profile device list.
+    Profiles schema_version is 2 (see docs/PROFILE_SCHEMA_REFACTOR.md).
+    Device edits update profiles when a profiles file is loaded; use save profiles.
+    save local-config writes groups-only output when profiles are loaded.
 
     If you need a standalone can_nt_config.json-style file for reference or
     external tooling, generate one from a profile:

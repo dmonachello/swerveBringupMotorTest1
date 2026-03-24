@@ -17,10 +17,12 @@ import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from tools.can_nt.bridge_session import BridgeSession
 from tools.common.json_io import read_json, write_json
+from tools.common.profile_io import validate_profiles_schema
+from tools.common.paths import profiles_deploy_path
 
 CONFIG_SCHEMA_VERSION = 1
 
@@ -48,6 +50,8 @@ class ConfigPlan:
     commands: List[BridgeCommand]
     replace: bool
     config: Optional[Dict[str, Any]] = None
+    root_payload: Optional[Dict[str, Any]] = None
+    root_path: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -186,7 +190,7 @@ def merge_config(path: str, conflict_policy: str = "error") -> ConfigPlan:
     NAME
         merge_config - Load a config file and build merge commands.
     """
-    config = _read_bridge_config(path)
+    config, root_payload = _read_bridge_config(path)
     if config is None:
         return ConfigPlan(False, f"Invalid config: {path}", [], False, None)
     commands = _build_commands_from_config(config, conflict_policy)
@@ -196,6 +200,8 @@ def merge_config(path: str, conflict_policy: str = "error") -> ConfigPlan:
         commands,
         False,
         config,
+        root_payload,
+        path if root_payload is not None else None,
     )
 
 
@@ -204,7 +210,7 @@ def import_config(path: str, conflict_policy: str = "error") -> ConfigPlan:
     NAME
         import_config - Load a config file and build replace commands.
     """
-    config = _read_bridge_config(path)
+    config, root_payload = _read_bridge_config(path)
     if config is None:
         return ConfigPlan(False, f"Invalid config: {path}", [], True, None)
     commands = _build_commands_from_config(config, conflict_policy)
@@ -214,13 +220,15 @@ def import_config(path: str, conflict_policy: str = "error") -> ConfigPlan:
         commands,
         True,
         config,
+        root_payload,
+        path if root_payload is not None else None,
     )
 
 
 def export_runtime_groups(session: BridgeSession, path: str) -> LocalOpResult:
     """
     NAME
-        export_runtime_groups - Export runtime groups to a config file.
+        export_runtime_groups - Export runtime groups to a bridgeConfig file.
     """
     state = _fetch_runtime_state_json(session)
     if state is None:
@@ -230,13 +238,13 @@ def export_runtime_groups(session: BridgeSession, path: str) -> LocalOpResult:
         write_json(Path(path), config, indent=2, trailing_newline=True)
     except Exception as exc:
         return LocalOpResult(False, f"Failed to write {path}: {exc}")
-    return LocalOpResult(True, f"Wrote runtime groups to {path}.")
+    return LocalOpResult(True, f"Wrote bridgeConfig to {path}.")
 
 
 def save_config(session: BridgeSession, path: str) -> LocalOpResult:
     """
     NAME
-        save_config - Save current runtime config to a file.
+        save_config - Save current runtime config to a bridgeConfig file.
     """
     state = _fetch_runtime_state_json(session)
     if state is None:
@@ -246,7 +254,7 @@ def save_config(session: BridgeSession, path: str) -> LocalOpResult:
         write_json(Path(path), config, indent=2, trailing_newline=True)
     except Exception as exc:
         return LocalOpResult(False, f"Failed to write {path}: {exc}")
-    return LocalOpResult(True, f"Wrote config to {path}.")
+    return LocalOpResult(True, f"Wrote bridgeConfig to {path}.")
 
 
 def group_add_device(
@@ -380,33 +388,56 @@ def parse_json_arg(raw: str) -> Optional[Any]:
         return None
 
 
-def _read_bridge_config(path: str) -> Optional[Dict[str, Any]]:
+def _read_bridge_config(
+    path: str,
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """
     NAME
-        _read_bridge_config - Load and normalize a bridge config file.
+        _read_bridge_config - Load and normalize bridge config from a profiles file.
     """
     if not path:
-        return None
+        return (None, None)
     try:
         payload = read_json(Path(path))
     except Exception:
-        return None
+        return (None, None)
     if not isinstance(payload, dict):
-        return None
-    return _normalize_config(payload)
+        return (None, None)
+    if "schema_version" in payload and "profiles" in payload:
+        bridge = payload.get("bridgeConfig") or {}
+        if not isinstance(bridge, dict):
+            return (None, None)
+        config = _normalize_bridge_config(bridge, allow_empty=True)
+        if config is None:
+            return (None, None)
+        generated_devices = devices_from_profiles_payload(payload)
+        if generated_devices is None:
+            return (None, None)
+        config["devices"] = generated_devices
+        return (config, payload)
+    config = _normalize_bridge_config(payload, allow_empty=False)
+    return (config, None)
 
 
-def _normalize_config(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _normalize_bridge_config(
+    payload: Dict[str, Any],
+    allow_empty: bool,
+) -> Optional[Dict[str, Any]]:
     """
     NAME
-        _normalize_config - Normalize config fields to a stable schema.
+        _normalize_bridge_config - Normalize bridge config fields to a stable schema.
     """
     version = int(payload.get("schemaVersion", CONFIG_SCHEMA_VERSION))
     if version != CONFIG_SCHEMA_VERSION:
         return None
     groups_raw = payload.get("groups")
     if not isinstance(groups_raw, list):
-        return None
+        if allow_empty:
+            groups_raw = []
+        else:
+            return None
+    devices_raw = payload.get("devices")
+    generated_at = payload.get("generatedAt")
     groups: List[Dict[str, Any]] = []
     for group in groups_raw:
         if not isinstance(group, dict):
@@ -446,6 +477,34 @@ def _normalize_config(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 "bindings": bindings,
             }
         )
+    devices: List[Dict[str, Any]] = []
+    if isinstance(devices_raw, list):
+        for device in devices_raw:
+            if not isinstance(device, dict):
+                continue
+            name = str(device.get("name", "")).strip()
+            if not name:
+                continue
+            entry: Dict[str, Any] = {"name": name}
+            if "manufacturer" in device:
+                entry["manufacturer"] = device.get("manufacturer")
+            if "deviceType" in device:
+                entry["deviceType"] = device.get("deviceType")
+            if "deviceId" in device:
+                entry["deviceId"] = device.get("deviceId")
+            if "vendor" in device:
+                entry["vendor"] = device.get("vendor")
+            if "role" in device:
+                entry["role"] = device.get("role")
+            if "notes" in device:
+                entry["notes"] = device.get("notes")
+            if "bus" in device:
+                entry["bus"] = device.get("bus")
+            if "tags" in device:
+                entry["tags"] = device.get("tags")
+            if "limits" in device:
+                entry["limits"] = device.get("limits")
+            devices.append(entry)
     selected = payload.get("selectedDevice", {}) or {}
     selected_device = ""
     selected_enabled = False
@@ -454,6 +513,8 @@ def _normalize_config(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         selected_enabled = bool(selected.get("enabled", False))
     return {
         "schemaVersion": version,
+        "generatedAt": generated_at,
+        "devices": devices,
         "groups": groups,
         "selectedDevice": {"device": selected_device, "enabled": selected_enabled},
     }
@@ -517,6 +578,236 @@ def _build_commands_from_config(
     return commands
 
 
+def validate_config_file(path: str) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    NAME
+        validate_config_file - Validate a bridgeConfig file and report missing devices.
+    """
+    config, _root = _read_bridge_config(path)
+    if config is None:
+        return (False, f"Invalid config: {path}", None)
+    duplicates = _find_duplicate_device_names(config)
+    if duplicates:
+        return (False, f"Duplicate device names: {', '.join(sorted(duplicates))}", config)
+    missing = _find_missing_device_refs(config)
+    if missing:
+        missing_list = ", ".join(sorted(missing))
+        return (False, f"Missing device entries: {missing_list}", config)
+    return (True, "OK", config)
+
+
+def _find_missing_device_refs(config: Dict[str, Any]) -> List[str]:
+    """
+    NAME
+        _find_missing_device_refs - Find group members missing from devices list.
+    """
+    devices = config.get("devices") if isinstance(config, dict) else None
+    known = set()
+    if isinstance(devices, list):
+        for device in devices:
+            if not isinstance(device, dict):
+                continue
+            name = str(device.get("name", "")).strip()
+            if name:
+                known.add(name.lower())
+    missing = []
+    groups = config.get("groups") if isinstance(config, dict) else None
+    if isinstance(groups, list):
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            for member in group.get("members", []) or []:
+                if isinstance(member, dict):
+                    name = str(member.get("device", "")).strip()
+                else:
+                    name = str(member).strip()
+                if name and name.lower() not in known:
+                    missing.append(name)
+    return missing
+
+
+def validate_config_data(config: Dict[str, Any]) -> Tuple[bool, str]:
+    """
+    NAME
+        validate_config_data - Validate an in-memory bridgeConfig.
+    """
+    duplicates = _find_duplicate_device_names(config)
+    if duplicates:
+        return (False, f"Duplicate device names: {', '.join(sorted(duplicates))}")
+    missing = _find_missing_device_refs(config)
+    if missing:
+        missing_list = ", ".join(sorted(missing))
+        return (False, f"Missing device entries: {missing_list}")
+    return (True, "OK")
+
+
+def devices_from_profiles_payload(payload: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+    """
+    NAME
+        _devices_from_profiles_payload - Build bridgeConfig devices from profiles.
+    """
+    profiles = payload.get("profiles")
+    if not isinstance(profiles, dict) or not profiles:
+        return None
+    default_profile = payload.get("default_profile")
+    if not isinstance(default_profile, str) or default_profile not in profiles:
+        default_profile = next(iter(profiles.keys()))
+    raw = profiles.get(default_profile)
+    if not isinstance(raw, dict):
+        return None
+    mappings = _load_can_mappings()
+    devices = _devices_from_profile(raw, mappings)
+    if _find_duplicate_device_names({"devices": devices}):
+        return None
+    return devices
+
+
+def _devices_from_profile(
+    raw: Dict[str, Any],
+    mappings: Tuple[Dict[str, int], Dict[str, int]],
+) -> List[Dict[str, Any]]:
+    """
+    NAME
+        _devices_from_profile - Convert a profile section into bridgeConfig devices.
+    """
+    mfg_map, type_map = mappings
+    devices: List[Dict[str, Any]] = []
+
+    def _add_device(entry: Dict[str, Any], label: str, device_id: int, manufacturer: int, device_type: int) -> None:
+        dev: Dict[str, Any] = {
+            "name": label,
+            "manufacturer": manufacturer,
+            "deviceType": device_type,
+            "deviceId": int(device_id),
+        }
+        if "vendor" in entry:
+            dev["vendor"] = entry.get("vendor")
+        if "role" in entry:
+            dev["role"] = entry.get("role")
+        if "notes" in entry:
+            dev["notes"] = entry.get("notes")
+        if "bus" in entry:
+            dev["bus"] = entry.get("bus")
+        if "tags" in entry:
+            dev["tags"] = entry.get("tags")
+        if "limits" in entry:
+            dev["limits"] = entry.get("limits")
+        devices.append(dev)
+
+    def _list_devices(key: str, manufacturer: int, device_type: int, default_prefix: str) -> None:
+        for entry in raw.get(key, []) or []:
+            if not isinstance(entry, dict) or "id" not in entry:
+                continue
+            label = entry.get("label") or f"{default_prefix} {entry.get('id')}"
+            _add_device(entry, str(label), int(entry.get("id")), manufacturer, device_type)
+
+    _list_devices("neos", 5, 2, "NEO")
+    _list_devices("neo550s", 5, 2, "NEO 550")
+    _list_devices("flexes", 5, 2, "FLEX")
+    _list_devices("krakens", 4, 2, "KRAKEN")
+    _list_devices("falcons", 4, 2, "FALCON")
+    _list_devices("cancoders", 4, 7, "CANCoder")
+    _list_devices("candles", 4, 10, "CANdle")
+
+    pdh = raw.get("pdh")
+    if isinstance(pdh, dict) and "id" in pdh:
+        label = pdh.get("label") or "PDH"
+        _add_device(pdh, str(label), int(pdh.get("id")), 5, 8)
+    pdp = raw.get("pdp")
+    if isinstance(pdp, dict) and "id" in pdp:
+        label = pdp.get("label") or "PDP"
+        _add_device(pdp, str(label), int(pdp.get("id")), 4, 8)
+    pigeon = raw.get("pigeon")
+    if isinstance(pigeon, dict) and "id" in pigeon:
+        label = pigeon.get("label") or "Pigeon"
+        _add_device(pigeon, str(label), int(pigeon.get("id")), 4, 4)
+    roborio = raw.get("roborio")
+    if isinstance(roborio, dict) and "id" in roborio:
+        label = roborio.get("label") or "roboRIO"
+        _add_device(roborio, str(label), int(roborio.get("id")), 1, 1)
+
+    for entry in raw.get("devices", []) or []:
+        if not isinstance(entry, dict) or "id" not in entry:
+            continue
+        label = entry.get("label") or f"Device {entry.get('id')}"
+        dev: Dict[str, Any] = {"name": str(label), "deviceId": int(entry.get("id"))}
+        vendor = entry.get("vendor")
+        dtype = entry.get("type")
+        if vendor:
+            dev["vendor"] = vendor
+            mfg_id = mfg_map.get(str(vendor).lower())
+            if mfg_id is not None:
+                dev["manufacturer"] = mfg_id
+        if dtype:
+            dev["role"] = dtype
+            type_id = type_map.get(str(dtype).lower())
+            if type_id is not None:
+                dev["deviceType"] = type_id
+        if "tags" in entry:
+            dev["tags"] = entry.get("tags")
+        if "limits" in entry:
+            dev["limits"] = entry.get("limits")
+        devices.append(dev)
+
+    return devices
+
+
+def _load_can_mappings() -> Tuple[Dict[str, int], Dict[str, int]]:
+    """
+    NAME
+        _load_can_mappings - Load manufacturer/deviceType name maps.
+    """
+    mapping_path = profiles_deploy_path().parent / "can_mappings.json"
+    try:
+        payload = read_json(mapping_path)
+    except Exception:
+        return ({}, {})
+    manufacturers = payload.get("manufacturers", {}) if isinstance(payload, dict) else {}
+    device_types = payload.get("device_types", {}) if isinstance(payload, dict) else {}
+    mfg_map: Dict[str, int] = {}
+    type_map: Dict[str, int] = {}
+    if isinstance(manufacturers, dict):
+        for key, value in manufacturers.items():
+            try:
+                mid = int(key)
+            except Exception:
+                continue
+            name = str(value).lower()
+            mfg_map[name] = mid
+    if isinstance(device_types, dict):
+        for key, value in device_types.items():
+            try:
+                tid = int(key)
+            except Exception:
+                continue
+            name = str(value).lower()
+            type_map[name] = tid
+    return (mfg_map, type_map)
+
+
+def _find_duplicate_device_names(config: Dict[str, Any]) -> List[str]:
+    """
+    NAME
+        _find_duplicate_device_names - Find duplicate device names.
+    """
+    devices = config.get("devices") if isinstance(config, dict) else None
+    if not isinstance(devices, list):
+        return []
+    seen = {}
+    dupes = []
+    for device in devices:
+        if not isinstance(device, dict):
+            continue
+        name = str(device.get("name", "")).strip()
+        if not name:
+            continue
+        key = name.lower()
+        seen[key] = seen.get(key, 0) + 1
+        if seen[key] == 2:
+            dupes.append(name)
+    return dupes
+
+
 def _fetch_runtime_state_json(
     session: BridgeSession,
     timeout_sec: float = 2.0,
@@ -555,6 +846,7 @@ def _config_from_runtime_state(state: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "schemaVersion": CONFIG_SCHEMA_VERSION,
         "generatedAt": stamp,
+        "devices": [],
         "groups": groups,
         "selectedDevice": {
             "device": str(selected.get("device", "")).strip(),

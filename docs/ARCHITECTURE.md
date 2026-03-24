@@ -117,7 +117,7 @@ Purpose: controller bindings remain data-driven and stable.
 Purpose: JSON inputs define behavior and runtime configuration.
 
 - `bringup_profiles.json`: hardware profiles (devices + IDs). Stored in `data/` and synced to deploy.
-  - Requires `schema_version`, `data_version`, and `data_hash` at the root.
+- Requires `schema_version` (2), `data_version`, and `data_hash` at the root.
 - `bringup_tests.json`: test definitions (composite/joystick) grouped into test sets.
 - `motor_specs.json`: motor current specs for health checks.
 - `can_mappings.json`: manufacturer/device type names for CAN decoding.
@@ -226,7 +226,7 @@ Purpose: stable interfaces are identified to prevent uncoordinated changes.
 
 ## Data Integrity Rules
 Purpose: define how runtime and offline tools enforce profile integrity.
-- Runtime tools (roboRIO + CAN bridge) must hard-fail on `schema_version`, `data_version`, or `data_hash` mismatch.
+- Runtime tools (roboRIO + CAN bridge) must hard-fail on `schema_version` (2), `data_version`, or `data_hash` mismatch.
 - Offline tools (topology editor) may open mismatched files for repair after prompting the user.
 - The topology editor always recomputes `data_hash` on save.
 

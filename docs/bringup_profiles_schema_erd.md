@@ -12,7 +12,7 @@ erDiagram
     DIAGRAM_PROFILE ||--o{ NODE : has
 
     BRINGUP_PROFILES {
-        int schema_version
+        int schema_version (2)
         string data_version
         string data_hash
         string default_profile

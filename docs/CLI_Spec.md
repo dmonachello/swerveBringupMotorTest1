@@ -208,10 +208,12 @@ No prompting allowed in batch mode.
 - `selected-device <device>`
 - `selected-mode on`
 - `selected-mode off`
-- `merge config <file>`
-- `import config <file>`
-- `export runtime-groups <file>`
-- `save config <file>`
+- `merge config <bringup_profiles.json>`
+- `import config <bringup_profiles.json>`
+- `export runtime-groups <bringup_profiles.json>`
+- `save config <bringup_profiles.json>`
+- `save local-config <bringup_profiles.json>`
+- `rename device <old> <new>`
 
 ### Group Config Mode Commands
 

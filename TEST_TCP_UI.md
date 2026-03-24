@@ -115,14 +115,14 @@ Purpose: validate the TCP UI command channel, single-client lock, error handling
 ### J) Bridge CLI (Batch + Config Files)
 27) Export runtime groups:
     - `configure terminal`
-    - `export runtime-groups tools\can_nt\logs\runtime_groups.json`
-    - Verify file exists with schemaVersion + groups.
+    - `export runtime-groups data\bringup_profiles.json`
+    - Verify file updated with bridgeConfig + updated data_hash.
 28) Run smoke script (read-only):
     - `python tools\can_nt\can_nt_bridge.py --batch --script tools\can_nt\scripts\bridge_cli_smoke.txt --no-can`
     - Expect ACK/OUT text or JSON for each command.
 29) Import config (replace):
-    - `import config tools\can_nt\logs\runtime_groups.json`
+    - `import config data\bringup_profiles.json`
     - Expect groups recreated from file (batch mode should not prompt).
 30) Merge config (additive):
-    - `merge config tools\can_nt\logs\runtime_groups.json`
+    - `merge config data\bringup_profiles.json`
     - Expect groups/members appended without clearing.

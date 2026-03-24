@@ -36,7 +36,7 @@ BUCKET_CATEGORIES = [
     "cancoders",
     "candles",
 ]
-PROFILE_SCHEMA_VERSION = 1
+PROFILE_SCHEMA_VERSION = 2
 
 
 def _compute_data_hash(payload: Dict[str, Any]) -> str:
@@ -207,6 +207,7 @@ def validate_profile(name: str, profile: Any, reporter: "Reporter") -> Tuple[Lis
 
     seen_full: Dict[Tuple[str, str, int], str] = {}
     seen_numeric: Dict[int, List[str]] = {}
+    seen_labels: Dict[str, int] = {}
 
     for category in BUCKET_CATEGORIES:
         entries = profile.get(category, [])
@@ -224,6 +225,7 @@ def validate_profile(name: str, profile: Any, reporter: "Reporter") -> Tuple[Lis
             )
             errors.extend(entry_errors)
             warnings.extend(entry_warnings)
+            _check_duplicate_label(name, entry, seen_labels, errors, reporter)
             if can_id is not None and can_id >= 0:
                 register_can_id(
                     seen_full,
@@ -252,6 +254,7 @@ def validate_profile(name: str, profile: Any, reporter: "Reporter") -> Tuple[Lis
         )
         errors.extend(entry_errors)
         warnings.extend(entry_warnings)
+        _check_duplicate_label(name, entry, seen_labels, errors, reporter)
         if can_id is not None and can_id >= 0:
             register_can_id(
                 seen_full,
@@ -283,6 +286,7 @@ def validate_profile(name: str, profile: Any, reporter: "Reporter") -> Tuple[Lis
                 )
                 errors.extend(entry_errors)
                 warnings.extend(entry_warnings)
+                _check_duplicate_label(name, entry, seen_labels, errors, reporter)
                 if can_id is not None and can_id >= 0:
                     register_can_id(
                         seen_full,
@@ -457,6 +461,28 @@ def validate_entry(
             reporter.pass_(f"Profile '{profile_name}' entry id {can_id} tags are valid.")
 
     return errors, warnings, can_id
+
+
+def _check_duplicate_label(
+    profile_name: str,
+    entry: Dict[str, Any],
+    seen_labels: Dict[str, int],
+    errors: List[str],
+    reporter: "Reporter",
+) -> None:
+    """
+    NAME
+        _check_duplicate_label - Flag duplicate labels within a profile.
+    """
+    label = entry.get("label")
+    if not isinstance(label, str) or not label.strip():
+        return
+    key = label.strip().lower()
+    seen_labels[key] = seen_labels.get(key, 0) + 1
+    if seen_labels[key] > 1:
+        msg = f"Profile '{profile_name}' has duplicate label '{label}'."
+        errors.append(msg)
+        reporter.fail(msg)
 
 
 def validate_limits(

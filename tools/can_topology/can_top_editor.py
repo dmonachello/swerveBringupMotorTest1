@@ -1308,7 +1308,7 @@ class TopologyEditor(tk.Tk):
 
     @staticmethod
     def _expected_schema_version() -> int:
-        return 1
+        return 2
 
     @staticmethod
     def _compute_data_hash(payload: Dict[str, object]) -> str:

@@ -523,15 +523,15 @@
           "id": 4
         },
         {
-          "label": "Angle Motor",
+          "label": "Angle Motor (id 7)",
           "id": 7
         },
         {
-          "label": "Angle Motor",
+          "label": "Angle Motor (id 1)",
           "id": 1
         },
         {
-          "label": "Angle Motor",
+          "label": "Angle Motor (id 10)",
           "id": 10,
           "terminator": false
         }
@@ -552,15 +552,15 @@
           "id": 5
         },
         {
-          "label": "Drive Motor",
+          "label": "Drive Motor (id 8)",
           "id": 8
         },
         {
-          "label": "Drive Motor",
+          "label": "Drive Motor (id 2)",
           "id": 2
         },
         {
-          "label": "Drive Motor",
+          "label": "Drive Motor (id 11)",
           "id": 11,
           "terminator": false
         }
@@ -571,15 +571,15 @@
           "id": 6
         },
         {
-          "label": "Encoder (CANCoder)",
+          "label": "Encoder (CANCoder) (id 9)",
           "id": 9
         },
         {
-          "label": "Encoder (CANCoder)",
+          "label": "Encoder (CANCoder) (id 3)",
           "id": 3
         },
         {
-          "label": "Encoder (CANCoder)",
+          "label": "Encoder (CANCoder) (id 12)",
           "id": 12
         }
       ],
@@ -1507,7 +1507,7 @@
             "nodeType": "device",
             "key": 7,
             "category": "neos",
-            "label": "Angle Motor",
+            "label": "Angle Motor (id 7)",
             "id": 7,
             "bus": 4,
             "row": 1,
@@ -1522,7 +1522,7 @@
             "nodeType": "device",
             "key": 8,
             "category": "neos",
-            "label": "Angle Motor",
+            "label": "Angle Motor (id 1)",
             "id": 1,
             "bus": 2,
             "row": 1,
@@ -1537,7 +1537,7 @@
             "nodeType": "device",
             "key": 9,
             "category": "neos",
-            "label": "Angle Motor",
+            "label": "Angle Motor (id 10)",
             "id": 10,
             "bus": 5,
             "row": 1,
@@ -1597,7 +1597,7 @@
             "nodeType": "device",
             "key": 13,
             "category": "krakens",
-            "label": "Drive Motor",
+            "label": "Drive Motor (id 8)",
             "id": 8,
             "bus": 4,
             "row": 1,
@@ -1612,7 +1612,7 @@
             "nodeType": "device",
             "key": 14,
             "category": "krakens",
-            "label": "Drive Motor",
+            "label": "Drive Motor (id 2)",
             "id": 2,
             "bus": 2,
             "row": 1,
@@ -1627,7 +1627,7 @@
             "nodeType": "device",
             "key": 15,
             "category": "krakens",
-            "label": "Drive Motor",
+            "label": "Drive Motor (id 11)",
             "id": 11,
             "bus": 5,
             "row": 1,
@@ -1657,7 +1657,7 @@
             "nodeType": "device",
             "key": 17,
             "category": "cancoders",
-            "label": "Encoder (CANCoder)",
+            "label": "Encoder (CANCoder) (id 9)",
             "id": 9,
             "bus": 4,
             "row": 1,
@@ -1672,7 +1672,7 @@
             "nodeType": "device",
             "key": 18,
             "category": "cancoders",
-            "label": "Encoder (CANCoder)",
+            "label": "Encoder (CANCoder) (id 3)",
             "id": 3,
             "bus": 2,
             "row": 1,
@@ -1687,7 +1687,7 @@
             "nodeType": "device",
             "key": 19,
             "category": "cancoders",
-            "label": "Encoder (CANCoder)",
+            "label": "Encoder (CANCoder) (id 12)",
             "id": 12,
             "bus": 5,
             "row": 1,
@@ -2529,7 +2529,7 @@
       }
     }
   },
-  "schema_version": 1,
+  "schema_version": 2,
   "data_version": "2026-03-20_143148",
-  "data_hash": "fc878c4457c22aee9446b703357448fce52ae2ddfaf66880f3d125c5b5aa7d84"
+  "data_hash": "a06688cf00609a5a04ec29a2e848592f43d669ac0441ca9f7fd2da53bb73aac3"
 }
