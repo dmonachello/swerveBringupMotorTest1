@@ -12,6 +12,17 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, List, Optional, Tuple
 
+try:
+    from tools.common.topology_layout import effective_bus_bounds as effective_bus_bounds_shared
+except ImportError:  # Allow running as a script from tools/can_topology.
+    import sys
+    from pathlib import Path as _Path
+
+    sys.path.append(str(_Path(__file__).resolve().parents[1]))
+    from common.topology_layout import (  # type: ignore
+        effective_bus_bounds as effective_bus_bounds_shared,
+    )
+
 
 def snap_value(value: float, grid_size: int) -> float:
     """
@@ -42,22 +53,7 @@ def effective_bus_bounds(
     NAME
         effective_bus_bounds - Compute bus left/right bounds with connectors.
     """
-    if len(bus_lefts) < len(bus_offsets):
-        bus_lefts.extend([40.0] * (len(bus_offsets) - len(bus_lefts)))
-    if len(bus_rights) < len(bus_offsets):
-        bus_rights.extend([max_node_x + 200.0] * (len(bus_offsets) - len(bus_rights)))
-    if len(bus_lefts) > len(bus_offsets):
-        bus_lefts[:] = bus_lefts[: len(bus_offsets)]
-    if len(bus_rights) > len(bus_offsets):
-        bus_rights[:] = bus_rights[: len(bus_offsets)]
-    eff_lefts = list(bus_lefts)
-    eff_rights = list(bus_rights)
-    for idx in range(len(eff_lefts) - 1):
-        if idx % 2 == 0:
-            eff_rights[idx + 1] = eff_rights[idx]
-        else:
-            eff_lefts[idx + 1] = eff_lefts[idx]
-    return bus_lefts, bus_rights, eff_lefts, eff_rights
+    return effective_bus_bounds_shared(bus_offsets, bus_lefts, bus_rights, max_node_x)
 
 
 def align_selected(

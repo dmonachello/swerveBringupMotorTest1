@@ -20,7 +20,8 @@ import json
 import time
 import tkinter as tk
 import uuid
-from tkinter import messagebox, ttk
+from pathlib import Path
+from tkinter import filedialog, messagebox, ttk
 from typing import Callable, Dict, List, Optional, Tuple, Any
 
 from .bridge_cmd_tracker import CommandTracker
@@ -28,6 +29,7 @@ from .bridge_ops import (
     connect,
     disconnect,
     send_command,
+    show_runtime_state,
     select_test_by_name,
     ui_disconnect,
     ui_handshake,
@@ -40,6 +42,7 @@ from tools.common.paths import tests_deploy_path
 from tools.common.tests_io import extract_test_names
 from tools.common.time_utils import timestamp_hms
 from .can_profiles import get_profiles_load_error, list_profiles, reload_profiles
+from tools.can_topology.live_topology_view import LiveTopologyView
 
 
 def _load_profiles() -> List[str]:
@@ -202,6 +205,27 @@ class BringupControlUI(tk.Tk):
         self._state_stale_sec = 2.0
         self._state_stale = False
         self._tracker = CommandTracker(timeout_sec=self._timeout_sec, max_retries=self._max_retries)
+        self._live_enabled_var = tk.BooleanVar(value=False)
+        self._live_source_var = tk.StringVar(value="tcp")
+        self._live_rate_var = tk.StringVar(value="5")
+        self._live_groups_var = tk.BooleanVar(value=True)
+        self._live_rate_min = 0.2
+        self._live_rate_max = 20.0
+        self._runtime_state_hz = 5.0
+        self._runtime_state_interval = 1.0 / self._runtime_state_hz
+        self._runtime_state_last_poll = 0.0
+        self._runtime_state_pending_seq: Optional[int] = None
+        self._runtime_state_pending_at = 0.0
+        self._runtime_state_timeout_sec = 0.6
+        self._runtime_state_path: Optional[str] = None
+        self._runtime_state_path_mtime: Optional[float] = None
+        self._runtime_state_backoff = 1.0
+        self._runtime_state_idle_count = 0
+        self._runtime_state_idle_pause_sec = 5.0
+        self._runtime_state_pause_until: Optional[float] = None
+        self._poll_interval_active = 0.25
+        self._poll_interval_idle = 1.0
+        self._live_view: Optional[LiveTopologyView] = None
         self._build_menu()
         self._build_ui()
         self._poll_nt()
@@ -237,6 +261,7 @@ class BringupControlUI(tk.Tk):
         profile_box = ttk.Combobox(header, values=profiles, state="readonly", width=18)
         profile_box.set(profiles[0])
         self._profile_box = profile_box
+        profile_box.bind("<<ComboboxSelected>>", self._on_profile_selected)
         ttk.Label(header, text="Profile").pack(side="left", padx=(16, 4))
         profile_box.pack(side="left")
         ttk.Button(header, text="Refresh", command=self._refresh_profiles).pack(
@@ -309,8 +334,10 @@ class BringupControlUI(tk.Tk):
 
         action_panel.bind("<Configure>", _on_actions_configure)
 
-        output_panel = ttk.LabelFrame(right, text="Output", padding=10)
-        output_panel.pack(fill="both", expand=True)
+        notebook = ttk.Notebook(right)
+        notebook.pack(fill="both", expand=True)
+        output_panel = ttk.Frame(notebook)
+        notebook.add(output_panel, text="Output")
         output_header = ttk.Frame(output_panel)
         output_header.pack(fill="x")
         ttk.Button(output_header, text="Clear Output", command=self._clear_output).pack(
@@ -321,6 +348,149 @@ class BringupControlUI(tk.Tk):
         scroll = ttk.Scrollbar(output_panel, command=self._output.yview)
         scroll.pack(side="right", fill="y")
         self._output.configure(yscrollcommand=scroll.set)
+
+        live_panel = ttk.Frame(notebook)
+        notebook.add(live_panel, text="Live Topology")
+        self._build_live_panel(live_panel)
+
+    def _build_live_panel(self, parent: tk.Widget) -> None:
+        """
+        NAME
+            _build_live_panel - Build the live topology overlay tab.
+        """
+        controls = ttk.Frame(parent, padding=(8, 8, 8, 4))
+        controls.pack(fill="x")
+        ttk.Checkbutton(
+            controls,
+            text="Enable Live Overlay",
+            variable=self._live_enabled_var,
+        ).pack(side="left")
+        ttk.Checkbutton(
+            controls,
+            text="Show Groups",
+            variable=self._live_groups_var,
+            command=self._apply_live_group_toggle,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Label(controls, text="Source:").pack(side="left", padx=(12, 4))
+        source_menu = ttk.OptionMenu(controls, self._live_source_var, "tcp", "tcp", "file")
+        source_menu.pack(side="left")
+        ttk.Button(controls, text="Load File...", command=self._load_runtime_state_file).pack(
+            side="left", padx=(8, 0)
+        )
+        ttk.Button(controls, text="Reload File", command=self._reload_runtime_state_file).pack(
+            side="left", padx=(6, 0)
+        )
+        ttk.Label(controls, text="Rate (Hz):").pack(side="left", padx=(12, 4))
+        rate_entry = ttk.Entry(controls, textvariable=self._live_rate_var, width=6)
+        rate_entry.pack(side="left")
+        ttk.Button(controls, text="Apply", command=self._apply_runtime_state_rate).pack(
+            side="left", padx=(6, 0)
+        )
+        ttk.Button(controls, text="Zoom -", command=self._zoom_out).pack(
+            side="left", padx=(12, 0)
+        )
+        ttk.Button(controls, text="Zoom +", command=self._zoom_in).pack(
+            side="left", padx=(4, 0)
+        )
+        ttk.Button(controls, text="Reset Zoom", command=self._zoom_reset).pack(
+            side="left", padx=(4, 0)
+        )
+
+        profile_name = self._profile_box.get() if hasattr(self, "_profile_box") else ""
+        self._live_view = LiveTopologyView(parent, profile_name)
+        self._live_view.set_show_groups(self._live_groups_var.get())
+        self._live_view.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+    def _on_profile_selected(self, _event=None) -> None:
+        """
+        NAME
+            _on_profile_selected - Update live topology view when profile changes.
+        """
+        if self._live_view is None:
+            return
+        name = self._profile_box.get().strip() if hasattr(self, "_profile_box") else ""
+        if name:
+            self._live_view.reload_profile(name)
+
+    def _load_runtime_state_file(self) -> None:
+        """
+        NAME
+            _load_runtime_state_file - Select a runtime-state JSON file.
+        """
+        path = filedialog.askopenfilename(
+            title="Load Runtime State JSON",
+            filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        self._runtime_state_path = path
+        self._runtime_state_path_mtime = None
+        self._live_source_var.set("file")
+        self._reload_runtime_state_file()
+
+    def _reload_runtime_state_file(self) -> None:
+        """
+        NAME
+            _reload_runtime_state_file - Manually reload the runtime-state JSON file.
+        """
+        if not self._runtime_state_path:
+            return
+        try:
+            payload = read_json(Path(self._runtime_state_path))
+        except Exception:
+            return
+        if isinstance(payload, dict):
+            self._apply_runtime_state_payload(payload)
+
+    def _apply_runtime_state_rate(self) -> None:
+        """
+        NAME
+            _apply_runtime_state_rate - Update the runtime-state polling rate.
+        """
+        try:
+            rate = float(self._live_rate_var.get())
+        except (TypeError, ValueError):
+            rate = self._runtime_state_hz
+        rate = max(self._live_rate_min, min(self._live_rate_max, rate))
+        self._runtime_state_hz = rate
+        self._runtime_state_interval = 1.0 / self._runtime_state_hz
+        self._live_rate_var.set(f"{rate:g}")
+        self._runtime_state_backoff = 1.0
+        self._runtime_state_idle_count = 0
+        self._runtime_state_pause_until = None
+
+    def _apply_live_group_toggle(self) -> None:
+        """
+        NAME
+            _apply_live_group_toggle - Toggle group overlays in the live view.
+        """
+        if self._live_view is None:
+            return
+        self._live_view.set_show_groups(self._live_groups_var.get())
+
+    def _zoom_in(self) -> None:
+        """
+        NAME
+            _zoom_in - Zoom in the live topology view.
+        """
+        if self._live_view is not None:
+            self._live_view._nudge_zoom(0.1)
+
+    def _zoom_out(self) -> None:
+        """
+        NAME
+            _zoom_out - Zoom out the live topology view.
+        """
+        if self._live_view is not None:
+            self._live_view._nudge_zoom(-0.1)
+
+    def _zoom_reset(self) -> None:
+        """
+        NAME
+            _zoom_reset - Reset zoom in the live topology view.
+        """
+        if self._live_view is not None:
+            self._live_view._reset_zoom()
 
     def _attach_tooltip(self, widget: tk.Widget, text: str) -> None:
         """
@@ -441,6 +611,7 @@ class BringupControlUI(tk.Tk):
             ("Reports", self._build_reports_help()),
             ("Tests", self._build_tests_help()),
             ("System", self._build_system_help()),
+            ("Live Topology", self._build_live_help()),
             ("Troubleshooting", self._build_troubleshooting_help()),
         ]
         for title, text in tabs:
@@ -468,6 +639,7 @@ class BringupControlUI(tk.Tk):
             "  - Select a test from the dropdown to send selectTestByName.",
             "  - Use Actions to print reports or run tests.",
             "  - Output shows ACK/OUT messages from the robot.",
+            "  - Live Topology tab shows read-only runtime overlays.",
             "",
             "Connection:",
             "  - Status shows NetworkTables link to the RIO.",
@@ -525,6 +697,8 @@ class BringupControlUI(tk.Tk):
             self._profile_box.set(current)
         else:
             self._profile_box.set(profiles[0])
+        if self._live_view is not None:
+            self._live_view.reload_profile(self._profile_box.get())
 
     def _build_reports_help(self) -> str:
         """
@@ -660,6 +834,33 @@ class BringupControlUI(tk.Tk):
             "Drive Axes Labels:",
             "  Left Drive (LY Axis) and Right Drive (RY Axis) are labels only.",
             "  They indicate which joystick axes are bound; no command is sent.",
+        ]
+        return "\n".join(lines)
+
+    def _build_live_help(self) -> str:
+        """
+        NAME
+            _build_live_help - Build the Live Topology tab text.
+        """
+        lines = [
+            "Purpose:",
+            "  Show live device presence and telemetry on the topology diagram.",
+            "",
+            "Enable Live Overlay:",
+            "  Starts polling runtime state from the roboRIO TCP UI channel.",
+            "  Live overlay is read-only and does not send commands.",
+            "",
+            "Show Groups:",
+            "  Toggles group boxes/labels from bridgeConfig groups.",
+            "  Useful for visualizing CLI groups in the live view.",
+            "",
+            "Source:",
+            "  - tcp: Fetch runtime state from the roboRIO (default).",
+            "  - file: Replay a saved JSON snapshot for offline testing.",
+            "",
+            "Rate:",
+            "  Updates per second (default 5 Hz).",
+            "  Higher rates add more TCP traffic; keep it modest.",
         ]
         return "\n".join(lines)
 
@@ -948,9 +1149,12 @@ class BringupControlUI(tk.Tk):
             _poll_nt - Poll TCP/NT inputs and update output log.
         """
         now = time.time()
-        if not self._tcp_connected and (now - self._last_connect_attempt) > 1.0:
-            self._last_connect_attempt = now
-        self._tcp_connected = connect(self._session)
+        if not self._tcp_connected:
+            if (now - self._last_connect_attempt) > 1.0:
+                self._last_connect_attempt = now
+                self._tcp_connected = connect(self._session)
+        else:
+            self._tcp_connected = connect(self._session)
         if self._tcp_connected:
             self._handshake_done = self._session.handshake_done()
         if self._tcp_connected != self._prev_tcp_connected:
@@ -1073,8 +1277,66 @@ class BringupControlUI(tk.Tk):
                 self._log_poll_inflight = True
                 self._log_poll_seq = seq
                 self._last_log_poll = now
+        self._poll_live_overlay(now)
         self._update_action_enabled()
-        self.after(250, self._poll_nt)
+        idle = (
+            not self._tcp_connected
+            and not self._nt_connected
+            and not self._live_enabled_var.get()
+            and not self._tracker.is_pending()
+            and not self._log_poll_inflight
+        )
+        interval = self._poll_interval_idle if idle else self._poll_interval_active
+        self.after(int(interval * 1000), self._poll_nt)
+
+    def _poll_live_overlay(self, now: float) -> None:
+        """
+        NAME
+            _poll_live_overlay - Poll runtime state for the live topology view.
+        """
+        if not self._live_enabled_var.get():
+            return
+        if self._runtime_state_pause_until is not None and now < self._runtime_state_pause_until:
+            return
+        if (now - self._runtime_state_last_poll) < (
+            self._runtime_state_interval * self._runtime_state_backoff
+        ):
+            return
+        self._runtime_state_last_poll = now
+        source = self._live_source_var.get()
+        if source == "file":
+            return
+        if not self._tcp_connected or not self._handshake_done:
+            return
+        if self._tracker.is_pending() or self._log_poll_inflight:
+            return
+        if self._runtime_state_pending_seq is None:
+            seq = show_runtime_state(self._session, json_output=True)
+            if seq is not None:
+                self._runtime_state_pending_seq = int(seq)
+                self._runtime_state_pending_at = now
+        else:
+            if (now - self._runtime_state_pending_at) > self._runtime_state_timeout_sec:
+                self._runtime_state_pending_seq = None
+
+    def _apply_runtime_state_payload(self, payload: Dict[str, Any]) -> None:
+        """
+        NAME
+            _apply_runtime_state_payload - Apply live runtime-state JSON.
+        """
+        if self._live_view is None:
+            return
+        changed = self._live_view.update_runtime_state(payload)
+        if changed:
+            self._runtime_state_backoff = 1.0
+            self._runtime_state_idle_count = 0
+            self._runtime_state_pause_until = None
+            return
+        self._runtime_state_idle_count += 1
+        if self._runtime_state_idle_count >= 3:
+            self._runtime_state_backoff = min(8.0, self._runtime_state_backoff * 2.0)
+            self._runtime_state_idle_count = 0
+            self._runtime_state_pause_until = time.time() + self._runtime_state_idle_pause_sec
 
     def _handle_tcp_response(self, event: BridgeEvent) -> None:
         """
@@ -1084,6 +1346,22 @@ class BringupControlUI(tk.Tk):
         msg_type = event.type
         name = event.name.strip()
         seq = event.seq
+        if (
+            self._runtime_state_pending_seq is not None
+            and name.lower() == "showruntimestate"
+            and int(seq) == int(self._runtime_state_pending_seq)
+        ):
+            if msg_type == "out":
+                try:
+                    payload = json.loads(event.json_text) if event.json_text else None
+                except Exception:
+                    payload = None
+                if isinstance(payload, dict):
+                    self._apply_runtime_state_payload(payload)
+                self._runtime_state_pending_seq = None
+                return
+            if msg_type == "ack":
+                return
         seq_match = self._log_poll_seq is not None and int(seq) == int(self._log_poll_seq)
         if msg_type in ("ack", "out") and (name.lower() == "uipolllog" or seq_match):
             if msg_type == "out":

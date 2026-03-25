@@ -14,8 +14,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
-from tools.common.json_io import read_json
-from tools.common.paths import can_mappings_path
+try:
+    from tools.common.json_io import read_json
+    from tools.common.paths import can_mappings_path
+except ImportError:  # Allow running as a script from tools/can_topology.
+    import sys
+    from pathlib import Path as _Path
+
+    sys.path.append(str(_Path(__file__).resolve().parents[1]))
+    from common.json_io import read_json  # type: ignore
+    from common.paths import can_mappings_path  # type: ignore
 BUCKET_CATEGORIES = [
     "neos",
     "neo550s",

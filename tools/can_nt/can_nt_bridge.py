@@ -656,7 +656,10 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         if nt is None or ui_table is None:
             print("ERROR: --ui requires NetworkTables (remove --no-nt).")
             return 2
-        from .bringup_ui import BringupControlUI
+        try:
+            from .bringup_ui import BringupControlUI
+        except ImportError:
+            from tools.can_nt.bringup_ui import BringupControlUI
 
         def _nt_is_connected() -> bool:
             """

@@ -41,3 +41,12 @@ Purpose: Consolidate all planned or future work discussed so far.
 - If performance is an issue, consider moving the CANable sniffer capture loop to a dedicated C program and keep Python for analysis/publishing.
 - Add runtime counters (frames received vs processed, max queue depth, processing lag) to verify Python CAN sniffer keeps up with CANable traffic.
 - The first test tbd idea.
+
+## UI Performance Tuning (Live Topology)
+- Work done: add live overlay change detection (skip redraw when derived state is unchanged), quantize telemetry, ignore timestamp-only churn, and file mtime checks.
+- Work done: add adaptive polling backoff and idle pause for live overlay polling.
+- Work done: reduce idle UI polling frequency when disconnected/no overlay.
+- Next: cap redraw FPS (separate poll rate from render rate).
+- Next: incremental redraw (only update changed nodes rather than full canvas).
+- Next: move TCP/NT to background reader with event queue, keep a slower UI tick (Tk-safe).
+- Next: add optional file system watcher to eliminate JSON polling.

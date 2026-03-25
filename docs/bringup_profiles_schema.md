@@ -92,7 +92,8 @@ Notes:
 - `schema_version`, `data_version`, and `data_hash` are required at the root (schema_version=3).
 - `devices` entries require `vendor` and `type`.
 - `diagram` is editor-only and ignored by robot/PC tools.
-- `bridgeConfig` is optional and ignored by the topology editor.
+- `bridgeConfig` is optional; the topology editor can read/write it for group overlays.
+- Robot and PC tools ignore bridgeConfig for control logic (CLI/UI only).
     class BridgeConfig {
         int schemaVersion
         string? generatedAt

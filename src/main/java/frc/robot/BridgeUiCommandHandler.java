@@ -9,10 +9,14 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.livewindow.LiveWindow;
 import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
 import frc.robot.input.BindingsManager;
+import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
+import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 import frc.robot.tests.BringupTestRegistry;
 import frc.robot.ui.TcpUiServer;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -1527,7 +1531,8 @@ public class BridgeUiCommandHandler {
   private JsonObject buildRuntimeStateJson() {
     JsonObject root = new JsonObject();
     root.addProperty("schemaVersion", 1);
-    root.addProperty("generatedAtMs", System.currentTimeMillis());
+    long nowMs = System.currentTimeMillis();
+    root.addProperty("generatedAtMs", nowMs);
     root.addProperty("build", BringupCore.getBuildMarker());
     root.addProperty("profile", BringupUtil.getActiveCanProfileLabel());
     root.addProperty("enabled", DriverStation.isEnabled());
@@ -1544,8 +1549,84 @@ public class BridgeUiCommandHandler {
     }
     root.add("groups", groups);
     root.add("selectedDevice", buildSelectedDeviceJson());
-    root.add("devices", buildDevicesJson().get("devices"));
+    root.add("devices", buildRuntimeStateDevices(nowMs));
     return root;
+  }
+
+  /**
+   * NAME
+   *   buildRuntimeStateDevices - Build device entries with live telemetry.
+   */
+  private JsonArray buildRuntimeStateDevices(long nowMs) {
+    List<DeviceSnapshot> snapshots = core != null ? core.captureSnapshots() : new ArrayList<>();
+    Map<String, DeviceSnapshot> byLabel = new HashMap<>();
+    Map<Integer, DeviceSnapshot> byId = new HashMap<>();
+    for (DeviceSnapshot snap : snapshots) {
+      if (snap == null) {
+        continue;
+      }
+      if (snap.label != null && !snap.label.isBlank()) {
+        byLabel.put(snap.label.trim().toLowerCase(), snap);
+      }
+      if (snap.canId >= 0) {
+        byId.put(snap.canId, snap);
+      }
+    }
+
+    JsonArray array = new JsonArray();
+    for (BringupUtil.DeviceEntry entry : BringupUtil.getActiveDevicesSorted()) {
+      if (entry == null) {
+        continue;
+      }
+      JsonObject obj = new JsonObject();
+      obj.addProperty("label", entry.label);
+      obj.addProperty("vendor", entry.vendor);
+      obj.addProperty("type", entry.type);
+      obj.addProperty("id", entry.id);
+
+      DeviceSnapshot snap = null;
+      if (entry.label != null) {
+        snap = byLabel.get(entry.label.trim().toLowerCase());
+      }
+      if (snap == null && entry.id >= 0) {
+        snap = byId.get(entry.id);
+      }
+      if (snap != null) {
+        obj.addProperty("presenceConfidence", snap.present ? 1.0 : 0.0);
+        if (snap.present) {
+          obj.addProperty("lastSeenMs", nowMs);
+        }
+        RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
+        if (rev != null) {
+          if (rev.motorCurrentA != null) {
+            obj.addProperty("motorCurrentA", rev.motorCurrentA);
+          }
+          if (rev.cmdDuty != null) {
+            obj.addProperty("cmdDuty", rev.cmdDuty);
+          }
+          if (rev.appliedDuty != null) {
+            obj.addProperty("appliedDuty", rev.appliedDuty);
+          }
+          if (rev.tempC != null) {
+            obj.addProperty("tempC", rev.tempC);
+          }
+        }
+        CtreMotorAttachment ctre = snap.getAttachment(CtreMotorAttachment.class);
+        if (ctre != null) {
+          if (ctre.motorCurrentA != null) {
+            obj.addProperty("motorCurrentA", ctre.motorCurrentA);
+          }
+          if (ctre.appliedDuty != null) {
+            obj.addProperty("appliedDuty", ctre.appliedDuty);
+          }
+          if (ctre.tempC != null) {
+            obj.addProperty("tempC", ctre.tempC);
+          }
+        }
+      }
+      array.add(obj);
+    }
+    return array;
   }
 
   /**

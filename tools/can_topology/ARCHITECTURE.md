@@ -14,6 +14,7 @@ Purpose: Explain where the editor fits in the system.
 - The editor produces `bringup_system.json` and diagram metadata.
 - The profiles are consumed by robot code and the PC tool.
 - Diagram metadata is editor-only and ignored by robot/PC tools.
+- bridgeConfig groups are used by CLI and can be rendered in the PC UI live view.
 
 ## Components
 Purpose: Describe major modules and responsibilities.

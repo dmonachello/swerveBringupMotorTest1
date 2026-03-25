@@ -8,6 +8,8 @@ Purpose: Turn a diagram into a `bringup_system.json` file.
 - Add nodes (motors, sensors, PDH, etc.).
 - Edit labels, CAN IDs, and optional fields.
 - Export a single profile JSON ready for deploy.
+- Edit-only: live overlays are shown in the Bringup Control UI.
+ - Group overlays (bridgeConfig) are shared with the UI live view.
 
 ## How To Run
 Purpose: Launch the editor without extra dependencies.
@@ -68,6 +70,7 @@ Purpose: Start with your existing profile if present.
 - Use File -> Open Profile... to pick a different profile.
 - If `data_hash` is missing or mismatched, the editor can still open the file for repair.
 
+
 ## Legacy File
 Purpose: Keep the previous editor available for reference without accidental use.
 - The old script has been moved to `tools/can_topology/legacy/can_topology_editor_OLD.py`.
@@ -114,6 +117,7 @@ Purpose: Use the topology editor to create and visualize groups.
 - Groups are stored under `bridgeConfig.groups` in `bringup_system.json`.
 - The editor draws dashed boxes around grouped devices (toggle in View menu).
 - Groups are optional and ignored by the robot code.
+ - The Bringup Control UI live view can also show these groups (Show Groups toggle).
 
 ## Keyboard Shortcuts
 Purpose: Keep shortcuts documented in one place.

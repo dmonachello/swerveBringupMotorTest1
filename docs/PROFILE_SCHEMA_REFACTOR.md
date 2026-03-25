@@ -7,6 +7,7 @@ Purpose: Explain why the schema refactor exists.
 - One file for device catalog, diagram metadata, and groups/bindings.
 - Profiles remain the single source of truth for device labels.
 - bridgeConfig stores groups/bindings without duplicating the device catalog.
+ - Topology editor can create/edit bridgeConfig groups in the same file.
 
 Schema v3 Rules
 Purpose: Document required conventions for bringup_system.json.
@@ -47,6 +48,7 @@ Purpose: Explain how tools consume schema v3.
 - can_profiles.py expects schema_version 3 (legacy v2 accepted for transition).
 - validate_profiles.py expects schema_version 3 and enforces unique labels.
 - bridgeConfig devices are regenerated from profiles when loading a unified file.
+- Topology editor may write bridgeConfig groups for visualization; robot ignores them.
 
 Tradeoffs
 Purpose: Explain costs of the refactor.

@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "generatedAtMs": 1761345600000,
+  "build": "offline-sample",
+  "profile": "robot_2026",
+  "enabled": false,
+  "estopped": false,
+  "mode": "disabled",
+  "groups": [
+    {
+      "name": "swerve_front_left",
+      "enabled": true,
+      "members": [
+        {"device": "Drive Motor (id 2)", "enabled": true},
+        {"device": "Angle Motor (id 1)", "enabled": true},
+        {"device": "Encoder (CANCoder) (id 3)", "enabled": true}
+      ],
+      "bindings": []
+    }
+  ],
+  "selectedDevice": {
+    "device": "Drive Motor (id 2)",
+    "enabled": false
+  },
+  "devices": [
+    {
+      "label": "Drive Motor (id 2)",
+      "vendor": "CTRE",
+      "type": "MotorController",
+      "id": 2,
+      "presenceConfidence": 0.98,
+      "lastSeenMs": 1761345598000,
+      "motorCurrentA": 12.4,
+      "cmdDuty": 0.2,
+      "appliedDuty": 0.19,
+      "tempC": 38.5
+    },
+    {
+      "label": "Angle Motor (id 1)",
+      "vendor": "REV",
+      "type": "MotorController",
+      "id": 1,
+      "presenceConfidence": 0.92,
+      "lastSeenMs": 1761345598100,
+      "motorCurrentA": 3.1,
+      "cmdDuty": 0.05,
+      "appliedDuty": 0.05,
+      "tempC": 31.2
+    },
+    {
+      "label": "Encoder (CANCoder) (id 3)",
+      "vendor": "CTRE",
+      "type": "Encoder",
+      "id": 3,
+      "presenceConfidence": 0.99,
+      "lastSeenMs": 1761345598200
+    },
+    {
+      "label": "IMU (Pigeon2)",
+      "vendor": "CTRE",
+      "type": "GyroSensor",
+      "id": 19,
+      "presenceConfidence": 0.75,
+      "lastSeenMs": 1761345597000
+    }
+  ]
+}

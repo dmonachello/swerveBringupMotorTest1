@@ -231,6 +231,21 @@ UI HELP
     - Each tab is scrollable for long descriptions.
     - Command buttons show short hover tooltips for quick reminders.
 
+LIVE TOPOLOGY OVERLAY
+    Purpose: Show live device presence and telemetry in the Bringup Control UI.
+    - Open the Live Topology tab.
+    - Enable Live Overlay to begin polling runtime state.
+    - Show Groups toggles bridgeConfig group boxes/labels in the live view.
+    - Source = tcp uses the UI TCP channel; Source = file loads a JSON snapshot manually.
+    - Use Load File... to pick a snapshot, then Reload File to refresh it.
+    - Update rate defaults to 5 Hz; adjust in the Live Topology controls.
+    - Sample snapshot: tools\can_nt\samples\sample_runtime_state.json
+    - Color legend:
+        - Green: presenceConfidence >= 0.5 or lastSeen is recent (<~2s).
+        - Orange: weak/stale presence (presenceConfidence 0.05..0.5 or lastSeen >~2s).
+        - Gray: presenceConfidence <= 0.05.
+        - Vendor color only: no live data for this device.
+
 UI SCREENSHOT
     Purpose: Provide a visual reference for the Bringup Control UI layout.
     - Screenshot: ![Bringup Control UI](../docs/images/bringup_ui_tests.png)

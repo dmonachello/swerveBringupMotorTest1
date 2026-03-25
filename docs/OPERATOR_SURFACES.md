@@ -22,12 +22,14 @@ Purpose: Provide button-driven control and status output.
 - Owns: UI layout, output panel, status indicators, and retry/timeout UI cues.
 - Uses: BridgeSession + bridge_ops for all command sends.
 - Local view: UI does not edit config; it is a runtime control surface.
+- Live Ops: hosts the read-only live topology overlay (Phase 1).
+- Live view can render bridgeConfig group boxes/labels (toggle in the UI).
 
 Topology Editor
 Purpose: Define and visualize device topology and layout.
 - Owns: Diagram layout, device placement, profile edits, and group overlays.
 - Uses: bringup_system.json (profiles + optional bridgeConfig).
-- Does not: send live TCP commands or modify runtime state.
+- Does not: send commands or modify runtime state.
 
 Dashboards (Shuffleboard/Glass)
 Purpose: Visualize runtime status and diagnostics.
@@ -49,7 +51,7 @@ Purpose: Centralize command wrappers and local config logic.
 Unified Config (bringup_system.json)
 Purpose: Store profiles, diagram, and bridgeConfig in one file.
 - Used by: CLI and topology editor.
-- Contract: `bridgeConfig` is optional; profiles + diagram are authoritative for device lists.
+- Contract: bridgeConfig is optional; profiles + diagram are authoritative for device lists.
 
 Data Ownership
 Purpose: Specify who owns which data.
@@ -67,17 +69,17 @@ Purpose: Explain how data moves between surfaces.
 Examples
 Purpose: Show common workflows.
 
-Example: Topology → CLI
+Example: Topology -> CLI
 - Edit devices and layout in topology editor.
-- Save to `data/bringup_system.json`.
-- CLI: `merge config data/bringup_system.json`, add groups, then `save unified-config`.
+- Save to data/bringup_system.json.
+- CLI: merge config data/bringup_system.json, add groups, then save unified-config.
 
 Example: CLI-only
-- CLI: create devices/groups, then `save unified-config data/bringup_system.json`.
+- CLI: create devices/groups, then save unified-config data/bringup_system.json.
 - Optional: open topology editor and load canonical file for layout.
 
 Example: Sniffer bootstrap
-- Run sniffer `--dump-profile` to create a profile.
+- Run sniffer --dump-profile to create a profile.
 - Rename labels, open topology editor, then use CLI to add groups.
 
 Failure/Absence Behavior
@@ -100,6 +102,6 @@ Purpose: Document known design tradeoffs.
 
 Future Extensions
 Purpose: Track safe next steps.
-- Add a small operator-surface “status” panel that shows which file is loaded and last saved.
+- Add a small operator-surface "status" panel that shows which file is loaded and last saved.
 - Add a spec-to-code checklist test to guard shared-layer usage.
 - Add a UI-only indicator when bridgeConfig groups are missing from the canonical file.

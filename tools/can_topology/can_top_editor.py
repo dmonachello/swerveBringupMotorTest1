@@ -19,9 +19,11 @@ ERRORS
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import re
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -29,15 +31,54 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox, simpledialog
 
-from tools.common.json_io import read_json
-from tools.common.topology_render import (
-    device_type_key_for_category,
-    fill_color_for_vendor,
-    outline_color_for_vendor,
-    shape_kind_for_category,
-    text_color_for_fill,
-    vendor_key_for_category,
-)
+try:
+    from tools.common.json_io import read_json
+    from tools.common.topology_render import (
+        device_type_key_for_category,
+        fill_color_for_vendor,
+        outline_color_for_vendor,
+        shape_kind_for_category,
+        text_color_for_fill,
+        vendor_key_for_category,
+    )
+    from tools.common.topology_layout import (
+        bus_ys as bus_ys_for_offsets,
+        node_box_dims,
+        node_box_y,
+        node_center_y_unscaled,
+    )
+    from tools.common.topology_text import (
+        fit_font_size as fit_font_size_shared,
+        truncate_to_width as truncate_to_width_shared,
+        wrap_label_lines as wrap_label_lines_shared,
+    )
+    from tools.common.topology_draw import draw_group_overlays
+except ImportError:  # Allow running as a script from this folder.
+    import sys
+    from pathlib import Path as _Path
+
+    sys.path.append(str(_Path(__file__).resolve().parents[1]))
+    from common.json_io import read_json  # type: ignore
+    from common.topology_render import (  # type: ignore
+        device_type_key_for_category,
+        fill_color_for_vendor,
+        outline_color_for_vendor,
+        shape_kind_for_category,
+        text_color_for_fill,
+        vendor_key_for_category,
+    )
+    from common.topology_layout import (  # type: ignore
+        bus_ys as bus_ys_for_offsets,
+        node_box_dims,
+        node_box_y,
+        node_center_y_unscaled,
+    )
+    from common.topology_text import (  # type: ignore
+        fit_font_size as fit_font_size_shared,
+        truncate_to_width as truncate_to_width_shared,
+        wrap_label_lines as wrap_label_lines_shared,
+    )
+    from common.topology_draw import draw_group_overlays  # type: ignore
 try:
     from tools.common.paths import profiles_canonical_path, profiles_deploy_path
     from tools.common.profile_io import compute_profiles_hash
@@ -107,7 +148,10 @@ except ImportError:  # Allow running as a script from this folder.
         tags_to_string,
     )
 
-from tools.common.time_utils import timestamp_version
+try:
+    from tools.common.time_utils import timestamp_version
+except ImportError:  # Allow running as a script from this folder.
+    from common.time_utils import timestamp_version  # type: ignore
 
 
 class TopologyEditor(tk.Tk):
@@ -619,6 +663,7 @@ class TopologyEditor(tk.Tk):
         self.detail_vars["limits"].set(limits_text)
         self.detail_vars["terminator"].set(term_text)
         self.detail_vars["scale"].set(f"{node.scale:.2f}")
+        self.detail_vars["tags"].set(self._tags_to_string(node.tags) or "--")
 
     def _update_callout_details(self, callout: Node) -> None:
         """
@@ -642,7 +687,6 @@ class TopologyEditor(tk.Tk):
                 n.key == callout.callout_target_node_key for n in self._device_nodes()
             )
         self._callout_debug_vars["target_exists"].set("yes" if exists else "no")
-        self.detail_vars["tags"].set(self._tags_to_string(node.tags) or "--")
         if hasattr(self, "_node_details_panel"):
             self._preserve_canvas_view(lambda: self._node_details_panel.pack(fill="x", pady=(8, 0)))
 
@@ -3881,10 +3925,7 @@ class TopologyEditor(tk.Tk):
         NAME
             _node_box_dims - Return box width/height for a node at a scale.
         """
-        node_scale = max(0.6, min(2.0, node.scale))
-        if node.node_type == "callout":
-            return 180 * scale * node_scale, 50 * scale * node_scale
-        return self._box_w * scale * node_scale, self._box_h * scale * node_scale
+        return node_box_dims(node, self._box_w, self._box_h, scale)
 
     def _should_clamp_node_to_bus(self, node: Node) -> bool:
         """
@@ -3902,37 +3943,14 @@ class TopologyEditor(tk.Tk):
         NAME
             _node_box_y - Return top/bottom Y coordinates for a node box.
         """
-        if node.row == 1:
-            y0 = bus_y + 30 * scale
-            y1 = y0 + box_h
-        else:
-            y1 = bus_y - 30 * scale
-            y0 = y1 - box_h
-        return y0, y1
+        return node_box_y(node, bus_y, box_h, scale)
 
     def _node_center_y_unscaled(self, node: Node) -> float:
         """
         NAME
             _node_center_y_unscaled - Compute unscaled center Y for a node.
         """
-        if node.free_y is not None:
-            if not self._bus_offsets:
-                return node.free_y
-            bus_index = min(max(node.bus_index, 0), max(len(self._bus_offsets) - 1, 0))
-            return self._bus_offsets[bus_index] + node.free_y
-        if not self._bus_offsets:
-            bus_offset = 0.0
-        else:
-            bus_index = min(max(node.bus_index, 0), max(len(self._bus_offsets) - 1, 0))
-            bus_offset = self._bus_offsets[bus_index]
-        node_scale = max(0.6, min(2.0, node.scale))
-        if node.node_type == "callout":
-            box_h = 50.0 * node_scale
-        else:
-            box_h = float(self._box_h) * node_scale
-        if node.row == 1:
-            return bus_offset + 30.0 + box_h / 2.0
-        return bus_offset - 30.0 - box_h / 2.0
+        return node_center_y_unscaled(node, self._bus_offsets, self._box_h)
 
     def _nearest_bus_and_row_from_offset(self, y_offset: float) -> Tuple[int, int]:
         """
@@ -5142,7 +5160,7 @@ class TopologyEditor(tk.Tk):
             self._details_layout_shift = False
         self._last_base_y = base_y
         self._last_canvas_height = height
-        bus_ys = [base_y + offset * scale for offset in self._bus_offsets]
+        bus_ys = bus_ys_for_offsets(base_y, self._bus_offsets, scale)
         box_w = self._box_w * scale
         box_h = self._box_h * scale
         span = box_h + 60 * scale
@@ -5406,7 +5424,7 @@ class TopologyEditor(tk.Tk):
             seg_right = eff_rights[n.bus_index] * scale
             node_centers[n.key] = (
                 min(max(n.x * scale, seg_left + 20), seg_right - 20),
-                bus_ys[n.bus_index] if bus_ys else base_y,
+            bus_ys[n.bus_index] if bus_ys else base_y,
             )
         linked_devices = {link.get("device") for link in self._cannect_device_links}
         for link in self._can_bus_links:
@@ -5611,53 +5629,12 @@ class TopologyEditor(tk.Tk):
             bounds = self._node_bounds.get(node.key)
             if bounds:
                 label_bounds[node.label] = bounds
-        if not label_bounds:
-            return
-        palette = ["#1f6feb", "#f97316", "#16a34a", "#a855f7", "#0ea5e9", "#e11d48"]
-        pad = 10.0
-        for idx, group in enumerate(groups):
-            if not isinstance(group, dict):
-                continue
-            name = str(group.get("name", "")).strip()
-            if not name:
-                continue
-            members = group.get("members", []) or []
-            bounds_list = []
-            for member in members:
-                if isinstance(member, dict):
-                    label = member.get("device")
-                else:
-                    label = member
-                if not isinstance(label, str):
-                    continue
-                bounds = label_bounds.get(label.strip())
-                if bounds:
-                    bounds_list.append(bounds)
-            if not bounds_list:
-                continue
-            x0 = min(b[0] for b in bounds_list) - pad
-            y0 = min(b[1] for b in bounds_list) - pad
-            x1 = max(b[2] for b in bounds_list) + pad
-            y1 = max(b[3] for b in bounds_list) + pad
-            color = palette[idx % len(palette)]
-            rect = self.canvas.create_rectangle(
-                x0,
-                y0,
-                x1,
-                y1,
-                outline=color,
-                width=2,
-                dash=(6, 4),
-            )
-            self.canvas.tag_lower(rect)
-            self.canvas.create_text(
-                x0 + 6,
-                y0 + 6,
-                text=name,
-                anchor="nw",
-                fill=color,
-                font=("Segoe UI", max(8, int(10 * self._zoom))),
-            )
+        draw_group_overlays(
+            self.canvas,
+            label_bounds,
+            groups,
+            zoom=self._zoom,
+        )
 
     def _shape_kind_for_node(self, node: Node) -> str:
         """
@@ -6943,7 +6920,7 @@ class TopologyEditor(tk.Tk):
             int(max(max_right, max_node_x + 200.0) * scale),
         )
         base_y = height * 0.5 + self._pan_y
-        bus_ys = [base_y + offset * scale for offset in self._bus_offsets]
+        bus_ys = bus_ys_for_offsets(base_y, self._bus_offsets, scale)
         box_w = self._box_w * scale
         box_h = self._box_h * scale
         span = box_h + 60 * scale
@@ -7951,64 +7928,21 @@ class TopologyEditor(tk.Tk):
         NAME
             _fit_font_size - Shrink font size until text fits inside a box.
         """
-        size = max(6, base_size)
-        lines = text.splitlines() or [text]
-        while size >= 6:
-            font = tkfont.Font(family="Segoe UI", size=size)
-            line_h = font.metrics("linespace")
-            total_h = line_h * len(lines)
-            if total_h <= max_h:
-                widest = max(font.measure(line) for line in lines)
-                if widest <= max_w:
-                    return size
-            size -= 1
-        return 6
+        return fit_font_size_shared(text, max_w, max_h, base_size)
 
     def _truncate_to_width(self, text: str, font: tkfont.Font, max_w: float) -> str:
         """
         NAME
             _truncate_to_width - Trim text to fit a max pixel width.
         """
-        if font.measure(text) <= max_w:
-            return text
-        if max_w <= 0:
-            return ""
-        trimmed = text
-        while trimmed and font.measure(trimmed + "...") > max_w:
-            trimmed = trimmed[:-1]
-        return (trimmed + "...") if trimmed else ""
+        return truncate_to_width_shared(text, font, max_w)
 
     def _wrap_label_lines(self, text: str, font: tkfont.Font, max_w: float) -> List[str]:
         """
         NAME
             _wrap_label_lines - Wrap label text into at most two lines.
         """
-        words = text.split()
-        if not words:
-            return [text]
-        lines: List[str] = []
-        current = ""
-        idx = 0
-        while idx < len(words) and len(lines) < 1:
-            word = words[idx]
-            cand = word if not current else f"{current} {word}"
-            if font.measure(cand) <= max_w or not current:
-                current = cand
-                idx += 1
-            else:
-                lines.append(current)
-                current = ""
-        if not lines:
-            lines.append(current or words[0])
-        remaining = words[idx:]
-        if remaining:
-            second = " ".join(remaining)
-        else:
-            second = ""
-        if second:
-            second = self._truncate_to_width(second, font, max_w)
-            lines.append(second)
-        return lines[:2]
+        return wrap_label_lines_shared(text, font, max_w)
 
     def _schedule_redraw(self) -> None:
         """
@@ -8161,7 +8095,6 @@ class TopologyEditor(tk.Tk):
                     return None
         return None
 
-
 def main() -> int:
     """
     NAME
@@ -8170,6 +8103,8 @@ def main() -> int:
     RETURNS
         Process exit code (0).
     """
+    parser = argparse.ArgumentParser(description="CAN topology editor")
+    args = parser.parse_args()
     app = TopologyEditor()
     app.mainloop()
     return 0

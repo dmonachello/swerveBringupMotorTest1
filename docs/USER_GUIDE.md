@@ -52,6 +52,10 @@ Test: Rotation only (internal)
 Test result: Rotation only (internal) = PASS (Reached rotation limit (NEO CAN 25))
 ```
 
+Live Topology (offline):
+- Load a runtime-state JSON file in the Live Topology tab.
+- Use Reload File to refresh the overlay when the file changes.
+
 ### Topology Editor (Python/Tkinter)
 Purpose: Author and maintain device profiles and layouts.
 - Location: `tools/can_topology/` (entry: `can_top_editor.py`).
@@ -65,6 +69,7 @@ Purpose: Author and maintain device profiles and layouts.
 - View -> `Show Warnings/Errors` toggles duplicate-ID badges.
 - File -> `Print Diagram...` prints the current diagram (PDF handler required).
 - Node boxes show the label with a separate `ID` line instead of `(id X)` inline.
+- Groups -> `Create Group from Selection...` writes bridgeConfig groups for CLI/UI use.
 - For Windows installs, use `install_windows.cmd` to install Python deps (includes `reportlab`).
 
 ## Data Flow
@@ -80,6 +85,7 @@ Example:
   python tools\can_topology\validate_profiles.py --path data\bringup_system.json --strict
 - The editor writes it; robot and PC tools consume it.
 - Diagram metadata is editor-only and ignored by robot/PC tools.
+- bridgeConfig groups can be edited in the topology editor or CLI for operator workflows.
 - The robot publishes local diagnostics; the PC publishes CAN-bus diagnostics.
 - Local robot data and PC CAN data are kept separate by design.
 
