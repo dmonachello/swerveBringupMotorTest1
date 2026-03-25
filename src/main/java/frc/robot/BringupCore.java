@@ -400,6 +400,35 @@ public final class BringupCore {
 
   /**
    * NAME
+   *   safetyStop - Stop active tests and motor outputs for safety events.
+   *
+   * PARAMETERS
+   *   reason - Label for the safety stop event.
+   *
+   * SIDE EFFECTS
+   *   Stops tests, commands motor outputs to zero, and emits a safety message.
+   */
+  public void safetyStop(String reason) {
+    if (activeTest != null && activeTest.isRunning()) {
+      String label = reason != null && !reason.isBlank() ? reason : "safetyStop";
+      String message =
+          "Safety: stopping active test '" + activeTest.getName() + "' (" + label + ").";
+      BringupPrinter.enqueue(message);
+      System.out.println(message);
+      activeTest.stop(testContext);
+    }
+    activeTest = null;
+    refreshSelectableTests();
+    for (ManufacturerGroup group : manufacturerGroups) {
+      group.stopAll();
+    }
+    forceStopAllMotorOutputs();
+    String label = reason != null && !reason.isBlank() ? reason : "safetyStop";
+    BringupPrinter.enqueue("Safety: outputs stopped (" + label + ").");
+  }
+
+  /**
+   * NAME
    *   runNextNonMotorTest - Run the next available non-motor device test.
    *
    * SIDE EFFECTS
@@ -747,14 +776,17 @@ public final class BringupCore {
    * NAME
    *   toggleSelectedBringupTestEnabled - Toggle enable state for selected test.
    *
+   * RETURNS
+   *   New enabled state when a test is selected, or null when unavailable.
+   *
    * SIDE EFFECTS
    *   Updates test metadata and attempts to persist to JSON.
    */
-  public void toggleSelectedBringupTestEnabled() {
+  public Boolean toggleSelectedBringupTestEnabled() {
     BringupTest test = getSelectedBringupTest();
     if (test == null) {
       BringupPrinter.enqueue("No bringup tests available.");
-      return;
+      return null;
     }
     boolean newValue = !test.isEnabled();
     test.setEnabled(newValue);
@@ -764,6 +796,7 @@ public final class BringupCore {
     if (!saved) {
       BringupPrinter.enqueue("Warning: failed to persist bringup test enable state.");
     }
+    return newValue;
   }
 
   /**

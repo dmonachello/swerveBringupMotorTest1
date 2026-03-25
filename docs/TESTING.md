@@ -72,6 +72,15 @@ Purpose: the fast test plan confirms minimum health checks for the system.
 ## Complete Test Plan
 Purpose: the complete test plan verifies major robot and PC tool functionality after large changes.
 
+### Safety (Client/Server)
+Purpose: verify TCP safety stop, stop latch, and Xbox priority behavior.
+
+1. TCP timeout safe stop: start a test from the Bringup Control UI or CLI, kill the UI process or unplug the PC network, expect the robot to stop within ~1s with the stop latch set and TCP start commands rejected.
+2. TCP stop latch set (command-driven): use a TCP command that disables or stops (for example `groupDisable` or `selectedModeSet enabled=false`), expect the stop latch to set and outputs to stop.
+3. Xbox clears latch: with latch active, press Xbox `A`/`B` to run a test, expect the latch to clear and the Xbox test to start.
+4. Xbox disconnect: with Xbox connected, start any test and unplug the controller USB, expect an immediate stop with the latch set.
+5. Driver Station override: while clients are active, disable the robot or E-stop from Driver Station, expect the robot to remain stopped regardless of TCP/Xbox commands.
+
 ### Profiles (Required Setup)
 Purpose: profiles match the hardware under test to avoid false diagnostics.
 

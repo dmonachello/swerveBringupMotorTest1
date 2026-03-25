@@ -15,6 +15,16 @@ public final class BringupCommandRouter {
 
   /**
    * NAME
+   *   CommonResult - Summary of binding-driven actions.
+   */
+  public static final class CommonResult {
+    public Boolean toggledTestEnabled = null;
+    public boolean runTestPressed = false;
+    public boolean runAllPressed = false;
+  }
+
+  /**
+   * NAME
    *   applyCommon - Apply common binding-driven actions.
    *
    * PARAMETERS
@@ -28,8 +38,11 @@ public final class BringupCommandRouter {
    *
    * SIDE EFFECTS
    *   Enqueues prints, triggers device actions, and updates reports/tests.
+   *
+   * RETURNS
+   *   Summary of binding-driven actions for downstream safety handling.
    */
-  public static void applyCommon(
+  public static CommonResult applyCommon(
       BindingsManager.BindingState bind,
       BringupCore core,
       DiagnosticsReporter diagnostics,
@@ -37,6 +50,7 @@ public final class BringupCommandRouter {
       Runnable printTestsInfo,
       Runnable printTestsOverview,
       boolean runHeld) {
+    CommonResult result = new CommonResult();
 
     if (bind.pressed("addMotor")) {
       BringupPrinter.enqueue("Command: addMotor");
@@ -67,7 +81,7 @@ public final class BringupCommandRouter {
       }
     }
     if (bind.pressed("toggleTest")) {
-      core.toggleSelectedBringupTestEnabled();
+      result.toggledTestEnabled = core.toggleSelectedBringupTestEnabled();
       if (printTestsOverview != null) {
         printTestsOverview.run();
       }
@@ -75,10 +89,12 @@ public final class BringupCommandRouter {
     if (bind.pressed("runTest")) {
       BringupPrinter.enqueue("Command: runTest");
       core.runSelectedBringupTest();
+      result.runTestPressed = true;
     }
     if (bind.pressed("runAllTests")) {
       BringupPrinter.enqueue("Command: runAllTests");
       core.runAllBringupTests();
+      result.runAllPressed = true;
     }
 
     if (bind.pressed("printBindings") && printBindings != null) {
@@ -131,5 +147,6 @@ public final class BringupCommandRouter {
 
     core.updateReports();
     core.updateTests(runHeld || bind.held("runTest"));
+    return result;
   }
 }

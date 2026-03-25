@@ -157,6 +157,8 @@ public class RobotV2 extends TimedRobot {
     }
     if (uiHandler != null) {
       uiHandler.processTcpCommands();
+      boolean xboxConnected = controller != null && DriverStation.isJoystickConnected(0);
+      uiHandler.updateSafety(xboxConnected);
       uiHandler.publishUiRobotState();
     }
     frc.robot.diag.app.AppStatusTracker.recordLoop();
@@ -180,7 +182,7 @@ public class RobotV2 extends TimedRobot {
     BindingsManager.BindingState bind = bindings.sample(controller, controller2, edge);
 
     boolean runHeld = bind.held("runTest");
-    BringupCommandRouter.applyCommon(
+    BringupCommandRouter.CommonResult commonResult = BringupCommandRouter.applyCommon(
         bind,
         core,
         diagnostics,
@@ -237,6 +239,15 @@ public class RobotV2 extends TimedRobot {
     if (uiHandler != null) {
       uiHandler.setLastSpeeds(neoSpeed, krakenSpeed);
       uiHandler.handleUiCommands();
+    }
+
+    if (uiHandler != null && commonResult != null) {
+      if (Boolean.FALSE.equals(commonResult.toggledTestEnabled)) {
+        uiHandler.setStopLatchFromXbox("xboxDisableTest");
+      }
+      if (commonResult.runTestPressed || commonResult.runAllPressed) {
+        uiHandler.clearStopLatchFromXbox("xboxRun");
+      }
     }
 
     // D-pad Right: print current stick inputs.

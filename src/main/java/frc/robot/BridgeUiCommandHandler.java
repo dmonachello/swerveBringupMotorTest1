@@ -39,6 +39,7 @@ public class BridgeUiCommandHandler {
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
   private static final int UI_PROTOCOL_VERSION = 1;
   private static final long TCP_CMD_TIMEOUT_MS = 1000;
+  private static final long TCP_LEASE_TIMEOUT_MS = 750;
   private static final int UI_LOG_MAX_LINES = 200;
   private static final Gson GSON = new Gson();
   private static final double DEADBAND = BringupUtil.DEADBAND;
@@ -61,6 +62,11 @@ public class BridgeUiCommandHandler {
   private String uiSessionId = UUID.randomUUID().toString();
   private String activeUiClientId = null;
   private long lastTcpSeq = -1;
+  private long lastTcpCommandMs = 0L;
+  private boolean tcpConnected = false;
+  private boolean stopLatchActive = false;
+  private String stopLatchReason = "";
+  private boolean lastXboxConnected = false;
   private final ConcurrentLinkedQueue<TcpPendingCommand> tcpCommandQueue = new ConcurrentLinkedQueue<>();
   private final ConcurrentLinkedQueue<String> uiLogQueue = new ConcurrentLinkedQueue<>();
   private final AtomicInteger uiLogCount = new AtomicInteger(0);
@@ -148,7 +154,7 @@ public class BridgeUiCommandHandler {
     String argsJson = uiTable.getEntry("cmd/args/json").getString("");
     double cmdTs = uiTable.getEntry("cmd/ts").getDouble(0.0);
     String clientId = uiTable.getEntry("cmd/clientId").getString("");
-    UiCommandResult result = processUiCommand(name, argsJson, cmdTs, clientId);
+    UiCommandResult result = processUiCommand(name, argsJson, cmdTs, clientId, false);
     publishUiAck(seq, result.ok, result.message, name, cmdTs);
     publishUiOut(seq, name, result.outText, cmdTs, result.outJson);
   }
@@ -187,6 +193,7 @@ public class BridgeUiCommandHandler {
    *   onTcpConnect - Handle TCP UI client connect events.
    */
   public void onTcpConnect(java.net.Socket socket) {
+    tcpConnected = true;
     if (uiProtocolMonitorEnabled) {
       uiTcpTable.getEntry("connected").setBoolean(true);
       if (socket != null && socket.getRemoteSocketAddress() != null) {
@@ -201,6 +208,9 @@ public class BridgeUiCommandHandler {
    */
   public void onTcpDisconnect() {
     activeUiClientId = null;
+    tcpConnected = false;
+    setStopLatch("tcpDisconnect");
+    applySafetyStop("tcpDisconnect");
     if (uiProtocolMonitorEnabled) {
       uiTcpTable.getEntry("connected").setBoolean(false);
     }
@@ -218,14 +228,63 @@ public class BridgeUiCommandHandler {
         continue;
       }
       lastTcpSeq = command.seq;
+      lastTcpCommandMs = System.currentTimeMillis();
       UiCommandResult result = processUiCommand(
           command.name,
           command.argsJson,
           command.ts,
-          command.clientId);
+          command.clientId,
+          true);
       TcpUiServer.UiResponse response = buildTcpResponse(command, result);
       pending.future.complete(response);
     }
+  }
+
+  /**
+   * NAME
+   *   updateSafety - Update safety latch and timeouts from robot loop.
+   *
+   * PARAMETERS
+   *   xboxConnected - Whether the primary Xbox controller is connected.
+   *
+   * SIDE EFFECTS
+   *   May latch safety state and stop outputs on disconnect or timeout events.
+   */
+  public void updateSafety(boolean xboxConnected) {
+    boolean connected = xboxConnected;
+    if (lastXboxConnected && !connected) {
+      setStopLatch("xboxDisconnected");
+      applySafetyStop("xboxDisconnected");
+    }
+    lastXboxConnected = connected;
+    checkTcpTimeout();
+  }
+
+  /**
+   * NAME
+   *   setStopLatchFromXbox - Latch safety stop from the Xbox client.
+   */
+  public void setStopLatchFromXbox(String reason) {
+    setStopLatch(reason);
+    applySafetyStop(reason);
+  }
+
+  /**
+   * NAME
+   *   clearStopLatchFromXbox - Clear the stop latch from the Xbox client.
+   *
+   * RETURNS
+   *   True if the latch was cleared.
+   */
+  public boolean clearStopLatchFromXbox(String reason) {
+    if (!stopLatchActive) {
+      return false;
+    }
+    stopLatchActive = false;
+    stopLatchReason = "";
+    String label = reason != null && !reason.isBlank() ? reason : "xboxClear";
+    BringupPrinter.enqueue("Safety: stop latch cleared (" + label + ").");
+    return true;
   }
 
   /**
@@ -294,7 +353,12 @@ public class BridgeUiCommandHandler {
    * NAME
    *   processUiCommand - Execute a UI command and return the result.
    */
-  private UiCommandResult processUiCommand(String name, String argsJson, double cmdTs, String clientId) {
+  private UiCommandResult processUiCommand(
+      String name,
+      String argsJson,
+      double cmdTs,
+      String clientId,
+      boolean isTcp) {
     UiCommandResult result = new UiCommandResult();
     if (name == null || name.isBlank()) {
       result.ok = false;
@@ -321,6 +385,11 @@ public class BridgeUiCommandHandler {
     } else if (!locked && !isHandshake && !isDisconnect) {
       result.ok = false;
       result.message = "UI handshake required before commands.";
+    } else if (isTcp && isTcpStartCommand(name, args) && stopLatchActive) {
+      result.ok = false;
+      result.message = "Stop latch active"
+          + (stopLatchReason.isBlank() ? "." : " (" + stopLatchReason + ").")
+          + " Clear from Xbox to resume.";
     } else if (!isHandshake && !isDisconnect && !allowWhenDisabled && !isEnabled) {
       result.ok = false;
       result.message = isEStopped ? "Robot disabled (E-Stop)." : "Robot disabled.";
@@ -329,6 +398,11 @@ public class BridgeUiCommandHandler {
     if (!result.ok) {
       result.outText = result.message;
       return result;
+    }
+
+    if (isTcp && isTcpStopCommand(name, args)) {
+      setStopLatch("tcpStop");
+      applySafetyStop("tcpStop");
     }
 
     switch (name) {
@@ -424,7 +498,10 @@ public class BridgeUiCommandHandler {
         result.outText = inputsReport;
         break;
       case "toggleTest":
-        core.toggleSelectedBringupTestEnabled();
+        Boolean toggled = core.toggleSelectedBringupTestEnabled();
+        if (isTcp && Boolean.FALSE.equals(toggled)) {
+          setStopLatch("tcpDisableTest");
+        }
         printTestsOverview();
         break;
       case "runTest":
@@ -943,6 +1020,98 @@ public class BridgeUiCommandHandler {
       }
     }
     return result;
+  }
+
+  /**
+   * NAME
+   *   checkTcpTimeout - Apply safety stop when TCP commands stall.
+   */
+  private void checkTcpTimeout() {
+    if (!tcpConnected || activeUiClientId == null || activeUiClientId.isBlank()) {
+      return;
+    }
+    if (lastTcpCommandMs <= 0) {
+      return;
+    }
+    long now = System.currentTimeMillis();
+    if ((now - lastTcpCommandMs) <= TCP_LEASE_TIMEOUT_MS) {
+      return;
+    }
+    setStopLatch("tcpTimeout");
+    applySafetyStop("tcpTimeout");
+  }
+
+  /**
+   * NAME
+   *   setStopLatch - Enable the safety stop latch.
+   */
+  private void setStopLatch(String reason) {
+    if (stopLatchActive) {
+      return;
+    }
+    stopLatchActive = true;
+    stopLatchReason = reason != null ? reason : "";
+    String label = stopLatchReason.isBlank() ? "stopLatch" : stopLatchReason;
+    BringupPrinter.enqueue("Safety: stop latch set (" + label + ").");
+  }
+
+  /**
+   * NAME
+   *   applySafetyStop - Stop outputs on safety events.
+   */
+  private void applySafetyStop(String reason) {
+    if (core == null) {
+      return;
+    }
+    if (!DriverStation.isEnabled() || DriverStation.isEStopped()) {
+      return;
+    }
+    core.safetyStop(reason);
+  }
+
+  /**
+   * NAME
+   *   isTcpStartCommand - Check if a TCP command starts or enables activity.
+   */
+  private boolean isTcpStartCommand(String name, JsonObject args) {
+    if (name == null) {
+      return false;
+    }
+    switch (name) {
+      case "runTest":
+      case "runAllTests":
+      case "groupRunTest":
+      case "groupEnable":
+      case "groupMemberEnable":
+        return true;
+      case "selectedModeSet": {
+        Boolean enabled = parseUiArgBoolean(args, "enabled");
+        return Boolean.TRUE.equals(enabled);
+      }
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * NAME
+   *   isTcpStopCommand - Check if a TCP command disables or stops activity.
+   */
+  private boolean isTcpStopCommand(String name, JsonObject args) {
+    if (name == null) {
+      return false;
+    }
+    switch (name) {
+      case "groupDisable":
+      case "groupMemberDisable":
+        return true;
+      case "selectedModeSet": {
+        Boolean enabled = parseUiArgBoolean(args, "enabled");
+        return Boolean.FALSE.equals(enabled);
+      }
+      default:
+        return false;
+    }
   }
 
   /**

@@ -12,6 +12,21 @@ Use this project to:
 
 This repository is almost entirely AI-created, including both code and documentation. See PROJECT_INTENT.md for details.
 
+## Safety Rules (Client/Server)
+Purpose: keep networked control safe and deterministic.
+
+- The robot is the server and owns all actuation authority.
+- PC tools are clients; Xbox is a local client with highest priority.
+- Both Xbox and TCP clients can be active at the same time.
+- Xbox always wins on conflicts.
+- A stop/disable/abort command sets a stop latch.
+- The stop latch can be set by TCP or Xbox, but only Xbox can clear it.
+- When the stop latch is set, TCP start/enable/run commands are rejected.
+- TCP connection loss triggers a safe stop and sets the stop latch.
+- Xbox disconnect triggers a safe stop and sets the stop latch.
+- Driver Station enable/disable/E-stop overrides all client commands.
+- NetworkTables is diagnostics/state only; TCP is command/log output only.
+
 ## Run
 Use the normal FRC robot workflow to deploy and run the robot code.
 
