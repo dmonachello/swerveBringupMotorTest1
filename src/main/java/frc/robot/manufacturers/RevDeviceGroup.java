@@ -188,7 +188,7 @@ public final class RevDeviceGroup implements ManufacturerGroup {
   public void setDuty(double duty) {
     for (DeviceTypeBucket bucket : motorBuckets) {
       for (DeviceUnit device : bucket.getDevices()) {
-        device.setDuty(duty);
+        device.applyDuty(duty);
       }
     }
   }

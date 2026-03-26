@@ -40,6 +40,9 @@ public class BridgeUiCommandHandler {
   private static final int UI_PROTOCOL_VERSION = 1;
   private static final long TCP_CMD_TIMEOUT_MS = 1000;
   private static final long TCP_LEASE_TIMEOUT_MS = 750;
+  private static final long TCP_TIMEOUT_STOP_COOLDOWN_MS = 5000;
+  private static final long TCP_KEEPALIVE_INTERVAL_MS = 1000;
+  private static final long TCP_KEEPALIVE_MISSES = 5;
   private static final int UI_LOG_MAX_LINES = 200;
   private static final Gson GSON = new Gson();
   private static final double DEADBAND = BringupUtil.DEADBAND;
@@ -53,6 +56,7 @@ public class BridgeUiCommandHandler {
   private final NetworkTable uiTable;
   private final NetworkTable uiTcpTable;
   private final Runnable profileToggleAction;
+  private final Runnable profileActivateAction;
 
   private boolean dashboardUpdatesEnabled = false;
   private long lastStartupPrintMs = 0L;
@@ -64,6 +68,9 @@ public class BridgeUiCommandHandler {
   private long lastTcpSeq = -1;
   private long lastTcpCommandMs = 0L;
   private boolean tcpConnected = false;
+  private long lastTcpKeepaliveMs = 0L;
+  private java.net.Socket tcpSocket;
+  private long lastTcpTimeoutStopMs = 0L;
   private boolean stopLatchActive = false;
   private String stopLatchReason = "";
   private boolean lastXboxConnected = false;
@@ -88,7 +95,8 @@ public class BridgeUiCommandHandler {
       NetworkTable testsTable,
       NetworkTable uiTable,
       NetworkTable uiTcpTable,
-      Runnable profileToggleAction) {
+      Runnable profileToggleAction,
+      Runnable profileActivateAction) {
     this.core = core;
     this.diagnostics = diagnostics;
     this.bindings = bindings;
@@ -98,6 +106,7 @@ public class BridgeUiCommandHandler {
     this.uiTable = uiTable;
     this.uiTcpTable = uiTcpTable;
     this.profileToggleAction = profileToggleAction;
+    this.profileActivateAction = profileActivateAction;
   }
 
   /**
@@ -194,6 +203,8 @@ public class BridgeUiCommandHandler {
    */
   public void onTcpConnect(java.net.Socket socket) {
     tcpConnected = true;
+    tcpSocket = socket;
+    lastTcpKeepaliveMs = System.currentTimeMillis();
     if (uiProtocolMonitorEnabled) {
       uiTcpTable.getEntry("connected").setBoolean(true);
       if (socket != null && socket.getRemoteSocketAddress() != null) {
@@ -209,6 +220,8 @@ public class BridgeUiCommandHandler {
   public void onTcpDisconnect() {
     activeUiClientId = null;
     tcpConnected = false;
+    tcpSocket = null;
+    lastTcpKeepaliveMs = 0L;
     setStopLatch("tcpDisconnect");
     applySafetyStop("tcpDisconnect");
     if (uiProtocolMonitorEnabled) {
@@ -229,6 +242,7 @@ public class BridgeUiCommandHandler {
       }
       lastTcpSeq = command.seq;
       lastTcpCommandMs = System.currentTimeMillis();
+      lastTcpKeepaliveMs = lastTcpCommandMs;
       UiCommandResult result = processUiCommand(
           command.name,
           command.argsJson,
@@ -257,6 +271,7 @@ public class BridgeUiCommandHandler {
       applySafetyStop("xboxDisconnected");
     }
     lastXboxConnected = connected;
+    checkTcpKeepalive();
     checkTcpTimeout();
   }
 
@@ -372,6 +387,7 @@ public class BridgeUiCommandHandler {
     boolean locked = activeUiClientId != null && !activeUiClientId.isBlank();
     boolean isHandshake = "uiHandshake".equals(name);
     boolean isDisconnect = "uiDisconnect".equals(name);
+    boolean isPing = "uiPing".equals(name);
     boolean allowWhenDisabled = isUiCommandAllowedWhenDisabled(name);
     boolean isEnabled = DriverStation.isEnabled();
     boolean isEStopped = DriverStation.isEStopped();
@@ -382,7 +398,7 @@ public class BridgeUiCommandHandler {
     } else if (locked && !activeUiClientId.equals(client)) {
       result.ok = false;
       result.message = "UI locked by another client. Disconnect or reboot to switch.";
-    } else if (!locked && !isHandshake && !isDisconnect) {
+    } else if (!locked && !isHandshake && !isDisconnect && !isPing) {
       result.ok = false;
       result.message = "UI handshake required before commands.";
     } else if (isTcp && isTcpStartCommand(name, args) && stopLatchActive) {
@@ -406,6 +422,10 @@ public class BridgeUiCommandHandler {
     }
 
     switch (name) {
+      case "uiPing":
+        result.message = "OK";
+        result.outText = "";
+        break;
       case "uiHandshake":
         if (!locked) {
           activeUiClientId = client;
@@ -451,15 +471,31 @@ public class BridgeUiCommandHandler {
         result.outText = drainUiLog();
         break;
       case "profileToggle":
-        BringupUtil.toggleCanProfile();
-        profileToggleAction.run();
-        result.message = "Profile toggled.";
+        BringupUtil.selectNextProfile();
+        if (profileToggleAction != null) {
+          profileToggleAction.run();
+        }
+        result.message = "Profile selected.";
         break;
       case "addMotor":
+        if (!BringupUtil.isProfileActive()) {
+          BringupUtil.prepareActivationForSelectedProfile();
+          BringupUtil.activateSelectedProfile();
+          if (BringupUtil.isProfileActive() && profileActivateAction != null) {
+            profileActivateAction.run();
+          }
+        }
         core.addNextMotorCommand();
         result.message = "Add motor.";
         break;
       case "addAll":
+        if (!BringupUtil.isProfileActive()) {
+          BringupUtil.prepareActivationForSelectedProfile();
+          BringupUtil.activateSelectedProfile();
+          if (BringupUtil.isProfileActive() && profileActivateAction != null) {
+            profileActivateAction.run();
+          }
+        }
         core.addAllDevicesCommand();
         result.message = "Add all motors.";
         break;
@@ -1038,7 +1074,47 @@ public class BridgeUiCommandHandler {
       return;
     }
     setStopLatch("tcpTimeout");
-    applySafetyStop("tcpTimeout");
+    if ((now - lastTcpTimeoutStopMs) >= TCP_TIMEOUT_STOP_COOLDOWN_MS) {
+      lastTcpTimeoutStopMs = now;
+      applySafetyStop("tcpTimeout");
+    }
+  }
+
+  /**
+   * NAME
+   *   checkTcpKeepalive - Enforce keepalive liveness for TCP clients.
+   */
+  private void checkTcpKeepalive() {
+    if (!tcpConnected) {
+      return;
+    }
+    if (lastTcpKeepaliveMs <= 0) {
+      return;
+    }
+    long now = System.currentTimeMillis();
+    long timeoutMs = TCP_KEEPALIVE_INTERVAL_MS * TCP_KEEPALIVE_MISSES;
+    if ((now - lastTcpKeepaliveMs) <= timeoutMs) {
+      return;
+    }
+    forceTcpDisconnect("tcpKeepaliveTimeout");
+  }
+
+  private void forceTcpDisconnect(String reason) {
+    if (tcpSocket != null) {
+      try {
+        tcpSocket.close();
+      } catch (Exception ignored) {
+      }
+    }
+    tcpSocket = null;
+    tcpConnected = false;
+    activeUiClientId = null;
+    lastTcpKeepaliveMs = 0L;
+    setStopLatch(reason);
+    applySafetyStop(reason);
+    if (uiProtocolMonitorEnabled) {
+      uiTcpTable.getEntry("connected").setBoolean(false);
+    }
   }
 
   /**
@@ -1290,6 +1366,7 @@ public class BridgeUiCommandHandler {
       return false;
     }
     switch (name) {
+      case "uiPing":
       case "printProfileDevices":
       case "printSummary":
       case "uiPollLog":
@@ -1607,7 +1684,9 @@ public class BridgeUiCommandHandler {
    *   buildDevicesText - Build text list of active profile devices.
    */
   private String buildDevicesText() {
-    List<BringupUtil.DeviceEntry> devices = BringupUtil.getActiveDevicesSorted();
+    List<BringupUtil.DeviceEntry> devices = BringupUtil.isProfileActive()
+        ? BringupUtil.getActiveDevicesSorted()
+        : BringupUtil.getSelectedDevicesSorted();
     if (devices.isEmpty()) {
       return "Devices: (none)";
     }
@@ -1631,7 +1710,10 @@ public class BridgeUiCommandHandler {
   private JsonObject buildDevicesJson() {
     JsonObject root = new JsonObject();
     JsonArray array = new JsonArray();
-    for (BringupUtil.DeviceEntry entry : BringupUtil.getActiveDevicesSorted()) {
+    List<BringupUtil.DeviceEntry> devices = BringupUtil.isProfileActive()
+        ? BringupUtil.getActiveDevicesSorted()
+        : BringupUtil.getSelectedDevicesSorted();
+    for (BringupUtil.DeviceEntry entry : devices) {
       if (entry == null) {
         continue;
       }
@@ -2006,7 +2088,9 @@ public class BridgeUiCommandHandler {
    *   sb - Target StringBuilder.
    */
   private void appendDeviceSummary(StringBuilder sb) {
-    List<BringupUtil.DeviceEntry> devices = BringupUtil.getActiveDevicesSorted();
+    List<BringupUtil.DeviceEntry> devices = BringupUtil.isProfileActive()
+        ? BringupUtil.getActiveDevicesSorted()
+        : BringupUtil.getSelectedDevicesSorted();
     if (devices.isEmpty()) {
       ReportTextUtil.appendLine(sb, "Devices: (none)");
       return;

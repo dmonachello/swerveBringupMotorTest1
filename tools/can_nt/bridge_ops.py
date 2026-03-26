@@ -130,6 +130,14 @@ def ui_poll_log(session: BridgeSession) -> Optional[int]:
     return _send(session, "uiPollLog", {})
 
 
+def ui_ping(session: BridgeSession) -> Optional[int]:
+    """
+    NAME
+        ui_ping - Send a UI keepalive ping.
+    """
+    return _send(session, "uiPing", {})
+
+
 def select_test_by_name(session: BridgeSession, name: str) -> Optional[int]:
     """
     NAME

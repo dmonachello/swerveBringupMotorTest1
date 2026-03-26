@@ -57,6 +57,16 @@ public class RobotV2 extends TimedRobot {
   private final EdgeTrigger edge = new EdgeTrigger();
   private static final int UI_TCP_PORT = 5809;
   private TcpUiServer uiTcpServer;
+  private final TcpUiServer.CommandHandler uiCommandHandler = new UiCommandHandler();
+  private final TcpUiServer.ConnectionListener uiConnectionListener = new UiConnectionListener();
+  private final BringupPrinter.LineListener bringupLineListener = new BringupLineListener();
+  private final Runnable profileToggleAction = new ProfileToggleAction();
+  private final Runnable profileActivateAction = new ProfileActivateAction();
+  private final Runnable bindingsPrinter = new BindingsPrinter();
+  private final Runnable testsInfoPrinter = new TestsInfoPrinter();
+  private final Runnable testsOverviewPrinter = new TestsOverviewPrinter();
+  private final BringupCommandRouter.AddAllHandler addAllHandler = new AddAllHandlerImpl();
+  private final BringupCommandRouter.AddMotorHandler addMotorHandler = new AddMotorHandlerImpl();
 
   /**
    * NAME
@@ -83,22 +93,13 @@ public class RobotV2 extends TimedRobot {
         testsTable,
         uiTable,
         uiTcpTable,
-        () -> resetCoreForProfile("profileToggle"));
-    BringupPrinter.setLineListener(uiHandler::onBringupLine);
+        profileToggleAction,
+        profileActivateAction);
+    BringupPrinter.setLineListener(bringupLineListener);
     uiTcpServer = new TcpUiServer(
         UI_TCP_PORT,
-        uiHandler::handleTcpUiCommand,
-        new TcpUiServer.ConnectionListener() {
-          @Override
-          public void onConnect(java.net.Socket socket) {
-            uiHandler.onTcpConnect(socket);
-          }
-
-          @Override
-          public void onDisconnect() {
-            uiHandler.onTcpDisconnect();
-          }
-        });
+        uiCommandHandler,
+        uiConnectionListener);
     uiTcpServer.start();
     uiHandler.applyDashboardUpdateState();
     // Print bindings and validate IDs once at startup.
@@ -186,15 +187,19 @@ public class RobotV2 extends TimedRobot {
         bind,
         core,
         diagnostics,
-        uiHandler::printBindings,
-        uiHandler::printTestsInfo,
-        uiHandler::printTestsOverview,
-        runHeld);
+        bindingsPrinter,
+        testsInfoPrinter,
+        testsOverviewPrinter,
+        runHeld,
+        addAllHandler,
+        addMotorHandler);
 
     // --- Profile switching ---
     if (bind.pressed("profileToggle")) {
-      BringupUtil.toggleCanProfile();
-      resetCoreForProfile("profileToggle");
+      BringupUtil.selectNextProfile();
+      if (uiHandler != null) {
+        uiHandler.printProfileInfo();
+      }
     }
 
     // --- Diagnostics / reporting ---
@@ -321,6 +326,200 @@ public class RobotV2 extends TimedRobot {
       uiHandler.setCore(core);
       uiHandler.setDiagnostics(diagnostics);
       uiHandler.printProfileInfo();
+    }
+  }
+
+  /**
+   * NAME
+   *   handleUiTcpCommand - Adapter for TCP UI command handling.
+   */
+  private TcpUiServer.UiResponse handleUiTcpCommand(TcpUiServer.UiCommand command) {
+    if (uiHandler == null) {
+      return null;
+    }
+    return uiHandler.handleTcpUiCommand(command);
+  }
+
+  /**
+   * NAME
+   *   handleUiTcpConnect - Adapter for TCP UI connect events.
+   */
+  private void handleUiTcpConnect(java.net.Socket socket) {
+    if (uiHandler != null) {
+      uiHandler.onTcpConnect(socket);
+    }
+  }
+
+  /**
+   * NAME
+   *   handleUiTcpDisconnect - Adapter for TCP UI disconnect events.
+   */
+  private void handleUiTcpDisconnect() {
+    if (uiHandler != null) {
+      uiHandler.onTcpDisconnect();
+    }
+  }
+
+  /**
+   * NAME
+   *   handleBringupLine - Adapter for BringupPrinter output.
+   */
+  private void handleBringupLine(String text) {
+    if (uiHandler != null) {
+      uiHandler.onBringupLine(text);
+    }
+  }
+
+  /**
+   * NAME
+   *   handleProfileToggle - Adapter for UI profile toggle actions.
+   */
+  private void handleProfileToggle() {
+    if (uiHandler != null) {
+      uiHandler.printProfileInfo();
+    }
+  }
+
+  /**
+   * NAME
+   *   handleProfileActivate - Adapter for profile activation.
+   */
+  private void handleProfileActivate() {
+    resetCoreForProfile("profileActivate");
+  }
+
+  /**
+   * NAME
+   *   AddAllHandlerImpl - Activate profile before add-all.
+   */
+  private final class AddAllHandlerImpl implements BringupCommandRouter.AddAllHandler {
+    @Override
+    public void handleAddAll(boolean addAllNow) {
+      if (addAllNow && !BringupUtil.isProfileActive()) {
+        BringupUtil.prepareActivationForSelectedProfile();
+        BringupUtil.activateSelectedProfile();
+        if (BringupUtil.isProfileActive()) {
+          resetCoreForProfile("profileActivate");
+        }
+      }
+      if (core != null) {
+        core.handleAddAll(addAllNow);
+      }
+    }
+  }
+
+  /**
+   * NAME
+   *   AddMotorHandlerImpl - Activate profile before add-next.
+   */
+  private final class AddMotorHandlerImpl implements BringupCommandRouter.AddMotorHandler {
+    @Override
+    public void handleAddMotor(boolean addMotorNow) {
+      if (addMotorNow && !BringupUtil.isProfileActive()) {
+        BringupUtil.prepareActivationForSelectedProfile();
+        BringupUtil.activateSelectedProfile();
+        if (BringupUtil.isProfileActive()) {
+          resetCoreForProfile("profileActivate");
+        }
+      }
+      if (core != null) {
+        core.handleAdd(addMotorNow);
+      }
+    }
+  }
+
+  /**
+   * NAME
+   *   UiCommandHandler - Delegate for TCP UI command handling.
+   */
+  private final class UiCommandHandler implements TcpUiServer.CommandHandler {
+    @Override
+    public TcpUiServer.UiResponse handle(TcpUiServer.UiCommand command) {
+      return handleUiTcpCommand(command);
+    }
+  }
+
+  /**
+   * NAME
+   *   UiConnectionListener - Delegate for TCP UI connect/disconnect.
+   */
+  private final class UiConnectionListener implements TcpUiServer.ConnectionListener {
+    @Override
+    public void onConnect(java.net.Socket socket) {
+      handleUiTcpConnect(socket);
+    }
+
+    @Override
+    public void onDisconnect() {
+      handleUiTcpDisconnect();
+    }
+  }
+
+  /**
+   * NAME
+   *   BringupLineListener - Delegate for BringupPrinter output.
+   */
+  private final class BringupLineListener implements BringupPrinter.LineListener {
+    @Override
+    public void onLine(String text) {
+      handleBringupLine(text);
+    }
+  }
+
+  /**
+   * NAME
+   *   ProfileToggleAction - Delegate for profile toggle actions.
+   */
+  private final class ProfileToggleAction implements Runnable {
+    @Override
+    public void run() {
+      handleProfileToggle();
+    }
+  }
+
+  private final class ProfileActivateAction implements Runnable {
+    @Override
+    public void run() {
+      handleProfileActivate();
+    }
+  }
+
+  /**
+   * NAME
+   *   BindingsPrinter - Delegate for bindings printing.
+   */
+  private final class BindingsPrinter implements Runnable {
+    @Override
+    public void run() {
+      if (uiHandler != null) {
+        uiHandler.printBindings();
+      }
+    }
+  }
+
+  /**
+   * NAME
+   *   TestsInfoPrinter - Delegate for tests info printing.
+   */
+  private final class TestsInfoPrinter implements Runnable {
+    @Override
+    public void run() {
+      if (uiHandler != null) {
+        uiHandler.printTestsInfo();
+      }
+    }
+  }
+
+  /**
+   * NAME
+   *   TestsOverviewPrinter - Delegate for tests overview printing.
+   */
+  private final class TestsOverviewPrinter implements Runnable {
+    @Override
+    public void run() {
+      if (uiHandler != null) {
+        uiHandler.printTestsOverview();
+      }
     }
   }
 

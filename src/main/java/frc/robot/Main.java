@@ -41,6 +41,17 @@ public final class Main {
     // Entry point selection: RobotV2 is the active bringup harness.
     // Swap to Robot if you need the legacy behavior.
     // RobotBase.startRobot(Robot::new);
-    RobotBase.startRobot(RobotV2::new);
+    RobotBase.startRobot(new RobotSupplier());
+  }
+
+  /**
+   * NAME
+   *   RobotSupplier - Explicit robot constructor for WPILib startup.
+   */
+  private static final class RobotSupplier implements java.util.function.Supplier<RobotBase> {
+    @Override
+    public RobotBase get() {
+      return new RobotV2();
+    }
   }
 }

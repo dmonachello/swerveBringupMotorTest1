@@ -97,10 +97,14 @@ public final class CtreCANCoderDevice implements DeviceUnit {
   @Override
   public void ensureCreated() {
     if (device != null) {
+      BringupUtil.claimDeviceInstance(this);
       initLimitInputs();
       return;
     }
     initLimitInputs();
+    if (!BringupUtil.claimDeviceInstance(this)) {
+      return;
+    }
     device = new CANcoder(canId);
   }
 
@@ -118,6 +122,7 @@ public final class CtreCANCoderDevice implements DeviceUnit {
   public void close() {
     BringupUtil.closeIfPossible(device);
     device = null;
+    BringupUtil.releaseDeviceInstance(this);
     BringupUtil.closeIfPossible(fwdLimit);
     BringupUtil.closeIfPossible(revLimit);
     fwdLimit = null;

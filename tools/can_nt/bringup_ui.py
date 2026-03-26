@@ -35,6 +35,7 @@ from .bridge_ops import (
     ui_handshake,
     ui_monitor,
     ui_poll_log,
+    ui_ping,
 )
 from .bridge_session import BridgeEvent, BridgeSession
 from tools.common.json_io import read_json
@@ -190,6 +191,9 @@ class BringupControlUI(tk.Tk):
         self._handshake_inflight = False
         self._last_handshake_attempt = 0.0
         self._handshake_min_interval = 2.0
+        self._handshake_warn_last = 0.0
+        self._keepalive_interval = 1.0
+        self._last_keepalive = 0.0
         self._ui_fail_interval = 5.0
         self._ui_failures: Dict[str, Dict[str, Any]] = {}
         self._prev_tcp_connected = False
@@ -1177,6 +1181,7 @@ class BringupControlUI(tk.Tk):
             self._handshake_done = False
             self._handshake_inflight = False
             self._session.reset_handshake()
+            self._last_keepalive = 0.0
         for event in self._session.poll_events():
             self._handle_tcp_response(event)
 
@@ -1265,6 +1270,11 @@ class BringupControlUI(tk.Tk):
             and (time.time() - self._last_handshake_attempt) >= self._handshake_min_interval
         ):
             self._send_handshake(reset=False, log=False)
+        if self._tcp_connected and not self._tracker.is_pending():
+            if (now - self._last_keepalive) >= self._keepalive_interval:
+                seq = ui_ping(self._session)
+                if seq is not None:
+                    self._last_keepalive = now
         if (
             self._tcp_connected
             and self._handshake_done
@@ -1346,6 +1356,11 @@ class BringupControlUI(tk.Tk):
         msg_type = event.type
         name = event.name.strip()
         seq = event.seq
+        if name.lower() == "uiping":
+            return
+        if msg_type in ("ack", "out") and self._is_handshake_required(event):
+            self._handle_handshake_required()
+            return
         if (
             self._runtime_state_pending_seq is not None
             and name.lower() == "showruntimestate"
@@ -1446,6 +1461,43 @@ class BringupControlUI(tk.Tk):
             self._test_box.configure(state=state)
         if self._reset_button is not None:
             self._reset_button.state(["!disabled"] if self._tcp_connected else ["disabled"])
+
+    def _is_handshake_required(self, event: BridgeEvent) -> bool:
+        """
+        NAME
+            _is_handshake_required - Check if a response indicates missing handshake.
+        """
+        if event is None:
+            return False
+        message = (event.message or "").strip()
+        if message:
+            return "UI handshake required before commands." in message
+        text = (event.text or "").strip()
+        if text:
+            return "UI handshake required before commands." in text
+        return False
+
+    def _handle_handshake_required(self) -> None:
+        """
+        NAME
+            _handle_handshake_required - Reset handshake state on server warning.
+        """
+        self._handshake_done = False
+        self._handshake_inflight = False
+        self._last_handshake_attempt = 0.0
+        self._session.reset_handshake()
+        self._log_poll_inflight = False
+        self._log_poll_seq = None
+        self._tracker.clear()
+        now = time.time()
+        if (now - self._handshake_warn_last) >= 2.0:
+            self._handshake_warn_last = now
+            self._notify_ui_failure(
+                "handshake",
+                True,
+                "UI handshake required, resyncing.",
+                "UI handshake OK.",
+            )
 
     def _resolve_selected_from_rows(self) -> str:
         """

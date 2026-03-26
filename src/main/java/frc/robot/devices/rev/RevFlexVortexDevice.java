@@ -40,6 +40,7 @@ public final class RevFlexVortexDevice implements DeviceUnit {
   private DigitalInput fwdLimit;
   private DigitalInput revLimit;
   private SparkFlex device;
+  private boolean closed = false;
 
   /**
    * NAME
@@ -94,7 +95,7 @@ public final class RevFlexVortexDevice implements DeviceUnit {
 
   @Override
   public boolean isCreated() {
-    return device != null;
+    return device != null && !closed;
   }
 
   /**
@@ -109,12 +110,24 @@ public final class RevFlexVortexDevice implements DeviceUnit {
    */
   @Override
   public void ensureCreated() {
-    if (device != null) {
+    if (device != null && !closed) {
+      BringupUtil.claimDeviceInstance(this);
       initLimitInputs();
       return;
     }
     initLimitInputs();
+    if (device != null) {
+      try {
+        device.close();
+      } catch (Exception ignored) {
+      }
+      device = null;
+    }
+    if (!BringupUtil.claimDeviceInstance(this)) {
+      return;
+    }
     device = new SparkFlex(canId, MotorType.kBrushless);
+    closed = false;
     device.pauseFollowerModeAsync();
     device.configureAsync(
         new SparkFlexConfig(),
@@ -134,8 +147,15 @@ public final class RevFlexVortexDevice implements DeviceUnit {
    */
   @Override
   public void close() {
-    BringupUtil.closeIfPossible(device);
+    if (device != null) {
+      try {
+        device.close();
+      } catch (Exception ignored) {
+      }
+    }
     device = null;
+    closed = true;
+    BringupUtil.releaseDeviceInstance(this);
     BringupUtil.closeIfPossible(fwdLimit);
     BringupUtil.closeIfPossible(revLimit);
     fwdLimit = null;
@@ -155,7 +175,11 @@ public final class RevFlexVortexDevice implements DeviceUnit {
   @Override
   public void clearFaults() {
     if (device != null) {
-      device.clearFaults();
+      try {
+        device.clearFaults();
+      } catch (IllegalStateException ex) {
+        handleClosed("clearFaults", ex);
+      }
     }
   }
 
@@ -175,7 +199,15 @@ public final class RevFlexVortexDevice implements DeviceUnit {
   @Override
   public void setDuty(double duty) {
     if (device != null) {
-      device.set(applyLimit(duty));
+      try {
+        device.set(applyLimit(duty));
+      } catch (IllegalStateException ex) {
+        handleClosed("set", ex);
+        ensureCreated();
+        if (device != null) {
+          device.set(applyLimit(duty));
+        }
+      }
     }
   }
 
@@ -189,7 +221,11 @@ public final class RevFlexVortexDevice implements DeviceUnit {
   @Override
   public void stop() {
     if (device != null) {
-      device.stopMotor();
+      try {
+        device.stopMotor();
+      } catch (IllegalStateException ex) {
+        handleClosed("stop", ex);
+      }
     }
   }
 
@@ -215,6 +251,20 @@ public final class RevFlexVortexDevice implements DeviceUnit {
   @Override
   public void deactivate() {
     stop();
+  }
+
+  private void handleClosed(String action, IllegalStateException ex) {
+    System.out.println(
+        "Warning: SparkFlex CAN " + canId + " closed during " + action + "; recreating.");
+    if (device != null) {
+      try {
+        device.close();
+      } catch (Exception ignored) {
+      }
+    }
+    device = null;
+    closed = true;
+    BringupUtil.releaseDeviceInstance(this);
   }
 
   /**

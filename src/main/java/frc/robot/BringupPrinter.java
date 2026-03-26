@@ -132,11 +132,22 @@ public final class BringupPrinter {
       if (started) {
         return;
       }
-      Thread t = new Thread(BringupPrinter::runLoop, "BringupPrinter");
+      Thread t = new Thread(new PrinterRunner(), "BringupPrinter");
       t.setDaemon(true);
       t.setPriority(Thread.MIN_PRIORITY);
       t.start();
       started = true;
+    }
+  }
+
+  /**
+   * NAME
+   *   PrinterRunner - Named runnable for the printer thread.
+   */
+  private static final class PrinterRunner implements Runnable {
+    @Override
+    public void run() {
+      runLoop();
     }
   }
 

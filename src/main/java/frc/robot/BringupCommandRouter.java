@@ -25,6 +25,22 @@ public final class BringupCommandRouter {
 
   /**
    * NAME
+   *   AddAllHandler - Hook for add-all activation behavior.
+   */
+  public interface AddAllHandler {
+    void handleAddAll(boolean addAllNow);
+  }
+
+  /**
+   * NAME
+   *   AddMotorHandler - Hook for add-next activation behavior.
+   */
+  public interface AddMotorHandler {
+    void handleAddMotor(boolean addMotorNow);
+  }
+
+  /**
+   * NAME
    *   applyCommon - Apply common binding-driven actions.
    *
    * PARAMETERS
@@ -49,20 +65,38 @@ public final class BringupCommandRouter {
       Runnable printBindings,
       Runnable printTestsInfo,
       Runnable printTestsOverview,
-      boolean runHeld) {
+      boolean runHeld,
+      AddAllHandler addAllHandler,
+      AddMotorHandler addMotorHandler) {
     CommonResult result = new CommonResult();
 
     if (bind.pressed("addMotor")) {
       BringupPrinter.enqueue("Command: addMotor");
-      core.handleAdd(true);
+      if (addMotorHandler != null) {
+        addMotorHandler.handleAddMotor(true);
+      } else {
+        core.handleAdd(true);
+      }
     } else {
-      core.handleAdd(false);
+      if (addMotorHandler != null) {
+        addMotorHandler.handleAddMotor(false);
+      } else {
+        core.handleAdd(false);
+      }
     }
     if (bind.pressed("addAll")) {
       BringupPrinter.enqueue("Command: addAll");
-      core.handleAddAll(true);
+      if (addAllHandler != null) {
+        addAllHandler.handleAddAll(true);
+      } else {
+        core.handleAddAll(true);
+      }
     } else {
-      core.handleAddAll(false);
+      if (addAllHandler != null) {
+        addAllHandler.handleAddAll(false);
+      } else {
+        core.handleAddAll(false);
+      }
     }
     core.handlePrint(bind.pressed("printState"));
     core.handleHealth(bind.pressed("printHealth"));

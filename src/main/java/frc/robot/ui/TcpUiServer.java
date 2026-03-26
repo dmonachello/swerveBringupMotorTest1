@@ -113,7 +113,7 @@ public final class TcpUiServer {
       return;
     }
     running = true;
-    serverThread = new Thread(this::runServer, "ui-tcp-server");
+    serverThread = new Thread(new ServerRunner(), "ui-tcp-server");
     serverThread.setDaemon(true);
     serverThread.start();
   }
@@ -126,6 +126,17 @@ public final class TcpUiServer {
     running = false;
     if (serverThread != null) {
       serverThread.interrupt();
+    }
+  }
+
+  /**
+   * NAME
+   *   ServerRunner - Named runnable for the TCP server thread.
+   */
+  private final class ServerRunner implements Runnable {
+    @Override
+    public void run() {
+      runServer();
     }
   }
 

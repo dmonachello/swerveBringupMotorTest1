@@ -88,6 +88,25 @@ public interface DeviceUnit extends HasRegistrationHeader {
 
   /**
    * NAME
+   * applyDuty
+   *
+   * SYNOPSIS
+   * Apply duty only when the device is created.
+   *
+   * PARAMETERS
+   * duty - requested output in [-1, 1].
+   *
+   * SIDE EFFECTS
+   * Calls setDuty for created devices.
+   */
+  default void applyDuty(double duty) {
+    if (isCreated()) {
+      setDuty(duty);
+    }
+  }
+
+  /**
+   * NAME
    * stop
    *
    * SYNOPSIS

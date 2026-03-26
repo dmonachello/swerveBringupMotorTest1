@@ -104,6 +104,9 @@ public final class TemplateMotorDevice implements DeviceUnit {
   @Override
   public void ensureCreated() {
     initLimitInputs();
+    if (!BringupUtil.claimDeviceInstance(this)) {
+      return;
+    }
     created = true;
   }
 
@@ -120,6 +123,7 @@ public final class TemplateMotorDevice implements DeviceUnit {
   @Override
   public void close() {
     created = false;
+    BringupUtil.releaseDeviceInstance(this);
     BringupUtil.closeIfPossible(fwdLimit);
     BringupUtil.closeIfPossible(revLimit);
     fwdLimit = null;

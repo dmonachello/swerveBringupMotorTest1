@@ -73,6 +73,7 @@ public final class BringupCore {
   private int runAllIndex = 0;
   private final Map<String, Double> warningLastSec = new HashMap<>();
   private static final double WARNING_COOLDOWN_SEC = 1.0;
+  private static final double SAFETY_COOLDOWN_SEC = 5.0;
   private final BringupTestContext testContext;
   private double primaryInput = 0.0;
   private double secondaryInput = 0.0;
@@ -383,6 +384,7 @@ public final class BringupCore {
     for (ManufacturerGroup group : manufacturerGroups) {
       group.closeAll();
     }
+    BringupUtil.clearDeviceInstanceRegistry();
     resetLowCurrentTimers();
 
     nextMotorGroupIndex = 0;
@@ -424,7 +426,7 @@ public final class BringupCore {
     }
     forceStopAllMotorOutputs();
     String label = reason != null && !reason.isBlank() ? reason : "safetyStop";
-    BringupPrinter.enqueue("Safety: outputs stopped (" + label + ").");
+    logSafetyThrottled("safetyStop:" + label, "Safety: outputs stopped (" + label + ").");
   }
 
   /**
@@ -1542,12 +1544,8 @@ public final class BringupCore {
         "=====================",
         4,
         items,
-        (sb, item) -> appendStateDevice(sb, item));
-    job.onComplete = () -> {
-      StringBuilder sb = job.buffer;
-      appendLine(sb, "Next add will be: " + getNextAddLabel());
-      appendVirtualDevices(sb);
-    };
+        new StateReportAppender());
+    job.onComplete = new StateReportCompletion(job);
     return job;
   }
 
@@ -1838,15 +1836,15 @@ public final class BringupCore {
     for (ManufacturerGroup group : manufacturerGroups) {
       collectHealthItems(items, group);
     }
-    final DeviceReportJob[] jobRef = new DeviceReportJob[1];
+    ReportJobRef ref = new ReportJobRef();
     DeviceReportJob job = new DeviceReportJob(
         "=== Bringup Health (Local Robot Data) ===",
         "======================",
         4,
         items,
-        (sb, item) -> appendHealthDevice(sb, item, jobRef[0].nowSec));
-    jobRef[0] = job;
-    job.onComplete = () -> appendVirtualDeviceHealth(job.buffer);
+        new HealthReportAppender(ref));
+    ref.job = job;
+    job.onComplete = new HealthReportCompletion(job);
     return job;
   }
 
@@ -1872,7 +1870,7 @@ public final class BringupCore {
         "=======================",
         4,
         items,
-        (sb, item) -> appendCANCoderDevice(sb, item));
+        new CANCoderReportAppender());
     return job;
   }
 
@@ -1893,15 +1891,15 @@ public final class BringupCore {
    */
   private DeviceReportJob buildSweepReport() {
     List<DevicePrintItem> items = collectDeviceItems();
-    final DeviceReportJob[] jobRef = new DeviceReportJob[1];
+    ReportJobRef ref = new ReportJobRef();
     DeviceReportJob job = new DeviceReportJob(
         "=== CAN Ping Sweep (Local Vendor API) ===",
         "==============================",
         6,
         items,
-        (sb, item) -> appendSweepDevice(sb, item, jobRef[0].nowSec));
-    jobRef[0] = job;
-    job.onComplete = () -> appendLine(job.buffer, "Note: Devices must be added to be probed (use addAll).");
+        new SweepReportAppender(ref));
+    ref.job = job;
+    job.onComplete = new SweepReportCompletion(job);
     return job;
   }
 
@@ -2072,6 +2070,131 @@ public final class BringupCore {
      */
     public StringBuilder getBuffer() {
       return buffer;
+    }
+  }
+
+  /**
+   * NAME
+   *   ReportJobRef - Mutable holder for a report job reference.
+   */
+  private static final class ReportJobRef {
+    private DeviceReportJob job;
+  }
+
+  /**
+   * NAME
+   *   StateReportAppender - Report appender for state entries.
+   */
+  private final class StateReportAppender
+      implements java.util.function.BiConsumer<StringBuilder, DevicePrintItem> {
+    @Override
+    public void accept(StringBuilder sb, DevicePrintItem item) {
+      appendStateDevice(sb, item);
+    }
+  }
+
+  /**
+   * NAME
+   *   StateReportCompletion - Completion hook for state reports.
+   */
+  private final class StateReportCompletion implements Runnable {
+    private final DeviceReportJob job;
+
+    private StateReportCompletion(DeviceReportJob job) {
+      this.job = job;
+    }
+
+    @Override
+    public void run() {
+      StringBuilder sb = job.buffer;
+      appendLine(sb, "Next add will be: " + getNextAddLabel());
+      appendVirtualDevices(sb);
+    }
+  }
+
+  /**
+   * NAME
+   *   HealthReportAppender - Report appender for health entries.
+   */
+  private final class HealthReportAppender
+      implements java.util.function.BiConsumer<StringBuilder, DevicePrintItem> {
+    private final ReportJobRef jobRef;
+
+    private HealthReportAppender(ReportJobRef jobRef) {
+      this.jobRef = jobRef;
+    }
+
+    @Override
+    public void accept(StringBuilder sb, DevicePrintItem item) {
+      DeviceReportJob job = jobRef.job;
+      double nowSec = job != null ? job.nowSec : 0.0;
+      appendHealthDevice(sb, item, nowSec);
+    }
+  }
+
+  /**
+   * NAME
+   *   HealthReportCompletion - Completion hook for health reports.
+   */
+  private final class HealthReportCompletion implements Runnable {
+    private final DeviceReportJob job;
+
+    private HealthReportCompletion(DeviceReportJob job) {
+      this.job = job;
+    }
+
+    @Override
+    public void run() {
+      appendVirtualDeviceHealth(job.buffer);
+    }
+  }
+
+  /**
+   * NAME
+   *   CANCoderReportAppender - Report appender for CANCoder entries.
+   */
+  private final class CANCoderReportAppender
+      implements java.util.function.BiConsumer<StringBuilder, DevicePrintItem> {
+    @Override
+    public void accept(StringBuilder sb, DevicePrintItem item) {
+      appendCANCoderDevice(sb, item);
+    }
+  }
+
+  /**
+   * NAME
+   *   SweepReportAppender - Report appender for sweep entries.
+   */
+  private final class SweepReportAppender
+      implements java.util.function.BiConsumer<StringBuilder, DevicePrintItem> {
+    private final ReportJobRef jobRef;
+
+    private SweepReportAppender(ReportJobRef jobRef) {
+      this.jobRef = jobRef;
+    }
+
+    @Override
+    public void accept(StringBuilder sb, DevicePrintItem item) {
+      DeviceReportJob job = jobRef.job;
+      double nowSec = job != null ? job.nowSec : 0.0;
+      appendSweepDevice(sb, item, nowSec);
+    }
+  }
+
+  /**
+   * NAME
+   *   SweepReportCompletion - Completion hook for sweep reports.
+   */
+  private final class SweepReportCompletion implements Runnable {
+    private final DeviceReportJob job;
+
+    private SweepReportCompletion(DeviceReportJob job) {
+      this.job = job;
+    }
+
+    @Override
+    public void run() {
+      appendLine(job.buffer, "Note: Devices must be added to be probed (use addAll).");
     }
   }
 
@@ -2535,8 +2658,7 @@ public final class BringupCore {
     if (counts.stopped > 0) {
       String message =
           "Safety: forced stop on " + counts.stopped + " motor(s) (created " + counts.created + ").";
-      BringupPrinter.enqueue(message);
-      System.out.println(message);
+      logSafetyThrottled("forceStop", message);
     }
   }
 
@@ -2604,6 +2726,31 @@ public final class BringupCore {
     double now = Timer.getFPGATimestamp();
     Double last = warningLastSec.get(key);
     if (last != null && (now - last) < WARNING_COOLDOWN_SEC) {
+      return;
+    }
+    warningLastSec.put(key, now);
+    BringupPrinter.enqueue(message);
+    System.out.println(message);
+  }
+
+  /**
+   * NAME
+   *   logSafetyThrottled - Emit safety output with rate limiting.
+   *
+   * PARAMETERS
+   *   key - Unique safety key for rate limiting.
+   *   message - Message to print.
+   *
+   * SIDE EFFECTS
+   *   Enqueues and writes to stdout at most once per cooldown window.
+   */
+  private void logSafetyThrottled(String key, String message) {
+    if (key == null || message == null) {
+      return;
+    }
+    double now = Timer.getFPGATimestamp();
+    Double last = warningLastSec.get(key);
+    if (last != null && (now - last) < SAFETY_COOLDOWN_SEC) {
       return;
     }
     warningLastSec.put(key, now);

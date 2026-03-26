@@ -18,6 +18,8 @@ import com.revrobotics.util.StatusLogger;
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.GenericHID;
+import frc.robot.devices.DeviceUnit;
+import frc.robot.registry.RegistrationHeader;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
@@ -92,11 +94,14 @@ public final class BringupUtil {
   private static Map<String, CanProfileConfig> profiles = new LinkedHashMap<>();
   private static List<String> profileOrder = new ArrayList<>();
   private static String defaultProfile = DEFAULT_PROFILE_NAME;
+  private static String selectedProfile = DEFAULT_PROFILE_NAME;
+  private static boolean activeProfileApplied = false;
   private static final Map<String, MotorSpec> MOTOR_SPECS = loadMotorSpecs();
   private static final CanMappings CAN_MAPPINGS = loadCanMappings();
   private static final Map<String, Integer> MANUFACTURER_NAME_TO_ID = buildManufacturerNameToId();
   private static final Map<String, Integer> DEVICE_TYPE_NAME_TO_ID = buildDeviceTypeNameToId();
   private static final Map<DeviceKey, List<DeviceConfig>> DEVICE_CONFIGS = new LinkedHashMap<>();
+  private static final Map<DeviceInstanceKey, Object> DEVICE_INSTANCE_REGISTRY = new LinkedHashMap<>();
 
   // Currently active profile name.
   private static String activeProfile = DEFAULT_PROFILE_NAME;
@@ -113,7 +118,6 @@ public final class BringupUtil {
   static {
     disableVendorLogging();
     loadProfilesFromJson();
-    setActiveCanProfile(activeProfile);
   }
 
   // Disable vendor auto-logging to avoid extra files on the roboRIO.
@@ -198,6 +202,13 @@ public final class BringupUtil {
       activeProfile = DEFAULT_PROFILE_NAME;
       return;
     }
+    try {
+      validateProfileCanIdsStrict(profileName, config);
+    } catch (JsonParseException ex) {
+      System.out.println("ERROR: cannot activate profile '" + profileName + "': " + ex.getMessage());
+      System.out.println("ERROR: Profile activation aborted. Staying on '" + activeProfile + "'.");
+      return;
+    }
 
     List<DeviceRef> merged = mergeDevices(config);
     buildDeviceConfigs(merged);
@@ -205,6 +216,31 @@ public final class BringupUtil {
     PIGEON_CAN_ID = resolveSingletonId(merged, "CTRE", "Pigeon", config.pigeon);
     ROBORIO_CAN_ID = resolveSingletonId(merged, "NI", "roboRIO", config.roborio);
     activeProfile = profileName;
+    selectedProfile = profileName;
+    activeProfileApplied = true;
+  }
+
+  /**
+   * NAME
+   *   selectCanProfile - Select a profile without activating it.
+   *
+   * PARAMETERS
+   *   profileName - Profile name to select.
+   *
+   * SIDE EFFECTS
+   *   Updates the selected profile label only.
+   */
+  public static void selectCanProfile(String profileName) {
+    if (profileName == null || profileName.isBlank()) {
+      selectedProfile = defaultProfile;
+      return;
+    }
+    if (!profiles.containsKey(profileName)) {
+      System.out.println("Warning: unknown CAN profile '" + profileName + "'. Using default.");
+      selectedProfile = defaultProfile;
+      return;
+    }
+    selectedProfile = profileName;
   }
 
   /**
@@ -216,9 +252,7 @@ public final class BringupUtil {
     if (profileOrder.isEmpty()) {
       return;
     }
-    int index = profileOrder.indexOf(activeProfile);
-    int nextIndex = (index < 0 ? 0 : (index + 1) % profileOrder.size());
-    setActiveCanProfile(profileOrder.get(nextIndex));
+    selectNextProfile();
   }
 
   public static String getActiveCanProfile() {
@@ -228,7 +262,95 @@ public final class BringupUtil {
 
   public static String getActiveCanProfileLabel() {
     // Label currently matches profile name, but can diverge later.
-    return activeProfile;
+    String label = activeProfileApplied ? activeProfile : selectedProfile;
+    if (label == null || label.isBlank()) {
+      label = defaultProfile;
+    }
+    if (!activeProfileApplied) {
+      return label + " (inactive)";
+    }
+    return label;
+  }
+
+  /**
+   * NAME
+   *   isProfileActive - Check whether a profile is currently active.
+   */
+  public static boolean isProfileActive() {
+    return activeProfileApplied;
+  }
+
+  /**
+   * NAME
+   *   getSelectedCanProfile - Return the currently selected profile name.
+   */
+  public static String getSelectedCanProfile() {
+    return selectedProfile;
+  }
+
+  /**
+   * NAME
+   *   selectNextProfile - Advance selected profile without activating.
+   */
+  public static void selectNextProfile() {
+    if (profileOrder.isEmpty()) {
+      return;
+    }
+    int index = profileOrder.indexOf(selectedProfile);
+    int nextIndex = (index < 0 ? 0 : (index + 1) % profileOrder.size());
+    selectedProfile = profileOrder.get(nextIndex);
+  }
+
+  /**
+   * NAME
+   *   activateSelectedProfile - Activate the currently selected profile.
+   */
+  public static void activateSelectedProfile() {
+    if (selectedProfile == null || selectedProfile.isBlank()) {
+      setActiveCanProfile(defaultProfile);
+      return;
+    }
+    setActiveCanProfile(selectedProfile);
+  }
+
+  /**
+   * NAME
+   *   prepareActivationForSelectedProfile - Deactivate active profile when switching.
+   *
+   * DESCRIPTION
+   *   Ensures the previously active profile is deactivated once per switch
+   *   before the selected profile is activated.
+   */
+  public static void prepareActivationForSelectedProfile() {
+    if (!activeProfileApplied) {
+      return;
+    }
+    if (activeProfile == null || selectedProfile == null) {
+      return;
+    }
+    if (activeProfile.equals(selectedProfile)) {
+      return;
+    }
+    deactivateActiveProfile();
+  }
+
+  /**
+   * NAME
+   *   deactivateActiveProfile - Clear active profile state without selecting a new one.
+   *
+   * SIDE EFFECTS
+   *   Clears active device configs and marks the profile inactive.
+   */
+  public static void deactivateActiveProfile() {
+    if (!activeProfileApplied) {
+      return;
+    }
+    ACTIVE_DEVICES.clear();
+    DEVICE_CONFIGS.clear();
+    PDH_CAN_ID = DISABLED_CAN_ID;
+    PIGEON_CAN_ID = DISABLED_CAN_ID;
+    ROBORIO_CAN_ID = DISABLED_CAN_ID;
+    activeProfileApplied = false;
   }
 
   /**
@@ -248,6 +370,111 @@ public final class BringupUtil {
    */
   public static List<DeviceEntry> getActiveDevicesSorted() {
     List<DeviceEntry> devices = new ArrayList<>(ACTIVE_DEVICES);
+    devices.sort((a, b) -> {
+      int vendor = safeText(a.vendor).compareToIgnoreCase(safeText(b.vendor));
+      if (vendor != 0) {
+        return vendor;
+      }
+      int type = safeText(a.type).compareToIgnoreCase(safeText(b.type));
+      if (type != 0) {
+        return type;
+      }
+      return Integer.compare(a.id, b.id);
+    });
+    return devices;
+  }
+
+  /**
+   * NAME
+   *   claimDeviceInstance - Enforce single-instance ownership per vendor/type/id.
+   *
+   * PARAMETERS
+   *   device - DeviceUnit requesting ownership.
+   *
+   * RETURNS
+   *   True if ownership is granted or already held by the same instance.
+   */
+  public static synchronized boolean claimDeviceInstance(DeviceUnit device) {
+    if (device == null) {
+      return false;
+    }
+    RegistrationHeader header = device.getHeader();
+    String vendor = header != null ? header.vendor() : "";
+    String type = header != null ? header.deviceType() : device.getDeviceType();
+    int id = device.getCanId();
+    DeviceInstanceKey key = new DeviceInstanceKey(vendor, type, id);
+    Object existing = DEVICE_INSTANCE_REGISTRY.get(key);
+    if (existing == device) {
+      return true;
+    }
+    if (existing != null) {
+      System.out.println(
+          "ERROR: duplicate device instance for "
+              + safeText(vendor) + " " + safeText(type) + " CAN " + id
+              + " (" + safeText(device.getLabel()) + ").");
+      return false;
+    }
+    DEVICE_INSTANCE_REGISTRY.put(key, device);
+    return true;
+  }
+
+  /**
+   * NAME
+   *   releaseDeviceInstance - Release a claimed device instance.
+   *
+   * PARAMETERS
+   *   device - DeviceUnit releasing ownership.
+   */
+  public static synchronized void releaseDeviceInstance(DeviceUnit device) {
+    if (device == null) {
+      return;
+    }
+    RegistrationHeader header = device.getHeader();
+    String vendor = header != null ? header.vendor() : "";
+    String type = header != null ? header.deviceType() : device.getDeviceType();
+    int id = device.getCanId();
+    DeviceInstanceKey key = new DeviceInstanceKey(vendor, type, id);
+    Object existing = DEVICE_INSTANCE_REGISTRY.get(key);
+    if (existing == device) {
+      DEVICE_INSTANCE_REGISTRY.remove(key);
+    }
+  }
+
+  /**
+   * NAME
+   *   clearDeviceInstanceRegistry - Clear all claimed device instances.
+   */
+  public static synchronized void clearDeviceInstanceRegistry() {
+    DEVICE_INSTANCE_REGISTRY.clear();
+  }
+
+  /**
+   * NAME
+   *   getSelectedDevicesSorted - Return selected profile devices sorted by vendor/type/id.
+   */
+  public static List<DeviceEntry> getSelectedDevicesSorted() {
+    return getProfileDevicesSorted(selectedProfile);
+  }
+
+  /**
+   * NAME
+   *   getProfileDevicesSorted - Return devices for a profile without activating it.
+   *
+   * PARAMETERS
+   *   profileName - Profile to inspect.
+   *
+   * RETURNS
+   *   Sorted list of device entries.
+   */
+  public static List<DeviceEntry> getProfileDevicesSorted(String profileName) {
+    if (profileName == null || profileName.isBlank()) {
+      return Collections.emptyList();
+    }
+    CanProfileConfig config = profiles.get(profileName);
+    if (config == null) {
+      return Collections.emptyList();
+    }
+    List<DeviceEntry> devices = buildDeviceEntries(mergeDevices(config));
     devices.sort((a, b) -> {
       int vendor = safeText(a.vendor).compareToIgnoreCase(safeText(b.vendor));
       if (vendor != 0) {
@@ -586,10 +813,10 @@ public final class BringupUtil {
 
   /**
    * NAME
-   *   applyProfileFromArgs - Resolve and apply profile from CLI/env/system props.
+   *   applyProfileFromArgs - Resolve and select profile from CLI/env/system props.
    *
    * SIDE EFFECTS
-   *   Updates active profile and logs selection.
+   *   Updates selected profile for later activation.
    */
   public static void applyProfileFromArgs() {
     // Read profile name from JVM props, env var, or command-line flag.
@@ -601,7 +828,7 @@ public final class BringupUtil {
       profile = extractProfileFromCommand();
     }
     if (profile != null && !profile.isBlank()) {
-      setActiveCanProfile(profile.trim());
+      selectCanProfile(profile.trim());
     }
   }
 
@@ -678,16 +905,15 @@ public final class BringupUtil {
         throw new JsonParseException("data_hash mismatch (run tools/sync_profiles.py)");
       }
       profiles = new LinkedHashMap<>(root.profiles);
-      for (Map.Entry<String, CanProfileConfig> entry : profiles.entrySet()) {
-        validateProfileCanIdsStrict(entry.getKey(), entry.getValue());
-      }
       profileOrder = new ArrayList<>(profiles.keySet());
       defaultProfile = root.defaultProfile != null ? root.defaultProfile : DEFAULT_PROFILE_NAME;
       if (!profiles.containsKey(defaultProfile)) {
         System.out.println("Warning: default_profile not found in JSON. Using 'robot'.");
         defaultProfile = DEFAULT_PROFILE_NAME;
       }
-      activeProfile = defaultProfile;
+      selectedProfile = defaultProfile;
+      activeProfile = DEFAULT_PROFILE_NAME;
+      activeProfileApplied = false;
     } catch (IOException | JsonParseException ex) {
       System.out.println("ERROR: bringup_system.json invalid: " + ex.getMessage());
       System.out.println("ERROR: Redeploy required. Robot code will stop.");
@@ -797,7 +1023,9 @@ public final class BringupUtil {
         new DeviceRef(FALLBACK_ROBORIO_CAN_ID, "NI", "roboRIO")));
     profileOrder = new ArrayList<>(profiles.keySet());
     defaultProfile = DEFAULT_PROFILE_NAME;
-    activeProfile = defaultProfile;
+    selectedProfile = defaultProfile;
+    activeProfile = DEFAULT_PROFILE_NAME;
+    activeProfileApplied = false;
     List<DeviceRef> merged = mergeDevices(profiles.get(DEFAULT_PROFILE_NAME));
     buildDeviceConfigs(merged);
     PDH_CAN_ID = resolveSingletonId(merged, "REV", "PDH", new DeviceRef(FALLBACK_PDH_CAN_ID, "REV", "PDH"));
@@ -820,21 +1048,36 @@ public final class BringupUtil {
     if (config == null) {
       return;
     }
-    Map<Integer, List<String>> seen = new LinkedHashMap<>();
-    addDeviceRefIds(seen, config.neos, "NEO");
-    addDeviceRefIds(seen, config.neo550s, "NEO 550");
-    addDeviceRefIds(seen, config.flexes, "FLEX");
-    addDeviceRefIds(seen, config.krakens, "KRAKEN");
-    addDeviceRefIds(seen, config.falcons, "FALCON");
-    addDeviceRefIds(seen, config.cancoders, "CANCoder");
-    addDeviceRefIds(seen, config.candles, "CANdle");
-    addDeviceRefIds(seen, config.devices, "Device");
-    addDeviceRefId(seen, config.pdh, "PDH");
-    addDeviceRefId(seen, config.pdp, "PDP");
-    addDeviceRefId(seen, config.pigeon, "Pigeon");
-    addDeviceRefId(seen, config.roborio, "roboRIO");
+    Map<String, List<String>> seen = new LinkedHashMap<>();
+    Map<Integer, List<String>> seenById = new LinkedHashMap<>();
+    addDeviceRefIds(seen, config.neos, "REV", "NEO");
+    addDeviceRefIds(seen, config.neo550s, "REV", "NEO 550");
+    addDeviceRefIds(seen, config.flexes, "REV", "FLEX");
+    addDeviceRefIds(seen, config.krakens, "CTRE", "KRAKEN");
+    addDeviceRefIds(seen, config.falcons, "CTRE", "FALCON");
+    addDeviceRefIds(seen, config.cancoders, "CTRE", "CANCoder");
+    addDeviceRefIds(seen, config.candles, "CTRE", "CANdle");
+    addDeviceRefIds(seen, config.devices, null, null);
+    addDeviceRefId(seen, config.pdh, "REV", "PDH");
+    addDeviceRefId(seen, config.pdp, "CTRE", "PDP");
+    addDeviceRefId(seen, config.pigeon, "CTRE", "Pigeon");
+    addDeviceRefId(seen, config.roborio, "NI", "roboRIO");
 
-    for (Map.Entry<Integer, List<String>> entry : seen.entrySet()) {
+    // Track same CAN ID across vendor/type for convention warnings.
+    addDeviceRefIdsById(seenById, config.neos, "REV", "NEO");
+    addDeviceRefIdsById(seenById, config.neo550s, "REV", "NEO 550");
+    addDeviceRefIdsById(seenById, config.flexes, "REV", "FLEX");
+    addDeviceRefIdsById(seenById, config.krakens, "CTRE", "KRAKEN");
+    addDeviceRefIdsById(seenById, config.falcons, "CTRE", "FALCON");
+    addDeviceRefIdsById(seenById, config.cancoders, "CTRE", "CANCoder");
+    addDeviceRefIdsById(seenById, config.candles, "CTRE", "CANdle");
+    addDeviceRefIdsById(seenById, config.devices, null, null);
+    addDeviceRefIdById(seenById, config.pdh, "REV", "PDH");
+    addDeviceRefIdById(seenById, config.pdp, "CTRE", "PDP");
+    addDeviceRefIdById(seenById, config.pigeon, "CTRE", "Pigeon");
+    addDeviceRefIdById(seenById, config.roborio, "NI", "roboRIO");
+
+    for (Map.Entry<String, List<String>> entry : seen.entrySet()) {
       if (entry.getValue().size() > 1) {
         throw new JsonParseException(
             "Profile '"
@@ -846,33 +1089,91 @@ public final class BringupUtil {
                 + ")");
       }
     }
+
+    for (Map.Entry<Integer, List<String>> entry : seenById.entrySet()) {
+      if (entry.getValue().size() > 1) {
+        System.out.println(
+            "Warning: profile '" + profileName + "' uses CAN ID " + entry.getKey()
+                + " across multiple vendor/types ("
+                + String.join(", ", entry.getValue())
+                + "). This violates the bringup conventions but is allowed.");
+      }
+    }
   }
 
   private static void addDeviceRefIds(
-      Map<Integer, List<String>> seen,
+      Map<String, List<String>> seen,
       List<DeviceRef> refs,
-      String fallbackLabel) {
+      String fallbackVendor,
+      String fallbackType) {
     if (refs == null) {
       return;
     }
     for (DeviceRef ref : refs) {
-      addDeviceRefId(seen, ref, fallbackLabel);
+      addDeviceRefId(seen, ref, fallbackVendor, fallbackType);
+    }
+  }
+
+  private static void addDeviceRefIdsById(
+      Map<Integer, List<String>> seen,
+      List<DeviceRef> refs,
+      String fallbackVendor,
+      String fallbackType) {
+    if (refs == null) {
+      return;
+    }
+    for (DeviceRef ref : refs) {
+      addDeviceRefIdById(seen, ref, fallbackVendor, fallbackType);
     }
   }
 
   private static void addDeviceRefId(
-      Map<Integer, List<String>> seen,
+      Map<String, List<String>> seen,
       DeviceRef ref,
-      String fallbackLabel) {
+      String fallbackVendor,
+      String fallbackType) {
     if (ref == null || !isEnabledCanId(ref.id)) {
       return;
     }
+    String vendor = ref.vendor != null && !ref.vendor.isBlank() ? ref.vendor : fallbackVendor;
+    String type = ref.type != null && !ref.type.isBlank() ? ref.type : fallbackType;
     String label = ref.label;
     if (label == null || label.isBlank()) {
-      label = fallbackLabel + " " + ref.id;
+      String labelVendor = vendor != null ? vendor : "UNKNOWN";
+      String labelType = type != null ? type : "Device";
+      label = labelVendor + " " + labelType + " " + ref.id;
     }
-    List<String> labels = seen.computeIfAbsent(ref.id, ignored -> new ArrayList<>());
+    String keyVendor = vendor != null ? vendor : "UNKNOWN";
+    String keyType = type != null ? type : "Device";
+    String key = keyVendor + ":" + keyType + ":" + ref.id;
+    List<String> labels = getOrCreateLabelList(seen, key);
     labels.add(label);
+  }
+
+  private static void addDeviceRefIdById(
+      Map<Integer, List<String>> seen,
+      DeviceRef ref,
+      String fallbackVendor,
+      String fallbackType) {
+    if (ref == null || !isEnabledCanId(ref.id)) {
+      return;
+    }
+    String vendor = ref.vendor != null && !ref.vendor.isBlank() ? ref.vendor : fallbackVendor;
+    String type = ref.type != null && !ref.type.isBlank() ? ref.type : fallbackType;
+    String labelVendor = vendor != null ? vendor : "UNKNOWN";
+    String labelType = type != null ? type : "Device";
+    String label = labelVendor + " " + labelType;
+    List<String> labels = getOrCreateLabelList(seen, ref.id);
+    labels.add(label);
+  }
+
+  private static <K> List<String> getOrCreateLabelList(Map<K, List<String>> map, K key) {
+    List<String> labels = map.get(key);
+    if (labels == null) {
+      labels = new ArrayList<>();
+      map.put(key, labels);
+    }
+    return labels;
   }
 
   /**
@@ -933,6 +1234,35 @@ public final class BringupUtil {
       DeviceConfig config = new DeviceConfig(ref.id, label, ref.motor, ref.limits);
       DEVICE_CONFIGS.computeIfAbsent(key, ignored -> new ArrayList<>()).add(config);
     }
+  }
+
+  private static List<DeviceEntry> buildDeviceEntries(List<DeviceRef> refs) {
+    List<DeviceEntry> entries = new ArrayList<>();
+    if (refs == null || refs.isEmpty()) {
+      return entries;
+    }
+    for (DeviceRef ref : refs) {
+      if (ref == null) {
+        continue;
+      }
+      String vendor = safeText(ref.vendor);
+      String type = safeText(ref.type);
+      String label = safeText(ref.label);
+      if (label.isEmpty()) {
+        String fallback = !type.isEmpty() ? type : "Device";
+        label = fallback + " " + ref.id;
+      }
+      entries.add(new DeviceEntry(
+          ref.id,
+          vendor,
+          type,
+          label,
+          safeText(ref.motor),
+          ref.limits,
+          ref.tags,
+          ref.terminator));
+    }
+    return entries;
   }
 
   /**
@@ -1475,6 +1805,42 @@ public final class BringupUtil {
     @Override
     public int hashCode() {
       return 31 * vendor.hashCode() + type.hashCode();
+    }
+  }
+
+  /**
+   * NAME
+   *   DeviceInstanceKey - Normalized key for runtime device instances.
+   */
+  private static final class DeviceInstanceKey {
+    private final String vendor;
+    private final String type;
+    private final int id;
+
+    DeviceInstanceKey(String vendor, String type, int id) {
+      this.vendor = vendor == null ? "" : vendor.trim().toUpperCase();
+      this.type = type == null ? "" : type.trim().toUpperCase();
+      this.id = id;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) {
+        return true;
+      }
+      if (obj == null || getClass() != obj.getClass()) {
+        return false;
+      }
+      DeviceInstanceKey other = (DeviceInstanceKey) obj;
+      return id == other.id && vendor.equals(other.vendor) && type.equals(other.type);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = vendor.hashCode();
+      result = 31 * result + type.hashCode();
+      result = 31 * result + id;
+      return result;
     }
   }
 

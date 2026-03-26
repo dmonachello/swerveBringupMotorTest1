@@ -151,3 +151,10 @@ class CommandTracker:
         """
         return (self._state.name, self._state.args)
 
+    def clear(self) -> None:
+        """
+        NAME
+            clear - Reset tracker state to idle.
+        """
+        self._state = CommandState()
+

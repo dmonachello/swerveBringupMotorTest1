@@ -36,6 +36,8 @@ public class Robot extends TimedRobot {
   private BringupCore core;
   // Edge-detect state for one-shot actions.
   private final EdgeTrigger edge = new EdgeTrigger();
+  private final BringupCommandRouter.AddAllHandler addAllHandler = new AddAllHandlerImpl();
+  private final BringupCommandRouter.AddMotorHandler addMotorHandler = new AddMotorHandlerImpl();
 
   /**
    * NAME
@@ -107,17 +109,16 @@ public class Robot extends TimedRobot {
         bind,
         core,
         null,
-        this::printStartupInfo,
-        this::printTestsInfo,
-        this::printTestsOverview,
-        bind.held("runTest"));
+        new StartupInfoPrinter(),
+        new TestsInfoPrinter(),
+        new TestsOverviewPrinter(),
+        bind.held("runTest"),
+        addAllHandler,
+        addMotorHandler);
 
     // --- Profile switching ---
     if (bind.pressed("profileToggle")) {
-      BringupUtil.toggleCanProfile();
-      core.resetState("profileToggle");
-      core = new BringupCore();
-      validateCanIds();
+      BringupUtil.selectNextProfile();
       printProfileInfo();
     }
 
@@ -146,6 +147,85 @@ public class Robot extends TimedRobot {
 
     // Apply speeds after inputs are processed.
     core.setSpeeds(neoSpeed, krakenSpeed);
+  }
+
+  /**
+   * NAME
+   *   AddAllHandlerImpl - Activate profile before add-all.
+   */
+  private final class AddAllHandlerImpl implements BringupCommandRouter.AddAllHandler {
+    @Override
+    public void handleAddAll(boolean addAllNow) {
+      if (addAllNow && !BringupUtil.isProfileActive()) {
+        BringupUtil.prepareActivationForSelectedProfile();
+        BringupUtil.activateSelectedProfile();
+        if (BringupUtil.isProfileActive()) {
+          core.resetState("profileActivate");
+          core = new BringupCore();
+          validateCanIds();
+          printProfileInfo();
+        }
+      }
+      if (core != null) {
+        core.handleAddAll(addAllNow);
+      }
+    }
+  }
+
+  /**
+   * NAME
+   *   AddMotorHandlerImpl - Activate profile before add-next.
+   */
+  private final class AddMotorHandlerImpl implements BringupCommandRouter.AddMotorHandler {
+    @Override
+    public void handleAddMotor(boolean addMotorNow) {
+      if (addMotorNow && !BringupUtil.isProfileActive()) {
+        BringupUtil.prepareActivationForSelectedProfile();
+        BringupUtil.activateSelectedProfile();
+        if (BringupUtil.isProfileActive()) {
+          core.resetState("profileActivate");
+          core = new BringupCore();
+          validateCanIds();
+          printProfileInfo();
+        }
+      }
+      if (core != null) {
+        core.handleAdd(addMotorNow);
+      }
+    }
+  }
+
+  /**
+   * NAME
+   *   StartupInfoPrinter - Delegate for startup info printing.
+   */
+  private final class StartupInfoPrinter implements Runnable {
+    @Override
+    public void run() {
+      printStartupInfo();
+    }
+  }
+
+  /**
+   * NAME
+   *   TestsInfoPrinter - Delegate for tests info printing.
+   */
+  private final class TestsInfoPrinter implements Runnable {
+    @Override
+    public void run() {
+      printTestsInfo();
+    }
+  }
+
+  /**
+   * NAME
+   *   TestsOverviewPrinter - Delegate for tests overview printing.
+   */
+  private final class TestsOverviewPrinter implements Runnable {
+    @Override
+    public void run() {
+      printTestsOverview();
+    }
   }
 
   // ---------------------------------------------------

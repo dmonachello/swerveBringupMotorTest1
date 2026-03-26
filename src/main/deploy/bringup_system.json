@@ -1,5 +1,5 @@
 {
-  "default_profile": "robot_2026",
+  "default_profile": "home_030226",
   "profiles": {
     "example_default": {
       "neos": [
@@ -2438,8 +2438,8 @@
         "busRights": [
           1388.0
         ],
-        "panY": 0.0,
-        "zoom": 1.0,
+        "panY": -4.0,
+        "zoom": 1.968299711815562,
         "nodes": [
           {
             "nodeType": "device",
@@ -2494,21 +2494,6 @@
           },
           {
             "nodeType": "device",
-            "key": 77,
-            "category": "roborio",
-            "label": "roboRIO",
-            "id": 0,
-            "bus": 0,
-            "row": 0,
-            "x": 210.0,
-            "freeY": -66.5,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
             "key": 78,
             "category": "pdp",
             "label": "pdp",
@@ -2521,6 +2506,21 @@
             "scale": 1.0,
             "tags": [],
             "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 77,
+            "category": "roborio",
+            "label": "roboRIO",
+            "id": 0,
+            "bus": 0,
+            "row": 0,
+            "x": 210.0,
+            "freeY": -66.5,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
           }
         ],
         "ethernetLinks": [],
@@ -2530,8 +2530,8 @@
     }
   },
   "schema_version": 3,
-  "data_version": "2026-03-24_144229",
-  "data_hash": "5253195612c7ac90ee1ff9d8a566e65e2ab3980d7b61bb405a321a71763847b9",
+  "data_version": "2026-03-25_152540",
+  "data_hash": "37cea8a7f55f2d75076f63f79110c75974a2f55559b144c13761b9ffc3e127ea",
   "bridgeConfig": {
     "schemaVersion": 1,
     "generatedAt": null,
