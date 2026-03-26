@@ -154,7 +154,9 @@ public final class JoystickTest implements BringupTest {
     }
     result = BringupTestResult.RUNNING;
     status = "Running";
-    BringupPrinter.enqueue("Joystick test started: " + getName());
+    long runId = context != null ? context.getRunId() : 0;
+    String prefix = runId > 0 ? ("Test started #" + runId + ": ") : "Test started: ";
+    BringupPrinter.enqueue(prefix + getName());
     return true;
   }
 

@@ -14,6 +14,7 @@ import java.util.List;
  */
 public final class BringupTestContext {
   private final List<ManufacturerGroup> groups;
+  private long runId = 0;
 
   /**
    * NAME
@@ -24,6 +25,28 @@ public final class BringupTestContext {
    */
   public BringupTestContext(List<ManufacturerGroup> groups) {
     this.groups = groups;
+  }
+
+  /**
+   * NAME
+   *   setRunId - Set the current test run identifier.
+   *
+   * PARAMETERS
+   *   runId - Monotonic test run identifier.
+   */
+  public void setRunId(long runId) {
+    this.runId = runId;
+  }
+
+  /**
+   * NAME
+   *   getRunId - Return the current test run identifier.
+   *
+   * RETURNS
+   *   Current run identifier or 0 when unset.
+   */
+  public long getRunId() {
+    return runId;
   }
 
   /**

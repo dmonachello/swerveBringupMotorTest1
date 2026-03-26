@@ -67,10 +67,14 @@ public final class BringupCore {
   private final List<BringupTest> selectableTests = new ArrayList<>();
   private int nextBringupTestIndex = 0;
   private int selectedTestIndex = -1;
+  private String runTestBindingLabel = "(unbound)";
   private BringupTest activeTest = null;
   private boolean runAllActive = false;
   private final List<BringupTest> runAllQueue = new ArrayList<>();
   private int runAllIndex = 0;
+  private long testRunCounter = 0L;
+  private long activeTestRunId = 0L;
+  private double activeTestStartSec = 0.0;
   private final Map<String, Double> warningLastSec = new HashMap<>();
   private static final double WARNING_COOLDOWN_SEC = 1.0;
   private static final double SAFETY_COOLDOWN_SEC = 5.0;
@@ -101,6 +105,21 @@ public final class BringupCore {
    */
   public static String getBuildMarker() {
     return BUILD_MARKER;
+  }
+
+  /**
+   * NAME
+   *   setRunTestBindingLabel - Set the binding label for hold-to-run prompts.
+   *
+   * PARAMETERS
+   *   label - Human-readable binding string, e.g. "secondary button A (hold)".
+   */
+  public void setRunTestBindingLabel(String label) {
+    if (label == null || label.isBlank()) {
+      runTestBindingLabel = "(unbound)";
+      return;
+    }
+    runTestBindingLabel = label;
   }
 
   // Edge-triggered: add the next motor in the alternating sequence.
@@ -463,9 +482,11 @@ public final class BringupCore {
         continue;
       }
       device.runTest();
+      testRunCounter++;
+      activeTestRunId = testRunCounter;
       String testName = device.getTestName();
       BringupPrinter.enqueue(
-          "Test: " + device.getLabel() +
+          "Test #" + activeTestRunId + ": " + device.getLabel() +
           " (" + device.getDeviceType() + ")" +
           (testName.isEmpty() ? "" : " [" + testName + "]"));
       return;
@@ -571,12 +592,20 @@ public final class BringupCore {
       return;
     }
     runAllActive = false;
-    boolean started = test.start(testContext, Timer.getFPGATimestamp());
+    long candidateRunId = testRunCounter + 1;
+    testContext.setRunId(candidateRunId);
+    double startSec = Timer.getFPGATimestamp();
+    boolean started = test.start(testContext, startSec);
     if (started) {
       activeTest = test;
-      BringupPrinter.enqueue("Test: " + test.getName());
+      testRunCounter = candidateRunId;
+      activeTestRunId = candidateRunId;
+      activeTestStartSec = startSec;
+      BringupPrinter.enqueue("Test #" + activeTestRunId + ": " + test.getName());
       return;
     }
+    testContext.setRunId(0);
+    activeTestStartSec = 0.0;
     BringupPrinter.enqueue("Test skipped: " + test.getName() + " (" + test.getStatus() + ")");
   }
 
@@ -599,9 +628,14 @@ public final class BringupCore {
     activeTest.update(testContext, now);
     if (activeTest.isFinished()) {
       BringupTestResult result = activeTest.getResult();
+      double elapsed = activeTestStartSec > 0.0 ? Math.max(0.0, now - activeTestStartSec) : 0.0;
       BringupPrinter.enqueue(
-          "Test result: " + activeTest.getName() + " = " + result + " (" + activeTest.getStatus() + ")");
+          "Test result #" + activeTestRunId + ": " + activeTest.getName() + " = " + result
+              + " (" + activeTest.getStatus() + ")"
+              + " time=" + String.format("%.2fs", elapsed));
       activeTest = null;
+      activeTestRunId = 0;
+      activeTestStartSec = 0.0;
       if (runAllActive) {
         if (!startNextRunAllTest()) {
           runAllActive = false;
@@ -862,6 +896,7 @@ public final class BringupCore {
       row.type = resolveTestType(test);
       row.status = test.getStatus();
       row.motors = test.getMotorKeys();
+      row.holdBinding = resolveHoldBinding(test);
       if (row.enabled) {
         enabledCount++;
       }
@@ -896,24 +931,26 @@ public final class BringupCore {
         sb,
         "Total: " + overview.totalCount +
         " Enabled: " + overview.enabledCount);
-    appendLine(sb, "Idx Sel En Type       Name                         Motors");
+    appendLine(sb, "Idx Sel En Type       Name                         HoldBtn                Motors");
     for (TestRow row : overview.rows) {
       String sel = row.selected ? "*" : " ";
       String en = row.enabled ? "Y" : "N";
       String type = row.type != null ? row.type : "?";
       String name = row.name != null ? row.name : "(unnamed)";
+      String hold = row.holdBinding != null ? row.holdBinding : "-";
       String motors = (row.motors == null || row.motors.isEmpty())
           ? "-"
           : String.join(", ", row.motors);
       appendLine(
           sb,
           String.format(
-              "%3d  %s  %s  %-9s %-28s %s",
+              "%3d  %s  %s  %-9s %-28s %-20s %s",
               row.index,
               sel,
               en,
               type,
               name,
+              hold,
               motors));
     }
     appendLine(sb, "=====================");
@@ -935,6 +972,35 @@ public final class BringupCore {
       return frc.robot.tests.DeadbandSweepTest.TYPE;
     }
     return test != null ? test.getClass().getSimpleName() : "?";
+  }
+
+  /**
+   * NAME
+   *   resolveHoldBinding - Resolve hold-to-run binding label for a test.
+   *
+   * PARAMETERS
+   *   test - Test instance to inspect.
+   *
+   * RETURNS
+   *   Binding label when hold is enabled, or "-" when not applicable.
+   */
+  private String resolveHoldBinding(BringupTest test) {
+    if (!(test instanceof CompositeTest composite)) {
+      return "-";
+    }
+    Map<String, Object> entry = composite.toEntry();
+    if (entry == null) {
+      return "-";
+    }
+    Object hold = entry.get("hold");
+    if (!(hold instanceof Map<?, ?> holdMap)) {
+      return "-";
+    }
+    Object enabled = holdMap.get("enabled");
+    if (enabled instanceof Boolean && !((Boolean) enabled)) {
+      return "-";
+    }
+    return runTestBindingLabel != null ? runTestBindingLabel : "-";
   }
 
   /**
@@ -962,6 +1028,7 @@ public final class BringupCore {
     public String type;
     public String status;
     public List<String> motors = new ArrayList<>();
+    public String holdBinding;
   }
 
   /**
@@ -980,12 +1047,20 @@ public final class BringupCore {
       if (!ensureTestDevicesInstantiated(test)) {
         continue;
       }
-      boolean started = test.start(testContext, Timer.getFPGATimestamp());
+      long candidateRunId = testRunCounter + 1;
+      testContext.setRunId(candidateRunId);
+      double startSec = Timer.getFPGATimestamp();
+      boolean started = test.start(testContext, startSec);
       if (started) {
         activeTest = test;
-        BringupPrinter.enqueue("Test: " + test.getName());
+        testRunCounter = candidateRunId;
+        activeTestRunId = candidateRunId;
+        activeTestStartSec = startSec;
+        BringupPrinter.enqueue("Test #" + activeTestRunId + ": " + test.getName());
         return true;
       }
+      testContext.setRunId(0);
+      activeTestStartSec = 0.0;
       BringupPrinter.enqueue("Test skipped: " + test.getName() + " (" + test.getStatus() + ")");
     }
     return false;
@@ -1736,6 +1811,7 @@ public final class BringupCore {
     Object hold = entry.get("hold");
     if (hold instanceof Map<?, ?> holdMap) {
       lines.add("  hold: " + formatMapInline(holdMap));
+      lines.add("  holdButton: " + runTestBindingLabel);
       checks.add("hold");
     } else {
       lines.add("  hold: (none)");

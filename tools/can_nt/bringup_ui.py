@@ -108,6 +108,8 @@ def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
         (
             "Scriptable Tests",
             [
+                ("Test Prev", "selectTestPrev"),
+                ("Test Next", "selectTestNext"),
                 ("Toggle Enabled", "toggleTest"),
                 ("Run Selected", "runTest"),
                 ("Run All", "runAllTests"),
@@ -129,6 +131,7 @@ def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
             [
                 ("Toggle Dashboard", "toggleDashboard"),
                 ("Clear Faults", "clearFaults"),
+                ("Clear Stop Latch", "clearStopLatch"),
                 ("Reset UI Session", "uiHandshakeReset"),
                 ("Release UI Lock", "uiDisconnect"),
                 ("Protocol Monitor ON", "uiMonitorEnable"),
@@ -194,10 +197,11 @@ class BringupControlUI(tk.Tk):
         self._handshake_warn_last = 0.0
         self._keepalive_interval = 1.0
         self._last_keepalive = 0.0
+        self._last_selected_profile = ""
         self._ui_fail_interval = 5.0
         self._ui_failures: Dict[str, Dict[str, Any]] = {}
         self._prev_tcp_connected = False
-        self._log_poll_interval = 0.5
+        self._log_poll_interval = 2.0
         self._last_log_poll = 0.0
         self._log_poll_inflight = False
         self._log_poll_seq: Optional[int] = None
@@ -410,11 +414,20 @@ class BringupControlUI(tk.Tk):
         NAME
             _on_profile_selected - Update live topology view when profile changes.
         """
-        if self._live_view is None:
-            return
         name = self._profile_box.get().strip() if hasattr(self, "_profile_box") else ""
-        if name:
+        if self._live_view is not None and name:
             self._live_view.reload_profile(name)
+        if not name or name == self._last_selected_profile:
+            return
+        self._last_selected_profile = name
+        if not self._tcp_connected or not self._handshake_done:
+            return
+        if self._tracker.is_pending():
+            return
+        seq = send_command(self._session, "selectProfile", {"name": name})
+        if seq is not None:
+            self._last_sent_seq = seq
+            self._tracker.start("selectProfile", {"name": name}, seq, now=time.time())
 
     def _load_runtime_state_file(self) -> None:
         """
@@ -552,6 +565,8 @@ class BringupControlUI(tk.Tk):
             "printCANcoder": "Print encoder status and readings.",
             "printTestsInfo": "Print details for selected test.",
             "printTestsOverview": "Print test list and enabled status.",
+            "selectTestPrev": "Select the previous test in the list.",
+            "selectTestNext": "Select the next test in the list.",
             "toggleTest": "Enable/disable the selected test.",
             "runTest": "Run the selected test once.",
             "runAllTests": "Run all enabled tests.",
@@ -563,6 +578,7 @@ class BringupControlUI(tk.Tk):
             "fixedSpeed100": "Run motors at 100% output.",
             "toggleDashboard": "Toggle dashboard reporting output.",
             "clearFaults": "Clear latched device faults.",
+            "clearStopLatch": "Clear the safety stop latch.",
             "uiHandshakeReset": "Reset the UI session and resync seq.",
             "uiDisconnect": "Release the UI lock for this client.",
             "uiMonitorEnable": "Enable protocol status publishing to NT.",
@@ -671,6 +687,11 @@ class BringupControlUI(tk.Tk):
             "  If a profile has no devices, Add Motor/Add All will do nothing.",
             "  Output: ACK + OUT with the new profile name and device count.",
             "",
+            "Profile Dropdown:",
+            "  Selecting a profile updates the live topology view.",
+            "  If TCP is connected, it also selects that profile on the robot",
+            "  (no activation; Add Motor/Add All still required).",
+            "",
             "Add Motor:",
             "  Adds the next motor from the active profile to the bringup list.",
             "  The bringup list is the set of devices that tests and reports use.",
@@ -701,6 +722,7 @@ class BringupControlUI(tk.Tk):
             self._profile_box.set(current)
         else:
             self._profile_box.set(profiles[0])
+        self._last_selected_profile = self._profile_box.get()
         if self._live_view is not None:
             self._live_view.reload_profile(self._profile_box.get())
 
@@ -1278,7 +1300,6 @@ class BringupControlUI(tk.Tk):
         if (
             self._tcp_connected
             and self._handshake_done
-            and not self._tracker.is_pending()
             and not self._log_poll_inflight
             and (now - self._last_log_poll) >= self._log_poll_interval
         ):

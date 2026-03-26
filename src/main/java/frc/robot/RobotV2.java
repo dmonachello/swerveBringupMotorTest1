@@ -83,6 +83,7 @@ public class RobotV2 extends TimedRobot {
     String testsOverride = BringupUtil.extractBringupTestsFromCommand();
     BringupTestRegistry.setOverrideTestsPath(testsOverride);
     core = new BringupCore();
+    core.setRunTestBindingLabel(bindings.describeBinding("runTest"));
     diagnostics = new DiagnosticsReporter(core, canHealth, diagTable);
     uiHandler = new BridgeUiCommandHandler(
         core,

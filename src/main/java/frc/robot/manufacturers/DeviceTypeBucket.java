@@ -126,6 +126,9 @@ public final class DeviceTypeBucket {
   public void addAll() {
     for (int i = 0; i < devices.size(); i++) {
       DeviceUnit device = devices.get(i);
+      if (device.isCreated()) {
+        continue;
+      }
       device.ensureCreated();
       BringupPrinter.enqueue(
           "Device created: " + registration.displayName() +

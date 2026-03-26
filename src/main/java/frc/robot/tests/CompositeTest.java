@@ -244,7 +244,9 @@ public final class CompositeTest implements BringupTest {
     for (DeviceUnit device : motors) {
       device.setDuty(clampDuty(config.duty));
     }
-    BringupPrinter.enqueue("Test started: " + getName());
+    long runId = context != null ? context.getRunId() : 0;
+    String prefix = runId > 0 ? ("Test started #" + runId + ": ") : "Test started: ";
+    BringupPrinter.enqueue(prefix + getName());
     return true;
   }
 

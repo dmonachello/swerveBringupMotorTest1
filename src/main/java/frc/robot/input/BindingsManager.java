@@ -119,6 +119,30 @@ public final class BindingsManager {
     return lines;
   }
 
+  /**
+   * NAME
+   *   describeBinding - Return a human-readable binding for a command.
+   *
+   * PARAMETERS
+   *   command - Logical command name to resolve.
+   *
+   * RETURNS
+   *   Binding description, or "(unbound)" if not found.
+   */
+  public String describeBinding(String command) {
+    if (command == null || command.isBlank()) {
+      return "(unbound)";
+    }
+    for (BindingSpec spec : bindings) {
+      if (!command.equals(spec.command)) {
+        continue;
+      }
+      String mode = spec.mode != null ? spec.mode : "edge";
+      return spec.controller + " " + spec.input + " " + spec.id + " (" + mode + ")";
+    }
+    return "(unbound)";
+  }
+
   private void loadBindings() {
     bindings.clear();
     axes.clear();

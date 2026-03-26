@@ -76,10 +76,12 @@ Purpose: the complete test plan verifies major robot and PC tool functionality a
 Purpose: verify TCP safety stop, stop latch, and Xbox priority behavior.
 
 1. TCP timeout safe stop: start a test from the Bringup Control UI or CLI, kill the UI process or unplug the PC network, expect the robot to stop within ~1s with the stop latch set and TCP start commands rejected.
-2. TCP stop latch set (command-driven): use a TCP command that disables or stops (for example `groupDisable` or `selectedModeSet enabled=false`), expect the stop latch to set and outputs to stop.
-3. Xbox clears latch: with latch active, press Xbox `A`/`B` to run a test, expect the latch to clear and the Xbox test to start.
-4. Xbox disconnect: with Xbox connected, start any test and unplug the controller USB, expect an immediate stop with the latch set.
-5. Driver Station override: while clients are active, disable the robot or E-stop from Driver Station, expect the robot to remain stopped regardless of TCP/Xbox commands.
+2. TCP stop latch set (command-driven): use a TCP stop command (for example `groupDisable` or `selectedModeSet enabled=false`), expect the stop latch to set and outputs to stop.
+3. UI keepalive required: start the UI and confirm it sends `uiPing` every 1s; stop the UI and verify the TCP session is closed after 5 missed keepalives.
+4. Xbox clears latch: with latch active, press Xbox `A`/`B` to run a test, expect the latch to clear and the Xbox test to start.
+5. UI clears latch: with latch active, press the UI **Clear Stop Latch** button, then re-run the test from the UI.
+6. Xbox disconnect: with Xbox connected, start any test and unplug the controller USB, expect an immediate stop with the latch set.
+7. Driver Station override: while clients are active, disable the robot or E-stop from Driver Station, expect the robot to remain stopped regardless of TCP/Xbox commands.
 
 ### Profiles (Required Setup)
 Purpose: profiles match the hardware under test to avoid false diagnostics.
@@ -105,6 +107,14 @@ Purpose: generate or edit profiles with the topology editor before testing.
 5. Use **Save to Deploy** to append/replace the profile in `data/bringup_system.json` (syncs to deploy).
 6. If needed, check **Set As Default** so the new profile is selected on startup.
 7. Deploy robot code so the updated profile is on the roboRIO.
+
+### UI Profile Selection
+Purpose: verify UI profile selection and activation behavior.
+
+1. In the UI, pick a profile from the dropdown.
+2. Confirm the UI sends `selectProfile` and the robot acknowledges the selection.
+3. Run **Add Motor** or **Add All** and confirm devices are added from the selected profile.
+4. If a different profile is active on the robot, re-select in the UI and retry.
 
 ### Build and Deploy
 Purpose: builds and deploys succeed before hardware testing begins.
@@ -670,6 +680,52 @@ Steps:
 Expected:
 - The CANdle toggles between OFF and BLUE.
 - Console prints `Test: <label> (CANdle) [toggle_led]`.
+
+## Create New Tests
+Purpose: add data-driven tests without code changes.
+
+1. Open `src/main/deploy/bringup_tests.json`.
+2. Choose the `default_test_set` you want to edit, or add a new set under `test_sets`.
+3. Add a new test object to the chosen list.
+4. Ensure `type`, `name`, `enabled`, and `motorKeys` are present.
+5. Add check blocks for composite tests: `rotation`, `time`, `limitSwitch`, `hold`.
+6. Deploy the updated JSON to the roboRIO.
+7. In teleop, use secondary `LB`/`RB` to select the test and `A` to run it.
+
+Current test types:
+- `composite`: duty + checks (rotation/time/limitSwitch/hold).
+- `joystick`: live joystick control of configured motors.
+- `deadbandSweep`: sweep duty to find deadband threshold.
+
+Example (composite with rotation + time + hold):
+```json
+{
+  "type": "composite",
+  "name": "Rotation + Time + Hold",
+  "enabled": true,
+  "duty": 0.2,
+  "rotation": { "limitRot": 5.0, "encoderKey": "internal", "encoderMotorIndex": 0 },
+  "time": { "timeoutSec": 2.0, "onTimeout": "fail" },
+  "hold": { "enabled": true, "onRelease": "pass" },
+  "motorKeys": ["REV:NEO:25"]
+}
+```
+
+Example (joystick):
+```json
+{
+  "type": "joystick",
+  "name": "Joystick motor (primary axis)",
+  "enabled": true,
+  "motorKeys": ["REV:NEO:25"],
+  "deadband": 0.12,
+  "inputAxis": "primary"
+}
+```
+
+Notes:
+- Hold checks use the run-test binding (secondary `A`, hold).
+- Tests run only against motors that are instantiated via add/add-all.
 
 ## Troubleshooting
 

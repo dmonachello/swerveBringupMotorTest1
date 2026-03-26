@@ -74,6 +74,12 @@ public class BridgeUiCommandHandler {
   private boolean stopLatchActive = false;
   private String stopLatchReason = "";
   private boolean lastXboxConnected = false;
+  private final Map<String, Long> lastTcpSeqByClient = new HashMap<>();
+  private final Map<String, LastTcpResponse> lastTcpResponseByClient = new HashMap<>();
+  private long tcpCommandsProcessed = 0L;
+  private long tcpCommandTimeouts = 0L;
+  private long tcpDuplicateAcked = 0L;
+  private long tcpDuplicateDropped = 0L;
   private final ConcurrentLinkedQueue<TcpPendingCommand> tcpCommandQueue = new ConcurrentLinkedQueue<>();
   private final ConcurrentLinkedQueue<String> uiLogQueue = new ConcurrentLinkedQueue<>();
   private final AtomicInteger uiLogCount = new AtomicInteger(0);
@@ -182,6 +188,7 @@ public class BridgeUiCommandHandler {
       return pending.future.get(TCP_CMD_TIMEOUT_MS, TimeUnit.MILLISECONDS);
     } catch (TimeoutException ex) {
       pending.cancelled = true;
+      tcpCommandTimeouts++;
       UiCommandResult result = new UiCommandResult();
       result.ok = false;
       result.message = "Robot loop timeout.";
@@ -240,17 +247,56 @@ public class BridgeUiCommandHandler {
       if (command == null || pending.cancelled) {
         continue;
       }
+      String cmdName = command.name != null ? command.name : "";
+      String cmdClient = command.clientId != null ? command.clientId : "";
+      if (!cmdClient.isBlank()) {
+        Long lastSeq = lastTcpSeqByClient.get(cmdClient);
+        if (lastSeq != null && command.seq <= lastSeq) {
+          LastTcpResponse lastResponse = lastTcpResponseByClient.get(cmdClient);
+          if (lastResponse != null && lastResponse.seq == command.seq) {
+            tcpDuplicateAcked++;
+            pending.future.complete(lastResponse.response);
+          } else {
+            tcpDuplicateDropped++;
+          }
+          continue;
+        }
+        lastTcpSeqByClient.put(cmdClient, command.seq);
+      }
+      if (!"uiPing".equals(cmdName) && !"uiPollLog".equals(cmdName)) {
+        String cmdInfo =
+            "Remote command: " + cmdName + " (seq=" + command.seq + ", client=" + cmdClient + ")";
+        BringupPrinter.enqueue(cmdInfo);
+      }
       lastTcpSeq = command.seq;
       lastTcpCommandMs = System.currentTimeMillis();
       lastTcpKeepaliveMs = lastTcpCommandMs;
       UiCommandResult result = processUiCommand(
-          command.name,
+          cmdName,
           command.argsJson,
           command.ts,
-          command.clientId,
+          cmdClient,
           true);
       TcpUiServer.UiResponse response = buildTcpResponse(command, result);
+      if (!cmdClient.isBlank()) {
+        lastTcpResponseByClient.put(cmdClient, new LastTcpResponse(command.seq, response));
+      }
+      tcpCommandsProcessed++;
       pending.future.complete(response);
+    }
+  }
+
+  /**
+   * NAME
+   *   LastTcpResponse - Cache of last response per TCP client.
+   */
+  private static final class LastTcpResponse {
+    private final long seq;
+    private final TcpUiServer.UiResponse response;
+
+    private LastTcpResponse(long seq, TcpUiServer.UiResponse response) {
+      this.seq = seq;
+      this.response = response;
     }
   }
 
@@ -298,6 +344,24 @@ public class BridgeUiCommandHandler {
     stopLatchActive = false;
     stopLatchReason = "";
     String label = reason != null && !reason.isBlank() ? reason : "xboxClear";
+    BringupPrinter.enqueue("Safety: stop latch cleared (" + label + ").");
+    return true;
+  }
+
+  /**
+   * NAME
+   *   clearStopLatchFromUi - Clear the stop latch from the UI client.
+   *
+   * RETURNS
+   *   True if the latch was cleared.
+   */
+  public boolean clearStopLatchFromUi(String reason) {
+    if (!stopLatchActive) {
+      return false;
+    }
+    stopLatchActive = false;
+    stopLatchReason = "";
+    String label = reason != null && !reason.isBlank() ? reason : "uiClear";
     BringupPrinter.enqueue("Safety: stop latch cleared (" + label + ").");
     return true;
   }
@@ -388,6 +452,7 @@ public class BridgeUiCommandHandler {
     boolean isHandshake = "uiHandshake".equals(name);
     boolean isDisconnect = "uiDisconnect".equals(name);
     boolean isPing = "uiPing".equals(name);
+    boolean isSelectProfile = "selectProfile".equals(name);
     boolean allowWhenDisabled = isUiCommandAllowedWhenDisabled(name);
     boolean isEnabled = DriverStation.isEnabled();
     boolean isEStopped = DriverStation.isEStopped();
@@ -405,7 +470,7 @@ public class BridgeUiCommandHandler {
       result.ok = false;
       result.message = "Stop latch active"
           + (stopLatchReason.isBlank() ? "." : " (" + stopLatchReason + ").")
-          + " Clear from Xbox to resume.";
+          + " Clear from Xbox or UI to resume.";
     } else if (!isHandshake && !isDisconnect && !allowWhenDisabled && !isEnabled) {
       result.ok = false;
       result.message = isEStopped ? "Robot disabled (E-Stop)." : "Robot disabled.";
@@ -426,6 +491,18 @@ public class BridgeUiCommandHandler {
         result.message = "OK";
         result.outText = "";
         break;
+      case "selectProfile": {
+        String profileName = parseUiArgString(args, "name");
+        if (profileName == null || profileName.isBlank()) {
+          result.ok = false;
+          result.message = "selectProfile requires args.name.";
+          break;
+        }
+        BringupUtil.selectCanProfile(profileName.trim());
+        result.message = "Selected profile: " + BringupUtil.getActiveCanProfileLabel();
+        result.outText = result.message;
+        break;
+      }
       case "uiHandshake":
         if (!locked) {
           activeUiClientId = client;
@@ -534,10 +611,7 @@ public class BridgeUiCommandHandler {
         result.outText = inputsReport;
         break;
       case "toggleTest":
-        Boolean toggled = core.toggleSelectedBringupTestEnabled();
-        if (isTcp && Boolean.FALSE.equals(toggled)) {
-          setStopLatch("tcpDisableTest");
-        }
+        core.toggleSelectedBringupTestEnabled();
         printTestsOverview();
         break;
       case "runTest":
@@ -547,6 +621,14 @@ public class BridgeUiCommandHandler {
       case "runAllTests":
         BringupPrinter.enqueue("Command: runAllTests (UI)");
         core.runAllBringupTests();
+        break;
+      case "selectTestPrev":
+        core.selectPrevBringupTest();
+        result.outText = "Selected test: " + core.getSelectedBringupTestName();
+        break;
+      case "selectTestNext":
+        core.selectNextBringupTest();
+        result.outText = "Selected test: " + core.getSelectedBringupTestName();
         break;
       case "printNextTest":
         String nextTestReport = core.buildNextTestReportText();
@@ -591,6 +673,14 @@ public class BridgeUiCommandHandler {
         core.clearAllFaults();
         BringupPrinter.enqueue("Cleared device faults (current + sticky).");
         break;
+      case "clearStopLatch":
+        if (clearStopLatchFromUi("uiClear")) {
+          result.message = "Stop latch cleared.";
+        } else {
+          result.message = "Stop latch not active.";
+        }
+        result.outText = result.message;
+        break;
       case "canSweep":
         BringupPrinter.enqueue("Command: canSweep (UI)");
         String sweepReport = core.buildCanPingSweepReportText();
@@ -617,6 +707,7 @@ public class BridgeUiCommandHandler {
         if (diagnostics != null) {
           String report = diagnostics.buildNetworkDiagnosticsReportIfReady();
           if (report != null) {
+            report = appendUiTcpStats(report);
             core.requestTextReport(report, 4);
             result.outText = report;
           } else {
@@ -1066,6 +1157,9 @@ public class BridgeUiCommandHandler {
     if (!tcpConnected || activeUiClientId == null || activeUiClientId.isBlank()) {
       return;
     }
+    if (lastTcpKeepaliveMs > 0) {
+      return;
+    }
     if (lastTcpCommandMs <= 0) {
       return;
     }
@@ -1367,8 +1461,12 @@ public class BridgeUiCommandHandler {
     }
     switch (name) {
       case "uiPing":
+      case "selectProfile":
+      case "selectTestPrev":
+      case "selectTestNext":
       case "printProfileDevices":
       case "printSummary":
+      case "clearStopLatch":
       case "uiPollLog":
       case "showStatus":
       case "showGroups":
@@ -2052,6 +2150,30 @@ public class BridgeUiCommandHandler {
       sb.append(line);
       first = false;
     }
+    return sb.toString();
+  }
+
+  /**
+   * NAME
+   *   appendUiTcpStats - Append UI/TCP stats to an existing report.
+   *
+   * PARAMETERS
+   *   report - Base report text.
+   *
+   * RETURNS
+   *   Report with a UI/TCP stats block appended.
+   */
+  private String appendUiTcpStats(String report) {
+    StringBuilder sb = new StringBuilder(256);
+    sb.append(report == null ? "" : report.trim());
+    if (sb.length() > 0) {
+      sb.append('\n');
+    }
+    sb.append("UI/TCP stats (since boot):\n");
+    sb.append("  commandsProcessed=").append(tcpCommandsProcessed)
+        .append(" timeouts=").append(tcpCommandTimeouts)
+        .append(" dupAcked=").append(tcpDuplicateAcked)
+        .append(" dupDropped=").append(tcpDuplicateDropped);
     return sb.toString();
   }
 
