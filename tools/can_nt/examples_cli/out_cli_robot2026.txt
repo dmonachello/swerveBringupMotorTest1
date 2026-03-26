@@ -1,0 +1,108 @@
+configure terminal
+device "Encoder (CANCoder) (swerve-back-left)"
+set manufacturer 4
+set deviceType 7
+set deviceId 6
+exit
+device "Encoder (CANCoder) (swerve-back-right)"
+set manufacturer 4
+set deviceType 7
+set deviceId 9
+exit
+device "Encoder (CANCoder) (swerve-front-left)"
+set manufacturer 4
+set deviceType 7
+set deviceId 3
+exit
+device "Encoder (CANCoder) (swerve-front-right)"
+set manufacturer 4
+set deviceType 7
+set deviceId 12
+exit
+device "IMU (Pigeon2)"
+set manufacturer 4
+set deviceType 4
+set deviceId 19
+exit
+device "Climb Motor"
+set deviceId 60
+exit
+device "Fuel Intake Motor"
+set deviceId 24
+exit
+device "Pivot Intake Motor"
+set deviceId 22
+exit
+device "Pivot Intake Follower"
+set deviceId 11
+exit
+device "Feeder Motor"
+set deviceId 28
+exit
+device "Flywheel Motor (Leader)"
+set deviceId 27
+exit
+device "Flywheel Motor (Follower)"
+set deviceId 23
+exit
+device "Drive Motor (swerve-back-left)"
+set manufacturer 4
+set deviceType 2
+set deviceId 5
+exit
+device "Angle Motor (swerve-back-left)"
+set manufacturer 5
+set deviceType 2
+set deviceId 4
+exit
+device "Drive Motor (swerve-back-right)"
+set manufacturer 4
+set deviceType 2
+set deviceId 8
+exit
+device "Angle Motor (swerve-back-right)"
+set manufacturer 5
+set deviceType 2
+set deviceId 7
+exit
+device "Drive Motor (swerve-front-left)"
+set manufacturer 4
+set deviceType 2
+set deviceId 2
+exit
+device "Angle Motor (swerve-front-left)"
+set manufacturer 5
+set deviceType 2
+set deviceId 1
+exit
+device "Drive Motor (swerve-front-right)"
+set manufacturer 4
+set deviceType 2
+set deviceId 11
+exit
+device "Angle Motor (swerve-front-right)"
+set manufacturer 5
+set deviceType 2
+set deviceId 10
+exit
+group swerve_front_left
+add device "Drive Motor (swerve-front-left)"
+add device "Angle Motor (swerve-front-left)"
+add device "Encoder (CANCoder) (swerve-front-left)"
+exit
+group swerve_front_right
+add device "Drive Motor (swerve-front-right)"
+add device "Angle Motor (swerve-front-right)"
+add device "Encoder (CANCoder) (swerve-front-right)"
+exit
+group swerve_back_left
+add device "Drive Motor (swerve-back-left)"
+add device "Angle Motor (swerve-back-left)"
+add device "Encoder (CANCoder) (swerve-back-left)"
+exit
+group swerve_back_right
+add device "Drive Motor (swerve-back-right)"
+add device "Angle Motor (swerve-back-right)"
+add device "Encoder (CANCoder) (swerve-back-right)"
+exit
+selected-mode off
