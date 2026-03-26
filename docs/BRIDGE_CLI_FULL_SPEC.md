@@ -71,6 +71,28 @@ Purpose: Provide a Cisco-style operator surface only.
 - Batch/script execution.
 - Invokes shared operations only.
 
+### Parser Generation
+Purpose: Keep the CLI grammar and parser constants in sync with the EBNF spec.
+
+- Canonical EBNF: `tools/can_nt/bridge_cli_ebnf.txt`
+- Metadata sidecar: `tools/can_nt/bridge_cli_grammar_meta.json`
+- Generator: `python tools\can_nt\gen_bridge_cli_parser.py`
+- Generated outputs: `tools/can_nt/bridge_cli_grammar_gen.py` and `tools/can_nt/bridge_cli_constants_gen.py`
+
+### EBNF Rationale
+Purpose: Justify the choice of EBNF for the CLI grammar.
+
+- EBNF is compact and human-readable, making command syntax reviewable in diffs.
+- The grammar is tool-agnostic, avoiding lock-in to a single parser library.
+- It provides a stable single source of truth for code generation and tests.
+- The language fits the problem size: a small command DSL with clear modes.
+- The EBNF is the heart of the CLI: defining the language shapes how the CLI functions.
+
+Tradeoffs:
+- EBNF alone cannot express runtime validation or mode transitions.
+- Some behavior (errors, labels) still lives in metadata.
+
+
 ### GUI Front End
 Purpose: Remain a thin front end.
 
@@ -79,6 +101,16 @@ Purpose: Remain a thin front end.
 ## Modes
 Purpose: Define CLI contexts and prompts.
 
+### Mode Transitions
+Purpose: Show how operators enter and exit each mode.
+
+- Exec -> Config: `configure terminal`
+- Config -> Group: `group <name>`
+- Config -> Device: `device <name>`
+- Group -> Config: `exit`
+- Device -> Config: `exit`
+- Any Mode -> Exec: `end`
+- Exec -> Exit CLI: `exit` or `quit`
 ### Exec
 Prompt: `bridge>`
 
@@ -512,3 +544,109 @@ Purpose: Track compatible next steps.
 - Optional `?` shorthand.
 - NDJSON stream mode for long show commands.
 - GUI reuse of CLI help text strings.
+
+## Appendix A: CLI Formal Grammar
+Purpose: Provide a precise EBNF reference for the CLI command language.
+
+```
+(* Bridge CLI Grammar (EBNF) *)
+
+line           = ws? command ws? ;
+command        = common
+               | exec
+               | config
+               | group ;
+
+common         = "exit"
+               | "end"
+               | "help"
+               | "ping"
+               | "quit" ;
+
+exec           = show_exec
+               | "configure" ws "terminal"
+               | "connect"
+               | "disconnect" ;
+
+show_exec      = "show" ws show_target [ ws show_source ] [ ws "--json" ] ;
+
+show_target    = "status"
+               | "groups"
+               | "group" ws name
+               | "devices"
+               | "device" ws name
+               | "bindings"
+               | "selected-device"
+               | "runtime-state"
+               | "config" ;
+
+show_source    = "robot" | "local" | "both" ;
+
+config         = "group" ws name
+               | "no" ws "group" ws name
+               | "selected-device" ws name
+               | "selected-mode" ws ("on" | "off")
+               | "merge" ws "config" ws path
+               | "import" ws "config" ws path
+               | "export" ws "runtime-groups" ws path
+               | "save" ws "config" ws path
+               | "save" ws "local-config" ws path
+               | "save" ws "profiles" ws path
+               | "save" ws "unified-config" ws path
+               | "rename" ws "device" ws name ws name
+               | "validate" ws "config" [ ws path ] ;
+
+group          = "show"
+               | "show" ws "members"
+               | "show" ws "binding"
+               | "add" ws "device" ws name
+               | "no" ws "device" ws name
+               | "member" ws name ws ("enable" | "disable" | "toggle")
+               | "bind" ws input ws "analog"
+               | "bind" ws input ws ("hold" | "toggle" | "jog-forward" | "jog-reverse") ws value
+               | "no" ws "bind"
+               | "enable"
+               | "disable"
+               | "run" ws "test" [ ws name ] ;
+
+(* Lexical conventions *)
+
+name           = token ;
+input          = token ;
+value          = number ;
+path           = token ;
+
+token          = token_char { token_char } ;
+token_char     = ? any non-whitespace character ? ;
+
+number         = ["+"|"-"] digit { digit } [ "." digit { digit } ] ;
+digit          = "0"???"9" ;
+ws             = { " " | "\t" } ;
+```
+## Appendix B: EBNF References
+Purpose: Provide approachable books and articles for learning BNF/EBNF.
+
+Books:
+- Niklaus Wirth, *Compiler Construction*.
+- Alfred V. Aho, Ravi Sethi, Jeffrey D. Ullman, *Compilers: Principles, Techniques, and Tools*.
+- Terence Parr, *The Definitive ANTLR 4 Reference*.
+
+Articles / Tutorials:
+- Lars Marius Garshol, *BNF and EBNF: What are they and how do they work?*
+- W3C, *Extensible Markup Language (XML) 1.0 (Fifth Edition)*, Appendix on notation.
+
+## Appendix C: EBNF Change Workflow
+Purpose: Document the steps to update the CLI grammar and regenerate code.
+
+1. Edit the canonical grammar:
+   - `tools/can_nt/bridge_cli_ebnf.txt`
+2. Update metadata if needed:
+   - `tools/can_nt/bridge_cli_grammar_meta.json`
+3. Regenerate parser artifacts (PowerShell):
+   - `tools\can_nt\regen_cli_parser.ps1`
+4. Sanity test locally (no roboRIO required):
+   - `python -m tools.can_nt.can_nt_bridge --no-can --no-nt --cli-parser ebnf --batch --script tools\can_nt\tmp_cli_mixed.txt`
+5. Commit updated generated files:
+   - `tools/can_nt/bridge_cli_grammar_gen.py`
+   - `tools/can_nt/bridge_cli_constants_gen.py`
+

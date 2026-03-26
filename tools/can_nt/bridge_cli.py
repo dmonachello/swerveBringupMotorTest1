@@ -21,6 +21,9 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from tools.can_nt.bridge_cmd_tracker import CommandTracker
+from tools.can_nt.bridge_cli_parser import BridgeCliParser, CliParseError
+from tools.can_nt.bridge_cli_ast import BridgeCliAstExecutor
+from tools.can_nt.bridge_cli_constants import CLI_PARSER_CONST
 from tools.can_nt.bridge_ops import (
     connect,
     disconnect,
@@ -62,6 +65,10 @@ from tools.common.json_io import write_json
 from tools.common.profile_io import compute_profiles_hash
 from tools.common.time_utils import timestamp_version
 
+# Parser selection (comment out one of the two lines below).
+# CLI_PARSER_KIND = CLI_PARSER_CONST["legacy"]
+CLI_PARSER_KIND = CLI_PARSER_CONST["ebnf"]
+
 
 @dataclass
 class CliMode:
@@ -81,10 +88,21 @@ class BridgeCli:
         session: BridgeSession,
         batch: bool = False,
         conflict_policy: str = "error",
+        parser_kind: Optional[str] = None,
     ) -> None:
         self._session = session
         self._batch = batch
         self._conflict_policy = conflict_policy
+        parser_choice = (parser_kind or CLI_PARSER_KIND).strip().lower()
+        if parser_choice not in (CLI_PARSER_CONST["legacy"], CLI_PARSER_CONST["ebnf"]):
+            parser_choice = CLI_PARSER_CONST["legacy"]
+        self._parser_kind = parser_choice
+        self._parser = (
+            BridgeCliParser(strict=bool(CLI_PARSER_CONST["strict_default"]))
+            if parser_choice == CLI_PARSER_CONST["ebnf"]
+            else None
+        )
+        self._ast_executor = BridgeCliAstExecutor(self)
         self._modes: List[CliMode] = [CliMode("exec")]
         self._last_seq: Optional[int] = None
         self._local_config: Optional[Dict[str, object]] = None
@@ -162,10 +180,18 @@ class BridgeCli:
 
     def _execute_line(self, line: str) -> Optional[int]:
         try:
-            tokens = self._split_command(line)
-        except ValueError as exc:
+            if self._parser_kind == CLI_PARSER_CONST["ebnf"] and self._parser is not None:
+                parsed = self._parser.parse(line, mode=self._modes[-1].name)
+                tokens = parsed.tokens
+                ast = parsed.ast
+            else:
+                tokens = self._split_command(line)
+                ast = None
+        except (CliParseError, ValueError) as exc:
             print(f"ERROR: {exc}")
             return None
+        if ast is not None:
+            return self._ast_executor.execute(ast)
         if not tokens:
             return None
         cmd = tokens[0].lower()

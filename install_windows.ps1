@@ -47,7 +47,8 @@ $deps = @(
     "pyserial",
     "pyntcore",
     "pynetworktables",
-    "reportlab"
+    "reportlab",
+    "lark"
 )
 & $Python -m pip install --upgrade @deps
 

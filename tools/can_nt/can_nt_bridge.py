@@ -260,7 +260,12 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             }
 
         session = BridgeSession(args.rio, args.ui_tcp_port, nt_state_reader=_read_nt_state)
-        cli = BridgeCli(session, batch=bool(args.batch), conflict_policy=args.conflict_policy)
+        cli = BridgeCli(
+            session,
+            batch=bool(args.batch),
+            conflict_policy=args.conflict_policy,
+            parser_kind=getattr(args, "cli_parser", None),
+        )
         if args.batch:
             try:
                 with open(args.script, "r", encoding="utf-8") as handle:
