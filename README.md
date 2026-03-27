@@ -22,7 +22,7 @@ Highlights:
 Purpose: Show the high-value capabilities at a glance.
 
 | Capability | Robot (Java) | PC Tool (Python) |
-| --- | --- | --- |
+| :-- | :--: | :--: |
 | Motor bringup and actuator control | Yes | No |
 | Local device health (faults/current/temp) | Yes | No |
 | CAN visibility (seen/missing/age/fps) | No | Yes |
