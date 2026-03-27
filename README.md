@@ -29,7 +29,7 @@ Purpose: Show the high-value capabilities at a glance.
 | NetworkTables diagnostics publishing | Reads | Writes |
 | TCP console parsing (warnings/errors) | Produces | Parses |
 | PCAP/PCAPNG capture + Wireshark | No | Yes |
-| `bringup_report.json` snapshot | Yes | No |
+| bringup_report.json snapshot | Yes | No |
 | Reverse-engineering inventory output | No | Yes |
 
 ## What It Gives You
