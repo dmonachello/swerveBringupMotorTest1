@@ -20,7 +20,6 @@ Highlights:
 
 ## Feature Matrix
 Purpose: Show the high-value capabilities at a glance.
-
 | Capability | Robot (Java) | PC Tool (Python) |
 | --- | --- | --- |
 | Motor bringup and actuator control | Yes | No |
