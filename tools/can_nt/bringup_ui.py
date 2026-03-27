@@ -42,8 +42,39 @@ from tools.common.json_io import read_json
 from tools.common.paths import tests_deploy_path
 from tools.common.tests_io import extract_test_names
 from tools.common.time_utils import timestamp_hms
-from .can_profiles import get_profiles_load_error, list_profiles, reload_profiles
+from .can_profiles import get_profile, get_profiles_load_error, list_profiles, reload_profiles
 from tools.can_topology.live_topology_view import LiveTopologyView
+
+# Constants (NetworkTables paths and presence values).
+NT_PATH_PRESENCE_FMT = "dev/{}/{}/{}/presenceConfidence"
+NT_VALUE_EMPTY = ""
+PRESENCE_VALUE_HIGH = "HIGH"
+PRESENCE_VALUE_LOW = "LOW"
+PRESENCE_VALUE_NONE = "NONE"
+PRESENCE_VALUES = {
+    PRESENCE_VALUE_HIGH,
+    PRESENCE_VALUE_LOW,
+    PRESENCE_VALUE_NONE,
+}
+
+# Constants (device dict keys).
+DEVICE_KEY_LABEL = "label"
+DEVICE_KEY_MFG = "manufacturer"
+DEVICE_KEY_TYPE = "device_type"
+DEVICE_KEY_ID = "device_id"
+
+# Constants (file-based presence overrides).
+PRESENCE_FILE_KEY_OVERRIDES = "presenceOverrides"
+PRESENCE_FILE_KEY_TIMELINE = "presenceTimeline"
+PRESENCE_FILE_KEY_AT_SEC = "atSec"
+PRESENCE_FILE_KEY_OVERRIDES_BLOCK = "overrides"
+PRESENCE_TIME_NONE = 0.0
+PRESENCE_TIMELINE_MIN_STEP = 1.0
+PRESENCE_TIMELINE_DEFAULT_STEP = 2.0
+LIVE_SOURCE_TCP = "tcp"
+LIVE_SOURCE_FILE = "file"
+LIVE_CLOCK_FORMAT = "%H:%M:%S"
+LIVE_CLOCK_LABEL = "Clock:"
 
 
 def _load_profiles() -> List[str]:
@@ -162,6 +193,7 @@ class BringupControlUI(tk.Tk):
         self,
         ui_table,
         tests_table,
+        diag_table,
         rio_host: str,
         tcp_port: int,
         is_connected: Optional[Callable[[], bool]] = None,
@@ -173,6 +205,7 @@ class BringupControlUI(tk.Tk):
         self.minsize(900, 600)
         self._ui_table = ui_table
         self._tests_table = tests_table
+        self._diag_table = diag_table
         self._on_close = on_close
         self._rio_host = rio_host
         self._is_connected = is_connected
@@ -214,9 +247,10 @@ class BringupControlUI(tk.Tk):
         self._state_stale = False
         self._tracker = CommandTracker(timeout_sec=self._timeout_sec, max_retries=self._max_retries)
         self._live_enabled_var = tk.BooleanVar(value=False)
-        self._live_source_var = tk.StringVar(value="tcp")
+        self._live_source_var = tk.StringVar(value=LIVE_SOURCE_TCP)
         self._live_rate_var = tk.StringVar(value="5")
         self._live_groups_var = tk.BooleanVar(value=True)
+        self._live_clock_var = tk.StringVar(value=NT_VALUE_EMPTY)
         self._live_rate_min = 0.2
         self._live_rate_max = 20.0
         self._runtime_state_hz = 5.0
@@ -227,6 +261,10 @@ class BringupControlUI(tk.Tk):
         self._runtime_state_timeout_sec = 0.6
         self._runtime_state_path: Optional[str] = None
         self._runtime_state_path_mtime: Optional[float] = None
+        self._presence_overrides_file: Dict[str, str] = {}
+        self._presence_timeline: List[Dict[str, Any]] = []
+        self._presence_timeline_start = PRESENCE_TIME_NONE
+        self._presence_timeline_period = PRESENCE_TIME_NONE
         self._runtime_state_backoff = 1.0
         self._runtime_state_idle_count = 0
         self._runtime_state_idle_pause_sec = 5.0
@@ -234,8 +272,10 @@ class BringupControlUI(tk.Tk):
         self._poll_interval_active = 0.25
         self._poll_interval_idle = 1.0
         self._live_view: Optional[LiveTopologyView] = None
+        self._profile_devices: Dict[str, Dict[str, Any]] = {}
         self._build_menu()
         self._build_ui()
+        self._refresh_profile_devices()
         self._poll_nt()
         self.protocol("WM_DELETE_WINDOW", self._handle_close)
 
@@ -380,7 +420,13 @@ class BringupControlUI(tk.Tk):
             command=self._apply_live_group_toggle,
         ).pack(side="left", padx=(8, 0))
         ttk.Label(controls, text="Source:").pack(side="left", padx=(12, 4))
-        source_menu = ttk.OptionMenu(controls, self._live_source_var, "tcp", "tcp", "file")
+        source_menu = ttk.OptionMenu(
+            controls,
+            self._live_source_var,
+            LIVE_SOURCE_TCP,
+            LIVE_SOURCE_TCP,
+            LIVE_SOURCE_FILE,
+        )
         source_menu.pack(side="left")
         ttk.Button(controls, text="Load File...", command=self._load_runtime_state_file).pack(
             side="left", padx=(8, 0)
@@ -394,6 +440,8 @@ class BringupControlUI(tk.Tk):
         ttk.Button(controls, text="Apply", command=self._apply_runtime_state_rate).pack(
             side="left", padx=(6, 0)
         )
+        ttk.Label(controls, text=LIVE_CLOCK_LABEL).pack(side="left", padx=(12, 4))
+        ttk.Label(controls, textvariable=self._live_clock_var).pack(side="left")
         ttk.Button(controls, text="Zoom -", command=self._zoom_out).pack(
             side="left", padx=(12, 0)
         )
@@ -415,6 +463,7 @@ class BringupControlUI(tk.Tk):
             _on_profile_selected - Update live topology view when profile changes.
         """
         name = self._profile_box.get().strip() if hasattr(self, "_profile_box") else ""
+        self._refresh_profile_devices()
         if self._live_view is not None and name:
             self._live_view.reload_profile(name)
         if not name or name == self._last_selected_profile:
@@ -429,6 +478,75 @@ class BringupControlUI(tk.Tk):
             self._last_sent_seq = seq
             self._tracker.start("selectProfile", {"name": name}, seq, now=time.time())
 
+    def _refresh_profile_devices(self) -> None:
+        """
+        NAME
+            _refresh_profile_devices - Refresh label->device mapping for the profile.
+        """
+        name = self._profile_box.get().strip() if hasattr(self, "_profile_box") else ""
+        if not name:
+            self._profile_devices = {}
+            return
+        try:
+            devices, _expected = get_profile(name)
+        except Exception:
+            self._profile_devices = {}
+            return
+        mapping: Dict[str, Dict[str, Any]] = {}
+        for device in devices:
+            if not isinstance(device, dict):
+                continue
+            label = str(device.get(DEVICE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+            if not label:
+                continue
+            mapping[label.lower()] = device
+        self._profile_devices = mapping
+
+    def _poll_presence_overrides(self) -> None:
+        """
+        NAME
+            _poll_presence_overrides - Read presence confidence from NT diagnostics.
+        """
+        if self._live_view is None:
+            return
+        if not self._live_enabled_var.get():
+            self._live_view.set_presence_overrides({})
+            return
+        source = self._live_source_var.get()
+        if source == LIVE_SOURCE_FILE:
+            overrides = self._presence_overrides_file
+            if self._presence_timeline:
+                elapsed = max(PRESENCE_TIME_NONE, time.time() - self._presence_timeline_start)
+                if self._presence_timeline_period > PRESENCE_TIME_NONE:
+                    elapsed = elapsed % self._presence_timeline_period
+                active = None
+                for entry in self._presence_timeline:
+                    at_sec = float(entry.get(PRESENCE_FILE_KEY_AT_SEC, PRESENCE_TIME_NONE))
+                    if elapsed >= at_sec:
+                        active = entry
+                    else:
+                        break
+                if isinstance(active, dict):
+                    overrides = dict(active.get(PRESENCE_FILE_KEY_OVERRIDES_BLOCK, {}))
+            self._live_view.set_presence_overrides(overrides or {})
+            return
+        if self._diag_table is None:
+            self._live_view.set_presence_overrides({})
+            return
+        overrides: Dict[str, str] = {}
+        for label, device in self._profile_devices.items():
+            try:
+                manufacturer = int(device.get(DEVICE_KEY_MFG))
+                device_type = int(device.get(DEVICE_KEY_TYPE))
+                device_id = int(device.get(DEVICE_KEY_ID))
+            except Exception:
+                continue
+            path = NT_PATH_PRESENCE_FMT.format(manufacturer, device_type, device_id)
+            value = self._diag_table.getEntry(path).getString(NT_VALUE_EMPTY)
+            if value in PRESENCE_VALUES:
+                overrides[label] = value
+        self._live_view.set_presence_overrides(overrides)
+
     def _load_runtime_state_file(self) -> None:
         """
         NAME
@@ -442,7 +560,7 @@ class BringupControlUI(tk.Tk):
             return
         self._runtime_state_path = path
         self._runtime_state_path_mtime = None
-        self._live_source_var.set("file")
+        self._live_source_var.set(LIVE_SOURCE_FILE)
         self._reload_runtime_state_file()
 
     def _reload_runtime_state_file(self) -> None:
@@ -458,6 +576,63 @@ class BringupControlUI(tk.Tk):
             return
         if isinstance(payload, dict):
             self._apply_runtime_state_payload(payload)
+            self._apply_presence_overrides_file(payload)
+
+    def _apply_presence_overrides_file(self, payload: Dict[str, Any]) -> None:
+        """
+        NAME
+            _apply_presence_overrides_file - Load presence overrides/timeline from file.
+        """
+        overrides: Dict[str, str] = {}
+        raw_overrides = payload.get(PRESENCE_FILE_KEY_OVERRIDES)
+        if isinstance(raw_overrides, dict):
+            for label, value in raw_overrides.items():
+                label_text = str(label).strip()
+                value_text = str(value).strip()
+                if label_text and value_text in PRESENCE_VALUES:
+                    overrides[label_text.lower()] = value_text
+        self._presence_overrides_file = overrides
+        timeline: List[Dict[str, Any]] = []
+        raw_timeline = payload.get(PRESENCE_FILE_KEY_TIMELINE)
+        if isinstance(raw_timeline, list):
+            for entry in raw_timeline:
+                if not isinstance(entry, dict):
+                    continue
+                at_sec = entry.get(PRESENCE_FILE_KEY_AT_SEC)
+                block = entry.get(PRESENCE_FILE_KEY_OVERRIDES_BLOCK)
+                if not isinstance(at_sec, (int, float)) or not isinstance(block, dict):
+                    continue
+                mapped: Dict[str, str] = {}
+                for label, value in block.items():
+                    label_text = str(label).strip()
+                    value_text = str(value).strip()
+                    if label_text and value_text in PRESENCE_VALUES:
+                        mapped[label_text.lower()] = value_text
+                timeline.append({PRESENCE_FILE_KEY_AT_SEC: float(at_sec), PRESENCE_FILE_KEY_OVERRIDES_BLOCK: mapped})
+        timeline.sort(
+            key=lambda item: float(item.get(PRESENCE_FILE_KEY_AT_SEC, PRESENCE_TIME_NONE))
+        )
+        self._presence_timeline = timeline
+        if timeline:
+            max_at = max(
+                float(item.get(PRESENCE_FILE_KEY_AT_SEC, PRESENCE_TIME_NONE))
+                for item in timeline
+            )
+            prev_at = PRESENCE_TIME_NONE
+            if len(timeline) > 1:
+                prev_at = float(
+                    timeline[-2].get(PRESENCE_FILE_KEY_AT_SEC, PRESENCE_TIME_NONE)
+                )
+            step = max(PRESENCE_TIMELINE_MIN_STEP, max_at - prev_at)
+            if max_at <= PRESENCE_TIME_NONE:
+                step = PRESENCE_TIMELINE_DEFAULT_STEP
+            self._presence_timeline_period = max_at + step
+            if self._presence_timeline_period <= PRESENCE_TIME_NONE:
+                self._presence_timeline_period = PRESENCE_TIMELINE_DEFAULT_STEP
+            self._presence_timeline_start = time.time()
+        else:
+            self._presence_timeline_start = PRESENCE_TIME_NONE
+            self._presence_timeline_period = PRESENCE_TIME_NONE
 
     def _apply_runtime_state_rate(self) -> None:
         """
@@ -1174,6 +1349,7 @@ class BringupControlUI(tk.Tk):
         NAME
             _poll_nt - Poll TCP/NT inputs and update output log.
         """
+        self._live_clock_var.set(time.strftime(LIVE_CLOCK_FORMAT))
         now = time.time()
         if not self._tcp_connected:
             if (now - self._last_connect_attempt) > 1.0:
@@ -1309,6 +1485,7 @@ class BringupControlUI(tk.Tk):
                 self._log_poll_seq = seq
                 self._last_log_poll = now
         self._poll_live_overlay(now)
+        self._poll_presence_overrides()
         self._update_action_enabled()
         idle = (
             not self._tcp_connected
@@ -1335,7 +1512,7 @@ class BringupControlUI(tk.Tk):
             return
         self._runtime_state_last_poll = now
         source = self._live_source_var.get()
-        if source == "file":
+        if source == LIVE_SOURCE_FILE:
             return
         if not self._tcp_connected or not self._handshake_done:
             return

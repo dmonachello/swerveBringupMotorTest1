@@ -93,6 +93,12 @@ except ModuleNotFoundError:
     from tools.can_nt.bridge_cli import BridgeCli
     from tools.can_nt.bridge_session import BridgeSession
 
+# Constants (NetworkTables table names).
+NT_TABLE_ROOT = "bringup"
+NT_TABLE_UI = "ui"
+NT_TABLE_TESTS = "tests"
+NT_TABLE_DIAG = "diag"
+
 
 def _maybe_handle_dumps(
     args,
@@ -305,9 +311,12 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     nt, table = setup_nt(args)
     ui_table = None
     tests_table = None
+    diag_table = None
     if nt is not None:
-        ui_table = nt.getTable("bringup").getSubTable("ui")
-        tests_table = nt.getTable("bringup").getSubTable("tests")
+        root_table = nt.getTable(NT_TABLE_ROOT)
+        ui_table = root_table.getSubTable(NT_TABLE_UI)
+        tests_table = root_table.getSubTable(NT_TABLE_TESTS)
+        diag_table = root_table.getSubTable(NT_TABLE_DIAG)
 
     console_monitor = None
     if args.console_monitor:
@@ -682,6 +691,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         ui = BringupControlUI(
             ui_table=ui_table,
             tests_table=tests_table,
+            diag_table=diag_table,
             rio_host=args.rio,
             tcp_port=args.ui_tcp_port,
             is_connected=_nt_is_connected,

@@ -48,6 +48,17 @@ from tools.common.topology_parse import (
 )
 from tools.common.topology_draw import draw_bus_segments, draw_group_overlays, draw_links
 
+# Constants (presence confidence values and colors).
+PRESENCE_CONF_HIGH = "HIGH"
+PRESENCE_CONF_LOW = "LOW"
+PRESENCE_CONF_NONE = "NONE"
+PRESENCE_COLOR_HIGH = "#2f7a2f"
+PRESENCE_COLOR_LOW = "#f59e0b"
+PRESENCE_COLOR_NONE = "#dc2626"
+PRESENCE_STALE_MS = 2000
+PRESENCE_MIN_CONF = 0.05
+PRESENCE_HIGH_CONF = 0.5
+
 
 @dataclass
 class LiveNode:
@@ -243,6 +254,7 @@ class LiveTopologyView(ttk.Frame):
         self._nodes: List[LiveNode] = []
         self._diagram_meta: Dict[str, object] = {}
         self._runtime_state: Dict[str, Dict[str, object]] = {}
+        self._presence_overrides: Dict[str, str] = {}
         self._selected_label: Optional[str] = None
         self._selected_enabled: Optional[bool] = None
         self._bus_offsets: List[float] = [0.0]
@@ -384,6 +396,34 @@ class LiveTopologyView(ttk.Frame):
         if enabled != self._show_groups:
             self._show_groups = enabled
             self._redraw()
+
+    def set_presence_overrides(self, overrides: Dict[str, str]) -> None:
+        """
+        NAME
+            set_presence_overrides - Apply NT-derived presence confidence overrides.
+        """
+        normalized: Dict[str, str] = {}
+        for label, value in (overrides or {}).items():
+            if not label:
+                continue
+            normalized[str(label).strip().lower()] = str(value).strip()
+        if normalized == self._presence_overrides:
+            return
+        self._presence_overrides = normalized
+        self._redraw()
+
+    def _presence_fill_from_confidence(self, value: str) -> Optional[str]:
+        """
+        NAME
+            _presence_fill_from_confidence - Map HIGH/LOW/NONE to fill colors.
+        """
+        if value == PRESENCE_CONF_HIGH:
+            return PRESENCE_COLOR_HIGH
+        if value == PRESENCE_CONF_LOW:
+            return PRESENCE_COLOR_LOW
+        if value == PRESENCE_CONF_NONE:
+            return PRESENCE_COLOR_NONE
+        return None
 
     def update_runtime_state(self, payload: Optional[Dict[str, object]]) -> bool:
         """
@@ -565,19 +605,24 @@ class LiveTopologyView(ttk.Frame):
         self._detail_vars["selected"].set(selected_text)
 
     def _live_fill(self, node: LiveNode, now_ms: int) -> Optional[str]:
+        override = self._presence_overrides.get(node.label.lower())
+        if override:
+            fill = self._presence_fill_from_confidence(override)
+            if fill:
+                return fill
         live = self._runtime_state.get(node.label.lower())
         if not live:
             return None
         presence = live.get("presenceConfidence")
         last_seen = live.get("lastSeenMs")
-        if isinstance(presence, (int, float)) and presence <= 0.05:
-            return "#6b7280"
-        if isinstance(last_seen, (int, float)) and now_ms - int(last_seen) > 2000:
-            return "#b45309"
+        if isinstance(presence, (int, float)) and presence <= PRESENCE_MIN_CONF:
+            return PRESENCE_COLOR_NONE
+        if isinstance(last_seen, (int, float)) and now_ms - int(last_seen) > PRESENCE_STALE_MS:
+            return PRESENCE_COLOR_LOW
         if isinstance(presence, (int, float)):
-            return "#2f7a2f" if presence >= 0.5 else "#b45309"
+            return PRESENCE_COLOR_HIGH if presence >= PRESENCE_HIGH_CONF else PRESENCE_COLOR_LOW
         if isinstance(last_seen, (int, float)):
-            return "#2f7a2f"
+            return PRESENCE_COLOR_HIGH
         return None
 
     def _redraw(self, _event: Optional[tk.Event] = None) -> None:

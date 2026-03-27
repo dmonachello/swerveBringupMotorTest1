@@ -1,0 +1,41 @@
+{
+  "presenceOverrides": {
+    "NEO 25": "HIGH",
+    "FALCON 9": "LOW",
+    "roboRIO": "NONE"
+  },
+  "presenceTimeline": [
+    {
+      "atSec": 0,
+      "overrides": {
+        "NEO 25": "HIGH",
+        "FALCON 9": "LOW",
+        "roboRIO": "NONE"
+      }
+    },
+    {
+      "atSec": 2,
+      "overrides": {
+        "NEO 25": "LOW",
+        "FALCON 9": "NONE",
+        "roboRIO": "HIGH"
+      }
+    },
+    {
+      "atSec": 4,
+      "overrides": {
+        "NEO 25": "NONE",
+        "FALCON 9": "HIGH",
+        "roboRIO": "LOW"
+      }
+    },
+    {
+      "atSec": 6,
+      "overrides": {
+        "NEO 25": "HIGH",
+        "FALCON 9": "LOW",
+        "roboRIO": "NONE"
+      }
+    }
+  ]
+}
