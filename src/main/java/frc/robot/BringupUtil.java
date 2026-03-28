@@ -1,5 +1,6 @@
 package frc.robot;
 
+import frc.robot.BringupPrinter;
 import com.ctre.phoenix6.SignalLogger;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.google.gson.Gson;
@@ -192,12 +193,12 @@ public final class BringupUtil {
     }
     CanProfileConfig config = profiles.get(profileName);
     if (config == null) {
-      System.out.println("Warning: unknown CAN profile '" + profileName + "'. Using default.");
+      BringupPrinter.enqueue("Warning: unknown CAN profile '" + profileName + "'. Using default.");
       config = profiles.get(defaultProfile);
       profileName = defaultProfile;
     }
     if (config == null) {
-      System.out.println("Warning: default CAN profile missing; using fallback IDs.");
+      BringupPrinter.enqueue("Warning: default CAN profile missing; using fallback IDs.");
       applyFallbackProfile();
       activeProfile = DEFAULT_PROFILE_NAME;
       return;
@@ -205,8 +206,8 @@ public final class BringupUtil {
     try {
       validateProfileCanIdsStrict(profileName, config);
     } catch (JsonParseException ex) {
-      System.out.println("ERROR: cannot activate profile '" + profileName + "': " + ex.getMessage());
-      System.out.println("ERROR: Profile activation aborted. Staying on '" + activeProfile + "'.");
+      BringupPrinter.enqueue("ERROR: cannot activate profile '" + profileName + "': " + ex.getMessage());
+      BringupPrinter.enqueue("ERROR: Profile activation aborted. Staying on '" + activeProfile + "'.");
       return;
     }
 
@@ -236,7 +237,7 @@ public final class BringupUtil {
       return;
     }
     if (!profiles.containsKey(profileName)) {
-      System.out.println("Warning: unknown CAN profile '" + profileName + "'. Using default.");
+      BringupPrinter.enqueue("Warning: unknown CAN profile '" + profileName + "'. Using default.");
       selectedProfile = defaultProfile;
       return;
     }
@@ -408,7 +409,7 @@ public final class BringupUtil {
       return true;
     }
     if (existing != null) {
-      System.out.println(
+      BringupPrinter.enqueue(
           "ERROR: duplicate device instance for "
               + safeText(vendor) + " " + safeText(type) + " CAN " + id
               + " (" + safeText(device.getLabel()) + ").");
@@ -505,13 +506,13 @@ public final class BringupUtil {
           continue;
         }
         if (!seen.add(entry.id)) {
-          System.out.println("Warning: duplicate CAN ID: " + entry.id);
+          BringupPrinter.enqueue("Warning: duplicate CAN ID: " + entry.id);
           hasDuplicate = true;
         }
       }
     }
     if (hasDuplicate) {
-      System.out.println("Warning: duplicate CAN IDs can cause bringup confusion.");
+      BringupPrinter.enqueue("Warning: duplicate CAN IDs can cause bringup confusion.");
     }
   }
 
@@ -531,7 +532,7 @@ public final class BringupUtil {
       int manufacturer = resolveCanManufacturerId(entry.vendor);
       int deviceType = resolveCanDeviceTypeId(entry.type);
       if (manufacturer < 0 || deviceType < 0) {
-        System.out.println(
+        BringupPrinter.enqueue(
             "Warning: unable to map device to CAN identity (vendor="
                 + entry.vendor + ", type=" + entry.type + ", id=" + entry.id + ").");
         continue;
@@ -766,7 +767,7 @@ public final class BringupUtil {
         }
         enabledCount++;
         if (!seen.add(id)) {
-          System.out.println("Warning: duplicate CAN ID: " + id);
+          BringupPrinter.enqueue("Warning: duplicate CAN ID: " + id);
           hasDuplicate = true;
         }
       }
@@ -775,12 +776,12 @@ public final class BringupUtil {
         if (groupLabels != null && groupIndex < groupLabels.length) {
           label = groupLabels[groupIndex];
         }
-        System.out.println("Warning: all CAN IDs disabled for " + label + ".");
+        BringupPrinter.enqueue("Warning: all CAN IDs disabled for " + label + ".");
       }
     }
 
     if (hasDuplicate) {
-      System.out.println("Warning: duplicate CAN IDs can cause bringup confusion.");
+      BringupPrinter.enqueue("Warning: duplicate CAN IDs can cause bringup confusion.");
     }
   }
 
@@ -806,7 +807,7 @@ public final class BringupUtil {
       try {
         closeable.close();
       } catch (Exception e) {
-        System.out.println("Warning: failed to close device: " + e.getMessage());
+        BringupPrinter.enqueue("Warning: failed to close device: " + e.getMessage());
       }
     }
   }
@@ -877,7 +878,7 @@ public final class BringupUtil {
     // Load bringup_system.json from deploy or dev path.
     Path path = resolveProfilePath();
     if (path == null || !Files.exists(path)) {
-      System.out.println("Warning: CAN profile JSON not found. Using fallback IDs.");
+      BringupPrinter.enqueue("Warning: CAN profile JSON not found. Using fallback IDs.");
       applyFallbackProfile();
       return;
     }
@@ -908,15 +909,15 @@ public final class BringupUtil {
       profileOrder = new ArrayList<>(profiles.keySet());
       defaultProfile = root.defaultProfile != null ? root.defaultProfile : DEFAULT_PROFILE_NAME;
       if (!profiles.containsKey(defaultProfile)) {
-        System.out.println("Warning: default_profile not found in JSON. Using 'robot'.");
+        BringupPrinter.enqueue("Warning: default_profile not found in JSON. Using 'robot'.");
         defaultProfile = DEFAULT_PROFILE_NAME;
       }
       selectedProfile = defaultProfile;
       activeProfile = DEFAULT_PROFILE_NAME;
       activeProfileApplied = false;
     } catch (IOException | JsonParseException ex) {
-      System.out.println("ERROR: bringup_system.json invalid: " + ex.getMessage());
-      System.out.println("ERROR: Redeploy required. Robot code will stop.");
+      BringupPrinter.enqueue("ERROR: bringup_system.json invalid: " + ex.getMessage());
+      BringupPrinter.enqueue("ERROR: Redeploy required. Robot code will stop.");
       throw new RuntimeException("Invalid bringup_system.json", ex);
     }
   }
@@ -1092,7 +1093,7 @@ public final class BringupUtil {
 
     for (Map.Entry<Integer, List<String>> entry : seenById.entrySet()) {
       if (entry.getValue().size() > 1) {
-        System.out.println(
+        BringupPrinter.enqueue(
             "Warning: profile '" + profileName + "' uses CAN ID " + entry.getKey()
                 + " across multiple vendor/types ("
                 + String.join(", ", entry.getValue())
@@ -1227,7 +1228,7 @@ public final class BringupUtil {
           ref.terminator);
       ACTIVE_DEVICES.add(entry);
       if (vendor.isEmpty() || type.isEmpty()) {
-        System.out.println("Warning: device entry missing vendor/type for CAN ID " + ref.id);
+        BringupPrinter.enqueue("Warning: device entry missing vendor/type for CAN ID " + ref.id);
         continue;
       }
       DeviceKey key = new DeviceKey(vendor, type);
@@ -1498,7 +1499,7 @@ public final class BringupUtil {
       }
       return specs;
     } catch (IOException | JsonParseException ex) {
-      System.out.println("Warning: failed to load motor specs: " + ex.getMessage());
+      BringupPrinter.enqueue("Warning: failed to load motor specs: " + ex.getMessage());
       return fallback;
     }
   }
@@ -1516,7 +1517,7 @@ public final class BringupUtil {
       CanMappings mappings = GSON.fromJson(reader, CanMappings.class);
       return mappings != null ? mappings : new CanMappings();
     } catch (IOException | JsonParseException ex) {
-      System.out.println("Warning: failed to load CAN mappings: " + ex.getMessage());
+      BringupPrinter.enqueue("Warning: failed to load CAN mappings: " + ex.getMessage());
       return new CanMappings();
     }
   }

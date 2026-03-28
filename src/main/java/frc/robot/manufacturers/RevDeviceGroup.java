@@ -1,5 +1,6 @@
 package frc.robot.manufacturers;
 
+import frc.robot.BringupPrinter;
 import frc.robot.BringupHealthFormat;
 import frc.robot.BringupUtil;
 import frc.robot.BringupUtil.DeviceConfig;
@@ -458,7 +459,7 @@ public final class RevDeviceGroup implements ManufacturerGroup {
   private void warnIfMissingMotorSpec(String label, String modelOverride) {
     BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
     if (spec == null) {
-      System.out.println("Warning: missing motor spec for " + label);
+      BringupPrinter.enqueue("Warning: missing motor spec for " + label);
     }
   }
 

@@ -98,6 +98,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Launch the interactive bridge CLI.",
     )
     parser.add_argument(
+        "--cli-echo",
+        action="store_true",
+        help="Echo CLI script commands (batch-friendly).",
+    )
+    parser.add_argument(
         f"--{CLI_PARSER_CONST['arg_name'].replace('_', '-')}",
         dest=CLI_PARSER_CONST["arg_name"],
         default=CLI_PARSER_CONST["arg_default"],

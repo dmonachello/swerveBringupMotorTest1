@@ -1,5 +1,6 @@
 package frc.robot.input;
 
+import frc.robot.BringupPrinter;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import edu.wpi.first.wpilibj.Filesystem;
@@ -46,18 +47,17 @@ public final class BindingsManager {
    *   sample - Sample controller inputs into a BindingState.
    *
    * PARAMETERS
-   *   primary - Primary Xbox controller.
-   *   secondary - Secondary Xbox controller (optional).
+   *   controllers - Named Xbox controller map.
    *   edge - EdgeTrigger for rising-edge detection.
    *
    * RETURNS
    *   BindingState snapshot for this cycle.
    */
-  public BindingState sample(XboxController primary, XboxController secondary, EdgeTrigger edge) {
+  public BindingState sample(Map<String, XboxController> controllers, EdgeTrigger edge) {
     BindingState state = new BindingState();
     for (int i = 0; i < bindings.size(); i++) {
       BindingSpec spec = bindings.get(i);
-      XboxController controller = resolveController(spec.controller, primary, secondary);
+      XboxController controller = resolveController(spec.controller, controllers);
       if (controller == null) {
         continue;
       }
@@ -78,7 +78,7 @@ public final class BindingsManager {
     }
 
     for (AxisSpec spec : axes) {
-      XboxController controller = resolveController(spec.controller, primary, secondary);
+      XboxController controller = resolveController(spec.controller, controllers);
       if (controller == null) {
         continue;
       }
@@ -176,38 +176,38 @@ public final class BindingsManager {
     bindings.clear();
     axes.clear();
 
-    bindings.add(BindingSpec.edge("addMotor", "primary", "button", "A"));
-    bindings.add(BindingSpec.edge("addAll", "primary", "button", "START"));
-    bindings.add(BindingSpec.edge("printState", "primary", "button", "B"));
-    bindings.add(BindingSpec.edge("printHealth", "primary", "dpad", "LEFT"));
-    bindings.add(BindingSpec.edge("printCANcoder", "primary", "button", "RB"));
-    bindings.add(BindingSpec.edge("printNTdiag", "primary", "dpad", "DOWN"));
-    bindings.add(BindingSpec.edge("printCANdiag", "primary", "dpad", "UP"));
-    bindings.add(BindingSpec.edge("printInputs", "primary", "dpad", "RIGHT"));
-    bindings.add(BindingSpec.edge("printBindings", "primary", "button", "LB"));
-    bindings.add(BindingSpec.edge("printTestsInfo", "primary", "combo", "LB+RB"));
-    bindings.add(BindingSpec.edge("printTestsOverview", "primary", "button", "LS"));
-    bindings.add(BindingSpec.edge("clearFaults", "primary", "button", "RS"));
-    bindings.add(BindingSpec.edge("dumpReport", "primary", "button", "X"));
-    bindings.add(BindingSpec.edge("toggleDashboard", "primary", "button", "Y"));
-    bindings.add(BindingSpec.edge("profileToggle", "primary", "button", "BACK"));
+    bindings.add(BindingSpec.edge("addMotor", "controller0", "button", "A"));
+    bindings.add(BindingSpec.edge("addAll", "controller0", "button", "START"));
+    bindings.add(BindingSpec.edge("printState", "controller0", "button", "B"));
+    bindings.add(BindingSpec.edge("printHealth", "controller0", "dpad", "LEFT"));
+    bindings.add(BindingSpec.edge("printCANcoder", "controller0", "button", "RB"));
+    bindings.add(BindingSpec.edge("printNTdiag", "controller0", "dpad", "DOWN"));
+    bindings.add(BindingSpec.edge("printCANdiag", "controller0", "dpad", "UP"));
+    bindings.add(BindingSpec.edge("printInputs", "controller0", "dpad", "RIGHT"));
+    bindings.add(BindingSpec.edge("printBindings", "controller0", "button", "LB"));
+    bindings.add(BindingSpec.edge("printTestsInfo", "controller0", "combo", "LB+RB"));
+    bindings.add(BindingSpec.edge("printTestsOverview", "controller0", "button", "LS"));
+    bindings.add(BindingSpec.edge("clearFaults", "controller0", "button", "RS"));
+    bindings.add(BindingSpec.edge("dumpReport", "controller0", "button", "X"));
+    bindings.add(BindingSpec.edge("toggleDashboard", "controller0", "button", "Y"));
+    bindings.add(BindingSpec.edge("profileToggle", "controller0", "button", "BACK"));
 
-    bindings.add(BindingSpec.edge("canSweep", "secondary", "button", "Y"));
+    bindings.add(BindingSpec.edge("canSweep", "controller1", "button", "Y"));
 
-    bindings.add(BindingSpec.edge("selectTestPrev", "secondary", "button", "LB"));
-    bindings.add(BindingSpec.edge("selectTestNext", "secondary", "button", "RB"));
-    bindings.add(BindingSpec.edge("toggleTest", "secondary", "button", "X"));
-    bindings.add(BindingSpec.hold("runTest", "secondary", "button", "A"));
-    bindings.add(BindingSpec.edge("runAllTests", "secondary", "button", "B"));
-    bindings.add(BindingSpec.edge("printNextTest", "secondary", "button", "START"));
+    bindings.add(BindingSpec.edge("selectTestPrev", "controller1", "button", "LB"));
+    bindings.add(BindingSpec.edge("selectTestNext", "controller1", "button", "RB"));
+    bindings.add(BindingSpec.edge("toggleTest", "controller1", "button", "X"));
+    bindings.add(BindingSpec.hold("runTest", "controller1", "button", "A"));
+    bindings.add(BindingSpec.edge("runAllTests", "controller1", "button", "B"));
+    bindings.add(BindingSpec.edge("printNextTest", "controller1", "button", "START"));
 
-    bindings.add(BindingSpec.hold("fixedSpeed25", "secondary", "dpad", "UP"));
-    bindings.add(BindingSpec.hold("fixedSpeed50", "secondary", "dpad", "RIGHT"));
-    bindings.add(BindingSpec.hold("fixedSpeed75", "secondary", "dpad", "DOWN"));
-    bindings.add(BindingSpec.hold("fixedSpeed100", "secondary", "dpad", "LEFT"));
+    bindings.add(BindingSpec.hold("fixedSpeed25", "controller1", "dpad", "UP"));
+    bindings.add(BindingSpec.hold("fixedSpeed50", "controller1", "dpad", "RIGHT"));
+    bindings.add(BindingSpec.hold("fixedSpeed75", "controller1", "dpad", "DOWN"));
+    bindings.add(BindingSpec.hold("fixedSpeed100", "controller1", "dpad", "LEFT"));
 
-    axes.add(AxisSpec.axis("leftDrive", "primary", "LY", true, 0.12));
-    axes.add(AxisSpec.axis("rightDrive", "primary", "RY", true, 0.12));
+    axes.add(AxisSpec.axis("leftDrive", "controller0", "leftY", true, 0.12));
+    axes.add(AxisSpec.axis("rightDrive", "controller0", "rightY", true, 0.12));
   }
 
   private void validateBindings() {
@@ -247,12 +247,12 @@ public final class BindingsManager {
       String command = spec.command.trim();
       bindingCounts.put(command, bindingCounts.getOrDefault(command, 0) + 1);
       if (!knownCommands.contains(command)) {
-        System.out.println("Warning: unknown binding command '" + command + "'.");
+        BringupPrinter.enqueue("Warning: unknown binding command '" + command + "'.");
       }
     }
     for (Map.Entry<String, Integer> entry : bindingCounts.entrySet()) {
       if (entry.getValue() > 1) {
-        System.out.println("Warning: duplicate binding for command '" + entry.getKey() + "'.");
+        BringupPrinter.enqueue("Warning: duplicate binding for command '" + entry.getKey() + "'.");
       }
     }
     for (AxisSpec axis : axes) {
@@ -261,7 +261,7 @@ public final class BindingsManager {
       }
       String command = axis.command.trim();
       if (!List.of("leftDrive", "rightDrive").contains(command)) {
-        System.out.println("Warning: unknown axis command '" + command + "'.");
+        BringupPrinter.enqueue("Warning: unknown axis command '" + command + "'.");
       }
     }
   }
@@ -327,24 +327,25 @@ public final class BindingsManager {
   }
 
   private double readAxis(XboxController controller, String id) {
+    if (id == null) {
+      return 0.0;
+    }
     return switch (id) {
-      case "LX" -> controller.getLeftX();
-      case "LY" -> controller.getLeftY();
-      case "RX" -> controller.getRightX();
-      case "RY" -> controller.getRightY();
+      case "leftX" -> controller.getLeftX();
+      case "leftY" -> controller.getLeftY();
+      case "rightX" -> controller.getRightX();
+      case "rightY" -> controller.getRightY();
+      case "leftTrigger" -> controller.getLeftTriggerAxis();
+      case "rightTrigger" -> controller.getRightTriggerAxis();
       default -> 0.0;
     };
   }
 
-  private XboxController resolveController(String role, XboxController primary, XboxController secondary) {
-    if (role == null) {
-      return primary;
+  private XboxController resolveController(String name, Map<String, XboxController> controllers) {
+    if (name == null || controllers == null) {
+      return null;
     }
-    String normalized = role.trim().toLowerCase(Locale.ROOT);
-    if ("secondary".equals(normalized)) {
-      return secondary;
-    }
-    return primary;
+    return controllers.get(name);
   }
 
   private Path resolvePath() {

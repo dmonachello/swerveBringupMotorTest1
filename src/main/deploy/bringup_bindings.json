@@ -1,187 +1,195 @@
 {
   "controllers": [
-    { "type": "XBOX", "port": 0, "role": "primary" },
-    { "type": "XBOX", "port": 1, "role": "secondary" }
+    {
+      "type": "XBOX",
+      "port": 0,
+      "name": "controller0"
+    },
+    {
+      "type": "XBOX",
+      "port": 1,
+      "name": "controller1"
+    }
   ],
   "bindings": [
     {
       "command": "addMotor",
-      "controller": "primary",
+      "controller": "controller0",
       "input": "button",
       "id": "A",
       "mode": "edge"
     },
     {
       "command": "addAll",
-      "controller": "primary",
+      "controller": "controller0",
       "input": "button",
       "id": "START",
       "mode": "edge"
     },
     {
       "command": "printState",
-      "controller": "primary",
+      "controller": "controller0",
       "input": "button",
       "id": "B",
       "mode": "edge"
     },
     {
       "command": "printHealth",
-      "controller": "primary",
+      "controller": "controller0",
       "input": "dpad",
       "id": "LEFT",
       "mode": "edge"
     },
     {
       "command": "printCANcoder",
-      "controller": "primary",
+      "controller": "controller0",
       "input": "button",
       "id": "RB",
       "mode": "edge"
     },
     {
       "command": "printNTdiag",
-      "controller": "primary",
+      "controller": "controller0",
       "input": "dpad",
       "id": "DOWN",
       "mode": "edge"
     },
     {
       "command": "printCANdiag",
-      "controller": "primary",
+      "controller": "controller0",
       "input": "dpad",
       "id": "UP",
       "mode": "edge"
     },
     {
       "command": "printInputs",
-      "controller": "primary",
+      "controller": "controller0",
       "input": "dpad",
       "id": "RIGHT",
       "mode": "edge"
     },
     {
       "command": "printBindings",
-      "controller": "primary",
+      "controller": "controller0",
       "input": "button",
       "id": "LB",
       "mode": "edge"
     },
     {
       "command": "printTestsInfo",
-      "controller": "primary",
+      "controller": "controller0",
       "input": "combo",
       "id": "LB+RB",
       "mode": "edge"
     },
     {
       "command": "printTestsOverview",
-      "controller": "primary",
+      "controller": "controller0",
       "input": "button",
       "id": "LS",
       "mode": "edge"
     },
     {
       "command": "clearFaults",
-      "controller": "primary",
+      "controller": "controller0",
       "input": "button",
       "id": "RS",
       "mode": "edge"
     },
     {
       "command": "dumpReport",
-      "controller": "primary",
+      "controller": "controller0",
       "input": "button",
       "id": "X",
       "mode": "edge"
     },
     {
       "command": "toggleDashboard",
-      "controller": "primary",
+      "controller": "controller0",
       "input": "button",
       "id": "Y",
       "mode": "edge"
     },
     {
       "command": "profileToggle",
-      "controller": "primary",
+      "controller": "controller0",
       "input": "button",
       "id": "BACK",
       "mode": "edge"
     },
     {
       "command": "canSweep",
-      "controller": "secondary",
+      "controller": "controller1",
       "input": "button",
       "id": "Y",
       "mode": "edge"
     },
     {
       "command": "selectTestPrev",
-      "controller": "secondary",
+      "controller": "controller1",
       "input": "button",
       "id": "LB",
       "mode": "edge"
     },
     {
       "command": "selectTestNext",
-      "controller": "secondary",
+      "controller": "controller1",
       "input": "button",
       "id": "RB",
       "mode": "edge"
     },
     {
       "command": "toggleTest",
-      "controller": "secondary",
+      "controller": "controller1",
       "input": "button",
       "id": "X",
       "mode": "edge"
     },
     {
       "command": "runTest",
-      "controller": "secondary",
+      "controller": "controller1",
       "input": "button",
       "id": "A",
       "mode": "hold"
     },
     {
       "command": "runAllTests",
-      "controller": "secondary",
+      "controller": "controller1",
       "input": "button",
       "id": "B",
       "mode": "edge"
     },
     {
       "command": "printNextTest",
-      "controller": "secondary",
+      "controller": "controller1",
       "input": "button",
       "id": "START",
       "mode": "edge"
     },
     {
       "command": "fixedSpeed25",
-      "controller": "secondary",
+      "controller": "controller1",
       "input": "dpad",
       "id": "UP",
       "mode": "hold"
     },
     {
       "command": "fixedSpeed50",
-      "controller": "secondary",
+      "controller": "controller1",
       "input": "dpad",
       "id": "RIGHT",
       "mode": "hold"
     },
     {
       "command": "fixedSpeed75",
-      "controller": "secondary",
+      "controller": "controller1",
       "input": "dpad",
       "id": "DOWN",
       "mode": "hold"
     },
     {
       "command": "fixedSpeed100",
-      "controller": "secondary",
+      "controller": "controller1",
       "input": "dpad",
       "id": "LEFT",
       "mode": "hold"
@@ -190,15 +198,15 @@
   "axes": [
     {
       "command": "leftDrive",
-      "controller": "primary",
-      "id": "LY",
+      "controller": "controller0",
+      "id": "leftY",
       "invert": true,
       "deadband": 0.12
     },
     {
       "command": "rightDrive",
-      "controller": "primary",
-      "id": "RY",
+      "controller": "controller0",
+      "id": "rightY",
       "invert": true,
       "deadband": 0.12
     }

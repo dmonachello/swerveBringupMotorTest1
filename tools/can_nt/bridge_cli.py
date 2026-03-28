@@ -24,6 +24,7 @@ from tools.can_nt.bridge_cmd_tracker import CommandTracker
 from tools.can_nt.bridge_cli_parser import BridgeCliParser, CliParseError
 from tools.can_nt.bridge_cli_ast import BridgeCliAstExecutor
 from tools.can_nt.bridge_cli_constants import CLI_PARSER_CONST
+from tools.can_nt.can_profiles import get_default_profile
 from tools.can_nt.bridge_ops import (
     connect,
     disconnect,
@@ -63,11 +64,145 @@ from tools.can_nt.bridge_ops import (
 from tools.can_nt.bridge_session import BridgeEvent, BridgeSession
 from tools.common.json_io import write_json
 from tools.common.profile_io import compute_profiles_hash
+from tools.common.paths import repo_root, tests_deploy_path
+from tools.common.tests_io import load_tests_payload, write_tests_payload
+from tools.common.test_authoring import (
+    TestAuthoringModel,
+    TestBindingButton,
+    TestBindingJoystick,
+    TestModel,
+    TestSetModel,
+    TerminationModel,
+    model_from_payload,
+    model_to_payload,
+    validate_model,
+    validate_test_name,
+)
+from tools.common.test_authoring.device_catalog import load_controller_names
 from tools.common.time_utils import timestamp_version
 
 # Parser selection (comment out one of the two lines below).
 # CLI_PARSER_KIND = CLI_PARSER_CONST["legacy"]
 CLI_PARSER_KIND = CLI_PARSER_CONST["ebnf"]
+
+MODE_CONFIG = "config"
+MODE_TEST = "test"
+
+TESTS_FILENAME = "bringup_tests.json"
+DEFAULT_TEST_SET = "default"
+EMPTY_STRING = ""
+TEST_LABEL_UNKNOWN = "unknown"
+
+CMD_SHOW = "show"
+CMD_WRITE = "write"
+CMD_TEST = "test"
+CMD_TESTS = "tests"
+CMD_CREATE = "create"
+CMD_DELETE = "delete"
+CMD_SET = "set"
+CMD_TYPE = "type"
+CMD_DEVICE = "device"
+CMD_ADD = "add"
+CMD_NO = "no"
+CMD_INPUT_SOURCE = "inputsource"
+CMD_DEADBAND = "deadband"
+CMD_DUTY = "duty"
+CMD_TERMINATION = "termination"
+CMD_ROTATION = "rotation"
+CMD_TIME = "time"
+CMD_HOLD = "hold"
+CMD_LIMITSWITCH = "limitswitch"
+CMD_DEADBAND_SWEEP = "deadbandsweep"
+CMD_ENABLED = "enabled"
+CMD_EXIT = "exit"
+CMD_END = "end"
+
+TEST_TYPE_JOYSTICK = "joystick"
+TEST_TYPE_BUTTON = "button"
+TEST_TYPE_COMPOSITE = "composite"
+TEST_TYPE_DEADBAND_SWEEP = "deadbandSweep"
+
+TERMINATION_HOLD = "hold"
+TERMINATION_TIME = "time"
+TERMINATION_ROTATION = "rotation"
+TERMINATION_LIMITSWITCH = "limitswitch"
+
+DEVICE_KEY_SEPARATOR = ":"
+DEVICE_KEY_SEPARATOR_COUNT = 2
+
+DEADBAND_MIN = 0.0
+DEADBAND_MAX = 1.0
+DUTY_MIN = -1.0
+DUTY_MAX = 1.0
+TIME_MIN_SEC = 0.0
+ROTATION_MIN = 0.0
+PROMPT_OVERWRITE = "Test '{name}' exists. Overwrite? (y/N): "
+CONFIRM_YES = "y"
+TIME_ON_TIMEOUT_DEFAULT = "fail"
+GLOBAL_LABEL = "global"
+LIMIT_SWITCH_KEY_ENABLED = "enabled"
+LIMIT_SWITCH_KEY_ON_HIT = "onHit"
+LIMIT_SWITCH_KEY_ID = "id"
+LIMIT_SWITCH_ON_HIT_DEFAULT = "pass"
+LIMIT_SWITCH_DEFAULT = {
+    LIMIT_SWITCH_KEY_ENABLED: True,
+    LIMIT_SWITCH_KEY_ON_HIT: LIMIT_SWITCH_ON_HIT_DEFAULT,
+}
+DEVICE_JOIN_SEPARATOR = ", "
+
+MESSAGE_ERROR_TEST_SUBCOMMAND = "ERROR: test requires a subcommand."
+MESSAGE_ERROR_TEST_SET_NAME = "ERROR: test set requires a name."
+MESSAGE_ERROR_TEST_EXISTS = "ERROR: Test already exists."
+MESSAGE_ERROR_TEST_NOT_FOUND = "ERROR: Test not found."
+MESSAGE_ERROR_UNKNOWN_TEST = "ERROR: Unknown test command."
+MESSAGE_ERROR_INVALID_TEST_COMMAND = "ERROR: Invalid test authoring command."
+MESSAGE_ERROR_WITH_TEXT = "ERROR: {message}"
+MESSAGE_ERROR_WITH_TEST = "ERROR: {message} ({test})"
+MESSAGE_WARNING_WITH_TEST = "WARNING: {message} ({test})"
+MESSAGE_ERROR_TEST_MODE = "ERROR: No active test."
+MESSAGE_ERROR_TYPE = "ERROR: type must be joystick, button, composite, or deadbandSweep."
+MESSAGE_ERROR_DEVICE_DUP = "WARNING: Device already present."
+MESSAGE_ERROR_INPUT_SOURCE_TYPE = "ERROR: inputSource only valid for joystick/button/composite tests."
+MESSAGE_ERROR_INPUT_SOURCE_VALUE = "ERROR: inputSource requires <controller>.<inputId>."
+MESSAGE_ERROR_DEADBAND_TYPE = "ERROR: deadband only valid for joystick tests."
+MESSAGE_ERROR_DEADBAND_NUMBER = "ERROR: deadband requires a number."
+MESSAGE_ERROR_DEADBAND_RANGE = "ERROR: deadband must be 0.0 to 1.0."
+MESSAGE_ERROR_DUTY_TYPE = "ERROR: duty only valid for button/composite tests."
+MESSAGE_ERROR_DUTY_NUMBER = "ERROR: duty requires a number."
+MESSAGE_ERROR_DUTY_RANGE = "ERROR: duty must be -1.0 to 1.0."
+MESSAGE_ERROR_TERMINATION = "ERROR: unknown termination type."
+MESSAGE_ERROR_TERMINATION_TIME = "ERROR: termination time requires a number."
+MESSAGE_ERROR_TERMINATION_TIME_RANGE = "ERROR: termination time must be >= 0."
+MESSAGE_ERROR_TERMINATION_ROTATION = "ERROR: termination rotation requires a number."
+MESSAGE_ERROR_TERMINATION_ROTATION_RANGE = "ERROR: termination rotation must be >= 0."
+MESSAGE_ERROR_ROTATION_TYPE = "ERROR: rotation only valid for button/composite tests."
+MESSAGE_ERROR_TIME_TYPE = "ERROR: time only valid for button/composite tests."
+MESSAGE_ERROR_HOLD_TYPE = "ERROR: hold only valid for button/composite tests."
+MESSAGE_ERROR_LIMITSWITCH_TYPE = "ERROR: limitswitch only valid for button/composite tests."
+MESSAGE_ERROR_DEADBAND_SWEEP_TYPE = "ERROR: deadbandSweep only valid for deadbandSweep tests."
+MESSAGE_ERROR_DEADBAND_SWEEP_FIELD = "ERROR: deadbandSweep requires a field name and value."
+MESSAGE_ERROR_DEVICE_KEY = "ERROR: device key must be VENDOR:TYPE:ID."
+MESSAGE_ERROR_SHOW_TESTS = "ERROR: show tests | show test <name>"
+MESSAGE_ERROR_WRITE_TESTS = "ERROR: write tests <path>"
+MESSAGE_SELECTED_TEST_SET = "Selected test set: {name}"
+MESSAGE_CANCELLED = "Cancelled."
+MESSAGE_DELETED_TEST = "Deleted test: {name}"
+MESSAGE_WROTE_TESTS = "Wrote tests to {path}."
+MESSAGE_ACTIVE_TEST_SET = "Active test set: {name}"
+MESSAGE_TEST_LIST_ENTRY = "- {name} ({type}) devices={count} enabled={enabled}"
+MESSAGE_TEST_HEADER = "Test: {name}"
+MESSAGE_TEST_TYPE = "  type: {type}"
+MESSAGE_TEST_ENABLED = "  enabled: {enabled}"
+MESSAGE_TEST_DEVICES = "  devices: {devices}"
+MESSAGE_TEST_INPUT_SOURCE = "  inputSource: {source}"
+MESSAGE_TEST_DEADBAND = "  deadband: {deadband}"
+MESSAGE_TEST_DUTY = "  duty: {duty}"
+MESSAGE_TEST_TERMINATION = "  termination: hold={hold} time={time} rotation={rotation}"
+MESSAGE_TEST_LIMIT_SWITCH = "  limitSwitch: {limit}"
+MESSAGE_TEST_ROTATION = "  rotation: {rotation}"
+MESSAGE_TEST_TIME = "  time: {time}"
+MESSAGE_TEST_HOLD = "  hold: {hold}"
+MESSAGE_TEST_DEADBAND_SWEEP = "  deadbandSweep: {sweep}"
 
 
 @dataclass
@@ -75,6 +210,7 @@ class CliMode:
     name: str
     group: str = ""
     device: str = ""
+    test: str = ""
 
 
 class BridgeCli:
@@ -89,10 +225,12 @@ class BridgeCli:
         batch: bool = False,
         conflict_policy: str = "error",
         parser_kind: Optional[str] = None,
+        echo_enabled: bool = False,
     ) -> None:
         self._session = session
         self._batch = batch
         self._conflict_policy = conflict_policy
+        self._echo_enabled = echo_enabled
         parser_choice = (parser_kind or CLI_PARSER_KIND).strip().lower()
         if parser_choice not in (CLI_PARSER_CONST["legacy"], CLI_PARSER_CONST["ebnf"]):
             parser_choice = CLI_PARSER_CONST["legacy"]
@@ -119,6 +257,11 @@ class BridgeCli:
         self._can_type_name_to_id: Dict[str, int] = {}
         self._tracker = CommandTracker(timeout_sec=2.0, max_retries=0)
         self._load_can_mappings()
+        self._tests_model: Optional[TestAuthoringModel] = None
+        self._tests_path: Optional[Path] = None
+        self._tests_dirty: bool = False
+        self._tests_active_set: str = ""
+        self._tests_profile: Optional[str] = None
 
     def run_interactive(self) -> int:
         """
@@ -161,6 +304,8 @@ class BridgeCli:
             line = raw.strip()
             if not line or line.startswith("#"):
                 continue
+            if self._echo_enabled:
+                print(f">> {line}")
             code = self._execute_line(line)
             if code is not None:
                 return code
@@ -170,12 +315,15 @@ class BridgeCli:
         mode = self._modes[-1]
         if mode.name == "exec":
             return "bridge> "
-        if mode.name == "config":
+        if mode.name == MODE_CONFIG:
             return "bridge(config)# "
         if mode.name == "group":
             return f"bridge(config-group-{mode.group})# "
         if mode.name == "device":
             return f"bridge(config-device-{mode.device})# "
+        if mode.name == MODE_TEST:
+            label = mode.test or TEST_LABEL_UNKNOWN
+            return f"bridge(config-test-{label})# "
         return "bridge> "
 
     def _execute_line(self, line: str) -> Optional[int]:
@@ -188,8 +336,14 @@ class BridgeCli:
                 tokens = self._split_command(line)
                 ast = None
         except (CliParseError, ValueError) as exc:
+            if self._parser_kind == CLI_PARSER_CONST["ebnf"]:
+                tokens = self._split_command(line)
+                if self._is_test_authoring_command(tokens):
+                    return self._execute_test_authoring(tokens)
             print(f"ERROR: {exc}")
             return None
+        if self._is_test_authoring_command(tokens):
+            return self._execute_test_authoring(tokens)
         if ast is not None:
             return self._ast_executor.execute(ast)
         if not tokens:
@@ -210,18 +364,688 @@ class BridgeCli:
             seq = show_status(self._session, json_output=False)
             self._wait_for_seq(seq)
             return None
+        if cmd == "echo":
+            if len(tokens) < 2:
+                state = "on" if self._echo_enabled else "off"
+                print(f"echo {state}")
+                return None
+            value = tokens[1].lower()
+            if value in ("on", "true", "1", "yes"):
+                self._echo_enabled = True
+                return None
+            if value in ("off", "false", "0", "no"):
+                self._echo_enabled = False
+                return None
+            print("ERROR: echo requires on/off.")
+            return 2 if self._batch else None
 
         mode = self._modes[-1].name
         if mode == "exec":
             return self._exec_command(tokens)
-        if mode == "config":
+        if mode == MODE_CONFIG:
             return self._config_command(tokens)
         if mode == "group":
             return self._group_command(tokens)
         if mode == "device":
             return self._device_command(tokens)
+        if mode == MODE_TEST:
+            return self._test_mode_command(tokens)
         print("ERROR: unknown mode.")
         return None
+
+    def _is_test_authoring_command(self, tokens: List[str]) -> bool:
+        """
+        NAME
+            _is_test_authoring_command - Identify test authoring commands.
+
+        PARAMETERS
+            tokens - Tokenized command input.
+
+        RETURNS
+            True when the command targets test authoring workflows.
+        """
+
+        if not tokens:
+            return False
+        mode = self._modes[-1].name
+        if mode == MODE_TEST:
+            return True
+        if mode == MODE_CONFIG and tokens[0].lower() == CMD_TEST:
+            return True
+        if tokens[0].lower() == CMD_SHOW and len(tokens) > 1:
+            return tokens[1].lower().startswith(CMD_TEST)
+        if tokens[0].lower() == CMD_WRITE and len(tokens) > 1:
+            return tokens[1].lower() == CMD_TESTS
+        return False
+
+    def _execute_test_authoring(self, tokens: List[str]) -> Optional[int]:
+        """
+        NAME
+            _execute_test_authoring - Dispatch test authoring commands.
+
+        PARAMETERS
+            tokens - Tokenized command input.
+
+        RETURNS
+            None on success, or a CLI exit code.
+        """
+
+        mode = self._modes[-1].name
+        if mode == MODE_TEST:
+            return self._test_mode_command(tokens)
+        if mode == MODE_CONFIG and tokens[0].lower() == CMD_TEST:
+            return self._config_test_command(tokens)
+        if tokens[0].lower() == CMD_SHOW:
+            return self._show_tests_command(tokens)
+        if tokens[0].lower() == CMD_WRITE:
+            return self._write_tests_command(tokens)
+        print(MESSAGE_ERROR_INVALID_TEST_COMMAND)
+        return None
+
+    def _ensure_tests_loaded(self) -> None:
+        """
+        NAME
+            _ensure_tests_loaded - Load tests JSON into the authoring model.
+
+        DESCRIPTION
+            Loads the default tests file from the repo root when present,
+            otherwise falls back to the deploy copy.
+        """
+
+        if self._tests_model is not None:
+            return
+        root_path = repo_root() / TESTS_FILENAME
+        deploy_path = tests_deploy_path()
+        path = root_path if root_path.exists() else deploy_path
+        payload: Dict[str, object] = {}
+        if path.exists():
+            try:
+                payload = load_tests_payload(path)
+            except Exception:
+                payload = {}
+        self._tests_model = model_from_payload(payload or {})
+        self._tests_path = path
+        if not self._tests_profile:
+            self._tests_profile = get_default_profile()
+        default_set = self._tests_model.default_test_set if self._tests_model else EMPTY_STRING
+        self._tests_active_set = default_set or DEFAULT_TEST_SET
+
+    def _config_test_command(self, tokens: List[str]) -> Optional[int]:
+        """
+        NAME
+            _config_test_command - Handle config-mode test authoring commands.
+        """
+
+        self._ensure_tests_loaded()
+        if len(tokens) < 2:
+            print(MESSAGE_ERROR_TEST_SUBCOMMAND)
+            return None
+        sub = tokens[1].lower()
+        if sub == CMD_SET and len(tokens) >= 3:
+            name = tokens[2]
+            if not name:
+                print(MESSAGE_ERROR_TEST_SET_NAME)
+                return None
+            self._tests_active_set = name
+            if self._tests_model and name not in self._tests_model.test_sets:
+                self._tests_model.test_sets[name] = TestSetModel(name=name, tests=[])
+                self._tests_dirty = True
+            print(MESSAGE_SELECTED_TEST_SET.format(name=name))
+            return None
+        if sub == CMD_CREATE and len(tokens) >= 3:
+            name = tokens[2]
+            err = validate_test_name(name)
+            if err:
+                print(MESSAGE_ERROR_WITH_TEXT.format(message=err))
+                return None
+            test_set = self._get_active_test_set()
+            if self._find_test(name, test_set):
+                if self._batch:
+                    print(MESSAGE_ERROR_TEST_EXISTS)
+                    return None
+                prompt = PROMPT_OVERWRITE.format(name=name)
+                confirm = input(prompt).strip().lower()
+                if confirm != CONFIRM_YES:
+                    print(MESSAGE_CANCELLED)
+                    return None
+                self._delete_test(name, test_set)
+            test_set.tests.append(
+                TestModel(
+                    name=name,
+                    test_type=TEST_TYPE_COMPOSITE,
+                    devices=[],
+                    button=TestBindingButton(),
+                    termination=TerminationModel(),
+                    enabled=False,
+                )
+            )
+            self._tests_dirty = True
+            self._modes.append(CliMode(MODE_TEST, test=name))
+            return None
+        if sub == CMD_DELETE and len(tokens) >= 3:
+            name = tokens[2]
+            test_set = self._get_active_test_set()
+            if not self._delete_test(name, test_set):
+                print(MESSAGE_ERROR_TEST_NOT_FOUND)
+                return None
+            self._tests_dirty = True
+            print(MESSAGE_DELETED_TEST.format(name=name))
+            return None
+        if len(tokens) >= 2 and sub not in (CMD_CREATE, CMD_DELETE, CMD_SET):
+            name = tokens[1]
+            test_set = self._get_active_test_set()
+            if not self._find_test(name, test_set):
+                print(MESSAGE_ERROR_TEST_NOT_FOUND)
+                return None
+            self._modes.append(CliMode(MODE_TEST, test=name))
+            return None
+        print(MESSAGE_ERROR_UNKNOWN_TEST)
+        return None
+
+    def _test_mode_command(self, tokens: List[str]) -> Optional[int]:
+        """
+        NAME
+            _test_mode_command - Handle test-mode configuration commands.
+        """
+
+        self._ensure_tests_loaded()
+        if not tokens:
+            return None
+        cmd = tokens[0].lower()
+        if cmd in (CMD_EXIT, CMD_END):
+            self._pop_mode()
+            return None
+        test = self._get_active_test()
+        if test is None:
+            print(MESSAGE_ERROR_TEST_MODE)
+            return None
+        if cmd == CMD_TYPE and len(tokens) >= 2:
+            kind_raw = tokens[1]
+            kind = kind_raw.lower()
+            kind_map = {
+                TEST_TYPE_JOYSTICK: TEST_TYPE_JOYSTICK,
+                TEST_TYPE_BUTTON: TEST_TYPE_BUTTON,
+                TEST_TYPE_COMPOSITE: TEST_TYPE_COMPOSITE,
+                TEST_TYPE_DEADBAND_SWEEP.lower(): TEST_TYPE_DEADBAND_SWEEP,
+            }
+            if kind not in kind_map:
+                print(MESSAGE_ERROR_TYPE)
+                return None
+            test.test_type = kind_map[kind]
+            if test.test_type == TEST_TYPE_JOYSTICK:
+                test.joystick = test.joystick or TestBindingJoystick()
+                test.button = None
+                test.deadband_sweep = None
+            elif test.test_type == TEST_TYPE_DEADBAND_SWEEP:
+                from tools.common.test_authoring.model import DeadbandSweepModel
+                test.deadband_sweep = test.deadband_sweep or DeadbandSweepModel()
+                test.joystick = None
+                test.button = None
+            else:
+                test.button = test.button or TestBindingButton()
+                test.joystick = None
+                test.deadband_sweep = None
+            self._tests_dirty = True
+            return None
+        if cmd == CMD_DEVICE and len(tokens) >= 3 and tokens[1].lower() == CMD_ADD:
+            key = tokens[2]
+            if not self._is_device_key_valid(key):
+                print(MESSAGE_ERROR_DEVICE_KEY)
+                return None
+            if key in test.devices:
+                print(MESSAGE_ERROR_DEVICE_DUP)
+                return None
+            test.devices.append(key)
+            self._tests_dirty = True
+            return None
+        if cmd == CMD_NO and len(tokens) >= 3 and tokens[1].lower() == CMD_DEVICE:
+            key = tokens[2]
+            if key in test.devices:
+                test.devices.remove(key)
+                self._tests_dirty = True
+            return None
+        if cmd == CMD_INPUT_SOURCE:
+            if test.test_type not in (TEST_TYPE_JOYSTICK, TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
+                print(MESSAGE_ERROR_INPUT_SOURCE_TYPE)
+                return None
+            if len(tokens) != 2:
+                print(MESSAGE_ERROR_INPUT_SOURCE_VALUE)
+                return None
+            value = tokens[1].strip()
+            if "." not in value:
+                print(MESSAGE_ERROR_INPUT_SOURCE_VALUE)
+                return None
+            test.input_source = value
+            self._tests_dirty = True
+            return None
+        if cmd == CMD_DEADBAND and len(tokens) >= 2:
+            if test.test_type != TEST_TYPE_JOYSTICK:
+                print(MESSAGE_ERROR_DEADBAND_TYPE)
+                return None
+            try:
+                value = float(tokens[1])
+            except ValueError:
+                print(MESSAGE_ERROR_DEADBAND_NUMBER)
+                return None
+            if value < DEADBAND_MIN or value > DEADBAND_MAX:
+                print(MESSAGE_ERROR_DEADBAND_RANGE)
+                return None
+            test.joystick = test.joystick or TestBindingJoystick()
+            test.joystick.deadband = value
+            self._tests_dirty = True
+            return None
+        if cmd == CMD_DUTY and len(tokens) >= 2:
+            if test.test_type not in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
+                print(MESSAGE_ERROR_DUTY_TYPE)
+                return None
+            try:
+                value = float(tokens[1])
+            except ValueError:
+                print(MESSAGE_ERROR_DUTY_NUMBER)
+                return None
+            if value < DUTY_MIN or value > DUTY_MAX:
+                print(MESSAGE_ERROR_DUTY_RANGE)
+                return None
+            test.button = test.button or TestBindingButton()
+            test.button.duty = value
+            self._tests_dirty = True
+            return None
+        if cmd == CMD_TERMINATION and len(tokens) >= 2:
+            if test.test_type not in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
+                print(MESSAGE_ERROR_TERMINATION)
+                return None
+            term = test.termination
+            kind = tokens[1].lower()
+            if kind == TERMINATION_HOLD:
+                term.hold_enabled = True
+                self._tests_dirty = True
+                return None
+            if kind == TERMINATION_TIME and len(tokens) >= 3:
+                try:
+                    value = float(tokens[2])
+                except ValueError:
+                    print(MESSAGE_ERROR_TERMINATION_TIME)
+                    return None
+                if value < TIME_MIN_SEC:
+                    print(MESSAGE_ERROR_TERMINATION_TIME_RANGE)
+                    return None
+                term.time_sec = value
+                term.time_on_timeout = term.time_on_timeout or TIME_ON_TIMEOUT_DEFAULT
+                self._tests_dirty = True
+                return None
+            if kind == TERMINATION_ROTATION and len(tokens) >= 3:
+                try:
+                    value = float(tokens[2])
+                except ValueError:
+                    print(MESSAGE_ERROR_TERMINATION_ROTATION)
+                    return None
+                if value < ROTATION_MIN:
+                    print(MESSAGE_ERROR_TERMINATION_ROTATION_RANGE)
+                    return None
+                term.rotation_limit = value
+                self._tests_dirty = True
+                return None
+            if kind == TERMINATION_LIMITSWITCH:
+                limit = term.limit_switch or deepcopy(LIMIT_SWITCH_DEFAULT)
+                if len(tokens) >= 3:
+                    limit[LIMIT_SWITCH_KEY_ID] = tokens[2]
+                term.limit_switch = limit
+                self._tests_dirty = True
+                return None
+            print(MESSAGE_ERROR_TERMINATION)
+            return None
+        if cmd == CMD_ROTATION and len(tokens) >= 2:
+            if test.test_type not in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
+                print(MESSAGE_ERROR_ROTATION_TYPE)
+                return None
+            term = test.termination
+            field = tokens[1].lower()
+            if field == "limit" and len(tokens) >= 3:
+                try:
+                    value = float(tokens[2])
+                except ValueError:
+                    print(MESSAGE_ERROR_TERMINATION_ROTATION)
+                    return None
+                if value < ROTATION_MIN:
+                    print(MESSAGE_ERROR_TERMINATION_ROTATION_RANGE)
+                    return None
+                term.rotation_limit = value
+                self._tests_dirty = True
+                return None
+            if field == "encoderkey" and len(tokens) >= 3:
+                term.rotation_encoder_key = tokens[2]
+                self._tests_dirty = True
+                return None
+            if field == "encodersource" and len(tokens) >= 3:
+                term.rotation_encoder_source = tokens[2]
+                self._tests_dirty = True
+                return None
+            if field == "encodermotorindex" and len(tokens) >= 3:
+                try:
+                    term.rotation_encoder_motor_index = int(tokens[2])
+                except ValueError:
+                    print(MESSAGE_ERROR_TERMINATION_ROTATION)
+                    return None
+                self._tests_dirty = True
+                return None
+            if field == "encodercountsperrev" and len(tokens) >= 3:
+                try:
+                    term.rotation_encoder_counts_per_rev = float(tokens[2])
+                except ValueError:
+                    print(MESSAGE_ERROR_TERMINATION_ROTATION)
+                    return None
+                self._tests_dirty = True
+                return None
+            print(MESSAGE_ERROR_TERMINATION)
+            return None
+        if cmd == CMD_TIME and len(tokens) >= 2:
+            if test.test_type not in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
+                print(MESSAGE_ERROR_TIME_TYPE)
+                return None
+            term = test.termination
+            field = tokens[1].lower()
+            if field == "timeout" and len(tokens) >= 3:
+                try:
+                    value = float(tokens[2])
+                except ValueError:
+                    print(MESSAGE_ERROR_TERMINATION_TIME)
+                    return None
+                if value < TIME_MIN_SEC:
+                    print(MESSAGE_ERROR_TERMINATION_TIME_RANGE)
+                    return None
+                term.time_sec = value
+                self._tests_dirty = True
+                return None
+            if field == "ontimeout" and len(tokens) >= 3:
+                term.time_on_timeout = tokens[2]
+                self._tests_dirty = True
+                return None
+            print(MESSAGE_ERROR_TERMINATION)
+            return None
+        if cmd == CMD_HOLD and len(tokens) >= 2:
+            if test.test_type not in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
+                print(MESSAGE_ERROR_HOLD_TYPE)
+                return None
+            term = test.termination
+            field = tokens[1].lower()
+            if field == "onrelease" and len(tokens) >= 3:
+                term.hold_enabled = True
+                term.hold_on_release = tokens[2]
+                self._tests_dirty = True
+                return None
+            print(MESSAGE_ERROR_TERMINATION)
+            return None
+        if cmd == CMD_LIMITSWITCH and len(tokens) >= 2:
+            if test.test_type not in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
+                print(MESSAGE_ERROR_LIMITSWITCH_TYPE)
+                return None
+            term = test.termination
+            limit = term.limit_switch or deepcopy(LIMIT_SWITCH_DEFAULT)
+            field = tokens[1].lower()
+            if field == "onhit" and len(tokens) >= 3:
+                limit[LIMIT_SWITCH_KEY_ON_HIT] = tokens[2]
+                term.limit_switch = limit
+                self._tests_dirty = True
+                return None
+            if field == "id" and len(tokens) >= 3:
+                limit[LIMIT_SWITCH_KEY_ID] = tokens[2]
+                term.limit_switch = limit
+                self._tests_dirty = True
+                return None
+            print(MESSAGE_ERROR_TERMINATION)
+            return None
+        if cmd == CMD_DEADBAND_SWEEP:
+            if test.test_type != TEST_TYPE_DEADBAND_SWEEP:
+                print(MESSAGE_ERROR_DEADBAND_SWEEP_TYPE)
+                return None
+            if len(tokens) < 3:
+                print(MESSAGE_ERROR_DEADBAND_SWEEP_FIELD)
+                return None
+            if test.deadband_sweep is None:
+                from tools.common.test_authoring.model import DeadbandSweepModel
+                test.deadband_sweep = DeadbandSweepModel()
+            sweep = test.deadband_sweep
+            field = tokens[1]
+            value = tokens[2]
+            try:
+                if field == "startDuty":
+                    sweep.start_duty = float(value)
+                elif field == "maxDuty":
+                    sweep.max_duty = float(value)
+                elif field == "stepDuty":
+                    sweep.step_duty = float(value)
+                elif field == "stepHoldSec":
+                    sweep.step_hold_sec = float(value)
+                elif field == "motionThresholdRot":
+                    sweep.motion_threshold_rot = float(value)
+                elif field == "encoderCountsPerRev":
+                    sweep.encoder_counts_per_rev = float(value)
+                elif field == "requiredSamples":
+                    sweep.required_samples = int(value)
+                elif field == "encoderMotorIndex":
+                    sweep.encoder_motor_index = int(value)
+                elif field == "encoderKey":
+                    sweep.encoder_key = value
+                elif field == "encoderSource":
+                    sweep.encoder_source = value
+                else:
+                    print(MESSAGE_ERROR_DEADBAND_SWEEP_FIELD)
+                    return None
+            except ValueError:
+                print(MESSAGE_ERROR_DEADBAND_SWEEP_FIELD)
+                return None
+            self._tests_dirty = True
+            return None
+        if cmd == CMD_ENABLED and len(tokens) >= 2:
+            value = tokens[1].lower()
+            if value in ("true", "on", "1", "yes"):
+                test.enabled = True
+            elif value in ("false", "off", "0", "no"):
+                test.enabled = False
+            else:
+                print("ERROR: enabled requires true/false.")
+                return None
+            self._tests_dirty = True
+            return None
+        if cmd == CMD_SHOW:
+            self._print_test(test)
+            return None
+        print(MESSAGE_ERROR_UNKNOWN_TEST)
+        return None
+
+    def _is_device_key_valid(self, key: str) -> bool:
+        """
+        NAME
+            _is_device_key_valid - Validate canonical device key syntax.
+
+        PARAMETERS
+            key - Proposed device key string.
+
+        RETURNS
+            True when the key matches VENDOR:TYPE:ID format.
+        """
+
+        if not key or not isinstance(key, str):
+            return False
+        if key.count(DEVICE_KEY_SEPARATOR) != DEVICE_KEY_SEPARATOR_COUNT:
+            return False
+        vendor, device_type, can_id = key.split(DEVICE_KEY_SEPARATOR, DEVICE_KEY_SEPARATOR_COUNT)
+        return bool(vendor and device_type and can_id and can_id.isdigit())
+
+    def _show_tests_command(self, tokens: List[str]) -> Optional[int]:
+        """
+        NAME
+            _show_tests_command - Render test authoring state.
+        """
+
+        self._ensure_tests_loaded()
+        if len(tokens) >= 2 and tokens[1].lower() == CMD_TESTS:
+            self._print_tests()
+            return None
+        if len(tokens) >= 3 and tokens[1].lower() == CMD_TEST:
+            test_set = self._get_active_test_set()
+            test = self._find_test(tokens[2], test_set)
+            if not test:
+                print(MESSAGE_ERROR_TEST_NOT_FOUND)
+                return None
+            self._print_test(test)
+            return None
+        print(MESSAGE_ERROR_SHOW_TESTS)
+        return None
+
+    def _write_tests_command(self, tokens: List[str]) -> Optional[int]:
+        """
+        NAME
+            _write_tests_command - Validate and persist tests JSON.
+        """
+
+        self._ensure_tests_loaded()
+        if len(tokens) < 3 or tokens[1].lower() != CMD_TESTS:
+            print(MESSAGE_ERROR_WRITE_TESTS)
+            return None
+        path = Path(tokens[2])
+        model = self._tests_model or TestAuthoringModel()
+        profile = self._tests_profile
+        controller_names = load_controller_names()
+        result = validate_model(model, profile_name=profile, controller_names=controller_names)
+        if not result.ok():
+            for issue in result.errors:
+                test_name = issue.test_name or GLOBAL_LABEL
+                print(
+                    MESSAGE_ERROR_WITH_TEST.format(
+                        message=issue.message,
+                        test=test_name,
+                    )
+                )
+            return None
+        for issue in result.warnings:
+            test_name = issue.test_name or GLOBAL_LABEL
+            print(
+                MESSAGE_WARNING_WITH_TEST.format(
+                    message=issue.message,
+                    test=test_name,
+                )
+            )
+        payload = model_to_payload(model)
+        write_tests_payload(path, payload)
+        self._tests_dirty = False
+        print(MESSAGE_WROTE_TESTS.format(path=path))
+        return None
+
+    def _get_active_test_set(self) -> TestSetModel:
+        """
+        NAME
+            _get_active_test_set - Resolve the active test set.
+        """
+
+        self._ensure_tests_loaded()
+        model = self._tests_model or TestAuthoringModel()
+        name = self._tests_active_set or model.default_test_set
+        if name not in model.test_sets:
+            model.test_sets[name] = TestSetModel(name=name, tests=[])
+        self._tests_model = model
+        return model.test_sets[name]
+
+    def _find_test(self, name: str, test_set: TestSetModel) -> Optional[TestModel]:
+        """
+        NAME
+            _find_test - Locate a test by name.
+        """
+
+        for test in test_set.tests:
+            if test.name == name:
+                return test
+        return None
+
+    def _delete_test(self, name: str, test_set: TestSetModel) -> bool:
+        """
+        NAME
+            _delete_test - Remove a test from a set.
+        """
+
+        for idx, test in enumerate(test_set.tests):
+            if test.name == name:
+                del test_set.tests[idx]
+                return True
+        return False
+
+    def _get_active_test(self) -> Optional[TestModel]:
+        """
+        NAME
+            _get_active_test - Resolve the currently edited test.
+        """
+
+        mode = self._modes[-1]
+        if mode.name != MODE_TEST:
+            return None
+        test_set = self._get_active_test_set()
+        return self._find_test(mode.test, test_set)
+
+    def _print_tests(self) -> None:
+        """
+        NAME
+            _print_tests - Render a summary list of tests.
+        """
+
+        test_set = self._get_active_test_set()
+        print(MESSAGE_ACTIVE_TEST_SET.format(name=test_set.name))
+        for test in test_set.tests:
+            print(
+                MESSAGE_TEST_LIST_ENTRY.format(
+                    name=test.name,
+                    type=test.test_type,
+                    count=len(test.devices),
+                    enabled=test.enabled,
+                )
+            )
+
+    def _print_test(self, test: TestModel) -> None:
+        """
+        NAME
+            _print_test - Render details for a single test.
+        """
+
+        print(MESSAGE_TEST_HEADER.format(name=test.name))
+        print(MESSAGE_TEST_TYPE.format(type=test.test_type))
+        print(MESSAGE_TEST_ENABLED.format(enabled=test.enabled))
+        if test.devices:
+            devices = DEVICE_JOIN_SEPARATOR.join(test.devices)
+            print(MESSAGE_TEST_DEVICES.format(devices=devices))
+        if test.input_source:
+            print(MESSAGE_TEST_INPUT_SOURCE.format(source=test.input_source))
+        else:
+            print(MESSAGE_TEST_INPUT_SOURCE.format(source="(none)"))
+        if test.test_type == TEST_TYPE_JOYSTICK and test.joystick:
+            print(MESSAGE_TEST_DEADBAND.format(deadband=test.joystick.deadband))
+        if test.test_type in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE) and test.button:
+            print(MESSAGE_TEST_DUTY.format(duty=test.button.duty))
+            term = test.termination
+            print(
+                MESSAGE_TEST_TERMINATION.format(
+                    hold=term.hold_enabled,
+                    time=term.time_sec,
+                    rotation=term.rotation_limit,
+                )
+            )
+            if term.rotation_limit is not None or term.rotation_encoder_key:
+                rotation = {
+                    "limitRot": term.rotation_limit,
+                    "encoderKey": term.rotation_encoder_key,
+                    "encoderSource": term.rotation_encoder_source,
+                    "encoderMotorIndex": term.rotation_encoder_motor_index,
+                    "encoderCountsPerRev": term.rotation_encoder_counts_per_rev,
+                }
+                print(MESSAGE_TEST_ROTATION.format(rotation=rotation))
+            if term.time_sec is not None or term.time_on_timeout:
+                time = {"timeoutSec": term.time_sec, "onTimeout": term.time_on_timeout}
+                print(MESSAGE_TEST_TIME.format(time=time))
+            if term.hold_enabled or term.hold_on_release:
+                hold = {"enabled": term.hold_enabled, "onRelease": term.hold_on_release}
+                print(MESSAGE_TEST_HOLD.format(hold=hold))
+            if term.limit_switch:
+                print(MESSAGE_TEST_LIMIT_SWITCH.format(limit=term.limit_switch))
+        if test.test_type == TEST_TYPE_DEADBAND_SWEEP and test.deadband_sweep:
+            print(MESSAGE_TEST_DEADBAND_SWEEP.format(sweep=test.deadband_sweep))
 
     def _exec_command(self, tokens: List[str]) -> Optional[int]:
         cmd = tokens[0].lower()
@@ -779,6 +1603,7 @@ class BridgeCli:
                 "configure terminal": "configure terminal\n  Enter config mode.",
                 "connect": "connect\n  Open TCP connection and perform handshake.",
                 "disconnect": "disconnect\n  Close TCP connection.",
+                "echo": "echo on|off\n  Toggle echo for batch scripts (prints each command).",
                 "group": "group <name>\n  Create/select a group (config mode).",
                 "no group": "no group <name>\n  Delete group (config mode, prompts in interactive).",
                 "selected-device": "selected-device <device>\n  Set selected-device override.",
@@ -861,7 +1686,7 @@ class BridgeCli:
                 print("Help: command not found.")
             return
         print(
-            "Common: help, exit, end, quit, ping\n"
+            "Common: help, exit, end, quit, ping, echo\n"
             "Exec: show, connect, disconnect, configure terminal\n"
             "Config: group, device, no group, selected-device, selected-mode, merge/import/export/save\n"
             "Group: show, add device, no device, member, bind, no bind, enable, disable, run test\n"

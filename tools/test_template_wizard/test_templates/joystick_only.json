@@ -4,10 +4,10 @@
     "default": [
       {
         "type": "joystick",
-        "name": "Joystick motor (primary axis)",
+        "name": "Joystick motor (controller0.leftY)",
         "enabled": false,
         "deadband": 0.12,
-        "inputAxis": "primary",
+        "inputSource": "controller0.leftY",
         "motorKeys": [
           "REV:NEO:10"
         ]

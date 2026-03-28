@@ -36,6 +36,7 @@ PARSER_RUNTIME_CONST = {
         "config": "config_line",
         "group": "group_line",
         "device": "device_line",
+        "test": "test_line",
     },
 }
 
@@ -141,6 +142,7 @@ class BridgeCliParser:
                 SPEC.cmd_disconnect: self._handle_simple,
                 SPEC.cmd_configure: self._handle_configure_terminal,
                 SPEC.cmd_show: self._handle_show_command,
+                SPEC.cmd_write: self._handle_test_any,
             },
             SPEC.modes[SPEC.idx_config]: {
                 SPEC.cmd_show: self._handle_show_command,
@@ -155,6 +157,8 @@ class BridgeCliParser:
                 SPEC.cmd_rename: self._handle_rename,
                 SPEC.cmd_device: self._handle_device_command,
                 SPEC.cmd_validate: self._handle_validate,
+                SPEC.cmd_test: self._handle_test_any,
+                SPEC.cmd_write: self._handle_test_any,
             },
             SPEC.modes[SPEC.idx_group]: {
                 SPEC.cmd_show: self._handle_group_show,
@@ -165,11 +169,24 @@ class BridgeCliParser:
                 SPEC.cmd_enable: self._handle_group_toggle,
                 SPEC.cmd_disable: self._handle_group_toggle,
                 SPEC.cmd_run: self._handle_group_run,
+                SPEC.cmd_write: self._handle_test_any,
             },
             SPEC.modes[SPEC.idx_device]: {
                 SPEC.cmd_show: self._handle_device_show,
                 SPEC.cmd_set: self._handle_device_set,
                 SPEC.cmd_no: self._handle_device_no,
+                SPEC.cmd_write: self._handle_test_any,
+            },
+            SPEC.modes[SPEC.idx_test]: {
+                SPEC.cmd_show: self._handle_test_any,
+                SPEC.cmd_type: self._handle_test_any,
+                SPEC.cmd_device: self._handle_test_any,
+                SPEC.cmd_no: self._handle_test_any,
+                SPEC.cmd_input_source: self._handle_test_any,
+                SPEC.cmd_deadband: self._handle_test_any,
+                SPEC.cmd_duty: self._handle_test_any,
+                SPEC.cmd_termination: self._handle_test_any,
+                SPEC.cmd_write: self._handle_test_any,
             },
         }
 
@@ -194,7 +211,7 @@ class BridgeCliParser:
 
         PARAMETERS
             line: Raw input line from the CLI.
-            mode: Current CLI mode (exec/config/group/device).
+            mode: Current CLI mode (exec/config/group/device/test).
         """
         tokens = self.tokenize(line)
         if not tokens:
@@ -811,10 +828,20 @@ class BridgeCliParser:
             return SPEC.msg_mode_name_group
         if mode == SPEC.modes[SPEC.idx_device]:
             return SPEC.msg_mode_name_device
+        if mode == SPEC.modes[SPEC.idx_test]:
+            return SPEC.msg_mode_name_test
         return mode
 
     def _handle_simple(self, tokens: List[str]) -> None:
         self._reject_extra(tokens, SPEC.count_one, SPEC.label_connect)
+
+    def _handle_test_any(self, tokens: List[str]) -> None:
+        """
+        NAME
+            _handle_test_any - Permissive handler for test authoring commands.
+        """
+
+        return
 
     def _handle_configure_terminal(self, tokens: List[str]) -> None:
         if len(tokens) < SPEC.count_two or tokens[SPEC.count_one].lower() != SPEC.cmd_terminal:
@@ -966,7 +993,11 @@ class BridgeCliParser:
         target = core[SPEC.count_zero].lower()
         if target not in self._show_targets:
             raise CliParseError(SPEC.msg_unknown_show)
-        if target in (SPEC.show_target_group, SPEC.show_target_device) and len(core) < SPEC.count_two:
+        if target in (
+            SPEC.show_target_group,
+            SPEC.show_target_device,
+            SPEC.show_target_test,
+        ) and len(core) < SPEC.count_two:
             raise CliParseError(SPEC.msg_show_name % target)
         if self._strict:
             max_len = SPEC.count_two if target in (SPEC.show_target_group, SPEC.show_target_device) else SPEC.count_one

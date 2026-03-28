@@ -103,8 +103,8 @@ Example (rotation only):
 }
 ```
 Run:
-- Secondary `LB`/`RB` select the test by name.
-- Secondary `A` (hold) runs the selected test.
+- Controller1 `LB`/`RB` select the test by name.
+- Controller1 `A` (hold) runs the selected test.
 
 CTRE reference (external CAN encoder):
 ```json
@@ -118,8 +118,8 @@ CTRE reference (external CAN encoder):
 }
 ```
 Run:
-- Secondary `LB`/`RB` select the test by name.
-- Secondary `A` (hold) runs the selected test.
+- Controller1 `LB`/`RB` select the test by name.
+- Controller1 `A` (hold) runs the selected test.
 
 Example (REV Through-Bore via SPARK MAX data port):
 ```json
@@ -139,17 +139,17 @@ Example (REV Through-Bore via SPARK MAX data port):
 }
 ```
 Run:
-- Secondary `LB`/`RB` select the test by name.
-- Secondary `A` (hold) runs the selected test.
+- Controller1 `LB`/`RB` select the test by name.
+- Controller1 `A` (hold) runs the selected test.
 
 Notes:
 - While a test runs, joystick motor output is ignored for safety.
 - Limit switch checks use limit switches configured in `bringup_system.json`.
-- Hold checks use the current test-run button (secondary `A` in hold mode). Releasing it triggers the hold action.
-- Using secondary `X` toggles a test enabled/disabled and persists it to `bringup_tests.json` (the active tests file).
+- Hold checks use the current test-run button (controller1 `A` in hold mode). Releasing it triggers the hold action.
+- Using controller1 `X` toggles a test enabled/disabled and persists it to `bringup_tests.json` (the active tests file).
 - The former "nudge" action is now a time-only composite test; adjust `duty` and `time.timeoutSec`.
 
-Additional composite examples (each is selectable/run the same way: secondary `LB`/`RB` to select, secondary `A` to run):
+Additional composite examples (each is selectable/run the same way: controller1 `LB`/`RB` to select, controller1 `A` to run):
 
 Rotation + time + limit:
 ```json
@@ -204,25 +204,25 @@ Example (time only):
 }
 ```
 Run:
-- Secondary `LB`/`RB` select the test by name.
-- Secondary `A` (hold) runs the selected test.
+- Controller1 `LB`/`RB` select the test by name.
+- Controller1 `A` (hold) runs the selected test.
 
 Example (joystick test):
 ```json
 {
   "type": "joystick",
-  "name": "Joystick motor (primary axis)",
+  "name": "Joystick motor (controller0.leftY)",
   "enabled": true,
   "motorKeys": ["REV:NEO:10", "REV:NEO550:7"],
   "deadband": 0.12,
-  "inputAxis": "primary"
+  "inputSource": "controller0.leftY"
 }
 ```
 Run:
-- Secondary `LB`/`RB` select the test by name.
-- Secondary `A` (hold) runs the selected test.
+- Controller1 `LB`/`RB` select the test by name.
+- Controller1 `A` (hold) runs the selected test.
 Control:
-- Primary `Left Y` (primary axis) drives the joystick test output.
+- Controller0 `Left Y` (controller0.leftY) drives the joystick test output.
 
 ## Procedure A: Basic Bringup (Add + Health)
 Purpose: bus and devices are verified before motion tests.
@@ -236,15 +236,15 @@ Purpose: bus and devices are verified before motion tests.
 Purpose: encoder feedback and basic motion are confirmed with a fixed rotation target.
 
 1. Enable the desired test in `bringup_tests.json` (or use `--bringup-tests=...`) and deploy.
-2. Press secondary `LB`/`RB` until the test name prints.
-3. Press secondary `A` to run it.
+2. Press controller1 `LB`/`RB` until the test name prints.
+3. Press controller1 `A` to run it.
 4. Confirm the console shows PASS/FAIL and the reason.
 
 ## Procedure C: Rotation Limit Tests (Run All)
 Purpose: multiple tests run in a defined order.
 
 1. Enable multiple tests in `bringup_tests.json` (or use `--bringup-tests=...`).
-2. Press secondary `B` to run all enabled tests in order.
+2. Press controller1 `B` to run all enabled tests in order.
 3. Watch for `Test result` lines after each test and `Run-all complete.` at the end.
 
 ## Procedure D: CANCoder Absolute Position Print
@@ -272,10 +272,10 @@ Purpose: bringup tests and bindings behave correctly on real hardware.
 
 - Confirm controller detection prints at startup (controller name and type).
 - Press `B` to print state and verify devices are instantiated.
-- Use secondary `LB`/`RB` to change the selected test and confirm the name updates.
-- Run the selected test with secondary `A` and confirm PASS/FAIL and reason.
-- Hold secondary `A` during a test that has `hold.enabled=true`; release to trigger the hold action.
-- Press secondary `B` to run all enabled tests in order; verify `Run-all complete.` prints at the end.
+- Use controller1 `LB`/`RB` to change the selected test and confirm the name updates.
+- Run the selected test with controller1 `A` and confirm PASS/FAIL and reason.
+- Hold controller1 `A` during a test that has `hold.enabled=true`; release to trigger the hold action.
+- Press controller1 `B` to run all enabled tests in order; verify `Run-all complete.` prints at the end.
 - If a joystick test is enabled, confirm the listed `motorKeys` move together and stop when the test ends.
 - If a rotation test uses `encoderKey: internal`, confirm it uses the motor index given by `encoderMotorIndex`.
 - If a limit switch check is enabled, verify the test ends on switch activation and the result matches `onHit`.

@@ -256,10 +256,7 @@
         {
           "label": "SPARKMAX/NEO 25",
           "id": 25,
-          "motor": "REV NEO",
-          "tags": [
-            "motor"
-          ]
+          "motor": "REV NEO"
         }
       ],
       "neo550s": [
@@ -271,20 +268,21 @@
             "fwdDio": 0,
             "revDio": -1,
             "invert": true
-          },
-          "tags": [
-            "motor"
-          ]
+          }
         }
       ],
       "falcons": [
         {
           "label": "FALCON 9",
           "id": 9,
-          "motor": "CTRE Falcon 500",
-          "tags": [
-            "motor"
-          ]
+          "motor": "CTRE Falcon 500"
+        }
+      ],
+      "cancoders": [
+        {
+          "label": "cancoder 44",
+          "id": 44,
+          "terminator": false
         }
       ],
       "pdp": {
@@ -2531,18 +2529,28 @@
       },
       "home_030226": {
         "busOffsets": [
-          0.0
+          0.0,
+          160.0,
+          646.9475009404603
         ],
-        "busCount": 1,
+        "busCount": 3,
         "busSpacing": 160.0,
         "busLefts": [
+          40.0,
+          40.0,
           40.0
         ],
         "busRights": [
-          1388.0
+          1388.0,
+          1388.0,
+          1574.736423172942
         ],
-        "panY": -1.0,
-        "zoom": 1.968299711815562,
+        "busConnectors": [
+          true,
+          false
+        ],
+        "panY": -140.50354209489092,
+        "zoom": 0.4343584043238207,
         "nodes": [
           {
             "nodeType": "device",
@@ -2550,15 +2558,13 @@
             "category": "neos",
             "label": "SPARKMAX/NEO 25",
             "id": 25,
-            "bus": 0,
-            "row": 0,
-            "x": 870.0,
-            "freeY": -62.5,
+            "bus": 2,
+            "row": 1,
+            "x": 954.7771964023121,
+            "freeY": 78.41890667213852,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "motor"
-            ],
+            "tags": [],
             "profileVisible": true
           },
           {
@@ -2567,15 +2573,13 @@
             "category": "neo550s",
             "label": "SPARKMAX/NEO550 7",
             "id": 7,
-            "bus": 0,
+            "bus": 2,
             "row": 0,
-            "x": 674.0,
-            "freeY": -64.5,
+            "x": 1163.5883092233514,
+            "freeY": 283.47375047023013,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "motor"
-            ],
+            "tags": [],
             "profileVisible": true
           },
           {
@@ -2584,15 +2588,13 @@
             "category": "falcons",
             "label": "FALCON 9",
             "id": 9,
-            "bus": 0,
+            "bus": 2,
             "row": 0,
-            "x": 482.0,
-            "freeY": -62.5,
+            "x": 1342.4885434834637,
+            "freeY": 304.6680495708081,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "motor"
-            ],
+            "tags": [],
             "profileVisible": true
           },
           {
@@ -2624,17 +2626,94 @@
             "scale": 1.0,
             "tags": [],
             "profileVisible": true
+          },
+          {
+            "nodeType": "diagram",
+            "key": 79,
+            "category": "cannect_inject",
+            "label": "CANnect Inject",
+            "id": -1,
+            "bus": 1,
+            "row": 1,
+            "x": 977.7878407031224,
+            "freeY": 298.2611401798844,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": false
+          },
+          {
+            "nodeType": "diagram",
+            "key": 80,
+            "category": "cannect_direct",
+            "label": "CANnect Direct",
+            "id": -1,
+            "bus": 2,
+            "row": 0,
+            "x": 1228.4957593789543,
+            "freeY": 440.5007780171677,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": false
+          },
+          {
+            "nodeType": "device",
+            "key": 82,
+            "category": "cancoders",
+            "label": "cancoder 44",
+            "id": 44,
+            "bus": 2,
+            "row": 0,
+            "x": 1042.2231489177107,
+            "freeY": 463.5118113384459,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
           }
         ],
-        "ethernetLinks": [],
-        "canLinks": [],
-        "deviceLinks": []
+        "ethernetLinks": [
+          {
+            "a": 79,
+            "b": 80
+          }
+        ],
+        "canLinks": [
+          {
+            "node": 80,
+            "bus": 2,
+            "port": 1
+          }
+        ],
+        "deviceLinks": [
+          {
+            "node": 80,
+            "device": 75,
+            "port": 1
+          },
+          {
+            "node": 80,
+            "device": 76,
+            "port": 2
+          },
+          {
+            "node": 80,
+            "device": 81,
+            "port": 3
+          },
+          {
+            "node": 80,
+            "device": 82,
+            "port": 1
+          }
+        ]
       }
     }
   },
   "schema_version": 3,
-  "data_version": "2026-03-27_013039",
-  "data_hash": "2d3060e86af8bf808e214140039c6c928e5b272f911b4adfb7a7b940c819e1e4",
+  "data_version": "2026-03-28_133149",
+  "data_hash": "c912eb47dfb3406e03154f51035cde07ad0d49ca4a6ee4f50b4273099e121dce",
   "bridgeConfig": {
     "schemaVersion": 1,
     "generatedAt": null,

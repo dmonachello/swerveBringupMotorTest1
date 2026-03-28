@@ -271,6 +271,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             batch=bool(args.batch),
             conflict_policy=args.conflict_policy,
             parser_kind=getattr(args, "cli_parser", None),
+            echo_enabled=bool(getattr(args, "cli_echo", False)),
         )
         if args.batch:
             try:

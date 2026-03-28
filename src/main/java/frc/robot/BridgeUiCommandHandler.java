@@ -305,7 +305,7 @@ public class BridgeUiCommandHandler {
    *   updateSafety - Update safety latch and timeouts from robot loop.
    *
    * PARAMETERS
-   *   xboxConnected - Whether the primary Xbox controller is connected.
+   *   xboxConnected - Whether the controller0 Xbox controller is connected.
    *
    * SIDE EFFECTS
    *   May latch safety state and stop outputs on disconnect or timeout events.

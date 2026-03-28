@@ -10,6 +10,8 @@ import frc.robot.input.BindingsManager;
 import frc.robot.input.ControllerManager;
 import frc.robot.tests.BringupTestRegistry;
 import frc.robot.ui.TcpUiServer;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * NAME
@@ -31,9 +33,10 @@ public class RobotV2 extends TimedRobot {
 
   // Driver Station controller input.
   private final ControllerManager controllers = new ControllerManager();
-  private final XboxController controller = controllers.getXbox(0);
+  private final java.util.Map<String, XboxController> controllerMap = controllers.getXboxControllers();
+  private final XboxController controller0 = controllerMap.get("controller0");
   // Optional second controller for fixed-speed test buttons.
-  private final XboxController controller2 = controllers.getXbox(1);
+  private final XboxController controller1 = controllerMap.get("controller1");
   private final BindingsManager bindings = new BindingsManager();
   // Local bringup behaviors for device creation and health.
   private BringupCore core;
@@ -159,7 +162,7 @@ public class RobotV2 extends TimedRobot {
     }
     if (uiHandler != null) {
       uiHandler.processTcpCommands();
-      boolean xboxConnected = controller != null && DriverStation.isJoystickConnected(0);
+      boolean xboxConnected = controller0 != null && DriverStation.isJoystickConnected(0);
       uiHandler.updateSafety(xboxConnected);
       uiHandler.publishUiRobotState();
     }
@@ -178,10 +181,10 @@ public class RobotV2 extends TimedRobot {
   public void teleopPeriodic() {
 
     // --- Device instantiation / local prints ---
-    if (controller == null) {
+    if (controller0 == null) {
       return;
     }
-    BindingsManager.BindingState bind = bindings.sample(controller, controller2, edge);
+    BindingsManager.BindingState bind = bindings.sample(controllerMap, edge);
 
     boolean runHeld = bind.held("runTest");
     BringupCommandRouter.CommonResult commonResult = BringupCommandRouter.applyCommon(
@@ -215,12 +218,12 @@ public class RobotV2 extends TimedRobot {
     // --- Analog input to motor outputs ---
     double neoSpeed = bind.hasAxis("leftDrive")
         ? bind.axis("leftDrive")
-        : BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
+        : BringupUtil.deadband(-controller0.getLeftY(), DEADBAND);
     double krakenSpeed = bind.hasAxis("rightDrive")
         ? bind.axis("rightDrive")
-        : BringupUtil.deadband(-controller.getRightY(), DEADBAND);
+        : BringupUtil.deadband(-controller0.getRightY(), DEADBAND);
 
-    boolean controller2Connected = controller2 != null && DriverStation.isJoystickConnected(1);
+    boolean controller2Connected = controller1 != null && DriverStation.isJoystickConnected(1);
     if (controller2Connected) {
       double fixedSpeed = Double.NaN;
       if (bind.held("fixedSpeed25")) {
@@ -284,29 +287,29 @@ public class RobotV2 extends TimedRobot {
     // core update and diagnostics handled by BringupCommandRouter
 
     // Feed test inputs (used by joystick-mode tests).
-    core.setTestInputs(neoSpeed, krakenSpeed);
+    core.setTestInputs(buildAxisInputs(controllerMap, neoSpeed, krakenSpeed));
 
     // Apply speeds after inputs are processed.
     core.setSpeeds(neoSpeed, krakenSpeed);
 
     BridgeGroupManager.InputSnapshot inputs = new BridgeGroupManager.InputSnapshot();
-    inputs.driverLeftY = BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
-    inputs.driverRightY = BringupUtil.deadband(-controller.getRightY(), DEADBAND);
-    inputs.driverA = controller.getAButton();
-    inputs.driverB = controller.getBButton();
-    inputs.driverX = controller.getXButton();
-    inputs.driverY = controller.getYButton();
-    inputs.driverLb = controller.getLeftBumperButton();
-    inputs.driverRb = controller.getRightBumperButton();
+    inputs.driverLeftY = BringupUtil.deadband(-controller0.getLeftY(), DEADBAND);
+    inputs.driverRightY = BringupUtil.deadband(-controller0.getRightY(), DEADBAND);
+    inputs.driverA = controller0.getAButton();
+    inputs.driverB = controller0.getBButton();
+    inputs.driverX = controller0.getXButton();
+    inputs.driverY = controller0.getYButton();
+    inputs.driverLb = controller0.getLeftBumperButton();
+    inputs.driverRb = controller0.getRightBumperButton();
     if (controller2Connected) {
-      inputs.operatorLeftY = BringupUtil.deadband(-controller2.getLeftY(), DEADBAND);
-      inputs.operatorRightY = BringupUtil.deadband(-controller2.getRightY(), DEADBAND);
-      inputs.operatorA = controller2.getAButton();
-      inputs.operatorB = controller2.getBButton();
-      inputs.operatorX = controller2.getXButton();
-      inputs.operatorY = controller2.getYButton();
-      inputs.operatorLb = controller2.getLeftBumperButton();
-      inputs.operatorRb = controller2.getRightBumperButton();
+      inputs.operatorLeftY = BringupUtil.deadband(-controller1.getLeftY(), DEADBAND);
+      inputs.operatorRightY = BringupUtil.deadband(-controller1.getRightY(), DEADBAND);
+      inputs.operatorA = controller1.getAButton();
+      inputs.operatorB = controller1.getBButton();
+      inputs.operatorX = controller1.getXButton();
+      inputs.operatorY = controller1.getYButton();
+      inputs.operatorLb = controller1.getLeftBumperButton();
+      inputs.operatorRb = controller1.getRightBumperButton();
     }
     bridgeGroups.applyBindings(inputs, core, bridgeSelected);
 
@@ -387,6 +390,36 @@ public class RobotV2 extends TimedRobot {
    */
   private void handleProfileActivate() {
     resetCoreForProfile("profileActivate");
+  }
+
+  private Map<String, Map<String, Double>> buildAxisInputs(
+      Map<String, XboxController> controllers,
+      double leftDrive,
+      double rightDrive) {
+    Map<String, Map<String, Double>> axisInputs = new HashMap<>();
+    if (controllers == null) {
+      return axisInputs;
+    }
+    for (Map.Entry<String, XboxController> entry : controllers.entrySet()) {
+      String name = entry.getKey();
+      XboxController controller = entry.getValue();
+      if (name == null || controller == null) {
+        continue;
+      }
+      Map<String, Double> values = new HashMap<>();
+      values.put("leftX", controller.getLeftX());
+      values.put("leftY", controller.getLeftY());
+      values.put("rightX", controller.getRightX());
+      values.put("rightY", controller.getRightY());
+      values.put("leftTrigger", controller.getLeftTriggerAxis());
+      values.put("rightTrigger", controller.getRightTriggerAxis());
+      if ("controller0".equals(name)) {
+        values.put("leftY", leftDrive);
+        values.put("rightY", rightDrive);
+      }
+      axisInputs.put(name, values);
+    }
+    return axisInputs;
   }
 
   /**

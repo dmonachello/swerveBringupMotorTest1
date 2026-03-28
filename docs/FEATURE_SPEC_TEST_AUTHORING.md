@@ -11,6 +11,7 @@ Provide a Windows-side workflow to create and edit `bringup_tests.json` via the 
 * Provide a Cisco-style, context-sensitive CLI for the same operations.
 * Validate test syntax and requirements on Windows before saving.
 * Keep robot-side behavior and schemas unchanged.
+* Prioritize common code and reuse across UI, CLI, validation, and serialization.
 
 ## Non-Goals
 
@@ -60,13 +61,12 @@ The model is the single source of truth and is used by:
 
   * joystick:
 
-    * axis ("primary" | "secondary")
+    * inputSource (string, required)
     * deadband (float)
   * button:
 
-    * input source:
-
-      * controller button OR UI button
+    * input source (string, required)
+      * controller input or UI input
     * duty (float)
 * termination:
 
@@ -139,13 +139,13 @@ All device selection must resolve to canonical keys before entering the model.
 
 ### Joystick Binding
 
-* Continuous control via axis
+* Continuous control via inputSource
 * Maps to:
 
   * `type: "joystick"`
 * Parameters:
 
-  * axis
+  * inputSource
   * deadband
 
 ### Button Binding
@@ -168,25 +168,13 @@ All device selection must resolve to canonical keys before entering the model.
 
 ## Input Definitions
 
-### Axis
+### inputSource
 
-* primary ? primary controller left stick Y
-* secondary ? secondary controller left stick Y
-
-### Button Input
-
-* Must include:
-
-  * source type:
-
-    * controller OR UI
-  * if controller:
-
-    * controller (primary | secondary)
-    * button id
-  * if UI:
-
-    * UI button identifier (arbitrary string)
+* Format: `<controllerName>.<inputId>`
+* Controller inputs use WPILib naming:
+  * axes: `leftX`, `leftY`, `rightX`, `rightY`, `leftTrigger`, `rightTrigger`
+  * buttons: `A`, `B`, `X`, `Y`, `LB`, `RB`, `LS`, `RS`, `START`, `BACK`, `D_UP`, `D_DOWN`, `D_LEFT`, `D_RIGHT`
+* UI inputs use `ui.<id>` (arbitrary string)
 
 ---
 
@@ -284,13 +272,13 @@ Warnings (do not block save):
 5. `device add <vendor:type:id>`
 6. joystick only:
 
-   * `axis primary|secondary`
+   * `inputSource <controller>.<inputId>`
    * `deadband <value>`
 7. button only:
 
-   * `button controller <primary|secondary> <id>`
+   * `inputSource <controller>.<inputId>`
    * or
-   * `button ui <id>`
+   * `inputSource ui.<id>`
    * `duty <value>`
 8. termination:
 
@@ -321,7 +309,7 @@ Warnings (do not block save):
 
 Examples:
 
-* `axis` only valid for joystick tests
+* `inputSource` only valid for joystick/button tests
 * `duty` only valid for button tests
 
 ---

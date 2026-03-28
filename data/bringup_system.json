@@ -2712,8 +2712,8 @@
     }
   },
   "schema_version": 3,
-  "data_version": "2026-03-27_204400",
-  "data_hash": "4b825308203a758398350cc5d64b925e7e1d30a4e39bcca4ac820aa0bf1e0430",
+  "data_version": "2026-03-28_133149",
+  "data_hash": "c912eb47dfb3406e03154f51035cde07ad0d49ca4a6ee4f50b4273099e121dce",
   "bridgeConfig": {
     "schemaVersion": 1,
     "generatedAt": null,

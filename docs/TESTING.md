@@ -36,7 +36,241 @@ Software on Windows PC:
 
 Helpful tools:
 - Device Manager to verify COM ports if auto-detect selects the wrong device.
-- Driver Station USB tab to confirm which Xbox controller is primary vs secondary (port 0 vs port 1).
+- Driver Station USB tab to confirm which Xbox controller is controller0 vs controller1 (port 0 vs port 1).
+
+## Weekly Regression Test Plan (RoboRIO + Xbox + Bridge UI + Bridge CLI)
+Purpose: validate changes added this week from three perspectives (robot/Xbox, UI, CLI). Topology editor tests are deferred.
+
+### A) RoboRIO + Xbox Controller Perspective
+Purpose: validate robot-side behavior, controller bindings, safety guards, and test execution.
+
+1. Boot + startup banner
+   - Expected: bringup banner prints once; no command list spam.
+   - Notes: screenshot shows banner printed once. Additional warnings observed: loop time overrun, failed to write `bringup_tests.json`, failed to persist enable state, periodic tracer output, and CAN error spike.
+2. Disabled state guard
+   - Expected: when the robot is not enabled, commands do nothing and no outputs change.
+3. Enable robot in Driver Station
+   - Expected: robot transitions to enabled state; commands are now allowed to execute.
+   - Notes: console shows teleop init timing stats and the bringup banner with the active (inactive) profile summary.
+4. Profile toggle (selection only)
+   - Action: controller0 `Back` (edge).
+   - Expected: profile name changes; no device instantiation; no CAN errors.
+   - Notes: console shows repeated `=== Profile Updated ===` blocks cycling through profiles and ending back on `home_030226 (inactive)`.
+5. Activate selected profile
+   - Action: controller0 `Start` (edge) to add all devices.
+   - Expected: devices created once; no duplicate device errors.
+   - Notes: `addAll` printed bringup reset, created NEO 25, NEO 550 7, FALCON 9, then printed `Added all configured devices` and the profile summary.
+6. Print state
+   - Action: controller0 `B` (edge).
+   - Expected: state shows active profile name and expected devices.
+   - Notes: examples below assume the selected profile is `home_030226`.
+   - Example output:
+     `=== Bringup State ===`
+     `Build: bringup-core-state-v3`
+     `CAN profile: home_030226`
+     `NEO:`
+     `index 0 CAN 25 ACTIVE`
+     `NEO 550:`
+     `index 0 CAN 7 ACTIVE`
+     `FALCON:`
+     `index 0 CAN 9 ACTIVE`
+     `Next add will be: REV motor`
+     `Virtual devices:`
+     `roboRIO CAN 0 PRESENT (no local API)`
+     `=====================`
+7. Next/prev test selection
+   - Action: controller1 `LB`/`RB`.
+   - Expected: selected test name updates; no errors.
+8. Button binding visibility
+   - Action: `printTestsOverview` (controller1 `LS` or UI).
+   - Expected: output lists bound button (e.g., `controller1 A (hold)`) for hold-to-run tests.
+   - Example output:
+     `=== Bringup Tests ===`
+     `Active set: default (default: default)`
+     `Total: 10 Enabled: 0`
+     `Idx Sel En Type Name HoldBtn Motors`
+     `0 N composite Rotation only (internal) - REV:NEO:25`
+     `1 N deadbandSweep Deadband sweep (internal) - REV:NEO:25`
+     `2 N composite Rotation + Time (t=2.00s) - CTRE:FALCON:9`
+     `3 N composite Time only (t=1.50s) - REV:NEO 550:7`
+     `4 N composite Nudge (0.2 for 0.5s) (t=0.50s) - REV:NEO:25`
+     `5 N composite Limit switch only - REV:NEO 550:7`
+     `6 N composite Hold to run (unbound) CTRE:FALCON:9`
+     `7 N composite Rotation + Time + Limit (t=2.00s) - REV:NEO 550:7, REV:NEO:25, CTRE:FALCON:9`
+     `8 N composite All checks (t=3.00s) (unbound) REV:NEO 550:7`
+     `9 * N joystick Joystick motor (controller0.leftY) - REV:NEO:25, CTRE:FALCON:9`
+     `=====================`
+9. Safety latch: disable/enable
+   - Action: DS disable/enable.
+   - Expected: active test stops on disable; no motors move on enable unless a test is explicitly started.
+10. Stop latch behavior
+   - Trigger: force a TCP timeout (stop UI keepalive) or explicit TCP stop.
+   - Expected: latch blocks tests; Xbox clear latch command works; message indicates how to clear.
+11. Run selected test (hold) - disabled case
+   - Action: controller1 `A` (hold).
+   - Expected: test does not run if disabled.
+   - Example output:
+     `Command: runTest`
+     `Test disabled: Rotation only (internal)`
+12. Enable the test
+   - Action: controller1 `X` (edge) to toggle enabled on the selected test.
+   - Expected: test is now enabled and will run.
+   - Example output:
+     `=== Bringup Tests ===`
+     `Active set: default (default: default)`
+     `Total: 10 Enabled: 1`
+     `Idx Sel En Type Name HoldBtn Motors`
+     `0 * Y composite Rotation only (internal) - REV:NEO:25`
+     `1 N deadbandSweep Deadband sweep (internal) - REV:NEO:25`
+     `2 N composite Rotation + Time (t=2.00s) - CTRE:FALCON:9`
+     `3 N composite Time only (t=1.50s) - REV:NEO 550:7`
+     `4 N composite Nudge (0.2 for 0.5s) (t=0.50s) - REV:NEO:25`
+     `5 N composite Limit switch only - REV:NEO 550:7`
+     `6 N composite Hold to run (unbound) CTRE:FALCON:9`
+     `7 N composite Rotation + Time + Limit (t=2.00s) - REV:NEO 550:7, REV:NEO:25, CTRE:FALCON:9`
+     `8 N composite All checks (t=3.00s) (unbound) REV:NEO 550:7`
+     `9 N joystick Joystick motor (controller0.leftY) - REV:NEO:25, CTRE:FALCON:9`
+     `=====================`
+13. Run selected test (hold)
+   - Action: controller1 `A` (hold).
+   - Expected: console prints `Command: runTest`, `Test started #N`, `Test #N`, `Test result #N ... time=...`.
+   - Example output (three runs):
+     `Test started #1: Rotation only (internal)`
+     `Test #1: Rotation only (internal)`
+     `Test result #1: Rotation only (internal) = PASS (Reached rotation limit (NEO CAN 25)) time=0.16s`
+     `[Spark Max] IDs: 25, timed out while waiting for Period Status 2: HAL: CAN Receive has Timed Out`
+     `Command: runTest`
+     `Test started #2: Rotation only (internal)`
+     `Test #2: Rotation only (internal)`
+     `Test result #2: Rotation only (internal) = PASS (Reached rotation limit (NEO CAN 25)) time=0.90s`
+     `Command: runTest`
+     `Test started #3: Rotation only (internal)`
+     `Test #3: Rotation only (internal)`
+     `Test result #3: Rotation only (internal) = PASS (Reached rotation limit (NEO CAN 25)) time=0.90s`
+14. Run-all tests (multiple enabled)
+   - Action: enable 2-3 tests first:
+     - Use controller1 `LB`/`RB` to select a test.
+     - Press controller1 `X` (edge) to toggle it enabled.
+     - Repeat for two more tests.
+   - Then press controller1 `B` (edge).
+   - Expected: run-all proceeds through enabled tests; prints results with test numbers.
+   - Example output:
+     `Idx Sel En Type Name HoldBtn Motors`
+     `0 Y composite Rotation only (internal) - REV:NEO:25`
+     `1 N deadbandSweep Deadband sweep (internal) - REV:NEO:25`
+     `2 Y composite Rotation + Time (t=2.00s) - CTRE:FALCON:9`
+     `3 * Y composite Time only (t=1.50s) - REV:NEO 550:7`
+     `4 N composite Nudge (0.2 for 0.5s) (t=0.50s) - REV:NEO:25`
+     `5 N composite Limit switch only - REV:NEO 550:7`
+     `6 N composite Hold to run (unbound) CTRE:FALCON:9`
+     `7 N composite Rotation + Time + Limit (t=2.00s) - REV:NEO 550:7, REV:NEO:25, CTRE:FALCON:9`
+     `8 N composite All checks (t=3.00s) (unbound) REV:NEO 550:7`
+     `9 N joystick Joystick motor (controller0.leftY) - REV:NEO:25, CTRE:FALCON:9`
+     `=====================`
+     `Command: runAllTests`
+     `Test started #5: Time only`
+     `Test #5: Time only`
+     `Test result #5: Time only = PASS (Time limit reached) time=1.52s`
+     `Test started #6: Rotation only (internal)`
+     `Test #6: Rotation only (internal)`
+     `Test result #6: Rotation only (internal) = PASS (Reached rotation limit (NEO CAN 25)) time=0.90s`
+     `Test #7: Rotation + Time`
+     `Test result #7: Rotation + Time = PASS (Reached rotation limit (FALCON CAN 9)) time=1.66s`
+     `Run-all complete.`
+
+### B) Bridge UI Perspective
+Purpose: validate UI command routing, output mirroring, keepalive, and profile selection.
+
+1. UI connection + handshake
+   - Start UI and connect to the robot.
+   - Expected: handshake OK, no repeated handshake spam.
+2. Keepalive requirement
+   - Leave UI running for >10s.
+   - Expected: no TCP timeout stop latch triggered; outputs not spammed.
+3. Output mirroring
+   - Run `printState`, `printProfileDevices`, `printCANdiag`, `canSweep`, and `runTest`.
+   - Expected: all console output also appears in UI Output panel without duplicates.
+4. Run selected test from UI
+   - Action: click `Run Selected`.
+   - Expected: Output panel includes: `Command: runTest (UI)`, `Test started #N`, `Test #N`, `Test result #N ... time=...`.
+5. Stop latch message visibility
+   - Trigger stop latch then run a test.
+   - Expected: UI shows error message explaining latch and how to clear.
+6. Profile selection in UI
+   - Choose profile from dropdown and run `Add All`.
+   - Expected: robot adds devices from the selected profile (not a stale one).
+7. Profile devices report
+   - Action: click `Profile Devices`.
+   - Expected: output shows correct profile name and device list.
+8. Next test info
+   - Action: click `Print Next`.
+   - Expected: output shows selected test details including rotation/time/limit blocks.
+
+### C) Bridge CLI Perspective
+Purpose: validate test authoring via CLI, grammar support, and JSON output.
+
+1. CLI parser compatibility
+   - Commands: `conf t`, `test set default`, `test create MyTest1`, `test MyTest1`.
+   - Expected: no parse errors; prompt changes to `bridge(config-test-MyTest1)#`.
+   - Notes: `conf t` is not accepted; use `configure terminal` to enter config mode.
+   - Notes: while already in `bridge(config-test-MyTest1)#`, the `test MyTest1` command is rejected; stay in test mode and continue with `type`, `device`, etc.
+2. Joystick test authoring
+   - Commands:
+     - `type joystick`
+     - `device add REV:NEO:25`
+     - `inputSource controller0.leftY`
+     - `deadband 0.12`
+     - `show`
+   - Expected: show output matches settings.
+   - Notes: device key must be `VENDOR:TYPE:ID` (for example `REV:NEO:25`). `REV:NEO25` is rejected.
+   - Example output:
+     `Test: MyTest1`
+     `  type: joystick`
+     `  enabled: False`
+     `  devices: REV:NEO:25`
+     `  inputSource: controller0.leftY`
+     `  deadband: 0.12`
+   - Exit: `end` returns to `bridge(config)#`.
+   - Example output (post-exit):
+     `bridge(config)# show tests`
+     `Active test set: default`
+     `- Rotation only (internal) (button) devices=1 enabled=False`
+     `- Deadband sweep (internal) (button) devices=1 enabled=False`
+     `- Rotation + Time (button) devices=1 enabled=False`
+     `- Time only (button) devices=1 enabled=False`
+     `- Nudge (0.2 for 0.5s) (button) devices=1 enabled=False`
+     `- Limit switch only (button) devices=1 enabled=False`
+     `- Hold to run (button) devices=1 enabled=False`
+     `- Rotation + Time + Limit (button) devices=3 enabled=False`
+     `- All checks (button) devices=1 enabled=False`
+     `- Joystick motor (controller0.leftY) (joystick) devices=2 enabled=False`
+     `- MyTest1 (joystick) devices=1 enabled=False`
+     `bridge(config)# show test MyTest1`
+     `Test: MyTest1`
+     `  type: joystick`
+     `  enabled: False`
+     `  devices: REV:NEO:25`
+     `  inputSource: controller0.leftY`
+     `  deadband: 0.12`
+3. Button test authoring
+   - Commands:
+     - `type button`
+     - `device add CTRE:FALCON:9`
+     - `inputSource controller1.A`
+     - `duty 0.2`
+     - `termination hold`
+     - `termination time 2.0`
+     - `show`
+   - Expected: show output includes button binding and termination fields.
+4. Validation errors
+   - Commands: set `deadband 1.5`, `duty 2.0`, or invalid device key.
+   - Expected: CLI rejects invalid values with clear error.
+5. Save tests
+   - Command: `write tests bringup_tests.json`
+   - Expected: file written; schema remains compatible.
+6. Backward compatibility
+   - After save, deploy and run tests on robot.
+   - Expected: robot loads tests normally and runs without schema errors.
 
 ## Fast Test Plan
 Purpose: the fast test plan confirms minimum health checks for the system.
@@ -44,20 +278,20 @@ Purpose: the fast test plan confirms minimum health checks for the system.
 1. Deploy robot code and enter teleop.
 2. Confirm controller detection prints at startup (controller name and type).
 3. Scroll through available test configs to choose the desired test config.
-4. Primary controller: press `Start` to add all configured devices.
-5. Primary controller: press `B` to print state and confirm devices are present.
-6. Primary controller: move `Left Y`/`Right Y` to run connected motors, then press `D-pad Right` to confirm inputs.
+4. Controller0: press `Start` to add all configured devices.
+5. Controller0: press `B` to print state and confirm devices are present.
+6. Controller0: move `Left Y`/`Right Y` to run connected motors, then press `D-pad Right` to confirm inputs.
 7. Start the PC tool (default test profile):
    - `%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile example_default --rio 172.22.11.2`
 8. Use the smoke test set:
    - In `src/main/deploy/bringup_tests.json`, set `"default_test_set": "smoke"` and deploy.
-   - Scroll through tests with the secondary controller (`LB`/`RB`).
-   - Select which tests run by toggling enable on the secondary controller (`X`) while the test is highlighted.
-9. Primary controller: press `D-pad Down` and confirm `openOk=YES` (PC tool has an active CAN interface and is publishing). Verify the table includes `conf`, `score`, `warn`, `err`, and `fatal` columns and uses dot-padded right-justified formatting.
-10. Secondary controller: press `LB`/`RB` to select a test and confirm the name updates.
-11. Secondary controller: run one enabled test with `A` and confirm PASS/FAIL prints.
-12. Secondary controller: hold `A` during a test with `hold.enabled=true`, then release to confirm the hold termination path.
-13. Secondary controller: press `B` to run all enabled tests and confirm `Run-all complete.` prints.
+   - Scroll through tests with the controller1 (`LB`/`RB`).
+   - Select which tests run by toggling enable on the controller1 (`X`) while the test is highlighted.
+9. Controller0: press `D-pad Down` and confirm `openOk=YES` (PC tool has an active CAN interface and is publishing). Verify the table includes `conf`, `score`, `warn`, `err`, and `fatal` columns and uses dot-padded right-justified formatting.
+10. Controller1: press `LB`/`RB` to select a test and confirm the name updates.
+11. Controller1: run one enabled test with `A` and confirm PASS/FAIL prints.
+12. Controller1: hold `A` during a test with `hold.enabled=true`, then release to confirm the hold termination path.
+13. Controller1: press `B` to run all enabled tests and confirm `Run-all complete.` prints.
 14. If a joystick test is enabled, confirm its `motorKeys` move together and stop when the test ends.
 15. If a rotation test uses `encoderKey: internal`, confirm it uses `encoderMotorIndex`.
 16. If a limit switch check is enabled, verify it terminates on switch activation.
@@ -135,8 +369,8 @@ Purpose: base robot bringup actions still work under teleop.
 2. Profile toggle (cycle):
    - Action: Press `Back`.
    - Expected: Profile name changes; the known device list updates.
-3. Primary controller: press `Start` to add all configured devices.
-4. Primary controller: press `B` to print state.
+3. Controller0: press `Start` to add all configured devices.
+4. Controller0: press `B` to print state.
 Expected:
 - All configured devices show `present=YES`.
 - No exceptions or missing device errors.
@@ -185,29 +419,29 @@ Config excerpt (bindings + controllers):
 // src/main/deploy/bringup_bindings.json
 {
   "controllers": [
-    { "type": "XBOX", "port": 0, "role": "primary" },
-    { "type": "XBOX", "port": 1, "role": "secondary" }
+    { "type": "XBOX", "port": 0, "name": "controller0" },
+    { "type": "XBOX", "port": 1, "name": "controller1" }
   ],
   "bindings": [
-    { "command": "addMotor", "controller": "primary", "input": "button", "id": "A", "mode": "edge" },
-    { "command": "addAll", "controller": "primary", "input": "button", "id": "START", "mode": "edge" },
-    { "command": "printState", "controller": "primary", "input": "button", "id": "B", "mode": "edge" },
-    { "command": "printBindings", "controller": "primary", "input": "button", "id": "LB", "mode": "edge" },
-    { "command": "selectTestPrev", "controller": "secondary", "input": "button", "id": "LB", "mode": "edge" },
-    { "command": "selectTestNext", "controller": "secondary", "input": "button", "id": "RB", "mode": "edge" },
-    { "command": "runTest", "controller": "secondary", "input": "button", "id": "A", "mode": "hold" },
-    { "command": "runAllTests", "controller": "secondary", "input": "button", "id": "B", "mode": "edge" }
+    { "command": "addMotor", "controller": "controller0", "input": "button", "id": "A", "mode": "edge" },
+    { "command": "addAll", "controller": "controller0", "input": "button", "id": "START", "mode": "edge" },
+    { "command": "printState", "controller": "controller0", "input": "button", "id": "B", "mode": "edge" },
+    { "command": "printBindings", "controller": "controller0", "input": "button", "id": "LB", "mode": "edge" },
+    { "command": "selectTestPrev", "controller": "controller1", "input": "button", "id": "LB", "mode": "edge" },
+    { "command": "selectTestNext", "controller": "controller1", "input": "button", "id": "RB", "mode": "edge" },
+    { "command": "runTest", "controller": "controller1", "input": "button", "id": "A", "mode": "hold" },
+    { "command": "runAllTests", "controller": "controller1", "input": "button", "id": "B", "mode": "edge" }
   ],
   "axes": [
-    { "command": "leftDrive", "controller": "primary", "id": "LY", "invert": true, "deadband": 0.12 },
-    { "command": "rightDrive", "controller": "primary", "id": "RY", "invert": true, "deadband": 0.12 }
+    { "command": "leftDrive", "controller": "controller0", "id": "leftY", "invert": true, "deadband": 0.12 },
+    { "command": "rightDrive", "controller": "controller0", "id": "rightY", "invert": true, "deadband": 0.12 }
   ]
 }
 ```
 
-1. Primary controller: confirm startup prints the bindings list, then press `LB` to reprint.
-2. Primary controller: press `A`, `Start`, `B`, `X`, `Y`, `Back`.
-3. Secondary controller: press `LB`, `RB`, `A`, `B`, `X`, `D-pad` (any direction).
+1. Controller0: confirm startup prints the bindings list, then press `LB` to reprint.
+2. Controller0: press `A`, `Start`, `B`, `X`, `Y`, `Back`.
+3. Controller1: press `LB`, `RB`, `A`, `B`, `X`, `D-pad` (any direction).
 Expected:
 - Each command prints the expected action.
 - No missing/unknown command warnings.
@@ -220,14 +454,14 @@ Config excerpt (axis bindings):
 // src/main/deploy/bringup_bindings.json
 {
   "axes": [
-    { "command": "leftDrive", "controller": "primary", "id": "LY", "invert": true, "deadband": 0.12 },
-    { "command": "rightDrive", "controller": "primary", "id": "RY", "invert": true, "deadband": 0.12 }
+    { "command": "leftDrive", "controller": "controller0", "id": "leftY", "invert": true, "deadband": 0.12 },
+    { "command": "rightDrive", "controller": "controller0", "id": "rightY", "invert": true, "deadband": 0.12 }
   ]
 }
 ```
 
-1. Primary controller: move `Left Y` and `Right Y`.
-2. Primary controller: press `D-pad Right` to print inputs.
+1. Controller0: move `Left Y` and `Right Y`.
+2. Controller0: press `D-pad Right` to print inputs.
 Expected:
 - Values match stick movement and deadband/invert settings.
 
@@ -251,8 +485,8 @@ Config excerpt (motors in the active profile):
 }
 ```
 
-1. Primary controller: add one REV motor and one CTRE motor.
-2. Primary controller: move `Left Y` and `Right Y`.
+1. Controller0: add one REV motor and one CTRE motor.
+2. Controller0: move `Left Y` and `Right Y`.
 Expected:
 - Motors respond to their respective axes.
 - Output stops when stick returns to center.
@@ -269,9 +503,9 @@ Existing tests in the active test set (`default_test_set` in `bringup_tests.json
 - Hold to run
 - Rotation + Time + Limit
 - All checks
-- Joystick motor (primary axis)
+- Joystick motor (controller0.leftY)
 
-Test bindings (secondary controller):
+Test bindings (controller1):
 - `LB` / `RB`: select previous/next test
 - `A` (hold): run selected test / hold signal
 - `B`: run all enabled tests
@@ -282,9 +516,9 @@ Example configs (match the test titles above):
 
 Steps:
 1. Enable 2+ tests in `bringup_tests.json` (or the active override), deploy.
-2. Secondary controller: press `LB`/`RB` to cycle tests.
-3. Secondary controller: press `A` to run the selected test.
-4. Secondary controller: press `B` to run all enabled tests.
+2. Controller1: press `LB`/`RB` to cycle tests.
+3. Controller1: press `A` to run the selected test.
+4. Controller1: press `B` to run all enabled tests.
 Expected:
 - Test names print on selection.
 - PASS/FAIL prints after each run.
@@ -304,7 +538,7 @@ Rotation only (internal):
   "rotation": { "limitRot": 5.0, "encoderKey": "internal", "encoderMotorIndex": 0 }
 }
 ```
-Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
+Run: controller1 `LB`/`RB` select, controller1 `A` (hold) run.
 
 Time only:
 ```json
@@ -317,7 +551,7 @@ Time only:
   "time": { "timeoutSec": 1.5, "onTimeout": "pass" }
 }
 ```
-Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
+Run: controller1 `LB`/`RB` select, controller1 `A` (hold) run.
 
 Limit switch only:
 ```json
@@ -330,7 +564,7 @@ Limit switch only:
   "limitSwitch": { "enabled": true, "onHit": "pass" }
 }
 ```
-Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
+Run: controller1 `LB`/`RB` select, controller1 `A` (hold) run.
 
 Hold to run:
 ```json
@@ -343,7 +577,7 @@ Hold to run:
   "hold": { "enabled": true, "onRelease": "pass" }
 }
 ```
-Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
+Run: controller1 `LB`/`RB` select, controller1 `A` (hold) run.
 
 Combined (rotation + time + limit + hold):
 ```json
@@ -359,7 +593,7 @@ Combined (rotation + time + limit + hold):
   "hold": { "enabled": true, "onRelease": "pass" }
 }
 ```
-Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
+Run: controller1 `LB`/`RB` select, controller1 `A` (hold) run.
 Expected:
 - Each check terminates the test per its condition.
 - Combined test stops on the first triggered condition.
@@ -378,7 +612,7 @@ CTRE reference (external CAN encoder):
   "rotation": { "limitRot": 5.0, "encoderKey": "CTRE:CANCoder:12", "encoderSource": "external", "encoderMotorIndex": 0 }
 }
 ```
-Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
+Run: controller1 `LB`/`RB` select, controller1 `A` (hold) run.
 
 REV Through-Bore via SPARK MAX data port:
 ```json
@@ -397,25 +631,25 @@ REV Through-Bore via SPARK MAX data port:
   }
 }
 ```
-Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
+Run: controller1 `LB`/`RB` select, controller1 `A` (hold) run.
 Expected:
 - Encoder output changes and test terminates at `limitRot`.
 
 ### H) Multi-Motor Tests
 Purpose: `motorKeys` drives multiple motors together.
 
-Joystick motor (primary axis):
+Joystick motor (controller0.leftY):
 ```json
 {
   "type": "joystick",
-  "name": "Joystick motor (primary axis)",
+  "name": "Joystick motor (controller0.leftY)",
   "enabled": true,
   "motorKeys": ["REV:NEO:10", "REV:NEO550:7"],
   "deadband": 0.12,
-  "inputAxis": "primary"
+  "inputSource": "controller0.leftY"
 }
 ```
-Run: secondary `LB`/`RB` select, secondary `A` (hold) run. Control: primary `Left Y`.
+Run: controller1 `LB`/`RB` select, controller1 `A` (hold) run. Control: controller0 `Left Y`.
 Expected:
 - All motors respond together; stop together on test end.
 
@@ -433,7 +667,7 @@ Limit switch test:
   "limitSwitch": { "enabled": true, "onHit": "pass" }
 }
 ```
-Run: secondary `LB`/`RB` select, secondary `A` (hold) run.
+Run: controller1 `LB`/`RB` select, controller1 `A` (hold) run.
 
 Steps:
 1. Configure `limits` for a motor in `bringup_system.json`.
@@ -447,7 +681,7 @@ Purpose: the PC sniffer runs and publishes NetworkTables diagnostics.
 
 1. Run the PC tool:
    - `%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile <profile> --rio 172.22.11.2`
-2. Primary controller: press `D-pad Down`.
+2. Controller0: press `D-pad Down`.
 Expected:
 - `openOk=YES`, heartbeat updates, and device table matches CAN traffic.
 - Device table columns include `conf`, `score`, `warn`, `err`, and `fatal` with dot-padded right-justified formatting.
@@ -665,7 +899,7 @@ Steps:
    `{ "label": "FL KRAK", "id": 2, "limits": { "fwdDio": 0, "revDio": 1, "invert": false } }`
 2. Wire limit switches to the specified DIO ports.
 3. Deploy and run the robot code.
-4. Primary controller: press `D-pad Left` to print health status.
+4. Controller0: press `D-pad Left` to print health status.
 Expected:
 - The device row includes `limits=fwd:DIO0=OPEN/ CLOSED,rev:DIO1=OPEN/ CLOSED`.
 - Toggling the limit switch updates the reported state.
@@ -676,7 +910,7 @@ Expected:
 Steps:
 1. Ensure a CANdle is in the profile (`candles` list).
 2. Deploy and run the robot code.
-3. Secondary controller: press `A` to run the non-motor test action.
+3. Controller1: press `A` to run the non-motor test action.
 Expected:
 - The CANdle toggles between OFF and BLUE.
 - Console prints `Test: <label> (CANdle) [toggle_led]`.
@@ -690,7 +924,7 @@ Purpose: add data-driven tests without code changes.
 4. Ensure `type`, `name`, `enabled`, and `motorKeys` are present.
 5. Add check blocks for composite tests: `rotation`, `time`, `limitSwitch`, `hold`.
 6. Deploy the updated JSON to the roboRIO.
-7. In teleop, use secondary `LB`/`RB` to select the test and `A` to run it.
+7. In teleop, use controller1 `LB`/`RB` to select the test and `A` to run it.
 
 Current test types:
 - `composite`: duty + checks (rotation/time/limitSwitch/hold).
@@ -715,16 +949,16 @@ Example (joystick):
 ```json
 {
   "type": "joystick",
-  "name": "Joystick motor (primary axis)",
+  "name": "Joystick motor (controller0.leftY)",
   "enabled": true,
   "motorKeys": ["REV:NEO:25"],
   "deadband": 0.12,
-  "inputAxis": "primary"
+  "inputSource": "controller0.leftY"
 }
 ```
 
 Notes:
-- Hold checks use the run-test binding (secondary `A`, hold).
+- Hold checks use the run-test binding (controller1 `A`, hold).
 - Tests run only against motors that are instantiated via add/add-all.
 
 ## Troubleshooting
@@ -741,6 +975,7 @@ If NT is not connected:
 
 If imports fail:
 - Use the explicit Python path shown above.
+- If you see `bringup_system.json load failed: Profile data_hash mismatch`, run `sync_profiles.cmd` from the repo root to update the profile hash.
 
 ## Pass/Fail Record
 

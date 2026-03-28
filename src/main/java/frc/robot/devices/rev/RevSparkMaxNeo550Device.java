@@ -1,5 +1,6 @@
 package frc.robot.devices.rev;
 
+import frc.robot.BringupPrinter;
 import com.revrobotics.PersistMode;
 import com.revrobotics.ResetMode;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
@@ -256,7 +257,7 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
   }
 
   private void handleClosed(String action, IllegalStateException ex) {
-    System.out.println(
+    BringupPrinter.enqueue(
         "Warning: SparkMax NEO 550 CAN " + canId + " closed during " + action + "; recreating.");
     if (device != null) {
       try {

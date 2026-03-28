@@ -5,12 +5,14 @@ command        = common
                | exec
                | config
                | group
-               | device ;
+               | device
+               | test ;
 
 common         = "exit"
                | "end"
                | "help"
                | "ping"
+               | "echo" ws ("on" | "off")
                | "quit" ;
 
 exec           = show_exec
@@ -28,7 +30,9 @@ show_target    = "status"
                | "bindings"
                | "selected-device"
                | "runtime-state"
-               | "config" ;
+               | "config"
+               | "tests"
+               | "test" ws name ;
 
 show_source    = "robot" | "local" | "both" ;
 show_flags     = show_flag { ws show_flag } ;
@@ -50,7 +54,12 @@ config         = "group" ws name
                | "device" ws name
                | "device" ws name ws "set" ws field ws value_text
                | "validate" ws "config" [ ws path ]
-               | "show" ws show_target [ ws show_flags ] ;
+               | "show" ws show_target [ ws show_flags ]
+               | "write" ws "tests" ws path
+               | "test" ws ("set" ws name
+                           | "create" ws name
+                           | "delete" ws name
+                           | name) ;
 
 group          = "show"
                | "show" ws "members"
@@ -64,12 +73,39 @@ group          = "show"
                | "no" ws "bind"
                | "enable"
                | "disable"
-               | "run" ws "test" [ ws name ] ;
+               | "run" ws "test" [ ws name ]
+               | "write" ws "tests" ws path ;
 
 device         = "show"
                | "show" ws show_target [ ws show_flags ]
                | "set" ws field ws value_or_text
-               | "no" ws field ;
+               | "no" ws field
+               | "write" ws "tests" ws path ;
+
+test           = "show"
+               | "type" ws ("joystick" | "button" | "composite" | "deadbandSweep")
+               | "device" ws "add" ws name
+               | "no" ws "device" ws name
+               | "inputSource" ws name
+               | "deadband" ws number
+               | "duty" ws number
+               | "rotation" ws "limit" ws number
+               | "rotation" ws ("encoderKey" | "encoderSource") ws name
+               | "rotation" ws ("encoderMotorIndex" | "encoderCountsPerRev") ws number
+               | "time" ws "timeout" ws number
+               | "time" ws "onTimeout" ws name
+               | "hold" ws "onRelease" ws name
+               | "limitswitch" ws ("onHit" | "id") ws name
+               | "deadbandSweep" ws ("startDuty" | "maxDuty" | "stepDuty" | "stepHoldSec" | "motionThresholdRot") ws number
+               | "deadbandSweep" ws "requiredSamples" ws number
+               | "deadbandSweep" ws ("encoderKey" | "encoderSource") ws name
+               | "deadbandSweep" ws ("encoderMotorIndex" | "encoderCountsPerRev") ws number
+               | "enabled" ws ("true" | "false" | "on" | "off")
+               | "termination" ws "hold"
+               | "termination" ws "time" ws number
+               | "termination" ws "rotation" ws number
+               | "termination" ws "limitswitch" [ ws name ]
+               | "write" ws "tests" ws path ;
 
 (* Lexical conventions *)
 

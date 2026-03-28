@@ -247,16 +247,16 @@ def _build_joystick():
     enabled = _prompt_bool("Enabled", False)
     motor_keys = _prompt_device_keys("Motor keys (comma-separated VENDOR:TYPE:ID)")
     deadband = _prompt_float("Deadband", 0.12)
-    axis = _prompt("Input axis (primary or secondary)", "primary").strip().lower()
-    if axis not in ("primary", "secondary"):
-        axis = "primary"
+    input_source = _prompt("inputSource (<controller>.<inputId>)", "controller0.leftY").strip()
+    if "." not in input_source:
+        input_source = "controller0.leftY"
     return {
         "type": "joystick",
         "name": name,
         "enabled": enabled,
         "motorKeys": motor_keys,
         "deadband": deadband,
-        "inputAxis": axis,
+        "inputSource": input_source,
     }
 
 def main():

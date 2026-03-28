@@ -8,6 +8,7 @@ import frc.robot.input.ControllerManager;
 import frc.robot.tests.BringupTestRegistry;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -30,7 +31,8 @@ public class Robot extends TimedRobot {
   private static final double DEADBAND = BringupUtil.DEADBAND;
   // Driver Station controller input.
   private final ControllerManager controllers = new ControllerManager();
-  private final XboxController controller = controllers.getXbox(0);
+  private final java.util.Map<String, XboxController> controllerMap = controllers.getXboxControllers();
+  private final XboxController controller0 = controllerMap.get("controller0");
   private final BindingsManager bindings = new BindingsManager();
   // Local bringup behaviors for device creation and health.
   private BringupCore core;
@@ -100,10 +102,10 @@ public class Robot extends TimedRobot {
   public void teleopPeriodic() {
 
     // --- Device instantiation / local prints ---
-    if (controller == null) {
+    if (controller0 == null) {
       return;
     }
-    BindingsManager.BindingState bind = bindings.sample(controller, null, edge);
+    BindingsManager.BindingState bind = bindings.sample(controllerMap, edge);
 
     BringupCommandRouter.applyCommon(
         bind,
@@ -125,10 +127,10 @@ public class Robot extends TimedRobot {
     // --- Analog input to motor outputs ---
     double neoSpeed = bind.hasAxis("leftDrive")
         ? bind.axis("leftDrive")
-        : BringupUtil.deadband(-controller.getLeftY(), DEADBAND);
+        : BringupUtil.deadband(-controller0.getLeftY(), DEADBAND);
     double krakenSpeed = bind.hasAxis("rightDrive")
         ? bind.axis("rightDrive")
-        : BringupUtil.deadband(-controller.getRightY(), DEADBAND);
+        : BringupUtil.deadband(-controller0.getRightY(), DEADBAND);
 
     // --- Print current stick inputs on demand ---
     if (bind.pressed("printInputs")) {
@@ -143,10 +145,40 @@ public class Robot extends TimedRobot {
     // core update handled by BringupCommandRouter
 
     // Feed test inputs (used by joystick-mode tests).
-    core.setTestInputs(neoSpeed, krakenSpeed);
+    core.setTestInputs(buildAxisInputs(controllerMap, neoSpeed, krakenSpeed));
 
     // Apply speeds after inputs are processed.
     core.setSpeeds(neoSpeed, krakenSpeed);
+  }
+
+  private Map<String, Map<String, Double>> buildAxisInputs(
+      Map<String, XboxController> controllers,
+      double leftDrive,
+      double rightDrive) {
+    Map<String, Map<String, Double>> axisInputs = new HashMap<>();
+    if (controllers == null) {
+      return axisInputs;
+    }
+    for (Map.Entry<String, XboxController> entry : controllers.entrySet()) {
+      String name = entry.getKey();
+      XboxController controller = entry.getValue();
+      if (name == null || controller == null) {
+        continue;
+      }
+      Map<String, Double> values = new HashMap<>();
+      values.put("leftX", controller.getLeftX());
+      values.put("leftY", controller.getLeftY());
+      values.put("rightX", controller.getRightX());
+      values.put("rightY", controller.getRightY());
+      values.put("leftTrigger", controller.getLeftTriggerAxis());
+      values.put("rightTrigger", controller.getRightTriggerAxis());
+      if ("controller0".equals(name)) {
+        values.put("leftY", leftDrive);
+        values.put("rightY", rightDrive);
+      }
+      axisInputs.put(name, values);
+    }
+    return axisInputs;
   }
 
   /**

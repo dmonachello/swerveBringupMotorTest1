@@ -1,5 +1,6 @@
 package frc.robot.tests;
 
+import frc.robot.BringupPrinter;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.google.gson.annotations.SerializedName;
@@ -65,7 +66,7 @@ public final class BringupTestRegistry {
       }
       return tests;
     } catch (IOException | JsonParseException ex) {
-      System.out.println("Warning: failed to read bringup tests JSON: " + ex.getMessage());
+      BringupPrinter.enqueue("Warning: failed to read bringup tests JSON: " + ex.getMessage());
       return Collections.emptyList();
     }
   }
@@ -169,7 +170,7 @@ public final class BringupTestRegistry {
       Files.writeString(path, json + System.lineSeparator(), StandardCharsets.UTF_8);
       return true;
     } catch (IOException ex) {
-      System.out.println("Warning: failed to write bringup tests JSON: " + ex.getMessage());
+      BringupPrinter.enqueue("Warning: failed to write bringup tests JSON: " + ex.getMessage());
       return false;
     }
   }
@@ -191,7 +192,7 @@ public final class BringupTestRegistry {
     if (DeadbandSweepTest.TYPE.equalsIgnoreCase(entry.type)) {
       return buildDeadbandSweep(entry);
     }
-    System.out.println("Warning: unknown test type '" + entry.type + "'.");
+    BringupPrinter.enqueue("Warning: unknown test type '" + entry.type + "'.");
     return null;
   }
 
@@ -406,7 +407,13 @@ public final class BringupTestRegistry {
     config.name = entry.name != null ? entry.name : config.name;
     config.enabled = entry.enabled != null ? entry.enabled.booleanValue() : config.enabled;
     config.deadband = entry.deadband != null ? entry.deadband.doubleValue() : config.deadband;
-    config.inputAxis = entry.inputAxis != null ? entry.inputAxis : config.inputAxis;
+    if (entry.inputSource != null && !entry.inputSource.isBlank()) {
+      config.inputSource = entry.inputSource;
+    } else {
+      config.inputSource = null;
+      config.enabled = false;
+      BringupPrinter.enqueue("Warning: joystick test '" + config.name + "' missing inputSource; disabled.");
+    }
     if (entry.motorKeys != null && !entry.motorKeys.isEmpty()) {
       java.util.List<MotorRef> refs = new java.util.ArrayList<>();
       for (String key : entry.motorKeys) {
@@ -430,7 +437,7 @@ public final class BringupTestRegistry {
       if (override != null && Files.exists(override)) {
         return override;
       }
-      System.out.println("Warning: bringup tests override not found: " + overrideTestsPath);
+      BringupPrinter.enqueue("Warning: bringup tests override not found: " + overrideTestsPath);
     }
     try {
       Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(TESTS_FILE);
@@ -569,7 +576,7 @@ public final class BringupTestRegistry {
     CompositeTest.HoldCheck hold;
     DeadbandSweepTest.SweepConfig deadbandSweep;
     Double deadband;
-    String inputAxis;
+    String inputSource;
     Integer encoderMotorIndex;
   }
 

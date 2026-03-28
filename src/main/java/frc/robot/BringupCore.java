@@ -79,8 +79,6 @@ public final class BringupCore {
   private static final double WARNING_COOLDOWN_SEC = 1.0;
   private static final double SAFETY_COOLDOWN_SEC = 5.0;
   private final BringupTestContext testContext;
-  private double primaryInput = 0.0;
-  private double secondaryInput = 0.0;
 
   /**
    * NAME
@@ -112,7 +110,7 @@ public final class BringupCore {
    *   setRunTestBindingLabel - Set the binding label for hold-to-run prompts.
    *
    * PARAMETERS
-   *   label - Human-readable binding string, e.g. "secondary button A (hold)".
+   *   label - Human-readable binding string, e.g. "controller1 button A (hold)".
    */
   public void setRunTestBindingLabel(String label) {
     if (label == null || label.isBlank()) {
@@ -299,20 +297,35 @@ public final class BringupCore {
 
   /**
    * NAME
-   *   setTestInputs - Provide joystick inputs to test logic.
+   *   setTestInputs - Provide controller inputs to test logic.
    *
    * PARAMETERS
-   *   primary - Primary axis input.
-   *   secondary - Secondary axis input.
+   *   axisInputs - Controller axis values keyed by controller name.
    */
-  public void setTestInputs(double primary, double secondary) {
-    primaryInput = primary;
-    secondaryInput = secondary;
-    if (activeTest instanceof frc.robot.tests.JoystickTest joystick) {
-      String axis = joystick.getInputAxis();
-      double value = "secondary".equalsIgnoreCase(axis) ? secondaryInput : primaryInput;
-      joystick.setInputValue(value);
+  public void setTestInputs(Map<String, Map<String, Double>> axisInputs) {
+    if (!(activeTest instanceof frc.robot.tests.JoystickTest joystick)) {
+      return;
     }
+    double value = resolveAxisInput(joystick.getInputSource(), axisInputs);
+    joystick.setInputValue(value);
+  }
+
+  private double resolveAxisInput(String inputSource, Map<String, Map<String, Double>> axisInputs) {
+    if (inputSource == null || inputSource.isBlank() || axisInputs == null) {
+      return 0.0;
+    }
+    int separator = inputSource.indexOf('.');
+    if (separator <= 0 || separator == inputSource.length() - 1) {
+      return 0.0;
+    }
+    String controller = inputSource.substring(0, separator);
+    String axis = inputSource.substring(separator + 1);
+    Map<String, Double> inputs = axisInputs.get(controller);
+    if (inputs == null) {
+      return 0.0;
+    }
+    Double value = inputs.get(axis);
+    return value != null ? value.doubleValue() : 0.0;
   }
 
   // Clear current and sticky faults on all instantiated devices where supported.
@@ -391,7 +404,6 @@ public final class BringupCore {
       String message =
           "Warning: stopping active test '" + activeTest.getName() + "' due to reset (" + reason + ").";
       BringupPrinter.enqueue(message);
-      System.out.println(message);
       activeTest.stop(testContext);
     }
     activeTest = null;
@@ -435,7 +447,6 @@ public final class BringupCore {
       String message =
           "Safety: stopping active test '" + activeTest.getName() + "' (" + label + ").";
       BringupPrinter.enqueue(message);
-      System.out.println(message);
       activeTest.stop(testContext);
     }
     activeTest = null;
@@ -1837,11 +1848,11 @@ public final class BringupCore {
     } else {
       lines.add("  deadband: (none)");
     }
-    Object inputAxis = entry.get("inputAxis");
-    if (inputAxis != null) {
-      lines.add("  inputAxis: " + inputAxis);
+    Object inputSource = entry.get("inputSource");
+    if (inputSource != null) {
+      lines.add("  inputSource: " + inputSource);
     } else {
-      lines.add("  inputAxis: (none)");
+      lines.add("  inputSource: (none)");
     }
     lines.add("  checks: joystick");
   }
@@ -2806,7 +2817,6 @@ public final class BringupCore {
     }
     warningLastSec.put(key, now);
     BringupPrinter.enqueue(message);
-    System.out.println(message);
   }
 
   /**
@@ -2831,7 +2841,6 @@ public final class BringupCore {
     }
     warningLastSec.put(key, now);
     BringupPrinter.enqueue(message);
-    System.out.println(message);
   }
 
   /**

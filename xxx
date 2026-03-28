@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-03-28T19:05:24Z",
+  "devices": [],
+  "groups": [],
+  "selectedDevice": {
+    "device": "",
+    "enabled": false
+  }
+}

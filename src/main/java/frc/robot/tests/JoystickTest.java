@@ -22,7 +22,7 @@ public final class JoystickTest implements BringupTest {
     public boolean enabled = true;
     public java.util.List<BringupTestRegistry.MotorRef> motors;
     public double deadband = 0.12;
-    public String inputAxis = "primary"; // primary | secondary
+    public String inputSource;
   }
 
   private final Config config;
@@ -200,10 +200,10 @@ public final class JoystickTest implements BringupTest {
 
   /**
    * NAME
-   *   getInputAxis - Return configured input axis name.
+   *   getInputSource - Return configured input source.
    */
-  public String getInputAxis() {
-    return config.inputAxis != null ? config.inputAxis : "primary";
+  public String getInputSource() {
+    return config.inputSource;
   }
 
   private double applyDeadband(double value, double deadband) {
@@ -230,7 +230,9 @@ public final class JoystickTest implements BringupTest {
       entry.put("motorKeys", motorKeys);
     }
     entry.put("deadband", config.deadband);
-    entry.put("inputAxis", getInputAxis());
+    if (getInputSource() != null && !getInputSource().isBlank()) {
+      entry.put("inputSource", getInputSource());
+    }
     return entry;
   }
 

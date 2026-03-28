@@ -1,5 +1,6 @@
 package frc.robot.devices.rev;
 
+import frc.robot.BringupPrinter;
 import com.revrobotics.PersistMode;
 import com.revrobotics.ResetMode;
 import com.revrobotics.spark.SparkFlex;
@@ -254,7 +255,7 @@ public final class RevFlexVortexDevice implements DeviceUnit {
   }
 
   private void handleClosed(String action, IllegalStateException ex) {
-    System.out.println(
+    BringupPrinter.enqueue(
         "Warning: SparkFlex CAN " + canId + " closed during " + action + "; recreating.");
     if (device != null) {
       try {

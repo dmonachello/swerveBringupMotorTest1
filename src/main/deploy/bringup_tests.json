@@ -156,14 +156,14 @@
       },
       {
         "type": "joystick",
-        "name": "Joystick motor (primary axis)",
+        "name": "Joystick motor (controller0.leftY)",
         "enabled": false,
         "motorKeys": [
           "REV:NEO:25",
           "CTRE:FALCON:9"
         ],
         "deadband": 0.12,
-        "inputAxis": "primary"
+        "inputSource": "controller0.leftY"
       }
     ],
     "smoke": [
@@ -222,14 +222,13 @@
       },
       {
         "type": "joystick",
-        "name": "Joystick motor (primary axis)",
+        "name": "Joystick motor (controller0.leftY)",
         "enabled": true,
         "motorKeys": [
-          "REV:NEO:25",
           "REV:NEO:25"
         ],
         "deadband": 0.12,
-        "inputAxis": "primary"
+        "inputSource": "controller0.leftY"
       }
     ]
   }

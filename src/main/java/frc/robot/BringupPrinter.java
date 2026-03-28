@@ -43,10 +43,6 @@ public final class BringupPrinter {
     if (text == null || text.isEmpty()) {
       return;
     }
-    LineListener listener = LINE_LISTENER;
-    if (listener != null) {
-      listener.onLine(text);
-    }
     int bytes = text.length();
     long queued = QUEUED_BYTES.addAndGet(bytes);
     if (queued > MAX_QUEUE_BYTES) {
@@ -189,6 +185,10 @@ public final class BringupPrinter {
       if (!msg.endsWith("\n")) {
         System.out.println();
         windowBytes += 1;
+      }
+      LineListener listener = LINE_LISTENER;
+      if (listener != null) {
+        listener.onLine(msg);
       }
       // Small delay to keep console spam from starving other threads.
       sleepMs(100);

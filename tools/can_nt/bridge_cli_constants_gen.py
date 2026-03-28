@@ -20,6 +20,7 @@ class ParserSpec:
     idx_config: int
     idx_group: int
     idx_device: int
+    idx_test: int
     modes: tuple[str, ...]
     common: tuple[str, ...]
     show_flags: tuple[str, ...]
@@ -29,6 +30,8 @@ class ParserSpec:
     show_targets: tuple[str, ...]
     show_target_config: str
     show_target_runtime_state: str
+    show_target_tests: str
+    show_target_test: str
     bind_kinds: tuple[str, ...]
     cmd_connect: str
     cmd_disconnect: str
@@ -55,6 +58,16 @@ class ParserSpec:
     cmd_rename: str
     cmd_device: str
     cmd_set: str
+    cmd_write: str
+    cmd_tests: str
+    cmd_create: str
+    cmd_delete: str
+    cmd_type: str
+    cmd_input_source: str
+    cmd_deadband: str
+    cmd_duty: str
+    cmd_termination: str
+    cmd_limitswitch: str
     cmd_validate: str
     cmd_add: str
     cmd_member: str
@@ -111,6 +124,7 @@ class ParserSpec:
     msg_mode_name_config: str
     msg_mode_name_group: str
     msg_mode_name_device: str
+    msg_mode_name_test: str
     label_connect: str
     label_configure: str
     label_group: str
@@ -186,15 +200,18 @@ SPEC = ParserSpec(
     idx_config=1,
     idx_group=2,
     idx_device=3,
-    modes=('exec', 'config', 'group', 'device'),
+    idx_test=4,
+    modes=('exec', 'config', 'group', 'device', 'test'),
     common=('exit', 'end', 'help', 'ping', 'quit'),
     show_flags=('--json', 'robot', '--robot', 'local', '--local', 'both', '--both'),
     show_source_robot='robot',
     show_source_local='local',
     show_source_both='both',
-    show_targets=('status', 'groups', 'group', 'devices', 'device', 'bindings', 'selected-device', 'runtime-state', 'config'),
+    show_targets=('status', 'groups', 'group', 'devices', 'device', 'bindings', 'selected-device', 'runtime-state', 'tests', 'test', 'config'),
     show_target_config='config',
     show_target_runtime_state='runtime-state',
+    show_target_tests='tests',
+    show_target_test='test',
     bind_kinds=('analog', 'hold', 'toggle', 'jog-forward', 'jog-reverse'),
     cmd_connect='connect',
     cmd_disconnect='disconnect',
@@ -221,6 +238,16 @@ SPEC = ParserSpec(
     cmd_rename='rename',
     cmd_device='device',
     cmd_set='set',
+    cmd_write='write',
+    cmd_tests='tests',
+    cmd_create='create',
+    cmd_delete='delete',
+    cmd_type='type',
+    cmd_input_source='inputSource',
+    cmd_deadband='deadband',
+    cmd_duty='duty',
+    cmd_termination='termination',
+    cmd_limitswitch='limitswitch',
     cmd_validate='validate',
     cmd_add='add',
     cmd_member='member',
@@ -277,6 +304,7 @@ SPEC = ParserSpec(
     msg_mode_name_config='config',
     msg_mode_name_group='group',
     msg_mode_name_device='device',
+    msg_mode_name_test='test',
     label_connect='connect/disconnect',
     label_configure='configure terminal',
     label_group='group',
