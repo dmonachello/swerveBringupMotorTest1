@@ -256,10 +256,7 @@
         {
           "label": "SPARKMAX/NEO 25",
           "id": 25,
-          "motor": "REV NEO",
-          "tags": [
-            "motor"
-          ]
+          "motor": "REV NEO"
         }
       ],
       "neo550s": [
@@ -271,20 +268,21 @@
             "fwdDio": 0,
             "revDio": -1,
             "invert": true
-          },
-          "tags": [
-            "motor"
-          ]
+          }
         }
       ],
       "falcons": [
         {
           "label": "FALCON 9",
           "id": 9,
-          "motor": "CTRE Falcon 500",
-          "tags": [
-            "motor"
-          ]
+          "motor": "CTRE Falcon 500"
+        }
+      ],
+      "cancoders": [
+        {
+          "label": "cancoder 44",
+          "id": 44,
+          "terminator": false
         }
       ],
       "pdp": {
@@ -500,7 +498,11 @@
       "neos": [
         {
           "label": "Climb Motor",
-          "id": 60
+          "id": 60,
+          "motor": "NEO",
+          "tags": [
+            "motor"
+          ]
         },
         {
           "label": "Fuel Intake Motor",
@@ -512,38 +514,69 @@
         },
         {
           "label": "Pivot Intake Follower",
-          "id": 11
+          "id": 11,
+          "motor": "NEO",
+          "tags": [
+            "motor"
+          ]
         },
         {
           "label": "Feeder Motor",
-          "id": 28
+          "id": 28,
+          "motor": "NEO",
+          "tags": [
+            "motor"
+          ]
         },
         {
           "label": "angle motor front left",
-          "id": 4
+          "id": 4,
+          "motor": "NEO",
+          "tags": [
+            "sensor"
+          ]
         },
         {
           "label": "angle motor back right",
-          "id": 7
+          "id": 7,
+          "motor": "NEO",
+          "tags": [
+            "motor"
+          ]
         },
         {
           "label": "angle motor front right",
-          "id": 1
+          "id": 1,
+          "motor": "NEO",
+          "tags": [
+            "motor"
+          ]
         },
         {
           "label": "angle motor back left",
           "id": 10,
-          "terminator": false
+          "motor": "NEO",
+          "terminator": false,
+          "tags": [
+            "motor"
+          ]
         }
       ],
       "flexes": [
         {
           "label": "Flywheel Motor (Leader)",
-          "id": 27
+          "id": 27,
+          "motor": "Vortex",
+          "terminator": false
         },
         {
           "label": "Flywheel Motor (Follower)",
-          "id": 23
+          "id": 23,
+          "motor": "Vortex",
+          "terminator": false,
+          "tags": [
+            "motor"
+          ]
         }
       ],
       "krakens": [
@@ -568,19 +601,42 @@
       "cancoders": [
         {
           "label": "Encoder (CANCoder)",
-          "id": 6
+          "id": 6,
+          "motor": "motor",
+          "tags": [
+            "sensor"
+          ]
         },
         {
           "label": "Encoder (CANCoder) (id 9)",
-          "id": 9
+          "id": 9,
+          "motor": "motor",
+          "tags": [
+            "sensor"
+          ]
         },
         {
           "label": "Encoder (CANCoder) (id 3)",
-          "id": 3
+          "id": 3,
+          "motor": "motor",
+          "tags": [
+            "sensor"
+          ]
         },
         {
           "label": "Encoder (CANCoder) (id 12)",
-          "id": 12
+          "id": 12,
+          "motor": "motor",
+          "tags": [
+            "sensor"
+          ]
+        }
+      ],
+      "candles": [
+        {
+          "label": "CANDle",
+          "id": 62,
+          "terminator": false
         }
       ],
       "pdh": {
@@ -590,7 +646,11 @@
       },
       "pigeon": {
         "label": "IMU (Pigeon2)",
-        "id": 19
+        "id": 19,
+        "terminator": false,
+        "tags": [
+          "sensor"
+        ]
       },
       "roborio": {
         "label": "roborio",
@@ -1403,8 +1463,8 @@
           40.0
         ],
         "busRights": [
-          1072.9255533199193,
-          979.1561984519731,
+          1197.6458752515107,
+          1183.8309859154929,
           1059.5421810140124,
           1004.1725352112685,
           1148.822865118639,
@@ -1425,7 +1485,9 @@
             "freeY": null,
             "freeYRelative": false,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "motor"
+            ],
             "profileVisible": true
           },
           {
@@ -1470,7 +1532,9 @@
             "freeY": null,
             "freeYRelative": false,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "motor"
+            ],
             "profileVisible": true
           },
           {
@@ -1485,7 +1549,9 @@
             "freeY": -55.13078470824948,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "motor"
+            ],
             "profileVisible": true
           },
           {
@@ -1497,10 +1563,12 @@
             "bus": 3,
             "row": 1,
             "x": 280.0,
-            "freeY": 90.0,
+            "freeY": 570.0,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "sensor"
+            ],
             "profileVisible": true
           },
           {
@@ -1512,10 +1580,12 @@
             "bus": 4,
             "row": 1,
             "x": 280.0,
-            "freeY": 90.0,
+            "freeY": 730.0,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "motor"
+            ],
             "profileVisible": true
           },
           {
@@ -1526,11 +1596,13 @@
             "id": 1,
             "bus": 3,
             "row": 0,
-            "x": 271.6297786720322,
-            "freeY": -68.49094567404427,
+            "x": 420.2012072434608,
+            "freeY": 424.06438631790746,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "motor"
+            ],
             "profileVisible": true
           },
           {
@@ -1541,11 +1613,13 @@
             "id": 10,
             "bus": 5,
             "row": 1,
-            "x": 280.0,
-            "freeY": 90.0,
+            "x": 273.72233400402416,
+            "freeY": 917.9074446680081,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "motor"
+            ],
             "profileVisible": true
           },
           {
@@ -1575,7 +1649,9 @@
             "freeY": null,
             "freeYRelative": false,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "motor"
+            ],
             "profileVisible": true
           },
           {
@@ -1587,7 +1663,7 @@
             "bus": 3,
             "row": 1,
             "x": 455.0,
-            "freeY": 75.0,
+            "freeY": 555.0,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -1602,7 +1678,7 @@
             "bus": 4,
             "row": 1,
             "x": 455.0,
-            "freeY": 75.0,
+            "freeY": 715.0,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -1616,8 +1692,8 @@
             "id": 2,
             "bus": 3,
             "row": 0,
-            "x": 471.74044265593557,
-            "freeY": -60.120724346076486,
+            "x": 620.3118712273641,
+            "freeY": 432.43460764587525,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -1631,8 +1707,8 @@
             "id": 11,
             "bus": 5,
             "row": 1,
-            "x": 455.0,
-            "freeY": 75.0,
+            "x": 480.11066398390335,
+            "freeY": 907.4446680080483,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -1647,10 +1723,12 @@
             "bus": 3,
             "row": 1,
             "x": 630.0,
-            "freeY": null,
-            "freeYRelative": false,
+            "freeY": 540.0,
+            "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "sensor"
+            ],
             "profileVisible": true
           },
           {
@@ -1662,10 +1740,12 @@
             "bus": 4,
             "row": 1,
             "x": 630.0,
-            "freeY": null,
-            "freeYRelative": false,
+            "freeY": 700.0,
+            "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "sensor"
+            ],
             "profileVisible": true
           },
           {
@@ -1676,11 +1756,13 @@
             "id": 3,
             "bus": 2,
             "row": 1,
-            "x": 623.7223340040244,
-            "freeY": 54.40643863179076,
+            "x": 770.201207243461,
+            "freeY": 390.5835010060362,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "sensor"
+            ],
             "profileVisible": true
           },
           {
@@ -1691,9 +1773,26 @@
             "id": 12,
             "bus": 5,
             "row": 1,
-            "x": 630.0,
-            "freeY": null,
-            "freeYRelative": false,
+            "x": 686.4989939637824,
+            "freeY": 863.5010060362173,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "sensor"
+            ],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 28,
+            "category": "candles",
+            "label": "CANDle",
+            "id": 62,
+            "bus": 0,
+            "row": 1,
+            "x": 1077.6458752515107,
+            "freeY": 47.40442655935621,
+            "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
             "profileVisible": true
@@ -1725,7 +1824,9 @@
             "freeY": -65.59356136820924,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "sensor"
+            ],
             "profileVisible": true
           },
           {
@@ -1752,8 +1853,8 @@
             "bus": 4,
             "row": 1,
             "x": 120.0,
-            "freeY": null,
-            "freeYRelative": false,
+            "freeY": 700.0,
+            "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
             "profileVisible": false
@@ -1766,9 +1867,9 @@
             "id": -1,
             "bus": 2,
             "row": 1,
-            "x": 120.0,
-            "freeY": null,
-            "freeYRelative": false,
+            "x": 268.57142857142856,
+            "freeY": 392.55533199195173,
+            "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
             "profileVisible": false
@@ -1782,8 +1883,8 @@
             "bus": 3,
             "row": 1,
             "x": 120.0,
-            "freeY": null,
-            "freeYRelative": false,
+            "freeY": 540.0,
+            "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
             "profileVisible": false
@@ -1797,8 +1898,8 @@
             "bus": 5,
             "row": 1,
             "x": 120.0,
-            "freeY": null,
-            "freeYRelative": false,
+            "freeY": 860.0,
+            "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
             "profileVisible": false
@@ -2428,18 +2529,28 @@
       },
       "home_030226": {
         "busOffsets": [
-          0.0
+          0.0,
+          160.0,
+          646.9475009404603
         ],
-        "busCount": 1,
+        "busCount": 3,
         "busSpacing": 160.0,
         "busLefts": [
+          40.0,
+          40.0,
           40.0
         ],
         "busRights": [
-          1388.0
+          1388.0,
+          1388.0,
+          1574.736423172942
         ],
-        "panY": -1.0,
-        "zoom": 1.968299711815562,
+        "busConnectors": [
+          true,
+          false
+        ],
+        "panY": -140.50354209489092,
+        "zoom": 0.4343584043238207,
         "nodes": [
           {
             "nodeType": "device",
@@ -2447,15 +2558,13 @@
             "category": "neos",
             "label": "SPARKMAX/NEO 25",
             "id": 25,
-            "bus": 0,
-            "row": 0,
-            "x": 870.0,
-            "freeY": -62.5,
+            "bus": 2,
+            "row": 1,
+            "x": 954.7771964023121,
+            "freeY": 78.41890667213852,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "motor"
-            ],
+            "tags": [],
             "profileVisible": true
           },
           {
@@ -2464,15 +2573,13 @@
             "category": "neo550s",
             "label": "SPARKMAX/NEO550 7",
             "id": 7,
-            "bus": 0,
+            "bus": 2,
             "row": 0,
-            "x": 674.0,
-            "freeY": -64.5,
+            "x": 1163.5883092233514,
+            "freeY": 283.47375047023013,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "motor"
-            ],
+            "tags": [],
             "profileVisible": true
           },
           {
@@ -2481,15 +2588,13 @@
             "category": "falcons",
             "label": "FALCON 9",
             "id": 9,
-            "bus": 0,
+            "bus": 2,
             "row": 0,
-            "x": 482.0,
-            "freeY": -62.5,
+            "x": 1342.4885434834637,
+            "freeY": 304.6680495708081,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [
-              "motor"
-            ],
+            "tags": [],
             "profileVisible": true
           },
           {
@@ -2521,17 +2626,94 @@
             "scale": 1.0,
             "tags": [],
             "profileVisible": true
+          },
+          {
+            "nodeType": "diagram",
+            "key": 79,
+            "category": "cannect_inject",
+            "label": "CANnect Inject",
+            "id": -1,
+            "bus": 1,
+            "row": 1,
+            "x": 977.7878407031224,
+            "freeY": 298.2611401798844,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": false
+          },
+          {
+            "nodeType": "diagram",
+            "key": 80,
+            "category": "cannect_direct",
+            "label": "CANnect Direct",
+            "id": -1,
+            "bus": 2,
+            "row": 0,
+            "x": 1228.4957593789543,
+            "freeY": 440.5007780171677,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": false
+          },
+          {
+            "nodeType": "device",
+            "key": 82,
+            "category": "cancoders",
+            "label": "cancoder 44",
+            "id": 44,
+            "bus": 2,
+            "row": 0,
+            "x": 1042.2231489177107,
+            "freeY": 463.5118113384459,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
           }
         ],
-        "ethernetLinks": [],
-        "canLinks": [],
-        "deviceLinks": []
+        "ethernetLinks": [
+          {
+            "a": 79,
+            "b": 80
+          }
+        ],
+        "canLinks": [
+          {
+            "node": 80,
+            "bus": 2,
+            "port": 1
+          }
+        ],
+        "deviceLinks": [
+          {
+            "node": 80,
+            "device": 75,
+            "port": 1
+          },
+          {
+            "node": 80,
+            "device": 76,
+            "port": 2
+          },
+          {
+            "node": 80,
+            "device": 81,
+            "port": 3
+          },
+          {
+            "node": 80,
+            "device": 82,
+            "port": 1
+          }
+        ]
       }
     }
   },
   "schema_version": 3,
-  "data_version": "2026-03-25_152852",
-  "data_hash": "ac3d1282d39953c24ea5148965649f8020eaed966561fffba2cac7718b19bd94",
+  "data_version": "2026-03-27_204400",
+  "data_hash": "4b825308203a758398350cc5d64b925e7e1d30a4e39bcca4ac820aa0bf1e0430",
   "bridgeConfig": {
     "schemaVersion": 1,
     "generatedAt": null,

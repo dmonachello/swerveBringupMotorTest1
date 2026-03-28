@@ -135,6 +135,12 @@ Useful flags:
 - `--pcap <path>` to capture PCAPNG.
 - `--list-ports` to enumerate COM ports.
 
+Live Wireshark (Windows named pipe):
+```cmd
+wireshark -k -i \\.\pipe\FRC_CAN
+python tools\can_nt\can_nt_bridge.py --pcap-pipe FRC_CAN
+```
+
 ## Bringup Control UI
 Purpose: Fast command access and readable console output from the roboRIO.
 

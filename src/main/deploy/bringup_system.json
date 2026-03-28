@@ -500,7 +500,11 @@
       "neos": [
         {
           "label": "Climb Motor",
-          "id": 60
+          "id": 60,
+          "motor": "NEO",
+          "tags": [
+            "motor"
+          ]
         },
         {
           "label": "Fuel Intake Motor",
@@ -512,38 +516,69 @@
         },
         {
           "label": "Pivot Intake Follower",
-          "id": 11
+          "id": 11,
+          "motor": "NEO",
+          "tags": [
+            "motor"
+          ]
         },
         {
           "label": "Feeder Motor",
-          "id": 28
+          "id": 28,
+          "motor": "NEO",
+          "tags": [
+            "motor"
+          ]
         },
         {
           "label": "angle motor front left",
-          "id": 4
+          "id": 4,
+          "motor": "NEO",
+          "tags": [
+            "sensor"
+          ]
         },
         {
           "label": "angle motor back right",
-          "id": 7
+          "id": 7,
+          "motor": "NEO",
+          "tags": [
+            "motor"
+          ]
         },
         {
           "label": "angle motor front right",
-          "id": 1
+          "id": 1,
+          "motor": "NEO",
+          "tags": [
+            "motor"
+          ]
         },
         {
           "label": "angle motor back left",
           "id": 10,
-          "terminator": false
+          "motor": "NEO",
+          "terminator": false,
+          "tags": [
+            "motor"
+          ]
         }
       ],
       "flexes": [
         {
           "label": "Flywheel Motor (Leader)",
-          "id": 27
+          "id": 27,
+          "motor": "Vortex",
+          "terminator": false
         },
         {
           "label": "Flywheel Motor (Follower)",
-          "id": 23
+          "id": 23,
+          "motor": "Vortex",
+          "terminator": false,
+          "tags": [
+            "motor"
+          ]
         }
       ],
       "krakens": [
@@ -568,19 +603,42 @@
       "cancoders": [
         {
           "label": "Encoder (CANCoder)",
-          "id": 6
+          "id": 6,
+          "motor": "motor",
+          "tags": [
+            "sensor"
+          ]
         },
         {
           "label": "Encoder (CANCoder) (id 9)",
-          "id": 9
+          "id": 9,
+          "motor": "motor",
+          "tags": [
+            "sensor"
+          ]
         },
         {
           "label": "Encoder (CANCoder) (id 3)",
-          "id": 3
+          "id": 3,
+          "motor": "motor",
+          "tags": [
+            "sensor"
+          ]
         },
         {
           "label": "Encoder (CANCoder) (id 12)",
-          "id": 12
+          "id": 12,
+          "motor": "motor",
+          "tags": [
+            "sensor"
+          ]
+        }
+      ],
+      "candles": [
+        {
+          "label": "CANDle",
+          "id": 62,
+          "terminator": false
         }
       ],
       "pdh": {
@@ -590,7 +648,11 @@
       },
       "pigeon": {
         "label": "IMU (Pigeon2)",
-        "id": 19
+        "id": 19,
+        "terminator": false,
+        "tags": [
+          "sensor"
+        ]
       },
       "roborio": {
         "label": "roborio",
@@ -1403,8 +1465,8 @@
           40.0
         ],
         "busRights": [
-          1072.9255533199193,
-          979.1561984519731,
+          1197.6458752515107,
+          1183.8309859154929,
           1059.5421810140124,
           1004.1725352112685,
           1148.822865118639,
@@ -1425,7 +1487,9 @@
             "freeY": null,
             "freeYRelative": false,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "motor"
+            ],
             "profileVisible": true
           },
           {
@@ -1470,7 +1534,9 @@
             "freeY": null,
             "freeYRelative": false,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "motor"
+            ],
             "profileVisible": true
           },
           {
@@ -1485,7 +1551,9 @@
             "freeY": -55.13078470824948,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "motor"
+            ],
             "profileVisible": true
           },
           {
@@ -1497,10 +1565,12 @@
             "bus": 3,
             "row": 1,
             "x": 280.0,
-            "freeY": 90.0,
+            "freeY": 570.0,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "sensor"
+            ],
             "profileVisible": true
           },
           {
@@ -1512,10 +1582,12 @@
             "bus": 4,
             "row": 1,
             "x": 280.0,
-            "freeY": 90.0,
+            "freeY": 730.0,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "motor"
+            ],
             "profileVisible": true
           },
           {
@@ -1526,11 +1598,13 @@
             "id": 1,
             "bus": 3,
             "row": 0,
-            "x": 271.6297786720322,
-            "freeY": -68.49094567404427,
+            "x": 420.2012072434608,
+            "freeY": 424.06438631790746,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "motor"
+            ],
             "profileVisible": true
           },
           {
@@ -1541,11 +1615,13 @@
             "id": 10,
             "bus": 5,
             "row": 1,
-            "x": 280.0,
-            "freeY": 90.0,
+            "x": 273.72233400402416,
+            "freeY": 917.9074446680081,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "motor"
+            ],
             "profileVisible": true
           },
           {
@@ -1575,7 +1651,9 @@
             "freeY": null,
             "freeYRelative": false,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "motor"
+            ],
             "profileVisible": true
           },
           {
@@ -1587,7 +1665,7 @@
             "bus": 3,
             "row": 1,
             "x": 455.0,
-            "freeY": 75.0,
+            "freeY": 555.0,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -1602,7 +1680,7 @@
             "bus": 4,
             "row": 1,
             "x": 455.0,
-            "freeY": 75.0,
+            "freeY": 715.0,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -1616,8 +1694,8 @@
             "id": 2,
             "bus": 3,
             "row": 0,
-            "x": 471.74044265593557,
-            "freeY": -60.120724346076486,
+            "x": 620.3118712273641,
+            "freeY": 432.43460764587525,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -1631,8 +1709,8 @@
             "id": 11,
             "bus": 5,
             "row": 1,
-            "x": 455.0,
-            "freeY": 75.0,
+            "x": 480.11066398390335,
+            "freeY": 907.4446680080483,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -1647,10 +1725,12 @@
             "bus": 3,
             "row": 1,
             "x": 630.0,
-            "freeY": null,
-            "freeYRelative": false,
+            "freeY": 540.0,
+            "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "sensor"
+            ],
             "profileVisible": true
           },
           {
@@ -1662,10 +1742,12 @@
             "bus": 4,
             "row": 1,
             "x": 630.0,
-            "freeY": null,
-            "freeYRelative": false,
+            "freeY": 700.0,
+            "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "sensor"
+            ],
             "profileVisible": true
           },
           {
@@ -1676,11 +1758,13 @@
             "id": 3,
             "bus": 2,
             "row": 1,
-            "x": 623.7223340040244,
-            "freeY": 54.40643863179076,
+            "x": 770.201207243461,
+            "freeY": 390.5835010060362,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "sensor"
+            ],
             "profileVisible": true
           },
           {
@@ -1691,9 +1775,26 @@
             "id": 12,
             "bus": 5,
             "row": 1,
-            "x": 630.0,
-            "freeY": null,
-            "freeYRelative": false,
+            "x": 686.4989939637824,
+            "freeY": 863.5010060362173,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [
+              "sensor"
+            ],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 28,
+            "category": "candles",
+            "label": "CANDle",
+            "id": 62,
+            "bus": 0,
+            "row": 1,
+            "x": 1077.6458752515107,
+            "freeY": 47.40442655935621,
+            "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
             "profileVisible": true
@@ -1725,7 +1826,9 @@
             "freeY": -65.59356136820924,
             "freeYRelative": true,
             "scale": 1.0,
-            "tags": [],
+            "tags": [
+              "sensor"
+            ],
             "profileVisible": true
           },
           {
@@ -1752,8 +1855,8 @@
             "bus": 4,
             "row": 1,
             "x": 120.0,
-            "freeY": null,
-            "freeYRelative": false,
+            "freeY": 700.0,
+            "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
             "profileVisible": false
@@ -1766,9 +1869,9 @@
             "id": -1,
             "bus": 2,
             "row": 1,
-            "x": 120.0,
-            "freeY": null,
-            "freeYRelative": false,
+            "x": 268.57142857142856,
+            "freeY": 392.55533199195173,
+            "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
             "profileVisible": false
@@ -1782,8 +1885,8 @@
             "bus": 3,
             "row": 1,
             "x": 120.0,
-            "freeY": null,
-            "freeYRelative": false,
+            "freeY": 540.0,
+            "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
             "profileVisible": false
@@ -1797,8 +1900,8 @@
             "bus": 5,
             "row": 1,
             "x": 120.0,
-            "freeY": null,
-            "freeYRelative": false,
+            "freeY": 860.0,
+            "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
             "profileVisible": false
@@ -2438,7 +2541,7 @@
         "busRights": [
           1388.0
         ],
-        "panY": -4.0,
+        "panY": -1.0,
         "zoom": 1.968299711815562,
         "nodes": [
           {
@@ -2530,8 +2633,8 @@
     }
   },
   "schema_version": 3,
-  "data_version": "2026-03-25_152540",
-  "data_hash": "37cea8a7f55f2d75076f63f79110c75974a2f55559b144c13761b9ffc3e127ea",
+  "data_version": "2026-03-27_013039",
+  "data_hash": "2d3060e86af8bf808e214140039c6c928e5b272f911b4adfb7a7b940c819e1e4",
   "bridgeConfig": {
     "schemaVersion": 1,
     "generatedAt": null,

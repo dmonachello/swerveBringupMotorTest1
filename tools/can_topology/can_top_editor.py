@@ -31,9 +31,67 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox, simpledialog
 
-ENABLE_CANNECT_BUS_LINKS = False
+ENABLE_CANNECT_BUS_LINKS = True
 ENABLE_CANNECT_FREE_FLOAT = True
 ENABLE_CANNECT_CLUSTER_DRAG = True
+TEXT_EMPTY = ""
+NODE_TYPE_DEVICE = "device"
+NODE_TYPE_CALLOUT = "callout"
+MENU_LABEL_ADD_ANALYZER = "Add Analyzer"
+MENU_LABEL_SET_CANNECT_PORT = "Set CANnect Port..."
+ANALYZER_LABEL_PREFIX = "Analyzer"
+ANALYZER_DEFAULT_CAN_ID = -1
+ANALYZER_NODE_TYPE = "diagram"
+ANALYZER_TAGS = ["analyzer"]
+ANALYZER_LABEL_START = 1
+ANALYZER_LABEL_STEP = 1
+ANALYZER_ROW_MOD = 2
+ANALYZER_SCALE = 1.0
+LAYOUT_PAD_X = 200
+BUS_INDEX_FLOOR = 1
+CANNECT_PORT_MIN = 1
+CANNECT_PORT_STEP = 1
+CANNECT_PORT_ZERO = 0
+CANNECT_PORT_COUNT_DEFAULT = 0
+CAN_ID_DIAGRAM_DEFAULT = -1
+DIAGRAM_VENDOR_SWYFT = "SWYFT"
+DIAGRAM_VENDOR_ANALYZER = "ANALYZER"
+DIAGRAM_DEVICE_WIRING = "Wiring"
+DIAGRAM_DEVICE_ANALYZER = "Analyzer"
+TAG_SWYFT = "swyft"
+TAG_CANNECT = "cannect"
+TAG_INJECT = "inject"
+TAG_DIRECT = "direct"
+TAG_ANALYZER = "analyzer"
+MSG_CAN_BUS_LINK_TITLE = "Add CAN Bus Link"
+MSG_CAN_BUS_LINK_SELECT_NODE = "Select exactly one CANnect node."
+MSG_CAN_BUS_LINK_SELECT_BUS = "Select exactly one bus segment."
+MSG_CAN_BUS_LINK_NODE_INVALID = "Selected node is not a CANnect node."
+MSG_CAN_BUS_LINK_FULL = "{} already has {} CAN bus links."
+MSG_CAN_BUS_LINK_DUP = "A CAN bus link to this segment already exists."
+MSG_ADD_BUS_TITLE = "Add Bus"
+MSG_ADD_BUS_PROMPT = "Click on the canvas where you want the new bus."
+MSG_ADD_BUS_CONN_DUP = "A CAN bus link to this segment already exists."
+MSG_ADD_BUS_CONN_INVALID = "Selected node is not a CANnect Direct node."
+MSG_ADD_BUS_CONN_FULL = "{} already has {} CAN bus links."
+MSG_SET_PORT_TITLE = "Set CANnect Port"
+MSG_SET_PORT_SELECT = "Select one device linked to a CANnect node."
+MSG_SET_PORT_NO_LINK = "Selected device is not linked to a CANnect node."
+MSG_SET_PORT_INVALID = "Invalid port number."
+MSG_SET_PORT_BUSY = "Port {} is already used by another device."
+PROMPT_PORT = "Port (1-{}):"
+BUS_CONNECT_DEFAULT = True
+BUS_CONNECT_DISABLED = False
+PROMPT_BUS_INDEX = "Bus index (0-{}):"
+PROMPT_BUS_TITLE = "Select Bus Segment"
+PROMPT_CANNECT_TITLE = "Select CANnect Node"
+PROMPT_CANNECT_LABEL = "CANnect label:\n{}"
+ERR_CANNECT_NOT_FOUND = "CANnect label not found."
+ERR_CANNECT_NONE = "No CANnect nodes exist in this diagram."
+MSG_FIX_CANNECT_TITLE = "Fix CANnect Conflicts"
+MSG_FIX_CANNECT_NONE = "No Ethernet-linked CANnect Inject nodes found."
+MSG_FIX_CANNECT_REMOVED = "Removed {} CAN trunk link(s) from Ethernet-linked CANnect Inject nodes."
+MSG_FIX_CANNECT_NO_REMOVE = "No CAN trunk links needed removal."
 
 try:
     from tools.common.json_io import read_json
@@ -94,6 +152,10 @@ except ImportError:
 try:
     from .can_top_models import (
         BUCKET_CATEGORIES,
+        DIAGRAM_CATEGORIES,
+        DIAGRAM_CATEGORY_ANALYZER,
+        DIAGRAM_CATEGORY_CANNECT_DIRECT,
+        DIAGRAM_CATEGORY_CANNECT_INJECT,
         GENERIC_CATEGORY,
         SINGLETON_CATEGORIES,
         SUPPORTED_DEVICE_TYPES,
@@ -126,6 +188,10 @@ except ImportError:  # Allow running as a script from this folder.
     sys.path.append(str(_Path(__file__).resolve().parents[1]))
     from can_topology.can_top_models import (  # type: ignore
         BUCKET_CATEGORIES,
+        DIAGRAM_CATEGORIES,
+        DIAGRAM_CATEGORY_ANALYZER,
+        DIAGRAM_CATEGORY_CANNECT_DIRECT,
+        DIAGRAM_CATEGORY_CANNECT_INJECT,
         GENERIC_CATEGORY,
         SINGLETON_CATEGORIES,
         SUPPORTED_DEVICE_TYPES,
@@ -206,6 +272,10 @@ class TopologyEditor(tk.Tk):
         self._bus_rights: List[float] = []
         self._bus_spacing = 160.0
         self._add_bus_mode = False
+        self._pending_bus_after: Optional[int] = None
+        self._pending_cannect_direct: Optional[int] = None
+        self._pending_bus_island: bool = False
+        self._bus_connectors: List[bool] = []
         self._bus_drag: Optional[Tuple[int, float, float]] = None
         self._bus_resize: Optional[Tuple[int, str, float, float, float]] = None
         self._undo_stack: List[Dict[str, object]] = []
@@ -435,10 +505,13 @@ class TopologyEditor(tk.Tk):
         edit_menu.add_separator()
         edit_menu.add_command(label="Add CANnect Inject", command=self._add_cannect_inject)
         edit_menu.add_command(label="Add CANnect Direct", command=self._add_cannect_direct)
+        edit_menu.add_command(label=MENU_LABEL_ADD_ANALYZER, command=self._add_analyzer_node)
+        edit_menu.add_command(label="Add Bus Segment", command=self._on_add_bus)
         edit_menu.add_command(label="Add Ethernet Link", command=self._add_ethernet_link)
         edit_menu.add_command(label="Remove Ethernet Link", command=self._remove_ethernet_link)
         edit_menu.add_separator()
         edit_menu.add_command(label="Link Device to CANnect", command=self._link_selected_devices_to_cannect)
+        edit_menu.add_command(label=MENU_LABEL_SET_CANNECT_PORT, command=self._set_cannect_port)
         edit_menu.add_command(
             label="Fix CANnect Conflicts", command=lambda: self._fix_cannect_conflicts(notify=True)
         )
@@ -918,6 +991,7 @@ class TopologyEditor(tk.Tk):
         self._bus_offsets = [0.0]
         self._bus_lefts = []
         self._bus_rights = []
+        self._bus_connectors = []
         self._last_base_y = None
         self._details_layout_shift = False
         self._dirty = False
@@ -2017,11 +2091,13 @@ class TopologyEditor(tk.Tk):
         """
         devices = [n for n in self._nodes if n.node_type != "callout"]
         bus_count = max((n.bus_index for n in devices), default=0) + 1
+        self._ensure_bus_connectors(max(1, bus_count))
         snapshot = {
             "busCount": max(1, bus_count),
             "busSpacing": float(self._bus_spacing),
             "panY": 0.0,
             "zoom": 1.0,
+            "busConnectors": list(self._bus_connectors),
             "nodes": [
                 {
                     "nodeType": n.node_type,
@@ -2183,6 +2259,7 @@ class TopologyEditor(tk.Tk):
             "busSpacing": self._bus_spacing,
             "busLefts": list(self._bus_lefts),
             "busRights": list(self._bus_rights),
+            "busConnectors": list(self._bus_connectors),
             "panY": self._pan_y,
             "zoom": self._zoom,
             "nodes": nodes,
@@ -2213,6 +2290,12 @@ class TopologyEditor(tk.Tk):
             self._bus_lefts = [float(x) for x in bus_lefts if isinstance(x, (int, float))]
         if isinstance(bus_rights, list):
             self._bus_rights = [float(x) for x in bus_rights if isinstance(x, (int, float))]
+        bus_connectors = diagram.get("busConnectors")
+        if isinstance(bus_connectors, list):
+            self._bus_connectors = [bool(x) for x in bus_connectors]
+        else:
+            self._bus_connectors = []
+        self._ensure_bus_connectors(len(self._bus_offsets))
         pan_y = diagram.get("panY")
         if isinstance(pan_y, (int, float)):
             self._pan_y = float(pan_y)
@@ -2617,21 +2700,30 @@ class TopologyEditor(tk.Tk):
                 if not replace:
                     return
                 self._nodes = [n for n in self._nodes if n.category != category]
+        is_diagram_category = category in DIAGRAM_CATEGORIES
+        vendor_default, device_type_default, tag_defaults = (TEXT_EMPTY, TEXT_EMPTY, [])
+        if is_diagram_category:
+            vendor_default, device_type_default, tag_defaults = self._diagram_defaults(category)
+        tags = self._normalize_tags(data.get("tags", []))
+        if is_diagram_category:
+            tags = self._normalize_tags(tags + tag_defaults)
         node = Node(
             key=self._next_key,
             category=category,
             label=str(data["label"]),
-            can_id=int(data["can_id"]),
-            vendor=str(data.get("vendor", "")),
-            device_type=str(data.get("device_type", "")),
-            motor=str(data.get("motor", "")),
-            limits=data.get("limits") if isinstance(data.get("limits"), dict) else None,
-            terminator=bool(data.get("terminator")) if data.get("terminator") is not None else None,
+            can_id=CAN_ID_DIAGRAM_DEFAULT if is_diagram_category else int(data["can_id"]),
+            node_type=ANALYZER_NODE_TYPE if is_diagram_category else NODE_TYPE_DEVICE,
+            vendor=str(data.get("vendor", TEXT_EMPTY)) if not is_diagram_category else vendor_default,
+            device_type=str(data.get("device_type", TEXT_EMPTY)) if not is_diagram_category else device_type_default,
+            motor=str(data.get("motor", TEXT_EMPTY)) if not is_diagram_category else TEXT_EMPTY,
+            limits=data.get("limits") if (not is_diagram_category and isinstance(data.get("limits"), dict)) else None,
+            terminator=bool(data.get("terminator")) if (not is_diagram_category and data.get("terminator") is not None) else None,
             x=self._next_x_position(),
             row=len(self._nodes) % 2,
             bus_index=len(self._nodes) % max(len(self._bus_offsets), 1),
             scale=1.0,
-            tags=self._normalize_tags(data.get("tags", [])),
+            tags=tags,
+            profile_visible=False if is_diagram_category else True,
         )
         self._next_key += 1
         self._nodes.append(node)
@@ -2684,6 +2776,97 @@ class TopologyEditor(tk.Tk):
         self._refresh_list()
         self._redraw_canvas()
         self._select_node(node.key)
+
+    def _add_analyzer_node(self) -> None:
+        """
+        NAME
+            _add_analyzer_node - Add a diagram-only CAN analyzer node.
+        """
+        self._push_undo()
+        node = Node(
+            key=self._next_key,
+            category=DIAGRAM_CATEGORY_ANALYZER,
+            label=self._next_analyzer_label(),
+            can_id=ANALYZER_DEFAULT_CAN_ID,
+            node_type=ANALYZER_NODE_TYPE,
+            x=self._next_x_position(),
+            row=len(self._nodes) % ANALYZER_ROW_MOD,
+            bus_index=len(self._nodes) % max(len(self._bus_offsets), BUS_INDEX_FLOOR),
+            scale=ANALYZER_SCALE,
+            tags=self._normalize_tags(ANALYZER_TAGS),
+            profile_visible=False,
+        )
+        self._next_key += 1
+        self._nodes.append(node)
+        self._layout_width = max(self._layout_width, node.x + LAYOUT_PAD_X)
+        self._refresh_list()
+        self._redraw_canvas()
+        self._select_node(node.key)
+
+    def _next_analyzer_label(self) -> str:
+        """
+        NAME
+            _next_analyzer_label - Build a unique analyzer label.
+        """
+        existing = {
+            (n.label or "").strip()
+            for n in self._nodes
+            if (n.category or "").lower() == DIAGRAM_CATEGORY_ANALYZER
+        }
+        index = ANALYZER_LABEL_START
+        while True:
+            label = f"{ANALYZER_LABEL_PREFIX} {index}"
+            if label not in existing:
+                return label
+            index += ANALYZER_LABEL_STEP
+
+    def _diagram_defaults(self, category: str) -> Tuple[str, str, List[str]]:
+        """
+        NAME
+            _diagram_defaults - Resolve vendor/type/tags for diagram categories.
+        """
+        cat = (category or "").lower()
+        if cat == DIAGRAM_CATEGORY_CANNECT_INJECT:
+            return (DIAGRAM_VENDOR_SWYFT, DIAGRAM_DEVICE_WIRING, [TAG_SWYFT, TAG_CANNECT, TAG_INJECT])
+        if cat == DIAGRAM_CATEGORY_CANNECT_DIRECT:
+            return (DIAGRAM_VENDOR_SWYFT, DIAGRAM_DEVICE_WIRING, [TAG_SWYFT, TAG_CANNECT, TAG_DIRECT])
+        if cat == DIAGRAM_CATEGORY_ANALYZER:
+            return (DIAGRAM_VENDOR_ANALYZER, DIAGRAM_DEVICE_ANALYZER, [TAG_ANALYZER])
+        return (TEXT_EMPTY, TEXT_EMPTY, [])
+    def _allow_multi_port_links(self, node: Node) -> bool:
+        """
+        NAME
+            _allow_multi_port_links - Allow multiple links per CANnect port.
+        """
+        category = (node.category or "").lower()
+        return category == DIAGRAM_CATEGORY_CANNECT_DIRECT
+
+    def _cannect_port_counts(
+        self,
+        cannect: Node,
+        links: List[Dict[str, int]],
+        max_ports: int,
+    ) -> Dict[int, int]:
+        """
+        NAME
+            _cannect_port_counts - Count links per CANnect port.
+        """
+        counts = {port: CANNECT_PORT_COUNT_DEFAULT for port in range(CANNECT_PORT_MIN, max_ports + 1)}
+        for link in links:
+            if link.get("node") != cannect.key:
+                continue
+            port = int(link.get("port", CANNECT_PORT_ZERO))
+            if port in counts:
+                counts[port] += 1
+        return counts
+
+    @staticmethod
+    def _select_least_loaded_port(counts: Dict[int, int]) -> int:
+        """
+        NAME
+            _select_least_loaded_port - Pick the lowest-load CANnect port.
+        """
+        return min(counts.items(), key=lambda item: (item[1], item[0]))[0]
 
     @staticmethod
     def _max_cannect_ports(node: Node) -> int:
@@ -2821,43 +3004,79 @@ class TopologyEditor(tk.Tk):
             return
         selected_nodes = [n for n in self._device_nodes() if n.key in self._selected_nodes]
         swyft = [n for n in selected_nodes if self._is_swyft_node(n)]
-        if len(swyft) != 1:
-            messagebox.showinfo(
-                "Add CAN Bus Link",
-                "Select exactly one CANnect node.",
-            )
+        cannect_nodes = [n for n in self._device_nodes() if self._is_swyft_node(n)]
+        if not cannect_nodes:
+            messagebox.showinfo(MSG_CAN_BUS_LINK_TITLE, ERR_CANNECT_NONE)
             return
-        if len(self._selected_buses) != 1:
-            messagebox.showinfo(
-                "Add CAN Bus Link",
-                "Select exactly one bus segment.",
-            )
-            return
-        node = swyft[0]
-        bus_index = list(self._selected_buses)[0]
+        if len(swyft) == 1:
+            node = swyft[0]
+        elif len(cannect_nodes) == 1:
+            node = cannect_nodes[0]
+        else:
+            labels = [n.label for n in cannect_nodes if n.label]
+            if not labels:
+                messagebox.showinfo(MSG_CAN_BUS_LINK_TITLE, MSG_CAN_BUS_LINK_SELECT_NODE)
+                return
+            prompt = PROMPT_CANNECT_LABEL.format("\n".join(labels))
+            selection = simpledialog.askstring(PROMPT_CANNECT_TITLE, prompt)
+            if selection is None:
+                return
+            selection = selection.strip()
+            node = next((n for n in cannect_nodes if n.label == selection), None)
+            if node is None:
+                messagebox.showinfo(MSG_CAN_BUS_LINK_TITLE, ERR_CANNECT_NOT_FOUND)
+                return
+        if len(self._selected_buses) == 1:
+            bus_index = list(self._selected_buses)[0]
+        else:
+            max_bus = max(len(self._bus_offsets) - 1, 0)
+            if max_bus <= 0:
+                bus_index = 0
+            else:
+                bus_index = simpledialog.askinteger(
+                    PROMPT_BUS_TITLE,
+                    PROMPT_BUS_INDEX.format(max_bus),
+                    minvalue=0,
+                    maxvalue=max_bus,
+                )
+                if bus_index is None:
+                    return
         max_ports = self._max_cannect_ports(node)
         if max_ports <= 0:
-            messagebox.showinfo("Add CAN Bus Link", "Selected node is not a CANnect node.")
+            messagebox.showinfo(MSG_CAN_BUS_LINK_TITLE, MSG_CAN_BUS_LINK_NODE_INVALID)
             return
+        allow_multi = self._allow_multi_port_links(node)
         existing_ports = [
-            link["port"]
+            int(link["port"])
             for link in self._can_bus_links
             if link.get("node") == node.key
         ]
-        if len(existing_ports) >= max_ports:
+        if not allow_multi and len(existing_ports) >= max_ports:
             messagebox.showinfo(
-                "Add CAN Bus Link",
-                f"{node.label} already has {max_ports} CAN bus links.",
+                MSG_CAN_BUS_LINK_TITLE,
+                MSG_CAN_BUS_LINK_FULL.format(node.label, max_ports),
             )
             return
         for link in self._can_bus_links:
             if link.get("node") == node.key and link.get("bus") == bus_index:
-                messagebox.showinfo(
-                    "Add CAN Bus Link",
-                    "A CAN bus link to this segment already exists.",
-                )
+                messagebox.showinfo(MSG_CAN_BUS_LINK_TITLE, MSG_CAN_BUS_LINK_DUP)
                 return
-        port = next((p for p in range(1, max_ports + 1) if p not in existing_ports), 1)
+        if allow_multi:
+            counts = self._cannect_port_counts(node, self._can_bus_links, max_ports)
+            port = self._select_least_loaded_port(counts)
+        else:
+            port = next(
+                (
+                    p
+                    for p in range(
+                        CANNECT_PORT_MIN,
+                        max_ports + BUS_INDEX_FLOOR,
+                        CANNECT_PORT_STEP,
+                    )
+                    if p not in existing_ports
+                ),
+                CANNECT_PORT_MIN,
+            )
         self._push_undo()
         self._can_bus_links.append({"node": node.key, "bus": bus_index, "port": port})
         self._redraw_canvas()
@@ -2897,13 +3116,18 @@ class TopologyEditor(tk.Tk):
                 "Selected node is not a CANnect node.",
             )
             return
+        allow_multi = self._allow_multi_port_links(cannect)
         used_ports = {
-            int(link.get("port", 0))
+            int(link.get("port", CANNECT_PORT_ZERO))
             for link in self._cannect_device_links
             if link.get("node") == cannect.key
         }
-        available_ports = [p for p in range(1, max_ports + 1) if p not in used_ports]
-        if not available_ports:
+        available_ports = [
+            p
+            for p in range(CANNECT_PORT_MIN, max_ports + 1, CANNECT_PORT_STEP)
+            if p not in used_ports
+        ]
+        if not available_ports and not allow_multi:
             messagebox.showinfo(
                 "Link Device to CANnect",
                 f"{cannect.label} has no free device ports.",
@@ -2911,23 +3135,31 @@ class TopologyEditor(tk.Tk):
             return
         self._push_undo()
         device_keys = {n.key for n in devices}
-        self._cannect_device_links = [
+        remaining_links = [
             link
             for link in self._cannect_device_links
             if link.get("device") not in device_keys
         ]
+        self._cannect_device_links = remaining_links
         linked = 0
+        port_counts = {}
+        if allow_multi:
+            port_counts = self._cannect_port_counts(cannect, remaining_links, max_ports)
         for device in devices:
-            if not available_ports:
-                break
-            port = available_ports.pop(0)
+            if allow_multi:
+                port = self._select_least_loaded_port(port_counts)
+                port_counts[port] = port_counts.get(port, CANNECT_PORT_COUNT_DEFAULT) + 1
+            else:
+                if not available_ports:
+                    break
+                port = available_ports.pop(0)
             self._cannect_device_links.append(
                 {"node": cannect.key, "device": device.key, "port": port}
             )
             linked += 1
         self._dirty = True
         self._redraw_canvas()
-        if linked < len(devices):
+        if not allow_multi and linked < len(devices):
             messagebox.showinfo(
                 "Link Device to CANnect",
                 f"Linked {linked} of {len(devices)} devices. {cannect.label} has only {max_ports} ports.",
@@ -3000,6 +3232,59 @@ class TopologyEditor(tk.Tk):
             )
         self._redraw_canvas()
 
+    def _set_cannect_port(self) -> None:
+        """
+        NAME
+            _set_cannect_port - Reassign a device to a different CANnect port.
+        """
+        selected_nodes = [n for n in self._device_nodes() if n.key in self._selected_nodes]
+        device_nodes = [n for n in selected_nodes if not self._is_swyft_node(n)]
+        if len(device_nodes) != BUS_INDEX_FLOOR:
+            messagebox.showinfo(MSG_SET_PORT_TITLE, MSG_SET_PORT_SELECT)
+            return
+        device = device_nodes[0]
+        link = next(
+            (l for l in self._cannect_device_links if l.get("device") == device.key),
+            None,
+        )
+        if link is None:
+            messagebox.showinfo(MSG_SET_PORT_TITLE, MSG_SET_PORT_NO_LINK)
+            return
+        cannect_key = link.get("node")
+        cannect = next((n for n in self._device_nodes() if n.key == cannect_key), None)
+        if cannect is None:
+            messagebox.showinfo(MSG_SET_PORT_TITLE, MSG_SET_PORT_NO_LINK)
+            return
+        max_ports = self._max_cannect_ports(cannect)
+        if max_ports <= CANNECT_PORT_ZERO:
+            messagebox.showinfo(MSG_SET_PORT_TITLE, MSG_SET_PORT_INVALID)
+            return
+        port = simpledialog.askinteger(
+            MSG_SET_PORT_TITLE,
+            PROMPT_PORT.format(max_ports),
+            minvalue=CANNECT_PORT_MIN,
+            maxvalue=max_ports,
+        )
+        if port is None:
+            return
+        if not isinstance(port, int):
+            messagebox.showinfo(MSG_SET_PORT_TITLE, MSG_SET_PORT_INVALID)
+            return
+        used_ports = {
+            int(l.get("port", CANNECT_PORT_ZERO))
+            for l in self._cannect_device_links
+            if l.get("node") == cannect.key and l.get("device") != device.key
+        }
+        if port in used_ports and not self._allow_multi_port_links(cannect):
+            messagebox.showinfo(MSG_SET_PORT_TITLE, MSG_SET_PORT_BUSY.format(port))
+            return
+        self._push_undo()
+        link["port"] = int(port)
+        self._sync_cannect_bus_index(cannect)
+        self._ensure_cannect_free_float(cannect)
+        self._ensure_cannect_free_float(device)
+        self._redraw_canvas()
+
     def _fix_cannect_conflicts(self, notify: bool = False) -> bool:
         """
         NAME
@@ -3017,14 +3302,20 @@ class TopologyEditor(tk.Tk):
             ethernet_nodes.add(b)
         if not ethernet_nodes:
             if notify:
-                messagebox.showinfo(
-                    "Fix CANnect Conflicts",
-                    "No Ethernet-linked CANnect nodes found.",
-                )
+                messagebox.showinfo(MSG_FIX_CANNECT_TITLE, MSG_FIX_CANNECT_NONE)
+            return False
+        inject_nodes = {
+            n.key
+            for n in self._device_nodes()
+            if n.key in ethernet_nodes and n.category == DIAGRAM_CATEGORY_CANNECT_INJECT
+        }
+        if not inject_nodes:
+            if notify:
+                messagebox.showinfo(MSG_FIX_CANNECT_TITLE, MSG_FIX_CANNECT_NONE)
             return False
         before = len(self._can_bus_links)
         self._can_bus_links = [
-            link for link in self._can_bus_links if link.get("node") not in ethernet_nodes
+            link for link in self._can_bus_links if link.get("node") not in inject_nodes
         ]
         removed = before - len(self._can_bus_links)
         if removed > 0:
@@ -3033,14 +3324,11 @@ class TopologyEditor(tk.Tk):
         if notify:
             if removed > 0:
                 messagebox.showinfo(
-                    "Fix CANnect Conflicts",
-                    f"Removed {removed} CAN trunk link(s) from Ethernet-linked CANnect nodes.",
+                    MSG_FIX_CANNECT_TITLE,
+                    MSG_FIX_CANNECT_REMOVED.format(removed),
                 )
             else:
-                messagebox.showinfo(
-                    "Fix CANnect Conflicts",
-                    "No CAN trunk links needed removal.",
-                )
+                messagebox.showinfo(MSG_FIX_CANNECT_TITLE, MSG_FIX_CANNECT_NO_REMOVE)
         return removed > 0
 
     def _maybe_link_dragged_device_to_cannect(self, dragged_key: int) -> None:
@@ -3090,14 +3378,22 @@ class TopologyEditor(tk.Tk):
             for link in self._cannect_device_links
         ):
             return
+        allow_multi = self._allow_multi_port_links(cannect)
         used_ports = [
-            link.get("port")
+            int(link.get("port", CANNECT_PORT_ZERO))
             for link in self._cannect_device_links
             if link.get("node") == cannect.key
         ]
-        if len(used_ports) >= max_ports:
+        if len(used_ports) >= max_ports and not allow_multi:
             return
-        port = next((p for p in range(1, max_ports + 1) if p not in used_ports), 1)
+        if allow_multi:
+            counts = self._cannect_port_counts(cannect, self._cannect_device_links, max_ports)
+            port = self._select_least_loaded_port(counts)
+        else:
+            port = next(
+                (p for p in range(CANNECT_PORT_MIN, max_ports + 1, CANNECT_PORT_STEP) if p not in used_ports),
+                CANNECT_PORT_MIN,
+            )
         self._push_undo()
         self._cannect_device_links = [
             link for link in self._cannect_device_links if link.get("device") != device.key
@@ -3105,6 +3401,7 @@ class TopologyEditor(tk.Tk):
         self._cannect_device_links.append(
             {"node": cannect.key, "device": device.key, "port": port}
         )
+        self._sync_cannect_bus_index(cannect)
         self._ensure_cannect_free_float(cannect)
         self._ensure_cannect_free_float(device)
         self._redraw_canvas()
@@ -3126,19 +3423,28 @@ class TopologyEditor(tk.Tk):
             return
         if bus_index < 0 or bus_index >= len(self._bus_offsets):
             return
+        allow_multi = self._allow_multi_port_links(cannect)
         existing_ports = [
-            link["port"]
+            int(link.get("port", CANNECT_PORT_ZERO))
             for link in self._can_bus_links
             if link.get("node") == cannect.key
         ]
-        if len(existing_ports) >= max_ports:
+        if len(existing_ports) >= max_ports and not allow_multi:
             return
         for link in self._can_bus_links:
             if link.get("node") == cannect.key and link.get("bus") == bus_index:
                 return
-        port = next((p for p in range(1, max_ports + 1) if p not in existing_ports), 1)
+        if allow_multi:
+            counts = self._cannect_port_counts(cannect, self._can_bus_links, max_ports)
+            port = self._select_least_loaded_port(counts)
+        else:
+            port = next(
+                (p for p in range(CANNECT_PORT_MIN, max_ports + 1, CANNECT_PORT_STEP) if p not in existing_ports),
+                CANNECT_PORT_MIN,
+            )
         self._push_undo()
         self._can_bus_links.append({"node": cannect.key, "bus": bus_index, "port": port})
+        self._sync_cannect_bus_index(cannect)
         self._redraw_canvas()
     def _on_edit(self) -> None:
         """
@@ -3338,6 +3644,17 @@ class TopologyEditor(tk.Tk):
                 del self._bus_lefts[idx]
             if idx < len(self._bus_rights):
                 del self._bus_rights[idx]
+        if self._bus_connectors:
+            surviving = [i for i in range(len(self._bus_offsets) + len(indices)) if i not in indices]
+            index_map = {old: new for new, old in enumerate(surviving)}
+            new_connectors: List[bool] = []
+            for old_idx in range(len(self._bus_connectors)):
+                a = old_idx
+                b = old_idx + BUS_INDEX_FLOOR
+                if a in index_map and b in index_map and index_map[b] == index_map[a] + BUS_INDEX_FLOOR:
+                    new_connectors.append(self._bus_connectors[old_idx])
+            self._bus_connectors = new_connectors
+        self._ensure_bus_connectors(len(self._bus_offsets))
         def _shift_index(old: int) -> int:
             return old - sum(1 for removed in indices if removed < old)
         for node in device_nodes:
@@ -3354,6 +3671,81 @@ class TopologyEditor(tk.Tk):
                 callout.callout_target_bus = _shift_index(callout.callout_target_bus)
         self._clear_selection()
         return True
+
+    def _selected_cannect_direct_key(self) -> Optional[int]:
+        """
+        NAME
+            _selected_cannect_direct_key - Return selected CANnect Direct key if singular.
+        """
+        selected_nodes = [n for n in self._device_nodes() if n.key in self._selected_nodes]
+        direct_nodes = [
+            n for n in selected_nodes if n.category == DIAGRAM_CATEGORY_CANNECT_DIRECT
+        ]
+        if len(direct_nodes) == BUS_INDEX_FLOOR:
+            return direct_nodes[0].key
+        return None
+
+    def _maybe_link_new_bus_to_cannect_direct(self, node_key: int, bus_index: int) -> None:
+        """
+        NAME
+            _maybe_link_new_bus_to_cannect_direct - Link new bus to selected CANnect Direct.
+        """
+        node = next((n for n in self._device_nodes() if n.key == node_key), None)
+        if node is None or node.category != DIAGRAM_CATEGORY_CANNECT_DIRECT:
+            messagebox.showinfo(MSG_CAN_BUS_LINK_TITLE, MSG_ADD_BUS_CONN_INVALID)
+            return
+        max_ports = self._max_cannect_ports(node)
+        if max_ports <= CANNECT_PORT_ZERO:
+            messagebox.showinfo(MSG_CAN_BUS_LINK_TITLE, MSG_CAN_BUS_LINK_NODE_INVALID)
+            return
+        for link in self._can_bus_links:
+            if link.get("node") == node.key and link.get("bus") == bus_index:
+                messagebox.showinfo(MSG_CAN_BUS_LINK_TITLE, MSG_ADD_BUS_CONN_DUP)
+                return
+        allow_multi = self._allow_multi_port_links(node)
+        existing_ports = [
+            int(link["port"])
+            for link in self._can_bus_links
+            if link.get("node") == node.key
+        ]
+        if not allow_multi and len(existing_ports) >= max_ports:
+            messagebox.showinfo(
+                MSG_CAN_BUS_LINK_TITLE,
+                MSG_ADD_BUS_CONN_FULL.format(node.label, max_ports),
+            )
+            return
+        if allow_multi:
+            counts = self._cannect_port_counts(node, self._can_bus_links, max_ports)
+            port = self._select_least_loaded_port(counts)
+        else:
+            port = next(
+                (p for p in range(CANNECT_PORT_MIN, max_ports + 1, CANNECT_PORT_STEP) if p not in existing_ports),
+                CANNECT_PORT_MIN,
+            )
+        self._can_bus_links.append({"node": node.key, "bus": bus_index, "port": port})
+        self._sync_cannect_bus_index(node)
+
+    def _sync_cannect_bus_index(self, cannect: Node) -> None:
+        """
+        NAME
+            _sync_cannect_bus_index - Anchor CANnect bus index to its trunk link.
+        """
+        if not self._is_swyft_node(cannect):
+            return
+        port_map: Dict[int, int] = {}
+        for link in self._can_bus_links:
+            if link.get("node") != cannect.key:
+                continue
+            bus_index = link.get("bus")
+            port = link.get("port", CANNECT_PORT_MIN)
+            if isinstance(bus_index, int) and isinstance(port, int):
+                port_map[int(port)] = int(bus_index)
+        if not port_map:
+            return
+        if CANNECT_PORT_MIN in port_map:
+            cannect.bus_index = port_map[CANNECT_PORT_MIN]
+        elif len(port_map) == BUS_INDEX_FLOOR:
+            cannect.bus_index = next(iter(port_map.values()))
 
     def _refresh_list(self) -> None:
         """
@@ -3421,7 +3813,8 @@ class TopologyEditor(tk.Tk):
             categories = (
                 BUCKET_CATEGORIES
                 + SINGLETON_CATEGORIES
-                + [GENERIC_CATEGORY, "cannect_inject", "cannect_direct"]
+                + [GENERIC_CATEGORY]
+                + list(DIAGRAM_CATEGORIES)
             )
             categories = list(dict.fromkeys(categories))
             editor: tk.Widget = ttk.Combobox(
@@ -4604,7 +4997,12 @@ class TopologyEditor(tk.Tk):
         motor_cats = {"neos", "neo550s", "flexes", "krakens", "falcons"}
         sensor_cats = {"cancoders", "pigeon"}
         power_cats = {"pdh", "pdp"}
-        controller_cats = {"roborio", "cannect_inject", "cannect_direct"}
+        controller_cats = {
+            "roborio",
+            DIAGRAM_CATEGORY_CANNECT_INJECT,
+            DIAGRAM_CATEGORY_CANNECT_DIRECT,
+            DIAGRAM_CATEGORY_ANALYZER,
+        }
 
         def _category_group(node: Node) -> Tuple[int, str]:
             cat = (node.category or "").lower()
@@ -5311,7 +5709,9 @@ class TopologyEditor(tk.Tk):
             self.canvas.create_line(
                 start_x, bus_y, end_x, bus_y, width=bus_width, fill=bus_color
             )
-            if idx + 1 < len(bus_ys):
+            if idx + 1 < len(bus_ys) and self._bus_connectors:
+                if idx < len(self._bus_connectors) and not self._bus_connectors[idx]:
+                    continue
                 next_y = bus_ys[idx + 1]
                 connector_x = end_x
                 offset = turn_radius if idx % 2 == 0 else -turn_radius
@@ -5547,11 +5947,6 @@ class TopologyEditor(tk.Tk):
                     continue
                 if not isinstance(bus_index, int) or bus_index < 0 or bus_index >= len(bus_ys):
                     continue
-                if any(
-                    n.bus_index == bus_index and n.key in linked_devices
-                    for n in self._device_nodes()
-                ):
-                    continue
                 port_pos = can_ports[node_key].get(int(port))
                 if not port_pos:
                     continue
@@ -5762,9 +6157,9 @@ class TopologyEditor(tk.Tk):
             _is_swyft_node - Identify CANnect diagram nodes.
         """
         category = (node.category or "").lower()
-        return category in ("cannect_inject", "cannect_direct") and not getattr(
-            node, "profile_visible", True
-        )
+        if node.node_type == NODE_TYPE_CALLOUT:
+            return False
+        return category in (DIAGRAM_CATEGORY_CANNECT_INJECT, DIAGRAM_CATEGORY_CANNECT_DIRECT)
 
     def _fill_color_for_node(self, node: Node) -> str:
         """
@@ -6537,6 +6932,13 @@ class TopologyEditor(tk.Tk):
             is_even = bus_index % 2 == 0
             connector_with_next = (end == "right" and is_even) or (end == "left" and not is_even)
             connector_with_prev = (end == "left" and is_even) or (end == "right" and not is_even)
+            if self._bus_connectors:
+                if bus_index < len(self._bus_connectors):
+                    if not self._bus_connectors[bus_index]:
+                        connector_with_next = False
+                if bus_index - BUS_INDEX_FLOOR >= 0 and bus_index - BUS_INDEX_FLOOR < len(self._bus_connectors):
+                    if not self._bus_connectors[bus_index - BUS_INDEX_FLOOR]:
+                        connector_with_prev = False
 
             new_pos = (start_left + dx) if end == "left" else (start_right + dx)
             min_allowed = float("-inf")
@@ -6629,7 +7031,8 @@ class TopologyEditor(tk.Tk):
             self._apply_marquee_selection(x0, y0, x1, y1, additive=True)
             return
         if self._bus_drag is not None:
-            self._reorder_buses_by_y()
+            if not self._bus_connectors or all(self._bus_connectors):
+                self._reorder_buses_by_y()
         if self._drag_free_y:
             for key, free_y in list(self._drag_free_y.items()):
                 node = next((n for n in self._nodes if n.key == key), None)
@@ -6667,7 +7070,14 @@ class TopologyEditor(tk.Tk):
             _on_add_bus - Add a parallel bus segment connected to the first.
         """
         self._add_bus_mode = True
-        messagebox.showinfo("Add Bus", "Click on the canvas where you want the new bus.")
+        self._pending_bus_after = (
+            list(self._selected_buses)[0] if len(self._selected_buses) == BUS_INDEX_FLOOR else None
+        )
+        self._pending_cannect_direct = self._selected_cannect_direct_key()
+        self._pending_bus_island = (
+            self._pending_cannect_direct is not None and self._pending_bus_after is None
+        )
+        messagebox.showinfo(MSG_ADD_BUS_TITLE, MSG_ADD_BUS_PROMPT)
 
     def _add_bus_at(self, cy: float) -> None:
         """
@@ -6680,15 +7090,34 @@ class TopologyEditor(tk.Tk):
         self._push_undo()
         if not self._bus_offsets:
             self._bus_offsets = [0.0]
+        old_bus_count = len(self._bus_offsets)
+        if not self._bus_connectors and old_bus_count > BUS_INDEX_FLOOR:
+            self._bus_connectors = [BUS_CONNECT_DEFAULT] * (old_bus_count - BUS_INDEX_FLOOR)
         # Preserve insertion order; do not sort so existing buses don't shift.
         if offset not in self._bus_offsets:
-            self._bus_offsets.append(offset)
+            insert_at = None
+            if self._pending_bus_after is not None:
+                insert_at = min(
+                    max(self._pending_bus_after + BUS_INDEX_FLOOR, CANNECT_PORT_ZERO),
+                    len(self._bus_offsets),
+                )
+            if insert_at is None:
+                self._bus_offsets.append(offset)
+                new_index = len(self._bus_offsets) - BUS_INDEX_FLOOR
+                insert_at = new_index
+            else:
+                self._bus_offsets.insert(insert_at, offset)
+                new_index = insert_at
+            if old_bus_count > CANNECT_PORT_ZERO:
+                if insert_at >= old_bus_count:
+                    self._bus_connectors.append(BUS_CONNECT_DEFAULT)
+                else:
+                    self._bus_connectors.insert(insert_at, BUS_CONNECT_DEFAULT)
             max_node_x = max((n.x for n in self._nodes), default=0.0)
             default_right = max(max_node_x + 200.0, 400.0)
             default_left = 40.0
-            new_index = len(self._bus_offsets) - 1
-            if new_index > 0 and new_index - 1 < len(self._bus_lefts):
-                prev_index = new_index - 1
+            if new_index > CANNECT_PORT_ZERO and new_index - BUS_INDEX_FLOOR < len(self._bus_lefts):
+                prev_index = new_index - BUS_INDEX_FLOOR
                 if prev_index % 2 == 0:
                     connector_x = self._bus_rights[prev_index]
                 else:
@@ -6697,8 +7126,33 @@ class TopologyEditor(tk.Tk):
                     default_left = connector_x
                 else:
                     default_right = connector_x
-            self._bus_lefts.append(default_left)
-            self._bus_rights.append(default_right)
+            self._bus_lefts.insert(new_index, default_left)
+            self._bus_rights.insert(new_index, default_right)
+            if self._pending_bus_after is not None:
+                for node in self._nodes:
+                    if node.bus_index >= new_index:
+                        node.bus_index += BUS_INDEX_FLOOR
+                for callout in self._callout_nodes():
+                    if callout.callout_target_type == "bus" and callout.callout_target_bus >= new_index:
+                        callout.callout_target_bus += BUS_INDEX_FLOOR
+                for link in self._can_bus_links:
+                    if link.get("bus") is not None and link["bus"] >= new_index:
+                        link["bus"] += BUS_INDEX_FLOOR
+            if self._pending_bus_island:
+                if new_index > CANNECT_PORT_ZERO and new_index - BUS_INDEX_FLOOR < len(self._bus_connectors):
+                    self._bus_connectors[new_index - BUS_INDEX_FLOOR] = BUS_CONNECT_DISABLED
+                if new_index < len(self._bus_connectors):
+                    self._bus_connectors[new_index] = BUS_CONNECT_DISABLED
+            effective_cannect_direct = (
+                self._pending_cannect_direct
+                if self._pending_cannect_direct is not None
+                else self._selected_cannect_direct_key()
+            )
+            if effective_cannect_direct is not None:
+                self._maybe_link_new_bus_to_cannect_direct(effective_cannect_direct, new_index)
+        self._pending_bus_after = None
+        self._pending_cannect_direct = None
+        self._pending_bus_island = False
         self._redraw_canvas()
 
     def _on_add_callout(self) -> None:
@@ -7459,11 +7913,6 @@ class TopologyEditor(tk.Tk):
                     continue
                 if not isinstance(bus_index, int) or bus_index < 0 or bus_index >= len(bus_ys):
                     continue
-                if any(
-                    n.bus_index == bus_index and n.key in linked_devices
-                    for n in self._device_nodes()
-                ):
-                    continue
                 port_pos = can_ports[node_key].get(int(port))
                 if not port_pos:
                     continue
@@ -8052,6 +8501,25 @@ class TopologyEditor(tk.Tk):
             _fit_font_size - Shrink font size until text fits inside a box.
         """
         return fit_font_size_shared(text, max_w, max_h, base_size)
+
+    def _ensure_bus_connectors(self, bus_count: int) -> None:
+        """
+        NAME
+            _ensure_bus_connectors - Ensure connector flags match bus count.
+        """
+        if bus_count <= BUS_INDEX_FLOOR:
+            self._bus_connectors = []
+            return
+        desired = bus_count - BUS_INDEX_FLOOR
+        if not self._bus_connectors:
+            self._bus_connectors = [BUS_CONNECT_DEFAULT] * desired
+            return
+        if len(self._bus_connectors) < desired:
+            self._bus_connectors.extend(
+                [BUS_CONNECT_DEFAULT] * (desired - len(self._bus_connectors))
+            )
+        elif len(self._bus_connectors) > desired:
+            self._bus_connectors = self._bus_connectors[:desired]
 
     def _truncate_to_width(self, text: str, font: tkfont.Font, max_w: float) -> str:
         """

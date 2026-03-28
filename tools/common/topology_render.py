@@ -14,6 +14,15 @@ DESCRIPTION
 
 from typing import Iterable, List
 
+# Constants (categories).
+CATEGORY_ANALYZER = "analyzer"
+CATEGORY_CANNECT_INJECT = "cannect_inject"
+CATEGORY_CANNECT_DIRECT = "cannect_direct"
+
+# Constants (vendor keys).
+VENDOR_ANALYZER = "ANALYZER"
+DEVICE_TYPE_ANALYZER = "ANALYZER"
+
 
 def shape_kind_for_category(category: str) -> str:
     """
@@ -27,8 +36,10 @@ def shape_kind_for_category(category: str) -> str:
         return "sensor"
     if cat in ("pdh", "pdp"):
         return "power"
-    if cat in ("roborio", "cannect_inject", "cannect_direct"):
+    if cat in ("roborio", CATEGORY_CANNECT_INJECT, CATEGORY_CANNECT_DIRECT):
         return "controller"
+    if cat == CATEGORY_ANALYZER:
+        return "sensor"
     if cat in ("candles",):
         return "misc"
     if cat == "devices":
@@ -51,8 +62,10 @@ def vendor_key_for_category(category: str, vendor_override: str = "") -> str:
         return "CTRE"
     if cat in ("roborio",):
         return "NI"
-    if cat in ("cannect_inject", "cannect_direct"):
+    if cat in (CATEGORY_CANNECT_INJECT, CATEGORY_CANNECT_DIRECT):
         return "SWYFT"
+    if cat == CATEGORY_ANALYZER:
+        return VENDOR_ANALYZER
     return ""
 
 
@@ -74,8 +87,10 @@ def device_type_key_for_category(category: str, device_type_override: str = "") 
         return "MISCELLANEOUS"
     if cat in ("roborio",):
         return "ROBOTCONTROLLER"
-    if cat in ("cannect_inject", "cannect_direct"):
+    if cat in (CATEGORY_CANNECT_INJECT, CATEGORY_CANNECT_DIRECT):
         return "MISCELLANEOUS"
+    if cat == CATEGORY_ANALYZER:
+        return DEVICE_TYPE_ANALYZER
     if cat == "devices":
         override = (device_type_override or "").strip().upper().replace(" ", "")
         return override or "UNKNOWN"
@@ -95,6 +110,7 @@ def fill_color_for_vendor(vendor: str) -> str:
         "ANDYMARK": "#c9d2ff",
         "NI": "#e7e7e7",
         "SWYFT": "#e0d7ff",
+        VENDOR_ANALYZER: "#cbd5f5",
     }
     return palette.get(vendor, "#f7f7f7")
 
@@ -112,6 +128,7 @@ def outline_color_for_vendor(vendor: str) -> str:
         "ANDYMARK": "#3b4aa0",
         "NI": "#6a6a6a",
         "SWYFT": "#5b4aa0",
+        VENDOR_ANALYZER: "#3b4aa0",
     }
     return palette.get(vendor, "#222222")
 

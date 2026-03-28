@@ -18,12 +18,30 @@ from tkinter import ttk, messagebox
 
 from .can_top_models import (
     BUCKET_CATEGORIES,
+    DIAGRAM_CATEGORIES,
     GENERIC_CATEGORY,
     SINGLETON_CATEGORIES,
     SUPPORTED_DEVICE_TYPES,
     SUPPORTED_MANUFACTURERS,
     Node,
 )
+
+# Constants (dialog defaults and validation).
+TEXT_EMPTY = ""
+DIALOG_TITLE_INVALID = "Invalid"
+ERR_LABEL_REQUIRED = "Label is required."
+ERR_CAN_ID_REQUIRED = "CAN ID is required."
+ERR_CAN_ID_INT = "CAN ID must be an integer."
+ERR_CAN_ID_RANGE = "CAN ID must be -1 or in the range 0-62."
+ERR_TARGET_NODE_REQUIRED = "Choose a node target."
+ERR_TARGET_NOT_FOUND = "Target node not found."
+ERR_CALLOUT_TEXT_REQUIRED = "Callout text is required."
+ERR_BUS_INDEX_INT = "Bus index must be an integer."
+ERR_BUS_INDEX_RANGE = "Bus index out of range."
+ERR_LIMITS_INT = "Limit inputs must be integers."
+ERR_DIO_INT = "{} must be an integer."
+ERR_DIO_RANGE = "{} must be -1 or greater."
+CAN_ID_DIAGRAM_DEFAULT = -1
 
 
 class NodeDialog(tk.Toplevel):
@@ -54,21 +72,21 @@ class NodeDialog(tk.Toplevel):
         frame = ttk.Frame(self, padding=12)
         frame.grid(row=0, column=0, sticky="nsew")
 
-        categories = BUCKET_CATEGORIES + [GENERIC_CATEGORY] + SINGLETON_CATEGORIES
+        categories = BUCKET_CATEGORIES + [GENERIC_CATEGORY] + SINGLETON_CATEGORIES + DIAGRAM_CATEGORIES
         self.var_category = tk.StringVar(value=initial.category if initial else BUCKET_CATEGORIES[0])
-        self.var_label = tk.StringVar(value=initial.label if initial else "")
+        self.var_label = tk.StringVar(value=initial.label if initial else TEXT_EMPTY)
         self.var_can_id = tk.StringVar(value=str(initial.can_id) if initial else "")
-        self.var_vendor = tk.StringVar(value=initial.vendor if initial else "")
-        self.var_type = tk.StringVar(value=initial.device_type if initial else "")
-        self.var_motor = tk.StringVar(value=initial.motor if initial else "")
+        self.var_vendor = tk.StringVar(value=initial.vendor if initial else TEXT_EMPTY)
+        self.var_type = tk.StringVar(value=initial.device_type if initial else TEXT_EMPTY)
+        self.var_motor = tk.StringVar(value=initial.motor if initial else TEXT_EMPTY)
         self.var_tags = tk.StringVar(
             value=", ".join(initial.tags) if initial and initial.tags else ""
         )
         self.var_fwd = tk.StringVar(
-            value=str(initial.limits.get("fwdDio")) if initial and initial.limits else ""
+            value=str(initial.limits.get("fwdDio")) if initial and initial.limits else TEXT_EMPTY
         )
         self.var_rev = tk.StringVar(
-            value=str(initial.limits.get("revDio")) if initial and initial.limits else ""
+            value=str(initial.limits.get("revDio")) if initial and initial.limits else TEXT_EMPTY
         )
         self.var_invert = tk.BooleanVar(
             value=bool(initial.limits.get("invert")) if initial and initial.limits else False
@@ -133,12 +151,14 @@ class NodeDialog(tk.Toplevel):
         label = self.var_label.get().strip()
         can_id_text = self.var_can_id.get().strip()
         if not label:
-            messagebox.showerror("Invalid", "Label is required.")
+            messagebox.showerror(DIALOG_TITLE_INVALID, ERR_LABEL_REQUIRED)
             return
+        category = self.var_category.get().strip()
         try:
-            can_id = self._parse_can_id(can_id_text)
+            allow_empty = category in DIAGRAM_CATEGORIES
+            can_id = self._parse_can_id(can_id_text, allow_empty=allow_empty)
         except ValueError as exc:
-            messagebox.showerror("Invalid", str(exc))
+            messagebox.showerror(DIALOG_TITLE_INVALID, str(exc))
             return
         limits = None
         fwd_text = self.var_fwd.get().strip()
@@ -152,10 +172,10 @@ class NodeDialog(tk.Toplevel):
                     "invert": invert,
                 }
             except ValueError:
-                messagebox.showerror("Invalid", "Limit inputs must be integers.")
+                messagebox.showerror(DIALOG_TITLE_INVALID, ERR_LIMITS_INT)
                 return
         self.result = {
-            "category": self.var_category.get(),
+            "category": category,
             "label": label,
             "can_id": can_id,
             "vendor": self.var_vendor.get().strip(),
@@ -176,7 +196,7 @@ class NodeDialog(tk.Toplevel):
         self.destroy()
 
     @staticmethod
-    def _parse_can_id(value: str) -> int:
+    def _parse_can_id(value: str, allow_empty: bool) -> int:
         """
         NAME
             _parse_can_id - Parse and validate a CAN ID entry.
@@ -185,12 +205,14 @@ class NodeDialog(tk.Toplevel):
             Parsed CAN ID value.
         """
         if not value:
-            raise ValueError("CAN ID is required.")
+            if allow_empty:
+                return CAN_ID_DIAGRAM_DEFAULT
+            raise ValueError(ERR_CAN_ID_REQUIRED)
         if not re.fullmatch(r"-?\d+", value):
-            raise ValueError("CAN ID must be an integer.")
+            raise ValueError(ERR_CAN_ID_INT)
         can_id = int(value)
         if can_id < -1 or can_id > 62:
-            raise ValueError("CAN ID must be -1 or in the range 0-62.")
+            raise ValueError(ERR_CAN_ID_RANGE)
         return can_id
 
     @staticmethod
@@ -205,10 +227,10 @@ class NodeDialog(tk.Toplevel):
         if not value:
             return -1
         if not re.fullmatch(r"-?\d+", value):
-            raise ValueError(f"{label} must be an integer.")
+            raise ValueError(ERR_DIO_INT.format(label))
         dio = int(value)
         if dio < -1:
-            raise ValueError(f"{label} must be -1 or greater.")
+            raise ValueError(ERR_DIO_RANGE.format(label))
         return dio
 
     @staticmethod
@@ -259,13 +281,13 @@ class CalloutDialog(tk.Toplevel):
         frame = ttk.Frame(self, padding=12)
         frame.grid(row=0, column=0, sticky="nsew")
 
-        self.var_text = tk.StringVar(value=initial.callout_text if initial else "")
+        self.var_text = tk.StringVar(value=initial.callout_text if initial else TEXT_EMPTY)
         target_type = initial.callout_target_type if initial else "node"
         self.var_target_type = tk.StringVar(value=target_type)
         self.var_target_bus = tk.StringVar(value=str(initial.callout_target_bus if initial else 0))
-        self.var_target_node = tk.StringVar()
+        self.var_target_node = tk.StringVar(value=TEXT_EMPTY)
         self.var_tags = tk.StringVar(
-            value=", ".join(initial.tags) if initial and initial.tags else ""
+            value=", ".join(initial.tags) if initial and initial.tags else TEXT_EMPTY
         )
         self._node_label_map: Dict[str, int] = {}
 
@@ -319,7 +341,7 @@ class CalloutDialog(tk.Toplevel):
         """
         text = self.var_text.get().strip()
         if not text:
-            messagebox.showerror("Invalid", "Callout text is required.")
+            messagebox.showerror(DIALOG_TITLE_INVALID, ERR_CALLOUT_TEXT_REQUIRED)
             return
         target_type = self.var_target_type.get()
         target_node_key = None
@@ -329,7 +351,7 @@ class CalloutDialog(tk.Toplevel):
         if target_type == "node":
             label = self.var_target_node.get().strip()
             if not label:
-                messagebox.showerror("Invalid", "Choose a node target.")
+                messagebox.showerror(DIALOG_TITLE_INVALID, ERR_TARGET_NODE_REQUIRED)
                 return
             if label in self._node_label_map:
                 key = self._node_label_map[label]
@@ -349,17 +371,17 @@ class CalloutDialog(tk.Toplevel):
                         target_node_id = node.can_id
                         break
             if target_node_key is None:
-                messagebox.showerror("Invalid", "Target node not found.")
+                messagebox.showerror(DIALOG_TITLE_INVALID, ERR_TARGET_NOT_FOUND)
                 return
         target_bus = 0
         if target_type == "bus":
             try:
                 target_bus = int(self.var_target_bus.get())
             except ValueError:
-                messagebox.showerror("Invalid", "Bus index must be an integer.")
+                messagebox.showerror(DIALOG_TITLE_INVALID, ERR_BUS_INDEX_INT)
                 return
             if target_bus < 0 or target_bus >= self._bus_count:
-                messagebox.showerror("Invalid", "Bus index out of range.")
+                messagebox.showerror(DIALOG_TITLE_INVALID, ERR_BUS_INDEX_RANGE)
                 return
         self.result = {
             "text": text,
