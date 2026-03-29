@@ -69,12 +69,28 @@ def tests_deploy_path() -> Path:
     return repo_root() / "src" / "main" / "deploy" / "bringup_tests.json"
 
 
+def bindings_deploy_path() -> Path:
+    """
+    NAME
+        bindings_deploy_path - Path to src/main/deploy/bringup_bindings.json.
+    """
+    return repo_root() / "src" / "main" / "deploy" / "bringup_bindings.json"
+
+
 def can_mappings_path() -> Path:
     """
     NAME
         can_mappings_path - Path to src/main/deploy/can_mappings.json.
     """
     return repo_root() / "src" / "main" / "deploy" / "can_mappings.json"
+
+
+def test_templates_dir() -> Path:
+    """
+    NAME
+        test_templates_dir - Path to tools/test_template_wizard/test_templates.
+    """
+    return repo_root() / "tools" / "test_template_wizard" / "test_templates"
 
 
 def logs_dir() -> Path:

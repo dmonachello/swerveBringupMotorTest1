@@ -36,6 +36,14 @@ from tools.common.profile_constants import (
     KEY_DEVICES,
     KEY_DEVICE,
     KEY_LABEL,
+    KEY_INTERFACE,
+    KEY_MANUFACTURER,
+    KEY_DEVICE_TYPE,
+    KEY_ID,
+    KEY_DIO,
+    KEY_INVERT,
+    KEY_PWM,
+    KEY_ANALOG,
     KEY_LIMITS,
     KEY_NOTES,
     KEY_PROFILES,
@@ -45,6 +53,11 @@ from tools.common.profile_constants import (
     KEY_TAGS,
     KEY_TYPE,
     KEY_VENDOR,
+    INTERFACE_ANALOG,
+    INTERFACE_CAN,
+    INTERFACE_DIO,
+    INTERFACE_INTERNAL,
+    INTERFACE_PWM,
 )
 from tools.common.profile_io import validate_profiles_schema
 
@@ -54,7 +67,7 @@ SEP_NEWLINE = "\n"
 MSG_DUPLICATE_DEVICE_NAMES = "Duplicate device names: {names}"
 MSG_MISSING_DEVICE_ENTRIES = "Missing device entries: {names}"
 MSG_MISSING_DEVICE_GROUP_HEADER = "Missing device references by group:"
-MSG_MISSING_DEVICE_GROUP_LINE = "  {group}: {devices}"
+MSG_MISSING_DEVICE_GROUP_LINE = "  profile={profile} group={group}: {devices}"
 MSG_LEGACY_GROUPS = "Legacy bridgeConfig.groups is not supported. Use per-profile bridgeConfig.byProfile."
 MSG_LEGACY_SELECTED_DEVICE = (
     "Legacy bridgeConfig.selectedDevice is not supported. Use per-profile bridgeConfig.byProfile."
@@ -65,6 +78,33 @@ MSG_UNKNOWN_PROFILE = "bridgeConfig.byProfile references unknown profile: {name}
 MSG_DUPLICATE_PROFILE_LABEL_HEADER = "Duplicate device labels by profile:"
 MSG_DUPLICATE_PROFILE_LABEL_LINE = "  {profile}: {labels}"
 MSG_PROFILE_REQUIRED = "Profile not selected."
+MSG_DEVICE_DEF_HEADER = "Invalid device definitions:"
+MSG_DEVICE_DEF_LINE = "  {label}: {issues}"
+MSG_DEVICE_DEF_LABEL_REQUIRED = "label required"
+MSG_DEVICE_DEF_LABEL_DUPLICATE = "duplicate label"
+MSG_DEVICE_DEF_INTERFACE_REQUIRED = "interface required"
+MSG_DEVICE_DEF_INTERFACE_INVALID = "interface invalid"
+MSG_DEVICE_DEF_MANUFACTURER_REQUIRED = "manufacturer required"
+MSG_DEVICE_DEF_DEVICE_TYPE_REQUIRED = "deviceType required"
+MSG_DEVICE_DEF_ID_REQUIRED = "id required"
+MSG_DEVICE_DEF_DIO_REQUIRED = "dio required"
+MSG_DEVICE_DEF_INVERT_REQUIRED = "invert required"
+MSG_DEVICE_DEF_PWM_REQUIRED = "pwm required"
+MSG_DEVICE_DEF_ANALOG_REQUIRED = "analog required"
+MSG_DEVICE_DEF_MANUFACTURER_TYPE = "manufacturer must be int"
+MSG_DEVICE_DEF_DEVICE_TYPE_TYPE = "deviceType must be int"
+MSG_DEVICE_DEF_ID_TYPE = "id must be int"
+MSG_DEVICE_DEF_DIO_TYPE = "dio must be int"
+MSG_DEVICE_DEF_INVERT_TYPE = "invert must be bool"
+MSG_DEVICE_DEF_PWM_TYPE = "pwm must be int"
+MSG_DEVICE_DEF_ANALOG_TYPE = "analog must be int"
+MSG_DEVICE_DEF_UNNAMED = "(unnamed)"
+
+DEVICE_REQUIRED_CAN = (KEY_MANUFACTURER, KEY_DEVICE_TYPE, KEY_ID)
+DEVICE_REQUIRED_DIO = (KEY_DIO, KEY_INVERT)
+DEVICE_REQUIRED_PWM = (KEY_PWM,)
+DEVICE_REQUIRED_ANALOG = (KEY_ANALOG,)
+DEVICE_REQUIRED_INTERNAL = tuple()
 
 
 @dataclass(frozen=True)
@@ -972,6 +1012,99 @@ def _find_missing_device_refs(config: Dict[str, Any], root_payload: Dict[str, An
     return missing
 
 
+def _validate_device_definitions(root_payload: Dict[str, Any]) -> List[str]:
+    """
+    NAME
+        _validate_device_definitions - Validate device registry entries.
+    """
+    devices = root_payload.get(KEY_DEVICES)
+    if not isinstance(devices, list):
+        return []
+    seen: Dict[str, int] = {}
+    errors: List[str] = []
+    for entry in devices:
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get(KEY_LABEL, "")).strip()
+        issues: List[str] = []
+        if not label:
+            issues.append(MSG_DEVICE_DEF_LABEL_REQUIRED)
+        else:
+            key = label.lower()
+            seen[key] = seen.get(key, 0) + 1
+            if seen[key] == 2:
+                issues.append(MSG_DEVICE_DEF_LABEL_DUPLICATE)
+        interface = str(entry.get(KEY_INTERFACE, "")).strip()
+        if not interface:
+            issues.append(MSG_DEVICE_DEF_INTERFACE_REQUIRED)
+        elif interface not in (
+            INTERFACE_CAN,
+            INTERFACE_DIO,
+            INTERFACE_PWM,
+            INTERFACE_ANALOG,
+            INTERFACE_INTERNAL,
+        ):
+            issues.append(MSG_DEVICE_DEF_INTERFACE_INVALID)
+        required: tuple[str, ...]
+        if interface == INTERFACE_CAN:
+            required = DEVICE_REQUIRED_CAN
+        elif interface == INTERFACE_DIO:
+            required = DEVICE_REQUIRED_DIO
+        elif interface == INTERFACE_PWM:
+            required = DEVICE_REQUIRED_PWM
+        elif interface == INTERFACE_ANALOG:
+            required = DEVICE_REQUIRED_ANALOG
+        else:
+            required = DEVICE_REQUIRED_INTERNAL
+        for field in required:
+            if entry.get(field) is None:
+                if field == KEY_MANUFACTURER:
+                    issues.append(MSG_DEVICE_DEF_MANUFACTURER_REQUIRED)
+                elif field == KEY_DEVICE_TYPE:
+                    issues.append(MSG_DEVICE_DEF_DEVICE_TYPE_REQUIRED)
+                elif field == KEY_ID:
+                    issues.append(MSG_DEVICE_DEF_ID_REQUIRED)
+                elif field == KEY_DIO:
+                    issues.append(MSG_DEVICE_DEF_DIO_REQUIRED)
+                elif field == KEY_INVERT:
+                    issues.append(MSG_DEVICE_DEF_INVERT_REQUIRED)
+                elif field == KEY_PWM:
+                    issues.append(MSG_DEVICE_DEF_PWM_REQUIRED)
+                elif field == KEY_ANALOG:
+                    issues.append(MSG_DEVICE_DEF_ANALOG_REQUIRED)
+        if interface == INTERFACE_CAN:
+            manufacturer = entry.get(KEY_MANUFACTURER)
+            device_type = entry.get(KEY_DEVICE_TYPE)
+            device_id = entry.get(KEY_ID)
+            if manufacturer is not None and not isinstance(manufacturer, int):
+                issues.append(MSG_DEVICE_DEF_MANUFACTURER_TYPE)
+            if device_type is not None and not isinstance(device_type, int):
+                issues.append(MSG_DEVICE_DEF_DEVICE_TYPE_TYPE)
+            if device_id is not None and not isinstance(device_id, int):
+                issues.append(MSG_DEVICE_DEF_ID_TYPE)
+        if interface == INTERFACE_DIO:
+            dio = entry.get(KEY_DIO)
+            invert = entry.get(KEY_INVERT)
+            if dio is not None and not isinstance(dio, int):
+                issues.append(MSG_DEVICE_DEF_DIO_TYPE)
+            if invert is not None and not isinstance(invert, bool):
+                issues.append(MSG_DEVICE_DEF_INVERT_TYPE)
+        if interface == INTERFACE_PWM:
+            pwm = entry.get(KEY_PWM)
+            if pwm is not None and not isinstance(pwm, int):
+                issues.append(MSG_DEVICE_DEF_PWM_TYPE)
+        if interface == INTERFACE_ANALOG:
+            analog = entry.get(KEY_ANALOG)
+            if analog is not None and not isinstance(analog, int):
+                issues.append(MSG_DEVICE_DEF_ANALOG_TYPE)
+        if issues:
+            name = label or MSG_DEVICE_DEF_UNNAMED
+            errors.append(MSG_DEVICE_DEF_LINE.format(label=name, issues=SEP_COMMA_SPACE.join(issues)))
+    if not errors:
+        return []
+    return [MSG_DEVICE_DEF_HEADER] + errors
+
+
 def validate_config_data(config: Dict[str, Any], root_payload: Optional[Dict[str, Any]]) -> Tuple[bool, str]:
     """
     NAME
@@ -982,6 +1115,9 @@ def validate_config_data(config: Dict[str, Any], root_payload: Optional[Dict[str
     duplicates = _find_duplicate_profile_labels(root_payload, config)
     if duplicates:
         return (False, _format_duplicate_profile_labels(duplicates))
+    device_errors = _validate_device_definitions(root_payload)
+    if device_errors:
+        return (False, SEP_NEWLINE.join(device_errors))
     missing = _find_missing_device_refs(config, root_payload)
     if missing:
         missing_list = SEP_COMMA_SPACE.join(sorted(missing))
@@ -1005,7 +1141,7 @@ def _describe_missing_device_refs(
     if not missing:
         return ""
     missing_set = {name.strip().lower() for name in missing if isinstance(name, str)}
-    hits: Dict[str, List[str]] = {}
+    hits: Dict[tuple[str, str], List[str]] = {}
     by_profile = config.get(KEY_BRIDGE_BY_PROFILE) if isinstance(config, dict) else None
     if not isinstance(by_profile, dict):
         return ""
@@ -1029,14 +1165,20 @@ def _describe_missing_device_refs(
                 if not name:
                     continue
                 if name.strip().lower() in missing_set:
-                    key = f"{profile_name}:{group_name}"
+                    key = (profile_name, group_name)
                     hits.setdefault(key, []).append(name)
     if not hits:
         return ""
     lines = [MSG_MISSING_DEVICE_GROUP_HEADER]
-    for group_name in sorted(hits.keys()):
-        devices = SEP_COMMA_SPACE.join(sorted(set(hits[group_name])))
-        lines.append(MSG_MISSING_DEVICE_GROUP_LINE.format(group=group_name, devices=devices))
+    for profile_name, group_name in sorted(hits.keys()):
+        devices = SEP_COMMA_SPACE.join(sorted(set(hits[(profile_name, group_name)])))
+        lines.append(
+            MSG_MISSING_DEVICE_GROUP_LINE.format(
+                profile=profile_name,
+                group=group_name,
+                devices=devices,
+            )
+        )
     return SEP_NEWLINE.join(lines)
 
 

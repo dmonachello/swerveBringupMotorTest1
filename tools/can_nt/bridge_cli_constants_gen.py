@@ -67,6 +67,8 @@ class ParserSpec:
     cmd_registry: str
     cmd_set: str
     cmd_write: str
+    cmd_bindings: str
+    cmd_can_mappings: str
     cmd_tests: str
     cmd_create: str
     cmd_delete: str
@@ -181,6 +183,8 @@ class ParserSpec:
     kind_config_device: str
     kind_config_device_set: str
     kind_config_validate: str
+    kind_config_bindings: str
+    kind_config_can_mappings: str
     kind_group_show: str
     kind_group_show_members: str
     kind_group_show_binding: str
@@ -257,6 +261,8 @@ SPEC = ParserSpec(
     cmd_registry='registry',
     cmd_set='set',
     cmd_write='write',
+    cmd_bindings='bindings',
+    cmd_can_mappings='can-mappings',
     cmd_tests='tests',
     cmd_create='create',
     cmd_delete='delete',
@@ -371,6 +377,8 @@ SPEC = ParserSpec(
     kind_config_device='config_device',
     kind_config_device_set='config_device_set',
     kind_config_validate='config_validate',
+    kind_config_bindings='config_bindings',
+    kind_config_can_mappings='config_can_mappings',
     kind_group_show='group_show',
     kind_group_show_members='group_show_members',
     kind_group_show_binding='group_show_binding',

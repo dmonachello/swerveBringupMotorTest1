@@ -33,6 +33,7 @@ show_target    = "status"
                | "runtime-state"
                | "config"
                | "config" ws "local-raw"
+               | "config" ws "dirty"
                | "profiles"
                | "profile"
                | "tests"
@@ -60,6 +61,9 @@ config         = "group" ws name
                | "device" ws name ws "set" ws field ws value_text
                | "validate" ws "config" [ ws path ]
                | "show" ws show_target [ ws show_flags ]
+               | "bindings" [ ws value_text ]
+               | "can-mappings" [ ws value_text ]
+               | "tests" [ ws value_text ]
                | "write" ws "tests" ws path
                | "test" ws ("set" ws name
                            | "create" ws name

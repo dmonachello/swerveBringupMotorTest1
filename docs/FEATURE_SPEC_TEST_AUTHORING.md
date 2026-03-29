@@ -219,12 +219,14 @@ Purpose: configure limit switch termination behavior in test mode.
 Commands:
 1. `termination limitswitch [id]` enables the limit switch check (id is optional metadata).
 2. `limitswitch onHit <pass|fail>` defines the result when triggered.
+3. `limitswitch id <id>` sets or updates the optional id field.
 
 Notes:
 - The limit switch check triggers when any selected motor reports a closed forward or reverse limit.
-- Limit switches are defined per device in `bringup_system.json` under `limits` (DIO wiring + invert).
+- Limit switches are defined as DIO devices in `bringup_system.json` and referenced by label in `attachments` on the CAN device.
 - Either `termination limitswitch` or `limitswitch onHit` enables the limit switch check.
 - The optional id is stored in JSON but is not used by the robot runtime yet.
+- Validation enforces `onHit` values (`pass` or `fail`) and non-empty ids when provided.
 
 ### Requirements
 
@@ -242,6 +244,7 @@ Must pass before saving:
 * No duplicate devices
 * Valid parameter ranges
 * Valid termination configuration
+* Valid limit switch configuration (`onHit` and optional `id`)
 
 Warnings (do not block save):
 

@@ -103,6 +103,10 @@ AST_EXEC_SPEC = {
 
 SHOW_TARGET_CONFIG_RAW = "config-raw"
 SHOW_NAME_LOCAL_RAW = "local-raw"
+SHOW_TARGET_CONFIG_DIRTY = "config-dirty"
+SHOW_NAME_DIRTY = "dirty"
+SHOW_TARGET_PROFILE = "profile"
+SHOW_TARGET_PROFILES = "profiles"
 
 
 class BridgeCliAstExecutor:
@@ -159,6 +163,8 @@ class BridgeCliAstExecutor:
             SPEC.kind_config_device: self._ast_config_device,
             SPEC.kind_config_device_set: self._ast_config_device_set,
             SPEC.kind_config_validate: self._ast_config_validate,
+            SPEC.kind_config_bindings: self._ast_config_bindings,
+            SPEC.kind_config_can_mappings: self._ast_config_can_mappings,
             SPEC.kind_group_show: self._ast_group_show,
             SPEC.kind_group_show_members: self._ast_group_show,
             SPEC.kind_group_show_binding: self._ast_group_show,
@@ -365,6 +371,12 @@ class BridgeCliAstExecutor:
         print(AST_EXEC_SPEC["msg_err_fmt"] % message)
         return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
 
+    def _ast_config_bindings(self, ast: CommandAst) -> Optional[int]:
+        return self._cli._config_bindings_command(ast.tokens)
+
+    def _ast_config_can_mappings(self, ast: CommandAst) -> Optional[int]:
+        return self._cli._config_can_mappings_command(ast.tokens)
+
     def _ast_group_show(self, ast: CommandAst) -> Optional[int]:
         group = self._cli._modes[-1].group
         if not self._cli._session.is_connected():
@@ -538,11 +550,25 @@ class BridgeCliAstExecutor:
             print(AST_EXEC_SPEC["msg_err_show_requires"])
             return None
         if target == SPEC.show_target_config:
-            if ast.show_name and ast.show_name.lower() == SHOW_NAME_LOCAL_RAW:
-                target = SHOW_TARGET_CONFIG_RAW
+            if ast.show_name:
+                name = ast.show_name.lower()
+                if name == SHOW_NAME_LOCAL_RAW:
+                    target = SHOW_TARGET_CONFIG_RAW
+                elif name == SHOW_NAME_DIRTY:
+                    target = SHOW_TARGET_CONFIG_DIRTY
+                else:
+                    target = SPEC.show_target_runtime_state
             else:
                 target = SPEC.show_target_runtime_state
         source = ast.show_source
+        if target in (
+            SHOW_TARGET_CONFIG_RAW,
+            SHOW_TARGET_CONFIG_DIRTY,
+            SHOW_TARGET_PROFILE,
+            SHOW_TARGET_PROFILES,
+            SPEC.show_target_device_registry,
+        ):
+            source = SPEC.show_source_local
         if not source:
             source = SPEC.show_source_robot if self._cli._session.is_connected() else SPEC.show_source_local
         if source == SPEC.show_source_both:

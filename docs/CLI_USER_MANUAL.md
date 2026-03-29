@@ -1,656 +1,351 @@
-﻿CLI User Manual (Bringup Bridge CLI)
+CLI User Manual (Bringup Bridge CLI)
 
-Purpose: Explain how to use the CAN bringup bridge CLI for local configs and robot control.
+Purpose: Teach operators how to use the Bridge CLI to inspect, edit, and save bringup configs and tests.
 
-Overview
-Purpose: Summarize what the CLI does.
-- Manages bringup groups, device membership, bindings, and metadata.
-- Supports local-only editing (no robot/CAN) or robot-connected runtime control.
-- Reads and writes unified bringup_system.json (profiles + bridgeConfig.byProfile).
-- Device labels are unique and shared across tools via bringup_system.json.
+## What This CLI Is
+Purpose: Give a simple mental model of what the CLI does.
 
-Configuration Paths
-Purpose: Explain the multiple ways to build and edit configs.
-There is more than one valid path to configure the system. You can start
-from the topology tool, from the CLI, or from the sniffer. Many paths can
-feed into each other.
+The Bridge CLI is a Windows-side tool for:
+- Inspecting robot runtime groups and local configs.
+- Editing per-profile groups and bindings.
+- Authoring bringup tests without editing JSON.
 
-Path A: Topology Tool (profiles-first)
-Purpose: Use the topology UI to define devices and layout.
-Workflow:
-- Edit bringup_system.json (device lists + diagram).
-- Ensure labels are unique.
-- Load in CLI with merge config and create groups.
-- Save unified config with groups.
+It does not replace the topology tool. It consumes `bringup_system.json` and writes updates back when you save.
 
-Path B: CLI-Only (no topology tool)
-Purpose: Build a unified bringup_system.json with devices and groups.
-Workflow:
-- Create devices in CLI (device <name>).
-- Create groups and bindings.
-- Save unified config.
+## Core Concepts
+Purpose: Explain the few ideas you must remember.
 
-Path C: Sniffer Bootstrap
-Purpose: Use observed CAN traffic to seed bringup_system.json.
-Workflow:
-- Run sniffer and dump a profile.
-- Rename labels to be unique and meaningful.
-- (Optional) edit topology diagram.
-- Load bringup_system.json in CLI and add groups.
+- Labels are the only identifiers. Every device reference is a label string.
+- Profiles define which device labels exist.
+- Groups live under `bridgeConfig.byProfile.<profileName>`.
+- Local edits are in memory until you save.
+- `show config local-raw` shows the raw bridgeConfig data.
 
-Path D: Manual JSON Edit
-Purpose: Edit bringup_system.json directly.
-Workflow:
-- Edit JSON by hand (labels, IDs, tags, attachments).
-- Validate.
-- Load into CLI for group work.
+## Quick Start (Local-Only, No Robot)
+Purpose: Get a minimal group edited and saved quickly.
 
-Cross-Editing (mixing paths)
-Purpose: Describe how data flows between tools.
-- Topology edits -> CLI groups (profiles are canonical).
-- Sniffer profile -> manual rename -> topology refine -> CLI groups.
-- CLI-only config -> export script -> manual tweaks -> re-run script.
-- Robot runtime groups -> save config -> edit in CLI.
-
-Quick Start (Local-Only)
-Purpose: Run the CLI without robot or CANable.
 Example:
-  python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
-  merge config data/bringup_system.json
-  show groups local
-  configure terminal
-  profile robot
-  group swerve_front_left
-  add device "Drive Motor (swerve-front-left)"
-  exit
-  save unified-config data/bringup_system.json
+```
+python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
+configure terminal
+profile home_030226
+group motors
+add device "SPARKMAX/NEO 25"
+add device "SPARKMAX/NEO550 7"
+add device "FALCON 9"
+exit
+save profiles data/bringup_system.json
+end
+```
+
 Notes:
-- Windows paths accept either / or \\. Use quotes if the path contains spaces.
+- Use quotes for labels with spaces.
+- `save profiles` persists groups into `bringup_system.json`.
 
-Quick Start (Robot-Connected)
-Purpose: Use live robot runtime groups.
+## Quick Start (Robot-Connected)
+Purpose: Read and snapshot live robot groups.
+
 Example:
-  python tools\can_nt\can_nt_bridge.py --cli --rio 172.22.11.2
-  connect
-  show groups
-  save config x.json
+```
+python tools\can_nt\can_nt_bridge.py --cli --rio 172.22.11.2
+connect
+show groups
+save config runtime_groups.json
+```
 
-Test Authoring (Bringup Tests)
-Purpose: Create and edit bringup tests without writing JSON.
-Workflow:
-- Enter config mode: `configure terminal`.
-- Select or create a test set: `test set <name>`.
-- Create a test: `test create <name>` (enters test mode).
-- Configure fields (`type`, `device add`, `inputSource`, `duty`, `termination`, etc.).
-- Save: `write tests bringup_tests.json`.
 Notes:
-- Device labels come from `data/bringup_system.json`.
-- See `docs/CLI_TEST_AUTHORING_USER_GUIDE.md` for the full walkthrough.
+- `save config` captures runtime groups from the robot.
+- Use `import config` to replace groups with a file.
 
-Modes
-Purpose: Explain prompt modes and how to enter/exit.
-- Exec mode: bridge>
-- Config mode: bridge(config-profile-<name>)#
-- Group mode: bridge(config-profile-<name>-group-<name>)#
-- Device mode: bridge(config-device-<name>)#
-- exit pops one mode; end returns to exec.
-- Windows EOF: Ctrl+Z then Enter behaves like exit (Ctrl+D on POSIX shells).
+## Modes and Prompts
+Purpose: Show how the CLI indicates context.
 
-Core Commands (Exec)
-Purpose: High-level control.
-- help / help <topic>
-- connect / disconnect
-- show ... (see Show Commands)
+Prompts:
+- Exec: `bridge>` or `bridge-profile-<name>>`
+- Config: `bridge(config-profile-<name>)#`
+- Group: `bridge(config-profile-<name>-group-<name>)#`
+- Device: `bridge(config-device-<name>)#`
+- Test: `bridge(config-test-<name>)#`
 
-Show Commands
-Purpose: Inspect state.
-- show status [local|robot|both] [--json]
-- show groups [local|robot|both] [--json]
-- show group <name> [local|robot|both] [--json]
-- show devices [local|robot|both] [--json]
-- show device <name> [local|robot|both] [--json]
-- show device registry <name> [local|--local] [--json]
-- show bindings [local|robot|both] [--json]
-- show runtime-state [local|robot|both] [--json]
-- show config local-raw [local] [--json]
-- show profiles [local] [--json]
-- show profile [local] [--json]
+Navigation:
+- `configure terminal` enters config mode.
+- `exit` goes up one level.
+- `end` returns to exec mode.
+
+## How to Choose a Profile
+Purpose: Ensure groups are tied to the right profile.
+
+Commands:
+```
+show profiles
+profile <name>
+show profile
+```
+
+Rules:
+- Groups are stored under the active profile.
+- If you do not select a profile, the CLI uses the default profile.
+
+## Inspecting State
+Purpose: Learn the inspection commands you will use constantly.
+
+Common show commands:
+- `show status`
+- `show groups`
+- `show group <name>`
+- `show devices`
+- `show device <name>`
+- `show device registry <name>`
+- `show bindings`
+- `show runtime-state`
+- `show config local-raw`
+- `show config dirty`
+- `show profiles`
+- `show profile`
+- `show tests`
+- `show test <name>`
+- `bindings show`
+- `can-mappings show`
+
 Notes:
-- show group prints member names and binding details in text mode.
-- show devices (local) lists the full profile-derived device inventory, not just group members.
-- show device includes the profile label and metadata.
-- show device registry returns the full device registry entry (local only).
-- On startup, the CLI auto-imports `data/bringup_system.json` if it exists (replaces groups).
-- merge config is only allowed when the incoming profiles hash matches the loaded profiles; otherwise use import config.
+- Use `--json` for machine-readable output.
+- `show config local-raw` prints `bridgeConfig.byProfile`.
+- `show config dirty` shows unsaved local changes.
 
-Config Commands
-Purpose: Build and edit groups.
-- group <name> / no group <name>
-- profile <name>
-- selected-device <name>
-- selected-mode <on|off>
-- rename device <old> <new>
-- merge config <path>
-- import config <path>
-- validate config [path]
-- save unified-config <path>
-- save local-config <path>
-- save config <path>
-- save profiles <path>
+## Creating and Editing Groups
+Purpose: Teach the everyday workflow.
 
-Group Mode Commands
-Purpose: Manage devices and bindings in a group.
-- add device <name>
-- no device <name>
-- member <name> <enable|disable|toggle>
-- bind <input> <analog|hold|toggle|jog-forward|jog-reverse> [value]
-- no bind
-- enable / disable
-- run test [name]
-- show [members|binding]
+Create a group:
+```
+configure terminal
+profile home_030226
+group swerve_front_left
+add device "Drive Motor (swerve-front-left)"
+add device "Angle Motor (swerve-front-left)"
+add device "Encoder (CANCoder) (swerve-front-left)"
+bind controller0.leftY analog
+exit
+```
 
-Group Mode Rule
-Purpose: Ensure device entries exist before group membership.
-- Device labels must exist in the active profile before add device.
-  Create or rename device labels in the topology tool and reload profiles.
-- Batch scripts are linted before execution to ensure device entries appear
-  before add device commands.
+Modify a group:
+```
+configure terminal
+profile home_030226
+group swerve_front_left
+no device "Encoder (CANCoder) (swerve-front-left)"
+member "Drive Motor (swerve-front-left)" disable
+bind controller0.leftY analog
+exit
+```
 
-Validate Local Config
-Purpose: Validate the current in-memory config without a file.
-Example:
-  validate config
+Save your changes:
+```
+save profiles data/bringup_system.json
+```
 
-Device Mode Commands
-Purpose: Edit device metadata in local config.
-- show
-- set <vendor|role|notes|bus|tags> <value>
-- no <vendor|role|notes|bus|tags>
-Note:
-- Device identity is label-only; CAN ID metadata lives in bringup_system.json.
-- When bringup_system.json is loaded, device edits write back to profiles and require save profiles or save unified-config.
+## Saving and Files
+Purpose: Explain what each save command does.
 
-Config Files
-Purpose: Define inputs/outputs and expected shape.
-Unified bringup_system.json:
-  {
-    "schema_version": 4,
-    "data_version": "...",
-    "data_hash": "...",
-    "default_profile": "robot",
-    "profiles": { ... },
-    "devices": [ ... ],
-    "diagram": { "profiles": { ... } },
-    "bridgeConfig": {
-      "schemaVersion": 2,
-      "generatedAt": null,
-      "byProfile": {
-        "robot": {
-          "groups": [...],
-          "selectedDevice": { "device": "", "enabled": false }
-        }
-      }
-    }
-  }
-bridgeConfig-only file (legacy local-only):
-  {
-    "schemaVersion": 2,
-    "generatedAt": null,
-    "byProfile": {
-      "robot": {
-        "groups": [...],
-        "selectedDevice": { "device": "", "enabled": false }
-      }
-    }
-  }
-Note:
-- bridgeConfig-only files are legacy and will be removed after the unified workflow is adopted.
-Note:
-- When writing configs, devices are listed before groups for consistency.
-- Device names must be unique. Duplicate labels are invalid.
+- `save profiles <path>`
+  Writes `bringup_system.json` with updated `bridgeConfig.byProfile`.
+- `save local-config <path>`
+  Writes a bridgeConfig-only file for local reuse.
+- `save config <path>`
+  Captures runtime groups from the robot.
+- `save unified-config <path>`
+  Writes a full bringup_system.json with profiles + bridgeConfig.
 
-Unified Config (bringup_system.json)
-Purpose: Clarify source of truth.
-- bringup_system.json is the single source of truth for device labels and groups.
-- The devices registry defines device identity and attachments.
-- The profiles section lists device labels only.
-- bridgeConfig stores groups/bindings/selectedDevice per profile that reference those labels.
-- The default_profile is used when generating local device metadata.
-- schema_version is 4 (see docs/PROFILE_SCHEMA_REFACTOR.md).
+Use `show config dirty` before you exit to avoid losing work.
 
-Config Save Formats
-Purpose: Explain which files to save and why.
-- Unified JSON (authoritative): save unified-config <path>
-  Use as the primary source of truth for devices + groups.
-- Groups-only JSON (local use): save local-config <path>
-  Use for quick local per-profile group edits without changing profiles.
-- Runtime bridgeConfig JSON (from robot): save config <path>
-  Captures live runtime groups from the robot for later review or reuse.
-- CLI script (derived): export cli-script <path>
-  Convenience batch script generated from the current local config.
-  Regenerate from JSON; do not hand-edit.
-- Profiles JSON (devices only): save profiles <path>
-  Writes bringup_system.json after device edits and preserves bridgeConfig.byProfile.
+## Test Authoring (No JSON)
+Purpose: Create tests without editing `bringup_tests.json` directly.
 
-Usage Guidance
-Purpose: Recommend a stable workflow.
-- Use JSON as the canonical config and store it in version control.
-- Generate scripts from JSON for quick rebuild or demos.
-- Recreate a config by running the script, then save JSON:
-  python tools\can_nt\can_nt_bridge.py --batch --script x_rebuild.txt --no-can --no-nt
-  save unified-config data\bringup_system.json
+Create a test:
+```
+configure terminal
+test set default
+test create MotorPulse
+type button
+device add "FALCON 9"
+inputSource controller0.A
+duty 0.2
+termination time 1.5
+end
+write tests bringup_tests.json
+```
 
-Manual CLI Batch Scripts
-Purpose: Explain when and how to hand-write a batch script.
-Batch scripts are just CLI command lists. You can hand-write them when you want a
-human-readable sequence of steps, but the preferred flow is to export a script
-from JSON and treat scripts as derived artifacts.
-Guidance:
-- Put all device definitions before any add device commands.
-- If you are using bringup_system.json profiles, start with: merge config <bringup_system.json>.
-- Keep one command per line; avoid extra prompts or output lines.
-Example:
-  configure terminal
-  device "Arm Motor"
-  exit
-  group arm
-  add device "Arm Motor"
-  bind LY analog
-  exit
-Run:
-  python tools\can_nt\can_nt_bridge.py --batch --script arm_rebuild.txt --no-can --no-nt
+Inspect tests:
+```
+show tests
+show test MotorPulse
+```
 
-Guided Walkthrough: Build a Full Config From Scratch
-Purpose: Step-by-step guide to create a complete unified config.
-This assumes a local-only session (no topology tool).
+Limit switch termination:
+```
+termination limitswitch
+limitswitch onHit pass
+limitswitch id limitA
+```
 
-Step 1: Start the CLI
-Purpose: Launch in local-only mode.
-Example:
-  python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
-
-Step 2: Enter config mode
-Purpose: Create an empty local config in this session.
-Example:
-  configure terminal
-
-Step 3: Create all device entries first
-Purpose: Devices must exist before groups can reference them.
-Do this for each device you plan to group.
-Example (repeat pattern for all devices):
-  device "Drive Motor (swerve-front-left)"
-  set vendor CTRE
-  set role "swerve drive"
-  set tags ["swerve","drive","front-left"]
-  exit
-
-Example (sensor device):
-  device "Encoder (CANCoder) (swerve-front-left)"
-  set vendor CTRE
-  set role encoder
-  set tags ["encoder","swerve-front-left"]
-  exit
-
-Step 4: Create groups and add devices
-Purpose: Organize devices into testable groups.
-Example:
-  group swerve_front_left
-  add device "Drive Motor (swerve-front-left)"
-  add device "Angle Motor (swerve-front-left)"
-  add device "Encoder (CANCoder) (swerve-front-left)"
-  bind LY analog
-  exit
-
-Step 5: Validate the config
-Purpose: Ensure all group members exist in devices.
-Example:
-  validate config
-
-Step 6: Save the config
-Purpose: Write a unified bringup_system.json file.
-Example:
-  save unified-config data\bringup_system.json
-
-Step 7: Export a rebuild script (optional)
-Purpose: Generate a replayable script for future rebuilds.
-Example:
-  export cli-script x_rebuild.txt
-
-Step 8: Reuse the config
-Purpose: Load and reuse in a future session.
-Example:
-  merge config data\bringup_system.json
-
-Unified Workflow (Topology + CLI)
-Purpose: Use bringup_system.json as the single source of truth.
-1) Edit profiles (labels must be unique). Use the topology tool or edit JSON.
-2) Load bringup_system.json in the CLI:
-   merge config data\bringup_system.json
-3) Create groups using those labels.
-4) Save unified config:
-   save unified-config data\bringup_system.json
 Notes:
-- Device edits update the loaded profiles data and require save profiles or save unified-config.
-- The CLI derives devices from the default_profile.
+- Validation rejects invalid `onHit` values and empty ids.
+- Use `show test <name>` to infer CLI commands from current settings.
+- Use `tests templates` to list available templates.
+- Use `tests load template <name>` to load a template into the editor.
 
-Device Mode Examples
-Purpose: Show how to create and fully define device entries in local sessions.
+## Device Metadata Editing
+Purpose: Explain when to use device mode.
 
-Example: Create a new device entry with all attributes
-Purpose: Create a new device and set CAN identity fields.
-Example:
-  configure terminal
-  device "Test Motor 1"
-  set vendor REV
-  set role "arm motor"
-  set notes "bench test motor"
-  set bus 0
-  set tags ["arm","motor","test"]
-  exit
+Device edits apply to the loaded profiles. You must save afterward.
 
-Example: Update device metadata (decimal and hex)
-Purpose: Demonstrate edits using decimal and hex.
-Example:
-  configure terminal
-  device "Drive Motor (swerve-front-left)"
-  set vendor CTRE
-  set role "swerve drive"
-  set tags ["swerve","drive"]
-  exit
+Rules:
+- `device <label>` creates the device in the registry and adds it to the active profile.
+- Labels must be unique across the entire registry.
 
-Example: Clear a device field
-Purpose: Remove a field from the device entry.
-Example:
-  configure terminal
-  device "Test Motor 1"
-  exit
+Example (create a new CAN device):
+```
+configure terminal
+profile home_030226
+device "Drive Motor (swerve-front-left)"
+set interface CAN
+set manufacturer 5
+set deviceType 2
+set id 11
+set vendor CTRE
+set role "swerve drive"
+set tags ["swerve","drive","front-left"]
+exit
+save profiles data/bringup_system.json
+```
 
-Example: Create device first, then add to group
-Purpose: Show preferred ordering for scripts.
-Example:
-  configure terminal
-  device "Arm Motor"
-  exit
-  group arm
-  add device "Arm Motor"
-  bind LY analog
-  exit
+Notes:
+- The CLI validates required fields when you create or edit a device.
 
-Example: Sensors with metadata
-Purpose: Define IMU and encoder device identities.
-Example:
-  configure terminal
-  device "IMU (Pigeon2)"
-  set vendor CTRE
-  set role imu
-  set tags ["imu","swerve"]
-  exit
-  device "Encoder (CANCoder) (swerve-front-left)"
-  set vendor CTRE
-  set role encoder
-  set tags ["encoder","swerve-front-left"]
-  exit
+Required fields by interface:
+- CAN: `interface`, `manufacturer`, `deviceType`, `id`
+- DIO: `interface`, `dio`, `invert`
+- PWM: `interface`, `pwm`
+- ANALOG: `interface`, `analog`
 
-Examples
-Purpose: Provide ready-to-run patterns for common networks.
+Supported `set` fields:
+- `interface`, `manufacturer`, `deviceType`, `id`, `model`, `type`
+- `dio`, `invert`, `pwm`, `analog`
+- `attachments`, `terminator`
+- `vendor`, `role`, `notes`, `tags`, `limits`
 
-Example: 4-Module Swerve (Kraken drive, NEO angle, CANCoder)
-Purpose: Four swerve groups, each with drive/angle/encoder.
-Example:
-  configure terminal
-  group swerve_front_left
-  add device "Drive Motor (swerve-front-left)"
-  add device "Angle Motor (swerve-front-left)"
-  add device "Encoder (CANCoder) (swerve-front-left)"
-  exit
-  group swerve_front_right
-  add device "Drive Motor (swerve-front-right)"
-  add device "Angle Motor (swerve-front-right)"
-  add device "Encoder (CANCoder) (swerve-front-right)"
-  exit
-  group swerve_back_left
-  add device "Drive Motor (swerve-back-left)"
-  add device "Angle Motor (swerve-back-left)"
-  add device "Encoder (CANCoder) (swerve-back-left)"
-  exit
-  group swerve_back_right
-  add device "Drive Motor (swerve-back-right)"
-  add device "Angle Motor (swerve-back-right)"
-  add device "Encoder (CANCoder) (swerve-back-right)"
-  exit
+## Controller Bindings (bringup_bindings.json)
+Purpose: Edit controller bindings without touching JSON.
 
-Example: Shooter + Feeder (2 flywheels + feeder)
-Purpose: Shooter group for coordinated testing.
-Example:
-  configure terminal
-  device "Feeder Motor"
-  set vendor CTRE
-  set role feeder
-  exit
-  device "Flywheel Motor (Leader)"
-  set vendor CTRE
-  set role flywheel
-  exit
-  device "Flywheel Motor (Follower)"
-  set vendor CTRE
-  set role flywheel
-  exit
-  group shooter
-  add device "Feeder Motor"
-  add device "Flywheel Motor (Leader)"
-  add device "Flywheel Motor (Follower)"
-  bind LY analog
-  exit
+Show bindings:
+```
+configure terminal
+bindings show
+bindings show controllers
+bindings show bindings
+bindings show axes
+```
 
-Example: Intake + Pivot
-Purpose: Separate intake and pivot control.
-Example:
-  configure terminal
-  device "Fuel Intake Motor"
-  set vendor REV
-  set role intake
-  exit
-  group intake
-  add device "Fuel Intake Motor"
-  bind A toggle 1
-  exit
-  device "Pivot Intake Motor"
-  set vendor REV
-  set role pivot
-  exit
-  device "Pivot Intake Follower"
-  set vendor REV
-  set role pivot
-  exit
-  group intake_pivot
-  add device "Pivot Intake Motor"
-  add device "Pivot Intake Follower"
-  bind B toggle 1
-  exit
+Add or edit controllers:
+```
+bindings controller add controller2 XBOX 2
+bindings controller set controller2 port 2
+bindings controller rename controller2 controller_op
+bindings no controller controller_op
+```
 
-Example: Climber
-Purpose: One device with a hold binding.
-Example:
-  configure terminal
-  device "Climb Motor"
-  set vendor CTRE
-  set role climb
-  exit
-  group climb
-  add device "Climb Motor"
-  bind RB hold 1
-  exit
+Add or edit bindings:
+```
+bindings binding add runTest controller1 button A hold
+bindings binding set 3 mode edge
+bindings binding delete 3
+```
 
-Example: Sensor-Only Validation
-Purpose: Group sensors for presence checks.
-Example:
-  configure terminal
-  device "IMU (Pigeon2)"
-  set vendor CTRE
-  set role imu
-  set tags ["imu","swerve"]
-  exit
-  device "Encoder (CANCoder) (swerve-front-left)"
-  set vendor CTRE
-  set role encoder
-  set tags ["encoder","swerve-front-left"]
-  exit
-  device "Encoder (CANCoder) (swerve-front-right)"
-  set vendor CTRE
-  set role encoder
-  set tags ["encoder","swerve-front-right"]
-  exit
-  device "Encoder (CANCoder) (swerve-back-left)"
-  set vendor CTRE
-  set role encoder
-  set tags ["encoder","swerve-back-left"]
-  exit
-  device "Encoder (CANCoder) (swerve-back-right)"
-  set vendor CTRE
-  set role encoder
-  set tags ["encoder","swerve-back-right"]
-  exit
-  group sensors
-  add device "IMU (Pigeon2)"
-  add device "Encoder (CANCoder) (swerve-front-left)"
-  add device "Encoder (CANCoder) (swerve-front-right)"
-  add device "Encoder (CANCoder) (swerve-back-left)"
-  add device "Encoder (CANCoder) (swerve-back-right)"
-  exit
+Add or edit axes:
+```
+bindings axis add leftDrive controller0 leftY invert on deadband 0.12
+bindings axis set 2 deadband 0.08
+bindings axis delete 2
+```
 
-Example: Minimal Bench Test (Single Motor)
-Purpose: Quick bench setup with one device.
-Example:
-  configure terminal
-  device "Test Motor 1"
-  exit
-  group bench
-  add device "Test Motor 1"
-  bind LY analog
-  exit
+Save or validate:
+```
+bindings save src/main/deploy/bringup_bindings.json
+bindings validate
+```
 
-Example: Mixed Vendors (REV + CTRE)
-Purpose: Two groups split by vendor.
-Example:
-  configure terminal
-  group rev_motors
-  add device "Angle Motor (swerve-front-left)"
-  add device "Angle Motor (swerve-front-right)"
-  exit
-  group ctre_motors
-  add device "Drive Motor (swerve-front-left)"
-  add device "Drive Motor (swerve-front-right)"
-  exit
+Notes:
+- Controller names must exist before bindings/axes reference them.
+- Indexes are 1-based and shown in `bindings show`.
 
-Example: Duplicate Labels (Disambiguate)
-Purpose: Split repeated labels using module tags.
-Example:
-  configure terminal
-  group swerve_front_left
-  add device "Drive Motor (swerve-front-left)"
-  exit
-  group swerve_front_right
-  add device "Drive Motor (swerve-front-right)"
-  exit
+## CAN Mappings (can_mappings.json)
+Purpose: Edit manufacturer and device type lookup tables.
 
-Example: Binding Cleanup
-Purpose: Remove bindings from a group.
-Example:
-  configure terminal
-  group shooter
-  no bind
-  exit
+Show mappings:
+```
+configure terminal
+can-mappings show
+can-mappings show manufacturers
+can-mappings show device-types
+```
 
-Example: Save and Reuse
-Purpose: Save a config and reload it later.
-Example:
-  save unified-config data\bringup_system.json
-  merge config data\bringup_system.json
+Edit entries:
+```
+can-mappings manufacturer set 21 NewVendor
+can-mappings manufacturer delete 21
+can-mappings device-type set 14 RangeSensor
+can-mappings device-type delete 14
+```
 
-Appendix: Full Example Script (2026 Robot-Style)
-Purpose: Provide a complete batch script that recreates a full config.
-Example:
-  configure terminal
-  device "Encoder (CANCoder) (swerve-back-left)"
-  exit
-  device "Encoder (CANCoder) (swerve-back-right)"
-  exit
-  device "Encoder (CANCoder) (swerve-front-left)"
-  exit
-  device "Encoder (CANCoder) (swerve-front-right)"
-  exit
-  device "IMU (Pigeon2)"
-  exit
-  device "Climb Motor"
-  exit
-  device "Fuel Intake Motor"
-  exit
-  device "Pivot Intake Motor"
-  exit
-  device "Pivot Intake Follower"
-  exit
-  device "Feeder Motor"
-  exit
-  device "Flywheel Motor (Leader)"
-  exit
-  device "Flywheel Motor (Follower)"
-  exit
-  device "Drive Motor (swerve-back-left)"
-  exit
-  device "Angle Motor (swerve-back-left)"
-  exit
-  device "Drive Motor (swerve-back-right)"
-  exit
-  device "Angle Motor (swerve-back-right)"
-  exit
-  device "Drive Motor (swerve-front-left)"
-  exit
-  device "Angle Motor (swerve-front-left)"
-  exit
-  device "Drive Motor (swerve-front-right)"
-  exit
-  device "Angle Motor (swerve-front-right)"
-  exit
-  group swerve_front_left
-  add device "Drive Motor (swerve-front-left)"
-  add device "Angle Motor (swerve-front-left)"
-  add device "Encoder (CANCoder) (swerve-front-left)"
-  exit
-  group swerve_front_right
-  add device "Drive Motor (swerve-front-right)"
-  add device "Angle Motor (swerve-front-right)"
-  add device "Encoder (CANCoder) (swerve-front-right)"
-  exit
-  group swerve_back_left
-  add device "Drive Motor (swerve-back-left)"
-  add device "Angle Motor (swerve-back-left)"
-  add device "Encoder (CANCoder) (swerve-back-left)"
-  exit
-  group swerve_back_right
-  add device "Drive Motor (swerve-back-right)"
-  add device "Angle Motor (swerve-back-right)"
-  add device "Encoder (CANCoder) (swerve-back-right)"
-  exit
-  group shooter
-  add device "Feeder Motor"
-  add device "Flywheel Motor (Leader)"
-  add device "Flywheel Motor (Follower)"
-  exit
-  group flywheel
-  bind LY analog
-  exit
+Save or validate:
+```
+can-mappings save src/main/deploy/can_mappings.json
+can-mappings validate
+```
 
-Troubleshooting
+## Validation
+Purpose: Explain how to catch mistakes.
+
+Validate the current local config:
+```
+validate config
+```
+
+Typical errors:
+- Missing device entries in a group.
+- Duplicate device labels in a profile.
+- Invalid test parameters.
+- Invalid device definitions (missing required interface fields).
+- Invalid bindings or CAN mappings.
+
+The validator reports profile and group context for missing device labels.
+
+## Troubleshooting
 Purpose: Common errors and fixes.
-- Invalid config: file is not bridgeConfig-only or unified bringup_system.json.
-- Paths with backslashes: use quotes or forward slashes.
-- No CAN IDs shown: labels are the identifiers; CAN IDs live in bringup_system.json.
 
-Tradeoffs
-Purpose: Explain design choices.
-- bridgeConfig-only outputs are compact but do not carry profiles or topology.
-- Unified bringup_system.json preserves shared data but is larger.
+- `ERROR: Profile not selected`  
+  Run `profile <name>` in config mode.
 
-Future Extensions
-Purpose: Planned improvements.
-- Batch command to set device metadata in one line.
+- Groups vanish after restart  
+  You forgot to save. Run `save profiles data/bringup_system.json`.
+
+- Exit prompts about unsaved changes  
+  Run `show config dirty` and save profiles or tests.
+
+- Device label not found  
+  Verify the label exists in `bringup_system.json` for the active profile.
+
+## Learning Path
+Purpose: Suggested path for new users.
+
+1. Run local-only CLI and list profiles.
+2. Create a simple group and save it.
+3. Inspect it with `show group` and `show config local-raw`.
+4. Create a simple test and `write tests`.
+5. Connect to a robot and compare `show groups` local vs robot.
+
+## Reference Pointers
+Purpose: Where to find deeper specs.
+
+- Full command list: `docs/BRIDGE_CLI_FULL_SPEC.md`
+- Test authoring tutorial: `docs/CLI_TEST_AUTHORING_USER_GUIDE.md`
+- Profiles schema: `docs/bringup_profiles_schema.md`

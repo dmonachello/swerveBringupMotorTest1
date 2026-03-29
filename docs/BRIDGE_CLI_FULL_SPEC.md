@@ -112,7 +112,7 @@ Purpose: Show how operators enter and exit each mode.
 - Any Mode -> Exec: `end`
 - Exec -> Exit CLI: `exit` or `quit`
 ### Exec
-Prompt: `bridge>`
+Prompt: `bridge>` or `bridge-profile-<name>>` when a profile is active/default.
 
 Purpose:
 - inspection
@@ -137,6 +137,20 @@ Purpose:
 - membership and bindings
 - enable/disable
 - run tests
+
+### Device Config
+Prompt: `bridge(config-device-<name>)#`
+
+Purpose:
+- edit device metadata
+- inspect device fields
+
+### Test Config
+Prompt: `bridge(config-test-<name>)#`
+
+Purpose:
+- create and edit bringup tests
+- edit bindings and termination settings
 
 ### Batch
 Purpose: Run scripts deterministically without prompts.
@@ -181,6 +195,8 @@ Common:
 - `end`
 - `help`
 - `ping`
+- `echo on`
+- `echo off`
 - `quit`
 - Windows EOF: Ctrl+Z then Enter behaves like `exit` (Ctrl+D on POSIX shells).
 
@@ -196,8 +212,11 @@ Exec:
 - `show runtime-state [robot|local|both]`
 - `show config [robot|local|both]` (alias for runtime-state)
 - `show config local-raw [local]` (raw bridgeConfig.byProfile)
+- `show config dirty [local]` (local unsaved flags)
 - `show profiles [local]` (profile names from bringup_system.json)
 - `show profile [local]` (active/default profile summary)
+- `show tests [--json]`
+- `show test <name> [--json]`
 - `configure terminal`
 - `connect`
 - `disconnect`
@@ -205,17 +224,54 @@ Exec:
 Config:
 - `group <name>`
 - `no group <name>`
+- `profile <name>`
 - `selected-device <device>`
 - `selected-mode on`
 - `selected-mode off`
 - `merge config <bringup_system.json>`
 - `import config <bringup_system.json>`
 - `export runtime-groups <bridgeConfig.json>`
+- `export cli-script <path>`
 - `save config <bridgeConfig.json>`
 - `save local-config <path>` (local-only; writes groups-only when profiles are loaded)
 - `save profiles <path>` (profiles-only; preserves bridgeConfig)
 - `save unified-config <path>`
 - `rename device <old> <new>` (local-only; updates profiles when loaded)
+- `device <name>`
+- `device <name> set <field> <value>`
+- `validate config [path]`
+- `bindings show [controllers|bindings|axes] [--json]`
+- `bindings controller add <name> <type> <port>`
+- `bindings controller set <name> <field> <value>`
+- `bindings controller rename <old> <new>`
+- `bindings no controller <name>`
+- `bindings binding add <command> <controller> <input> <id> <mode>`
+- `bindings binding set <index> <field> <value>`
+- `bindings binding delete <index>`
+- `bindings axis add <command> <controller> <id> invert <on|off> deadband <value>`
+- `bindings axis set <index> <field> <value>`
+- `bindings axis delete <index>`
+- `bindings load <path>`
+- `bindings save <path>`
+- `bindings validate [path]`
+- `can-mappings show [manufacturers|device-types] [--json]`
+- `can-mappings manufacturer set <id> <name>`
+- `can-mappings manufacturer delete <id>`
+- `can-mappings device-type set <id> <name>`
+- `can-mappings device-type delete <id>`
+- `can-mappings load <path>`
+- `can-mappings save <path>`
+- `can-mappings validate [path]`
+- `tests templates`
+- `tests load <path>`
+- `tests load template <name>`
+- `tests save`
+- `show <...>` (same targets as exec)
+- `write tests <path>`
+- `test set <name>`
+- `test create <name>`
+- `test delete <name>`
+- `test <name>` (edit existing)
 
 Show Output Notes:
 - `show group` text output includes members and bindings.
@@ -230,6 +286,7 @@ Group:
 - `show`
 - `show members`
 - `show binding`
+- `show <target> [--json]`
 - `add device <device>`
 - `no device <device>`
 - `member <device> enable`
@@ -245,6 +302,52 @@ Group:
 - `disable`
 - `run test`
 - `run test <name>`
+- `write tests <path>`
+
+Device:
+- `show`
+- `show <target> [--json]`
+- `set <field> <value>`
+- `no <field>`
+- `write tests <path>`
+
+Test:
+- `show`
+- `type joystick`
+- `type button`
+- `type composite`
+- `type deadbandSweep`
+- `device add <name>`
+- `no device <name>`
+- `inputSource <controller>.<inputId>`
+- `deadband <value>`
+- `duty <value>`
+- `rotation limit <value>`
+- `rotation encoderKey <label|internal>`
+- `rotation encoderSource <internal|sparkmax_alt|external>`
+- `rotation encoderMotorIndex <index>`
+- `rotation encoderCountsPerRev <value>`
+- `time timeout <seconds>`
+- `time onTimeout <pass|fail>`
+- `hold onRelease <pass|fail>`
+- `limitswitch onHit <pass|fail>`
+- `limitswitch id <id>`
+- `deadbandSweep startDuty <value>`
+- `deadbandSweep maxDuty <value>`
+- `deadbandSweep stepDuty <value>`
+- `deadbandSweep stepHoldSec <value>`
+- `deadbandSweep motionThresholdRot <value>`
+- `deadbandSweep requiredSamples <value>`
+- `deadbandSweep encoderKey <label|internal>`
+- `deadbandSweep encoderSource <internal|sparkmax_alt|external>`
+- `deadbandSweep encoderMotorIndex <index>`
+- `deadbandSweep encoderCountsPerRev <value>`
+- `enabled true|false|on|off`
+- `termination hold`
+- `termination time <seconds>`
+- `termination rotation <value>`
+- `termination limitswitch [id]`
+- `write tests <path>`
 
 ## Control Identifiers
 Purpose: Define allowed input names.
@@ -362,6 +465,12 @@ Commands:
 - `show selected-device --json`
 - `show runtime-state --json`
 - `show config --json`
+- `show config local-raw --json`
+- `show config dirty --json`
+- `show profiles --json`
+- `show profile --json`
+- `show tests --json`
+- `show test <name> --json`
 
 JSON is one blob per command.
 
@@ -464,8 +573,10 @@ Config:
 - `import config <file>` -> local: delete groups, then emit group commands
 - `export runtime-groups <file>` -> local: `showRuntimeState --json`, write file
 - `save config <file>` -> local: `showRuntimeState --json`, write file
-- `save profiles <file>` -> local: write bringup_system.json (profiles + diagram only)
+- `save local-config <file>` -> local: write bridgeConfig-byProfile only
+- `save profiles <file>` -> local: write bringup_system.json (profiles + diagram + bridgeConfig.byProfile)
 - `save unified-config <file>` -> local: write bringup_system.json (profiles + bridgeConfig.byProfile)
+- `write tests <file>` -> local: validate and write bringup_tests.json
 
 Group:
 - `add device <device>` -> `groupAddDevice` `{group, device, conflictPolicy, forceMove}`
@@ -569,12 +680,15 @@ line           = ws? command ws? ;
 command        = common
                | exec
                | config
-               | group ;
+               | group
+               | device
+               | test ;
 
 common         = "exit"
                | "end"
                | "help"
                | "ping"
+               | "echo" ws ("on" | "off")
                | "quit" ;
 
 exec           = show_exec
@@ -582,37 +696,60 @@ exec           = show_exec
                | "connect"
                | "disconnect" ;
 
-show_exec      = "show" ws show_target [ ws show_source ] [ ws "--json" ] ;
+show_exec      = "show" ws show_target [ ws show_flags ] ;
 
 show_target    = "status"
                | "groups"
                | "group" ws name
                | "devices"
                | "device" ws name
+               | "device" ws "registry" ws name
                | "bindings"
                | "selected-device"
                | "runtime-state"
-               | "config" ;
+               | "config"
+               | "config" ws "local-raw"
+               | "config" ws "dirty"
+               | "profiles"
+               | "profile"
+               | "tests"
+               | "test" ws name ;
 
 show_source    = "robot" | "local" | "both" ;
+show_flags     = show_flag { ws show_flag } ;
+show_flag      = show_source | "--json" ;
 
 config         = "group" ws name
                | "no" ws "group" ws name
+               | "profile" ws name
                | "selected-device" ws name
                | "selected-mode" ws ("on" | "off")
                | "merge" ws "config" ws path
                | "import" ws "config" ws path
                | "export" ws "runtime-groups" ws path
+               | "export" ws "cli-script" ws path
                | "save" ws "config" ws path
                | "save" ws "local-config" ws path
                | "save" ws "profiles" ws path
                | "save" ws "unified-config" ws path
                | "rename" ws "device" ws name ws name
-               | "validate" ws "config" [ ws path ] ;
+               | "device" ws name
+               | "device" ws name ws "set" ws field ws value_text
+               | "validate" ws "config" [ ws path ]
+               | "show" ws show_target [ ws show_flags ]
+               | "bindings" [ ws value_text ]
+               | "can-mappings" [ ws value_text ]
+               | "tests" [ ws value_text ]
+               | "write" ws "tests" ws path
+               | "test" ws ("set" ws name
+                           | "create" ws name
+                           | "delete" ws name
+                           | name) ;
 
 group          = "show"
                | "show" ws "members"
                | "show" ws "binding"
+               | "show" ws show_target [ ws show_flags ]
                | "add" ws "device" ws name
                | "no" ws "device" ws name
                | "member" ws name ws ("enable" | "disable" | "toggle")
@@ -621,20 +758,55 @@ group          = "show"
                | "no" ws "bind"
                | "enable"
                | "disable"
-               | "run" ws "test" [ ws name ] ;
+               | "run" ws "test" [ ws name ]
+               | "write" ws "tests" ws path ;
+
+device         = "show"
+               | "show" ws show_target [ ws show_flags ]
+               | "set" ws field ws value_or_text
+               | "no" ws field
+               | "write" ws "tests" ws path ;
+
+test           = "show"
+               | "type" ws ("joystick" | "button" | "composite" | "deadbandSweep")
+               | "device" ws "add" ws name
+               | "no" ws "device" ws name
+               | "inputSource" ws name
+               | "deadband" ws number
+               | "duty" ws number
+               | "rotation" ws "limit" ws number
+               | "rotation" ws ("encoderKey" | "encoderSource") ws name
+               | "rotation" ws ("encoderMotorIndex" | "encoderCountsPerRev") ws number
+               | "time" ws "timeout" ws number
+               | "time" ws "onTimeout" ws name
+               | "hold" ws "onRelease" ws name
+               | "limitswitch" ws ("onHit" | "id") ws name
+               | "deadbandSweep" ws ("startDuty" | "maxDuty" | "stepDuty" | "stepHoldSec" | "motionThresholdRot") ws number
+               | "deadbandSweep" ws "requiredSamples" ws number
+               | "deadbandSweep" ws ("encoderKey" | "encoderSource") ws name
+               | "deadbandSweep" ws ("encoderMotorIndex" | "encoderCountsPerRev") ws number
+               | "enabled" ws ("true" | "false" | "on" | "off")
+               | "termination" ws "hold"
+               | "termination" ws "time" ws number
+               | "termination" ws "rotation" ws number
+               | "termination" ws "limitswitch" [ ws name ]
+               | "write" ws "tests" ws path ;
 
 (* Lexical conventions *)
 
 name           = token ;
 input          = token ;
 value          = number ;
+value_or_text  = number | value_text ;
 path           = token ;
+field          = token ;
+value_text     = token { ws token } ;
 
 token          = token_char { token_char } ;
 token_char     = ? any non-whitespace character ? ;
 
 number         = ["+"|"-"] digit { digit } [ "." digit { digit } ] ;
-digit          = "0"???"9" ;
+digit          = "0"..."9" ;
 ws             = { " " | "\t" } ;
 ```
 ## Appendix B: EBNF References

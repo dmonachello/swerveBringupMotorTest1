@@ -57,6 +57,19 @@ Notes:
 - New tests are appended to the selected set.
 - Existing tests in other sets are not modified unless selected.
 
+## Templates and Loading
+Purpose: start from a template or load an existing tests file.
+
+Commands:
+1. `tests templates` lists available templates.
+2. `tests load template <name>` loads a template into the editor.
+3. `tests load <path>` loads an existing tests JSON.
+4. `tests save` writes back to the currently loaded tests file.
+
+Notes:
+- Templates live under `tools/test_template_wizard/test_templates`.
+- Loading replaces the in-memory tests model.
+
 ## Device Selection
 Purpose: bind tests to device labels from the active profile.
 
@@ -142,6 +155,7 @@ Purpose: terminate a test when a limit switch is hit.
 Commands:
 1. `termination limitswitch [id]` enables limit switch termination. The id is optional metadata.
 2. `limitswitch onHit <pass|fail>` defines the result when the switch triggers.
+3. `limitswitch id <id>` sets or updates the optional id field.
 
 Example:
 ```
@@ -154,6 +168,7 @@ Notes:
 - Limit switches are defined as DIO devices in `bringup_system.json` and referenced by label in `attachments` on the CAN device.
 - Either `termination limitswitch` or `limitswitch onHit` enables the limit switch check.
 - The optional id is stored in JSON but is not used by the robot runtime yet.
+- Validation enforces `onHit` values (`pass` or `fail`) and non-empty ids when provided.
 
 ## Quick Start (Create a Joystick Test)
 Purpose: create a simple joystick-driven test in a few commands.
@@ -206,6 +221,10 @@ Steps:
 5. `end`
 6. `write tests bringup_tests.json`
 
+Notes:
+- Use `show tests` to list all tests in the active set.
+- Use `show test <name>` to inspect a specific test.
+
 Overwrite behavior:
 - Only `test create <name>` can overwrite. The CLI warns and prompts before replacing an existing test.
 
@@ -217,6 +236,7 @@ Validation failures:
 2. No devices selected.
 3. Invalid ranges such as duty outside -1.0 to 1.0.
 4. Invalid or duplicate test names.
+5. Invalid limit switch configuration (`onHit` or `id`).
 
 Warnings:
 - Device not found in the active profile.

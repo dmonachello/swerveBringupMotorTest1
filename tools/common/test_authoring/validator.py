@@ -55,6 +55,10 @@ FIELD_DEADBAND = "deadband"
 FIELD_BUTTON = "button"
 FIELD_DUTY = "duty"
 FIELD_TERMINATION = "termination"
+FIELD_LIMIT_SWITCH = "limitSwitch"
+FIELD_LIMIT_SWITCH_ENABLED = "enabled"
+FIELD_LIMIT_SWITCH_ON_HIT = "onHit"
+FIELD_LIMIT_SWITCH_ID = "id"
 FIELD_TYPE = "type"
 FIELD_DEADBAND_SWEEP = "deadbandSweep"
 
@@ -79,6 +83,10 @@ MESSAGE_TEST_TYPE_UNKNOWN = "Unknown test type."
 MESSAGE_DEADBAND_SWEEP_REQUIRED = "deadbandSweep config is required."
 MESSAGE_DEADBAND_SWEEP_FIELD = "deadbandSweep field is required."
 MESSAGE_DEADBAND_SWEEP_SAMPLES = "deadbandSweep requiredSamples must be >= 1."
+MESSAGE_LIMIT_SWITCH_REQUIRED = "limitSwitch must be an object."
+MESSAGE_LIMIT_SWITCH_ENABLED = "limitSwitch.enabled must be true/false."
+MESSAGE_LIMIT_SWITCH_ON_HIT = "limitSwitch.onHit must be pass or fail."
+MESSAGE_LIMIT_SWITCH_ID = "limitSwitch.id must be a non-empty string."
 
 TEST_TYPE_JOYSTICK = "joystick"
 TEST_TYPE_BUTTON = "button"
@@ -88,6 +96,9 @@ DEADBAND_MIN = 0.0
 DEADBAND_MAX = 1.0
 DUTY_MIN = -1.0
 DUTY_MAX = 1.0
+DURATION_PASS = "pass"
+DURATION_FAIL = "fail"
+LIMIT_SWITCH_ON_HIT_ALLOWED = {DURATION_PASS, DURATION_FAIL}
 
 
 @dataclass
@@ -298,6 +309,7 @@ def _validate_button(
         result.errors.append(
             ValidationIssue(MESSAGE_TERMINATION_REQUIRED, test.name, FIELD_TERMINATION)
         )
+    _validate_limit_switch(test, result)
 
 
 def _validate_composite(
@@ -330,6 +342,7 @@ def _validate_composite(
         result.errors.append(
             ValidationIssue(MESSAGE_TERMINATION_REQUIRED, test.name, FIELD_TERMINATION)
         )
+    _validate_limit_switch(test, result)
 
 
 def _validate_deadband_sweep(test: TestModel, result: ValidationResult) -> None:
@@ -363,6 +376,38 @@ def _validate_deadband_sweep(test: TestModel, result: ValidationResult) -> None:
             ValidationIssue(MESSAGE_DEADBAND_SWEEP_SAMPLES, test.name, FIELD_DEADBAND_SWEEP)
         )
 
+def _validate_limit_switch(test: TestModel, result: ValidationResult) -> None:
+    """
+    NAME
+        _validate_limit_switch - Validate limitSwitch termination configuration.
+    """
+
+    term = test.termination
+    limit_switch = term.limit_switch
+    if limit_switch is None:
+        return
+    if not isinstance(limit_switch, dict):
+        result.errors.append(
+            ValidationIssue(MESSAGE_LIMIT_SWITCH_REQUIRED, test.name, FIELD_LIMIT_SWITCH)
+        )
+        return
+    enabled = limit_switch.get(FIELD_LIMIT_SWITCH_ENABLED)
+    if enabled is not None and not isinstance(enabled, bool):
+        result.errors.append(
+            ValidationIssue(MESSAGE_LIMIT_SWITCH_ENABLED, test.name, FIELD_LIMIT_SWITCH)
+        )
+    on_hit = limit_switch.get(FIELD_LIMIT_SWITCH_ON_HIT)
+    if on_hit is not None:
+        if not isinstance(on_hit, str) or on_hit not in LIMIT_SWITCH_ON_HIT_ALLOWED:
+            result.errors.append(
+                ValidationIssue(MESSAGE_LIMIT_SWITCH_ON_HIT, test.name, FIELD_LIMIT_SWITCH)
+            )
+    limit_id = limit_switch.get(FIELD_LIMIT_SWITCH_ID)
+    if limit_id is not None and (not isinstance(limit_id, str) or not limit_id.strip()):
+        result.errors.append(
+            ValidationIssue(MESSAGE_LIMIT_SWITCH_ID, test.name, FIELD_LIMIT_SWITCH)
+        )
+
 def _has_termination(test: TestModel) -> bool:
     """
     NAME
@@ -377,6 +422,10 @@ def _has_termination(test: TestModel) -> bool:
     if term.rotation_limit is not None:
         return True
     if term.limit_switch:
+        if isinstance(term.limit_switch, dict):
+            enabled = term.limit_switch.get(FIELD_LIMIT_SWITCH_ENABLED)
+            if enabled is not None and not bool(enabled):
+                return False
         return True
     return False
 

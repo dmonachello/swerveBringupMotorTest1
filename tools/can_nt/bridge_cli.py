@@ -64,7 +64,14 @@ from tools.can_nt.bridge_ops import (
 from tools.can_nt.bridge_session import BridgeEvent, BridgeSession
 from tools.common.json_io import read_json, write_json
 from tools.common.profile_io import compute_profiles_hash
-from tools.common.paths import repo_root, tests_deploy_path, profiles_canonical_path, can_mappings_path
+from tools.common.paths import (
+    repo_root,
+    tests_deploy_path,
+    profiles_canonical_path,
+    can_mappings_path,
+    bindings_deploy_path,
+    test_templates_dir,
+)
 from tools.common.profile_constants import (
     BRIDGE_CONFIG_SCHEMA_VERSION,
     KEY_BRIDGE_BY_PROFILE,
@@ -72,10 +79,34 @@ from tools.common.profile_constants import (
     KEY_BRIDGE_GROUPS,
     KEY_BRIDGE_SCHEMA_VERSION,
     KEY_BRIDGE_SELECTED_DEVICE,
+    KEY_DIO,
     KEY_DEFAULT_PROFILE,
+    KEY_DEVICE_TYPE,
+    KEY_ID,
+    KEY_INTERFACE,
+    KEY_INVERT,
+    KEY_LABEL,
+    KEY_LIMITS,
+    KEY_MANUFACTURER,
+    KEY_MODEL,
+    KEY_NOTES,
+    KEY_PWM,
+    KEY_ANALOG,
     KEY_PROFILE,
     KEY_PROFILES,
+    KEY_PROFILE_DEVICES,
     PROFILE_SCHEMA_VERSION,
+    INTERFACE_ANALOG,
+    INTERFACE_CAN,
+    INTERFACE_DIO,
+    INTERFACE_INTERNAL,
+    INTERFACE_PWM,
+    KEY_ATTACHMENTS,
+    KEY_TERMINATOR,
+    KEY_TYPE,
+    KEY_VENDOR,
+    KEY_ROLE,
+    KEY_TAGS,
 )
 from tools.common.tests_io import load_tests_payload, write_tests_payload
 from tools.common.test_authoring import (
@@ -105,6 +136,15 @@ DEFAULT_TEST_SET = "default"
 EMPTY_STRING = ""
 TEST_LABEL_UNKNOWN = "unknown"
 COUNT_ZERO = 0
+COUNT_ONE = 1
+COUNT_TWO = 2
+COUNT_THREE = 3
+COUNT_FOUR = 4
+COUNT_FIVE = 5
+COUNT_SIX = 6
+COUNT_SEVEN = 7
+COUNT_EIGHT = 8
+COUNT_NINE = 9
 EXIT_CODE_ERROR = 2
 
 CMD_SHOW = "show"
@@ -120,6 +160,8 @@ CMD_REGISTRY = "registry"
 CMD_PROFILE = "profile"
 CMD_ADD = "add"
 CMD_NO = "no"
+CMD_RENAME = "rename"
+CMD_VALIDATE = "validate"
 CMD_INPUT_SOURCE = "inputsource"
 CMD_DEADBAND = "deadband"
 CMD_DUTY = "duty"
@@ -132,13 +174,42 @@ CMD_DEADBAND_SWEEP = "deadbandsweep"
 CMD_ENABLED = "enabled"
 CMD_EXIT = "exit"
 CMD_END = "end"
+CMD_BINDINGS = "bindings"
+CMD_CONTROLLER = "controller"
+CMD_BINDING = "binding"
+CMD_AXIS = "axis"
+CMD_CAN_MAPPINGS = "can-mappings"
+CMD_MANUFACTURER = "manufacturer"
+CMD_DEVICE_TYPE_NAME = "device-type"
+CMD_LOAD = "load"
+CMD_SAVE = "save"
+CMD_TEMPLATES = "templates"
+CMD_TEMPLATE = "template"
+CMD_INFO = "info"
 
 KEY_DEVICE = "device"
+KEY_NAME = "name"
 KEY_GROUPS = "groups"
 KEY_BY_PROFILE = "byProfile"
 KEY_SELECTED_DEVICE = "selectedDevice"
 KEY_MANUFACTURERS = "manufacturers"
 KEY_DEVICE_TYPES = "device_types"
+KEY_TEST_SETS = "test_sets"
+KEY_TESTS = "tests"
+KEY_TEST_SET = "test_set"
+KEY_TEST = "test"
+KEY_DIRTY = "dirty"
+DIRTY_BINDINGS = "bindings"
+DIRTY_CAN_MAPPINGS = "can-mappings"
+KEY_CONTROLLERS = "controllers"
+KEY_BINDINGS = "bindings"
+KEY_AXES = "axes"
+KEY_COMMAND = "command"
+KEY_CONTROLLER = "controller"
+KEY_INPUT = "input"
+KEY_MODE = "mode"
+KEY_PORT = "port"
+KEY_DEADBAND = "deadband"
 
 SHOW_TARGET_CONFIG = "config"
 SHOW_TARGET_RUNTIME = "runtime-state"
@@ -146,16 +217,23 @@ SHOW_TARGET_CONFIG_RAW = "config-raw"
 SHOW_CONFIG_LOCAL_RAW = "local-raw"
 SHOW_TARGET_PROFILES = "profiles"
 SHOW_TARGET_PROFILE = "profile"
-
-COUNT_ZERO = 0
-COUNT_ONE = 1
-COUNT_TWO = 2
+SHOW_TARGET_CONFIG_DIRTY = "config-dirty"
+SHOW_CONFIG_DIRTY = "dirty"
 
 KEY_PROFILE_INFO = "profile"
 KEY_ACTIVE = "active"
 KEY_DEFAULT = "default"
 KEY_AVAILABLE = "available"
 STRING_NONE = "(none)"
+
+PROMPT_EXEC = "bridge> "
+PROMPT_EXEC_WITH_PROFILE_FMT = "bridge{suffix}> "
+PROMPT_CONFIG_PREFIX = "bridge(config"
+PROMPT_GROUP_SEGMENT = "-group-"
+PROMPT_DEVICE_PREFIX = "bridge(config-device-"
+PROMPT_TEST_PREFIX = "bridge(config-test-"
+PROMPT_SUFFIX = ")# "
+PROMPT_PROFILE_PREFIX = "-profile-"
 SHOW_TARGET_STATUS = "status"
 SHOW_TARGET_GROUPS = "groups"
 SHOW_TARGET_GROUP = "group"
@@ -172,10 +250,24 @@ MESSAGE_ERR_LOCAL_CONFIG_MISSING = "ERROR: Local config not loaded. Use merge/im
 MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND = "ERROR: Local device not found."
 MESSAGE_ERR_REGISTRY_NOT_LOADED = "ERROR: Profiles not loaded. Use merge/import config <bringup_system.json>."
 MESSAGE_LOCAL_PROFILES_EMPTY = "Local profiles: (none)"
+MESSAGE_LOCAL_PROFILES_HEADER = "Local profiles:"
 MESSAGE_LOCAL_PROFILE_HEADER = "Local profile:"
 MESSAGE_LOCAL_PROFILE_ACTIVE = "  active={name}"
 MESSAGE_LOCAL_PROFILE_DEFAULT = "  default={name}"
 MESSAGE_LOCAL_PROFILE_AVAILABLE = "  available={count}"
+MESSAGE_DIRTY_HEADER = "Local dirty state:"
+MESSAGE_DIRTY_ENTRY = "  {name}={value}"
+MESSAGE_DIRTY_NONE = "  (clean)"
+MESSAGE_DIRTY_PROMPT = "Unsaved changes in: {items}. Exit anyway?"
+MESSAGE_ERR_DEVICE_LABEL_REQUIRED = "ERROR: device name required."
+MESSAGE_ERR_DEVICE_PROFILE_REQUIRED = "ERROR: Profile not selected. Use 'profile <name>'."
+MESSAGE_ERR_DEVICE_INTERFACE_INVALID = "ERROR: interface must be CAN, DIO, PWM, ANALOG, or INTERNAL."
+MESSAGE_ERR_DEVICE_FIELD_UNKNOWN = "ERROR: device set field not supported."
+MESSAGE_ERR_DEVICE_FIELD_INT = "ERROR: device set value must be an integer."
+MESSAGE_ERR_DEVICE_FIELD_BOOL = "ERROR: device set value must be true/false."
+MESSAGE_ERR_DEVICE_FIELD_LIST = "ERROR: device set value must be a JSON list."
+MESSAGE_ERR_DEVICE_FIELD_DICT = "ERROR: device set value must be a JSON object."
+MESSAGE_WARN_DEVICE_INCOMPLETE = "WARNING: Device {label} missing required fields: {fields}"
 MESSAGE_ERR_REGISTRY_DEVICE_NOT_FOUND = "ERROR: Device not found in registry."
 MESSAGE_SOURCE_LOCAL = "SOURCE: local"
 MESSAGE_LOCAL_CONFIG_RAW = "Local bridgeConfig (raw):"
@@ -184,9 +276,80 @@ MESSAGE_LOCAL_REGISTRY_EMPTY = "  (no fields)"
 MESSAGE_REGISTRY_FIELD_FMT = "  {key}={value}"
 MESSAGE_REGISTRY_FIELD_FMT_NAMED = "  {key}={value} ({name})"
 MESSAGE_MAPPINGS_READ_FAIL = "WARNING: Failed to read CAN mappings: {path}"
+MESSAGE_ERR_BINDINGS_SUBCOMMAND = (
+    "ERROR: bindings <show|controller|binding|axis|load|save|validate>"
+)
+MESSAGE_ERR_BINDINGS_SHOW = "ERROR: bindings show [controllers|bindings|axes] [--json]"
+MESSAGE_ERR_BINDINGS_CONTROLLER_ADD = "ERROR: bindings controller add <name> <type> <port>"
+MESSAGE_ERR_BINDINGS_CONTROLLER_SET = "ERROR: bindings controller set <name> <field> <value>"
+MESSAGE_ERR_BINDINGS_CONTROLLER_RENAME = "ERROR: bindings controller rename <old> <new>"
+MESSAGE_ERR_BINDINGS_CONTROLLER_DELETE = "ERROR: bindings no controller <name>"
+MESSAGE_ERR_BINDINGS_CONTROLLER_PORT = "ERROR: controller port must be an integer."
+MESSAGE_ERR_BINDINGS_CONTROLLER_EXISTS = "ERROR: controller already exists."
+MESSAGE_ERR_BINDINGS_CONTROLLER_NOT_FOUND = "ERROR: controller not found."
+MESSAGE_ERR_BINDINGS_CONTROLLER_IN_USE = "ERROR: controller is referenced by bindings or axes."
+MESSAGE_ERR_BINDINGS_BINDING_ADD = (
+    "ERROR: bindings binding add <command> <controller> <input> <id> <mode>"
+)
+MESSAGE_ERR_BINDINGS_BINDING_SET = "ERROR: bindings binding set <index> <field> <value>"
+MESSAGE_ERR_BINDINGS_BINDING_DELETE = "ERROR: bindings binding delete <index>"
+MESSAGE_ERR_BINDINGS_BINDING_INDEX = "ERROR: binding index out of range."
+MESSAGE_ERR_BINDINGS_AXIS_ADD = (
+    "ERROR: bindings axis add <command> <controller> <id> invert <on|off> deadband <value>"
+)
+MESSAGE_ERR_BINDINGS_AXIS_SET = "ERROR: bindings axis set <index> <field> <value>"
+MESSAGE_ERR_BINDINGS_AXIS_DELETE = "ERROR: bindings axis delete <index>"
+MESSAGE_ERR_BINDINGS_AXIS_INDEX = "ERROR: axis index out of range."
+MESSAGE_ERR_BINDINGS_FIELD_UNKNOWN = "ERROR: bindings field not supported."
+MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED = "ERROR: controller not found: {name}"
+MESSAGE_ERR_BINDINGS_INVERT = "ERROR: invert must be on/off."
+MESSAGE_ERR_BINDINGS_DEADBAND = "ERROR: deadband must be 0.0 to 1.0."
+MESSAGE_ERR_BINDINGS_LOAD = "ERROR: Failed to read bindings: {path}"
+MESSAGE_ERR_BINDINGS_WRITE = "ERROR: Failed to write bindings: {path}: {error}"
+MESSAGE_ERR_BINDINGS_VALIDATE = "ERROR: bindings validation failed: {message}"
+MESSAGE_INFO_BINDINGS_LOADED = "Loaded bindings: {path}"
+MESSAGE_INFO_BINDINGS_SAVED = "Wrote bindings to {path}."
+MESSAGE_BINDINGS_HEADER = "Local bindings config:"
+MESSAGE_BINDINGS_CONTROLLERS_HEADER = "  controllers:"
+MESSAGE_BINDINGS_BINDINGS_HEADER = "  bindings:"
+MESSAGE_BINDINGS_AXES_HEADER = "  axes:"
+MESSAGE_BINDINGS_NONE = "  (none)"
+MESSAGE_BINDINGS_CONTROLLER_FMT = "    {name} type={type} port={port}"
+MESSAGE_BINDINGS_BINDING_FMT = (
+    "    [{index}] command={command} controller={controller} input={input} id={id} mode={mode}"
+)
+MESSAGE_BINDINGS_AXIS_FMT = (
+    "    [{index}] command={command} controller={controller} id={id} invert={invert} deadband={deadband}"
+)
+MESSAGE_ERR_MAPPINGS_SUBCOMMAND = (
+    "ERROR: can-mappings <show|manufacturer|device-type|load|save|validate>"
+)
+MESSAGE_ERR_MAPPINGS_SHOW = "ERROR: can-mappings show [manufacturers|device-types] [--json]"
+MESSAGE_ERR_MAPPINGS_SET = "ERROR: {target} set <id> <name>"
+MESSAGE_ERR_MAPPINGS_DELETE = "ERROR: {target} delete <id>"
+MESSAGE_ERR_MAPPINGS_ID = "ERROR: id must be an integer."
+MESSAGE_ERR_MAPPINGS_LOAD = "ERROR: Failed to read CAN mappings: {path}"
+MESSAGE_ERR_MAPPINGS_WRITE = "ERROR: Failed to write CAN mappings: {path}: {error}"
+MESSAGE_ERR_MAPPINGS_VALIDATE = "ERROR: can-mappings validation failed: {message}"
+MESSAGE_INFO_MAPPINGS_LOADED = "Loaded CAN mappings: {path}"
+MESSAGE_INFO_MAPPINGS_SAVED = "Wrote CAN mappings to {path}."
+MESSAGE_MAPPINGS_HEADER = "Local CAN mappings:"
+MESSAGE_MAPPINGS_MANUFACTURERS_HEADER = "  manufacturers:"
+MESSAGE_MAPPINGS_DEVICE_TYPES_HEADER = "  device-types:"
+MESSAGE_MAPPINGS_ENTRY_FMT = "    {id}={name}"
+MESSAGE_MAPPINGS_NONE = "  (none)"
+MESSAGE_ERR_TESTS_SUBCOMMAND = "ERROR: tests <templates|load|save>"
+MESSAGE_ERR_TESTS_LOAD = "ERROR: tests load <path> | tests load template <name>"
+MESSAGE_ERR_TESTS_SAVE = "ERROR: tests save requires a loaded tests file."
+MESSAGE_ERR_TESTS_TEMPLATE_NOT_FOUND = "ERROR: test template not found: {name}"
+MESSAGE_TESTS_TEMPLATES_HEADER = "Test templates:"
+MESSAGE_TESTS_TEMPLATES_NONE = "  (none)"
+MESSAGE_TESTS_TEMPLATE_ENTRY = "  {name}"
+MESSAGE_TESTS_LOADED = "Loaded tests: {path}"
 HELP_SHOW_TEXT = (
     "show <status|groups|group <name>|devices|device <name>|device registry <name>|bindings|"
-    "selected-device|runtime-state|config|config local-raw|profiles|profile> [--json] [robot|local|both]\n"
+    "selected-device|runtime-state|config|config local-raw|config dirty|profiles|profile|tests|test <name>> "
+    "[--json] [robot|local|both]\n"
     "  Defaults: robot if connected, otherwise local."
 )
 MESSAGE_AUTO_MERGE_FAIL = "WARNING: Failed to auto-load default profiles: {path}"
@@ -211,6 +374,81 @@ FIELD_ID = "id"
 FIELD_INTERFACE = "interface"
 FIELD_LABEL = "label"
 FIELD_TYPE = "type"
+FIELD_MODEL = "model"
+FIELD_DIO = "dio"
+FIELD_INVERT = "invert"
+FIELD_PWM = "pwm"
+FIELD_ANALOG = "analog"
+FIELD_ATTACHMENTS = "attachments"
+FIELD_TERMINATOR = "terminator"
+FIELD_VENDOR = "vendor"
+FIELD_ROLE = "role"
+FIELD_NOTES = "notes"
+FIELD_TAGS = "tags"
+FIELD_LIMITS = "limits"
+
+DEVICE_FIELD_INT = "int"
+DEVICE_FIELD_BOOL = "bool"
+DEVICE_FIELD_LIST = "list"
+DEVICE_FIELD_STR = "str"
+DEVICE_FIELD_DICT = "dict"
+
+DEVICE_INTERFACE_ALLOWED = {
+    INTERFACE_CAN,
+    INTERFACE_DIO,
+    INTERFACE_PWM,
+    INTERFACE_ANALOG,
+    INTERFACE_INTERNAL,
+}
+
+DEVICE_FIELDS_PROFILE = {
+    FIELD_INTERFACE,
+    FIELD_MANUFACTURER,
+    FIELD_DEVICE_TYPE,
+    FIELD_ID,
+    FIELD_MODEL,
+    FIELD_TYPE,
+    FIELD_DIO,
+    FIELD_INVERT,
+    FIELD_PWM,
+    FIELD_ANALOG,
+    FIELD_ATTACHMENTS,
+    FIELD_TERMINATOR,
+    FIELD_VENDOR,
+    FIELD_ROLE,
+    FIELD_NOTES,
+    FIELD_TAGS,
+    FIELD_LIMITS,
+}
+
+DEVICE_FIELD_TYPES = {
+    FIELD_INTERFACE: DEVICE_FIELD_STR,
+    FIELD_MANUFACTURER: DEVICE_FIELD_INT,
+    FIELD_DEVICE_TYPE: DEVICE_FIELD_INT,
+    FIELD_ID: DEVICE_FIELD_INT,
+    FIELD_MODEL: DEVICE_FIELD_STR,
+    FIELD_TYPE: DEVICE_FIELD_STR,
+    FIELD_DIO: DEVICE_FIELD_INT,
+    FIELD_INVERT: DEVICE_FIELD_BOOL,
+    FIELD_PWM: DEVICE_FIELD_INT,
+    FIELD_ANALOG: DEVICE_FIELD_INT,
+    FIELD_ATTACHMENTS: DEVICE_FIELD_LIST,
+    FIELD_TERMINATOR: DEVICE_FIELD_BOOL,
+    FIELD_VENDOR: DEVICE_FIELD_STR,
+    FIELD_ROLE: DEVICE_FIELD_STR,
+    FIELD_NOTES: DEVICE_FIELD_STR,
+    FIELD_TAGS: DEVICE_FIELD_LIST,
+    FIELD_LIMITS: DEVICE_FIELD_DICT,
+}
+
+BOOL_TRUE_VALUES = {"true", "on", "1", "yes"}
+BOOL_FALSE_VALUES = {"false", "off", "0", "no"}
+
+DEVICE_REQUIRED_CAN = (FIELD_INTERFACE, FIELD_MANUFACTURER, FIELD_DEVICE_TYPE, FIELD_ID)
+DEVICE_REQUIRED_DIO = (FIELD_INTERFACE, FIELD_DIO, FIELD_INVERT)
+DEVICE_REQUIRED_PWM = (FIELD_INTERFACE, FIELD_PWM)
+DEVICE_REQUIRED_ANALOG = (FIELD_INTERFACE, FIELD_ANALOG)
+DEVICE_REQUIRED_INTERNAL = (FIELD_INTERFACE,)
 
 TEST_TYPE_JOYSTICK = "joystick"
 TEST_TYPE_BUTTON = "button"
@@ -242,6 +480,25 @@ LIMIT_SWITCH_DEFAULT = {
     LIMIT_SWITCH_KEY_ON_HIT: LIMIT_SWITCH_ON_HIT_DEFAULT,
 }
 DEVICE_JOIN_SEPARATOR = ", "
+
+BINDINGS_EMPTY_PAYLOAD = {
+    KEY_CONTROLLERS: [],
+    KEY_BINDINGS: [],
+    KEY_AXES: [],
+}
+BINDINGS_SHOW_CONTROLLERS = "controllers"
+BINDINGS_SHOW_BINDINGS = "bindings"
+BINDINGS_SHOW_AXES = "axes"
+BINDINGS_SHOW_TARGETS = {BINDINGS_SHOW_CONTROLLERS, BINDINGS_SHOW_BINDINGS, BINDINGS_SHOW_AXES}
+BINDINGS_CONTROLLER_FIELDS = {FIELD_TYPE, KEY_PORT, KEY_NAME}
+BINDINGS_BINDING_FIELDS = {KEY_COMMAND, KEY_CONTROLLER, KEY_INPUT, KEY_ID, KEY_MODE}
+BINDINGS_AXIS_FIELDS = {KEY_COMMAND, KEY_CONTROLLER, KEY_ID, KEY_INVERT, KEY_DEADBAND}
+
+MAPPINGS_SHOW_MANUFACTURERS = "manufacturers"
+MAPPINGS_SHOW_DEVICE_TYPES = "device-types"
+MAPPINGS_SHOW_TARGETS = {MAPPINGS_SHOW_MANUFACTURERS, MAPPINGS_SHOW_DEVICE_TYPES}
+
+TESTS_TEMPLATES_SUFFIX = ".json"
 
 MESSAGE_ERROR_TEST_SUBCOMMAND = "ERROR: test requires a subcommand."
 MESSAGE_ERROR_TEST_SET_NAME = "ERROR: test set requires a name."
@@ -348,6 +605,7 @@ class BridgeCli:
         self._show_label_seq: Dict[int, str] = {}
         self._local_devices_locked: bool = False
         self._profiles_dirty: bool = False
+        self._groups_dirty: bool = False
         self._tracker = CommandTracker(timeout_sec=2.0, max_retries=0)
         self._tests_model: Optional[TestAuthoringModel] = None
         self._tests_path: Optional[Path] = None
@@ -356,6 +614,11 @@ class BridgeCli:
         self._tests_profile: Optional[str] = None
         self._groups_profile: Optional[str] = None
         self._can_mappings: Optional[Dict[str, Dict[str, str]]] = None
+        self._can_mappings_path: Optional[Path] = None
+        self._can_mappings_dirty: bool = False
+        self._bindings_payload: Optional[Dict[str, object]] = None
+        self._bindings_path: Optional[Path] = None
+        self._bindings_dirty: bool = False
 
     def run_interactive(self) -> int:
         """
@@ -410,28 +673,33 @@ class BridgeCli:
     def _prompt(self) -> str:
         mode = self._modes[-1]
         if mode.name == "exec":
-            return "bridge> "
+            suffix = self._profile_prompt_suffix(use_active=True)
+            if suffix:
+                return PROMPT_EXEC_WITH_PROFILE_FMT.format(suffix=suffix)
+            return PROMPT_EXEC
         if mode.name == MODE_CONFIG:
             suffix = self._profile_prompt_suffix()
-            return f"bridge(config{suffix})# "
+            return f"{PROMPT_CONFIG_PREFIX}{suffix}{PROMPT_SUFFIX}"
         if mode.name == "group":
             suffix = self._profile_prompt_suffix()
-            return f"bridge(config{suffix}-group-{mode.group})# "
+            return f"{PROMPT_CONFIG_PREFIX}{suffix}{PROMPT_GROUP_SEGMENT}{mode.group}{PROMPT_SUFFIX}"
         if mode.name == "device":
-            return f"bridge(config-device-{mode.device})# "
+            return f"{PROMPT_DEVICE_PREFIX}{mode.device}{PROMPT_SUFFIX}"
         if mode.name == MODE_TEST:
             label = mode.test or TEST_LABEL_UNKNOWN
-            return f"bridge(config-test-{label})# "
-        return "bridge> "
+            return f"{PROMPT_TEST_PREFIX}{label}{PROMPT_SUFFIX}"
+        return PROMPT_EXEC
 
-    def _profile_prompt_suffix(self) -> str:
+    def _profile_prompt_suffix(self, use_active: bool = False) -> str:
         """
         NAME
             _profile_prompt_suffix - Render prompt suffix for active profile.
         """
         profile = self._groups_profile or ""
+        if use_active and not profile:
+            profile = self._active_profile_name() or ""
         if profile:
-            return f"-profile-{profile}"
+            return f"{PROMPT_PROFILE_PREFIX}{profile}"
         return ""
 
     def _auto_merge_default_profiles(self) -> None:
@@ -668,6 +936,14 @@ class BridgeCli:
         cmd = tokens[0].lower()
         if cmd in ("quit", "exit"):
             if self._modes[-1].name == "exec":
+                dirty = {name: flag for name, flag in self._dirty_state().items() if flag}
+                if dirty:
+                    items = ", ".join(sorted(dirty.keys()))
+                    if self._batch:
+                        print(MESSAGE_DIRTY_PROMPT.format(items=items))
+                        return 0
+                    if not self._confirm(MESSAGE_DIRTY_PROMPT.format(items=items)):
+                        return None
                 return 0
             self._pop_mode()
             return None
@@ -729,6 +1005,8 @@ class BridgeCli:
             return True
         if mode == MODE_CONFIG and tokens[0].lower() == CMD_TEST:
             return True
+        if tokens[0].lower() == CMD_TESTS:
+            return True
         if tokens[0].lower() == CMD_SHOW and len(tokens) > 1:
             return tokens[1].lower().startswith(CMD_TEST)
         if tokens[0].lower() == CMD_WRITE and len(tokens) > 1:
@@ -752,6 +1030,8 @@ class BridgeCli:
             return self._test_mode_command(tokens)
         if mode == MODE_CONFIG and tokens[0].lower() == CMD_TEST:
             return self._config_test_command(tokens)
+        if tokens[0].lower() == CMD_TESTS:
+            return self._tests_command(tokens)
         if tokens[0].lower() == CMD_SHOW:
             return self._show_tests_command(tokens)
         if tokens[0].lower() == CMD_WRITE:
@@ -793,6 +1073,911 @@ class BridgeCli:
             self._tests_duplicate_labels = set()
         default_set = self._tests_model.default_test_set if self._tests_model else EMPTY_STRING
         self._tests_active_set = default_set or DEFAULT_TEST_SET
+
+    def _tests_command(self, tokens: List[str]) -> Optional[int]:
+        """
+        NAME
+            _tests_command - Handle tests subcommands (templates/load/save).
+        """
+
+        self._ensure_tests_loaded()
+        if len(tokens) < COUNT_TWO:
+            print(MESSAGE_ERR_TESTS_SUBCOMMAND)
+            return None
+        sub = tokens[COUNT_ONE].lower()
+        if sub == CMD_TEMPLATES:
+            return self._show_test_templates()
+        if sub == CMD_LOAD:
+            if len(tokens) >= COUNT_FOUR and tokens[COUNT_TWO].lower() == CMD_TEMPLATE:
+                name = tokens[COUNT_THREE]
+                path = self._resolve_template_path(name)
+                if path is None:
+                    print(MESSAGE_ERR_TESTS_TEMPLATE_NOT_FOUND.format(name=name))
+                    return None
+                if not self._load_tests_from_path(path):
+                    return None
+                print(MESSAGE_TESTS_LOADED.format(path=path))
+                return None
+            if len(tokens) >= COUNT_THREE:
+                path = Path(tokens[COUNT_TWO])
+                if not self._load_tests_from_path(path):
+                    return None
+                print(MESSAGE_TESTS_LOADED.format(path=path))
+                return None
+            print(MESSAGE_ERR_TESTS_LOAD)
+            return None
+        if sub == CMD_SAVE:
+            if not self._tests_path:
+                print(MESSAGE_ERR_TESTS_SAVE)
+                return None
+            return self._write_tests_command([CMD_WRITE, CMD_TESTS, str(self._tests_path)])
+        print(MESSAGE_ERR_TESTS_SUBCOMMAND)
+        return None
+
+    def _show_test_templates(self) -> Optional[int]:
+        """
+        NAME
+            _show_test_templates - List available test templates.
+        """
+
+        templates = self._list_test_templates()
+        print(MESSAGE_TESTS_TEMPLATES_HEADER)
+        if not templates:
+            print(MESSAGE_TESTS_TEMPLATES_NONE)
+            return None
+        for name in templates:
+            print(MESSAGE_TESTS_TEMPLATE_ENTRY.format(name=name))
+        return None
+
+    def _list_test_templates(self) -> List[str]:
+        """
+        NAME
+            _list_test_templates - Return template filenames.
+        """
+
+        template_dir = test_templates_dir()
+        if not template_dir.exists():
+            return []
+        return sorted([path.name for path in template_dir.glob(f"*{TESTS_TEMPLATES_SUFFIX}")])
+
+    def _resolve_template_path(self, name: str) -> Optional[Path]:
+        """
+        NAME
+            _resolve_template_path - Resolve a template name to a path.
+        """
+
+        template_dir = test_templates_dir()
+        if not template_dir.exists():
+            return None
+        filename = name
+        if not filename.endswith(TESTS_TEMPLATES_SUFFIX):
+            filename = f"{filename}{TESTS_TEMPLATES_SUFFIX}"
+        path = template_dir / filename
+        if not path.exists():
+            return None
+        return path
+
+    def _load_tests_from_path(self, path: Path) -> bool:
+        """
+        NAME
+            _load_tests_from_path - Load tests JSON from a path.
+        """
+
+        try:
+            payload = load_tests_payload(path)
+        except Exception:
+            return False
+        model = model_from_payload(payload or {})
+        self._tests_model = model
+        self._tests_path = path
+        self._tests_dirty = False
+        if not self._tests_profile:
+            self._tests_profile = get_default_profile()
+        try:
+            catalog, duplicates = load_profile_devices(self._tests_profile)
+            self._tests_device_catalog = catalog
+            self._tests_duplicate_labels = duplicates
+        except Exception:
+            self._tests_device_catalog = {}
+            self._tests_duplicate_labels = set()
+        default_set = model.default_test_set if model else EMPTY_STRING
+        self._tests_active_set = default_set or DEFAULT_TEST_SET
+        return True
+
+    def _ensure_bindings_loaded(self) -> bool:
+        """
+        NAME
+            _ensure_bindings_loaded - Load bringup_bindings.json if needed.
+        """
+
+        if isinstance(self._bindings_payload, dict):
+            return True
+        path = bindings_deploy_path()
+        return self._load_bindings_from_path(path, announce=False)
+
+    def _load_bindings_from_path(self, path: Path, announce: bool = True) -> bool:
+        """
+        NAME
+            _load_bindings_from_path - Load bindings config from a path.
+        """
+
+        payload = deepcopy(BINDINGS_EMPTY_PAYLOAD)
+        if path.exists():
+            try:
+                loaded = read_json(path)
+            except Exception:
+                print(MESSAGE_ERR_BINDINGS_LOAD.format(path=path))
+                return False
+            if isinstance(loaded, dict):
+                payload.update(loaded)
+        payload[KEY_CONTROLLERS] = (
+            payload.get(KEY_CONTROLLERS) if isinstance(payload.get(KEY_CONTROLLERS), list) else []
+        )
+        payload[KEY_BINDINGS] = (
+            payload.get(KEY_BINDINGS) if isinstance(payload.get(KEY_BINDINGS), list) else []
+        )
+        payload[KEY_AXES] = payload.get(KEY_AXES) if isinstance(payload.get(KEY_AXES), list) else []
+        self._bindings_payload = payload
+        self._bindings_path = path
+        self._bindings_dirty = False
+        if announce:
+            print(MESSAGE_INFO_BINDINGS_LOADED.format(path=path))
+        return True
+
+    def _save_bindings_to_path(self, path: Path) -> Optional[int]:
+        """
+        NAME
+            _save_bindings_to_path - Save bindings config to a path.
+        """
+
+        if not isinstance(self._bindings_payload, dict):
+            print(MESSAGE_ERR_BINDINGS_LOAD.format(path=path))
+            return EXIT_CODE_ERROR if self._batch else None
+        payload = {
+            KEY_CONTROLLERS: self._bindings_payload.get(KEY_CONTROLLERS, []),
+            KEY_BINDINGS: self._bindings_payload.get(KEY_BINDINGS, []),
+            KEY_AXES: self._bindings_payload.get(KEY_AXES, []),
+        }
+        try:
+            write_json(path, payload, indent=COUNT_TWO, trailing_newline=True)
+        except Exception as exc:
+            print(MESSAGE_ERR_BINDINGS_WRITE.format(path=path, error=exc))
+            return EXIT_CODE_ERROR if self._batch else None
+        self._bindings_dirty = False
+        self._bindings_path = path
+        print(MESSAGE_INFO_BINDINGS_SAVED.format(path=path))
+        return None
+
+    def _bindings_show(self, tokens: List[str]) -> Optional[int]:
+        """
+        NAME
+            _bindings_show - Show bindings config content.
+        """
+
+        if not isinstance(self._bindings_payload, dict):
+            print(MESSAGE_ERR_BINDINGS_LOAD.format(path=EMPTY_STRING))
+            return None
+        _source, cleaned, json_output = self._parse_show_flags(tokens)
+        target = cleaned[COUNT_ZERO].lower() if cleaned else EMPTY_STRING
+        controllers = self._bindings_payload.get(KEY_CONTROLLERS, [])
+        bindings = self._bindings_payload.get(KEY_BINDINGS, [])
+        axes = self._bindings_payload.get(KEY_AXES, [])
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            if target == BINDINGS_SHOW_CONTROLLERS:
+                print(json.dumps({KEY_CONTROLLERS: controllers}))
+                return None
+            if target == BINDINGS_SHOW_BINDINGS:
+                print(json.dumps({KEY_BINDINGS: bindings}))
+                return None
+            if target == BINDINGS_SHOW_AXES:
+                print(json.dumps({KEY_AXES: axes}))
+                return None
+            print(json.dumps(self._bindings_payload))
+            return None
+        if target and target not in BINDINGS_SHOW_TARGETS:
+            print(MESSAGE_ERR_BINDINGS_SHOW)
+            return None
+        print(MESSAGE_BINDINGS_HEADER)
+        if target in (EMPTY_STRING, BINDINGS_SHOW_CONTROLLERS):
+            print(MESSAGE_BINDINGS_CONTROLLERS_HEADER)
+            self._print_bindings_controllers(controllers)
+            if target == BINDINGS_SHOW_CONTROLLERS:
+                return None
+        if target in (EMPTY_STRING, BINDINGS_SHOW_BINDINGS):
+            print(MESSAGE_BINDINGS_BINDINGS_HEADER)
+            self._print_bindings_entries(bindings)
+            if target == BINDINGS_SHOW_BINDINGS:
+                return None
+        if target in (EMPTY_STRING, BINDINGS_SHOW_AXES):
+            print(MESSAGE_BINDINGS_AXES_HEADER)
+            self._print_bindings_axes(axes)
+        return None
+
+    def _print_bindings_controllers(self, controllers: object) -> None:
+        if not isinstance(controllers, list) or not controllers:
+            print(MESSAGE_BINDINGS_NONE)
+            return
+        for entry in controllers:
+            if not isinstance(entry, dict):
+                continue
+            name = str(entry.get(KEY_NAME, "")).strip()
+            ctrl_type = str(entry.get(FIELD_TYPE, "")).strip()
+            port = entry.get(KEY_PORT)
+            if name:
+                print(MESSAGE_BINDINGS_CONTROLLER_FMT.format(name=name, type=ctrl_type, port=port))
+
+    def _print_bindings_entries(self, bindings: object) -> None:
+        if not isinstance(bindings, list) or not bindings:
+            print(MESSAGE_BINDINGS_NONE)
+            return
+        for idx, entry in enumerate(bindings, start=COUNT_ONE):
+            if not isinstance(entry, dict):
+                continue
+            print(
+                MESSAGE_BINDINGS_BINDING_FMT.format(
+                    index=idx,
+                    command=entry.get(KEY_COMMAND),
+                    controller=entry.get(KEY_CONTROLLER),
+                    input=entry.get(KEY_INPUT),
+                    id=entry.get(KEY_ID),
+                    mode=entry.get(KEY_MODE),
+                )
+            )
+
+    def _print_bindings_axes(self, axes: object) -> None:
+        if not isinstance(axes, list) or not axes:
+            print(MESSAGE_BINDINGS_NONE)
+            return
+        for idx, entry in enumerate(axes, start=COUNT_ONE):
+            if not isinstance(entry, dict):
+                continue
+            print(
+                MESSAGE_BINDINGS_AXIS_FMT.format(
+                    index=idx,
+                    command=entry.get(KEY_COMMAND),
+                    controller=entry.get(KEY_CONTROLLER),
+                    id=entry.get(KEY_ID),
+                    invert=entry.get(KEY_INVERT),
+                    deadband=entry.get(KEY_DEADBAND),
+                )
+            )
+
+    def _bindings_controller_command(self, tokens: List[str]) -> Optional[int]:
+        """
+        NAME
+            _bindings_controller_command - Edit controller entries.
+        """
+
+        if not tokens:
+            print(MESSAGE_ERR_BINDINGS_CONTROLLER_SET)
+            return None
+        action = tokens[COUNT_ZERO].lower()
+        controllers = self._bindings_payload.get(KEY_CONTROLLERS, []) if self._bindings_payload else []
+        if action == CMD_ADD:
+            if len(tokens) < COUNT_FOUR:
+                print(MESSAGE_ERR_BINDINGS_CONTROLLER_ADD)
+                return None
+            name = tokens[COUNT_ONE].strip()
+            ctrl_type = tokens[COUNT_TWO].strip()
+            try:
+                port = int(tokens[COUNT_THREE])
+            except ValueError:
+                print(MESSAGE_ERR_BINDINGS_CONTROLLER_PORT)
+                return None
+            if self._bindings_find_controller(name, controllers):
+                print(MESSAGE_ERR_BINDINGS_CONTROLLER_EXISTS)
+                return None
+            controllers.append({KEY_NAME: name, FIELD_TYPE: ctrl_type, KEY_PORT: port})
+            self._bindings_payload[KEY_CONTROLLERS] = controllers
+            self._bindings_dirty = True
+            return None
+        if action == CMD_SET:
+            if len(tokens) < COUNT_FOUR:
+                print(MESSAGE_ERR_BINDINGS_CONTROLLER_SET)
+                return None
+            name = tokens[COUNT_ONE].strip()
+            field = tokens[COUNT_TWO].strip()
+            value = " ".join(tokens[COUNT_THREE:]).strip()
+            entry = self._bindings_find_controller(name, controllers)
+            if not entry:
+                print(MESSAGE_ERR_BINDINGS_CONTROLLER_NOT_FOUND)
+                return None
+            if field == KEY_NAME:
+                return self._bindings_rename_controller(name, value)
+            if field == FIELD_TYPE:
+                entry[FIELD_TYPE] = value
+            elif field == KEY_PORT:
+                try:
+                    entry[KEY_PORT] = int(value)
+                except ValueError:
+                    print(MESSAGE_ERR_BINDINGS_CONTROLLER_PORT)
+                    return None
+            else:
+                print(MESSAGE_ERR_BINDINGS_FIELD_UNKNOWN)
+                return None
+            self._bindings_dirty = True
+            return None
+        if action == CMD_RENAME:
+            if len(tokens) < COUNT_THREE:
+                print(MESSAGE_ERR_BINDINGS_CONTROLLER_RENAME)
+                return None
+            return self._bindings_rename_controller(tokens[COUNT_ONE], tokens[COUNT_TWO])
+        print(MESSAGE_ERR_BINDINGS_SUBCOMMAND)
+        return None
+
+    def _bindings_delete_controller(self, name: str) -> Optional[int]:
+        """
+        NAME
+            _bindings_delete_controller - Remove a controller by name.
+        """
+
+        controllers = self._bindings_payload.get(KEY_CONTROLLERS, []) if self._bindings_payload else []
+        entry = self._bindings_find_controller(name, controllers)
+        if not entry:
+            print(MESSAGE_ERR_BINDINGS_CONTROLLER_NOT_FOUND)
+            return None
+        if self._bindings_controller_in_use(name):
+            print(MESSAGE_ERR_BINDINGS_CONTROLLER_IN_USE)
+            return None
+        controllers.remove(entry)
+        self._bindings_payload[KEY_CONTROLLERS] = controllers
+        self._bindings_dirty = True
+        return None
+
+    def _bindings_binding_command(self, tokens: List[str]) -> Optional[int]:
+        """
+        NAME
+            _bindings_binding_command - Edit button binding entries.
+        """
+
+        if not tokens:
+            print(MESSAGE_ERR_BINDINGS_BINDING_SET)
+            return None
+        action = tokens[COUNT_ZERO].lower()
+        bindings = self._bindings_payload.get(KEY_BINDINGS, []) if self._bindings_payload else []
+        if action == CMD_ADD:
+            if len(tokens) < COUNT_SIX:
+                print(MESSAGE_ERR_BINDINGS_BINDING_ADD)
+                return None
+            entry = {
+                KEY_COMMAND: tokens[COUNT_ONE],
+                KEY_CONTROLLER: tokens[COUNT_TWO],
+                KEY_INPUT: tokens[COUNT_THREE],
+                KEY_ID: tokens[COUNT_FOUR],
+                KEY_MODE: tokens[COUNT_FIVE],
+            }
+            if not self._bindings_controller_exists(entry[KEY_CONTROLLER]):
+                print(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=entry[KEY_CONTROLLER]))
+                return None
+            bindings.append(entry)
+            self._bindings_payload[KEY_BINDINGS] = bindings
+            self._bindings_dirty = True
+            return None
+        if action == CMD_SET:
+            if len(tokens) < COUNT_FOUR:
+                print(MESSAGE_ERR_BINDINGS_BINDING_SET)
+                return None
+            index = self._parse_index(tokens[COUNT_ONE], MESSAGE_ERR_BINDINGS_BINDING_INDEX)
+            if index is None:
+                return None
+            entry = self._bindings_entry_at(bindings, index)
+            if entry is None:
+                print(MESSAGE_ERR_BINDINGS_BINDING_INDEX)
+                return None
+            field = tokens[COUNT_TWO]
+            value = " ".join(tokens[COUNT_THREE:]).strip()
+            if field not in BINDINGS_BINDING_FIELDS:
+                print(MESSAGE_ERR_BINDINGS_FIELD_UNKNOWN)
+                return None
+            if field == KEY_CONTROLLER and not self._bindings_controller_exists(value):
+                print(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=value))
+                return None
+            entry[field] = value
+            self._bindings_dirty = True
+            return None
+        if action == CMD_DELETE:
+            if len(tokens) < COUNT_TWO:
+                print(MESSAGE_ERR_BINDINGS_BINDING_DELETE)
+                return None
+            index = self._parse_index(tokens[COUNT_ONE], MESSAGE_ERR_BINDINGS_BINDING_INDEX)
+            if index is None:
+                return None
+            entry = self._bindings_entry_at(bindings, index)
+            if entry is None:
+                print(MESSAGE_ERR_BINDINGS_BINDING_INDEX)
+                return None
+            bindings.remove(entry)
+            self._bindings_dirty = True
+            return None
+        print(MESSAGE_ERR_BINDINGS_SUBCOMMAND)
+        return None
+
+    def _bindings_axis_command(self, tokens: List[str]) -> Optional[int]:
+        """
+        NAME
+            _bindings_axis_command - Edit axis binding entries.
+        """
+
+        if not tokens:
+            print(MESSAGE_ERR_BINDINGS_AXIS_SET)
+            return None
+        action = tokens[COUNT_ZERO].lower()
+        axes = self._bindings_payload.get(KEY_AXES, []) if self._bindings_payload else []
+        if action == CMD_ADD:
+            if len(tokens) < COUNT_EIGHT:
+                print(MESSAGE_ERR_BINDINGS_AXIS_ADD)
+                return None
+            if tokens[COUNT_FOUR].lower() != KEY_INVERT:
+                print(MESSAGE_ERR_BINDINGS_AXIS_ADD)
+                return None
+            if tokens[COUNT_SIX].lower() != KEY_DEADBAND:
+                print(MESSAGE_ERR_BINDINGS_AXIS_ADD)
+                return None
+            invert = self._parse_bool(tokens[COUNT_FIVE])
+            if invert is None:
+                print(MESSAGE_ERR_BINDINGS_INVERT)
+                return None
+            try:
+                deadband = float(tokens[COUNT_SEVEN])
+            except ValueError:
+                print(MESSAGE_ERR_BINDINGS_DEADBAND)
+                return None
+            if deadband < DEADBAND_MIN or deadband > DEADBAND_MAX:
+                print(MESSAGE_ERR_BINDINGS_DEADBAND)
+                return None
+            controller = tokens[COUNT_TWO]
+            if not self._bindings_controller_exists(controller):
+                print(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=controller))
+                return None
+            entry = {
+                KEY_COMMAND: tokens[COUNT_ONE],
+                KEY_CONTROLLER: controller,
+                KEY_ID: tokens[COUNT_THREE],
+                KEY_INVERT: invert,
+                KEY_DEADBAND: deadband,
+            }
+            axes.append(entry)
+            self._bindings_payload[KEY_AXES] = axes
+            self._bindings_dirty = True
+            return None
+        if action == CMD_SET:
+            if len(tokens) < COUNT_FOUR:
+                print(MESSAGE_ERR_BINDINGS_AXIS_SET)
+                return None
+            index = self._parse_index(tokens[COUNT_ONE], MESSAGE_ERR_BINDINGS_AXIS_INDEX)
+            if index is None:
+                return None
+            entry = self._bindings_entry_at(axes, index)
+            if entry is None:
+                print(MESSAGE_ERR_BINDINGS_AXIS_INDEX)
+                return None
+            field = tokens[COUNT_TWO]
+            value = " ".join(tokens[COUNT_THREE:]).strip()
+            if field not in BINDINGS_AXIS_FIELDS:
+                print(MESSAGE_ERR_BINDINGS_FIELD_UNKNOWN)
+                return None
+            if field == KEY_CONTROLLER:
+                if not self._bindings_controller_exists(value):
+                    print(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=value))
+                    return None
+                entry[field] = value
+                self._bindings_dirty = True
+                return None
+            if field == KEY_INVERT:
+                parsed = self._parse_bool(value)
+                if parsed is None:
+                    print(MESSAGE_ERR_BINDINGS_INVERT)
+                    return None
+                entry[field] = parsed
+                self._bindings_dirty = True
+                return None
+            if field == KEY_DEADBAND:
+                try:
+                    deadband = float(value)
+                except ValueError:
+                    print(MESSAGE_ERR_BINDINGS_DEADBAND)
+                    return None
+                if deadband < DEADBAND_MIN or deadband > DEADBAND_MAX:
+                    print(MESSAGE_ERR_BINDINGS_DEADBAND)
+                    return None
+                entry[field] = deadband
+                self._bindings_dirty = True
+                return None
+            entry[field] = value
+            self._bindings_dirty = True
+            return None
+        if action == CMD_DELETE:
+            if len(tokens) < COUNT_TWO:
+                print(MESSAGE_ERR_BINDINGS_AXIS_DELETE)
+                return None
+            index = self._parse_index(tokens[COUNT_ONE], MESSAGE_ERR_BINDINGS_AXIS_INDEX)
+            if index is None:
+                return None
+            entry = self._bindings_entry_at(axes, index)
+            if entry is None:
+                print(MESSAGE_ERR_BINDINGS_AXIS_INDEX)
+                return None
+            axes.remove(entry)
+            self._bindings_dirty = True
+            return None
+        print(MESSAGE_ERR_BINDINGS_SUBCOMMAND)
+        return None
+
+    def _bindings_validate(self, path: Optional[Path]) -> Optional[int]:
+        """
+        NAME
+            _bindings_validate - Validate bindings payload or file.
+        """
+
+        payload = self._bindings_payload
+        if path is not None:
+            try:
+                loaded = read_json(path)
+            except Exception:
+                print(MESSAGE_ERR_BINDINGS_LOAD.format(path=path))
+                return EXIT_CODE_ERROR if self._batch else None
+            if not isinstance(loaded, dict):
+                print(MESSAGE_ERR_BINDINGS_VALIDATE.format(message=EMPTY_STRING))
+                return EXIT_CODE_ERROR if self._batch else None
+            payload = loaded
+        errors = self._validate_bindings_payload(payload or {})
+        if errors:
+            for message in errors:
+                print(MESSAGE_ERR_BINDINGS_VALIDATE.format(message=message))
+            return EXIT_CODE_ERROR if self._batch else None
+        print(AST_EXEC_SPEC["msg_ok_config"])
+        return None
+
+    def _validate_bindings_payload(self, payload: Dict[str, object]) -> List[str]:
+        """
+        NAME
+            _validate_bindings_payload - Return validation errors for bindings.
+        """
+
+        errors: List[str] = []
+        controllers = payload.get(KEY_CONTROLLERS, [])
+        bindings = payload.get(KEY_BINDINGS, [])
+        axes = payload.get(KEY_AXES, [])
+        controller_names: set[str] = set()
+        if isinstance(controllers, list):
+            for entry in controllers:
+                if not isinstance(entry, dict):
+                    errors.append(MESSAGE_ERR_BINDINGS_CONTROLLER_NOT_FOUND)
+                    continue
+                name = str(entry.get(KEY_NAME, "")).strip()
+                ctrl_type = str(entry.get(FIELD_TYPE, "")).strip()
+                port = entry.get(KEY_PORT)
+                if not name or not ctrl_type:
+                    errors.append(MESSAGE_ERR_BINDINGS_CONTROLLER_SET)
+                if name in controller_names:
+                    errors.append(MESSAGE_ERR_BINDINGS_CONTROLLER_EXISTS)
+                controller_names.add(name)
+                if not isinstance(port, int):
+                    errors.append(MESSAGE_ERR_BINDINGS_CONTROLLER_PORT)
+        if isinstance(bindings, list):
+            for entry in bindings:
+                if not isinstance(entry, dict):
+                    errors.append(MESSAGE_ERR_BINDINGS_BINDING_SET)
+                    continue
+                controller = str(entry.get(KEY_CONTROLLER, "")).strip()
+                for field in BINDINGS_BINDING_FIELDS:
+                    value = entry.get(field)
+                    if value is None or str(value).strip() == EMPTY_STRING:
+                        errors.append(MESSAGE_ERR_BINDINGS_BINDING_SET)
+                        break
+                if controller and controller not in controller_names:
+                    errors.append(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=controller))
+        if isinstance(axes, list):
+            for entry in axes:
+                if not isinstance(entry, dict):
+                    errors.append(MESSAGE_ERR_BINDINGS_AXIS_SET)
+                    continue
+                controller = str(entry.get(KEY_CONTROLLER, "")).strip()
+                for field in BINDINGS_AXIS_FIELDS:
+                    if entry.get(field) is None:
+                        errors.append(MESSAGE_ERR_BINDINGS_AXIS_SET)
+                        break
+                invert = entry.get(KEY_INVERT)
+                if not isinstance(invert, bool):
+                    errors.append(MESSAGE_ERR_BINDINGS_INVERT)
+                deadband = entry.get(KEY_DEADBAND)
+                if not isinstance(deadband, (int, float)):
+                    errors.append(MESSAGE_ERR_BINDINGS_DEADBAND)
+                else:
+                    if deadband < DEADBAND_MIN or deadband > DEADBAND_MAX:
+                        errors.append(MESSAGE_ERR_BINDINGS_DEADBAND)
+                if controller and controller not in controller_names:
+                    errors.append(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=controller))
+        return errors
+
+    def _bindings_find_controller(
+        self, name: str, controllers: List[Dict[str, object]]
+    ) -> Optional[Dict[str, object]]:
+        """
+        NAME
+            _bindings_find_controller - Find a controller entry by name.
+        """
+
+        for entry in controllers:
+            if not isinstance(entry, dict):
+                continue
+            if str(entry.get(KEY_NAME, "")).strip() == name:
+                return entry
+        return None
+
+    def _bindings_controller_exists(self, name: str) -> bool:
+        """
+        NAME
+            _bindings_controller_exists - Check for a controller by name.
+        """
+
+        controllers = self._bindings_payload.get(KEY_CONTROLLERS, []) if self._bindings_payload else []
+        return self._bindings_find_controller(name, controllers) is not None
+
+    def _bindings_controller_in_use(self, name: str) -> bool:
+        """
+        NAME
+            _bindings_controller_in_use - Check references in bindings/axes.
+        """
+
+        if not self._bindings_payload:
+            return False
+        for entry in self._bindings_payload.get(KEY_BINDINGS, []):
+            if isinstance(entry, dict) and str(entry.get(KEY_CONTROLLER, "")).strip() == name:
+                return True
+        for entry in self._bindings_payload.get(KEY_AXES, []):
+            if isinstance(entry, dict) and str(entry.get(KEY_CONTROLLER, "")).strip() == name:
+                return True
+        return False
+
+    def _bindings_rename_controller(self, old: str, new: str) -> Optional[int]:
+        """
+        NAME
+            _bindings_rename_controller - Rename a controller and update references.
+        """
+
+        if old == new:
+            return None
+        controllers = self._bindings_payload.get(KEY_CONTROLLERS, []) if self._bindings_payload else []
+        entry = self._bindings_find_controller(old, controllers)
+        if not entry:
+            print(MESSAGE_ERR_BINDINGS_CONTROLLER_NOT_FOUND)
+            return None
+        if self._bindings_find_controller(new, controllers):
+            print(MESSAGE_ERR_BINDINGS_CONTROLLER_EXISTS)
+            return None
+        entry[KEY_NAME] = new
+        for binding in self._bindings_payload.get(KEY_BINDINGS, []):
+            if isinstance(binding, dict) and binding.get(KEY_CONTROLLER) == old:
+                binding[KEY_CONTROLLER] = new
+        for axis in self._bindings_payload.get(KEY_AXES, []):
+            if isinstance(axis, dict) and axis.get(KEY_CONTROLLER) == old:
+                axis[KEY_CONTROLLER] = new
+        self._bindings_dirty = True
+        return None
+
+    def _bindings_entry_at(
+        self, entries: List[Dict[str, object]], index: int
+    ) -> Optional[Dict[str, object]]:
+        """
+        NAME
+            _bindings_entry_at - Return 1-based entry by index.
+        """
+
+        if index < COUNT_ONE or index > len(entries):
+            return None
+        return entries[index - COUNT_ONE]
+
+    def _parse_index(self, raw: str, error_message: str) -> Optional[int]:
+        """
+        NAME
+            _parse_index - Parse a 1-based index value.
+        """
+
+        try:
+            index = int(raw)
+        except ValueError:
+            print(error_message)
+            return None
+        if index < COUNT_ONE:
+            print(error_message)
+            return None
+        return index
+
+    def _ensure_can_mappings_loaded(self) -> bool:
+        """
+        NAME
+            _ensure_can_mappings_loaded - Load CAN mappings if needed.
+        """
+
+        if isinstance(self._can_mappings, dict):
+            return True
+        self._load_can_mappings()
+        return isinstance(self._can_mappings, dict)
+
+    def _load_can_mappings_from_path(self, path: Path) -> Optional[int]:
+        """
+        NAME
+            _load_can_mappings_from_path - Load CAN mappings from a path.
+        """
+
+        payload: Dict[str, object] = {}
+        if path.exists():
+            try:
+                loaded = read_json(path)
+            except Exception:
+                print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=path))
+                return EXIT_CODE_ERROR if self._batch else None
+            if isinstance(loaded, dict):
+                payload = loaded
+        manufacturers = payload.get(KEY_MANUFACTURERS)
+        device_types = payload.get(KEY_DEVICE_TYPES)
+        self._can_mappings = {
+            KEY_MANUFACTURERS: manufacturers if isinstance(manufacturers, dict) else {},
+            KEY_DEVICE_TYPES: device_types if isinstance(device_types, dict) else {},
+        }
+        self._can_mappings_path = path
+        self._can_mappings_dirty = False
+        print(MESSAGE_INFO_MAPPINGS_LOADED.format(path=path))
+        return None
+
+    def _save_can_mappings_to_path(self, path: Path) -> Optional[int]:
+        """
+        NAME
+            _save_can_mappings_to_path - Save CAN mappings to a path.
+        """
+
+        if not isinstance(self._can_mappings, dict):
+            print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=path))
+            return EXIT_CODE_ERROR if self._batch else None
+        payload = {
+            KEY_MANUFACTURERS: self._can_mappings.get(KEY_MANUFACTURERS, {}),
+            KEY_DEVICE_TYPES: self._can_mappings.get(KEY_DEVICE_TYPES, {}),
+        }
+        try:
+            write_json(path, payload, indent=COUNT_TWO, trailing_newline=True)
+        except Exception as exc:
+            print(MESSAGE_ERR_MAPPINGS_WRITE.format(path=path, error=exc))
+            return EXIT_CODE_ERROR if self._batch else None
+        self._can_mappings_dirty = False
+        self._can_mappings_path = path
+        print(MESSAGE_INFO_MAPPINGS_SAVED.format(path=path))
+        return None
+
+    def _mappings_show(self, tokens: List[str]) -> Optional[int]:
+        """
+        NAME
+            _mappings_show - Show CAN mappings content.
+        """
+
+        if not isinstance(self._can_mappings, dict):
+            print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=EMPTY_STRING))
+            return None
+        _source, cleaned, json_output = self._parse_show_flags(tokens)
+        target = cleaned[COUNT_ZERO].lower() if cleaned else EMPTY_STRING
+        manufacturers = self._can_mappings.get(KEY_MANUFACTURERS, {})
+        device_types = self._can_mappings.get(KEY_DEVICE_TYPES, {})
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            if target == MAPPINGS_SHOW_MANUFACTURERS:
+                print(json.dumps({KEY_MANUFACTURERS: manufacturers}))
+                return None
+            if target == MAPPINGS_SHOW_DEVICE_TYPES:
+                print(json.dumps({KEY_DEVICE_TYPES: device_types}))
+                return None
+            print(json.dumps(self._can_mappings))
+            return None
+        if target and target not in MAPPINGS_SHOW_TARGETS:
+            print(MESSAGE_ERR_MAPPINGS_SHOW)
+            return None
+        print(MESSAGE_MAPPINGS_HEADER)
+        if target in (EMPTY_STRING, MAPPINGS_SHOW_MANUFACTURERS):
+            print(MESSAGE_MAPPINGS_MANUFACTURERS_HEADER)
+            self._print_mappings_entries(manufacturers)
+            if target == MAPPINGS_SHOW_MANUFACTURERS:
+                return None
+        if target in (EMPTY_STRING, MAPPINGS_SHOW_DEVICE_TYPES):
+            print(MESSAGE_MAPPINGS_DEVICE_TYPES_HEADER)
+            self._print_mappings_entries(device_types)
+        return None
+
+    def _print_mappings_entries(self, entries: object) -> None:
+        """
+        NAME
+            _print_mappings_entries - Render mapping entries.
+        """
+
+        if not isinstance(entries, dict) or not entries:
+            print(MESSAGE_MAPPINGS_NONE)
+            return
+        for key in sorted(entries.keys(), key=lambda value: int(value) if str(value).isdigit() else value):
+            name = entries.get(key)
+            print(MESSAGE_MAPPINGS_ENTRY_FMT.format(id=key, name=name))
+
+    def _mappings_entry_command(self, target_key: str, tokens: List[str]) -> Optional[int]:
+        """
+        NAME
+            _mappings_entry_command - Edit manufacturer/device-type entries.
+        """
+
+        if not tokens:
+            print(MESSAGE_ERR_MAPPINGS_SUBCOMMAND)
+            return None
+        action = tokens[COUNT_ZERO].lower()
+        if action == CMD_SET:
+            if len(tokens) < COUNT_THREE:
+                print(MESSAGE_ERR_MAPPINGS_SET.format(target=target_key))
+                return None
+            try:
+                key = int(tokens[COUNT_ONE])
+            except ValueError:
+                print(MESSAGE_ERR_MAPPINGS_ID)
+                return None
+            name = " ".join(tokens[COUNT_TWO:]).strip()
+            entries = self._can_mappings.setdefault(target_key, {})
+            entries[str(key)] = name
+            self._can_mappings_dirty = True
+            return None
+        if action in (CMD_DELETE, CMD_NO):
+            if len(tokens) < COUNT_TWO:
+                print(MESSAGE_ERR_MAPPINGS_DELETE.format(target=target_key))
+                return None
+            try:
+                key = int(tokens[COUNT_ONE])
+            except ValueError:
+                print(MESSAGE_ERR_MAPPINGS_ID)
+                return None
+            entries = self._can_mappings.setdefault(target_key, {})
+            entries.pop(str(key), None)
+            self._can_mappings_dirty = True
+            return None
+        print(MESSAGE_ERR_MAPPINGS_SUBCOMMAND)
+        return None
+
+    def _mappings_validate(self, path: Optional[Path]) -> Optional[int]:
+        """
+        NAME
+            _mappings_validate - Validate CAN mappings payload or file.
+        """
+
+        payload = self._can_mappings
+        if path is not None:
+            try:
+                loaded = read_json(path)
+            except Exception:
+                print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=path))
+                return EXIT_CODE_ERROR if self._batch else None
+            if not isinstance(loaded, dict):
+                print(MESSAGE_ERR_MAPPINGS_VALIDATE.format(message=EMPTY_STRING))
+                return EXIT_CODE_ERROR if self._batch else None
+            payload = loaded
+        errors = self._validate_mappings_payload(payload or {})
+        if errors:
+            for message in errors:
+                print(MESSAGE_ERR_MAPPINGS_VALIDATE.format(message=message))
+            return EXIT_CODE_ERROR if self._batch else None
+        print(AST_EXEC_SPEC["msg_ok_config"])
+        return None
+
+    def _validate_mappings_payload(self, payload: Dict[str, object]) -> List[str]:
+        """
+        NAME
+            _validate_mappings_payload - Return validation errors for mappings.
+        """
+
+        errors: List[str] = []
+        for key in (KEY_MANUFACTURERS, KEY_DEVICE_TYPES):
+            entries = payload.get(key)
+            if not isinstance(entries, dict):
+                errors.append(MESSAGE_ERR_MAPPINGS_SUBCOMMAND)
+                continue
+            for entry_key, entry_value in entries.items():
+                if not str(entry_key).isdigit():
+                    errors.append(MESSAGE_ERR_MAPPINGS_ID)
+                if entry_value is None or str(entry_value).strip() == EMPTY_STRING:
+                    errors.append(MESSAGE_ERR_MAPPINGS_SET.format(target=key))
+        return errors
 
     def _config_test_command(self, tokens: List[str]) -> Optional[int]:
         """
@@ -1207,14 +2392,23 @@ class BridgeCli:
         """
 
         self._ensure_tests_loaded()
-        if len(tokens) >= 2 and tokens[1].lower() == CMD_TESTS:
+        source, cleaned, json_output = self._parse_show_flags(tokens[1:])
+        if source:
+            pass
+        if len(cleaned) >= 1 and cleaned[0].lower() == CMD_TESTS:
+            if json_output:
+                self._print_tests_json()
+                return None
             self._print_tests()
             return None
-        if len(tokens) >= 3 and tokens[1].lower() == CMD_TEST:
+        if len(cleaned) >= 2 and cleaned[0].lower() == CMD_TEST:
             test_set = self._get_active_test_set()
-            test = self._find_test(tokens[2], test_set)
+            test = self._find_test(cleaned[1], test_set)
             if not test:
                 print(MESSAGE_ERROR_TEST_NOT_FOUND)
+                return None
+            if json_output:
+                self._print_test_json(test)
                 return None
             self._print_test(test)
             return None
@@ -1327,6 +2521,20 @@ class BridgeCli:
                 )
             )
 
+    def _print_tests_json(self) -> None:
+        """
+        NAME
+            _print_tests_json - Render tests as JSON payload.
+        """
+
+        test_set = self._get_active_test_set()
+        model = TestAuthoringModel(
+            default_test_set=test_set.name,
+            test_sets={test_set.name: test_set},
+        )
+        payload = model_to_payload(model)
+        print(json.dumps(payload))
+
     def _print_test(self, test: TestModel) -> None:
         """
         NAME
@@ -1375,6 +2583,26 @@ class BridgeCli:
         if test.test_type == TEST_TYPE_DEADBAND_SWEEP and test.deadband_sweep:
             print(MESSAGE_TEST_DEADBAND_SWEEP.format(sweep=test.deadband_sweep))
 
+    def _print_test_json(self, test: TestModel) -> None:
+        """
+        NAME
+            _print_test_json - Render a single test as JSON payload.
+        """
+
+        test_set = self._get_active_test_set()
+        temp_set = TestSetModel(name=test_set.name, tests=[test])
+        model = TestAuthoringModel(
+            default_test_set=test_set.name,
+            test_sets={test_set.name: temp_set},
+        )
+        payload = model_to_payload(model)
+        tests_payload = payload.get(KEY_TEST_SETS)
+        entries = []
+        if isinstance(tests_payload, dict):
+            entries = tests_payload.get(test_set.name, []) or []
+        entry = entries[COUNT_ZERO] if isinstance(entries, list) and entries else {}
+        print(json.dumps({KEY_TEST_SET: test_set.name, KEY_TEST: entry}))
+
     def _exec_command(self, tokens: List[str]) -> Optional[int]:
         cmd = tokens[0].lower()
         if cmd == "connect":
@@ -1402,6 +2630,10 @@ class BridgeCli:
 
     def _config_command(self, tokens: List[str]) -> Optional[int]:
         cmd = tokens[0].lower()
+        if cmd == CMD_BINDINGS:
+            return self._config_bindings_command(tokens)
+        if cmd == CMD_CAN_MAPPINGS:
+            return self._config_can_mappings_command(tokens)
         if cmd == CMD_PROFILE:
             if len(tokens) < 2:
                 print(MESSAGE_ERR_PROFILE_REQUIRED)
@@ -1538,6 +2770,79 @@ class BridgeCli:
         if cmd == "show":
             return self._handle_show(tokens[1:])
         print(f"ERROR: Unknown command: {' '.join(tokens)}")
+        return None
+
+    def _config_bindings_command(self, tokens: List[str]) -> Optional[int]:
+        """
+        NAME
+            _config_bindings_command - Handle bindings subcommands.
+        """
+
+        if not self._ensure_bindings_loaded():
+            return EXIT_CODE_ERROR if self._batch else None
+        if len(tokens) == COUNT_ONE:
+            return self._bindings_show([])
+        sub = tokens[COUNT_ONE].lower()
+        if sub == CMD_SHOW:
+            return self._bindings_show(tokens[COUNT_TWO:])
+        if sub == CMD_CONTROLLER:
+            return self._bindings_controller_command(tokens[COUNT_TWO:])
+        if sub == CMD_BINDING:
+            return self._bindings_binding_command(tokens[COUNT_TWO:])
+        if sub == CMD_AXIS:
+            return self._bindings_axis_command(tokens[COUNT_TWO:])
+        if sub == CMD_LOAD:
+            if len(tokens) < COUNT_THREE:
+                print(MESSAGE_ERR_BINDINGS_LOAD.format(path=EMPTY_STRING))
+                return None
+            return self._load_bindings_from_path(Path(tokens[COUNT_TWO]))
+        if sub == CMD_SAVE:
+            if len(tokens) < COUNT_THREE:
+                print(MESSAGE_ERR_BINDINGS_WRITE.format(path=EMPTY_STRING, error=EMPTY_STRING))
+                return None
+            return self._save_bindings_to_path(Path(tokens[COUNT_TWO]))
+        if sub == CMD_VALIDATE:
+            path = Path(tokens[COUNT_TWO]) if len(tokens) >= COUNT_THREE else None
+            return self._bindings_validate(path)
+        if sub == CMD_NO and len(tokens) >= COUNT_THREE and tokens[COUNT_TWO].lower() == CMD_CONTROLLER:
+            if len(tokens) < COUNT_FOUR:
+                print(MESSAGE_ERR_BINDINGS_CONTROLLER_DELETE)
+                return None
+            return self._bindings_delete_controller(tokens[COUNT_THREE])
+        print(MESSAGE_ERR_BINDINGS_SUBCOMMAND)
+        return None
+
+    def _config_can_mappings_command(self, tokens: List[str]) -> Optional[int]:
+        """
+        NAME
+            _config_can_mappings_command - Handle CAN mappings subcommands.
+        """
+
+        if not self._ensure_can_mappings_loaded():
+            return EXIT_CODE_ERROR if self._batch else None
+        if len(tokens) == COUNT_ONE:
+            return self._mappings_show([])
+        sub = tokens[COUNT_ONE].lower()
+        if sub == CMD_SHOW:
+            return self._mappings_show(tokens[COUNT_TWO:])
+        if sub == CMD_MANUFACTURER:
+            return self._mappings_entry_command(KEY_MANUFACTURERS, tokens[COUNT_TWO:])
+        if sub == CMD_DEVICE_TYPE_NAME:
+            return self._mappings_entry_command(KEY_DEVICE_TYPES, tokens[COUNT_TWO:])
+        if sub == CMD_LOAD:
+            if len(tokens) < COUNT_THREE:
+                print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=EMPTY_STRING))
+                return None
+            return self._load_can_mappings_from_path(Path(tokens[COUNT_TWO]))
+        if sub == CMD_SAVE:
+            if len(tokens) < COUNT_THREE:
+                print(MESSAGE_ERR_MAPPINGS_WRITE.format(path=EMPTY_STRING, error=EMPTY_STRING))
+                return None
+            return self._save_can_mappings_to_path(Path(tokens[COUNT_TWO]))
+        if sub == CMD_VALIDATE:
+            path = Path(tokens[COUNT_TWO]) if len(tokens) >= COUNT_THREE else None
+            return self._mappings_validate(path)
+        print(MESSAGE_ERR_MAPPINGS_SUBCOMMAND)
         return None
 
     def _group_command(self, tokens: List[str]) -> Optional[int]:
@@ -1688,6 +2993,8 @@ class BridgeCli:
             name = tokens[1].lower()
             if name == SHOW_CONFIG_LOCAL_RAW:
                 target = SHOW_TARGET_CONFIG_RAW
+            elif name == SHOW_CONFIG_DIRTY:
+                target = SHOW_TARGET_CONFIG_DIRTY
         if (
             target == CMD_DEVICE
             and len(tokens) >= 3
@@ -1697,6 +3004,8 @@ class BridgeCli:
             tokens = [SHOW_TARGET_DEVICE_REGISTRY, tokens[2]]
         if target == SHOW_TARGET_CONFIG:
             target = SHOW_TARGET_RUNTIME
+        if target in (SHOW_TARGET_CONFIG_RAW, SHOW_TARGET_CONFIG_DIRTY):
+            source = "local"
         if source == "both":
             local_ok = self._show_local(target, tokens, json_output)
             robot_ok = self._show_robot(target, tokens, json_output)
@@ -1757,6 +3066,7 @@ class BridgeCli:
                 self._local_root_hash = incoming_hash
                 self._local_devices_locked = True
             self._profiles_dirty = False
+            self._groups_dirty = False
             self._sync_group_profile()
         if not self._session.is_connected():
             print("WARNING: Robot not connected; local config loaded only.")
@@ -1987,7 +3297,7 @@ class BridgeCli:
                 "save local-config": "save local-config <path>\n  Save local per-profile groups config.",
                 "save profiles": (
                     "save profiles <path>\n"
-                    "  Save profiles/diagram to bringup_system.json (bridgeConfig.byProfile unchanged)."
+                    "  Save bringup_system.json (profiles + bridgeConfig.byProfile)."
                 ),
                 "save unified-config": (
                     "save unified-config <path>\n"
@@ -2014,6 +3324,38 @@ class BridgeCli:
                 "validate config": (
                     "validate config [path]\n"
                     "  Validate devices vs groups in a config file, or the local config if omitted."
+                ),
+                "bindings": (
+                    "bindings show [controllers|bindings|axes] [--json]\n"
+                    "bindings controller add <name> <type> <port>\n"
+                    "bindings controller set <name> <field> <value>\n"
+                    "bindings controller rename <old> <new>\n"
+                    "bindings no controller <name>\n"
+                    "bindings binding add <command> <controller> <input> <id> <mode>\n"
+                    "bindings binding set <index> <field> <value>\n"
+                    "bindings binding delete <index>\n"
+                    "bindings axis add <command> <controller> <id> invert <on|off> deadband <value>\n"
+                    "bindings axis set <index> <field> <value>\n"
+                    "bindings axis delete <index>\n"
+                    "bindings load <path>\n"
+                    "bindings save <path>\n"
+                    "bindings validate [path]"
+                ),
+                "can-mappings": (
+                    "can-mappings show [manufacturers|device-types] [--json]\n"
+                    "can-mappings manufacturer set <id> <name>\n"
+                    "can-mappings manufacturer delete <id>\n"
+                    "can-mappings device-type set <id> <name>\n"
+                    "can-mappings device-type delete <id>\n"
+                    "can-mappings load <path>\n"
+                    "can-mappings save <path>\n"
+                    "can-mappings validate [path]"
+                ),
+                "tests": (
+                    "tests templates\n"
+                    "tests load <path>\n"
+                    "tests load template <name>\n"
+                    "tests save"
                 ),
                 "add device": (
                     "add device <device>\n"
@@ -2048,7 +3390,7 @@ class BridgeCli:
         print(
             "Common: help, exit, end, quit, ping, echo\n"
             "Exec: show, connect, disconnect, configure terminal\n"
-            "Config: profile, group, device, no group, selected-device, selected-mode, merge/import/export/save\n"
+            "Config: profile, group, device, bindings, can-mappings, tests, no group, selected-device, selected-mode, merge/import/export/save\n"
             "Group: show, add device, no device, member, bind, no bind, enable, disable, run test\n"
             "Device: show, set, no\n"
             "Tips: help show | help sources | help group | help batch | help json"
@@ -2115,6 +3457,8 @@ class BridgeCli:
             return False
         if target == SHOW_TARGET_CONFIG_RAW:
             return self._show_local_config_raw(json_output)
+        if target == SHOW_TARGET_CONFIG_DIRTY:
+            return self._show_local_config_dirty(json_output)
         if target == SHOW_TARGET_PROFILES:
             return self._show_local_profiles(json_output)
         if target == SHOW_TARGET_PROFILE:
@@ -2335,6 +3679,28 @@ class BridgeCli:
         print("ERROR: Unknown show command.")
         return False
 
+    def _show_local_config_dirty(self, json_output: bool) -> bool:
+        """
+        NAME
+            _show_local_config_dirty - Show local dirty flags.
+        """
+
+        dirty = self._dirty_state()
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(json.dumps({KEY_DIRTY: dirty}))
+            return True
+        print(MESSAGE_DIRTY_HEADER)
+        any_dirty = False
+        for name in sorted(dirty.keys()):
+            value = dirty[name]
+            if value:
+                any_dirty = True
+            print(MESSAGE_DIRTY_ENTRY.format(name=name, value=str(value).lower()))
+        if not any_dirty:
+            print(MESSAGE_DIRTY_NONE)
+        return True
+
     def _show_local_profiles(self, json_output: bool) -> bool:
         """
         NAME
@@ -2351,12 +3717,12 @@ class BridgeCli:
         names = sorted([name for name in profiles.keys() if isinstance(name, str)])
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
-            print(json.dumps({"profiles": names}))
+            print(json.dumps({KEY_PROFILES: names}))
             return True
         if not names:
             print(MESSAGE_LOCAL_PROFILES_EMPTY)
             return True
-        print("Local profiles:")
+        print(MESSAGE_LOCAL_PROFILES_HEADER)
         for name in names:
             print(f"  {name}")
         return True
@@ -2470,6 +3836,7 @@ class BridgeCli:
             if isinstance(group, dict) and str(group.get("name", "")).strip().lower() == key.lower():
                 return True
         groups.append({"name": key, "enabled": True, "members": [], "bindings": []})
+        self._mark_groups_dirty()
         return True
 
     def _delete_local_group(self, name: str) -> bool:
@@ -2495,6 +3862,7 @@ class BridgeCli:
             return False
         entry = self._local_profile_entry(profile, create=True)
         entry[KEY_BRIDGE_GROUPS] = kept
+        self._mark_groups_dirty()
         return True
 
     def _set_local_selected_device(self, device: str) -> bool:
@@ -2508,6 +3876,7 @@ class BridgeCli:
         selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE, {}) or {}
         enabled = bool(selected.get("enabled", False)) if isinstance(selected, dict) else False
         entry[KEY_BRIDGE_SELECTED_DEVICE] = {KEY_DEVICE: device.strip(), CMD_ENABLED: enabled}
+        self._mark_groups_dirty()
         return True
 
     def _set_local_selected_mode(self, enabled: bool) -> bool:
@@ -2521,6 +3890,7 @@ class BridgeCli:
         selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE, {}) or {}
         device = str(selected.get(KEY_DEVICE, "")).strip() if isinstance(selected, dict) else ""
         entry[KEY_BRIDGE_SELECTED_DEVICE] = {KEY_DEVICE: device, CMD_ENABLED: bool(enabled)}
+        self._mark_groups_dirty()
         return True
 
     def _find_local_group(self, name: str) -> Optional[Dict[str, object]]:
@@ -2553,6 +3923,7 @@ class BridgeCli:
                 return True
         members.append({"device": device, "enabled": True})
         group["members"] = members
+        self._mark_groups_dirty()
         return True
 
     def _remove_local_group_member(self, group_name: str, device: str) -> bool:
@@ -2576,6 +3947,7 @@ class BridgeCli:
             print("ERROR: Device not in local group.")
             return False
         group["members"] = kept
+        self._mark_groups_dirty()
         return True
 
     def _set_local_member_enabled(self, group_name: str, device: str, action: str) -> bool:
@@ -2595,11 +3967,13 @@ class BridgeCli:
                         member["enabled"] = False
                     elif action == "toggle":
                         member["enabled"] = not enabled
+                    self._mark_groups_dirty()
                     return True
             elif isinstance(member, str):
                 if member.strip().lower() == device.lower():
                     members.remove(member)
                     members.append({"device": member, "enabled": action != "disable"})
+                    self._mark_groups_dirty()
                     return True
         print("ERROR: Device not in local group.")
         return False
@@ -2623,6 +3997,7 @@ class BridgeCli:
         bindings = group.get("bindings", [])
         bindings.append(entry)
         group["bindings"] = bindings
+        self._mark_groups_dirty()
         return True
 
     def _clear_local_bindings(self, group_name: str) -> bool:
@@ -2631,6 +4006,7 @@ class BridgeCli:
             print("ERROR: Local group not found.")
             return False
         group["bindings"] = []
+        self._mark_groups_dirty()
         return True
 
     def _set_local_group_enabled(self, group_name: str, enabled: bool) -> bool:
@@ -2639,6 +4015,7 @@ class BridgeCli:
             print("ERROR: Local group not found.")
             return False
         group["enabled"] = bool(enabled)
+        self._mark_groups_dirty()
         return True
 
     def _rename_local_device(self, old: str, new: str) -> bool:
@@ -2768,6 +4145,7 @@ class BridgeCli:
                     changed = True
         if changed:
             self._local_config = config
+            self._mark_groups_dirty()
 
     def _update_diagram_label(self, entry: Dict[str, object], new_label: str) -> None:
         payload = self._local_root_payload
@@ -2835,35 +4213,37 @@ class BridgeCli:
         field_key = field.strip()
         if self._local_devices_locked:
             return self._set_profiles_device_meta(name, field_key, value_raw)
-        if field_key not in (
-            "vendor",
-            "role",
-            "notes",
-            "bus",
-            "tags",
-            "limits",
-        ):
-            print(
-                "ERROR: device set field must be vendor, role, notes, bus, tags, or limits."
-            )
+        if field_key == FIELD_LABEL:
+            print("ERROR: device label is managed by rename device.")
             return False
+        if field_key not in DEVICE_FIELDS_PROFILE:
+            print(MESSAGE_ERR_DEVICE_FIELD_UNKNOWN)
+            return False
+        store_key = FIELD_TYPE if field_key == FIELD_ROLE else field_key
+        field_type = DEVICE_FIELD_TYPES.get(field_key, DEVICE_FIELD_STR)
         value: object
-        if field_key == "bus":
+        if field_type == DEVICE_FIELD_INT:
             try:
                 value = int(value_raw, 0)
             except ValueError:
-                print("ERROR: device set value must be an integer (decimal or 0x..).")
+                print(MESSAGE_ERR_DEVICE_FIELD_INT)
                 return False
-        elif field_key in ("tags", "limits"):
-            parsed = parse_json_arg(value_raw)
+        elif field_type == DEVICE_FIELD_BOOL:
+            parsed = self._parse_bool(value_raw)
             if parsed is None:
-                print("ERROR: device set value must be valid JSON for tags/limits.")
+                print(MESSAGE_ERR_DEVICE_FIELD_BOOL)
                 return False
-            if field_key == "tags" and not isinstance(parsed, list):
-                print("ERROR: tags must be a JSON list.")
+            value = parsed
+        elif field_type == DEVICE_FIELD_LIST:
+            parsed = parse_json_arg(value_raw)
+            if parsed is None or not isinstance(parsed, list):
+                print(MESSAGE_ERR_DEVICE_FIELD_LIST)
                 return False
-            if field_key == "limits" and not isinstance(parsed, dict):
-                print("ERROR: limits must be a JSON object.")
+            value = parsed
+        elif field_type == DEVICE_FIELD_DICT:
+            parsed = parse_json_arg(value_raw)
+            if parsed is None or not isinstance(parsed, dict):
+                print(MESSAGE_ERR_DEVICE_FIELD_DICT)
                 return False
             value = parsed
         else:
@@ -2888,7 +4268,14 @@ class BridgeCli:
                 return False
             target = {"name": name.strip()}
             devices.append(target)
-        target[field_key] = value
+        target[store_key] = value
+        if field_key == FIELD_INTERFACE and isinstance(target, dict):
+            interface = str(target.get(KEY_INTERFACE, "")).strip()
+            if interface and interface not in DEVICE_INTERFACE_ALLOWED:
+                print(MESSAGE_ERR_DEVICE_INTERFACE_INVALID)
+                return False
+        if not self._local_devices_locked:
+            self._mark_groups_dirty()
         return True
 
     def _clear_local_device_meta(self, name: str, field: str) -> bool:
@@ -2902,18 +4289,13 @@ class BridgeCli:
         field_key = field.strip()
         if self._local_devices_locked:
             return self._clear_profiles_device_meta(name, field_key)
-        if field_key not in (
-            "vendor",
-            "role",
-            "notes",
-            "bus",
-            "tags",
-            "limits",
-        ):
-            print(
-                "ERROR: device clear field must be vendor, role, notes, bus, tags, or limits."
-            )
+        if field_key == FIELD_LABEL:
+            print("ERROR: device label is managed by rename device.")
             return False
+        if field_key not in DEVICE_FIELDS_PROFILE:
+            print(MESSAGE_ERR_DEVICE_FIELD_UNKNOWN)
+            return False
+        store_key = FIELD_TYPE if field_key == FIELD_ROLE else field_key
         devices = self._local_config.get("devices")
         if not isinstance(devices, list):
             print("ERROR: No local devices are defined.")
@@ -2923,8 +4305,11 @@ class BridgeCli:
                 continue
             dev_name = str(device.get("name", "")).strip()
             if dev_name.lower() == name.strip().lower():
-                if field_key in device:
-                    device.pop(field_key, None)
+                if store_key in device:
+                    device.pop(store_key, None)
+                    self._validate_device_entry(device)
+                    if not self._local_devices_locked:
+                        self._mark_groups_dirty()
                 return True
         print("ERROR: Device not found in local config.")
         return False
@@ -2951,6 +4336,7 @@ class BridgeCli:
             if dev_name.lower() == name.strip().lower():
                 return True
         devices.append({"name": name.strip()})
+        self._validate_device_entry(devices[-1])
         return True
 
     def _show_local_device_entry(self, name: str) -> Optional[int]:
@@ -3070,7 +4456,80 @@ class BridgeCli:
             KEY_MANUFACTURERS: manufacturers if isinstance(manufacturers, dict) else {},
             KEY_DEVICE_TYPES: device_types if isinstance(device_types, dict) else {},
         }
+        self._can_mappings_path = path
+        self._can_mappings_dirty = False
         return self._can_mappings
+
+    def _parse_bool(self, value_raw: str) -> Optional[bool]:
+        """
+        NAME
+            _parse_bool - Parse a boolean from CLI input.
+        """
+
+        value = value_raw.strip().lower()
+        if value in BOOL_TRUE_VALUES:
+            return True
+        if value in BOOL_FALSE_VALUES:
+            return False
+        return None
+
+    def _device_missing_fields(self, entry: Dict[str, object]) -> List[str]:
+        """
+        NAME
+            _device_missing_fields - Return missing required fields for a device.
+        """
+
+        interface = str(entry.get(KEY_INTERFACE, "")).strip()
+        if not interface:
+            return [FIELD_INTERFACE]
+        required: tuple[str, ...]
+        if interface == INTERFACE_CAN:
+            required = DEVICE_REQUIRED_CAN
+        elif interface == INTERFACE_DIO:
+            required = DEVICE_REQUIRED_DIO
+        elif interface == INTERFACE_PWM:
+            required = DEVICE_REQUIRED_PWM
+        elif interface == INTERFACE_ANALOG:
+            required = DEVICE_REQUIRED_ANALOG
+        else:
+            required = DEVICE_REQUIRED_INTERNAL
+        missing: List[str] = []
+        for field in required:
+            if field == FIELD_INTERFACE:
+                continue
+            if entry.get(field) is None:
+                missing.append(field)
+        return missing
+
+    def _validate_device_entry(self, entry: Dict[str, object]) -> None:
+        """
+        NAME
+            _validate_device_entry - Validate a device definition after edits.
+        """
+
+        interface = str(entry.get(KEY_INTERFACE, "")).strip()
+        if interface and interface not in DEVICE_INTERFACE_ALLOWED:
+            print(MESSAGE_ERR_DEVICE_INTERFACE_INVALID)
+            return
+        missing = self._device_missing_fields(entry)
+        if missing:
+            label = str(entry.get(KEY_LABEL, "")).strip() or str(entry.get(KEY_NAME, "")).strip()
+            fields = ", ".join(missing)
+            print(MESSAGE_WARN_DEVICE_INCOMPLETE.format(label=label, fields=fields))
+
+    def _dirty_state(self) -> Dict[str, bool]:
+        """
+        NAME
+            _dirty_state - Return local dirty flags.
+        """
+
+        return {
+            KEY_GROUPS: bool(self._groups_dirty),
+            KEY_PROFILES: bool(self._profiles_dirty),
+            KEY_TESTS: bool(self._tests_dirty),
+            DIRTY_BINDINGS: bool(self._bindings_dirty),
+            DIRTY_CAN_MAPPINGS: bool(self._can_mappings_dirty),
+        }
 
     def _save_profiles(self, path: str) -> bool:
         """
@@ -3096,6 +4555,7 @@ class BridgeCli:
             print(f"ERROR: Failed to write {path}: {exc}")
             return False
         self._profiles_dirty = False
+        self._groups_dirty = False
         print(f"Wrote profiles to {path}.")
         return True
 
@@ -3104,8 +4564,55 @@ class BridgeCli:
         NAME
             _ensure_profiles_device_entry - Reject implicit registry creation.
         """
-        print("ERROR: Device not found in registry. Edit bringup_system.json in the topology tool.")
-        return False
+        label = name.strip()
+        if not label:
+            print(MESSAGE_ERR_DEVICE_LABEL_REQUIRED)
+            return False
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return False
+        profile_name = self._active_profile_name()
+        if not profile_name:
+            print(MESSAGE_ERR_DEVICE_PROFILE_REQUIRED)
+            return False
+        profiles = payload.get(KEY_PROFILES)
+        if not isinstance(profiles, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return False
+        profile = profiles.get(profile_name)
+        if not isinstance(profile, dict):
+            print(MESSAGE_ERR_PROFILE_UNKNOWN.format(name=profile_name))
+            return False
+        devices = payload.get(KEY_DEVICES)
+        if not isinstance(devices, list):
+            devices = []
+            payload[KEY_DEVICES] = devices
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            existing = str(entry.get(KEY_LABEL, "")).strip()
+            if existing.lower() == label.lower():
+                labels = profile.get(KEY_PROFILE_DEVICES)
+                if not isinstance(labels, list):
+                    labels = []
+                    profile[KEY_PROFILE_DEVICES] = labels
+                if existing and existing not in labels:
+                    labels.append(existing)
+                    self._profiles_dirty = True
+                return True
+        entry = {KEY_LABEL: label}
+        devices.append(entry)
+        labels = profile.get(KEY_PROFILE_DEVICES)
+        if not isinstance(labels, list):
+            labels = []
+            profile[KEY_PROFILE_DEVICES] = labels
+        if label not in labels:
+            labels.append(label)
+        self._profiles_dirty = True
+        self._refresh_devices_from_profiles()
+        self._validate_device_entry(entry)
+        return True
 
     def _set_profiles_device_meta(self, name: str, field: str, value_raw: str) -> bool:
         """
@@ -3115,44 +4622,49 @@ class BridgeCli:
         entry = self._find_profiles_device_entry(name)
         if entry is None:
             return self._ensure_profiles_device_entry(name)
-        if field in (
-            FIELD_MANUFACTURER,
-            FIELD_DEVICE_TYPE,
-            FIELD_DEVICE_ID,
-            FIELD_ID,
-            FIELD_INTERFACE,
-            FIELD_LABEL,
-        ):
-            print("ERROR: device identity fields are managed in bringup_system.json.")
+        field_key = field.strip()
+        if field_key == FIELD_LABEL:
+            print("ERROR: device label is managed by rename device.")
             return False
-        elif field == "vendor":
-            entry["vendor"] = value_raw
-        elif field == "role":
-            entry[FIELD_TYPE] = value_raw
-        elif field == "notes":
-            entry["notes"] = value_raw
-        elif field == "bus":
+        if field_key not in DEVICE_FIELDS_PROFILE:
+            print(MESSAGE_ERR_DEVICE_FIELD_UNKNOWN)
+            return False
+        store_key = FIELD_TYPE if field_key == FIELD_ROLE else field_key
+        field_type = DEVICE_FIELD_TYPES.get(field_key, DEVICE_FIELD_STR)
+        if field_type == DEVICE_FIELD_INT:
             try:
-                entry["bus"] = int(value_raw, 0)
+                entry[store_key] = int(value_raw, 0)
             except ValueError:
-                print("ERROR: bus must be an integer (decimal or 0x..).")
+                print(MESSAGE_ERR_DEVICE_FIELD_INT)
                 return False
-        elif field == "tags":
+        elif field_type == DEVICE_FIELD_BOOL:
+            parsed = self._parse_bool(value_raw)
+            if parsed is None:
+                print(MESSAGE_ERR_DEVICE_FIELD_BOOL)
+                return False
+            entry[store_key] = parsed
+        elif field_type == DEVICE_FIELD_LIST:
             parsed = parse_json_arg(value_raw)
             if parsed is None or not isinstance(parsed, list):
-                print("ERROR: tags must be a JSON list.")
+                print(MESSAGE_ERR_DEVICE_FIELD_LIST)
                 return False
-            entry["tags"] = parsed
-        elif field == "limits":
+            entry[store_key] = parsed
+        elif field_type == DEVICE_FIELD_DICT:
             parsed = parse_json_arg(value_raw)
             if parsed is None or not isinstance(parsed, dict):
-                print("ERROR: limits must be a JSON object.")
+                print(MESSAGE_ERR_DEVICE_FIELD_DICT)
                 return False
-            entry["limits"] = parsed
+            entry[field_key] = parsed
         else:
-            entry[field] = value_raw
+            entry[store_key] = value_raw
+        if field_key == FIELD_INTERFACE:
+            interface = str(entry.get(KEY_INTERFACE, "")).strip()
+            if interface and interface not in DEVICE_INTERFACE_ALLOWED:
+                print(MESSAGE_ERR_DEVICE_INTERFACE_INVALID)
+                return False
         self._profiles_dirty = True
         self._refresh_devices_from_profiles()
+        self._validate_device_entry(entry)
         return True
 
     def _clear_profiles_device_meta(self, name: str, field: str) -> bool:
@@ -3164,20 +4676,18 @@ class BridgeCli:
         if entry is None:
             print("ERROR: Device not found in profiles.")
             return False
-        if field in (
-            FIELD_MANUFACTURER,
-            FIELD_DEVICE_TYPE,
-            FIELD_DEVICE_ID,
-            FIELD_ID,
-            FIELD_INTERFACE,
-            FIELD_LABEL,
-        ):
-            print("ERROR: device identity fields are managed in bringup_system.json.")
+        field_key = field.strip()
+        if field_key == FIELD_LABEL:
+            print("ERROR: device label is managed by rename device.")
             return False
-        else:
-            entry.pop(field, None)
+        if field_key not in DEVICE_FIELDS_PROFILE:
+            print(MESSAGE_ERR_DEVICE_FIELD_UNKNOWN)
+            return False
+        store_key = FIELD_TYPE if field_key == FIELD_ROLE else field_key
+        entry.pop(store_key, None)
         self._profiles_dirty = True
         self._refresh_devices_from_profiles()
+        self._validate_device_entry(entry)
         return True
 
     def _find_profiles_device_entry(self, name: str) -> Optional[Dict[str, object]]:
@@ -3461,9 +4971,18 @@ class BridgeCli:
             }
             self._local_devices_locked = False
             self._profiles_dirty = False
+            self._groups_dirty = False
         if self._groups_profile is None and self._local_root_payload is None:
             self._groups_profile = DEFAULT_PROFILE_LOCAL
             self._local_profile_entry(self._groups_profile, create=True)
+
+    def _mark_groups_dirty(self) -> None:
+        """
+        NAME
+            _mark_groups_dirty - Mark local group config as dirty.
+        """
+
+        self._groups_dirty = True
 
     def _build_unified_payload(self) -> Optional[Dict[str, object]]:
         """
@@ -3503,6 +5022,7 @@ class BridgeCli:
             print(f"ERROR: Failed to write {path}: {exc}")
             return False
         self._profiles_dirty = False
+        self._groups_dirty = False
         print(f"Wrote unified config to {path}.")
         return True
 
@@ -3518,6 +5038,7 @@ class BridgeCli:
         except Exception as exc:
             print(f"ERROR: Failed to write {path}: {exc}")
             return False
+        self._groups_dirty = False
         if self._local_devices_locked:
             print(f"Wrote groups config to {path}.")
         else:

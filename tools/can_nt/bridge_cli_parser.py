@@ -41,6 +41,7 @@ PARSER_RUNTIME_CONST = {
 }
 
 SHOW_CONFIG_LOCAL_RAW = "local-raw"
+SHOW_CONFIG_DIRTY = "dirty"
 
 
 class CliParseError(ValueError):
@@ -161,6 +162,9 @@ class BridgeCliParser:
                 SPEC.cmd_rename: self._handle_rename,
                 SPEC.cmd_device: self._handle_device_command,
                 SPEC.cmd_validate: self._handle_validate,
+                SPEC.cmd_bindings: self._handle_test_any,
+                SPEC.cmd_can_mappings: self._handle_test_any,
+                SPEC.cmd_tests: self._handle_test_any,
                 SPEC.cmd_test: self._handle_test_any,
                 SPEC.cmd_write: self._handle_test_any,
             },
@@ -580,6 +584,38 @@ class BridgeCliParser:
                 SPEC.empty_str,
                 SPEC.empty_str,
                 path,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+            )
+        if verb == SPEC.cmd_bindings:
+            return (
+                SPEC.kind_config_bindings,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+            )
+        if verb == SPEC.cmd_can_mappings:
+            return (
+                SPEC.kind_config_can_mappings,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
@@ -1057,7 +1093,10 @@ class BridgeCliParser:
         if target == "profiles" and len(core) > SPEC.count_one and self._strict:
             raise CliParseError(SPEC.msg_show_too_many)
         if target == SPEC.show_target_config and len(core) > SPEC.count_one:
-            if len(core) == SPEC.count_two and core[SPEC.count_one].lower() == SHOW_CONFIG_LOCAL_RAW:
+            if (
+                len(core) == SPEC.count_two
+                and core[SPEC.count_one].lower() in (SHOW_CONFIG_LOCAL_RAW, SHOW_CONFIG_DIRTY)
+            ):
                 pass
             elif self._strict:
                 raise CliParseError(SPEC.msg_show_too_many)
@@ -1067,7 +1106,7 @@ class BridgeCliParser:
             elif (
                 target == SPEC.show_target_config
                 and len(core) == SPEC.count_two
-                and core[SPEC.count_one].lower() == SHOW_CONFIG_LOCAL_RAW
+                and core[SPEC.count_one].lower() in (SHOW_CONFIG_LOCAL_RAW, SHOW_CONFIG_DIRTY)
             ):
                 max_len = SPEC.count_two
             else:

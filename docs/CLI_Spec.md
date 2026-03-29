@@ -200,8 +200,11 @@ No prompting allowed in batch mode.
 - `show selected-device`
 - `show runtime-state`
 - `show config local-raw`
+- `show config dirty`
 - `show profiles`
 - `show profile`
+- `show tests`
+- `show test <name>`
 - `configure terminal`
 - `connect`
 - `disconnect`
@@ -222,6 +225,40 @@ No prompting allowed in batch mode.
 - `save profiles <path>`
 - `save unified-config <path>`
 - `rename device <old> <new>`
+- `device <name>`
+- `device <name> set <field> <value>`
+- `validate config [path]`
+- `bindings show [controllers|bindings|axes] [--json]`
+- `bindings controller add <name> <type> <port>`
+- `bindings controller set <name> <field> <value>`
+- `bindings controller rename <old> <new>`
+- `bindings no controller <name>`
+- `bindings binding add <command> <controller> <input> <id> <mode>`
+- `bindings binding set <index> <field> <value>`
+- `bindings binding delete <index>`
+- `bindings axis add <command> <controller> <id> invert <on|off> deadband <value>`
+- `bindings axis set <index> <field> <value>`
+- `bindings axis delete <index>`
+- `bindings load <path>`
+- `bindings save <path>`
+- `bindings validate [path]`
+- `can-mappings show [manufacturers|device-types] [--json]`
+- `can-mappings manufacturer set <id> <name>`
+- `can-mappings manufacturer delete <id>`
+- `can-mappings device-type set <id> <name>`
+- `can-mappings device-type delete <id>`
+- `can-mappings load <path>`
+- `can-mappings save <path>`
+- `can-mappings validate [path]`
+- `tests templates`
+- `tests load <path>`
+- `tests load template <name>`
+- `tests save`
+- `write tests <path>`
+- `test set <name>`
+- `test create <name>`
+- `test delete <name>`
+- `test <name>`
 
 ### Group Config Mode Commands
 
