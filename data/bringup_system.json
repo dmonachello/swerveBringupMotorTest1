@@ -1,759 +1,5 @@
 {
   "default_profile": "home_030226",
-  "profiles": {
-    "example_default": {
-      "neos": [
-        {
-          "label": "SPARKMAX 10",
-          "id": 10,
-          "motor": "REV NEO"
-        },
-        {
-          "label": "SPARKMAX 25",
-          "id": 25,
-          "motor": "REV NEO"
-        }
-      ],
-      "roborio": {
-        "label": "roboRIO",
-        "id": 0
-      }
-    },
-    "robot": {
-      "neos": [
-        {
-          "label": "FR NEO",
-          "id": 10,
-          "motor": "REV NEO"
-        },
-        {
-          "label": "FL NEO",
-          "id": 1,
-          "motor": "REV NEO"
-        },
-        {
-          "label": "BR NEO",
-          "id": 7,
-          "motor": "REV NEO"
-        },
-        {
-          "label": "BL NEO",
-          "id": 4,
-          "motor": "REV NEO"
-        }
-      ],
-      "krakens": [
-        {
-          "label": "FR KRAK",
-          "id": 11,
-          "motor": "CTRE Kraken X60"
-        },
-        {
-          "label": "FL KRAK",
-          "id": 2,
-          "motor": "CTRE Kraken X60"
-        },
-        {
-          "label": "BR KRAK",
-          "id": 8,
-          "motor": "CTRE Kraken X60"
-        },
-        {
-          "label": "BL KRAK",
-          "id": 5,
-          "motor": "CTRE Kraken X60"
-        }
-      ],
-      "cancoders": [
-        {
-          "label": "FR CANC",
-          "id": 12
-        },
-        {
-          "label": "FL CANC",
-          "id": 3
-        },
-        {
-          "label": "BR CANC",
-          "id": 9
-        },
-        {
-          "label": "BL CANC",
-          "id": 6
-        }
-      ],
-      "pdh": {
-        "label": "PDH",
-        "id": 1
-      },
-      "pigeon": {
-        "label": "Pigeon",
-        "id": 1
-      },
-      "roborio": {
-        "label": "roboRIO",
-        "id": 0
-      }
-    },
-    "demo_club": {
-      "neos": [
-        {
-          "label": "NEO 25",
-          "id": 25,
-          "motor": "REV NEO"
-        },
-        {
-          "label": "NEO 22",
-          "id": 22,
-          "motor": "REV NEO"
-        },
-        {
-          "label": "NEO 10",
-          "id": 10,
-          "motor": "REV NEO"
-        }
-      ],
-      "roborio": {
-        "label": "roboRIO",
-        "id": 0
-      }
-    },
-    "demo_home": {
-      "neos": [
-        {
-          "label": "VORTEX/FLEX 10",
-          "id": 10,
-          "motor": "REV NEO Vortex"
-        },
-        {
-          "label": "VORTEX/FLEX 20",
-          "id": 20,
-          "motor": "REV NEO Vortex"
-        }
-      ],
-      "falcons": [
-        {
-          "label": "FALCON 30",
-          "id": 30,
-          "motor": "CTRE Falcon 500"
-        }
-      ],
-      "roborio": {
-        "label": "roboRIO",
-        "id": 0
-      }
-    },
-    "demo_home_022326": {
-      "flexes": [
-        {
-          "label": "VORTEX/FLEX 11",
-          "id": 11,
-          "motor": "REV NEO Vortex"
-        },
-        {
-          "label": "VORTEX/FLEX 26",
-          "id": 26,
-          "motor": "REV NEO Vortex"
-        }
-      ],
-      "falcons": [
-        {
-          "label": "FALCON 9",
-          "id": 9,
-          "motor": "CTRE Falcon 500"
-        }
-      ],
-      "pdh": {
-        "label": "PDH",
-        "id": 1,
-        "terminator": true
-      },
-      "roborio": {
-        "label": "roboRIO",
-        "id": 0,
-        "terminator": true
-      }
-    },
-    "demo_home_022526": {
-      "neos": [
-        {
-          "label": "NEO 25",
-          "id": 25,
-          "motor": "REV NEO"
-        }
-      ],
-      "falcons": [
-        {
-          "label": "FALCON 9",
-          "id": 9,
-          "motor": "CTRE Falcon 500"
-        }
-      ],
-      "roborio": {
-        "label": "roboRIO",
-        "id": 0
-      }
-    },
-    "club_022426": {
-      "neos": [
-        {
-          "label": "SPARKMAX 10",
-          "id": 10,
-          "motor": "REV NEO"
-        },
-        {
-          "label": "SPARKMAX 25",
-          "id": 25,
-          "motor": "REV NEO"
-        }
-      ],
-      "flexes": [
-        {
-          "label": "VORTEX/FLEX 11",
-          "id": 11,
-          "motor": "REV NEO Vortex"
-        }
-      ],
-      "candles": [
-        {
-          "label": "CANdle 30",
-          "id": 30
-        }
-      ],
-      "roborio": {
-        "label": "roboRIO",
-        "id": 0
-      }
-    },
-    "club_022526": {
-      "neos": [
-        {
-          "label": "SPARKMAX/NEO 22",
-          "id": 22,
-          "motor": "REV NEO"
-        }
-      ],
-      "neo550s": [
-        {
-          "label": "SPARKMAX/NEO550 7",
-          "id": 7,
-          "motor": "REV NEO 550"
-        }
-      ],
-      "pdh": {
-        "label": "pdh",
-        "id": 1,
-        "terminator": true
-      },
-      "roborio": {
-        "label": "roboRIO",
-        "id": 0,
-        "terminator": true
-      }
-    },
-    "home_030226": {
-      "neos": [
-        {
-          "label": "SPARKMAX/NEO 25",
-          "id": 25,
-          "motor": "REV NEO"
-        }
-      ],
-      "neo550s": [
-        {
-          "label": "SPARKMAX/NEO550 7",
-          "id": 7,
-          "motor": "REV NEO 550",
-          "limits": {
-            "fwdDio": 0,
-            "revDio": -1,
-            "invert": true
-          }
-        }
-      ],
-      "falcons": [
-        {
-          "label": "FALCON 9",
-          "id": 9,
-          "motor": "CTRE Falcon 500"
-        }
-      ],
-      "cancoders": [
-        {
-          "label": "cancoder 44",
-          "id": 44,
-          "terminator": false
-        }
-      ],
-      "pdp": {
-        "label": "pdp",
-        "id": 1,
-        "terminator": true
-      },
-      "roborio": {
-        "label": "roboRIO",
-        "id": 0,
-        "terminator": true
-      }
-    },
-    "reverse_eng_min1": {
-      "neos": [
-        {
-          "label": "SPARKMAX/NEO 11",
-          "id": 11,
-          "motor": "REV NEO"
-        }
-      ],
-      "pdp": {
-        "label": "PDP",
-        "id": 0,
-        "terminator": true
-      },
-      "roborio": {
-        "label": "roboRIO",
-        "id": 0,
-        "terminator": true
-      }
-    },
-    "home_031226": {
-      "neos": [
-        {
-          "label": "SPARKMAX/NEO 25",
-          "id": 25,
-          "motor": "REV NEO"
-        }
-      ],
-      "neo550s": [
-        {
-          "label": "SPARKMAX/NEO550 7",
-          "id": 7,
-          "motor": "REV NEO 550",
-          "limits": {
-            "fwdDio": 0,
-            "revDio": -1,
-            "invert": true
-          }
-        }
-      ],
-      "falcons": [
-        {
-          "label": "FALCON 9",
-          "id": 9,
-          "motor": "CTRE Falcon 500"
-        }
-      ],
-      "candles": [
-        {
-          "label": "candle",
-          "id": 2,
-          "terminator": false
-        }
-      ],
-      "pdh": {
-        "label": "pdh",
-        "id": 1,
-        "terminator": true
-      },
-      "roborio": {
-        "label": "roboRIO",
-        "id": 0,
-        "terminator": true
-      }
-    },
-    "robot_test1": {
-      "neos": [
-        {
-          "label": "intake neo 51",
-          "id": 51,
-          "limits": {
-            "fwdDio": 1,
-            "revDio": 2,
-            "invert": false
-          },
-          "terminator": false
-        },
-        {
-          "label": "SPARKMAX/NEO 11",
-          "id": 11,
-          "motor": "REV NEO",
-          "limits": {
-            "fwdDio": 0,
-            "revDio": -1,
-            "invert": true
-          },
-          "terminator": false
-        },
-        {
-          "label": "neo 21",
-          "id": 21,
-          "terminator": false
-        },
-        {
-          "label": "SPARKMAX/NEO 31",
-          "id": 31,
-          "motor": "REV NEO",
-          "terminator": false
-        },
-        {
-          "label": "SPARKMAX/NEO 41",
-          "id": 41,
-          "motor": "REV NEO",
-          "terminator": false
-        }
-      ],
-      "krakens": [
-        {
-          "label": "kracken 12",
-          "id": 12,
-          "terminator": false
-        },
-        {
-          "label": "kracken 22",
-          "id": 22,
-          "terminator": false
-        },
-        {
-          "label": "kracken 32",
-          "id": 32,
-          "terminator": false
-        },
-        {
-          "label": "kracken 42",
-          "id": 42,
-          "terminator": false
-        }
-      ],
-      "cancoders": [
-        {
-          "label": "cancoder 13",
-          "id": 13,
-          "terminator": false
-        },
-        {
-          "label": "cancoder 23",
-          "id": 23,
-          "terminator": false
-        },
-        {
-          "label": "cancoder 33",
-          "id": 33,
-          "terminator": false
-        },
-        {
-          "label": "cancoder 43",
-          "id": 43,
-          "terminator": false
-        }
-      ],
-      "candles": [
-        {
-          "label": "candle",
-          "id": 2,
-          "terminator": false
-        }
-      ],
-      "pdh": {
-        "label": "pdh",
-        "id": 1,
-        "terminator": true
-      },
-      "roborio": {
-        "label": "roboRIO",
-        "id": 0,
-        "terminator": true
-      }
-    },
-    "home net test 2x": {
-      "flexes": [
-        {
-          "label": "VORTEX/FLEX 11",
-          "id": 11,
-          "motor": "REV NEO Vortex"
-        },
-        {
-          "label": "VORTEX/FLEX 26",
-          "id": 26,
-          "motor": "REV NEO Vortex"
-        }
-      ],
-      "falcons": [
-        {
-          "label": "FALCON 9",
-          "id": 9,
-          "motor": "CTRE Falcon 500"
-        }
-      ],
-      "pdh": {
-        "label": "PDH",
-        "id": 1,
-        "terminator": true
-      },
-      "roborio": {
-        "label": "roboRIO",
-        "id": 0,
-        "terminator": true
-      }
-    },
-    "robot_2026": {
-      "neos": [
-        {
-          "label": "Climb Motor",
-          "id": 60,
-          "motor": "NEO",
-          "tags": [
-            "motor"
-          ]
-        },
-        {
-          "label": "Fuel Intake Motor",
-          "id": 24
-        },
-        {
-          "label": "Pivot Intake Motor",
-          "id": 22
-        },
-        {
-          "label": "Pivot Intake Follower",
-          "id": 11,
-          "motor": "NEO",
-          "tags": [
-            "motor"
-          ]
-        },
-        {
-          "label": "Feeder Motor",
-          "id": 28,
-          "motor": "NEO",
-          "tags": [
-            "motor"
-          ]
-        },
-        {
-          "label": "angle motor front left",
-          "id": 4,
-          "motor": "NEO",
-          "tags": [
-            "sensor"
-          ]
-        },
-        {
-          "label": "angle motor back right",
-          "id": 7,
-          "motor": "NEO",
-          "tags": [
-            "motor"
-          ]
-        },
-        {
-          "label": "angle motor front right",
-          "id": 1,
-          "motor": "NEO",
-          "tags": [
-            "motor"
-          ]
-        },
-        {
-          "label": "angle motor back left",
-          "id": 10,
-          "motor": "NEO",
-          "terminator": false,
-          "tags": [
-            "motor"
-          ]
-        }
-      ],
-      "flexes": [
-        {
-          "label": "Flywheel Motor (Leader)",
-          "id": 27,
-          "motor": "Vortex",
-          "terminator": false
-        },
-        {
-          "label": "Flywheel Motor (Follower)",
-          "id": 23,
-          "motor": "Vortex",
-          "terminator": false,
-          "tags": [
-            "motor"
-          ]
-        }
-      ],
-      "krakens": [
-        {
-          "label": "Drive Motor",
-          "id": 5
-        },
-        {
-          "label": "Drive Motor (id 8)",
-          "id": 8
-        },
-        {
-          "label": "Drive Motor (id 2)",
-          "id": 2
-        },
-        {
-          "label": "Drive Motor (id 11)",
-          "id": 11,
-          "terminator": false
-        }
-      ],
-      "cancoders": [
-        {
-          "label": "Encoder (CANCoder)",
-          "id": 6,
-          "motor": "motor",
-          "tags": [
-            "sensor"
-          ]
-        },
-        {
-          "label": "Encoder (CANCoder) (id 9)",
-          "id": 9,
-          "motor": "motor",
-          "tags": [
-            "sensor"
-          ]
-        },
-        {
-          "label": "Encoder (CANCoder) (id 3)",
-          "id": 3,
-          "motor": "motor",
-          "tags": [
-            "sensor"
-          ]
-        },
-        {
-          "label": "Encoder (CANCoder) (id 12)",
-          "id": 12,
-          "motor": "motor",
-          "tags": [
-            "sensor"
-          ]
-        }
-      ],
-      "candles": [
-        {
-          "label": "CANDle",
-          "id": 62,
-          "terminator": false
-        }
-      ],
-      "pdh": {
-        "label": "pdh",
-        "id": 1,
-        "terminator": true
-      },
-      "pigeon": {
-        "label": "IMU (Pigeon2)",
-        "id": 19,
-        "terminator": false,
-        "tags": [
-          "sensor"
-        ]
-      },
-      "roborio": {
-        "label": "roborio",
-        "id": 0,
-        "terminator": true
-      }
-    },
-    "cannectTests1": {
-      "neos": [
-        {
-          "label": "neo 11",
-          "id": 11,
-          "terminator": false
-        },
-        {
-          "label": "neo 1",
-          "id": 1,
-          "terminator": false
-        },
-        {
-          "label": "neo 21",
-          "id": 21,
-          "terminator": false
-        },
-        {
-          "label": "neo 31",
-          "id": 31,
-          "terminator": false
-        },
-        {
-          "label": "neo feeder 53",
-          "id": 52,
-          "terminator": false
-        }
-      ],
-      "flexes": [
-        {
-          "label": "flex 50 flywheel left",
-          "id": 50,
-          "terminator": false
-        },
-        {
-          "label": "flex 52  flywheel right",
-          "id": 51,
-          "terminator": false
-        }
-      ],
-      "krakens": [
-        {
-          "label": "kracken 12",
-          "id": 12,
-          "terminator": false
-        },
-        {
-          "label": "kracken 2",
-          "id": 2,
-          "terminator": false
-        },
-        {
-          "label": "kracken 22",
-          "id": 22,
-          "terminator": false
-        },
-        {
-          "label": "kracken 32",
-          "id": 32,
-          "terminator": false
-        }
-      ],
-      "cancoders": [
-        {
-          "label": "cancoder 3",
-          "id": 3,
-          "terminator": false
-        },
-        {
-          "label": "cancoder 13",
-          "id": 13,
-          "terminator": false
-        },
-        {
-          "label": "cancoder 23",
-          "id": 23,
-          "terminator": false
-        },
-        {
-          "label": "cancoder 33",
-          "id": 33,
-          "terminator": false
-        }
-      ],
-      "pdh": {
-        "label": "pdh",
-        "id": 62,
-        "terminator": true
-      },
-      "roborio": {
-        "label": "roborio",
-        "id": 0,
-        "terminator": true
-      }
-    }
-  },
   "diagram": {
     "profiles": {
       "home_031226": {
@@ -2711,93 +1957,956 @@
       }
     }
   },
-  "schema_version": 3,
-  "data_version": "2026-03-28_133149",
-  "data_hash": "c912eb47dfb3406e03154f51035cde07ad0d49ca4a6ee4f50b4273099e121dce",
   "bridgeConfig": {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "generatedAt": null,
-    "groups": [
-      {
-        "name": "swerve_front_right",
-        "enabled": true,
-        "members": [
+    "byProfile": {
+      "home_030226": {
+        "groups": [
           {
-            "device": "angle motor back right",
-            "enabled": true
-          },
-          {
-            "device": "Drive Motor (id 2)",
-            "enabled": true
-          },
-          {
-            "device": "Encoder (CANCoder) (id 3)",
-            "enabled": true
+            "name": "motors",
+            "enabled": true,
+            "members": [
+              {
+                "device": "SPARKMAX/NEO 25",
+                "enabled": true
+              },
+              {
+                "device": "SPARKMAX/NEO550 7",
+                "enabled": true
+              },
+              {
+                "device": "FALCON 9",
+                "enabled": true
+              }
+            ],
+            "bindings": []
           }
         ],
-        "bindings": []
-      },
-      {
-        "name": "swerve_front_left",
-        "enabled": true,
-        "members": [
-          {
-            "device": "angle motor front left",
-            "enabled": true
-          },
-          {
-            "device": "Drive Motor",
-            "enabled": true
-          },
-          {
-            "device": "Encoder (CANCoder)",
-            "enabled": true
-          }
-        ],
-        "bindings": []
-      },
-      {
-        "name": "swerve_back_right",
-        "enabled": true,
-        "members": [
-          {
-            "device": "angle motor back right",
-            "enabled": true
-          },
-          {
-            "device": "Drive Motor (id 8)",
-            "enabled": true
-          },
-          {
-            "device": "Encoder (CANCoder) (id 9)",
-            "enabled": true
-          }
-        ],
-        "bindings": []
-      },
-      {
-        "name": "swerve_back_left",
-        "enabled": true,
-        "members": [
-          {
-            "device": "angle motor back left",
-            "enabled": true
-          },
-          {
-            "device": "Drive Motor (id 11)",
-            "enabled": true
-          },
-          {
-            "device": "Encoder (CANCoder) (id 12)",
-            "enabled": true
-          }
-        ],
-        "bindings": []
+        "selectedDevice": {
+          "device": "",
+          "enabled": false
+        }
       }
-    ],
-    "selectedDevice": {
-      "device": "",
-      "enabled": false
     }
-  }
+  },
+  "schema_version": 4,
+  "profiles": {
+    "example_default": {
+      "devices": [
+        "SPARKMAX 10",
+        "SPARKMAX 25",
+        "roboRIO"
+      ]
+    },
+    "robot": {
+      "devices": [
+        "FR NEO",
+        "FL NEO",
+        "BR NEO",
+        "BL NEO",
+        "FR KRAK",
+        "FL KRAK",
+        "BR KRAK",
+        "BL KRAK",
+        "FR CANC",
+        "FL CANC",
+        "BR CANC",
+        "BL CANC",
+        "PDH",
+        "Pigeon",
+        "roboRIO"
+      ]
+    },
+    "demo_club": {
+      "devices": [
+        "NEO 25",
+        "NEO 22",
+        "NEO 10",
+        "roboRIO"
+      ]
+    },
+    "demo_home": {
+      "devices": [
+        "VORTEX/FLEX 10",
+        "VORTEX/FLEX 20",
+        "FALCON 30",
+        "roboRIO"
+      ]
+    },
+    "demo_home_022326": {
+      "devices": [
+        "VORTEX/FLEX 11",
+        "VORTEX/FLEX 26",
+        "FALCON 9",
+        "PDH",
+        "roboRIO"
+      ]
+    },
+    "demo_home_022526": {
+      "devices": [
+        "NEO 25",
+        "FALCON 9",
+        "roboRIO"
+      ]
+    },
+    "club_022426": {
+      "devices": [
+        "SPARKMAX 10",
+        "SPARKMAX 25",
+        "VORTEX/FLEX 11",
+        "CANdle 30",
+        "roboRIO"
+      ]
+    },
+    "club_022526": {
+      "devices": [
+        "SPARKMAX/NEO 22",
+        "SPARKMAX/NEO550 7",
+        "pdh",
+        "roboRIO"
+      ]
+    },
+    "home_030226": {
+      "devices": [
+        "SPARKMAX/NEO 25",
+        "SPARKMAX/NEO550 7 limit fwd",
+        "SPARKMAX/NEO550 7",
+        "FALCON 9",
+        "cancoder 44",
+        "pdp",
+        "roboRIO"
+      ]
+    },
+    "reverse_eng_min1": {
+      "devices": [
+        "SPARKMAX/NEO 11",
+        "PDP",
+        "roboRIO"
+      ]
+    },
+    "home_031226": {
+      "devices": [
+        "SPARKMAX/NEO 25",
+        "SPARKMAX/NEO550 7 limit fwd",
+        "SPARKMAX/NEO550 7",
+        "FALCON 9",
+        "candle",
+        "pdh",
+        "roboRIO"
+      ]
+    },
+    "robot_test1": {
+      "devices": [
+        "intake neo 51 limit fwd",
+        "intake neo 51 limit rev",
+        "intake neo 51",
+        "SPARKMAX/NEO 11 limit fwd",
+        "SPARKMAX/NEO 11",
+        "neo 21",
+        "SPARKMAX/NEO 31",
+        "SPARKMAX/NEO 41",
+        "kracken 12",
+        "kracken 22",
+        "kracken 32",
+        "kracken 42",
+        "cancoder 13",
+        "cancoder 23",
+        "cancoder 33",
+        "cancoder 43",
+        "candle",
+        "pdh",
+        "roboRIO"
+      ]
+    },
+    "home net test 2x": {
+      "devices": [
+        "VORTEX/FLEX 11",
+        "VORTEX/FLEX 26",
+        "FALCON 9",
+        "PDH",
+        "roboRIO"
+      ]
+    },
+    "robot_2026": {
+      "devices": [
+        "Climb Motor",
+        "Fuel Intake Motor",
+        "Pivot Intake Motor",
+        "Pivot Intake Follower",
+        "Feeder Motor",
+        "angle motor front left",
+        "angle motor back right",
+        "angle motor front right",
+        "angle motor back left",
+        "Flywheel Motor (Leader)",
+        "Flywheel Motor (Follower)",
+        "Drive Motor",
+        "Drive Motor (id 8)",
+        "Drive Motor (id 2)",
+        "Drive Motor (id 11)",
+        "Encoder (CANCoder)",
+        "Encoder (CANCoder) (id 9)",
+        "Encoder (CANCoder) (id 3)",
+        "Encoder (CANCoder) (id 12)",
+        "CANDle",
+        "pdh",
+        "IMU (Pigeon2)",
+        "roborio"
+      ]
+    },
+    "cannectTests1": {
+      "devices": [
+        "neo 11",
+        "neo 1",
+        "neo 21",
+        "neo 31",
+        "neo feeder 53",
+        "flex 50 flywheel left",
+        "flex 52  flywheel right",
+        "kracken 12",
+        "kracken 2",
+        "kracken 22",
+        "kracken 32",
+        "cancoder 3",
+        "cancoder 13",
+        "cancoder 23",
+        "cancoder 33",
+        "pdh",
+        "roborio"
+      ]
+    }
+  },
+  "devices": [
+    {
+      "label": "angle motor back left",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 10,
+      "model": "NEO",
+      "type": "motor",
+      "terminator": false,
+      "tags": [
+        "motor"
+      ]
+    },
+    {
+      "label": "angle motor back right",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 7,
+      "model": "NEO",
+      "type": "motor",
+      "tags": [
+        "motor"
+      ]
+    },
+    {
+      "label": "angle motor front left",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 4,
+      "model": "NEO",
+      "type": "motor",
+      "tags": [
+        "sensor"
+      ]
+    },
+    {
+      "label": "angle motor front right",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 1,
+      "model": "NEO",
+      "type": "motor",
+      "tags": [
+        "motor"
+      ]
+    },
+    {
+      "label": "BL CANC",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 7,
+      "id": 6,
+      "type": "encoderExternal"
+    },
+    {
+      "label": "BL KRAK",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 2,
+      "id": 5,
+      "model": "CTRE Kraken X60",
+      "type": "motor"
+    },
+    {
+      "label": "BL NEO",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 4,
+      "model": "REV NEO",
+      "type": "motor"
+    },
+    {
+      "label": "BR CANC",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 7,
+      "id": 9,
+      "type": "encoderExternal"
+    },
+    {
+      "label": "BR KRAK",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 2,
+      "id": 8,
+      "model": "CTRE Kraken X60",
+      "type": "motor"
+    },
+    {
+      "label": "BR NEO",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 7,
+      "model": "REV NEO",
+      "type": "motor"
+    },
+    {
+      "label": "cancoder 13",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 7,
+      "id": 13,
+      "type": "encoderExternal",
+      "terminator": false
+    },
+    {
+      "label": "cancoder 23",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 7,
+      "id": 23,
+      "type": "encoderExternal",
+      "terminator": false
+    },
+    {
+      "label": "cancoder 3",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 7,
+      "id": 3,
+      "type": "encoderExternal",
+      "terminator": false
+    },
+    {
+      "label": "cancoder 33",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 7,
+      "id": 33,
+      "type": "encoderExternal",
+      "terminator": false
+    },
+    {
+      "label": "cancoder 43",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 7,
+      "id": 43,
+      "type": "encoderExternal",
+      "terminator": false
+    },
+    {
+      "label": "cancoder 44",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 7,
+      "id": 44,
+      "type": "encoderExternal",
+      "terminator": false
+    },
+    {
+      "label": "candle",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 10,
+      "id": 2,
+      "terminator": false
+    },
+    {
+      "label": "CANdle 30",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 10,
+      "id": 30
+    },
+    {
+      "label": "Climb Motor",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 60,
+      "model": "NEO",
+      "type": "motor",
+      "tags": [
+        "motor"
+      ]
+    },
+    {
+      "label": "Drive Motor",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 2,
+      "id": 5,
+      "type": "motor"
+    },
+    {
+      "label": "Drive Motor (id 11)",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 2,
+      "id": 11,
+      "type": "motor",
+      "terminator": false
+    },
+    {
+      "label": "Drive Motor (id 2)",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 2,
+      "id": 2,
+      "type": "motor"
+    },
+    {
+      "label": "Drive Motor (id 8)",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 2,
+      "id": 8,
+      "type": "motor"
+    },
+    {
+      "label": "Encoder (CANCoder)",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 7,
+      "id": 6,
+      "model": "motor",
+      "type": "encoderExternal",
+      "tags": [
+        "sensor"
+      ]
+    },
+    {
+      "label": "Encoder (CANCoder) (id 12)",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 7,
+      "id": 12,
+      "model": "motor",
+      "type": "encoderExternal",
+      "tags": [
+        "sensor"
+      ]
+    },
+    {
+      "label": "Encoder (CANCoder) (id 3)",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 7,
+      "id": 3,
+      "model": "motor",
+      "type": "encoderExternal",
+      "tags": [
+        "sensor"
+      ]
+    },
+    {
+      "label": "Encoder (CANCoder) (id 9)",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 7,
+      "id": 9,
+      "model": "motor",
+      "type": "encoderExternal",
+      "tags": [
+        "sensor"
+      ]
+    },
+    {
+      "label": "FALCON 30",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 2,
+      "id": 30,
+      "model": "CTRE Falcon 500",
+      "type": "motor"
+    },
+    {
+      "label": "FALCON 9",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 2,
+      "id": 9,
+      "model": "CTRE Falcon 500",
+      "type": "motor"
+    },
+    {
+      "label": "Feeder Motor",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 28,
+      "model": "NEO",
+      "type": "motor",
+      "tags": [
+        "motor"
+      ]
+    },
+    {
+      "label": "FL CANC",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 7,
+      "id": 3,
+      "type": "encoderExternal"
+    },
+    {
+      "label": "FL KRAK",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 2,
+      "id": 2,
+      "model": "CTRE Kraken X60",
+      "type": "motor"
+    },
+    {
+      "label": "FL NEO",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 1,
+      "model": "REV NEO",
+      "type": "motor"
+    },
+    {
+      "label": "flex 50 flywheel left",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 50,
+      "type": "motor",
+      "terminator": false
+    },
+    {
+      "label": "flex 52  flywheel right",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 51,
+      "type": "motor",
+      "terminator": false
+    },
+    {
+      "label": "Flywheel Motor (Follower)",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 23,
+      "model": "Vortex",
+      "type": "motor",
+      "terminator": false,
+      "tags": [
+        "motor"
+      ]
+    },
+    {
+      "label": "Flywheel Motor (Leader)",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 27,
+      "model": "Vortex",
+      "type": "motor",
+      "terminator": false
+    },
+    {
+      "label": "FR CANC",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 7,
+      "id": 12,
+      "type": "encoderExternal"
+    },
+    {
+      "label": "FR KRAK",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 2,
+      "id": 11,
+      "model": "CTRE Kraken X60",
+      "type": "motor"
+    },
+    {
+      "label": "FR NEO",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 10,
+      "model": "REV NEO",
+      "type": "motor"
+    },
+    {
+      "label": "Fuel Intake Motor",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 24,
+      "type": "motor"
+    },
+    {
+      "label": "IMU (Pigeon2)",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 4,
+      "id": 19,
+      "terminator": false,
+      "tags": [
+        "sensor"
+      ]
+    },
+    {
+      "label": "intake neo 51",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 51,
+      "type": "motor",
+      "terminator": false,
+      "attachments": [
+        "intake neo 51 limit fwd",
+        "intake neo 51 limit rev"
+      ]
+    },
+    {
+      "label": "intake neo 51 limit fwd",
+      "interface": "DIO",
+      "type": "limitSwitch",
+      "dio": 1,
+      "invert": false
+    },
+    {
+      "label": "intake neo 51 limit rev",
+      "interface": "DIO",
+      "type": "limitSwitch",
+      "dio": 2,
+      "invert": false
+    },
+    {
+      "label": "kracken 12",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 2,
+      "id": 12,
+      "type": "motor",
+      "terminator": false
+    },
+    {
+      "label": "kracken 2",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 2,
+      "id": 2,
+      "type": "motor",
+      "terminator": false
+    },
+    {
+      "label": "kracken 22",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 2,
+      "id": 22,
+      "type": "motor",
+      "terminator": false
+    },
+    {
+      "label": "kracken 32",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 2,
+      "id": 32,
+      "type": "motor",
+      "terminator": false
+    },
+    {
+      "label": "kracken 42",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 2,
+      "id": 42,
+      "type": "motor",
+      "terminator": false
+    },
+    {
+      "label": "neo 1",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 1,
+      "type": "motor",
+      "terminator": false
+    },
+    {
+      "label": "NEO 10",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 10,
+      "model": "REV NEO",
+      "type": "motor"
+    },
+    {
+      "label": "neo 11",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 11,
+      "type": "motor",
+      "terminator": false
+    },
+    {
+      "label": "neo 21",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 21,
+      "type": "motor",
+      "terminator": false
+    },
+    {
+      "label": "NEO 22",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 22,
+      "model": "REV NEO",
+      "type": "motor"
+    },
+    {
+      "label": "NEO 25",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 25,
+      "model": "REV NEO",
+      "type": "motor"
+    },
+    {
+      "label": "neo 31",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 31,
+      "type": "motor",
+      "terminator": false
+    },
+    {
+      "label": "neo feeder 53",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 52,
+      "type": "motor",
+      "terminator": false
+    },
+    {
+      "label": "PDH",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 8,
+      "id": 1
+    },
+    {
+      "label": "pdp",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 8,
+      "id": 1,
+      "terminator": true
+    },
+    {
+      "label": "Pigeon",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 4,
+      "id": 1
+    },
+    {
+      "label": "Pivot Intake Follower",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 11,
+      "model": "NEO",
+      "type": "motor",
+      "tags": [
+        "motor"
+      ]
+    },
+    {
+      "label": "Pivot Intake Motor",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 22,
+      "type": "motor"
+    },
+    {
+      "label": "roboRIO",
+      "interface": "CAN",
+      "manufacturer": 1,
+      "deviceType": 1,
+      "id": 0
+    },
+    {
+      "label": "SPARKMAX 10",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 10,
+      "model": "REV NEO",
+      "type": "motor"
+    },
+    {
+      "label": "SPARKMAX 25",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 25,
+      "model": "REV NEO",
+      "type": "motor"
+    },
+    {
+      "label": "SPARKMAX/NEO 11",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 11,
+      "model": "REV NEO",
+      "type": "motor",
+      "attachments": [
+        "SPARKMAX/NEO 11 limit fwd"
+      ]
+    },
+    {
+      "label": "SPARKMAX/NEO 11 limit fwd",
+      "interface": "DIO",
+      "type": "limitSwitch",
+      "dio": 0,
+      "invert": true
+    },
+    {
+      "label": "SPARKMAX/NEO 22",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 22,
+      "model": "REV NEO",
+      "type": "motor"
+    },
+    {
+      "label": "SPARKMAX/NEO 25",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 25,
+      "model": "REV NEO",
+      "type": "motor"
+    },
+    {
+      "label": "SPARKMAX/NEO 31",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 31,
+      "model": "REV NEO",
+      "type": "motor",
+      "terminator": false
+    },
+    {
+      "label": "SPARKMAX/NEO 41",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 41,
+      "model": "REV NEO",
+      "type": "motor",
+      "terminator": false
+    },
+    {
+      "label": "SPARKMAX/NEO550 7",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 7,
+      "model": "REV NEO 550",
+      "type": "motor",
+      "attachments": [
+        "SPARKMAX/NEO550 7 limit fwd"
+      ]
+    },
+    {
+      "label": "SPARKMAX/NEO550 7 limit fwd",
+      "interface": "DIO",
+      "type": "limitSwitch",
+      "dio": 0,
+      "invert": true
+    },
+    {
+      "label": "VORTEX/FLEX 10",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 10,
+      "model": "REV NEO Vortex",
+      "type": "motor"
+    },
+    {
+      "label": "VORTEX/FLEX 11",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 11,
+      "model": "REV NEO Vortex",
+      "type": "motor"
+    },
+    {
+      "label": "VORTEX/FLEX 20",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 20,
+      "model": "REV NEO Vortex",
+      "type": "motor"
+    },
+    {
+      "label": "VORTEX/FLEX 26",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 26,
+      "model": "REV NEO Vortex",
+      "type": "motor"
+    }
+  ],
+  "data_version": "2026-03-29_021303",
+  "data_hash": "74f641e72e6cd09b59cdbd507c61814cca3cfbc5bc5c3f1f35c01045d3c20e09"
 }

@@ -74,7 +74,7 @@ Phase 1: Live Overlay (Read-Only)
 - Update cadence is configurable; default 5 Hz.
 - Presence uses presenceConfidence (0.0-1.0) plus lastSeen timestamp.
 - Faults are deferred to Phase 2 (explicit requirement).
-- Group overlays (bridgeConfig) can be toggled on/off in the live view.
+- Group overlays (bridgeConfig.byProfile) can be toggled on/off in the live view.
 - Color legend: green=present/fresh, orange=stale/weak, gray=absent/low.
 
 Phase 2: Selected-Device + Tests

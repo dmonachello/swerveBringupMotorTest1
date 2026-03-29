@@ -16,6 +16,13 @@ import java.util.List;
  */
 public final class BringupHealthFormat {
   private BringupHealthFormat() {}
+  private static final String LIMITS_PREFIX = " limits=";
+  private static final String LIMITS_SEPARATOR = ",";
+  private static final String LIMITS_INVERT_SUFFIX = " inv";
+  private static final String LIMITS_DIO_PREFIX = "DIO";
+  private static final String LIMIT_STATE_UNKNOWN = "?";
+  private static final String LIMIT_STATE_CLOSED = "CLOSED";
+  private static final String LIMIT_STATE_OPEN = "OPEN";
 
   /**
    * NAME
@@ -100,24 +107,29 @@ public final class BringupHealthFormat {
    *   Summary string or empty string when no limits are configured.
    */
   public static String formatLimitSummary(LimitsAttachment limits) {
-    if (limits == null || (limits.fwdDio < 0 && limits.revDio < 0)) {
+    if (limits == null || limits.switches == null || limits.switches.isEmpty()) {
       return "";
     }
     StringBuilder sb = new StringBuilder(48);
-    sb.append(" limits=");
-    if (limits.fwdDio >= 0) {
-      sb.append("fwd:DIO").append(limits.fwdDio)
-          .append("=").append(formatLimitState(limits.fwdClosed));
-    }
-    if (limits.revDio >= 0) {
-      if (limits.fwdDio >= 0) {
-        sb.append(",");
+    sb.append(LIMITS_PREFIX);
+    boolean first = true;
+    for (LimitsAttachment.LimitSwitchState state : limits.switches) {
+      if (state == null) {
+        continue;
       }
-      sb.append("rev:DIO").append(limits.revDio)
-          .append("=").append(formatLimitState(limits.revClosed));
-    }
-    if (limits.invert) {
-      sb.append(" inv");
+      if (!first) {
+        sb.append(LIMITS_SEPARATOR);
+      }
+      String label = state.label != null && !state.label.isBlank()
+          ? state.label
+          : LIMITS_DIO_PREFIX + state.dio;
+      sb.append(label)
+          .append("=")
+          .append(formatLimitState(state.closed));
+      if (state.invert) {
+        sb.append(LIMITS_INVERT_SUFFIX);
+      }
+      first = false;
     }
     return sb.toString();
   }
@@ -128,9 +140,9 @@ public final class BringupHealthFormat {
    */
   private static String formatLimitState(Boolean closed) {
     if (closed == null) {
-      return "?";
+      return LIMIT_STATE_UNKNOWN;
     }
-    return closed ? "CLOSED" : "OPEN";
+    return closed ? LIMIT_STATE_CLOSED : LIMIT_STATE_OPEN;
   }
 
   /**

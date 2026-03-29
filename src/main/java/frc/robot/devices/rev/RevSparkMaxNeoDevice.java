@@ -38,8 +38,7 @@ public final class RevSparkMaxNeoDevice implements DeviceUnit {
   private final String label;
   private final String motorModelOverride;
   private final BringupUtil.LimitConfig limitConfig;
-  private DigitalInput fwdLimit;
-  private DigitalInput revLimit;
+  private final java.util.List<DigitalInput> limitInputs = new java.util.ArrayList<>();
   private SparkMax device;
   private boolean closed = false;
   private boolean altEncoderConfigured = false;
@@ -159,10 +158,7 @@ public final class RevSparkMaxNeoDevice implements DeviceUnit {
     device = null;
     closed = true;
     BringupUtil.releaseDeviceInstance(this);
-    BringupUtil.closeIfPossible(fwdLimit);
-    BringupUtil.closeIfPossible(revLimit);
-    fwdLimit = null;
-    revLimit = null;
+    BringupUtil.closeInputs(limitInputs);
   }
 
   /**
@@ -355,8 +351,7 @@ public final class RevSparkMaxNeoDevice implements DeviceUnit {
    * Allocates DigitalInput instances when DIO channels are configured.
    */
   private void initLimitInputs() {
-    fwdLimit = BringupUtil.ensureDioInput(fwdLimit, limitConfig.fwdDio);
-    revLimit = BringupUtil.ensureDioInput(revLimit, limitConfig.revDio);
+    BringupUtil.ensureDioInputs(limitInputs, limitConfig.switches);
   }
 
   /**
@@ -370,18 +365,20 @@ public final class RevSparkMaxNeoDevice implements DeviceUnit {
    * snap - snapshot to populate with limit data.
    */
   private void addLimitAttachment(DeviceSnapshot snap) {
-    if (!limitConfig.hasForward() && !limitConfig.hasReverse()) {
+    if (!limitConfig.hasSwitches()) {
       return;
     }
     LimitsAttachment limits = new LimitsAttachment();
-    limits.invert = limitConfig.invert;
-    if (limitConfig.hasForward()) {
-      limits.fwdDio = limitConfig.fwdDio;
-      limits.fwdClosed = readLimit(fwdLimit);
-    }
-    if (limitConfig.hasReverse()) {
-      limits.revDio = limitConfig.revDio;
-      limits.revClosed = readLimit(revLimit);
+    for (int i = 0; i < limitConfig.switches.size(); i++) {
+      BringupUtil.LimitSwitchConfig spec = limitConfig.switches.get(i);
+      LimitsAttachment.LimitSwitchState state = new LimitsAttachment.LimitSwitchState();
+      if (spec != null) {
+        state.label = spec.label;
+        state.dio = spec.dio;
+        state.invert = spec.invert;
+      }
+      state.closed = readLimit(i);
+      limits.switches.add(state);
     }
     snap.addAttachment(limits);
   }
@@ -399,8 +396,16 @@ public final class RevSparkMaxNeoDevice implements DeviceUnit {
    * RETURNS
    * True if closed, false if open, or null when input is absent.
    */
-  private Boolean readLimit(DigitalInput input) {
-    return BringupUtil.readLimitInput(input, limitConfig.invert);
+  private Boolean readLimit(int index) {
+    if (index < 0 || index >= limitConfig.switches.size()) {
+      return null;
+    }
+    BringupUtil.LimitSwitchConfig spec = limitConfig.switches.get(index);
+    DigitalInput input = index < limitInputs.size() ? limitInputs.get(index) : null;
+    if (spec == null) {
+      return null;
+    }
+    return BringupUtil.readLimitInput(input, spec.invert);
   }
 
   /**
@@ -476,15 +481,19 @@ public final class RevSparkMaxNeoDevice implements DeviceUnit {
    * Duty command after limit switch enforcement.
    */
   private double applyLimit(double duty) {
-    Boolean fwdClosed = readLimit(fwdLimit);
-    if (Boolean.TRUE.equals(fwdClosed) && duty > 0.0) {
-      return 0.0;
-    }
-    Boolean revClosed = readLimit(revLimit);
-    if (Boolean.TRUE.equals(revClosed) && duty < 0.0) {
+    if (isAnyLimitClosed()) {
       return 0.0;
     }
     return duty;
+  }
+
+  private boolean isAnyLimitClosed() {
+    for (int i = 0; i < limitConfig.switches.size(); i++) {
+      if (Boolean.TRUE.equals(readLimit(i))) {
+        return true;
+      }
+    }
+    return false;
   }
 }
 

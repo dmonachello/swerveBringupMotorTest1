@@ -37,8 +37,8 @@ Make controller selection explicit and consistent across robot control, UI, and 
 {
   "controllers": [
     { "name": "controller0", "type": "XBOX", "port": 0 },
-    { "name": "operator", "type": "XBOX", "port": 1 },
-    { "name": "tech", "type": "XBOX", "port": 2 }
+    { "name": "controller1", "type": "XBOX", "port": 1 },
+    { "name": "controller2", "type": "XBOX", "port": 2 }
   ]
 }
 ```
@@ -58,9 +58,9 @@ inputSource = <controllerName>.<inputId>
 
 ### Examples
 
-- `inputSource driver.leftY`
-- `inputSource operator.A`
-- `inputSource tech.D_LEFT`
+- `inputSource controller0.leftY`
+- `inputSource controller1.A`
+- `inputSource controller2.D_LEFT`
 
 ## CLI Behavior
 
@@ -77,7 +77,7 @@ inputSource = <controllerName>.<inputId>
   "type": "joystick",
   "name": "Joystick motor (controller0.leftY)",
   "enabled": true,
-  "motorKeys": ["REV:NEO:25"],
+  "motorLabels": ["SPARKMAX/NEO 25"],
   "deadband": 0.12,
   "inputSource": "controller0.leftY"
 }
@@ -90,10 +90,10 @@ inputSource = <controllerName>.<inputId>
   "type": "composite",
   "name": "Hold to run",
   "enabled": true,
-  "motorKeys": ["CTRE:FALCON:9"],
+  "motorLabels": ["FALCON 9"],
   "duty": 0.2,
   "termination": { "hold": true },
-  "inputSource": "operator.A"
+  "inputSource": "controller1.A"
 }
 ```
 

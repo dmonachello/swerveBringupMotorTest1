@@ -74,7 +74,7 @@ def _edit_tests(payload):
         _edit_tests - Interactive editing of test entries.
 
     DESCRIPTION
-        Updates motor keys and encoder keys in-place based on user input.
+        Updates motor labels and encoder keys in-place based on user input.
     """
     set_name = payload.get("default_test_set") or "default"
     test_sets = payload.get("test_sets", {})
@@ -86,18 +86,18 @@ def _edit_tests(payload):
     for idx, test in enumerate(tests, start=1):
         name = test.get("name", f"Test {idx}")
         print(f"\nTest {idx}: {name}")
-        motor_keys = test.get("motorKeys")
-        if isinstance(motor_keys, list) and motor_keys:
-            default_keys = ", ".join(motor_keys)
-            new_keys = _prompt("Motor keys (comma-separated VENDOR:TYPE:ID)", default_keys)
-            keys = [part.strip() for part in (new_keys or "").split(",") if part.strip()]
-            if keys:
-                test["motorKeys"] = keys
+        motor_labels = test.get("motorLabels")
+        if isinstance(motor_labels, list) and motor_labels:
+            default_labels = ", ".join(motor_labels)
+            new_labels = _prompt("Motor labels (comma-separated)", default_labels)
+            labels = [part.strip() for part in (new_labels or "").split(",") if part.strip()]
+            if labels:
+                test["motorLabels"] = labels
         rotation = test.get("rotation")
         if isinstance(rotation, dict):
             encoder_key = rotation.get("encoderKey")
             if encoder_key and encoder_key.lower() != "internal":
-                new_encoder = _prompt("Encoder (internal or VENDOR:TYPE:ID)", encoder_key)
+                new_encoder = _prompt("Encoder (internal or device label)", encoder_key)
                 rotation["encoderKey"] = new_encoder
         tests[idx - 1] = test
     test_sets[set_name] = tests

@@ -40,6 +40,8 @@ PARSER_RUNTIME_CONST = {
     },
 }
 
+SHOW_CONFIG_LOCAL_RAW = "local-raw"
+
 
 class CliParseError(ValueError):
     """
@@ -71,6 +73,7 @@ class CommandAst:
     show_source: str
     show_json: bool
     group_name: str
+    profile_name: str
     device_name: str
     input_name: str
     bind_kind: str
@@ -148,6 +151,7 @@ class BridgeCliParser:
                 SPEC.cmd_show: self._handle_show_command,
                 SPEC.cmd_group: self._handle_group_command,
                 SPEC.cmd_no: self._handle_no_group,
+                SPEC.cmd_profile: self._handle_profile,
                 SPEC.cmd_selected_device: self._handle_selected_device,
                 SPEC.cmd_selected_mode: self._handle_selected_mode,
                 SPEC.cmd_merge: self._handle_merge_import,
@@ -227,6 +231,7 @@ class BridgeCliParser:
                 show_source=SPEC.empty_str,
                 show_json=bool(SPEC.bool_false),
                 group_name=SPEC.empty_str,
+                profile_name=SPEC.empty_str,
                 device_name=SPEC.empty_str,
                 input_name=SPEC.empty_str,
                 bind_kind=SPEC.empty_str,
@@ -264,6 +269,7 @@ class BridgeCliParser:
         show_source = SPEC.empty_str
         show_json = bool(SPEC.bool_false)
         group_name = SPEC.empty_str
+        profile_name = SPEC.empty_str
         device_name = SPEC.empty_str
         input_name = SPEC.empty_str
         bind_kind = SPEC.empty_str
@@ -284,6 +290,7 @@ class BridgeCliParser:
             (
                 kind,
                 group_name,
+                profile_name,
                 device_name,
                 field,
                 value,
@@ -323,6 +330,7 @@ class BridgeCliParser:
             show_source=show_source,
             show_json=show_json,
             group_name=group_name,
+            profile_name=profile_name,
             device_name=device_name,
             input_name=input_name,
             bind_kind=bind_kind,
@@ -363,13 +371,14 @@ class BridgeCliParser:
 
     def _build_config_ast(
         self, tokens: List[str]
-    ) -> tuple[str, str, str, str, str, str, str, str, str, str, str, bool]:
+    ) -> tuple[str, str, str, str, str, str, str, str, str, str, str, str, bool]:
         verb = tokens[SPEC.count_zero].lower()
         if verb == SPEC.cmd_show:
             show_source, cleaned, show_json = self._parse_show_flags(tokens[SPEC.count_one :])
             show_target, show_name = self._split_show_target(cleaned)
             return (
                 SPEC.kind_show,
+                SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
@@ -395,6 +404,7 @@ class BridgeCliParser:
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
+                SPEC.empty_str,
                 bool(SPEC.bool_false),
             )
         if verb == SPEC.cmd_no and tokens[SPEC.count_one].lower() == SPEC.cmd_group:
@@ -410,11 +420,29 @@ class BridgeCliParser:
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+            )
+        if verb == SPEC.cmd_profile:
+            return (
+                SPEC.kind_config_profile,
+                SPEC.empty_str,
+                tokens[SPEC.count_one],
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
                 bool(SPEC.bool_false),
             )
         if verb == SPEC.cmd_selected_device:
             return (
                 SPEC.kind_config_selected_device,
+                SPEC.empty_str,
                 SPEC.empty_str,
                 tokens[SPEC.count_one],
                 SPEC.empty_str,
@@ -430,6 +458,7 @@ class BridgeCliParser:
         if verb == SPEC.cmd_selected_mode:
             return (
                 SPEC.kind_config_selected_mode,
+                SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
                 tokens[SPEC.count_one],
@@ -451,6 +480,7 @@ class BridgeCliParser:
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
+                SPEC.empty_str,
                 tokens[SPEC.count_two],
                 SPEC.empty_str,
                 SPEC.empty_str,
@@ -460,6 +490,7 @@ class BridgeCliParser:
         if verb == SPEC.cmd_export:
             return (
                 SPEC.kind_config_export,
+                SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
@@ -479,6 +510,7 @@ class BridgeCliParser:
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
+                SPEC.empty_str,
                 tokens[SPEC.count_one],
                 SPEC.empty_str,
                 tokens[SPEC.count_two],
@@ -490,6 +522,7 @@ class BridgeCliParser:
         if verb == SPEC.cmd_rename and tokens[SPEC.count_one].lower() == SPEC.cmd_device:
             return (
                 SPEC.kind_config_rename_device,
+                SPEC.empty_str,
                 SPEC.empty_str,
                 tokens[SPEC.count_two],
                 tokens[SPEC.count_three],
@@ -508,6 +541,7 @@ class BridgeCliParser:
                 return (
                     SPEC.kind_config_device_set,
                     SPEC.empty_str,
+                    SPEC.empty_str,
                     tokens[SPEC.count_one],
                     tokens[SPEC.count_three],
                     value,
@@ -521,6 +555,7 @@ class BridgeCliParser:
                 )
             return (
                 SPEC.kind_config_device,
+                SPEC.empty_str,
                 SPEC.empty_str,
                 tokens[SPEC.count_one],
                 SPEC.empty_str,
@@ -543,6 +578,7 @@ class BridgeCliParser:
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
+                SPEC.empty_str,
                 path,
                 SPEC.empty_str,
                 SPEC.empty_str,
@@ -550,6 +586,7 @@ class BridgeCliParser:
                 bool(SPEC.bool_false),
             )
         return (
+            SPEC.empty_str,
             SPEC.empty_str,
             SPEC.empty_str,
             SPEC.empty_str,
@@ -783,6 +820,12 @@ class BridgeCliParser:
     def _split_show_target(self, tokens: List[str]) -> tuple[str, str]:
         if not tokens:
             return (SPEC.empty_str, SPEC.empty_str)
+        if (
+            len(tokens) > SPEC.count_two
+            and tokens[SPEC.count_zero].lower() == SPEC.cmd_device
+            and tokens[SPEC.count_one].lower() == SPEC.cmd_registry
+        ):
+            return (SPEC.show_target_device_registry, tokens[SPEC.count_two])
         target = tokens[SPEC.count_zero]
         name = tokens[SPEC.count_one] if len(tokens) > SPEC.count_one else SPEC.empty_str
         return (target, name)
@@ -864,6 +907,10 @@ class BridgeCliParser:
     def _handle_selected_device(self, tokens: List[str]) -> None:
         self._require(tokens, SPEC.count_two, SPEC.msg_selected_device)
         self._reject_extra(tokens, SPEC.count_two, SPEC.label_selected_device)
+
+    def _handle_profile(self, tokens: List[str]) -> None:
+        self._require(tokens, SPEC.count_two, SPEC.msg_profile_name)
+        self._reject_extra(tokens, SPEC.count_two, SPEC.cmd_profile)
 
     def _handle_selected_mode(self, tokens: List[str]) -> None:
         self._require(tokens, SPEC.count_two, SPEC.msg_selected_mode)
@@ -991,6 +1038,12 @@ class BridgeCliParser:
         if not core:
             raise CliParseError(SPEC.msg_show_requires)
         target = core[SPEC.count_zero].lower()
+        if (
+            len(core) > SPEC.count_two
+            and core[SPEC.count_zero].lower() == SPEC.cmd_device
+            and core[SPEC.count_one].lower() == SPEC.cmd_registry
+        ):
+            target = SPEC.show_target_device_registry
         if target not in self._show_targets:
             raise CliParseError(SPEC.msg_unknown_show)
         if target in (
@@ -999,8 +1052,26 @@ class BridgeCliParser:
             SPEC.show_target_test,
         ) and len(core) < SPEC.count_two:
             raise CliParseError(SPEC.msg_show_name % target)
+        if target == SPEC.show_target_device_registry and len(core) < SPEC.count_three:
+            raise CliParseError(SPEC.msg_show_name % target)
+        if target == "profiles" and len(core) > SPEC.count_one and self._strict:
+            raise CliParseError(SPEC.msg_show_too_many)
+        if target == SPEC.show_target_config and len(core) > SPEC.count_one:
+            if len(core) == SPEC.count_two and core[SPEC.count_one].lower() == SHOW_CONFIG_LOCAL_RAW:
+                pass
+            elif self._strict:
+                raise CliParseError(SPEC.msg_show_too_many)
         if self._strict:
-            max_len = SPEC.count_two if target in (SPEC.show_target_group, SPEC.show_target_device) else SPEC.count_one
+            if target == SPEC.show_target_device_registry:
+                max_len = SPEC.count_three
+            elif (
+                target == SPEC.show_target_config
+                and len(core) == SPEC.count_two
+                and core[SPEC.count_one].lower() == SHOW_CONFIG_LOCAL_RAW
+            ):
+                max_len = SPEC.count_two
+            else:
+                max_len = SPEC.count_two if target in (SPEC.show_target_group, SPEC.show_target_device) else SPEC.count_one
             if len(core) > max_len:
                 raise CliParseError(SPEC.msg_show_too_many)
 

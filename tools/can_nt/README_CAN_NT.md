@@ -56,9 +56,9 @@ BRIDGE CLI
     Notes:
     - CLI uses the TCP UI channel (port 5809 by default).
     - CLI does not require CAN access; use --no-can when running CLI only.
-    - add device requires the device to exist in local config (create with device <name> first).
-    - device set supports manufacturer, deviceType, deviceId, vendor, role, notes, bus, tags, limits.
-    - manufacturer/deviceType accept numeric IDs or names from src/main/deploy/can_mappings.json.
+    - add device requires the label to exist in the active profile.
+    - device set supports vendor, role, notes, bus, tags, limits.
+    - Device identity is label-only; manufacturer/deviceType/deviceId live only in bringup_system.json.
     - validate config [path] checks for group members missing from devices (file or local).
     - batch scripts are linted to ensure devices are defined before add device.
     - show group text output includes members and bindings.
@@ -69,11 +69,11 @@ CONFIG
     Device lists are loaded from data\bringup_system.json via --profile
     (deploy fallback). This keeps the PC tool aligned with robot profiles.
 
-    Labels in profiles must be unique. bridgeConfig devices are derived from
-    profiles so labels stay consistent across tools and CLI groups.
-    When loading a profiles file, bridgeConfig.devices are regenerated from the
-    selected default_profile device list.
-    Profiles schema_version is 3 (see docs/PROFILE_SCHEMA_REFACTOR.md).
+    Labels in profiles must be unique. bridgeConfig.byProfile groups reference
+    those labels so CLI groups stay consistent across tools.
+    When loading a profiles file, per-profile groups remain scoped to their
+    matching profile device list.
+    Profiles schema_version is 4 (see docs/PROFILE_SCHEMA_REFACTOR.md).
     Device edits update profiles when a profiles file is loaded; use save profiles.
     save local-config writes groups-only output when profiles are loaded.
 
@@ -235,7 +235,7 @@ LIVE TOPOLOGY OVERLAY
     Purpose: Show live device presence and telemetry in the Bringup Control UI.
     - Open the Live Topology tab.
     - Enable Live Overlay to begin polling runtime state.
-    - Show Groups toggles bridgeConfig group boxes/labels in the live view.
+    - Show Groups toggles bridgeConfig.byProfile group boxes/labels in the live view.
     - Source = tcp uses the UI TCP channel; Source = file loads a JSON snapshot manually.
     - Use Load File... to pick a snapshot, then Reload File to refresh it.
     - Update rate defaults to 5 Hz; adjust in the Live Topology controls.
@@ -279,7 +279,7 @@ UI OUTPUT EXAMPLES
     Publish unknown devices seen on bus:
         python tools\\can_nt\\can_nt_bridge.py --publish-unknown
 
-    Dump observed arbitration IDs:
+    Dump observed labels:
         python tools\\can_nt\\can_nt_bridge.py --dump-can-expected-ids tools\can_nt\seen_ids.json --dump-after 3.0
 
     Generate a profile from observed traffic:
@@ -342,18 +342,15 @@ OPTIONS
 
 PUBLISHED KEYS
     bringup/diag/busErrorCount
-    bringup/diag/dev/<mfg>/<type>/<id>/label
-    bringup/diag/dev/<mfg>/<type>/<id>/status
-    bringup/diag/dev/<mfg>/<type>/<id>/presenceSource
-    bringup/diag/dev/<mfg>/<type>/<id>/presenceConfidence
-    bringup/diag/dev/<mfg>/<type>/<id>/ageSec
-    bringup/diag/dev/<mfg>/<type>/<id>/trafficAgeSec
-    bringup/diag/dev/<mfg>/<type>/<id>/statusAgeSec
-    bringup/diag/dev/<mfg>/<type>/<id>/msgCount
-    bringup/diag/dev/<mfg>/<type>/<id>/lastSeen
-    bringup/diag/dev/<mfg>/<type>/<id>/manufacturer
-    bringup/diag/dev/<mfg>/<type>/<id>/deviceType
-    bringup/diag/dev/<mfg>/<type>/<id>/deviceId
+    bringup/diag/dev/<labelKey>/label
+    bringup/diag/dev/<labelKey>/status
+    bringup/diag/dev/<labelKey>/presenceSource
+    bringup/diag/dev/<labelKey>/presenceConfidence
+    bringup/diag/dev/<labelKey>/ageSec
+    bringup/diag/dev/<labelKey>/trafficAgeSec
+    bringup/diag/dev/<labelKey>/statusAgeSec
+    bringup/diag/dev/<labelKey>/msgCount
+    bringup/diag/dev/<labelKey>/lastSeen
     bringup/diag/can/summary/json
     bringup/diag/can/pc/heartbeat
     bringup/diag/can/pc/openOk
@@ -366,14 +363,14 @@ PUBLISHED KEYS
     bringup/diag/console/system/warnCount
     bringup/diag/console/system/errorCount
     bringup/diag/console/system/fatalCount
-    bringup/diag/console/devices/<id>/warnCount
-    bringup/diag/console/devices/<id>/errorCount
-    bringup/diag/console/devices/<id>/fatalCount
+    bringup/diag/console/devices/<labelKey>/warnCount
+    bringup/diag/console/devices/<labelKey>/errorCount
+    bringup/diag/console/devices/<labelKey>/fatalCount
 
 NOTES
-    - Device IDs use the lowest 6 bits of the CAN extended ID.
-    - Inventory snapshots list devices keyed by (manufacturer_id, device_type_id, can_id) and
-      per-device frame_data entries keyed by apiClass/apiIndex derived from arbitration IDs.
+- Device identity is label-only in NT and inventory outputs; bringup_system.json is the
+  source of CAN ID metadata when needed.
+- `labelKey` is the percent-encoded label (UTF-8, safe chars `-_.~`).
     - Presence is derived from vendor-specific status-frame heuristics when available:
       - REV motor controllers: api_class=6 (periodic status).
       - CTRE devices: PF/PS 0xFF/0x00..0x07 (status), 0xEF (control-only).

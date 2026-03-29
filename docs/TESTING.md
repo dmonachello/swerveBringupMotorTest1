@@ -89,16 +89,16 @@ Purpose: validate robot-side behavior, controller bindings, safety guards, and t
      `Active set: default (default: default)`
      `Total: 10 Enabled: 0`
      `Idx Sel En Type Name HoldBtn Motors`
-     `0 N composite Rotation only (internal) - REV:NEO:25`
-     `1 N deadbandSweep Deadband sweep (internal) - REV:NEO:25`
-     `2 N composite Rotation + Time (t=2.00s) - CTRE:FALCON:9`
-     `3 N composite Time only (t=1.50s) - REV:NEO 550:7`
-     `4 N composite Nudge (0.2 for 0.5s) (t=0.50s) - REV:NEO:25`
-     `5 N composite Limit switch only - REV:NEO 550:7`
-     `6 N composite Hold to run (unbound) CTRE:FALCON:9`
-     `7 N composite Rotation + Time + Limit (t=2.00s) - REV:NEO 550:7, REV:NEO:25, CTRE:FALCON:9`
-     `8 N composite All checks (t=3.00s) (unbound) REV:NEO 550:7`
-     `9 * N joystick Joystick motor (controller0.leftY) - REV:NEO:25, CTRE:FALCON:9`
+     `0 N composite Rotation only (internal) - SPARKMAX/NEO 25`
+     `1 N deadbandSweep Deadband sweep (internal) - SPARKMAX/NEO 25`
+     `2 N composite Rotation + Time (t=2.00s) - FALCON 9`
+     `3 N composite Time only (t=1.50s) - SPARKMAX/NEO550 7`
+     `4 N composite Nudge (0.2 for 0.5s) (t=0.50s) - SPARKMAX/NEO 25`
+     `5 N composite Limit switch only - SPARKMAX/NEO550 7`
+     `6 N composite Hold to run (unbound) FALCON 9`
+     `7 N composite Rotation + Time + Limit (t=2.00s) - SPARKMAX/NEO550 7, SPARKMAX/NEO 25, FALCON 9`
+     `8 N composite All checks (t=3.00s) (unbound) SPARKMAX/NEO550 7`
+     `9 * N joystick Joystick motor (controller0.leftY) - SPARKMAX/NEO 25, FALCON 9`
      `=====================`
 9. Safety latch: disable/enable
    - Action: DS disable/enable.
@@ -120,16 +120,16 @@ Purpose: validate robot-side behavior, controller bindings, safety guards, and t
      `Active set: default (default: default)`
      `Total: 10 Enabled: 1`
      `Idx Sel En Type Name HoldBtn Motors`
-     `0 * Y composite Rotation only (internal) - REV:NEO:25`
-     `1 N deadbandSweep Deadband sweep (internal) - REV:NEO:25`
-     `2 N composite Rotation + Time (t=2.00s) - CTRE:FALCON:9`
-     `3 N composite Time only (t=1.50s) - REV:NEO 550:7`
-     `4 N composite Nudge (0.2 for 0.5s) (t=0.50s) - REV:NEO:25`
-     `5 N composite Limit switch only - REV:NEO 550:7`
-     `6 N composite Hold to run (unbound) CTRE:FALCON:9`
-     `7 N composite Rotation + Time + Limit (t=2.00s) - REV:NEO 550:7, REV:NEO:25, CTRE:FALCON:9`
-     `8 N composite All checks (t=3.00s) (unbound) REV:NEO 550:7`
-     `9 N joystick Joystick motor (controller0.leftY) - REV:NEO:25, CTRE:FALCON:9`
+     `0 * Y composite Rotation only (internal) - SPARKMAX/NEO 25`
+     `1 N deadbandSweep Deadband sweep (internal) - SPARKMAX/NEO 25`
+     `2 N composite Rotation + Time (t=2.00s) - FALCON 9`
+     `3 N composite Time only (t=1.50s) - SPARKMAX/NEO550 7`
+     `4 N composite Nudge (0.2 for 0.5s) (t=0.50s) - SPARKMAX/NEO 25`
+     `5 N composite Limit switch only - SPARKMAX/NEO550 7`
+     `6 N composite Hold to run (unbound) FALCON 9`
+     `7 N composite Rotation + Time + Limit (t=2.00s) - SPARKMAX/NEO550 7, SPARKMAX/NEO 25, FALCON 9`
+     `8 N composite All checks (t=3.00s) (unbound) SPARKMAX/NEO550 7`
+     `9 N joystick Joystick motor (controller0.leftY) - SPARKMAX/NEO 25, FALCON 9`
      `=====================`
 13. Run selected test (hold)
    - Action: controller1 `A` (hold).
@@ -156,16 +156,16 @@ Purpose: validate robot-side behavior, controller bindings, safety guards, and t
    - Expected: run-all proceeds through enabled tests; prints results with test numbers.
    - Example output:
      `Idx Sel En Type Name HoldBtn Motors`
-     `0 Y composite Rotation only (internal) - REV:NEO:25`
-     `1 N deadbandSweep Deadband sweep (internal) - REV:NEO:25`
-     `2 Y composite Rotation + Time (t=2.00s) - CTRE:FALCON:9`
-     `3 * Y composite Time only (t=1.50s) - REV:NEO 550:7`
-     `4 N composite Nudge (0.2 for 0.5s) (t=0.50s) - REV:NEO:25`
-     `5 N composite Limit switch only - REV:NEO 550:7`
-     `6 N composite Hold to run (unbound) CTRE:FALCON:9`
-     `7 N composite Rotation + Time + Limit (t=2.00s) - REV:NEO 550:7, REV:NEO:25, CTRE:FALCON:9`
-     `8 N composite All checks (t=3.00s) (unbound) REV:NEO 550:7`
-     `9 N joystick Joystick motor (controller0.leftY) - REV:NEO:25, CTRE:FALCON:9`
+     `0 Y composite Rotation only (internal) - SPARKMAX/NEO 25`
+     `1 N deadbandSweep Deadband sweep (internal) - SPARKMAX/NEO 25`
+     `2 Y composite Rotation + Time (t=2.00s) - FALCON 9`
+     `3 * Y composite Time only (t=1.50s) - SPARKMAX/NEO550 7`
+     `4 N composite Nudge (0.2 for 0.5s) (t=0.50s) - SPARKMAX/NEO 25`
+     `5 N composite Limit switch only - SPARKMAX/NEO550 7`
+     `6 N composite Hold to run (unbound) FALCON 9`
+     `7 N composite Rotation + Time + Limit (t=2.00s) - SPARKMAX/NEO550 7, SPARKMAX/NEO 25, FALCON 9`
+     `8 N composite All checks (t=3.00s) (unbound) SPARKMAX/NEO550 7`
+     `9 N joystick Joystick motor (controller0.leftY) - SPARKMAX/NEO 25, FALCON 9`
      `=====================`
      `Command: runAllTests`
      `Test started #5: Time only`
@@ -210,24 +210,25 @@ Purpose: validate UI command routing, output mirroring, keepalive, and profile s
 Purpose: validate test authoring via CLI, grammar support, and JSON output.
 
 1. CLI parser compatibility
-   - Commands: `conf t`, `test set default`, `test create MyTest1`, `test MyTest1`.
+   - Commands: `configure terminal`, `test set default`, `test create MyTest1`.
    - Expected: no parse errors; prompt changes to `bridge(config-test-MyTest1)#`.
    - Notes: `conf t` is not accepted; use `configure terminal` to enter config mode.
-   - Notes: while already in `bridge(config-test-MyTest1)#`, the `test MyTest1` command is rejected; stay in test mode and continue with `type`, `device`, etc.
+   - Notes: `test create MyTest1` enters test mode. While already in `bridge(config-test-MyTest1)#`, the `test MyTest1` command is rejected; stay in test mode and continue with `type`, `device`, etc.
+   - Notes: `test set <name>` selects the set and creates it if it does not exist.
 2. Joystick test authoring
    - Commands:
      - `type joystick`
-     - `device add REV:NEO:25`
+     - `device add SPARKMAX/NEO 25`
      - `inputSource controller0.leftY`
      - `deadband 0.12`
      - `show`
    - Expected: show output matches settings.
-   - Notes: device key must be `VENDOR:TYPE:ID` (for example `REV:NEO:25`). `REV:NEO25` is rejected.
+   - Notes: device label must match a profile label (for example `SPARKMAX/NEO 25`).
    - Example output:
      `Test: MyTest1`
      `  type: joystick`
      `  enabled: False`
-     `  devices: REV:NEO:25`
+     `  devices: SPARKMAX/NEO 25`
      `  inputSource: controller0.leftY`
      `  deadband: 0.12`
    - Exit: `end` returns to `bridge(config)#`.
@@ -249,13 +250,13 @@ Purpose: validate test authoring via CLI, grammar support, and JSON output.
      `Test: MyTest1`
      `  type: joystick`
      `  enabled: False`
-     `  devices: REV:NEO:25`
+     `  devices: SPARKMAX/NEO 25`
      `  inputSource: controller0.leftY`
      `  deadband: 0.12`
 3. Button test authoring
    - Commands:
      - `type button`
-     - `device add CTRE:FALCON:9`
+     - `device add FALCON 9`
      - `inputSource controller1.A`
      - `duty 0.2`
      - `termination hold`
@@ -263,7 +264,7 @@ Purpose: validate test authoring via CLI, grammar support, and JSON output.
      - `show`
    - Expected: show output includes button binding and termination fields.
 4. Validation errors
-   - Commands: set `deadband 1.5`, `duty 2.0`, or invalid device key.
+   - Commands: set `deadband 1.5`, `duty 2.0`, or invalid device label.
    - Expected: CLI rejects invalid values with clear error.
 5. Save tests
    - Command: `write tests bringup_tests.json`
@@ -292,7 +293,7 @@ Purpose: the fast test plan confirms minimum health checks for the system.
 11. Controller1: run one enabled test with `A` and confirm PASS/FAIL prints.
 12. Controller1: hold `A` during a test with `hold.enabled=true`, then release to confirm the hold termination path.
 13. Controller1: press `B` to run all enabled tests and confirm `Run-all complete.` prints.
-14. If a joystick test is enabled, confirm its `motorKeys` move together and stop when the test ends.
+14. If a joystick test is enabled, confirm its `motorLabels` move together and stop when the test ends.
 15. If a rotation test uses `encoderKey: internal`, confirm it uses `encoderMotorIndex`.
 16. If a limit switch check is enabled, verify it terminates on switch activation.
 17. If Wireshark is needed, run a quick capture and confirm frames appear.
@@ -533,7 +534,7 @@ Rotation only (internal):
   "type": "composite",
   "name": "Rotation only (internal)",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10"],
+  "motorLabels": ["SPARKMAX/NEO 10"],
   "duty": 0.2,
   "rotation": { "limitRot": 5.0, "encoderKey": "internal", "encoderMotorIndex": 0 }
 }
@@ -546,7 +547,7 @@ Time only:
   "type": "composite",
   "name": "Time only",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10"],
+  "motorLabels": ["SPARKMAX/NEO 10"],
   "duty": 0.3,
   "time": { "timeoutSec": 1.5, "onTimeout": "pass" }
 }
@@ -559,7 +560,7 @@ Limit switch only:
   "type": "composite",
   "name": "Limit switch only",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10"],
+  "motorLabels": ["SPARKMAX/NEO 10"],
   "duty": 0.2,
   "limitSwitch": { "enabled": true, "onHit": "pass" }
 }
@@ -572,7 +573,7 @@ Hold to run:
   "type": "composite",
   "name": "Hold to run",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10"],
+  "motorLabels": ["SPARKMAX/NEO 10"],
   "duty": 0.2,
   "hold": { "enabled": true, "onRelease": "pass" }
 }
@@ -585,7 +586,7 @@ Combined (rotation + time + limit + hold):
   "type": "composite",
   "name": "All checks",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10"],
+  "motorLabels": ["SPARKMAX/NEO 10"],
   "duty": 0.2,
   "rotation": { "limitRot": 8.0, "encoderKey": "internal", "encoderMotorIndex": 0 },
   "time": { "timeoutSec": 3.0, "onTimeout": "pass" },
@@ -607,9 +608,9 @@ CTRE reference (external CAN encoder):
   "type": "composite",
   "name": "CTRE rotation (CANCoder)",
   "enabled": true,
-  "motorKeys": ["CTRE:FALCON:11"],
+  "motorLabels": ["FALCON 11"],
   "duty": 0.2,
-  "rotation": { "limitRot": 5.0, "encoderKey": "CTRE:CANCoder:12", "encoderSource": "external", "encoderMotorIndex": 0 }
+  "rotation": { "limitRot": 5.0, "encoderKey": "CANCoder 12", "encoderSource": "external", "encoderMotorIndex": 0 }
 }
 ```
 Run: controller1 `LB`/`RB` select, controller1 `A` (hold) run.
@@ -620,7 +621,7 @@ REV Through-Bore via SPARK MAX data port:
   "type": "composite",
   "name": "Through-bore rotation (SparkMax)",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10"],
+  "motorLabels": ["SPARKMAX/NEO 10"],
   "duty": 0.2,
   "rotation": {
     "limitRot": 5.0,
@@ -636,7 +637,7 @@ Expected:
 - Encoder output changes and test terminates at `limitRot`.
 
 ### H) Multi-Motor Tests
-Purpose: `motorKeys` drives multiple motors together.
+Purpose: `motorLabels` drives multiple motors together.
 
 Joystick motor (controller0.leftY):
 ```json
@@ -644,7 +645,7 @@ Joystick motor (controller0.leftY):
   "type": "joystick",
   "name": "Joystick motor (controller0.leftY)",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10", "REV:NEO550:7"],
+  "motorLabels": ["SPARKMAX/NEO 10", "SPARKMAX/NEO550 7"],
   "deadband": 0.12,
   "inputSource": "controller0.leftY"
 }
@@ -662,7 +663,7 @@ Limit switch test:
   "type": "composite",
   "name": "Limit switch only",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10"],
+  "motorLabels": ["SPARKMAX/NEO 10"],
   "duty": 0.2,
   "limitSwitch": { "enabled": true, "onHit": "pass" }
 }
@@ -675,6 +676,7 @@ Steps:
 Expected:
 - Motor output clamps on closed limit.
 - Test ends and reports PASS/FAIL per `onHit`.
+- The check triggers when any selected motor reports a closed forward or reverse limit.
 
 ### J) PC CAN Tool - Basic
 Purpose: the PC sniffer runs and publishes NetworkTables diagnostics.
@@ -724,7 +726,7 @@ Purpose: config generation, validation, and hash update workflow is correct.
 6. Update hash after manual review:
    - `%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe tools\can_inventory\can_inventory.py --validate --input tools\can_nt\robot_config.json --inventory tools\can_nt\inv_gen.json --update-hash`
 Expected:
-- Generated device names use `UNNAMED_<type>_<can_id>`.
+- Generated device names use the device label from the inventory.
 - Validation fails on placeholder names or missing required parameters.
 - Hash update rewrites `metadata.inventory_hash` and `metadata.inventory_source`.
 
@@ -812,13 +814,12 @@ Steps:
 Expected:
 - Periodic warning: `No CAN traffic detected as of HH:MM:SS.`
 
-### 4) Device IDs, manufacturer/type, and labels
+### 4) Device labels and status
 Steps:
-1. Ensure the CAN bus contains devices with IDs defined in the selected bringup profile.
+1. Ensure the CAN bus contains devices with labels defined in the selected bringup profile.
 2. Run with summaries enabled.
 Expected:
 - Each device prints its label (e.g., `FR NEO`, `FL KRAK`, `FR CANC`).
-- Same numeric IDs across different device types still show as separate entries.
 - `status` is `OK` when active; `STALE` after timeout; `MISSING` if never seen.
 
 ### 5) `--print-publish` behavior
@@ -827,7 +828,7 @@ Steps:
 2. Power-cycle one CAN device so it drops off the bus and returns.
 Expected:
 - When it returns after timeout, a line prints:
-  `Device seen: mfg=XX type=YY id=ZZ count=NN`
+  `Device seen: label=<LABEL> count=NN`
 
 ### 6) Summary output formatting
 Steps:
@@ -850,15 +851,12 @@ Steps:
 1. Run tool and view NT values (e.g., NT client or RobotV2 Y button).
 Expected keys under `bringup/diag`:
 - `busErrorCount`
-- `dev/<mfg>/<type>/<id>/label`
-- `dev/<mfg>/<type>/<id>/status`
-- `dev/<mfg>/<type>/<id>/ageSec`
-- `dev/<mfg>/<type>/<id>/msgCount`
-- `dev/<mfg>/<type>/<id>/lastSeen`
-- `dev/<mfg>/<type>/<id>/manufacturer`
-- `dev/<mfg>/<type>/<id>/deviceType`
-- `dev/<mfg>/<type>/<id>/deviceId`
-RobotV2 uses the composite `dev/<mfg>/<type>/<id>` keys.
+- `dev/<labelKey>/label`
+- `dev/<labelKey>/status`
+- `dev/<labelKey>/ageSec`
+- `dev/<labelKey>/msgCount`
+- `dev/<labelKey>/lastSeen`
+RobotV2 uses the composite `dev/<labelKey>` keys.
 
 ### 8a) NT Contract Sanity (Robot <-> PC)
 Purpose: RobotV2 consumes bringup/diag keys without missing data.
@@ -869,13 +867,6 @@ Expected:
 - The diagnostics report prints without key-not-found errors.
 - The PC tool status block shows heartbeat, frames/sec, and last frame age.
 
-Legacy deviceId-only aggregate keys:
-  - `lastSeen/<id>`
-  - `missing/<id>`
-  - `msgCount/<id>`
-  - `type/<id>` (always `Mixed`)
-  - `status/<id>` (OK/STALE/MISSING)
-  - `ageSec/<id>` (-1 if missing)
 
 ### 9) CSV logging
 Steps:
@@ -918,13 +909,22 @@ Expected:
 ## Create New Tests
 Purpose: add data-driven tests without code changes.
 
-1. Open `src/main/deploy/bringup_tests.json`.
-2. Choose the `default_test_set` you want to edit, or add a new set under `test_sets`.
-3. Add a new test object to the chosen list.
-4. Ensure `type`, `name`, `enabled`, and `motorKeys` are present.
-5. Add check blocks for composite tests: `rotation`, `time`, `limitSwitch`, `hold`.
-6. Deploy the updated JSON to the roboRIO.
-7. In teleop, use controller1 `LB`/`RB` to select the test and `A` to run it.
+1. Launch the CLI in local-only mode:
+   - `python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt`
+2. Enter config mode: `configure terminal`.
+3. Select or create a test set: `test set <name>`.
+4. Create a test: `test create <name>` (enters test mode).
+5. Configure the test:
+   - `type joystick|button|composite|deadbandSweep`
+   - `device add <label>`
+   - `inputSource <controller>.<inputId>` for joystick/button/composite
+   - `deadband <value>` for joystick
+   - `duty <value>` for button/composite
+   - `termination hold|time <sec>|rotation <rot>|limitswitch` for button/composite
+6. Exit test mode: `end`.
+7. Save tests: `write tests bringup_tests.json`.
+8. Copy the file to `src/main/deploy/bringup_tests.json` and deploy the robot code.
+9. In teleop, use controller1 `LB`/`RB` to select the test and `A` to run it.
 
 Current test types:
 - `composite`: duty + checks (rotation/time/limitSwitch/hold).
@@ -941,7 +941,7 @@ Example (composite with rotation + time + hold):
   "rotation": { "limitRot": 5.0, "encoderKey": "internal", "encoderMotorIndex": 0 },
   "time": { "timeoutSec": 2.0, "onTimeout": "fail" },
   "hold": { "enabled": true, "onRelease": "pass" },
-  "motorKeys": ["REV:NEO:25"]
+  "motorLabels": ["SPARKMAX/NEO 25"]
 }
 ```
 
@@ -951,7 +951,7 @@ Example (joystick):
   "type": "joystick",
   "name": "Joystick motor (controller0.leftY)",
   "enabled": true,
-  "motorKeys": ["REV:NEO:25"],
+  "motorLabels": ["SPARKMAX/NEO 25"],
   "deadband": 0.12,
   "inputSource": "controller0.leftY"
 }

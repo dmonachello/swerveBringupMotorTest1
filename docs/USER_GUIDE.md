@@ -69,23 +69,23 @@ Purpose: Author and maintain device profiles and layouts.
 - View -> `Show Warnings/Errors` toggles duplicate-ID badges.
 - File -> `Print Diagram...` prints the current diagram (PDF handler required).
 - Node boxes show the label with a separate `ID` line instead of `(id X)` inline.
-- Groups -> `Create Group from Selection...` writes bridgeConfig groups for CLI/UI use.
+- Groups -> `Create Group from Selection...` writes bridgeConfig.byProfile groups for CLI/UI use.
 - For Windows installs, use `install_windows.cmd` to install Python deps (includes `reportlab`).
 
 ## Data Flow
 Purpose: Describe how data moves between parts.
 - `data/bringup_system.json` is the shared configuration source (sync to deploy for roboRIO).
-- `schema_version` (3), `data_version` (`YYYY-MM-DD_HHMMSS`), and `data_hash` must be present and consistent across copies.
+- `schema_version` (4), `data_version` (`YYYY-MM-DD_HHMMSS`), and `data_hash` must be present and consistent across copies.
+- Profiles reference devices by label only; device identity lives in the device registry.
 
-Profiles Migration (Schema v3)
-Purpose: Update bringup_system.json to schema v3 with unique labels.
+Profiles Migration (Schema v4)
+Purpose: Update bringup_system.json to schema v4 with a device registry and label-only profiles.
 Example:
-  python tools\migrate_profiles.py --source data\bringup_system.json --dest data\bringup_system.json --report migrate_report.json
   python tools\sync_profiles.py
   python tools\can_topology\validate_profiles.py --path data\bringup_system.json --strict
 - The editor writes it; robot and PC tools consume it.
 - Diagram metadata is editor-only and ignored by robot/PC tools.
-- bridgeConfig groups can be edited in the topology editor or CLI for operator workflows.
+- bridgeConfig.byProfile groups can be edited in the topology editor or CLI for operator workflows.
 - The robot publishes local diagnostics; the PC publishes CAN-bus diagnostics.
 - Local robot data and PC CAN data are kept separate by design.
 

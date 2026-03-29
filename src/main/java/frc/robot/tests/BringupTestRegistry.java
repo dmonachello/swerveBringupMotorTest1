@@ -304,15 +304,8 @@ public final class BringupTestRegistry {
     config.name = entry.name != null ? entry.name : config.name;
     config.enabled = entry.enabled != null ? entry.enabled.booleanValue() : config.enabled;
     config.duty = entry.duty != null ? entry.duty.doubleValue() : config.duty;
-    if (entry.motorKeys != null && !entry.motorKeys.isEmpty()) {
-      java.util.List<MotorRef> refs = new java.util.ArrayList<>();
-      for (String key : entry.motorKeys) {
-        MotorRef ref = parseDeviceRef(key);
-        if (ref != null) {
-          refs.add(ref);
-        }
-      }
-      config.motors = refs;
+    if (entry.motorLabels != null && !entry.motorLabels.isEmpty()) {
+      config.motorLabels = new java.util.ArrayList<>(entry.motorLabels);
     }
     if (entry.rotation != null) {
       config.rotation = entry.rotation;
@@ -372,15 +365,8 @@ public final class BringupTestRegistry {
     DeadbandSweepTest.Config config = new DeadbandSweepTest.Config();
     config.name = entry.name != null ? entry.name : config.name;
     config.enabled = entry.enabled != null ? entry.enabled.booleanValue() : config.enabled;
-    if (entry.motorKeys != null && !entry.motorKeys.isEmpty()) {
-      List<MotorRef> refs = new ArrayList<>();
-      for (String key : entry.motorKeys) {
-        MotorRef ref = parseDeviceRef(key);
-        if (ref != null) {
-          refs.add(ref);
-        }
-      }
-      config.motors = refs;
+    if (entry.motorLabels != null && !entry.motorLabels.isEmpty()) {
+      config.motorLabels = new ArrayList<>(entry.motorLabels);
     }
     if (entry.deadbandSweep != null) {
       DeadbandSweepTest.SweepConfig sweep = entry.deadbandSweep;
@@ -414,15 +400,8 @@ public final class BringupTestRegistry {
       config.enabled = false;
       BringupPrinter.enqueue("Warning: joystick test '" + config.name + "' missing inputSource; disabled.");
     }
-    if (entry.motorKeys != null && !entry.motorKeys.isEmpty()) {
-      java.util.List<MotorRef> refs = new java.util.ArrayList<>();
-      for (String key : entry.motorKeys) {
-        MotorRef ref = parseDeviceRef(key);
-        if (ref != null) {
-          refs.add(ref);
-        }
-      }
-      config.motors = refs;
+    if (entry.motorLabels != null && !entry.motorLabels.isEmpty()) {
+      config.motorLabels = new java.util.ArrayList<>(entry.motorLabels);
     }
     return new JoystickTest(config);
   }
@@ -566,7 +545,7 @@ public final class BringupTestRegistry {
     Double limitRot;
     Double timeoutSec;
     Double durationSec;
-    List<String> motorKeys;
+    List<String> motorLabels;
     String encoderKey;
     String encoderSource;
     Integer encoderCountsPerRev;
@@ -580,72 +559,4 @@ public final class BringupTestRegistry {
     Integer encoderMotorIndex;
   }
 
-  /**
-   * NAME
-   *   parseDeviceRef - Parse a VENDOR:TYPE:ID key into a MotorRef.
-   */
-  static MotorRef parseDeviceRef(String value) {
-    if (value == null || value.isBlank()) {
-      return null;
-    }
-    String[] parts = value.split(":");
-    if (parts.length != 3) {
-      return null;
-    }
-    MotorRef ref = new MotorRef();
-    ref.vendor = parts[0].trim();
-    ref.type = parts[1].trim();
-    try {
-      ref.id = Integer.parseInt(parts[2].trim());
-    } catch (NumberFormatException ex) {
-      return null;
-    }
-    return ref;
-  }
-
-  static EncoderRef parseEncoderRef(String value) {
-    if (value == null || value.isBlank()) {
-      return null;
-    }
-    String trimmed = value.trim();
-    EncoderRef ref = new EncoderRef();
-    if ("internal".equalsIgnoreCase(trimmed)) {
-      ref.source = "internal";
-      return ref;
-    }
-    if ("external".equalsIgnoreCase(trimmed)) {
-      ref.source = "external";
-      return ref;
-    }
-    String[] parts = trimmed.split(":");
-    if (parts.length != 3) {
-      return null;
-    }
-    ref.source = "external";
-    ref.vendor = parts[0].trim();
-    ref.type = parts[1].trim();
-    try {
-      ref.id = Integer.parseInt(parts[2].trim());
-    } catch (NumberFormatException ex) {
-      return null;
-    }
-    return ref;
-  }
-
-  /**
-   * NAME
-   *   MotorRef - Parsed motor key reference.
-   */
-  static final class MotorRef {
-    String vendor;
-    String type;
-    int id = -1;
-  }
-
-  static final class EncoderRef {
-    String source;
-    String vendor;
-    String type;
-    int id = -1;
-  }
 }

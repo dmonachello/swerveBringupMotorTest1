@@ -14,7 +14,9 @@ DESCRIPTION
 
 from dataclasses import dataclass, field
 from collections import Counter, deque
-from typing import Any, Deque, Dict, Optional, Set
+from typing import Any, Deque, Dict, Optional, Set, Callable
+
+LABEL_UNKNOWN = "UNKNOWN"
 
 
 @dataclass
@@ -102,7 +104,14 @@ class CanLiveAnalyzer:
         """
         return set(self.states.keys())
 
-    def summary(self, now: float, stale_s: float, top_n: int) -> Dict[str, Any]:
+    def summary(
+        self,
+        now: float,
+        stale_s: float,
+        top_n: int,
+        label_lookup: Optional[Dict[tuple[int, int, int], str]] = None,
+        decode_device_key: Optional[Callable[[int], tuple[int, int, int]]] = None,
+    ) -> Dict[str, Any]:
         """
         NAME
             summary - Build a summary snapshot of bus health and top talkers.
@@ -125,6 +134,15 @@ class CanLiveAnalyzer:
 
         top = sorted(self.states.values(), key=lambda s: s.hz(), reverse=True)[:top_n]
 
+        def _label_for(can_id: int) -> str:
+            if label_lookup is None or decode_device_key is None:
+                return LABEL_UNKNOWN
+            key = decode_device_key(can_id)
+            return label_lookup.get(key, LABEL_UNKNOWN)
+
+        missing_labels = [_label_for(can_id) for can_id in missing]
+        stale_labels = [_label_for(can_id) for can_id in stale]
+
         return {
             "bus": {
                 "uptime_s": round(uptime, 3),
@@ -133,12 +151,12 @@ class CanLiveAnalyzer:
                 "unique_ids": len(seen),
             },
             "health": {
-                "missing": [hex(x) for x in missing],
-                "stale": [hex(x) for x in stale],
+                "missing": missing_labels,
+                "stale": stale_labels,
             },
             "top": [
                 {
-                    "id": hex(st.can_id),
+                    "label": _label_for(st.can_id),
                     "hz": round(st.hz(), 2),
                     "last": st.last_data.hex(),
                     "changing": [i for i in range(8) if (st.changing_mask >> i) & 1],

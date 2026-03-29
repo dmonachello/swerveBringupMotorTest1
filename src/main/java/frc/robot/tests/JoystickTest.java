@@ -20,7 +20,7 @@ public final class JoystickTest implements BringupTest {
   public static final class Config {
     public String name = "Joystick";
     public boolean enabled = true;
-    public java.util.List<BringupTestRegistry.MotorRef> motors;
+    public java.util.List<String> motorLabels;
     public double deadband = 0.12;
     public String inputSource;
   }
@@ -104,21 +104,14 @@ public final class JoystickTest implements BringupTest {
 
   /**
    * NAME
-   *   getMotorKeys - Return motor keys used by this test.
+   *   getMotorKeys - Return motor labels used by this test.
    */
   @Override
   public java.util.List<String> getMotorKeys() {
-    if (config.motors == null || config.motors.isEmpty()) {
+    if (config.motorLabels == null || config.motorLabels.isEmpty()) {
       return java.util.Collections.emptyList();
     }
-    java.util.List<String> keys = new java.util.ArrayList<>();
-    for (BringupTestRegistry.MotorRef ref : config.motors) {
-      String key = buildMotorKey(ref);
-      if (!key.isBlank()) {
-        keys.add(key);
-      }
-    }
-    return keys;
+    return new java.util.ArrayList<>(config.motorLabels);
   }
 
   /**
@@ -127,21 +120,16 @@ public final class JoystickTest implements BringupTest {
    */
   @Override
   public boolean start(BringupTestContext context, double nowSec) {
-    if (config.motors == null || config.motors.isEmpty()) {
+    if (config.motorLabels == null || config.motorLabels.isEmpty()) {
       status = "Motor not found";
       result = BringupTestResult.FAIL;
       return false;
     }
     motors.clear();
-    if (config.motors != null && !config.motors.isEmpty()) {
-      for (BringupTestRegistry.MotorRef ref : config.motors) {
-        if (ref == null || ref.vendor == null || ref.type == null) {
-          continue;
-        }
-        DeviceUnit device = context.findDevice(ref.vendor, ref.type, ref.id);
-        if (device != null && !motors.contains(device)) {
-          motors.add(device);
-        }
+    for (String label : config.motorLabels) {
+      DeviceUnit device = context.findDeviceByLabel(label);
+      if (device != null && !motors.contains(device)) {
+        motors.add(device);
       }
     }
     if (motors.isEmpty()) {
@@ -219,15 +207,8 @@ public final class JoystickTest implements BringupTest {
     entry.put("type", TYPE);
     entry.put("name", getName());
     entry.put("enabled", config.enabled);
-    if (config.motors != null && !config.motors.isEmpty()) {
-      java.util.List<String> motorKeys = new java.util.ArrayList<>();
-      for (BringupTestRegistry.MotorRef ref : config.motors) {
-        String key = buildMotorKey(ref);
-        if (!key.isBlank()) {
-          motorKeys.add(key);
-        }
-      }
-      entry.put("motorKeys", motorKeys);
+    if (config.motorLabels != null && !config.motorLabels.isEmpty()) {
+      entry.put("motorLabels", new java.util.ArrayList<>(config.motorLabels));
     }
     entry.put("deadband", config.deadband);
     if (getInputSource() != null && !getInputSource().isBlank()) {
@@ -236,10 +217,4 @@ public final class JoystickTest implements BringupTest {
     return entry;
   }
 
-  private String buildMotorKey(BringupTestRegistry.MotorRef motorRef) {
-    if (motorRef == null || motorRef.vendor == null || motorRef.type == null) {
-      return "";
-    }
-    return motorRef.vendor.trim() + ":" + motorRef.type.trim() + ":" + motorRef.id;
-  }
 }

@@ -9,7 +9,7 @@ Purpose: Turn a diagram into a `bringup_system.json` file.
 - Edit labels, CAN IDs, and optional fields.
 - Export a single profile JSON ready for deploy.
 - Edit-only: live overlays are shown in the Bringup Control UI.
- - Group overlays (bridgeConfig) are shared with the UI live view.
+- Group overlays (bridgeConfig.byProfile) are shared with the UI live view.
 
 ## How To Run
 Purpose: Launch the editor without extra dependencies.
@@ -26,16 +26,14 @@ python tools\\can_topology\\validate_profiles.py --strict
 python tools\\can_topology\\validate_profiles.py --verbose
 ```
 Checks:
-- JSON parses and contains a `profiles` object.
-- Root `schema_version` matches the expected value (3).
+- JSON parses and contains `profiles` plus a device registry.
+- Root `schema_version` matches the expected value (4).
 - Root `data_version` is present and non-empty.
 - Root `data_hash` is present and matches the computed value.
-- Allowed categories only (buckets, singletons, `devices`).
-- Each entry has integer `id` in range -1 or 0-62.
-- `devices` entries include `vendor` and `type`.
-- `limits` entries use integer `fwdDio`/`revDio` and boolean `invert`.
-- Duplicate full CAN identifiers (vendor + type + CAN ID) are errors.
-- Duplicate numeric CAN IDs (0-62) across different vendor/type are warnings.
+- Device registry labels are unique.
+- Profiles reference known device labels only and may not repeat labels.
+- Device entries include required fields per interface (CAN, DIO, PWM, ANALOG).
+- Attachment references must point at known device labels.
 
 ## Workflow
 Purpose: Describe the shortest path from sketch to JSON.
@@ -58,7 +56,7 @@ Purpose: Describe the shortest path from sketch to JSON.
 
 ## Details Panel
 Purpose: Show fields not displayed on the boxes.
-- Select any node to view full metadata (motor, limits, terminator, vendor/type).
+- Select any node to view full metadata (interface, CAN identity, limits, terminator).
 - Diagram boxes show the label with a separate `ID` line; type remains in the left list.
 - Tags appear in the details panel for quick reference.
 - Callout selections show a callout details panel (including target debug fields).
@@ -104,17 +102,16 @@ Purpose: Document limitations up front.
 - Select a node and use the Scale controls to resize that node's box; scale is saved
   in the diagram metadata.
 - Select a callout and use the Callout Scale controls to resize it; scale is saved.
-- Singletons (`pdh`, `pdp`, `pigeon`, `roborio`) allow only one node each.
-- `devices` entries require `vendor` and `type`.
+- Device registry labels must be unique.
 - `terminator` is an optional per-node flag (true/false) to mark a bus end.
 - Vendor and device type fields use dropdowns populated from `src/main/deploy/can_mappings.json`
   (you can also type a custom value).
-- Group overlays (from bridgeConfig) can be toggled via View -> Show Group Overlays.
+- Group overlays (from bridgeConfig.byProfile) can be toggled via View -> Show Group Overlays.
 
 ## Groups (BridgeConfig)
 Purpose: Use the topology editor to create and visualize groups.
 - Multi-select device nodes, then use Groups -> Create Group from Selection...
-- Groups are stored under `bridgeConfig.groups` in `bringup_system.json`.
+- Groups are stored under `bridgeConfig.byProfile.<profile>.groups` in `bringup_system.json`.
 - The editor draws dashed boxes around grouped devices (toggle in View menu).
 - Groups are optional and ignored by the robot code.
  - The Bringup Control UI live view can also show these groups (Show Groups toggle).

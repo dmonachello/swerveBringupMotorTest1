@@ -15,7 +15,7 @@ Bridge CLI
 Purpose: Provide a Cisco-style operator console.
 - Owns: Prompt modes, command parsing, batch execution.
 - Uses: BridgeSession + bridge_ops for all command sends.
-- Local view: Reads bridgeConfig + profiles-derived devices for inspection and editing.
+- Local view: Reads bridgeConfig.byProfile + profiles-derived devices for inspection and editing.
 
 Bringup Control UI (GUI)
 Purpose: Provide button-driven control and status output.
@@ -23,12 +23,12 @@ Purpose: Provide button-driven control and status output.
 - Uses: BridgeSession + bridge_ops for all command sends.
 - Local view: UI does not edit config; it is a runtime control surface.
 - Live Ops: hosts the read-only live topology overlay (Phase 1).
-- Live view can render bridgeConfig group boxes/labels (toggle in the UI).
+- Live view can render bridgeConfig.byProfile group boxes/labels (toggle in the UI).
 
 Topology Editor
 Purpose: Define and visualize device topology and layout.
 - Owns: Diagram layout, device placement, profile edits, and group overlays.
-- Uses: bringup_system.json (profiles + optional bridgeConfig).
+- Uses: bringup_system.json (profiles + optional bridgeConfig.byProfile).
 - Does not: send commands or modify runtime state.
 
 Dashboards (Shuffleboard/Glass)
@@ -49,21 +49,21 @@ Purpose: Centralize command wrappers and local config logic.
 - Contains: show/group/binding/selected-device operations and local config helpers.
 
 Unified Config (bringup_system.json)
-Purpose: Store profiles, diagram, and bridgeConfig in one file.
+Purpose: Store profiles, diagram, and bridgeConfig.byProfile in one file.
 - Used by: CLI and topology editor.
 - Contract: bridgeConfig is optional; profiles + diagram are authoritative for device lists.
 
 Data Ownership
 Purpose: Specify who owns which data.
-- Profiles + diagram: owned by topology editor or manual JSON edits.
-- bridgeConfig (groups, bindings, selectedDevice): owned by CLI and runtime tools.
+- Device registry + profiles + diagram: owned by topology editor or manual JSON edits.
+- bridgeConfig.byProfile (groups, bindings, selectedDevice): owned by CLI and runtime tools.
 - Runtime state: owned by robot (TCP UI) and published to NT for dashboards.
 
 Data Flow
 Purpose: Explain how data moves between surfaces.
 - Topology editor writes profiles/diagram to bringup_system.json.
-- CLI loads bringup_system.json, edits groups/bindings, and writes bridgeConfig back.
-- CLI can write unified bringup_system.json (profiles + bridgeConfig) for a single source.
+- CLI loads bringup_system.json, edits groups/bindings, and writes bridgeConfig.byProfile back.
+- CLI can write unified bringup_system.json (profiles + bridgeConfig.byProfile) for a single source.
 - GUI reads runtime state; it does not edit config files.
 
 Examples
@@ -90,18 +90,18 @@ Purpose: Define behavior when components are missing.
 
 Output and Contracts
 Purpose: List stable contracts and keys.
-- bringup_system.json schema_version 3.
-- bridgeConfig schemaVersion 1.
+- bringup_system.json schema_version 4.
+- bridgeConfig schemaVersion 2.
 - NetworkTables keys remain under bringup/diag/...
 
 Tradeoffs
 Purpose: Document known design tradeoffs.
 - Centralizing command sends in bridge_ops reduces drift but adds indirection.
-- Keeping profiles and bridgeConfig in one file simplifies sharing but requires strict ordering and clear ownership.
+- Keeping profiles and bridgeConfig.byProfile in one file simplifies sharing but requires strict ordering and clear ownership.
 - UI retry logic is shared to align behavior but still visualized differently per surface.
 
 Future Extensions
 Purpose: Track safe next steps.
 - Add a small operator-surface "status" panel that shows which file is loaded and last saved.
 - Add a spec-to-code checklist test to guard shared-layer usage.
-- Add a UI-only indicator when bridgeConfig groups are missing from the canonical file.
+- Add a UI-only indicator when bridgeConfig.byProfile groups are missing from the canonical file.

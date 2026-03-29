@@ -153,7 +153,15 @@ public final class LedStatusInference {
     }
 
     LimitsAttachment limits = snap.getAttachment(LimitsAttachment.class);
-    boolean limitClosed = limits != null && (isClosed(limits.fwdClosed) || isClosed(limits.revClosed));
+    boolean limitClosed = false;
+    if (limits != null && limits.switches != null) {
+      for (LimitsAttachment.LimitSwitchState state : limits.switches) {
+        if (state != null && isClosed(state.closed)) {
+          limitClosed = true;
+          break;
+        }
+      }
+    }
     if (limitClosed && duty != null && Math.abs(duty) >= DUTY_THRESHOLD) {
       setLikely(led, "Off/Red", "MEDIUM");
       return led;

@@ -62,9 +62,21 @@ from tools.can_nt.bridge_ops import (
     show_status,
 )
 from tools.can_nt.bridge_session import BridgeEvent, BridgeSession
-from tools.common.json_io import write_json
+from tools.common.json_io import read_json, write_json
 from tools.common.profile_io import compute_profiles_hash
-from tools.common.paths import repo_root, tests_deploy_path
+from tools.common.paths import repo_root, tests_deploy_path, profiles_canonical_path, can_mappings_path
+from tools.common.profile_constants import (
+    BRIDGE_CONFIG_SCHEMA_VERSION,
+    KEY_BRIDGE_BY_PROFILE,
+    KEY_BRIDGE_GENERATED_AT,
+    KEY_BRIDGE_GROUPS,
+    KEY_BRIDGE_SCHEMA_VERSION,
+    KEY_BRIDGE_SELECTED_DEVICE,
+    KEY_DEFAULT_PROFILE,
+    KEY_PROFILE,
+    KEY_PROFILES,
+    PROFILE_SCHEMA_VERSION,
+)
 from tools.common.tests_io import load_tests_payload, write_tests_payload
 from tools.common.test_authoring import (
     TestAuthoringModel,
@@ -78,7 +90,7 @@ from tools.common.test_authoring import (
     validate_model,
     validate_test_name,
 )
-from tools.common.test_authoring.device_catalog import load_controller_names
+from tools.common.test_authoring.device_catalog import load_controller_names, load_profile_devices
 from tools.common.time_utils import timestamp_version
 
 # Parser selection (comment out one of the two lines below).
@@ -92,6 +104,8 @@ TESTS_FILENAME = "bringup_tests.json"
 DEFAULT_TEST_SET = "default"
 EMPTY_STRING = ""
 TEST_LABEL_UNKNOWN = "unknown"
+COUNT_ZERO = 0
+EXIT_CODE_ERROR = 2
 
 CMD_SHOW = "show"
 CMD_WRITE = "write"
@@ -102,6 +116,8 @@ CMD_DELETE = "delete"
 CMD_SET = "set"
 CMD_TYPE = "type"
 CMD_DEVICE = "device"
+CMD_REGISTRY = "registry"
+CMD_PROFILE = "profile"
 CMD_ADD = "add"
 CMD_NO = "no"
 CMD_INPUT_SOURCE = "inputsource"
@@ -117,6 +133,85 @@ CMD_ENABLED = "enabled"
 CMD_EXIT = "exit"
 CMD_END = "end"
 
+KEY_DEVICE = "device"
+KEY_GROUPS = "groups"
+KEY_BY_PROFILE = "byProfile"
+KEY_SELECTED_DEVICE = "selectedDevice"
+KEY_MANUFACTURERS = "manufacturers"
+KEY_DEVICE_TYPES = "device_types"
+
+SHOW_TARGET_CONFIG = "config"
+SHOW_TARGET_RUNTIME = "runtime-state"
+SHOW_TARGET_CONFIG_RAW = "config-raw"
+SHOW_CONFIG_LOCAL_RAW = "local-raw"
+SHOW_TARGET_PROFILES = "profiles"
+SHOW_TARGET_PROFILE = "profile"
+
+COUNT_ZERO = 0
+COUNT_ONE = 1
+COUNT_TWO = 2
+
+KEY_PROFILE_INFO = "profile"
+KEY_ACTIVE = "active"
+KEY_DEFAULT = "default"
+KEY_AVAILABLE = "available"
+STRING_NONE = "(none)"
+SHOW_TARGET_STATUS = "status"
+SHOW_TARGET_GROUPS = "groups"
+SHOW_TARGET_GROUP = "group"
+SHOW_TARGET_DEVICES = "devices"
+SHOW_TARGET_DEVICE = "device"
+SHOW_TARGET_DEVICE_REGISTRY = "device-registry"
+SHOW_TARGET_BINDINGS = "bindings"
+SHOW_TARGET_SELECTED_DEVICE = "selected-device"
+
+MESSAGE_ERR_UNKNOWN_SHOW = "ERROR: Unknown show command."
+MESSAGE_ERR_UNKNOWN_SHOW_SOURCE = "ERROR: Unknown show source."
+MESSAGE_ERR_SHOW_REQUIRES_TARGET = "ERROR: show requires a target."
+MESSAGE_ERR_LOCAL_CONFIG_MISSING = "ERROR: Local config not loaded. Use merge/import config <bringup_system.json>."
+MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND = "ERROR: Local device not found."
+MESSAGE_ERR_REGISTRY_NOT_LOADED = "ERROR: Profiles not loaded. Use merge/import config <bringup_system.json>."
+MESSAGE_LOCAL_PROFILES_EMPTY = "Local profiles: (none)"
+MESSAGE_LOCAL_PROFILE_HEADER = "Local profile:"
+MESSAGE_LOCAL_PROFILE_ACTIVE = "  active={name}"
+MESSAGE_LOCAL_PROFILE_DEFAULT = "  default={name}"
+MESSAGE_LOCAL_PROFILE_AVAILABLE = "  available={count}"
+MESSAGE_ERR_REGISTRY_DEVICE_NOT_FOUND = "ERROR: Device not found in registry."
+MESSAGE_SOURCE_LOCAL = "SOURCE: local"
+MESSAGE_LOCAL_CONFIG_RAW = "Local bridgeConfig (raw):"
+MESSAGE_LOCAL_REGISTRY_DEVICE = "Local registry device {label}:"
+MESSAGE_LOCAL_REGISTRY_EMPTY = "  (no fields)"
+MESSAGE_REGISTRY_FIELD_FMT = "  {key}={value}"
+MESSAGE_REGISTRY_FIELD_FMT_NAMED = "  {key}={value} ({name})"
+MESSAGE_MAPPINGS_READ_FAIL = "WARNING: Failed to read CAN mappings: {path}"
+HELP_SHOW_TEXT = (
+    "show <status|groups|group <name>|devices|device <name>|device registry <name>|bindings|"
+    "selected-device|runtime-state|config|config local-raw|profiles|profile> [--json] [robot|local|both]\n"
+    "  Defaults: robot if connected, otherwise local."
+)
+MESSAGE_AUTO_MERGE_FAIL = "WARNING: Failed to auto-load default profiles: {path}"
+MESSAGE_AUTO_MERGE_OK = "Loaded default profiles: {path}"
+MESSAGE_ERR_PROFILE_MIX = (
+    "ERROR: Profiles mismatch. Use 'import config <path>' to replace groups."
+)
+MESSAGE_ERR_PROFILE_HASH = (
+    "ERROR: Profiles hash mismatch (local={local}, incoming={incoming}). "
+    "Use 'import config <path>' to replace groups."
+)
+MESSAGE_ERR_PROFILE_MISSING_HASH = (
+    "ERROR: Local groups loaded without profiles; use 'import config <path>' to replace groups."
+)
+MESSAGE_ERR_PROFILE_REQUIRED = "ERROR: Profile not selected. Use 'profile <name>'."
+MESSAGE_ERR_PROFILE_UNKNOWN = "ERROR: Profile not found: {name}."
+
+FIELD_MANUFACTURER = "manufacturer"
+FIELD_DEVICE_TYPE = "deviceType"
+FIELD_DEVICE_ID = "deviceId"
+FIELD_ID = "id"
+FIELD_INTERFACE = "interface"
+FIELD_LABEL = "label"
+FIELD_TYPE = "type"
+
 TEST_TYPE_JOYSTICK = "joystick"
 TEST_TYPE_BUTTON = "button"
 TEST_TYPE_COMPOSITE = "composite"
@@ -126,9 +221,6 @@ TERMINATION_HOLD = "hold"
 TERMINATION_TIME = "time"
 TERMINATION_ROTATION = "rotation"
 TERMINATION_LIMITSWITCH = "limitswitch"
-
-DEVICE_KEY_SEPARATOR = ":"
-DEVICE_KEY_SEPARATOR_COUNT = 2
 
 DEADBAND_MIN = 0.0
 DEADBAND_MAX = 1.0
@@ -140,6 +232,7 @@ PROMPT_OVERWRITE = "Test '{name}' exists. Overwrite? (y/N): "
 CONFIRM_YES = "y"
 TIME_ON_TIMEOUT_DEFAULT = "fail"
 GLOBAL_LABEL = "global"
+DEFAULT_PROFILE_LOCAL = "local"
 LIMIT_SWITCH_KEY_ENABLED = "enabled"
 LIMIT_SWITCH_KEY_ON_HIT = "onHit"
 LIMIT_SWITCH_KEY_ID = "id"
@@ -181,7 +274,8 @@ MESSAGE_ERROR_HOLD_TYPE = "ERROR: hold only valid for button/composite tests."
 MESSAGE_ERROR_LIMITSWITCH_TYPE = "ERROR: limitswitch only valid for button/composite tests."
 MESSAGE_ERROR_DEADBAND_SWEEP_TYPE = "ERROR: deadbandSweep only valid for deadbandSweep tests."
 MESSAGE_ERROR_DEADBAND_SWEEP_FIELD = "ERROR: deadbandSweep requires a field name and value."
-MESSAGE_ERROR_DEVICE_KEY = "ERROR: device key must be VENDOR:TYPE:ID."
+MESSAGE_ERROR_DEVICE_LABEL = "ERROR: device label not found in active profile."
+MESSAGE_ERROR_DEVICE_LABEL_DUPLICATE = "ERROR: duplicate device labels in profile."
 MESSAGE_ERROR_SHOW_TESTS = "ERROR: show tests | show test <name>"
 MESSAGE_ERROR_WRITE_TESTS = "ERROR: write tests <path>"
 MESSAGE_SELECTED_TEST_SET = "Selected test set: {name}"
@@ -231,6 +325,8 @@ class BridgeCli:
         self._batch = batch
         self._conflict_policy = conflict_policy
         self._echo_enabled = echo_enabled
+        self._tests_device_catalog: Dict[str, object] = {}
+        self._tests_duplicate_labels: set[str] = set()
         parser_choice = (parser_kind or CLI_PARSER_KIND).strip().lower()
         if parser_choice not in (CLI_PARSER_CONST["legacy"], CLI_PARSER_CONST["ebnf"]):
             parser_choice = CLI_PARSER_CONST["legacy"]
@@ -248,26 +344,25 @@ class BridgeCli:
         self._local_loaded_at: Optional[float] = None
         self._local_root_payload: Optional[Dict[str, object]] = None
         self._local_root_path: Optional[str] = None
+        self._local_root_hash: Optional[str] = None
         self._show_label_seq: Dict[int, str] = {}
         self._local_devices_locked: bool = False
         self._profiles_dirty: bool = False
-        self._can_mfg_id_to_name: Dict[int, str] = {}
-        self._can_mfg_name_to_id: Dict[str, int] = {}
-        self._can_type_id_to_name: Dict[int, str] = {}
-        self._can_type_name_to_id: Dict[str, int] = {}
         self._tracker = CommandTracker(timeout_sec=2.0, max_retries=0)
-        self._load_can_mappings()
         self._tests_model: Optional[TestAuthoringModel] = None
         self._tests_path: Optional[Path] = None
         self._tests_dirty: bool = False
         self._tests_active_set: str = ""
         self._tests_profile: Optional[str] = None
+        self._groups_profile: Optional[str] = None
+        self._can_mappings: Optional[Dict[str, Dict[str, str]]] = None
 
     def run_interactive(self) -> int:
         """
         NAME
             run_interactive - Enter the interactive prompt loop.
         """
+        self._auto_merge_default_profiles()
         while True:
             try:
                 prompt = self._prompt()
@@ -296,6 +391,7 @@ class BridgeCli:
         NAME
             run_batch - Execute a batch script.
         """
+        self._auto_merge_default_profiles()
         lint_error = self._lint_script(lines)
         if lint_error:
             print(f"ERROR: {lint_error}")
@@ -316,15 +412,236 @@ class BridgeCli:
         if mode.name == "exec":
             return "bridge> "
         if mode.name == MODE_CONFIG:
-            return "bridge(config)# "
+            suffix = self._profile_prompt_suffix()
+            return f"bridge(config{suffix})# "
         if mode.name == "group":
-            return f"bridge(config-group-{mode.group})# "
+            suffix = self._profile_prompt_suffix()
+            return f"bridge(config{suffix}-group-{mode.group})# "
         if mode.name == "device":
             return f"bridge(config-device-{mode.device})# "
         if mode.name == MODE_TEST:
             label = mode.test or TEST_LABEL_UNKNOWN
             return f"bridge(config-test-{label})# "
         return "bridge> "
+
+    def _profile_prompt_suffix(self) -> str:
+        """
+        NAME
+            _profile_prompt_suffix - Render prompt suffix for active profile.
+        """
+        profile = self._groups_profile or ""
+        if profile:
+            return f"-profile-{profile}"
+        return ""
+
+    def _auto_merge_default_profiles(self) -> None:
+        """
+        NAME
+            _auto_merge_default_profiles - Load the default bringup_system.json if present.
+        """
+        if self._local_config is not None:
+            return
+        path = profiles_canonical_path()
+        if not path.exists():
+            return
+        plan = import_config(str(path), self._conflict_policy, self._active_profile_name())
+        if not plan.ok:
+            print(MESSAGE_AUTO_MERGE_FAIL.format(path=path))
+            return
+        code = self._apply_config_plan(plan, prompt_on_replace=False)
+        if code is None or code == 0:
+            print(MESSAGE_AUTO_MERGE_OK.format(path=path))
+
+    def _profiles_hash(self, payload: Optional[Dict[str, object]]) -> Optional[str]:
+        """
+        NAME
+            _profiles_hash - Compute the profiles hash for a payload.
+        """
+        if not isinstance(payload, dict):
+            return None
+        try:
+            return compute_profiles_hash(payload)
+        except Exception:
+            return None
+
+    def _default_profile_name(self) -> Optional[str]:
+        """
+        NAME
+            _default_profile_name - Return the default profile name from local payload.
+        """
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            return None
+        profiles = payload.get(KEY_PROFILES)
+        if not isinstance(profiles, dict) or not profiles:
+            return None
+        default_profile = payload.get(KEY_DEFAULT_PROFILE)
+        if isinstance(default_profile, str) and default_profile in profiles:
+            return default_profile
+        return next(iter(profiles.keys()))
+
+    def _active_profile_name(self) -> Optional[str]:
+        """
+        NAME
+            _active_profile_name - Return the active profile name for group editing.
+        """
+        if self._groups_profile:
+            return self._groups_profile
+        default_profile = self._default_profile_name()
+        if default_profile:
+            return default_profile
+        return self._fallback_profile_name()
+
+    def _fallback_profile_name(self) -> Optional[str]:
+        """
+        NAME
+            _fallback_profile_name - Return a single local profile if present.
+        """
+        if not self._local_config:
+            return None
+        by_profile = self._local_config.get(KEY_BRIDGE_BY_PROFILE)
+        if not isinstance(by_profile, dict):
+            return None
+        names = [name for name in by_profile.keys() if isinstance(name, str)]
+        if len(names) == COUNT_ONE:
+            return names[COUNT_ZERO]
+        return None
+
+    def _local_profile_entry(self, profile_name: str, create: bool = False) -> Dict[str, object]:
+        """
+        NAME
+            _local_profile_entry - Return or create a per-profile bridgeConfig entry.
+        """
+        self._ensure_local_config()
+        if not isinstance(self._local_config, dict):
+            return {}
+        by_profile = self._local_config.get(KEY_BRIDGE_BY_PROFILE)
+        if not isinstance(by_profile, dict):
+            by_profile = {}
+            self._local_config[KEY_BRIDGE_BY_PROFILE] = by_profile
+        entry = by_profile.get(profile_name)
+        if isinstance(entry, dict):
+            return entry
+        if not create:
+            return {}
+        entry = {
+            KEY_BRIDGE_GROUPS: [],
+            KEY_BRIDGE_SELECTED_DEVICE: {KEY_DEVICE: EMPTY_STRING, CMD_ENABLED: False},
+        }
+        by_profile[profile_name] = entry
+        return entry
+
+    def _profile_device_entries(self, profile_name: str) -> List[Dict[str, object]]:
+        """
+        NAME
+            _profile_device_entries - Return device entries for a profile.
+        """
+        if not self._local_root_payload:
+            return []
+        devices = devices_from_profiles_payload(self._local_root_payload, profile_name)
+        if devices is None:
+            return []
+        return devices
+
+    def _profile_device_labels(self, profile_name: str) -> set[str]:
+        """
+        NAME
+            _profile_device_labels - Return device label set for a profile.
+        """
+        labels = set()
+        for device in self._profile_device_entries(profile_name):
+            name = str(device.get("name", "")).strip()
+            if name:
+                labels.add(name.lower())
+        return labels
+
+    def _local_groups(self, profile_name: str, create: bool = False) -> List[Dict[str, object]]:
+        """
+        NAME
+            _local_groups - Return group list for a profile.
+        """
+        entry = self._local_profile_entry(profile_name, create=create)
+        groups = entry.get(KEY_BRIDGE_GROUPS)
+        if isinstance(groups, list):
+            return groups
+        groups = []
+        entry[KEY_BRIDGE_GROUPS] = groups
+        return groups
+
+    def _sync_group_profile(self) -> None:
+        """
+        NAME
+            _sync_group_profile - Ensure group profile exists in loaded profiles.
+        """
+        profiles = self._local_root_payload.get(KEY_PROFILES) if isinstance(self._local_root_payload, dict) else None
+        if not isinstance(profiles, dict) or not profiles:
+            self._groups_profile = None
+            return
+        if self._groups_profile and self._groups_profile in profiles:
+            return
+        self._groups_profile = self._default_profile_name()
+
+    def _set_active_profile(self, name: str) -> bool:
+        """
+        NAME
+            _set_active_profile - Set active profile for local group operations.
+        """
+        profiles = self._local_root_payload.get(KEY_PROFILES) if isinstance(self._local_root_payload, dict) else None
+        key = name.strip()
+        if not key:
+            print(MESSAGE_ERR_PROFILE_REQUIRED)
+            return False
+        if not isinstance(profiles, dict) or not profiles:
+            self._groups_profile = key
+            self._local_profile_entry(key, create=True)
+            return True
+        if key not in profiles:
+            print(MESSAGE_ERR_PROFILE_UNKNOWN.format(name=name))
+            return False
+        self._groups_profile = key
+        self._local_profile_entry(key, create=True)
+        return True
+
+    def _require_active_profile(self) -> Optional[str]:
+        """
+        NAME
+            _require_active_profile - Return active profile or report error.
+        """
+        profile = self._active_profile_name()
+        if not profile:
+            print(MESSAGE_ERR_PROFILE_REQUIRED)
+            return None
+        return profile
+
+    def _local_group_count(self) -> int:
+        """
+        NAME
+            _local_group_count - Return number of local groups.
+        """
+        if not isinstance(self._local_config, dict):
+            return COUNT_ZERO
+        profile_name = self._active_profile_name()
+        if not profile_name:
+            return COUNT_ZERO
+        entry = self._local_profile_entry(profile_name)
+        groups = entry.get(KEY_BRIDGE_GROUPS)
+        if not isinstance(groups, list):
+            return COUNT_ZERO
+        return len(groups)
+
+    def validate_config_file(self, path: str) -> tuple[bool, str, Optional[Dict[str, object]]]:
+        """
+        NAME
+            validate_config_file - Wrapper to validate a config file path.
+        """
+        return validate_config_file(path)
+
+    def validate_config_data(self, config: Dict[str, object]) -> tuple[bool, str]:
+        """
+        NAME
+            validate_config_data - Wrapper to validate an in-memory config.
+        """
+        return validate_config_data(config, self._local_root_payload)
 
     def _execute_line(self, line: str) -> Optional[int]:
         try:
@@ -467,6 +784,13 @@ class BridgeCli:
         self._tests_path = path
         if not self._tests_profile:
             self._tests_profile = get_default_profile()
+        try:
+            catalog, duplicates = load_profile_devices(self._tests_profile)
+            self._tests_device_catalog = catalog
+            self._tests_duplicate_labels = duplicates
+        except Exception:
+            self._tests_device_catalog = {}
+            self._tests_duplicate_labels = set()
         default_set = self._tests_model.default_test_set if self._tests_model else EMPTY_STRING
         self._tests_active_set = default_set or DEFAULT_TEST_SET
 
@@ -588,20 +912,23 @@ class BridgeCli:
             self._tests_dirty = True
             return None
         if cmd == CMD_DEVICE and len(tokens) >= 3 and tokens[1].lower() == CMD_ADD:
-            key = tokens[2]
-            if not self._is_device_key_valid(key):
-                print(MESSAGE_ERROR_DEVICE_KEY)
+            label = tokens[2]
+            if not self._is_device_label_valid(label):
+                if self._tests_duplicate_labels:
+                    print(MESSAGE_ERROR_DEVICE_LABEL_DUPLICATE)
+                else:
+                    print(MESSAGE_ERROR_DEVICE_LABEL)
                 return None
-            if key in test.devices:
+            if label in test.devices:
                 print(MESSAGE_ERROR_DEVICE_DUP)
                 return None
-            test.devices.append(key)
+            test.devices.append(label)
             self._tests_dirty = True
             return None
         if cmd == CMD_NO and len(tokens) >= 3 and tokens[1].lower() == CMD_DEVICE:
-            key = tokens[2]
-            if key in test.devices:
-                test.devices.remove(key)
+            label = tokens[2]
+            if label in test.devices:
+                test.devices.remove(label)
                 self._tests_dirty = True
             return None
         if cmd == CMD_INPUT_SOURCE:
@@ -853,24 +1180,25 @@ class BridgeCli:
         print(MESSAGE_ERROR_UNKNOWN_TEST)
         return None
 
-    def _is_device_key_valid(self, key: str) -> bool:
+    def _is_device_label_valid(self, label: str) -> bool:
         """
         NAME
-            _is_device_key_valid - Validate canonical device key syntax.
+            _is_device_label_valid - Validate device label in active profile.
 
         PARAMETERS
-            key - Proposed device key string.
+            label - Proposed device label string.
 
         RETURNS
-            True when the key matches VENDOR:TYPE:ID format.
+            True when the label is known in the active profile.
         """
 
-        if not key or not isinstance(key, str):
+        if not label or not isinstance(label, str):
             return False
-        if key.count(DEVICE_KEY_SEPARATOR) != DEVICE_KEY_SEPARATOR_COUNT:
+        if self._tests_duplicate_labels:
             return False
-        vendor, device_type, can_id = key.split(DEVICE_KEY_SEPARATOR, DEVICE_KEY_SEPARATOR_COUNT)
-        return bool(vendor and device_type and can_id and can_id.isdigit())
+        if not self._tests_device_catalog:
+            return False
+        return label in self._tests_device_catalog
 
     def _show_tests_command(self, tokens: List[str]) -> Optional[int]:
         """
@@ -1074,10 +1402,18 @@ class BridgeCli:
 
     def _config_command(self, tokens: List[str]) -> Optional[int]:
         cmd = tokens[0].lower()
+        if cmd == CMD_PROFILE:
+            if len(tokens) < 2:
+                print(MESSAGE_ERR_PROFILE_REQUIRED)
+                return 2 if self._batch else None
+            if not self._set_active_profile(tokens[1]):
+                return 2 if self._batch else None
+            print(f"Active profile: {self._groups_profile}")
+            return None
         if cmd == "group" and len(tokens) >= 2 and not self._session.is_connected():
             name = tokens[1]
             if not self._select_or_create_local_group(name):
-                return 2 if self._batch else None
+                return EXIT_CODE_ERROR if self._batch else None
             self._modes.append(CliMode("group", name))
             print("WARNING: Robot not connected; local group selected.")
             return None
@@ -1090,7 +1426,7 @@ class BridgeCli:
             field = tokens[3]
             value_raw = " ".join(tokens[4:])
             if not self._set_local_device_meta(tokens[1], field, value_raw):
-                return 2 if self._batch else None
+                return EXIT_CODE_ERROR if self._batch else None
             print(f"Updated device {tokens[1]} {field}={value_raw}.")
             return None
         if cmd == "group" and len(tokens) >= 2:
@@ -1157,13 +1493,13 @@ class BridgeCli:
                 return 2 if self._batch else None
             return None
         if cmd == "merge" and len(tokens) >= 3 and tokens[1].lower() == "config":
-            plan = merge_config(tokens[2], self._conflict_policy)
-            return self._apply_config_plan(plan)
+            plan = merge_config(tokens[2], self._conflict_policy, self._active_profile_name())
+            return self._apply_config_plan(plan, prompt_on_replace=True)
         if cmd == "import" and len(tokens) >= 3 and tokens[1].lower() == "config":
-            plan = import_config(tokens[2], self._conflict_policy)
-            return self._apply_config_plan(plan)
+            plan = import_config(tokens[2], self._conflict_policy, self._active_profile_name())
+            return self._apply_config_plan(plan, prompt_on_replace=True)
         if cmd == "export" and len(tokens) >= 3 and tokens[1].lower() == "runtime-groups":
-            result = export_runtime_groups(self._session, tokens[2])
+            result = export_runtime_groups(self._session, tokens[2], self._active_profile_name())
             print(result.message)
             return 2 if not result.ok else None
         if cmd == "export" and len(tokens) >= 3 and tokens[1].lower() == "cli-script":
@@ -1185,14 +1521,14 @@ class BridgeCli:
                 if not self._local_config:
                     print("ERROR: Local config not loaded. Use merge/import config <path> first.")
                     return 2 if self._batch else None
-                ok, message = validate_config_data(self._local_config)
+                ok, message = validate_config_data(self._local_config, self._local_root_payload)
             if ok:
                 print("OK: Config is valid.")
                 return None
             print(f"ERROR: {message}")
             return 2 if self._batch else None
         if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == "config":
-            result = save_config(self._session, tokens[2])
+            result = save_config(self._session, tokens[2], self._active_profile_name())
             print(result.message)
             return 2 if not result.ok else None
         if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == "local-config":
@@ -1341,15 +1677,26 @@ class BridgeCli:
 
     def _handle_show(self, tokens: List[str]) -> Optional[int]:
         if not tokens:
-            print("ERROR: show requires a target.")
+            print(MESSAGE_ERR_SHOW_REQUIRES_TARGET)
             return None
         source, tokens, json_output = self._parse_show_flags(tokens)
         if not tokens:
-            print("ERROR: show requires a target.")
+            print(MESSAGE_ERR_SHOW_REQUIRES_TARGET)
             return None
         target = tokens[0].lower()
-        if target == "config":
-            target = "runtime-state"
+        if target == SHOW_TARGET_CONFIG and len(tokens) >= 2:
+            name = tokens[1].lower()
+            if name == SHOW_CONFIG_LOCAL_RAW:
+                target = SHOW_TARGET_CONFIG_RAW
+        if (
+            target == CMD_DEVICE
+            and len(tokens) >= 3
+            and tokens[1].lower() == CMD_REGISTRY
+        ):
+            target = SHOW_TARGET_DEVICE_REGISTRY
+            tokens = [SHOW_TARGET_DEVICE_REGISTRY, tokens[2]]
+        if target == SHOW_TARGET_CONFIG:
+            target = SHOW_TARGET_RUNTIME
         if source == "both":
             local_ok = self._show_local(target, tokens, json_output)
             robot_ok = self._show_robot(target, tokens, json_output)
@@ -1358,16 +1705,16 @@ class BridgeCli:
             return None
         if source == "local":
             if not self._show_local(target, tokens, json_output):
-                return 2 if self._batch else None
+                return EXIT_CODE_ERROR if self._batch else None
             return None
         if source == "robot":
             if not self._show_robot(target, tokens, json_output):
-                return 2 if self._batch else None
+                return EXIT_CODE_ERROR if self._batch else None
             return None
-        print("ERROR: Unknown show source.")
+        print(MESSAGE_ERR_UNKNOWN_SHOW_SOURCE)
         return None
 
-    def _apply_config_plan(self, plan: ConfigPlan) -> Optional[int]:
+    def _apply_config_plan(self, plan: ConfigPlan, prompt_on_replace: bool = True) -> Optional[int]:
         """
         NAME
             _apply_config_plan - Execute commands from a merge/import plan.
@@ -1375,22 +1722,42 @@ class BridgeCli:
         if not plan.ok:
             print(f"ERROR: {plan.message}")
             return 2
+        if plan.root_payload is None and self._local_root_payload is None:
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return EXIT_CODE_ERROR if self._batch else None
+        incoming_hash = self._profiles_hash(plan.root_payload)
+        if not plan.replace and incoming_hash:
+            if self._local_root_hash is None and self._local_group_count() > COUNT_ZERO:
+                print(MESSAGE_ERR_PROFILE_MISSING_HASH)
+                return EXIT_CODE_ERROR if self._batch else None
+            if self._local_root_hash and incoming_hash != self._local_root_hash:
+                print(
+                    MESSAGE_ERR_PROFILE_HASH.format(
+                        local=self._local_root_hash,
+                        incoming=incoming_hash,
+                    )
+                )
+                return EXIT_CODE_ERROR if self._batch else None
         if plan.replace:
-            if not self._batch:
+            if prompt_on_replace and not self._batch and self._session.is_connected():
                 if not self._confirm("Replace existing groups?"):
                     print("Import cancelled.")
                     return None
-            if not self._clear_existing_groups():
-                return 2
+            if self._session.is_connected():
+                if not self._clear_existing_groups():
+                    return 2
         print(plan.message)
         if plan.config:
             self._local_config = plan.config
             self._local_config_path = plan.root_path
             self._local_loaded_at = time.time()
-            self._local_root_payload = plan.root_payload
-            self._local_root_path = plan.root_path
-            self._local_devices_locked = plan.root_payload is not None
+            if plan.root_payload is not None:
+                self._local_root_payload = plan.root_payload
+                self._local_root_path = plan.root_path
+                self._local_root_hash = incoming_hash
+                self._local_devices_locked = True
             self._profiles_dirty = False
+            self._sync_group_profile()
         if not self._session.is_connected():
             print("WARNING: Robot not connected; local config loaded only.")
             return None
@@ -1405,6 +1772,8 @@ class BridgeCli:
         NAME
             _clear_existing_groups - Delete all current groups.
         """
+        if not self._session.is_connected():
+            return self._clear_local_groups()
         groups = self._fetch_group_names()
         if groups is None:
             print("ERROR: Failed to query groups.")
@@ -1414,6 +1783,21 @@ class BridgeCli:
         for name in groups:
             seq = group_delete(self._session, name, confirm=True)
             self._wait_for_seq(seq)
+        return True
+
+    def _clear_local_groups(self) -> bool:
+        """
+        NAME
+            _clear_local_groups - Clear local groups without touching the robot.
+        """
+        if not isinstance(self._local_config, dict):
+            return True
+        by_profile = self._local_config.get(KEY_BRIDGE_BY_PROFILE)
+        if not isinstance(by_profile, dict):
+            return True
+        for entry in by_profile.values():
+            if isinstance(entry, dict):
+                entry[KEY_BRIDGE_GROUPS] = []
         return True
 
     def _fetch_group_names(self) -> Optional[List[str]]:
@@ -1459,7 +1843,7 @@ class BridgeCli:
             device = str(command.args.get("device", ""))
             group = str(command.args.get("group", ""))
             if self._handle_add_device_conflict(event, group, device):
-                return 2 if self._batch else None
+                return EXIT_CODE_ERROR if self._batch else None
         return None
 
     def _handle_add_device_conflict(
@@ -1552,27 +1936,6 @@ class BridgeCli:
                 print(event.json_text.rstrip())
             return
 
-    def _format_can_meta(self, key: str, value: object) -> str:
-        """
-        NAME
-            _format_can_meta - Format manufacturer/deviceType with optional name.
-        """
-        if value is None:
-            return ""
-        try:
-            numeric = int(value)
-        except Exception:
-            return f"{key} {value}"
-        if key == "mfg":
-            name = self._can_mfg_id_to_name.get(numeric)
-        elif key == "type":
-            name = self._can_type_id_to_name.get(numeric)
-        else:
-            name = None
-        if name:
-            return f"{key} {numeric} ({name})"
-        return f"{key} {numeric}"
-
     def _confirm(self, prompt: str) -> bool:
         if self._batch:
             return False
@@ -1595,48 +1958,45 @@ class BridgeCli:
         if args:
             topic = " ".join(args).strip().lower()
             detail = {
-                "show": (
-                    "show <status|groups|group <name>|devices|device <name>|bindings|selected-device|runtime-state|config> "
-                    "[--json] [robot|local|both]\n"
-                    "  Defaults: robot if connected, otherwise local."
-                ),
+                "show": HELP_SHOW_TEXT,
                 "configure terminal": "configure terminal\n  Enter config mode.",
                 "connect": "connect\n  Open TCP connection and perform handshake.",
                 "disconnect": "disconnect\n  Close TCP connection.",
                 "echo": "echo on|off\n  Toggle echo for batch scripts (prints each command).",
                 "group": "group <name>\n  Create/select a group (config mode).",
                 "no group": "no group <name>\n  Delete group (config mode, prompts in interactive).",
+                "profile": "profile <name>\n  Select active profile for groups/bindings.",
                 "selected-device": "selected-device <device>\n  Set selected-device override.",
                 "selected-mode": "selected-mode <on|off>\n  Enable/disable selected-device mode.",
                 "merge config": (
                     "merge config <bringup_system.json>\n"
-                    "  Load bridgeConfig from profiles without clearing existing."
+                    "  Load bridgeConfig.byProfile for the active profile without clearing existing."
                 ),
                 "import config": (
                     "import config <bringup_system.json>\n"
-                    "  Replace groups from profiles (prompts in interactive)."
+                    "  Replace bridgeConfig.byProfile for the active profile (prompts in interactive)."
                 ),
                 "export runtime-groups": (
                     "export runtime-groups <bridgeConfig.json>\n"
-                    "  Write bridgeConfig from current runtime groups."
+                    "  Write bridgeConfig.byProfile for the active profile."
                 ),
                 "save config": (
                     "save config <bridgeConfig.json>\n"
-                    "  Write bridgeConfig from current runtime state."
+                    "  Write bridgeConfig.byProfile for the active profile."
                 ),
-                "save local-config": "save local-config <path>\n  Save local groups config.",
+                "save local-config": "save local-config <path>\n  Save local per-profile groups config.",
                 "save profiles": (
                     "save profiles <path>\n"
-                    "  Save profiles/diagram to bringup_system.json (bridgeConfig unchanged)."
+                    "  Save profiles/diagram to bringup_system.json (bridgeConfig.byProfile unchanged)."
                 ),
                 "save unified-config": (
                     "save unified-config <path>\n"
-                    "  Write a unified bringup_system.json with profiles + bridgeConfig."
+                    "  Write a unified bringup_system.json with profiles + bridgeConfig.byProfile."
                 ),
                 "rename device": "rename device <old> <new>\n  Rename a device in local config.",
                 "device set": (
                     "device <name> set <field> <value>\n"
-                    "  Fields: manufacturer, deviceType, deviceId, vendor, role, notes, bus, tags, limits\n"
+                    "  Fields: vendor, role, notes, bus, tags, limits\n"
                     "  Use JSON for tags/limits (e.g., tags [\"arm\",\"motor\"])."
                 ),
                 "device": (
@@ -1645,7 +2005,7 @@ class BridgeCli:
                 ),
                 "device mode": (
                     "device mode: show, set <field> <value>, no <field>\n"
-                    "  Fields: manufacturer, deviceType, deviceId, vendor, role, notes, bus, tags, limits"
+                    "  Fields: vendor, role, notes, bus, tags, limits"
                 ),
                 "export cli-script": (
                     "export cli-script <path>\n"
@@ -1675,7 +2035,7 @@ class BridgeCli:
                 "conflict-policy": "set with --conflict-policy <error|move>",
                 "exec": "exec mode: show, connect, disconnect, configure terminal",
                 "config": (
-                    "config mode: group, no group, selected-device, selected-mode, "
+                    "config mode: profile, group, no group, selected-device, selected-mode, "
                     "merge/import/export/save, rename device, device set, save local-config, save profiles, save unified-config"
                 ),
                 "group mode": "group mode: show, add/no device, member, bind/no bind, enable/disable, run test",
@@ -1688,7 +2048,7 @@ class BridgeCli:
         print(
             "Common: help, exit, end, quit, ping, echo\n"
             "Exec: show, connect, disconnect, configure terminal\n"
-            "Config: group, device, no group, selected-device, selected-mode, merge/import/export/save\n"
+            "Config: profile, group, device, no group, selected-device, selected-mode, merge/import/export/save\n"
             "Group: show, add device, no device, member, bind, no bind, enable, disable, run test\n"
             "Device: show, set, no\n"
             "Tips: help show | help sources | help group | help batch | help json"
@@ -1721,24 +2081,24 @@ class BridgeCli:
         if not self._session.is_connected():
             print("ERROR: Robot source unavailable (not connected).")
             return False
-        if target == "status":
+        if target == SHOW_TARGET_STATUS:
             seq = show_status(self._session, json_output=json_output)
-        elif target == "groups":
+        elif target == SHOW_TARGET_GROUPS:
             seq = show_groups(self._session, json_output=json_output)
-        elif target == "group" and len(tokens) >= 2:
+        elif target == SHOW_TARGET_GROUP and len(tokens) >= 2:
             seq = show_group(self._session, tokens[1], json_output=json_output)
-        elif target == "devices":
+        elif target == SHOW_TARGET_DEVICES:
             seq = show_devices(self._session, json_output=json_output)
-        elif target == "device" and len(tokens) >= 2:
+        elif target == SHOW_TARGET_DEVICE and len(tokens) >= 2:
             seq = show_device(self._session, tokens[1], json_output=json_output)
-        elif target == "bindings":
+        elif target == SHOW_TARGET_BINDINGS:
             seq = show_bindings(self._session, json_output=json_output)
-        elif target == "selected-device":
+        elif target == SHOW_TARGET_SELECTED_DEVICE:
             seq = show_selected_device(self._session, json_output=json_output)
-        elif target == "runtime-state":
+        elif target == SHOW_TARGET_RUNTIME:
             seq = show_runtime_state(self._session, json_output=json_output)
         else:
-            print("ERROR: Unknown show command.")
+            print(MESSAGE_ERR_UNKNOWN_SHOW)
             return False
         if seq is None:
             print("ERROR: Command failed to send.")
@@ -1751,9 +2111,25 @@ class BridgeCli:
 
     def _show_local(self, target: str, tokens: List[str], json_output: bool) -> bool:
         if not self._local_config:
-            print("WARNING: Local config not loaded. Use merge/import config <bringup_system.json>.")
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return False
-        ok, error, payload = local_show_data(target, tokens, self._local_config)
+        if target == SHOW_TARGET_CONFIG_RAW:
+            return self._show_local_config_raw(json_output)
+        if target == SHOW_TARGET_PROFILES:
+            return self._show_local_profiles(json_output)
+        if target == SHOW_TARGET_PROFILE:
+            return self._show_local_profile(json_output)
+        if target == SHOW_TARGET_DEVICE_REGISTRY:
+            name = tokens[1] if len(tokens) >= 2 else ""
+            return self._show_local_registry_device(name, json_output)
+        profile = self._active_profile_name()
+        if not profile:
+            print(MESSAGE_ERR_PROFILE_REQUIRED)
+            return False
+        devices = self._profile_device_entries(profile)
+        ok, error, payload = local_show_data(
+            target, tokens, self._local_config, profile, devices
+        )
         if not ok:
             print(f"ERROR: {error}")
             return False
@@ -1761,25 +2137,27 @@ class BridgeCli:
         selected = payload.get("selectedDevice") if isinstance(payload.get("selectedDevice"), dict) else {}
         selected_device = str(selected.get("device", "")).strip()
         selected_enabled = bool(selected.get("enabled", False))
+        profile_name = str(payload.get(KEY_PROFILE, "")).strip()
 
         def _print_local(payload_text: str, payload_json: Optional[Dict[str, object]]) -> None:
-            print("SOURCE: local")
+            print(MESSAGE_SOURCE_LOCAL)
             if json_output and payload_json is not None:
                 print(json.dumps(payload_json))
             else:
                 print(payload_text.rstrip())
 
-        if target == "status":
+        if target == SHOW_TARGET_STATUS:
             text = (
                 "Local status:\n"
+                f"  profile={profile_name or '(none)'}\n"
                 f"  groups={payload.get('groupCount', len(groups))}\n"
                 f"  selectedDevice={selected_device or '(none)'} ({'on' if selected_enabled else 'off'})"
             )
             _print_local(text, payload)
             return True
 
-        if target == "groups":
-            lines = ["Local groups:"]
+        if target == SHOW_TARGET_GROUPS:
+            lines = [f"Local groups (profile {profile_name or '(none)'}):"]
             for group in groups:
                 if not isinstance(group, dict):
                     continue
@@ -1791,13 +2169,13 @@ class BridgeCli:
             _print_local("\n".join(lines), payload)
             return True
 
-        if target == "group" and len(tokens) >= 2:
+        if target == SHOW_TARGET_GROUP and len(tokens) >= 2:
             name = tokens[1]
             match = payload.get("group") if isinstance(payload.get("group"), dict) else {}
             members = match.get("members", []) or []
             bindings = match.get("bindings", []) or []
             lines = [
-                f"Local group {name}:",
+                f"Local group {name} (profile {profile_name or '(none)'}):",
                 f"  enabled={'true' if match.get('enabled', True) else 'false'}",
                 f"  members={len(members)}",
                 f"  bindings={len(bindings)}",
@@ -1818,7 +2196,7 @@ class BridgeCli:
             _print_local("\n".join(lines), payload)
             return True
 
-        if target == "devices":
+        if target == SHOW_TARGET_DEVICES:
             devices_raw = payload.get("devices")
             lines = ["Local devices:"]
             if isinstance(devices_raw, list) and devices_raw:
@@ -1828,15 +2206,7 @@ class BridgeCli:
                     name = str(device.get("name", "")).strip()
                     if not name:
                         continue
-                    details: List[str] = []
-                    if "manufacturer" in device:
-                        details.append(self._format_can_meta("mfg", device.get("manufacturer")))
-                    if "deviceType" in device:
-                        details.append(self._format_can_meta("type", device.get("deviceType")))
-                    if "deviceId" in device:
-                        details.append(f"id {device.get('deviceId')}")
-                    suffix = f" ({', '.join(details)})" if details else ""
-                    lines.append(f"  {name}{suffix}")
+                    lines.append(f"  {name}")
             else:
                 if isinstance(devices_raw, list) and devices_raw:
                     lines.extend(f"  {name}" for name in devices_raw if isinstance(name, str))
@@ -1845,39 +2215,27 @@ class BridgeCli:
             _print_local("\n".join(lines), payload)
             return True
 
-        if target == "device" and len(tokens) >= 2:
+        if target == SHOW_TARGET_DEVICE and len(tokens) >= 2:
             name = tokens[1]
             device_payload = payload.get("device")
             group_name = payload.get("group", "")
             enabled = payload.get("enabled", None)
             if isinstance(device_payload, dict):
-                details: List[str] = []
-                if "manufacturer" in device_payload:
-                    details.append(
-                        f"manufacturer={self._format_can_meta('mfg', device_payload.get('manufacturer'))}"
-                    )
-                if "deviceType" in device_payload:
-                    details.append(
-                        f"deviceType={self._format_can_meta('type', device_payload.get('deviceType'))}"
-                    )
-                if "deviceId" in device_payload:
-                    details.append(f"deviceId={device_payload.get('deviceId')}")
-                detail_text = " ".join(details)
                 if group_name:
-                    text = f"Local device {name}: group={group_name} enabled={enabled} {detail_text}".rstrip()
+                    text = f"Local device {name}: group={group_name} enabled={enabled}".rstrip()
                 else:
-                    text = f"Local device {name}: {detail_text}".rstrip()
+                    text = f"Local device {name}".rstrip()
                 _print_local(text, payload)
                 return True
             if isinstance(device_payload, str):
                 text = f"Local device {name}: group={group_name} enabled={enabled}"
                 _print_local(text, payload)
                 return True
-            print("ERROR: Local device not found.")
+            print(MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND)
             return False
 
-        if target == "bindings":
-            lines = ["Local bindings:"]
+        if target == SHOW_TARGET_BINDINGS:
+            lines = [f"Local bindings (profile {profile_name or '(none)'}):"]
             for group in groups:
                 if not isinstance(group, dict):
                     continue
@@ -1895,17 +2253,18 @@ class BridgeCli:
             _print_local("\n".join(lines), payload)
             return True
 
-        if target == "selected-device":
+        if target == SHOW_TARGET_SELECTED_DEVICE:
             text = (
-                "Local selected device: "
+                f"Local selected device (profile {profile_name or '(none)'}): "
                 f"{selected_device or '(none)'} ({'on' if selected_enabled else 'off'})"
             )
             _print_local(text, payload)
             return True
 
-        if target == "runtime-state":
+        if target == SHOW_TARGET_RUNTIME:
             lines = [
                 "Local runtime-state:",
+                f"  profile={profile_name or '(none)'}",
                 f"  selectedDevice={selected_device or '(none)'} ({'on' if selected_enabled else 'off'})",
                 f"  groups={len(groups)}",
             ]
@@ -1931,18 +2290,6 @@ class BridgeCli:
                     if not name:
                         continue
                     parts = [name]
-                    meta = []
-                    manufacturer = device.get("manufacturer")
-                    device_type = device.get("deviceType")
-                    device_id = device.get("deviceId")
-                    if manufacturer:
-                        meta.append(str(manufacturer))
-                    if device_type:
-                        meta.append(str(device_type))
-                    if device_id is not None:
-                        meta.append(f"id {device_id}")
-                    if meta:
-                        parts.append(f"({', '.join(meta)})")
                     if name.lower() not in grouped_devices:
                         parts.append("[ungrouped]")
                     lines.append("    " + " ".join(parts))
@@ -1988,6 +2335,75 @@ class BridgeCli:
         print("ERROR: Unknown show command.")
         return False
 
+    def _show_local_profiles(self, json_output: bool) -> bool:
+        """
+        NAME
+            _show_local_profiles - Show available profile names.
+        """
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return False
+        profiles = payload.get(KEY_PROFILES)
+        if not isinstance(profiles, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return False
+        names = sorted([name for name in profiles.keys() if isinstance(name, str)])
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(json.dumps({"profiles": names}))
+            return True
+        if not names:
+            print(MESSAGE_LOCAL_PROFILES_EMPTY)
+            return True
+        print("Local profiles:")
+        for name in names:
+            print(f"  {name}")
+        return True
+
+    def _show_local_profile(self, json_output: bool) -> bool:
+        """
+        NAME
+            _show_local_profile - Show the active/default profile names.
+        """
+        active = self._active_profile_name() or ""
+        default_profile = self._default_profile_name() or ""
+        payload = self._local_root_payload
+        profiles = payload.get(KEY_PROFILES) if isinstance(payload, dict) else {}
+        names = [name for name in profiles.keys() if isinstance(name, str)] if isinstance(profiles, dict) else []
+        count = len(names)
+        output = {
+            KEY_ACTIVE: active,
+            KEY_DEFAULT: default_profile,
+            KEY_AVAILABLE: sorted(names),
+        }
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(json.dumps({KEY_PROFILE_INFO: output}))
+            return True
+        print(MESSAGE_LOCAL_PROFILE_HEADER)
+        print(MESSAGE_LOCAL_PROFILE_ACTIVE.format(name=active or STRING_NONE))
+        print(MESSAGE_LOCAL_PROFILE_DEFAULT.format(name=default_profile or STRING_NONE))
+        print(MESSAGE_LOCAL_PROFILE_AVAILABLE.format(count=count))
+        return True
+
+    def _show_local_config_raw(self, json_output: bool) -> bool:
+        """
+        NAME
+            _show_local_config_raw - Show raw local bridgeConfig content.
+        """
+        if not self._local_config:
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            return False
+        payload = self._ordered_bridge_config(self._local_config, include_devices=True)
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(json.dumps(payload))
+            return True
+        print(MESSAGE_LOCAL_CONFIG_RAW)
+        print(json.dumps(payload, indent=2))
+        return True
+
     def _group_command_local(self, tokens: List[str], group: str) -> Optional[int]:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
@@ -2011,7 +2427,7 @@ class BridgeCli:
                 if self._set_local_member_enabled(group, tokens[1], action):
                     print("WARNING: Robot not connected; local member updated.")
                     return None
-                return 2 if self._batch else None
+                return EXIT_CODE_ERROR if self._batch else None
         if cmd == "bind" and len(tokens) >= 3:
             if self._add_local_binding(group, tokens[1:]):
                 print("WARNING: Robot not connected; local binding updated.")
@@ -2042,24 +2458,29 @@ class BridgeCli:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return False
+        profile = self._require_active_profile()
+        if not profile:
+            return False
         key = name.strip()
         if not key:
             print("ERROR: group name required.")
             return False
-        groups = self._local_config.get("groups", [])
+        groups = self._local_groups(profile, create=True)
         for group in groups:
             if isinstance(group, dict) and str(group.get("name", "")).strip().lower() == key.lower():
                 return True
         groups.append({"name": key, "enabled": True, "members": [], "bindings": []})
-        self._local_config["groups"] = groups
         return True
 
     def _delete_local_group(self, name: str) -> bool:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return False
+        profile = self._require_active_profile()
+        if not profile:
+            return False
         key = name.strip().lower()
-        groups = self._local_config.get("groups", [])
+        groups = self._local_groups(profile, create=True)
         kept = []
         removed = False
         for group in groups:
@@ -2072,29 +2493,41 @@ class BridgeCli:
         if not removed:
             print("ERROR: Local group not found.")
             return False
-        self._local_config["groups"] = kept
+        entry = self._local_profile_entry(profile, create=True)
+        entry[KEY_BRIDGE_GROUPS] = kept
         return True
 
     def _set_local_selected_device(self, device: str) -> bool:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return False
-        selected = self._local_config.get("selectedDevice", {}) or {}
+        profile = self._require_active_profile()
+        if not profile:
+            return False
+        entry = self._local_profile_entry(profile, create=True)
+        selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE, {}) or {}
         enabled = bool(selected.get("enabled", False)) if isinstance(selected, dict) else False
-        self._local_config["selectedDevice"] = {"device": device.strip(), "enabled": enabled}
+        entry[KEY_BRIDGE_SELECTED_DEVICE] = {KEY_DEVICE: device.strip(), CMD_ENABLED: enabled}
         return True
 
     def _set_local_selected_mode(self, enabled: bool) -> bool:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return False
-        selected = self._local_config.get("selectedDevice", {}) or {}
-        device = str(selected.get("device", "")).strip() if isinstance(selected, dict) else ""
-        self._local_config["selectedDevice"] = {"device": device, "enabled": bool(enabled)}
+        profile = self._require_active_profile()
+        if not profile:
+            return False
+        entry = self._local_profile_entry(profile, create=True)
+        selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE, {}) or {}
+        device = str(selected.get(KEY_DEVICE, "")).strip() if isinstance(selected, dict) else ""
+        entry[KEY_BRIDGE_SELECTED_DEVICE] = {KEY_DEVICE: device, CMD_ENABLED: bool(enabled)}
         return True
 
     def _find_local_group(self, name: str) -> Optional[Dict[str, object]]:
-        groups = self._local_config.get("groups", []) if self._local_config else []
+        profile = self._active_profile_name()
+        if not profile or not self._local_config:
+            return None
+        groups = self._local_groups(profile, create=True)
         for group in groups:
             if not isinstance(group, dict):
                 continue
@@ -2223,61 +2656,56 @@ class BridgeCli:
             print("ERROR: New name matches existing name.")
             return False
         config = self._local_config
-        devices = config.get("devices") if isinstance(config, dict) else None
         existing_names = set()
-        if isinstance(devices, list):
-            for device in devices:
-                if isinstance(device, dict):
-                    name = str(device.get("name", "")).strip()
-                    if name:
-                        existing_names.add(name.lower())
-        for group in config.get("groups", []) if isinstance(config, dict) else []:
-            if not isinstance(group, dict):
-                continue
-            for member in group.get("members", []) or []:
-                if isinstance(member, dict):
-                    name = str(member.get("device", "")).strip()
-                else:
-                    name = str(member).strip()
-                if name:
-                    existing_names.add(name.lower())
-        selected = config.get("selectedDevice") if isinstance(config, dict) else {}
-        if isinstance(selected, dict):
-            sel_name = str(selected.get("device", "")).strip()
-            if sel_name:
-                existing_names.add(sel_name.lower())
+        by_profile = config.get(KEY_BRIDGE_BY_PROFILE) if isinstance(config, dict) else None
+        if isinstance(by_profile, dict):
+            for entry in by_profile.values():
+                if not isinstance(entry, dict):
+                    continue
+                for group in entry.get(KEY_BRIDGE_GROUPS, []) or []:
+                    if not isinstance(group, dict):
+                        continue
+                    for member in group.get("members", []) or []:
+                        if isinstance(member, dict):
+                            name = str(member.get(KEY_DEVICE, "")).strip()
+                        else:
+                            name = str(member).strip()
+                        if name:
+                            existing_names.add(name.lower())
+                selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE) if isinstance(entry, dict) else {}
+                if isinstance(selected, dict):
+                    sel_name = str(selected.get(KEY_DEVICE, "")).strip()
+                    if sel_name:
+                        existing_names.add(sel_name.lower())
         if new_name.lower() in existing_names:
             print(f"ERROR: Device name {new_name} already exists.")
             return False
 
         changed = False
-        if isinstance(devices, list):
-            for device in devices:
-                if not isinstance(device, dict):
+        if isinstance(by_profile, dict):
+            for entry in by_profile.values():
+                if not isinstance(entry, dict):
                     continue
-                name = str(device.get("name", "")).strip()
-                if name.lower() == old_name.lower():
-                    device["name"] = new_name
-                    changed = True
-        for group in config.get("groups", []) if isinstance(config, dict) else []:
-            if not isinstance(group, dict):
-                continue
-            for member in group.get("members", []) or []:
-                if isinstance(member, dict):
-                    name = str(member.get("device", "")).strip()
-                    if name.lower() == old_name.lower():
-                        member["device"] = new_name
+                for group in entry.get(KEY_BRIDGE_GROUPS, []) or []:
+                    if not isinstance(group, dict):
+                        continue
+                    for member in group.get("members", []) or []:
+                        if isinstance(member, dict):
+                            name = str(member.get(KEY_DEVICE, "")).strip()
+                            if name.lower() == old_name.lower():
+                                member[KEY_DEVICE] = new_name
+                                changed = True
+                        elif isinstance(member, str):
+                            if member.strip().lower() == old_name.lower():
+                                index = group["members"].index(member)
+                                group["members"][index] = new_name
+                                changed = True
+                selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE)
+                if isinstance(selected, dict):
+                    sel_name = str(selected.get(KEY_DEVICE, "")).strip()
+                    if sel_name.lower() == old_name.lower():
+                        selected[KEY_DEVICE] = new_name
                         changed = True
-                elif isinstance(member, str):
-                    if member.strip().lower() == old_name.lower():
-                        index = group["members"].index(member)
-                        group["members"][index] = new_name
-                        changed = True
-        if isinstance(selected, dict):
-            sel_name = str(selected.get("device", "")).strip()
-            if sel_name.lower() == old_name.lower():
-                selected["device"] = new_name
-                changed = True
         if not changed:
             print(f"ERROR: Device {old_name} not found in local config.")
             return False
@@ -2311,27 +2739,33 @@ class BridgeCli:
         config = self._local_config
         if not isinstance(config, dict):
             return
+        by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
+        if not isinstance(by_profile, dict):
+            return
         changed = False
-        for group in config.get("groups", []) if isinstance(config.get("groups"), list) else []:
-            if not isinstance(group, dict):
+        for entry in by_profile.values():
+            if not isinstance(entry, dict):
                 continue
-            for member in group.get("members", []) or []:
-                if isinstance(member, dict):
-                    name = str(member.get("device", "")).strip()
-                    if name.lower() == old.lower():
-                        member["device"] = new
-                        changed = True
-                elif isinstance(member, str):
-                    if member.strip().lower() == old.lower():
-                        index = group["members"].index(member)
-                        group["members"][index] = new
-                        changed = True
-        selected = config.get("selectedDevice")
-        if isinstance(selected, dict):
-            sel_name = str(selected.get("device", "")).strip()
-            if sel_name.lower() == old.lower():
-                selected["device"] = new
-                changed = True
+            for group in entry.get(KEY_BRIDGE_GROUPS, []) or []:
+                if not isinstance(group, dict):
+                    continue
+                for member in group.get("members", []) or []:
+                    if isinstance(member, dict):
+                        name = str(member.get(KEY_DEVICE, "")).strip()
+                        if name.lower() == old.lower():
+                            member[KEY_DEVICE] = new
+                            changed = True
+                    elif isinstance(member, str):
+                        if member.strip().lower() == old.lower():
+                            index = group["members"].index(member)
+                            group["members"][index] = new
+                            changed = True
+            selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE)
+            if isinstance(selected, dict):
+                sel_name = str(selected.get(KEY_DEVICE, "")).strip()
+                if sel_name.lower() == old.lower():
+                    selected[KEY_DEVICE] = new
+                    changed = True
         if changed:
             self._local_config = config
 
@@ -2393,18 +2827,15 @@ class BridgeCli:
     def _set_local_device_meta(self, name: str, field: str, value_raw: str) -> bool:
         """
         NAME
-            _set_local_device_meta - Update manufacturer/deviceType/deviceId for a local device.
+            _set_local_device_meta - Update metadata for a local device.
         """
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return False
+        field_key = field.strip()
         if self._local_devices_locked:
             return self._set_profiles_device_meta(name, field_key, value_raw)
-        field_key = field.strip()
         if field_key not in (
-            "manufacturer",
-            "deviceType",
-            "deviceId",
             "vendor",
             "role",
             "notes",
@@ -2413,17 +2844,11 @@ class BridgeCli:
             "limits",
         ):
             print(
-                "ERROR: device set field must be manufacturer, deviceType, deviceId, "
-                "vendor, role, notes, bus, tags, or limits."
+                "ERROR: device set field must be vendor, role, notes, bus, tags, or limits."
             )
             return False
         value: object
-        if field_key in ("manufacturer", "deviceType"):
-            resolved = self._resolve_can_id(field_key, value_raw)
-            if resolved is None:
-                return False
-            value = resolved
-        elif field_key in ("deviceId", "bus"):
+        if field_key == "bus":
             try:
                 value = int(value_raw, 0)
             except ValueError:
@@ -2469,18 +2894,15 @@ class BridgeCli:
     def _clear_local_device_meta(self, name: str, field: str) -> bool:
         """
         NAME
-            _clear_local_device_meta - Clear manufacturer/deviceType/deviceId for a local device.
+            _clear_local_device_meta - Clear metadata for a local device.
         """
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return False
+        field_key = field.strip()
         if self._local_devices_locked:
             return self._clear_profiles_device_meta(name, field_key)
-        field_key = field.strip()
         if field_key not in (
-            "manufacturer",
-            "deviceType",
-            "deviceId",
             "vendor",
             "role",
             "notes",
@@ -2489,8 +2911,7 @@ class BridgeCli:
             "limits",
         ):
             print(
-                "ERROR: device clear field must be manufacturer, deviceType, deviceId, "
-                "vendor, role, notes, bus, tags, or limits."
+                "ERROR: device clear field must be vendor, role, notes, bus, tags, or limits."
             )
             return False
         devices = self._local_config.get("devices")
@@ -2538,7 +2959,7 @@ class BridgeCli:
             _show_local_device_entry - Print the local device metadata.
         """
         if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return None
         devices = self._local_config.get("devices")
         if not isinstance(devices, list):
@@ -2550,25 +2971,12 @@ class BridgeCli:
             dev_name = str(device.get("name", "")).strip()
             if dev_name.lower() == name.strip().lower():
                 parts = [f"Local device {dev_name}:"]
-                manufacturer = device.get("manufacturer")
-                device_type = device.get("deviceType")
-                device_id = device.get("deviceId")
                 vendor = device.get("vendor")
                 role = device.get("role")
                 notes = device.get("notes")
                 bus = device.get("bus")
                 tags = device.get("tags")
                 limits = device.get("limits")
-                if manufacturer is not None:
-                    mfg_name = self._can_mfg_id_to_name.get(int(manufacturer))
-                    suffix = f" ({mfg_name})" if mfg_name else ""
-                    parts.append(f"  manufacturer={manufacturer}{suffix}")
-                if device_type is not None:
-                    type_name = self._can_type_id_to_name.get(int(device_type))
-                    suffix = f" ({type_name})" if type_name else ""
-                    parts.append(f"  deviceType={device_type}{suffix}")
-                if device_id is not None:
-                    parts.append(f"  deviceId={device_id}")
                 if vendor is not None:
                     parts.append(f"  vendor={vendor}")
                 if role is not None:
@@ -2585,8 +2993,84 @@ class BridgeCli:
                     parts.append("  (no metadata)")
                 print("\n".join(parts))
                 return None
-        print("ERROR: Device not found in local config.")
+        print(MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND)
         return None
+
+    def _show_local_registry_device(self, name: str, json_output: bool) -> bool:
+        """
+        NAME
+            _show_local_registry_device - Print device registry entry details.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return False
+        entry = self._find_profiles_device_entry(name)
+        if entry is None:
+            print(MESSAGE_ERR_REGISTRY_DEVICE_NOT_FOUND)
+            return False
+        label = str(entry.get(FIELD_LABEL, name)).strip() or name
+        payload = {KEY_DEVICE: entry}
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(json.dumps(payload))
+            return True
+        lines = [MESSAGE_LOCAL_REGISTRY_DEVICE.format(label=label)]
+        mappings = self._load_can_mappings()
+        manufacturers = mappings.get(KEY_MANUFACTURERS, {}) if mappings else {}
+        device_types = mappings.get(KEY_DEVICE_TYPES, {}) if mappings else {}
+        for key in sorted(entry.keys()):
+            value = entry.get(key)
+            if key == FIELD_MANUFACTURER and isinstance(value, int):
+                name_value = manufacturers.get(str(value), "")
+                if name_value:
+                    lines.append(
+                        MESSAGE_REGISTRY_FIELD_FMT_NAMED.format(
+                            key=key, value=value, name=name_value
+                        )
+                    )
+                    continue
+            if key == FIELD_DEVICE_TYPE and isinstance(value, int):
+                name_value = device_types.get(str(value), "")
+                if name_value:
+                    lines.append(
+                        MESSAGE_REGISTRY_FIELD_FMT_NAMED.format(
+                            key=key, value=value, name=name_value
+                        )
+                    )
+                    continue
+            lines.append(MESSAGE_REGISTRY_FIELD_FMT.format(key=key, value=value))
+        if len(lines) == 1:
+            lines.append(MESSAGE_LOCAL_REGISTRY_EMPTY)
+        print("\n".join(lines))
+        return True
+
+    def _load_can_mappings(self) -> Dict[str, Dict[str, str]]:
+        """
+        NAME
+            _load_can_mappings - Load CAN manufacturer/device type mappings.
+        """
+        if isinstance(self._can_mappings, dict):
+            return self._can_mappings
+        path = can_mappings_path()
+        if not path.exists():
+            self._can_mappings = {}
+            return self._can_mappings
+        try:
+            payload = read_json(path)
+        except Exception:
+            print(MESSAGE_MAPPINGS_READ_FAIL.format(path=path))
+            self._can_mappings = {}
+            return self._can_mappings
+        if not isinstance(payload, dict):
+            self._can_mappings = {}
+            return self._can_mappings
+        manufacturers = payload.get(KEY_MANUFACTURERS)
+        device_types = payload.get(KEY_DEVICE_TYPES)
+        self._can_mappings = {
+            KEY_MANUFACTURERS: manufacturers if isinstance(manufacturers, dict) else {},
+            KEY_DEVICE_TYPES: device_types if isinstance(device_types, dict) else {},
+        }
+        return self._can_mappings
 
     def _save_profiles(self, path: str) -> bool:
         """
@@ -2596,8 +3080,14 @@ class BridgeCli:
         if not self._local_devices_locked or self._local_root_payload is None:
             print("ERROR: No profiles are loaded.")
             return False
+        if not self._local_config:
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            return False
         payload = dict(self._local_root_payload)
-        payload["schema_version"] = 3
+        payload["bridgeConfig"] = self._ordered_bridge_config(
+            self._local_config, include_devices=False
+        )
+        payload["schema_version"] = PROFILE_SCHEMA_VERSION
         payload["data_version"] = timestamp_version()
         payload["data_hash"] = compute_profiles_hash(payload)
         try:
@@ -2612,25 +3102,10 @@ class BridgeCli:
     def _ensure_profiles_device_entry(self, name: str) -> bool:
         """
         NAME
-            _ensure_profiles_device_entry - Create a generic device in profiles if missing.
+            _ensure_profiles_device_entry - Reject implicit registry creation.
         """
-        entry = self._find_profiles_device_entry(name)
-        if entry is not None:
-            return True
-        profiles, profile_name = self._profiles_root_and_name()
-        if profiles is None or profile_name is None:
-            return False
-        profile = profiles.get(profile_name)
-        if not isinstance(profile, dict):
-            return False
-        devices = profile.get("devices")
-        if not isinstance(devices, list):
-            devices = []
-            profile["devices"] = devices
-        devices.append({"label": name.strip(), "id": -1})
-        self._profiles_dirty = True
-        self._refresh_devices_from_profiles()
-        return True
+        print("ERROR: Device not found in registry. Edit bringup_system.json in the topology tool.")
+        return False
 
     def _set_profiles_device_meta(self, name: str, field: str, value_raw: str) -> bool:
         """
@@ -2639,41 +3114,21 @@ class BridgeCli:
         """
         entry = self._find_profiles_device_entry(name)
         if entry is None:
-            if not self._ensure_profiles_device_entry(name):
-                return False
-            entry = self._find_profiles_device_entry(name)
-            if entry is None:
-                return False
-        if field in ("manufacturer", "deviceType"):
-            # Only generic devices can change vendor/type; bucketed devices are derived.
-            if not self._is_generic_profiles_entry(entry):
-                print("ERROR: manufacturer/deviceType are derived from profile category.")
-                return False
-            resolved = self._resolve_can_id(field, value_raw)
-            if resolved is None:
-                return False
-            if field == "manufacturer":
-                name_val = self._can_mfg_id_to_name.get(int(resolved))
-                if not name_val:
-                    print("ERROR: Unknown manufacturer ID.")
-                    return False
-                entry["vendor"] = name_val
-            else:
-                name_val = self._can_type_id_to_name.get(int(resolved))
-                if not name_val:
-                    print("ERROR: Unknown deviceType ID.")
-                    return False
-                entry["type"] = name_val
-        elif field == "deviceId":
-            try:
-                entry["id"] = int(value_raw, 0)
-            except ValueError:
-                print("ERROR: deviceId must be an integer (decimal or 0x..).")
-                return False
+            return self._ensure_profiles_device_entry(name)
+        if field in (
+            FIELD_MANUFACTURER,
+            FIELD_DEVICE_TYPE,
+            FIELD_DEVICE_ID,
+            FIELD_ID,
+            FIELD_INTERFACE,
+            FIELD_LABEL,
+        ):
+            print("ERROR: device identity fields are managed in bringup_system.json.")
+            return False
         elif field == "vendor":
             entry["vendor"] = value_raw
         elif field == "role":
-            entry["role"] = value_raw
+            entry[FIELD_TYPE] = value_raw
         elif field == "notes":
             entry["notes"] = value_raw
         elif field == "bus":
@@ -2709,11 +3164,16 @@ class BridgeCli:
         if entry is None:
             print("ERROR: Device not found in profiles.")
             return False
-        if field in ("manufacturer", "deviceType"):
-            print("ERROR: manufacturer/deviceType are derived from profile category.")
+        if field in (
+            FIELD_MANUFACTURER,
+            FIELD_DEVICE_TYPE,
+            FIELD_DEVICE_ID,
+            FIELD_ID,
+            FIELD_INTERFACE,
+            FIELD_LABEL,
+        ):
+            print("ERROR: device identity fields are managed in bringup_system.json.")
             return False
-        if field == "deviceId":
-            entry["id"] = -1
         else:
             entry.pop(field, None)
         self._profiles_dirty = True
@@ -2721,54 +3181,26 @@ class BridgeCli:
         return True
 
     def _find_profiles_device_entry(self, name: str) -> Optional[Dict[str, object]]:
-        profiles, profile_name = self._profiles_root_and_name()
-        if profiles is None or profile_name is None:
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
             return None
-        profile = profiles.get(profile_name)
-        if not isinstance(profile, dict):
+        devices = payload.get("devices")
+        if not isinstance(devices, list):
             return None
         label = name.strip().lower()
-        for key in (
-            "neos",
-            "neo550s",
-            "flexes",
-            "krakens",
-            "falcons",
-            "cancoders",
-            "candles",
-        ):
-            for entry in profile.get(key, []) or []:
-                if isinstance(entry, dict) and str(entry.get("label", "")).strip().lower() == label:
-                    return entry
-        for key in ("pdh", "pdp", "pigeon", "roborio"):
-            entry = profile.get(key)
-            if isinstance(entry, dict) and str(entry.get("label", "")).strip().lower() == label:
-                return entry
-        for entry in profile.get("devices", []) or []:
-            if isinstance(entry, dict) and str(entry.get("label", "")).strip().lower() == label:
+        for entry in devices:
+            if isinstance(entry, dict) and str(entry.get(FIELD_LABEL, "")).strip().lower() == label:
                 return entry
         return None
-
-    def _is_generic_profiles_entry(self, entry: Dict[str, object]) -> bool:
-        profiles, profile_name = self._profiles_root_and_name()
-        if profiles is None or profile_name is None:
-            return False
-        profile = profiles.get(profile_name)
-        if not isinstance(profile, dict):
-            return False
-        devices = profile.get("devices")
-        if not isinstance(devices, list):
-            return False
-        return entry in devices
 
     def _profiles_root_and_name(self) -> tuple[Optional[Dict[str, object]], Optional[str]]:
         payload = self._local_root_payload
         if not isinstance(payload, dict):
             return (None, None)
-        profiles = payload.get("profiles")
+        profiles = payload.get(KEY_PROFILES)
         if not isinstance(profiles, dict) or not profiles:
             return (None, None)
-        default_profile = payload.get("default_profile")
+        default_profile = payload.get(KEY_DEFAULT_PROFILE)
         if not isinstance(default_profile, str) or default_profile not in profiles:
             default_profile = next(iter(profiles.keys()))
         return (profiles, default_profile)
@@ -2776,10 +3208,10 @@ class BridgeCli:
     def _refresh_devices_from_profiles(self) -> None:
         if not self._local_root_payload or not self._local_config:
             return
-        devices = devices_from_profiles_payload(self._local_root_payload)
-        if devices is None:
-            return
-        self._local_config["devices"] = devices
+        self._sync_group_profile()
+        profile = self._active_profile_name()
+        if profile:
+            self._local_profile_entry(profile, create=True)
     def _export_cli_script(self, path: str) -> bool:
         """
         NAME
@@ -2812,12 +3244,6 @@ class BridgeCli:
                 if not name:
                     continue
                 meta = []
-                if "manufacturer" in device:
-                    meta.append(("manufacturer", device.get("manufacturer")))
-                if "deviceType" in device:
-                    meta.append(("deviceType", device.get("deviceType")))
-                if "deviceId" in device:
-                    meta.append(("deviceId", device.get("deviceId")))
                 if "vendor" in device:
                     meta.append(("vendor", device.get("vendor")))
                 if "role" in device:
@@ -2838,51 +3264,58 @@ class BridgeCli:
                     else:
                         lines.append(f"set {field} {value}")
                 lines.append("exit")
-        groups = config.get("groups", []) if isinstance(config, dict) else []
-        for group in groups:
-            if not isinstance(group, dict):
-                continue
-            name = str(group.get("name", "")).strip()
-            if not name:
-                continue
-            lines.append(f"group {name}")
-            members = group.get("members", []) or []
-            for member in members:
-                if isinstance(member, dict):
-                    device = str(member.get("device", "")).strip()
-                    enabled = bool(member.get("enabled", True))
-                else:
-                    device = str(member).strip()
-                    enabled = True
-                if not device:
+        by_profile = config.get(KEY_BRIDGE_BY_PROFILE) if isinstance(config, dict) else None
+        if isinstance(by_profile, dict):
+            for profile_name in sorted(by_profile.keys()):
+                entry = by_profile.get(profile_name)
+                if not isinstance(entry, dict):
                     continue
-                lines.append(f'add device "{device}"')
-                if not enabled:
-                    lines.append(f'member "{device}" disable')
-            bindings = group.get("bindings", []) or []
-            for binding in bindings:
-                if not isinstance(binding, dict):
-                    continue
-                input_name = str(binding.get("input", "")).strip()
-                kind = str(binding.get("kind", "")).strip()
-                if not input_name or not kind:
-                    continue
-                if "value" in binding:
-                    lines.append(f"bind {input_name} {kind} {binding.get('value')}")
-                else:
-                    lines.append(f"bind {input_name} {kind}")
-            if group.get("enabled") is False:
-                lines.append("disable")
-            lines.append("exit")
-        selected = config.get("selectedDevice", {}) if isinstance(config, dict) else {}
-        if isinstance(selected, dict):
-            sel_name = str(selected.get("device", "")).strip()
-            if sel_name:
-                lines.append(f'selected-device "{sel_name}"')
-            if selected.get("enabled") is True:
-                lines.append("selected-mode on")
-            elif selected.get("enabled") is False:
-                lines.append("selected-mode off")
+                lines.append(f"profile {profile_name}")
+                groups = entry.get(KEY_BRIDGE_GROUPS, []) or []
+                for group in groups:
+                    if not isinstance(group, dict):
+                        continue
+                    name = str(group.get("name", "")).strip()
+                    if not name:
+                        continue
+                    lines.append(f"group {name}")
+                    members = group.get("members", []) or []
+                    for member in members:
+                        if isinstance(member, dict):
+                            device = str(member.get(KEY_DEVICE, "")).strip()
+                            enabled = bool(member.get("enabled", True))
+                        else:
+                            device = str(member).strip()
+                            enabled = True
+                        if not device:
+                            continue
+                        lines.append(f'add device "{device}"')
+                        if not enabled:
+                            lines.append(f'member "{device}" disable')
+                    bindings = group.get(KEY_BRIDGE_BINDINGS, []) or []
+                    for binding in bindings:
+                        if not isinstance(binding, dict):
+                            continue
+                        input_name = str(binding.get("input", "")).strip()
+                        kind = str(binding.get("kind", "")).strip()
+                        if not input_name or not kind:
+                            continue
+                        if "value" in binding:
+                            lines.append(f"bind {input_name} {kind} {binding.get('value')}")
+                        else:
+                            lines.append(f"bind {input_name} {kind}")
+                    if group.get("enabled") is False:
+                        lines.append("disable")
+                    lines.append("exit")
+                selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE, {}) if isinstance(entry, dict) else {}
+                if isinstance(selected, dict):
+                    sel_name = str(selected.get(KEY_DEVICE, "")).strip()
+                    if sel_name:
+                        lines.append(f'selected-device "{sel_name}"')
+                    if selected.get("enabled") is True:
+                        lines.append("selected-mode on")
+                    elif selected.get("enabled") is False:
+                        lines.append("selected-mode off")
         try:
             Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
         except Exception as exc:
@@ -2930,33 +3363,15 @@ class BridgeCli:
                 ok, message, config = validate_config_file(tokens[2])
                 if not ok:
                     return message
-                if config:
-                    devices = config.get("devices")
-                    if isinstance(devices, list):
-                        for device in devices:
-                            if not isinstance(device, dict):
-                                continue
-                            name = str(device.get("name", "")).strip()
-                            if name:
-                                known_devices.add(name.lower())
                 continue
             if cmd == "import" and len(tokens) >= 3 and tokens[1].lower() == "config":
                 ok, message, config = validate_config_file(tokens[2])
                 if not ok:
                     return message
-                if config:
-                    devices = config.get("devices")
-                    if isinstance(devices, list):
-                        for device in devices:
-                            if not isinstance(device, dict):
-                                continue
-                            name = str(device.get("name", "")).strip()
-                            if name:
-                                known_devices.add(name.lower())
                 continue
             if cmd == "add" and len(tokens) >= 3 and tokens[1].lower() == "device":
                 device = tokens[2].strip().lower()
-                if device not in known_devices:
+                if known_devices and device not in known_devices:
                     return f"Device '{tokens[2]}' not defined before add device."
         return None
 
@@ -2978,16 +3393,22 @@ class BridgeCli:
             _device_in_groups - Check if a device name is referenced in any group.
         """
         config = self._local_config or {}
-        for group in config.get("groups", []) if isinstance(config, dict) else []:
-            if not isinstance(group, dict):
+        by_profile = config.get(KEY_BRIDGE_BY_PROFILE) if isinstance(config, dict) else None
+        if not isinstance(by_profile, dict):
+            return False
+        for entry in by_profile.values():
+            if not isinstance(entry, dict):
                 continue
-            for member in group.get("members", []) or []:
-                if isinstance(member, dict):
-                    dev_name = str(member.get("device", "")).strip()
-                else:
-                    dev_name = str(member).strip()
-                if dev_name.lower() == name.strip().lower():
-                    return True
+            for group in entry.get(KEY_BRIDGE_GROUPS, []) or []:
+                if not isinstance(group, dict):
+                    continue
+                for member in group.get("members", []) or []:
+                    if isinstance(member, dict):
+                        dev_name = str(member.get(KEY_DEVICE, "")).strip()
+                    else:
+                        dev_name = str(member).strip()
+                    if dev_name.lower() == name.strip().lower():
+                        return True
         return False
 
     @staticmethod
@@ -2997,17 +3418,13 @@ class BridgeCli:
             _ordered_bridge_config - Normalize bridgeConfig key order for output.
         """
         ordered: Dict[str, object] = {
-            "schemaVersion": config.get("schemaVersion", 1),
-            "generatedAt": config.get("generatedAt"),
+            KEY_BRIDGE_SCHEMA_VERSION: config.get(KEY_BRIDGE_SCHEMA_VERSION, BRIDGE_CONFIG_SCHEMA_VERSION),
+            KEY_BRIDGE_GENERATED_AT: config.get(KEY_BRIDGE_GENERATED_AT),
         }
-        if include_devices:
-            ordered["devices"] = (
-                list(config.get("devices", [])) if isinstance(config.get("devices"), list) else []
-            )
-        ordered["groups"] = (
-            list(config.get("groups", [])) if isinstance(config.get("groups"), list) else []
+        by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
+        ordered[KEY_BRIDGE_BY_PROFILE] = (
+            dict(by_profile) if isinstance(by_profile, dict) else {}
         )
-        ordered["selectedDevice"] = config.get("selectedDevice", {"device": "", "enabled": False})
         return ordered
 
     def _local_device_exists(self, name: str) -> bool:
@@ -3015,6 +3432,10 @@ class BridgeCli:
         NAME
             _local_device_exists - Check if a device entry exists in local config.
         """
+        if self._local_root_payload is not None:
+            profile = self._active_profile_name()
+            if profile:
+                return name.strip().lower() in self._profile_device_labels(profile)
         config = self._local_config or {}
         devices = config.get("devices") if isinstance(config, dict) else None
         if not isinstance(devices, list):
@@ -3027,62 +3448,6 @@ class BridgeCli:
                 return True
         return False
 
-    def _resolve_can_id(self, field: str, value_raw: str) -> Optional[int]:
-        """
-        NAME
-            _resolve_can_id - Resolve manufacturer/deviceType from numeric or name.
-        """
-        raw = value_raw.strip()
-        try:
-            return int(raw, 0)
-        except ValueError:
-            pass
-        key = raw.lower()
-        if field == "manufacturer":
-            if key in self._can_mfg_name_to_id:
-                return self._can_mfg_name_to_id[key]
-            print("ERROR: Unknown manufacturer name.")
-            return None
-        if field == "deviceType":
-            if key in self._can_type_name_to_id:
-                return self._can_type_name_to_id[key]
-            print("ERROR: Unknown deviceType name.")
-            return None
-        print("ERROR: Unsupported field for name resolution.")
-        return None
-
-    def _load_can_mappings(self) -> None:
-        """
-        NAME
-            _load_can_mappings - Load CAN manufacturer/device type name maps.
-        """
-        repo_root = Path(__file__).resolve().parents[2]
-        mapping_path = repo_root / "src" / "main" / "deploy" / "can_mappings.json"
-        try:
-            payload = json.loads(mapping_path.read_text(encoding="utf-8"))
-        except Exception:
-            return
-        manufacturers = payload.get("manufacturers", {})
-        device_types = payload.get("device_types", {})
-        if isinstance(manufacturers, dict):
-            for key, value in manufacturers.items():
-                try:
-                    mid = int(key)
-                except Exception:
-                    continue
-                name = str(value)
-                self._can_mfg_id_to_name[mid] = name
-                self._can_mfg_name_to_id[name.lower()] = mid
-        if isinstance(device_types, dict):
-            for key, value in device_types.items():
-                try:
-                    tid = int(key)
-                except Exception:
-                    continue
-                name = str(value)
-                self._can_type_id_to_name[tid] = name
-                self._can_type_name_to_id[name.lower()] = tid
-
     def _ensure_local_config(self) -> None:
         """
         NAME
@@ -3090,60 +3455,15 @@ class BridgeCli:
         """
         if self._local_config is None:
             self._local_config = {
-                "schemaVersion": 1,
-                "generatedAt": None,
-                "devices": [],
-                "groups": [],
-                "selectedDevice": {"device": "", "enabled": False},
+                KEY_BRIDGE_SCHEMA_VERSION: BRIDGE_CONFIG_SCHEMA_VERSION,
+                KEY_BRIDGE_GENERATED_AT: None,
+                KEY_BRIDGE_BY_PROFILE: {},
             }
             self._local_devices_locked = False
             self._profiles_dirty = False
-
-    def _profiles_from_local_devices(self) -> Dict[str, object]:
-        """
-        NAME
-            _profiles_from_local_devices - Build a minimal profiles payload from local devices.
-        """
-        devices_out: List[Dict[str, object]] = []
-        config = self._local_config or {}
-        for device in config.get("devices", []) if isinstance(config, dict) else []:
-            if not isinstance(device, dict):
-                continue
-            name = str(device.get("name", "")).strip()
-            if not name:
-                continue
-            entry: Dict[str, object] = {"label": name}
-            device_id = device.get("deviceId")
-            entry["id"] = int(device_id) if device_id is not None else -1
-            vendor = device.get("vendor")
-            if not vendor:
-                manufacturer = device.get("manufacturer")
-                if manufacturer is not None:
-                    vendor = self._can_mfg_id_to_name.get(int(manufacturer))
-            if not vendor:
-                vendor = "Unknown"
-            entry["vendor"] = vendor
-            dtype = device.get("deviceType")
-            type_name = None
-            if dtype is not None:
-                type_name = self._can_type_id_to_name.get(int(dtype))
-            if not type_name:
-                role = device.get("role")
-                if role:
-                    type_name = str(role)
-            if not type_name:
-                type_name = "Unknown"
-            entry["type"] = type_name
-            for key in ("role", "notes", "bus", "tags", "limits"):
-                if key in device:
-                    entry[key] = device.get(key)
-            devices_out.append(entry)
-        profile = {"devices": devices_out}
-        return {
-            "default_profile": "robot",
-            "profiles": {"robot": profile},
-            "diagram": {"profiles": {}},
-        }
+        if self._groups_profile is None and self._local_root_payload is None:
+            self._groups_profile = DEFAULT_PROFILE_LOCAL
+            self._local_profile_entry(self._groups_profile, create=True)
 
     def _build_unified_payload(self) -> Optional[Dict[str, object]]:
         """
@@ -3154,12 +3474,13 @@ class BridgeCli:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return None
         payload: Dict[str, object] = deepcopy(self._local_root_payload) if self._local_root_payload else {}
-        if "profiles" not in payload:
-            payload.update(self._profiles_from_local_devices())
+        if "profiles" not in payload or not self._local_root_payload:
+            print("ERROR: No profiles loaded. Merge a bringup_system.json before saving unified config.")
+            return None
         if "diagram" not in payload:
             payload["diagram"] = {"profiles": {}}
         payload.setdefault("default_profile", "robot")
-        payload["schema_version"] = 3
+        payload["schema_version"] = PROFILE_SCHEMA_VERSION
         payload["bridgeConfig"] = self._ordered_bridge_config(
             self._local_config, include_devices=False
         )

@@ -1,63 +1,67 @@
 {
   "default_profile": "my_robot",
+  "schema_version": 4,
   "profiles": {
     "my_robot": {
-      "neos": [
-        {
-          "label": "Example NEO",
-          "id": 1,
-          "limits": {
-            "fwdDio": 0,
-            "revDio": 1,
-            "invert": false
-          }
-        }
-      ],
-      "flexes": [],
-      "krakens": [],
-      "falcons": [],
-      "cancoders": [],
       "devices": [
-        {
-          "vendor": "REV",
-          "type": "NEO",
-          "label": "Example NEO (generic)",
-          "id": 2
-        },
-        {
-          "vendor": "CTRE",
-          "type": "CANdle",
-          "label": "Example CANdle (generic)",
-          "id": 33
-        }
-      ],
-      "pdh": {
-        "label": "PDH",
-        "id": 1
-      },
-      "pigeon": {
-        "label": "Pigeon",
-        "id": 1
-      },
-      "roborio": {
-        "label": "roboRIO",
-        "id": 0
-      }
+        "Example NEO",
+        "Example NEO limit",
+        "PDH",
+        "Pigeon",
+        "roboRIO"
+      ]
     }
   },
+  "devices": [
+    {
+      "label": "Example NEO",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 1,
+      "model": "REV NEO",
+      "type": "motor",
+      "attachments": [
+        "Example NEO limit"
+      ]
+    },
+    {
+      "label": "Example NEO limit",
+      "interface": "DIO",
+      "type": "limitSwitch",
+      "dio": 0,
+      "invert": false
+    },
+    {
+      "label": "PDH",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 8,
+      "id": 1
+    },
+    {
+      "label": "Pigeon",
+      "interface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 4,
+      "id": 1
+    },
+    {
+      "label": "roboRIO",
+      "interface": "CAN",
+      "manufacturer": 1,
+      "deviceType": 1,
+      "id": 0
+    }
+  ],
   "diagram": {
     "profiles": {}
   },
   "bridgeConfig": {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "generatedAt": null,
-    "groups": [],
-    "selectedDevice": {
-      "device": "",
-      "enabled": false
-    }
+    "byProfile": {}
   },
-  "schema_version": 3,
-  "data_version": "2026-03-24_114154",
-  "data_hash": "6768801b8ad69b834a206e1bab4cc235009060919737ab25544e1e50ee617522"
+  "data_version": "2026-03-28_212624",
+  "data_hash": "0db198281c5660af7564b1c7d63ad02a2415a8609bf9b2ca046afa359024059b"
 }

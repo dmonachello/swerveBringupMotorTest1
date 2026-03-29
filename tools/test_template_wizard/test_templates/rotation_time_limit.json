@@ -20,8 +20,8 @@
           "enabled": true,
           "onHit": "pass"
         },
-        "motorKeys": [
-          "CTRE:FALCON:11"
+        "motorLabels": [
+          "Device 11"
         ]
       }
     ]

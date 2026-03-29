@@ -13,12 +13,42 @@ DESCRIPTION
 """
 
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from tools.common.time_utils import timestamp_hms
+from tools.common.nt_labels import encode_label_for_nt
 from .can_analyzer import CanLiveAnalyzer
-from .can_nt_publish import decode_frc_ext_id
 from .can_state import SnifferState
+
+
+KEY_DEV_BASE = "bringup/diag/dev"
+KEY_LABEL = "label"
+KEY_STATUS = "status"
+KEY_AGE_SEC = "ageSec"
+KEY_MSG_COUNT = "msgCount"
+KEY_LAST_SEEN = "lastSeen"
+KEY_PRESENCE_SOURCE = "presenceSource"
+KEY_PRESENCE_CONFIDENCE = "presenceConfidence"
+KEY_TRAFFIC_AGE_SEC = "trafficAgeSec"
+KEY_STATUS_AGE_SEC = "statusAgeSec"
+KEY_PREFER_STATUS = "prefer_status"
+
+KEY_CAN_SUMMARY = "bringup/diag/can/summary/json"
+KEY_PC_HEARTBEAT = "bringup/diag/can/pc/heartbeat"
+KEY_PC_OPEN_OK = "bringup/diag/can/pc/openOk"
+KEY_PC_FRAMES_PER_SEC = "bringup/diag/can/pc/framesPerSec"
+KEY_PC_FRAMES_TOTAL = "bringup/diag/can/pc/framesTotal"
+KEY_PC_READ_ERRORS = "bringup/diag/can/pc/readErrors"
+KEY_PC_LAST_FRAME_AGE = "bringup/diag/can/pc/lastFrameAgeSec"
+KEY_CONSOLE_DYNAMIC = "bringup/diag/console/(dynamic keys per rule/device)"
+KEY_CONSOLE_RESET = "bringup/diag/console/reset"
+
+STATUS_OK = "OK"
+STATUS_MISSING = "MISSING"
+STATUS_CONTROL_ONLY = "CONTROL_ONLY"
+STATUS_UNKNOWN = "UNKNOWN"
+
+LABEL_UNKNOWN = "UNKNOWN"
 
 
 def print_or_dump_nt_keys(devices, print_keys: bool, dump_path: str) -> None:
@@ -36,34 +66,33 @@ def print_or_dump_nt_keys(devices, print_keys: bool, dump_path: str) -> None:
     """
     keys = []
     for spec in devices:
-        base = f"bringup/diag/dev/{spec['manufacturer']}/{spec['device_type']}/{spec['device_id']}"
+        label = str(spec.get(KEY_LABEL, LABEL_UNKNOWN))
+        label_key = encode_label_for_nt(label)
+        base = f"{KEY_DEV_BASE}/{label_key}"
         keys.extend(
             [
-                f"{base}/label",
-                f"{base}/status",
-                f"{base}/ageSec",
-                f"{base}/msgCount",
-                f"{base}/lastSeen",
-                f"{base}/presenceSource",
-                f"{base}/presenceConfidence",
-                f"{base}/trafficAgeSec",
-                f"{base}/statusAgeSec",
-                f"{base}/manufacturer",
-                f"{base}/deviceType",
-                f"{base}/deviceId",
+                f"{base}/{KEY_LABEL}",
+                f"{base}/{KEY_STATUS}",
+                f"{base}/{KEY_AGE_SEC}",
+                f"{base}/{KEY_MSG_COUNT}",
+                f"{base}/{KEY_LAST_SEEN}",
+                f"{base}/{KEY_PRESENCE_SOURCE}",
+                f"{base}/{KEY_PRESENCE_CONFIDENCE}",
+                f"{base}/{KEY_TRAFFIC_AGE_SEC}",
+                f"{base}/{KEY_STATUS_AGE_SEC}",
             ]
         )
-    keys.append("bringup/diag/can/summary/json")
+    keys.append(KEY_CAN_SUMMARY)
     keys.extend(
         [
-            "bringup/diag/can/pc/heartbeat",
-            "bringup/diag/can/pc/openOk",
-            "bringup/diag/can/pc/framesPerSec",
-            "bringup/diag/can/pc/framesTotal",
-            "bringup/diag/can/pc/readErrors",
-            "bringup/diag/can/pc/lastFrameAgeSec",
-            "bringup/diag/console/(dynamic keys per rule/device)",
-            "bringup/diag/console/reset",
+            KEY_PC_HEARTBEAT,
+            KEY_PC_OPEN_OK,
+            KEY_PC_FRAMES_PER_SEC,
+            KEY_PC_FRAMES_TOTAL,
+            KEY_PC_READ_ERRORS,
+            KEY_PC_LAST_FRAME_AGE,
+            KEY_CONSOLE_DYNAMIC,
+            KEY_CONSOLE_RESET,
         ]
     )
     payload = {
@@ -85,13 +114,12 @@ def print_or_dump_nt_keys(devices, print_keys: bool, dump_path: str) -> None:
 
 def print_status_transitions(
     devices,
-    last_seen: Dict[Tuple[int, int, int], float],
-    status_last_seen: Dict[Tuple[int, int, int], float],
-    control_last_seen: Dict[Tuple[int, int, int], float],
+    last_seen: Dict[str, float],
+    status_last_seen: Dict[str, float],
+    control_last_seen: Dict[str, float],
     now: float,
     timeout_s: float,
-    last_status: Dict[Tuple[int, int, int], str],
-    uses_status_presence,
+    last_status: Dict[str, str],
 ) -> None:
     """
     NAME
@@ -105,46 +133,26 @@ def print_status_transitions(
         Writes to stdout.
     """
     for spec in devices:
-        key = (spec["manufacturer"], spec["device_type"], spec["device_id"])
-        traffic_ts = last_seen.get(key)
-        status_ts = status_last_seen.get(key)
-        control_ts = control_last_seen.get(key)
-        ts = status_ts if uses_status_presence(key[0], key[1]) else traffic_ts
+        label = str(spec.get(KEY_LABEL, LABEL_UNKNOWN))
+        traffic_ts = last_seen.get(label)
+        status_ts = status_last_seen.get(label)
+        control_ts = control_last_seen.get(label)
+        prefer_status = bool(spec.get(KEY_PREFER_STATUS, False))
+        ts = status_ts if prefer_status else traffic_ts
         if ts is None:
-            status = "CONTROL_ONLY" if control_ts is not None else "MISSING"
+            status = STATUS_CONTROL_ONLY if control_ts is not None else STATUS_MISSING
         else:
-            status = "OK" if (now - ts) < timeout_s else "MISSING"
-        prev = last_status.get(key)
+            status = STATUS_OK if (now - ts) < timeout_s else STATUS_MISSING
+        prev = last_status.get(label)
         if prev is None:
-            last_status[key] = status
+            last_status[label] = status
             continue
         if prev != status:
-            label = spec.get("label", "")
-            if status == "OK":
-                print(f"[seen] {label} mfg={key[0]} type={key[1]} id={key[2]}")
+            if status == STATUS_OK:
+                print(f"[seen] {label}")
             else:
-                print(f"[missing] {label} mfg={key[0]} type={key[1]} id={key[2]} ({status})")
-        last_status[key] = status
-
-
-def build_device_label_map(devices: List[Dict[str, Any]]) -> Dict[Tuple[int, int, int], str]:
-    """
-    NAME
-        build_device_label_map - Map (mfg,type,id) to human labels.
-
-    RETURNS
-        Dictionary keyed by (manufacturer, device_type, device_id).
-    """
-    labels: Dict[Tuple[int, int, int], str] = {}
-    for dev in devices:
-        try:
-            key = (int(dev["manufacturer"]), int(dev["device_type"]), int(dev["device_id"]))
-            label = str(dev.get("label", "")).strip()
-            if label:
-                labels[key] = label
-        except Exception:
-            continue
-    return labels
+                print(f"[missing] {label} ({status})")
+        last_status[label] = status
 
 
 def format_frame_line(
@@ -165,62 +173,12 @@ def format_frame_line(
     RETURNS
         A one-line string with identifiers, label, and data bytes.
     """
-    mfg_names = {
-        1: "NI",
-        4: "CTRE",
-        5: "REV",
-    }
-    type_names = {
-        2: "MotorController",
-        8: "Pneumatics",
-    }
-    mfg_name = mfg_names.get(mfg)
-    type_name = type_names.get(dtype)
-
     label_text = f" {label}" if label else ""
-    mfg_text = f" mfgName={mfg_name}" if mfg_name else ""
-    type_text = f" typeName={type_name}" if type_name else ""
     return (
-        f"[{kind}] id=0x{arb_id:X}"
-        f"{label_text} mfg={mfg}{mfg_text} type={dtype}{type_text} "
-        f"devId={device_id} apiClass={api_class} apiIndex={api_index} "
+        f"[{kind}]"
+        f"{label_text} apiClass={api_class} apiIndex={api_index} "
         f"len={len(data)} data={data.hex()}"
     )
-
-
-def format_can_id(can_id_hex: str, labels: Dict[Tuple[int, int, int], str]) -> str:
-    """
-    NAME
-        format_can_id - Render a CAN ID with decoded labels and names.
-
-    PARAMETERS
-        can_id_hex: Hex string of the arbitration ID (no 0x required).
-        labels: Optional device label map.
-
-    RETURNS
-        String containing decoded manufacturer/type/id and label.
-    """
-    try:
-        can_id = int(can_id_hex, 16)
-    except Exception:
-        return f"id={can_id_hex}"
-    mfg, dtype, did = decode_frc_ext_id(can_id)
-    label = labels.get((mfg, dtype, did), "")
-    label_part = f"{label} " if label else ""
-    mfg_names = {
-        1: "NI",
-        4: "CTRE",
-        5: "REV",
-    }
-    type_names = {
-        2: "MotorController",
-        8: "Pneumatics",
-    }
-    mfg_name = mfg_names.get(mfg)
-    type_name = type_names.get(dtype)
-    mfg_text = f" mfgName={mfg_name}" if mfg_name else ""
-    type_text = f" typeName={type_name}" if type_name else ""
-    return f"{label_part}mfg={mfg}{mfg_text} type={dtype}{type_text} id={did} can={can_id_hex}"
 
 
 def get_bus_dropped(bus) -> Optional[int]:
@@ -260,23 +218,22 @@ def build_summary_extra(
     bus_load_pct = None
     if isinstance(bytes_per_s, (int, float)) and bitrate > 0:
         bus_load_pct = (bytes_per_s * 8.0 / float(bitrate)) * 100.0
-    known_keys = {(d["manufacturer"], d["device_type"], d["device_id"]) for d in devices}
-    seen_keys = {decode_frc_ext_id(cid) for cid in analyzer.seen_ids()}
-    unknown_keys = seen_keys - known_keys
+    known_labels = {str(d.get(KEY_LABEL, LABEL_UNKNOWN)) for d in devices}
+    seen_labels = set(state.last_seen.keys())
+    unknown_labels = seen_labels - known_labels
     return {
         "bus_load_pct": bus_load_pct,
         "read_errors": state.read_errors,
         "pcap_errors": state.pcap_errors,
         "dropped": get_bus_dropped(bus),
-        "seen_devices": len(seen_keys),
-        "unknown_devices": len(unknown_keys),
+        "seen_devices": len(seen_labels),
+        "unknown_devices": len(unknown_labels),
     }
 
 
 def print_summary(
     summary,
     now: float,
-    labels: Dict[Tuple[int, int, int], str],
     extra: Dict[str, Any],
 ) -> None:
     """
@@ -286,7 +243,6 @@ def print_summary(
     PARAMETERS
         summary: Analyzer summary payload.
         now: Current wall-clock time (seconds).
-        labels: Device label map.
         extra: Derived summary fields.
 
     SIDE EFFECTS
@@ -310,10 +266,10 @@ def print_summary(
     )
     for row in top[:5]:
         try:
+            label = row.get("label", LABEL_UNKNOWN)
             print(
                 "  "
-                f"{format_can_id(row.get('id', ''), labels)} "
-                f"hz={row.get('hz')}"
+                f"{label} hz={row.get('hz')}"
             )
         except Exception:
             continue

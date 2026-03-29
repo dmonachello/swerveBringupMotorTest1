@@ -1,63 +1,56 @@
-Profile Schema Refactor (v3)
+Profile Schema Refactor (v4)
 
-Purpose: Define the unified bringup_system.json schema and migration plan.
+Purpose: Define the unified bringup_system.json schema and label-only model.
 
 Overview
 Purpose: Explain why the schema refactor exists.
-- One file for device catalog, diagram metadata, and groups/bindings.
-- Profiles remain the single source of truth for device labels.
-- bridgeConfig stores groups/bindings without duplicating the device catalog.
- - Topology editor can create/edit bridgeConfig groups in the same file.
+- One file for device catalog, diagram metadata, and per-profile groups/bindings.
+- The device registry is the single source of truth for device identity.
+- Profiles reference devices by label only.
+- bridgeConfig.byProfile stores groups/bindings without duplicating the device catalog.
+- The topology editor can create/edit bridgeConfig.byProfile groups in the same file.
 
-Schema v3 Rules
+Schema v4 Rules
 Purpose: Document required conventions for bringup_system.json.
-- schema_version must be 3.
+- schema_version must be 4.
 - data_version and data_hash are required.
 - data_hash is computed from profiles + diagram (bridgeConfig is excluded).
-- Device labels are unique within each profile.
-- Device entries keep existing fields (id, label, tags, limits, vendor/type for generic devices).
+- Device labels are unique in the device registry.
+- Profiles list device labels only.
+- Device entries own identity fields (interface + CAN or port metadata).
 - Diagram labels must match device labels when present.
 - bridgeConfig is optional and may be omitted.
 
 Single Source of Truth
 Purpose: Clarify ownership between profiles and bridgeConfig.
-- Profiles define device labels and CAN IDs.
-- bridgeConfig groups reference those labels.
-- bridgeConfig does not own device catalog data.
+- The device registry defines device labels and identity.
+- bridgeConfig.byProfile groups reference those labels.
+- bridgeConfig.byProfile does not own device catalog data.
 
 Migration Plan
-Purpose: Convert existing profiles to schema v3.
-1) Run the migration tool:
-   python tools\migrate_profiles.py --source data\bringup_system.json --dest data\bringup_system.json
-2) Sync to deploy:
+Purpose: Convert existing profiles to schema v4.
+1) Update bringup_system.json to include a device registry at the root.
+2) Replace profile device lists with label-only arrays.
+3) Sync to deploy:
    python tools\sync_profiles.py
-3) Validate:
+4) Validate:
    python tools\can_topology\validate_profiles.py --path data\bringup_system.json --strict
 
-Migration Behavior
-Purpose: Describe how duplicates are resolved.
-- Duplicate labels are disambiguated using tags when available:
-  "Drive Motor" + tag "swerve-front-left" becomes "Drive Motor (swerve-front-left)".
-- If no tag exists, the CAN ID is appended:
-  "Drive Motor" id 5 becomes "Drive Motor (id 5)".
-- Diagram node labels are updated to match.
-- data_hash is recomputed after changes.
-
 Compatibility
-Purpose: Explain how tools consume schema v3.
-- can_profiles.py expects schema_version 3 (legacy v2 accepted for transition).
-- validate_profiles.py expects schema_version 3 and enforces unique labels.
-- bridgeConfig devices are regenerated from profiles when loading a unified file.
-- Topology editor may write bridgeConfig groups for visualization; robot ignores them.
+Purpose: Explain how tools consume schema v4.
+- can_profiles.py expects schema_version 4.
+- validate_profiles.py expects schema_version 4 and enforces unique labels.
+- bridgeConfig.byProfile is loaded per profile when present.
+- Topology editor may write bridgeConfig.byProfile groups for visualization; robot ignores them.
 
 Tradeoffs
 Purpose: Explain costs of the refactor.
 - Requires unique labels (may force renaming existing devices).
-- Migration tool may rename labels for disambiguation.
+- Profiles are thinner, so the device registry must be kept up to date.
 - Any downstream tooling that assumed duplicate labels must be updated.
 
 Future Extensions
 Purpose: Describe next steps.
 - Add a report of renamed labels for review in dashboards.
 - Add a "labels preview" mode before applying migrations.
-- Add a schema v3 JSON schema file for external validation.
+- Add a schema v4 JSON schema file for external validation.

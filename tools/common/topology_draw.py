@@ -89,7 +89,7 @@ def draw_group_overlays(
 ) -> None:
     """
     NAME
-        draw_group_overlays - Draw bounding boxes for bridgeConfig groups.
+        draw_group_overlays - Draw bounding boxes for bridgeConfig by-profile groups.
     """
     if not groups or not label_bounds:
         return

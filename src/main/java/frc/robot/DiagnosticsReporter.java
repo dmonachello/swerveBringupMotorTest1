@@ -1,12 +1,8 @@
 package frc.robot;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableEntry;
 import edu.wpi.first.networktables.NetworkTableValue;
-import edu.wpi.first.wpilibj.Filesystem;
 import frc.robot.diag.report.ReportJsonBuilder;
 import frc.robot.diag.report.ReportTextBuilder;
 import frc.robot.diag.snapshots.BusSnapshot;
@@ -17,11 +13,6 @@ import frc.robot.diag.snapshots.SnapshotBundle;
 import frc.robot.diag.led.LedStatusInference;
 import frc.robot.diag.can.CanSuspicionInference;
 import frc.robot.diag.snapshots.CanSuspicionAttachment;
-import java.io.IOException;
-import java.io.Reader;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -37,10 +28,6 @@ import java.util.Map;
  */
 final class DiagnosticsReporter {
   private static final String REPORT_PATH = "/home/lvuser/bringup_report.json";
-  private static final String CAN_MAP_FILE = "can_mappings.json";
-  private static final Gson GSON = new Gson();
-  private static final Map<Integer, String> MANUFACTURER_NAMES = loadManufacturerNames();
-  private static final Map<Integer, String> DEVICE_TYPE_NAMES = loadDeviceTypeNames();
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
   private static final double PC_STALE_DEVICE_AGE_SEC = 2.0;
   private static final double PC_STALE_HEARTBEAT_SEC = 1.0;
@@ -311,9 +298,10 @@ final class DiagnosticsReporter {
     }
 
     ReportTextUtil.appendLine(sb, "Devices:");
+    DeviceSpec[] expectedSpecs = buildDeviceSpecs();
     ArrayList<DeviceSpec> allSpecs = new ArrayList<>();
-    Collections.addAll(allSpecs, buildDeviceSpecs());
-    Collections.addAll(allSpecs, findUnknownDeviceSpecs());
+    Collections.addAll(allSpecs, expectedSpecs);
+    Collections.addAll(allSpecs, findUnknownDeviceSpecs(expectedSpecs));
     printNetworkDeviceTable(sb, allSpecs, nowSeconds);
     appendConsoleAlerts(sb, nowSeconds);
     ReportTextUtil.appendLine(sb, "=============================");
@@ -357,10 +345,11 @@ final class DiagnosticsReporter {
       appendConsoleEvent(sb, system.getSubTable(event), "system", null, event, nowSeconds);
     }
     NetworkTable devices = console.getSubTable("devices");
-    for (String deviceId : devices.getSubTables()) {
-      NetworkTable deviceTable = devices.getSubTable(deviceId);
+    for (String labelKey : devices.getSubTables()) {
+      String label = BringupUtil.decodeLabelFromNt(labelKey);
+      NetworkTable deviceTable = devices.getSubTable(labelKey);
       for (String event : deviceTable.getSubTables()) {
-        appendConsoleEvent(sb, deviceTable.getSubTable(event), "device", deviceId, event, nowSeconds);
+        appendConsoleEvent(sb, deviceTable.getSubTable(event), "device", label, event, nowSeconds);
       }
     }
   }
@@ -373,7 +362,7 @@ final class DiagnosticsReporter {
    *   sb - Target StringBuilder.
    *   table - Event subtable.
    *   scope - "system" or "device".
-   *   deviceId - Device ID when scope is device.
+   *   deviceLabel - Device label when scope is device.
    *   eventType - Event type key.
    *   nowSeconds - Current time for age calculations.
    */
@@ -381,7 +370,7 @@ final class DiagnosticsReporter {
       StringBuilder sb,
       NetworkTable table,
       String scope,
-      String deviceId,
+      String deviceLabel,
       String eventType,
       double nowSeconds) {
     boolean active = table.getEntry("Active").getBoolean(false);
@@ -394,7 +383,7 @@ final class DiagnosticsReporter {
     String message = table.getEntry("Message").getString("");
     String target = "system".equals(scope)
         ? "system"
-        : "device " + deviceId;
+        : "device " + deviceLabel;
     ReportTextUtil.appendLine(
         sb,
         "  [" + (severity.isBlank() ? "INFO" : severity) + "] " +
@@ -477,18 +466,29 @@ final class DiagnosticsReporter {
     pc.readErrors = diagTable.getEntry("can/pc/readErrors").getDouble(Double.NaN);
     pc.lastFrameAgeSec = diagTable.getEntry("can/pc/lastFrameAgeSec").getDouble(Double.NaN);
 
+    DeviceSpec[] expectedSpecs = buildDeviceSpecs();
+    DeviceSpec[] unknownSpecs = findUnknownDeviceSpecs(expectedSpecs);
     ArrayList<DeviceSpec> allSpecs = new ArrayList<>();
-    Collections.addAll(allSpecs, buildDeviceSpecs());
-    Collections.addAll(allSpecs, findUnknownDeviceSpecs());
+    Collections.addAll(allSpecs, expectedSpecs);
+    Collections.addAll(allSpecs, unknownSpecs);
     pc.totalCount = allSpecs.size();
+
+    java.util.HashSet<String> expectedLabels = new java.util.HashSet<>();
+    for (DeviceSpec spec : expectedSpecs) {
+      expectedLabels.add(spec.label);
+    }
+    java.util.ArrayList<String> unknownLabels = new java.util.ArrayList<>();
+    for (DeviceSpec spec : unknownSpecs) {
+      unknownLabels.add(spec.label);
+    }
 
     int missingCount = 0;
     int flappingCount = 0;
-    Map<String, ArrayList<Integer>> unknownByType = collectUnknownSeenIdsByType();
 
     for (DeviceSpec spec : allSpecs) {
-      String key = spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
-      String base = "dev/" + spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
+      String label = spec.label;
+      String labelKey = spec.labelKey;
+      String base = "dev/" + labelKey;
       String status = diagTable.getEntry(base + "/status").getString("UNKNOWN");
       double ageSec = diagTable.getEntry(base + "/ageSec").getDouble(Double.NaN);
 
@@ -501,46 +501,42 @@ final class DiagnosticsReporter {
       boolean stale = !missing && !Double.isNaN(ageSec) && ageSec > PC_STALE_DEVICE_AGE_SEC;
       if (stale) {
         PcSnapshot.StaleDeviceEntry entry = new PcSnapshot.StaleDeviceEntry();
-        entry.key = key;
+        entry.key = label;
         entry.ageSec = ageSec;
         pc.staleDevices.add(entry);
       }
 
-      String prev = pcLastStatus.get(key);
+      String prev = pcLastStatus.get(label);
       if (prev != null && !prev.equals(status)) {
-        int flaps = pcStatusFlaps.getOrDefault(key, 0) + 1;
-        pcStatusFlaps.put(key, flaps);
-        pcLastStatusChangeMs.put(key, nowMs);
+        int flaps = pcStatusFlaps.getOrDefault(label, 0) + 1;
+        pcStatusFlaps.put(label, flaps);
+        pcLastStatusChangeMs.put(label, nowMs);
       }
-      pcLastStatus.put(key, status);
+      pcLastStatus.put(label, status);
 
-      int flaps = pcStatusFlaps.getOrDefault(key, 0);
+      int flaps = pcStatusFlaps.getOrDefault(label, 0);
       if (flaps > 0) {
         flappingCount++;
       }
 
-      boolean localPresent = core.isDeviceInstantiated(spec.manufacturer, spec.deviceType, spec.deviceId);
+      boolean localPresent = core != null && core.findDeviceByLabel(label) != null;
       String presenceSource = diagTable.getEntry(base + "/presenceSource").getString("NONE");
       double statusAge = diagTable.getEntry(base + "/statusAgeSec").getDouble(Double.NaN);
       boolean statusSeen = "STATUS".equals(presenceSource) && !Double.isNaN(statusAge) && statusAge >= 0;
       if (statusSeen && !localPresent) {
         PcSnapshot.SeenNotLocalEntry entry = new PcSnapshot.SeenNotLocalEntry();
-        entry.key = key;
+        entry.key = label;
         if (!Double.isNaN(statusAge)) {
           entry.ageSec = statusAge;
         }
         pc.seenNotLocal.add(entry);
       }
 
-      if (missing) {
-        String typeKey = spec.manufacturer + "/" + spec.deviceType;
-        ArrayList<Integer> candidates = unknownByType.get(typeKey);
-        if (candidates != null && !candidates.isEmpty()) {
-          PcSnapshot.ProfileMismatchEntry entry = new PcSnapshot.ProfileMismatchEntry();
-          entry.expected = key;
-          entry.seenIds.addAll(candidates);
-          pc.profileMismatch.add(entry);
-        }
+      if (missing && expectedLabels.contains(label) && !unknownLabels.isEmpty()) {
+        PcSnapshot.ProfileMismatchEntry entry = new PcSnapshot.ProfileMismatchEntry();
+        entry.expected = label;
+        entry.seenLabels.addAll(unknownLabels);
+        pc.profileMismatch.add(entry);
       }
     }
 
@@ -575,10 +571,7 @@ final class DiagnosticsReporter {
       java.util.List<DeviceSpec> specs,
       double nowSeconds) {
     ArrayList<DeviceRow> rows = new ArrayList<>();
-    String idHeaderLong = "id";
     String labelHeaderLong = "label";
-    String mfgHeaderLong = "mfg";
-    String typeHeaderLong = "type";
     String statusHeaderLong = "status";
     String confHeaderLong = "conf";
     String scoreHeaderLong = "score";
@@ -588,10 +581,7 @@ final class DiagnosticsReporter {
     String ageHeaderLong = "ageSec";
     String fpsHeaderLong = "fps";
     String msgHeaderLong = "msgCount";
-    int idWidth = 4;
-    int labelWidth = 26;
-    int mfgIdWidth = 10;
-    int typeIdWidth = 12;
+    int labelWidth = 28;
     int statusWidth = 8;
     int confWidth = 8;
     int scoreWidth = 5;
@@ -602,12 +592,12 @@ final class DiagnosticsReporter {
     int fpsWidth = 7;
     int msgWidth = 12;
     int[] widths = new int[] {
-        idWidth, labelWidth, mfgIdWidth, typeIdWidth, statusWidth, confWidth, scoreWidth, warnWidth,
+        labelWidth, statusWidth, confWidth, scoreWidth, warnWidth,
         errWidth, fatalWidth, ageWidth, fpsWidth, msgWidth
     };
     int maxLineWidth = computeLineWidth(widths);
 
-    Map<String, ConsoleCounts> consoleCounts = buildConsoleCounts(specs);
+    Map<String, ConsoleCounts> consoleCounts = buildConsoleCounts();
 
     // Build rows first so we can compute column widths and wrap lines.
     for (DeviceSpec spec : specs) {
@@ -617,9 +607,8 @@ final class DiagnosticsReporter {
 
     ReportTextUtil.appendWrappedHeaders(
         sb,
-        new String[] { idHeaderLong, labelHeaderLong, mfgHeaderLong, typeHeaderLong,
-            statusHeaderLong, confHeaderLong, scoreHeaderLong, warnHeaderLong, errHeaderLong,
-            fatalHeaderLong, ageHeaderLong, fpsHeaderLong, msgHeaderLong },
+        new String[] { labelHeaderLong, statusHeaderLong, confHeaderLong, scoreHeaderLong,
+            warnHeaderLong, errHeaderLong, fatalHeaderLong, ageHeaderLong, fpsHeaderLong, msgHeaderLong },
         null,
         widths,
         maxLineWidth);
@@ -628,10 +617,7 @@ final class DiagnosticsReporter {
       ReportTextUtil.appendWrappedRow(
           sb,
           new String[] {
-              Integer.toString(row.spec.deviceId),
               row.label,
-              formatManufacturer(row.spec.manufacturer),
-              formatDeviceType(row.spec.deviceType),
               row.status,
               row.confidence,
               row.scoreText,
@@ -656,7 +642,7 @@ final class DiagnosticsReporter {
       double nowSeconds,
       Map<String, ConsoleCounts> consoleCounts) {
     // Pull PC tool data for each device and compute age/fps values.
-    String base = "dev/" + spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
+    String base = "dev/" + spec.labelKey;
     String label = diagTable.getEntry(base + "/label").getString(spec.label);
     String status = diagTable.getEntry(base + "/status").getString("UNKNOWN");
     String presenceSource = diagTable.getEntry(base + "/presenceSource").getString("NONE");
@@ -688,8 +674,7 @@ final class DiagnosticsReporter {
       fpsText = Double.isNaN(fpsValue) ? "-" : String.format("%.1f", fpsValue);
     }
 
-    String key = buildDeviceKey(spec);
-    ConsoleCounts counts = consoleCounts.get(key);
+    ConsoleCounts counts = consoleCounts.get(spec.labelKey);
     String warnCount = counts != null && counts.warn > 0 ? Integer.toString(counts.warn) : "-";
     String errCount = counts != null && counts.err > 0 ? Integer.toString(counts.err) : "-";
     String fatalCount = counts != null && counts.fatal > 0 ? Integer.toString(counts.fatal) : "-";
@@ -721,50 +706,28 @@ final class DiagnosticsReporter {
    * RETURNS
    *   Map of device key to warning/error counts.
    */
-  private Map<String, ConsoleCounts> buildConsoleCounts(java.util.List<DeviceSpec> specs) {
+  private Map<String, ConsoleCounts> buildConsoleCounts() {
     Map<String, ConsoleCounts> counts = new HashMap<>();
-    Map<Integer, ArrayList<DeviceSpec>> specsById = new HashMap<>();
-    for (DeviceSpec spec : specs) {
-      specsById.computeIfAbsent(spec.deviceId, k -> new ArrayList<>()).add(spec);
-    }
     NetworkTable console = diagTable.getSubTable("console");
     double rulesLoaded = console.getEntry("rulesLoaded").getDouble(Double.NaN);
     if (Double.isNaN(rulesLoaded)) {
       return counts;
     }
     NetworkTable devices = console.getSubTable("devices");
-    for (String deviceId : devices.getSubTables()) {
-      int id = parseIntOrDefault(deviceId, -1);
-      if (id < 0) {
-        continue;
-      }
-      ArrayList<DeviceSpec> candidates = specsById.get(id);
-      if (candidates == null || candidates.isEmpty() || candidates.size() != 1) {
-        continue;
-      }
-      DeviceSpec target = candidates.get(0);
-      NetworkTable deviceTable = devices.getSubTable(deviceId);
+    for (String labelKey : devices.getSubTables()) {
+      NetworkTable deviceTable = devices.getSubTable(labelKey);
       int warn = (int) Math.round(deviceTable.getEntry("warnCount").getDouble(0.0));
       int err = (int) Math.round(deviceTable.getEntry("errorCount").getDouble(0.0));
       int fatal = (int) Math.round(deviceTable.getEntry("fatalCount").getDouble(0.0));
       if (warn <= 0 && err <= 0 && fatal <= 0) {
         continue;
       }
-      String key = buildDeviceKey(target);
-      ConsoleCounts entry = counts.computeIfAbsent(key, k -> new ConsoleCounts());
+      ConsoleCounts entry = counts.computeIfAbsent(labelKey, k -> new ConsoleCounts());
       entry.warn += Math.max(0, warn);
       entry.err += Math.max(0, err);
       entry.fatal += Math.max(0, fatal);
     }
     return counts;
-  }
-
-  /**
-   * NAME
-   *   buildDeviceKey - Build the key used for per-device maps.
-   */
-  private static String buildDeviceKey(DeviceSpec spec) {
-    return spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
   }
 
   /**
@@ -852,7 +815,7 @@ final class DiagnosticsReporter {
     if (Double.isNaN(msgCount)) {
       return Double.NaN;
     }
-    String key = spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId;
+    String key = spec.label;
     Double prevCount = prevMsgCount.get(key);
     Double prevTime = prevMsgTime.get(key);
     prevMsgCount.put(key, msgCount);
@@ -870,198 +833,29 @@ final class DiagnosticsReporter {
 
   /**
    * NAME
-   *   formatManufacturer - Format manufacturer ID with display name.
-   */
-  private static String formatManufacturer(int manufacturer) {
-    String name = MANUFACTURER_NAMES.get(manufacturer);
-    if (name == null) {
-      return Integer.toString(manufacturer);
-    }
-    return name;
-  }
-
-  /**
-   * NAME
-   *   formatDeviceType - Format device type ID with display name.
-   */
-  private static String formatDeviceType(int deviceType) {
-    String name = DEVICE_TYPE_NAMES.get(deviceType);
-    if (name == null) {
-      return Integer.toString(deviceType);
-    }
-    return name;
-  }
-
-  /**
-   * NAME
-   *   loadManufacturerNames - Load manufacturer name map with fallback.
-   */
-  private static Map<Integer, String> loadManufacturerNames() {
-    // Load friendly names from can_mappings.json with a fallback map.
-    Map<Integer, String> fallback = new HashMap<>();
-    fallback.put(1, "NI");
-    fallback.put(4, "CTRE");
-    fallback.put(5, "REV");
-    fallback.put(9, "Kauai");
-    fallback.put(11, "PWF");
-    return loadCanMapSection("manufacturers", fallback);
-  }
-
-  /**
-   * NAME
-   *   loadDeviceTypeNames - Load device type name map with fallback.
-   */
-  private static Map<Integer, String> loadDeviceTypeNames() {
-    // Load friendly names from can_mappings.json with a fallback map.
-    Map<Integer, String> fallback = new HashMap<>();
-    fallback.put(2, "Motor");
-    fallback.put(4, "Gyro");
-    fallback.put(7, "Encoder");
-    fallback.put(8, "PDM");
-    return loadCanMapSection("device_types", fallback);
-  }
-
-  /**
-   * NAME
-   *   loadCanMapSection - Load a named section from can_mappings.json.
-   */
-  private static Map<Integer, String> loadCanMapSection(String key, Map<Integer, String> fallback) {
-    // Read can_mappings.json (deploy or local) for display names.
-    Path path = resolveCanMapPath();
-    if (path == null || !Files.exists(path)) {
-      return fallback;
-    }
-    try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-      JsonObject root = GSON.fromJson(reader, JsonObject.class);
-      if (root == null || !root.has(key) || !root.get(key).isJsonObject()) {
-        return fallback;
-      }
-      JsonObject section = root.getAsJsonObject(key);
-      Map<Integer, String> result = new HashMap<>(fallback);
-      for (Map.Entry<String, JsonElement> entry : section.entrySet()) {
-        String name = entry.getKey();
-        if (name == null || name.isBlank()) {
-          continue;
-        }
-        String value = entry.getValue().getAsString();
-        try {
-          int id = Integer.parseInt(name);
-          result.put(id, value);
-        } catch (NumberFormatException ignored) {
-          // skip invalid keys
-        }
-      }
-      return Collections.unmodifiableMap(result);
-    } catch (IOException | RuntimeException ex) {
-      return fallback;
-    }
-  }
-
-  /**
-   * NAME
-   *   resolveCanMapPath - Resolve can_mappings.json path.
-   */
-  private static Path resolveCanMapPath() {
-    // Prefer deploy directory; fall back to repo path for local dev.
-    try {
-      Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(CAN_MAP_FILE);
-      if (Files.exists(deployPath)) {
-        return deployPath;
-      }
-    } catch (Exception ex) {
-      // Fall through to local dev path.
-    }
-    Path devPath = Path.of("src", "main", "deploy", CAN_MAP_FILE);
-    if (Files.exists(devPath)) {
-      return devPath;
-    }
-    return Path.of(CAN_MAP_FILE);
-  }
-
-  /**
-   * NAME
    *   findUnknownDeviceSpecs - Enumerate devices seen by PC tool but not local.
    */
-  private DeviceSpec[] findUnknownDeviceSpecs() {
+  private DeviceSpec[] findUnknownDeviceSpecs(DeviceSpec[] expectedSpecs) {
     // Any device published by the PC tool but not in our profile is "unknown".
-    java.util.HashSet<String> known = new java.util.HashSet<>();
-    for (DeviceSpec spec : buildDeviceSpecs()) {
-      known.add(spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId);
+    java.util.HashSet<String> knownKeys = new java.util.HashSet<>();
+    for (DeviceSpec spec : expectedSpecs) {
+      knownKeys.add(spec.labelKey);
     }
 
     ArrayList<DeviceSpec> unknowns = new ArrayList<>();
     NetworkTable devTable = diagTable.getSubTable("dev");
-    for (String mfgName : devTable.getSubTables()) {
-      int mfg = parseIntOrDefault(mfgName, -1);
-      NetworkTable mfgTable = devTable.getSubTable(mfgName);
-      for (String typeName : mfgTable.getSubTables()) {
-        int type = parseIntOrDefault(typeName, -1);
-        NetworkTable typeTable = mfgTable.getSubTable(typeName);
-        for (String idName : typeTable.getSubTables()) {
-          int id = parseIntOrDefault(idName, -1);
-          if (mfg < 0 || type < 0 || id < 0) {
-            continue;
-          }
-          String key = mfg + "/" + type + "/" + id;
-          if (!known.contains(key)) {
-            unknowns.add(new DeviceSpec("UNKNOWN", mfg, type, id));
-          }
-        }
+    for (String labelKey : devTable.getSubTables()) {
+      if (knownKeys.contains(labelKey)) {
+        continue;
       }
+      NetworkTable deviceTable = devTable.getSubTable(labelKey);
+      String label = deviceTable.getEntry("label").getString("");
+      if (label == null || label.isBlank()) {
+        label = BringupUtil.decodeLabelFromNt(labelKey);
+      }
+      unknowns.add(new DeviceSpec(label, labelKey));
     }
     return unknowns.toArray(new DeviceSpec[0]);
-  }
-
-  /**
-   * NAME
-   *   collectUnknownSeenIdsByType - Group unknown IDs by manufacturer/type.
-   */
-  private Map<String, ArrayList<Integer>> collectUnknownSeenIdsByType() {
-    // Collect unknown device IDs per (manufacturer/type) that the PC tool has seen on wire.
-    java.util.HashSet<String> known = new java.util.HashSet<>();
-    for (DeviceSpec spec : buildDeviceSpecs()) {
-      known.add(spec.manufacturer + "/" + spec.deviceType + "/" + spec.deviceId);
-    }
-
-    Map<String, ArrayList<Integer>> unknownByType = new HashMap<>();
-    NetworkTable devTable = diagTable.getSubTable("dev");
-    for (String mfgName : devTable.getSubTables()) {
-      int mfg = parseIntOrDefault(mfgName, -1);
-      NetworkTable mfgTable = devTable.getSubTable(mfgName);
-      for (String typeName : mfgTable.getSubTables()) {
-        int type = parseIntOrDefault(typeName, -1);
-        NetworkTable typeTable = mfgTable.getSubTable(typeName);
-        for (String idName : typeTable.getSubTables()) {
-          int id = parseIntOrDefault(idName, -1);
-          if (mfg < 0 || type < 0 || id < 0) {
-            continue;
-          }
-          String key = mfg + "/" + type + "/" + id;
-          if (known.contains(key)) {
-            continue;
-          }
-          double lastSeen = typeTable.getSubTable(idName).getEntry("lastSeen").getDouble(Double.NaN);
-          if (Double.isNaN(lastSeen) || lastSeen <= 0) {
-            continue;
-          }
-          String typeKey = mfg + "/" + type;
-          unknownByType.computeIfAbsent(typeKey, k -> new ArrayList<>()).add(id);
-        }
-      }
-    }
-    return unknownByType;
-  }
-
-  /**
-   * NAME
-   *   parseIntOrDefault - Parse an integer with fallback.
-   */
-  private static int parseIntOrDefault(String value, int fallback) {
-    try {
-      return Integer.parseInt(value);
-    } catch (NumberFormatException ex) {
-      return fallback;
-    }
   }
 
   /**
@@ -1070,13 +864,19 @@ final class DiagnosticsReporter {
    */
   private static DeviceSpec[] buildDeviceSpecs() {
     // Build the expected device list from the active profile.
-    java.util.List<BringupUtil.ExpectedDevice> expected = BringupUtil.getExpectedDevices();
-    DeviceSpec[] specs = new DeviceSpec[expected.size()];
-    int i = 0;
-    for (BringupUtil.ExpectedDevice entry : expected) {
-      specs[i++] = new DeviceSpec(entry.label, entry.manufacturer, entry.deviceType, entry.deviceId);
+    java.util.List<BringupUtil.DeviceEntry> expected = BringupUtil.getActiveDevices();
+    java.util.List<DeviceSpec> specs = new java.util.ArrayList<>();
+    for (BringupUtil.DeviceEntry entry : expected) {
+      if (entry == null || !BringupUtil.isEnabledCanId(entry.id)) {
+        continue;
+      }
+      String label = entry.label != null ? entry.label.trim() : "";
+      if (label.isBlank()) {
+        continue;
+      }
+      specs.add(DeviceSpec.fromLabel(label));
     }
-    return specs;
+    return specs.toArray(new DeviceSpec[0]);
   }
 
   /**
@@ -1116,15 +916,15 @@ final class DiagnosticsReporter {
    */
   private static final class DeviceSpec {
     private final String label;
-    private final int manufacturer;
-    private final int deviceType;
-    private final int deviceId;
+    private final String labelKey;
 
-    private DeviceSpec(String label, int manufacturer, int deviceType, int deviceId) {
+    private DeviceSpec(String label, String labelKey) {
       this.label = label;
-      this.manufacturer = manufacturer;
-      this.deviceType = deviceType;
-      this.deviceId = deviceId;
+      this.labelKey = labelKey;
+    }
+
+    private static DeviceSpec fromLabel(String label) {
+      return new DeviceSpec(label, BringupUtil.encodeLabelForNt(label));
     }
   }
 

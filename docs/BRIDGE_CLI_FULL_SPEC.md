@@ -120,16 +120,17 @@ Purpose:
 - entry to config mode
 
 ### Config
-Prompt: `bridge(config)#`
+Prompt: `bridge(config-profile-<name>)#`
 
 Purpose:
 - structural edits
 - group creation/selection
 - selected device control
 - merge/import/export
+- profile selection (`profile <name>`)
 
 ### Group Config
-Prompt: `bridge(config-group-<name>)#`
+Prompt: `bridge(config-profile-<name>-group-<name>)#`
 
 Purpose:
 - manage a single group
@@ -189,10 +190,14 @@ Exec:
 - `show group <name> [robot|local|both]`
 - `show devices [robot|local|both]`
 - `show device <name> [robot|local|both]`
+- `show device registry <name> [local|--local]`
 - `show bindings [robot|local|both]`
 - `show selected-device [robot|local|both]`
 - `show runtime-state [robot|local|both]`
 - `show config [robot|local|both]` (alias for runtime-state)
+- `show config local-raw [local]` (raw bridgeConfig.byProfile)
+- `show profiles [local]` (profile names from bringup_system.json)
+- `show profile [local]` (active/default profile summary)
 - `configure terminal`
 - `connect`
 - `disconnect`
@@ -215,7 +220,10 @@ Config:
 Show Output Notes:
 - `show group` text output includes members and bindings.
 - `show devices` (local) lists the full profile-derived device inventory, not only group members.
-- `show device` text output includes manufacturer/deviceType names when mappings are available.
+- `show device` text output includes label-based metadata from bringup_system.json.
+- `show device registry` returns the full device registry entry (local only).
+- The CLI auto-imports `data/bringup_system.json` on startup when present (replaces groups).
+- merge config is only allowed when the incoming profiles hash matches the loaded profiles; otherwise use import config.
 - `validate config [path]`
 
 Group:
@@ -242,26 +250,26 @@ Group:
 Purpose: Define allowed input names.
 
 Examples:
-- `driver.left.y`
-- `driver.right.y`
-- `driver.a`
-- `driver.b`
-- `driver.x`
-- `driver.y`
-- `driver.lb`
-- `driver.rb`
-- `operator.left.y`
-- `operator.right.y`
-- `operator.a`
-- `operator.b`
-- `operator.x`
-- `operator.y`
-- `operator.lb`
-- `operator.rb`
+- `controller0.leftY`
+- `controller0.rightY`
+- `controller0.A`
+- `controller0.B`
+- `controller0.X`
+- `controller0.Y`
+- `controller0.LB`
+- `controller0.RB`
+- `controller1.leftY`
+- `controller1.rightY`
+- `controller1.A`
+- `controller1.B`
+- `controller1.X`
+- `controller1.Y`
+- `controller1.LB`
+- `controller1.RB`
 - `ui.slider1`
 - `ui.slider2`
-- `ui.button1`
-- `ui.button2`
+- `ui.Button1`
+- `ui.Button2`
 
 ## Binding Rules
 Purpose: Define supported binding behaviors.
@@ -366,11 +374,13 @@ Purpose: Store bridge group config inside the single shared data file.
 - `data_hash` is computed from profiles + diagram; `bridgeConfig` changes do not affect it.
 
 `bridgeConfig` object:
-- `schemaVersion` (required, current: 1)
-- `groups` (list of group objects)
-- `devices` (optional list of device metadata for local-only configs)
-- `selectedDevice` (selected-device override)
+- `schemaVersion` (required, current: 2)
+- `byProfile` (map of profile name -> per-profile config)
 - `generatedAt` (optional timestamp)
+
+Per-profile config object:
+- `groups` (list of group objects)
+- `selectedDevice` (selected-device override)
 
 Group object:
 - `name` (string, required)
@@ -380,39 +390,43 @@ Group object:
 
 Device object (optional, local-only):
 - `name` (string, required)
-- `manufacturer` (string or int, optional)
-- `deviceType` (string or int, optional)
-- `deviceId` (int, optional)
 
 Example:
 ```
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "data_version": "2026-03-20_143148",
   "data_hash": "...",
   "default_profile": "robot",
+  "devices": [
+    { "label": "FL_DRIVE", "interface": "CAN", "manufacturer": 5, "deviceType": 2, "id": 1 }
+  ],
   "profiles": {
-    "robot": { "neos": [], "krakens": [] }
+    "robot": { "devices": ["FL_DRIVE"] }
   },
   "bridgeConfig": {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "generatedAt": "2026-03-23T14:02:00Z",
-    "groups": [
-      {
-        "name": "swerve_drive",
-        "enabled": true,
-        "members": [
-          {"device": "FL_DRIVE", "enabled": true},
-          {"device": "FR_DRIVE", "enabled": true}
+    "byProfile": {
+      "robot": {
+        "groups": [
+          {
+            "name": "swerve_drive",
+            "enabled": true,
+            "members": [
+              {"device": "FL_DRIVE", "enabled": true},
+              {"device": "FR_DRIVE", "enabled": true}
+            ],
+            "bindings": [
+              {"input": "controller0.leftY", "kind": "analog"}
+            ]
+          }
         ],
-        "bindings": [
-          {"input": "driver.left.y", "kind": "analog"}
-        ]
+        "selectedDevice": {
+          "device": "FL_DRIVE",
+          "enabled": false
+        }
       }
-    ],
-    "selectedDevice": {
-      "device": "FL_DRIVE",
-      "enabled": false
     }
   }
 }
@@ -451,7 +465,7 @@ Config:
 - `export runtime-groups <file>` -> local: `showRuntimeState --json`, write file
 - `save config <file>` -> local: `showRuntimeState --json`, write file
 - `save profiles <file>` -> local: write bringup_system.json (profiles + diagram only)
-- `save unified-config <file>` -> local: write bringup_system.json (profiles + bridgeConfig)
+- `save unified-config <file>` -> local: write bringup_system.json (profiles + bridgeConfig.byProfile)
 
 Group:
 - `add device <device>` -> `groupAddDevice` `{group, device, conflictPolicy, forceMove}`
@@ -486,7 +500,7 @@ Runtime-state JSON:
 - `schemaVersion, generatedAtMs, build, profile`
 - `groups[]` with members/bindings
 - `selectedDevice`
-- `devices[]` (label/vendor/type/id)
+- `devices[]` (label + interface/identity fields)
 
 ## Implementation Notes
 Purpose: Provide guidance to avoid duplication.
@@ -506,7 +520,7 @@ bridge> show groups
 bridge> configure terminal
 bridge(config)# group swerve_drive
 bridge(config-group-swerve_drive)# add device FL_DRIVE
-bridge(config-group-swerve_drive)# bind driver.left.y analog
+bridge(config-group-swerve_drive)# bind controller0.leftY analog
 bridge(config-group-swerve_drive)# enable
 bridge(config-group-swerve_drive)# exit
 bridge(config)# selected-device FL_DRIVE
@@ -526,7 +540,7 @@ configure terminal
 group swerve_drive
 add device FL_DRIVE
 add device FR_DRIVE
-bind driver.left.y analog
+bind controller0.leftY analog
 enable
 end
 ```

@@ -12,8 +12,8 @@
           "encoderKey": "internal",
           "encoderMotorIndex": 0
         },
-        "motorKeys": [
-          "REV:NEO:10"
+        "motorLabels": [
+          "Device 10"
         ]
       },
       {
@@ -25,8 +25,8 @@
           "timeoutSec": 1.5,
           "onTimeout": "pass"
         },
-        "motorKeys": [
-          "REV:NEO:10"
+        "motorLabels": [
+          "Device 10"
         ]
       },
       {
@@ -38,8 +38,8 @@
           "enabled": true,
           "onHit": "pass"
         },
-        "motorKeys": [
-          "REV:NEO:10"
+        "motorLabels": [
+          "Device 10"
         ]
       },
       {
@@ -64,8 +64,8 @@
           "enabled": true,
           "onRelease": "pass"
         },
-        "motorKeys": [
-          "REV:NEO:10"
+        "motorLabels": [
+          "Device 10"
         ]
       }
     ]

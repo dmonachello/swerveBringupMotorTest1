@@ -1,4 +1,4 @@
-CLI User Manual (Bringup Bridge CLI)
+﻿CLI User Manual (Bringup Bridge CLI)
 
 Purpose: Explain how to use the CAN bringup bridge CLI for local configs and robot control.
 
@@ -6,7 +6,7 @@ Overview
 Purpose: Summarize what the CLI does.
 - Manages bringup groups, device membership, bindings, and metadata.
 - Supports local-only editing (no robot/CAN) or robot-connected runtime control.
-- Reads and writes unified bringup_system.json (profiles + bridgeConfig).
+- Reads and writes unified bringup_system.json (profiles + bridgeConfig.byProfile).
 - Device labels are unique and shared across tools via bringup_system.json.
 
 Configuration Paths
@@ -41,7 +41,7 @@ Workflow:
 Path D: Manual JSON Edit
 Purpose: Edit bringup_system.json directly.
 Workflow:
-- Edit JSON by hand (labels, IDs, tags, limits).
+- Edit JSON by hand (labels, IDs, tags, attachments).
 - Validate.
 - Load into CLI for group work.
 
@@ -59,6 +59,7 @@ Example:
   merge config data/bringup_system.json
   show groups local
   configure terminal
+  profile robot
   group swerve_front_left
   add device "Drive Motor (swerve-front-left)"
   exit
@@ -74,11 +75,23 @@ Example:
   show groups
   save config x.json
 
+Test Authoring (Bringup Tests)
+Purpose: Create and edit bringup tests without writing JSON.
+Workflow:
+- Enter config mode: `configure terminal`.
+- Select or create a test set: `test set <name>`.
+- Create a test: `test create <name>` (enters test mode).
+- Configure fields (`type`, `device add`, `inputSource`, `duty`, `termination`, etc.).
+- Save: `write tests bringup_tests.json`.
+Notes:
+- Device labels come from `data/bringup_system.json`.
+- See `docs/CLI_TEST_AUTHORING_USER_GUIDE.md` for the full walkthrough.
+
 Modes
 Purpose: Explain prompt modes and how to enter/exit.
 - Exec mode: bridge>
-- Config mode: bridge(config)#
-- Group mode: bridge(config-group-<name>)#
+- Config mode: bridge(config-profile-<name>)#
+- Group mode: bridge(config-profile-<name>-group-<name>)#
 - Device mode: bridge(config-device-<name>)#
 - exit pops one mode; end returns to exec.
 - Windows EOF: Ctrl+Z then Enter behaves like exit (Ctrl+D on POSIX shells).
@@ -96,16 +109,24 @@ Purpose: Inspect state.
 - show group <name> [local|robot|both] [--json]
 - show devices [local|robot|both] [--json]
 - show device <name> [local|robot|both] [--json]
+- show device registry <name> [local|--local] [--json]
 - show bindings [local|robot|both] [--json]
 - show runtime-state [local|robot|both] [--json]
+- show config local-raw [local] [--json]
+- show profiles [local] [--json]
+- show profile [local] [--json]
 Notes:
 - show group prints member names and binding details in text mode.
 - show devices (local) lists the full profile-derived device inventory, not just group members.
-- show device includes manufacturer/deviceType names when mappings are available.
+- show device includes the profile label and metadata.
+- show device registry returns the full device registry entry (local only).
+- On startup, the CLI auto-imports `data/bringup_system.json` if it exists (replaces groups).
+- merge config is only allowed when the incoming profiles hash matches the loaded profiles; otherwise use import config.
 
 Config Commands
 Purpose: Build and edit groups.
 - group <name> / no group <name>
+- profile <name>
 - selected-device <name>
 - selected-mode <on|off>
 - rename device <old> <new>
@@ -130,8 +151,8 @@ Purpose: Manage devices and bindings in a group.
 
 Group Mode Rule
 Purpose: Ensure device entries exist before group membership.
-- You must create a device entry first (device <name>) before add device.
-  This applies in both local-only and robot-connected sessions.
+- Device labels must exist in the active profile before add device.
+  Create or rename device labels in the topology tool and reload profiles.
 - Batch scripts are linted before execution to ensure device entries appear
   before add device commands.
 
@@ -143,37 +164,44 @@ Example:
 Device Mode Commands
 Purpose: Edit device metadata in local config.
 - show
-- set <manufacturer|deviceType|deviceId|vendor|role|notes|bus|tags|limits> <value>
-- no <manufacturer|deviceType|deviceId|vendor|role|notes|bus|tags|limits>
+- set <vendor|role|notes|bus|tags> <value>
+- no <vendor|role|notes|bus|tags>
 Note:
-- manufacturer and deviceType accept numeric IDs or names from can_mappings.json.
-  Examples: set manufacturer CTRE, set deviceType MotorController.
+- Device identity is label-only; CAN ID metadata lives in bringup_system.json.
 - When bringup_system.json is loaded, device edits write back to profiles and require save profiles or save unified-config.
 
 Config Files
 Purpose: Define inputs/outputs and expected shape.
 Unified bringup_system.json:
   {
-    "schema_version": 3,
+    "schema_version": 4,
     "data_version": "...",
     "data_hash": "...",
     "default_profile": "robot",
     "profiles": { ... },
+    "devices": [ ... ],
     "diagram": { "profiles": { ... } },
     "bridgeConfig": {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "generatedAt": null,
-      "groups": [...],
-      "selectedDevice": { "device": "", "enabled": false }
+      "byProfile": {
+        "robot": {
+          "groups": [...],
+          "selectedDevice": { "device": "", "enabled": false }
+        }
+      }
     }
   }
 bridgeConfig-only file (legacy local-only):
   {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "generatedAt": null,
-    "devices": [...],
-    "groups": [...],
-    "selectedDevice": { "device": "", "enabled": false }
+    "byProfile": {
+      "robot": {
+        "groups": [...],
+        "selectedDevice": { "device": "", "enabled": false }
+      }
+    }
   }
 Note:
 - bridgeConfig-only files are legacy and will be removed after the unified workflow is adopted.
@@ -184,24 +212,25 @@ Note:
 Unified Config (bringup_system.json)
 Purpose: Clarify source of truth.
 - bringup_system.json is the single source of truth for device labels and groups.
-- The profiles section defines the device catalog and labels.
-- bridgeConfig stores groups/bindings/selectedDevice that reference those labels.
+- The devices registry defines device identity and attachments.
+- The profiles section lists device labels only.
+- bridgeConfig stores groups/bindings/selectedDevice per profile that reference those labels.
 - The default_profile is used when generating local device metadata.
-- schema_version is 3 (see docs/PROFILE_SCHEMA_REFACTOR.md).
+- schema_version is 4 (see docs/PROFILE_SCHEMA_REFACTOR.md).
 
 Config Save Formats
 Purpose: Explain which files to save and why.
 - Unified JSON (authoritative): save unified-config <path>
   Use as the primary source of truth for devices + groups.
 - Groups-only JSON (local use): save local-config <path>
-  Use for quick local group edits without changing profiles.
+  Use for quick local per-profile group edits without changing profiles.
 - Runtime bridgeConfig JSON (from robot): save config <path>
   Captures live runtime groups from the robot for later review or reuse.
 - CLI script (derived): export cli-script <path>
   Convenience batch script generated from the current local config.
   Regenerate from JSON; do not hand-edit.
 - Profiles JSON (devices only): save profiles <path>
-  Writes bringup_system.json after device edits and preserves bridgeConfig.
+  Writes bringup_system.json after device edits and preserves bridgeConfig.byProfile.
 
 Usage Guidance
 Purpose: Recommend a stable workflow.
@@ -223,9 +252,6 @@ Guidance:
 Example:
   configure terminal
   device "Arm Motor"
-  set manufacturer CTRE
-  set deviceType MotorController
-  set deviceId 42
   exit
   group arm
   add device "Arm Motor"
@@ -253,9 +279,6 @@ Purpose: Devices must exist before groups can reference them.
 Do this for each device you plan to group.
 Example (repeat pattern for all devices):
   device "Drive Motor (swerve-front-left)"
-  set manufacturer CTRE
-  set deviceType MotorController
-  set deviceId 2
   set vendor CTRE
   set role "swerve drive"
   set tags ["swerve","drive","front-left"]
@@ -263,9 +286,6 @@ Example (repeat pattern for all devices):
 
 Example (sensor device):
   device "Encoder (CANCoder) (swerve-front-left)"
-  set manufacturer CTRE
-  set deviceType Encoder
-  set deviceId 3
   set vendor CTRE
   set role encoder
   set tags ["encoder","swerve-front-left"]
@@ -321,15 +341,11 @@ Purpose: Create a new device and set CAN identity fields.
 Example:
   configure terminal
   device "Test Motor 1"
-  set manufacturer REV
-  set deviceType MotorController
-  set deviceId 31
   set vendor REV
   set role "arm motor"
   set notes "bench test motor"
   set bus 0
   set tags ["arm","motor","test"]
-  set limits {"fwdDio":0,"revDio":1,"invert":false}
   exit
 
 Example: Update device metadata (decimal and hex)
@@ -337,9 +353,6 @@ Purpose: Demonstrate edits using decimal and hex.
 Example:
   configure terminal
   device "Drive Motor (swerve-front-left)"
-  set manufacturer 0x04
-  set deviceType 2
-  set deviceId 2
   set vendor CTRE
   set role "swerve drive"
   set tags ["swerve","drive"]
@@ -350,7 +363,6 @@ Purpose: Remove a field from the device entry.
 Example:
   configure terminal
   device "Test Motor 1"
-  no deviceType
   exit
 
 Example: Create device first, then add to group
@@ -358,9 +370,6 @@ Purpose: Show preferred ordering for scripts.
 Example:
   configure terminal
   device "Arm Motor"
-  set manufacturer 5
-  set deviceType 2
-  set deviceId 42
   exit
   group arm
   add device "Arm Motor"
@@ -372,17 +381,11 @@ Purpose: Define IMU and encoder device identities.
 Example:
   configure terminal
   device "IMU (Pigeon2)"
-  set manufacturer 4
-  set deviceType 4
-  set deviceId 19
   set vendor CTRE
   set role imu
   set tags ["imu","swerve"]
   exit
   device "Encoder (CANCoder) (swerve-front-left)"
-  set manufacturer 4
-  set deviceType 7
-  set deviceId 3
   set vendor CTRE
   set role encoder
   set tags ["encoder","swerve-front-left"]
@@ -421,17 +424,14 @@ Purpose: Shooter group for coordinated testing.
 Example:
   configure terminal
   device "Feeder Motor"
-  set deviceId 28
   set vendor CTRE
   set role feeder
   exit
   device "Flywheel Motor (Leader)"
-  set deviceId 27
   set vendor CTRE
   set role flywheel
   exit
   device "Flywheel Motor (Follower)"
-  set deviceId 23
   set vendor CTRE
   set role flywheel
   exit
@@ -447,7 +447,6 @@ Purpose: Separate intake and pivot control.
 Example:
   configure terminal
   device "Fuel Intake Motor"
-  set deviceId 24
   set vendor REV
   set role intake
   exit
@@ -456,12 +455,10 @@ Example:
   bind A toggle 1
   exit
   device "Pivot Intake Motor"
-  set deviceId 22
   set vendor REV
   set role pivot
   exit
   device "Pivot Intake Follower"
-  set deviceId 11
   set vendor REV
   set role pivot
   exit
@@ -476,7 +473,6 @@ Purpose: One device with a hold binding.
 Example:
   configure terminal
   device "Climb Motor"
-  set deviceId 60
   set vendor CTRE
   set role climb
   exit
@@ -490,41 +486,26 @@ Purpose: Group sensors for presence checks.
 Example:
   configure terminal
   device "IMU (Pigeon2)"
-  set manufacturer 4
-  set deviceType 4
-  set deviceId 19
   set vendor CTRE
   set role imu
   set tags ["imu","swerve"]
   exit
   device "Encoder (CANCoder) (swerve-front-left)"
-  set manufacturer 4
-  set deviceType 7
-  set deviceId 3
   set vendor CTRE
   set role encoder
   set tags ["encoder","swerve-front-left"]
   exit
   device "Encoder (CANCoder) (swerve-front-right)"
-  set manufacturer 4
-  set deviceType 7
-  set deviceId 12
   set vendor CTRE
   set role encoder
   set tags ["encoder","swerve-front-right"]
   exit
   device "Encoder (CANCoder) (swerve-back-left)"
-  set manufacturer 4
-  set deviceType 7
-  set deviceId 6
   set vendor CTRE
   set role encoder
   set tags ["encoder","swerve-back-left"]
   exit
   device "Encoder (CANCoder) (swerve-back-right)"
-  set manufacturer 4
-  set deviceType 7
-  set deviceId 9
   set vendor CTRE
   set role encoder
   set tags ["encoder","swerve-back-right"]
@@ -542,9 +523,6 @@ Purpose: Quick bench setup with one device.
 Example:
   configure terminal
   device "Test Motor 1"
-  set manufacturer 5
-  set deviceType 2
-  set deviceId 3
   exit
   group bench
   add device "Test Motor 1"
@@ -594,90 +572,44 @@ Purpose: Provide a complete batch script that recreates a full config.
 Example:
   configure terminal
   device "Encoder (CANCoder) (swerve-back-left)"
-  set manufacturer 4
-  set deviceType 7
-  set deviceId 6
   exit
   device "Encoder (CANCoder) (swerve-back-right)"
-  set manufacturer 4
-  set deviceType 7
-  set deviceId 9
   exit
   device "Encoder (CANCoder) (swerve-front-left)"
-  set manufacturer 4
-  set deviceType 7
-  set deviceId 3
   exit
   device "Encoder (CANCoder) (swerve-front-right)"
-  set manufacturer 4
-  set deviceType 7
-  set deviceId 12
   exit
   device "IMU (Pigeon2)"
-  set manufacturer 4
-  set deviceType 4
-  set deviceId 19
   exit
   device "Climb Motor"
-  set deviceId 60
   exit
   device "Fuel Intake Motor"
-  set deviceId 24
   exit
   device "Pivot Intake Motor"
-  set deviceId 22
   exit
   device "Pivot Intake Follower"
-  set deviceId 11
   exit
   device "Feeder Motor"
-  set deviceId 28
   exit
   device "Flywheel Motor (Leader)"
-  set deviceId 27
   exit
   device "Flywheel Motor (Follower)"
-  set deviceId 23
   exit
   device "Drive Motor (swerve-back-left)"
-  set manufacturer 4
-  set deviceType 2
-  set deviceId 5
   exit
   device "Angle Motor (swerve-back-left)"
-  set manufacturer 5
-  set deviceType 2
-  set deviceId 4
   exit
   device "Drive Motor (swerve-back-right)"
-  set manufacturer 4
-  set deviceType 2
-  set deviceId 8
   exit
   device "Angle Motor (swerve-back-right)"
-  set manufacturer 5
-  set deviceType 2
-  set deviceId 7
   exit
   device "Drive Motor (swerve-front-left)"
-  set manufacturer 4
-  set deviceType 2
-  set deviceId 2
   exit
   device "Angle Motor (swerve-front-left)"
-  set manufacturer 5
-  set deviceType 2
-  set deviceId 1
   exit
   device "Drive Motor (swerve-front-right)"
-  set manufacturer 4
-  set deviceType 2
-  set deviceId 11
   exit
   device "Angle Motor (swerve-front-right)"
-  set manufacturer 5
-  set deviceType 2
-  set deviceId 10
   exit
   group swerve_front_left
   add device "Drive Motor (swerve-front-left)"
@@ -712,7 +644,7 @@ Troubleshooting
 Purpose: Common errors and fixes.
 - Invalid config: file is not bridgeConfig-only or unified bringup_system.json.
 - Paths with backslashes: use quotes or forward slashes.
-- No CAN IDs shown: set deviceId in device mode.
+- No CAN IDs shown: labels are the identifiers; CAN IDs live in bringup_system.json.
 
 Tradeoffs
 Purpose: Explain design choices.
@@ -721,5 +653,4 @@ Purpose: Explain design choices.
 
 Future Extensions
 Purpose: Planned improvements.
-- Batch command to set manufacturer/deviceType/deviceId in one line.
-- Optional shorthand to set vendor/type/deviceId in one line.
+- Batch command to set device metadata in one line.

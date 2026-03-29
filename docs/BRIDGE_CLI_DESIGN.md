@@ -105,6 +105,7 @@ Exec / Show:
 - `show group <name>` -> `showGroup` `{name}`
 - `show devices` -> `showDevices`
 - `show device <name>` -> `showDevice` `{name}`
+- `show device registry <name>` -> local-only registry lookup
 - `show bindings` -> `showBindings`
 - `show selected-device` -> `showSelectedDevice`
 - `show runtime-state` -> `showRuntimeState`
@@ -113,22 +114,23 @@ Exec / Show:
 Show sources:
 - `show <...> robot|local|both` selects data source.
 - Default is `robot` when connected, otherwise `local`.
-- Local source reads `bridgeConfig` from `data/bringup_system.json` plus profile-derived devices.
+- Local source reads `bridgeConfig.byProfile` from `data/bringup_system.json` plus profile-derived devices.
 - Each show output is prefixed with `SOURCE: robot|local`.
 - `show group` text output includes members and bindings.
 - `show devices` (local) lists the full profile-derived device inventory, not only group members.
-- `show device` text output includes manufacturer/deviceType names when mappings are available.
+- `show device` text output includes label-based metadata from bringup_system.json.
+- `show device registry` returns the full device registry entry (local only).
 
 Config:
 - `group <name>` -> `groupCreate` `{name}`
 - `no group <name>` -> `groupDelete` `{name, confirm}`
 - `selected-device <device>` -> `selectedDeviceSet` `{name}`
 - `selected-mode on|off` -> `selectedModeSet` `{enabled}`
-- `merge config <bringup_system.json>` -> local: read bridgeConfig, emit group commands
+- `merge config <bringup_system.json>` -> local: read bridgeConfig.byProfile, emit group commands for the active profile
 - `import config <bringup_system.json>` -> local: delete groups, then emit group commands
-- `export runtime-groups <bridgeConfig.json>` -> local: update bridgeConfig
-- `save config <bridgeConfig.json>` -> local: update bridgeConfig
-- `save local-config <path>` -> local: update bridgeConfig only
+- `export runtime-groups <bridgeConfig.json>` -> local: update bridgeConfig.byProfile for the active profile
+- `save config <bridgeConfig.json>` -> local: update bridgeConfig.byProfile for the active profile
+- `save local-config <path>` -> local: update bridgeConfig.byProfile only
 - `save profiles <path>` -> local: update profiles/diagram only
 - `save unified-config <path>` -> local: update shared bringup_system.json
 - `rename device <old> <new>` -> local: rename device in profiles when loaded, update bridgeConfig references

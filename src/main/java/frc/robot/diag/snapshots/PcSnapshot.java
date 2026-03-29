@@ -33,11 +33,11 @@ public final class PcSnapshot {
 
   /**
    * NAME
-   *   ProfileMismatchEntry - Expected device missing but IDs seen nearby.
+   *   ProfileMismatchEntry - Expected device missing but labels seen nearby.
    */
   public static final class ProfileMismatchEntry {
     public String expected = "";
-    public final List<Integer> seenIds = new ArrayList<>();
+    public final List<String> seenLabels = new ArrayList<>();
   }
 
   /**

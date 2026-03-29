@@ -1,4 +1,4 @@
-{
+﻿{
   "tabPane": [
     {
       "title": "LiveWindow",
@@ -422,8 +422,8 @@
             ],
             "content": {
               "_type": "Text View",
-              "_source0": "network_table:///bringup/diag/dev/1/1/0/presenceConfidence",
-              "_title": "bringup/diag/dev/1/1/0/presenceConfidence",
+              "_source0": "network_table:///bringup/diag/dev/roboRIO/presenceConfidence",
+              "_title": "bringup/diag/dev/roboRIO/presenceConfidence",
               "_glyph": 148,
               "_showGlyph": false
             }
@@ -435,8 +435,8 @@
             ],
             "content": {
               "_type": "Text View",
-              "_source0": "network_table:///bringup/diag/dev/4/2/9/presenceConfidence",
-              "_title": "bringup/diag/dev/4/2/9/presenceConfidence",
+              "_source0": "network_table:///bringup/diag/dev/FALCON%209/presenceConfidence",
+              "_title": "bringup/diag/dev/FALCON%209/presenceConfidence",
               "_glyph": 148,
               "_showGlyph": false
             }
@@ -448,8 +448,8 @@
             ],
             "content": {
               "_type": "Text View",
-              "_source0": "network_table:///bringup/diag/dev/5/2/7/presenceConfidence",
-              "_title": "bringup/diag/dev/5/2/7/presenceConfidence",
+              "_source0": "network_table:///bringup/diag/dev/SPARKMAX%2FNEO550%207/presenceConfidence",
+              "_title": "bringup/diag/dev/SPARKMAX%2FNEO550%207/presenceConfidence",
               "_glyph": 148,
               "_showGlyph": false
             }
@@ -461,8 +461,8 @@
             ],
             "content": {
               "_type": "Text View",
-              "_source0": "network_table:///bringup/diag/dev/5/2/25/presenceConfidence",
-              "_title": "bringup/diag/dev/5/2/25/presenceConfidence",
+              "_source0": "network_table:///bringup/diag/dev/SPARKMAX%2FNEO%2025/presenceConfidence",
+              "_title": "bringup/diag/dev/SPARKMAX%2FNEO%2025/presenceConfidence",
               "_glyph": 148,
               "_showGlyph": false
             }

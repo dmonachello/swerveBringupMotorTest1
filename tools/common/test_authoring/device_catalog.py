@@ -9,26 +9,22 @@ SYNOPSIS
 
 DESCRIPTION
     Loads device metadata from bringup_system.json via the existing profile
-    loader and exposes canonical device keys for validation and UI lists.
+    loader and exposes device labels for validation and UI lists.
 """
 
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, Optional, Set, Tuple
 
 from tools.can_nt.can_profiles import get_profile, reload_profiles
 from tools.common.paths import repo_root
+from tools.common.profile_constants import KEY_LABEL
 
 
-KEY_VENDOR = "vendor"
-KEY_TYPE = "type"
-KEY_ID = "id"
-KEY_LABEL = "label"
 KEY_CONTROLLERS = "controllers"
 KEY_NAME = "name"
 KEY_PORT = "port"
-KEY_SEPARATOR = ":"
 EMPTY_STRING = ""
 DEFAULT_CONTROLLER_PREFIX = "controller"
 DEFAULT_CONTROLLER_COUNT = 6
@@ -41,44 +37,36 @@ class DeviceInfo:
         DeviceInfo - Canonical device info entry.
     """
 
-    key: str
     label: str
-    vendor: str
-    device_type: str
-    can_id: int
 
 
-def load_profile_devices(profile_name: str) -> Dict[str, DeviceInfo]:
+def load_profile_devices(profile_name: str) -> Tuple[Dict[str, DeviceInfo], Set[str]]:
     """
     NAME
-        load_profile_devices - Load canonical device map for a profile.
+        load_profile_devices - Load device label map for a profile.
 
     PARAMETERS
         profile_name - Profile name to load.
 
     RETURNS
-        Mapping of canonical key to DeviceInfo.
+        Tuple of:
+        - Mapping of label to DeviceInfo.
+        - Set of duplicate labels detected in the profile.
     """
 
     reload_profiles()
     devices, _dup_ids = get_profile(profile_name)
     catalog: Dict[str, DeviceInfo] = {}
+    duplicates: Set[str] = set()
     for entry in devices:
-        vendor = str(entry.get(KEY_VENDOR, EMPTY_STRING)).strip()
-        device_type = str(entry.get(KEY_TYPE, EMPTY_STRING)).strip()
-        can_id = entry.get(KEY_ID)
-        if not vendor or not device_type or not isinstance(can_id, int):
+        label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+        if not label:
             continue
-        key = f"{vendor}{KEY_SEPARATOR}{device_type}{KEY_SEPARATOR}{can_id}"
-        label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip() or key
-        catalog[key] = DeviceInfo(
-            key=key,
-            label=label,
-            vendor=vendor,
-            device_type=device_type,
-            can_id=can_id,
-        )
-    return catalog
+        if label in catalog:
+            duplicates.add(label)
+            continue
+        catalog[label] = DeviceInfo(label=label)
+    return catalog, duplicates
 
 
 def load_controller_names(bindings_path: Optional[Path] = None) -> Set[str]:

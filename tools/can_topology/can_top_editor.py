@@ -92,6 +92,19 @@ MSG_FIX_CANNECT_TITLE = "Fix CANnect Conflicts"
 MSG_FIX_CANNECT_NONE = "No Ethernet-linked CANnect Inject nodes found."
 MSG_FIX_CANNECT_REMOVED = "Removed {} CAN trunk link(s) from Ethernet-linked CANnect Inject nodes."
 MSG_FIX_CANNECT_NO_REMOVE = "No CAN trunk links needed removal."
+MFG_NI = 1
+MFG_CTRE = 4
+MFG_REV = 5
+DEVTYPE_ROBORIO = 1
+DEVTYPE_GYRO = 4
+DEVTYPE_MOTOR = 2
+DEVTYPE_ENCODER = 7
+DEVTYPE_POWER = 8
+DEVTYPE_MISC = 10
+MODEL_NEO_550 = "NEO 550"
+MODEL_FLEX = "VORTEX"
+MODEL_KRAKEN = "KRAKEN"
+MODEL_FALCON = "FALCON"
 
 try:
     from tools.common.json_io import read_json
@@ -148,6 +161,11 @@ except ImportError:
     profiles_canonical_path = None
     profiles_deploy_path = None
     compute_profiles_hash = None
+
+try:
+    from tools.common import profile_constants as profile_consts
+except ImportError:
+    profile_consts = None
 
 try:
     from .can_top_models import (
@@ -241,6 +259,8 @@ class TopologyEditor(tk.Tk):
         self.minsize(760, 480)
         self._nodes: List[Node] = []
         self._next_key = 1
+        self._device_registry: Dict[str, Dict[str, object]] = {}
+        self._device_registry_list: List[Dict[str, object]] = []
         self._selected_key: Optional[int] = None
         self._drag_state: Optional[Tuple[int, float, float]] = None
         self._drag_free_y: Dict[int, float] = {}
@@ -1041,7 +1061,7 @@ class TopologyEditor(tk.Tk):
             messagebox.showerror("Error", "Profiles JSON root must be an object.")
             return None
         schema_version = data.get("schema_version")
-        if schema_version is not None and schema_version not in (self._expected_schema_version(), 2):
+        if schema_version is not None and schema_version not in (self._expected_schema_version(), 3, 2):
             proceed = messagebox.askyesno(
                 "Schema Mismatch",
                 "Profile schema_version mismatch. Open anyway to repair?",
@@ -1074,6 +1094,7 @@ class TopologyEditor(tk.Tk):
                 if not proceed:
                     return None
         self._stash_root_extras(data)
+        self._load_device_registry(data)
         return data
 
     def _write_profiles_payload(
@@ -1089,11 +1110,14 @@ class TopologyEditor(tk.Tk):
         if include_extras:
             for key, value in self._root_extras.items():
                 if key == "bridgeConfig":
-                    # Always persist the latest bridgeConfig (groups/selectedDevice).
+                    # Always persist the latest bridgeConfig (per-profile groups/selectedDevice).
                     data[key] = value
                     continue
                 if key not in data:
                     data[key] = value
+        self._apply_node_updates_to_registry()
+        if self._device_registry_list:
+            data["devices"] = self._device_registry_list
         data["schema_version"] = self._expected_schema_version()
         data["data_version"] = timestamp_version()
         data["data_hash"] = self._compute_data_hash(data)
@@ -1363,6 +1387,7 @@ class TopologyEditor(tk.Tk):
             messagebox.showerror("Error", f"Failed to open file: {exc}")
             return
         self._stash_root_extras(data)
+        self._load_device_registry(data)
         profiles = data.get("profiles")
         if not isinstance(profiles, dict) or not profiles:
             messagebox.showerror("Error", "No profiles found in JSON.")
@@ -1475,7 +1500,7 @@ class TopologyEditor(tk.Tk):
 
     @staticmethod
     def _expected_schema_version() -> int:
-        return 3
+        return 4
 
     @staticmethod
     def _compute_data_hash(payload: Dict[str, object]) -> str:
@@ -1492,7 +1517,7 @@ class TopologyEditor(tk.Tk):
 
     @staticmethod
     def _root_known_keys() -> set[str]:
-        return {"schema_version", "data_version", "data_hash", "default_profile", "profiles", "diagram"}
+        return {"schema_version", "data_version", "data_hash", "default_profile", "profiles", "diagram", "devices"}
 
     def _stash_root_extras(self, payload: Dict[str, object]) -> None:
         """
@@ -1501,6 +1526,29 @@ class TopologyEditor(tk.Tk):
         """
         known = self._root_known_keys()
         self._root_extras = {key: value for key, value in payload.items() if key not in known}
+
+    def _load_device_registry(self, payload: Dict[str, object]) -> None:
+        """
+        NAME
+            _load_device_registry - Cache device definitions from bringup_system.json.
+        """
+        devices = payload.get("devices")
+        if not isinstance(devices, list):
+            self._device_registry_list = []
+            self._device_registry = {}
+            return
+        registry_list: List[Dict[str, object]] = []
+        registry_map: Dict[str, Dict[str, object]] = {}
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            label = str(entry.get("label", "")).strip()
+            if not label:
+                continue
+            registry_list.append(entry)
+            registry_map[label] = entry
+        self._device_registry_list = registry_list
+        self._device_registry = registry_map
 
     def _default_profiles_path(self) -> Path:
         canonical = self._canonical_profiles_path()
@@ -1680,6 +1728,9 @@ class TopologyEditor(tk.Tk):
                 }
             },
         }
+        self._apply_node_updates_to_registry()
+        if self._device_registry_list:
+            data["devices"] = self._device_registry_list
         data["data_hash"] = self._compute_data_hash(data)
         try:
             with open(path, "w", encoding="utf-8") as handle:
@@ -1754,6 +1805,9 @@ class TopologyEditor(tk.Tk):
                 }
             },
         }
+        self._apply_node_updates_to_registry()
+        if self._device_registry_list:
+            data["devices"] = self._device_registry_list
         data["data_hash"] = self._compute_data_hash(data)
         selected_keys = {n.key for n in selected_nodes}
         diag_profile = data["diagram"]["profiles"][profile_name]
@@ -1937,19 +1991,8 @@ class TopologyEditor(tk.Tk):
             _profile_from_nodes_list - Build a bringup profile from a node list.
         """
         nodes = [n for n in nodes if getattr(n, "profile_visible", True)]
-        profile: Dict[str, object] = {}
-        for category in BUCKET_CATEGORIES:
-            entries = [self._node_to_entry(n) for n in nodes if n.category == category]
-            if entries:
-                profile[category] = entries
-        for category in SINGLETON_CATEGORIES:
-            entries = [self._node_to_entry(n) for n in nodes if n.category == category]
-            if entries:
-                profile[category] = entries[0]
-        generic_entries = [self._node_to_entry(n) for n in nodes if n.category == GENERIC_CATEGORY]
-        if generic_entries:
-            profile[GENERIC_CATEGORY] = generic_entries
-        return profile
+        labels = [n.label for n in nodes if n.node_type == "device"]
+        return {"devices": labels}
 
     def _node_to_entry(self, node: Node) -> Dict[str, object]:
         """
@@ -2023,6 +2066,13 @@ class TopologyEditor(tk.Tk):
             _nodes_from_profile - Convert a profile dict into Node objects.
         """
         nodes: List[Node] = []
+        devices = profile.get("devices")
+        if isinstance(devices, list):
+            for label in devices:
+                node = self._node_from_device_label(label)
+                if node is not None:
+                    nodes.append(node)
+            return nodes
 
         def _append(category: str, entry: Dict[str, object]) -> None:
             label = str(entry.get("label", "")).strip()
@@ -2069,6 +2119,214 @@ class TopologyEditor(tk.Tk):
                 if isinstance(entry, dict):
                     _append(GENERIC_CATEGORY, entry)
         return nodes
+
+    def _node_from_device_label(self, label: object) -> Optional[Node]:
+        """
+        NAME
+            _node_from_device_label - Build a Node from a device registry label.
+        """
+        label_text = str(label).strip()
+        if not label_text:
+            return None
+        entry = self._device_registry.get(label_text)
+        if not isinstance(entry, dict):
+            return None
+        return self._node_from_device_def(entry)
+
+    def _node_from_device_def(self, entry: Dict[str, object]) -> Optional[Node]:
+        """
+        NAME
+            _node_from_device_def - Build a Node from a device registry entry.
+        """
+        if not self._is_can_device_entry(entry):
+            return None
+        can_id = entry.get("id")
+        if not isinstance(can_id, int):
+            return None
+        label = str(entry.get("label", "")).strip()
+        category = self._category_for_device(entry)
+        vendor = self._vendor_for_device(entry)
+        device_type = self._device_type_for_device(entry)
+        motor = str(entry.get("model", "")).strip()
+        terminator = entry.get("terminator")
+        tags = self._normalize_tags(entry.get("tags", []))
+        node = Node(
+            key=self._next_key,
+            category=category,
+            label=label,
+            can_id=can_id,
+            vendor=vendor,
+            device_type=device_type,
+            motor=motor,
+            limits=None,
+            terminator=bool(terminator) if isinstance(terminator, bool) else None,
+            x=0.0,
+            row=0,
+            scale=1.0,
+            tags=tags,
+        )
+        self._next_key += 1
+        return node
+
+    def _is_can_device_entry(self, entry: Dict[str, object]) -> bool:
+        interface = str(entry.get("interface", "")).strip()
+        if profile_consts is not None:
+            return interface.upper() == profile_consts.INTERFACE_CAN
+        return interface.upper() == "CAN"
+
+    def _category_for_device(self, entry: Dict[str, object]) -> str:
+        manufacturer = entry.get("manufacturer")
+        device_type = entry.get("deviceType")
+        model = str(entry.get("model", "")).upper()
+        if device_type == DEVTYPE_MOTOR:
+            if manufacturer == MFG_REV:
+                if MODEL_NEO_550 in model:
+                    return "neo550s"
+                if MODEL_FLEX in model:
+                    return "flexes"
+                return "neos"
+            if manufacturer == MFG_CTRE:
+                if MODEL_FALCON in model:
+                    return "falcons"
+                return "krakens"
+        if device_type == DEVTYPE_ENCODER:
+            return "cancoders"
+        if device_type == DEVTYPE_MISC:
+            return "candles"
+        if device_type == DEVTYPE_POWER:
+            return "pdp" if manufacturer == MFG_CTRE else "pdh"
+        if device_type == DEVTYPE_GYRO:
+            return "pigeon"
+        if device_type == DEVTYPE_ROBORIO:
+            return "roborio"
+        return GENERIC_CATEGORY
+
+    def _vendor_for_device(self, entry: Dict[str, object]) -> str:
+        manufacturer = entry.get("manufacturer")
+        if manufacturer == MFG_NI:
+            return "NI"
+        if manufacturer == MFG_CTRE:
+            return "CTRE"
+        if manufacturer == MFG_REV:
+            return "REV"
+        return ""
+
+    def _device_type_for_device(self, entry: Dict[str, object]) -> str:
+        manufacturer = entry.get("manufacturer")
+        device_type = entry.get("deviceType")
+        model = str(entry.get("model", "")).upper()
+        if device_type == DEVTYPE_MOTOR:
+            if manufacturer == MFG_REV:
+                if MODEL_NEO_550 in model:
+                    return "NEO 550"
+                if MODEL_FLEX in model:
+                    return "FLEX"
+                return "NEO"
+            if manufacturer == MFG_CTRE:
+                if MODEL_FALCON in model:
+                    return "FALCON"
+                return "KRAKEN"
+        if device_type == DEVTYPE_ENCODER:
+            return "CANCoder"
+        if device_type == DEVTYPE_MISC:
+            return "CANdle"
+        if device_type == DEVTYPE_POWER:
+            return "PDP" if manufacturer == MFG_CTRE else "PDH"
+        if device_type == DEVTYPE_GYRO:
+            return "Pigeon"
+        if device_type == DEVTYPE_ROBORIO:
+            return "roboRIO"
+        return ""
+
+    def _apply_node_updates_to_registry(self) -> None:
+        """
+        NAME
+            _apply_node_updates_to_registry - Update device registry entries from nodes.
+        """
+        if not self._device_registry_list:
+            return
+        for node in self._device_nodes():
+            entry = self._device_registry.get(node.label)
+            if isinstance(entry, dict):
+                entry["label"] = node.label
+                if node.tags:
+                    entry["tags"] = list(node.tags)
+                elif "tags" in entry:
+                    entry["tags"] = []
+                if node.terminator is not None:
+                    entry["terminator"] = node.terminator
+                elif "terminator" in entry:
+                    entry.pop("terminator", None)
+                continue
+            new_entry = self._device_entry_from_node(node)
+            self._device_registry_list.append(new_entry)
+            self._device_registry[node.label] = new_entry
+
+    def _device_entry_from_node(self, node: Node) -> Dict[str, object]:
+        """
+        NAME
+            _device_entry_from_node - Build a device registry entry from a node.
+        """
+        manufacturer = self._manufacturer_id_from_vendor(node.vendor)
+        device_type = self._device_type_id_from_name(node.device_type)
+        entry: Dict[str, object] = {
+            "label": node.label,
+            "interface": profile_consts.INTERFACE_CAN if profile_consts is not None else "CAN",
+            "id": node.can_id,
+        }
+        if manufacturer is not None:
+            entry["manufacturer"] = manufacturer
+        if device_type is not None:
+            entry["deviceType"] = device_type
+        if node.motor:
+            entry["model"] = node.motor
+        if node.device_type and not node.motor:
+            entry["model"] = node.device_type
+        if node.device_type and node.device_type.strip():
+            entry["type"] = self._device_def_type_from_device_name(node.device_type)
+        if node.tags:
+            entry["tags"] = list(node.tags)
+        if node.terminator is not None:
+            entry["terminator"] = node.terminator
+        return entry
+
+    def _manufacturer_id_from_vendor(self, vendor: str) -> Optional[int]:
+        vendor_norm = vendor.strip().upper()
+        if vendor_norm == "NI":
+            return MFG_NI
+        if vendor_norm == "CTRE":
+            return MFG_CTRE
+        if vendor_norm == "REV":
+            return MFG_REV
+        return None
+
+    def _device_type_id_from_name(self, name: str) -> Optional[int]:
+        key = name.strip().upper()
+        if not key:
+            return None
+        if "NEO" in key or "FLEX" in key or "KRAKEN" in key or "FALCON" in key:
+            return DEVTYPE_MOTOR
+        if "CANCODER" in key or "ENCODER" in key:
+            return DEVTYPE_ENCODER
+        if "CANDLE" in key:
+            return DEVTYPE_MISC
+        if "PDH" in key or "PDP" in key:
+            return DEVTYPE_POWER
+        if "PIGEON" in key or "IMU" in key or "GYRO" in key:
+            return DEVTYPE_GYRO
+        if "ROBORIO" in key or "ROBOTCONTROLLER" in key:
+            return DEVTYPE_ROBORIO
+        return None
+
+    def _device_def_type_from_device_name(self, name: str) -> str:
+        key = name.strip().upper()
+        if not key:
+            return ""
+        if "NEO" in key or "FLEX" in key or "KRAKEN" in key or "FALCON" in key:
+            return profile_consts.TYPE_MOTOR if profile_consts is not None else "motor"
+        if "CANCODER" in key or "ENCODER" in key:
+            return profile_consts.TYPE_ENCODER_EXTERNAL if profile_consts is not None else "encoderExternal"
+        return ""
 
     def _diagram_snapshot(self) -> Dict[str, object]:
         """
@@ -4829,27 +5087,47 @@ class TopologyEditor(tk.Tk):
             config = existing
         else:
             config = {
-                "schemaVersion": 1,
-                "generatedAt": None,
-                "groups": [],
-                "selectedDevice": {"device": "", "enabled": False},
+                profile_consts.KEY_BRIDGE_SCHEMA_VERSION: profile_consts.BRIDGE_CONFIG_SCHEMA_VERSION,
+                profile_consts.KEY_BRIDGE_GENERATED_AT: None,
+                profile_consts.KEY_BRIDGE_BY_PROFILE: {},
             }
             self._root_extras["bridgeConfig"] = config
-        if not isinstance(config.get("groups"), list):
-            config["groups"] = []
-        if not isinstance(config.get("selectedDevice"), dict):
-            config["selectedDevice"] = {"device": "", "enabled": False}
+        by_profile = config.get(profile_consts.KEY_BRIDGE_BY_PROFILE)
+        if not isinstance(by_profile, dict):
+            by_profile = {}
+            config[profile_consts.KEY_BRIDGE_BY_PROFILE] = by_profile
+        profile_name = self._profile_name or ""
+        if profile_name:
+            entry = by_profile.get(profile_name)
+            if not isinstance(entry, dict):
+                entry = {
+                    profile_consts.KEY_BRIDGE_GROUPS: [],
+                    profile_consts.KEY_BRIDGE_SELECTED_DEVICE: {
+                        profile_consts.KEY_DEVICE: "",
+                        "enabled": False,
+                    },
+                }
+                by_profile[profile_name] = entry
+            if not isinstance(entry.get(profile_consts.KEY_BRIDGE_GROUPS), list):
+                entry[profile_consts.KEY_BRIDGE_GROUPS] = []
         return config
 
     def _bridge_groups(self) -> List[Dict[str, object]]:
         """
         NAME
-            _bridge_groups - Return the bridgeConfig groups list (may be empty).
+            _bridge_groups - Return the per-profile bridgeConfig groups list (may be empty).
         """
         config = self._root_extras.get("bridgeConfig")
         if not isinstance(config, dict):
             return []
-        groups = config.get("groups")
+        by_profile = config.get(profile_consts.KEY_BRIDGE_BY_PROFILE)
+        if not isinstance(by_profile, dict):
+            return []
+        profile_name = self._profile_name or ""
+        entry = by_profile.get(profile_name)
+        if not isinstance(entry, dict):
+            return []
+        groups = entry.get(profile_consts.KEY_BRIDGE_GROUPS)
         return groups if isinstance(groups, list) else []
 
     def _create_group_from_selection(self) -> None:
@@ -4867,11 +5145,8 @@ class TopologyEditor(tk.Tk):
         name = name.strip()
         if not name:
             return
-        config = self._ensure_bridge_config()
-        groups = config.get("groups")
-        if not isinstance(groups, list):
-            groups = []
-            config["groups"] = groups
+        self._ensure_bridge_config()
+        groups = self._bridge_groups()
         existing = None
         for group in groups:
             if isinstance(group, dict) and str(group.get("name", "")).strip().lower() == name.lower():
@@ -4915,9 +5190,18 @@ class TopologyEditor(tk.Tk):
         if not name:
             return
         config = self._ensure_bridge_config()
+        by_profile = config.get(profile_consts.KEY_BRIDGE_BY_PROFILE)
+        if not isinstance(by_profile, dict):
+            messagebox.showinfo("Remove Group", "No bridgeConfig profiles found.")
+            return
+        profile_name = self._profile_name or ""
+        entry = by_profile.get(profile_name)
+        if not isinstance(entry, dict):
+            messagebox.showinfo("Remove Group", f"Profile '{profile_name}' not found.")
+            return
         new_groups = []
         removed = False
-        for group in config.get("groups", []) if isinstance(config.get("groups"), list) else []:
+        for group in entry.get(profile_consts.KEY_BRIDGE_GROUPS, []) or []:
             if not isinstance(group, dict):
                 continue
             group_name = str(group.get("name", "")).strip()
@@ -4928,7 +5212,7 @@ class TopologyEditor(tk.Tk):
         if not removed:
             messagebox.showinfo("Remove Group", f"Group '{name}' not found.")
             return
-        config["groups"] = new_groups
+        entry[profile_consts.KEY_BRIDGE_GROUPS] = new_groups
         self._dirty = True
         self._redraw_canvas()
 
@@ -6126,7 +6410,7 @@ class TopologyEditor(tk.Tk):
     def _draw_group_overlays(self) -> None:
         """
         NAME
-            _draw_group_overlays - Draw bounding boxes for bridgeConfig groups.
+            _draw_group_overlays - Draw bounding boxes for bridgeConfig by-profile groups.
         """
         groups = self._bridge_groups()
         if not groups:
@@ -6518,7 +6802,7 @@ class TopologyEditor(tk.Tk):
                 "Purpose: Store CLI groups and visualize them in the diagram.\n"
                 "\n"
                 "- Use Groups -> Create Group from Selection... after multi-selecting nodes.\n"
-                "- Groups are stored under bridgeConfig.groups in bringup_system.json.\n"
+                "- Groups are stored under bridgeConfig.byProfile.<profile>.groups in bringup_system.json.\n"
                 "- View -> Show Group Overlays toggles dashed group boxes.\n"
             ),
             "Bus Segments": (

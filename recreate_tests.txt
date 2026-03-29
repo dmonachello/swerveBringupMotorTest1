@@ -6,7 +6,7 @@ test set default
 test delete "Rotation only (internal)"
 test create "Rotation only (internal)"
 type composite
-device add "REV:NEO:25"
+device add "SPARKMAX/NEO 25"
 duty 0.2
 rotation limit 15.0
 rotation encoderKey internal
@@ -16,7 +16,7 @@ exit
 test delete "Deadband sweep (internal)"
 test create "Deadband sweep (internal)"
 type deadbandSweep
-device add "REV:NEO:25"
+device add "SPARKMAX/NEO 25"
 deadbandSweep startDuty 0.0
 deadbandSweep maxDuty 0.2
 deadbandSweep stepDuty 0.01
@@ -30,7 +30,7 @@ exit
 test delete "Rotation + Time"
 test create "Rotation + Time"
 type composite
-device add "CTRE:FALCON:9"
+device add "FALCON 9"
 duty 0.2
 rotation limit 10.0
 rotation encoderKey internal
@@ -42,7 +42,7 @@ exit
 test delete "Time only"
 test create "Time only"
 type composite
-device add "REV:NEO 550:7"
+device add "SPARKMAX/NEO550 7"
 duty 0.3
 time timeout 1.5
 time onTimeout pass
@@ -51,7 +51,7 @@ exit
 test delete "Nudge (0.2 for 0.5s)"
 test create "Nudge (0.2 for 0.5s)"
 type composite
-device add "REV:NEO:25"
+device add "SPARKMAX/NEO 25"
 duty 0.2
 time timeout 0.5
 time onTimeout pass
@@ -60,7 +60,7 @@ exit
 test delete "Limit switch only"
 test create "Limit switch only"
 type composite
-device add "REV:NEO 550:7"
+device add "SPARKMAX/NEO550 7"
 duty 0.2
 limitswitch onHit pass
 exit
@@ -68,7 +68,7 @@ exit
 test delete "Hold to run"
 test create "Hold to run"
 type composite
-device add "CTRE:FALCON:9"
+device add "FALCON 9"
 duty 0.2
 hold onRelease pass
 exit
@@ -76,9 +76,9 @@ exit
 test delete "Rotation + Time + Limit"
 test create "Rotation + Time + Limit"
 type composite
-device add "REV:NEO 550:7"
-device add "REV:NEO:25"
-device add "CTRE:FALCON:9"
+device add "SPARKMAX/NEO550 7"
+device add "SPARKMAX/NEO 25"
+device add "FALCON 9"
 duty 0.2
 rotation limit 10.0
 rotation encoderKey internal
@@ -91,7 +91,7 @@ exit
 test delete "All checks"
 test create "All checks"
 type composite
-device add "REV:NEO 550:7"
+device add "SPARKMAX/NEO550 7"
 duty 0.2
 rotation limit 8.0
 rotation encoderKey internal
@@ -105,8 +105,8 @@ exit
 test delete "Joystick motor (controller0.leftY)"
 test create "Joystick motor (controller0.leftY)"
 type joystick
-device add "REV:NEO:25"
-device add "CTRE:FALCON:9"
+device add "SPARKMAX/NEO 25"
+device add "FALCON 9"
 inputSource controller0.leftY
 deadband 0.12
 exit
@@ -116,7 +116,7 @@ test set smoke
 test delete "Rotation only (internal)"
 test create "Rotation only (internal)"
 type composite
-device add "REV:NEO:25"
+device add "SPARKMAX/NEO 25"
 duty 0.2
 rotation limit 2.0
 rotation encoderKey internal
@@ -127,7 +127,7 @@ exit
 test delete "Time only"
 test create "Time only"
 type composite
-device add "REV:NEO:25"
+device add "SPARKMAX/NEO 25"
 duty 0.3
 time timeout 1.5
 time onTimeout pass
@@ -137,7 +137,7 @@ exit
 test delete "Nudge (0.2 for 0.5s)"
 test create "Nudge (0.2 for 0.5s)"
 type composite
-device add "REV:NEO:25"
+device add "SPARKMAX/NEO 25"
 duty 0.2
 time timeout 0.5
 time onTimeout pass
@@ -147,7 +147,7 @@ exit
 test delete "Hold to run"
 test create "Hold to run"
 type composite
-device add "REV:NEO:25"
+device add "SPARKMAX/NEO 25"
 duty 0.2
 hold onRelease pass
 enabled true
@@ -156,7 +156,7 @@ exit
 test delete "Joystick motor (controller0.leftY)"
 test create "Joystick motor (controller0.leftY)"
 type joystick
-device add "REV:NEO:25"
+device add "SPARKMAX/NEO 25"
 inputSource controller0.leftY
 deadband 0.12
 enabled true

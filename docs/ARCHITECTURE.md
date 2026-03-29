@@ -161,8 +161,9 @@ Purpose: controller bindings remain data-driven and stable for the local Xbox cl
 ## Configuration Layer
 Purpose: JSON inputs define behavior and runtime configuration.
 
-- `bringup_system.json`: unified system config (profiles + diagram + bridgeConfig). Stored in `data/` and synced to deploy.
-- Requires `schema_version` (3), `data_version`, and `data_hash` at the root.
+- `bringup_system.json`: unified system config (profiles + diagram + bridgeConfig.byProfile). Stored in `data/` and synced to deploy.
+- Requires `schema_version` (4), `data_version`, and `data_hash` at the root.
+- Profiles reference devices by label only; the device registry owns the CAN identity fields.
 - `bringup_tests.json`: test definitions (composite/joystick) grouped into test sets.
 - `motor_specs.json`: motor current specs for health checks.
 - `can_mappings.json`: manufacturer/device type names for CAN decoding.
@@ -193,7 +194,7 @@ Purpose: describe the operator-facing surfaces beyond the core CAN bridge.
 Purpose: document the profile authoring and diagram pipeline.
 
 - Topology editor (`tools/can_topology/`) edits profiles, tags, and diagram layout.
-- Outputs `bringup_system.json` (profiles + diagram metadata + bridgeConfig groups).
+- Outputs `bringup_system.json` (profiles + diagram metadata + bridgeConfig.byProfile groups).
 - Diagram metadata is editor-only; robot and CAN bridge ignore it.
 - Live topology view reads the same profile JSON for overlays.
 
@@ -305,7 +306,7 @@ Purpose: stable interfaces are identified to prevent uncoordinated changes.
 
 ## Data Integrity Rules
 Purpose: define how runtime and offline tools enforce profile integrity.
-- Runtime tools (roboRIO + CAN bridge) must hard-fail on `schema_version` (3; legacy 2 accepted during transition and will be removed), `data_version`, or `data_hash` mismatch.
+- Runtime tools (roboRIO + CAN bridge) must hard-fail on `schema_version` (4), `data_version`, or `data_hash` mismatch.
 - Offline tools (topology editor) may open mismatched files for repair after prompting the user.
 - The topology editor always recomputes `data_hash` on save.
 
@@ -318,7 +319,7 @@ Composite test (rotation + time):
   "type": "composite",
   "name": "Rotation + Time",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10"],
+  "motorLabels": ["SPARKMAX/NEO 10"],
   "duty": 0.2,
   "rotation": { "limitRot": 10.0, "encoderKey": "internal", "encoderMotorIndex": 0 },
   "time": { "timeoutSec": 2.0, "onTimeout": "fail" }
@@ -331,7 +332,7 @@ Through-bore via SparkMax alternate encoder:
   "type": "composite",
   "name": "Through-bore rotation (SparkMax)",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10"],
+  "motorLabels": ["SPARKMAX/NEO 10"],
   "duty": 0.2,
   "rotation": {
     "limitRot": 5.0,

@@ -130,20 +130,20 @@ def _pick_type():
         print("Out of range.")
 
 
-def _prompt_device_keys(label):
+def _prompt_device_labels(label):
     """
     NAME
-        _prompt_device_keys - Prompt for comma-separated device keys.
+        _prompt_device_labels - Prompt for comma-separated device labels.
     """
     while True:
         raw = _prompt(label)
         if not raw:
-            print("Enter at least one key.")
+            print("Enter at least one label.")
             continue
         keys = [part.strip() for part in raw.split(",") if part.strip()]
-        if all(key.count(":") == 2 for key in keys):
+        if all(keys):
             return keys
-        print("Use VENDOR:TYPE:ID (example: REV:NEO:10). Separate multiple with commas.")
+        print("Use device labels. Separate multiple with commas.")
 
 
 def _prompt_encoder_key():
@@ -152,12 +152,12 @@ def _prompt_encoder_key():
         _prompt_encoder_key - Prompt for an encoder key.
     """
     while True:
-        raw = _prompt("Encoder (internal or VENDOR:TYPE:ID)", "internal")
+        raw = _prompt("Encoder (internal or device label)", "internal")
         if raw and raw.lower() == "internal":
             return "internal"
-        if raw and raw.count(":") == 2:
+        if raw:
             return raw
-        print("Use 'internal' or VENDOR:TYPE:ID (example: CTRE:CANCoder:12)")
+        print("Use 'internal' or a device label.")
 
 
 def _prompt_action(label, default):
@@ -179,7 +179,7 @@ def _build_composite():
     """
     name = _prompt("Test name", "Composite test")
     enabled = _prompt_bool("Enabled", False)
-    motor_keys = _prompt_device_keys("Motor keys (comma-separated VENDOR:TYPE:ID)")
+    motor_keys = _prompt_device_labels("Motor labels (comma-separated)")
     duty = _prompt_float("Duty (-1.0..1.0)", 0.2)
 
     rotation_enabled = _prompt_bool("Enable rotation check", True)
@@ -224,7 +224,7 @@ def _build_composite():
         "type": "composite",
         "name": name,
         "enabled": enabled,
-        "motorKeys": motor_keys,
+        "motorLabels": motor_keys,
         "duty": duty,
     }
     if rotation is not None:
@@ -245,7 +245,7 @@ def _build_joystick():
     """
     name = _prompt("Test name", "Joystick motor")
     enabled = _prompt_bool("Enabled", False)
-    motor_keys = _prompt_device_keys("Motor keys (comma-separated VENDOR:TYPE:ID)")
+    motor_keys = _prompt_device_labels("Motor labels (comma-separated)")
     deadband = _prompt_float("Deadband", 0.12)
     input_source = _prompt("inputSource (<controller>.<inputId>)", "controller0.leftY").strip()
     if "." not in input_source:
@@ -254,7 +254,7 @@ def _build_joystick():
         "type": "joystick",
         "name": name,
         "enabled": enabled,
-        "motorKeys": motor_keys,
+        "motorLabels": motor_keys,
         "deadband": deadband,
         "inputSource": input_source,
     }

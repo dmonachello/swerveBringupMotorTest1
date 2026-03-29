@@ -11,8 +11,8 @@
           "enabled": true,
           "onRelease": "pass"
         },
-        "motorKeys": [
-          "CTRE:KRAKEN:11"
+        "motorLabels": [
+          "Device 11"
         ]
       }
     ]

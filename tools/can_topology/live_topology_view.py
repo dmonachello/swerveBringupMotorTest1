@@ -23,6 +23,19 @@ from tools.common.json_io import read_json
 from tools.common.paths import profiles_canonical_path, profiles_deploy_path
 import tkinter.font as tkfont
 
+from tools.common.profile_constants import (
+    INTERFACE_CAN,
+    KEY_DEFAULT_PROFILE,
+    KEY_DEVICE_TYPE,
+    KEY_DEVICES,
+    KEY_ID,
+    KEY_INTERFACE,
+    KEY_LABEL,
+    KEY_MANUFACTURER,
+    KEY_MODEL,
+    KEY_PROFILES,
+    KEY_PROFILE_DEVICES,
+)
 from tools.common.topology_render import (
     fill_color_for_vendor,
     outline_color_for_vendor,
@@ -58,6 +71,45 @@ PRESENCE_COLOR_NONE = "#dc2626"
 PRESENCE_STALE_MS = 2000
 PRESENCE_MIN_CONF = 0.05
 PRESENCE_HIGH_CONF = 0.5
+
+CATEGORY_NEOS = "neos"
+CATEGORY_NEO550S = "neo550s"
+CATEGORY_FLEXES = "flexes"
+CATEGORY_KRAKENS = "krakens"
+CATEGORY_FALCONS = "falcons"
+CATEGORY_CANCODERS = "cancoders"
+CATEGORY_CANDLES = "candles"
+CATEGORY_PDH = "pdh"
+CATEGORY_PDP = "pdp"
+CATEGORY_PIGEON = "pigeon"
+CATEGORY_ROBORIO = "roborio"
+CATEGORY_DEVICES = "devices"
+
+VENDOR_CTRE = "CTRE"
+VENDOR_REV = "REV"
+VENDOR_NI = "NI"
+
+MODEL_NEO_550 = "NEO 550"
+MODEL_FLEX = "VORTEX"
+MODEL_KRAKEN = "KRAKEN"
+MODEL_FALCON = "FALCON"
+
+MFG_NI = 1
+MFG_CTRE = 4
+MFG_REV = 5
+
+DEVTYPE_ROBORIO = 1
+DEVTYPE_MOTOR = 2
+DEVTYPE_GYRO = 4
+DEVTYPE_ENCODER = 7
+DEVTYPE_POWER = 8
+DEVTYPE_MISC = 10
+
+NODE_X_STEP = 120.0
+NODE_ROW_MOD = 2
+NODE_ROW_EVEN = 0
+NODE_ROW_ODD = 1
+NODE_CAN_ID_DEFAULT = -1
 
 
 @dataclass
@@ -104,70 +156,98 @@ def _load_profiles_payload() -> Tuple[Optional[Dict[str, object]], str]:
     return payload, ""
 
 
-def _profile_devices(raw: Dict[str, object]) -> List[LiveNode]:
+def _load_device_registry(payload: Dict[str, object]) -> Dict[str, Dict[str, object]]:
+    """
+    NAME
+        _load_device_registry - Load the label-based device registry.
+    """
+    registry: Dict[str, Dict[str, object]] = {}
+    devices = payload.get(KEY_DEVICES)
+    if not isinstance(devices, list):
+        return registry
+    for entry in devices:
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get(KEY_LABEL, "")).strip()
+        if not label:
+            continue
+        registry[label.lower()] = entry
+    return registry
+
+
+def _vendor_for_device(entry: Dict[str, object]) -> str:
+    manufacturer = entry.get(KEY_MANUFACTURER)
+    if manufacturer == MFG_CTRE:
+        return VENDOR_CTRE
+    if manufacturer == MFG_REV:
+        return VENDOR_REV
+    if manufacturer == MFG_NI:
+        return VENDOR_NI
+    return ""
+
+
+def _category_for_device(entry: Dict[str, object]) -> str:
+    device_type = entry.get(KEY_DEVICE_TYPE)
+    manufacturer = entry.get(KEY_MANUFACTURER)
+    model = str(entry.get(KEY_MODEL, "")).upper()
+    if device_type == DEVTYPE_ROBORIO:
+        return CATEGORY_ROBORIO
+    if device_type == DEVTYPE_POWER:
+        return CATEGORY_PDP if manufacturer == MFG_CTRE else CATEGORY_PDH
+    if device_type == DEVTYPE_GYRO:
+        return CATEGORY_PIGEON
+    if device_type == DEVTYPE_ENCODER:
+        return CATEGORY_CANCODERS
+    if device_type == DEVTYPE_MISC:
+        return CATEGORY_CANDLES if manufacturer == MFG_CTRE else CATEGORY_DEVICES
+    if device_type == DEVTYPE_MOTOR:
+        if manufacturer == MFG_REV:
+            if MODEL_NEO_550 in model:
+                return CATEGORY_NEO550S
+            if MODEL_FLEX in model:
+                return CATEGORY_FLEXES
+            return CATEGORY_NEOS
+        if manufacturer == MFG_CTRE:
+            if MODEL_FALCON in model:
+                return CATEGORY_FALCONS
+            return CATEGORY_KRAKENS
+    return CATEGORY_DEVICES
+
+
+def _profile_devices(
+    raw: Dict[str, object],
+    registry: Dict[str, Dict[str, object]],
+) -> List[LiveNode]:
     """
     NAME
         _profile_devices - Extract device nodes from a profile payload.
     """
     nodes: List[LiveNode] = []
+    if not isinstance(raw, dict):
+        return nodes
+    labels = raw.get(KEY_PROFILE_DEVICES) if isinstance(raw.get(KEY_PROFILE_DEVICES), list) else []
     key = 1
-    for category in ("neos", "neo550s", "flexes", "krakens", "falcons", "cancoders", "candles"):
-        for entry in raw.get(category, []) or []:
-            if not isinstance(entry, dict) or "id" not in entry:
-                continue
-            label = str(entry.get("label") or f"{category.upper()} {entry.get('id')}")
-            nodes.append(
-                LiveNode(
-                    key=key,
-                    category=category,
-                    label=label,
-                    can_id=int(entry.get("id")),
-                    bus_index=0,
-                    row=0 if key % 2 == 0 else 1,
-                    x=float(key * 120),
-                    node_type="device",
-                )
-            )
-            key += 1
-    for name, category in (
-        ("pdh", "pdh"),
-        ("pdp", "pdp"),
-        ("pigeon", "pigeon"),
-        ("roborio", "roborio"),
-    ):
-        entry = raw.get(name)
-        if isinstance(entry, dict) and "id" in entry:
-            label = str(entry.get("label") or name.upper())
-            nodes.append(
-                LiveNode(
-                    key=key,
-                    category=category,
-                    label=label,
-                    can_id=int(entry.get("id")),
-                    bus_index=0,
-                    row=0 if key % 2 == 0 else 1,
-                    x=float(key * 120),
-                    node_type="device",
-                )
-            )
-            key += 1
-    for entry in raw.get("devices", []) or []:
-        if not isinstance(entry, dict) or "id" not in entry:
+    for label_entry in labels:
+        if not isinstance(label_entry, str):
             continue
-        label = str(entry.get("label") or f"Device {entry.get('id')}")
-        vendor = str(entry.get("vendor") or "")
-        device_type = str(entry.get("type") or "")
+        label = label_entry.strip()
+        if not label:
+            continue
+        entry = registry.get(label.lower())
+        if not entry or entry.get(KEY_INTERFACE) != INTERFACE_CAN:
+            continue
+        can_id = entry.get(KEY_ID)
         nodes.append(
             LiveNode(
                 key=key,
-                category="devices",
+                category=_category_for_device(entry),
                 label=label,
-                can_id=int(entry.get("id")),
+                can_id=int(can_id) if isinstance(can_id, int) else NODE_CAN_ID_DEFAULT,
                 bus_index=0,
-                row=0 if key % 2 == 0 else 1,
-                x=float(key * 120),
-                vendor=vendor,
-                device_type=device_type,
+                row=NODE_ROW_EVEN if key % NODE_ROW_MOD == 0 else NODE_ROW_ODD,
+                x=float(key * NODE_X_STEP),
+                vendor=_vendor_for_device(entry),
+                device_type=str(entry.get(KEY_DEVICE_TYPE) or ""),
                 node_type="device",
             )
         )
@@ -175,7 +255,10 @@ def _profile_devices(raw: Dict[str, object]) -> List[LiveNode]:
     return nodes
 
 
-def _diagram_nodes(diagram: Dict[str, object]) -> Tuple[List[LiveNode], Dict[str, object]]:
+def _diagram_nodes(
+    diagram: Dict[str, object],
+    registry: Dict[str, Dict[str, object]],
+) -> Tuple[List[LiveNode], Dict[str, object]]:
     """
     NAME
         _diagram_nodes - Build nodes from a diagram snapshot.
@@ -224,12 +307,18 @@ def _diagram_nodes(diagram: Dict[str, object]) -> Tuple[List[LiveNode], Dict[str
                 free_y = free_y - bus_offset
         raw_key = entry.get("key")
         node_key = int(raw_key) if isinstance(raw_key, int) else key
+        can_id = entry.get("id") if isinstance(entry.get("id"), int) else NODE_CAN_ID_DEFAULT
+        registry_entry = registry.get(label.strip().lower())
+        if can_id == NODE_CAN_ID_DEFAULT and registry_entry:
+            reg_id = registry_entry.get(KEY_ID)
+            if isinstance(reg_id, int):
+                can_id = reg_id
         nodes.append(
             LiveNode(
                 key=node_key,
-                category=str(entry.get("category") or "devices"),
+                category=str(entry.get("category") or CATEGORY_DEVICES),
                 label=label,
-                can_id=int(entry.get("id")) if isinstance(entry.get("id"), int) else -1,
+                can_id=int(can_id) if isinstance(can_id, int) else NODE_CAN_ID_DEFAULT,
                 bus_index=bus_index,
                 row=int(entry.get("row") or 0),
                 x=float(entry.get("x") or 0.0),
@@ -346,8 +435,9 @@ class LiveTopologyView(ttk.Frame):
             self._bridge_groups = []
             self._redraw()
             return
-        profiles = payload.get("profiles") if isinstance(payload.get("profiles"), dict) else {}
-        default_profile = str(payload.get("default_profile") or self._profile_name)
+        registry = _load_device_registry(payload)
+        profiles = payload.get(KEY_PROFILES) if isinstance(payload.get(KEY_PROFILES), dict) else {}
+        default_profile = str(payload.get(KEY_DEFAULT_PROFILE) or self._profile_name)
         profile_name = self._profile_name or default_profile
         raw_profile = profiles.get(profile_name)
         if not isinstance(raw_profile, dict):
@@ -360,7 +450,7 @@ class LiveTopologyView(ttk.Frame):
         diagram_profiles = diagram.get("profiles") if isinstance(diagram.get("profiles"), dict) else {}
         diag = diagram_profiles.get(self._profile_name)
         if isinstance(diag, dict):
-            nodes, meta = _diagram_nodes(diag)
+            nodes, meta = _diagram_nodes(diag, registry)
             self._nodes = nodes
             self._diagram_meta = meta
             self._use_diagram_layout = True
@@ -372,7 +462,10 @@ class LiveTopologyView(ttk.Frame):
             self._zoom = float(meta.get("zoom") or 1.0)
             self._ethernet_links, self._can_links, self._device_links = parse_diagram_links(meta)
         else:
-            self._nodes = _profile_devices(raw_profile if isinstance(raw_profile, dict) else {})
+            self._nodes = _profile_devices(
+                raw_profile if isinstance(raw_profile, dict) else {},
+                registry,
+            )
             self._diagram_meta = {}
             self._use_diagram_layout = False
             self._bus_offsets = [0.0]
@@ -384,13 +477,13 @@ class LiveTopologyView(ttk.Frame):
             self._ethernet_links = []
             self._can_links = []
             self._device_links = []
-        self._bridge_groups = parse_bridge_groups(payload)
+        self._bridge_groups = parse_bridge_groups(payload, self._profile_name)
         self._redraw()
 
     def set_show_groups(self, enabled: bool) -> None:
         """
         NAME
-            set_show_groups - Toggle bridgeConfig group overlays.
+            set_show_groups - Toggle bridgeConfig by-profile group overlays.
         """
         enabled = bool(enabled)
         if enabled != self._show_groups:

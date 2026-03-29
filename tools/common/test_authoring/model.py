@@ -87,7 +87,7 @@ class TestModel:
     """
 
     name: str
-    test_type: str  # joystick | button
+    test_type: str  # joystick | button | composite | deadbandSweep
     devices: List[str] = field(default_factory=list)
     input_source: Optional[str] = None
     joystick: Optional[TestBindingJoystick] = None

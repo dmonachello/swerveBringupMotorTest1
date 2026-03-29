@@ -1889,7 +1889,7 @@ public final class BringupCore {
    *   rotationMap - Rotation config map.
    *
    * RETURNS
-   *   Motor key string or descriptive fallback.
+   *   Motor label string or descriptive fallback.
    */
   private String resolveEncoderMotorLabel(BringupTest test, Map<?, ?> rotationMap) {
     if (test == null) {
@@ -2652,8 +2652,8 @@ public final class BringupCore {
     if (test == null) {
       return false;
     }
-    List<String> keys = test.getMotorKeys();
-    if (keys == null || keys.isEmpty()) {
+    List<String> labels = test.getMotorKeys();
+    if (labels == null || labels.isEmpty()) {
       if (hasInstantiatedDevices()) {
         return true;
       }
@@ -2661,15 +2661,10 @@ public final class BringupCore {
       return false;
     }
     List<String> missing = new ArrayList<>();
-    for (String key : keys) {
-      MotorKey motorKey = parseMotorKey(key);
-      if (motorKey == null) {
-        missing.add(key);
-        continue;
-      }
-      DeviceUnit device = testContext.findDevice(motorKey.vendor, motorKey.type, motorKey.id);
+    for (String label : labels) {
+      DeviceUnit device = testContext.findDeviceByLabel(label);
       if (device == null || !device.isCreated()) {
-        missing.add(key);
+        missing.add(label);
       }
     }
     if (!missing.isEmpty()) {
@@ -2679,51 +2674,6 @@ public final class BringupCore {
       return false;
     }
     return true;
-  }
-
-  /**
-   * NAME
-   *   MotorKey - Parsed vendor/type/id key for test devices.
-   */
-  private static final class MotorKey {
-    final String vendor;
-    final String type;
-    final int id;
-
-    private MotorKey(String vendor, String type, int id) {
-      this.vendor = vendor;
-      this.type = type;
-      this.id = id;
-    }
-  }
-
-  /**
-   * NAME
-   *   parseMotorKey - Parse a VENDOR:TYPE:ID key string.
-   *
-   * RETURNS
-   *   MotorKey on success or null when invalid.
-   */
-  private static MotorKey parseMotorKey(String value) {
-    if (value == null || value.isBlank()) {
-      return null;
-    }
-    String[] parts = value.split(":");
-    if (parts.length != 3) {
-      return null;
-    }
-    String vendor = parts[0].trim();
-    String type = parts[1].trim();
-    if (vendor.isEmpty() || type.isEmpty()) {
-      return null;
-    }
-    int id;
-    try {
-      id = Integer.parseInt(parts[2].trim());
-    } catch (NumberFormatException ex) {
-      return null;
-    }
-    return new MotorKey(vendor, type, id);
   }
 
   /**

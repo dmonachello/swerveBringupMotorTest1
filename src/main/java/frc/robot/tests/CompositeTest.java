@@ -15,6 +15,12 @@ import frc.robot.diag.snapshots.LimitsAttachment;
  */
 public final class CompositeTest implements BringupTest {
   public static final String TYPE = "composite";
+  private static final String ENCODER_INTERNAL = "internal";
+  private static final String ENCODER_EXTERNAL = "external";
+  private static final String ENCODER_ALT = "sparkmax_alt";
+  private static final String ENCODER_ALT_ALT = "sparkmax_alternate";
+  private static final String ENCODER_ALT_SHORT = "alternate";
+  private static final String ENCODER_ALT_THROUGH = "through_bore";
 
   /**
    * NAME
@@ -23,7 +29,7 @@ public final class CompositeTest implements BringupTest {
   public static final class Config {
     public String name = "Composite Test";
     public boolean enabled = true;
-    public java.util.List<BringupTestRegistry.MotorRef> motors;
+    public java.util.List<String> motorLabels;
     public double duty = 0.2;
     public RotationCheck rotation;
     public TimeCheck time;
@@ -37,7 +43,7 @@ public final class CompositeTest implements BringupTest {
    */
   public static final class RotationCheck {
     public double limitRot = 1.0;
-    public String encoderKey = "internal"; // internal or VENDOR:TYPE:ID
+    public String encoderKey = "internal"; // internal or device label
     public String encoderSource = "internal"; // internal | sparkmax_alt | external
     public Integer encoderCountsPerRev = null;
     public int encoderMotorIndex = 0;
@@ -168,21 +174,14 @@ public final class CompositeTest implements BringupTest {
 
   /**
    * NAME
-   *   getMotorKeys - Return motor keys used by this test.
+   *   getMotorKeys - Return motor labels used by this test.
    */
   @Override
   public java.util.List<String> getMotorKeys() {
-    if (config.motors == null || config.motors.isEmpty()) {
+    if (config.motorLabels == null || config.motorLabels.isEmpty()) {
       return java.util.Collections.emptyList();
     }
-    java.util.List<String> keys = new java.util.ArrayList<>();
-    for (BringupTestRegistry.MotorRef ref : config.motors) {
-      String key = buildMotorKey(ref);
-      if (!key.isBlank()) {
-        keys.add(key);
-      }
-    }
-    return keys;
+    return new java.util.ArrayList<>(config.motorLabels);
   }
 
   /**
@@ -191,17 +190,14 @@ public final class CompositeTest implements BringupTest {
    */
   @Override
   public boolean start(BringupTestContext context, double nowSec) {
-    if (config.motors == null || config.motors.isEmpty()) {
+    if (config.motorLabels == null || config.motorLabels.isEmpty()) {
       status = "Motor not found";
       result = BringupTestResult.FAIL;
       return false;
     }
     motors.clear();
-    for (BringupTestRegistry.MotorRef ref : config.motors) {
-      if (ref == null || ref.vendor == null || ref.type == null) {
-        continue;
-      }
-      DeviceUnit device = context.findDevice(ref.vendor, ref.type, ref.id);
+    for (String label : config.motorLabels) {
+      DeviceUnit device = context.findDeviceByLabel(label);
       if (device != null && !motors.contains(device)) {
         motors.add(device);
       }
@@ -331,18 +327,20 @@ public final class CompositeTest implements BringupTest {
     String key = config.rotation.encoderKey != null ? config.rotation.encoderKey.trim() : "";
     String source = config.rotation.encoderSource != null ? config.rotation.encoderSource.trim() : "";
     if (source.isBlank()) {
-      source = "internal";
+      source = ENCODER_INTERNAL;
     }
-    if (!key.isBlank() && isAltEncoderKey(key) && "internal".equalsIgnoreCase(source)) {
-      source = "sparkmax_alt";
+    if (!key.isBlank() && isAltEncoderKey(key) && ENCODER_INTERNAL.equalsIgnoreCase(source)) {
+      source = ENCODER_ALT;
     }
-    if (!key.isBlank() && !isAltEncoderKey(key) && !"internal".equalsIgnoreCase(key)
-        && "internal".equalsIgnoreCase(source)) {
-      source = "external";
+    if (!key.isBlank()
+        && !isAltEncoderKey(key)
+        && !ENCODER_INTERNAL.equalsIgnoreCase(key)
+        && ENCODER_INTERNAL.equalsIgnoreCase(source)) {
+      source = ENCODER_EXTERNAL;
     }
     encoderSource = source;
     encoderCountsPerRev = config.rotation.encoderCountsPerRev;
-    if (key.isBlank() || "internal".equalsIgnoreCase(key) || isAltEncoderKey(key)) {
+    if (key.isBlank() || ENCODER_INTERNAL.equalsIgnoreCase(key) || isAltEncoderKey(key)) {
       if (motors.isEmpty()) {
         return null;
       }
@@ -352,11 +350,7 @@ public final class CompositeTest implements BringupTest {
       }
       return motors.get(index);
     }
-    BringupTestRegistry.EncoderRef ref = BringupTestRegistry.parseEncoderRef(key);
-    if (ref == null || ref.vendor == null || ref.type == null) {
-      return null;
-    }
-    return context.findDevice(ref.vendor, ref.type, ref.id);
+    return context.findDeviceByLabel(key);
   }
 
   /**
@@ -368,10 +362,10 @@ public final class CompositeTest implements BringupTest {
       return false;
     }
     String normalized = key.trim().toLowerCase();
-    return normalized.equals("sparkmax_alt")
-        || normalized.equals("sparkmax_alternate")
-        || normalized.equals("alternate")
-        || normalized.equals("through_bore");
+    return normalized.equals(ENCODER_ALT)
+        || normalized.equals(ENCODER_ALT_ALT)
+        || normalized.equals(ENCODER_ALT_SHORT)
+        || normalized.equals(ENCODER_ALT_THROUGH);
   }
 
   /**
@@ -432,12 +426,17 @@ public final class CompositeTest implements BringupTest {
         continue;
       }
       LimitsAttachment limits = snap.getAttachment(LimitsAttachment.class);
-      if (limits == null) {
+      if (limits == null || limits.switches == null) {
         continue;
       }
-      if (Boolean.TRUE.equals(limits.fwdClosed) || Boolean.TRUE.equals(limits.revClosed)) {
-        lastLimitDevice = device;
-        return true;
+      for (LimitsAttachment.LimitSwitchState state : limits.switches) {
+        if (state == null) {
+          continue;
+        }
+        if (Boolean.TRUE.equals(state.closed)) {
+          lastLimitDevice = device;
+          return true;
+        }
       }
     }
     return false;
@@ -489,15 +488,8 @@ public final class CompositeTest implements BringupTest {
     entry.put("type", TYPE);
     entry.put("name", getName());
     entry.put("enabled", config.enabled);
-    if (config.motors != null && !config.motors.isEmpty()) {
-      java.util.List<String> motorKeys = new java.util.ArrayList<>();
-      for (BringupTestRegistry.MotorRef ref : config.motors) {
-        String key = buildMotorKey(ref);
-        if (!key.isBlank()) {
-          motorKeys.add(key);
-        }
-      }
-      entry.put("motorKeys", motorKeys);
+    if (config.motorLabels != null && !config.motorLabels.isEmpty()) {
+      entry.put("motorLabels", new java.util.ArrayList<>(config.motorLabels));
     }
     entry.put("duty", config.duty);
     if (config.rotation != null) {
@@ -532,14 +524,4 @@ public final class CompositeTest implements BringupTest {
     return entry;
   }
 
-  /**
-   * NAME
-   *   buildMotorKey - Build a vendor/type/id motor key string.
-   */
-  private String buildMotorKey(BringupTestRegistry.MotorRef motorRef) {
-    if (motorRef == null || motorRef.vendor == null || motorRef.type == null) {
-      return "";
-    }
-    return motorRef.vendor.trim() + ":" + motorRef.type.trim() + ":" + motorRef.id;
-  }
 }

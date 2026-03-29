@@ -32,6 +32,12 @@ class ParserSpec:
     show_target_runtime_state: str
     show_target_tests: str
     show_target_test: str
+    show_target_status: str
+    show_target_groups: str
+    show_target_devices: str
+    show_target_bindings: str
+    show_target_selected_device: str
+    show_target_device_registry: str
     bind_kinds: tuple[str, ...]
     cmd_connect: str
     cmd_disconnect: str
@@ -40,6 +46,7 @@ class ParserSpec:
     cmd_show: str
     cmd_group: str
     cmd_no: str
+    cmd_profile: str
     cmd_selected_device: str
     cmd_selected_mode: str
     cmd_on: str
@@ -57,6 +64,7 @@ class ParserSpec:
     cmd_save_unified: str
     cmd_rename: str
     cmd_device: str
+    cmd_registry: str
     cmd_set: str
     cmd_write: str
     cmd_tests: str
@@ -94,6 +102,7 @@ class ParserSpec:
     msg_too_many_fmt: str
     msg_group_name: str
     msg_no_group_name: str
+    msg_profile_name: str
     msg_selected_device: str
     msg_selected_mode: str
     msg_selected_mode_value: str
@@ -161,6 +170,7 @@ class ParserSpec:
     kind_show: str
     kind_config_group: str
     kind_config_no_group: str
+    kind_config_profile: str
     kind_config_selected_device: str
     kind_config_selected_mode: str
     kind_config_merge: str
@@ -207,11 +217,17 @@ SPEC = ParserSpec(
     show_source_robot='robot',
     show_source_local='local',
     show_source_both='both',
-    show_targets=('status', 'groups', 'group', 'devices', 'device', 'bindings', 'selected-device', 'runtime-state', 'tests', 'test', 'config'),
+    show_targets=('status', 'groups', 'group', 'devices', 'device', 'device-registry', 'bindings', 'selected-device', 'runtime-state', 'tests', 'test', 'config', 'profiles', 'profile'),
     show_target_config='config',
     show_target_runtime_state='runtime-state',
     show_target_tests='tests',
     show_target_test='test',
+    show_target_status='status',
+    show_target_groups='groups',
+    show_target_devices='devices',
+    show_target_bindings='bindings',
+    show_target_selected_device='selected-device',
+    show_target_device_registry='device-registry',
     bind_kinds=('analog', 'hold', 'toggle', 'jog-forward', 'jog-reverse'),
     cmd_connect='connect',
     cmd_disconnect='disconnect',
@@ -220,6 +236,7 @@ SPEC = ParserSpec(
     cmd_show='show',
     cmd_group='group',
     cmd_no='no',
+    cmd_profile='profile',
     cmd_selected_device='selected-device',
     cmd_selected_mode='selected-mode',
     cmd_on='on',
@@ -237,6 +254,7 @@ SPEC = ParserSpec(
     cmd_save_unified='unified-config',
     cmd_rename='rename',
     cmd_device='device',
+    cmd_registry='registry',
     cmd_set='set',
     cmd_write='write',
     cmd_tests='tests',
@@ -274,6 +292,7 @@ SPEC = ParserSpec(
     msg_too_many_fmt='too many arguments for %s',
     msg_group_name='group requires name',
     msg_no_group_name='no group requires name',
+    msg_profile_name='profile requires name',
     msg_selected_device='selected-device requires device',
     msg_selected_mode='selected-mode requires on/off',
     msg_selected_mode_value='selected-mode requires on/off',
@@ -341,6 +360,7 @@ SPEC = ParserSpec(
     kind_show='show',
     kind_config_group='config_group',
     kind_config_no_group='config_no_group',
+    kind_config_profile='config_profile',
     kind_config_selected_device='config_selected_device',
     kind_config_selected_mode='config_selected_mode',
     kind_config_merge='config_merge',

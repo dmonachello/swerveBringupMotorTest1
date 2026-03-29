@@ -90,7 +90,7 @@ public interface BringupTest {
 
   /**
    * NAME
-   *   getMotorKeys - Return motor keys used by the test.
+   *   getMotorKeys - Return motor labels used by the test.
    */
   default java.util.List<String> getMotorKeys() {
     return java.util.Collections.emptyList();

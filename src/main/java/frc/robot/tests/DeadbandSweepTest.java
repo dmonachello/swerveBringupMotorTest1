@@ -1,8 +1,6 @@
 package frc.robot.tests;
 
 import frc.robot.devices.DeviceUnit;
-import frc.robot.tests.BringupTestRegistry.EncoderRef;
-import frc.robot.tests.BringupTestRegistry.MotorRef;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -19,6 +17,12 @@ import java.util.Map;
  */
 public final class DeadbandSweepTest implements BringupTest {
   public static final String TYPE = "deadbandSweep";
+  private static final String ENCODER_INTERNAL = "internal";
+  private static final String ENCODER_EXTERNAL = "external";
+  private static final String ENCODER_ALT = "sparkmax_alt";
+  private static final String ENCODER_ALT_ALT = "sparkmax_alternate";
+  private static final String ENCODER_ALT_SHORT = "alternate";
+  private static final String ENCODER_ALT_THROUGH = "through_bore";
 
   /**
    * NAME
@@ -37,7 +41,7 @@ public final class DeadbandSweepTest implements BringupTest {
     public String encoderSource = null;
     public Integer encoderCountsPerRev = null;
     public int encoderMotorIndex = 0;
-    public List<MotorRef> motors = Collections.emptyList();
+    public List<String> motorLabels = Collections.emptyList();
   }
 
   /**
@@ -143,21 +147,14 @@ public final class DeadbandSweepTest implements BringupTest {
 
   /**
    * NAME
-   *   getMotorKeys - Return motor keys used by this test.
+   *   getMotorKeys - Return motor labels used by this test.
    */
   @Override
   public List<String> getMotorKeys() {
-    if (config.motors == null || config.motors.isEmpty()) {
+    if (config.motorLabels == null || config.motorLabels.isEmpty()) {
       return Collections.emptyList();
     }
-    List<String> keys = new ArrayList<>();
-    for (MotorRef ref : config.motors) {
-      if (ref == null || ref.vendor == null || ref.type == null) {
-        continue;
-      }
-      keys.add(ref.vendor.trim() + ":" + ref.type.trim() + ":" + ref.id);
-    }
-    return keys;
+    return new ArrayList<>(config.motorLabels);
   }
 
   /**
@@ -177,13 +174,13 @@ public final class DeadbandSweepTest implements BringupTest {
       result = BringupTestResult.FAIL;
       return false;
     }
-    if (config.motors == null || config.motors.isEmpty()) {
+    if (config.motorLabels == null || config.motorLabels.isEmpty()) {
       status = "Motor not configured";
       result = BringupTestResult.FAIL;
       return false;
     }
-    for (MotorRef ref : config.motors) {
-      DeviceUnit device = context.findDevice(ref.vendor, ref.type, ref.id);
+    for (String label : config.motorLabels) {
+      DeviceUnit device = context.findDeviceByLabel(label);
       if (device != null && !motors.contains(device)) {
         motors.add(device);
       }
@@ -289,15 +286,8 @@ public final class DeadbandSweepTest implements BringupTest {
     entry.put("type", TYPE);
     entry.put("name", getName());
     entry.put("enabled", config.enabled);
-    if (config.motors != null && !config.motors.isEmpty()) {
-      List<String> motorKeys = new ArrayList<>();
-      for (MotorRef ref : config.motors) {
-        if (ref == null || ref.vendor == null || ref.type == null) {
-          continue;
-        }
-        motorKeys.add(ref.vendor.trim() + ":" + ref.type.trim() + ":" + ref.id);
-      }
-      entry.put("motorKeys", motorKeys);
+    if (config.motorLabels != null && !config.motorLabels.isEmpty()) {
+      entry.put("motorLabels", new ArrayList<>(config.motorLabels));
     }
     Map<String, Object> sweep = new java.util.LinkedHashMap<>();
     sweep.put("startDuty", config.startDuty);
@@ -338,28 +328,39 @@ public final class DeadbandSweepTest implements BringupTest {
   }
 
   private DeviceUnit resolveEncoder(BringupTestContext context) {
-    String key = config.encoderKey != null ? config.encoderKey.trim() : "internal";
-    EncoderRef ref = BringupTestRegistry.parseEncoderRef(key);
-    if (ref == null) {
-      return null;
-    }
-    if ("internal".equalsIgnoreCase(ref.source)) {
+    String key = config.encoderKey != null ? config.encoderKey.trim() : ENCODER_INTERNAL;
+    String source = config.encoderSource != null ? config.encoderSource : ENCODER_INTERNAL;
+    if (key.isBlank() || ENCODER_INTERNAL.equalsIgnoreCase(key) || isAltEncoderKey(key)) {
       int index = config.encoderMotorIndex < 0 ? 0 : config.encoderMotorIndex;
       if (index >= motors.size()) {
         index = 0;
       }
-      encoderSource = config.encoderSource != null ? config.encoderSource : "internal";
+      encoderSource = source;
       encoderCountsPerRev = config.encoderCountsPerRev;
       return motors.get(index);
     }
-    DeviceUnit device = context.findDevice(ref.vendor, ref.type, ref.id);
+    if (ENCODER_INTERNAL.equalsIgnoreCase(source)) {
+      source = ENCODER_EXTERNAL;
+    }
+    DeviceUnit device = context.findDeviceByLabel(key);
     if (device == null) {
       return null;
     }
-    encoderSource = config.encoderSource != null ? config.encoderSource : ref.source;
+    encoderSource = source;
     encoderCountsPerRev = config.encoderCountsPerRev;
     device.ensureCreated();
     return device;
+  }
+
+  private boolean isAltEncoderKey(String key) {
+    if (key == null) {
+      return false;
+    }
+    String normalized = key.trim().toLowerCase();
+    return normalized.equals(ENCODER_ALT)
+        || normalized.equals(ENCODER_ALT_ALT)
+        || normalized.equals(ENCODER_ALT_SHORT)
+        || normalized.equals(ENCODER_ALT_THROUGH);
   }
 
   private static double clampDuty(double duty) {

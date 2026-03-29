@@ -5,23 +5,20 @@
       {
         "name": "Rotation only (internal)",
         "enabled": false,
-        "motorKeys": [
-          "REV:NEO:25"
-        ],
         "type": "composite",
         "duty": 0.2,
         "rotation": {
           "limitRot": 15.0,
           "encoderKey": "internal",
           "encoderMotorIndex": 0
-        }
+        },
+        "motorLabels": [
+          "SPARKMAX/NEO 25"
+        ]
       },
       {
         "name": "Deadband sweep (internal)",
         "enabled": false,
-        "motorKeys": [
-          "REV:NEO:25"
-        ],
         "type": "deadbandSweep",
         "deadbandSweep": {
           "startDuty": 0.0,
@@ -32,14 +29,14 @@
           "requiredSamples": 3,
           "encoderKey": "internal",
           "encoderMotorIndex": 0
-        }
+        },
+        "motorLabels": [
+          "SPARKMAX/NEO 25"
+        ]
       },
       {
         "name": "Rotation + Time",
         "enabled": false,
-        "motorKeys": [
-          "CTRE:FALCON:9"
-        ],
         "type": "composite",
         "duty": 0.2,
         "rotation": {
@@ -50,68 +47,66 @@
         "time": {
           "timeoutSec": 2.0,
           "onTimeout": "fail"
-        }
+        },
+        "motorLabels": [
+          "FALCON 9"
+        ]
       },
       {
         "name": "Time only",
         "enabled": false,
-        "motorKeys": [
-          "REV:NEO 550:7"
-        ],
         "type": "composite",
         "duty": 0.3,
         "time": {
           "timeoutSec": 1.5,
           "onTimeout": "pass"
-        }
+        },
+        "motorLabels": [
+          "SPARKMAX/NEO550 7"
+        ]
       },
       {
         "name": "Nudge (0.2 for 0.5s)",
         "enabled": false,
-        "motorKeys": [
-          "REV:NEO:25"
-        ],
         "type": "composite",
         "duty": 0.2,
         "time": {
           "timeoutSec": 0.5,
           "onTimeout": "pass"
-        }
+        },
+        "motorLabels": [
+          "SPARKMAX/NEO 25"
+        ]
       },
       {
         "name": "Limit switch only",
         "enabled": false,
-        "motorKeys": [
-          "REV:NEO 550:7"
-        ],
         "type": "composite",
         "duty": 0.2,
         "limitSwitch": {
           "enabled": true,
           "onHit": "pass"
-        }
+        },
+        "motorLabels": [
+          "SPARKMAX/NEO550 7"
+        ]
       },
       {
         "name": "Hold to run",
         "enabled": false,
-        "motorKeys": [
-          "CTRE:FALCON:9"
-        ],
         "type": "composite",
         "duty": 0.2,
         "hold": {
           "enabled": true,
           "onRelease": "pass"
-        }
+        },
+        "motorLabels": [
+          "FALCON 9"
+        ]
       },
       {
         "name": "Rotation + Time + Limit",
         "enabled": false,
-        "motorKeys": [
-          "REV:NEO 550:7",
-          "REV:NEO:25",
-          "CTRE:FALCON:9"
-        ],
         "type": "composite",
         "duty": 0.2,
         "rotation": {
@@ -126,14 +121,16 @@
         "limitSwitch": {
           "enabled": true,
           "onHit": "pass"
-        }
+        },
+        "motorLabels": [
+          "SPARKMAX/NEO550 7",
+          "SPARKMAX/NEO 25",
+          "FALCON 9"
+        ]
       },
       {
         "name": "All checks",
         "enabled": false,
-        "motorKeys": [
-          "REV:NEO 550:7"
-        ],
         "type": "composite",
         "duty": 0.2,
         "rotation": {
@@ -152,83 +149,86 @@
         "limitSwitch": {
           "enabled": true,
           "onHit": "pass"
-        }
+        },
+        "motorLabels": [
+          "SPARKMAX/NEO550 7"
+        ]
       },
       {
         "name": "Joystick motor (controller0.leftY)",
         "enabled": false,
-        "motorKeys": [
-          "REV:NEO:25",
-          "CTRE:FALCON:9"
-        ],
         "type": "joystick",
         "inputSource": "controller0.leftY",
-        "deadband": 0.12
+        "deadband": 0.12,
+        "motorLabels": [
+          "SPARKMAX/NEO 25",
+          "FALCON 9"
+        ]
       }
     ],
     "smoke": [
       {
         "name": "Rotation only (internal)",
         "enabled": true,
-        "motorKeys": [
-          "REV:NEO:25"
-        ],
         "type": "composite",
         "duty": 0.2,
         "rotation": {
           "limitRot": 2.0,
           "encoderKey": "internal",
           "encoderMotorIndex": 0
-        }
+        },
+        "motorLabels": [
+          "SPARKMAX/NEO 25"
+        ]
       },
       {
         "name": "Time only",
         "enabled": true,
-        "motorKeys": [
-          "REV:NEO:25"
-        ],
         "type": "composite",
         "duty": 0.3,
         "time": {
           "timeoutSec": 1.5,
           "onTimeout": "pass"
-        }
+        },
+        "motorLabels": [
+          "SPARKMAX/NEO 25"
+        ]
       },
       {
         "name": "Nudge (0.2 for 0.5s)",
         "enabled": true,
-        "motorKeys": [
-          "REV:NEO:25"
-        ],
         "type": "composite",
         "duty": 0.2,
         "time": {
           "timeoutSec": 0.5,
           "onTimeout": "pass"
-        }
+        },
+        "motorLabels": [
+          "SPARKMAX/NEO 25"
+        ]
       },
       {
         "name": "Hold to run",
         "enabled": true,
-        "motorKeys": [
-          "REV:NEO:25"
-        ],
         "type": "composite",
         "duty": 0.2,
         "hold": {
           "enabled": true,
           "onRelease": "pass"
-        }
+        },
+        "motorLabels": [
+          "SPARKMAX/NEO 25"
+        ]
       },
       {
         "name": "Joystick motor (controller0.leftY)",
         "enabled": true,
-        "motorKeys": [
-          "REV:NEO:25"
-        ],
         "type": "joystick",
         "inputSource": "controller0.leftY",
-        "deadband": 0.12
+        "deadband": 0.12,
+        "motorLabels": [
+          "SPARKMAX/NEO 25"
+        ]
       }
     ]
   }

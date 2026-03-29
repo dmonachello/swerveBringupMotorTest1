@@ -1,4 +1,4 @@
-configure terminal
+﻿configure terminal
 device testMotor
 device testMotor set type sparkmax
 group testGroup

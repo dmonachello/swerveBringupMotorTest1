@@ -20,9 +20,10 @@ import threading
 from dataclasses import dataclass
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Callable
 
 from tools.common.json_io import read_json
+from tools.common.nt_labels import encode_label_for_nt
 
 @dataclass
 class ConsoleRule:
@@ -39,6 +40,7 @@ class ConsoleEntry:
     key: str
     event_type: str
     device_id: Optional[int]
+    device_label: Optional[str]
     severity: str
     active: bool
     count: int
@@ -68,6 +70,7 @@ class ConsoleMonitor:
         transport: str,
         host: str,
         port: int,
+        device_label_resolver: Optional[Callable[[int], str]] = None,
     ) -> None:
         self._rules_path = rules_path
         self._rules: List[ConsoleRule] = []
@@ -91,11 +94,29 @@ class ConsoleMonitor:
         self._recent_timeouts: Dict[int, float] = {}
         self._bus_fault_window_s = 5.0
         self._bus_fault_min_devices = 2
-        self._published_keys: set[Tuple[Optional[int], str]] = set()
+        self._published_keys: set[Tuple[Optional[str], str]] = set()
         self._reset_requested = False
+        self._device_label_resolver = device_label_resolver
         self._init_logger(debug_log_path, debug_log_max_mb, debug_log_max_files)
         self._load_rules()
         self._init_sockets()
+
+    def _resolve_device_label(self, device_id: Optional[int]) -> Optional[str]:
+        """
+        NAME
+            _resolve_device_label - Resolve a label for a device ID when possible.
+        """
+        if device_id is None:
+            return None
+        if self._device_label_resolver is None:
+            return None
+        try:
+            label = self._device_label_resolver(int(device_id))
+        except Exception:
+            return None
+        if not label:
+            return None
+        return str(label)
 
     def _init_logger(self, path: str, max_mb: int, max_files: int) -> None:
         """
@@ -402,6 +423,7 @@ class ConsoleMonitor:
                         key=key,
                         event_type=rule.event_type,
                         device_id=device_id,
+                        device_label=self._resolve_device_label(device_id),
                         severity=rule.severity,
                         active=True,
                         count=1,
@@ -455,6 +477,7 @@ class ConsoleMonitor:
                     key=key,
                     event_type="BUS_FAULT_SUSPECTED",
                     device_id=None,
+                    device_label=None,
                     severity="WARN",
                     active=True,
                     count=1,
@@ -512,11 +535,16 @@ class ConsoleMonitor:
         console_table.getEntry("linesMatched").setDouble(float(self._lines_matched))
         console_table.getEntry("packetsReceived").setDouble(float(self._packets_received))
         console_table.getEntry("lastSource").setString(self._last_addr or "")
-        device_counts: Dict[int, Dict[str, int]] = {}
+        device_counts: Dict[str, Dict[str, int]] = {}
         system_counts = {"WARN": 0, "ERROR": 0, "FATAL": 0}
         for entry in entries:
-            if entry.device_id is not None:
-                base = console_table.getSubTable("devices").getSubTable(str(entry.device_id)).getSubTable(entry.event_type)
+            if entry.device_label:
+                label_key = encode_label_for_nt(entry.device_label)
+                base = (
+                    console_table.getSubTable("devices")
+                    .getSubTable(label_key)
+                    .getSubTable(entry.event_type)
+                )
             else:
                 base = console_table.getSubTable("system").getSubTable(entry.event_type)
             base.getEntry("Active").setBoolean(entry.active)
@@ -524,19 +552,21 @@ class ConsoleMonitor:
             base.getEntry("LastSeen").setDouble(float(entry.last_seen))
             base.getEntry("Message").setString(entry.last_message)
             base.getEntry("Severity").setString(entry.severity)
-            self._published_keys.add((entry.device_id, entry.event_type))
+            self._published_keys.add((entry.device_label, entry.event_type))
             if entry.active:
                 severity = entry.severity.upper()
-                if entry.device_id is not None:
-                    counts = device_counts.setdefault(entry.device_id, {"WARN": 0, "ERROR": 0, "FATAL": 0})
+                if entry.device_label:
+                    counts = device_counts.setdefault(entry.device_label, {"WARN": 0, "ERROR": 0, "FATAL": 0})
                     if severity in counts:
                         counts[severity] += max(1, entry.count)
                 else:
                     if severity in system_counts:
                         system_counts[severity] += max(1, entry.count)
         devices_table = console_table.getSubTable("devices")
-        for device_id, counts in device_counts.items():
-            base = devices_table.getSubTable(str(device_id))
+        for device_label, counts in device_counts.items():
+            if not device_label:
+                continue
+            base = devices_table.getSubTable(encode_label_for_nt(device_label))
             base.getEntry("warnCount").setDouble(float(counts["WARN"]))
             base.getEntry("errorCount").setDouble(float(counts["ERROR"]))
             base.getEntry("fatalCount").setDouble(float(counts["FATAL"]))
@@ -566,9 +596,13 @@ class ConsoleMonitor:
         """
         with self._lock:
             self._entries.clear()
-        for device_id, event_type in list(self._published_keys):
-            if device_id is not None:
-                base = console_table.getSubTable("devices").getSubTable(str(device_id)).getSubTable(event_type)
+        for device_label, event_type in list(self._published_keys):
+            if device_label:
+                base = (
+                    console_table.getSubTable("devices")
+                    .getSubTable(encode_label_for_nt(device_label))
+                    .getSubTable(event_type)
+                )
             else:
                 base = console_table.getSubTable("system").getSubTable(event_type)
             base.getEntry("Active").setBoolean(False)

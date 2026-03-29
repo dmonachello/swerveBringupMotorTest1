@@ -27,10 +27,14 @@ show_target    = "status"
                | "group" ws name
                | "devices"
                | "device" ws name
+               | "device" ws "registry" ws name
                | "bindings"
                | "selected-device"
                | "runtime-state"
                | "config"
+               | "config" ws "local-raw"
+               | "profiles"
+               | "profile"
                | "tests"
                | "test" ws name ;
 
@@ -40,6 +44,7 @@ show_flag      = show_source | "--json" ;
 
 config         = "group" ws name
                | "no" ws "group" ws name
+               | "profile" ws name
                | "selected-device" ws name
                | "selected-mode" ws ("on" | "off")
                | "merge" ws "config" ws path

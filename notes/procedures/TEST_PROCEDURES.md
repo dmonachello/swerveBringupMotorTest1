@@ -58,9 +58,9 @@ Each test entry includes:
 - `type`: test type string (`composite` or `joystick`).
 - `name`: display name used in console prints.
 - `enabled`: whether the test is selectable and runnable.
-- `motorKeys`: list of `VENDOR:TYPE:ID` for the device(s) under test.
+- `motorLabels`: list of `device label` for the device(s) under test.
 - `duty`: motor command (-1.0..1.0).
-- `rotation`: optional object with `limitRot`, `encoderKey` (`internal`, `through_bore`, or `VENDOR:TYPE:ID`),
+- `rotation`: optional object with `limitRot`, `encoderKey` (`internal`, `through_bore`, or `device label`),
   `encoderSource` (`internal`, `sparkmax_alt`, or `external`), `encoderCountsPerRev` (optional), and `encoderMotorIndex` (0-based).
 - `time`: optional object with `timeoutSec` and `onTimeout` (`pass` or `fail`).
 - `limitSwitch`: optional object with `enabled` and `onHit` (`pass` or `fail`).
@@ -83,7 +83,7 @@ Example (rotation + time + limit):
   "type": "composite",
   "name": "NEO rotation + time + limit",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10"],
+  "motorLabels": ["SPARKMAX/NEO 10"],
   "duty": 0.2,
   "rotation": { "limitRot": 2.0, "encoderKey": "internal", "encoderMotorIndex": 0 },
   "time": { "timeoutSec": 3.0, "onTimeout": "pass" },
@@ -97,7 +97,7 @@ Example (rotation only):
   "type": "composite",
   "name": "CANCoder external 1 rotation",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10"],
+  "motorLabels": ["SPARKMAX/NEO 10"],
   "duty": 0.2,
   "rotation": { "limitRot": 1.0, "encoderKey": "internal", "encoderMotorIndex": 0 }
 }
@@ -112,9 +112,9 @@ CTRE reference (external CAN encoder):
   "type": "composite",
   "name": "CTRE rotation (CANCoder)",
   "enabled": true,
-  "motorKeys": ["CTRE:FALCON:11"],
+  "motorLabels": ["FALCON 11"],
   "duty": 0.2,
-  "rotation": { "limitRot": 1.0, "encoderKey": "CTRE:CANCoder:12", "encoderSource": "external", "encoderMotorIndex": 0 }
+  "rotation": { "limitRot": 1.0, "encoderKey": "CANCoder 12", "encoderSource": "external", "encoderMotorIndex": 0 }
 }
 ```
 Run:
@@ -127,7 +127,7 @@ Example (REV Through-Bore via SPARK MAX data port):
   "type": "composite",
   "name": "Through-bore rotation (SparkMax)",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10"],
+  "motorLabels": ["SPARKMAX/NEO 10"],
   "duty": 0.2,
   "rotation": {
     "limitRot": 5.0,
@@ -157,7 +157,7 @@ Rotation + time + limit:
   "type": "composite",
   "name": "Rotation + time + limit",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10"],
+  "motorLabels": ["SPARKMAX/NEO 10"],
   "duty": 0.2,
   "rotation": { "limitRot": 10.0, "encoderKey": "internal", "encoderMotorIndex": 0 },
   "time": { "timeoutSec": 2.0, "onTimeout": "fail" },
@@ -171,7 +171,7 @@ Hold to run:
   "type": "composite",
   "name": "Hold to run",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10"],
+  "motorLabels": ["SPARKMAX/NEO 10"],
   "duty": 0.2,
   "hold": { "enabled": true, "onRelease": "pass" }
 }
@@ -183,7 +183,7 @@ All checks (rotation + time + limit + hold):
   "type": "composite",
   "name": "All checks",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10"],
+  "motorLabels": ["SPARKMAX/NEO 10"],
   "duty": 0.2,
   "rotation": { "limitRot": 8.0, "encoderKey": "internal", "encoderMotorIndex": 0 },
   "time": { "timeoutSec": 3.0, "onTimeout": "pass" },
@@ -198,7 +198,7 @@ Example (time only):
   "type": "composite",
   "name": "Spin motor for 1.5s",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10"],
+  "motorLabels": ["SPARKMAX/NEO 10"],
   "duty": 0.2,
   "time": { "timeoutSec": 1.5, "onTimeout": "pass" }
 }
@@ -213,7 +213,7 @@ Example (joystick test):
   "type": "joystick",
   "name": "Joystick motor (controller0.leftY)",
   "enabled": true,
-  "motorKeys": ["REV:NEO:10", "REV:NEO550:7"],
+  "motorLabels": ["SPARKMAX/NEO 10", "SPARKMAX/NEO550 7"],
   "deadband": 0.12,
   "inputSource": "controller0.leftY"
 }
@@ -276,7 +276,7 @@ Purpose: bringup tests and bindings behave correctly on real hardware.
 - Run the selected test with controller1 `A` and confirm PASS/FAIL and reason.
 - Hold controller1 `A` during a test that has `hold.enabled=true`; release to trigger the hold action.
 - Press controller1 `B` to run all enabled tests in order; verify `Run-all complete.` prints at the end.
-- If a joystick test is enabled, confirm the listed `motorKeys` move together and stop when the test ends.
+- If a joystick test is enabled, confirm the listed `motorLabels` move together and stop when the test ends.
 - If a rotation test uses `encoderKey: internal`, confirm it uses the motor index given by `encoderMotorIndex`.
 - If a limit switch check is enabled, verify the test ends on switch activation and the result matches `onHit`.
 - If the PC tool is running, press `D-pad Down` and confirm PC diagnostics show `openOk=YES`.

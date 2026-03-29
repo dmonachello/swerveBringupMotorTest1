@@ -55,11 +55,11 @@ def publish_updates(
     analyzer: CanLiveAnalyzer,
     state: SnifferState,
     devices: List[Dict[str, object]],
-    labels: Dict[Tuple[int, int, int], str],
+    label_lookup: Dict[Tuple[int, int, int], str],
+    decode_device_key,
     table,
     bus,
     console_monitor: ConsoleMonitor | None,
-    uses_status_presence,
 ) -> Tuple[float, float]:
     """
     NAME
@@ -73,11 +73,11 @@ def publish_updates(
         analyzer: Live analyzer for summary data.
         state: SnifferState with counters and timestamps.
         devices: Profile device list.
-        labels: Device label map.
+        label_lookup: Map of (mfg,type,id) to device label.
+        decode_device_key: Function that decodes a CAN ID into (mfg,type,id).
         table: NetworkTables base table (bringup/diag) or None.
         bus: CAN bus instance for extra summary context.
         console_monitor: Optional NetConsole monitor.
-        uses_status_presence: Predicate for presence source selection.
 
     RETURNS
         Updated (last_publish, last_summary) timestamps.
@@ -99,7 +99,6 @@ def publish_updates(
             last_seen=state.last_seen,
             status_last_seen=state.status_last_seen,
             control_last_seen=state.control_last_seen,
-            uses_status_presence=uses_status_presence,
             msg_count=state.msg_count,
             now=now,
             timeout_s=args.timeout,
@@ -114,11 +113,16 @@ def publish_updates(
             now=now,
             timeout_s=args.timeout,
             last_status=state.last_status,
-            uses_status_presence=uses_status_presence,
         )
 
     if args.publish_can_summary and table is not None:
-        summary = analyzer.summary(now, stale_s=args.stale_s, top_n=args.top_n)
+        summary = analyzer.summary(
+            now,
+            stale_s=args.stale_s,
+            top_n=args.top_n,
+            label_lookup=label_lookup,
+            decode_device_key=decode_device_key,
+        )
         table.getEntry("can/summary/json").setString(
             json.dumps(summary, separators=(",", ":"))
         )
@@ -136,9 +140,15 @@ def publish_updates(
     state.period_frames = 0
     state.heartbeat += 1
     if args.print_summary_period and (now - last_summary) >= args.print_summary_period:
-        summary = analyzer.summary(now, stale_s=args.stale_s, top_n=args.top_n)
+        summary = analyzer.summary(
+            now,
+            stale_s=args.stale_s,
+            top_n=args.top_n,
+            label_lookup=label_lookup,
+            decode_device_key=decode_device_key,
+        )
         extra = build_summary_extra(summary, devices, analyzer, state, bus, args.bitrate)
-        print_summary(summary, now, labels, extra)
+        print_summary(summary, now, extra)
         last_summary = now
 
     last_publish = now

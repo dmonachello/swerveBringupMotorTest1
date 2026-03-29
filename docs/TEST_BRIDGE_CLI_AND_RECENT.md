@@ -50,7 +50,7 @@ Purpose: Validate end-to-end TCP UI path + robot-side behavior.
    - `configure terminal`
    - `group swerve_drive`
    - `add device FL_DRIVE`
-   - `bind driver.left.y analog`
+   - `bind controller0.leftY analog`
    - `enable`
    - `end`
 4) Verify:

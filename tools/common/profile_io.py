@@ -16,6 +16,12 @@ import hashlib
 import json
 from typing import Any, Dict, Tuple
 
+from tools.common.profile_constants import (
+    KEY_BRIDGE_CONFIG,
+    KEY_DATA_HASH,
+    PROFILE_SCHEMA_VERSION,
+)
+
 
 def compute_profiles_hash(payload: Dict[str, Any]) -> str:
     """
@@ -28,9 +34,9 @@ def compute_profiles_hash(payload: Dict[str, Any]) -> str:
         excluded so local group edits do not invalidate profiles integrity.
     """
     normalized = dict(payload)
-    normalized["data_hash"] = ""
-    if "bridgeConfig" in normalized:
-        normalized.pop("bridgeConfig", None)
+    normalized[KEY_DATA_HASH] = ""
+    if KEY_BRIDGE_CONFIG in normalized:
+        normalized.pop(KEY_BRIDGE_CONFIG, None)
     blob = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
@@ -50,3 +56,11 @@ def validate_profiles_schema(payload: Dict[str, Any], schema_version: int) -> Tu
             f"expected {schema_version}, got {payload.get('schema_version')}",
         )
     return (True, "")
+
+
+def default_profiles_schema_version() -> int:
+    """
+    NAME
+        default_profiles_schema_version - Return the current schema_version.
+    """
+    return PROFILE_SCHEMA_VERSION

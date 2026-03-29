@@ -1,15 +1,11 @@
-# Good: enter config, define device, enter device mode, set fields
+﻿# Good: enter config, define device, enter device mode, set fields
 configure terminal
 device leftMotor
 set vendor rev
-set deviceType MotorController
-set deviceId 5
 exit
 
 device rightMotor
 set vendor rev
-set deviceType MotorController
-set deviceId 4
 exit
 
 # Good: group config

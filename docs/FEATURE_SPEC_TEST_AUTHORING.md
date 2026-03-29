@@ -55,8 +55,8 @@ The model is the single source of truth and is used by:
 ### Test Object
 
 * name (string, immutable in v1)
-* type ("joystick" | "button")
-* devices (list of canonical device keys)
+* type ("joystick" | "button" | "composite" | "deadbandSweep")
+* devices (list of canonical device labels)
 * binding:
 
   * joystick:
@@ -68,6 +68,10 @@ The model is the single source of truth and is used by:
     * input source (string, required)
       * controller input or UI input
     * duty (float)
+  * deadband sweep:
+
+    * deadbandSweep fields (startDuty/maxDuty/stepDuty/stepHoldSec/motionThresholdRot/requiredSamples)
+    * optional encoderKey/encoderSource/encoderCountsPerRev/encoderMotorIndex
 * termination:
 
   * hold (bool)
@@ -86,14 +90,14 @@ The model is the single source of truth and is used by:
 ## Test Name Rules
 
 * Must be unique within the test set
-* Allowed characters: A?Z, a?z, 0?9, underscore
+* Allowed characters: A-Z, a-z, 0-9, underscore
 * No spaces in v1
 * Case-sensitive (recommended)
 
 ### CLI Behavior
 
-* Duplicate name ? error
-* Invalid name ? error
+* Duplicate name -> error
+* Invalid name -> error
 
 ---
 
@@ -101,6 +105,7 @@ The model is the single source of truth and is used by:
 
 * UI and CLI must allow choosing which test set to edit or create under `test_sets`.
 * Selection determines where new tests are appended and which tests are shown for editing.
+* `test set <name>` creates the set if it does not exist (no separate create command).
 
 ---
 
@@ -114,12 +119,13 @@ The model is the single source of truth and is used by:
 ## Device Identity Rules
 
 * UI displays device labels
-* Internal model stores canonical key: `VENDOR:TYPE:ID`
-* JSON output uses `motorKeys` derived from canonical keys
+* Internal model stores device labels
+* JSON output uses `motorLabels` derived from labels
 
-### Requirement
+### Requirements
 
-All device selection must resolve to canonical keys before entering the model.
+* All device selection must resolve to labels before entering the model.
+* Labels must be unique within the active profile; duplicates are errors.
 
 ---
 
@@ -154,6 +160,7 @@ All device selection must resolve to canonical keys before entering the model.
 * Maps to:
 
   * `type: "composite"`
+* CLI accepts `type button` as an alias; JSON output remains `type: "composite"`.
 * Must include:
 
   * duty (required)
@@ -205,6 +212,20 @@ Multiple termination conditions are allowed.
 
   * all fields supported by existing schema
 
+### Limit Switch Commands (CLI)
+
+Purpose: configure limit switch termination behavior in test mode.
+
+Commands:
+1. `termination limitswitch [id]` enables the limit switch check (id is optional metadata).
+2. `limitswitch onHit <pass|fail>` defines the result when triggered.
+
+Notes:
+- The limit switch check triggers when any selected motor reports a closed forward or reverse limit.
+- Limit switches are defined per device in `bringup_system.json` under `limits` (DIO wiring + invert).
+- Either `termination limitswitch` or `limitswitch onHit` enables the limit switch check.
+- The optional id is stored in JSON but is not used by the robot runtime yet.
+
 ### Requirements
 
 * At least one termination condition is required for button tests
@@ -217,7 +238,7 @@ Must pass before saving:
 
 * Required fields present for test type
 * Non-empty device list
-* Valid canonical device keys
+* Valid canonical device labels
 * No duplicate devices
 * Valid parameter ranges
 * Valid termination configuration
@@ -246,8 +267,23 @@ Warnings (do not block save):
 
 * Save locally as `bringup_tests.json`
 * Default location: repository root (configurable)
-* New test name: append to the selected test set without prompt
+* New test name: appended to the selected test set without prompt
 * Existing test name: warn and prompt before overwrite (UI and CLI)
+
+---
+
+## Migration Plan (Hard Switch to Labels)
+
+Purpose: move from `motorKeys` to label-only identifiers without ambiguity.
+
+Steps:
+1. Update `data/bringup_system.json` to ensure all device labels are unique.
+2. Update existing tests to use `motorLabels` only.
+3. Deploy the updated `bringup_tests.json`.
+4. Reject any remaining `motorKeys` entries; only `motorLabels` are supported.
+
+Notes:
+- Missing label mappings are treated as errors and must be resolved before saving.
 
 ---
 
@@ -265,29 +301,48 @@ Warnings (do not block save):
 
 ### Core Flow
 
-1. `conf t`
-2. `test create <name>`
-3. `test <name>`
-4. `type joystick|button`
-5. `device add <vendor:type:id>`
-6. joystick only:
+1. `configure terminal`
+2. `test set <name>` (selects or creates the set)
+3. `test create <name>` (enters test mode)
+4. `test <name>` (existing tests only)
+5. `type joystick|button|composite|deadbandSweep`
+6. `device add <device label>`
+7. joystick only:
 
    * `inputSource <controller>.<inputId>`
    * `deadband <value>`
-7. button only:
+8. button only:
 
    * `inputSource <controller>.<inputId>`
    * or
    * `inputSource ui.<id>`
    * `duty <value>`
-8. termination:
+9. termination:
 
    * `termination hold`
    * `termination time <seconds>`
    * `termination rotation <value>`
-   * `termination limitswitch <id>`
-9. `end`
-10. `write tests <path>`
+   * `termination limitswitch [id]`
+   * `limitswitch onHit <pass|fail>`
+10. `end`
+11. `write tests <path>`
+
+### Deadband Sweep Commands (CLI)
+
+Purpose: configure deadband sweep tests in test mode.
+
+Commands:
+1. `deadbandSweep startDuty <value>`
+2. `deadbandSweep maxDuty <value>`
+3. `deadbandSweep stepDuty <value>`
+4. `deadbandSweep stepHoldSec <value>`
+5. `deadbandSweep motionThresholdRot <value>`
+6. `deadbandSweep requiredSamples <value>`
+7. Optional encoder fields:
+   - `deadbandSweep encoderKey <label|internal>`
+   - `deadbandSweep encoderSource <internal|sparkmax_alt|external>`
+   - `deadbandSweep encoderCountsPerRev <value>`
+   - `deadbandSweep encoderMotorIndex <value>`
 
 ---
 

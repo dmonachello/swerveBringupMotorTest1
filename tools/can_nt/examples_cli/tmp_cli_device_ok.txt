@@ -1,6 +1,4 @@
-configure terminal
+﻿configure terminal
 device leftMotor
 set vendor rev
-set deviceType 1
-set deviceId 5
 exit

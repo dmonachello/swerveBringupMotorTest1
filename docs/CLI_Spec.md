@@ -195,9 +195,13 @@ No prompting allowed in batch mode.
 - `show group <name>`
 - `show devices`
 - `show device <name>`
+- `show device registry <name>`
 - `show bindings`
 - `show selected-device`
 - `show runtime-state`
+- `show config local-raw`
+- `show profiles`
+- `show profile`
 - `configure terminal`
 - `connect`
 - `disconnect`
@@ -206,6 +210,7 @@ No prompting allowed in batch mode.
 
 - `group <name>`
 - `no group <name>`
+- `profile <name>`
 - `selected-device <device>`
 - `selected-mode on`
 - `selected-mode off`
@@ -243,31 +248,34 @@ No prompting allowed in batch mode.
 
 - `show group` text output includes member names and bindings.
 - `show devices` (local) lists the full profile-derived device inventory, not only group members.
-- `show device` text output includes manufacturer/deviceType names when mappings are available.
+- `show device` text output includes label-based metadata from bringup_system.json.
+- `show device registry` returns the full device registry entry (local only).
+- CLI auto-imports `data/bringup_system.json` on startup when present (replaces groups).
+- merge config is only allowed when the incoming profiles hash matches the loaded profiles; otherwise use import config.
 
 ## Control Identifiers
 
 Examples:
-- `driver.left.y`
-- `driver.right.y`
-- `operator.left.y`
-- `operator.right.y`
-- `driver.a`
-- `driver.b`
-- `driver.x`
-- `driver.y`
-- `driver.lb`
-- `driver.rb`
-- `operator.a`
-- `operator.b`
-- `operator.x`
-- `operator.y`
-- `operator.lb`
-- `operator.rb`
+- `controller0.leftY`
+- `controller0.rightY`
+- `controller1.leftY`
+- `controller1.rightY`
+- `controller0.A`
+- `controller0.B`
+- `controller0.X`
+- `controller0.Y`
+- `controller0.LB`
+- `controller0.RB`
+- `controller1.A`
+- `controller1.B`
+- `controller1.X`
+- `controller1.Y`
+- `controller1.LB`
+- `controller1.RB`
 - `ui.slider1`
 - `ui.slider2`
-- `ui.button1`
-- `ui.button2`
+- `ui.Button1`
+- `ui.Button2`
 
 ## Binding Rules
 
@@ -393,7 +401,7 @@ configure terminal
 group swerve_drive
 add device FL_DRIVE
 add device FR_DRIVE
-bind driver.left.y analog
+bind controller0.leftY analog
 enable
 end
 
@@ -485,7 +493,7 @@ bridge> configure terminal
 bridge(config)# group swerve_drive
 bridge(config-group-swerve_drive)# add device FL_DRIVE
 bridge(config-group-swerve_drive)# member FR_DRIVE disable
-bridge(config-group-swerve_drive)# bind driver.left.y analog
+bridge(config-group-swerve_drive)# bind controller0.leftY analog
 bridge(config-group-swerve_drive)# enable
 bridge(config-group-swerve_drive)# exit
 bridge(config)# selected-device FL_DRIVE

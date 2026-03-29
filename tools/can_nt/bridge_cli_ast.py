@@ -101,6 +101,9 @@ AST_EXEC_SPEC = {
     "label_show_group": "show group",
 }
 
+SHOW_TARGET_CONFIG_RAW = "config-raw"
+SHOW_NAME_LOCAL_RAW = "local-raw"
+
 
 class BridgeCliAstExecutor:
     """
@@ -145,6 +148,7 @@ class BridgeCliAstExecutor:
             SPEC.kind_show: self._ast_show,
             SPEC.kind_config_group: self._ast_config_group,
             SPEC.kind_config_no_group: self._ast_config_no_group,
+            SPEC.kind_config_profile: self._ast_config_profile,
             SPEC.kind_config_selected_device: self._ast_config_selected_device,
             SPEC.kind_config_selected_mode: self._ast_config_selected_mode,
             SPEC.kind_config_merge: self._ast_config_merge,
@@ -250,6 +254,12 @@ class BridgeCliAstExecutor:
             return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
         return None
 
+    def _ast_config_profile(self, ast: CommandAst) -> Optional[int]:
+        if not self._cli._set_active_profile(ast.profile_name):
+            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+        print(f"Active profile: {self._cli._groups_profile}")
+        return None
+
     def _ast_config_selected_device(self, ast: CommandAst) -> Optional[int]:
         if not self._cli._session.is_connected():
             if not self._cli._set_local_selected_device(ast.device_name):
@@ -280,16 +290,18 @@ class BridgeCliAstExecutor:
         return None
 
     def _ast_config_merge(self, ast: CommandAst) -> Optional[int]:
-        plan = merge_config(ast.path, self._cli._conflict_policy)
+        plan = merge_config(ast.path, self._cli._conflict_policy, self._cli._active_profile_name())
         return self._cli._apply_config_plan(plan)
 
     def _ast_config_import(self, ast: CommandAst) -> Optional[int]:
-        plan = import_config(ast.path, self._cli._conflict_policy)
+        plan = import_config(ast.path, self._cli._conflict_policy, self._cli._active_profile_name())
         return self._cli._apply_config_plan(plan)
 
     def _ast_config_export(self, ast: CommandAst) -> Optional[int]:
         if ast.export_target == SPEC.cmd_export_runtime_groups:
-            result = export_runtime_groups(self._cli._session, ast.path)
+            result = export_runtime_groups(
+                self._cli._session, ast.path, self._cli._active_profile_name()
+            )
             print(result.message)
             return AST_EXEC_SPEC["ret_err"] if not result.ok else None
         if ast.export_target == SPEC.cmd_export_cli_script:
@@ -309,7 +321,7 @@ class BridgeCliAstExecutor:
                 return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
             return None
         if ast.save_target == SPEC.cmd_save_config:
-            result = save_config(self._cli._session, ast.path)
+            result = save_config(self._cli._session, ast.path, self._cli._active_profile_name())
             print(result.message)
             return AST_EXEC_SPEC["ret_err"] if not result.ok else None
         if ast.save_target == SPEC.cmd_save_local_config:
@@ -526,7 +538,10 @@ class BridgeCliAstExecutor:
             print(AST_EXEC_SPEC["msg_err_show_requires"])
             return None
         if target == SPEC.show_target_config:
-            target = SPEC.show_target_runtime_state
+            if ast.show_name and ast.show_name.lower() == SHOW_NAME_LOCAL_RAW:
+                target = SHOW_TARGET_CONFIG_RAW
+            else:
+                target = SPEC.show_target_runtime_state
         source = ast.show_source
         if not source:
             source = SPEC.show_source_robot if self._cli._session.is_connected() else SPEC.show_source_local
@@ -551,22 +566,25 @@ class BridgeCliAstExecutor:
         if not self._cli._session.is_connected():
             print(AST_EXEC_SPEC["msg_err_robot_unavailable"])
             return bool(SPEC.bool_false)
-        if target == SPEC.show_targets[SPEC.count_zero]:
+        if target == SPEC.show_target_status:
             seq = show_status(self._cli._session, json_output=json_output)
-        elif target == SPEC.show_targets[SPEC.count_one]:
+        elif target == SPEC.show_target_groups:
             seq = show_groups(self._cli._session, json_output=json_output)
-        elif target == SPEC.show_targets[SPEC.count_two] and name:
+        elif target == SPEC.show_target_group and name:
             seq = show_group(self._cli._session, name, json_output=json_output)
-        elif target == SPEC.show_targets[SPEC.count_three]:
+        elif target == SPEC.show_target_devices:
             seq = show_devices(self._cli._session, json_output=json_output)
-        elif target == SPEC.show_targets[SPEC.count_four] and name:
+        elif target == SPEC.show_target_device and name:
             seq = show_device(self._cli._session, name, json_output=json_output)
-        elif target == SPEC.show_targets[SPEC.count_five]:
+        elif target == SPEC.show_target_bindings:
             seq = show_bindings(self._cli._session, json_output=json_output)
-        elif target == SPEC.show_targets[SPEC.count_six]:
+        elif target == SPEC.show_target_selected_device:
             seq = show_selected_device(self._cli._session, json_output=json_output)
         elif target == SPEC.show_target_runtime_state:
             seq = show_runtime_state(self._cli._session, json_output=json_output)
+        elif target == SPEC.show_target_device_registry:
+            print(AST_EXEC_SPEC["msg_err_unknown_show"])
+            return bool(SPEC.bool_false)
         else:
             print(AST_EXEC_SPEC["msg_err_unknown_show"])
             return bool(SPEC.bool_false)

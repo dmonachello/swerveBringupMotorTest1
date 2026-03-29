@@ -14,7 +14,7 @@ Purpose: Explain where the editor fits in the system.
 - The editor produces `bringup_system.json` and diagram metadata.
 - The profiles are consumed by robot code and the PC tool.
 - Diagram metadata is editor-only and ignored by robot/PC tools.
-- bridgeConfig groups are used by CLI and can be rendered in the PC UI live view.
+- bridgeConfig.byProfile groups are used by CLI and can be rendered in the PC UI live view.
 
 ## Components
 Purpose: Describe major modules and responsibilities.
@@ -63,31 +63,33 @@ Purpose: Stable device configuration consumed by robot and PC tools.
 - Canonical location: `data/bringup_system.json`.
 - RoboRIO deploy copy: `src/main/deploy/bringup_system.json` (synced from `data/`).
 - Root fields:
-- `schema_version` (int, 3)
+- `schema_version` (int, 4)
 - `data_version` (string)
 - `data_hash` (string)
 - `default_profile` (string)
+- `devices` (device registry)
 - `profiles` (object of named profiles)
 - Optional `diagram` (editor-only layout metadata)
-- Optional `bridgeConfig` (groups/bindings metadata)
+- Optional `bridgeConfig` (per-profile groups/bindings metadata)
 
 Profile sections:
-- Lists: `neos`, `neo550s`, `flexes`, `krakens`, `falcons`, `cancoders`, `candles`, `devices`
-- Singletons: `pdh`, `pdp`, `pigeon`, `roborio`
- - Optional: `bridgeConfig` (groups/bindings used by CLI)
+- `profiles.<name>.devices` is a label-only list referencing the device registry.
 
 Device entry schema:
-- Required: `label`, `id`
-- Optional: `motor`, `limits`, `terminator`, `tags`
-- `devices` entries also require: `vendor`, `type`
+- Required: `label`, `interface`
+- CAN devices require: `manufacturer`, `deviceType`, `id`
+- Optional: `model`, `terminator`, `tags`, `limits`, `attachments`
 
 Example:
 ```json
 {
   "label": "FL KRAK",
+  "interface": "CAN",
+  "manufacturer": 4,
+  "deviceType": 2,
   "id": 2,
-  "motor": "CTRE Kraken",
-  "limits": { "fwdDio": 0, "revDio": 1, "invert": false },
+  "model": "KRAKEN",
+  "limits": { "switches": [{ "label": "FL LIMIT", "dio": 0, "invert": false }] },
   "terminator": false,
   "tags": ["swerve", "front-left"]
 }

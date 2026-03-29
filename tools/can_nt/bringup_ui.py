@@ -39,6 +39,7 @@ from .bridge_ops import (
 )
 from .bridge_session import BridgeEvent, BridgeSession
 from tools.common.json_io import read_json
+from tools.common.nt_labels import encode_label_for_nt
 from tools.common.paths import tests_deploy_path
 from tools.common.tests_io import extract_test_names
 from tools.common.time_utils import timestamp_hms
@@ -46,7 +47,7 @@ from .can_profiles import get_profile, get_profiles_load_error, list_profiles, r
 from tools.can_topology.live_topology_view import LiveTopologyView
 
 # Constants (NetworkTables paths and presence values).
-NT_PATH_PRESENCE_FMT = "dev/{}/{}/{}/presenceConfidence"
+NT_PATH_PRESENCE_FMT = "dev/{}/presenceConfidence"
 NT_VALUE_EMPTY = ""
 PRESENCE_VALUE_HIGH = "HIGH"
 PRESENCE_VALUE_LOW = "LOW"
@@ -59,9 +60,6 @@ PRESENCE_VALUES = {
 
 # Constants (device dict keys).
 DEVICE_KEY_LABEL = "label"
-DEVICE_KEY_MFG = "manufacturer"
-DEVICE_KEY_TYPE = "device_type"
-DEVICE_KEY_ID = "device_id"
 
 # Constants (file-based presence overrides).
 PRESENCE_FILE_KEY_OVERRIDES = "presenceOverrides"
@@ -535,13 +533,11 @@ class BringupControlUI(tk.Tk):
             return
         overrides: Dict[str, str] = {}
         for label, device in self._profile_devices.items():
-            try:
-                manufacturer = int(device.get(DEVICE_KEY_MFG))
-                device_type = int(device.get(DEVICE_KEY_TYPE))
-                device_id = int(device.get(DEVICE_KEY_ID))
-            except Exception:
-                continue
-            path = NT_PATH_PRESENCE_FMT.format(manufacturer, device_type, device_id)
+                label = str(device.get(DEVICE_KEY_LABEL, "")).strip()
+                if not label:
+                    continue
+                label_key = encode_label_for_nt(label)
+                path = NT_PATH_PRESENCE_FMT.format(label_key)
             value = self._diag_table.getEntry(path).getString(NT_VALUE_EMPTY)
             if value in PRESENCE_VALUES:
                 overrides[label] = value
@@ -1052,7 +1048,7 @@ class BringupControlUI(tk.Tk):
             "  Live overlay is read-only and does not send commands.",
             "",
             "Show Groups:",
-            "  Toggles group boxes/labels from bridgeConfig groups.",
+            "  Toggles group boxes/labels from bridgeConfig by-profile groups.",
             "  Useful for visualizing CLI groups in the live view.",
             "",
             "Source:",

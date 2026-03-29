@@ -21,10 +21,6 @@ from .model import TestAuthoringModel, TestModel
 
 
 NAME_PATTERN = re.compile(r"^.+$")
-KEY_SEPARATOR = ":"
-KEY_SEPARATOR_COUNT = 2
-KEY_PART_COUNT = 3
-
 INPUT_SEPARATOR = "."
 AXIS_INPUTS = {
     "leftX",
@@ -66,9 +62,10 @@ MESSAGE_NAME_REQUIRED = "Test name is required."
 MESSAGE_NAME_INVALID = "Test name must be non-empty."
 MESSAGE_NAME_DUPLICATE = "Duplicate test name."
 MESSAGE_DEVICES_REQUIRED = "At least one device is required."
-MESSAGE_DEVICE_KEY_INVALID = "Invalid device key format."
+MESSAGE_DEVICE_LABEL_INVALID = "Invalid device label."
 MESSAGE_DEVICE_DUPLICATE = "Duplicate device in test."
 MESSAGE_DEVICE_NOT_IN_PROFILE = "Device not in active profile."
+MESSAGE_DEVICE_LABEL_DUPLICATE = "Duplicate device label in profile: {label}"
 MESSAGE_BINDING_JOYSTICK_REQUIRED = "Joystick binding required."
 MESSAGE_INPUT_SOURCE_REQUIRED = "inputSource is required."
 MESSAGE_INPUT_SOURCE_INVALID = "inputSource must be <controller>.<inputId>."
@@ -162,11 +159,18 @@ def validate_model(
 
     result = ValidationResult()
     devices_catalog: Dict[str, object] = {}
+    duplicate_labels: Set[str] = set()
     if profile_name:
         try:
-            devices_catalog = load_profile_devices(profile_name)
+            devices_catalog, duplicate_labels = load_profile_devices(profile_name)
         except Exception:
             devices_catalog = {}
+            duplicate_labels = set()
+
+    for label in sorted(duplicate_labels):
+        result.errors.append(
+            ValidationIssue(MESSAGE_DEVICE_LABEL_DUPLICATE.format(label=label), None, FIELD_DEVICES)
+        )
 
     for test_set in model.test_sets.values():
         seen_names: Set[str] = set()
@@ -220,23 +224,19 @@ def _validate_devices(
 ) -> None:
     """
     NAME
-        _validate_devices - Validate device keys for a test.
+        _validate_devices - Validate device labels for a test.
     """
 
     seen: Set[str] = set()
-    for key in test.devices:
-        if not isinstance(key, str) or key.count(KEY_SEPARATOR) != KEY_SEPARATOR_COUNT:
-            result.errors.append(ValidationIssue(MESSAGE_DEVICE_KEY_INVALID, test.name, FIELD_DEVICES))
+    for label in test.devices:
+        if not isinstance(label, str) or not label.strip():
+            result.errors.append(ValidationIssue(MESSAGE_DEVICE_LABEL_INVALID, test.name, FIELD_DEVICES))
             continue
-        parts = key.split(KEY_SEPARATOR, KEY_SEPARATOR_COUNT)
-        if len(parts) != KEY_PART_COUNT or not parts[2].isdigit():
-            result.errors.append(ValidationIssue(MESSAGE_DEVICE_KEY_INVALID, test.name, FIELD_DEVICES))
-            continue
-        if key in seen:
+        if label in seen:
             result.warnings.append(ValidationIssue(MESSAGE_DEVICE_DUPLICATE, test.name, FIELD_DEVICES))
         else:
-            seen.add(key)
-        if catalog and key not in catalog:
+            seen.add(label)
+        if catalog and label not in catalog:
             result.warnings.append(
                 ValidationIssue(MESSAGE_DEVICE_NOT_IN_PROFILE, test.name, FIELD_DEVICES)
             )

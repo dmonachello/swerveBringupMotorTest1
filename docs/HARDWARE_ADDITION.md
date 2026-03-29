@@ -15,11 +15,10 @@ Purpose: decide scope, bucket, and whether you need code changes.
 
 If you are only adding a new motor model for an existing wrapper, skip to **Step 6**.
 
-Current profile buckets (bringup_system.json):
-- REV: `neos`, `neo550s`, `flexes`
-- CTRE: `krakens`, `falcons`, `cancoders`, `candles`
-- Singletons: `pdh`, `pigeon`, `roborio`
-- Generic: `devices` (vendor/type/id; for non-standard entries)
+Current profile model (bringup_system.json):
+- A device registry at the root defines each device (label + interface + identity).
+- Profiles reference devices by label only.
+- Diagram categories remain for layout and visualization only.
 
 ## Template Reference (Recommended Starting Point)
 Purpose: point to safe skeletons for new device work.
@@ -90,19 +89,15 @@ to an existing manufacturer group does not require any core edits.
 Only update `src/main/java/frc/robot/BringupCore.java` if you need custom output
 (e.g., a new encoder-specific status printout).
 
-## Step 5: Extend Profile Schema in BringupUtil
-Purpose: add profile parsing and runtime wiring for the new device bucket.
+## Step 5: Update BringupUtil (Registry + Mapping)
+Purpose: ensure the device registry can be resolved into runtime device configs.
 Update:
 - `src/main/java/frc/robot/BringupUtil.java`
 
-Add:
-- New ID arrays and label arrays (if a new device list is introduced).
-- Parsing support in the `CanProfileConfig` JSON model.
-- `setActiveCanProfile()` wiring to populate arrays/labels/motor models/limits.
-- `buildDeviceConfigs()` registration for the new bucket or generic type.
-
-Tip: if the new device does not fit an existing bucket, prefer the generic
-`devices` list to avoid schema churn.
+Add or adjust:
+- Manufacturer/device type mapping if a new vendor or device class is added.
+- Device config registration to instantiate the new wrapper.
+- Model mapping if the device needs a distinct motor model token.
 
 ## Step 6: Add Manufacturer and Device Type Names
 Purpose: keep printed tables readable with human names.
@@ -129,33 +124,33 @@ Add a new motor entry with:
 
 Then reference that motor model in your profile entry (see Step 8).
 
-## Step 8: Add Profile Entries
-Purpose: define the device IDs and labels for a profile.
+## Step 8: Add Device Registry Entries + Profile Labels
+Purpose: define device identity and include it in a profile.
 Update:
 - `data/bringup_system.json` (sync to `src/main/deploy/bringup_system.json`)
 
-Add the new device list under the correct profile name.
-Example pattern:
+Add a device entry to the registry and reference it by label in the profile.
+Example device entry:
 ```json
 {
   "label": "MY MOTOR 1",
+  "interface": "CAN",
+  "manufacturer": 5,
+  "deviceType": 2,
   "id": 42,
-  "motor": "My Motor Model Name"
+  "model": "My Motor Model Name"
 }
 ```
 
-For new device types that do not fit an existing bucket, prefer the generic `devices` list:
+Example profile label list:
 ```json
 {
-  "vendor": "ACME",
-  "type": "AcmeMotor",
-  "label": "Example Acme Motor",
-  "id": 1,
-  "motor": "Acme Model X",
-  "limits": { "fwdDio": 0, "revDio": 1, "invert": false }
+  "devices": ["MY MOTOR 1"]
 }
 ```
-Set `"invert": true` for normally-closed limit switches so CLOSED/OPEN reads correctly.
+
+For limit switches, attach a DIO device or define a limit switch attachment in the
+referencing device entry using label-only attachments and explicit DIO channels.
 
 If this is a new device category, also update:
 - `src/main/deploy/bringup_system.template.json`
@@ -175,7 +170,7 @@ If you add telemetry fields, include them under `devices[].attachments` in the J
 Purpose: add optional PC-side tracking for the new device.
 If you want the PC tool to track the new device by default:
 - `tools/can_nt/can_nt_config.json` (recommended)
-- `tools/can_profiles.py` bucket mapping (if you add a new profile bucket)
+- `tools/can_profiles.py` mapping if a new manufacturer/device type needs special handling
 
 This is not required for robot-side bringup, but helps with CAN visibility.
 The PC tool uses `bringup_system.json` when `--profile` is specified.
@@ -192,7 +187,7 @@ Update any relevant docs:
 Purpose: confirm the new device works end-to-end.
 At minimum:
 - Run the robot code and verify it prints the new device.
-- Confirm the CAN ID validation catches duplicates.
+- Confirm the profile validator catches duplicate labels.
 - Verify the diagnostic report includes the new device snapshots.
 
 Optional:
@@ -204,7 +199,7 @@ Optional:
 
 ## Common Pitfalls
 Purpose: avoid common integration mistakes.
-- Forgetting to add the new device type to profile parsing in `BringupUtil`.
+- Forgetting to add the new device type to BringupUtil device registration.
 - Updating device wrappers but not adding them to `ManufacturerGroup`.
 - Adding new fields without updating JSON schema or docs.
 - Forgetting to add motor specs for new current thresholds.

@@ -12,17 +12,14 @@
           "encoderKey": "internal",
           "encoderMotorIndex": 0
         },
-        "motorKeys": [
-          "REV:NEO:25"
+        "motorLabels": [
+          "SPARKMAX/NEO 25"
         ]
       },
       {
         "type": "deadbandSweep",
         "name": "Deadband sweep (internal)",
         "enabled": false,
-        "motorKeys": [
-          "REV:NEO:25"
-        ],
         "deadbandSweep": {
           "startDuty": 0.0,
           "maxDuty": 0.2,
@@ -32,7 +29,10 @@
           "requiredSamples": 3,
           "encoderKey": "internal",
           "encoderMotorIndex": 0
-        }
+        },
+        "motorLabels": [
+          "SPARKMAX/NEO 25"
+        ]
       },
       {
         "type": "composite",
@@ -48,8 +48,8 @@
           "timeoutSec": 2.0,
           "onTimeout": "fail"
         },
-        "motorKeys": [
-          "CTRE:FALCON:9"
+        "motorLabels": [
+          "FALCON 9"
         ]
       },
       {
@@ -61,8 +61,8 @@
           "timeoutSec": 1.5,
           "onTimeout": "pass"
         },
-        "motorKeys": [
-          "REV:NEO 550:7"
+        "motorLabels": [
+          "SPARKMAX/NEO550 7"
         ]
       },
       {
@@ -74,8 +74,8 @@
           "timeoutSec": 0.5,
           "onTimeout": "pass"
         },
-        "motorKeys": [
-          "REV:NEO:25"
+        "motorLabels": [
+          "SPARKMAX/NEO 25"
         ]
       },
       {
@@ -87,8 +87,8 @@
           "enabled": true,
           "onHit": "pass"
         },
-        "motorKeys": [
-          "REV:NEO 550:7"
+        "motorLabels": [
+          "SPARKMAX/NEO550 7"
         ]
       },
       {
@@ -100,8 +100,8 @@
           "enabled": true,
           "onRelease": "pass"
         },
-        "motorKeys": [
-          "CTRE:FALCON:9"
+        "motorLabels": [
+          "FALCON 9"
         ]
       },
       {
@@ -122,10 +122,10 @@
           "enabled": true,
           "onHit": "pass"
         },
-        "motorKeys": [
-          "REV:NEO 550:7",
-          "REV:NEO:25",
-          "CTRE:FALCON:9"
+        "motorLabels": [
+          "SPARKMAX/NEO550 7",
+          "SPARKMAX/NEO 25",
+          "FALCON 9"
         ]
       },
       {
@@ -150,20 +150,20 @@
           "enabled": true,
           "onRelease": "pass"
         },
-        "motorKeys": [
-          "REV:NEO 550:7"
+        "motorLabels": [
+          "SPARKMAX/NEO550 7"
         ]
       },
       {
         "type": "joystick",
         "name": "Joystick motor (controller0.leftY)",
         "enabled": false,
-        "motorKeys": [
-          "REV:NEO:25",
-          "CTRE:FALCON:9"
-        ],
         "deadband": 0.12,
-        "inputSource": "controller0.leftY"
+        "inputSource": "controller0.leftY",
+        "motorLabels": [
+          "SPARKMAX/NEO 25",
+          "FALCON 9"
+        ]
       }
     ],
     "smoke": [
@@ -177,8 +177,8 @@
           "encoderKey": "internal",
           "encoderMotorIndex": 0
         },
-        "motorKeys": [
-          "REV:NEO:25"
+        "motorLabels": [
+          "SPARKMAX/NEO 25"
         ]
       },
       {
@@ -190,8 +190,8 @@
           "timeoutSec": 1.5,
           "onTimeout": "pass"
         },
-        "motorKeys": [
-          "REV:NEO:25"
+        "motorLabels": [
+          "SPARKMAX/NEO 25"
         ]
       },
       {
@@ -203,8 +203,8 @@
           "timeoutSec": 0.5,
           "onTimeout": "pass"
         },
-        "motorKeys": [
-          "REV:NEO:25"
+        "motorLabels": [
+          "SPARKMAX/NEO 25"
         ]
       },
       {
@@ -216,19 +216,19 @@
           "enabled": true,
           "onRelease": "pass"
         },
-        "motorKeys": [
-          "REV:NEO:25"
+        "motorLabels": [
+          "SPARKMAX/NEO 25"
         ]
       },
       {
         "type": "joystick",
         "name": "Joystick motor (controller0.leftY)",
         "enabled": true,
-        "motorKeys": [
-          "REV:NEO:25"
-        ],
         "deadband": 0.12,
-        "inputSource": "controller0.leftY"
+        "inputSource": "controller0.leftY",
+        "motorLabels": [
+          "SPARKMAX/NEO 25"
+        ]
       }
     ]
   }

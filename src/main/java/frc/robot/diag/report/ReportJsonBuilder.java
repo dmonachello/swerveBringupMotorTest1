@@ -108,11 +108,11 @@ public final class ReportJsonBuilder {
     for (PcSnapshot.ProfileMismatchEntry entry : pc.profileMismatch) {
       JsonObject obj = new JsonObject();
       obj.addProperty("expected", entry.expected);
-      JsonArray ids = new JsonArray();
-      for (Integer id : entry.seenIds) {
-        ids.add(id);
+      JsonArray labels = new JsonArray();
+      for (String label : entry.seenLabels) {
+        labels.add(label);
       }
-      obj.add("seenIds", ids);
+      obj.add("seenLabels", labels);
       profileMismatch.add(obj);
     }
     JsonArray staleDevices = new JsonArray();

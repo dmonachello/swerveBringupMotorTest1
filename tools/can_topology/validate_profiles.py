@@ -12,11 +12,11 @@ NAME
     validate_profiles.py - Validate bringup_system.json compatibility.
 
 SYNOPSIS
-    python tools\\can_topology\\validate_profiles.py [--path PATH] [--strict]
+    python tools\can_topology\validate_profiles.py [--path PATH] [--strict]
 
 DESCRIPTION
-    Checks bringup profile JSON for schema errors, duplicate CAN IDs, and
-    invalid limits so that output is compatible with the robot and PC tools.
+    Checks bringup_system.json for schema errors, duplicate labels, and
+    interface-specific required fields so output is compatible with tooling.
 """
 
 import argparse
@@ -25,18 +25,62 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from tools.common.cli_helpers import add_path_arg
 from tools.common.json_io import read_json
+from tools.common.profile_constants import (
+    INTERFACE_ANALOG,
+    INTERFACE_CAN,
+    INTERFACE_DIO,
+    INTERFACE_INTERNAL,
+    INTERFACE_PWM,
+    KEY_ATTACHMENTS,
+    KEY_DATA_HASH,
+    KEY_DATA_VERSION,
+    KEY_DEFAULT_PROFILE,
+    KEY_DEVICE_TYPE,
+    KEY_DEVICES,
+    KEY_DIO,
+    KEY_ID,
+    KEY_INTERFACE,
+    KEY_INVERT,
+    KEY_LABEL,
+    KEY_MANUFACTURER,
+    KEY_PROFILE_DEVICES,
+    KEY_PROFILES,
+    KEY_SCHEMA_VERSION,
+    KEY_ANALOG,
+    KEY_PWM,
+    PROFILE_SCHEMA_VERSION,
+)
 from tools.common.profile_io import compute_profiles_hash
 
-BUCKET_CATEGORIES = [
-    "neos",
-    "neo550s",
-    "flexes",
-    "krakens",
-    "falcons",
-    "cancoders",
-    "candles",
-]
-PROFILE_SCHEMA_VERSION = 3
+DEFAULT_PATH = str(Path("data") / "bringup_system.json")
+
+MSG_ERR_FILE_MISSING = "File not found: {path}"
+MSG_ERR_JSON_PARSE = "Failed to parse JSON: {error}"
+MSG_ERR_SCHEMA = "Root 'schema_version' mismatch: expected {expected}, got {found}"
+MSG_ERR_DATA_VERSION = "Root 'data_version' missing or empty."
+MSG_ERR_DATA_HASH = "Root 'data_hash' missing or empty."
+MSG_ERR_HASH_MISMATCH = "Root 'data_hash' mismatch (run tools/sync_profiles.py)."
+MSG_ERR_DEVICES = "Root 'devices' must be a non-empty list."
+MSG_ERR_PROFILES = "Root 'profiles' must be a non-empty object."
+MSG_WARN_DEFAULT_PROFILE = "Root 'default_profile' is missing or empty."
+MSG_WARN_DEFAULT_PROFILE_MISSING = "Root 'default_profile' '{profile}' not found in profiles."
+MSG_ERR_DEVICE_LABEL = "Device entry missing label."
+MSG_ERR_DEVICE_LABEL_DUP = "Duplicate device label in registry: {label}"
+MSG_ERR_DEVICE_INTERFACE = "Device '{label}' missing interface."
+MSG_ERR_PROFILE_OBJECT = "Profile '{name}' must be an object."
+MSG_ERR_PROFILE_DEVICES = "Profile '{name}' missing devices list."
+MSG_ERR_PROFILE_LABEL_UNKNOWN = "Profile '{name}' references unknown device label '{label}'."
+MSG_ERR_PROFILE_LABEL_DUP = "Profile '{name}' has duplicate label '{label}'."
+MSG_ERR_DEVICE_CAN_FIELDS = "Device '{label}' missing CAN fields: id/manufacturer/deviceType."
+MSG_ERR_DEVICE_DIO_FIELDS = "Device '{label}' missing DIO fields: dio/invert."
+MSG_ERR_DEVICE_PWM_FIELDS = "Device '{label}' missing PWM field: pwm."
+MSG_ERR_DEVICE_ANALOG_FIELDS = "Device '{label}' missing ANALOG field: analog."
+MSG_ERR_DEVICE_ATTACHMENTS = "Device '{label}' references unknown attachment '{attachment}'."
+MSG_PASS_SCHEMA = "Root 'schema_version' matches expected version."
+MSG_PASS_DATA_VERSION = "Root 'data_version' is present."
+MSG_PASS_DATA_HASH = "Root 'data_hash' matches computed value."
+MSG_PASS_PROFILES = "Root 'profiles' is a non-empty object."
+MSG_PASS_DEFAULT_PROFILE = "Root 'default_profile' present in profiles."
 
 
 def _compute_data_hash(payload: Dict[str, Any]) -> str:
@@ -45,22 +89,7 @@ def _compute_data_hash(payload: Dict[str, Any]) -> str:
         _compute_data_hash - Compute a stable hash for profile payloads.
     """
     return compute_profiles_hash(payload)
-SINGLETON_CATEGORIES = ["pdh", "pdp", "pigeon", "roborio"]
-GENERIC_CATEGORY = "devices"
-ALLOWED_PROFILE_KEYS = set(BUCKET_CATEGORIES + SINGLETON_CATEGORIES + [GENERIC_CATEGORY, "notes", "unknown"])
-CATEGORY_IDENTITY = {
-    "neos": ("REV", "NEO"),
-    "neo550s": ("REV", "NEO 550"),
-    "flexes": ("REV", "FLEX"),
-    "krakens": ("CTRE", "KRAKEN"),
-    "falcons": ("CTRE", "FALCON"),
-    "cancoders": ("CTRE", "CANCoder"),
-    "candles": ("CTRE", "CANdle"),
-    "pdh": ("REV", "PDH"),
-    "pdp": ("CTRE", "PDP"),
-    "pigeon": ("CTRE", "Pigeon"),
-    "roborio": ("NI", "roboRIO"),
-}
+
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
@@ -74,7 +103,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate bringup_system.json compatibility.")
     add_path_arg(
         parser,
-        default=str(Path("data") / "bringup_system.json"),
+        default=DEFAULT_PATH,
         help_text="Path to bringup_system.json",
     )
     parser.add_argument(
@@ -90,6 +119,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+
 def load_profiles_json(path: Path) -> Dict[str, Any]:
     """
     NAME
@@ -102,11 +132,12 @@ def load_profiles_json(path: Path) -> Dict[str, Any]:
         Raises ValueError when the file is missing or invalid.
     """
     if not path.exists():
-        raise ValueError(f"File not found: {path}")
+        raise ValueError(MSG_ERR_FILE_MISSING.format(path=path))
     try:
         return read_json(path)
     except Exception as exc:
-        raise ValueError(f"Failed to parse JSON: {exc}") from exc
+        raise ValueError(MSG_ERR_JSON_PARSE.format(error=exc)) from exc
+
 
 
 def validate_profiles(payload: Dict[str, Any], reporter: "Reporter") -> Tuple[List[str], List[str]]:
@@ -120,74 +151,173 @@ def validate_profiles(payload: Dict[str, Any], reporter: "Reporter") -> Tuple[Li
     errors: List[str] = []
     warnings: List[str] = []
 
-    schema_version = payload.get("schema_version")
+    schema_version = payload.get(KEY_SCHEMA_VERSION)
     if schema_version != PROFILE_SCHEMA_VERSION:
-        if schema_version == 2:
-            msg = "Root 'schema_version' is legacy v2 (temporary); migrate to v3."
-            warnings.append(msg)
-            reporter.warn(msg)
-        else:
-            msg = (
-                "Root 'schema_version' mismatch: "
-                f"expected {PROFILE_SCHEMA_VERSION}, got {schema_version}"
-            )
-            errors.append(msg)
-            reporter.fail(msg)
-            return errors, warnings
-    else:
-        reporter.pass_("Root 'schema_version' matches expected version.")
-
-    data_version = payload.get("data_version")
-    if not isinstance(data_version, str) or not data_version.strip():
-        msg = "Root 'data_version' missing or empty."
+        msg = MSG_ERR_SCHEMA.format(expected=PROFILE_SCHEMA_VERSION, found=schema_version)
         errors.append(msg)
         reporter.fail(msg)
         return errors, warnings
-    reporter.pass_("Root 'data_version' is present.")
+    reporter.pass_(MSG_PASS_SCHEMA)
 
-    data_hash = payload.get("data_hash")
+    data_version = payload.get(KEY_DATA_VERSION)
+    if not isinstance(data_version, str) or not data_version.strip():
+        msg = MSG_ERR_DATA_VERSION
+        errors.append(msg)
+        reporter.fail(msg)
+        return errors, warnings
+    reporter.pass_(MSG_PASS_DATA_VERSION)
+
+    data_hash = payload.get(KEY_DATA_HASH)
     if not isinstance(data_hash, str) or not data_hash.strip():
-        msg = "Root 'data_hash' missing or empty."
+        msg = MSG_ERR_DATA_HASH
         errors.append(msg)
         reporter.fail(msg)
         return errors, warnings
     computed_hash = _compute_data_hash(payload)
     if data_hash != computed_hash:
-        msg = "Root 'data_hash' mismatch (run tools/sync_profiles.py)."
+        msg = MSG_ERR_HASH_MISMATCH
         errors.append(msg)
         reporter.fail(msg)
         return errors, warnings
-    reporter.pass_("Root 'data_hash' matches computed value.")
+    reporter.pass_(MSG_PASS_DATA_HASH)
 
-    profiles = payload.get("profiles")
+    devices = payload.get(KEY_DEVICES)
+    if not isinstance(devices, list) or not devices:
+        msg = MSG_ERR_DEVICES
+        errors.append(msg)
+        reporter.fail(msg)
+        return errors, warnings
+
+    registry, registry_errors, registry_warnings = validate_device_registry(devices, reporter)
+    errors.extend(registry_errors)
+    warnings.extend(registry_warnings)
+    if registry_errors:
+        return errors, warnings
+
+    profiles = payload.get(KEY_PROFILES)
     if not isinstance(profiles, dict) or not profiles:
-        msg = "Root 'profiles' must be a non-empty object."
+        msg = MSG_ERR_PROFILES
         errors.append(msg)
         reporter.fail(msg)
         return errors, warnings
-    reporter.pass_("Root 'profiles' is a non-empty object.")
+    reporter.pass_(MSG_PASS_PROFILES)
 
-    default_profile = payload.get("default_profile")
+    default_profile = payload.get(KEY_DEFAULT_PROFILE)
     if not isinstance(default_profile, str) or not default_profile:
-        msg = "Root 'default_profile' is missing or empty."
+        msg = MSG_WARN_DEFAULT_PROFILE
         warnings.append(msg)
         reporter.warn(msg)
     elif default_profile not in profiles:
-        msg = f"Root 'default_profile' '{default_profile}' not found in profiles."
+        msg = MSG_WARN_DEFAULT_PROFILE_MISSING.format(profile=default_profile)
         warnings.append(msg)
         reporter.warn(msg)
     else:
-        reporter.pass_("Root 'default_profile' present in profiles.")
+        reporter.pass_(MSG_PASS_DEFAULT_PROFILE)
 
     for name, profile in profiles.items():
-        profile_errors, profile_warnings = validate_profile(name, profile, reporter)
+        profile_errors, profile_warnings = validate_profile(name, profile, registry, reporter)
         errors.extend(profile_errors)
         warnings.extend(profile_warnings)
 
     return errors, warnings
 
 
-def validate_profile(name: str, profile: Any, reporter: "Reporter") -> Tuple[List[str], List[str]]:
+
+def validate_device_registry(
+    devices: List[Any],
+    reporter: "Reporter",
+) -> Tuple[Dict[str, Dict[str, Any]], List[str], List[str]]:
+    """
+    NAME
+        validate_device_registry - Validate the devices registry entries.
+
+    RETURNS
+        (registry_map, errors, warnings).
+    """
+    errors: List[str] = []
+    warnings: List[str] = []
+    registry: Dict[str, Dict[str, Any]] = {}
+
+    for entry in devices:
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get(KEY_LABEL, "")).strip()
+        if not label:
+            msg = MSG_ERR_DEVICE_LABEL
+            errors.append(msg)
+            reporter.fail(msg)
+            continue
+        key = label.lower()
+        if key in registry:
+            msg = MSG_ERR_DEVICE_LABEL_DUP.format(label=label)
+            errors.append(msg)
+            reporter.fail(msg)
+            continue
+        registry[key] = entry
+        interface = entry.get(KEY_INTERFACE)
+        if not isinstance(interface, str) or not interface:
+            msg = MSG_ERR_DEVICE_INTERFACE.format(label=label)
+            errors.append(msg)
+            reporter.fail(msg)
+            continue
+        if interface == INTERFACE_CAN:
+            if not _has_can_fields(entry):
+                msg = MSG_ERR_DEVICE_CAN_FIELDS.format(label=label)
+                errors.append(msg)
+                reporter.fail(msg)
+        elif interface == INTERFACE_DIO:
+            if not _has_dio_fields(entry):
+                msg = MSG_ERR_DEVICE_DIO_FIELDS.format(label=label)
+                errors.append(msg)
+                reporter.fail(msg)
+        elif interface == INTERFACE_PWM:
+            if not _has_pwm_fields(entry):
+                msg = MSG_ERR_DEVICE_PWM_FIELDS.format(label=label)
+                errors.append(msg)
+                reporter.fail(msg)
+        elif interface == INTERFACE_ANALOG:
+            if not _has_analog_fields(entry):
+                msg = MSG_ERR_DEVICE_ANALOG_FIELDS.format(label=label)
+                errors.append(msg)
+                reporter.fail(msg)
+        elif interface == INTERFACE_INTERNAL:
+            pass
+
+    for entry in devices:
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get(KEY_LABEL, "")).strip()
+        if not label:
+            continue
+        attachments = entry.get(KEY_ATTACHMENTS)
+        if attachments is None:
+            continue
+        if not isinstance(attachments, list):
+            msg = MSG_ERR_DEVICE_ATTACHMENTS.format(label=label, attachment="<invalid>")
+            errors.append(msg)
+            reporter.fail(msg)
+            continue
+        for att in attachments:
+            if not isinstance(att, str) or not att.strip():
+                msg = MSG_ERR_DEVICE_ATTACHMENTS.format(label=label, attachment="<invalid>")
+                errors.append(msg)
+                reporter.fail(msg)
+                continue
+            if att.strip().lower() not in registry:
+                msg = MSG_ERR_DEVICE_ATTACHMENTS.format(label=label, attachment=att)
+                errors.append(msg)
+                reporter.fail(msg)
+
+    return registry, errors, warnings
+
+
+
+def validate_profile(
+    name: str,
+    profile: Any,
+    registry: Dict[str, Dict[str, Any]],
+    reporter: "Reporter",
+) -> Tuple[List[str], List[str]]:
     """
     NAME
         validate_profile - Validate one profile section.
@@ -199,335 +329,62 @@ def validate_profile(name: str, profile: Any, reporter: "Reporter") -> Tuple[Lis
     warnings: List[str] = []
 
     if not isinstance(profile, dict):
-        msg = f"Profile '{name}' must be an object."
+        msg = MSG_ERR_PROFILE_OBJECT.format(name=name)
         errors.append(msg)
         reporter.fail(msg)
         return errors, warnings
-    reporter.pass_(f"Profile '{name}' is an object.")
 
-    for key in profile.keys():
-        if key not in ALLOWED_PROFILE_KEYS:
-            msg = f"Profile '{name}' has unknown key '{key}'."
-            warnings.append(msg)
-            reporter.warn(msg)
+    devices = profile.get(KEY_PROFILE_DEVICES)
+    if not isinstance(devices, list):
+        msg = MSG_ERR_PROFILE_DEVICES.format(name=name)
+        errors.append(msg)
+        reporter.fail(msg)
+        return errors, warnings
 
-    seen_full: Dict[Tuple[str, str, int], str] = {}
-    seen_numeric: Dict[int, List[str]] = {}
-    seen_labels: Dict[str, int] = {}
-
-    for category in BUCKET_CATEGORIES:
-        entries = profile.get(category, [])
-        if entries is None:
+    seen: Dict[str, int] = {}
+    for label in devices:
+        if not isinstance(label, str) or not label.strip():
             continue
-        if not isinstance(entries, list):
-            msg = f"Profile '{name}' category '{category}' must be a list."
+        key = label.strip().lower()
+        if key not in registry:
+            msg = MSG_ERR_PROFILE_LABEL_UNKNOWN.format(name=name, label=label)
             errors.append(msg)
             reporter.fail(msg)
             continue
-        reporter.pass_(f"Profile '{name}' category '{category}' is a list.")
-        for entry in entries:
-            entry_errors, entry_warnings, can_id = validate_entry(
-                name, category, entry, reporter
-            )
-            errors.extend(entry_errors)
-            warnings.extend(entry_warnings)
-            _check_duplicate_label(name, entry, seen_labels, errors, reporter)
-            if can_id is not None and can_id >= 0:
-                register_can_id(
-                    seen_full,
-                    seen_numeric,
-                    errors,
-                    warnings,
-                    reporter,
-                    name,
-                    can_id,
-                    category,
-                    entry,
-                )
-
-    for category in SINGLETON_CATEGORIES:
-        entry = profile.get(category)
-        if entry is None:
-            continue
-        if not isinstance(entry, dict):
-            msg = f"Profile '{name}' category '{category}' must be an object."
+        seen[key] = seen.get(key, 0) + 1
+        if seen[key] > 1:
+            msg = MSG_ERR_PROFILE_LABEL_DUP.format(name=name, label=label)
             errors.append(msg)
             reporter.fail(msg)
-            continue
-        reporter.pass_(f"Profile '{name}' category '{category}' is an object.")
-        entry_errors, entry_warnings, can_id = validate_entry(
-            name, category, entry, reporter
-        )
-        errors.extend(entry_errors)
-        warnings.extend(entry_warnings)
-        _check_duplicate_label(name, entry, seen_labels, errors, reporter)
-        if can_id is not None and can_id >= 0:
-            register_can_id(
-                seen_full,
-                seen_numeric,
-                errors,
-                warnings,
-                reporter,
-                name,
-                can_id,
-                category,
-                entry,
-            )
-
-    entries = profile.get(GENERIC_CATEGORY, [])
-    if entries is not None:
-        if not isinstance(entries, list):
-            msg = f"Profile '{name}' category '{GENERIC_CATEGORY}' must be a list."
-            errors.append(msg)
-            reporter.fail(msg)
-        else:
-            reporter.pass_(f"Profile '{name}' category '{GENERIC_CATEGORY}' is a list.")
-            for entry in entries:
-                entry_errors, entry_warnings, can_id = validate_entry(
-                    name,
-                    GENERIC_CATEGORY,
-                    entry,
-                    reporter,
-                    require_vendor_type=True,
-                )
-                errors.extend(entry_errors)
-                warnings.extend(entry_warnings)
-                _check_duplicate_label(name, entry, seen_labels, errors, reporter)
-                if can_id is not None and can_id >= 0:
-                    register_can_id(
-                        seen_full,
-                        seen_numeric,
-                        errors,
-                        warnings,
-                        reporter,
-                        name,
-                        can_id,
-                        GENERIC_CATEGORY,
-                        entry,
-                    )
 
     return errors, warnings
 
 
-def register_can_id(
-    seen_full: Dict[Tuple[str, str, int], str],
-    seen_numeric: Dict[int, List[str]],
-    errors: List[str],
-    warnings: List[str],
-    reporter: "Reporter",
-    profile_name: str,
-    can_id: int,
-    category: str,
-    entry: Dict[str, Any],
-) -> None:
-    """
-    NAME
-        register_can_id - Track CAN IDs and flag duplicates.
-    """
-    label = entry.get("label") or f"id {can_id}"
-    vendor, device_type = resolve_identity(category, entry)
-    if vendor and device_type:
-        key = (vendor, device_type, can_id)
-        if key in seen_full:
-            other = seen_full[key]
-            msg = (
-                f"Profile '{profile_name}' duplicate CAN ID {can_id} "
-                f"({vendor} {device_type}) ({other}, {label})."
-            )
-            errors.append(msg)
-            reporter.fail(msg)
-            return
-        seen_full[key] = str(label)
-        reporter.pass_(
-            f"Profile '{profile_name}' CAN ID {can_id} unique for {vendor} {device_type}."
-        )
-    else:
-        msg = f"Profile '{profile_name}' entry id {can_id} missing vendor/type context."
-        warnings.append(msg)
-        reporter.warn(msg)
 
-    if can_id in seen_numeric:
-        others = seen_numeric[can_id] + [str(label)]
-        msg = (
-            f"Profile '{profile_name}' duplicate numeric CAN ID {can_id} "
-            f"({', '.join(others)})."
-        )
-        warnings.append(msg)
-        reporter.warn(msg)
-        seen_numeric[can_id].append(str(label))
-    else:
-        seen_numeric[can_id] = [str(label)]
-        reporter.pass_(f"Profile '{profile_name}' CAN ID {can_id} unique (numeric).")
+def _has_can_fields(entry: Dict[str, Any]) -> bool:
+    manufacturer = entry.get(KEY_MANUFACTURER)
+    device_type = entry.get(KEY_DEVICE_TYPE)
+    device_id = entry.get(KEY_ID)
+    return isinstance(manufacturer, int) and isinstance(device_type, int) and isinstance(device_id, int)
 
 
-def resolve_identity(category: str, entry: Dict[str, Any]) -> Tuple[str, str]:
-    """
-    NAME
-        resolve_identity - Resolve vendor/type for a profile entry.
-    """
-    if category == GENERIC_CATEGORY:
-        vendor = entry.get("vendor")
-        device_type = entry.get("type")
-        if isinstance(vendor, str) and isinstance(device_type, str):
-            return vendor.strip(), device_type.strip()
-        return "", ""
-    vendor, device_type = CATEGORY_IDENTITY.get(category, ("", ""))
-    return vendor, device_type
+
+def _has_dio_fields(entry: Dict[str, Any]) -> bool:
+    dio = entry.get(KEY_DIO)
+    invert = entry.get(KEY_INVERT)
+    return isinstance(dio, int) and isinstance(invert, bool)
 
 
-def validate_entry(
-    profile_name: str,
-    category: str,
-    entry: Any,
-    reporter: "Reporter",
-    require_vendor_type: bool = False,
-) -> Tuple[List[str], List[str], Optional[int]]:
-    """
-    NAME
-        validate_entry - Validate a single device entry.
 
-    RETURNS
-        (errors, warnings, can_id) tuple.
-    """
-    errors: List[str] = []
-    warnings: List[str] = []
-
-    if not isinstance(entry, dict):
-        msg = f"Profile '{profile_name}' category '{category}' entries must be objects."
-        errors.append(msg)
-        reporter.fail(msg)
-        return errors, warnings, None
-    reporter.pass_(f"Profile '{profile_name}' category '{category}' entry is an object.")
-
-    can_id = entry.get("id")
-    if not isinstance(can_id, int):
-        msg = f"Profile '{profile_name}' entry '{entry}' missing integer 'id'."
-        errors.append(msg)
-        reporter.fail(msg)
-        return errors, warnings, None
-    reporter.pass_(f"Profile '{profile_name}' entry id {can_id} has integer CAN ID.")
-    if can_id < -1 or can_id > 62:
-        msg = (
-            f"Profile '{profile_name}' entry '{entry.get('label')}' has invalid CAN ID {can_id}."
-        )
-        errors.append(msg)
-        reporter.fail(msg)
-    else:
-        reporter.pass_(f"Profile '{profile_name}' entry id {can_id} is in range.")
-
-    label = entry.get("label")
-    if label is not None and not isinstance(label, str):
-        msg = f"Profile '{profile_name}' entry id {can_id} has non-string label."
-        errors.append(msg)
-        reporter.fail(msg)
-    else:
-        reporter.pass_(f"Profile '{profile_name}' entry id {can_id} label type ok.")
-
-    if require_vendor_type:
-        vendor = entry.get("vendor")
-        device_type = entry.get("type")
-        if not isinstance(vendor, str) or not vendor.strip():
-            msg = f"Profile '{profile_name}' entry id {can_id} missing vendor."
-            errors.append(msg)
-            reporter.fail(msg)
-        else:
-            reporter.pass_(f"Profile '{profile_name}' entry id {can_id} vendor set.")
-        if not isinstance(device_type, str) or not device_type.strip():
-            msg = f"Profile '{profile_name}' entry id {can_id} missing type."
-            errors.append(msg)
-            reporter.fail(msg)
-        else:
-            reporter.pass_(f"Profile '{profile_name}' entry id {can_id} type set.")
-
-    limits = entry.get("limits")
-    if limits is not None:
-        if not isinstance(limits, dict):
-            msg = f"Profile '{profile_name}' entry id {can_id} limits must be an object."
-            errors.append(msg)
-            reporter.fail(msg)
-        else:
-            reporter.pass_(f"Profile '{profile_name}' entry id {can_id} limits is object.")
-            validate_limits(profile_name, can_id, limits, errors, warnings, reporter)
-
-    terminator = entry.get("terminator")
-    if terminator is not None and not isinstance(terminator, bool):
-        msg = f"Profile '{profile_name}' entry id {can_id} terminator must be boolean."
-        errors.append(msg)
-        reporter.fail(msg)
-    elif terminator is not None:
-        reporter.pass_(f"Profile '{profile_name}' entry id {can_id} terminator is boolean.")
-
-    tags = entry.get("tags")
-    if tags is not None:
-        if not isinstance(tags, list) or not all(isinstance(tag, str) and tag.strip() for tag in tags):
-            msg = f"Profile '{profile_name}' entry id {can_id} tags must be a list of non-empty strings."
-            errors.append(msg)
-            reporter.fail(msg)
-        else:
-            reporter.pass_(f"Profile '{profile_name}' entry id {can_id} tags are valid.")
-
-    return errors, warnings, can_id
+def _has_pwm_fields(entry: Dict[str, Any]) -> bool:
+    pwm = entry.get(KEY_PWM)
+    return isinstance(pwm, int)
 
 
-def _check_duplicate_label(
-    profile_name: str,
-    entry: Dict[str, Any],
-    seen_labels: Dict[str, int],
-    errors: List[str],
-    reporter: "Reporter",
-) -> None:
-    """
-    NAME
-        _check_duplicate_label - Flag duplicate labels within a profile.
-    """
-    label = entry.get("label")
-    if not isinstance(label, str) or not label.strip():
-        return
-    key = label.strip().lower()
-    seen_labels[key] = seen_labels.get(key, 0) + 1
-    if seen_labels[key] > 1:
-        msg = f"Profile '{profile_name}' has duplicate label '{label}'."
-        errors.append(msg)
-        reporter.fail(msg)
 
-
-def validate_limits(
-    profile_name: str,
-    can_id: int,
-    limits: Dict[str, Any],
-    errors: List[str],
-    warnings: List[str],
-    reporter: "Reporter",
-) -> None:
-    """
-    NAME
-        validate_limits - Validate limit switch fields for an entry.
-    """
-    for key in ("fwdDio", "revDio"):
-        value = limits.get(key, -1)
-        if not isinstance(value, int):
-            msg = f"Profile '{profile_name}' entry id {can_id} {key} must be an integer."
-            errors.append(msg)
-            reporter.fail(msg)
-        elif value < -1:
-            msg = (
-                f"Profile '{profile_name}' entry id {can_id} {key} must be -1 or greater."
-            )
-            errors.append(msg)
-            reporter.fail(msg)
-        else:
-            reporter.pass_(f"Profile '{profile_name}' entry id {can_id} {key} ok.")
-    invert = limits.get("invert")
-    if invert is not None and not isinstance(invert, bool):
-        msg = f"Profile '{profile_name}' entry id {can_id} invert must be boolean."
-        errors.append(msg)
-        reporter.fail(msg)
-    elif invert is not None:
-        reporter.pass_(f"Profile '{profile_name}' entry id {can_id} invert is boolean.")
-    if invert is None:
-        msg = f"Profile '{profile_name}' entry id {can_id} limits missing 'invert' flag."
-        warnings.append(msg)
-        reporter.warn(msg)
+def _has_analog_fields(entry: Dict[str, Any]) -> bool:
+    analog = entry.get(KEY_ANALOG)
+    return isinstance(analog, int)
 
 
 class Reporter:
@@ -550,6 +407,7 @@ class Reporter:
     def warn(self, msg: str) -> None:
         if self._enabled:
             print(f"WARN: {msg}")
+
 
 
 def main(argv: Optional[List[str]] = None) -> int:

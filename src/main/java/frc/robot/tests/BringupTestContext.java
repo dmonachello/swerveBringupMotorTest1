@@ -92,4 +92,44 @@ public final class BringupTestContext {
     }
     return null;
   }
+
+  /**
+   * NAME
+   *   findDeviceByLabel - Locate a device by label.
+   *
+   * PARAMETERS
+   *   label - Device label from bringup_system.json.
+   *
+   * RETURNS
+   *   Matching DeviceUnit or null if not found.
+   */
+  public DeviceUnit findDeviceByLabel(String label) {
+    if (label == null || label.isBlank()) {
+      return null;
+    }
+    String needle = label.trim();
+    if (needle.isEmpty()) {
+      return null;
+    }
+    for (ManufacturerGroup group : groups) {
+      if (group == null) {
+        continue;
+      }
+      for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
+        for (DeviceUnit device : bucket.getDevices()) {
+          if (device == null) {
+            continue;
+          }
+          String deviceLabel = device.getLabel();
+          if (deviceLabel == null || deviceLabel.isBlank()) {
+            continue;
+          }
+          if (deviceLabel.trim().equalsIgnoreCase(needle)) {
+            return device;
+          }
+        }
+      }
+    }
+    return null;
+  }
 }

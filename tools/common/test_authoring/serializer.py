@@ -32,7 +32,7 @@ KEY_TESTS = "tests"
 KEY_NAME = "name"
 KEY_TYPE = "type"
 KEY_ENABLED = "enabled"
-KEY_MOTOR_KEYS = "motorKeys"
+KEY_MOTOR_LABELS = "motorLabels"
 KEY_INPUT_SOURCE = "inputSource"
 KEY_DEADBAND = "deadband"
 KEY_DUTY = "duty"
@@ -144,7 +144,7 @@ def _parse_tests(entries: List[Dict[str, Any]]) -> List[TestModel]:
             test_type = TYPE_DEADBAND_SWEEP
         test = TestModel(name=name, test_type=test_type)
         test.enabled = bool(entry.get(KEY_ENABLED, False))
-        test.devices = list(entry.get(KEY_MOTOR_KEYS, []) or [])
+        test.devices = list(entry.get(KEY_MOTOR_LABELS, []) or [])
         if test_type == TYPE_JOYSTICK:
             test.joystick = TestBindingJoystick(
                 deadband=float(entry.get(KEY_DEADBAND, DEFAULT_DEADBAND)),
@@ -213,7 +213,7 @@ def _test_to_entry(test: TestModel) -> Dict[str, Any]:
     entry: Dict[str, Any] = {
         KEY_NAME: test.name,
         KEY_ENABLED: bool(test.enabled),
-        KEY_MOTOR_KEYS: list(test.devices),
+        KEY_MOTOR_LABELS: list(test.devices),
     }
     if test.test_type == TYPE_JOYSTICK:
         entry[KEY_TYPE] = TYPE_JOYSTICK

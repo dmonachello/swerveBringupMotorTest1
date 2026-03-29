@@ -16,6 +16,12 @@ from dataclasses import dataclass, field
 from typing import Dict, Tuple
 
 
+LABEL_KEY = "label"
+GROUP_KEY = "group"
+GROUP_UNKNOWN = "unknown"
+PREFER_STATUS_KEY = "prefer_status"
+
+
 @dataclass
 class SnifferState:
     """
@@ -26,12 +32,12 @@ class SnifferState:
         Holds per-device timestamps, message counts, and error totals used by
         reporting and publishing.
     """
-    last_seen: Dict[Tuple[int, int, int], float] = field(default_factory=dict)
-    status_last_seen: Dict[Tuple[int, int, int], float] = field(default_factory=dict)
-    control_last_seen: Dict[Tuple[int, int, int], float] = field(default_factory=dict)
-    msg_count: Dict[Tuple[int, int, int], int] = field(default_factory=dict)
-    pair_stats: Dict[Tuple[int, int, int, int, int], Dict[str, float]] = field(default_factory=dict)
-    last_status: Dict[Tuple[int, int, int], str] = field(default_factory=dict)
+    last_seen: Dict[str, float] = field(default_factory=dict)
+    status_last_seen: Dict[str, float] = field(default_factory=dict)
+    control_last_seen: Dict[str, float] = field(default_factory=dict)
+    msg_count: Dict[str, int] = field(default_factory=dict)
+    pair_stats: Dict[Tuple[str, int, int], Dict[str, float]] = field(default_factory=dict)
+    last_status: Dict[str, str] = field(default_factory=dict)
     total_frames: int = 0
     period_frames: int = 0
     read_errors: int = 0
@@ -43,7 +49,7 @@ class SnifferState:
     last_marker_ts: float = 0.0
 
 
-def merge_unknown_devices(devices, last_seen: Dict[Tuple[int, int, int], float], enabled: bool):
+def merge_unknown_devices(devices, last_seen: Dict[str, float], enabled: bool):
     """
     NAME
         merge_unknown_devices - Optionally include unprofiled devices.
@@ -58,19 +64,16 @@ def merge_unknown_devices(devices, last_seen: Dict[Tuple[int, int, int], float],
     """
     if not enabled:
         return devices
-    known_keys = {(d["manufacturer"], d["device_type"], d["device_id"]) for d in devices}
+    known_labels = {str(d.get(LABEL_KEY, "")) for d in devices}
     merged = list(devices)
-    for key in last_seen.keys():
-        if key in known_keys:
+    for label in last_seen.keys():
+        if label in known_labels:
             continue
-        mfg, dtype, did = key
         merged.append(
             {
-                "label": "UNKNOWN",
-                "manufacturer": mfg,
-                "device_type": dtype,
-                "device_id": did,
-                "group": "unknown",
+                LABEL_KEY: label,
+                GROUP_KEY: GROUP_UNKNOWN,
+                PREFER_STATUS_KEY: False,
             }
         )
     return merged

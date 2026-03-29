@@ -21,45 +21,22 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from tools.common.json_io import read_json, write_json
-DEVICE_REGISTRY: Dict[Tuple[int, int], Dict[str, Any]] = {
-    (4, 2): {
-        "device_name": "TalonFX",
-        "required_params": ["gear_ratio", "inverted"],
-        "optional_params": ["current_limit"],
-        "expected_frames": {
-            "apiClass_11_apiIndex_0": 10,
-            "apiClass_11_apiIndex_1": 20,
-        },
-    },
-    (9, 1): {
-        "device_name": "CANcoder",
-        "required_params": [],
-        "optional_params": [],
-        "expected_frames": {
-            "apiClass_6_apiIndex_0": 20,
-        },
-    },
-    (5, 2): {
-        "device_name": "REV_MOTOR",
-        "required_params": ["gear_ratio", "inverted"],
-        "optional_params": ["current_limit"],
-    },
-    (4, 10): {
-        "device_name": "CANdle",
-        "required_params": [],
-        "optional_params": [],
-    },
-    (4, 8): {
-        "device_name": "PDP",
-        "required_params": [],
-        "optional_params": [],
-    },
-    (1, 1): {
-        "device_name": "roboRIO",
-        "required_params": [],
-        "optional_params": [],
-    },
-}
+
+KEY_METADATA = "metadata"
+KEY_DEVICES = "devices"
+KEY_LABEL = "label"
+KEY_FRAME_DATA = "frame_data"
+KEY_CAPTURE_TIMESTAMP = "capture_timestamp"
+KEY_SOURCE = "source"
+KEY_ROBOT_IP = "robot_ip"
+KEY_PARAMETERS = "parameters"
+KEY_NAME = "name"
+KEY_DIO_DEVICES = "dio_devices"
+KEY_EXTERNAL_ENCODERS = "external_encoders"
+KEY_LINKED_DEVICE = "linked_device"
+ENCODER_DEFAULT_TYPE = "through_bore"
+DIO_EXAMPLE_NAME = "limit_switch_example"
+ENCODER_EXAMPLE_NAME = "encoder_example"
 
 
 def dump_api_inventory(
@@ -68,7 +45,7 @@ def dump_api_inventory(
     interface: str,
     channel: str,
     bitrate: int,
-    pairs: Dict[Tuple[int, int, int, int, int], Dict[str, float]],
+    pairs: Dict[Tuple[str, int, int], Dict[str, float]],
     source: str = "can_nt_bridge",
     robot_ip: Optional[str] = None,
 ) -> None:
@@ -82,43 +59,37 @@ def dump_api_inventory(
         interface: CAN interface type (e.g., slcan).
         channel: CAN channel (e.g., COM port).
         bitrate: CAN bitrate in bps.
-        pairs: Observed pair stats keyed by (mfg,type,id,apiClass,apiIndex).
+        pairs: Observed pair stats keyed by (label,apiClass,apiIndex).
         source: Inventory source label.
         robot_ip: Robot IP address string.
 
     SIDE EFFECTS
         Writes a JSON file to disk.
     """
-    devices: Dict[Tuple[int, int, int], Dict[str, Any]] = {}
-    for (mfg, dtype, did, api_class, api_index), stats in pairs.items():
-        key = (mfg, dtype, did)
+    devices: Dict[str, Dict[str, Any]] = {}
+    for (label, api_class, api_index), stats in pairs.items():
+        key = str(label)
         duration = max(0.0, stats["last"] - stats["first"])
         fps = (stats["count"] / duration) if duration > 0 else 0.0
         period_ms = (1000.0 / fps) if fps > 0 else None
         frame_name = build_frame_name(api_class, api_index)
         frame_entry = {
-            "frame_id": int(stats.get("arb_id")) if stats.get("arb_id") is not None else None,
             "period_ms": period_ms,
         }
         if key not in devices:
-            registry = lookup_registry_by_ids(mfg, dtype)
-            device_name = (registry.get("device_name") if registry else None) or "UNKNOWN"
             devices[key] = {
-                "can_id": did,
-                "manufacturer_id": mfg,
-                "device_type_id": dtype,
-                "device_name": device_name,
-                "frame_data": {},
+                KEY_LABEL: key,
+                KEY_FRAME_DATA: {},
             }
-        devices[key]["frame_data"][frame_name] = frame_entry
+        devices[key][KEY_FRAME_DATA][frame_name] = frame_entry
 
     payload = {
-        "metadata": {
-            "capture_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "source": source,
-            "robot_ip": robot_ip,
+        KEY_METADATA: {
+            KEY_CAPTURE_TIMESTAMP: datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            KEY_SOURCE: source,
+            KEY_ROBOT_IP: robot_ip,
         },
-        "devices": [devices[key] for key in sorted(devices.keys())],
+        KEY_DEVICES: [devices[key] for key in sorted(devices.keys())],
     }
     try:
         with open(path, "w", encoding="utf-8") as f:
@@ -127,7 +98,7 @@ def dump_api_inventory(
         print(f"ERROR: Failed to write API inventory '{path}': {exc}")
 
 
-def load_inventory(path: str) -> Dict[Tuple[int, int, int, int, int], float]:
+def load_inventory(path: str) -> Dict[Tuple[str, int, int], float]:
     """
     NAME
         load_inventory - Load inventory JSON into a keyed fps map.
@@ -136,7 +107,7 @@ def load_inventory(path: str) -> Dict[Tuple[int, int, int, int, int], float]:
         path: Inventory JSON file path.
 
     RETURNS
-        Mapping of (mfg,type,id,apiClass,apiIndex) -> fps.
+        Mapping of (label,apiClass,apiIndex) -> fps.
 
     ERRORS
         Prints a warning and returns empty map on read/parse failures.
@@ -146,15 +117,12 @@ def load_inventory(path: str) -> Dict[Tuple[int, int, int, int, int], float]:
     except Exception as exc:
         print(f"ERROR: Failed to load inventory file '{path}': {exc}")
         return {}
-    result: Dict[Tuple[int, int, int, int, int], float] = {}
-    for dev in payload.get("devices", []):
-        try:
-            mfg = int(dev.get("manufacturer_id"))
-            dtype = int(dev.get("device_type_id"))
-            did = int(dev.get("can_id"))
-        except Exception:
+    result: Dict[Tuple[str, int, int], float] = {}
+    for dev in payload.get(KEY_DEVICES, []):
+        label = str(dev.get(KEY_LABEL, "")).strip()
+        if not label:
             continue
-        frame_data = dev.get("frame_data", {})
+        frame_data = dev.get(KEY_FRAME_DATA, {})
         if not isinstance(frame_data, dict):
             continue
         for frame_name, frame in frame_data.items():
@@ -166,7 +134,7 @@ def load_inventory(path: str) -> Dict[Tuple[int, int, int, int, int], float]:
                 fps = 1000.0 / period_ms if period_ms > 0 else 0.0
             except Exception:
                 fps = 0.0
-            result[(mfg, dtype, did, api_class, api_index)] = fps
+            result[(label, api_class, api_index)] = fps
     return result
 
 
@@ -201,24 +169,24 @@ def print_inventory_diff(path_a: str, path_b: str, top_n: int) -> None:
     print("=== Inventory Diff ===")
     print(f"New pairs: {len(new_pairs)}")
     for key in new_pairs[:top_n]:
-        mfg, dtype, did, api_class, api_index = key
-        print(f"  + mfg={mfg} type={dtype} id={did} apiClass={api_class} apiIndex={api_index}")
+        label, api_class, api_index = key
+        print(f"  + label={label} apiClass={api_class} apiIndex={api_index}")
     if len(new_pairs) > top_n:
         print(f"  ... {len(new_pairs) - top_n} more")
 
     print(f"Missing pairs: {len(missing_pairs)}")
     for key in missing_pairs[:top_n]:
-        mfg, dtype, did, api_class, api_index = key
-        print(f"  - mfg={mfg} type={dtype} id={did} apiClass={api_class} apiIndex={api_index}")
+        label, api_class, api_index = key
+        print(f"  - label={label} apiClass={api_class} apiIndex={api_index}")
     if len(missing_pairs) > top_n:
         print(f"  ... {len(missing_pairs) - top_n} more")
 
     print(f"Biggest rate changes (top {top_n}):")
     for _, delta, key, fps_a, fps_b in deltas[:top_n]:
-        mfg, dtype, did, api_class, api_index = key
+        label, api_class, api_index = key
         print(
             "  "
-            f"mfg={mfg} type={dtype} id={did} apiClass={api_class} apiIndex={api_index} "
+            f"label={label} apiClass={api_class} apiIndex={api_index} "
             f"fps={fps_a:.2f} -> {fps_b:.2f} (delta {delta:+.2f})"
         )
 
@@ -261,23 +229,6 @@ def compute_inventory_hash(path: str) -> str:
     """
     data = Path(path).read_bytes()
     return hashlib.sha256(data).hexdigest()
-
-
-def normalize_device_type_name(name: str) -> str:
-    """
-    NAME
-        normalize_device_type_name - Normalize a device type for placeholder names.
-
-    PARAMETERS
-        name: Device name string.
-
-    RETURNS
-        Uppercase name with non-alphanumeric characters replaced by underscores.
-    """
-    out = []
-    for ch in name.upper():
-        out.append(ch if ch.isalnum() else "_")
-    return "".join(out).strip("_") or "UNKNOWN"
 
 
 def build_frame_name(api_class: int, api_index: int) -> str:
@@ -336,45 +287,6 @@ def discover_devices(inventory: Dict[str, Any]) -> List[Dict[str, Any]]:
     return devices if isinstance(devices, list) else []
 
 
-def lookup_registry_by_ids(
-    manufacturer_id: Optional[int],
-    device_type_id: Optional[int],
-) -> Optional[Dict[str, Any]]:
-    """
-    NAME
-        lookup_registry_by_ids - Lookup registry entry by numeric IDs.
-
-    PARAMETERS
-        manufacturer_id: Manufacturer ID.
-        device_type_id: Device type ID.
-
-    RETURNS
-        Registry entry dict or None if not found.
-    """
-    if manufacturer_id is None or device_type_id is None:
-        return None
-    return DEVICE_REGISTRY.get((manufacturer_id, device_type_id))
-
-
-def lookup_registry_by_name(device_type: str) -> Optional[Dict[str, Any]]:
-    """
-    NAME
-        lookup_registry_by_name - Lookup registry entry by device type name.
-
-    PARAMETERS
-        device_type: Device type string.
-
-    RETURNS
-        Registry entry dict or None if not found.
-    """
-    if not device_type:
-        return None
-    for entry in DEVICE_REGISTRY.values():
-        if entry.get("device_name") == device_type:
-            return entry
-    return None
-
-
 def generate_config(
     inventory: Dict[str, Any],
     inventory_path: str,
@@ -393,35 +305,18 @@ def generate_config(
         Generated configuration dict.
     """
     devices = discover_devices(inventory)
-    unrecognized: List[Dict[str, Any]] = []
     config_devices: List[Dict[str, Any]] = []
 
     for dev in devices:
-        try:
-            can_id = int(dev.get("can_id"))
-        except Exception:
-            can_id = None
-        manufacturer_id = dev.get("manufacturer_id")
-        device_type_id = dev.get("device_type_id")
-        registry = lookup_registry_by_ids(
-            int(manufacturer_id) if manufacturer_id is not None else None,
-            int(device_type_id) if device_type_id is not None else None,
-        )
-        device_type = (registry.get("device_name") if registry else None) or dev.get("device_name") or "UNKNOWN"
+        label = str(dev.get(KEY_LABEL, "")).strip()
+        if not label:
+            continue
         config_entry = {
-            "can_id": can_id,
-            "type": device_type,
-            "name": f"UNNAMED_{device_type}_{can_id}" if can_id is not None else f"UNNAMED_{device_type}",
-            "parameters": {},
-            "frame_data": dev.get("frame_data", {}) if isinstance(dev, dict) else {},
+            KEY_LABEL: label,
+            KEY_NAME: label,
+            KEY_PARAMETERS: {},
+            KEY_FRAME_DATA: dev.get(KEY_FRAME_DATA, {}) if isinstance(dev, dict) else {},
         }
-        if registry:
-            for param in registry.get("required_params", []):
-                config_entry["parameters"][param] = None
-            for param in registry.get("optional_params", []):
-                config_entry["parameters"][param] = None
-        else:
-            unrecognized.append(dev)
         config_devices.append(config_entry)
 
     metadata = {
@@ -432,23 +327,23 @@ def generate_config(
     }
 
     return {
-        "metadata": metadata,
-        "devices": config_devices,
-        "dio_devices": [
+        KEY_METADATA: metadata,
+        KEY_DEVICES: config_devices,
+        KEY_DIO_DEVICES: [
             {
-                "name": "limit_switch_example",
+                KEY_NAME: DIO_EXAMPLE_NAME,
                 "port": None,
                 "inverted": None,
-                "linked_device": None,
+                KEY_LINKED_DEVICE: None,
             }
         ],
-        "external_encoders": [
+        KEY_EXTERNAL_ENCODERS: [
             {
-                "name": "encoder_example",
-                "type": "through_bore",
+                KEY_NAME: ENCODER_EXAMPLE_NAME,
+                "type": ENCODER_DEFAULT_TYPE,
                 "port": None,
                 "offset": None,
-                "linked_device": None,
+                KEY_LINKED_DEVICE: None,
             }
         ],
     }
@@ -468,50 +363,31 @@ def compare_inventories(current: Dict[str, Any], previous: Dict[str, Any]) -> No
     """
     current_devices = discover_devices(current)
     previous_devices = discover_devices(previous)
-    current_keys = set()
-    previous_keys = set()
-    current_by_type: Dict[Tuple[int, int], List[int]] = {}
-    previous_by_type: Dict[Tuple[int, int], List[int]] = {}
+    current_labels = set()
+    previous_labels = set()
 
-    def add_device(device: Dict[str, Any], keys: set, by_type: Dict[Tuple[int, int], List[int]]) -> None:
-        try:
-            can_id = int(device.get("can_id"))
-            mfg = int(device.get("manufacturer_id"))
-            dtype = int(device.get("device_type_id"))
-        except Exception:
-            return
-        keys.add((mfg, dtype, can_id))
-        by_type.setdefault((mfg, dtype), []).append(can_id)
+    def add_device(device: Dict[str, Any], labels: set) -> None:
+        label = str(device.get(KEY_LABEL, "")).strip()
+        if label:
+            labels.add(label)
 
     for dev in current_devices:
         if isinstance(dev, dict):
-            add_device(dev, current_keys, current_by_type)
+            add_device(dev, current_labels)
     for dev in previous_devices:
         if isinstance(dev, dict):
-            add_device(dev, previous_keys, previous_by_type)
+            add_device(dev, previous_labels)
 
-    added = sorted(current_keys - previous_keys)
-    removed = sorted(previous_keys - current_keys)
+    added = sorted(current_labels - previous_labels)
+    removed = sorted(previous_labels - current_labels)
 
     print("=== Inventory Comparison ===")
     print(f"Devices added: {len(added)}")
-    for mfg, dtype, can_id in added:
-        print(f"  + mfg={mfg} type={dtype} can_id={can_id}")
+    for label in added:
+        print(f"  + label={label}")
     print(f"Devices removed: {len(removed)}")
-    for mfg, dtype, can_id in removed:
-        print(f"  - mfg={mfg} type={dtype} can_id={can_id}")
-
-    id_changes = []
-    for key in set(current_by_type.keys()) | set(previous_by_type.keys()):
-        before = set(previous_by_type.get(key, []))
-        after = set(current_by_type.get(key, []))
-        added_ids = sorted(after - before)
-        removed_ids = sorted(before - after)
-        if added_ids and removed_ids:
-            id_changes.append((key, added_ids, removed_ids))
-    print(f"CAN ID changes: {len(id_changes)}")
-    for (mfg, dtype), added_ids, removed_ids in id_changes:
-        print(f"  * mfg={mfg} type={dtype} added={added_ids} removed={removed_ids}")
+    for label in removed:
+        print(f"  - label={label}")
 
 
 def validate_config(
@@ -534,83 +410,42 @@ def validate_config(
     errors: List[str] = []
     warnings: List[str] = []
 
-    devices = config.get("devices", [])
+    devices = config.get(KEY_DEVICES, [])
     if not isinstance(devices, list):
         errors.append("Config devices must be a list.")
         return False, errors, warnings
 
-    seen_can_ids = set()
+    seen_labels = set()
     for device in devices:
         if not isinstance(device, dict):
             errors.append("Device entry must be an object.")
             continue
-        can_id = device.get("can_id")
-        device_type = device.get("type", "")
-        name = device.get("name", "")
-        parameters = device.get("parameters", {})
-        frame_data = device.get("frame_data", {})
-
-        if can_id is None:
-            errors.append(f"Device '{name}' missing can_id.")
-        else:
-            if can_id in seen_can_ids:
-                errors.append(f"Duplicate CAN ID {can_id}.")
-            seen_can_ids.add(can_id)
-
-        if isinstance(name, str) and name.startswith("UNNAMED_"):
-            errors.append(f"Device '{name}' has placeholder name.")
-
-        if not isinstance(device_type, str) or not device_type:
-            errors.append(f"Device '{name}' missing type.")
-
-        registry = lookup_registry_by_name(device_type)
-        if registry is None:
-            warnings.append(f"Unrecognized device type '{device_type}'.")
+        label = str(device.get(KEY_LABEL, "")).strip()
+        name = device.get(KEY_NAME, "")
+        if not label:
+            errors.append("Device entry missing label.")
             continue
+        if label in seen_labels:
+            errors.append(f"Duplicate device label '{label}'.")
+        seen_labels.add(label)
+        if not isinstance(name, str) or not name:
+            warnings.append(f"Device '{label}' missing display name.")
 
-        required = registry.get("required_params", [])
-        for param in required:
-            if not isinstance(parameters, dict) or parameters.get(param) is None:
-                errors.append(f"Device '{name}' missing required parameter '{param}'.")
-
-        expected_frames = registry.get("expected_frames", {})
-        if expected_frames and isinstance(frame_data, dict):
-            for frame_name, expected_period in expected_frames.items():
-                frame = frame_data.get(frame_name)
-                if not isinstance(frame, dict):
-                    continue
-                actual = frame.get("period_ms")
-                if actual is None:
-                    continue
-                try:
-                    actual_val = float(actual)
-                    expected_val = float(expected_period)
-                except Exception:
-                    continue
-                if expected_val <= 0:
-                    continue
-                deviation = abs(actual_val - expected_val) / expected_val * 100.0
-                if deviation > tolerance_percent:
-                    warnings.append(
-                        f"Frame '{frame_name}' for device '{name}' deviates by "
-                        f"{deviation:.1f}% (expected {expected_val}ms, got {actual_val}ms)."
-                    )
-
-    for device in config.get("dio_devices", []) or []:
+    for device in config.get(KEY_DIO_DEVICES, []) or []:
         if not isinstance(device, dict):
             errors.append("DIO device entry must be an object.")
             continue
-        linked = device.get("linked_device")
-        if linked is not None and linked not in seen_can_ids:
-            errors.append(f"DIO device '{device.get('name')}' links to unknown CAN ID {linked}.")
+        linked = device.get(KEY_LINKED_DEVICE)
+        if linked is not None and linked not in seen_labels:
+            errors.append(f"DIO device '{device.get(KEY_NAME)}' links to unknown label '{linked}'.")
 
-    for device in config.get("external_encoders", []) or []:
+    for device in config.get(KEY_EXTERNAL_ENCODERS, []) or []:
         if not isinstance(device, dict):
             errors.append("External encoder entry must be an object.")
             continue
-        linked = device.get("linked_device")
-        if linked is not None and linked not in seen_can_ids:
-            errors.append(f"External encoder '{device.get('name')}' links to unknown CAN ID {linked}.")
+        linked = device.get(KEY_LINKED_DEVICE)
+        if linked is not None and linked not in seen_labels:
+            errors.append(f"External encoder '{device.get(KEY_NAME)}' links to unknown label '{linked}'.")
 
     if inventory_path:
         try:
@@ -765,14 +600,8 @@ def run_generate(args: Dict[str, Any]) -> int:
     if not write_config(output_path, config):
         return 2
 
-    recognized = len(config["devices"]) - len(
-        [d for d in config["devices"] if lookup_registry_by_name(d.get("type", "")) is None]
-    )
     print("Inventory scan complete")
     print(f"Devices detected: {len(config['devices'])}")
-    print(f"Recognized: {recognized}")
-    print(f"Unrecognized: {len(config['devices']) - recognized}")
-    print("NOTE: Device types are best-guess from IDs; review and rename as needed.")
     print(f"Config file written to {output_path}")
     return 0
 

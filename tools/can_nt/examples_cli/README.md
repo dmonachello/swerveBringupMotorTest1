@@ -10,7 +10,7 @@ Run with:
 ## Files
 Purpose: Describe each file in this folder.
 
-- `tmp_cli_robot2026.txt`: Recreates the 2026 robot bridgeConfig (devices + groups) and prints show outputs.
+- `tmp_cli_robot2026.txt`: Recreates the 2026 robot bridgeConfig.byProfile groups and prints show outputs.
 - `tmp_cli_mixed.txt`: Mixed valid/invalid commands for parser and mode behavior testing.
 - `tmp_cli_device_ok.txt`: Device-mode only set commands with numeric and text values.
 - `tmp_cli_script.txt`: Small baseline script for quick batch CLI smoke tests.

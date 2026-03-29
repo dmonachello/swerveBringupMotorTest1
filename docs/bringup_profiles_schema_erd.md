@@ -5,18 +5,19 @@ Purpose: Show a database-style ERD view of the bringup profiles JSON structure.
 ```mermaid
 erDiagram
     BRINGUP_SYSTEM ||--o{ PROFILE : contains
-    PROFILE ||--o{ DEVICE_ENTRY : has
-    DEVICE_ENTRY ||--o| LIMIT_CONFIG : uses
+    BRINGUP_SYSTEM ||--o{ DEVICE_DEFINITION : registry
+    PROFILE ||--o{ DEVICE_DEFINITION : references_by_label
     BRINGUP_SYSTEM ||--o| DIAGRAM : includes
     DIAGRAM ||--o{ DIAGRAM_PROFILE : contains
     DIAGRAM_PROFILE ||--o{ NODE : has
     BRINGUP_SYSTEM ||--o| BRIDGE_CONFIG : includes
-    BRIDGE_CONFIG ||--o{ GROUP : contains
+    BRIDGE_CONFIG ||--o{ BRIDGE_PROFILE : byProfile
+    BRIDGE_PROFILE ||--o{ GROUP : contains
     GROUP ||--o{ MEMBER : has
     GROUP ||--o{ BINDING : has
 
     BRINGUP_SYSTEM {
-        int schema_version (3)
+        int schema_version
         string data_version
         string data_hash
         string default_profile
@@ -24,22 +25,22 @@ erDiagram
 
     PROFILE {
         string name
-        string section
+        string[] devices
     }
 
-    DEVICE_ENTRY {
-        int id
+    DEVICE_DEFINITION {
         string label
-        string vendor
+        string interface
+        int manufacturer
+        int deviceType
+        int id
+        string model
         string type
-        string motor
-        bool terminator
-    }
-
-    LIMIT_CONFIG {
-        int fwdDio
-        int revDio
+        int dio
         bool invert
+        string[] attachments
+        string[] tags
+        bool terminator
     }
 
     DIAGRAM {
@@ -71,6 +72,10 @@ erDiagram
         string generatedAt
     }
 
+    BRIDGE_PROFILE {
+        string profile_name
+    }
+
     GROUP {
         string name
         bool enabled
@@ -90,5 +95,6 @@ erDiagram
 
 Notes:
 - This ERD is a conceptual mapping of JSON objects to relational entities.
-- `PROFILE.section` represents which list a device came from (e.g., `neos`, `krakens`, `devices`, `pdh`).
+- Root schema_version is 4.
+- Profiles only store device labels; identity fields live in the device registry.
 - Optional JSON fields are shown without nullable markers to keep the ERD compact.

@@ -8,51 +8,72 @@ SYNOPSIS
     from tools.can_nt.can_profiles import get_profile, list_profiles
 
 DESCRIPTION
-    Reads bringup_system.json from the central data repository (with deploy
-    and legacy bringup_profiles.json fallback) and provides default device
-    lists for the CAN diagnostics tool.
+    Reads bringup_system.json from the central data repository (deploy fallback)
+    and provides CAN device entries for the diagnostics tool.
 """
+
+from typing import Any, Dict, List, Set, Tuple
 
 from tools.common.json_io import read_json
 from tools.common.paths import (
-    legacy_profiles_canonical_path,
-    legacy_profiles_deploy_path,
     profiles_canonical_path,
     profiles_deploy_path,
 )
+from tools.common.profile_constants import (
+    INTERFACE_CAN,
+    KEY_ATTACHMENTS,
+    KEY_DATA_HASH,
+    KEY_DATA_VERSION,
+    KEY_DEFAULT_PROFILE,
+    KEY_DEVICE_TYPE,
+    KEY_DEVICES,
+    KEY_ID,
+    KEY_INTERFACE,
+    KEY_LABEL,
+    KEY_MANUFACTURER,
+    KEY_MODEL,
+    KEY_PROFILES,
+    KEY_PROFILE_DEVICES,
+    KEY_SCHEMA_VERSION,
+    KEY_TAGS,
+    KEY_TERMINATOR,
+    KEY_TYPE,
+    PROFILE_SCHEMA_VERSION,
+)
 from tools.common.profile_io import compute_profiles_hash
-from typing import Any, Dict, List, Set, Tuple
-
+from .can_frc_defs import uses_status_presence
 
 DEFAULT_PROFILE_NAME = "robot"
-PROFILE_SCHEMA_VERSION = 3
 CANONICAL_PROFILE_FILE = profiles_canonical_path()
 DEPLOY_PROFILE_FILE = profiles_deploy_path()
-LEGACY_CANONICAL_PROFILE_FILE = legacy_profiles_canonical_path()
-LEGACY_DEPLOY_PROFILE_FILE = legacy_profiles_deploy_path()
 _LOAD_ERROR: str = ""
 _DATA_VERSION: str = ""
 _DATA_HASH: str = ""
 
+KEY_PREFER_STATUS = "prefer_status"
+EMPTY_STRING = ""
 
-def _device(label: str, manufacturer: int, device_type: int, device_id: int, group: str) -> Dict[str, Any]:
-    """
-    NAME
-        _device - Build a normalized device dictionary.
-    """
-    return {
-        "label": label,
-        "manufacturer": manufacturer,
-        "device_type": device_type,
-        "device_id": device_id,
-        "group": group,
-    }
+MSG_LOAD_MISSING = "Profiles file not found at {path}"
+MSG_LOAD_PARSE = "Failed to parse profiles JSON at {path}"
+MSG_SCHEMA_MISMATCH = "Profile schema_version mismatch: expected {version}, got {found}"
+MSG_DATA_VERSION_MISSING = "Profile data_version missing or empty"
+MSG_DATA_HASH_MISSING = "Profile data_hash missing or empty"
+MSG_DATA_HASH_MISMATCH = "Profile data_hash mismatch (run tools/sync_profiles.py)"
+MSG_PROFILES_MISSING = "Profiles payload missing 'profiles' map"
+MSG_DEVICES_MISSING = "Profiles payload missing 'devices' list"
+MSG_DEVICE_LABEL_MISSING = "Device entry missing label"
+MSG_DEVICE_LABEL_DUP = "Duplicate device label in registry: {label}"
+MSG_PROFILE_DEVICES_MISSING = "Profile '{profile}' missing devices list"
+MSG_PROFILE_DEVICE_UNKNOWN = "Profile '{profile}' references unknown device label: {label}"
+MSG_PROFILES_EMPTY = "Profiles map is empty"
+MSG_DEVICE_LIST_EMPTY = "Devices registry is empty"
+MSG_UNKNOWN_PROFILE = "Unknown profile: {profile}. Available: {profiles}"
 
 
 def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
     """
     NAME
-        _load_profiles - Load profiles from JSON with fallbacks.
+        _load_profiles - Load profiles from JSON with deploy fallback.
 
     RETURNS
         (default_profile_name, profiles_map).
@@ -60,209 +81,111 @@ def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
     global _LOAD_ERROR
     global _DATA_VERSION
     global _DATA_HASH
-    _LOAD_ERROR = ""
-    _DATA_VERSION = ""
-    _DATA_HASH = ""
+    _LOAD_ERROR = EMPTY_STRING
+    _DATA_VERSION = EMPTY_STRING
+    _DATA_HASH = EMPTY_STRING
     path = CANONICAL_PROFILE_FILE if CANONICAL_PROFILE_FILE.exists() else DEPLOY_PROFILE_FILE
     if not path.exists():
-        # LEGACY (remove after v3 unified file adoption).
-        legacy_path = (
-            LEGACY_CANONICAL_PROFILE_FILE
-            if LEGACY_CANONICAL_PROFILE_FILE.exists()
-            else LEGACY_DEPLOY_PROFILE_FILE
-        )
-        if legacy_path.exists():
-            path = legacy_path
-        else:
-            _LOAD_ERROR = f"Profiles file not found at {path}"
-            return (_fallback_default(), _fallback_profiles())
+        _LOAD_ERROR = MSG_LOAD_MISSING.format(path=path)
         return (_fallback_default(), _fallback_profiles())
 
     try:
         payload = read_json(path)
     except Exception:
-        _LOAD_ERROR = f"Failed to parse profiles JSON at {path}"
+        _LOAD_ERROR = MSG_LOAD_PARSE.format(path=path)
         return (_fallback_default(), _fallback_profiles())
 
-    schema_version = payload.get("schema_version")
-    if schema_version not in (PROFILE_SCHEMA_VERSION, 2):
-        _LOAD_ERROR = (
-            "Profile schema_version mismatch: "
-            f"expected {PROFILE_SCHEMA_VERSION} or 2, got {schema_version}"
+    schema_version = payload.get(KEY_SCHEMA_VERSION)
+    if schema_version != PROFILE_SCHEMA_VERSION:
+        _LOAD_ERROR = MSG_SCHEMA_MISMATCH.format(
+            version=PROFILE_SCHEMA_VERSION,
+            found=schema_version,
         )
         return (_fallback_default(), _fallback_profiles())
 
-    data_version = payload.get("data_version")
+    data_version = payload.get(KEY_DATA_VERSION)
     if not isinstance(data_version, str) or not data_version.strip():
-        _LOAD_ERROR = "Profile data_version missing or empty"
+        _LOAD_ERROR = MSG_DATA_VERSION_MISSING
         return (_fallback_default(), _fallback_profiles())
     _DATA_VERSION = data_version.strip()
 
-    data_hash = payload.get("data_hash")
+    data_hash = payload.get(KEY_DATA_HASH)
     if not isinstance(data_hash, str) or not data_hash.strip():
-        _LOAD_ERROR = "Profile data_hash missing or empty"
+        _LOAD_ERROR = MSG_DATA_HASH_MISSING
         return (_fallback_default(), _fallback_profiles())
     computed_hash = compute_profiles_hash(payload)
     if data_hash != computed_hash:
-        _LOAD_ERROR = "Profile data_hash mismatch (run tools/sync_profiles.py)"
+        _LOAD_ERROR = MSG_DATA_HASH_MISMATCH
         return (_fallback_default(), _fallback_profiles())
     _DATA_HASH = data_hash
 
-    default_profile = payload.get("default_profile") or DEFAULT_PROFILE_NAME
-    raw_profiles = payload.get("profiles")
+    devices_raw = payload.get(KEY_DEVICES)
+    if not isinstance(devices_raw, list) or not devices_raw:
+        _LOAD_ERROR = MSG_DEVICES_MISSING
+        return (_fallback_default(), _fallback_profiles())
+
+    device_registry: Dict[str, Dict[str, Any]] = {}
+    for entry in devices_raw:
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+        if not label:
+            _LOAD_ERROR = MSG_DEVICE_LABEL_MISSING
+            return (_fallback_default(), _fallback_profiles())
+        key = label.lower()
+        if key in device_registry:
+            _LOAD_ERROR = MSG_DEVICE_LABEL_DUP.format(label=label)
+            return (_fallback_default(), _fallback_profiles())
+        device_registry[key] = entry
+
+    if not device_registry:
+        _LOAD_ERROR = MSG_DEVICE_LIST_EMPTY
+        return (_fallback_default(), _fallback_profiles())
+
+    raw_profiles = payload.get(KEY_PROFILES)
     if not isinstance(raw_profiles, dict) or not raw_profiles:
-        _LOAD_ERROR = "Profiles payload missing 'profiles' map"
+        _LOAD_ERROR = MSG_PROFILES_MISSING
         return (_fallback_default(), _fallback_profiles())
 
     profiles: Dict[str, List[Dict[str, Any]]] = {}
     for name, raw in raw_profiles.items():
         if not isinstance(raw, dict):
             continue
-        profiles[name] = _profile_devices(raw)
+        devices = raw.get(KEY_PROFILE_DEVICES)
+        if not isinstance(devices, list):
+            _LOAD_ERROR = MSG_PROFILE_DEVICES_MISSING.format(profile=name)
+            return (_fallback_default(), _fallback_profiles())
+        resolved: List[Dict[str, Any]] = []
+        for label in devices:
+            if not isinstance(label, str):
+                continue
+            key = label.strip().lower()
+            entry = device_registry.get(key)
+            if entry is None:
+                _LOAD_ERROR = MSG_PROFILE_DEVICE_UNKNOWN.format(profile=name, label=label)
+                return (_fallback_default(), _fallback_profiles())
+            device_copy = dict(entry)
+            if device_copy.get(KEY_INTERFACE) == INTERFACE_CAN:
+                manufacturer = device_copy.get(KEY_MANUFACTURER)
+                device_type = device_copy.get(KEY_DEVICE_TYPE)
+                if isinstance(manufacturer, int) and isinstance(device_type, int):
+                    device_copy[KEY_PREFER_STATUS] = uses_status_presence(
+                        manufacturer,
+                        device_type,
+                    )
+            resolved.append(device_copy)
+        profiles[name] = resolved
 
+    default_profile = payload.get(KEY_DEFAULT_PROFILE) or DEFAULT_PROFILE_NAME
     if default_profile not in profiles:
         default_profile = DEFAULT_PROFILE_NAME
 
     if not profiles:
-        _LOAD_ERROR = "Profiles map is empty"
-        return (_fallback_default(), _fallback_profiles())
-
-    dup_error = _check_duplicate_ids(profiles)
-    if dup_error:
-        _LOAD_ERROR = dup_error
-        return (_fallback_default(), _fallback_profiles())
-    label_error = _check_duplicate_labels(profiles)
-    if label_error:
-        _LOAD_ERROR = label_error
+        _LOAD_ERROR = MSG_PROFILES_EMPTY
         return (_fallback_default(), _fallback_profiles())
 
     return (default_profile, profiles)
 
-
-def _profile_devices(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    NAME
-        _profile_devices - Convert a profile JSON section into device entries.
-    """
-    devices: List[Dict[str, Any]] = []
-
-    for entry in raw.get("neos", []) or []:
-        if not isinstance(entry, dict) or "id" not in entry:
-            continue
-        label = entry.get("label") or f"NEO {entry.get('id')}"
-        device_id = int(entry.get("id"))
-        devices.append(_device(label, 5, 2, device_id, "neos"))
-
-    for entry in raw.get("neo550s", []) or []:
-        if not isinstance(entry, dict) or "id" not in entry:
-            continue
-        label = entry.get("label") or f"NEO 550 {entry.get('id')}"
-        device_id = int(entry.get("id"))
-        devices.append(_device(label, 5, 2, device_id, "neo550s"))
-
-    for entry in raw.get("flexes", []) or []:
-        if not isinstance(entry, dict) or "id" not in entry:
-            continue
-        label = entry.get("label") or f"FLEX {entry.get('id')}"
-        device_id = int(entry.get("id"))
-        devices.append(_device(label, 5, 2, device_id, "flexes"))
-
-    for entry in raw.get("krakens", []) or []:
-        if not isinstance(entry, dict) or "id" not in entry:
-            continue
-        label = entry.get("label") or f"KRAKEN {entry.get('id')}"
-        device_id = int(entry.get("id"))
-        devices.append(_device(label, 4, 2, device_id, "krakens"))
-
-    for entry in raw.get("falcons", []) or []:
-        if not isinstance(entry, dict) or "id" not in entry:
-            continue
-        label = entry.get("label") or f"FALCON {entry.get('id')}"
-        device_id = int(entry.get("id"))
-        devices.append(_device(label, 4, 2, device_id, "falcons"))
-
-    for entry in raw.get("cancoders", []) or []:
-        if not isinstance(entry, dict) or "id" not in entry:
-            continue
-        label = entry.get("label") or f"CANCoder {entry.get('id')}"
-        device_id = int(entry.get("id"))
-        devices.append(_device(label, 4, 7, device_id, "cancoders"))
-
-    for entry in raw.get("candles", []) or []:
-        if not isinstance(entry, dict) or "id" not in entry:
-            continue
-        label = entry.get("label") or f"CANdle {entry.get('id')}"
-        device_id = int(entry.get("id"))
-        devices.append(_device(label, 4, 10, device_id, "candles"))
-
-    pdh = raw.get("pdh")
-    if isinstance(pdh, dict) and "id" in pdh:
-        label = pdh.get("label") or "PDH"
-        devices.append(_device(label, 5, 8, int(pdh.get("id")), "power"))
-
-    pdp = raw.get("pdp")
-    if isinstance(pdp, dict) and "id" in pdp:
-        label = pdp.get("label") or "PDP"
-        devices.append(_device(label, 4, 8, int(pdp.get("id")), "power"))
-
-    pigeon = raw.get("pigeon")
-    if isinstance(pigeon, dict) and "id" in pigeon:
-        label = pigeon.get("label") or "Pigeon"
-        devices.append(_device(label, 4, 4, int(pigeon.get("id")), "sensors"))
-
-    roborio = raw.get("roborio")
-    if isinstance(roborio, dict) and "id" in roborio:
-        label = roborio.get("label") or "roboRIO"
-        devices.append(_device(label, 1, 1, int(roborio.get("id")), "controller"))
-
-    return devices
-
-
-def _check_duplicate_ids(profiles: Dict[str, List[Dict[str, Any]]]) -> str:
-    """
-    NAME
-        _check_duplicate_ids - Validate duplicate CAN IDs across profiles.
-
-    RETURNS
-        Error string when duplicates are found, otherwise empty string.
-    """
-    for name, devices in profiles.items():
-        seen: set[tuple[int, int, int]] = set()
-        for entry in devices:
-            try:
-                device_id = int(entry.get("device_id"))
-                manufacturer = int(entry.get("manufacturer"))
-                device_type = int(entry.get("device_type"))
-            except Exception:
-                continue
-            if device_id < 0:
-                continue
-            key = (manufacturer, device_type, device_id)
-            if key in seen:
-                return (
-                    f"Profile '{name}' duplicate full CAN ID "
-                    f"mfg={manufacturer} type={device_type} id={device_id}"
-                )
-            seen.add(key)
-    return ""
-
-
-def _check_duplicate_labels(profiles: Dict[str, List[Dict[str, Any]]]) -> str:
-    """
-    NAME
-        _check_duplicate_labels - Validate duplicate labels across profiles.
-    """
-    for name, devices in profiles.items():
-        seen = {}
-        for device in devices:
-            label = str(device.get("label", "")).strip()
-            if not label:
-                continue
-            key = label.lower()
-            seen[key] = seen.get(key, 0) + 1
-            if seen[key] > 1:
-                return f"Duplicate label in profile '{name}': {label}"
-    return ""
 
 
 def _fallback_default() -> str:
@@ -273,40 +196,19 @@ def _fallback_default() -> str:
     return DEFAULT_PROFILE_NAME
 
 
+
 def _fallback_profiles() -> Dict[str, List[Dict[str, Any]]]:
     """
     NAME
         _fallback_profiles - Provide fallback profiles when JSON is missing.
     """
-    robot_devices: List[Dict[str, Any]] = [
-        _device("FR NEO", 5, 2, 10, "neos"),
-        _device("FL NEO", 5, 2, 1, "neos"),
-        _device("BR NEO", 5, 2, 7, "neos"),
-        _device("BL NEO", 5, 2, 4, "neos"),
-        _device("FR KRAK", 4, 2, 11, "krakens"),
-        _device("FL KRAK", 4, 2, 2, "krakens"),
-        _device("BR KRAK", 4, 2, 8, "krakens"),
-        _device("BL KRAK", 4, 2, 5, "krakens"),
-        _device("FR CANC", 4, 7, 12, "cancoders"),
-        _device("FL CANC", 4, 7, 3, "cancoders"),
-        _device("BR CANC", 4, 7, 9, "cancoders"),
-        _device("BL CANC", 4, 7, 6, "cancoders"),
-        _device("PDH", 5, 8, 1, "power"),
-        _device("Pigeon", 4, 4, 1, "sensors"),
-    ]
-    demo_devices: List[Dict[str, Any]] = [
-        _device("NEO 22", 5, 2, 22, "neos"),
-        _device("NEO 25", 5, 2, 25, "neos"),
-        _device("NEO 10", 5, 2, 10, "neos"),
-    ]
     return {
-        "robot": robot_devices,
-        "demo_club": demo_devices,
-        "demo_home": [],
+        DEFAULT_PROFILE_NAME: [],
     }
 
 
 DEFAULT_PROFILE, PROFILE_DEVICES = _load_profiles()
+
 
 
 def get_default_profile() -> str:
@@ -317,12 +219,14 @@ def get_default_profile() -> str:
     return DEFAULT_PROFILE
 
 
+
 def get_profile_schema_version() -> int:
     """
     NAME
         get_profile_schema_version - Return the expected profiles schema version.
     """
     return PROFILE_SCHEMA_VERSION
+
 
 
 def get_profiles_load_error() -> str:
@@ -333,6 +237,7 @@ def get_profiles_load_error() -> str:
     return _LOAD_ERROR
 
 
+
 def get_profiles_data_version() -> str:
     """
     NAME
@@ -341,12 +246,14 @@ def get_profiles_data_version() -> str:
     return _DATA_VERSION
 
 
+
 def get_profiles_data_hash() -> str:
     """
     NAME
         get_profiles_data_hash - Return the loaded profile data_hash.
     """
     return _DATA_HASH
+
 
 
 def reload_profiles() -> Tuple[bool, str]:
@@ -363,12 +270,14 @@ def reload_profiles() -> Tuple[bool, str]:
     return True, ""
 
 
+
 def list_profiles() -> List[str]:
     """
     NAME
         list_profiles - Return available profile names.
     """
     return list(PROFILE_DEVICES.keys())
+
 
 
 def get_profile(profile: str) -> Tuple[List[Dict[str, Any]], Set[int]]:
@@ -386,5 +295,15 @@ def get_profile(profile: str) -> Tuple[List[Dict[str, Any]], Set[int]]:
         Raises ValueError when the profile is unknown.
     """
     if profile in PROFILE_DEVICES:
-        return (list(PROFILE_DEVICES[profile]), set())
-    raise ValueError(f"Unknown profile: {profile}. Available: {', '.join(PROFILE_DEVICES.keys())}")
+        devices = [
+            entry
+            for entry in PROFILE_DEVICES[profile]
+            if entry.get(KEY_INTERFACE) == INTERFACE_CAN
+        ]
+        return (devices, set())
+    raise ValueError(
+        MSG_UNKNOWN_PROFILE.format(
+            profile=profile,
+            profiles=", ".join(PROFILE_DEVICES.keys()),
+        )
+    )

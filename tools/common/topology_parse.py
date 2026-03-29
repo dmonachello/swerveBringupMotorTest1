@@ -11,7 +11,9 @@ DESCRIPTION
     Extracts nodes and link metadata from bringup_system.json diagram sections.
 """
 
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Tuple, Optional
+
+from tools.common.profile_constants import KEY_BRIDGE_BY_PROFILE, KEY_BRIDGE_GROUPS
 
 
 def parse_diagram_nodes(diagram: Dict[str, object]) -> List[Dict[str, object]]:
@@ -47,15 +49,21 @@ def parse_diagram_links(diagram: Dict[str, object]) -> Tuple[List[Tuple[int, int
     return ethernet, can_links, device_links
 
 
-def parse_bridge_groups(payload: Dict[str, object]) -> List[Dict[str, object]]:
+def parse_bridge_groups(payload: Dict[str, object], profile_name: Optional[str]) -> List[Dict[str, object]]:
     """
     NAME
-        parse_bridge_groups - Return bridgeConfig group metadata.
+        parse_bridge_groups - Return per-profile bridgeConfig group metadata.
     """
     bridge = payload.get("bridgeConfig")
     if not isinstance(bridge, dict):
         return []
-    groups = bridge.get("groups")
+    by_profile = bridge.get(KEY_BRIDGE_BY_PROFILE)
+    if not isinstance(by_profile, dict) or not profile_name:
+        return []
+    entry = by_profile.get(profile_name)
+    if not isinstance(entry, dict):
+        return []
+    groups = entry.get(KEY_BRIDGE_GROUPS)
     if isinstance(groups, list):
         return [entry for entry in groups if isinstance(entry, dict)]
     return []

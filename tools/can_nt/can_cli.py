@@ -211,7 +211,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stale-s", type=float, default=0.75)
     parser.add_argument("--top-n", type=int, default=15)
 
-    parser.add_argument("--dump-can-expected-ids", default="")
+    parser.add_argument(
+        "--dump-can-expected-ids",
+        default="",
+        help="Write a snapshot of observed device labels and exit.",
+    )
     parser.add_argument("--dump-after", type=float, default=3.0)
 
     parser.add_argument(
@@ -363,28 +367,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print all frames (ignores status/control classification).",
     )
     parser.add_argument(
-        "--print-can-id",
-        type=lambda s: int(s, 0),
-        default=-1,
-        help="Only print frames matching this arbitration ID (hex or dec).",
-    )
-    parser.add_argument(
-        "--print-device-id",
-        type=int,
-        default=-1,
-        help="Only print frames matching this device ID (low 6 bits of arbitration ID).",
-    )
-    parser.add_argument(
-        "--print-mfg",
-        type=int,
-        default=-1,
-        help="Only print frames matching this manufacturer ID.",
-    )
-    parser.add_argument(
-        "--print-type",
-        type=int,
-        default=-1,
-        help="Only print frames matching this device type.",
+        "--print-label",
+        type=str,
+        default="",
+        help="Only print frames matching this device label.",
     )
 
     return parser

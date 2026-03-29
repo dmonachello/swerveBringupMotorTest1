@@ -8,8 +8,8 @@
         "enabled": false,
         "deadband": 0.12,
         "inputSource": "controller0.leftY",
-        "motorKeys": [
-          "REV:NEO:10"
+        "motorLabels": [
+          "Device 10"
         ]
       }
     ]

@@ -7,8 +7,9 @@ SYNOPSIS
 
 DESCRIPTION
     Parses a simple text table (tab or multi-space columns) describing
-    subsystem, device name, and CAN ID. Produces a first-pass
-    bringup_system.json payload suitable for loading into the topology editor.
+    subsystem, device name, and CAN ID. Produces a label-only
+    bringup_system.json payload with placeholder CAN identity fields
+    suitable for loading into the topology editor.
 """
 from __future__ import annotations
 
@@ -26,9 +27,29 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from tools.common.cli_helpers import add_input_arg, add_output_arg
+from tools.common.profile_constants import (
+    INTERFACE_CAN,
+    KEY_DATA_HASH,
+    KEY_DATA_VERSION,
+    KEY_DEFAULT_PROFILE,
+    KEY_DEVICE_TYPE,
+    KEY_DEVICES,
+    KEY_ID,
+    KEY_INTERFACE,
+    KEY_LABEL,
+    KEY_MANUFACTURER,
+    KEY_PROFILE_DEVICES,
+    KEY_PROFILES,
+    KEY_SCHEMA_VERSION,
+    KEY_TAGS,
+    PROFILE_SCHEMA_VERSION,
+)
 from tools.common.profile_io import compute_profiles_hash
 from tools.common.text_io import read_lines
 from tools.common.time_utils import timestamp_version
+
+UNKNOWN_CAN_FIELD = -1
+MSG_DUP_LABEL = "Duplicate device label: {label}"
 
 @dataclass
 class TableRow:
@@ -140,70 +161,47 @@ def _device_tags(subsystem: str, device: str) -> List[str]:
     return sorted(tags)
 
 
-def _classify_device(device: str) -> Tuple[str, Dict[str, str]]:
+def build_payload(rows: List[TableRow], profile_name: str) -> Dict[str, object]:
     """
     NAME
-        _classify_device - Map a device name to a profile category.
-
-    RETURNS
-        Tuple of (category, extra_fields). The extra_fields contain
-        vendor/type/motor when using the generic devices category.
+        build_payload - Convert rows into a label-only profiles payload.
     """
-    lowered = device.lower()
-    if "cancoder" in lowered:
-        return "cancoders", {}
-    if "candle" in lowered:
-        return "candles", {}
-    if "pigeon" in lowered or "imu" in lowered:
-        return "pigeon", {}
-    if "pdh" in lowered:
-        return "pdh", {}
-    if "pdp" in lowered:
-        return "pdp", {}
-    if "roborio" in lowered:
-        return "roborio", {}
-    if "kraken" in lowered:
-        return "krakens", {"motor": "CTRE Kraken X60"}
-    if "falcon" in lowered:
-        return "falcons", {"motor": "CTRE Falcon 500"}
-    if "neo 550" in lowered or "neo550" in lowered:
-        return "neo550s", {"motor": "REV NEO 550"}
-    if "vortex" in lowered or "sparkflex" in lowered or "spark flex" in lowered:
-        return "flexes", {"motor": "REV NEO Vortex"}
-    if "neo" in lowered or "sparkmax" in lowered or "spark max" in lowered:
-        return "neos", {"motor": "REV NEO"}
-
-    extra: Dict[str, str] = {"vendor": "Unknown", "type": "Miscellaneous"}
-    if "motor" in lowered:
-        extra["type"] = "MotorController"
-    if "encoder" in lowered:
-        extra["type"] = "Encoder"
-    return "devices", extra
-
-
-def build_profile(rows: List[TableRow]) -> Dict[str, List[Dict[str, object]]]:
-    """
-    NAME
-        build_profile - Convert rows into a bringup profile structure.
-    """
-    profile: Dict[str, List[Dict[str, object]]] = {}
-    singletons: Dict[str, Dict[str, object]] = {}
+    devices: List[Dict[str, object]] = []
+    labels: List[str] = []
+    seen: Dict[str, str] = {}
     for row in rows:
-        category, extra = _classify_device(row.device)
+        label = _normalize_text(row.device)
+        if not label:
+            continue
+        label_key = label.lower()
+        if label_key in seen:
+            raise ValueError(MSG_DUP_LABEL.format(label=label))
+        seen[label_key] = label
+        labels.append(label)
         entry: Dict[str, object] = {
-            "label": row.device,
-            "id": row.can_id,
+            KEY_LABEL: label,
+            KEY_INTERFACE: INTERFACE_CAN,
+            KEY_ID: row.can_id,
+            KEY_MANUFACTURER: UNKNOWN_CAN_FIELD,
+            KEY_DEVICE_TYPE: UNKNOWN_CAN_FIELD,
         }
         tags = _device_tags(row.subsystem, row.device)
         if tags:
-            entry["tags"] = tags
-        entry.update(extra)
-        if category in {"pdh", "pdp", "pigeon", "roborio"}:
-            singletons[category] = entry
-            continue
-        profile.setdefault(category, []).append(entry)
-    profile.update(singletons)
-    return profile
+            entry[KEY_TAGS] = tags
+        devices.append(entry)
+    payload: Dict[str, object] = {
+        KEY_SCHEMA_VERSION: PROFILE_SCHEMA_VERSION,
+        KEY_DATA_VERSION: timestamp_version(),
+        KEY_DEFAULT_PROFILE: profile_name,
+        KEY_DEVICES: devices,
+        KEY_PROFILES: {
+            profile_name: {
+                KEY_PROFILE_DEVICES: labels,
+            },
+        },
+    }
+    payload[KEY_DATA_HASH] = _compute_data_hash(payload)
+    return payload
 
 
 def _detect_duplicates(rows: List[TableRow]) -> Dict[int, List[TableRow]]:
@@ -284,14 +282,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     rows = parse_table(_load_text(args.input))
-    profile = build_profile(rows)
-    payload = {
-        "schema_version": 3,
-        "data_version": timestamp_version(),
-        "default_profile": args.profile,
-        "profiles": {args.profile: profile},
-    }
-    payload["data_hash"] = _compute_data_hash(payload)
+    try:
+        payload = build_payload(rows, args.profile)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     _write_json(args.output, payload)
 
     if args.warn_duplicates:

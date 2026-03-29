@@ -34,7 +34,7 @@ try:
     from tools.can_nt.can_analyzer import CanLiveAnalyzer
     from tools.can_nt.can_cli import build_parser
     from tools.can_nt.can_console_monitor import ConsoleMonitor
-    from tools.can_nt.can_frc_defs import decode_frc_ext_id_full, classify_frame, uses_status_presence
+    from tools.can_nt.can_frc_defs import decode_frc_ext_id_full, classify_frame
     from tools.can_inventory.can_inventory import dump_api_inventory, print_inventory_diff
     from tools.can_nt.can_nt_client import publish_updates, setup_nt
     from tools.can_nt.can_nt_publish import decode_frc_ext_id
@@ -49,7 +49,6 @@ try:
     )
     from tools.can_nt.can_profiles_dump import dump_seen_ids, dump_profile, dump_can_config
     from tools.can_nt.can_reporting import (
-        build_device_label_map,
         build_summary_extra,
         format_frame_line,
         print_or_dump_nt_keys,
@@ -66,7 +65,7 @@ except ModuleNotFoundError:
     from tools.can_nt.can_analyzer import CanLiveAnalyzer
     from tools.can_nt.can_cli import build_parser
     from tools.can_nt.can_console_monitor import ConsoleMonitor
-    from tools.can_nt.can_frc_defs import decode_frc_ext_id_full, classify_frame, uses_status_presence
+    from tools.can_nt.can_frc_defs import decode_frc_ext_id_full, classify_frame
     from tools.can_inventory.can_inventory import dump_api_inventory, print_inventory_diff
     from tools.can_nt.can_nt_client import publish_updates, setup_nt
     from tools.can_nt.can_nt_publish import decode_frc_ext_id
@@ -81,7 +80,6 @@ except ModuleNotFoundError:
     )
     from tools.can_nt.can_profiles_dump import dump_seen_ids, dump_profile, dump_can_config
     from tools.can_nt.can_reporting import (
-        build_device_label_map,
         build_summary_extra,
         format_frame_line,
         print_or_dump_nt_keys,
@@ -99,21 +97,61 @@ NT_TABLE_UI = "ui"
 NT_TABLE_TESTS = "tests"
 NT_TABLE_DIAG = "diag"
 
+# Constants (device keys).
+DEVICE_KEY_LABEL = "label"
+DEVICE_KEY_MFG = "manufacturer"
+DEVICE_KEY_TYPE = "device_type"
+DEVICE_KEY_ID = "device_id"
+DEVICE_KEY_PREFER_STATUS = "prefer_status"
+
+# Constants (unknown label handling).
+UNKNOWN_LABEL_PREFIX = "UNPROFILED_DEVICE_"
+CONSOLE_UNKNOWN_LABEL_PREFIX = "UNPROFILED_CONSOLE_"
+
+
+def _build_device_maps(
+    devices: List[Dict[str, Any]],
+) -> Tuple[Dict[Tuple[int, int, int], str], Dict[int, List[str]]]:
+    """
+    NAME
+        _build_device_maps - Build CAN-key and device-id label maps.
+
+    RETURNS
+        (can_to_label, id_to_labels).
+    """
+    can_to_label: Dict[Tuple[int, int, int], str] = {}
+    id_to_labels: Dict[int, List[str]] = {}
+    for spec in devices:
+        label = str(spec.get(DEVICE_KEY_LABEL, "")).strip()
+        if not label:
+            continue
+        try:
+            mfg = int(spec.get(DEVICE_KEY_MFG))
+            dtype = int(spec.get(DEVICE_KEY_TYPE))
+            did = int(spec.get(DEVICE_KEY_ID))
+        except Exception:
+            continue
+        key = (mfg, dtype, did)
+        can_to_label[key] = label
+        id_to_labels.setdefault(did, []).append(label)
+    return can_to_label, id_to_labels
+
 
 def _maybe_handle_dumps(
     args,
     now: float,
     start: float,
-    analyzer: CanLiveAnalyzer,
     state: SnifferState,
     devices: List[Dict[str, Any]],
+    seen_labels: set[str],
+    seen_can_keys: set[Tuple[int, int, int]],
 ) -> bool:
     """
     NAME
         _maybe_handle_dumps - Emit one-shot dump outputs when timers elapse.
 
     SYNOPSIS
-        handled = _maybe_handle_dumps(args, now, start, analyzer, state, devices)
+        handled = _maybe_handle_dumps(args, now, start, analyzer, state, devices, seen_can_keys)
 
     DESCRIPTION
         Checks configured dump flags and their delays, writes outputs once, and
@@ -123,9 +161,10 @@ def _maybe_handle_dumps(
         args: Parsed CLI arguments with dump settings.
         now: Current wall-clock time (seconds).
         start: Process start time (seconds).
-        analyzer: Live analyzer for seen IDs.
         state: SnifferState carrying observed pairs and timestamps.
         devices: Profile device list for context.
+        seen_labels: Observed device labels for reporting.
+        seen_can_keys: Observed (mfg,type,id) tuples for profile generation.
 
     RETURNS
         True when a dump was produced and the caller should exit.
@@ -134,7 +173,7 @@ def _maybe_handle_dumps(
         Writes JSON or profile outputs to disk and prints status lines.
     """
     if args.dump_can_expected_ids and (now - start) >= args.dump_after:
-        seen_sorted = sorted(analyzer.seen_ids())
+        seen_sorted = sorted(seen_labels)
         dump_seen_ids(
             args.dump_can_expected_ids,
             args.profile,
@@ -143,10 +182,10 @@ def _maybe_handle_dumps(
             args.bitrate,
             seen_sorted,
         )
-        print(f"Dumped observed arbitration IDs to {args.dump_can_expected_ids}")
+        print(f"Dumped observed labels to {args.dump_can_expected_ids}")
         return True
     if args.dump_profile and (now - start) >= args.dump_profile_after:
-        seen_keys = sorted(state.last_seen.keys())
+        seen_keys = sorted(seen_can_keys)
         profile_name = args.dump_profile_name
         if not profile_name:
             profile_name = timestamp_compact("sniffer", now)
@@ -226,7 +265,13 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         print(f"Profiles data_hash: {data_hash}")
 
     devices, expected_ids = get_profile(args.profile)
-    device_labels = build_device_label_map(devices)
+    can_to_label, id_to_labels = _build_device_maps(devices)
+    unknown_labels: Dict[Tuple[int, int, int], str] = {}
+    unknown_label_counter = 0
+    seen_can_keys: set[Tuple[int, int, int]] = set()
+    seen_labels: set[str] = set()
+    console_unknown_labels: Dict[int, str] = {}
+    console_unknown_counter = 0
 
     channel = ""
     if not args.no_can:
@@ -320,6 +365,18 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         diag_table = root_table.getSubTable(NT_TABLE_DIAG)
 
     console_monitor = None
+    def _resolve_console_label(device_id: int) -> str:
+        nonlocal console_unknown_counter
+        labels = id_to_labels.get(device_id, [])
+        if len(labels) == 1:
+            return labels[0]
+        label = console_unknown_labels.get(device_id)
+        if not label:
+            console_unknown_counter += 1
+            label = f"{CONSOLE_UNKNOWN_LABEL_PREFIX}{console_unknown_counter}"
+            console_unknown_labels[device_id] = label
+        return label
+
     if args.console_monitor:
         transport = args.console_transport.lower()
         host = args.console_host or args.rio
@@ -336,6 +393,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             transport=transport,
             host=host,
             port=port,
+            device_label_resolver=_resolve_console_label,
         )
         if args.console_reset_on_start:
             console_monitor.request_reset()
@@ -441,6 +499,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             _run_sniffer - Run the CAN sniffer loop until stopped.
         """
         nonlocal stop_requested, last_publish, last_summary, startup_summary_done
+        nonlocal unknown_label_counter, console_unknown_counter
         try:
             while True:
                 if stop_event is not None and stop_event.is_set():
@@ -476,8 +535,17 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                         continue
                     devices.clear()
                     devices.extend(new_devices)
-                    device_labels.clear()
-                    device_labels.update(build_device_label_map(devices))
+                    can_to_label.clear()
+                    id_to_labels.clear()
+                    new_can_to_label, new_id_to_labels = _build_device_maps(devices)
+                    can_to_label.update(new_can_to_label)
+                    id_to_labels.update(new_id_to_labels)
+                    unknown_labels.clear()
+                    unknown_label_counter = 0
+                    seen_can_keys.clear()
+                    seen_labels.clear()
+                    console_unknown_labels.clear()
+                    console_unknown_counter = 0
                     analyzer.expected_ids = set(new_expected or [])
                     dv = get_profiles_data_version()
                     dh = get_profiles_data_hash()
@@ -486,7 +554,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     if dh:
                         print(f"Profiles data_hash: {dh}")
 
-                if _maybe_handle_dumps(args, now, start, analyzer, state, devices):
+                if _maybe_handle_dumps(args, now, start, state, devices, seen_labels, seen_can_keys):
                     return 0
 
                 if (
@@ -496,9 +564,15 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 ):
                     startup_summary_done = True
                     print("Startup OK.")
-                    summary = analyzer.summary(now, args.stale_s, top_n=args.top_n)
+                    summary = analyzer.summary(
+                        now,
+                        args.stale_s,
+                        top_n=args.top_n,
+                        label_lookup=can_to_label,
+                        decode_device_key=decode_frc_ext_id,
+                    )
                     extra = build_summary_extra(summary, devices, analyzer, state, bus, args.bitrate)
-                    print_summary(summary, now, device_labels, extra)
+                    print_summary(summary, now, extra)
 
                 msg = None
                 if bus is not None:
@@ -523,8 +597,17 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     mfg, dtype, did = decode_frc_ext_id(arb_id)
                     _, _, api_class, api_index, _ = decode_frc_ext_id_full(arb_id)
                     key = (mfg, dtype, did)
-                    state.last_seen[key] = now
-                    state.msg_count[key] = state.msg_count.get(key, 0) + 1
+                    seen_can_keys.add(key)
+                    label = can_to_label.get(key)
+                    if not label:
+                        label = unknown_labels.get(key)
+                        if not label:
+                            unknown_label_counter += 1
+                            label = f"{UNKNOWN_LABEL_PREFIX}{unknown_label_counter}"
+                            unknown_labels[key] = label
+                    seen_labels.add(label)
+                    state.last_seen[label] = now
+                    state.msg_count[label] = state.msg_count.get(label, 0) + 1
 
                     is_status, is_control = classify_frame(
                         arb_id=arb_id,
@@ -534,23 +617,16 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                         api_index=api_index,
                     )
                     if is_status:
-                        state.status_last_seen[key] = now
+                        state.status_last_seen[label] = now
                     if is_control:
-                        state.control_last_seen[key] = now
+                        state.control_last_seen[label] = now
 
-                    print_id_match = (args.print_can_id == -1 or arb_id == args.print_can_id)
-                    print_dev_match = (args.print_device_id == -1 or did == args.print_device_id)
-                    print_mfg_match = (args.print_mfg == -1 or mfg == args.print_mfg)
-                    print_type_match = (args.print_type == -1 or dtype == args.print_type)
+                    print_label_match = (
+                        not args.print_label
+                        or label.lower() == args.print_label.lower()
+                    )
 
-                    label = device_labels.get((mfg, dtype, did), "")
-                    if (
-                        args.print_any
-                        and print_id_match
-                        and print_dev_match
-                        and print_mfg_match
-                        and print_type_match
-                    ):
+                    if args.print_any and print_label_match:
                         print(
                             format_frame_line(
                                 "frame",
@@ -564,14 +640,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                                 label,
                             )
                         )
-                    if (
-                        args.print_status
-                        and is_status
-                        and print_id_match
-                        and print_dev_match
-                        and print_mfg_match
-                        and print_type_match
-                    ):
+                    if args.print_status and is_status and print_label_match:
                         print(
                             format_frame_line(
                                 "status",
@@ -585,14 +654,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                                 label,
                             )
                         )
-                    if (
-                        args.print_control
-                        and is_control
-                        and print_id_match
-                        and print_dev_match
-                        and print_mfg_match
-                        and print_type_match
-                    ):
+                    if args.print_control and is_control and print_label_match:
                         print(
                             format_frame_line(
                                 "control",
@@ -607,10 +669,10 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                             )
                         )
 
-                    pair_key = (mfg, dtype, did, api_class, api_index)
+                    pair_key = (label, api_class, api_index)
                     stats = state.pair_stats.get(pair_key)
                     if stats is None:
-                        stats = {"first": now, "last": now, "count": 0.0, "arb_id": arb_id}
+                        stats = {"first": now, "last": now, "count": 0.0}
                         state.pair_stats[pair_key] = stats
                     stats["last"] = now
                     stats["count"] += 1.0
@@ -630,11 +692,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     analyzer=analyzer,
                     state=state,
                     devices=devices,
-                    labels=device_labels,
+                    label_lookup=can_to_label,
+                    decode_device_key=decode_frc_ext_id,
                     table=table,
                     bus=bus,
                     console_monitor=console_monitor,
-                    uses_status_presence=uses_status_presence,
                 )
 
         except KeyboardInterrupt:
@@ -644,10 +706,16 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             if console_monitor is not None:
                 console_monitor.stop()
             try:
-                summary = analyzer.summary(now, stale_s=args.stale_s, top_n=args.top_n)
+                summary = analyzer.summary(
+                    now,
+                    stale_s=args.stale_s,
+                    top_n=args.top_n,
+                    label_lookup=can_to_label,
+                    decode_device_key=decode_frc_ext_id,
+                )
                 print("=== Final Summary ===")
                 extra = build_summary_extra(summary, devices, analyzer, state, bus, args.bitrate)
-                print_summary(summary, now, device_labels, extra)
+                print_summary(summary, now, extra)
             except Exception as exc:
                 print(f"WARNING: Failed to print summary on exit: {exc}")
 

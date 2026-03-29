@@ -28,6 +28,22 @@ from typing import Any, Dict, List, Tuple
 
 from tools.common.cli_helpers import add_input_arg, add_output_arg
 from tools.common.json_io import read_json
+from tools.common.profile_constants import (
+    INTERFACE_CAN,
+    KEY_DEFAULT_PROFILE,
+    KEY_DEVICE_TYPE,
+    KEY_DEVICES,
+    KEY_ID,
+    KEY_INTERFACE,
+    KEY_LABEL,
+    KEY_MANUFACTURER,
+    KEY_MODEL,
+    KEY_PROFILE_DEVICES,
+    KEY_PROFILES,
+    KEY_TAGS,
+    KEY_TYPE,
+    KEY_VENDOR,
+)
 from tools.common.topology_render import (
     fill_color_for_vendor,
     outline_color_for_vendor,
@@ -56,69 +72,110 @@ def _escape(value: Any) -> str:
     return html.escape("" if value is None else str(value))
 
 
-def _collect_devices(profile: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _collect_devices(
+    profile: Dict[str, Any],
+    registry: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
     devices: List[Dict[str, Any]] = []
-
-    def add_list(category: str, vendor: str, dtype: str) -> None:
-        for entry in profile.get(category, []) or []:
-            if not isinstance(entry, dict):
-                continue
-            if "id" not in entry:
-                continue
-            devices.append(
-                {
-                    "id": int(entry.get("id")),
-                    "label": entry.get("label") or f"{dtype} {entry.get('id')}",
-                    "vendor": vendor,
-                    "type": dtype,
-                    "category": category,
-                    "tags": entry.get("tags") or [],
-                }
-            )
-
-    add_list("neos", "REV", "NEO")
-    add_list("neo550s", "REV", "NEO 550")
-    add_list("flexes", "REV", "FLEX")
-    add_list("krakens", "CTRE", "KRAKEN")
-    add_list("falcons", "CTRE", "FALCON")
-    add_list("cancoders", "CTRE", "CANCoder")
-    add_list("candles", "CTRE", "CANdle")
-
-    for entry in profile.get("devices", []) or []:
-        if not isinstance(entry, dict) or "id" not in entry:
+    labels = profile.get(KEY_PROFILE_DEVICES)
+    if not isinstance(labels, list):
+        return devices
+    for label in labels:
+        if not isinstance(label, str):
             continue
+        entry = registry.get(label.strip().lower())
+        if entry is None:
+            continue
+        if entry.get(KEY_INTERFACE) != INTERFACE_CAN:
+            continue
+        can_id = entry.get(KEY_ID)
+        if not isinstance(can_id, int):
+            continue
+        vendor = _resolve_vendor(entry)
+        dtype = _resolve_type(entry)
+        category = _resolve_category(entry)
         devices.append(
             {
-                "id": int(entry.get("id")),
-                "label": entry.get("label") or f"Device {entry.get('id')}",
-                "vendor": entry.get("vendor") or "Unknown",
-                "type": entry.get("type") or "Unknown",
-                "category": "devices",
-                "tags": entry.get("tags") or [],
-            }
-        )
-
-    for key, vendor, dtype in [
-        ("pdh", "REV", "PDH"),
-        ("pdp", "CTRE", "PDP"),
-        ("pigeon", "CTRE", "Pigeon"),
-        ("roborio", "NI", "roboRIO"),
-    ]:
-        entry = profile.get(key)
-        if not isinstance(entry, dict) or "id" not in entry:
-            continue
-        devices.append(
-            {
-                "id": int(entry.get("id")),
-                "label": entry.get("label") or dtype,
+                "id": can_id,
+                "label": entry.get(KEY_LABEL) or label,
                 "vendor": vendor,
                 "type": dtype,
-                "category": key,
-                "tags": entry.get("tags") or [],
+                "category": category,
+                "tags": entry.get(KEY_TAGS) or [],
             }
         )
-
     return devices
+
+
+def _build_registry(payload: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    registry: Dict[str, Dict[str, Any]] = {}
+    devices = payload.get(KEY_DEVICES)
+    if not isinstance(devices, list):
+        return registry
+    for entry in devices:
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get(KEY_LABEL, "")).strip()
+        if not label:
+            continue
+        registry[label.lower()] = entry
+    return registry
+
+
+def _resolve_vendor(entry: Dict[str, Any]) -> str:
+    vendor = entry.get(KEY_VENDOR)
+    if isinstance(vendor, str) and vendor:
+        return vendor
+    manufacturer = entry.get(KEY_MANUFACTURER)
+    if manufacturer == 5:
+        return "REV"
+    if manufacturer == 4:
+        return "CTRE"
+    if manufacturer == 1:
+        return "NI"
+    return "Unknown"
+
+
+def _resolve_type(entry: Dict[str, Any]) -> str:
+    dtype = entry.get(KEY_TYPE)
+    if isinstance(dtype, str) and dtype:
+        return dtype
+    model = entry.get(KEY_MODEL)
+    if isinstance(model, str) and model:
+        return model
+    return "Unknown"
+
+
+def _resolve_category(entry: Dict[str, Any]) -> str:
+    manufacturer = entry.get(KEY_MANUFACTURER)
+    device_type = entry.get(KEY_DEVICE_TYPE)
+    model = str(entry.get(KEY_MODEL, "")).lower()
+    dtype = str(entry.get(KEY_TYPE, "")).lower()
+    if manufacturer == 5 and device_type == 2:
+        if "550" in model:
+            return "neo550s"
+        if "vortex" in model or "flex" in model:
+            return "flexes"
+        return "neos"
+    if manufacturer == 4 and device_type == 2:
+        if "falcon" in model:
+            return "falcons"
+        return "krakens"
+    if manufacturer == 4 and device_type == 7:
+        return "cancoders"
+    if manufacturer == 4 and device_type == 10:
+        return "candles"
+    if manufacturer == 5 and device_type == 8:
+        return "pdh"
+    if manufacturer == 4 and device_type == 8:
+        return "pdp"
+    if manufacturer == 4 and device_type == 4:
+        return "pigeon"
+    if manufacturer == 1 and device_type == 1:
+        return "roborio"
+    if dtype:
+        return dtype
+    return "devices"
 
 
 def _svg_for_profile(devices: List[Dict[str, Any]]) -> str:
@@ -486,14 +543,15 @@ def _table_for_profile(devices: List[Dict[str, Any]]) -> str:
 
 
 def _html(payload: Dict[str, Any]) -> str:
-    profiles = payload.get("profiles", {})
+    profiles = payload.get(KEY_PROFILES, {})
     diagram_profiles = (payload.get("diagram") or {}).get("profiles", {})
     data_version = payload.get("data_version", "")
     data_hash = payload.get("data_hash", "")
+    registry = _build_registry(payload)
     cards = []
     for name in sorted(profiles.keys()):
         profile = profiles.get(name) or {}
-        devices = _collect_devices(profile)
+        devices = _collect_devices(profile, registry)
         diagram = diagram_profiles.get(name) if isinstance(diagram_profiles, dict) else None
         if isinstance(diagram, dict):
             diagram_html = _svg_for_topology(diagram)

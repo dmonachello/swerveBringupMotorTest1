@@ -2,7 +2,7 @@
 
 Purpose: validate the TCP UI command channel, single-client lock, error handling, and NT protocol monitor behavior.
 
-## Quick Test Plan (10–15 minutes)
+## Quick Test Plan (10?15 minutes)
 
 1) Basic connect + handshake
 - Run: `tools\can_nt\run_can_nt.cmd --ui`
@@ -107,7 +107,7 @@ Purpose: validate the TCP UI command channel, single-client lock, error handling
     - `configure terminal`
     - `group swerve_drive`
     - `add device FL_DRIVE`
-    - `bind driver.left.y analog`
+    - `bind controller0.leftY analog`
     - `enable`
     - `end`
 26) Verify `show group swerve_drive` prints members + bindings.
