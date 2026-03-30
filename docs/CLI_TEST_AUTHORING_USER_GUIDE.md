@@ -15,6 +15,7 @@ Checklist:
 3. Confirm `src/main/deploy/bringup_bindings.json` defines controller names you want to reference.
 4. Decide which test set under `test_sets` you will edit or create.
 5. Decide where to save `bringup_tests.json` on your Windows machine.
+6. If you are testing a new device label, add it to the active profile first (see “Add a Device to the Active Profile” below).
 
 ## Core Concepts
 Purpose: explain the minimum mental model for authoring.
@@ -78,6 +79,7 @@ Rules:
 2. The CLI resolves labels from `data/bringup_system.json`.
 3. Duplicate device adds are rejected with a warning.
 4. Duplicate labels in the active profile are errors.
+5. A device must exist in the active profile with required fields (CAN: `interface`, `manufacturer`, `deviceType`, `id`) before tests can reference it.
 
 Examples:
 1. `device add SPARKMAX/NEO 25`
@@ -101,6 +103,28 @@ Examples:
 Notes:
 - Controller names come from `bringup_bindings.json`.
 - Default controller names are `controller0` through `controller5` when omitted in bindings.
+
+## Add a Device to the Active Profile
+Purpose: ensure a new device label is usable in tests.
+
+Example (new REV NEO motor on CAN ID 26):
+```
+configure terminal
+profile home_tests_033026
+device "Feeder Motor"
+set interface CAN
+set manufacturer 5
+set deviceType 2
+set id 26
+set model "REV NEO"
+set type motor
+exit
+save profiles data/bringup_system.json
+```
+
+Notes:
+- Use numeric manufacturer/deviceType IDs (REV=5, MotorController=2).
+- If this step is skipped, `device add "Feeder Motor"` in test mode will fail with “device label not found in active profile.”
 
 ## Test Types
 Purpose: choose the correct type for the behavior you want.

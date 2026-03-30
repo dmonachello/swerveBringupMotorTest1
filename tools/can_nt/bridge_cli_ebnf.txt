@@ -59,7 +59,7 @@ config         = "group" ws name
                | "save" ws "unified-config" ws path
                | "rename" ws "device" ws name ws name
                | "device" ws name
-               | "device" ws name ws "set" ws field ws value_text
+               | "device" ws name ws "set" ws device_field ws value_text
                | "validate" ws "config" [ ws path ]
                | "show" ws show_target [ ws show_flags ]
                | "bindings" [ ws bindings_args ]
@@ -97,7 +97,8 @@ mappings_args  = "show" [ ws ("manufacturers" | "device-types") ] [ ws show_flag
 tests_args     = "templates"
                | "load" ws path
                | "load" ws "template" ws name
-               | "save" ;
+               | "save"
+               | "clear" ;
 
 group          = "show"
                | "show" ws "members"
@@ -116,8 +117,8 @@ group          = "show"
 
 device         = "show"
                | "show" ws show_target [ ws show_flags ]
-               | "set" ws field ws value_or_text
-               | "no" ws field
+               | "set" ws device_field ws value_or_text
+               | "no" ws device_field
                | "write" ws "tests" ws path ;
 
 test           = "show"
@@ -158,6 +159,23 @@ value          = number ;
 value_or_text  = number | value_text ;
 path           = token ;
 field          = token ;
+device_field   = "interface"
+               | "manufacturer"
+               | "deviceType"
+               | "id"
+               | "model"
+               | "type"
+               | "dio"
+               | "invert"
+               | "pwm"
+               | "analog"
+               | "attachments"
+               | "terminator"
+               | "vendor"
+               | "role"
+               | "notes"
+               | "tags"
+               | "limits" ;
 value_text     = token { ws token } ;
 
 token          = token_char { token_char } ;

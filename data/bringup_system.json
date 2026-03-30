@@ -1973,7 +1973,8 @@
             "port": 3
           }
         ]
-      }
+      },
+      "home_tests_033026": {}
     }
   },
   "bridgeConfig": {
@@ -2086,6 +2087,13 @@
             "bindings": []
           }
         ],
+        "selectedDevice": {
+          "device": "",
+          "enabled": false
+        }
+      },
+      "home_tests_033026": {
+        "groups": [],
         "selectedDevice": {
           "device": "",
           "enabled": false
@@ -2276,6 +2284,11 @@
         "cancoder 33",
         "PDH",
         "roboRIO"
+      ]
+    },
+    "home_tests_033026": {
+      "devices": [
+        "FeederMotor"
       ]
     }
   },
@@ -3029,8 +3042,17 @@
       "model": "RobotController",
       "type": "",
       "terminator": true
+    },
+    {
+      "label": "FeederMotor",
+      "interface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 25,
+      "model": "REV NEO",
+      "type": "motor"
     }
   ],
-  "data_version": "2026-03-30_005520",
-  "data_hash": "6c9790b048705cc5cfb42a241024a0ba0d3d4330f3478fe6f9d10266d0ee9c47"
+  "data_version": "2026-03-30_121720",
+  "data_hash": "b40c7a4841101283589abc754ae525b00d79890611722ef0d415aef50d99c005"
 }

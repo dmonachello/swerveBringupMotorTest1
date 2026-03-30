@@ -184,6 +184,7 @@ CMD_TESTS = "tests"
 CMD_CREATE = "create"
 CMD_DELETE = "delete"
 CMD_SET = "set"
+CMD_CLEAR = "clear"
 CMD_TYPE = "type"
 CMD_DEVICE = "device"
 CMD_REGISTRY = "registry"
@@ -403,7 +404,7 @@ MESSAGE_MAPPINGS_MANUFACTURERS_HEADER = "  manufacturers:"
 MESSAGE_MAPPINGS_DEVICE_TYPES_HEADER = "  device-types:"
 MESSAGE_MAPPINGS_ENTRY_FMT = "    {id}={name}"
 MESSAGE_MAPPINGS_NONE = "  (none)"
-MESSAGE_ERR_TESTS_SUBCOMMAND = "ERROR: tests <templates|load|save>"
+MESSAGE_ERR_TESTS_SUBCOMMAND = "ERROR: tests <templates|load|save|clear>"
 MESSAGE_ERR_TESTS_LOAD = "ERROR: tests load <path> | tests load template <name>"
 MESSAGE_ERR_TESTS_SAVE = "ERROR: tests save requires a loaded tests file."
 MESSAGE_ERR_TESTS_TEMPLATE_NOT_FOUND = "ERROR: test template not found: {name}"
@@ -411,6 +412,7 @@ MESSAGE_TESTS_TEMPLATES_HEADER = "Test templates:"
 MESSAGE_TESTS_TEMPLATES_NONE = "  (none)"
 MESSAGE_TESTS_TEMPLATE_ENTRY = "  {name}"
 MESSAGE_TESTS_LOADED = "Loaded tests: {path}"
+MESSAGE_TESTS_CLEARED = "Tests cleared."
 HELP_SHOW_TEXT = (
     "show <status|groups|group <name>|devices|device <name>|device registry <name>|bindings|"
     "selected-device|runtime-state|config|config local-raw|config dirty|profiles|profile|tests|test <name>> "
@@ -633,6 +635,8 @@ MESSAGE_SELECTED_TEST_SET = "Selected test set: {name}"
 MESSAGE_CANCELLED = "Cancelled."
 MESSAGE_DELETED_TEST = "Deleted test: {name}"
 MESSAGE_WROTE_TESTS = "Wrote tests to {path}."
+MESSAGE_TEST_SETS_HEADER = "Test sets:"
+MESSAGE_TEST_SETS_ENTRY = "  {name} ({count} tests)"
 MESSAGE_ACTIVE_TEST_SET = "Active test set: {name}"
 MESSAGE_TEST_LIST_ENTRY = "- {name} ({type}) devices={count} enabled={enabled}"
 MESSAGE_TEST_HEADER = "Test: {name}"
@@ -1568,7 +1572,7 @@ class BridgeCli:
             _suggest_tests_args - Suggest tests subcommands.
         """
         if not tokens:
-            return [CMD_TEMPLATES, CMD_LOAD, CMD_SAVE]
+            return [CMD_TEMPLATES, CMD_LOAD, CMD_SAVE, CMD_CLEAR]
         sub = tokens[COUNT_ZERO].lower()
         if sub == CMD_LOAD and len(tokens) == COUNT_ONE:
             return [PLACEHOLDER_PATH, CMD_TEMPLATE]
@@ -1709,6 +1713,19 @@ class BridgeCli:
                 print(MESSAGE_ERR_TESTS_SAVE)
                 return None
             return self._write_tests_command([CMD_WRITE, CMD_TESTS, str(self._tests_path)])
+        if sub == CMD_CLEAR:
+            model = TestAuthoringModel()
+            model.test_sets[DEFAULT_TEST_SET] = TestSetModel(name=DEFAULT_TEST_SET, tests=[])
+            self._tests_model = model
+            self._tests_active_set = DEFAULT_TEST_SET
+            self._tests_dirty = True
+            self._sync_store_tests()
+            if not self._tests_profile:
+                self._refresh_tests_profile(self._active_profile_name() or get_default_profile())
+            else:
+                self._refresh_tests_profile(self._tests_profile)
+            print(MESSAGE_TESTS_CLEARED)
+            return None
         print(MESSAGE_ERR_TESTS_SUBCOMMAND)
         return None
 
@@ -3200,8 +3217,23 @@ class BridgeCli:
         NAME
             _print_tests - Render a summary list of tests.
         """
+        model = self._tests_model or TestAuthoringModel()
+        active_name = self._tests_active_set or model.default_test_set or DEFAULT_TEST_SET
+        test_sets = model.test_sets
+        if test_sets:
+            print(MESSAGE_TEST_SETS_HEADER)
+            for name in sorted(test_sets.keys()):
+                entry = test_sets.get(name)
+                count = len(entry.tests) if entry else 0
+                print(MESSAGE_TEST_SETS_ENTRY.format(name=name, count=count))
+        else:
+            print(MESSAGE_TEST_SETS_HEADER)
+            print(MESSAGE_TESTS_TEMPLATES_NONE)
 
-        test_set = self._get_active_test_set()
+        test_set = test_sets.get(active_name)
+        if test_set is None:
+            test_set = TestSetModel(name=active_name, tests=[])
+            test_sets[active_name] = test_set
         print(MESSAGE_ACTIVE_TEST_SET.format(name=test_set.name))
         for test in test_set.tests:
             print(
@@ -4087,7 +4119,8 @@ class BridgeCli:
                     "tests templates\n"
                     "tests load <path>\n"
                     "tests load template <name>\n"
-                    "tests save"
+                    "tests save\n"
+                    "tests clear"
                 ),
                 "add device": (
                     "add device <device>\n"
