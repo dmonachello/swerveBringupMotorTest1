@@ -85,6 +85,8 @@ from tools.common.profile_constants import (
     KEY_BRIDGE_GROUPS,
     KEY_BRIDGE_SCHEMA_VERSION,
     KEY_BRIDGE_SELECTED_DEVICE,
+    KEY_DATA_HASH,
+    KEY_DATA_VERSION,
     KEY_DIO,
     KEY_DEFAULT_PROFILE,
     KEY_DEVICE_TYPE,
@@ -102,6 +104,7 @@ from tools.common.profile_constants import (
     KEY_PROFILE,
     KEY_PROFILES,
     KEY_PROFILE_DEVICES,
+    KEY_SCHEMA_VERSION,
     PROFILE_SCHEMA_VERSION,
     INTERFACE_ANALOG,
     INTERFACE_CAN,
@@ -272,6 +275,8 @@ SHOW_TARGET_CONFIG_DIRTY = "config-dirty"
 SHOW_CONFIG_DIRTY = "dirty"
 
 KEY_PROFILE_INFO = "profile"
+KEY_DIAGRAM = "diagram"
+KEY_DIAGRAM_PROFILES = "profiles"
 KEY_ACTIVE = "active"
 KEY_DEFAULT = "default"
 KEY_AVAILABLE = "available"
@@ -619,6 +624,9 @@ MESSAGE_ERROR_DEADBAND_SWEEP_TYPE = "ERROR: deadbandSweep only valid for deadban
 MESSAGE_ERROR_DEADBAND_SWEEP_FIELD = "ERROR: deadbandSweep requires a field name and value."
 MESSAGE_ERROR_DEVICE_LABEL = "ERROR: device label not found in active profile."
 MESSAGE_ERROR_DEVICE_LABEL_DUPLICATE = "ERROR: duplicate device labels in profile."
+MESSAGE_ERR_PROFILE_CREATE_NAME = "ERROR: Profile name is required."
+MESSAGE_ERR_PROFILE_EXISTS = "ERROR: Profile already exists: {name}."
+MESSAGE_PROFILE_CREATED = "Created profile: {name}."
 MESSAGE_ERROR_SHOW_TESTS = "ERROR: show tests | show test <name>"
 MESSAGE_ERROR_WRITE_TESTS = "ERROR: write tests <path>"
 MESSAGE_SELECTED_TEST_SET = "Selected test set: {name}"
@@ -1079,6 +1087,91 @@ class BridgeCli:
         self._refresh_tests_profile(key)
         return True
 
+    def _ensure_local_profiles_payload(self) -> bool:
+        """
+        NAME
+            _ensure_local_profiles_payload - Ensure a profiles payload exists.
+        """
+        if self._local_root_payload is None:
+            self._local_root_payload = {
+                KEY_SCHEMA_VERSION: PROFILE_SCHEMA_VERSION,
+                KEY_DATA_VERSION: timestamp_version(),
+                KEY_DATA_HASH: EMPTY_STRING,
+                KEY_DEFAULT_PROFILE: EMPTY_STRING,
+                KEY_PROFILES: {},
+                KEY_DEVICES: [],
+                KEY_DIAGRAM: {KEY_DIAGRAM_PROFILES: {}},
+            }
+            self._local_root_hash = None
+            self._local_devices_locked = True
+            self._profiles_dirty = True
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return False
+        profiles = payload.get(KEY_PROFILES)
+        if profiles is None:
+            payload[KEY_PROFILES] = {}
+        elif not isinstance(profiles, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return False
+        devices = payload.get(KEY_DEVICES)
+        if devices is None:
+            payload[KEY_DEVICES] = []
+        elif not isinstance(devices, list):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return False
+        diagram = payload.get(KEY_DIAGRAM)
+        if diagram is None:
+            payload[KEY_DIAGRAM] = {KEY_DIAGRAM_PROFILES: {}}
+        elif not isinstance(diagram, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return False
+        return True
+
+    def _create_profile(self, name: str) -> bool:
+        """
+        NAME
+            _create_profile - Create a new empty profile and select it.
+        """
+        key = name.strip()
+        if not key:
+            print(MESSAGE_ERR_PROFILE_CREATE_NAME)
+            return False
+        self._ensure_local_config()
+        if not self._ensure_local_profiles_payload():
+            return False
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return False
+        profiles = payload.get(KEY_PROFILES)
+        if not isinstance(profiles, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return False
+        if key in profiles:
+            print(MESSAGE_ERR_PROFILE_EXISTS.format(name=key))
+            return False
+        profiles[key] = {KEY_PROFILE_DEVICES: []}
+        default_profile = payload.get(KEY_DEFAULT_PROFILE)
+        if not isinstance(default_profile, str) or not default_profile.strip():
+            payload[KEY_DEFAULT_PROFILE] = key
+        diagram = payload.get(KEY_DIAGRAM)
+        if isinstance(diagram, dict):
+            diag_profiles = diagram.get(KEY_DIAGRAM_PROFILES)
+            if not isinstance(diag_profiles, dict):
+                diag_profiles = {}
+                diagram[KEY_DIAGRAM_PROFILES] = diag_profiles
+            diag_profiles.setdefault(key, {})
+        self._profiles_dirty = True
+        self._local_devices_locked = True
+        self._groups_profile = key
+        self._local_profile_entry(key, create=True)
+        self._refresh_tests_profile(key)
+        self._sync_store_from_local()
+        print(MESSAGE_PROFILE_CREATED.format(name=key))
+        return True
+
     def _require_active_profile(self) -> Optional[str]:
         """
         NAME
@@ -1276,6 +1369,12 @@ class BridgeCli:
             return self._suggest_bindings_args(tokens[COUNT_ONE:])
         if mode == MODE_CONFIG and cmd == CMD_CAN_MAPPINGS:
             return self._suggest_mappings_args(tokens[COUNT_ONE:])
+        if mode == MODE_CONFIG and cmd == CMD_PROFILE:
+            if len(tokens) == COUNT_ONE:
+                return [CMD_CREATE, PLACEHOLDER_NAME]
+            if len(tokens) == COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_CREATE:
+                return [PLACEHOLDER_NAME]
+            return []
         if cmd == CMD_TESTS:
             return self._suggest_tests_args(tokens[COUNT_ONE:])
         if mode == MODE_CONFIG and cmd == CMD_TEST:
@@ -3247,6 +3346,10 @@ class BridgeCli:
             if len(tokens) < 2:
                 print(MESSAGE_ERR_PROFILE_REQUIRED)
                 return 2 if self._batch else None
+            if len(tokens) >= 3 and tokens[1].lower() == CMD_CREATE:
+                if not self._create_profile(tokens[2]):
+                    return 2 if self._batch else None
+                return None
             if not self._set_active_profile(tokens[1]):
                 return 2 if self._batch else None
             print(f"Active profile: {self._groups_profile}")
@@ -3899,7 +4002,12 @@ class BridgeCli:
                 "echo": "echo on|off\n  Toggle echo for batch scripts (prints each command).",
                 "group": "group <name>\n  Create/select a group (config mode).",
                 "no group": "no group <name>\n  Delete group (config mode, prompts in interactive).",
-                "profile": "profile <name>\n  Select active profile for groups/bindings.",
+                "profile": (
+                    "profile <name>\n"
+                    "  Select active profile for groups/bindings.\n"
+                    "profile create <name>\n"
+                    "  Create a new empty profile and select it."
+                ),
                 "selected-device": "selected-device <device>\n  Set selected-device override.",
                 "selected-mode": "selected-mode <on|off>\n  Enable/disable selected-device mode.",
                 "merge config": (

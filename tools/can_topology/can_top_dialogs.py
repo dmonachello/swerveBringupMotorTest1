@@ -19,7 +19,10 @@ from tkinter import ttk, messagebox
 from .can_top_models import (
     BUCKET_CATEGORIES,
     DIAGRAM_CATEGORIES,
+    DIO_DEVICE_TYPES,
     GENERIC_CATEGORY,
+    INTERFACE_CAN,
+    INTERFACE_DIO,
     SINGLETON_CATEGORIES,
     SUPPORTED_DEVICE_TYPES,
     SUPPORTED_MANUFACTURERS,
@@ -41,7 +44,12 @@ ERR_BUS_INDEX_RANGE = "Bus index out of range."
 ERR_LIMITS_INT = "Limit inputs must be integers."
 ERR_DIO_INT = "{} must be an integer."
 ERR_DIO_RANGE = "{} must be -1 or greater."
+ERR_DIO_REQUIRED = "DIO channel is required."
+ERR_DIO_TYPE_INVALID = "DIO device type must be limitSwitch or encoderExternal."
 CAN_ID_DIAGRAM_DEFAULT = -1
+LABEL_INTERFACE = "Interface"
+LABEL_DIO = "DIO"
+LABEL_INVERT = "Invert"
 
 
 class NodeDialog(tk.Toplevel):
@@ -74,6 +82,9 @@ class NodeDialog(tk.Toplevel):
 
         categories = BUCKET_CATEGORIES + [GENERIC_CATEGORY] + SINGLETON_CATEGORIES + DIAGRAM_CATEGORIES
         self.var_category = tk.StringVar(value=initial.category if initial else BUCKET_CATEGORIES[0])
+        self.var_interface = tk.StringVar(
+            value=initial.interface if initial else INTERFACE_CAN
+        )
         self.var_label = tk.StringVar(value=initial.label if initial else TEXT_EMPTY)
         self.var_can_id = tk.StringVar(value=str(initial.can_id) if initial else "")
         self.var_vendor = tk.StringVar(value=initial.vendor if initial else TEXT_EMPTY)
@@ -88,8 +99,14 @@ class NodeDialog(tk.Toplevel):
         self.var_rev = tk.StringVar(
             value=str(initial.limits.get("revDio")) if initial and initial.limits else TEXT_EMPTY
         )
-        self.var_invert = tk.BooleanVar(
+        self.var_limits_invert = tk.BooleanVar(
             value=bool(initial.limits.get("invert")) if initial and initial.limits else False
+        )
+        self.var_dio = tk.StringVar(
+            value=str(initial.dio) if initial and initial.dio is not None else TEXT_EMPTY
+        )
+        self.var_dio_invert = tk.BooleanVar(
+            value=bool(initial.invert) if initial and initial.invert is not None else False
         )
         self.var_terminator = tk.BooleanVar(
             value=bool(initial.terminator) if initial and initial.terminator is not None else False
@@ -101,47 +118,82 @@ class NodeDialog(tk.Toplevel):
         )
         self.combo_category.grid(row=0, column=1, sticky="w", pady=(0, 4))
 
-        ttk.Label(frame, text="Label").grid(row=1, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.var_label, width=24).grid(row=1, column=1, sticky="w")
+        ttk.Label(frame, text=LABEL_INTERFACE).grid(row=1, column=0, sticky="w")
+        self.combo_interface = ttk.Combobox(
+            frame, textvariable=self.var_interface, values=[INTERFACE_CAN, INTERFACE_DIO], state="readonly", width=22
+        )
+        self.combo_interface.grid(row=1, column=1, sticky="w", pady=(0, 4))
 
-        ttk.Label(frame, text="CAN ID").grid(row=2, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.var_can_id, width=10).grid(row=2, column=1, sticky="w")
+        ttk.Label(frame, text="Label").grid(row=2, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_label, width=24).grid(row=2, column=1, sticky="w")
 
-        ttk.Label(frame, text="Vendor").grid(row=3, column=0, sticky="w")
+        ttk.Label(frame, text="CAN ID").grid(row=3, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_can_id, width=10).grid(row=3, column=1, sticky="w")
+
+        ttk.Label(frame, text=LABEL_DIO).grid(row=4, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_dio, width=10).grid(row=4, column=1, sticky="w")
+
+        ttk.Checkbutton(frame, text=LABEL_INVERT, variable=self.var_dio_invert).grid(
+            row=5, column=0, columnspan=2, sticky="w"
+        )
+
+        ttk.Label(frame, text="Vendor").grid(row=6, column=0, sticky="w")
         self.combo_vendor = ttk.Combobox(
             frame, textvariable=self.var_vendor, values=SUPPORTED_MANUFACTURERS, width=22
         )
-        self.combo_vendor.grid(row=3, column=1, sticky="w")
+        self.combo_vendor.grid(row=6, column=1, sticky="w")
 
-        ttk.Label(frame, text="Device Type").grid(row=4, column=0, sticky="w")
+        ttk.Label(frame, text="Device Type").grid(row=7, column=0, sticky="w")
         self.combo_type = ttk.Combobox(
             frame, textvariable=self.var_type, values=SUPPORTED_DEVICE_TYPES, width=22
         )
-        self.combo_type.grid(row=4, column=1, sticky="w")
+        self.combo_type.grid(row=7, column=1, sticky="w")
 
-        ttk.Label(frame, text="Motor").grid(row=5, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.var_motor, width=24).grid(row=5, column=1, sticky="w")
+        ttk.Label(frame, text="Motor").grid(row=8, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_motor, width=24).grid(row=8, column=1, sticky="w")
 
-        ttk.Label(frame, text="Fwd Limit").grid(row=6, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.var_fwd, width=12).grid(row=6, column=1, sticky="w")
+        ttk.Label(frame, text="Fwd Limit").grid(row=9, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_fwd, width=12).grid(row=9, column=1, sticky="w")
 
-        ttk.Label(frame, text="Rev Limit").grid(row=7, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.var_rev, width=12).grid(row=7, column=1, sticky="w")
+        ttk.Label(frame, text="Rev Limit").grid(row=10, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_rev, width=12).grid(row=10, column=1, sticky="w")
 
-        ttk.Checkbutton(frame, text="Invert Limits", variable=self.var_invert).grid(
-            row=8, column=0, columnspan=2, sticky="w"
+        ttk.Checkbutton(frame, text="Invert Limits", variable=self.var_limits_invert).grid(
+            row=11, column=0, columnspan=2, sticky="w"
         )
         ttk.Checkbutton(frame, text="Bus Terminator", variable=self.var_terminator).grid(
-            row=9, column=0, columnspan=2, sticky="w"
+            row=12, column=0, columnspan=2, sticky="w"
         )
 
-        ttk.Label(frame, text="Tags").grid(row=10, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.var_tags, width=24).grid(row=10, column=1, sticky="w")
+        ttk.Label(frame, text="Tags").grid(row=13, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_tags, width=24).grid(row=13, column=1, sticky="w")
 
         button_row = ttk.Frame(frame)
-        button_row.grid(row=11, column=0, columnspan=2, sticky="e", pady=(8, 0))
+        button_row.grid(row=14, column=0, columnspan=2, sticky="e", pady=(8, 0))
         ttk.Button(button_row, text="Cancel", command=self._on_cancel).pack(side="right", padx=(4, 0))
         ttk.Button(button_row, text="OK", command=self._on_ok).pack(side="right")
+        self._sync_device_type_choices()
+        self.var_interface.trace_add("write", self._on_interface_change)
+
+    def _on_interface_change(self, *_args: object) -> None:
+        """
+        NAME
+            _on_interface_change - Update device-type choices for interface.
+        """
+        self._sync_device_type_choices()
+
+    def _sync_device_type_choices(self) -> None:
+        """
+        NAME
+            _sync_device_type_choices - Update device type list for interface.
+        """
+        interface = self.var_interface.get().strip().upper()
+        if interface == INTERFACE_DIO:
+            self.combo_type["values"] = DIO_DEVICE_TYPES
+            if self.var_type.get().strip() not in DIO_DEVICE_TYPES and DIO_DEVICE_TYPES:
+                self.var_type.set(DIO_DEVICE_TYPES[0])
+        else:
+            self.combo_type["values"] = SUPPORTED_DEVICE_TYPES
 
     def _on_ok(self) -> None:
         """
@@ -154,8 +206,9 @@ class NodeDialog(tk.Toplevel):
             messagebox.showerror(DIALOG_TITLE_INVALID, ERR_LABEL_REQUIRED)
             return
         category = self.var_category.get().strip()
+        interface = self.var_interface.get().strip().upper()
         try:
-            allow_empty = category in DIAGRAM_CATEGORIES
+            allow_empty = category in DIAGRAM_CATEGORIES or interface == INTERFACE_DIO
             can_id = self._parse_can_id(can_id_text, allow_empty=allow_empty)
         except ValueError as exc:
             messagebox.showerror(DIALOG_TITLE_INVALID, str(exc))
@@ -163,7 +216,7 @@ class NodeDialog(tk.Toplevel):
         limits = None
         fwd_text = self.var_fwd.get().strip()
         rev_text = self.var_rev.get().strip()
-        invert = bool(self.var_invert.get())
+        invert = bool(self.var_limits_invert.get())
         if fwd_text or rev_text or invert:
             try:
                 limits = {
@@ -174,14 +227,34 @@ class NodeDialog(tk.Toplevel):
             except ValueError:
                 messagebox.showerror(DIALOG_TITLE_INVALID, ERR_LIMITS_INT)
                 return
+        dio_value = None
+        dio_text = self.var_dio.get().strip()
+        if interface == INTERFACE_DIO:
+            if not dio_text:
+                messagebox.showerror(DIALOG_TITLE_INVALID, ERR_DIO_REQUIRED)
+                return
+            try:
+                dio_value = self._parse_dio_value(dio_text, LABEL_DIO)
+            except ValueError as exc:
+                messagebox.showerror(DIALOG_TITLE_INVALID, str(exc))
+                return
+            if dio_value < 0:
+                messagebox.showerror(DIALOG_TITLE_INVALID, ERR_DIO_REQUIRED)
+                return
+            if self.var_type.get().strip() not in DIO_DEVICE_TYPES:
+                messagebox.showerror(DIALOG_TITLE_INVALID, ERR_DIO_TYPE_INVALID)
+                return
         self.result = {
             "category": category,
+            "interface": interface,
             "label": label,
             "can_id": can_id,
             "vendor": self.var_vendor.get().strip(),
             "device_type": self.var_type.get().strip(),
             "motor": self.var_motor.get().strip(),
             "limits": limits,
+            "dio": dio_value,
+            "dio_invert": bool(self.var_dio_invert.get()),
             "terminator": self.var_terminator.get(),
             "tags": self._parse_tags(self.var_tags.get()),
         }

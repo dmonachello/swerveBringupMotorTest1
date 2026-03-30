@@ -58,6 +58,7 @@ DIAGRAM_VENDOR_SWYFT = "SWYFT"
 DIAGRAM_VENDOR_ANALYZER = "ANALYZER"
 DIAGRAM_DEVICE_WIRING = "Wiring"
 DIAGRAM_DEVICE_ANALYZER = "Analyzer"
+CATEGORY_ROBORIO = "roborio"
 TAG_SWYFT = "swyft"
 TAG_CANNECT = "cannect"
 TAG_INJECT = "inject"
@@ -92,6 +93,41 @@ MSG_FIX_CANNECT_TITLE = "Fix CANnect Conflicts"
 MSG_FIX_CANNECT_NONE = "No Ethernet-linked CANnect Inject nodes found."
 MSG_FIX_CANNECT_REMOVED = "Removed {} CAN trunk link(s) from Ethernet-linked CANnect Inject nodes."
 MSG_FIX_CANNECT_NO_REMOVE = "No CAN trunk links needed removal."
+MSG_INVALID_DIO_CHANNEL = "Invalid DIO channel for {}."
+MSG_MISSING_DIO_TYPE = "Missing DIO device type for {}."
+MSG_INVALID_DIO_TYPE = "Invalid DIO device type for {}."
+MSG_ATTACH_SELECT = "Select exactly two nodes (one DIO device and one host device)."
+MSG_ATTACH_INVALID = "Attachment requires one DIO device and one non-DIO device."
+MSG_ATTACH_DUP = "Attachment already exists."
+MSG_ATTACH_NONE = "No attachment links were removed."
+MSG_ATTACH_REMOVE_SELECT = "Select one or more nodes to remove attachment links."
+MSG_WIRE_SELECT = "Select a DIO device to wire to roboRIO."
+MSG_WIRE_NO_ROBORIO = "No roboRIO node found in the diagram."
+MSG_WIRE_DUP = "DIO wiring link already exists."
+MSG_WIRE_NONE = "No DIO wiring links were removed."
+MSG_WIRE_REMOVE_SELECT = "Select one or more nodes to remove DIO wiring links."
+MSG_DIO_ATTACH_REQUIRED = "DIO device {} must be attached to a host device."
+MSG_DIO_WIRE_REQUIRED = "DIO device {} must be wired to roboRIO."
+MSG_DIO_NO_ROBORIO = "DIO devices require a roboRIO node."
+TITLE_ATTACH_DEVICE = "Attach Device"
+TITLE_REMOVE_ATTACHMENT = "Remove Attachment"
+TITLE_WIRE_DIO = "Wire DIO"
+TITLE_REMOVE_DIO_WIRE = "Remove DIO Wire"
+KEY_ATTACHMENT_LINKS = "attachmentLinks"
+KEY_DIO_LINKS = "dioLinks"
+KEY_LINK_DEVICE = "device"
+KEY_LINK_ATTACHMENT = "attachment"
+KEY_LINK_ROBORIO = "roborio"
+KEY_ATTACHMENTS = "attachments"
+KEY_UNDO_INTERFACE = "interface"
+KEY_UNDO_DIO = "dio"
+KEY_UNDO_INVERT = "invert"
+KEY_UNDO_ATTACHMENT_LINKS = "attachment_links"
+KEY_UNDO_DIO_LINKS = "dio_links"
+ATTACH_LINE_COLOR = "#7a5d00"
+WIRE_LINE_COLOR = "#1f6feb"
+LINK_LINE_WIDTH = 2
+LINK_DASH = (6, 4)
 MFG_NI = 1
 MFG_CTRE = 4
 MFG_REV = 5
@@ -180,6 +216,9 @@ try:
         DIAGRAM_CATEGORY_ANALYZER,
         DIAGRAM_CATEGORY_CANNECT_DIRECT,
         DIAGRAM_CATEGORY_CANNECT_INJECT,
+        DIO_DEVICE_TYPES,
+        INTERFACE_CAN,
+        INTERFACE_DIO,
         GENERIC_CATEGORY,
         SINGLETON_CATEGORIES,
         SUPPORTED_DEVICE_TYPES,
@@ -216,6 +255,9 @@ except ImportError:  # Allow running as a script from this folder.
         DIAGRAM_CATEGORY_ANALYZER,
         DIAGRAM_CATEGORY_CANNECT_DIRECT,
         DIAGRAM_CATEGORY_CANNECT_INJECT,
+        DIO_DEVICE_TYPES,
+        INTERFACE_CAN,
+        INTERFACE_DIO,
         GENERIC_CATEGORY,
         SINGLETON_CATEGORIES,
         SUPPORTED_DEVICE_TYPES,
@@ -273,6 +315,8 @@ class TopologyEditor(tk.Tk):
         self._ethernet_links: List[Tuple[int, int]] = []
         self._can_bus_links: List[Dict[str, int]] = []
         self._cannect_device_links: List[Dict[str, int]] = []
+        self._attachment_links: List[Dict[str, int]] = []
+        self._dio_wiring_links: List[Dict[str, int]] = []
         self._profile_name = "drawn_profile"
         self._profile_source_path: Optional[str] = None
         self._suppress_profile_select = False
@@ -547,6 +591,11 @@ class TopologyEditor(tk.Tk):
             edit_menu.add_command(label="Remove CAN Bus Link", command=self._remove_can_bus_link)
             edit_menu.add_separator()
         edit_menu.add_command(label="Remove CANnect Device Link", command=self._remove_cannect_device_link)
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Attach Device (Logical)", command=self._attach_device_link)
+        edit_menu.add_command(label="Remove Attachment Link", command=self._remove_attachment_link)
+        edit_menu.add_command(label="Wire DIO to roboRIO", command=self._wire_dio_to_roborio)
+        edit_menu.add_command(label="Remove DIO Wire", command=self._remove_dio_wire)
         menu.add_cascade(label="Edit", menu=edit_menu)
         tags_menu = tk.Menu(menu, tearoff=False)
         tags_menu.add_command(label="Select by Tag...", command=self._select_by_tag)
@@ -648,6 +697,9 @@ class TopologyEditor(tk.Tk):
             "category": tk.StringVar(value="--"),
             "label": tk.StringVar(value="--"),
             "can_id": tk.StringVar(value="--"),
+            "interface": tk.StringVar(value="--"),
+            "dio": tk.StringVar(value="--"),
+            "invert": tk.StringVar(value="--"),
             "vendor": tk.StringVar(value="--"),
             "type": tk.StringVar(value="--"),
             "motor": tk.StringVar(value="--"),
@@ -663,6 +715,9 @@ class TopologyEditor(tk.Tk):
             ("Category", "category"),
             ("Label", "label"),
             ("CAN ID", "can_id"),
+            ("Interface", "interface"),
+            ("DIO", "dio"),
+            ("Invert", "invert"),
             ("Vendor", "vendor"),
             ("Device Type", "type"),
             ("Motor", "motor"),
@@ -761,6 +816,15 @@ class TopologyEditor(tk.Tk):
             self.detail_vars["can_id"].set(str(node.can_id))
         else:
             self.detail_vars["can_id"].set("--")
+        self.detail_vars["interface"].set(node.interface or "--")
+        if node.interface == INTERFACE_DIO:
+            dio_text = "--" if node.dio is None else str(node.dio)
+            invert_text = "--" if node.invert is None else ("on" if node.invert else "off")
+        else:
+            dio_text = "--"
+            invert_text = "--"
+        self.detail_vars["dio"].set(dio_text)
+        self.detail_vars["invert"].set(invert_text)
         self.detail_vars["vendor"].set(node.vendor or "--")
         self.detail_vars["type"].set(node.device_type or "--")
         self.detail_vars["motor"].set(node.motor or "--")
@@ -880,10 +944,13 @@ class TopologyEditor(tk.Tk):
                     "category": n.category,
                     "label": n.label,
                     "can_id": n.can_id,
+                    KEY_UNDO_INTERFACE: n.interface,
                     "vendor": n.vendor,
                     "device_type": n.device_type,
                     "motor": n.motor,
                     "limits": n.limits,
+                    KEY_UNDO_DIO: n.dio,
+                    KEY_UNDO_INVERT: n.invert,
                     "terminator": n.terminator,
                     "x": n.x,
                     "row": n.row,
@@ -904,6 +971,8 @@ class TopologyEditor(tk.Tk):
             "ethernet_links": list(self._ethernet_links),
             "can_bus_links": list(self._can_bus_links),
             "cannect_device_links": list(self._cannect_device_links),
+            KEY_UNDO_ATTACHMENT_LINKS: list(self._attachment_links),
+            KEY_UNDO_DIO_LINKS: list(self._dio_wiring_links),
             "bus_offsets": list(self._bus_offsets),
             "bus_lefts": list(self._bus_lefts),
             "bus_rights": list(self._bus_rights),
@@ -932,10 +1001,13 @@ class TopologyEditor(tk.Tk):
                 label=n["label"],
                 can_id=n["can_id"],
                 node_type=n.get("node_type", "device"),
+                interface=n.get(KEY_UNDO_INTERFACE, INTERFACE_CAN),
                 vendor=n.get("vendor", ""),
                 device_type=n.get("device_type", ""),
                 motor=n.get("motor", ""),
                 limits=n.get("limits"),
+                dio=n.get(KEY_UNDO_DIO),
+                invert=n.get(KEY_UNDO_INVERT),
                 terminator=n.get("terminator"),
                 x=n.get("x", 0.0),
                 row=n.get("row", 0),
@@ -977,6 +1049,26 @@ class TopologyEditor(tk.Tk):
             and isinstance(link.get("node"), int)
             and isinstance(link.get("device"), int)
         ]
+        self._attachment_links = [
+            {
+                KEY_LINK_DEVICE: int(link.get(KEY_LINK_DEVICE)),
+                KEY_LINK_ATTACHMENT: int(link.get(KEY_LINK_ATTACHMENT)),
+            }
+            for link in snap.get(KEY_UNDO_ATTACHMENT_LINKS, [])
+            if isinstance(link, dict)
+            and isinstance(link.get(KEY_LINK_DEVICE), int)
+            and isinstance(link.get(KEY_LINK_ATTACHMENT), int)
+        ]
+        self._dio_wiring_links = [
+            {
+                KEY_LINK_ROBORIO: int(link.get(KEY_LINK_ROBORIO)),
+                KEY_LINK_DEVICE: int(link.get(KEY_LINK_DEVICE)),
+            }
+            for link in snap.get(KEY_UNDO_DIO_LINKS, [])
+            if isinstance(link, dict)
+            and isinstance(link.get(KEY_LINK_ROBORIO), int)
+            and isinstance(link.get(KEY_LINK_DEVICE), int)
+        ]
         self._bus_offsets = snap["bus_offsets"]
         self._bus_lefts = snap.get("bus_lefts", [])
         self._bus_rights = snap.get("bus_rights", [])
@@ -1003,6 +1095,8 @@ class TopologyEditor(tk.Tk):
         self._ethernet_links = []
         self._can_bus_links = []
         self._cannect_device_links = []
+        self._attachment_links = []
+        self._dio_wiring_links = []
         self._next_key = 1
         self._selected_key = None
         self._callout_scale_var.set("--")
@@ -1449,6 +1543,8 @@ class TopologyEditor(tk.Tk):
         self._ethernet_links = []
         self._can_bus_links = []
         self._cannect_device_links = []
+        self._attachment_links = []
+        self._dio_wiring_links = []
         diagram_applied = False
         diagram_profiles = {}
         diagram = data.get("diagram")
@@ -1460,6 +1556,9 @@ class TopologyEditor(tk.Tk):
                 self._apply_diagram_snapshot(diag)
                 diagram_applied = True
                 self._zoom_label_var.set(f"Zoom: {int(self._zoom * 100)}%")
+        if not diagram_applied:
+            self._rebuild_attachment_links_from_registry()
+            self._ensure_dio_wiring_links()
         self._next_key = 1 + max([n.key for n in self._nodes], default=0)
         self._profile_name = name
         self._profile_source_path = path
@@ -1849,6 +1948,24 @@ class TopologyEditor(tk.Tk):
             for link in self._cannect_device_links
             if link.get("node") in selected_keys and link.get("device") in selected_keys
         ]
+        diag_profile[KEY_ATTACHMENT_LINKS] = [
+            {
+                KEY_LINK_DEVICE: link.get(KEY_LINK_DEVICE),
+                KEY_LINK_ATTACHMENT: link.get(KEY_LINK_ATTACHMENT),
+            }
+            for link in self._attachment_links
+            if link.get(KEY_LINK_DEVICE) in selected_keys
+            and link.get(KEY_LINK_ATTACHMENT) in selected_keys
+        ]
+        diag_profile[KEY_DIO_LINKS] = [
+            {
+                KEY_LINK_ROBORIO: link.get(KEY_LINK_ROBORIO),
+                KEY_LINK_DEVICE: link.get(KEY_LINK_DEVICE),
+            }
+            for link in self._dio_wiring_links
+            if link.get(KEY_LINK_DEVICE) in selected_keys
+            and link.get(KEY_LINK_ROBORIO) in selected_keys
+        ]
         try:
             with open(path, "w", encoding="utf-8") as handle:
                 json.dump(data, handle, indent=2)
@@ -1966,16 +2083,50 @@ class TopologyEditor(tk.Tk):
         seen_singletons = {}
         seen_strict: Dict[Tuple[str, str, int], Node] = {}
         nodes_to_check = nodes if nodes is not None else self._profile_device_nodes()
+        node_by_key = {n.key: n for n in self._device_nodes()}
+        roborio_node = self._roborio_node()
+        attachment_keys = {
+            link.get(KEY_LINK_ATTACHMENT)
+            for link in self._attachment_links
+            if isinstance(link, dict)
+            and link.get(KEY_LINK_DEVICE) in node_by_key
+            and link.get(KEY_LINK_ATTACHMENT) in node_by_key
+            and self._is_dio_node(node_by_key[link.get(KEY_LINK_ATTACHMENT)])
+            and not self._is_dio_node(node_by_key[link.get(KEY_LINK_DEVICE)])
+        }
+        wiring_keys = {
+            link.get(KEY_LINK_DEVICE)
+            for link in self._dio_wiring_links
+            if isinstance(link, dict)
+            and link.get(KEY_LINK_DEVICE) in node_by_key
+            and link.get(KEY_LINK_ROBORIO) in node_by_key
+            and self._is_dio_node(node_by_key[link.get(KEY_LINK_DEVICE)])
+            and node_by_key[link.get(KEY_LINK_ROBORIO)].category == CATEGORY_ROBORIO
+        }
+        if any(n.interface == INTERFACE_DIO for n in nodes_to_check) and roborio_node is None:
+            return MSG_DIO_NO_ROBORIO
         for node in nodes_to_check:
             if node.category in SINGLETON_CATEGORIES:
                 if node.category in seen_singletons:
                     return f"Only one {node.category} is allowed."
                 seen_singletons[node.category] = node
-            if node.category == GENERIC_CATEGORY:
+            if node.interface != INTERFACE_DIO and node.category == GENERIC_CATEGORY:
                 if not node.vendor or not node.device_type:
                     return "Generic devices require vendor and device type."
-            if not self._is_valid_can_id(node.can_id):
-                return f"Invalid CAN ID {node.can_id} for {node.label}."
+            if node.interface == INTERFACE_DIO:
+                if node.dio is None or not isinstance(node.dio, int) or node.dio < 0:
+                    return MSG_INVALID_DIO_CHANNEL.format(node.label)
+                if not node.device_type:
+                    return MSG_MISSING_DIO_TYPE.format(node.label)
+                if node.device_type not in DIO_DEVICE_TYPES:
+                    return MSG_INVALID_DIO_TYPE.format(node.label)
+                if node.key not in attachment_keys:
+                    return MSG_DIO_ATTACH_REQUIRED.format(node.label)
+                if node.key not in wiring_keys:
+                    return MSG_DIO_WIRE_REQUIRED.format(node.label)
+            else:
+                if not self._is_valid_can_id(node.can_id):
+                    return f"Invalid CAN ID {node.can_id} for {node.label}."
             strict_key = self._dup_key_for_node(node)
             if strict_key is not None:
                 vendor, dev_type, can_id = strict_key
@@ -2157,6 +2308,32 @@ class TopologyEditor(tk.Tk):
         NAME
             _node_from_device_def - Build a Node from a device registry entry.
         """
+        if self._is_dio_device_entry(entry):
+            label = str(entry.get("label", "")).strip()
+            device_type = str(entry.get("type", "")).strip()
+            dio_value = entry.get("dio")
+            invert = entry.get("invert")
+            tags = self._normalize_tags(entry.get("tags", []))
+            node = Node(
+                key=self._next_key,
+                category=GENERIC_CATEGORY,
+                label=label,
+                can_id=CAN_ID_DIAGRAM_DEFAULT,
+                interface=INTERFACE_DIO,
+                vendor="",
+                device_type=device_type,
+                motor="",
+                limits=None,
+                dio=int(dio_value) if isinstance(dio_value, int) else None,
+                invert=bool(invert) if isinstance(invert, bool) else None,
+                terminator=None,
+                x=0.0,
+                row=0,
+                scale=1.0,
+                tags=tags,
+            )
+            self._next_key += 1
+            return node
         if not self._is_can_device_entry(entry):
             return None
         can_id = entry.get("id")
@@ -2174,6 +2351,7 @@ class TopologyEditor(tk.Tk):
             category=category,
             label=label,
             can_id=can_id,
+            interface=INTERFACE_CAN,
             vendor=vendor,
             device_type=device_type,
             motor=motor,
@@ -2192,6 +2370,12 @@ class TopologyEditor(tk.Tk):
         if profile_consts is not None:
             return interface.upper() == profile_consts.INTERFACE_CAN
         return interface.upper() == "CAN"
+
+    def _is_dio_device_entry(self, entry: Dict[str, object]) -> bool:
+        interface = str(entry.get("interface", "")).strip()
+        if profile_consts is not None:
+            return interface.upper() == profile_consts.INTERFACE_DIO
+        return interface.upper() == INTERFACE_DIO
 
     def _category_for_device(self, entry: Dict[str, object]) -> str:
         manufacturer = entry.get("manufacturer")
@@ -2268,6 +2452,20 @@ class TopologyEditor(tk.Tk):
             entry = self._device_registry.get(node.label)
             if isinstance(entry, dict):
                 entry["label"] = node.label
+                entry["interface"] = (
+                    profile_consts.INTERFACE_DIO if profile_consts is not None else INTERFACE_DIO
+                ) if node.interface == INTERFACE_DIO else (
+                    profile_consts.INTERFACE_CAN if profile_consts is not None else INTERFACE_CAN
+                )
+                if node.interface == INTERFACE_DIO:
+                    entry["dio"] = node.dio
+                    entry["invert"] = bool(node.invert) if node.invert is not None else False
+                    if node.device_type and node.device_type.strip():
+                        entry["type"] = node.device_type
+                    for key in ("manufacturer", "deviceType", "id", "model", "terminator"):
+                        entry.pop(key, None)
+                else:
+                    entry["id"] = node.can_id
                 if node.tags:
                     entry["tags"] = list(node.tags)
                 elif "tags" in entry:
@@ -2280,17 +2478,158 @@ class TopologyEditor(tk.Tk):
             new_entry = self._device_entry_from_node(node)
             self._device_registry_list.append(new_entry)
             self._device_registry[node.label] = new_entry
+        self._sync_attachment_links_to_registry()
+
+    def _sync_attachment_links_to_registry(self) -> None:
+        """
+        NAME
+            _sync_attachment_links_to_registry - Store attachment links in registry.
+        """
+        if not self._device_registry_list:
+            return
+        node_by_key = {n.key: n for n in self._device_nodes()}
+        attachments_by_label: Dict[str, List[str]] = {}
+        for link in self._attachment_links:
+            host_key = link.get(KEY_LINK_DEVICE)
+            attach_key = link.get(KEY_LINK_ATTACHMENT)
+            if not isinstance(host_key, int) or not isinstance(attach_key, int):
+                continue
+            host = node_by_key.get(host_key)
+            attach = node_by_key.get(attach_key)
+            if host is None or attach is None:
+                continue
+            attachments_by_label.setdefault(host.label, []).append(attach.label)
+        for entry in self._device_registry_list:
+            if not isinstance(entry, dict):
+                continue
+            label = str(entry.get("label", "")).strip()
+            if not label:
+                continue
+            attachments = attachments_by_label.get(label)
+            if attachments:
+                entry[KEY_ATTACHMENTS] = sorted(set(attachments))
+            elif KEY_ATTACHMENTS in entry:
+                entry.pop(KEY_ATTACHMENTS, None)
+
+    def _rebuild_attachment_links_from_registry(self) -> None:
+        """
+        NAME
+            _rebuild_attachment_links_from_registry - Build attachment links from registry.
+        """
+        self._attachment_links = []
+        if not self._device_registry_list:
+            return
+        node_by_label = {n.label: n for n in self._device_nodes()}
+        for entry in self._device_registry_list:
+            if not isinstance(entry, dict):
+                continue
+            host_label = str(entry.get("label", "")).strip()
+            if not host_label:
+                continue
+            attachments = entry.get(KEY_ATTACHMENTS)
+            if not isinstance(attachments, list):
+                continue
+            host_node = node_by_label.get(host_label)
+            if host_node is None:
+                continue
+            for attach_label in attachments:
+                if not isinstance(attach_label, str):
+                    continue
+                attach_node = node_by_label.get(attach_label.strip())
+                if attach_node is None:
+                    continue
+                link = {KEY_LINK_DEVICE: host_node.key, KEY_LINK_ATTACHMENT: attach_node.key}
+                if link not in self._attachment_links:
+                    self._attachment_links.append(link)
+
+    def _prune_attachment_links(self) -> bool:
+        """
+        NAME
+            _prune_attachment_links - Drop invalid attachment links.
+
+        RETURNS
+            True when any links were removed.
+        """
+        node_by_key = {n.key: n for n in self._device_nodes()}
+        before = len(self._attachment_links)
+        self._attachment_links = [
+            link
+            for link in self._attachment_links
+            if isinstance(link, dict)
+            and link.get(KEY_LINK_DEVICE) in node_by_key
+            and link.get(KEY_LINK_ATTACHMENT) in node_by_key
+            and self._is_dio_node(node_by_key[link.get(KEY_LINK_ATTACHMENT)])
+            and not self._is_dio_node(node_by_key[link.get(KEY_LINK_DEVICE)])
+        ]
+        return len(self._attachment_links) != before
+
+    def _prune_dio_wiring_links(self) -> bool:
+        """
+        NAME
+            _prune_dio_wiring_links - Drop invalid DIO wiring links.
+
+        RETURNS
+            True when any links were removed.
+        """
+        node_by_key = {n.key: n for n in self._device_nodes()}
+        before = len(self._dio_wiring_links)
+        self._dio_wiring_links = [
+            link
+            for link in self._dio_wiring_links
+            if isinstance(link, dict)
+            and link.get(KEY_LINK_DEVICE) in node_by_key
+            and link.get(KEY_LINK_ROBORIO) in node_by_key
+            and self._is_dio_node(node_by_key[link.get(KEY_LINK_DEVICE)])
+            and node_by_key[link.get(KEY_LINK_ROBORIO)].category == CATEGORY_ROBORIO
+        ]
+        return len(self._dio_wiring_links) != before
+
+    def _ensure_dio_wiring_links(self) -> bool:
+        """
+        NAME
+            _ensure_dio_wiring_links - Ensure each DIO node is wired to roboRIO.
+
+        RETURNS
+            True when any links were added.
+        """
+        roborio = self._roborio_node()
+        if roborio is None:
+            return False
+        existing = {link.get(KEY_LINK_DEVICE) for link in self._dio_wiring_links}
+        added = False
+        for node in self._device_nodes():
+            if not self._is_dio_node(node):
+                continue
+            if node.key in existing:
+                continue
+            self._dio_wiring_links.append(
+                {KEY_LINK_ROBORIO: roborio.key, KEY_LINK_DEVICE: node.key}
+            )
+            added = True
+        return added
 
     def _device_entry_from_node(self, node: Node) -> Dict[str, object]:
         """
         NAME
             _device_entry_from_node - Build a device registry entry from a node.
         """
+        if node.interface == INTERFACE_DIO:
+            entry: Dict[str, object] = {
+                "label": node.label,
+                "interface": profile_consts.INTERFACE_DIO if profile_consts is not None else INTERFACE_DIO,
+                "dio": node.dio,
+                "invert": bool(node.invert) if node.invert is not None else False,
+            }
+            if node.device_type and node.device_type.strip():
+                entry["type"] = node.device_type
+            if node.tags:
+                entry["tags"] = list(node.tags)
+            return entry
         manufacturer = self._manufacturer_id_from_vendor(node.vendor)
         device_type = self._device_type_id_from_name(node.device_type)
-        entry: Dict[str, object] = {
+        entry = {
             "label": node.label,
-            "interface": profile_consts.INTERFACE_CAN if profile_consts is not None else "CAN",
+            "interface": profile_consts.INTERFACE_CAN if profile_consts is not None else INTERFACE_CAN,
             "id": node.can_id,
         }
         if manufacturer is not None:
@@ -2395,6 +2734,8 @@ class TopologyEditor(tk.Tk):
             ],
             "ethernetLinks": [{"a": a, "b": b} for a, b in self._ethernet_links],
             "canLinks": list(self._can_bus_links),
+            KEY_ATTACHMENT_LINKS: list(self._attachment_links),
+            KEY_DIO_LINKS: list(self._dio_wiring_links),
         }
         return snapshot
 
@@ -2543,6 +2884,8 @@ class TopologyEditor(tk.Tk):
             "ethernetLinks": [{"a": a, "b": b} for a, b in self._ethernet_links],
             "canLinks": list(self._can_bus_links),
             "deviceLinks": list(self._cannect_device_links),
+            KEY_ATTACHMENT_LINKS: list(self._attachment_links),
+            KEY_DIO_LINKS: list(self._dio_wiring_links),
         }
 
     def _apply_diagram_snapshot(self, diagram: Dict[str, object]) -> None:
@@ -2934,6 +3277,54 @@ class TopologyEditor(tk.Tk):
                     {"node": int(node_key), "device": int(device_key), "port": int(port)}
                 )
 
+        self._attachment_links = []
+        attachment_from_diagram = KEY_ATTACHMENT_LINKS in diagram
+        attachment_links = diagram.get(KEY_ATTACHMENT_LINKS)
+        if isinstance(attachment_links, list):
+            node_keys = {n.key for n in self._nodes}
+            for entry in attachment_links:
+                if not isinstance(entry, dict):
+                    continue
+                host_key = entry.get(KEY_LINK_DEVICE)
+                attach_key = entry.get(KEY_LINK_ATTACHMENT)
+                if not isinstance(host_key, int) or not isinstance(attach_key, int):
+                    continue
+                if host_key in device_key_remap:
+                    host_key = device_key_remap[host_key]
+                if attach_key in device_key_remap:
+                    attach_key = device_key_remap[attach_key]
+                if host_key not in node_keys or attach_key not in node_keys:
+                    continue
+                self._attachment_links.append(
+                    {KEY_LINK_DEVICE: int(host_key), KEY_LINK_ATTACHMENT: int(attach_key)}
+                )
+        if not attachment_from_diagram:
+            self._rebuild_attachment_links_from_registry()
+
+        self._dio_wiring_links = []
+        dio_links = diagram.get(KEY_DIO_LINKS)
+        if isinstance(dio_links, list):
+            node_keys = {n.key for n in self._nodes}
+            for entry in dio_links:
+                if not isinstance(entry, dict):
+                    continue
+                robo_key = entry.get(KEY_LINK_ROBORIO)
+                dev_key = entry.get(KEY_LINK_DEVICE)
+                if not isinstance(robo_key, int) or not isinstance(dev_key, int):
+                    continue
+                if robo_key in device_key_remap:
+                    robo_key = device_key_remap[robo_key]
+                if dev_key in device_key_remap:
+                    dev_key = device_key_remap[dev_key]
+                if robo_key not in node_keys or dev_key not in node_keys:
+                    continue
+                self._dio_wiring_links.append(
+                    {KEY_LINK_ROBORIO: int(robo_key), KEY_LINK_DEVICE: int(dev_key)}
+                )
+
+        self._prune_attachment_links()
+        self._prune_dio_wiring_links()
+        self._ensure_dio_wiring_links()
         self._fix_cannect_conflicts(notify=False)
         self._apply_cannect_free_float()
         self._resolve_overlaps()
@@ -2984,16 +3375,20 @@ class TopologyEditor(tk.Tk):
         tags = self._normalize_tags(data.get("tags", []))
         if is_diagram_category:
             tags = self._normalize_tags(tags + tag_defaults)
+        interface = str(data.get("interface", INTERFACE_CAN)).strip() or INTERFACE_CAN
         node = Node(
             key=self._next_key,
             category=category,
             label=str(data["label"]),
             can_id=CAN_ID_DIAGRAM_DEFAULT if is_diagram_category else int(data["can_id"]),
             node_type=ANALYZER_NODE_TYPE if is_diagram_category else NODE_TYPE_DEVICE,
+            interface=interface if not is_diagram_category else INTERFACE_CAN,
             vendor=str(data.get("vendor", TEXT_EMPTY)) if not is_diagram_category else vendor_default,
             device_type=str(data.get("device_type", TEXT_EMPTY)) if not is_diagram_category else device_type_default,
             motor=str(data.get("motor", TEXT_EMPTY)) if not is_diagram_category else TEXT_EMPTY,
             limits=data.get("limits") if (not is_diagram_category and isinstance(data.get("limits"), dict)) else None,
+            dio=data.get("dio") if (not is_diagram_category and interface == INTERFACE_DIO) else None,
+            invert=data.get("dio_invert") if (not is_diagram_category and interface == INTERFACE_DIO) else None,
             terminator=bool(data.get("terminator")) if (not is_diagram_category and data.get("terminator") is not None) else None,
             x=self._next_x_position(),
             row=len(self._nodes) % 2,
@@ -3005,6 +3400,9 @@ class TopologyEditor(tk.Tk):
         self._next_key += 1
         self._nodes.append(node)
         self._layout_width = max(self._layout_width, node.x + 200)
+        self._prune_attachment_links()
+        self._prune_dio_wiring_links()
+        self._ensure_dio_wiring_links()
         self._refresh_list()
         self._redraw_canvas()
         self._select_node(node.key)
@@ -3509,6 +3907,114 @@ class TopologyEditor(tk.Tk):
             )
         self._redraw_canvas()
 
+    def _attach_device_link(self) -> None:
+        """
+        NAME
+            _attach_device_link - Create a logical attachment link.
+        """
+        selected = [n for n in self._device_nodes() if n.key in self._selected_nodes]
+        if len(selected) != 2:
+            messagebox.showinfo(TITLE_ATTACH_DEVICE, MSG_ATTACH_SELECT)
+            return
+        dio_nodes = [n for n in selected if self._is_dio_node(n)]
+        host_nodes = [n for n in selected if not self._is_dio_node(n)]
+        if len(dio_nodes) != 1 or len(host_nodes) != 1:
+            messagebox.showinfo(TITLE_ATTACH_DEVICE, MSG_ATTACH_INVALID)
+            return
+        attachment = dio_nodes[0]
+        host = host_nodes[0]
+        link = {KEY_LINK_DEVICE: host.key, KEY_LINK_ATTACHMENT: attachment.key}
+        if link in self._attachment_links:
+            messagebox.showinfo(TITLE_ATTACH_DEVICE, MSG_ATTACH_DUP)
+            return
+        self._push_undo()
+        self._attachment_links.append(link)
+        self._dirty = True
+        self._redraw_canvas()
+
+    def _remove_attachment_link(self) -> None:
+        """
+        NAME
+            _remove_attachment_link - Remove attachment links for selected nodes.
+        """
+        selected_keys = {n.key for n in self._device_nodes() if n.key in self._selected_nodes}
+        if not selected_keys:
+            messagebox.showinfo(TITLE_REMOVE_ATTACHMENT, MSG_ATTACH_REMOVE_SELECT)
+            return
+        before = len(self._attachment_links)
+        self._push_undo()
+        self._attachment_links = [
+            link
+            for link in self._attachment_links
+            if link.get(KEY_LINK_DEVICE) not in selected_keys
+            and link.get(KEY_LINK_ATTACHMENT) not in selected_keys
+        ]
+        if len(self._attachment_links) == before:
+            messagebox.showinfo(TITLE_REMOVE_ATTACHMENT, MSG_ATTACH_NONE)
+        self._redraw_canvas()
+
+    def _wire_dio_to_roborio(self) -> None:
+        """
+        NAME
+            _wire_dio_to_roborio - Create a physical wiring link to roboRIO.
+        """
+        selected = [n for n in self._device_nodes() if n.key in self._selected_nodes]
+        dio_nodes = [n for n in selected if self._is_dio_node(n)]
+        if len(dio_nodes) != 1:
+            messagebox.showinfo(TITLE_WIRE_DIO, MSG_WIRE_SELECT)
+            return
+        roborio = self._roborio_node()
+        if roborio is None:
+            messagebox.showinfo(TITLE_WIRE_DIO, MSG_WIRE_NO_ROBORIO)
+            return
+        dio_node = dio_nodes[0]
+        link = {KEY_LINK_ROBORIO: roborio.key, KEY_LINK_DEVICE: dio_node.key}
+        if link in self._dio_wiring_links:
+            messagebox.showinfo(TITLE_WIRE_DIO, MSG_WIRE_DUP)
+            return
+        self._push_undo()
+        self._dio_wiring_links = [
+            l for l in self._dio_wiring_links if l.get(KEY_LINK_DEVICE) != dio_node.key
+        ]
+        self._dio_wiring_links.append(link)
+        self._dirty = True
+        self._redraw_canvas()
+
+    def _remove_dio_wire(self) -> None:
+        """
+        NAME
+            _remove_dio_wire - Remove DIO wiring links for selected nodes.
+        """
+        selected_keys = {n.key for n in self._device_nodes() if n.key in self._selected_nodes}
+        if not selected_keys:
+            messagebox.showinfo(TITLE_REMOVE_DIO_WIRE, MSG_WIRE_REMOVE_SELECT)
+            return
+        before = len(self._dio_wiring_links)
+        self._push_undo()
+        self._dio_wiring_links = [
+            link
+            for link in self._dio_wiring_links
+            if link.get(KEY_LINK_DEVICE) not in selected_keys
+            and link.get(KEY_LINK_ROBORIO) not in selected_keys
+        ]
+        if len(self._dio_wiring_links) == before:
+            messagebox.showinfo(TITLE_REMOVE_DIO_WIRE, MSG_WIRE_NONE)
+        self._redraw_canvas()
+
+    def _is_dio_node(self, node: Node) -> bool:
+        """
+        NAME
+            _is_dio_node - Return True when a node is a DIO device.
+        """
+        return node.interface == INTERFACE_DIO
+
+    def _roborio_node(self) -> Optional[Node]:
+        """
+        NAME
+            _roborio_node - Return the roboRIO node if present.
+        """
+        return next((n for n in self._device_nodes() if n.category == CATEGORY_ROBORIO), None)
+
     def _set_cannect_port(self) -> None:
         """
         NAME
@@ -3749,14 +4255,20 @@ class TopologyEditor(tk.Tk):
         node.category = category
         node.label = str(data["label"])
         node.can_id = int(data["can_id"])
+        node.interface = str(data.get("interface", INTERFACE_CAN)).strip() or INTERFACE_CAN
         node.vendor = str(data.get("vendor", ""))
         node.device_type = str(data.get("device_type", ""))
         node.motor = str(data.get("motor", ""))
         node.limits = data.get("limits") if isinstance(data.get("limits"), dict) else None
+        node.dio = data.get("dio") if node.interface == INTERFACE_DIO else None
+        node.invert = data.get("dio_invert") if node.interface == INTERFACE_DIO else None
         node.terminator = (
             bool(data.get("terminator")) if data.get("terminator") is not None else None
         )
         node.tags = self._normalize_tags(data.get("tags", []))
+        self._prune_attachment_links()
+        self._prune_dio_wiring_links()
+        self._ensure_dio_wiring_links()
         self._refresh_list()
         self._redraw_canvas()
         self._select_node(node.key)
@@ -3821,6 +4333,8 @@ class TopologyEditor(tk.Tk):
         self._push_undo()
         self._nodes = [n for n in self._nodes if n.key != node.key]
         self._selected_key = None
+        self._prune_attachment_links()
+        self._prune_dio_wiring_links()
         self._refresh_list()
         self._update_details_panel(None)
         self._redraw_canvas()
@@ -3862,6 +4376,8 @@ class TopologyEditor(tk.Tk):
         self._push_undo()
         self._nodes = [n for n in self._nodes if n.key not in self._selected_nodes]
         self._clear_selection()
+        self._prune_attachment_links()
+        self._prune_dio_wiring_links()
         self._refresh_list()
         self._update_details_panel(None)
         if hasattr(self, "_callout_details_panel"):
@@ -6283,8 +6799,44 @@ class TopologyEditor(tk.Tk):
                 py,
                 tx,
                 ty,
-                width=2,
+                width=LINK_LINE_WIDTH,
                 fill="#2f7a2f",
+            )
+            self.canvas.tag_lower(line)
+
+        for link in self._attachment_links:
+            host_key = link.get(KEY_LINK_DEVICE)
+            attach_key = link.get(KEY_LINK_ATTACHMENT)
+            if host_key not in node_centers or attach_key not in node_centers:
+                continue
+            hx, hy = node_centers[host_key]
+            ax, ay = node_centers[attach_key]
+            line = self.canvas.create_line(
+                hx,
+                hy,
+                ax,
+                ay,
+                width=LINK_LINE_WIDTH,
+                fill=ATTACH_LINE_COLOR,
+                dash=LINK_DASH,
+            )
+            self.canvas.tag_lower(line)
+
+        for link in self._dio_wiring_links:
+            robo_key = link.get(KEY_LINK_ROBORIO)
+            dev_key = link.get(KEY_LINK_DEVICE)
+            if robo_key not in node_centers or dev_key not in node_centers:
+                continue
+            rx, ry = node_centers[robo_key]
+            dx, dy = node_centers[dev_key]
+            line = self.canvas.create_line(
+                rx,
+                ry,
+                dx,
+                dy,
+                width=LINK_LINE_WIDTH,
+                fill=WIRE_LINE_COLOR,
+                dash=LINK_DASH,
             )
             self.canvas.tag_lower(line)
 
@@ -6499,6 +7051,8 @@ class TopologyEditor(tk.Tk):
         NAME
             _dup_key_for_node - Build a duplicate-detection key.
         """
+        if node.interface != INTERFACE_CAN:
+            return None
         if not isinstance(node.can_id, int) or node.can_id < 0:
             return None
         vendor = self._vendor_key_for_node(node) or "UNKNOWN"
@@ -8243,8 +8797,44 @@ class TopologyEditor(tk.Tk):
             p0 = _to_pdf(px, py)
             p1 = _to_pdf(tx, ty)
             c.setStrokeColor(_pdf_color("#2f7a2f"))
-            c.setLineWidth(2 * fit_scale)
+            c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
             c.line(p0[0], p0[1], p1[0], p1[1])
+
+        for link in self._attachment_links:
+            host_key = link.get(KEY_LINK_DEVICE)
+            attach_key = link.get(KEY_LINK_ATTACHMENT)
+            if host_key not in node_centers or attach_key not in node_centers:
+                continue
+            hx, hy = node_centers[host_key]
+            ax, ay = node_centers[attach_key]
+            p0 = _to_pdf(hx, hy)
+            p1 = _to_pdf(ax, ay)
+            c.setStrokeColor(_pdf_color(ATTACH_LINE_COLOR))
+            c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
+            try:
+                c.setDash(LINK_DASH[0] * fit_scale, LINK_DASH[1] * fit_scale)
+            except Exception:
+                pass
+            c.line(p0[0], p0[1], p1[0], p1[1])
+            c.setDash()
+
+        for link in self._dio_wiring_links:
+            robo_key = link.get(KEY_LINK_ROBORIO)
+            dev_key = link.get(KEY_LINK_DEVICE)
+            if robo_key not in node_centers or dev_key not in node_centers:
+                continue
+            rx, ry = node_centers[robo_key]
+            dx, dy = node_centers[dev_key]
+            p0 = _to_pdf(rx, ry)
+            p1 = _to_pdf(dx, dy)
+            c.setStrokeColor(_pdf_color(WIRE_LINE_COLOR))
+            c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
+            try:
+                c.setDash(LINK_DASH[0] * fit_scale, LINK_DASH[1] * fit_scale)
+            except Exception:
+                pass
+            c.line(p0[0], p0[1], p1[0], p1[1])
+            c.setDash()
 
         for a, b in self._ethernet_links:
             if a not in ethernet_ports or b not in ethernet_ports:

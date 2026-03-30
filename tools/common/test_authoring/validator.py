@@ -75,7 +75,10 @@ MESSAGE_DEVICES_REQUIRED = "At least one device is required."
 MESSAGE_DEVICE_LABEL_INVALID = "Invalid device label."
 MESSAGE_DEVICE_DUPLICATE = "Duplicate device in test."
 MESSAGE_DEVICE_NOT_IN_PROFILE = "Device not in active profile."
-MESSAGE_DEVICE_LABEL_DUPLICATE = "Duplicate device label in profile: {label}"
+MESSAGE_DEVICE_LABEL_DUPLICATE = (
+    "Duplicate device label in profile: {label}. Fix: remove the duplicate label "
+    "from the profile device list."
+)
 MESSAGE_BINDING_JOYSTICK_REQUIRED = "Joystick binding required."
 MESSAGE_INPUT_SOURCE_REQUIRED = "inputSource is required."
 MESSAGE_INPUT_SOURCE_INVALID = "inputSource must be <controller>.<inputId>."
@@ -84,7 +87,11 @@ MESSAGE_INPUT_SOURCE_CONTROLLER_INVALID = "inputSource controller name is invali
 MESSAGE_DEADBAND_RANGE = "Deadband must be 0.0 to 1.0."
 MESSAGE_BINDING_BUTTON_REQUIRED = "Button binding required."
 MESSAGE_DUTY_RANGE = "Duty must be -1.0 to 1.0."
-MESSAGE_TERMINATION_REQUIRED = "At least one termination is required."
+MESSAGE_TERMINATION_REQUIRED = (
+    "At least one termination is required. Fix: add one of "
+    "termination hold | termination time <sec> | termination rotation <rot> | "
+    "termination limitswitch <label>."
+)
 MESSAGE_TEST_TYPE_UNKNOWN = "Unknown test type."
 MESSAGE_DEADBAND_SWEEP_REQUIRED = "deadbandSweep config is required."
 MESSAGE_DEADBAND_SWEEP_FIELD = "deadbandSweep field is required."
@@ -100,8 +107,14 @@ MESSAGE_LIMIT_SWITCH_REQUIRED = "limitSwitch must be an object."
 MESSAGE_LIMIT_SWITCH_ENABLED = "limitSwitch.enabled must be true/false."
 MESSAGE_LIMIT_SWITCH_ON_HIT = "limitSwitch.onHit must be pass or fail."
 MESSAGE_LIMIT_SWITCH_ID = "limitSwitch.id must be a non-empty string."
-MESSAGE_LIMIT_SWITCH_ID_REQUIRED = "limitSwitch.id is required when limitSwitch is enabled."
-MESSAGE_LIMIT_SWITCH_NOT_FOUND = "limitSwitch.id not found in active profile."
+MESSAGE_LIMIT_SWITCH_ID_REQUIRED = (
+    "limitSwitch.id is required when limitSwitch is enabled. Fix: set it with "
+    "limitswitch id <label>."
+)
+MESSAGE_LIMIT_SWITCH_NOT_FOUND = (
+    "limitSwitch.id not found in active profile. Fix: add the label to the active "
+    "profile device list and define it in the device registry."
+)
 MESSAGE_LIMIT_SWITCH_TYPE_INVALID = "limitSwitch.id must reference a limitSwitch device."
 
 TEST_TYPE_JOYSTICK = "joystick"

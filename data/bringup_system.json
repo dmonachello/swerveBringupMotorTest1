@@ -46,7 +46,7 @@
           },
           {
             "category": "pdh",
-            "label": "pdh",
+            "label": "PDH",
             "id": 1,
             "bus": 2,
             "row": 0,
@@ -280,7 +280,7 @@
           {
             "nodeType": "device",
             "category": "pdh",
-            "label": "pdh",
+            "label": "PDH",
             "id": 1,
             "bus": 5,
             "row": 0,
@@ -447,7 +447,7 @@
           {
             "nodeType": "device",
             "category": "pdh",
-            "label": "pdh",
+            "label": "PDH",
             "id": 1,
             "bus": 1,
             "row": 1,
@@ -709,15 +709,22 @@
           40.0
         ],
         "busRights": [
-          1197.6458752515107,
+          1563.1031737498777,
           1183.8309859154929,
           1059.5421810140124,
-          1004.1725352112685,
+          1743.1031737498777,
           1148.822865118639,
           1218.6476471441256
         ],
-        "panY": -191.15384615384616,
-        "zoom": 0.4778846153846154,
+        "busConnectors": [
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "panY": -144.52461112198677,
+        "zoom": 0.3613115278049669,
         "nodes": [
           {
             "nodeType": "device",
@@ -744,7 +751,7 @@
             "id": 24,
             "bus": 0,
             "row": 0,
-            "x": 428.0,
+            "x": 432.74045059757816,
             "freeY": null,
             "freeYRelative": false,
             "scale": 1.0,
@@ -759,9 +766,9 @@
             "id": 22,
             "bus": 1,
             "row": 0,
-            "x": 859.1561984519731,
-            "freeY": null,
-            "freeYRelative": false,
+            "x": 952.9475470524819,
+            "freeY": -75.87786259541986,
+            "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
             "profileVisible": true
@@ -809,7 +816,7 @@
             "bus": 3,
             "row": 1,
             "x": 280.0,
-            "freeY": 570.0,
+            "freeY": 2490.0,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [
@@ -826,7 +833,7 @@
             "bus": 4,
             "row": 1,
             "x": 280.0,
-            "freeY": 730.0,
+            "freeY": 3290.0,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [
@@ -843,7 +850,7 @@
             "bus": 3,
             "row": 0,
             "x": 420.2012072434608,
-            "freeY": 424.06438631790746,
+            "freeY": 2344.0643863179075,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [
@@ -860,7 +867,7 @@
             "bus": 5,
             "row": 1,
             "x": 273.72233400402416,
-            "freeY": 917.9074446680081,
+            "freeY": 4117.907444668008,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [
@@ -909,7 +916,7 @@
             "bus": 3,
             "row": 1,
             "x": 455.0,
-            "freeY": 555.0,
+            "freeY": 2475.0,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -924,7 +931,7 @@
             "bus": 4,
             "row": 1,
             "x": 455.0,
-            "freeY": 715.0,
+            "freeY": 3275.0,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -939,7 +946,7 @@
             "bus": 3,
             "row": 0,
             "x": 620.3118712273641,
-            "freeY": 432.43460764587525,
+            "freeY": 2352.434607645875,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -954,7 +961,7 @@
             "bus": 5,
             "row": 1,
             "x": 480.11066398390335,
-            "freeY": 907.4446680080483,
+            "freeY": 4107.444668008048,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -969,7 +976,7 @@
             "bus": 3,
             "row": 1,
             "x": 630.0,
-            "freeY": 540.0,
+            "freeY": 2460.0,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [
@@ -986,7 +993,7 @@
             "bus": 4,
             "row": 1,
             "x": 630.0,
-            "freeY": 700.0,
+            "freeY": 3260.0,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [
@@ -1003,7 +1010,7 @@
             "bus": 2,
             "row": 1,
             "x": 770.201207243461,
-            "freeY": 390.5835010060362,
+            "freeY": 1670.5835010060362,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [
@@ -1020,42 +1027,12 @@
             "bus": 5,
             "row": 1,
             "x": 686.4989939637824,
-            "freeY": 863.5010060362173,
+            "freeY": 4063.5010060362174,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [
               "sensor"
             ],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 28,
-            "category": "candles",
-            "label": "CANDle",
-            "id": 62,
-            "bus": 0,
-            "row": 1,
-            "x": 1077.6458752515107,
-            "freeY": 47.40442655935621,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 20,
-            "category": "pdh",
-            "label": "pdh",
-            "id": 1,
-            "bus": 5,
-            "row": 1,
-            "x": 1098.5311871227364,
-            "freeY": 55.13078470824951,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
             "profileVisible": true
           },
           {
@@ -1077,15 +1054,45 @@
           },
           {
             "nodeType": "device",
-            "key": 22,
-            "category": "roborio",
-            "label": "roborio",
-            "id": 0,
+            "key": 103,
+            "category": "devices",
+            "label": "lmtSw1",
+            "id": -1,
+            "bus": 0,
+            "row": 1,
+            "x": 1443.1031737498777,
+            "freeY": 76.08142493638677,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 104,
+            "category": "pdh",
+            "label": "PDH",
+            "id": 1,
             "bus": 0,
             "row": 0,
-            "x": 86.31790744466802,
-            "freeY": -73.96378269617705,
-            "freeYRelative": true,
+            "x": 0.0,
+            "freeY": null,
+            "freeYRelative": false,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 106,
+            "category": "roborio",
+            "label": "roborio2",
+            "id": 1,
+            "bus": 3,
+            "row": 1,
+            "x": 1623.1031737498777,
+            "freeY": null,
+            "freeYRelative": false,
             "scale": 1.0,
             "tags": [],
             "profileVisible": true
@@ -1099,7 +1106,7 @@
             "bus": 4,
             "row": 1,
             "x": 120.0,
-            "freeY": 700.0,
+            "freeY": 3260.0,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -1114,7 +1121,7 @@
             "bus": 2,
             "row": 1,
             "x": 268.57142857142856,
-            "freeY": 392.55533199195173,
+            "freeY": 1672.5553319919518,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -1129,7 +1136,7 @@
             "bus": 3,
             "row": 1,
             "x": 120.0,
-            "freeY": 540.0,
+            "freeY": 2460.0,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -1144,7 +1151,7 @@
             "bus": 5,
             "row": 1,
             "x": 120.0,
-            "freeY": 860.0,
+            "freeY": 4060.0,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -1245,6 +1252,18 @@
             "node": 26,
             "device": 9,
             "port": 3
+          }
+        ],
+        "attachmentLinks": [
+          {
+            "device": 3,
+            "attachment": 103
+          }
+        ],
+        "dioLinks": [
+          {
+            "roborio": 106,
+            "device": 103
           }
         ]
       },
@@ -1492,7 +1511,7 @@
             "nodeType": "device",
             "key": 35,
             "category": "pdh",
-            "label": "pdh",
+            "label": "PDH",
             "id": 62,
             "bus": 0,
             "row": 0,
@@ -1507,7 +1526,7 @@
             "nodeType": "device",
             "key": 21,
             "category": "roborio",
-            "label": "roborio",
+            "label": "roboRIO",
             "id": 0,
             "bus": 0,
             "row": 0,
@@ -2147,7 +2166,7 @@
       "devices": [
         "SPARKMAX/NEO 22",
         "SPARKMAX/NEO550 7",
-        "pdh",
+        "PDH",
         "roboRIO"
       ]
     },
@@ -2175,7 +2194,7 @@
         "SPARKMAX/NEO550 7",
         "FALCON 9",
         "candle",
-        "pdh",
+        "PDH",
         "roboRIO"
       ]
     },
@@ -2198,7 +2217,7 @@
         "cancoder 33",
         "cancoder 43",
         "candle",
-        "pdh",
+        "PDH",
         "roboRIO"
       ]
     },
@@ -2232,11 +2251,10 @@
         "Encoder (CANCoder) (id 9)",
         "Encoder (CANCoder) (id 3)",
         "Encoder (CANCoder) (id 12)",
-        "CANDle",
-        "pdh",
         "IMU (Pigeon2)",
-        "roborio",
-        "lmtSw1"
+        "lmtSw1",
+        "PDH",
+        "roborio2"
       ]
     },
     "cannectTests1": {
@@ -2256,8 +2274,8 @@
         "cancoder 13",
         "cancoder 23",
         "cancoder 33",
-        "pdh",
-        "roborio"
+        "PDH",
+        "roboRIO"
       ]
     }
   },
@@ -2674,11 +2692,7 @@
       "deviceType": 2,
       "id": 51,
       "type": "motor",
-      "terminator": false,
-      "attachments": [
-        "intake neo 51 limit fwd",
-        "intake neo 51 limit rev"
-      ]
+      "terminator": false
     },
     {
       "label": "intake neo 51 limit fwd",
@@ -2816,7 +2830,8 @@
       "interface": "CAN",
       "manufacturer": 5,
       "deviceType": 8,
-      "id": 1
+      "id": 1,
+      "terminator": true
     },
     {
       "label": "pdp",
@@ -2851,7 +2866,10 @@
       "manufacturer": 5,
       "deviceType": 2,
       "id": 22,
-      "type": "motor"
+      "type": "motor",
+      "attachments": [
+        "lmtSw1"
+      ]
     },
     {
       "label": "roboRIO",
@@ -2886,10 +2904,7 @@
       "deviceType": 2,
       "id": 11,
       "model": "REV NEO",
-      "type": "motor",
-      "attachments": [
-        "SPARKMAX/NEO 11 limit fwd"
-      ]
+      "type": "motor"
     },
     {
       "label": "SPARKMAX/NEO 11 limit fwd",
@@ -2943,10 +2958,7 @@
       "deviceType": 2,
       "id": 7,
       "model": "REV NEO 550",
-      "type": "motor",
-      "attachments": [
-        "SPARKMAX/NEO550 7 limit fwd"
-      ]
+      "type": "motor"
     },
     {
       "label": "SPARKMAX/NEO550 7 limit fwd",
@@ -3007,8 +3019,18 @@
       "type": "limitSwitch",
       "dio": 0,
       "invert": false
+    },
+    {
+      "label": "roborio2",
+      "interface": "CAN",
+      "id": 1,
+      "manufacturer": 1,
+      "deviceType": 1,
+      "model": "RobotController",
+      "type": "",
+      "terminator": true
     }
   ],
-  "data_version": "2026-03-29_231647",
-  "data_hash": "e4e3ea06a38ac8825945d307e8db66dca10b461745c5e59430098e8b9d835661"
+  "data_version": "2026-03-30_005520",
+  "data_hash": "6c9790b048705cc5cfb42a241024a0ba0d3d4330f3478fe6f9d10266d0ee9c47"
 }

@@ -10,7 +10,7 @@ command        = common
 
 common         = "exit"
                | "end"
-               | "help"
+               | "help" [ ws name { ws name } ]
                | "ping"
                | "echo" ws ("on" | "off")
                | "quit" ;
@@ -46,6 +46,7 @@ show_flag      = show_source | "--json" | "--pretty" ;
 config         = "group" ws name
                | "no" ws "group" ws name
                | "profile" ws name
+               | "profile" ws "create" ws name
                | "selected-device" ws name
                | "selected-mode" ws ("on" | "off")
                | "merge" ws "config" ws path

@@ -43,6 +43,9 @@ DIAGRAM_CATEGORIES = [
     DIAGRAM_CATEGORY_CANNECT_DIRECT,
     DIAGRAM_CATEGORY_ANALYZER,
 ]
+INTERFACE_CAN = "CAN"
+INTERFACE_DIO = "DIO"
+DIO_DEVICE_TYPES = ["limitSwitch", "encoderExternal"]
 
 DEFAULT_MANUFACTURERS = [
     "CTRE",
@@ -105,10 +108,13 @@ class Node:
     label: str
     can_id: int
     node_type: str = "device"  # "device" or "callout"
+    interface: str = INTERFACE_CAN
     vendor: str = ""
     device_type: str = ""
     motor: str = ""
     limits: Optional[Dict[str, int | bool]] = None
+    dio: Optional[int] = None
+    invert: Optional[bool] = None
     terminator: Optional[bool] = None
     x: float = 0.0
     row: int = 0

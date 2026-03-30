@@ -477,6 +477,22 @@ class BridgeCliParser:
                 bool(SPEC.bool_false),
             )
         if verb == SPEC.cmd_profile:
+            if tokens[SPEC.count_one].lower() == SPEC.cmd_create:
+                return (
+                    SPEC.kind_config_profile,
+                    SPEC.empty_str,
+                    tokens[SPEC.count_two],
+                    SPEC.empty_str,
+                    SPEC.cmd_create,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    bool(SPEC.bool_false),
+                )
             return (
                 SPEC.kind_config_profile,
                 SPEC.empty_str,
@@ -1058,6 +1074,10 @@ class BridgeCliParser:
 
     def _handle_profile(self, tokens: List[str]) -> None:
         self._require(tokens, SPEC.count_two, SPEC.msg_profile_name)
+        if tokens[SPEC.count_one].lower() == SPEC.cmd_create:
+            self._require(tokens, SPEC.count_three, SPEC.msg_profile_name)
+            self._reject_extra(tokens, SPEC.count_three, SPEC.cmd_profile)
+            return
         self._reject_extra(tokens, SPEC.count_two, SPEC.cmd_profile)
 
     def _handle_selected_mode(self, tokens: List[str]) -> None:

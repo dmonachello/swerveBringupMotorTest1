@@ -262,6 +262,10 @@ class BridgeCliAstExecutor:
         return None
 
     def _ast_config_profile(self, ast: CommandAst) -> Optional[int]:
+        if ast.field == SPEC.cmd_create:
+            if not self._cli._create_profile(ast.profile_name):
+                return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return None
         if not self._cli._set_active_profile(ast.profile_name):
             return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
         print(f"Active profile: {self._cli._groups_profile}")
