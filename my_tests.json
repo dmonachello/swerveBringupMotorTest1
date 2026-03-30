@@ -1,20 +1,19 @@
 {
   "default_test_set": "default",
   "test_sets": {
-    "default": [],
-    "clean_033026": [
+    "default": [
       {
         "name": "FeederSpin",
         "enabled": false,
         "motorLabels": [
-          "FeederMotor"
+          "Feeder Motor"
         ],
         "type": "composite",
         "inputSource": "controller0.A",
         "duty": 0.2,
         "time": {
           "timeoutSec": 2.0,
-          "onTimeout": "fail"
+          "onTimeout": "pass"
         }
       }
     ]

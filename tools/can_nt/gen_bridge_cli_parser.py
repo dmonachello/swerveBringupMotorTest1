@@ -104,6 +104,157 @@ def _collect_rules(text: str) -> List[RuleBlock]:
     return rules
 
 
+def _prepare_expr(expr: str) -> str:
+    expr = re.sub(r"(\"[^\"]+\")\?", r"\\1 ?", expr)
+    expr = re.sub(r"([A-Za-z_][A-Za-z0-9_]*)\?", r"\\1 ?", expr)
+    return expr
+
+
+def _tokenize_expr(expr: str) -> List[tuple[str, str]]:
+    expr = _prepare_expr(expr)
+    tokens: List[tuple[str, str]] = []
+    i = 0
+    while i < len(expr):
+        ch = expr[i]
+        if ch.isspace():
+            i += 1
+            continue
+        if ch in "|(){}[]?":
+            tokens.append((ch, ch))
+            i += 1
+            continue
+        if ch == '"':
+            j = i + 1
+            while j < len(expr) and expr[j] != '"':
+                j += 1
+            value = expr[i + 1 : j]
+            tokens.append(("lit", value))
+            i = j + 1
+            continue
+        if ch.isalnum() or ch == "_":
+            j = i + 1
+            while j < len(expr) and (expr[j].isalnum() or expr[j] == "_"):
+                j += 1
+            tokens.append(("id", expr[i:j]))
+            i = j
+            continue
+        i += 1
+    return tokens
+
+
+def _parse_expr(tokens: List[tuple[str, str]], idx: int = 0) -> tuple[dict, int]:
+    def parse_seq(index: int) -> tuple[list, int]:
+        items: List[dict] = []
+        while index < len(tokens):
+            kind, value = tokens[index]
+            if kind in (")", "]", "}", "|"):
+                break
+            if kind == "(":
+                node, index = _parse_expr(tokens, index + 1)
+                if index < len(tokens) and tokens[index][0] == ")":
+                    index += 1
+            elif kind == "[":
+                node, index = _parse_expr(tokens, index + 1)
+                if index < len(tokens) and tokens[index][0] == "]":
+                    index += 1
+                node = {"type": "opt", "child": node}
+            elif kind == "{":
+                node, index = _parse_expr(tokens, index + 1)
+                if index < len(tokens) and tokens[index][0] == "}":
+                    index += 1
+                node = {"type": "rep", "child": node}
+            elif kind == "lit":
+                node = {"type": "lit", "value": value}
+                index += 1
+            elif kind == "id":
+                node = {"type": "id", "value": value}
+                index += 1
+            else:
+                index += 1
+                continue
+
+            if index < len(tokens) and tokens[index][0] == "?":
+                node = {"type": "opt", "child": node}
+                index += 1
+            items.append(node)
+        return items, index
+
+    alts: List[dict] = []
+    seq, idx = parse_seq(idx)
+    alts.append({"type": "seq", "items": seq})
+    while idx < len(tokens) and tokens[idx][0] == "|":
+        seq, idx = parse_seq(idx + 1)
+        alts.append({"type": "seq", "items": seq})
+    return {"type": "alt", "alts": alts}, idx
+
+
+def _build_rule_ast(expr: str) -> dict:
+    tokens = _tokenize_expr(expr)
+    node, _ = _parse_expr(tokens, 0)
+    return node
+
+
+def _compute_first_sets(rules: Dict[str, dict]) -> Dict[str, set[str]]:
+    nullable_cache: Dict[str, bool] = {}
+    first_cache: Dict[str, set[str]] = {}
+
+    def nullable(node: dict) -> bool:
+        t = node["type"]
+        if t == "lit":
+            return False
+        if t == "id":
+            name = node["value"]
+            if name == "ws":
+                return True
+            if name in nullable_cache:
+                return nullable_cache[name]
+            if name not in rules:
+                return False
+            nullable_cache[name] = False
+            nullable_cache[name] = nullable(rules[name])
+            return nullable_cache[name]
+        if t == "seq":
+            return all(nullable(item) for item in node["items"])
+        if t == "alt":
+            return any(nullable(alt) for alt in node["alts"])
+        if t in ("opt", "rep"):
+            return True
+        return False
+
+    def first(node: dict) -> set[str]:
+        t = node["type"]
+        if t == "lit":
+            return {node["value"]}
+        if t == "id":
+            name = node["value"]
+            if name == "ws":
+                return set()
+            if name in first_cache:
+                return first_cache[name]
+            if name not in rules:
+                return set()
+            first_cache[name] = set()
+            first_cache[name] = first(rules[name])
+            return first_cache[name]
+        if t == "alt":
+            out: set[str] = set()
+            for alt in node["alts"]:
+                out |= first(alt)
+            return out
+        if t == "seq":
+            out: set[str] = set()
+            for item in node["items"]:
+                out |= first(item)
+                if not nullable(item):
+                    break
+            return out
+        if t in ("opt", "rep"):
+            return first(node["child"])
+        return set()
+
+    return {name: {lit for lit in first(node)} for name, node in rules.items()}
+
+
 def _convert_expr(expr: str) -> str:
     expr = re.sub(r"\?\s*any non-whitespace character\s*\?", r"/[^\\s]/", expr)
     expr = re.sub(r"\"0\"\\.\\.\\.\"9\"", "\"0\"..\"9\"", expr)
@@ -166,7 +317,7 @@ def _write_grammar(grammar: str) -> None:
     )
 
 
-def _write_constants(meta: Dict[str, object]) -> None:
+def _write_constants(meta: Dict[str, object], mode_commands: Dict[str, tuple[str, ...]]) -> None:
     modes = meta["modes"]
     commands = meta["commands"]
     kinds = meta["kinds"]
@@ -326,6 +477,12 @@ def _write_constants(meta: Dict[str, object]) -> None:
     lines.append("    label_rename: str")
     lines.append("    label_device: str")
     lines.append("    label_device_set: str")
+    lines.append("    label_device_delete: str")
+    lines.append("    mode_exec_cmds: tuple[str, ...]")
+    lines.append("    mode_config_cmds: tuple[str, ...]")
+    lines.append("    mode_group_cmds: tuple[str, ...]")
+    lines.append("    mode_device_cmds: tuple[str, ...]")
+    lines.append("    mode_test_cmds: tuple[str, ...]")
     lines.append("    label_validate: str")
     lines.append("    label_show_members: str")
     lines.append("    label_add_device: str")
@@ -349,6 +506,7 @@ def _write_constants(meta: Dict[str, object]) -> None:
     lines.append("    kind_show: str")
     lines.append("    kind_config_group: str")
     lines.append("    kind_config_no_group: str")
+    lines.append("    kind_config_no_device: str")
     lines.append("    kind_config_profile: str")
     lines.append("    kind_config_selected_device: str")
     lines.append("    kind_config_selected_mode: str")
@@ -376,6 +534,7 @@ def _write_constants(meta: Dict[str, object]) -> None:
     lines.append("    kind_device_show: str")
     lines.append("    kind_device_set: str")
     lines.append("    kind_device_no: str")
+    lines.append("    kind_device_delete: str")
     lines.append("")
     lines.append("SPEC = ParserSpec(")
     lines.append("    bool_true=True,")
@@ -523,6 +682,12 @@ def _write_constants(meta: Dict[str, object]) -> None:
     lines.append(f"    label_rename={labels['rename']!r},")
     lines.append(f"    label_device={labels['device']!r},")
     lines.append(f"    label_device_set={labels['device_set']!r},")
+    lines.append(f"    label_device_delete={labels['device_delete']!r},")
+    lines.append(f"    mode_exec_cmds={mode_commands['exec']!r},")
+    lines.append(f"    mode_config_cmds={mode_commands['config']!r},")
+    lines.append(f"    mode_group_cmds={mode_commands['group']!r},")
+    lines.append(f"    mode_device_cmds={mode_commands['device']!r},")
+    lines.append(f"    mode_test_cmds={mode_commands['test']!r},")
     lines.append(f"    label_validate={labels['validate']!r},")
     lines.append(f"    label_show_members={labels['show_members']!r},")
     lines.append(f"    label_add_device={labels['add_device']!r},")
@@ -546,6 +711,7 @@ def _write_constants(meta: Dict[str, object]) -> None:
     lines.append(f"    kind_show={kinds['show']!r},")
     lines.append(f"    kind_config_group={kinds['config_group']!r},")
     lines.append(f"    kind_config_no_group={kinds['config_no_group']!r},")
+    lines.append(f"    kind_config_no_device={kinds['config_no_device']!r},")
     lines.append(f"    kind_config_profile={kinds['config_profile']!r},")
     lines.append(f"    kind_config_selected_device={kinds['config_selected_device']!r},")
     lines.append(f"    kind_config_selected_mode={kinds['config_selected_mode']!r},")
@@ -573,6 +739,7 @@ def _write_constants(meta: Dict[str, object]) -> None:
     lines.append(f"    kind_device_show={kinds['device_show']!r},")
     lines.append(f"    kind_device_set={kinds['device_set']!r},")
     lines.append(f"    kind_device_no={kinds['device_no']!r},")
+    lines.append(f"    kind_device_delete={kinds['device_delete']!r},")
     lines.append(")")
 
     OUT_CONST.write_text("\n".join(lines) + "\n", encoding="ascii")
@@ -583,7 +750,16 @@ def main() -> None:
     meta = json.loads(META_PATH.read_text(encoding="ascii"))
     grammar = _build_lark(ebnf)
     _write_grammar(grammar)
-    _write_constants(meta)
+    rules = _collect_rules(_strip_comments(ebnf))
+    rule_asts = {rule.name: _build_rule_ast(rule.expr) for rule in rules}
+    first_sets = _compute_first_sets(rule_asts)
+    common = {lit.lower() for lit in first_sets.get("common", set())}
+    mode_commands: Dict[str, tuple[str, ...]] = {}
+    for mode in ("exec", "config", "group", "device", "test"):
+        literals = {lit.lower() for lit in first_sets.get(mode, set())}
+        literals = {lit for lit in literals if lit and lit not in common}
+        mode_commands[mode] = tuple(sorted(literals))
+    _write_constants(meta, mode_commands)
 
 
 if __name__ == "__main__":

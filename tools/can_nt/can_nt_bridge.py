@@ -254,6 +254,51 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         return 0
 
     load_error = get_profiles_load_error()
+    if args.cli or args.batch:
+        if load_error:
+            print(f"WARNING: bringup_system.json load failed: {load_error}")
+            print("WARNING: Starting CLI in recovery mode (profiles must be repaired before robot tools).")
+        else:
+            data_version = get_profiles_data_version()
+            if data_version:
+                print(f"Profiles data_version: {data_version}")
+            data_hash = get_profiles_data_hash()
+            if data_hash:
+                print(f"Profiles data_hash: {data_hash}")
+        nt, _ = setup_nt(args)
+        ui_table = None
+        if nt is not None:
+            ui_table = nt.getTable("bringup").getSubTable("ui")
+
+        def _read_nt_state() -> Dict[str, Any]:
+            if ui_table is None:
+                return {}
+            return {
+                "enabled": ui_table.getEntry("state/enabled").getBoolean(False),
+                "estopped": ui_table.getEntry("state/estopped").getBoolean(False),
+                "mode": ui_table.getEntry("state/mode").getString("disabled"),
+                "lastAckMs": ui_table.getEntry("state/lastAckMs").getDouble(0.0),
+                "sessionId": ui_table.getEntry("state/sessionId").getString(""),
+            }
+
+        session = BridgeSession(args.rio, args.ui_tcp_port, nt_state_reader=_read_nt_state)
+        cli = BridgeCli(
+            session,
+            batch=bool(args.batch),
+            conflict_policy=args.conflict_policy,
+            echo_enabled=bool(getattr(args, "cli_echo", False)),
+            message_level=(args.cli_messages or None),
+        )
+        if args.batch:
+            try:
+                with open(args.script, "r", encoding="utf-8") as handle:
+                    lines = handle.readlines()
+            except Exception as exc:
+                print(f"ERROR: Failed to read script: {exc}")
+                return 2
+            return cli.run_batch(lines)
+        return cli.run_interactive()
+
     if load_error:
         print(f"ERROR: bringup_system.json load failed: {load_error}")
         return 2
@@ -292,41 +337,6 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     if args.tx_seq and not args.tx_allow:
         print("ERROR: --tx-seq requires --tx-allow for safety.")
         return 2
-
-    if args.cli or args.batch:
-        nt, _ = setup_nt(args)
-        ui_table = None
-        if nt is not None:
-            ui_table = nt.getTable("bringup").getSubTable("ui")
-
-        def _read_nt_state() -> Dict[str, Any]:
-            if ui_table is None:
-                return {}
-            return {
-                "enabled": ui_table.getEntry("state/enabled").getBoolean(False),
-                "estopped": ui_table.getEntry("state/estopped").getBoolean(False),
-                "mode": ui_table.getEntry("state/mode").getString("disabled"),
-                "lastAckMs": ui_table.getEntry("state/lastAckMs").getDouble(0.0),
-                "sessionId": ui_table.getEntry("state/sessionId").getString(""),
-            }
-
-        session = BridgeSession(args.rio, args.ui_tcp_port, nt_state_reader=_read_nt_state)
-        cli = BridgeCli(
-            session,
-            batch=bool(args.batch),
-            conflict_policy=args.conflict_policy,
-            parser_kind=getattr(args, "cli_parser", None),
-            echo_enabled=bool(getattr(args, "cli_echo", False)),
-        )
-        if args.batch:
-            try:
-                with open(args.script, "r", encoding="utf-8") as handle:
-                    lines = handle.readlines()
-            except Exception as exc:
-                print(f"ERROR: Failed to read script: {exc}")
-                return 2
-            return cli.run_batch(lines)
-        return cli.run_interactive()
 
     bus = None
     can = None

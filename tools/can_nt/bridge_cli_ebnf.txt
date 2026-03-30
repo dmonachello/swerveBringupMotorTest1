@@ -13,6 +13,7 @@ common         = "exit"
                | "help" [ ws name { ws name } ]
                | "ping"
                | "echo" ws ("on" | "off")
+               | "messages" ws ("beginner" | "medium" | "expert")
                | "quit" ;
 
 exec           = show_exec
@@ -37,7 +38,8 @@ show_target    = "status"
                | "profiles"
                | "profile" [ ws name ]
                | "tests"
-               | "test" ws name ;
+               | "test" ws name
+               | "message-level" ;
 
 show_source    = "robot" | "local" | "both" ;
 show_flags     = show_flag { ws show_flag } ;
@@ -45,6 +47,7 @@ show_flag      = show_source | "--json" | "--pretty" ;
 
 config         = "group" ws name
                | "no" ws "group" ws name
+               | "no" ws "device" ws name
                | "profile" ws name
                | "profile" ws "create" ws name
                | "selected-device" ws name
@@ -96,6 +99,7 @@ mappings_args  = "show" [ ws ("manufacturers" | "device-types") ] [ ws show_flag
 
 tests_args     = "templates"
                | "load" ws path
+               | "merge" ws path
                | "load" ws "template" ws name
                | "save"
                | "clear" ;
@@ -119,6 +123,7 @@ device         = "show"
                | "show" ws show_target [ ws show_flags ]
                | "set" ws device_field ws value_or_text
                | "no" ws device_field
+               | "delete"
                | "write" ws "tests" ws path ;
 
 test           = "show"

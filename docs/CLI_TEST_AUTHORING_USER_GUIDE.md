@@ -23,6 +23,7 @@ Purpose: explain the minimum mental model for authoring.
 Key ideas:
 1. The CLI edits an in-memory model, not JSON directly.
 2. `write tests` validates and writes the JSON.
+3. `write tests` only works in config mode (not inside `config-test-*`). Use `end` or `exit` to leave test edit mode first.
 3. Devices are chosen from `data/bringup_system.json`.
 4. Test names are unique within a test set.
 5. Inputs use a unified `inputSource` format: `controllerName.inputId`.
@@ -278,6 +279,10 @@ Purpose: write a deployable tests file.
 
 Command:
 - `write tests <path>`
+
+Notes:
+- `write tests` must be run from `bringup(config)#` or `bringup(config-profile-...)#`.
+- If you are in `bringup(config-test-<name>)#`, run `end` or `exit` first.
 
 Notes:
 - Output is a standard `bringup_tests.json`.

@@ -16,7 +16,6 @@ import argparse
 from pathlib import Path
 
 from .can_profiles import get_default_profile
-from .bridge_cli_constants import CLI_PARSER_CONST
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -98,16 +97,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Launch the interactive bridge CLI.",
     )
     parser.add_argument(
+        "--cli-messages",
+        default="",
+        help="CLI message verbosity: beginner, medium, or expert (default: beginner).",
+    )
+    parser.add_argument(
         "--cli-echo",
         action="store_true",
         help="Echo CLI script commands (batch-friendly).",
-    )
-    parser.add_argument(
-        f"--{CLI_PARSER_CONST['arg_name'].replace('_', '-')}",
-        dest=CLI_PARSER_CONST["arg_name"],
-        default=CLI_PARSER_CONST["arg_default"],
-        choices=CLI_PARSER_CONST["arg_choices"],
-        help=CLI_PARSER_CONST["arg_help"],
     )
     parser.add_argument(
         "--batch",

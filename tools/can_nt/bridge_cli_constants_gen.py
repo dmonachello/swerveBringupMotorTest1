@@ -149,6 +149,12 @@ class ParserSpec:
     label_rename: str
     label_device: str
     label_device_set: str
+    label_device_delete: str
+    mode_exec_cmds: tuple[str, ...]
+    mode_config_cmds: tuple[str, ...]
+    mode_group_cmds: tuple[str, ...]
+    mode_device_cmds: tuple[str, ...]
+    mode_test_cmds: tuple[str, ...]
     label_validate: str
     label_show_members: str
     label_add_device: str
@@ -172,6 +178,7 @@ class ParserSpec:
     kind_show: str
     kind_config_group: str
     kind_config_no_group: str
+    kind_config_no_device: str
     kind_config_profile: str
     kind_config_selected_device: str
     kind_config_selected_mode: str
@@ -199,6 +206,7 @@ class ParserSpec:
     kind_device_show: str
     kind_device_set: str
     kind_device_no: str
+    kind_device_delete: str
 
 SPEC = ParserSpec(
     bool_true=True,
@@ -343,6 +351,12 @@ SPEC = ParserSpec(
     label_rename='rename device',
     label_device='device',
     label_device_set='device set',
+    label_device_delete='delete',
+    mode_exec_cmds=('configure', 'connect', 'disconnect', 'show'),
+    mode_config_cmds=('bindings', 'can-mappings', 'device', 'export', 'group', 'import', 'merge', 'no', 'profile', 'rename', 'save', 'selected-device', 'selected-mode', 'show', 'test', 'tests', 'validate', 'write'),
+    mode_group_cmds=('add', 'bind', 'disable', 'enable', 'member', 'no', 'run', 'show', 'write'),
+    mode_device_cmds=('delete', 'no', 'set', 'show', 'write'),
+    mode_test_cmds=('action', 'brightness', 'color', 'deadband', 'deadbandsweep', 'device', 'duration', 'duty', 'enabled', 'hold', 'inputsource', 'limitswitch', 'no', 'pattern', 'rotation', 'show', 'termination', 'time', 'type', 'write'),
     label_validate='validate config',
     label_show_members='show members/binding',
     label_add_device='add device',
@@ -366,6 +380,7 @@ SPEC = ParserSpec(
     kind_show='show',
     kind_config_group='config_group',
     kind_config_no_group='config_no_group',
+    kind_config_no_device='config_no_device',
     kind_config_profile='config_profile',
     kind_config_selected_device='config_selected_device',
     kind_config_selected_mode='config_selected_mode',
@@ -393,4 +408,5 @@ SPEC = ParserSpec(
     kind_device_show='device_show',
     kind_device_set='device_set',
     kind_device_no='device_no',
+    kind_device_delete='device_delete',
 )

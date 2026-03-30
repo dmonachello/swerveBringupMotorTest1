@@ -19,6 +19,7 @@ import sys
 import re
 from copy import deepcopy
 from pathlib import Path
+import copy
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -155,7 +156,6 @@ except Exception:
     FileHistory = None
 
 # Parser selection (comment out one of the two lines below).
-# CLI_PARSER_KIND = CLI_PARSER_CONST["legacy"]
 CLI_PARSER_KIND = CLI_PARSER_CONST["ebnf"]
 
 MODE_CONFIG = "config"
@@ -185,6 +185,8 @@ CMD_CREATE = "create"
 CMD_DELETE = "delete"
 CMD_SET = "set"
 CMD_CLEAR = "clear"
+CMD_MESSAGES = "messages"
+CMD_MESSAGE_LEVEL = "message-level"
 CMD_TYPE = "type"
 CMD_DEVICE = "device"
 CMD_REGISTRY = "registry"
@@ -227,6 +229,7 @@ CMD_MANUFACTURER = "manufacturer"
 CMD_DEVICE_TYPE_NAME = "device-type"
 CMD_LOAD = "load"
 CMD_SAVE = "save"
+CMD_MERGE = "merge"
 CMD_TEMPLATES = "templates"
 CMD_TEMPLATE = "template"
 CMD_INFO = "info"
@@ -300,6 +303,7 @@ SHOW_TARGET_DEVICE = "device"
 SHOW_TARGET_DEVICE_REGISTRY = "device-registry"
 SHOW_TARGET_BINDINGS = "bindings"
 SHOW_TARGET_SELECTED_DEVICE = "selected-device"
+SHOW_TARGET_MESSAGE_LEVEL = "message-level"
 
 MESSAGE_ERR_UNKNOWN_SHOW = "ERROR: Unknown show command."
 MESSAGE_ERR_UNKNOWN_SHOW_SOURCE = "ERROR: Unknown show source."
@@ -404,7 +408,7 @@ MESSAGE_MAPPINGS_MANUFACTURERS_HEADER = "  manufacturers:"
 MESSAGE_MAPPINGS_DEVICE_TYPES_HEADER = "  device-types:"
 MESSAGE_MAPPINGS_ENTRY_FMT = "    {id}={name}"
 MESSAGE_MAPPINGS_NONE = "  (none)"
-MESSAGE_ERR_TESTS_SUBCOMMAND = "ERROR: tests <templates|load|save|clear>"
+MESSAGE_ERR_TESTS_SUBCOMMAND = "ERROR: tests <templates|load|merge|save|clear>"
 MESSAGE_ERR_TESTS_LOAD = "ERROR: tests load <path> | tests load template <name>"
 MESSAGE_ERR_TESTS_SAVE = "ERROR: tests save requires a loaded tests file."
 MESSAGE_ERR_TESTS_TEMPLATE_NOT_FOUND = "ERROR: test template not found: {name}"
@@ -413,9 +417,12 @@ MESSAGE_TESTS_TEMPLATES_NONE = "  (none)"
 MESSAGE_TESTS_TEMPLATE_ENTRY = "  {name}"
 MESSAGE_TESTS_LOADED = "Loaded tests: {path}"
 MESSAGE_TESTS_CLEARED = "Tests cleared."
+MESSAGE_MESSAGE_LEVEL = "Message level: {level}"
+MESSAGE_MESSAGE_LEVEL_UPDATED = "Message level set to {level}."
+MESSAGE_MESSAGE_LEVEL_ERROR = "ERROR: messages <beginner|medium|expert>"
 HELP_SHOW_TEXT = (
     "show <status|groups|group <name>|devices|device <name>|device registry <name>|bindings|"
-    "selected-device|runtime-state|config|config local-raw|config dirty|profiles|profile|tests|test <name>> "
+    "selected-device|runtime-state|config|config local-raw|config dirty|profiles|profile|tests|test <name>|message-level> "
     "[--json] [--pretty] [robot|local|both]\n"
     "  Defaults: robot if connected, otherwise local."
 )
@@ -658,6 +665,13 @@ MESSAGE_TEST_PATTERN = "  pattern: {pattern}"
 MESSAGE_TEST_BRIGHTNESS = "  brightness: {brightness}"
 MESSAGE_TEST_DURATION = "  durationSec: {duration}"
 
+MESSAGE_LEVEL_BEGINNER = "beginner"
+MESSAGE_LEVEL_MEDIUM = "medium"
+MESSAGE_LEVEL_EXPERT = "expert"
+MESSAGE_LEVELS = {MESSAGE_LEVEL_BEGINNER, MESSAGE_LEVEL_MEDIUM, MESSAGE_LEVEL_EXPERT}
+
+CLI_SETTINGS_FILENAME = ".bridge_cli_settings.json"
+
 
 @dataclass
 class CliMode:
@@ -678,24 +692,20 @@ class BridgeCli:
         session: BridgeSession,
         batch: bool = False,
         conflict_policy: str = "error",
-        parser_kind: Optional[str] = None,
         echo_enabled: bool = False,
+        message_level: Optional[str] = None,
     ) -> None:
         self._session = session
         self._batch = batch
         self._conflict_policy = conflict_policy
         self._echo_enabled = echo_enabled
+        self._message_level = MESSAGE_LEVEL_BEGINNER
+        self._message_level_from_flag = False
+        self._tips_suppressed: set[str] = set()
         self._tests_device_catalog: Dict[str, object] = {}
         self._tests_duplicate_labels: set[str] = set()
-        parser_choice = (parser_kind or CLI_PARSER_KIND).strip().lower()
-        if parser_choice not in (CLI_PARSER_CONST["legacy"], CLI_PARSER_CONST["ebnf"]):
-            parser_choice = CLI_PARSER_CONST["legacy"]
-        self._parser_kind = parser_choice
-        self._parser = (
-            BridgeCliParser(strict=bool(CLI_PARSER_CONST["strict_default"]))
-            if parser_choice == CLI_PARSER_CONST["ebnf"]
-            else None
-        )
+        self._parser_kind = CLI_PARSER_KIND
+        self._parser = BridgeCliParser(strict=bool(CLI_PARSER_CONST["strict_default"]))
         self._ast_executor = BridgeCliAstExecutor(self)
         self._modes: List[CliMode] = [CliMode("exec")]
         self._last_seq: Optional[int] = None
@@ -716,6 +726,7 @@ class BridgeCli:
         self._tests_dirty: bool = False
         self._tests_active_set: str = ""
         self._tests_profile: Optional[str] = None
+        self._load_message_level(message_level)
         self._groups_profile: Optional[str] = None
         self._pending_prompt_text: Optional[str] = None
         self._use_prompt_toolkit: bool = PROMPT_TOOLKIT_AVAILABLE
@@ -771,7 +782,7 @@ class BridgeCli:
             if code is not None:
                 if code == 0:
                     return 0
-                print("WARNING: Command failed; staying in CLI.")
+                self._warn("WARNING: Command failed; staying in CLI.")
                 continue
 
     def _build_prompt_session(self) -> Optional[PromptSession]:
@@ -853,7 +864,7 @@ class BridgeCli:
             return
         plan = import_config(str(path), self._conflict_policy, self._active_profile_name())
         if not plan.ok:
-            print(MESSAGE_AUTO_MERGE_FAIL.format(path=path))
+            self._warn(MESSAGE_AUTO_MERGE_FAIL.format(path=path))
             return
         code = self._apply_config_plan(plan, prompt_on_replace=False)
         if code is None or code == 0:
@@ -1221,18 +1232,15 @@ class BridgeCli:
         if self._handle_question(line):
             return None
         try:
-            if self._parser_kind == CLI_PARSER_CONST["ebnf"] and self._parser is not None:
-                parsed = self._parser.parse(line, mode=self._modes[-1].name)
-                tokens = parsed.tokens
-                ast = parsed.ast
-            else:
-                tokens = self._split_command(line)
-                ast = None
+            parsed = self._parser.parse(line, mode=self._modes[-1].name)
+            tokens = parsed.tokens
+            ast = parsed.ast
         except (CliParseError, ValueError) as exc:
-            if self._parser_kind == CLI_PARSER_CONST["ebnf"]:
-                tokens = self._split_command(line)
-                if self._is_test_authoring_command(tokens):
-                    return self._execute_test_authoring(tokens)
+            try:
+                self._split_command(line)
+            except CliParseError as split_exc:
+                print(f"ERROR: {split_exc}")
+                return None
             print(f"ERROR: {exc}")
             return None
         if self._is_test_authoring_command(tokens):
@@ -1253,9 +1261,11 @@ class BridgeCli:
                     if not self._confirm(MESSAGE_DIRTY_PROMPT.format(items=items)):
                         return None
                 return 0
+            self._warn_unsaved_if_needed()
             self._pop_mode()
             return None
         if cmd == "end":
+            self._warn_unsaved_if_needed()
             self._modes = [CliMode("exec")]
             return None
         if cmd == "help":
@@ -1279,6 +1289,15 @@ class BridgeCli:
                 return None
             print("ERROR: echo requires on/off.")
             return 2 if self._batch else None
+        if cmd == CMD_MESSAGES:
+            if len(tokens) < 2:
+                print(MESSAGE_MESSAGE_LEVEL_ERROR)
+                return 2 if self._batch else None
+            if not self._set_message_level(tokens[1], persist=True):
+                print(MESSAGE_MESSAGE_LEVEL_ERROR)
+                return 2 if self._batch else None
+            print(MESSAGE_MESSAGE_LEVEL_UPDATED.format(level=self._message_level))
+            return None
 
         mode = self._modes[-1].name
         if mode == "exec":
@@ -1508,6 +1527,7 @@ class BridgeCli:
             CMD_PROFILE + PARSER_SPEC.space_str + PLACEHOLDER_NAME,
             PARSER_SPEC.show_target_tests,
             PARSER_SPEC.show_target_test + PARSER_SPEC.space_str + PLACEHOLDER_NAME,
+            PARSER_SPEC.show_target_message_level,
         ]
 
     def _show_flag_suggestions(self) -> List[str]:
@@ -1572,9 +1592,9 @@ class BridgeCli:
             _suggest_tests_args - Suggest tests subcommands.
         """
         if not tokens:
-            return [CMD_TEMPLATES, CMD_LOAD, CMD_SAVE, CMD_CLEAR]
+            return [CMD_TEMPLATES, CMD_LOAD, CMD_MERGE, CMD_SAVE, CMD_CLEAR]
         sub = tokens[COUNT_ZERO].lower()
-        if sub == CMD_LOAD and len(tokens) == COUNT_ONE:
+        if sub in (CMD_LOAD, CMD_MERGE) and len(tokens) == COUNT_ONE:
             return [PLACEHOLDER_PATH, CMD_TEMPLATE]
         if sub == CMD_TEMPLATE and len(tokens) == COUNT_ONE:
             return [PLACEHOLDER_NAME]
@@ -1708,6 +1728,15 @@ class BridgeCli:
                 return None
             print(MESSAGE_ERR_TESTS_LOAD)
             return None
+        if sub == CMD_MERGE:
+            if len(tokens) >= COUNT_THREE:
+                path = Path(tokens[COUNT_TWO])
+                if not self._merge_tests_from_path(path):
+                    return None
+                print(MESSAGE_TESTS_LOADED.format(path=path))
+                return None
+            print(MESSAGE_ERR_TESTS_LOAD)
+            return None
         if sub == CMD_SAVE:
             if not self._tests_path:
                 print(MESSAGE_ERR_TESTS_SAVE)
@@ -1793,6 +1822,54 @@ class BridgeCli:
         default_set = model.default_test_set if model else EMPTY_STRING
         self._tests_active_set = default_set or DEFAULT_TEST_SET
         self._sync_store_tests()
+        return True
+
+    def _merge_tests_from_path(self, path: Path) -> bool:
+        """
+        NAME
+            _merge_tests_from_path - Merge tests JSON into current model.
+        """
+        try:
+            payload = load_tests_payload(path)
+        except Exception as exc:
+            print(f"ERROR: Failed to read tests: {exc}")
+            return False
+        incoming = model_from_payload(payload or {})
+        dest = self._tests_model or TestAuthoringModel()
+        if not dest.default_test_set and incoming.default_test_set:
+            dest.default_test_set = incoming.default_test_set
+        for set_name, src_set in incoming.test_sets.items():
+            if set_name not in dest.test_sets:
+                dest.test_sets[set_name] = TestSetModel(
+                    name=set_name,
+                    tests=[copy.deepcopy(t) for t in src_set.tests],
+                )
+                continue
+            dst_set = dest.test_sets[set_name]
+            for src_test in src_set.tests:
+                existing_idx = None
+                for idx, test in enumerate(dst_set.tests):
+                    if test.name == src_test.name:
+                        existing_idx = idx
+                        break
+                if existing_idx is not None:
+                    dst_set.tests[existing_idx] = copy.deepcopy(src_test)
+                    self._warn(
+                        f"WARNING: Test '{src_test.name}' overwritten in set '{set_name}'."
+                    )
+                else:
+                    dst_set.tests.append(copy.deepcopy(src_test))
+        self._tests_model = dest
+        if not self._tests_active_set:
+            self._tests_active_set = dest.default_test_set or DEFAULT_TEST_SET
+        if self._tests_active_set not in dest.test_sets:
+            self._tests_active_set = dest.default_test_set or DEFAULT_TEST_SET
+        self._tests_dirty = True
+        self._sync_store_tests()
+        if not self._tests_profile:
+            self._refresh_tests_profile(self._active_profile_name() or get_default_profile())
+        else:
+            self._refresh_tests_profile(self._tests_profile)
         return True
 
     def _ensure_bindings_loaded(self) -> bool:
@@ -2737,7 +2814,7 @@ class BridgeCli:
                     print(MESSAGE_ERROR_DEVICE_LABEL)
                 return None
             if label in test.devices:
-                print(MESSAGE_ERROR_DEVICE_DUP)
+                self._warn(MESSAGE_ERROR_DEVICE_DUP)
                 return None
             test.devices.append(label)
             self._tests_dirty = True
@@ -3150,7 +3227,7 @@ class BridgeCli:
             return None
         for issue in result.warnings:
             test_name = issue.test_name or GLOBAL_LABEL
-            print(
+            self._warn(
                 MESSAGE_WARNING_WITH_TEST.format(
                     message=issue.message,
                     test=test_name,
@@ -3251,11 +3328,7 @@ class BridgeCli:
             _print_tests_json - Render tests as JSON payload.
         """
 
-        test_set = self._get_active_test_set()
-        model = TestAuthoringModel(
-            default_test_set=test_set.name,
-            test_sets={test_set.name: test_set},
-        )
+        model = self._tests_model or TestAuthoringModel()
         payload = model_to_payload(model)
         print(self._dump_json(payload, pretty))
 
@@ -3391,13 +3464,21 @@ class BridgeCli:
             if not self._select_or_create_local_group(name):
                 return EXIT_CODE_ERROR if self._batch else None
             self._modes.append(CliMode("group", name))
-            print("WARNING: Robot not connected; local group selected.")
+            self._warn("WARNING: Robot not connected; local group selected.")
             return None
         if cmd == "rename" and len(tokens) >= 4 and tokens[1].lower() == "device":
             if self._rename_local_device(tokens[2], tokens[3]):
                 print(f"Renamed device {tokens[2]} -> {tokens[3]}.")
                 return None
             return 2 if self._batch else None
+        if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "device":
+            name = tokens[2]
+            if not self._confirm(f"Delete device '{name}'?"):
+                return None
+            if not self._delete_local_device(name):
+                return 2 if self._batch else None
+            print(f"Deleted device {name}.")
+            return None
         if cmd == "device" and len(tokens) >= 5 and tokens[2].lower() == "set":
             field = tokens[3]
             value_raw = " ".join(tokens[4:])
@@ -3425,7 +3506,7 @@ class BridgeCli:
                 return None
             if not self._delete_local_group(name):
                 return 2 if self._batch else None
-            print("WARNING: Robot not connected; local group deleted.")
+            self._warn("WARNING: Robot not connected; local group deleted.")
             return None
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "group":
             name = tokens[2]
@@ -3439,7 +3520,7 @@ class BridgeCli:
         if cmd == "selected-device" and len(tokens) >= 2 and not self._session.is_connected():
             if not self._set_local_selected_device(tokens[1]):
                 return 2 if self._batch else None
-            print("WARNING: Robot not connected; local selected-device updated.")
+            self._warn("WARNING: Robot not connected; local selected-device updated.")
             return None
         if cmd == "selected-device" and len(tokens) >= 2:
             seq = selected_device_set(self._session, tokens[1])
@@ -3455,7 +3536,7 @@ class BridgeCli:
             enabled = mode_value == "on"
             if not self._set_local_selected_mode(enabled):
                 return 2 if self._batch else None
-            print("WARNING: Robot not connected; local selected-mode updated.")
+            self._warn("WARNING: Robot not connected; local selected-mode updated.")
             return None
         if cmd == "selected-mode" and len(tokens) >= 2:
             mode_value = tokens[1].lower()
@@ -3726,6 +3807,16 @@ class BridgeCli:
                 return 2 if self._batch else None
             print(f"Cleared device {device} {field}.")
             return None
+        if cmd in ("delete", "remove") or (
+            cmd == "no" and len(tokens) >= 2 and tokens[1].lower() == "device"
+        ):
+            if not self._confirm(f"Delete device '{device}'?"):
+                return None
+            if not self._delete_local_device(device):
+                return 2 if self._batch else None
+            print(f"Deleted device {device}.")
+            self._pop_mode()
+            return None
         print(f"ERROR: Unknown command: {' '.join(tokens)}")
         return None
 
@@ -3755,6 +3846,8 @@ class BridgeCli:
             tokens = [SHOW_TARGET_DEVICE_REGISTRY, tokens[2]]
         if target == SHOW_TARGET_CONFIG:
             target = SHOW_TARGET_RUNTIME
+        if target == SHOW_TARGET_MESSAGE_LEVEL:
+            source = "local"
         if target in (SHOW_TARGET_CONFIG_RAW, SHOW_TARGET_CONFIG_DIRTY):
             source = "local"
         if source == "both":
@@ -3821,7 +3914,7 @@ class BridgeCli:
             self._sync_group_profile()
             self._sync_store_from_local()
         if not self._session.is_connected():
-            print("WARNING: Robot not connected; local config loaded only.")
+            self._warn("WARNING: Robot not connected; local config loaded only.")
             return None
         for command in plan.commands:
             code = self._execute_command(command)
@@ -3972,7 +4065,7 @@ class BridgeCli:
                         event.status = ack_status
                         event.message = ack_message
                     return event
-        print("WARNING: Timeout waiting for OUT.")
+            self._warn("WARNING: Timeout waiting for OUT.", essential=True)
         return None
 
     def _event_failed(self, event: Optional[BridgeEvent], context: str) -> bool:
@@ -4012,6 +4105,87 @@ class BridgeCli:
     def _has_json(tokens: List[str]) -> bool:
         return any(tok == "--json" for tok in tokens)
 
+    def _settings_path(self) -> Path:
+        return repo_root() / CLI_SETTINGS_FILENAME
+
+    def _load_message_level(self, message_level: Optional[str]) -> None:
+        if message_level:
+            self._message_level_from_flag = True
+            self._set_message_level(message_level, persist=False)
+            return
+        level = self._read_message_level()
+        if level:
+            self._set_message_level(level, persist=False)
+
+    def _read_message_level(self) -> Optional[str]:
+        path = self._settings_path()
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+        level = payload.get("message_level") if isinstance(payload, dict) else None
+        if isinstance(level, str) and level in MESSAGE_LEVELS:
+            return level
+        return None
+
+    def _write_message_level(self) -> None:
+        path = self._settings_path()
+        payload = {"message_level": self._message_level}
+        try:
+            path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        except Exception:
+            return
+
+    def _set_message_level(self, level: str, persist: bool) -> bool:
+        value = level.strip().lower()
+        if value not in MESSAGE_LEVELS:
+            return False
+        self._message_level = value
+        if persist:
+            self._write_message_level()
+        return True
+
+    def _warn(self, message: str, essential: bool = False) -> None:
+        if self._message_level == MESSAGE_LEVEL_EXPERT and not essential:
+            return
+        print(message)
+
+    def _tip(self, key: str, message: str) -> None:
+        if self._batch:
+            return
+        if self._message_level != MESSAGE_LEVEL_BEGINNER:
+            return
+        if key in self._tips_suppressed:
+            return
+        self._tips_suppressed.add(key)
+        print(message)
+
+    def _clear_tip(self, key: str) -> None:
+        self._tips_suppressed.discard(key)
+
+    def _warn_unsaved_if_needed(self) -> None:
+        if self._modes[-1].name == "exec":
+            return
+        dirty = {name: flag for name, flag in self._dirty_state().items() if flag}
+        if not dirty:
+            self._clear_tip("unsaved")
+            return
+        items = ", ".join(sorted(dirty.keys()))
+        self._warn(f"WARNING: Unsaved changes in: {items}.", essential=True)
+        self._tip(
+            "unsaved",
+            "You have unsaved changes. Use `write tests ...` or `save profiles ...` to save.",
+        )
+
+    def _show_message_level(self, json_output: bool, pretty: bool) -> bool:
+        if json_output:
+            print(self._dump_json({"messageLevel": self._message_level}, pretty))
+        else:
+            print(MESSAGE_MESSAGE_LEVEL.format(level=self._message_level))
+        return True
+
     @staticmethod
     def _validate_pretty_flag(tokens: List[str]) -> bool:
         if FLAG_PRETTY in tokens and FLAG_JSON not in tokens:
@@ -4032,8 +4206,11 @@ class BridgeCli:
                 "connect": "connect\n  Open TCP connection and perform handshake.",
                 "disconnect": "disconnect\n  Close TCP connection.",
                 "echo": "echo on|off\n  Toggle echo for batch scripts (prints each command).",
+                "messages": "messages <beginner|medium|expert>\n  Set CLI message level.",
+                "show message-level": "show message-level\n  Show current CLI message level.",
                 "group": "group <name>\n  Create/select a group (config mode).",
                 "no group": "no group <name>\n  Delete group (config mode, prompts in interactive).",
+                "no device": "no device <name>\n  Delete a device from the active profile.",
                 "profile": (
                     "profile <name>\n"
                     "  Select active profile for groups/bindings.\n"
@@ -4078,7 +4255,7 @@ class BridgeCli:
                     "  Enter device mode to edit local device metadata."
                 ),
                 "device mode": (
-                    "device mode: show, set <field> <value>, no <field>\n"
+                    "device mode: show, set <field> <value>, no <field>, delete\n"
                     "  Fields: vendor, role, notes, bus, tags, limits"
                 ),
                 "export cli-script": (
@@ -4115,12 +4292,13 @@ class BridgeCli:
                     "can-mappings save <path>\n"
                     "can-mappings validate [path]"
                 ),
-                "tests": (
-                    "tests templates\n"
-                    "tests load <path>\n"
-                    "tests load template <name>\n"
-                    "tests save\n"
-                    "tests clear"
+            "tests": (
+                "tests templates\n"
+                "tests load <path>\n"
+                "tests merge <path>\n"
+                "tests load template <name>\n"
+                "tests save\n"
+                "tests clear"
                 ),
                 "add device": (
                     "add device <device>\n"
@@ -4142,7 +4320,7 @@ class BridgeCli:
                 "conflict-policy": "set with --conflict-policy <error|move>",
                 "exec": "exec mode: show, connect, disconnect, configure terminal",
                 "config": (
-                    "config mode: profile, group, no group, selected-device, selected-mode, "
+                    "config mode: profile, group, no group, no device, selected-device, selected-mode, "
                     "merge/import/export/save, rename device, device set, save local-config, save profiles, save unified-config"
                 ),
                 "group mode": "group mode: show, add/no device, member, bind/no bind, enable/disable, run test",
@@ -4153,7 +4331,7 @@ class BridgeCli:
                 print("Help: command not found.")
             return
         print(
-            "Common: help, exit, end, quit, ping, echo\n"
+            "Common: help, exit, end, quit, ping, echo, messages\n"
             "Exec: show, connect, disconnect, configure terminal\n"
             "Config: profile, group, device, bindings, can-mappings, tests, no group, selected-device, selected-mode, merge/import/export/save\n"
             "Group: show, add device, no device, member, bind, no bind, enable, disable, run test\n"
@@ -4236,6 +4414,8 @@ class BridgeCli:
     def _show_local(
         self, target: str, tokens: List[str], json_output: bool, pretty: bool
     ) -> bool:
+        if target == SHOW_TARGET_MESSAGE_LEVEL:
+            return self._show_message_level(json_output, pretty)
         if not self._local_config:
             print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return False
@@ -4579,39 +4759,39 @@ class BridgeCli:
             return self._handle_show(["group", group] + tokens[1:])
         if cmd == "add" and len(tokens) >= 3 and tokens[1].lower() == "device":
             if self._add_local_group_member(group, tokens[2]):
-                print("WARNING: Robot not connected; local group member added.")
+                self._warn("WARNING: Robot not connected; local group member added.")
                 return None
             return 2 if self._batch else None
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "device":
             if self._remove_local_group_member(group, tokens[2]):
-                print("WARNING: Robot not connected; local group member removed.")
+                self._warn("WARNING: Robot not connected; local group member removed.")
                 return None
             return 2 if self._batch else None
         if cmd == "member" and len(tokens) >= 3:
             action = tokens[2].lower()
             if action in ("enable", "disable", "toggle"):
                 if self._set_local_member_enabled(group, tokens[1], action):
-                    print("WARNING: Robot not connected; local member updated.")
+                    self._warn("WARNING: Robot not connected; local member updated.")
                     return None
                 return EXIT_CODE_ERROR if self._batch else None
         if cmd == "bind" and len(tokens) >= 3:
             if self._add_local_binding(group, tokens[1:]):
-                print("WARNING: Robot not connected; local binding updated.")
+                self._warn("WARNING: Robot not connected; local binding updated.")
                 return None
             return 2 if self._batch else None
         if cmd == "no" and len(tokens) >= 2 and tokens[1].lower() == "bind":
             if self._clear_local_bindings(group):
-                print("WARNING: Robot not connected; local bindings cleared.")
+                self._warn("WARNING: Robot not connected; local bindings cleared.")
                 return None
             return 2 if self._batch else None
         if cmd == "enable":
             if self._set_local_group_enabled(group, True):
-                print("WARNING: Robot not connected; local group enabled.")
+                self._warn("WARNING: Robot not connected; local group enabled.")
                 return None
             return 2 if self._batch else None
         if cmd == "disable":
             if self._set_local_group_enabled(group, False):
-                print("WARNING: Robot not connected; local group disabled.")
+                self._warn("WARNING: Robot not connected; local group disabled.")
                 return None
             return 2 if self._batch else None
         if cmd == "run" and len(tokens) >= 2 and tokens[1].lower() == "test":
@@ -4887,6 +5067,214 @@ class BridgeCli:
             print(f"ERROR: Device {old_name} not found in local config.")
             return False
         return True
+
+    def _delete_local_device(self, name: str) -> bool:
+        if not self._local_config:
+            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
+            return False
+        if self._local_devices_locked:
+            return self._delete_profiles_device(name)
+        label = name.strip()
+        if not label:
+            print("ERROR: device name required.")
+            return False
+        config = self._local_config
+        devices = config.get("devices")
+        if not isinstance(devices, list):
+            print("ERROR: No local devices are defined.")
+            return False
+        removed = False
+        for idx, device in enumerate(list(devices)):
+            if not isinstance(device, dict):
+                continue
+            dev_name = str(device.get("name", "")).strip()
+            if dev_name.lower() == label.lower():
+                del devices[idx]
+                removed = True
+                break
+        if not removed:
+            print(f"ERROR: Device {label} not found in local config.")
+            return False
+        if self._remove_bridge_groups_device(label):
+            self._mark_groups_dirty()
+        return True
+
+    def _delete_profiles_device(self, name: str) -> bool:
+        entry = self._find_profiles_device_entry(name)
+        if entry is None:
+            if self._delete_bridge_config_device(name):
+                self._warn(
+                    f"WARNING: Device {name} not found in profiles; removed from local bridgeConfig devices."
+                )
+                return True
+            print(f"ERROR: Device {name} not found in profiles.")
+            return False
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return False
+        profiles, profile_name = self._profiles_root_and_name()
+        if profiles is None or profile_name is None:
+            print(MESSAGE_ERR_DEVICE_PROFILE_REQUIRED)
+            return False
+        profile = profiles.get(profile_name)
+        if not isinstance(profile, dict):
+            print(MESSAGE_ERR_DEVICE_PROFILE_REQUIRED)
+            return False
+        category = self._find_entry_category(profile, entry)
+        removed = False
+        if category in (
+            "neos",
+            "neo550s",
+            "flexes",
+            "krakens",
+            "falcons",
+            "cancoders",
+            "candles",
+            "devices",
+        ):
+            devices = profile.get(category) or []
+            if isinstance(devices, list):
+                for idx, item in enumerate(list(devices)):
+                    if item is entry:
+                        del devices[idx]
+                        removed = True
+                        break
+        elif category in ("pdh", "pdp", "pigeon", "roborio"):
+            if profile.get(category) is entry:
+                profile.pop(category, None)
+                removed = True
+
+        label = str(entry.get(KEY_LABEL, "")).strip()
+        if label:
+            labels = profile.get(KEY_PROFILE_DEVICES)
+            if isinstance(labels, list) and label in labels:
+                labels.remove(label)
+                removed = True
+            devices_registry = payload.get(KEY_DEVICES)
+            if isinstance(devices_registry, list):
+                for idx, item in enumerate(list(devices_registry)):
+                    if not isinstance(item, dict):
+                        continue
+                    existing = str(item.get(KEY_LABEL, "")).strip()
+                    if existing.lower() == label.lower():
+                        del devices_registry[idx]
+                        removed = True
+                        break
+
+        if not removed:
+            print(f"ERROR: Device {name} not found in profiles.")
+            return False
+        self._profiles_dirty = True
+        self._remove_diagram_device(entry)
+        self._remove_bridge_groups_device(name)
+        self._refresh_devices_from_profiles()
+        return True
+
+    def _delete_bridge_config_device(self, name: str) -> bool:
+        if not self._local_config:
+            return False
+        devices = self._local_config.get("devices")
+        if not isinstance(devices, list):
+            return False
+        label = name.strip()
+        if not label:
+            return False
+        removed = False
+        for idx, device in enumerate(list(devices)):
+            if not isinstance(device, dict):
+                continue
+            dev_name = str(device.get("name", "")).strip()
+            if dev_name.lower() == label.lower():
+                del devices[idx]
+                removed = True
+                break
+        if removed:
+            self._local_config["devices"] = devices
+            return True
+        return False
+
+    def _remove_bridge_groups_device(self, name: str) -> bool:
+        config = self._local_config
+        if not isinstance(config, dict):
+            return False
+        by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
+        if not isinstance(by_profile, dict):
+            return False
+        changed = False
+        for entry in by_profile.values():
+            if not isinstance(entry, dict):
+                continue
+            for group in entry.get(KEY_BRIDGE_GROUPS, []) or []:
+                if not isinstance(group, dict):
+                    continue
+                members = group.get("members", []) or []
+                if not isinstance(members, list):
+                    continue
+                to_remove = []
+                for member in members:
+                    if isinstance(member, dict):
+                        dev_name = str(member.get(KEY_DEVICE, "")).strip()
+                        if dev_name.lower() == name.strip().lower():
+                            to_remove.append(member)
+                    else:
+                        dev_name = str(member).strip()
+                        if dev_name.lower() == name.strip().lower():
+                            to_remove.append(member)
+                for member in to_remove:
+                    members.remove(member)
+                    changed = True
+                if to_remove:
+                    group["members"] = members
+            selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE)
+            if isinstance(selected, dict):
+                sel_name = str(selected.get(KEY_DEVICE, "")).strip()
+                if sel_name.lower() == name.strip().lower():
+                    entry.pop(KEY_BRIDGE_SELECTED_DEVICE, None)
+                    changed = True
+        if changed:
+            self._local_config = config
+        return changed
+
+    def _remove_diagram_device(self, entry: Dict[str, object]) -> None:
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            return
+        profiles, profile_name = self._profiles_root_and_name()
+        if profiles is None or profile_name is None:
+            return
+        profile = profiles.get(profile_name)
+        if not isinstance(profile, dict):
+            return
+        category = self._find_entry_category(profile, entry)
+        if category is None:
+            return
+        device_id = entry.get("id")
+        if device_id is None:
+            return
+        diagram = payload.get("diagram")
+        if not isinstance(diagram, dict):
+            return
+        diag_profiles = diagram.get("profiles")
+        if not isinstance(diag_profiles, dict):
+            return
+        diag_profile = diag_profiles.get(profile_name)
+        if not isinstance(diag_profile, dict):
+            return
+        nodes = diag_profile.get("nodes")
+        if not isinstance(nodes, list):
+            return
+        removed = False
+        for node in list(nodes):
+            if not isinstance(node, dict):
+                continue
+            if node.get("nodeType") != "device":
+                continue
+            if node.get("category") == category and node.get("id") == device_id:
+                nodes.remove(node)
+                removed = True
+        if removed:
+            diag_profile["nodes"] = nodes
 
     def _rename_profiles_device(self, old: str, new: str) -> bool:
         """
@@ -5244,7 +5632,7 @@ class BridgeCli:
         try:
             payload = read_json(path)
         except Exception:
-            print(MESSAGE_MAPPINGS_READ_FAIL.format(path=path))
+            self._warn(MESSAGE_MAPPINGS_READ_FAIL.format(path=path))
             self._can_mappings = {}
             return self._can_mappings
         if not isinstance(payload, dict):
@@ -5316,7 +5704,7 @@ class BridgeCli:
         if missing:
             label = str(entry.get(KEY_LABEL, "")).strip() or str(entry.get(KEY_NAME, "")).strip()
             fields = ", ".join(missing)
-            print(MESSAGE_WARN_DEVICE_INCOMPLETE.format(label=label, fields=fields))
+            self._warn(MESSAGE_WARN_DEVICE_INCOMPLETE.format(label=label, fields=fields))
 
     def _dirty_state(self) -> Dict[str, bool]:
         """
@@ -5763,7 +6151,10 @@ class BridgeCli:
         lexer.whitespace_split = True
         lexer.escape = ""
         lexer.escapechar = ""
-        return list(lexer)
+        try:
+            return list(lexer)
+        except ValueError as exc:
+            raise CliParseError(str(exc)) from exc
 
     def _device_in_groups(self, name: str) -> bool:
         """

@@ -11,8 +11,7 @@ SYNOPSIS
 DESCRIPTION
     Provides a lightweight, Lark-based parser for the Bridge CLI command
     language. The parser validates minimal structure per the published
-    grammar while remaining permissive enough to act as a drop-in
-    replacement for legacy token-based parsing.
+    grammar while remaining permissive for interactive use.
 """
 
 from dataclasses import dataclass
@@ -59,7 +58,7 @@ class CommandAst:
 
     DESCRIPTION
         Captures the command verb, args, and normalized tokens for
-        compatibility with the legacy executor while enabling AST
+    compatibility with the CLI AST executor
         execution paths.
     """
 
@@ -119,15 +118,22 @@ class BridgeCliParser:
 
         PARAMETERS
             strict: When true, reject extra tokens beyond the minimal
-                command shape. Default false keeps compatibility with
-                legacy permissive parsing.
+                command shape. Default false keeps interactive usage
+                permissive.
         """
         self._strict = bool(strict)
-        self._common = set(SPEC.common)
+        self._common = {cmd.lower() for cmd in SPEC.common}
         self._show_flags = set(SPEC.show_flags)
         self._show_targets = set(SPEC.show_targets)
         self._bind_kinds = set(SPEC.bind_kinds)
         self._modes = set(SPEC.modes)
+        self._mode_cmds = {
+            SPEC.modes[SPEC.idx_exec]: set(SPEC.mode_exec_cmds),
+            SPEC.modes[SPEC.idx_config]: set(SPEC.mode_config_cmds),
+            SPEC.modes[SPEC.idx_group]: set(SPEC.mode_group_cmds),
+            SPEC.modes[SPEC.idx_device]: set(SPEC.mode_device_cmds),
+            SPEC.modes[SPEC.idx_test]: set(SPEC.mode_test_cmds),
+        }
         self._dispatch = self._build_dispatch()
         self._parser = Lark(
             GRAMMAR,
@@ -141,63 +147,85 @@ class BridgeCliParser:
         NAME
             _build_dispatch - Build the table-driven command dispatch.
         """
-        return {
-            SPEC.modes[SPEC.idx_exec]: {
-                SPEC.cmd_connect: self._handle_simple,
-                SPEC.cmd_disconnect: self._handle_simple,
-                SPEC.cmd_configure: self._handle_configure_terminal,
-                SPEC.cmd_show: self._handle_show_command,
-                SPEC.cmd_write: self._handle_test_any,
-            },
-            SPEC.modes[SPEC.idx_config]: {
-                SPEC.cmd_show: self._handle_show_command,
-                SPEC.cmd_group: self._handle_group_command,
-                SPEC.cmd_no: self._handle_no_group,
-                SPEC.cmd_profile: self._handle_profile,
-                SPEC.cmd_selected_device: self._handle_selected_device,
-                SPEC.cmd_selected_mode: self._handle_selected_mode,
-                SPEC.cmd_merge: self._handle_merge_import,
-                SPEC.cmd_import: self._handle_merge_import,
-                SPEC.cmd_export: self._handle_export,
-                SPEC.cmd_save: self._handle_save,
-                SPEC.cmd_rename: self._handle_rename,
-                SPEC.cmd_device: self._handle_device_command,
-                SPEC.cmd_validate: self._handle_validate,
-                SPEC.cmd_bindings: self._handle_test_any,
-                SPEC.cmd_can_mappings: self._handle_test_any,
-                SPEC.cmd_tests: self._handle_test_any,
-                SPEC.cmd_test: self._handle_test_any,
-                SPEC.cmd_write: self._handle_test_any,
-            },
-            SPEC.modes[SPEC.idx_group]: {
-                SPEC.cmd_show: self._handle_group_show,
-                SPEC.cmd_add: self._handle_group_add,
-                SPEC.cmd_no: self._handle_group_no,
-                SPEC.cmd_member: self._handle_group_member,
-                SPEC.cmd_bind: self._handle_group_bind,
-                SPEC.cmd_enable: self._handle_group_toggle,
-                SPEC.cmd_disable: self._handle_group_toggle,
-                SPEC.cmd_run: self._handle_group_run,
-                SPEC.cmd_write: self._handle_test_any,
-            },
-            SPEC.modes[SPEC.idx_device]: {
-                SPEC.cmd_show: self._handle_device_show,
-                SPEC.cmd_set: self._handle_device_set,
-                SPEC.cmd_no: self._handle_device_no,
-                SPEC.cmd_write: self._handle_test_any,
-            },
-            SPEC.modes[SPEC.idx_test]: {
-                SPEC.cmd_show: self._handle_test_any,
-                SPEC.cmd_type: self._handle_test_any,
-                SPEC.cmd_device: self._handle_test_any,
-                SPEC.cmd_no: self._handle_test_any,
-                SPEC.cmd_input_source: self._handle_test_any,
-                SPEC.cmd_deadband: self._handle_test_any,
-                SPEC.cmd_duty: self._handle_test_any,
-                SPEC.cmd_termination: self._handle_test_any,
-                SPEC.cmd_write: self._handle_test_any,
-            },
-        }
+        def _k(cmd: str) -> str:
+            return cmd.lower()
+
+        dispatch: Dict[str, Dict[str, callable]] = {}
+        for mode, commands in self._mode_cmds.items():
+            dispatch[mode] = {}
+            for cmd in commands:
+                handler = self._handler_for(mode, cmd)
+                if handler is None:
+                    handler = self._handle_test_any
+                dispatch[mode][cmd] = handler
+        return dispatch
+
+    def _handler_for(self, mode: str, cmd: str):
+        if mode == SPEC.modes[SPEC.idx_exec]:
+            if cmd == SPEC.cmd_connect.lower():
+                return self._handle_simple
+            if cmd == SPEC.cmd_disconnect.lower():
+                return self._handle_simple
+            if cmd == SPEC.cmd_configure.lower():
+                return self._handle_configure_terminal
+            if cmd == SPEC.cmd_show.lower():
+                return self._handle_show_command
+            return None
+        if mode == SPEC.modes[SPEC.idx_config]:
+            if cmd == SPEC.cmd_show.lower():
+                return self._handle_show_command
+            if cmd == SPEC.cmd_group.lower():
+                return self._handle_group_command
+            if cmd == SPEC.cmd_no.lower():
+                return self._handle_config_no
+            if cmd == SPEC.cmd_profile.lower():
+                return self._handle_profile
+            if cmd == SPEC.cmd_selected_device.lower():
+                return self._handle_selected_device
+            if cmd == SPEC.cmd_selected_mode.lower():
+                return self._handle_selected_mode
+            if cmd == SPEC.cmd_merge.lower() or cmd == SPEC.cmd_import.lower():
+                return self._handle_merge_import
+            if cmd == SPEC.cmd_export.lower():
+                return self._handle_export
+            if cmd == SPEC.cmd_save.lower():
+                return self._handle_save
+            if cmd == SPEC.cmd_rename.lower():
+                return self._handle_rename
+            if cmd == SPEC.cmd_device.lower():
+                return self._handle_device_command
+            if cmd == SPEC.cmd_validate.lower():
+                return self._handle_validate
+            return self._handle_test_any
+        if mode == SPEC.modes[SPEC.idx_group]:
+            if cmd == SPEC.cmd_show.lower():
+                return self._handle_group_show
+            if cmd == SPEC.cmd_add.lower():
+                return self._handle_group_add
+            if cmd == SPEC.cmd_no.lower():
+                return self._handle_group_no
+            if cmd == SPEC.cmd_member.lower():
+                return self._handle_group_member
+            if cmd == SPEC.cmd_bind.lower():
+                return self._handle_group_bind
+            if cmd == SPEC.cmd_enable.lower() or cmd == SPEC.cmd_disable.lower():
+                return self._handle_group_toggle
+            if cmd == SPEC.cmd_run.lower():
+                return self._handle_group_run
+            return self._handle_test_any
+        if mode == SPEC.modes[SPEC.idx_device]:
+            if cmd == SPEC.cmd_show.lower():
+                return self._handle_device_show
+            if cmd == SPEC.cmd_set.lower():
+                return self._handle_device_set
+            if cmd == SPEC.cmd_no.lower():
+                return self._handle_device_no
+            if cmd == SPEC.cmd_delete.lower():
+                return self._handle_device_delete
+            return self._handle_test_any
+        if mode == SPEC.modes[SPEC.idx_test]:
+            return self._handle_test_any
+        return None
 
     def tokenize(self, line: str) -> List[str]:
         """
@@ -205,7 +233,7 @@ class BridgeCliParser:
             tokenize - Split a CLI line into tokens.
 
         DESCRIPTION
-            Uses shlex without escapes to match legacy token behavior.
+            Uses shlex without escapes to match token behavior.
         """
         lexer = shlex.shlex(line, posix=bool(SPEC.shlex_posix))
         lexer.whitespace_split = bool(SPEC.bool_true)
@@ -466,6 +494,22 @@ class BridgeCliParser:
                 tokens[SPEC.count_two],
                 SPEC.empty_str,
                 SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+            )
+        if verb == SPEC.cmd_no and tokens[SPEC.count_one].lower() == SPEC.cmd_device:
+            return (
+                SPEC.kind_config_no_device,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                tokens[SPEC.count_two],
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
@@ -939,6 +983,17 @@ class BridgeCliParser:
                 bool(SPEC.bool_false),
                 bool(SPEC.bool_false),
             )
+        if verb == SPEC.cmd_delete:
+            return (
+                SPEC.kind_device_delete,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
+            )
         return (
             SPEC.empty_str,
             SPEC.empty_str,
@@ -1068,6 +1123,18 @@ class BridgeCliParser:
         self._require(tokens, SPEC.count_three, SPEC.msg_no_group_name)
         self._reject_extra(tokens, SPEC.count_three, SPEC.label_no_group)
 
+    def _handle_config_no(self, tokens: List[str]) -> None:
+        if len(tokens) < SPEC.count_two:
+            raise CliParseError(SPEC.msg_unknown_cmd_fmt % tokens[SPEC.count_zero])
+        if tokens[SPEC.count_one].lower() == SPEC.cmd_group:
+            self._handle_no_group(tokens)
+            return
+        if tokens[SPEC.count_one].lower() == SPEC.cmd_device:
+            self._require(tokens, SPEC.count_three, SPEC.msg_no_device)
+            self._reject_extra(tokens, SPEC.count_three, SPEC.label_no_device)
+            return
+        raise CliParseError(SPEC.msg_unknown_cmd_fmt % tokens[SPEC.count_zero])
+
     def _handle_selected_device(self, tokens: List[str]) -> None:
         self._require(tokens, SPEC.count_two, SPEC.msg_selected_device)
         self._reject_extra(tokens, SPEC.count_two, SPEC.label_selected_device)
@@ -1195,7 +1262,10 @@ class BridgeCliParser:
 
     def _handle_device_no(self, tokens: List[str]) -> None:
         self._require(tokens, SPEC.count_two, SPEC.msg_no)
-        self._reject_extra(tokens, SPEC.count_two, SPEC.cmd_no)
+        self._reject_extra(tokens, SPEC.count_two, SPEC.label_no_device)
+
+    def _handle_device_delete(self, tokens: List[str]) -> None:
+        self._reject_extra(tokens, SPEC.count_one, SPEC.label_device_delete)
 
     def _parse_show(self, tokens: List[str], allow_empty: bool) -> None:
         if not tokens:

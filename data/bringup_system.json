@@ -2288,7 +2288,7 @@
     },
     "home_tests_033026": {
       "devices": [
-        "FeederMotor"
+        "Feeder Motor"
       ]
     }
   },
@@ -2579,8 +2579,8 @@
       "interface": "CAN",
       "manufacturer": 5,
       "deviceType": 2,
-      "id": 28,
-      "model": "NEO",
+      "id": 26,
+      "model": "REV NEO",
       "type": "motor",
       "tags": [
         "motor"
@@ -3042,17 +3042,8 @@
       "model": "RobotController",
       "type": "",
       "terminator": true
-    },
-    {
-      "label": "FeederMotor",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 25,
-      "model": "REV NEO",
-      "type": "motor"
     }
   ],
-  "data_version": "2026-03-30_121720",
-  "data_hash": "b40c7a4841101283589abc754ae525b00d79890611722ef0d415aef50d99c005"
+  "data_version": "2026-03-30_163250",
+  "data_hash": "1b38b23d12c509010e82be28a21fedfcd6951f947a2a5e7758c81b65b787610f"
 }

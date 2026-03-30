@@ -873,7 +873,7 @@ Purpose: Document the steps to update the CLI grammar and regenerate code.
 3. Regenerate parser artifacts (PowerShell):
    - `tools\can_nt\regen_cli_parser.ps1`
 4. Sanity test locally (no roboRIO required):
-   - `python -m tools.can_nt.can_nt_bridge --no-can --no-nt --cli-parser ebnf --batch --script tools\can_nt\tmp_cli_mixed.txt`
+   - `python -m tools.can_nt.can_nt_bridge --no-can --no-nt --batch --script tools\can_nt\tmp_cli_mixed.txt`
 5. Commit updated generated files:
    - `tools/can_nt/bridge_cli_grammar_gen.py`
    - `tools/can_nt/bridge_cli_constants_gen.py`

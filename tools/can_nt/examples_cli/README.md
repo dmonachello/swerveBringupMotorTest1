@@ -5,7 +5,7 @@ Purpose: Explain how to use these scripts.
 
 These files are example inputs for the Bridge CLI batch mode.
 Run with:
-`python -m tools.can_nt.can_nt_bridge --no-can --no-nt --cli-parser ebnf --batch --script <path>`
+`python -m tools.can_nt.can_nt_bridge --no-can --no-nt --batch --script <path>`
 
 ## Files
 Purpose: Describe each file in this folder.

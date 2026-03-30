@@ -161,6 +161,7 @@ class BridgeCliAstExecutor:
             SPEC.kind_config_export: self._ast_config_export,
             SPEC.kind_config_save: self._ast_config_save,
             SPEC.kind_config_rename_device: self._ast_config_rename_device,
+            SPEC.kind_config_no_device: self._ast_config_no_device,
             SPEC.kind_config_device: self._ast_config_device,
             SPEC.kind_config_device_set: self._ast_config_device_set,
             SPEC.kind_config_validate: self._ast_config_validate,
@@ -180,6 +181,7 @@ class BridgeCliAstExecutor:
             SPEC.kind_device_show: self._ast_device_show,
             SPEC.kind_device_set: self._ast_device_set,
             SPEC.kind_device_no: self._ast_device_no,
+            SPEC.kind_device_delete: self._ast_device_delete,
         }
 
     def _ast_common_exit(self, _ast: CommandAst) -> Optional[int]:
@@ -347,6 +349,15 @@ class BridgeCliAstExecutor:
             print(AST_EXEC_SPEC["fmt_rename_device"] % (ast.device_name, ast.field))
             return None
         return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+
+    def _ast_config_no_device(self, ast: CommandAst) -> Optional[int]:
+        name = ast.device_name
+        if not self._cli._confirm(f"Delete device '{name}'?"):
+            return None
+        if not self._cli._delete_local_device(name):
+            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+        print(f"Deleted device {name}.")
+        return None
 
     def _ast_config_device(self, ast: CommandAst) -> Optional[int]:
         name = ast.device_name
@@ -549,6 +560,16 @@ class BridgeCliAstExecutor:
         if not self._cli._clear_local_device_meta(device, ast.field):
             return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
         print(AST_EXEC_SPEC["fmt_clear_device"] % (device, ast.field))
+        return None
+
+    def _ast_device_delete(self, _ast: CommandAst) -> Optional[int]:
+        device = self._cli._modes[-1].device
+        if not self._cli._confirm(f"Delete device '{device}'?"):
+            return None
+        if not self._cli._delete_local_device(device):
+            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+        print(f"Deleted device {device}.")
+        self._cli._pop_mode()
         return None
 
     def _handle_show_ast(self, ast: CommandAst) -> Optional[int]:
