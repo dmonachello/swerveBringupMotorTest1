@@ -73,6 +73,7 @@ class CommandAst:
     show_name: str
     show_source: str
     show_json: bool
+    show_pretty: bool
     group_name: str
     profile_name: str
     device_name: str
@@ -234,6 +235,7 @@ class BridgeCliParser:
                 show_name=SPEC.empty_str,
                 show_source=SPEC.empty_str,
                 show_json=bool(SPEC.bool_false),
+                show_pretty=bool(SPEC.bool_false),
                 group_name=SPEC.empty_str,
                 profile_name=SPEC.empty_str,
                 device_name=SPEC.empty_str,
@@ -264,6 +266,12 @@ class BridgeCliParser:
         NAME
             _build_ast - Build a compatibility AST from tokens.
         """
+        def _pad(values: tuple, length: int) -> List[object]:
+            items = list(values)
+            while len(items) < length:
+                items.append(bool(SPEC.bool_false))
+            return items
+
         verb = tokens[SPEC.count_zero].lower() if tokens else SPEC.empty_str
         args = tokens[SPEC.count_one :] if len(tokens) > SPEC.count_one else list()
         normalized = tokens
@@ -272,6 +280,7 @@ class BridgeCliParser:
         show_name = SPEC.empty_str
         show_source = SPEC.empty_str
         show_json = bool(SPEC.bool_false)
+        show_pretty = bool(SPEC.bool_false)
         group_name = SPEC.empty_str
         profile_name = SPEC.empty_str
         device_name = SPEC.empty_str
@@ -289,8 +298,10 @@ class BridgeCliParser:
         if verb in self._common:
             kind = self._common_kind(verb)
         elif mode == SPEC.modes[SPEC.idx_exec]:
-            kind, show_target, show_name, show_source, show_json = self._build_exec_ast(tokens)
+            values = _pad(self._build_exec_ast(tokens), 6)
+            kind, show_target, show_name, show_source, show_json, show_pretty = values
         elif mode == SPEC.modes[SPEC.idx_config]:
+            values = _pad(self._build_config_ast(tokens), 14)
             (
                 kind,
                 group_name,
@@ -305,8 +316,10 @@ class BridgeCliParser:
                 show_name,
                 show_source,
                 show_json,
-            ) = self._build_config_ast(tokens)
+                show_pretty,
+            ) = values
         elif mode == SPEC.modes[SPEC.idx_group]:
+            values = _pad(self._build_group_ast(tokens), 11)
             (
                 kind,
                 input_name,
@@ -318,9 +331,11 @@ class BridgeCliParser:
                 show_name,
                 show_source,
                 show_json,
-            ) = self._build_group_ast(tokens)
+                show_pretty,
+            ) = values
         elif mode == SPEC.modes[SPEC.idx_device]:
-            kind, field, value, show_target, show_name, show_source, show_json = self._build_device_ast(tokens)
+            values = _pad(self._build_device_ast(tokens), 8)
+            kind, field, value, show_target, show_name, show_source, show_json, show_pretty = values
 
         return CommandAst(
             mode=mode,
@@ -333,6 +348,7 @@ class BridgeCliParser:
             show_name=show_name,
             show_source=show_source,
             show_json=show_json,
+            show_pretty=show_pretty,
             group_name=group_name,
             profile_name=profile_name,
             device_name=device_name,
@@ -359,26 +375,58 @@ class BridgeCliParser:
             return SPEC.kind_common_ping
         return SPEC.empty_str
 
-    def _build_exec_ast(self, tokens: List[str]) -> tuple[str, str, str, str, bool]:
+    def _build_exec_ast(self, tokens: List[str]) -> tuple[str, str, str, str, bool, bool]:
         verb = tokens[SPEC.count_zero].lower()
         if verb == SPEC.cmd_connect:
-            return (SPEC.kind_exec_connect, SPEC.empty_str, SPEC.empty_str, SPEC.empty_str, bool(SPEC.bool_false))
+            return (
+                SPEC.kind_exec_connect,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
+            )
         if verb == SPEC.cmd_disconnect:
-            return (SPEC.kind_exec_disconnect, SPEC.empty_str, SPEC.empty_str, SPEC.empty_str, bool(SPEC.bool_false))
+            return (
+                SPEC.kind_exec_disconnect,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
+            )
         if verb == SPEC.cmd_configure:
-            return (SPEC.kind_exec_configure_terminal, SPEC.empty_str, SPEC.empty_str, SPEC.empty_str, bool(SPEC.bool_false))
+            return (
+                SPEC.kind_exec_configure_terminal,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
+            )
         if verb == SPEC.cmd_show:
-            show_source, cleaned, show_json = self._parse_show_flags(tokens[SPEC.count_one :])
+            show_source, cleaned, show_json, show_pretty = self._parse_show_flags(
+                tokens[SPEC.count_one :]
+            )
             show_target, show_name = self._split_show_target(cleaned)
-            return (SPEC.kind_show, show_target, show_name, show_source, show_json)
-        return (SPEC.empty_str, SPEC.empty_str, SPEC.empty_str, SPEC.empty_str, bool(SPEC.bool_false))
+            return (SPEC.kind_show, show_target, show_name, show_source, show_json, show_pretty)
+        return (
+            SPEC.empty_str,
+            SPEC.empty_str,
+            SPEC.empty_str,
+            SPEC.empty_str,
+            bool(SPEC.bool_false),
+            bool(SPEC.bool_false),
+        )
 
     def _build_config_ast(
         self, tokens: List[str]
     ) -> tuple[str, str, str, str, str, str, str, str, str, str, str, str, bool]:
         verb = tokens[SPEC.count_zero].lower()
         if verb == SPEC.cmd_show:
-            show_source, cleaned, show_json = self._parse_show_flags(tokens[SPEC.count_one :])
+            show_source, cleaned, show_json, show_pretty = self._parse_show_flags(
+                tokens[SPEC.count_one :]
+            )
             show_target, show_name = self._split_show_target(cleaned)
             return (
                 SPEC.kind_show,
@@ -394,6 +442,7 @@ class BridgeCliParser:
                 show_name,
                 show_source,
                 show_json,
+                show_pretty,
             )
         if verb == SPEC.cmd_group:
             return (
@@ -654,6 +703,7 @@ class BridgeCliParser:
                     SPEC.empty_str,
                     SPEC.empty_str,
                     self._has_json(tokens),
+                    self._has_pretty(tokens),
                 )
             sub = tokens[SPEC.count_one].lower()
             if sub == SPEC.cmd_members:
@@ -668,6 +718,7 @@ class BridgeCliParser:
                     SPEC.empty_str,
                     SPEC.empty_str,
                     self._has_json(tokens),
+                    self._has_pretty(tokens),
                 )
             if sub == SPEC.cmd_binding:
                 return (
@@ -681,8 +732,11 @@ class BridgeCliParser:
                     SPEC.empty_str,
                     SPEC.empty_str,
                     self._has_json(tokens),
+                    self._has_pretty(tokens),
                 )
-            show_source, cleaned, show_json = self._parse_show_flags(tokens[SPEC.count_one :])
+            show_source, cleaned, show_json, show_pretty = self._parse_show_flags(
+                tokens[SPEC.count_one :]
+            )
             show_target, show_name = self._split_show_target(cleaned)
             return (
                 SPEC.kind_show,
@@ -695,6 +749,7 @@ class BridgeCliParser:
                 show_name,
                 show_source,
                 show_json,
+                show_pretty,
             )
         if verb == SPEC.cmd_add and tokens[SPEC.count_one].lower() == SPEC.cmd_device:
             return (
@@ -821,37 +876,88 @@ class BridgeCliParser:
         verb = tokens[SPEC.count_zero].lower()
         if verb == SPEC.cmd_show:
             if len(tokens) == SPEC.count_one:
-                return (SPEC.kind_device_show, SPEC.empty_str, SPEC.empty_str, SPEC.empty_str, SPEC.empty_str, SPEC.empty_str, self._has_json(tokens))
-            show_source, cleaned, show_json = self._parse_show_flags(tokens[SPEC.count_one :])
+                return (
+                    SPEC.kind_device_show,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    self._has_json(tokens),
+                    self._has_pretty(tokens),
+                )
+            show_source, cleaned, show_json, show_pretty = self._parse_show_flags(
+                tokens[SPEC.count_one :]
+            )
             show_target, show_name = self._split_show_target(cleaned)
-            return (SPEC.kind_show, SPEC.empty_str, SPEC.empty_str, show_target, show_name, show_source, show_json)
+            return (
+                SPEC.kind_show,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                show_target,
+                show_name,
+                show_source,
+                show_json,
+                show_pretty,
+            )
         if verb == SPEC.cmd_set:
             value = SPEC.space_str.join(tokens[SPEC.count_two :])
-            return (SPEC.kind_device_set, tokens[SPEC.count_one], value, SPEC.empty_str, SPEC.empty_str, SPEC.empty_str, bool(SPEC.bool_false))
+            return (
+                SPEC.kind_device_set,
+                tokens[SPEC.count_one],
+                value,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
+            )
         if verb == SPEC.cmd_no:
-            return (SPEC.kind_device_no, tokens[SPEC.count_one], SPEC.empty_str, SPEC.empty_str, SPEC.empty_str, SPEC.empty_str, bool(SPEC.bool_false))
-        return (SPEC.empty_str, SPEC.empty_str, SPEC.empty_str, SPEC.empty_str, SPEC.empty_str, SPEC.empty_str, bool(SPEC.bool_false))
+            return (
+                SPEC.kind_device_no,
+                tokens[SPEC.count_one],
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
+            )
+        return (
+            SPEC.empty_str,
+            SPEC.empty_str,
+            SPEC.empty_str,
+            SPEC.empty_str,
+            SPEC.empty_str,
+            SPEC.empty_str,
+            bool(SPEC.bool_false),
+            bool(SPEC.bool_false),
+        )
 
-    def _parse_show_flags(self, tokens: List[str]) -> tuple[str, List[str], bool]:
+    def _parse_show_flags(self, tokens: List[str]) -> tuple[str, List[str], bool, bool]:
         source = SPEC.empty_str
         cleaned: List[str] = []
         json_output = bool(SPEC.bool_false)
+        pretty = bool(SPEC.bool_false)
         for tok in tokens:
             lower = tok.lower()
             if lower == SPEC.show_flags[SPEC.count_zero]:
                 json_output = bool(SPEC.bool_true)
                 continue
-            if lower in (SPEC.show_flags[SPEC.count_one], SPEC.show_flags[SPEC.count_two]):
+            if lower == SPEC.show_flags[SPEC.count_one]:
+                pretty = bool(SPEC.bool_true)
+                continue
+            if lower in (SPEC.show_flags[SPEC.count_two], SPEC.show_flags[SPEC.count_three]):
                 source = SPEC.show_source_robot
                 continue
-            if lower in (SPEC.show_flags[SPEC.count_three], SPEC.show_flags[SPEC.count_four]):
+            if lower in (SPEC.show_flags[SPEC.count_four], SPEC.show_flags[SPEC.count_five]):
                 source = SPEC.show_source_local
                 continue
-            if lower in (SPEC.show_flags[SPEC.count_five], SPEC.show_flags[SPEC.count_six]):
+            if lower in (SPEC.show_flags[SPEC.count_six], SPEC.show_flags[SPEC.count_six + 1]):
                 source = SPEC.show_source_both
                 continue
             cleaned.append(tok)
-        return source, cleaned, json_output
+        return source, cleaned, json_output, pretty
 
     def _split_show_target(self, tokens: List[str]) -> tuple[str, str]:
         if not tokens:
@@ -869,6 +975,12 @@ class BridgeCliParser:
     def _has_json(self, tokens: List[str]) -> bool:
         for tok in tokens:
             if tok.lower() == SPEC.show_flags[SPEC.count_zero]:
+                return bool(SPEC.bool_true)
+        return bool(SPEC.bool_false)
+
+    def _has_pretty(self, tokens: List[str]) -> bool:
+        for tok in tokens:
+            if tok.lower() == SPEC.show_flags[SPEC.count_one]:
                 return bool(SPEC.bool_true)
         return bool(SPEC.bool_false)
 

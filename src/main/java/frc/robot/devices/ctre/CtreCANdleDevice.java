@@ -4,6 +4,7 @@ import com.ctre.phoenix6.controls.SolidColor;
 import com.ctre.phoenix6.hardware.CANdle;
 import com.ctre.phoenix6.signals.RGBWColor;
 import frc.robot.BringupUtil;
+import frc.robot.devices.DeviceActionRequest;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.manufacturers.ctre.diag.CtreCandleReader;
 import frc.robot.diag.snapshots.DeviceSnapshot;
@@ -38,6 +39,10 @@ public final class CtreCANdleDevice implements DeviceUnit {
   private CANdle device;
   private boolean testOn = false;
   private final SolidColor testColor = new SolidColor(0, 7);
+  private static final int COLOR_COMPONENT_OFF = 0;
+  private static final int COLOR_COMPONENT_RED = 0;
+  private static final int COLOR_COMPONENT_GREEN = 128;
+  private static final int COLOR_COMPONENT_BLUE = 255;
 
   /**
    * NAME
@@ -203,9 +208,52 @@ public final class CtreCANdleDevice implements DeviceUnit {
     if (device == null) {
       return;
     }
-    RGBWColor color = testOn ? new RGBWColor(0, 0, 0) : new RGBWColor(0, 128, 255);
+    RGBWColor color = testOn
+        ? new RGBWColor(COLOR_COMPONENT_OFF, COLOR_COMPONENT_OFF, COLOR_COMPONENT_OFF)
+        : new RGBWColor(COLOR_COMPONENT_RED, COLOR_COMPONENT_GREEN, COLOR_COMPONENT_BLUE);
     device.setControl(testColor.withColor(color));
     testOn = !testOn;
+  }
+
+  /**
+   * NAME
+   * applyDeviceAction
+   *
+   * SYNOPSIS
+   * Apply a device action command to the CANdle.
+   *
+   * RETURNS
+   * True when the action is supported and applied.
+   */
+  @Override
+  public boolean applyDeviceAction(DeviceActionRequest request) {
+    if (request == null) {
+      return false;
+    }
+    ensureCreated();
+    if (device == null) {
+      return false;
+    }
+    if (request.isAction(DeviceActionRequest.ACTION_TOGGLE_LED)) {
+      runTest();
+      return true;
+    }
+    if (request.isAction(DeviceActionRequest.ACTION_SET_COLOR)) {
+      if (!request.isSolidPattern()) {
+        return false;
+      }
+      DeviceActionRequest.RgbColor color = request.color;
+      if (color == null) {
+        return false;
+      }
+      int red = DeviceActionRequest.scaleComponent(color.red, request.brightness);
+      int green = DeviceActionRequest.scaleComponent(color.green, request.brightness);
+      int blue = DeviceActionRequest.scaleComponent(color.blue, request.brightness);
+      RGBWColor rgb = new RGBWColor(red, green, blue);
+      device.setControl(testColor.withColor(rgb));
+      return true;
+    }
+    return false;
   }
 
   /**

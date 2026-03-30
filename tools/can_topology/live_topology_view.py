@@ -20,7 +20,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from tools.common.json_io import read_json
-from tools.common.paths import profiles_canonical_path, profiles_deploy_path
+from tools.common.paths import profiles_canonical_path, profiles_deploy_path, repo_root
 import tkinter.font as tkfont
 
 from tools.common.profile_constants import (
@@ -36,6 +36,7 @@ from tools.common.profile_constants import (
     KEY_PROFILES,
     KEY_PROFILE_DEVICES,
 )
+from tools.config.schema_store import ConfigSchemaStore
 from tools.common.topology_render import (
     fill_color_for_vendor,
     outline_color_for_vendor,
@@ -71,6 +72,7 @@ PRESENCE_COLOR_NONE = "#dc2626"
 PRESENCE_STALE_MS = 2000
 PRESENCE_MIN_CONF = 0.05
 PRESENCE_HIGH_CONF = 0.5
+EMPTY_STRING = ""
 
 CATEGORY_NEOS = "neos"
 CATEGORY_NEO550S = "neo550s"
@@ -142,6 +144,9 @@ def _load_profiles_payload() -> Tuple[Optional[Dict[str, object]], str]:
     RETURNS
         (payload, error_message).
     """
+    payload = _load_profiles_payload_from_store()
+    if payload is not None:
+        return payload, EMPTY_STRING
     path = profiles_canonical_path()
     if not path.exists():
         path = profiles_deploy_path()
@@ -153,7 +158,24 @@ def _load_profiles_payload() -> Tuple[Optional[Dict[str, object]], str]:
         return None, f"Failed to read profiles file: {exc}"
     if not isinstance(payload, dict):
         return None, "Profiles payload was not a JSON object."
-    return payload, ""
+    return payload, EMPTY_STRING
+
+
+def _load_profiles_payload_from_store() -> Optional[Dict[str, object]]:
+    """
+    NAME
+        _load_profiles_payload_from_store - Load profiles via config store.
+    """
+    store = ConfigSchemaStore()
+    try:
+        store.load(repo_root())
+    except Exception:
+        return None
+    payload = store.root_payload()
+    profiles = payload.get(KEY_PROFILES)
+    if not isinstance(profiles, dict) or not profiles:
+        return None
+    return payload
 
 
 def _load_device_registry(payload: Dict[str, object]) -> Dict[str, Dict[str, object]]:

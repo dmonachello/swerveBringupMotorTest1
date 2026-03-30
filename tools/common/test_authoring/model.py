@@ -19,6 +19,7 @@ from typing import Dict, List, Optional
 DEFAULT_DEADBAND = 0.12
 DEFAULT_DUTY = 0.2
 DEFAULT_TEST_SET = "default"
+DEFAULT_BRIGHTNESS = 1.0
 
 
 @dataclass
@@ -80,6 +81,20 @@ class DeadbandSweepModel:
 
 
 @dataclass
+class DeviceActionModel:
+    """
+    NAME
+        DeviceActionModel - Device action parameters for non-motor tests.
+    """
+
+    action: Optional[str] = None
+    color: Optional[str] = None
+    pattern: Optional[str] = None
+    brightness: Optional[float] = None
+    duration_sec: Optional[float] = None
+
+
+@dataclass
 class TestModel:
     """
     NAME
@@ -94,6 +109,7 @@ class TestModel:
     button: Optional[TestBindingButton] = None
     termination: TerminationModel = field(default_factory=TerminationModel)
     deadband_sweep: Optional[DeadbandSweepModel] = None
+    device_action: Optional[DeviceActionModel] = None
     enabled: bool = False
 
 

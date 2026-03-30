@@ -55,7 +55,7 @@ The model is the single source of truth and is used by:
 ### Test Object
 
 * name (string, immutable in v1)
-* type ("joystick" | "button" | "composite" | "deadbandSweep")
+* type ("joystick" | "button" | "composite" | "deadbandSweep" | "deviceAction")
 * devices (list of canonical device labels)
 * binding:
 
@@ -72,6 +72,13 @@ The model is the single source of truth and is used by:
 
     * deadbandSweep fields (startDuty/maxDuty/stepDuty/stepHoldSec/motionThresholdRot/requiredSamples)
     * optional encoderKey/encoderSource/encoderCountsPerRev/encoderMotorIndex
+  * device action:
+
+    * action (`toggle_led` | `set_color`)
+    * color (`#RRGGBB`, required for `set_color`)
+    * pattern (`solid` only in v1)
+    * brightness (0.0-1.0)
+    * durationSec (seconds; optional)
 * termination:
 
   * hold (bool)
@@ -165,6 +172,22 @@ The model is the single source of truth and is used by:
 
   * duty (required)
   * input source (controller button or UI button)
+
+### Device Action Tests
+
+* Non-motor device actions (LEDs, indicators).
+* Maps to:
+
+  * `type: "deviceAction"`
+* Required fields:
+
+  * action (`toggle_led` | `set_color`)
+* `set_color` fields:
+
+  * color (`#RRGGBB`)
+  * pattern (`solid` only in v1)
+  * brightness (0.0-1.0)
+  * durationSec (seconds; optional)
 
 ### Parameter Constraints
 
@@ -308,7 +331,7 @@ Notes:
 2. `test set <name>` (selects or creates the set)
 3. `test create <name>` (enters test mode)
 4. `test <name>` (existing tests only)
-5. `type joystick|button|composite|deadbandSweep`
+5. `type joystick|button|composite|deadbandSweep|deviceAction`
 6. `device add <device label>`
 7. joystick only:
 
@@ -320,15 +343,22 @@ Notes:
    * or
    * `inputSource ui.<id>`
    * `duty <value>`
-9. termination:
+9. deviceAction only:
+
+   * `action toggle_led|set_color`
+   * `color #RRGGBB`
+   * `pattern solid`
+   * `brightness <value>`
+   * `duration <seconds>`
+10. termination:
 
    * `termination hold`
    * `termination time <seconds>`
    * `termination rotation <value>`
    * `termination limitswitch [id]`
    * `limitswitch onHit <pass|fail>`
-10. `end`
-11. `write tests <path>`
+11. `end`
+12. `write tests <path>`
 
 ### Deadband Sweep Commands (CLI)
 

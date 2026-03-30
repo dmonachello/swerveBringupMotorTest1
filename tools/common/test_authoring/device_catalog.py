@@ -12,14 +12,20 @@ DESCRIPTION
     loader and exposes device labels for validation and UI lists.
 """
 
-from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import Dict, Optional, Set, Tuple
 
-from tools.can_nt.can_profiles import get_profile, reload_profiles
+from tools.can_nt.can_profiles import reload_profiles
 from tools.common.paths import repo_root
-from tools.common.profile_constants import KEY_LABEL
+from tools.common.profile_constants import (
+    KEY_DEVICES,
+    KEY_LABEL,
+    KEY_PROFILES,
+    KEY_PROFILE_DEVICES,
+)
+from tools.common.json_io import read_json
+from tools.common.paths import profiles_canonical_path, profiles_deploy_path
 
 
 KEY_CONTROLLERS = "controllers"
@@ -30,17 +36,7 @@ DEFAULT_CONTROLLER_PREFIX = "controller"
 DEFAULT_CONTROLLER_COUNT = 6
 
 
-@dataclass
-class DeviceInfo:
-    """
-    NAME
-        DeviceInfo - Canonical device info entry.
-    """
-
-    label: str
-
-
-def load_profile_devices(profile_name: str) -> Tuple[Dict[str, DeviceInfo], Set[str]]:
+def load_profile_devices(profile_name: str) -> Tuple[Dict[str, Dict[str, object]], Set[str]]:
     """
     NAME
         load_profile_devices - Load device label map for a profile.
@@ -50,22 +46,58 @@ def load_profile_devices(profile_name: str) -> Tuple[Dict[str, DeviceInfo], Set[
 
     RETURNS
         Tuple of:
-        - Mapping of label to DeviceInfo.
+        - Mapping of label to device entry dict.
         - Set of duplicate labels detected in the profile.
     """
 
     reload_profiles()
-    devices, _dup_ids = get_profile(profile_name)
-    catalog: Dict[str, DeviceInfo] = {}
+    catalog: Dict[str, Dict[str, object]] = {}
     duplicates: Set[str] = set()
+    path = profiles_canonical_path()
+    if not path.exists():
+        path = profiles_deploy_path()
+    if not path.exists():
+        return catalog, duplicates
+    try:
+        payload = read_json(path)
+    except Exception:
+        return catalog, duplicates
+    if not isinstance(payload, dict):
+        return catalog, duplicates
+    profiles = payload.get(KEY_PROFILES)
+    devices = payload.get(KEY_DEVICES)
+    if not isinstance(profiles, dict) or not isinstance(devices, list):
+        return catalog, duplicates
+    profile = profiles.get(profile_name)
+    if not isinstance(profile, dict):
+        return catalog, duplicates
+    labels = profile.get(KEY_PROFILE_DEVICES)
+    if not isinstance(labels, list):
+        return catalog, duplicates
+    registry: Dict[str, Dict[str, object]] = {}
     for entry in devices:
+        if not isinstance(entry, dict):
+            continue
         label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
         if not label:
             continue
-        if label in catalog:
-            duplicates.add(label)
+        registry[label.lower()] = entry
+    seen: Set[str] = set()
+    for label in labels:
+        if not isinstance(label, str):
             continue
-        catalog[label] = DeviceInfo(label=label)
+        clean = label.strip()
+        if not clean:
+            continue
+        key = clean.lower()
+        if key in seen:
+            duplicates.add(clean)
+            continue
+        seen.add(key)
+        entry = registry.get(key)
+        if entry is None:
+            continue
+        catalog[clean] = dict(entry)
     return catalog, duplicates
 
 

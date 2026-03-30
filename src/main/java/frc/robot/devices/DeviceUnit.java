@@ -187,6 +187,23 @@ public interface DeviceUnit extends HasRegistrationHeader {
    */
   default void runTest() {}
 
+  /**
+   * NAME
+   * applyDeviceAction
+   *
+   * SYNOPSIS
+   * Apply a device-specific action from a test definition.
+   *
+   * PARAMETERS
+   * request - Parsed action request payload.
+   *
+   * RETURNS
+   * True when the action was accepted and applied.
+   */
+  default boolean applyDeviceAction(DeviceActionRequest request) {
+    return false;
+  }
+
   // Optional encoder position in rotations (internal or external sensor).
   /**
    * NAME

@@ -155,17 +155,23 @@ except ImportError:  # Allow running as a script from this folder.
     )
     from common.topology_draw import draw_group_overlays  # type: ignore
 try:
-    from tools.common.paths import profiles_canonical_path, profiles_deploy_path
+    from tools.common.paths import profiles_canonical_path, profiles_deploy_path, repo_root
     from tools.common.profile_io import compute_profiles_hash
 except ImportError:
     profiles_canonical_path = None
     profiles_deploy_path = None
+    repo_root = None
     compute_profiles_hash = None
 
 try:
     from tools.common import profile_constants as profile_consts
 except ImportError:
     profile_consts = None
+
+try:
+    from tools.config.schema_store import ConfigSchemaStore
+except ImportError:
+    ConfigSchemaStore = None
 
 try:
     from .can_top_models import (
@@ -1052,11 +1058,24 @@ class TopologyEditor(tk.Tk):
         NAME
             _load_profiles_payload - Load bringup_system.json with repair prompts.
         """
-        try:
-            data = read_json(path)
-        except Exception as exc:
-            messagebox.showerror("Error", f"Failed to open file: {exc}")
-            return None
+        store_payload = None
+        if ConfigSchemaStore is not None and repo_root is not None:
+            default_path = self._default_profiles_path()
+            if path == default_path:
+                store = ConfigSchemaStore()
+                try:
+                    store.load(repo_root())
+                    store_payload = store.root_payload()
+                except Exception:
+                    store_payload = None
+        if store_payload is not None:
+            data = store_payload
+        else:
+            try:
+                data = read_json(path)
+            except Exception as exc:
+                messagebox.showerror("Error", f"Failed to open file: {exc}")
+                return None
         if not isinstance(data, dict):
             messagebox.showerror("Error", "Profiles JSON root must be an object.")
             return None

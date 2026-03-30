@@ -982,6 +982,9 @@ public final class BringupCore {
     if (test instanceof frc.robot.tests.DeadbandSweepTest) {
       return frc.robot.tests.DeadbandSweepTest.TYPE;
     }
+    if (test instanceof frc.robot.tests.DeviceActionTest) {
+      return frc.robot.tests.DeviceActionTest.TYPE;
+    }
     return test != null ? test.getClass().getSimpleName() : "?";
   }
 

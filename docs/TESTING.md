@@ -915,7 +915,7 @@ Purpose: add data-driven tests without code changes.
 3. Select or create a test set: `test set <name>`.
 4. Create a test: `test create <name>` (enters test mode).
 5. Configure the test:
-   - `type joystick|button|composite|deadbandSweep`
+  - `type joystick|button|composite|deadbandSweep|deviceAction`
    - `device add <label>`
    - `inputSource <controller>.<inputId>` for joystick/button/composite
    - `deadband <value>` for joystick

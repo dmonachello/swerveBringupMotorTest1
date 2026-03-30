@@ -119,6 +119,14 @@ Deadband sweep tests:
 - Required fields: `type deadbandSweep`, `device add`, and deadband sweep fields.
 - `inputSource` is not used for deadband sweep tests.
 
+Device action tests:
+- `type deviceAction`
+- `action toggle_led | set_color`
+- `color #RRGGBB` (required for `set_color`)
+- `pattern solid` (only supported value in v1)
+- `brightness <0.0-1.0>`
+- `duration <seconds>` (optional; 0 or omitted means immediate)
+
 Deadband sweep fields:
 - `deadbandSweep startDuty <value>`
 - `deadbandSweep maxDuty <value>`
@@ -153,9 +161,9 @@ Notes:
 Purpose: terminate a test when a limit switch is hit.
 
 Commands:
-1. `termination limitswitch [id]` enables limit switch termination. The id is optional metadata.
+1. `termination limitswitch [id]` enables limit switch termination.
 2. `limitswitch onHit <pass|fail>` defines the result when the switch triggers.
-3. `limitswitch id <id>` sets or updates the optional id field.
+3. `limitswitch id <label>` sets the required limit switch label.
 
 Example:
 ```
@@ -236,7 +244,7 @@ Validation failures:
 2. No devices selected.
 3. Invalid ranges such as duty outside -1.0 to 1.0.
 4. Invalid or duplicate test names.
-5. Invalid limit switch configuration (`onHit` or `id`).
+5. Invalid limit switch configuration (`onHit` or missing/unknown `id`).
 
 Warnings:
 - Device not found in the active profile.
@@ -250,6 +258,41 @@ Command:
 Notes:
 - Output is a standard `bringup_tests.json`.
 - Copy it to `src/main/deploy/bringup_tests.json` before deploying robot code.
+
+## Example: CANdle LED Tests
+Purpose: create deviceAction tests for a CANdle LED controller.
+
+Toggle LED:
+```
+configure terminal
+test set default
+test create CandleToggle
+test CandleToggle
+type deviceAction
+device add "candle"
+action toggle_led
+enabled true
+end
+write tests bringup_tests.json
+```
+
+Set solid color:
+```
+configure terminal
+test set default
+test create CandleBlue
+test CandleBlue
+type deviceAction
+device add "candle"
+action set_color
+color #0080FF
+pattern solid
+brightness 0.7
+duration 2.0
+enabled true
+end
+write tests bringup_tests.json
+```
 
 ## Example Session (Full)
 Purpose: show a complete authoring flow.

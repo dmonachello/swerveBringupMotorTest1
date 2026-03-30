@@ -1,0 +1,36 @@
+configure terminal
+profile robot_2026
+
+group swerve_front_left
+add device "angle motor front left"
+add device "Drive Motor"
+add device "Encoder (CANCoder)"
+exit
+
+group swerve_front_right
+add device "angle motor front right"
+add device "Drive Motor (id 2)"
+add device "Encoder (CANCoder) (id 3)"
+exit
+
+group swerve_back_left
+add device "angle motor back left"
+add device "Drive Motor (id 11)"
+add device "Encoder (CANCoder) (id 12)"
+exit
+
+group swerve_back_right
+add device "angle motor back right"
+add device "Drive Motor (id 8)"
+add device "Encoder (CANCoder) (id 9)"
+exit
+
+show groups
+show group swerve_front_left
+show group swerve_front_right
+show group swerve_back_left
+show group swerve_back_right
+
+# Uncomment to persist to the default profiles file
+save profiles data/bringup_system.json
+end

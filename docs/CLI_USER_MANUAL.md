@@ -72,6 +72,25 @@ Navigation:
 - `exit` goes up one level.
 - `end` returns to exec mode.
 
+## Inline Help (`?`)
+Purpose: Discover valid next arguments without leaving the command line.
+
+Use a trailing `?` to list valid next tokens.
+
+Examples:
+```
+show ?
+show group ?
+show groups ?
+bindings ?
+can-mappings ?
+```
+
+Notes:
+- The `?` help does not execute the command.
+- It only shows valid next arguments for the current context.
+- `prompt_toolkit` enables inline prefill so the text is editable after the `?`.
+
 ## How to Choose a Profile
 Purpose: Ensure groups are tied to the right profile.
 
@@ -102,6 +121,7 @@ Common show commands:
 - `show config dirty`
 - `show profiles`
 - `show profile`
+- `show profile <name>`
 - `show tests`
 - `show test <name>`
 - `bindings show`

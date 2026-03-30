@@ -61,7 +61,7 @@ Robot-side (roboRIO):
 PC-side (Driver Station Windows PC):
 - Install dependencies:
 ```cmd
-py -m pip install --upgrade python-can pyserial pynetworktables pyntcore
+py -m pip install --upgrade python-can pyserial pynetworktables pyntcore prompt_toolkit
 ```
 - Run the CAN bridge:
 ```cmd

@@ -203,6 +203,7 @@ No prompting allowed in batch mode.
 - `show config dirty`
 - `show profiles`
 - `show profile`
+- `show profile <name>`
 - `show tests`
 - `show test <name>`
 - `configure terminal`
@@ -228,7 +229,7 @@ No prompting allowed in batch mode.
 - `device <name>`
 - `device <name> set <field> <value>`
 - `validate config [path]`
-- `bindings show [controllers|bindings|axes] [--json]`
+- `bindings show [controllers|bindings|axes] [--json] [--pretty]`
 - `bindings controller add <name> <type> <port>`
 - `bindings controller set <name> <field> <value>`
 - `bindings controller rename <old> <new>`
@@ -242,7 +243,7 @@ No prompting allowed in batch mode.
 - `bindings load <path>`
 - `bindings save <path>`
 - `bindings validate [path]`
-- `can-mappings show [manufacturers|device-types] [--json]`
+- `can-mappings show [manufacturers|device-types] [--json] [--pretty]`
 - `can-mappings manufacturer set <id> <name>`
 - `can-mappings manufacturer delete <id>`
 - `can-mappings device-type set <id> <name>`
@@ -280,6 +281,14 @@ No prompting allowed in batch mode.
 - `disable`
 - `run test`
 - `run test <name>`
+
+## EBNF Source
+
+Purpose: Point to the canonical grammar and highlight subcommand parsing for complex verbs.
+
+- Canonical grammar: `tools/can_nt/bridge_cli_ebnf.txt`
+- The `bindings`, `can-mappings`, and `tests` verbs parse subcommands via `bindings_args`, `mappings_args`, and `tests_args`.
+- Update the grammar and regenerate the parser before modifying command syntax.
 
 ### Output Notes
 
@@ -405,8 +414,9 @@ Support:
 - `help`
 - `help <command>`
 
-Later:
-- optional `?`
+Also:
+- trailing `?` shows valid next arguments (e.g., `show groups ?`).
+- `?` is part of the command line grammar and may follow any command.
 
 ## Error Handling
 
@@ -444,7 +454,7 @@ end
 
 Structured Output
 
-Support machine-readable output: --json
+Support machine-readable output: --json (add --pretty for formatted JSON)
 
 For:
 
@@ -551,3 +561,4 @@ avoids prompts in batch mode
 uses structured output for automation
 
 remains simple, predictable, and operator-friendly
+

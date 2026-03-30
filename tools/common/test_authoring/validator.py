@@ -17,6 +17,7 @@ import re
 from typing import Dict, List, Optional, Set
 
 from .device_catalog import load_profile_devices
+from tools.common.profile_constants import KEY_INTERFACE, KEY_TYPE, INTERFACE_DIO
 from .model import TestAuthoringModel, TestModel
 
 
@@ -52,6 +53,11 @@ FIELD_JOYSTICK = "joystick"
 FIELD_AXIS = "axis"
 FIELD_INPUT_SOURCE = "inputSource"
 FIELD_DEADBAND = "deadband"
+FIELD_ACTION = "action"
+FIELD_COLOR = "color"
+FIELD_PATTERN = "pattern"
+FIELD_BRIGHTNESS = "brightness"
+FIELD_DURATION = "durationSec"
 FIELD_BUTTON = "button"
 FIELD_DUTY = "duty"
 FIELD_TERMINATION = "termination"
@@ -83,22 +89,45 @@ MESSAGE_TEST_TYPE_UNKNOWN = "Unknown test type."
 MESSAGE_DEADBAND_SWEEP_REQUIRED = "deadbandSweep config is required."
 MESSAGE_DEADBAND_SWEEP_FIELD = "deadbandSweep field is required."
 MESSAGE_DEADBAND_SWEEP_SAMPLES = "deadbandSweep requiredSamples must be >= 1."
+MESSAGE_ACTION_REQUIRED = "action is required."
+MESSAGE_ACTION_INVALID = "action must be toggle_led or set_color."
+MESSAGE_COLOR_REQUIRED = "color is required for set_color."
+MESSAGE_COLOR_INVALID = "color must be #RRGGBB."
+MESSAGE_PATTERN_INVALID = "pattern is not supported."
+MESSAGE_BRIGHTNESS_RANGE = "brightness must be 0.0 to 1.0."
+MESSAGE_DURATION_RANGE = "durationSec must be >= 0."
 MESSAGE_LIMIT_SWITCH_REQUIRED = "limitSwitch must be an object."
 MESSAGE_LIMIT_SWITCH_ENABLED = "limitSwitch.enabled must be true/false."
 MESSAGE_LIMIT_SWITCH_ON_HIT = "limitSwitch.onHit must be pass or fail."
 MESSAGE_LIMIT_SWITCH_ID = "limitSwitch.id must be a non-empty string."
+MESSAGE_LIMIT_SWITCH_ID_REQUIRED = "limitSwitch.id is required when limitSwitch is enabled."
+MESSAGE_LIMIT_SWITCH_NOT_FOUND = "limitSwitch.id not found in active profile."
+MESSAGE_LIMIT_SWITCH_TYPE_INVALID = "limitSwitch.id must reference a limitSwitch device."
 
 TEST_TYPE_JOYSTICK = "joystick"
 TEST_TYPE_BUTTON = "button"
 TEST_TYPE_COMPOSITE = "composite"
 TEST_TYPE_DEADBAND_SWEEP = "deadbandSweep"
+TEST_TYPE_DEVICE_ACTION = "deviceAction"
+LIMIT_SWITCH_DEVICE_TYPE = "limitSwitch"
 DEADBAND_MIN = 0.0
 DEADBAND_MAX = 1.0
 DUTY_MIN = -1.0
 DUTY_MAX = 1.0
+BRIGHTNESS_MIN = 0.0
+BRIGHTNESS_MAX = 1.0
+DURATION_MIN_SEC = 0.0
 DURATION_PASS = "pass"
 DURATION_FAIL = "fail"
 LIMIT_SWITCH_ON_HIT_ALLOWED = {DURATION_PASS, DURATION_FAIL}
+ACTION_TOGGLE_LED = "toggle_led"
+ACTION_SET_COLOR = "set_color"
+ACTION_ALLOWED = {ACTION_TOGGLE_LED, ACTION_SET_COLOR}
+PATTERN_SOLID = "solid"
+PATTERN_ALLOWED = {PATTERN_SOLID}
+COLOR_PREFIX = "#"
+COLOR_HEX_LEN = 7
+COLOR_HEX_REGEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
 @dataclass
@@ -155,6 +184,8 @@ def validate_model(
     model: TestAuthoringModel,
     profile_name: Optional[str] = None,
     controller_names: Optional[Set[str]] = None,
+    device_catalog: Optional[Dict[str, object]] = None,
+    duplicate_labels: Optional[Set[str]] = None,
 ) -> ValidationResult:
     """
     NAME
@@ -163,6 +194,9 @@ def validate_model(
     PARAMETERS
         model - TestAuthoringModel instance.
         profile_name - Optional profile name for device validation.
+        controller_names - Optional set of valid controller names.
+        device_catalog - Optional device catalog mapping.
+        duplicate_labels - Optional duplicate label set.
 
     RETURNS
         ValidationResult with errors and warnings.
@@ -170,15 +204,19 @@ def validate_model(
 
     result = ValidationResult()
     devices_catalog: Dict[str, object] = {}
-    duplicate_labels: Set[str] = set()
-    if profile_name:
+    duplicate_label_set: Set[str] = set()
+    if device_catalog is not None:
+        devices_catalog = device_catalog
+    if duplicate_labels is not None:
+        duplicate_label_set = duplicate_labels
+    if profile_name and device_catalog is None:
         try:
-            devices_catalog, duplicate_labels = load_profile_devices(profile_name)
+            devices_catalog, duplicate_label_set = load_profile_devices(profile_name)
         except Exception:
             devices_catalog = {}
-            duplicate_labels = set()
+            duplicate_label_set = set()
 
-    for label in sorted(duplicate_labels):
+    for label in sorted(duplicate_label_set):
         result.errors.append(
             ValidationIssue(MESSAGE_DEVICE_LABEL_DUPLICATE.format(label=label), None, FIELD_DEVICES)
         )
@@ -219,11 +257,13 @@ def _validate_test(
     if test.test_type == TEST_TYPE_JOYSTICK:
         _validate_joystick(test, result, controller_names)
     elif test.test_type == TEST_TYPE_BUTTON:
-        _validate_button(test, result, controller_names)
+        _validate_button(test, result, controller_names, catalog)
     elif test.test_type == TEST_TYPE_COMPOSITE:
-        _validate_composite(test, result, controller_names)
+        _validate_composite(test, result, controller_names, catalog)
     elif test.test_type == TEST_TYPE_DEADBAND_SWEEP:
         _validate_deadband_sweep(test, result)
+    elif test.test_type == TEST_TYPE_DEVICE_ACTION:
+        _validate_device_action(test, result)
     else:
         result.errors.append(ValidationIssue(MESSAGE_TEST_TYPE_UNKNOWN, test.name, FIELD_TYPE))
 
@@ -284,6 +324,7 @@ def _validate_button(
     test: TestModel,
     result: ValidationResult,
     controller_names: Optional[Set[str]],
+    catalog: Dict[str, object],
 ) -> None:
     """
     NAME
@@ -309,13 +350,14 @@ def _validate_button(
         result.errors.append(
             ValidationIssue(MESSAGE_TERMINATION_REQUIRED, test.name, FIELD_TERMINATION)
         )
-    _validate_limit_switch(test, result)
+    _validate_limit_switch(test, result, catalog)
 
 
 def _validate_composite(
     test: TestModel,
     result: ValidationResult,
     controller_names: Optional[Set[str]],
+    catalog: Dict[str, object],
 ) -> None:
     """
     NAME
@@ -342,7 +384,7 @@ def _validate_composite(
         result.errors.append(
             ValidationIssue(MESSAGE_TERMINATION_REQUIRED, test.name, FIELD_TERMINATION)
         )
-    _validate_limit_switch(test, result)
+    _validate_limit_switch(test, result, catalog)
 
 
 def _validate_deadband_sweep(test: TestModel, result: ValidationResult) -> None:
@@ -376,7 +418,41 @@ def _validate_deadband_sweep(test: TestModel, result: ValidationResult) -> None:
             ValidationIssue(MESSAGE_DEADBAND_SWEEP_SAMPLES, test.name, FIELD_DEADBAND_SWEEP)
         )
 
-def _validate_limit_switch(test: TestModel, result: ValidationResult) -> None:
+
+def _validate_device_action(test: TestModel, result: ValidationResult) -> None:
+    """
+    NAME
+        _validate_device_action - Validate deviceAction tests.
+    """
+
+    action = test.device_action.action if test.device_action else None
+    if not action:
+        result.errors.append(ValidationIssue(MESSAGE_ACTION_REQUIRED, test.name, FIELD_ACTION))
+        return
+    if action not in ACTION_ALLOWED:
+        result.errors.append(ValidationIssue(MESSAGE_ACTION_INVALID, test.name, FIELD_ACTION))
+        return
+    if action == ACTION_SET_COLOR:
+        color = test.device_action.color if test.device_action else None
+        if not color:
+            result.errors.append(ValidationIssue(MESSAGE_COLOR_REQUIRED, test.name, FIELD_COLOR))
+        elif not COLOR_HEX_REGEX.match(color):
+            result.errors.append(ValidationIssue(MESSAGE_COLOR_INVALID, test.name, FIELD_COLOR))
+        pattern = test.device_action.pattern if test.device_action else None
+        if pattern and pattern not in PATTERN_ALLOWED:
+            result.errors.append(ValidationIssue(MESSAGE_PATTERN_INVALID, test.name, FIELD_PATTERN))
+        brightness = test.device_action.brightness if test.device_action else None
+        if brightness is not None and (brightness < BRIGHTNESS_MIN or brightness > BRIGHTNESS_MAX):
+            result.errors.append(ValidationIssue(MESSAGE_BRIGHTNESS_RANGE, test.name, FIELD_BRIGHTNESS))
+        duration_sec = test.device_action.duration_sec if test.device_action else None
+        if duration_sec is not None and duration_sec < DURATION_MIN_SEC:
+            result.errors.append(ValidationIssue(MESSAGE_DURATION_RANGE, test.name, FIELD_DURATION))
+
+def _validate_limit_switch(
+    test: TestModel,
+    result: ValidationResult,
+    catalog: Dict[str, object],
+) -> None:
     """
     NAME
         _validate_limit_switch - Validate limitSwitch termination configuration.
@@ -407,6 +483,34 @@ def _validate_limit_switch(test: TestModel, result: ValidationResult) -> None:
         result.errors.append(
             ValidationIssue(MESSAGE_LIMIT_SWITCH_ID, test.name, FIELD_LIMIT_SWITCH)
         )
+        return
+    if enabled is not False:
+        if limit_id is None:
+            result.errors.append(
+                ValidationIssue(MESSAGE_LIMIT_SWITCH_ID_REQUIRED, test.name, FIELD_LIMIT_SWITCH)
+            )
+            return
+        if not isinstance(limit_id, str) or not limit_id.strip():
+            result.errors.append(
+                ValidationIssue(MESSAGE_LIMIT_SWITCH_ID, test.name, FIELD_LIMIT_SWITCH)
+            )
+            return
+        if catalog and limit_id not in catalog:
+            result.errors.append(
+                ValidationIssue(MESSAGE_LIMIT_SWITCH_NOT_FOUND, test.name, FIELD_LIMIT_SWITCH)
+            )
+            return
+        if catalog and limit_id in catalog:
+            entry = catalog.get(limit_id)
+            if isinstance(entry, dict):
+                interface = entry.get(KEY_INTERFACE)
+                device_type = entry.get(KEY_TYPE)
+                if interface != INTERFACE_DIO or device_type != LIMIT_SWITCH_DEVICE_TYPE:
+                    result.errors.append(
+                        ValidationIssue(
+                            MESSAGE_LIMIT_SWITCH_TYPE_INVALID, test.name, FIELD_LIMIT_SWITCH
+                        )
+                    )
 
 def _has_termination(test: TestModel) -> bool:
     """

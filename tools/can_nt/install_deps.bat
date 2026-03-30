@@ -34,6 +34,9 @@ python -m pip install --upgrade pyntcore
 echo Installing fallback NetworkTables client: pynetworktables
 python -m pip install --upgrade pynetworktables
 
+echo Installing CLI line editor: prompt_toolkit
+python -m pip install --upgrade prompt_toolkit
+
 echo.
 echo Done.
 echo If you see Windows DLL errors for pyntcore, install the VS 2022 redistributable.

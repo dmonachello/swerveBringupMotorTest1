@@ -145,6 +145,8 @@ public final class BringupTestRegistry {
         entries.add(joystick.toEntry());
       } else if (test instanceof DeadbandSweepTest sweep) {
         entries.add(sweep.toEntry());
+      } else if (test instanceof DeviceActionTest deviceAction) {
+        entries.add(deviceAction.toEntry());
       }
     }
     Path path = resolveTestsPath();
@@ -191,6 +193,9 @@ public final class BringupTestRegistry {
     }
     if (DeadbandSweepTest.TYPE.equalsIgnoreCase(entry.type)) {
       return buildDeadbandSweep(entry);
+    }
+    if (DeviceActionTest.TYPE.equalsIgnoreCase(entry.type)) {
+      return buildDeviceAction(entry);
     }
     BringupPrinter.enqueue("Warning: unknown test type '" + entry.type + "'.");
     return null;
@@ -386,6 +391,25 @@ public final class BringupTestRegistry {
 
   /**
    * NAME
+   *   buildDeviceAction - Build a DeviceActionTest from a JSON entry.
+   */
+  private static BringupTest buildDeviceAction(TestEntry entry) {
+    DeviceActionTest.Config config = new DeviceActionTest.Config();
+    config.name = entry.name != null ? entry.name : config.name;
+    config.enabled = entry.enabled != null ? entry.enabled.booleanValue() : config.enabled;
+    if (entry.motorLabels != null && !entry.motorLabels.isEmpty()) {
+      config.deviceLabels = new ArrayList<>(entry.motorLabels);
+    }
+    config.action = entry.action;
+    config.color = entry.color;
+    config.pattern = entry.pattern;
+    config.brightness = entry.brightness;
+    config.durationSec = entry.durationSec;
+    return new DeviceActionTest(config);
+  }
+
+  /**
+   * NAME
    *   buildJoystick - Build a JoystickTest from a JSON entry.
    */
   private static BringupTest buildJoystick(TestEntry entry) {
@@ -557,6 +581,10 @@ public final class BringupTestRegistry {
     Double deadband;
     String inputSource;
     Integer encoderMotorIndex;
+    String action;
+    String color;
+    String pattern;
+    Double brightness;
   }
 
 }

@@ -11,6 +11,7 @@ DESCRIPTION
 from .device_catalog import load_profile_devices
 from .model import (
     DeadbandSweepModel,
+    DeviceActionModel,
     TestAuthoringModel,
     TestBindingButton,
     TestBindingJoystick,
@@ -34,6 +35,7 @@ __all__ = [
     "TestBindingButton",
     "TestBindingJoystick",
     "DeadbandSweepModel",
+    "DeviceActionModel",
     "TestModel",
     "TestSetModel",
     "TerminationModel",

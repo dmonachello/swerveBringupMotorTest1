@@ -23,6 +23,7 @@ Purpose: Explain what the installer configures.
   - `pyntcore`
   - `pynetworktables`
   - `reportlab`
+  - `prompt_toolkit` (CLI inline `?` prefill)
 - Creates log folders:
   - `tools\can_nt\logs`
   - `tools\can_nt\captures`

@@ -12,7 +12,7 @@ Purpose: Define the operator outcomes.
 - Shared command execution and response parsing with the GUI.
 - Scriptable batch operation with deterministic behavior.
 - Streaming output to console (no buffering).
-- `--json` output for show commands (one JSON blob per command).
+- `--json` output for show commands (one JSON blob per command). Use `--pretty` for pretty JSON output.
 
 ## Non-Goals
 Purpose: Clarify what is out of scope.
@@ -85,6 +85,7 @@ Purpose: Justify the choice of EBNF for the CLI grammar.
 - EBNF is compact and human-readable, making command syntax reviewable in diffs.
 - The grammar is tool-agnostic, avoiding lock-in to a single parser library.
 - It provides a stable single source of truth for code generation and tests.
+- Complex verbs (`bindings`, `can-mappings`, `tests`) route through explicit subcommand productions.
 - The language fits the problem size: a small command DSL with clear modes.
 - The EBNF is the heart of the CLI: defining the language shapes how the CLI functions.
 
@@ -165,7 +166,7 @@ Purpose: Specify streaming and formatting rules.
 
 - All output streams directly to console.
 - ACK/OUT/CONSOLE are printed as received.
-- `--json` prints one JSON blob per command.
+- `--json` prints one JSON blob per command. Add `--pretty` for formatted JSON.
 - No buffering unless required for formatting.
 
 ## Conflict Policy
@@ -199,6 +200,7 @@ Common:
 - `echo off`
 - `quit`
 - Windows EOF: Ctrl+Z then Enter behaves like `exit` (Ctrl+D on POSIX shells).
+- Inline help: a trailing `?` shows valid next arguments (e.g., `show groups ?`).
 
 Exec:
 - `show status [robot|local|both]`
@@ -215,8 +217,9 @@ Exec:
 - `show config dirty [local]` (local unsaved flags)
 - `show profiles [local]` (profile names from bringup_system.json)
 - `show profile [local]` (active/default profile summary)
-- `show tests [--json]`
-- `show test <name> [--json]`
+- `show profile <name> [local]` (device labels for a profile)
+- `show tests [--json] [--pretty]`
+- `show test <name> [--json] [--pretty]`
 - `configure terminal`
 - `connect`
 - `disconnect`
@@ -240,7 +243,7 @@ Config:
 - `device <name>`
 - `device <name> set <field> <value>`
 - `validate config [path]`
-- `bindings show [controllers|bindings|axes] [--json]`
+- `bindings show [controllers|bindings|axes] [--json] [--pretty]`
 - `bindings controller add <name> <type> <port>`
 - `bindings controller set <name> <field> <value>`
 - `bindings controller rename <old> <new>`
@@ -254,7 +257,7 @@ Config:
 - `bindings load <path>`
 - `bindings save <path>`
 - `bindings validate [path]`
-- `can-mappings show [manufacturers|device-types] [--json]`
+- `can-mappings show [manufacturers|device-types] [--json] [--pretty]`
 - `can-mappings manufacturer set <id> <name>`
 - `can-mappings manufacturer delete <id>`
 - `can-mappings device-type set <id> <name>`
@@ -286,7 +289,7 @@ Group:
 - `show`
 - `show members`
 - `show binding`
-- `show <target> [--json]`
+- `show <target> [--json] [--pretty]`
 - `add device <device>`
 - `no device <device>`
 - `member <device> enable`
@@ -306,7 +309,7 @@ Group:
 
 Device:
 - `show`
-- `show <target> [--json]`
+- `show <target> [--json] [--pretty]`
 - `set <field> <value>`
 - `no <field>`
 - `write tests <path>`
@@ -317,11 +320,17 @@ Test:
 - `type button`
 - `type composite`
 - `type deadbandSweep`
+- `type deviceAction`
 - `device add <name>`
 - `no device <name>`
 - `inputSource <controller>.<inputId>`
 - `deadband <value>`
 - `duty <value>`
+- `action toggle_led|set_color`
+- `color #RRGGBB`
+- `pattern solid`
+- `brightness <value>`
+- `duration <seconds>`
 - `rotation limit <value>`
 - `rotation encoderKey <label|internal>`
 - `rotation encoderSource <internal|sparkmax_alt|external>`
@@ -676,7 +685,7 @@ Purpose: Provide a precise EBNF reference for the CLI command language.
 ```
 (* Bridge CLI Grammar (EBNF) *)
 
-line           = ws? command ws? ;
+line           = ws? command ws? [ "?" ] ;
 command        = common
                | exec
                | config
@@ -711,13 +720,13 @@ show_target    = "status"
                | "config" ws "local-raw"
                | "config" ws "dirty"
                | "profiles"
-               | "profile"
+               | "profile" [ ws name ]
                | "tests"
                | "test" ws name ;
 
 show_source    = "robot" | "local" | "both" ;
 show_flags     = show_flag { ws show_flag } ;
-show_flag      = show_source | "--json" ;
+show_flag      = show_source | "--json" | "--pretty" ;
 
 config         = "group" ws name
                | "no" ws "group" ws name
@@ -737,14 +746,42 @@ config         = "group" ws name
                | "device" ws name ws "set" ws field ws value_text
                | "validate" ws "config" [ ws path ]
                | "show" ws show_target [ ws show_flags ]
-               | "bindings" [ ws value_text ]
-               | "can-mappings" [ ws value_text ]
-               | "tests" [ ws value_text ]
+               | "bindings" [ ws bindings_args ]
+               | "can-mappings" [ ws mappings_args ]
+               | "tests" [ ws tests_args ]
                | "write" ws "tests" ws path
                | "test" ws ("set" ws name
                            | "create" ws name
                            | "delete" ws name
                            | name) ;
+
+bindings_args  = "show" [ ws ("controllers" | "bindings" | "axes") ] [ ws show_flags ]
+               | "controller" ws ("add" ws name ws name ws number
+                                   | "set" ws name ws field ws value_text
+                                   | "rename" ws name ws name
+                                   | "list"
+                                   | "no" ws name)
+               | "binding" ws ("add" ws name ws name ws name ws name ws name
+                                | "set" ws number ws field ws value_text
+                                | "delete" ws number)
+               | "axis" ws ("add" ws name ws name ws name ws "invert" ws ("on" | "off") ws "deadband" ws number
+                             | "set" ws number ws field ws value_text
+                             | "delete" ws number)
+               | "load" ws path
+               | "save" ws path
+               | "validate" [ ws path ] ;
+
+mappings_args  = "show" [ ws ("manufacturers" | "device-types") ] [ ws show_flags ]
+               | "manufacturer" ws ("set" ws number ws value_text | "delete" ws number | "no" ws number)
+               | "device-type" ws ("set" ws number ws value_text | "delete" ws number | "no" ws number)
+               | "load" ws path
+               | "save" ws path
+               | "validate" [ ws path ] ;
+
+tests_args     = "templates"
+               | "load" ws path
+               | "load" ws "template" ws name
+               | "save" ;
 
 group          = "show"
                | "show" ws "members"
@@ -768,12 +805,17 @@ device         = "show"
                | "write" ws "tests" ws path ;
 
 test           = "show"
-               | "type" ws ("joystick" | "button" | "composite" | "deadbandSweep")
+               | "type" ws ("joystick" | "button" | "composite" | "deadbandSweep" | "deviceAction")
                | "device" ws "add" ws name
                | "no" ws "device" ws name
                | "inputSource" ws name
                | "deadband" ws number
                | "duty" ws number
+               | "action" ws name
+               | "color" ws name
+               | "pattern" ws name
+               | "brightness" ws number
+               | "duration" ws number
                | "rotation" ws "limit" ws number
                | "rotation" ws ("encoderKey" | "encoderSource") ws name
                | "rotation" ws ("encoderMotorIndex" | "encoderCountsPerRev") ws number
@@ -835,4 +877,5 @@ Purpose: Document the steps to update the CLI grammar and regenerate code.
 5. Commit updated generated files:
    - `tools/can_nt/bridge_cli_grammar_gen.py`
    - `tools/can_nt/bridge_cli_constants_gen.py`
+
 

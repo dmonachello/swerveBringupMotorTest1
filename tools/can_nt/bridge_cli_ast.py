@@ -55,6 +55,7 @@ AST_EXEC_SPEC = {
     "msg_err_show_requires": "ERROR: show requires a target.",
     "msg_err_unknown_show": "ERROR: Unknown show command.",
     "msg_err_unknown_show_source": "ERROR: Unknown show source.",
+    "msg_err_pretty_requires_json": "ERROR: --pretty requires --json.",
     "msg_err_robot_unavailable": "ERROR: Robot source unavailable (not connected).",
     "msg_err_cmd_send": "ERROR: Command failed to send.",
     "msg_err_connect": "ERROR: Failed to connect.",
@@ -380,7 +381,9 @@ class BridgeCliAstExecutor:
     def _ast_group_show(self, ast: CommandAst) -> Optional[int]:
         group = self._cli._modes[-1].group
         if not self._cli._session.is_connected():
-            return self._show_local_ast(SPEC.show_target_group, group, ast.show_json)
+            return self._show_local_ast(
+                SPEC.show_target_group, group, ast.show_json, ast.show_pretty
+            )
         seq = show_group(self._cli._session, group, json_output=ast.show_json)
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_show_group"]):
@@ -549,6 +552,9 @@ class BridgeCliAstExecutor:
         if not target:
             print(AST_EXEC_SPEC["msg_err_show_requires"])
             return None
+        if ast.show_pretty and not ast.show_json:
+            print(AST_EXEC_SPEC["msg_err_pretty_requires_json"])
+            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
         if target == SPEC.show_target_config:
             if ast.show_name:
                 name = ast.show_name.lower()
@@ -572,13 +578,17 @@ class BridgeCliAstExecutor:
         if not source:
             source = SPEC.show_source_robot if self._cli._session.is_connected() else SPEC.show_source_local
         if source == SPEC.show_source_both:
-            local_ok = self._show_local_ast(target, ast.show_name, ast.show_json)
+            local_ok = self._show_local_ast(
+                target, ast.show_name, ast.show_json, ast.show_pretty
+            )
             robot_ok = self._show_robot_ast(target, ast.show_name, ast.show_json)
             if self._cli._batch and (not local_ok or not robot_ok):
                 return AST_EXEC_SPEC["ret_err"]
             return None
         if source == SPEC.show_source_local:
-            if not self._show_local_ast(target, ast.show_name, ast.show_json):
+            if not self._show_local_ast(
+                target, ast.show_name, ast.show_json, ast.show_pretty
+            ):
                 return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
             return None
         if source == SPEC.show_source_robot:
@@ -623,5 +633,9 @@ class BridgeCliAstExecutor:
             return bool(SPEC.bool_false)
         return bool(SPEC.bool_true)
 
-    def _show_local_ast(self, target: str, name: str, json_output: bool) -> bool:
-        return self._cli._show_local(target, [target, name] if name else [target], json_output)
+    def _show_local_ast(
+        self, target: str, name: str, json_output: bool, pretty: bool
+    ) -> bool:
+        return self._cli._show_local(
+            target, [target, name] if name else [target], json_output, pretty
+        )

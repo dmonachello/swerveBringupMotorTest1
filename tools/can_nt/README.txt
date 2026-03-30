@@ -25,6 +25,7 @@ Requirements (Windows Driver Station)
 - NetworkTables client:
     - pyntcore (preferred; NT4)
     - pynetworktables (fallback; older NT2/NT3)
+- prompt_toolkit (enables CLI inline `?` prefill)
 
 Wireshark capture
 - Use --pcap tools\can_nt\logs\run.pcapng

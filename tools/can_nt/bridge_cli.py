@@ -15,6 +15,8 @@ DESCRIPTION
 import json
 import shlex
 import time
+import sys
+import re
 from copy import deepcopy
 from pathlib import Path
 from dataclasses import dataclass
@@ -22,8 +24,9 @@ from typing import Dict, List, Optional
 
 from tools.can_nt.bridge_cmd_tracker import CommandTracker
 from tools.can_nt.bridge_cli_parser import BridgeCliParser, CliParseError
-from tools.can_nt.bridge_cli_ast import BridgeCliAstExecutor
+from tools.can_nt.bridge_cli_ast import BridgeCliAstExecutor, AST_EXEC_SPEC
 from tools.can_nt.bridge_cli_constants import CLI_PARSER_CONST
+from tools.can_nt.bridge_cli_constants_gen import SPEC as PARSER_SPEC
 from tools.can_nt.can_profiles import get_default_profile
 from tools.can_nt.bridge_ops import (
     connect,
@@ -62,10 +65,12 @@ from tools.can_nt.bridge_ops import (
     show_status,
 )
 from tools.can_nt.bridge_session import BridgeEvent, BridgeSession
+from tools.config.schema_store import ConfigSchemaStore, LOCATION_BINDINGS, LOCATION_MAPPINGS
 from tools.common.json_io import read_json, write_json
 from tools.common.profile_io import compute_profiles_hash
 from tools.common.paths import (
     repo_root,
+    logs_dir,
     tests_deploy_path,
     profiles_canonical_path,
     can_mappings_path,
@@ -75,6 +80,7 @@ from tools.common.paths import (
 from tools.common.profile_constants import (
     BRIDGE_CONFIG_SCHEMA_VERSION,
     KEY_BRIDGE_BY_PROFILE,
+    KEY_BRIDGE_CONFIG,
     KEY_BRIDGE_GENERATED_AT,
     KEY_BRIDGE_GROUPS,
     KEY_BRIDGE_SCHEMA_VERSION,
@@ -82,6 +88,7 @@ from tools.common.profile_constants import (
     KEY_DIO,
     KEY_DEFAULT_PROFILE,
     KEY_DEVICE_TYPE,
+    KEY_DEVICES,
     KEY_ID,
     KEY_INTERFACE,
     KEY_INVERT,
@@ -113,6 +120,7 @@ from tools.common.test_authoring import (
     TestAuthoringModel,
     TestBindingButton,
     TestBindingJoystick,
+    DeviceActionModel,
     TestModel,
     TestSetModel,
     TerminationModel,
@@ -123,6 +131,25 @@ from tools.common.test_authoring import (
 )
 from tools.common.test_authoring.device_catalog import load_controller_names, load_profile_devices
 from tools.common.time_utils import timestamp_version
+
+# Optional line editing for Cisco-style '?' prefill.
+MESSAGE_WARN_PROMPT_TOOLKIT = (
+    "WARNING: prompt_toolkit not installed; '?' help cannot prefill the line buffer."
+)
+MESSAGE_WARN_HISTORY_DISABLED = (
+    "WARNING: command history disabled (prompt_toolkit not available)."
+)
+PROMPT_TOOLKIT_AVAILABLE = False
+
+try:
+    from prompt_toolkit import prompt as prompt_toolkit_prompt
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.history import FileHistory
+    PROMPT_TOOLKIT_AVAILABLE = True
+except Exception:
+    prompt_toolkit_prompt = None
+    PromptSession = None
+    FileHistory = None
 
 # Parser selection (comment out one of the two lines below).
 # CLI_PARSER_KIND = CLI_PARSER_CONST["legacy"]
@@ -157,7 +184,19 @@ CMD_SET = "set"
 CMD_TYPE = "type"
 CMD_DEVICE = "device"
 CMD_REGISTRY = "registry"
+CMD_GROUP = "group"
+CMD_CONFIG = "config"
+CMD_LOCAL_RAW = "local-raw"
+CMD_DIRTY = "dirty"
+CMD_PROFILES = "profiles"
 CMD_PROFILE = "profile"
+CMD_CONFIGURE = "configure"
+CMD_TERMINAL = "terminal"
+CMD_ACTION = "action"
+CMD_COLOR = "color"
+CMD_PATTERN = "pattern"
+CMD_BRIGHTNESS = "brightness"
+CMD_DURATION = "duration"
 CMD_ADD = "add"
 CMD_NO = "no"
 CMD_RENAME = "rename"
@@ -177,6 +216,7 @@ CMD_END = "end"
 CMD_BINDINGS = "bindings"
 CMD_CONTROLLER = "controller"
 CMD_BINDING = "binding"
+CMD_BIND = PARSER_SPEC.cmd_bind
 CMD_AXIS = "axis"
 CMD_CAN_MAPPINGS = "can-mappings"
 CMD_MANUFACTURER = "manufacturer"
@@ -186,6 +226,17 @@ CMD_SAVE = "save"
 CMD_TEMPLATES = "templates"
 CMD_TEMPLATE = "template"
 CMD_INFO = "info"
+QUESTION_MARK = "?"
+SUGGESTION_SEPARATOR = " | "
+MESSAGE_NEXT_ARGS_PREFIX = "Next args: "
+MESSAGE_NEXT_ARGS_NONE = "Next args: (none)"
+PLACEHOLDER_NAME = "<name>"
+PLACEHOLDER_PATH = "<path>"
+FLAG_JSON = "--json"
+FLAG_PRETTY = "--pretty"
+JSON_PRETTY_INDENT = 2
+MESSAGE_EMPTY_PROMPT = ""
+HISTORY_FILENAME = "bridge_cli_history.txt"
 
 KEY_DEVICE = "device"
 KEY_NAME = "name"
@@ -225,6 +276,7 @@ KEY_ACTIVE = "active"
 KEY_DEFAULT = "default"
 KEY_AVAILABLE = "available"
 STRING_NONE = "(none)"
+SEP_NEWLINE = "\n"
 
 PROMPT_EXEC = "bridge> "
 PROMPT_EXEC_WITH_PROFILE_FMT = "bridge{suffix}> "
@@ -246,15 +298,23 @@ SHOW_TARGET_SELECTED_DEVICE = "selected-device"
 MESSAGE_ERR_UNKNOWN_SHOW = "ERROR: Unknown show command."
 MESSAGE_ERR_UNKNOWN_SHOW_SOURCE = "ERROR: Unknown show source."
 MESSAGE_ERR_SHOW_REQUIRES_TARGET = "ERROR: show requires a target."
+MESSAGE_ERR_PRETTY_REQUIRES_JSON = "ERROR: --pretty requires --json."
 MESSAGE_ERR_LOCAL_CONFIG_MISSING = "ERROR: Local config not loaded. Use merge/import config <bringup_system.json>."
 MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND = "ERROR: Local device not found."
+MESSAGE_OK_CONFIG_VALID = "OK: Config is valid."
+MESSAGE_ERR_CONFIG_VALIDATE = "ERROR: {message}"
+MESSAGE_STORE_ISSUE = "{location}: {message}"
 MESSAGE_ERR_REGISTRY_NOT_LOADED = "ERROR: Profiles not loaded. Use merge/import config <bringup_system.json>."
 MESSAGE_LOCAL_PROFILES_EMPTY = "Local profiles: (none)"
 MESSAGE_LOCAL_PROFILES_HEADER = "Local profiles:"
 MESSAGE_LOCAL_PROFILE_HEADER = "Local profile:"
+MESSAGE_LOCAL_PROFILE_NAME = "  name={name}"
 MESSAGE_LOCAL_PROFILE_ACTIVE = "  active={name}"
 MESSAGE_LOCAL_PROFILE_DEFAULT = "  default={name}"
 MESSAGE_LOCAL_PROFILE_AVAILABLE = "  available={count}"
+MESSAGE_LOCAL_PROFILE_DEVICES_HEADER = "  devices={count}"
+MESSAGE_LOCAL_PROFILE_DEVICE_FMT = "    {label}"
+MESSAGE_ERR_PROFILE_NOT_FOUND = "ERROR: Profile not found."
 MESSAGE_DIRTY_HEADER = "Local dirty state:"
 MESSAGE_DIRTY_ENTRY = "  {name}={value}"
 MESSAGE_DIRTY_NONE = "  (clean)"
@@ -279,7 +339,7 @@ MESSAGE_MAPPINGS_READ_FAIL = "WARNING: Failed to read CAN mappings: {path}"
 MESSAGE_ERR_BINDINGS_SUBCOMMAND = (
     "ERROR: bindings <show|controller|binding|axis|load|save|validate>"
 )
-MESSAGE_ERR_BINDINGS_SHOW = "ERROR: bindings show [controllers|bindings|axes] [--json]"
+MESSAGE_ERR_BINDINGS_SHOW = "ERROR: bindings show [controllers|bindings|axes] [--json] [--pretty]"
 MESSAGE_ERR_BINDINGS_CONTROLLER_ADD = "ERROR: bindings controller add <name> <type> <port>"
 MESSAGE_ERR_BINDINGS_CONTROLLER_SET = "ERROR: bindings controller set <name> <field> <value>"
 MESSAGE_ERR_BINDINGS_CONTROLLER_RENAME = "ERROR: bindings controller rename <old> <new>"
@@ -324,7 +384,7 @@ MESSAGE_BINDINGS_AXIS_FMT = (
 MESSAGE_ERR_MAPPINGS_SUBCOMMAND = (
     "ERROR: can-mappings <show|manufacturer|device-type|load|save|validate>"
 )
-MESSAGE_ERR_MAPPINGS_SHOW = "ERROR: can-mappings show [manufacturers|device-types] [--json]"
+MESSAGE_ERR_MAPPINGS_SHOW = "ERROR: can-mappings show [manufacturers|device-types] [--json] [--pretty]"
 MESSAGE_ERR_MAPPINGS_SET = "ERROR: {target} set <id> <name>"
 MESSAGE_ERR_MAPPINGS_DELETE = "ERROR: {target} delete <id>"
 MESSAGE_ERR_MAPPINGS_ID = "ERROR: id must be an integer."
@@ -349,7 +409,7 @@ MESSAGE_TESTS_LOADED = "Loaded tests: {path}"
 HELP_SHOW_TEXT = (
     "show <status|groups|group <name>|devices|device <name>|device registry <name>|bindings|"
     "selected-device|runtime-state|config|config local-raw|config dirty|profiles|profile|tests|test <name>> "
-    "[--json] [robot|local|both]\n"
+    "[--json] [--pretty] [robot|local|both]\n"
     "  Defaults: robot if connected, otherwise local."
 )
 MESSAGE_AUTO_MERGE_FAIL = "WARNING: Failed to auto-load default profiles: {path}"
@@ -454,6 +514,15 @@ TEST_TYPE_JOYSTICK = "joystick"
 TEST_TYPE_BUTTON = "button"
 TEST_TYPE_COMPOSITE = "composite"
 TEST_TYPE_DEADBAND_SWEEP = "deadbandSweep"
+TEST_TYPE_DEVICE_ACTION = "deviceAction"
+ACTION_TOGGLE_LED = "toggle_led"
+ACTION_SET_COLOR = "set_color"
+ACTION_ALLOWED = {ACTION_TOGGLE_LED, ACTION_SET_COLOR}
+PATTERN_SOLID = "solid"
+PATTERN_ALLOWED = {PATTERN_SOLID}
+COLOR_PREFIX = "#"
+COLOR_HEX_LEN = 7
+COLOR_HEX_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 TERMINATION_HOLD = "hold"
 TERMINATION_TIME = "time"
@@ -466,6 +535,9 @@ DUTY_MIN = -1.0
 DUTY_MAX = 1.0
 TIME_MIN_SEC = 0.0
 ROTATION_MIN = 0.0
+BRIGHTNESS_MIN = 0.0
+BRIGHTNESS_MAX = 1.0
+DURATION_MIN_SEC = 0.0
 PROMPT_OVERWRITE = "Test '{name}' exists. Overwrite? (y/N): "
 CONFIRM_YES = "y"
 TIME_ON_TIMEOUT_DEFAULT = "fail"
@@ -510,7 +582,9 @@ MESSAGE_ERROR_WITH_TEXT = "ERROR: {message}"
 MESSAGE_ERROR_WITH_TEST = "ERROR: {message} ({test})"
 MESSAGE_WARNING_WITH_TEST = "WARNING: {message} ({test})"
 MESSAGE_ERROR_TEST_MODE = "ERROR: No active test."
-MESSAGE_ERROR_TYPE = "ERROR: type must be joystick, button, composite, or deadbandSweep."
+MESSAGE_ERROR_TYPE = (
+    "ERROR: type must be joystick, button, composite, deadbandSweep, or deviceAction."
+)
 MESSAGE_ERROR_DEVICE_DUP = "WARNING: Device already present."
 MESSAGE_ERROR_INPUT_SOURCE_TYPE = "ERROR: inputSource only valid for joystick/button/composite tests."
 MESSAGE_ERROR_INPUT_SOURCE_VALUE = "ERROR: inputSource requires <controller>.<inputId>."
@@ -520,6 +594,18 @@ MESSAGE_ERROR_DEADBAND_RANGE = "ERROR: deadband must be 0.0 to 1.0."
 MESSAGE_ERROR_DUTY_TYPE = "ERROR: duty only valid for button/composite tests."
 MESSAGE_ERROR_DUTY_NUMBER = "ERROR: duty requires a number."
 MESSAGE_ERROR_DUTY_RANGE = "ERROR: duty must be -1.0 to 1.0."
+MESSAGE_ERROR_ACTION_TYPE = "ERROR: action only valid for deviceAction tests."
+MESSAGE_ERROR_ACTION_REQUIRED = "ERROR: action requires toggle_led or set_color."
+MESSAGE_ERROR_COLOR_TYPE = "ERROR: color only valid for deviceAction tests."
+MESSAGE_ERROR_COLOR_REQUIRED = "ERROR: color requires #RRGGBB."
+MESSAGE_ERROR_PATTERN_TYPE = "ERROR: pattern only valid for deviceAction tests."
+MESSAGE_ERROR_PATTERN_VALUE = "ERROR: pattern must be solid."
+MESSAGE_ERROR_BRIGHTNESS_TYPE = "ERROR: brightness only valid for deviceAction tests."
+MESSAGE_ERROR_BRIGHTNESS_NUMBER = "ERROR: brightness requires a number."
+MESSAGE_ERROR_BRIGHTNESS_RANGE = "ERROR: brightness must be 0.0 to 1.0."
+MESSAGE_ERROR_DURATION_TYPE = "ERROR: duration only valid for deviceAction tests."
+MESSAGE_ERROR_DURATION_NUMBER = "ERROR: duration requires a number."
+MESSAGE_ERROR_DURATION_RANGE = "ERROR: duration must be >= 0."
 MESSAGE_ERROR_TERMINATION = "ERROR: unknown termination type."
 MESSAGE_ERROR_TERMINATION_TIME = "ERROR: termination time requires a number."
 MESSAGE_ERROR_TERMINATION_TIME_RANGE = "ERROR: termination time must be >= 0."
@@ -554,6 +640,11 @@ MESSAGE_TEST_ROTATION = "  rotation: {rotation}"
 MESSAGE_TEST_TIME = "  time: {time}"
 MESSAGE_TEST_HOLD = "  hold: {hold}"
 MESSAGE_TEST_DEADBAND_SWEEP = "  deadbandSweep: {sweep}"
+MESSAGE_TEST_ACTION = "  action: {action}"
+MESSAGE_TEST_COLOR = "  color: {color}"
+MESSAGE_TEST_PATTERN = "  pattern: {pattern}"
+MESSAGE_TEST_BRIGHTNESS = "  brightness: {brightness}"
+MESSAGE_TEST_DURATION = "  durationSec: {duration}"
 
 
 @dataclass
@@ -607,12 +698,18 @@ class BridgeCli:
         self._profiles_dirty: bool = False
         self._groups_dirty: bool = False
         self._tracker = CommandTracker(timeout_sec=2.0, max_retries=0)
+        self._store = ConfigSchemaStore()
         self._tests_model: Optional[TestAuthoringModel] = None
         self._tests_path: Optional[Path] = None
         self._tests_dirty: bool = False
         self._tests_active_set: str = ""
         self._tests_profile: Optional[str] = None
         self._groups_profile: Optional[str] = None
+        self._pending_prompt_text: Optional[str] = None
+        self._use_prompt_toolkit: bool = PROMPT_TOOLKIT_AVAILABLE
+        self._warned_prompt_toolkit: bool = False
+        self._warned_history: bool = False
+        self._prompt_session = self._build_prompt_session()
         self._can_mappings: Optional[Dict[str, Dict[str, str]]] = None
         self._can_mappings_path: Optional[Path] = None
         self._can_mappings_dirty: bool = False
@@ -629,7 +726,23 @@ class BridgeCli:
         while True:
             try:
                 prompt = self._prompt()
-                line = input(prompt)
+                if self._use_prompt_toolkit and self._prompt_session is not None:
+                    if self._pending_prompt_text is not None:
+                        line = self._prompt_session.prompt(prompt, default=self._pending_prompt_text)
+                        self._pending_prompt_text = None
+                    else:
+                        line = self._prompt_session.prompt(prompt)
+                else:
+                    if self._pending_prompt_text is not None:
+                        if not self._warned_prompt_toolkit:
+                            print(MESSAGE_WARN_PROMPT_TOOLKIT)
+                            self._warned_prompt_toolkit = True
+                        sys.stdout.write(self._prompt() + self._pending_prompt_text)
+                        sys.stdout.flush()
+                        self._pending_prompt_text = None
+                        line = input(MESSAGE_EMPTY_PROMPT)
+                    else:
+                        line = input(prompt)
             except EOFError:
                 print()
                 code = self._execute_line("exit")
@@ -648,6 +761,20 @@ class BridgeCli:
                     return 0
                 print("WARNING: Command failed; staying in CLI.")
                 continue
+
+    def _build_prompt_session(self) -> Optional[PromptSession]:
+        """
+        NAME
+            _build_prompt_session - Build a prompt_toolkit session with history.
+        """
+        if not self._use_prompt_toolkit or PromptSession is None or FileHistory is None:
+            if not self._warned_history:
+                print(MESSAGE_WARN_HISTORY_DISABLED)
+                self._warned_history = True
+            return None
+        history_path = logs_dir() / HISTORY_FILENAME
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        return PromptSession(history=FileHistory(str(history_path)))
 
     def run_batch(self, lines: List[str]) -> int:
         """
@@ -775,6 +902,87 @@ class BridgeCli:
             return names[COUNT_ZERO]
         return None
 
+    def _refresh_tests_profile(self, profile_name: Optional[str]) -> None:
+        """
+        NAME
+            _refresh_tests_profile - Sync test profile and device catalog.
+
+        DESCRIPTION
+            Prefer local profiles payload when present so unsaved edits
+            are visible to test validation.
+        """
+
+        if not profile_name:
+            self._tests_profile = None
+            self._tests_device_catalog = {}
+            self._tests_duplicate_labels = set()
+            return
+        self._tests_profile = profile_name
+        payload = self._local_root_payload if isinstance(self._local_root_payload, dict) else None
+        catalog, duplicates = self._catalog_from_payload(payload, profile_name)
+        if catalog:
+            self._tests_device_catalog = catalog
+            self._tests_duplicate_labels = duplicates
+            return
+        try:
+            catalog, duplicates = load_profile_devices(profile_name)
+            self._tests_device_catalog = catalog
+            self._tests_duplicate_labels = duplicates
+        except Exception:
+            self._tests_device_catalog = {}
+            self._tests_duplicate_labels = set()
+
+    def _catalog_from_payload(
+        self, payload: Optional[Dict[str, object]], profile_name: str
+    ) -> tuple[Dict[str, Dict[str, object]], set[str]]:
+        """
+        NAME
+            _catalog_from_payload - Build device catalog from profiles payload.
+
+        DESCRIPTION
+            Returns catalog + duplicate labels using an in-memory payload.
+        """
+
+        catalog: Dict[str, Dict[str, object]] = {}
+        duplicates: set[str] = set()
+        if not payload or not profile_name:
+            return catalog, duplicates
+        profiles = payload.get(KEY_PROFILES)
+        devices = payload.get(KEY_DEVICES)
+        if not isinstance(profiles, dict) or not isinstance(devices, list):
+            return catalog, duplicates
+        profile = profiles.get(profile_name)
+        if not isinstance(profile, dict):
+            return catalog, duplicates
+        labels = profile.get(KEY_PROFILE_DEVICES)
+        if not isinstance(labels, list):
+            return catalog, duplicates
+        registry: Dict[str, Dict[str, object]] = {}
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if not label:
+                continue
+            registry[label.lower()] = entry
+        seen: set[str] = set()
+        for label in labels:
+            if not isinstance(label, str):
+                continue
+            clean = label.strip()
+            if not clean:
+                continue
+            key = clean.lower()
+            if key in seen:
+                duplicates.add(clean)
+                continue
+            seen.add(key)
+            entry = registry.get(key)
+            if entry is None:
+                continue
+            catalog[clean] = dict(entry)
+        return catalog, duplicates
+
     def _local_profile_entry(self, profile_name: str, create: bool = False) -> Dict[str, object]:
         """
         NAME
@@ -868,6 +1076,7 @@ class BridgeCli:
             return False
         self._groups_profile = key
         self._local_profile_entry(key, create=True)
+        self._refresh_tests_profile(key)
         return True
 
     def _require_active_profile(self) -> Optional[str]:
@@ -912,6 +1121,8 @@ class BridgeCli:
         return validate_config_data(config, self._local_root_payload)
 
     def _execute_line(self, line: str) -> Optional[int]:
+        if self._handle_question(line):
+            return None
         try:
             if self._parser_kind == CLI_PARSER_CONST["ebnf"] and self._parser is not None:
                 parsed = self._parser.parse(line, mode=self._modes[-1].name)
@@ -985,6 +1196,298 @@ class BridgeCli:
             return self._test_mode_command(tokens)
         print("ERROR: unknown mode.")
         return None
+
+    def _handle_question(self, line: str) -> bool:
+        """
+        NAME
+            _handle_question - Provide Cisco-style help for trailing '?'.
+
+        DESCRIPTION
+            When a command line ends with '?', display possible next arguments
+            instead of executing the command. This is handled before parsing
+            so the EBNF parser does not see the '?' token.
+        """
+        if QUESTION_MARK not in line:
+            return False
+        tokens = self._split_command(line)
+        if not tokens:
+            return False
+        tokens = self._normalize_question_tokens(tokens)
+        if not tokens or tokens[-1] != QUESTION_MARK:
+            return False
+        base_tokens = tokens[:-1]
+        suggestions = self._suggest_next_args(base_tokens)
+        self._print_next_args(suggestions)
+        self._queue_question_line(base_tokens)
+        return True
+
+    def _normalize_question_tokens(self, tokens: List[str]) -> List[str]:
+        """
+        NAME
+            _normalize_question_tokens - Split a trailing '?' token when attached.
+        """
+        last = tokens[-1]
+        if not last.endswith(QUESTION_MARK):
+            return tokens
+        if last == QUESTION_MARK:
+            return tokens
+        base = last[:-len(QUESTION_MARK)]
+        normalized = tokens[:-1]
+        if base:
+            normalized.append(base)
+        normalized.append(QUESTION_MARK)
+        return normalized
+
+    def _print_next_args(self, suggestions: List[str]) -> None:
+        """
+        NAME
+            _print_next_args - Print suggestion list for '?' help.
+        """
+        if not suggestions:
+            print(MESSAGE_NEXT_ARGS_NONE)
+            return
+        joined = SUGGESTION_SEPARATOR.join(suggestions)
+        print(MESSAGE_NEXT_ARGS_PREFIX + joined)
+
+    def _queue_question_line(self, tokens: List[str]) -> None:
+        """
+        NAME
+            _queue_question_line - Queue the original command line after '?' help.
+        """
+        if not tokens:
+            return
+        line = PARSER_SPEC.space_str.join(tokens) + PARSER_SPEC.space_str
+        self._pending_prompt_text = line
+
+    def _suggest_next_args(self, tokens: List[str]) -> List[str]:
+        """
+        NAME
+            _suggest_next_args - Compute next-argument suggestions.
+        """
+        mode = self._modes[-1].name
+        if not tokens:
+            return self._mode_root_suggestions(mode)
+        cmd = tokens[COUNT_ZERO].lower()
+        if cmd == CMD_SHOW:
+            return self._suggest_show_args(tokens[COUNT_ONE:])
+        if cmd == CMD_CONFIGURE:
+            return self._suggest_configure_args(tokens[COUNT_ONE:])
+        if mode == MODE_CONFIG and cmd == CMD_BINDINGS:
+            return self._suggest_bindings_args(tokens[COUNT_ONE:])
+        if mode == MODE_CONFIG and cmd == CMD_CAN_MAPPINGS:
+            return self._suggest_mappings_args(tokens[COUNT_ONE:])
+        if cmd == CMD_TESTS:
+            return self._suggest_tests_args(tokens[COUNT_ONE:])
+        if mode == MODE_CONFIG and cmd == CMD_TEST:
+            return self._suggest_test_config_args(tokens[COUNT_ONE:])
+        return []
+
+    def _mode_root_suggestions(self, mode: str) -> List[str]:
+        """
+        NAME
+            _mode_root_suggestions - Suggest top-level commands for a mode.
+        """
+        if mode == MODE_CONFIG:
+            return [
+                CMD_SHOW,
+                CMD_GROUP,
+                CMD_NO,
+                CMD_PROFILE,
+                PARSER_SPEC.cmd_selected_device,
+                PARSER_SPEC.cmd_selected_mode,
+                PARSER_SPEC.cmd_merge,
+                PARSER_SPEC.cmd_import,
+                PARSER_SPEC.cmd_export,
+                CMD_SAVE,
+                CMD_RENAME,
+                CMD_DEVICE,
+                CMD_BINDINGS,
+                CMD_CAN_MAPPINGS,
+                CMD_TESTS,
+                CMD_TEST,
+                CMD_WRITE,
+                CMD_VALIDATE,
+            ]
+        if mode == MODE_TEST:
+            return [
+                CMD_SHOW,
+                CMD_TYPE,
+                CMD_DEVICE,
+                CMD_INPUT_SOURCE,
+                CMD_DEADBAND,
+                CMD_DUTY,
+                CMD_TERMINATION,
+                CMD_ACTION,
+                CMD_COLOR,
+                CMD_PATTERN,
+                CMD_BRIGHTNESS,
+                CMD_DURATION,
+            ]
+        if mode == PARSER_SPEC.msg_mode_name_group:
+            return [CMD_SHOW, CMD_ADD, CMD_NO, CMD_BIND, PARSER_SPEC.cmd_enable, PARSER_SPEC.cmd_disable, PARSER_SPEC.cmd_run]
+        if mode == PARSER_SPEC.msg_mode_name_device:
+            return [CMD_SHOW, CMD_SET, CMD_NO]
+        return [
+            CMD_SHOW,
+            PARSER_SPEC.cmd_connect,
+            PARSER_SPEC.cmd_disconnect,
+            PARSER_SPEC.cmd_configure,
+        ]
+
+    def _suggest_show_args(self, tokens: List[str]) -> List[str]:
+        """
+        NAME
+            _suggest_show_args - Suggest next args for show commands.
+        """
+        if not tokens:
+            return self._show_target_suggestions()
+        target = tokens[COUNT_ZERO].lower()
+        if target == CMD_GROUP:
+            if len(tokens) == COUNT_ONE:
+                return [PLACEHOLDER_NAME]
+            if len(tokens) == COUNT_TWO:
+                return self._show_flag_suggestions()
+            return []
+        if target == CMD_DEVICE:
+            if len(tokens) == COUNT_ONE:
+                return [PLACEHOLDER_NAME, CMD_REGISTRY]
+            if len(tokens) == COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_REGISTRY:
+                return [PLACEHOLDER_NAME]
+            if len(tokens) == COUNT_TWO:
+                return self._show_flag_suggestions()
+            if len(tokens) == COUNT_THREE:
+                return self._show_flag_suggestions()
+            return []
+        if target == CMD_CONFIG:
+            if len(tokens) == COUNT_ONE:
+                return [CMD_LOCAL_RAW, CMD_DIRTY] + self._show_flag_suggestions()
+            if len(tokens) == COUNT_TWO and tokens[COUNT_ONE].lower() in (CMD_LOCAL_RAW, CMD_DIRTY):
+                return self._show_flag_suggestions()
+            return self._show_flag_suggestions()
+        if target == CMD_PROFILE:
+            if len(tokens) == COUNT_ONE:
+                return [PLACEHOLDER_NAME] + self._show_flag_suggestions()
+            if len(tokens) == COUNT_TWO:
+                return self._show_flag_suggestions()
+            return []
+        if target == PARSER_SPEC.show_target_test:
+            if len(tokens) == COUNT_ONE:
+                return [PLACEHOLDER_NAME]
+            if len(tokens) == COUNT_TWO:
+                return self._show_flag_suggestions()
+            return []
+        if target in PARSER_SPEC.show_targets:
+            if len(tokens) == COUNT_ONE:
+                return self._show_flag_suggestions()
+            return []
+        return []
+
+    def _show_target_suggestions(self) -> List[str]:
+        """
+        NAME
+            _show_target_suggestions - Suggest show targets.
+        """
+        return [
+            PARSER_SPEC.show_target_status,
+            PARSER_SPEC.show_target_groups,
+            CMD_GROUP + PARSER_SPEC.space_str + PLACEHOLDER_NAME,
+            PARSER_SPEC.show_target_devices,
+            CMD_DEVICE + PARSER_SPEC.space_str + PLACEHOLDER_NAME,
+            CMD_DEVICE + PARSER_SPEC.space_str + CMD_REGISTRY + PARSER_SPEC.space_str + PLACEHOLDER_NAME,
+            PARSER_SPEC.show_target_bindings,
+            PARSER_SPEC.show_target_selected_device,
+            PARSER_SPEC.show_target_runtime_state,
+            CMD_CONFIG,
+            CMD_CONFIG + PARSER_SPEC.space_str + CMD_LOCAL_RAW,
+            CMD_CONFIG + PARSER_SPEC.space_str + CMD_DIRTY,
+            CMD_PROFILES,
+            CMD_PROFILE,
+            CMD_PROFILE + PARSER_SPEC.space_str + PLACEHOLDER_NAME,
+            PARSER_SPEC.show_target_tests,
+            PARSER_SPEC.show_target_test + PARSER_SPEC.space_str + PLACEHOLDER_NAME,
+        ]
+
+    def _show_flag_suggestions(self) -> List[str]:
+        """
+        NAME
+            _show_flag_suggestions - Suggest show flags.
+        """
+        return [
+            PARSER_SPEC.show_source_robot,
+            PARSER_SPEC.show_source_local,
+            PARSER_SPEC.show_source_both,
+            FLAG_JSON,
+            FLAG_PRETTY,
+        ]
+
+    def _suggest_bindings_args(self, tokens: List[str]) -> List[str]:
+        """
+        NAME
+            _suggest_bindings_args - Suggest bindings subcommands.
+        """
+        if not tokens:
+            return [CMD_SHOW, CMD_CONTROLLER, CMD_BINDING, CMD_AXIS, CMD_LOAD, CMD_SAVE, CMD_VALIDATE]
+        sub = tokens[COUNT_ZERO].lower()
+        if sub == CMD_SHOW and len(tokens) == COUNT_ONE:
+            return [BINDINGS_SHOW_CONTROLLERS, BINDINGS_SHOW_BINDINGS, BINDINGS_SHOW_AXES, FLAG_JSON]
+        if sub == CMD_CONTROLLER and len(tokens) == COUNT_ONE:
+            return [CMD_ADD, CMD_SET, CMD_RENAME, CMD_NO]
+        if sub == CMD_BINDING and len(tokens) == COUNT_ONE:
+            return [CMD_ADD, CMD_SET, CMD_DELETE]
+        if sub == CMD_AXIS and len(tokens) == COUNT_ONE:
+            return [CMD_ADD, CMD_SET, CMD_DELETE]
+        if sub in (CMD_LOAD, CMD_SAVE, CMD_VALIDATE) and len(tokens) == COUNT_ONE:
+            return [PLACEHOLDER_PATH]
+        return []
+
+    def _suggest_configure_args(self, tokens: List[str]) -> List[str]:
+        """
+        NAME
+            _suggest_configure_args - Suggest configure subcommands.
+        """
+        if not tokens:
+            return [CMD_TERMINAL]
+        return []
+
+    def _suggest_mappings_args(self, tokens: List[str]) -> List[str]:
+        """
+        NAME
+            _suggest_mappings_args - Suggest can-mappings subcommands.
+        """
+        if not tokens:
+            return [CMD_SHOW, CMD_MANUFACTURER, CMD_DEVICE_TYPE_NAME, CMD_LOAD, CMD_SAVE, CMD_VALIDATE]
+        sub = tokens[COUNT_ZERO].lower()
+        if sub == CMD_SHOW and len(tokens) == COUNT_ONE:
+            return [CMD_MANUFACTURER, CMD_DEVICE_TYPE_NAME, FLAG_JSON]
+        if sub in (CMD_LOAD, CMD_SAVE, CMD_VALIDATE) and len(tokens) == COUNT_ONE:
+            return [PLACEHOLDER_PATH]
+        return []
+
+    def _suggest_tests_args(self, tokens: List[str]) -> List[str]:
+        """
+        NAME
+            _suggest_tests_args - Suggest tests subcommands.
+        """
+        if not tokens:
+            return [CMD_TEMPLATES, CMD_LOAD, CMD_SAVE]
+        sub = tokens[COUNT_ZERO].lower()
+        if sub == CMD_LOAD and len(tokens) == COUNT_ONE:
+            return [PLACEHOLDER_PATH, CMD_TEMPLATE]
+        if sub == CMD_TEMPLATE and len(tokens) == COUNT_ONE:
+            return [PLACEHOLDER_NAME]
+        return []
+
+    def _suggest_test_config_args(self, tokens: List[str]) -> List[str]:
+        """
+        NAME
+            _suggest_test_config_args - Suggest config-mode test subcommands.
+        """
+        if not tokens:
+            return [CMD_SET, CMD_CREATE, CMD_DELETE, PLACEHOLDER_NAME]
+        sub = tokens[COUNT_ZERO].lower()
+        if sub in (CMD_SET, CMD_CREATE, CMD_DELETE) and len(tokens) == COUNT_ONE:
+            return [PLACEHOLDER_NAME]
+        return []
 
     def _is_test_authoring_command(self, tokens: List[str]) -> bool:
         """
@@ -1062,15 +1565,11 @@ class BridgeCli:
                 payload = {}
         self._tests_model = model_from_payload(payload or {})
         self._tests_path = path
+        self._sync_store_tests()
         if not self._tests_profile:
-            self._tests_profile = get_default_profile()
-        try:
-            catalog, duplicates = load_profile_devices(self._tests_profile)
-            self._tests_device_catalog = catalog
-            self._tests_duplicate_labels = duplicates
-        except Exception:
-            self._tests_device_catalog = {}
-            self._tests_duplicate_labels = set()
+            self._refresh_tests_profile(self._active_profile_name() or get_default_profile())
+        else:
+            self._refresh_tests_profile(self._tests_profile)
         default_set = self._tests_model.default_test_set if self._tests_model else EMPTY_STRING
         self._tests_active_set = default_set or DEFAULT_TEST_SET
 
@@ -1172,16 +1671,12 @@ class BridgeCli:
         self._tests_path = path
         self._tests_dirty = False
         if not self._tests_profile:
-            self._tests_profile = get_default_profile()
-        try:
-            catalog, duplicates = load_profile_devices(self._tests_profile)
-            self._tests_device_catalog = catalog
-            self._tests_duplicate_labels = duplicates
-        except Exception:
-            self._tests_device_catalog = {}
-            self._tests_duplicate_labels = set()
+            self._refresh_tests_profile(self._active_profile_name() or get_default_profile())
+        else:
+            self._refresh_tests_profile(self._tests_profile)
         default_set = model.default_test_set if model else EMPTY_STRING
         self._tests_active_set = default_set or DEFAULT_TEST_SET
+        self._sync_store_tests()
         return True
 
     def _ensure_bindings_loaded(self) -> bool:
@@ -1220,6 +1715,7 @@ class BridgeCli:
         self._bindings_payload = payload
         self._bindings_path = path
         self._bindings_dirty = False
+        self._sync_store_bindings()
         if announce:
             print(MESSAGE_INFO_BINDINGS_LOADED.format(path=path))
         return True
@@ -1245,6 +1741,7 @@ class BridgeCli:
             return EXIT_CODE_ERROR if self._batch else None
         self._bindings_dirty = False
         self._bindings_path = path
+        self._sync_store_bindings()
         print(MESSAGE_INFO_BINDINGS_SAVED.format(path=path))
         return None
 
@@ -1257,7 +1754,9 @@ class BridgeCli:
         if not isinstance(self._bindings_payload, dict):
             print(MESSAGE_ERR_BINDINGS_LOAD.format(path=EMPTY_STRING))
             return None
-        _source, cleaned, json_output = self._parse_show_flags(tokens)
+        _source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens)
+        if not ok:
+            return 2 if self._batch else None
         target = cleaned[COUNT_ZERO].lower() if cleaned else EMPTY_STRING
         controllers = self._bindings_payload.get(KEY_CONTROLLERS, [])
         bindings = self._bindings_payload.get(KEY_BINDINGS, [])
@@ -1265,15 +1764,15 @@ class BridgeCli:
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             if target == BINDINGS_SHOW_CONTROLLERS:
-                print(json.dumps({KEY_CONTROLLERS: controllers}))
+                print(self._dump_json({KEY_CONTROLLERS: controllers}, pretty))
                 return None
             if target == BINDINGS_SHOW_BINDINGS:
-                print(json.dumps({KEY_BINDINGS: bindings}))
+                print(self._dump_json({KEY_BINDINGS: bindings}, pretty))
                 return None
             if target == BINDINGS_SHOW_AXES:
-                print(json.dumps({KEY_AXES: axes}))
+                print(self._dump_json({KEY_AXES: axes}, pretty))
                 return None
-            print(json.dumps(self._bindings_payload))
+            print(self._dump_json(self._bindings_payload, pretty))
             return None
         if target and target not in BINDINGS_SHOW_TARGETS:
             print(MESSAGE_ERR_BINDINGS_SHOW)
@@ -1621,10 +2120,12 @@ class BridgeCli:
                 print(MESSAGE_ERR_BINDINGS_VALIDATE.format(message=EMPTY_STRING))
                 return EXIT_CODE_ERROR if self._batch else None
             payload = loaded
-        errors = self._validate_bindings_payload(payload or {})
+        self._store.set_bindings_payload(payload or {})
+        result = self._store.validate_bindings_only(strict=True)
+        errors = [issue for issue in result.errors() if issue.location == LOCATION_BINDINGS]
         if errors:
-            for message in errors:
-                print(MESSAGE_ERR_BINDINGS_VALIDATE.format(message=message))
+            message = self._format_store_errors(errors)
+            print(MESSAGE_ERR_BINDINGS_VALIDATE.format(message=message))
             return EXIT_CODE_ERROR if self._batch else None
         print(AST_EXEC_SPEC["msg_ok_config"])
         return None
@@ -1819,6 +2320,7 @@ class BridgeCli:
         }
         self._can_mappings_path = path
         self._can_mappings_dirty = False
+        self._sync_store_mappings()
         print(MESSAGE_INFO_MAPPINGS_LOADED.format(path=path))
         return None
 
@@ -1842,6 +2344,7 @@ class BridgeCli:
             return EXIT_CODE_ERROR if self._batch else None
         self._can_mappings_dirty = False
         self._can_mappings_path = path
+        self._sync_store_mappings()
         print(MESSAGE_INFO_MAPPINGS_SAVED.format(path=path))
         return None
 
@@ -1854,19 +2357,21 @@ class BridgeCli:
         if not isinstance(self._can_mappings, dict):
             print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=EMPTY_STRING))
             return None
-        _source, cleaned, json_output = self._parse_show_flags(tokens)
+        _source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens)
+        if not ok:
+            return 2 if self._batch else None
         target = cleaned[COUNT_ZERO].lower() if cleaned else EMPTY_STRING
         manufacturers = self._can_mappings.get(KEY_MANUFACTURERS, {})
         device_types = self._can_mappings.get(KEY_DEVICE_TYPES, {})
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             if target == MAPPINGS_SHOW_MANUFACTURERS:
-                print(json.dumps({KEY_MANUFACTURERS: manufacturers}))
+                print(self._dump_json({KEY_MANUFACTURERS: manufacturers}, pretty))
                 return None
             if target == MAPPINGS_SHOW_DEVICE_TYPES:
-                print(json.dumps({KEY_DEVICE_TYPES: device_types}))
+                print(self._dump_json({KEY_DEVICE_TYPES: device_types}, pretty))
                 return None
-            print(json.dumps(self._can_mappings))
+            print(self._dump_json(self._can_mappings, pretty))
             return None
         if target and target not in MAPPINGS_SHOW_TARGETS:
             print(MESSAGE_ERR_MAPPINGS_SHOW)
@@ -1952,10 +2457,12 @@ class BridgeCli:
                 print(MESSAGE_ERR_MAPPINGS_VALIDATE.format(message=EMPTY_STRING))
                 return EXIT_CODE_ERROR if self._batch else None
             payload = loaded
-        errors = self._validate_mappings_payload(payload or {})
+        self._store.set_mappings_payload(payload or {})
+        result = self._store.validate_mappings_only(strict=True)
+        errors = [issue for issue in result.errors() if issue.location == LOCATION_MAPPINGS]
         if errors:
-            for message in errors:
-                print(MESSAGE_ERR_MAPPINGS_VALIDATE.format(message=message))
+            message = self._format_store_errors(errors)
+            print(MESSAGE_ERR_MAPPINGS_VALIDATE.format(message=message))
             return EXIT_CODE_ERROR if self._batch else None
         print(AST_EXEC_SPEC["msg_ok_config"])
         return None
@@ -2076,6 +2583,7 @@ class BridgeCli:
                 TEST_TYPE_BUTTON: TEST_TYPE_BUTTON,
                 TEST_TYPE_COMPOSITE: TEST_TYPE_COMPOSITE,
                 TEST_TYPE_DEADBAND_SWEEP.lower(): TEST_TYPE_DEADBAND_SWEEP,
+                TEST_TYPE_DEVICE_ACTION.lower(): TEST_TYPE_DEVICE_ACTION,
             }
             if kind not in kind_map:
                 print(MESSAGE_ERROR_TYPE)
@@ -2085,15 +2593,23 @@ class BridgeCli:
                 test.joystick = test.joystick or TestBindingJoystick()
                 test.button = None
                 test.deadband_sweep = None
+                test.device_action = None
             elif test.test_type == TEST_TYPE_DEADBAND_SWEEP:
                 from tools.common.test_authoring.model import DeadbandSweepModel
                 test.deadband_sweep = test.deadband_sweep or DeadbandSweepModel()
                 test.joystick = None
                 test.button = None
+                test.device_action = None
+            elif test.test_type == TEST_TYPE_DEVICE_ACTION:
+                test.device_action = test.device_action or DeviceActionModel()
+                test.joystick = None
+                test.button = None
+                test.deadband_sweep = None
             else:
                 test.button = test.button or TestBindingButton()
                 test.joystick = None
                 test.deadband_sweep = None
+                test.device_action = None
             self._tests_dirty = True
             return None
         if cmd == CMD_DEVICE and len(tokens) >= 3 and tokens[1].lower() == CMD_ADD:
@@ -2160,6 +2676,74 @@ class BridgeCli:
                 return None
             test.button = test.button or TestBindingButton()
             test.button.duty = value
+            self._tests_dirty = True
+            return None
+        if cmd == CMD_ACTION and len(tokens) >= 2:
+            if test.test_type != TEST_TYPE_DEVICE_ACTION:
+                print(MESSAGE_ERROR_ACTION_TYPE)
+                return None
+            action = tokens[1].lower()
+            if action not in ACTION_ALLOWED:
+                print(MESSAGE_ERROR_ACTION_REQUIRED)
+                return None
+            test.device_action = test.device_action or DeviceActionModel()
+            test.device_action.action = action
+            self._tests_dirty = True
+            return None
+        if cmd == CMD_COLOR and len(tokens) >= 2:
+            if test.test_type != TEST_TYPE_DEVICE_ACTION:
+                print(MESSAGE_ERROR_COLOR_TYPE)
+                return None
+            value = tokens[1]
+            if not COLOR_HEX_PATTERN.match(value):
+                print(MESSAGE_ERROR_COLOR_REQUIRED)
+                return None
+            test.device_action = test.device_action or DeviceActionModel()
+            test.device_action.color = value
+            self._tests_dirty = True
+            return None
+        if cmd == CMD_PATTERN and len(tokens) >= 2:
+            if test.test_type != TEST_TYPE_DEVICE_ACTION:
+                print(MESSAGE_ERROR_PATTERN_TYPE)
+                return None
+            value = tokens[1].lower()
+            if value not in PATTERN_ALLOWED:
+                print(MESSAGE_ERROR_PATTERN_VALUE)
+                return None
+            test.device_action = test.device_action or DeviceActionModel()
+            test.device_action.pattern = value
+            self._tests_dirty = True
+            return None
+        if cmd == CMD_BRIGHTNESS and len(tokens) >= 2:
+            if test.test_type != TEST_TYPE_DEVICE_ACTION:
+                print(MESSAGE_ERROR_BRIGHTNESS_TYPE)
+                return None
+            try:
+                value = float(tokens[1])
+            except ValueError:
+                print(MESSAGE_ERROR_BRIGHTNESS_NUMBER)
+                return None
+            if value < BRIGHTNESS_MIN or value > BRIGHTNESS_MAX:
+                print(MESSAGE_ERROR_BRIGHTNESS_RANGE)
+                return None
+            test.device_action = test.device_action or DeviceActionModel()
+            test.device_action.brightness = value
+            self._tests_dirty = True
+            return None
+        if cmd == CMD_DURATION and len(tokens) >= 2:
+            if test.test_type != TEST_TYPE_DEVICE_ACTION:
+                print(MESSAGE_ERROR_DURATION_TYPE)
+                return None
+            try:
+                value = float(tokens[1])
+            except ValueError:
+                print(MESSAGE_ERROR_DURATION_NUMBER)
+                return None
+            if value < DURATION_MIN_SEC:
+                print(MESSAGE_ERROR_DURATION_RANGE)
+                return None
+            test.device_action = test.device_action or DeviceActionModel()
+            test.device_action.duration_sec = value
             self._tests_dirty = True
             return None
         if cmd == CMD_TERMINATION and len(tokens) >= 2:
@@ -2392,12 +2976,14 @@ class BridgeCli:
         """
 
         self._ensure_tests_loaded()
-        source, cleaned, json_output = self._parse_show_flags(tokens[1:])
+        source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens[1:])
+        if not ok:
+            return 2 if self._batch else None
         if source:
             pass
         if len(cleaned) >= 1 and cleaned[0].lower() == CMD_TESTS:
             if json_output:
-                self._print_tests_json()
+                self._print_tests_json(pretty)
                 return None
             self._print_tests()
             return None
@@ -2408,7 +2994,7 @@ class BridgeCli:
                 print(MESSAGE_ERROR_TEST_NOT_FOUND)
                 return None
             if json_output:
-                self._print_test_json(test)
+                self._print_test_json(test, pretty)
                 return None
             self._print_test(test)
             return None
@@ -2429,7 +3015,13 @@ class BridgeCli:
         model = self._tests_model or TestAuthoringModel()
         profile = self._tests_profile
         controller_names = load_controller_names()
-        result = validate_model(model, profile_name=profile, controller_names=controller_names)
+        result = validate_model(
+            model,
+            profile_name=profile,
+            controller_names=controller_names,
+            device_catalog=self._tests_device_catalog,
+            duplicate_labels=self._tests_duplicate_labels,
+        )
         if not result.ok():
             for issue in result.errors:
                 test_name = issue.test_name or GLOBAL_LABEL
@@ -2451,6 +3043,7 @@ class BridgeCli:
         payload = model_to_payload(model)
         write_tests_payload(path, payload)
         self._tests_dirty = False
+        self._sync_store_tests()
         print(MESSAGE_WROTE_TESTS.format(path=path))
         return None
 
@@ -2521,7 +3114,7 @@ class BridgeCli:
                 )
             )
 
-    def _print_tests_json(self) -> None:
+    def _print_tests_json(self, pretty: bool) -> None:
         """
         NAME
             _print_tests_json - Render tests as JSON payload.
@@ -2533,7 +3126,7 @@ class BridgeCli:
             test_sets={test_set.name: test_set},
         )
         payload = model_to_payload(model)
-        print(json.dumps(payload))
+        print(self._dump_json(payload, pretty))
 
     def _print_test(self, test: TestModel) -> None:
         """
@@ -2550,7 +3143,7 @@ class BridgeCli:
         if test.input_source:
             print(MESSAGE_TEST_INPUT_SOURCE.format(source=test.input_source))
         else:
-            print(MESSAGE_TEST_INPUT_SOURCE.format(source="(none)"))
+            print(MESSAGE_TEST_INPUT_SOURCE.format(source=STRING_NONE))
         if test.test_type == TEST_TYPE_JOYSTICK and test.joystick:
             print(MESSAGE_TEST_DEADBAND.format(deadband=test.joystick.deadband))
         if test.test_type in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE) and test.button:
@@ -2582,8 +3175,24 @@ class BridgeCli:
                 print(MESSAGE_TEST_LIMIT_SWITCH.format(limit=term.limit_switch))
         if test.test_type == TEST_TYPE_DEADBAND_SWEEP and test.deadband_sweep:
             print(MESSAGE_TEST_DEADBAND_SWEEP.format(sweep=test.deadband_sweep))
+        if test.test_type == TEST_TYPE_DEVICE_ACTION:
+            device_action = test.device_action or DeviceActionModel()
+            action = device_action.action or STRING_NONE
+            color = device_action.color or STRING_NONE
+            pattern = device_action.pattern or STRING_NONE
+            brightness = (
+                device_action.brightness if device_action.brightness is not None else STRING_NONE
+            )
+            duration = (
+                device_action.duration_sec if device_action.duration_sec is not None else STRING_NONE
+            )
+            print(MESSAGE_TEST_ACTION.format(action=action))
+            print(MESSAGE_TEST_COLOR.format(color=color))
+            print(MESSAGE_TEST_PATTERN.format(pattern=pattern))
+            print(MESSAGE_TEST_BRIGHTNESS.format(brightness=brightness))
+            print(MESSAGE_TEST_DURATION.format(duration=duration))
 
-    def _print_test_json(self, test: TestModel) -> None:
+    def _print_test_json(self, test: TestModel, pretty: bool) -> None:
         """
         NAME
             _print_test_json - Render a single test as JSON payload.
@@ -2601,7 +3210,7 @@ class BridgeCli:
         if isinstance(tests_payload, dict):
             entries = tests_payload.get(test_set.name, []) or []
         entry = entries[COUNT_ZERO] if isinstance(entries, list) and entries else {}
-        print(json.dumps({KEY_TEST_SET: test_set.name, KEY_TEST: entry}))
+        print(self._dump_json({KEY_TEST_SET: test_set.name, KEY_TEST: entry}, pretty))
 
     def _exec_command(self, tokens: List[str]) -> Optional[int]:
         cmd = tokens[0].lower()
@@ -2753,11 +3362,14 @@ class BridgeCli:
                 if not self._local_config:
                     print("ERROR: Local config not loaded. Use merge/import config <path> first.")
                     return 2 if self._batch else None
-                ok, message = validate_config_data(self._local_config, self._local_root_payload)
+                self._sync_store_from_local()
+                result = self._store.validate_profiles_only(strict=True)
+                ok = result.ok()
+                message = self._format_store_errors(result.errors())
             if ok:
-                print("OK: Config is valid.")
+                print(MESSAGE_OK_CONFIG_VALID)
                 return None
-            print(f"ERROR: {message}")
+            print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
             return 2 if self._batch else None
         if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == "config":
             result = save_config(self._session, tokens[2], self._active_profile_name())
@@ -2851,6 +3463,8 @@ class BridgeCli:
         if not self._session.is_connected():
             return self._group_command_local(tokens, group)
         if cmd == "show":
+            if not self._validate_pretty_flag(tokens):
+                return EXIT_CODE_ERROR if self._batch else None
             if len(tokens) == 1:
                 seq = show_group(self._session, group, json_output=self._has_json(tokens))
                 event = self._wait_for_seq(seq)
@@ -2984,7 +3598,9 @@ class BridgeCli:
         if not tokens:
             print(MESSAGE_ERR_SHOW_REQUIRES_TARGET)
             return None
-        source, tokens, json_output = self._parse_show_flags(tokens)
+        source, tokens, json_output, pretty, ok = self._parse_show_flags(tokens)
+        if not ok:
+            return 2 if self._batch else None
         if not tokens:
             print(MESSAGE_ERR_SHOW_REQUIRES_TARGET)
             return None
@@ -3007,13 +3623,13 @@ class BridgeCli:
         if target in (SHOW_TARGET_CONFIG_RAW, SHOW_TARGET_CONFIG_DIRTY):
             source = "local"
         if source == "both":
-            local_ok = self._show_local(target, tokens, json_output)
+            local_ok = self._show_local(target, tokens, json_output, pretty)
             robot_ok = self._show_robot(target, tokens, json_output)
             if self._batch and (not local_ok or not robot_ok):
                 return 2
             return None
         if source == "local":
-            if not self._show_local(target, tokens, json_output):
+            if not self._show_local(target, tokens, json_output, pretty):
                 return EXIT_CODE_ERROR if self._batch else None
             return None
         if source == "robot":
@@ -3068,6 +3684,7 @@ class BridgeCli:
             self._profiles_dirty = False
             self._groups_dirty = False
             self._sync_group_profile()
+            self._sync_store_from_local()
         if not self._session.is_connected():
             print("WARNING: Robot not connected; local config loaded only.")
             return None
@@ -3260,6 +3877,13 @@ class BridgeCli:
     def _has_json(tokens: List[str]) -> bool:
         return any(tok == "--json" for tok in tokens)
 
+    @staticmethod
+    def _validate_pretty_flag(tokens: List[str]) -> bool:
+        if FLAG_PRETTY in tokens and FLAG_JSON not in tokens:
+            print(MESSAGE_ERR_PRETTY_REQUIRES_JSON)
+            return False
+        return True
+
     def _pop_mode(self) -> None:
         if len(self._modes) > 1:
             self._modes.pop()
@@ -3326,7 +3950,7 @@ class BridgeCli:
                     "  Validate devices vs groups in a config file, or the local config if omitted."
                 ),
                 "bindings": (
-                    "bindings show [controllers|bindings|axes] [--json]\n"
+                    "bindings show [controllers|bindings|axes] [--json] [--pretty]\n"
                     "bindings controller add <name> <type> <port>\n"
                     "bindings controller set <name> <field> <value>\n"
                     "bindings controller rename <old> <new>\n"
@@ -3342,7 +3966,7 @@ class BridgeCli:
                     "bindings validate [path]"
                 ),
                 "can-mappings": (
-                    "can-mappings show [manufacturers|device-types] [--json]\n"
+                    "can-mappings show [manufacturers|device-types] [--json] [--pretty]\n"
                     "can-mappings manufacturer set <id> <name>\n"
                     "can-mappings manufacturer delete <id>\n"
                     "can-mappings device-type set <id> <name>\n"
@@ -3371,7 +3995,7 @@ class BridgeCli:
                 "enable": "enable\n  Enable current group.",
                 "disable": "disable\n  Disable current group.",
                 "run test": "run test [name]\n  Run a test in the current group.",
-                "json": "append --json to show commands for JSON output",
+                "json": "append --json to show commands for JSON output; add --pretty for pretty JSON",
                 "sources": "append robot|local|both to show commands to select source",
                 "batch": "use --batch --script <file> (no prompts, conflict policy applies)",
                 "conflict-policy": "set with --conflict-policy <error|move>",
@@ -3396,14 +4020,18 @@ class BridgeCli:
             "Tips: help show | help sources | help group | help batch | help json"
         )
 
-    def _parse_show_flags(self, tokens: List[str]) -> tuple[str, List[str], bool]:
+    def _parse_show_flags(self, tokens: List[str]) -> tuple[str, List[str], bool, bool, bool]:
         source = ""
         cleaned: List[str] = []
         json_output = False
+        pretty = False
         for tok in tokens:
             lower = tok.lower()
             if lower in ("--json",):
                 json_output = True
+                continue
+            if lower in ("--pretty",):
+                pretty = True
                 continue
             if lower in ("robot", "--robot"):
                 source = "robot"
@@ -3417,7 +4045,20 @@ class BridgeCli:
             cleaned.append(tok)
         if not source:
             source = "robot" if self._session.is_connected() else "local"
-        return source, cleaned, json_output
+        if pretty and not json_output:
+            print(MESSAGE_ERR_PRETTY_REQUIRES_JSON)
+            return source, cleaned, False, False, False
+        return source, cleaned, json_output, pretty, True
+
+    @staticmethod
+    def _dump_json(payload: object, pretty: bool) -> str:
+        """
+        NAME
+            _dump_json - Serialize JSON with optional pretty formatting.
+        """
+        if pretty:
+            return json.dumps(payload, indent=JSON_PRETTY_INDENT)
+        return json.dumps(payload)
 
     def _show_robot(self, target: str, tokens: List[str], json_output: bool) -> bool:
         if not self._session.is_connected():
@@ -3451,21 +4092,24 @@ class BridgeCli:
             return False
         return True
 
-    def _show_local(self, target: str, tokens: List[str], json_output: bool) -> bool:
+    def _show_local(
+        self, target: str, tokens: List[str], json_output: bool, pretty: bool
+    ) -> bool:
         if not self._local_config:
             print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return False
         if target == SHOW_TARGET_CONFIG_RAW:
-            return self._show_local_config_raw(json_output)
+            return self._show_local_config_raw(json_output, pretty)
         if target == SHOW_TARGET_CONFIG_DIRTY:
-            return self._show_local_config_dirty(json_output)
+            return self._show_local_config_dirty(json_output, pretty)
         if target == SHOW_TARGET_PROFILES:
-            return self._show_local_profiles(json_output)
+            return self._show_local_profiles(json_output, pretty)
         if target == SHOW_TARGET_PROFILE:
-            return self._show_local_profile(json_output)
+            name = tokens[1] if len(tokens) >= 2 else ""
+            return self._show_local_profile(name, json_output, pretty)
         if target == SHOW_TARGET_DEVICE_REGISTRY:
             name = tokens[1] if len(tokens) >= 2 else ""
-            return self._show_local_registry_device(name, json_output)
+            return self._show_local_registry_device(name, json_output, pretty)
         profile = self._active_profile_name()
         if not profile:
             print(MESSAGE_ERR_PROFILE_REQUIRED)
@@ -3486,7 +4130,7 @@ class BridgeCli:
         def _print_local(payload_text: str, payload_json: Optional[Dict[str, object]]) -> None:
             print(MESSAGE_SOURCE_LOCAL)
             if json_output and payload_json is not None:
-                print(json.dumps(payload_json))
+                print(self._dump_json(payload_json, pretty))
             else:
                 print(payload_text.rstrip())
 
@@ -3679,7 +4323,7 @@ class BridgeCli:
         print("ERROR: Unknown show command.")
         return False
 
-    def _show_local_config_dirty(self, json_output: bool) -> bool:
+    def _show_local_config_dirty(self, json_output: bool, pretty: bool) -> bool:
         """
         NAME
             _show_local_config_dirty - Show local dirty flags.
@@ -3688,7 +4332,7 @@ class BridgeCli:
         dirty = self._dirty_state()
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
-            print(json.dumps({KEY_DIRTY: dirty}))
+            print(self._dump_json({KEY_DIRTY: dirty}, pretty))
             return True
         print(MESSAGE_DIRTY_HEADER)
         any_dirty = False
@@ -3701,7 +4345,7 @@ class BridgeCli:
             print(MESSAGE_DIRTY_NONE)
         return True
 
-    def _show_local_profiles(self, json_output: bool) -> bool:
+    def _show_local_profiles(self, json_output: bool, pretty: bool) -> bool:
         """
         NAME
             _show_local_profiles - Show available profile names.
@@ -3717,7 +4361,7 @@ class BridgeCli:
         names = sorted([name for name in profiles.keys() if isinstance(name, str)])
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
-            print(json.dumps({KEY_PROFILES: names}))
+            print(self._dump_json({KEY_PROFILES: names}, pretty))
             return True
         if not names:
             print(MESSAGE_LOCAL_PROFILES_EMPTY)
@@ -3727,25 +4371,40 @@ class BridgeCli:
             print(f"  {name}")
         return True
 
-    def _show_local_profile(self, json_output: bool) -> bool:
+    def _show_local_profile(self, name: str, json_output: bool, pretty: bool) -> bool:
         """
         NAME
-            _show_local_profile - Show the active/default profile names.
+            _show_local_profile - Show profile summary info.
         """
-        active = self._active_profile_name() or ""
-        default_profile = self._default_profile_name() or ""
         payload = self._local_root_payload
         profiles = payload.get(KEY_PROFILES) if isinstance(payload, dict) else {}
         names = [name for name in profiles.keys() if isinstance(name, str)] if isinstance(profiles, dict) else []
+        active = self._active_profile_name() or ""
+        default_profile = self._default_profile_name() or ""
+        selected = name.strip() if name else ""
+        if selected:
+            if not isinstance(profiles, dict) or selected not in profiles:
+                print(MESSAGE_ERR_PROFILE_NOT_FOUND)
+                return False
+            profile = profiles.get(selected)
+            labels = profile.get(KEY_PROFILE_DEVICES) if isinstance(profile, dict) else []
+            device_labels = [label for label in labels if isinstance(label, str)]
+            output = {KEY_PROFILE: selected, KEY_PROFILE_DEVICES: sorted(device_labels)}
+            print(MESSAGE_SOURCE_LOCAL)
+            if json_output:
+                print(self._dump_json(output, pretty))
+                return True
+            print(MESSAGE_LOCAL_PROFILE_HEADER)
+            print(MESSAGE_LOCAL_PROFILE_NAME.format(name=selected))
+            print(MESSAGE_LOCAL_PROFILE_DEVICES_HEADER.format(count=len(device_labels)))
+            for label in device_labels:
+                print(MESSAGE_LOCAL_PROFILE_DEVICE_FMT.format(label=label))
+            return True
         count = len(names)
-        output = {
-            KEY_ACTIVE: active,
-            KEY_DEFAULT: default_profile,
-            KEY_AVAILABLE: sorted(names),
-        }
+        output = {KEY_ACTIVE: active, KEY_DEFAULT: default_profile, KEY_AVAILABLE: sorted(names)}
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
-            print(json.dumps({KEY_PROFILE_INFO: output}))
+            print(self._dump_json({KEY_PROFILE_INFO: output}, pretty))
             return True
         print(MESSAGE_LOCAL_PROFILE_HEADER)
         print(MESSAGE_LOCAL_PROFILE_ACTIVE.format(name=active or STRING_NONE))
@@ -3753,7 +4412,7 @@ class BridgeCli:
         print(MESSAGE_LOCAL_PROFILE_AVAILABLE.format(count=count))
         return True
 
-    def _show_local_config_raw(self, json_output: bool) -> bool:
+    def _show_local_config_raw(self, json_output: bool, pretty: bool) -> bool:
         """
         NAME
             _show_local_config_raw - Show raw local bridgeConfig content.
@@ -3764,10 +4423,10 @@ class BridgeCli:
         payload = self._ordered_bridge_config(self._local_config, include_devices=True)
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
-            print(json.dumps(payload))
+            print(self._dump_json(payload, pretty))
             return True
         print(MESSAGE_LOCAL_CONFIG_RAW)
-        print(json.dumps(payload, indent=2))
+        print(json.dumps(payload, indent=JSON_PRETTY_INDENT))
         return True
 
     def _group_command_local(self, tokens: List[str], group: str) -> Optional[int]:
@@ -4382,7 +5041,7 @@ class BridgeCli:
         print(MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND)
         return None
 
-    def _show_local_registry_device(self, name: str, json_output: bool) -> bool:
+    def _show_local_registry_device(self, name: str, json_output: bool, pretty: bool) -> bool:
         """
         NAME
             _show_local_registry_device - Print device registry entry details.
@@ -4398,7 +5057,7 @@ class BridgeCli:
         payload = {KEY_DEVICE: entry}
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
-            print(json.dumps(payload))
+            print(self._dump_json(payload, pretty))
             return True
         lines = [MESSAGE_LOCAL_REGISTRY_DEVICE.format(label=label)]
         mappings = self._load_can_mappings()
@@ -4458,6 +5117,7 @@ class BridgeCli:
         }
         self._can_mappings_path = path
         self._can_mappings_dirty = False
+        self._sync_store_mappings()
         return self._can_mappings
 
     def _parse_bool(self, value_raw: str) -> Optional[bool]:
@@ -4523,6 +5183,14 @@ class BridgeCli:
             _dirty_state - Return local dirty flags.
         """
 
+        return self._current_dirty_flags()
+
+    def _current_dirty_flags(self) -> Dict[str, bool]:
+        """
+        NAME
+            _current_dirty_flags - Build current dirty flags map.
+        """
+
         return {
             KEY_GROUPS: bool(self._groups_dirty),
             KEY_PROFILES: bool(self._profiles_dirty),
@@ -4530,6 +5198,64 @@ class BridgeCli:
             DIRTY_BINDINGS: bool(self._bindings_dirty),
             DIRTY_CAN_MAPPINGS: bool(self._can_mappings_dirty),
         }
+
+    def _sync_store_from_local(self) -> None:
+        """
+        NAME
+            _sync_store_from_local - Sync CLI state into the config store.
+        """
+
+        if self._local_root_payload is not None:
+            payload = dict(self._local_root_payload)
+            if isinstance(self._local_config, dict):
+                payload[KEY_BRIDGE_CONFIG] = self._ordered_bridge_config(
+                    self._local_config, include_devices=False
+                )
+            self._store.set_profiles_payload(payload)
+        self._sync_store_tests()
+        self._sync_store_bindings()
+        self._sync_store_mappings()
+        self._store.set_dirty_flags(self._current_dirty_flags())
+
+    def _sync_store_tests(self) -> None:
+        """
+        NAME
+            _sync_store_tests - Sync tests model into the store.
+        """
+
+        if self._tests_model is not None:
+            self._store.set_tests_model(self._tests_model)
+
+    def _sync_store_bindings(self) -> None:
+        """
+        NAME
+            _sync_store_bindings - Sync bindings payload into the store.
+        """
+
+        if isinstance(self._bindings_payload, dict):
+            self._store.set_bindings_payload(self._bindings_payload)
+
+    def _sync_store_mappings(self) -> None:
+        """
+        NAME
+            _sync_store_mappings - Sync CAN mappings payload into the store.
+        """
+
+        if isinstance(self._can_mappings, dict):
+            self._store.set_mappings_payload(self._can_mappings)
+
+    def _format_store_errors(self, issues: List[object]) -> str:
+        """
+        NAME
+            _format_store_errors - Format store validation errors.
+        """
+
+        lines: List[str] = []
+        for issue in issues:
+            location = getattr(issue, "location", EMPTY_STRING)
+            message = getattr(issue, "message", EMPTY_STRING)
+            lines.append(MESSAGE_STORE_ISSUE.format(location=location, message=message))
+        return SEP_NEWLINE.join(lines)
 
     def _save_profiles(self, path: str) -> bool:
         """
@@ -4556,6 +5282,7 @@ class BridgeCli:
             return False
         self._profiles_dirty = False
         self._groups_dirty = False
+        self._sync_store_from_local()
         print(f"Wrote profiles to {path}.")
         return True
 

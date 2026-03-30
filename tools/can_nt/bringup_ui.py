@@ -40,10 +40,11 @@ from .bridge_ops import (
 from .bridge_session import BridgeEvent, BridgeSession
 from tools.common.json_io import read_json
 from tools.common.nt_labels import encode_label_for_nt
-from tools.common.paths import tests_deploy_path
+from tools.common.paths import repo_root, tests_deploy_path
 from tools.common.tests_io import extract_test_names
 from tools.common.time_utils import timestamp_hms
 from .can_profiles import get_profile, get_profiles_load_error, list_profiles, reload_profiles
+from tools.config.schema_store import ConfigSchemaStore
 from tools.can_topology.live_topology_view import LiveTopologyView
 
 # Constants (NetworkTables paths and presence values).
@@ -73,6 +74,7 @@ LIVE_SOURCE_TCP = "tcp"
 LIVE_SOURCE_FILE = "file"
 LIVE_CLOCK_FORMAT = "%H:%M:%S"
 LIVE_CLOCK_LABEL = "Clock:"
+TEST_NAME_EMPTY = ""
 
 
 def _load_profiles() -> List[str]:
@@ -94,6 +96,9 @@ def _load_tests() -> List[str]:
     NAME
         _load_tests - Load test names from bringup_tests.json.
     """
+    store_names = _load_tests_from_store()
+    if store_names is not None:
+        return store_names
     try:
         path = tests_deploy_path()
         data = read_json(path)
@@ -101,6 +106,28 @@ def _load_tests() -> List[str]:
     except Exception:
         pass
     return []
+
+
+def _load_tests_from_store() -> Optional[List[str]]:
+    """
+    NAME
+        _load_tests_from_store - Load test names from the config store.
+    """
+    store = ConfigSchemaStore()
+    try:
+        store.load(repo_root())
+    except Exception:
+        return None
+    model = store.tests_model()
+    if model is None:
+        return None
+    names: List[str] = []
+    for test_set in model.test_sets.values():
+        for test in test_set.tests:
+            name = test.name
+            if isinstance(name, str) and name and name != TEST_NAME_EMPTY:
+                names.append(name)
+    return sorted(set(names))
 
 
 def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
@@ -533,11 +560,11 @@ class BringupControlUI(tk.Tk):
             return
         overrides: Dict[str, str] = {}
         for label, device in self._profile_devices.items():
-                label = str(device.get(DEVICE_KEY_LABEL, "")).strip()
-                if not label:
-                    continue
-                label_key = encode_label_for_nt(label)
-                path = NT_PATH_PRESENCE_FMT.format(label_key)
+            label = str(device.get(DEVICE_KEY_LABEL, "")).strip()
+            if not label:
+                continue
+            label_key = encode_label_for_nt(label)
+            path = NT_PATH_PRESENCE_FMT.format(label_key)
             value = self._diag_table.getEntry(path).getString(NT_VALUE_EMPTY)
             if value in PRESENCE_VALUES:
                 overrides[label] = value

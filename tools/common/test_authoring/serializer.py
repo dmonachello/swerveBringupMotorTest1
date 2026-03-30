@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 
 from .model import (
     DeadbandSweepModel,
+    DeviceActionModel,
     TerminationModel,
     TestAuthoringModel,
     TestBindingButton,
@@ -36,6 +37,10 @@ KEY_MOTOR_LABELS = "motorLabels"
 KEY_INPUT_SOURCE = "inputSource"
 KEY_DEADBAND = "deadband"
 KEY_DUTY = "duty"
+KEY_ACTION = "action"
+KEY_COLOR = "color"
+KEY_PATTERN = "pattern"
+KEY_BRIGHTNESS = "brightness"
 KEY_HOLD = "hold"
 KEY_TIME = "time"
 KEY_ROTATION = "rotation"
@@ -61,6 +66,7 @@ TYPE_JOYSTICK = "joystick"
 TYPE_BUTTON = "button"
 TYPE_COMPOSITE = "composite"
 TYPE_DEADBAND_SWEEP = "deadbandSweep"
+TYPE_DEVICE_ACTION = "deviceAction"
 DEFAULT_TEST_SET = "default"
 DEFAULT_DEADBAND = 0.12
 DEFAULT_DUTY = 0.2
@@ -142,6 +148,8 @@ def _parse_tests(entries: List[Dict[str, Any]]) -> List[TestModel]:
             test_type = TYPE_JOYSTICK
         elif raw_type == TYPE_DEADBAND_SWEEP:
             test_type = TYPE_DEADBAND_SWEEP
+        elif raw_type == TYPE_DEVICE_ACTION.lower():
+            test_type = TYPE_DEVICE_ACTION
         test = TestModel(name=name, test_type=test_type)
         test.enabled = bool(entry.get(KEY_ENABLED, False))
         test.devices = list(entry.get(KEY_MOTOR_LABELS, []) or [])
@@ -151,6 +159,19 @@ def _parse_tests(entries: List[Dict[str, Any]]) -> List[TestModel]:
             )
         elif test_type == TYPE_DEADBAND_SWEEP:
             test.deadband_sweep = _parse_deadband_sweep(entry)
+        elif test_type == TYPE_DEVICE_ACTION:
+            action = entry.get(KEY_ACTION)
+            color = entry.get(KEY_COLOR)
+            pattern = entry.get(KEY_PATTERN)
+            brightness = entry.get(KEY_BRIGHTNESS)
+            duration = entry.get(KEY_DURATION_SEC)
+            test.device_action = DeviceActionModel(
+                action=action if isinstance(action, str) else None,
+                color=color if isinstance(color, str) else None,
+                pattern=pattern if isinstance(pattern, str) else None,
+                brightness=float(brightness) if isinstance(brightness, (int, float)) else None,
+                duration_sec=float(duration) if isinstance(duration, (int, float)) else None,
+            )
         else:
             test.button = TestBindingButton(duty=float(entry.get(KEY_DUTY, DEFAULT_DUTY)))
             test.termination = _parse_termination(entry)
@@ -228,6 +249,20 @@ def _test_to_entry(test: TestModel) -> Dict[str, Any]:
             entry[KEY_INPUT_SOURCE] = test.input_source
         sweep = test.deadband_sweep or DeadbandSweepModel()
         entry[KEY_DEADBAND_SWEEP] = _deadband_sweep_entry(sweep)
+        return entry
+    if test.test_type == TYPE_DEVICE_ACTION:
+        entry[KEY_TYPE] = TYPE_DEVICE_ACTION
+        device_action = test.device_action or DeviceActionModel()
+        if device_action.action:
+            entry[KEY_ACTION] = device_action.action
+        if device_action.color:
+            entry[KEY_COLOR] = device_action.color
+        if device_action.pattern:
+            entry[KEY_PATTERN] = device_action.pattern
+        if device_action.brightness is not None:
+            entry[KEY_BRIGHTNESS] = device_action.brightness
+        if device_action.duration_sec is not None:
+            entry[KEY_DURATION_SEC] = device_action.duration_sec
         return entry
 
     entry[KEY_TYPE] = TYPE_COMPOSITE

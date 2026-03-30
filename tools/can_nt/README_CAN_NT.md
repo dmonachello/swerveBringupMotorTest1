@@ -16,6 +16,7 @@ INSTALL
     py -m pip install pynetworktables
     py -m pip install python-can
     py -m pip install pyserial
+    py -m pip install prompt_toolkit
 
 RUN
     python tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2

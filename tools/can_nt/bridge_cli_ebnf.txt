@@ -1,6 +1,6 @@
 (* Bridge CLI Grammar (EBNF) *)
 
-line           = ws? command ws? ;
+line           = ws? command ws? [ "?" ] ;
 command        = common
                | exec
                | config
@@ -35,13 +35,13 @@ show_target    = "status"
                | "config" ws "local-raw"
                | "config" ws "dirty"
                | "profiles"
-               | "profile"
+               | "profile" [ ws name ]
                | "tests"
                | "test" ws name ;
 
 show_source    = "robot" | "local" | "both" ;
 show_flags     = show_flag { ws show_flag } ;
-show_flag      = show_source | "--json" ;
+show_flag      = show_source | "--json" | "--pretty" ;
 
 config         = "group" ws name
                | "no" ws "group" ws name
@@ -61,14 +61,42 @@ config         = "group" ws name
                | "device" ws name ws "set" ws field ws value_text
                | "validate" ws "config" [ ws path ]
                | "show" ws show_target [ ws show_flags ]
-               | "bindings" [ ws value_text ]
-               | "can-mappings" [ ws value_text ]
-               | "tests" [ ws value_text ]
+               | "bindings" [ ws bindings_args ]
+               | "can-mappings" [ ws mappings_args ]
+               | "tests" [ ws tests_args ]
                | "write" ws "tests" ws path
                | "test" ws ("set" ws name
                            | "create" ws name
                            | "delete" ws name
                            | name) ;
+
+bindings_args  = "show" [ ws ("controllers" | "bindings" | "axes") ] [ ws show_flags ]
+               | "controller" ws ("add" ws name ws name ws number
+                                   | "set" ws name ws field ws value_text
+                                   | "rename" ws name ws name
+                                   | "list"
+                                   | "no" ws name)
+               | "binding" ws ("add" ws name ws name ws name ws name ws name
+                                | "set" ws number ws field ws value_text
+                                | "delete" ws number)
+               | "axis" ws ("add" ws name ws name ws name ws "invert" ws ("on" | "off") ws "deadband" ws number
+                             | "set" ws number ws field ws value_text
+                             | "delete" ws number)
+               | "load" ws path
+               | "save" ws path
+               | "validate" [ ws path ] ;
+
+mappings_args  = "show" [ ws ("manufacturers" | "device-types") ] [ ws show_flags ]
+               | "manufacturer" ws ("set" ws number ws value_text | "delete" ws number | "no" ws number)
+               | "device-type" ws ("set" ws number ws value_text | "delete" ws number | "no" ws number)
+               | "load" ws path
+               | "save" ws path
+               | "validate" [ ws path ] ;
+
+tests_args     = "templates"
+               | "load" ws path
+               | "load" ws "template" ws name
+               | "save" ;
 
 group          = "show"
                | "show" ws "members"
@@ -92,12 +120,17 @@ device         = "show"
                | "write" ws "tests" ws path ;
 
 test           = "show"
-               | "type" ws ("joystick" | "button" | "composite" | "deadbandSweep")
+               | "type" ws ("joystick" | "button" | "composite" | "deadbandSweep" | "deviceAction")
                | "device" ws "add" ws name
                | "no" ws "device" ws name
                | "inputSource" ws name
                | "deadband" ws number
                | "duty" ws number
+               | "action" ws name
+               | "color" ws name
+               | "pattern" ws name
+               | "brightness" ws number
+               | "duration" ws number
                | "rotation" ws "limit" ws number
                | "rotation" ws ("encoderKey" | "encoderSource") ws name
                | "rotation" ws ("encoderMotorIndex" | "encoderCountsPerRev") ws number

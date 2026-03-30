@@ -54,10 +54,10 @@ ws: WS
 name: TOKEN
 input: TOKEN
 path: TOKEN
-field: TOKEN
+field: TOKEN | "type" | "invert"
 value: NUMBER
 number: NUMBER
-value_text: TOKEN (WS TOKEN)*
+value_text: (TOKEN | "true" | "false" | "on" | "off") (WS (TOKEN | "true" | "false" | "on" | "off"))*
 """.strip()
 
 
