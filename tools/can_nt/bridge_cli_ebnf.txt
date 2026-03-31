@@ -19,7 +19,8 @@ common         = "exit"
 exec           = show_exec
                | "configure" ws "terminal"
                | "connect"
-               | "disconnect" ;
+               | "disconnect"
+               | diagnose ;
 
 show_exec      = "show" ws show_target [ ws show_flags ] ;
 
@@ -65,6 +66,7 @@ config         = "group" ws name
                | "device" ws name ws "set" ws device_field ws value_text
                | "validate" ws "config" [ ws path ]
                | "show" ws show_target [ ws show_flags ]
+               | diagnose
                | "bindings" [ ws bindings_args ]
                | "can-mappings" [ ws mappings_args ]
                | "tests" [ ws tests_args ]
@@ -73,6 +75,8 @@ config         = "group" ws name
                            | "create" ws name
                            | "delete" ws name
                            | name) ;
+
+diagnose       = "diagnose" ws ("motor" | "device") ws name ;
 
 bindings_args  = "show" [ ws ("controllers" | "bindings" | "axes") ] [ ws show_flags ]
                | "controller" ws ("add" ws name ws name ws number

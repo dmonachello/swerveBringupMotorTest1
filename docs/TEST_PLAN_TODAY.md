@@ -64,6 +64,17 @@ show config dirty
 Expected:
 - `Local dirty state:` block prints all dirty flags.
 
+### A6) Diagnose motor (runtime-state required)
+Commands:
+```
+connect
+diagnose motor "Drive Motor (id 2)"
+```
+
+Expected:
+- Prints a `Likely causes:` block with ranked causes.
+- If telemetry is missing, prints `UNKNOWN` and a `Missing fields:` list.
+
 ---
 
 ## B) UI Tests

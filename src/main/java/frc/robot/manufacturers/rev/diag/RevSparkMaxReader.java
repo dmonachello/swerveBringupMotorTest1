@@ -66,6 +66,7 @@ public final class RevSparkMaxReader {
     rev.motorCurrentA = device.getOutputCurrent();
     rev.tempC = device.getMotorTemperature();
     rev.cmdDuty = device.get();
+    rev.velRpm = device.getEncoder().getVelocity();
     rev.follower = device.isFollower();
     snap.addAttachment(rev);
     return snap;

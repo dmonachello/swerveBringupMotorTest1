@@ -117,6 +117,7 @@ Common show commands:
 - `show device registry <name>`
 - `show bindings`
 - `show runtime-state`
+- `diagnose motor <label>`
 - `show config local-raw`
 - `show config dirty`
 - `show profiles`
@@ -131,6 +132,31 @@ Notes:
 - Use `--json` for machine-readable output.
 - `show config local-raw` prints `bridgeConfig.byProfile`.
 - `show config dirty` shows unsaved local changes.
+
+## Motor Diagnosis (Runtime Telemetry)
+Purpose: Explain how to get a quick motor diagnosis summary.
+
+Commands:
+```
+diagnose motor "<label>"
+diagnose device "<label>"
+```
+
+Example:
+```
+diagnose motor "Drive Motor (id 2)"
+```
+
+Example output:
+```
+Likely causes:
+1) NO_MOTION (medium)
+  Evidence: appliedV=2.4, velRpm=0.0
+```
+
+Notes:
+- Requires a robot connection (runtime-state data).
+- If telemetry is missing, the output shows `UNKNOWN` plus a missing-fields list.
 
 ## Creating and Editing Groups
 Purpose: Teach the everyday workflow.

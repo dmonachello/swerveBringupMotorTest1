@@ -33,6 +33,7 @@
       "motorCurrentA": 12.4,
       "cmdDuty": 0.2,
       "appliedDuty": 0.19,
+      "velRpm": 0.0,
       "tempC": 38.5
     },
     {
@@ -45,6 +46,7 @@
       "motorCurrentA": 3.1,
       "cmdDuty": 0.05,
       "appliedDuty": 0.05,
+      "velRpm": 1200.0,
       "tempC": 31.2
     },
     {

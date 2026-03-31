@@ -31,6 +31,8 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `show profile <name> [local] [--json] [--pretty]`
 - `show tests [--json] [--pretty]`
 - `show test <name> [--json] [--pretty]`
+- `diagnose motor <label>`
+- `diagnose device <label>`
 - `configure terminal`
 - `connect`
 - `disconnect`
@@ -39,6 +41,8 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `group <name>`
 - `no group <name>`
 - `profile <name>`
+- `diagnose motor <label>`
+- `diagnose device <label>`
 - `selected-device <device>`
 - `selected-mode on`
 - `selected-mode off`
@@ -1232,6 +1236,94 @@ EXAMPLE
 
 EXAMPLE OUTPUT
 Disconnected.
+
+### diagnose motor <label>
+
+NAME
+
+diagnose motor <label> - Diagnose a motor using runtime telemetry.
+
+SYNOPSIS
+
+diagnose motor <label>
+
+DESCRIPTION
+
+Fetch runtime-state telemetry and produce a ranked list of likely causes for a motor not running.
+This command is valid in Exec Mode (`bridge>`) and Config Mode (`bridge(config-...)#`).
+
+PARAMETERS
+
+- <label>: Device label of the motor to diagnose.
+
+RETURNS
+
+Prints diagnosis output to the console; errors are reported inline.
+
+SIDE EFFECTS
+
+Requests runtime-state data from the robot.
+
+ERRORS
+
+Reports connection errors, missing devices, or ambiguous labels.
+
+NOTES
+
+If telemetry is missing, the output will include `UNKNOWN` plus a missing-fields list.
+
+EXAMPLE
+
+`diagnose motor "Drive Motor (id 2)"`
+
+EXAMPLE OUTPUT
+Likely causes:
+1) NO_MOTION (medium)
+  Evidence: appliedV=2.4, velRpm=0.0
+
+### diagnose device <label>
+
+NAME
+
+diagnose device <label> - Diagnose a motor using runtime telemetry (alias).
+
+SYNOPSIS
+
+diagnose device <label>
+
+DESCRIPTION
+
+Alias for `diagnose motor <label>`.
+
+PARAMETERS
+
+- <label>: Device label of the motor to diagnose.
+
+RETURNS
+
+Prints diagnosis output to the console; errors are reported inline.
+
+SIDE EFFECTS
+
+Requests runtime-state data from the robot.
+
+ERRORS
+
+Reports connection errors, missing devices, or ambiguous labels.
+
+NOTES
+
+If telemetry is missing, the output will include `UNKNOWN` plus a missing-fields list.
+
+EXAMPLE
+
+`diagnose device "Drive Motor (id 2)"`
+
+EXAMPLE OUTPUT
+Likely causes:
+1) UNKNOWN (low)
+Missing fields:
+  appliedV, motorCurrentA, velRpm
 
 ### group <name>
 
@@ -6011,6 +6103,8 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `show profile <name> [local] [--json] [--pretty]`
 - `show tests [--json] [--pretty]`
 - `show test <name> [--json] [--pretty]`
+- `diagnose motor <label>`
+- `diagnose device <label>`
 - `configure terminal`
 - `connect`
 - `disconnect`
@@ -6019,6 +6113,8 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `group <name>`
 - `no group <name>`
 - `profile <name>`
+- `diagnose motor <label>`
+- `diagnose device <label>`
 - `selected-device <device>`
 - `selected-mode on`
 - `selected-mode off`

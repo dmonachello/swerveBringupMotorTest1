@@ -16,6 +16,8 @@ import frc.robot.diag.snapshots.DeviceSnapshot;
  * Samples Phoenix status signals and packages telemetry into snapshots.
  */
 public final class CtreTalonFxReader {
+  private static final double RPM_PER_RPS = 60.0;
+
   private CtreTalonFxReader() {}
 
   /**
@@ -52,6 +54,7 @@ public final class CtreTalonFxReader {
     var supplyCurrent = device.getSupplyCurrent();
     var deviceTemp = device.getDeviceTemp();
     var motorVoltage = device.getMotorVoltage();
+    var rotorVelocity = device.getRotorVelocity();
     BaseStatusSignal.refreshAll(
         faultSignal,
         stickySignal,
@@ -59,7 +62,8 @@ public final class CtreTalonFxReader {
         dutyCycle,
         supplyCurrent,
         deviceTemp,
-        motorVoltage);
+        motorVoltage,
+        rotorVelocity);
 
     ctre.faultsRaw = faultSignal.getValue();
     ctre.stickyFaultsRaw = stickySignal.getValue();
@@ -72,6 +76,7 @@ public final class CtreTalonFxReader {
     ctre.tempC = deviceTemp.getValue().in(Units.Celsius);
     ctre.motorV = motorVoltage.getValue().in(Units.Volts);
     ctre.appliedV = ctre.motorV;
+    ctre.velRpm = rotorVelocity.getValue().in(Units.RotationsPerSecond) * RPM_PER_RPS;
 
     CtreReaderUtil.collectFaultFlags(device, ctre.faultFlags);
     CtreReaderUtil.collectStickyFaultFlags(device, ctre.stickyFaultFlags);

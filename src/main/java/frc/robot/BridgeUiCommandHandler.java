@@ -44,6 +44,7 @@ public class BridgeUiCommandHandler {
   private static final long TCP_KEEPALIVE_INTERVAL_MS = 1000;
   private static final long TCP_KEEPALIVE_MISSES = 5;
   private static final int UI_LOG_MAX_LINES = 200;
+  private static final String JSON_KEY_VEL_RPM = "velRpm";
   private static final Gson GSON = new Gson();
   private static final double DEADBAND = BringupUtil.DEADBAND;
 
@@ -1956,6 +1957,9 @@ public class BridgeUiCommandHandler {
           if (rev.appliedDuty != null) {
             obj.addProperty("appliedDuty", rev.appliedDuty);
           }
+          if (rev.velRpm != null) {
+            obj.addProperty(JSON_KEY_VEL_RPM, rev.velRpm);
+          }
           if (rev.tempC != null) {
             obj.addProperty("tempC", rev.tempC);
           }
@@ -1967,6 +1971,9 @@ public class BridgeUiCommandHandler {
           }
           if (ctre.appliedDuty != null) {
             obj.addProperty("appliedDuty", ctre.appliedDuty);
+          }
+          if (ctre.velRpm != null) {
+            obj.addProperty(JSON_KEY_VEL_RPM, ctre.velRpm);
           }
           if (ctre.tempC != null) {
             obj.addProperty("tempC", ctre.tempC);

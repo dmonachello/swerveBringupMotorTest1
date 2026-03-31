@@ -64,8 +64,30 @@ from tools.can_nt.bridge_ops import (
     show_runtime_state,
     show_selected_device,
     show_status,
+    parse_json_arg,
 )
 from tools.can_nt.bridge_session import BridgeEvent, BridgeSession
+from tools.can_nt.motor_diag_constants import (
+    CMD_DIAGNOSE,
+    CMD_MOTOR,
+    FMT_CAUSE_LINE,
+    FMT_EVIDENCE_LINE,
+    FMT_FINDING_LINE,
+    FMT_MISSING_LINE,
+    MSG_DEVICE_AMBIGUOUS,
+    MSG_DEVICE_CANDIDATES,
+    MSG_DEVICE_NOT_FOUND,
+    MSG_DIAGNOSE_SYNTAX,
+    MSG_DIAGNOSE_TARGET,
+    MSG_RUNTIME_MISSING,
+    MSG_RUNTIME_REQUIRED,
+    OUT_FINDINGS,
+    OUT_LIKELY_CAUSES,
+    OUT_MISSING_FIELDS,
+    SEP_COMMA_SPACE,
+)
+from tools.can_nt.motor_diag_normalize import collect_profile_labels, normalize_runtime_state
+from tools.can_nt.motor_diag_rules import diagnose_motor
 from tools.config.schema_store import ConfigSchemaStore, LOCATION_BINDINGS, LOCATION_MAPPINGS
 from tools.common.json_io import read_json, write_json
 from tools.common.profile_io import compute_profiles_hash
@@ -425,6 +447,11 @@ HELP_SHOW_TEXT = (
     "selected-device|runtime-state|config|config local-raw|config dirty|profiles|profile|tests|test <name>|message-level> "
     "[--json] [--pretty] [robot|local|both]\n"
     "  Defaults: robot if connected, otherwise local."
+)
+HELP_DIAGNOSE_TEXT = (
+    "diagnose motor <label>\n"
+    "diagnose device <label>\n"
+    "  Analyze runtime telemetry to explain why a motor is not running."
 )
 MESSAGE_AUTO_MERGE_FAIL = "WARNING: Failed to auto-load default profiles: {path}"
 MESSAGE_AUTO_MERGE_OK = "Loaded default profiles: {path}"
@@ -1243,6 +1270,8 @@ class BridgeCli:
                 return None
             print(f"ERROR: {exc}")
             return None
+        if tokens and tokens[COUNT_ZERO].lower() == CMD_DIAGNOSE:
+            return self._diagnose_command(tokens)
         if self._is_test_authoring_command(tokens):
             return self._execute_test_authoring(tokens)
         if ast is not None:
@@ -1386,6 +1415,8 @@ class BridgeCli:
         cmd = tokens[COUNT_ZERO].lower()
         if cmd == CMD_SHOW:
             return self._suggest_show_args(tokens[COUNT_ONE:])
+        if cmd == CMD_DIAGNOSE:
+            return self._suggest_diagnose_args(tokens[COUNT_ONE:])
         if cmd == CMD_CONFIGURE:
             return self._suggest_configure_args(tokens[COUNT_ONE:])
         if mode == MODE_CONFIG and cmd == CMD_BINDINGS:
@@ -1404,6 +1435,17 @@ class BridgeCli:
             return self._suggest_test_config_args(tokens[COUNT_ONE:])
         return []
 
+    def _suggest_diagnose_args(self, tokens: List[str]) -> List[str]:
+        """
+        NAME
+            _suggest_diagnose_args - Suggest diagnose command arguments.
+        """
+        if not tokens:
+            return [CMD_MOTOR, CMD_DEVICE]
+        if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() in (CMD_MOTOR, CMD_DEVICE):
+            return [PLACEHOLDER_NAME]
+        return []
+
     def _mode_root_suggestions(self, mode: str) -> List[str]:
         """
         NAME
@@ -1415,6 +1457,7 @@ class BridgeCli:
                 CMD_GROUP,
                 CMD_NO,
                 CMD_PROFILE,
+                CMD_DIAGNOSE,
                 PARSER_SPEC.cmd_selected_device,
                 PARSER_SPEC.cmd_selected_mode,
                 PARSER_SPEC.cmd_merge,
@@ -1451,6 +1494,7 @@ class BridgeCli:
             return [CMD_SHOW, CMD_SET, CMD_NO]
         return [
             CMD_SHOW,
+            CMD_DIAGNOSE,
             PARSER_SPEC.cmd_connect,
             PARSER_SPEC.cmd_disconnect,
             PARSER_SPEC.cmd_configure,
@@ -4186,6 +4230,77 @@ class BridgeCli:
             print(MESSAGE_MESSAGE_LEVEL.format(level=self._message_level))
         return True
 
+    def _diagnose_command(self, tokens: List[str]) -> Optional[int]:
+        """
+        NAME
+            _diagnose_command - Diagnose a motor using runtime telemetry.
+        """
+        if len(tokens) < COUNT_THREE:
+            print(MSG_DIAGNOSE_SYNTAX)
+            return EXIT_CODE_ERROR if self._batch else None
+        target = tokens[COUNT_ONE].lower()
+        if target not in (CMD_MOTOR, CMD_DEVICE):
+            print(MSG_DIAGNOSE_TARGET)
+            return EXIT_CODE_ERROR if self._batch else None
+        label = tokens[COUNT_TWO]
+        if not self._session.is_connected():
+            print(MSG_RUNTIME_REQUIRED)
+            return EXIT_CODE_ERROR if self._batch else None
+        seq = show_runtime_state(self._session, json_output=True)
+        event = self._wait_for_seq(seq, print_events=False)
+        if event is None or not event.json_text:
+            print(MSG_RUNTIME_MISSING)
+            return EXIT_CODE_ERROR if self._batch else None
+        payload = parse_json_arg(event.json_text)
+        if not isinstance(payload, dict):
+            print(MSG_RUNTIME_MISSING)
+            return EXIT_CODE_ERROR if self._batch else None
+        result = normalize_runtime_state(payload, label)
+        if result.telemetry is None:
+            if result.candidates:
+                print(MSG_DEVICE_AMBIGUOUS)
+                print(MSG_DEVICE_CANDIDATES.format(candidates=SEP_COMMA_SPACE.join(result.candidates)))
+            else:
+                print(MSG_DEVICE_NOT_FOUND)
+            return EXIT_CODE_ERROR if self._batch else None
+        profile_labels = collect_profile_labels(self._local_root_payload, self._active_profile_name())
+        report = diagnose_motor(result.telemetry, profile_labels)
+        self._print_diagnosis(report)
+        return None
+
+    @staticmethod
+    def _print_diagnosis(report) -> None:
+        """
+        NAME
+            _print_diagnosis - Print a diagnosis report.
+        """
+        print(OUT_LIKELY_CAUSES)
+        for idx, finding in enumerate(report.causes, start=COUNT_ONE):
+            print(
+                FMT_CAUSE_LINE.format(
+                    index=idx, cause=finding.cause, confidence=finding.confidence
+                )
+            )
+            if finding.evidence:
+                print(FMT_EVIDENCE_LINE.format(evidence=SEP_COMMA_SPACE.join(finding.evidence)))
+        if report.findings:
+            print(OUT_FINDINGS)
+            for finding in report.findings:
+                print(
+                    FMT_FINDING_LINE.format(
+                        cause=finding.cause, confidence=finding.confidence
+                    )
+                )
+                if finding.evidence:
+                    print(
+                        FMT_EVIDENCE_LINE.format(
+                            evidence=SEP_COMMA_SPACE.join(finding.evidence)
+                        )
+                    )
+        if report.missing:
+            print(OUT_MISSING_FIELDS)
+            print(FMT_MISSING_LINE.format(fields=SEP_COMMA_SPACE.join(report.missing)))
+
     @staticmethod
     def _validate_pretty_flag(tokens: List[str]) -> bool:
         if FLAG_PRETTY in tokens and FLAG_JSON not in tokens:
@@ -4208,6 +4323,7 @@ class BridgeCli:
                 "echo": "echo on|off\n  Toggle echo for batch scripts (prints each command).",
                 "messages": "messages <beginner|medium|expert>\n  Set CLI message level.",
                 "show message-level": "show message-level\n  Show current CLI message level.",
+                "diagnose": HELP_DIAGNOSE_TEXT,
                 "group": "group <name>\n  Create/select a group (config mode).",
                 "no group": "no group <name>\n  Delete group (config mode, prompts in interactive).",
                 "no device": "no device <name>\n  Delete a device from the active profile.",
@@ -4332,7 +4448,7 @@ class BridgeCli:
             return
         print(
             "Common: help, exit, end, quit, ping, echo, messages\n"
-            "Exec: show, connect, disconnect, configure terminal\n"
+            "Exec: show, diagnose, connect, disconnect, configure terminal\n"
             "Config: profile, group, device, bindings, can-mappings, tests, no group, selected-device, selected-mode, merge/import/export/save\n"
             "Group: show, add device, no device, member, bind, no bind, enable, disable, run test\n"
             "Device: show, set, no\n"

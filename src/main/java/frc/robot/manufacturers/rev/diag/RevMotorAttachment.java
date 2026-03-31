@@ -27,6 +27,7 @@ public final class RevMotorAttachment extends DeviceAttachment {
   public Double motorCurrentA;
   public Double tempC;
   public Double cmdDuty;
+  public Double velRpm;
   public boolean follower = false;
   public String healthNote = "";
   public String lowCurrentNote = "";
