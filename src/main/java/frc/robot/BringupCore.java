@@ -44,10 +44,20 @@ public final class BringupCore {
   private static final int TYPE_ROBOT_CONTROLLER = 1;
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
   private static final int REPORT_BATCH = 2;
+  private static final String VENDOR_REV = "REV";
   private static final String VENDOR_CTRE = "CTRE";
+  private static final String VENDOR_NI = "NI";
+  private static final String DEVICE_TYPE_PDH = "PDH";
   private static final String DEVICE_TYPE_PDP = "PDP";
+  private static final String DEVICE_TYPE_ROBORIO = "roboRIO";
+  private static final String NOTE_PDH_READ_FAIL_PREFIX = "PDH read failed: ";
+  private static final String NOTE_PDH_NOT_INITIALIZED = "PDH not initialized";
   private static final String NOTE_PDP_READ_FAIL_PREFIX = "PDP read failed: ";
   private static final String NOTE_PDP_NOT_INITIALIZED = "PDP not initialized";
+  private static final String NOTE_VIRTUAL = "virtual";
+  private static final String VIRTUAL_PRESENT_LINE_PREFIX = "  roboRIO CAN ";
+  private static final String VIRTUAL_PRESENT_LINE_SUFFIX = " PRESENT (no local API)";
+  private static final String VIRTUAL_HEALTH_LINE_SUFFIX = ": present=YES (virtual, no local API)";
 
   private final List<ManufacturerGroup> manufacturerGroups = ManufacturerRegistry.buildGroups();
   private final Map<String, ManufacturerGroup> manufacturerByVendor =
@@ -231,7 +241,7 @@ public final class BringupCore {
     if (activeTest != null && activeTest.isRunning()) {
       return;
     }
-    setDutyByVendor("REV", neoSpeed);
+    setDutyByVendor(VENDOR_REV, neoSpeed);
     setDutyByVendor("CTRE", krakenSpeed);
   }
 
@@ -1520,7 +1530,7 @@ public final class BringupCore {
     DeviceSnapshot snap = device.snapshot();
     if (bucket.getRegistration().role() == DeviceRole.MOTOR) {
       fillSpecForMotor(snap, device.getLabel(), device.getMotorModelOverride());
-      if ("REV".equalsIgnoreCase(bucket.getRegistration().vendor()) && snap.present) {
+      if (VENDOR_REV.equalsIgnoreCase(bucket.getRegistration().vendor()) && snap.present) {
         RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
         if (rev != null) {
           rev.healthNote = buildRevHealthNote(
@@ -2501,8 +2511,8 @@ public final class BringupCore {
 
     if (BringupUtil.isEnabledCanId(BringupUtil.PDH_CAN_ID)) {
       DeviceSnapshot snap = new DeviceSnapshot();
-      snap.vendor = "REV";
-      snap.deviceType = "PDH";
+      snap.vendor = VENDOR_REV;
+      snap.deviceType = DEVICE_TYPE_PDH;
       snap.canId = BringupUtil.PDH_CAN_ID;
       ensurePdhReader();
       if (pdhReader != null) {
@@ -2512,11 +2522,11 @@ public final class BringupCore {
           snap.addAttachment(pdhStatus);
         } catch (RuntimeException ex) {
           snap.present = false;
-          snap.note = "PDH read failed: " + ex.getMessage();
+          snap.note = NOTE_PDH_READ_FAIL_PREFIX + ex.getMessage();
         }
       } else {
         snap.present = false;
-        snap.note = "PDH not initialized";
+        snap.note = NOTE_PDH_NOT_INITIALIZED;
       }
       devices.add(snap);
     }
@@ -2545,11 +2555,11 @@ public final class BringupCore {
 
     if (BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
       DeviceSnapshot snap = new DeviceSnapshot();
-      snap.vendor = "NI";
-      snap.deviceType = "roboRIO";
+      snap.vendor = VENDOR_NI;
+      snap.deviceType = DEVICE_TYPE_ROBORIO;
       snap.canId = BringupUtil.ROBORIO_CAN_ID;
       snap.present = true;
-      snap.note = "virtual";
+      snap.note = NOTE_VIRTUAL;
       devices.add(snap);
     }
 
@@ -2599,7 +2609,9 @@ public final class BringupCore {
       return;
     }
     appendLine(sb, "Virtual devices:");
-    appendLine(sb, "  roboRIO CAN " + BringupUtil.ROBORIO_CAN_ID + " PRESENT (no local API)");
+    appendLine(
+        sb,
+        VIRTUAL_PRESENT_LINE_PREFIX + BringupUtil.ROBORIO_CAN_ID + VIRTUAL_PRESENT_LINE_SUFFIX);
   }
 
   /**
@@ -2610,7 +2622,9 @@ public final class BringupCore {
     if (!BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
       return;
     }
-    appendLine(sb, "  roboRIO CAN " + BringupUtil.ROBORIO_CAN_ID + ": present=YES (virtual, no API)");
+    appendLine(
+        sb,
+        VIRTUAL_PRESENT_LINE_PREFIX + BringupUtil.ROBORIO_CAN_ID + VIRTUAL_HEALTH_LINE_SUFFIX);
   }
 
   /**

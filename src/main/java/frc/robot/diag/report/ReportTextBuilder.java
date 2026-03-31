@@ -41,6 +41,30 @@ public final class ReportTextBuilder {
   private static final String TEXT_PRESENT_NO = ": present=NO";
   private static final String TEXT_PRESENT_YES = ": present=YES";
   private static final String TEXT_NO_STATUS_ATTACHMENT = " (no status attachment)";
+  private static final String TEXT_VOLTAGE = " voltage=";
+  private static final String TEXT_TOTAL_CURRENT = " totalCurrent=";
+  private static final String TEXT_SWITCHABLE = " switchable=";
+  private static final String TEXT_TEMP = " tempC=";
+  private static final String TEXT_VOLT = "V";
+  private static final String TEXT_AMP = "A";
+  private static final String TEXT_ON = "ON";
+  private static final String TEXT_OFF = "OFF";
+  private static final String TEXT_FAULTS_PREFIX = "    Faults: brownout=";
+  private static final String TEXT_CAN_WARN = " canWarn=";
+  private static final String TEXT_HW_FAULT = " hwFault=";
+  private static final String TEXT_STICKY_PREFIX = "    Sticky: brownout=";
+  private static final String TEXT_BUS_OFF = " busOff=";
+  private static final String TEXT_HAS_RESET = " hasReset=";
+  private static final String TEXT_CH_PREFIX = "    Ch ";
+  private static final String TEXT_CURRENT_PREFIX = " current=";
+  private static final String TEXT_ACTIVE_FAULT = " activeFault=";
+  private static final String TEXT_STICKY_FAULT = " stickyFault=";
+  private static final String TEXT_STATUS = " status=";
+  private static final String STATUS_STICKY_FAULT = "STICKY_FAULT";
+  private static final String STATUS_ACTIVE_FAULT = "ACTIVE_FAULT";
+  private static final String STATUS_OK = "OK";
+  private static final String FORMAT_CH = "%02d";
+  private static final String FORMAT_CURRENT = "%6.2f";
 
   /**
    * NAME
@@ -401,36 +425,36 @@ public final class ReportTextBuilder {
         sb,
         PREFIX_PDP_CAN + snap.canId +
         TEXT_PRESENT_YES +
-        " voltage=" + formatDouble(pdp.voltage, 2) + "V" +
-        " totalCurrent=" + formatDouble(pdp.totalCurrent, 2) + "A" +
-        " switchable=" + (pdp.switchableEnabled ? "ON" : "OFF") +
-        " tempC=" + formatDouble(pdp.temperature, 1));
+        TEXT_VOLTAGE + formatDouble(pdp.voltage, 2) + TEXT_VOLT +
+        TEXT_TOTAL_CURRENT + formatDouble(pdp.totalCurrent, 2) + TEXT_AMP +
+        TEXT_SWITCHABLE + (pdp.switchableEnabled ? TEXT_ON : TEXT_OFF) +
+        TEXT_TEMP + formatDouble(pdp.temperature, 1));
 
     ReportTextUtil.appendLine(
         sb,
-        "    Faults: brownout=" + formatBoolean(pdp.brownout) +
-        " canWarn=" + formatBoolean(pdp.canWarning) +
-        " hwFault=" + formatBoolean(pdp.hardwareFault));
+        TEXT_FAULTS_PREFIX + formatBoolean(pdp.brownout) +
+        TEXT_CAN_WARN + formatBoolean(pdp.canWarning) +
+        TEXT_HW_FAULT + formatBoolean(pdp.hardwareFault));
     ReportTextUtil.appendLine(
         sb,
-        "    Sticky: brownout=" + formatBoolean(pdp.stickyBrownout) +
-        " canWarn=" + formatBoolean(pdp.stickyCanWarning) +
-        " busOff=" + formatBoolean(pdp.stickyCanBusOff) +
-        " hasReset=" + formatBoolean(pdp.stickyHasReset));
+        TEXT_STICKY_PREFIX + formatBoolean(pdp.stickyBrownout) +
+        TEXT_CAN_WARN + formatBoolean(pdp.stickyCanWarning) +
+        TEXT_BUS_OFF + formatBoolean(pdp.stickyCanBusOff) +
+        TEXT_HAS_RESET + formatBoolean(pdp.stickyHasReset));
 
     if (pdp.channelCurrentA != null) {
       for (int ch = 0; ch < pdp.channelCurrentA.length; ch++) {
         boolean active = pdp.channelFault != null && ch < pdp.channelFault.length && pdp.channelFault[ch];
         boolean sticky = pdp.channelStickyFault != null && ch < pdp.channelStickyFault.length
             && pdp.channelStickyFault[ch];
-        String status = sticky ? "STICKY_FAULT" : (active ? "ACTIVE_FAULT" : "OK");
+        String status = sticky ? STATUS_STICKY_FAULT : (active ? STATUS_ACTIVE_FAULT : STATUS_OK);
         ReportTextUtil.appendLine(
             sb,
-            "    Ch " + String.format("%02d", ch) +
-            " current=" + String.format("%6.2f", pdp.channelCurrentA[ch]) + "A" +
-            " activeFault=" + formatBoolean(active) +
-            " stickyFault=" + formatBoolean(sticky) +
-            " status=" + status);
+            TEXT_CH_PREFIX + String.format(FORMAT_CH, ch) +
+            TEXT_CURRENT_PREFIX + String.format(FORMAT_CURRENT, pdp.channelCurrentA[ch]) + TEXT_AMP +
+            TEXT_ACTIVE_FAULT + formatBoolean(active) +
+            TEXT_STICKY_FAULT + formatBoolean(sticky) +
+            TEXT_STATUS + status);
       }
     }
   }

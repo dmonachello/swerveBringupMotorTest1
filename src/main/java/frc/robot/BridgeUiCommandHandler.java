@@ -46,11 +46,23 @@ public class BridgeUiCommandHandler {
   private static final long TCP_KEEPALIVE_INTERVAL_MS = 1000;
   private static final long TCP_KEEPALIVE_MISSES = 5;
   private static final int UI_LOG_MAX_LINES = 200;
+  private static final String JSON_KEY_LABEL = "label";
+  private static final String JSON_KEY_VENDOR = "vendor";
+  private static final String JSON_KEY_TYPE = "type";
+  private static final String JSON_KEY_ID = "id";
+  private static final String JSON_KEY_DEVICE = "device";
+  private static final String JSON_KEY_ENABLED = "enabled";
+  private static final String JSON_KEY_PRESENCE_CONF = "presenceConfidence";
+  private static final String JSON_KEY_LAST_SEEN_MS = "lastSeenMs";
+  private static final String JSON_KEY_MOTOR_CURRENT_A = "motorCurrentA";
+  private static final String JSON_KEY_CMD_DUTY = "cmdDuty";
+  private static final String JSON_KEY_APPLIED_DUTY = "appliedDuty";
+  private static final String JSON_KEY_APPLIED_V = "appliedV";
+  private static final String JSON_KEY_TEMP_C = "tempC";
   private static final String JSON_KEY_VEL_RPM = "velRpm";
   private static final String JSON_KEY_BUS_V = "busV";
   private static final String JSON_KEY_TOTAL_CURRENT_A = "totalCurrentA";
   private static final String JSON_KEY_SWITCHABLE_ENABLED = "switchableEnabled";
-  private static final String JSON_KEY_TEMP_C = "tempC";
   private static final String JSON_KEY_BROWNOUT = "brownout";
   private static final String JSON_KEY_CAN_WARNING = "canWarning";
   private static final String JSON_KEY_HARDWARE_FAULT = "hardwareFault";
@@ -62,6 +74,21 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_CHANNEL_FAULT = "channelFault";
   private static final String JSON_KEY_CHANNEL_STICKY_FAULT = "channelStickyFault";
   private static final int INDEX_START = 0;
+  private static final String TEXT_SELECTED_DEVICE_PREFIX = "Selected device: ";
+  private static final String TEXT_PAREN_OPEN = " (";
+  private static final String TEXT_PAREN_CLOSE = ")";
+  private static final String TEXT_NONE = "(none)";
+  private static final String TEXT_ON = "on";
+  private static final String TEXT_OFF = "off";
+  private static final String TEXT_DEVICE_PREFIX = "Device ";
+  private static final String TEXT_VENDOR_SEP = " ";
+  private static final String TEXT_TYPE_SEP = " ";
+  private static final String TEXT_ID_PREFIX = " id=";
+  private static final String TEXT_DEVICE_NOT_FOUND = "Device: (not found)";
+  private static final String TEXT_DEVICES_NONE = "Devices: (none)";
+  private static final String TEXT_DEVICES_HEADER = "Devices:\n";
+  private static final String TEXT_DEVICE_LIST_PREFIX = "  ";
+  private static final String JSON_KEY_DEVICES = "devices";
   private static final Gson GSON = new Gson();
   private static final double DEADBAND = BringupUtil.DEADBAND;
 
@@ -1804,17 +1831,18 @@ public class BridgeUiCommandHandler {
         ? BringupUtil.getActiveDevicesSorted()
         : BringupUtil.getSelectedDevicesSorted();
     if (devices.isEmpty()) {
-      return "Devices: (none)";
+      return TEXT_DEVICES_NONE;
     }
     StringBuilder sb = new StringBuilder(256);
-    sb.append("Devices:\n");
+    sb.append(TEXT_DEVICES_HEADER);
     for (BringupUtil.DeviceEntry entry : devices) {
       if (entry == null) {
         continue;
       }
-      sb.append("  ").append(entry.label)
-          .append(" (").append(entry.vendor).append(" ")
-          .append(entry.type).append(" id=").append(entry.id).append(")\n");
+      sb.append(TEXT_DEVICE_LIST_PREFIX).append(entry.label)
+          .append(TEXT_PAREN_OPEN).append(entry.vendor).append(TEXT_VENDOR_SEP)
+          .append(entry.type).append(TEXT_ID_PREFIX).append(entry.id).append(TEXT_PAREN_CLOSE)
+          .append("\n");
     }
     return sb.toString();
   }
@@ -1834,13 +1862,13 @@ public class BridgeUiCommandHandler {
         continue;
       }
       JsonObject obj = new JsonObject();
-      obj.addProperty("label", entry.label);
-      obj.addProperty("vendor", entry.vendor);
-      obj.addProperty("type", entry.type);
-      obj.addProperty("id", entry.id);
+      obj.addProperty(JSON_KEY_LABEL, entry.label);
+      obj.addProperty(JSON_KEY_VENDOR, entry.vendor);
+      obj.addProperty(JSON_KEY_TYPE, entry.type);
+      obj.addProperty(JSON_KEY_ID, entry.id);
       array.add(obj);
     }
-    root.add("devices", array);
+    root.add(JSON_KEY_DEVICES, array);
     return root;
   }
 
@@ -1850,9 +1878,11 @@ public class BridgeUiCommandHandler {
    */
   private String buildDeviceText(BringupUtil.DeviceEntry entry) {
     if (entry == null) {
-      return "Device: (not found)";
+      return TEXT_DEVICE_NOT_FOUND;
     }
-    return "Device " + entry.label + " (" + entry.vendor + " " + entry.type + " id=" + entry.id + ")";
+    return TEXT_DEVICE_PREFIX + entry.label + TEXT_PAREN_OPEN
+        + entry.vendor + TEXT_VENDOR_SEP + entry.type + TEXT_ID_PREFIX + entry.id
+        + TEXT_PAREN_CLOSE;
   }
 
   /**
@@ -1864,10 +1894,10 @@ public class BridgeUiCommandHandler {
       return null;
     }
     JsonObject obj = new JsonObject();
-    obj.addProperty("label", entry.label);
-    obj.addProperty("vendor", entry.vendor);
-    obj.addProperty("type", entry.type);
-    obj.addProperty("id", entry.id);
+    obj.addProperty(JSON_KEY_LABEL, entry.label);
+    obj.addProperty(JSON_KEY_VENDOR, entry.vendor);
+    obj.addProperty(JSON_KEY_TYPE, entry.type);
+    obj.addProperty(JSON_KEY_ID, entry.id);
     return obj;
   }
 
@@ -1876,8 +1906,9 @@ public class BridgeUiCommandHandler {
    *   buildSelectedDeviceText - Build text for selected-device state.
    */
   private String buildSelectedDeviceText() {
-    String device = bridgeSelected.device != null ? bridgeSelected.device : "(none)";
-    return "Selected device: " + device + " (" + (bridgeSelected.enabled ? "on" : "off") + ")";
+    String device = bridgeSelected.device != null ? bridgeSelected.device : TEXT_NONE;
+    return TEXT_SELECTED_DEVICE_PREFIX + device + TEXT_PAREN_OPEN
+        + (bridgeSelected.enabled ? TEXT_ON : TEXT_OFF) + TEXT_PAREN_CLOSE;
   }
 
   /**
@@ -1886,8 +1917,8 @@ public class BridgeUiCommandHandler {
    */
   private JsonObject buildSelectedDeviceJson() {
     JsonObject obj = new JsonObject();
-    obj.addProperty("device", bridgeSelected.device != null ? bridgeSelected.device : "");
-    obj.addProperty("enabled", bridgeSelected.enabled);
+    obj.addProperty(JSON_KEY_DEVICE, bridgeSelected.device != null ? bridgeSelected.device : "");
+    obj.addProperty(JSON_KEY_ENABLED, bridgeSelected.enabled);
     return obj;
   }
 
@@ -1946,10 +1977,10 @@ public class BridgeUiCommandHandler {
         continue;
       }
       JsonObject obj = new JsonObject();
-      obj.addProperty("label", entry.label);
-      obj.addProperty("vendor", entry.vendor);
-      obj.addProperty("type", entry.type);
-      obj.addProperty("id", entry.id);
+      obj.addProperty(JSON_KEY_LABEL, entry.label);
+      obj.addProperty(JSON_KEY_VENDOR, entry.vendor);
+      obj.addProperty(JSON_KEY_TYPE, entry.type);
+      obj.addProperty(JSON_KEY_ID, entry.id);
 
       DeviceSnapshot snap = null;
       if (entry.label != null) {
@@ -1959,41 +1990,47 @@ public class BridgeUiCommandHandler {
         snap = byId.get(entry.id);
       }
       if (snap != null) {
-        obj.addProperty("presenceConfidence", snap.present ? 1.0 : 0.0);
+        obj.addProperty(JSON_KEY_PRESENCE_CONF, snap.present ? 1.0 : 0.0);
         if (snap.present) {
-          obj.addProperty("lastSeenMs", nowMs);
+          obj.addProperty(JSON_KEY_LAST_SEEN_MS, nowMs);
         }
         RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
         if (rev != null) {
           if (rev.motorCurrentA != null) {
-            obj.addProperty("motorCurrentA", rev.motorCurrentA);
+            obj.addProperty(JSON_KEY_MOTOR_CURRENT_A, rev.motorCurrentA);
           }
           if (rev.cmdDuty != null) {
-            obj.addProperty("cmdDuty", rev.cmdDuty);
+            obj.addProperty(JSON_KEY_CMD_DUTY, rev.cmdDuty);
           }
           if (rev.appliedDuty != null) {
-            obj.addProperty("appliedDuty", rev.appliedDuty);
+            obj.addProperty(JSON_KEY_APPLIED_DUTY, rev.appliedDuty);
+          }
+          if (rev.appliedV != null) {
+            obj.addProperty(JSON_KEY_APPLIED_V, rev.appliedV);
           }
           if (rev.velRpm != null) {
             obj.addProperty(JSON_KEY_VEL_RPM, rev.velRpm);
           }
           if (rev.tempC != null) {
-            obj.addProperty("tempC", rev.tempC);
+            obj.addProperty(JSON_KEY_TEMP_C, rev.tempC);
           }
         }
         CtreMotorAttachment ctre = snap.getAttachment(CtreMotorAttachment.class);
         if (ctre != null) {
           if (ctre.motorCurrentA != null) {
-            obj.addProperty("motorCurrentA", ctre.motorCurrentA);
+            obj.addProperty(JSON_KEY_MOTOR_CURRENT_A, ctre.motorCurrentA);
           }
           if (ctre.appliedDuty != null) {
-            obj.addProperty("appliedDuty", ctre.appliedDuty);
+            obj.addProperty(JSON_KEY_APPLIED_DUTY, ctre.appliedDuty);
+          }
+          if (ctre.appliedV != null) {
+            obj.addProperty(JSON_KEY_APPLIED_V, ctre.appliedV);
           }
           if (ctre.velRpm != null) {
             obj.addProperty(JSON_KEY_VEL_RPM, ctre.velRpm);
           }
           if (ctre.tempC != null) {
-            obj.addProperty("tempC", ctre.tempC);
+            obj.addProperty(JSON_KEY_TEMP_C, ctre.tempC);
           }
         }
         PdhStatusAttachment pdh = snap.getAttachment(PdhStatusAttachment.class);
