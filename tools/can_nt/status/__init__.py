@@ -3,7 +3,12 @@ NAME
     __init__.py - Status code package exports.
 """
 
-from tools.can_nt.status.status_encode import format_status, decode, FLAG_PRINT_MESSAGE
+from tools.can_nt.status.status_encode import (
+    format_status,
+    decode,
+    format_status_message,
+    FLAG_PRINT_MESSAGE,
+)
 from tools.can_nt.status.status_result import StatusResult
 from tools.can_nt.status.cli_parser_codes import (
     SS__CLI_PARSER__INVALID_SYNTAX,
@@ -17,10 +22,11 @@ from tools.can_nt.status.cli_validator_codes import (
     SS__CLI_VALIDATOR__REQUIRED,
 )
 from tools.can_nt.status.executor_codes import (
-    SS__EXECUTOR__SUCCESS,
     SS__EXECUTOR__CANCELLED,
     SS__EXECUTOR__INTERNAL_ERROR,
     SS__EXECUTOR__NOT_SUPPORTED,
+    SS__EXECUTOR__FAILED,
+    SS__NORMAL,
 )
 from tools.can_nt.status.device_codes import (
     SS__DEVICE__NOT_FOUND,
@@ -60,6 +66,7 @@ from tools.can_nt.status.config_codes import (
 __all__ = [
     "format_status",
     "decode",
+    "format_status_message",
     "FLAG_PRINT_MESSAGE",
     "StatusResult",
     "SS__CLI_PARSER__INVALID_SYNTAX",
@@ -69,10 +76,11 @@ __all__ = [
     "SS__CLI_VALIDATOR__INVALID_VALUE",
     "SS__CLI_VALIDATOR__OUT_OF_RANGE",
     "SS__CLI_VALIDATOR__REQUIRED",
-    "SS__EXECUTOR__SUCCESS",
+    "SS__NORMAL",
     "SS__EXECUTOR__CANCELLED",
     "SS__EXECUTOR__INTERNAL_ERROR",
     "SS__EXECUTOR__NOT_SUPPORTED",
+    "SS__EXECUTOR__FAILED",
     "SS__DEVICE__NOT_FOUND",
     "SS__DEVICE__NOT_DEFINED",
     "SS__DEVICE__INVALID_FIELD",

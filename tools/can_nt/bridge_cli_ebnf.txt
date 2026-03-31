@@ -18,11 +18,14 @@ common         = "exit"
 
 exec           = show_exec
                | "configure" ws "terminal"
+               | "cfg"
                | "connect"
                | "disconnect"
+               | "profile" ws "device" ws "show-all" ws name
+               | "prof" ws "device" ws "show-all" ws name
                | diagnose ;
 
-show_exec      = "show" ws show_target [ ws show_flags ] ;
+show_exec      = ("show" | "ls") ws show_target [ ws show_flags ] ;
 
 show_target    = "status"
                | "groups"
@@ -30,6 +33,8 @@ show_target    = "status"
                | "devices"
                | "device" ws name
                | "device" ws "registry" ws name
+               | "commands"
+               | "help"
                | "bindings"
                | "selected-device"
                | "runtime-state"
@@ -40,6 +45,7 @@ show_target    = "status"
                | "profile" [ ws name ]
                | "tests"
                | "test" ws name
+               | "device-usage" ws name
                | "message-level" ;
 
 show_source    = "robot" | "local" | "both" ;
@@ -51,6 +57,12 @@ config         = "group" ws name
                | "no" ws "device" ws name
                | "profile" ws name
                | "profile" ws "create" ws name
+               | "profile" ws "device" ws "delete" ws name
+               | "profile" ws "device" ws "show-all" ws name
+               | "prof" ws name
+               | "prof" ws "create" ws name
+               | "prof" ws "device" ws "delete" ws name
+               | "prof" ws "device" ws "show-all" ws name
                | "selected-device" ws name
                | "selected-mode" ws ("on" | "off")
                | "merge" ws "config" ws path
@@ -61,11 +73,16 @@ config         = "group" ws name
                | "save" ws "local-config" ws path
                | "save" ws "profiles" ws path
                | "save" ws "unified-config" ws path
+               | "savep" ws path
                | "rename" ws "device" ws name ws name
                | "device" ws name
                | "device" ws name ws "set" ws device_field ws value_text
-               | "validate" ws "config" [ ws path ]
-               | "show" ws show_target [ ws show_flags ]
+               | ("validate" | "val") ws "config" [ ws path ] [ ws "--all" ]
+               | ("validate" | "val") ws "profiles"
+               | ("validate" | "val") ws "tests"
+               | ("validate" | "val") ws "bindings" [ ws path ]
+               | ("validate" | "val") ws "can-mappings" [ ws path ]
+               | ("show" | "ls") ws show_target [ ws show_flags ]
                | diagnose
                | "bindings" [ ws bindings_args ]
                | "can-mappings" [ ws mappings_args ]
@@ -78,7 +95,7 @@ config         = "group" ws name
 
 diagnose       = "diagnose" ws ("motor" | "device") ws name ;
 
-bindings_args  = "show" [ ws ("controllers" | "bindings" | "axes") ] [ ws show_flags ]
+bindings_args  = ("show" | "ls") [ ws ("controllers" | "bindings" | "axes") ] [ ws show_flags ]
                | "controller" ws ("add" ws name ws name ws number
                                    | "set" ws name ws field ws value_text
                                    | "rename" ws name ws name
@@ -94,7 +111,7 @@ bindings_args  = "show" [ ws ("controllers" | "bindings" | "axes") ] [ ws show_f
                | "save" ws path
                | "validate" [ ws path ] ;
 
-mappings_args  = "show" [ ws ("manufacturers" | "device-types") ] [ ws show_flags ]
+mappings_args  = ("show" | "ls") [ ws ("manufacturers" | "device-types" | "device-type") ] [ ws show_flags ]
                | "manufacturer" ws ("set" ws number ws value_text | "delete" ws number | "no" ws number)
                | "device-type" ws ("set" ws number ws value_text | "delete" ws number | "no" ws number)
                | "load" ws path
@@ -108,10 +125,10 @@ tests_args     = "templates"
                | "save"
                | "clear" ;
 
-group          = "show"
-               | "show" ws "members"
-               | "show" ws "binding"
-               | "show" ws show_target [ ws show_flags ]
+group          = ("show" | "ls")
+               | ("show" | "ls") ws "members"
+               | ("show" | "ls") ws "binding"
+               | ("show" | "ls") ws show_target [ ws show_flags ]
                | "add" ws "device" ws name
                | "no" ws "device" ws name
                | "member" ws name ws ("enable" | "disable" | "toggle")
@@ -123,14 +140,14 @@ group          = "show"
                | "run" ws "test" [ ws name ]
                | "write" ws "tests" ws path ;
 
-device         = "show"
-               | "show" ws show_target [ ws show_flags ]
+device         = ("show" | "ls")
+               | ("show" | "ls") ws show_target [ ws show_flags ]
                | "set" ws device_field ws value_or_text
                | "no" ws device_field
                | "delete"
                | "write" ws "tests" ws path ;
 
-test           = "show"
+test           = ("show" | "ls")
                | "type" ws ("joystick" | "button" | "composite" | "deadbandSweep" | "deviceAction")
                | "device" ws "add" ws name
                | "no" ws "device" ws name

@@ -21,13 +21,17 @@ from tools.can_nt.status import (
     SS__CLI_PARSER__UNKNOWN_COMMAND,
     SS__CLI_VALIDATOR__INVALID_VALUE,
     SS__CONFIG__NOT_LOADED,
+    SS__CONFIG__INVALID,
+    SS__CONFIG__VALID,
     SS__DEVICE__NOT_DEFINED,
-    SS__EXECUTOR__SUCCESS,
+    SS__EXECUTOR__FAILED,
+    SS__NORMAL,
     SS__NETWORK__COMMAND_SEND_FAILED,
     SS__NETWORK__CONNECT_FAILED,
     SS__NETWORK__HANDSHAKE_FAILED,
     SS__NETWORK__NOT_CONNECTED,
     SS__NETWORK__ROBOT_UNAVAILABLE,
+    format_status_message,
 )
 from tools.can_nt.bridge_ops import (
     connect,
@@ -63,7 +67,7 @@ from tools.can_nt.bridge_ops import (
 
 AST_EXEC_SPEC = {
     "ret_ok": 0,
-    "ret_err": 2,
+    "ret_err": SS__EXECUTOR__FAILED,
     "msg_err_unknown_cmd": "ERROR: Unknown command.",
     "msg_err_show_requires": "ERROR: show requires a target.",
     "msg_err_unknown_show": "ERROR: Unknown show command.",
@@ -96,6 +100,8 @@ AST_EXEC_SPEC = {
     "msg_warn_local_group_enable": "WARNING: Robot not connected; local group enabled.",
     "msg_warn_local_group_disable": "WARNING: Robot not connected; local group disabled.",
     "fmt_delete_group": "Delete group '%s'?",
+    "fmt_delete_profile_device": "Delete profile device '%s'?",
+    "fmt_profile_device_deleted": "Deleted profile device %s.",
     "fmt_rename_device": "Renamed device %s -> %s.",
     "fmt_update_device": "Updated device %s %s=%s.",
     "fmt_clear_device": "Cleared device %s %s.",
@@ -199,7 +205,7 @@ class BridgeCliAstExecutor:
 
     def _ast_common_exit(self, _ast: CommandAst) -> Optional[StatusResult]:
         if self._cli._modes[-1].name == SPEC.modes[SPEC.idx_exec]:
-            return StatusResult(code=SS__EXECUTOR__SUCCESS, exit_requested=True)
+            return StatusResult(code=SS__NORMAL, exit_requested=True)
         self._cli._pop_mode()
         return None
 
@@ -210,12 +216,12 @@ class BridgeCliAstExecutor:
 
     def _ast_common_help(self, ast: CommandAst) -> Optional[StatusResult]:
         self._cli._print_help(ast.args if ast.args else [])
-        return StatusResult(code=SS__EXECUTOR__SUCCESS)
+        return StatusResult(code=SS__NORMAL)
 
     def _ast_common_ping(self, _ast: CommandAst) -> Optional[StatusResult]:
         seq = show_status(self._cli._session, json_output=bool(SPEC.bool_false))
         self._cli._wait_for_seq(seq)
-        return StatusResult(code=SS__EXECUTOR__SUCCESS)
+        return StatusResult(code=SS__NORMAL)
 
     def _ast_exec_connect(self, _ast: CommandAst) -> Optional[StatusResult]:
         if not connect(self._cli._session):
@@ -226,18 +232,18 @@ class BridgeCliAstExecutor:
             print(AST_EXEC_SPEC["msg_err_handshake"])
             return StatusResult(code=SS__NETWORK__HANDSHAKE_FAILED, message=AST_EXEC_SPEC["msg_err_handshake"])
         print(AST_EXEC_SPEC["msg_connected"])
-        return StatusResult(code=SS__EXECUTOR__SUCCESS)
+        return StatusResult(code=SS__NORMAL)
 
     def _ast_exec_disconnect(self, _ast: CommandAst) -> Optional[StatusResult]:
         disconnect(self._cli._session)
         print(AST_EXEC_SPEC["msg_disconnected"])
-        return StatusResult(code=SS__EXECUTOR__SUCCESS)
+        return StatusResult(code=SS__NORMAL)
 
     def _ast_exec_configure_terminal(self, _ast: CommandAst) -> Optional[StatusResult]:
         self._cli._ensure_local_config()
         mode_cls = type(self._cli._modes[SPEC.count_zero])
         self._cli._modes.append(mode_cls(SPEC.modes[SPEC.idx_config]))
-        return StatusResult(code=SS__EXECUTOR__SUCCESS)
+        return StatusResult(code=SS__NORMAL)
 
     def _ast_show(self, ast: CommandAst) -> Optional[int]:
         return self._handle_show_ast(ast)
@@ -276,15 +282,31 @@ class BridgeCliAstExecutor:
             return AST_EXEC_SPEC["ret_err"]
         return None
 
-    def _ast_config_profile(self, ast: CommandAst) -> Optional[int]:
+    def _ast_config_profile(self, ast: CommandAst) -> Optional[StatusResult]:
         if ast.field == SPEC.cmd_create:
             if not self._cli._create_profile(ast.profile_name):
-                return AST_EXEC_SPEC["ret_err"]
-            return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            return StatusResult(code=SS__NORMAL)
+        if ast.field == SPEC.cmd_delete:
+            name = ast.device_name
+            if not name:
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            if not self._cli._confirm(AST_EXEC_SPEC["fmt_delete_profile_device"] % name):
+                return None
+            result = self._cli._delete_profiles_device(name)
+            if not result.ok():
+                return result
+            print(AST_EXEC_SPEC["fmt_profile_device_deleted"] % name)
+            return StatusResult(code=SS__NORMAL)
+        if ast.field == SPEC.cmd_show_all:
+            name = ast.device_name
+            if not name:
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            return self._cli._show_profiles_device_all(name)
         if not self._cli._set_active_profile(ast.profile_name):
-            return AST_EXEC_SPEC["ret_err"]
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         print(f"Active profile: {self._cli._groups_profile}")
-        return None
+        return StatusResult(code=SS__NORMAL)
 
     def _ast_config_selected_device(self, ast: CommandAst) -> Optional[StatusResult]:
         if not self._cli._session.is_connected():
@@ -296,7 +318,7 @@ class BridgeCliAstExecutor:
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_selected_device"]):
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED, message=AST_EXEC_SPEC["msg_err_cmd_send"])
-        return StatusResult(code=SS__EXECUTOR__SUCCESS)
+        return StatusResult(code=SS__NORMAL)
 
     def _ast_config_selected_mode(self, ast: CommandAst) -> Optional[StatusResult]:
         mode_value = ast.field.lower()
@@ -313,7 +335,7 @@ class BridgeCliAstExecutor:
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_selected_mode"]):
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED, message=AST_EXEC_SPEC["msg_err_cmd_send"])
-        return StatusResult(code=SS__EXECUTOR__SUCCESS)
+        return StatusResult(code=SS__NORMAL)
 
     def _ast_config_merge(self, ast: CommandAst) -> Optional[int]:
         plan = merge_config(ast.path, self._cli._conflict_policy, self._cli._active_profile_name())
@@ -328,8 +350,10 @@ class BridgeCliAstExecutor:
             result = export_runtime_groups(
                 self._cli._session, ast.path, self._cli._active_profile_name()
             )
-            print(result.message)
-            return AST_EXEC_SPEC["ret_err"] if not result.ok else None
+            message = format_status_message(result.code) or result.message
+            if message:
+                print(message)
+            return AST_EXEC_SPEC["ret_err"] if not result.ok() else None
         if ast.export_target == SPEC.cmd_export_cli_script:
             if not self._cli._export_cli_script(ast.path):
                 return AST_EXEC_SPEC["ret_err"]
@@ -348,8 +372,10 @@ class BridgeCliAstExecutor:
             return None
         if ast.save_target == SPEC.cmd_save_config:
             result = save_config(self._cli._session, ast.path, self._cli._active_profile_name())
-            print(result.message)
-            return AST_EXEC_SPEC["ret_err"] if not result.ok else None
+            message = format_status_message(result.code) or result.message
+            if message:
+                print(message)
+            return AST_EXEC_SPEC["ret_err"] if not result.ok() else None
         if ast.save_target == SPEC.cmd_save_local_config:
             if not self._cli._save_local_config(ast.path):
                 return AST_EXEC_SPEC["ret_err"]
@@ -386,19 +412,41 @@ class BridgeCliAstExecutor:
         print(AST_EXEC_SPEC["fmt_update_device"] % (ast.device_name, ast.field, ast.value))
         return None
 
-    def _ast_config_validate(self, ast: CommandAst) -> Optional[int]:
-        if ast.path:
-            ok, message, _config = self._cli.validate_config_file(ast.path)
+    def _ast_config_validate(self, ast: CommandAst) -> Optional[StatusResult]:
+        target = ast.field or SPEC.empty_str
+        all_issues = ast.value == SPEC.cmd_validate_all
+        if target == SPEC.cmd_config:
+            if ast.path:
+                if all_issues:
+                    ok, message, _config = self._cli.validate_config_file_all(ast.path)
+                else:
+                    ok, message, _config = self._cli.validate_config_file(ast.path)
+            else:
+                if not self._cli._local_config:
+                    print(AST_EXEC_SPEC["msg_err_local_missing"])
+                    return StatusResult(code=SS__CONFIG__NOT_LOADED)
+                if all_issues:
+                    ok, message = self._cli.validate_config_data_all(self._cli._local_config)
+                else:
+                    ok, message = self._cli.validate_config_data(self._cli._local_config)
+        elif target == "profiles":
+            ok, message = self._cli.validate_profiles_only()
+        elif target == SPEC.cmd_tests:
+            ok, message = self._cli.validate_tests_only()
+        elif target == SPEC.cmd_bindings:
+            ok, message = self._cli.validate_bindings_only(ast.path)
+        elif target == SPEC.cmd_can_mappings:
+            ok, message = self._cli.validate_mappings_only(ast.path)
         else:
-            if not self._cli._local_config:
-                print(AST_EXEC_SPEC["msg_err_local_missing"])
-                return AST_EXEC_SPEC["ret_err"]
-            ok, message = self._cli.validate_config_data(self._cli._local_config)
+            print(AST_EXEC_SPEC["msg_err_unknown_cmd"])
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         if ok:
             print(AST_EXEC_SPEC["msg_ok_config"])
-            return None
+            return StatusResult(code=SS__CONFIG__VALID)
         print(AST_EXEC_SPEC["msg_err_fmt"] % message)
-        return AST_EXEC_SPEC["ret_err"]
+        if target == SPEC.cmd_config and ast.path:
+            self._cli._maybe_hint_validate_profile(ast.path)
+        return StatusResult(code=SS__CONFIG__INVALID)
 
     def _ast_config_bindings(self, ast: CommandAst) -> Optional[int]:
         return self._cli._config_bindings_command(ast.tokens)
@@ -619,7 +667,12 @@ class BridgeCliAstExecutor:
             local_ok = self._show_local_ast(
                 target, ast.show_name, ast.show_json, ast.show_pretty
             )
-            robot_ok = self._show_robot_ast(target, ast.show_name, ast.show_json)
+            robot_result = self._show_robot_ast(target, ast.show_name, ast.show_json)
+            if isinstance(robot_result, StatusResult):
+                if self._cli._batch and not robot_result.ok():
+                    return robot_result
+                return robot_result
+            robot_ok = bool(robot_result)
             if self._cli._batch and (not local_ok or not robot_ok):
                 return AST_EXEC_SPEC["ret_err"]
             return None
@@ -630,16 +683,19 @@ class BridgeCliAstExecutor:
                 return AST_EXEC_SPEC["ret_err"]
             return None
         if source == SPEC.show_source_robot:
-            if not self._show_robot_ast(target, ast.show_name, ast.show_json):
+            robot_result = self._show_robot_ast(target, ast.show_name, ast.show_json)
+            if isinstance(robot_result, StatusResult):
+                return robot_result
+            if not robot_result:
                 return AST_EXEC_SPEC["ret_err"]
             return None
         print(AST_EXEC_SPEC["msg_err_unknown_show_source"])
         return AST_EXEC_SPEC["ret_err"]
 
-    def _show_robot_ast(self, target: str, name: str, json_output: bool) -> bool:
+    def _show_robot_ast(self, target: str, name: str, json_output: bool) -> object:
         if not self._cli._session.is_connected():
             print(AST_EXEC_SPEC["msg_err_robot_unavailable"])
-            return bool(SPEC.bool_false)
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
         if target == SPEC.show_target_status:
             seq = show_status(self._cli._session, json_output=json_output)
         elif target == SPEC.show_target_groups:
@@ -658,17 +714,17 @@ class BridgeCliAstExecutor:
             seq = show_runtime_state(self._cli._session, json_output=json_output)
         elif target == SPEC.show_target_device_registry:
             print(AST_EXEC_SPEC["msg_err_unknown_show"])
-            return bool(SPEC.bool_false)
+            return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
         else:
             print(AST_EXEC_SPEC["msg_err_unknown_show"])
-            return bool(SPEC.bool_false)
+            return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
         if seq is None:
             print(AST_EXEC_SPEC["msg_err_cmd_send"])
-            return bool(SPEC.bool_false)
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         self._cli._show_label_seq[int(seq)] = SPEC.show_source_robot
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_show"]):
-            return bool(SPEC.bool_false)
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         return bool(SPEC.bool_true)
 
     def _show_local_ast(

@@ -20,6 +20,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from tools.can_nt.bridge_session import BridgeSession
+from tools.can_nt.status import (
+    StatusResult,
+    SS__CONFIG__INVALID,
+    SS__CONFIG__PROFILE_REQUIRED,
+    SS__CONFIG__SAVED,
+    SS__NETWORK__ROBOT_UNAVAILABLE,
+)
 from tools.common.json_io import read_json, write_json
 from tools.common.profile_constants import (
     BRIDGE_CONFIG_SCHEMA_VERSION,
@@ -64,6 +71,7 @@ from tools.common.profile_io import validate_profiles_schema
 CONFIG_SCHEMA_VERSION = BRIDGE_CONFIG_SCHEMA_VERSION
 SEP_COMMA_SPACE = ", "
 SEP_NEWLINE = "\n"
+MSG_OK = "OK"
 MSG_DUPLICATE_DEVICE_NAMES = "Duplicate device names: {names}"
 MSG_MISSING_DEVICE_ENTRIES = "Missing device entries: {names}"
 MSG_MISSING_DEVICE_GROUP_HEADER = "Missing device references by group:"
@@ -134,15 +142,7 @@ class ConfigPlan:
     root_path: Optional[str] = None
 
 
-@dataclass(frozen=True)
-class LocalOpResult:
-    """
-    NAME
-        LocalOpResult - Result of a local config operation.
-    """
-
-    ok: bool
-    message: str
+# LocalOpResult replaced by StatusResult.
 
 
 def _send(session: BridgeSession, name: str, args: Optional[Dict[str, Any]] = None) -> Optional[int]:
@@ -553,40 +553,40 @@ def import_config(
 
 def export_runtime_groups(
     session: BridgeSession, path: str, profile_name: Optional[str]
-) -> LocalOpResult:
+) -> StatusResult:
     """
     NAME
         export_runtime_groups - Export runtime groups to a bridgeConfig file.
     """
     if not profile_name:
-        return LocalOpResult(False, MSG_PROFILE_REQUIRED)
+        return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED, message=MSG_PROFILE_REQUIRED)
     state = _fetch_runtime_state_json(session)
     if state is None:
-        return LocalOpResult(False, "Failed to fetch runtime state.")
+        return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE, message="Failed to fetch runtime state.")
     config = _config_from_runtime_state(state, profile_name)
     try:
         write_json(Path(path), config, indent=2, trailing_newline=True)
     except Exception as exc:
-        return LocalOpResult(False, f"Failed to write {path}: {exc}")
-    return LocalOpResult(True, f"Wrote bridgeConfig to {path}.")
+        return StatusResult(code=SS__CONFIG__INVALID, message=f"Failed to write {path}: {exc}")
+    return StatusResult(code=SS__CONFIG__SAVED, message=f"Wrote bridgeConfig to {path}.")
 
 
-def save_config(session: BridgeSession, path: str, profile_name: Optional[str]) -> LocalOpResult:
+def save_config(session: BridgeSession, path: str, profile_name: Optional[str]) -> StatusResult:
     """
     NAME
         save_config - Save current runtime config to a bridgeConfig file.
     """
     if not profile_name:
-        return LocalOpResult(False, MSG_PROFILE_REQUIRED)
+        return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED, message=MSG_PROFILE_REQUIRED)
     state = _fetch_runtime_state_json(session)
     if state is None:
-        return LocalOpResult(False, "Failed to fetch runtime state.")
+        return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE, message="Failed to fetch runtime state.")
     config = _config_from_runtime_state(state, profile_name)
     try:
         write_json(Path(path), config, indent=2, trailing_newline=True)
     except Exception as exc:
-        return LocalOpResult(False, f"Failed to write {path}: {exc}")
-    return LocalOpResult(True, f"Wrote bridgeConfig to {path}.")
+        return StatusResult(code=SS__CONFIG__INVALID, message=f"Failed to write {path}: {exc}")
+    return StatusResult(code=SS__CONFIG__SAVED, message=f"Wrote bridgeConfig to {path}.")
 
 
 def group_add_device(
@@ -976,7 +976,22 @@ def validate_config_file(path: str) -> Tuple[bool, str, Optional[Dict[str, Any]]
         if detail:
             message = SEP_NEWLINE.join([message, detail])
         return (False, message, config)
-    return (True, "OK", config)
+    return (True, MSG_OK, config)
+
+
+def validate_config_file_all(path: str) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    NAME
+        validate_config_file_all - Validate config file and report all issues.
+    """
+    config, root_payload, error = _read_bridge_config(path)
+    if config is None:
+        message = error or f"Invalid config: {path}"
+        return (False, message, None)
+    if root_payload is None:
+        return (False, MSG_MISSING_PROFILES, config)
+    ok, message = validate_config_data_all(config, root_payload)
+    return (ok, message, config)
 
 
 def _find_missing_device_refs(config: Dict[str, Any], root_payload: Dict[str, Any]) -> List[str]:
@@ -1126,7 +1141,36 @@ def validate_config_data(config: Dict[str, Any], root_payload: Optional[Dict[str
         if detail:
             message = SEP_NEWLINE.join([message, detail])
         return (False, message)
-    return (True, "OK")
+    return (True, MSG_OK)
+
+
+def validate_config_data_all(
+    config: Dict[str, Any], root_payload: Optional[Dict[str, Any]]
+) -> Tuple[bool, str]:
+    """
+    NAME
+        validate_config_data_all - Validate config and report all issues.
+    """
+    if root_payload is None:
+        return (False, MSG_MISSING_PROFILES)
+    messages: List[str] = []
+    duplicates = _find_duplicate_profile_labels(root_payload, config)
+    if duplicates:
+        messages.append(_format_duplicate_profile_labels(duplicates))
+    device_errors = _validate_device_definitions(root_payload)
+    if device_errors:
+        messages.append(SEP_NEWLINE.join(device_errors))
+    missing = _find_missing_device_refs(config, root_payload)
+    if missing:
+        missing_list = SEP_COMMA_SPACE.join(sorted(missing))
+        detail = _describe_missing_device_refs(config, root_payload, missing)
+        message = MSG_MISSING_DEVICE_ENTRIES.format(names=missing_list)
+        if detail:
+            message = SEP_NEWLINE.join([message, detail])
+        messages.append(message)
+    if messages:
+        return (False, SEP_NEWLINE.join(messages))
+    return (True, MSG_OK)
 
 
 def _describe_missing_device_refs(

@@ -15,3 +15,15 @@ SS__CONFIG__VALID = code(SEV.SUCCESS, FAC.CONFIG, MSG.CONFIG.VALID)
 SS__CONFIG__PROFILE_REQUIRED = code(SEV.ERROR, FAC.CONFIG, MSG.CONFIG.PROFILE_REQUIRED)
 SS__CONFIG__DUPLICATE_LABEL = code(SEV.ERROR, FAC.CONFIG, MSG.CONFIG.DUPLICATE_LABEL)
 SS__CONFIG__MISSING_DEVICE = code(SEV.ERROR, FAC.CONFIG, MSG.CONFIG.MISSING_DEVICE)
+
+STATUS_MESSAGES = {
+    SS__CONFIG__NOT_LOADED: "Config not loaded.",
+    SS__CONFIG__INVALID: "Config invalid: {detail}.",
+    SS__CONFIG__SAVED: "Config saved.",
+    SS__CONFIG__MERGED: "Config merged.",
+    SS__CONFIG__IMPORTED: "Config imported.",
+    SS__CONFIG__VALID: "Config valid.",
+    SS__CONFIG__PROFILE_REQUIRED: "Active profile required.",
+    SS__CONFIG__DUPLICATE_LABEL: "Duplicate label: {label}.",
+    SS__CONFIG__MISSING_DEVICE: "Missing device: {device}.",
+}

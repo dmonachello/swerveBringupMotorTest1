@@ -38,15 +38,22 @@ class ParserSpec:
     show_target_bindings: str
     show_target_selected_device: str
     show_target_device_registry: str
+    show_target_commands: str
+    show_target_help: str
+    show_target_device_usage: str
+    show_target_message_level: str
     bind_kinds: tuple[str, ...]
     cmd_connect: str
     cmd_disconnect: str
     cmd_configure: str
+    cmd_cfg: str
     cmd_terminal: str
     cmd_show: str
+    cmd_ls: str
     cmd_group: str
     cmd_no: str
     cmd_profile: str
+    cmd_prof: str
     cmd_selected_device: str
     cmd_selected_mode: str
     cmd_on: str
@@ -62,6 +69,7 @@ class ParserSpec:
     cmd_save_local_config: str
     cmd_save_profiles: str
     cmd_save_unified: str
+    cmd_savep: str
     cmd_rename: str
     cmd_device: str
     cmd_registry: str
@@ -79,6 +87,7 @@ class ParserSpec:
     cmd_termination: str
     cmd_limitswitch: str
     cmd_validate: str
+    cmd_val: str
     cmd_add: str
     cmd_member: str
     cmd_enable: str
@@ -89,6 +98,8 @@ class ParserSpec:
     cmd_test: str
     cmd_members: str
     cmd_binding: str
+    cmd_show_all: str
+    cmd_validate_all: str
     show_target_group: str
     show_target_device: str
     strict_default: bool
@@ -229,7 +240,7 @@ SPEC = ParserSpec(
     show_source_robot='robot',
     show_source_local='local',
     show_source_both='both',
-    show_targets=('status', 'groups', 'group', 'devices', 'device', 'device-registry', 'bindings', 'selected-device', 'runtime-state', 'tests', 'test', 'config', 'profiles', 'profile'),
+    show_targets=('status', 'groups', 'group', 'devices', 'device', 'commands', 'help', 'device-usage', 'device-registry', 'bindings', 'selected-device', 'runtime-state', 'tests', 'test', 'config', 'profiles', 'profile', 'message-level'),
     show_target_config='config',
     show_target_runtime_state='runtime-state',
     show_target_tests='tests',
@@ -240,15 +251,22 @@ SPEC = ParserSpec(
     show_target_bindings='bindings',
     show_target_selected_device='selected-device',
     show_target_device_registry='device-registry',
+    show_target_commands='commands',
+    show_target_help='help',
+    show_target_device_usage='device-usage',
+    show_target_message_level='message-level',
     bind_kinds=('analog', 'hold', 'toggle', 'jog-forward', 'jog-reverse'),
     cmd_connect='connect',
     cmd_disconnect='disconnect',
     cmd_configure='configure',
+    cmd_cfg='cfg',
     cmd_terminal='terminal',
     cmd_show='show',
+    cmd_ls='ls',
     cmd_group='group',
     cmd_no='no',
     cmd_profile='profile',
+    cmd_prof='prof',
     cmd_selected_device='selected-device',
     cmd_selected_mode='selected-mode',
     cmd_on='on',
@@ -264,6 +282,7 @@ SPEC = ParserSpec(
     cmd_save_local_config='local-config',
     cmd_save_profiles='profiles',
     cmd_save_unified='unified-config',
+    cmd_savep='savep',
     cmd_rename='rename',
     cmd_device='device',
     cmd_registry='registry',
@@ -281,6 +300,7 @@ SPEC = ParserSpec(
     cmd_termination='termination',
     cmd_limitswitch='limitswitch',
     cmd_validate='validate',
+    cmd_val='val',
     cmd_add='add',
     cmd_member='member',
     cmd_enable='enable',
@@ -291,6 +311,8 @@ SPEC = ParserSpec(
     cmd_test='test',
     cmd_members='members',
     cmd_binding='binding',
+    cmd_show_all='show-all',
+    cmd_validate_all='--all',
     show_target_group='group',
     show_target_device='device',
     strict_default=False,
@@ -304,9 +326,9 @@ SPEC = ParserSpec(
     msg_show_name='show %s requires a name',
     msg_show_too_many='too many arguments for show',
     msg_too_many_fmt='too many arguments for %s',
-    msg_group_name='group requires name',
-    msg_no_group_name='no group requires name',
-    msg_profile_name='profile requires name',
+    msg_group_name='group requires group name',
+    msg_no_group_name='no group requires group name',
+    msg_profile_name='profile requires profile name',
     msg_selected_device='selected-device requires device',
     msg_selected_mode='selected-mode requires on/off',
     msg_selected_mode_value='selected-mode requires on/off',
@@ -317,11 +339,11 @@ SPEC = ParserSpec(
     msg_save_requires='save requires target and path',
     msg_save_target='save requires config/local-config/profiles/unified-config',
     msg_rename_device="rename requires 'device <old> <new>'",
-    msg_device_name='device requires name',
-    msg_device_set='device <name> set <field> <value>',
+    msg_device_name='device requires device label',
+    msg_device_set='device <device> set <field> <value>',
     msg_validate_config="validate requires 'config [path]'",
-    msg_add_device='add device requires name',
-    msg_no_device='no device requires name',
+    msg_add_device='add device requires device label',
+    msg_no_device='no device requires device label',
     msg_member='member requires device and action',
     msg_member_action='member requires enable/disable/toggle',
     msg_bind='bind requires input and kind',
@@ -352,11 +374,11 @@ SPEC = ParserSpec(
     label_device='device',
     label_device_set='device set',
     label_device_delete='delete',
-    mode_exec_cmds=('configure', 'connect', 'diagnose', 'disconnect', 'show'),
-    mode_config_cmds=('bindings', 'can-mappings', 'device', 'diagnose', 'export', 'group', 'import', 'merge', 'no', 'profile', 'rename', 'save', 'selected-device', 'selected-mode', 'show', 'test', 'tests', 'validate', 'write'),
-    mode_group_cmds=('add', 'bind', 'disable', 'enable', 'member', 'no', 'run', 'show', 'write'),
-    mode_device_cmds=('delete', 'no', 'set', 'show', 'write'),
-    mode_test_cmds=('action', 'brightness', 'color', 'deadband', 'deadbandsweep', 'device', 'duration', 'duty', 'enabled', 'hold', 'inputsource', 'limitswitch', 'no', 'pattern', 'rotation', 'show', 'termination', 'time', 'type', 'write'),
+    mode_exec_cmds=('cfg', 'configure', 'connect', 'diagnose', 'disconnect', 'ls', 'prof', 'profile', 'show'),
+    mode_config_cmds=('bindings', 'can-mappings', 'device', 'diagnose', 'export', 'group', 'import', 'ls', 'merge', 'no', 'prof', 'profile', 'rename', 'save', 'savep', 'selected-device', 'selected-mode', 'show', 'test', 'tests', 'val', 'validate', 'write'),
+    mode_group_cmds=('add', 'bind', 'disable', 'enable', 'ls', 'member', 'no', 'run', 'show', 'write'),
+    mode_device_cmds=('delete', 'ls', 'no', 'set', 'show', 'write'),
+    mode_test_cmds=('action', 'brightness', 'color', 'deadband', 'deadbandsweep', 'device', 'duration', 'duty', 'enabled', 'hold', 'inputsource', 'limitswitch', 'ls', 'no', 'pattern', 'rotation', 'show', 'termination', 'time', 'type', 'write'),
     label_validate='validate config',
     label_show_members='show members/binding',
     label_add_device='add device',

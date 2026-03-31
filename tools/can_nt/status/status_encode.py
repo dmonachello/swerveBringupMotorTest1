@@ -33,6 +33,8 @@ KEY_FLAGS = "flags"
 UNKNOWN_FACILITY = "UNKNOWN_FACILITY"
 UNKNOWN_MESSAGE = "UNKNOWN_MESSAGE"
 UNKNOWN_SEVERITY = "UNKNOWN_SEVERITY"
+UNKNOWN_TEMPLATE = ""
+EMPTY_MAPPING: Dict[str, int] = {}
 
 FLAG_PRINT_MESSAGE = 1 << 28
 FLAG_LOG_ONLY = 1 << 29
@@ -57,11 +59,30 @@ def format_status(value: int, include_raw: bool = False) -> str:
     parts = decode(value)
     sev_name = _reverse_lookup(SEV.__dict__, parts[KEY_SEVERITY], UNKNOWN_SEVERITY)
     fac_name = _reverse_lookup(FAC.__dict__, parts[KEY_FACILITY], UNKNOWN_FACILITY)
-    msg_name = _reverse_lookup(MSG.__dict__.get(fac_name, {}), parts[KEY_MESSAGE], UNKNOWN_MESSAGE)
+    msg_container = MSG.__dict__.get(fac_name, EMPTY_MAPPING)
+    msg_map = _coerce_mapping(msg_container)
+    msg_name = _reverse_lookup(msg_map, parts[KEY_MESSAGE], UNKNOWN_MESSAGE)
     label = f"{sev_name} [{fac_name}.{msg_name}]"
     if include_raw:
         return f"{label} (0x{value:08X})"
     return label
+
+
+def format_status_message(value: int, *args: object, **kwargs: object) -> str | None:
+    """
+    NAME
+        format_status_message - Return formatted message text for a status code.
+    """
+
+    from tools.can_nt.status.status_messages import get_message_template
+
+    template = get_message_template(value) or UNKNOWN_TEMPLATE
+    if not template:
+        return None
+    try:
+        return template.format(*args, **kwargs)
+    except (KeyError, IndexError, ValueError):
+        return template
 
 
 def _reverse_lookup(mapping: Dict[str, int], value: int, fallback: str) -> str:
@@ -71,3 +92,14 @@ def _reverse_lookup(mapping: Dict[str, int], value: int, fallback: str) -> str:
         if code_value == value:
             return name
     return fallback
+
+
+def _coerce_mapping(mapping_like: object) -> Dict[str, int]:
+    """
+    NAME
+        _coerce_mapping - Normalize mapping-like objects to dicts for lookups.
+    """
+
+    if isinstance(mapping_like, dict):
+        return mapping_like
+    return getattr(mapping_like, "__dict__", EMPTY_MAPPING)

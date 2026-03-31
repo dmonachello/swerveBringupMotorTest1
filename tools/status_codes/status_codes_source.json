@@ -32,7 +32,8 @@
       "SUCCESS": 1,
       "CANCELLED": 2,
       "INTERNAL_ERROR": 3,
-      "NOT_SUPPORTED": 4
+      "NOT_SUPPORTED": 4,
+      "FAILED": 5
     },
     "DEVICE": {
       "NOT_FOUND": 1,

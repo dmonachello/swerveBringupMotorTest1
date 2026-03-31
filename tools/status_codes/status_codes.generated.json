@@ -40,6 +40,7 @@
       },
       "EXECUTOR": {
         "CANCELLED": 2,
+        "FAILED": 5,
         "INTERNAL_ERROR": 3,
         "NOT_SUPPORTED": 4,
         "SUCCESS": 1

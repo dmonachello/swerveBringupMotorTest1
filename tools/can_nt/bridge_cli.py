@@ -37,7 +37,9 @@ from tools.can_nt.bridge_ops import (
     BridgeCommand,
     ConfigPlan,
     validate_config_file,
+    validate_config_file_all,
     validate_config_data,
+    validate_config_data_all,
     devices_from_profiles_payload,
     group_add_device,
     group_bind,
@@ -93,13 +95,39 @@ from tools.can_nt.status import (
     FLAG_PRINT_MESSAGE,
     StatusResult,
     format_status,
+    format_status_message,
+    SS__CLI_PARSER__UNKNOWN_COMMAND,
     SS__CLI_PARSER__INVALID_SYNTAX,
+    SS__CLI_PARSER__MISSING_ARGUMENT,
+    SS__CLI_PARSER__INVALID_FLAG,
     SS__CLI_VALIDATOR__INVALID_VALUE,
+    SS__CLI_VALIDATOR__OUT_OF_RANGE,
     SS__CLI_VALIDATOR__REQUIRED,
+    SS__CONFIG__INVALID,
+    SS__CONFIG__NOT_LOADED,
+    SS__CONFIG__PROFILE_REQUIRED,
+    SS__CONFIG__SAVED,
+    SS__CONFIG__VALID,
+    SS__CONFIG__MERGED,
+    SS__CONFIG__IMPORTED,
+    SS__DEVICE__INVALID_FIELD,
+    SS__DEVICE__NOT_DEFINED,
+    SS__DEVICE__NOT_FOUND,
     SS__EXECUTOR__CANCELLED,
+    SS__EXECUTOR__FAILED,
     SS__EXECUTOR__INTERNAL_ERROR,
     SS__EXECUTOR__NOT_SUPPORTED,
-    SS__EXECUTOR__SUCCESS,
+    SS__NORMAL,
+    SS__GROUP__BINDING_INVALID,
+    SS__GROUP__NOT_FOUND,
+    SS__GROUP__MEMBER_MISSING,
+    SS__INPUT_BINDING__INVALID,
+    SS__INPUT_BINDING__NOT_FOUND,
+    SS__NETWORK__CONNECT_FAILED,
+    SS__NETWORK__COMMAND_SEND_FAILED,
+    SS__NETWORK__HANDSHAKE_FAILED,
+    SS__NETWORK__NOT_CONNECTED,
+    SS__NETWORK__ROBOT_UNAVAILABLE,
 )
 from tools.config.schema_store import ConfigSchemaStore, LOCATION_BINDINGS, LOCATION_MAPPINGS
 from tools.common.json_io import read_json, write_json
@@ -195,6 +223,9 @@ CLI_PARSER_KIND = CLI_PARSER_CONST["ebnf"]
 
 MODE_CONFIG = "config"
 MODE_TEST = "test"
+MODE_GROUP = "group"
+MODE_DEVICE = "device"
+MODE_EXEC = "exec"
 
 TESTS_FILENAME = "bringup_tests.json"
 DEFAULT_TEST_SET = "default"
@@ -216,6 +247,9 @@ STATUS_OK_MESSAGE = "OK"
 EXIT_CODE_ERROR = 2
 
 CMD_SHOW = "show"
+CMD_LS = PARSER_SPEC.cmd_ls
+CMD_CONNECT = "connect"
+CMD_DISCONNECT = "disconnect"
 CMD_WRITE = "write"
 CMD_TEST = "test"
 CMD_TESTS = "tests"
@@ -227,6 +261,7 @@ CMD_MESSAGES = "messages"
 CMD_MESSAGE_LEVEL = "message-level"
 CMD_TYPE = "type"
 CMD_DEVICE = "device"
+CMD_DEVICES = "devices"
 CMD_REGISTRY = "registry"
 CMD_GROUP = "group"
 CMD_CONFIG = "config"
@@ -234,8 +269,10 @@ CMD_LOCAL_RAW = "local-raw"
 CMD_DIRTY = "dirty"
 CMD_PROFILES = "profiles"
 CMD_PROFILE = "profile"
+CMD_PROF = PARSER_SPEC.cmd_prof
 CMD_CONFIGURE = "configure"
 CMD_TERMINAL = "terminal"
+CMD_CFG = PARSER_SPEC.cmd_cfg
 CMD_ACTION = "action"
 CMD_COLOR = "color"
 CMD_PATTERN = "pattern"
@@ -245,6 +282,7 @@ CMD_ADD = "add"
 CMD_NO = "no"
 CMD_RENAME = "rename"
 CMD_VALIDATE = "validate"
+CMD_VAL = PARSER_SPEC.cmd_val
 CMD_INPUT_SOURCE = "inputsource"
 CMD_DEADBAND = "deadband"
 CMD_DUTY = "duty"
@@ -265,8 +303,15 @@ CMD_AXIS = "axis"
 CMD_CAN_MAPPINGS = "can-mappings"
 CMD_MANUFACTURER = "manufacturer"
 CMD_DEVICE_TYPE_NAME = "device-type"
+CMD_DEVICE_TYPES = "device-types"
+CMD_DEVICE_USAGE = "device-usage"
+CMD_SHOW_ALL = "show-all"
+CMD_LOCAL_CONFIG = "local-config"
+CMD_SAVE_UNIFIED = "unified-config"
+CMD_VALIDATE_ALL = PARSER_SPEC.cmd_validate_all
 CMD_LOAD = "load"
 CMD_SAVE = "save"
+CMD_SAVEP = PARSER_SPEC.cmd_savep
 CMD_MERGE = "merge"
 CMD_TEMPLATES = "templates"
 CMD_TEMPLATE = "template"
@@ -275,7 +320,14 @@ QUESTION_MARK = "?"
 SUGGESTION_SEPARATOR = " | "
 MESSAGE_NEXT_ARGS_PREFIX = "Next args: "
 MESSAGE_NEXT_ARGS_NONE = "Next args: (none)"
+HELP_INDENT = "  "
 PLACEHOLDER_NAME = "<name>"
+PLACEHOLDER_PROFILE = "<profile>"
+PLACEHOLDER_DEVICE = "<device>"
+PLACEHOLDER_GROUP = "<group>"
+PLACEHOLDER_TEST = "<test>"
+PLACEHOLDER_FIELD = "<field>"
+PLACEHOLDER_TEMPLATE = "<template>"
 PLACEHOLDER_PATH = "<path>"
 FLAG_JSON = "--json"
 FLAG_PRETTY = "--pretty"
@@ -286,6 +338,7 @@ HISTORY_FILENAME = "bridge_cli_history.txt"
 KEY_DEVICE = "device"
 KEY_NAME = "name"
 KEY_GROUPS = "groups"
+KEY_MEMBERS = "members"
 KEY_BY_PROFILE = "byProfile"
 KEY_SELECTED_DEVICE = "selectedDevice"
 KEY_MANUFACTURERS = "manufacturers"
@@ -297,6 +350,8 @@ KEY_TEST = "test"
 KEY_DIRTY = "dirty"
 DIRTY_BINDINGS = "bindings"
 DIRTY_CAN_MAPPINGS = "can-mappings"
+KEY_COMMANDS = "commands"
+KEY_TOPICS = "topics"
 KEY_CONTROLLERS = "controllers"
 KEY_BINDINGS = "bindings"
 KEY_AXES = "axes"
@@ -342,6 +397,9 @@ SHOW_TARGET_DEVICE_REGISTRY = "device-registry"
 SHOW_TARGET_BINDINGS = "bindings"
 SHOW_TARGET_SELECTED_DEVICE = "selected-device"
 SHOW_TARGET_MESSAGE_LEVEL = "message-level"
+SHOW_TARGET_DEVICE_USAGE = "device-usage"
+SHOW_TARGET_COMMANDS = "commands"
+SHOW_TARGET_HELP = "help"
 
 MESSAGE_ERR_UNKNOWN_SHOW = "ERROR: Unknown show command."
 MESSAGE_ERR_UNKNOWN_SHOW_SOURCE = "ERROR: Unknown show source."
@@ -368,7 +426,7 @@ MESSAGE_DIRTY_ENTRY = "  {name}={value}"
 MESSAGE_DIRTY_NONE = "  (clean)"
 MESSAGE_DIRTY_PROMPT = "Unsaved changes in: {items}. Exit anyway?"
 MESSAGE_ERR_DEVICE_LABEL_REQUIRED = "ERROR: device name required."
-MESSAGE_ERR_DEVICE_PROFILE_REQUIRED = "ERROR: Profile not selected. Use 'profile <name>'."
+MESSAGE_ERR_DEVICE_PROFILE_REQUIRED = "ERROR: Profile not selected. Use 'profile <profile>'."
 MESSAGE_ERR_DEVICE_INTERFACE_INVALID = "ERROR: interface must be CAN, DIO, PWM, ANALOG, or INTERNAL."
 MESSAGE_ERR_DEVICE_FIELD_UNKNOWN = "ERROR: device set field not supported."
 MESSAGE_ERR_DEVICE_FIELD_INT = "ERROR: device set value must be an integer."
@@ -388,10 +446,10 @@ MESSAGE_ERR_BINDINGS_SUBCOMMAND = (
     "ERROR: bindings <show|controller|binding|axis|load|save|validate>"
 )
 MESSAGE_ERR_BINDINGS_SHOW = "ERROR: bindings show [controllers|bindings|axes] [--json] [--pretty]"
-MESSAGE_ERR_BINDINGS_CONTROLLER_ADD = "ERROR: bindings controller add <name> <type> <port>"
-MESSAGE_ERR_BINDINGS_CONTROLLER_SET = "ERROR: bindings controller set <name> <field> <value>"
+MESSAGE_ERR_BINDINGS_CONTROLLER_ADD = "ERROR: bindings controller add <controller> <type> <port>"
+MESSAGE_ERR_BINDINGS_CONTROLLER_SET = "ERROR: bindings controller set <controller> <field> <value>"
 MESSAGE_ERR_BINDINGS_CONTROLLER_RENAME = "ERROR: bindings controller rename <old> <new>"
-MESSAGE_ERR_BINDINGS_CONTROLLER_DELETE = "ERROR: bindings no controller <name>"
+MESSAGE_ERR_BINDINGS_CONTROLLER_DELETE = "ERROR: bindings no controller <controller>"
 MESSAGE_ERR_BINDINGS_CONTROLLER_PORT = "ERROR: controller port must be an integer."
 MESSAGE_ERR_BINDINGS_CONTROLLER_EXISTS = "ERROR: controller already exists."
 MESSAGE_ERR_BINDINGS_CONTROLLER_NOT_FOUND = "ERROR: controller not found."
@@ -447,7 +505,7 @@ MESSAGE_MAPPINGS_DEVICE_TYPES_HEADER = "  device-types:"
 MESSAGE_MAPPINGS_ENTRY_FMT = "    {id}={name}"
 MESSAGE_MAPPINGS_NONE = "  (none)"
 MESSAGE_ERR_TESTS_SUBCOMMAND = "ERROR: tests <templates|load|merge|save|clear>"
-MESSAGE_ERR_TESTS_LOAD = "ERROR: tests load <path> | tests load template <name>"
+MESSAGE_ERR_TESTS_LOAD = "ERROR: tests load <path> | tests load template <template>"
 MESSAGE_ERR_TESTS_SAVE = "ERROR: tests save requires a loaded tests file."
 MESSAGE_ERR_TESTS_TEMPLATE_NOT_FOUND = "ERROR: test template not found: {name}"
 MESSAGE_TESTS_TEMPLATES_HEADER = "Test templates:"
@@ -458,9 +516,58 @@ MESSAGE_TESTS_CLEARED = "Tests cleared."
 MESSAGE_MESSAGE_LEVEL = "Message level: {level}"
 MESSAGE_MESSAGE_LEVEL_UPDATED = "Message level set to {level}."
 MESSAGE_MESSAGE_LEVEL_ERROR = "ERROR: messages <beginner|medium|expert>"
+MESSAGE_CONFIRM_PROFILE_DEVICE_DELETE = "Delete profile device '{name}'?"
+MESSAGE_PROFILE_DEVICE_DELETED = "Deleted profile device {name}."
+MESSAGE_PROFILE_DEVICE_SHOW_ALL_HEADER = "Profile device entries:"
+MESSAGE_PROFILE_DEVICE_SHOW_ALL_PROFILE_HEADER = "Profile device list:"
+MESSAGE_PROFILE_DEVICE_SHOW_ALL_PROFILE_ENTRY = "  {label} x{count}"
+MESSAGE_PROFILE_DEVICE_SHOW_ALL_ENTRY = "  [{index}] label={label}"
+MESSAGE_PROFILE_DEVICE_SHOW_ALL_COUNT = "  count={count}"
+MESSAGE_PROFILE_DEVICE_SHOW_ALL_FIELD_FMT = "    {key}={value}"
+MESSAGE_PROFILE_DEVICE_SHOW_ALL_NONE = "  (none)"
+MESSAGE_SHOW_COMMANDS_HEADER = "Available commands:"
+MESSAGE_SHOW_HELP_HEADER = "Help topics:"
+MESSAGE_HELP_QUICK_HEADER = "Quick help:"
+MESSAGE_HELP_QUICK_EMPTY = "  (no commands)"
+MESSAGE_HELP_QUICK_ALIASES = "Aliases: ls=show, cfg=configure terminal, prof=profile, val=validate, savep=save profiles"
+MESSAGE_HINT_PREFIX = "HINT: "
+MESSAGE_HINT_VALIDATE = "validate config [path] [--all] | validate profiles | validate tests | validate bindings [path] | validate can-mappings [path]"
+MESSAGE_HINT_SAVE = "save config <path> | save local-config <path> | save profiles <path> | save unified-config <path>"
+MESSAGE_HINT_SHOW = "show <target> [--json] [--pretty] [robot|local|both]"
+MESSAGE_HINT_PROFILE = (
+    "profile <profile> | profile create <profile> | profile device delete <device> "
+    "| profile device show-all <device>"
+)
+MESSAGE_HINT_CAN_MAPPINGS = "can-mappings show [manufacturers|device-types] | can-mappings manufacturer set <id> <name>"
+MESSAGE_HINT_VALIDATE_CONFIG_PROFILE = "validate config expects a file path; did you mean `profile <profile>`?"
+MESSAGE_VALIDATE_OK = "OK"
+MESSAGE_VALIDATE_BINDINGS_LOAD = "ERROR: Failed to read bindings: {path}"
+MESSAGE_VALIDATE_MAPPINGS_LOAD = "ERROR: Failed to read CAN mappings: {path}"
+MESSAGE_VALIDATE_TESTS_HEADER = "Test validation errors:"
+MESSAGE_VALIDATE_TESTS_ENTRY = "  {message}"
+MESSAGE_DEVICE_USAGE_HEADER = "Device usage:"
+MESSAGE_DEVICE_USAGE_DEVICE = "  device={name}"
+MESSAGE_DEVICE_USAGE_PROFILE = "  profile={name}"
+MESSAGE_DEVICE_USAGE_GROUPS_HEADER = "  groups:"
+MESSAGE_DEVICE_USAGE_TESTS_HEADER = "  tests:"
+MESSAGE_DEVICE_USAGE_NONE = "    (none)"
+MESSAGE_DEVICE_USAGE_GROUP_ENTRY = "    {name}"
+MESSAGE_DEVICE_USAGE_TEST_ENTRY = "    {test_set}/{name} ({type})"
+MESSAGE_DEVICE_USAGE_TEST_ENTRY_SIMPLE = "    {test_set}/{name}"
+HELP_TOPIC_DEVICE_USAGE = "device-usage"
+HELP_DEVICE_USAGE_TEXT = "show device-usage <device>\n  Show local group/test references for a device."
+HELP_TOPIC_PROFILE_DEVICE_DELETE = "profile device delete"
+HELP_PROFILE_DEVICE_DELETE_TEXT = (
+    "profile device delete <device>\n  Remove a device label from the active profile."
+)
+HELP_TOPIC_PROFILE_DEVICE_SHOW_ALL = "profile device show-all"
+HELP_PROFILE_DEVICE_SHOW_ALL_TEXT = (
+    "profile device show-all <device>\n  Show all profile device entries matching a label."
+)
+HELP_TOPIC_QUICK = "quick"
 HELP_SHOW_TEXT = (
-    "show <status|groups|group <name>|devices|device <name>|device registry <name>|bindings|"
-    "selected-device|runtime-state|config|config local-raw|config dirty|profiles|profile|tests|test <name>|message-level> "
+    "show <status|groups|group <group>|devices|device <device>|device registry <device>|device-usage <device>|commands|help|"
+    "bindings|selected-device|runtime-state|config|config local-raw|config dirty|profiles|profile|tests|test <test>|message-level> "
     "[--json] [--pretty] [robot|local|both]\n"
     "  Defaults: robot if connected, otherwise local."
 )
@@ -481,7 +588,7 @@ MESSAGE_ERR_PROFILE_HASH = (
 MESSAGE_ERR_PROFILE_MISSING_HASH = (
     "ERROR: Local groups loaded without profiles; use 'import config <path>' to replace groups."
 )
-MESSAGE_ERR_PROFILE_REQUIRED = "ERROR: Profile not selected. Use 'profile <name>'."
+MESSAGE_ERR_PROFILE_REQUIRED = "ERROR: Profile not selected. Use 'profile <profile>'."
 MESSAGE_ERR_PROFILE_UNKNOWN = "ERROR: Profile not found: {name}."
 
 FIELD_MANUFACTURER = "manufacturer"
@@ -625,7 +732,8 @@ BINDINGS_AXIS_FIELDS = {KEY_COMMAND, KEY_CONTROLLER, KEY_ID, KEY_INVERT, KEY_DEA
 
 MAPPINGS_SHOW_MANUFACTURERS = "manufacturers"
 MAPPINGS_SHOW_DEVICE_TYPES = "device-types"
-MAPPINGS_SHOW_TARGETS = {MAPPINGS_SHOW_MANUFACTURERS, MAPPINGS_SHOW_DEVICE_TYPES}
+MAPPINGS_SHOW_DEVICE_TYPE = "device-type"
+MAPPINGS_SHOW_TARGETS = {MAPPINGS_SHOW_MANUFACTURERS, MAPPINGS_SHOW_DEVICE_TYPES, MAPPINGS_SHOW_DEVICE_TYPE}
 
 TESTS_TEMPLATES_SUFFIX = ".json"
 
@@ -679,7 +787,7 @@ MESSAGE_ERROR_DEVICE_LABEL_DUPLICATE = "ERROR: duplicate device labels in profil
 MESSAGE_ERR_PROFILE_CREATE_NAME = "ERROR: Profile name is required."
 MESSAGE_ERR_PROFILE_EXISTS = "ERROR: Profile already exists: {name}."
 MESSAGE_PROFILE_CREATED = "Created profile: {name}."
-MESSAGE_ERROR_SHOW_TESTS = "ERROR: show tests | show test <name>"
+MESSAGE_ERROR_SHOW_TESTS = "ERROR: show tests | show test <test>"
 MESSAGE_ERROR_WRITE_TESTS = "ERROR: write tests <path>"
 MESSAGE_SELECTED_TEST_SET = "Selected test set: {name}"
 MESSAGE_CANCELLED = "Cancelled."
@@ -868,7 +976,7 @@ class BridgeCli:
                 return result.exit_code()
             if not result.ok():
                 return result.exit_code()
-        return StatusResult(code=SS__EXECUTOR__SUCCESS).exit_code()
+        return StatusResult(code=SS__NORMAL).exit_code()
 
     def _prompt(self) -> str:
         mode = self._modes[-1]
@@ -916,8 +1024,8 @@ class BridgeCli:
         if not plan.ok:
             self._warn(MESSAGE_AUTO_MERGE_FAIL.format(path=path))
             return
-        code = self._apply_config_plan(plan, prompt_on_replace=False)
-        if code is None or code == 0:
+        result = self._apply_config_plan(plan, prompt_on_replace=False)
+        if result.ok():
             print(MESSAGE_AUTO_MERGE_OK.format(path=path))
 
     def _profiles_hash(self, payload: Optional[Dict[str, object]]) -> Optional[str]:
@@ -1130,7 +1238,7 @@ class BridgeCli:
             return
         self._groups_profile = self._default_profile_name()
 
-    def _set_active_profile(self, name: str) -> bool:
+    def _set_active_profile(self, name: str) -> StatusResult:
         """
         NAME
             _set_active_profile - Set active profile for local group operations.
@@ -1139,20 +1247,20 @@ class BridgeCli:
         key = name.strip()
         if not key:
             print(MESSAGE_ERR_PROFILE_REQUIRED)
-            return False
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         if not isinstance(profiles, dict) or not profiles:
             self._groups_profile = key
             self._local_profile_entry(key, create=True)
-            return True
+            return StatusResult(code=SS__NORMAL)
         if key not in profiles:
             print(MESSAGE_ERR_PROFILE_UNKNOWN.format(name=name))
-            return False
+            return StatusResult(code=SS__CONFIG__INVALID)
         self._groups_profile = key
         self._local_profile_entry(key, create=True)
         self._refresh_tests_profile(key)
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _ensure_local_profiles_payload(self) -> bool:
+    def _ensure_local_profiles_payload(self) -> StatusResult:
         """
         NAME
             _ensure_local_profiles_payload - Ensure a profiles payload exists.
@@ -1173,28 +1281,28 @@ class BridgeCli:
         payload = self._local_root_payload
         if not isinstance(payload, dict):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profiles = payload.get(KEY_PROFILES)
         if profiles is None:
             payload[KEY_PROFILES] = {}
         elif not isinstance(profiles, dict):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         devices = payload.get(KEY_DEVICES)
         if devices is None:
             payload[KEY_DEVICES] = []
         elif not isinstance(devices, list):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         diagram = payload.get(KEY_DIAGRAM)
         if diagram is None:
             payload[KEY_DIAGRAM] = {KEY_DIAGRAM_PROFILES: {}}
         elif not isinstance(diagram, dict):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return False
-        return True
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        return StatusResult(code=SS__NORMAL)
 
-    def _create_profile(self, name: str) -> bool:
+    def _create_profile(self, name: str) -> StatusResult:
         """
         NAME
             _create_profile - Create a new empty profile and select it.
@@ -1202,21 +1310,22 @@ class BridgeCli:
         key = name.strip()
         if not key:
             print(MESSAGE_ERR_PROFILE_CREATE_NAME)
-            return False
+            return StatusResult(code=SS__CONFIG__INVALID)
         self._ensure_local_config()
-        if not self._ensure_local_profiles_payload():
-            return False
+        payload_result = self._ensure_local_profiles_payload()
+        if not payload_result.ok():
+            return payload_result
         payload = self._local_root_payload
         if not isinstance(payload, dict):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profiles = payload.get(KEY_PROFILES)
         if not isinstance(profiles, dict):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         if key in profiles:
             print(MESSAGE_ERR_PROFILE_EXISTS.format(name=key))
-            return False
+            return StatusResult(code=SS__CONFIG__INVALID)
         profiles[key] = {KEY_PROFILE_DEVICES: []}
         default_profile = payload.get(KEY_DEFAULT_PROFILE)
         if not isinstance(default_profile, str) or not default_profile.strip():
@@ -1235,7 +1344,7 @@ class BridgeCli:
         self._refresh_tests_profile(key)
         self._sync_store_from_local()
         print(MESSAGE_PROFILE_CREATED.format(name=key))
-        return True
+        return StatusResult(code=SS__NORMAL)
 
     def _require_active_profile(self) -> Optional[str]:
         """
@@ -1271,12 +1380,99 @@ class BridgeCli:
         """
         return validate_config_file(path)
 
+    def validate_config_file_all(self, path: str) -> tuple[bool, str, Optional[Dict[str, object]]]:
+        """
+        NAME
+            validate_config_file_all - Validate config and report all issues.
+        """
+        return validate_config_file_all(path)
+
     def validate_config_data(self, config: Dict[str, object]) -> tuple[bool, str]:
         """
         NAME
             validate_config_data - Wrapper to validate an in-memory config.
         """
         return validate_config_data(config, self._local_root_payload)
+
+    def validate_config_data_all(self, config: Dict[str, object]) -> tuple[bool, str]:
+        """
+        NAME
+            validate_config_data_all - Validate config and report all issues.
+        """
+        return validate_config_data_all(config, self._local_root_payload)
+
+    def validate_profiles_only(self) -> tuple[bool, str]:
+        """
+        NAME
+            validate_profiles_only - Validate profiles payload only.
+        """
+        self._sync_store_from_local()
+        result = self._store.validate_profiles_only(strict=True)
+        if result.ok():
+            return (True, MESSAGE_VALIDATE_OK)
+        message = self._format_store_errors(result.errors())
+        return (False, message)
+
+    def validate_tests_only(self) -> tuple[bool, str]:
+        """
+        NAME
+            validate_tests_only - Validate tests against profile devices.
+        """
+        self._ensure_tests_loaded()
+        model = self._tests_model or TestAuthoringModel()
+        profile_name = self._tests_profile or self._active_profile_name()
+        controller_names = load_controller_names()
+        result = validate_model(
+            model,
+            profile_name=profile_name,
+            controller_names=controller_names,
+            device_catalog=self._tests_device_catalog,
+        )
+        if result.ok():
+            return (True, MESSAGE_VALIDATE_OK)
+        issues = [issue.message for issue in result.errors if issue.message]
+        if not issues:
+            return (False, MESSAGE_VALIDATE_OK)
+        message = SEP_NEWLINE.join([MESSAGE_VALIDATE_TESTS_HEADER] + [MESSAGE_VALIDATE_TESTS_ENTRY.format(message=msg) for msg in issues])
+        return (False, message)
+
+    def validate_bindings_only(self, path: Optional[str]) -> tuple[bool, str]:
+        """
+        NAME
+            validate_bindings_only - Validate bindings payload or file.
+        """
+        payload = self._bindings_payload
+        if path:
+            try:
+                payload = read_json(Path(path))
+            except Exception:
+                return (False, MESSAGE_VALIDATE_BINDINGS_LOAD.format(path=path))
+        self._store.set_bindings_payload(payload or {})
+        result = self._store.validate_bindings_only(strict=True)
+        errors = [issue for issue in result.errors() if issue.location == LOCATION_BINDINGS]
+        if errors:
+            message = self._format_store_errors(errors)
+            return (False, message)
+        return (True, MESSAGE_VALIDATE_OK)
+
+    def validate_mappings_only(self, path: Optional[str]) -> tuple[bool, str]:
+        """
+        NAME
+            validate_mappings_only - Validate CAN mappings payload or file.
+        """
+        payload = self._can_mappings
+        if path:
+            try:
+                payload = read_json(Path(path))
+            except Exception:
+                return (False, MESSAGE_VALIDATE_MAPPINGS_LOAD.format(path=path))
+        self._store.set_mappings_payload(payload or {})
+        result = self._store.validate_mappings_only(strict=True)
+        errors = [issue for issue in result.errors() if issue.location == LOCATION_MAPPINGS]
+        if errors:
+            message = self._format_store_errors(errors)
+            return (False, message)
+        return (True, MESSAGE_VALIDATE_OK)
 
     def _emit_status(self, result: StatusResult) -> None:
         """
@@ -1285,7 +1481,10 @@ class BridgeCli:
         """
         include_raw = STATUS_INCLUDE_RAW_DEFAULT or bool(result.code & FLAG_PRINT_MESSAGE)
         print(format_status(result.code, include_raw=include_raw))
-        if result.message:
+        status_message = format_status_message(result.code)
+        if status_message:
+            print(STATUS_DETAIL_PREFIX + status_message)
+        elif result.message:
             print(STATUS_DETAIL_PREFIX + result.message)
         if result.detail:
             print(STATUS_DETAIL_PREFIX + result.detail)
@@ -1298,16 +1497,16 @@ class BridgeCli:
         if isinstance(outcome, StatusResult):
             return outcome
         if outcome is None:
-            return StatusResult(code=SS__EXECUTOR__SUCCESS, message=STATUS_OK_MESSAGE)
+            return StatusResult(code=SS__NORMAL, message=STATUS_OK_MESSAGE)
         if isinstance(outcome, int):
             if outcome == COUNT_ZERO:
-                return StatusResult(code=SS__EXECUTOR__SUCCESS, exit_requested=True)
-            return StatusResult(code=SS__EXECUTOR__INTERNAL_ERROR)
+                return StatusResult(code=SS__NORMAL, exit_requested=True)
+            return StatusResult(code=outcome)
         return StatusResult(code=SS__EXECUTOR__INTERNAL_ERROR)
 
     def _execute_line(self, line: str) -> StatusResult:
         if self._handle_question(line):
-            return StatusResult(code=SS__EXECUTOR__SUCCESS)
+            return StatusResult(code=SS__NORMAL)
         try:
             parsed = self._parser.parse(line, mode=self._modes[-1].name)
             tokens = parsed.tokens
@@ -1316,8 +1515,12 @@ class BridgeCli:
             try:
                 self._split_command(line)
             except CliParseError as split_exc:
-                return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(split_exc))
-            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(exc))
+                result = StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(split_exc))
+                self._maybe_print_failure_hint(line)
+                return result
+            result = StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(exc))
+            self._maybe_print_failure_hint(line)
+            return result
         if tokens and tokens[COUNT_ZERO].lower() == CMD_DIAGNOSE:
             return self._coerce_status(self._diagnose_command(tokens))
         if self._is_test_authoring_command(tokens):
@@ -1325,7 +1528,7 @@ class BridgeCli:
         if ast is not None:
             return self._coerce_status(self._ast_executor.execute(ast))
         if not tokens:
-            return StatusResult(code=SS__EXECUTOR__SUCCESS)
+            return StatusResult(code=SS__NORMAL)
         cmd = tokens[0].lower()
         if cmd in ("quit", "exit"):
             if self._modes[-1].name == "exec":
@@ -1334,36 +1537,36 @@ class BridgeCli:
                     items = ", ".join(sorted(dirty.keys()))
                     if self._batch:
                         print(MESSAGE_DIRTY_PROMPT.format(items=items))
-                        return StatusResult(code=SS__EXECUTOR__SUCCESS, exit_requested=True)
+                        return StatusResult(code=SS__NORMAL, exit_requested=True)
                     if not self._confirm(MESSAGE_DIRTY_PROMPT.format(items=items)):
                         return StatusResult(code=SS__EXECUTOR__CANCELLED)
-                return StatusResult(code=SS__EXECUTOR__SUCCESS, exit_requested=True)
+                return StatusResult(code=SS__NORMAL, exit_requested=True)
             self._warn_unsaved_if_needed()
             self._pop_mode()
-            return StatusResult(code=SS__EXECUTOR__SUCCESS)
+            return StatusResult(code=SS__NORMAL)
         if cmd == "end":
             self._warn_unsaved_if_needed()
             self._modes = [CliMode("exec")]
-            return StatusResult(code=SS__EXECUTOR__SUCCESS)
+            return StatusResult(code=SS__NORMAL)
         if cmd == "help":
             self._print_help(tokens[1:] if len(tokens) > 1 else [])
-            return StatusResult(code=SS__EXECUTOR__SUCCESS)
+            return StatusResult(code=SS__NORMAL)
         if cmd == "ping":
             seq = show_status(self._session, json_output=False)
             self._wait_for_seq(seq)
-            return StatusResult(code=SS__EXECUTOR__SUCCESS)
+            return StatusResult(code=SS__NORMAL)
         if cmd == "echo":
             if len(tokens) < 2:
                 state = "on" if self._echo_enabled else "off"
                 print(f"echo {state}")
-                return StatusResult(code=SS__EXECUTOR__SUCCESS)
+                return StatusResult(code=SS__NORMAL)
             value = tokens[1].lower()
             if value in ("on", "true", "1", "yes"):
                 self._echo_enabled = True
-                return StatusResult(code=SS__EXECUTOR__SUCCESS)
+                return StatusResult(code=SS__NORMAL)
             if value in ("off", "false", "0", "no"):
                 self._echo_enabled = False
-                return StatusResult(code=SS__EXECUTOR__SUCCESS)
+                return StatusResult(code=SS__NORMAL)
             print("ERROR: echo requires on/off.")
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         if cmd == CMD_MESSAGES:
@@ -1374,7 +1577,7 @@ class BridgeCli:
                 print(MESSAGE_MESSAGE_LEVEL_ERROR)
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             print(MESSAGE_MESSAGE_LEVEL_UPDATED.format(level=self._message_level))
-            return StatusResult(code=SS__EXECUTOR__SUCCESS)
+            return StatusResult(code=SS__NORMAL)
 
         mode = self._modes[-1].name
         if mode == "exec":
@@ -1407,7 +1610,7 @@ class BridgeCli:
         tokens = self._normalize_question_tokens(tokens)
         if not tokens or tokens[-1] != QUESTION_MARK:
             return False
-        base_tokens = tokens[:-1]
+        base_tokens = self._parser.normalize_tokens(tokens[:-1])
         suggestions = self._suggest_next_args(base_tokens)
         self._print_next_args(suggestions)
         self._queue_question_line(base_tokens)
@@ -1466,15 +1669,23 @@ class BridgeCli:
             return self._suggest_diagnose_args(tokens[COUNT_ONE:])
         if cmd == CMD_CONFIGURE:
             return self._suggest_configure_args(tokens[COUNT_ONE:])
+        if cmd == CMD_VALIDATE:
+            return self._suggest_validate_args(tokens[COUNT_ONE:])
+        if cmd == CMD_SAVE:
+            return self._suggest_save_args(tokens[COUNT_ONE:])
         if mode == MODE_CONFIG and cmd == CMD_BINDINGS:
             return self._suggest_bindings_args(tokens[COUNT_ONE:])
         if mode == MODE_CONFIG and cmd == CMD_CAN_MAPPINGS:
             return self._suggest_mappings_args(tokens[COUNT_ONE:])
         if mode == MODE_CONFIG and cmd == CMD_PROFILE:
             if len(tokens) == COUNT_ONE:
-                return [CMD_CREATE, PLACEHOLDER_NAME]
+                return [CMD_CREATE, CMD_DEVICE, PLACEHOLDER_PROFILE]
             if len(tokens) == COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_CREATE:
-                return [PLACEHOLDER_NAME]
+                return [PLACEHOLDER_PROFILE]
+            if len(tokens) == COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_DEVICE:
+                return [CMD_DELETE, CMD_SHOW_ALL]
+            if len(tokens) == COUNT_THREE and tokens[COUNT_ONE].lower() == CMD_DEVICE:
+                return [PLACEHOLDER_DEVICE]
             return []
         if cmd == CMD_TESTS:
             return self._suggest_tests_args(tokens[COUNT_ONE:])
@@ -1490,7 +1701,7 @@ class BridgeCli:
         if not tokens:
             return [CMD_MOTOR, CMD_DEVICE]
         if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() in (CMD_MOTOR, CMD_DEVICE):
-            return [PLACEHOLDER_NAME]
+            return [PLACEHOLDER_DEVICE]
         return []
 
     def _mode_root_suggestions(self, mode: str) -> List[str]:
@@ -1557,18 +1768,28 @@ class BridgeCli:
         target = tokens[COUNT_ZERO].lower()
         if target == CMD_GROUP:
             if len(tokens) == COUNT_ONE:
-                return [PLACEHOLDER_NAME]
+                return [PLACEHOLDER_GROUP]
             if len(tokens) == COUNT_TWO:
                 return self._show_flag_suggestions()
             return []
         if target == CMD_DEVICE:
             if len(tokens) == COUNT_ONE:
-                return [PLACEHOLDER_NAME, CMD_REGISTRY]
+                return [PLACEHOLDER_DEVICE, CMD_REGISTRY]
             if len(tokens) == COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_REGISTRY:
-                return [PLACEHOLDER_NAME]
+                return [PLACEHOLDER_DEVICE]
             if len(tokens) == COUNT_TWO:
                 return self._show_flag_suggestions()
             if len(tokens) == COUNT_THREE:
+                return self._show_flag_suggestions()
+            return []
+        if target == CMD_DEVICE_USAGE:
+            if len(tokens) == COUNT_ONE:
+                return [PLACEHOLDER_DEVICE]
+            if len(tokens) == COUNT_TWO:
+                return self._show_flag_suggestions()
+            return []
+        if target in (SHOW_TARGET_COMMANDS, SHOW_TARGET_HELP):
+            if len(tokens) == COUNT_ONE:
                 return self._show_flag_suggestions()
             return []
         if target == CMD_CONFIG:
@@ -1579,13 +1800,13 @@ class BridgeCli:
             return self._show_flag_suggestions()
         if target == CMD_PROFILE:
             if len(tokens) == COUNT_ONE:
-                return [PLACEHOLDER_NAME] + self._show_flag_suggestions()
+                return [PLACEHOLDER_PROFILE] + self._show_flag_suggestions()
             if len(tokens) == COUNT_TWO:
                 return self._show_flag_suggestions()
             return []
         if target == PARSER_SPEC.show_target_test:
             if len(tokens) == COUNT_ONE:
-                return [PLACEHOLDER_NAME]
+                return [PLACEHOLDER_TEST]
             if len(tokens) == COUNT_TWO:
                 return self._show_flag_suggestions()
             return []
@@ -1603,10 +1824,13 @@ class BridgeCli:
         return [
             PARSER_SPEC.show_target_status,
             PARSER_SPEC.show_target_groups,
-            CMD_GROUP + PARSER_SPEC.space_str + PLACEHOLDER_NAME,
+            CMD_GROUP + PARSER_SPEC.space_str + PLACEHOLDER_GROUP,
             PARSER_SPEC.show_target_devices,
-            CMD_DEVICE + PARSER_SPEC.space_str + PLACEHOLDER_NAME,
-            CMD_DEVICE + PARSER_SPEC.space_str + CMD_REGISTRY + PARSER_SPEC.space_str + PLACEHOLDER_NAME,
+            CMD_DEVICE + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
+            PARSER_SPEC.show_target_commands,
+            PARSER_SPEC.show_target_help,
+            CMD_DEVICE_USAGE + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
+            CMD_DEVICE + PARSER_SPEC.space_str + CMD_REGISTRY + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
             PARSER_SPEC.show_target_bindings,
             PARSER_SPEC.show_target_selected_device,
             PARSER_SPEC.show_target_runtime_state,
@@ -1615,9 +1839,9 @@ class BridgeCli:
             CMD_CONFIG + PARSER_SPEC.space_str + CMD_DIRTY,
             CMD_PROFILES,
             CMD_PROFILE,
-            CMD_PROFILE + PARSER_SPEC.space_str + PLACEHOLDER_NAME,
+            CMD_PROFILE + PARSER_SPEC.space_str + PLACEHOLDER_PROFILE,
             PARSER_SPEC.show_target_tests,
-            PARSER_SPEC.show_target_test + PARSER_SPEC.space_str + PLACEHOLDER_NAME,
+            PARSER_SPEC.show_target_test + PARSER_SPEC.space_str + PLACEHOLDER_TEST,
             PARSER_SPEC.show_target_message_level,
         ]
 
@@ -1663,6 +1887,32 @@ class BridgeCli:
             return [CMD_TERMINAL]
         return []
 
+    def _suggest_validate_args(self, tokens: List[str]) -> List[str]:
+        """
+        NAME
+            _suggest_validate_args - Suggest validate subcommands.
+        """
+        if not tokens:
+            return [CMD_CONFIG, CMD_PROFILES, CMD_TESTS, CMD_BINDINGS, CMD_CAN_MAPPINGS]
+        if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() == CMD_CONFIG:
+            return [PLACEHOLDER_PATH, CMD_VALIDATE_ALL]
+        if len(tokens) == COUNT_TWO and tokens[COUNT_ZERO].lower() == CMD_CONFIG:
+            return [CMD_VALIDATE_ALL]
+        if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() in (CMD_BINDINGS, CMD_CAN_MAPPINGS):
+            return [PLACEHOLDER_PATH]
+        return []
+
+    def _suggest_save_args(self, tokens: List[str]) -> List[str]:
+        """
+        NAME
+            _suggest_save_args - Suggest save targets.
+        """
+        if not tokens:
+            return [CMD_CONFIG, CMD_LOCAL_CONFIG, CMD_PROFILES, CMD_SAVE_UNIFIED]
+        if len(tokens) == COUNT_ONE:
+            return [PLACEHOLDER_PATH]
+        return []
+
     def _suggest_mappings_args(self, tokens: List[str]) -> List[str]:
         """
         NAME
@@ -1672,7 +1922,7 @@ class BridgeCli:
             return [CMD_SHOW, CMD_MANUFACTURER, CMD_DEVICE_TYPE_NAME, CMD_LOAD, CMD_SAVE, CMD_VALIDATE]
         sub = tokens[COUNT_ZERO].lower()
         if sub == CMD_SHOW and len(tokens) == COUNT_ONE:
-            return [CMD_MANUFACTURER, CMD_DEVICE_TYPE_NAME, FLAG_JSON]
+            return [CMD_MANUFACTURER, CMD_DEVICE_TYPE_NAME, CMD_DEVICE_TYPES, FLAG_JSON]
         if sub in (CMD_LOAD, CMD_SAVE, CMD_VALIDATE) and len(tokens) == COUNT_ONE:
             return [PLACEHOLDER_PATH]
         return []
@@ -1688,7 +1938,7 @@ class BridgeCli:
         if sub in (CMD_LOAD, CMD_MERGE) and len(tokens) == COUNT_ONE:
             return [PLACEHOLDER_PATH, CMD_TEMPLATE]
         if sub == CMD_TEMPLATE and len(tokens) == COUNT_ONE:
-            return [PLACEHOLDER_NAME]
+            return [PLACEHOLDER_TEMPLATE]
         return []
 
     def _suggest_test_config_args(self, tokens: List[str]) -> List[str]:
@@ -1697,10 +1947,10 @@ class BridgeCli:
             _suggest_test_config_args - Suggest config-mode test subcommands.
         """
         if not tokens:
-            return [CMD_SET, CMD_CREATE, CMD_DELETE, PLACEHOLDER_NAME]
+            return [CMD_SET, CMD_CREATE, CMD_DELETE, PLACEHOLDER_TEST]
         sub = tokens[COUNT_ZERO].lower()
         if sub in (CMD_SET, CMD_CREATE, CMD_DELETE) and len(tokens) == COUNT_ONE:
-            return [PLACEHOLDER_NAME]
+            return [PLACEHOLDER_TEST]
         return []
 
     def _is_test_authoring_command(self, tokens: List[str]) -> bool:
@@ -1730,7 +1980,7 @@ class BridgeCli:
             return tokens[1].lower() == CMD_TESTS
         return False
 
-    def _execute_test_authoring(self, tokens: List[str]) -> Optional[int]:
+    def _execute_test_authoring(self, tokens: List[str]) -> StatusResult:
         """
         NAME
             _execute_test_authoring - Dispatch test authoring commands.
@@ -1744,9 +1994,9 @@ class BridgeCli:
 
         mode = self._modes[-1].name
         if mode == MODE_TEST:
-            return self._test_mode_command(tokens)
+            return self._coerce_status(self._test_mode_command(tokens))
         if mode == MODE_CONFIG and tokens[0].lower() == CMD_TEST:
-            return self._config_test_command(tokens)
+            return self._coerce_status(self._config_test_command(tokens))
         if tokens[0].lower() == CMD_TESTS:
             return self._tests_command(tokens)
         if tokens[0].lower() == CMD_SHOW:
@@ -1754,7 +2004,7 @@ class BridgeCli:
         if tokens[0].lower() == CMD_WRITE:
             return self._write_tests_command(tokens)
         print(MESSAGE_ERROR_INVALID_TEST_COMMAND)
-        return None
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
     def _ensure_tests_loaded(self) -> None:
         """
@@ -1787,7 +2037,7 @@ class BridgeCli:
         default_set = self._tests_model.default_test_set if self._tests_model else EMPTY_STRING
         self._tests_active_set = default_set or DEFAULT_TEST_SET
 
-    def _tests_command(self, tokens: List[str]) -> Optional[int]:
+    def _tests_command(self, tokens: List[str]) -> StatusResult:
         """
         NAME
             _tests_command - Handle tests subcommands (templates/load/save).
@@ -1796,7 +2046,7 @@ class BridgeCli:
         self._ensure_tests_loaded()
         if len(tokens) < COUNT_TWO:
             print(MESSAGE_ERR_TESTS_SUBCOMMAND)
-            return None
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         sub = tokens[COUNT_ONE].lower()
         if sub == CMD_TEMPLATES:
             return self._show_test_templates()
@@ -1806,32 +2056,35 @@ class BridgeCli:
                 path = self._resolve_template_path(name)
                 if path is None:
                     print(MESSAGE_ERR_TESTS_TEMPLATE_NOT_FOUND.format(name=name))
-                    return None
-                if not self._load_tests_from_path(path):
-                    return None
+                    return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+                result = self._load_tests_from_path(path)
+                if not result.ok():
+                    return result
                 print(MESSAGE_TESTS_LOADED.format(path=path))
-                return None
+                return StatusResult(code=SS__CONFIG__IMPORTED)
             if len(tokens) >= COUNT_THREE:
                 path = Path(tokens[COUNT_TWO])
-                if not self._load_tests_from_path(path):
-                    return None
+                result = self._load_tests_from_path(path)
+                if not result.ok():
+                    return result
                 print(MESSAGE_TESTS_LOADED.format(path=path))
-                return None
+                return StatusResult(code=SS__CONFIG__IMPORTED)
             print(MESSAGE_ERR_TESTS_LOAD)
-            return None
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         if sub == CMD_MERGE:
             if len(tokens) >= COUNT_THREE:
                 path = Path(tokens[COUNT_TWO])
-                if not self._merge_tests_from_path(path):
-                    return None
+                result = self._merge_tests_from_path(path)
+                if not result.ok():
+                    return result
                 print(MESSAGE_TESTS_LOADED.format(path=path))
-                return None
+                return StatusResult(code=SS__CONFIG__MERGED)
             print(MESSAGE_ERR_TESTS_LOAD)
-            return None
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         if sub == CMD_SAVE:
             if not self._tests_path:
                 print(MESSAGE_ERR_TESTS_SAVE)
-                return None
+                return StatusResult(code=SS__CONFIG__NOT_LOADED)
             return self._write_tests_command([CMD_WRITE, CMD_TESTS, str(self._tests_path)])
         if sub == CMD_CLEAR:
             model = TestAuthoringModel()
@@ -1845,11 +2098,11 @@ class BridgeCli:
             else:
                 self._refresh_tests_profile(self._tests_profile)
             print(MESSAGE_TESTS_CLEARED)
-            return None
+            return StatusResult(code=SS__NORMAL)
         print(MESSAGE_ERR_TESTS_SUBCOMMAND)
-        return None
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
-    def _show_test_templates(self) -> Optional[int]:
+    def _show_test_templates(self) -> StatusResult:
         """
         NAME
             _show_test_templates - List available test templates.
@@ -1859,10 +2112,10 @@ class BridgeCli:
         print(MESSAGE_TESTS_TEMPLATES_HEADER)
         if not templates:
             print(MESSAGE_TESTS_TEMPLATES_NONE)
-            return None
+            return StatusResult(code=SS__NORMAL)
         for name in templates:
             print(MESSAGE_TESTS_TEMPLATE_ENTRY.format(name=name))
-        return None
+        return StatusResult(code=SS__NORMAL)
 
     def _list_test_templates(self) -> List[str]:
         """
@@ -1892,7 +2145,7 @@ class BridgeCli:
             return None
         return path
 
-    def _load_tests_from_path(self, path: Path) -> bool:
+    def _load_tests_from_path(self, path: Path) -> StatusResult:
         """
         NAME
             _load_tests_from_path - Load tests JSON from a path.
@@ -1901,7 +2154,7 @@ class BridgeCli:
         try:
             payload = load_tests_payload(path)
         except Exception:
-            return False
+            return StatusResult(code=SS__CONFIG__INVALID)
         model = model_from_payload(payload or {})
         self._tests_model = model
         self._tests_path = path
@@ -1913,9 +2166,9 @@ class BridgeCli:
         default_set = model.default_test_set if model else EMPTY_STRING
         self._tests_active_set = default_set or DEFAULT_TEST_SET
         self._sync_store_tests()
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _merge_tests_from_path(self, path: Path) -> bool:
+    def _merge_tests_from_path(self, path: Path) -> StatusResult:
         """
         NAME
             _merge_tests_from_path - Merge tests JSON into current model.
@@ -1924,7 +2177,7 @@ class BridgeCli:
             payload = load_tests_payload(path)
         except Exception as exc:
             print(f"ERROR: Failed to read tests: {exc}")
-            return False
+            return StatusResult(code=SS__CONFIG__INVALID)
         incoming = model_from_payload(payload or {})
         dest = self._tests_model or TestAuthoringModel()
         if not dest.default_test_set and incoming.default_test_set:
@@ -1961,7 +2214,7 @@ class BridgeCli:
             self._refresh_tests_profile(self._active_profile_name() or get_default_profile())
         else:
             self._refresh_tests_profile(self._tests_profile)
-        return True
+        return StatusResult(code=SS__NORMAL)
 
     def _ensure_bindings_loaded(self) -> bool:
         """
@@ -1972,9 +2225,9 @@ class BridgeCli:
         if isinstance(self._bindings_payload, dict):
             return True
         path = bindings_deploy_path()
-        return self._load_bindings_from_path(path, announce=False)
+        return self._load_bindings_from_path(path, announce=False).ok()
 
-    def _load_bindings_from_path(self, path: Path, announce: bool = True) -> bool:
+    def _load_bindings_from_path(self, path: Path, announce: bool = True) -> StatusResult:
         """
         NAME
             _load_bindings_from_path - Load bindings config from a path.
@@ -1986,7 +2239,7 @@ class BridgeCli:
                 loaded = read_json(path)
             except Exception:
                 print(MESSAGE_ERR_BINDINGS_LOAD.format(path=path))
-                return False
+                return StatusResult(code=SS__CONFIG__INVALID)
             if isinstance(loaded, dict):
                 payload.update(loaded)
         payload[KEY_CONTROLLERS] = (
@@ -2002,9 +2255,9 @@ class BridgeCli:
         self._sync_store_bindings()
         if announce:
             print(MESSAGE_INFO_BINDINGS_LOADED.format(path=path))
-        return True
+        return StatusResult(code=SS__CONFIG__IMPORTED)
 
-    def _save_bindings_to_path(self, path: Path) -> Optional[int]:
+    def _save_bindings_to_path(self, path: Path) -> StatusResult:
         """
         NAME
             _save_bindings_to_path - Save bindings config to a path.
@@ -2012,7 +2265,7 @@ class BridgeCli:
 
         if not isinstance(self._bindings_payload, dict):
             print(MESSAGE_ERR_BINDINGS_LOAD.format(path=path))
-            return EXIT_CODE_ERROR
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         payload = {
             KEY_CONTROLLERS: self._bindings_payload.get(KEY_CONTROLLERS, []),
             KEY_BINDINGS: self._bindings_payload.get(KEY_BINDINGS, []),
@@ -2022,14 +2275,14 @@ class BridgeCli:
             write_json(path, payload, indent=COUNT_TWO, trailing_newline=True)
         except Exception as exc:
             print(MESSAGE_ERR_BINDINGS_WRITE.format(path=path, error=exc))
-            return EXIT_CODE_ERROR
+            return StatusResult(code=SS__CONFIG__INVALID)
         self._bindings_dirty = False
         self._bindings_path = path
         self._sync_store_bindings()
         print(MESSAGE_INFO_BINDINGS_SAVED.format(path=path))
-        return None
+        return StatusResult(code=SS__CONFIG__SAVED)
 
-    def _bindings_show(self, tokens: List[str]) -> Optional[int]:
+    def _bindings_show(self, tokens: List[str]) -> StatusResult:
         """
         NAME
             _bindings_show - Show bindings config content.
@@ -2037,10 +2290,10 @@ class BridgeCli:
 
         if not isinstance(self._bindings_payload, dict):
             print(MESSAGE_ERR_BINDINGS_LOAD.format(path=EMPTY_STRING))
-            return None
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         _source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens)
         if not ok:
-            return 2
+            return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
         target = cleaned[COUNT_ZERO].lower() if cleaned else EMPTY_STRING
         controllers = self._bindings_payload.get(KEY_CONTROLLERS, [])
         bindings = self._bindings_payload.get(KEY_BINDINGS, [])
@@ -2049,33 +2302,33 @@ class BridgeCli:
         if json_output:
             if target == BINDINGS_SHOW_CONTROLLERS:
                 print(self._dump_json({KEY_CONTROLLERS: controllers}, pretty))
-                return None
+                return StatusResult(code=SS__NORMAL)
             if target == BINDINGS_SHOW_BINDINGS:
                 print(self._dump_json({KEY_BINDINGS: bindings}, pretty))
-                return None
+                return StatusResult(code=SS__NORMAL)
             if target == BINDINGS_SHOW_AXES:
                 print(self._dump_json({KEY_AXES: axes}, pretty))
-                return None
+                return StatusResult(code=SS__NORMAL)
             print(self._dump_json(self._bindings_payload, pretty))
-            return None
+            return StatusResult(code=SS__NORMAL)
         if target and target not in BINDINGS_SHOW_TARGETS:
             print(MESSAGE_ERR_BINDINGS_SHOW)
-            return None
+            return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
         print(MESSAGE_BINDINGS_HEADER)
         if target in (EMPTY_STRING, BINDINGS_SHOW_CONTROLLERS):
             print(MESSAGE_BINDINGS_CONTROLLERS_HEADER)
             self._print_bindings_controllers(controllers)
             if target == BINDINGS_SHOW_CONTROLLERS:
-                return None
+                return StatusResult(code=SS__NORMAL)
         if target in (EMPTY_STRING, BINDINGS_SHOW_BINDINGS):
             print(MESSAGE_BINDINGS_BINDINGS_HEADER)
             self._print_bindings_entries(bindings)
             if target == BINDINGS_SHOW_BINDINGS:
-                return None
+                return StatusResult(code=SS__NORMAL)
         if target in (EMPTY_STRING, BINDINGS_SHOW_AXES):
             print(MESSAGE_BINDINGS_AXES_HEADER)
             self._print_bindings_axes(axes)
-        return None
+        return StatusResult(code=SS__NORMAL)
 
     def _print_bindings_controllers(self, controllers: object) -> None:
         if not isinstance(controllers, list) or not controllers:
@@ -2126,7 +2379,7 @@ class BridgeCli:
                 )
             )
 
-    def _bindings_controller_command(self, tokens: List[str]) -> Optional[int]:
+    def _bindings_controller_command(self, tokens: List[str]) -> StatusResult:
         """
         NAME
             _bindings_controller_command - Edit controller entries.
@@ -2134,38 +2387,38 @@ class BridgeCli:
 
         if not tokens:
             print(MESSAGE_ERR_BINDINGS_CONTROLLER_SET)
-            return None
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         action = tokens[COUNT_ZERO].lower()
         controllers = self._bindings_payload.get(KEY_CONTROLLERS, []) if self._bindings_payload else []
         if action == CMD_ADD:
             if len(tokens) < COUNT_FOUR:
                 print(MESSAGE_ERR_BINDINGS_CONTROLLER_ADD)
-                return None
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             name = tokens[COUNT_ONE].strip()
             ctrl_type = tokens[COUNT_TWO].strip()
             try:
                 port = int(tokens[COUNT_THREE])
             except ValueError:
                 print(MESSAGE_ERR_BINDINGS_CONTROLLER_PORT)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             if self._bindings_find_controller(name, controllers):
                 print(MESSAGE_ERR_BINDINGS_CONTROLLER_EXISTS)
-                return None
+                return StatusResult(code=SS__INPUT_BINDING__INVALID)
             controllers.append({KEY_NAME: name, FIELD_TYPE: ctrl_type, KEY_PORT: port})
             self._bindings_payload[KEY_CONTROLLERS] = controllers
             self._bindings_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if action == CMD_SET:
             if len(tokens) < COUNT_FOUR:
                 print(MESSAGE_ERR_BINDINGS_CONTROLLER_SET)
-                return None
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             name = tokens[COUNT_ONE].strip()
             field = tokens[COUNT_TWO].strip()
             value = " ".join(tokens[COUNT_THREE:]).strip()
             entry = self._bindings_find_controller(name, controllers)
             if not entry:
                 print(MESSAGE_ERR_BINDINGS_CONTROLLER_NOT_FOUND)
-                return None
+                return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
             if field == KEY_NAME:
                 return self._bindings_rename_controller(name, value)
             if field == FIELD_TYPE:
@@ -2175,21 +2428,21 @@ class BridgeCli:
                     entry[KEY_PORT] = int(value)
                 except ValueError:
                     print(MESSAGE_ERR_BINDINGS_CONTROLLER_PORT)
-                    return None
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             else:
                 print(MESSAGE_ERR_BINDINGS_FIELD_UNKNOWN)
-                return None
+                return StatusResult(code=SS__INPUT_BINDING__INVALID)
             self._bindings_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if action == CMD_RENAME:
             if len(tokens) < COUNT_THREE:
                 print(MESSAGE_ERR_BINDINGS_CONTROLLER_RENAME)
-                return None
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             return self._bindings_rename_controller(tokens[COUNT_ONE], tokens[COUNT_TWO])
         print(MESSAGE_ERR_BINDINGS_SUBCOMMAND)
-        return None
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
-    def _bindings_delete_controller(self, name: str) -> Optional[int]:
+    def _bindings_delete_controller(self, name: str) -> StatusResult:
         """
         NAME
             _bindings_delete_controller - Remove a controller by name.
@@ -2199,16 +2452,16 @@ class BridgeCli:
         entry = self._bindings_find_controller(name, controllers)
         if not entry:
             print(MESSAGE_ERR_BINDINGS_CONTROLLER_NOT_FOUND)
-            return None
+            return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
         if self._bindings_controller_in_use(name):
             print(MESSAGE_ERR_BINDINGS_CONTROLLER_IN_USE)
-            return None
+            return StatusResult(code=SS__INPUT_BINDING__INVALID)
         controllers.remove(entry)
         self._bindings_payload[KEY_CONTROLLERS] = controllers
         self._bindings_dirty = True
-        return None
+        return StatusResult(code=SS__NORMAL)
 
-    def _bindings_binding_command(self, tokens: List[str]) -> Optional[int]:
+    def _bindings_binding_command(self, tokens: List[str]) -> StatusResult:
         """
         NAME
             _bindings_binding_command - Edit button binding entries.
@@ -2216,13 +2469,13 @@ class BridgeCli:
 
         if not tokens:
             print(MESSAGE_ERR_BINDINGS_BINDING_SET)
-            return None
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         action = tokens[COUNT_ZERO].lower()
         bindings = self._bindings_payload.get(KEY_BINDINGS, []) if self._bindings_payload else []
         if action == CMD_ADD:
             if len(tokens) < COUNT_SIX:
                 print(MESSAGE_ERR_BINDINGS_BINDING_ADD)
-                return None
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             entry = {
                 KEY_COMMAND: tokens[COUNT_ONE],
                 KEY_CONTROLLER: tokens[COUNT_TWO],
@@ -2232,51 +2485,51 @@ class BridgeCli:
             }
             if not self._bindings_controller_exists(entry[KEY_CONTROLLER]):
                 print(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=entry[KEY_CONTROLLER]))
-                return None
+                return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
             bindings.append(entry)
             self._bindings_payload[KEY_BINDINGS] = bindings
             self._bindings_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if action == CMD_SET:
             if len(tokens) < COUNT_FOUR:
                 print(MESSAGE_ERR_BINDINGS_BINDING_SET)
-                return None
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             index = self._parse_index(tokens[COUNT_ONE], MESSAGE_ERR_BINDINGS_BINDING_INDEX)
             if index is None:
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             entry = self._bindings_entry_at(bindings, index)
             if entry is None:
                 print(MESSAGE_ERR_BINDINGS_BINDING_INDEX)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             field = tokens[COUNT_TWO]
             value = " ".join(tokens[COUNT_THREE:]).strip()
             if field not in BINDINGS_BINDING_FIELDS:
                 print(MESSAGE_ERR_BINDINGS_FIELD_UNKNOWN)
-                return None
+                return StatusResult(code=SS__INPUT_BINDING__INVALID)
             if field == KEY_CONTROLLER and not self._bindings_controller_exists(value):
                 print(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=value))
-                return None
+                return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
             entry[field] = value
             self._bindings_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if action == CMD_DELETE:
             if len(tokens) < COUNT_TWO:
                 print(MESSAGE_ERR_BINDINGS_BINDING_DELETE)
-                return None
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             index = self._parse_index(tokens[COUNT_ONE], MESSAGE_ERR_BINDINGS_BINDING_INDEX)
             if index is None:
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             entry = self._bindings_entry_at(bindings, index)
             if entry is None:
                 print(MESSAGE_ERR_BINDINGS_BINDING_INDEX)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             bindings.remove(entry)
             self._bindings_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         print(MESSAGE_ERR_BINDINGS_SUBCOMMAND)
-        return None
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
-    def _bindings_axis_command(self, tokens: List[str]) -> Optional[int]:
+    def _bindings_axis_command(self, tokens: List[str]) -> StatusResult:
         """
         NAME
             _bindings_axis_command - Edit axis binding entries.
@@ -2284,35 +2537,35 @@ class BridgeCli:
 
         if not tokens:
             print(MESSAGE_ERR_BINDINGS_AXIS_SET)
-            return None
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         action = tokens[COUNT_ZERO].lower()
         axes = self._bindings_payload.get(KEY_AXES, []) if self._bindings_payload else []
         if action == CMD_ADD:
             if len(tokens) < COUNT_EIGHT:
                 print(MESSAGE_ERR_BINDINGS_AXIS_ADD)
-                return None
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             if tokens[COUNT_FOUR].lower() != KEY_INVERT:
                 print(MESSAGE_ERR_BINDINGS_AXIS_ADD)
-                return None
+                return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
             if tokens[COUNT_SIX].lower() != KEY_DEADBAND:
                 print(MESSAGE_ERR_BINDINGS_AXIS_ADD)
-                return None
+                return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
             invert = self._parse_bool(tokens[COUNT_FIVE])
             if invert is None:
                 print(MESSAGE_ERR_BINDINGS_INVERT)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             try:
                 deadband = float(tokens[COUNT_SEVEN])
             except ValueError:
                 print(MESSAGE_ERR_BINDINGS_DEADBAND)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
             if deadband < DEADBAND_MIN or deadband > DEADBAND_MAX:
                 print(MESSAGE_ERR_BINDINGS_DEADBAND)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
             controller = tokens[COUNT_TWO]
             if not self._bindings_controller_exists(controller):
                 print(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=controller))
-                return None
+                return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
             entry = {
                 KEY_COMMAND: tokens[COUNT_ONE],
                 KEY_CONTROLLER: controller,
@@ -2323,71 +2576,71 @@ class BridgeCli:
             axes.append(entry)
             self._bindings_payload[KEY_AXES] = axes
             self._bindings_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if action == CMD_SET:
             if len(tokens) < COUNT_FOUR:
                 print(MESSAGE_ERR_BINDINGS_AXIS_SET)
-                return None
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             index = self._parse_index(tokens[COUNT_ONE], MESSAGE_ERR_BINDINGS_AXIS_INDEX)
             if index is None:
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             entry = self._bindings_entry_at(axes, index)
             if entry is None:
                 print(MESSAGE_ERR_BINDINGS_AXIS_INDEX)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             field = tokens[COUNT_TWO]
             value = " ".join(tokens[COUNT_THREE:]).strip()
             if field not in BINDINGS_AXIS_FIELDS:
                 print(MESSAGE_ERR_BINDINGS_FIELD_UNKNOWN)
-                return None
+                return StatusResult(code=SS__INPUT_BINDING__INVALID)
             if field == KEY_CONTROLLER:
                 if not self._bindings_controller_exists(value):
                     print(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=value))
-                    return None
+                    return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
                 entry[field] = value
                 self._bindings_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             if field == KEY_INVERT:
                 parsed = self._parse_bool(value)
                 if parsed is None:
                     print(MESSAGE_ERR_BINDINGS_INVERT)
-                    return None
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
                 entry[field] = parsed
                 self._bindings_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             if field == KEY_DEADBAND:
                 try:
                     deadband = float(value)
                 except ValueError:
                     print(MESSAGE_ERR_BINDINGS_DEADBAND)
-                    return None
+                    return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
                 if deadband < DEADBAND_MIN or deadband > DEADBAND_MAX:
                     print(MESSAGE_ERR_BINDINGS_DEADBAND)
-                    return None
+                    return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
                 entry[field] = deadband
                 self._bindings_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             entry[field] = value
             self._bindings_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if action == CMD_DELETE:
             if len(tokens) < COUNT_TWO:
                 print(MESSAGE_ERR_BINDINGS_AXIS_DELETE)
-                return None
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             index = self._parse_index(tokens[COUNT_ONE], MESSAGE_ERR_BINDINGS_AXIS_INDEX)
             if index is None:
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             entry = self._bindings_entry_at(axes, index)
             if entry is None:
                 print(MESSAGE_ERR_BINDINGS_AXIS_INDEX)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             axes.remove(entry)
             self._bindings_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         print(MESSAGE_ERR_BINDINGS_SUBCOMMAND)
-        return None
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
-    def _bindings_validate(self, path: Optional[Path]) -> Optional[int]:
+    def _bindings_validate(self, path: Optional[Path]) -> StatusResult:
         """
         NAME
             _bindings_validate - Validate bindings payload or file.
@@ -2399,10 +2652,10 @@ class BridgeCli:
                 loaded = read_json(path)
             except Exception:
                 print(MESSAGE_ERR_BINDINGS_LOAD.format(path=path))
-                return EXIT_CODE_ERROR
+                return StatusResult(code=SS__CONFIG__INVALID)
             if not isinstance(loaded, dict):
                 print(MESSAGE_ERR_BINDINGS_VALIDATE.format(message=EMPTY_STRING))
-                return EXIT_CODE_ERROR
+                return StatusResult(code=SS__CONFIG__INVALID)
             payload = loaded
         self._store.set_bindings_payload(payload or {})
         result = self._store.validate_bindings_only(strict=True)
@@ -2410,9 +2663,9 @@ class BridgeCli:
         if errors:
             message = self._format_store_errors(errors)
             print(MESSAGE_ERR_BINDINGS_VALIDATE.format(message=message))
-            return EXIT_CODE_ERROR
+            return StatusResult(code=SS__CONFIG__INVALID)
         print(AST_EXEC_SPEC["msg_ok_config"])
-        return None
+        return StatusResult(code=SS__CONFIG__VALID)
 
     def _validate_bindings_payload(self, payload: Dict[str, object]) -> List[str]:
         """
@@ -2516,22 +2769,22 @@ class BridgeCli:
                 return True
         return False
 
-    def _bindings_rename_controller(self, old: str, new: str) -> Optional[int]:
+    def _bindings_rename_controller(self, old: str, new: str) -> StatusResult:
         """
         NAME
             _bindings_rename_controller - Rename a controller and update references.
         """
 
         if old == new:
-            return None
+            return StatusResult(code=SS__INPUT_BINDING__INVALID)
         controllers = self._bindings_payload.get(KEY_CONTROLLERS, []) if self._bindings_payload else []
         entry = self._bindings_find_controller(old, controllers)
         if not entry:
             print(MESSAGE_ERR_BINDINGS_CONTROLLER_NOT_FOUND)
-            return None
+            return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
         if self._bindings_find_controller(new, controllers):
             print(MESSAGE_ERR_BINDINGS_CONTROLLER_EXISTS)
-            return None
+            return StatusResult(code=SS__INPUT_BINDING__INVALID)
         entry[KEY_NAME] = new
         for binding in self._bindings_payload.get(KEY_BINDINGS, []):
             if isinstance(binding, dict) and binding.get(KEY_CONTROLLER) == old:
@@ -2540,7 +2793,7 @@ class BridgeCli:
             if isinstance(axis, dict) and axis.get(KEY_CONTROLLER) == old:
                 axis[KEY_CONTROLLER] = new
         self._bindings_dirty = True
-        return None
+        return StatusResult(code=SS__NORMAL)
 
     def _bindings_entry_at(
         self, entries: List[Dict[str, object]], index: int
@@ -2581,7 +2834,7 @@ class BridgeCli:
         self._load_can_mappings()
         return isinstance(self._can_mappings, dict)
 
-    def _load_can_mappings_from_path(self, path: Path) -> Optional[int]:
+    def _load_can_mappings_from_path(self, path: Path) -> StatusResult:
         """
         NAME
             _load_can_mappings_from_path - Load CAN mappings from a path.
@@ -2593,7 +2846,7 @@ class BridgeCli:
                 loaded = read_json(path)
             except Exception:
                 print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=path))
-                return EXIT_CODE_ERROR
+                return StatusResult(code=SS__CONFIG__INVALID)
             if isinstance(loaded, dict):
                 payload = loaded
         manufacturers = payload.get(KEY_MANUFACTURERS)
@@ -2606,9 +2859,9 @@ class BridgeCli:
         self._can_mappings_dirty = False
         self._sync_store_mappings()
         print(MESSAGE_INFO_MAPPINGS_LOADED.format(path=path))
-        return None
+        return StatusResult(code=SS__CONFIG__IMPORTED)
 
-    def _save_can_mappings_to_path(self, path: Path) -> Optional[int]:
+    def _save_can_mappings_to_path(self, path: Path) -> StatusResult:
         """
         NAME
             _save_can_mappings_to_path - Save CAN mappings to a path.
@@ -2616,7 +2869,7 @@ class BridgeCli:
 
         if not isinstance(self._can_mappings, dict):
             print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=path))
-            return EXIT_CODE_ERROR
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         payload = {
             KEY_MANUFACTURERS: self._can_mappings.get(KEY_MANUFACTURERS, {}),
             KEY_DEVICE_TYPES: self._can_mappings.get(KEY_DEVICE_TYPES, {}),
@@ -2625,14 +2878,14 @@ class BridgeCli:
             write_json(path, payload, indent=COUNT_TWO, trailing_newline=True)
         except Exception as exc:
             print(MESSAGE_ERR_MAPPINGS_WRITE.format(path=path, error=exc))
-            return EXIT_CODE_ERROR
+            return StatusResult(code=SS__CONFIG__INVALID)
         self._can_mappings_dirty = False
         self._can_mappings_path = path
         self._sync_store_mappings()
         print(MESSAGE_INFO_MAPPINGS_SAVED.format(path=path))
-        return None
+        return StatusResult(code=SS__CONFIG__SAVED)
 
-    def _mappings_show(self, tokens: List[str]) -> Optional[int]:
+    def _mappings_show(self, tokens: List[str]) -> StatusResult:
         """
         NAME
             _mappings_show - Show CAN mappings content.
@@ -2640,36 +2893,38 @@ class BridgeCli:
 
         if not isinstance(self._can_mappings, dict):
             print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=EMPTY_STRING))
-            return None
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         _source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens)
         if not ok:
-            return 2
+            return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
         target = cleaned[COUNT_ZERO].lower() if cleaned else EMPTY_STRING
+        if target == MAPPINGS_SHOW_DEVICE_TYPE:
+            target = MAPPINGS_SHOW_DEVICE_TYPES
         manufacturers = self._can_mappings.get(KEY_MANUFACTURERS, {})
         device_types = self._can_mappings.get(KEY_DEVICE_TYPES, {})
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             if target == MAPPINGS_SHOW_MANUFACTURERS:
                 print(self._dump_json({KEY_MANUFACTURERS: manufacturers}, pretty))
-                return None
+                return StatusResult(code=SS__NORMAL)
             if target == MAPPINGS_SHOW_DEVICE_TYPES:
                 print(self._dump_json({KEY_DEVICE_TYPES: device_types}, pretty))
-                return None
+                return StatusResult(code=SS__NORMAL)
             print(self._dump_json(self._can_mappings, pretty))
-            return None
+            return StatusResult(code=SS__NORMAL)
         if target and target not in MAPPINGS_SHOW_TARGETS:
             print(MESSAGE_ERR_MAPPINGS_SHOW)
-            return None
+            return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
         print(MESSAGE_MAPPINGS_HEADER)
         if target in (EMPTY_STRING, MAPPINGS_SHOW_MANUFACTURERS):
             print(MESSAGE_MAPPINGS_MANUFACTURERS_HEADER)
             self._print_mappings_entries(manufacturers)
             if target == MAPPINGS_SHOW_MANUFACTURERS:
-                return None
+                return StatusResult(code=SS__NORMAL)
         if target in (EMPTY_STRING, MAPPINGS_SHOW_DEVICE_TYPES):
             print(MESSAGE_MAPPINGS_DEVICE_TYPES_HEADER)
             self._print_mappings_entries(device_types)
-        return None
+        return StatusResult(code=SS__NORMAL)
 
     def _print_mappings_entries(self, entries: object) -> None:
         """
@@ -2684,7 +2939,7 @@ class BridgeCli:
             name = entries.get(key)
             print(MESSAGE_MAPPINGS_ENTRY_FMT.format(id=key, name=name))
 
-    def _mappings_entry_command(self, target_key: str, tokens: List[str]) -> Optional[int]:
+    def _mappings_entry_command(self, target_key: str, tokens: List[str]) -> StatusResult:
         """
         NAME
             _mappings_entry_command - Edit manufacturer/device-type entries.
@@ -2692,39 +2947,39 @@ class BridgeCli:
 
         if not tokens:
             print(MESSAGE_ERR_MAPPINGS_SUBCOMMAND)
-            return None
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         action = tokens[COUNT_ZERO].lower()
         if action == CMD_SET:
             if len(tokens) < COUNT_THREE:
                 print(MESSAGE_ERR_MAPPINGS_SET.format(target=target_key))
-                return None
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             try:
                 key = int(tokens[COUNT_ONE])
             except ValueError:
                 print(MESSAGE_ERR_MAPPINGS_ID)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             name = " ".join(tokens[COUNT_TWO:]).strip()
             entries = self._can_mappings.setdefault(target_key, {})
             entries[str(key)] = name
             self._can_mappings_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if action in (CMD_DELETE, CMD_NO):
             if len(tokens) < COUNT_TWO:
                 print(MESSAGE_ERR_MAPPINGS_DELETE.format(target=target_key))
-                return None
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             try:
                 key = int(tokens[COUNT_ONE])
             except ValueError:
                 print(MESSAGE_ERR_MAPPINGS_ID)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             entries = self._can_mappings.setdefault(target_key, {})
             entries.pop(str(key), None)
             self._can_mappings_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         print(MESSAGE_ERR_MAPPINGS_SUBCOMMAND)
-        return None
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
-    def _mappings_validate(self, path: Optional[Path]) -> Optional[int]:
+    def _mappings_validate(self, path: Optional[Path]) -> StatusResult:
         """
         NAME
             _mappings_validate - Validate CAN mappings payload or file.
@@ -2736,10 +2991,10 @@ class BridgeCli:
                 loaded = read_json(path)
             except Exception:
                 print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=path))
-                return EXIT_CODE_ERROR
+                return StatusResult(code=SS__CONFIG__INVALID)
             if not isinstance(loaded, dict):
                 print(MESSAGE_ERR_MAPPINGS_VALIDATE.format(message=EMPTY_STRING))
-                return EXIT_CODE_ERROR
+                return StatusResult(code=SS__CONFIG__INVALID)
             payload = loaded
         self._store.set_mappings_payload(payload or {})
         result = self._store.validate_mappings_only(strict=True)
@@ -2747,9 +3002,9 @@ class BridgeCli:
         if errors:
             message = self._format_store_errors(errors)
             print(MESSAGE_ERR_MAPPINGS_VALIDATE.format(message=message))
-            return EXIT_CODE_ERROR
+            return StatusResult(code=SS__CONFIG__INVALID)
         print(AST_EXEC_SPEC["msg_ok_config"])
-        return None
+        return StatusResult(code=SS__CONFIG__VALID)
 
     def _validate_mappings_payload(self, payload: Dict[str, object]) -> List[str]:
         """
@@ -2770,7 +3025,7 @@ class BridgeCli:
                     errors.append(MESSAGE_ERR_MAPPINGS_SET.format(target=key))
         return errors
 
-    def _config_test_command(self, tokens: List[str]) -> Optional[int]:
+    def _config_test_command(self, tokens: List[str]) -> StatusResult:
         """
         NAME
             _config_test_command - Handle config-mode test authoring commands.
@@ -2779,35 +3034,35 @@ class BridgeCli:
         self._ensure_tests_loaded()
         if len(tokens) < 2:
             print(MESSAGE_ERROR_TEST_SUBCOMMAND)
-            return None
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         sub = tokens[1].lower()
         if sub == CMD_SET and len(tokens) >= 3:
             name = tokens[2]
             if not name:
                 print(MESSAGE_ERROR_TEST_SET_NAME)
-                return None
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             self._tests_active_set = name
             if self._tests_model and name not in self._tests_model.test_sets:
                 self._tests_model.test_sets[name] = TestSetModel(name=name, tests=[])
                 self._tests_dirty = True
             print(MESSAGE_SELECTED_TEST_SET.format(name=name))
-            return None
+            return StatusResult(code=SS__NORMAL)
         if sub == CMD_CREATE and len(tokens) >= 3:
             name = tokens[2]
             err = validate_test_name(name)
             if err:
                 print(MESSAGE_ERROR_WITH_TEXT.format(message=err))
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             test_set = self._get_active_test_set()
             if self._find_test(name, test_set):
                 if self._batch:
                     print(MESSAGE_ERROR_TEST_EXISTS)
-                    return None
+                    return StatusResult(code=SS__CONFIG__INVALID)
                 prompt = PROMPT_OVERWRITE.format(name=name)
                 confirm = input(prompt).strip().lower()
                 if confirm != CONFIRM_YES:
                     print(MESSAGE_CANCELLED)
-                    return None
+                    return StatusResult(code=SS__EXECUTOR__CANCELLED)
                 self._delete_test(name, test_set)
             test_set.tests.append(
                 TestModel(
@@ -2821,26 +3076,26 @@ class BridgeCli:
             )
             self._tests_dirty = True
             self._modes.append(CliMode(MODE_TEST, test=name))
-            return None
+            return StatusResult(code=SS__NORMAL)
         if sub == CMD_DELETE and len(tokens) >= 3:
             name = tokens[2]
             test_set = self._get_active_test_set()
             if not self._delete_test(name, test_set):
                 print(MESSAGE_ERROR_TEST_NOT_FOUND)
-                return None
+                return StatusResult(code=SS__CONFIG__INVALID)
             self._tests_dirty = True
             print(MESSAGE_DELETED_TEST.format(name=name))
-            return None
+            return StatusResult(code=SS__NORMAL)
         if len(tokens) >= 2 and sub not in (CMD_CREATE, CMD_DELETE, CMD_SET):
             name = tokens[1]
             test_set = self._get_active_test_set()
             if not self._find_test(name, test_set):
                 print(MESSAGE_ERROR_TEST_NOT_FOUND)
-                return None
+                return StatusResult(code=SS__CONFIG__INVALID)
             self._modes.append(CliMode(MODE_TEST, test=name))
-            return None
+            return StatusResult(code=SS__NORMAL)
         print(MESSAGE_ERROR_UNKNOWN_TEST)
-        return None
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
     def _test_mode_command(self, tokens: List[str]) -> Optional[int]:
         """
@@ -2850,15 +3105,15 @@ class BridgeCli:
 
         self._ensure_tests_loaded()
         if not tokens:
-            return None
+            return StatusResult(code=SS__NORMAL)
         cmd = tokens[0].lower()
         if cmd in (CMD_EXIT, CMD_END):
             self._pop_mode()
-            return None
+            return StatusResult(code=SS__NORMAL)
         test = self._get_active_test()
         if test is None:
             print(MESSAGE_ERROR_TEST_MODE)
-            return None
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         if cmd == CMD_TYPE and len(tokens) >= 2:
             kind_raw = tokens[1]
             kind = kind_raw.lower()
@@ -2871,7 +3126,7 @@ class BridgeCli:
             }
             if kind not in kind_map:
                 print(MESSAGE_ERROR_TYPE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             test.test_type = kind_map[kind]
             if test.test_type == TEST_TYPE_JOYSTICK:
                 test.joystick = test.joystick or TestBindingJoystick()
@@ -2895,7 +3150,7 @@ class BridgeCli:
                 test.deadband_sweep = None
                 test.device_action = None
             self._tests_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == CMD_DEVICE and len(tokens) >= 3 and tokens[1].lower() == CMD_ADD:
             label = tokens[2]
             if not self._is_device_label_valid(label):
@@ -2903,181 +3158,181 @@ class BridgeCli:
                     print(MESSAGE_ERROR_DEVICE_LABEL_DUPLICATE)
                 else:
                     print(MESSAGE_ERROR_DEVICE_LABEL)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             if label in test.devices:
                 self._warn(MESSAGE_ERROR_DEVICE_DUP)
-                return None
+                return StatusResult(code=SS__NORMAL)
             test.devices.append(label)
             self._tests_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == CMD_NO and len(tokens) >= 3 and tokens[1].lower() == CMD_DEVICE:
             label = tokens[2]
             if label in test.devices:
                 test.devices.remove(label)
                 self._tests_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == CMD_INPUT_SOURCE:
             if test.test_type not in (TEST_TYPE_JOYSTICK, TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
                 print(MESSAGE_ERROR_INPUT_SOURCE_TYPE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             if len(tokens) != 2:
                 print(MESSAGE_ERROR_INPUT_SOURCE_VALUE)
-                return None
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             value = tokens[1].strip()
             if "." not in value:
                 print(MESSAGE_ERROR_INPUT_SOURCE_VALUE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             test.input_source = value
             self._tests_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == CMD_DEADBAND and len(tokens) >= 2:
             if test.test_type != TEST_TYPE_JOYSTICK:
                 print(MESSAGE_ERROR_DEADBAND_TYPE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             try:
                 value = float(tokens[1])
             except ValueError:
                 print(MESSAGE_ERROR_DEADBAND_NUMBER)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             if value < DEADBAND_MIN or value > DEADBAND_MAX:
                 print(MESSAGE_ERROR_DEADBAND_RANGE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
             test.joystick = test.joystick or TestBindingJoystick()
             test.joystick.deadband = value
             self._tests_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == CMD_DUTY and len(tokens) >= 2:
             if test.test_type not in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
                 print(MESSAGE_ERROR_DUTY_TYPE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             try:
                 value = float(tokens[1])
             except ValueError:
                 print(MESSAGE_ERROR_DUTY_NUMBER)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             if value < DUTY_MIN or value > DUTY_MAX:
                 print(MESSAGE_ERROR_DUTY_RANGE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
             test.button = test.button or TestBindingButton()
             test.button.duty = value
             self._tests_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == CMD_ACTION and len(tokens) >= 2:
             if test.test_type != TEST_TYPE_DEVICE_ACTION:
                 print(MESSAGE_ERROR_ACTION_TYPE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             action = tokens[1].lower()
             if action not in ACTION_ALLOWED:
                 print(MESSAGE_ERROR_ACTION_REQUIRED)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             test.device_action = test.device_action or DeviceActionModel()
             test.device_action.action = action
             self._tests_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == CMD_COLOR and len(tokens) >= 2:
             if test.test_type != TEST_TYPE_DEVICE_ACTION:
                 print(MESSAGE_ERROR_COLOR_TYPE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             value = tokens[1]
             if not COLOR_HEX_PATTERN.match(value):
                 print(MESSAGE_ERROR_COLOR_REQUIRED)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             test.device_action = test.device_action or DeviceActionModel()
             test.device_action.color = value
             self._tests_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == CMD_PATTERN and len(tokens) >= 2:
             if test.test_type != TEST_TYPE_DEVICE_ACTION:
                 print(MESSAGE_ERROR_PATTERN_TYPE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             value = tokens[1].lower()
             if value not in PATTERN_ALLOWED:
                 print(MESSAGE_ERROR_PATTERN_VALUE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             test.device_action = test.device_action or DeviceActionModel()
             test.device_action.pattern = value
             self._tests_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == CMD_BRIGHTNESS and len(tokens) >= 2:
             if test.test_type != TEST_TYPE_DEVICE_ACTION:
                 print(MESSAGE_ERROR_BRIGHTNESS_TYPE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             try:
                 value = float(tokens[1])
             except ValueError:
                 print(MESSAGE_ERROR_BRIGHTNESS_NUMBER)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             if value < BRIGHTNESS_MIN or value > BRIGHTNESS_MAX:
                 print(MESSAGE_ERROR_BRIGHTNESS_RANGE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
             test.device_action = test.device_action or DeviceActionModel()
             test.device_action.brightness = value
             self._tests_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == CMD_DURATION and len(tokens) >= 2:
             if test.test_type != TEST_TYPE_DEVICE_ACTION:
                 print(MESSAGE_ERROR_DURATION_TYPE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             try:
                 value = float(tokens[1])
             except ValueError:
                 print(MESSAGE_ERROR_DURATION_NUMBER)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             if value < DURATION_MIN_SEC:
                 print(MESSAGE_ERROR_DURATION_RANGE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
             test.device_action = test.device_action or DeviceActionModel()
             test.device_action.duration_sec = value
             self._tests_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == CMD_TERMINATION and len(tokens) >= 2:
             if test.test_type not in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
                 print(MESSAGE_ERROR_TERMINATION)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             term = test.termination
             kind = tokens[1].lower()
             if kind == TERMINATION_HOLD:
                 term.hold_enabled = True
                 self._tests_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             if kind == TERMINATION_TIME and len(tokens) >= 3:
                 try:
                     value = float(tokens[2])
                 except ValueError:
                     print(MESSAGE_ERROR_TERMINATION_TIME)
-                    return None
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
                 if value < TIME_MIN_SEC:
                     print(MESSAGE_ERROR_TERMINATION_TIME_RANGE)
-                    return None
+                    return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
                 term.time_sec = value
                 term.time_on_timeout = term.time_on_timeout or TIME_ON_TIMEOUT_DEFAULT
                 self._tests_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             if kind == TERMINATION_ROTATION and len(tokens) >= 3:
                 try:
                     value = float(tokens[2])
                 except ValueError:
                     print(MESSAGE_ERROR_TERMINATION_ROTATION)
-                    return None
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
                 if value < ROTATION_MIN:
                     print(MESSAGE_ERROR_TERMINATION_ROTATION_RANGE)
-                    return None
+                    return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
                 term.rotation_limit = value
                 self._tests_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             if kind == TERMINATION_LIMITSWITCH:
                 limit = term.limit_switch or deepcopy(LIMIT_SWITCH_DEFAULT)
                 if len(tokens) >= 3:
                     limit[LIMIT_SWITCH_KEY_ID] = tokens[2]
                 term.limit_switch = limit
                 self._tests_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             print(MESSAGE_ERROR_TERMINATION)
-            return None
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         if cmd == CMD_ROTATION and len(tokens) >= 2:
             if test.test_type not in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
                 print(MESSAGE_ERROR_ROTATION_TYPE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             term = test.termination
             field = tokens[1].lower()
             if field == "limit" and len(tokens) >= 3:
@@ -3085,43 +3340,43 @@ class BridgeCli:
                     value = float(tokens[2])
                 except ValueError:
                     print(MESSAGE_ERROR_TERMINATION_ROTATION)
-                    return None
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
                 if value < ROTATION_MIN:
                     print(MESSAGE_ERROR_TERMINATION_ROTATION_RANGE)
-                    return None
+                    return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
                 term.rotation_limit = value
                 self._tests_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             if field == "encoderkey" and len(tokens) >= 3:
                 term.rotation_encoder_key = tokens[2]
                 self._tests_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             if field == "encodersource" and len(tokens) >= 3:
                 term.rotation_encoder_source = tokens[2]
                 self._tests_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             if field == "encodermotorindex" and len(tokens) >= 3:
                 try:
                     term.rotation_encoder_motor_index = int(tokens[2])
                 except ValueError:
                     print(MESSAGE_ERROR_TERMINATION_ROTATION)
-                    return None
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
                 self._tests_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             if field == "encodercountsperrev" and len(tokens) >= 3:
                 try:
                     term.rotation_encoder_counts_per_rev = float(tokens[2])
                 except ValueError:
                     print(MESSAGE_ERROR_TERMINATION_ROTATION)
-                    return None
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
                 self._tests_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             print(MESSAGE_ERROR_TERMINATION)
-            return None
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         if cmd == CMD_TIME and len(tokens) >= 2:
             if test.test_type not in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
                 print(MESSAGE_ERROR_TIME_TYPE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             term = test.termination
             field = tokens[1].lower()
             if field == "timeout" and len(tokens) >= 3:
@@ -3129,36 +3384,36 @@ class BridgeCli:
                     value = float(tokens[2])
                 except ValueError:
                     print(MESSAGE_ERROR_TERMINATION_TIME)
-                    return None
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
                 if value < TIME_MIN_SEC:
                     print(MESSAGE_ERROR_TERMINATION_TIME_RANGE)
-                    return None
+                    return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
                 term.time_sec = value
                 self._tests_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             if field == "ontimeout" and len(tokens) >= 3:
                 term.time_on_timeout = tokens[2]
                 self._tests_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             print(MESSAGE_ERROR_TERMINATION)
-            return None
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         if cmd == CMD_HOLD and len(tokens) >= 2:
             if test.test_type not in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
                 print(MESSAGE_ERROR_HOLD_TYPE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             term = test.termination
             field = tokens[1].lower()
             if field == "onrelease" and len(tokens) >= 3:
                 term.hold_enabled = True
                 term.hold_on_release = tokens[2]
                 self._tests_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             print(MESSAGE_ERROR_TERMINATION)
-            return None
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         if cmd == CMD_LIMITSWITCH and len(tokens) >= 2:
             if test.test_type not in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
                 print(MESSAGE_ERROR_LIMITSWITCH_TYPE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             term = test.termination
             limit = term.limit_switch or deepcopy(LIMIT_SWITCH_DEFAULT)
             field = tokens[1].lower()
@@ -3166,21 +3421,21 @@ class BridgeCli:
                 limit[LIMIT_SWITCH_KEY_ON_HIT] = tokens[2]
                 term.limit_switch = limit
                 self._tests_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             if field == "id" and len(tokens) >= 3:
                 limit[LIMIT_SWITCH_KEY_ID] = tokens[2]
                 term.limit_switch = limit
                 self._tests_dirty = True
-                return None
+                return StatusResult(code=SS__NORMAL)
             print(MESSAGE_ERROR_TERMINATION)
-            return None
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         if cmd == CMD_DEADBAND_SWEEP:
             if test.test_type != TEST_TYPE_DEADBAND_SWEEP:
                 print(MESSAGE_ERROR_DEADBAND_SWEEP_TYPE)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             if len(tokens) < 3:
                 print(MESSAGE_ERROR_DEADBAND_SWEEP_FIELD)
-                return None
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             if test.deadband_sweep is None:
                 from tools.common.test_authoring.model import DeadbandSweepModel
                 test.deadband_sweep = DeadbandSweepModel()
@@ -3210,12 +3465,12 @@ class BridgeCli:
                     sweep.encoder_source = value
                 else:
                     print(MESSAGE_ERROR_DEADBAND_SWEEP_FIELD)
-                    return None
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             except ValueError:
                 print(MESSAGE_ERROR_DEADBAND_SWEEP_FIELD)
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             self._tests_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == CMD_ENABLED and len(tokens) >= 2:
             value = tokens[1].lower()
             if value in ("true", "on", "1", "yes"):
@@ -3224,14 +3479,14 @@ class BridgeCli:
                 test.enabled = False
             else:
                 print("ERROR: enabled requires true/false.")
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             self._tests_dirty = True
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == CMD_SHOW:
             self._print_test(test)
-            return None
+            return StatusResult(code=SS__NORMAL)
         print(MESSAGE_ERROR_UNKNOWN_TEST)
-        return None
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
     def _is_device_label_valid(self, label: str) -> bool:
         """
@@ -3253,7 +3508,7 @@ class BridgeCli:
             return False
         return label in self._tests_device_catalog
 
-    def _show_tests_command(self, tokens: List[str]) -> Optional[int]:
+    def _show_tests_command(self, tokens: List[str]) -> StatusResult:
         """
         NAME
             _show_tests_command - Render test authoring state.
@@ -3262,30 +3517,30 @@ class BridgeCli:
         self._ensure_tests_loaded()
         source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens[1:])
         if not ok:
-            return 2
+            return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
         if source:
             pass
         if len(cleaned) >= 1 and cleaned[0].lower() == CMD_TESTS:
             if json_output:
                 self._print_tests_json(pretty)
-                return None
+                return StatusResult(code=SS__NORMAL)
             self._print_tests()
-            return None
+            return StatusResult(code=SS__NORMAL)
         if len(cleaned) >= 2 and cleaned[0].lower() == CMD_TEST:
             test_set = self._get_active_test_set()
             test = self._find_test(cleaned[1], test_set)
             if not test:
                 print(MESSAGE_ERROR_TEST_NOT_FOUND)
-                return None
+                return StatusResult(code=SS__CONFIG__INVALID)
             if json_output:
                 self._print_test_json(test, pretty)
-                return None
+                return StatusResult(code=SS__NORMAL)
             self._print_test(test)
-            return None
+            return StatusResult(code=SS__NORMAL)
         print(MESSAGE_ERROR_SHOW_TESTS)
-        return None
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
-    def _write_tests_command(self, tokens: List[str]) -> Optional[int]:
+    def _write_tests_command(self, tokens: List[str]) -> StatusResult:
         """
         NAME
             _write_tests_command - Validate and persist tests JSON.
@@ -3294,7 +3549,7 @@ class BridgeCli:
         self._ensure_tests_loaded()
         if len(tokens) < 3 or tokens[1].lower() != CMD_TESTS:
             print(MESSAGE_ERROR_WRITE_TESTS)
-            return None
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         path = Path(tokens[2])
         model = self._tests_model or TestAuthoringModel()
         profile = self._tests_profile
@@ -3315,7 +3570,7 @@ class BridgeCli:
                         test=test_name,
                     )
                 )
-            return None
+            return StatusResult(code=SS__CONFIG__INVALID)
         for issue in result.warnings:
             test_name = issue.test_name or GLOBAL_LABEL
             self._warn(
@@ -3329,7 +3584,7 @@ class BridgeCli:
         self._tests_dirty = False
         self._sync_store_tests()
         print(MESSAGE_WROTE_TESTS.format(path=path))
-        return None
+        return StatusResult(code=SS__CONFIG__SAVED)
 
     def _get_active_test_set(self) -> TestSetModel:
         """
@@ -3507,32 +3762,32 @@ class BridgeCli:
         entry = entries[COUNT_ZERO] if isinstance(entries, list) and entries else {}
         print(self._dump_json({KEY_TEST_SET: test_set.name, KEY_TEST: entry}, pretty))
 
-    def _exec_command(self, tokens: List[str]) -> Optional[int]:
+    def _exec_command(self, tokens: List[str]) -> StatusResult:
         cmd = tokens[0].lower()
         if cmd == "connect":
             if not connect(self._session):
                 print("ERROR: Failed to connect.")
-                return 2
+                return StatusResult(code=SS__NETWORK__CONNECT_FAILED)
             ok = self._session.ensure_handshake()
             if not ok:
                 print("ERROR: Handshake failed.")
-                return 2
+                return StatusResult(code=SS__NETWORK__HANDSHAKE_FAILED)
             print("Connected.")
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == "disconnect":
             disconnect(self._session)
             print("Disconnected.")
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == "configure" and len(tokens) > 1 and tokens[1].lower() == "terminal":
             self._ensure_local_config()
             self._modes.append(CliMode("config"))
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == "show":
-            return self._handle_show(tokens[1:])
+            return self._coerce_status(self._handle_show(tokens[1:]))
         print(f"ERROR: Unknown command: {' '.join(tokens)}")
-        return None
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
-    def _config_command(self, tokens: List[str]) -> Optional[int]:
+    def _config_command(self, tokens: List[str]) -> StatusResult:
         cmd = tokens[0].lower()
         if cmd == CMD_BINDINGS:
             return self._config_bindings_command(tokens)
@@ -3541,275 +3796,363 @@ class BridgeCli:
         if cmd == CMD_PROFILE:
             if len(tokens) < 2:
                 print(MESSAGE_ERR_PROFILE_REQUIRED)
-                return 2
+                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
+            if (
+                len(tokens) >= COUNT_FOUR
+                and tokens[COUNT_ONE].lower() == CMD_DEVICE
+                and tokens[COUNT_TWO].lower() == CMD_DELETE
+            ):
+                name = tokens[COUNT_THREE]
+                if not self._confirm(
+                    MESSAGE_CONFIRM_PROFILE_DEVICE_DELETE.format(name=name)
+                ):
+                    return StatusResult(code=SS__EXECUTOR__CANCELLED)
+                result = self._delete_profiles_device(name)
+                if not result.ok():
+                    return result
+                print(MESSAGE_PROFILE_DEVICE_DELETED.format(name=name))
+                return StatusResult(code=SS__NORMAL)
+            if (
+                len(tokens) >= COUNT_FOUR
+                and tokens[COUNT_ONE].lower() == CMD_DEVICE
+                and tokens[COUNT_TWO].lower() == CMD_SHOW_ALL
+            ):
+                name = tokens[COUNT_THREE]
+                return self._show_profiles_device_all(name)
             if len(tokens) >= 3 and tokens[1].lower() == CMD_CREATE:
-                if not self._create_profile(tokens[2]):
-                    return 2
-                return None
-            if not self._set_active_profile(tokens[1]):
-                return 2
+                result = self._create_profile(tokens[2])
+                if not result.ok():
+                    return result
+                return StatusResult(code=SS__NORMAL)
+            result = self._set_active_profile(tokens[1])
+            if not result.ok():
+                return result
             print(f"Active profile: {self._groups_profile}")
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == "group" and len(tokens) >= 2 and not self._session.is_connected():
             name = tokens[1]
-            if not self._select_or_create_local_group(name):
-                return EXIT_CODE_ERROR
+            result = self._select_or_create_local_group(name)
+            if not result.ok():
+                return result
             self._modes.append(CliMode("group", name))
             self._warn("WARNING: Robot not connected; local group selected.")
-            return None
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
         if cmd == "rename" and len(tokens) >= 4 and tokens[1].lower() == "device":
-            if self._rename_local_device(tokens[2], tokens[3]):
+            result = self._rename_local_device(tokens[2], tokens[3])
+            if result.ok():
                 print(f"Renamed device {tokens[2]} -> {tokens[3]}.")
-                return None
-            return 2
+                return StatusResult(code=SS__NORMAL)
+            return result
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "device":
             name = tokens[2]
             if not self._confirm(f"Delete device '{name}'?"):
-                return None
-            if not self._delete_local_device(name):
-                return 2
+                return StatusResult(code=SS__EXECUTOR__CANCELLED)
+            result = self._delete_local_device(name)
+            if not result.ok():
+                return result
             print(f"Deleted device {name}.")
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == "device" and len(tokens) >= 5 and tokens[2].lower() == "set":
             field = tokens[3]
             value_raw = " ".join(tokens[4:])
-            if not self._set_local_device_meta(tokens[1], field, value_raw):
-                return EXIT_CODE_ERROR
+            result = self._set_local_device_meta(tokens[1], field, value_raw)
+            if not result.ok():
+                return result
             print(f"Updated device {tokens[1]} {field}={value_raw}.")
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == "group" and len(tokens) >= 2:
             name = tokens[1]
             seq = group_create(self._session, name)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "group create"):
-                return 2
+                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
             self._modes.append(CliMode("group", name))
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == "device" and len(tokens) >= 2:
             name = tokens[1]
-            if not self._ensure_local_device_entry(name):
-                return 2
+            result = self._ensure_local_device_entry(name)
+            if not result.ok():
+                return result
             self._modes.append(CliMode("device", device=name))
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "group" and not self._session.is_connected():
             name = tokens[2]
             if not self._confirm(f"Delete group '{name}'?"):
-                return None
-            if not self._delete_local_group(name):
-                return 2
+                return StatusResult(code=SS__EXECUTOR__CANCELLED)
+            result = self._delete_local_group(name)
+            if not result.ok():
+                return result
             self._warn("WARNING: Robot not connected; local group deleted.")
-            return None
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "group":
             name = tokens[2]
             if not self._confirm(f"Delete group '{name}'?"):
-                return None
+                return StatusResult(code=SS__EXECUTOR__CANCELLED)
             seq = group_delete(self._session, name, confirm=True)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "group delete"):
-                return 2
-            return None
+                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+            return StatusResult(code=SS__NORMAL)
         if cmd == "selected-device" and len(tokens) >= 2 and not self._session.is_connected():
-            if not self._set_local_selected_device(tokens[1]):
-                return 2
+            result = self._set_local_selected_device(tokens[1])
+            if not result.ok():
+                return result
             self._warn("WARNING: Robot not connected; local selected-device updated.")
-            return None
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
         if cmd == "selected-device" and len(tokens) >= 2:
             seq = selected_device_set(self._session, tokens[1])
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "selected-device"):
-                return 2
-            return None
+                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+            return StatusResult(code=SS__NORMAL)
         if cmd == "selected-mode" and len(tokens) >= 2 and not self._session.is_connected():
             mode_value = tokens[1].lower()
             if mode_value not in ("on", "off"):
                 print("ERROR: selected-mode requires on/off.")
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             enabled = mode_value == "on"
-            if not self._set_local_selected_mode(enabled):
-                return 2
+            result = self._set_local_selected_mode(enabled)
+            if not result.ok():
+                return result
             self._warn("WARNING: Robot not connected; local selected-mode updated.")
-            return None
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
         if cmd == "selected-mode" and len(tokens) >= 2:
             mode_value = tokens[1].lower()
             if mode_value not in ("on", "off"):
                 print("ERROR: selected-mode requires on/off.")
-                return None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             enabled = mode_value == "on"
             seq = selected_mode_set(self._session, enabled)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "selected-mode"):
-                return 2
-            return None
+                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+            return StatusResult(code=SS__NORMAL)
         if cmd == "merge" and len(tokens) >= 3 and tokens[1].lower() == "config":
             plan = merge_config(tokens[2], self._conflict_policy, self._active_profile_name())
-            return self._apply_config_plan(plan, prompt_on_replace=True)
+            return self._coerce_status(self._apply_config_plan(plan, prompt_on_replace=True))
         if cmd == "import" and len(tokens) >= 3 and tokens[1].lower() == "config":
             plan = import_config(tokens[2], self._conflict_policy, self._active_profile_name())
-            return self._apply_config_plan(plan, prompt_on_replace=True)
+            return self._coerce_status(self._apply_config_plan(plan, prompt_on_replace=True))
         if cmd == "export" and len(tokens) >= 3 and tokens[1].lower() == "runtime-groups":
             result = export_runtime_groups(self._session, tokens[2], self._active_profile_name())
-            print(result.message)
-            return 2 if not result.ok else None
+            message = format_status_message(result.code) or result.message
+            if message:
+                print(message)
+            return StatusResult(code=SS__NORMAL if result.ok() else SS__NETWORK__COMMAND_SEND_FAILED)
         if cmd == "export" and len(tokens) >= 3 and tokens[1].lower() == "cli-script":
-            if not self._export_cli_script(tokens[2]):
-                return 2
-            return None
+            result = self._export_cli_script(tokens[2])
+            if not result.ok():
+                return result
+            return StatusResult(code=SS__NORMAL)
         if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == "profiles":
-            if not self._save_profiles(tokens[2]):
-                return 2
-            return None
-        if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == "unified-config":
-            if not self._save_unified_config(tokens[2]):
-                return 2
-            return None
-        if cmd == "validate" and len(tokens) >= 2 and tokens[1].lower() == "config":
+            result = self._save_profiles(tokens[2])
+            if not result.ok():
+                return result
+            return StatusResult(code=SS__NORMAL)
+        if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == CMD_SAVE_UNIFIED:
+            result = self._save_unified_config(tokens[2])
+            if not result.ok():
+                return result
+            return StatusResult(code=SS__NORMAL)
+        if cmd == CMD_VALIDATE and len(tokens) >= 2:
+            target = tokens[1].lower()
+            use_all = tokens[-1].lower() == CMD_VALIDATE_ALL if tokens else False
+            path = ""
             if len(tokens) >= 3:
-                ok, message, _config = validate_config_file(tokens[2])
-            else:
-                if not self._local_config:
-                    print("ERROR: Local config not loaded. Use merge/import config <path> first.")
-                    return 2
-                self._sync_store_from_local()
-                result = self._store.validate_profiles_only(strict=True)
-                ok = result.ok()
-                message = self._format_store_errors(result.errors())
-            if ok:
-                print(MESSAGE_OK_CONFIG_VALID)
-                return None
-            print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
-            return 2
+                candidate = tokens[2]
+                if candidate.lower() != CMD_VALIDATE_ALL:
+                    path = candidate
+            if target == CMD_CONFIG:
+                if path:
+                    if use_all:
+                        ok, message, _config = validate_config_file_all(path)
+                    else:
+                        ok, message, _config = validate_config_file(path)
+                else:
+                    if not self._local_config:
+                        print("ERROR: Local config not loaded. Use merge/import config <path> first.")
+                        return StatusResult(code=SS__CONFIG__NOT_LOADED)
+                    if use_all:
+                        ok, message = validate_config_data_all(self._local_config, self._local_root_payload)
+                    else:
+                        self._sync_store_from_local()
+                        result = self._store.validate_profiles_only(strict=True)
+                        ok = result.ok()
+                        message = self._format_store_errors(result.errors())
+                if ok:
+                    print(MESSAGE_OK_CONFIG_VALID)
+                    return StatusResult(code=SS__CONFIG__VALID)
+                print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
+                if path:
+                    self._maybe_hint_validate_profile(path)
+                return StatusResult(code=SS__CONFIG__INVALID)
+            if target == CMD_PROFILES:
+                ok, message = self.validate_profiles_only()
+                if ok:
+                    print(MESSAGE_OK_CONFIG_VALID)
+                    return StatusResult(code=SS__CONFIG__VALID)
+                print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
+                return StatusResult(code=SS__CONFIG__INVALID)
+            if target == CMD_TESTS:
+                ok, message = self.validate_tests_only()
+                if ok:
+                    print(MESSAGE_OK_CONFIG_VALID)
+                    return StatusResult(code=SS__CONFIG__VALID)
+                print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
+                return StatusResult(code=SS__CONFIG__INVALID)
+            if target == CMD_BINDINGS:
+                ok, message = self.validate_bindings_only(path or None)
+                if ok:
+                    print(MESSAGE_OK_CONFIG_VALID)
+                    return StatusResult(code=SS__CONFIG__VALID)
+                print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
+                return StatusResult(code=SS__CONFIG__INVALID)
+            if target == CMD_CAN_MAPPINGS:
+                ok, message = self.validate_mappings_only(path or None)
+                if ok:
+                    print(MESSAGE_OK_CONFIG_VALID)
+                    return StatusResult(code=SS__CONFIG__VALID)
+                print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
+                return StatusResult(code=SS__CONFIG__INVALID)
         if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == "config":
             result = save_config(self._session, tokens[2], self._active_profile_name())
-            print(result.message)
-            return 2 if not result.ok else None
-        if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == "local-config":
-            if not self._save_local_config(tokens[2]):
-                return 2
-            return None
+            message = format_status_message(result.code) or result.message
+            if message:
+                print(message)
+            return StatusResult(code=SS__CONFIG__SAVED if result.ok() else SS__CONFIG__INVALID)
+        if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == CMD_LOCAL_CONFIG:
+            result = self._save_local_config(tokens[2])
+            if not result.ok():
+                return result
+            return StatusResult(code=SS__NORMAL)
         if cmd == "show":
-            return self._handle_show(tokens[1:])
+            return self._coerce_status(self._handle_show(tokens[1:]))
         print(f"ERROR: Unknown command: {' '.join(tokens)}")
-        return None
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
-    def _config_bindings_command(self, tokens: List[str]) -> Optional[int]:
+    def _config_bindings_command(self, tokens: List[str]) -> StatusResult:
         """
         NAME
             _config_bindings_command - Handle bindings subcommands.
         """
 
         if not self._ensure_bindings_loaded():
-            return EXIT_CODE_ERROR
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         if len(tokens) == COUNT_ONE:
-            return self._bindings_show([])
+            return self._coerce_status(self._bindings_show([]))
         sub = tokens[COUNT_ONE].lower()
+        if sub == CMD_LS:
+            sub = CMD_SHOW
         if sub == CMD_SHOW:
-            return self._bindings_show(tokens[COUNT_TWO:])
+            return self._coerce_status(self._bindings_show(tokens[COUNT_TWO:]))
         if sub == CMD_CONTROLLER:
-            return self._bindings_controller_command(tokens[COUNT_TWO:])
+            return self._coerce_status(self._bindings_controller_command(tokens[COUNT_TWO:]))
         if sub == CMD_BINDING:
-            return self._bindings_binding_command(tokens[COUNT_TWO:])
+            return self._coerce_status(self._bindings_binding_command(tokens[COUNT_TWO:]))
         if sub == CMD_AXIS:
-            return self._bindings_axis_command(tokens[COUNT_TWO:])
+            return self._coerce_status(self._bindings_axis_command(tokens[COUNT_TWO:]))
         if sub == CMD_LOAD:
             if len(tokens) < COUNT_THREE:
                 print(MESSAGE_ERR_BINDINGS_LOAD.format(path=EMPTY_STRING))
-                return None
-            return self._load_bindings_from_path(Path(tokens[COUNT_TWO]))
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._coerce_status(self._load_bindings_from_path(Path(tokens[COUNT_TWO])))
         if sub == CMD_SAVE:
             if len(tokens) < COUNT_THREE:
                 print(MESSAGE_ERR_BINDINGS_WRITE.format(path=EMPTY_STRING, error=EMPTY_STRING))
-                return None
-            return self._save_bindings_to_path(Path(tokens[COUNT_TWO]))
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._coerce_status(self._save_bindings_to_path(Path(tokens[COUNT_TWO])))
         if sub == CMD_VALIDATE:
             path = Path(tokens[COUNT_TWO]) if len(tokens) >= COUNT_THREE else None
-            return self._bindings_validate(path)
+            return self._coerce_status(self._bindings_validate(path))
         if sub == CMD_NO and len(tokens) >= COUNT_THREE and tokens[COUNT_TWO].lower() == CMD_CONTROLLER:
             if len(tokens) < COUNT_FOUR:
                 print(MESSAGE_ERR_BINDINGS_CONTROLLER_DELETE)
-                return None
-            return self._bindings_delete_controller(tokens[COUNT_THREE])
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._coerce_status(self._bindings_delete_controller(tokens[COUNT_THREE]))
         print(MESSAGE_ERR_BINDINGS_SUBCOMMAND)
-        return None
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
-    def _config_can_mappings_command(self, tokens: List[str]) -> Optional[int]:
+    def _config_can_mappings_command(self, tokens: List[str]) -> StatusResult:
         """
         NAME
             _config_can_mappings_command - Handle CAN mappings subcommands.
         """
 
         if not self._ensure_can_mappings_loaded():
-            return EXIT_CODE_ERROR
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         if len(tokens) == COUNT_ONE:
-            return self._mappings_show([])
+            return self._coerce_status(self._mappings_show([]))
         sub = tokens[COUNT_ONE].lower()
+        if sub == CMD_LS:
+            sub = CMD_SHOW
         if sub == CMD_SHOW:
-            return self._mappings_show(tokens[COUNT_TWO:])
+            return self._coerce_status(self._mappings_show(tokens[COUNT_TWO:]))
         if sub == CMD_MANUFACTURER:
-            return self._mappings_entry_command(KEY_MANUFACTURERS, tokens[COUNT_TWO:])
+            return self._coerce_status(self._mappings_entry_command(KEY_MANUFACTURERS, tokens[COUNT_TWO:]))
         if sub == CMD_DEVICE_TYPE_NAME:
-            return self._mappings_entry_command(KEY_DEVICE_TYPES, tokens[COUNT_TWO:])
+            return self._coerce_status(self._mappings_entry_command(KEY_DEVICE_TYPES, tokens[COUNT_TWO:]))
         if sub == CMD_LOAD:
             if len(tokens) < COUNT_THREE:
                 print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=EMPTY_STRING))
-                return None
-            return self._load_can_mappings_from_path(Path(tokens[COUNT_TWO]))
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._coerce_status(self._load_can_mappings_from_path(Path(tokens[COUNT_TWO])))
         if sub == CMD_SAVE:
             if len(tokens) < COUNT_THREE:
                 print(MESSAGE_ERR_MAPPINGS_WRITE.format(path=EMPTY_STRING, error=EMPTY_STRING))
-                return None
-            return self._save_can_mappings_to_path(Path(tokens[COUNT_TWO]))
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._coerce_status(self._save_can_mappings_to_path(Path(tokens[COUNT_TWO])))
         if sub == CMD_VALIDATE:
             path = Path(tokens[COUNT_TWO]) if len(tokens) >= COUNT_THREE else None
-            return self._mappings_validate(path)
+            return self._coerce_status(self._mappings_validate(path))
         print(MESSAGE_ERR_MAPPINGS_SUBCOMMAND)
-        return None
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
-    def _group_command(self, tokens: List[str]) -> Optional[int]:
+    def _group_command(self, tokens: List[str]) -> StatusResult:
         group = self._modes[-1].group
         cmd = tokens[0].lower()
         if not self._session.is_connected():
-            return self._group_command_local(tokens, group)
+            return self._coerce_status(self._group_command_local(tokens, group))
         if cmd == "show":
             if not self._validate_pretty_flag(tokens):
-                return EXIT_CODE_ERROR
+                return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
             if len(tokens) == 1:
                 seq = show_group(self._session, group, json_output=self._has_json(tokens))
                 event = self._wait_for_seq(seq)
                 if self._event_failed(event, "show group"):
-                    return 2
-                return None
+                    return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+                return StatusResult(code=SS__NORMAL)
             if tokens[1].lower() == "members":
                 seq = show_group(self._session, group, json_output=self._has_json(tokens))
                 event = self._wait_for_seq(seq)
                 if self._event_failed(event, "show group"):
-                    return 2
-                return None
+                    return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+                return StatusResult(code=SS__NORMAL)
             if tokens[1].lower() == "binding":
                 seq = show_group(self._session, group, json_output=self._has_json(tokens))
                 event = self._wait_for_seq(seq)
                 if self._event_failed(event, "show group"):
-                    return 2
-                return None
-            return self._handle_show(tokens[1:])
+                    return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+                return StatusResult(code=SS__NORMAL)
+            return self._coerce_status(self._handle_show(tokens[1:]))
         if cmd == "add" and len(tokens) >= 3 and tokens[1].lower() == "device":
             if not self._local_device_exists(tokens[2]):
-                print("ERROR: Device not defined in local config. Use device <name> to create it.")
-                return 2
+                print("ERROR: Device not defined in local config. Use device <device> to create it.")
+                return StatusResult(code=SS__DEVICE__NOT_DEFINED)
             seq = group_add_device(
                 self._session, group, tokens[2], self._conflict_policy, force_move=False
             )
             event = self._wait_for_seq(seq)
             if self._handle_add_device_conflict(event, group, tokens[2]):
-                return 2
+                return StatusResult(code=SS__GROUP__BINDING_INVALID)
             if self._event_failed(event, "add device"):
-                return 2
-            return None
+                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+            return StatusResult(code=SS__NORMAL)
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "device":
             seq = group_remove_device(self._session, group, tokens[2])
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "remove device"):
-                return 2
-            return None
+                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+            return StatusResult(code=SS__NORMAL)
         if cmd == "member" and len(tokens) >= 3:
             action = tokens[2].lower()
             if action == "enable":
@@ -3820,11 +4163,11 @@ class BridgeCli:
                 seq = group_member_toggle(self._session, group, tokens[1])
             else:
                 print("ERROR: member requires enable/disable/toggle.")
-                return None
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "member"):
-                return 2
-            return None
+                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+            return StatusResult(code=SS__NORMAL)
         if cmd == "bind" and len(tokens) >= 3:
             input_name = tokens[1]
             kind = tokens[2].lower()
@@ -3832,46 +4175,46 @@ class BridgeCli:
             if kind != "analog":
                 if len(tokens) < 4:
                     print("ERROR: binding requires value.")
-                    return None
+                    return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
                 try:
                     value = float(tokens[3])
                 except ValueError:
                     print("ERROR: binding value must be numeric.")
-                    return None
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             seq = group_bind(self._session, group, input_name, kind, value=value)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "bind"):
-                return 2
-            return None
+                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+            return StatusResult(code=SS__NORMAL)
         if cmd == "no" and len(tokens) >= 2 and tokens[1].lower() == "bind":
             seq = group_unbind(self._session, group)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "no bind"):
-                return 2
-            return None
+                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+            return StatusResult(code=SS__NORMAL)
         if cmd == "enable":
             seq = group_enable(self._session, group)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "enable"):
-                return 2
-            return None
+                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+            return StatusResult(code=SS__NORMAL)
         if cmd == "disable":
             seq = group_disable(self._session, group)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "disable"):
-                return 2
-            return None
+                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+            return StatusResult(code=SS__NORMAL)
         if cmd == "run" and len(tokens) >= 2 and tokens[1].lower() == "test":
             name = tokens[2] if len(tokens) >= 3 else None
             seq = group_run_test(self._session, group, name)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "run test"):
-                return 2
-            return None
+                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+            return StatusResult(code=SS__NORMAL)
         print(f"ERROR: Unknown command: {' '.join(tokens)}")
-        return None
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
-    def _device_command(self, tokens: List[str]) -> Optional[int]:
+    def _device_command(self, tokens: List[str]) -> StatusResult:
         """
         NAME
             _device_command - Handle device-mode commands.
@@ -3883,44 +4226,47 @@ class BridgeCli:
         cmd = tokens[0].lower()
         if cmd == "show":
             if len(tokens) == 1:
-                return self._show_local_device_entry(device)
-            return self._handle_show(tokens[1:])
+                return self._coerce_status(self._show_local_device_entry(device))
+            return self._coerce_status(self._handle_show(tokens[1:]))
         if cmd == "set" and len(tokens) >= 3:
             field = tokens[1]
             value_raw = " ".join(tokens[2:])
-            if not self._set_local_device_meta(device, field, value_raw):
-                return 2
+            result = self._set_local_device_meta(device, field, value_raw)
+            if not result.ok():
+                return result
             print(f"Updated device {device} {field}={value_raw}.")
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd == "no" and len(tokens) >= 2:
             field = tokens[1]
-            if not self._clear_local_device_meta(device, field):
-                return 2
+            result = self._clear_local_device_meta(device, field)
+            if not result.ok():
+                return result
             print(f"Cleared device {device} {field}.")
-            return None
+            return StatusResult(code=SS__NORMAL)
         if cmd in ("delete", "remove") or (
             cmd == "no" and len(tokens) >= 2 and tokens[1].lower() == "device"
         ):
             if not self._confirm(f"Delete device '{device}'?"):
-                return None
-            if not self._delete_local_device(device):
-                return 2
+                return StatusResult(code=SS__EXECUTOR__CANCELLED)
+            result = self._delete_local_device(device)
+            if not result.ok():
+                return result
             print(f"Deleted device {device}.")
             self._pop_mode()
-            return None
+            return StatusResult(code=SS__NORMAL)
         print(f"ERROR: Unknown command: {' '.join(tokens)}")
-        return None
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
-    def _handle_show(self, tokens: List[str]) -> Optional[int]:
+    def _handle_show(self, tokens: List[str]) -> StatusResult:
         if not tokens:
             print(MESSAGE_ERR_SHOW_REQUIRES_TARGET)
-            return None
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         source, tokens, json_output, pretty, ok = self._parse_show_flags(tokens)
         if not ok:
-            return 2
+            return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
         if not tokens:
             print(MESSAGE_ERR_SHOW_REQUIRES_TARGET)
-            return None
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         target = tokens[0].lower()
         if target == SHOW_TARGET_CONFIG and len(tokens) >= 2:
             name = tokens[1].lower()
@@ -3939,41 +4285,52 @@ class BridgeCli:
             target = SHOW_TARGET_RUNTIME
         if target == SHOW_TARGET_MESSAGE_LEVEL:
             source = "local"
+        if target == SHOW_TARGET_DEVICE_USAGE:
+            source = "local"
+        if target in (SHOW_TARGET_COMMANDS, SHOW_TARGET_HELP):
+            source = "local"
         if target in (SHOW_TARGET_CONFIG_RAW, SHOW_TARGET_CONFIG_DIRTY):
             source = "local"
         if source == "both":
-            local_ok = self._show_local(target, tokens, json_output, pretty)
-            robot_ok = self._show_robot(target, tokens, json_output)
-            if self._batch and (not local_ok or not robot_ok):
-                return 2
-            return None
+            local_result = self._show_local(target, tokens, json_output, pretty)
+            robot_result = self._show_robot(target, tokens, json_output)
+            if self._batch and (not local_result.ok() or not robot_result.ok()):
+                return StatusResult(code=SS__EXECUTOR__FAILED)
+            if not local_result.ok():
+                return local_result
+            if not robot_result.ok():
+                return robot_result
+            return StatusResult(code=SS__NORMAL)
         if source == "local":
-            if not self._show_local(target, tokens, json_output, pretty):
-                return EXIT_CODE_ERROR
-            return None
+            result = self._show_local(target, tokens, json_output, pretty)
+            if not result.ok():
+                return result
+            return StatusResult(code=SS__NORMAL)
         if source == "robot":
-            if not self._show_robot(target, tokens, json_output):
-                return EXIT_CODE_ERROR
-            return None
+            result = self._show_robot(target, tokens, json_output)
+            if not result.ok():
+                return result
+            return StatusResult(code=SS__NORMAL)
         print(MESSAGE_ERR_UNKNOWN_SHOW_SOURCE)
-        return None
+        print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW)
+        return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
 
-    def _apply_config_plan(self, plan: ConfigPlan, prompt_on_replace: bool = True) -> Optional[int]:
+    def _apply_config_plan(self, plan: ConfigPlan, prompt_on_replace: bool = True) -> StatusResult:
         """
         NAME
             _apply_config_plan - Execute commands from a merge/import plan.
         """
         if not plan.ok:
             print(f"ERROR: {plan.message}")
-            return 2
+            return StatusResult(code=SS__CONFIG__INVALID)
         if plan.root_payload is None and self._local_root_payload is None:
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return EXIT_CODE_ERROR
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         incoming_hash = self._profiles_hash(plan.root_payload)
         if not plan.replace and incoming_hash:
             if self._local_root_hash is None and self._local_group_count() > COUNT_ZERO:
                 print(MESSAGE_ERR_PROFILE_MISSING_HASH)
-                return EXIT_CODE_ERROR
+                return StatusResult(code=SS__CONFIG__INVALID)
             if self._local_root_hash and incoming_hash != self._local_root_hash:
                 print(
                     MESSAGE_ERR_PROFILE_HASH.format(
@@ -3981,15 +4338,16 @@ class BridgeCli:
                         incoming=incoming_hash,
                     )
                 )
-                return EXIT_CODE_ERROR
+                return StatusResult(code=SS__CONFIG__INVALID)
         if plan.replace:
             if prompt_on_replace and not self._batch and self._session.is_connected():
                 if not self._confirm("Replace existing groups?"):
                     print("Import cancelled.")
-                    return None
+                    return StatusResult(code=SS__EXECUTOR__CANCELLED)
             if self._session.is_connected():
-                if not self._clear_existing_groups():
-                    return 2
+                result = self._clear_existing_groups()
+                if not result.ok():
+                    return result
         print(plan.message)
         if plan.config:
             self._local_config = plan.config
@@ -4006,14 +4364,18 @@ class BridgeCli:
             self._sync_store_from_local()
         if not self._session.is_connected():
             self._warn("WARNING: Robot not connected; local config loaded only.")
-            return None
+            if plan.replace:
+                return StatusResult(code=SS__CONFIG__MERGED)
+            return StatusResult(code=SS__CONFIG__IMPORTED)
         for command in plan.commands:
-            code = self._execute_command(command)
-            if code is not None and code != 0:
-                return code
-        return None
+            result = self._execute_command(command)
+            if not result.ok():
+                return result
+        if plan.replace:
+            return StatusResult(code=SS__CONFIG__MERGED)
+        return StatusResult(code=SS__CONFIG__IMPORTED)
 
-    def _clear_existing_groups(self) -> bool:
+    def _clear_existing_groups(self) -> StatusResult:
         """
         NAME
             _clear_existing_groups - Delete all current groups.
@@ -4023,28 +4385,28 @@ class BridgeCli:
         groups = self._fetch_group_names()
         if groups is None:
             print("ERROR: Failed to query groups.")
-            return False
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         if not groups:
-            return True
+            return StatusResult(code=SS__NORMAL)
         for name in groups:
             seq = group_delete(self._session, name, confirm=True)
             self._wait_for_seq(seq)
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _clear_local_groups(self) -> bool:
+    def _clear_local_groups(self) -> StatusResult:
         """
         NAME
             _clear_local_groups - Clear local groups without touching the robot.
         """
         if not isinstance(self._local_config, dict):
-            return True
+            return StatusResult(code=SS__NORMAL)
         by_profile = self._local_config.get(KEY_BRIDGE_BY_PROFILE)
         if not isinstance(by_profile, dict):
-            return True
+            return StatusResult(code=SS__NORMAL)
         for entry in by_profile.values():
             if isinstance(entry, dict):
                 entry[KEY_BRIDGE_GROUPS] = []
-        return True
+        return StatusResult(code=SS__NORMAL)
 
     def _fetch_group_names(self) -> Optional[List[str]]:
         """
@@ -4073,7 +4435,7 @@ class BridgeCli:
                 names.append(name)
         return names
 
-    def _execute_command(self, command: BridgeCommand) -> Optional[int]:
+    def _execute_command(self, command: BridgeCommand) -> StatusResult:
         """
         NAME
             _execute_command - Send a BridgeCommand and wait for output.
@@ -4081,16 +4443,16 @@ class BridgeCli:
         seq = self._session.send_command(command.name, command.args)
         if seq is None:
             print(f"ERROR: Failed to send {command.name}.")
-            return 2
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         event = self._wait_for_seq(seq)
         if self._event_failed(event, command.name):
-            return 2
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         if command.name == "groupAddDevice":
             device = str(command.args.get("device", ""))
             group = str(command.args.get("group", ""))
             if self._handle_add_device_conflict(event, group, device):
-                return EXIT_CODE_ERROR
-        return None
+                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        return StatusResult(code=SS__NORMAL)
 
     def _handle_add_device_conflict(
         self,
@@ -4277,31 +4639,251 @@ class BridgeCli:
             print(MESSAGE_MESSAGE_LEVEL.format(level=self._message_level))
         return True
 
-    def _diagnose_command(self, tokens: List[str]) -> Optional[int]:
+    def _show_commands(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_commands - Show available commands for the current mode.
+        """
+        mode = self._modes[-1].name
+        common = list(PARSER_SPEC.common)
+        mode_cmds = self._mode_root_suggestions(mode)
+        commands = sorted({cmd for cmd in common + mode_cmds if isinstance(cmd, str) and cmd})
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(self._dump_json({KEY_COMMANDS: commands}, pretty))
+            return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_SHOW_COMMANDS_HEADER)
+        if not commands:
+            print(HELP_INDENT + MESSAGE_HELP_QUICK_EMPTY.strip())
+            return StatusResult(code=SS__NORMAL)
+        for cmd in commands:
+            print(HELP_INDENT + cmd)
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_help_topics(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_help_topics - Show available help topics.
+        """
+        topics = sorted(self._help_topics())
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(self._dump_json({KEY_TOPICS: topics}, pretty))
+            return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_SHOW_HELP_HEADER)
+        if not topics:
+            print(HELP_INDENT + MESSAGE_HELP_QUICK_EMPTY.strip())
+            return StatusResult(code=SS__NORMAL)
+        for topic in topics:
+            print(HELP_INDENT + topic)
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_device_usage(self, name: str, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_device_usage - Show local group/test references for a device.
+        """
+
+        device_name = str(name).strip()
+        if not device_name:
+            print(MESSAGE_ERR_DEVICE_LABEL_REQUIRED)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        profile = self._active_profile_name()
+        if not profile:
+            print(MESSAGE_ERR_PROFILE_REQUIRED)
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
+        target = device_name.lower()
+        group_hits: List[str] = []
+        group_seen: set[str] = set()
+        for group in self._local_groups(profile):
+            if not isinstance(group, dict):
+                continue
+            group_name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
+            if not group_name:
+                continue
+            members = group.get(KEY_MEMBERS, []) or []
+            for member in members:
+                if isinstance(member, dict):
+                    member_name = str(member.get(KEY_DEVICE, EMPTY_STRING)).strip()
+                else:
+                    member_name = str(member).strip()
+                if not member_name:
+                    continue
+                if member_name.lower() == target:
+                    group_key = group_name.lower()
+                    if group_key not in group_seen:
+                        group_seen.add(group_key)
+                        group_hits.append(group_name)
+                    break
+        tests_hits: List[Dict[str, str]] = []
+        self._ensure_tests_loaded()
+        model = self._tests_model
+        if model and isinstance(model.test_sets, dict):
+            for test_set_name in sorted(model.test_sets.keys()):
+                test_set = model.test_sets.get(test_set_name)
+                if not isinstance(test_set, TestSetModel):
+                    continue
+                for test in test_set.tests:
+                    if not isinstance(test, TestModel):
+                        continue
+                    if not test.devices:
+                        continue
+                    for label in test.devices:
+                        if str(label).strip().lower() == target:
+                            tests_hits.append(
+                                {
+                                    KEY_TEST_SET: test_set.name,
+                                    KEY_NAME: test.name,
+                                    KEY_TYPE: test.test_type,
+                                }
+                            )
+                            break
+        group_hits_sorted = sorted(group_hits)
+        tests_hits_sorted = sorted(
+            tests_hits,
+            key=lambda entry: (
+                str(entry.get(KEY_TEST_SET, EMPTY_STRING)),
+                str(entry.get(KEY_NAME, EMPTY_STRING)),
+            ),
+        )
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            payload = {
+                KEY_DEVICE: device_name,
+                KEY_PROFILE: profile,
+                KEY_GROUPS: group_hits_sorted,
+                KEY_TESTS: tests_hits_sorted,
+            }
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_DEVICE_USAGE_HEADER)
+        print(MESSAGE_DEVICE_USAGE_DEVICE.format(name=device_name))
+        print(MESSAGE_DEVICE_USAGE_PROFILE.format(name=profile))
+        print(MESSAGE_DEVICE_USAGE_GROUPS_HEADER)
+        if group_hits_sorted:
+            for group_name in group_hits_sorted:
+                print(MESSAGE_DEVICE_USAGE_GROUP_ENTRY.format(name=group_name))
+        else:
+            print(MESSAGE_DEVICE_USAGE_NONE)
+        print(MESSAGE_DEVICE_USAGE_TESTS_HEADER)
+        if tests_hits_sorted:
+            for entry in tests_hits_sorted:
+                test_set = str(entry.get(KEY_TEST_SET, EMPTY_STRING)).strip()
+                test_name = str(entry.get(KEY_NAME, EMPTY_STRING)).strip()
+                test_type = str(entry.get(KEY_TYPE, EMPTY_STRING)).strip()
+                if test_type:
+                    print(
+                        MESSAGE_DEVICE_USAGE_TEST_ENTRY.format(
+                            test_set=test_set, name=test_name, type=test_type
+                        )
+                    )
+                else:
+                    print(
+                        MESSAGE_DEVICE_USAGE_TEST_ENTRY_SIMPLE.format(
+                            test_set=test_set, name=test_name
+                        )
+                    )
+        else:
+            print(MESSAGE_DEVICE_USAGE_NONE)
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_profiles_device_all(self, name: str) -> StatusResult:
+        """
+        NAME
+            _show_profiles_device_all - Show all profile device entries for a label.
+        """
+
+        label = str(name).strip()
+        if not label:
+            print(MESSAGE_ERR_DEVICE_LABEL_REQUIRED)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        devices = payload.get(KEY_DEVICES)
+        if not isinstance(devices, list):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        profile_name = self._active_profile_name()
+        if not profile_name:
+            print(MESSAGE_ERR_PROFILE_REQUIRED)
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
+        profiles = payload.get(KEY_PROFILES)
+        if not isinstance(profiles, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        profile = profiles.get(profile_name)
+        if not isinstance(profile, dict):
+            print(MESSAGE_ERR_PROFILE_REQUIRED)
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
+        labels = profile.get(KEY_PROFILE_DEVICES)
+        if not isinstance(labels, list):
+            labels = []
+        matches: List[Dict[str, object]] = []
+        target = label.lower()
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            entry_label = str(entry.get(FIELD_LABEL, "")).strip()
+            if entry_label.lower() == target:
+                matches.append(entry)
+        profile_counts: Dict[str, int] = {}
+        for entry in labels:
+            if not isinstance(entry, str):
+                continue
+            key = entry.strip()
+            if not key:
+                continue
+            if key.lower() == target:
+                profile_counts[key] = profile_counts.get(key, 0) + 1
+        print(MESSAGE_PROFILE_DEVICE_SHOW_ALL_HEADER)
+        if not matches:
+            print(MESSAGE_PROFILE_DEVICE_SHOW_ALL_NONE)
+        else:
+            print(MESSAGE_PROFILE_DEVICE_SHOW_ALL_COUNT.format(count=len(matches)))
+            for idx, entry in enumerate(matches, start=1):
+                entry_label = str(entry.get(FIELD_LABEL, "")).strip()
+                print(MESSAGE_PROFILE_DEVICE_SHOW_ALL_ENTRY.format(index=idx, label=entry_label or label))
+                for key in sorted(entry.keys()):
+                    print(MESSAGE_PROFILE_DEVICE_SHOW_ALL_FIELD_FMT.format(key=key, value=entry.get(key)))
+        print(MESSAGE_PROFILE_DEVICE_SHOW_ALL_PROFILE_HEADER)
+        if not profile_counts:
+            print(MESSAGE_PROFILE_DEVICE_SHOW_ALL_NONE)
+            return StatusResult(code=SS__NORMAL)
+        for entry_label in sorted(profile_counts.keys(), key=lambda v: v.lower()):
+            print(
+                MESSAGE_PROFILE_DEVICE_SHOW_ALL_PROFILE_ENTRY.format(
+                    label=entry_label, count=profile_counts[entry_label]
+                )
+            )
+        return StatusResult(code=SS__NORMAL)
+
+    def _diagnose_command(self, tokens: List[str]) -> StatusResult:
         """
         NAME
             _diagnose_command - Diagnose a motor using runtime telemetry.
         """
         if len(tokens) < COUNT_THREE:
             print(MSG_DIAGNOSE_SYNTAX)
-            return EXIT_CODE_ERROR
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         target = tokens[COUNT_ONE].lower()
         if target not in (CMD_MOTOR, CMD_DEVICE):
             print(MSG_DIAGNOSE_TARGET)
-            return EXIT_CODE_ERROR
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         label = tokens[COUNT_TWO]
         if not self._session.is_connected():
             print(MSG_RUNTIME_REQUIRED)
-            return EXIT_CODE_ERROR
+            return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE)
         seq = show_runtime_state(self._session, json_output=True)
         event = self._wait_for_seq(seq, print_events=False)
         if event is None or not event.json_text:
             print(MSG_RUNTIME_MISSING)
-            return EXIT_CODE_ERROR
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         payload = parse_json_arg(event.json_text)
         if not isinstance(payload, dict):
             print(MSG_RUNTIME_MISSING)
-            return EXIT_CODE_ERROR
+            return StatusResult(code=SS__CONFIG__INVALID)
         result = normalize_runtime_state(payload, label)
         if result.telemetry is None:
             if result.candidates:
@@ -4309,11 +4891,11 @@ class BridgeCli:
                 print(MSG_DEVICE_CANDIDATES.format(candidates=SEP_COMMA_SPACE.join(result.candidates)))
             else:
                 print(MSG_DEVICE_NOT_FOUND)
-            return EXIT_CODE_ERROR
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
         profile_labels = collect_profile_labels(self._local_root_payload, self._active_profile_name())
         report = diagnose_motor(result.telemetry, profile_labels, result.power_devices)
         self._print_diagnosis(report)
-        return None
+        return StatusResult(code=SS__NORMAL)
 
     @staticmethod
     def _print_diagnosis(report) -> None:
@@ -4368,132 +4950,7 @@ class BridgeCli:
     def _print_help(self, args: List[str]) -> None:
         if args:
             topic = " ".join(args).strip().lower()
-            detail = {
-                "show": HELP_SHOW_TEXT,
-                "configure terminal": "configure terminal\n  Enter config mode.",
-                "connect": "connect\n  Open TCP connection and perform handshake.",
-                "disconnect": "disconnect\n  Close TCP connection.",
-                "echo": "echo on|off\n  Toggle echo for batch scripts (prints each command).",
-                "messages": "messages <beginner|medium|expert>\n  Set CLI message level.",
-                "show message-level": "show message-level\n  Show current CLI message level.",
-                "diagnose": HELP_DIAGNOSE_TEXT,
-                "group": "group <name>\n  Create/select a group (config mode).",
-                "no group": "no group <name>\n  Delete group (config mode, prompts in interactive).",
-                "no device": "no device <name>\n  Delete a device from the active profile.",
-                "profile": (
-                    "profile <name>\n"
-                    "  Select active profile for groups/bindings.\n"
-                    "profile create <name>\n"
-                    "  Create a new empty profile and select it."
-                ),
-                "selected-device": "selected-device <device>\n  Set selected-device override.",
-                "selected-mode": "selected-mode <on|off>\n  Enable/disable selected-device mode.",
-                "merge config": (
-                    "merge config <bringup_system.json>\n"
-                    "  Load bridgeConfig.byProfile for the active profile without clearing existing."
-                ),
-                "import config": (
-                    "import config <bringup_system.json>\n"
-                    "  Replace bridgeConfig.byProfile for the active profile (prompts in interactive)."
-                ),
-                "export runtime-groups": (
-                    "export runtime-groups <bridgeConfig.json>\n"
-                    "  Write bridgeConfig.byProfile for the active profile."
-                ),
-                "save config": (
-                    "save config <bridgeConfig.json>\n"
-                    "  Write bridgeConfig.byProfile for the active profile."
-                ),
-                "save local-config": "save local-config <path>\n  Save local per-profile groups config.",
-                "save profiles": (
-                    "save profiles <path>\n"
-                    "  Save bringup_system.json (profiles + bridgeConfig.byProfile)."
-                ),
-                "save unified-config": (
-                    "save unified-config <path>\n"
-                    "  Write a unified bringup_system.json with profiles + bridgeConfig.byProfile."
-                ),
-                "rename device": "rename device <old> <new>\n  Rename a device in local config.",
-                "device set": (
-                    "device <name> set <field> <value>\n"
-                    "  Fields: vendor, role, notes, bus, tags, limits\n"
-                    "  Use JSON for tags/limits (e.g., tags [\"arm\",\"motor\"])."
-                ),
-                "device": (
-                    "device <name>\n"
-                    "  Enter device mode to edit local device metadata."
-                ),
-                "device mode": (
-                    "device mode: show, set <field> <value>, no <field>, delete\n"
-                    "  Fields: vendor, role, notes, bus, tags, limits"
-                ),
-                "export cli-script": (
-                    "export cli-script <path>\n"
-                    "  Write a batch script that recreates the local config."
-                ),
-                "validate config": (
-                    "validate config [path]\n"
-                    "  Validate devices vs groups in a config file, or the local config if omitted."
-                ),
-                "bindings": (
-                    "bindings show [controllers|bindings|axes] [--json] [--pretty]\n"
-                    "bindings controller add <name> <type> <port>\n"
-                    "bindings controller set <name> <field> <value>\n"
-                    "bindings controller rename <old> <new>\n"
-                    "bindings no controller <name>\n"
-                    "bindings binding add <command> <controller> <input> <id> <mode>\n"
-                    "bindings binding set <index> <field> <value>\n"
-                    "bindings binding delete <index>\n"
-                    "bindings axis add <command> <controller> <id> invert <on|off> deadband <value>\n"
-                    "bindings axis set <index> <field> <value>\n"
-                    "bindings axis delete <index>\n"
-                    "bindings load <path>\n"
-                    "bindings save <path>\n"
-                    "bindings validate [path]"
-                ),
-                "can-mappings": (
-                    "can-mappings show [manufacturers|device-types] [--json] [--pretty]\n"
-                    "can-mappings manufacturer set <id> <name>\n"
-                    "can-mappings manufacturer delete <id>\n"
-                    "can-mappings device-type set <id> <name>\n"
-                    "can-mappings device-type delete <id>\n"
-                    "can-mappings load <path>\n"
-                    "can-mappings save <path>\n"
-                    "can-mappings validate [path]"
-                ),
-            "tests": (
-                "tests templates\n"
-                "tests load <path>\n"
-                "tests merge <path>\n"
-                "tests load template <name>\n"
-                "tests save\n"
-                "tests clear"
-                ),
-                "add device": (
-                    "add device <device>\n"
-                    "  Add device to current group (device must exist in local config)."
-                ),
-                "no device": "no device <device>\n  Remove device from current group.",
-                "member": "member <device> <enable|disable|toggle>\n  Control per-member enable state.",
-                "bind": (
-                    "bind <input> <analog|hold|toggle|jog-forward|jog-reverse> [value]\n"
-                    "  Create a binding. Button bindings require a value."
-                ),
-                "no bind": "no bind\n  Clear all bindings from current group.",
-                "enable": "enable\n  Enable current group.",
-                "disable": "disable\n  Disable current group.",
-                "run test": "run test [name]\n  Run a test in the current group.",
-                "json": "append --json to show commands for JSON output; add --pretty for pretty JSON",
-                "sources": "append robot|local|both to show commands to select source",
-                "batch": "use --batch --script <file> (no prompts, conflict policy applies)",
-                "conflict-policy": "set with --conflict-policy <error|move>",
-                "exec": "exec mode: show, connect, disconnect, configure terminal",
-                "config": (
-                    "config mode: profile, group, no group, no device, selected-device, selected-mode, "
-                    "merge/import/export/save, rename device, device set, save local-config, save profiles, save unified-config"
-                ),
-                "group mode": "group mode: show, add/no device, member, bind/no bind, enable/disable, run test",
-            }.get(topic)
+            detail = self._help_topic_map().get(topic)
             if detail:
                 print(detail)
             else:
@@ -4507,6 +4964,192 @@ class BridgeCli:
             "Device: show, set, no\n"
             "Tips: help show | help sources | help group | help batch | help json"
         )
+
+    def _help_topic_map(self) -> Dict[str, str]:
+        """
+        NAME
+            _help_topic_map - Build help topic map for the CLI.
+        """
+        return {
+            "show": HELP_SHOW_TEXT,
+            "configure terminal": "configure terminal\n  Enter config mode.",
+            "connect": "connect\n  Open TCP connection and perform handshake.",
+            "disconnect": "disconnect\n  Close TCP connection.",
+            "echo": "echo on|off\n  Toggle echo for batch scripts (prints each command).",
+            "messages": "messages <beginner|medium|expert>\n  Set CLI message level.",
+            "show message-level": "show message-level\n  Show current CLI message level.",
+            "diagnose": HELP_DIAGNOSE_TEXT,
+            "group": "group <group>\n  Create/select a group (config mode).",
+            "no group": "no group <group>\n  Delete group (config mode, prompts in interactive).",
+            "no device": "no device <device>\n  Delete a device from the active profile.",
+            "profile": (
+                "profile <profile>\n"
+                "  Select active profile for groups/bindings.\n"
+                "profile create <profile>\n"
+                "  Create a new empty profile and select it."
+            ),
+            "selected-device": "selected-device <device>\n  Set selected-device override.",
+            "selected-mode": "selected-mode <on|off>\n  Enable/disable selected-device mode.",
+            "merge config": (
+                "merge config <bringup_system.json>\n"
+                "  Load bridgeConfig.byProfile for the active profile without clearing existing."
+            ),
+            "import config": (
+                "import config <bringup_system.json>\n"
+                "  Replace bridgeConfig.byProfile for the active profile (prompts in interactive)."
+            ),
+            "export runtime-groups": (
+                "export runtime-groups <bridgeConfig.json>\n"
+                "  Write bridgeConfig.byProfile for the active profile."
+            ),
+            "save config": (
+                "save config <bridgeConfig.json>\n"
+                "  Write bridgeConfig.byProfile for the active profile."
+            ),
+            "save local-config": "save local-config <path>\n  Save local per-profile groups config.",
+            "save profiles": (
+                "save profiles <path>\n"
+                "  Save bringup_system.json (profiles + bridgeConfig.byProfile)."
+            ),
+            "save unified-config": (
+                "save unified-config <path>\n"
+                "  Write a unified bringup_system.json with profiles + bridgeConfig.byProfile."
+            ),
+            "rename device": "rename device <old> <new>\n  Rename a device in local config.",
+            "device set": (
+                "device <device> set <field> <value>\n"
+                "  Fields: vendor, role, notes, bus, tags, limits\n"
+                "  Use JSON for tags/limits (e.g., tags [\"arm\",\"motor\"])."
+            ),
+            "device": (
+                "device <device>\n"
+                "  Enter device mode to edit local device metadata."
+            ),
+            HELP_TOPIC_DEVICE_USAGE: HELP_DEVICE_USAGE_TEXT,
+            HELP_TOPIC_PROFILE_DEVICE_DELETE: HELP_PROFILE_DEVICE_DELETE_TEXT,
+            HELP_TOPIC_PROFILE_DEVICE_SHOW_ALL: HELP_PROFILE_DEVICE_SHOW_ALL_TEXT,
+            HELP_TOPIC_QUICK: self._quick_help_text(),
+            "device mode": (
+                "device mode: show, set <field> <value>, no <field>, delete\n"
+                "  Fields: vendor, role, notes, bus, tags, limits"
+            ),
+            "export cli-script": (
+                "export cli-script <path>\n"
+                "  Write a batch script that recreates the local config."
+            ),
+            "validate config": (
+                "validate config [path] [--all]\n"
+                "  Validate devices vs groups in a config file, or the local config if omitted."
+            ),
+            "validate profiles": "validate profiles\n  Validate profile devices only.",
+            "validate tests": "validate tests\n  Validate tests against profile devices.",
+            "validate bindings": "validate bindings [path]\n  Validate bindings payload.",
+            "validate can-mappings": "validate can-mappings [path]\n  Validate CAN mappings payload.",
+            "bindings": (
+                "bindings show [controllers|bindings|axes] [--json] [--pretty]\n"
+                "bindings controller add <controller> <type> <port>\n"
+                "bindings controller set <controller> <field> <value>\n"
+                "bindings controller rename <old> <new>\n"
+                "bindings no controller <controller>\n"
+                "bindings binding add <command> <controller> <input> <id> <mode>\n"
+                "bindings binding set <index> <field> <value>\n"
+                "bindings binding delete <index>\n"
+                "bindings axis add <command> <controller> <id> invert <on|off> deadband <value>\n"
+                "bindings axis set <index> <field> <value>\n"
+                "bindings axis delete <index>\n"
+                "bindings load <path>\n"
+                "bindings save <path>\n"
+                "bindings validate [path]"
+            ),
+            "can-mappings": (
+                "can-mappings show [manufacturers|device-types] [--json] [--pretty]\n"
+                "can-mappings manufacturer set <id> <name>\n"
+                "can-mappings manufacturer delete <id>\n"
+                "can-mappings device-type set <id> <name>\n"
+                "can-mappings device-type delete <id>\n"
+                "can-mappings load <path>\n"
+                "can-mappings save <path>\n"
+                "can-mappings validate [path]"
+            ),
+            "tests": (
+                "tests templates\n"
+                "tests load <path>\n"
+                "tests merge <path>\n"
+                "tests load template <template>\n"
+                "tests save\n"
+                "tests clear"
+            ),
+            "add device": (
+                "add device <device>\n"
+                "  Add device to current group (device must exist in local config)."
+            ),
+            "no device": "no device <device>\n  Remove device from current group.",
+            "member": "member <device> <enable|disable|toggle>\n  Control per-member enable state.",
+            "bind": (
+                "bind <input> <analog|hold|toggle|jog-forward|jog-reverse> [value]\n"
+                "  Create a binding. Button bindings require a value."
+            ),
+            "no bind": "no bind\n  Clear all bindings from current group.",
+            "enable": "enable\n  Enable current group.",
+            "disable": "disable\n  Disable current group.",
+            "run test": "run test [name]\n  Run a test in the current group.",
+            "json": "append --json to show commands for JSON output; add --pretty for pretty JSON",
+            "sources": "append robot|local|both to show commands to select source",
+            "batch": "use --batch --script <file> (no prompts, conflict policy applies)",
+        }
+
+    def _help_topics(self) -> List[str]:
+        return sorted(self._help_topic_map().keys())
+
+    def _quick_help_text(self) -> str:
+        """
+        NAME
+            _quick_help_text - Build a concise, mode-aware help summary.
+        """
+        mode = self._modes[-1].name
+        entries: List[str] = []
+        if mode == MODE_CONFIG:
+            entries = [
+                f"{CMD_PROFILE} {PLACEHOLDER_PROFILE}",
+                f"{CMD_SHOW} {CMD_DEVICES}",
+                f"{CMD_VALIDATE} {CMD_CONFIG}",
+                f"{CMD_SAVE} {CMD_PROFILES} {PLACEHOLDER_PATH}",
+                f"{CMD_PROFILE} {CMD_DEVICE} {CMD_DELETE} {PLACEHOLDER_DEVICE}",
+            ]
+        elif mode == MODE_TEST:
+            entries = [
+                f"{CMD_SHOW} {CMD_TESTS}",
+                f"{CMD_TEST} {CMD_CREATE} {PLACEHOLDER_TEST}",
+                f"{CMD_TEST} {CMD_SET} {PLACEHOLDER_TEST}",
+                f"{CMD_WRITE} {CMD_TESTS} {PLACEHOLDER_PATH}",
+            ]
+        elif mode == MODE_GROUP:
+            entries = [
+                f"{CMD_SHOW}",
+                f"{CMD_ADD} {CMD_DEVICE} {PLACEHOLDER_DEVICE}",
+                f"{CMD_RUN} {CMD_TEST} {PLACEHOLDER_TEST}",
+            ]
+        elif mode == MODE_DEVICE:
+            entries = [
+                f"{CMD_SHOW}",
+                f"{CMD_SET} {PLACEHOLDER_FIELD}",
+                f"{CMD_NO} {PLACEHOLDER_FIELD}",
+            ]
+        else:
+            entries = [
+                CMD_SHOW,
+                CMD_CONFIGURE,
+                CMD_CONNECT,
+                CMD_DISCONNECT,
+            ]
+        lines = [MESSAGE_HELP_QUICK_HEADER]
+        if not entries:
+            lines.append(HELP_INDENT + MESSAGE_HELP_QUICK_EMPTY.strip())
+            return SEP_NEWLINE.join(lines)
+        for entry in entries:
+            lines.append(HELP_INDENT + entry)
+        lines.append(HELP_INDENT + MESSAGE_HELP_QUICK_ALIASES)
+        return SEP_NEWLINE.join(lines)
 
     def _parse_show_flags(self, tokens: List[str]) -> tuple[str, List[str], bool, bool, bool]:
         source = ""
@@ -4548,10 +5191,10 @@ class BridgeCli:
             return json.dumps(payload, indent=JSON_PRETTY_INDENT)
         return json.dumps(payload)
 
-    def _show_robot(self, target: str, tokens: List[str], json_output: bool) -> bool:
+    def _show_robot(self, target: str, tokens: List[str], json_output: bool) -> StatusResult:
         if not self._session.is_connected():
             print("ERROR: Robot source unavailable (not connected).")
-            return False
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
         if target == SHOW_TARGET_STATUS:
             seq = show_status(self._session, json_output=json_output)
         elif target == SHOW_TARGET_GROUPS:
@@ -4570,24 +5213,34 @@ class BridgeCli:
             seq = show_runtime_state(self._session, json_output=json_output)
         else:
             print(MESSAGE_ERR_UNKNOWN_SHOW)
-            return False
+            print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW)
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
         if seq is None:
             print("ERROR: Command failed to send.")
-            return False
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         self._show_label_seq[int(seq)] = "robot"
         event = self._wait_for_seq(seq)
         if self._event_failed(event, "show"):
-            return False
-        return True
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        return StatusResult(code=SS__NORMAL)
 
     def _show_local(
         self, target: str, tokens: List[str], json_output: bool, pretty: bool
-    ) -> bool:
+    ) -> StatusResult:
         if target == SHOW_TARGET_MESSAGE_LEVEL:
-            return self._show_message_level(json_output, pretty)
+            if self._show_message_level(json_output, pretty):
+                return StatusResult(code=SS__NORMAL)
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         if not self._local_config:
             print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        if target == SHOW_TARGET_COMMANDS:
+            return self._show_commands(json_output, pretty)
+        if target == SHOW_TARGET_HELP:
+            return self._show_help_topics(json_output, pretty)
+        if target == SHOW_TARGET_DEVICE_USAGE:
+            name = tokens[COUNT_ONE] if len(tokens) >= COUNT_TWO else EMPTY_STRING
+            return self._show_device_usage(name, json_output, pretty)
         if target == SHOW_TARGET_CONFIG_RAW:
             return self._show_local_config_raw(json_output, pretty)
         if target == SHOW_TARGET_CONFIG_DIRTY:
@@ -4603,14 +5256,15 @@ class BridgeCli:
         profile = self._active_profile_name()
         if not profile:
             print(MESSAGE_ERR_PROFILE_REQUIRED)
-            return False
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         devices = self._profile_device_entries(profile)
         ok, error, payload = local_show_data(
             target, tokens, self._local_config, profile, devices
         )
         if not ok:
             print(f"ERROR: {error}")
-            return False
+            print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW)
+            return StatusResult(code=SS__CONFIG__INVALID)
         groups = payload.get("groups", []) if isinstance(payload.get("groups"), list) else []
         selected = payload.get("selectedDevice") if isinstance(payload.get("selectedDevice"), dict) else {}
         selected_device = str(selected.get("device", "")).strip()
@@ -4632,7 +5286,7 @@ class BridgeCli:
                 f"  selectedDevice={selected_device or '(none)'} ({'on' if selected_enabled else 'off'})"
             )
             _print_local(text, payload)
-            return True
+            return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_GROUPS:
             lines = [f"Local groups (profile {profile_name or '(none)'}):"]
@@ -4645,7 +5299,7 @@ class BridgeCli:
             if len(lines) == 1:
                 lines.append("  (none)")
             _print_local("\n".join(lines), payload)
-            return True
+            return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_GROUP and len(tokens) >= 2:
             name = tokens[1]
@@ -4672,7 +5326,7 @@ class BridgeCli:
             else:
                 lines.append("  members: (none)")
             _print_local("\n".join(lines), payload)
-            return True
+            return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_DEVICES:
             devices_raw = payload.get("devices")
@@ -4691,7 +5345,7 @@ class BridgeCli:
                 else:
                     lines.append("  (none)")
             _print_local("\n".join(lines), payload)
-            return True
+            return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_DEVICE and len(tokens) >= 2:
             name = tokens[1]
@@ -4704,13 +5358,13 @@ class BridgeCli:
                 else:
                     text = f"Local device {name}".rstrip()
                 _print_local(text, payload)
-                return True
+                return StatusResult(code=SS__NORMAL)
             if isinstance(device_payload, str):
                 text = f"Local device {name}: group={group_name} enabled={enabled}"
                 _print_local(text, payload)
-                return True
+                return StatusResult(code=SS__NORMAL)
             print(MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND)
-            return False
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
 
         if target == SHOW_TARGET_BINDINGS:
             lines = [f"Local bindings (profile {profile_name or '(none)'}):"]
@@ -4729,7 +5383,7 @@ class BridgeCli:
             if len(lines) == 1:
                 lines.append("  (none)")
             _print_local("\n".join(lines), payload)
-            return True
+            return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_SELECTED_DEVICE:
             text = (
@@ -4737,7 +5391,7 @@ class BridgeCli:
                 f"{selected_device or '(none)'} ({'on' if selected_enabled else 'off'})"
             )
             _print_local(text, payload)
-            return True
+            return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_RUNTIME:
             lines = [
@@ -4808,12 +5462,12 @@ class BridgeCli:
                 else:
                     lines.append("    bindings: (none)")
             _print_local("\n".join(lines), payload)
-            return True
+            return StatusResult(code=SS__NORMAL)
 
         print("ERROR: Unknown show command.")
-        return False
+        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
 
-    def _show_local_config_dirty(self, json_output: bool, pretty: bool) -> bool:
+    def _show_local_config_dirty(self, json_output: bool, pretty: bool) -> StatusResult:
         """
         NAME
             _show_local_config_dirty - Show local dirty flags.
@@ -4823,7 +5477,7 @@ class BridgeCli:
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             print(self._dump_json({KEY_DIRTY: dirty}, pretty))
-            return True
+            return StatusResult(code=SS__NORMAL)
         print(MESSAGE_DIRTY_HEADER)
         any_dirty = False
         for name in sorted(dirty.keys()):
@@ -4833,9 +5487,9 @@ class BridgeCli:
             print(MESSAGE_DIRTY_ENTRY.format(name=name, value=str(value).lower()))
         if not any_dirty:
             print(MESSAGE_DIRTY_NONE)
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _show_local_profiles(self, json_output: bool, pretty: bool) -> bool:
+    def _show_local_profiles(self, json_output: bool, pretty: bool) -> StatusResult:
         """
         NAME
             _show_local_profiles - Show available profile names.
@@ -4843,25 +5497,25 @@ class BridgeCli:
         payload = self._local_root_payload
         if not isinstance(payload, dict):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profiles = payload.get(KEY_PROFILES)
         if not isinstance(profiles, dict):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         names = sorted([name for name in profiles.keys() if isinstance(name, str)])
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             print(self._dump_json({KEY_PROFILES: names}, pretty))
-            return True
+            return StatusResult(code=SS__NORMAL)
         if not names:
             print(MESSAGE_LOCAL_PROFILES_EMPTY)
-            return True
+            return StatusResult(code=SS__NORMAL)
         print(MESSAGE_LOCAL_PROFILES_HEADER)
         for name in names:
             print(f"  {name}")
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _show_local_profile(self, name: str, json_output: bool, pretty: bool) -> bool:
+    def _show_local_profile(self, name: str, json_output: bool, pretty: bool) -> StatusResult:
         """
         NAME
             _show_local_profile - Show profile summary info.
@@ -4875,7 +5529,7 @@ class BridgeCli:
         if selected:
             if not isinstance(profiles, dict) or selected not in profiles:
                 print(MESSAGE_ERR_PROFILE_NOT_FOUND)
-                return False
+                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             profile = profiles.get(selected)
             labels = profile.get(KEY_PROFILE_DEVICES) if isinstance(profile, dict) else []
             device_labels = [label for label in labels if isinstance(label, str)]
@@ -4883,118 +5537,125 @@ class BridgeCli:
             print(MESSAGE_SOURCE_LOCAL)
             if json_output:
                 print(self._dump_json(output, pretty))
-                return True
+                return StatusResult(code=SS__NORMAL)
             print(MESSAGE_LOCAL_PROFILE_HEADER)
             print(MESSAGE_LOCAL_PROFILE_NAME.format(name=selected))
             print(MESSAGE_LOCAL_PROFILE_DEVICES_HEADER.format(count=len(device_labels)))
             for label in device_labels:
                 print(MESSAGE_LOCAL_PROFILE_DEVICE_FMT.format(label=label))
-            return True
+            return StatusResult(code=SS__NORMAL)
         count = len(names)
         output = {KEY_ACTIVE: active, KEY_DEFAULT: default_profile, KEY_AVAILABLE: sorted(names)}
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             print(self._dump_json({KEY_PROFILE_INFO: output}, pretty))
-            return True
+            return StatusResult(code=SS__NORMAL)
         print(MESSAGE_LOCAL_PROFILE_HEADER)
         print(MESSAGE_LOCAL_PROFILE_ACTIVE.format(name=active or STRING_NONE))
         print(MESSAGE_LOCAL_PROFILE_DEFAULT.format(name=default_profile or STRING_NONE))
         print(MESSAGE_LOCAL_PROFILE_AVAILABLE.format(count=count))
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _show_local_config_raw(self, json_output: bool, pretty: bool) -> bool:
+    def _show_local_config_raw(self, json_output: bool, pretty: bool) -> StatusResult:
         """
         NAME
             _show_local_config_raw - Show raw local bridgeConfig content.
         """
         if not self._local_config:
             print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         payload = self._ordered_bridge_config(self._local_config, include_devices=True)
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             print(self._dump_json(payload, pretty))
-            return True
+            return StatusResult(code=SS__NORMAL)
         print(MESSAGE_LOCAL_CONFIG_RAW)
         print(json.dumps(payload, indent=JSON_PRETTY_INDENT))
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _group_command_local(self, tokens: List[str], group: str) -> Optional[int]:
+    def _group_command_local(self, tokens: List[str], group: str) -> StatusResult:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return 2
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         cmd = tokens[0].lower()
         if cmd == "show":
-            return self._handle_show(["group", group] + tokens[1:])
+            return self._coerce_status(self._handle_show(["group", group] + tokens[1:]))
         if cmd == "add" and len(tokens) >= 3 and tokens[1].lower() == "device":
-            if self._add_local_group_member(group, tokens[2]):
+            result = self._add_local_group_member(group, tokens[2])
+            if result.ok():
                 self._warn("WARNING: Robot not connected; local group member added.")
-                return None
-            return 2
+                return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+            return result
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "device":
-            if self._remove_local_group_member(group, tokens[2]):
+            result = self._remove_local_group_member(group, tokens[2])
+            if result.ok():
                 self._warn("WARNING: Robot not connected; local group member removed.")
-                return None
-            return 2
+                return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+            return result
         if cmd == "member" and len(tokens) >= 3:
             action = tokens[2].lower()
             if action in ("enable", "disable", "toggle"):
-                if self._set_local_member_enabled(group, tokens[1], action):
+                result = self._set_local_member_enabled(group, tokens[1], action)
+                if result.ok():
                     self._warn("WARNING: Robot not connected; local member updated.")
-                    return None
-                return EXIT_CODE_ERROR
+                    return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+                return result
         if cmd == "bind" and len(tokens) >= 3:
-            if self._add_local_binding(group, tokens[1:]):
+            result = self._add_local_binding(group, tokens[1:])
+            if result.ok():
                 self._warn("WARNING: Robot not connected; local binding updated.")
-                return None
-            return 2
+                return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+            return result
         if cmd == "no" and len(tokens) >= 2 and tokens[1].lower() == "bind":
-            if self._clear_local_bindings(group):
+            result = self._clear_local_bindings(group)
+            if result.ok():
                 self._warn("WARNING: Robot not connected; local bindings cleared.")
-                return None
-            return 2
+                return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+            return result
         if cmd == "enable":
-            if self._set_local_group_enabled(group, True):
+            result = self._set_local_group_enabled(group, True)
+            if result.ok():
                 self._warn("WARNING: Robot not connected; local group enabled.")
-                return None
-            return 2
+                return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+            return result
         if cmd == "disable":
-            if self._set_local_group_enabled(group, False):
+            result = self._set_local_group_enabled(group, False)
+            if result.ok():
                 self._warn("WARNING: Robot not connected; local group disabled.")
-                return None
-            return 2
+                return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+            return result
         if cmd == "run" and len(tokens) >= 2 and tokens[1].lower() == "test":
             print("ERROR: Cannot run tests without robot connection.")
-            return 2
+            return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE)
         print(f"ERROR: Unknown command: {' '.join(tokens)}")
-        return None
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
-    def _select_or_create_local_group(self, name: str) -> bool:
+    def _select_or_create_local_group(self, name: str) -> StatusResult:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profile = self._require_active_profile()
         if not profile:
-            return False
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         key = name.strip()
         if not key:
             print("ERROR: group name required.")
-            return False
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         groups = self._local_groups(profile, create=True)
         for group in groups:
             if isinstance(group, dict) and str(group.get("name", "")).strip().lower() == key.lower():
-                return True
+                return StatusResult(code=SS__NORMAL)
         groups.append({"name": key, "enabled": True, "members": [], "bindings": []})
         self._mark_groups_dirty()
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _delete_local_group(self, name: str) -> bool:
+    def _delete_local_group(self, name: str) -> StatusResult:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profile = self._require_active_profile()
         if not profile:
-            return False
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         key = name.strip().lower()
         groups = self._local_groups(profile, create=True)
         kept = []
@@ -5008,39 +5669,39 @@ class BridgeCli:
             kept.append(group)
         if not removed:
             print("ERROR: Local group not found.")
-            return False
+            return StatusResult(code=SS__GROUP__NOT_FOUND)
         entry = self._local_profile_entry(profile, create=True)
         entry[KEY_BRIDGE_GROUPS] = kept
         self._mark_groups_dirty()
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _set_local_selected_device(self, device: str) -> bool:
+    def _set_local_selected_device(self, device: str) -> StatusResult:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profile = self._require_active_profile()
         if not profile:
-            return False
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         entry = self._local_profile_entry(profile, create=True)
         selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE, {}) or {}
         enabled = bool(selected.get("enabled", False)) if isinstance(selected, dict) else False
         entry[KEY_BRIDGE_SELECTED_DEVICE] = {KEY_DEVICE: device.strip(), CMD_ENABLED: enabled}
         self._mark_groups_dirty()
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _set_local_selected_mode(self, enabled: bool) -> bool:
+    def _set_local_selected_mode(self, enabled: bool) -> StatusResult:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profile = self._require_active_profile()
         if not profile:
-            return False
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         entry = self._local_profile_entry(profile, create=True)
         selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE, {}) or {}
         device = str(selected.get(KEY_DEVICE, "")).strip() if isinstance(selected, dict) else ""
         entry[KEY_BRIDGE_SELECTED_DEVICE] = {KEY_DEVICE: device, CMD_ENABLED: bool(enabled)}
         self._mark_groups_dirty()
-        return True
+        return StatusResult(code=SS__NORMAL)
 
     def _find_local_group(self, name: str) -> Optional[Dict[str, object]]:
         profile = self._active_profile_name()
@@ -5054,14 +5715,14 @@ class BridgeCli:
                 return group
         return None
 
-    def _add_local_group_member(self, group_name: str, device: str) -> bool:
+    def _add_local_group_member(self, group_name: str, device: str) -> StatusResult:
         group = self._find_local_group(group_name)
         if group is None:
             print("ERROR: Local group not found.")
-            return False
+            return StatusResult(code=SS__GROUP__NOT_FOUND)
         if not self._local_device_exists(device):
-            print("ERROR: Device not defined in local config. Use device <name> to create it.")
-            return False
+            print("ERROR: Device not defined in local config. Use device <device> to create it.")
+            return StatusResult(code=SS__DEVICE__NOT_DEFINED)
         members = group.get("members", [])
         for member in members:
             if isinstance(member, dict):
@@ -5069,17 +5730,17 @@ class BridgeCli:
             else:
                 name = str(member).strip()
             if name.lower() == device.lower():
-                return True
+                return StatusResult(code=SS__NORMAL)
         members.append({"device": device, "enabled": True})
         group["members"] = members
         self._mark_groups_dirty()
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _remove_local_group_member(self, group_name: str, device: str) -> bool:
+    def _remove_local_group_member(self, group_name: str, device: str) -> StatusResult:
         group = self._find_local_group(group_name)
         if group is None:
             print("ERROR: Local group not found.")
-            return False
+            return StatusResult(code=SS__GROUP__NOT_FOUND)
         members = group.get("members", [])
         kept = []
         removed = False
@@ -5094,16 +5755,16 @@ class BridgeCli:
             kept.append(member)
         if not removed:
             print("ERROR: Device not in local group.")
-            return False
+            return StatusResult(code=SS__GROUP__MEMBER_MISSING)
         group["members"] = kept
         self._mark_groups_dirty()
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _set_local_member_enabled(self, group_name: str, device: str, action: str) -> bool:
+    def _set_local_member_enabled(self, group_name: str, device: str, action: str) -> StatusResult:
         group = self._find_local_group(group_name)
         if group is None:
             print("ERROR: Local group not found.")
-            return False
+            return StatusResult(code=SS__GROUP__NOT_FOUND)
         members = group.get("members", [])
         for member in members:
             if isinstance(member, dict):
@@ -5117,70 +5778,70 @@ class BridgeCli:
                     elif action == "toggle":
                         member["enabled"] = not enabled
                     self._mark_groups_dirty()
-                    return True
+                    return StatusResult(code=SS__NORMAL)
             elif isinstance(member, str):
                 if member.strip().lower() == device.lower():
                     members.remove(member)
                     members.append({"device": member, "enabled": action != "disable"})
                     self._mark_groups_dirty()
-                    return True
+                    return StatusResult(code=SS__NORMAL)
         print("ERROR: Device not in local group.")
-        return False
+        return StatusResult(code=SS__GROUP__MEMBER_MISSING)
 
-    def _add_local_binding(self, group_name: str, tokens: List[str]) -> bool:
+    def _add_local_binding(self, group_name: str, tokens: List[str]) -> StatusResult:
         if len(tokens) < 2:
             print("ERROR: bind requires input and kind.")
-            return False
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         group = self._find_local_group(group_name)
         if group is None:
             print("ERROR: Local group not found.")
-            return False
+            return StatusResult(code=SS__GROUP__NOT_FOUND)
         input_name = tokens[0]
         kind = tokens[1]
         entry = {"input": input_name, "kind": kind}
         if kind != "analog":
             if len(tokens) < 3:
                 print("ERROR: Button bindings require a value.")
-                return False
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             entry["value"] = tokens[2]
         bindings = group.get("bindings", [])
         bindings.append(entry)
         group["bindings"] = bindings
         self._mark_groups_dirty()
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _clear_local_bindings(self, group_name: str) -> bool:
+    def _clear_local_bindings(self, group_name: str) -> StatusResult:
         group = self._find_local_group(group_name)
         if group is None:
             print("ERROR: Local group not found.")
-            return False
+            return StatusResult(code=SS__GROUP__NOT_FOUND)
         group["bindings"] = []
         self._mark_groups_dirty()
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _set_local_group_enabled(self, group_name: str, enabled: bool) -> bool:
+    def _set_local_group_enabled(self, group_name: str, enabled: bool) -> StatusResult:
         group = self._find_local_group(group_name)
         if group is None:
             print("ERROR: Local group not found.")
-            return False
+            return StatusResult(code=SS__GROUP__NOT_FOUND)
         group["enabled"] = bool(enabled)
         self._mark_groups_dirty()
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _rename_local_device(self, old: str, new: str) -> bool:
+    def _rename_local_device(self, old: str, new: str) -> StatusResult:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         if self._local_devices_locked:
             return self._rename_profiles_device(old, new)
         old_name = old.strip()
         new_name = new.strip()
         if not old_name or not new_name:
             print("ERROR: rename device requires old and new names.")
-            return False
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         if old_name.lower() == new_name.lower():
             print("ERROR: New name matches existing name.")
-            return False
+            return StatusResult(code=SS__CONFIG__DUPLICATE_LABEL)
         config = self._local_config
         existing_names = set()
         by_profile = config.get(KEY_BRIDGE_BY_PROFILE) if isinstance(config, dict) else None
@@ -5205,7 +5866,7 @@ class BridgeCli:
                         existing_names.add(sel_name.lower())
         if new_name.lower() in existing_names:
             print(f"ERROR: Device name {new_name} already exists.")
-            return False
+            return StatusResult(code=SS__CONFIG__DUPLICATE_LABEL)
 
         changed = False
         if isinstance(by_profile, dict):
@@ -5234,24 +5895,24 @@ class BridgeCli:
                         changed = True
         if not changed:
             print(f"ERROR: Device {old_name} not found in local config.")
-            return False
-        return True
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        return StatusResult(code=SS__NORMAL)
 
-    def _delete_local_device(self, name: str) -> bool:
+    def _delete_local_device(self, name: str) -> StatusResult:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         if self._local_devices_locked:
             return self._delete_profiles_device(name)
         label = name.strip()
         if not label:
             print("ERROR: device name required.")
-            return False
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         config = self._local_config
         devices = config.get("devices")
         if not isinstance(devices, list):
             print("ERROR: No local devices are defined.")
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         removed = False
         for idx, device in enumerate(list(devices)):
             if not isinstance(device, dict):
@@ -5263,33 +5924,35 @@ class BridgeCli:
                 break
         if not removed:
             print(f"ERROR: Device {label} not found in local config.")
-            return False
-        if self._remove_bridge_groups_device(label):
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        group_result = self._remove_bridge_groups_device(label)
+        if group_result.ok():
             self._mark_groups_dirty()
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _delete_profiles_device(self, name: str) -> bool:
+    def _delete_profiles_device(self, name: str) -> StatusResult:
         entry = self._find_profiles_device_entry(name)
         if entry is None:
-            if self._delete_bridge_config_device(name):
+            bridge_result = self._delete_bridge_config_device(name)
+            if bridge_result.ok():
                 self._warn(
                     f"WARNING: Device {name} not found in profiles; removed from local bridgeConfig devices."
                 )
-                return True
+                return StatusResult(code=SS__NORMAL)
             print(f"ERROR: Device {name} not found in profiles.")
-            return False
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
         payload = self._local_root_payload
         if not isinstance(payload, dict):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profiles, profile_name = self._profiles_root_and_name()
         if profiles is None or profile_name is None:
             print(MESSAGE_ERR_DEVICE_PROFILE_REQUIRED)
-            return False
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         profile = profiles.get(profile_name)
         if not isinstance(profile, dict):
             print(MESSAGE_ERR_DEVICE_PROFILE_REQUIRED)
-            return False
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         category = self._find_entry_category(profile, entry)
         removed = False
         if category in (
@@ -5333,22 +5996,22 @@ class BridgeCli:
 
         if not removed:
             print(f"ERROR: Device {name} not found in profiles.")
-            return False
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
         self._profiles_dirty = True
         self._remove_diagram_device(entry)
         self._remove_bridge_groups_device(name)
         self._refresh_devices_from_profiles()
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _delete_bridge_config_device(self, name: str) -> bool:
+    def _delete_bridge_config_device(self, name: str) -> StatusResult:
         if not self._local_config:
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         devices = self._local_config.get("devices")
         if not isinstance(devices, list):
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         label = name.strip()
         if not label:
-            return False
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         removed = False
         for idx, device in enumerate(list(devices)):
             if not isinstance(device, dict):
@@ -5360,16 +6023,16 @@ class BridgeCli:
                 break
         if removed:
             self._local_config["devices"] = devices
-            return True
-        return False
+            return StatusResult(code=SS__NORMAL)
+        return StatusResult(code=SS__DEVICE__NOT_FOUND)
 
-    def _remove_bridge_groups_device(self, name: str) -> bool:
+    def _remove_bridge_groups_device(self, name: str) -> StatusResult:
         config = self._local_config
         if not isinstance(config, dict):
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
         if not isinstance(by_profile, dict):
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         changed = False
         for entry in by_profile.values():
             if not isinstance(entry, dict):
@@ -5403,7 +6066,7 @@ class BridgeCli:
                     changed = True
         if changed:
             self._local_config = config
-        return changed
+        return StatusResult(code=SS__NORMAL)
 
     def _remove_diagram_device(self, entry: Dict[str, object]) -> None:
         payload = self._local_root_payload
@@ -5445,7 +6108,7 @@ class BridgeCli:
         if removed:
             diag_profile["nodes"] = nodes
 
-    def _rename_profiles_device(self, old: str, new: str) -> bool:
+    def _rename_profiles_device(self, old: str, new: str) -> StatusResult:
         """
         NAME
             _rename_profiles_device - Rename a device label inside profiles.
@@ -5453,17 +6116,17 @@ class BridgeCli:
         entry = self._find_profiles_device_entry(old)
         if entry is None:
             print(f"ERROR: Device {old} not found in profiles.")
-            return False
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
         new_label = new.strip()
         if not new_label:
             print("ERROR: new device name required.")
-            return False
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         entry["label"] = new_label
         self._profiles_dirty = True
         self._update_diagram_label(entry, new_label)
         self._update_bridge_groups_label(old, new_label)
         self._refresh_devices_from_profiles()
-        return True
+        return StatusResult(code=SS__NORMAL)
 
     def _update_bridge_groups_label(self, old: str, new: str) -> None:
         """
@@ -5559,23 +6222,23 @@ class BridgeCli:
             return "devices"
         return None
 
-    def _set_local_device_meta(self, name: str, field: str, value_raw: str) -> bool:
+    def _set_local_device_meta(self, name: str, field: str, value_raw: str) -> StatusResult:
         """
         NAME
             _set_local_device_meta - Update metadata for a local device.
         """
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         field_key = field.strip()
         if self._local_devices_locked:
             return self._set_profiles_device_meta(name, field_key, value_raw)
         if field_key == FIELD_LABEL:
             print("ERROR: device label is managed by rename device.")
-            return False
+            return StatusResult(code=SS__DEVICE__INVALID_FIELD)
         if field_key not in DEVICE_FIELDS_PROFILE:
             print(MESSAGE_ERR_DEVICE_FIELD_UNKNOWN)
-            return False
+            return StatusResult(code=SS__DEVICE__INVALID_FIELD)
         store_key = FIELD_TYPE if field_key == FIELD_ROLE else field_key
         field_type = DEVICE_FIELD_TYPES.get(field_key, DEVICE_FIELD_STR)
         value: object
@@ -5584,24 +6247,24 @@ class BridgeCli:
                 value = int(value_raw, 0)
             except ValueError:
                 print(MESSAGE_ERR_DEVICE_FIELD_INT)
-                return False
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         elif field_type == DEVICE_FIELD_BOOL:
             parsed = self._parse_bool(value_raw)
             if parsed is None:
                 print(MESSAGE_ERR_DEVICE_FIELD_BOOL)
-                return False
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             value = parsed
         elif field_type == DEVICE_FIELD_LIST:
             parsed = parse_json_arg(value_raw)
             if parsed is None or not isinstance(parsed, list):
                 print(MESSAGE_ERR_DEVICE_FIELD_LIST)
-                return False
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             value = parsed
         elif field_type == DEVICE_FIELD_DICT:
             parsed = parse_json_arg(value_raw)
             if parsed is None or not isinstance(parsed, dict):
                 print(MESSAGE_ERR_DEVICE_FIELD_DICT)
-                return False
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             value = parsed
         else:
             value = value_raw
@@ -5622,7 +6285,7 @@ class BridgeCli:
             # Allow metadata edits for devices already referenced by groups.
             if not self._device_in_groups(name):
                 print("ERROR: Device not found in local config or groups.")
-                return False
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
             target = {"name": name.strip()}
             devices.append(target)
         target[store_key] = value
@@ -5630,33 +6293,33 @@ class BridgeCli:
             interface = str(target.get(KEY_INTERFACE, "")).strip()
             if interface and interface not in DEVICE_INTERFACE_ALLOWED:
                 print(MESSAGE_ERR_DEVICE_INTERFACE_INVALID)
-                return False
+                return StatusResult(code=SS__DEVICE__INVALID_FIELD)
         if not self._local_devices_locked:
             self._mark_groups_dirty()
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _clear_local_device_meta(self, name: str, field: str) -> bool:
+    def _clear_local_device_meta(self, name: str, field: str) -> StatusResult:
         """
         NAME
             _clear_local_device_meta - Clear metadata for a local device.
         """
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         field_key = field.strip()
         if self._local_devices_locked:
             return self._clear_profiles_device_meta(name, field_key)
         if field_key == FIELD_LABEL:
             print("ERROR: device label is managed by rename device.")
-            return False
+            return StatusResult(code=SS__DEVICE__INVALID_FIELD)
         if field_key not in DEVICE_FIELDS_PROFILE:
             print(MESSAGE_ERR_DEVICE_FIELD_UNKNOWN)
-            return False
+            return StatusResult(code=SS__DEVICE__INVALID_FIELD)
         store_key = FIELD_TYPE if field_key == FIELD_ROLE else field_key
         devices = self._local_config.get("devices")
         if not isinstance(devices, list):
             print("ERROR: No local devices are defined.")
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         for device in devices:
             if not isinstance(device, dict):
                 continue
@@ -5667,18 +6330,18 @@ class BridgeCli:
                     self._validate_device_entry(device)
                     if not self._local_devices_locked:
                         self._mark_groups_dirty()
-                return True
+                return StatusResult(code=SS__NORMAL)
         print("ERROR: Device not found in local config.")
-        return False
+        return StatusResult(code=SS__DEVICE__NOT_FOUND)
 
-    def _ensure_local_device_entry(self, name: str) -> bool:
+    def _ensure_local_device_entry(self, name: str) -> StatusResult:
         """
         NAME
             _ensure_local_device_entry - Ensure a local device entry exists.
         """
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         if self._local_devices_locked:
             return self._ensure_profiles_device_entry(name)
         config = self._local_config
@@ -5691,23 +6354,23 @@ class BridgeCli:
                 continue
             dev_name = str(device.get("name", "")).strip()
             if dev_name.lower() == name.strip().lower():
-                return True
+                return StatusResult(code=SS__NORMAL)
         devices.append({"name": name.strip()})
         self._validate_device_entry(devices[-1])
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _show_local_device_entry(self, name: str) -> Optional[int]:
+    def _show_local_device_entry(self, name: str) -> StatusResult:
         """
         NAME
             _show_local_device_entry - Print the local device metadata.
         """
         if not self._local_config:
             print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
-            return None
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         devices = self._local_config.get("devices")
         if not isinstance(devices, list):
             print("ERROR: No local devices are defined.")
-            return None
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         for device in devices:
             if not isinstance(device, dict):
                 continue
@@ -5735,28 +6398,28 @@ class BridgeCli:
                 if len(parts) == 1:
                     parts.append("  (no metadata)")
                 print("\n".join(parts))
-                return None
+                return StatusResult(code=SS__NORMAL)
         print(MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND)
-        return None
+        return StatusResult(code=SS__DEVICE__NOT_FOUND)
 
-    def _show_local_registry_device(self, name: str, json_output: bool, pretty: bool) -> bool:
+    def _show_local_registry_device(self, name: str, json_output: bool, pretty: bool) -> StatusResult:
         """
         NAME
             _show_local_registry_device - Print device registry entry details.
         """
         if not isinstance(self._local_root_payload, dict):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         entry = self._find_profiles_device_entry(name)
         if entry is None:
             print(MESSAGE_ERR_REGISTRY_DEVICE_NOT_FOUND)
-            return False
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
         label = str(entry.get(FIELD_LABEL, name)).strip() or name
         payload = {KEY_DEVICE: entry}
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             print(self._dump_json(payload, pretty))
-            return True
+            return StatusResult(code=SS__NORMAL)
         lines = [MESSAGE_LOCAL_REGISTRY_DEVICE.format(label=label)]
         mappings = self._load_can_mappings()
         manufacturers = mappings.get(KEY_MANUFACTURERS, {}) if mappings else {}
@@ -5785,7 +6448,7 @@ class BridgeCli:
         if len(lines) == 1:
             lines.append(MESSAGE_LOCAL_REGISTRY_EMPTY)
         print("\n".join(lines))
-        return True
+        return StatusResult(code=SS__NORMAL)
 
     def _load_can_mappings(self) -> Dict[str, Dict[str, str]]:
         """
@@ -5955,17 +6618,17 @@ class BridgeCli:
             lines.append(MESSAGE_STORE_ISSUE.format(location=location, message=message))
         return SEP_NEWLINE.join(lines)
 
-    def _save_profiles(self, path: str) -> bool:
+    def _save_profiles(self, path: str) -> StatusResult:
         """
         NAME
             _save_profiles - Save updated bringup_system.json.
         """
         if not self._local_devices_locked or self._local_root_payload is None:
             print("ERROR: No profiles are loaded.")
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         if not self._local_config:
             print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         payload = dict(self._local_root_payload)
         payload["bridgeConfig"] = self._ordered_bridge_config(
             self._local_config, include_devices=False
@@ -5977,14 +6640,14 @@ class BridgeCli:
             write_json(Path(path), payload, indent=2, trailing_newline=True)
         except Exception as exc:
             print(f"ERROR: Failed to write {path}: {exc}")
-            return False
+            return StatusResult(code=SS__CONFIG__INVALID)
         self._profiles_dirty = False
         self._groups_dirty = False
         self._sync_store_from_local()
         print(f"Wrote profiles to {path}.")
-        return True
+        return StatusResult(code=SS__CONFIG__SAVED)
 
-    def _ensure_profiles_device_entry(self, name: str) -> bool:
+    def _ensure_profiles_device_entry(self, name: str) -> StatusResult:
         """
         NAME
             _ensure_profiles_device_entry - Reject implicit registry creation.
@@ -5992,23 +6655,23 @@ class BridgeCli:
         label = name.strip()
         if not label:
             print(MESSAGE_ERR_DEVICE_LABEL_REQUIRED)
-            return False
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         payload = self._local_root_payload
         if not isinstance(payload, dict):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profile_name = self._active_profile_name()
         if not profile_name:
             print(MESSAGE_ERR_DEVICE_PROFILE_REQUIRED)
-            return False
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         profiles = payload.get(KEY_PROFILES)
         if not isinstance(profiles, dict):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profile = profiles.get(profile_name)
         if not isinstance(profile, dict):
             print(MESSAGE_ERR_PROFILE_UNKNOWN.format(name=profile_name))
-            return False
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         devices = payload.get(KEY_DEVICES)
         if not isinstance(devices, list):
             devices = []
@@ -6025,7 +6688,7 @@ class BridgeCli:
                 if existing and existing not in labels:
                     labels.append(existing)
                     self._profiles_dirty = True
-                return True
+                return StatusResult(code=SS__NORMAL)
         entry = {KEY_LABEL: label}
         devices.append(entry)
         labels = profile.get(KEY_PROFILE_DEVICES)
@@ -6037,9 +6700,56 @@ class BridgeCli:
         self._profiles_dirty = True
         self._refresh_devices_from_profiles()
         self._validate_device_entry(entry)
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _set_profiles_device_meta(self, name: str, field: str, value_raw: str) -> bool:
+    def _maybe_hint_validate_profile(self, path: str) -> None:
+        """
+        NAME
+            _maybe_hint_validate_profile - Suggest profile usage when a path is missing.
+        """
+        if not path:
+            return
+        try:
+            if Path(path).exists():
+                return
+        except Exception:
+            return
+        payload = self._local_root_payload
+        profiles = payload.get(KEY_PROFILES) if isinstance(payload, dict) else None
+        if not isinstance(profiles, dict):
+            return
+        if path in profiles:
+            print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_VALIDATE_CONFIG_PROFILE)
+
+    def _maybe_print_failure_hint(self, line: str) -> None:
+        """
+        NAME
+            _maybe_print_failure_hint - Print a targeted hint for common commands.
+        """
+        try:
+            tokens = self._split_command(line)
+        except CliParseError:
+            return
+        if not tokens:
+            return
+        tokens = self._parser.normalize_tokens(tokens)
+        cmd = tokens[COUNT_ZERO].lower()
+        if cmd == CMD_VALIDATE:
+            print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_VALIDATE)
+            return
+        if cmd == CMD_SAVE:
+            print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SAVE)
+            return
+        if cmd == CMD_SHOW:
+            print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW)
+            return
+        if cmd == CMD_PROFILE:
+            print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_PROFILE)
+            return
+        if cmd == CMD_CAN_MAPPINGS:
+            print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_CAN_MAPPINGS)
+
+    def _set_profiles_device_meta(self, name: str, field: str, value_raw: str) -> StatusResult:
         """
         NAME
             _set_profiles_device_meta - Update a device entry inside profiles.
@@ -6050,10 +6760,10 @@ class BridgeCli:
         field_key = field.strip()
         if field_key == FIELD_LABEL:
             print("ERROR: device label is managed by rename device.")
-            return False
+            return StatusResult(code=SS__DEVICE__INVALID_FIELD)
         if field_key not in DEVICE_FIELDS_PROFILE:
             print(MESSAGE_ERR_DEVICE_FIELD_UNKNOWN)
-            return False
+            return StatusResult(code=SS__DEVICE__INVALID_FIELD)
         store_key = FIELD_TYPE if field_key == FIELD_ROLE else field_key
         field_type = DEVICE_FIELD_TYPES.get(field_key, DEVICE_FIELD_STR)
         if field_type == DEVICE_FIELD_INT:
@@ -6061,24 +6771,24 @@ class BridgeCli:
                 entry[store_key] = int(value_raw, 0)
             except ValueError:
                 print(MESSAGE_ERR_DEVICE_FIELD_INT)
-                return False
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         elif field_type == DEVICE_FIELD_BOOL:
             parsed = self._parse_bool(value_raw)
             if parsed is None:
                 print(MESSAGE_ERR_DEVICE_FIELD_BOOL)
-                return False
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             entry[store_key] = parsed
         elif field_type == DEVICE_FIELD_LIST:
             parsed = parse_json_arg(value_raw)
             if parsed is None or not isinstance(parsed, list):
                 print(MESSAGE_ERR_DEVICE_FIELD_LIST)
-                return False
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             entry[store_key] = parsed
         elif field_type == DEVICE_FIELD_DICT:
             parsed = parse_json_arg(value_raw)
             if parsed is None or not isinstance(parsed, dict):
                 print(MESSAGE_ERR_DEVICE_FIELD_DICT)
-                return False
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             entry[field_key] = parsed
         else:
             entry[store_key] = value_raw
@@ -6086,13 +6796,13 @@ class BridgeCli:
             interface = str(entry.get(KEY_INTERFACE, "")).strip()
             if interface and interface not in DEVICE_INTERFACE_ALLOWED:
                 print(MESSAGE_ERR_DEVICE_INTERFACE_INVALID)
-                return False
+                return StatusResult(code=SS__DEVICE__INVALID_FIELD)
         self._profiles_dirty = True
         self._refresh_devices_from_profiles()
         self._validate_device_entry(entry)
-        return True
+        return StatusResult(code=SS__NORMAL)
 
-    def _clear_profiles_device_meta(self, name: str, field: str) -> bool:
+    def _clear_profiles_device_meta(self, name: str, field: str) -> StatusResult:
         """
         NAME
             _clear_profiles_device_meta - Clear a device field in profiles.
@@ -6100,20 +6810,20 @@ class BridgeCli:
         entry = self._find_profiles_device_entry(name)
         if entry is None:
             print("ERROR: Device not found in profiles.")
-            return False
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
         field_key = field.strip()
         if field_key == FIELD_LABEL:
             print("ERROR: device label is managed by rename device.")
-            return False
+            return StatusResult(code=SS__DEVICE__INVALID_FIELD)
         if field_key not in DEVICE_FIELDS_PROFILE:
             print(MESSAGE_ERR_DEVICE_FIELD_UNKNOWN)
-            return False
+            return StatusResult(code=SS__DEVICE__INVALID_FIELD)
         store_key = FIELD_TYPE if field_key == FIELD_ROLE else field_key
         entry.pop(store_key, None)
         self._profiles_dirty = True
         self._refresh_devices_from_profiles()
         self._validate_device_entry(entry)
-        return True
+        return StatusResult(code=SS__NORMAL)
 
     def _find_profiles_device_entry(self, name: str) -> Optional[Dict[str, object]]:
         payload = self._local_root_payload
@@ -6147,7 +6857,7 @@ class BridgeCli:
         profile = self._active_profile_name()
         if profile:
             self._local_profile_entry(profile, create=True)
-    def _export_cli_script(self, path: str) -> bool:
+    def _export_cli_script(self, path: str) -> StatusResult:
         """
         NAME
             _export_cli_script - Write a CLI batch script for the local config.
@@ -6161,7 +6871,7 @@ class BridgeCli:
         """
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         config = self._local_config
         lines: List[str] = []
         if self._local_devices_locked:
@@ -6255,9 +6965,9 @@ class BridgeCli:
             Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
         except Exception as exc:
             print(f"ERROR: Failed to write {path}: {exc}")
-            return False
+            return StatusResult(code=SS__CONFIG__INVALID)
         print(f"Wrote CLI script to {path}.")
-        return True
+        return StatusResult(code=SS__NORMAL)
 
     def _lint_script(self, lines: List[str]) -> Optional[str]:
         """
@@ -6436,28 +7146,28 @@ class BridgeCli:
         payload["data_hash"] = compute_profiles_hash(payload)
         return payload
 
-    def _save_unified_config(self, path: str) -> bool:
+    def _save_unified_config(self, path: str) -> StatusResult:
         """
         NAME
             _save_unified_config - Save a unified bringup_system.json payload.
         """
         payload = self._build_unified_payload()
         if payload is None:
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         try:
             write_json(Path(path), payload, indent=2, trailing_newline=True)
         except Exception as exc:
             print(f"ERROR: Failed to write {path}: {exc}")
-            return False
+            return StatusResult(code=SS__CONFIG__INVALID)
         self._profiles_dirty = False
         self._groups_dirty = False
         print(f"Wrote unified config to {path}.")
-        return True
+        return StatusResult(code=SS__CONFIG__SAVED)
 
-    def _save_local_config(self, path: str) -> bool:
+    def _save_local_config(self, path: str) -> StatusResult:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return False
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         try:
             config_out = self._ordered_bridge_config(
                 self._local_config, include_devices=not self._local_devices_locked
@@ -6465,10 +7175,10 @@ class BridgeCli:
             write_json(Path(path), config_out, indent=2, trailing_newline=True)
         except Exception as exc:
             print(f"ERROR: Failed to write {path}: {exc}")
-            return False
+            return StatusResult(code=SS__CONFIG__INVALID)
         self._groups_dirty = False
         if self._local_devices_locked:
             print(f"Wrote groups config to {path}.")
         else:
             print(f"Wrote bridgeConfig to {path}.")
-        return True
+        return StatusResult(code=SS__CONFIG__SAVED)

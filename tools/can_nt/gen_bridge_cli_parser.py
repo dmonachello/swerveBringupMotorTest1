@@ -24,6 +24,9 @@ META_PATH = SCRIPT_DIR / "bridge_cli_grammar_meta.json"
 OUT_GRAMMAR = SCRIPT_DIR / "bridge_cli_grammar_gen.py"
 OUT_CONST = SCRIPT_DIR / "bridge_cli_constants_gen.py"
 
+SHOW_TARGET_MESSAGE_LEVEL = "message-level"
+SHOW_TARGET_DEVICE_USAGE = "device-usage"
+
 RULE_SKIP = {
     "name",
     "input",
@@ -59,6 +62,8 @@ value: NUMBER
 number: NUMBER
 value_text: (TOKEN | "true" | "false" | "on" | "off") (WS (TOKEN | "true" | "false" | "on" | "off"))*
 """.strip()
+
+CMD_SHOW_ALL = "show-all"
 
 
 @dataclass
@@ -366,15 +371,22 @@ def _write_constants(meta: Dict[str, object], mode_commands: Dict[str, tuple[str
     lines.append("    show_target_bindings: str")
     lines.append("    show_target_selected_device: str")
     lines.append("    show_target_device_registry: str")
+    lines.append("    show_target_commands: str")
+    lines.append("    show_target_help: str")
+    lines.append("    show_target_device_usage: str")
+    lines.append("    show_target_message_level: str")
     lines.append("    bind_kinds: tuple[str, ...]")
     lines.append("    cmd_connect: str")
     lines.append("    cmd_disconnect: str")
     lines.append("    cmd_configure: str")
+    lines.append("    cmd_cfg: str")
     lines.append("    cmd_terminal: str")
     lines.append("    cmd_show: str")
+    lines.append("    cmd_ls: str")
     lines.append("    cmd_group: str")
     lines.append("    cmd_no: str")
     lines.append("    cmd_profile: str")
+    lines.append("    cmd_prof: str")
     lines.append("    cmd_selected_device: str")
     lines.append("    cmd_selected_mode: str")
     lines.append("    cmd_on: str")
@@ -390,6 +402,7 @@ def _write_constants(meta: Dict[str, object], mode_commands: Dict[str, tuple[str
     lines.append("    cmd_save_local_config: str")
     lines.append("    cmd_save_profiles: str")
     lines.append("    cmd_save_unified: str")
+    lines.append("    cmd_savep: str")
     lines.append("    cmd_rename: str")
     lines.append("    cmd_device: str")
     lines.append("    cmd_registry: str")
@@ -407,6 +420,7 @@ def _write_constants(meta: Dict[str, object], mode_commands: Dict[str, tuple[str
     lines.append("    cmd_termination: str")
     lines.append("    cmd_limitswitch: str")
     lines.append("    cmd_validate: str")
+    lines.append("    cmd_val: str")
     lines.append("    cmd_add: str")
     lines.append("    cmd_member: str")
     lines.append("    cmd_enable: str")
@@ -417,6 +431,8 @@ def _write_constants(meta: Dict[str, object], mode_commands: Dict[str, tuple[str
     lines.append("    cmd_test: str")
     lines.append("    cmd_members: str")
     lines.append("    cmd_binding: str")
+    lines.append("    cmd_show_all: str")
+    lines.append("    cmd_validate_all: str")
     lines.append("    show_target_group: str")
     lines.append("    show_target_device: str")
     lines.append("    strict_default: bool")
@@ -571,15 +587,22 @@ def _write_constants(meta: Dict[str, object], mode_commands: Dict[str, tuple[str
     lines.append(f"    show_target_bindings={_target('bindings')!r},")
     lines.append(f"    show_target_selected_device={_target('selected-device')!r},")
     lines.append(f"    show_target_device_registry={_target('device-registry')!r},")
+    lines.append(f"    show_target_commands={_target('commands')!r},")
+    lines.append(f"    show_target_help={_target('help')!r},")
+    lines.append(f"    show_target_device_usage={_target(SHOW_TARGET_DEVICE_USAGE)!r},")
+    lines.append(f"    show_target_message_level={_target(SHOW_TARGET_MESSAGE_LEVEL)!r},")
     lines.append(f"    bind_kinds={tuple(meta['bind_kinds'])!r},")
     lines.append(f"    cmd_connect={commands['connect']!r},")
     lines.append(f"    cmd_disconnect={commands['disconnect']!r},")
     lines.append(f"    cmd_configure={commands['configure']!r},")
+    lines.append(f"    cmd_cfg={commands['cfg']!r},")
     lines.append(f"    cmd_terminal={commands['terminal']!r},")
     lines.append(f"    cmd_show={commands['show']!r},")
+    lines.append(f"    cmd_ls={commands['ls']!r},")
     lines.append(f"    cmd_group={commands['group']!r},")
     lines.append(f"    cmd_no={commands['no']!r},")
     lines.append(f"    cmd_profile={commands['profile']!r},")
+    lines.append(f"    cmd_prof={commands['prof']!r},")
     lines.append(f"    cmd_selected_device={commands['selected_device']!r},")
     lines.append(f"    cmd_selected_mode={commands['selected_mode']!r},")
     lines.append(f"    cmd_on={commands['on']!r},")
@@ -595,6 +618,7 @@ def _write_constants(meta: Dict[str, object], mode_commands: Dict[str, tuple[str
     lines.append(f"    cmd_save_local_config={commands['save_local_config']!r},")
     lines.append(f"    cmd_save_profiles={commands['save_profiles']!r},")
     lines.append(f"    cmd_save_unified={commands['save_unified']!r},")
+    lines.append(f"    cmd_savep={commands['savep']!r},")
     lines.append(f"    cmd_rename={commands['rename']!r},")
     lines.append(f"    cmd_device={commands['device']!r},")
     lines.append(f"    cmd_registry={commands['registry']!r},")
@@ -612,6 +636,7 @@ def _write_constants(meta: Dict[str, object], mode_commands: Dict[str, tuple[str
     lines.append(f"    cmd_termination={commands['termination']!r},")
     lines.append(f"    cmd_limitswitch={commands['limitswitch']!r},")
     lines.append(f"    cmd_validate={commands['validate']!r},")
+    lines.append(f"    cmd_val={commands['val']!r},")
     lines.append(f"    cmd_add={commands['add']!r},")
     lines.append(f"    cmd_member={commands['member']!r},")
     lines.append(f"    cmd_enable={commands['enable']!r},")
@@ -622,6 +647,8 @@ def _write_constants(meta: Dict[str, object], mode_commands: Dict[str, tuple[str
     lines.append(f"    cmd_test={commands['test']!r},")
     lines.append(f"    cmd_members={commands['members']!r},")
     lines.append(f"    cmd_binding={commands['binding']!r},")
+    lines.append(f"    cmd_show_all={commands['show_all']!r},")
+    lines.append(f"    cmd_validate_all={commands['validate_all']!r},")
     lines.append(f"    show_target_group={_target('group')!r},")
     lines.append(f"    show_target_device={_target('device')!r},")
     lines.append(f"    strict_default={parser_meta.get('strict_default', False)!r},")

@@ -2181,11 +2181,11 @@
     "home_030226": {
       "devices": [
         "SPARKMAX/NEO 25",
-        "roboRIO",
         "FALCON 9",
         "cancoder 44",
         "pdp",
-        "roboRIO"
+        "roboRIO",
+        "CANnect Inject"
       ]
     },
     "reverse_eng_min1": {
@@ -2885,14 +2885,6 @@
       ]
     },
     {
-      "label": "roboRIO",
-      "interface": "CAN",
-      "manufacturer": 1,
-      "deviceType": 1,
-      "id": 0,
-      "terminator": true
-    },
-    {
       "label": "SPARKMAX 10",
       "interface": "CAN",
       "manufacturer": 5,
@@ -3019,7 +3011,9 @@
     {
       "label": "CANnect Inject",
       "interface": "CAN",
-      "id": -1
+      "id": -1,
+      "manufacturer": 18,
+      "deviceType": 10
     },
     {
       "label": "CANnect Direct",
@@ -3044,6 +3038,6 @@
       "terminator": true
     }
   ],
-  "data_version": "2026-03-30_163250",
-  "data_hash": "1b38b23d12c509010e82be28a21fedfcd6951f947a2a5e7758c81b65b787610f"
+  "data_version": "2026-03-31_101310",
+  "data_hash": "a7d3745520c52584ad69a68b0cb8640dedef3ab49151fbdfe3388dd641477254"
 }

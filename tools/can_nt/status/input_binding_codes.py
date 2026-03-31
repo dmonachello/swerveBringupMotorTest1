@@ -8,3 +8,8 @@ from tools.can_nt.status.status_encode import code
 
 SS__INPUT_BINDING__NOT_FOUND = code(SEV.ERROR, FAC.INPUT_BINDING, MSG.INPUT_BINDING.NOT_FOUND)
 SS__INPUT_BINDING__INVALID = code(SEV.ERROR, FAC.INPUT_BINDING, MSG.INPUT_BINDING.INVALID)
+
+STATUS_MESSAGES = {
+    SS__INPUT_BINDING__NOT_FOUND: "Input binding not found: {binding}.",
+    SS__INPUT_BINDING__INVALID: "Invalid input binding.",
+}
