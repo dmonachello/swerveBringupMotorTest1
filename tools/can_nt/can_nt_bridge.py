@@ -581,7 +581,16 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                         label_lookup=can_to_label,
                         decode_device_key=decode_frc_ext_id,
                     )
-                    extra = build_summary_extra(summary, devices, analyzer, state, bus, args.bitrate)
+                    extra = build_summary_extra(
+                        summary,
+                        devices,
+                        analyzer,
+                        state,
+                        bus,
+                        args.bitrate,
+                        now,
+                        args.stale_s,
+                    )
                     print_summary(summary, now, extra)
 
                 msg = None
@@ -724,7 +733,16 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     decode_device_key=decode_frc_ext_id,
                 )
                 print("=== Final Summary ===")
-                extra = build_summary_extra(summary, devices, analyzer, state, bus, args.bitrate)
+                extra = build_summary_extra(
+                    summary,
+                    devices,
+                    analyzer,
+                    state,
+                    bus,
+                    args.bitrate,
+                    now,
+                    args.stale_s,
+                )
                 print_summary(summary, now, extra)
             except Exception as exc:
                 print(f"WARNING: Failed to print summary on exit: {exc}")

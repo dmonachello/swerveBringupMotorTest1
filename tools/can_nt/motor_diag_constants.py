@@ -92,6 +92,7 @@ VENDOR_UNKNOWN = "UNKNOWN"
 
 CAUSE_CAN_BUS_ISSUE = "CAN_BUS_ISSUE"
 CAUSE_CONTROLLER_FAULT = "CONTROLLER_FAULT"
+CAUSE_POWER_DISTRIBUTION_FAULT = "POWER_DISTRIBUTION_FAULT"
 CAUSE_NO_POWER = "NO_POWER"
 CAUSE_LIMIT_ACTIVE = "LIMIT_ACTIVE"
 CAUSE_NO_MOTION = "NO_MOTION"
@@ -108,6 +109,7 @@ CONF_LOW = "low"
 CAUSE_ORDER = (
     CAUSE_CAN_BUS_ISSUE,
     CAUSE_CONTROLLER_FAULT,
+    CAUSE_POWER_DISTRIBUTION_FAULT,
     CAUSE_NO_POWER,
     CAUSE_LIMIT_ACTIVE,
     CAUSE_NO_MOTION,
@@ -145,3 +147,17 @@ FMT_CAUSE_LINE = "{index}) {cause} ({confidence})"
 FMT_FINDING_LINE = "- {cause} ({confidence})"
 FMT_EVIDENCE_LINE = "  Evidence: {evidence}"
 FMT_MISSING_LINE = "  {fields}"
+
+CAUSE_EXPLANATIONS = {
+    CAUSE_CAN_BUS_ISSUE: "Device not present on the bus.",
+    CAUSE_CONTROLLER_FAULT: "Controller reported a fault or error.",
+    CAUSE_POWER_DISTRIBUTION_FAULT: "Power distribution reported a fault or brownout.",
+    CAUSE_NO_POWER: "Bus voltage is too low for the controller.",
+    CAUSE_LIMIT_ACTIVE: "A limit switch is closed while motion is expected.",
+    CAUSE_NO_MOTION: "Motor is commanded but encoder reports no motion.",
+    CAUSE_LOW_CURRENT: "Controller is driving but current is unusually low.",
+    CAUSE_STALL: "Controller is driving and current is abnormally high.",
+    CAUSE_NOT_COMMANDED: "No command was issued to drive the motor.",
+    CAUSE_CONFIG_MISMATCH: "Device label is not in the active profile.",
+    CAUSE_UNKNOWN: "Insufficient telemetry to determine a cause.",
+}

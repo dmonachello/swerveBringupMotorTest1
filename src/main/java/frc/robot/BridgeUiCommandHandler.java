@@ -11,6 +11,8 @@ import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
 import frc.robot.input.BindingsManager;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
+import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
+import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
 import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 import frc.robot.tests.BringupTestRegistry;
 import frc.robot.ui.TcpUiServer;
@@ -45,6 +47,21 @@ public class BridgeUiCommandHandler {
   private static final long TCP_KEEPALIVE_MISSES = 5;
   private static final int UI_LOG_MAX_LINES = 200;
   private static final String JSON_KEY_VEL_RPM = "velRpm";
+  private static final String JSON_KEY_BUS_V = "busV";
+  private static final String JSON_KEY_TOTAL_CURRENT_A = "totalCurrentA";
+  private static final String JSON_KEY_SWITCHABLE_ENABLED = "switchableEnabled";
+  private static final String JSON_KEY_TEMP_C = "tempC";
+  private static final String JSON_KEY_BROWNOUT = "brownout";
+  private static final String JSON_KEY_CAN_WARNING = "canWarning";
+  private static final String JSON_KEY_HARDWARE_FAULT = "hardwareFault";
+  private static final String JSON_KEY_STICKY_BROWNOUT = "stickyBrownout";
+  private static final String JSON_KEY_STICKY_CAN_WARNING = "stickyCanWarning";
+  private static final String JSON_KEY_STICKY_CAN_BUS_OFF = "stickyCanBusOff";
+  private static final String JSON_KEY_STICKY_HAS_RESET = "stickyHasReset";
+  private static final String JSON_KEY_CHANNEL_CURRENT_A = "channelCurrentA";
+  private static final String JSON_KEY_CHANNEL_FAULT = "channelFault";
+  private static final String JSON_KEY_CHANNEL_STICKY_FAULT = "channelStickyFault";
+  private static final int INDEX_START = 0;
   private static final Gson GSON = new Gson();
   private static final double DEADBAND = BringupUtil.DEADBAND;
 
@@ -1979,8 +1996,100 @@ public class BridgeUiCommandHandler {
             obj.addProperty("tempC", ctre.tempC);
           }
         }
+        PdhStatusAttachment pdh = snap.getAttachment(PdhStatusAttachment.class);
+        if (pdh != null) {
+          applyPdhFields(obj, pdh);
+        }
+        PdpStatusAttachment pdp = snap.getAttachment(PdpStatusAttachment.class);
+        if (pdp != null) {
+          applyPdpFields(obj, pdp);
+        }
       }
       array.add(obj);
+    }
+    return array;
+  }
+
+  /**
+   * NAME
+   *   applyPdhFields - Add PDH telemetry to a runtime-state JSON entry.
+   */
+  private void applyPdhFields(JsonObject obj, PdhStatusAttachment pdh) {
+    obj.addProperty(JSON_KEY_BUS_V, pdh.voltage);
+    obj.addProperty(JSON_KEY_TOTAL_CURRENT_A, pdh.totalCurrent);
+    obj.addProperty(JSON_KEY_SWITCHABLE_ENABLED, pdh.switchableEnabled);
+    obj.addProperty(JSON_KEY_TEMP_C, pdh.temperature);
+    obj.addProperty(JSON_KEY_BROWNOUT, pdh.brownout);
+    obj.addProperty(JSON_KEY_CAN_WARNING, pdh.canWarning);
+    obj.addProperty(JSON_KEY_HARDWARE_FAULT, pdh.hardwareFault);
+    obj.addProperty(JSON_KEY_STICKY_BROWNOUT, pdh.stickyBrownout);
+    obj.addProperty(JSON_KEY_STICKY_CAN_WARNING, pdh.stickyCanWarning);
+    obj.addProperty(JSON_KEY_STICKY_CAN_BUS_OFF, pdh.stickyCanBusOff);
+    obj.addProperty(JSON_KEY_STICKY_HAS_RESET, pdh.stickyHasReset);
+    if (pdh.channelCurrentA != null) {
+      obj.add(JSON_KEY_CHANNEL_CURRENT_A, buildDoubleArray(pdh.channelCurrentA));
+    }
+    if (pdh.channelFault != null) {
+      obj.add(JSON_KEY_CHANNEL_FAULT, buildBooleanArray(pdh.channelFault));
+    }
+    if (pdh.channelStickyFault != null) {
+      obj.add(JSON_KEY_CHANNEL_STICKY_FAULT, buildBooleanArray(pdh.channelStickyFault));
+    }
+  }
+
+  /**
+   * NAME
+   *   applyPdpFields - Add PDP telemetry to a runtime-state JSON entry.
+   */
+  private void applyPdpFields(JsonObject obj, PdpStatusAttachment pdp) {
+    obj.addProperty(JSON_KEY_BUS_V, pdp.voltage);
+    obj.addProperty(JSON_KEY_TOTAL_CURRENT_A, pdp.totalCurrent);
+    obj.addProperty(JSON_KEY_SWITCHABLE_ENABLED, pdp.switchableEnabled);
+    obj.addProperty(JSON_KEY_TEMP_C, pdp.temperature);
+    obj.addProperty(JSON_KEY_BROWNOUT, pdp.brownout);
+    obj.addProperty(JSON_KEY_CAN_WARNING, pdp.canWarning);
+    obj.addProperty(JSON_KEY_HARDWARE_FAULT, pdp.hardwareFault);
+    obj.addProperty(JSON_KEY_STICKY_BROWNOUT, pdp.stickyBrownout);
+    obj.addProperty(JSON_KEY_STICKY_CAN_WARNING, pdp.stickyCanWarning);
+    obj.addProperty(JSON_KEY_STICKY_CAN_BUS_OFF, pdp.stickyCanBusOff);
+    obj.addProperty(JSON_KEY_STICKY_HAS_RESET, pdp.stickyHasReset);
+    if (pdp.channelCurrentA != null) {
+      obj.add(JSON_KEY_CHANNEL_CURRENT_A, buildDoubleArray(pdp.channelCurrentA));
+    }
+    if (pdp.channelFault != null) {
+      obj.add(JSON_KEY_CHANNEL_FAULT, buildBooleanArray(pdp.channelFault));
+    }
+    if (pdp.channelStickyFault != null) {
+      obj.add(JSON_KEY_CHANNEL_STICKY_FAULT, buildBooleanArray(pdp.channelStickyFault));
+    }
+  }
+
+  /**
+   * NAME
+   *   buildDoubleArray - Convert a double array to JsonArray.
+   */
+  private JsonArray buildDoubleArray(double[] values) {
+    JsonArray array = new JsonArray();
+    if (values == null) {
+      return array;
+    }
+    for (int idx = INDEX_START; idx < values.length; idx++) {
+      array.add(values[idx]);
+    }
+    return array;
+  }
+
+  /**
+   * NAME
+   *   buildBooleanArray - Convert a boolean array to JsonArray.
+   */
+  private JsonArray buildBooleanArray(boolean[] values) {
+    JsonArray array = new JsonArray();
+    if (values == null) {
+      return array;
+    }
+    for (int idx = INDEX_START; idx < values.length; idx++) {
+      array.add(values[idx]);
     }
     return array;
   }

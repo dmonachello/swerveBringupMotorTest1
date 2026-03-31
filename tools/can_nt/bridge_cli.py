@@ -70,6 +70,7 @@ from tools.can_nt.bridge_session import BridgeEvent, BridgeSession
 from tools.can_nt.motor_diag_constants import (
     CMD_DIAGNOSE,
     CMD_MOTOR,
+    CAUSE_EXPLANATIONS,
     FMT_CAUSE_LINE,
     FMT_EVIDENCE_LINE,
     FMT_FINDING_LINE,
@@ -4264,7 +4265,7 @@ class BridgeCli:
                 print(MSG_DEVICE_NOT_FOUND)
             return EXIT_CODE_ERROR if self._batch else None
         profile_labels = collect_profile_labels(self._local_root_payload, self._active_profile_name())
-        report = diagnose_motor(result.telemetry, profile_labels)
+        report = diagnose_motor(result.telemetry, profile_labels, result.power_devices)
         self._print_diagnosis(report)
         return None
 
@@ -4281,6 +4282,9 @@ class BridgeCli:
                     index=idx, cause=finding.cause, confidence=finding.confidence
                 )
             )
+            explanation = CAUSE_EXPLANATIONS.get(finding.cause)
+            if explanation:
+                print(f"  {explanation}")
             if finding.evidence:
                 print(FMT_EVIDENCE_LINE.format(evidence=SEP_COMMA_SPACE.join(finding.evidence)))
         if report.findings:
@@ -4291,6 +4295,9 @@ class BridgeCli:
                         cause=finding.cause, confidence=finding.confidence
                     )
                 )
+                explanation = CAUSE_EXPLANATIONS.get(finding.cause)
+                if explanation:
+                    print(f"  {explanation}")
                 if finding.evidence:
                     print(
                         FMT_EVIDENCE_LINE.format(

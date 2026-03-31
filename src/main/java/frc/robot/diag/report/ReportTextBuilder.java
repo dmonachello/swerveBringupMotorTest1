@@ -9,6 +9,7 @@ import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.EncoderAttachment;
 import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.diag.snapshots.MotorSpecAttachment;
+import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
 import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
 import frc.robot.diag.snapshots.PcSnapshot;
 import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
@@ -35,6 +36,11 @@ public final class ReportTextBuilder {
   private static final String LIMIT_STATE_UNKNOWN = "?";
   private static final String LIMIT_STATE_CLOSED = "CLOSED";
   private static final String LIMIT_STATE_OPEN = "OPEN";
+  private static final String DEVICE_TYPE_PDP = "PDP";
+  private static final String PREFIX_PDP_CAN = "  PDP CAN ";
+  private static final String TEXT_PRESENT_NO = ": present=NO";
+  private static final String TEXT_PRESENT_YES = ": present=YES";
+  private static final String TEXT_NO_STATUS_ATTACHMENT = " (no status attachment)";
 
   /**
    * NAME
@@ -186,6 +192,8 @@ public final class ReportTextBuilder {
         appendCANdle(sb, snap);
       } else if ("PDH".equals(snap.deviceType)) {
         appendPdhDevice(sb, snap);
+      } else if (DEVICE_TYPE_PDP.equals(snap.deviceType)) {
+        appendPdpDevice(sb, snap);
       } else if ("roboRIO".equals(snap.deviceType)) {
         ReportTextUtil.appendLine(
             sb,
@@ -364,6 +372,62 @@ public final class ReportTextBuilder {
             sb,
             "    Ch " + String.format("%02d", ch) +
             " current=" + String.format("%6.2f", pdh.channelCurrentA[ch]) + "A" +
+            " activeFault=" + formatBoolean(active) +
+            " stickyFault=" + formatBoolean(sticky) +
+            " status=" + status);
+      }
+    }
+  }
+
+  /**
+   * NAME
+   *   appendPdpDevice - Append PDP status section.
+   */
+  private void appendPdpDevice(StringBuilder sb, DeviceSnapshot snap) {
+    if (!snap.present) {
+      ReportTextUtil.appendLine(
+          sb,
+          PREFIX_PDP_CAN + snap.canId + TEXT_PRESENT_NO + formatNote(snap.note));
+      return;
+    }
+    PdpStatusAttachment pdp = snap.getAttachment(PdpStatusAttachment.class);
+    if (pdp == null) {
+      ReportTextUtil.appendLine(
+          sb,
+          PREFIX_PDP_CAN + snap.canId + TEXT_PRESENT_YES + TEXT_NO_STATUS_ATTACHMENT);
+      return;
+    }
+    ReportTextUtil.appendLine(
+        sb,
+        PREFIX_PDP_CAN + snap.canId +
+        TEXT_PRESENT_YES +
+        " voltage=" + formatDouble(pdp.voltage, 2) + "V" +
+        " totalCurrent=" + formatDouble(pdp.totalCurrent, 2) + "A" +
+        " switchable=" + (pdp.switchableEnabled ? "ON" : "OFF") +
+        " tempC=" + formatDouble(pdp.temperature, 1));
+
+    ReportTextUtil.appendLine(
+        sb,
+        "    Faults: brownout=" + formatBoolean(pdp.brownout) +
+        " canWarn=" + formatBoolean(pdp.canWarning) +
+        " hwFault=" + formatBoolean(pdp.hardwareFault));
+    ReportTextUtil.appendLine(
+        sb,
+        "    Sticky: brownout=" + formatBoolean(pdp.stickyBrownout) +
+        " canWarn=" + formatBoolean(pdp.stickyCanWarning) +
+        " busOff=" + formatBoolean(pdp.stickyCanBusOff) +
+        " hasReset=" + formatBoolean(pdp.stickyHasReset));
+
+    if (pdp.channelCurrentA != null) {
+      for (int ch = 0; ch < pdp.channelCurrentA.length; ch++) {
+        boolean active = pdp.channelFault != null && ch < pdp.channelFault.length && pdp.channelFault[ch];
+        boolean sticky = pdp.channelStickyFault != null && ch < pdp.channelStickyFault.length
+            && pdp.channelStickyFault[ch];
+        String status = sticky ? "STICKY_FAULT" : (active ? "ACTIVE_FAULT" : "OK");
+        ReportTextUtil.appendLine(
+            sb,
+            "    Ch " + String.format("%02d", ch) +
+            " current=" + String.format("%6.2f", pdp.channelCurrentA[ch]) + "A" +
             " activeFault=" + formatBoolean(active) +
             " stickyFault=" + formatBoolean(sticky) +
             " status=" + status);

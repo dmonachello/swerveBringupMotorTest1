@@ -6,6 +6,8 @@ import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.EncoderAttachment;
 import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.diag.snapshots.MotorSpecAttachment;
+import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
+import frc.robot.manufacturers.ctre.util.PdpStatusReader;
 import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
 import frc.robot.manufacturers.DeviceAddResult;
 import frc.robot.manufacturers.DeviceRole;
@@ -42,12 +44,18 @@ public final class BringupCore {
   private static final int TYPE_ROBOT_CONTROLLER = 1;
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
   private static final int REPORT_BATCH = 2;
+  private static final String VENDOR_CTRE = "CTRE";
+  private static final String DEVICE_TYPE_PDP = "PDP";
+  private static final String NOTE_PDP_READ_FAIL_PREFIX = "PDP read failed: ";
+  private static final String NOTE_PDP_NOT_INITIALIZED = "PDP not initialized";
 
   private final List<ManufacturerGroup> manufacturerGroups = ManufacturerRegistry.buildGroups();
   private final Map<String, ManufacturerGroup> manufacturerByVendor =
       ManufacturerRegistry.indexByVendor(manufacturerGroups);
   private PdhStatusReader pdhReader;
   private int pdhReaderCanId = BringupUtil.DISABLED_CAN_ID;
+  private PdpStatusReader pdpReader;
+  private int pdpReaderCanId = BringupUtil.DISABLED_CAN_ID;
 
   private int nextMotorGroupIndex = 0;
 
@@ -2513,6 +2521,28 @@ public final class BringupCore {
       devices.add(snap);
     }
 
+    if (BringupUtil.isEnabledCanId(BringupUtil.PDP_CAN_ID)) {
+      DeviceSnapshot snap = new DeviceSnapshot();
+      snap.vendor = VENDOR_CTRE;
+      snap.deviceType = DEVICE_TYPE_PDP;
+      snap.canId = BringupUtil.PDP_CAN_ID;
+      ensurePdpReader();
+      if (pdpReader != null) {
+        try {
+          PdpStatusAttachment pdpStatus = pdpReader.snapshot();
+          snap.present = true;
+          snap.addAttachment(pdpStatus);
+        } catch (RuntimeException ex) {
+          snap.present = false;
+          snap.note = NOTE_PDP_READ_FAIL_PREFIX + ex.getMessage();
+        }
+      } else {
+        snap.present = false;
+        snap.note = NOTE_PDP_NOT_INITIALIZED;
+      }
+      devices.add(snap);
+    }
+
     if (BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
       DeviceSnapshot snap = new DeviceSnapshot();
       snap.vendor = "NI";
@@ -2540,6 +2570,23 @@ public final class BringupCore {
     if (pdhReader == null || pdhReaderCanId != canId) {
       pdhReader = new PdhStatusReader(canId);
       pdhReaderCanId = canId;
+    }
+  }
+
+  /**
+   * NAME
+   *   ensurePdpReader - Ensure PDP reader matches current CAN ID.
+   */
+  private void ensurePdpReader() {
+    int canId = BringupUtil.PDP_CAN_ID;
+    if (!BringupUtil.isEnabledCanId(canId)) {
+      pdpReader = null;
+      pdpReaderCanId = BringupUtil.DISABLED_CAN_ID;
+      return;
+    }
+    if (pdpReader == null || pdpReaderCanId != canId) {
+      pdpReader = new PdpStatusReader(canId);
+      pdpReaderCanId = canId;
     }
   }
 

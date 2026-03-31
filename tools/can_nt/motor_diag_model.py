@@ -14,6 +14,8 @@ DESCRIPTION
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from tools.can_nt.power_diag_model import PowerDistributionTelemetry
+
 
 @dataclass
 class PowerState:
@@ -166,3 +168,4 @@ class NormalizeResult:
     candidates: List[str] = field(default_factory=list)
     missing: List[str] = field(default_factory=list)
     profile_labels: List[str] = field(default_factory=list)
+    power_devices: List[PowerDistributionTelemetry] = field(default_factory=list)

@@ -75,6 +75,7 @@ public final class BringupUtil {
   private static final int[] FALLBACK_DEMO_CANCODER_CAN_IDS = { -1, -1, -1, -1 };
 
   private static final int FALLBACK_PDH_CAN_ID = 1;
+  private static final int FALLBACK_PDP_CAN_ID = 0;
   private static final int FALLBACK_PIGEON_CAN_ID = 1;
   private static final int FALLBACK_ROBORIO_CAN_ID = 0;
 
@@ -173,6 +174,7 @@ public final class BringupUtil {
   // Active device list built from the selected profile.
   private static final List<DeviceEntry> ACTIVE_DEVICES = new ArrayList<>();
   public static int PDH_CAN_ID = FALLBACK_PDH_CAN_ID;
+  public static int PDP_CAN_ID = FALLBACK_PDP_CAN_ID;
   public static int PIGEON_CAN_ID = FALLBACK_PIGEON_CAN_ID;
   public static int ROBORIO_CAN_ID = FALLBACK_ROBORIO_CAN_ID;
   public static final int DISABLED_CAN_ID = -1;
@@ -278,6 +280,7 @@ public final class BringupUtil {
     List<DeviceDefinition> profileDevices = resolveProfileDevices(config);
     buildDeviceConfigs(profileDevices);
     PDH_CAN_ID = resolveSingletonIdByMfgType(profileDevices, MFG_REV_ID, DEVTYPE_POWER_ID);
+    PDP_CAN_ID = resolveSingletonIdByMfgType(profileDevices, MFG_CTRE_ID, DEVTYPE_POWER_ID);
     PIGEON_CAN_ID = resolveSingletonIdByMfgType(profileDevices, MFG_CTRE_ID, DEVTYPE_GYRO_ID);
     ROBORIO_CAN_ID = resolveSingletonIdByMfgType(profileDevices, MFG_NI_ID, DEVTYPE_ROBORIO_ID);
     activeProfile = profileName;
@@ -413,6 +416,7 @@ public final class BringupUtil {
     ACTIVE_DEVICES.clear();
     DEVICE_CONFIGS.clear();
     PDH_CAN_ID = DISABLED_CAN_ID;
+    PDP_CAN_ID = DISABLED_CAN_ID;
     PIGEON_CAN_ID = DISABLED_CAN_ID;
     ROBORIO_CAN_ID = DISABLED_CAN_ID;
     activeProfileApplied = false;

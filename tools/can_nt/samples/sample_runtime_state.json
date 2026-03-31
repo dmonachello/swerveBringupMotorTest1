@@ -33,6 +33,7 @@
       "motorCurrentA": 12.4,
       "cmdDuty": 0.2,
       "appliedDuty": 0.19,
+      "appliedV": 2.28,
       "velRpm": 0.0,
       "tempC": 38.5
     },
@@ -46,6 +47,7 @@
       "motorCurrentA": 3.1,
       "cmdDuty": 0.05,
       "appliedDuty": 0.05,
+      "appliedV": 0.60,
       "velRpm": 1200.0,
       "tempC": 31.2
     },
@@ -64,6 +66,28 @@
       "id": 19,
       "presenceConfidence": 0.75,
       "lastSeenMs": 1761345597000
+    },
+    {
+      "label": "pdh",
+      "vendor": "REV",
+      "type": "PDH",
+      "id": 1,
+      "presenceConfidence": 0.99,
+      "lastSeenMs": 1761345596000,
+      "busV": 11.9,
+      "totalCurrentA": 34.2,
+      "switchableEnabled": true,
+      "tempC": 28.0,
+      "brownout": false,
+      "canWarning": false,
+      "hardwareFault": false,
+      "stickyBrownout": false,
+      "stickyCanWarning": false,
+      "stickyCanBusOff": false,
+      "stickyHasReset": false,
+      "channelCurrentA": [1.2, 0.0, 3.4, 0.6],
+      "channelFault": [false, false, false, false],
+      "channelStickyFault": [false, false, false, false]
     }
   ]
 }

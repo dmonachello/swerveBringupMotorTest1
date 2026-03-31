@@ -24,6 +24,7 @@ from tools.can_nt.motor_diag_constants import (
     CAUSE_CONTROLLER_FAULT,
     CAUSE_LIMIT_ACTIVE,
     CAUSE_LOW_CURRENT,
+    CAUSE_POWER_DISTRIBUTION_FAULT,
     CAUSE_NO_MOTION,
     CAUSE_NO_POWER,
     CAUSE_NOT_COMMANDED,
@@ -64,10 +65,14 @@ from tools.can_nt.motor_diag_constants import (
     TEXT_TRUE,
 )
 from tools.can_nt.motor_diag_model import DiagnosisFinding, DiagnosisReport, NormalizedMotorTelemetry
+from tools.can_nt.power_diag_model import PowerDistributionTelemetry
+from tools.can_nt.power_diag_constants import FIELD_BROWNOUT, FLAG_BROWNOUT
 
 
 def diagnose_motor(
-    telemetry: NormalizedMotorTelemetry, profile_labels: List[str]
+    telemetry: NormalizedMotorTelemetry,
+    profile_labels: List[str],
+    power_devices: List[PowerDistributionTelemetry],
 ) -> DiagnosisReport:
     """
     NAME
@@ -76,6 +81,7 @@ def diagnose_motor(
     PARAMETERS
         telemetry - Normalized motor telemetry.
         profile_labels - Active profile labels (lower-cased).
+        power_devices - Normalized PDH/PDP telemetry list.
 
     RETURNS
         DiagnosisReport containing ranked causes and findings.
@@ -86,7 +92,8 @@ def diagnose_motor(
         return _rank_report(report)
 
     _append_controller_faults(report, telemetry)
-    _append_no_power(report, telemetry)
+    _append_power_distribution_faults(report, power_devices)
+    _append_no_power(report, telemetry, power_devices)
     _append_not_commanded(report, telemetry)
     _append_limit_active(report, telemetry)
     _append_no_motion(report, telemetry)
@@ -123,10 +130,26 @@ def _append_controller_faults(
         report.causes.append(_cause(CAUSE_CONTROLLER_FAULT, CONF_HIGH, evidence))
 
 
-def _append_no_power(report: DiagnosisReport, telemetry: NormalizedMotorTelemetry) -> None:
+def _append_no_power(
+    report: DiagnosisReport,
+    telemetry: NormalizedMotorTelemetry,
+    power_devices: List[PowerDistributionTelemetry],
+) -> None:
     bus_v = telemetry.power.bus_v
     if bus_v is not None and bus_v < BUS_V_LOW:
         report.causes.append(_cause(CAUSE_NO_POWER, CONF_HIGH, [_ev_pair(FIELD_BUS_V, bus_v)]))
+        return
+    power_bus_v, power_label = _min_power_bus_v(power_devices)
+    if power_bus_v is not None and power_bus_v < BUS_V_LOW:
+        label_field = _power_field_label(FIELD_BUS_V, power_label or STR_EMPTY)
+        report.causes.append(
+            _cause(CAUSE_NO_POWER, CONF_HIGH, [_ev_pair(label_field, power_bus_v)])
+        )
+        return
+    if _power_brownout(power_devices):
+        report.causes.append(
+            _cause(CAUSE_NO_POWER, CONF_HIGH, [_ev_pair(FIELD_BROWNOUT, TEXT_TRUE)])
+        )
 
 
 def _append_not_commanded(report: DiagnosisReport, telemetry: NormalizedMotorTelemetry) -> None:
@@ -162,19 +185,26 @@ def _append_limit_active(report: DiagnosisReport, telemetry: NormalizedMotorTele
 def _append_no_motion(report: DiagnosisReport, telemetry: NormalizedMotorTelemetry) -> None:
     if not _has_drive_evidence(telemetry):
         return
+    applied_v = _effective_applied_v(telemetry)
     vel = telemetry.encoder.vel_rpm
     if vel is None:
         return
     if abs(vel) <= MOTION_EPS_RPM:
-        report.causes.append(
-            _cause(CAUSE_NO_MOTION, CONF_MED, [_ev_pair(FIELD_APPLIED_V, telemetry.power.applied_v), _ev_pair(FIELD_VEL_RPM, vel)])
-        )
+        evidence = []
+        if applied_v is not None:
+            evidence.append(_ev_pair(FIELD_APPLIED_V, applied_v))
+        elif telemetry.power.applied_duty is not None:
+            evidence.append(_ev_pair(FIELD_APPLIED_DUTY, telemetry.power.applied_duty))
+        elif telemetry.power.cmd_duty is not None:
+            evidence.append(_ev_pair(FIELD_CMD_DUTY, telemetry.power.cmd_duty))
+        evidence.append(_ev_pair(FIELD_VEL_RPM, vel))
+        report.causes.append(_cause(CAUSE_NO_MOTION, CONF_MED, evidence))
 
 
 def _append_low_current(report: DiagnosisReport, telemetry: NormalizedMotorTelemetry) -> None:
     if not _has_drive_evidence(telemetry):
         return
-    applied_v = telemetry.power.applied_v
+    applied_v = _effective_applied_v(telemetry)
     current = telemetry.load.motor_current_a
     if applied_v is None or current is None:
         return
@@ -198,7 +228,7 @@ def _append_low_current(report: DiagnosisReport, telemetry: NormalizedMotorTelem
 def _append_stall(report: DiagnosisReport, telemetry: NormalizedMotorTelemetry) -> None:
     if not _has_drive_evidence(telemetry):
         return
-    applied_v = telemetry.power.applied_v
+    applied_v = _effective_applied_v(telemetry)
     current = telemetry.load.motor_current_a
     if applied_v is None or current is None:
         return
@@ -246,6 +276,24 @@ def _rank_report(report: DiagnosisReport) -> DiagnosisReport:
     return report
 
 
+def _append_power_distribution_faults(
+    report: DiagnosisReport, power_devices: List[PowerDistributionTelemetry]
+) -> None:
+    evidence: List[str] = []
+    for device in power_devices:
+        if not device.fault_flags and not device.sticky_fault_flags:
+            continue
+        label = device.label or STR_EMPTY
+        if device.fault_flags:
+            evidence.append(_ev_list(_power_field_label(FIELD_FAULT_FLAGS, label), device.fault_flags))
+        if device.sticky_fault_flags:
+            evidence.append(
+                _ev_list(_power_field_label(FIELD_STICKY_FAULT_FLAGS, label), device.sticky_fault_flags)
+            )
+    if evidence:
+        report.findings.append(_cause(CAUSE_POWER_DISTRIBUTION_FAULT, CONF_MED, evidence))
+
+
 def _cause_rank(cause: str) -> int:
     if cause in CAUSE_ORDER:
         return CAUSE_ORDER.index(cause)
@@ -287,6 +335,14 @@ def _has_drive_evidence(telemetry: NormalizedMotorTelemetry) -> bool:
     return False
 
 
+def _effective_applied_v(telemetry: NormalizedMotorTelemetry) -> Optional[float]:
+    if telemetry.power.applied_v is not None:
+        return telemetry.power.applied_v
+    if telemetry.power.bus_v is None or telemetry.power.applied_duty is None:
+        return None
+    return telemetry.power.bus_v * telemetry.power.applied_duty
+
+
 def _motor_not_running(telemetry: NormalizedMotorTelemetry) -> bool:
     vel = telemetry.encoder.vel_rpm
     if vel is not None:
@@ -325,6 +381,31 @@ def _missing_fields(telemetry: NormalizedMotorTelemetry) -> List[str]:
     if telemetry.encoder.vel_rpm is None:
         fields.append(FIELD_VEL_RPM)
     return fields
+
+
+def _min_power_bus_v(
+    power_devices: List[PowerDistributionTelemetry],
+) -> tuple[Optional[float], Optional[str]]:
+    pairs = [(dev.bus_v, dev.label) for dev in power_devices if dev.bus_v is not None]
+    if not pairs:
+        return (None, None)
+    bus_v, label = min(pairs, key=lambda item: item[0])
+    return (bus_v, label)
+
+
+def _power_brownout(power_devices: List[PowerDistributionTelemetry]) -> bool:
+    for device in power_devices:
+        if FLAG_BROWNOUT in device.fault_flags:
+            return True
+        if FLAG_BROWNOUT in device.sticky_fault_flags:
+            return True
+    return False
+
+
+def _power_field_label(field: str, label: str) -> str:
+    if not label:
+        return field
+    return field + BRACKET_OPEN + label + BRACKET_CLOSE
 
 
 def _ev_pair(field: str, value: Optional[object]) -> str:

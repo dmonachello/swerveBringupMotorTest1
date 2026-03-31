@@ -79,6 +79,7 @@ from tools.can_nt.motor_diag_model import (
     NotesState,
     PowerState,
 )
+from tools.can_nt.power_diag_normalize import normalize_power_distribution
 
 
 def normalize_runtime_state(state: Dict[str, Any], label: str) -> NormalizeResult:
@@ -97,6 +98,7 @@ def normalize_runtime_state(state: Dict[str, Any], label: str) -> NormalizeResul
     labels = _device_labels(devices)
     resolved, candidates = _resolve_label(labels, label)
     result = NormalizeResult()
+    result.power_devices = normalize_power_distribution(state)
     result.candidates = candidates
     if resolved is None:
         return result

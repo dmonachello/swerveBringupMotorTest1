@@ -38,7 +38,11 @@ TEXT_EMPTY = ""
 NODE_TYPE_DEVICE = "device"
 NODE_TYPE_CALLOUT = "callout"
 MENU_LABEL_ADD_ANALYZER = "Add Analyzer"
+MENU_LABEL_ADD_DEVICE = "Add Node..."
+MENU_LABEL_ADD_DIO_DEVICE = "Add DIO Device..."
 MENU_LABEL_SET_CANNECT_PORT = "Set CANnect Port..."
+DIALOG_TITLE_ADD_DIO = "Add DIO Device"
+DIALOG_TITLE_REPLACE = "Replace"
 ANALYZER_LABEL_PREFIX = "Analyzer"
 ANALYZER_DEFAULT_CAN_ID = -1
 ANALYZER_NODE_TYPE = "diagram"
@@ -141,6 +145,16 @@ MODEL_NEO_550 = "NEO 550"
 MODEL_FLEX = "VORTEX"
 MODEL_KRAKEN = "KRAKEN"
 MODEL_FALCON = "FALCON"
+HELP_DIO_TITLE = "DIO Devices"
+HELP_DIO_BODY = (
+    "Purpose: Model DIO devices like limit switches and external encoders.\n"
+    "\n"
+    "- Use Edit -> Add DIO Device... to create a DIO node.\n"
+    "- Set Interface=DIO, Type=limitSwitch or encoderExternal, and DIO channel.\n"
+    "- DIO devices must be attached to a host device (Edit -> Attach Device).\n"
+    "- DIO devices must be wired to roboRIO (Edit -> Wire DIO to roboRIO).\n"
+    "- Both links are required for validation and exports.\n"
+)
 
 try:
     from tools.common.json_io import read_json
@@ -573,6 +587,8 @@ class TopologyEditor(tk.Tk):
         edit_menu.add_command(label="Paste", command=self._on_paste)
         edit_menu.add_command(label="Bulk Edit...", command=self._bulk_edit_selection)
         edit_menu.add_separator()
+        edit_menu.add_command(label=MENU_LABEL_ADD_DEVICE, command=self._on_add)
+        edit_menu.add_command(label=MENU_LABEL_ADD_DIO_DEVICE, command=self._on_add_dio_device)
         edit_menu.add_command(label="Add CANnect Inject", command=self._add_cannect_inject)
         edit_menu.add_command(label="Add CANnect Direct", command=self._add_cannect_direct)
         edit_menu.add_command(label=MENU_LABEL_ADD_ANALYZER, command=self._add_analyzer_node)
@@ -3362,7 +3378,7 @@ class TopologyEditor(tk.Tk):
         if category in SINGLETON_CATEGORIES:
             if any(n.category == category for n in self._nodes):
                 replace = messagebox.askyesno(
-                    "Replace",
+                    DIALOG_TITLE_REPLACE,
                     f"{category} already exists. Replace it?",
                 )
                 if not replace:
@@ -3474,6 +3490,77 @@ class TopologyEditor(tk.Tk):
         self._next_key += 1
         self._nodes.append(node)
         self._layout_width = max(self._layout_width, node.x + LAYOUT_PAD_X)
+        self._refresh_list()
+        self._redraw_canvas()
+        self._select_node(node.key)
+
+    def _on_add_dio_device(self) -> None:
+        """
+        NAME
+            _on_add_dio_device - Add a DIO device node with DIO defaults.
+        """
+        initial = Node(
+            key=self._next_key,
+            category=GENERIC_CATEGORY,
+            label=TEXT_EMPTY,
+            can_id=CAN_ID_DIAGRAM_DEFAULT,
+            node_type=NODE_TYPE_DEVICE,
+            interface=INTERFACE_DIO,
+            vendor=TEXT_EMPTY,
+            device_type=DIO_DEVICE_TYPES[0] if DIO_DEVICE_TYPES else TEXT_EMPTY,
+            motor=TEXT_EMPTY,
+        )
+        dialog = NodeDialog(self, DIALOG_TITLE_ADD_DIO, initial=initial)
+        self.wait_window(dialog)
+        if not dialog.result:
+            return
+        self._push_undo()
+        data = dialog.result
+        category = str(data["category"])
+        if category in SINGLETON_CATEGORIES:
+            if any(n.category == category for n in self._nodes):
+                replace = messagebox.askyesno(
+                    DIALOG_TITLE_REPLACE,
+                    f"{category} already exists. Replace it?",
+                )
+                if not replace:
+                    return
+                self._nodes = [n for n in self._nodes if n.category != category]
+        is_diagram_category = category in DIAGRAM_CATEGORIES
+        vendor_default, device_type_default, tag_defaults = (TEXT_EMPTY, TEXT_EMPTY, [])
+        if is_diagram_category:
+            vendor_default, device_type_default, tag_defaults = self._diagram_defaults(category)
+        tags = self._normalize_tags(data.get("tags", []))
+        if is_diagram_category:
+            tags = self._normalize_tags(tags + tag_defaults)
+        interface = str(data.get("interface", INTERFACE_DIO)).strip() or INTERFACE_DIO
+        node = Node(
+            key=self._next_key,
+            category=category,
+            label=str(data["label"]),
+            can_id=CAN_ID_DIAGRAM_DEFAULT if is_diagram_category else int(data["can_id"]),
+            node_type=ANALYZER_NODE_TYPE if is_diagram_category else NODE_TYPE_DEVICE,
+            interface=interface if not is_diagram_category else INTERFACE_CAN,
+            vendor=str(data.get("vendor", TEXT_EMPTY)) if not is_diagram_category else vendor_default,
+            device_type=str(data.get("device_type", TEXT_EMPTY)) if not is_diagram_category else device_type_default,
+            motor=str(data.get("motor", TEXT_EMPTY)) if not is_diagram_category else TEXT_EMPTY,
+            limits=data.get("limits") if (not is_diagram_category and isinstance(data.get("limits"), dict)) else None,
+            dio=data.get("dio") if (not is_diagram_category and interface == INTERFACE_DIO) else None,
+            invert=data.get("dio_invert") if (not is_diagram_category and interface == INTERFACE_DIO) else None,
+            terminator=bool(data.get("terminator")) if (not is_diagram_category and data.get("terminator") is not None) else None,
+            x=self._next_x_position(),
+            row=len(self._nodes) % 2,
+            bus_index=len(self._nodes) % max(len(self._bus_offsets), 1),
+            scale=1.0,
+            tags=tags,
+            profile_visible=False if is_diagram_category else True,
+        )
+        self._next_key += 1
+        self._nodes.append(node)
+        self._layout_width = max(self._layout_width, node.x + 200)
+        self._prune_attachment_links()
+        self._prune_dio_wiring_links()
+        self._ensure_dio_wiring_links()
         self._refresh_list()
         self._redraw_canvas()
         self._select_node(node.key)
@@ -7378,6 +7465,7 @@ class TopologyEditor(tk.Tk):
                 "- Groups are stored under bridgeConfig.byProfile.<profile>.groups in bringup_system.json.\n"
                 "- View -> Show Group Overlays toggles dashed group boxes.\n"
             ),
+            HELP_DIO_TITLE: HELP_DIO_BODY,
             "Bus Segments": (
                 "Purpose: Understand bus segment editing.\n"
                 "\n"
