@@ -306,6 +306,8 @@ CMD_DEVICE_TYPE_NAME = "device-type"
 CMD_DEVICE_TYPES = "device-types"
 CMD_DEVICE_USAGE = "device-usage"
 CMD_SHOW_ALL = "show-all"
+CMD_ROBOT = "robot"
+CMD_LOCAL = "local"
 CMD_LOCAL_CONFIG = "local-config"
 CMD_SAVE_UNIFIED = "unified-config"
 CMD_VALIDATE_ALL = PARSER_SPEC.cmd_validate_all
@@ -531,7 +533,10 @@ MESSAGE_HELP_QUICK_HEADER = "Quick help:"
 MESSAGE_HELP_QUICK_EMPTY = "  (no commands)"
 MESSAGE_HELP_QUICK_ALIASES = "Aliases: ls=show, cfg=configure terminal, prof=profile, val=validate, savep=save profiles"
 MESSAGE_HINT_PREFIX = "HINT: "
-MESSAGE_HINT_VALIDATE = "validate config [path] [--all] | validate profiles | validate tests | validate bindings [path] | validate can-mappings [path]"
+MESSAGE_HINT_VALIDATE = (
+    "validate config [path] [--all] | validate profiles [robot|local] | validate tests "
+    "| validate bindings [path] | validate can-mappings [path]"
+)
 MESSAGE_HINT_SAVE = "save config <path> | save local-config <path> | save profiles <path> | save unified-config <path>"
 MESSAGE_HINT_SHOW = "show <target> [--json] [--pretty] [robot|local|both]"
 MESSAGE_HINT_PROFILE = (
@@ -541,6 +546,12 @@ MESSAGE_HINT_PROFILE = (
 MESSAGE_HINT_CAN_MAPPINGS = "can-mappings show [manufacturers|device-types] | can-mappings manufacturer set <id> <name>"
 MESSAGE_HINT_VALIDATE_CONFIG_PROFILE = "validate config expects a file path; did you mean `profile <profile>`?"
 MESSAGE_VALIDATE_OK = "OK"
+MESSAGE_VALIDATE_ROBOT_NOT_CONNECTED = "Robot not connected."
+MESSAGE_VALIDATE_ROBOT_DEVICES_FETCH = "ERROR: Failed to fetch robot devices."
+MESSAGE_VALIDATE_PROFILES_MISSING = "  missing: {labels}"
+MESSAGE_VALIDATE_PROFILES_EXTRA = "  extra: {labels}"
+MESSAGE_VALIDATE_PROFILES_HEADER = "Profile devices do not match robot:"
+MESSAGE_LABEL_SHOW_DEVICES = "show devices"
 MESSAGE_VALIDATE_BINDINGS_LOAD = "ERROR: Failed to read bindings: {path}"
 MESSAGE_VALIDATE_MAPPINGS_LOAD = "ERROR: Failed to read CAN mappings: {path}"
 MESSAGE_VALIDATE_TESTS_HEADER = "Test validation errors:"
@@ -1413,6 +1424,45 @@ class BridgeCli:
         message = self._format_store_errors(result.errors())
         return (False, message)
 
+    def validate_profiles_robot(self) -> tuple[bool, str]:
+        """
+        NAME
+            validate_profiles_robot - Compare local profile devices to robot devices.
+        """
+        if not self._session.is_connected():
+            return (False, MESSAGE_VALIDATE_ROBOT_NOT_CONNECTED)
+        profile_name = self._active_profile_name()
+        if not profile_name:
+            return (False, MESSAGE_ERR_PROFILE_REQUIRED)
+        local_labels = self._profile_device_labels(profile_name)
+        seq = show_devices(self._session, json_output=True)
+        if seq is None:
+            return (False, MESSAGE_VALIDATE_ROBOT_DEVICES_FETCH)
+        event = self._wait_for_seq(seq, print_events=False)
+        if self._event_failed(event, MESSAGE_LABEL_SHOW_DEVICES):
+            return (False, MESSAGE_VALIDATE_ROBOT_DEVICES_FETCH)
+        payload = parse_json_arg(event.json_text) if event else None
+        devices = payload.get(KEY_DEVICES) if isinstance(payload, dict) else None
+        robot_labels: set[str] = set()
+        if isinstance(devices, list):
+            for entry in devices:
+                if isinstance(entry, dict):
+                    label = str(entry.get(KEY_LABEL, "")).strip()
+                else:
+                    label = str(entry).strip()
+                if label:
+                    robot_labels.add(label.lower())
+        missing = sorted(local_labels - robot_labels)
+        extra = sorted(robot_labels - local_labels)
+        if missing or extra:
+            lines = [MESSAGE_VALIDATE_PROFILES_HEADER]
+            if missing:
+                lines.append(MESSAGE_VALIDATE_PROFILES_MISSING.format(labels=SEP_COMMA_SPACE.join(missing)))
+            if extra:
+                lines.append(MESSAGE_VALIDATE_PROFILES_EXTRA.format(labels=SEP_COMMA_SPACE.join(extra)))
+            return (False, SEP_NEWLINE.join(lines))
+        return (True, MESSAGE_VALIDATE_OK)
+
     def validate_tests_only(self) -> tuple[bool, str]:
         """
         NAME
@@ -1898,6 +1948,8 @@ class BridgeCli:
             return [PLACEHOLDER_PATH, CMD_VALIDATE_ALL]
         if len(tokens) == COUNT_TWO and tokens[COUNT_ZERO].lower() == CMD_CONFIG:
             return [CMD_VALIDATE_ALL]
+        if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() == CMD_PROFILES:
+            return [CMD_ROBOT, CMD_LOCAL]
         if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() in (CMD_BINDINGS, CMD_CAN_MAPPINGS):
             return [PLACEHOLDER_PATH]
         return []
@@ -5041,7 +5093,7 @@ class BridgeCli:
                 "validate config [path] [--all]\n"
                 "  Validate devices vs groups in a config file, or the local config if omitted."
             ),
-            "validate profiles": "validate profiles\n  Validate profile devices only.",
+            "validate profiles": "validate profiles [robot|local]\n  Compare profile devices to robot or validate locally.",
             "validate tests": "validate tests\n  Validate tests against profile devices.",
             "validate bindings": "validate bindings [path]\n  Validate bindings payload.",
             "validate can-mappings": "validate can-mappings [path]\n  Validate CAN mappings payload.",

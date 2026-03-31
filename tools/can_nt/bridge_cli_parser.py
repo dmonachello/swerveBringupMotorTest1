@@ -723,6 +723,8 @@ class BridgeCliParser:
                     value = SPEC.cmd_validate_all
                 elif target in (SPEC.cmd_bindings, SPEC.cmd_can_mappings, SPEC.cmd_config):
                     path = tokens[SPEC.count_two]
+                elif target == "profiles":
+                    value = tokens[SPEC.count_two].lower()
             if len(tokens) > SPEC.count_three and tokens[SPEC.count_three].lower() == SPEC.cmd_validate_all:
                 value = SPEC.cmd_validate_all
             return (
@@ -1284,7 +1286,19 @@ class BridgeCliParser:
                 self._reject_extra(tokens, SPEC.count_three, SPEC.label_validate)
                 return
             return
-        if target in ("profiles", SPEC.cmd_tests):
+        if target == "profiles":
+            if len(tokens) > SPEC.count_three:
+                self._reject_extra(tokens, SPEC.count_three, SPEC.label_validate)
+                return
+            if len(tokens) == SPEC.count_three:
+                if tokens[SPEC.count_two].lower() not in (
+                    SPEC.show_source_robot,
+                    SPEC.show_source_local,
+                ):
+                    self._reject_extra(tokens, SPEC.count_two, SPEC.label_validate)
+                return
+            return
+        if target == SPEC.cmd_tests:
             self._reject_extra(tokens, SPEC.count_two, SPEC.label_validate)
             return
         raise CliParseError(SPEC.msg_validate_config)

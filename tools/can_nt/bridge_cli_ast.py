@@ -430,7 +430,10 @@ class BridgeCliAstExecutor:
                 else:
                     ok, message = self._cli.validate_config_data(self._cli._local_config)
         elif target == "profiles":
-            ok, message = self._cli.validate_profiles_only()
+            if ast.value == SPEC.show_source_robot:
+                ok, message = self._cli.validate_profiles_robot()
+            else:
+                ok, message = self._cli.validate_profiles_only()
         elif target == SPEC.cmd_tests:
             ok, message = self._cli.validate_tests_only()
         elif target == SPEC.cmd_bindings:

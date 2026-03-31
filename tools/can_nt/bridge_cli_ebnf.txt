@@ -78,7 +78,7 @@ config         = "group" ws name
                | "device" ws name
                | "device" ws name ws "set" ws device_field ws value_text
                | ("validate" | "val") ws "config" [ ws path ] [ ws "--all" ]
-               | ("validate" | "val") ws "profiles"
+               | ("validate" | "val") ws "profiles" [ ws ("robot" | "local") ]
                | ("validate" | "val") ws "tests"
                | ("validate" | "val") ws "bindings" [ ws path ]
                | ("validate" | "val") ws "can-mappings" [ ws path ]
