@@ -16,6 +16,19 @@ DESCRIPTION
 from typing import Dict, Optional
 
 from tools.can_nt.bridge_cli_parser import CommandAst, SPEC
+from tools.can_nt.status import (
+    StatusResult,
+    SS__CLI_PARSER__UNKNOWN_COMMAND,
+    SS__CLI_VALIDATOR__INVALID_VALUE,
+    SS__CONFIG__NOT_LOADED,
+    SS__DEVICE__NOT_DEFINED,
+    SS__EXECUTOR__SUCCESS,
+    SS__NETWORK__COMMAND_SEND_FAILED,
+    SS__NETWORK__CONNECT_FAILED,
+    SS__NETWORK__HANDSHAKE_FAILED,
+    SS__NETWORK__NOT_CONNECTED,
+    SS__NETWORK__ROBOT_UNAVAILABLE,
+)
 from tools.can_nt.bridge_ops import (
     connect,
     disconnect,
@@ -124,7 +137,7 @@ class BridgeCliAstExecutor:
         self._cli = cli
         self._dispatch = self._build_dispatch()
 
-    def execute(self, ast: CommandAst) -> Optional[int]:
+    def execute(self, ast: CommandAst) -> Optional[StatusResult]:
         """
         NAME
             execute - Execute a parsed AST command.
@@ -134,7 +147,7 @@ class BridgeCliAstExecutor:
         handler = self._dispatch.get(ast.kind)
         if not handler:
             print(AST_EXEC_SPEC["msg_err_unknown_cmd"])
-            return None
+            return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND, message=AST_EXEC_SPEC["msg_err_unknown_cmd"])
         return handler(ast)
 
     def _build_dispatch(self) -> Dict[str, callable]:
@@ -184,47 +197,47 @@ class BridgeCliAstExecutor:
             SPEC.kind_device_delete: self._ast_device_delete,
         }
 
-    def _ast_common_exit(self, _ast: CommandAst) -> Optional[int]:
+    def _ast_common_exit(self, _ast: CommandAst) -> Optional[StatusResult]:
         if self._cli._modes[-1].name == SPEC.modes[SPEC.idx_exec]:
-            return AST_EXEC_SPEC["ret_ok"]
+            return StatusResult(code=SS__EXECUTOR__SUCCESS, exit_requested=True)
         self._cli._pop_mode()
         return None
 
-    def _ast_common_end(self, _ast: CommandAst) -> Optional[int]:
+    def _ast_common_end(self, _ast: CommandAst) -> Optional[StatusResult]:
         mode_cls = type(self._cli._modes[SPEC.count_zero])
         self._cli._modes = [mode_cls(SPEC.modes[SPEC.idx_exec])]
         return None
 
-    def _ast_common_help(self, ast: CommandAst) -> Optional[int]:
+    def _ast_common_help(self, ast: CommandAst) -> Optional[StatusResult]:
         self._cli._print_help(ast.args if ast.args else [])
-        return None
+        return StatusResult(code=SS__EXECUTOR__SUCCESS)
 
-    def _ast_common_ping(self, _ast: CommandAst) -> Optional[int]:
+    def _ast_common_ping(self, _ast: CommandAst) -> Optional[StatusResult]:
         seq = show_status(self._cli._session, json_output=bool(SPEC.bool_false))
         self._cli._wait_for_seq(seq)
-        return None
+        return StatusResult(code=SS__EXECUTOR__SUCCESS)
 
-    def _ast_exec_connect(self, _ast: CommandAst) -> Optional[int]:
+    def _ast_exec_connect(self, _ast: CommandAst) -> Optional[StatusResult]:
         if not connect(self._cli._session):
             print(AST_EXEC_SPEC["msg_err_connect"])
-            return AST_EXEC_SPEC["ret_err"]
+            return StatusResult(code=SS__NETWORK__CONNECT_FAILED, message=AST_EXEC_SPEC["msg_err_connect"])
         ok = self._cli._session.ensure_handshake()
         if not ok:
             print(AST_EXEC_SPEC["msg_err_handshake"])
-            return AST_EXEC_SPEC["ret_err"]
+            return StatusResult(code=SS__NETWORK__HANDSHAKE_FAILED, message=AST_EXEC_SPEC["msg_err_handshake"])
         print(AST_EXEC_SPEC["msg_connected"])
-        return None
+        return StatusResult(code=SS__EXECUTOR__SUCCESS)
 
-    def _ast_exec_disconnect(self, _ast: CommandAst) -> Optional[int]:
+    def _ast_exec_disconnect(self, _ast: CommandAst) -> Optional[StatusResult]:
         disconnect(self._cli._session)
         print(AST_EXEC_SPEC["msg_disconnected"])
-        return None
+        return StatusResult(code=SS__EXECUTOR__SUCCESS)
 
-    def _ast_exec_configure_terminal(self, _ast: CommandAst) -> Optional[int]:
+    def _ast_exec_configure_terminal(self, _ast: CommandAst) -> Optional[StatusResult]:
         self._cli._ensure_local_config()
         mode_cls = type(self._cli._modes[SPEC.count_zero])
         self._cli._modes.append(mode_cls(SPEC.modes[SPEC.idx_config]))
-        return None
+        return StatusResult(code=SS__EXECUTOR__SUCCESS)
 
     def _ast_show(self, ast: CommandAst) -> Optional[int]:
         return self._handle_show_ast(ast)
@@ -233,7 +246,7 @@ class BridgeCliAstExecutor:
         name = ast.group_name
         if not self._cli._session.is_connected():
             if not self._cli._select_or_create_local_group(name):
-                return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+                return AST_EXEC_SPEC["ret_err"]
             mode_cls = type(self._cli._modes[SPEC.count_zero])
             self._cli._modes.append(mode_cls(SPEC.modes[SPEC.idx_group], name))
             print(AST_EXEC_SPEC["msg_warn_local_group"])
@@ -241,7 +254,7 @@ class BridgeCliAstExecutor:
         seq = group_create(self._cli._session, name)
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_group_create"]):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         mode_cls = type(self._cli._modes[SPEC.count_zero])
         self._cli._modes.append(mode_cls(SPEC.modes[SPEC.idx_group], name))
         return None
@@ -252,7 +265,7 @@ class BridgeCliAstExecutor:
             if not self._cli._confirm(AST_EXEC_SPEC["fmt_delete_group"] % name):
                 return None
             if not self._cli._delete_local_group(name):
-                return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+                return AST_EXEC_SPEC["ret_err"]
             print(AST_EXEC_SPEC["msg_warn_local_group_deleted"])
             return None
         if not self._cli._confirm(AST_EXEC_SPEC["fmt_delete_group"] % name):
@@ -260,47 +273,47 @@ class BridgeCliAstExecutor:
         seq = group_delete(self._cli._session, name, confirm=bool(SPEC.bool_true))
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_group_delete"]):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         return None
 
     def _ast_config_profile(self, ast: CommandAst) -> Optional[int]:
         if ast.field == SPEC.cmd_create:
             if not self._cli._create_profile(ast.profile_name):
-                return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+                return AST_EXEC_SPEC["ret_err"]
             return None
         if not self._cli._set_active_profile(ast.profile_name):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         print(f"Active profile: {self._cli._groups_profile}")
         return None
 
-    def _ast_config_selected_device(self, ast: CommandAst) -> Optional[int]:
+    def _ast_config_selected_device(self, ast: CommandAst) -> Optional[StatusResult]:
         if not self._cli._session.is_connected():
             if not self._cli._set_local_selected_device(ast.device_name):
-                return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+                return StatusResult(code=SS__DEVICE__NOT_DEFINED, message=AST_EXEC_SPEC["msg_err_device_missing"])
             print(AST_EXEC_SPEC["msg_warn_local_selected"])
-            return None
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED, message=AST_EXEC_SPEC["msg_warn_local_selected"])
         seq = selected_device_set(self._cli._session, ast.device_name)
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_selected_device"]):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
-        return None
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED, message=AST_EXEC_SPEC["msg_err_cmd_send"])
+        return StatusResult(code=SS__EXECUTOR__SUCCESS)
 
-    def _ast_config_selected_mode(self, ast: CommandAst) -> Optional[int]:
+    def _ast_config_selected_mode(self, ast: CommandAst) -> Optional[StatusResult]:
         mode_value = ast.field.lower()
         if mode_value not in (SPEC.cmd_on, SPEC.cmd_off):
             print(AST_EXEC_SPEC["msg_err_selected_mode"])
-            return None
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE, message=AST_EXEC_SPEC["msg_err_selected_mode"])
         enabled = mode_value == SPEC.cmd_on
         if not self._cli._session.is_connected():
             if not self._cli._set_local_selected_mode(enabled):
-                return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+                return StatusResult(code=SS__CONFIG__NOT_LOADED, message=AST_EXEC_SPEC["msg_err_local_missing"])
             print(AST_EXEC_SPEC["msg_warn_local_selected_mode"])
-            return None
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED, message=AST_EXEC_SPEC["msg_warn_local_selected_mode"])
         seq = selected_mode_set(self._cli._session, enabled)
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_selected_mode"]):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
-        return None
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED, message=AST_EXEC_SPEC["msg_err_cmd_send"])
+        return StatusResult(code=SS__EXECUTOR__SUCCESS)
 
     def _ast_config_merge(self, ast: CommandAst) -> Optional[int]:
         plan = merge_config(ast.path, self._cli._conflict_policy, self._cli._active_profile_name())
@@ -319,19 +332,19 @@ class BridgeCliAstExecutor:
             return AST_EXEC_SPEC["ret_err"] if not result.ok else None
         if ast.export_target == SPEC.cmd_export_cli_script:
             if not self._cli._export_cli_script(ast.path):
-                return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+                return AST_EXEC_SPEC["ret_err"]
             return None
         print(AST_EXEC_SPEC["msg_err_unknown_cmd"])
-        return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+        return AST_EXEC_SPEC["ret_err"]
 
     def _ast_config_save(self, ast: CommandAst) -> Optional[int]:
         if ast.save_target == SPEC.cmd_save_profiles:
             if not self._cli._save_profiles(ast.path):
-                return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+                return AST_EXEC_SPEC["ret_err"]
             return None
         if ast.save_target == SPEC.cmd_save_unified:
             if not self._cli._save_unified_config(ast.path):
-                return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+                return AST_EXEC_SPEC["ret_err"]
             return None
         if ast.save_target == SPEC.cmd_save_config:
             result = save_config(self._cli._session, ast.path, self._cli._active_profile_name())
@@ -339,37 +352,37 @@ class BridgeCliAstExecutor:
             return AST_EXEC_SPEC["ret_err"] if not result.ok else None
         if ast.save_target == SPEC.cmd_save_local_config:
             if not self._cli._save_local_config(ast.path):
-                return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+                return AST_EXEC_SPEC["ret_err"]
             return None
         print(AST_EXEC_SPEC["msg_err_unknown_cmd"])
-        return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+        return AST_EXEC_SPEC["ret_err"]
 
     def _ast_config_rename_device(self, ast: CommandAst) -> Optional[int]:
         if self._cli._rename_local_device(ast.device_name, ast.field):
             print(AST_EXEC_SPEC["fmt_rename_device"] % (ast.device_name, ast.field))
             return None
-        return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+        return AST_EXEC_SPEC["ret_err"]
 
     def _ast_config_no_device(self, ast: CommandAst) -> Optional[int]:
         name = ast.device_name
         if not self._cli._confirm(f"Delete device '{name}'?"):
             return None
         if not self._cli._delete_local_device(name):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         print(f"Deleted device {name}.")
         return None
 
     def _ast_config_device(self, ast: CommandAst) -> Optional[int]:
         name = ast.device_name
         if not self._cli._ensure_local_device_entry(name):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         mode_cls = type(self._cli._modes[SPEC.count_zero])
         self._cli._modes.append(mode_cls(SPEC.modes[SPEC.idx_device], device=name))
         return None
 
     def _ast_config_device_set(self, ast: CommandAst) -> Optional[int]:
         if not self._cli._set_local_device_meta(ast.device_name, ast.field, ast.value):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         print(AST_EXEC_SPEC["fmt_update_device"] % (ast.device_name, ast.field, ast.value))
         return None
 
@@ -379,13 +392,13 @@ class BridgeCliAstExecutor:
         else:
             if not self._cli._local_config:
                 print(AST_EXEC_SPEC["msg_err_local_missing"])
-                return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+                return AST_EXEC_SPEC["ret_err"]
             ok, message = self._cli.validate_config_data(self._cli._local_config)
         if ok:
             print(AST_EXEC_SPEC["msg_ok_config"])
             return None
         print(AST_EXEC_SPEC["msg_err_fmt"] % message)
-        return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+        return AST_EXEC_SPEC["ret_err"]
 
     def _ast_config_bindings(self, ast: CommandAst) -> Optional[int]:
         return self._cli._config_bindings_command(ast.tokens)
@@ -402,7 +415,7 @@ class BridgeCliAstExecutor:
         seq = show_group(self._cli._session, group, json_output=ast.show_json)
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_show_group"]):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         return None
 
     def _ast_group_add_device(self, ast: CommandAst) -> Optional[int]:
@@ -411,10 +424,10 @@ class BridgeCliAstExecutor:
             if self._cli._add_local_group_member(group, ast.input_name):
                 print(AST_EXEC_SPEC["msg_warn_local_member_add"])
                 return None
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         if not self._cli._local_device_exists(ast.input_name):
             print(AST_EXEC_SPEC["msg_err_device_missing"])
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         seq = group_add_device(
             self._cli._session,
             group,
@@ -424,9 +437,9 @@ class BridgeCliAstExecutor:
         )
         event = self._cli._wait_for_seq(seq)
         if self._cli._handle_add_device_conflict(event, group, ast.input_name):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_add_device"]):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         return None
 
     def _ast_group_no_device(self, ast: CommandAst) -> Optional[int]:
@@ -435,11 +448,11 @@ class BridgeCliAstExecutor:
             if self._cli._remove_local_group_member(group, ast.input_name):
                 print(AST_EXEC_SPEC["msg_warn_local_member_remove"])
                 return None
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         seq = group_remove_device(self._cli._session, group, ast.input_name)
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_remove_device"]):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         return None
 
     def _ast_group_member(self, ast: CommandAst) -> Optional[int]:
@@ -450,7 +463,7 @@ class BridgeCliAstExecutor:
                 if self._cli._set_local_member_enabled(group, ast.input_name, action):
                     print(AST_EXEC_SPEC["msg_warn_local_member_update"])
                     return None
-                return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+                return AST_EXEC_SPEC["ret_err"]
         if action == SPEC.cmd_enable:
             seq = group_member_enable(self._cli._session, group, ast.input_name)
         elif action == SPEC.cmd_disable:
@@ -459,10 +472,10 @@ class BridgeCliAstExecutor:
             seq = group_member_toggle(self._cli._session, group, ast.input_name)
         else:
             print(AST_EXEC_SPEC["msg_err_member_action"])
-            return None
+            return AST_EXEC_SPEC["ret_err"]
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_member"]):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         return None
 
     def _ast_group_bind(self, ast: CommandAst) -> Optional[int]:
@@ -474,21 +487,21 @@ class BridgeCliAstExecutor:
             if self._cli._add_local_binding(group, tokens):
                 print(AST_EXEC_SPEC["msg_warn_local_binding"])
                 return None
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         value = None
         if ast.bind_kind != SPEC.bind_kinds[SPEC.count_zero]:
             if not ast.bind_value:
                 print(AST_EXEC_SPEC["msg_err_bind_value"])
-                return None
+                return AST_EXEC_SPEC["ret_err"]
             try:
                 value = float(ast.bind_value)
             except ValueError:
                 print(AST_EXEC_SPEC["msg_err_bind_numeric"])
-                return None
+                return AST_EXEC_SPEC["ret_err"]
         seq = group_bind(self._cli._session, group, ast.input_name, ast.bind_kind, value=value)
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_bind"]):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         return None
 
     def _ast_group_no_bind(self, _ast: CommandAst) -> Optional[int]:
@@ -497,11 +510,11 @@ class BridgeCliAstExecutor:
             if self._cli._clear_local_bindings(group):
                 print(AST_EXEC_SPEC["msg_warn_local_bind_clear"])
                 return None
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         seq = group_unbind(self._cli._session, group)
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_no_bind"]):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         return None
 
     def _ast_group_enable(self, _ast: CommandAst) -> Optional[int]:
@@ -510,11 +523,11 @@ class BridgeCliAstExecutor:
             if self._cli._set_local_group_enabled(group, bool(SPEC.bool_true)):
                 print(AST_EXEC_SPEC["msg_warn_local_group_enable"])
                 return None
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         seq = group_enable(self._cli._session, group)
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_enable"]):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         return None
 
     def _ast_group_disable(self, _ast: CommandAst) -> Optional[int]:
@@ -523,23 +536,23 @@ class BridgeCliAstExecutor:
             if self._cli._set_local_group_enabled(group, bool(SPEC.bool_false)):
                 print(AST_EXEC_SPEC["msg_warn_local_group_disable"])
                 return None
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         seq = group_disable(self._cli._session, group)
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_disable"]):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         return None
 
     def _ast_group_run_test(self, ast: CommandAst) -> Optional[int]:
         group = self._cli._modes[-1].group
         if not self._cli._session.is_connected():
             print(AST_EXEC_SPEC["msg_err_run_no_robot"])
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         name = ast.test_name if ast.test_name else None
         seq = group_run_test(self._cli._session, group, name)
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_run_test"]):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         return None
 
     def _ast_device_show(self, ast: CommandAst) -> Optional[int]:
@@ -551,14 +564,14 @@ class BridgeCliAstExecutor:
     def _ast_device_set(self, ast: CommandAst) -> Optional[int]:
         device = self._cli._modes[-1].device
         if not self._cli._set_local_device_meta(device, ast.field, ast.value):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         print(AST_EXEC_SPEC["fmt_update_device"] % (device, ast.field, ast.value))
         return None
 
     def _ast_device_no(self, ast: CommandAst) -> Optional[int]:
         device = self._cli._modes[-1].device
         if not self._cli._clear_local_device_meta(device, ast.field):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         print(AST_EXEC_SPEC["fmt_clear_device"] % (device, ast.field))
         return None
 
@@ -567,7 +580,7 @@ class BridgeCliAstExecutor:
         if not self._cli._confirm(f"Delete device '{device}'?"):
             return None
         if not self._cli._delete_local_device(device):
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         print(f"Deleted device {device}.")
         self._cli._pop_mode()
         return None
@@ -576,10 +589,10 @@ class BridgeCliAstExecutor:
         target = ast.show_target.lower() if ast.show_target else SPEC.empty_str
         if not target:
             print(AST_EXEC_SPEC["msg_err_show_requires"])
-            return None
+            return AST_EXEC_SPEC["ret_err"]
         if ast.show_pretty and not ast.show_json:
             print(AST_EXEC_SPEC["msg_err_pretty_requires_json"])
-            return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+            return AST_EXEC_SPEC["ret_err"]
         if target == SPEC.show_target_config:
             if ast.show_name:
                 name = ast.show_name.lower()
@@ -614,14 +627,14 @@ class BridgeCliAstExecutor:
             if not self._show_local_ast(
                 target, ast.show_name, ast.show_json, ast.show_pretty
             ):
-                return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+                return AST_EXEC_SPEC["ret_err"]
             return None
         if source == SPEC.show_source_robot:
             if not self._show_robot_ast(target, ast.show_name, ast.show_json):
-                return AST_EXEC_SPEC["ret_err"] if self._cli._batch else None
+                return AST_EXEC_SPEC["ret_err"]
             return None
         print(AST_EXEC_SPEC["msg_err_unknown_show_source"])
-        return None
+        return AST_EXEC_SPEC["ret_err"]
 
     def _show_robot_ast(self, target: str, name: str, json_output: bool) -> bool:
         if not self._cli._session.is_connected():

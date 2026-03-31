@@ -1,0 +1,72 @@
+{
+  "severities": {
+    "SUCCESS": 0,
+    "INFO": 1,
+    "WARNING": 2,
+    "ERROR": 3,
+    "FATAL": 4
+  },
+  "facilities": {
+    "CLI_PARSER": 1,
+    "CLI_VALIDATOR": 2,
+    "EXECUTOR": 3,
+    "DEVICE": 4,
+    "GROUP": 5,
+    "INPUT_BINDING": 6,
+    "NETWORK": 7,
+    "CONFIG": 8
+  },
+  "messages": {
+    "CLI_PARSER": {
+      "INVALID_SYNTAX": 1,
+      "UNKNOWN_COMMAND": 2,
+      "MISSING_ARGUMENT": 3,
+      "INVALID_FLAG": 4
+    },
+    "CLI_VALIDATOR": {
+      "INVALID_VALUE": 1,
+      "OUT_OF_RANGE": 2,
+      "REQUIRED": 3
+    },
+    "EXECUTOR": {
+      "SUCCESS": 1,
+      "CANCELLED": 2,
+      "INTERNAL_ERROR": 3,
+      "NOT_SUPPORTED": 4
+    },
+    "DEVICE": {
+      "NOT_FOUND": 1,
+      "NOT_DEFINED": 2,
+      "INVALID_FIELD": 3
+    },
+    "GROUP": {
+      "NOT_FOUND": 1,
+      "EMPTY": 2,
+      "MEMBER_MISSING": 3,
+      "BINDING_INVALID": 4
+    },
+    "INPUT_BINDING": {
+      "NOT_FOUND": 1,
+      "INVALID": 2
+    },
+    "NETWORK": {
+      "NOT_CONNECTED": 1,
+      "COMMAND_SEND_FAILED": 2,
+      "HANDSHAKE_FAILED": 3,
+      "CONNECT_FAILED": 4,
+      "ROBOT_UNAVAILABLE": 5,
+      "TIMEOUT": 6
+    },
+    "CONFIG": {
+      "NOT_LOADED": 1,
+      "INVALID": 2,
+      "SAVED": 3,
+      "MERGED": 4,
+      "IMPORTED": 5,
+      "VALID": 6,
+      "PROFILE_REQUIRED": 7,
+      "DUPLICATE_LABEL": 8,
+      "MISSING_DEVICE": 9
+    }
+  }
+}

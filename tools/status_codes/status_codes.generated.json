@@ -1,0 +1,76 @@
+{
+  "data": {
+    "facilities": {
+      "CLI_PARSER": 1,
+      "CLI_VALIDATOR": 2,
+      "CONFIG": 8,
+      "DEVICE": 4,
+      "EXECUTOR": 3,
+      "GROUP": 5,
+      "INPUT_BINDING": 6,
+      "NETWORK": 7
+    },
+    "messages": {
+      "CLI_PARSER": {
+        "INVALID_FLAG": 4,
+        "INVALID_SYNTAX": 1,
+        "MISSING_ARGUMENT": 3,
+        "UNKNOWN_COMMAND": 2
+      },
+      "CLI_VALIDATOR": {
+        "INVALID_VALUE": 1,
+        "OUT_OF_RANGE": 2,
+        "REQUIRED": 3
+      },
+      "CONFIG": {
+        "DUPLICATE_LABEL": 8,
+        "IMPORTED": 5,
+        "INVALID": 2,
+        "MERGED": 4,
+        "MISSING_DEVICE": 9,
+        "NOT_LOADED": 1,
+        "PROFILE_REQUIRED": 7,
+        "SAVED": 3,
+        "VALID": 6
+      },
+      "DEVICE": {
+        "INVALID_FIELD": 3,
+        "NOT_DEFINED": 2,
+        "NOT_FOUND": 1
+      },
+      "EXECUTOR": {
+        "CANCELLED": 2,
+        "INTERNAL_ERROR": 3,
+        "NOT_SUPPORTED": 4,
+        "SUCCESS": 1
+      },
+      "GROUP": {
+        "BINDING_INVALID": 4,
+        "EMPTY": 2,
+        "MEMBER_MISSING": 3,
+        "NOT_FOUND": 1
+      },
+      "INPUT_BINDING": {
+        "INVALID": 2,
+        "NOT_FOUND": 1
+      },
+      "NETWORK": {
+        "COMMAND_SEND_FAILED": 2,
+        "CONNECT_FAILED": 4,
+        "HANDSHAKE_FAILED": 3,
+        "NOT_CONNECTED": 1,
+        "ROBOT_UNAVAILABLE": 5,
+        "TIMEOUT": 6
+      }
+    },
+    "severities": {
+      "ERROR": 3,
+      "FATAL": 4,
+      "INFO": 1,
+      "SUCCESS": 0,
+      "WARNING": 2
+    }
+  },
+  "generatedFrom": "status_codes_source.json",
+  "version": "1"
+}

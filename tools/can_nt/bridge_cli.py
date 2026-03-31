@@ -89,6 +89,18 @@ from tools.can_nt.motor_diag_constants import (
 )
 from tools.can_nt.motor_diag_normalize import collect_profile_labels, normalize_runtime_state
 from tools.can_nt.motor_diag_rules import diagnose_motor
+from tools.can_nt.status import (
+    FLAG_PRINT_MESSAGE,
+    StatusResult,
+    format_status,
+    SS__CLI_PARSER__INVALID_SYNTAX,
+    SS__CLI_VALIDATOR__INVALID_VALUE,
+    SS__CLI_VALIDATOR__REQUIRED,
+    SS__EXECUTOR__CANCELLED,
+    SS__EXECUTOR__INTERNAL_ERROR,
+    SS__EXECUTOR__NOT_SUPPORTED,
+    SS__EXECUTOR__SUCCESS,
+)
 from tools.config.schema_store import ConfigSchemaStore, LOCATION_BINDINGS, LOCATION_MAPPINGS
 from tools.common.json_io import read_json, write_json
 from tools.common.profile_io import compute_profiles_hash
@@ -198,6 +210,9 @@ COUNT_SIX = 6
 COUNT_SEVEN = 7
 COUNT_EIGHT = 8
 COUNT_NINE = 9
+STATUS_INCLUDE_RAW_DEFAULT = False
+STATUS_DETAIL_PREFIX = "DETAIL: "
+STATUS_OK_MESSAGE = "OK"
 EXIT_CODE_ERROR = 2
 
 CMD_SHOW = "show"
@@ -796,20 +811,22 @@ class BridgeCli:
                         line = input(prompt)
             except EOFError:
                 print()
-                code = self._execute_line("exit")
-                if code is None:
-                    continue
-                return code
+                result = self._execute_line("exit")
+                self._emit_status(result)
+                if result.exit_requested:
+                    return result.exit_code()
+                continue
             except KeyboardInterrupt:
                 print()
                 continue
             line = line.strip()
             if not line:
                 continue
-            code = self._execute_line(line)
-            if code is not None:
-                if code == 0:
-                    return 0
+            result = self._execute_line(line)
+            self._emit_status(result)
+            if result.exit_requested:
+                return result.exit_code()
+            if not result.ok():
                 self._warn("WARNING: Command failed; staying in CLI.")
                 continue
 
@@ -836,17 +853,22 @@ class BridgeCli:
         lint_error = self._lint_script(lines)
         if lint_error:
             print(f"ERROR: {lint_error}")
-            return 2
+            result = StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(lint_error))
+            self._emit_status(result)
+            return result.exit_code()
         for raw in lines:
             line = raw.strip()
             if not line or line.startswith("#"):
                 continue
             if self._echo_enabled:
                 print(f">> {line}")
-            code = self._execute_line(line)
-            if code is not None:
-                return code
-        return 0
+            result = self._execute_line(line)
+            self._emit_status(result)
+            if result.exit_requested:
+                return result.exit_code()
+            if not result.ok():
+                return result.exit_code()
+        return StatusResult(code=SS__EXECUTOR__SUCCESS).exit_code()
 
     def _prompt(self) -> str:
         mode = self._modes[-1]
@@ -1256,9 +1278,36 @@ class BridgeCli:
         """
         return validate_config_data(config, self._local_root_payload)
 
-    def _execute_line(self, line: str) -> Optional[int]:
+    def _emit_status(self, result: StatusResult) -> None:
+        """
+        NAME
+            _emit_status - Print a structured status code line.
+        """
+        include_raw = STATUS_INCLUDE_RAW_DEFAULT or bool(result.code & FLAG_PRINT_MESSAGE)
+        print(format_status(result.code, include_raw=include_raw))
+        if result.message:
+            print(STATUS_DETAIL_PREFIX + result.message)
+        if result.detail:
+            print(STATUS_DETAIL_PREFIX + result.detail)
+
+    def _coerce_status(self, outcome: Optional[object]) -> StatusResult:
+        """
+        NAME
+            _coerce_status - Normalize handler output into a StatusResult.
+        """
+        if isinstance(outcome, StatusResult):
+            return outcome
+        if outcome is None:
+            return StatusResult(code=SS__EXECUTOR__SUCCESS, message=STATUS_OK_MESSAGE)
+        if isinstance(outcome, int):
+            if outcome == COUNT_ZERO:
+                return StatusResult(code=SS__EXECUTOR__SUCCESS, exit_requested=True)
+            return StatusResult(code=SS__EXECUTOR__INTERNAL_ERROR)
+        return StatusResult(code=SS__EXECUTOR__INTERNAL_ERROR)
+
+    def _execute_line(self, line: str) -> StatusResult:
         if self._handle_question(line):
-            return None
+            return StatusResult(code=SS__EXECUTOR__SUCCESS)
         try:
             parsed = self._parser.parse(line, mode=self._modes[-1].name)
             tokens = parsed.tokens
@@ -1267,18 +1316,16 @@ class BridgeCli:
             try:
                 self._split_command(line)
             except CliParseError as split_exc:
-                print(f"ERROR: {split_exc}")
-                return None
-            print(f"ERROR: {exc}")
-            return None
+                return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(split_exc))
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(exc))
         if tokens and tokens[COUNT_ZERO].lower() == CMD_DIAGNOSE:
-            return self._diagnose_command(tokens)
+            return self._coerce_status(self._diagnose_command(tokens))
         if self._is_test_authoring_command(tokens):
-            return self._execute_test_authoring(tokens)
+            return self._coerce_status(self._execute_test_authoring(tokens))
         if ast is not None:
-            return self._ast_executor.execute(ast)
+            return self._coerce_status(self._ast_executor.execute(ast))
         if not tokens:
-            return None
+            return StatusResult(code=SS__EXECUTOR__SUCCESS)
         cmd = tokens[0].lower()
         if cmd in ("quit", "exit"):
             if self._modes[-1].name == "exec":
@@ -1287,61 +1334,60 @@ class BridgeCli:
                     items = ", ".join(sorted(dirty.keys()))
                     if self._batch:
                         print(MESSAGE_DIRTY_PROMPT.format(items=items))
-                        return 0
+                        return StatusResult(code=SS__EXECUTOR__SUCCESS, exit_requested=True)
                     if not self._confirm(MESSAGE_DIRTY_PROMPT.format(items=items)):
-                        return None
-                return 0
+                        return StatusResult(code=SS__EXECUTOR__CANCELLED)
+                return StatusResult(code=SS__EXECUTOR__SUCCESS, exit_requested=True)
             self._warn_unsaved_if_needed()
             self._pop_mode()
-            return None
+            return StatusResult(code=SS__EXECUTOR__SUCCESS)
         if cmd == "end":
             self._warn_unsaved_if_needed()
             self._modes = [CliMode("exec")]
-            return None
+            return StatusResult(code=SS__EXECUTOR__SUCCESS)
         if cmd == "help":
             self._print_help(tokens[1:] if len(tokens) > 1 else [])
-            return None
+            return StatusResult(code=SS__EXECUTOR__SUCCESS)
         if cmd == "ping":
             seq = show_status(self._session, json_output=False)
             self._wait_for_seq(seq)
-            return None
+            return StatusResult(code=SS__EXECUTOR__SUCCESS)
         if cmd == "echo":
             if len(tokens) < 2:
                 state = "on" if self._echo_enabled else "off"
                 print(f"echo {state}")
-                return None
+                return StatusResult(code=SS__EXECUTOR__SUCCESS)
             value = tokens[1].lower()
             if value in ("on", "true", "1", "yes"):
                 self._echo_enabled = True
-                return None
+                return StatusResult(code=SS__EXECUTOR__SUCCESS)
             if value in ("off", "false", "0", "no"):
                 self._echo_enabled = False
-                return None
+                return StatusResult(code=SS__EXECUTOR__SUCCESS)
             print("ERROR: echo requires on/off.")
-            return 2 if self._batch else None
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         if cmd == CMD_MESSAGES:
             if len(tokens) < 2:
                 print(MESSAGE_MESSAGE_LEVEL_ERROR)
-                return 2 if self._batch else None
+                return StatusResult(code=SS__CLI_VALIDATOR__REQUIRED)
             if not self._set_message_level(tokens[1], persist=True):
                 print(MESSAGE_MESSAGE_LEVEL_ERROR)
-                return 2 if self._batch else None
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             print(MESSAGE_MESSAGE_LEVEL_UPDATED.format(level=self._message_level))
-            return None
+            return StatusResult(code=SS__EXECUTOR__SUCCESS)
 
         mode = self._modes[-1].name
         if mode == "exec":
-            return self._exec_command(tokens)
+            return self._coerce_status(self._exec_command(tokens))
         if mode == MODE_CONFIG:
-            return self._config_command(tokens)
+            return self._coerce_status(self._config_command(tokens))
         if mode == "group":
-            return self._group_command(tokens)
+            return self._coerce_status(self._group_command(tokens))
         if mode == "device":
-            return self._device_command(tokens)
+            return self._coerce_status(self._device_command(tokens))
         if mode == MODE_TEST:
-            return self._test_mode_command(tokens)
-        print("ERROR: unknown mode.")
-        return None
+            return self._coerce_status(self._test_mode_command(tokens))
+        return StatusResult(code=SS__EXECUTOR__NOT_SUPPORTED)
 
     def _handle_question(self, line: str) -> bool:
         """
@@ -1966,7 +2012,7 @@ class BridgeCli:
 
         if not isinstance(self._bindings_payload, dict):
             print(MESSAGE_ERR_BINDINGS_LOAD.format(path=path))
-            return EXIT_CODE_ERROR if self._batch else None
+            return EXIT_CODE_ERROR
         payload = {
             KEY_CONTROLLERS: self._bindings_payload.get(KEY_CONTROLLERS, []),
             KEY_BINDINGS: self._bindings_payload.get(KEY_BINDINGS, []),
@@ -1976,7 +2022,7 @@ class BridgeCli:
             write_json(path, payload, indent=COUNT_TWO, trailing_newline=True)
         except Exception as exc:
             print(MESSAGE_ERR_BINDINGS_WRITE.format(path=path, error=exc))
-            return EXIT_CODE_ERROR if self._batch else None
+            return EXIT_CODE_ERROR
         self._bindings_dirty = False
         self._bindings_path = path
         self._sync_store_bindings()
@@ -1994,7 +2040,7 @@ class BridgeCli:
             return None
         _source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens)
         if not ok:
-            return 2 if self._batch else None
+            return 2
         target = cleaned[COUNT_ZERO].lower() if cleaned else EMPTY_STRING
         controllers = self._bindings_payload.get(KEY_CONTROLLERS, [])
         bindings = self._bindings_payload.get(KEY_BINDINGS, [])
@@ -2353,10 +2399,10 @@ class BridgeCli:
                 loaded = read_json(path)
             except Exception:
                 print(MESSAGE_ERR_BINDINGS_LOAD.format(path=path))
-                return EXIT_CODE_ERROR if self._batch else None
+                return EXIT_CODE_ERROR
             if not isinstance(loaded, dict):
                 print(MESSAGE_ERR_BINDINGS_VALIDATE.format(message=EMPTY_STRING))
-                return EXIT_CODE_ERROR if self._batch else None
+                return EXIT_CODE_ERROR
             payload = loaded
         self._store.set_bindings_payload(payload or {})
         result = self._store.validate_bindings_only(strict=True)
@@ -2364,7 +2410,7 @@ class BridgeCli:
         if errors:
             message = self._format_store_errors(errors)
             print(MESSAGE_ERR_BINDINGS_VALIDATE.format(message=message))
-            return EXIT_CODE_ERROR if self._batch else None
+            return EXIT_CODE_ERROR
         print(AST_EXEC_SPEC["msg_ok_config"])
         return None
 
@@ -2547,7 +2593,7 @@ class BridgeCli:
                 loaded = read_json(path)
             except Exception:
                 print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=path))
-                return EXIT_CODE_ERROR if self._batch else None
+                return EXIT_CODE_ERROR
             if isinstance(loaded, dict):
                 payload = loaded
         manufacturers = payload.get(KEY_MANUFACTURERS)
@@ -2570,7 +2616,7 @@ class BridgeCli:
 
         if not isinstance(self._can_mappings, dict):
             print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=path))
-            return EXIT_CODE_ERROR if self._batch else None
+            return EXIT_CODE_ERROR
         payload = {
             KEY_MANUFACTURERS: self._can_mappings.get(KEY_MANUFACTURERS, {}),
             KEY_DEVICE_TYPES: self._can_mappings.get(KEY_DEVICE_TYPES, {}),
@@ -2579,7 +2625,7 @@ class BridgeCli:
             write_json(path, payload, indent=COUNT_TWO, trailing_newline=True)
         except Exception as exc:
             print(MESSAGE_ERR_MAPPINGS_WRITE.format(path=path, error=exc))
-            return EXIT_CODE_ERROR if self._batch else None
+            return EXIT_CODE_ERROR
         self._can_mappings_dirty = False
         self._can_mappings_path = path
         self._sync_store_mappings()
@@ -2597,7 +2643,7 @@ class BridgeCli:
             return None
         _source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens)
         if not ok:
-            return 2 if self._batch else None
+            return 2
         target = cleaned[COUNT_ZERO].lower() if cleaned else EMPTY_STRING
         manufacturers = self._can_mappings.get(KEY_MANUFACTURERS, {})
         device_types = self._can_mappings.get(KEY_DEVICE_TYPES, {})
@@ -2690,10 +2736,10 @@ class BridgeCli:
                 loaded = read_json(path)
             except Exception:
                 print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=path))
-                return EXIT_CODE_ERROR if self._batch else None
+                return EXIT_CODE_ERROR
             if not isinstance(loaded, dict):
                 print(MESSAGE_ERR_MAPPINGS_VALIDATE.format(message=EMPTY_STRING))
-                return EXIT_CODE_ERROR if self._batch else None
+                return EXIT_CODE_ERROR
             payload = loaded
         self._store.set_mappings_payload(payload or {})
         result = self._store.validate_mappings_only(strict=True)
@@ -2701,7 +2747,7 @@ class BridgeCli:
         if errors:
             message = self._format_store_errors(errors)
             print(MESSAGE_ERR_MAPPINGS_VALIDATE.format(message=message))
-            return EXIT_CODE_ERROR if self._batch else None
+            return EXIT_CODE_ERROR
         print(AST_EXEC_SPEC["msg_ok_config"])
         return None
 
@@ -3216,7 +3262,7 @@ class BridgeCli:
         self._ensure_tests_loaded()
         source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens[1:])
         if not ok:
-            return 2 if self._batch else None
+            return 2
         if source:
             pass
         if len(cleaned) >= 1 and cleaned[0].lower() == CMD_TESTS:
@@ -3495,19 +3541,19 @@ class BridgeCli:
         if cmd == CMD_PROFILE:
             if len(tokens) < 2:
                 print(MESSAGE_ERR_PROFILE_REQUIRED)
-                return 2 if self._batch else None
+                return 2
             if len(tokens) >= 3 and tokens[1].lower() == CMD_CREATE:
                 if not self._create_profile(tokens[2]):
-                    return 2 if self._batch else None
+                    return 2
                 return None
             if not self._set_active_profile(tokens[1]):
-                return 2 if self._batch else None
+                return 2
             print(f"Active profile: {self._groups_profile}")
             return None
         if cmd == "group" and len(tokens) >= 2 and not self._session.is_connected():
             name = tokens[1]
             if not self._select_or_create_local_group(name):
-                return EXIT_CODE_ERROR if self._batch else None
+                return EXIT_CODE_ERROR
             self._modes.append(CliMode("group", name))
             self._warn("WARNING: Robot not connected; local group selected.")
             return None
@@ -3515,20 +3561,20 @@ class BridgeCli:
             if self._rename_local_device(tokens[2], tokens[3]):
                 print(f"Renamed device {tokens[2]} -> {tokens[3]}.")
                 return None
-            return 2 if self._batch else None
+            return 2
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "device":
             name = tokens[2]
             if not self._confirm(f"Delete device '{name}'?"):
                 return None
             if not self._delete_local_device(name):
-                return 2 if self._batch else None
+                return 2
             print(f"Deleted device {name}.")
             return None
         if cmd == "device" and len(tokens) >= 5 and tokens[2].lower() == "set":
             field = tokens[3]
             value_raw = " ".join(tokens[4:])
             if not self._set_local_device_meta(tokens[1], field, value_raw):
-                return EXIT_CODE_ERROR if self._batch else None
+                return EXIT_CODE_ERROR
             print(f"Updated device {tokens[1]} {field}={value_raw}.")
             return None
         if cmd == "group" and len(tokens) >= 2:
@@ -3536,13 +3582,13 @@ class BridgeCli:
             seq = group_create(self._session, name)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "group create"):
-                return 2 if self._batch else None
+                return 2
             self._modes.append(CliMode("group", name))
             return None
         if cmd == "device" and len(tokens) >= 2:
             name = tokens[1]
             if not self._ensure_local_device_entry(name):
-                return 2 if self._batch else None
+                return 2
             self._modes.append(CliMode("device", device=name))
             return None
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "group" and not self._session.is_connected():
@@ -3550,7 +3596,7 @@ class BridgeCli:
             if not self._confirm(f"Delete group '{name}'?"):
                 return None
             if not self._delete_local_group(name):
-                return 2 if self._batch else None
+                return 2
             self._warn("WARNING: Robot not connected; local group deleted.")
             return None
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "group":
@@ -3560,18 +3606,18 @@ class BridgeCli:
             seq = group_delete(self._session, name, confirm=True)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "group delete"):
-                return 2 if self._batch else None
+                return 2
             return None
         if cmd == "selected-device" and len(tokens) >= 2 and not self._session.is_connected():
             if not self._set_local_selected_device(tokens[1]):
-                return 2 if self._batch else None
+                return 2
             self._warn("WARNING: Robot not connected; local selected-device updated.")
             return None
         if cmd == "selected-device" and len(tokens) >= 2:
             seq = selected_device_set(self._session, tokens[1])
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "selected-device"):
-                return 2 if self._batch else None
+                return 2
             return None
         if cmd == "selected-mode" and len(tokens) >= 2 and not self._session.is_connected():
             mode_value = tokens[1].lower()
@@ -3580,7 +3626,7 @@ class BridgeCli:
                 return None
             enabled = mode_value == "on"
             if not self._set_local_selected_mode(enabled):
-                return 2 if self._batch else None
+                return 2
             self._warn("WARNING: Robot not connected; local selected-mode updated.")
             return None
         if cmd == "selected-mode" and len(tokens) >= 2:
@@ -3592,7 +3638,7 @@ class BridgeCli:
             seq = selected_mode_set(self._session, enabled)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "selected-mode"):
-                return 2 if self._batch else None
+                return 2
             return None
         if cmd == "merge" and len(tokens) >= 3 and tokens[1].lower() == "config":
             plan = merge_config(tokens[2], self._conflict_policy, self._active_profile_name())
@@ -3606,15 +3652,15 @@ class BridgeCli:
             return 2 if not result.ok else None
         if cmd == "export" and len(tokens) >= 3 and tokens[1].lower() == "cli-script":
             if not self._export_cli_script(tokens[2]):
-                return 2 if self._batch else None
+                return 2
             return None
         if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == "profiles":
             if not self._save_profiles(tokens[2]):
-                return 2 if self._batch else None
+                return 2
             return None
         if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == "unified-config":
             if not self._save_unified_config(tokens[2]):
-                return 2 if self._batch else None
+                return 2
             return None
         if cmd == "validate" and len(tokens) >= 2 and tokens[1].lower() == "config":
             if len(tokens) >= 3:
@@ -3622,7 +3668,7 @@ class BridgeCli:
             else:
                 if not self._local_config:
                     print("ERROR: Local config not loaded. Use merge/import config <path> first.")
-                    return 2 if self._batch else None
+                    return 2
                 self._sync_store_from_local()
                 result = self._store.validate_profiles_only(strict=True)
                 ok = result.ok()
@@ -3631,14 +3677,14 @@ class BridgeCli:
                 print(MESSAGE_OK_CONFIG_VALID)
                 return None
             print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
-            return 2 if self._batch else None
+            return 2
         if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == "config":
             result = save_config(self._session, tokens[2], self._active_profile_name())
             print(result.message)
             return 2 if not result.ok else None
         if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == "local-config":
             if not self._save_local_config(tokens[2]):
-                return 2 if self._batch else None
+                return 2
             return None
         if cmd == "show":
             return self._handle_show(tokens[1:])
@@ -3652,7 +3698,7 @@ class BridgeCli:
         """
 
         if not self._ensure_bindings_loaded():
-            return EXIT_CODE_ERROR if self._batch else None
+            return EXIT_CODE_ERROR
         if len(tokens) == COUNT_ONE:
             return self._bindings_show([])
         sub = tokens[COUNT_ONE].lower()
@@ -3692,7 +3738,7 @@ class BridgeCli:
         """
 
         if not self._ensure_can_mappings_loaded():
-            return EXIT_CODE_ERROR if self._batch else None
+            return EXIT_CODE_ERROR
         if len(tokens) == COUNT_ONE:
             return self._mappings_show([])
         sub = tokens[COUNT_ONE].lower()
@@ -3725,44 +3771,44 @@ class BridgeCli:
             return self._group_command_local(tokens, group)
         if cmd == "show":
             if not self._validate_pretty_flag(tokens):
-                return EXIT_CODE_ERROR if self._batch else None
+                return EXIT_CODE_ERROR
             if len(tokens) == 1:
                 seq = show_group(self._session, group, json_output=self._has_json(tokens))
                 event = self._wait_for_seq(seq)
                 if self._event_failed(event, "show group"):
-                    return 2 if self._batch else None
+                    return 2
                 return None
             if tokens[1].lower() == "members":
                 seq = show_group(self._session, group, json_output=self._has_json(tokens))
                 event = self._wait_for_seq(seq)
                 if self._event_failed(event, "show group"):
-                    return 2 if self._batch else None
+                    return 2
                 return None
             if tokens[1].lower() == "binding":
                 seq = show_group(self._session, group, json_output=self._has_json(tokens))
                 event = self._wait_for_seq(seq)
                 if self._event_failed(event, "show group"):
-                    return 2 if self._batch else None
+                    return 2
                 return None
             return self._handle_show(tokens[1:])
         if cmd == "add" and len(tokens) >= 3 and tokens[1].lower() == "device":
             if not self._local_device_exists(tokens[2]):
                 print("ERROR: Device not defined in local config. Use device <name> to create it.")
-                return 2 if self._batch else None
+                return 2
             seq = group_add_device(
                 self._session, group, tokens[2], self._conflict_policy, force_move=False
             )
             event = self._wait_for_seq(seq)
             if self._handle_add_device_conflict(event, group, tokens[2]):
-                return 2 if self._batch else None
+                return 2
             if self._event_failed(event, "add device"):
-                return 2 if self._batch else None
+                return 2
             return None
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "device":
             seq = group_remove_device(self._session, group, tokens[2])
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "remove device"):
-                return 2 if self._batch else None
+                return 2
             return None
         if cmd == "member" and len(tokens) >= 3:
             action = tokens[2].lower()
@@ -3777,7 +3823,7 @@ class BridgeCli:
                 return None
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "member"):
-                return 2 if self._batch else None
+                return 2
             return None
         if cmd == "bind" and len(tokens) >= 3:
             input_name = tokens[1]
@@ -3795,32 +3841,32 @@ class BridgeCli:
             seq = group_bind(self._session, group, input_name, kind, value=value)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "bind"):
-                return 2 if self._batch else None
+                return 2
             return None
         if cmd == "no" and len(tokens) >= 2 and tokens[1].lower() == "bind":
             seq = group_unbind(self._session, group)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "no bind"):
-                return 2 if self._batch else None
+                return 2
             return None
         if cmd == "enable":
             seq = group_enable(self._session, group)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "enable"):
-                return 2 if self._batch else None
+                return 2
             return None
         if cmd == "disable":
             seq = group_disable(self._session, group)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "disable"):
-                return 2 if self._batch else None
+                return 2
             return None
         if cmd == "run" and len(tokens) >= 2 and tokens[1].lower() == "test":
             name = tokens[2] if len(tokens) >= 3 else None
             seq = group_run_test(self._session, group, name)
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "run test"):
-                return 2 if self._batch else None
+                return 2
             return None
         print(f"ERROR: Unknown command: {' '.join(tokens)}")
         return None
@@ -3843,13 +3889,13 @@ class BridgeCli:
             field = tokens[1]
             value_raw = " ".join(tokens[2:])
             if not self._set_local_device_meta(device, field, value_raw):
-                return 2 if self._batch else None
+                return 2
             print(f"Updated device {device} {field}={value_raw}.")
             return None
         if cmd == "no" and len(tokens) >= 2:
             field = tokens[1]
             if not self._clear_local_device_meta(device, field):
-                return 2 if self._batch else None
+                return 2
             print(f"Cleared device {device} {field}.")
             return None
         if cmd in ("delete", "remove") or (
@@ -3858,7 +3904,7 @@ class BridgeCli:
             if not self._confirm(f"Delete device '{device}'?"):
                 return None
             if not self._delete_local_device(device):
-                return 2 if self._batch else None
+                return 2
             print(f"Deleted device {device}.")
             self._pop_mode()
             return None
@@ -3871,7 +3917,7 @@ class BridgeCli:
             return None
         source, tokens, json_output, pretty, ok = self._parse_show_flags(tokens)
         if not ok:
-            return 2 if self._batch else None
+            return 2
         if not tokens:
             print(MESSAGE_ERR_SHOW_REQUIRES_TARGET)
             return None
@@ -3903,11 +3949,11 @@ class BridgeCli:
             return None
         if source == "local":
             if not self._show_local(target, tokens, json_output, pretty):
-                return EXIT_CODE_ERROR if self._batch else None
+                return EXIT_CODE_ERROR
             return None
         if source == "robot":
             if not self._show_robot(target, tokens, json_output):
-                return EXIT_CODE_ERROR if self._batch else None
+                return EXIT_CODE_ERROR
             return None
         print(MESSAGE_ERR_UNKNOWN_SHOW_SOURCE)
         return None
@@ -3922,12 +3968,12 @@ class BridgeCli:
             return 2
         if plan.root_payload is None and self._local_root_payload is None:
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return EXIT_CODE_ERROR if self._batch else None
+            return EXIT_CODE_ERROR
         incoming_hash = self._profiles_hash(plan.root_payload)
         if not plan.replace and incoming_hash:
             if self._local_root_hash is None and self._local_group_count() > COUNT_ZERO:
                 print(MESSAGE_ERR_PROFILE_MISSING_HASH)
-                return EXIT_CODE_ERROR if self._batch else None
+                return EXIT_CODE_ERROR
             if self._local_root_hash and incoming_hash != self._local_root_hash:
                 print(
                     MESSAGE_ERR_PROFILE_HASH.format(
@@ -3935,7 +3981,7 @@ class BridgeCli:
                         incoming=incoming_hash,
                     )
                 )
-                return EXIT_CODE_ERROR if self._batch else None
+                return EXIT_CODE_ERROR
         if plan.replace:
             if prompt_on_replace and not self._batch and self._session.is_connected():
                 if not self._confirm("Replace existing groups?"):
@@ -4038,12 +4084,12 @@ class BridgeCli:
             return 2
         event = self._wait_for_seq(seq)
         if self._event_failed(event, command.name):
-            return 2 if self._batch else None
+            return 2
         if command.name == "groupAddDevice":
             device = str(command.args.get("device", ""))
             group = str(command.args.get("group", ""))
             if self._handle_add_device_conflict(event, group, device):
-                return EXIT_CODE_ERROR if self._batch else None
+                return EXIT_CODE_ERROR
         return None
 
     def _handle_add_device_conflict(
@@ -4238,24 +4284,24 @@ class BridgeCli:
         """
         if len(tokens) < COUNT_THREE:
             print(MSG_DIAGNOSE_SYNTAX)
-            return EXIT_CODE_ERROR if self._batch else None
+            return EXIT_CODE_ERROR
         target = tokens[COUNT_ONE].lower()
         if target not in (CMD_MOTOR, CMD_DEVICE):
             print(MSG_DIAGNOSE_TARGET)
-            return EXIT_CODE_ERROR if self._batch else None
+            return EXIT_CODE_ERROR
         label = tokens[COUNT_TWO]
         if not self._session.is_connected():
             print(MSG_RUNTIME_REQUIRED)
-            return EXIT_CODE_ERROR if self._batch else None
+            return EXIT_CODE_ERROR
         seq = show_runtime_state(self._session, json_output=True)
         event = self._wait_for_seq(seq, print_events=False)
         if event is None or not event.json_text:
             print(MSG_RUNTIME_MISSING)
-            return EXIT_CODE_ERROR if self._batch else None
+            return EXIT_CODE_ERROR
         payload = parse_json_arg(event.json_text)
         if not isinstance(payload, dict):
             print(MSG_RUNTIME_MISSING)
-            return EXIT_CODE_ERROR if self._batch else None
+            return EXIT_CODE_ERROR
         result = normalize_runtime_state(payload, label)
         if result.telemetry is None:
             if result.candidates:
@@ -4263,7 +4309,7 @@ class BridgeCli:
                 print(MSG_DEVICE_CANDIDATES.format(candidates=SEP_COMMA_SPACE.join(result.candidates)))
             else:
                 print(MSG_DEVICE_NOT_FOUND)
-            return EXIT_CODE_ERROR if self._batch else None
+            return EXIT_CODE_ERROR
         profile_labels = collect_profile_labels(self._local_root_payload, self._active_profile_name())
         report = diagnose_motor(result.telemetry, profile_labels, result.power_devices)
         self._print_diagnosis(report)
@@ -4876,7 +4922,7 @@ class BridgeCli:
     def _group_command_local(self, tokens: List[str], group: str) -> Optional[int]:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return 2 if self._batch else None
+            return 2
         cmd = tokens[0].lower()
         if cmd == "show":
             return self._handle_show(["group", group] + tokens[1:])
@@ -4884,42 +4930,42 @@ class BridgeCli:
             if self._add_local_group_member(group, tokens[2]):
                 self._warn("WARNING: Robot not connected; local group member added.")
                 return None
-            return 2 if self._batch else None
+            return 2
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "device":
             if self._remove_local_group_member(group, tokens[2]):
                 self._warn("WARNING: Robot not connected; local group member removed.")
                 return None
-            return 2 if self._batch else None
+            return 2
         if cmd == "member" and len(tokens) >= 3:
             action = tokens[2].lower()
             if action in ("enable", "disable", "toggle"):
                 if self._set_local_member_enabled(group, tokens[1], action):
                     self._warn("WARNING: Robot not connected; local member updated.")
                     return None
-                return EXIT_CODE_ERROR if self._batch else None
+                return EXIT_CODE_ERROR
         if cmd == "bind" and len(tokens) >= 3:
             if self._add_local_binding(group, tokens[1:]):
                 self._warn("WARNING: Robot not connected; local binding updated.")
                 return None
-            return 2 if self._batch else None
+            return 2
         if cmd == "no" and len(tokens) >= 2 and tokens[1].lower() == "bind":
             if self._clear_local_bindings(group):
                 self._warn("WARNING: Robot not connected; local bindings cleared.")
                 return None
-            return 2 if self._batch else None
+            return 2
         if cmd == "enable":
             if self._set_local_group_enabled(group, True):
                 self._warn("WARNING: Robot not connected; local group enabled.")
                 return None
-            return 2 if self._batch else None
+            return 2
         if cmd == "disable":
             if self._set_local_group_enabled(group, False):
                 self._warn("WARNING: Robot not connected; local group disabled.")
                 return None
-            return 2 if self._batch else None
+            return 2
         if cmd == "run" and len(tokens) >= 2 and tokens[1].lower() == "test":
             print("ERROR: Cannot run tests without robot connection.")
-            return 2 if self._batch else None
+            return 2
         print(f"ERROR: Unknown command: {' '.join(tokens)}")
         return None
 
