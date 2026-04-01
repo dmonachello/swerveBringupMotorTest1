@@ -13,6 +13,7 @@ DESCRIPTION
 """
 
 import json
+import hashlib
 import shlex
 import time
 import sys
@@ -308,6 +309,8 @@ CMD_DEVICE_USAGE = "device-usage"
 CMD_SHOW_ALL = "show-all"
 CMD_ROBOT = "robot"
 CMD_LOCAL = "local"
+CMD_PUSH = "push"
+CMD_ACTIVATE = PARSER_SPEC.cmd_activate
 CMD_LOCAL_CONFIG = "local-config"
 CMD_SAVE_UNIFIED = "unified-config"
 CMD_VALIDATE_ALL = PARSER_SPEC.cmd_validate_all
@@ -331,11 +334,19 @@ PLACEHOLDER_TEST = "<test>"
 PLACEHOLDER_FIELD = "<field>"
 PLACEHOLDER_TEMPLATE = "<template>"
 PLACEHOLDER_PATH = "<path>"
+PLACEHOLDER_REGISTRY = "<registry>"
 FLAG_JSON = "--json"
 FLAG_PRETTY = "--pretty"
 JSON_PRETTY_INDENT = 2
 MESSAGE_EMPTY_PROMPT = ""
 HISTORY_FILENAME = "bridge_cli_history.txt"
+ENCODING_UTF8 = "utf-8"
+
+CMD_PROFILES_APPLY = "profilesApply"
+ARG_REGISTRY_JSON = "registryJson"
+ARG_ACTIVATE_PROFILE = "activateProfile"
+ARG_REGISTRY_HASH = "registryHash"
+ARG_REGISTRY_BYTES = "registryBytes"
 
 KEY_DEVICE = "device"
 KEY_NAME = "name"
@@ -552,6 +563,19 @@ MESSAGE_VALIDATE_PROFILES_MISSING = "  missing: {labels}"
 MESSAGE_VALIDATE_PROFILES_EXTRA = "  extra: {labels}"
 MESSAGE_VALIDATE_PROFILES_HEADER = "Profile devices do not match robot:"
 MESSAGE_LABEL_SHOW_DEVICES = "show devices"
+MESSAGE_VALIDATE_SCHEMA_VERSION = "schema_version mismatch: expected {expected}, got {found}"
+MESSAGE_VALIDATE_DATA_VERSION = "data_version missing or empty"
+MESSAGE_VALIDATE_DATA_HASH = "data_hash missing or empty"
+MESSAGE_VALIDATE_DATA_HASH_MISMATCH = "data_hash mismatch (run tools/sync_profiles.py)"
+MESSAGE_VALIDATE_DEVICES_MISSING = "devices missing or empty"
+MESSAGE_VALIDATE_DEVICE_LABEL_MISSING = "device label missing"
+MESSAGE_VALIDATE_DEVICE_LABEL_DUP = "duplicate device label: {label}"
+MESSAGE_VALIDATE_PROFILES_EMPTY = "profiles missing or empty"
+MESSAGE_VALIDATE_PROFILE_DEVICES_MISSING = "profile devices list missing: {profile}"
+MESSAGE_VALIDATE_PROFILE_DEVICE_UNKNOWN = "profile {profile} references unknown device {label}"
+MESSAGE_VALIDATE_PROFILE_DEVICE_DUP = "profile {profile} duplicate device label {label}"
+MESSAGE_VALIDATE_ACTIVATE_PROFILE_UNKNOWN = "activate profile not found: {profile}"
+MESSAGE_ERR_PROFILES_PUSH_PARSE_ROOT = "root is not an object"
 MESSAGE_VALIDATE_BINDINGS_LOAD = "ERROR: Failed to read bindings: {path}"
 MESSAGE_VALIDATE_MAPPINGS_LOAD = "ERROR: Failed to read CAN mappings: {path}"
 MESSAGE_VALIDATE_TESTS_HEADER = "Test validation errors:"
@@ -574,6 +598,14 @@ HELP_PROFILE_DEVICE_DELETE_TEXT = (
 HELP_TOPIC_PROFILE_DEVICE_SHOW_ALL = "profile device show-all"
 HELP_PROFILE_DEVICE_SHOW_ALL_TEXT = (
     "profile device show-all <device>\n  Show all profile device entries matching a label."
+)
+HELP_TOPIC_PROFILES_PUSH = "profiles push"
+HELP_PROFILES_PUSH_TEXT = (
+    "profiles push <path> [--activate <profile>]\n  Push profiles/devices registry to robot (TCP only)."
+)
+HELP_TOPIC_CONFIG_PUSH = "config push"
+HELP_CONFIG_PUSH_TEXT = (
+    "config push <path> [--activate <profile>]\n  Push registry then import groups/bindings."
 )
 HELP_TOPIC_QUICK = "quick"
 HELP_SHOW_TEXT = (
@@ -601,6 +633,14 @@ MESSAGE_ERR_PROFILE_MISSING_HASH = (
 )
 MESSAGE_ERR_PROFILE_REQUIRED = "ERROR: Profile not selected. Use 'profile <profile>'."
 MESSAGE_ERR_PROFILE_UNKNOWN = "ERROR: Profile not found: {name}."
+MESSAGE_ERR_PROFILES_PUSH_PATH = "ERROR: profiles push requires a path."
+MESSAGE_ERR_PROFILES_PUSH_READ = "ERROR: Failed to read profiles JSON: {path}."
+MESSAGE_ERR_PROFILES_PUSH_PARSE = "ERROR: Invalid profiles JSON: {detail}."
+MESSAGE_ERR_PROFILES_PUSH_VALIDATE = "ERROR: Profiles validation failed: {detail}."
+MESSAGE_ERR_PROFILES_PUSH_SEND = "ERROR: Failed to send profiles apply command."
+MESSAGE_ERR_PROFILES_PUSH_ACTIVATE = "ERROR: Invalid activate profile: {profile}."
+MESSAGE_INFO_PROFILES_PUSH_LOCAL = "Loaded profiles from {path}."
+MESSAGE_INFO_CONFIG_PUSH_START = "Pushing registry then groups from {path}."
 
 FIELD_MANUFACTURER = "manufacturer"
 FIELD_DEVICE_TYPE = "deviceType"
@@ -1737,6 +1777,26 @@ class BridgeCli:
             if len(tokens) == COUNT_THREE and tokens[COUNT_ONE].lower() == CMD_DEVICE:
                 return [PLACEHOLDER_DEVICE]
             return []
+        if mode == MODE_CONFIG and cmd == CMD_PROFILES:
+            if len(tokens) == COUNT_ONE:
+                return [CMD_PUSH]
+            if len(tokens) == COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_PUSH:
+                return [PLACEHOLDER_PATH]
+            if len(tokens) == COUNT_THREE and tokens[COUNT_ONE].lower() == CMD_PUSH:
+                return [CMD_ACTIVATE]
+            if len(tokens) == COUNT_FOUR and tokens[COUNT_ONE].lower() == CMD_PUSH:
+                return [PLACEHOLDER_PROFILE]
+            return []
+        if mode == MODE_CONFIG and cmd == CMD_CONFIG:
+            if len(tokens) == COUNT_ONE:
+                return [CMD_PUSH]
+            if len(tokens) == COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_PUSH:
+                return [PLACEHOLDER_PATH]
+            if len(tokens) == COUNT_THREE and tokens[COUNT_ONE].lower() == CMD_PUSH:
+                return [CMD_ACTIVATE]
+            if len(tokens) == COUNT_FOUR and tokens[COUNT_ONE].lower() == CMD_PUSH:
+                return [PLACEHOLDER_PROFILE]
+            return []
         if cmd == CMD_TESTS:
             return self._suggest_tests_args(tokens[COUNT_ONE:])
         if mode == MODE_CONFIG and cmd == CMD_TEST:
@@ -1765,6 +1825,8 @@ class BridgeCli:
                 CMD_GROUP,
                 CMD_NO,
                 CMD_PROFILE,
+                CMD_PROFILES,
+                CMD_CONFIG,
                 CMD_DIAGNOSE,
                 PARSER_SPEC.cmd_selected_device,
                 PARSER_SPEC.cmd_selected_mode,
@@ -4427,6 +4489,173 @@ class BridgeCli:
             return StatusResult(code=SS__CONFIG__MERGED)
         return StatusResult(code=SS__CONFIG__IMPORTED)
 
+    def _read_registry_raw(self, path: str) -> tuple[bool, str, str, Optional[Dict[str, object]]]:
+        """
+        NAME
+            _read_registry_raw - Load raw registry JSON and parse payload.
+        """
+        if not path:
+            return (False, MESSAGE_ERR_PROFILES_PUSH_PATH, EMPTY_STRING, None)
+        source_path = Path(path)
+        try:
+            raw = source_path.read_text(encoding=ENCODING_UTF8)
+        except Exception:
+            return (False, MESSAGE_ERR_PROFILES_PUSH_READ.format(path=path), EMPTY_STRING, None)
+        try:
+            payload = json.loads(raw)
+        except Exception as exc:
+            return (False, MESSAGE_ERR_PROFILES_PUSH_PARSE.format(detail=exc), raw, None)
+        if not isinstance(payload, dict):
+            return (False, MESSAGE_ERR_PROFILES_PUSH_PARSE.format(detail=MESSAGE_ERR_PROFILES_PUSH_PARSE_ROOT), raw, None)
+        return (True, EMPTY_STRING, raw, payload)
+
+    def _hash_raw_registry(self, raw: str) -> str:
+        """
+        NAME
+            _hash_raw_registry - Compute SHA-256 for raw registry JSON.
+        """
+        digest = hashlib.sha256(raw.encode(ENCODING_UTF8))
+        return digest.hexdigest()
+
+    def _validate_registry_payload(
+        self,
+        payload: Dict[str, object],
+        activate_profile: str,
+    ) -> tuple[bool, str]:
+        """
+        NAME
+            _validate_registry_payload - Validate bringup_system.json payload.
+        """
+        schema_version = payload.get(KEY_SCHEMA_VERSION)
+        if schema_version != PROFILE_SCHEMA_VERSION:
+            return (
+                False,
+                MESSAGE_VALIDATE_SCHEMA_VERSION.format(expected=PROFILE_SCHEMA_VERSION, found=schema_version),
+            )
+        data_version = payload.get(KEY_DATA_VERSION)
+        if not isinstance(data_version, str) or not data_version.strip():
+            return (False, MESSAGE_VALIDATE_DATA_VERSION)
+        data_hash = payload.get(KEY_DATA_HASH)
+        if not isinstance(data_hash, str) or not data_hash.strip():
+            return (False, MESSAGE_VALIDATE_DATA_HASH)
+        computed_hash = compute_profiles_hash(payload)
+        if data_hash != computed_hash:
+            return (False, MESSAGE_VALIDATE_DATA_HASH_MISMATCH)
+        devices_raw = payload.get(KEY_DEVICES)
+        if not isinstance(devices_raw, list) or not devices_raw:
+            return (False, MESSAGE_VALIDATE_DEVICES_MISSING)
+        registry: Dict[str, Dict[str, object]] = {}
+        for entry in devices_raw:
+            if not isinstance(entry, dict):
+                continue
+            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if not label:
+                return (False, MESSAGE_VALIDATE_DEVICE_LABEL_MISSING)
+            key = label.lower()
+            if key in registry:
+                return (False, MESSAGE_VALIDATE_DEVICE_LABEL_DUP.format(label=label))
+            registry[key] = entry
+        profiles = payload.get(KEY_PROFILES)
+        if not isinstance(profiles, dict) or not profiles:
+            return (False, MESSAGE_VALIDATE_PROFILES_EMPTY)
+        for profile_name, entry in profiles.items():
+            if not isinstance(entry, dict):
+                continue
+            labels = entry.get(KEY_PROFILE_DEVICES)
+            if labels is None:
+                return (
+                    False,
+                    MESSAGE_VALIDATE_PROFILE_DEVICES_MISSING.format(profile=profile_name),
+                )
+            if not isinstance(labels, list):
+                return (
+                    False,
+                    MESSAGE_VALIDATE_PROFILE_DEVICES_MISSING.format(profile=profile_name),
+                )
+            seen: set[str] = set()
+            for label in labels:
+                name = str(label).strip()
+                if not name:
+                    continue
+                key = name.lower()
+                if key in seen:
+                    return (
+                        False,
+                        MESSAGE_VALIDATE_PROFILE_DEVICE_DUP.format(
+                            profile=profile_name, label=name
+                        ),
+                    )
+                seen.add(key)
+                if key not in registry:
+                    return (
+                        False,
+                        MESSAGE_VALIDATE_PROFILE_DEVICE_UNKNOWN.format(
+                            profile=profile_name, label=name
+                        ),
+                    )
+        if activate_profile:
+            if activate_profile not in profiles:
+                return (
+                    False,
+                    MESSAGE_VALIDATE_ACTIVATE_PROFILE_UNKNOWN.format(profile=activate_profile),
+                )
+        return (True, EMPTY_STRING)
+
+    def _profiles_push(self, path: str, activate_profile: str) -> StatusResult:
+        """
+        NAME
+            _profiles_push - Push registry payload to the robot.
+        """
+        if not self._session.is_connected():
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+        ok, error, raw, payload = self._read_registry_raw(path)
+        if not ok:
+            print(error)
+            return StatusResult(code=SS__CONFIG__INVALID)
+        assert payload is not None
+        valid, message = self._validate_registry_payload(payload, activate_profile)
+        if not valid:
+            print(MESSAGE_ERR_PROFILES_PUSH_VALIDATE.format(detail=message))
+            return StatusResult(code=SS__CONFIG__INVALID)
+        registry_hash = self._hash_raw_registry(raw)
+        registry_bytes = len(raw.encode(ENCODING_UTF8))
+        args = {
+            ARG_REGISTRY_JSON: raw,
+            ARG_REGISTRY_HASH: registry_hash,
+            ARG_REGISTRY_BYTES: registry_bytes,
+        }
+        if activate_profile:
+            args[ARG_ACTIVATE_PROFILE] = activate_profile
+        seq = self._session.send_command(CMD_PROFILES_APPLY, args)
+        if seq is None:
+            print(MESSAGE_ERR_PROFILES_PUSH_SEND)
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        event = self._wait_for_seq(seq)
+        if self._event_failed(event, CMD_PROFILES_APPLY):
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        self._local_root_payload = payload
+        self._local_root_path = path
+        self._local_root_hash = self._profiles_hash(payload)
+        self._local_devices_locked = True
+        self._sync_store_from_local()
+        print(MESSAGE_INFO_PROFILES_PUSH_LOCAL.format(path=path))
+        return StatusResult(code=SS__NORMAL)
+
+    def _config_push(self, path: str, activate_profile: str) -> StatusResult:
+        """
+        NAME
+            _config_push - Push registry then bridgeConfig groups to robot.
+        """
+        print(MESSAGE_INFO_CONFIG_PUSH_START.format(path=path))
+        result = self._profiles_push(path, activate_profile)
+        if not result.ok():
+            return result
+        plan = import_config(path, self._conflict_policy, self._active_profile_name())
+        if not plan.ok:
+            print(plan.message)
+            return StatusResult(code=SS__CONFIG__INVALID)
+        return self._apply_config_plan(plan)
+
     def _clear_existing_groups(self) -> StatusResult:
         """
         NAME
@@ -5080,6 +5309,8 @@ class BridgeCli:
             HELP_TOPIC_DEVICE_USAGE: HELP_DEVICE_USAGE_TEXT,
             HELP_TOPIC_PROFILE_DEVICE_DELETE: HELP_PROFILE_DEVICE_DELETE_TEXT,
             HELP_TOPIC_PROFILE_DEVICE_SHOW_ALL: HELP_PROFILE_DEVICE_SHOW_ALL_TEXT,
+            HELP_TOPIC_PROFILES_PUSH: HELP_PROFILES_PUSH_TEXT,
+            HELP_TOPIC_CONFIG_PUSH: HELP_CONFIG_PUSH_TEXT,
             HELP_TOPIC_QUICK: self._quick_help_text(),
             "device mode": (
                 "device mode: show, set <field> <value>, no <field>, delete\n"

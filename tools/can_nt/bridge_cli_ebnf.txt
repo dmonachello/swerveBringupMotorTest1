@@ -82,6 +82,8 @@ config         = "group" ws name
                | ("validate" | "val") ws "tests"
                | ("validate" | "val") ws "bindings" [ ws path ]
                | ("validate" | "val") ws "can-mappings" [ ws path ]
+               | "profiles" ws "push" ws path [ ws "--activate" ws name ]
+               | "config" ws "push" ws path [ ws "--activate" ws name ]
                | ("show" | "ls") ws show_target [ ws show_flags ]
                | diagnose
                | "bindings" [ ws bindings_args ]

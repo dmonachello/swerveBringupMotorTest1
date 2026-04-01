@@ -16,6 +16,7 @@ import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
 import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 import frc.robot.tests.BringupTestRegistry;
 import frc.robot.ui.TcpUiServer;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -74,6 +75,20 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_CHANNEL_FAULT = "channelFault";
   private static final String JSON_KEY_CHANNEL_STICKY_FAULT = "channelStickyFault";
   private static final int INDEX_START = 0;
+  private static final String JSON_KEY_OK = "ok";
+  private static final String JSON_KEY_MESSAGE = "message";
+  private static final String JSON_KEY_TRANSFER_CHECK = "transferCheck";
+  private static final String JSON_KEY_CONTENT_VALIDATION = "contentValidation";
+  private static final String JSON_KEY_APPLY = "apply";
+  private static final String JSON_KEY_POST_APPLY = "postApplyCheck";
+  private static final String JSON_KEY_OVERALL_OK = "overallOk";
+  private static final String JSON_KEY_ACTIVE_PROFILE = "activeProfile";
+  private static final String JSON_KEY_ACTIVATED = "activated";
+  private static final String ARG_REGISTRY_JSON = "registryJson";
+  private static final String ARG_REGISTRY_HASH = "registryHash";
+  private static final String ARG_REGISTRY_BYTES = "registryBytes";
+  private static final String ARG_ACTIVATE_PROFILE = "activateProfile";
+  private static final String CMD_PROFILES_APPLY = "profilesApply";
   private static final String TEXT_SELECTED_DEVICE_PREFIX = "Selected device: ";
   private static final String TEXT_PAREN_OPEN = " (";
   private static final String TEXT_PAREN_CLOSE = ")";
@@ -88,6 +103,19 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_DEVICES_NONE = "Devices: (none)";
   private static final String TEXT_DEVICES_HEADER = "Devices:\n";
   private static final String TEXT_DEVICE_LIST_PREFIX = "  ";
+  private static final String TEXT_EMPTY = "";
+  private static final String TEXT_PROFILES_APPLY_OK = "Profiles applied.";
+  private static final String TEXT_PROFILES_APPLY_FAILED = "Profiles apply failed.";
+  private static final String TEXT_PROFILES_APPLY_NOT_SUPPORTED = "profilesApply only supported over TCP.";
+  private static final String TEXT_PROFILES_APPLY_MISSING_REGISTRY = "profilesApply requires registryJson.";
+  private static final String TEXT_PROFILES_APPLY_MISSING_HASH = "profilesApply requires registryHash.";
+  private static final String TEXT_PROFILES_APPLY_MISSING_BYTES = "profilesApply requires registryBytes.";
+  private static final String TEXT_PROFILES_APPLY_HASH_MISMATCH = "registryHash mismatch.";
+  private static final String TEXT_PROFILES_APPLY_HASH_UNAVAILABLE = "registryHash unavailable.";
+  private static final String TEXT_PROFILES_APPLY_BYTES_MISMATCH = "registryBytes mismatch.";
+  private static final String TEXT_PROFILES_APPLY_DEVICES = " devices=";
+  private static final String TEXT_PROFILES_APPLY_PROFILES = " profiles=";
+  private static final String TEXT_PROFILES_APPLY_ACTIVE = " active=";
   private static final String JSON_KEY_DEVICES = "devices";
   private static final Gson GSON = new Gson();
   private static final double DEADBAND = BringupUtil.DEADBAND;
@@ -874,6 +902,10 @@ public class BridgeUiCommandHandler {
         applyShowResult(result, text, buildRuntimeStateJson(), wantsJson);
         break;
       }
+      case CMD_PROFILES_APPLY: {
+        applyProfilesApplyCommand(result, args, isTcp);
+        break;
+      }
       case "groupCreate": {
         String groupName = parseUiArgString(args, "name");
         if (groupName == null) {
@@ -1498,6 +1530,184 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
+   *   parseUiArgLong - Parse args JSON for a long field.
+   *
+   * PARAMETERS
+   *   args - Parsed args object.
+   *   key - Field name.
+   *
+   * RETURNS
+   *   Long value or null when missing/invalid.
+   */
+  private Long parseUiArgLong(JsonObject args, String key) {
+    if (args == null || key == null || !args.has(key)) {
+      return null;
+    }
+    try {
+      return args.get(key).getAsLong();
+    } catch (Exception ex) {
+      return null;
+    }
+  }
+
+  /**
+   * NAME
+   *   applyProfilesApplyCommand - Execute profilesApply registry push.
+   *
+   * PARAMETERS
+   *   result - Mutable command result container.
+   *   args - Parsed args JSON.
+   *   isTcp - True when invoked over TCP.
+   */
+  private void applyProfilesApplyCommand(UiCommandResult result, JsonObject args, boolean isTcp) {
+    if (result == null) {
+      return;
+    }
+    BringupUtil.RegistryStageResult transfer = new BringupUtil.RegistryStageResult();
+    BringupUtil.RegistryApplyReport report = new BringupUtil.RegistryApplyReport();
+    String registryJson = parseUiArgString(args, ARG_REGISTRY_JSON);
+    String registryHash = parseUiArgString(args, ARG_REGISTRY_HASH);
+    Long registryBytes = parseUiArgLong(args, ARG_REGISTRY_BYTES);
+    String activateProfile = parseUiArgString(args, ARG_ACTIVATE_PROFILE);
+    if (!isTcp) {
+      transfer.message = TEXT_PROFILES_APPLY_NOT_SUPPORTED;
+    } else if (registryJson == null || registryJson.isBlank()) {
+      transfer.message = TEXT_PROFILES_APPLY_MISSING_REGISTRY;
+    } else if (registryHash == null || registryHash.isBlank()) {
+      transfer.message = TEXT_PROFILES_APPLY_MISSING_HASH;
+    } else if (registryBytes == null) {
+      transfer.message = TEXT_PROFILES_APPLY_MISSING_BYTES;
+    } else {
+      String computedHash = TEXT_EMPTY;
+      try {
+        computedHash = BringupUtil.computeRawRegistryHash(registryJson);
+      } catch (RuntimeException ex) {
+        computedHash = TEXT_EMPTY;
+      }
+      if (computedHash.isBlank()) {
+        transfer.message = TEXT_PROFILES_APPLY_HASH_UNAVAILABLE;
+      } else if (!computedHash.equals(registryHash)) {
+        transfer.message = TEXT_PROFILES_APPLY_HASH_MISMATCH;
+      } else {
+        long computedBytes = registryJson.getBytes(StandardCharsets.UTF_8).length;
+        if (registryBytes != computedBytes) {
+          transfer.message = TEXT_PROFILES_APPLY_BYTES_MISMATCH;
+        } else {
+          transfer.ok = true;
+        }
+      }
+    }
+    if (transfer.ok) {
+      report = BringupUtil.applyRegistryJson(registryJson, activateProfile);
+    }
+    boolean overallOk = transfer.ok && report.overallOk;
+    result.ok = overallOk;
+    String failureMessage = selectProfilesApplyFailureMessage(transfer, report);
+    if (overallOk) {
+      result.message = TEXT_PROFILES_APPLY_OK;
+    } else if (failureMessage.isBlank()) {
+      result.message = TEXT_PROFILES_APPLY_FAILED;
+    } else {
+      result.message = failureMessage;
+    }
+    result.outText = buildProfilesApplyText(overallOk, transfer, report);
+    result.outJson = buildProfilesApplyJson(overallOk, transfer, report);
+    if (overallOk && report.activated && profileActivateAction != null) {
+      profileActivateAction.run();
+    }
+  }
+
+  /**
+   * NAME
+   *   buildProfilesApplyText - Build human-readable profilesApply output.
+   */
+  private String buildProfilesApplyText(
+      boolean overallOk,
+      BringupUtil.RegistryStageResult transfer,
+      BringupUtil.RegistryApplyReport report) {
+    if (overallOk) {
+      String active = report.activeProfile != null && !report.activeProfile.isBlank()
+          ? report.activeProfile
+          : BringupUtil.getActiveCanProfile();
+      StringBuilder builder = new StringBuilder();
+      builder.append(TEXT_PROFILES_APPLY_OK)
+          .append(TEXT_PROFILES_APPLY_DEVICES)
+          .append(BringupUtil.getRegistryDeviceCount())
+          .append(TEXT_PROFILES_APPLY_PROFILES)
+          .append(BringupUtil.getProfileCount())
+          .append(TEXT_PROFILES_APPLY_ACTIVE)
+          .append(active);
+      return builder.toString();
+    }
+    String message = selectProfilesApplyFailureMessage(transfer, report);
+    if (message.isBlank()) {
+      return TEXT_PROFILES_APPLY_FAILED;
+    }
+    return TEXT_PROFILES_APPLY_FAILED + TEXT_VENDOR_SEP + message;
+  }
+
+  /**
+   * NAME
+   *   selectProfilesApplyFailureMessage - Choose the first failing stage message.
+   */
+  private String selectProfilesApplyFailureMessage(
+      BringupUtil.RegistryStageResult transfer,
+      BringupUtil.RegistryApplyReport report) {
+    if (transfer != null && !transfer.ok && transfer.message != null && !transfer.message.isBlank()) {
+      return transfer.message;
+    }
+    if (report != null) {
+      if (!report.contentValidation.ok && !report.contentValidation.message.isBlank()) {
+        return report.contentValidation.message;
+      }
+      if (!report.apply.ok && !report.apply.message.isBlank()) {
+        return report.apply.message;
+      }
+      if (!report.postApplyCheck.ok && !report.postApplyCheck.message.isBlank()) {
+        return report.postApplyCheck.message;
+      }
+    }
+    return TEXT_EMPTY;
+  }
+
+  /**
+   * NAME
+   *   buildProfilesApplyJson - Build JSON output for profilesApply.
+   */
+  private String buildProfilesApplyJson(
+      boolean overallOk,
+      BringupUtil.RegistryStageResult transfer,
+      BringupUtil.RegistryApplyReport report) {
+    JsonObject payload = new JsonObject();
+    payload.add(JSON_KEY_TRANSFER_CHECK, buildStageJson(transfer));
+    payload.add(JSON_KEY_CONTENT_VALIDATION, buildStageJson(report.contentValidation));
+    payload.add(JSON_KEY_APPLY, buildStageJson(report.apply));
+    payload.add(JSON_KEY_POST_APPLY, buildStageJson(report.postApplyCheck));
+    payload.addProperty(JSON_KEY_OVERALL_OK, overallOk);
+    String active = report.activeProfile != null ? report.activeProfile : TEXT_EMPTY;
+    if (active.isBlank()) {
+      active = BringupUtil.getActiveCanProfile();
+    }
+    payload.addProperty(JSON_KEY_ACTIVE_PROFILE, active);
+    payload.addProperty(JSON_KEY_ACTIVATED, report.activated);
+    return payload.toString();
+  }
+
+  /**
+   * NAME
+   *   buildStageJson - Build a stage result JSON object.
+   */
+  private JsonObject buildStageJson(BringupUtil.RegistryStageResult stage) {
+    JsonObject obj = new JsonObject();
+    boolean ok = stage != null && stage.ok;
+    String message = stage != null && stage.message != null ? stage.message : TEXT_EMPTY;
+    obj.addProperty(JSON_KEY_OK, ok);
+    obj.addProperty(JSON_KEY_MESSAGE, message);
+    return obj;
+  }
+
+  /**
+   * NAME
    *   isUiCommandAllowedWhenDisabled - Check if command is allowed while disabled.
    */
   private boolean isUiCommandAllowedWhenDisabled(String name) {
@@ -1534,6 +1744,7 @@ public class BridgeUiCommandHandler {
       case "groupDisable":
       case "selectedDeviceSet":
       case "selectedModeSet":
+      case CMD_PROFILES_APPLY:
         return true;
       default:
         return false;

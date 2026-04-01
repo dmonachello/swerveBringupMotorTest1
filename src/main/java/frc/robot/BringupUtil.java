@@ -34,6 +34,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * NAME
@@ -107,6 +108,46 @@ public final class BringupUtil {
       "Profile '%s' references unknown device '%s'";
   private static final String MESSAGE_EMPTY_DEVICE_REGISTRY =
       "No devices found";
+  private static final String MESSAGE_REGISTRY_JSON_MISSING =
+      "Registry JSON missing.";
+  private static final String MESSAGE_REGISTRY_JSON_PARSE =
+      "Registry JSON parse failed: %s";
+  private static final String MESSAGE_REGISTRY_ROOT_NOT_OBJECT =
+      "Registry JSON root is not an object.";
+  private static final String MESSAGE_REGISTRY_SCHEMA_MISMATCH =
+      "schema_version mismatch: expected %s, got %s";
+  private static final String MESSAGE_REGISTRY_DATA_VERSION_MISSING =
+      "data_version missing or empty";
+  private static final String MESSAGE_REGISTRY_DATA_HASH_MISSING =
+      "data_hash missing or empty";
+  private static final String MESSAGE_REGISTRY_DATA_HASH_MISMATCH =
+      "data_hash mismatch";
+  private static final String MESSAGE_REGISTRY_DEVICES_MISSING =
+      "devices missing or empty";
+  private static final String MESSAGE_REGISTRY_DEVICE_LABEL_MISSING =
+      "device label missing";
+  private static final String MESSAGE_REGISTRY_DEVICE_LABEL_DUP =
+      "duplicate device label: %s";
+  private static final String MESSAGE_REGISTRY_PROFILES_MISSING =
+      "profiles missing or empty";
+  private static final String MESSAGE_REGISTRY_PROFILE_DEVICES_MISSING =
+      "profile devices missing: %s";
+  private static final String MESSAGE_REGISTRY_PROFILE_DEVICE_DUP =
+      "profile duplicate device label: %s/%s";
+  private static final String MESSAGE_REGISTRY_PROFILE_DEVICE_UNKNOWN =
+      "profile unknown device label: %s/%s";
+  private static final String MESSAGE_REGISTRY_ACTIVATE_UNKNOWN =
+      "activate profile not found: %s";
+  private static final String MESSAGE_REGISTRY_ACTIVATE_MISSING =
+      "activate profile missing";
+  private static final String MESSAGE_REGISTRY_ACTIVATE_FAILED =
+      "activate profile failed";
+  private static final String MESSAGE_REGISTRY_ACTIVE_UNKNOWN =
+      "active profile not found: %s";
+  private static final String MESSAGE_REGISTRY_APPLY_FAILED =
+      "registry apply failed: %s";
+  private static final String MESSAGE_REGISTRY_POST_APPLY_FAILED =
+      "post-apply check failed: %s";
   private static final String MESSAGE_UNKNOWN_CAN_IDENTITY =
       "Warning: unable to map device to CAN identity (label=%s, id=%s).";
   private static final int PROFILE_SCHEMA_VERSION = 4;
@@ -149,6 +190,7 @@ public final class BringupUtil {
   private static final int DEVTYPE_ENCODER_ID = 7;
   private static final int DEVTYPE_POWER_ID = 8;
   private static final int DEVTYPE_MISC_ID = 10;
+  private static final int INDEX_ZERO = 0;
 
   // JSON parser for bringup_system.json.
   private static final Gson GSON = new Gson();
@@ -431,6 +473,39 @@ public final class BringupUtil {
    */
   public static List<DeviceEntry> getActiveDevices() {
     return Collections.unmodifiableList(ACTIVE_DEVICES);
+  }
+
+  /**
+   * NAME
+   *   getRegistryDeviceCount - Return number of registry devices.
+   */
+  public static int getRegistryDeviceCount() {
+    return DEVICE_REGISTRY.size();
+  }
+
+  /**
+   * NAME
+   *   getProfileCount - Return number of profiles in the registry.
+   */
+  public static int getProfileCount() {
+    return profiles.size();
+  }
+
+  /**
+   * NAME
+   *   computeRawRegistryHash - Compute SHA-256 for raw registry JSON.
+   *
+   * PARAMETERS
+   *   rawJson - Registry JSON string.
+   *
+   * RETURNS
+   *   Hex-encoded SHA-256 digest or empty string on missing input.
+   */
+  public static String computeRawRegistryHash(String rawJson) {
+    if (rawJson == null) {
+      return NT_LABEL_EMPTY;
+    }
+    return sha256Hex(rawJson);
   }
 
   /**
@@ -1260,6 +1335,325 @@ public final class BringupUtil {
       addToRegistry(def);
       labels.add(label);
     }
+  }
+
+  /**
+   * NAME
+   *   RegistryStageResult - Stage result for registry apply workflow.
+   *
+   * DESCRIPTION
+   *   Captures per-stage success and message text for UI reporting.
+   */
+  public static final class RegistryStageResult {
+    public boolean ok = false;
+    public String message = NT_LABEL_EMPTY;
+  }
+
+  /**
+   * NAME
+   *   RegistryApplyReport - Registry apply report for UI commands.
+   *
+   * DESCRIPTION
+   *   Bundles stage results plus final active profile metadata.
+   */
+  public static final class RegistryApplyReport {
+    public final RegistryStageResult contentValidation = new RegistryStageResult();
+    public final RegistryStageResult apply = new RegistryStageResult();
+    public final RegistryStageResult postApplyCheck = new RegistryStageResult();
+    public boolean overallOk = false;
+    public String activeProfile = NT_LABEL_EMPTY;
+    public boolean activated = false;
+  }
+
+  /**
+   * NAME
+   *   applyRegistryJson - Validate and apply a registry JSON payload.
+   *
+   * PARAMETERS
+   *   rawJson - Full bringup_system.json payload.
+   *   activateProfile - Optional profile name to activate.
+   *
+   * RETURNS
+   *   RegistryApplyReport with per-stage status.
+   */
+  public static RegistryApplyReport applyRegistryJson(String rawJson, String activateProfile) {
+    RegistryApplyReport report = new RegistryApplyReport();
+    RegistryPayload payload = validateRegistryPayload(rawJson, activateProfile, report);
+    if (payload == null) {
+      return report;
+    }
+    report.contentValidation.ok = true;
+    boolean applied = applyRegistryPayload(payload, activateProfile, report);
+    if (!applied) {
+      return report;
+    }
+    boolean verified = verifyRegistryApply(activateProfile, report);
+    if (!verified) {
+      return report;
+    }
+    report.overallOk = true;
+    report.activeProfile = safeText(activeProfile);
+    report.activated = activateProfile != null
+        && !activateProfile.isBlank()
+        && safeText(activeProfile).equals(activateProfile)
+        && activeProfileApplied;
+    return report;
+  }
+
+  /**
+   * NAME
+   *   RegistryPayload - Parsed registry payload with a validated registry map.
+   */
+  private static final class RegistryPayload {
+    private final ProfileRoot root;
+    private final Map<String, DeviceDefinition> registry;
+
+    private RegistryPayload(ProfileRoot root, Map<String, DeviceDefinition> registry) {
+      this.root = root;
+      this.registry = registry;
+    }
+  }
+
+  /**
+   * NAME
+   *   validateRegistryPayload - Validate registry JSON without mutating state.
+   */
+  private static RegistryPayload validateRegistryPayload(
+      String rawJson,
+      String activateProfile,
+      RegistryApplyReport report) {
+    if (rawJson == null || rawJson.isBlank()) {
+      report.contentValidation.message = MESSAGE_REGISTRY_JSON_MISSING;
+      return null;
+    }
+    JsonElement parsed;
+    try {
+      parsed = JsonParser.parseString(rawJson);
+    } catch (JsonParseException ex) {
+      report.contentValidation.message = String.format(MESSAGE_REGISTRY_JSON_PARSE, ex.getMessage());
+      return null;
+    }
+    if (parsed == null || !parsed.isJsonObject()) {
+      report.contentValidation.message = MESSAGE_REGISTRY_ROOT_NOT_OBJECT;
+      return null;
+    }
+    ProfileRoot root;
+    try {
+      root = GSON.fromJson(parsed, ProfileRoot.class);
+    } catch (JsonParseException ex) {
+      report.contentValidation.message = String.format(MESSAGE_REGISTRY_JSON_PARSE, ex.getMessage());
+      return null;
+    }
+    if (root == null) {
+      report.contentValidation.message = MESSAGE_REGISTRY_JSON_MISSING;
+      return null;
+    }
+    if (root.schemaVersion != PROFILE_SCHEMA_VERSION) {
+      report.contentValidation.message =
+          String.format(MESSAGE_REGISTRY_SCHEMA_MISMATCH, PROFILE_SCHEMA_VERSION, root.schemaVersion);
+      return null;
+    }
+    if (root.dataVersion == null || root.dataVersion.isBlank()) {
+      report.contentValidation.message = MESSAGE_REGISTRY_DATA_VERSION_MISSING;
+      return null;
+    }
+    if (root.dataHash == null || root.dataHash.isBlank()) {
+      report.contentValidation.message = MESSAGE_REGISTRY_DATA_HASH_MISSING;
+      return null;
+    }
+    String computedHash;
+    try {
+      computedHash = computeDataHash(rawJson);
+    } catch (JsonParseException ex) {
+      report.contentValidation.message = ex.getMessage();
+      return null;
+    }
+    if (!root.dataHash.equals(computedHash)) {
+      report.contentValidation.message = MESSAGE_REGISTRY_DATA_HASH_MISMATCH;
+      return null;
+    }
+    if (root.devices == null || root.devices.isEmpty()) {
+      report.contentValidation.message = MESSAGE_REGISTRY_DEVICES_MISSING;
+      return null;
+    }
+    Map<String, DeviceDefinition> registry = buildRegistryMap(root.devices, report);
+    if (registry == null) {
+      return null;
+    }
+    if (root.profiles == null || root.profiles.isEmpty()) {
+      report.contentValidation.message = MESSAGE_REGISTRY_PROFILES_MISSING;
+      return null;
+    }
+    String active = safeText(activeProfile);
+    if (activateProfile == null || activateProfile.isBlank()) {
+      if (!active.isBlank() && !root.profiles.containsKey(active)) {
+        report.contentValidation.message =
+            String.format(MESSAGE_REGISTRY_ACTIVE_UNKNOWN, active);
+        return null;
+      }
+    } else if (!root.profiles.containsKey(activateProfile)) {
+      report.contentValidation.message =
+          String.format(MESSAGE_REGISTRY_ACTIVATE_UNKNOWN, activateProfile);
+      return null;
+    }
+    for (Map.Entry<String, ProfileConfig> entry : root.profiles.entrySet()) {
+      String profileName = entry.getKey();
+      ProfileConfig config = entry.getValue();
+      List<String> labels = config != null ? config.devices : null;
+      if (labels == null) {
+        report.contentValidation.message =
+            String.format(MESSAGE_REGISTRY_PROFILE_DEVICES_MISSING, profileName);
+        return null;
+      }
+      Set<String> seen = new java.util.HashSet<>();
+      for (String label : labels) {
+        String normalized = safeText(label);
+        if (normalized.isEmpty()) {
+          continue;
+        }
+        if (seen.contains(normalized)) {
+          report.contentValidation.message =
+              String.format(MESSAGE_REGISTRY_PROFILE_DEVICE_DUP, profileName, normalized);
+          return null;
+        }
+        seen.add(normalized);
+        if (!registry.containsKey(normalized)) {
+          report.contentValidation.message =
+              String.format(MESSAGE_REGISTRY_PROFILE_DEVICE_UNKNOWN, profileName, normalized);
+          return null;
+        }
+      }
+    }
+    return new RegistryPayload(root, registry);
+  }
+
+  /**
+   * NAME
+   *   buildRegistryMap - Build a validated device registry map.
+   */
+  private static Map<String, DeviceDefinition> buildRegistryMap(
+      List<DeviceDefinition> devices,
+      RegistryApplyReport report) {
+    Map<String, DeviceDefinition> registry = new LinkedHashMap<>();
+    for (DeviceDefinition def : devices) {
+      if (def == null) {
+        continue;
+      }
+      String label = safeText(def.label);
+      if (label.isEmpty()) {
+        report.contentValidation.message = MESSAGE_REGISTRY_DEVICE_LABEL_MISSING;
+        return null;
+      }
+      if (registry.containsKey(label)) {
+        report.contentValidation.message =
+            String.format(MESSAGE_REGISTRY_DEVICE_LABEL_DUP, label);
+        return null;
+      }
+      registry.put(label, def);
+    }
+    return registry;
+  }
+
+  /**
+   * NAME
+   *   applyRegistryPayload - Replace in-memory registry from payload data.
+   */
+  private static boolean applyRegistryPayload(
+      RegistryPayload payload,
+      String activateProfile,
+      RegistryApplyReport report) {
+    try {
+      profiles = new LinkedHashMap<>(payload.root.profiles);
+      profileOrder = new ArrayList<>(profiles.keySet());
+      String nextDefault = safeText(payload.root.defaultProfile);
+      if (nextDefault.isBlank() || !profiles.containsKey(nextDefault)) {
+        nextDefault = profiles.isEmpty() ? DEFAULT_PROFILE_NAME : profileOrder.get(INDEX_ZERO);
+      }
+      defaultProfile = nextDefault;
+      if (selectedProfile == null || selectedProfile.isBlank() || !profiles.containsKey(selectedProfile)) {
+        selectedProfile = defaultProfile;
+      }
+      DEVICE_REGISTRY.clear();
+      DEVICE_REGISTRY.putAll(payload.registry);
+      clearDeviceInstanceRegistry();
+      if (activateProfile != null && !activateProfile.isBlank()) {
+        String error = applyActiveProfileStrict(activateProfile);
+        if (!error.isBlank()) {
+          report.apply.message = error;
+          return false;
+        }
+      }
+      report.apply.ok = true;
+      return true;
+    } catch (Exception ex) {
+      report.apply.message = String.format(MESSAGE_REGISTRY_APPLY_FAILED, ex.getMessage());
+      return false;
+    }
+  }
+
+  /**
+   * NAME
+   *   verifyRegistryApply - Verify registry consistency after apply.
+   */
+  private static boolean verifyRegistryApply(
+      String activateProfile,
+      RegistryApplyReport report) {
+    if (profiles == null || profiles.isEmpty()) {
+      report.postApplyCheck.message =
+          String.format(MESSAGE_REGISTRY_POST_APPLY_FAILED, MESSAGE_REGISTRY_PROFILES_MISSING);
+      return false;
+    }
+    if (DEVICE_REGISTRY.isEmpty()) {
+      report.postApplyCheck.message =
+          String.format(MESSAGE_REGISTRY_POST_APPLY_FAILED, MESSAGE_REGISTRY_DEVICES_MISSING);
+      return false;
+    }
+    String active = safeText(activeProfile);
+    if (!active.isBlank() && !profiles.containsKey(active)) {
+      report.postApplyCheck.message =
+          String.format(MESSAGE_REGISTRY_POST_APPLY_FAILED, String.format(MESSAGE_REGISTRY_ACTIVE_UNKNOWN, active));
+      return false;
+    }
+    if (activateProfile != null && !activateProfile.isBlank()) {
+      if (!activeProfileApplied || !safeText(activeProfile).equals(activateProfile)) {
+        report.postApplyCheck.message =
+            String.format(MESSAGE_REGISTRY_POST_APPLY_FAILED, MESSAGE_REGISTRY_ACTIVATE_FAILED);
+        return false;
+      }
+    }
+    report.postApplyCheck.ok = true;
+    return true;
+  }
+
+  /**
+   * NAME
+   *   applyActiveProfileStrict - Activate a profile with strict validation.
+   */
+  private static String applyActiveProfileStrict(String profileName) {
+    String resolved = safeText(profileName);
+    if (resolved.isBlank()) {
+      return MESSAGE_REGISTRY_ACTIVATE_MISSING;
+    }
+    ProfileConfig config = profiles.get(resolved);
+    if (config == null) {
+      return String.format(MESSAGE_REGISTRY_ACTIVATE_UNKNOWN, resolved);
+    }
+    try {
+      validateProfileCanIdsStrict(resolved, config);
+      validateProfileLabelsStrict(resolved, config);
+    } catch (JsonParseException ex) {
+      return ex.getMessage();
+    }
+    List<DeviceDefinition> profileDevices = resolveProfileDevices(config);
+    buildDeviceConfigs(profileDevices);
+    PDH_CAN_ID = resolveSingletonIdByMfgType(profileDevices, MFG_REV_ID, DEVTYPE_POWER_ID);
+    PDP_CAN_ID = resolveSingletonIdByMfgType(profileDevices, MFG_CTRE_ID, DEVTYPE_POWER_ID);
+    PIGEON_CAN_ID = resolveSingletonIdByMfgType(profileDevices, MFG_CTRE_ID, DEVTYPE_GYRO_ID);
+    ROBORIO_CAN_ID = resolveSingletonIdByMfgType(profileDevices, MFG_NI_ID, DEVTYPE_ROBORIO_ID);
+    activeProfile = resolved;
+    selectedProfile = resolved;
+    activeProfileApplied = true;
+    return NT_LABEL_EMPTY;
   }
 
   private static void addFallbackSingleton(

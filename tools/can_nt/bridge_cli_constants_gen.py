@@ -53,6 +53,7 @@ class ParserSpec:
     cmd_group: str
     cmd_no: str
     cmd_profile: str
+    cmd_profiles: str
     cmd_prof: str
     cmd_selected_device: str
     cmd_selected_mode: str
@@ -266,6 +267,7 @@ SPEC = ParserSpec(
     cmd_group='group',
     cmd_no='no',
     cmd_profile='profile',
+    cmd_profiles='profiles',
     cmd_prof='prof',
     cmd_selected_device='selected-device',
     cmd_selected_mode='selected-mode',
@@ -283,6 +285,8 @@ SPEC = ParserSpec(
     cmd_save_profiles='profiles',
     cmd_save_unified='unified-config',
     cmd_savep='savep',
+    cmd_push='push',
+    cmd_activate='--activate',
     cmd_rename='rename',
     cmd_device='device',
     cmd_registry='registry',
@@ -375,7 +379,7 @@ SPEC = ParserSpec(
     label_device_set='device set',
     label_device_delete='delete',
     mode_exec_cmds=('cfg', 'configure', 'connect', 'diagnose', 'disconnect', 'ls', 'prof', 'profile', 'show'),
-    mode_config_cmds=('bindings', 'can-mappings', 'device', 'diagnose', 'export', 'group', 'import', 'ls', 'merge', 'no', 'prof', 'profile', 'rename', 'save', 'savep', 'selected-device', 'selected-mode', 'show', 'test', 'tests', 'val', 'validate', 'write'),
+    mode_config_cmds=('bindings', 'can-mappings', 'config', 'device', 'diagnose', 'export', 'group', 'import', 'ls', 'merge', 'no', 'prof', 'profile', 'profiles', 'rename', 'save', 'savep', 'selected-device', 'selected-mode', 'show', 'test', 'tests', 'val', 'validate', 'write'),
     mode_group_cmds=('add', 'bind', 'disable', 'enable', 'ls', 'member', 'no', 'run', 'show', 'write'),
     mode_device_cmds=('delete', 'ls', 'no', 'set', 'show', 'write'),
     mode_test_cmds=('action', 'brightness', 'color', 'deadband', 'deadbandsweep', 'device', 'duration', 'duty', 'enabled', 'hold', 'inputsource', 'limitswitch', 'ls', 'no', 'pattern', 'rotation', 'show', 'termination', 'time', 'type', 'write'),
@@ -410,6 +414,7 @@ SPEC = ParserSpec(
     kind_config_import='config_import',
     kind_config_export='config_export',
     kind_config_save='config_save',
+    kind_config_push='config_push',
     kind_config_rename_device='config_rename_device',
     kind_config_device='config_device',
     kind_config_device_set='config_device_set',

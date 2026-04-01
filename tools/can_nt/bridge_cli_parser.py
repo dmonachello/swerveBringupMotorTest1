@@ -182,6 +182,8 @@ class BridgeCliParser:
                 return self._handle_config_no
             if cmd == SPEC.cmd_profile.lower():
                 return self._handle_profile
+            if cmd == SPEC.cmd_profiles.lower():
+                return self._handle_profiles_command
             if cmd == SPEC.cmd_selected_device.lower():
                 return self._handle_selected_device
             if cmd == SPEC.cmd_selected_mode.lower():
@@ -192,6 +194,8 @@ class BridgeCliParser:
                 return self._handle_export
             if cmd == SPEC.cmd_save.lower():
                 return self._handle_save
+            if cmd == SPEC.cmd_config.lower():
+                return self._handle_config_command
             if cmd == SPEC.cmd_rename.lower():
                 return self._handle_rename
             if cmd == SPEC.cmd_device.lower():
@@ -742,6 +746,27 @@ class BridgeCliParser:
                 SPEC.empty_str,
                 bool(SPEC.bool_false),
             )
+        if verb in (SPEC.cmd_profiles, SPEC.cmd_config):
+            if len(tokens) >= SPEC.count_three and tokens[SPEC.count_one].lower() == SPEC.cmd_push:
+                path = tokens[SPEC.count_two]
+                value = SPEC.empty_str
+                if len(tokens) >= SPEC.count_five and tokens[SPEC.count_three].lower() == SPEC.cmd_activate:
+                    value = tokens[SPEC.count_four]
+                return (
+                    SPEC.kind_config_push,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    verb,
+                    value,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    path,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    bool(SPEC.bool_false),
+                )
         if verb == SPEC.cmd_bindings:
             return (
                 SPEC.kind_config_bindings,
@@ -1220,6 +1245,28 @@ class BridgeCliParser:
         if tokens[SPEC.count_one].lower() not in (SPEC.cmd_on, SPEC.cmd_off):
             raise CliParseError(SPEC.msg_selected_mode_value)
         self._reject_extra(tokens, SPEC.count_two, SPEC.label_selected_mode)
+
+    def _handle_profiles_command(self, tokens: List[str]) -> None:
+        if len(tokens) < SPEC.count_three or tokens[SPEC.count_one].lower() != SPEC.cmd_push:
+            raise CliParseError(SPEC.msg_push_requires)
+        if len(tokens) == SPEC.count_three:
+            return
+        if len(tokens) == SPEC.count_five:
+            if tokens[SPEC.count_three].lower() != SPEC.cmd_activate:
+                self._reject_extra(tokens, SPEC.count_three, SPEC.label_push)
+            return
+        self._reject_extra(tokens, SPEC.count_three, SPEC.label_push)
+
+    def _handle_config_command(self, tokens: List[str]) -> None:
+        if len(tokens) < SPEC.count_three or tokens[SPEC.count_one].lower() != SPEC.cmd_push:
+            raise CliParseError(SPEC.msg_push_requires)
+        if len(tokens) == SPEC.count_three:
+            return
+        if len(tokens) == SPEC.count_five:
+            if tokens[SPEC.count_three].lower() != SPEC.cmd_activate:
+                self._reject_extra(tokens, SPEC.count_three, SPEC.label_push)
+            return
+        self._reject_extra(tokens, SPEC.count_three, SPEC.label_push)
 
     def _handle_merge_import(self, tokens: List[str]) -> None:
         cmd = tokens[SPEC.count_zero].lower()

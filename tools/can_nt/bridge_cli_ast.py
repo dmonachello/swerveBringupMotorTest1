@@ -179,6 +179,7 @@ class BridgeCliAstExecutor:
             SPEC.kind_config_import: self._ast_config_import,
             SPEC.kind_config_export: self._ast_config_export,
             SPEC.kind_config_save: self._ast_config_save,
+            SPEC.kind_config_push: self._ast_config_push,
             SPEC.kind_config_rename_device: self._ast_config_rename_device,
             SPEC.kind_config_no_device: self._ast_config_no_device,
             SPEC.kind_config_device: self._ast_config_device,
@@ -382,6 +383,15 @@ class BridgeCliAstExecutor:
             return None
         print(AST_EXEC_SPEC["msg_err_unknown_cmd"])
         return AST_EXEC_SPEC["ret_err"]
+
+    def _ast_config_push(self, ast: CommandAst) -> Optional[StatusResult]:
+        target = ast.field or SPEC.empty_str
+        if target == SPEC.cmd_profiles:
+            return self._cli._profiles_push(ast.path, ast.value)
+        if target == SPEC.cmd_config:
+            return self._cli._config_push(ast.path, ast.value)
+        print(AST_EXEC_SPEC["msg_err_unknown_cmd"])
+        return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
 
     def _ast_config_rename_device(self, ast: CommandAst) -> Optional[int]:
         if self._cli._rename_local_device(ast.device_name, ast.field):
