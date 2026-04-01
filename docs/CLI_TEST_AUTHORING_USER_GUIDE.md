@@ -27,6 +27,8 @@ Key ideas:
 3. Devices are chosen from `data/bringup_system.json`.
 4. Test names are unique within a test set.
 5. Inputs use a unified `inputSource` format: `controllerName.inputId`.
+6. `show workspace` reveals which tests file is loaded and whether it is dirty.
+7. `validate tests --active-set` limits validation to the current test set.
 
 ## Modes and Prompts
 Purpose: show how the CLI indicates context.
@@ -35,6 +37,7 @@ Prompts:
 - `bringup>` is normal mode.
 - `bringup(config)#` is config mode.
 - `bringup(config-test-<name>)#` is test edit mode.
+TBD Screenshot: CLI showing the three prompt modes side-by-side (exec, config, and config-test) with short example commands.
 
 ## Command Syntax Notation
 Purpose: explain required vs optional parameters in examples.

@@ -2098,6 +2098,13 @@
           "device": "",
           "enabled": false
         }
+      },
+      "example_default": {
+        "groups": [],
+        "selectedDevice": {
+          "device": "",
+          "enabled": false
+        }
       }
     }
   },
@@ -3036,8 +3043,16 @@
       "model": "RobotController",
       "type": "",
       "terminator": true
+    },
+    {
+      "label": "roboRIO",
+      "interface": "CAN",
+      "manufacturer": 0,
+      "deviceType": 1,
+      "id": 0,
+      "type": "roborio"
     }
   ],
-  "data_version": "2026-03-31_101310",
-  "data_hash": "a7d3745520c52584ad69a68b0cb8640dedef3ab49151fbdfe3388dd641477254"
+  "data_version": "2026-04-01_131521",
+  "data_hash": "17ae86b2652c23a1a01b23e4bd6cd6f87a8954f21ddb39c7b08cda96d56b779c"
 }

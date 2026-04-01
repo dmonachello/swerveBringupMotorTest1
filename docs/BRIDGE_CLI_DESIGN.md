@@ -104,9 +104,11 @@ Exec / Show:
 - `show groups` -> `showGroups`
 - `show group <name>` -> `showGroup` `{name}`
 - `show devices` -> `showDevices`
-- `show device <name>` -> `showDevice` `{name}`
-- `show device registry <name>` -> local-only registry lookup
+- `show device-group <name>` -> `showDevice` `{name}`
+- `show device <name>` -> local-only registry lookup (definition)
 - `show bindings` -> `showBindings`
+- `show workspace` / `show session` -> local-only (loaded paths, active profile/set, dirty flags)
+- `show controllers` -> local-only (declared controllers + supported inputs)
 - `show selected-device` -> `showSelectedDevice`
 - `show runtime-state` -> `showRuntimeState`
 - `show config` -> `showRuntimeState`
@@ -118,8 +120,8 @@ Show sources:
 - Each show output is prefixed with `SOURCE: robot|local`.
 - `show group` text output includes members and bindings.
 - `show devices` (local) lists the full profile-derived device inventory, not only group members.
-- `show device` text output includes label-based metadata from bringup_system.json.
-- `show device registry` returns the full device registry entry (local only).
+- `show device` returns the full device definition from bringup_system.json (local only).
+- `show device-group` returns the device’s group membership/usage info.
 
 Config:
 - `group <name>` -> `groupCreate` `{name}`
@@ -174,6 +176,6 @@ Purpose: Record known design tradeoffs.
 ## Future Extensions
 Purpose: Track safe, compatible next steps.
 
-- Optional `?` help shorthand.
+- Expand `?` help to include all bounded values and numeric ranges (now supported).
 - NDJSON stream mode for long show commands.
 - GUI reuse of CLI command help strings for consistency.

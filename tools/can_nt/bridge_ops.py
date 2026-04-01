@@ -418,7 +418,7 @@ def local_show_data(
             {"source": "local", "devices": devices_list, KEY_PROFILE: profile_name},
         )
 
-    if target == "device":
+    if target == "device-group":
         name = tokens[1] if len(tokens) >= 2 else ""
         if isinstance(devices, list):
             for device in devices:

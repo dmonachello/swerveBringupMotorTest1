@@ -34,6 +34,7 @@ Purpose: Provide a clickable command surface and live output pane.
 
 Screenshot:
 ![Bringup Control UI](docs/images/bringup_ui_tests.png)
+TBD Screenshot: Show the profile dropdown, Output panel with recent commands, and connection status (top bar).
 
 Example outputs:
 ```text
@@ -71,6 +72,7 @@ Purpose: Author and maintain device profiles and layouts.
 - Node boxes show the label with a separate `ID` line instead of `(id X)` inline.
 - Groups -> `Create Group from Selection...` writes bridgeConfig.byProfile groups for CLI/UI use.
 - For Windows installs, use `install_windows.cmd` to install Python deps (includes `reportlab`).
+TBD Screenshot: Topology editor with a loaded profile showing labeled devices, the diagram canvas, and the groups/tags panel.
 
 ## Data Flow
 Purpose: Describe how data moves between parts.

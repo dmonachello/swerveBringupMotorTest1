@@ -32,9 +32,9 @@ show_target    = "status"
                | "group" ws name
                | "devices"
                | "device" ws name
-               | "device" ws "registry" ws name
                | "commands"
                | "help"
+               | "controllers"
                | "bindings"
                | "selected-device"
                | "runtime-state"
@@ -45,8 +45,11 @@ show_target    = "status"
                | "profile" [ ws name ]
                | "tests"
                | "test" ws name
+               | "device-group" ws name
                | "device-usage" ws name
-               | "message-level" ;
+               | "message-level"
+               | "workspace"
+               | "session" ;
 
 show_source    = "robot" | "local" | "both" ;
 show_flags     = show_flag { ws show_flag } ;
@@ -73,13 +76,14 @@ config         = "group" ws name
                | "save" ws "local-config" ws path
                | "save" ws "profiles" ws path
                | "save" ws "unified-config" ws path
+               | "save" ws "all" [ ws "--prompt" ]
                | "savep" ws path
                | "rename" ws "device" ws name ws name
                | "device" ws name
                | "device" ws name ws "set" ws device_field ws value_text
                | ("validate" | "val") ws "config" [ ws path ] [ ws "--all" ]
-               | ("validate" | "val") ws "profiles" [ ws ("robot" | "local") ]
-               | ("validate" | "val") ws "tests"
+               | ("validate" | "val") ws "profiles" [ ws ("robot" | "local") ] [ ws "--active" ]
+               | ("validate" | "val") ws "tests" [ ws "--active-set" ]
                | ("validate" | "val") ws "bindings" [ ws path ]
                | ("validate" | "val") ws "can-mappings" [ ws path ]
                | "profiles" ws "push" ws path [ ws "--activate" ws name ]

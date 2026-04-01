@@ -6,6 +6,21 @@
 python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
 ```
 
+Notes:
+- If `bringup_system.json` is invalid, the CLI will still start in recovery mode and print warnings. Fix the profile data, then `save profiles ...`.
+TBD Screenshot: Recovery-mode CLI startup showing the warning banner and the active prompt.
+
+0a) Inspect the current workspace (optional but recommended)
+
+```text
+show workspace
+```
+
+Expected:
+- Paths for profiles/tests/bindings/mappings.
+- Active profile and active test set.
+- Dirty flags (should be false on a fresh session).
+
 1) Select or Create Profile
 
 ```text
@@ -26,6 +41,7 @@ Notes:
 - If `bringup_tests.json` does not exist yet, skip `tests load` and run `tests clear` only.
 - `tests load bringup_tests.json` ensures the CLI is working from a known file.
 - `tests clear` wipes all test sets in memory so you can start clean.
+- If you want to merge tests from another file instead of replacing, use `tests merge <path>`.
 
 3) Add Device to the Active Profile (required before tests can reference it)
 
@@ -71,6 +87,32 @@ exit
 show tests
 show test FeederSpin
 ```
+Screenshot: `show tests` output listing multiple test sets and the active set.
+```text
+
+bridge(config-profile-home_tests_033026)# show tests
+Test sets:
+  clean_033026 (1 tests)
+  default (0 tests)
+Active test set: clean_033026
+- FeederSpin (button) devices=1 enabled=False
+SUCCESS [EXECUTOR.SUCCESS]
+DETAIL: Success.
+
+bridge(config-profile-home_tests_033026)# show test FeederSpin
+Test: FeederSpin
+  type: button
+  enabled: False
+  devices: Feeder Motor
+  inputSource: controller0.A
+  duty: 0.2
+  termination: hold=False time=2.0 rotation=None
+  time: {'timeoutSec': 2.0, 'onTimeout': 'fail'}
+SUCCESS [EXECUTOR.SUCCESS]
+DETAIL: Success.
+bridge(config-profile-home_tests_033026)#
+```
+
 
 8) Save Tests to a Custom File
 
@@ -85,6 +127,11 @@ write tests my_tests.json
 - `show tests` lists all sets plus the active set.
 - `write tests` validates all sets in memory unless you ran `tests clear`.
 - `write tests` must be run from `bridge(config)#` or `bridge(config-profile-...)#` (not from `bridge(config-test-...)#`). Use `exit` or `end` to leave test edit mode first.
+- Commands are case-insensitive (`inputSource`, `inputsource`, `InputSource` all work).
+- To delete a device:
+  - `no device "<label>"` from config/profile mode, or
+  - `device "<label>"` then `delete` from device mode.
+- If both profiles and tests are dirty, you can use `save all` to persist everything with the current file paths.
 
 ## Clean Verification Procedure (CLI Config + Tests)
 
@@ -105,6 +152,7 @@ configure terminal
 ```text
 show profiles
 ```
+TBD Screenshot: `show profiles` output listing available profiles.
 
 4) Select the profile under test
 
@@ -117,6 +165,7 @@ profile home_tests_033026
 ```text
 show devices
 ```
+TBD Screenshot: `show devices` output with `Feeder Motor` present.
 
 Expected:
 - `Feeder Motor` is present.

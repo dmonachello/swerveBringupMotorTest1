@@ -37,10 +37,10 @@ class ParserSpec:
     show_target_devices: str
     show_target_bindings: str
     show_target_selected_device: str
-    show_target_device_registry: str
     show_target_commands: str
     show_target_help: str
     show_target_device_usage: str
+    show_target_device_group: str
     show_target_message_level: str
     bind_kinds: tuple[str, ...]
     cmd_connect: str
@@ -71,6 +71,8 @@ class ParserSpec:
     cmd_save_profiles: str
     cmd_save_unified: str
     cmd_savep: str
+    cmd_push: str
+    cmd_activate: str
     cmd_rename: str
     cmd_device: str
     cmd_registry: str
@@ -198,6 +200,7 @@ class ParserSpec:
     kind_config_import: str
     kind_config_export: str
     kind_config_save: str
+    kind_config_push: str
     kind_config_rename_device: str
     kind_config_device: str
     kind_config_device_set: str
@@ -241,7 +244,7 @@ SPEC = ParserSpec(
     show_source_robot='robot',
     show_source_local='local',
     show_source_both='both',
-    show_targets=('status', 'groups', 'group', 'devices', 'device', 'commands', 'help', 'device-usage', 'device-registry', 'bindings', 'selected-device', 'runtime-state', 'tests', 'test', 'config', 'profiles', 'profile', 'message-level'),
+    show_targets=('status', 'groups', 'group', 'devices', 'device', 'commands', 'help', 'device-usage', 'bindings', 'selected-device', 'runtime-state', 'tests', 'test', 'config', 'profiles', 'profile', 'message-level', 'workspace', 'session', 'controllers', 'device-group'),
     show_target_config='config',
     show_target_runtime_state='runtime-state',
     show_target_tests='tests',
@@ -251,7 +254,7 @@ SPEC = ParserSpec(
     show_target_devices='devices',
     show_target_bindings='bindings',
     show_target_selected_device='selected-device',
-    show_target_device_registry='device-registry',
+    show_target_device_group='device-group',
     show_target_commands='commands',
     show_target_help='help',
     show_target_device_usage='device-usage',

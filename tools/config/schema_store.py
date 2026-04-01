@@ -32,9 +32,11 @@ from tools.common.profile_constants import (
     KEY_BRIDGE_GROUPS,
     KEY_BRIDGE_SCHEMA_VERSION,
     KEY_BRIDGE_SELECTED_DEVICE,
+    KEY_BUS,
     KEY_DATA_HASH,
     KEY_DATA_VERSION,
     KEY_DEFAULT_PROFILE,
+    KEY_DIAGRAM,
     KEY_DEVICE,
     KEY_DEVICE_TYPE,
     KEY_DEVICES,
@@ -43,11 +45,19 @@ from tools.common.profile_constants import (
     KEY_INTERFACE,
     KEY_INVERT,
     KEY_LABEL,
+    KEY_LIMITS,
     KEY_MANUFACTURER,
+    KEY_MODEL,
+    KEY_NOTES,
     KEY_PROFILE_DEVICES,
     KEY_PROFILES,
     KEY_PWM,
+    KEY_ROLE,
     KEY_SCHEMA_VERSION,
+    KEY_TAGS,
+    KEY_TERMINATOR,
+    KEY_TYPE,
+    KEY_VENDOR,
     INTERFACE_ANALOG,
     INTERFACE_CAN,
     INTERFACE_DIO,
@@ -154,6 +164,7 @@ ALLOWED_ROOT_KEYS = {
     KEY_DEVICES,
     KEY_PROFILES,
     KEY_BRIDGE_CONFIG,
+    KEY_DIAGRAM,
 }
 ALLOWED_TESTS_KEYS = {KEY_DEFAULT_TEST_SET, KEY_TEST_SETS, KEY_TESTS}
 ALLOWED_BINDINGS_KEYS = {KEY_CONTROLLERS, KEY_BINDINGS, KEY_AXES}
@@ -164,6 +175,15 @@ ALLOWED_DEVICE_KEYS = {
     KEY_MANUFACTURER,
     KEY_DEVICE_TYPE,
     KEY_ID,
+    KEY_MODEL,
+    KEY_TYPE,
+    KEY_VENDOR,
+    KEY_ROLE,
+    KEY_NOTES,
+    KEY_TAGS,
+    KEY_TERMINATOR,
+    KEY_LIMITS,
+    KEY_BUS,
     KEY_DIO,
     KEY_INVERT,
     KEY_PWM,
@@ -519,14 +539,16 @@ class ConfigSchemaStore:
         self._validate_mappings(issues, strict)
         return ValidationResult(issues)
 
-    def validate_profiles_only(self, strict: bool = True) -> ValidationResult:
+    def validate_profiles_only(
+        self, strict: bool = True, profile_name: Optional[str] = None
+    ) -> ValidationResult:
         """
         NAME
             validate_profiles_only - Validate profiles and bridge config only.
         """
 
         issues: List[ValidationIssue] = list()
-        self._validate_profiles(issues, strict)
+        self._validate_profiles(issues, strict, profile_name=profile_name)
         return ValidationResult(issues)
 
     def validate_bindings_only(self, strict: bool = True) -> ValidationResult:
@@ -788,7 +810,12 @@ class ConfigSchemaStore:
                     merged[key] = root_payload.get(key)
         return merged, warnings
 
-    def _validate_profiles(self, issues: List[ValidationIssue], strict: bool) -> None:
+    def _validate_profiles(
+        self,
+        issues: List[ValidationIssue],
+        strict: bool,
+        profile_name: Optional[str] = None,
+    ) -> None:
         """
         NAME
             _validate_profiles - Validate profiles and device registry.
@@ -803,8 +830,31 @@ class ConfigSchemaStore:
         if not isinstance(devices, list):
             self._append_issue(issues, LOCATION_PROFILES, MESSAGE_TYPE_INVALID.format(key=KEY_DEVICES), SEVERITY_ERROR)
             devices = list()
+        target_profile = profile_name
+        active_profile = None
+        profiles = payload.get(KEY_PROFILES)
+        if target_profile:
+            if isinstance(profiles, dict):
+                active_profile = profiles.get(target_profile)
+            if not isinstance(active_profile, dict):
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_PROFILE_UNKNOWN.format(profile=target_profile),
+                    SEVERITY_ERROR,
+                )
+                active_profile = None
         catalog, duplicates = self._build_device_catalog(devices)
+        active_labels: Optional[Set[str]] = None
+        if target_profile and active_profile is None:
+            active_labels = set()
+        elif active_profile is not None:
+            labels = active_profile.get(KEY_PROFILE_DEVICES)
+            if isinstance(labels, list):
+                active_labels = {str(label).strip().lower() for label in labels if isinstance(label, str)}
         for label in sorted(duplicates):
+            if active_labels is not None and label.lower() not in active_labels:
+                continue
             self._append_issue(
                 issues,
                 LOCATION_PROFILES,
@@ -813,6 +863,9 @@ class ConfigSchemaStore:
             )
         for entry in devices:
             if isinstance(entry, dict):
+                label = str(entry.get(KEY_LABEL, "")).strip()
+                if active_labels is not None and label.lower() not in active_labels:
+                    continue
                 self._check_unknown_keys(entry, ALLOWED_DEVICE_KEYS, LOCATION_PROFILES, issues, strict)
                 self._validate_device_entry(entry, issues)
                 attachments = entry.get(KEY_ATTACHMENTS)
@@ -825,12 +878,13 @@ class ConfigSchemaStore:
                                 MESSAGE_MISSING_DEVICE_REF.format(label=attachment),
                                 SEVERITY_ERROR,
                             )
-        profiles = payload.get(KEY_PROFILES)
         if profiles is not None and not isinstance(profiles, dict):
             self._append_issue(issues, LOCATION_PROFILES, MESSAGE_TYPE_INVALID.format(key=KEY_PROFILES), SEVERITY_ERROR)
             profiles = dict()
         if isinstance(profiles, dict):
             for profile_name, profile in profiles.items():
+                if target_profile is not None and profile_name != target_profile:
+                    continue
                 if not isinstance(profile, dict):
                     continue
                 labels = profile.get(KEY_PROFILE_DEVICES)
@@ -854,6 +908,8 @@ class ConfigSchemaStore:
                         )
         by_profile = self._bridge_by_profile()
         for profile_name, entry in by_profile.items():
+            if target_profile is not None and profile_name != target_profile:
+                continue
             if profile_name not in self.profiles():
                 self._append_issue(
                     issues,

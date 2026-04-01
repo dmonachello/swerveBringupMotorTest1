@@ -258,6 +258,15 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         if load_error:
             print(f"WARNING: bringup_system.json load failed: {load_error}")
             print("WARNING: Starting CLI in recovery mode (profiles must be repaired before robot tools).")
+            from tools.common.paths import profiles_canonical_path, profiles_deploy_path
+
+            profiles_path = profiles_canonical_path()
+            if not profiles_path.exists():
+                profiles_path = profiles_deploy_path()
+            print(f"Recovery profiles source: {profiles_path}")
+            print("Next: show workspace")
+            print("Next: validate profiles --active")
+            print("Next: show devices")
         else:
             data_version = get_profiles_data_version()
             if data_version:
@@ -288,6 +297,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             conflict_policy=args.conflict_policy,
             echo_enabled=bool(getattr(args, "cli_echo", False)),
             message_level=(args.cli_messages or None),
+            recovery_mode=bool(load_error),
         )
         if args.batch:
             try:

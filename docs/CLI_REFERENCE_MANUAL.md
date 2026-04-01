@@ -18,8 +18,8 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `show groups [robot|local|both] [--json] [--pretty]`
 - `show group <name> [robot|local|both] [--json] [--pretty]`
 - `show devices [robot|local|both] [--json] [--pretty]`
-- `show device <name> [robot|local|both] [--json] [--pretty]`
-- `show device registry <name> [local|--local] [--json] [--pretty]`
+- `show device <name> [local] [--json] [--pretty]`
+- `show device-group <name> [robot|local|both] [--json] [--pretty]`
 - `show bindings [robot|local|both] [--json] [--pretty]`
 - `show selected-device [robot|local|both] [--json] [--pretty]`
 - `show runtime-state [robot|local|both] [--json] [--pretty]`
@@ -31,6 +31,9 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `show profile <name> [local] [--json] [--pretty]`
 - `show tests [--json] [--pretty]`
 - `show test <name> [--json] [--pretty]`
+- `show workspace [--json] [--pretty]`
+- `show session [--json] [--pretty]`
+- `show controllers [--json] [--pretty]`
 - `diagnose motor <label>`
 - `diagnose device <label>`
 - `configure terminal`
@@ -50,6 +53,7 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `import config <path>`
 - `export runtime-groups <path>`
 - `export cli-script <path>`
+- `save all [--prompt]`
 - `save config <path>`
 - `save local-config <path>`
 - `save profiles <path>`
@@ -57,7 +61,9 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `rename device <old> <new>`
 - `device <name>`
 - `device <name> set <field> <value>`
-- `validate config [path]`
+- `validate config [path] [--all]`
+- `validate profiles [robot|local] [--active]`
+- `validate tests [--active-set]`
 - `show <target> [robot|local|both] [--json] [--pretty]`
 - `bindings show [controllers|bindings|axes] [--json] [--pretty]`
 - `bindings controller add <name> <type> <port>`
@@ -567,19 +573,19 @@ Local devices:
   pdp
   roboRIO
 
-### show device <name> [robot|local|both] [--json] [--pretty]
+### show device <name> [local] [--json] [--pretty]
 
 NAME
 
-show device <name> [robot|local|both] [--json] [--pretty] - Display the requested information.
+show device <name> [local] [--json] [--pretty] - Display the requested information.
 
 SYNOPSIS
 
-show device <name> [robot|local|both] [--json] [--pretty]
+show device <name> [local] [--json] [--pretty]
 
 DESCRIPTION
 
-Display the requested information. This command is valid in Exec Mode (`bridge>`).
+Display the device definition from the profiles registry. This command is valid in Exec Mode (`bridge>`).
 
 PARAMETERS
 
@@ -603,55 +609,57 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`show device <name> [robot|local|both] [--json] [--pretty]`
-
-EXAMPLE OUTPUT
-SOURCE: local
-Local device SPARKMAX/NEO 25:
-  role=motor
-  attachments=[]
-
-### show device registry <name> [local|--local] [--json] [--pretty]
-
-NAME
-
-show device registry <name> [local|--local] [--json] [--pretty] - Display the requested information.
-
-SYNOPSIS
-
-show device registry <name> [local|--local] [--json] [--pretty]
-
-DESCRIPTION
-
-Display the requested information. This command is valid in Exec Mode (`bridge>`).
-
-PARAMETERS
-
-- <name>: Identifier for a named entity (group, device, test, profile) depending on command context.
-
-RETURNS
-
-Prints output to the console or updates in-memory state; errors are reported inline.
-
-SIDE EFFECTS
-
-May update local in-memory config. If connected, some commands may send updates to the robot.
-
-ERRORS
-
-Reports invalid syntax, missing entities, or validation failures when applicable.
-
-NOTES
-
-You can suffix the command with `?` to see valid next arguments. Device references use labels.
-
-EXAMPLE
-
-`show device registry "SPARKMAX/NEO 25" --json`
+`show device <name> [local] [--json] [--pretty]`
 
 EXAMPLE OUTPUT
 SOURCE: local
 Local registry device SPARKMAX/NEO 25:
+  interface=CAN
+  manufacturer=5
+  deviceType=2
+  id=25
+
+### show device-group <name> [robot|local|both] [--json] [--pretty]
+
+NAME
+
+show device-group <name> [robot|local|both] [--json] [--pretty] - Display the requested information.
+
+SYNOPSIS
+
+show device-group <name> [robot|local|both] [--json] [--pretty]
+
+DESCRIPTION
+
+Display the device group membership/usage information. This command is valid in Exec Mode (`bridge>`).
+
+PARAMETERS
+
+- <name>: Identifier for a named entity (group, device, test, profile) depending on command context.
+
+RETURNS
+
+Prints output to the console or updates in-memory state; errors are reported inline.
+
+SIDE EFFECTS
+
+May update local in-memory config. If connected, some commands may send updates to the robot.
+
+ERRORS
+
+Reports invalid syntax, missing entities, or validation failures when applicable.
+
+NOTES
+
+You can suffix the command with `?` to see valid next arguments. Device references use labels.
+
+EXAMPLE
+
+`show device-group "SPARKMAX/NEO 25" --json`
+
+EXAMPLE OUTPUT
+SOURCE: local
+Local device-group SPARKMAX/NEO 25:
   label=SPARKMAX/NEO 25
   interface=CAN
   manufacturer=5 (REV)
@@ -6090,8 +6098,8 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `show groups [robot|local|both] [--json] [--pretty]`
 - `show group <name> [robot|local|both] [--json] [--pretty]`
 - `show devices [robot|local|both] [--json] [--pretty]`
-- `show device <name> [robot|local|both] [--json] [--pretty]`
-- `show device registry <name> [local|--local] [--json] [--pretty]`
+- `show device <name> [local] [--json] [--pretty]`
+- `show device-group <name> [robot|local|both] [--json] [--pretty]`
 - `show bindings [robot|local|both] [--json] [--pretty]`
 - `show selected-device [robot|local|both] [--json] [--pretty]`
 - `show runtime-state [robot|local|both] [--json] [--pretty]`

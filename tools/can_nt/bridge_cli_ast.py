@@ -671,7 +671,7 @@ class BridgeCliAstExecutor:
             SHOW_TARGET_CONFIG_DIRTY,
             SHOW_TARGET_PROFILE,
             SHOW_TARGET_PROFILES,
-            SPEC.show_target_device_registry,
+            SPEC.show_target_device,
         ):
             source = SPEC.show_source_local
         if not source:
@@ -717,7 +717,7 @@ class BridgeCliAstExecutor:
             seq = show_group(self._cli._session, name, json_output=json_output)
         elif target == SPEC.show_target_devices:
             seq = show_devices(self._cli._session, json_output=json_output)
-        elif target == SPEC.show_target_device and name:
+        elif target == SPEC.show_target_device_group and name:
             seq = show_device(self._cli._session, name, json_output=json_output)
         elif target == SPEC.show_target_bindings:
             seq = show_bindings(self._cli._session, json_output=json_output)
@@ -725,7 +725,7 @@ class BridgeCliAstExecutor:
             seq = show_selected_device(self._cli._session, json_output=json_output)
         elif target == SPEC.show_target_runtime_state:
             seq = show_runtime_state(self._cli._session, json_output=json_output)
-        elif target == SPEC.show_target_device_registry:
+        elif target == SPEC.show_target_device:
             print(AST_EXEC_SPEC["msg_err_unknown_show"])
             return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
         else:

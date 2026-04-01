@@ -1102,12 +1102,6 @@ class BridgeCliParser:
     def _split_show_target(self, tokens: List[str]) -> tuple[str, str]:
         if not tokens:
             return (SPEC.empty_str, SPEC.empty_str)
-        if (
-            len(tokens) > SPEC.count_two
-            and tokens[SPEC.count_zero].lower() == SPEC.cmd_device
-            and tokens[SPEC.count_one].lower() == SPEC.cmd_registry
-        ):
-            return (SPEC.show_target_device_registry, tokens[SPEC.count_two])
         target = tokens[SPEC.count_zero]
         name = tokens[SPEC.count_one] if len(tokens) > SPEC.count_one else SPEC.empty_str
         return (target, name)
@@ -1426,12 +1420,6 @@ class BridgeCliParser:
         if not core:
             raise CliParseError(SPEC.msg_show_requires)
         target = core[SPEC.count_zero].lower()
-        if (
-            len(core) > SPEC.count_two
-            and core[SPEC.count_zero].lower() == SPEC.cmd_device
-            and core[SPEC.count_one].lower() == SPEC.cmd_registry
-        ):
-            target = SPEC.show_target_device_registry
         if target not in self._show_targets:
             raise CliParseError(SPEC.msg_unknown_show)
         if target in (
@@ -1439,9 +1427,8 @@ class BridgeCliParser:
             SPEC.show_target_device,
             SPEC.show_target_test,
             SPEC.show_target_device_usage,
+            SPEC.show_target_device_group,
         ) and len(core) < SPEC.count_two:
-            raise CliParseError(SPEC.msg_show_name % target)
-        if target == SPEC.show_target_device_registry and len(core) < SPEC.count_three:
             raise CliParseError(SPEC.msg_show_name % target)
         if target == "profiles" and len(core) > SPEC.count_one and self._strict:
             raise CliParseError(SPEC.msg_show_too_many)
@@ -1454,16 +1441,14 @@ class BridgeCliParser:
             elif self._strict:
                 raise CliParseError(SPEC.msg_show_too_many)
         if self._strict:
-            if target == SPEC.show_target_device_registry:
-                max_len = SPEC.count_three
-            elif (
+            if (
                 target == SPEC.show_target_config
                 and len(core) == SPEC.count_two
                 and core[SPEC.count_one].lower() in (SHOW_CONFIG_LOCAL_RAW, SHOW_CONFIG_DIRTY)
             ):
                 max_len = SPEC.count_two
             else:
-                max_len = SPEC.count_two if target in (SPEC.show_target_group, SPEC.show_target_device) else SPEC.count_one
+                max_len = SPEC.count_two if target in (SPEC.show_target_group, SPEC.show_target_device, SPEC.show_target_device_group) else SPEC.count_one
             if len(core) > max_len:
                 raise CliParseError(SPEC.msg_show_too_many)
 

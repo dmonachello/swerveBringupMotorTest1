@@ -90,6 +90,7 @@ Notes:
 - The `?` help does not execute the command.
 - It only shows valid next arguments for the current context.
 - `prompt_toolkit` enables inline prefill so the text is editable after the `?`.
+- For bounded values, `?` prints the full inline list (including numeric ranges).
 
 ## How to Choose a Profile
 Purpose: Ensure groups are tied to the right profile.
@@ -110,14 +111,57 @@ Purpose: Learn the inspection commands you will use constantly.
 
 Common show commands:
 - `show status`
+- `show workspace` (alias `show session`)
 - `show groups`
 - `show group <name>`
 - `show devices`
-- `show device <name>`
-- `show device registry <name>`
+- `show device <name>` (definition)
+- `show device-group <name>` (group usage)
 - `show bindings`
+- `show controllers`
 - `show runtime-state`
 - `diagnose motor <label>`
+
+## Workspace View
+Purpose: See loaded files, active profile/set, and dirty flags.
+
+Commands:
+```
+show workspace
+show workspace --json --pretty
+```
+
+Output includes:
+- Profiles/tests/bindings/mappings source paths.
+- Active profile and active test set.
+- Dirty flags.
+- Recovery mode status.
+
+## Scoped Validation
+Purpose: Validate only the active profile or active test set.
+
+Commands:
+```
+validate profiles --active
+validate tests --active-set
+```
+
+Notes:
+- Scoped validation reduces noise from unrelated profiles/sets.
+- Output includes the exact profile/test set name.
+
+## Save All
+Purpose: Persist all dirty sections in one step.
+
+Commands:
+```
+save all
+save all --prompt
+```
+
+Notes:
+- Uses the current source paths.
+- If a path is missing, the CLI prints a one-line fix (for example: `write tests my_tests.json`).
 - `show config local-raw`
 - `show config dirty`
 - `show profiles`

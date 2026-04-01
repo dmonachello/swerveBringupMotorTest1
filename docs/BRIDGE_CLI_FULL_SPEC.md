@@ -201,14 +201,15 @@ Common:
 - `quit`
 - Windows EOF: Ctrl+Z then Enter behaves like `exit` (Ctrl+D on POSIX shells).
 - Inline help: a trailing `?` shows valid next arguments (e.g., `show groups ?`).
+- For bounded values, `?` prints the full inline list and any numeric ranges.
 
 Exec:
 - `show status [robot|local|both]`
 - `show groups [robot|local|both]`
 - `show group <name> [robot|local|both]`
 - `show devices [robot|local|both]`
-- `show device <name> [robot|local|both]`
-- `show device registry <name> [local|--local]`
+- `show device <name> [local]`
+- `show device-group <name> [robot|local|both]`
 - `show bindings [robot|local|both]`
 - `show selected-device [robot|local|both]`
 - `show runtime-state [robot|local|both]`
@@ -220,6 +221,9 @@ Exec:
 - `show profile <name> [local]` (device labels for a profile)
 - `show tests [--json] [--pretty]`
 - `show test <name> [--json] [--pretty]`
+- `show workspace [--json] [--pretty]`
+- `show session [--json] [--pretty]`
+- `show controllers [--json] [--pretty]`
 - `configure terminal`
 - `connect`
 - `disconnect`
@@ -236,13 +240,16 @@ Config:
 - `export runtime-groups <bridgeConfig.json>`
 - `export cli-script <path>`
 - `save config <bridgeConfig.json>`
+- `save all [--prompt]`
 - `save local-config <path>` (local-only; writes groups-only when profiles are loaded)
 - `save profiles <path>` (profiles-only; preserves bridgeConfig)
 - `save unified-config <path>`
 - `rename device <old> <new>` (local-only; updates profiles when loaded)
 - `device <name>`
 - `device <name> set <field> <value>`
-- `validate config [path]`
+- `validate config [path] [--all]`
+- `validate profiles [robot|local] [--active]`
+- `validate tests [--active-set]`
 - `bindings show [controllers|bindings|axes] [--json] [--pretty]`
 - `bindings controller add <name> <type> <port>`
 - `bindings controller set <name> <field> <value>`
@@ -279,8 +286,8 @@ Config:
 Show Output Notes:
 - `show group` text output includes members and bindings.
 - `show devices` (local) lists the full profile-derived device inventory, not only group members.
-- `show device` text output includes label-based metadata from bringup_system.json.
-- `show device registry` returns the full device registry entry (local only).
+- `show device` returns the full device definition from bringup_system.json (local only).
+- `show device-group` returns the device’s group membership/usage info.
 - The CLI auto-imports `data/bringup_system.json` on startup when present (replaces groups).
 - merge config is only allowed when the incoming profiles hash matches the loaded profiles; otherwise use import config.
 - `validate config [path]`
@@ -469,7 +476,8 @@ Commands:
 - `show groups --json`
 - `show group <name> --json`
 - `show devices --json`
-- `show device <name> --json`
+- `show device <name> --json` (definition)
+- `show device-group <name> --json` (usage)
 - `show bindings --json`
 - `show selected-device --json`
 - `show runtime-state --json`
@@ -568,7 +576,7 @@ Show:
 - `show groups` -> `showGroups`
 - `show group <name>` -> `showGroup` `{name}`
 - `show devices` -> `showDevices`
-- `show device <name>` -> `showDevice` `{name}`
+- `show device-group <name>` -> `showDevice` `{name}`
 - `show bindings` -> `showBindings`
 - `show selected-device` -> `showSelectedDevice`
 - `show runtime-state` -> `showRuntimeState`
@@ -712,7 +720,7 @@ show_target    = "status"
                | "group" ws name
                | "devices"
                | "device" ws name
-               | "device" ws "registry" ws name
+               | "device-group" ws name
                | "bindings"
                | "selected-device"
                | "runtime-state"
@@ -722,7 +730,10 @@ show_target    = "status"
                | "profiles"
                | "profile" [ ws name ]
                | "tests"
-               | "test" ws name ;
+               | "test" ws name
+               | "workspace"
+               | "session"
+               | "controllers" ;
 
 show_source    = "robot" | "local" | "both" ;
 show_flags     = show_flag { ws show_flag } ;
@@ -737,6 +748,7 @@ config         = "group" ws name
                | "import" ws "config" ws path
                | "export" ws "runtime-groups" ws path
                | "export" ws "cli-script" ws path
+               | "save" ws "all" [ ws "--prompt" ]
                | "save" ws "config" ws path
                | "save" ws "local-config" ws path
                | "save" ws "profiles" ws path
@@ -744,7 +756,9 @@ config         = "group" ws name
                | "rename" ws "device" ws name ws name
                | "device" ws name
                | "device" ws name ws "set" ws field ws value_text
-               | "validate" ws "config" [ ws path ]
+               | "validate" ws "config" [ ws path ] [ ws "--all" ]
+               | "validate" ws "profiles" [ ws ("robot" | "local") ] [ ws "--active" ]
+               | "validate" ws "tests" [ ws "--active-set" ]
                | "show" ws show_target [ ws show_flags ]
                | "bindings" [ ws bindings_args ]
                | "can-mappings" [ ws mappings_args ]

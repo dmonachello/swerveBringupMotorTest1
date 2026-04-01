@@ -194,8 +194,8 @@ No prompting allowed in batch mode.
 - `show groups`
 - `show group <name>`
 - `show devices`
-- `show device <name>`
-- `show device registry <name>`
+- `show device <name>` (definition, local only)
+- `show device-group <name>` (group usage)
 - `show bindings`
 - `show selected-device`
 - `show runtime-state`
@@ -206,6 +206,9 @@ No prompting allowed in batch mode.
 - `show profile <name>`
 - `show tests`
 - `show test <name>`
+- `show workspace`
+- `show session`
+- `show controllers`
 - `configure terminal`
 - `connect`
 - `disconnect`
@@ -222,13 +225,16 @@ No prompting allowed in batch mode.
 - `import config <bringup_system.json>`
 - `export runtime-groups <bridgeConfig.json>`
 - `save config <bridgeConfig.json>`
+- `save all [--prompt]`
 - `save local-config <path>`
 - `save profiles <path>`
 - `save unified-config <path>`
 - `rename device <old> <new>`
 - `device <name>`
 - `device <name> set <field> <value>`
-- `validate config [path]`
+- `validate config [path] [--all]`
+- `validate profiles [robot|local] [--active]`
+- `validate tests [--active-set]`
 - `bindings show [controllers|bindings|axes] [--json] [--pretty]`
 - `bindings controller add <name> <type> <port>`
 - `bindings controller set <name> <field> <value>`
@@ -294,8 +300,8 @@ Purpose: Point to the canonical grammar and highlight subcommand parsing for com
 
 - `show group` text output includes member names and bindings.
 - `show devices` (local) lists the full profile-derived device inventory, not only group members.
-- `show device` text output includes label-based metadata from bringup_system.json.
-- `show device registry` returns the full device registry entry (local only).
+- `show device` returns the full device definition from bringup_system.json (local only).
+- `show device-group` returns the device’s group membership/usage info.
 - CLI auto-imports `data/bringup_system.json` on startup when present (replaces groups).
 - merge config is only allowed when the incoming profiles hash matches the loaded profiles; otherwise use import config.
 
@@ -417,6 +423,8 @@ Support:
 Also:
 - trailing `?` shows valid next arguments (e.g., `show groups ?`).
 - `?` is part of the command line grammar and may follow any command.
+- When a field has a bounded/known value set, `?` prints the full inline list.
+- Numeric fields print known ranges (example: `duty: -1.0..1.0`).
 
 ## Error Handling
 
@@ -467,6 +475,8 @@ show group <name>
 show devices
 
 show device <name>
+
+show device-group <name>
 
 show bindings
 

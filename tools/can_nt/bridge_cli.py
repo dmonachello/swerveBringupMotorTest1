@@ -263,7 +263,6 @@ CMD_MESSAGE_LEVEL = "message-level"
 CMD_TYPE = "type"
 CMD_DEVICE = "device"
 CMD_DEVICES = "devices"
-CMD_REGISTRY = "registry"
 CMD_GROUP = "group"
 CMD_CONFIG = "config"
 CMD_LOCAL_RAW = "local-raw"
@@ -307,6 +306,9 @@ CMD_DEVICE_TYPE_NAME = "device-type"
 CMD_DEVICE_TYPES = "device-types"
 CMD_DEVICE_USAGE = "device-usage"
 CMD_SHOW_ALL = "show-all"
+CMD_WORKSPACE = "workspace"
+CMD_SESSION = "session"
+CMD_CONTROLLERS = "controllers"
 CMD_ROBOT = "robot"
 CMD_LOCAL = "local"
 CMD_PUSH = "push"
@@ -314,6 +316,10 @@ CMD_ACTIVATE = PARSER_SPEC.cmd_activate
 CMD_LOCAL_CONFIG = "local-config"
 CMD_SAVE_UNIFIED = "unified-config"
 CMD_VALIDATE_ALL = PARSER_SPEC.cmd_validate_all
+CMD_ACTIVE = "--active"
+CMD_ACTIVE_SET = "--active-set"
+CMD_ALL = "all"
+CMD_PROMPT = "--prompt"
 CMD_LOAD = "load"
 CMD_SAVE = "save"
 CMD_SAVEP = PARSER_SPEC.cmd_savep
@@ -361,8 +367,10 @@ KEY_TESTS = "tests"
 KEY_TEST_SET = "test_set"
 KEY_TEST = "test"
 KEY_DIRTY = "dirty"
+DIRTY_PROFILES = "profiles"
+DIRTY_TESTS = "tests"
 DIRTY_BINDINGS = "bindings"
-DIRTY_CAN_MAPPINGS = "can-mappings"
+DIRTY_MAPPINGS = "can-mappings"
 KEY_COMMANDS = "commands"
 KEY_TOPICS = "topics"
 KEY_CONTROLLERS = "controllers"
@@ -406,13 +414,16 @@ SHOW_TARGET_GROUPS = "groups"
 SHOW_TARGET_GROUP = "group"
 SHOW_TARGET_DEVICES = "devices"
 SHOW_TARGET_DEVICE = "device"
-SHOW_TARGET_DEVICE_REGISTRY = "device-registry"
+SHOW_TARGET_DEVICE_GROUP = "device-group"
 SHOW_TARGET_BINDINGS = "bindings"
 SHOW_TARGET_SELECTED_DEVICE = "selected-device"
 SHOW_TARGET_MESSAGE_LEVEL = "message-level"
 SHOW_TARGET_DEVICE_USAGE = "device-usage"
 SHOW_TARGET_COMMANDS = "commands"
 SHOW_TARGET_HELP = "help"
+SHOW_TARGET_WORKSPACE = "workspace"
+SHOW_TARGET_SESSION = "session"
+SHOW_TARGET_CONTROLLERS = "controllers"
 
 MESSAGE_ERR_UNKNOWN_SHOW = "ERROR: Unknown show command."
 MESSAGE_ERR_UNKNOWN_SHOW_SOURCE = "ERROR: Unknown show source."
@@ -526,6 +537,14 @@ MESSAGE_TESTS_TEMPLATES_NONE = "  (none)"
 MESSAGE_TESTS_TEMPLATE_ENTRY = "  {name}"
 MESSAGE_TESTS_LOADED = "Loaded tests: {path}"
 MESSAGE_TESTS_CLEARED = "Tests cleared."
+MESSAGE_SAVE_ALL_PROFILES_MISSING = "ERROR: No profiles destination set. Fix: save profiles data/bringup_system.json"
+MESSAGE_SAVE_ALL_TESTS_MISSING = "ERROR: No tests destination set. Fix: write tests my_tests.json"
+MESSAGE_SAVE_ALL_BINDINGS_MISSING = (
+    "ERROR: No bindings destination set. Fix: bindings save src/main/deploy/bringup_bindings.json"
+)
+MESSAGE_SAVE_ALL_MAPPINGS_MISSING = (
+    "ERROR: No mappings destination set. Fix: can-mappings save src/main/deploy/can_mappings.json"
+)
 MESSAGE_MESSAGE_LEVEL = "Message level: {level}"
 MESSAGE_MESSAGE_LEVEL_UPDATED = "Message level set to {level}."
 MESSAGE_MESSAGE_LEVEL_ERROR = "ERROR: messages <beginner|medium|expert>"
@@ -545,10 +564,14 @@ MESSAGE_HELP_QUICK_EMPTY = "  (no commands)"
 MESSAGE_HELP_QUICK_ALIASES = "Aliases: ls=show, cfg=configure terminal, prof=profile, val=validate, savep=save profiles"
 MESSAGE_HINT_PREFIX = "HINT: "
 MESSAGE_HINT_VALIDATE = (
-    "validate config [path] [--all] | validate profiles [robot|local] | validate tests "
+    "validate config [path] [--all] | validate profiles [robot|local] [--active] | validate tests [--active-set] "
     "| validate bindings [path] | validate can-mappings [path]"
 )
-MESSAGE_HINT_SAVE = "save config <path> | save local-config <path> | save profiles <path> | save unified-config <path>"
+from tools.common.test_authoring.validator import AXIS_INPUTS, BUTTON_INPUTS, LIMIT_SWITCH_DEVICE_TYPE
+MESSAGE_HINT_SAVE = (
+    "save all [--prompt] | save config <path> | save local-config <path> | "
+    "save profiles <path> | save unified-config <path>"
+)
 MESSAGE_HINT_SHOW = "show <target> [--json] [--pretty] [robot|local|both]"
 MESSAGE_HINT_PROFILE = (
     "profile <profile> | profile create <profile> | profile device delete <device> "
@@ -591,6 +614,7 @@ MESSAGE_DEVICE_USAGE_TEST_ENTRY = "    {test_set}/{name} ({type})"
 MESSAGE_DEVICE_USAGE_TEST_ENTRY_SIMPLE = "    {test_set}/{name}"
 HELP_TOPIC_DEVICE_USAGE = "device-usage"
 HELP_DEVICE_USAGE_TEXT = "show device-usage <device>\n  Show local group/test references for a device."
+MESSAGE_NO_KNOWN_VALUES = "No known values; see docs."
 HELP_TOPIC_PROFILE_DEVICE_DELETE = "profile device delete"
 HELP_PROFILE_DEVICE_DELETE_TEXT = (
     "profile device delete <device>\n  Remove a device label from the active profile."
@@ -609,8 +633,9 @@ HELP_CONFIG_PUSH_TEXT = (
 )
 HELP_TOPIC_QUICK = "quick"
 HELP_SHOW_TEXT = (
-    "show <status|groups|group <group>|devices|device <device>|device registry <device>|device-usage <device>|commands|help|"
-    "bindings|selected-device|runtime-state|config|config local-raw|config dirty|profiles|profile|tests|test <test>|message-level> "
+    "show <status|groups|group <group>|devices|device <device>|device-group <device>|device-usage <device>|commands|help|"
+    "bindings|selected-device|runtime-state|config|config local-raw|config dirty|profiles|profile|tests|test <test>|message-level|"
+    "workspace|session|controllers> "
     "[--json] [--pretty] [robot|local|both]\n"
     "  Defaults: robot if connected, otherwise local."
 )
@@ -896,6 +921,7 @@ class BridgeCli:
         conflict_policy: str = "error",
         echo_enabled: bool = False,
         message_level: Optional[str] = None,
+        recovery_mode: bool = False,
     ) -> None:
         self._session = session
         self._batch = batch
@@ -904,6 +930,8 @@ class BridgeCli:
         self._message_level = MESSAGE_LEVEL_BEGINNER
         self._message_level_from_flag = False
         self._tips_suppressed: set[str] = set()
+        self._warnings: List[str] = []
+        self._recovery_mode = recovery_mode
         self._tests_device_catalog: Dict[str, object] = {}
         self._tests_duplicate_labels: set[str] = set()
         self._parser_kind = CLI_PARSER_KIND
@@ -1452,16 +1480,18 @@ class BridgeCli:
         """
         return validate_config_data_all(config, self._local_root_payload)
 
-    def validate_profiles_only(self) -> tuple[bool, str]:
+    def validate_profiles_only(self, profile_name: Optional[str] = None) -> tuple[bool, str]:
         """
         NAME
             validate_profiles_only - Validate profiles payload only.
         """
         self._sync_store_from_local()
-        result = self._store.validate_profiles_only(strict=True)
+        result = self._store.validate_profiles_only(strict=True, profile_name=profile_name)
         if result.ok():
             return (True, MESSAGE_VALIDATE_OK)
         message = self._format_store_errors(result.errors())
+        if profile_name:
+            message = f"profile {profile_name}:\n{message}"
         return (False, message)
 
     def validate_profiles_robot(self) -> tuple[bool, str]:
@@ -1503,13 +1533,18 @@ class BridgeCli:
             return (False, SEP_NEWLINE.join(lines))
         return (True, MESSAGE_VALIDATE_OK)
 
-    def validate_tests_only(self) -> tuple[bool, str]:
+    def validate_tests_only(self, active_set: Optional[str] = None) -> tuple[bool, str]:
         """
         NAME
             validate_tests_only - Validate tests against profile devices.
         """
         self._ensure_tests_loaded()
         model = self._tests_model or TestAuthoringModel()
+        if active_set:
+            test_set = model.test_sets.get(active_set)
+            if test_set is None:
+                return (False, f"Test set not found: {active_set}")
+            model = TestAuthoringModel(default_test_set=active_set, test_sets={active_set: test_set})
         profile_name = self._tests_profile or self._active_profile_name()
         controller_names = load_controller_names()
         result = validate_model(
@@ -1523,7 +1558,10 @@ class BridgeCli:
         issues = [issue.message for issue in result.errors if issue.message]
         if not issues:
             return (False, MESSAGE_VALIDATE_OK)
-        message = SEP_NEWLINE.join([MESSAGE_VALIDATE_TESTS_HEADER] + [MESSAGE_VALIDATE_TESTS_ENTRY.format(message=msg) for msg in issues])
+        header = MESSAGE_VALIDATE_TESTS_HEADER
+        if active_set:
+            header = f"{MESSAGE_VALIDATE_TESTS_HEADER} (test set: {active_set})"
+        message = SEP_NEWLINE.join([header] + [MESSAGE_VALIDATE_TESTS_ENTRY.format(message=msg) for msg in issues])
         return (False, message)
 
     def validate_bindings_only(self, path: Optional[str]) -> tuple[bool, str]:
@@ -1604,7 +1642,7 @@ class BridgeCli:
         except (CliParseError, ValueError) as exc:
             try:
                 self._split_command(line)
-            except CliParseError as split_exc:
+            except Exception as split_exc:
                 result = StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(split_exc))
                 self._maybe_print_failure_hint(line)
                 return result
@@ -1694,7 +1732,11 @@ class BridgeCli:
         """
         if QUESTION_MARK not in line:
             return False
-        tokens = self._split_command(line)
+        try:
+            tokens = self._split_command(line)
+        except Exception as exc:
+            print(f"ERROR: {exc}")
+            return True
         if not tokens:
             return False
         tokens = self._normalize_question_tokens(tokens)
@@ -1728,6 +1770,9 @@ class BridgeCli:
         NAME
             _print_next_args - Print suggestion list for '?' help.
         """
+        if suggestions == [MESSAGE_NO_KNOWN_VALUES]:
+            print(MESSAGE_NO_KNOWN_VALUES)
+            return
         if not suggestions:
             print(MESSAGE_NEXT_ARGS_NONE)
             return
@@ -1744,11 +1789,208 @@ class BridgeCli:
         line = PARSER_SPEC.space_str.join(tokens) + PARSER_SPEC.space_str
         self._pending_prompt_text = line
 
+    def _contextual_value_suggestions(self, tokens: List[str]) -> Optional[List[str]]:
+        """
+        NAME
+            _contextual_value_suggestions - Provide inline value lists for '?' help.
+        """
+
+        if not tokens:
+            return None
+        mode = self._modes[-1].name
+        lowered = [token.lower() for token in tokens]
+        cmd = lowered[COUNT_ZERO]
+        if mode == MODE_CONFIG:
+            if len(lowered) >= 4 and cmd == CMD_DEVICE and lowered[COUNT_TWO] == CMD_SET:
+                return self._device_field_values(lowered[COUNT_THREE])
+            if cmd == CMD_BINDINGS:
+                return self._bindings_value_help(lowered)
+            if cmd == CMD_CAN_MAPPINGS:
+                return self._mappings_value_help(lowered)
+        if mode == PARSER_SPEC.msg_mode_name_device and cmd == CMD_SET and len(lowered) >= 2:
+            return self._device_field_values(lowered[COUNT_ONE])
+        if mode == MODE_TEST:
+            if cmd == CMD_INPUT_SOURCE and len(lowered) == COUNT_ONE:
+                return self._input_source_values()
+            if cmd == CMD_DEADBAND and len(lowered) == COUNT_ONE:
+                return [self._format_range("deadband", DEADBAND_MIN, DEADBAND_MAX)]
+            if cmd == CMD_DUTY and len(lowered) == COUNT_ONE:
+                return [self._format_range("duty", DUTY_MIN, DUTY_MAX)]
+            if cmd == CMD_BRIGHTNESS and len(lowered) == COUNT_ONE:
+                return [self._format_range("brightness", BRIGHTNESS_MIN, BRIGHTNESS_MAX)]
+            if cmd == CMD_DURATION and len(lowered) == COUNT_ONE:
+                return [self._format_minimum("durationSec", DURATION_MIN_SEC)]
+            if cmd == CMD_TERMINATION:
+                if len(lowered) == COUNT_ONE:
+                    return [TERMINATION_HOLD, TERMINATION_TIME, TERMINATION_ROTATION, TERMINATION_LIMITSWITCH]
+                if len(lowered) == COUNT_TWO and lowered[COUNT_ONE] == TERMINATION_TIME:
+                    return [self._format_minimum("timeSec", TIME_MIN_SEC)]
+                if len(lowered) == COUNT_TWO and lowered[COUNT_ONE] == TERMINATION_ROTATION:
+                    return [self._format_minimum("rotation", ROTATION_MIN)]
+                if len(lowered) == COUNT_TWO and lowered[COUNT_ONE] == TERMINATION_LIMITSWITCH:
+                    return self._limit_switch_labels()
+            if cmd == CMD_TIME:
+                if len(lowered) == COUNT_ONE:
+                    return ["timeout", "onTimeout"]
+                if len(lowered) == COUNT_TWO and lowered[COUNT_ONE] == "timeout":
+                    return [self._format_minimum("timeoutSec", TIME_MIN_SEC)]
+                if len(lowered) == COUNT_TWO and lowered[COUNT_ONE] == "ontimeout":
+                    return ["pass", "fail"]
+            if cmd == CMD_ROTATION:
+                if len(lowered) == COUNT_ONE:
+                    return [
+                        "limit",
+                        "encoderKey",
+                        "encoderSource",
+                        "encoderMotorIndex",
+                        "encoderCountsPerRev",
+                    ]
+                if len(lowered) == COUNT_TWO and lowered[COUNT_ONE] == "limit":
+                    return [self._format_minimum("limitRot", ROTATION_MIN)]
+                if len(lowered) == COUNT_TWO and lowered[COUNT_ONE] == "encodermotorindex":
+                    return ["integer >= 0"]
+                if len(lowered) == COUNT_TWO and lowered[COUNT_ONE] == "encodercountsperrev":
+                    return ["number > 0"]
+            if cmd == CMD_HOLD:
+                if len(lowered) == COUNT_ONE:
+                    return ["onRelease"]
+                if len(lowered) == COUNT_TWO and lowered[COUNT_ONE] == "onrelease":
+                    return ["pass", "fail"]
+            if cmd == CMD_LIMITSWITCH:
+                if len(lowered) == COUNT_ONE:
+                    return ["onHit", "id"]
+                if len(lowered) == COUNT_TWO and lowered[COUNT_ONE] == "onhit":
+                    return ["pass", "fail"]
+                if len(lowered) == COUNT_TWO and lowered[COUNT_ONE] == "id":
+                    return self._limit_switch_labels()
+        return None
+
+    def _device_field_values(self, field: str) -> Optional[List[str]]:
+        """
+        NAME
+            _device_field_values - Provide value lists for device fields.
+        """
+
+        if field == FIELD_INTERFACE:
+            return sorted(DEVICE_INTERFACE_ALLOWED)
+        if field == FIELD_MANUFACTURER:
+            return self._mappings_values(KEY_MANUFACTURERS)
+        if field == FIELD_DEVICE_TYPE:
+            return self._mappings_values(KEY_DEVICE_TYPES)
+        if field == FIELD_TYPE:
+            return ["motor", "sensor", "limitSwitch"]
+        if field == FIELD_TERMINATOR:
+            return ["true", "false"]
+        return None
+
+    def _bindings_value_help(self, tokens: List[str]) -> Optional[List[str]]:
+        """
+        NAME
+            _bindings_value_help - Contextual '?' for bindings commands.
+        """
+
+        if len(tokens) < COUNT_TWO:
+            return None
+        sub = tokens[COUNT_ONE]
+        if sub == CMD_BINDING and len(tokens) >= 5 and tokens[COUNT_TWO] == CMD_SET:
+            field = tokens[COUNT_FOUR]
+            if field == KEY_INPUT:
+                return sorted(BUTTON_INPUTS)
+            if field == KEY_ID:
+                return sorted(BUTTON_INPUTS)
+            if field == KEY_MODE:
+                return ["edge", "hold"]
+        if sub == CMD_AXIS and len(tokens) >= 5 and tokens[COUNT_TWO] == CMD_SET:
+            field = tokens[COUNT_FOUR]
+            if field == KEY_ID:
+                return sorted(AXIS_INPUTS)
+            if field == KEY_DEADBAND:
+                return [self._format_range("deadband", DEADBAND_MIN, DEADBAND_MAX)]
+            if field == KEY_INVERT:
+                return ["true", "false"]
+        return None
+
+    def _mappings_value_help(self, tokens: List[str]) -> Optional[List[str]]:
+        """
+        NAME
+            _mappings_value_help - Contextual '?' for can-mappings commands.
+        """
+
+        if len(tokens) < COUNT_TWO:
+            return None
+        sub = tokens[COUNT_ONE]
+        if sub == CMD_MANUFACTURER:
+            return self._mappings_values(KEY_MANUFACTURERS)
+        if sub == CMD_DEVICE_TYPE_NAME:
+            return self._mappings_values(KEY_DEVICE_TYPES)
+        return None
+
+    def _mappings_values(self, key: str) -> List[str]:
+        """
+        NAME
+            _mappings_values - Format mappings entries as inline id=name values.
+        """
+
+        if not self._ensure_can_mappings_loaded() or not isinstance(self._can_mappings, dict):
+            return [MESSAGE_NO_KNOWN_VALUES]
+        mapping = self._can_mappings.get(key)
+        if not isinstance(mapping, dict) or not mapping:
+            return [MESSAGE_NO_KNOWN_VALUES]
+        entries = []
+        for raw_id, name in mapping.items():
+            entries.append(f"{raw_id}={name}")
+        return sorted(entries, key=lambda item: int(item.split("=", 1)[0]) if item.split("=", 1)[0].isdigit() else item)
+
+    def _input_source_values(self) -> List[str]:
+        """
+        NAME
+            _input_source_values - Enumerate controller.inputSource values.
+        """
+
+        controllers = sorted(load_controller_names(self._bindings_path))
+        inputs = sorted(AXIS_INPUTS | BUTTON_INPUTS)
+        if not controllers or not inputs:
+            return [MESSAGE_NO_KNOWN_VALUES]
+        values: List[str] = []
+        for controller in controllers:
+            for input_id in inputs:
+                values.append(f"{controller}.{input_id}")
+        return values
+
+    def _limit_switch_labels(self) -> List[str]:
+        """
+        NAME
+            _limit_switch_labels - Provide limit switch labels for '?' help.
+        """
+
+        labels: List[str] = []
+        catalog = self._tests_device_catalog or {}
+        for name, entry in catalog.items():
+            if not isinstance(entry, dict):
+                continue
+            device_type = str(entry.get(KEY_TYPE, "")).strip()
+            if device_type == LIMIT_SWITCH_DEVICE_TYPE:
+                labels.append(name)
+        if not labels:
+            return [MESSAGE_NO_KNOWN_VALUES]
+        return sorted(labels)
+
+    @staticmethod
+    def _format_range(label: str, minimum: float, maximum: float) -> str:
+        return f"{label}: {minimum}..{maximum}"
+
+    @staticmethod
+    def _format_minimum(label: str, minimum: float) -> str:
+        return f"{label}: >= {minimum}"
+
     def _suggest_next_args(self, tokens: List[str]) -> List[str]:
         """
         NAME
             _suggest_next_args - Compute next-argument suggestions.
         """
+        contextual = self._contextual_value_suggestions(tokens)
+        if contextual is not None:
+            return contextual
         mode = self._modes[-1].name
         if not tokens:
             return self._mode_root_suggestions(mode)
@@ -1886,12 +2128,14 @@ class BridgeCli:
             return []
         if target == CMD_DEVICE:
             if len(tokens) == COUNT_ONE:
-                return [PLACEHOLDER_DEVICE, CMD_REGISTRY]
-            if len(tokens) == COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_REGISTRY:
                 return [PLACEHOLDER_DEVICE]
             if len(tokens) == COUNT_TWO:
                 return self._show_flag_suggestions()
-            if len(tokens) == COUNT_THREE:
+            return []
+        if target == SHOW_TARGET_DEVICE_GROUP:
+            if len(tokens) == COUNT_ONE:
+                return [PLACEHOLDER_DEVICE]
+            if len(tokens) == COUNT_TWO:
                 return self._show_flag_suggestions()
             return []
         if target == CMD_DEVICE_USAGE:
@@ -1942,7 +2186,7 @@ class BridgeCli:
             PARSER_SPEC.show_target_commands,
             PARSER_SPEC.show_target_help,
             CMD_DEVICE_USAGE + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
-            CMD_DEVICE + PARSER_SPEC.space_str + CMD_REGISTRY + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
+            SHOW_TARGET_DEVICE_GROUP + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
             PARSER_SPEC.show_target_bindings,
             PARSER_SPEC.show_target_selected_device,
             PARSER_SPEC.show_target_runtime_state,
@@ -1955,6 +2199,9 @@ class BridgeCli:
             PARSER_SPEC.show_target_tests,
             PARSER_SPEC.show_target_test + PARSER_SPEC.space_str + PLACEHOLDER_TEST,
             PARSER_SPEC.show_target_message_level,
+            SHOW_TARGET_WORKSPACE,
+            SHOW_TARGET_SESSION,
+            SHOW_TARGET_CONTROLLERS,
         ]
 
     def _show_flag_suggestions(self) -> List[str]:
@@ -2011,7 +2258,9 @@ class BridgeCli:
         if len(tokens) == COUNT_TWO and tokens[COUNT_ZERO].lower() == CMD_CONFIG:
             return [CMD_VALIDATE_ALL]
         if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() == CMD_PROFILES:
-            return [CMD_ROBOT, CMD_LOCAL]
+            return [CMD_ROBOT, CMD_LOCAL, CMD_ACTIVE]
+        if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() == CMD_TESTS:
+            return [CMD_ACTIVE_SET]
         if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() in (CMD_BINDINGS, CMD_CAN_MAPPINGS):
             return [PLACEHOLDER_PATH]
         return []
@@ -2022,7 +2271,9 @@ class BridgeCli:
             _suggest_save_args - Suggest save targets.
         """
         if not tokens:
-            return [CMD_CONFIG, CMD_LOCAL_CONFIG, CMD_PROFILES, CMD_SAVE_UNIFIED]
+            return [CMD_ALL, CMD_CONFIG, CMD_LOCAL_CONFIG, CMD_PROFILES, CMD_SAVE_UNIFIED]
+        if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() == CMD_ALL:
+            return [CMD_PROMPT]
         if len(tokens) == COUNT_ONE:
             return [PLACEHOLDER_PATH]
         return []
@@ -3221,6 +3472,12 @@ class BridgeCli:
         if not tokens:
             return StatusResult(code=SS__NORMAL)
         cmd = tokens[0].lower()
+        if cmd == CMD_WRITE and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_TESTS:
+            print("ERROR: You are in test edit mode. Use `exit` or `end` first.")
+            return StatusResult(code=SS__CLI_PARSER__INVALID_COMMAND)
+        if cmd == CMD_TESTS:
+            print("ERROR: tests load/merge/save/clear not allowed in test edit mode. Use `exit` or `end` first.")
+            return StatusResult(code=SS__CLI_PARSER__INVALID_COMMAND)
         if cmd in (CMD_EXIT, CMD_END):
             self._pop_mode()
             return StatusResult(code=SS__NORMAL)
@@ -4101,14 +4358,32 @@ class BridgeCli:
                     self._maybe_hint_validate_profile(path)
                 return StatusResult(code=SS__CONFIG__INVALID)
             if target == CMD_PROFILES:
-                ok, message = self.validate_profiles_only()
+                use_robot = any(token.lower() == CMD_ROBOT for token in tokens[COUNT_TWO:])
+                active_only = any(token.lower() == CMD_ACTIVE for token in tokens[COUNT_TWO:])
+                if use_robot:
+                    ok, message = self.validate_profiles_robot()
+                elif active_only:
+                    profile_name = self._active_profile_name()
+                    if not profile_name:
+                        print(MESSAGE_ERR_PROFILE_REQUIRED)
+                        return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
+                    ok, message = self.validate_profiles_only(profile_name=profile_name)
+                else:
+                    ok, message = self.validate_profiles_only()
                 if ok:
                     print(MESSAGE_OK_CONFIG_VALID)
                     return StatusResult(code=SS__CONFIG__VALID)
                 print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
                 return StatusResult(code=SS__CONFIG__INVALID)
             if target == CMD_TESTS:
-                ok, message = self.validate_tests_only()
+                active_only = any(token.lower() == CMD_ACTIVE_SET for token in tokens[COUNT_TWO:])
+                active_set = None
+                if active_only:
+                    if self._tests_model is None:
+                        self._ensure_tests_loaded()
+                    model = self._tests_model or TestAuthoringModel()
+                    active_set = self._tests_active_set or model.default_test_set
+                ok, message = self.validate_tests_only(active_set=active_set)
                 if ok:
                     print(MESSAGE_OK_CONFIG_VALID)
                     return StatusResult(code=SS__CONFIG__VALID)
@@ -4128,6 +4403,9 @@ class BridgeCli:
                     return StatusResult(code=SS__CONFIG__VALID)
                 print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
                 return StatusResult(code=SS__CONFIG__INVALID)
+        if cmd == CMD_SAVE and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_ALL:
+            prompt = any(token.lower() == CMD_PROMPT for token in tokens[COUNT_TWO:])
+            return self._save_all(prompt)
         if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == "config":
             result = save_config(self._session, tokens[2], self._active_profile_name())
             message = format_status_message(result.code) or result.message
@@ -4388,20 +4666,17 @@ class BridgeCli:
                 target = SHOW_TARGET_CONFIG_RAW
             elif name == SHOW_CONFIG_DIRTY:
                 target = SHOW_TARGET_CONFIG_DIRTY
-        if (
-            target == CMD_DEVICE
-            and len(tokens) >= 3
-            and tokens[1].lower() == CMD_REGISTRY
-        ):
-            target = SHOW_TARGET_DEVICE_REGISTRY
-            tokens = [SHOW_TARGET_DEVICE_REGISTRY, tokens[2]]
         if target == SHOW_TARGET_CONFIG:
             target = SHOW_TARGET_RUNTIME
         if target == SHOW_TARGET_MESSAGE_LEVEL:
             source = "local"
         if target == SHOW_TARGET_DEVICE_USAGE:
             source = "local"
+        if target == SHOW_TARGET_DEVICE:
+            source = "local"
         if target in (SHOW_TARGET_COMMANDS, SHOW_TARGET_HELP):
+            source = "local"
+        if target in (SHOW_TARGET_WORKSPACE, SHOW_TARGET_SESSION, SHOW_TARGET_CONTROLLERS):
             source = "local"
         if target in (SHOW_TARGET_CONFIG_RAW, SHOW_TARGET_CONFIG_DIRTY):
             source = "local"
@@ -4920,6 +5195,123 @@ class BridgeCli:
             print(MESSAGE_MESSAGE_LEVEL.format(level=self._message_level))
         return True
 
+    def _show_workspace(self, json_output: bool, pretty: bool) -> StatusResult:
+        profiles_path = str(self._local_root_path) if self._local_root_path else EMPTY_STRING
+        tests_path = str(self._tests_path) if self._tests_path else EMPTY_STRING
+        bindings_path = str(self._bindings_path) if self._bindings_path else EMPTY_STRING
+        mappings_path = str(self._can_mappings_path) if self._can_mappings_path else EMPTY_STRING
+        dirty = self._store.dirty_flags() if self._store else {}
+        model = self._tests_model
+        default_set = model.default_test_set if model else EMPTY_STRING
+        test_count = 0
+        if model:
+            for test_set in model.test_sets.values():
+                test_count += len(test_set.tests)
+        tests_empty = bool(model is not None and test_count == 0)
+        payload = {
+            "profiles": {
+                "path": profiles_path,
+                "loaded": bool(self._local_root_payload),
+                "activeProfile": self._active_profile_name() or EMPTY_STRING,
+                "dirty": bool(dirty.get(DIRTY_PROFILES, False)),
+                "recoveryMode": bool(self._recovery_mode),
+                "loadWarnings": list(self._warnings),
+            },
+            "tests": {
+                "path": tests_path,
+                "loaded": bool(model is not None),
+                "activeSet": self._tests_active_set or EMPTY_STRING,
+                "defaultSet": default_set,
+                "dirty": bool(dirty.get(DIRTY_TESTS, False)),
+                "testCount": test_count,
+                "empty": tests_empty,
+            },
+            "bindings": {
+                "path": bindings_path,
+                "loaded": bool(self._bindings_payload),
+                "dirty": bool(dirty.get(DIRTY_BINDINGS, False)),
+            },
+            "mappings": {
+                "path": mappings_path,
+                "loaded": bool(self._can_mappings),
+                "dirty": bool(dirty.get(DIRTY_MAPPINGS, False)),
+            },
+            "cli": {
+                "messageLevel": self._message_level,
+                "echo": bool(self._echo_enabled),
+            },
+        }
+        if json_output:
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        print(
+            f"Profiles: {profiles_path or '(none)'} "
+            f"({'loaded' if payload['profiles']['loaded'] else 'not loaded'})"
+        )
+        print(f"Active profile: {payload['profiles']['activeProfile'] or '(none)'}")
+        tests_loaded = payload["tests"]["loaded"]
+        tests_state = "loaded" if tests_loaded else "not loaded"
+        if tests_loaded and payload["tests"]["empty"]:
+            tests_state += ", empty"
+        elif tests_loaded:
+            tests_state += f", {payload['tests']['testCount']} tests"
+        print(f"Tests: {tests_path or '(none)'} ({tests_state})")
+        print(
+            f"Active set: {payload['tests']['activeSet'] or '(none)'} "
+            f"(default={payload['tests']['defaultSet'] or '(none)'})"
+        )
+        print(
+            f"Bindings: {bindings_path or '(none)'} "
+            f"({'loaded' if payload['bindings']['loaded'] else 'not loaded'})"
+        )
+        print(
+            f"Mappings: {mappings_path or '(none)'} "
+            f"({'loaded' if payload['mappings']['loaded'] else 'not loaded'})"
+        )
+        print(
+            "Dirty: profiles={profiles} tests={tests} bindings={bindings} mappings={mappings}".format(
+                profiles=payload["profiles"]["dirty"],
+                tests=payload["tests"]["dirty"],
+                bindings=payload["bindings"]["dirty"],
+                mappings=payload["mappings"]["dirty"],
+            )
+        )
+        print(f"CLI: messages={self._message_level} echo={'on' if self._echo_enabled else 'off'}")
+        print(f"Recovery mode: {'ON' if self._recovery_mode else 'OFF'}")
+        if payload["profiles"]["loadWarnings"]:
+            print("Warnings:")
+            for warning in payload["profiles"]["loadWarnings"]:
+                print(f"  {warning}")
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_controllers(self, json_output: bool, pretty: bool) -> StatusResult:
+        controller_names = sorted(load_controller_names(self._bindings_path))
+        inputs = sorted(AXIS_INPUTS | BUTTON_INPUTS)
+        declared: List[Dict[str, object]] = []
+        if isinstance(self._bindings_payload, dict):
+            controllers = self._bindings_payload.get(KEY_CONTROLLERS)
+            if isinstance(controllers, list):
+                for entry in controllers:
+                    if isinstance(entry, dict):
+                        declared.append(dict(entry))
+        payload = {"controllers": controller_names, "declared": declared, "inputs": inputs}
+        if json_output:
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        print("Controllers:")
+        for name in controller_names:
+            print(f"  {name}")
+        if declared:
+            print("Declared controllers:")
+            for entry in declared:
+                name = entry.get(KEY_NAME)
+                ctrl_type = entry.get(FIELD_TYPE)
+                port = entry.get(KEY_PORT)
+                print(f"  {name} type={ctrl_type} port={port}")
+        print("Inputs:")
+        print("  " + ", ".join(inputs))
+        return StatusResult(code=SS__NORMAL)
+
     def _show_commands(self, json_output: bool, pretty: bool) -> StatusResult:
         """
         NAME
@@ -5259,6 +5651,9 @@ class BridgeCli:
             "echo": "echo on|off\n  Toggle echo for batch scripts (prints each command).",
             "messages": "messages <beginner|medium|expert>\n  Set CLI message level.",
             "show message-level": "show message-level\n  Show current CLI message level.",
+            "show workspace": "show workspace\n  Show loaded file paths, active profile/set, dirty flags, and recovery mode.",
+            "show session": "show session\n  Alias for show workspace.",
+            "show controllers": "show controllers\n  List controller names and supported input IDs.",
             "diagnose": HELP_DIAGNOSE_TEXT,
             "group": "group <group>\n  Create/select a group (config mode).",
             "no group": "no group <group>\n  Delete group (config mode, prompts in interactive).",
@@ -5286,6 +5681,10 @@ class BridgeCli:
             "save config": (
                 "save config <bridgeConfig.json>\n"
                 "  Write bridgeConfig.byProfile for the active profile."
+            ),
+            "save all": (
+                "save all [--prompt]\n"
+                "  Save all dirty sections using current file paths."
             ),
             "save local-config": "save local-config <path>\n  Save local per-profile groups config.",
             "save profiles": (
@@ -5486,7 +5885,7 @@ class BridgeCli:
             seq = show_group(self._session, tokens[1], json_output=json_output)
         elif target == SHOW_TARGET_DEVICES:
             seq = show_devices(self._session, json_output=json_output)
-        elif target == SHOW_TARGET_DEVICE and len(tokens) >= 2:
+        elif target == SHOW_TARGET_DEVICE_GROUP and len(tokens) >= 2:
             seq = show_device(self._session, tokens[1], json_output=json_output)
         elif target == SHOW_TARGET_BINDINGS:
             seq = show_bindings(self._session, json_output=json_output)
@@ -5510,6 +5909,10 @@ class BridgeCli:
     def _show_local(
         self, target: str, tokens: List[str], json_output: bool, pretty: bool
     ) -> StatusResult:
+        if target in (SHOW_TARGET_WORKSPACE, SHOW_TARGET_SESSION):
+            return self._show_workspace(json_output, pretty)
+        if target == SHOW_TARGET_CONTROLLERS:
+            return self._show_controllers(json_output, pretty)
         if target == SHOW_TARGET_MESSAGE_LEVEL:
             if self._show_message_level(json_output, pretty):
                 return StatusResult(code=SS__NORMAL)
@@ -5533,7 +5936,7 @@ class BridgeCli:
         if target == SHOW_TARGET_PROFILE:
             name = tokens[1] if len(tokens) >= 2 else ""
             return self._show_local_profile(name, json_output, pretty)
-        if target == SHOW_TARGET_DEVICE_REGISTRY:
+        if target == SHOW_TARGET_DEVICE:
             name = tokens[1] if len(tokens) >= 2 else ""
             return self._show_local_registry_device(name, json_output, pretty)
         profile = self._active_profile_name()
@@ -5630,7 +6033,7 @@ class BridgeCli:
             _print_local("\n".join(lines), payload)
             return StatusResult(code=SS__NORMAL)
 
-        if target == SHOW_TARGET_DEVICE and len(tokens) >= 2:
+        if target == SHOW_TARGET_DEVICE_GROUP and len(tokens) >= 2:
             name = tokens[1]
             device_payload = payload.get("device")
             group_name = payload.get("group", "")
@@ -6840,7 +7243,7 @@ class BridgeCli:
             KEY_PROFILES: bool(self._profiles_dirty),
             KEY_TESTS: bool(self._tests_dirty),
             DIRTY_BINDINGS: bool(self._bindings_dirty),
-            DIRTY_CAN_MAPPINGS: bool(self._can_mappings_dirty),
+            DIRTY_MAPPINGS: bool(self._can_mappings_dirty),
         }
 
     def _sync_store_from_local(self) -> None:
@@ -6928,6 +7331,71 @@ class BridgeCli:
         self._groups_dirty = False
         self._sync_store_from_local()
         print(f"Wrote profiles to {path}.")
+        return StatusResult(code=SS__CONFIG__SAVED)
+
+    def _save_all(self, prompt: bool) -> StatusResult:
+        """
+        NAME
+            _save_all - Save all dirty sections using current paths.
+        """
+
+        if self._batch:
+            prompt = False
+        failures = False
+        saved_any = False
+        dirty_profiles = self._profiles_dirty or self._groups_dirty
+        if dirty_profiles:
+            if not self._local_root_path:
+                print(MESSAGE_SAVE_ALL_PROFILES_MISSING)
+                failures = True
+            else:
+                if prompt and not self._confirm(f"Save profiles to {self._local_root_path}?"):
+                    pass
+                else:
+                    result = self._save_profiles(str(self._local_root_path))
+                    saved_any = True
+                    if not result.ok():
+                        failures = True
+        if self._tests_dirty:
+            if not self._tests_path:
+                print(MESSAGE_SAVE_ALL_TESTS_MISSING)
+                failures = True
+            else:
+                if prompt and not self._confirm(f"Write tests to {self._tests_path}?"):
+                    pass
+                else:
+                    result = self._write_tests_command([CMD_WRITE, CMD_TESTS, str(self._tests_path)])
+                    saved_any = True
+                    if not result.ok():
+                        failures = True
+        if self._bindings_dirty:
+            if not self._bindings_path:
+                print(MESSAGE_SAVE_ALL_BINDINGS_MISSING)
+                failures = True
+            else:
+                if prompt and not self._confirm(f"Save bindings to {self._bindings_path}?"):
+                    pass
+                else:
+                    result = self._save_bindings_to_path(Path(self._bindings_path))
+                    saved_any = True
+                    if not result.ok():
+                        failures = True
+        if self._can_mappings_dirty:
+            if not self._can_mappings_path:
+                print(MESSAGE_SAVE_ALL_MAPPINGS_MISSING)
+                failures = True
+            else:
+                if prompt and not self._confirm(f"Save mappings to {self._can_mappings_path}?"):
+                    pass
+                else:
+                    result = self._save_can_mappings_to_path(Path(self._can_mappings_path))
+                    saved_any = True
+                    if not result.ok():
+                        failures = True
+        if not saved_any and not failures:
+            print("Nothing to save.")
+        if failures:
+            return StatusResult(code=SS__CONFIG__INVALID)
         return StatusResult(code=SS__CONFIG__SAVED)
 
     def _ensure_profiles_device_entry(self, name: str) -> StatusResult:
