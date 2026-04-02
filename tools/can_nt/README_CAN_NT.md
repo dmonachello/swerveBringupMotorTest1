@@ -13,6 +13,7 @@ DESCRIPTION
     stream live PCAPNG into Wireshark via a Windows named pipe.
 
 INSTALL
+    py -m pip install pyntcore
     py -m pip install pynetworktables
     py -m pip install python-can
     py -m pip install pyserial
@@ -35,6 +36,20 @@ RUN
     If neither is set, the helper script:
     1) uses the first python in PATH
     2) falls back to %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe
+
+VERSIONING
+    Purpose: Show and update app versions.
+
+    Show bridge version:
+        python tools\\can_nt\\can_nt_bridge.py --version
+
+    Show versions inside the CLI:
+        show version
+        show version --robot
+
+    Update versions:
+        python tools\\update_versions.py --set all=1.2.3
+        python tools\\update_versions.py --set can_nt_bridge=1.2.3
 
 BRIDGE CLI
     Purpose: Run the Cisco-style CLI front end inside the bridge app.
@@ -64,7 +79,14 @@ BRIDGE CLI
     - batch scripts are linted to ensure devices are defined before add device.
     - show group text output includes members and bindings.
     - show devices (local) lists the full profile-derived device inventory, not only group members.
+    - show version prints local versions; add --robot to query the roboRIO.
     - Windows EOF uses Ctrl+Z then Enter (Ctrl+D on POSIX shells).
+    - Registry push uses TCP only: `profiles push` / `config push` (no NT apply).
+    - Registry push applies in-memory on the robot and does not persist to disk.
+
+    Registry push (config mode):
+        profiles push <path> [--activate <profile>]
+        config push <path> [--activate <profile>]
 
 CONFIG
     Device lists are loaded from data\bringup_system.json via --profile
@@ -306,6 +328,7 @@ WIRESHARK
         Start Wireshark with -k -i \\.\pipe\FRC_CAN before running --pcap-pipe FRC_CAN.
 
 OPTIONS
+    --version                Print version and exit.
     --channel COMx            CANable COM port. If omitted, auto-detects the
                               first port whose description contains "USB Serial Device".
     --interface slcan         CAN interface (default slcan).

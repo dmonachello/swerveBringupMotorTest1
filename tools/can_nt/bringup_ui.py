@@ -43,6 +43,12 @@ from tools.common.nt_labels import encode_label_for_nt
 from tools.common.paths import repo_root, tests_deploy_path
 from tools.common.tests_io import extract_test_names
 from tools.common.time_utils import timestamp_hms
+from tools.common.app_versions import (
+    APP_BRINGUP_UI_NAME,
+    VERSIONS,
+    VERSION_HEADER,
+    format_version_line,
+)
 from .can_profiles import get_profile, get_profiles_load_error, list_profiles, reload_profiles
 from tools.config.schema_store import ConfigSchemaStore
 from tools.can_topology.live_topology_view import LiveTopologyView
@@ -75,6 +81,13 @@ LIVE_SOURCE_FILE = "file"
 LIVE_CLOCK_FORMAT = "%H:%M:%S"
 LIVE_CLOCK_LABEL = "Clock:"
 TEST_NAME_EMPTY = ""
+VERSION_APP_NAME = APP_BRINGUP_UI_NAME
+VERSION_TITLE = VERSION_HEADER
+ABOUT_TITLE = "About Bringup Control"
+ABOUT_NAME = "Bringup Control UI"
+ABOUT_DESCRIPTION = "PC-side NetworkTables command panel for RobotV2 bringup."
+ABOUT_LAUNCH = "Launch via tools/can_nt/run_can_nt.cmd --ui"
+ABOUT_SEPARATOR = "\n"
 
 
 def _load_profiles() -> List[str]:
@@ -225,6 +238,7 @@ class BringupControlUI(tk.Tk):
         on_close: Optional[Callable[[], None]] = None,
     ) -> None:
         super().__init__()
+        self._print_version_banner()
         self.title("Bringup Control")
         self.geometry("1100x720")
         self.minsize(900, 600)
@@ -303,6 +317,17 @@ class BringupControlUI(tk.Tk):
         self._refresh_profile_devices()
         self._poll_nt()
         self.protocol("WM_DELETE_WINDOW", self._handle_close)
+
+    def _print_version_banner(self) -> None:
+        """
+        NAME
+            _print_version_banner - Print the bringup UI version on startup.
+        """
+        version = VERSIONS.get(VERSION_APP_NAME, "")
+        if not version:
+            return
+        print(VERSION_TITLE)
+        print(format_version_line(VERSION_APP_NAME, version))
 
     def _build_menu(self) -> None:
         """
@@ -803,12 +828,11 @@ class BringupControlUI(tk.Tk):
         NAME
             _show_about - Display the about dialog.
         """
-        messagebox.showinfo(
-            "About Bringup Control",
-            "Bringup Control UI\n"
-            "PC-side NetworkTables command panel for RobotV2 bringup.\n"
-            "Launch via tools/can_nt/run_can_nt.cmd --ui",
-        )
+        version = VERSIONS.get(VERSION_APP_NAME, "")
+        version_line = format_version_line(VERSION_APP_NAME, version) if version else ""
+        lines = [ABOUT_NAME, version_line, ABOUT_DESCRIPTION, ABOUT_LAUNCH]
+        body = ABOUT_SEPARATOR.join([line for line in lines if line])
+        messagebox.showinfo(ABOUT_TITLE, body)
 
     def _build_help_window(self) -> tk.Toplevel:
         """

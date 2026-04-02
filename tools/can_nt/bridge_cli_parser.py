@@ -41,6 +41,54 @@ PARSER_RUNTIME_CONST = {
 
 SHOW_CONFIG_LOCAL_RAW = "local-raw"
 SHOW_CONFIG_DIRTY = "dirty"
+PATH_SEPARATORS = ("/", "\\", ":")
+TOKEN_PREFIX_SKIP = ("\"", "'")
+SHOW_TARGET_DEVICE = "device"
+SHOW_TARGET_CONFIG = "config"
+SHOW_TARGET_PROFILE = "profile"
+SHOW_TARGET_GROUP = "group"
+SHOW_TARGET_TEST = "test"
+SHOW_TARGET_DEVICE_USAGE = "device-usage"
+SHOW_TARGET_DEVICE_REGISTRY = "device-registry"
+SHOW_TARGET_REGISTRY = "registry"
+CMD_CONFIG = "config"
+CMD_SHOW = "show"
+CMD_LS = "ls"
+CMD_CONFIGURE = "configure"
+CMD_PROFILE = "profile"
+CMD_PROFILES = "profiles"
+CMD_DEVICE = "device"
+CMD_GROUP = "group"
+CMD_NO = "no"
+CMD_DEFAULT = "default"
+CMD_CREATE = "create"
+CMD_DELETE = "delete"
+CMD_SHOW_ALL = "show-all"
+CMD_MEMBERS = "members"
+CMD_BINDING = "binding"
+CMD_ENABLE = "enable"
+CMD_DISABLE = "disable"
+CMD_TOGGLE = "toggle"
+CMD_SELECTED_MODE = "selected-mode"
+CMD_ON = "on"
+CMD_OFF = "off"
+CMD_SAVE = "save"
+CMD_EXPORT = "export"
+CMD_IMPORT = "import"
+CMD_MERGE = "merge"
+CMD_VALIDATE = "validate"
+CMD_BINDINGS = "bindings"
+CMD_CAN_MAPPINGS = "can-mappings"
+CMD_TESTS = "tests"
+CMD_PUSH = "push"
+CMD_ACTIVATE = "--activate"
+CMD_TERMINAL = "terminal"
+EXPORT_TARGET_RUNTIME_GROUPS = "runtime-groups"
+EXPORT_TARGET_CLI_SCRIPT = "cli-script"
+SAVE_TARGET_CONFIG = "config"
+SAVE_TARGET_LOCAL_CONFIG = "local-config"
+SAVE_TARGET_PROFILES = "profiles"
+SAVE_TARGET_UNIFIED = "unified-config"
 
 
 class CliParseError(ValueError):
@@ -127,6 +175,7 @@ class BridgeCliParser:
         self._show_targets = set(SPEC.show_targets)
         self._bind_kinds = set(SPEC.bind_kinds)
         self._modes = set(SPEC.modes)
+        self._mode = SPEC.modes[SPEC.idx_exec]
         self._mode_cmds = {
             SPEC.modes[SPEC.idx_exec]: set(SPEC.mode_exec_cmds),
             SPEC.modes[SPEC.idx_config]: set(SPEC.mode_config_cmds),
@@ -194,6 +243,10 @@ class BridgeCliParser:
                 return self._handle_export
             if cmd == SPEC.cmd_save.lower():
                 return self._handle_save
+            if cmd == SPEC.cmd_load.lower():
+                return self._handle_load
+            if cmd == SPEC.cmd_write.lower():
+                return self._handle_write
             if cmd == SPEC.cmd_config.lower():
                 return self._handle_config_command
             if cmd == SPEC.cmd_rename.lower():
@@ -218,6 +271,8 @@ class BridgeCliParser:
                 return self._handle_group_toggle
             if cmd == SPEC.cmd_run.lower():
                 return self._handle_group_run
+            if cmd == SPEC.cmd_write.lower():
+                return self._handle_write
             return self._handle_test_any
         if mode == SPEC.modes[SPEC.idx_device]:
             if cmd == SPEC.cmd_show.lower():
@@ -228,8 +283,12 @@ class BridgeCliParser:
                 return self._handle_device_no
             if cmd == SPEC.cmd_delete.lower():
                 return self._handle_device_delete
+            if cmd == SPEC.cmd_write.lower():
+                return self._handle_write
             return self._handle_test_any
         if mode == SPEC.modes[SPEC.idx_test]:
+            if cmd == SPEC.cmd_write.lower():
+                return self._handle_write
             return self._handle_test_any
         return None
 
@@ -257,7 +316,7 @@ class BridgeCliParser:
             mode: Current CLI mode (exec/config/group/device/test).
         """
         tokens = self.tokenize(line)
-        normalized_tokens = self.normalize_tokens(tokens)
+        normalized_tokens = self.normalize_tokens(tokens, mode)
         if not tokens:
             ast = CommandAst(
                 mode=mode,
@@ -288,22 +347,198 @@ class BridgeCliParser:
             return ParsedLine(tokens=normalized_tokens, mode=mode, ast=ast)
         self._parse_tokens(normalized_tokens, mode)
         if line.strip():
-            if tokens and tokens[SPEC.count_zero].lower() == SPEC.common[SPEC.count_two]:
+            if normalized_tokens and normalized_tokens[SPEC.count_zero].lower() == SPEC.common[SPEC.count_two]:
                 return ParsedLine(tokens=normalized_tokens, mode=mode, ast=self._build_ast(normalized_tokens, mode))
             try:
                 start_rule = PARSER_RUNTIME_CONST["start_map"].get(mode, "exec_line")
-                self._parser.parse(line, start=start_rule)
+                parsed_line = self._tokens_to_line(normalized_tokens)
+                self._parser.parse(parsed_line, start=start_rule)
             except UnexpectedInput as exc:
                 raise CliParseError(SPEC.msg_parse_error) from exc
         ast = self._build_ast(normalized_tokens, mode)
         return ParsedLine(tokens=normalized_tokens, mode=mode, ast=ast)
 
-    def normalize_tokens(self, tokens: List[str]) -> List[str]:
+    def normalize_tokens(self, tokens: List[str], mode: str | None = None) -> List[str]:
         """
         NAME
             normalize_tokens - Normalize alias tokens to canonical commands.
         """
-        return self._expand_alias_tokens(tokens)
+        self._mode = mode or SPEC.modes[SPEC.idx_exec]
+        return self._expand_prefix_tokens(tokens)
+
+    def _expand_prefix_tokens(self, tokens: List[str]) -> List[str]:
+        if not tokens:
+            return tokens
+        normalized = list(tokens)
+        cmd_candidates = list(self._common) + list(self._mode_cmds_for(self._mode))
+        normalized[SPEC.count_zero] = self._expand_prefix_token(normalized[SPEC.count_zero], cmd_candidates)
+        if len(normalized) == SPEC.count_one:
+            return normalized
+        verb = normalized[SPEC.count_zero].lower()
+        if verb in (SPEC.cmd_show, SPEC.cmd_ls):
+            return self._expand_show_prefixes(normalized)
+        if verb in (SPEC.cmd_configure, SPEC.cmd_cfg):
+            normalized[SPEC.count_one] = self._expand_prefix_token(
+                normalized[SPEC.count_one], [SPEC.cmd_terminal]
+            )
+            return normalized
+        if verb in (SPEC.cmd_profile, SPEC.cmd_prof):
+            return self._expand_profile_prefixes(normalized)
+        if verb in (SPEC.cmd_profiles, SPEC.cmd_config):
+            normalized[SPEC.count_one] = self._expand_prefix_token(
+                normalized[SPEC.count_one], [SPEC.cmd_push]
+            )
+            return normalized
+        if verb == SPEC.cmd_save:
+            normalized[SPEC.count_one] = self._expand_prefix_token(
+                normalized[SPEC.count_one],
+                [
+                    SPEC.cmd_save_config,
+                    SPEC.cmd_save_local_config,
+                    SPEC.cmd_save_profiles,
+                    SPEC.cmd_save_unified,
+                    SPEC.cmd_sources,
+                ],
+            )
+            return normalized
+        if verb == SPEC.cmd_load:
+            normalized[SPEC.count_one] = self._expand_prefix_token(
+                normalized[SPEC.count_one],
+                [SPEC.cmd_sources],
+            )
+            return normalized
+        if verb == SPEC.cmd_export:
+            normalized[SPEC.count_one] = self._expand_prefix_token(
+                normalized[SPEC.count_one],
+                [
+                    SPEC.cmd_export_runtime_groups,
+                    SPEC.cmd_export_cli_script,
+                ],
+            )
+            return normalized
+        if verb == SPEC.cmd_validate and len(normalized) > SPEC.count_one:
+            normalized[SPEC.count_one] = self._expand_prefix_token(
+                normalized[SPEC.count_one],
+                [
+                    SPEC.cmd_config,
+                    SPEC.cmd_profiles,
+                    SPEC.cmd_tests,
+                    SPEC.cmd_bindings,
+                    SPEC.cmd_can_mappings,
+                ],
+            )
+            return normalized
+        if verb == SPEC.cmd_selected_mode and len(normalized) > SPEC.count_one:
+            normalized[SPEC.count_one] = self._expand_prefix_token(
+                normalized[SPEC.count_one],
+                [SPEC.cmd_on, SPEC.cmd_off],
+            )
+            return normalized
+        if self._mode == SPEC.modes[SPEC.idx_group] and verb == SPEC.cmd_member:
+            if len(normalized) > SPEC.count_two:
+                normalized[SPEC.count_two] = self._expand_prefix_token(
+                    normalized[SPEC.count_two],
+                    [SPEC.cmd_enable, SPEC.cmd_disable, SPEC.cmd_toggle],
+                )
+            return normalized
+        if verb == SPEC.cmd_no and len(normalized) > SPEC.count_one:
+            normalized[SPEC.count_one] = self._expand_prefix_token(
+                normalized[SPEC.count_one],
+                [SPEC.cmd_group, SPEC.cmd_device, SPEC.cmd_bind],
+            )
+            return normalized
+        return normalized
+
+    def _expand_profile_prefixes(self, tokens: List[str]) -> List[str]:
+        normalized = list(tokens)
+        if len(normalized) <= SPEC.count_one:
+            return normalized
+        normalized[SPEC.count_one] = self._expand_prefix_token(
+            normalized[SPEC.count_one],
+            [SPEC.cmd_create, SPEC.cmd_default, SPEC.cmd_device],
+        )
+        if len(normalized) <= SPEC.count_two:
+            return normalized
+        if normalized[SPEC.count_one].lower() == SPEC.cmd_device:
+            normalized[SPEC.count_two] = self._expand_prefix_token(
+                normalized[SPEC.count_two],
+                [SPEC.cmd_delete, SPEC.cmd_show_all],
+            )
+        return normalized
+
+    def _expand_show_prefixes(self, tokens: List[str]) -> List[str]:
+        normalized = list(tokens)
+        if len(normalized) <= SPEC.count_one:
+            return normalized
+        candidates = list(SPEC.show_targets) + list(SPEC.show_flags)
+        if self._mode == SPEC.modes[SPEC.idx_group]:
+            candidates.extend([SPEC.cmd_members, SPEC.cmd_binding])
+        normalized[SPEC.count_one] = self._expand_prefix_token(
+            normalized[SPEC.count_one],
+            candidates,
+        )
+        if len(normalized) <= SPEC.count_two:
+            return normalized
+        target = normalized[SPEC.count_one].lower()
+        if target == SHOW_TARGET_CONFIG:
+            normalized[SPEC.count_two] = self._expand_prefix_token(
+                normalized[SPEC.count_two], [SHOW_CONFIG_LOCAL_RAW, SHOW_CONFIG_DIRTY]
+            )
+        elif target == SHOW_TARGET_DEVICE:
+            normalized[SPEC.count_two] = self._expand_prefix_token(
+                normalized[SPEC.count_two], [SHOW_TARGET_REGISTRY]
+            )
+        elif target == SHOW_TARGET_PROFILE:
+            return normalized
+        elif target == SHOW_TARGET_GROUP:
+            return normalized
+        elif target == SHOW_TARGET_TEST:
+            return normalized
+        elif target == SHOW_TARGET_DEVICE_USAGE:
+            return normalized
+        return normalized
+
+    def _expand_prefix_token(self, token: str, candidates: List[str]) -> str:
+        if not token:
+            return token
+        if token.startswith(TOKEN_PREFIX_SKIP):
+            return token
+        for ch in PATH_SEPARATORS:
+            if ch in token:
+                return token
+        token_lower = token.lower()
+        exact = [cand for cand in candidates if cand.lower() == token_lower]
+        if exact:
+            return exact[0]
+        matches = [cand for cand in candidates if cand.lower().startswith(token_lower)]
+        if len(matches) == 1:
+            return matches[0]
+        return token
+
+    def _tokens_to_line(self, tokens: List[str]) -> str:
+        result = []
+        for token in tokens:
+            if not token:
+                continue
+            if any(ch.isspace() for ch in token) or "\"" in token:
+                escaped = token.replace("\"", "\\\"")
+                result.append(f"\"{escaped}\"")
+            else:
+                result.append(token)
+        return SPEC.space_str.join(result)
+
+    def _mode_cmds_for(self, mode: str) -> tuple[str, ...]:
+        if mode == SPEC.modes[SPEC.idx_exec]:
+            return SPEC.mode_exec_cmds
+        if mode == SPEC.modes[SPEC.idx_config]:
+            return SPEC.mode_config_cmds
+        if mode == SPEC.modes[SPEC.idx_group]:
+            return SPEC.mode_group_cmds
+        if mode == SPEC.modes[SPEC.idx_device]:
+            return SPEC.mode_device_cmds
+        if mode == SPEC.modes[SPEC.idx_test]:
+            return SPEC.mode_test_cmds
+        return tuple()
 
     def _build_ast(self, tokens: List[str], mode: str) -> CommandAst:
         """
@@ -553,6 +788,22 @@ class BridgeCliParser:
                     SPEC.empty_str,
                     bool(SPEC.bool_false),
                 )
+            if tokens[SPEC.count_one].lower() == SPEC.cmd_default:
+                return (
+                    SPEC.kind_config_profile,
+                    SPEC.empty_str,
+                    tokens[SPEC.count_two],
+                    SPEC.empty_str,
+                    SPEC.cmd_default,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    bool(SPEC.bool_false),
+                )
             if (
                 len(tokens) >= SPEC.count_four
                 and tokens[SPEC.count_one].lower() == SPEC.cmd_device
@@ -653,6 +904,22 @@ class BridgeCliParser:
                 bool(SPEC.bool_false),
             )
         if verb == SPEC.cmd_save:
+            if tokens[SPEC.count_one].lower() == SPEC.cmd_sources:
+                return (
+                    SPEC.kind_config_save,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    tokens[SPEC.count_one],
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    bool(SPEC.bool_false),
+                )
             return (
                 SPEC.kind_config_save,
                 SPEC.empty_str,
@@ -668,6 +935,22 @@ class BridgeCliParser:
                 SPEC.empty_str,
                 bool(SPEC.bool_false),
             )
+        if verb == SPEC.cmd_load:
+            return (
+                SPEC.kind_config_load,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+            )
         if verb == SPEC.cmd_rename and tokens[SPEC.count_one].lower() == SPEC.cmd_device:
             return (
                 SPEC.kind_config_rename_device,
@@ -675,6 +958,22 @@ class BridgeCliParser:
                 SPEC.empty_str,
                 tokens[SPEC.count_two],
                 tokens[SPEC.count_three],
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+            )
+        if verb == SPEC.cmd_rename and len(tokens) >= SPEC.count_three:
+            return (
+                SPEC.kind_config_rename_device,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                tokens[SPEC.count_one],
+                tokens[SPEC.count_two],
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
@@ -1224,6 +1523,10 @@ class BridgeCliParser:
             self._require(tokens, SPEC.count_three, SPEC.msg_profile_name)
             self._reject_extra(tokens, SPEC.count_three, SPEC.cmd_profile)
             return
+        if tokens[SPEC.count_one].lower() == SPEC.cmd_default:
+            self._require(tokens, SPEC.count_three, SPEC.msg_profile_name)
+            self._reject_extra(tokens, SPEC.count_three, SPEC.cmd_profile)
+            return
         if (
             len(tokens) >= SPEC.count_four
             and tokens[SPEC.count_one].lower() == SPEC.cmd_device
@@ -1262,6 +1565,11 @@ class BridgeCliParser:
             return
         self._reject_extra(tokens, SPEC.count_three, SPEC.label_push)
 
+    def _handle_write(self, tokens: List[str]) -> None:
+        if len(tokens) < SPEC.count_three or tokens[SPEC.count_one].lower() != SPEC.cmd_tests:
+            raise CliParseError(SPEC.msg_write_requires)
+        self._reject_extra(tokens, SPEC.count_three, SPEC.cmd_write)
+
     def _handle_merge_import(self, tokens: List[str]) -> None:
         cmd = tokens[SPEC.count_zero].lower()
         if len(tokens) < SPEC.count_three or tokens[SPEC.count_one].lower() != SPEC.cmd_config:
@@ -1279,9 +1587,14 @@ class BridgeCliParser:
         self._reject_extra(tokens, SPEC.count_three, SPEC.label_export)
 
     def _handle_save(self, tokens: List[str]) -> None:
-        if len(tokens) < SPEC.count_three:
+        if len(tokens) < SPEC.count_two:
             raise CliParseError(SPEC.msg_save_requires)
         target = tokens[SPEC.count_one].lower()
+        if target == SPEC.cmd_sources:
+            self._reject_extra(tokens, SPEC.count_two, SPEC.label_save)
+            return
+        if len(tokens) < SPEC.count_three:
+            raise CliParseError(SPEC.msg_save_requires)
         if target not in (
             SPEC.cmd_save_config,
             SPEC.cmd_save_local_config,
@@ -1291,10 +1604,21 @@ class BridgeCliParser:
             raise CliParseError(SPEC.msg_save_target)
         self._reject_extra(tokens, SPEC.count_three, SPEC.label_save)
 
+    def _handle_load(self, tokens: List[str]) -> None:
+        if len(tokens) < SPEC.count_two:
+            raise CliParseError(SPEC.msg_load_requires)
+        if tokens[SPEC.count_one].lower() != SPEC.cmd_sources:
+            raise CliParseError(SPEC.msg_load_requires)
+        self._reject_extra(tokens, SPEC.count_two, SPEC.cmd_load)
+
     def _handle_rename(self, tokens: List[str]) -> None:
-        if len(tokens) < SPEC.count_four or tokens[SPEC.count_one].lower() != SPEC.cmd_device:
-            raise CliParseError(SPEC.msg_rename_device)
-        self._reject_extra(tokens, SPEC.count_four, SPEC.label_rename)
+        if len(tokens) >= SPEC.count_four and tokens[SPEC.count_one].lower() == SPEC.cmd_device:
+            self._reject_extra(tokens, SPEC.count_four, SPEC.label_rename)
+            return
+        if len(tokens) >= SPEC.count_three:
+            self._reject_extra(tokens, SPEC.count_three, SPEC.label_rename)
+            return
+        raise CliParseError(SPEC.msg_rename_device)
 
     def _handle_device_command(self, tokens: List[str]) -> None:
         self._require(tokens, SPEC.count_two, SPEC.msg_device_name)

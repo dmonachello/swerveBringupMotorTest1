@@ -7,6 +7,9 @@ These files are example inputs for the Bridge CLI batch mode.
 Run with:
 `python -m tools.can_nt.can_nt_bridge --no-can --no-nt --batch --script <path>`
 
+Notes:
+- Scripts run over the TCP UI channel; the robot must be reachable if commands require robot data.
+
 ## Files
 Purpose: Describe each file in this folder.
 

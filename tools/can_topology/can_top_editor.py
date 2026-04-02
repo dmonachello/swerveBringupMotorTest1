@@ -155,6 +155,17 @@ HELP_DIO_BODY = (
     "- DIO devices must be wired to roboRIO (Edit -> Wire DIO to roboRIO).\n"
     "- Both links are required for validation and exports.\n"
 )
+ARG_VERSION = "--version"
+ARG_VERSION_ATTR = "version"
+ACTION_STORE_TRUE = "store_true"
+HELP_VERSION = "Print version and exit."
+VERSION_APP_NAME = APP_CAN_TOPOLOGY_NAME
+VERSION_TITLE = VERSION_HEADER
+ABOUT_TITLE = "About CAN Topology Editor"
+ABOUT_NAME = "CAN Topology Editor"
+ABOUT_DESCRIPTION = "GUI for editing CAN topology profiles."
+ABOUT_LAUNCH = "Launch via python -m tools.can_topology.can_top_editor"
+ABOUT_SEPARATOR = "\n"
 
 try:
     from tools.common.json_io import read_json
@@ -302,6 +313,21 @@ try:
     from tools.common.time_utils import timestamp_version
 except ImportError:  # Allow running as a script from this folder.
     from common.time_utils import timestamp_version  # type: ignore
+
+try:
+    from tools.common.app_versions import (
+        APP_CAN_TOPOLOGY_NAME,
+        VERSIONS,
+        VERSION_HEADER,
+        format_version_line,
+    )
+except ImportError:  # Allow running as a script from this folder.
+    from common.app_versions import (  # type: ignore
+        APP_CAN_TOPOLOGY_NAME,
+        VERSIONS,
+        VERSION_HEADER,
+        format_version_line,
+    )
 
 
 class TopologyEditor(tk.Tk):
@@ -698,6 +724,8 @@ class TopologyEditor(tk.Tk):
         help_menu = tk.Menu(menu, tearoff=False)
         help_menu.add_command(label="Help...", command=self._show_help_dialog)
         help_menu.add_command(label="Keyboard Shortcuts...", command=self._show_shortcuts_dialog)
+        help_menu.add_separator()
+        help_menu.add_command(label="About...", command=self._show_about_dialog)
         menu.add_cascade(label="Help", menu=help_menu)
         self.config(menu=menu)
 
@@ -7545,6 +7573,17 @@ class TopologyEditor(tk.Tk):
         text = self._help_topics().get("Keyboard Shortcuts", "")
         messagebox.showinfo("Keyboard Shortcuts", text)
 
+    def _show_about_dialog(self) -> None:
+        """
+        NAME
+            _show_about_dialog - Show the about dialog.
+        """
+        version = VERSIONS.get(VERSION_APP_NAME, "")
+        version_line = format_version_line(VERSION_APP_NAME, version) if version else ""
+        lines = [ABOUT_NAME, version_line, ABOUT_DESCRIPTION, ABOUT_LAUNCH]
+        body = ABOUT_SEPARATOR.join([line for line in lines if line])
+        messagebox.showinfo(ABOUT_TITLE, body)
+
     def _fill_color_for_vendor(self, vendor: str) -> str:
         """
         NAME
@@ -9667,6 +9706,18 @@ class TopologyEditor(tk.Tk):
                     return None
         return None
 
+
+def _print_version_banner() -> None:
+    """
+    NAME
+        _print_version_banner - Print the CAN topology editor version.
+    """
+    version = VERSIONS.get(VERSION_APP_NAME, "")
+    if not version:
+        return
+    print(VERSION_TITLE)
+    print(format_version_line(VERSION_APP_NAME, version))
+
 def main() -> int:
     """
     NAME
@@ -9676,7 +9727,12 @@ def main() -> int:
         Process exit code (0).
     """
     parser = argparse.ArgumentParser(description="CAN topology editor")
+    parser.add_argument(ARG_VERSION, action=ACTION_STORE_TRUE, help=HELP_VERSION)
     args = parser.parse_args()
+    if getattr(args, ARG_VERSION_ATTR, False):
+        _print_version_banner()
+        return 0
+    _print_version_banner()
     app = TopologyEditor()
     app.mainloop()
     return 0

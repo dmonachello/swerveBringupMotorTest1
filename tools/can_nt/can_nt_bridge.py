@@ -57,6 +57,12 @@ try:
     from tools.can_nt.can_state import SnifferState
     from tools.can_nt.can_tx import start_tx_if_requested
     from tools.common.time_utils import timestamp_compact
+    from tools.common.app_versions import (
+        APP_CAN_BRIDGE_NAME,
+        VERSIONS,
+        VERSION_HEADER,
+        format_version_line,
+    )
     from tools.can_nt.bridge_cli import BridgeCli
     from tools.can_nt.bridge_session import BridgeSession
 except ModuleNotFoundError:
@@ -88,6 +94,12 @@ except ModuleNotFoundError:
     from tools.can_nt.can_state import SnifferState
     from tools.can_nt.can_tx import start_tx_if_requested
     from tools.common.time_utils import timestamp_compact
+    from tools.common.app_versions import (
+        APP_CAN_BRIDGE_NAME,
+        VERSIONS,
+        VERSION_HEADER,
+        format_version_line,
+    )
     from tools.can_nt.bridge_cli import BridgeCli
     from tools.can_nt.bridge_session import BridgeSession
 
@@ -96,6 +108,11 @@ NT_TABLE_ROOT = "bringup"
 NT_TABLE_UI = "ui"
 NT_TABLE_TESTS = "tests"
 NT_TABLE_DIAG = "diag"
+
+# Constants (version output).
+VERSION_APP_NAME = APP_CAN_BRIDGE_NAME
+VERSION_TITLE = VERSION_HEADER
+VERSION_ARG_ATTR = "version"
 
 # Constants (device keys).
 DEVICE_KEY_LABEL = "label"
@@ -107,6 +124,18 @@ DEVICE_KEY_PREFER_STATUS = "prefer_status"
 # Constants (unknown label handling).
 UNKNOWN_LABEL_PREFIX = "UNPROFILED_DEVICE_"
 CONSOLE_UNKNOWN_LABEL_PREFIX = "UNPROFILED_CONSOLE_"
+
+
+def _print_version_banner() -> None:
+    """
+    NAME
+        _print_version_banner - Print the can_nt_bridge version banner.
+    """
+    version = VERSIONS.get(VERSION_APP_NAME, "")
+    if not version:
+        return
+    print(VERSION_TITLE)
+    print(format_version_line(VERSION_APP_NAME, version))
 
 
 def _build_device_maps(
@@ -236,6 +265,10 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     """
     parser = build_parser()
     args = parser.parse_args(argv)
+    if getattr(args, VERSION_ARG_ATTR, False):
+        _print_version_banner()
+        return 0
+    _print_version_banner()
     if args.ui_only:
         args.ui = True
         args.no_can = True

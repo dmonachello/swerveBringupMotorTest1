@@ -62,8 +62,10 @@ from tools.can_nt.bridge_ops import (
     show_runtime_state,
     show_selected_device,
     show_status,
+    show_version,
 )
 
+SHOW_TARGET_VERSION = "version"
 
 AST_EXEC_SPEC = {
     "ret_ok": 0,
@@ -179,6 +181,7 @@ class BridgeCliAstExecutor:
             SPEC.kind_config_import: self._ast_config_import,
             SPEC.kind_config_export: self._ast_config_export,
             SPEC.kind_config_save: self._ast_config_save,
+            SPEC.kind_config_load: self._ast_config_load,
             SPEC.kind_config_push: self._ast_config_push,
             SPEC.kind_config_rename_device: self._ast_config_rename_device,
             SPEC.kind_config_no_device: self._ast_config_no_device,
@@ -288,6 +291,8 @@ class BridgeCliAstExecutor:
             if not self._cli._create_profile(ast.profile_name):
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             return StatusResult(code=SS__NORMAL)
+        if ast.field == SPEC.cmd_default:
+            return self._cli._set_default_profile(ast.profile_name)
         if ast.field == SPEC.cmd_delete:
             name = ast.device_name
             if not name:
@@ -363,6 +368,9 @@ class BridgeCliAstExecutor:
         return AST_EXEC_SPEC["ret_err"]
 
     def _ast_config_save(self, ast: CommandAst) -> Optional[int]:
+        if ast.save_target == SPEC.cmd_sources:
+            result = self._cli._save_sources()
+            return AST_EXEC_SPEC["ret_err"] if not result.ok() else None
         if ast.save_target == SPEC.cmd_save_profiles:
             if not self._cli._save_profiles(ast.path):
                 return AST_EXEC_SPEC["ret_err"]
@@ -383,6 +391,10 @@ class BridgeCliAstExecutor:
             return None
         print(AST_EXEC_SPEC["msg_err_unknown_cmd"])
         return AST_EXEC_SPEC["ret_err"]
+
+    def _ast_config_load(self, ast: CommandAst) -> Optional[int]:
+        result = self._cli._load_sources()
+        return AST_EXEC_SPEC["ret_err"] if not result.ok() else None
 
     def _ast_config_push(self, ast: CommandAst) -> Optional[StatusResult]:
         target = ast.field or SPEC.empty_str
@@ -672,7 +684,10 @@ class BridgeCliAstExecutor:
             SHOW_TARGET_PROFILE,
             SHOW_TARGET_PROFILES,
             SPEC.show_target_device,
+            SPEC.show_target_device_registry,
         ):
+            source = SPEC.show_source_local
+        if target == SHOW_TARGET_VERSION and not source:
             source = SPEC.show_source_local
         if not source:
             source = SPEC.show_source_robot if self._cli._session.is_connected() else SPEC.show_source_local
@@ -725,9 +740,8 @@ class BridgeCliAstExecutor:
             seq = show_selected_device(self._cli._session, json_output=json_output)
         elif target == SPEC.show_target_runtime_state:
             seq = show_runtime_state(self._cli._session, json_output=json_output)
-        elif target == SPEC.show_target_device:
-            print(AST_EXEC_SPEC["msg_err_unknown_show"])
-            return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+        elif target == SHOW_TARGET_VERSION:
+            seq = show_version(self._cli._session, json_output=json_output)
         else:
             print(AST_EXEC_SPEC["msg_err_unknown_show"])
             return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)

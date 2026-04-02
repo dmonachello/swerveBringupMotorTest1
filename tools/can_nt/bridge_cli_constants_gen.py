@@ -39,6 +39,7 @@ class ParserSpec:
     show_target_selected_device: str
     show_target_commands: str
     show_target_help: str
+    show_target_sources: str
     show_target_device_usage: str
     show_target_device_group: str
     show_target_message_level: str
@@ -73,14 +74,17 @@ class ParserSpec:
     cmd_savep: str
     cmd_push: str
     cmd_activate: str
+    cmd_default: str
     cmd_rename: str
     cmd_device: str
     cmd_registry: str
+    cmd_sources: str
     cmd_set: str
     cmd_write: str
     cmd_bindings: str
     cmd_can_mappings: str
     cmd_tests: str
+    cmd_load: str
     cmd_create: str
     cmd_delete: str
     cmd_type: str
@@ -128,6 +132,7 @@ class ParserSpec:
     msg_export_target: str
     msg_save_requires: str
     msg_save_target: str
+    msg_write_requires: str
     msg_rename_device: str
     msg_device_name: str
     msg_device_set: str
@@ -200,6 +205,7 @@ class ParserSpec:
     kind_config_import: str
     kind_config_export: str
     kind_config_save: str
+    kind_config_load: str
     kind_config_push: str
     kind_config_rename_device: str
     kind_config_device: str
@@ -244,7 +250,7 @@ SPEC = ParserSpec(
     show_source_robot='robot',
     show_source_local='local',
     show_source_both='both',
-    show_targets=('status', 'groups', 'group', 'devices', 'device', 'commands', 'help', 'device-usage', 'bindings', 'selected-device', 'runtime-state', 'tests', 'test', 'config', 'profiles', 'profile', 'message-level', 'workspace', 'session', 'controllers', 'device-group'),
+    show_targets=('status', 'groups', 'group', 'devices', 'device', 'commands', 'help', 'version', 'device-usage', 'device-registry', 'bindings', 'selected-device', 'runtime-state', 'tests', 'test', 'config', 'sources', 'profiles', 'profile', 'message-level', 'workspace', 'session', 'controllers', 'device-group'),
     show_target_config='config',
     show_target_runtime_state='runtime-state',
     show_target_tests='tests',
@@ -257,6 +263,7 @@ SPEC = ParserSpec(
     show_target_device_group='device-group',
     show_target_commands='commands',
     show_target_help='help',
+    show_target_sources='sources',
     show_target_device_usage='device-usage',
     show_target_message_level='message-level',
     bind_kinds=('analog', 'hold', 'toggle', 'jog-forward', 'jog-reverse'),
@@ -290,14 +297,17 @@ SPEC = ParserSpec(
     cmd_savep='savep',
     cmd_push='push',
     cmd_activate='--activate',
+    cmd_default='default',
     cmd_rename='rename',
     cmd_device='device',
     cmd_registry='registry',
+    cmd_sources='sources',
     cmd_set='set',
     cmd_write='write',
     cmd_bindings='bindings',
     cmd_can_mappings='can-mappings',
     cmd_tests='tests',
+    cmd_load='load',
     cmd_create='create',
     cmd_delete='delete',
     cmd_type='type',
@@ -343,8 +353,9 @@ SPEC = ParserSpec(
     msg_import_config="import requires 'config <path>'",
     msg_export_requires='export requires target and path',
     msg_export_target='export requires runtime-groups or cli-script',
-    msg_save_requires='save requires target and path',
-    msg_save_target='save requires config/local-config/profiles/unified-config',
+    msg_save_requires='save requires target and path (or sources/all)',
+    msg_save_target='save requires all/config/local-config/profiles/unified-config/sources',
+    msg_write_requires='write requires tests <path>',
     msg_rename_device="rename requires 'device <old> <new>'",
     msg_device_name='device requires device label',
     msg_device_set='device <device> set <field> <value>',
@@ -382,7 +393,7 @@ SPEC = ParserSpec(
     label_device_set='device set',
     label_device_delete='delete',
     mode_exec_cmds=('cfg', 'configure', 'connect', 'diagnose', 'disconnect', 'ls', 'prof', 'profile', 'show'),
-    mode_config_cmds=('bindings', 'can-mappings', 'config', 'device', 'diagnose', 'export', 'group', 'import', 'ls', 'merge', 'no', 'prof', 'profile', 'profiles', 'rename', 'save', 'savep', 'selected-device', 'selected-mode', 'show', 'test', 'tests', 'val', 'validate', 'write'),
+    mode_config_cmds=('bindings', 'can-mappings', 'config', 'device', 'diagnose', 'export', 'group', 'import', 'load', 'ls', 'merge', 'no', 'prof', 'profile', 'profiles', 'rename', 'save', 'savep', 'selected-device', 'selected-mode', 'show', 'test', 'tests', 'val', 'validate', 'write'),
     mode_group_cmds=('add', 'bind', 'disable', 'enable', 'ls', 'member', 'no', 'run', 'show', 'write'),
     mode_device_cmds=('delete', 'ls', 'no', 'set', 'show', 'write'),
     mode_test_cmds=('action', 'brightness', 'color', 'deadband', 'deadbandsweep', 'device', 'duration', 'duty', 'enabled', 'hold', 'inputsource', 'limitswitch', 'ls', 'no', 'pattern', 'rotation', 'show', 'termination', 'time', 'type', 'write'),
@@ -417,6 +428,7 @@ SPEC = ParserSpec(
     kind_config_import='config_import',
     kind_config_export='config_export',
     kind_config_save='config_save',
+    kind_config_load='config_load',
     kind_config_push='config_push',
     kind_config_rename_device='config_rename_device',
     kind_config_device='config_device',

@@ -74,6 +74,9 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_CHANNEL_CURRENT_A = "channelCurrentA";
   private static final String JSON_KEY_CHANNEL_FAULT = "channelFault";
   private static final String JSON_KEY_CHANNEL_STICKY_FAULT = "channelStickyFault";
+  private static final String JSON_KEY_JSON = "json";
+  private static final String JSON_KEY_VERSION = "version";
+  private static final String CMD_SHOW_VERSION = "showVersion";
   private static final int INDEX_START = 0;
   private static final String JSON_KEY_OK = "ok";
   private static final String JSON_KEY_MESSAGE = "message";
@@ -838,12 +841,17 @@ public class BridgeUiCommandHandler {
         }
         break;
       case "showStatus": {
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, "json"));
+        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
         applyShowResult(result, buildStatusText(), buildStatusJson(), wantsJson);
         break;
       }
+      case CMD_SHOW_VERSION: {
+        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
+        applyShowResult(result, buildVersionText(), buildVersionJson(), wantsJson);
+        break;
+      }
       case "showGroups": {
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, "json"));
+        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
         applyShowResult(result, buildGroupsText(), buildGroupsJson(), wantsJson);
         break;
       }
@@ -860,12 +868,12 @@ public class BridgeUiCommandHandler {
           result.message = "Group not found: " + groupName;
           break;
         }
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, "json"));
+        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
         applyShowResult(result, buildGroupText(group), buildGroupJson(group), wantsJson);
         break;
       }
       case "showDevices": {
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, "json"));
+        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
         applyShowResult(result, buildDevicesText(), buildDevicesJson(), wantsJson);
         break;
       }
@@ -882,22 +890,22 @@ public class BridgeUiCommandHandler {
           result.message = "Device not found: " + deviceName;
           break;
         }
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, "json"));
+        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
         applyShowResult(result, buildDeviceText(entry), buildDeviceJson(entry), wantsJson);
         break;
       }
       case "showBindings": {
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, "json"));
+        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
         applyShowResult(result, buildBindingsText(), buildBindingsJson(), wantsJson);
         break;
       }
       case "showSelectedDevice": {
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, "json"));
+        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
         applyShowResult(result, buildSelectedDeviceText(), buildSelectedDeviceJson(), wantsJson);
         break;
       }
       case "showRuntimeState": {
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, "json"));
+        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
         String text = buildStatusText() + "\n" + buildGroupsText();
         applyShowResult(result, text, buildRuntimeStateJson(), wantsJson);
         break;
@@ -1866,6 +1874,24 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
+   *   buildVersionText - Build the show version text output.
+   */
+  private String buildVersionText() {
+    return AppVersion.VERSION_PREFIX + AppVersion.ROBOT_APP_VERSION;
+  }
+
+  /**
+   * NAME
+   *   buildVersionJson - Build the show version JSON payload.
+   */
+  private JsonObject buildVersionJson() {
+    JsonObject root = new JsonObject();
+    root.addProperty(JSON_KEY_VERSION, AppVersion.ROBOT_APP_VERSION);
+    return root;
+  }
+
+  /**
+   * NAME
    *   buildGroupsText - Build the show groups text output.
    */
   private String buildGroupsText() {
@@ -2400,6 +2426,7 @@ public class BridgeUiCommandHandler {
     lastStartupPrintMs = nowMs;
     StringBuilder sb = new StringBuilder(512);
     ReportTextUtil.appendLine(sb, "=== Swerve Bringup V2 ===");
+    ReportTextUtil.appendLine(sb, AppVersion.VERSION_PREFIX + AppVersion.ROBOT_APP_VERSION);
     ReportTextUtil.appendLine(sb, "Build: " + BringupCore.getBuildMarker());
     ReportTextUtil.appendLine(sb, "Deadband: " + DEADBAND);
     ReportTextUtil.appendLine(sb, "Dashboard updates: " + (dashboardUpdatesEnabled ? "ON" : "OFF"));

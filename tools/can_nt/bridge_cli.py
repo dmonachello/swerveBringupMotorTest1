@@ -67,6 +67,7 @@ from tools.can_nt.bridge_ops import (
     show_runtime_state,
     show_selected_device,
     show_status,
+    show_version,
     parse_json_arg,
 )
 from tools.can_nt.bridge_session import BridgeEvent, BridgeSession
@@ -199,6 +200,13 @@ from tools.common.test_authoring import (
 )
 from tools.common.test_authoring.device_catalog import load_controller_names, load_profile_devices
 from tools.common.time_utils import timestamp_version
+from tools.common.app_versions import (
+    APP_BRIDGE_CLI_NAME,
+    APP_VERSION_ORDER,
+    VERSIONS,
+    VERSION_HEADER,
+    format_version_line,
+)
 
 # Optional line editing for Cisco-style '?' prefill.
 MESSAGE_WARN_PROMPT_TOOLKIT = (
@@ -207,16 +215,31 @@ MESSAGE_WARN_PROMPT_TOOLKIT = (
 MESSAGE_WARN_HISTORY_DISABLED = (
     "WARNING: command history disabled (prompt_toolkit not available)."
 )
+MESSAGE_WARN_PROMPT_TOOLKIT_NO_CONSOLE = (
+    "WARNING: prompt_toolkit unavailable (no console); falling back to basic input."
+)
+MESSAGE_WARN_COMPLETION_DISABLED = (
+    "WARNING: prompt_toolkit completion unavailable; continuing without tab completion."
+)
 PROMPT_TOOLKIT_AVAILABLE = False
+COMPLETION_ENABLED = True
+COMPLETION_WHILE_TYPING = True
+COMPLETION_META_TEXT = ""
+COMPLETION_PREFIX_EMPTY = ""
+COMPLETION_SPACE = " "
+COMPLETION_START_POS_ZERO = 0
 
 try:
     from prompt_toolkit import prompt as prompt_toolkit_prompt
     from prompt_toolkit import PromptSession
+    from prompt_toolkit.completion import Completer, Completion
     from prompt_toolkit.history import FileHistory
     PROMPT_TOOLKIT_AVAILABLE = True
 except Exception:
     prompt_toolkit_prompt = None
     PromptSession = None
+    Completer = None
+    Completion = None
     FileHistory = None
 
 # Parser selection (comment out one of the two lines below).
@@ -246,6 +269,12 @@ STATUS_INCLUDE_RAW_DEFAULT = False
 STATUS_DETAIL_PREFIX = "DETAIL: "
 STATUS_OK_MESSAGE = "OK"
 EXIT_CODE_ERROR = 2
+VERSION_TITLE = VERSION_HEADER
+VERSION_KEY_APPS = "apps"
+VERSION_KEY_NAME = "name"
+VERSION_KEY_VERSION = "version"
+MESSAGE_VERSION_NONE = "  (none)"
+VERSION_APP_NAME = APP_BRIDGE_CLI_NAME
 
 CMD_SHOW = "show"
 CMD_LS = PARSER_SPEC.cmd_ls
@@ -258,6 +287,8 @@ CMD_CREATE = "create"
 CMD_DELETE = "delete"
 CMD_SET = "set"
 CMD_CLEAR = "clear"
+SHOW_TARGET_VERSION = "version"
+CMD_DEFAULT = PARSER_SPEC.cmd_default
 CMD_MESSAGES = "messages"
 CMD_MESSAGE_LEVEL = "message-level"
 CMD_TYPE = "type"
@@ -322,6 +353,7 @@ CMD_ALL = "all"
 CMD_PROMPT = "--prompt"
 CMD_LOAD = "load"
 CMD_SAVE = "save"
+CMD_SOURCES = "sources"
 CMD_SAVEP = PARSER_SPEC.cmd_savep
 CMD_MERGE = "merge"
 CMD_TEMPLATES = "templates"
@@ -424,6 +456,19 @@ SHOW_TARGET_HELP = "help"
 SHOW_TARGET_WORKSPACE = "workspace"
 SHOW_TARGET_SESSION = "session"
 SHOW_TARGET_CONTROLLERS = "controllers"
+SHOW_TARGET_SOURCES = "sources"
+
+SHOW_SOURCE_ROBOT = "robot"
+SHOW_SOURCE_LOCAL = "local"
+SHOW_SOURCE_BOTH = "both"
+SHOW_SOURCE_FLAGS = {
+    SHOW_SOURCE_ROBOT,
+    SHOW_SOURCE_LOCAL,
+    SHOW_SOURCE_BOTH,
+    "--robot",
+    "--local",
+    "--both",
+}
 
 MESSAGE_ERR_UNKNOWN_SHOW = "ERROR: Unknown show command."
 MESSAGE_ERR_UNKNOWN_SHOW_SOURCE = "ERROR: Unknown show source."
@@ -561,7 +606,7 @@ MESSAGE_SHOW_COMMANDS_HEADER = "Available commands:"
 MESSAGE_SHOW_HELP_HEADER = "Help topics:"
 MESSAGE_HELP_QUICK_HEADER = "Quick help:"
 MESSAGE_HELP_QUICK_EMPTY = "  (no commands)"
-MESSAGE_HELP_QUICK_ALIASES = "Aliases: ls=show, cfg=configure terminal, prof=profile, val=validate, savep=save profiles"
+MESSAGE_HELP_QUICK_ALIASES = "Abbrev: use unique prefixes (e.g., 'conf ter', 'pro def', 'sho ver')."
 MESSAGE_HINT_PREFIX = "HINT: "
 MESSAGE_HINT_VALIDATE = (
     "validate config [path] [--all] | validate profiles [robot|local] [--active] | validate tests [--active-set] "
@@ -570,12 +615,13 @@ MESSAGE_HINT_VALIDATE = (
 from tools.common.test_authoring.validator import AXIS_INPUTS, BUTTON_INPUTS, LIMIT_SWITCH_DEVICE_TYPE
 MESSAGE_HINT_SAVE = (
     "save all [--prompt] | save config <path> | save local-config <path> | "
-    "save profiles <path> | save unified-config <path>"
+    "save profiles <path> | save unified-config <path> | save sources"
 )
+MESSAGE_HINT_SOURCES = "show sources | load sources | save sources"
 MESSAGE_HINT_SHOW = "show <target> [--json] [--pretty] [robot|local|both]"
 MESSAGE_HINT_PROFILE = (
     "profile <profile> | profile create <profile> | profile device delete <device> "
-    "| profile device show-all <device>"
+    "| profile device show-all <device> | profile default <profile>"
 )
 MESSAGE_HINT_CAN_MAPPINGS = "can-mappings show [manufacturers|device-types] | can-mappings manufacturer set <id> <name>"
 MESSAGE_HINT_VALIDATE_CONFIG_PROFILE = "validate config expects a file path; did you mean `profile <profile>`?"
@@ -612,9 +658,42 @@ MESSAGE_DEVICE_USAGE_NONE = "    (none)"
 MESSAGE_DEVICE_USAGE_GROUP_ENTRY = "    {name}"
 MESSAGE_DEVICE_USAGE_TEST_ENTRY = "    {test_set}/{name} ({type})"
 MESSAGE_DEVICE_USAGE_TEST_ENTRY_SIMPLE = "    {test_set}/{name}"
+MESSAGE_NO_KNOWN_VALUES = "No known values; see docs."
+MESSAGE_SOURCES_HEADER = "Sources:"
+MESSAGE_SOURCES_ENTRY = "  {name}: {value}"
+MESSAGE_SOURCES_NOT_LOADED = "(not loaded)"
+MESSAGE_SOURCES_UNKNOWN = "(unknown source)"
+MESSAGE_SOURCES_LOAD_HEADER = "Loading sources:"
+MESSAGE_SOURCES_SAVE_HEADER = "Saving sources:"
+MESSAGE_SOURCES_LOAD_OK = "Loaded {name} from {path}."
+MESSAGE_SOURCES_SAVE_OK = "Saved {name} to {path}."
+MESSAGE_SOURCES_SKIP_UNKNOWN = "ERROR: {name} has unknown source path."
+MESSAGE_SOURCES_SKIP_NOT_LOADED = "ERROR: {name} not loaded."
+MESSAGE_SOURCES_ROBOT_UNSUPPORTED = "ERROR: Robot does not report sources."
+MESSAGE_SOURCES_DONE = "Done."
+
+KEY_SOURCES = "sources"
+KEY_SOURCE_NAME = "name"
+KEY_SOURCE_PATH = "path"
+KEY_SOURCE_STATUS = "status"
+KEY_SOURCE_NOTE = "note"
+SOURCE_STATUS_LOADED = "loaded"
+SOURCE_STATUS_NOT_LOADED = "not-loaded"
+SOURCE_STATUS_UNKNOWN = "unknown"
+SOURCE_NAME_REGISTRY = "registry"
+SOURCE_NAME_CONFIG = "config"
+SOURCE_NAME_TESTS = "tests"
+SOURCE_NAME_BINDINGS = "bindings"
+SOURCE_NAME_CAN_MAPPINGS = "can-mappings"
 HELP_TOPIC_DEVICE_USAGE = "device-usage"
 HELP_DEVICE_USAGE_TEXT = "show device-usage <device>\n  Show local group/test references for a device."
-MESSAGE_NO_KNOWN_VALUES = "No known values; see docs."
+HELP_TOPIC_SOURCES = "sources"
+HELP_SOURCES_TEXT = (
+    "show sources\n"
+    "load sources\n"
+    "save sources\n"
+    "  Show and reload/save CLI data sources (local only)."
+)
 HELP_TOPIC_PROFILE_DEVICE_DELETE = "profile device delete"
 HELP_PROFILE_DEVICE_DELETE_TEXT = (
     "profile device delete <device>\n  Remove a device label from the active profile."
@@ -622,6 +701,10 @@ HELP_PROFILE_DEVICE_DELETE_TEXT = (
 HELP_TOPIC_PROFILE_DEVICE_SHOW_ALL = "profile device show-all"
 HELP_PROFILE_DEVICE_SHOW_ALL_TEXT = (
     "profile device show-all <device>\n  Show all profile device entries matching a label."
+)
+HELP_TOPIC_PROFILE_DEFAULT = "profile default"
+HELP_PROFILE_DEFAULT_TEXT = (
+    "profile default <profile>\n  Set the default profile name in bringup_system.json."
 )
 HELP_TOPIC_PROFILES_PUSH = "profiles push"
 HELP_PROFILES_PUSH_TEXT = (
@@ -633,9 +716,9 @@ HELP_CONFIG_PUSH_TEXT = (
 )
 HELP_TOPIC_QUICK = "quick"
 HELP_SHOW_TEXT = (
-    "show <status|groups|group <group>|devices|device <device>|device-group <device>|device-usage <device>|commands|help|"
-    "bindings|selected-device|runtime-state|config|config local-raw|config dirty|profiles|profile|tests|test <test>|message-level|"
-    "workspace|session|controllers> "
+    "show <status|groups|group <group>|devices|device <device>|device-group <device>|device registry <device>|"
+    "device-usage <device>|commands|help|bindings|selected-device|runtime-state|config|config local-raw|config dirty|"
+    "sources|profiles|profile|tests|test <test>|message-level|workspace|session|controllers> "
     "[--json] [--pretty] [robot|local|both]\n"
     "  Defaults: robot if connected, otherwise local."
 )
@@ -657,7 +740,9 @@ MESSAGE_ERR_PROFILE_MISSING_HASH = (
     "ERROR: Local groups loaded without profiles; use 'import config <path>' to replace groups."
 )
 MESSAGE_ERR_PROFILE_REQUIRED = "ERROR: Profile not selected. Use 'profile <profile>'."
+MESSAGE_ERR_PLAN = "ERROR: {message}"
 MESSAGE_ERR_PROFILE_UNKNOWN = "ERROR: Profile not found: {name}."
+MESSAGE_PROFILE_DEFAULT_SET = "Default profile: {name}."
 MESSAGE_ERR_PROFILES_PUSH_PATH = "ERROR: profiles push requires a path."
 MESSAGE_ERR_PROFILES_PUSH_READ = "ERROR: Failed to read profiles JSON: {path}."
 MESSAGE_ERR_PROFILES_PUSH_PARSE = "ERROR: Invalid profiles JSON: {detail}."
@@ -969,12 +1054,14 @@ class BridgeCli:
         self._bindings_payload: Optional[Dict[str, object]] = None
         self._bindings_path: Optional[Path] = None
         self._bindings_dirty: bool = False
+        self._version_printed = False
 
     def run_interactive(self) -> int:
         """
         NAME
             run_interactive - Enter the interactive prompt loop.
         """
+        self._print_version_banner()
         self._auto_merge_default_profiles()
         while True:
             try:
@@ -1029,13 +1116,39 @@ class BridgeCli:
             return None
         history_path = logs_dir() / HISTORY_FILENAME
         history_path.parent.mkdir(parents=True, exist_ok=True)
-        return PromptSession(history=FileHistory(str(history_path)))
+        try:
+            completer = self._build_completer()
+            return PromptSession(
+                history=FileHistory(str(history_path)),
+                completer=completer,
+                complete_while_typing=COMPLETION_WHILE_TYPING,
+            )
+        except Exception:
+            if not self._warned_prompt_toolkit:
+                print(MESSAGE_WARN_PROMPT_TOOLKIT_NO_CONSOLE)
+                self._warned_prompt_toolkit = True
+            return None
+
+    def _build_completer(self) -> Optional[object]:
+        """
+        NAME
+            _build_completer - Build a prompt_toolkit completer if available.
+        """
+        if not COMPLETION_ENABLED:
+            return None
+        if Completer is None or Completion is None:
+            if not self._warned_prompt_toolkit:
+                print(MESSAGE_WARN_COMPLETION_DISABLED)
+                self._warned_prompt_toolkit = True
+            return None
+        return BridgeCliCompleter(self)
 
     def run_batch(self, lines: List[str]) -> int:
         """
         NAME
             run_batch - Execute a batch script.
         """
+        self._print_version_banner()
         self._auto_merge_default_profiles()
         lint_error = self._lint_script(lines)
         if lint_error:
@@ -1056,6 +1169,20 @@ class BridgeCli:
             if not result.ok():
                 return result.exit_code()
         return StatusResult(code=SS__NORMAL).exit_code()
+
+    def _print_version_banner(self) -> None:
+        """
+        NAME
+            _print_version_banner - Print bridge CLI version once.
+        """
+        if self._version_printed:
+            return
+        self._version_printed = True
+        version = VERSIONS.get(VERSION_APP_NAME, EMPTY_STRING)
+        if not version:
+            return
+        print(VERSION_TITLE)
+        print(format_version_line(VERSION_APP_NAME, version))
 
     def _prompt(self) -> str:
         mode = self._modes[-1]
@@ -1425,6 +1552,33 @@ class BridgeCli:
         print(MESSAGE_PROFILE_CREATED.format(name=key))
         return StatusResult(code=SS__NORMAL)
 
+    def _set_default_profile(self, name: str) -> StatusResult:
+        """
+        NAME
+            _set_default_profile - Set the default profile in the local payload.
+        """
+        key = name.strip()
+        if not key:
+            print(MESSAGE_ERR_PROFILE_REQUIRED)
+            return StatusResult(code=SS__CONFIG__INVALID)
+        payload_result = self._ensure_local_profiles_payload()
+        if not payload_result.ok():
+            return payload_result
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        profiles = payload.get(KEY_PROFILES)
+        if not isinstance(profiles, dict) or key not in profiles:
+            print(MESSAGE_ERR_PROFILE_UNKNOWN.format(name=key))
+            return StatusResult(code=SS__CONFIG__INVALID)
+        payload[KEY_DEFAULT_PROFILE] = key
+        self._profiles_dirty = True
+        self._local_devices_locked = True
+        self._sync_store_from_local()
+        print(MESSAGE_PROFILE_DEFAULT_SET.format(name=key))
+        return StatusResult(code=SS__NORMAL)
+
     def _require_active_profile(self) -> Optional[str]:
         """
         NAME
@@ -1742,7 +1896,7 @@ class BridgeCli:
         tokens = self._normalize_question_tokens(tokens)
         if not tokens or tokens[-1] != QUESTION_MARK:
             return False
-        base_tokens = self._parser.normalize_tokens(tokens[:-1])
+        base_tokens = self._parser.normalize_tokens(tokens[:-1], self._modes[-1].name)
         suggestions = self._suggest_next_args(base_tokens)
         self._print_next_args(suggestions)
         self._queue_question_line(base_tokens)
@@ -2005,6 +2159,26 @@ class BridgeCli:
             return self._suggest_validate_args(tokens[COUNT_ONE:])
         if cmd == CMD_SAVE:
             return self._suggest_save_args(tokens[COUNT_ONE:])
+        if cmd == CMD_LOAD:
+            if len(tokens) == COUNT_ONE:
+                return [CMD_SOURCES]
+            return []
+        if cmd == CMD_WRITE:
+            if len(tokens) == COUNT_ONE:
+                return [CMD_TESTS]
+            if len(tokens) == COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_TESTS:
+                return [PLACEHOLDER_PATH]
+            return []
+        if cmd == CMD_RENAME:
+            if len(tokens) == COUNT_ONE:
+                return [CMD_DEVICE, PLACEHOLDER_DEVICE]
+            if len(tokens) == COUNT_TWO:
+                if tokens[COUNT_ONE].lower() == CMD_DEVICE:
+                    return [PLACEHOLDER_DEVICE]
+                return [PLACEHOLDER_DEVICE]
+            if len(tokens) == COUNT_THREE and tokens[COUNT_ONE].lower() == CMD_DEVICE:
+                return [PLACEHOLDER_DEVICE]
+            return []
         if mode == MODE_CONFIG and cmd == CMD_BINDINGS:
             return self._suggest_bindings_args(tokens[COUNT_ONE:])
         if mode == MODE_CONFIG and cmd == CMD_CAN_MAPPINGS:
@@ -2076,6 +2250,7 @@ class BridgeCli:
                 PARSER_SPEC.cmd_import,
                 PARSER_SPEC.cmd_export,
                 CMD_SAVE,
+                CMD_LOAD,
                 CMD_RENAME,
                 CMD_DEVICE,
                 CMD_BINDINGS,
@@ -2185,6 +2360,8 @@ class BridgeCli:
             CMD_DEVICE + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
             PARSER_SPEC.show_target_commands,
             PARSER_SPEC.show_target_help,
+            SHOW_TARGET_VERSION,
+            SHOW_TARGET_SOURCES,
             CMD_DEVICE_USAGE + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
             SHOW_TARGET_DEVICE_GROUP + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
             PARSER_SPEC.show_target_bindings,
@@ -2271,10 +2448,12 @@ class BridgeCli:
             _suggest_save_args - Suggest save targets.
         """
         if not tokens:
-            return [CMD_ALL, CMD_CONFIG, CMD_LOCAL_CONFIG, CMD_PROFILES, CMD_SAVE_UNIFIED]
+            return [CMD_ALL, CMD_CONFIG, CMD_LOCAL_CONFIG, CMD_PROFILES, CMD_SAVE_UNIFIED, CMD_SOURCES]
         if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() == CMD_ALL:
             return [CMD_PROMPT]
         if len(tokens) == COUNT_ONE:
+            if tokens[COUNT_ZERO].lower() == CMD_SOURCES:
+                return []
             return [PLACEHOLDER_PATH]
         return []
 
@@ -4164,6 +4343,8 @@ class BridgeCli:
             return self._config_bindings_command(tokens)
         if cmd == CMD_CAN_MAPPINGS:
             return self._config_can_mappings_command(tokens)
+        if cmd == CMD_LOAD and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_SOURCES:
+            return self._load_sources()
         if cmd == CMD_PROFILE:
             if len(tokens) < 2:
                 print(MESSAGE_ERR_PROFILE_REQUIRED)
@@ -4322,6 +4503,11 @@ class BridgeCli:
             return StatusResult(code=SS__NORMAL)
         if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == CMD_SAVE_UNIFIED:
             result = self._save_unified_config(tokens[2])
+            if not result.ok():
+                return result
+            return StatusResult(code=SS__NORMAL)
+        if cmd == CMD_SAVE and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_SOURCES:
+            result = self._save_sources()
             if not result.ok():
                 return result
             return StatusResult(code=SS__NORMAL)
@@ -4653,6 +4839,7 @@ class BridgeCli:
         if not tokens:
             print(MESSAGE_ERR_SHOW_REQUIRES_TARGET)
             return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        has_source_flag = any(token.lower() in SHOW_SOURCE_FLAGS for token in tokens)
         source, tokens, json_output, pretty, ok = self._parse_show_flags(tokens)
         if not ok:
             return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
@@ -4666,21 +4853,30 @@ class BridgeCli:
                 target = SHOW_TARGET_CONFIG_RAW
             elif name == SHOW_CONFIG_DIRTY:
                 target = SHOW_TARGET_CONFIG_DIRTY
+        if (
+            target == CMD_DEVICE
+            and len(tokens) >= 3
+            and tokens[1].lower() == CMD_REGISTRY
+        ):
+            target = SHOW_TARGET_DEVICE_REGISTRY
+            tokens = [SHOW_TARGET_DEVICE_REGISTRY, tokens[2]]
         if target == SHOW_TARGET_CONFIG:
             target = SHOW_TARGET_RUNTIME
         if target == SHOW_TARGET_MESSAGE_LEVEL:
-            source = "local"
+            source = SHOW_SOURCE_LOCAL
         if target == SHOW_TARGET_DEVICE_USAGE:
-            source = "local"
+            source = SHOW_SOURCE_LOCAL
         if target == SHOW_TARGET_DEVICE:
-            source = "local"
+            source = SHOW_SOURCE_LOCAL
         if target in (SHOW_TARGET_COMMANDS, SHOW_TARGET_HELP):
-            source = "local"
+            source = SHOW_SOURCE_LOCAL
         if target in (SHOW_TARGET_WORKSPACE, SHOW_TARGET_SESSION, SHOW_TARGET_CONTROLLERS):
-            source = "local"
+            source = SHOW_SOURCE_LOCAL
+        if target == SHOW_TARGET_SOURCES and not has_source_flag:
+            source = SHOW_SOURCE_LOCAL
         if target in (SHOW_TARGET_CONFIG_RAW, SHOW_TARGET_CONFIG_DIRTY):
-            source = "local"
-        if source == "both":
+            source = SHOW_SOURCE_LOCAL
+        if source == SHOW_SOURCE_BOTH:
             local_result = self._show_local(target, tokens, json_output, pretty)
             robot_result = self._show_robot(target, tokens, json_output)
             if self._batch and (not local_result.ok() or not robot_result.ok()):
@@ -4690,12 +4886,12 @@ class BridgeCli:
             if not robot_result.ok():
                 return robot_result
             return StatusResult(code=SS__NORMAL)
-        if source == "local":
+        if source == SHOW_SOURCE_LOCAL:
             result = self._show_local(target, tokens, json_output, pretty)
             if not result.ok():
                 return result
             return StatusResult(code=SS__NORMAL)
-        if source == "robot":
+        if source == SHOW_SOURCE_ROBOT:
             result = self._show_robot(target, tokens, json_output)
             if not result.ok():
                 return result
@@ -4710,7 +4906,7 @@ class BridgeCli:
             _apply_config_plan - Execute commands from a merge/import plan.
         """
         if not plan.ok:
-            print(f"ERROR: {plan.message}")
+            print(MESSAGE_ERR_PLAN.format(message=plan.message))
             return StatusResult(code=SS__CONFIG__INVALID)
         if plan.root_payload is None and self._local_root_payload is None:
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
@@ -5632,7 +5828,7 @@ class BridgeCli:
         print(
             "Common: help, exit, end, quit, ping, echo, messages\n"
             "Exec: show, diagnose, connect, disconnect, configure terminal\n"
-            "Config: profile, group, device, bindings, can-mappings, tests, no group, selected-device, selected-mode, merge/import/export/save\n"
+            "Config: profile, group, device, bindings, can-mappings, tests, no group, selected-device, selected-mode, merge/import/export/save/load\n"
             "Group: show, add device, no device, member, bind, no bind, enable, disable, run test\n"
             "Device: show, set, no\n"
             "Tips: help show | help sources | help group | help batch | help json"
@@ -5654,6 +5850,8 @@ class BridgeCli:
             "show workspace": "show workspace\n  Show loaded file paths, active profile/set, dirty flags, and recovery mode.",
             "show session": "show session\n  Alias for show workspace.",
             "show controllers": "show controllers\n  List controller names and supported input IDs.",
+            "sources": HELP_SOURCES_TEXT,
+            "show sources": HELP_SOURCES_TEXT,
             "diagnose": HELP_DIAGNOSE_TEXT,
             "group": "group <group>\n  Create/select a group (config mode).",
             "no group": "no group <group>\n  Delete group (config mode, prompts in interactive).",
@@ -5661,6 +5859,8 @@ class BridgeCli:
             "profile": (
                 "profile <profile>\n"
                 "  Select active profile for groups/bindings.\n"
+                "profile default <profile>\n"
+                "  Set the default profile name in bringup_system.json.\n"
                 "profile create <profile>\n"
                 "  Create a new empty profile and select it."
             ),
@@ -5695,7 +5895,11 @@ class BridgeCli:
                 "save unified-config <path>\n"
                 "  Write a unified bringup_system.json with profiles + bridgeConfig.byProfile."
             ),
-            "rename device": "rename device <old> <new>\n  Rename a device in local config.",
+            "rename device": (
+                "rename device <old> <new>\n"
+                "  Rename a device in local config.\n"
+                "  Alias: rename <old> <new>"
+            ),
             "device set": (
                 "device <device> set <field> <value>\n"
                 "  Fields: vendor, role, notes, bus, tags, limits\n"
@@ -5708,6 +5912,7 @@ class BridgeCli:
             HELP_TOPIC_DEVICE_USAGE: HELP_DEVICE_USAGE_TEXT,
             HELP_TOPIC_PROFILE_DEVICE_DELETE: HELP_PROFILE_DEVICE_DELETE_TEXT,
             HELP_TOPIC_PROFILE_DEVICE_SHOW_ALL: HELP_PROFILE_DEVICE_SHOW_ALL_TEXT,
+            HELP_TOPIC_PROFILE_DEFAULT: HELP_PROFILE_DEFAULT_TEXT,
             HELP_TOPIC_PROFILES_PUSH: HELP_PROFILES_PUSH_TEXT,
             HELP_TOPIC_CONFIG_PUSH: HELP_CONFIG_PUSH_TEXT,
             HELP_TOPIC_QUICK: self._quick_help_text(),
@@ -5834,7 +6039,7 @@ class BridgeCli:
         return SEP_NEWLINE.join(lines)
 
     def _parse_show_flags(self, tokens: List[str]) -> tuple[str, List[str], bool, bool, bool]:
-        source = ""
+        source = EMPTY_STRING
         cleaned: List[str] = []
         json_output = False
         pretty = False
@@ -5846,18 +6051,18 @@ class BridgeCli:
             if lower in ("--pretty",):
                 pretty = True
                 continue
-            if lower in ("robot", "--robot"):
-                source = "robot"
+            if lower in (SHOW_SOURCE_ROBOT, "--robot"):
+                source = SHOW_SOURCE_ROBOT
                 continue
-            if lower in ("local", "--local"):
-                source = "local"
+            if lower in (SHOW_SOURCE_LOCAL, "--local"):
+                source = SHOW_SOURCE_LOCAL
                 continue
-            if lower in ("both", "--both"):
-                source = "both"
+            if lower in (SHOW_SOURCE_BOTH, "--both"):
+                source = SHOW_SOURCE_BOTH
                 continue
             cleaned.append(tok)
         if not source:
-            source = "robot" if self._session.is_connected() else "local"
+            source = SHOW_SOURCE_ROBOT if self._session.is_connected() else SHOW_SOURCE_LOCAL
         if pretty and not json_output:
             print(MESSAGE_ERR_PRETTY_REQUIRES_JSON)
             return source, cleaned, False, False, False
@@ -5877,6 +6082,9 @@ class BridgeCli:
         if not self._session.is_connected():
             print("ERROR: Robot source unavailable (not connected).")
             return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+        if target == SHOW_TARGET_SOURCES:
+            print(MESSAGE_SOURCES_ROBOT_UNSUPPORTED)
+            return StatusResult(code=SS__EXECUTOR__NOT_SUPPORTED)
         if target == SHOW_TARGET_STATUS:
             seq = show_status(self._session, json_output=json_output)
         elif target == SHOW_TARGET_GROUPS:
@@ -5893,6 +6101,8 @@ class BridgeCli:
             seq = show_selected_device(self._session, json_output=json_output)
         elif target == SHOW_TARGET_RUNTIME:
             seq = show_runtime_state(self._session, json_output=json_output)
+        elif target == SHOW_TARGET_VERSION:
+            seq = show_version(self._session, json_output=json_output)
         else:
             print(MESSAGE_ERR_UNKNOWN_SHOW)
             print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW)
@@ -5909,6 +6119,10 @@ class BridgeCli:
     def _show_local(
         self, target: str, tokens: List[str], json_output: bool, pretty: bool
     ) -> StatusResult:
+        if target == SHOW_TARGET_VERSION:
+            return self._show_local_version(json_output, pretty)
+        if target == SHOW_TARGET_SOURCES:
+            return self._show_local_sources(json_output, pretty)
         if target in (SHOW_TARGET_WORKSPACE, SHOW_TARGET_SESSION):
             return self._show_workspace(json_output, pretty)
         if target == SHOW_TARGET_CONTROLLERS:
@@ -6174,6 +6388,141 @@ class BridgeCli:
         if not any_dirty:
             print(MESSAGE_DIRTY_NONE)
         return StatusResult(code=SS__NORMAL)
+
+    def _show_local_version(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_local_version - Show local app version information.
+        """
+        apps = []
+        for name in APP_VERSION_ORDER:
+            version = VERSIONS.get(name, EMPTY_STRING)
+            if not version:
+                continue
+            apps.append(
+                {
+                    VERSION_KEY_NAME: name,
+                    VERSION_KEY_VERSION: version,
+                }
+            )
+        payload = {VERSION_KEY_APPS: apps}
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        print(VERSION_TITLE)
+        if not apps:
+            print(MESSAGE_VERSION_NONE)
+            return StatusResult(code=SS__NORMAL)
+        for app in apps:
+            print(
+                format_version_line(
+                    str(app.get(VERSION_KEY_NAME, EMPTY_STRING)),
+                    str(app.get(VERSION_KEY_VERSION, EMPTY_STRING)),
+                )
+            )
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_local_sources(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_local_sources - Show local file sources for loaded data.
+        """
+
+        entries = self._collect_sources()
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(self._dump_json({KEY_SOURCES: entries}, pretty))
+            return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_SOURCES_HEADER)
+        for entry in entries:
+            name = str(entry.get(KEY_SOURCE_NAME, EMPTY_STRING))
+            value = self._source_display_value(entry)
+            print(MESSAGE_SOURCES_ENTRY.format(name=name, value=value))
+        return StatusResult(code=SS__NORMAL)
+
+    def _collect_sources(self) -> List[Dict[str, object]]:
+        """
+        NAME
+            _collect_sources - Collect local source info for CLI data.
+        """
+
+        sources: List[Dict[str, object]] = []
+        sources.append(
+            self._build_source_entry(
+                SOURCE_NAME_REGISTRY,
+                isinstance(self._local_root_payload, dict),
+                self._local_root_path,
+            )
+        )
+        sources.append(
+            self._build_source_entry(
+                SOURCE_NAME_CONFIG,
+                isinstance(self._local_config, dict),
+                self._local_config_path,
+            )
+        )
+        sources.append(
+            self._build_source_entry(
+                SOURCE_NAME_TESTS,
+                self._tests_model is not None,
+                self._tests_path,
+            )
+        )
+        sources.append(
+            self._build_source_entry(
+                SOURCE_NAME_BINDINGS,
+                isinstance(self._bindings_payload, dict),
+                self._bindings_path,
+            )
+        )
+        sources.append(
+            self._build_source_entry(
+                SOURCE_NAME_CAN_MAPPINGS,
+                isinstance(self._can_mappings, dict),
+                self._can_mappings_path,
+            )
+        )
+        return sources
+
+    def _build_source_entry(
+        self,
+        name: str,
+        loaded: bool,
+        path: Optional[Path],
+    ) -> Dict[str, object]:
+        """
+        NAME
+            _build_source_entry - Create a source entry for display/JSON.
+        """
+
+        if not loaded:
+            status = SOURCE_STATUS_NOT_LOADED
+        elif path is None:
+            status = SOURCE_STATUS_UNKNOWN
+        else:
+            status = SOURCE_STATUS_LOADED
+        path_text = str(path) if path is not None else EMPTY_STRING
+        return {
+            KEY_SOURCE_NAME: name,
+            KEY_SOURCE_STATUS: status,
+            KEY_SOURCE_PATH: path_text,
+        }
+
+    @staticmethod
+    def _source_display_value(entry: Dict[str, object]) -> str:
+        """
+        NAME
+            _source_display_value - Build display text for a source entry.
+        """
+
+        status = str(entry.get(KEY_SOURCE_STATUS, EMPTY_STRING))
+        path = str(entry.get(KEY_SOURCE_PATH, EMPTY_STRING))
+        if status == SOURCE_STATUS_LOADED:
+            return path
+        if status == SOURCE_STATUS_UNKNOWN:
+            return MESSAGE_SOURCES_UNKNOWN
+        return MESSAGE_SOURCES_NOT_LOADED
 
     def _show_local_profiles(self, json_output: bool, pretty: bool) -> StatusResult:
         """
@@ -7483,7 +7832,7 @@ class BridgeCli:
             return
         if not tokens:
             return
-        tokens = self._parser.normalize_tokens(tokens)
+        tokens = self._parser.normalize_tokens(tokens, self._modes[-1].name)
         cmd = tokens[COUNT_ZERO].lower()
         if cmd == CMD_VALIDATE:
             print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_VALIDATE)
@@ -7493,6 +7842,12 @@ class BridgeCli:
             return
         if cmd == CMD_SHOW:
             print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW)
+            return
+        if cmd == CMD_SOURCES:
+            print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SOURCES)
+            return
+        if cmd == CMD_LOAD:
+            print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SOURCES)
             return
         if cmd == CMD_PROFILE:
             print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_PROFILE)
@@ -7933,3 +8288,199 @@ class BridgeCli:
         else:
             print(f"Wrote bridgeConfig to {path}.")
         return StatusResult(code=SS__CONFIG__SAVED)
+
+    def _load_sources(self) -> StatusResult:
+        """
+        NAME
+            _load_sources - Reload all known local sources from disk.
+        """
+
+        print(MESSAGE_SOURCES_LOAD_HEADER)
+        entries = self._collect_sources()
+        ok = True
+        for entry in entries:
+            name = str(entry.get(KEY_SOURCE_NAME, EMPTY_STRING))
+            status = str(entry.get(KEY_SOURCE_STATUS, EMPTY_STRING))
+            path = str(entry.get(KEY_SOURCE_PATH, EMPTY_STRING))
+            if status == SOURCE_STATUS_UNKNOWN or not path:
+                print(MESSAGE_SOURCES_SKIP_UNKNOWN.format(name=name))
+                ok = False
+                continue
+            if status == SOURCE_STATUS_NOT_LOADED and not path:
+                print(MESSAGE_SOURCES_SKIP_NOT_LOADED.format(name=name))
+                ok = False
+                continue
+            result = self._reload_source(name, path)
+            if not result.ok():
+                ok = False
+                continue
+            print(MESSAGE_SOURCES_LOAD_OK.format(name=name, path=path))
+        if ok:
+            print(MESSAGE_SOURCES_DONE)
+            return StatusResult(code=SS__NORMAL)
+        return StatusResult(code=SS__EXECUTOR__FAILED)
+
+    def _reload_source(self, name: str, path: str) -> StatusResult:
+        """
+        NAME
+            _reload_source - Reload a single source entry from disk.
+        """
+
+        if name == SOURCE_NAME_REGISTRY:
+            plan = import_config(path, self._conflict_policy, self._active_profile_name())
+            return self._apply_config_plan_local(plan)
+        if name == SOURCE_NAME_CONFIG:
+            ok, message, config = validate_config_file(path)
+            if not ok or config is None:
+                print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
+                return StatusResult(code=SS__CONFIG__INVALID)
+            self._local_config = config
+            self._local_config_path = path
+            self._local_loaded_at = time.time()
+            self._groups_dirty = False
+            self._sync_store_from_local()
+            return StatusResult(code=SS__NORMAL)
+        if name == SOURCE_NAME_TESTS:
+            return self._load_tests_from_path(Path(path))
+        if name == SOURCE_NAME_BINDINGS:
+            return self._load_bindings_from_path(Path(path))
+        if name == SOURCE_NAME_CAN_MAPPINGS:
+            return self._load_can_mappings_from_path(Path(path))
+        return StatusResult(code=SS__EXECUTOR__FAILED)
+
+    def _save_sources(self) -> StatusResult:
+        """
+        NAME
+            _save_sources - Save all known local sources back to disk.
+        """
+
+        print(MESSAGE_SOURCES_SAVE_HEADER)
+        entries = self._collect_sources()
+        ok = True
+        for entry in entries:
+            name = str(entry.get(KEY_SOURCE_NAME, EMPTY_STRING))
+            status = str(entry.get(KEY_SOURCE_STATUS, EMPTY_STRING))
+            path = str(entry.get(KEY_SOURCE_PATH, EMPTY_STRING))
+            if status == SOURCE_STATUS_UNKNOWN or not path:
+                print(MESSAGE_SOURCES_SKIP_UNKNOWN.format(name=name))
+                ok = False
+                continue
+            if status == SOURCE_STATUS_NOT_LOADED:
+                print(MESSAGE_SOURCES_SKIP_NOT_LOADED.format(name=name))
+                ok = False
+                continue
+            result = self._save_source(name, path)
+            if not result.ok():
+                ok = False
+                continue
+            print(MESSAGE_SOURCES_SAVE_OK.format(name=name, path=path))
+        if ok:
+            print(MESSAGE_SOURCES_DONE)
+            return StatusResult(code=SS__NORMAL)
+        return StatusResult(code=SS__EXECUTOR__FAILED)
+
+    def _save_source(self, name: str, path: str) -> StatusResult:
+        """
+        NAME
+            _save_source - Save a single source entry to disk.
+        """
+
+        if name == SOURCE_NAME_REGISTRY:
+            return self._save_profiles(path)
+        if name == SOURCE_NAME_CONFIG:
+            return self._save_local_config(path)
+        if name == SOURCE_NAME_TESTS:
+            return self._write_tests_command([CMD_WRITE, CMD_TESTS, path])
+        if name == SOURCE_NAME_BINDINGS:
+            return self._save_bindings_to_path(Path(path))
+        if name == SOURCE_NAME_CAN_MAPPINGS:
+            return self._save_can_mappings_to_path(Path(path))
+        return StatusResult(code=SS__EXECUTOR__FAILED)
+
+    def _apply_config_plan_local(self, plan: ConfigPlan) -> StatusResult:
+        """
+        NAME
+            _apply_config_plan_local - Apply a config plan without robot IO.
+        """
+
+        if not plan.ok:
+            print(MESSAGE_ERR_PLAN.format(message=plan.message))
+            return StatusResult(code=SS__CONFIG__INVALID)
+        if plan.root_payload is None and self._local_root_payload is None:
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        incoming_hash = self._profiles_hash(plan.root_payload)
+        if not plan.replace and incoming_hash:
+            if self._local_root_hash is None and self._local_group_count() > COUNT_ZERO:
+                print(MESSAGE_ERR_PROFILE_MISSING_HASH)
+                return StatusResult(code=SS__CONFIG__INVALID)
+            if self._local_root_hash and incoming_hash != self._local_root_hash:
+                print(
+                    MESSAGE_ERR_PROFILE_HASH.format(
+                        local=self._local_root_hash,
+                        incoming=incoming_hash,
+                    )
+                )
+                return StatusResult(code=SS__CONFIG__INVALID)
+        print(plan.message)
+        if plan.config:
+            self._local_config = plan.config
+            self._local_config_path = plan.root_path
+            self._local_loaded_at = time.time()
+            if plan.root_payload is not None:
+                self._local_root_payload = plan.root_payload
+                self._local_root_path = plan.root_path
+                self._local_root_hash = incoming_hash
+                self._local_devices_locked = True
+            self._profiles_dirty = False
+            self._groups_dirty = False
+            self._sync_group_profile()
+            self._sync_store_from_local()
+        return StatusResult(code=SS__NORMAL)
+
+
+if Completer is None:
+    class BridgeCliCompleter:
+        """
+        NAME
+            BridgeCliCompleter - Placeholder when prompt_toolkit is unavailable.
+        """
+
+        def __init__(self, cli: "BridgeCli") -> None:
+            self._cli = cli
+else:
+    class BridgeCliCompleter(Completer):
+        """
+        NAME
+            BridgeCliCompleter - Keyword completer for the Bridge CLI.
+        """
+
+        def __init__(self, cli: "BridgeCli") -> None:
+            self._cli = cli
+
+        def get_completions(self, document, complete_event):
+            text = document.text_before_cursor
+            try:
+                tokens = self._cli._parser.tokenize(text) if text else []
+            except Exception:
+                return
+            if tokens and text.endswith(COMPLETION_SPACE):
+                base_tokens = tokens
+                prefix = COMPLETION_PREFIX_EMPTY
+            elif tokens:
+                base_tokens = tokens[:-1]
+                prefix = tokens[-1]
+            else:
+                base_tokens = []
+                prefix = COMPLETION_PREFIX_EMPTY
+            suggestions = self._cli._suggest_next_args(base_tokens)
+            if prefix:
+                pref = prefix.lower()
+                suggestions = [
+                    item for item in suggestions if item and item.lower().startswith(pref)
+                ]
+            for item in suggestions:
+                if not item:
+                    continue
+                start_pos = -len(prefix) if prefix else COMPLETION_START_POS_ZERO
+                yield Completion(item, start_position=start_pos, display_meta=COMPLETION_META_TEXT)

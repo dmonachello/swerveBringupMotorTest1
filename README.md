@@ -17,6 +17,8 @@ Highlights:
 - JSON reports and AI-assisted triage (`bringup_report.json` + `docs/AI_DIAGNOSIS.md`).
 - Data-driven hardware profiles shared by robot code and the PC tool.
 - Reverse-engineering inventory tooling for CAN traffic classification (additive).
+- TCP-only command channel for UI/CLI actions (NetworkTables is diagnostics only).
+- TCP registry push (`profiles push` / `config push`) with staged validation on the robot.
 
 ## Feature Matrix
 Purpose: Show the high-value capabilities at a glance.
@@ -30,6 +32,7 @@ Purpose: Show the high-value capabilities at a glance.
 | PCAP/PCAPNG capture + Wireshark | No | Yes |
 | bringup_report.json snapshot | Yes | No |
 | Reverse-engineering inventory output | No | Yes |
+| TCP registry apply (profiles/config) | Yes | Initiates |
 
 ## What It Gives You
 Purpose: Fast, repeatable visibility into device health and CAN behavior.
@@ -39,6 +42,7 @@ Purpose: Fast, repeatable visibility into device health and CAN behavior.
 - CAN-bus visibility (seen/missing, age, msgCount, fps).
 - TCP console parsing for warnings and errors from the roboRIO.
 - Device presence confidence and best-effort LED/CAN suspicion inference.
+- Profile registry push to the robot over TCP (no redeploy required).
 
 ## What It Does Not Do
 Purpose: Avoid confusion about scope.
@@ -46,6 +50,7 @@ Purpose: Avoid confusion about scope.
 - Fix robot logic or tuning problems.
 - Replace vendor tools (REV Hardware Client, CTRE Tuner X).
 - Transmit CAN frames from the PC tool (read-only by design).
+- Persist registry changes on the roboRIO filesystem (in-memory only, for now).
 
 ## Quick Start
 Purpose: Get a first bringup run in minutes.
@@ -100,6 +105,14 @@ Purpose: Keep actuation deterministic and safe.
 - Driver Station enable/disable/E-stop overrides all client commands.
 - NetworkTables is diagnostics/state only; TCP is command/log output only.
 
+## TCP Registry Push
+Purpose: Update profiles and device registry without redeploying robot code.
+
+- CLI commands: `profiles push <path> [--activate <profile>]`, `config push <path> [--activate <profile>]`
+- TCP-only; NetworkTables is not used for apply.
+- Robot validates payload, applies in-memory only, and reports per-stage status.
+- Activation happens only when requested and only after validation passes.
+
 ## Real-Time Printing Model
 Purpose: Prevent console output from breaking the 20ms control loop.
 
@@ -141,6 +154,18 @@ wireshark -k -i \\.\pipe\FRC_CAN
 python tools\can_nt\can_nt_bridge.py --pcap-pipe FRC_CAN
 ```
 
+## Versioning
+Purpose: Track and update app versions consistently.
+
+- Version source: `tools/common/app_versions.py`.
+- Update all apps: `python tools/update_versions.py --set all=1.2.3`
+- Update one app: `python tools/update_versions.py --set can_nt_bridge=1.2.3`
+- Show versions:
+- `python tools\can_nt\can_nt_bridge.py --version`
+- Bridge CLI: `show version`
+- CAN Topology Editor: `python tools\can_topology\can_top_editor.py --version`
+- Bringup Control UI: Help -> About
+
 ## Bringup Control UI
 Purpose: Fast command access and readable console output from the roboRIO.
 
@@ -176,6 +201,8 @@ Purpose: Find deep details without cluttering the README.
 - `docs/TESTING.md`
 - `docs/AI_DIAGNOSIS.md`
 - `docs/CAN_BACKGROUND.md`
+- `docs/ProfileRegistryPushSpec.md`
+- `docs/FEATURE_SPEC_BYTE_FINGERPRINTING.md`
 - `tools/can_nt/README_CAN_NT.md`
 
 ## Notes

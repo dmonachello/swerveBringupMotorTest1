@@ -35,6 +35,11 @@ show_target    = "status"
                | "commands"
                | "help"
                | "controllers"
+               | "version"
+               | "sources"
+               | "controllers"
+               | "version"
+               | "sources"
                | "bindings"
                | "selected-device"
                | "runtime-state"
@@ -59,10 +64,12 @@ config         = "group" ws name
                | "no" ws "group" ws name
                | "no" ws "device" ws name
                | "profile" ws name
+               | "profile" ws "default" ws name
                | "profile" ws "create" ws name
                | "profile" ws "device" ws "delete" ws name
                | "profile" ws "device" ws "show-all" ws name
                | "prof" ws name
+               | "prof" ws "default" ws name
                | "prof" ws "create" ws name
                | "prof" ws "device" ws "delete" ws name
                | "prof" ws "device" ws "show-all" ws name
@@ -77,8 +84,13 @@ config         = "group" ws name
                | "save" ws "profiles" ws path
                | "save" ws "unified-config" ws path
                | "save" ws "all" [ ws "--prompt" ]
+               | "save" ws "sources"
+               | "save" ws "all" [ ws "--prompt" ]
+               | "save" ws "sources"
                | "savep" ws path
+               | "load" ws "sources"
                | "rename" ws "device" ws name ws name
+               | "rename" ws name ws name
                | "device" ws name
                | "device" ws name ws "set" ws device_field ws value_text
                | ("validate" | "val") ws "config" [ ws path ] [ ws "--all" ]

@@ -72,6 +72,7 @@ CONFIG_SCHEMA_VERSION = BRIDGE_CONFIG_SCHEMA_VERSION
 SEP_COMMA_SPACE = ", "
 SEP_NEWLINE = "\n"
 MSG_OK = "OK"
+CMD_SHOW_VERSION = "showVersion"
 MSG_DUPLICATE_DEVICE_NAMES = "Duplicate device names: {names}"
 MSG_MISSING_DEVICE_ENTRIES = "Missing device entries: {names}"
 MSG_MISSING_DEVICE_GROUP_HEADER = "Missing device references by group:"
@@ -231,6 +232,14 @@ def show_status(session: BridgeSession, json_output: bool = False) -> Optional[i
         show_status - Request bridge status output.
     """
     return _send(session, "showStatus", _json_arg(json_output))
+
+
+def show_version(session: BridgeSession, json_output: bool = False) -> Optional[int]:
+    """
+    NAME
+        show_version - Request robot version output.
+    """
+    return _send(session, CMD_SHOW_VERSION, _json_arg(json_output))
 
 
 def show_groups(session: BridgeSession, json_output: bool = False) -> Optional[int]:

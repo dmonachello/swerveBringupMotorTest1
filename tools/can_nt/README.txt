@@ -1,11 +1,12 @@
 FRC CAN Bringup Diagnostics (Python)
-Version: 0.1.0-2026-02-22
+Version: 1.0.0
 
 What this is
 - Reads live FRC CAN traffic (via python-can)
 - Publishes device presence/age/count to NetworkTables under /bringup/diag/...
 - Optionally publishes a CAN arbitration-ID summary (as JSON)
 - Optionally writes a Wireshark-readable capture (.pcapng preferred)
+- Optional Bridge CLI for TCP command/control (no CAN access required)
 
 Folder contents
 - can_nt_bridge.py        Main program (run this)
@@ -13,6 +14,7 @@ Folder contents
 - can_analyzer.py         Tracks arbitration IDs: rates, stale/missing, changing bytes
 - can_logging.py          PCAP/PCAPNG logging wrapper
 - can_nt_publish.py       NetworkTables publishing helpers
+- bridge_cli.py           TCP CLI front end for robot UI commands
 - run_can_robot.bat       Convenience runner (robot profile)
 - run_can_demo.bat        Convenience runner (demo_club profile)
 - install_deps.bat        Installs Python dependencies via pip
@@ -62,11 +64,19 @@ Quick start
 3) Plug in your CANable and note the COM port (Device Manager)
 4) Double-click run_can_robot.bat (auto-detects COM port)
 
+Versioning
+- Show version:
+  python -m tools.can_nt.can_nt_bridge --version
+- Update all app versions:
+  python tools\update_versions.py --set all=1.2.3
+
 Typical commands
 Robot run with capture:
   python -m tools.can_nt.can_nt_bridge --profile robot --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --publish-can-summary --pcap tools\can_nt\logs\robot_run.pcapng
 Robot run with live Wireshark pipe:
   python -m tools.can_nt.can_nt_bridge --profile robot --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --publish-can-summary --pcap-pipe FRC_CAN
+Bridge CLI (TCP only, no CAN required):
+  python -m tools.can_nt.can_nt_bridge --cli --no-can --rio 172.22.11.2
 
 Dump observed arbitration IDs and exit:
   python -m tools.can_nt.can_nt_bridge --profile robot --interface slcan --channel COM3 --bitrate 1000000 --dump-can-expected-ids tools\can_nt\robot_seen_ids.json --dump-after 3.0 --pcap tools\can_nt\logs\seen_ids.pcapng

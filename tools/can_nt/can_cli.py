@@ -17,6 +17,10 @@ from pathlib import Path
 
 from .can_profiles import get_default_profile
 
+ARG_VERSION = "--version"
+ACTION_STORE_TRUE = "store_true"
+HELP_VERSION = "Print version and exit."
+
 
 def build_parser() -> argparse.ArgumentParser:
     """
@@ -36,6 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="FRC CAN bringup diagnostics")
 
     parser.add_argument("--profile", default=get_default_profile())
+    parser.add_argument(ARG_VERSION, action=ACTION_STORE_TRUE, help=HELP_VERSION)
 
     parser.add_argument("--interface", default="slcan")
     parser.add_argument(

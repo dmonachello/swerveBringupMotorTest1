@@ -1,0 +1,43 @@
+"""
+NAME
+    app_versions.py - Central app version constants.
+"""
+
+APP_CAN_BRIDGE_NAME = "can_nt_bridge"
+APP_BRIDGE_CLI_NAME = "bridge_cli"
+APP_BRINGUP_UI_NAME = "bringup_ui"
+APP_CAN_TOPOLOGY_NAME = "can_topology_editor"
+APP_ROBOT_NAME = "robot_bringup"
+
+VERSION_CAN_BRIDGE = "0.1.1"
+VERSION_BRIDGE_CLI = "0.1.1"
+VERSION_BRINGUP_UI = "0.1.1"
+VERSION_CAN_TOPOLOGY = "0.1.1"
+VERSION_ROBOT = "0.1.1"
+
+VERSION_HEADER = "Version"
+VERSION_SEPARATOR = ": "
+
+APP_VERSION_ORDER = (
+    APP_CAN_BRIDGE_NAME,
+    APP_BRIDGE_CLI_NAME,
+    APP_BRINGUP_UI_NAME,
+    APP_CAN_TOPOLOGY_NAME,
+    APP_ROBOT_NAME,
+)
+
+VERSIONS = {
+    APP_CAN_BRIDGE_NAME: VERSION_CAN_BRIDGE,
+    APP_BRIDGE_CLI_NAME: VERSION_BRIDGE_CLI,
+    APP_BRINGUP_UI_NAME: VERSION_BRINGUP_UI,
+    APP_CAN_TOPOLOGY_NAME: VERSION_CAN_TOPOLOGY,
+    APP_ROBOT_NAME: VERSION_ROBOT,
+}
+
+
+def format_version_line(app_name: str, version: str) -> str:
+    """
+    NAME
+        format_version_line - Build a standard version line.
+    """
+    return f"{app_name}{VERSION_SEPARATOR}{version}"

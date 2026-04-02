@@ -17,6 +17,11 @@ Purpose: Launch the editor without extra dependencies.
 python tools\\can_topology\\can_top_editor.py
 ```
 
+Version:
+```cmd
+python tools\\can_topology\\can_top_editor.py --version
+```
+
 ## Profile Validation
 Purpose: Validate `bringup_system.json` for compatibility.
 ```cmd
@@ -53,6 +58,7 @@ Purpose: Describe the shortest path from sketch to JSON.
 6. Use `Set As Default` to update `default_profile` on save.
 7. Use File -> `Export PDF...` to write a printable PDF (requires `reportlab`).
 8. Use File -> `Print Diagram...` to print without a manual export step.
+Optional: Apply the updated registry without redeploy using the Bridge CLI `profiles push <path>`.
 
 ## Details Panel
 Purpose: Show fields not displayed on the boxes.
@@ -172,6 +178,7 @@ Purpose: Apply changes across many nodes at once.
 Purpose: Show where to find built-in help.
 - Help -> Help... shows topic-based guidance.
 - Help -> Keyboard Shortcuts... shows the shortcut list.
+- Help -> About... shows the app version.
 
 ## Architecture
 Purpose: Explain the post-refactor code layout and responsibilities.
