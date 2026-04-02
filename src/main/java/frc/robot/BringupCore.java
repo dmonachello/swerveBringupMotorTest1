@@ -872,7 +872,7 @@ public final class BringupCore {
    *   persist - Whether to save changes to disk.
    *
    * SIDE EFFECTS
-   *   Updates test enable flags and may write bringup_tests.json.
+   *   Updates test enable flags and may write bringup_system.json.
    */
   public void disableAllBringupTests(boolean persist) {
     if (bringupTests.isEmpty()) {

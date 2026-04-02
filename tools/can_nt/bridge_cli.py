@@ -137,7 +137,6 @@ from tools.common.profile_io import compute_profiles_hash
 from tools.common.paths import (
     repo_root,
     logs_dir,
-    tests_deploy_path,
     profiles_canonical_path,
     can_mappings_path,
     bindings_deploy_path,
@@ -151,6 +150,7 @@ from tools.common.profile_constants import (
     KEY_BRIDGE_GROUPS,
     KEY_BRIDGE_SCHEMA_VERSION,
     KEY_BRIDGE_SELECTED_DEVICE,
+    KEY_BRIDGE_TESTS,
     KEY_DATA_HASH,
     KEY_DATA_VERSION,
     KEY_DIO,
@@ -573,17 +573,15 @@ MESSAGE_MAPPINGS_MANUFACTURERS_HEADER = "  manufacturers:"
 MESSAGE_MAPPINGS_DEVICE_TYPES_HEADER = "  device-types:"
 MESSAGE_MAPPINGS_ENTRY_FMT = "    {id}={name}"
 MESSAGE_MAPPINGS_NONE = "  (none)"
-MESSAGE_ERR_TESTS_SUBCOMMAND = "ERROR: tests <templates|load|merge|save|clear>"
-MESSAGE_ERR_TESTS_LOAD = "ERROR: tests load <path> | tests load template <template>"
-MESSAGE_ERR_TESTS_SAVE = "ERROR: tests save requires a loaded tests file."
+MESSAGE_ERR_TESTS_SUBCOMMAND = "ERROR: tests <templates|clear>"
 MESSAGE_ERR_TESTS_TEMPLATE_NOT_FOUND = "ERROR: test template not found: {name}"
 MESSAGE_TESTS_TEMPLATES_HEADER = "Test templates:"
 MESSAGE_TESTS_TEMPLATES_NONE = "  (none)"
 MESSAGE_TESTS_TEMPLATE_ENTRY = "  {name}"
-MESSAGE_TESTS_LOADED = "Loaded tests: {path}"
 MESSAGE_TESTS_CLEARED = "Tests cleared."
+MESSAGE_TIP_UNSAVED = "You have unsaved changes. Use `save profiles ...` or `save sources` to save."
+MESSAGE_ERR_TESTS_EDIT_MODE = "ERROR: tests templates/clear not allowed in test edit mode. Use `exit` or `end` first."
 MESSAGE_SAVE_ALL_PROFILES_MISSING = "ERROR: No profiles destination set. Fix: save profiles data/bringup_system.json"
-MESSAGE_SAVE_ALL_TESTS_MISSING = "ERROR: No tests destination set. Fix: write tests my_tests.json"
 MESSAGE_SAVE_ALL_BINDINGS_MISSING = (
     "ERROR: No bindings destination set. Fix: bindings save src/main/deploy/bringup_bindings.json"
 )
@@ -1037,7 +1035,6 @@ class BridgeCli:
         self._tracker = CommandTracker(timeout_sec=2.0, max_retries=0)
         self._store = ConfigSchemaStore()
         self._tests_model: Optional[TestAuthoringModel] = None
-        self._tests_path: Optional[Path] = None
         self._tests_dirty: bool = False
         self._tests_active_set: str = ""
         self._tests_profile: Optional[str] = None
@@ -1301,10 +1298,20 @@ class BridgeCli:
 
         if not profile_name:
             self._tests_profile = None
+            self._tests_model = None
             self._tests_device_catalog = {}
             self._tests_duplicate_labels = set()
             return
+        if self._tests_profile and self._tests_profile != profile_name and self._tests_model is not None:
+            self._sync_store_tests()
         self._tests_profile = profile_name
+        entry = self._local_profile_entry(profile_name, create=True)
+        payload = entry.get(KEY_BRIDGE_TESTS)
+        if not isinstance(payload, dict):
+            payload = {}
+        self._tests_model = model_from_payload(payload or {})
+        default_set = self._tests_model.default_test_set if self._tests_model else EMPTY_STRING
+        self._tests_active_set = default_set or DEFAULT_TEST_SET
         payload = self._local_root_payload if isinstance(self._local_root_payload, dict) else None
         catalog, duplicates = self._catalog_from_payload(payload, profile_name)
         if catalog:
@@ -2477,12 +2484,7 @@ class BridgeCli:
             _suggest_tests_args - Suggest tests subcommands.
         """
         if not tokens:
-            return [CMD_TEMPLATES, CMD_LOAD, CMD_MERGE, CMD_SAVE, CMD_CLEAR]
-        sub = tokens[COUNT_ZERO].lower()
-        if sub in (CMD_LOAD, CMD_MERGE) and len(tokens) == COUNT_ONE:
-            return [PLACEHOLDER_PATH, CMD_TEMPLATE]
-        if sub == CMD_TEMPLATE and len(tokens) == COUNT_ONE:
-            return [PLACEHOLDER_TEMPLATE]
+            return [CMD_TEMPLATES, CMD_CLEAR]
         return []
 
     def _suggest_test_config_args(self, tokens: List[str]) -> List[str]:
@@ -2520,8 +2522,6 @@ class BridgeCli:
             return True
         if tokens[0].lower() == CMD_SHOW and len(tokens) > 1:
             return tokens[1].lower().startswith(CMD_TEST)
-        if tokens[0].lower() == CMD_WRITE and len(tokens) > 1:
-            return tokens[1].lower() == CMD_TESTS
         return False
 
     def _execute_test_authoring(self, tokens: List[str]) -> StatusResult:
@@ -2545,8 +2545,6 @@ class BridgeCli:
             return self._tests_command(tokens)
         if tokens[0].lower() == CMD_SHOW:
             return self._show_tests_command(tokens)
-        if tokens[0].lower() == CMD_WRITE:
-            return self._write_tests_command(tokens)
         print(MESSAGE_ERROR_INVALID_TEST_COMMAND)
         return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
@@ -2556,35 +2554,28 @@ class BridgeCli:
             _ensure_tests_loaded - Load tests JSON into the authoring model.
 
         DESCRIPTION
-            Loads the default tests file from the repo root when present,
-            otherwise falls back to the deploy copy.
+            Loads tests from bridgeConfig.byProfile for the active profile.
         """
 
-        if self._tests_model is not None:
+        profile_name = self._tests_profile or self._active_profile_name() or get_default_profile()
+        if self._tests_model is not None and profile_name == self._tests_profile:
             return
-        root_path = repo_root() / TESTS_FILENAME
-        deploy_path = tests_deploy_path()
-        path = root_path if root_path.exists() else deploy_path
-        payload: Dict[str, object] = {}
-        if path.exists():
-            try:
-                payload = load_tests_payload(path)
-            except Exception:
-                payload = {}
+        self._ensure_local_config()
+        self._tests_profile = profile_name
+        entry = self._local_profile_entry(profile_name, create=True)
+        payload = entry.get(KEY_BRIDGE_TESTS)
+        if not isinstance(payload, dict):
+            payload = {}
         self._tests_model = model_from_payload(payload or {})
-        self._tests_path = path
         self._sync_store_tests()
-        if not self._tests_profile:
-            self._refresh_tests_profile(self._active_profile_name() or get_default_profile())
-        else:
-            self._refresh_tests_profile(self._tests_profile)
+        self._refresh_tests_profile(profile_name)
         default_set = self._tests_model.default_test_set if self._tests_model else EMPTY_STRING
         self._tests_active_set = default_set or DEFAULT_TEST_SET
 
     def _tests_command(self, tokens: List[str]) -> StatusResult:
         """
         NAME
-            _tests_command - Handle tests subcommands (templates/load/save).
+            _tests_command - Handle tests subcommands (templates/clear).
         """
 
         self._ensure_tests_loaded()
@@ -2594,48 +2585,12 @@ class BridgeCli:
         sub = tokens[COUNT_ONE].lower()
         if sub == CMD_TEMPLATES:
             return self._show_test_templates()
-        if sub == CMD_LOAD:
-            if len(tokens) >= COUNT_FOUR and tokens[COUNT_TWO].lower() == CMD_TEMPLATE:
-                name = tokens[COUNT_THREE]
-                path = self._resolve_template_path(name)
-                if path is None:
-                    print(MESSAGE_ERR_TESTS_TEMPLATE_NOT_FOUND.format(name=name))
-                    return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
-                result = self._load_tests_from_path(path)
-                if not result.ok():
-                    return result
-                print(MESSAGE_TESTS_LOADED.format(path=path))
-                return StatusResult(code=SS__CONFIG__IMPORTED)
-            if len(tokens) >= COUNT_THREE:
-                path = Path(tokens[COUNT_TWO])
-                result = self._load_tests_from_path(path)
-                if not result.ok():
-                    return result
-                print(MESSAGE_TESTS_LOADED.format(path=path))
-                return StatusResult(code=SS__CONFIG__IMPORTED)
-            print(MESSAGE_ERR_TESTS_LOAD)
-            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        if sub == CMD_MERGE:
-            if len(tokens) >= COUNT_THREE:
-                path = Path(tokens[COUNT_TWO])
-                result = self._merge_tests_from_path(path)
-                if not result.ok():
-                    return result
-                print(MESSAGE_TESTS_LOADED.format(path=path))
-                return StatusResult(code=SS__CONFIG__MERGED)
-            print(MESSAGE_ERR_TESTS_LOAD)
-            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        if sub == CMD_SAVE:
-            if not self._tests_path:
-                print(MESSAGE_ERR_TESTS_SAVE)
-                return StatusResult(code=SS__CONFIG__NOT_LOADED)
-            return self._write_tests_command([CMD_WRITE, CMD_TESTS, str(self._tests_path)])
         if sub == CMD_CLEAR:
             model = TestAuthoringModel()
             model.test_sets[DEFAULT_TEST_SET] = TestSetModel(name=DEFAULT_TEST_SET, tests=[])
             self._tests_model = model
             self._tests_active_set = DEFAULT_TEST_SET
-            self._tests_dirty = True
+            self._mark_tests_dirty()
             self._sync_store_tests()
             if not self._tests_profile:
                 self._refresh_tests_profile(self._active_profile_name() or get_default_profile())
@@ -2701,7 +2656,6 @@ class BridgeCli:
             return StatusResult(code=SS__CONFIG__INVALID)
         model = model_from_payload(payload or {})
         self._tests_model = model
-        self._tests_path = path
         self._tests_dirty = False
         if not self._tests_profile:
             self._refresh_tests_profile(self._active_profile_name() or get_default_profile())
@@ -2752,7 +2706,7 @@ class BridgeCli:
             self._tests_active_set = dest.default_test_set or DEFAULT_TEST_SET
         if self._tests_active_set not in dest.test_sets:
             self._tests_active_set = dest.default_test_set or DEFAULT_TEST_SET
-        self._tests_dirty = True
+        self._mark_tests_dirty()
         self._sync_store_tests()
         if not self._tests_profile:
             self._refresh_tests_profile(self._active_profile_name() or get_default_profile())
@@ -3588,7 +3542,7 @@ class BridgeCli:
             self._tests_active_set = name
             if self._tests_model and name not in self._tests_model.test_sets:
                 self._tests_model.test_sets[name] = TestSetModel(name=name, tests=[])
-                self._tests_dirty = True
+                self._mark_tests_dirty()
             print(MESSAGE_SELECTED_TEST_SET.format(name=name))
             return StatusResult(code=SS__NORMAL)
         if sub == CMD_CREATE and len(tokens) >= 3:
@@ -3618,7 +3572,7 @@ class BridgeCli:
                     enabled=False,
                 )
             )
-            self._tests_dirty = True
+            self._mark_tests_dirty()
             self._modes.append(CliMode(MODE_TEST, test=name))
             return StatusResult(code=SS__NORMAL)
         if sub == CMD_DELETE and len(tokens) >= 3:
@@ -3627,7 +3581,7 @@ class BridgeCli:
             if not self._delete_test(name, test_set):
                 print(MESSAGE_ERROR_TEST_NOT_FOUND)
                 return StatusResult(code=SS__CONFIG__INVALID)
-            self._tests_dirty = True
+            self._mark_tests_dirty()
             print(MESSAGE_DELETED_TEST.format(name=name))
             return StatusResult(code=SS__NORMAL)
         if len(tokens) >= 2 and sub not in (CMD_CREATE, CMD_DELETE, CMD_SET):
@@ -3655,7 +3609,7 @@ class BridgeCli:
             print("ERROR: You are in test edit mode. Use `exit` or `end` first.")
             return StatusResult(code=SS__CLI_PARSER__INVALID_COMMAND)
         if cmd == CMD_TESTS:
-            print("ERROR: tests load/merge/save/clear not allowed in test edit mode. Use `exit` or `end` first.")
+            print(MESSAGE_ERR_TESTS_EDIT_MODE)
             return StatusResult(code=SS__CLI_PARSER__INVALID_COMMAND)
         if cmd in (CMD_EXIT, CMD_END):
             self._pop_mode()
@@ -3699,7 +3653,7 @@ class BridgeCli:
                 test.joystick = None
                 test.deadband_sweep = None
                 test.device_action = None
-            self._tests_dirty = True
+            self._mark_tests_dirty()
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_DEVICE and len(tokens) >= 3 and tokens[1].lower() == CMD_ADD:
             label = tokens[2]
@@ -3713,13 +3667,13 @@ class BridgeCli:
                 self._warn(MESSAGE_ERROR_DEVICE_DUP)
                 return StatusResult(code=SS__NORMAL)
             test.devices.append(label)
-            self._tests_dirty = True
+            self._mark_tests_dirty()
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_NO and len(tokens) >= 3 and tokens[1].lower() == CMD_DEVICE:
             label = tokens[2]
             if label in test.devices:
                 test.devices.remove(label)
-                self._tests_dirty = True
+                self._mark_tests_dirty()
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_INPUT_SOURCE:
             if test.test_type not in (TEST_TYPE_JOYSTICK, TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
@@ -3733,7 +3687,7 @@ class BridgeCli:
                 print(MESSAGE_ERROR_INPUT_SOURCE_VALUE)
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             test.input_source = value
-            self._tests_dirty = True
+            self._mark_tests_dirty()
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_DEADBAND and len(tokens) >= 2:
             if test.test_type != TEST_TYPE_JOYSTICK:
@@ -3749,7 +3703,7 @@ class BridgeCli:
                 return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
             test.joystick = test.joystick or TestBindingJoystick()
             test.joystick.deadband = value
-            self._tests_dirty = True
+            self._mark_tests_dirty()
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_DUTY and len(tokens) >= 2:
             if test.test_type not in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
@@ -3765,7 +3719,7 @@ class BridgeCli:
                 return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
             test.button = test.button or TestBindingButton()
             test.button.duty = value
-            self._tests_dirty = True
+            self._mark_tests_dirty()
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_ACTION and len(tokens) >= 2:
             if test.test_type != TEST_TYPE_DEVICE_ACTION:
@@ -3777,7 +3731,7 @@ class BridgeCli:
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             test.device_action = test.device_action or DeviceActionModel()
             test.device_action.action = action
-            self._tests_dirty = True
+            self._mark_tests_dirty()
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_COLOR and len(tokens) >= 2:
             if test.test_type != TEST_TYPE_DEVICE_ACTION:
@@ -3789,7 +3743,7 @@ class BridgeCli:
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             test.device_action = test.device_action or DeviceActionModel()
             test.device_action.color = value
-            self._tests_dirty = True
+            self._mark_tests_dirty()
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_PATTERN and len(tokens) >= 2:
             if test.test_type != TEST_TYPE_DEVICE_ACTION:
@@ -3801,7 +3755,7 @@ class BridgeCli:
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             test.device_action = test.device_action or DeviceActionModel()
             test.device_action.pattern = value
-            self._tests_dirty = True
+            self._mark_tests_dirty()
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_BRIGHTNESS and len(tokens) >= 2:
             if test.test_type != TEST_TYPE_DEVICE_ACTION:
@@ -3817,7 +3771,7 @@ class BridgeCli:
                 return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
             test.device_action = test.device_action or DeviceActionModel()
             test.device_action.brightness = value
-            self._tests_dirty = True
+            self._mark_tests_dirty()
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_DURATION and len(tokens) >= 2:
             if test.test_type != TEST_TYPE_DEVICE_ACTION:
@@ -3833,7 +3787,7 @@ class BridgeCli:
                 return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
             test.device_action = test.device_action or DeviceActionModel()
             test.device_action.duration_sec = value
-            self._tests_dirty = True
+            self._mark_tests_dirty()
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_TERMINATION and len(tokens) >= 2:
             if test.test_type not in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
@@ -3843,7 +3797,7 @@ class BridgeCli:
             kind = tokens[1].lower()
             if kind == TERMINATION_HOLD:
                 term.hold_enabled = True
-                self._tests_dirty = True
+                self._mark_tests_dirty()
                 return StatusResult(code=SS__NORMAL)
             if kind == TERMINATION_TIME and len(tokens) >= 3:
                 try:
@@ -3856,7 +3810,7 @@ class BridgeCli:
                     return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
                 term.time_sec = value
                 term.time_on_timeout = term.time_on_timeout or TIME_ON_TIMEOUT_DEFAULT
-                self._tests_dirty = True
+                self._mark_tests_dirty()
                 return StatusResult(code=SS__NORMAL)
             if kind == TERMINATION_ROTATION and len(tokens) >= 3:
                 try:
@@ -3868,14 +3822,14 @@ class BridgeCli:
                     print(MESSAGE_ERROR_TERMINATION_ROTATION_RANGE)
                     return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
                 term.rotation_limit = value
-                self._tests_dirty = True
+                self._mark_tests_dirty()
                 return StatusResult(code=SS__NORMAL)
             if kind == TERMINATION_LIMITSWITCH:
                 limit = term.limit_switch or deepcopy(LIMIT_SWITCH_DEFAULT)
                 if len(tokens) >= 3:
                     limit[LIMIT_SWITCH_KEY_ID] = tokens[2]
                 term.limit_switch = limit
-                self._tests_dirty = True
+                self._mark_tests_dirty()
                 return StatusResult(code=SS__NORMAL)
             print(MESSAGE_ERROR_TERMINATION)
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
@@ -3895,15 +3849,15 @@ class BridgeCli:
                     print(MESSAGE_ERROR_TERMINATION_ROTATION_RANGE)
                     return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
                 term.rotation_limit = value
-                self._tests_dirty = True
+                self._mark_tests_dirty()
                 return StatusResult(code=SS__NORMAL)
             if field == "encoderkey" and len(tokens) >= 3:
                 term.rotation_encoder_key = tokens[2]
-                self._tests_dirty = True
+                self._mark_tests_dirty()
                 return StatusResult(code=SS__NORMAL)
             if field == "encodersource" and len(tokens) >= 3:
                 term.rotation_encoder_source = tokens[2]
-                self._tests_dirty = True
+                self._mark_tests_dirty()
                 return StatusResult(code=SS__NORMAL)
             if field == "encodermotorindex" and len(tokens) >= 3:
                 try:
@@ -3911,7 +3865,7 @@ class BridgeCli:
                 except ValueError:
                     print(MESSAGE_ERROR_TERMINATION_ROTATION)
                     return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-                self._tests_dirty = True
+                self._mark_tests_dirty()
                 return StatusResult(code=SS__NORMAL)
             if field == "encodercountsperrev" and len(tokens) >= 3:
                 try:
@@ -3919,7 +3873,7 @@ class BridgeCli:
                 except ValueError:
                     print(MESSAGE_ERROR_TERMINATION_ROTATION)
                     return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-                self._tests_dirty = True
+                self._mark_tests_dirty()
                 return StatusResult(code=SS__NORMAL)
             print(MESSAGE_ERROR_TERMINATION)
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
@@ -3939,11 +3893,11 @@ class BridgeCli:
                     print(MESSAGE_ERROR_TERMINATION_TIME_RANGE)
                     return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
                 term.time_sec = value
-                self._tests_dirty = True
+                self._mark_tests_dirty()
                 return StatusResult(code=SS__NORMAL)
             if field == "ontimeout" and len(tokens) >= 3:
                 term.time_on_timeout = tokens[2]
-                self._tests_dirty = True
+                self._mark_tests_dirty()
                 return StatusResult(code=SS__NORMAL)
             print(MESSAGE_ERROR_TERMINATION)
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
@@ -3956,7 +3910,7 @@ class BridgeCli:
             if field == "onrelease" and len(tokens) >= 3:
                 term.hold_enabled = True
                 term.hold_on_release = tokens[2]
-                self._tests_dirty = True
+                self._mark_tests_dirty()
                 return StatusResult(code=SS__NORMAL)
             print(MESSAGE_ERROR_TERMINATION)
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
@@ -3970,12 +3924,12 @@ class BridgeCli:
             if field == "onhit" and len(tokens) >= 3:
                 limit[LIMIT_SWITCH_KEY_ON_HIT] = tokens[2]
                 term.limit_switch = limit
-                self._tests_dirty = True
+                self._mark_tests_dirty()
                 return StatusResult(code=SS__NORMAL)
             if field == "id" and len(tokens) >= 3:
                 limit[LIMIT_SWITCH_KEY_ID] = tokens[2]
                 term.limit_switch = limit
-                self._tests_dirty = True
+                self._mark_tests_dirty()
                 return StatusResult(code=SS__NORMAL)
             print(MESSAGE_ERROR_TERMINATION)
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
@@ -4019,7 +3973,7 @@ class BridgeCli:
             except ValueError:
                 print(MESSAGE_ERROR_DEADBAND_SWEEP_FIELD)
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            self._tests_dirty = True
+            self._mark_tests_dirty()
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_ENABLED and len(tokens) >= 2:
             value = tokens[1].lower()
@@ -4030,7 +3984,7 @@ class BridgeCli:
             else:
                 print("ERROR: enabled requires true/false.")
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            self._tests_dirty = True
+            self._mark_tests_dirty()
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_SHOW:
             self._print_test(test)
@@ -5379,10 +5333,7 @@ class BridgeCli:
             return
         items = ", ".join(sorted(dirty.keys()))
         self._warn(f"WARNING: Unsaved changes in: {items}.", essential=True)
-        self._tip(
-            "unsaved",
-            "You have unsaved changes. Use `write tests ...` or `save profiles ...` to save.",
-        )
+        self._tip("unsaved", MESSAGE_TIP_UNSAVED)
 
     def _show_message_level(self, json_output: bool, pretty: bool) -> bool:
         if json_output:
@@ -5393,7 +5344,7 @@ class BridgeCli:
 
     def _show_workspace(self, json_output: bool, pretty: bool) -> StatusResult:
         profiles_path = str(self._local_root_path) if self._local_root_path else EMPTY_STRING
-        tests_path = str(self._tests_path) if self._tests_path else EMPTY_STRING
+        tests_path = profiles_path
         bindings_path = str(self._bindings_path) if self._bindings_path else EMPTY_STRING
         mappings_path = str(self._can_mappings_path) if self._can_mappings_path else EMPTY_STRING
         dirty = self._store.dirty_flags() if self._store else {}
@@ -5960,10 +5911,6 @@ class BridgeCli:
             ),
             "tests": (
                 "tests templates\n"
-                "tests load <path>\n"
-                "tests merge <path>\n"
-                "tests load template <template>\n"
-                "tests save\n"
                 "tests clear"
             ),
             "add device": (
@@ -6460,13 +6407,6 @@ class BridgeCli:
                 SOURCE_NAME_CONFIG,
                 isinstance(self._local_config, dict),
                 self._local_config_path,
-            )
-        )
-        sources.append(
-            self._build_source_entry(
-                SOURCE_NAME_TESTS,
-                self._tests_model is not None,
-                self._tests_path,
             )
         )
         sources.append(
@@ -7619,8 +7559,14 @@ class BridgeCli:
             _sync_store_tests - Sync tests model into the store.
         """
 
-        if self._tests_model is not None:
-            self._store.set_tests_model(self._tests_model)
+        if self._tests_model is None:
+            return
+        profile = self._tests_profile or self._active_profile_name() or get_default_profile()
+        if not profile:
+            return
+        entry = self._local_profile_entry(profile, create=True)
+        entry[KEY_BRIDGE_TESTS] = model_to_payload(self._tests_model)
+        self._store.set_tests_model(profile, self._tests_model)
 
     def _sync_store_bindings(self) -> None:
         """
@@ -7664,6 +7610,7 @@ class BridgeCli:
         if not self._local_config:
             print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        self._sync_store_tests()
         payload = dict(self._local_root_payload)
         payload["bridgeConfig"] = self._ordered_bridge_config(
             self._local_config, include_devices=False
@@ -7692,7 +7639,7 @@ class BridgeCli:
             prompt = False
         failures = False
         saved_any = False
-        dirty_profiles = self._profiles_dirty or self._groups_dirty
+        dirty_profiles = self._profiles_dirty or self._groups_dirty or self._tests_dirty
         if dirty_profiles:
             if not self._local_root_path:
                 print(MESSAGE_SAVE_ALL_PROFILES_MISSING)
@@ -7702,18 +7649,6 @@ class BridgeCli:
                     pass
                 else:
                     result = self._save_profiles(str(self._local_root_path))
-                    saved_any = True
-                    if not result.ok():
-                        failures = True
-        if self._tests_dirty:
-            if not self._tests_path:
-                print(MESSAGE_SAVE_ALL_TESTS_MISSING)
-                failures = True
-            else:
-                if prompt and not self._confirm(f"Write tests to {self._tests_path}?"):
-                    pass
-                else:
-                    result = self._write_tests_command([CMD_WRITE, CMD_TESTS, str(self._tests_path)])
                     saved_any = True
                     if not result.ok():
                         failures = True
@@ -8228,6 +8163,15 @@ class BridgeCli:
 
         self._groups_dirty = True
 
+    def _mark_tests_dirty(self) -> None:
+        """
+        NAME
+            _mark_tests_dirty - Mark tests state as dirty and sync payload.
+        """
+
+        self._tests_dirty = True
+        self._sync_store_tests()
+
     def _build_unified_payload(self) -> Optional[Dict[str, object]]:
         """
         NAME
@@ -8236,6 +8180,7 @@ class BridgeCli:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return None
+        self._sync_store_tests()
         payload: Dict[str, object] = deepcopy(self._local_root_payload) if self._local_root_payload else {}
         if "profiles" not in payload or not self._local_root_payload:
             print("ERROR: No profiles loaded. Merge a bringup_system.json before saving unified config.")
@@ -8274,6 +8219,7 @@ class BridgeCli:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        self._sync_store_tests()
         try:
             config_out = self._ordered_bridge_config(
                 self._local_config, include_devices=not self._local_devices_locked
@@ -8340,8 +8286,6 @@ class BridgeCli:
             self._groups_dirty = False
             self._sync_store_from_local()
             return StatusResult(code=SS__NORMAL)
-        if name == SOURCE_NAME_TESTS:
-            return self._load_tests_from_path(Path(path))
         if name == SOURCE_NAME_BINDINGS:
             return self._load_bindings_from_path(Path(path))
         if name == SOURCE_NAME_CAN_MAPPINGS:
@@ -8389,8 +8333,6 @@ class BridgeCli:
             return self._save_profiles(path)
         if name == SOURCE_NAME_CONFIG:
             return self._save_local_config(path)
-        if name == SOURCE_NAME_TESTS:
-            return self._write_tests_command([CMD_WRITE, CMD_TESTS, path])
         if name == SOURCE_NAME_BINDINGS:
             return self._save_bindings_to_path(Path(path))
         if name == SOURCE_NAME_CAN_MAPPINGS:

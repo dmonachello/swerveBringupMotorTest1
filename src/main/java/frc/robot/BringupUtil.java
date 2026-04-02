@@ -85,6 +85,9 @@ public final class BringupUtil {
   private static final String DEFAULT_PROFILE_FILE = "bringup_system.json";
   // LEGACY (remove after v3 unified file adoption).
   private static final String LEGACY_PROFILE_FILE = "bringup_profiles.json";
+  private static final String KEY_BRIDGE_CONFIG = "bridgeConfig";
+  private static final String KEY_BRIDGE_BY_PROFILE = "byProfile";
+  private static final String KEY_BRIDGE_TESTS = "tests";
   private static final String LABEL_UNKNOWN = "UNKNOWN";
   private static final String LABEL_DEVICE = "Device";
   private static final String LABEL_SEPARATOR = ":";
@@ -199,6 +202,7 @@ public final class BringupUtil {
   // Profile registry as loaded from JSON (or fallback).
   private static Map<String, ProfileConfig> profiles = new LinkedHashMap<>();
   private static List<String> profileOrder = new ArrayList<>();
+  private static final Map<String, JsonElement> PROFILE_TESTS = new LinkedHashMap<>();
   private static String defaultProfile = DEFAULT_PROFILE_NAME;
   private static String selectedProfile = DEFAULT_PROFILE_NAME;
   private static boolean activeProfileApplied = false;
@@ -489,6 +493,41 @@ public final class BringupUtil {
    */
   public static int getProfileCount() {
     return profiles.size();
+  }
+
+  /**
+   * NAME
+   *   getProfileTestsPayload - Return tests payload for a profile.
+   */
+  public static JsonElement getProfileTestsPayload(String profileName) {
+    String name = safeText(profileName);
+    if (name.isBlank()) {
+      name = safeText(activeProfile);
+    }
+    if (name.isBlank()) {
+      name = safeText(defaultProfile);
+    }
+    return PROFILE_TESTS.get(name);
+  }
+
+  /**
+   * NAME
+   *   updateProfileTests - Update cached tests payload for a profile.
+   */
+  public static void updateProfileTests(String profileName, JsonElement payload) {
+    String name = safeText(profileName);
+    if (name.isBlank() || payload == null) {
+      return;
+    }
+    PROFILE_TESTS.put(name, payload);
+  }
+
+  /**
+   * NAME
+   *   getProfilePath - Resolve bringup_system.json path.
+   */
+  public static Path getProfilePath() {
+    return resolveProfilePath();
   }
 
   /**
@@ -1114,6 +1153,8 @@ public final class BringupUtil {
     }
     try {
       String rawJson = Files.readString(path, StandardCharsets.UTF_8);
+      JsonElement parsed = JsonParser.parseString(rawJson);
+      setProfileTests(extractProfileTests(parsed));
       ProfileRoot root = GSON.fromJson(rawJson, ProfileRoot.class);
       if (root == null || root.profiles == null || root.profiles.isEmpty()) {
         throw new JsonParseException("No profiles found");
@@ -1204,6 +1245,7 @@ public final class BringupUtil {
     // Populate default profiles in-memory when JSON is unavailable.
     profiles = new LinkedHashMap<>();
     DEVICE_REGISTRY.clear();
+    setProfileTests(new LinkedHashMap<>());
     List<String> robotLabels = new ArrayList<>();
     addFallbackCanDevices(
         FALLBACK_ROBOT_NEO_CAN_IDS,
@@ -1407,10 +1449,15 @@ public final class BringupUtil {
   private static final class RegistryPayload {
     private final ProfileRoot root;
     private final Map<String, DeviceDefinition> registry;
+    private final Map<String, JsonElement> testsByProfile;
 
-    private RegistryPayload(ProfileRoot root, Map<String, DeviceDefinition> registry) {
+    private RegistryPayload(
+        ProfileRoot root,
+        Map<String, DeviceDefinition> registry,
+        Map<String, JsonElement> testsByProfile) {
       this.root = root;
       this.registry = registry;
+      this.testsByProfile = testsByProfile;
     }
   }
 
@@ -1524,7 +1571,8 @@ public final class BringupUtil {
         }
       }
     }
-    return new RegistryPayload(root, registry);
+    Map<String, JsonElement> testsByProfile = extractProfileTests(parsed);
+    return new RegistryPayload(root, registry, testsByProfile);
   }
 
   /**
@@ -1556,6 +1604,53 @@ public final class BringupUtil {
 
   /**
    * NAME
+   *   extractProfileTests - Extract per-profile tests payloads from JSON.
+   */
+  private static Map<String, JsonElement> extractProfileTests(JsonElement parsed) {
+    Map<String, JsonElement> testsByProfile = new LinkedHashMap<>();
+    if (parsed == null || !parsed.isJsonObject()) {
+      return testsByProfile;
+    }
+    JsonObject root = parsed.getAsJsonObject();
+    JsonElement bridgeElement = root.get(KEY_BRIDGE_CONFIG);
+    if (bridgeElement == null || !bridgeElement.isJsonObject()) {
+      return testsByProfile;
+    }
+    JsonObject bridge = bridgeElement.getAsJsonObject();
+    JsonElement byProfileElement = bridge.get(KEY_BRIDGE_BY_PROFILE);
+    if (byProfileElement == null || !byProfileElement.isJsonObject()) {
+      return testsByProfile;
+    }
+    JsonObject byProfile = byProfileElement.getAsJsonObject();
+    for (Map.Entry<String, JsonElement> entry : byProfile.entrySet()) {
+      String profileName = entry.getKey();
+      JsonElement profileElement = entry.getValue();
+      if (profileElement == null || !profileElement.isJsonObject()) {
+        continue;
+      }
+      JsonObject profile = profileElement.getAsJsonObject();
+      JsonElement testsElement = profile.get(KEY_BRIDGE_TESTS);
+      if (testsElement != null && testsElement.isJsonObject()) {
+        testsByProfile.put(profileName, testsElement);
+      }
+    }
+    return testsByProfile;
+  }
+
+  /**
+   * NAME
+   *   setProfileTests - Replace profile tests cache.
+   */
+  private static void setProfileTests(Map<String, JsonElement> testsByProfile) {
+    PROFILE_TESTS.clear();
+    if (testsByProfile == null || testsByProfile.isEmpty()) {
+      return;
+    }
+    PROFILE_TESTS.putAll(testsByProfile);
+  }
+
+  /**
+   * NAME
    *   applyRegistryPayload - Replace in-memory registry from payload data.
    */
   private static boolean applyRegistryPayload(
@@ -1575,6 +1670,7 @@ public final class BringupUtil {
       }
       DEVICE_REGISTRY.clear();
       DEVICE_REGISTRY.putAll(payload.registry);
+      setProfileTests(payload.testsByProfile);
       clearDeviceInstanceRegistry();
       if (activateProfile != null && !activateProfile.isBlank()) {
         String error = applyActiveProfileStrict(activateProfile);
@@ -2268,8 +2364,8 @@ public final class BringupUtil {
     }
     JsonObject root = parsed.getAsJsonObject();
     root.addProperty("data_hash", "");
-    if (root.has("bridgeConfig")) {
-      root.remove("bridgeConfig");
+    if (root.has(KEY_BRIDGE_CONFIG)) {
+      root.remove(KEY_BRIDGE_CONFIG);
     }
     String canonical = canonicalizeJson(root);
     return sha256Hex(canonical);

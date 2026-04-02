@@ -1,8 +1,12 @@
 package frc.robot.tests;
 
 import frc.robot.BringupPrinter;
+import frc.robot.BringupUtil;
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
 import com.google.gson.annotations.SerializedName;
 import edu.wpi.first.wpilibj.Filesystem;
 import java.io.InputStream;
@@ -24,11 +28,17 @@ import java.util.Map;
  *   BringupTestRegistry - Load and persist bringup tests from JSON.
  *
  * DESCRIPTION
- *   Handles reading bringup_tests.json, selecting test sets, and saving test
- *   enable state.
+ *   Handles reading tests from bringup_system.json bridgeConfig entries (or an
+ *   override file), selecting test sets, and saving test enable state.
  */
 public final class BringupTestRegistry {
   private static final String TESTS_FILE = "bringup_tests.json";
+  private static final String KEY_BRIDGE_CONFIG = "bridgeConfig";
+  private static final String KEY_BRIDGE_BY_PROFILE = "byProfile";
+  private static final String KEY_BRIDGE_TESTS = "tests";
+  private static final String TESTS_SOURCE_REGISTRY = "registry";
+  private static final String TESTS_SOURCE_OVERRIDE = "override";
+  private static final String TESTS_SOURCE_NONE = "none";
   private static final Gson GSON = new Gson();
   private static String overrideTestsPath = null;
   private static boolean usingTestSets = false;
@@ -44,36 +54,112 @@ public final class BringupTestRegistry {
    *   List of BringupTest instances.
    */
   public static List<BringupTest> loadTests() {
-    Path path = resolveTestsPath();
-    if (path == null || !Files.exists(path)) {
+    TestRootLoad root = loadTestsRoot();
+    if (root == null) {
       return Collections.emptyList();
     }
+    List<TestEntry> entries = selectTestEntries(root);
+    if (entries == null || entries.isEmpty()) {
+      return Collections.emptyList();
+    }
+    List<BringupTest> tests = new ArrayList<>();
+    for (TestEntry entry : entries) {
+      BringupTest test = buildTest(entry);
+      if (test != null) {
+        tests.add(test);
+      }
+    }
+    return tests;
+  }
+
+  /**
+   * NAME
+   *   loadTestsRoot - Load tests payload from override or registry.
+   */
+  private static TestRootLoad loadTestsRoot() {
+    if (overrideTestsPath != null && !overrideTestsPath.isBlank()) {
+      Path override = resolveOverridePath(overrideTestsPath);
+      if (override != null && Files.exists(override)) {
+        TestRootLoad root = loadTestsRootFromOverride(override);
+        if (root != null) {
+          return root;
+        }
+      } else {
+        BringupPrinter.enqueue("Warning: bringup tests override not found: " + overrideTestsPath);
+      }
+    }
+    return loadTestsRootFromRegistry();
+  }
+
+  /**
+   * NAME
+   *   loadTestsRootFromOverride - Load tests payload from an override file.
+   */
+  private static TestRootLoad loadTestsRootFromOverride(Path path) {
     try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-      TestRootLoad root = GSON.fromJson(reader, TestRootLoad.class);
-      if (root == null) {
-        return Collections.emptyList();
-      }
-      List<TestEntry> entries = selectTestEntries(root);
-      if (entries == null || entries.isEmpty()) {
-        return Collections.emptyList();
-      }
-      List<BringupTest> tests = new ArrayList<>();
-      for (TestEntry entry : entries) {
-        BringupTest test = buildTest(entry);
-        if (test != null) {
-          tests.add(test);
+      JsonElement parsed = JsonParser.parseReader(reader);
+      if (parsed != null && parsed.isJsonObject()) {
+        JsonObject root = parsed.getAsJsonObject();
+        if (root.has(KEY_BRIDGE_CONFIG)) {
+          return loadTestsRootFromRegistryObject(root);
         }
       }
-      return tests;
+      return GSON.fromJson(parsed, TestRootLoad.class);
     } catch (IOException | JsonParseException ex) {
       BringupPrinter.enqueue("Warning: failed to read bringup tests JSON: " + ex.getMessage());
-      return Collections.emptyList();
+      return null;
     }
   }
 
   /**
    * NAME
-   *   setOverrideTestsPath - Override the path to bringup_tests.json.
+   *   loadTestsRootFromRegistry - Load tests payload from in-memory registry.
+   */
+  private static TestRootLoad loadTestsRootFromRegistry() {
+    JsonElement payload = BringupUtil.getProfileTestsPayload(BringupUtil.getActiveCanProfile());
+    if (payload != null && payload.isJsonObject()) {
+      return GSON.fromJson(payload, TestRootLoad.class);
+    }
+    return null;
+  }
+
+  /**
+   * NAME
+   *   loadTestsRootFromRegistryObject - Load tests payload from bringup_system.json root.
+   */
+  private static TestRootLoad loadTestsRootFromRegistryObject(JsonObject root) {
+    if (root == null) {
+      return null;
+    }
+    JsonElement bridgeElement = root.get(KEY_BRIDGE_CONFIG);
+    if (bridgeElement == null || !bridgeElement.isJsonObject()) {
+      return null;
+    }
+    JsonObject bridge = bridgeElement.getAsJsonObject();
+    JsonElement byProfileElement = bridge.get(KEY_BRIDGE_BY_PROFILE);
+    if (byProfileElement == null || !byProfileElement.isJsonObject()) {
+      return null;
+    }
+    JsonObject byProfile = byProfileElement.getAsJsonObject();
+    String profileName = BringupUtil.getActiveCanProfile();
+    if (profileName == null || profileName.isBlank()) {
+      return null;
+    }
+    JsonElement profileElement = byProfile.get(profileName);
+    if (profileElement == null || !profileElement.isJsonObject()) {
+      return null;
+    }
+    JsonObject profile = profileElement.getAsJsonObject();
+    JsonElement testsElement = profile.get(KEY_BRIDGE_TESTS);
+    if (testsElement == null || !testsElement.isJsonObject()) {
+      return null;
+    }
+    return GSON.fromJson(testsElement, TestRootLoad.class);
+  }
+
+  /**
+   * NAME
+   *   setOverrideTestsPath - Override the path to tests JSON.
    */
   public static void setOverrideTestsPath(String path) {
     if (path == null || path.isBlank()) {
@@ -85,28 +171,44 @@ public final class BringupTestRegistry {
 
   /**
    * NAME
-   *   getTestsInfo - Gather metadata about the tests file.
+   *   getTestsInfo - Gather metadata about tests payload.
    */
   public static TestsInfo getTestsInfo() {
     TestsInfo info = new TestsInfo();
     info.overridePath = overrideTestsPath;
-    Path path = resolveTestsPath();
-    info.path = path;
-    if (path == null) {
-      return info;
+    info.profileName = BringupUtil.getActiveCanProfile();
+    TestRootLoad root = null;
+    if (overrideTestsPath != null && !overrideTestsPath.isBlank()) {
+      Path override = resolveOverridePath(overrideTestsPath);
+      info.source = TESTS_SOURCE_OVERRIDE;
+      info.path = override;
+      info.exists = override != null && Files.exists(override);
+      if (info.exists && override != null) {
+        try {
+          info.sizeBytes = Files.size(override);
+          info.lastModifiedMs = Files.getLastModifiedTime(override).toMillis();
+          info.sha256 = hashFile(override);
+        } catch (IOException ex) {
+          info.readError = ex.getMessage();
+        }
+        root = loadTestsRootFromOverride(override);
+      }
+    } else {
+      info.source = TESTS_SOURCE_REGISTRY;
+      Path profilePath = BringupUtil.getProfilePath();
+      info.path = profilePath;
+      info.exists = profilePath != null && Files.exists(profilePath);
+      if (info.exists && profilePath != null) {
+        try {
+          info.sizeBytes = Files.size(profilePath);
+          info.lastModifiedMs = Files.getLastModifiedTime(profilePath).toMillis();
+          info.sha256 = hashFile(profilePath);
+        } catch (IOException ex) {
+          info.readError = ex.getMessage();
+        }
+      }
+      root = loadTestsRootFromRegistry();
     }
-    info.exists = Files.exists(path);
-    if (!info.exists) {
-      return info;
-    }
-    try {
-      info.sizeBytes = Files.size(path);
-      info.lastModifiedMs = Files.getLastModifiedTime(path).toMillis();
-      info.sha256 = hashFile(path);
-    } catch (IOException ex) {
-      info.readError = ex.getMessage();
-    }
-    TestRootLoad root = readRoot(path);
     if (root != null && root.testSets != null && !root.testSets.isEmpty()) {
       info.usingTestSets = true;
       info.activeTestSetName = resolveActiveSetName(root);
@@ -120,12 +222,18 @@ public final class BringupTestRegistry {
       info.usingTestSets = false;
       info.testCount = root.tests.size();
     }
+    if (info.source == null) {
+      info.source = TESTS_SOURCE_NONE;
+    }
     return info;
   }
 
   /**
    * NAME
    *   saveTests - Persist bringup tests to JSON.
+   *
+   * DESCRIPTION
+   *   Writes tests into bringup_system.json under bridgeConfig.byProfile.
    *
    * PARAMETERS
    *   tests - List of tests to serialize.
@@ -149,14 +257,10 @@ public final class BringupTestRegistry {
         entries.add(deviceAction.toEntry());
       }
     }
-    Path path = resolveTestsPath();
-    if (path == null) {
-      return false;
-    }
     try {
       TestRootSave root = new TestRootSave();
       if (usingTestSets) {
-        TestRootLoad existing = readRoot(path);
+        TestRootLoad existing = loadTestsRootFromRegistry();
         String setName = resolveSaveSetName(existing);
         Map<String, List<TestEntry>> sets = new java.util.LinkedHashMap<>();
         if (existing != null && existing.testSets != null && !existing.testSets.isEmpty()) {
@@ -168,8 +272,40 @@ public final class BringupTestRegistry {
       } else {
         root.tests = entries;
       }
-      String json = GSON.toJson(root);
-      Files.writeString(path, json + System.lineSeparator(), StandardCharsets.UTF_8);
+      String profileName = BringupUtil.getActiveCanProfile();
+      if (profileName == null || profileName.isBlank()) {
+        return false;
+      }
+      Path path = BringupUtil.getProfilePath();
+      if (path == null || !Files.exists(path)) {
+        return false;
+      }
+      String rawJson = Files.readString(path, StandardCharsets.UTF_8);
+      JsonElement parsed = JsonParser.parseString(rawJson);
+      if (parsed == null || !parsed.isJsonObject()) {
+        return false;
+      }
+      JsonObject rootObj = parsed.getAsJsonObject();
+      JsonObject bridge = rootObj.has(KEY_BRIDGE_CONFIG)
+          && rootObj.get(KEY_BRIDGE_CONFIG).isJsonObject()
+          ? rootObj.getAsJsonObject(KEY_BRIDGE_CONFIG)
+          : new JsonObject();
+      JsonObject byProfile = bridge.has(KEY_BRIDGE_BY_PROFILE)
+          && bridge.get(KEY_BRIDGE_BY_PROFILE).isJsonObject()
+          ? bridge.getAsJsonObject(KEY_BRIDGE_BY_PROFILE)
+          : new JsonObject();
+      JsonObject profile = byProfile.has(profileName)
+          && byProfile.get(profileName).isJsonObject()
+          ? byProfile.getAsJsonObject(profileName)
+          : new JsonObject();
+      JsonElement testsElement = GSON.toJsonTree(root);
+      profile.add(KEY_BRIDGE_TESTS, testsElement);
+      byProfile.add(profileName, profile);
+      bridge.add(KEY_BRIDGE_BY_PROFILE, byProfile);
+      rootObj.add(KEY_BRIDGE_CONFIG, bridge);
+      String updated = GSON.toJson(rootObj);
+      Files.writeString(path, updated + System.lineSeparator(), StandardCharsets.UTF_8);
+      BringupUtil.updateProfileTests(profileName, testsElement);
       return true;
     } catch (IOException ex) {
       BringupPrinter.enqueue("Warning: failed to write bringup tests JSON: " + ex.getMessage());
@@ -267,18 +403,6 @@ public final class BringupTestRegistry {
       return root.defaultTestSet;
     }
     return fallback;
-  }
-
-  /**
-   * NAME
-   *   readRoot - Read and parse the tests JSON file.
-   */
-  private static TestRootLoad readRoot(Path path) {
-    try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-      return GSON.fromJson(reader, TestRootLoad.class);
-    } catch (IOException | JsonParseException ex) {
-      return null;
-    }
   }
 
   /**
@@ -432,33 +556,6 @@ public final class BringupTestRegistry {
 
   /**
    * NAME
-   *   resolveTestsPath - Resolve the tests JSON path.
-   */
-  private static Path resolveTestsPath() {
-    if (overrideTestsPath != null && !overrideTestsPath.isBlank()) {
-      Path override = resolveOverridePath(overrideTestsPath);
-      if (override != null && Files.exists(override)) {
-        return override;
-      }
-      BringupPrinter.enqueue("Warning: bringup tests override not found: " + overrideTestsPath);
-    }
-    try {
-      Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(TESTS_FILE);
-      if (Files.exists(deployPath)) {
-        return deployPath;
-      }
-    } catch (Exception ex) {
-      // Fall through to local dev path.
-    }
-    Path devPath = Paths.get("src", "main", "deploy", TESTS_FILE);
-    if (Files.exists(devPath)) {
-      return devPath;
-    }
-    return Paths.get(TESTS_FILE);
-  }
-
-  /**
-   * NAME
    *   resolveOverridePath - Resolve an override path into an absolute path.
    */
   private static Path resolveOverridePath(String path) {
@@ -513,11 +610,13 @@ public final class BringupTestRegistry {
 
   /**
    * NAME
-   *   TestsInfo - Summary metadata for bringup_tests.json.
+   *   TestsInfo - Summary metadata for tests payload.
    */
   public static final class TestsInfo {
     public Path path;
     public String overridePath;
+    public String profileName;
+    public String source;
     public boolean exists;
     public boolean usingTestSets;
     public String activeTestSetName;

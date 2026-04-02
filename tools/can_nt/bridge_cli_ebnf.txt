@@ -105,7 +105,6 @@ config         = "group" ws name
                | "bindings" [ ws bindings_args ]
                | "can-mappings" [ ws mappings_args ]
                | "tests" [ ws tests_args ]
-               | "write" ws "tests" ws path
                | "test" ws ("set" ws name
                            | "create" ws name
                            | "delete" ws name
@@ -137,10 +136,6 @@ mappings_args  = ("show" | "ls") [ ws ("manufacturers" | "device-types" | "devic
                | "validate" [ ws path ] ;
 
 tests_args     = "templates"
-               | "load" ws path
-               | "merge" ws path
-               | "load" ws "template" ws name
-               | "save"
                | "clear" ;
 
 group          = ("show" | "ls")
@@ -155,15 +150,13 @@ group          = ("show" | "ls")
                | "no" ws "bind"
                | "enable"
                | "disable"
-               | "run" ws "test" [ ws name ]
-               | "write" ws "tests" ws path ;
+               | "run" ws "test" [ ws name ] ;
 
 device         = ("show" | "ls")
                | ("show" | "ls") ws show_target [ ws show_flags ]
                | "set" ws device_field ws value_or_text
                | "no" ws device_field
-               | "delete"
-               | "write" ws "tests" ws path ;
+               | "delete" ;
 
 test           = ("show" | "ls")
                | "type" ws ("joystick" | "button" | "composite" | "deadbandSweep" | "deviceAction")
@@ -192,8 +185,7 @@ test           = ("show" | "ls")
                | "termination" ws "hold"
                | "termination" ws "time" ws number
                | "termination" ws "rotation" ws number
-               | "termination" ws "limitswitch" [ ws name ]
-               | "write" ws "tests" ws path ;
+               | "termination" ws "limitswitch" [ ws name ] ;
 
 (* Lexical conventions *)
 

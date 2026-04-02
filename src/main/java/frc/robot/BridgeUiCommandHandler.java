@@ -107,6 +107,8 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_DEVICES_HEADER = "Devices:\n";
   private static final String TEXT_DEVICE_LIST_PREFIX = "  ";
   private static final String TEXT_EMPTY = "";
+  private static final String TEXT_TESTS_INFO_PROFILE = "Profile: ";
+  private static final String TEXT_TESTS_INFO_SOURCE = "Source: ";
   private static final String TEXT_PROFILES_APPLY_OK = "Profiles applied.";
   private static final String TEXT_PROFILES_APPLY_FAILED = "Profiles apply failed.";
   private static final String TEXT_PROFILES_APPLY_NOT_SUPPORTED = "profilesApply only supported over TCP.";
@@ -2636,10 +2638,10 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
-   *   printTestsInfo - Emit bringup test file diagnostics.
+   *   printTestsInfo - Emit bringup tests diagnostics.
    *
    * DESCRIPTION
-   *   Reports resolved test file path, metadata, and active test set info.
+   *   Reports resolved registry path, metadata, and active test set info.
    *
    * RETURNS
    *   Full tests info report text.
@@ -2657,6 +2659,12 @@ public class BridgeUiCommandHandler {
     ReportTextUtil.appendLine(
         sb,
         "Resolved path: " + (info.path != null ? info.path.toString() : "(none)"));
+    ReportTextUtil.appendLine(
+        sb,
+        TEXT_TESTS_INFO_PROFILE + (info.profileName != null ? info.profileName : "(none)"));
+    ReportTextUtil.appendLine(
+        sb,
+        TEXT_TESTS_INFO_SOURCE + (info.source != null ? info.source : "(none)"));
     ReportTextUtil.appendLine(sb, "Exists: " + info.exists);
     if (info.exists) {
       if (info.sizeBytes > 0) {

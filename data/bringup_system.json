@@ -2090,6 +2090,171 @@
         "selectedDevice": {
           "device": "",
           "enabled": false
+        },
+        "tests": {
+          "test_sets": {
+            "default": [
+              {
+                "name": "Rotation only (internal)",
+                "enabled": false,
+                "motorLabels": [
+                  "Feeder Motor"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "rotation": {
+                  "limitRot": 15.0,
+                  "encoderKey": "internal",
+                  "encoderMotorIndex": 0
+                }
+              },
+              {
+                "name": "Deadband sweep (internal)",
+                "enabled": false,
+                "motorLabels": [
+                  "Feeder Motor"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "time": {
+                  "timeoutSec": 5.0,
+                  "onTimeout": "pass"
+                }
+              },
+              {
+                "name": "Rotation + Time",
+                "enabled": false,
+                "motorLabels": [
+                  "Feeder Motor"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "rotation": {
+                  "limitRot": 10.0,
+                  "encoderKey": "internal",
+                  "encoderMotorIndex": 0
+                },
+                "time": {
+                  "timeoutSec": 2.0,
+                  "onTimeout": "fail"
+                }
+              },
+              {
+                "name": "Time only",
+                "enabled": false,
+                "motorLabels": [
+                  "Feeder Motor"
+                ],
+                "type": "composite",
+                "duty": 0.3,
+                "time": {
+                  "timeoutSec": 1.5,
+                  "onTimeout": "pass"
+                }
+              },
+              {
+                "name": "Nudge (0.2 for 0.5s)",
+                "enabled": false,
+                "motorLabels": [
+                  "Feeder Motor"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "time": {
+                  "timeoutSec": 0.5,
+                  "onTimeout": "pass"
+                }
+              },
+              {
+                "name": "Limit switch only",
+                "enabled": false,
+                "motorLabels": [
+                  "Feeder Motor"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "limitSwitch": {
+                  "enabled": true,
+                  "onHit": "pass",
+                  "id": "lmtSw1"
+                }
+              },
+              {
+                "name": "Hold to run",
+                "enabled": false,
+                "motorLabels": [
+                  "Feeder Motor"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "hold": {
+                  "enabled": true,
+                  "onRelease": "pass"
+                }
+              },
+              {
+                "name": "Rotation + Time + Limit",
+                "enabled": false,
+                "motorLabels": [
+                  "Feeder Motor"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "rotation": {
+                  "limitRot": 10.0,
+                  "encoderKey": "internal",
+                  "encoderMotorIndex": 0
+                },
+                "time": {
+                  "timeoutSec": 2.0,
+                  "onTimeout": "fail"
+                },
+                "limitSwitch": {
+                  "enabled": true,
+                  "onHit": "pass",
+                  "id": "lmtSw1"
+                }
+              },
+              {
+                "name": "All checks",
+                "enabled": false,
+                "motorLabels": [
+                  "Feeder Motor"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "rotation": {
+                  "limitRot": 8.0,
+                  "encoderKey": "internal",
+                  "encoderMotorIndex": 0
+                },
+                "time": {
+                  "timeoutSec": 3.0,
+                  "onTimeout": "pass"
+                },
+                "hold": {
+                  "enabled": true,
+                  "onRelease": "pass"
+                },
+                "limitSwitch": {
+                  "enabled": true,
+                  "onHit": "pass",
+                  "id": "lmtSw1"
+                }
+              },
+              {
+                "name": "Joystick motor (controller0.leftY)",
+                "enabled": false,
+                "motorLabels": [
+                  "Feeder Motor"
+                ],
+                "type": "joystick",
+                "inputSource": "controller0.leftY",
+                "deadband": 0.12
+              }
+            ]
+          },
+          "default_test_set": "default"
         }
       },
       "home_tests_033026": {
@@ -2097,6 +2262,76 @@
         "selectedDevice": {
           "device": "",
           "enabled": false
+        },
+        "tests": {
+          "test_sets": {
+            "smoke": [
+              {
+                "name": "Rotation only (internal)",
+                "enabled": true,
+                "motorLabels": [
+                  "Feeder Motor"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "rotation": {
+                  "limitRot": 2.0,
+                  "encoderKey": "internal",
+                  "encoderMotorIndex": 0
+                }
+              },
+              {
+                "name": "Time only",
+                "enabled": true,
+                "motorLabels": [
+                  "Feeder Motor"
+                ],
+                "type": "composite",
+                "duty": 0.3,
+                "time": {
+                  "timeoutSec": 1.5,
+                  "onTimeout": "pass"
+                }
+              },
+              {
+                "name": "Nudge (0.2 for 0.5s)",
+                "enabled": true,
+                "motorLabels": [
+                  "Feeder Motor"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "time": {
+                  "timeoutSec": 0.5,
+                  "onTimeout": "pass"
+                }
+              },
+              {
+                "name": "Hold to run",
+                "enabled": true,
+                "motorLabels": [
+                  "Feeder Motor"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "hold": {
+                  "enabled": true,
+                  "onRelease": "pass"
+                }
+              },
+              {
+                "name": "Joystick motor (controller0.leftY)",
+                "enabled": true,
+                "motorLabels": [
+                  "Feeder Motor"
+                ],
+                "type": "joystick",
+                "inputSource": "controller0.leftY",
+                "deadband": 0.12
+              }
+            ]
+          },
+          "default_test_set": "smoke"
         }
       },
       "example_default": {

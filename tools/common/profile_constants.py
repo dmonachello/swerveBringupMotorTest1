@@ -31,6 +31,7 @@ KEY_BRIDGE_BY_PROFILE = "byProfile"
 KEY_BRIDGE_GROUPS = "groups"
 KEY_BRIDGE_SELECTED_DEVICE = "selectedDevice"
 KEY_BRIDGE_BINDINGS = "bindings"
+KEY_BRIDGE_TESTS = "tests"
 KEY_DEVICE = "device"
 
 KEY_LABEL = "label"

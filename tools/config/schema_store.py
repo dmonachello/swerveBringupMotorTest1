@@ -28,6 +28,7 @@ from tools.common.profile_constants import (
     KEY_ATTACHMENTS,
     KEY_BRIDGE_BY_PROFILE,
     KEY_BRIDGE_CONFIG,
+    KEY_BRIDGE_TESTS,
     KEY_BRIDGE_GENERATED_AT,
     KEY_BRIDGE_GROUPS,
     KEY_BRIDGE_SCHEMA_VERSION,
@@ -146,6 +147,7 @@ MESSAGE_MAPPINGS_VALUE_TYPE = "Mapping value must be non-empty string."
 MESSAGE_TEST_ISSUE = "{name}: {message}"
 MESSAGE_TEST_FIELD_ISSUE = "{name}.{field}: {message}"
 MESSAGE_TEST_GENERIC = "{message}"
+MESSAGE_TEST_PROFILE_PREFIX = "profile {profile}: {message}"
 ATTR_TEST_NAME = "test_name"
 ATTR_FIELD = "field"
 ATTR_MESSAGE = "message"
@@ -287,7 +289,7 @@ class ConfigSchemaStore:
 
         self._repo_root: Path = repo_root_path()
         self._db = JsonStore()
-        self._tests_model: Optional[TestAuthoringModel] = None
+        self._tests_by_profile: Dict[str, TestAuthoringModel] = dict()
         self._dirty_flags: Dict[str, bool] = {
             DIRTY_PROFILES: BOOL_FALSE,
             DIRTY_GROUPS: BOOL_FALSE,
@@ -312,8 +314,8 @@ class ConfigSchemaStore:
         self._warnings = list()
         if repo_root is not None:
             self._repo_root = repo_root
-        self._load_profiles(self._profiles_path(self._repo_root))
-        _payload, self._tests_model = self._load_tests(self._repo_root)
+        profiles_payload = self._load_profiles(self._profiles_path(self._repo_root))
+        self._tests_by_profile = self._load_tests_from_profiles(profiles_payload)
         self._load_bindings(self._repo_root)
         self._load_mappings(self._repo_root)
         for key in self._dirty_flags:
@@ -336,21 +338,18 @@ class ConfigSchemaStore:
 
         self._db.set_payload(DOC_PROFILES, payload)
 
-    def set_tests_payload(self, payload: Dict[str, object]) -> None:
+    def set_tests_model(self, profile: str, model: Optional[TestAuthoringModel]) -> None:
         """
         NAME
-            set_tests_payload - Replace the tests payload.
+            set_tests_model - Replace tests authoring model for a profile.
         """
 
-        self._db.set_payload(DOC_TESTS, payload)
-
-    def set_tests_model(self, model: Optional[TestAuthoringModel]) -> None:
-        """
-        NAME
-            set_tests_model - Replace the tests authoring model.
-        """
-
-        self._tests_model = model
+        if not profile:
+            return
+        if model is None:
+            self._tests_by_profile.pop(profile, None)
+            return
+        self._tests_by_profile[profile] = model
 
     def set_bindings_payload(self, payload: Dict[str, object]) -> None:
         """
@@ -483,13 +482,15 @@ class ConfigSchemaStore:
             return selected
         return dict()
 
-    def tests_model(self) -> Optional[TestAuthoringModel]:
+    def tests_model(self, profile: Optional[str]) -> Optional[TestAuthoringModel]:
         """
         NAME
-            tests_model - Return in-memory tests model.
+            tests_model - Return tests model for a profile.
         """
 
-        return self._tests_model
+        if not profile:
+            return None
+        return self._tests_by_profile.get(profile)
 
     def bindings(self) -> Dict[str, object]:
         """
@@ -577,17 +578,8 @@ class ConfigSchemaStore:
             save_profiles - Write profiles payload to a file.
         """
 
-        write_json(Path(path), self._db.get_payload(DOC_PROFILES))
-
-    def save_tests(self, path: str | Path) -> None:
-        """
-        NAME
-            save_tests - Write tests payload to a file.
-        """
-
-        payload = self._db.get_payload(DOC_TESTS)
-        if self._tests_model is not None:
-            payload = model_to_payload(self._tests_model)
+        payload = dict(self._db.get_payload(DOC_PROFILES))
+        self._write_tests_into_profiles(payload)
         write_json(Path(path), payload)
 
     def save_bindings(self, path: str | Path) -> None:
@@ -691,23 +683,32 @@ class ConfigSchemaStore:
         ):
             bridge[KEY_BRIDGE_BY_PROFILE] = dict()
 
-    def _load_tests(self, repo_root: Path) -> Tuple[Dict[str, object], TestAuthoringModel]:
+    def _load_tests_from_profiles(
+        self, profiles_payload: Dict[str, object]
+    ) -> Dict[str, TestAuthoringModel]:
         """
         NAME
-            _load_tests - Load and merge tests payloads.
+            _load_tests_from_profiles - Load tests models from bridgeConfig.byProfile.
         """
 
-        root_path = repo_root / FILE_TESTS_ROOT
-        deploy_path = self._deploy_path(FILE_TESTS_ROOT)
-        warnings = self._db.load_document(DOC_TESTS, root_path, deploy_path, self._merge_tests)
-        self._warnings.extend(warnings)
-        merged = self._db.get_payload(DOC_TESTS)
-        model: TestAuthoringModel
-        try:
-            model = model_from_payload(merged)
-        except Exception:
-            model = TestAuthoringModel()
-        return merged, model
+        tests_by_profile: Dict[str, TestAuthoringModel] = dict()
+        bridge = profiles_payload.get(KEY_BRIDGE_CONFIG)
+        if not isinstance(bridge, dict):
+            return tests_by_profile
+        by_profile = bridge.get(KEY_BRIDGE_BY_PROFILE)
+        if not isinstance(by_profile, dict):
+            return tests_by_profile
+        for profile_name, entry in by_profile.items():
+            if not isinstance(profile_name, str) or not isinstance(entry, dict):
+                continue
+            payload = entry.get(KEY_BRIDGE_TESTS)
+            if not isinstance(payload, dict):
+                continue
+            try:
+                tests_by_profile[profile_name] = model_from_payload(payload)
+            except Exception:
+                tests_by_profile[profile_name] = TestAuthoringModel()
+        return tests_by_profile
 
     def _load_bindings(self, repo_root: Path) -> Dict[str, object]:
         """
@@ -731,58 +732,32 @@ class ConfigSchemaStore:
         self._db.load_document(DOC_MAPPINGS, path, None, None)
         return self._db.get_payload(DOC_MAPPINGS)
 
-    def _merge_tests(
-        self, root_payload: Dict[str, object], deploy_payload: Dict[str, object]
-    ) -> Tuple[Dict[str, object], List[str]]:
+    def _write_tests_into_profiles(self, payload: Dict[str, object]) -> None:
         """
         NAME
-            _merge_tests - Merge root/deploy test payloads with warnings.
+            _write_tests_into_profiles - Store tests models under bridgeConfig.byProfile.
         """
 
-        merged: Dict[str, object] = dict()
-        warnings: List[str] = list()
-        if deploy_payload:
-            merged.update(deploy_payload)
-        if root_payload:
-            if KEY_DEFAULT_TEST_SET in root_payload and KEY_DEFAULT_TEST_SET in deploy_payload:
-                warnings.append(
-                    MESSAGE_MERGE_WARNING.format(
-                        label=KEY_DEFAULT_TEST_SET,
-                        root=FILE_TESTS_ROOT,
-                        deploy=str(self._deploy_path(FILE_TESTS_ROOT)),
-                    )
-                )
-            if KEY_TESTS in root_payload and KEY_TESTS in deploy_payload:
-                warnings.append(
-                    MESSAGE_MERGE_WARNING.format(
-                        label=KEY_TESTS,
-                        root=FILE_TESTS_ROOT,
-                        deploy=str(self._deploy_path(FILE_TESTS_ROOT)),
-                    )
-                )
-            merged_sets = dict()
-            deploy_sets = deploy_payload.get(KEY_TEST_SETS)
-            root_sets = root_payload.get(KEY_TEST_SETS)
-            if isinstance(deploy_sets, dict):
-                merged_sets.update(deploy_sets)
-            if isinstance(root_sets, dict):
-                for name, value in root_sets.items():
-                    if name in merged_sets:
-                        warnings.append(
-                            MESSAGE_MERGE_WARNING.format(
-                                label=KEY_TEST_SETS,
-                                root=FILE_TESTS_ROOT,
-                                deploy=str(self._deploy_path(FILE_TESTS_ROOT)),
-                            )
-                        )
-                    merged_sets[name] = value
-            if merged_sets:
-                merged[KEY_TEST_SETS] = merged_sets
-            if KEY_DEFAULT_TEST_SET in root_payload:
-                merged[KEY_DEFAULT_TEST_SET] = root_payload.get(KEY_DEFAULT_TEST_SET)
-            if KEY_TESTS in root_payload:
-                merged[KEY_TESTS] = root_payload.get(KEY_TESTS)
-        return merged, warnings
+        bridge = payload.get(KEY_BRIDGE_CONFIG)
+        if bridge is None:
+            bridge = {}
+            payload[KEY_BRIDGE_CONFIG] = bridge
+        if not isinstance(bridge, dict):
+            return
+        by_profile = bridge.get(KEY_BRIDGE_BY_PROFILE)
+        if by_profile is None:
+            by_profile = {}
+            bridge[KEY_BRIDGE_BY_PROFILE] = by_profile
+        if not isinstance(by_profile, dict):
+            return
+        for profile_name, model in self._tests_by_profile.items():
+            if not profile_name or model is None:
+                continue
+            entry = by_profile.get(profile_name)
+            if not isinstance(entry, dict):
+                entry = {}
+                by_profile[profile_name] = entry
+            entry[KEY_BRIDGE_TESTS] = model_to_payload(model)
 
     def _merge_bindings(
         self, root_payload: Dict[str, object], deploy_payload: Dict[str, object]
@@ -943,30 +918,35 @@ class ConfigSchemaStore:
         """
 
         _ = strict
-        if self._tests_model is None:
+        if not self._tests_by_profile:
             return
-        device_catalog, duplicate_labels = self._build_device_catalog(self.devices())
         controller_names = self._bindings_controller_names()
-        result = validate_model(
-            self._tests_model,
-            controller_names=controller_names,
-            device_catalog=device_catalog,
-            duplicate_labels=duplicate_labels,
-        )
-        for issue in result.errors:
-            self._append_issue(
-                issues,
-                LOCATION_TESTS,
-                self._format_test_issue(issue),
-                SEVERITY_ERROR,
+        for profile_name, model in self._tests_by_profile.items():
+            if model is None:
+                continue
+            device_catalog, duplicate_labels = self._device_catalog_for_profile(profile_name)
+            result = validate_model(
+                model,
+                controller_names=controller_names,
+                device_catalog=device_catalog,
+                duplicate_labels=duplicate_labels,
             )
-        for issue in result.warnings:
-            self._append_issue(
-                issues,
-                LOCATION_TESTS,
-                self._format_test_issue(issue),
-                SEVERITY_WARN,
-            )
+            for issue in result.errors:
+                message = self._format_test_issue(issue)
+                self._append_issue(
+                    issues,
+                    LOCATION_TESTS,
+                    MESSAGE_TEST_PROFILE_PREFIX.format(profile=profile_name, message=message),
+                    SEVERITY_ERROR,
+                )
+            for issue in result.warnings:
+                message = self._format_test_issue(issue)
+                self._append_issue(
+                    issues,
+                    LOCATION_TESTS,
+                    MESSAGE_TEST_PROFILE_PREFIX.format(profile=profile_name, message=message),
+                    SEVERITY_WARN,
+                )
 
     def _validate_bindings(self, issues: List[ValidationIssue], strict: bool) -> None:
         """
@@ -1121,6 +1101,52 @@ class ConfigSchemaStore:
         if name:
             return MESSAGE_TEST_ISSUE.format(name=name, message=message)
         return MESSAGE_TEST_GENERIC.format(message=message)
+
+    def _device_catalog_for_profile(
+        self, profile_name: str
+    ) -> Tuple[Dict[str, object], Set[str]]:
+        """
+        NAME
+            _device_catalog_for_profile - Build device catalog for a profile.
+        """
+
+        catalog: Dict[str, object] = dict()
+        duplicates: Set[str] = set()
+        profiles = self.profiles()
+        devices = self.devices()
+        if not profile_name or not isinstance(profiles, dict) or not isinstance(devices, list):
+            return catalog, duplicates
+        profile = profiles.get(profile_name)
+        if not isinstance(profile, dict):
+            return catalog, duplicates
+        labels = profile.get(KEY_PROFILE_DEVICES)
+        if not isinstance(labels, list):
+            return catalog, duplicates
+        registry: Dict[str, Dict[str, object]] = dict()
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            label = entry.get(KEY_LABEL)
+            if not isinstance(label, str) or not label:
+                continue
+            registry[label.lower()] = entry
+        seen: Set[str] = set()
+        for label in labels:
+            if not isinstance(label, str):
+                continue
+            clean = label.strip()
+            if not clean:
+                continue
+            key = clean.lower()
+            if key in seen:
+                duplicates.add(clean)
+                continue
+            seen.add(key)
+            entry = registry.get(key)
+            if entry is None:
+                continue
+            catalog[clean] = entry
+        return catalog, duplicates
 
     def _build_device_catalog(
         self, devices: List[Dict[str, object]]

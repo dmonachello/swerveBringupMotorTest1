@@ -29,6 +29,8 @@ public class Robot extends TimedRobot {
 
 
   private static final double DEADBAND = BringupUtil.DEADBAND;
+  private static final String TEXT_TESTS_INFO_PROFILE = "Profile: ";
+  private static final String TEXT_TESTS_INFO_SOURCE = "Source: ";
   // Driver Station controller input.
   private final ControllerManager controllers = new ControllerManager();
   private final java.util.Map<String, XboxController> controllerMap = controllers.getXboxControllers();
@@ -306,7 +308,7 @@ public class Robot extends TimedRobot {
 
   /**
    * NAME
-   *   printTestsInfo - Emit bringup test file diagnostics.
+   *   printTestsInfo - Emit bringup tests diagnostics.
    *
    * SIDE EFFECTS
    *   Enqueues a text report for throttled console output.
@@ -317,6 +319,8 @@ public class Robot extends TimedRobot {
     appendLine(sb, "=== Bringup Tests Info ===");
     appendLine(sb, "Override path: " + (info.overridePath != null ? info.overridePath : "(none)"));
     appendLine(sb, "Resolved path: " + (info.path != null ? info.path.toString() : "(none)"));
+    appendLine(sb, TEXT_TESTS_INFO_PROFILE + (info.profileName != null ? info.profileName : "(none)"));
+    appendLine(sb, TEXT_TESTS_INFO_SOURCE + (info.source != null ? info.source : "(none)"));
     appendLine(sb, "Exists: " + info.exists);
     if (info.exists) {
       if (info.sizeBytes > 0) {

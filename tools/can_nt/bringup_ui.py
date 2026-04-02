@@ -104,12 +104,12 @@ def _load_profiles() -> List[str]:
     return sorted(name for name in list_profiles() if name)
 
 
-def _load_tests() -> List[str]:
+def _load_tests(profile_name: str) -> List[str]:
     """
     NAME
-        _load_tests - Load test names from bringup_tests.json.
+        _load_tests - Load test names for a profile.
     """
-    store_names = _load_tests_from_store()
+    store_names = _load_tests_from_store(profile_name)
     if store_names is not None:
         return store_names
     try:
@@ -121,17 +121,17 @@ def _load_tests() -> List[str]:
     return []
 
 
-def _load_tests_from_store() -> Optional[List[str]]:
+def _load_tests_from_store(profile_name: str) -> Optional[List[str]]:
     """
     NAME
-        _load_tests_from_store - Load test names from the config store.
+        _load_tests_from_store - Load test names for a profile from the config store.
     """
     store = ConfigSchemaStore()
     try:
         store.load(repo_root())
     except Exception:
         return None
-    model = store.tests_model()
+    model = store.tests_model(profile_name)
     if model is None:
         return None
     names: List[str] = []
@@ -354,10 +354,11 @@ class BringupControlUI(tk.Tk):
         )
 
         profiles = _load_profiles() or ["(none)"]
-        tests = _load_tests() or ["(none)"]
+        active_profile = profiles[0]
+        tests = _load_tests(active_profile) or ["(none)"]
 
         profile_box = ttk.Combobox(header, values=profiles, state="readonly", width=18)
-        profile_box.set(profiles[0])
+        profile_box.set(active_profile)
         self._profile_box = profile_box
         profile_box.bind("<<ComboboxSelected>>", self._on_profile_selected)
         ttk.Label(header, text="Profile").pack(side="left", padx=(16, 4))
@@ -514,6 +515,7 @@ class BringupControlUI(tk.Tk):
         """
         name = self._profile_box.get().strip() if hasattr(self, "_profile_box") else ""
         self._refresh_profile_devices()
+        self._refresh_tests_for_profile(name)
         if self._live_view is not None and name:
             self._live_view.reload_profile(name)
         if not name or name == self._last_selected_profile:
@@ -945,8 +947,23 @@ class BringupControlUI(tk.Tk):
         else:
             self._profile_box.set(profiles[0])
         self._last_selected_profile = self._profile_box.get()
+        self._refresh_tests_for_profile(self._profile_box.get())
         if self._live_view is not None:
             self._live_view.reload_profile(self._profile_box.get())
+
+    def _refresh_tests_for_profile(self, profile_name: str) -> None:
+        """
+        NAME
+            _refresh_tests_for_profile - Refresh tests dropdown for a profile.
+        """
+        if not hasattr(self, "_test_box"):
+            return
+        name = profile_name.strip() if isinstance(profile_name, str) else ""
+        tests = _load_tests(name) or ["(none)"]
+        self._test_box["values"] = tests
+        if tests:
+            self._test_box.set(tests[0])
+            self._last_selected_test = tests[0]
 
     def _build_reports_help(self) -> str:
         """
