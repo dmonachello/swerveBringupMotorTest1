@@ -164,12 +164,16 @@ Version helper (preferred):
 - Set version: `bump set bridge_cli 0.4.1`
 - Field-set patch: `bump field-set bridge_cli patch 7`
 
+Build metadata (git):
+- Stamp git build info: `gitver`
+- Dry-run: `gitver --dry-run`
+
 Underlying script (still available):
 - Update all apps: `python tools/update_versions.py --set all=1.2.3`
 - Update one app: `python tools/update_versions.py --set can_nt_bridge=1.2.3`
 - Show versions:
 - `python tools\can_nt\can_nt_bridge.py --version`
-- Bridge CLI: `show version`
+- Bridge CLI: `show version` (bridge_cli only)
 - CAN Topology Editor: `python tools\can_topology\can_top_editor.py --version`
 - Bringup Control UI: Help -> About
 

@@ -63,6 +63,7 @@ try:
         VERSION_HEADER,
         format_version_line,
     )
+    from tools.common.build_info import build_lines
     from tools.can_nt.bridge_cli import BridgeCli
     from tools.can_nt.bridge_session import BridgeSession
 except ModuleNotFoundError:
@@ -100,6 +101,7 @@ except ModuleNotFoundError:
         VERSION_HEADER,
         format_version_line,
     )
+    from tools.common.build_info import build_lines
     from tools.can_nt.bridge_cli import BridgeCli
     from tools.can_nt.bridge_session import BridgeSession
 
@@ -136,6 +138,8 @@ def _print_version_banner() -> None:
         return
     print(VERSION_TITLE)
     print(format_version_line(VERSION_APP_NAME, version))
+    for line in build_lines():
+        print(line)
 
 
 def _build_device_maps(

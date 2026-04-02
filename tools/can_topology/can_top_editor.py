@@ -159,13 +159,12 @@ ARG_VERSION = "--version"
 ARG_VERSION_ATTR = "version"
 ACTION_STORE_TRUE = "store_true"
 HELP_VERSION = "Print version and exit."
-VERSION_APP_NAME = APP_CAN_TOPOLOGY_NAME
-VERSION_TITLE = VERSION_HEADER
 ABOUT_TITLE = "About CAN Topology Editor"
 ABOUT_NAME = "CAN Topology Editor"
 ABOUT_DESCRIPTION = "GUI for editing CAN topology profiles."
 ABOUT_LAUNCH = "Launch via python -m tools.can_topology.can_top_editor"
 ABOUT_SEPARATOR = "\n"
+BUILD_TITLE = "Build"
 
 try:
     from tools.common.json_io import read_json
@@ -228,6 +227,31 @@ try:
     from tools.common import profile_constants as profile_consts
 except ImportError:
     profile_consts = None
+
+BRIDGE_CONFIG_SCHEMA_VERSION_FALLBACK = 1
+KEY_BRIDGE_SCHEMA_VERSION = (
+    profile_consts.KEY_BRIDGE_SCHEMA_VERSION
+    if profile_consts is not None
+    else "bridgeSchemaVersion"
+)
+KEY_BRIDGE_GENERATED_AT = (
+    profile_consts.KEY_BRIDGE_GENERATED_AT
+    if profile_consts is not None
+    else "generatedAt"
+)
+KEY_BRIDGE_BY_PROFILE = (
+    profile_consts.KEY_BRIDGE_BY_PROFILE if profile_consts is not None else "byProfile"
+)
+KEY_BRIDGE_GROUPS = (
+    profile_consts.KEY_BRIDGE_GROUPS if profile_consts is not None else "groups"
+)
+KEY_BRIDGE_SELECTED_DEVICE = (
+    profile_consts.KEY_BRIDGE_SELECTED_DEVICE
+    if profile_consts is not None
+    else "selectedDevice"
+)
+KEY_DEVICE = profile_consts.KEY_DEVICE if profile_consts is not None else "device"
+KEY_SELECTED_ENABLED = "enabled"
 
 try:
     from tools.config.schema_store import ConfigSchemaStore
@@ -321,6 +345,7 @@ try:
         VERSION_HEADER,
         format_version_line,
     )
+    from tools.common.build_info import build_lines
 except ImportError:  # Allow running as a script from this folder.
     from common.app_versions import (  # type: ignore
         APP_CAN_TOPOLOGY_NAME,
@@ -328,6 +353,10 @@ except ImportError:  # Allow running as a script from this folder.
         VERSION_HEADER,
         format_version_line,
     )
+    from common.build_info import build_lines  # type: ignore
+
+VERSION_APP_NAME = APP_CAN_TOPOLOGY_NAME
+VERSION_TITLE = VERSION_HEADER
 
 
 class TopologyEditor(tk.Tk):
@@ -5737,29 +5766,33 @@ class TopologyEditor(tk.Tk):
             config = existing
         else:
             config = {
-                profile_consts.KEY_BRIDGE_SCHEMA_VERSION: profile_consts.BRIDGE_CONFIG_SCHEMA_VERSION,
-                profile_consts.KEY_BRIDGE_GENERATED_AT: None,
-                profile_consts.KEY_BRIDGE_BY_PROFILE: {},
+                KEY_BRIDGE_SCHEMA_VERSION: (
+                    profile_consts.BRIDGE_CONFIG_SCHEMA_VERSION
+                    if profile_consts is not None
+                    else BRIDGE_CONFIG_SCHEMA_VERSION_FALLBACK
+                ),
+                KEY_BRIDGE_GENERATED_AT: None,
+                KEY_BRIDGE_BY_PROFILE: {},
             }
             self._root_extras["bridgeConfig"] = config
-        by_profile = config.get(profile_consts.KEY_BRIDGE_BY_PROFILE)
+        by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
         if not isinstance(by_profile, dict):
             by_profile = {}
-            config[profile_consts.KEY_BRIDGE_BY_PROFILE] = by_profile
+            config[KEY_BRIDGE_BY_PROFILE] = by_profile
         profile_name = self._profile_name or ""
         if profile_name:
             entry = by_profile.get(profile_name)
             if not isinstance(entry, dict):
                 entry = {
-                    profile_consts.KEY_BRIDGE_GROUPS: [],
-                    profile_consts.KEY_BRIDGE_SELECTED_DEVICE: {
-                        profile_consts.KEY_DEVICE: "",
-                        "enabled": False,
+                    KEY_BRIDGE_GROUPS: [],
+                    KEY_BRIDGE_SELECTED_DEVICE: {
+                        KEY_DEVICE: "",
+                        KEY_SELECTED_ENABLED: False,
                     },
                 }
                 by_profile[profile_name] = entry
-            if not isinstance(entry.get(profile_consts.KEY_BRIDGE_GROUPS), list):
-                entry[profile_consts.KEY_BRIDGE_GROUPS] = []
+            if not isinstance(entry.get(KEY_BRIDGE_GROUPS), list):
+                entry[KEY_BRIDGE_GROUPS] = []
         return config
 
     def _bridge_groups(self) -> List[Dict[str, object]]:
@@ -5770,14 +5803,14 @@ class TopologyEditor(tk.Tk):
         config = self._root_extras.get("bridgeConfig")
         if not isinstance(config, dict):
             return []
-        by_profile = config.get(profile_consts.KEY_BRIDGE_BY_PROFILE)
+        by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
         if not isinstance(by_profile, dict):
             return []
         profile_name = self._profile_name or ""
         entry = by_profile.get(profile_name)
         if not isinstance(entry, dict):
             return []
-        groups = entry.get(profile_consts.KEY_BRIDGE_GROUPS)
+        groups = entry.get(KEY_BRIDGE_GROUPS)
         return groups if isinstance(groups, list) else []
 
     def _create_group_from_selection(self) -> None:
@@ -5840,7 +5873,7 @@ class TopologyEditor(tk.Tk):
         if not name:
             return
         config = self._ensure_bridge_config()
-        by_profile = config.get(profile_consts.KEY_BRIDGE_BY_PROFILE)
+        by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
         if not isinstance(by_profile, dict):
             messagebox.showinfo("Remove Group", "No bridgeConfig profiles found.")
             return
@@ -5851,7 +5884,7 @@ class TopologyEditor(tk.Tk):
             return
         new_groups = []
         removed = False
-        for group in entry.get(profile_consts.KEY_BRIDGE_GROUPS, []) or []:
+        for group in entry.get(KEY_BRIDGE_GROUPS, []) or []:
             if not isinstance(group, dict):
                 continue
             group_name = str(group.get("name", "")).strip()
@@ -5862,7 +5895,7 @@ class TopologyEditor(tk.Tk):
         if not removed:
             messagebox.showinfo("Remove Group", f"Group '{name}' not found.")
             return
-        entry[profile_consts.KEY_BRIDGE_GROUPS] = new_groups
+        entry[KEY_BRIDGE_GROUPS] = new_groups
         self._dirty = True
         self._redraw_canvas()
 
@@ -7580,7 +7613,7 @@ class TopologyEditor(tk.Tk):
         """
         version = VERSIONS.get(VERSION_APP_NAME, "")
         version_line = format_version_line(VERSION_APP_NAME, version) if version else ""
-        lines = [ABOUT_NAME, version_line, ABOUT_DESCRIPTION, ABOUT_LAUNCH]
+        lines = [ABOUT_NAME, version_line, BUILD_TITLE, *build_lines(), ABOUT_DESCRIPTION, ABOUT_LAUNCH]
         body = ABOUT_SEPARATOR.join([line for line in lines if line])
         messagebox.showinfo(ABOUT_TITLE, body)
 
@@ -9715,8 +9748,10 @@ def _print_version_banner() -> None:
     version = VERSIONS.get(VERSION_APP_NAME, "")
     if not version:
         return
-    print(VERSION_TITLE)
-    print(format_version_line(VERSION_APP_NAME, version))
+        print(VERSION_TITLE)
+        print(format_version_line(VERSION_APP_NAME, version))
+        for line in build_lines():
+            print(line)
 
 def main() -> int:
     """

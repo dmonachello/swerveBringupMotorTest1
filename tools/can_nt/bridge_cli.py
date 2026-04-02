@@ -207,6 +207,11 @@ from tools.common.app_versions import (
     VERSION_HEADER,
     format_version_line,
 )
+from tools.common.build_info import (
+    KEY_BUILD,
+    build_info_payload,
+    build_lines,
+)
 
 # Optional line editing for Cisco-style '?' prefill.
 MESSAGE_WARN_PROMPT_TOOLKIT = (
@@ -275,6 +280,7 @@ VERSION_KEY_NAME = "name"
 VERSION_KEY_VERSION = "version"
 MESSAGE_VERSION_NONE = "  (none)"
 VERSION_APP_NAME = APP_BRIDGE_CLI_NAME
+BUILD_TITLE = "Build"
 
 CMD_SHOW = "show"
 CMD_LS = PARSER_SPEC.cmd_ls
@@ -1184,6 +1190,8 @@ class BridgeCli:
             return
         print(VERSION_TITLE)
         print(format_version_line(VERSION_APP_NAME, version))
+        for line in build_lines():
+            print(line)
 
     def _prompt(self) -> str:
         mode = self._modes[-1]
@@ -6371,17 +6379,15 @@ class BridgeCli:
             _show_local_version - Show local app version information.
         """
         apps = []
-        for name in APP_VERSION_ORDER:
-            version = VERSIONS.get(name, EMPTY_STRING)
-            if not version:
-                continue
+        version = VERSIONS.get(VERSION_APP_NAME, EMPTY_STRING)
+        if version:
             apps.append(
                 {
-                    VERSION_KEY_NAME: name,
+                    VERSION_KEY_NAME: VERSION_APP_NAME,
                     VERSION_KEY_VERSION: version,
                 }
             )
-        payload = {VERSION_KEY_APPS: apps}
+        payload = {VERSION_KEY_APPS: apps, KEY_BUILD: build_info_payload()}
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             print(self._dump_json(payload, pretty))
@@ -6397,6 +6403,9 @@ class BridgeCli:
                     str(app.get(VERSION_KEY_VERSION, EMPTY_STRING)),
                 )
             )
+        print(BUILD_TITLE)
+        for line in build_lines():
+            print(line)
         return StatusResult(code=SS__NORMAL)
 
     def _show_local_sources(self, json_output: bool, pretty: bool) -> StatusResult:

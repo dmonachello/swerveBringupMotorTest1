@@ -79,7 +79,7 @@ BRIDGE CLI
     - batch scripts are linted to ensure devices are defined before add device.
     - show group text output includes members and bindings.
     - show devices (local) lists the full profile-derived device inventory, not only group members.
-    - show version prints local versions; add --robot to query the roboRIO.
+    - show version prints the bridge_cli version; add --robot to query the roboRIO.
     - Windows EOF uses Ctrl+Z then Enter (Ctrl+D on POSIX shells).
     - Registry push uses TCP only: `profiles push` / `config push` (no NT apply).
     - Registry push applies in-memory on the robot and does not persist to disk.

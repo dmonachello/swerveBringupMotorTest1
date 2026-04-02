@@ -49,6 +49,7 @@ from tools.common.app_versions import (
     VERSION_HEADER,
     format_version_line,
 )
+from tools.common.build_info import build_lines
 from .can_profiles import get_profile, get_profiles_load_error, list_profiles, reload_profiles
 from tools.config.schema_store import ConfigSchemaStore
 from tools.can_topology.live_topology_view import LiveTopologyView
@@ -88,6 +89,7 @@ ABOUT_NAME = "Bringup Control UI"
 ABOUT_DESCRIPTION = "PC-side NetworkTables command panel for RobotV2 bringup."
 ABOUT_LAUNCH = "Launch via tools/can_nt/run_can_nt.cmd --ui"
 ABOUT_SEPARATOR = "\n"
+BUILD_TITLE = "Build"
 
 
 def _load_profiles() -> List[str]:
@@ -328,6 +330,8 @@ class BringupControlUI(tk.Tk):
             return
         print(VERSION_TITLE)
         print(format_version_line(VERSION_APP_NAME, version))
+        for line in build_lines():
+            print(line)
 
     def _build_menu(self) -> None:
         """
@@ -832,7 +836,7 @@ class BringupControlUI(tk.Tk):
         """
         version = VERSIONS.get(VERSION_APP_NAME, "")
         version_line = format_version_line(VERSION_APP_NAME, version) if version else ""
-        lines = [ABOUT_NAME, version_line, ABOUT_DESCRIPTION, ABOUT_LAUNCH]
+        lines = [ABOUT_NAME, version_line, BUILD_TITLE, *build_lines(), ABOUT_DESCRIPTION, ABOUT_LAUNCH]
         body = ABOUT_SEPARATOR.join([line for line in lines if line])
         messagebox.showinfo(ABOUT_TITLE, body)
 

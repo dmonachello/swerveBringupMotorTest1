@@ -47,6 +47,7 @@ public class BridgeUiCommandHandler {
   private static final long TCP_KEEPALIVE_INTERVAL_MS = 1000;
   private static final long TCP_KEEPALIVE_MISSES = 5;
   private static final int UI_LOG_MAX_LINES = 200;
+  private static final int VERSION_TEXT_BUILDER_SIZE = 128;
   private static final String JSON_KEY_LABEL = "label";
   private static final String JSON_KEY_VENDOR = "vendor";
   private static final String JSON_KEY_TYPE = "type";
@@ -76,6 +77,10 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_CHANNEL_STICKY_FAULT = "channelStickyFault";
   private static final String JSON_KEY_JSON = "json";
   private static final String JSON_KEY_VERSION = "version";
+  private static final String JSON_KEY_BUILD = "build";
+  private static final String JSON_KEY_BUILD_FIELDS = "fields";
+  private static final String JSON_KEY_BUILD_LABEL = "label";
+  private static final String JSON_KEY_BUILD_VALUE = "value";
   private static final String CMD_SHOW_VERSION = "showVersion";
   private static final int INDEX_START = 0;
   private static final String JSON_KEY_OK = "ok";
@@ -107,6 +112,7 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_DEVICES_HEADER = "Devices:\n";
   private static final String TEXT_DEVICE_LIST_PREFIX = "  ";
   private static final String TEXT_EMPTY = "";
+  private static final String TEXT_BUILD_HEADER = "Build:";
   private static final String TEXT_TESTS_INFO_PROFILE = "Profile: ";
   private static final String TEXT_TESTS_INFO_SOURCE = "Source: ";
   private static final String TEXT_PROFILES_APPLY_OK = "Profiles applied.";
@@ -1879,7 +1885,10 @@ public class BridgeUiCommandHandler {
    *   buildVersionText - Build the show version text output.
    */
   private String buildVersionText() {
-    return AppVersion.VERSION_PREFIX + AppVersion.ROBOT_APP_VERSION;
+    StringBuilder sb = new StringBuilder(VERSION_TEXT_BUILDER_SIZE);
+    sb.append(AppVersion.VERSION_PREFIX).append(AppVersion.ROBOT_APP_VERSION);
+    appendBuildLines(sb);
+    return sb.toString();
   }
 
   /**
@@ -1889,7 +1898,60 @@ public class BridgeUiCommandHandler {
   private JsonObject buildVersionJson() {
     JsonObject root = new JsonObject();
     root.addProperty(JSON_KEY_VERSION, AppVersion.ROBOT_APP_VERSION);
+    root.add(JSON_KEY_BUILD, buildBuildInfoJson());
     return root;
+  }
+
+  /**
+   * NAME
+   *   appendBuildLines - Append build-info lines to a StringBuilder.
+   *
+   * PARAMETERS
+   *   sb - Target builder for build-info text.
+   */
+  private void appendBuildLines(StringBuilder sb) {
+    sb.append(BuildInfo.TEXT_NEWLINE).append(TEXT_BUILD_HEADER);
+    sb.append(BuildInfo.TEXT_NEWLINE)
+        .append(BuildInfo.formatBuildLine(BuildInfo.BUILD_LABEL_GIT, BuildInfo.BUILD_GIT_DESCRIBE));
+    sb.append(BuildInfo.TEXT_NEWLINE)
+        .append(BuildInfo.formatBuildLine(BuildInfo.BUILD_LABEL_SHA, BuildInfo.BUILD_GIT_SHA));
+    sb.append(BuildInfo.TEXT_NEWLINE)
+        .append(BuildInfo.formatBuildLine(BuildInfo.BUILD_LABEL_BRANCH, BuildInfo.BUILD_GIT_BRANCH));
+    sb.append(BuildInfo.TEXT_NEWLINE)
+        .append(BuildInfo.formatBuildLine(BuildInfo.BUILD_LABEL_DIRTY, BuildInfo.BUILD_GIT_DIRTY));
+    sb.append(BuildInfo.TEXT_NEWLINE)
+        .append(BuildInfo.formatBuildLine(BuildInfo.BUILD_LABEL_TIME, BuildInfo.BUILD_TIMESTAMP));
+  }
+
+  /**
+   * NAME
+   *   buildBuildInfoJson - Build JSON for build-info output.
+   */
+  private JsonObject buildBuildInfoJson() {
+    JsonObject root = new JsonObject();
+    JsonArray fields = new JsonArray();
+    fields.add(buildBuildField(BuildInfo.BUILD_LABEL_GIT, BuildInfo.BUILD_GIT_DESCRIBE));
+    fields.add(buildBuildField(BuildInfo.BUILD_LABEL_SHA, BuildInfo.BUILD_GIT_SHA));
+    fields.add(buildBuildField(BuildInfo.BUILD_LABEL_BRANCH, BuildInfo.BUILD_GIT_BRANCH));
+    fields.add(buildBuildField(BuildInfo.BUILD_LABEL_DIRTY, BuildInfo.BUILD_GIT_DIRTY));
+    fields.add(buildBuildField(BuildInfo.BUILD_LABEL_TIME, BuildInfo.BUILD_TIMESTAMP));
+    root.add(JSON_KEY_BUILD_FIELDS, fields);
+    return root;
+  }
+
+  /**
+   * NAME
+   *   buildBuildField - Build a JSON field entry for build-info.
+   *
+   * PARAMETERS
+   *   label - Build-info label.
+   *   value - Build-info value.
+   */
+  private JsonObject buildBuildField(String label, String value) {
+    JsonObject entry = new JsonObject();
+    entry.addProperty(JSON_KEY_BUILD_LABEL, label);
+    entry.addProperty(JSON_KEY_BUILD_VALUE, value);
+    return entry;
   }
 
   /**
