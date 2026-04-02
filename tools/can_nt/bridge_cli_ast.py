@@ -684,7 +684,7 @@ class BridgeCliAstExecutor:
             SHOW_TARGET_PROFILE,
             SHOW_TARGET_PROFILES,
             SPEC.show_target_device,
-            SPEC.show_target_device_registry,
+                SPEC.show_target_device_group,
         ):
             source = SPEC.show_source_local
         if target == SHOW_TARGET_VERSION and not source:

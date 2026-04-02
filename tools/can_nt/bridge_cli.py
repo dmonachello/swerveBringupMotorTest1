@@ -582,6 +582,8 @@ MESSAGE_TESTS_CLEARED = "Tests cleared."
 MESSAGE_TIP_UNSAVED = "You have unsaved changes. Use `save profiles ...` or `save sources` to save."
 MESSAGE_ERR_TESTS_EDIT_MODE = "ERROR: tests templates/clear not allowed in test edit mode. Use `exit` or `end` first."
 MESSAGE_SAVE_ALL_PROFILES_MISSING = "ERROR: No profiles destination set. Fix: save profiles data/bringup_system.json"
+MESSAGE_SAVE_PROFILES_PATH_REQUIRED = "ERROR: No profiles path set. Fix: save profiles <path>."
+MESSAGE_SAVE_PROFILES_CONFIRM = "Save profiles to {path}?"
 MESSAGE_SAVE_ALL_BINDINGS_MISSING = (
     "ERROR: No bindings destination set. Fix: bindings save src/main/deploy/bringup_bindings.json"
 )
@@ -1060,6 +1062,7 @@ class BridgeCli:
         """
         self._print_version_banner()
         self._auto_merge_default_profiles()
+        self._auto_load_default_sources()
         while True:
             try:
                 prompt = self._prompt()
@@ -1147,6 +1150,7 @@ class BridgeCli:
         """
         self._print_version_banner()
         self._auto_merge_default_profiles()
+        self._auto_load_default_sources()
         lint_error = self._lint_script(lines)
         if lint_error:
             print(f"ERROR: {lint_error}")
@@ -1230,6 +1234,19 @@ class BridgeCli:
         result = self._apply_config_plan(plan, prompt_on_replace=False)
         if result.ok():
             print(MESSAGE_AUTO_MERGE_OK.format(path=path))
+
+
+    def _auto_load_default_sources(self) -> None:
+        """
+        NAME
+            _auto_load_default_sources - Auto-load default bindings/mappings if present.
+        """
+        bindings_path = bindings_deploy_path()
+        if bindings_path.exists():
+            self._load_bindings_from_path(bindings_path, announce=True)
+        mappings_path = can_mappings_path()
+        if mappings_path.exists():
+            self._load_can_mappings_from_path(mappings_path)
 
     def _profiles_hash(self, payload: Optional[Dict[str, object]]) -> Optional[str]:
         """
@@ -4450,8 +4467,19 @@ class BridgeCli:
             if not result.ok():
                 return result
             return StatusResult(code=SS__NORMAL)
-        if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == "profiles":
-            result = self._save_profiles(tokens[2])
+        if cmd == "save" and len(tokens) >= 2 and tokens[1].lower() == "profiles":
+            path = tokens[2] if len(tokens) >= 3 else ""
+            if not path:
+                if not self._local_root_path:
+                    print(MESSAGE_SAVE_PROFILES_PATH_REQUIRED)
+                    return StatusResult(code=SS__CONFIG__NOT_LOADED)
+                if self._batch:
+                    print(MESSAGE_SAVE_PROFILES_PATH_REQUIRED)
+                    return StatusResult(code=SS__CONFIG__NOT_LOADED)
+                if not self._confirm(MESSAGE_SAVE_PROFILES_CONFIRM.format(path=self._local_root_path)):
+                    return StatusResult(code=SS__EXECUTOR__CANCELLED)
+                path = str(self._local_root_path)
+            result = self._save_profiles(path)
             if not result.ok():
                 return result
             return StatusResult(code=SS__NORMAL)
@@ -5839,8 +5867,9 @@ class BridgeCli:
             ),
             "save local-config": "save local-config <path>\n  Save local per-profile groups config.",
             "save profiles": (
-                "save profiles <path>\n"
-                "  Save bringup_system.json (profiles + bridgeConfig.byProfile)."
+                "save profiles [path]\n"
+                "  Save bringup_system.json (profiles + bridgeConfig.byProfile).\n"
+                "  If path is omitted, uses the loaded profiles path (prompts)."
             ),
             "save unified-config": (
                 "save unified-config <path>\n"

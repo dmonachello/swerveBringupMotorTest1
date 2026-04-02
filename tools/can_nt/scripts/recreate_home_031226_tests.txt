@@ -1,0 +1,103 @@
+configure terminal
+profile home_031226
+
+tests clear
+
+test create "Rotation only (internal)"
+type composite
+device add "SPARKMAX/NEO 25"
+duty 0.2
+rotation limit 15.0
+rotation encoderKey internal
+rotation encoderMotorIndex 0
+exit
+
+test create "Deadband sweep (internal)"
+type composite
+device add "SPARKMAX/NEO 25"
+duty 0.2
+time timeout 5.0
+time onTimeout pass
+exit
+
+test create "Rotation + Time"
+type composite
+device add "FALCON 9"
+duty 0.2
+rotation limit 10.0
+rotation encoderKey internal
+rotation encoderMotorIndex 0
+time timeout 2.0
+time onTimeout fail
+exit
+
+test create "Time only"
+type composite
+device add "SPARKMAX/NEO550 7"
+duty 0.3
+time timeout 1.5
+time onTimeout pass
+exit
+
+test create "Nudge (0.2 for 0.5s)"
+type composite
+device add "SPARKMAX/NEO 25"
+duty 0.2
+time timeout 0.5
+time onTimeout pass
+exit
+
+test create "Limit switch only"
+type composite
+device add "SPARKMAX/NEO550 7"
+duty 0.2
+limitswitch id "SPARKMAX/NEO550 7 limit fwd"
+limitswitch onHit pass
+exit
+
+test create "Hold to run"
+type composite
+device add "FALCON 9"
+duty 0.2
+termination hold
+hold onRelease pass
+exit
+
+test create "Rotation + Time + Limit"
+type composite
+device add "SPARKMAX/NEO550 7"
+device add "SPARKMAX/NEO 25"
+device add "FALCON 9"
+duty 0.2
+rotation limit 10.0
+rotation encoderKey internal
+rotation encoderMotorIndex 0
+time timeout 2.0
+time onTimeout fail
+limitswitch id "SPARKMAX/NEO550 7 limit fwd"
+limitswitch onHit pass
+exit
+
+test create "All checks"
+type composite
+device add "SPARKMAX/NEO550 7"
+duty 0.2
+rotation limit 8.0
+rotation encoderKey internal
+rotation encoderMotorIndex 0
+time timeout 3.0
+time onTimeout pass
+termination hold
+hold onRelease pass
+limitswitch id "SPARKMAX/NEO550 7 limit fwd"
+limitswitch onHit pass
+exit
+
+test create "Joystick motor (controller0.leftY)"
+type joystick
+device add "SPARKMAX/NEO 25"
+device add "FALCON 9"
+inputSource controller0.leftY
+deadband 0.12
+exit
+save profiles data/bringup_system.json

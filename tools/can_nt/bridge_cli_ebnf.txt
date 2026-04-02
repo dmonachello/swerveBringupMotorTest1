@@ -81,7 +81,7 @@ config         = "group" ws name
                | "export" ws "cli-script" ws path
                | "save" ws "config" ws path
                | "save" ws "local-config" ws path
-               | "save" ws "profiles" ws path
+               | "save" ws "profiles" [ ws path ]
                | "save" ws "unified-config" ws path
                | "save" ws "all" [ ws "--prompt" ]
                | "save" ws "sources"
@@ -159,10 +159,14 @@ device         = ("show" | "ls")
                | "delete" ;
 
 test           = ("show" | "ls")
-               | "type" ws ("joystick" | "button" | "composite" | "deadbandSweep" | "deviceAction")
+               | "type" ws ("joystick"
+                            | "button"
+                            | "composite"
+                            | "deadbandsweep" | "deadbandSweep"
+                            | "deviceaction" | "deviceAction")
                | "device" ws "add" ws name
                | "no" ws "device" ws name
-               | "inputSource" ws name
+               | "inputsource" ws name
                | "deadband" ws number
                | "duty" ws number
                | "action" ws name
@@ -177,10 +181,10 @@ test           = ("show" | "ls")
                | "time" ws "onTimeout" ws name
                | "hold" ws "onRelease" ws name
                | "limitswitch" ws ("onHit" | "id") ws name
-               | "deadbandSweep" ws ("startDuty" | "maxDuty" | "stepDuty" | "stepHoldSec" | "motionThresholdRot") ws number
-               | "deadbandSweep" ws "requiredSamples" ws number
-               | "deadbandSweep" ws ("encoderKey" | "encoderSource") ws name
-               | "deadbandSweep" ws ("encoderMotorIndex" | "encoderCountsPerRev") ws number
+               | "deadbandsweep" ws ("startDuty" | "maxDuty" | "stepDuty" | "stepHoldSec" | "motionThresholdRot") ws number
+               | "deadbandsweep" ws "requiredSamples" ws number
+               | "deadbandsweep" ws ("encoderKey" | "encoderSource") ws name
+               | "deadbandsweep" ws ("encoderMotorIndex" | "encoderCountsPerRev") ws number
                | "enabled" ws ("true" | "false" | "on" | "off")
                | "termination" ws "hold"
                | "termination" ws "time" ws number

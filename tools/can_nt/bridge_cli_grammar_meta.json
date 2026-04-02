@@ -11,6 +11,8 @@
     "end",
     "help",
     "ping",
+    "echo",
+    "messages",
     "quit"
   ],
   "show_flags": [

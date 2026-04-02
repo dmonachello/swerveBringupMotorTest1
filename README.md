@@ -158,6 +158,13 @@ python tools\can_nt\can_nt_bridge.py --pcap-pipe FRC_CAN
 Purpose: Track and update app versions consistently.
 
 - Version source: `tools/common/app_versions.py`.
+Version helper (preferred):
+- Show version: `bump show bridge_cli`
+- Bump minor: `bump bump bridge_cli minor`
+- Set version: `bump set bridge_cli 0.4.1`
+- Field-set patch: `bump field-set bridge_cli patch 7`
+
+Underlying script (still available):
 - Update all apps: `python tools/update_versions.py --set all=1.2.3`
 - Update one app: `python tools/update_versions.py --set can_nt_bridge=1.2.3`
 - Show versions:

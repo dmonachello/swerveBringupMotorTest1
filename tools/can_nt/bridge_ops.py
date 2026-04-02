@@ -38,6 +38,7 @@ from tools.common.profile_constants import (
     KEY_BRIDGE_GROUPS,
     KEY_BRIDGE_SCHEMA_VERSION,
     KEY_BRIDGE_SELECTED_DEVICE,
+    KEY_BRIDGE_TESTS,
     KEY_BUS,
     KEY_DEFAULT_PROFILE,
     KEY_DEVICES,
@@ -846,6 +847,9 @@ def _normalize_bridge_config(
         if isinstance(selected, dict):
             selected_device = str(selected.get(KEY_DEVICE, "")).strip()
             selected_enabled = bool(selected.get("enabled", False))
+        tests = entry.get(KEY_BRIDGE_TESTS)
+        if not isinstance(tests, dict):
+            tests = None
         normalized[name] = {
             KEY_BRIDGE_GROUPS: groups,
             KEY_BRIDGE_SELECTED_DEVICE: {
@@ -853,6 +857,8 @@ def _normalize_bridge_config(
                 "enabled": selected_enabled,
             },
         }
+        if tests is not None:
+            normalized[name][KEY_BRIDGE_TESTS] = tests
     return (
         {
             KEY_BRIDGE_SCHEMA_VERSION: version,

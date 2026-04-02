@@ -2090,15 +2090,37 @@
         "selectedDevice": {
           "device": "",
           "enabled": false
+        }
+      },
+      "home_tests_033026": {
+        "groups": [],
+        "selectedDevice": {
+          "device": "",
+          "enabled": false
+        }
+      },
+      "example_default": {
+        "groups": [],
+        "selectedDevice": {
+          "device": "",
+          "enabled": false
+        }
+      },
+      "home_031226": {
+        "groups": [],
+        "selectedDevice": {
+          "device": "",
+          "enabled": false
         },
         "tests": {
+          "default_test_set": "default",
           "test_sets": {
             "default": [
               {
                 "name": "Rotation only (internal)",
                 "enabled": false,
                 "motorLabels": [
-                  "Feeder Motor"
+                  "SPARKMAX/NEO 25"
                 ],
                 "type": "composite",
                 "duty": 0.2,
@@ -2112,7 +2134,7 @@
                 "name": "Deadband sweep (internal)",
                 "enabled": false,
                 "motorLabels": [
-                  "Feeder Motor"
+                  "SPARKMAX/NEO 25"
                 ],
                 "type": "composite",
                 "duty": 0.2,
@@ -2125,7 +2147,7 @@
                 "name": "Rotation + Time",
                 "enabled": false,
                 "motorLabels": [
-                  "Feeder Motor"
+                  "FALCON 9"
                 ],
                 "type": "composite",
                 "duty": 0.2,
@@ -2143,7 +2165,7 @@
                 "name": "Time only",
                 "enabled": false,
                 "motorLabels": [
-                  "Feeder Motor"
+                  "SPARKMAX/NEO550 7"
                 ],
                 "type": "composite",
                 "duty": 0.3,
@@ -2156,7 +2178,7 @@
                 "name": "Nudge (0.2 for 0.5s)",
                 "enabled": false,
                 "motorLabels": [
-                  "Feeder Motor"
+                  "SPARKMAX/NEO 25"
                 ],
                 "type": "composite",
                 "duty": 0.2,
@@ -2169,21 +2191,21 @@
                 "name": "Limit switch only",
                 "enabled": false,
                 "motorLabels": [
-                  "Feeder Motor"
+                  "SPARKMAX/NEO550 7"
                 ],
                 "type": "composite",
                 "duty": 0.2,
                 "limitSwitch": {
                   "enabled": true,
                   "onHit": "pass",
-                  "id": "lmtSw1"
+                  "id": "SPARKMAX/NEO550 7 limit fwd"
                 }
               },
               {
                 "name": "Hold to run",
                 "enabled": false,
                 "motorLabels": [
-                  "Feeder Motor"
+                  "FALCON 9"
                 ],
                 "type": "composite",
                 "duty": 0.2,
@@ -2196,7 +2218,9 @@
                 "name": "Rotation + Time + Limit",
                 "enabled": false,
                 "motorLabels": [
-                  "Feeder Motor"
+                  "SPARKMAX/NEO550 7",
+                  "SPARKMAX/NEO 25",
+                  "FALCON 9"
                 ],
                 "type": "composite",
                 "duty": 0.2,
@@ -2212,14 +2236,14 @@
                 "limitSwitch": {
                   "enabled": true,
                   "onHit": "pass",
-                  "id": "lmtSw1"
+                  "id": "SPARKMAX/NEO550 7 limit fwd"
                 }
               },
               {
                 "name": "All checks",
                 "enabled": false,
                 "motorLabels": [
-                  "Feeder Motor"
+                  "SPARKMAX/NEO550 7"
                 ],
                 "type": "composite",
                 "duty": 0.2,
@@ -2239,106 +2263,23 @@
                 "limitSwitch": {
                   "enabled": true,
                   "onHit": "pass",
-                  "id": "lmtSw1"
+                  "id": "SPARKMAX/NEO550 7 limit fwd"
                 }
               },
               {
                 "name": "Joystick motor (controller0.leftY)",
                 "enabled": false,
                 "motorLabels": [
-                  "Feeder Motor"
+                  "SPARKMAX/NEO 25",
+                  "FALCON 9"
                 ],
                 "type": "joystick",
                 "inputSource": "controller0.leftY",
                 "deadband": 0.12
               }
-            ]
-          },
-          "default_test_set": "default"
-        }
-      },
-      "home_tests_033026": {
-        "groups": [],
-        "selectedDevice": {
-          "device": "",
-          "enabled": false
-        },
-        "tests": {
-          "test_sets": {
-            "smoke": [
-              {
-                "name": "Rotation only (internal)",
-                "enabled": true,
-                "motorLabels": [
-                  "Feeder Motor"
-                ],
-                "type": "composite",
-                "duty": 0.2,
-                "rotation": {
-                  "limitRot": 2.0,
-                  "encoderKey": "internal",
-                  "encoderMotorIndex": 0
-                }
-              },
-              {
-                "name": "Time only",
-                "enabled": true,
-                "motorLabels": [
-                  "Feeder Motor"
-                ],
-                "type": "composite",
-                "duty": 0.3,
-                "time": {
-                  "timeoutSec": 1.5,
-                  "onTimeout": "pass"
-                }
-              },
-              {
-                "name": "Nudge (0.2 for 0.5s)",
-                "enabled": true,
-                "motorLabels": [
-                  "Feeder Motor"
-                ],
-                "type": "composite",
-                "duty": 0.2,
-                "time": {
-                  "timeoutSec": 0.5,
-                  "onTimeout": "pass"
-                }
-              },
-              {
-                "name": "Hold to run",
-                "enabled": true,
-                "motorLabels": [
-                  "Feeder Motor"
-                ],
-                "type": "composite",
-                "duty": 0.2,
-                "hold": {
-                  "enabled": true,
-                  "onRelease": "pass"
-                }
-              },
-              {
-                "name": "Joystick motor (controller0.leftY)",
-                "enabled": true,
-                "motorLabels": [
-                  "Feeder Motor"
-                ],
-                "type": "joystick",
-                "inputSource": "controller0.leftY",
-                "deadband": 0.12
-              }
-            ]
-          },
-          "default_test_set": "smoke"
-        }
-      },
-      "example_default": {
-        "groups": [],
-        "selectedDevice": {
-          "device": "",
-          "enabled": false
+            ],
+            "mini": []
+          }
         }
       }
     }
@@ -3288,6 +3229,6 @@
       "type": "roborio"
     }
   ],
-  "data_version": "2026-04-01_131521",
-  "data_hash": "17ae86b2652c23a1a01b23e4bd6cd6f87a8954f21ddb39c7b08cda96d56b779c"
+  "data_version": "2026-04-02_132011",
+  "data_hash": "eb740a20ba6dca2bbf304f91773bec8ba086e23887dafbef8c678ac51cefc4bb"
 }
