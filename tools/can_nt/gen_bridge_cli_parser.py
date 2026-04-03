@@ -54,13 +54,13 @@ WS: /[ \\t]+/
 
 CUSTOM_RULES = """
 ws: WS
-name: TOKEN
+name: TOKEN | "default"
 input: TOKEN
 path: TOKEN
 field: TOKEN | "type" | "invert"
 value: NUMBER
 number: NUMBER
-value_text: (TOKEN | "true" | "false" | "on" | "off") (WS (TOKEN | "true" | "false" | "on" | "off"))*
+value_text: (TOKEN | "true" | "false" | "on" | "off" | "default") (WS (TOKEN | "true" | "false" | "on" | "off" | "default"))*
 """.strip()
 
 CMD_SHOW_ALL = "show-all"
@@ -404,8 +404,10 @@ def _write_constants(meta: Dict[str, object], mode_commands: Dict[str, tuple[str
     lines.append("    cmd_save_local_config: str")
     lines.append("    cmd_save_profiles: str")
     lines.append("    cmd_save_unified: str")
+    lines.append("    cmd_save_tests: str")
     lines.append("    cmd_savep: str")
     lines.append("    cmd_push: str")
+    lines.append("    cmd_init: str")
     lines.append("    cmd_activate: str")
     lines.append("    cmd_default: str")
     lines.append("    cmd_rename: str")
@@ -498,6 +500,7 @@ def _write_constants(meta: Dict[str, object], mode_commands: Dict[str, tuple[str
     lines.append("    label_import: str")
     lines.append("    label_export: str")
     lines.append("    label_save: str")
+    lines.append("    label_profiles_init: str")
     lines.append("    label_rename: str")
     lines.append("    label_device: str")
     lines.append("    label_device_set: str")
@@ -540,6 +543,7 @@ def _write_constants(meta: Dict[str, object], mode_commands: Dict[str, tuple[str
     lines.append("    kind_config_save: str")
     lines.append("    kind_config_load: str")
     lines.append("    kind_config_push: str")
+    lines.append("    kind_config_profiles_init: str")
     lines.append("    kind_config_rename_device: str")
     lines.append("    kind_config_device: str")
     lines.append("    kind_config_device_set: str")
@@ -630,8 +634,10 @@ def _write_constants(meta: Dict[str, object], mode_commands: Dict[str, tuple[str
     lines.append(f"    cmd_save_local_config={commands['save_local_config']!r},")
     lines.append(f"    cmd_save_profiles={commands['save_profiles']!r},")
     lines.append(f"    cmd_save_unified={commands['save_unified']!r},")
+    lines.append(f"    cmd_save_tests={commands['save_tests']!r},")
     lines.append(f"    cmd_savep={commands['savep']!r},")
     lines.append(f"    cmd_push={commands['push']!r},")
+    lines.append(f"    cmd_init={commands['init']!r},")
     lines.append(f"    cmd_activate={commands['activate']!r},")
     lines.append(f"    cmd_default={commands['default']!r},")
     lines.append(f"    cmd_rename={commands['rename']!r},")
@@ -724,6 +730,7 @@ def _write_constants(meta: Dict[str, object], mode_commands: Dict[str, tuple[str
     lines.append(f"    label_import={labels['import']!r},")
     lines.append(f"    label_export={labels['export']!r},")
     lines.append(f"    label_save={labels['save']!r},")
+    lines.append(f"    label_profiles_init={labels['profiles_init']!r},")
     lines.append(f"    label_rename={labels['rename']!r},")
     lines.append(f"    label_device={labels['device']!r},")
     lines.append(f"    label_device_set={labels['device_set']!r},")
@@ -766,6 +773,7 @@ def _write_constants(meta: Dict[str, object], mode_commands: Dict[str, tuple[str
     lines.append(f"    kind_config_save={kinds['config_save']!r},")
     lines.append(f"    kind_config_load={kinds['config_load']!r},")
     lines.append(f"    kind_config_push={kinds['config_push']!r},")
+    lines.append(f"    kind_config_profiles_init={kinds['config_profiles_init']!r},")
     lines.append(f"    kind_config_rename_device={kinds['config_rename_device']!r},")
     lines.append(f"    kind_config_device={kinds['config_device']!r},")
     lines.append(f"    kind_config_device_set={kinds['config_device_set']!r},")

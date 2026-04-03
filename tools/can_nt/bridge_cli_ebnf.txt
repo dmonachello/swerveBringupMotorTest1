@@ -14,6 +14,7 @@ common         = "exit"
                | "ping"
                | "echo" ws ("on" | "off")
                | "messages" ws ("beginner" | "medium" | "expert")
+               | "debug" ws "grammar" [ ws "--json" ]
                | "quit" ;
 
 exec           = show_exec
@@ -32,6 +33,7 @@ show_target    = "status"
                | "group" ws name
                | "devices"
                | "device" ws name
+               | "device" ws "registry" ws name
                | "commands"
                | "help"
                | "controllers"
@@ -41,6 +43,7 @@ show_target    = "status"
                | "version"
                | "sources"
                | "bindings"
+               | "can-mappings" [ ws ("manufacturers" | "device-types" | "device-type") ]
                | "selected-device"
                | "runtime-state"
                | "config"
@@ -58,7 +61,7 @@ show_target    = "status"
 
 show_source    = "robot" | "local" | "both" ;
 show_flags     = show_flag { ws show_flag } ;
-show_flag      = show_source | "--json" | "--pretty" ;
+show_flag      = show_source | "--json" | "--pretty" | "--all" ;
 
 config         = "group" ws name
                | "no" ws "group" ws name
@@ -66,11 +69,15 @@ config         = "group" ws name
                | "profile" ws name
                | "profile" ws "default" ws name
                | "profile" ws "create" ws name
+               | "profile" ws "delete" ws name
+               | "profile" ws "export" ws name ws path
                | "profile" ws "device" ws "delete" ws name
                | "profile" ws "device" ws "show-all" ws name
                | "prof" ws name
                | "prof" ws "default" ws name
                | "prof" ws "create" ws name
+               | "prof" ws "delete" ws name
+               | "prof" ws "export" ws name ws path
                | "prof" ws "device" ws "delete" ws name
                | "prof" ws "device" ws "show-all" ws name
                | "selected-device" ws name
@@ -79,6 +86,7 @@ config         = "group" ws name
                | "import" ws "config" ws path
                | "export" ws "runtime-groups" ws path
                | "export" ws "cli-script" ws path
+               | "save" ws "tests" ws path
                | "save" ws "config" ws path
                | "save" ws "local-config" ws path
                | "save" ws "profiles" [ ws path ]
@@ -89,15 +97,19 @@ config         = "group" ws name
                | "save" ws "sources"
                | "savep" ws path
                | "load" ws "sources"
+               | "write" ws "tests" ws path
                | "rename" ws "device" ws name ws name
                | "rename" ws name ws name
                | "device" ws name
-               | "device" ws name ws "set" ws device_field ws value_text
+               | "device" ws name ws "set" ws device_field ws value_or_text
+               | ("validate" | "val") ws "all"
                | ("validate" | "val") ws "config" [ ws path ] [ ws "--all" ]
                | ("validate" | "val") ws "profiles" [ ws ("robot" | "local") ] [ ws "--active" ]
                | ("validate" | "val") ws "tests" [ ws "--active-set" ]
                | ("validate" | "val") ws "bindings" [ ws path ]
                | ("validate" | "val") ws "can-mappings" [ ws path ]
+               | ("validate" | "val") ws "script" ws path
+               | "profiles" ws "init"
                | "profiles" ws "push" ws path [ ws "--activate" ws name ]
                | "config" ws "push" ws path [ ws "--activate" ws name ]
                | ("show" | "ls") ws show_target [ ws show_flags ]
@@ -110,7 +122,7 @@ config         = "group" ws name
                            | "delete" ws name
                            | name) ;
 
-diagnose       = "diagnose" ws ("motor" | "device") ws name ;
+diagnose       = "diagnose" ws name ws name ;
 
 bindings_args  = ("show" | "ls") [ ws ("controllers" | "bindings" | "axes") ] [ ws show_flags ]
                | "controller" ws ("add" ws name ws name ws number
@@ -216,7 +228,7 @@ device_field   = "interface"
                | "notes"
                | "tags"
                | "limits" ;
-value_text     = token { ws token } ;
+value_text     = (token | "default") { ws (token | "default") } ;
 
 token          = token_char { token_char } ;
 token_char     = ? any non-whitespace character ? ;

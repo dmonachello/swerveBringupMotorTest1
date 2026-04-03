@@ -42,6 +42,7 @@
     "device-usage",
     "device-registry",
     "bindings",
+    "can-mappings",
     "selected-device",
     "runtime-state",
     "tests",
@@ -80,6 +81,7 @@
     "selected_mode": "selected-mode",
     "on": "on",
     "off": "off",
+    "all": "all",
     "merge": "merge",
     "import": "import",
     "config": "config",
@@ -93,7 +95,9 @@
     "save_unified": "unified-config",
     "savep": "savep",
     "profiles": "profiles",
+    "init": "init",
     "push": "push",
+    "profiles_init": "profiles init",
     "activate": "--activate",
     "default": "default",
     "rename": "rename",
@@ -136,7 +140,8 @@
     "run": "run",
     "test": "test",
     "members": "members",
-    "binding": "binding"
+    "binding": "binding",
+    "save_tests": "tests"
   },
   "kinds": {
     "common_exit": "common_exit",
@@ -159,6 +164,7 @@
     "config_save": "config_save",
     "config_load": "config_load",
     "config_push": "config_push",
+    "config_profiles_init": "config_profiles_init",
     "config_rename_device": "config_rename_device",
     "config_device": "config_device",
     "config_device_set": "config_device_set",
@@ -209,7 +215,8 @@
     "bind": "bind",
     "no_bind": "no bind",
     "enable": "enable/disable",
-    "run_test": "run test"
+    "run_test": "run test",
+    "profiles_init": "profiles init"
   },
   "messages": {
     "unknown_mode": "unknown mode '%s'",

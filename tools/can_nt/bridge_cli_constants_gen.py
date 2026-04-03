@@ -71,8 +71,10 @@ class ParserSpec:
     cmd_save_local_config: str
     cmd_save_profiles: str
     cmd_save_unified: str
+    cmd_save_tests: str
     cmd_savep: str
     cmd_push: str
+    cmd_init: str
     cmd_activate: str
     cmd_default: str
     cmd_rename: str
@@ -165,6 +167,7 @@ class ParserSpec:
     label_import: str
     label_export: str
     label_save: str
+    label_profiles_init: str
     label_rename: str
     label_device: str
     label_device_set: str
@@ -207,6 +210,7 @@ class ParserSpec:
     kind_config_save: str
     kind_config_load: str
     kind_config_push: str
+    kind_config_profiles_init: str
     kind_config_rename_device: str
     kind_config_device: str
     kind_config_device_set: str
@@ -250,7 +254,7 @@ SPEC = ParserSpec(
     show_source_robot='robot',
     show_source_local='local',
     show_source_both='both',
-    show_targets=('status', 'groups', 'group', 'devices', 'device', 'commands', 'help', 'version', 'device-usage', 'device-registry', 'bindings', 'selected-device', 'runtime-state', 'tests', 'test', 'config', 'sources', 'profiles', 'profile', 'message-level', 'workspace', 'session', 'controllers', 'device-group'),
+    show_targets=('status', 'groups', 'group', 'devices', 'device', 'commands', 'help', 'version', 'device-usage', 'device-registry', 'bindings', 'can-mappings', 'selected-device', 'runtime-state', 'tests', 'test', 'config', 'sources', 'profiles', 'profile', 'message-level', 'workspace', 'session', 'controllers', 'device-group'),
     show_target_config='config',
     show_target_runtime_state='runtime-state',
     show_target_tests='tests',
@@ -294,8 +298,10 @@ SPEC = ParserSpec(
     cmd_save_local_config='local-config',
     cmd_save_profiles='profiles',
     cmd_save_unified='unified-config',
+    cmd_save_tests='tests',
     cmd_savep='savep',
     cmd_push='push',
+    cmd_init='init',
     cmd_activate='--activate',
     cmd_default='default',
     cmd_rename='rename',
@@ -388,6 +394,7 @@ SPEC = ParserSpec(
     label_import='import config',
     label_export='export',
     label_save='save',
+    label_profiles_init='profiles init',
     label_rename='rename device',
     label_device='device',
     label_device_set='device set',
@@ -430,6 +437,7 @@ SPEC = ParserSpec(
     kind_config_save='config_save',
     kind_config_load='config_load',
     kind_config_push='config_push',
+    kind_config_profiles_init='config_profiles_init',
     kind_config_rename_device='config_rename_device',
     kind_config_device='config_device',
     kind_config_device_set='config_device_set',

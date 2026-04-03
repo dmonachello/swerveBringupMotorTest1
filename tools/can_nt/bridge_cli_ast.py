@@ -16,6 +16,12 @@ DESCRIPTION
 from typing import Dict, Optional
 
 from tools.can_nt.bridge_cli_parser import CommandAst, SPEC
+CMD_ALL = "all"
+MESSAGE_VALIDATE_ALL_HEADER = "Validate all:"
+MESSAGE_VALIDATE_ALL_ITEM_OK = "  {label}: OK"
+MESSAGE_VALIDATE_ALL_ITEM_ERR = "  {label}: ERROR: {message}"
+MESSAGE_VALIDATE_ALL_SUMMARY_OK = "OK: All validations passed."
+MESSAGE_VALIDATE_ALL_SUMMARY_ERR = "ERROR: Validation failures: {count}"
 from tools.can_nt.status import (
     StatusResult,
     SS__CLI_PARSER__UNKNOWN_COMMAND,
@@ -104,6 +110,7 @@ AST_EXEC_SPEC = {
     "fmt_delete_group": "Delete group '%s'?",
     "fmt_delete_profile_device": "Delete profile device '%s'?",
     "fmt_profile_device_deleted": "Deleted profile device %s.",
+    "fmt_delete_profile": "Delete profile '%s'?",
     "fmt_rename_device": "Renamed device %s -> %s.",
     "fmt_update_device": "Updated device %s %s=%s.",
     "fmt_clear_device": "Cleared device %s %s.",
@@ -183,6 +190,7 @@ class BridgeCliAstExecutor:
             SPEC.kind_config_save: self._ast_config_save,
             SPEC.kind_config_load: self._ast_config_load,
             SPEC.kind_config_push: self._ast_config_push,
+            SPEC.kind_config_profiles_init: self._ast_config_profiles_init,
             SPEC.kind_config_rename_device: self._ast_config_rename_device,
             SPEC.kind_config_no_device: self._ast_config_no_device,
             SPEC.kind_config_device: self._ast_config_device,
@@ -293,11 +301,22 @@ class BridgeCliAstExecutor:
             return StatusResult(code=SS__NORMAL)
         if ast.field == SPEC.cmd_default:
             return self._cli._set_default_profile(ast.profile_name)
+        if ast.field == SPEC.cmd_export:
+            return self._cli._export_profile_bundle(ast.profile_name, ast.path)
         if ast.field == SPEC.cmd_delete:
+            if ast.profile_name and not ast.device_name:
+                name = ast.profile_name
+                if not self._cli._batch and not self._cli._confirm(
+                    AST_EXEC_SPEC["fmt_delete_profile"] % name
+                ):
+                    return None
+                return self._cli._delete_profile(name)
             name = ast.device_name
             if not name:
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            if not self._cli._confirm(AST_EXEC_SPEC["fmt_delete_profile_device"] % name):
+            if not self._cli._batch and not self._cli._confirm(
+                AST_EXEC_SPEC["fmt_delete_profile_device"] % name
+            ):
                 return None
             result = self._cli._delete_profiles_device(name)
             if not result.ok():
@@ -405,6 +424,9 @@ class BridgeCliAstExecutor:
         print(AST_EXEC_SPEC["msg_err_unknown_cmd"])
         return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
 
+    def _ast_config_profiles_init(self, ast: CommandAst) -> Optional[StatusResult]:
+        return self._cli._init_profiles_payload()
+
     def _ast_config_rename_device(self, ast: CommandAst) -> Optional[int]:
         if self._cli._rename_local_device(ast.device_name, ast.field):
             print(AST_EXEC_SPEC["fmt_rename_device"] % (ast.device_name, ast.field))
@@ -436,6 +458,20 @@ class BridgeCliAstExecutor:
 
     def _ast_config_validate(self, ast: CommandAst) -> Optional[StatusResult]:
         target = ast.field or SPEC.empty_str
+        if target == CMD_ALL:
+            ok, results = self._cli.validate_all()
+            print(MESSAGE_VALIDATE_ALL_HEADER)
+            for label, item_ok, message in results:
+                if item_ok:
+                    print(MESSAGE_VALIDATE_ALL_ITEM_OK.format(label=label))
+                else:
+                    print(MESSAGE_VALIDATE_ALL_ITEM_ERR.format(label=label, message=message))
+            if ok:
+                print(MESSAGE_VALIDATE_ALL_SUMMARY_OK)
+                return StatusResult(code=SS__CONFIG__VALID)
+            failures = [item for item in results if not item[1]]
+            print(MESSAGE_VALIDATE_ALL_SUMMARY_ERR.format(count=len(failures)))
+            return StatusResult(code=SS__CONFIG__INVALID)
         all_issues = ast.value == SPEC.cmd_validate_all
         if target == SPEC.cmd_config:
             if ast.path:
