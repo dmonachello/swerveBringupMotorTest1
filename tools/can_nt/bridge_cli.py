@@ -8774,6 +8774,7 @@ class BridgeCli:
             + PROFILE_EXPORT_PATH_SEPARATOR
             + profile_token
         )
+        lines.append(CMD_VALIDATE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_VALIDATE_ALL)
         lines.append(CMD_SAVE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_SOURCES)
         lines.append(PROFILE_EXPORT_CMD_EXIT)
         return lines
