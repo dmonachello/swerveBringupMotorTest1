@@ -372,8 +372,15 @@ CMD_TEMPLATE = "template"
 CMD_INFO = "info"
 CMD_DEBUG = "debug"
 CMD_GRAMMAR = "grammar"
+CMD_RECOVER = "recover"
+CMD_LAST_GOOD = "last-good"
+CMD_FROM = "from"
+CMD_LIST = "list"
+CMD_FILE = "file"
 FLAG_JSON = "--json"
 FLAG_DOT = "--dot"
+FLAG_FORCE = "--force"
+FLAG_REPAIR = "--repair"
 QUESTION_MARK = "?"
 SUGGESTION_SEPARATOR = " | "
 MESSAGE_NEXT_ARGS_PREFIX = "Next args: "
@@ -395,6 +402,19 @@ MESSAGE_EMPTY_PROMPT = ""
 HISTORY_FILENAME = "bridge_cli_history.txt"
 ENCODING_UTF8 = "utf-8"
 FILE_MODE_WRITE = "w"
+FILE_MODE_READ = "r"
+BACKUP_DIR_PARENT = "data"
+BACKUP_DIR_NAME = "backups"
+BACKUP_INDEX_NAME = "index.json"
+BACKUP_SUFFIX_TMP = ".tmp"
+BACKUP_SUFFIX_BAK = ".bak"
+SNAPSHOT_SEPARATOR = "_"
+SNAPSHOT_LAST_GOOD = "last_good"
+SNAPSHOT_RETAIN_COUNT = 10
+SNAPSHOT_TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
+SNAPSHOT_DOT = "."
+SNAPSHOT_GLOB_WILDCARD = "*"
+HASH_ALGO_SHA256 = "sha256"
 PROFILE_EXPORT_JSON_SUFFIX = ".json"
 PROFILE_EXPORT_SCRIPT_SUFFIX = ".cli"
 PROFILE_EXPORT_JSON_FMT = "{profile}_profile.json"
@@ -766,14 +786,15 @@ MESSAGE_HINT_PREFIX = "HINT: "
 MESSAGE_HINT_VALIDATE = (
     "validate all | validate config [path] [--all] | validate profiles [robot|local] [--active] | "
     "validate tests [--active-set] | validate bindings [path] | validate can-mappings [path] | "
-    "validate script <path>"
+    "validate script <path> | validate file <path> [--repair]"
 )
 from tools.common.test_authoring.validator import AXIS_INPUTS, BUTTON_INPUTS, LIMIT_SWITCH_DEVICE_TYPE
 MESSAGE_HINT_SAVE = (
-    "save all [--prompt] | save config <path> | save local-config <path> | "
-    "save profiles <path> | save unified-config <path> | save sources"
+    "save all [--prompt] [--force] | save config <path> [--force] | save local-config <path> [--force] | "
+    "save profiles <path> [--force] | save unified-config <path> [--force] | save sources [--force]"
 )
 MESSAGE_HINT_SOURCES = "show sources | load sources | save sources"
+MESSAGE_HINT_RECOVER = "recover list | recover last-good | recover from <timestamp>"
 MESSAGE_HINT_SHOW = "show <target> [--json] [--pretty] [robot|local|both]"
 MESSAGE_HINT_PROFILE = (
     "profile <profile> | profile create <profile> | profile delete <profile> | profile device delete <device> "
@@ -851,12 +872,51 @@ MESSAGE_SOURCES_SKIP_UNKNOWN = "ERROR: {name} has unknown source path."
 MESSAGE_SOURCES_SKIP_NOT_LOADED = "ERROR: {name} not loaded."
 MESSAGE_SOURCES_ROBOT_UNSUPPORTED = "ERROR: Robot does not report sources."
 MESSAGE_SOURCES_DONE = "Done."
+MESSAGE_SAVE_BLOCKED = "ERROR: Save blocked; validation failed."
+MESSAGE_SAVE_FORCE_HINT = "Hint: Use --force to save anyway."
+MESSAGE_SAVE_FORCED = "WARNING: Saving despite validation errors (--force)."
+MESSAGE_ERR_SAVE_WRITE = "ERROR: Failed to write {path}: {error}"
+MESSAGE_ERR_SAVE_PROMPT = "ERROR: --prompt only valid with save all."
+MESSAGE_ERR_SAVE_PATH_REQUIRED = "ERROR: save {target} <path>"
+MESSAGE_SAVE_CONFIG_SAVED = "Wrote bridgeConfig to {path}."
+MESSAGE_SNAPSHOT_CREATED = "Snapshot created: {path}"
+MESSAGE_SNAPSHOT_FAILED = "WARNING: Failed to write snapshot: {path}: {error}"
+MESSAGE_SNAPSHOT_LAST_GOOD_FAILED = "WARNING: Failed to write last_good snapshot: {path}: {error}"
+MESSAGE_AUDIT_WRITE_FAILED = "WARNING: Failed to write audit log: {path}: {error}"
+MESSAGE_RECOVER_HEADER = "Recovery:"
+MESSAGE_RECOVER_LIST_HEADER = "Recovery snapshots:"
+MESSAGE_RECOVER_LIST_EMPTY = "  (none)"
+MESSAGE_RECOVER_LIST_SOURCE = "  {source}: {path}"
+MESSAGE_RECOVER_LIST_LAST_GOOD = "    last-good: {name}"
+MESSAGE_RECOVER_LIST_ENTRY = "    {name}"
+MESSAGE_RECOVER_LIST_SOURCE_EMPTY = "    (none)"
+MESSAGE_RECOVER_MISSING = "WARNING: Snapshot not found for {source}: {path}"
+MESSAGE_RECOVER_SOURCE_SKIP = "WARNING: Source not loaded; skipping {source}."
+MESSAGE_RECOVER_APPLIED = "Recovery applied."
+MESSAGE_RECOVER_FAILED = "ERROR: Recovery failed for {source}: {path}"
+MESSAGE_REPAIR_APPLIED = "Repair applied to {path}."
+MESSAGE_REPAIR_NO_CHANGES = "No repairs needed for {path}."
+MESSAGE_REPAIR_FAILED = "ERROR: Repair failed: {message}"
+MESSAGE_VALIDATE_FILE_OK = "OK: File validation passed."
+MESSAGE_VALIDATE_FILE_ERR = "ERROR: File validation failed: {message}"
+MESSAGE_VALIDATE_FILE_LOAD = "ERROR: Failed to read file: {path}"
+MESSAGE_VALIDATE_FILE_UNSUPPORTED = "ERROR: Unsupported file for validation: {path}"
+MESSAGE_VALIDATE_FILE_PATH_REQUIRED = "ERROR: validate file <path>"
 
 KEY_SOURCES = "sources"
 KEY_SOURCE_NAME = "name"
 KEY_SOURCE_PATH = "path"
 KEY_SOURCE_STATUS = "status"
 KEY_SOURCE_NOTE = "note"
+KEY_AUDIT_ENTRIES = "entries"
+KEY_AUDIT_TIMESTAMP = "timestamp"
+KEY_AUDIT_ACTION = "action"
+KEY_AUDIT_SOURCE = "source"
+KEY_AUDIT_PATH = "path"
+KEY_AUDIT_HASH = "hash"
+KEY_AUDIT_VALID = "valid"
+KEY_DATA_VERSION_CAMEL = "dataVersion"
+KEY_DATA_HASH_CAMEL = "dataHash"
 SOURCE_STATUS_LOADED = "loaded"
 SOURCE_STATUS_NOT_LOADED = "not-loaded"
 SOURCE_STATUS_UNKNOWN = "unknown"
@@ -865,6 +925,9 @@ SOURCE_NAME_CONFIG = "config"
 SOURCE_NAME_TESTS = "tests"
 SOURCE_NAME_BINDINGS = "bindings"
 SOURCE_NAME_CAN_MAPPINGS = "can-mappings"
+AUDIT_ACTION_SAVE = "save"
+AUDIT_ACTION_RECOVER = "recover"
+AUDIT_ACTION_REPAIR = "repair"
 HELP_TOPIC_DEVICE_USAGE = "device-usage"
 HELP_DEVICE_USAGE_TEXT = "show device-usage <device>\n  Show local group/test references for a device."
 HELP_TOPIC_SOURCES = "sources"
@@ -913,6 +976,18 @@ HELP_PROFILES_EXPORT_TEXT = (
 HELP_TOPIC_CONFIG_PUSH = "config push"
 HELP_CONFIG_PUSH_TEXT = (
     "config push <path> [--activate <profile>]\n  Push registry then import groups/bindings."
+)
+HELP_TOPIC_RECOVER = "recover"
+HELP_RECOVER_TEXT = (
+    "recover list\n"
+    "recover last-good\n"
+    "recover from <timestamp>\n"
+    "  Load a snapshot into memory; use `save sources` to persist."
+)
+HELP_TOPIC_VALIDATE_FILE = "validate file"
+HELP_VALIDATE_FILE_TEXT = (
+    "validate file <path> [--repair]\n"
+    "  Validate a profiles payload file; use --repair to fix missing keys."
 )
 HELP_TOPIC_QUICK = "quick"
 HELP_SHOW_TEXT = (
@@ -3115,7 +3190,7 @@ class BridgeCli:
             print(MESSAGE_INFO_BINDINGS_LOADED.format(path=path))
         return StatusResult(code=SS__CONFIG__IMPORTED)
 
-    def _save_bindings_to_path(self, path: Path) -> StatusResult:
+    def _save_bindings_to_path(self, path: Path, *, validation_ok: bool = True) -> StatusResult:
         """
         NAME
             _save_bindings_to_path - Save bindings config to a path.
@@ -3129,14 +3204,27 @@ class BridgeCli:
             KEY_BINDINGS: self._bindings_payload.get(KEY_BINDINGS, []),
             KEY_AXES: self._bindings_payload.get(KEY_AXES, []),
         }
-        try:
-            write_json(path, payload, indent=COUNT_TWO, trailing_newline=True)
-        except Exception as exc:
-            print(MESSAGE_ERR_BINDINGS_WRITE.format(path=path, error=exc))
+        ok, error = self._atomic_write_json(
+            path,
+            payload,
+            JSON_PRETTY_INDENT,
+            True,
+        )
+        if not ok:
+            print(MESSAGE_ERR_BINDINGS_WRITE.format(path=path, error=error))
             return StatusResult(code=SS__CONFIG__INVALID)
         self._bindings_dirty = False
         self._bindings_path = path
         self._sync_store_bindings()
+        self._post_save(
+            AUDIT_ACTION_SAVE,
+            [SOURCE_NAME_BINDINGS],
+            path,
+            payload,
+            validation_ok,
+            JSON_PRETTY_INDENT,
+            True,
+        )
         print(MESSAGE_INFO_BINDINGS_SAVED.format(path=path))
         return StatusResult(code=SS__CONFIG__SAVED)
 
@@ -3719,7 +3807,7 @@ class BridgeCli:
         print(MESSAGE_INFO_MAPPINGS_LOADED.format(path=path))
         return StatusResult(code=SS__CONFIG__IMPORTED)
 
-    def _save_can_mappings_to_path(self, path: Path) -> StatusResult:
+    def _save_can_mappings_to_path(self, path: Path, *, validation_ok: bool = True) -> StatusResult:
         """
         NAME
             _save_can_mappings_to_path - Save CAN mappings to a path.
@@ -3732,14 +3820,27 @@ class BridgeCli:
             KEY_MANUFACTURERS: self._can_mappings.get(KEY_MANUFACTURERS, {}),
             KEY_DEVICE_TYPES: self._can_mappings.get(KEY_DEVICE_TYPES, {}),
         }
-        try:
-            write_json(path, payload, indent=COUNT_TWO, trailing_newline=True)
-        except Exception as exc:
-            print(MESSAGE_ERR_MAPPINGS_WRITE.format(path=path, error=exc))
+        ok, error = self._atomic_write_json(
+            path,
+            payload,
+            JSON_PRETTY_INDENT,
+            True,
+        )
+        if not ok:
+            print(MESSAGE_ERR_MAPPINGS_WRITE.format(path=path, error=error))
             return StatusResult(code=SS__CONFIG__INVALID)
         self._can_mappings_dirty = False
         self._can_mappings_path = path
         self._sync_store_mappings()
+        self._post_save(
+            AUDIT_ACTION_SAVE,
+            [SOURCE_NAME_CAN_MAPPINGS],
+            path,
+            payload,
+            validation_ok,
+            JSON_PRETTY_INDENT,
+            True,
+        )
         print(MESSAGE_INFO_MAPPINGS_SAVED.format(path=path))
         return StatusResult(code=SS__CONFIG__SAVED)
 
@@ -4410,11 +4511,33 @@ class BridgeCli:
             _save_tests_command - Validate and persist tests JSON.
         """
 
+        cleaned, flags = self._strip_flags(tokens, [FLAG_FORCE])
+        force = FLAG_FORCE in flags
         self._ensure_tests_loaded()
-        if len(tokens) < 3 or tokens[1].lower() != CMD_TESTS:
+        if len(cleaned) < 3 or cleaned[1].lower() != CMD_TESTS:
             print("ERROR: save tests <path>")
             return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        path = Path(tokens[2])
+        path = Path(cleaned[2])
+        return self._save_tests_to_path(path, force=force)
+
+    def _save_tests_to_path(
+        self,
+        path: Path,
+        *,
+        skip_validation: bool = False,
+        force: bool = False,
+        validation_ok: Optional[bool] = None,
+    ) -> StatusResult:
+        """
+        NAME
+            _save_tests_to_path - Save tests payload to disk.
+        """
+        if not skip_validation:
+            allowed, validation_ok = self._guard_save(force)
+            if not allowed:
+                return StatusResult(code=SS__CONFIG__INVALID)
+        if validation_ok is None:
+            validation_ok = True
         model = self._tests_model or TestAuthoringModel()
         profile = self._tests_profile
         controller_names = load_controller_names()
@@ -4444,9 +4567,26 @@ class BridgeCli:
                 )
             )
         payload = model_to_payload(model)
-        write_tests_payload(path, payload)
+        ok, error = self._atomic_write_json(
+            path,
+            payload,
+            JSON_PRETTY_INDENT,
+            False,
+        )
+        if not ok:
+            print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=error))
+            return StatusResult(code=SS__CONFIG__INVALID)
         self._tests_dirty = False
         self._sync_store_tests()
+        self._post_save(
+            AUDIT_ACTION_SAVE,
+            [SOURCE_NAME_TESTS],
+            path,
+            payload,
+            validation_ok,
+            JSON_PRETTY_INDENT,
+            False,
+        )
         print(MESSAGE_WROTE_TESTS.format(path=path))
         return StatusResult(code=SS__CONFIG__SAVED)
 
@@ -4660,12 +4800,70 @@ class BridgeCli:
         print(f"ERROR: Unknown command: {' '.join(tokens)}")
         return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
+    def _handle_save_command(self, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _handle_save_command - Dispatch save commands with flags.
+        """
+        cleaned, flags = self._strip_flags(tokens, [FLAG_FORCE, CMD_PROMPT])
+        force = FLAG_FORCE in flags
+        prompt = CMD_PROMPT in flags
+        if len(cleaned) < COUNT_TWO:
+            print(MESSAGE_HINT_SAVE)
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+        target = cleaned[COUNT_ONE].lower()
+        if prompt and target != CMD_ALL:
+            print(MESSAGE_ERR_SAVE_PROMPT)
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+        if target == CMD_ALL:
+            return self._save_all(prompt, force=force)
+        if target == CMD_SOURCES:
+            return self._save_sources(force=force)
+        if target == CMD_TESTS:
+            return self._coerce_status(self._save_tests_command(tokens))
+        if target == CMD_PROFILES:
+            path = cleaned[COUNT_TWO] if len(cleaned) >= COUNT_THREE else EMPTY_STRING
+            if not path:
+                if not self._local_root_path:
+                    print(MESSAGE_SAVE_PROFILES_PATH_REQUIRED)
+                    return StatusResult(code=SS__CONFIG__NOT_LOADED)
+                if self._batch:
+                    print(MESSAGE_SAVE_PROFILES_PATH_REQUIRED)
+                    return StatusResult(code=SS__CONFIG__NOT_LOADED)
+                if not self._confirm(
+                    MESSAGE_SAVE_PROFILES_CONFIRM.format(path=self._local_root_path)
+                ):
+                    return StatusResult(code=SS__EXECUTOR__CANCELLED)
+                path = str(self._local_root_path)
+            return self._save_profiles(path, force=force)
+        if target == CMD_SAVE_UNIFIED:
+            if len(cleaned) < COUNT_THREE:
+                print(MESSAGE_ERR_SAVE_PATH_REQUIRED.format(target=CMD_SAVE_UNIFIED))
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._save_unified_config(cleaned[COUNT_TWO], force=force)
+        if target == CMD_CONFIG:
+            if len(cleaned) < COUNT_THREE:
+                print(MESSAGE_ERR_SAVE_PATH_REQUIRED.format(target=CMD_CONFIG))
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._save_runtime_config(cleaned[COUNT_TWO], force=force)
+        if target == CMD_LOCAL_CONFIG:
+            if len(cleaned) < COUNT_THREE:
+                print(MESSAGE_ERR_SAVE_PATH_REQUIRED.format(target=CMD_LOCAL_CONFIG))
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._save_local_config(cleaned[COUNT_TWO], force=force)
+        print(MESSAGE_HINT_SAVE)
+        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+
     def _config_command(self, tokens: List[str]) -> StatusResult:
         cmd = tokens[0].lower()
         if cmd == CMD_BINDINGS:
             return self._config_bindings_command(tokens)
         if cmd == CMD_CAN_MAPPINGS:
             return self._config_can_mappings_command(tokens)
+        if cmd == CMD_SAVE:
+            return self._handle_save_command(tokens)
+        if cmd == CMD_RECOVER:
+            return self._handle_recover_command(tokens)
         if cmd == CMD_LOAD and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_SOURCES:
             return self._load_sources()
         if cmd == CMD_PROFILES and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_INIT:
@@ -4874,6 +5072,12 @@ class BridgeCli:
                 candidate = tokens[2]
                 if candidate.lower() != CMD_VALIDATE_ALL:
                     path = candidate
+            if target == CMD_FILE:
+                if not path or path.lower() == FLAG_REPAIR:
+                    print(MESSAGE_VALIDATE_FILE_PATH_REQUIRED)
+                    return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+                repair = self._flag_present(tokens, FLAG_REPAIR)
+                return self._validate_file(path, repair)
             if target == CMD_CONFIG:
                 if path:
                     if use_all:
@@ -5481,6 +5685,289 @@ class BridgeCli:
                     MESSAGE_VALIDATE_ACTIVATE_PROFILE_UNKNOWN.format(profile=activate_profile),
                 )
         return (True, EMPTY_STRING)
+
+    def _backup_root(self) -> Path:
+        """
+        NAME
+            _backup_root - Return the base directory for snapshots/audit logs.
+        """
+        return Path(repo_root()) / BACKUP_DIR_PARENT / BACKUP_DIR_NAME
+
+    def _ensure_backup_root(self) -> Path:
+        """
+        NAME
+            _ensure_backup_root - Ensure the backup root directory exists.
+        """
+        root = self._backup_root()
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            self._warn(MESSAGE_SNAPSHOT_FAILED.format(path=root, error=exc))
+        return root
+
+    def _snapshot_timestamp(self) -> str:
+        """
+        NAME
+            _snapshot_timestamp - Format timestamps for snapshot/audit entries.
+        """
+        return time.strftime(SNAPSHOT_TIMESTAMP_FORMAT, time.localtime(time.time()))
+
+    def _snapshot_paths(self, path: Path, stamp: str) -> tuple[Path, Path]:
+        """
+        NAME
+            _snapshot_paths - Build snapshot and last_good paths for a file.
+        """
+        root = self._ensure_backup_root()
+        stem = path.stem
+        suffix = path.suffix
+        snapshot_name = f"{stem}{SNAPSHOT_DOT}{stamp}{suffix}"
+        last_good_name = f"{stem}{SNAPSHOT_DOT}{SNAPSHOT_LAST_GOOD}{suffix}"
+        return (root / snapshot_name, root / last_good_name)
+
+    def _snapshot_tag_from_name(self, name: str, stem: str, suffix: str) -> str:
+        """
+        NAME
+            _snapshot_tag_from_name - Extract snapshot tag from a filename.
+        """
+        prefix = f"{stem}{SNAPSHOT_DOT}"
+        if not name.startswith(prefix) or not name.endswith(suffix):
+            return EMPTY_STRING
+        return name[len(prefix) : len(name) - len(suffix)]
+
+    def _list_snapshots_for_path(self, path: Path) -> tuple[Optional[Path], List[str]]:
+        """
+        NAME
+            _list_snapshots_for_path - List snapshot tags for a source path.
+        """
+        root = self._backup_root()
+        if not root.exists():
+            return (None, [])
+        stem = path.stem
+        suffix = path.suffix
+        pattern = f"{stem}{SNAPSHOT_DOT}{SNAPSHOT_GLOB_WILDCARD}{suffix}"
+        last_good = root / f"{stem}{SNAPSHOT_DOT}{SNAPSHOT_LAST_GOOD}{suffix}"
+        tags: List[str] = []
+        for entry in sorted(root.glob(pattern)):
+            tag = self._snapshot_tag_from_name(entry.name, stem, suffix)
+            if not tag or tag == SNAPSHOT_LAST_GOOD:
+                continue
+            tags.append(tag)
+        return (last_good if last_good.exists() else None, tags)
+
+    def _prune_snapshots(self, path: Path) -> None:
+        """
+        NAME
+            _prune_snapshots - Enforce snapshot retention for a source path.
+        """
+        root = self._backup_root()
+        if not root.exists():
+            return
+        stem = path.stem
+        suffix = path.suffix
+        pattern = f"{stem}{SNAPSHOT_DOT}{SNAPSHOT_GLOB_WILDCARD}{suffix}"
+        snapshots = [
+            entry
+            for entry in sorted(root.glob(pattern))
+            if SNAPSHOT_LAST_GOOD not in entry.name
+        ]
+        if len(snapshots) <= SNAPSHOT_RETAIN_COUNT:
+            return
+        to_remove = snapshots[: len(snapshots) - SNAPSHOT_RETAIN_COUNT]
+        for entry in to_remove:
+            try:
+                entry.unlink()
+            except Exception as exc:
+                self._warn(MESSAGE_SNAPSHOT_FAILED.format(path=entry, error=exc))
+
+    def _atomic_write_json(
+        self,
+        path: Path,
+        payload: object,
+        indent: int,
+        trailing_newline: bool,
+    ) -> tuple[bool, str]:
+        """
+        NAME
+            _atomic_write_json - Write JSON using a temp file and backup swap.
+        """
+        temp_path = path.with_name(path.name + BACKUP_SUFFIX_TMP)
+        backup_path = path.with_name(path.name + BACKUP_SUFFIX_BAK)
+        try:
+            write_json(temp_path, payload, indent=indent, trailing_newline=trailing_newline)
+        except Exception as exc:
+            return (False, str(exc))
+        try:
+            read_json(temp_path)
+        except Exception as exc:
+            try:
+                temp_path.unlink()
+            except Exception:
+                pass
+            return (False, str(exc))
+        try:
+            if backup_path.exists():
+                backup_path.unlink()
+            if path.exists():
+                path.replace(backup_path)
+            temp_path.replace(path)
+        except Exception as exc:
+            try:
+                if backup_path.exists() and not path.exists():
+                    backup_path.replace(path)
+            except Exception:
+                pass
+            return (False, str(exc))
+        return (True, EMPTY_STRING)
+
+    def _hash_file(self, path: Path) -> str:
+        """
+        NAME
+            _hash_file - Compute SHA-256 for a file.
+        """
+        try:
+            digest = hashlib.new(HASH_ALGO_SHA256)
+            digest.update(path.read_bytes())
+            return digest.hexdigest()
+        except Exception:
+            return EMPTY_STRING
+
+    def _append_audit_log(
+        self,
+        action: str,
+        source: str,
+        path: Path,
+        validation_ok: bool,
+    ) -> None:
+        """
+        NAME
+            _append_audit_log - Append an audit entry to the backup index.
+        """
+        root = self._ensure_backup_root()
+        index_path = root / BACKUP_INDEX_NAME
+        entries: List[Dict[str, object]] = []
+        if index_path.exists():
+            try:
+                payload = read_json(index_path)
+                if isinstance(payload, dict):
+                    loaded = payload.get(KEY_AUDIT_ENTRIES, [])
+                    if isinstance(loaded, list):
+                        entries = list(loaded)
+                elif isinstance(payload, list):
+                    entries = list(payload)
+            except Exception:
+                entries = []
+        entry = {
+            KEY_AUDIT_TIMESTAMP: self._snapshot_timestamp(),
+            KEY_AUDIT_ACTION: action,
+            KEY_AUDIT_SOURCE: source,
+            KEY_AUDIT_PATH: str(path),
+            KEY_AUDIT_HASH: self._hash_file(path),
+            KEY_AUDIT_VALID: bool(validation_ok),
+        }
+        entries.append(entry)
+        try:
+            write_json(index_path, {KEY_AUDIT_ENTRIES: entries}, indent=JSON_PRETTY_INDENT, trailing_newline=True)
+        except Exception as exc:
+            self._warn(MESSAGE_AUDIT_WRITE_FAILED.format(path=index_path, error=exc))
+
+    def _write_snapshot(
+        self,
+        path: Path,
+        payload: object,
+        validation_ok: bool,
+        indent: int,
+        trailing_newline: bool,
+    ) -> None:
+        """
+        NAME
+            _write_snapshot - Write snapshot and last_good files for a payload.
+        """
+        stamp = self._snapshot_timestamp()
+        snapshot_path, last_good_path = self._snapshot_paths(path, stamp)
+        ok, error = self._atomic_write_json(snapshot_path, payload, indent, trailing_newline)
+        if ok:
+            print(MESSAGE_SNAPSHOT_CREATED.format(path=snapshot_path))
+        else:
+            self._warn(MESSAGE_SNAPSHOT_FAILED.format(path=snapshot_path, error=error))
+        if validation_ok:
+            ok, error = self._atomic_write_json(last_good_path, payload, indent, trailing_newline)
+            if not ok:
+                self._warn(MESSAGE_SNAPSHOT_LAST_GOOD_FAILED.format(path=last_good_path, error=error))
+        self._prune_snapshots(path)
+
+    def _post_save(
+        self,
+        action: str,
+        sources: List[str],
+        path: Path,
+        payload: object,
+        validation_ok: bool,
+        indent: int,
+        trailing_newline: bool,
+    ) -> None:
+        """
+        NAME
+            _post_save - Record snapshots and audit entries after saving.
+        """
+        self._write_snapshot(path, payload, validation_ok, indent, trailing_newline)
+        for source in sources:
+            self._append_audit_log(action, source, path, validation_ok)
+
+    def _print_validation_results(self, results: List[tuple[str, bool, str]]) -> int:
+        """
+        NAME
+            _print_validation_results - Emit validate-all style output.
+        """
+        print(MESSAGE_VALIDATE_ALL_HEADER)
+        for label, item_ok, message in results:
+            if item_ok:
+                print(MESSAGE_VALIDATE_ALL_ITEM_OK.format(label=label))
+            else:
+                print(MESSAGE_VALIDATE_ALL_ITEM_ERR.format(label=label, message=message))
+        failures = [item for item in results if not item[COUNT_ONE]]
+        if failures:
+            print(MESSAGE_VALIDATE_ALL_SUMMARY_ERR.format(count=len(failures)))
+        else:
+            print(MESSAGE_VALIDATE_ALL_SUMMARY_OK)
+        return len(failures)
+
+    def _guard_save(self, force: bool) -> tuple[bool, bool]:
+        """
+        NAME
+            _guard_save - Validate before save with optional force override.
+        """
+        ok, results = self.validate_all()
+        if ok:
+            return (True, True)
+        self._print_validation_results(results)
+        if not force:
+            print(MESSAGE_SAVE_BLOCKED)
+            print(MESSAGE_SAVE_FORCE_HINT)
+            return (False, False)
+        print(MESSAGE_SAVE_FORCED)
+        return (True, False)
+
+    def _strip_flags(self, tokens: List[str], flags: List[str]) -> tuple[List[str], List[str]]:
+        """
+        NAME
+            _strip_flags - Remove recognized flags from tokens.
+        """
+        cleaned: List[str] = []
+        seen: List[str] = []
+        for token in tokens:
+            lowered = token.lower()
+            if lowered in flags:
+                seen.append(lowered)
+                continue
+            cleaned.append(token)
+        return (cleaned, seen)
+
+    def _flag_present(self, tokens: List[str], flag: str) -> bool:
+        """
+        NAME
+            _flag_present - Check if a flag appears in tokens.
+        """
+        return any(token.lower() == flag for token in tokens)
 
     def _profiles_push(self, path: str, activate_profile: str) -> StatusResult:
         """
@@ -6289,27 +6776,30 @@ class BridgeCli:
                 "  Write bridgeConfig.byProfile for the active profile."
             ),
             "save config": (
-                "save config <bridgeConfig.json>\n"
+                "save config <bridgeConfig.json> [--force]\n"
                 "  Write bridgeConfig.byProfile for the active profile."
             ),
             "save all": (
-                "save all [--prompt]\n"
+                "save all [--prompt] [--force]\n"
                 "  Save all dirty sections using current file paths."
             ),
-            "save local-config": "save local-config <path>\n  Save local per-profile groups config.",
+            "save local-config": "save local-config <path> [--force]\n  Save local per-profile groups config.",
             "save profiles": (
-                "save profiles [path]\n"
+                "save profiles [path] [--force]\n"
                 "  Save bringup_system.json (profiles + bridgeConfig.byProfile).\n"
                 "  If path is omitted, uses the loaded profiles path (prompts)."
             ),
             "save tests": (
-                "save tests <path>\n"
+                "save tests <path> [--force]\n"
                 "  Validate and save test sets."
             ),
             "save unified-config": (
-                "save unified-config <path>\n"
+                "save unified-config <path> [--force]\n"
                 "  Write a unified bringup_system.json with profiles + bridgeConfig.byProfile."
             ),
+            "save sources": "save sources [--force]\n  Save all local sources back to disk.",
+            "recover": HELP_RECOVER_TEXT,
+            "validate file": HELP_VALIDATE_FILE_TEXT,
             "rename device": (
                 "rename device <old> <new>\n"
                 "  Rename a device in local config.\n"
@@ -6334,6 +6824,8 @@ class BridgeCli:
             HELP_TOPIC_PROFILES_INIT: HELP_PROFILES_INIT_TEXT,
             HELP_TOPIC_PROFILES_EXPORT: HELP_PROFILES_EXPORT_TEXT,
             HELP_TOPIC_CONFIG_PUSH: HELP_CONFIG_PUSH_TEXT,
+            HELP_TOPIC_RECOVER: HELP_RECOVER_TEXT,
+            HELP_TOPIC_VALIDATE_FILE: HELP_VALIDATE_FILE_TEXT,
             HELP_TOPIC_QUICK: self._quick_help_text(),
             "device mode": (
                 "device mode: show, set <field> <value>, no <field>, delete\n"
@@ -8203,11 +8695,24 @@ class BridgeCli:
             lines.append(MESSAGE_STORE_ISSUE.format(location=location, message=message))
         return SEP_NEWLINE.join(lines)
 
-    def _save_profiles(self, path: str) -> StatusResult:
+    def _save_profiles(
+        self,
+        path: str,
+        *,
+        skip_validation: bool = False,
+        force: bool = False,
+        validation_ok: Optional[bool] = None,
+    ) -> StatusResult:
         """
         NAME
             _save_profiles - Save updated bringup_system.json.
         """
+        if not skip_validation:
+            allowed, validation_ok = self._guard_save(force)
+            if not allowed:
+                return StatusResult(code=SS__CONFIG__INVALID)
+        if validation_ok is None:
+            validation_ok = True
         if not self._local_devices_locked or self._local_root_payload is None:
             print("ERROR: No profiles are loaded.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
@@ -8222,19 +8727,32 @@ class BridgeCli:
         payload["schema_version"] = PROFILE_SCHEMA_VERSION
         payload["data_version"] = timestamp_version()
         payload["data_hash"] = compute_profiles_hash(payload)
-        try:
-            write_json(Path(path), payload, indent=2, trailing_newline=True)
-        except Exception as exc:
-            print(f"ERROR: Failed to write {path}: {exc}")
+        ok, error = self._atomic_write_json(
+            Path(path),
+            payload,
+            JSON_PRETTY_INDENT,
+            True,
+        )
+        if not ok:
+            print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=error))
             return StatusResult(code=SS__CONFIG__INVALID)
         self._profiles_dirty = False
         self._groups_dirty = False
         self._tests_dirty = False
         self._sync_store_from_local()
+        self._post_save(
+            AUDIT_ACTION_SAVE,
+            [SOURCE_NAME_REGISTRY],
+            Path(path),
+            payload,
+            validation_ok,
+            JSON_PRETTY_INDENT,
+            True,
+        )
         print(f"Wrote profiles to {path}.")
         return StatusResult(code=SS__CONFIG__SAVED)
 
-    def _save_all(self, prompt: bool) -> StatusResult:
+    def _save_all(self, prompt: bool, force: bool = False) -> StatusResult:
         """
         NAME
             _save_all - Save all dirty sections using current paths.
@@ -8244,45 +8762,68 @@ class BridgeCli:
             prompt = False
         failures = False
         saved_any = False
+        save_candidates = False
         dirty_profiles = self._profiles_dirty or self._groups_dirty or self._tests_dirty
         if dirty_profiles:
             if not self._local_root_path:
                 print(MESSAGE_SAVE_ALL_PROFILES_MISSING)
                 failures = True
             else:
-                if prompt and not self._confirm(f"Save profiles to {self._local_root_path}?"):
-                    pass
-                else:
-                    result = self._save_profiles(str(self._local_root_path))
-                    saved_any = True
-                    if not result.ok():
-                        failures = True
+                save_candidates = True
         if self._bindings_dirty:
             if not self._bindings_path:
                 print(MESSAGE_SAVE_ALL_BINDINGS_MISSING)
                 failures = True
             else:
-                if prompt and not self._confirm(f"Save bindings to {self._bindings_path}?"):
-                    pass
-                else:
-                    result = self._save_bindings_to_path(Path(self._bindings_path))
-                    saved_any = True
-                    if not result.ok():
-                        failures = True
+                save_candidates = True
         if self._can_mappings_dirty:
             if not self._can_mappings_path:
                 print(MESSAGE_SAVE_ALL_MAPPINGS_MISSING)
                 failures = True
             else:
-                if prompt and not self._confirm(f"Save mappings to {self._can_mappings_path}?"):
-                    pass
-                else:
-                    result = self._save_can_mappings_to_path(Path(self._can_mappings_path))
-                    saved_any = True
-                    if not result.ok():
-                        failures = True
-        if not saved_any and not failures:
+                save_candidates = True
+        if not save_candidates and not failures:
             print("Nothing to save.")
+            return StatusResult(code=SS__CONFIG__SAVED)
+        if failures and not save_candidates:
+            return StatusResult(code=SS__CONFIG__INVALID)
+        allowed, validation_ok = self._guard_save(force)
+        if not allowed:
+            return StatusResult(code=SS__CONFIG__INVALID)
+        if dirty_profiles and self._local_root_path:
+            if prompt and not self._confirm(f"Save profiles to {self._local_root_path}?"):
+                pass
+            else:
+                result = self._save_profiles(
+                    str(self._local_root_path),
+                    skip_validation=True,
+                    validation_ok=validation_ok,
+                )
+                saved_any = True
+                if not result.ok():
+                    failures = True
+        if self._bindings_dirty and self._bindings_path:
+            if prompt and not self._confirm(f"Save bindings to {self._bindings_path}?"):
+                pass
+            else:
+                result = self._save_bindings_to_path(
+                    Path(self._bindings_path),
+                    validation_ok=validation_ok,
+                )
+                saved_any = True
+                if not result.ok():
+                    failures = True
+        if self._can_mappings_dirty and self._can_mappings_path:
+            if prompt and not self._confirm(f"Save mappings to {self._can_mappings_path}?"):
+                pass
+            else:
+                result = self._save_can_mappings_to_path(
+                    Path(self._can_mappings_path),
+                    validation_ok=validation_ok,
+                )
+                saved_any = True
+                if not result.ok():
+                    failures = True
         if failures:
             return StatusResult(code=SS__CONFIG__INVALID)
         return StatusResult(code=SS__CONFIG__SAVED)
@@ -9810,26 +10351,65 @@ class BridgeCli:
         payload["data_hash"] = compute_profiles_hash(payload)
         return payload
 
-    def _save_unified_config(self, path: str) -> StatusResult:
+    def _save_unified_config(
+        self,
+        path: str,
+        *,
+        skip_validation: bool = False,
+        force: bool = False,
+        validation_ok: Optional[bool] = None,
+    ) -> StatusResult:
         """
         NAME
             _save_unified_config - Save a unified bringup_system.json payload.
         """
+        if not skip_validation:
+            allowed, validation_ok = self._guard_save(force)
+            if not allowed:
+                return StatusResult(code=SS__CONFIG__INVALID)
+        if validation_ok is None:
+            validation_ok = True
         payload = self._build_unified_payload()
         if payload is None:
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        try:
-            write_json(Path(path), payload, indent=2, trailing_newline=True)
-        except Exception as exc:
-            print(f"ERROR: Failed to write {path}: {exc}")
+        ok, error = self._atomic_write_json(
+            Path(path),
+            payload,
+            JSON_PRETTY_INDENT,
+            True,
+        )
+        if not ok:
+            print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=error))
             return StatusResult(code=SS__CONFIG__INVALID)
         self._profiles_dirty = False
         self._groups_dirty = False
         self._tests_dirty = False
+        self._post_save(
+            AUDIT_ACTION_SAVE,
+            [SOURCE_NAME_REGISTRY, SOURCE_NAME_CONFIG],
+            Path(path),
+            payload,
+            validation_ok,
+            JSON_PRETTY_INDENT,
+            True,
+        )
         print(f"Wrote unified config to {path}.")
         return StatusResult(code=SS__CONFIG__SAVED)
 
-    def _save_local_config(self, path: str) -> StatusResult:
+    def _save_local_config(
+        self,
+        path: str,
+        *,
+        skip_validation: bool = False,
+        force: bool = False,
+        validation_ok: Optional[bool] = None,
+    ) -> StatusResult:
+        if not skip_validation:
+            allowed, validation_ok = self._guard_save(force)
+            if not allowed:
+                return StatusResult(code=SS__CONFIG__INVALID)
+        if validation_ok is None:
+            validation_ok = True
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
@@ -9838,15 +10418,79 @@ class BridgeCli:
             config_out = self._ordered_bridge_config(
                 self._local_config, include_devices=not self._local_devices_locked
             )
-            write_json(Path(path), config_out, indent=2, trailing_newline=True)
         except Exception as exc:
-            print(f"ERROR: Failed to write {path}: {exc}")
+            print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=exc))
+            return StatusResult(code=SS__CONFIG__INVALID)
+        ok, error = self._atomic_write_json(
+            Path(path),
+            config_out,
+            JSON_PRETTY_INDENT,
+            True,
+        )
+        if not ok:
+            print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=error))
             return StatusResult(code=SS__CONFIG__INVALID)
         self._groups_dirty = False
+        self._post_save(
+            AUDIT_ACTION_SAVE,
+            [SOURCE_NAME_CONFIG],
+            Path(path),
+            config_out,
+            validation_ok,
+            JSON_PRETTY_INDENT,
+            True,
+        )
         if self._local_devices_locked:
             print(f"Wrote groups config to {path}.")
         else:
             print(f"Wrote bridgeConfig to {path}.")
+        return StatusResult(code=SS__CONFIG__SAVED)
+
+    def _save_runtime_config(self, path: str, *, force: bool = False) -> StatusResult:
+        """
+        NAME
+            _save_runtime_config - Save runtime bridgeConfig with atomic swap.
+        """
+        allowed, validation_ok = self._guard_save(force)
+        if not allowed:
+            return StatusResult(code=SS__CONFIG__INVALID)
+        target_path = Path(path)
+        temp_path = target_path.with_name(target_path.name + BACKUP_SUFFIX_TMP)
+        result = save_config(self._session, str(temp_path), self._active_profile_name())
+        if not result.ok():
+            message = format_status_message(result.code) or result.message
+            if message:
+                print(message)
+            return StatusResult(code=SS__CONFIG__INVALID)
+        try:
+            payload = read_json(temp_path)
+        except Exception as exc:
+            print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=exc))
+            return StatusResult(code=SS__CONFIG__INVALID)
+        try:
+            if temp_path.exists():
+                temp_path.unlink()
+        except Exception:
+            pass
+        ok, error = self._atomic_write_json(
+            target_path,
+            payload,
+            JSON_PRETTY_INDENT,
+            True,
+        )
+        if not ok:
+            print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=error))
+            return StatusResult(code=SS__CONFIG__INVALID)
+        self._post_save(
+            AUDIT_ACTION_SAVE,
+            [SOURCE_NAME_CONFIG],
+            target_path,
+            payload,
+            validation_ok,
+            JSON_PRETTY_INDENT,
+            True,
+        )
+        print(MESSAGE_SAVE_CONFIG_SAVED.format(path=path))
         return StatusResult(code=SS__CONFIG__SAVED)
 
     def _load_sources(self) -> StatusResult:
@@ -9906,12 +10550,15 @@ class BridgeCli:
             return self._load_can_mappings_from_path(Path(path))
         return StatusResult(code=SS__EXECUTOR__FAILED)
 
-    def _save_sources(self) -> StatusResult:
+    def _save_sources(self, force: bool = False) -> StatusResult:
         """
         NAME
             _save_sources - Save all known local sources back to disk.
         """
 
+        allowed, validation_ok = self._guard_save(force)
+        if not allowed:
+            return StatusResult(code=SS__CONFIG__INVALID)
         print(MESSAGE_SOURCES_SAVE_HEADER)
         entries = self._collect_sources()
         registry_path = EMPTY_STRING
@@ -9936,7 +10583,11 @@ class BridgeCli:
             and registry_path
             and registry_path == config_path
         ):
-            result = self._save_unified_config(registry_path)
+            result = self._save_unified_config(
+                registry_path,
+                skip_validation=True,
+                validation_ok=validation_ok,
+            )
             if not result.ok():
                 ok = False
             else:
@@ -9957,7 +10608,7 @@ class BridgeCli:
                 print(MESSAGE_SOURCES_SKIP_NOT_LOADED.format(name=name))
                 ok = False
                 continue
-            result = self._save_source(name, path)
+            result = self._save_source(name, path, validation_ok=validation_ok)
             if not result.ok():
                 ok = False
                 continue
@@ -9967,21 +10618,285 @@ class BridgeCli:
             return StatusResult(code=SS__NORMAL)
         return StatusResult(code=SS__EXECUTOR__FAILED)
 
-    def _save_source(self, name: str, path: str) -> StatusResult:
+    def _save_source(self, name: str, path: str, *, validation_ok: bool = True) -> StatusResult:
         """
         NAME
             _save_source - Save a single source entry to disk.
         """
 
         if name == SOURCE_NAME_REGISTRY:
-            return self._save_profiles(path)
+            return self._save_profiles(path, skip_validation=True, validation_ok=validation_ok)
         if name == SOURCE_NAME_CONFIG:
-            return self._save_local_config(path)
+            return self._save_local_config(path, skip_validation=True, validation_ok=validation_ok)
         if name == SOURCE_NAME_BINDINGS:
-            return self._save_bindings_to_path(Path(path))
+            return self._save_bindings_to_path(Path(path), validation_ok=validation_ok)
         if name == SOURCE_NAME_CAN_MAPPINGS:
-            return self._save_can_mappings_to_path(Path(path))
+            return self._save_can_mappings_to_path(Path(path), validation_ok=validation_ok)
         return StatusResult(code=SS__EXECUTOR__FAILED)
+
+    def _handle_recover_command(self, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _handle_recover_command - Dispatch recovery commands.
+        """
+        if len(tokens) < COUNT_TWO:
+            print(MESSAGE_HINT_RECOVER)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        action = tokens[COUNT_ONE].lower()
+        if action == CMD_LIST:
+            return self._recover_list()
+        if action == CMD_LAST_GOOD:
+            return self._recover_apply(SNAPSHOT_LAST_GOOD)
+        if action == CMD_FROM:
+            if len(tokens) < COUNT_THREE:
+                print(MESSAGE_HINT_RECOVER)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._recover_apply(tokens[COUNT_TWO])
+        print(MESSAGE_HINT_RECOVER)
+        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+
+    def _recover_list(self) -> StatusResult:
+        """
+        NAME
+            _recover_list - List available recovery snapshots.
+        """
+        entries = self._collect_sources()
+        grouped: Dict[str, List[str]] = {}
+        for entry in entries:
+            name = str(entry.get(KEY_SOURCE_NAME, EMPTY_STRING))
+            status = str(entry.get(KEY_SOURCE_STATUS, EMPTY_STRING))
+            path = str(entry.get(KEY_SOURCE_PATH, EMPTY_STRING))
+            if not path or status == SOURCE_STATUS_NOT_LOADED:
+                continue
+            grouped.setdefault(path, []).append(name)
+        print(MESSAGE_RECOVER_LIST_HEADER)
+        if not grouped:
+            print(MESSAGE_RECOVER_LIST_EMPTY)
+            return StatusResult(code=SS__NORMAL)
+        for path_text, names in grouped.items():
+            source_label = SEP_COMMA_SPACE.join(sorted(names))
+            print(MESSAGE_RECOVER_LIST_SOURCE.format(source=source_label, path=path_text))
+            last_good, tags = self._list_snapshots_for_path(Path(path_text))
+            if last_good is not None:
+                print(MESSAGE_RECOVER_LIST_LAST_GOOD.format(name=last_good.name))
+            if tags:
+                for tag in tags:
+                    print(MESSAGE_RECOVER_LIST_ENTRY.format(name=tag))
+            if last_good is None and not tags:
+                print(MESSAGE_RECOVER_LIST_SOURCE_EMPTY)
+        return StatusResult(code=SS__NORMAL)
+
+    def _recover_apply(self, tag: str) -> StatusResult:
+        """
+        NAME
+            _recover_apply - Apply a snapshot to local state.
+        """
+        entries = self._collect_sources()
+        grouped: Dict[str, List[str]] = {}
+        for entry in entries:
+            name = str(entry.get(KEY_SOURCE_NAME, EMPTY_STRING))
+            status = str(entry.get(KEY_SOURCE_STATUS, EMPTY_STRING))
+            path = str(entry.get(KEY_SOURCE_PATH, EMPTY_STRING))
+            if not path:
+                continue
+            if status == SOURCE_STATUS_NOT_LOADED:
+                self._warn(MESSAGE_RECOVER_SOURCE_SKIP.format(source=name))
+                continue
+            grouped.setdefault(path, []).append(name)
+        if not grouped:
+            print(MESSAGE_RECOVER_LIST_EMPTY)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        ok = True
+        for path_text, names in grouped.items():
+            source_path = Path(path_text)
+            stamp = tag
+            snapshot_path, last_good_path = self._snapshot_paths(source_path, stamp)
+            selected_path = last_good_path if tag == SNAPSHOT_LAST_GOOD else snapshot_path
+            if not selected_path.exists():
+                for name in names:
+                    self._warn(MESSAGE_RECOVER_MISSING.format(source=name, path=selected_path))
+                ok = False
+                continue
+            if SOURCE_NAME_REGISTRY in names or SOURCE_NAME_CONFIG in names:
+                if not self._recover_profiles_snapshot(selected_path, source_path):
+                    ok = False
+                    continue
+            if SOURCE_NAME_BINDINGS in names:
+                if not self._recover_bindings_snapshot(selected_path, source_path):
+                    ok = False
+                    continue
+            if SOURCE_NAME_CAN_MAPPINGS in names:
+                if not self._recover_mappings_snapshot(selected_path, source_path):
+                    ok = False
+                    continue
+        if ok:
+            print(MESSAGE_RECOVER_APPLIED)
+            return StatusResult(code=SS__NORMAL)
+        return StatusResult(code=SS__CONFIG__INVALID)
+
+    def _recover_profiles_snapshot(self, snapshot_path: Path, source_path: Path) -> bool:
+        """
+        NAME
+            _recover_profiles_snapshot - Load a profiles snapshot into memory.
+        """
+        plan = import_config(str(snapshot_path), self._conflict_policy, self._active_profile_name())
+        result = self._apply_config_plan_local(plan)
+        if not result.ok():
+            self._warn(MESSAGE_RECOVER_FAILED.format(source=SOURCE_NAME_REGISTRY, path=snapshot_path))
+            return False
+        self._local_root_path = source_path
+        self._local_config_path = source_path
+        self._profiles_dirty = True
+        self._groups_dirty = True
+        self._tests_dirty = True
+        self._sync_store_from_local()
+        valid, _message = self._validate_registry_payload(
+            self._local_root_payload or {},
+            EMPTY_STRING,
+        )
+        for name in (SOURCE_NAME_REGISTRY, SOURCE_NAME_CONFIG):
+            self._append_audit_log(AUDIT_ACTION_RECOVER, name, snapshot_path, valid)
+        return True
+
+    def _recover_bindings_snapshot(self, snapshot_path: Path, source_path: Path) -> bool:
+        """
+        NAME
+            _recover_bindings_snapshot - Load a bindings snapshot into memory.
+        """
+        result = self._load_bindings_from_path(snapshot_path, announce=False)
+        if not result.ok():
+            self._warn(MESSAGE_RECOVER_FAILED.format(source=SOURCE_NAME_BINDINGS, path=snapshot_path))
+            return False
+        self._bindings_path = source_path
+        self._bindings_dirty = True
+        self._sync_store_bindings()
+        valid, _message = self.validate_bindings_only(None)
+        self._append_audit_log(AUDIT_ACTION_RECOVER, SOURCE_NAME_BINDINGS, snapshot_path, valid)
+        return True
+
+    def _recover_mappings_snapshot(self, snapshot_path: Path, source_path: Path) -> bool:
+        """
+        NAME
+            _recover_mappings_snapshot - Load a mappings snapshot into memory.
+        """
+        result = self._load_can_mappings_from_path(snapshot_path)
+        if not result.ok():
+            self._warn(MESSAGE_RECOVER_FAILED.format(source=SOURCE_NAME_CAN_MAPPINGS, path=snapshot_path))
+            return False
+        self._can_mappings_path = source_path
+        self._can_mappings_dirty = True
+        self._sync_store_mappings()
+        valid, _message = self.validate_mappings_only(None)
+        self._append_audit_log(AUDIT_ACTION_RECOVER, SOURCE_NAME_CAN_MAPPINGS, snapshot_path, valid)
+        return True
+
+    def _validate_file(self, path: str, repair: bool) -> StatusResult:
+        """
+        NAME
+            _validate_file - Validate or repair a profiles file on disk.
+        """
+        if not path:
+            print(MESSAGE_VALIDATE_FILE_PATH_REQUIRED)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        source_path = Path(path)
+        try:
+            payload = read_json(source_path)
+        except Exception:
+            print(MESSAGE_VALIDATE_FILE_LOAD.format(path=path))
+            return StatusResult(code=SS__CONFIG__INVALID)
+        if not isinstance(payload, dict):
+            print(MESSAGE_VALIDATE_FILE_UNSUPPORTED.format(path=path))
+            return StatusResult(code=SS__CONFIG__INVALID)
+        if repair:
+            repaired, changed = self._repair_profiles_payload(payload)
+            if changed:
+                ok, error = self._atomic_write_json(
+                    source_path,
+                    repaired,
+                    JSON_PRETTY_INDENT,
+                    True,
+                )
+                if not ok:
+                    print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=error))
+                    return StatusResult(code=SS__CONFIG__INVALID)
+                self._post_save(
+                    AUDIT_ACTION_REPAIR,
+                    [SOURCE_NAME_REGISTRY],
+                    source_path,
+                    repaired,
+                    True,
+                    JSON_PRETTY_INDENT,
+                    True,
+                )
+                print(MESSAGE_REPAIR_APPLIED.format(path=path))
+            else:
+                print(MESSAGE_REPAIR_NO_CHANGES.format(path=path))
+            valid, message = self._validate_registry_payload(repaired, EMPTY_STRING)
+            if valid:
+                print(MESSAGE_VALIDATE_FILE_OK)
+                return StatusResult(code=SS__CONFIG__VALID)
+            print(MESSAGE_VALIDATE_FILE_ERR.format(message=message))
+            return StatusResult(code=SS__CONFIG__INVALID)
+        valid, message = self._validate_registry_payload(payload, EMPTY_STRING)
+        if valid:
+            print(MESSAGE_VALIDATE_FILE_OK)
+            return StatusResult(code=SS__CONFIG__VALID)
+        print(MESSAGE_VALIDATE_FILE_ERR.format(message=message))
+        return StatusResult(code=SS__CONFIG__INVALID)
+
+    def _repair_profiles_payload(
+        self, payload: Dict[str, object]
+    ) -> tuple[Dict[str, object], bool]:
+        """
+        NAME
+            _repair_profiles_payload - Repair missing required profile fields.
+        """
+        repaired = deepcopy(payload)
+        changed = False
+        schema_version = repaired.get(KEY_SCHEMA_VERSION)
+        if not isinstance(schema_version, int):
+            alt = repaired.get(KEY_BRIDGE_SCHEMA_VERSION)
+            if isinstance(alt, int):
+                schema_version = alt
+            else:
+                schema_version = PROFILE_SCHEMA_VERSION
+            repaired[KEY_SCHEMA_VERSION] = schema_version
+            changed = True
+        data_version = repaired.get(KEY_DATA_VERSION)
+        if not isinstance(data_version, str) or not data_version.strip():
+            repaired[KEY_DATA_VERSION] = timestamp_version()
+            changed = True
+        devices = repaired.get(KEY_DEVICES)
+        if not isinstance(devices, list):
+            repaired[KEY_DEVICES] = []
+            changed = True
+        profiles = repaired.get(KEY_PROFILES)
+        if not isinstance(profiles, dict):
+            repaired[KEY_PROFILES] = {}
+            profiles = repaired.get(KEY_PROFILES)
+            changed = True
+        if isinstance(profiles, dict):
+            for entry in profiles.values():
+                if not isinstance(entry, dict):
+                    continue
+                labels = entry.get(KEY_PROFILE_DEVICES)
+                if not isinstance(labels, list):
+                    entry[KEY_PROFILE_DEVICES] = []
+                    changed = True
+        if KEY_DATA_VERSION_CAMEL in repaired and KEY_DATA_VERSION not in repaired:
+            repaired[KEY_DATA_VERSION] = repaired.get(KEY_DATA_VERSION_CAMEL)
+            changed = True
+        if KEY_DATA_HASH_CAMEL in repaired and KEY_DATA_HASH not in repaired:
+            repaired[KEY_DATA_HASH] = repaired.get(KEY_DATA_HASH_CAMEL)
+            changed = True
+        try:
+            computed_hash = compute_profiles_hash(repaired)
+        except Exception:
+            computed_hash = EMPTY_STRING
+        if repaired.get(KEY_DATA_HASH) != computed_hash:
+            repaired[KEY_DATA_HASH] = computed_hash
+            changed = True
+        return (repaired, changed)
 
     def _apply_config_plan_local(self, plan: ConfigPlan) -> StatusResult:
         """
