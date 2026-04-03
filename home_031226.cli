@@ -1,0 +1,154 @@
+# bridge_cli profile export
+# echo on
+# save unified-config <path>
+configure terminal
+profiles init
+profile delete home_031226
+profile create home_031226
+profile home_031226
+device "SPARKMAX/NEO 25" set interface CAN
+device "SPARKMAX/NEO 25" set manufacturer 5
+device "SPARKMAX/NEO 25" set deviceType 2
+device "SPARKMAX/NEO 25" set id 25
+device "SPARKMAX/NEO 25" set model "REV NEO"
+device "SPARKMAX/NEO 25" set type motor
+device "SPARKMAX/NEO550 7 limit fwd" set interface DIO
+device "SPARKMAX/NEO550 7 limit fwd" set type limitSwitch
+device "SPARKMAX/NEO550 7 limit fwd" set dio 0
+device "SPARKMAX/NEO550 7 limit fwd" set invert true
+device "SPARKMAX/NEO550 7" set interface CAN
+device "SPARKMAX/NEO550 7" set manufacturer 5
+device "SPARKMAX/NEO550 7" set deviceType 2
+device "SPARKMAX/NEO550 7" set id 7
+device "SPARKMAX/NEO550 7" set model "REV NEO 550"
+device "SPARKMAX/NEO550 7" set type motor
+device "FALCON 9" set interface CAN
+device "FALCON 9" set manufacturer 4
+device "FALCON 9" set deviceType 2
+device "FALCON 9" set id 9
+device "FALCON 9" set model "CTRE Falcon 500"
+device "FALCON 9" set type motor
+device candle set interface CAN
+device candle set manufacturer 4
+device candle set deviceType 10
+device candle set id 2
+device candle set terminator false
+device PDH set interface CAN
+device PDH set manufacturer 5
+device PDH set deviceType 8
+device PDH set id 1
+device PDH set terminator true
+device roboRIO set interface CAN
+device roboRIO set manufacturer 0
+device roboRIO set deviceType 1
+device roboRIO set id 0
+device roboRIO set type roborio
+tests clear
+test set default
+test set default
+test create "Rotation only (internal)"
+type composite
+device add "SPARKMAX/NEO 25"
+duty 0.2
+termination rotation 15.0
+rotation encoderKey internal
+rotation encoderMotorIndex 0
+enabled false
+exit
+test create "Deadband sweep (internal)"
+type composite
+device add "SPARKMAX/NEO 25"
+duty 0.2
+termination time 5.0
+time onTimeout pass
+enabled false
+exit
+test create "Rotation + Time"
+type composite
+device add "FALCON 9"
+duty 0.2
+termination time 2.0
+termination rotation 10.0
+rotation encoderKey internal
+rotation encoderMotorIndex 0
+time onTimeout fail
+enabled false
+exit
+test create "Time only"
+type composite
+device add "SPARKMAX/NEO550 7"
+duty 0.3
+termination time 1.5
+time onTimeout pass
+enabled false
+exit
+test create "Nudge (0.2 for 0.5s)"
+type composite
+device add "SPARKMAX/NEO 25"
+duty 0.2
+termination time 0.5
+time onTimeout pass
+enabled false
+exit
+test create "Limit switch only"
+type composite
+device add "SPARKMAX/NEO550 7"
+duty 0.2
+limitswitch id "SPARKMAX/NEO550 7 limit fwd"
+limitswitch onHit pass
+termination limitswitch "SPARKMAX/NEO550 7 limit fwd"
+enabled false
+exit
+test create "Hold to run"
+type composite
+device add "FALCON 9"
+duty 0.2
+termination hold
+hold onRelease pass
+enabled false
+exit
+test create "Rotation + Time + Limit"
+type composite
+device add "SPARKMAX/NEO550 7"
+device add "SPARKMAX/NEO 25"
+device add "FALCON 9"
+duty 0.2
+termination time 2.0
+termination rotation 10.0
+rotation encoderKey internal
+rotation encoderMotorIndex 0
+time onTimeout fail
+limitswitch id "SPARKMAX/NEO550 7 limit fwd"
+limitswitch onHit pass
+termination limitswitch "SPARKMAX/NEO550 7 limit fwd"
+enabled false
+exit
+test create "All checks"
+type composite
+device add "SPARKMAX/NEO550 7"
+duty 0.2
+termination hold
+termination time 3.0
+termination rotation 8.0
+rotation encoderKey internal
+rotation encoderMotorIndex 0
+time onTimeout pass
+hold onRelease pass
+limitswitch id "SPARKMAX/NEO550 7 limit fwd"
+limitswitch onHit pass
+termination limitswitch "SPARKMAX/NEO550 7 limit fwd"
+enabled false
+exit
+test create "Joystick motor (controller0.leftY)"
+type joystick
+device add "SPARKMAX/NEO 25"
+device add "FALCON 9"
+inputsource controller0.leftY
+deadband 0.12
+enabled false
+exit
+test set mini
+selected-mode off
+profile default home_031226
+save sources
+exit

@@ -81,6 +81,13 @@ CMD_ON = "on"
 CMD_OFF = "off"
 CMD_SAVE = "save"
 CMD_SAVE_TESTS = "save-tests"
+CMD_RECOVER = "recover"
+CMD_LAST_GOOD = "last-good"
+CMD_FROM = "from"
+CMD_LIST = "list"
+CMD_FILE = "file"
+FLAG_FORCE = "--force"
+FLAG_REPAIR = "--repair"
 CMD_EXPORT = "export"
 CMD_IMPORT = "import"
 CMD_MERGE = "merge"
@@ -93,6 +100,7 @@ CMD_TESTS = "tests"
 CMD_PUSH = "push"
 CMD_ACTIVATE = "--activate"
 CMD_TERMINAL = "terminal"
+CMD_PROMPT = "--prompt"
 EXPORT_TARGET_RUNTIME_GROUPS = "runtime-groups"
 EXPORT_TARGET_CLI_SCRIPT = "cli-script"
 SAVE_TARGET_CONFIG = "config"
@@ -248,6 +256,8 @@ class BridgeCliParser:
                 return self._handle_export
             if cmd == SPEC.cmd_save.lower():
                 return self._handle_save
+            if cmd == CMD_RECOVER:
+                return self._handle_recover
             if cmd == SPEC.cmd_load.lower():
                 return self._handle_load
             if cmd == SPEC.cmd_write.lower():
@@ -839,7 +849,8 @@ class BridgeCliParser:
                 bool(SPEC.bool_false),
             )
         if verb == SPEC.cmd_save:
-            if tokens[SPEC.count_one].lower() == SPEC.cmd_sources:
+            cleaned, _flags = self._strip_flags(tokens, [FLAG_FORCE, CMD_PROMPT])
+            if len(cleaned) < SPEC.count_two:
                 return (
                     SPEC.kind_config_save,
                     SPEC.empty_str,
@@ -847,7 +858,7 @@ class BridgeCliParser:
                     SPEC.empty_str,
                     SPEC.empty_str,
                     SPEC.empty_str,
-                    tokens[SPEC.count_one],
+                    SPEC.empty_str,
                     SPEC.empty_str,
                     SPEC.empty_str,
                     SPEC.empty_str,
@@ -855,7 +866,8 @@ class BridgeCliParser:
                     SPEC.empty_str,
                     bool(SPEC.bool_false),
                 )
-            if tokens[SPEC.count_one].lower() == SPEC.cmd_save_tests:
+            target = cleaned[SPEC.count_one]
+            if target.lower() in (SPEC.cmd_sources, CMD_ALL):
                 return (
                     SPEC.kind_config_save,
                     SPEC.empty_str,
@@ -863,14 +875,15 @@ class BridgeCliParser:
                     SPEC.empty_str,
                     SPEC.empty_str,
                     SPEC.empty_str,
-                    tokens[SPEC.count_one],
+                    target,
                     SPEC.empty_str,
-                    tokens[SPEC.count_two],
+                    SPEC.empty_str,
                     SPEC.empty_str,
                     SPEC.empty_str,
                     SPEC.empty_str,
                     bool(SPEC.bool_false),
                 )
+            path = cleaned[SPEC.count_two] if len(cleaned) >= SPEC.count_three else SPEC.empty_str
             return (
                 SPEC.kind_config_save,
                 SPEC.empty_str,
@@ -878,9 +891,25 @@ class BridgeCliParser:
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
-                tokens[SPEC.count_one],
+                target,
                 SPEC.empty_str,
-                tokens[SPEC.count_two],
+                path,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+            )
+        if verb == CMD_RECOVER:
+            return (
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
@@ -968,19 +997,22 @@ class BridgeCliParser:
                 bool(SPEC.bool_false),
             )
         if verb == SPEC.cmd_validate:
-            target = tokens[SPEC.count_one].lower() if len(tokens) > SPEC.count_one else SPEC.empty_str
+            cleaned, flags = self._strip_flags(tokens, [FLAG_REPAIR])
+            target = cleaned[SPEC.count_one].lower() if len(cleaned) > SPEC.count_one else SPEC.empty_str
             path = SPEC.empty_str
             field = target
             value = SPEC.empty_str
-            if len(tokens) > SPEC.count_two:
-                if tokens[SPEC.count_two].lower() == SPEC.cmd_validate_all:
+            if len(cleaned) > SPEC.count_two:
+                if cleaned[SPEC.count_two].lower() == SPEC.cmd_validate_all:
                     value = SPEC.cmd_validate_all
-                elif target in (SPEC.cmd_bindings, SPEC.cmd_can_mappings, SPEC.cmd_config):
-                    path = tokens[SPEC.count_two]
+                elif target in (SPEC.cmd_bindings, SPEC.cmd_can_mappings, SPEC.cmd_config, CMD_FILE):
+                    path = cleaned[SPEC.count_two]
                 elif target == "profiles":
-                    value = tokens[SPEC.count_two].lower()
-            if len(tokens) > SPEC.count_three and tokens[SPEC.count_three].lower() == SPEC.cmd_validate_all:
+                    value = cleaned[SPEC.count_two].lower()
+            if len(cleaned) > SPEC.count_three and cleaned[SPEC.count_three].lower() == SPEC.cmd_validate_all:
                 value = SPEC.cmd_validate_all
+            if FLAG_REPAIR in flags:
+                value = FLAG_REPAIR
             return (
                 SPEC.kind_config_validate,
                 SPEC.empty_str,
@@ -1522,8 +1554,15 @@ class BridgeCliParser:
         self._reject_extra(tokens, SPEC.count_two, SPEC.label_selected_mode)
 
     def _handle_profiles_command(self, tokens: List[str]) -> None:
+        if len(tokens) < SPEC.count_two:
+            raise CliParseError(SPEC.msg_push_requires)
         if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() == SPEC.cmd_init:
             self._reject_extra(tokens, SPEC.count_two, SPEC.label_profiles_init)
+            return
+        if tokens[SPEC.count_one].lower() == SPEC.cmd_export:
+            if len(tokens) < SPEC.count_three:
+                raise CliParseError(SPEC.msg_export_requires)
+            self._reject_extra(tokens, SPEC.count_three, SPEC.label_export)
             return
         if len(tokens) < SPEC.count_three or tokens[SPEC.count_one].lower() != SPEC.cmd_push:
             raise CliParseError(SPEC.msg_push_requires)
@@ -1567,23 +1606,59 @@ class BridgeCliParser:
             raise CliParseError(SPEC.msg_export_target)
         self._reject_extra(tokens, SPEC.count_three, SPEC.label_export)
 
+    def _strip_flags(self, tokens: List[str], flags: List[str]) -> tuple[List[str], List[str]]:
+        cleaned: List[str] = []
+        seen: List[str] = []
+        for token in tokens:
+            lowered = token.lower()
+            if lowered in flags:
+                seen.append(lowered)
+                continue
+            cleaned.append(token)
+        return (cleaned, seen)
+
     def _handle_save(self, tokens: List[str]) -> None:
-        if len(tokens) < SPEC.count_two:
+        cleaned, flags = self._strip_flags(tokens, [FLAG_FORCE, CMD_PROMPT])
+        if len(cleaned) < SPEC.count_two:
             raise CliParseError(SPEC.msg_save_requires)
-        target = tokens[SPEC.count_one].lower()
+        target = cleaned[SPEC.count_one].lower()
+        if CMD_PROMPT in flags and target != CMD_ALL:
+            raise CliParseError(SPEC.msg_save_target)
         if target == SPEC.cmd_sources:
-            self._reject_extra(tokens, SPEC.count_two, SPEC.label_save)
+            self._reject_extra(cleaned, SPEC.count_two, SPEC.label_save)
             return
-        if len(tokens) < SPEC.count_three:
+        if target == CMD_ALL:
+            self._reject_extra(cleaned, SPEC.count_two, SPEC.label_save)
+            return
+        if target == SPEC.cmd_save_profiles:
+            if len(cleaned) == SPEC.count_two:
+                return
+            self._reject_extra(cleaned, SPEC.count_three, SPEC.label_save)
+            return
+        if len(cleaned) < SPEC.count_three:
             raise CliParseError(SPEC.msg_save_requires)
         if target not in (
             SPEC.cmd_save_config,
             SPEC.cmd_save_local_config,
             SPEC.cmd_save_profiles,
             SPEC.cmd_save_unified,
+            SPEC.cmd_save_tests,
         ):
             raise CliParseError(SPEC.msg_save_target)
-        self._reject_extra(tokens, SPEC.count_three, SPEC.label_save)
+        self._reject_extra(cleaned, SPEC.count_three, SPEC.label_save)
+
+    def _handle_recover(self, tokens: List[str]) -> None:
+        if len(tokens) < SPEC.count_two:
+            raise CliParseError(SPEC.msg_unknown_cmd_fmt % tokens[SPEC.count_zero])
+        action = tokens[SPEC.count_one].lower()
+        if action in (CMD_LIST, CMD_LAST_GOOD):
+            self._reject_extra(tokens, SPEC.count_two, CMD_RECOVER)
+            return
+        if action == CMD_FROM:
+            self._require(tokens, SPEC.count_three, SPEC.msg_unknown_cmd_fmt % tokens[SPEC.count_zero])
+            self._reject_extra(tokens, SPEC.count_three, CMD_RECOVER)
+            return
+        raise CliParseError(SPEC.msg_unknown_cmd_fmt % tokens[SPEC.count_zero])
 
     def _handle_load(self, tokens: List[str]) -> None:
         if len(tokens) < SPEC.count_two:
@@ -1610,47 +1685,52 @@ class BridgeCliParser:
         self._reject_extra(tokens, SPEC.count_two, SPEC.label_device)
 
     def _handle_validate(self, tokens: List[str]) -> None:
-        if len(tokens) < SPEC.count_two:
+        cleaned, _flags = self._strip_flags(tokens, [FLAG_REPAIR])
+        if len(cleaned) < SPEC.count_two:
             raise CliParseError(SPEC.msg_validate_config)
-        target = tokens[SPEC.count_one].lower()
+        target = cleaned[SPEC.count_one].lower()
         if target == CMD_ALL:
-            self._reject_extra(tokens, SPEC.count_two, SPEC.label_validate)
+            self._reject_extra(cleaned, SPEC.count_two, SPEC.label_validate)
+            return
+        if target == CMD_FILE:
+            self._require(cleaned, SPEC.count_three, SPEC.msg_validate_config)
+            self._reject_extra(cleaned, SPEC.count_three, SPEC.label_validate)
             return
         if target == SPEC.cmd_config:
-            if len(tokens) > SPEC.count_four:
-                self._reject_extra(tokens, SPEC.count_four, SPEC.label_validate)
+            if len(cleaned) > SPEC.count_four:
+                self._reject_extra(cleaned, SPEC.count_four, SPEC.label_validate)
                 return
-            if len(tokens) == SPEC.count_three:
-                if tokens[SPEC.count_two].lower() == SPEC.cmd_validate_all:
+            if len(cleaned) == SPEC.count_three:
+                if cleaned[SPEC.count_two].lower() == SPEC.cmd_validate_all:
                     return
-                self._reject_extra(tokens, SPEC.count_three, SPEC.label_validate)
+                self._reject_extra(cleaned, SPEC.count_three, SPEC.label_validate)
                 return
-            if len(tokens) == SPEC.count_four:
-                if tokens[SPEC.count_three].lower() != SPEC.cmd_validate_all:
-                    self._reject_extra(tokens, SPEC.count_three, SPEC.label_validate)
+            if len(cleaned) == SPEC.count_four:
+                if cleaned[SPEC.count_three].lower() != SPEC.cmd_validate_all:
+                    self._reject_extra(cleaned, SPEC.count_three, SPEC.label_validate)
                 return
             return
         if target in (SPEC.cmd_bindings, SPEC.cmd_can_mappings, CMD_SCRIPT):
-            if len(tokens) > SPEC.count_three:
-                self._reject_extra(tokens, SPEC.count_three, SPEC.label_validate)
+            if len(cleaned) > SPEC.count_three:
+                self._reject_extra(cleaned, SPEC.count_three, SPEC.label_validate)
                 return
-            if target == CMD_SCRIPT and len(tokens) < SPEC.count_three:
+            if target == CMD_SCRIPT and len(cleaned) < SPEC.count_three:
                 raise CliParseError(SPEC.msg_validate_config)
             return
         if target == "profiles":
-            if len(tokens) > SPEC.count_three:
-                self._reject_extra(tokens, SPEC.count_three, SPEC.label_validate)
+            if len(cleaned) > SPEC.count_three:
+                self._reject_extra(cleaned, SPEC.count_three, SPEC.label_validate)
                 return
-            if len(tokens) == SPEC.count_three:
-                if tokens[SPEC.count_two].lower() not in (
+            if len(cleaned) == SPEC.count_three:
+                if cleaned[SPEC.count_two].lower() not in (
                     SPEC.show_source_robot,
                     SPEC.show_source_local,
                 ):
-                    self._reject_extra(tokens, SPEC.count_two, SPEC.label_validate)
+                    self._reject_extra(cleaned, SPEC.count_two, SPEC.label_validate)
                 return
             return
         if target == SPEC.cmd_tests:
-            self._reject_extra(tokens, SPEC.count_two, SPEC.label_validate)
+            self._reject_extra(cleaned, SPEC.count_two, SPEC.label_validate)
             return
         raise CliParseError(SPEC.msg_validate_config)
 

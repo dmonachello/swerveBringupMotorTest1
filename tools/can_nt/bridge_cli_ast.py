@@ -17,6 +17,9 @@ from typing import Dict, Optional
 
 from tools.can_nt.bridge_cli_parser import CommandAst, SPEC
 CMD_ALL = "all"
+CMD_FILE = "file"
+FLAG_FORCE = "--force"
+FLAG_REPAIR = "--repair"
 MESSAGE_VALIDATE_ALL_HEADER = "Validate all:"
 MESSAGE_VALIDATE_ALL_ITEM_OK = "  {label}: OK"
 MESSAGE_VALIDATE_ALL_ITEM_ERR = "  {label}: ERROR: {message}"
@@ -57,7 +60,6 @@ from tools.can_nt.bridge_ops import (
     group_unbind,
     import_config,
     merge_config,
-    save_config,
     selected_device_set,
     selected_mode_set,
     show_bindings,
@@ -387,29 +389,8 @@ class BridgeCliAstExecutor:
         return AST_EXEC_SPEC["ret_err"]
 
     def _ast_config_save(self, ast: CommandAst) -> Optional[int]:
-        if ast.save_target == SPEC.cmd_sources:
-            result = self._cli._save_sources()
-            return AST_EXEC_SPEC["ret_err"] if not result.ok() else None
-        if ast.save_target == SPEC.cmd_save_profiles:
-            if not self._cli._save_profiles(ast.path):
-                return AST_EXEC_SPEC["ret_err"]
-            return None
-        if ast.save_target == SPEC.cmd_save_unified:
-            if not self._cli._save_unified_config(ast.path):
-                return AST_EXEC_SPEC["ret_err"]
-            return None
-        if ast.save_target == SPEC.cmd_save_config:
-            result = save_config(self._cli._session, ast.path, self._cli._active_profile_name())
-            message = format_status_message(result.code) or result.message
-            if message:
-                print(message)
-            return AST_EXEC_SPEC["ret_err"] if not result.ok() else None
-        if ast.save_target == SPEC.cmd_save_local_config:
-            if not self._cli._save_local_config(ast.path):
-                return AST_EXEC_SPEC["ret_err"]
-            return None
-        print(AST_EXEC_SPEC["msg_err_unknown_cmd"])
-        return AST_EXEC_SPEC["ret_err"]
+        result = self._cli._handle_save_command(ast.tokens)
+        return AST_EXEC_SPEC["ret_err"] if not result.ok() else None
 
     def _ast_config_load(self, ast: CommandAst) -> Optional[int]:
         result = self._cli._load_sources()
@@ -458,6 +439,9 @@ class BridgeCliAstExecutor:
 
     def _ast_config_validate(self, ast: CommandAst) -> Optional[StatusResult]:
         target = ast.field or SPEC.empty_str
+        if target == CMD_FILE:
+            repair = any(token.lower() == FLAG_REPAIR for token in ast.tokens)
+            return self._cli._validate_file(ast.path, repair)
         if target == CMD_ALL:
             ok, results = self._cli.validate_all()
             print(MESSAGE_VALIDATE_ALL_HEADER)

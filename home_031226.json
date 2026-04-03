@@ -1,0 +1,234 @@
+{
+  "schema_version": 4,
+  "data_version": "2026-04-03_101409",
+  "default_profile": "home_031226",
+  "profiles": {
+    "home_031226": {
+      "devices": [
+        "SPARKMAX/NEO 25",
+        "SPARKMAX/NEO550 7 limit fwd",
+        "SPARKMAX/NEO550 7",
+        "FALCON 9",
+        "candle",
+        "PDH",
+        "roboRIO"
+      ]
+    }
+  },
+  "devices": [
+    {
+      "name": "SPARKMAX/NEO 25",
+      "role": "motor"
+    },
+    {
+      "name": "SPARKMAX/NEO550 7 limit fwd",
+      "role": "limitSwitch"
+    },
+    {
+      "name": "SPARKMAX/NEO550 7",
+      "role": "motor"
+    },
+    {
+      "name": "FALCON 9",
+      "role": "motor"
+    },
+    {
+      "name": "candle"
+    },
+    {
+      "name": "PDH"
+    },
+    {
+      "name": "roboRIO",
+      "role": "roborio"
+    }
+  ],
+  "bridgeConfig": {
+    "schemaVersion": 2,
+    "generatedAt": null,
+    "byProfile": {
+      "home_031226": {
+        "groups": [],
+        "selectedDevice": {
+          "device": "",
+          "enabled": false
+        },
+        "tests": {
+          "default_test_set": "default",
+          "test_sets": {
+            "default": [
+              {
+                "name": "Rotation only (internal)",
+                "enabled": false,
+                "motorLabels": [
+                  "SPARKMAX/NEO 25"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "rotation": {
+                  "limitRot": 15.0,
+                  "encoderKey": "internal",
+                  "encoderMotorIndex": 0
+                }
+              },
+              {
+                "name": "Deadband sweep (internal)",
+                "enabled": false,
+                "motorLabels": [
+                  "SPARKMAX/NEO 25"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "time": {
+                  "timeoutSec": 5.0,
+                  "onTimeout": "pass"
+                }
+              },
+              {
+                "name": "Rotation + Time",
+                "enabled": false,
+                "motorLabels": [
+                  "FALCON 9"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "rotation": {
+                  "limitRot": 10.0,
+                  "encoderKey": "internal",
+                  "encoderMotorIndex": 0
+                },
+                "time": {
+                  "timeoutSec": 2.0,
+                  "onTimeout": "fail"
+                }
+              },
+              {
+                "name": "Time only",
+                "enabled": false,
+                "motorLabels": [
+                  "SPARKMAX/NEO550 7"
+                ],
+                "type": "composite",
+                "duty": 0.3,
+                "time": {
+                  "timeoutSec": 1.5,
+                  "onTimeout": "pass"
+                }
+              },
+              {
+                "name": "Nudge (0.2 for 0.5s)",
+                "enabled": false,
+                "motorLabels": [
+                  "SPARKMAX/NEO 25"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "time": {
+                  "timeoutSec": 0.5,
+                  "onTimeout": "pass"
+                }
+              },
+              {
+                "name": "Limit switch only",
+                "enabled": false,
+                "motorLabels": [
+                  "SPARKMAX/NEO550 7"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "limitSwitch": {
+                  "enabled": true,
+                  "onHit": "pass",
+                  "id": "SPARKMAX/NEO550 7 limit fwd"
+                }
+              },
+              {
+                "name": "Hold to run",
+                "enabled": false,
+                "motorLabels": [
+                  "FALCON 9"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "hold": {
+                  "enabled": true,
+                  "onRelease": "pass"
+                }
+              },
+              {
+                "name": "Rotation + Time + Limit",
+                "enabled": false,
+                "motorLabels": [
+                  "SPARKMAX/NEO550 7",
+                  "SPARKMAX/NEO 25",
+                  "FALCON 9"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "rotation": {
+                  "limitRot": 10.0,
+                  "encoderKey": "internal",
+                  "encoderMotorIndex": 0
+                },
+                "time": {
+                  "timeoutSec": 2.0,
+                  "onTimeout": "fail"
+                },
+                "limitSwitch": {
+                  "enabled": true,
+                  "onHit": "pass",
+                  "id": "SPARKMAX/NEO550 7 limit fwd"
+                }
+              },
+              {
+                "name": "All checks",
+                "enabled": false,
+                "motorLabels": [
+                  "SPARKMAX/NEO550 7"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "rotation": {
+                  "limitRot": 8.0,
+                  "encoderKey": "internal",
+                  "encoderMotorIndex": 0
+                },
+                "time": {
+                  "timeoutSec": 3.0,
+                  "onTimeout": "pass"
+                },
+                "hold": {
+                  "enabled": true,
+                  "onRelease": "pass"
+                },
+                "limitSwitch": {
+                  "enabled": true,
+                  "onHit": "pass",
+                  "id": "SPARKMAX/NEO550 7 limit fwd"
+                }
+              },
+              {
+                "name": "Joystick motor (controller0.leftY)",
+                "enabled": false,
+                "motorLabels": [
+                  "SPARKMAX/NEO 25",
+                  "FALCON 9"
+                ],
+                "type": "joystick",
+                "inputSource": "controller0.leftY",
+                "deadband": 0.12
+              }
+            ],
+            "mini": []
+          }
+        }
+      }
+    }
+  },
+  "diagram": {
+    "profiles": {
+      "home_031226": {}
+    }
+  },
+  "data_hash": "128f5dc6816afa86de87593cc3c44d9c6d5958c61ecf0232275ae1fcb3cc9855"
+}
