@@ -108,6 +108,44 @@ KEY_RULE_EXPR = "expr"
 KEY_EXPR_TYPE = "type"
 KEY_EXPR_VALUE = "value"
 KEY_EXPR_CHILDREN = "children"
+KEY_DOT = "dot"
+
+DOT_GRAPH = "digraph"
+DOT_RANKDIR = "rankdir"
+DOT_RANKDIR_LR = "LR"
+DOT_NODE = "node"
+DOT_EDGE = "edge"
+DOT_LABEL = "label"
+DOT_SHAPE = "shape"
+DOT_SHAPE_BOX = "box"
+DOT_SHAPE_OVAL = "oval"
+DOT_SHAPE_DIAMOND = "diamond"
+DOT_STYLE = "style"
+DOT_STYLE_DASHED = "dashed"
+DOT_SEPARATOR = " -> "
+DOT_LINE_END = ";"
+DOT_LBRACE = "{"
+DOT_RBRACE = "}"
+DOT_NEWLINE = "\n"
+DOT_QUOTE = "\""
+DOT_SPACE = " "
+DOT_COMMA_SPACE = ", "
+DOT_EQUALS = "="
+DOT_ATTR_OPEN = " ["
+DOT_ATTR_CLOSE = "]"
+DOT_ID_SEP = "_"
+DOT_PREFIX_RULE = "rule"
+DOT_PREFIX_EXPR = "expr"
+DOT_LABEL_LITERAL = "literal"
+DOT_LABEL_PLACEHOLDER = "placeholder"
+DOT_LABEL_REF = "ref"
+DOT_LABEL_SEQUENCE = "sequence"
+DOT_LABEL_CHOICE = "choice"
+DOT_LABEL_REPEAT = "repeat"
+DOT_LABEL_EMPTY = "empty"
+DOT_LABEL_FAIL = "fail"
+DOT_LABEL_UNKNOWN = "unknown"
+DOT_LABEL_SEPARATOR = ": "
 
 EXPR_TYPE_LITERAL = "literal"
 EXPR_TYPE_PLACEHOLDER = "placeholder"
@@ -282,6 +320,46 @@ class CliGrammarModel:
             KEY_PLACEHOLDERS: placeholders,
             KEY_RULES: rules,
         }
+
+    def dump_dot(self, mode: str) -> str:
+        """
+        NAME
+            dump_dot - Return Graphviz DOT for the grammar model.
+        """
+        expr_cache: Dict[Expr, str] = {}
+        lines: List[str] = []
+        lines.append(DOT_GRAPH + DOT_SPACE + DOT_LBRACE)
+        lines.append(DOT_RANKDIR + DOT_EQUALS + DOT_RANKDIR_LR + DOT_LINE_END)
+        lines.append(
+            DOT_NODE
+            + DOT_ATTR_OPEN
+            + DOT_SHAPE
+            + DOT_EQUALS
+            + DOT_SHAPE_BOX
+            + DOT_ATTR_CLOSE
+            + DOT_LINE_END
+        )
+        for name in sorted(self._rules.keys()):
+            rule_id = _dot_id(DOT_PREFIX_RULE, name)
+            lines.append(_dot_node(rule_id, name, DOT_SHAPE_BOX))
+            expr = self._rules[name]
+            expr_id = self._dot_expr(expr, expr_cache, lines)
+            lines.append(_dot_edge(rule_id, expr_id))
+        lines.append(DOT_RBRACE)
+        return DOT_NEWLINE.join(lines)
+
+    def _dot_expr(self, expr: Expr, cache: Dict[Expr, str], lines: List[str]) -> str:
+        if expr in cache:
+            return cache[expr]
+        node_id = _dot_id(DOT_PREFIX_EXPR, str(len(cache)))
+        cache[expr] = node_id
+        label = _expr_label(expr)
+        shape = _expr_shape(expr)
+        lines.append(_dot_node(node_id, label, shape))
+        for child in _expr_children(expr):
+            child_id = self._dot_expr(child, cache, lines)
+            lines.append(_dot_edge(node_id, child_id))
+        return node_id
 
     def _mode_expr(self, mode: str) -> Expr:
         if mode == MODE_CONFIG:
@@ -504,6 +582,78 @@ def _expr_to_dict(expr: Expr) -> Dict[str, object]:
     if isinstance(expr, Empty):
         return {KEY_EXPR_TYPE: EXPR_TYPE_EMPTY}
     return {KEY_EXPR_TYPE: EXPR_TYPE_UNKNOWN}
+
+
+def _dot_id(prefix: str, value: str) -> str:
+    return prefix + DOT_ID_SEP + _dot_escape(value)
+
+
+def _dot_escape(value: str) -> str:
+    return value.replace(DOT_QUOTE, "")
+
+
+def _dot_node(node_id: str, label: str, shape: str) -> str:
+    return (
+        DOT_QUOTE
+        + node_id
+        + DOT_QUOTE
+        + DOT_ATTR_OPEN
+        + DOT_LABEL
+        + DOT_EQUALS
+        + DOT_QUOTE
+        + _dot_escape(label)
+        + DOT_QUOTE
+        + DOT_COMMA_SPACE
+        + DOT_SHAPE
+        + DOT_EQUALS
+        + shape
+        + DOT_ATTR_CLOSE
+        + DOT_LINE_END
+    )
+
+
+def _dot_edge(source: str, target: str) -> str:
+    return DOT_QUOTE + source + DOT_QUOTE + DOT_SEPARATOR + DOT_QUOTE + target + DOT_QUOTE + DOT_LINE_END
+
+
+def _expr_label(expr: Expr) -> str:
+    if isinstance(expr, Literal):
+        return DOT_LABEL_LITERAL + DOT_LABEL_SEPARATOR + expr.value
+    if isinstance(expr, Placeholder):
+        return DOT_LABEL_PLACEHOLDER + DOT_LABEL_SEPARATOR + expr.name
+    if isinstance(expr, Ref):
+        return DOT_LABEL_REF + DOT_LABEL_SEPARATOR + expr.name
+    if isinstance(expr, Sequence):
+        return DOT_LABEL_SEQUENCE
+    if isinstance(expr, Choice):
+        return DOT_LABEL_CHOICE
+    if isinstance(expr, Repeat):
+        return DOT_LABEL_REPEAT
+    if isinstance(expr, Empty):
+        return DOT_LABEL_EMPTY
+    if isinstance(expr, Fail):
+        return DOT_LABEL_FAIL
+    return DOT_LABEL_UNKNOWN
+
+
+def _expr_shape(expr: Expr) -> str:
+    if isinstance(expr, Choice):
+        return DOT_SHAPE_DIAMOND
+    if isinstance(expr, Literal) or isinstance(expr, Placeholder):
+        return DOT_SHAPE_BOX
+    return DOT_SHAPE_OVAL
+
+
+def _expr_children(expr: Expr) -> List[Expr]:
+    if isinstance(expr, Sequence):
+        return list(expr.parts)
+    if isinstance(expr, Choice):
+        return list(expr.options)
+    if isinstance(expr, Repeat):
+        return [expr.expr]
+    if isinstance(expr, Ref):
+        return [expr]
+    return []
 
 
 def _lex_ebnf(text: str) -> List[EbnfToken]:

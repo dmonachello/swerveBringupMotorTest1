@@ -423,6 +423,13 @@ class BridgeCliParser:
         """
         return self._grammar.dump(mode)
 
+    def dump_grammar_dot(self, mode: str) -> str:
+        """
+        NAME
+            dump_grammar_dot - Return Graphviz DOT for the grammar model.
+        """
+        return self._grammar.dump_dot(mode)
+
     def _mode_cmds_for(self, mode: str) -> tuple[str, ...]:
         if mode == SPEC.modes[SPEC.idx_exec]:
             return SPEC.mode_exec_cmds

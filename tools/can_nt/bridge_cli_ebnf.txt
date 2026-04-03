@@ -14,7 +14,8 @@ common         = "exit"
                | "ping"
                | "echo" ws ("on" | "off")
                | "messages" ws ("beginner" | "medium" | "expert")
-               | "debug" ws "grammar" [ ws "--json" ]
+               | "debug" ws "grammar" [ ws "--json" ] [ ws "--dot" ws path ]
+               | "debug" ws "grammar" [ ws "--dot" ws path ] [ ws "--json" ]
                | "quit" ;
 
 exec           = show_exec

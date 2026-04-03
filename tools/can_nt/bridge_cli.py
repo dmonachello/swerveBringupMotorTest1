@@ -373,6 +373,7 @@ CMD_INFO = "info"
 CMD_DEBUG = "debug"
 CMD_GRAMMAR = "grammar"
 FLAG_JSON = "--json"
+FLAG_DOT = "--dot"
 QUESTION_MARK = "?"
 SUGGESTION_SEPARATOR = " | "
 MESSAGE_NEXT_ARGS_PREFIX = "Next args: "
@@ -393,6 +394,7 @@ JSON_PRETTY_INDENT = 2
 MESSAGE_EMPTY_PROMPT = ""
 HISTORY_FILENAME = "bridge_cli_history.txt"
 ENCODING_UTF8 = "utf-8"
+FILE_MODE_WRITE = "w"
 PROFILE_EXPORT_JSON_SUFFIX = ".json"
 PROFILE_EXPORT_SCRIPT_SUFFIX = ".cli"
 PROFILE_EXPORT_JSON_FMT = "{profile}_profile.json"
@@ -793,7 +795,10 @@ MESSAGE_VALIDATE_SCRIPT_LINE = "  line {line}: {message}"
 MESSAGE_VALIDATE_SCRIPT_PATH_REQUIRED = "ERROR: validate script <path>"
 SCRIPT_COMMENT_PREFIX = "#"
 MESSAGE_DEBUG_GRAMMAR_HEADER = "Grammar model dump:"
-MESSAGE_DEBUG_GRAMMAR_USAGE = "ERROR: debug grammar [--json]"
+MESSAGE_DEBUG_GRAMMAR_USAGE = "ERROR: debug grammar [--json] [--dot <path>]"
+MESSAGE_DEBUG_GRAMMAR_DOT_REQUIRED = "ERROR: --dot requires a path."
+MESSAGE_DEBUG_GRAMMAR_DOT_SAVED = "Wrote grammar DOT to {path}."
+MESSAGE_DEBUG_GRAMMAR_DOT_FAIL = "ERROR: Failed to write grammar DOT: {error}"
 MESSAGE_HINT_VALIDATE_CONFIG_PROFILE = "validate config expects a file path; did you mean `profile <profile>`?"
 MESSAGE_VALIDATE_OK = "OK"
 MESSAGE_VALIDATE_ROBOT_NOT_CONNECTED = "Robot not connected."
@@ -2189,6 +2194,8 @@ class BridgeCli:
             parsed = self._parser.parse(line, mode=self._modes[-1].name)
             tokens = parsed.tokens
             ast = parsed.ast
+            if ast is not None and (not ast.verb or not ast.kind):
+                ast = None
         except (CliParseError, ValueError) as exc:
             try:
                 tokens = self._split_command(line)
@@ -4943,13 +4950,39 @@ class BridgeCli:
             if len(tokens) < COUNT_TWO or tokens[COUNT_ONE].lower() != CMD_GRAMMAR:
                 print(MESSAGE_DEBUG_GRAMMAR_USAGE)
                 return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
-            json_output = any(tok.lower() == FLAG_JSON for tok in tokens[COUNT_TWO:])
+            json_output = False
+            dot_path = None
+            idx = COUNT_TWO
+            while idx < len(tokens):
+                token = tokens[idx].lower()
+                if token == FLAG_JSON:
+                    json_output = True
+                    idx += COUNT_ONE
+                    continue
+                if token == FLAG_DOT:
+                    if idx + COUNT_ONE >= len(tokens):
+                        print(MESSAGE_DEBUG_GRAMMAR_DOT_REQUIRED)
+                        return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+                    dot_path = tokens[idx + COUNT_ONE]
+                    idx += COUNT_TWO
+                    continue
+                print(MESSAGE_DEBUG_GRAMMAR_USAGE)
+                return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
             payload = self._parser.dump_grammar(self._modes[-1].name)
             if json_output:
                 print(self._dump_json(payload, pretty=True))
             else:
                 print(MESSAGE_DEBUG_GRAMMAR_HEADER)
                 print(self._dump_json(payload, pretty=True))
+            if dot_path:
+                try:
+                    dot_text = self._parser.dump_grammar_dot(self._modes[-1].name)
+                    with open(dot_path, FILE_MODE_WRITE, encoding=ENCODING_UTF8) as handle:
+                        handle.write(dot_text)
+                    print(MESSAGE_DEBUG_GRAMMAR_DOT_SAVED.format(path=dot_path))
+                except OSError as exc:
+                    print(MESSAGE_DEBUG_GRAMMAR_DOT_FAIL.format(error=exc))
+                    return StatusResult(code=SS__EXECUTOR__INTERNAL_ERROR)
             return StatusResult(code=SS__NORMAL)
         if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == "config":
             result = save_config(self._session, tokens[2], self._active_profile_name())
@@ -6204,7 +6237,7 @@ class BridgeCli:
             "disconnect": "disconnect\n  Close TCP connection.",
             "echo": "echo on|off\n  Toggle echo for batch scripts (prints each command).",
             "messages": "messages <beginner|medium|expert>\n  Set CLI message level.",
-            "debug grammar": "debug grammar [--json]\n  Dump the grammar model for the current mode.",
+            "debug grammar": "debug grammar [--json] [--dot <path>]\n  Dump the grammar model for the current mode.",
             "show message-level": "show message-level\n  Show current CLI message level.",
             "show workspace": "show workspace\n  Show loaded file paths, active profile/set, dirty flags, and recovery mode.",
             "show session": "show session\n  Alias for show workspace.",
