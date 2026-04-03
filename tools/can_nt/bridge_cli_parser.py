@@ -1522,8 +1522,15 @@ class BridgeCliParser:
         self._reject_extra(tokens, SPEC.count_two, SPEC.label_selected_mode)
 
     def _handle_profiles_command(self, tokens: List[str]) -> None:
+        if len(tokens) < SPEC.count_two:
+            raise CliParseError(SPEC.msg_push_requires)
         if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() == SPEC.cmd_init:
             self._reject_extra(tokens, SPEC.count_two, SPEC.label_profiles_init)
+            return
+        if tokens[SPEC.count_one].lower() == SPEC.cmd_export:
+            if len(tokens) < SPEC.count_three:
+                raise CliParseError(SPEC.msg_export_requires)
+            self._reject_extra(tokens, SPEC.count_three, SPEC.label_export)
             return
         if len(tokens) < SPEC.count_three or tokens[SPEC.count_one].lower() != SPEC.cmd_push:
             raise CliParseError(SPEC.msg_push_requires)

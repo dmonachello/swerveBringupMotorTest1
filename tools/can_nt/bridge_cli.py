@@ -400,6 +400,9 @@ PROFILE_EXPORT_SCRIPT_SUFFIX = ".cli"
 PROFILE_EXPORT_JSON_FMT = "{profile}_profile.json"
 PROFILE_EXPORT_SCRIPT_FMT = "{profile}_profile.cli"
 PROFILE_EXPORT_SCRIPT_HEADER = "# bridge_cli profile export"
+PROFILE_EXPORT_SCRIPT_HEADER_ALL = "# bridge_cli profiles export"
+PROFILES_EXPORT_JSON_NAME = "profiles_export.json"
+PROFILES_EXPORT_SCRIPT_NAME = "profiles_export.cli"
 PROFILE_EXPORT_HEADER_PREFIX = "#"
 PROFILE_EXPORT_HEADER_ECHO = "# echo on"
 PROFILE_EXPORT_HEADER_INIT = "# profiles init"
@@ -744,6 +747,7 @@ MESSAGE_PROFILE_EXPORT_NONE = "ERROR: No profiles loaded. Merge a bringup_system
 MESSAGE_PROFILE_EXPORT_UNKNOWN = "ERROR: Profile not found: {name}."
 MESSAGE_PROFILE_EXPORT_WRITE_FAIL = "ERROR: Failed to write profile export: {detail}"
 MESSAGE_PROFILE_EXPORT_WRITTEN = "Wrote profile export: {json_path} + {script_path}."
+MESSAGE_PROFILES_EXPORT_WRITTEN = "Wrote profiles export: {json_path} + {script_path}."
 MESSAGE_PROFILE_EXPORT_PATH_INVALID = "Invalid export path (missing directory): {path}"
 MESSAGE_PROFILE_DEVICE_SHOW_ALL_HEADER = "Profile device entries:"
 MESSAGE_PROFILE_DEVICE_SHOW_ALL_PROFILE_HEADER = "Profile device list:"
@@ -886,6 +890,7 @@ HELP_TOPIC_PROFILE_EXPORT = "profile export"
 HELP_PROFILE_EXPORT_TEXT = (
     "profile export <profile> <path>\n"
     "  Write a JSON snapshot plus CLI script for the profile.\n"
+    "  Includes global bindings and CAN mappings.\n"
     "  If <path> is a directory, files are created under it."
 )
 HELP_TOPIC_PROFILE_DEFAULT = "profile default"
@@ -899,6 +904,11 @@ HELP_PROFILES_PUSH_TEXT = (
 HELP_TOPIC_PROFILES_INIT = "profiles init"
 HELP_PROFILES_INIT_TEXT = (
     "profiles init\n  Initialize an empty profiles payload in memory."
+)
+HELP_TOPIC_PROFILES_EXPORT = "profiles export"
+HELP_PROFILES_EXPORT_TEXT = (
+    "profiles export <path>\n  Write a JSON snapshot plus CLI script for all profiles.\n"
+    "  Includes global bindings and CAN mappings."
 )
 HELP_TOPIC_CONFIG_PUSH = "config push"
 HELP_CONFIG_PUSH_TEXT = (
@@ -937,6 +947,7 @@ MESSAGE_ERR_PLAN = "ERROR: {message}"
 MESSAGE_ERR_PROFILE_UNKNOWN = "ERROR: Profile not found: {name}."
 MESSAGE_PROFILE_DEFAULT_SET = "Default profile: {name}."
 MESSAGE_ERR_PROFILES_PUSH_PATH = "ERROR: profiles push requires a path."
+MESSAGE_ERR_PROFILES_EXPORT_PATH = "ERROR: profiles export <path>"
 MESSAGE_ERR_PROFILES_PUSH_READ = "ERROR: Failed to read profiles JSON: {path}."
 MESSAGE_ERR_PROFILES_PUSH_PARSE = "ERROR: Invalid profiles JSON: {detail}."
 MESSAGE_ERR_PROFILES_PUSH_VALIDATE = "ERROR: Profiles validation failed: {detail}."
@@ -4659,6 +4670,11 @@ class BridgeCli:
             return self._load_sources()
         if cmd == CMD_PROFILES and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_INIT:
             return self._init_profiles_payload()
+        if cmd == CMD_PROFILES and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_EXPORT:
+            if len(tokens) < COUNT_THREE:
+                print(MESSAGE_ERR_PROFILES_EXPORT_PATH)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._export_profiles_bundle(tokens[COUNT_TWO])
         if cmd == CMD_PROFILE:
             if len(tokens) < 2:
                 print(MESSAGE_ERR_PROFILE_REQUIRED)
@@ -6316,6 +6332,7 @@ class BridgeCli:
             HELP_TOPIC_PROFILE_DEFAULT: HELP_PROFILE_DEFAULT_TEXT,
             HELP_TOPIC_PROFILES_PUSH: HELP_PROFILES_PUSH_TEXT,
             HELP_TOPIC_PROFILES_INIT: HELP_PROFILES_INIT_TEXT,
+            HELP_TOPIC_PROFILES_EXPORT: HELP_PROFILES_EXPORT_TEXT,
             HELP_TOPIC_CONFIG_PUSH: HELP_CONFIG_PUSH_TEXT,
             HELP_TOPIC_QUICK: self._quick_help_text(),
             "device mode": (
@@ -8694,6 +8711,55 @@ class BridgeCli:
         )
         return StatusResult(code=SS__NORMAL)
 
+    def _export_profiles_bundle(self, path: str) -> StatusResult:
+        """
+        NAME
+            _export_profiles_bundle - Export all profiles JSON snapshot and CLI script.
+        """
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            print(MESSAGE_PROFILE_EXPORT_NONE)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        profiles = payload.get(KEY_PROFILES)
+        if not isinstance(profiles, dict) or not profiles:
+            print(MESSAGE_PROFILE_EXPORT_NONE)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        export_payload: Dict[str, object] = {
+            KEY_SCHEMA_VERSION: PROFILE_SCHEMA_VERSION,
+            KEY_DATA_VERSION: timestamp_version(),
+            KEY_DEFAULT_PROFILE: self._default_profile_name(),
+            KEY_PROFILES: deepcopy(profiles),
+            KEY_DEVICES: deepcopy(payload.get(KEY_DEVICES, [])),
+        }
+        bridge_config = payload.get(KEY_BRIDGE_CONFIG)
+        if isinstance(bridge_config, dict):
+            export_payload[KEY_BRIDGE_CONFIG] = deepcopy(bridge_config)
+        diagram = payload.get(KEY_DIAGRAM)
+        if isinstance(diagram, dict):
+            export_payload[KEY_DIAGRAM] = deepcopy(diagram)
+        export_payload[KEY_DATA_HASH] = compute_profiles_hash(export_payload)
+        json_path, script_path, error = self._resolve_profiles_export_paths(path)
+        if error:
+            print(MESSAGE_PROFILE_EXPORT_WRITE_FAIL.format(detail=error))
+            return StatusResult(code=SS__CONFIG__INVALID)
+        try:
+            write_json(Path(json_path), export_payload, indent=PROFILE_EXPORT_INDENT)
+            script_lines = self._profiles_export_script_lines(json_path)
+            Path(script_path).write_text(
+                PROFILE_EXPORT_NEWLINE.join(script_lines) + PROFILE_EXPORT_NEWLINE,
+                encoding=ENCODING_UTF8,
+            )
+        except Exception as exc:
+            print(MESSAGE_PROFILE_EXPORT_WRITE_FAIL.format(detail=str(exc)))
+            return StatusResult(code=SS__CONFIG__INVALID)
+        print(
+            MESSAGE_PROFILES_EXPORT_WRITTEN.format(
+                json_path=json_path,
+                script_path=script_path,
+            )
+        )
+        return StatusResult(code=SS__NORMAL)
+
     def _resolve_profile_export_paths(
         self, profile_name: str, path: str
     ) -> tuple[str, str, str]:
@@ -8710,6 +8776,35 @@ class BridgeCli:
             script_name = PROFILE_EXPORT_SCRIPT_FMT.format(profile=profile_name)
             json_path = str(target / json_name)
             script_path = str(target / script_name)
+            return (json_path, script_path, error)
+        suffix = target.suffix.lower()
+        if suffix == PROFILE_EXPORT_JSON_SUFFIX:
+            json_path = str(target)
+            script_path = str(target.with_suffix(PROFILE_EXPORT_SCRIPT_SUFFIX))
+        elif suffix == PROFILE_EXPORT_SCRIPT_SUFFIX:
+            script_path = str(target)
+            json_path = str(target.with_suffix(PROFILE_EXPORT_JSON_SUFFIX))
+        else:
+            json_path = str(target.with_suffix(PROFILE_EXPORT_JSON_SUFFIX))
+            script_path = str(target.with_suffix(PROFILE_EXPORT_SCRIPT_SUFFIX))
+        parent = Path(json_path).parent
+        if not parent.exists():
+            error = MESSAGE_PROFILE_EXPORT_PATH_INVALID.format(path=str(parent))
+            return (EMPTY_STRING, EMPTY_STRING, error)
+        return (json_path, script_path, error)
+
+    def _resolve_profiles_export_paths(self, path: str) -> tuple[str, str, str]:
+        """
+        NAME
+            _resolve_profiles_export_paths - Resolve JSON/script output paths for all profiles.
+        """
+        target = Path(path)
+        json_path = EMPTY_STRING
+        script_path = EMPTY_STRING
+        error = EMPTY_STRING
+        if target.exists() and target.is_dir():
+            json_path = str(target / PROFILES_EXPORT_JSON_NAME)
+            script_path = str(target / PROFILES_EXPORT_SCRIPT_NAME)
             return (json_path, script_path, error)
         suffix = target.suffix.lower()
         if suffix == PROFILE_EXPORT_JSON_SUFFIX:
@@ -8748,6 +8843,7 @@ class BridgeCli:
             + PROFILE_EXPORT_PATH_SEPARATOR
             + CMD_INIT
         )
+        lines.extend(self._profile_export_global_lines())
         lines.append(
             PROFILE_EXPORT_CMD_PROFILE
             + PROFILE_EXPORT_PATH_SEPARATOR
@@ -8774,6 +8870,66 @@ class BridgeCli:
             + PROFILE_EXPORT_PATH_SEPARATOR
             + profile_token
         )
+        lines.append(CMD_VALIDATE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_VALIDATE_ALL)
+        lines.append(CMD_SAVE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_SOURCES)
+        lines.append(PROFILE_EXPORT_CMD_EXIT)
+        return lines
+
+    def _profiles_export_script_lines(self, json_path: str) -> List[str]:
+        """
+        NAME
+            _profiles_export_script_lines - Build a CLI batch script for all profiles.
+        """
+        payload = self._local_root_payload
+        profiles = payload.get(KEY_PROFILES) if isinstance(payload, dict) else None
+        if not isinstance(profiles, dict):
+            return []
+        default_profile = self._default_profile_name()
+        lines = [
+            PROFILE_EXPORT_SCRIPT_HEADER_ALL,
+            PROFILE_EXPORT_HEADER_ECHO,
+            PROFILE_EXPORT_HEADER_SAVE_NEW,
+        ]
+        lines.append(
+            PROFILE_EXPORT_CMD_CONFIGURE
+            + PROFILE_EXPORT_PATH_SEPARATOR
+            + PROFILE_EXPORT_CMD_TERMINAL
+        )
+        lines.append(
+            PROFILE_EXPORT_CMD_PROFILES
+            + PROFILE_EXPORT_PATH_SEPARATOR
+            + CMD_INIT
+        )
+        lines.extend(self._profile_export_global_lines())
+        for profile_name in sorted(profiles.keys()):
+            profile_token = self._quote_if_needed(profile_name)
+            lines.append(
+                PROFILE_EXPORT_CMD_PROFILE
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + PROFILE_EXPORT_CMD_DELETE
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + profile_token
+            )
+            lines.append(
+                PROFILE_EXPORT_CMD_PROFILE
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + PROFILE_EXPORT_CMD_CREATE
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + profile_token
+            )
+            lines.append(PROFILE_EXPORT_CMD_PROFILE + PROFILE_EXPORT_PATH_SEPARATOR + profile_token)
+            lines.extend(self._profile_export_device_lines(profile_name))
+            lines.extend(self._profile_export_group_lines(profile_name))
+            lines.extend(self._profile_export_tests_lines(profile_name))
+            lines.extend(self._profile_export_selected_lines(profile_name))
+        if default_profile:
+            lines.append(
+                PROFILE_EXPORT_CMD_PROFILE
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + PROFILE_EXPORT_CMD_DEFAULT
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + self._quote_if_needed(default_profile)
+            )
         lines.append(CMD_VALIDATE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_VALIDATE_ALL)
         lines.append(CMD_SAVE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_SOURCES)
         lines.append(PROFILE_EXPORT_CMD_EXIT)
@@ -8812,6 +8968,164 @@ class BridgeCli:
                     + field
                     + PROFILE_EXPORT_PATH_SEPARATOR
                     + value_token
+                )
+        return lines
+
+    def _profile_export_global_lines(self) -> List[str]:
+        """
+        NAME
+            _profile_export_global_lines - Build CLI lines for global bindings and CAN mappings.
+        """
+        lines: List[str] = []
+        lines.extend(self._profile_export_bindings_lines())
+        lines.extend(self._profile_export_can_mappings_lines())
+        return lines
+
+    def _profile_export_bindings_lines(self) -> List[str]:
+        """
+        NAME
+            _profile_export_bindings_lines - Build CLI lines for global bindings.
+        """
+        if not self._ensure_bindings_loaded():
+            return []
+        payload = self._bindings_payload
+        if not isinstance(payload, dict):
+            return []
+        lines: List[str] = []
+        controllers = payload.get(KEY_CONTROLLERS, [])
+        if isinstance(controllers, list):
+            for entry in controllers:
+                if not isinstance(entry, dict):
+                    continue
+                name = str(entry.get(KEY_NAME, EMPTY_STRING)).strip()
+                ctrl_type = str(entry.get(FIELD_TYPE, EMPTY_STRING)).strip()
+                port = entry.get(KEY_PORT)
+                if not name or not ctrl_type or port is None:
+                    continue
+                lines.append(
+                    CMD_BINDINGS
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + CMD_CONTROLLER
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + CMD_ADD
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + self._quote_if_needed(name)
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + self._quote_if_needed(ctrl_type)
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + self._format_cli_value(port)
+                )
+        bindings = payload.get(KEY_BINDINGS, [])
+        if isinstance(bindings, list):
+            for entry in bindings:
+                if not isinstance(entry, dict):
+                    continue
+                command = str(entry.get(KEY_COMMAND, EMPTY_STRING)).strip()
+                controller = str(entry.get(KEY_CONTROLLER, EMPTY_STRING)).strip()
+                input_name = str(entry.get(KEY_INPUT, EMPTY_STRING)).strip()
+                input_id = str(entry.get(KEY_ID, EMPTY_STRING)).strip()
+                mode = str(entry.get(KEY_MODE, EMPTY_STRING)).strip()
+                if not command or not controller or not input_name or not input_id or not mode:
+                    continue
+                lines.append(
+                    CMD_BINDINGS
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + CMD_BINDING
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + CMD_ADD
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + self._quote_if_needed(command)
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + self._quote_if_needed(controller)
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + self._quote_if_needed(input_name)
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + self._quote_if_needed(input_id)
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + self._quote_if_needed(mode)
+                )
+        axes = payload.get(KEY_AXES, [])
+        if isinstance(axes, list):
+            for entry in axes:
+                if not isinstance(entry, dict):
+                    continue
+                command = str(entry.get(KEY_COMMAND, EMPTY_STRING)).strip()
+                controller = str(entry.get(KEY_CONTROLLER, EMPTY_STRING)).strip()
+                axis_id = str(entry.get(KEY_ID, EMPTY_STRING)).strip()
+                invert = entry.get(KEY_INVERT)
+                deadband = entry.get(KEY_DEADBAND)
+                if not command or not controller or not axis_id:
+                    continue
+                invert_token = PROFILE_EXPORT_CMD_ON if bool(invert) else PROFILE_EXPORT_CMD_OFF
+                if deadband is None:
+                    continue
+                lines.append(
+                    CMD_BINDINGS
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + CMD_AXIS
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + CMD_ADD
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + self._quote_if_needed(command)
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + self._quote_if_needed(controller)
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + self._quote_if_needed(axis_id)
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + KEY_INVERT
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + invert_token
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + KEY_DEADBAND
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + self._format_cli_value(deadband)
+                )
+        return lines
+
+    def _profile_export_can_mappings_lines(self) -> List[str]:
+        """
+        NAME
+            _profile_export_can_mappings_lines - Build CLI lines for CAN mappings.
+        """
+        if not self._ensure_can_mappings_loaded():
+            return []
+        payload = self._can_mappings
+        if not isinstance(payload, dict):
+            return []
+        lines: List[str] = []
+        manufacturers = payload.get(KEY_MANUFACTURERS, {})
+        if isinstance(manufacturers, dict):
+            for key in sorted(manufacturers.keys(), key=lambda value: int(value) if str(value).isdigit() else value):
+                name = manufacturers.get(key)
+                if name is None:
+                    continue
+                lines.append(
+                    CMD_CAN_MAPPINGS
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + CMD_MANUFACTURER
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + CMD_SET
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + self._format_cli_value(key)
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + self._quote_if_needed(str(name))
+                )
+        device_types = payload.get(KEY_DEVICE_TYPES, {})
+        if isinstance(device_types, dict):
+            for key in sorted(device_types.keys(), key=lambda value: int(value) if str(value).isdigit() else value):
+                name = device_types.get(key)
+                if name is None:
+                    continue
+                lines.append(
+                    CMD_CAN_MAPPINGS
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + CMD_DEVICE_TYPE_NAME
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + CMD_SET
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + self._format_cli_value(key)
+                    + PROFILE_EXPORT_PATH_SEPARATOR
+                    + self._quote_if_needed(str(name))
                 )
         return lines
 

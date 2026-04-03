@@ -111,6 +111,7 @@ config         = "group" ws name
                | ("validate" | "val") ws "can-mappings" [ ws path ]
                | ("validate" | "val") ws "script" ws path
                | "profiles" ws "init"
+               | "profiles" ws "export" ws path
                | "profiles" ws "push" ws path [ ws "--activate" ws name ]
                | "config" ws "push" ws path [ ws "--activate" ws name ]
                | ("show" | "ls") ws show_target [ ws show_flags ]
