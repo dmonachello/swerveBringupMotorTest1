@@ -208,3 +208,7 @@ tools/save/
 *.pdf
 # Local saved artifacts
 saved/
+*.bak
+*.json
+*.cli
+*.cmd

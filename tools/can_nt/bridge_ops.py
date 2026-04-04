@@ -791,6 +791,9 @@ def _normalize_bridge_config(
         if not isinstance(profiles, dict):
             profiles = None
     generated_at = payload.get(KEY_BRIDGE_GENERATED_AT)
+    devices_meta = payload.get(KEY_DEVICES)
+    if not isinstance(devices_meta, list):
+        devices_meta = []
     normalized: Dict[str, Dict[str, Any]] = {}
     for name, entry in by_profile.items():
         if not isinstance(name, str) or not name:
@@ -864,6 +867,7 @@ def _normalize_bridge_config(
             KEY_BRIDGE_SCHEMA_VERSION: version,
             KEY_BRIDGE_GENERATED_AT: generated_at,
             KEY_BRIDGE_BY_PROFILE: normalized,
+            KEY_DEVICES: devices_meta,
         },
         None,
     )

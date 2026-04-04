@@ -58,8 +58,6 @@ from tools.can_nt.bridge_ops import (
     group_remove_device,
     group_run_test,
     group_unbind,
-    import_config,
-    merge_config,
     selected_device_set,
     selected_mode_set,
     show_bindings,
@@ -92,7 +90,7 @@ AST_EXEC_SPEC = {
     "msg_err_bind_value": "ERROR: binding requires value.",
     "msg_err_bind_numeric": "ERROR: binding value must be numeric.",
     "msg_err_device_missing": "ERROR: Device not defined in local config. Use device <name> to create it.",
-    "msg_err_local_missing": "ERROR: Local config not loaded. Use merge/import config <bringup_system.json> first.",
+    "msg_err_local_missing": "ERROR: Local config not loaded. Use load config <path> --merge|--replace first.",
     "msg_err_member_action": "ERROR: member requires enable/disable/toggle.",
     "msg_err_fmt": "ERROR: %s",
     "msg_ok_config": "OK: Config is valid.",
@@ -365,12 +363,12 @@ class BridgeCliAstExecutor:
         return StatusResult(code=SS__NORMAL)
 
     def _ast_config_merge(self, ast: CommandAst) -> Optional[int]:
-        plan = merge_config(ast.path, self._cli._conflict_policy, self._cli._active_profile_name())
-        return self._cli._apply_config_plan(plan)
+        result = self._cli._load_config_merge_deprecated(ast.path)
+        return AST_EXEC_SPEC["ret_err"] if not result.ok() else None
 
     def _ast_config_import(self, ast: CommandAst) -> Optional[int]:
-        plan = import_config(ast.path, self._cli._conflict_policy, self._cli._active_profile_name())
-        return self._cli._apply_config_plan(plan)
+        result = self._cli._load_config_replace_deprecated(ast.path)
+        return AST_EXEC_SPEC["ret_err"] if not result.ok() else None
 
     def _ast_config_export(self, ast: CommandAst) -> Optional[int]:
         if ast.export_target == SPEC.cmd_export_runtime_groups:
@@ -393,7 +391,7 @@ class BridgeCliAstExecutor:
         return AST_EXEC_SPEC["ret_err"] if not result.ok() else None
 
     def _ast_config_load(self, ast: CommandAst) -> Optional[int]:
-        result = self._cli._load_sources()
+        result = self._cli._handle_load_command(ast.tokens)
         return AST_EXEC_SPEC["ret_err"] if not result.ok() else None
 
     def _ast_config_push(self, ast: CommandAst) -> Optional[StatusResult]:
@@ -432,7 +430,8 @@ class BridgeCliAstExecutor:
         return None
 
     def _ast_config_device_set(self, ast: CommandAst) -> Optional[int]:
-        if not self._cli._set_local_device_meta(ast.device_name, ast.field, ast.value):
+        result = self._cli._set_local_device_meta(ast.device_name, ast.field, ast.value)
+        if not result.ok():
             return AST_EXEC_SPEC["ret_err"]
         print(AST_EXEC_SPEC["fmt_update_device"] % (ast.device_name, ast.field, ast.value))
         return None
@@ -656,14 +655,16 @@ class BridgeCliAstExecutor:
 
     def _ast_device_set(self, ast: CommandAst) -> Optional[int]:
         device = self._cli._modes[-1].device
-        if not self._cli._set_local_device_meta(device, ast.field, ast.value):
+        result = self._cli._set_local_device_meta(device, ast.field, ast.value)
+        if not result.ok():
             return AST_EXEC_SPEC["ret_err"]
         print(AST_EXEC_SPEC["fmt_update_device"] % (device, ast.field, ast.value))
         return None
 
     def _ast_device_no(self, ast: CommandAst) -> Optional[int]:
         device = self._cli._modes[-1].device
-        if not self._cli._clear_local_device_meta(device, ast.field):
+        result = self._cli._clear_local_device_meta(device, ast.field)
+        if not result.ok():
             return AST_EXEC_SPEC["ret_err"]
         print(AST_EXEC_SPEC["fmt_clear_device"] % (device, ast.field))
         return None

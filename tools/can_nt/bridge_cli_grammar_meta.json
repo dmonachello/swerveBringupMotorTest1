@@ -40,7 +40,6 @@
     "help",
     "version",
     "device-usage",
-    "device-registry",
     "bindings",
     "can-mappings",
     "selected-device",
@@ -55,7 +54,8 @@
     "workspace",
     "session",
     "controllers",
-    "device-group"
+    "device-group",
+    "device-meta"
   ],
   "bind_kinds": [
     "analog",
@@ -109,6 +109,7 @@
     "bindings": "bindings",
     "can_mappings": "can-mappings",
     "load": "load",
+    "reload": "reload",
     "tests": "tests",
     "create": "create",
     "delete": "delete",
@@ -131,6 +132,8 @@
     "validate": "validate",
     "val": "val",
     "validate_all": "--all",
+    "merge_flag": "--merge",
+    "replace_flag": "--replace",
     "add": "add",
     "member": "member",
     "enable": "enable",
@@ -239,7 +242,7 @@
     "export_target": "export requires runtime-groups or cli-script",
     "save_requires": "save requires target and path (or sources/all)",
     "save_target": "save requires all/config/local-config/profiles/unified-config/sources",
-    "load_requires": "load requires sources",
+    "load_requires": "load requires sources or config <path> [--merge|--replace]",
     "write_requires": "write requires tests <path>",
     "push_requires": "push requires path",
     "rename_device": "rename requires 'device <old> <new>'",

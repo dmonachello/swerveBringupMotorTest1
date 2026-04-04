@@ -682,6 +682,8 @@ class ConfigSchemaStore:
             bridge.get(KEY_BRIDGE_BY_PROFILE), dict
         ):
             bridge[KEY_BRIDGE_BY_PROFILE] = dict()
+        if KEY_DEVICES not in bridge:
+            bridge[KEY_DEVICES] = list()
 
     def _load_tests_from_profiles(
         self, profiles_payload: Dict[str, object]

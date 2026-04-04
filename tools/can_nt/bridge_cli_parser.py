@@ -56,7 +56,6 @@ SHOW_TARGET_PROFILE = "profile"
 SHOW_TARGET_GROUP = "group"
 SHOW_TARGET_TEST = "test"
 SHOW_TARGET_DEVICE_USAGE = "device-usage"
-SHOW_TARGET_DEVICE_REGISTRY = "device-registry"
 SHOW_TARGET_REGISTRY = "registry"
 CMD_CONFIG = "config"
 CMD_SHOW = "show"
@@ -81,6 +80,7 @@ CMD_ON = "on"
 CMD_OFF = "off"
 CMD_SAVE = "save"
 CMD_SAVE_TESTS = "save-tests"
+CMD_RELOAD = SPEC.cmd_reload
 CMD_RECOVER = "recover"
 CMD_LAST_GOOD = "last-good"
 CMD_FROM = "from"
@@ -88,6 +88,8 @@ CMD_LIST = "list"
 CMD_FILE = "file"
 FLAG_FORCE = "--force"
 FLAG_REPAIR = "--repair"
+FLAG_MERGE = SPEC.cmd_merge_flag
+FLAG_REPLACE = SPEC.cmd_replace_flag
 CMD_EXPORT = "export"
 CMD_IMPORT = "import"
 CMD_MERGE = "merge"
@@ -259,6 +261,8 @@ class BridgeCliParser:
             if cmd == CMD_RECOVER:
                 return self._handle_recover
             if cmd == SPEC.cmd_load.lower():
+                return self._handle_load
+            if cmd == SPEC.cmd_reload.lower():
                 return self._handle_load
             if cmd == SPEC.cmd_write.lower():
                 return self._handle_write
@@ -915,17 +919,28 @@ class BridgeCliParser:
                 SPEC.empty_str,
                 bool(SPEC.bool_false),
             )
-        if verb == SPEC.cmd_load:
+        if verb in (SPEC.cmd_load, SPEC.cmd_reload):
+            target = SPEC.empty_str
+            path = SPEC.empty_str
+            mode = SPEC.empty_str
+            if verb == SPEC.cmd_reload:
+                target = SPEC.cmd_sources
+            elif len(tokens) >= SPEC.count_two:
+                target = tokens[SPEC.count_one].lower()
+                if target == SPEC.cmd_config and len(tokens) >= SPEC.count_three:
+                    path = tokens[SPEC.count_two]
+                    if len(tokens) >= SPEC.count_four:
+                        mode = tokens[SPEC.count_three].lower()
             return (
                 SPEC.kind_config_load,
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
+                target,
+                mode,
                 SPEC.empty_str,
                 SPEC.empty_str,
-                SPEC.empty_str,
-                SPEC.empty_str,
-                SPEC.empty_str,
+                path,
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
@@ -1663,9 +1678,28 @@ class BridgeCliParser:
     def _handle_load(self, tokens: List[str]) -> None:
         if len(tokens) < SPEC.count_two:
             raise CliParseError(SPEC.msg_load_requires)
-        if tokens[SPEC.count_one].lower() != SPEC.cmd_sources:
-            raise CliParseError(SPEC.msg_load_requires)
-        self._reject_extra(tokens, SPEC.count_two, SPEC.cmd_load)
+        verb = tokens[SPEC.count_zero].lower()
+        if verb == SPEC.cmd_reload:
+            if tokens[SPEC.count_one].lower() != SPEC.cmd_sources:
+                raise CliParseError(SPEC.msg_load_requires)
+            self._reject_extra(tokens, SPEC.count_two, SPEC.cmd_reload)
+            return
+        target = tokens[SPEC.count_one].lower()
+        if target == SPEC.cmd_sources:
+            self._reject_extra(tokens, SPEC.count_two, SPEC.cmd_load)
+            return
+        if target == SPEC.cmd_config:
+            self._require(tokens, SPEC.count_three, SPEC.msg_load_requires)
+            if len(tokens) == SPEC.count_three:
+                return
+            if len(tokens) == SPEC.count_four and tokens[SPEC.count_three].lower() in (
+                FLAG_MERGE,
+                FLAG_REPLACE,
+            ):
+                return
+            self._reject_extra(tokens, SPEC.count_four, SPEC.cmd_load)
+            return
+        raise CliParseError(SPEC.msg_load_requires)
 
     def _handle_rename(self, tokens: List[str]) -> None:
         if len(tokens) >= SPEC.count_four and tokens[SPEC.count_one].lower() == SPEC.cmd_device:
@@ -1815,8 +1849,8 @@ class BridgeCliParser:
             and target == SHOW_TARGET_DEVICE
             and core[SPEC.count_one].lower() == SHOW_TARGET_REGISTRY
         ):
-            core = [SHOW_TARGET_DEVICE_REGISTRY, core[SPEC.count_two]]
-            target = SHOW_TARGET_DEVICE_REGISTRY
+            core = [SHOW_TARGET_DEVICE, core[SPEC.count_two]]
+            target = SHOW_TARGET_DEVICE
         if target not in self._show_targets:
             raise CliParseError(SPEC.msg_unknown_show)
         if target in (
@@ -1825,7 +1859,6 @@ class BridgeCliParser:
             SPEC.show_target_test,
             SPEC.show_target_device_usage,
             SPEC.show_target_device_group,
-            SHOW_TARGET_DEVICE_REGISTRY,
         ) and len(core) < SPEC.count_two:
             raise CliParseError(SPEC.msg_show_name % target)
         if target == "profiles" and len(core) > SPEC.count_one and self._strict:

@@ -4,7 +4,7 @@
     "home_031226": {
       "devices": [
         "SPARKMAX/NEO 25",
-        "SPARKMAX/NEO550 7 limit fwd",
+        "lmtSw1",
         "SPARKMAX/NEO550 7",
         "FALCON 9",
         "candle",
@@ -16,61 +16,61 @@
   "devices": [
     {
       "label": "SPARKMAX/NEO 25",
+      "interface": "CAN",
       "manufacturer": 5,
       "deviceType": 2,
       "id": 25,
       "model": "REV NEO",
-      "type": "motor",
-      "interface": "CAN"
+      "type": "motor"
     },
     {
-      "label": "SPARKMAX/NEO550 7 limit fwd",
+      "label": "lmtSw1",
+      "interface": "DIO",
       "type": "limitSwitch",
       "dio": 0,
-      "invert": true,
-      "interface": "DIO"
+      "invert": true
     },
     {
       "label": "SPARKMAX/NEO550 7",
+      "interface": "CAN",
       "manufacturer": 5,
       "deviceType": 2,
       "id": 7,
       "model": "REV NEO 550",
-      "type": "motor",
-      "interface": "CAN"
+      "type": "motor"
     },
     {
       "label": "FALCON 9",
+      "interface": "CAN",
       "manufacturer": 4,
       "deviceType": 2,
       "id": 9,
-      "model": "CTRE Falcon 500",
-      "type": "motor",
-      "interface": "CAN"
+      "model": "CTRE Falcon 500 motor",
+      "type": "motor"
     },
     {
       "label": "candle",
+      "interface": "CAN",
       "manufacturer": 4,
       "deviceType": 10,
       "id": 2,
-      "terminator": false,
-      "interface": "CAN"
+      "terminator": false
     },
     {
       "label": "PDH",
+      "interface": "CAN",
       "manufacturer": 5,
       "deviceType": 8,
       "id": 1,
-      "terminator": true,
-      "interface": "CAN"
+      "terminator": true
     },
     {
       "label": "roboRIO",
+      "interface": "CAN",
       "manufacturer": 0,
       "deviceType": 1,
       "id": 0,
-      "type": "roborio",
-      "interface": "CAN"
+      "type": "roborio"
     }
   ],
   "diagram": {
@@ -78,8 +78,8 @@
       "home_031226": {}
     }
   },
-  "data_version": "2026-04-03_001836",
-  "data_hash": "77d4dadc64d7656ab13d7cfed6d8242254785e990645cf342d28a2090c744374",
+  "data_version": "2026-04-04_012756",
+  "data_hash": "dfdb7d0d17835ab07197d46cab313ee6a55818cb4b5d3043caaf366301052013",
   "default_profile": "home_031226",
   "bridgeConfig": {
     "schemaVersion": 2,
@@ -177,7 +177,7 @@
                 "limitSwitch": {
                   "enabled": true,
                   "onHit": "pass",
-                  "id": "SPARKMAX/NEO550 7 limit fwd"
+                  "id": "lmtSw1"
                 }
               },
               {
@@ -215,7 +215,7 @@
                 "limitSwitch": {
                   "enabled": true,
                   "onHit": "pass",
-                  "id": "SPARKMAX/NEO550 7 limit fwd"
+                  "id": "lmtSw1"
                 }
               },
               {
@@ -242,7 +242,7 @@
                 "limitSwitch": {
                   "enabled": true,
                   "onHit": "pass",
-                  "id": "SPARKMAX/NEO550 7 limit fwd"
+                  "id": "lmtSw1"
                 }
               },
               {
@@ -261,6 +261,24 @@
           }
         }
       }
-    }
+    },
+    "devices": [
+      {
+        "name": "FALCON 9",
+        "vendor": "CTRE",
+        "notes": "Flcon motor",
+        "tags": [
+          "motor",
+          "swerve",
+          "clown"
+        ],
+        "bus": "CAN",
+        "role": "motor",
+        "limits": {
+          "fwdDio": 0,
+          "revDio": 1
+        }
+      }
+    ]
   }
 }

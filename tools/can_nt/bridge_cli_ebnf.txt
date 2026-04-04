@@ -34,7 +34,7 @@ show_target    = "status"
                | "group" ws name
                | "devices"
                | "device" ws name
-               | "device" ws "registry" ws name
+               | "device-meta" [ ws name ]
                | "commands"
                | "help"
                | "controllers"
@@ -85,6 +85,7 @@ config         = "group" ws name
                | "selected-mode" ws ("on" | "off")
                | "merge" ws "config" ws path
                | "import" ws "config" ws path
+               | "load" ws "config" ws path [ ws ("--merge" | "--replace") ]
                | "export" ws "runtime-groups" ws path
                | "export" ws "cli-script" ws path
                | "save" ws "tests" ws path [ ws "--force" ]
@@ -98,11 +99,13 @@ config         = "group" ws name
                | "save" ws "sources" [ ws "--force" ]
                | "savep" ws path
                | "load" ws "sources"
+               | "reload" ws "sources"
                | "write" ws "tests" ws path
                | "rename" ws "device" ws name ws name
                | "rename" ws name ws name
                | "device" ws name
                | "device" ws name ws "set" ws device_field ws value_or_text
+               | "device" ws name ws "no" ws device_field
                | ("validate" | "val") ws "all"
                | ("validate" | "val") ws "config" [ ws path ] [ ws "--all" ]
                | ("validate" | "val") ws "file" ws path [ ws "--repair" ]
@@ -230,6 +233,7 @@ device_field   = "interface"
                | "vendor"
                | "role"
                | "notes"
+               | "bus"
                | "tags"
                | "limits" ;
 value_text     = (token | "default") { ws (token | "default") } ;

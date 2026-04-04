@@ -363,10 +363,12 @@ CMD_ALL = "all"
 CMD_SCRIPT = "script"
 CMD_PROMPT = "--prompt"
 CMD_LOAD = "load"
+CMD_RELOAD = PARSER_SPEC.cmd_reload
 CMD_SAVE = "save"
 CMD_SOURCES = "sources"
 CMD_SAVEP = PARSER_SPEC.cmd_savep
 CMD_MERGE = "merge"
+CMD_IMPORT = "import"
 CMD_TEMPLATES = "templates"
 CMD_TEMPLATE = "template"
 CMD_INFO = "info"
@@ -381,6 +383,8 @@ FLAG_JSON = "--json"
 FLAG_DOT = "--dot"
 FLAG_FORCE = "--force"
 FLAG_REPAIR = "--repair"
+FLAG_MERGE = PARSER_SPEC.cmd_merge_flag
+FLAG_REPLACE = PARSER_SPEC.cmd_replace_flag
 QUESTION_MARK = "?"
 SUGGESTION_SEPARATOR = " | "
 MESSAGE_NEXT_ARGS_PREFIX = "Next args: "
@@ -421,6 +425,12 @@ PROFILE_EXPORT_JSON_FMT = "{profile}_profile.json"
 PROFILE_EXPORT_SCRIPT_FMT = "{profile}_profile.cli"
 PROFILE_EXPORT_SCRIPT_HEADER = "# bridge_cli profile export"
 PROFILE_EXPORT_SCRIPT_HEADER_ALL = "# bridge_cli profiles export"
+SCRIPT_LOAD_CONFIG_MERGE_FMT = 'load config "{path}" --merge'
+SCRIPT_LOAD_CONFIG_NOTE = "# NOTE: devices are derived from profiles; load config <path> --merge first."
+PROFILE_EXPORT_EMPTY_BINDINGS_FMT = "{profile}_bindings_empty.json"
+PROFILE_EXPORT_EMPTY_MAPPINGS_FMT = "{profile}_mappings_empty.json"
+PROFILES_EXPORT_EMPTY_BINDINGS_NAME = "bindings_empty.json"
+PROFILES_EXPORT_EMPTY_MAPPINGS_NAME = "mappings_empty.json"
 PROFILES_EXPORT_JSON_NAME = "profiles_export.json"
 PROFILES_EXPORT_SCRIPT_NAME = "profiles_export.cli"
 PROFILE_EXPORT_HEADER_PREFIX = "#"
@@ -511,6 +521,13 @@ PROFILE_EXPORT_PATH_SEPARATOR = " "
 PROFILE_EXPORT_JSON_SEP_COMMA = ","
 PROFILE_EXPORT_JSON_SEP_COLON = ":"
 PROFILE_EXPORT_JSON_SEPARATORS = (PROFILE_EXPORT_JSON_SEP_COMMA, PROFILE_EXPORT_JSON_SEP_COLON)
+BRACE_OPEN = "{"
+BRACE_CLOSE = "}"
+BRACKET_OPEN = "["
+BRACKET_CLOSE = "]"
+TOKEN_TRUE = "true"
+TOKEN_FALSE = "false"
+TOKEN_DOT = "."
 ATTR_SWEEP_START_DUTY = "start_duty"
 ATTR_SWEEP_MAX_DUTY = "max_duty"
 ATTR_SWEEP_STEP_DUTY = "step_duty"
@@ -564,6 +581,17 @@ DIRTY_PROFILES = "profiles"
 DIRTY_TESTS = "tests"
 DIRTY_BINDINGS = "bindings"
 DIRTY_MAPPINGS = "can-mappings"
+KEY_CONTEXT = "context"
+KEY_CONTEXT_SOURCE = "source"
+KEY_CONTEXT_PROFILE = "profile"
+KEY_CONTEXT_TEST_SET = "testSet"
+KEY_CONTEXT_SELECTED_DEVICE = "selectedDevice"
+KEY_CONTEXT_SELECTED_MODE = "selectedMode"
+KEY_CONTEXT_DEFAULT_PROFILE = "defaultProfile"
+CONTEXT_SOURCE_LOCAL = "local"
+CONTEXT_SOURCE_ROBOT = "robot"
+SELECTED_MODE_ON = "on"
+SELECTED_MODE_OFF = "off"
 KEY_COMMANDS = "commands"
 KEY_TOPICS = "topics"
 KEY_CONTROLLERS = "controllers"
@@ -610,6 +638,8 @@ SHOW_TARGET_GROUPS = "groups"
 SHOW_TARGET_GROUP = "group"
 SHOW_TARGET_DEVICES = "devices"
 SHOW_TARGET_DEVICE = "device"
+SHOW_TARGET_DEVICE_META = "device-meta"
+SHOW_TARGET_DEVICE_REGISTRY = "device-registry"
 SHOW_TARGET_DEVICE_GROUP = "device-group"
 SHOW_TARGET_BINDINGS = "bindings"
 SHOW_TARGET_CAN_MAPPINGS = "can-mappings"
@@ -640,12 +670,13 @@ MESSAGE_ERR_UNKNOWN_SHOW = "ERROR: Unknown show command."
 MESSAGE_ERR_UNKNOWN_SHOW_SOURCE = "ERROR: Unknown show source."
 MESSAGE_ERR_SHOW_REQUIRES_TARGET = "ERROR: show requires a target."
 MESSAGE_ERR_PRETTY_REQUIRES_JSON = "ERROR: --pretty requires --json."
-MESSAGE_ERR_LOCAL_CONFIG_MISSING = "ERROR: Local config not loaded. Use merge/import config <bringup_system.json>."
+MESSAGE_ERR_LOCAL_CONFIG_MISSING = "ERROR: Local config not loaded. Use load config <path> --merge|--replace."
+MESSAGE_ERR_LOCAL_CONFIG_MISSING_FIRST = "ERROR: Local config not loaded. Use load config <path> --merge|--replace first."
 MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND = "ERROR: Local device not found."
 MESSAGE_OK_CONFIG_VALID = "OK: Config is valid."
 MESSAGE_ERR_CONFIG_VALIDATE = "ERROR: {message}"
 MESSAGE_STORE_ISSUE = "{location}: {message}"
-MESSAGE_ERR_REGISTRY_NOT_LOADED = "ERROR: Profiles not loaded. Use merge/import config <bringup_system.json>."
+MESSAGE_ERR_REGISTRY_NOT_LOADED = "ERROR: Profiles not loaded. Use load config <path> --merge|--replace."
 MESSAGE_LOCAL_PROFILES_EMPTY = "Local profiles: (none)"
 MESSAGE_LOCAL_PROFILES_HEADER = "Local profiles:"
 MESSAGE_LOCAL_PROFILE_HEADER = "Local profile:"
@@ -674,6 +705,9 @@ MESSAGE_SOURCE_LOCAL = "SOURCE: local"
 MESSAGE_LOCAL_CONFIG_RAW = "Local bridgeConfig (raw):"
 MESSAGE_LOCAL_REGISTRY_DEVICE = "Local registry device {label}:"
 MESSAGE_LOCAL_REGISTRY_EMPTY = "  (no fields)"
+MESSAGE_METADATA_NONE = "  metadata: (none)"
+MESSAGE_METADATA_HEADER = "  metadata:"
+MESSAGE_METADATA_HEADER_LEGACY = "  metadata (legacy):"
 MESSAGE_REGISTRY_FIELD_FMT = "  {key}={value}"
 MESSAGE_REGISTRY_FIELD_FMT_NAMED = "  {key}={value} ({name})"
 MESSAGE_MAPPINGS_READ_FAIL = "WARNING: Failed to read CAN mappings: {path}"
@@ -793,7 +827,8 @@ MESSAGE_HINT_SAVE = (
     "save all [--prompt] [--force] | save config <path> [--force] | save local-config <path> [--force] | "
     "save profiles <path> [--force] | save unified-config <path> [--force] | save sources [--force]"
 )
-MESSAGE_HINT_SOURCES = "show sources | load sources | save sources"
+MESSAGE_HINT_LOAD = "load config <path> --merge|--replace | reload sources"
+MESSAGE_HINT_SOURCES = "show sources | reload sources | save sources"
 MESSAGE_HINT_RECOVER = "recover list | recover last-good | recover from <timestamp>"
 MESSAGE_HINT_SHOW = "show <target> [--json] [--pretty] [robot|local|both]"
 MESSAGE_HINT_PROFILE = (
@@ -827,6 +862,25 @@ MESSAGE_DEBUG_GRAMMAR_DOT_FAIL = "ERROR: Failed to write grammar DOT: {error}"
 MESSAGE_HINT_VALIDATE_CONFIG_PROFILE = "validate config expects a file path; did you mean `profile <profile>`?"
 MESSAGE_VALIDATE_OK = "OK"
 MESSAGE_VALIDATE_ROBOT_NOT_CONNECTED = "Robot not connected."
+MESSAGE_WARN_DEPRECATED_MERGE = "WARNING: 'merge config' is deprecated; use 'load config <path> --merge'."
+MESSAGE_WARN_DEPRECATED_IMPORT = "WARNING: 'import config' is deprecated; use 'load config <path> --replace'."
+MESSAGE_WARN_DEPRECATED_LOAD_SOURCES = "WARNING: 'load sources' is deprecated; use 'reload sources'."
+MESSAGE_ERR_LOAD_CONFIG_PATH = "ERROR: load config requires <path>."
+MESSAGE_ERR_LOAD_CONFIG_FLAG = "ERROR: load config requires --merge or --replace."
+MESSAGE_LOAD_CONFIG_DONE = (
+    "Loaded config: mode={mode} path={path} profile={profile} source={source}."
+)
+MESSAGE_RELOAD_SOURCES_DONE = "Reloaded sources: source={source}."
+MESSAGE_WARN_DEPRECATED_BINDINGS_SHOW = "WARNING: `bindings show` is deprecated; use `show bindings`."
+MESSAGE_WARN_DEPRECATED_MAPPINGS_SHOW = "WARNING: `can-mappings show` is deprecated; use `show can-mappings`."
+MESSAGE_WARN_DEPRECATED_SHOW_SOURCES = "WARNING: `show sources` is deprecated; use `show workspace`."
+MESSAGE_WARN_DEPRECATED_SHOW_SESSION = "WARNING: `show session` is deprecated; use `show workspace`."
+MESSAGE_ACTION_SUMMARY = "Action: {action} scope={scope} persistence={persistence} source={source}"
+ACTION_LOAD = "load"
+ACTION_RELOAD = "reload"
+ACTION_SAVE = "save"
+PERSISTENCE_MEMORY = "memory"
+PERSISTENCE_DISK = "disk"
 MESSAGE_VALIDATE_ROBOT_DEVICES_FETCH = "ERROR: Failed to fetch robot devices."
 MESSAGE_VALIDATE_PROFILES_MISSING = "  missing: {labels}"
 MESSAGE_VALIDATE_PROFILES_EXTRA = "  extra: {labels}"
@@ -902,6 +956,11 @@ MESSAGE_VALIDATE_FILE_ERR = "ERROR: File validation failed: {message}"
 MESSAGE_VALIDATE_FILE_LOAD = "ERROR: Failed to read file: {path}"
 MESSAGE_VALIDATE_FILE_UNSUPPORTED = "ERROR: Unsupported file for validation: {path}"
 MESSAGE_VALIDATE_FILE_PATH_REQUIRED = "ERROR: validate file <path>"
+MESSAGE_WORKSPACE_DEFAULT_PROFILE = "Default profile: {profile}"
+MESSAGE_WORKSPACE_CONTEXT = (
+    "Active context: source={source} profile={profile} testSet={test_set} "
+    "selectedDevice={device} selectedMode={mode}"
+)
 
 KEY_SOURCES = "sources"
 KEY_SOURCE_NAME = "name"
@@ -933,9 +992,17 @@ HELP_DEVICE_USAGE_TEXT = "show device-usage <device>\n  Show local group/test re
 HELP_TOPIC_SOURCES = "sources"
 HELP_SOURCES_TEXT = (
     "show sources\n"
-    "load sources\n"
+    "reload sources\n"
     "save sources\n"
     "  Show and reload/save CLI data sources (local only)."
+)
+HELP_LOAD_SOURCES_TEXT = (
+    "load sources\n"
+    "  Deprecated. Use `reload sources`."
+)
+HELP_SHOW_SOURCES_TEXT = (
+    "show sources\n"
+    "  Deprecated. Use `show workspace`."
 )
 HELP_TOPIC_PROFILE_DEVICE_DELETE = "profile device delete"
 HELP_PROFILE_DEVICE_DELETE_TEXT = (
@@ -991,30 +1058,55 @@ HELP_VALIDATE_FILE_TEXT = (
 )
 HELP_TOPIC_QUICK = "quick"
 HELP_SHOW_TEXT = (
-    "show <status|groups|group <group>|devices|device <device>|device-group <device>|device registry <device>|"
+    "show <status|groups|group <group>|devices|device <device>|device-group <device>|"
     "device-usage <device>|commands|help|bindings|selected-device|runtime-state|config|config local-raw|config dirty|"
     "sources|profiles|profile|tests|test <test>|message-level|workspace|session|controllers> "
     "[--json] [--pretty] [robot|local|both]\n"
     "  Defaults: robot if connected, otherwise local."
+)
+HELP_SUMMARY_TEXT = (
+    "Common: help, exit, end, quit, ping, echo, messages\n"
+    "Exec: show, diagnose, connect, disconnect, configure terminal\n"
+    "Config: profile, group, device, bindings, can-mappings, tests, no group, selected-device, "
+    "selected-mode, load/reload/export/save\n"
+    "Group: show, add device, no device, member, bind, no bind, enable, disable, run test\n"
+    "Device: show, set, no\n"
+    "Tips: help show | help sources | help group | help batch | help json"
 )
 HELP_DIAGNOSE_TEXT = (
     "diagnose motor <label>\n"
     "diagnose device <label>\n"
     "  Analyze runtime telemetry to explain why a motor is not running."
 )
+HELP_LOAD_CONFIG_TEXT = (
+    "load config <bringup_system.json> --merge|--replace\n"
+    "  Load bridgeConfig.byProfile for the active profile.\n"
+    "  --merge keeps existing groups; --replace clears then loads."
+)
+HELP_MERGE_CONFIG_TEXT = (
+    "merge config <bringup_system.json>\n"
+    "  Deprecated. Use `load config <path> --merge`."
+)
+HELP_IMPORT_CONFIG_TEXT = (
+    "import config <bringup_system.json>\n"
+    "  Deprecated. Use `load config <path> --replace`."
+)
 MESSAGE_AUTO_MERGE_FAIL = "WARNING: Failed to auto-load default profiles: {path}"
 MESSAGE_AUTO_MERGE_OK = "Loaded default profiles: {path}"
 MESSAGE_ERR_PROFILE_MIX = (
-    "ERROR: Profiles mismatch. Use 'import config <path>' to replace groups."
+    "ERROR: Profiles mismatch. Use 'load config <path> --replace' to replace groups."
 )
 MESSAGE_ERR_PROFILE_HASH = (
     "ERROR: Profiles hash mismatch (local={local}, incoming={incoming}). "
-    "Use 'import config <path>' to replace groups."
+    "Use 'load config <path> --replace' to replace groups."
 )
 MESSAGE_ERR_PROFILE_MISSING_HASH = (
-    "ERROR: Local groups loaded without profiles; use 'import config <path>' to replace groups."
+    "ERROR: Local groups loaded without profiles; use 'load config <path> --replace' to replace groups."
 )
 MESSAGE_ERR_PROFILE_REQUIRED = "ERROR: Profile not selected. Use 'profile <profile>'."
+MESSAGE_ERR_UNIFIED_NO_PROFILES = (
+    "ERROR: No profiles loaded. Load config <path> --merge|--replace before saving unified config."
+)
 MESSAGE_PROFILE_DELETE_OK = "Deleted profile: {name}."
 MESSAGE_PROFILE_DELETE_MISSING = "WARNING: Profile not found: {name}."
 MESSAGE_PROFILE_DELETE_CONFIRM = "Delete profile '{name}'?"
@@ -1048,8 +1140,13 @@ FIELD_TERMINATOR = "terminator"
 FIELD_VENDOR = "vendor"
 FIELD_ROLE = "role"
 FIELD_NOTES = "notes"
+FIELD_BUS = "bus"
 FIELD_TAGS = "tags"
 FIELD_LIMITS = "limits"
+KEY_METADATA = "metadata"
+KEY_METADATA_SOURCE = "metadataSource"
+META_SOURCE_LOCAL = "local"
+META_SOURCE_REGISTRY = "registry-legacy"
 
 DEVICE_FIELD_INT = "int"
 DEVICE_FIELD_BOOL = "bool"
@@ -1081,6 +1178,7 @@ DEVICE_FIELDS_PROFILE = {
     FIELD_VENDOR,
     FIELD_ROLE,
     FIELD_NOTES,
+    FIELD_BUS,
     FIELD_TAGS,
     FIELD_LIMITS,
 }
@@ -1101,6 +1199,7 @@ DEVICE_FIELD_TYPES = {
     FIELD_VENDOR: DEVICE_FIELD_STR,
     FIELD_ROLE: DEVICE_FIELD_STR,
     FIELD_NOTES: DEVICE_FIELD_STR,
+    FIELD_BUS: DEVICE_FIELD_STR,
     FIELD_TAGS: DEVICE_FIELD_LIST,
     FIELD_LIMITS: DEVICE_FIELD_DICT,
 }
@@ -1113,6 +1212,7 @@ DEVICE_REQUIRED_DIO = (FIELD_INTERFACE, FIELD_DIO, FIELD_INVERT)
 DEVICE_REQUIRED_PWM = (FIELD_INTERFACE, FIELD_PWM)
 DEVICE_REQUIRED_ANALOG = (FIELD_INTERFACE, FIELD_ANALOG)
 DEVICE_REQUIRED_INTERNAL = (FIELD_INTERFACE,)
+DEVICE_META_FIELDS = (FIELD_VENDOR, FIELD_ROLE, FIELD_NOTES, FIELD_TAGS, FIELD_LIMITS, FIELD_BUS)
 
 TEST_TYPE_JOYSTICK = "joystick"
 TEST_TYPE_BUTTON = "button"
@@ -1161,6 +1261,11 @@ BINDINGS_EMPTY_PAYLOAD = {
     KEY_CONTROLLERS: [],
     KEY_BINDINGS: [],
     KEY_AXES: [],
+}
+BINDINGS_EMPTY_PAYLOAD_KEYS = (KEY_CONTROLLERS, KEY_BINDINGS, KEY_AXES)
+MAPPINGS_EMPTY_PAYLOAD = {
+    KEY_MANUFACTURERS: {},
+    KEY_DEVICE_TYPES: {},
 }
 BINDINGS_SHOW_CONTROLLERS = "controllers"
 BINDINGS_SHOW_BINDINGS = "bindings"
@@ -1978,11 +2083,20 @@ class BridgeCli:
         NAME
             _require_active_profile - Return active profile or report error.
         """
-        profile = self._active_profile_name()
+        profile = self._explicit_profile_name()
         if not profile:
             print(MESSAGE_ERR_PROFILE_REQUIRED)
             return None
         return profile
+
+    def _explicit_profile_name(self) -> Optional[str]:
+        """
+        NAME
+            _explicit_profile_name - Return explicitly selected profile name.
+        """
+        if self._groups_profile:
+            return self._groups_profile
+        return None
 
     def _local_group_count(self) -> int:
         """
@@ -2292,6 +2406,9 @@ class BridgeCli:
             normalized = self._parser.normalize_tokens(tokens, self._modes[-1].name)
             if self._fallback_device_set(normalized):
                 return self._coerce_status(self._config_command(normalized))
+            if self._fallback_device_no(normalized):
+                result = self._clear_local_device_meta(normalized[COUNT_ONE], normalized[COUNT_THREE])
+                return self._coerce_status(result)
             result = StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(exc))
             self._maybe_print_failure_hint(line)
             return result
@@ -2351,6 +2468,14 @@ class BridgeCli:
             return self._coerce_status(self._diagnose_command(tokens))
         if self._is_test_authoring_command(tokens):
             return self._coerce_status(self._execute_test_authoring(tokens))
+        if (
+            self._modes[-1].name == MODE_CONFIG
+            and len(tokens) >= COUNT_FOUR
+            and tokens[COUNT_ZERO].lower() == CMD_DEVICE
+            and tokens[COUNT_TWO].lower() == CMD_NO
+        ):
+            result = self._clear_local_device_meta(tokens[COUNT_ONE], tokens[COUNT_THREE])
+            return self._coerce_status(result)
         if ast is not None:
             return self._coerce_status(self._ast_executor.execute(ast))
 
@@ -2379,6 +2504,24 @@ class BridgeCli:
         if tokens[COUNT_ZERO].lower() != CMD_DEVICE:
             return False
         if tokens[COUNT_TWO].lower() != CMD_SET:
+            return False
+        field = tokens[COUNT_THREE]
+        if field not in DEVICE_FIELDS_PROFILE:
+            return False
+        return True
+
+    def _fallback_device_no(self, tokens: List[str]) -> bool:
+        """
+        NAME
+            _fallback_device_no - Allow config-mode device no <field>.
+        """
+        if self._modes[-1].name != MODE_CONFIG:
+            return False
+        if len(tokens) < COUNT_FOUR:
+            return False
+        if tokens[COUNT_ZERO].lower() != CMD_DEVICE:
+            return False
+        if tokens[COUNT_TWO].lower() != CMD_NO:
             return False
         field = tokens[COUNT_THREE]
         if field not in DEVICE_FIELDS_PROFILE:
@@ -2798,6 +2941,7 @@ class BridgeCli:
             CMD_GROUP + PARSER_SPEC.space_str + PLACEHOLDER_GROUP,
             PARSER_SPEC.show_target_devices,
             CMD_DEVICE + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
+            SHOW_TARGET_DEVICE_META + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
             PARSER_SPEC.show_target_commands,
             PARSER_SPEC.show_target_help,
             SHOW_TARGET_VERSION,
@@ -2971,6 +3115,8 @@ class BridgeCli:
             None on success, or a CLI exit code.
         """
 
+        if not self._require_active_profile():
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         mode = self._modes[-1].name
         if mode == MODE_TEST:
             return self._coerce_status(self._test_mode_command(tokens))
@@ -2992,7 +3138,9 @@ class BridgeCli:
             Loads tests from bridgeConfig.byProfile for the active profile.
         """
 
-        profile_name = self._tests_profile or self._active_profile_name() or get_default_profile()
+        profile_name = self._tests_profile or self._require_active_profile()
+        if not profile_name:
+            return
         if self._tests_model is not None and profile_name == self._tests_profile:
             return
         self._ensure_local_config()
@@ -3013,6 +3161,8 @@ class BridgeCli:
             _tests_command - Handle tests subcommands (templates/clear).
         """
 
+        if not self._require_active_profile():
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         self._ensure_tests_loaded()
         if len(tokens) < COUNT_TWO:
             print(MESSAGE_ERR_TESTS_SUBCOMMAND)
@@ -3990,6 +4140,8 @@ class BridgeCli:
             _config_test_command - Handle config-mode test authoring commands.
         """
 
+        if not self._require_active_profile():
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         self._ensure_tests_loaded()
         if len(tokens) < 2:
             print(MESSAGE_ERROR_TEST_SUBCOMMAND)
@@ -4062,6 +4214,8 @@ class BridgeCli:
             _test_mode_command - Handle test-mode configuration commands.
         """
 
+        if not self._require_active_profile():
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         self._ensure_tests_loaded()
         if not tokens:
             return StatusResult(code=SS__NORMAL)
@@ -4479,6 +4633,8 @@ class BridgeCli:
             _show_tests_command - Render test authoring state.
         """
 
+        if not self._require_active_profile():
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         self._ensure_tests_loaded()
         source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens[1:])
         if not ok:
@@ -4511,6 +4667,8 @@ class BridgeCli:
             _save_tests_command - Validate and persist tests JSON.
         """
 
+        if not self._require_active_profile():
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         cleaned, flags = self._strip_flags(tokens, [FLAG_FORCE])
         force = FLAG_FORCE in flags
         self._ensure_tests_loaded()
@@ -4588,6 +4746,14 @@ class BridgeCli:
             False,
         )
         print(MESSAGE_WROTE_TESTS.format(path=path))
+        print(
+            MESSAGE_ACTION_SUMMARY.format(
+                action=ACTION_SAVE,
+                scope=CMD_TESTS,
+                persistence=PERSISTENCE_DISK,
+                source=self._active_source_label(),
+            )
+        )
         return StatusResult(code=SS__CONFIG__SAVED)
 
     def _write_tests_command(self, tokens: List[str]) -> StatusResult:
@@ -4845,13 +5011,117 @@ class BridgeCli:
             if len(cleaned) < COUNT_THREE:
                 print(MESSAGE_ERR_SAVE_PATH_REQUIRED.format(target=CMD_CONFIG))
                 return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            if not self._require_active_profile():
+                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             return self._save_runtime_config(cleaned[COUNT_TWO], force=force)
         if target == CMD_LOCAL_CONFIG:
             if len(cleaned) < COUNT_THREE:
                 print(MESSAGE_ERR_SAVE_PATH_REQUIRED.format(target=CMD_LOCAL_CONFIG))
                 return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            if not self._require_active_profile():
+                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             return self._save_local_config(cleaned[COUNT_TWO], force=force)
         print(MESSAGE_HINT_SAVE)
+        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+
+    def _load_config_with_mode(self, path: str, mode: str, warn_message: str = EMPTY_STRING) -> StatusResult:
+        """
+        NAME
+            _load_config_with_mode - Load config with explicit merge/replace mode.
+        """
+        if warn_message:
+            print(warn_message)
+        profile = self._require_active_profile()
+        if not profile:
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
+        if not mode:
+            print(MESSAGE_ERR_LOAD_CONFIG_FLAG)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        if mode == FLAG_MERGE:
+            plan = merge_config(path, self._conflict_policy, self._active_profile_name())
+            result = self._apply_config_plan(plan, prompt_on_replace=True)
+            if result.ok():
+                print(
+                    MESSAGE_LOAD_CONFIG_DONE.format(
+                        mode=FLAG_MERGE,
+                        path=path,
+                        profile=profile,
+                        source=self._active_source_label(),
+                    )
+                )
+                print(
+                    MESSAGE_ACTION_SUMMARY.format(
+                        action=ACTION_LOAD,
+                        scope=CMD_CONFIG,
+                        persistence=PERSISTENCE_MEMORY,
+                        source=self._active_source_label(),
+                    )
+                )
+            return result
+        if mode == FLAG_REPLACE:
+            plan = import_config(path, self._conflict_policy, self._active_profile_name())
+            result = self._apply_config_plan(plan, prompt_on_replace=True)
+            if result.ok():
+                print(
+                    MESSAGE_LOAD_CONFIG_DONE.format(
+                        mode=FLAG_REPLACE,
+                        path=path,
+                        profile=profile,
+                        source=self._active_source_label(),
+                    )
+                )
+                print(
+                    MESSAGE_ACTION_SUMMARY.format(
+                        action=ACTION_LOAD,
+                        scope=CMD_CONFIG,
+                        persistence=PERSISTENCE_MEMORY,
+                        source=self._active_source_label(),
+                    )
+                )
+            return result
+        print(MESSAGE_ERR_LOAD_CONFIG_FLAG)
+        return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
+
+    def _load_config_merge_deprecated(self, path: str) -> StatusResult:
+        """
+        NAME
+            _load_config_merge_deprecated - Execute deprecated merge config path.
+        """
+        return self._load_config_with_mode(path, FLAG_MERGE, MESSAGE_WARN_DEPRECATED_MERGE)
+
+    def _load_config_replace_deprecated(self, path: str) -> StatusResult:
+        """
+        NAME
+            _load_config_replace_deprecated - Execute deprecated import config path.
+        """
+        return self._load_config_with_mode(path, FLAG_REPLACE, MESSAGE_WARN_DEPRECATED_IMPORT)
+
+    def _handle_load_command(self, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _handle_load_command - Dispatch load/reload commands with explicit mode.
+        """
+        if len(tokens) < COUNT_TWO:
+            print(MESSAGE_HINT_LOAD)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        cmd = tokens[COUNT_ZERO].lower()
+        target = tokens[COUNT_ONE].lower()
+        if cmd == CMD_RELOAD:
+            if target != CMD_SOURCES:
+                print(MESSAGE_HINT_LOAD)
+                return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+            return self._load_sources()
+        if cmd == CMD_LOAD and target == CMD_SOURCES:
+            print(MESSAGE_WARN_DEPRECATED_LOAD_SOURCES)
+            return self._load_sources()
+        if cmd == CMD_LOAD and target == CMD_CONFIG:
+            if len(tokens) < COUNT_THREE:
+                print(MESSAGE_ERR_LOAD_CONFIG_PATH)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            path = tokens[COUNT_TWO]
+            mode = tokens[COUNT_THREE].lower() if len(tokens) >= COUNT_FOUR else EMPTY_STRING
+            return self._load_config_with_mode(path, mode)
+        print(MESSAGE_HINT_LOAD)
         return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
 
     def _config_command(self, tokens: List[str]) -> StatusResult:
@@ -4864,8 +5134,8 @@ class BridgeCli:
             return self._handle_save_command(tokens)
         if cmd == CMD_RECOVER:
             return self._handle_recover_command(tokens)
-        if cmd == CMD_LOAD and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_SOURCES:
-            return self._load_sources()
+        if cmd in (CMD_LOAD, CMD_RELOAD):
+            return self._handle_load_command(tokens)
         if cmd == CMD_PROFILES and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_INIT:
             return self._init_profiles_payload()
         if cmd == CMD_PROFILES and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_EXPORT:
@@ -4924,6 +5194,8 @@ class BridgeCli:
             print(f"Active profile: {self._groups_profile}")
             return StatusResult(code=SS__NORMAL)
         if cmd == "group" and len(tokens) >= 2 and not self._session.is_connected():
+            if not self._require_active_profile():
+                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             name = tokens[1]
             result = self._select_or_create_local_group(name)
             if not result.ok():
@@ -4955,6 +5227,8 @@ class BridgeCli:
             print(f"Updated device {tokens[1]} {field}={value_raw}.")
             return StatusResult(code=SS__NORMAL)
         if cmd == "group" and len(tokens) >= 2:
+            if not self._require_active_profile():
+                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             name = tokens[1]
             seq = group_create(self._session, name)
             event = self._wait_for_seq(seq)
@@ -4970,6 +5244,8 @@ class BridgeCli:
             self._modes.append(CliMode("device", device=name))
             return StatusResult(code=SS__NORMAL)
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "group" and not self._session.is_connected():
+            if not self._require_active_profile():
+                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             name = tokens[2]
             if not self._confirm(f"Delete group '{name}'?"):
                 return StatusResult(code=SS__EXECUTOR__CANCELLED)
@@ -4979,6 +5255,8 @@ class BridgeCli:
             self._warn("WARNING: Robot not connected; local group deleted.")
             return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "group":
+            if not self._require_active_profile():
+                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             name = tokens[2]
             if not self._confirm(f"Delete group '{name}'?"):
                 return StatusResult(code=SS__EXECUTOR__CANCELLED)
@@ -4988,18 +5266,24 @@ class BridgeCli:
                 return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
             return StatusResult(code=SS__NORMAL)
         if cmd == "selected-device" and len(tokens) >= 2 and not self._session.is_connected():
+            if not self._require_active_profile():
+                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             result = self._set_local_selected_device(tokens[1])
             if not result.ok():
                 return result
             self._warn("WARNING: Robot not connected; local selected-device updated.")
             return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
         if cmd == "selected-device" and len(tokens) >= 2:
+            if not self._require_active_profile():
+                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             seq = selected_device_set(self._session, tokens[1])
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "selected-device"):
                 return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
             return StatusResult(code=SS__NORMAL)
         if cmd == "selected-mode" and len(tokens) >= 2 and not self._session.is_connected():
+            if not self._require_active_profile():
+                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             mode_value = tokens[1].lower()
             if mode_value not in ("on", "off"):
                 print("ERROR: selected-mode requires on/off.")
@@ -5011,6 +5295,8 @@ class BridgeCli:
             self._warn("WARNING: Robot not connected; local selected-mode updated.")
             return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
         if cmd == "selected-mode" and len(tokens) >= 2:
+            if not self._require_active_profile():
+                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             mode_value = tokens[1].lower()
             if mode_value not in ("on", "off"):
                 print("ERROR: selected-mode requires on/off.")
@@ -5021,13 +5307,13 @@ class BridgeCli:
             if self._event_failed(event, "selected-mode"):
                 return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
             return StatusResult(code=SS__NORMAL)
-        if cmd == "merge" and len(tokens) >= 3 and tokens[1].lower() == "config":
-            plan = merge_config(tokens[2], self._conflict_policy, self._active_profile_name())
-            return self._coerce_status(self._apply_config_plan(plan, prompt_on_replace=True))
-        if cmd == "import" and len(tokens) >= 3 and tokens[1].lower() == "config":
-            plan = import_config(tokens[2], self._conflict_policy, self._active_profile_name())
-            return self._coerce_status(self._apply_config_plan(plan, prompt_on_replace=True))
+        if cmd == CMD_MERGE and len(tokens) >= COUNT_THREE and tokens[COUNT_ONE].lower() == CMD_CONFIG:
+            return self._load_config_merge_deprecated(tokens[COUNT_TWO])
+        if cmd == CMD_IMPORT and len(tokens) >= COUNT_THREE and tokens[COUNT_ONE].lower() == CMD_CONFIG:
+            return self._load_config_replace_deprecated(tokens[COUNT_TWO])
         if cmd == "export" and len(tokens) >= 3 and tokens[1].lower() == "runtime-groups":
+            if not self._require_active_profile():
+                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             result = export_runtime_groups(self._session, tokens[2], self._active_profile_name())
             message = format_status_message(result.code) or result.message
             if message:
@@ -5086,7 +5372,7 @@ class BridgeCli:
                         ok, message, _config = validate_config_file(path)
                 else:
                     if not self._local_config:
-                        print("ERROR: Local config not loaded. Use merge/import config <path> first.")
+                        print(MESSAGE_ERR_LOCAL_CONFIG_MISSING_FIRST)
                         return StatusResult(code=SS__CONFIG__NOT_LOADED)
                     if use_all:
                         ok, message = validate_config_data_all(self._local_config, self._local_root_payload)
@@ -5234,6 +5520,7 @@ class BridgeCli:
         if sub == CMD_LS:
             sub = CMD_SHOW
         if sub == CMD_SHOW:
+            print(MESSAGE_WARN_DEPRECATED_BINDINGS_SHOW)
             return self._coerce_status(self._bindings_show(tokens[COUNT_TWO:]))
         if sub == CMD_CONTROLLER:
             return self._coerce_status(self._bindings_controller_command(tokens[COUNT_TWO:]))
@@ -5276,6 +5563,7 @@ class BridgeCli:
         if sub == CMD_LS:
             sub = CMD_SHOW
         if sub == CMD_SHOW:
+            print(MESSAGE_WARN_DEPRECATED_MAPPINGS_SHOW)
             return self._coerce_status(self._mappings_show(tokens[COUNT_TWO:]))
         if sub == CMD_MANUFACTURER:
             return self._coerce_status(self._mappings_entry_command(KEY_MANUFACTURERS, tokens[COUNT_TWO:]))
@@ -5465,13 +5753,6 @@ class BridgeCli:
                 target = SHOW_TARGET_CONFIG_RAW
             elif name == SHOW_CONFIG_DIRTY:
                 target = SHOW_TARGET_CONFIG_DIRTY
-        if (
-            target == CMD_DEVICE
-            and len(tokens) >= 3
-            and tokens[1].lower() == CMD_REGISTRY
-        ):
-            target = SHOW_TARGET_DEVICE_REGISTRY
-            tokens = [SHOW_TARGET_DEVICE_REGISTRY, tokens[2]]
         if target == SHOW_TARGET_CONFIG:
             target = SHOW_TARGET_RUNTIME
         if target == SHOW_TARGET_MESSAGE_LEVEL:
@@ -5479,6 +5760,8 @@ class BridgeCli:
         if target == SHOW_TARGET_DEVICE_USAGE:
             source = SHOW_SOURCE_LOCAL
         if target == SHOW_TARGET_DEVICE:
+            source = SHOW_SOURCE_LOCAL
+        if target == SHOW_TARGET_DEVICE_META:
             source = SHOW_SOURCE_LOCAL
         if target == SHOW_TARGET_CAN_MAPPINGS:
             source = SHOW_SOURCE_LOCAL
@@ -5490,6 +5773,12 @@ class BridgeCli:
             source = SHOW_SOURCE_LOCAL
         if target in (SHOW_TARGET_CONFIG_RAW, SHOW_TARGET_CONFIG_DIRTY):
             source = SHOW_SOURCE_LOCAL
+        if target == SHOW_TARGET_SOURCES:
+            print(MESSAGE_WARN_DEPRECATED_SHOW_SOURCES)
+            target = SHOW_TARGET_WORKSPACE
+        if target == SHOW_TARGET_SESSION:
+            print(MESSAGE_WARN_DEPRECATED_SHOW_SESSION)
+            target = SHOW_TARGET_WORKSPACE
         if source == SHOW_SOURCE_BOTH:
             local_result = self._show_local(target, tokens, json_output, pretty)
             robot_result = self._show_robot(target, tokens, json_output)
@@ -6295,6 +6584,18 @@ class BridgeCli:
         dirty = self._store.dirty_flags() if self._store else {}
         model = self._tests_model
         default_set = model.default_test_set if model else EMPTY_STRING
+        default_profile = self._default_profile_name() or EMPTY_STRING
+        active_profile = self._explicit_profile_name() or EMPTY_STRING
+        selected_device, selected_enabled = self._local_selected_device_state(active_profile)
+        selected_mode = SELECTED_MODE_ON if selected_enabled else SELECTED_MODE_OFF
+        context = {
+            KEY_CONTEXT_SOURCE: self._active_source_label(),
+            KEY_CONTEXT_PROFILE: active_profile,
+            KEY_CONTEXT_DEFAULT_PROFILE: default_profile,
+            KEY_CONTEXT_TEST_SET: self._tests_active_set or EMPTY_STRING,
+            KEY_CONTEXT_SELECTED_DEVICE: selected_device or EMPTY_STRING,
+            KEY_CONTEXT_SELECTED_MODE: selected_mode,
+        }
         test_count = 0
         if model:
             for test_set in model.test_sets.values():
@@ -6304,7 +6605,8 @@ class BridgeCli:
             "profiles": {
                 "path": profiles_path,
                 "loaded": bool(self._local_root_payload),
-                "activeProfile": self._active_profile_name() or EMPTY_STRING,
+                "activeProfile": active_profile,
+                "defaultProfile": default_profile,
                 "dirty": bool(dirty.get(DIRTY_PROFILES, False)),
                 "recoveryMode": bool(self._recovery_mode),
                 "loadWarnings": list(self._warnings),
@@ -6332,6 +6634,7 @@ class BridgeCli:
                 "messageLevel": self._message_level,
                 "echo": bool(self._echo_enabled),
             },
+            KEY_CONTEXT: context,
         }
         if json_output:
             print(self._dump_json(payload, pretty))
@@ -6341,6 +6644,20 @@ class BridgeCli:
             f"({'loaded' if payload['profiles']['loaded'] else 'not loaded'})"
         )
         print(f"Active profile: {payload['profiles']['activeProfile'] or '(none)'}")
+        print(
+            MESSAGE_WORKSPACE_DEFAULT_PROFILE.format(
+                profile=payload["profiles"]["defaultProfile"] or "(none)"
+            )
+        )
+        print(
+            MESSAGE_WORKSPACE_CONTEXT.format(
+                source=context[KEY_CONTEXT_SOURCE] or "(none)",
+                profile=context[KEY_CONTEXT_PROFILE] or "(none)",
+                test_set=context[KEY_CONTEXT_TEST_SET] or "(none)",
+                device=context[KEY_CONTEXT_SELECTED_DEVICE] or "(none)",
+                mode=context[KEY_CONTEXT_SELECTED_MODE] or "(none)",
+            )
+        )
         tests_loaded = payload["tests"]["loaded"]
         tests_state = "loaded" if tests_loaded else "not loaded"
         if tests_loaded and payload["tests"]["empty"]:
@@ -6375,6 +6692,32 @@ class BridgeCli:
             for warning in payload["profiles"]["loadWarnings"]:
                 print(f"  {warning}")
         return StatusResult(code=SS__NORMAL)
+
+    def _active_source_label(self) -> str:
+        """
+        NAME
+            _active_source_label - Return active source label for context.
+        """
+        if self._session.is_connected():
+            return CONTEXT_SOURCE_ROBOT
+        return CONTEXT_SOURCE_LOCAL
+
+    def _local_selected_device_state(self, profile_name: str) -> tuple[str, bool]:
+        """
+        NAME
+            _local_selected_device_state - Return selected device and enable state.
+        """
+        if not profile_name:
+            return (EMPTY_STRING, False)
+        entry = self._local_profile_entry(profile_name)
+        if not isinstance(entry, dict):
+            return (EMPTY_STRING, False)
+        selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE)
+        if not isinstance(selected, dict):
+            return (EMPTY_STRING, False)
+        device = str(selected.get(KEY_DEVICE, EMPTY_STRING)).strip()
+        enabled = bool(selected.get(CMD_ENABLED, False))
+        return (device, enabled)
 
     def _show_controllers(self, json_output: bool, pretty: bool) -> StatusResult:
         controller_names = sorted(load_controller_names(self._bindings_path))
@@ -6719,14 +7062,7 @@ class BridgeCli:
             else:
                 print("Help: command not found.")
             return
-        print(
-            "Common: help, exit, end, quit, ping, echo, messages\n"
-            "Exec: show, diagnose, connect, disconnect, configure terminal\n"
-            "Config: profile, group, device, bindings, can-mappings, tests, no group, selected-device, selected-mode, merge/import/export/save/load\n"
-            "Group: show, add device, no device, member, bind, no bind, enable, disable, run test\n"
-            "Device: show, set, no\n"
-            "Tips: help show | help sources | help group | help batch | help json"
-        )
+        print(HELP_SUMMARY_TEXT)
 
     def _help_topic_map(self) -> Dict[str, str]:
         """
@@ -6746,7 +7082,9 @@ class BridgeCli:
             "show session": "show session\n  Alias for show workspace.",
             "show controllers": "show controllers\n  List controller names and supported input IDs.",
             "sources": HELP_SOURCES_TEXT,
-            "show sources": HELP_SOURCES_TEXT,
+            "show sources": HELP_SHOW_SOURCES_TEXT,
+            "reload sources": HELP_SOURCES_TEXT,
+            "load sources": HELP_LOAD_SOURCES_TEXT,
             "diagnose": HELP_DIAGNOSE_TEXT,
             "group": "group <group>\n  Create/select a group (config mode).",
             "no group": "no group <group>\n  Delete group (config mode, prompts in interactive).",
@@ -6763,14 +7101,9 @@ class BridgeCli:
             ),
             "selected-device": "selected-device <device>\n  Set selected-device override.",
             "selected-mode": "selected-mode <on|off>\n  Enable/disable selected-device mode.",
-            "merge config": (
-                "merge config <bringup_system.json>\n"
-                "  Load bridgeConfig.byProfile for the active profile without clearing existing."
-            ),
-            "import config": (
-                "import config <bringup_system.json>\n"
-                "  Replace bridgeConfig.byProfile for the active profile (prompts in interactive)."
-            ),
+            "load config": HELP_LOAD_CONFIG_TEXT,
+            "merge config": HELP_MERGE_CONFIG_TEXT,
+            "import config": HELP_IMPORT_CONFIG_TEXT,
             "export runtime-groups": (
                 "export runtime-groups <bridgeConfig.json>\n"
                 "  Write bridgeConfig.byProfile for the active profile."
@@ -7073,6 +7406,13 @@ class BridgeCli:
         if target == SHOW_TARGET_DEVICE:
             name = tokens[1] if len(tokens) >= 2 else ""
             return self._show_local_registry_device(name, json_output, pretty)
+        if target == SHOW_TARGET_DEVICE_META:
+            name = tokens[1] if len(tokens) >= 2 else ""
+            if name:
+                return self._show_local_device_entry(name)
+            return self._show_local_device_meta_list(json_output, pretty)
+        if target == SHOW_TARGET_DEVICES:
+            return self._show_local_registry_devices(json_output, pretty)
         profile = self._active_profile_name()
         if not profile:
             print(MESSAGE_ERR_PROFILE_REQUIRED)
@@ -7145,25 +7485,6 @@ class BridgeCli:
                         lines.append(f"    {device} ({'enabled' if enabled else 'disabled'})")
             else:
                 lines.append("  members: (none)")
-            _print_local("\n".join(lines), payload)
-            return StatusResult(code=SS__NORMAL)
-
-        if target == SHOW_TARGET_DEVICES:
-            devices_raw = payload.get("devices")
-            lines = ["Local devices:"]
-            if isinstance(devices_raw, list) and devices_raw:
-                for device in devices_raw:
-                    if not isinstance(device, dict):
-                        continue
-                    name = str(device.get("name", "")).strip()
-                    if not name:
-                        continue
-                    lines.append(f"  {name}")
-            else:
-                if isinstance(devices_raw, list) and devices_raw:
-                    lines.extend(f"  {name}" for name in devices_raw if isinstance(name, str))
-                else:
-                    lines.append("  (none)")
             _print_local("\n".join(lines), payload)
             return StatusResult(code=SS__NORMAL)
 
@@ -7646,7 +7967,7 @@ class BridgeCli:
 
     def _group_command_local(self, tokens: List[str], group: str) -> StatusResult:
         if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         cmd = tokens[0].lower()
         if cmd == "show":
@@ -7703,7 +8024,7 @@ class BridgeCli:
 
     def _select_or_create_local_group(self, name: str) -> StatusResult:
         if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profile = self._require_active_profile()
         if not profile:
@@ -7722,7 +8043,7 @@ class BridgeCli:
 
     def _delete_local_group(self, name: str) -> StatusResult:
         if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profile = self._require_active_profile()
         if not profile:
@@ -7748,7 +8069,7 @@ class BridgeCli:
 
     def _set_local_selected_device(self, device: str) -> StatusResult:
         if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profile = self._require_active_profile()
         if not profile:
@@ -7762,7 +8083,7 @@ class BridgeCli:
 
     def _set_local_selected_mode(self, enabled: bool) -> StatusResult:
         if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profile = self._require_active_profile()
         if not profile:
@@ -7901,7 +8222,7 @@ class BridgeCli:
 
     def _rename_local_device(self, old: str, new: str) -> StatusResult:
         if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         if self._local_devices_locked:
             return self._rename_profiles_device(old, new)
@@ -7971,7 +8292,7 @@ class BridgeCli:
 
     def _delete_local_device(self, name: str) -> StatusResult:
         if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         if self._local_devices_locked:
             return self._delete_profiles_device(name)
@@ -8299,9 +8620,11 @@ class BridgeCli:
             _set_local_device_meta - Update metadata for a local device.
         """
         if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         field_key = field.strip()
+        if field_key in DEVICE_META_FIELDS:
+            return self._set_local_device_meta_entry(name, field_key, value_raw)
         if self._local_devices_locked:
             return self._set_profiles_device_meta(name, field_key, value_raw)
         if field_key == FIELD_LABEL:
@@ -8328,37 +8651,25 @@ class BridgeCli:
         elif field_type == DEVICE_FIELD_LIST:
             parsed = parse_json_arg(value_raw)
             if parsed is None or not isinstance(parsed, list):
+                parsed = self._parse_bracket_list(value_raw)
+            if parsed is None or not isinstance(parsed, list):
                 print(MESSAGE_ERR_DEVICE_FIELD_LIST)
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             value = parsed
         elif field_type == DEVICE_FIELD_DICT:
             parsed = parse_json_arg(value_raw)
             if parsed is None or not isinstance(parsed, dict):
+                parsed = self._parse_brace_dict(value_raw)
+            if parsed is None or not isinstance(parsed, dict):
                 print(MESSAGE_ERR_DEVICE_FIELD_DICT)
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             value = parsed
         else:
             value = value_raw
-        config = self._local_config
-        devices = config.get("devices")
-        if not isinstance(devices, list):
-            devices = []
-            config["devices"] = devices
-        target = None
-        for device in devices:
-            if not isinstance(device, dict):
-                continue
-            dev_name = str(device.get("name", "")).strip()
-            if dev_name.lower() == name.strip().lower():
-                target = device
-                break
+        target = self._find_or_create_local_device_meta(name)
         if target is None:
-            # Allow metadata edits for devices already referenced by groups.
-            if not self._device_in_groups(name):
-                print("ERROR: Device not found in local config or groups.")
-                return StatusResult(code=SS__DEVICE__NOT_FOUND)
-            target = {"name": name.strip()}
-            devices.append(target)
+            print("ERROR: Device not found in local config or groups.")
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
         target[store_key] = value
         if field_key == FIELD_INTERFACE and isinstance(target, dict):
             interface = str(target.get(KEY_INTERFACE, "")).strip()
@@ -8375,9 +8686,11 @@ class BridgeCli:
             _clear_local_device_meta - Clear metadata for a local device.
         """
         if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         field_key = field.strip()
+        if field_key in DEVICE_META_FIELDS:
+            return self._clear_local_device_meta_entry(name, field_key)
         if self._local_devices_locked:
             return self._clear_profiles_device_meta(name, field_key)
         if field_key == FIELD_LABEL:
@@ -8405,13 +8718,27 @@ class BridgeCli:
         print("ERROR: Device not found in local config.")
         return StatusResult(code=SS__DEVICE__NOT_FOUND)
 
+    def _clear_local_device_meta_entry(self, name: str, field_key: str) -> StatusResult:
+        """
+        NAME
+            _clear_local_device_meta_entry - Clear metadata fields in local device list.
+        """
+        target = self._find_local_device_meta_entry(name)
+        if target is None:
+            print("ERROR: Device not found in local config.")
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        if field_key in target:
+            target.pop(field_key, None)
+            self._mark_groups_dirty()
+        return StatusResult(code=SS__NORMAL)
+
     def _ensure_local_device_entry(self, name: str) -> StatusResult:
         """
         NAME
             _ensure_local_device_entry - Ensure a local device entry exists.
         """
         if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         if self._local_devices_locked:
             return self._ensure_profiles_device_entry(name)
@@ -8473,6 +8800,200 @@ class BridgeCli:
         print(MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND)
         return StatusResult(code=SS__DEVICE__NOT_FOUND)
 
+    def _set_local_device_meta_entry(self, name: str, field_key: str, value_raw: str) -> StatusResult:
+        """
+        NAME
+            _set_local_device_meta_entry - Update metadata fields in local device list.
+        """
+        store_key = field_key
+        field_type = DEVICE_FIELD_TYPES.get(field_key, DEVICE_FIELD_STR)
+        value: object
+        if field_type == DEVICE_FIELD_INT:
+            try:
+                value = int(value_raw, 0)
+            except ValueError:
+                print(MESSAGE_ERR_DEVICE_FIELD_INT)
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+        elif field_type == DEVICE_FIELD_BOOL:
+            parsed = self._parse_bool(value_raw)
+            if parsed is None:
+                print(MESSAGE_ERR_DEVICE_FIELD_BOOL)
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            value = parsed
+        elif field_type == DEVICE_FIELD_LIST:
+            parsed = parse_json_arg(value_raw)
+            if parsed is None or not isinstance(parsed, list):
+                parsed = self._parse_bracket_list(value_raw)
+            if parsed is None or not isinstance(parsed, list):
+                print(MESSAGE_ERR_DEVICE_FIELD_LIST)
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            value = parsed
+        elif field_type == DEVICE_FIELD_DICT:
+            parsed = parse_json_arg(value_raw)
+            if parsed is None or not isinstance(parsed, dict):
+                parsed = self._parse_brace_dict(value_raw)
+            if parsed is None or not isinstance(parsed, dict):
+                print(MESSAGE_ERR_DEVICE_FIELD_DICT)
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            value = parsed
+        else:
+            value = value_raw
+        target = self._find_or_create_local_device_meta(name)
+        if target is None:
+            print("ERROR: Device not found in local config or groups.")
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        target[store_key] = value
+        self._mark_groups_dirty()
+        return StatusResult(code=SS__NORMAL)
+
+    def _find_or_create_local_device_meta(self, name: str) -> Optional[Dict[str, object]]:
+        """
+        NAME
+            _find_or_create_local_device_meta - Find or create metadata entry.
+        """
+        if not self._local_config:
+            return None
+        config = self._local_config
+        devices = config.get("devices")
+        if not isinstance(devices, list):
+            devices = []
+            config["devices"] = devices
+        for device in devices:
+            if not isinstance(device, dict):
+                continue
+            dev_name = str(device.get("name", "")).strip()
+            if dev_name.lower() == name.strip().lower():
+                return device
+        # Allow metadata edits for devices already referenced by groups.
+        if not self._device_in_groups(name):
+            if self._find_profiles_device_entry(name) is None:
+                return None
+        entry = {"name": name.strip()}
+        devices.append(entry)
+        return entry
+
+    def _find_local_device_meta_entry(self, name: str) -> Optional[Dict[str, object]]:
+        """
+        NAME
+            _find_local_device_meta_entry - Find local metadata entry by name.
+        """
+        if not self._local_config:
+            return None
+        devices = self._local_config.get("devices")
+        if not isinstance(devices, list):
+            return None
+        for device in devices:
+            if not isinstance(device, dict):
+                continue
+            dev_name = str(device.get("name", "")).strip()
+            if dev_name.lower() == name.strip().lower():
+                return device
+        return None
+
+    def _show_local_device_meta_list(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_local_device_meta_list - Print all local device metadata entries.
+        """
+        if not self._local_config:
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        devices = self._local_config.get("devices")
+        if not isinstance(devices, list):
+            devices = []
+        payload = {"source": "local", "devices": devices}
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        lines = ["Local device metadata:"]
+        for device in devices:
+            if not isinstance(device, dict):
+                continue
+            name = str(device.get("name", "")).strip()
+            if not name:
+                continue
+            lines.append(f"  {name}:")
+            for key in ("vendor", "role", "notes", "bus", "tags", "limits"):
+                if key in device:
+                    lines.append(f"    {key}={device.get(key)}")
+        if len(lines) == 1:
+            lines.append("  (none)")
+        print("\n".join(lines))
+        return StatusResult(code=SS__NORMAL)
+
+    def _extract_registry_metadata(self, entry: Dict[str, object]) -> Dict[str, object]:
+        """
+        NAME
+            _extract_registry_metadata - Extract metadata-like fields from registry entry.
+        """
+        meta: Dict[str, object] = {}
+        for key in (FIELD_VENDOR, FIELD_ROLE, FIELD_NOTES, FIELD_BUS, FIELD_TAGS, FIELD_LIMITS):
+            if key in entry:
+                meta[key] = entry.get(key)
+        return meta
+
+    def _registry_without_metadata(self, entry: Dict[str, object]) -> Dict[str, object]:
+        """
+        NAME
+            _registry_without_metadata - Strip metadata fields from registry entry.
+        """
+        filtered = {key: value for key, value in entry.items() if key not in DEVICE_META_FIELDS}
+        return filtered
+
+    def _parse_bracket_list(self, value_raw: str) -> Optional[List[str]]:
+        """
+        NAME
+            _parse_bracket_list - Parse simple bracketed lists like [foo,bar].
+        """
+        text = value_raw.strip()
+        if len(text) < 2 or not (text.startswith(BRACKET_OPEN) and text.endswith(BRACKET_CLOSE)):
+            return None
+        inner = text[1:-1].strip()
+        if not inner:
+            return []
+        parts = [part.strip() for part in inner.split(PROFILE_EXPORT_JSON_SEP_COMMA)]
+        return [part for part in parts if part]
+
+    def _parse_brace_dict(self, value_raw: str) -> Optional[Dict[str, object]]:
+        """
+        NAME
+            _parse_brace_dict - Parse simple brace dicts like {key:1,other:2}.
+        """
+        text = value_raw.strip()
+        if len(text) < 2 or not (text.startswith(BRACE_OPEN) and text.endswith(BRACE_CLOSE)):
+            return None
+        inner = text[1:-1].strip()
+        if not inner:
+            return {}
+        result: Dict[str, object] = {}
+        items = [part.strip() for part in inner.split(PROFILE_EXPORT_JSON_SEP_COMMA)]
+        for item in items:
+            if PROFILE_EXPORT_JSON_SEP_COLON not in item:
+                return None
+            key_text, value_text = item.split(PROFILE_EXPORT_JSON_SEP_COLON, 1)
+            key = key_text.strip()
+            if not key:
+                return None
+            value_token = value_text.strip()
+            result[key] = self._parse_scalar_value(value_token)
+        return result
+
+    def _parse_scalar_value(self, token: str) -> object:
+        """
+        NAME
+            _parse_scalar_value - Parse a scalar token into int/float/bool/str.
+        """
+        lowered = token.lower()
+        if lowered in (TOKEN_TRUE, TOKEN_FALSE):
+            return lowered == TOKEN_TRUE
+        try:
+            if TOKEN_DOT in token:
+                return float(token)
+            return int(token, 0)
+        except ValueError:
+            return token
+
     def _show_local_registry_device(self, name: str, json_output: bool, pretty: bool) -> StatusResult:
         """
         NAME
@@ -8486,22 +9007,34 @@ class BridgeCli:
             print(MESSAGE_ERR_REGISTRY_DEVICE_NOT_FOUND)
             return StatusResult(code=SS__DEVICE__NOT_FOUND)
         label = str(entry.get(FIELD_LABEL, name)).strip() or name
-        payload = {KEY_DEVICE: entry}
+        meta = self._find_local_device_meta_entry(label)
+        legacy_meta = self._extract_registry_metadata(entry)
+        payload = {
+            KEY_DEVICE: self._registry_without_metadata(entry),
+            KEY_METADATA: meta,
+            "metadataLegacy": legacy_meta,
+            KEY_METADATA_SOURCE: (
+                META_SOURCE_LOCAL if meta else (META_SOURCE_REGISTRY if legacy_meta else EMPTY_STRING)
+            ),
+        }
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             print(self._dump_json(payload, pretty))
             return StatusResult(code=SS__NORMAL)
         lines = [MESSAGE_LOCAL_REGISTRY_DEVICE.format(label=label)]
+        lines.append("  registry:")
         mappings = self._load_can_mappings()
         manufacturers = mappings.get(KEY_MANUFACTURERS, {}) if mappings else {}
         device_types = mappings.get(KEY_DEVICE_TYPES, {}) if mappings else {}
-        for key in sorted(entry.keys()):
-            value = entry.get(key)
+        registry_only = self._registry_without_metadata(entry)
+        for key in sorted(registry_only.keys()):
+            value = registry_only.get(key)
             if key == FIELD_MANUFACTURER and isinstance(value, int):
                 name_value = manufacturers.get(str(value), "")
                 if name_value:
                     lines.append(
-                        MESSAGE_REGISTRY_FIELD_FMT_NAMED.format(
+                        "    "
+                        + MESSAGE_REGISTRY_FIELD_FMT_NAMED.format(
                             key=key, value=value, name=name_value
                         )
                     )
@@ -8510,14 +9043,80 @@ class BridgeCli:
                 name_value = device_types.get(str(value), "")
                 if name_value:
                     lines.append(
-                        MESSAGE_REGISTRY_FIELD_FMT_NAMED.format(
+                        "    "
+                        + MESSAGE_REGISTRY_FIELD_FMT_NAMED.format(
                             key=key, value=value, name=name_value
                         )
                     )
                     continue
-            lines.append(MESSAGE_REGISTRY_FIELD_FMT.format(key=key, value=value))
+            lines.append("    " + MESSAGE_REGISTRY_FIELD_FMT.format(key=key, value=value))
         if len(lines) == 1:
             lines.append(MESSAGE_LOCAL_REGISTRY_EMPTY)
+        if isinstance(meta, dict) and meta:
+            lines.append(MESSAGE_METADATA_HEADER)
+            for key in ("vendor", "role", "notes", "bus", "tags", "limits"):
+                if key in meta:
+                    lines.append(f"    {key}={meta.get(key)}")
+        else:
+            lines.append(MESSAGE_METADATA_NONE)
+        if isinstance(legacy_meta, dict) and legacy_meta:
+            lines.append(MESSAGE_METADATA_HEADER_LEGACY)
+            for key in ("vendor", "role", "notes", "bus", "tags", "limits"):
+                if key in legacy_meta:
+                    lines.append(f"    {key}={legacy_meta.get(key)}")
+        print("\n".join(lines))
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_local_registry_devices(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_local_registry_devices - Print all registry device entries.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        devices = self._local_root_payload.get(KEY_DEVICES)
+        if not isinstance(devices, list):
+            devices = []
+        payload = {"source": "local", KEY_DEVICES: devices}
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        lines = ["Local registry devices:"]
+        mappings = self._load_can_mappings()
+        manufacturers = mappings.get(KEY_MANUFACTURERS, {}) if mappings else {}
+        device_types = mappings.get(KEY_DEVICE_TYPES, {}) if mappings else {}
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            label = str(entry.get(FIELD_LABEL, "")).strip()
+            if not label:
+                continue
+            lines.append(f"  {label}:")
+            for key in sorted(entry.keys()):
+                value = entry.get(key)
+                if key == FIELD_MANUFACTURER and isinstance(value, int):
+                    name_value = manufacturers.get(str(value), "")
+                    if name_value:
+                        lines.append(
+                            MESSAGE_REGISTRY_FIELD_FMT_NAMED.format(
+                                key=key, value=value, name=name_value
+                            )
+                        )
+                        continue
+                if key == FIELD_DEVICE_TYPE and isinstance(value, int):
+                    name_value = device_types.get(str(value), "")
+                    if name_value:
+                        lines.append(
+                            MESSAGE_REGISTRY_FIELD_FMT_NAMED.format(
+                                key=key, value=value, name=name_value
+                            )
+                        )
+                        continue
+                lines.append(MESSAGE_REGISTRY_FIELD_FMT.format(key=key, value=value))
+        if len(lines) == 1:
+            lines.append("  (none)")
         print("\n".join(lines))
         return StatusResult(code=SS__NORMAL)
 
@@ -8641,13 +9240,37 @@ class BridgeCli:
             payload = dict(self._local_root_payload)
             if isinstance(self._local_config, dict):
                 payload[KEY_BRIDGE_CONFIG] = self._ordered_bridge_config(
-                    self._local_config, include_devices=False
+                    self._local_config, include_devices=True
                 )
             self._store.set_profiles_payload(payload)
         self._sync_store_tests()
         self._sync_store_bindings()
         self._sync_store_mappings()
         self._store.set_dirty_flags(self._current_dirty_flags())
+
+    def _sync_local_from_store(self) -> None:
+        """
+        NAME
+            _sync_local_from_store - Sync store state back into CLI fields.
+        """
+
+        if not self._store:
+            return
+        payload = self._store.root_payload()
+        if payload and (KEY_SCHEMA_VERSION in payload or KEY_PROFILES in payload):
+            self._local_root_payload = payload
+        else:
+            self._local_root_payload = None
+        self._local_config = self._store.bridge_config() if self._local_root_payload else None
+        profile = self._tests_profile or self._explicit_profile_name() or self._default_profile_name()
+        if profile:
+            self._tests_model = self._store.tests_model(profile)
+            self._tests_profile = profile
+            model = self._tests_model
+            default_set = model.default_test_set if model else EMPTY_STRING
+            self._tests_active_set = default_set or DEFAULT_TEST_SET
+        self._bindings_payload = self._store.bindings()
+        self._can_mappings = self._store.can_mappings()
 
     def _sync_store_tests(self) -> None:
         """
@@ -8657,7 +9280,7 @@ class BridgeCli:
 
         if self._tests_model is None:
             return
-        profile = self._tests_profile or self._active_profile_name() or get_default_profile()
+        profile = self._tests_profile or self._explicit_profile_name()
         if not profile:
             return
         entry = self._local_profile_entry(profile, create=True)
@@ -8722,7 +9345,7 @@ class BridgeCli:
         self._sync_store_tests()
         payload = dict(self._local_root_payload)
         payload["bridgeConfig"] = self._ordered_bridge_config(
-            self._local_config, include_devices=False
+            self._local_config, include_devices=True
         )
         payload["schema_version"] = PROFILE_SCHEMA_VERSION
         payload["data_version"] = timestamp_version()
@@ -8924,11 +9547,8 @@ class BridgeCli:
         if cmd == CMD_SHOW:
             print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW)
             return
-        if cmd == CMD_SOURCES:
-            print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SOURCES)
-            return
-        if cmd == CMD_LOAD:
-            print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SOURCES)
+        if cmd in (CMD_LOAD, CMD_RELOAD):
+            print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_LOAD)
             return
         if cmd == CMD_PROFILE:
             print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_PROFILE)
@@ -8944,11 +9564,19 @@ class BridgeCli:
         NAME
             _set_profiles_device_meta - Update a device entry inside profiles.
         """
+        field_key = field.strip()
+        if field_key in DEVICE_META_FIELDS:
+            return self._set_local_device_meta_entry(name, field_key, value_raw)
         entry = self._find_profiles_device_entry(name)
         if entry is None:
-            return self._ensure_profiles_device_entry(name)
+            result = self._ensure_profiles_device_entry(name)
+            if not result.ok():
+                return result
+            entry = self._find_profiles_device_entry(name)
+            if entry is None:
+                print(MESSAGE_ERR_DEVICE_NOT_FOUND)
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
         self._ensure_profile_device_label(name)
-        field_key = field.strip()
         if field_key == FIELD_LABEL:
             print("ERROR: device label is managed by rename device.")
             return StatusResult(code=SS__DEVICE__INVALID_FIELD)
@@ -8972,11 +9600,15 @@ class BridgeCli:
         elif field_type == DEVICE_FIELD_LIST:
             parsed = parse_json_arg(value_raw)
             if parsed is None or not isinstance(parsed, list):
+                parsed = self._parse_bracket_list(value_raw)
+            if parsed is None or not isinstance(parsed, list):
                 print(MESSAGE_ERR_DEVICE_FIELD_LIST)
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             entry[store_key] = parsed
         elif field_type == DEVICE_FIELD_DICT:
             parsed = parse_json_arg(value_raw)
+            if parsed is None or not isinstance(parsed, dict):
+                parsed = self._parse_brace_dict(value_raw)
             if parsed is None or not isinstance(parsed, dict):
                 print(MESSAGE_ERR_DEVICE_FIELD_DICT)
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
@@ -9029,6 +9661,8 @@ class BridgeCli:
             print("ERROR: Device not found in profiles.")
             return StatusResult(code=SS__DEVICE__NOT_FOUND)
         field_key = field.strip()
+        if field_key in DEVICE_META_FIELDS:
+            return self._clear_local_device_meta_entry(name, field_key)
         if field_key == FIELD_LABEL:
             print("ERROR: device label is managed by rename device.")
             return StatusResult(code=SS__DEVICE__INVALID_FIELD)
@@ -9081,104 +9715,34 @@ class BridgeCli:
             _export_cli_script - Write a CLI batch script for the local config.
 
         DESCRIPTION
-            Emits a plain-text command script that recreates the local
-            bridgeConfig when run in batch mode.
+            Emits a plain-text command script that recreates the full
+            local config (profiles, tests, bindings, mappings) when run
+            in batch mode.
 
         PARAMETERS
             path: Output file path for the script.
         """
-        if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            print(MESSAGE_PROFILE_EXPORT_NONE)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        config = self._local_config
-        lines: List[str] = []
-        if self._local_devices_locked:
-            if self._local_root_path:
-                lines.append(f'merge config "{self._local_root_path}"')
-            else:
-                lines.append("# NOTE: devices are derived from profiles; merge a profiles file first.")
-        lines.append("configure terminal")
-        devices = config.get("devices") if isinstance(config, dict) else None
-        if isinstance(devices, list) and not self._local_devices_locked:
-            for device in devices:
-                if not isinstance(device, dict):
-                    continue
-                name = str(device.get("name", "")).strip()
-                if not name:
-                    continue
-                meta = []
-                if "vendor" in device:
-                    meta.append(("vendor", device.get("vendor")))
-                if "role" in device:
-                    meta.append(("role", device.get("role")))
-                if "notes" in device:
-                    meta.append(("notes", device.get("notes")))
-                if "bus" in device:
-                    meta.append(("bus", device.get("bus")))
-                if "tags" in device:
-                    meta.append(("tags", device.get("tags")))
-                if "limits" in device:
-                    meta.append(("limits", device.get("limits")))
-                lines.append(f'device "{name}"')
-                for field, value in meta:
-                    if field in ("tags", "limits"):
-                        encoded = json.dumps(value, separators=(",", ":"))
-                        lines.append(f"set {field} {encoded}")
-                    else:
-                        lines.append(f"set {field} {value}")
-                lines.append("exit")
-        by_profile = config.get(KEY_BRIDGE_BY_PROFILE) if isinstance(config, dict) else None
-        if isinstance(by_profile, dict):
-            for profile_name in sorted(by_profile.keys()):
-                entry = by_profile.get(profile_name)
-                if not isinstance(entry, dict):
-                    continue
-                lines.append(f"profile {profile_name}")
-                groups = entry.get(KEY_BRIDGE_GROUPS, []) or []
-                for group in groups:
-                    if not isinstance(group, dict):
-                        continue
-                    name = str(group.get("name", "")).strip()
-                    if not name:
-                        continue
-                    lines.append(f"group {name}")
-                    members = group.get("members", []) or []
-                    for member in members:
-                        if isinstance(member, dict):
-                            device = str(member.get(KEY_DEVICE, "")).strip()
-                            enabled = bool(member.get("enabled", True))
-                        else:
-                            device = str(member).strip()
-                            enabled = True
-                        if not device:
-                            continue
-                        lines.append(f'add device "{device}"')
-                        if not enabled:
-                            lines.append(f'member "{device}" disable')
-                    bindings = group.get(KEY_BRIDGE_BINDINGS, []) or []
-                    for binding in bindings:
-                        if not isinstance(binding, dict):
-                            continue
-                        input_name = str(binding.get("input", "")).strip()
-                        kind = str(binding.get("kind", "")).strip()
-                        if not input_name or not kind:
-                            continue
-                        if "value" in binding:
-                            lines.append(f"bind {input_name} {kind} {binding.get('value')}")
-                        else:
-                            lines.append(f"bind {input_name} {kind}")
-                    if group.get("enabled") is False:
-                        lines.append("disable")
-                    lines.append("exit")
-                selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE, {}) if isinstance(entry, dict) else {}
-                if isinstance(selected, dict):
-                    sel_name = str(selected.get(KEY_DEVICE, "")).strip()
-                    if sel_name:
-                        lines.append(f'selected-device "{sel_name}"')
-                    if selected.get("enabled") is True:
-                        lines.append("selected-mode on")
-                    elif selected.get("enabled") is False:
-                        lines.append("selected-mode off")
+        profiles = payload.get(KEY_PROFILES)
+        if not isinstance(profiles, dict) or not profiles:
+            print(MESSAGE_PROFILE_EXPORT_NONE)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        parent = Path(path).parent
+        if not parent.exists():
+            print(MESSAGE_PROFILE_EXPORT_PATH_INVALID.format(path=str(parent)))
+            return StatusResult(code=SS__CONFIG__INVALID)
+        empty_bindings, empty_mappings = self._write_export_clear_files(parent, EMPTY_STRING)
+        lines = self._profiles_export_script_lines(
+            json_path=EMPTY_STRING,
+            empty_bindings=empty_bindings,
+            empty_mappings=empty_mappings,
+        )
+        if not lines:
+            print(MESSAGE_PROFILE_EXPORT_NONE)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         try:
             Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
         except Exception as exc:
@@ -9236,7 +9800,15 @@ class BridgeCli:
             return StatusResult(code=SS__CONFIG__INVALID)
         try:
             write_json(Path(json_path), export_payload, indent=PROFILE_EXPORT_INDENT)
-            script_lines = self._profile_export_script_lines(profile_name, json_path)
+            empty_bindings, empty_mappings = self._write_export_clear_files(
+                Path(json_path).parent, profile_name
+            )
+            script_lines = self._profile_export_script_lines(
+                profile_name,
+                json_path,
+                empty_bindings,
+                empty_mappings,
+            )
             Path(script_path).write_text(
                 PROFILE_EXPORT_NEWLINE.join(script_lines) + PROFILE_EXPORT_NEWLINE,
                 encoding=ENCODING_UTF8,
@@ -9285,7 +9857,14 @@ class BridgeCli:
             return StatusResult(code=SS__CONFIG__INVALID)
         try:
             write_json(Path(json_path), export_payload, indent=PROFILE_EXPORT_INDENT)
-            script_lines = self._profiles_export_script_lines(json_path)
+            empty_bindings, empty_mappings = self._write_export_clear_files(
+                Path(json_path).parent, EMPTY_STRING
+            )
+            script_lines = self._profiles_export_script_lines(
+                json_path,
+                empty_bindings,
+                empty_mappings,
+            )
             Path(script_path).write_text(
                 PROFILE_EXPORT_NEWLINE.join(script_lines) + PROFILE_EXPORT_NEWLINE,
                 encoding=ENCODING_UTF8,
@@ -9363,7 +9942,35 @@ class BridgeCli:
             return (EMPTY_STRING, EMPTY_STRING, error)
         return (json_path, script_path, error)
 
-    def _profile_export_script_lines(self, profile_name: str, json_path: str) -> List[str]:
+    def _write_export_clear_files(self, parent: Path, profile_name: str) -> tuple[str, str]:
+        """
+        NAME
+            _write_export_clear_files - Write empty bindings/mappings payloads for scripts.
+        """
+        if not parent.exists():
+            return (EMPTY_STRING, EMPTY_STRING)
+        if profile_name:
+            bindings_name = PROFILE_EXPORT_EMPTY_BINDINGS_FMT.format(profile=profile_name)
+            mappings_name = PROFILE_EXPORT_EMPTY_MAPPINGS_FMT.format(profile=profile_name)
+        else:
+            bindings_name = PROFILES_EXPORT_EMPTY_BINDINGS_NAME
+            mappings_name = PROFILES_EXPORT_EMPTY_MAPPINGS_NAME
+        bindings_path = parent / bindings_name
+        mappings_path = parent / mappings_name
+        try:
+            write_json(bindings_path, BINDINGS_EMPTY_PAYLOAD, indent=PROFILE_EXPORT_INDENT)
+            write_json(mappings_path, MAPPINGS_EMPTY_PAYLOAD, indent=PROFILE_EXPORT_INDENT)
+        except Exception:
+            return (EMPTY_STRING, EMPTY_STRING)
+        return (str(bindings_path), str(mappings_path))
+
+    def _profile_export_script_lines(
+        self,
+        profile_name: str,
+        json_path: str,
+        empty_bindings: str,
+        empty_mappings: str,
+    ) -> List[str]:
         """
         NAME
             _profile_export_script_lines - Build a CLI batch script for profile import.
@@ -9384,6 +9991,22 @@ class BridgeCli:
             + PROFILE_EXPORT_PATH_SEPARATOR
             + CMD_INIT
         )
+        if empty_bindings:
+            lines.append(
+                CMD_BINDINGS
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_LOAD
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + self._quote_if_needed(empty_bindings)
+            )
+        if empty_mappings:
+            lines.append(
+                CMD_CAN_MAPPINGS
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_LOAD
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + self._quote_if_needed(empty_mappings)
+            )
         lines.extend(self._profile_export_global_lines())
         lines.append(
             PROFILE_EXPORT_CMD_PROFILE
@@ -9400,6 +10023,7 @@ class BridgeCli:
             + profile_token
         )
         lines.append(PROFILE_EXPORT_CMD_PROFILE + PROFILE_EXPORT_PATH_SEPARATOR + profile_token)
+        lines.append(CMD_TESTS + PROFILE_EXPORT_PATH_SEPARATOR + CMD_CLEAR)
         lines.extend(self._profile_export_device_lines(profile_name))
         lines.extend(self._profile_export_group_lines(profile_name))
         lines.extend(self._profile_export_tests_lines(profile_name))
@@ -9411,12 +10035,17 @@ class BridgeCli:
             + PROFILE_EXPORT_PATH_SEPARATOR
             + profile_token
         )
-        lines.append(CMD_VALIDATE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_VALIDATE_ALL)
+        lines.append(CMD_VALIDATE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_ALL)
         lines.append(CMD_SAVE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_SOURCES)
         lines.append(PROFILE_EXPORT_CMD_EXIT)
         return lines
 
-    def _profiles_export_script_lines(self, json_path: str) -> List[str]:
+    def _profiles_export_script_lines(
+        self,
+        json_path: str,
+        empty_bindings: str,
+        empty_mappings: str,
+    ) -> List[str]:
         """
         NAME
             _profiles_export_script_lines - Build a CLI batch script for all profiles.
@@ -9441,6 +10070,22 @@ class BridgeCli:
             + PROFILE_EXPORT_PATH_SEPARATOR
             + CMD_INIT
         )
+        if empty_bindings:
+            lines.append(
+                CMD_BINDINGS
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_LOAD
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + self._quote_if_needed(empty_bindings)
+            )
+        if empty_mappings:
+            lines.append(
+                CMD_CAN_MAPPINGS
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_LOAD
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + self._quote_if_needed(empty_mappings)
+            )
         lines.extend(self._profile_export_global_lines())
         for profile_name in sorted(profiles.keys()):
             profile_token = self._quote_if_needed(profile_name)
@@ -9459,6 +10104,7 @@ class BridgeCli:
                 + profile_token
             )
             lines.append(PROFILE_EXPORT_CMD_PROFILE + PROFILE_EXPORT_PATH_SEPARATOR + profile_token)
+            lines.append(CMD_TESTS + PROFILE_EXPORT_PATH_SEPARATOR + CMD_CLEAR)
             lines.extend(self._profile_export_device_lines(profile_name))
             lines.extend(self._profile_export_group_lines(profile_name))
             lines.extend(self._profile_export_tests_lines(profile_name))
@@ -9471,7 +10117,7 @@ class BridgeCli:
                 + PROFILE_EXPORT_PATH_SEPARATOR
                 + self._quote_if_needed(default_profile)
             )
-        lines.append(CMD_VALIDATE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_VALIDATE_ALL)
+        lines.append(CMD_VALIDATE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_ALL)
         lines.append(CMD_SAVE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_SOURCES)
         lines.append(PROFILE_EXPORT_CMD_EXIT)
         return lines
@@ -10268,6 +10914,10 @@ class BridgeCli:
         ordered[KEY_BRIDGE_BY_PROFILE] = (
             dict(by_profile) if isinstance(by_profile, dict) else {}
         )
+        if include_devices:
+            devices = config.get(KEY_DEVICES)
+            if isinstance(devices, list):
+                ordered[KEY_DEVICES] = deepcopy(devices)
         return ordered
 
     def _local_device_exists(self, name: str) -> bool:
@@ -10332,23 +10982,23 @@ class BridgeCli:
             _build_unified_payload - Build a bringup_system.json payload from local state.
         """
         if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return None
-        self._sync_store_tests()
-        payload: Dict[str, object] = deepcopy(self._local_root_payload) if self._local_root_payload else {}
-        if "profiles" not in payload or not self._local_root_payload:
-            print("ERROR: No profiles loaded. Merge a bringup_system.json before saving unified config.")
+        self._sync_store_from_local()
+        payload: Dict[str, object] = deepcopy(self._store.root_payload()) if self._store else {}
+        if not payload or KEY_PROFILES not in payload:
+            print(MESSAGE_ERR_UNIFIED_NO_PROFILES)
             return None
-        if "diagram" not in payload:
-            payload["diagram"] = {"profiles": {}}
-        payload.setdefault("default_profile", "robot")
-        payload["schema_version"] = PROFILE_SCHEMA_VERSION
-        payload["bridgeConfig"] = self._ordered_bridge_config(
+        if KEY_DIAGRAM not in payload:
+            payload[KEY_DIAGRAM] = {KEY_PROFILES: {}}
+        payload.setdefault(KEY_DEFAULT_PROFILE, get_default_profile())
+        payload[KEY_SCHEMA_VERSION] = PROFILE_SCHEMA_VERSION
+        payload[KEY_BRIDGE_CONFIG] = self._ordered_bridge_config(
             self._local_config, include_devices=False
         )
-        if self._profiles_dirty or "data_version" not in payload:
-            payload["data_version"] = timestamp_version()
-        payload["data_hash"] = compute_profiles_hash(payload)
+        if self._profiles_dirty or KEY_DATA_VERSION not in payload:
+            payload[KEY_DATA_VERSION] = timestamp_version()
+        payload[KEY_DATA_HASH] = compute_profiles_hash(payload)
         return payload
 
     def _save_unified_config(
@@ -10394,6 +11044,14 @@ class BridgeCli:
             True,
         )
         print(f"Wrote unified config to {path}.")
+        print(
+            MESSAGE_ACTION_SUMMARY.format(
+                action=ACTION_SAVE,
+                scope=CMD_SAVE_UNIFIED,
+                persistence=PERSISTENCE_DISK,
+                source=self._active_source_label(),
+            )
+        )
         return StatusResult(code=SS__CONFIG__SAVED)
 
     def _save_local_config(
@@ -10411,7 +11069,7 @@ class BridgeCli:
         if validation_ok is None:
             validation_ok = True
         if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         self._sync_store_tests()
         try:
@@ -10444,6 +11102,14 @@ class BridgeCli:
             print(f"Wrote groups config to {path}.")
         else:
             print(f"Wrote bridgeConfig to {path}.")
+        print(
+            MESSAGE_ACTION_SUMMARY.format(
+                action=ACTION_SAVE,
+                scope=CMD_LOCAL_CONFIG,
+                persistence=PERSISTENCE_DISK,
+                source=self._active_source_label(),
+            )
+        )
         return StatusResult(code=SS__CONFIG__SAVED)
 
     def _save_runtime_config(self, path: str, *, force: bool = False) -> StatusResult:
@@ -10491,6 +11157,14 @@ class BridgeCli:
             True,
         )
         print(MESSAGE_SAVE_CONFIG_SAVED.format(path=path))
+        print(
+            MESSAGE_ACTION_SUMMARY.format(
+                action=ACTION_SAVE,
+                scope=CMD_CONFIG,
+                persistence=PERSISTENCE_DISK,
+                source=self._active_source_label(),
+            )
+        )
         return StatusResult(code=SS__CONFIG__SAVED)
 
     def _load_sources(self) -> StatusResult:
@@ -10519,8 +11193,18 @@ class BridgeCli:
                 ok = False
                 continue
             print(MESSAGE_SOURCES_LOAD_OK.format(name=name, path=path))
+        self._sync_local_from_store()
         if ok:
             print(MESSAGE_SOURCES_DONE)
+            print(MESSAGE_RELOAD_SOURCES_DONE.format(source=self._active_source_label()))
+            print(
+                MESSAGE_ACTION_SUMMARY.format(
+                    action=ACTION_RELOAD,
+                    scope=CMD_SOURCES,
+                    persistence=PERSISTENCE_MEMORY,
+                    source=self._active_source_label(),
+                )
+            )
             return StatusResult(code=SS__NORMAL)
         return StatusResult(code=SS__EXECUTOR__FAILED)
 
@@ -10615,6 +11299,14 @@ class BridgeCli:
             print(MESSAGE_SOURCES_SAVE_OK.format(name=name, path=path))
         if ok:
             print(MESSAGE_SOURCES_DONE)
+            print(
+                MESSAGE_ACTION_SUMMARY.format(
+                    action=ACTION_SAVE,
+                    scope=CMD_SOURCES,
+                    persistence=PERSISTENCE_DISK,
+                    source=self._active_source_label(),
+                )
+            )
             return StatusResult(code=SS__NORMAL)
         return StatusResult(code=SS__EXECUTOR__FAILED)
 
