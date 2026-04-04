@@ -154,6 +154,7 @@ from tools.common.profile_constants import (
     KEY_BRIDGE_BINDINGS,
     KEY_DATA_HASH,
     KEY_DATA_VERSION,
+    KEY_INPUT_ALIASES,
     KEY_DIO,
     KEY_DEFAULT_PROFILE,
     KEY_DEVICE_TYPE,
@@ -345,6 +346,7 @@ CMD_MANUFACTURER = "manufacturer"
 CMD_DEVICE_TYPE_NAME = "device-type"
 CMD_DEVICE_TYPES = "device-types"
 CMD_DEVICE_USAGE = "device-usage"
+CMD_BINDING_USAGE = "binding-usage"
 CMD_SHOW_ALL = "show-all"
 CMD_WORKSPACE = "workspace"
 CMD_SESSION = "session"
@@ -393,6 +395,7 @@ HELP_INDENT = "  "
 PLACEHOLDER_NAME = "<name>"
 PLACEHOLDER_PROFILE = "<profile>"
 PLACEHOLDER_DEVICE = "<device>"
+PLACEHOLDER_INPUT = "<input>"
 PLACEHOLDER_GROUP = "<group>"
 PLACEHOLDER_TEST = "<test>"
 PLACEHOLDER_FIELD = "<field>"
@@ -601,11 +604,78 @@ KEY_AXES = "axes"
 KEY_COMMAND = "command"
 KEY_CONTROLLER = "controller"
 KEY_INPUT = "input"
+KEY_AXIS = "axis"
+KEY_ALIAS = "alias"
 KEY_KIND = "kind"
 KEY_VALUE = "value"
 KEY_MODE = "mode"
 KEY_PORT = "port"
 KEY_DEADBAND = "deadband"
+INPUT_KIND_BUTTON = "button"
+INPUT_KIND_DPAD = "dpad"
+INPUT_KIND_COMBO = "combo"
+INPUT_KIND_AXIS = "axis"
+ALIAS_SEPARATOR = "."
+ALIAS_DPAD = "dpad"
+ALIAS_LEFT = "left"
+ALIAS_RIGHT = "right"
+ALIAS_TRIGGER = "trigger"
+ALIAS_AXIS_X = "x"
+ALIAS_AXIS_Y = "y"
+AXIS_ID_LEFT_X = "leftX"
+AXIS_ID_LEFT_Y = "leftY"
+AXIS_ID_RIGHT_X = "rightX"
+AXIS_ID_RIGHT_Y = "rightY"
+AXIS_ID_LEFT_TRIGGER = "leftTrigger"
+AXIS_ID_RIGHT_TRIGGER = "rightTrigger"
+CANONICAL_INPUT_KEYS = frozenset(
+    (
+        "driver.a",
+        "driver.b",
+        "driver.x",
+        "driver.y",
+        "driver.lb",
+        "driver.rb",
+        "driver.back",
+        "driver.start",
+        "driver.ls",
+        "driver.rs",
+        "driver.dpad.up",
+        "driver.dpad.right",
+        "driver.dpad.down",
+        "driver.dpad.left",
+        "driver.left.x",
+        "driver.left.y",
+        "driver.right.x",
+        "driver.right.y",
+        "driver.left.trigger",
+        "driver.right.trigger",
+        "operator.a",
+        "operator.b",
+        "operator.x",
+        "operator.y",
+        "operator.lb",
+        "operator.rb",
+        "operator.back",
+        "operator.start",
+        "operator.ls",
+        "operator.rs",
+        "operator.dpad.up",
+        "operator.dpad.right",
+        "operator.dpad.down",
+        "operator.dpad.left",
+        "operator.left.x",
+        "operator.left.y",
+        "operator.right.x",
+        "operator.right.y",
+        "operator.left.trigger",
+        "operator.right.trigger",
+        "ui.slider1",
+        "ui.slider2",
+        "ui.button1",
+        "ui.button2",
+    )
+)
 
 SHOW_TARGET_CONFIG = "config"
 SHOW_TARGET_RUNTIME = "runtime-state"
@@ -646,6 +716,8 @@ SHOW_TARGET_CAN_MAPPINGS = "can-mappings"
 SHOW_TARGET_SELECTED_DEVICE = "selected-device"
 SHOW_TARGET_MESSAGE_LEVEL = "message-level"
 SHOW_TARGET_DEVICE_USAGE = "device-usage"
+SHOW_TARGET_BINDING_USAGE = "binding-usage"
+SHOW_TARGET_INPUT_ALIASES = "input-aliases"
 SHOW_TARGET_COMMANDS = "commands"
 SHOW_TARGET_HELP = "help"
 SHOW_TARGET_WORKSPACE = "workspace"
@@ -692,6 +764,8 @@ MESSAGE_DIRTY_ENTRY = "  {name}={value}"
 MESSAGE_DIRTY_NONE = "  (clean)"
 MESSAGE_DIRTY_PROMPT = "Unsaved changes in: {items}. Exit anyway?"
 MESSAGE_ERR_DEVICE_LABEL_REQUIRED = "ERROR: device name required."
+MESSAGE_ERR_BINDING_INPUT_REQUIRED = "ERROR: binding input required."
+MESSAGE_ERR_BINDING_INPUT_UNKNOWN = "ERROR: binding input not recognized."
 MESSAGE_ERR_DEVICE_PROFILE_REQUIRED = "ERROR: Profile not selected. Use 'profile <profile>'."
 MESSAGE_ERR_DEVICE_INTERFACE_INVALID = "ERROR: interface must be CAN, DIO, PWM, ANALOG, or INTERNAL."
 MESSAGE_ERR_DEVICE_FIELD_UNKNOWN = "ERROR: device set field not supported."
@@ -710,6 +784,22 @@ MESSAGE_METADATA_HEADER = "  metadata:"
 MESSAGE_METADATA_HEADER_LEGACY = "  metadata (legacy):"
 MESSAGE_REGISTRY_FIELD_FMT = "  {key}={value}"
 MESSAGE_REGISTRY_FIELD_FMT_NAMED = "  {key}={value} ({name})"
+MESSAGE_LOCAL_REGISTRY_DEVICES_HEADER = "Local registry devices:"
+MESSAGE_LOCAL_REGISTRY_DEVICES_NONE = "  (none)"
+MESSAGE_LOCAL_REGISTRY_DEVICE_HEADER_FMT = "{label}"
+MESSAGE_LOCAL_REGISTRY_DEVICE_LABEL_FMT = "  {label}"
+MESSAGE_LOCAL_REGISTRY_ATTACHMENTS_HEADER = "  attachments:"
+MESSAGE_LOCAL_REGISTRY_ATTACHMENT_LABEL_FMT = "    {label}"
+MESSAGE_LOCAL_REGISTRY_FIELD_FMT = "{indent}{key}: {value}"
+MESSAGE_LOCAL_REGISTRY_FIELD_FMT_NAMED = "{indent}{key}: {value} ({name})"
+MESSAGE_LOCAL_REGISTRY_BLANK_LINE = ""
+INDENT_DEVICE_FIELD = "  "
+INDENT_ATTACHMENT_FIELD = "      "
+INDENT_DEVICE_ATTACHMENT = "    "
+MESSAGE_CONTROLLERS_HEADER = "Controllers:"
+MESSAGE_CONTROLLERS_DECLARED_HEADER = "Declared controllers:"
+MESSAGE_CONTROLLERS_INPUTS_HEADER = "Inputs:"
+MESSAGE_CONTROLLERS_DECLARED_ENTRY_FMT = "  {name} type={type} port={port}"
 MESSAGE_MAPPINGS_READ_FAIL = "WARNING: Failed to read CAN mappings: {path}"
 MESSAGE_ERR_BINDINGS_SUBCOMMAND = (
     "ERROR: bindings <show|controller|binding|axis|load|save|validate>"
@@ -913,6 +1003,24 @@ MESSAGE_DEVICE_USAGE_NONE = "    (none)"
 MESSAGE_DEVICE_USAGE_GROUP_ENTRY = "    {name}"
 MESSAGE_DEVICE_USAGE_TEST_ENTRY = "    {test_set}/{name} ({type})"
 MESSAGE_DEVICE_USAGE_TEST_ENTRY_SIMPLE = "    {test_set}/{name}"
+MESSAGE_BINDING_USAGE_HEADER = "Binding usage:"
+MESSAGE_BINDING_USAGE_INPUT = "  input={name}"
+MESSAGE_BINDING_USAGE_PROFILE = "  profile={name}"
+MESSAGE_BINDING_USAGE_GROUPS_HEADER = "  groups:"
+MESSAGE_BINDING_USAGE_GLOBAL_HEADER = "  global bindings:"
+MESSAGE_BINDING_USAGE_NONE = "    (none)"
+MESSAGE_BINDING_USAGE_GROUP_ENTRY = "    {name} kind={kind}"
+MESSAGE_BINDING_USAGE_GROUP_ENTRY_VALUE = "    {name} kind={kind} value={value}"
+MESSAGE_BINDING_USAGE_GLOBAL_ENTRY = (
+    "    {command} controller={controller} input={input} id={id} mode={mode}"
+)
+MESSAGE_BINDING_USAGE_GLOBAL_AXIS_ENTRY = (
+    "    {command} controller={controller} axis={axis} invert={invert} deadband={deadband}"
+)
+MESSAGE_INPUT_ALIASES_HEADER = "Input aliases:"
+MESSAGE_INPUT_ALIASES_PROFILE = "  profile={name}"
+MESSAGE_INPUT_ALIASES_ENTRY = "  {alias} -> {canonical}"
+MESSAGE_INPUT_ALIASES_NONE = "  (none)"
 MESSAGE_NO_KNOWN_VALUES = "No known values; see docs."
 MESSAGE_SOURCES_HEADER = "Sources:"
 MESSAGE_SOURCES_ENTRY = "  {name}: {value}"
@@ -989,6 +1097,16 @@ AUDIT_ACTION_RECOVER = "recover"
 AUDIT_ACTION_REPAIR = "repair"
 HELP_TOPIC_DEVICE_USAGE = "device-usage"
 HELP_DEVICE_USAGE_TEXT = "show device-usage <device>\n  Show local group/test references for a device."
+HELP_TOPIC_BINDING_USAGE = "binding-usage"
+HELP_BINDING_USAGE_TEXT = (
+    "show binding-usage <input>\n"
+    "  Show local group bindings and global command bindings for an input."
+)
+HELP_TOPIC_INPUT_ALIASES = "input-aliases"
+HELP_INPUT_ALIASES_TEXT = (
+    "show input-aliases\n"
+    "  Show merged input alias map for the active profile."
+)
 HELP_TOPIC_SOURCES = "sources"
 HELP_SOURCES_TEXT = (
     "show sources\n"
@@ -1059,7 +1177,7 @@ HELP_VALIDATE_FILE_TEXT = (
 HELP_TOPIC_QUICK = "quick"
 HELP_SHOW_TEXT = (
     "show <status|groups|group <group>|devices|device <device>|device-group <device>|"
-    "device-usage <device>|commands|help|bindings|selected-device|runtime-state|config|config local-raw|config dirty|"
+    "device-usage <device>|binding-usage <input>|commands|help|bindings|selected-device|runtime-state|config|config local-raw|config dirty|"
     "sources|profiles|profile|tests|test <test>|message-level|workspace|session|controllers> "
     "[--json] [--pretty] [robot|local|both]\n"
     "  Defaults: robot if connected, otherwise local."
@@ -2947,6 +3065,8 @@ class BridgeCli:
             SHOW_TARGET_VERSION,
             SHOW_TARGET_SOURCES,
             CMD_DEVICE_USAGE + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
+            CMD_BINDING_USAGE + PARSER_SPEC.space_str + PLACEHOLDER_INPUT,
+            SHOW_TARGET_INPUT_ALIASES,
             SHOW_TARGET_DEVICE_GROUP + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
             PARSER_SPEC.show_target_bindings,
             SHOW_TARGET_CAN_MAPPINGS,
@@ -5649,6 +5769,9 @@ class BridgeCli:
         if cmd == "bind" and len(tokens) >= 3:
             input_name = tokens[1]
             kind = tokens[2].lower()
+            if not self._is_valid_binding_input(input_name, self._active_profile_name()):
+                print(MESSAGE_ERR_BINDING_INPUT_UNKNOWN)
+                return StatusResult(code=SS__INPUT_BINDING__INVALID)
             value = None
             if kind != "analog":
                 if len(tokens) < 4:
@@ -5762,6 +5885,8 @@ class BridgeCli:
         if target == SHOW_TARGET_DEVICE:
             source = SHOW_SOURCE_LOCAL
         if target == SHOW_TARGET_DEVICE_META:
+            source = SHOW_SOURCE_LOCAL
+        if target == SHOW_TARGET_INPUT_ALIASES:
             source = SHOW_SOURCE_LOCAL
         if target == SHOW_TARGET_CAN_MAPPINGS:
             source = SHOW_SOURCE_LOCAL
@@ -6719,7 +6844,9 @@ class BridgeCli:
         enabled = bool(selected.get(CMD_ENABLED, False))
         return (device, enabled)
 
-    def _show_controllers(self, json_output: bool, pretty: bool) -> StatusResult:
+    def _show_controllers(
+        self, json_output: bool, pretty: bool, show_all: bool
+    ) -> StatusResult:
         controller_names = sorted(load_controller_names(self._bindings_path))
         inputs = sorted(AXIS_INPUTS | BUTTON_INPUTS)
         declared: List[Dict[str, object]] = []
@@ -6733,18 +6860,25 @@ class BridgeCli:
         if json_output:
             print(self._dump_json(payload, pretty))
             return StatusResult(code=SS__NORMAL)
-        print("Controllers:")
+        print(MESSAGE_CONTROLLERS_HEADER)
         for name in controller_names:
-            print(f"  {name}")
-        if declared:
-            print("Declared controllers:")
-            for entry in declared:
-                name = entry.get(KEY_NAME)
-                ctrl_type = entry.get(FIELD_TYPE)
-                port = entry.get(KEY_PORT)
-                print(f"  {name} type={ctrl_type} port={port}")
-        print("Inputs:")
-        print("  " + ", ".join(inputs))
+            print(HELP_INDENT + str(name))
+        if not controller_names:
+            print(MESSAGE_BINDINGS_NONE)
+        if show_all:
+            if declared:
+                print(MESSAGE_CONTROLLERS_DECLARED_HEADER)
+                for entry in declared:
+                    name = entry.get(KEY_NAME)
+                    ctrl_type = entry.get(FIELD_TYPE)
+                    port = entry.get(KEY_PORT)
+                    print(
+                        MESSAGE_CONTROLLERS_DECLARED_ENTRY_FMT.format(
+                            name=name, type=ctrl_type, port=port
+                        )
+                    )
+            print(MESSAGE_CONTROLLERS_INPUTS_HEADER)
+            print(HELP_INDENT + SEP_COMMA_SPACE.join(inputs))
         return StatusResult(code=SS__NORMAL)
 
     def _show_commands(self, json_output: bool, pretty: bool) -> StatusResult:
@@ -6891,6 +7025,320 @@ class BridgeCli:
                     )
         else:
             print(MESSAGE_DEVICE_USAGE_NONE)
+        return StatusResult(code=SS__NORMAL)
+
+    @staticmethod
+    def _normalize_alias_token(value: str) -> str:
+        """
+        NAME
+            _normalize_alias_token - Normalize alias keys/values for lookup.
+        """
+        return value.strip().lower()
+
+    def _load_input_aliases(self, profile: Optional[str]) -> Dict[str, str]:
+        """
+        NAME
+            _load_input_aliases - Load input aliases from bindings and profiles.
+        """
+        aliases: Dict[str, str] = {}
+        if self._ensure_bindings_loaded() and isinstance(self._bindings_payload, dict):
+            raw = self._bindings_payload.get(KEY_INPUT_ALIASES)
+            if isinstance(raw, dict):
+                for key, value in raw.items():
+                    if not isinstance(key, str) or not isinstance(value, str):
+                        continue
+                    key_norm = self._normalize_alias_token(key)
+                    value_norm = self._normalize_alias_token(value)
+                    if key_norm:
+                        aliases[key_norm] = value_norm
+        if (
+            profile
+            and isinstance(self._local_root_payload, dict)
+            and isinstance(self._local_root_payload.get(KEY_PROFILES), dict)
+        ):
+            profiles = self._local_root_payload.get(KEY_PROFILES)
+            profile_entry = profiles.get(profile) if isinstance(profiles, dict) else None
+            if isinstance(profile_entry, dict):
+                raw = profile_entry.get(KEY_INPUT_ALIASES)
+                if isinstance(raw, dict):
+                    for key, value in raw.items():
+                        if not isinstance(key, str) or not isinstance(value, str):
+                            continue
+                        key_norm = self._normalize_alias_token(key)
+                        value_norm = self._normalize_alias_token(value)
+                        if key_norm:
+                            aliases[key_norm] = value_norm
+        return aliases
+
+    def _resolve_input_alias(self, input_name: str, aliases: Dict[str, str]) -> str:
+        """
+        NAME
+            _resolve_input_alias - Resolve input aliases to a canonical key.
+
+        NOTES
+            Uses a single alias lookup; chaining is not supported.
+        """
+        if not input_name:
+            return EMPTY_STRING
+        key = self._normalize_alias_token(input_name)
+        if not aliases:
+            return key
+        target = aliases.get(key, EMPTY_STRING)
+        if not target:
+            return key
+        return self._normalize_alias_token(target)
+
+    @staticmethod
+    def _axis_alias_suffix(axis_id: str) -> str:
+        """
+        NAME
+            _axis_alias_suffix - Map axis IDs to alias suffixes.
+        """
+        if axis_id == AXIS_ID_LEFT_X:
+            return ALIAS_SEPARATOR.join((ALIAS_LEFT, ALIAS_AXIS_X))
+        if axis_id == AXIS_ID_LEFT_Y:
+            return ALIAS_SEPARATOR.join((ALIAS_LEFT, ALIAS_AXIS_Y))
+        if axis_id == AXIS_ID_RIGHT_X:
+            return ALIAS_SEPARATOR.join((ALIAS_RIGHT, ALIAS_AXIS_X))
+        if axis_id == AXIS_ID_RIGHT_Y:
+            return ALIAS_SEPARATOR.join((ALIAS_RIGHT, ALIAS_AXIS_Y))
+        if axis_id == AXIS_ID_LEFT_TRIGGER:
+            return ALIAS_SEPARATOR.join((ALIAS_LEFT, ALIAS_TRIGGER))
+        if axis_id == AXIS_ID_RIGHT_TRIGGER:
+            return ALIAS_SEPARATOR.join((ALIAS_RIGHT, ALIAS_TRIGGER))
+        return EMPTY_STRING
+
+    def _binding_alias_key(self, controller: str, input_kind: str, input_id: str) -> str:
+        """
+        NAME
+            _binding_alias_key - Build alias key for a binding entry.
+        """
+        if not controller or not input_kind or not input_id:
+            return EMPTY_STRING
+        controller_key = self._normalize_alias_token(controller)
+        if input_kind == INPUT_KIND_BUTTON:
+            return ALIAS_SEPARATOR.join((controller_key, input_id.lower()))
+        if input_kind == INPUT_KIND_DPAD:
+            return ALIAS_SEPARATOR.join(
+                (controller_key, ALIAS_DPAD, input_id.lower())
+            )
+        return EMPTY_STRING
+
+    def _is_valid_binding_input(self, input_name: str, profile: Optional[str]) -> bool:
+        """
+        NAME
+            _is_valid_binding_input - Validate a binding input using alias maps.
+        """
+        if not input_name:
+            return False
+        aliases = self._load_input_aliases(profile)
+        resolved = self._resolve_input_alias(input_name, aliases)
+        if not resolved:
+            return False
+        return resolved in CANONICAL_INPUT_KEYS
+
+    def _show_binding_usage(self, name: str, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_binding_usage - Show group/global bindings for a binding input.
+        """
+
+        input_name = str(name).strip()
+        if not input_name:
+            print(MESSAGE_ERR_BINDING_INPUT_REQUIRED)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        profile = self._active_profile_name()
+        if not profile:
+            print(MESSAGE_ERR_PROFILE_REQUIRED)
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
+        aliases = self._load_input_aliases(profile)
+        target = self._resolve_input_alias(input_name, aliases)
+        group_hits: List[Dict[str, object]] = []
+        for group in self._local_groups(profile):
+            if not isinstance(group, dict):
+                continue
+            group_name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
+            if not group_name:
+                continue
+            for binding in group.get(KEY_BRIDGE_BINDINGS, []) or []:
+                if not isinstance(binding, dict):
+                    continue
+                binding_input = str(binding.get(KEY_INPUT, EMPTY_STRING)).strip()
+                if not binding_input:
+                    continue
+                resolved_binding = self._resolve_input_alias(binding_input, aliases)
+                if resolved_binding != target:
+                    continue
+                entry: Dict[str, object] = {
+                    KEY_NAME: group_name,
+                    KEY_KIND: binding.get(KEY_KIND),
+                }
+                if KEY_VALUE in binding:
+                    entry[KEY_VALUE] = binding.get(KEY_VALUE)
+                group_hits.append(entry)
+
+        global_hits: List[Dict[str, object]] = []
+        if self._ensure_bindings_loaded() and isinstance(self._bindings_payload, dict):
+            bindings_payload = self._bindings_payload
+            bindings = bindings_payload.get(KEY_BINDINGS, [])
+            if isinstance(bindings, list):
+                for entry in bindings:
+                    if not isinstance(entry, dict):
+                        continue
+                    entry_controller = str(entry.get(KEY_CONTROLLER, EMPTY_STRING)).strip()
+                    entry_input = str(entry.get(KEY_INPUT, EMPTY_STRING)).strip()
+                    entry_id = str(entry.get(KEY_ID, EMPTY_STRING)).strip()
+                    alias_key = self._binding_alias_key(
+                        entry_controller,
+                        entry_input.lower(),
+                        entry_id,
+                    )
+                    if not alias_key:
+                        continue
+                    resolved = self._resolve_input_alias(alias_key, aliases)
+                    if resolved != target:
+                        continue
+                    global_hits.append(
+                        {
+                            KEY_COMMAND: entry.get(KEY_COMMAND),
+                            KEY_CONTROLLER: entry_controller,
+                            KEY_INPUT: entry_input,
+                            KEY_ID: entry_id,
+                            KEY_MODE: entry.get(KEY_MODE),
+                        }
+                    )
+            axes = bindings_payload.get(KEY_AXES, [])
+            if isinstance(axes, list):
+                for entry in axes:
+                    if not isinstance(entry, dict):
+                        continue
+                    entry_controller = str(entry.get(KEY_CONTROLLER, EMPTY_STRING)).strip()
+                    entry_id = str(entry.get(KEY_ID, EMPTY_STRING)).strip()
+                    axis_suffix = self._axis_alias_suffix(entry_id)
+                    if not axis_suffix:
+                        continue
+                    alias_key = ALIAS_SEPARATOR.join(
+                        (self._normalize_alias_token(entry_controller), axis_suffix)
+                    )
+                    resolved = self._resolve_input_alias(alias_key, aliases)
+                    if resolved != target:
+                        continue
+                    global_hits.append(
+                        {
+                            KEY_COMMAND: entry.get(KEY_COMMAND),
+                            KEY_CONTROLLER: entry_controller,
+                            KEY_AXIS: entry_id,
+                            KEY_INVERT: entry.get(KEY_INVERT),
+                            KEY_DEADBAND: entry.get(KEY_DEADBAND),
+                        }
+                    )
+
+        group_hits_sorted = sorted(
+            group_hits,
+            key=lambda entry: (
+                str(entry.get(KEY_NAME, EMPTY_STRING)),
+                str(entry.get(KEY_KIND, EMPTY_STRING)),
+            ),
+        )
+        global_hits_sorted = sorted(
+            global_hits,
+            key=lambda entry: (
+                str(entry.get(KEY_COMMAND, EMPTY_STRING)),
+                str(entry.get(KEY_CONTROLLER, EMPTY_STRING)),
+            ),
+        )
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            payload = {
+                KEY_INPUT: input_name,
+                KEY_ALIAS: target,
+                KEY_PROFILE: profile,
+                KEY_GROUPS: group_hits_sorted,
+                KEY_BINDINGS: global_hits_sorted,
+            }
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_BINDING_USAGE_HEADER)
+        print(MESSAGE_BINDING_USAGE_INPUT.format(name=input_name))
+        print(MESSAGE_BINDING_USAGE_PROFILE.format(name=profile))
+        print(MESSAGE_BINDING_USAGE_GROUPS_HEADER)
+        if group_hits_sorted:
+            for entry in group_hits_sorted:
+                group_name = str(entry.get(KEY_NAME, EMPTY_STRING)).strip()
+                kind = str(entry.get(KEY_KIND, EMPTY_STRING)).strip()
+                if KEY_VALUE in entry:
+                    value = self._format_cli_value(entry.get(KEY_VALUE))
+                    print(
+                        MESSAGE_BINDING_USAGE_GROUP_ENTRY_VALUE.format(
+                            name=group_name, kind=kind, value=value
+                        )
+                    )
+                else:
+                    print(
+                        MESSAGE_BINDING_USAGE_GROUP_ENTRY.format(
+                            name=group_name, kind=kind
+                        )
+                    )
+        else:
+            print(MESSAGE_BINDING_USAGE_NONE)
+        print(MESSAGE_BINDING_USAGE_GLOBAL_HEADER)
+        if global_hits_sorted:
+            for entry in global_hits_sorted:
+                if KEY_AXIS in entry:
+                    print(
+                        MESSAGE_BINDING_USAGE_GLOBAL_AXIS_ENTRY.format(
+                            command=entry.get(KEY_COMMAND),
+                            controller=entry.get(KEY_CONTROLLER),
+                            axis=entry.get(KEY_AXIS),
+                            invert=entry.get(KEY_INVERT),
+                            deadband=entry.get(KEY_DEADBAND),
+                        )
+                    )
+                else:
+                    print(
+                        MESSAGE_BINDING_USAGE_GLOBAL_ENTRY.format(
+                            command=entry.get(KEY_COMMAND),
+                            controller=entry.get(KEY_CONTROLLER),
+                            input=entry.get(KEY_INPUT),
+                            id=entry.get(KEY_ID),
+                            mode=entry.get(KEY_MODE),
+                        )
+                    )
+        else:
+            print(MESSAGE_BINDING_USAGE_NONE)
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_input_aliases(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_input_aliases - Show merged input aliases for the active profile.
+        """
+        profile = self._active_profile_name()
+        if not profile:
+            print(MESSAGE_ERR_PROFILE_REQUIRED)
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
+        aliases = self._load_input_aliases(profile)
+        sorted_aliases = {key: aliases[key] for key in sorted(aliases)}
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            payload = {
+                KEY_PROFILE: profile,
+                KEY_INPUT_ALIASES: sorted_aliases,
+            }
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_INPUT_ALIASES_HEADER)
+        print(MESSAGE_INPUT_ALIASES_PROFILE.format(name=profile))
+        if sorted_aliases:
+            for alias, canonical in sorted_aliases.items():
+                print(
+                    MESSAGE_INPUT_ALIASES_ENTRY.format(
+                        alias=alias,
+                        canonical=canonical,
+                    )
+                )
+        else:
+            print(MESSAGE_INPUT_ALIASES_NONE)
         return StatusResult(code=SS__NORMAL)
 
     def _show_profiles_device_all(self, name: str) -> StatusResult:
@@ -7080,7 +7528,7 @@ class BridgeCli:
             "show message-level": "show message-level\n  Show current CLI message level.",
             "show workspace": "show workspace\n  Show loaded file paths, active profile/set, dirty flags, and recovery mode.",
             "show session": "show session\n  Alias for show workspace.",
-            "show controllers": "show controllers\n  List controller names and supported input IDs.",
+            "show controllers": "show controllers [--all]\n  List controller names (default) or full controller inputs.",
             "sources": HELP_SOURCES_TEXT,
             "show sources": HELP_SHOW_SOURCES_TEXT,
             "reload sources": HELP_SOURCES_TEXT,
@@ -7148,6 +7596,8 @@ class BridgeCli:
                 "  Enter device mode to edit local device metadata."
             ),
             HELP_TOPIC_DEVICE_USAGE: HELP_DEVICE_USAGE_TEXT,
+            HELP_TOPIC_BINDING_USAGE: HELP_BINDING_USAGE_TEXT,
+            HELP_TOPIC_INPUT_ALIASES: HELP_INPUT_ALIASES_TEXT,
             HELP_TOPIC_PROFILE_DEVICE_DELETE: HELP_PROFILE_DEVICE_DELETE_TEXT,
             HELP_TOPIC_PROFILE_DEVICE_SHOW_ALL: HELP_PROFILE_DEVICE_SHOW_ALL_TEXT,
             HELP_TOPIC_PROFILE_DELETE: HELP_PROFILE_DELETE_TEXT,
@@ -7379,7 +7829,10 @@ class BridgeCli:
         if target in (SHOW_TARGET_WORKSPACE, SHOW_TARGET_SESSION):
             return self._show_workspace(json_output, pretty)
         if target == SHOW_TARGET_CONTROLLERS:
-            return self._show_controllers(json_output, pretty)
+            show_all = any(tok.lower() == SHOW_FLAG_ALL for tok in tokens[1:])
+            if show_all:
+                tokens = [tok for tok in tokens if tok.lower() != SHOW_FLAG_ALL]
+            return self._show_controllers(json_output, pretty, show_all)
         if target == SHOW_TARGET_MESSAGE_LEVEL:
             if self._show_message_level(json_output, pretty):
                 return StatusResult(code=SS__NORMAL)
@@ -7394,6 +7847,11 @@ class BridgeCli:
         if target == SHOW_TARGET_DEVICE_USAGE:
             name = tokens[COUNT_ONE] if len(tokens) >= COUNT_TWO else EMPTY_STRING
             return self._show_device_usage(name, json_output, pretty)
+        if target == SHOW_TARGET_BINDING_USAGE:
+            name = tokens[COUNT_ONE] if len(tokens) >= COUNT_TWO else EMPTY_STRING
+            return self._show_binding_usage(name, json_output, pretty)
+        if target == SHOW_TARGET_INPUT_ALIASES:
+            return self._show_input_aliases(json_output, pretty)
         if target == SHOW_TARGET_CONFIG_RAW:
             return self._show_local_config_raw(json_output, pretty)
         if target == SHOW_TARGET_CONFIG_DIRTY:
@@ -7412,7 +7870,10 @@ class BridgeCli:
                 return self._show_local_device_entry(name)
             return self._show_local_device_meta_list(json_output, pretty)
         if target == SHOW_TARGET_DEVICES:
-            return self._show_local_registry_devices(json_output, pretty)
+            show_all = any(tok.lower() == SHOW_FLAG_ALL for tok in tokens[1:])
+            if show_all:
+                tokens = [tok for tok in tokens if tok.lower() != SHOW_FLAG_ALL]
+            return self._show_local_registry_devices(json_output, pretty, show_all)
         profile = self._active_profile_name()
         if not profile:
             print(MESSAGE_ERR_PROFILE_REQUIRED)
@@ -8189,6 +8650,9 @@ class BridgeCli:
             print("ERROR: Local group not found.")
             return StatusResult(code=SS__GROUP__NOT_FOUND)
         input_name = tokens[0]
+        if not self._is_valid_binding_input(input_name, self._active_profile_name()):
+            print(MESSAGE_ERR_BINDING_INPUT_UNKNOWN)
+            return StatusResult(code=SS__INPUT_BINDING__INVALID)
         kind = tokens[1]
         entry = {"input": input_name, "kind": kind}
         if kind != "analog":
@@ -9067,10 +9531,12 @@ class BridgeCli:
         print("\n".join(lines))
         return StatusResult(code=SS__NORMAL)
 
-    def _show_local_registry_devices(self, json_output: bool, pretty: bool) -> StatusResult:
+    def _show_local_registry_devices(
+        self, json_output: bool, pretty: bool, show_all: bool
+    ) -> StatusResult:
         """
         NAME
-            _show_local_registry_devices - Print all registry device entries.
+            _show_local_registry_devices - Print registry device entries.
         """
         if not isinstance(self._local_root_payload, dict):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
@@ -9083,40 +9549,100 @@ class BridgeCli:
         if json_output:
             print(self._dump_json(payload, pretty))
             return StatusResult(code=SS__NORMAL)
-        lines = ["Local registry devices:"]
+        lines = [MESSAGE_LOCAL_REGISTRY_DEVICES_HEADER]
         mappings = self._load_can_mappings()
         manufacturers = mappings.get(KEY_MANUFACTURERS, {}) if mappings else {}
         device_types = mappings.get(KEY_DEVICE_TYPES, {}) if mappings else {}
+        devices_by_label: Dict[str, Dict[str, object]] = {}
         for entry in devices:
             if not isinstance(entry, dict):
                 continue
-            label = str(entry.get(FIELD_LABEL, "")).strip()
+            label = str(entry.get(FIELD_LABEL, EMPTY_STRING)).strip()
             if not label:
                 continue
-            lines.append(f"  {label}:")
+            devices_by_label[label] = entry
+
+        def _append_registry_field(
+            target: List[str],
+            key: str,
+            value: object,
+            indent: str,
+        ) -> None:
+            if key == FIELD_MANUFACTURER and isinstance(value, int):
+                name_value = manufacturers.get(str(value), EMPTY_STRING)
+                if name_value:
+                    target.append(
+                        MESSAGE_LOCAL_REGISTRY_FIELD_FMT_NAMED.format(
+                            indent=indent, key=key, value=value, name=name_value
+                        )
+                    )
+                    return
+            if key == FIELD_DEVICE_TYPE and isinstance(value, int):
+                name_value = device_types.get(str(value), EMPTY_STRING)
+                if name_value:
+                    target.append(
+                        MESSAGE_LOCAL_REGISTRY_FIELD_FMT_NAMED.format(
+                            indent=indent, key=key, value=value, name=name_value
+                        )
+                    )
+                    return
+            target.append(
+                MESSAGE_LOCAL_REGISTRY_FIELD_FMT.format(
+                    indent=indent, key=key, value=value
+                )
+            )
+
+        any_entry = False
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            label = str(entry.get(FIELD_LABEL, EMPTY_STRING)).strip()
+            if not label:
+                continue
+            if not show_all:
+                lines.append(
+                    MESSAGE_LOCAL_REGISTRY_DEVICE_LABEL_FMT.format(label=label)
+                )
+                any_entry = True
+                continue
+            if any_entry:
+                lines.append(MESSAGE_LOCAL_REGISTRY_BLANK_LINE)
+            lines.append(MESSAGE_LOCAL_REGISTRY_DEVICE_HEADER_FMT.format(label=label))
+            any_entry = True
+            attachments = entry.get(FIELD_ATTACHMENTS)
             for key in sorted(entry.keys()):
+                if key == FIELD_ATTACHMENTS:
+                    continue
                 value = entry.get(key)
-                if key == FIELD_MANUFACTURER and isinstance(value, int):
-                    name_value = manufacturers.get(str(value), "")
-                    if name_value:
-                        lines.append(
-                            MESSAGE_REGISTRY_FIELD_FMT_NAMED.format(
-                                key=key, value=value, name=name_value
-                            )
-                        )
+                _append_registry_field(lines, key, value, INDENT_DEVICE_FIELD)
+            if isinstance(attachments, list) and attachments:
+                lines.append(MESSAGE_LOCAL_REGISTRY_ATTACHMENTS_HEADER)
+                for attachment in attachments:
+                    if isinstance(attachment, dict):
+                        attachment_label = str(
+                            attachment.get(FIELD_LABEL, EMPTY_STRING)
+                        ).strip()
+                    else:
+                        attachment_label = str(attachment).strip()
+                    if not attachment_label:
                         continue
-                if key == FIELD_DEVICE_TYPE and isinstance(value, int):
-                    name_value = device_types.get(str(value), "")
-                    if name_value:
-                        lines.append(
-                            MESSAGE_REGISTRY_FIELD_FMT_NAMED.format(
-                                key=key, value=value, name=name_value
-                            )
+                    lines.append(
+                        MESSAGE_LOCAL_REGISTRY_ATTACHMENT_LABEL_FMT.format(
+                            label=attachment_label
                         )
+                    )
+                    attachment_entry = devices_by_label.get(attachment_label)
+                    if not isinstance(attachment_entry, dict):
                         continue
-                lines.append(MESSAGE_REGISTRY_FIELD_FMT.format(key=key, value=value))
-        if len(lines) == 1:
-            lines.append("  (none)")
+                    for key in sorted(attachment_entry.keys()):
+                        if key == FIELD_ATTACHMENTS:
+                            continue
+                        value = attachment_entry.get(key)
+                        _append_registry_field(
+                            lines, key, value, INDENT_ATTACHMENT_FIELD
+                        )
+        if not any_entry:
+            lines.append(MESSAGE_LOCAL_REGISTRY_DEVICES_NONE)
         print("\n".join(lines))
         return StatusResult(code=SS__NORMAL)
 

@@ -8,10 +8,12 @@ import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.ControllerManager;
+import frc.robot.input.InputAliasResolver;
 import frc.robot.tests.BringupTestRegistry;
 import frc.robot.ui.TcpUiServer;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * NAME
@@ -29,6 +31,26 @@ public class RobotV2 extends TimedRobot {
 
   // ---------------- CAN ID DEFINITIONS ----------------
   private static final double DEADBAND = BringupUtil.DEADBAND;
+  private static final double SPEED_ZERO = 0.0;
+  private static final double SPEED_FIXED_25 = 0.25;
+  private static final double SPEED_FIXED_50 = 0.50;
+  private static final double SPEED_FIXED_75 = 0.75;
+  private static final double SPEED_FIXED_100 = 1.00;
+  private static final String BINDING_LEFT_DRIVE = "leftDrive";
+  private static final String BINDING_RIGHT_DRIVE = "rightDrive";
+  private static final String COMMAND_RUN_TEST = "runTest";
+  private static final String COMMAND_PROFILE_TOGGLE = "profileToggle";
+  private static final String COMMAND_TOGGLE_DASHBOARD = "toggleDashboard";
+  private static final String COMMAND_FIXED_SPEED_25 = "fixedSpeed25";
+  private static final String COMMAND_FIXED_SPEED_50 = "fixedSpeed50";
+  private static final String COMMAND_FIXED_SPEED_75 = "fixedSpeed75";
+  private static final String COMMAND_FIXED_SPEED_100 = "fixedSpeed100";
+  private static final String COMMAND_PRINT_INPUTS = "printInputs";
+  private static final String TEXT_EMPTY = "";
+  private static final int POV_UP = 0;
+  private static final int POV_RIGHT = 90;
+  private static final int POV_DOWN = 180;
+  private static final int POV_LEFT = 270;
   // ---------------------------------------------------
 
   // Driver Station controller input.
@@ -70,6 +92,8 @@ public class RobotV2 extends TimedRobot {
   private final Runnable testsOverviewPrinter = new TestsOverviewPrinter();
   private final BringupCommandRouter.AddAllHandler addAllHandler = new AddAllHandlerImpl();
   private final BringupCommandRouter.AddMotorHandler addMotorHandler = new AddMotorHandlerImpl();
+  private Map<String, String> inputAliases = new HashMap<>();
+  private String inputAliasProfile = TEXT_EMPTY;
 
   /**
    * NAME
@@ -86,7 +110,7 @@ public class RobotV2 extends TimedRobot {
     String testsOverride = BringupUtil.extractBringupTestsFromCommand();
     BringupTestRegistry.setOverrideTestsPath(testsOverride);
     core = new BringupCore();
-    core.setRunTestBindingLabel(bindings.describeBinding("runTest"));
+    core.setRunTestBindingLabel(bindings.describeBinding(COMMAND_RUN_TEST));
     diagnostics = new DiagnosticsReporter(core, canHealth, diagTable);
     uiHandler = new BridgeUiCommandHandler(
         core,
@@ -106,6 +130,7 @@ public class RobotV2 extends TimedRobot {
         uiConnectionListener);
     uiTcpServer.start();
     uiHandler.applyDashboardUpdateState();
+    refreshInputAliases();
     // Print bindings and validate IDs once at startup.
     uiHandler.printStartupInfo();
     validateCanIds();
@@ -175,7 +200,8 @@ public class RobotV2 extends TimedRobot {
    *
    * DESCRIPTION
    *   Reads controller inputs, applies bringup commands, and updates motor
-   *   outputs within the 20ms loop budget.
+   *   outputs within the 20ms loop budget while allowing local bindings to
+   *   suppress overlapping global bindings.
    */
   @Override
   public void teleopPeriodic() {
@@ -184,9 +210,13 @@ public class RobotV2 extends TimedRobot {
     if (controller0 == null) {
       return;
     }
-    BindingsManager.BindingState bind = bindings.sample(controllerMap, edge);
+    Map<String, String> aliases = refreshInputAliases();
+    Set<String> localOverrides =
+        InputAliasResolver.resolveAll(bridgeGroups.getActiveBindingInputs(), aliases);
+    BindingsManager.BindingState bind =
+        bindings.sample(controllerMap, edge, localOverrides, aliases);
 
-    boolean runHeld = bind.held("runTest");
+    boolean runHeld = bind.held(COMMAND_RUN_TEST);
     BringupCommandRouter.CommonResult commonResult = BringupCommandRouter.applyCommon(
         bind,
         core,
@@ -199,7 +229,7 @@ public class RobotV2 extends TimedRobot {
         addMotorHandler);
 
     // --- Profile switching ---
-    if (bind.pressed("profileToggle")) {
+    if (bind.pressed(COMMAND_PROFILE_TOGGLE)) {
       BringupUtil.selectNextProfile();
       if (uiHandler != null) {
         uiHandler.printProfileInfo();
@@ -209,31 +239,40 @@ public class RobotV2 extends TimedRobot {
     // --- Diagnostics / reporting ---
 
     // Toggle dashboard updates to reduce periodic spam.
-    if (bind.pressed("toggleDashboard")) {
+    if (bind.pressed(COMMAND_TOGGLE_DASHBOARD)) {
       if (uiHandler != null) {
         uiHandler.toggleDashboardUpdates();
       }
     }
 
     // --- Analog input to motor outputs ---
-    double neoSpeed = bind.hasAxis("leftDrive")
-        ? bind.axis("leftDrive")
-        : BringupUtil.deadband(-controller0.getLeftY(), DEADBAND);
-    double krakenSpeed = bind.hasAxis("rightDrive")
-        ? bind.axis("rightDrive")
-        : BringupUtil.deadband(-controller0.getRightY(), DEADBAND);
+    boolean driverLeftOverridden = localOverrides.contains(InputAliasResolver.KEY_DRIVER_LEFT_Y);
+    boolean driverRightOverridden = localOverrides.contains(InputAliasResolver.KEY_DRIVER_RIGHT_Y);
+
+    double neoSpeed = SPEED_ZERO;
+    if (!driverLeftOverridden) {
+      neoSpeed = bind.hasAxis(BINDING_LEFT_DRIVE)
+          ? bind.axis(BINDING_LEFT_DRIVE)
+          : BringupUtil.deadband(-controller0.getLeftY(), DEADBAND);
+    }
+    double krakenSpeed = SPEED_ZERO;
+    if (!driverRightOverridden) {
+      krakenSpeed = bind.hasAxis(BINDING_RIGHT_DRIVE)
+          ? bind.axis(BINDING_RIGHT_DRIVE)
+          : BringupUtil.deadband(-controller0.getRightY(), DEADBAND);
+    }
 
     boolean controller2Connected = controller1 != null && DriverStation.isJoystickConnected(1);
     if (controller2Connected) {
       double fixedSpeed = Double.NaN;
-      if (bind.held("fixedSpeed25")) {
-        fixedSpeed = 0.25;
-      } else if (bind.held("fixedSpeed50")) {
-        fixedSpeed = 0.50;
-      } else if (bind.held("fixedSpeed75")) {
-        fixedSpeed = 0.75;
-      } else if (bind.held("fixedSpeed100")) {
-        fixedSpeed = 1.00;
+      if (bind.held(COMMAND_FIXED_SPEED_25)) {
+        fixedSpeed = SPEED_FIXED_25;
+      } else if (bind.held(COMMAND_FIXED_SPEED_50)) {
+        fixedSpeed = SPEED_FIXED_50;
+      } else if (bind.held(COMMAND_FIXED_SPEED_75)) {
+        fixedSpeed = SPEED_FIXED_75;
+      } else if (bind.held(COMMAND_FIXED_SPEED_100)) {
+        fixedSpeed = SPEED_FIXED_100;
       }
       if (!Double.isNaN(fixedSpeed)) {
         neoSpeed = fixedSpeed;
@@ -260,7 +299,7 @@ public class RobotV2 extends TimedRobot {
     }
 
     // D-pad Right: print current stick inputs.
-    if (bind.pressed("printInputs")) {
+    if (bind.pressed(COMMAND_PRINT_INPUTS)) {
       core.requestTextReport(
           "Inputs: leftY=" + String.format("%.2f", neoSpeed) +
           " rightY=" + String.format("%.2f", krakenSpeed) +
@@ -270,16 +309,16 @@ public class RobotV2 extends TimedRobot {
     }
 
     if (controller2Connected) {
-      if (bind.pressed("fixedSpeed25")) {
+      if (bind.pressed(COMMAND_FIXED_SPEED_25)) {
         BringupPrinter.enqueue("Fixed speed: 0.25 (Controller 2 A)");
       }
-      if (bind.pressed("fixedSpeed50")) {
+      if (bind.pressed(COMMAND_FIXED_SPEED_50)) {
         BringupPrinter.enqueue("Fixed speed: 0.50 (Controller 2 B)");
       }
-      if (bind.pressed("fixedSpeed75")) {
+      if (bind.pressed(COMMAND_FIXED_SPEED_75)) {
         BringupPrinter.enqueue("Fixed speed: 0.75 (Controller 2 X)");
       }
-      if (bind.pressed("fixedSpeed100")) {
+      if (bind.pressed(COMMAND_FIXED_SPEED_100)) {
         BringupPrinter.enqueue("Fixed speed: 1.00 (Controller 2 Y)");
       }
     }
@@ -295,21 +334,47 @@ public class RobotV2 extends TimedRobot {
     BridgeGroupManager.InputSnapshot inputs = new BridgeGroupManager.InputSnapshot();
     inputs.driverLeftY = BringupUtil.deadband(-controller0.getLeftY(), DEADBAND);
     inputs.driverRightY = BringupUtil.deadband(-controller0.getRightY(), DEADBAND);
+    inputs.driverLeftX = BringupUtil.deadband(controller0.getLeftX(), DEADBAND);
+    inputs.driverRightX = BringupUtil.deadband(controller0.getRightX(), DEADBAND);
+    inputs.driverLeftTrigger = controller0.getLeftTriggerAxis();
+    inputs.driverRightTrigger = controller0.getRightTriggerAxis();
     inputs.driverA = controller0.getAButton();
     inputs.driverB = controller0.getBButton();
     inputs.driverX = controller0.getXButton();
     inputs.driverY = controller0.getYButton();
     inputs.driverLb = controller0.getLeftBumperButton();
     inputs.driverRb = controller0.getRightBumperButton();
+    inputs.driverBack = controller0.getBackButton();
+    inputs.driverStart = controller0.getStartButton();
+    inputs.driverLs = controller0.getLeftStickButton();
+    inputs.driverRs = controller0.getRightStickButton();
+    int driverPov = controller0.getPOV();
+    inputs.driverDpadUp = driverPov == POV_UP;
+    inputs.driverDpadRight = driverPov == POV_RIGHT;
+    inputs.driverDpadDown = driverPov == POV_DOWN;
+    inputs.driverDpadLeft = driverPov == POV_LEFT;
     if (controller2Connected) {
       inputs.operatorLeftY = BringupUtil.deadband(-controller1.getLeftY(), DEADBAND);
       inputs.operatorRightY = BringupUtil.deadband(-controller1.getRightY(), DEADBAND);
+      inputs.operatorLeftX = BringupUtil.deadband(controller1.getLeftX(), DEADBAND);
+      inputs.operatorRightX = BringupUtil.deadband(controller1.getRightX(), DEADBAND);
+      inputs.operatorLeftTrigger = controller1.getLeftTriggerAxis();
+      inputs.operatorRightTrigger = controller1.getRightTriggerAxis();
       inputs.operatorA = controller1.getAButton();
       inputs.operatorB = controller1.getBButton();
       inputs.operatorX = controller1.getXButton();
       inputs.operatorY = controller1.getYButton();
       inputs.operatorLb = controller1.getLeftBumperButton();
       inputs.operatorRb = controller1.getRightBumperButton();
+      inputs.operatorBack = controller1.getBackButton();
+      inputs.operatorStart = controller1.getStartButton();
+      inputs.operatorLs = controller1.getLeftStickButton();
+      inputs.operatorRs = controller1.getRightStickButton();
+      int operatorPov = controller1.getPOV();
+      inputs.operatorDpadUp = operatorPov == POV_UP;
+      inputs.operatorDpadRight = operatorPov == POV_RIGHT;
+      inputs.operatorDpadDown = operatorPov == POV_DOWN;
+      inputs.operatorDpadLeft = operatorPov == POV_LEFT;
     }
     bridgeGroups.applyBindings(inputs, core, bridgeSelected);
 
@@ -331,6 +396,36 @@ public class RobotV2 extends TimedRobot {
       uiHandler.setDiagnostics(diagnostics);
       uiHandler.printProfileInfo();
     }
+    refreshInputAliases();
+  }
+
+  /**
+   * NAME
+   *   refreshInputAliases - Update alias map when the active profile changes.
+   *
+   * RETURNS
+   *   Current merged alias map.
+   */
+  private Map<String, String> refreshInputAliases() {
+    String profile = BringupUtil.getActiveCanProfile();
+    if (profile == null) {
+      profile = TEXT_EMPTY;
+    }
+    if (!profile.equals(inputAliasProfile)) {
+      inputAliasProfile = profile;
+      Map<String, String> merged = new HashMap<>();
+      merged.putAll(bindings.getInputAliases());
+      Map<String, String> profileAliases = BringupUtil.getProfileInputAliases(profile);
+      if (profileAliases != null && !profileAliases.isEmpty()) {
+        merged.putAll(profileAliases);
+      }
+      inputAliases = merged;
+      bridgeGroups.setInputAliases(inputAliases);
+      if (uiHandler != null) {
+        uiHandler.setInputAliases(inputAliases);
+      }
+    }
+    return inputAliases;
   }
 
   /**

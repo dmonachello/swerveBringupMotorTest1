@@ -9,6 +9,7 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.livewindow.LiveWindow;
 import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
 import frc.robot.input.BindingsManager;
+import frc.robot.input.InputAliasResolver;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
@@ -141,6 +142,7 @@ public class BridgeUiCommandHandler {
   private final NetworkTable uiTcpTable;
   private final Runnable profileToggleAction;
   private final Runnable profileActivateAction;
+  private Map<String, String> inputAliases = new HashMap<>();
 
   private boolean dashboardUpdatesEnabled = false;
   private long lastStartupPrintMs = 0L;
@@ -213,6 +215,17 @@ public class BridgeUiCommandHandler {
    */
   public void setDiagnostics(DiagnosticsReporter diagnostics) {
     this.diagnostics = diagnostics;
+  }
+
+  /**
+   * NAME
+   *   setInputAliases - Update input alias mapping for binding validation.
+   *
+   * PARAMETERS
+   *   aliases - Alias map (alias -> canonical input key).
+   */
+  public void setInputAliases(Map<String, String> aliases) {
+    inputAliases = aliases != null ? new HashMap<>(aliases) : new HashMap<>();
   }
 
   /**
@@ -1790,32 +1803,8 @@ public class BridgeUiCommandHandler {
     if (input == null || input.isBlank()) {
       return false;
     }
-    String key = input.trim().toLowerCase();
-    switch (key) {
-      case "driver.left.y":
-      case "driver.right.y":
-      case "driver.a":
-      case "driver.b":
-      case "driver.x":
-      case "driver.y":
-      case "driver.lb":
-      case "driver.rb":
-      case "operator.left.y":
-      case "operator.right.y":
-      case "operator.a":
-      case "operator.b":
-      case "operator.x":
-      case "operator.y":
-      case "operator.lb":
-      case "operator.rb":
-      case "ui.slider1":
-      case "ui.slider2":
-      case "ui.button1":
-      case "ui.button2":
-        return true;
-      default:
-        return false;
-    }
+    String key = InputAliasResolver.resolve(input, inputAliases);
+    return InputAliasResolver.isSupportedCanonical(key);
   }
 
   /**

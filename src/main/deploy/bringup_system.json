@@ -2108,7 +2108,8 @@
         "SPARKMAX 10",
         "SPARKMAX 25",
         "roboRIO"
-      ]
+      ],
+      "inputAliases": {}
     },
     "robot": {
       "devices": [
@@ -2127,7 +2128,8 @@
         "PDH",
         "Pigeon",
         "roboRIO"
-      ]
+      ],
+      "inputAliases": {}
     },
     "demo_club": {
       "devices": [
@@ -2135,7 +2137,8 @@
         "NEO 22",
         "NEO 10",
         "roboRIO"
-      ]
+      ],
+      "inputAliases": {}
     },
     "demo_home": {
       "devices": [
@@ -2143,7 +2146,8 @@
         "VORTEX/FLEX 20",
         "FALCON 30",
         "roboRIO"
-      ]
+      ],
+      "inputAliases": {}
     },
     "demo_home_022326": {
       "devices": [
@@ -2152,14 +2156,16 @@
         "FALCON 9",
         "PDH",
         "roboRIO"
-      ]
+      ],
+      "inputAliases": {}
     },
     "demo_home_022526": {
       "devices": [
         "NEO 25",
         "FALCON 9",
         "roboRIO"
-      ]
+      ],
+      "inputAliases": {}
     },
     "club_022426": {
       "devices": [
@@ -2168,7 +2174,8 @@
         "VORTEX/FLEX 11",
         "CANdle 30",
         "roboRIO"
-      ]
+      ],
+      "inputAliases": {}
     },
     "club_022526": {
       "devices": [
@@ -2176,7 +2183,8 @@
         "SPARKMAX/NEO550 7",
         "PDH",
         "roboRIO"
-      ]
+      ],
+      "inputAliases": {}
     },
     "home_030226": {
       "devices": [
@@ -2186,14 +2194,16 @@
         "cancoder 44",
         "pdp",
         "roboRIO"
-      ]
+      ],
+      "inputAliases": {}
     },
     "reverse_eng_min1": {
       "devices": [
         "SPARKMAX/NEO 11",
         "PDP",
         "roboRIO"
-      ]
+      ],
+      "inputAliases": {}
     },
     "home_031226": {
       "devices": [
@@ -2204,7 +2214,8 @@
         "candle",
         "PDH",
         "roboRIO"
-      ]
+      ],
+      "inputAliases": {}
     },
     "robot_test1": {
       "devices": [
@@ -2227,7 +2238,8 @@
         "candle",
         "PDH",
         "roboRIO"
-      ]
+      ],
+      "inputAliases": {}
     },
     "home net test 2x": {
       "devices": [
@@ -2236,7 +2248,8 @@
         "FALCON 9",
         "PDH",
         "roboRIO"
-      ]
+      ],
+      "inputAliases": {}
     },
     "robot_2026": {
       "devices": [
@@ -2263,7 +2276,8 @@
         "lmtSw1",
         "PDH",
         "roborio2"
-      ]
+      ],
+      "inputAliases": {}
     },
     "cannectTests1": {
       "devices": [
@@ -2284,12 +2298,14 @@
         "cancoder 33",
         "PDH",
         "roboRIO"
-      ]
+      ],
+      "inputAliases": {}
     },
     "home_tests_033026": {
       "devices": [
         "Feeder Motor"
-      ]
+      ],
+      "inputAliases": {}
     }
   },
   "devices": [

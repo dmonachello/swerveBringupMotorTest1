@@ -33,6 +33,7 @@ KEY_BRIDGE_SELECTED_DEVICE = "selectedDevice"
 KEY_BRIDGE_BINDINGS = "bindings"
 KEY_BRIDGE_TESTS = "tests"
 KEY_DEVICE = "device"
+KEY_INPUT_ALIASES = "inputAliases"
 
 KEY_LABEL = "label"
 KEY_INTERFACE = "interface"

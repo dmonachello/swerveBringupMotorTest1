@@ -56,6 +56,8 @@ show_target    = "status"
                | "test" ws name
                | "device-group" ws name
                | "device-usage" ws name
+               | "binding-usage" ws name
+               | "input-aliases"
                | "message-level"
                | "workspace"
                | "session" ;

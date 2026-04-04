@@ -15,9 +15,11 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * NAME
@@ -29,10 +31,12 @@ import java.util.Map;
  */
 public final class BindingsManager {
   private static final String BINDINGS_FILE = "bringup_bindings.json";
+  private static final String JSON_KEY_INPUT_ALIASES = "inputAliases";
   private static final Gson GSON = new Gson();
 
   private final List<BindingSpec> bindings = new ArrayList<>();
   private final List<AxisSpec> axes = new ArrayList<>();
+  private Map<String, String> inputAliases = new HashMap<>();
 
   /**
    * NAME
@@ -54,6 +58,28 @@ public final class BindingsManager {
    *   BindingState snapshot for this cycle.
    */
   public BindingState sample(Map<String, XboxController> controllers, EdgeTrigger edge) {
+    return sample(controllers, edge, Collections.emptySet(), inputAliases);
+  }
+
+  /**
+   * NAME
+   *   sample - Sample controller inputs into a BindingState with local overrides.
+   *
+   * PARAMETERS
+   *   controllers - Named Xbox controller map.
+   *   edge - EdgeTrigger for rising-edge detection.
+   *   localOverrides - Local binding inputs that should suppress globals.
+   *   aliases - Alias map for input resolution.
+   *
+   * RETURNS
+   *   BindingState snapshot for this cycle.
+   */
+  public BindingState sample(
+      Map<String, XboxController> controllers,
+      EdgeTrigger edge,
+      Set<String> localOverrides,
+      Map<String, String> aliases) {
+    Set<String> overrides = InputAliasResolver.resolveAll(localOverrides, aliases);
     BindingState state = new BindingState();
     for (int i = 0; i < bindings.size(); i++) {
       BindingSpec spec = bindings.get(i);
@@ -64,6 +90,9 @@ public final class BindingsManager {
       boolean active = isActive(controller, spec);
       String key = "bind_" + i + "_" + spec.command;
       boolean pressed = edge.pressed(key, active);
+      if (isBindingSuppressed(spec, overrides, aliases)) {
+        continue;
+      }
       boolean hold = active;
       if (spec.isHoldMode()) {
         state.holds.put(spec.command, hold);
@@ -82,6 +111,9 @@ public final class BindingsManager {
       if (controller == null) {
         continue;
       }
+      if (isAxisSuppressed(spec, overrides, aliases)) {
+        continue;
+      }
       double value = readAxis(controller, spec.id);
       if (spec.invert) {
         value = -value;
@@ -92,6 +124,14 @@ public final class BindingsManager {
       state.axes.put(spec.command, value);
     }
     return state;
+  }
+
+  /**
+   * NAME
+   *   getInputAliases - Return configured input alias mapping.
+   */
+  public Map<String, String> getInputAliases() {
+    return Collections.unmodifiableMap(inputAliases);
   }
 
   /**
@@ -143,6 +183,43 @@ public final class BindingsManager {
     return "(unbound)";
   }
 
+  private boolean isBindingSuppressed(
+      BindingSpec spec,
+      Set<String> overrides,
+      Map<String, String> aliases) {
+    if (spec == null || overrides == null || overrides.isEmpty()) {
+      return false;
+    }
+    String aliasKey = InputAliasResolver.bindingAliasKey(
+        spec.controller, spec.input, spec.id);
+    if (aliasKey.isBlank()) {
+      return false;
+    }
+    String canonical = InputAliasResolver.resolve(aliasKey, aliases);
+    if (canonical.isBlank()) {
+      return false;
+    }
+    return overrides.contains(canonical);
+  }
+
+  private boolean isAxisSuppressed(
+      AxisSpec spec,
+      Set<String> overrides,
+      Map<String, String> aliases) {
+    if (spec == null || overrides == null || overrides.isEmpty()) {
+      return false;
+    }
+    String aliasKey = InputAliasResolver.axisAliasKey(spec.controller, spec.id);
+    if (aliasKey.isBlank()) {
+      return false;
+    }
+    String canonical = InputAliasResolver.resolve(aliasKey, aliases);
+    if (canonical.isBlank()) {
+      return false;
+    }
+    return overrides.contains(canonical);
+  }
+
   private void loadBindings() {
     bindings.clear();
     axes.clear();
@@ -163,6 +240,11 @@ public final class BindingsManager {
       if (root.axes != null) {
         axes.addAll(root.axes);
       }
+      if (root.inputAliases != null) {
+        inputAliases = new HashMap<>(root.inputAliases);
+      } else {
+        inputAliases = new HashMap<>();
+      }
       if (bindings.isEmpty() && axes.isEmpty()) {
         loadDefaultBindings();
       }
@@ -175,6 +257,7 @@ public final class BindingsManager {
   private void loadDefaultBindings() {
     bindings.clear();
     axes.clear();
+    inputAliases = new HashMap<>();
 
     bindings.add(BindingSpec.edge("addMotor", "controller0", "button", "A"));
     bindings.add(BindingSpec.edge("addAll", "controller0", "button", "START"));
@@ -272,13 +355,13 @@ public final class BindingsManager {
     }
     String input = spec.input.trim().toLowerCase(Locale.ROOT);
     String id = spec.id.trim().toUpperCase(Locale.ROOT);
-    if ("button".equals(input)) {
+    if (InputAliasResolver.INPUT_KIND_BUTTON.equals(input)) {
       return isButtonPressed(controller, id);
     }
-    if ("dpad".equals(input)) {
+    if (InputAliasResolver.INPUT_KIND_DPAD.equals(input)) {
       return isDpadPressed(controller, id);
     }
-    if ("combo".equals(input)) {
+    if (InputAliasResolver.INPUT_KIND_COMBO.equals(input)) {
       return isComboPressed(controller, id);
     }
     return false;
@@ -331,12 +414,12 @@ public final class BindingsManager {
       return 0.0;
     }
     return switch (id) {
-      case "leftX" -> controller.getLeftX();
-      case "leftY" -> controller.getLeftY();
-      case "rightX" -> controller.getRightX();
-      case "rightY" -> controller.getRightY();
-      case "leftTrigger" -> controller.getLeftTriggerAxis();
-      case "rightTrigger" -> controller.getRightTriggerAxis();
+      case InputAliasResolver.AXIS_ID_LEFT_X -> controller.getLeftX();
+      case InputAliasResolver.AXIS_ID_LEFT_Y -> controller.getLeftY();
+      case InputAliasResolver.AXIS_ID_RIGHT_X -> controller.getRightX();
+      case InputAliasResolver.AXIS_ID_RIGHT_Y -> controller.getRightY();
+      case InputAliasResolver.AXIS_ID_LEFT_TRIGGER -> controller.getLeftTriggerAxis();
+      case InputAliasResolver.AXIS_ID_RIGHT_TRIGGER -> controller.getRightTriggerAxis();
       default -> 0.0;
     };
   }
@@ -409,6 +492,8 @@ public final class BindingsManager {
   private static final class BindingRoot {
     List<BindingSpec> bindings = Collections.emptyList();
     List<AxisSpec> axes = Collections.emptyList();
+    @com.google.gson.annotations.SerializedName(JSON_KEY_INPUT_ALIASES)
+    Map<String, String> inputAliases = Collections.emptyMap();
   }
 
   /**
@@ -468,4 +553,5 @@ public final class BindingsManager {
       return spec;
     }
   }
+
 }

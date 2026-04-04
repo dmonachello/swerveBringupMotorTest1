@@ -9,7 +9,8 @@
         "PDH",
         "Pigeon",
         "roboRIO"
-      ]
+      ],
+      "inputAliases": {}
     }
   },
   "devices": [

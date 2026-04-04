@@ -40,6 +40,8 @@
     "help",
     "version",
     "device-usage",
+    "binding-usage",
+    "input-aliases",
     "bindings",
     "can-mappings",
     "selected-device",

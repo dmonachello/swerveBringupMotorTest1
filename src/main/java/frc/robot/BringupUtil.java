@@ -88,6 +88,7 @@ public final class BringupUtil {
   private static final String KEY_BRIDGE_CONFIG = "bridgeConfig";
   private static final String KEY_BRIDGE_BY_PROFILE = "byProfile";
   private static final String KEY_BRIDGE_TESTS = "tests";
+  private static final String KEY_INPUT_ALIASES = "inputAliases";
   private static final String LABEL_UNKNOWN = "UNKNOWN";
   private static final String LABEL_DEVICE = "Device";
   private static final String LABEL_SEPARATOR = ":";
@@ -493,6 +494,28 @@ public final class BringupUtil {
    */
   public static int getProfileCount() {
     return profiles.size();
+  }
+
+  /**
+   * NAME
+   *   getProfileInputAliases - Return input aliases for a profile.
+   *
+   * RETURNS
+   *   Unmodifiable map of alias->canonical entries.
+   */
+  public static Map<String, String> getProfileInputAliases(String profileName) {
+    String name = safeText(profileName);
+    if (name.isBlank()) {
+      name = safeText(activeProfile);
+    }
+    if (name.isBlank()) {
+      name = safeText(defaultProfile);
+    }
+    ProfileConfig config = profiles.get(name);
+    if (config == null || config.inputAliases == null) {
+      return Collections.emptyMap();
+    }
+    return Collections.unmodifiableMap(config.inputAliases);
   }
 
   /**
@@ -2440,6 +2463,8 @@ public final class BringupUtil {
    */
   private static final class ProfileConfig {
     List<String> devices = Collections.emptyList();
+    @SerializedName(KEY_INPUT_ALIASES)
+    Map<String, String> inputAliases = Collections.emptyMap();
   }
 
   /**

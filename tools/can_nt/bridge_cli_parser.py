@@ -56,6 +56,7 @@ SHOW_TARGET_PROFILE = "profile"
 SHOW_TARGET_GROUP = "group"
 SHOW_TARGET_TEST = "test"
 SHOW_TARGET_DEVICE_USAGE = "device-usage"
+SHOW_TARGET_BINDING_USAGE = "binding-usage"
 SHOW_TARGET_REGISTRY = "registry"
 CMD_CONFIG = "config"
 CMD_SHOW = "show"
@@ -1861,6 +1862,8 @@ class BridgeCliParser:
             SPEC.show_target_device_group,
         ) and len(core) < SPEC.count_two:
             raise CliParseError(SPEC.msg_show_name % target)
+        if target == SHOW_TARGET_BINDING_USAGE and len(core) < SPEC.count_two:
+            raise CliParseError(SPEC.msg_show_name % target)
         if target == "profiles" and len(core) > SPEC.count_one and self._strict:
             raise CliParseError(SPEC.msg_show_too_many)
         if target == SPEC.show_target_config and len(core) > SPEC.count_one:
@@ -1879,7 +1882,14 @@ class BridgeCliParser:
             ):
                 max_len = SPEC.count_two
             else:
-                max_len = SPEC.count_two if target in (SPEC.show_target_group, SPEC.show_target_device, SPEC.show_target_device_group) else SPEC.count_one
+                max_len = SPEC.count_two if target in (
+                    SPEC.show_target_group,
+                    SPEC.show_target_device,
+                    SPEC.show_target_device_group,
+                    SPEC.show_target_device_usage,
+                    SPEC.show_target_test,
+                    SHOW_TARGET_BINDING_USAGE,
+                ) else SPEC.count_one
             if len(core) > max_len:
                 raise CliParseError(SPEC.msg_show_too_many)
 
