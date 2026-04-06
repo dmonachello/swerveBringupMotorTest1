@@ -21,6 +21,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from tools.common.runtime_constants import THREAD_NAME_TCP_READER
 
 @dataclass
 class BridgeEvent:
@@ -80,7 +81,11 @@ class TcpCommandClient:
             sock.settimeout(None)
             self._sock = sock
             self._connected = True
-            self._reader = threading.Thread(target=self._read_loop, daemon=True)
+            self._reader = threading.Thread(
+                target=self._read_loop,
+                name=THREAD_NAME_TCP_READER,
+                daemon=True,
+            )
             self._reader.start()
             return True
         except Exception:

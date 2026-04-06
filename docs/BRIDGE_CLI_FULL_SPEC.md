@@ -213,6 +213,7 @@ Exec:
 - `show bindings [robot|local|both]`
 - `show selected-device [robot|local|both]`
 - `show runtime-state [robot|local|both]`
+- `show runtime-components [local]`
 - `show config [robot|local|both]` (alias for runtime-state)
 - `show config local-raw [local]` (raw bridgeConfig.byProfile)
 - `show config dirty [local]` (local unsaved flags)
@@ -494,6 +495,7 @@ Commands:
 - `show bindings --json`
 - `show selected-device --json`
 - `show runtime-state --json`
+- `show runtime-components --json`
 - `show config --json`
 - `show config local-raw --json`
 - `show config dirty --json`
@@ -738,6 +740,7 @@ show_target    = "status"
                | "bindings"
                | "selected-device"
                | "runtime-state"
+               | "runtime-components"
                | "config"
                | "config" ws "local-raw"
                | "config" ws "dirty"

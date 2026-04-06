@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 from typing import List, Tuple
 
+from tools.common.runtime_constants import THREAD_NAME_TX_REPLAY
 from tools.common.text_io import read_lines
 
 def parse_tx_sequence(path: str) -> List[Tuple[float, int, bytes]]:
@@ -170,6 +171,7 @@ def start_tx_if_requested(
     tx_thread = threading.Thread(
         target=tx_worker,
         args=(bus, can_module, sequence, tx_stop, args.tx_scale, args.tx_loop, args.tx_verbose),
+        name=THREAD_NAME_TX_REPLAY,
         daemon=True,
     )
     tx_thread.start()

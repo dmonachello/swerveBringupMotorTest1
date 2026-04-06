@@ -47,6 +47,7 @@ show_target    = "status"
                | "can-mappings" [ ws ("manufacturers" | "device-types" | "device-type") ]
                | "selected-device"
                | "runtime-state"
+               | "runtime-components"
                | "config"
                | "config" ws "local-raw"
                | "config" ws "dirty"

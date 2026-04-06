@@ -23,6 +23,7 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `show bindings [robot|local|both] [--json] [--pretty]`
 - `show selected-device [robot|local|both] [--json] [--pretty]`
 - `show runtime-state [robot|local|both] [--json] [--pretty]`
+- `show runtime-components [local] [--json] [--pretty]`
 - `show config [robot|local|both] [--json] [--pretty]`
 - `show config local-raw [local] [--json] [--pretty]`
 - `show config dirty [local] [--json] [--pretty]`
@@ -797,6 +798,54 @@ EXAMPLE OUTPUT
 SOURCE: local
 Local runtime-state:
   present=false
+
+### show runtime-components [local] [--json] [--pretty]
+
+NAME
+
+show runtime-components [local] [--json] [--pretty] - Display runtime threads and component status.
+
+SYNOPSIS
+
+show runtime-components [local] [--json] [--pretty]
+
+DESCRIPTION
+
+Display local runtime threads and component status. This command is valid in Exec Mode (`bridge>`).
+
+RETURNS
+
+Prints output to the console or updates in-memory state; errors are reported inline.
+
+SIDE EFFECTS
+
+None.
+
+ERRORS
+
+Reports invalid syntax or missing runtime provider when applicable.
+
+NOTES
+
+Always local; ignores robot source flags.
+
+EXAMPLE
+
+`show runtime-components --json`
+
+EXAMPLE OUTPUT
+Local runtime-components:
+  components:
+    cli: running
+    sniffer: running
+    session: connected (handshake=done)
+    visibility: enabled
+    pcap: disabled
+    console-monitor: disabled
+    sources: enabled (count=1 available=1)
+    source:default: available (enabled)
+  threads:
+    sniffer id=1234 daemon=true alive=true
 
 ### show config [robot|local|both] [--json] [--pretty]
 
@@ -6186,6 +6235,7 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `show bindings [robot|local|both] [--json] [--pretty]`
 - `show selected-device [robot|local|both] [--json] [--pretty]`
 - `show runtime-state [robot|local|both] [--json] [--pretty]`
+- `show runtime-components [local] [--json] [--pretty]`
 - `show config [robot|local|both] [--json] [--pretty]`
 - `show config local-raw [local] [--json] [--pretty]`
 - `show config dirty [local] [--json] [--pretty]`

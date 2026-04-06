@@ -222,6 +222,40 @@ from tools.common.profile_constants import (
     KEY_ROLE,
     KEY_TAGS,
 )
+from tools.common.runtime_constants import (
+    RUNTIME_COMPONENT_CLI,
+    RUNTIME_COMPONENT_CONSOLE,
+    RUNTIME_COMPONENT_PCAP,
+    RUNTIME_COMPONENT_SESSION,
+    RUNTIME_COMPONENT_SNIFFER,
+    RUNTIME_COMPONENT_SOURCES,
+    RUNTIME_COMPONENT_SOURCE_PREFIX,
+    RUNTIME_COMPONENT_VISIBILITY,
+    RUNTIME_DETAIL_AVAILABLE_PREFIX,
+    RUNTIME_DETAIL_COUNT_PREFIX,
+    RUNTIME_DETAIL_DISABLED,
+    RUNTIME_DETAIL_ENABLED,
+    RUNTIME_DETAIL_HANDSHAKE_DONE,
+    RUNTIME_DETAIL_HANDSHAKE_PENDING,
+    RUNTIME_DETAIL_SEPARATOR,
+    RUNTIME_DETAIL_SESSION_PREFIX,
+    RUNTIME_KEY_ALIVE,
+    RUNTIME_KEY_COMPONENTS,
+    RUNTIME_KEY_DAEMON,
+    RUNTIME_KEY_DETAIL,
+    RUNTIME_KEY_IDENT,
+    RUNTIME_KEY_NAME,
+    RUNTIME_KEY_STATUS,
+    RUNTIME_KEY_THREADS,
+    RUNTIME_STATUS_AVAILABLE,
+    RUNTIME_STATUS_CONNECTED,
+    RUNTIME_STATUS_DISABLED,
+    RUNTIME_STATUS_DISCONNECTED,
+    RUNTIME_STATUS_ENABLED,
+    RUNTIME_STATUS_RUNNING,
+    RUNTIME_STATUS_STOPPED,
+    RUNTIME_STATUS_UNAVAILABLE,
+)
 from tools.common.topology_parse import parse_diagram_nodes, parse_diagram_neighbor_ports
 from tools.common.tests_io import load_tests_payload, write_tests_payload
 from tools.common.test_authoring import (
@@ -725,6 +759,7 @@ CANONICAL_INPUT_KEYS = frozenset(
 
 SHOW_TARGET_CONFIG = "config"
 SHOW_TARGET_RUNTIME = "runtime-state"
+SHOW_TARGET_RUNTIME_COMPONENTS = "runtime-components"
 SHOW_TARGET_CONFIG_RAW = "config-raw"
 SHOW_CONFIG_LOCAL_RAW = "local-raw"
 SHOW_TARGET_PROFILES = "profiles"
@@ -857,6 +892,14 @@ MESSAGE_ERR_NEIGHBOR_AUTO_SYNTAX = (
 )
 MESSAGE_ERR_NEIGHBOR_AUTO_NODE = "ERROR: topology neighbor-auto node <label>"
 MESSAGE_NEIGHBOR_AUTO_OK = "Auto-assigned neighbor ports."
+MESSAGE_ERR_RUNTIME_COMPONENTS_UNAVAILABLE = "ERROR: runtime-components unavailable."
+MESSAGE_RUNTIME_COMPONENTS_HEADER = "Local runtime-components:"
+MESSAGE_RUNTIME_COMPONENTS_LIST_HEADER = "  components:"
+MESSAGE_RUNTIME_THREADS_HEADER = "  threads:"
+MESSAGE_RUNTIME_COMPONENT_ENTRY = "    {name}: {status}"
+MESSAGE_RUNTIME_COMPONENT_ENTRY_DETAIL = "    {name}: {status} ({detail})"
+MESSAGE_RUNTIME_THREAD_ENTRY = "    {name} id={ident} daemon={daemon} alive={alive}"
+MESSAGE_RUNTIME_LIST_NONE = "    (none)"
 MESSAGE_OK_CONFIG_VALID = "OK: Config is valid."
 MESSAGE_ERR_CONFIG_VALIDATE = "ERROR: {message}"
 MESSAGE_STORE_ISSUE = "{location}: {message}"
@@ -1307,9 +1350,9 @@ HELP_VALIDATE_FILE_TEXT = (
 HELP_TOPIC_QUICK = "quick"
 HELP_SHOW_TEXT = (
     "show <status|groups|group <group>|devices|device <device>|device-group <device>|"
-    "device-usage <device>|binding-usage <input>|commands|help|bindings|selected-device|runtime-state|config|config local-raw|config dirty|"
-    "sources|profiles|profile|tests|test <test>|message-level|workspace|session|controllers|topology> "
-    "[--json] [--pretty] [robot|local|both]\n"
+    "device-usage <device>|binding-usage <input>|commands|help|bindings|selected-device|runtime-state|runtime-components|"
+    "config|config local-raw|config dirty|sources|profiles|profile|tests|test <test>|message-level|workspace|session|"
+    "controllers|topology> [--json] [--pretty] [robot|local|both]\n"
     "  Defaults: robot if connected, otherwise local."
 )
 HELP_SUMMARY_TEXT = (
@@ -1641,6 +1684,7 @@ class BridgeCli:
         message_level: Optional[str] = None,
         recovery_mode: bool = False,
         visibility_provider: Optional[object] = None,
+        runtime_details_provider: Optional[callable] = None,
     ) -> None:
         self._session = session
         self._batch = batch
@@ -1653,6 +1697,7 @@ class BridgeCli:
         self._recovery_mode = recovery_mode
         self._tests_device_catalog: Dict[str, object] = {}
         self._tests_duplicate_labels: set[str] = set()
+        self._runtime_details_provider = runtime_details_provider
         self._parser_kind = CLI_PARSER_KIND
         self._parser = BridgeCliParser(strict=bool(CLI_PARSER_CONST["strict_default"]))
         self._ast_executor = BridgeCliAstExecutor(self)
@@ -3204,6 +3249,7 @@ class BridgeCli:
             SHOW_TARGET_CAN_MAPPINGS,
             PARSER_SPEC.show_target_selected_device,
             PARSER_SPEC.show_target_runtime_state,
+            SHOW_TARGET_RUNTIME_COMPONENTS,
             CMD_CONFIG,
             CMD_CONFIG + PARSER_SPEC.space_str + CMD_LOCAL_RAW,
             CMD_CONFIG + PARSER_SPEC.space_str + CMD_DIRTY,
@@ -6536,6 +6582,8 @@ class BridgeCli:
                 target = SHOW_TARGET_CONFIG_DIRTY
         if target == SHOW_TARGET_CONFIG:
             target = SHOW_TARGET_RUNTIME
+        if target == SHOW_TARGET_RUNTIME_COMPONENTS:
+            source = SHOW_SOURCE_LOCAL
         if target == SHOW_TARGET_MESSAGE_LEVEL:
             source = SHOW_SOURCE_LOCAL
         if target == SHOW_TARGET_DEVICE_USAGE:
@@ -8507,6 +8555,8 @@ class BridgeCli:
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         if target == SHOW_TARGET_VISIBILITY:
             return self._show_local_visibility(tokens, json_output, pretty)
+        if target == SHOW_TARGET_RUNTIME_COMPONENTS:
+            return self._show_local_runtime_components(json_output, pretty)
         if not self._local_config:
             print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
@@ -8825,6 +8875,84 @@ class BridgeCli:
 
         print("ERROR: Unknown show command.")
         return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+
+    def _show_local_runtime_components(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_local_runtime_components - Show runtime threads/components.
+        """
+        provider = self._runtime_details_provider
+        if provider is None:
+            print(MESSAGE_ERR_RUNTIME_COMPONENTS_UNAVAILABLE)
+            return StatusResult(code=SS__EXECUTOR__NOT_SUPPORTED)
+        snapshot = provider()
+        if not isinstance(snapshot, dict):
+            print(MESSAGE_ERR_RUNTIME_COMPONENTS_UNAVAILABLE)
+            return StatusResult(code=SS__EXECUTOR__NOT_SUPPORTED)
+        threads = snapshot.get(RUNTIME_KEY_THREADS)
+        components = snapshot.get(RUNTIME_KEY_COMPONENTS)
+        if not isinstance(threads, list):
+            threads = []
+        if not isinstance(components, list):
+            components = []
+        if json_output:
+            payload = {
+                KEY_SOURCE: SHOW_SOURCE_LOCAL,
+                RUNTIME_KEY_THREADS: threads,
+                RUNTIME_KEY_COMPONENTS: components,
+            }
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        lines = [MESSAGE_RUNTIME_COMPONENTS_HEADER]
+        lines.append(MESSAGE_RUNTIME_COMPONENTS_LIST_HEADER)
+        if components:
+            for entry in components:
+                if not isinstance(entry, dict):
+                    continue
+                name = str(entry.get(RUNTIME_KEY_NAME, EMPTY_STRING)).strip() or STRING_NONE
+                status = str(entry.get(RUNTIME_KEY_STATUS, EMPTY_STRING)).strip() or STRING_NONE
+                detail = str(entry.get(RUNTIME_KEY_DETAIL, EMPTY_STRING)).strip()
+                if detail:
+                    lines.append(
+                        MESSAGE_RUNTIME_COMPONENT_ENTRY_DETAIL.format(
+                            name=name,
+                            status=status,
+                            detail=detail,
+                        )
+                    )
+                else:
+                    lines.append(
+                        MESSAGE_RUNTIME_COMPONENT_ENTRY.format(
+                            name=name,
+                            status=status,
+                        )
+                    )
+        else:
+            lines.append(MESSAGE_RUNTIME_LIST_NONE)
+        lines.append(MESSAGE_RUNTIME_THREADS_HEADER)
+        if threads:
+            for entry in threads:
+                if not isinstance(entry, dict):
+                    continue
+                name = str(entry.get(RUNTIME_KEY_NAME, EMPTY_STRING)).strip() or STRING_NONE
+                ident = entry.get(RUNTIME_KEY_IDENT)
+                ident_text = str(ident) if isinstance(ident, int) else STRING_NONE
+                daemon = entry.get(RUNTIME_KEY_DAEMON)
+                alive = entry.get(RUNTIME_KEY_ALIVE)
+                daemon_text = str(bool(daemon)).lower()
+                alive_text = str(bool(alive)).lower()
+                lines.append(
+                    MESSAGE_RUNTIME_THREAD_ENTRY.format(
+                        name=name,
+                        ident=ident_text,
+                        daemon=daemon_text,
+                        alive=alive_text,
+                    )
+                )
+        else:
+            lines.append(MESSAGE_RUNTIME_LIST_NONE)
+        print(SEP_NEWLINE.join(lines))
+        return StatusResult(code=SS__NORMAL)
 
     def _show_local_config_dirty(self, json_output: bool, pretty: bool) -> StatusResult:
         """

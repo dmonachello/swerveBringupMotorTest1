@@ -47,6 +47,7 @@
     "can-mappings",
     "selected-device",
     "runtime-state",
+    "runtime-components",
     "tests",
     "test",
     "config",

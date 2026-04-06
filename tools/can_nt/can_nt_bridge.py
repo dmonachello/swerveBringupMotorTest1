@@ -64,6 +64,40 @@ try:
     )
     from tools.can_nt.source_config import load_sources_config, SourceConfig
     from tools.common.time_utils import timestamp_compact
+    from tools.common.runtime_constants import (
+        RUNTIME_COMPONENT_CLI,
+        RUNTIME_COMPONENT_CONSOLE,
+        RUNTIME_COMPONENT_PCAP,
+        RUNTIME_COMPONENT_SESSION,
+        RUNTIME_COMPONENT_SNIFFER,
+        RUNTIME_COMPONENT_SOURCES,
+        RUNTIME_COMPONENT_SOURCE_PREFIX,
+        RUNTIME_COMPONENT_VISIBILITY,
+        RUNTIME_DETAIL_AVAILABLE_PREFIX,
+        RUNTIME_DETAIL_COUNT_PREFIX,
+        RUNTIME_DETAIL_DISABLED,
+        RUNTIME_DETAIL_ENABLED,
+        RUNTIME_DETAIL_HANDSHAKE_DONE,
+        RUNTIME_DETAIL_HANDSHAKE_PENDING,
+        RUNTIME_DETAIL_SEPARATOR,
+        RUNTIME_DETAIL_SESSION_PREFIX,
+        RUNTIME_KEY_ALIVE,
+        RUNTIME_KEY_COMPONENTS,
+        RUNTIME_KEY_DAEMON,
+        RUNTIME_KEY_DETAIL,
+        RUNTIME_KEY_IDENT,
+        RUNTIME_KEY_NAME,
+        RUNTIME_KEY_STATUS,
+        RUNTIME_KEY_THREADS,
+        RUNTIME_STATUS_AVAILABLE,
+        RUNTIME_STATUS_CONNECTED,
+        RUNTIME_STATUS_DISABLED,
+        RUNTIME_STATUS_DISCONNECTED,
+        RUNTIME_STATUS_ENABLED,
+        RUNTIME_STATUS_RUNNING,
+        RUNTIME_STATUS_STOPPED,
+        RUNTIME_STATUS_UNAVAILABLE,
+    )
     from tools.common.app_versions import (
         APP_CAN_BRIDGE_NAME,
         VERSIONS,
@@ -108,6 +142,40 @@ except ModuleNotFoundError:
     )
     from tools.can_nt.source_config import load_sources_config, SourceConfig
     from tools.common.time_utils import timestamp_compact
+    from tools.common.runtime_constants import (
+        RUNTIME_COMPONENT_CLI,
+        RUNTIME_COMPONENT_CONSOLE,
+        RUNTIME_COMPONENT_PCAP,
+        RUNTIME_COMPONENT_SESSION,
+        RUNTIME_COMPONENT_SNIFFER,
+        RUNTIME_COMPONENT_SOURCES,
+        RUNTIME_COMPONENT_SOURCE_PREFIX,
+        RUNTIME_COMPONENT_VISIBILITY,
+        RUNTIME_DETAIL_AVAILABLE_PREFIX,
+        RUNTIME_DETAIL_COUNT_PREFIX,
+        RUNTIME_DETAIL_DISABLED,
+        RUNTIME_DETAIL_ENABLED,
+        RUNTIME_DETAIL_HANDSHAKE_DONE,
+        RUNTIME_DETAIL_HANDSHAKE_PENDING,
+        RUNTIME_DETAIL_SEPARATOR,
+        RUNTIME_DETAIL_SESSION_PREFIX,
+        RUNTIME_KEY_ALIVE,
+        RUNTIME_KEY_COMPONENTS,
+        RUNTIME_KEY_DAEMON,
+        RUNTIME_KEY_DETAIL,
+        RUNTIME_KEY_IDENT,
+        RUNTIME_KEY_NAME,
+        RUNTIME_KEY_STATUS,
+        RUNTIME_KEY_THREADS,
+        RUNTIME_STATUS_AVAILABLE,
+        RUNTIME_STATUS_CONNECTED,
+        RUNTIME_STATUS_DISABLED,
+        RUNTIME_STATUS_DISCONNECTED,
+        RUNTIME_STATUS_ENABLED,
+        RUNTIME_STATUS_RUNNING,
+        RUNTIME_STATUS_STOPPED,
+        RUNTIME_STATUS_UNAVAILABLE,
+    )
     from tools.common.app_versions import (
         APP_CAN_BRIDGE_NAME,
         VERSIONS,
@@ -161,6 +229,10 @@ SOURCE_ERR_OPEN = "ERROR: Failed to open CAN bus for source {source_id}: {error}
 SOURCE_WARN_OPEN = "WARNING: Source {source_id} unavailable ({error})."
 SOURCE_INFO_DISABLED = "Source {source_id} disabled; marking unavailable."
 SOURCE_INFO_AVAILABLE = "Source {source_id} available."
+PCAP_LOGGER_STOPPED = "PCAP logger stopped."
+THREAD_NAME_SNIFFER = "sniffer"
+THREAD_NAME_KEYBOARD = "keyboard"
+THREAD_NAME_SOURCE_PREFIX = "source:"
 PAIR_STATS_FIRST = "first"
 PAIR_STATS_LAST = "last"
 PAIR_STATS_COUNT = "count"
@@ -584,6 +656,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     if primary_channel:
         channel = primary_channel
     pcap_comment = build_pcap_comment(args, channel)
+    pcap_enabled = bool(args.pcap or args.pcap_pipe)
     pcap = setup_pcap(args, pcap_comment)
     if args.enable_markers:
         if args.pcap and not args.pcap.lower().endswith(".pcapng"):
@@ -717,6 +790,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             thread = threading.Thread(
                 target=_source_reader,
                 args=(runtime,),
+                name=f"{THREAD_NAME_SOURCE_PREFIX}{runtime.source_id}",
                 daemon=True,
             )
             runtime.thread = thread
@@ -759,8 +833,14 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             else:
                 time.sleep(0.01)
 
-    if True:
-        key_thread = threading.Thread(target=_keyboard_worker, daemon=True)
+    sniffer_enabled = any(runtime.enabled for runtime in source_runtimes)
+    if console_monitor is not None:
+        sniffer_enabled = True
+
+    if sniffer_enabled:
+        key_thread = threading.Thread(
+            target=_keyboard_worker, name=THREAD_NAME_KEYBOARD, daemon=True
+        )
         key_thread.start()
         if args.enable_markers and args.pcap:
             _print_marker_banner()
@@ -1105,11 +1185,12 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
             key_stop.set()
             tx_stop.set()
-            try:
-                pcap.stop()
-                print("PCAP logger stopped.")
-            except Exception as exc:
-                print(f"WARNING: Failed to stop PCAP logger: {exc}")
+            if pcap_enabled:
+                try:
+                    pcap.stop()
+                    print(PCAP_LOGGER_STOPPED)
+                except Exception as exc:
+                    print(f"WARNING: Failed to stop PCAP logger: {exc}")
             if bus is not None:
                 try:
                     bus.shutdown()
@@ -1118,6 +1199,114 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     print(f"WARNING: Failed to close CAN bus: {exc}")
 
         return 0
+
+    sniffer_thread: Optional[threading.Thread] = None
+
+    def _runtime_details_snapshot() -> Dict[str, object]:
+        """
+        NAME
+            _runtime_details_snapshot - Capture runtime threads/components state.
+        """
+        thread_entries: List[Dict[str, object]] = []
+        for thread in threading.enumerate():
+            thread_entries.append(
+                {
+                    RUNTIME_KEY_NAME: thread.name,
+                    RUNTIME_KEY_IDENT: thread.ident,
+                    RUNTIME_KEY_DAEMON: bool(thread.daemon),
+                    RUNTIME_KEY_ALIVE: bool(thread.is_alive()),
+                }
+            )
+        component_entries: List[Dict[str, object]] = []
+        component_entries.append(
+            {
+                RUNTIME_KEY_NAME: RUNTIME_COMPONENT_CLI,
+                RUNTIME_KEY_STATUS: RUNTIME_STATUS_RUNNING,
+            }
+        )
+        sniffer_status = RUNTIME_STATUS_STOPPED
+        if sniffer_thread is not None and sniffer_thread.is_alive():
+            sniffer_status = RUNTIME_STATUS_RUNNING
+        component_entries.append(
+            {
+                RUNTIME_KEY_NAME: RUNTIME_COMPONENT_SNIFFER,
+                RUNTIME_KEY_STATUS: sniffer_status,
+            }
+        )
+        session_status = RUNTIME_STATUS_CONNECTED if session.is_connected() else RUNTIME_STATUS_DISCONNECTED
+        detail_parts: List[str] = []
+        detail_parts.append(
+            RUNTIME_DETAIL_HANDSHAKE_DONE
+            if session.handshake_done()
+            else RUNTIME_DETAIL_HANDSHAKE_PENDING
+        )
+        session_id = session.session_id()
+        if session_id:
+            detail_parts.append(RUNTIME_DETAIL_SESSION_PREFIX + session_id)
+        component_entries.append(
+            {
+                RUNTIME_KEY_NAME: RUNTIME_COMPONENT_SESSION,
+                RUNTIME_KEY_STATUS: session_status,
+                RUNTIME_KEY_DETAIL: RUNTIME_DETAIL_SEPARATOR.join(detail_parts)
+                if detail_parts
+                else EMPTY_STRING,
+            }
+        )
+        component_entries.append(
+            {
+                RUNTIME_KEY_NAME: RUNTIME_COMPONENT_VISIBILITY,
+                RUNTIME_KEY_STATUS: (
+                    RUNTIME_STATUS_ENABLED if visibility_provider is not None else RUNTIME_STATUS_DISABLED
+                ),
+            }
+        )
+        component_entries.append(
+            {
+                RUNTIME_KEY_NAME: RUNTIME_COMPONENT_PCAP,
+                RUNTIME_KEY_STATUS: RUNTIME_STATUS_ENABLED if pcap_enabled else RUNTIME_STATUS_DISABLED,
+                RUNTIME_KEY_DETAIL: pcap.pipe_name or pcap.path or EMPTY_STRING,
+            }
+        )
+        component_entries.append(
+            {
+                RUNTIME_KEY_NAME: RUNTIME_COMPONENT_CONSOLE,
+                RUNTIME_KEY_STATUS: (
+                    RUNTIME_STATUS_ENABLED if console_monitor is not None else RUNTIME_STATUS_DISABLED
+                ),
+            }
+        )
+        enabled_count = sum(INT_ONE for runtime in source_runtimes if runtime.enabled)
+        available_count = sum(INT_ONE for runtime in source_runtimes if runtime.available)
+        sources_status = RUNTIME_STATUS_ENABLED if enabled_count > INT_ZERO else RUNTIME_STATUS_DISABLED
+        sources_detail = (
+            f"{RUNTIME_DETAIL_COUNT_PREFIX}{enabled_count}"
+            f"{RUNTIME_DETAIL_SEPARATOR}{RUNTIME_DETAIL_AVAILABLE_PREFIX}{available_count}"
+        )
+        component_entries.append(
+            {
+                RUNTIME_KEY_NAME: RUNTIME_COMPONENT_SOURCES,
+                RUNTIME_KEY_STATUS: sources_status,
+                RUNTIME_KEY_DETAIL: sources_detail,
+            }
+        )
+        for runtime in source_runtimes:
+            source_name = f"{RUNTIME_COMPONENT_SOURCE_PREFIX}{runtime.source_id}"
+            source_status = (
+                RUNTIME_STATUS_AVAILABLE if runtime.available else RUNTIME_STATUS_UNAVAILABLE
+            )
+            component_entries.append(
+                {
+                    RUNTIME_KEY_NAME: source_name,
+                    RUNTIME_KEY_STATUS: source_status,
+                    RUNTIME_KEY_DETAIL: (
+                        RUNTIME_DETAIL_ENABLED if runtime.enabled else RUNTIME_DETAIL_DISABLED
+                    ),
+                }
+            )
+        return {
+            RUNTIME_KEY_THREADS: thread_entries,
+            RUNTIME_KEY_COMPONENTS: component_entries,
+        }
 
     if args.cli or args.batch:
         ui_table = None
@@ -1144,10 +1333,19 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             message_level=(args.cli_messages or None),
             recovery_mode=bool(load_error),
             visibility_provider=visibility_provider,
+            runtime_details_provider=_runtime_details_snapshot,
         )
-        stop_event = threading.Event()
-        thread = threading.Thread(target=_run_sniffer, args=(stop_event,), daemon=True)
-        thread.start()
+        stop_event = None
+        if sniffer_enabled:
+            stop_event = threading.Event()
+            thread = threading.Thread(
+                target=_run_sniffer,
+                args=(stop_event,),
+                name=THREAD_NAME_SNIFFER,
+                daemon=True,
+            )
+            sniffer_thread = thread
+            thread.start()
         try:
             if args.batch:
                 try:
@@ -1159,8 +1357,10 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 return cli.run_batch(lines)
             return cli.run_interactive()
         finally:
-            stop_event.set()
-            thread.join(timeout=SOURCE_THREAD_JOIN_SEC)
+            if stop_event is not None:
+                stop_event.set()
+            if sniffer_thread is not None:
+                sniffer_thread.join(timeout=SOURCE_THREAD_JOIN_SEC)
 
     if args.ui:
         if nt is None or ui_table is None:
@@ -1181,9 +1381,18 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             except Exception:
                 return False
 
-        stop_event = threading.Event()
-        thread = threading.Thread(target=_run_sniffer, args=(stop_event,), daemon=True)
-        thread.start()
+        stop_event = None
+        thread = None
+        if sniffer_enabled:
+            stop_event = threading.Event()
+            thread = threading.Thread(
+                target=_run_sniffer,
+                args=(stop_event,),
+                name=THREAD_NAME_SNIFFER,
+                daemon=True,
+            )
+            thread.start()
+        on_close = stop_event.set if stop_event is not None else (lambda: None)
         ui = BringupControlUI(
             ui_table=ui_table,
             tests_table=tests_table,
@@ -1191,7 +1400,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             rio_host=args.rio,
             tcp_port=args.ui_tcp_port,
             is_connected=_nt_is_connected,
-            on_close=stop_event.set,
+            on_close=on_close,
             visibility_provider=visibility_provider,
         )
         def _release_ui_lock() -> None:
@@ -1202,7 +1411,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
         def _handle_signal(_signum, _frame) -> None:
             _release_ui_lock()
-            stop_event.set()
+            if stop_event is not None:
+                stop_event.set()
             raise SystemExit(0)
 
         original_sigint = signal.getsignal(signal.SIGINT)
@@ -1213,8 +1423,10 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             ui.mainloop()
         finally:
             _release_ui_lock()
-            stop_event.set()
-            thread.join(timeout=SOURCE_THREAD_JOIN_SEC)
+            if stop_event is not None:
+                stop_event.set()
+            if thread is not None:
+                thread.join(timeout=SOURCE_THREAD_JOIN_SEC)
             signal.signal(signal.SIGINT, original_sigint)
             signal.signal(signal.SIGTERM, original_sigterm)
         return 0

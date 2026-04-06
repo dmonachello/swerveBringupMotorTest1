@@ -64,6 +64,13 @@ Purpose: Keep man-page style documentation consistent in Java and Python sources
   - If an undocumented file is modified and contains meaningful logic, add documentation.
 - Never change program behavior when enforcing documentation rules.
 
+Spec Editing Notes
+Purpose: Keep spec reviews actionable with consistent inline markers.
+- Use `SID_QUESTION:` for open questions that must be answered before changing behavior.
+- Use `SID_COMMENT:` for non-blocking notes or rationale.
+- Place markers inline near the relevant section (not at the end).
+- Remove `SID_QUESTION` lines once resolved in a follow-up edit.
+
 What to do first for any task that touches the Java-Python interface
 1) Inventory NetworkTables usage:
    - List every path written and read on the Java side.
