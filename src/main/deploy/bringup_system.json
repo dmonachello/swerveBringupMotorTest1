@@ -91,6 +91,44 @@
             "y": 818.3333333333328,
             "scale": 1.0
           }
+        ],
+        "neighborPorts": [
+          {
+            "node": "FALCON 9",
+            "port": "right",
+            "neighbor": "SPARKMAX/NEO 25",
+            "neighborPort": "left"
+          },
+          {
+            "node": "SPARKMAX/NEO 25",
+            "port": "left",
+            "neighbor": "FALCON 9",
+            "neighborPort": "right"
+          },
+          {
+            "node": "SPARKMAX/NEO550 7",
+            "port": "right",
+            "neighbor": "candle",
+            "neighborPort": "left"
+          },
+          {
+            "node": "candle",
+            "port": "left",
+            "neighbor": "SPARKMAX/NEO550 7",
+            "neighborPort": "right"
+          },
+          {
+            "node": "PDH",
+            "port": "right",
+            "neighbor": "roboRIO",
+            "neighborPort": "left"
+          },
+          {
+            "node": "roboRIO",
+            "port": "left",
+            "neighbor": "PDH",
+            "neighborPort": "right"
+          }
         ]
       },
       "robot_test1": {
@@ -2098,8 +2136,20 @@
           "device": "",
           "enabled": false
         }
+      },
+      "home_031226": {
+        "groups": [],
+        "selectedDevice": {
+          "device": "",
+          "enabled": false
+        },
+        "tests": {
+          "default_test_set": "default",
+          "test_sets": {}
+        }
       }
-    }
+    },
+    "devices": []
   },
   "schema_version": 4,
   "profiles": {
@@ -3060,6 +3110,6 @@
       "terminator": true
     }
   ],
-  "data_version": "2026-03-30_162729",
-  "data_hash": "d7bf7759390d1a9eff8c9246317cc0b0f3aa366d96581a96775ed0a4703f14d1"
+  "data_version": "2026-04-05_222734",
+  "data_hash": "c4a0224bc58b2b5220db2f98082b0e20a443765309cea7fb8e24780d433518b8"
 }

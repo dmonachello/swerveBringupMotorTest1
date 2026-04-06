@@ -47,6 +47,8 @@ classDiagram
         float zoom
         Node[] nodes
         object? ethernetLinks
+        object? neighborLinks
+        object? neighborPorts
         object? canLinks
         object? deviceLinks
     }

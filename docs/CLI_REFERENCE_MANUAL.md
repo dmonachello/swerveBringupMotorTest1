@@ -29,6 +29,11 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `show profiles [local] [--json] [--pretty]`
 - `show profile [local] [--json] [--pretty]`
 - `show profile <name> [local] [--json] [--pretty]`
+- `show topology [local] [--json] [--pretty]`
+- `show topology neighbors [local] [--json] [--pretty]`
+- `show visibility [local] [--json] [--pretty]`
+- `show visibility summary [local] [--json] [--pretty]`
+- `show visibility <device> [local] [--json] [--pretty]`
 - `show tests [--json] [--pretty]`
 - `show test <name> [--json] [--pretty]`
 - `show workspace [--json] [--pretty]`
@@ -61,6 +66,11 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `rename device <old> <new>`
 - `device <name>`
 - `device <name> set <field> <value>`
+- `topology neighbor-ports set <node> <port> <neighbor> <neighborPort>`
+- `topology neighbor-ports delete <node> <port>`
+- `topology neighbor-ports clear <node>`
+- `topology neighbor-auto all [label1,label2]`
+- `topology neighbor-auto node <label>`
 - `validate config [path] [--all]`
 - `validate profiles [robot|local] [--active]`
 - `validate tests [--active-set]`
@@ -1029,16 +1039,89 @@ EXAMPLE
 
 `show profile <name> [local] [--json] [--pretty]`
 
+### show topology [local] [--json] [--pretty]
+
+show topology [local] [--json] [--pretty] - Display diagram nodes for the active profile.
+
+show topology [local] [--json] [--pretty]
+
+Notes:
+- Output includes diagram-only nodes (for example analyzers) and device nodes.
+- Callouts are excluded.
+- JSON output includes `neighborPorts` when present.
+
+`show topology [local] [--json] [--pretty]`
+
 EXAMPLE OUTPUT
 SOURCE: local
-Profile home_030226:
-  devices=6
-  SPARKMAX/NEO 25
-  roboRIO
-  FALCON 9
-  cancoder 44
-  pdp
-  roboRIO
+Topology nodes:
+  PDH nodeType=device category=pdh id=1 bus=2 row=0 tags=(none)
+  roboRIO nodeType=device category=roborio id=0 bus=2 row=1 tags=(none)
+
+### show topology neighbors [local] [--json] [--pretty]
+
+show topology neighbors [local] [--json] [--pretty] - Display neighbor port assignments for the active profile.
+
+show topology neighbors [local] [--json] [--pretty]
+
+Notes:
+- Only neighbor ports are shown; no device list.
+- JSON output includes `neighborPorts` plus the node list.
+
+`show topology neighbors [local] [--json] [--pretty]`
+
+EXAMPLE OUTPUT
+SOURCE: local
+Topology neighbors:
+  PDH left -> roboRIO right
+
+### topology neighbor-ports set/delete/clear
+
+topology neighbor-ports set/delete/clear - Edit neighbor ports for the active profile (config mode).
+
+topology neighbor-ports set <node> <port> <neighbor> <neighborPort>  
+topology neighbor-ports delete <node> <port>  
+topology neighbor-ports clear <node>
+
+Notes:
+- Enforces same bus segment and adjacency by x-order.
+
+### topology neighbor-auto all|node
+
+topology neighbor-auto all|node - Auto-assign left/right neighbors from x-order (config mode).
+
+topology neighbor-auto all [label1,label2]  
+topology neighbor-auto node <label>
+
+Notes:
+- Overwrites existing neighborPorts for the target node(s).
+- If label1,label2 is provided, only those labels are updated; omit to update all nodes.
+- Provide the label list as a single token (comma-separated) or wrap it in quotes if it includes spaces.
+- CANnect device links populate `next/branch1/branch2` entries.
+
+### show visibility [local] [--json] [--pretty]
+
+show visibility [local] [--json] [--pretty] - Display the multi-analyzer visibility matrix.
+
+show visibility [local] [--json] [--pretty]
+
+`show visibility [local] [--json] [--pretty]`
+
+### show visibility summary [local] [--json] [--pretty]
+
+show visibility summary [local] [--json] [--pretty] - Display visibility summary counts.
+
+show visibility summary [local] [--json] [--pretty]
+
+`show visibility summary [local] [--json] [--pretty]`
+
+### show visibility <device> [local] [--json] [--pretty]
+
+show visibility <device> [local] [--json] [--pretty] - Display per-source visibility for one device.
+
+show visibility <device> [local] [--json] [--pretty]
+
+`show visibility <device> [local] [--json] [--pretty]`
 
 ### show tests [--json] [--pretty]
 
@@ -6109,6 +6192,9 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `show profiles [local] [--json] [--pretty]`
 - `show profile [local] [--json] [--pretty]`
 - `show profile <name> [local] [--json] [--pretty]`
+- `show visibility [local] [--json] [--pretty]`
+- `show visibility summary [local] [--json] [--pretty]`
+- `show visibility <device> [local] [--json] [--pretty]`
 - `show tests [--json] [--pretty]`
 - `show test <name> [--json] [--pretty]`
 - `diagnose motor <label>`

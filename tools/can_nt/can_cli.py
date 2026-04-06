@@ -16,10 +16,20 @@ import argparse
 from pathlib import Path
 
 from .can_profiles import get_default_profile
+from .visibility_constants import VIS_RETENTION_MS_DEFAULT, VIS_TIMEOUT_MS_DEFAULT
 
 ARG_VERSION = "--version"
 ACTION_STORE_TRUE = "store_true"
 HELP_VERSION = "Print version and exit."
+ARG_SOURCES = "--sources"
+ARG_VIS_TIMEOUT_MS = "--visibility-timeout-ms"
+ARG_OBS_RETENTION_MS = "--observed-retention-ms"
+HELP_SOURCES = "Path to a JSON sources config for multiple analyzers."
+HELP_VIS_TIMEOUT = "Visibility timeout in ms for analyzer sources."
+HELP_OBS_RETENTION = "Observed device retention in ms for unexpected devices."
+DEFAULT_EMPTY = ""
+DEFAULT_INTERFACE = "slcan"
+DEFAULT_AUTO_MATCH = "USB Serial Device"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,17 +52,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--profile", default=get_default_profile())
     parser.add_argument(ARG_VERSION, action=ACTION_STORE_TRUE, help=HELP_VERSION)
 
-    parser.add_argument("--interface", default="slcan")
+    parser.add_argument("--interface", default=DEFAULT_INTERFACE)
     parser.add_argument(
         "--channel",
-        default="",
+        default=DEFAULT_EMPTY,
         help="CAN channel (for slcan, the COM port like COM3). "
         "If omitted, attempts auto-detect by description.",
     )
     parser.add_argument("--bitrate", type=int, default=1_000_000)
     parser.add_argument(
         "--auto-match",
-        default="USB Serial Device",
+        default=DEFAULT_AUTO_MATCH,
         help="Substring to match when auto-detecting serial ports",
     )
     parser.add_argument(
@@ -69,6 +79,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-can",
         action="store_true",
         help="Disable CAN bus access (UI/NT only).",
+    )
+    parser.add_argument(ARG_SOURCES, default=DEFAULT_EMPTY, help=HELP_SOURCES)
+    parser.add_argument(
+        ARG_VIS_TIMEOUT_MS,
+        type=int,
+        default=VIS_TIMEOUT_MS_DEFAULT,
+        help=HELP_VIS_TIMEOUT,
+    )
+    parser.add_argument(
+        ARG_OBS_RETENTION_MS,
+        type=int,
+        default=VIS_RETENTION_MS_DEFAULT,
+        help=HELP_OBS_RETENTION,
     )
 
     parser.add_argument("--rio", default="172.22.11.2")

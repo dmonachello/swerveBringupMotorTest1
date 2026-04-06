@@ -100,6 +100,9 @@ Purpose: Persist editor layout and callouts.
 - Stored under `diagram.profiles.<profileName>`.
 - Includes `busOffsets`, `busLefts`, `busRights`, `panY`, `zoom`.
 - Includes `nodes` list for devices and callouts (position, scale, tags).
+- Optional: `neighborLinks` (undirected adjacency between node keys).
+- Optional: `neighborPorts` (directed port adjacency, preferred for inference).
+- Optional: `deviceLinks` (CANnect port links; used to derive `next/branch1/branch2` neighborPorts).
 
 Example:
 ```json

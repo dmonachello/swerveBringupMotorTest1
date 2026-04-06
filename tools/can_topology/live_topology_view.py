@@ -43,6 +43,7 @@ from tools.common.topology_render import (
     shape_kind_for_category,
     text_color_for_fill,
     vendor_key_for_category,
+    CATEGORY_ANALYZER,
 )
 from tools.common.topology_layout import (
     bus_ys,
@@ -61,6 +62,15 @@ from tools.common.topology_parse import (
     parse_diagram_nodes,
 )
 from tools.common.topology_draw import draw_bus_segments, draw_group_overlays, draw_links
+from tools.can_nt.visibility_constants import (
+    VIS_KEY_AVAILABLE,
+    VIS_KEY_DEVICES,
+    VIS_KEY_ID,
+    VIS_KEY_LABEL,
+    VIS_KEY_SOURCES,
+    VIS_KEY_VISIBILITY,
+    VIS_VISIBLE_TRUE,
+)
 
 # Constants (presence confidence values and colors).
 PRESENCE_CONF_HIGH = "HIGH"
@@ -73,6 +83,16 @@ PRESENCE_STALE_MS = 2000
 PRESENCE_MIN_CONF = 0.05
 PRESENCE_HIGH_CONF = 0.5
 EMPTY_STRING = ""
+
+# Constants (visibility overlay).
+VIS_STATE_ALL = "all"
+VIS_STATE_SOME = "some"
+VIS_STATE_NONE = "none"
+VIS_STATE_UNKNOWN = "unknown"
+VIS_COLOR_ALL = "#16a34a"
+VIS_COLOR_SOME = "#f59e0b"
+VIS_COLOR_NONE = "#dc2626"
+VIS_COLOR_UNKNOWN = "#9ca3af"
 
 CATEGORY_NEOS = "neos"
 CATEGORY_NEO550S = "neo550s"
@@ -366,6 +386,10 @@ class LiveTopologyView(ttk.Frame):
         self._diagram_meta: Dict[str, object] = {}
         self._runtime_state: Dict[str, Dict[str, object]] = {}
         self._presence_overrides: Dict[str, str] = {}
+        self._visibility_enabled = False
+        self._visibility_state: Dict[str, str] = {}
+        self._visibility_sources: Dict[str, bool] = {}
+        self._visibility_fingerprint: Optional[Tuple[object, ...]] = None
         self._selected_label: Optional[str] = None
         self._selected_enabled: Optional[bool] = None
         self._bus_offsets: List[float] = [0.0]
@@ -525,6 +549,82 @@ class LiveTopologyView(ttk.Frame):
         if normalized == self._presence_overrides:
             return
         self._presence_overrides = normalized
+        self._redraw()
+
+    def set_visibility_enabled(self, enabled: bool) -> None:
+        """
+        NAME
+            set_visibility_enabled - Toggle visibility overlay mode.
+        """
+        enabled = bool(enabled)
+        if enabled == self._visibility_enabled:
+            return
+        self._visibility_enabled = enabled
+        self._redraw()
+
+    def set_visibility_snapshot(self, snapshot: Optional[Dict[str, object]]) -> None:
+        """
+        NAME
+            set_visibility_snapshot - Apply a visibility snapshot for coloring.
+        """
+        if snapshot is None or not isinstance(snapshot, dict):
+            if self._visibility_state or self._visibility_sources:
+                self._visibility_state = {}
+                self._visibility_sources = {}
+                self._visibility_fingerprint = None
+                self._redraw()
+            return
+        sources = snapshot.get(VIS_KEY_SOURCES)
+        devices = snapshot.get(VIS_KEY_DEVICES)
+        if not isinstance(sources, list) or not isinstance(devices, list):
+            return
+        source_map: Dict[str, bool] = {}
+        for entry in sources:
+            if not isinstance(entry, dict):
+                continue
+            src_id = str(entry.get(VIS_KEY_ID, EMPTY_STRING)).strip()
+            src_label = str(entry.get(VIS_KEY_LABEL, EMPTY_STRING)).strip()
+            available = bool(entry.get(VIS_KEY_AVAILABLE))
+            if src_id:
+                source_map[src_id.lower()] = available
+            if src_label:
+                source_map[src_label.lower()] = available
+        state_map: Dict[str, str] = {}
+        available_ids = [
+            str(entry.get(VIS_KEY_ID, EMPTY_STRING)).strip()
+            for entry in sources
+            if isinstance(entry, dict) and bool(entry.get(VIS_KEY_AVAILABLE))
+        ]
+        for device in devices:
+            if not isinstance(device, dict):
+                continue
+            label = str(device.get(VIS_KEY_LABEL, EMPTY_STRING)).strip()
+            if not label:
+                continue
+            visibility = device.get(VIS_KEY_VISIBILITY)
+            if not isinstance(visibility, dict):
+                continue
+            if not available_ids:
+                state_map[label.lower()] = VIS_STATE_UNKNOWN
+                continue
+            vis_values = []
+            for src_id in available_ids:
+                value = visibility.get(src_id)
+                vis_values.append(value is VIS_VISIBLE_TRUE)
+            if all(vis_values):
+                state_map[label.lower()] = VIS_STATE_ALL
+            elif any(vis_values):
+                state_map[label.lower()] = VIS_STATE_SOME
+            else:
+                state_map[label.lower()] = VIS_STATE_NONE
+        fingerprint_items = sorted(state_map.items())
+        fingerprint_sources = sorted(source_map.items())
+        fingerprint: Tuple[object, ...] = (tuple(fingerprint_items), tuple(fingerprint_sources))
+        if fingerprint == self._visibility_fingerprint:
+            return
+        self._visibility_fingerprint = fingerprint
+        self._visibility_state = state_map
+        self._visibility_sources = source_map
         self._redraw()
 
     def _presence_fill_from_confidence(self, value: str) -> Optional[str]:
@@ -720,6 +820,10 @@ class LiveTopologyView(ttk.Frame):
         self._detail_vars["selected"].set(selected_text)
 
     def _live_fill(self, node: LiveNode, now_ms: int) -> Optional[str]:
+        if self._visibility_enabled:
+            vis_fill = self._visibility_fill(node)
+            if vis_fill:
+                return vis_fill
         override = self._presence_overrides.get(node.label.lower())
         if override:
             fill = self._presence_fill_from_confidence(override)
@@ -738,6 +842,27 @@ class LiveTopologyView(ttk.Frame):
             return PRESENCE_COLOR_HIGH if presence >= PRESENCE_HIGH_CONF else PRESENCE_COLOR_LOW
         if isinstance(last_seen, (int, float)):
             return PRESENCE_COLOR_HIGH
+        return None
+
+    def _visibility_fill(self, node: LiveNode) -> Optional[str]:
+        """
+        NAME
+            _visibility_fill - Resolve fill color from visibility state.
+        """
+        if node.category.lower() == CATEGORY_ANALYZER:
+            availability = self._visibility_sources.get(node.label.lower())
+            if availability is True:
+                return VIS_COLOR_ALL
+            return VIS_COLOR_UNKNOWN
+        state = self._visibility_state.get(node.label.lower())
+        if state == VIS_STATE_ALL:
+            return VIS_COLOR_ALL
+        if state == VIS_STATE_SOME:
+            return VIS_COLOR_SOME
+        if state == VIS_STATE_NONE:
+            return VIS_COLOR_NONE
+        if state == VIS_STATE_UNKNOWN:
+            return VIS_COLOR_UNKNOWN
         return None
 
     def _redraw(self, _event: Optional[tk.Event] = None) -> None:

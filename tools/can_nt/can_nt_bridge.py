@@ -24,6 +24,7 @@ import signal
 import queue
 import threading
 import time
+from dataclasses import dataclass, field
 from typing import Iterable, Optional, Tuple, List, Dict, Any
 import os
 import sys
@@ -56,6 +57,12 @@ try:
     )
     from tools.can_nt.can_state import SnifferState
     from tools.can_nt.can_tx import start_tx_if_requested
+    from tools.can_nt.visibility_provider import VisibilityProvider, SourceInfo
+    from tools.can_nt.visibility_constants import (
+        VIS_KEY_SEPARATOR,
+        VIS_MS_PER_SEC,
+    )
+    from tools.can_nt.source_config import load_sources_config, SourceConfig
     from tools.common.time_utils import timestamp_compact
     from tools.common.app_versions import (
         APP_CAN_BRIDGE_NAME,
@@ -94,6 +101,12 @@ except ModuleNotFoundError:
     )
     from tools.can_nt.can_state import SnifferState
     from tools.can_nt.can_tx import start_tx_if_requested
+    from tools.can_nt.visibility_provider import VisibilityProvider, SourceInfo
+    from tools.can_nt.visibility_constants import (
+        VIS_KEY_SEPARATOR,
+        VIS_MS_PER_SEC,
+    )
+    from tools.can_nt.source_config import load_sources_config, SourceConfig
     from tools.common.time_utils import timestamp_compact
     from tools.common.app_versions import (
         APP_CAN_BRIDGE_NAME,
@@ -126,6 +139,47 @@ DEVICE_KEY_PREFER_STATUS = "prefer_status"
 # Constants (unknown label handling).
 UNKNOWN_LABEL_PREFIX = "UNPROFILED_DEVICE_"
 CONSOLE_UNKNOWN_LABEL_PREFIX = "UNPROFILED_CONSOLE_"
+EMPTY_STRING = ""
+
+# Constants (multi-source CAN).
+SOURCE_DEFAULT_ID = "default"
+SOURCE_DEFAULT_LABEL = "default"
+SOURCE_DEFAULT_PORT = ""
+SOURCE_PRIMARY_INDEX = 0
+SOURCE_READ_TIMEOUT_SEC = 0.05
+SOURCE_ERROR_BACKOFF_SEC = 0.25
+SOURCE_THREAD_JOIN_SEC = 2.0
+SOURCE_AVAILABLE_FALSE = False
+SOURCE_AVAILABLE_TRUE = True
+SOURCE_ENABLED_TRUE = True
+SOURCE_ENABLED_FALSE = False
+SOURCE_QUEUE_EMPTY = None
+SOURCE_ERR_LOAD = "ERROR: Failed to load sources: {error}"
+SOURCE_ERR_DUP = "ERROR: Duplicate source id: {source_id}"
+SOURCE_ERR_PORT = "ERROR: Source '{source_id}' missing port."
+SOURCE_ERR_OPEN = "ERROR: Failed to open CAN bus for source {source_id}: {error}"
+SOURCE_WARN_OPEN = "WARNING: Source {source_id} unavailable ({error})."
+SOURCE_INFO_DISABLED = "Source {source_id} disabled; marking unavailable."
+SOURCE_INFO_AVAILABLE = "Source {source_id} available."
+PAIR_STATS_FIRST = "first"
+PAIR_STATS_LAST = "last"
+PAIR_STATS_COUNT = "count"
+FRAME_KIND_FRAME = "frame"
+FRAME_KIND_STATUS = "status"
+FRAME_KIND_CONTROL = "control"
+EMPTY_BYTES = b""
+PAIR_STATS_COUNT_INIT = 0.0
+PAIR_STATS_COUNT_INC = 1.0
+INT_ONE = 1
+INT_ZERO = 0
+FLOAT_ZERO = 0.0
+NT_UI_STATE_ENABLED = "state/enabled"
+NT_UI_STATE_ESTOPPED = "state/estopped"
+NT_UI_STATE_MODE = "state/mode"
+NT_UI_STATE_LAST_ACK = "state/lastAckMs"
+NT_UI_STATE_SESSION = "state/sessionId"
+NT_UI_MODE_DISABLED = "disabled"
+CAN_MSG_DATA_ATTR = "data"
 
 
 def _print_version_banner() -> None:
@@ -155,7 +209,7 @@ def _build_device_maps(
     can_to_label: Dict[Tuple[int, int, int], str] = {}
     id_to_labels: Dict[int, List[str]] = {}
     for spec in devices:
-        label = str(spec.get(DEVICE_KEY_LABEL, "")).strip()
+        label = str(spec.get(DEVICE_KEY_LABEL, EMPTY_STRING)).strip()
         if not label:
             continue
         try:
@@ -168,6 +222,78 @@ def _build_device_maps(
         can_to_label[key] = label
         id_to_labels.setdefault(did, []).append(label)
     return can_to_label, id_to_labels
+
+
+@dataclass
+class FrameItem:
+    """
+    NAME
+        FrameItem - Queue item for a received CAN frame.
+    """
+
+    source_id: str
+    msg: object
+    ts_s: float
+
+
+@dataclass
+class SourceRuntime:
+    """
+    NAME
+        SourceRuntime - Runtime state for an analyzer source.
+    """
+
+    source_id: str
+    label: str
+    port: str
+    interface: str
+    bitrate: int
+    enabled: bool
+    bus: Optional[object] = None
+    available: bool = SOURCE_AVAILABLE_FALSE
+    thread: Optional[threading.Thread] = None
+    stop_event: threading.Event = field(default_factory=threading.Event)
+
+
+def _visibility_key_from_ids(mfg: int, dtype: int, device_id: int) -> str:
+    """
+    NAME
+        _visibility_key_from_ids - Build a visibility key from CAN identity.
+    """
+    return (
+        str(mfg)
+        + VIS_KEY_SEPARATOR
+        + str(dtype)
+        + VIS_KEY_SEPARATOR
+        + str(device_id)
+    )
+
+
+def _build_visibility_expected(devices: List[Dict[str, Any]]) -> List[Tuple[str, str]]:
+    """
+    NAME
+        _build_visibility_expected - Build expected visibility keys for a profile.
+
+    PARAMETERS
+        devices: Profile device entries (CAN only).
+
+    RETURNS
+        List of (key, label) tuples.
+    """
+    expected: List[Tuple[str, str]] = []
+    for spec in devices:
+        label = str(spec.get(DEVICE_KEY_LABEL, EMPTY_STRING)).strip()
+        if not label:
+            continue
+        try:
+            mfg = int(spec.get(DEVICE_KEY_MFG))
+            dtype = int(spec.get(DEVICE_KEY_TYPE))
+            did = int(spec.get(DEVICE_KEY_ID))
+        except Exception:
+            continue
+        key = _visibility_key_from_ids(mfg, dtype, did)
+        expected.append((key, label))
+    return expected
 
 
 def _maybe_handle_dumps(
@@ -291,26 +417,18 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         return 0
 
     load_error = get_profiles_load_error()
-    if args.cli or args.batch:
-        if load_error:
-            print(f"WARNING: bringup_system.json load failed: {load_error}")
-            print("WARNING: Starting CLI in recovery mode (profiles must be repaired before robot tools).")
-            from tools.common.paths import profiles_canonical_path, profiles_deploy_path
+    if (args.cli or args.batch) and load_error:
+        print(f"WARNING: bringup_system.json load failed: {load_error}")
+        print("WARNING: Starting CLI in recovery mode (profiles must be repaired before robot tools).")
+        from tools.common.paths import profiles_canonical_path, profiles_deploy_path
 
-            profiles_path = profiles_canonical_path()
-            if not profiles_path.exists():
-                profiles_path = profiles_deploy_path()
-            print(f"Recovery profiles source: {profiles_path}")
-            print("Next: show workspace")
-            print("Next: validate profiles --active")
-            print("Next: show devices")
-        else:
-            data_version = get_profiles_data_version()
-            if data_version:
-                print(f"Profiles data_version: {data_version}")
-            data_hash = get_profiles_data_hash()
-            if data_hash:
-                print(f"Profiles data_hash: {data_hash}")
+        profiles_path = profiles_canonical_path()
+        if not profiles_path.exists():
+            profiles_path = profiles_deploy_path()
+        print(f"Recovery profiles source: {profiles_path}")
+        print("Next: show workspace")
+        print("Next: validate profiles --active")
+        print("Next: show devices")
         nt, _ = setup_nt(args)
         ui_table = None
         if nt is not None:
@@ -320,11 +438,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             if ui_table is None:
                 return {}
             return {
-                "enabled": ui_table.getEntry("state/enabled").getBoolean(False),
-                "estopped": ui_table.getEntry("state/estopped").getBoolean(False),
-                "mode": ui_table.getEntry("state/mode").getString("disabled"),
-                "lastAckMs": ui_table.getEntry("state/lastAckMs").getDouble(0.0),
-                "sessionId": ui_table.getEntry("state/sessionId").getString(""),
+                "enabled": ui_table.getEntry(NT_UI_STATE_ENABLED).getBoolean(False),
+                "estopped": ui_table.getEntry(NT_UI_STATE_ESTOPPED).getBoolean(False),
+                "mode": ui_table.getEntry(NT_UI_STATE_MODE).getString(NT_UI_MODE_DISABLED),
+                "lastAckMs": ui_table.getEntry(NT_UI_STATE_LAST_ACK).getDouble(FLOAT_ZERO),
+                "sessionId": ui_table.getEntry(NT_UI_STATE_SESSION).getString(EMPTY_STRING),
             }
 
         session = BridgeSession(args.rio, args.ui_tcp_port, nt_state_reader=_read_nt_state)
@@ -335,6 +453,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             echo_enabled=bool(getattr(args, "cli_echo", False)),
             message_level=(args.cli_messages or None),
             recovery_mode=bool(load_error),
+            visibility_provider=None,
         )
         if args.batch:
             try:
@@ -365,11 +484,35 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     console_unknown_labels: Dict[int, str] = {}
     console_unknown_counter = 0
 
-    channel = ""
-    if not args.no_can:
+    visibility_provider = VisibilityProvider(
+        timeout_ms=int(args.visibility_timeout_ms),
+        observed_retention_ms=int(args.observed_retention_ms),
+    )
+    visibility_provider.set_expected_devices(_build_visibility_expected(devices))
+
+    sources_config: List[SourceConfig] = []
+    sources_error = EMPTY_STRING
+    if args.sources:
+        sources_config, sources_error = load_sources_config(args.sources)
+        if sources_error:
+            print(SOURCE_ERR_LOAD.format(error=sources_error))
+            return 2
+
+    channel = EMPTY_STRING
+    if not args.no_can and not sources_config:
         channel, _, channel_status = maybe_auto_channel(args)
         if channel_status != 0 or not channel:
             return channel_status
+    if not sources_config:
+        sources_config = [
+            SourceConfig(
+                source_id=SOURCE_DEFAULT_ID,
+                label=SOURCE_DEFAULT_LABEL,
+                port=channel or args.channel,
+                enabled=SOURCE_ENABLED_TRUE if not args.no_can else SOURCE_ENABLED_FALSE,
+            )
+        ]
+    source_config_map: Dict[str, SourceConfig] = {cfg.source_id: cfg for cfg in sources_config}
 
     if args.list_keys or args.dump_nt:
         print_or_dump_nt_keys(devices, args.list_keys, args.dump_nt)
@@ -387,29 +530,79 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     bus = None
     can = None
+    source_runtimes: List[SourceRuntime] = []
+    primary_source_id = EMPTY_STRING
+    primary_bus = None
+    primary_channel = EMPTY_STRING
     if not args.no_can:
         # Delayed imports so --help still works without packages installed
         import can  # type: ignore
-
-        try:
-            bus = can.Bus(interface=args.interface, channel=channel, bitrate=args.bitrate)
-        except Exception as exc:
-            print(
-                "ERROR: Failed to open CAN bus "
-                f"(interface={args.interface}, channel={channel}, bitrate={args.bitrate}): {exc}"
-            )
+    source_ids_seen: set[str] = set()
+    for cfg in sources_config:
+        if cfg.source_id in source_ids_seen:
+            print(SOURCE_ERR_DUP.format(source_id=cfg.source_id))
             return 2
+        source_ids_seen.add(cfg.source_id)
+        interface = cfg.interface or args.interface
+        bitrate = int(cfg.bitrate) if cfg.bitrate else int(args.bitrate)
+        runtime = SourceRuntime(
+            source_id=cfg.source_id,
+            label=cfg.label,
+            port=cfg.port,
+            interface=interface,
+            bitrate=bitrate,
+            enabled=bool(cfg.enabled) and not args.no_can,
+        )
+        if not runtime.enabled:
+            print(SOURCE_INFO_DISABLED.format(source_id=cfg.source_id))
+            source_runtimes.append(runtime)
+            continue
+        if not cfg.port:
+            print(SOURCE_ERR_PORT.format(source_id=cfg.source_id))
+            return 2
+        try:
+            bus = can.Bus(interface=interface, channel=cfg.port, bitrate=bitrate)
+            runtime.bus = bus
+            runtime.available = SOURCE_AVAILABLE_TRUE
+            if primary_bus is None:
+                primary_bus = bus
+                primary_source_id = cfg.source_id
+                primary_channel = cfg.port
+            print(SOURCE_INFO_AVAILABLE.format(source_id=cfg.source_id))
+        except Exception as exc:
+            runtime.available = SOURCE_AVAILABLE_FALSE
+            print(SOURCE_WARN_OPEN.format(source_id=cfg.source_id, error=exc))
+        source_runtimes.append(runtime)
+    if primary_bus is not None:
+        bus = primary_bus
+    source_runtime_map: Dict[str, SourceRuntime] = {rt.source_id: rt for rt in source_runtimes}
 
     if args.pcap and args.pcap_pipe:
         print("ERROR: Use --pcap or --pcap-pipe, not both.")
         return 2
 
+    if primary_channel:
+        channel = primary_channel
     pcap_comment = build_pcap_comment(args, channel)
     pcap = setup_pcap(args, pcap_comment)
     if args.enable_markers:
         if args.pcap and not args.pcap.lower().endswith(".pcapng"):
             print("ERROR: Marker injection requires a .pcapng output file.")
             return 2
+
+    source_infos: List[SourceInfo] = []
+    for runtime in source_runtimes:
+        cfg = source_config_map.get(runtime.source_id)
+        timeout_ms = int(cfg.visibility_timeout_ms) if cfg and cfg.visibility_timeout_ms else int(args.visibility_timeout_ms)
+        source_infos.append(
+            SourceInfo(
+                source_id=runtime.source_id,
+                label=runtime.label,
+                available=runtime.available,
+                timeout_ms=timeout_ms,
+            )
+        )
+    visibility_provider.set_sources(source_infos)
 
     nt, table = setup_nt(args)
     ui_table = None
@@ -463,6 +656,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     analyzer = CanLiveAnalyzer(expected_ids=expected_ids)
     state = SnifferState()
+    frame_queue: queue.Queue[FrameItem] = queue.Queue()
+    source_stop_event = threading.Event()
     stop_requested = False
     state.last_marker_ts = 0.0
     marker_keys = {"0", "1", "2", "3", "4", "m", "q", "h"}
@@ -477,6 +672,68 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         print("Marker keys: [1]=0.25 [2]=0.50 [3]=0.75 [4]=1.00 [0]=stop [m]=mark [q]=quit [h]=help")
         print("Other keys: [r]=reload profiles")
         print(f"Marker ID: 0x{args.marker_id:08X} (extended)")
+
+    def _source_reader(runtime: SourceRuntime) -> None:
+        """
+        NAME
+            _source_reader - Background reader for a single CAN source.
+        """
+        bus = runtime.bus
+        if bus is None:
+            return
+        while not source_stop_event.is_set() and not runtime.stop_event.is_set():
+            try:
+                msg = bus.recv(timeout=SOURCE_READ_TIMEOUT_SEC)
+            except Exception as exc:
+                if runtime.available:
+                    runtime.available = SOURCE_AVAILABLE_FALSE
+                    visibility_provider.set_source_available(
+                        runtime.source_id,
+                        SOURCE_AVAILABLE_FALSE,
+                        int(time.time() * VIS_MS_PER_SEC),
+                    )
+                    print(SOURCE_WARN_OPEN.format(source_id=runtime.source_id, error=exc))
+                time.sleep(SOURCE_ERROR_BACKOFF_SEC)
+                continue
+            if msg is None:
+                continue
+            if not runtime.available:
+                runtime.available = SOURCE_AVAILABLE_TRUE
+                visibility_provider.set_source_available(
+                    runtime.source_id,
+                    SOURCE_AVAILABLE_TRUE,
+                    int(time.time() * VIS_MS_PER_SEC),
+                )
+            frame_queue.put(FrameItem(runtime.source_id, msg, time.time()))
+
+    def _start_source_threads() -> None:
+        """
+        NAME
+            _start_source_threads - Start reader threads for enabled sources.
+        """
+        for runtime in source_runtimes:
+            if runtime.bus is None:
+                continue
+            thread = threading.Thread(
+                target=_source_reader,
+                args=(runtime,),
+                daemon=True,
+            )
+            runtime.thread = thread
+            thread.start()
+
+    def _stop_source_threads() -> None:
+        """
+        NAME
+            _stop_source_threads - Stop reader threads for all sources.
+        """
+        source_stop_event.set()
+        for runtime in source_runtimes:
+            runtime.stop_event.set()
+        for runtime in source_runtimes:
+            if runtime.thread is None:
+                continue
+            runtime.thread.join(timeout=SOURCE_THREAD_JOIN_SEC)
 
     def _keyboard_worker() -> None:
         try:
@@ -550,6 +807,146 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     _send_ui_command.set_seq = _set_ui_command_seq  # type: ignore[attr-defined]
 
+    def _resolve_device_label(key: Tuple[int, int, int]) -> str:
+        """
+        NAME
+            _resolve_device_label - Resolve a label for a CAN device key.
+        """
+        nonlocal unknown_label_counter
+        label = can_to_label.get(key)
+        if not label:
+            label = unknown_labels.get(key)
+            if not label:
+                unknown_label_counter += 1
+                label = f"{UNKNOWN_LABEL_PREFIX}{unknown_label_counter}"
+                unknown_labels[key] = label
+        return label
+
+    def _handle_frame_item(item: FrameItem) -> None:
+        """
+        NAME
+            _handle_frame_item - Process a received CAN frame.
+        """
+        if item is None:
+            return
+        msg = item.msg
+        arb_id = int(msg.arbitration_id)
+        data = bytes(getattr(msg, CAN_MSG_DATA_ATTR, EMPTY_BYTES) or EMPTY_BYTES)
+        ts_s = item.ts_s
+        ts_ms = int(ts_s * VIS_MS_PER_SEC)
+
+        decoded_key = None
+        label = None
+        try:
+            mfg, dtype, did = decode_frc_ext_id(arb_id)
+            decoded_key = _visibility_key_from_ids(mfg, dtype, did)
+            label = _resolve_device_label((mfg, dtype, did))
+        except Exception:
+            decoded_key = None
+            label = None
+
+        visibility_provider.ingest_frame(
+            item.source_id,
+            arb_id,
+            ts_ms,
+            decoded_key=decoded_key,
+            label=label,
+        )
+
+        if item.source_id != primary_source_id:
+            return
+
+        if args.pcap or args.pcap_pipe:
+            if not pcap.log(msg, timestamp_s=ts_s):
+                state.pcap_errors += INT_ONE
+
+        analyzer.ingest(ts_s, arb_id, data)
+
+        mfg, dtype, did = decode_frc_ext_id(arb_id)
+        _, _, api_class, api_index, _ = decode_frc_ext_id_full(arb_id)
+        key = (mfg, dtype, did)
+        seen_can_keys.add(key)
+        label = _resolve_device_label(key)
+        seen_labels.add(label)
+        state.last_seen[label] = ts_s
+        state.msg_count[label] = state.msg_count.get(label, INT_ZERO) + INT_ONE
+
+        is_status, is_control = classify_frame(
+            arb_id=arb_id,
+            manufacturer=mfg,
+            device_type=dtype,
+            api_class=api_class,
+            api_index=api_index,
+        )
+        if is_status:
+            state.status_last_seen[label] = ts_s
+        if is_control:
+            state.control_last_seen[label] = ts_s
+
+        print_label_match = (
+            not args.print_label
+            or label.lower() == args.print_label.lower()
+        )
+
+        if args.print_any and print_label_match:
+            print(
+                format_frame_line(
+                    FRAME_KIND_FRAME,
+                    arb_id,
+                    mfg,
+                    dtype,
+                    did,
+                    api_class,
+                    api_index,
+                    data,
+                    label,
+                )
+            )
+        if args.print_status and is_status and print_label_match:
+            print(
+                format_frame_line(
+                    FRAME_KIND_STATUS,
+                    arb_id,
+                    mfg,
+                    dtype,
+                    did,
+                    api_class,
+                    api_index,
+                    data,
+                    label,
+                )
+            )
+        if args.print_control and is_control and print_label_match:
+            print(
+                format_frame_line(
+                    FRAME_KIND_CONTROL,
+                    arb_id,
+                    mfg,
+                    dtype,
+                    did,
+                    api_class,
+                    api_index,
+                    data,
+                    label,
+                )
+            )
+
+        pair_key = (label, api_class, api_index)
+        stats = state.pair_stats.get(pair_key)
+        if stats is None:
+            stats = {
+                PAIR_STATS_FIRST: ts_s,
+                PAIR_STATS_LAST: ts_s,
+                PAIR_STATS_COUNT: PAIR_STATS_COUNT_INIT,
+            }
+            state.pair_stats[pair_key] = stats
+        stats[PAIR_STATS_LAST] = ts_s
+        stats[PAIR_STATS_COUNT] += PAIR_STATS_COUNT_INC
+
+        state.total_frames += INT_ONE
+        state.period_frames += INT_ONE
+        state.last_frame_time = ts_s
+
     def _run_sniffer(stop_event: Optional[threading.Event]) -> int:
         """
         NAME
@@ -558,6 +955,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         nonlocal stop_requested, last_publish, last_summary, startup_summary_done
         nonlocal unknown_label_counter, console_unknown_counter
         try:
+            _start_source_threads()
             while True:
                 if stop_event is not None and stop_event.is_set():
                     break
@@ -604,6 +1002,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     console_unknown_labels.clear()
                     console_unknown_counter = 0
                     analyzer.expected_ids = set(new_expected or [])
+                    visibility_provider.set_expected_devices(_build_visibility_expected(devices))
                     dv = get_profiles_data_version()
                     dh = get_profiles_data_hash()
                     if dv:
@@ -640,112 +1039,21 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     )
                     print_summary(summary, now, extra)
 
-                msg = None
-                if bus is not None:
+                runtime = source_runtime_map.get(primary_source_id)
+                state.open_ok = bool(runtime.available) if runtime else False
+                frame_item = SOURCE_QUEUE_EMPTY
+                try:
+                    frame_item = frame_queue.get(timeout=SOURCE_READ_TIMEOUT_SEC)
+                except queue.Empty:
+                    frame_item = SOURCE_QUEUE_EMPTY
+                while frame_item is not SOURCE_QUEUE_EMPTY:
+                    _handle_frame_item(frame_item)
                     try:
-                        msg = bus.recv(timeout=0.05)
-                        state.open_ok = True
-                    except Exception:
-                        state.read_errors += 1
-                        state.open_ok = False
-                        msg = None
+                        frame_item = frame_queue.get_nowait()
+                    except queue.Empty:
+                        frame_item = SOURCE_QUEUE_EMPTY
 
-                if msg is not None:
-                    if args.pcap or args.pcap_pipe:
-                        if not pcap.log(msg, timestamp_s=now):
-                            state.pcap_errors += 1
-
-                    arb_id = int(msg.arbitration_id)
-                    data = bytes(getattr(msg, "data", b"") or b"")
-
-                    analyzer.ingest(now, arb_id, data)
-
-                    mfg, dtype, did = decode_frc_ext_id(arb_id)
-                    _, _, api_class, api_index, _ = decode_frc_ext_id_full(arb_id)
-                    key = (mfg, dtype, did)
-                    seen_can_keys.add(key)
-                    label = can_to_label.get(key)
-                    if not label:
-                        label = unknown_labels.get(key)
-                        if not label:
-                            unknown_label_counter += 1
-                            label = f"{UNKNOWN_LABEL_PREFIX}{unknown_label_counter}"
-                            unknown_labels[key] = label
-                    seen_labels.add(label)
-                    state.last_seen[label] = now
-                    state.msg_count[label] = state.msg_count.get(label, 0) + 1
-
-                    is_status, is_control = classify_frame(
-                        arb_id=arb_id,
-                        manufacturer=mfg,
-                        device_type=dtype,
-                        api_class=api_class,
-                        api_index=api_index,
-                    )
-                    if is_status:
-                        state.status_last_seen[label] = now
-                    if is_control:
-                        state.control_last_seen[label] = now
-
-                    print_label_match = (
-                        not args.print_label
-                        or label.lower() == args.print_label.lower()
-                    )
-
-                    if args.print_any and print_label_match:
-                        print(
-                            format_frame_line(
-                                "frame",
-                                arb_id,
-                                mfg,
-                                dtype,
-                                did,
-                                api_class,
-                                api_index,
-                                data,
-                                label,
-                            )
-                        )
-                    if args.print_status and is_status and print_label_match:
-                        print(
-                            format_frame_line(
-                                "status",
-                                arb_id,
-                                mfg,
-                                dtype,
-                                did,
-                                api_class,
-                                api_index,
-                                data,
-                                label,
-                            )
-                        )
-                    if args.print_control and is_control and print_label_match:
-                        print(
-                            format_frame_line(
-                                "control",
-                                arb_id,
-                                mfg,
-                                dtype,
-                                did,
-                                api_class,
-                                api_index,
-                                data,
-                                label,
-                            )
-                        )
-
-                    pair_key = (label, api_class, api_index)
-                    stats = state.pair_stats.get(pair_key)
-                    if stats is None:
-                        stats = {"first": now, "last": now, "count": 0.0}
-                        state.pair_stats[pair_key] = stats
-                    stats["last"] = now
-                    stats["count"] += 1.0
-
-                    state.total_frames += 1
-                    state.period_frames += 1
-                    state.last_frame_time = now
+                visibility_provider.tick(int(now * VIS_MS_PER_SEC))
 
                 if console_monitor is not None:
                     console_monitor.poll(now)
@@ -769,6 +1077,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             print("Stopping (Ctrl+C)...")
         finally:
             now = time.time()
+            _stop_source_threads()
             if console_monitor is not None:
                 console_monitor.stop()
             try:
@@ -810,6 +1119,49 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
         return 0
 
+    if args.cli or args.batch:
+        ui_table = None
+        if nt is not None:
+            ui_table = nt.getTable("bringup").getSubTable("ui")
+
+        def _read_nt_state() -> Dict[str, Any]:
+            if ui_table is None:
+                return {}
+            return {
+                "enabled": ui_table.getEntry(NT_UI_STATE_ENABLED).getBoolean(False),
+                "estopped": ui_table.getEntry(NT_UI_STATE_ESTOPPED).getBoolean(False),
+                "mode": ui_table.getEntry(NT_UI_STATE_MODE).getString(NT_UI_MODE_DISABLED),
+                "lastAckMs": ui_table.getEntry(NT_UI_STATE_LAST_ACK).getDouble(FLOAT_ZERO),
+                "sessionId": ui_table.getEntry(NT_UI_STATE_SESSION).getString(EMPTY_STRING),
+            }
+
+        session = BridgeSession(args.rio, args.ui_tcp_port, nt_state_reader=_read_nt_state)
+        cli = BridgeCli(
+            session,
+            batch=bool(args.batch),
+            conflict_policy=args.conflict_policy,
+            echo_enabled=bool(getattr(args, "cli_echo", False)),
+            message_level=(args.cli_messages or None),
+            recovery_mode=bool(load_error),
+            visibility_provider=visibility_provider,
+        )
+        stop_event = threading.Event()
+        thread = threading.Thread(target=_run_sniffer, args=(stop_event,), daemon=True)
+        thread.start()
+        try:
+            if args.batch:
+                try:
+                    with open(args.script, "r", encoding="utf-8") as handle:
+                        lines = handle.readlines()
+                except Exception as exc:
+                    print(f"ERROR: Failed to read script: {exc}")
+                    return 2
+                return cli.run_batch(lines)
+            return cli.run_interactive()
+        finally:
+            stop_event.set()
+            thread.join(timeout=SOURCE_THREAD_JOIN_SEC)
+
     if args.ui:
         if nt is None or ui_table is None:
             print("ERROR: --ui requires NetworkTables (remove --no-nt).")
@@ -840,6 +1192,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             tcp_port=args.ui_tcp_port,
             is_connected=_nt_is_connected,
             on_close=stop_event.set,
+            visibility_provider=visibility_provider,
         )
         def _release_ui_lock() -> None:
             try:
@@ -861,7 +1214,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         finally:
             _release_ui_lock()
             stop_event.set()
-            thread.join(timeout=2.0)
+            thread.join(timeout=SOURCE_THREAD_JOIN_SEC)
             signal.signal(signal.SIGINT, original_sigint)
             signal.signal(signal.SIGTERM, original_sigterm)
         return 0

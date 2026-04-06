@@ -53,6 +53,21 @@ from tools.common.build_info import build_lines
 from .can_profiles import get_profile, get_profiles_load_error, list_profiles, reload_profiles
 from tools.config.schema_store import ConfigSchemaStore
 from tools.can_topology.live_topology_view import LiveTopologyView
+from tools.can_nt.visibility_constants import (
+    VIS_KEY_DEVICES,
+    VIS_KEY_DEVICES_SHOWN,
+    VIS_KEY_ID,
+    VIS_KEY_KEY,
+    VIS_KEY_LABEL,
+    VIS_KEY_SOURCES,
+    VIS_KEY_SOURCES_COUNT,
+    VIS_KEY_VISIBLE_ALL,
+    VIS_KEY_VISIBLE_NONE,
+    VIS_KEY_VISIBLE_SOME,
+    VIS_KEY_VISIBILITY,
+    VIS_MS_PER_SEC,
+    VIS_SCOPE_BOTH,
+)
 
 # Constants (NetworkTables paths and presence values).
 NT_PATH_PRESENCE_FMT = "dev/{}/presenceConfidence"
@@ -90,6 +105,36 @@ ABOUT_DESCRIPTION = "PC-side NetworkTables command panel for RobotV2 bringup."
 ABOUT_LAUNCH = "Launch via tools/can_nt/run_can_nt.cmd --ui"
 ABOUT_SEPARATOR = "\n"
 BUILD_TITLE = "Build"
+
+# Constants (visibility UI).
+VIS_TAB_LABEL = "Visibility"
+VIS_COL_DEVICE = "Device"
+VIS_COL_VISIBLE = "Visible"
+VIS_VALUE_YES = "Y"
+VIS_VALUE_NO = "N"
+VIS_VALUE_UNKNOWN = "?"
+VIS_MODE_LABEL = "Visibility Mode"
+VIS_SUMMARY_FMT = "Sources: {sources} | Devices: {devices} | All: {all} | Some: {some} | None: {none}"
+VIS_EMPTY_MESSAGE = "Visibility provider not available."
+VIS_REFRESH_SEC = 0.5
+VIS_SOURCE_COUNT_UNKNOWN = "--"
+VIS_TREE_SHOW = "headings"
+VIS_TREE_END = "end"
+VIS_TREE_ROOT = ""
+VIS_TREE_COLUMNS = "columns"
+VIS_TREE_ANCHOR_W = "w"
+VIS_TREE_ANCHOR_CENTER = "center"
+VIS_PACK_SIDE_RIGHT = "right"
+VIS_PACK_SIDE_LEFT = "left"
+VIS_FILL_BOTH = "both"
+VIS_FILL_Y = "y"
+VIS_FILL_X = "x"
+VIS_SCROLLBAR_ORIENT = "vertical"
+VIS_PAD_HEADER = (8, 8, 8, 4)
+VIS_PAD_TABLE = (8, 0, 8, 8)
+VIS_PAD_LEFT = (8, 0)
+VIS_COL_DEVICE_WIDTH = 240
+VIS_COL_SOURCE_WIDTH = 72
 
 
 def _load_profiles() -> List[str]:
@@ -238,6 +283,7 @@ class BringupControlUI(tk.Tk):
         tcp_port: int,
         is_connected: Optional[Callable[[], bool]] = None,
         on_close: Optional[Callable[[], None]] = None,
+        visibility_provider: Optional[object] = None,
     ) -> None:
         super().__init__()
         self._print_version_banner()
@@ -258,6 +304,13 @@ class BringupControlUI(tk.Tk):
         self._lines: List[str] = []
         self._last_ack_seq = None
         self._last_out_seq = None
+        self._visibility_provider = visibility_provider
+        self._visibility_last_update = 0.0
+        self._visibility_sources: List[Dict[str, object]] = []
+        self._visibility_columns: List[str] = []
+        self._visibility_table: Optional[ttk.Treeview] = None
+        self._visibility_summary_var = tk.StringVar(value=VIS_SOURCE_COUNT_UNKNOWN)
+        self._visibility_enabled_var = tk.BooleanVar(value=False)
         self._last_selected_test = None
         self._last_sent_seq: Optional[int] = None
         self._nt_connected = False
@@ -456,6 +509,10 @@ class BringupControlUI(tk.Tk):
         notebook.add(live_panel, text="Live Topology")
         self._build_live_panel(live_panel)
 
+        visibility_panel = ttk.Frame(notebook)
+        notebook.add(visibility_panel, text=VIS_TAB_LABEL)
+        self._build_visibility_panel(visibility_panel)
+
     def _build_live_panel(self, parent: tk.Widget) -> None:
         """
         NAME
@@ -474,6 +531,12 @@ class BringupControlUI(tk.Tk):
             variable=self._live_groups_var,
             command=self._apply_live_group_toggle,
         ).pack(side="left", padx=(8, 0))
+        ttk.Checkbutton(
+            controls,
+            text=VIS_MODE_LABEL,
+            variable=self._visibility_enabled_var,
+            command=self._apply_visibility_mode_toggle,
+        ).pack(side=VIS_PACK_SIDE_LEFT, padx=VIS_PAD_LEFT)
         ttk.Label(controls, text="Source:").pack(side="left", padx=(12, 4))
         source_menu = ttk.OptionMenu(
             controls,
@@ -510,7 +573,35 @@ class BringupControlUI(tk.Tk):
         profile_name = self._profile_box.get() if hasattr(self, "_profile_box") else ""
         self._live_view = LiveTopologyView(parent, profile_name)
         self._live_view.set_show_groups(self._live_groups_var.get())
+        self._live_view.set_visibility_enabled(self._visibility_enabled_var.get())
         self._live_view.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+    def _build_visibility_panel(self, parent: tk.Widget) -> None:
+        """
+        NAME
+            _build_visibility_panel - Build the visibility matrix tab.
+        """
+        header = ttk.Frame(parent, padding=VIS_PAD_HEADER)
+        header.pack(fill=VIS_FILL_X)
+        ttk.Label(header, textvariable=self._visibility_summary_var).pack(anchor=VIS_TREE_ANCHOR_W)
+
+        table_frame = ttk.Frame(parent, padding=VIS_PAD_TABLE)
+        table_frame.pack(fill=VIS_FILL_BOTH, expand=True)
+        self._visibility_table = ttk.Treeview(
+            table_frame,
+            columns=(),
+            show=VIS_TREE_SHOW,
+        )
+        self._visibility_table.pack(side=VIS_PACK_SIDE_LEFT, fill=VIS_FILL_BOTH, expand=True)
+        scrollbar = ttk.Scrollbar(
+            table_frame,
+            orient=VIS_SCROLLBAR_ORIENT,
+            command=self._visibility_table.yview,
+        )
+        scrollbar.pack(side=VIS_PACK_SIDE_RIGHT, fill=VIS_FILL_Y)
+        self._visibility_table.configure(yscrollcommand=scrollbar.set)
+        if self._visibility_provider is None:
+            self._visibility_table.insert(VIS_TREE_END, VIS_TREE_END, values=[VIS_EMPTY_MESSAGE])
 
     def _on_profile_selected(self, _event=None) -> None:
         """
@@ -600,6 +691,112 @@ class BringupControlUI(tk.Tk):
             if value in PRESENCE_VALUES:
                 overrides[label] = value
         self._live_view.set_presence_overrides(overrides)
+
+    def _poll_visibility_snapshot(self, now: float) -> None:
+        """
+        NAME
+            _poll_visibility_snapshot - Refresh visibility snapshot data.
+        """
+        if self._visibility_provider is None:
+            return
+        if (now - self._visibility_last_update) < VIS_REFRESH_SEC:
+            return
+        self._visibility_last_update = now
+        now_ms = int(now * VIS_MS_PER_SEC)
+        try:
+            snapshot = self._visibility_provider.snapshot(VIS_SCOPE_BOTH, now_ms)
+            summary = self._visibility_provider.summary(VIS_SCOPE_BOTH, now_ms)
+        except Exception:
+            return
+        self._apply_visibility_snapshot(snapshot, summary)
+
+    def _apply_visibility_snapshot(self, snapshot: Dict[str, object], summary: Dict[str, object]) -> None:
+        """
+        NAME
+            _apply_visibility_snapshot - Apply visibility snapshot to UI.
+        """
+        if self._visibility_table is None:
+            return
+        sources = snapshot.get(VIS_KEY_SOURCES)
+        devices = snapshot.get(VIS_KEY_DEVICES)
+        if not isinstance(sources, list) or not isinstance(devices, list):
+            return
+        source_ids: List[str] = []
+        source_labels: Dict[str, str] = {}
+        for entry in sources:
+            if not isinstance(entry, dict):
+                continue
+            src_id = str(entry.get(VIS_KEY_ID, NT_VALUE_EMPTY)).strip()
+            if not src_id:
+                continue
+            source_ids.append(src_id)
+            label = str(entry.get(VIS_KEY_LABEL, src_id)).strip() or src_id
+            source_labels[src_id] = label
+        if source_ids != self._visibility_columns:
+            self._visibility_columns = list(source_ids)
+            columns = [VIS_COL_DEVICE] + source_ids
+            self._visibility_table[VIS_TREE_COLUMNS] = columns
+            self._visibility_table.heading(VIS_COL_DEVICE, text=VIS_COL_DEVICE, anchor=VIS_TREE_ANCHOR_W)
+            self._visibility_table.column(
+                VIS_COL_DEVICE,
+                width=VIS_COL_DEVICE_WIDTH,
+                anchor=VIS_TREE_ANCHOR_W,
+            )
+            for src_id in source_ids:
+                label = source_labels.get(src_id, src_id)
+                self._visibility_table.heading(src_id, text=label, anchor=VIS_TREE_ANCHOR_CENTER)
+                self._visibility_table.column(
+                    src_id,
+                    width=VIS_COL_SOURCE_WIDTH,
+                    anchor=VIS_TREE_ANCHOR_CENTER,
+                    stretch=True,
+                )
+        for row in self._visibility_table.get_children():
+            self._visibility_table.delete(row)
+        for device in devices:
+            if not isinstance(device, dict):
+                continue
+            label = str(device.get(VIS_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+            key = str(device.get(VIS_KEY_KEY, NT_VALUE_EMPTY)).strip()
+            device_name = label or key
+            visibility = device.get(VIS_KEY_VISIBILITY) if isinstance(device.get(VIS_KEY_VISIBILITY), dict) else {}
+            values: List[str] = [device_name]
+            for src_id in source_ids:
+                value = visibility.get(src_id)
+                if value is True:
+                    values.append(VIS_VALUE_YES)
+                elif value is False:
+                    values.append(VIS_VALUE_NO)
+                else:
+                    values.append(VIS_VALUE_UNKNOWN)
+            self._visibility_table.insert(VIS_TREE_ROOT, VIS_TREE_END, values=values)
+        self._update_visibility_summary(summary)
+        if self._live_view is not None:
+            self._live_view.set_visibility_snapshot(snapshot)
+
+    def _update_visibility_summary(self, summary: Dict[str, object]) -> None:
+        """
+        NAME
+            _update_visibility_summary - Update summary text for visibility.
+        """
+        if not isinstance(summary, dict):
+            return
+        sources = summary.get(VIS_KEY_SOURCES_COUNT)
+        devices = summary.get(VIS_KEY_DEVICES_SHOWN)
+        visible_all = summary.get(VIS_KEY_VISIBLE_ALL)
+        visible_some = summary.get(VIS_KEY_VISIBLE_SOME)
+        visible_none = summary.get(VIS_KEY_VISIBLE_NONE)
+        if not all(isinstance(v, int) for v in [sources, devices, visible_all, visible_some, visible_none]):
+            return
+        self._visibility_summary_var.set(
+            VIS_SUMMARY_FMT.format(
+                sources=sources,
+                devices=devices,
+                all=visible_all,
+                some=visible_some,
+                none=visible_none,
+            )
+        )
 
     def _load_runtime_state_file(self) -> None:
         """
@@ -713,6 +910,15 @@ class BringupControlUI(tk.Tk):
         if self._live_view is None:
             return
         self._live_view.set_show_groups(self._live_groups_var.get())
+
+    def _apply_visibility_mode_toggle(self) -> None:
+        """
+        NAME
+            _apply_visibility_mode_toggle - Toggle visibility mode in the live view.
+        """
+        if self._live_view is None:
+            return
+        self._live_view.set_visibility_enabled(self._visibility_enabled_var.get())
 
     def _zoom_in(self) -> None:
         """
@@ -1554,6 +1760,7 @@ class BringupControlUI(tk.Tk):
                 self._last_log_poll = now
         self._poll_live_overlay(now)
         self._poll_presence_overrides()
+        self._poll_visibility_snapshot(now)
         self._update_action_enabled()
         idle = (
             not self._tcp_connected

@@ -58,6 +58,8 @@ show_target    = "status"
                | "device-usage" ws name
                | "binding-usage" ws name
                | "input-aliases"
+               | "visibility" [ ws name ]
+               | "topology" [ ws "neighbors" ]
                | "message-level"
                | "workspace"
                | "session" ;
@@ -121,6 +123,10 @@ config         = "group" ws name
                | "profiles" ws "export" ws path
                | "profiles" ws "push" ws path [ ws "--activate" ws name ]
                | "config" ws "push" ws path [ ws "--activate" ws name ]
+               | "topology" ws "neighbor-ports" ws ("set" ws name ws name ws name ws name
+                                                   | "delete" ws name ws name
+                                                   | "clear" ws name)
+               | "topology" ws "neighbor-auto" ws ("all" [ ws name ] | "node" ws name)
                | ("show" | "ls") ws show_target [ ws show_flags ]
                | diagnose
                | "bindings" [ ws bindings_args ]

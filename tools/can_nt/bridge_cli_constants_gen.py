@@ -135,6 +135,7 @@ class ParserSpec:
     msg_import_config: str
     msg_export_requires: str
     msg_export_target: str
+    msg_push_requires: str
     msg_save_requires: str
     msg_save_target: str
     msg_load_requires: str
@@ -258,7 +259,7 @@ SPEC = ParserSpec(
     show_source_robot='robot',
     show_source_local='local',
     show_source_both='both',
-    show_targets=('status', 'groups', 'group', 'devices', 'device', 'commands', 'help', 'version', 'device-usage', 'binding-usage', 'input-aliases', 'bindings', 'can-mappings', 'selected-device', 'runtime-state', 'tests', 'test', 'config', 'sources', 'profiles', 'profile', 'message-level', 'workspace', 'session', 'controllers', 'device-group', 'device-meta'),
+    show_targets=('status', 'groups', 'group', 'devices', 'device', 'commands', 'help', 'version', 'device-usage', 'binding-usage', 'visibility', 'input-aliases', 'bindings', 'can-mappings', 'selected-device', 'runtime-state', 'tests', 'test', 'config', 'sources', 'profiles', 'profile', 'message-level', 'workspace', 'session', 'controllers', 'device-group', 'device-meta', 'topology'),
     show_target_config='config',
     show_target_runtime_state='runtime-state',
     show_target_tests='tests',
@@ -366,6 +367,7 @@ SPEC = ParserSpec(
     msg_import_config="import requires 'config <path>'",
     msg_export_requires='export requires target and path',
     msg_export_target='export requires runtime-groups or cli-script',
+    msg_push_requires='push requires path',
     msg_save_requires='save requires target and path (or sources/all)',
     msg_save_target='save requires all/config/local-config/profiles/unified-config/sources',
     msg_load_requires='load requires sources or config <path> [--merge|--replace]',
@@ -408,7 +410,7 @@ SPEC = ParserSpec(
     label_device_set='device set',
     label_device_delete='delete',
     mode_exec_cmds=('cfg', 'configure', 'connect', 'diagnose', 'disconnect', 'ls', 'prof', 'profile', 'show'),
-    mode_config_cmds=('bindings', 'can-mappings', 'config', 'device', 'diagnose', 'export', 'group', 'import', 'load', 'ls', 'merge', 'no', 'prof', 'profile', 'profiles', 'recover', 'reload', 'rename', 'save', 'savep', 'selected-device', 'selected-mode', 'show', 'test', 'tests', 'val', 'validate', 'write'),
+    mode_config_cmds=('bindings', 'can-mappings', 'config', 'device', 'diagnose', 'export', 'group', 'import', 'load', 'ls', 'merge', 'no', 'prof', 'profile', 'profiles', 'recover', 'reload', 'rename', 'save', 'savep', 'selected-device', 'selected-mode', 'show', 'test', 'tests', 'topology', 'val', 'validate', 'write'),
     mode_group_cmds=('add', 'bind', 'disable', 'enable', 'ls', 'member', 'no', 'run', 'show'),
     mode_device_cmds=('delete', 'ls', 'no', 'set', 'show'),
     mode_test_cmds=('action', 'brightness', 'color', 'deadband', 'deadbandsweep', 'device', 'duration', 'duty', 'enabled', 'hold', 'inputsource', 'limitswitch', 'ls', 'no', 'pattern', 'rotation', 'show', 'termination', 'time', 'type'),

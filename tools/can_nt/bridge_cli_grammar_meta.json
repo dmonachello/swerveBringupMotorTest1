@@ -41,6 +41,7 @@
     "version",
     "device-usage",
     "binding-usage",
+    "visibility",
     "input-aliases",
     "bindings",
     "can-mappings",
@@ -57,7 +58,8 @@
     "session",
     "controllers",
     "device-group",
-    "device-meta"
+    "device-meta",
+    "topology"
   ],
   "bind_kinds": [
     "analog",
@@ -108,6 +110,8 @@
     "sources": "sources",
     "set": "set",
     "write": "write",
+    "topology": "topology",
+    "neighbor_ports": "neighbor-ports",
     "bindings": "bindings",
     "can_mappings": "can-mappings",
     "load": "load",
@@ -176,6 +180,7 @@
     "config_validate": "config_validate",
     "config_bindings": "config_bindings",
     "config_can_mappings": "config_can_mappings",
+    "config_topology_neighbor_ports": "config_topology_neighbor_ports",
     "group_show": "group_show",
     "group_show_members": "group_show_members",
     "group_show_binding": "group_show_binding",
@@ -212,6 +217,7 @@
     "validate": "validate config",
     "bindings": "bindings",
     "can_mappings": "can-mappings",
+    "topology_neighbor_ports": "topology neighbor-ports",
     "show_members": "show members/binding",
     "add_device": "add device",
     "no_device": "no device",

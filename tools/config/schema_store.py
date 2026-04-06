@@ -50,6 +50,7 @@ from tools.common.profile_constants import (
     KEY_MANUFACTURER,
     KEY_MODEL,
     KEY_NOTES,
+    KEY_INPUT_ALIASES,
     KEY_PROFILE_DEVICES,
     KEY_PROFILES,
     KEY_PWM,
@@ -118,6 +119,8 @@ MESSAGE_DEVICE_DUPLICATE = "Duplicate device label: {label}"
 MESSAGE_DEVICE_LABEL_REQUIRED = "Device label is required."
 MESSAGE_DEVICE_INTERFACE_REQUIRED = "Device interface is required."
 MESSAGE_DEVICE_INTERFACE_INVALID = "Device interface is invalid."
+MESSAGE_DEVICE_INTERFACE_REQUIRED_FMT = "Device {label}: interface is required."
+MESSAGE_DEVICE_INTERFACE_INVALID_FMT = "Device {label}: interface is invalid."
 MESSAGE_DEVICE_MANUFACTURER_REQUIRED = "Device manufacturer is required."
 MESSAGE_DEVICE_DEVICE_TYPE_REQUIRED = "Device deviceType is required."
 MESSAGE_DEVICE_ID_REQUIRED = "Device id is required."
@@ -132,7 +135,17 @@ MESSAGE_DEVICE_DIO_TYPE = "Device dio must be int."
 MESSAGE_DEVICE_INVERT_TYPE = "Device invert must be bool."
 MESSAGE_DEVICE_PWM_TYPE = "Device pwm must be int."
 MESSAGE_DEVICE_ANALOG_TYPE = "Device analog must be int."
+MESSAGE_DEVICE_MANUFACTURER_TYPE_FMT = "Device {label}: manufacturer must be int."
+MESSAGE_DEVICE_DEVICE_TYPE_TYPE_FMT = "Device {label}: deviceType must be int."
+MESSAGE_DEVICE_ID_TYPE_FMT = "Device {label}: id must be int."
+MESSAGE_DEVICE_DIO_TYPE_FMT = "Device {label}: dio must be int."
+MESSAGE_DEVICE_INVERT_TYPE_FMT = "Device {label}: invert must be bool."
+MESSAGE_DEVICE_PWM_TYPE_FMT = "Device {label}: pwm must be int."
+MESSAGE_DEVICE_ANALOG_TYPE_FMT = "Device {label}: analog must be int."
+MESSAGE_REQUIRED_FIELD_FMT = "Device {label}: Missing required field: {key}"
 MESSAGE_MISSING_DEVICE_REF = "Missing device in profile: {label}"
+MESSAGE_MISSING_DEVICE_REF_PROFILE = "Profile {profile}: Missing device in profile: {label}"
+MESSAGE_MISSING_ATTACHMENT_REF = "Device {label}: Missing attachment device: {attachment}"
 MESSAGE_PROFILE_UNKNOWN = "Profile not found: {profile}"
 MESSAGE_BINDINGS_CONTROLLER_DUP = "Duplicate controller name."
 MESSAGE_BINDINGS_CONTROLLER_REQUIRED = "Controller name not found: {name}"
@@ -852,7 +865,10 @@ class ConfigSchemaStore:
                             self._append_issue(
                                 issues,
                                 LOCATION_PROFILES,
-                                MESSAGE_MISSING_DEVICE_REF.format(label=attachment),
+                                MESSAGE_MISSING_ATTACHMENT_REF.format(
+                                    label=label,
+                                    attachment=attachment,
+                                ),
                                 SEVERITY_ERROR,
                             )
         if profiles is not None and not isinstance(profiles, dict):
@@ -880,7 +896,10 @@ class ConfigSchemaStore:
                         self._append_issue(
                             issues,
                             LOCATION_PROFILES,
-                            MESSAGE_MISSING_DEVICE_REF.format(label=label),
+                            MESSAGE_MISSING_DEVICE_REF_PROFILE.format(
+                                profile=profile_name,
+                                label=label,
+                            ),
                             SEVERITY_ERROR,
                         )
         by_profile = self._bridge_by_profile()
@@ -1182,12 +1201,23 @@ class ConfigSchemaStore:
         if not label or not isinstance(label, str):
             self._append_issue(issues, LOCATION_PROFILES, MESSAGE_DEVICE_LABEL_REQUIRED, SEVERITY_ERROR)
             return
+        label_text = str(label).strip()
         interface = entry.get(KEY_INTERFACE)
         if not interface:
-            self._append_issue(issues, LOCATION_PROFILES, MESSAGE_DEVICE_INTERFACE_REQUIRED, SEVERITY_ERROR)
+            self._append_issue(
+                issues,
+                LOCATION_PROFILES,
+                MESSAGE_DEVICE_INTERFACE_REQUIRED_FMT.format(label=label_text),
+                SEVERITY_ERROR,
+            )
             return
         if not isinstance(interface, str):
-            self._append_issue(issues, LOCATION_PROFILES, MESSAGE_DEVICE_INTERFACE_INVALID, SEVERITY_ERROR)
+            self._append_issue(
+                issues,
+                LOCATION_PROFILES,
+                MESSAGE_DEVICE_INTERFACE_INVALID_FMT.format(label=label_text),
+                SEVERITY_ERROR,
+            )
             return
         required = self._required_fields_for_interface(interface)
         for key in required:
@@ -1195,27 +1225,62 @@ class ConfigSchemaStore:
                 self._append_issue(
                     issues,
                     LOCATION_PROFILES,
-                    MESSAGE_REQUIRED_FIELD.format(key=key),
+                    MESSAGE_REQUIRED_FIELD_FMT.format(label=label_text, key=key),
                     SEVERITY_ERROR,
                 )
         if interface == INTERFACE_CAN:
             if not isinstance(entry.get(KEY_MANUFACTURER), int):
-                self._append_issue(issues, LOCATION_PROFILES, MESSAGE_DEVICE_MANUFACTURER_TYPE, SEVERITY_ERROR)
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_DEVICE_MANUFACTURER_TYPE_FMT.format(label=label_text),
+                    SEVERITY_ERROR,
+                )
             if not isinstance(entry.get(KEY_DEVICE_TYPE), int):
-                self._append_issue(issues, LOCATION_PROFILES, MESSAGE_DEVICE_DEVICE_TYPE_TYPE, SEVERITY_ERROR)
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_DEVICE_DEVICE_TYPE_TYPE_FMT.format(label=label_text),
+                    SEVERITY_ERROR,
+                )
             if not isinstance(entry.get(KEY_ID), int):
-                self._append_issue(issues, LOCATION_PROFILES, MESSAGE_DEVICE_ID_TYPE, SEVERITY_ERROR)
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_DEVICE_ID_TYPE_FMT.format(label=label_text),
+                    SEVERITY_ERROR,
+                )
         if interface == INTERFACE_DIO:
             if entry.get(KEY_DIO) is not None and not isinstance(entry.get(KEY_DIO), int):
-                self._append_issue(issues, LOCATION_PROFILES, MESSAGE_DEVICE_DIO_TYPE, SEVERITY_ERROR)
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_DEVICE_DIO_TYPE_FMT.format(label=label_text),
+                    SEVERITY_ERROR,
+                )
             if entry.get(KEY_INVERT) is not None and not isinstance(entry.get(KEY_INVERT), bool):
-                self._append_issue(issues, LOCATION_PROFILES, MESSAGE_DEVICE_INVERT_TYPE, SEVERITY_ERROR)
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_DEVICE_INVERT_TYPE_FMT.format(label=label_text),
+                    SEVERITY_ERROR,
+                )
         if interface == INTERFACE_PWM:
             if entry.get(KEY_PWM) is not None and not isinstance(entry.get(KEY_PWM), int):
-                self._append_issue(issues, LOCATION_PROFILES, MESSAGE_DEVICE_PWM_TYPE, SEVERITY_ERROR)
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_DEVICE_PWM_TYPE_FMT.format(label=label_text),
+                    SEVERITY_ERROR,
+                )
         if interface == INTERFACE_ANALOG:
             if entry.get(KEY_ANALOG) is not None and not isinstance(entry.get(KEY_ANALOG), int):
-                self._append_issue(issues, LOCATION_PROFILES, MESSAGE_DEVICE_ANALOG_TYPE, SEVERITY_ERROR)
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_DEVICE_ANALOG_TYPE_FMT.format(label=label_text),
+                    SEVERITY_ERROR,
+                )
         if interface not in (
             INTERFACE_CAN,
             INTERFACE_DIO,
@@ -1223,7 +1288,12 @@ class ConfigSchemaStore:
             INTERFACE_ANALOG,
             INTERFACE_INTERNAL,
         ):
-            self._append_issue(issues, LOCATION_PROFILES, MESSAGE_DEVICE_INTERFACE_INVALID, SEVERITY_ERROR)
+            self._append_issue(
+                issues,
+                LOCATION_PROFILES,
+                MESSAGE_DEVICE_INTERFACE_INVALID_FMT.format(label=label_text),
+                SEVERITY_ERROR,
+            )
         attachments = entry.get(KEY_ATTACHMENTS)
         if attachments is not None and not isinstance(attachments, list):
             self._append_issue(

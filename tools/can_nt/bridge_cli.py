@@ -93,6 +93,27 @@ from tools.can_nt.motor_diag_constants import (
 )
 from tools.can_nt.motor_diag_normalize import collect_profile_labels, normalize_runtime_state
 from tools.can_nt.motor_diag_rules import diagnose_motor
+from tools.can_nt.visibility_constants import (
+    VIS_KEY_AGE_MS,
+    VIS_KEY_AVAILABLE,
+    VIS_KEY_DEVICE,
+    VIS_KEY_DEVICES,
+    VIS_KEY_DEVICES_SHOWN,
+    VIS_KEY_ID,
+    VIS_KEY_KEY,
+    VIS_KEY_LABEL,
+    VIS_KEY_SOURCES,
+    VIS_KEY_SOURCES_COUNT,
+    VIS_KEY_SCOPE,
+    VIS_KEY_TIMEOUT_MS,
+    VIS_KEY_VISIBLE_ALL,
+    VIS_KEY_VISIBLE_NONE,
+    VIS_KEY_VISIBLE_SOME,
+    VIS_KEY_VISIBILITY,
+    VIS_KEY_FRAMES_PER_SEC,
+    VIS_MS_PER_SEC,
+    VIS_SCOPE_BOTH,
+)
 from tools.can_nt.status import (
     FLAG_PRINT_MESSAGE,
     StatusResult,
@@ -167,12 +188,27 @@ from tools.common.profile_constants import (
     KEY_MANUFACTURER,
     KEY_MODEL,
     KEY_NOTES,
+    KEY_BUS,
     KEY_PWM,
     KEY_ANALOG,
     KEY_PROFILE,
     KEY_PROFILES,
     KEY_PROFILE_DEVICES,
+    KEY_NEIGHBOR_PORTS,
+    KEY_LINK_NODE,
+    KEY_LINK_PORT,
+    KEY_LINK_DEVICE,
+    KEY_LINK_NEIGHBOR,
+    KEY_LINK_NEIGHBOR_PORT,
+    KEY_DEVICE_LINKS,
+    KEY_NODE_KEY,
+    KEY_TAGS,
     KEY_SCHEMA_VERSION,
+    NEIGHBOR_PORT_LEFT,
+    NEIGHBOR_PORT_RIGHT,
+    NEIGHBOR_PORT_NEXT,
+    NEIGHBOR_PORT_BRANCH1,
+    NEIGHBOR_PORT_BRANCH2,
     PROFILE_SCHEMA_VERSION,
     INTERFACE_ANALOG,
     INTERFACE_CAN,
@@ -186,6 +222,7 @@ from tools.common.profile_constants import (
     KEY_ROLE,
     KEY_TAGS,
 )
+from tools.common.topology_parse import parse_diagram_nodes, parse_diagram_neighbor_ports
 from tools.common.tests_io import load_tests_payload, write_tests_payload
 from tools.common.test_authoring import (
     TestAuthoringModel,
@@ -297,7 +334,16 @@ CMD_EXPORT = "export"
 CMD_DELETE = "delete"
 CMD_SET = "set"
 CMD_CLEAR = "clear"
+CMD_TOPOLOGY = "topology"
+CMD_NEIGHBOR_PORTS = "neighbor-ports"
+CMD_NEIGHBOR_AUTO = "neighbor-auto"
+CMD_NODE = "node"
+CANNECT_PORT_ONE = 1
+CANNECT_PORT_TWO = 2
+CANNECT_PORT_THREE = 3
 SHOW_TARGET_VERSION = "version"
+SHOW_TARGET_TOPOLOGY = "topology"
+SHOW_TARGET_VISIBILITY = "visibility"
 CMD_DEFAULT = PARSER_SPEC.cmd_default
 CMD_MESSAGES = "messages"
 CMD_MESSAGE_LEVEL = "message-level"
@@ -689,6 +735,27 @@ SHOW_CONFIG_DIRTY = "dirty"
 KEY_PROFILE_INFO = "profile"
 KEY_DIAGRAM = "diagram"
 KEY_DIAGRAM_PROFILES = "profiles"
+KEY_DIAGRAM_NODES = "nodes"
+KEY_NODE_TYPE = "nodeType"
+KEY_CATEGORY = "category"
+KEY_ROW = "row"
+KEY_X = "x"
+KEY_SCALE = "scale"
+KEY_PROFILE_VISIBLE = "profileVisible"
+KEY_SOURCE = "source"
+KEY_TOPOLOGY = "topology"
+KEY_NODES = "nodes"
+
+NODE_TYPE_DEVICE = "device"
+NODE_TYPE_DIAGRAM = "diagram"
+NODE_TYPE_CALLOUT = "callout"
+
+TOPOLOGY_HEADER = "Topology nodes:"
+TOPOLOGY_EMPTY = "Topology nodes: (none)"
+TOPOLOGY_NODE_FMT = "  {label} nodeType={node_type} category={category} id={node_id} bus={bus} row={row} tags={tags}"
+TOPOLOGY_NEIGHBORS_HEADER = "Topology neighbors:"
+TOPOLOGY_NEIGHBORS_EMPTY = "Topology neighbors: (none)"
+TOPOLOGY_NEIGHBOR_ENTRY_FMT = "  {node} {port} -> {neighbor} {neighbor_port}"
 KEY_ACTIVE = "active"
 KEY_DEFAULT = "default"
 KEY_AVAILABLE = "available"
@@ -717,6 +784,7 @@ SHOW_TARGET_SELECTED_DEVICE = "selected-device"
 SHOW_TARGET_MESSAGE_LEVEL = "message-level"
 SHOW_TARGET_DEVICE_USAGE = "device-usage"
 SHOW_TARGET_BINDING_USAGE = "binding-usage"
+SHOW_TOPOLOGY_NEIGHBORS = "neighbors"
 SHOW_TARGET_INPUT_ALIASES = "input-aliases"
 SHOW_TARGET_COMMANDS = "commands"
 SHOW_TARGET_HELP = "help"
@@ -724,6 +792,31 @@ SHOW_TARGET_WORKSPACE = "workspace"
 SHOW_TARGET_SESSION = "session"
 SHOW_TARGET_CONTROLLERS = "controllers"
 SHOW_TARGET_SOURCES = "sources"
+SHOW_VISIBILITY_SUMMARY = "summary"
+SHOW_VISIBILITY_DEVICE = "Device"
+SHOW_VISIBILITY_SOURCE = "Source"
+SHOW_VISIBILITY_LEGEND = "Legend: Y=visible, N=not visible, ?=source unavailable"
+SHOW_VISIBILITY_SCOPE_FMT = "Scope: {scope}"
+SHOW_VISIBILITY_TIMEOUT_FMT = "Visibility timeout: {timeout_ms} ms"
+SHOW_VISIBILITY_UNAVAILABLE = "Unavailable sources: {count}"
+SHOW_VISIBILITY_VALUE_YES = "Y"
+SHOW_VISIBILITY_VALUE_NO = "N"
+SHOW_VISIBILITY_VALUE_UNKNOWN = "?"
+SHOW_VISIBILITY_HEADER_DEVICE = "Device"
+SHOW_VISIBILITY_HEADER_VISIBLE = "Visible"
+SHOW_VISIBILITY_HEADER_AGE = "Age(s)"
+SHOW_VISIBILITY_HEADER_FPS = "FPS"
+MESSAGE_ERR_VISIBILITY_UNAVAILABLE = "ERROR: Visibility provider not available."
+MESSAGE_ERR_VISIBILITY_DEVICE_NOT_FOUND = "ERROR: Visibility target not found: {name}"
+SHOW_VISIBILITY_DEVICE_FMT = "Device: {name}"
+SHOW_VISIBILITY_SUMMARY_SOURCES_FMT = "Sources: {sources}"
+SHOW_VISIBILITY_SUMMARY_DEVICES_FMT = "Devices shown: {devices}"
+SHOW_VISIBILITY_SUMMARY_ALL_FMT = "Visible at all sources: {count}"
+SHOW_VISIBILITY_SUMMARY_SOME_FMT = "Visible at some sources only: {count}"
+SHOW_VISIBILITY_SUMMARY_NONE_FMT = "Visible at no sources: {count}"
+SHOW_VISIBILITY_PLACEHOLDER = "-"
+SHOW_VISIBILITY_AGE_FMT = "{value:.2f}"
+SHOW_VISIBILITY_FPS_FMT = "{value:.1f}"
 
 SHOW_SOURCE_ROBOT = "robot"
 SHOW_SOURCE_LOCAL = "local"
@@ -745,6 +838,25 @@ MESSAGE_ERR_PRETTY_REQUIRES_JSON = "ERROR: --pretty requires --json."
 MESSAGE_ERR_LOCAL_CONFIG_MISSING = "ERROR: Local config not loaded. Use load config <path> --merge|--replace."
 MESSAGE_ERR_LOCAL_CONFIG_MISSING_FIRST = "ERROR: Local config not loaded. Use load config <path> --merge|--replace first."
 MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND = "ERROR: Local device not found."
+MESSAGE_ERR_TOPOLOGY_PROFILE_REQUIRED = "ERROR: Active profile required."
+MESSAGE_ERR_TOPOLOGY_MISSING = "ERROR: Topology diagram missing for active profile."
+MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND = "ERROR: Topology node not found: {label}"
+MESSAGE_ERR_NEIGHBOR_PORTS_SYNTAX = "ERROR: topology neighbor-ports expects set|delete|clear."
+MESSAGE_ERR_NEIGHBOR_PORTS_SET_ARGS = "ERROR: topology neighbor-ports set <node> <port> <neighbor> <neighborPort>"
+MESSAGE_ERR_NEIGHBOR_PORTS_DELETE_ARGS = "ERROR: topology neighbor-ports delete <node> <port>"
+MESSAGE_ERR_NEIGHBOR_PORTS_CLEAR_ARGS = "ERROR: topology neighbor-ports clear <node>"
+MESSAGE_ERR_NEIGHBOR_PORTS_SAME_LABEL = "ERROR: neighbor label must differ from source."
+MESSAGE_ERR_NEIGHBOR_PORTS_BUS = "ERROR: neighbor must be on the same bus segment."
+MESSAGE_ERR_NEIGHBOR_PORTS_NOT_ADJACENT = "ERROR: neighbor must be adjacent on the bus."
+MESSAGE_ERR_NEIGHBOR_PORTS_NODE_FIELDS = "ERROR: topology node missing bus or x for adjacency check."
+MESSAGE_NEIGHBOR_PORTS_SET_OK = "Updated neighbor port for {label}."
+MESSAGE_NEIGHBOR_PORTS_DELETE_OK = "Removed neighbor port for {label}."
+MESSAGE_NEIGHBOR_PORTS_CLEAR_OK = "Cleared neighbor ports for {label}."
+MESSAGE_ERR_NEIGHBOR_AUTO_SYNTAX = (
+    "ERROR: topology neighbor-auto expects all [label1,label2] | node <label>."
+)
+MESSAGE_ERR_NEIGHBOR_AUTO_NODE = "ERROR: topology neighbor-auto node <label>"
+MESSAGE_NEIGHBOR_AUTO_OK = "Auto-assigned neighbor ports."
 MESSAGE_OK_CONFIG_VALID = "OK: Config is valid."
 MESSAGE_ERR_CONFIG_VALIDATE = "ERROR: {message}"
 MESSAGE_STORE_ISSUE = "{location}: {message}"
@@ -1107,6 +1219,24 @@ HELP_INPUT_ALIASES_TEXT = (
     "show input-aliases\n"
     "  Show merged input alias map for the active profile."
 )
+HELP_TOPIC_TOPOLOGY = "topology"
+HELP_TOPOLOGY_TEXT = (
+    "show topology [neighbors]\n"
+    "  Show topology nodes or neighbor ports for the active profile."
+)
+HELP_TOPIC_TOPOLOGY_NEIGHBOR_PORTS = "topology neighbor-ports"
+HELP_TOPOLOGY_NEIGHBOR_PORTS_TEXT = (
+    "topology neighbor-ports set <node> <port> <neighbor> <neighborPort>\n"
+    "topology neighbor-ports delete <node> <port>\n"
+    "topology neighbor-ports clear <node>\n"
+    "  Edit neighbor port assignments (config mode)."
+)
+HELP_TOPIC_TOPOLOGY_NEIGHBOR_AUTO = "topology neighbor-auto"
+HELP_TOPOLOGY_NEIGHBOR_AUTO_TEXT = (
+    "topology neighbor-auto all [label1,label2]\n"
+    "topology neighbor-auto node <label>\n"
+    "  Auto-assign left/right neighbors from x-order (config mode)."
+)
 HELP_TOPIC_SOURCES = "sources"
 HELP_SOURCES_TEXT = (
     "show sources\n"
@@ -1178,7 +1308,7 @@ HELP_TOPIC_QUICK = "quick"
 HELP_SHOW_TEXT = (
     "show <status|groups|group <group>|devices|device <device>|device-group <device>|"
     "device-usage <device>|binding-usage <input>|commands|help|bindings|selected-device|runtime-state|config|config local-raw|config dirty|"
-    "sources|profiles|profile|tests|test <test>|message-level|workspace|session|controllers> "
+    "sources|profiles|profile|tests|test <test>|message-level|workspace|session|controllers|topology> "
     "[--json] [--pretty] [robot|local|both]\n"
     "  Defaults: robot if connected, otherwise local."
 )
@@ -1510,6 +1640,7 @@ class BridgeCli:
         echo_enabled: bool = False,
         message_level: Optional[str] = None,
         recovery_mode: bool = False,
+        visibility_provider: Optional[object] = None,
     ) -> None:
         self._session = session
         self._batch = batch
@@ -1557,6 +1688,7 @@ class BridgeCli:
         self._bindings_path: Optional[Path] = None
         self._bindings_dirty: bool = False
         self._version_printed = False
+        self._visibility_provider = visibility_provider
 
     def run_interactive(self) -> int:
         """
@@ -3084,6 +3216,8 @@ class BridgeCli:
             SHOW_TARGET_WORKSPACE,
             SHOW_TARGET_SESSION,
             SHOW_TARGET_CONTROLLERS,
+            SHOW_TARGET_TOPOLOGY,
+            SHOW_TARGET_VISIBILITY,
         ]
 
     def _show_flag_suggestions(self) -> List[str]:
@@ -5244,8 +5378,532 @@ class BridgeCli:
         print(MESSAGE_HINT_LOAD)
         return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
 
+    def _resolve_topology_label(self, labels: List[str], target: str) -> Optional[str]:
+        """
+        NAME
+            _resolve_topology_label - Resolve a label against topology nodes.
+        """
+        target_text = target.strip().lower()
+        if not target_text:
+            return None
+        for label in labels:
+            if label.strip().lower() == target_text:
+                return label
+        return None
+
+    def _topology_profile_entry(self) -> tuple[Optional[Dict[str, object]], Optional[List[str]]]:
+        """
+        NAME
+            _topology_profile_entry - Resolve the active profile topology entry.
+        """
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            return (None, None)
+        profile_name = self._active_profile_name()
+        if not profile_name:
+            print(MESSAGE_ERR_TOPOLOGY_PROFILE_REQUIRED)
+            return (None, None)
+        diagram = payload.get(KEY_DIAGRAM)
+        if not isinstance(diagram, dict):
+            print(MESSAGE_ERR_TOPOLOGY_MISSING)
+            return (None, None)
+        diag_profiles = diagram.get(KEY_DIAGRAM_PROFILES)
+        if not isinstance(diag_profiles, dict):
+            print(MESSAGE_ERR_TOPOLOGY_MISSING)
+            return (None, None)
+        diag_entry = diag_profiles.get(profile_name)
+        if not isinstance(diag_entry, dict):
+            print(MESSAGE_ERR_TOPOLOGY_MISSING)
+            return (None, None)
+        nodes_raw = parse_diagram_nodes(diag_entry)
+        labels: List[str] = []
+        for entry in nodes_raw:
+            if not isinstance(entry, dict):
+                continue
+            node_type = str(entry.get(KEY_NODE_TYPE) or NODE_TYPE_DEVICE)
+            if node_type == NODE_TYPE_CALLOUT:
+                continue
+            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if label:
+                labels.append(label)
+        return (diag_entry, labels)
+
+    def _topology_neighbor_adjacent(
+        self,
+        diag_entry: Dict[str, object],
+        source_label: str,
+        neighbor_label: str,
+    ) -> tuple[bool, str]:
+        """
+        NAME
+            _topology_neighbor_adjacent - Validate adjacency on the same bus.
+        """
+        nodes_raw = parse_diagram_nodes(diag_entry)
+        device_links = diag_entry.get(KEY_DEVICE_LINKS)
+        nodes: List[Dict[str, object]] = []
+        for entry in nodes_raw:
+            if not isinstance(entry, dict):
+                continue
+            node_type = str(entry.get(KEY_NODE_TYPE) or NODE_TYPE_DEVICE)
+            if node_type == NODE_TYPE_CALLOUT:
+                continue
+            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if not label:
+                continue
+            bus = entry.get(KEY_BUS)
+            x_value = entry.get(KEY_X)
+            nodes.append(
+                {
+                    KEY_LABEL: label,
+                    KEY_BUS: bus,
+                    KEY_X: x_value,
+                    KEY_NODE_KEY: entry.get(KEY_NODE_KEY),
+                }
+            )
+        if isinstance(device_links, list):
+            key_by_label = {
+                str(n.get(KEY_LABEL, EMPTY_STRING)).strip().lower(): n.get(KEY_NODE_KEY)
+                for n in nodes
+                if str(n.get(KEY_LABEL, EMPTY_STRING)).strip()
+            }
+            source_key = key_by_label.get(source_label.lower())
+            neighbor_key = key_by_label.get(neighbor_label.lower())
+            if source_key is not None and neighbor_key is not None:
+                for link in device_links:
+                    if not isinstance(link, dict):
+                        continue
+                    node_key = link.get(KEY_LINK_NODE)
+                    device_key = link.get(KEY_LINK_DEVICE)
+                    if (
+                        node_key == source_key
+                        and device_key == neighbor_key
+                        or node_key == neighbor_key
+                        and device_key == source_key
+                    ):
+                        return (True, EMPTY_STRING)
+        source = next(
+            (n for n in nodes if str(n.get(KEY_LABEL, EMPTY_STRING)).strip().lower() == source_label.lower()),
+            None,
+        )
+        neighbor = next(
+            (n for n in nodes if str(n.get(KEY_LABEL, EMPTY_STRING)).strip().lower() == neighbor_label.lower()),
+            None,
+        )
+        if source is None or neighbor is None:
+            return (False, MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(label=neighbor_label))
+        source_bus = source.get(KEY_BUS)
+        neighbor_bus = neighbor.get(KEY_BUS)
+        if source_bus != neighbor_bus:
+            return (False, MESSAGE_ERR_NEIGHBOR_PORTS_BUS)
+        source_x = source.get(KEY_X)
+        neighbor_x = neighbor.get(KEY_X)
+        if not isinstance(source_x, (int, float)) or not isinstance(neighbor_x, (int, float)):
+            return (False, MESSAGE_ERR_NEIGHBOR_PORTS_NODE_FIELDS)
+        same_bus = [
+            n
+            for n in nodes
+            if n.get(KEY_BUS) == source_bus and isinstance(n.get(KEY_X), (int, float))
+        ]
+        same_bus.sort(key=lambda n: (n.get(KEY_X), str(n.get(KEY_LABEL, EMPTY_STRING)).lower()))
+        labels = [str(n.get(KEY_LABEL, EMPTY_STRING)).strip().lower() for n in same_bus]
+        try:
+            src_index = labels.index(source_label.lower())
+            neighbor_index = labels.index(neighbor_label.lower())
+        except ValueError:
+            return (False, MESSAGE_ERR_NEIGHBOR_PORTS_NODE_FIELDS)
+        if abs(src_index - neighbor_index) != COUNT_ONE:
+            return (False, MESSAGE_ERR_NEIGHBOR_PORTS_NOT_ADJACENT)
+        return (True, EMPTY_STRING)
+
+    def _cannect_port_name(self, port: object) -> Optional[str]:
+        """
+        NAME
+            _cannect_port_name - Map CANnect port number to neighbor port name.
+        """
+        if not isinstance(port, int):
+            return None
+        if port == CANNECT_PORT_ONE:
+            return NEIGHBOR_PORT_NEXT
+        if port == CANNECT_PORT_TWO:
+            return NEIGHBOR_PORT_BRANCH1
+        if port == CANNECT_PORT_THREE:
+            return NEIGHBOR_PORT_BRANCH2
+        return None
+
+    def _topology_auto_neighbors(
+        self,
+        diag_entry: Dict[str, object],
+        target_labels: Optional[List[str]] = None,
+    ) -> List[Dict[str, object]]:
+        """
+        NAME
+            _topology_auto_neighbors - Build left/right neighbor ports from topology.
+        """
+        nodes_raw = parse_diagram_nodes(diag_entry)
+        device_links = diag_entry.get(KEY_DEVICE_LINKS)
+        nodes_all: List[Dict[str, object]] = []
+        for entry in nodes_raw:
+            if not isinstance(entry, dict):
+                continue
+            node_type = str(entry.get(KEY_NODE_TYPE) or NODE_TYPE_DEVICE)
+            if node_type == NODE_TYPE_CALLOUT:
+                continue
+            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if not label:
+                continue
+            bus = entry.get(KEY_BUS)
+            x_value = entry.get(KEY_X)
+            nodes_all.append(
+                {
+                    KEY_LABEL: label,
+                    KEY_BUS: bus,
+                    KEY_X: x_value,
+                    KEY_NODE_KEY: entry.get(KEY_NODE_KEY),
+                }
+            )
+        by_bus: Dict[int, List[Dict[str, object]]] = {}
+        linked_devices: set[str] = set()
+        label_by_key: Dict[object, str] = {}
+        for node in nodes_all:
+            key = node.get(KEY_NODE_KEY)
+            label = str(node.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if key is not None and label:
+                label_by_key[key] = label
+        for node in nodes_all:
+            bus = node.get(KEY_BUS)
+            if isinstance(bus, int):
+                by_bus.setdefault(bus, []).append(node)
+        if isinstance(device_links, list):
+            for link in device_links:
+                if not isinstance(link, dict):
+                    continue
+                device_key = link.get(KEY_LINK_DEVICE)
+                if device_key in label_by_key:
+                    linked_devices.add(label_by_key[device_key])
+        entries: List[Dict[str, object]] = []
+        for bus_nodes in by_bus.values():
+            bus_nodes.sort(key=lambda n: (n.get(KEY_X), str(n.get(KEY_LABEL, EMPTY_STRING)).lower()))
+            for idx, node in enumerate(bus_nodes):
+                label = str(node.get(KEY_LABEL, EMPTY_STRING)).strip()
+                if not label:
+                    continue
+                if target_labels is not None and label not in target_labels:
+                    continue
+                if label in linked_devices:
+                    continue
+                if idx > COUNT_ZERO:
+                    left = bus_nodes[idx - COUNT_ONE]
+                    left_label = str(left.get(KEY_LABEL, EMPTY_STRING)).strip()
+                    if left_label:
+                        entries.append(
+                            {
+                                KEY_LINK_NODE: label,
+                                KEY_LINK_PORT: NEIGHBOR_PORT_LEFT,
+                                KEY_LINK_NEIGHBOR: left_label,
+                                KEY_LINK_NEIGHBOR_PORT: NEIGHBOR_PORT_RIGHT,
+                            }
+                        )
+                if idx + COUNT_ONE < len(bus_nodes):
+                    right = bus_nodes[idx + COUNT_ONE]
+                    right_label = str(right.get(KEY_LABEL, EMPTY_STRING)).strip()
+                    if right_label:
+                        entries.append(
+                            {
+                                KEY_LINK_NODE: label,
+                                KEY_LINK_PORT: NEIGHBOR_PORT_RIGHT,
+                                KEY_LINK_NEIGHBOR: right_label,
+                                KEY_LINK_NEIGHBOR_PORT: NEIGHBOR_PORT_LEFT,
+                            }
+                        )
+        if isinstance(device_links, list):
+            for link in device_links:
+                if not isinstance(link, dict):
+                    continue
+                node_key = link.get(KEY_LINK_NODE)
+                device_key = link.get(KEY_LINK_DEVICE)
+                port = link.get(KEY_LINK_PORT)
+                node_label = label_by_key.get(node_key)
+                device_label = label_by_key.get(device_key)
+                if not node_label or not device_label:
+                    continue
+                if target_labels is not None:
+                    include_node = node_label in target_labels
+                    include_device = device_label in target_labels
+                    if not include_node and not include_device:
+                        continue
+                port_name = self._cannect_port_name(port)
+                if port_name is None:
+                    continue
+                if target_labels is None or node_label in target_labels:
+                    entries.append(
+                        {
+                            KEY_LINK_NODE: node_label,
+                            KEY_LINK_PORT: port_name,
+                            KEY_LINK_NEIGHBOR: device_label,
+                            KEY_LINK_NEIGHBOR_PORT: NEIGHBOR_PORT_NEXT,
+                        }
+                    )
+                if target_labels is None or device_label in target_labels:
+                    entries.append(
+                        {
+                            KEY_LINK_NODE: device_label,
+                            KEY_LINK_PORT: NEIGHBOR_PORT_NEXT,
+                            KEY_LINK_NEIGHBOR: node_label,
+                            KEY_LINK_NEIGHBOR_PORT: port_name,
+                        }
+                    )
+        return entries
+
+    def _config_topology_neighbor_auto(
+        self, diag_entry: Dict[str, object], labels: List[str], tokens: List[str]
+    ) -> StatusResult:
+        """
+        NAME
+            _config_topology_neighbor_auto - Auto assign neighbor ports.
+        """
+        if len(tokens) < COUNT_THREE:
+            print(MESSAGE_ERR_NEIGHBOR_AUTO_SYNTAX)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        mode = tokens[COUNT_TWO].lower()
+        if mode == CMD_ALL:
+            target_labels: Optional[List[str]] = None
+            if len(tokens) >= COUNT_FOUR:
+                raw = tokens[COUNT_THREE]
+                parts = [part.strip() for part in str(raw).split(PROFILE_EXPORT_JSON_SEP_COMMA)]
+                resolved: List[str] = []
+                for part in parts:
+                    if not part:
+                        continue
+                    match = self._resolve_topology_label(labels, part)
+                    if match is None:
+                        print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(label=part))
+                        return StatusResult(code=SS__DEVICE__NOT_FOUND)
+                    if match not in resolved:
+                        resolved.append(match)
+                if resolved:
+                    target_labels = resolved
+            entries = self._topology_auto_neighbors(diag_entry, target_labels)
+            if target_labels is None:
+                diag_entry[KEY_NEIGHBOR_PORTS] = entries
+            else:
+                neighbor_ports = diag_entry.get(KEY_NEIGHBOR_PORTS)
+                if not isinstance(neighbor_ports, list):
+                    neighbor_ports = []
+                target_lower = {label.lower() for label in target_labels}
+                neighbor_ports = [
+                    entry
+                    for entry in neighbor_ports
+                    if not (
+                        isinstance(entry, dict)
+                        and str(entry.get(KEY_LINK_NODE, EMPTY_STRING)).strip().lower()
+                        in target_lower
+                    )
+                ]
+                neighbor_ports.extend(entries)
+                diag_entry[KEY_NEIGHBOR_PORTS] = neighbor_ports
+            self._profiles_dirty = True
+            print(MESSAGE_NEIGHBOR_AUTO_OK)
+            return StatusResult(code=SS__NORMAL)
+        if mode == CMD_NODE:
+            if len(tokens) < COUNT_FOUR:
+                print(MESSAGE_ERR_NEIGHBOR_AUTO_NODE)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            label = self._resolve_topology_label(labels, tokens[COUNT_THREE])
+            if label is None:
+                print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(label=tokens[COUNT_THREE]))
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
+            entries = self._topology_auto_neighbors(diag_entry, [label])
+            neighbor_ports = diag_entry.get(KEY_NEIGHBOR_PORTS)
+            if not isinstance(neighbor_ports, list):
+                neighbor_ports = []
+            neighbor_ports = [
+                entry
+                for entry in neighbor_ports
+                if not (
+                    isinstance(entry, dict)
+                    and str(entry.get(KEY_LINK_NODE, EMPTY_STRING)).strip().lower()
+                    == label.lower()
+                )
+            ]
+            neighbor_ports.extend(entries)
+            diag_entry[KEY_NEIGHBOR_PORTS] = neighbor_ports
+            self._profiles_dirty = True
+            print(MESSAGE_NEIGHBOR_AUTO_OK)
+            return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_ERR_NEIGHBOR_AUTO_SYNTAX)
+        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+
+    def _config_topology_neighbor_ports_set(
+        self,
+        diag_entry: Dict[str, object],
+        labels: List[str],
+        node_label: str,
+        port: str,
+        neighbor_label: str,
+        neighbor_port: str,
+    ) -> StatusResult:
+        """
+        NAME
+            _config_topology_neighbor_ports_set - Set a neighbor port entry.
+        """
+        source = self._resolve_topology_label(labels, node_label)
+        neighbor = self._resolve_topology_label(labels, neighbor_label)
+        if source is None:
+            print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(label=node_label))
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        if neighbor is None:
+            print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(label=neighbor_label))
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        if source.lower() == neighbor.lower():
+            print(MESSAGE_ERR_NEIGHBOR_PORTS_SAME_LABEL)
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+        ok, error = self._topology_neighbor_adjacent(diag_entry, source, neighbor)
+        if not ok:
+            print(error)
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+        neighbor_ports = diag_entry.get(KEY_NEIGHBOR_PORTS)
+        if not isinstance(neighbor_ports, list):
+            neighbor_ports = []
+        neighbor_ports = [
+            entry
+            for entry in neighbor_ports
+            if isinstance(entry, dict)
+            and not (
+                str(entry.get(KEY_LINK_NODE, EMPTY_STRING)).strip().lower() == source.lower()
+                and str(entry.get(KEY_LINK_PORT, EMPTY_STRING)).strip().lower() == port.lower()
+            )
+        ]
+        neighbor_ports.append(
+            {
+                KEY_LINK_NODE: source,
+                KEY_LINK_PORT: port,
+                KEY_LINK_NEIGHBOR: neighbor,
+                KEY_LINK_NEIGHBOR_PORT: neighbor_port,
+            }
+        )
+        diag_entry[KEY_NEIGHBOR_PORTS] = neighbor_ports
+        self._profiles_dirty = True
+        print(MESSAGE_NEIGHBOR_PORTS_SET_OK.format(label=source))
+        return StatusResult(code=SS__NORMAL)
+
+    def _config_topology_neighbor_ports_delete(
+        self, diag_entry: Dict[str, object], labels: List[str], node_label: str, port: str
+    ) -> StatusResult:
+        """
+        NAME
+            _config_topology_neighbor_ports_delete - Remove a neighbor port entry.
+        """
+        source = self._resolve_topology_label(labels, node_label)
+        if source is None:
+            print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(label=node_label))
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        neighbor_ports = diag_entry.get(KEY_NEIGHBOR_PORTS)
+        if not isinstance(neighbor_ports, list):
+            neighbor_ports = []
+        filtered = [
+            entry
+            for entry in neighbor_ports
+            if not (
+                isinstance(entry, dict)
+                and str(entry.get(KEY_LINK_NODE, EMPTY_STRING)).strip().lower() == source.lower()
+                and str(entry.get(KEY_LINK_PORT, EMPTY_STRING)).strip().lower() == port.lower()
+            )
+        ]
+        diag_entry[KEY_NEIGHBOR_PORTS] = filtered
+        self._profiles_dirty = True
+        print(MESSAGE_NEIGHBOR_PORTS_DELETE_OK.format(label=source))
+        return StatusResult(code=SS__NORMAL)
+
+    def _config_topology_neighbor_ports_clear(
+        self, diag_entry: Dict[str, object], labels: List[str], node_label: str
+    ) -> StatusResult:
+        """
+        NAME
+            _config_topology_neighbor_ports_clear - Clear neighbor port entries.
+        """
+        source = self._resolve_topology_label(labels, node_label)
+        if source is None:
+            print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(label=node_label))
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        neighbor_ports = diag_entry.get(KEY_NEIGHBOR_PORTS)
+        if not isinstance(neighbor_ports, list):
+            neighbor_ports = []
+        filtered = [
+            entry
+            for entry in neighbor_ports
+            if not (
+                isinstance(entry, dict)
+                and str(entry.get(KEY_LINK_NODE, EMPTY_STRING)).strip().lower() == source.lower()
+            )
+        ]
+        diag_entry[KEY_NEIGHBOR_PORTS] = filtered
+        self._profiles_dirty = True
+        print(MESSAGE_NEIGHBOR_PORTS_CLEAR_OK.format(label=source))
+        return StatusResult(code=SS__NORMAL)
+
+    def _config_topology_command(self, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _config_topology_command - Handle topology configuration commands.
+        """
+        if len(tokens) < COUNT_TWO:
+            print(MESSAGE_ERR_NEIGHBOR_PORTS_SYNTAX)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        sub = tokens[COUNT_ONE].lower()
+        if sub != CMD_NEIGHBOR_PORTS:
+            if sub == CMD_NEIGHBOR_AUTO:
+                diag_entry, labels = self._topology_profile_entry()
+                if diag_entry is None or labels is None:
+                    return StatusResult(code=SS__CONFIG__NOT_LOADED)
+                return self._config_topology_neighbor_auto(diag_entry, labels, tokens)
+            print(MESSAGE_ERR_NEIGHBOR_PORTS_SYNTAX)
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+        if len(tokens) < COUNT_THREE:
+            print(MESSAGE_ERR_NEIGHBOR_PORTS_SYNTAX)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        action = tokens[COUNT_TWO].lower()
+        diag_entry, labels = self._topology_profile_entry()
+        if diag_entry is None or labels is None:
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        if action == CMD_SET:
+            if len(tokens) < COUNT_SEVEN:
+                print(MESSAGE_ERR_NEIGHBOR_PORTS_SET_ARGS)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._config_topology_neighbor_ports_set(
+                diag_entry,
+                labels,
+                tokens[COUNT_THREE],
+                tokens[COUNT_FOUR],
+                tokens[COUNT_FIVE],
+                tokens[COUNT_SIX],
+            )
+        if action == CMD_DELETE:
+            if len(tokens) < COUNT_FIVE:
+                print(MESSAGE_ERR_NEIGHBOR_PORTS_DELETE_ARGS)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._config_topology_neighbor_ports_delete(
+                diag_entry,
+                labels,
+                tokens[COUNT_THREE],
+                tokens[COUNT_FOUR],
+            )
+        if action == CMD_CLEAR:
+            if len(tokens) < COUNT_FOUR:
+                print(MESSAGE_ERR_NEIGHBOR_PORTS_CLEAR_ARGS)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._config_topology_neighbor_ports_clear(
+                diag_entry,
+                labels,
+                tokens[COUNT_THREE],
+            )
+        print(MESSAGE_ERR_NEIGHBOR_PORTS_SYNTAX)
+        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+
     def _config_command(self, tokens: List[str]) -> StatusResult:
         cmd = tokens[0].lower()
+        if cmd == CMD_TOPOLOGY:
+            return self._config_topology_command(tokens)
         if cmd == CMD_BINDINGS:
             return self._config_bindings_command(tokens)
         if cmd == CMD_CAN_MAPPINGS:
@@ -5889,6 +6547,10 @@ class BridgeCli:
         if target == SHOW_TARGET_INPUT_ALIASES:
             source = SHOW_SOURCE_LOCAL
         if target == SHOW_TARGET_CAN_MAPPINGS:
+            source = SHOW_SOURCE_LOCAL
+        if target == SHOW_TARGET_TOPOLOGY:
+            source = SHOW_SOURCE_LOCAL
+        if target == SHOW_TARGET_VISIBILITY:
             source = SHOW_SOURCE_LOCAL
         if target in (SHOW_TARGET_COMMANDS, SHOW_TARGET_HELP):
             source = SHOW_SOURCE_LOCAL
@@ -7552,6 +8214,9 @@ class BridgeCli:
             "load config": HELP_LOAD_CONFIG_TEXT,
             "merge config": HELP_MERGE_CONFIG_TEXT,
             "import config": HELP_IMPORT_CONFIG_TEXT,
+            "topology": HELP_TOPOLOGY_TEXT,
+            "topology neighbor-ports": HELP_TOPOLOGY_NEIGHBOR_PORTS_TEXT,
+            "topology neighbor-auto": HELP_TOPOLOGY_NEIGHBOR_AUTO_TEXT,
             "export runtime-groups": (
                 "export runtime-groups <bridgeConfig.json>\n"
                 "  Write bridgeConfig.byProfile for the active profile."
@@ -7598,6 +8263,9 @@ class BridgeCli:
             HELP_TOPIC_DEVICE_USAGE: HELP_DEVICE_USAGE_TEXT,
             HELP_TOPIC_BINDING_USAGE: HELP_BINDING_USAGE_TEXT,
             HELP_TOPIC_INPUT_ALIASES: HELP_INPUT_ALIASES_TEXT,
+            HELP_TOPIC_TOPOLOGY: HELP_TOPOLOGY_TEXT,
+            HELP_TOPIC_TOPOLOGY_NEIGHBOR_PORTS: HELP_TOPOLOGY_NEIGHBOR_PORTS_TEXT,
+            HELP_TOPIC_TOPOLOGY_NEIGHBOR_AUTO: HELP_TOPOLOGY_NEIGHBOR_AUTO_TEXT,
             HELP_TOPIC_PROFILE_DEVICE_DELETE: HELP_PROFILE_DEVICE_DELETE_TEXT,
             HELP_TOPIC_PROFILE_DEVICE_SHOW_ALL: HELP_PROFILE_DEVICE_SHOW_ALL_TEXT,
             HELP_TOPIC_PROFILE_DELETE: HELP_PROFILE_DELETE_TEXT,
@@ -7837,6 +8505,8 @@ class BridgeCli:
             if self._show_message_level(json_output, pretty):
                 return StatusResult(code=SS__NORMAL)
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+        if target == SHOW_TARGET_VISIBILITY:
+            return self._show_local_visibility(tokens, json_output, pretty)
         if not self._local_config:
             print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
@@ -7852,6 +8522,11 @@ class BridgeCli:
             return self._show_binding_usage(name, json_output, pretty)
         if target == SHOW_TARGET_INPUT_ALIASES:
             return self._show_input_aliases(json_output, pretty)
+        if target == SHOW_TARGET_TOPOLOGY:
+            show_neighbors = (
+                len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == SHOW_TOPOLOGY_NEIGHBORS
+            )
+            return self._show_local_topology(json_output, pretty, show_neighbors=show_neighbors)
         if target == SHOW_TARGET_CONFIG_RAW:
             return self._show_local_config_raw(json_output, pretty)
         if target == SHOW_TARGET_CONFIG_DIRTY:
@@ -8367,6 +9042,331 @@ class BridgeCli:
         print(MESSAGE_LOCAL_PROFILE_ACTIVE.format(name=active or STRING_NONE))
         print(MESSAGE_LOCAL_PROFILE_DEFAULT.format(name=default_profile or STRING_NONE))
         print(MESSAGE_LOCAL_PROFILE_AVAILABLE.format(count=count))
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_local_topology(
+        self, json_output: bool, pretty: bool, show_neighbors: bool = False
+    ) -> StatusResult:
+        """
+        NAME
+            _show_local_topology - Show diagram nodes for the active profile.
+        """
+        payload = self._local_root_payload if isinstance(self._local_root_payload, dict) else None
+        if payload is None:
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        profile_name = self._active_profile_name()
+        if not profile_name:
+            print(MESSAGE_ERR_PROFILE_REQUIRED)
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
+        diagram = payload.get(KEY_DIAGRAM)
+        if not isinstance(diagram, dict):
+            return self._show_local_topology_empty(json_output, pretty, profile_name)
+        diag_profiles = diagram.get(KEY_DIAGRAM_PROFILES)
+        if not isinstance(diag_profiles, dict):
+            return self._show_local_topology_empty(json_output, pretty, profile_name)
+        diag_entry = diag_profiles.get(profile_name)
+        if not isinstance(diag_entry, dict):
+            return self._show_local_topology_empty(json_output, pretty, profile_name)
+        nodes_raw = parse_diagram_nodes(diag_entry)
+        nodes: List[Dict[str, object]] = []
+        for entry in nodes_raw:
+            if not isinstance(entry, dict):
+                continue
+            node_type = str(entry.get(KEY_NODE_TYPE) or NODE_TYPE_DEVICE)
+            if node_type == NODE_TYPE_CALLOUT:
+                continue
+            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+            category = str(entry.get(KEY_CATEGORY, EMPTY_STRING)).strip()
+            node_id = entry.get(KEY_ID) if isinstance(entry.get(KEY_ID), int) else None
+            bus = entry.get(KEY_BUS) if isinstance(entry.get(KEY_BUS), int) else None
+            row = entry.get(KEY_ROW) if isinstance(entry.get(KEY_ROW), int) else None
+            x = entry.get(KEY_X) if isinstance(entry.get(KEY_X), (int, float)) else None
+            scale = entry.get(KEY_SCALE) if isinstance(entry.get(KEY_SCALE), (int, float)) else None
+            tags = entry.get(KEY_TAGS) if isinstance(entry.get(KEY_TAGS), list) else []
+            profile_visible = entry.get(KEY_PROFILE_VISIBLE)
+            nodes.append(
+                {
+                    KEY_NODE_TYPE: node_type,
+                    KEY_CATEGORY: category,
+                    KEY_LABEL: label,
+                    KEY_ID: node_id,
+                    KEY_BUS: bus,
+                    KEY_ROW: row,
+                    KEY_X: x,
+                    KEY_SCALE: scale,
+                    KEY_TAGS: tags,
+                    KEY_PROFILE_VISIBLE: profile_visible,
+                }
+            )
+        neighbor_ports = parse_diagram_neighbor_ports(diag_entry)
+        if json_output:
+            print(
+                self._dump_json(
+                    {
+                        KEY_SOURCE: SHOW_SOURCE_LOCAL,
+                        KEY_PROFILE: profile_name,
+                        KEY_NODES: nodes,
+                        KEY_NEIGHBOR_PORTS: neighbor_ports,
+                    },
+                    pretty,
+                )
+            )
+            return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_SOURCE_LOCAL)
+        if show_neighbors:
+            if not neighbor_ports:
+                print(TOPOLOGY_NEIGHBORS_EMPTY)
+                return StatusResult(code=SS__NORMAL)
+            print(TOPOLOGY_NEIGHBORS_HEADER)
+            for entry in neighbor_ports:
+                if not isinstance(entry, dict):
+                    continue
+                node = str(entry.get(KEY_LINK_NODE, STRING_NONE)).strip() or STRING_NONE
+                port = str(entry.get(KEY_LINK_PORT, STRING_NONE)).strip() or STRING_NONE
+                neighbor = str(entry.get(KEY_LINK_NEIGHBOR, STRING_NONE)).strip() or STRING_NONE
+                neighbor_port = str(entry.get(KEY_LINK_NEIGHBOR_PORT, STRING_NONE)).strip() or STRING_NONE
+                print(
+                    TOPOLOGY_NEIGHBOR_ENTRY_FMT.format(
+                        node=node,
+                        port=port,
+                        neighbor=neighbor,
+                        neighbor_port=neighbor_port,
+                    )
+                )
+            return StatusResult(code=SS__NORMAL)
+        if not nodes:
+            print(TOPOLOGY_EMPTY)
+            return StatusResult(code=SS__NORMAL)
+        print(TOPOLOGY_HEADER)
+        for entry in nodes:
+            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip() or STRING_NONE
+            node_type = str(entry.get(KEY_NODE_TYPE, STRING_NONE))
+            category = str(entry.get(KEY_CATEGORY, STRING_NONE))
+            node_id = entry.get(KEY_ID)
+            bus = entry.get(KEY_BUS)
+            row = entry.get(KEY_ROW)
+            tags = entry.get(KEY_TAGS, [])
+            id_text = str(node_id) if isinstance(node_id, int) else STRING_NONE
+            bus_text = str(bus) if isinstance(bus, int) else STRING_NONE
+            row_text = str(row) if isinstance(row, int) else STRING_NONE
+            tags_text = SEP_COMMA_SPACE.join([str(t) for t in tags]) if tags else STRING_NONE
+            print(
+                TOPOLOGY_NODE_FMT.format(
+                    label=label,
+                    node_type=node_type or STRING_NONE,
+                    category=category or STRING_NONE,
+                    node_id=id_text,
+                    bus=bus_text,
+                    row=row_text,
+                    tags=tags_text,
+                )
+            )
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_local_topology_empty(
+        self, json_output: bool, pretty: bool, profile_name: str
+    ) -> StatusResult:
+        """
+        NAME
+            _show_local_topology_empty - Emit an empty topology response.
+        """
+        if json_output:
+            print(
+                self._dump_json(
+                    {
+                        KEY_SOURCE: SHOW_SOURCE_LOCAL,
+                        KEY_PROFILE: profile_name,
+                        KEY_NODES: [],
+                    },
+                    pretty,
+                )
+            )
+            return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_SOURCE_LOCAL)
+        print(TOPOLOGY_EMPTY)
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_local_visibility(self, tokens: List[str], json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_local_visibility - Show multi-source visibility state.
+        """
+        if self._visibility_provider is None:
+            print(MESSAGE_ERR_VISIBILITY_UNAVAILABLE)
+            return StatusResult(code=SS__EXECUTOR__NOT_SUPPORTED)
+        name = tokens[COUNT_ONE] if len(tokens) >= COUNT_TWO else EMPTY_STRING
+        now_ms = int(time.time() * VIS_MS_PER_SEC)
+        if name.lower() == SHOW_VISIBILITY_SUMMARY:
+            summary = self._visibility_provider.summary(VIS_SCOPE_BOTH, now_ms)
+            if json_output:
+                payload = self._format_json(summary, pretty)
+                print(payload)
+                return StatusResult(code=SS__NORMAL)
+            return self._print_visibility_summary(summary)
+        if name:
+            snapshot = self._visibility_provider.snapshot_device(name, now_ms)
+            if not snapshot:
+                print(MESSAGE_ERR_VISIBILITY_DEVICE_NOT_FOUND.format(name=name))
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
+            if json_output:
+                payload = self._format_json(snapshot, pretty)
+                print(payload)
+                return StatusResult(code=SS__NORMAL)
+            return self._print_visibility_device(snapshot)
+        snapshot = self._visibility_provider.snapshot(VIS_SCOPE_BOTH, now_ms)
+        if json_output:
+            payload = self._format_json(snapshot, pretty)
+            print(payload)
+            return StatusResult(code=SS__NORMAL)
+        return self._print_visibility_matrix(snapshot)
+
+    def _print_visibility_matrix(self, snapshot: Dict[str, object]) -> StatusResult:
+        """
+        NAME
+            _print_visibility_matrix - Print the visibility matrix table.
+        """
+        sources = snapshot.get(VIS_KEY_SOURCES)
+        devices = snapshot.get(VIS_KEY_DEVICES)
+        if not isinstance(sources, list) or not isinstance(devices, list):
+            print(MESSAGE_ERR_VISIBILITY_UNAVAILABLE)
+            return StatusResult(code=SS__EXECUTOR__FAILED)
+        source_ids: List[str] = []
+        source_labels: Dict[str, str] = {}
+        source_available = COUNT_ZERO
+        for entry in sources:
+            if not isinstance(entry, dict):
+                continue
+            src_id = str(entry.get(VIS_KEY_ID, EMPTY_STRING)).strip()
+            if not src_id:
+                continue
+            source_ids.append(src_id)
+            label = str(entry.get(VIS_KEY_LABEL, src_id)).strip() or src_id
+            source_labels[src_id] = label
+            if bool(entry.get(VIS_KEY_AVAILABLE)):
+                source_available += COUNT_ONE
+        headers = [SHOW_VISIBILITY_HEADER_DEVICE] + [source_labels.get(sid, sid) for sid in source_ids]
+        rows: List[List[str]] = []
+        for device in devices:
+            if not isinstance(device, dict):
+                continue
+            label = str(device.get(VIS_KEY_LABEL, EMPTY_STRING)).strip()
+            key = str(device.get(VIS_KEY_KEY, EMPTY_STRING)).strip()
+            device_name = label or key
+            visibility = device.get(VIS_KEY_VISIBILITY)
+            if not isinstance(visibility, dict):
+                visibility = {}
+            values = [device_name]
+            for sid in source_ids:
+                value = visibility.get(sid)
+                if value is True:
+                    values.append(SHOW_VISIBILITY_VALUE_YES)
+                elif value is False:
+                    values.append(SHOW_VISIBILITY_VALUE_NO)
+                else:
+                    values.append(SHOW_VISIBILITY_VALUE_UNKNOWN)
+            rows.append(values)
+        print(MESSAGE_SOURCE_LOCAL)
+        self._print_table_simple(headers, rows)
+        scope = snapshot.get(VIS_KEY_SCOPE, EMPTY_STRING)
+        timeout_ms = snapshot.get(VIS_KEY_TIMEOUT_MS, EMPTY_STRING)
+        scope_text = SHOW_VISIBILITY_SCOPE_FMT.format(scope=scope)
+        print(scope_text)
+        print(SHOW_VISIBILITY_TIMEOUT_FMT.format(timeout_ms=timeout_ms))
+        print(SHOW_VISIBILITY_UNAVAILABLE.format(count=len(source_ids) - source_available))
+        print(SHOW_VISIBILITY_LEGEND)
+        return StatusResult(code=SS__NORMAL)
+
+    def _print_visibility_device(self, snapshot: Dict[str, object]) -> StatusResult:
+        """
+        NAME
+            _print_visibility_device - Print per-device visibility details.
+        """
+        device = (
+            snapshot.get(VIS_KEY_DEVICE)
+            if isinstance(snapshot.get(VIS_KEY_DEVICE), dict)
+            else {}
+        )
+        sources = snapshot.get(VIS_KEY_SOURCES) if isinstance(snapshot.get(VIS_KEY_SOURCES), list) else []
+        label = str(device.get(VIS_KEY_LABEL, EMPTY_STRING)).strip()
+        key = str(device.get(VIS_KEY_KEY, EMPTY_STRING)).strip()
+        print(MESSAGE_SOURCE_LOCAL)
+        print(SHOW_VISIBILITY_DEVICE_FMT.format(name=label or key))
+        headers = [
+            SHOW_VISIBILITY_SOURCE,
+            SHOW_VISIBILITY_HEADER_VISIBLE,
+            SHOW_VISIBILITY_HEADER_AGE,
+            SHOW_VISIBILITY_HEADER_FPS,
+        ]
+        rows: List[List[str]] = []
+        for entry in sources:
+            if not isinstance(entry, dict):
+                continue
+            src_label = str(entry.get(VIS_KEY_LABEL, EMPTY_STRING)).strip()
+            visible = entry.get(VIS_KEY_VISIBILITY)
+            age_ms = entry.get(VIS_KEY_AGE_MS)
+            fps = entry.get(VIS_KEY_FRAMES_PER_SEC)
+            visible_text = (
+                SHOW_VISIBILITY_VALUE_YES
+                if visible is True
+                else SHOW_VISIBILITY_VALUE_NO
+                if visible is False
+                else SHOW_VISIBILITY_VALUE_UNKNOWN
+            )
+            age_text = (
+                SHOW_VISIBILITY_AGE_FMT.format(value=float(age_ms) / VIS_MS_PER_SEC)
+                if isinstance(age_ms, (int, float))
+                else SHOW_VISIBILITY_PLACEHOLDER
+            )
+            fps_text = (
+                SHOW_VISIBILITY_FPS_FMT.format(value=float(fps))
+                if isinstance(fps, (int, float))
+                else SHOW_VISIBILITY_PLACEHOLDER
+            )
+            rows.append([src_label, visible_text, age_text, fps_text])
+        self._print_table_simple(headers, rows)
+        return StatusResult(code=SS__NORMAL)
+
+    def _print_table_simple(self, headers: List[str], rows: List[List[str]]) -> None:
+        """
+        NAME
+            _print_table_simple - Render a simple aligned table.
+        """
+        if not headers:
+            return
+        widths = [len(str(h)) for h in headers]
+        for row in rows:
+            for idx, cell in enumerate(row):
+                if idx >= len(widths):
+                    widths.append(len(str(cell)))
+                else:
+                    widths[idx] = max(widths[idx], len(str(cell)))
+        header_line = "  ".join(str(headers[idx]).ljust(widths[idx]) for idx in range(len(headers)))
+        print(header_line)
+        if rows:
+            for row in rows:
+                line = "  ".join(
+                    str(row[idx] if idx < len(row) else EMPTY_STRING).ljust(widths[idx])
+                    for idx in range(len(headers))
+                )
+                print(line)
+
+    def _print_visibility_summary(self, summary: Dict[str, object]) -> StatusResult:
+        """
+        NAME
+            _print_visibility_summary - Print visibility summary counts.
+        """
+        sources = summary.get(VIS_KEY_SOURCES_COUNT, COUNT_ZERO)
+        devices = summary.get(VIS_KEY_DEVICES_SHOWN, COUNT_ZERO)
+        visible_all = summary.get(VIS_KEY_VISIBLE_ALL, COUNT_ZERO)
+        visible_some = summary.get(VIS_KEY_VISIBLE_SOME, COUNT_ZERO)
+        visible_none = summary.get(VIS_KEY_VISIBLE_NONE, COUNT_ZERO)
+        print(MESSAGE_SOURCE_LOCAL)
+        print(SHOW_VISIBILITY_SUMMARY_SOURCES_FMT.format(sources=sources))
+        print(SHOW_VISIBILITY_SUMMARY_DEVICES_FMT.format(devices=devices))
+        print(SHOW_VISIBILITY_SUMMARY_ALL_FMT.format(count=visible_all))
+        print(SHOW_VISIBILITY_SUMMARY_SOME_FMT.format(count=visible_some))
+        print(SHOW_VISIBILITY_SUMMARY_NONE_FMT.format(count=visible_none))
         return StatusResult(code=SS__NORMAL)
 
     def _show_local_config_raw(self, json_output: bool, pretty: bool) -> StatusResult:
@@ -8963,6 +9963,23 @@ class BridgeCli:
                 removed = True
         if removed:
             diag_profile["nodes"] = nodes
+        label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+        if label:
+            neighbor_ports = diag_profile.get(KEY_NEIGHBOR_PORTS)
+            if isinstance(neighbor_ports, list):
+                diag_profile[KEY_NEIGHBOR_PORTS] = [
+                    link
+                    for link in neighbor_ports
+                    if not (
+                        isinstance(link, dict)
+                        and (
+                            str(link.get(KEY_LINK_NODE, EMPTY_STRING)).strip().lower()
+                            == label.lower()
+                            or str(link.get(KEY_LINK_NEIGHBOR, EMPTY_STRING)).strip().lower()
+                            == label.lower()
+                        )
+                    )
+                ]
 
     def _rename_profiles_device(self, old: str, new: str) -> StatusResult:
         """
@@ -8977,9 +9994,10 @@ class BridgeCli:
         if not new_label:
             print("ERROR: new device name required.")
             return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        old_label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
         entry["label"] = new_label
         self._profiles_dirty = True
-        self._update_diagram_label(entry, new_label)
+        self._update_diagram_label(entry, new_label, old_label)
         self._update_bridge_groups_label(old, new_label)
         self._refresh_devices_from_profiles()
         return StatusResult(code=SS__NORMAL)
@@ -9023,7 +10041,13 @@ class BridgeCli:
             self._local_config = config
             self._mark_groups_dirty()
 
-    def _update_diagram_label(self, entry: Dict[str, object], new_label: str) -> None:
+    def _update_diagram_label(
+        self, entry: Dict[str, object], new_label: str, old_label: str
+    ) -> None:
+        """
+        NAME
+            _update_diagram_label - Update topology diagram labels after rename.
+        """
         payload = self._local_root_payload
         if not isinstance(payload, dict):
             return
@@ -9058,6 +10082,18 @@ class BridgeCli:
                 continue
             if node.get("category") == category and node.get("id") == device_id:
                 node["label"] = new_label
+        if old_label:
+            neighbor_ports = diag_profile.get(KEY_NEIGHBOR_PORTS)
+            if isinstance(neighbor_ports, list):
+                for link in neighbor_ports:
+                    if not isinstance(link, dict):
+                        continue
+                    node_label = str(link.get(KEY_LINK_NODE, EMPTY_STRING)).strip()
+                    neighbor_label = str(link.get(KEY_LINK_NEIGHBOR, EMPTY_STRING)).strip()
+                    if node_label.lower() == old_label.lower():
+                        link[KEY_LINK_NODE] = new_label
+                    if neighbor_label.lower() == old_label.lower():
+                        link[KEY_LINK_NEIGHBOR] = new_label
 
     def _find_entry_category(self, profile: Dict[str, object], entry: Dict[str, object]) -> Optional[str]:
         for key in (

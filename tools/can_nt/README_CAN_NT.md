@@ -333,6 +333,9 @@ OPTIONS
                               first port whose description contains "USB Serial Device".
     --interface slcan         CAN interface (default slcan).
     --bitrate 1000000         Bitrate (default 1000000 for FRC CAN).
+    --sources PATH            Multi-analyzer sources config (JSON).
+    --visibility-timeout-ms N Visibility timeout for source visibility (ms).
+    --observed-retention-ms N Retention for observed-but-unexpected devices (ms).
     --timeout SECONDS         Device missing timeout.
     --print-publish           Print when a device is seen or goes missing.
     --print-summary-period N  Print CAN summary every N seconds (0 disables).

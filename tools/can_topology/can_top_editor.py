@@ -41,6 +41,9 @@ MENU_LABEL_ADD_ANALYZER = "Add Analyzer"
 MENU_LABEL_ADD_DEVICE = "Add Node..."
 MENU_LABEL_ADD_DIO_DEVICE = "Add DIO Device..."
 MENU_LABEL_SET_CANNECT_PORT = "Set CANnect Port..."
+MENU_LABEL_SET_NEIGHBOR_PORTS = "Set Neighbor Ports..."
+MENU_LABEL_AUTO_NEIGHBOR_SELECTED = "Auto-Assign Neighbor Ports (Selected)"
+MENU_LABEL_AUTO_NEIGHBOR_ALL = "Auto-Assign Neighbor Ports (All)"
 DIALOG_TITLE_ADD_DIO = "Add DIO Device"
 DIALOG_TITLE_REPLACE = "Replace"
 ANALYZER_LABEL_PREFIX = "Analyzer"
@@ -57,6 +60,9 @@ CANNECT_PORT_MIN = 1
 CANNECT_PORT_STEP = 1
 CANNECT_PORT_ZERO = 0
 CANNECT_PORT_COUNT_DEFAULT = 0
+COUNT_ONE = 1
+CANNECT_PORT_TWO = 2
+CANNECT_PORT_THREE = 3
 CAN_ID_DIAGRAM_DEFAULT = -1
 DIAGRAM_VENDOR_SWYFT = "SWYFT"
 DIAGRAM_VENDOR_ANALYZER = "ANALYZER"
@@ -118,7 +124,15 @@ TITLE_REMOVE_ATTACHMENT = "Remove Attachment"
 TITLE_WIRE_DIO = "Wire DIO"
 TITLE_REMOVE_DIO_WIRE = "Remove DIO Wire"
 KEY_ATTACHMENT_LINKS = "attachmentLinks"
+KEY_NEIGHBOR_LINKS = "neighborLinks"
+KEY_NEIGHBOR_PORTS = "neighborPorts"
 KEY_DIO_LINKS = "dioLinks"
+KEY_LINK_A = "a"
+KEY_LINK_B = "b"
+KEY_LINK_NODE = "node"
+KEY_LINK_PORT = "port"
+KEY_LINK_NEIGHBOR = "neighbor"
+KEY_LINK_NEIGHBOR_PORT = "neighborPort"
 KEY_LINK_DEVICE = "device"
 KEY_LINK_ATTACHMENT = "attachment"
 KEY_LINK_ROBORIO = "roborio"
@@ -128,6 +142,71 @@ KEY_UNDO_DIO = "dio"
 KEY_UNDO_INVERT = "invert"
 KEY_UNDO_ATTACHMENT_LINKS = "attachment_links"
 KEY_UNDO_DIO_LINKS = "dio_links"
+KEY_UNDO_NEIGHBOR_LINKS = "neighbor_links"
+KEY_UNDO_NEIGHBOR_PORTS = "neighbor_ports"
+NEIGHBOR_LINK_PAIR_LEN = 2
+MSG_NEIGHBOR_LABEL_DUP = "Duplicate diagram label: {label}"
+MSG_NEIGHBOR_LABEL_REQUIRED = "Label is required."
+MSG_NEIGHBOR_NODE_REQUIRED = "Select a node to edit neighbors."
+MSG_NEIGHBOR_PORTS_TITLE = "Set Neighbor Ports"
+MSG_NEIGHBOR_PORTS_HELP = "Select neighbor nodes and assign ports."
+MSG_NEIGHBOR_NO_TARGETS = "No other nodes available."
+MSG_NEIGHBOR_SELECT_ENTRY = "Select a neighbor entry to remove."
+MSG_NEIGHBOR_SELECT_FIELDS = "Select a neighbor and ports."
+MSG_NEIGHBOR_ENTRY_FMT = "{port} -> {neighbor} ({neighbor_port})"
+MSG_NEIGHBOR_BUS_MISMATCH = "Neighbor must be on the same bus segment."
+MSG_NEIGHBOR_NOT_ADJACENT = "Neighbor must be adjacent on the bus."
+MSG_NEIGHBOR_AUTO_NONE = "Select a node to auto-assign neighbors."
+MSG_NEIGHBOR_AUTO_DONE = "Neighbor ports updated."
+LABEL_NEIGHBOR = "Neighbor"
+LABEL_PORT = "Port"
+LABEL_NEIGHBOR_PORT = "Neighbor Port"
+LABEL_NEIGHBOR_ENTRIES = "Entries"
+MSG_NEIGHBOR_ADD = "Add"
+MSG_NEIGHBOR_REMOVE = "Remove"
+MSG_NEIGHBOR_FINISH = "Finish"
+MSG_NEIGHBOR_CANCEL = "Cancel"
+MSG_NEIGHBOR_SOURCE_FMT = "Source: {label}"
+MSG_NEIGHBOR_DUP_PORT = "Port already assigned for this node."
+NEIGHBOR_PORT_LEFT = "left"
+NEIGHBOR_PORT_RIGHT = "right"
+NEIGHBOR_PORT_NEXT = "next"
+NEIGHBOR_PORT_BRANCH1 = "branch1"
+NEIGHBOR_PORT_BRANCH2 = "branch2"
+NEIGHBOR_PORTS_DEFAULT = [
+    NEIGHBOR_PORT_LEFT,
+    NEIGHBOR_PORT_RIGHT,
+    NEIGHBOR_PORT_NEXT,
+    NEIGHBOR_PORT_BRANCH1,
+    NEIGHBOR_PORT_BRANCH2,
+]
+NEIGHBOR_DIALOG_PAD = 12
+NEIGHBOR_DIALOG_LISTBOX_HEIGHT = 8
+NEIGHBOR_DIALOG_LISTBOX_WIDTH = 44
+NEIGHBOR_DIALOG_ENTRY_WIDTH = 24
+NEIGHBOR_DIALOG_COMBO_WIDTH = 18
+NEIGHBOR_DIALOG_ROW_LABEL = 0
+NEIGHBOR_DIALOG_ROW_HELP = 1
+NEIGHBOR_DIALOG_ROW_ENTRIES = 2
+NEIGHBOR_DIALOG_ROW_FIELDS = 3
+NEIGHBOR_DIALOG_ROW_BUTTONS = 4
+NEIGHBOR_DIALOG_COL_LABEL = 0
+NEIGHBOR_DIALOG_COL_FIELD = 1
+NEIGHBOR_DIALOG_COL_BUTTONS = 2
+NEIGHBOR_DIALOG_COL_MAX = 3
+NEIGHBOR_DIALOG_BUTTON_PADX = 4
+NEIGHBOR_DIALOG_BUTTON_PADY = (8, 0)
+NEIGHBOR_DIALOG_ROW_FIELDS_NEXT = 4
+INDEX_FIRST = 0
+INDEX_ZERO = 0
+LISTBOX_INDEX_START = 0
+TITLE_INVALID = "Invalid"
+STICKY_W = "w"
+STICKY_E = "e"
+STICKY_NSEW = "nsew"
+STATE_READONLY = "readonly"
+SIDE_LEFT = "left"
+SIDE_RIGHT = "right"
 ATTACH_LINE_COLOR = "#7a5d00"
 WIRE_LINE_COLOR = "#1f6feb"
 LINK_LINE_WIDTH = 2
@@ -382,6 +461,8 @@ class TopologyEditor(tk.Tk):
         self._drag_state: Optional[Tuple[int, float, float]] = None
         self._drag_free_y: Dict[int, float] = {}
         self._ethernet_links: List[Tuple[int, int]] = []
+        self._neighbor_links: List[Tuple[int, int]] = []
+        self._neighbor_ports: List[Dict[str, object]] = []
         self._can_bus_links: List[Dict[str, int]] = []
         self._cannect_device_links: List[Dict[str, int]] = []
         self._attachment_links: List[Dict[str, int]] = []
@@ -650,6 +731,15 @@ class TopologyEditor(tk.Tk):
         edit_menu.add_command(label="Add Bus Segment", command=self._on_add_bus)
         edit_menu.add_command(label="Add Ethernet Link", command=self._add_ethernet_link)
         edit_menu.add_command(label="Remove Ethernet Link", command=self._remove_ethernet_link)
+        edit_menu.add_command(label=MENU_LABEL_SET_NEIGHBOR_PORTS, command=self._set_neighbor_ports)
+        edit_menu.add_command(
+            label=MENU_LABEL_AUTO_NEIGHBOR_SELECTED,
+            command=self._auto_assign_neighbor_ports_selected,
+        )
+        edit_menu.add_command(
+            label=MENU_LABEL_AUTO_NEIGHBOR_ALL,
+            command=self._auto_assign_neighbor_ports_all,
+        )
         edit_menu.add_separator()
         edit_menu.add_command(label="Link Device to CANnect", command=self._link_selected_devices_to_cannect)
         edit_menu.add_command(label=MENU_LABEL_SET_CANNECT_PORT, command=self._set_cannect_port)
@@ -1042,6 +1132,8 @@ class TopologyEditor(tk.Tk):
                 for n in self._nodes
             ],
             "ethernet_links": list(self._ethernet_links),
+            KEY_UNDO_NEIGHBOR_LINKS: list(self._neighbor_links),
+            KEY_UNDO_NEIGHBOR_PORTS: list(self._neighbor_ports),
             "can_bus_links": list(self._can_bus_links),
             "cannect_device_links": list(self._cannect_device_links),
             KEY_UNDO_ATTACHMENT_LINKS: list(self._attachment_links),
@@ -1101,6 +1193,35 @@ class TopologyEditor(tk.Tk):
             for a, b in snap.get("ethernet_links", [])
             if isinstance(a, int) and isinstance(b, int)
         ]
+        self._neighbor_links = [
+            (int(a), int(b))
+            for a, b in snap.get(KEY_UNDO_NEIGHBOR_LINKS, [])
+            if isinstance(a, int) and isinstance(b, int)
+        ]
+        self._neighbor_ports = []
+        for entry in snap.get(KEY_UNDO_NEIGHBOR_PORTS, []):
+            if not isinstance(entry, dict):
+                continue
+            node_label = entry.get(KEY_LINK_NODE)
+            port = entry.get(KEY_LINK_PORT)
+            neighbor_label = entry.get(KEY_LINK_NEIGHBOR)
+            neighbor_port = entry.get(KEY_LINK_NEIGHBOR_PORT)
+            if not isinstance(node_label, str) or not isinstance(neighbor_label, str):
+                continue
+            if not isinstance(port, str) or not isinstance(neighbor_port, str):
+                continue
+            node_label = node_label.strip()
+            neighbor_label = neighbor_label.strip()
+            if not node_label or not neighbor_label:
+                continue
+            self._neighbor_ports.append(
+                {
+                    KEY_LINK_NODE: node_label,
+                    KEY_LINK_PORT: port,
+                    KEY_LINK_NEIGHBOR: neighbor_label,
+                    KEY_LINK_NEIGHBOR_PORT: neighbor_port,
+                }
+            )
         if ENABLE_CANNECT_BUS_LINKS:
             self._can_bus_links = [
                 {"node": int(link.get("node")), "bus": int(link.get("bus")), "port": int(link.get("port", 1))}
@@ -1166,6 +1287,8 @@ class TopologyEditor(tk.Tk):
             return
         self._nodes.clear()
         self._ethernet_links = []
+        self._neighbor_links = []
+        self._neighbor_ports = []
         self._can_bus_links = []
         self._cannect_device_links = []
         self._attachment_links = []
@@ -1614,6 +1737,8 @@ class TopologyEditor(tk.Tk):
         self._last_base_y = None
         self._details_layout_shift = False
         self._ethernet_links = []
+        self._neighbor_links = []
+        self._neighbor_ports = []
         self._can_bus_links = []
         self._cannect_device_links = []
         self._attachment_links = []
@@ -2178,6 +2303,15 @@ class TopologyEditor(tk.Tk):
         }
         if any(n.interface == INTERFACE_DIO for n in nodes_to_check) and roborio_node is None:
             return MSG_DIO_NO_ROBORIO
+        label_seen: Dict[str, Node] = {}
+        for node in self._nodes:
+            label = (node.label or "").strip()
+            if not label:
+                continue
+            label_key = label.lower()
+            if label_key in label_seen:
+                return MSG_NEIGHBOR_LABEL_DUP.format(label=label)
+            label_seen[label_key] = node
         for node in nodes_to_check:
             if node.category in SINGLETON_CATEGORIES:
                 if node.category in seen_singletons:
@@ -2806,6 +2940,19 @@ class TopologyEditor(tk.Tk):
                 for n in devices
             ],
             "ethernetLinks": [{"a": a, "b": b} for a, b in self._ethernet_links],
+            KEY_NEIGHBOR_LINKS: [
+                {KEY_LINK_A: a, KEY_LINK_B: b} for a, b in self._neighbor_links
+            ],
+            KEY_NEIGHBOR_PORTS: [
+                {
+                    KEY_LINK_NODE: entry.get(KEY_LINK_NODE),
+                    KEY_LINK_PORT: entry.get(KEY_LINK_PORT),
+                    KEY_LINK_NEIGHBOR: entry.get(KEY_LINK_NEIGHBOR),
+                    KEY_LINK_NEIGHBOR_PORT: entry.get(KEY_LINK_NEIGHBOR_PORT),
+                }
+                for entry in self._neighbor_ports
+                if isinstance(entry, dict)
+            ],
             "canLinks": list(self._can_bus_links),
             KEY_ATTACHMENT_LINKS: list(self._attachment_links),
             KEY_DIO_LINKS: list(self._dio_wiring_links),
@@ -2955,6 +3102,19 @@ class TopologyEditor(tk.Tk):
             "zoom": self._zoom,
             "nodes": nodes,
             "ethernetLinks": [{"a": a, "b": b} for a, b in self._ethernet_links],
+            KEY_NEIGHBOR_LINKS: [
+                {KEY_LINK_A: a, KEY_LINK_B: b} for a, b in self._neighbor_links
+            ],
+            KEY_NEIGHBOR_PORTS: [
+                {
+                    KEY_LINK_NODE: entry.get(KEY_LINK_NODE),
+                    KEY_LINK_PORT: entry.get(KEY_LINK_PORT),
+                    KEY_LINK_NEIGHBOR: entry.get(KEY_LINK_NEIGHBOR),
+                    KEY_LINK_NEIGHBOR_PORT: entry.get(KEY_LINK_NEIGHBOR_PORT),
+                }
+                for entry in self._neighbor_ports
+                if isinstance(entry, dict)
+            ],
             "canLinks": list(self._can_bus_links),
             "deviceLinks": list(self._cannect_device_links),
             KEY_ATTACHMENT_LINKS: list(self._attachment_links),
@@ -3304,6 +3464,77 @@ class TopologyEditor(tk.Tk):
                 link = (min(a, b), max(a, b))
                 if link not in self._ethernet_links:
                     self._ethernet_links.append(link)
+
+        neighbor_entries = diagram.get(KEY_NEIGHBOR_LINKS)
+        self._neighbor_links = []
+        if isinstance(neighbor_entries, list):
+            node_keys = {n.key for n in self._nodes}
+            for entry in neighbor_entries:
+                if isinstance(entry, dict):
+                    a = entry.get(KEY_LINK_A)
+                    b = entry.get(KEY_LINK_B)
+                elif isinstance(entry, (list, tuple)) and len(entry) == NEIGHBOR_LINK_PAIR_LEN:
+                    a, b = entry
+                else:
+                    continue
+                if not isinstance(a, int) or not isinstance(b, int):
+                    continue
+                if a in device_key_remap:
+                    a = device_key_remap[a]
+                if b in device_key_remap:
+                    b = device_key_remap[b]
+                if a == b:
+                    continue
+                if a not in node_keys or b not in node_keys:
+                    continue
+                link = (min(a, b), max(a, b))
+                if link not in self._neighbor_links:
+                    self._neighbor_links.append(link)
+
+        neighbor_ports_entries = diagram.get(KEY_NEIGHBOR_PORTS)
+        self._neighbor_ports = []
+        if isinstance(neighbor_ports_entries, list):
+            label_by_key = {n.key: (n.label or "").strip() for n in self._nodes}
+            labels = {label for label in label_by_key.values() if label}
+            for entry in neighbor_ports_entries:
+                if not isinstance(entry, dict):
+                    continue
+                node_ref = entry.get(KEY_LINK_NODE)
+                neighbor_ref = entry.get(KEY_LINK_NEIGHBOR)
+                port = entry.get(KEY_LINK_PORT)
+                neighbor_port = entry.get(KEY_LINK_NEIGHBOR_PORT)
+                if not isinstance(port, str) or not isinstance(neighbor_port, str):
+                    continue
+                if isinstance(node_ref, int) and node_ref in device_key_remap:
+                    node_ref = device_key_remap[node_ref]
+                if isinstance(neighbor_ref, int) and neighbor_ref in device_key_remap:
+                    neighbor_ref = device_key_remap[neighbor_ref]
+                if isinstance(node_ref, int):
+                    node_label = label_by_key.get(node_ref, "")
+                elif isinstance(node_ref, str):
+                    node_label = node_ref.strip()
+                else:
+                    continue
+                if isinstance(neighbor_ref, int):
+                    neighbor_label = label_by_key.get(neighbor_ref, "")
+                elif isinstance(neighbor_ref, str):
+                    neighbor_label = neighbor_ref.strip()
+                else:
+                    continue
+                if not node_label or not neighbor_label:
+                    continue
+                if node_label not in labels or neighbor_label not in labels:
+                    continue
+                if node_label == neighbor_label:
+                    continue
+                self._neighbor_ports.append(
+                    {
+                        KEY_LINK_NODE: node_label,
+                        KEY_LINK_PORT: port,
+                        KEY_LINK_NEIGHBOR: neighbor_label,
+                        KEY_LINK_NEIGHBOR_PORT: neighbor_port,
+                    }
+                )
 
         self._can_bus_links = []
         if ENABLE_CANNECT_BUS_LINKS:
@@ -4212,6 +4443,234 @@ class TopologyEditor(tk.Tk):
         self._ensure_cannect_free_float(device)
         self._redraw_canvas()
 
+    def _set_neighbor_ports(self) -> None:
+        """
+        NAME
+            _set_neighbor_ports - Edit neighbor port assignments for a node.
+        """
+        node = self._get_selected_node()
+        if node is None:
+            messagebox.showinfo(MSG_NEIGHBOR_PORTS_TITLE, MSG_NEIGHBOR_NODE_REQUIRED)
+            return
+        source_label = (node.label or "").strip()
+        if not source_label:
+            messagebox.showerror(TITLE_INVALID, MSG_NEIGHBOR_LABEL_REQUIRED)
+            return
+        neighbor_labels = sorted(
+            [
+                (n.label or "").strip()
+                for n in self._nodes
+                if n.key != node.key and (n.label or "").strip()
+            ]
+        )
+        if not neighbor_labels:
+            messagebox.showinfo(MSG_NEIGHBOR_PORTS_TITLE, MSG_NEIGHBOR_NO_TARGETS)
+            return
+
+        dialog = tk.Toplevel(self)
+        dialog.title(MSG_NEIGHBOR_PORTS_TITLE)
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+
+        frame = ttk.Frame(dialog, padding=NEIGHBOR_DIALOG_PAD)
+        frame.grid(row=0, column=0, sticky=STICKY_NSEW)
+
+        ttk.Label(frame, text=MSG_NEIGHBOR_SOURCE_FMT.format(label=source_label)).grid(
+            row=NEIGHBOR_DIALOG_ROW_LABEL,
+            column=NEIGHBOR_DIALOG_COL_LABEL,
+            columnspan=NEIGHBOR_DIALOG_COL_MAX,
+            sticky=STICKY_W,
+        )
+        ttk.Label(frame, text=MSG_NEIGHBOR_PORTS_HELP).grid(
+            row=NEIGHBOR_DIALOG_ROW_HELP,
+            column=NEIGHBOR_DIALOG_COL_LABEL,
+            columnspan=NEIGHBOR_DIALOG_COL_MAX,
+            sticky=STICKY_W,
+            pady=NEIGHBOR_DIALOG_BUTTON_PADY,
+        )
+
+        ttk.Label(frame, text=LABEL_NEIGHBOR_ENTRIES).grid(
+            row=NEIGHBOR_DIALOG_ROW_ENTRIES,
+            column=NEIGHBOR_DIALOG_COL_LABEL,
+            sticky=STICKY_W,
+        )
+        entries_box = tk.Listbox(
+            frame,
+            height=NEIGHBOR_DIALOG_LISTBOX_HEIGHT,
+            width=NEIGHBOR_DIALOG_LISTBOX_WIDTH,
+        )
+        entries_box.grid(
+            row=NEIGHBOR_DIALOG_ROW_ENTRIES,
+            column=NEIGHBOR_DIALOG_COL_FIELD,
+            columnspan=NEIGHBOR_DIALOG_COL_BUTTONS,
+            sticky=STICKY_W,
+        )
+
+        neighbor_var = tk.StringVar(value=neighbor_labels[INDEX_FIRST])
+        port_var = tk.StringVar(value=NEIGHBOR_PORTS_DEFAULT[INDEX_FIRST])
+        neighbor_port_var = tk.StringVar(value=NEIGHBOR_PORTS_DEFAULT[INDEX_FIRST])
+
+        ttk.Label(frame, text=LABEL_NEIGHBOR).grid(
+            row=NEIGHBOR_DIALOG_ROW_FIELDS,
+            column=NEIGHBOR_DIALOG_COL_LABEL,
+            sticky=STICKY_W,
+        )
+        neighbor_combo = ttk.Combobox(
+            frame,
+            textvariable=neighbor_var,
+            values=neighbor_labels,
+            width=NEIGHBOR_DIALOG_ENTRY_WIDTH,
+            state=STATE_READONLY,
+        )
+        neighbor_combo.grid(
+            row=NEIGHBOR_DIALOG_ROW_FIELDS,
+            column=NEIGHBOR_DIALOG_COL_FIELD,
+            sticky=STICKY_W,
+        )
+
+        ttk.Label(frame, text=LABEL_PORT).grid(
+            row=NEIGHBOR_DIALOG_ROW_FIELDS,
+            column=NEIGHBOR_DIALOG_COL_BUTTONS,
+            sticky=STICKY_E,
+        )
+        port_combo = ttk.Combobox(
+            frame,
+            textvariable=port_var,
+            values=NEIGHBOR_PORTS_DEFAULT,
+            width=NEIGHBOR_DIALOG_COMBO_WIDTH,
+            state=STATE_READONLY,
+        )
+        port_combo.grid(
+            row=NEIGHBOR_DIALOG_ROW_FIELDS,
+            column=NEIGHBOR_DIALOG_COL_MAX,
+            sticky=STICKY_W,
+        )
+
+        ttk.Label(frame, text=LABEL_NEIGHBOR_PORT).grid(
+            row=NEIGHBOR_DIALOG_ROW_FIELDS_NEXT,
+            column=NEIGHBOR_DIALOG_COL_LABEL,
+            sticky=STICKY_W,
+        )
+        neighbor_port_combo = ttk.Combobox(
+            frame,
+            textvariable=neighbor_port_var,
+            values=NEIGHBOR_PORTS_DEFAULT,
+            width=NEIGHBOR_DIALOG_COMBO_WIDTH,
+            state=STATE_READONLY,
+        )
+        neighbor_port_combo.grid(
+            row=NEIGHBOR_DIALOG_ROW_FIELDS_NEXT,
+            column=NEIGHBOR_DIALOG_COL_FIELD,
+            sticky=STICKY_W,
+        )
+
+        entries: List[Dict[str, object]] = [
+            entry
+            for entry in self._neighbor_ports
+            if entry.get(KEY_LINK_NODE) == source_label
+        ]
+
+        def _refresh_entries() -> None:
+            entries_box.delete(LISTBOX_INDEX_START, tk.END)
+            for entry in entries:
+                entries_box.insert(
+                    tk.END,
+                    MSG_NEIGHBOR_ENTRY_FMT.format(
+                        port=entry.get(KEY_LINK_PORT, TEXT_EMPTY),
+                        neighbor=entry.get(KEY_LINK_NEIGHBOR, TEXT_EMPTY),
+                        neighbor_port=entry.get(KEY_LINK_NEIGHBOR_PORT, TEXT_EMPTY),
+                    ),
+                )
+
+        def _add_entry() -> None:
+            neighbor_label = neighbor_var.get().strip()
+            port = port_var.get().strip()
+            neighbor_port = neighbor_port_var.get().strip()
+            if not neighbor_label or not port or not neighbor_port:
+                messagebox.showinfo(MSG_NEIGHBOR_PORTS_TITLE, MSG_NEIGHBOR_SELECT_FIELDS)
+                return
+            if any(entry.get(KEY_LINK_PORT) == port for entry in entries):
+                messagebox.showinfo(MSG_NEIGHBOR_PORTS_TITLE, MSG_NEIGHBOR_DUP_PORT)
+                return
+            if not self._neighbor_ports_adjacent(source_label, neighbor_label):
+                if source_label and neighbor_label:
+                    source_node = next(
+                        (n for n in self._nodes if (n.label or "").strip() == source_label),
+                        None,
+                    )
+                    neighbor_node = next(
+                        (n for n in self._nodes if (n.label or "").strip() == neighbor_label),
+                        None,
+                    )
+                    if (
+                        source_node is not None
+                        and neighbor_node is not None
+                        and source_node.bus_index != neighbor_node.bus_index
+                    ):
+                        messagebox.showinfo(MSG_NEIGHBOR_PORTS_TITLE, MSG_NEIGHBOR_BUS_MISMATCH)
+                        return
+                messagebox.showinfo(MSG_NEIGHBOR_PORTS_TITLE, MSG_NEIGHBOR_NOT_ADJACENT)
+                return
+            entries.append(
+                {
+                    KEY_LINK_NODE: source_label,
+                    KEY_LINK_PORT: port,
+                    KEY_LINK_NEIGHBOR: neighbor_label,
+                    KEY_LINK_NEIGHBOR_PORT: neighbor_port,
+                }
+            )
+            _refresh_entries()
+
+        def _remove_entry() -> None:
+            selection = entries_box.curselection()
+            if not selection:
+                messagebox.showinfo(MSG_NEIGHBOR_PORTS_TITLE, MSG_NEIGHBOR_SELECT_ENTRY)
+                return
+            index = int(selection[INDEX_FIRST])
+            if index < INDEX_ZERO or index >= len(entries):
+                return
+            entries.pop(index)
+            _refresh_entries()
+
+        def _finish() -> None:
+            self._push_undo()
+            self._neighbor_ports = [
+                entry
+                for entry in self._neighbor_ports
+                if entry.get(KEY_LINK_NODE) != source_label
+            ]
+            self._neighbor_ports.extend(entries)
+            self._redraw_canvas()
+            dialog.destroy()
+
+        def _cancel() -> None:
+            dialog.destroy()
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(
+            row=NEIGHBOR_DIALOG_ROW_BUTTONS,
+            column=NEIGHBOR_DIALOG_COL_LABEL,
+            columnspan=NEIGHBOR_DIALOG_COL_MAX,
+            sticky=STICKY_E,
+            pady=NEIGHBOR_DIALOG_BUTTON_PADY,
+        )
+        ttk.Button(buttons, text=MSG_NEIGHBOR_ADD, command=_add_entry).pack(
+            side=SIDE_LEFT, padx=NEIGHBOR_DIALOG_BUTTON_PADX
+        )
+        ttk.Button(buttons, text=MSG_NEIGHBOR_REMOVE, command=_remove_entry).pack(
+            side=SIDE_LEFT, padx=NEIGHBOR_DIALOG_BUTTON_PADX
+        )
+        ttk.Button(buttons, text=MSG_NEIGHBOR_CANCEL, command=_cancel).pack(
+            side=SIDE_RIGHT, padx=NEIGHBOR_DIALOG_BUTTON_PADX
+        )
+        ttk.Button(buttons, text=MSG_NEIGHBOR_FINISH, command=_finish).pack(
+            side=SIDE_RIGHT, padx=NEIGHBOR_DIALOG_BUTTON_PADX
+        )
+
+        _refresh_entries()
+        self.wait_window(dialog)
+
     def _fix_cannect_conflicts(self, notify: bool = False) -> bool:
         """
         NAME
@@ -4389,15 +4848,23 @@ class TopologyEditor(tk.Tk):
         self.wait_window(dialog)
         if not dialog.result:
             return
-        self._push_undo()
         data = dialog.result
+        new_label = str(data["label"]).strip()
+        if not new_label:
+            messagebox.showerror(TITLE_INVALID, MSG_NEIGHBOR_LABEL_REQUIRED)
+            return
+        if self._label_in_use(new_label, ignore_key=node.key):
+            messagebox.showerror(TITLE_INVALID, MSG_NEIGHBOR_LABEL_DUP.format(label=new_label))
+            return
+        old_label = node.label
+        self._push_undo()
         category = str(data["category"])
         if category in SINGLETON_CATEGORIES:
             if any(n.category == category and n.key != node.key for n in self._nodes):
                 messagebox.showerror("Invalid", f"Only one {category} is allowed.")
                 return
         node.category = category
-        node.label = str(data["label"])
+        node.label = new_label
         node.can_id = int(data["can_id"])
         node.interface = str(data.get("interface", INTERFACE_CAN)).strip() or INTERFACE_CAN
         node.vendor = str(data.get("vendor", ""))
@@ -4410,6 +4877,7 @@ class TopologyEditor(tk.Tk):
             bool(data.get("terminator")) if data.get("terminator") is not None else None
         )
         node.tags = self._normalize_tags(data.get("tags", []))
+        self._update_neighbor_ports_label(old_label, new_label)
         self._prune_attachment_links()
         self._prune_dio_wiring_links()
         self._ensure_dio_wiring_links()
@@ -4443,7 +4911,13 @@ class TopologyEditor(tk.Tk):
 
         def _ok() -> None:
             if not label_var.get().strip():
-                messagebox.showerror("Invalid", "Label is required.")
+                messagebox.showerror(TITLE_INVALID, MSG_NEIGHBOR_LABEL_REQUIRED)
+                return
+            if self._label_in_use(label_var.get().strip(), ignore_key=node.key):
+                messagebox.showerror(
+                    TITLE_INVALID,
+                    MSG_NEIGHBOR_LABEL_DUP.format(label=label_var.get().strip()),
+                )
                 return
             result["ok"] = True
             dialog.destroy()
@@ -4460,10 +4934,275 @@ class TopologyEditor(tk.Tk):
         if not result["ok"]:
             return
         self._push_undo()
-        node.label = label_var.get().strip()
+        old_label = node.label
+        new_label = label_var.get().strip()
+        node.label = new_label
         node.tags = self._normalize_tags(tags_var.get())
+        self._update_neighbor_ports_label(old_label, new_label)
         self._refresh_list()
         self._redraw_canvas()
+
+    def _label_in_use(self, label: str, ignore_key: Optional[int] = None) -> bool:
+        """
+        NAME
+            _label_in_use - Check for an existing node label.
+        """
+        label_text = (label or "").strip().lower()
+        if not label_text:
+            return False
+        for node in self._nodes:
+            if ignore_key is not None and node.key == ignore_key:
+                continue
+            if (node.label or "").strip().lower() == label_text:
+                return True
+        return False
+
+    def _update_neighbor_ports_label(self, old_label: str, new_label: str) -> None:
+        """
+        NAME
+            _update_neighbor_ports_label - Replace labels in neighborPorts entries.
+        """
+        if not old_label or old_label == new_label:
+            return
+        for entry in self._neighbor_ports:
+            if entry.get(KEY_LINK_NODE) == old_label:
+                entry[KEY_LINK_NODE] = new_label
+            if entry.get(KEY_LINK_NEIGHBOR) == old_label:
+                entry[KEY_LINK_NEIGHBOR] = new_label
+
+    def _prune_neighbor_ports_label(self, label: str) -> None:
+        """
+        NAME
+            _prune_neighbor_ports_label - Remove neighborPorts entries with a label.
+        """
+        if not label:
+            return
+        self._neighbor_ports = [
+            entry
+            for entry in self._neighbor_ports
+            if entry.get(KEY_LINK_NODE) != label and entry.get(KEY_LINK_NEIGHBOR) != label
+        ]
+
+    def _neighbor_ports_adjacent(self, source_label: str, neighbor_label: str) -> bool:
+        """
+        NAME
+            _neighbor_ports_adjacent - Return True when neighbor is adjacent on the bus.
+        """
+        if not source_label or not neighbor_label:
+            return False
+        if self._cannect_linked_labels(source_label, neighbor_label):
+            return True
+        source_node = next(
+            (n for n in self._nodes if (n.label or "").strip() == source_label),
+            None,
+        )
+        neighbor_node = next(
+            (n for n in self._nodes if (n.label or "").strip() == neighbor_label),
+            None,
+        )
+        if source_node is None or neighbor_node is None:
+            return False
+        if source_node.bus_index != neighbor_node.bus_index:
+            return False
+        same_bus = [
+            n
+            for n in self._nodes
+            if n.bus_index == source_node.bus_index and (n.label or "").strip()
+        ]
+        same_bus.sort(key=lambda n: (n.x, n.key))
+        labels = [(n.label or "").strip() for n in same_bus]
+        try:
+            src_index = labels.index(source_label)
+            neighbor_index = labels.index(neighbor_label)
+        except ValueError:
+            return False
+        return abs(src_index - neighbor_index) == COUNT_ONE
+
+    def _cannect_linked_labels(self, source_label: str, neighbor_label: str) -> bool:
+        """
+        NAME
+            _cannect_linked_labels - Return True when a CANnect link joins two labels.
+        """
+        if not source_label or not neighbor_label:
+            return False
+        label_by_key = {n.key: (n.label or "").strip() for n in self._nodes if (n.label or "").strip()}
+        source_label_lower = source_label.lower()
+        neighbor_label_lower = neighbor_label.lower()
+        for link in self._cannect_device_links:
+            node_key = link.get("node")
+            device_key = link.get(KEY_LINK_DEVICE)
+            node_label = label_by_key.get(node_key, "")
+            device_label = label_by_key.get(device_key, "")
+            if not node_label or not device_label:
+                continue
+            if (
+                node_label.lower() == source_label_lower
+                and device_label.lower() == neighbor_label_lower
+            ) or (
+                node_label.lower() == neighbor_label_lower
+                and device_label.lower() == source_label_lower
+            ):
+                return True
+        return False
+
+    def _cannect_port_name(self, port: object) -> Optional[str]:
+        """
+        NAME
+            _cannect_port_name - Map CANnect port number to neighbor port name.
+        """
+        if not isinstance(port, int):
+            return None
+        if port == CANNECT_PORT_MIN:
+            return NEIGHBOR_PORT_NEXT
+        if port == CANNECT_PORT_TWO:
+            return NEIGHBOR_PORT_BRANCH1
+        if port == CANNECT_PORT_THREE:
+            return NEIGHBOR_PORT_BRANCH2
+        return None
+
+    def _auto_neighbor_entries(self, labels: Optional[List[str]] = None) -> List[Dict[str, object]]:
+        """
+        NAME
+            _auto_neighbor_entries - Build left/right neighbor ports from layout.
+        """
+        nodes = [n for n in self._nodes if (n.label or "").strip()]
+        by_bus: Dict[int, List[Node]] = {}
+        label_by_key = {n.key: (n.label or "").strip() for n in nodes}
+        linked_devices = {
+            label_by_key.get(link.get(KEY_LINK_DEVICE))
+            for link in self._cannect_device_links
+            if label_by_key.get(link.get(KEY_LINK_DEVICE))
+        }
+        for node in nodes:
+            by_bus.setdefault(node.bus_index, []).append(node)
+        entries: List[Dict[str, object]] = []
+        for bus_nodes in by_bus.values():
+            bus_nodes.sort(key=lambda n: (n.x, n.key))
+            for idx, node in enumerate(bus_nodes):
+                node_label = (node.label or "").strip()
+                if not node_label:
+                    continue
+                if labels is not None and node_label not in labels:
+                    continue
+                if node_label in linked_devices:
+                    continue
+                if idx > COUNT_ZERO:
+                    left_node = bus_nodes[idx - COUNT_ONE]
+                    left_label = (left_node.label or "").strip()
+                    if left_label:
+                        entries.append(
+                            {
+                                KEY_LINK_NODE: node_label,
+                                KEY_LINK_PORT: NEIGHBOR_PORT_LEFT,
+                                KEY_LINK_NEIGHBOR: left_label,
+                                KEY_LINK_NEIGHBOR_PORT: NEIGHBOR_PORT_RIGHT,
+                            }
+                        )
+                if idx + COUNT_ONE < len(bus_nodes):
+                    right_node = bus_nodes[idx + COUNT_ONE]
+                    right_label = (right_node.label or "").strip()
+                    if right_label:
+                        entries.append(
+                            {
+                                KEY_LINK_NODE: node_label,
+                                KEY_LINK_PORT: NEIGHBOR_PORT_RIGHT,
+                                KEY_LINK_NEIGHBOR: right_label,
+                                KEY_LINK_NEIGHBOR_PORT: NEIGHBOR_PORT_LEFT,
+                            }
+                        )
+        for link in self._cannect_device_links:
+            node_key = link.get("node")
+            device_key = link.get(KEY_LINK_DEVICE)
+            port = link.get(KEY_LINK_PORT)
+            node_label = label_by_key.get(node_key)
+            device_label = label_by_key.get(device_key)
+            if not node_label or not device_label:
+                continue
+            if labels is not None:
+                include_node = node_label in labels
+                include_device = device_label in labels
+                if not include_node and not include_device:
+                    continue
+            port_name = self._cannect_port_name(port)
+            if port_name is None:
+                continue
+            if labels is None or node_label in labels:
+                entries.append(
+                    {
+                        KEY_LINK_NODE: node_label,
+                        KEY_LINK_PORT: port_name,
+                        KEY_LINK_NEIGHBOR: device_label,
+                        KEY_LINK_NEIGHBOR_PORT: NEIGHBOR_PORT_NEXT,
+                    }
+                )
+            if labels is None or device_label in labels:
+                entries.append(
+                    {
+                        KEY_LINK_NODE: device_label,
+                        KEY_LINK_PORT: NEIGHBOR_PORT_NEXT,
+                        KEY_LINK_NEIGHBOR: node_label,
+                        KEY_LINK_NEIGHBOR_PORT: port_name,
+                    }
+                )
+        return entries
+
+    def _auto_assign_neighbor_ports_selected(self) -> None:
+        """
+        NAME
+            _auto_assign_neighbor_ports_selected - Auto assign left/right for selection.
+        """
+        node = self._get_selected_node()
+        if node is None:
+            messagebox.showinfo(MSG_NEIGHBOR_PORTS_TITLE, MSG_NEIGHBOR_AUTO_NONE)
+            return
+        label = (node.label or "").strip()
+        if not label:
+            messagebox.showerror(TITLE_INVALID, MSG_NEIGHBOR_LABEL_REQUIRED)
+            return
+        entries = self._auto_neighbor_entries([label])
+        self._push_undo()
+        self._neighbor_ports = [
+            entry
+            for entry in self._neighbor_ports
+            if entry.get(KEY_LINK_NODE) != label
+        ]
+        self._neighbor_ports.extend(entries)
+        self._redraw_canvas()
+        messagebox.showinfo(MSG_NEIGHBOR_PORTS_TITLE, MSG_NEIGHBOR_AUTO_DONE)
+
+    def _auto_assign_neighbor_ports_all(self) -> None:
+        """
+        NAME
+            _auto_assign_neighbor_ports_all - Auto assign left/right for all nodes.
+        """
+        selected_labels: List[str] = []
+        if self._selected_nodes:
+            for node in self._nodes:
+                if node.key not in self._selected_nodes:
+                    continue
+                if node.node_type == NODE_TYPE_CALLOUT:
+                    continue
+                label = (node.label or TEXT_EMPTY).strip()
+                if label and label not in selected_labels:
+                    selected_labels.append(label)
+        entries = self._auto_neighbor_entries(selected_labels if selected_labels else None)
+        self._push_undo()
+        if selected_labels:
+            selected_lower = {label.lower() for label in selected_labels}
+            self._neighbor_ports = [
+                entry
+                for entry in self._neighbor_ports
+                if not (
+                    isinstance(entry, dict)
+                    and str(entry.get(KEY_LINK_NODE, TEXT_EMPTY)).strip().lower()
+                    in selected_lower
+                )
+            ]
+            self._neighbor_ports.extend(entries)
+        else:
+            self._neighbor_ports = entries
+        self._redraw_canvas()
+        messagebox.showinfo(MSG_NEIGHBOR_PORTS_TITLE, MSG_NEIGHBOR_AUTO_DONE)
 
     def _on_remove(self) -> None:
         """
@@ -4477,6 +5216,7 @@ class TopologyEditor(tk.Tk):
         self._push_undo()
         self._nodes = [n for n in self._nodes if n.key != node.key]
         self._selected_key = None
+        self._prune_neighbor_ports_label(node.label)
         self._prune_attachment_links()
         self._prune_dio_wiring_links()
         self._refresh_list()
@@ -4517,9 +5257,14 @@ class TopologyEditor(tk.Tk):
             return
         if not messagebox.askyesno("Remove", "Remove selected nodes/callouts?"):
             return
+        removed_labels = [
+            n.label for n in self._nodes if n.key in self._selected_nodes and n.label
+        ]
         self._push_undo()
         self._nodes = [n for n in self._nodes if n.key not in self._selected_nodes]
         self._clear_selection()
+        for label in removed_labels:
+            self._prune_neighbor_ports_label(label)
         self._prune_attachment_links()
         self._prune_dio_wiring_links()
         self._refresh_list()

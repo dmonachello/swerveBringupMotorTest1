@@ -212,3 +212,5 @@ saved/
 *.json
 *.cli
 *.cmd
+# Local config byproducts
+/myData/

@@ -219,6 +219,11 @@ Exec:
 - `show profiles [local]` (profile names from bringup_system.json)
 - `show profile [local]` (active/default profile summary)
 - `show profile <name> [local]` (device labels for a profile)
+- `show topology [local]` (diagram nodes for the active profile)
+- `show topology neighbors [local]` (neighbor ports for the active profile)
+- `show visibility [local]` (multi-analyzer visibility matrix)
+- `show visibility summary [local]` (visibility counts)
+- `show visibility <device> [local]` (per-source visibility details)
 - `show tests [--json] [--pretty]`
 - `show test <name> [--json] [--pretty]`
 - `show workspace [--json] [--pretty]`
@@ -247,6 +252,14 @@ Config:
 - `rename device <old> <new>` (local-only; updates profiles when loaded)
 - `device <name>`
 - `device <name> set <field> <value>`
+- `topology neighbor-ports set <node> <port> <neighbor> <neighborPort>`
+- `topology neighbor-ports delete <node> <port>`
+- `topology neighbor-ports clear <node>`
+- `topology neighbor-auto all [label1,label2]`
+- `topology neighbor-auto node <label>`
+  - CANnect device links populate `next/branch1/branch2` neighbor ports.
+  - If label1,label2 is provided, only those labels are updated; omit to update all nodes.
+  - Label lists are comma-separated; wrap in quotes if spaces are present.
 - `validate config [path] [--all]`
 - `validate profiles [robot|local] [--active]`
 - `validate tests [--active-set]`
@@ -488,6 +501,7 @@ Commands:
 - `show profile --json`
 - `show tests --json`
 - `show test <name> --json`
+- `show visibility --json`
 
 JSON is one blob per command.
 
@@ -733,7 +747,8 @@ show_target    = "status"
                | "test" ws name
                | "workspace"
                | "session"
-               | "controllers" ;
+               | "controllers"
+               | "visibility" [ ws name ] ;
 
 show_source    = "robot" | "local" | "both" ;
 show_flags     = show_flag { ws show_flag } ;
