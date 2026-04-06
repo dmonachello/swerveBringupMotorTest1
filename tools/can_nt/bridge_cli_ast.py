@@ -136,6 +136,7 @@ SHOW_TARGET_CONFIG_DIRTY = "config-dirty"
 SHOW_NAME_DIRTY = "dirty"
 SHOW_TARGET_PROFILE = "profile"
 SHOW_TARGET_PROFILES = "profiles"
+SHOW_TARGET_RUNTIME_COMPONENTS = "runtime-components"
 
 
 class BridgeCliAstExecutor:
@@ -707,6 +708,8 @@ class BridgeCliAstExecutor:
             SPEC.show_target_device,
                 SPEC.show_target_device_group,
         ):
+            source = SPEC.show_source_local
+        if target == SHOW_TARGET_RUNTIME_COMPONENTS:
             source = SPEC.show_source_local
         if target == SHOW_TARGET_VERSION and not source:
             source = SPEC.show_source_local
