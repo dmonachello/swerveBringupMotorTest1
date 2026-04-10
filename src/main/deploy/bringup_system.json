@@ -1,2200 +1,6 @@
 {
-  "default_profile": "home_030226",
-  "diagram": {
-    "profiles": {
-      "home_031226": {
-        "busCount": 4,
-        "busSpacing": 160.0,
-        "panY": -45.0,
-        "zoom": 0.6000000000000001,
-        "nodes": [
-          {
-            "category": "neos",
-            "label": "SPARKMAX/NEO 25",
-            "id": 25,
-            "bus": 3,
-            "row": 0,
-            "x": 643.3333333333359,
-            "scale": 1.0
-          },
-          {
-            "category": "neo550s",
-            "label": "SPARKMAX/NEO550 7",
-            "id": 7,
-            "bus": 1,
-            "row": 1,
-            "x": 301.0,
-            "scale": 0.9
-          },
-          {
-            "category": "falcons",
-            "label": "FALCON 9",
-            "id": 9,
-            "bus": 3,
-            "row": 0,
-            "x": 486.76190476190544,
-            "scale": 0.8
-          },
-          {
-            "category": "candles",
-            "label": "candle",
-            "id": 2,
-            "bus": 1,
-            "row": 0,
-            "x": 1222.3333333333308,
-            "scale": 1.0
-          },
-          {
-            "category": "pdh",
-            "label": "PDH",
-            "id": 1,
-            "bus": 2,
-            "row": 0,
-            "x": 121.09523809523807,
-            "scale": 1.0
-          },
-          {
-            "category": "roborio",
-            "label": "roboRIO",
-            "id": 0,
-            "bus": 2,
-            "row": 1,
-            "x": 1452.3333333333342,
-            "scale": 1.0
-          }
-        ],
-        "callouts": [
-          {
-            "text": "ARM segment",
-            "targetType": "bus",
-            "targetBus": 0,
-            "targetNodeKey": null,
-            "x": 118.80952380952407,
-            "y": 337.3809523809532,
-            "scale": 1.0
-          },
-          {
-            "text": "LED Controller",
-            "targetType": "node",
-            "targetBus": 0,
-            "targetNodeKey": 4,
-            "x": 1410.0000000000007,
-            "y": 416.66666666666737,
-            "scale": 1.0
-          },
-          {
-            "text": "swerve 1",
-            "targetType": "bus",
-            "targetBus": 3,
-            "targetNodeKey": null,
-            "x": 141.9047619047619,
-            "y": 818.3333333333328,
-            "scale": 1.0
-          }
-        ]
-      },
-      "robot_test1": {
-        "busOffsets": [
-          0.0,
-          160.0,
-          320.0,
-          480.0,
-          640.0,
-          800.0
-        ],
-        "busCount": 6,
-        "busSpacing": 160.0,
-        "busLefts": [
-          40.0,
-          40.0,
-          40.0,
-          40.0,
-          40.0,
-          40.0
-        ],
-        "busRights": [
-          1364.9999999999957,
-          1366.6666666666629,
-          1360.0,
-          1387.333333333333,
-          1360.0,
-          1446.6666666666629
-        ],
-        "panY": -239.23076923076923,
-        "zoom": 0.5980769230769231,
-        "nodes": [
-          {
-            "nodeType": "device",
-            "category": "neos",
-            "label": "intake neo 51",
-            "id": 51,
-            "bus": 0,
-            "row": 0,
-            "x": 700.0,
-            "freeY": 58.589743589743605,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "neos",
-            "label": "SPARKMAX/NEO 11",
-            "id": 11,
-            "bus": 1,
-            "row": 0,
-            "x": 700.0,
-            "freeY": 218.5897435897436,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "neos",
-            "label": "neo 21",
-            "id": 21,
-            "bus": 2,
-            "row": 0,
-            "x": 700.0,
-            "freeY": 378.5897435897436,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "neos",
-            "label": "SPARKMAX/NEO 31",
-            "id": 31,
-            "bus": 3,
-            "row": 0,
-            "x": 700.0,
-            "freeY": 538.5897435897436,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "neos",
-            "label": "SPARKMAX/NEO 41",
-            "id": 41,
-            "bus": 4,
-            "row": 1,
-            "x": 480.79109753175766,
-            "freeY": 698.5897435897436,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "krakens",
-            "label": "kracken 12",
-            "id": 12,
-            "bus": 1,
-            "row": 1,
-            "x": 472.33333333333377,
-            "freeY": 218.5897435897436,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "krakens",
-            "label": "kracken 22",
-            "id": 22,
-            "bus": 2,
-            "row": 0,
-            "x": 122.0,
-            "freeY": 378.5897435897436,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "krakens",
-            "label": "kracken 32",
-            "id": 32,
-            "bus": 3,
-            "row": 1,
-            "x": 400.66666666666646,
-            "freeY": 538.5897435897436,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "krakens",
-            "label": "kracken 42",
-            "id": 42,
-            "bus": 4,
-            "row": 1,
-            "x": 645.666666666666,
-            "freeY": 698.5897435897436,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "cancoders",
-            "label": "cancoder 13",
-            "id": 13,
-            "bus": 1,
-            "row": 0,
-            "x": 1278.0,
-            "freeY": 218.5897435897436,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "cancoders",
-            "label": "cancoder 23",
-            "id": 23,
-            "bus": 2,
-            "row": 0,
-            "x": 1278.0,
-            "freeY": 378.5897435897436,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "cancoders",
-            "label": "cancoder 33",
-            "id": 33,
-            "bus": 3,
-            "row": 0,
-            "x": 1278.0,
-            "freeY": 538.5897435897436,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "cancoders",
-            "label": "cancoder 43",
-            "id": 43,
-            "bus": 4,
-            "row": 1,
-            "x": 855.666666666673,
-            "freeY": 704.1666666666667,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "candles",
-            "label": "candle",
-            "id": 2,
-            "bus": 0,
-            "row": 1,
-            "x": 1278.0,
-            "freeY": 58.589743589743605,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "pdh",
-            "label": "PDH",
-            "id": 1,
-            "bus": 5,
-            "row": 0,
-            "x": 122.0,
-            "freeY": 858.5897435897436,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "roborio",
-            "label": "roboRIO",
-            "id": 0,
-            "bus": 0,
-            "row": 1,
-            "x": 122.0,
-            "freeY": 58.589743589743605,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "callout",
-            "text": "intake segment",
-            "targetType": "bus",
-            "targetBus": 0,
-            "targetNodeKey": null,
-            "targetCategory": "",
-            "targetLabel": "",
-            "targetId": null,
-            "x": 119.95677152579461,
-            "y": -0.576923076923066,
-            "freeY": -0.576923076923066,
-            "bus": 0,
-            "row": 0,
-            "scale": 1.1
-          },
-          {
-            "nodeType": "callout",
-            "text": "LED Controller",
-            "targetType": "node",
-            "targetBus": 0,
-            "targetNodeKey": 14,
-            "targetCategory": "",
-            "targetLabel": "",
-            "targetId": null,
-            "x": 1169.9999999999927,
-            "y": -47.24358974358974,
-            "freeY": -47.24358974358974,
-            "bus": 0,
-            "row": 0,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "callout",
-            "text": "swerve 2",
-            "targetType": "bus",
-            "targetBus": 2,
-            "targetNodeKey": null,
-            "targetCategory": "",
-            "targetLabel": "",
-            "targetId": null,
-            "x": 107.22953984457796,
-            "y": 320.4562478334916,
-            "freeY": 320.4562478334916,
-            "bus": 2,
-            "row": 1,
-            "scale": 0.8
-          },
-          {
-            "nodeType": "callout",
-            "text": "swerve 1",
-            "targetType": "bus",
-            "targetBus": 1,
-            "targetNodeKey": null,
-            "targetCategory": "",
-            "targetLabel": "",
-            "targetId": null,
-            "x": 96.14090723669972,
-            "y": 153.78958116682495,
-            "freeY": 153.78958116682495,
-            "bus": 1,
-            "row": 0,
-            "scale": 0.7000000000000001
-          },
-          {
-            "nodeType": "callout",
-            "text": "swerve 4",
-            "targetType": "bus",
-            "targetBus": 4,
-            "targetNodeKey": null,
-            "targetCategory": "",
-            "targetLabel": "",
-            "targetId": null,
-            "x": 117.93398944262388,
-            "y": 631.9408998322551,
-            "freeY": 631.9408998322551,
-            "bus": 4,
-            "row": 0,
-            "scale": 0.8
-          },
-          {
-            "nodeType": "callout",
-            "text": "swerve 3",
-            "targetType": "bus",
-            "targetBus": 3,
-            "targetNodeKey": null,
-            "targetCategory": "",
-            "targetLabel": "",
-            "targetId": null,
-            "x": 108.69611295471182,
-            "y": 482.8777258566979,
-            "freeY": 482.8777258566979,
-            "bus": 3,
-            "row": 1,
-            "scale": 0.8
-          }
-        ]
-      },
-      "club_022526": {
-        "busCount": 2,
-        "busSpacing": 160.0,
-        "busLefts": [
-          40.0,
-          40.0
-        ],
-        "busRights": [
-          1065.0,
-          1065.0
-        ],
-        "panY": -136.25,
-        "zoom": 0.8422535211267606,
-        "nodes": [
-          {
-            "nodeType": "device",
-            "category": "neos",
-            "label": "SPARKMAX/NEO 22",
-            "id": 22,
-            "bus": 0,
-            "row": 0,
-            "x": 448.06020066889585,
-            "freeY": -91.71822742474916,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "neo550s",
-            "label": "SPARKMAX/NEO550 7",
-            "id": 7,
-            "bus": 0,
-            "row": 0,
-            "x": 673.1521739130432,
-            "freeY": -96.46739130434783,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "roborio",
-            "label": "roboRIO",
-            "id": 0,
-            "bus": 0,
-            "row": 0,
-            "x": 173.99665551839576,
-            "freeY": -119.02591973244148,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "pdh",
-            "label": "PDH",
-            "id": 1,
-            "bus": 1,
-            "row": 1,
-            "x": 1098.4280936454848,
-            "freeY": 218.5,
-            "scale": 1.0
-          }
-        ]
-      },
-      "demo_home_022326": {
-        "busOffsets": [
-          0.0,
-          160.0
-        ],
-        "busCount": 2,
-        "busSpacing": 160.0,
-        "busLefts": [
-          40.0,
-          40.0
-        ],
-        "busRights": [
-          1000.0,
-          1015.3623188405771
-        ],
-        "panY": -65.512569462821,
-        "zoom": 0.8189071182852625,
-        "nodes": [
-          {
-            "nodeType": "device",
-            "category": "flexes",
-            "label": "VORTEX/FLEX 11",
-            "id": 11,
-            "bus": 0,
-            "row": 0,
-            "x": 624.0356744704555,
-            "freeY": -60.75808249721293,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "flexes",
-            "label": "VORTEX/FLEX 26",
-            "id": 26,
-            "bus": 1,
-            "row": 0,
-            "x": 634.6132842163069,
-            "freeY": 86.71626839868804,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "falcons",
-            "label": "FALCON 9",
-            "id": 9,
-            "bus": 0,
-            "row": 0,
-            "x": 440.0,
-            "freeY": -60.75808249721293,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "pdh",
-            "label": "PDH",
-            "id": 1,
-            "bus": 1,
-            "row": 1,
-            "x": 895.3623188405771,
-            "freeY": 99.24191750278706,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "roborio",
-            "label": "roboRIO",
-            "id": 0,
-            "bus": 0,
-            "row": 0,
-            "x": 265.27103226536155,
-            "freeY": -62.26277608130127,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "callout",
-            "text": "home network test 2",
-            "targetType": "bus",
-            "targetBus": 0,
-            "targetNodeKey": null,
-            "targetCategory": "",
-            "targetLabel": "",
-            "targetId": null,
-            "x": 125.31562535343289,
-            "y": -159.95395278949098,
-            "freeY": -159.95395278949098,
-            "bus": 0,
-            "row": 0,
-            "scale": 1.0
-          }
-        ]
-      },
-      "home net test 2x": {
-        "busOffsets": [
-          0.0,
-          160.0
-        ],
-        "busCount": 2,
-        "busSpacing": 160.0,
-        "busLefts": [
-          40.0,
-          40.0
-        ],
-        "busRights": [
-          1000.0,
-          1015.3623188405771
-        ],
-        "panY": -38.91694231278148,
-        "zoom": 0.8189071182852625,
-        "nodes": [
-          {
-            "nodeType": "device",
-            "category": "flexes",
-            "label": "VORTEX/FLEX 11",
-            "id": 11,
-            "bus": 0,
-            "row": 0,
-            "x": 624.0356744704555,
-            "freeY": -62.26277608130127,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "flexes",
-            "label": "VORTEX/FLEX 26",
-            "id": 26,
-            "bus": 1,
-            "row": 0,
-            "x": 634.6132842163069,
-            "freeY": 97.73722391869873,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "falcons",
-            "label": "FALCON 9",
-            "id": 9,
-            "bus": 0,
-            "row": 0,
-            "x": 445.3156253534329,
-            "freeY": -62.26277608130127,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "pdh",
-            "label": "PDH",
-            "id": 1,
-            "bus": 1,
-            "row": 1,
-            "x": 895.3623188405771,
-            "freeY": 97.73722391869873,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "roborio",
-            "label": "roboRIO",
-            "id": 0,
-            "bus": 0,
-            "row": 0,
-            "x": 295.3156253534329,
-            "freeY": -62.26277608130127,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "callout",
-            "text": "home network test 2",
-            "targetType": "bus",
-            "targetBus": 0,
-            "targetNodeKey": null,
-            "targetCategory": "",
-            "targetLabel": "",
-            "targetId": null,
-            "x": 124.09448564458052,
-            "y": -104.50887014686573,
-            "freeY": -104.50887014686573,
-            "bus": 0,
-            "row": 0,
-            "scale": 1.0
-          }
-        ]
-      },
-      "reverse_eng_min1": {
-        "busOffsets": [
-          0.0
-        ],
-        "busCount": 1,
-        "busSpacing": 160.0,
-        "busLefts": [
-          40.0
-        ],
-        "busRights": [
-          1065.0
-        ],
-        "panY": -0.0,
-        "zoom": 0.8422535211267606,
-        "nodes": [
-          {
-            "nodeType": "device",
-            "category": "neos",
-            "label": "SPARKMAX/NEO 11",
-            "id": 11,
-            "bus": 0,
-            "row": 0,
-            "x": 615.4682274247484,
-            "freeY": -74.20568561872909,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "pdp",
-            "label": "PDP",
-            "id": 0,
-            "bus": 0,
-            "row": 1,
-            "x": 928.4197324414708,
-            "freeY": 76.58026755852843,
-            "scale": 1.0
-          },
-          {
-            "nodeType": "device",
-            "category": "roborio",
-            "label": "roboRIO",
-            "id": 0,
-            "bus": 0,
-            "row": 0,
-            "x": 190.61872909699082,
-            "freeY": -90.82775919732441,
-            "scale": 1.0
-          }
-        ]
-      },
-      "robot_2026": {
-        "busOffsets": [
-          0.0,
-          160.0,
-          320.0,
-          480.0,
-          640.0,
-          800.0
-        ],
-        "busCount": 6,
-        "busSpacing": 160.0,
-        "busLefts": [
-          40.0,
-          40.0,
-          40.0,
-          40.0,
-          40.0,
-          40.0
-        ],
-        "busRights": [
-          1563.1031737498777,
-          1183.8309859154929,
-          1059.5421810140124,
-          1743.1031737498777,
-          1148.822865118639,
-          1218.6476471441256
-        ],
-        "busConnectors": [
-          true,
-          true,
-          true,
-          true,
-          true
-        ],
-        "panY": -144.52461112198677,
-        "zoom": 0.3613115278049669,
-        "nodes": [
-          {
-            "nodeType": "device",
-            "key": 1,
-            "category": "neos",
-            "label": "Climb Motor",
-            "id": 60,
-            "bus": 0,
-            "row": 0,
-            "x": 764.0,
-            "freeY": null,
-            "freeYRelative": false,
-            "scale": 1.0,
-            "tags": [
-              "motor"
-            ],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 2,
-            "category": "neos",
-            "label": "Fuel Intake Motor",
-            "id": 24,
-            "bus": 0,
-            "row": 0,
-            "x": 432.74045059757816,
-            "freeY": null,
-            "freeYRelative": false,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 3,
-            "category": "neos",
-            "label": "Pivot Intake Motor",
-            "id": 22,
-            "bus": 1,
-            "row": 0,
-            "x": 952.9475470524819,
-            "freeY": -75.87786259541986,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 4,
-            "category": "neos",
-            "label": "Pivot Intake Follower",
-            "id": 11,
-            "bus": 1,
-            "row": 0,
-            "x": 659.4374656346488,
-            "freeY": null,
-            "freeYRelative": false,
-            "scale": 1.0,
-            "tags": [
-              "motor"
-            ],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 5,
-            "category": "neos",
-            "label": "Feeder Motor",
-            "id": 28,
-            "bus": 0,
-            "row": 0,
-            "x": 591.8148893360161,
-            "freeY": -55.13078470824948,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [
-              "motor"
-            ],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 6,
-            "category": "neos",
-            "label": "angle motor front left",
-            "id": 4,
-            "bus": 3,
-            "row": 1,
-            "x": 280.0,
-            "freeY": 2490.0,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [
-              "sensor"
-            ],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 7,
-            "category": "neos",
-            "label": "angle motor back right",
-            "id": 7,
-            "bus": 4,
-            "row": 1,
-            "x": 280.0,
-            "freeY": 3290.0,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [
-              "motor"
-            ],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 8,
-            "category": "neos",
-            "label": "angle motor front right",
-            "id": 1,
-            "bus": 3,
-            "row": 0,
-            "x": 420.2012072434608,
-            "freeY": 2344.0643863179075,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [
-              "motor"
-            ],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 9,
-            "category": "neos",
-            "label": "angle motor back left",
-            "id": 10,
-            "bus": 5,
-            "row": 1,
-            "x": 273.72233400402416,
-            "freeY": 4117.907444668008,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [
-              "motor"
-            ],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 10,
-            "category": "flexes",
-            "label": "Flywheel Motor (Leader)",
-            "id": 27,
-            "bus": 1,
-            "row": 0,
-            "x": 459.7187328173244,
-            "freeY": null,
-            "freeYRelative": false,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 11,
-            "category": "flexes",
-            "label": "Flywheel Motor (Follower)",
-            "id": 23,
-            "bus": 1,
-            "row": 0,
-            "x": 305.0,
-            "freeY": null,
-            "freeYRelative": false,
-            "scale": 1.0,
-            "tags": [
-              "motor"
-            ],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 12,
-            "category": "krakens",
-            "label": "Drive Motor",
-            "id": 5,
-            "bus": 3,
-            "row": 1,
-            "x": 455.0,
-            "freeY": 2475.0,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 13,
-            "category": "krakens",
-            "label": "Drive Motor (id 8)",
-            "id": 8,
-            "bus": 4,
-            "row": 1,
-            "x": 455.0,
-            "freeY": 3275.0,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 14,
-            "category": "krakens",
-            "label": "Drive Motor (id 2)",
-            "id": 2,
-            "bus": 3,
-            "row": 0,
-            "x": 620.3118712273641,
-            "freeY": 2352.434607645875,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 15,
-            "category": "krakens",
-            "label": "Drive Motor (id 11)",
-            "id": 11,
-            "bus": 5,
-            "row": 1,
-            "x": 480.11066398390335,
-            "freeY": 4107.444668008048,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 16,
-            "category": "cancoders",
-            "label": "Encoder (CANCoder)",
-            "id": 6,
-            "bus": 3,
-            "row": 1,
-            "x": 630.0,
-            "freeY": 2460.0,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [
-              "sensor"
-            ],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 17,
-            "category": "cancoders",
-            "label": "Encoder (CANCoder) (id 9)",
-            "id": 9,
-            "bus": 4,
-            "row": 1,
-            "x": 630.0,
-            "freeY": 3260.0,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [
-              "sensor"
-            ],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 18,
-            "category": "cancoders",
-            "label": "Encoder (CANCoder) (id 3)",
-            "id": 3,
-            "bus": 2,
-            "row": 1,
-            "x": 770.201207243461,
-            "freeY": 1670.5835010060362,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [
-              "sensor"
-            ],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 19,
-            "category": "cancoders",
-            "label": "Encoder (CANCoder) (id 12)",
-            "id": 12,
-            "bus": 5,
-            "row": 1,
-            "x": 686.4989939637824,
-            "freeY": 4063.5010060362174,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [
-              "sensor"
-            ],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 21,
-            "category": "pigeon",
-            "label": "IMU (Pigeon2)",
-            "id": 19,
-            "bus": 0,
-            "row": 0,
-            "x": 952.9255533199195,
-            "freeY": -65.59356136820924,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [
-              "sensor"
-            ],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 103,
-            "category": "devices",
-            "label": "lmtSw1",
-            "id": -1,
-            "bus": 0,
-            "row": 1,
-            "x": 1443.1031737498777,
-            "freeY": 76.08142493638677,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 104,
-            "category": "pdh",
-            "label": "PDH",
-            "id": 1,
-            "bus": 0,
-            "row": 0,
-            "x": 0.0,
-            "freeY": null,
-            "freeYRelative": false,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 106,
-            "category": "roborio",
-            "label": "roborio2",
-            "id": 1,
-            "bus": 3,
-            "row": 1,
-            "x": 1623.1031737498777,
-            "freeY": null,
-            "freeYRelative": false,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "diagram",
-            "key": 23,
-            "category": "cannect_direct",
-            "label": "CANnect Direct",
-            "id": -1,
-            "bus": 4,
-            "row": 1,
-            "x": 120.0,
-            "freeY": 3260.0,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": false
-          },
-          {
-            "nodeType": "diagram",
-            "key": 24,
-            "category": "cannect_direct",
-            "label": "CANnect Direct",
-            "id": -1,
-            "bus": 2,
-            "row": 1,
-            "x": 268.57142857142856,
-            "freeY": 1672.5553319919518,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": false
-          },
-          {
-            "nodeType": "diagram",
-            "key": 25,
-            "category": "cannect_direct",
-            "label": "CANnect Direct",
-            "id": -1,
-            "bus": 3,
-            "row": 1,
-            "x": 120.0,
-            "freeY": 2460.0,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": false
-          },
-          {
-            "nodeType": "diagram",
-            "key": 26,
-            "category": "cannect_direct",
-            "label": "CANnect Direct",
-            "id": -1,
-            "bus": 5,
-            "row": 1,
-            "x": 120.0,
-            "freeY": 4060.0,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": false
-          },
-          {
-            "nodeType": "diagram",
-            "key": 27,
-            "category": "cannect_inject",
-            "label": "CANnect Inject",
-            "id": -1,
-            "bus": 0,
-            "row": 1,
-            "x": 122.09255533199197,
-            "freeY": 72.51509054325956,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": false
-          }
-        ],
-        "ethernetLinks": [
-          {
-            "a": 24,
-            "b": 25
-          },
-          {
-            "a": 23,
-            "b": 25
-          },
-          {
-            "a": 23,
-            "b": 26
-          },
-          {
-            "a": 24,
-            "b": 27
-          }
-        ],
-        "canLinks": [],
-        "deviceLinks": [
-          {
-            "node": 23,
-            "device": 17,
-            "port": 1
-          },
-          {
-            "node": 23,
-            "device": 13,
-            "port": 2
-          },
-          {
-            "node": 23,
-            "device": 7,
-            "port": 3
-          },
-          {
-            "node": 24,
-            "device": 18,
-            "port": 1
-          },
-          {
-            "node": 24,
-            "device": 14,
-            "port": 2
-          },
-          {
-            "node": 24,
-            "device": 8,
-            "port": 3
-          },
-          {
-            "node": 25,
-            "device": 16,
-            "port": 1
-          },
-          {
-            "node": 25,
-            "device": 12,
-            "port": 2
-          },
-          {
-            "node": 25,
-            "device": 6,
-            "port": 3
-          },
-          {
-            "node": 26,
-            "device": 19,
-            "port": 1
-          },
-          {
-            "node": 26,
-            "device": 15,
-            "port": 2
-          },
-          {
-            "node": 26,
-            "device": 9,
-            "port": 3
-          }
-        ],
-        "attachmentLinks": [
-          {
-            "device": 3,
-            "attachment": 103
-          }
-        ],
-        "dioLinks": [
-          {
-            "roborio": 106,
-            "device": 103
-          }
-        ]
-      },
-      "cannectTests1": {
-        "busOffsets": [
-          0.0
-        ],
-        "busCount": 1,
-        "busSpacing": 160.0,
-        "busLefts": [
-          531.3962534287241
-        ],
-        "busRights": [
-          3462.982405411556
-        ],
-        "panY": -136.25,
-        "zoom": 0.39305769031064264,
-        "nodes": [
-          {
-            "nodeType": "device",
-            "key": 3,
-            "category": "neos",
-            "label": "neo 11",
-            "id": 11,
-            "bus": 0,
-            "row": 1,
-            "x": 1802.982405411556,
-            "freeY": 216.9581022287129,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 18,
-            "category": "neos",
-            "label": "neo 1",
-            "id": 1,
-            "bus": 0,
-            "row": 1,
-            "x": 3192.982405411556,
-            "freeY": 207.30735835840474,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 22,
-            "category": "neos",
-            "label": "neo 21",
-            "id": 21,
-            "bus": 0,
-            "row": 1,
-            "x": 562.982405411556,
-            "freeY": 593.8515836668405,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 31,
-            "category": "neos",
-            "label": "neo 31",
-            "id": 31,
-            "bus": 0,
-            "row": 1,
-            "x": 1952.982405411556,
-            "freeY": 570.175794426755,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 40,
-            "category": "neos",
-            "label": "neo feeder 53",
-            "id": 52,
-            "bus": 0,
-            "row": 0,
-            "x": 1423.365787562752,
-            "freeY": -169.54554137531332,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 36,
-            "category": "flexes",
-            "label": "flex 50 flywheel left",
-            "id": 50,
-            "bus": 0,
-            "row": 0,
-            "x": 1723.365787562752,
-            "freeY": -173.55240811347073,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 37,
-            "category": "flexes",
-            "label": "flex 52  flywheel right",
-            "id": 51,
-            "bus": 0,
-            "row": 0,
-            "x": 1873.365787562752,
-            "freeY": -173.55240811347073,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 4,
-            "category": "krakens",
-            "label": "kracken 12",
-            "id": 12,
-            "bus": 0,
-            "row": 1,
-            "x": 712.982405411556,
-            "freeY": 219.46126648752096,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 5,
-            "category": "krakens",
-            "label": "kracken 2",
-            "id": 2,
-            "bus": 0,
-            "row": 1,
-            "x": 2102.982405411556,
-            "freeY": 214.8471095514544,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 23,
-            "category": "krakens",
-            "label": "kracken 22",
-            "id": 22,
-            "bus": 0,
-            "row": 1,
-            "x": 1202.982405411556,
-            "freeY": 575.6259221414322,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 32,
-            "category": "krakens",
-            "label": "kracken 32",
-            "id": 32,
-            "bus": 0,
-            "row": 1,
-            "x": 2402.982405411556,
-            "freeY": 570.175794426755,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 6,
-            "category": "cancoders",
-            "label": "cancoder 3",
-            "id": 3,
-            "bus": 0,
-            "row": 1,
-            "x": 2892.982405411556,
-            "freeY": 207.30735835840474,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 7,
-            "category": "cancoders",
-            "label": "cancoder 13",
-            "id": 13,
-            "bus": 0,
-            "row": 1,
-            "x": 1502.982405411556,
-            "freeY": 212.30735835840474,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 24,
-            "category": "cancoders",
-            "label": "cancoder 23",
-            "id": 23,
-            "bus": 0,
-            "row": 1,
-            "x": 1652.982405411556,
-            "freeY": 584.9274098820486,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 33,
-            "category": "cancoders",
-            "label": "cancoder 33",
-            "id": 33,
-            "bus": 0,
-            "row": 1,
-            "x": 3042.982405411556,
-            "freeY": 570.175794426755,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 35,
-            "category": "pdh",
-            "label": "PDH",
-            "id": 62,
-            "bus": 0,
-            "row": 0,
-            "x": 933.7273505087999,
-            "freeY": -151.14525006326383,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 21,
-            "category": "roborio",
-            "label": "roboRIO",
-            "id": 0,
-            "bus": 0,
-            "row": 0,
-            "x": 609.339824820515,
-            "freeY": -66.6645512988411,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "diagram",
-            "key": 11,
-            "category": "cannect_direct",
-            "label": "front right swerve",
-            "id": -1,
-            "bus": 0,
-            "row": 1,
-            "x": 1352.982405411556,
-            "freeY": 119.09479196680346,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": false
-          },
-          {
-            "nodeType": "diagram",
-            "key": 16,
-            "category": "cannect_direct",
-            "label": "front left swerve",
-            "id": -1,
-            "bus": 0,
-            "row": 1,
-            "x": 2552.982405411556,
-            "freeY": 120.21570363008854,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": false
-          },
-          {
-            "nodeType": "diagram",
-            "key": 17,
-            "category": "cannect_inject",
-            "label": "CANnect Inject",
-            "id": -1,
-            "bus": 0,
-            "row": 1,
-            "x": 3342.982405411556,
-            "freeY": 120.70196045752904,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": false
-          },
-          {
-            "nodeType": "diagram",
-            "key": 19,
-            "category": "cannect_direct",
-            "label": "back right swerve",
-            "id": -1,
-            "bus": 0,
-            "row": 1,
-            "x": 862.982405411556,
-            "freeY": 431.4795004328456,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": false
-          },
-          {
-            "nodeType": "diagram",
-            "key": 30,
-            "category": "cannect_direct",
-            "label": "back left swerve",
-            "id": -1,
-            "bus": 0,
-            "row": 1,
-            "x": 2252.982405411556,
-            "freeY": 433.00409520595633,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": false
-          },
-          {
-            "nodeType": "diagram",
-            "key": 34,
-            "category": "cannect_direct",
-            "label": "CANnect Direct",
-            "id": -1,
-            "bus": 0,
-            "row": 0,
-            "x": 1573.365787562752,
-            "freeY": -280.52369607056534,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": false
-          },
-          {
-            "nodeType": "diagram",
-            "key": 38,
-            "category": "cannect_direct",
-            "label": "CANnect Direct",
-            "id": -1,
-            "bus": 0,
-            "row": 0,
-            "x": 1233.7273505087999,
-            "freeY": -277.3186762030319,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": false
-          },
-          {
-            "nodeType": "diagram",
-            "key": 39,
-            "category": "cannect_direct",
-            "label": "CANnect Direct",
-            "id": -1,
-            "bus": 0,
-            "row": 0,
-            "x": 1083.7273505087999,
-            "freeY": -276.94874580785796,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": false
-          },
-          {
-            "nodeType": "callout",
-            "key": 42,
-            "text": "left front swerve",
-            "targetType": "node",
-            "targetBus": 0,
-            "targetNodeKey": 16,
-            "targetCategory": "cannect_direct",
-            "targetLabel": "front left swerve",
-            "targetId": -1,
-            "x": 2722.982405411556,
-            "y": 55.0,
-            "freeY": null,
-            "freeYRelative": false,
-            "bus": 0,
-            "row": 1,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          }
-        ],
-        "ethernetLinks": [
-          {
-            "a": 11,
-            "b": 16
-          },
-          {
-            "a": 16,
-            "b": 17
-          },
-          {
-            "a": 11,
-            "b": 19
-          },
-          {
-            "a": 19,
-            "b": 30
-          },
-          {
-            "a": 30,
-            "b": 34
-          },
-          {
-            "a": 34,
-            "b": 38
-          },
-          {
-            "a": 38,
-            "b": 39
-          }
-        ],
-        "canLinks": [],
-        "deviceLinks": [
-          {
-            "node": 11,
-            "device": 4,
-            "port": 1
-          },
-          {
-            "node": 11,
-            "device": 7,
-            "port": 2
-          },
-          {
-            "node": 11,
-            "device": 3,
-            "port": 3
-          },
-          {
-            "node": 16,
-            "device": 5,
-            "port": 1
-          },
-          {
-            "node": 16,
-            "device": 6,
-            "port": 2
-          },
-          {
-            "node": 16,
-            "device": 18,
-            "port": 3
-          },
-          {
-            "node": 19,
-            "device": 22,
-            "port": 1
-          },
-          {
-            "node": 19,
-            "device": 23,
-            "port": 2
-          },
-          {
-            "node": 19,
-            "device": 24,
-            "port": 3
-          },
-          {
-            "node": 30,
-            "device": 31,
-            "port": 1
-          },
-          {
-            "node": 30,
-            "device": 32,
-            "port": 2
-          },
-          {
-            "node": 30,
-            "device": 33,
-            "port": 3
-          },
-          {
-            "node": 34,
-            "device": 36,
-            "port": 2
-          },
-          {
-            "node": 34,
-            "device": 37,
-            "port": 3
-          },
-          {
-            "node": 39,
-            "device": 35,
-            "port": 1
-          },
-          {
-            "node": 34,
-            "device": 40,
-            "port": 1
-          }
-        ]
-      },
-      "home_030226": {
-        "busOffsets": [
-          0.0,
-          128.77075215228433,
-          320.0
-        ],
-        "busCount": 3,
-        "busSpacing": 160.0,
-        "busLefts": [
-          40.0,
-          40.0,
-          40.0
-        ],
-        "busRights": [
-          1388.0,
-          1388.0,
-          1612.2231489177107
-        ],
-        "busConnectors": [
-          true,
-          false
-        ],
-        "panY": -118.25,
-        "zoom": 0.5042020110866959,
-        "nodes": [
-          {
-            "nodeType": "device",
-            "key": 74,
-            "category": "neos",
-            "label": "SPARKMAX/NEO 25",
-            "id": 25,
-            "bus": 2,
-            "row": 1,
-            "x": 548.9391014317762,
-            "freeY": 636.1537497811528,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 75,
-            "category": "neo550s",
-            "label": "roboRIO",
-            "id": 7,
-            "bus": 2,
-            "row": 0,
-            "x": 166.22722252700368,
-            "freeY": 536.3650746102709,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 76,
-            "category": "falcons",
-            "label": "FALCON 9",
-            "id": 9,
-            "bus": 2,
-            "row": 0,
-            "x": 536.1588412434987,
-            "freeY": 465.587194890493,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 82,
-            "category": "cancoders",
-            "label": "cancoder 44",
-            "id": 44,
-            "bus": 2,
-            "row": 0,
-            "x": 364.6798827225694,
-            "freeY": 427.8845294550478,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 78,
-            "category": "pdp",
-            "label": "pdp",
-            "id": 1,
-            "bus": 2,
-            "row": 1,
-            "x": 1343.5331409746202,
-            "freeY": 92.03722998296024,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 77,
-            "category": "roborio",
-            "label": "roboRIO",
-            "id": 0,
-            "bus": 0,
-            "row": 0,
-            "x": 210.0,
-            "freeY": -66.5,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "diagram",
-            "key": 79,
-            "category": "cannect_inject",
-            "label": "CANnect Inject",
-            "id": -1,
-            "bus": 1,
-            "row": 1,
-            "x": 1041.0352960720058,
-            "freeY": 720.5211737300971,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": false
-          },
-          {
-            "nodeType": "diagram",
-            "key": 80,
-            "category": "cannect_direct",
-            "label": "CANnect Direct",
-            "id": -1,
-            "bus": 2,
-            "row": 0,
-            "x": 329.37637951551557,
-            "freeY": 725.6993459389533,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": false
-          }
-        ],
-        "ethernetLinks": [
-          {
-            "a": 79,
-            "b": 80
-          }
-        ],
-        "canLinks": [
-          {
-            "node": 80,
-            "bus": 2,
-            "port": 1
-          }
-        ],
-        "deviceLinks": [
-          {
-            "node": 80,
-            "device": 75,
-            "port": 1
-          },
-          {
-            "node": 80,
-            "device": 76,
-            "port": 2
-          },
-          {
-            "node": 80,
-            "device": 82,
-            "port": 1
-          },
-          {
-            "node": 80,
-            "device": 74,
-            "port": 3
-          }
-        ]
-      },
-      "home_tests_033026": {}
-    }
-  },
-  "bridgeConfig": {
-    "schemaVersion": 2,
-    "generatedAt": null,
-    "byProfile": {
-      "home_030226": {
-        "groups": [
-          {
-            "name": "motors",
-            "enabled": true,
-            "members": [
-              {
-                "device": "SPARKMAX/NEO 25",
-                "enabled": true
-              },
-              {
-                "device": "SPARKMAX/NEO550 7",
-                "enabled": true
-              },
-              {
-                "device": "FALCON 9",
-                "enabled": true
-              }
-            ],
-            "bindings": []
-          }
-        ],
-        "selectedDevice": {
-          "device": "",
-          "enabled": false
-        }
-      },
-      "robot_2026": {
-        "groups": [
-          {
-            "name": "swerve_front_left",
-            "enabled": true,
-            "members": [
-              {
-                "device": "angle motor front left",
-                "enabled": true
-              },
-              {
-                "device": "Drive Motor",
-                "enabled": true
-              },
-              {
-                "device": "Encoder (CANCoder)",
-                "enabled": true
-              }
-            ],
-            "bindings": []
-          },
-          {
-            "name": "swerve_front_right",
-            "enabled": true,
-            "members": [
-              {
-                "device": "angle motor front right",
-                "enabled": true
-              },
-              {
-                "device": "Drive Motor (id 2)",
-                "enabled": true
-              },
-              {
-                "device": "Encoder (CANCoder) (id 3)",
-                "enabled": true
-              }
-            ],
-            "bindings": []
-          },
-          {
-            "name": "swerve_back_left",
-            "enabled": true,
-            "members": [
-              {
-                "device": "angle motor back left",
-                "enabled": true
-              },
-              {
-                "device": "Drive Motor (id 11)",
-                "enabled": true
-              },
-              {
-                "device": "Encoder (CANCoder) (id 12)",
-                "enabled": true
-              }
-            ],
-            "bindings": []
-          },
-          {
-            "name": "swerve_back_right",
-            "enabled": true,
-            "members": [
-              {
-                "device": "angle motor back right",
-                "enabled": true
-              },
-              {
-                "device": "Drive Motor (id 8)",
-                "enabled": true
-              },
-              {
-                "device": "Encoder (CANCoder) (id 9)",
-                "enabled": true
-              }
-            ],
-            "bindings": []
-          }
-        ],
-        "selectedDevice": {
-          "device": "",
-          "enabled": false
-        }
-      },
-      "home_tests_033026": {
-        "groups": [],
-        "selectedDevice": {
-          "device": "",
-          "enabled": false
-        }
-      }
-    }
-  },
   "schema_version": 4,
   "profiles": {
-    "example_default": {
-      "devices": [
-        "SPARKMAX 10",
-        "SPARKMAX 25",
-        "roboRIO"
-      ]
-    },
-    "robot": {
-      "devices": [
-        "FR NEO",
-        "FL NEO",
-        "BR NEO",
-        "BL NEO",
-        "FR KRAK",
-        "FL KRAK",
-        "BR KRAK",
-        "BL KRAK",
-        "FR CANC",
-        "FL CANC",
-        "BR CANC",
-        "BL CANC",
-        "PDH",
-        "Pigeon",
-        "roboRIO"
-      ]
-    },
-    "demo_club": {
-      "devices": [
-        "NEO 25",
-        "NEO 22",
-        "NEO 10",
-        "roboRIO"
-      ]
-    },
-    "demo_home": {
-      "devices": [
-        "VORTEX/FLEX 10",
-        "VORTEX/FLEX 20",
-        "FALCON 30",
-        "roboRIO"
-      ]
-    },
-    "demo_home_022326": {
-      "devices": [
-        "VORTEX/FLEX 11",
-        "VORTEX/FLEX 26",
-        "FALCON 9",
-        "PDH",
-        "roboRIO"
-      ]
-    },
-    "demo_home_022526": {
-      "devices": [
-        "NEO 25",
-        "FALCON 9",
-        "roboRIO"
-      ]
-    },
-    "club_022426": {
-      "devices": [
-        "SPARKMAX 10",
-        "SPARKMAX 25",
-        "VORTEX/FLEX 11",
-        "CANdle 30",
-        "roboRIO"
-      ]
-    },
-    "club_022526": {
-      "devices": [
-        "SPARKMAX/NEO 22",
-        "SPARKMAX/NEO550 7",
-        "PDH",
-        "roboRIO"
-      ]
-    },
-    "home_030226": {
-      "devices": [
-        "SPARKMAX/NEO 25",
-        "roboRIO",
-        "FALCON 9",
-        "cancoder 44",
-        "pdp",
-        "roboRIO"
-      ]
-    },
-    "reverse_eng_min1": {
-      "devices": [
-        "SPARKMAX/NEO 11",
-        "PDP",
-        "roboRIO"
-      ]
-    },
     "home_031226": {
       "devices": [
         "SPARKMAX/NEO 25",
@@ -2205,845 +11,397 @@
         "PDH",
         "roboRIO"
       ]
-    },
-    "robot_test1": {
-      "devices": [
-        "intake neo 51 limit fwd",
-        "intake neo 51 limit rev",
-        "intake neo 51",
-        "SPARKMAX/NEO 11 limit fwd",
-        "SPARKMAX/NEO 11",
-        "neo 21",
-        "SPARKMAX/NEO 31",
-        "SPARKMAX/NEO 41",
-        "kracken 12",
-        "kracken 22",
-        "kracken 32",
-        "kracken 42",
-        "cancoder 13",
-        "cancoder 23",
-        "cancoder 33",
-        "cancoder 43",
-        "candle",
-        "PDH",
-        "roboRIO"
-      ]
-    },
-    "home net test 2x": {
-      "devices": [
-        "VORTEX/FLEX 11",
-        "VORTEX/FLEX 26",
-        "FALCON 9",
-        "PDH",
-        "roboRIO"
-      ]
-    },
-    "robot_2026": {
-      "devices": [
-        "Climb Motor",
-        "Fuel Intake Motor",
-        "Pivot Intake Motor",
-        "Pivot Intake Follower",
-        "Feeder Motor",
-        "angle motor front left",
-        "angle motor back right",
-        "angle motor front right",
-        "angle motor back left",
-        "Flywheel Motor (Leader)",
-        "Flywheel Motor (Follower)",
-        "Drive Motor",
-        "Drive Motor (id 8)",
-        "Drive Motor (id 2)",
-        "Drive Motor (id 11)",
-        "Encoder (CANCoder)",
-        "Encoder (CANCoder) (id 9)",
-        "Encoder (CANCoder) (id 3)",
-        "Encoder (CANCoder) (id 12)",
-        "IMU (Pigeon2)",
-        "lmtSw1",
-        "PDH",
-        "roborio2"
-      ]
-    },
-    "cannectTests1": {
-      "devices": [
-        "neo 11",
-        "neo 1",
-        "neo 21",
-        "neo 31",
-        "neo feeder 53",
-        "flex 50 flywheel left",
-        "flex 52  flywheel right",
-        "kracken 12",
-        "kracken 2",
-        "kracken 22",
-        "kracken 32",
-        "cancoder 3",
-        "cancoder 13",
-        "cancoder 23",
-        "cancoder 33",
-        "PDH",
-        "roboRIO"
-      ]
-    },
-    "home_tests_033026": {
-      "devices": [
-        "Feeder Motor"
-      ]
     }
   },
   "devices": [
     {
-      "label": "angle motor back left",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 10,
-      "model": "NEO",
-      "type": "motor",
-      "terminator": false,
-      "tags": [
-        "motor"
-      ]
-    },
-    {
-      "label": "angle motor back right",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 7,
-      "model": "NEO",
-      "type": "motor",
-      "tags": [
-        "motor"
-      ]
-    },
-    {
-      "label": "angle motor front left",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 4,
-      "model": "NEO",
-      "type": "motor",
-      "tags": [
-        "sensor"
-      ]
-    },
-    {
-      "label": "angle motor front right",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 1,
-      "model": "NEO",
-      "type": "motor",
-      "tags": [
-        "motor"
-      ]
-    },
-    {
-      "label": "BL CANC",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 7,
-      "id": 6,
-      "type": "encoderExternal"
-    },
-    {
-      "label": "BL KRAK",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 5,
-      "model": "CTRE Kraken X60",
-      "type": "motor"
-    },
-    {
-      "label": "BL NEO",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 4,
-      "model": "REV NEO",
-      "type": "motor"
-    },
-    {
-      "label": "BR CANC",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 7,
-      "id": 9,
-      "type": "encoderExternal"
-    },
-    {
-      "label": "BR KRAK",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 8,
-      "model": "CTRE Kraken X60",
-      "type": "motor"
-    },
-    {
-      "label": "BR NEO",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 7,
-      "model": "REV NEO",
-      "type": "motor"
-    },
-    {
-      "label": "cancoder 13",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 7,
-      "id": 13,
-      "type": "encoderExternal",
-      "terminator": false
-    },
-    {
-      "label": "cancoder 23",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 7,
-      "id": 23,
-      "type": "encoderExternal",
-      "terminator": false
-    },
-    {
-      "label": "cancoder 3",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 7,
-      "id": 3,
-      "type": "encoderExternal",
-      "terminator": false
-    },
-    {
-      "label": "cancoder 33",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 7,
-      "id": 33,
-      "type": "encoderExternal",
-      "terminator": false
-    },
-    {
-      "label": "cancoder 43",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 7,
-      "id": 43,
-      "type": "encoderExternal",
-      "terminator": false
-    },
-    {
-      "label": "cancoder 44",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 7,
-      "id": 44,
-      "type": "encoderExternal",
-      "terminator": false
-    },
-    {
-      "label": "candle",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 10,
-      "id": 2,
-      "terminator": false
-    },
-    {
-      "label": "CANdle 30",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 10,
-      "id": 30
-    },
-    {
-      "label": "Climb Motor",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 60,
-      "model": "NEO",
-      "type": "motor",
-      "tags": [
-        "motor"
-      ]
-    },
-    {
-      "label": "Drive Motor",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 5,
-      "type": "motor"
-    },
-    {
-      "label": "Drive Motor (id 11)",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 11,
-      "type": "motor",
-      "terminator": false
-    },
-    {
-      "label": "Drive Motor (id 2)",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 2,
-      "type": "motor"
-    },
-    {
-      "label": "Drive Motor (id 8)",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 8,
-      "type": "motor"
-    },
-    {
-      "label": "Encoder (CANCoder)",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 7,
-      "id": 6,
-      "model": "motor",
-      "type": "encoderExternal",
-      "tags": [
-        "sensor"
-      ]
-    },
-    {
-      "label": "Encoder (CANCoder) (id 12)",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 7,
-      "id": 12,
-      "model": "motor",
-      "type": "encoderExternal",
-      "tags": [
-        "sensor"
-      ]
-    },
-    {
-      "label": "Encoder (CANCoder) (id 3)",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 7,
-      "id": 3,
-      "model": "motor",
-      "type": "encoderExternal",
-      "tags": [
-        "sensor"
-      ]
-    },
-    {
-      "label": "Encoder (CANCoder) (id 9)",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 7,
-      "id": 9,
-      "model": "motor",
-      "type": "encoderExternal",
-      "tags": [
-        "sensor"
-      ]
-    },
-    {
-      "label": "FALCON 30",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 30,
-      "model": "CTRE Falcon 500",
-      "type": "motor"
-    },
-    {
-      "label": "FALCON 9",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 9,
-      "model": "CTRE Falcon 500",
-      "type": "motor"
-    },
-    {
-      "label": "Feeder Motor",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 26,
-      "model": "REV NEO",
-      "type": "motor",
-      "tags": [
-        "motor"
-      ]
-    },
-    {
-      "label": "FL CANC",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 7,
-      "id": 3,
-      "type": "encoderExternal"
-    },
-    {
-      "label": "FL KRAK",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 2,
-      "model": "CTRE Kraken X60",
-      "type": "motor"
-    },
-    {
-      "label": "FL NEO",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 1,
-      "model": "REV NEO",
-      "type": "motor"
-    },
-    {
-      "label": "flex 50 flywheel left",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 50,
-      "type": "motor",
-      "terminator": false
-    },
-    {
-      "label": "flex 52  flywheel right",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 51,
-      "type": "motor",
-      "terminator": false
-    },
-    {
-      "label": "Flywheel Motor (Follower)",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 23,
-      "model": "Vortex",
-      "type": "motor",
-      "terminator": false,
-      "tags": [
-        "motor"
-      ]
-    },
-    {
-      "label": "Flywheel Motor (Leader)",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 27,
-      "model": "Vortex",
-      "type": "motor",
-      "terminator": false
-    },
-    {
-      "label": "FR CANC",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 7,
-      "id": 12,
-      "type": "encoderExternal"
-    },
-    {
-      "label": "FR KRAK",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 11,
-      "model": "CTRE Kraken X60",
-      "type": "motor"
-    },
-    {
-      "label": "FR NEO",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 10,
-      "model": "REV NEO",
-      "type": "motor"
-    },
-    {
-      "label": "Fuel Intake Motor",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 24,
-      "type": "motor"
-    },
-    {
-      "label": "IMU (Pigeon2)",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 4,
-      "id": 19,
-      "terminator": false,
-      "tags": [
-        "sensor"
-      ]
-    },
-    {
-      "label": "intake neo 51",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 51,
-      "type": "motor",
-      "terminator": false
-    },
-    {
-      "label": "intake neo 51 limit fwd",
-      "interface": "DIO",
-      "type": "limitSwitch",
-      "dio": 1,
-      "invert": false
-    },
-    {
-      "label": "intake neo 51 limit rev",
-      "interface": "DIO",
-      "type": "limitSwitch",
-      "dio": 2,
-      "invert": false
-    },
-    {
-      "label": "kracken 12",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 12,
-      "type": "motor",
-      "terminator": false
-    },
-    {
-      "label": "kracken 2",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 2,
-      "type": "motor",
-      "terminator": false
-    },
-    {
-      "label": "kracken 22",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 22,
-      "type": "motor",
-      "terminator": false
-    },
-    {
-      "label": "kracken 32",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 32,
-      "type": "motor",
-      "terminator": false
-    },
-    {
-      "label": "kracken 42",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 42,
-      "type": "motor",
-      "terminator": false
-    },
-    {
-      "label": "neo 1",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 1,
-      "type": "motor",
-      "terminator": false
-    },
-    {
-      "label": "NEO 10",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 10,
-      "model": "REV NEO",
-      "type": "motor"
-    },
-    {
-      "label": "neo 11",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 11,
-      "type": "motor",
-      "terminator": false
-    },
-    {
-      "label": "neo 21",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 21,
-      "type": "motor",
-      "terminator": false
-    },
-    {
-      "label": "NEO 22",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 22,
-      "model": "REV NEO",
-      "type": "motor"
-    },
-    {
-      "label": "NEO 25",
-      "interface": "CAN",
+      "label": "SPARKMAX/NEO 25",
       "manufacturer": 5,
       "deviceType": 2,
       "id": 25,
       "model": "REV NEO",
-      "type": "motor"
-    },
-    {
-      "label": "neo 31",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 31,
       "type": "motor",
-      "terminator": false
+      "interface": "CAN"
     },
     {
-      "label": "neo feeder 53",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 52,
-      "type": "motor",
-      "terminator": false
-    },
-    {
-      "label": "PDH",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 8,
-      "id": 1,
-      "terminator": true
-    },
-    {
-      "label": "pdp",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 8,
-      "id": 1,
-      "terminator": true
-    },
-    {
-      "label": "Pigeon",
-      "interface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 4,
-      "id": 1
-    },
-    {
-      "label": "Pivot Intake Follower",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 11,
-      "model": "NEO",
-      "type": "motor",
-      "tags": [
-        "motor"
-      ]
-    },
-    {
-      "label": "Pivot Intake Motor",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 22,
-      "type": "motor",
-      "attachments": [
-        "lmtSw1"
-      ]
-    },
-    {
-      "label": "roboRIO",
-      "interface": "CAN",
-      "manufacturer": 1,
-      "deviceType": 1,
-      "id": 0,
-      "terminator": true
-    },
-    {
-      "label": "SPARKMAX 10",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 10,
-      "model": "REV NEO",
-      "type": "motor"
-    },
-    {
-      "label": "SPARKMAX 25",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 25,
-      "model": "REV NEO",
-      "type": "motor"
-    },
-    {
-      "label": "SPARKMAX/NEO 11",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 11,
-      "model": "REV NEO",
-      "type": "motor"
-    },
-    {
-      "label": "SPARKMAX/NEO 11 limit fwd",
-      "interface": "DIO",
+      "label": "SPARKMAX/NEO550 7 limit fwd",
       "type": "limitSwitch",
       "dio": 0,
-      "invert": true
-    },
-    {
-      "label": "SPARKMAX/NEO 22",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 22,
-      "model": "REV NEO",
-      "type": "motor"
-    },
-    {
-      "label": "SPARKMAX/NEO 25",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 25,
-      "model": "REV NEO",
-      "type": "motor"
-    },
-    {
-      "label": "SPARKMAX/NEO 31",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 31,
-      "model": "REV NEO",
-      "type": "motor",
-      "terminator": false
-    },
-    {
-      "label": "SPARKMAX/NEO 41",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 41,
-      "model": "REV NEO",
-      "type": "motor",
-      "terminator": false
+      "invert": true,
+      "interface": "DIO"
     },
     {
       "label": "SPARKMAX/NEO550 7",
-      "interface": "CAN",
       "manufacturer": 5,
       "deviceType": 2,
       "id": 7,
       "model": "REV NEO 550",
-      "type": "motor"
+      "type": "motor",
+      "interface": "CAN"
     },
     {
-      "label": "SPARKMAX/NEO550 7 limit fwd",
-      "interface": "DIO",
-      "type": "limitSwitch",
-      "dio": 0,
-      "invert": true
-    },
-    {
-      "label": "VORTEX/FLEX 10",
-      "interface": "CAN",
-      "manufacturer": 5,
+      "label": "FALCON 9",
+      "manufacturer": 4,
       "deviceType": 2,
-      "id": 10,
-      "model": "REV NEO Vortex",
-      "type": "motor"
+      "id": 9,
+      "model": "CTRE Falcon 500",
+      "type": "motor",
+      "interface": "CAN"
     },
     {
-      "label": "VORTEX/FLEX 11",
-      "interface": "CAN",
+      "label": "candle",
+      "manufacturer": 4,
+      "deviceType": 10,
+      "id": 2,
+      "terminator": false,
+      "interface": "CAN"
+    },
+    {
+      "label": "PDH",
       "manufacturer": 5,
-      "deviceType": 2,
-      "id": 11,
-      "model": "REV NEO Vortex",
-      "type": "motor"
-    },
-    {
-      "label": "VORTEX/FLEX 20",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 20,
-      "model": "REV NEO Vortex",
-      "type": "motor"
-    },
-    {
-      "label": "VORTEX/FLEX 26",
-      "interface": "CAN",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 26,
-      "model": "REV NEO Vortex",
-      "type": "motor"
-    },
-    {
-      "label": "CANnect Inject",
-      "interface": "CAN",
-      "id": -1
-    },
-    {
-      "label": "CANnect Direct",
-      "interface": "CAN",
-      "id": -1
-    },
-    {
-      "label": "lmtSw1",
-      "interface": "DIO",
-      "type": "limitSwitch",
-      "dio": 0,
-      "invert": false
-    },
-    {
-      "label": "roborio2",
-      "interface": "CAN",
+      "deviceType": 8,
       "id": 1,
-      "manufacturer": 1,
+      "terminator": true,
+      "interface": "CAN"
+    },
+    {
+      "label": "roboRIO",
+      "manufacturer": 0,
       "deviceType": 1,
-      "model": "RobotController",
-      "type": "",
-      "terminator": true
+      "id": 0,
+      "type": "roborio",
+      "interface": "CAN",
+      "terminator": true,
+      "attachments": [
+        "SPARKMAX/NEO550 7 limit fwd"
+      ]
     }
   ],
-  "data_version": "2026-03-30_162729",
-  "data_hash": "d7bf7759390d1a9eff8c9246317cc0b0f3aa366d96581a96775ed0a4703f14d1"
+  "diagram": {
+    "profiles": {
+      "home_031226": {
+        "busOffsets": [
+          0.0
+        ],
+        "busCount": 1,
+        "busSpacing": 160.0,
+        "busLefts": [
+          40.0
+        ],
+        "busRights": [
+          1020.0
+        ],
+        "busConnectors": [],
+        "panY": -12.0,
+        "zoom": 1.5999999999999996,
+        "nodes": [
+          {
+            "nodeType": "device",
+            "key": 1,
+            "category": "neos",
+            "label": "SPARKMAX/NEO 25",
+            "id": 25,
+            "bus": 0,
+            "row": 0,
+            "x": 671.8750000000001,
+            "freeY": -66.56250000000001,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 2,
+            "category": "devices",
+            "label": "SPARKMAX/NEO550 7 limit fwd",
+            "id": -1,
+            "bus": 0,
+            "row": 0,
+            "x": 207.5,
+            "freeY": -65.93750000000001,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 3,
+            "category": "neo550s",
+            "label": "SPARKMAX/NEO550 7",
+            "id": 7,
+            "bus": 0,
+            "row": 0,
+            "x": 370.625,
+            "freeY": -62.812500000000014,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 4,
+            "category": "falcons",
+            "label": "FALCON 9",
+            "id": 9,
+            "bus": 0,
+            "row": 0,
+            "x": 518.125,
+            "freeY": -65.93750000000001,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 5,
+            "category": "candles",
+            "label": "candle",
+            "id": 2,
+            "bus": 0,
+            "row": 0,
+            "x": 859.375,
+            "freeY": -63.437500000000014,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 6,
+            "category": "pdh",
+            "label": "PDH",
+            "id": 1,
+            "bus": 0,
+            "row": 0,
+            "x": 1016.25,
+            "freeY": -60.937500000000014,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 7,
+            "category": "roborio",
+            "label": "roboRIO",
+            "id": 0,
+            "bus": 0,
+            "row": 0,
+            "x": 63.125,
+            "freeY": -75.31250000000001,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          }
+        ],
+        "ethernetLinks": [],
+        "canLinks": [],
+        "deviceLinks": [],
+        "attachmentLinks": [
+          {
+            "device": 7,
+            "attachment": 2
+          }
+        ],
+        "dioLinks": [
+          {
+            "roborio": 7,
+            "device": 2
+          }
+        ]
+      }
+    }
+  },
+  "data_version": "2026-04-07_135739",
+  "data_hash": "e608d1b0f113a185e15296c247e27fa108e2ecd1e715b34bb0901286a2b8dfad",
+  "default_profile": "home_031226",
+  "bridgeConfig": {
+    "schemaVersion": 2,
+    "generatedAt": null,
+    "byProfile": {
+      "home_031226": {
+        "groups": [],
+        "selectedDevice": {
+          "device": "",
+          "enabled": false
+        },
+        "tests": {
+          "default_test_set": "default",
+          "test_sets": {
+            "default": [
+              {
+                "name": "Rotation only (internal)",
+                "enabled": false,
+                "motorLabels": [
+                  "SPARKMAX/NEO 25"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "rotation": {
+                  "limitRot": 15.0,
+                  "encoderKey": "internal",
+                  "encoderMotorIndex": 0
+                }
+              },
+              {
+                "name": "Deadband sweep (internal)",
+                "enabled": false,
+                "motorLabels": [
+                  "SPARKMAX/NEO 25"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "time": {
+                  "timeoutSec": 5.0,
+                  "onTimeout": "pass"
+                }
+              },
+              {
+                "name": "Rotation + Time",
+                "enabled": false,
+                "motorLabels": [
+                  "FALCON 9"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "rotation": {
+                  "limitRot": 10.0,
+                  "encoderKey": "internal",
+                  "encoderMotorIndex": 0
+                },
+                "time": {
+                  "timeoutSec": 2.0,
+                  "onTimeout": "fail"
+                }
+              },
+              {
+                "name": "Time only",
+                "enabled": false,
+                "motorLabels": [
+                  "SPARKMAX/NEO550 7"
+                ],
+                "type": "composite",
+                "duty": 0.3,
+                "time": {
+                  "timeoutSec": 1.5,
+                  "onTimeout": "pass"
+                }
+              },
+              {
+                "name": "Nudge (0.2 for 0.5s)",
+                "enabled": false,
+                "motorLabels": [
+                  "SPARKMAX/NEO 25"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "time": {
+                  "timeoutSec": 0.5,
+                  "onTimeout": "pass"
+                }
+              },
+              {
+                "name": "Limit switch only",
+                "enabled": false,
+                "motorLabels": [
+                  "SPARKMAX/NEO550 7"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "limitSwitch": {
+                  "enabled": true,
+                  "onHit": "pass",
+                  "id": "SPARKMAX/NEO550 7 limit fwd"
+                }
+              },
+              {
+                "name": "Hold to run",
+                "enabled": false,
+                "motorLabels": [
+                  "FALCON 9"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "hold": {
+                  "enabled": true,
+                  "onRelease": "pass"
+                }
+              },
+              {
+                "name": "Rotation + Time + Limit",
+                "enabled": false,
+                "motorLabels": [
+                  "SPARKMAX/NEO550 7",
+                  "SPARKMAX/NEO 25",
+                  "FALCON 9"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "rotation": {
+                  "limitRot": 10.0,
+                  "encoderKey": "internal",
+                  "encoderMotorIndex": 0
+                },
+                "time": {
+                  "timeoutSec": 2.0,
+                  "onTimeout": "fail"
+                },
+                "limitSwitch": {
+                  "enabled": true,
+                  "onHit": "pass",
+                  "id": "SPARKMAX/NEO550 7 limit fwd"
+                }
+              },
+              {
+                "name": "All checks",
+                "enabled": false,
+                "motorLabels": [
+                  "SPARKMAX/NEO550 7"
+                ],
+                "type": "composite",
+                "duty": 0.2,
+                "rotation": {
+                  "limitRot": 8.0,
+                  "encoderKey": "internal",
+                  "encoderMotorIndex": 0
+                },
+                "time": {
+                  "timeoutSec": 3.0,
+                  "onTimeout": "pass"
+                },
+                "hold": {
+                  "enabled": true,
+                  "onRelease": "pass"
+                },
+                "limitSwitch": {
+                  "enabled": true,
+                  "onHit": "pass",
+                  "id": "SPARKMAX/NEO550 7 limit fwd"
+                }
+              },
+              {
+                "name": "Joystick motor (controller0.leftY)",
+                "enabled": false,
+                "motorLabels": [
+                  "SPARKMAX/NEO 25",
+                  "FALCON 9"
+                ],
+                "type": "joystick",
+                "inputSource": "controller0.leftY",
+                "deadband": 0.12
+              }
+            ],
+            "mini": []
+          }
+        }
+      }
+    }
+  }
 }

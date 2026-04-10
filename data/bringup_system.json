@@ -4,12 +4,13 @@
     "home_031226": {
       "devices": [
         "SPARKMAX/NEO 25",
-        "SPARKMAX/NEO550 7 limit fwd",
+        "lmt1",
         "SPARKMAX/NEO550 7",
         "FALCON 9",
         "candle",
         "PDH",
-        "roboRIO"
+        "roboRIO",
+        "lmt2"
       ]
     }
   },
@@ -21,10 +22,13 @@
       "id": 25,
       "model": "REV NEO",
       "type": "motor",
-      "interface": "CAN"
+      "interface": "CAN",
+      "attachments": [
+        "lmt1"
+      ]
     },
     {
-      "label": "SPARKMAX/NEO550 7 limit fwd",
+      "label": "lmt1",
       "type": "limitSwitch",
       "dio": 0,
       "invert": true,
@@ -37,7 +41,10 @@
       "id": 7,
       "model": "REV NEO 550",
       "type": "motor",
-      "interface": "CAN"
+      "interface": "CAN",
+      "attachments": [
+        "lmt1"
+      ]
     },
     {
       "label": "FALCON 9",
@@ -46,7 +53,10 @@
       "id": 9,
       "model": "CTRE Falcon 500",
       "type": "motor",
-      "interface": "CAN"
+      "interface": "CAN",
+      "attachments": [
+        "lmt2"
+      ]
     },
     {
       "label": "candle",
@@ -70,16 +80,189 @@
       "deviceType": 1,
       "id": 0,
       "type": "roborio",
-      "interface": "CAN"
+      "interface": "CAN",
+      "terminator": true
+    },
+    {
+      "label": "lmt2",
+      "interface": "DIO",
+      "dio": 2,
+      "invert": false,
+      "type": "limitSwitch"
     }
   ],
   "diagram": {
     "profiles": {
-      "home_031226": {}
+      "home_031226": {
+        "busOffsets": [
+          0.0
+        ],
+        "busCount": 1,
+        "busSpacing": 160.0,
+        "busLefts": [
+          40.0
+        ],
+        "busRights": [
+          1252.125
+        ],
+        "busConnectors": [],
+        "panY": -0.0,
+        "zoom": 2.0,
+        "dioFreeYMode": "rail",
+        "nodes": [
+          {
+            "nodeType": "device",
+            "key": 1,
+            "category": "neos",
+            "label": "SPARKMAX/NEO 25",
+            "id": 25,
+            "bus": 0,
+            "row": 0,
+            "x": 815.125,
+            "freeY": -66.56250000000001,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 2,
+            "category": "devices",
+            "label": "lmt1",
+            "id": -1,
+            "bus": 0,
+            "row": 0,
+            "x": 661.125,
+            "freeY": -271.75,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 3,
+            "category": "neo550s",
+            "label": "SPARKMAX/NEO550 7",
+            "id": 7,
+            "bus": 0,
+            "row": 0,
+            "x": 507.625,
+            "freeY": -81.25,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 4,
+            "category": "falcons",
+            "label": "FALCON 9",
+            "id": 9,
+            "bus": 0,
+            "row": 1,
+            "x": 286.12499999999943,
+            "freeY": 73.25,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 5,
+            "category": "candles",
+            "label": "candle",
+            "id": 2,
+            "bus": 0,
+            "row": 0,
+            "x": 977.625,
+            "freeY": -80.25,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 6,
+            "category": "pdh",
+            "label": "PDH",
+            "id": 1,
+            "bus": 0,
+            "row": 0,
+            "x": 1132.125,
+            "freeY": -69.25,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 7,
+            "category": "roborio",
+            "label": "roboRIO",
+            "id": 0,
+            "bus": 0,
+            "row": 0,
+            "x": 257.45833333333326,
+            "freeY": -85.25,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 8,
+            "category": "devices",
+            "label": "lmt2",
+            "id": -1,
+            "bus": 0,
+            "row": 0,
+            "x": 107.45833333333324,
+            "freeY": -46.75,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          }
+        ],
+        "ethernetLinks": [],
+        "canLinks": [],
+        "deviceLinks": [],
+        "attachmentLinks": [
+          {
+            "device": 4,
+            "attachment": 8
+          },
+          {
+            "device": 3,
+            "attachment": 2
+          },
+          {
+            "device": 1,
+            "attachment": 2
+          }
+        ],
+        "dioLinks": [
+          {
+            "roborio": 7,
+            "device": 2
+          },
+          {
+            "roborio": 7,
+            "device": 8
+          }
+        ]
+      }
     }
   },
-  "data_version": "2026-04-03_001836",
-  "data_hash": "77d4dadc64d7656ab13d7cfed6d8242254785e990645cf342d28a2090c744374",
+  "data_version": "2026-04-07_154555",
+  "data_hash": "5b059334a98110e793e577418d0d0a544693e8420da58ec21478496d21ee7ced",
   "default_profile": "home_031226",
   "bridgeConfig": {
     "schemaVersion": 2,

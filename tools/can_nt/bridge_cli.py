@@ -646,6 +646,39 @@ MESSAGE_OK_CONFIG_VALID = "OK: Config is valid."
 MESSAGE_ERR_CONFIG_VALIDATE = "ERROR: {message}"
 MESSAGE_STORE_ISSUE = "{location}: {message}"
 MESSAGE_ERR_REGISTRY_NOT_LOADED = "ERROR: Profiles not loaded. Use merge/import config <bringup_system.json>."
+MESSAGE_INFO_RENAME_REFS = "INFO: Updated references for {old} -> {new}: {details}"
+MESSAGE_INFO_RENAME_REFS_NONE = "INFO: No references updated for {old} -> {new}."
+MESSAGE_INFO_RENAME_REFS_ITEM = "{label}({count})"
+MESSAGE_INFO_RENAME_REFS_LABEL_PROFILE_DEVICES = "profiles.devices"
+MESSAGE_INFO_RENAME_REFS_LABEL_ATTACHMENTS = "devices.attachments"
+MESSAGE_INFO_RENAME_REFS_LABEL_GROUPS = "bridgeConfig.groups"
+MESSAGE_INFO_RENAME_REFS_LABEL_SELECTED = "bridgeConfig.selectedDevice"
+MESSAGE_INFO_RENAME_REFS_LABEL_DIAGRAM = "diagram.nodes"
+MESSAGE_INFO_RENAME_REFS_LABEL_TEST_DEVICES = "tests.devices"
+MESSAGE_INFO_RENAME_REFS_LABEL_TEST_LIMIT_SWITCH = "tests.limitSwitch.id"
+MESSAGE_INFO_RENAME_REFS_LABEL_TEST_ROTATION_ENCODER = "tests.rotation.encoderKey"
+MESSAGE_INFO_RENAME_REFS_LABEL_TEST_DEADBAND_ENCODER = "tests.deadbandSweep.encoderKey"
+RENAME_REF_PROFILE_DEVICES = "profile_devices"
+RENAME_REF_ATTACHMENTS = "attachments"
+RENAME_REF_GROUPS = "groups"
+RENAME_REF_SELECTED = "selected"
+RENAME_REF_DIAGRAM = "diagram"
+RENAME_REF_TEST_DEVICES = "test_devices"
+RENAME_REF_TEST_LIMIT_SWITCH = "test_limit_switch"
+RENAME_REF_TEST_ROTATION_ENCODER = "test_rotation_encoder"
+RENAME_REF_TEST_DEADBAND_ENCODER = "test_deadband_encoder"
+RENAME_REF_ORDER = (
+    RENAME_REF_PROFILE_DEVICES,
+    RENAME_REF_ATTACHMENTS,
+    RENAME_REF_GROUPS,
+    RENAME_REF_SELECTED,
+    RENAME_REF_DIAGRAM,
+    RENAME_REF_TEST_DEVICES,
+    RENAME_REF_TEST_LIMIT_SWITCH,
+    RENAME_REF_TEST_ROTATION_ENCODER,
+    RENAME_REF_TEST_DEADBAND_ENCODER,
+)
+KEY_LIMIT_SWITCH_ID = "id"
 MESSAGE_LOCAL_PROFILES_EMPTY = "Local profiles: (none)"
 MESSAGE_LOCAL_PROFILES_HEADER = "Local profiles:"
 MESSAGE_LOCAL_PROFILE_HEADER = "Local profile:"
@@ -7940,6 +7973,8 @@ class BridgeCli:
             return StatusResult(code=SS__CONFIG__DUPLICATE_LABEL)
 
         changed = False
+        groups_count = COUNT_ZERO
+        selected_count = COUNT_ZERO
         if isinstance(by_profile, dict):
             for entry in by_profile.values():
                 if not isinstance(entry, dict):
@@ -7953,20 +7988,38 @@ class BridgeCli:
                             if name.lower() == old_name.lower():
                                 member[KEY_DEVICE] = new_name
                                 changed = True
+                                groups_count += COUNT_ONE
                         elif isinstance(member, str):
                             if member.strip().lower() == old_name.lower():
                                 index = group["members"].index(member)
                                 group["members"][index] = new_name
                                 changed = True
+                                groups_count += COUNT_ONE
                 selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE)
                 if isinstance(selected, dict):
                     sel_name = str(selected.get(KEY_DEVICE, "")).strip()
                     if sel_name.lower() == old_name.lower():
                         selected[KEY_DEVICE] = new_name
                         changed = True
+                        selected_count += COUNT_ONE
         if not changed:
             print(f"ERROR: Device {old_name} not found in local config.")
             return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        rename_counts: Dict[str, int] = {
+            RENAME_REF_PROFILE_DEVICES: COUNT_ZERO,
+            RENAME_REF_ATTACHMENTS: COUNT_ZERO,
+            RENAME_REF_GROUPS: groups_count,
+            RENAME_REF_SELECTED: selected_count,
+            RENAME_REF_DIAGRAM: COUNT_ZERO,
+            RENAME_REF_TEST_DEVICES: COUNT_ZERO,
+            RENAME_REF_TEST_LIMIT_SWITCH: COUNT_ZERO,
+            RENAME_REF_TEST_ROTATION_ENCODER: COUNT_ZERO,
+            RENAME_REF_TEST_DEADBAND_ENCODER: COUNT_ZERO,
+        }
+        test_counts = self._update_tests_label_refs(old_name, new_name)
+        if test_counts:
+            rename_counts.update(test_counts)
+        self._print_rename_summary(old_name, new_name, rename_counts)
         return StatusResult(code=SS__NORMAL)
 
     def _delete_local_device(self, name: str) -> StatusResult:
@@ -8194,23 +8247,48 @@ class BridgeCli:
             return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         entry["label"] = new_label
         self._profiles_dirty = True
-        self._update_diagram_label(entry, new_label)
-        self._update_bridge_groups_label(old, new_label)
+        rename_counts: Dict[str, int] = {
+            RENAME_REF_PROFILE_DEVICES: COUNT_ZERO,
+            RENAME_REF_ATTACHMENTS: COUNT_ZERO,
+            RENAME_REF_GROUPS: COUNT_ZERO,
+            RENAME_REF_SELECTED: COUNT_ZERO,
+            RENAME_REF_DIAGRAM: COUNT_ZERO,
+            RENAME_REF_TEST_DEVICES: COUNT_ZERO,
+            RENAME_REF_TEST_LIMIT_SWITCH: COUNT_ZERO,
+            RENAME_REF_TEST_ROTATION_ENCODER: COUNT_ZERO,
+            RENAME_REF_TEST_DEADBAND_ENCODER: COUNT_ZERO,
+        }
+        rename_counts[RENAME_REF_PROFILE_DEVICES] = self._update_profile_device_label(old, new_label)
+        rename_counts[RENAME_REF_ATTACHMENTS] = self._update_attachment_labels(old, new_label)
+        groups_count, selected_count = self._update_bridge_groups_label(old, new_label)
+        rename_counts[RENAME_REF_GROUPS] = groups_count
+        rename_counts[RENAME_REF_SELECTED] = selected_count
+        if self._update_diagram_label(entry, new_label):
+            rename_counts[RENAME_REF_DIAGRAM] = COUNT_ONE
+        test_counts = self._update_tests_label_refs(old, new_label)
+        if test_counts:
+            rename_counts.update(test_counts)
         self._refresh_devices_from_profiles()
+        profile_name = self._tests_profile or self._active_profile_name()
+        if profile_name:
+            self._refresh_tests_profile(profile_name)
+        self._print_rename_summary(old, new_label, rename_counts)
         return StatusResult(code=SS__NORMAL)
 
-    def _update_bridge_groups_label(self, old: str, new: str) -> None:
+    def _update_bridge_groups_label(self, old: str, new: str) -> tuple[int, int]:
         """
         NAME
             _update_bridge_groups_label - Update bridgeConfig group members after rename.
         """
         config = self._local_config
         if not isinstance(config, dict):
-            return
+            return COUNT_ZERO, COUNT_ZERO
         by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
         if not isinstance(by_profile, dict):
-            return
+            return COUNT_ZERO, COUNT_ZERO
         changed = False
+        groups_changed = COUNT_ZERO
+        selected_changed = COUNT_ZERO
         for entry in by_profile.values():
             if not isinstance(entry, dict):
                 continue
@@ -8223,49 +8301,54 @@ class BridgeCli:
                         if name.lower() == old.lower():
                             member[KEY_DEVICE] = new
                             changed = True
+                            groups_changed += COUNT_ONE
                     elif isinstance(member, str):
                         if member.strip().lower() == old.lower():
                             index = group["members"].index(member)
                             group["members"][index] = new
                             changed = True
+                            groups_changed += COUNT_ONE
             selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE)
             if isinstance(selected, dict):
                 sel_name = str(selected.get(KEY_DEVICE, "")).strip()
                 if sel_name.lower() == old.lower():
                     selected[KEY_DEVICE] = new
                     changed = True
+                    selected_changed += COUNT_ONE
         if changed:
             self._local_config = config
             self._mark_groups_dirty()
+        return groups_changed, selected_changed
 
-    def _update_diagram_label(self, entry: Dict[str, object], new_label: str) -> None:
+    def _update_diagram_label(self, entry: Dict[str, object], new_label: str) -> bool:
         payload = self._local_root_payload
         if not isinstance(payload, dict):
-            return
+            return False
         profiles, profile_name = self._profiles_root_and_name()
         if profiles is None or profile_name is None:
-            return
+            return False
         profile = profiles.get(profile_name)
         if not isinstance(profile, dict):
-            return
+            return False
         category = self._find_entry_category(profile, entry)
         if category is None:
-            return
+            return False
         device_id = entry.get("id")
         if device_id is None:
-            return
+            return False
         diagram = payload.get("diagram")
         if not isinstance(diagram, dict):
-            return
+            return False
         diag_profiles = diagram.get("profiles")
         if not isinstance(diag_profiles, dict):
-            return
+            return False
         diag_profile = diag_profiles.get(profile_name)
         if not isinstance(diag_profile, dict):
-            return
+            return False
         nodes = diag_profile.get("nodes")
         if not isinstance(nodes, list):
-            return
+            return False
+        updated = False
         for node in nodes:
             if not isinstance(node, dict):
                 continue
@@ -8273,6 +8356,141 @@ class BridgeCli:
                 continue
             if node.get("category") == category and node.get("id") == device_id:
                 node["label"] = new_label
+                updated = True
+        return updated
+
+    def _update_profile_device_label(self, old: str, new: str) -> int:
+        """
+        NAME
+            _update_profile_device_label - Replace label in active profile devices list.
+        """
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            return COUNT_ZERO
+        profiles, profile_name = self._profiles_root_and_name()
+        if profiles is None or profile_name is None:
+            return COUNT_ZERO
+        profile = profiles.get(profile_name)
+        if not isinstance(profile, dict):
+            return COUNT_ZERO
+        labels = profile.get(KEY_PROFILE_DEVICES)
+        if not isinstance(labels, list):
+            return COUNT_ZERO
+        replaced = COUNT_ZERO
+        for idx, label in enumerate(list(labels)):
+            if not isinstance(label, str):
+                continue
+            if label.strip().lower() == old.strip().lower():
+                labels[idx] = new
+                replaced += COUNT_ONE
+        profile[KEY_PROFILE_DEVICES] = labels
+        return replaced
+
+    def _update_attachment_labels(self, old: str, new: str) -> int:
+        """
+        NAME
+            _update_attachment_labels - Replace label in device attachments lists.
+        """
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            return COUNT_ZERO
+        devices = payload.get(KEY_DEVICES)
+        if not isinstance(devices, list):
+            return COUNT_ZERO
+        replaced = COUNT_ZERO
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            attachments = entry.get(KEY_ATTACHMENTS)
+            if not isinstance(attachments, list):
+                continue
+            for idx, label in enumerate(list(attachments)):
+                if not isinstance(label, str):
+                    continue
+                if label.strip().lower() == old.strip().lower():
+                    attachments[idx] = new
+                    replaced += COUNT_ONE
+            entry[KEY_ATTACHMENTS] = attachments
+        return replaced
+
+    def _update_tests_label_refs(self, old: str, new: str) -> Dict[str, int]:
+        """
+        NAME
+            _update_tests_label_refs - Update test references for renamed devices.
+        """
+        self._ensure_tests_loaded()
+        model = self._tests_model
+        if model is None:
+            return {}
+        old_key = old.strip().lower()
+        counts = {
+            RENAME_REF_TEST_DEVICES: COUNT_ZERO,
+            RENAME_REF_TEST_LIMIT_SWITCH: COUNT_ZERO,
+            RENAME_REF_TEST_ROTATION_ENCODER: COUNT_ZERO,
+            RENAME_REF_TEST_DEADBAND_ENCODER: COUNT_ZERO,
+        }
+        for test_set in model.test_sets.values():
+            if not isinstance(test_set, TestSetModel):
+                continue
+            for test in test_set.tests:
+                if not isinstance(test, TestModel):
+                    continue
+                for idx, label in enumerate(list(test.devices)):
+                    if not isinstance(label, str):
+                        continue
+                    if label.strip().lower() == old_key:
+                        test.devices[idx] = new
+                        counts[RENAME_REF_TEST_DEVICES] += COUNT_ONE
+                term = test.termination
+                if term and isinstance(term.limit_switch, dict):
+                    limit_id = term.limit_switch.get(KEY_LIMIT_SWITCH_ID)
+                    if isinstance(limit_id, str) and limit_id.strip().lower() == old_key:
+                        term.limit_switch[KEY_LIMIT_SWITCH_ID] = new
+                        counts[RENAME_REF_TEST_LIMIT_SWITCH] += COUNT_ONE
+                if term and term.rotation_encoder_key:
+                    if str(term.rotation_encoder_key).strip().lower() == old_key:
+                        term.rotation_encoder_key = new
+                        counts[RENAME_REF_TEST_ROTATION_ENCODER] += COUNT_ONE
+                deadband = test.deadband_sweep
+                if deadband and deadband.encoder_key:
+                    if str(deadband.encoder_key).strip().lower() == old_key:
+                        deadband.encoder_key = new
+                        counts[RENAME_REF_TEST_DEADBAND_ENCODER] += COUNT_ONE
+        if any(count > COUNT_ZERO for count in counts.values()):
+            self._mark_tests_dirty()
+        return counts
+
+    def _print_rename_summary(self, old: str, new: str, counts: Dict[str, int]) -> None:
+        """
+        NAME
+            _print_rename_summary - Print rename reference updates.
+        """
+        label_map = {
+            RENAME_REF_PROFILE_DEVICES: MESSAGE_INFO_RENAME_REFS_LABEL_PROFILE_DEVICES,
+            RENAME_REF_ATTACHMENTS: MESSAGE_INFO_RENAME_REFS_LABEL_ATTACHMENTS,
+            RENAME_REF_GROUPS: MESSAGE_INFO_RENAME_REFS_LABEL_GROUPS,
+            RENAME_REF_SELECTED: MESSAGE_INFO_RENAME_REFS_LABEL_SELECTED,
+            RENAME_REF_DIAGRAM: MESSAGE_INFO_RENAME_REFS_LABEL_DIAGRAM,
+            RENAME_REF_TEST_DEVICES: MESSAGE_INFO_RENAME_REFS_LABEL_TEST_DEVICES,
+            RENAME_REF_TEST_LIMIT_SWITCH: MESSAGE_INFO_RENAME_REFS_LABEL_TEST_LIMIT_SWITCH,
+            RENAME_REF_TEST_ROTATION_ENCODER: MESSAGE_INFO_RENAME_REFS_LABEL_TEST_ROTATION_ENCODER,
+            RENAME_REF_TEST_DEADBAND_ENCODER: MESSAGE_INFO_RENAME_REFS_LABEL_TEST_DEADBAND_ENCODER,
+        }
+        parts: List[str] = []
+        for key in RENAME_REF_ORDER:
+            count = counts.get(key, COUNT_ZERO)
+            if count > COUNT_ZERO:
+                parts.append(
+                    MESSAGE_INFO_RENAME_REFS_ITEM.format(
+                        label=label_map.get(key, key),
+                        count=count,
+                    )
+                )
+        if not parts:
+            print(MESSAGE_INFO_RENAME_REFS_NONE.format(old=old, new=new))
+            return
+        details = SEP_COMMA_SPACE.join(parts)
+        print(MESSAGE_INFO_RENAME_REFS.format(old=old, new=new, details=details))
 
     def _find_entry_category(self, profile: Dict[str, object], entry: Dict[str, object]) -> Optional[str]:
         for key in (

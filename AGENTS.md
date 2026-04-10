@@ -64,6 +64,12 @@ Purpose: Keep man-page style documentation consistent in Java and Python sources
   - If an undocumented file is modified and contains meaningful logic, add documentation.
 - Never change program behavior when enforcing documentation rules.
 
+Testing Notes Workflow (Global)
+Purpose: Keep multiple test passes clean while preserving prior results.
+- Add new notes under `SID_COMMENT:` during a fresh pass.
+- After each pass, replace `SID_COMMENT:` with `TESTING_RESULTS:` to archive the run.
+- Leave `TESTING_RESULTS:` blocks in place; only `SID_COMMENT:` should be reused for the next pass.
+
 What to do first for any task that touches the Java-Python interface
 1) Inventory NetworkTables usage:
    - List every path written and read on the Java side.
