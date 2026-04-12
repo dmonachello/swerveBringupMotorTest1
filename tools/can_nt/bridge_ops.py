@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from tools.can_nt.bridge_session import BridgeSession
+from tools.can_nt.bridge_session import BridgeSession, _local_timezone_args
 from tools.can_nt.status import (
     StatusResult,
     SS__CONFIG__INVALID,
@@ -28,6 +28,7 @@ from tools.can_nt.status import (
     SS__NETWORK__ROBOT_UNAVAILABLE,
 )
 from tools.common.json_io import read_json, write_json
+from tools.common.build_info import BUILD_GIT_DESCRIBE, KEY_BUILD
 from tools.common.profile_constants import (
     BRIDGE_CONFIG_SCHEMA_VERSION,
     KEY_ATTACHMENTS,
@@ -43,7 +44,9 @@ from tools.common.profile_constants import (
     KEY_DEFAULT_PROFILE,
     KEY_DEVICES,
     KEY_DEVICE,
+    KEY_ENABLED,
     KEY_LABEL,
+    KEY_MODEL,
     KEY_INTERFACE,
     KEY_MANUFACTURER,
     KEY_DEVICE_TYPE,
@@ -57,10 +60,34 @@ from tools.common.profile_constants import (
     KEY_PROFILES,
     KEY_PROFILE_DEVICES,
     KEY_PROFILE,
+    KEY_GROUP_COUNT,
+    KEY_MEMBERS,
+    KEY_MEMBER_COUNT,
+    KEY_BINDING_COUNT,
+    KEY_INPUT,
+    KEY_KIND,
+    KEY_VALUE,
+    KEY_GENERATED_AT_MS,
     KEY_ROLE,
     KEY_TAGS,
     KEY_TYPE,
     KEY_VENDOR,
+    KEY_TESTS_ACTIVE_SET,
+    KEY_TESTS_DEFAULT_SET,
+    KEY_TESTS_USING_SETS,
+    KEY_TESTS_TOTAL_COUNT,
+    KEY_TESTS_ENABLED_COUNT,
+    KEY_TESTS_ROWS,
+    KEY_TESTS_INDEX,
+    KEY_TESTS_NAME,
+    KEY_TESTS_ENABLED,
+    KEY_TESTS_SELECTED,
+    KEY_TESTS_TYPE,
+    KEY_TESTS_STATUS,
+    KEY_TESTS_MOTORS,
+    KEY_NAME,
+    KEY_ESTOPPED,
+    KEY_MODE,
     INTERFACE_ANALOG,
     INTERFACE_CAN,
     INTERFACE_DIO,
@@ -74,6 +101,9 @@ SEP_COMMA_SPACE = ", "
 SEP_NEWLINE = "\n"
 MSG_OK = "OK"
 CMD_SHOW_VERSION = "showVersion"
+CMD_SHOW_SOURCES = "showSources"
+CMD_ADD_MOTOR = "addMotor"
+CMD_ADD_ALL = "addAll"
 MSG_DUPLICATE_DEVICE_NAMES = "Duplicate device names: {names}"
 MSG_MISSING_DEVICE_ENTRIES = "Missing device entries: {names}"
 MSG_MISSING_DEVICE_GROUP_HEADER = "Missing device references by group:"
@@ -109,6 +139,48 @@ MSG_DEVICE_DEF_INVERT_TYPE = "invert must be bool"
 MSG_DEVICE_DEF_PWM_TYPE = "pwm must be int"
 MSG_DEVICE_DEF_ANALOG_TYPE = "analog must be int"
 MSG_DEVICE_DEF_UNNAMED = "(unnamed)"
+LABEL_UNKNOWN = "UNKNOWN"
+MODE_LOCAL = "local"
+DEFAULT_INT = 0
+EMPTY_STRING = ""
+
+MFG_NI_ID = 1
+MFG_CTRE_ID = 4
+MFG_REV_ID = 5
+
+DEVTYPE_ROBORIO_ID = 1
+DEVTYPE_GYRO_ID = 4
+DEVTYPE_MOTOR_ID = 2
+DEVTYPE_ENCODER_ID = 7
+DEVTYPE_POWER_ID = 8
+DEVTYPE_MISC_ID = 10
+
+DEVICE_VENDOR_NI = "NI"
+DEVICE_VENDOR_CTRE = "CTRE"
+DEVICE_VENDOR_REV = "REV"
+
+DEVICE_TYPE_ROBORIO = "roboRIO"
+DEVICE_TYPE_PDH = "PDH"
+DEVICE_TYPE_PDP = "PDP"
+DEVICE_TYPE_PIGEON = "Pigeon"
+DEVICE_TYPE_CANCODER = "CANCoder"
+DEVICE_TYPE_CANDLE = "CANdle"
+DEVICE_TYPE_NEO = "NEO"
+DEVICE_TYPE_NEO_550 = "NEO 550"
+DEVICE_TYPE_FLEX = "FLEX"
+DEVICE_TYPE_KRAKEN = "KRAKEN"
+DEVICE_TYPE_FALCON = "FALCON"
+
+MODEL_NEO_550 = "NEO 550"
+MODEL_FLEX = "FLEX"
+MODEL_FALCON = "FALCON"
+MODEL_KRAKEN = "KRAKEN"
+
+RUNTIME_STATE_SCHEMA_VERSION = 1
+MS_PER_SEC = 1000.0
+BINDING_KIND_ANALOG = "analog"
+KEY_CAN_MAPPINGS_MANUFACTURERS = "manufacturers"
+KEY_CAN_MAPPINGS_DEVICE_TYPES = "device_types"
 
 DEVICE_REQUIRED_CAN = (KEY_MANUFACTURER, KEY_DEVICE_TYPE, KEY_ID)
 DEVICE_REQUIRED_DIO = (KEY_DIO, KEY_INVERT)
@@ -184,7 +256,41 @@ def ui_handshake(session: BridgeSession, client_id: str, reset: bool) -> Optiona
     NAME
         ui_handshake - Send the UI handshake command.
     """
-    return _send(session, "uiHandshake", {"clientId": client_id, "reset": bool(reset)})
+    args = {"clientId": client_id, "reset": bool(reset)}
+    args.update(_local_timezone_args())
+    return _send(session, "uiHandshake", args)
+
+
+def profile_activate(session: BridgeSession, profile_name: str) -> Optional[int]:
+    """
+    NAME
+        profile_activate - Activate a profile on the robot.
+    """
+    return _send(session, "profileActivate", {KEY_NAME: profile_name})
+
+
+def add_next_motor(session: BridgeSession) -> Optional[int]:
+    """
+    NAME
+        add_next_motor - Ask the robot to instantiate the next motor.
+
+    DESCRIPTION
+        Sends the addMotor command so the next configured motor wrapper
+        is instantiated on the robot.
+    """
+    return _send(session, CMD_ADD_MOTOR, {})
+
+
+def add_all_devices(session: BridgeSession) -> Optional[int]:
+    """
+    NAME
+        add_all_devices - Ask the robot to instantiate all configured devices.
+
+    DESCRIPTION
+        Sends the addAll command so all configured devices are instantiated
+        on the robot.
+    """
+    return _send(session, CMD_ADD_ALL, {})
 
 
 def ui_disconnect(session: BridgeSession) -> Optional[int]:
@@ -227,6 +333,9 @@ def select_test_by_name(session: BridgeSession, name: str) -> Optional[int]:
     """
     return _send(session, "selectTestByName", {"name": name})
 
+CMD_SHOW_TESTS = "showTests"
+
+
 def show_status(session: BridgeSession, json_output: bool = False) -> Optional[int]:
     """
     NAME
@@ -241,6 +350,14 @@ def show_version(session: BridgeSession, json_output: bool = False) -> Optional[
         show_version - Request robot version output.
     """
     return _send(session, CMD_SHOW_VERSION, _json_arg(json_output))
+
+
+def show_sources(session: BridgeSession, json_output: bool = False) -> Optional[int]:
+    """
+    NAME
+        show_sources - Request robot sources output.
+    """
+    return _send(session, CMD_SHOW_SOURCES, _json_arg(json_output))
 
 
 def show_groups(session: BridgeSession, json_output: bool = False) -> Optional[int]:
@@ -299,6 +416,14 @@ def show_runtime_state(session: BridgeSession, json_output: bool = False) -> Opt
     return _send(session, "showRuntimeState", _json_arg(json_output))
 
 
+def show_tests(session: BridgeSession, json_output: bool = False) -> Optional[int]:
+    """
+    NAME
+        show_tests - Request bringup tests overview output.
+    """
+    return _send(session, CMD_SHOW_TESTS, _json_arg(json_output))
+
+
 def group_create(session: BridgeSession, name: str) -> Optional[int]:
     """
     NAME
@@ -345,12 +470,168 @@ def _bridge_profile_entry(config: Dict[str, Any], profile_name: str) -> Dict[str
     return {}
 
 
+def _safe_int(value: object, default: int) -> int:
+    """
+    NAME
+        _safe_int - Coerce an int value with default fallback.
+    """
+    if isinstance(value, int):
+        return value
+    return default
+
+
+def _resolve_vendor_name(entry: Dict[str, Any], can_mappings: Optional[Dict[str, Any]]) -> str:
+    """
+    NAME
+        _resolve_vendor_name - Resolve vendor label from a device entry.
+    """
+    manufacturer = _safe_int(entry.get(KEY_MANUFACTURER), DEFAULT_INT)
+    mappings = can_mappings.get(KEY_CAN_MAPPINGS_MANUFACTURERS) if isinstance(can_mappings, dict) else None
+    if isinstance(mappings, dict):
+        name = mappings.get(str(manufacturer))
+        if isinstance(name, str) and name.strip():
+            return name
+    if manufacturer == MFG_NI_ID:
+        return DEVICE_VENDOR_NI
+    if manufacturer == MFG_CTRE_ID:
+        return DEVICE_VENDOR_CTRE
+    if manufacturer == MFG_REV_ID:
+        return DEVICE_VENDOR_REV
+    return LABEL_UNKNOWN
+
+
+def _resolve_device_type_label(entry: Dict[str, Any], can_mappings: Optional[Dict[str, Any]]) -> str:
+    """
+    NAME
+        _resolve_device_type_label - Resolve device type label for show output.
+    """
+    manufacturer = _safe_int(entry.get(KEY_MANUFACTURER), DEFAULT_INT)
+    dev_type = _safe_int(entry.get(KEY_DEVICE_TYPE), DEFAULT_INT)
+    model_raw = str(entry.get(KEY_MODEL, EMPTY_STRING)).upper()
+    if manufacturer == MFG_REV_ID and dev_type == DEVTYPE_MOTOR_ID:
+        if MODEL_NEO_550 in model_raw:
+            return DEVICE_TYPE_NEO_550
+        if MODEL_FLEX in model_raw:
+            return DEVICE_TYPE_FLEX
+        return DEVICE_TYPE_NEO
+    if manufacturer == MFG_CTRE_ID and dev_type == DEVTYPE_MOTOR_ID:
+        if MODEL_FALCON in model_raw:
+            return DEVICE_TYPE_FALCON
+        if MODEL_KRAKEN in model_raw:
+            return DEVICE_TYPE_KRAKEN
+        return DEVICE_TYPE_KRAKEN
+    if dev_type == DEVTYPE_ENCODER_ID:
+        return DEVICE_TYPE_CANCODER
+    if dev_type == DEVTYPE_MISC_ID:
+        return DEVICE_TYPE_CANDLE
+    if dev_type == DEVTYPE_POWER_ID:
+        return DEVICE_TYPE_PDP if manufacturer == MFG_CTRE_ID else DEVICE_TYPE_PDH
+    if dev_type == DEVTYPE_GYRO_ID:
+        return DEVICE_TYPE_PIGEON
+    if dev_type == DEVTYPE_ROBORIO_ID:
+        return DEVICE_TYPE_ROBORIO
+    mappings = can_mappings.get(KEY_CAN_MAPPINGS_DEVICE_TYPES) if isinstance(can_mappings, dict) else None
+    if isinstance(mappings, dict):
+        name = mappings.get(str(dev_type))
+        if isinstance(name, str) and name.strip():
+            return name
+    return LABEL_UNKNOWN
+
+
+def _build_show_device_entry(
+    entry: Dict[str, Any],
+    can_mappings: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    NAME
+        _build_show_device_entry - Build show devices entry matching robot schema.
+    """
+    device = {
+        KEY_LABEL: str(entry.get(KEY_LABEL, EMPTY_STRING)).strip(),
+        KEY_VENDOR: _resolve_vendor_name(entry, can_mappings),
+        KEY_TYPE: _resolve_device_type_label(entry, can_mappings),
+        KEY_ID: _safe_int(entry.get(KEY_ID), DEFAULT_INT),
+    }
+    return device
+
+
+def _select_profile_labels(
+    payload: Dict[str, Any],
+    profile_name: Optional[str],
+) -> List[str]:
+    """
+    NAME
+        _select_profile_labels - Return device labels for the chosen profile.
+    """
+    profiles = payload.get(KEY_PROFILES)
+    if not isinstance(profiles, dict) or not profiles:
+        return []
+    selected_profile = profile_name
+    if not isinstance(selected_profile, str) or selected_profile not in profiles:
+        default_profile = payload.get(KEY_DEFAULT_PROFILE)
+        if not isinstance(default_profile, str) or default_profile not in profiles:
+            default_profile = next(iter(profiles.keys()))
+        selected_profile = default_profile
+    entry = profiles.get(selected_profile)
+    if not isinstance(entry, dict):
+        return []
+    labels = entry.get(KEY_PROFILE_DEVICES)
+    if not isinstance(labels, list):
+        return []
+    cleaned = []
+    for label in labels:
+        if not isinstance(label, str):
+            continue
+        value = label.strip()
+        if value:
+            cleaned.append(value)
+    return cleaned
+
+
+def _build_show_devices_for_profile(
+    payload: Dict[str, Any],
+    profile_name: Optional[str],
+    can_mappings: Optional[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    NAME
+        _build_show_devices_for_profile - Build device list for show output.
+    """
+    registry = payload.get(KEY_DEVICES)
+    if not isinstance(registry, list) or not registry:
+        return []
+    registry_map: Dict[str, Dict[str, Any]] = {}
+    for entry in registry:
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+        if not label:
+            continue
+        registry_map[label.lower()] = entry
+    labels = _select_profile_labels(payload, profile_name)
+    devices: List[Dict[str, Any]] = []
+    for label in labels:
+        entry = registry_map.get(label.lower())
+        if entry is None:
+            continue
+        devices.append(_build_show_device_entry(entry, can_mappings))
+    devices.sort(
+        key=lambda item: (
+            str(item.get(KEY_VENDOR, EMPTY_STRING)),
+            str(item.get(KEY_TYPE, EMPTY_STRING)),
+            _safe_int(item.get(KEY_ID), DEFAULT_INT),
+        )
+    )
+    return devices
+
+
 def local_show_data(
     target: str,
     tokens: List[str],
     config: Dict[str, Any],
     profile_name: Optional[str],
-    devices: Optional[List[Dict[str, Any]]],
+    root_payload: Optional[Dict[str, Any]],
+    can_mappings: Optional[Dict[str, Any]],
 ) -> Tuple[bool, Optional[str], Dict[str, Any]]:
     """
     NAME
@@ -372,22 +653,36 @@ def local_show_data(
         else {}
     )
     selected_device = str(selected.get(KEY_DEVICE, "")).strip()
-    selected_enabled = bool(selected.get("enabled", False))
+    selected_enabled = bool(selected.get(KEY_ENABLED, False))
 
     if target == "status":
         payload = {
-            "source": "local",
-            "groupCount": len(groups),
-            "selectedDevice": {"device": selected_device, "enabled": selected_enabled},
+            KEY_BUILD: BUILD_GIT_DESCRIBE,
+            KEY_PROFILE: profile_name,
+            KEY_ENABLED: False,
+            KEY_ESTOPPED: False,
+            KEY_MODE: MODE_LOCAL,
+            KEY_GROUP_COUNT: len(groups),
+            KEY_BRIDGE_SELECTED_DEVICE: {KEY_DEVICE: selected_device, KEY_ENABLED: selected_enabled},
         }
         return (True, None, payload)
 
     if target == "groups":
-        return (
-            True,
-            None,
-            {"source": "local", "groups": groups, KEY_PROFILE: profile_name},
-        )
+        entries = []
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            members = group.get(KEY_MEMBERS, []) or []
+            bindings = group.get(KEY_BRIDGE_BINDINGS, []) or []
+            entries.append(
+                {
+                    KEY_NAME: str(group.get(KEY_NAME, EMPTY_STRING)).strip(),
+                    KEY_ENABLED: bool(group.get(KEY_ENABLED, True)),
+                    KEY_MEMBER_COUNT: len(members),
+                    KEY_BINDING_COUNT: len(bindings),
+                }
+            )
+        return (True, None, {KEY_BRIDGE_GROUPS: entries})
 
     if target == "group":
         name = tokens[1] if len(tokens) >= 2 else ""
@@ -395,116 +690,133 @@ def local_show_data(
         for group in groups:
             if not isinstance(group, dict):
                 continue
-            if str(group.get("name", "")).strip().lower() == name.lower():
+            if str(group.get(KEY_NAME, EMPTY_STRING)).strip().lower() == name.lower():
                 match = group
                 break
         if match is None:
             return (False, "Local group not found.", {})
-        return (True, None, {"source": "local", "group": match})
+        members_payload = []
+        for member in match.get(KEY_MEMBERS, []) or []:
+            if isinstance(member, dict):
+                device_name = str(member.get(KEY_DEVICE, EMPTY_STRING)).strip()
+                enabled = bool(member.get(KEY_ENABLED, True))
+            else:
+                device_name = str(member).strip()
+                enabled = True
+            if device_name:
+                members_payload.append({KEY_DEVICE: device_name, KEY_ENABLED: enabled})
+        bindings_payload = []
+        for binding in match.get(KEY_BRIDGE_BINDINGS, []) or []:
+            if not isinstance(binding, dict):
+                continue
+            entry = {
+                KEY_INPUT: binding.get(KEY_INPUT, EMPTY_STRING),
+                KEY_KIND: binding.get(KEY_KIND, EMPTY_STRING),
+            }
+            if KEY_VALUE in binding and binding.get(KEY_KIND) != BINDING_KIND_ANALOG:
+                entry[KEY_VALUE] = binding.get(KEY_VALUE)
+            bindings_payload.append(entry)
+        group_payload = {
+            KEY_NAME: str(match.get(KEY_NAME, EMPTY_STRING)).strip(),
+            KEY_ENABLED: bool(match.get(KEY_ENABLED, True)),
+            KEY_MEMBERS: members_payload,
+            KEY_BRIDGE_BINDINGS: bindings_payload,
+        }
+        return (True, None, group_payload)
 
     if target == "devices":
-        if isinstance(devices, list) and devices:
-            return (
-                True,
-                None,
-                {"source": "local", "devices": devices, KEY_PROFILE: profile_name},
-            )
-        devices_list: List[str] = []
-        for group in groups:
-            if not isinstance(group, dict):
-                continue
-            for member in group.get("members", []) or []:
-                if isinstance(member, dict):
-                    name = str(member.get("device", "")).strip()
-                else:
-                    name = str(member).strip()
-                if name and name not in devices_list:
-                    devices_list.append(name)
-        if selected_device and selected_device not in devices_list:
-            devices_list.append(selected_device)
-        return (
-            True,
-            None,
-            {"source": "local", "devices": devices_list, KEY_PROFILE: profile_name},
-        )
+        devices_payload = []
+        if isinstance(root_payload, dict):
+            devices_payload = _build_show_devices_for_profile(root_payload, profile_name, can_mappings)
+        return (True, None, {KEY_DEVICES: devices_payload})
 
     if target == "device-group":
         name = tokens[1] if len(tokens) >= 2 else ""
-        if isinstance(devices, list):
-            for device in devices:
-                if not isinstance(device, dict):
-                    continue
-                device_name = str(device.get("name", "")).strip()
-                if device_name.lower() != name.lower():
-                    continue
-                group_name = ""
-                enabled = None
-                for group in groups:
-                    if not isinstance(group, dict):
-                        continue
-                    for member in group.get("members", []) or []:
-                        if isinstance(member, dict):
-                            member_name = str(member.get("device", "")).strip()
-                            if member_name.lower() == name.lower():
-                                group_name = str(group.get("name", ""))
-                                enabled = bool(member.get("enabled", True))
-                                break
-                        else:
-                            if str(member).strip().lower() == name.lower():
-                                group_name = str(group.get("name", ""))
-                                enabled = True
-                                break
-                    if group_name:
-                        break
-                return (
-                    True,
-                    None,
-                    {"source": "local", "device": device, "group": group_name, "enabled": enabled},
-                )
-        found_group = ""
-        enabled = None
+        devices_payload = []
+        if isinstance(root_payload, dict):
+            devices_payload = _build_show_devices_for_profile(root_payload, profile_name, can_mappings)
+        for device in devices_payload:
+            if not isinstance(device, dict):
+                continue
+            label = str(device.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if label.lower() == name.lower():
+                return (True, None, device)
+        return (False, "Local device not found.", {})
+
+    if target == "bindings":
+        entries = []
         for group in groups:
             if not isinstance(group, dict):
                 continue
-            for member in group.get("members", []) or []:
-                if isinstance(member, dict):
-                    device_name = str(member.get("device", "")).strip()
-                    if device_name.lower() == name.lower():
-                        found_group = str(group.get("name", ""))
-                        enabled = bool(member.get("enabled", True))
-                        break
-                else:
-                    if str(member).strip().lower() == name.lower():
-                        found_group = str(group.get("name", ""))
-                        enabled = True
-                        break
-            if found_group:
-                break
-        if not found_group:
-            return (False, "Local device not found.", {})
-        return (True, None, {"source": "local", "device": name, "group": found_group, "enabled": enabled})
-
-    if target == "bindings":
-        return (True, None, {"source": "local", "groups": groups})
+            bindings_payload = []
+            for binding in group.get(KEY_BRIDGE_BINDINGS, []) or []:
+                if not isinstance(binding, dict):
+                    continue
+                entry = {
+                    KEY_INPUT: binding.get(KEY_INPUT, EMPTY_STRING),
+                    KEY_KIND: binding.get(KEY_KIND, EMPTY_STRING),
+                }
+                if KEY_VALUE in binding and binding.get(KEY_KIND) != BINDING_KIND_ANALOG:
+                    entry[KEY_VALUE] = binding.get(KEY_VALUE)
+                bindings_payload.append(entry)
+            entries.append(
+                {
+                    KEY_NAME: str(group.get(KEY_NAME, EMPTY_STRING)).strip(),
+                    KEY_BRIDGE_BINDINGS: bindings_payload,
+                }
+            )
+        return (True, None, {KEY_BRIDGE_GROUPS: entries})
 
     if target == "selected-device":
-        return (
-            True,
-            None,
-            {"source": "local", "selectedDevice": {"device": selected_device, "enabled": selected_enabled}},
-        )
+        return (True, None, {KEY_DEVICE: selected_device, KEY_ENABLED: selected_enabled})
 
     if target == "runtime-state":
-        devices = devices if isinstance(devices, list) else None
+        devices_payload = []
+        if isinstance(root_payload, dict):
+            devices_payload = _build_show_devices_for_profile(root_payload, profile_name, can_mappings)
         payload = {
-            "source": "local",
-            "schemaVersion": config.get(KEY_BRIDGE_SCHEMA_VERSION, CONFIG_SCHEMA_VERSION),
-            "generatedAt": config.get(KEY_BRIDGE_GENERATED_AT),
-            "groups": groups,
-            "selectedDevice": {"device": selected_device, "enabled": selected_enabled},
-            "devices": devices if isinstance(devices, list) else None,
+            KEY_BRIDGE_SCHEMA_VERSION: RUNTIME_STATE_SCHEMA_VERSION,
+            KEY_GENERATED_AT_MS: int(time.time() * MS_PER_SEC),
+            KEY_BUILD: BUILD_GIT_DESCRIBE,
             KEY_PROFILE: profile_name,
+            KEY_ENABLED: False,
+            KEY_ESTOPPED: False,
+            KEY_MODE: MODE_LOCAL,
+            KEY_BRIDGE_GROUPS: [],
+            KEY_BRIDGE_SELECTED_DEVICE: {KEY_DEVICE: selected_device, KEY_ENABLED: selected_enabled},
+            KEY_DEVICES: devices_payload,
         }
+        groups_payload = []
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            group_payload = {
+                KEY_NAME: str(group.get(KEY_NAME, EMPTY_STRING)).strip(),
+                KEY_ENABLED: bool(group.get(KEY_ENABLED, True)),
+                KEY_MEMBERS: [],
+                KEY_BRIDGE_BINDINGS: [],
+            }
+            for member in group.get(KEY_MEMBERS, []) or []:
+                if isinstance(member, dict):
+                    device_name = str(member.get(KEY_DEVICE, EMPTY_STRING)).strip()
+                    enabled = bool(member.get(KEY_ENABLED, True))
+                else:
+                    device_name = str(member).strip()
+                    enabled = True
+                if device_name:
+                    group_payload[KEY_MEMBERS].append({KEY_DEVICE: device_name, KEY_ENABLED: enabled})
+            for binding in group.get(KEY_BRIDGE_BINDINGS, []) or []:
+                if not isinstance(binding, dict):
+                    continue
+                entry = {
+                    KEY_INPUT: binding.get(KEY_INPUT, EMPTY_STRING),
+                    KEY_KIND: binding.get(KEY_KIND, EMPTY_STRING),
+                }
+                if KEY_VALUE in binding and binding.get(KEY_KIND) != BINDING_KIND_ANALOG:
+                    entry[KEY_VALUE] = binding.get(KEY_VALUE)
+                group_payload[KEY_BRIDGE_BINDINGS].append(entry)
+            groups_payload.append(group_payload)
+        payload[KEY_BRIDGE_GROUPS] = groups_payload
         return (True, None, payload)
 
     return (False, "Unknown show command.", {})
@@ -1451,3 +1763,4 @@ def _config_from_runtime_state(state: Dict[str, Any], profile_name: str) -> Dict
             }
         },
     }
+    KEY_NAME,

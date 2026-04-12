@@ -87,6 +87,7 @@ CMD_LAST_GOOD = "last-good"
 CMD_FROM = "from"
 CMD_LIST = "list"
 CMD_FILE = "file"
+CMD_NEXT = "next"
 FLAG_FORCE = "--force"
 FLAG_REPAIR = "--repair"
 FLAG_MERGE = SPEC.cmd_merge_flag
@@ -104,6 +105,7 @@ CMD_PUSH = "push"
 CMD_ACTIVATE = "--activate"
 CMD_TERMINAL = "terminal"
 CMD_PROMPT = "--prompt"
+LABEL_ADD = "add"
 EXPORT_TARGET_RUNTIME_GROUPS = "runtime-groups"
 EXPORT_TARGET_CLI_SCRIPT = "cli-script"
 SAVE_TARGET_CONFIG = "config"
@@ -237,6 +239,8 @@ class BridgeCliParser:
                 return self._handle_show_command
             if cmd == SPEC.cmd_profile.lower():
                 return self._handle_profile
+            if cmd == SPEC.cmd_add.lower():
+                return self._handle_add_command
             return None
         if mode == SPEC.modes[SPEC.idx_config]:
             if cmd == SPEC.cmd_show.lower():
@@ -249,6 +253,8 @@ class BridgeCliParser:
                 return self._handle_profile
             if cmd == SPEC.cmd_profiles.lower():
                 return self._handle_profiles_command
+            if cmd == SPEC.cmd_add.lower():
+                return self._handle_add_command
             if cmd == SPEC.cmd_selected_device.lower():
                 return self._handle_selected_device
             if cmd == SPEC.cmd_selected_mode.lower():
@@ -607,6 +613,16 @@ class BridgeCliParser:
             )
             show_target, show_name = self._split_show_target(cleaned)
             return (SPEC.kind_show, show_target, show_name, show_source, show_json, show_pretty)
+        if verb == SPEC.cmd_add:
+            kind = self._build_add_kind(tokens)
+            return (
+                kind,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
+            )
         return (
             SPEC.empty_str,
             SPEC.empty_str,
@@ -640,6 +656,24 @@ class BridgeCliParser:
                 show_source,
                 show_json,
                 show_pretty,
+            )
+        if verb == SPEC.cmd_add:
+            kind = self._build_add_kind(tokens)
+            return (
+                kind,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
             )
         if verb == SPEC.cmd_group:
             return (
@@ -1129,6 +1163,16 @@ class BridgeCliParser:
             bool(SPEC.bool_false),
         )
 
+    def _build_add_kind(self, tokens: List[str]) -> str:
+        if len(tokens) < SPEC.count_two:
+            return SPEC.empty_str
+        target = tokens[SPEC.count_one].lower()
+        if target == CMD_NEXT:
+            return SPEC.kind_exec_add_next
+        if target == CMD_ALL:
+            return SPEC.kind_exec_add_all
+        return SPEC.empty_str
+
     def _build_group_ast(
         self, tokens: List[str]
     ) -> tuple[str, str, str, str, str, str, str, str, str, bool]:
@@ -1509,6 +1553,14 @@ class BridgeCliParser:
     def _handle_show_command(self, tokens: List[str]) -> None:
         self._parse_show(tokens[SPEC.count_one :], allow_empty=bool(SPEC.disallow_empty))
 
+    def _handle_add_command(self, tokens: List[str]) -> None:
+        if len(tokens) < SPEC.count_two:
+            raise CliParseError(SPEC.msg_parse_error)
+        target = tokens[SPEC.count_one].lower()
+        if target not in (CMD_NEXT, CMD_ALL):
+            raise CliParseError(SPEC.msg_parse_error)
+        self._reject_extra(tokens, SPEC.count_two, LABEL_ADD)
+
     def _handle_group_command(self, tokens: List[str]) -> None:
         self._require(tokens, SPEC.count_two, SPEC.msg_group_name)
         self._reject_extra(tokens, SPEC.count_two, SPEC.label_group)
@@ -1574,6 +1626,10 @@ class BridgeCliParser:
             raise CliParseError(SPEC.msg_push_requires)
         if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() == SPEC.cmd_init:
             self._reject_extra(tokens, SPEC.count_two, SPEC.label_profiles_init)
+            return
+        if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() == SPEC.cmd_activate_profile:
+            self._require(tokens, SPEC.count_three, SPEC.msg_profile_name)
+            self._reject_extra(tokens, SPEC.count_three, SPEC.label_profiles_activate)
             return
         if tokens[SPEC.count_one].lower() == SPEC.cmd_export:
             if len(tokens) < SPEC.count_three:

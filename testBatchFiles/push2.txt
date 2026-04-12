@@ -1,0 +1,8 @@
+echo on
+connect
+configure terminal
+config push C:\Users\dmona\swerveBringupMotorTest1-main\data\bringup_system.json --activate home_031226
+end
+show devices robot --json --pretty
+show runtime-state robot --json --pretty
+end

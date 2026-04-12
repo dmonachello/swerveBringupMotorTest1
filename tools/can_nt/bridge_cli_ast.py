@@ -14,6 +14,7 @@ DESCRIPTION
 """
 
 from typing import Dict, Optional
+import time
 
 from tools.can_nt.bridge_cli_parser import CommandAst, SPEC
 CMD_ALL = "all"
@@ -43,6 +44,8 @@ from tools.can_nt.status import (
     format_status_message,
 )
 from tools.can_nt.bridge_ops import (
+    add_all_devices,
+    add_next_motor,
     connect,
     disconnect,
     export_runtime_groups,
@@ -58,6 +61,8 @@ from tools.can_nt.bridge_ops import (
     group_remove_device,
     group_run_test,
     group_unbind,
+    import_config,
+    merge_config,
     selected_device_set,
     selected_mode_set,
     show_bindings,
@@ -90,7 +95,7 @@ AST_EXEC_SPEC = {
     "msg_err_bind_value": "ERROR: binding requires value.",
     "msg_err_bind_numeric": "ERROR: binding value must be numeric.",
     "msg_err_device_missing": "ERROR: Device not defined in local config. Use device <name> to create it.",
-    "msg_err_local_missing": "ERROR: Local config not loaded. Use load config <path> --merge|--replace first.",
+    "msg_err_local_missing": "ERROR: Local config not loaded. Use merge/import config <bringup_system.json> first.",
     "msg_err_member_action": "ERROR: member requires enable/disable/toggle.",
     "msg_err_fmt": "ERROR: %s",
     "msg_ok_config": "OK: Config is valid.",
@@ -116,6 +121,8 @@ AST_EXEC_SPEC = {
     "fmt_clear_device": "Cleared device %s %s.",
     "label_group_create": "group create",
     "label_group_delete": "group delete",
+    "label_add_next": "add next",
+    "label_add_all": "add all",
     "label_selected_device": "selected-device",
     "label_selected_mode": "selected-mode",
     "label_add_device": "add device",
@@ -136,7 +143,6 @@ SHOW_TARGET_CONFIG_DIRTY = "config-dirty"
 SHOW_NAME_DIRTY = "dirty"
 SHOW_TARGET_PROFILE = "profile"
 SHOW_TARGET_PROFILES = "profiles"
-SHOW_TARGET_RUNTIME_COMPONENTS = "runtime-components"
 
 
 class BridgeCliAstExecutor:
@@ -179,6 +185,8 @@ class BridgeCliAstExecutor:
             SPEC.kind_exec_connect: self._ast_exec_connect,
             SPEC.kind_exec_disconnect: self._ast_exec_disconnect,
             SPEC.kind_exec_configure_terminal: self._ast_exec_configure_terminal,
+            SPEC.kind_exec_add_next: self._ast_exec_add_next,
+            SPEC.kind_exec_add_all: self._ast_exec_add_all,
             SPEC.kind_show: self._ast_show,
             SPEC.kind_config_group: self._ast_config_group,
             SPEC.kind_config_no_group: self._ast_config_no_group,
@@ -237,18 +245,27 @@ class BridgeCliAstExecutor:
         return StatusResult(code=SS__NORMAL)
 
     def _ast_exec_connect(self, _ast: CommandAst) -> Optional[StatusResult]:
+        self._cli._proto_mark_connect_attempt()
         if not connect(self._cli._session):
+            self._cli._proto_mark_connect_failure()
             print(AST_EXEC_SPEC["msg_err_connect"])
             return StatusResult(code=SS__NETWORK__CONNECT_FAILED, message=AST_EXEC_SPEC["msg_err_connect"])
         ok = self._cli._session.ensure_handshake()
         if not ok:
+            self._cli._proto_mark_connect_failure()
             print(AST_EXEC_SPEC["msg_err_handshake"])
             return StatusResult(code=SS__NETWORK__HANDSHAKE_FAILED, message=AST_EXEC_SPEC["msg_err_handshake"])
+        now = time.time()
+        self._cli._proto_mark_connected(now=now)
+        self._cli._proto_mark_handshake(now=now)
+        self._cli._start_keepalive()
         print(AST_EXEC_SPEC["msg_connected"])
         return StatusResult(code=SS__NORMAL)
 
     def _ast_exec_disconnect(self, _ast: CommandAst) -> Optional[StatusResult]:
+        self._cli._stop_keepalive()
         disconnect(self._cli._session)
+        self._cli._proto_mark_disconnected(now=time.time())
         print(AST_EXEC_SPEC["msg_disconnected"])
         return StatusResult(code=SS__NORMAL)
 
@@ -257,6 +274,26 @@ class BridgeCliAstExecutor:
         mode_cls = type(self._cli._modes[SPEC.count_zero])
         self._cli._modes.append(mode_cls(SPEC.modes[SPEC.idx_config]))
         return StatusResult(code=SS__NORMAL)
+
+    def _ast_exec_add_next(self, _ast: CommandAst) -> Optional[int]:
+        if not self._cli._session.is_connected():
+            print(AST_EXEC_SPEC["msg_err_robot_unavailable"])
+            return AST_EXEC_SPEC["ret_err"]
+        seq = add_next_motor(self._cli._session)
+        event = self._cli._wait_for_seq(seq)
+        if self._cli._event_failed(event, AST_EXEC_SPEC["label_add_next"]):
+            return AST_EXEC_SPEC["ret_err"]
+        return None
+
+    def _ast_exec_add_all(self, _ast: CommandAst) -> Optional[int]:
+        if not self._cli._session.is_connected():
+            print(AST_EXEC_SPEC["msg_err_robot_unavailable"])
+            return AST_EXEC_SPEC["ret_err"]
+        seq = add_all_devices(self._cli._session)
+        event = self._cli._wait_for_seq(seq)
+        if self._cli._event_failed(event, AST_EXEC_SPEC["label_add_all"]):
+            return AST_EXEC_SPEC["ret_err"]
+        return None
 
     def _ast_show(self, ast: CommandAst) -> Optional[int]:
         return self._handle_show_ast(ast)
@@ -364,12 +401,12 @@ class BridgeCliAstExecutor:
         return StatusResult(code=SS__NORMAL)
 
     def _ast_config_merge(self, ast: CommandAst) -> Optional[int]:
-        result = self._cli._load_config_merge_deprecated(ast.path)
-        return AST_EXEC_SPEC["ret_err"] if not result.ok() else None
+        plan = merge_config(ast.path, self._cli._conflict_policy, self._cli._active_profile_name())
+        return self._cli._apply_config_plan(plan)
 
     def _ast_config_import(self, ast: CommandAst) -> Optional[int]:
-        result = self._cli._load_config_replace_deprecated(ast.path)
-        return AST_EXEC_SPEC["ret_err"] if not result.ok() else None
+        plan = import_config(ast.path, self._cli._conflict_policy, self._cli._active_profile_name())
+        return self._cli._apply_config_plan(plan)
 
     def _ast_config_export(self, ast: CommandAst) -> Optional[int]:
         if ast.export_target == SPEC.cmd_export_runtime_groups:
@@ -392,7 +429,7 @@ class BridgeCliAstExecutor:
         return AST_EXEC_SPEC["ret_err"] if not result.ok() else None
 
     def _ast_config_load(self, ast: CommandAst) -> Optional[int]:
-        result = self._cli._handle_load_command(ast.tokens)
+        result = self._cli._load_sources()
         return AST_EXEC_SPEC["ret_err"] if not result.ok() else None
 
     def _ast_config_push(self, ast: CommandAst) -> Optional[StatusResult]:
@@ -431,8 +468,7 @@ class BridgeCliAstExecutor:
         return None
 
     def _ast_config_device_set(self, ast: CommandAst) -> Optional[int]:
-        result = self._cli._set_local_device_meta(ast.device_name, ast.field, ast.value)
-        if not result.ok():
+        if not self._cli._set_local_device_meta(ast.device_name, ast.field, ast.value):
             return AST_EXEC_SPEC["ret_err"]
         print(AST_EXEC_SPEC["fmt_update_device"] % (ast.device_name, ast.field, ast.value))
         return None
@@ -656,16 +692,14 @@ class BridgeCliAstExecutor:
 
     def _ast_device_set(self, ast: CommandAst) -> Optional[int]:
         device = self._cli._modes[-1].device
-        result = self._cli._set_local_device_meta(device, ast.field, ast.value)
-        if not result.ok():
+        if not self._cli._set_local_device_meta(device, ast.field, ast.value):
             return AST_EXEC_SPEC["ret_err"]
         print(AST_EXEC_SPEC["fmt_update_device"] % (device, ast.field, ast.value))
         return None
 
     def _ast_device_no(self, ast: CommandAst) -> Optional[int]:
         device = self._cli._modes[-1].device
-        result = self._cli._clear_local_device_meta(device, ast.field)
-        if not result.ok():
+        if not self._cli._clear_local_device_meta(device, ast.field):
             return AST_EXEC_SPEC["ret_err"]
         print(AST_EXEC_SPEC["fmt_clear_device"] % (device, ast.field))
         return None
@@ -709,7 +743,7 @@ class BridgeCliAstExecutor:
                 SPEC.show_target_device_group,
         ):
             source = SPEC.show_source_local
-        if target == SHOW_TARGET_RUNTIME_COMPONENTS:
+        if target == SPEC.show_target_sources:
             source = SPEC.show_source_local
         if target == SHOW_TARGET_VERSION and not source:
             source = SPEC.show_source_local

@@ -54,8 +54,6 @@ public class Robot extends TimedRobot {
   public void robotInit() {
     // Load profile before devices are created.
     BringupUtil.applyProfileFromArgs();
-    String testsOverride = BringupUtil.extractBringupTestsFromCommand();
-    BringupTestRegistry.setOverrideTestsPath(testsOverride);
     core = new BringupCore();
     printStartupInfo();
     validateCanIds();
@@ -317,7 +315,6 @@ public class Robot extends TimedRobot {
     BringupTestRegistry.TestsInfo info = BringupTestRegistry.getTestsInfo();
     StringBuilder sb = new StringBuilder(256);
     appendLine(sb, "=== Bringup Tests Info ===");
-    appendLine(sb, "Override path: " + (info.overridePath != null ? info.overridePath : "(none)"));
     appendLine(sb, "Resolved path: " + (info.path != null ? info.path.toString() : "(none)"));
     appendLine(sb, TEXT_TESTS_INFO_PROFILE + (info.profileName != null ? info.profileName : "(none)"));
     appendLine(sb, TEXT_TESTS_INFO_SOURCE + (info.source != null ? info.source : "(none)"));

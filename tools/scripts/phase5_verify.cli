@@ -1,0 +1,5 @@
+# Phase 5 Verify on Robot - CLI batch script
+echo on
+connect
+show devices robot --json --pretty
+show runtime-state robot --json --pretty

@@ -1,0 +1,10 @@
+echo on
+connect
+configure terminal
+group testgroup
+add device "SPARKMAX/NEO 25"
+enable
+run test neo25_button
+run test all_motors
+end
+

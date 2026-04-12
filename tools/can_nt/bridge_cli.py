@@ -18,6 +18,7 @@ import shlex
 import time
 import sys
 import re
+import threading
 from copy import deepcopy
 from pathlib import Path
 import copy
@@ -67,8 +68,12 @@ from tools.can_nt.bridge_ops import (
     show_runtime_state,
     show_selected_device,
     show_status,
+    show_sources,
+    show_tests,
     show_version,
+    ui_ping,
     parse_json_arg,
+    profile_activate,
 )
 from tools.can_nt.bridge_session import BridgeEvent, BridgeSession
 from tools.can_nt.motor_diag_constants import (
@@ -93,27 +98,6 @@ from tools.can_nt.motor_diag_constants import (
 )
 from tools.can_nt.motor_diag_normalize import collect_profile_labels, normalize_runtime_state
 from tools.can_nt.motor_diag_rules import diagnose_motor
-from tools.can_nt.visibility_constants import (
-    VIS_KEY_AGE_MS,
-    VIS_KEY_AVAILABLE,
-    VIS_KEY_DEVICE,
-    VIS_KEY_DEVICES,
-    VIS_KEY_DEVICES_SHOWN,
-    VIS_KEY_ID,
-    VIS_KEY_KEY,
-    VIS_KEY_LABEL,
-    VIS_KEY_SOURCES,
-    VIS_KEY_SOURCES_COUNT,
-    VIS_KEY_SCOPE,
-    VIS_KEY_TIMEOUT_MS,
-    VIS_KEY_VISIBLE_ALL,
-    VIS_KEY_VISIBLE_NONE,
-    VIS_KEY_VISIBLE_SOME,
-    VIS_KEY_VISIBILITY,
-    VIS_KEY_FRAMES_PER_SEC,
-    VIS_MS_PER_SEC,
-    VIS_SCOPE_BOTH,
-)
 from tools.can_nt.status import (
     FLAG_PRINT_MESSAGE,
     StatusResult,
@@ -175,11 +159,38 @@ from tools.common.profile_constants import (
     KEY_BRIDGE_BINDINGS,
     KEY_DATA_HASH,
     KEY_DATA_VERSION,
-    KEY_INPUT_ALIASES,
     KEY_DIO,
     KEY_DEFAULT_PROFILE,
     KEY_DEVICE_TYPE,
     KEY_DEVICES,
+    KEY_ENABLED,
+    KEY_ESTOPPED,
+    KEY_MODE,
+    KEY_GROUP_COUNT,
+    KEY_MEMBER_COUNT,
+    KEY_BINDING_COUNT,
+    KEY_INPUT,
+    KEY_KIND,
+    KEY_VALUE,
+    KEY_GENERATED_AT_MS,
+    KEY_SOURCES,
+    KEY_SOURCES_NAME,
+    KEY_SOURCES_PATH,
+    KEY_SOURCES_EXISTS,
+    KEY_TESTS_ACTIVE_SET,
+    KEY_TESTS_DEFAULT_SET,
+    KEY_TESTS_USING_SETS,
+    KEY_TESTS_TOTAL_COUNT,
+    KEY_TESTS_ENABLED_COUNT,
+    KEY_TESTS_ROWS,
+    KEY_TESTS_INDEX,
+    KEY_TESTS_NAME,
+    KEY_TESTS_ENABLED,
+    KEY_TESTS_SELECTED,
+    KEY_TESTS_TYPE,
+    KEY_TESTS_STATUS,
+    KEY_TESTS_MOTORS,
+    KEY_VERSION,
     KEY_ID,
     KEY_INTERFACE,
     KEY_INVERT,
@@ -188,27 +199,12 @@ from tools.common.profile_constants import (
     KEY_MANUFACTURER,
     KEY_MODEL,
     KEY_NOTES,
-    KEY_BUS,
     KEY_PWM,
     KEY_ANALOG,
     KEY_PROFILE,
     KEY_PROFILES,
     KEY_PROFILE_DEVICES,
-    KEY_NEIGHBOR_PORTS,
-    KEY_LINK_NODE,
-    KEY_LINK_PORT,
-    KEY_LINK_DEVICE,
-    KEY_LINK_NEIGHBOR,
-    KEY_LINK_NEIGHBOR_PORT,
-    KEY_DEVICE_LINKS,
-    KEY_NODE_KEY,
-    KEY_TAGS,
     KEY_SCHEMA_VERSION,
-    NEIGHBOR_PORT_LEFT,
-    NEIGHBOR_PORT_RIGHT,
-    NEIGHBOR_PORT_NEXT,
-    NEIGHBOR_PORT_BRANCH1,
-    NEIGHBOR_PORT_BRANCH2,
     PROFILE_SCHEMA_VERSION,
     INTERFACE_ANALOG,
     INTERFACE_CAN,
@@ -222,42 +218,6 @@ from tools.common.profile_constants import (
     KEY_ROLE,
     KEY_TAGS,
 )
-from tools.common.runtime_constants import (
-    RUNTIME_COMPONENT_CLI,
-    RUNTIME_COMPONENT_CONSOLE,
-    RUNTIME_COMPONENT_PCAP,
-    RUNTIME_COMPONENT_SESSION,
-    RUNTIME_COMPONENT_SNIFFER,
-    RUNTIME_COMPONENT_SOURCES,
-    RUNTIME_COMPONENT_SOURCE_PREFIX,
-    RUNTIME_COMPONENT_VISIBILITY,
-    RUNTIME_DETAIL_AVAILABLE_PREFIX,
-    RUNTIME_DETAIL_COUNT_PREFIX,
-    RUNTIME_DETAIL_DISABLED,
-    RUNTIME_DETAIL_ENABLED,
-    RUNTIME_DETAIL_HANDSHAKE_DONE,
-    RUNTIME_DETAIL_HANDSHAKE_PENDING,
-    RUNTIME_DETAIL_SEPARATOR,
-    RUNTIME_DETAIL_SESSION_PREFIX,
-    RUNTIME_KEY_ALIVE,
-    RUNTIME_KEY_COMPONENTS,
-    RUNTIME_KEY_DAEMON,
-    RUNTIME_KEY_DETAIL,
-    RUNTIME_KEY_IDENT,
-    RUNTIME_KEY_NAME,
-    RUNTIME_KEY_STATUS,
-    RUNTIME_KEY_THREADS,
-    RUNTIME_STATUS_AVAILABLE,
-    RUNTIME_STATUS_CONNECTED,
-    RUNTIME_STATUS_DISABLED,
-    RUNTIME_STATUS_DISCONNECTED,
-    RUNTIME_STATUS_ENABLED,
-    RUNTIME_STATUS_RUNNING,
-    RUNTIME_STATUS_STOPPED,
-    RUNTIME_STATUS_UNAVAILABLE,
-)
-from tools.common.topology_parse import parse_diagram_nodes, parse_diagram_neighbor_ports
-from tools.common.tests_io import load_tests_payload, write_tests_payload
 from tools.common.test_authoring import (
     TestAuthoringModel,
     TestBindingButton,
@@ -306,6 +266,80 @@ COMPLETION_META_TEXT = ""
 COMPLETION_PREFIX_EMPTY = ""
 COMPLETION_SPACE = " "
 COMPLETION_START_POS_ZERO = 0
+KEEPALIVE_INTERVAL_SEC = 1.0
+KEEPALIVE_SLEEP_SEC = 0.1
+KEEPALIVE_DISCONNECTED_WAIT_SEC = 0.5
+KEEPALIVE_JOIN_TIMEOUT_SEC = 1.0
+KEEPALIVE_LAST_INIT = 0.0
+KEEPALIVE_THREAD_NAME = "BridgeCliKeepalive"
+CMD_UI_PING = "uiPing"
+EVENT_TYPE_ACK = "ack"
+EVENT_TYPE_OUT = "out"
+MESSAGE_KEEPALIVE_THREAD_START = "KEEPALIVE: thread started."
+MESSAGE_KEEPALIVE_THREAD_STOP = "KEEPALIVE: thread stopped."
+MESSAGE_KEEPALIVE_STATE_CONNECTED = "KEEPALIVE: session connected."
+MESSAGE_KEEPALIVE_STATE_DISCONNECTED = "KEEPALIVE: session disconnected."
+MESSAGE_KEEPALIVE_SEND_OK = "KEEPALIVE: uiPing sent (seq={seq})."
+MESSAGE_KEEPALIVE_SEND_FAIL = "KEEPALIVE: uiPing send failed."
+MESSAGE_KEEPALIVE_RECV_ACK = "KEEPALIVE: uiPing ack received (seq={seq})."
+MESSAGE_KEEPALIVE_RECV_OUT = "KEEPALIVE: uiPing out received (seq={seq})."
+MESSAGE_DEBUG_REGISTRY_PUSH = (
+    "DEBUG: registry push path={path} bytes={bytes} sha256={sha256} data_hash={data_hash}"
+)
+PROTO_TIME_ZERO = 0.0
+PROTO_LAST_SEQ_INIT = 0
+PROTO_EMPTY_ID = ""
+PROTO_KEY_TCP = "tcp"
+PROTO_KEY_NT = "nt"
+PROTO_KEY_UI = "ui"
+PROTO_KEY_KEEPALIVE = "keepalive"
+PROTO_KEY_COMMANDS = "commands"
+PROTO_KEY_ACKS = "acks"
+PROTO_KEY_OUTS = "outs"
+PROTO_KEY_TIMEOUTS = "timeouts"
+PROTO_KEY_PROTOCOL = "protocol"
+PROTO_KEY_CONNECTED = "connected"
+PROTO_KEY_CONNECT_ATTEMPTS = "connectAttempts"
+PROTO_KEY_CONNECT_FAILS = "connectFailures"
+PROTO_KEY_CONNECT_SUCCESSES = "connectSuccesses"
+PROTO_KEY_LAST_CONNECT_AT = "lastConnectAt"
+PROTO_KEY_LAST_DISCONNECT_AT = "lastDisconnectAt"
+PROTO_KEY_HANDSHAKES = "handshakes"
+PROTO_KEY_LAST_HANDSHAKE_AT = "lastHandshakeAt"
+PROTO_KEY_SESSION_ID = "sessionId"
+PROTO_KEY_COMMANDS_SENT = "sent"
+PROTO_KEY_COMMANDS_LAST = "last"
+PROTO_KEY_COMMANDS_LAST_AT = "lastAt"
+PROTO_KEY_LAST_SEQ = "lastSeq"
+PROTO_KEY_ACK_COUNT = "count"
+PROTO_KEY_OUT_COUNT = "count"
+PROTO_KEY_LAST_ACK_AT = "lastAckAt"
+PROTO_KEY_LAST_OUT_AT = "lastOutAt"
+PROTO_KEY_KEEPALIVE_SENT = "sent"
+PROTO_KEY_KEEPALIVE_FAILED = "failed"
+PROTO_KEY_KEEPALIVE_ACKED = "acked"
+PROTO_KEY_KEEPALIVE_OUT = "out"
+PROTO_KEY_KEEPALIVE_LAST_SENT_AT = "lastSentAt"
+PROTO_KEY_KEEPALIVE_LAST_ACK_AT = "lastAckAt"
+PROTO_KEY_KEEPALIVE_LAST_OUT_AT = "lastOutAt"
+PROTO_KEY_TIMEOUT_COUNT = "count"
+PROTO_KEY_LAST_TIMEOUT_AT = "lastTimeoutAt"
+NT_STATE_ENABLED = "enabled"
+NT_STATE_ESTOPPED = "estopped"
+NT_STATE_MODE = "mode"
+NT_STATE_LAST_ACK_MS = "lastAckMs"
+NT_STATE_SESSION_ID = "sessionId"
+CMD_SHOW_STATUS = "showStatus"
+CMD_SHOW_GROUPS = "showGroups"
+CMD_SHOW_GROUP = "showGroup"
+CMD_SHOW_DEVICES = "showDevices"
+CMD_SHOW_DEVICE = "showDevice"
+CMD_SHOW_BINDINGS = "showBindings"
+CMD_SHOW_SELECTED_DEVICE = "showSelectedDevice"
+CMD_SHOW_RUNTIME_STATE = "showRuntimeState"
+CMD_SHOW_VERSION = "showVersion"
+CMD_SHOW_TESTS = "showTests"
+CMD_SHOW_SOURCES = "showSources"
 
 try:
     from prompt_toolkit import prompt as prompt_toolkit_prompt
@@ -330,6 +364,7 @@ MODE_DEVICE = "device"
 MODE_EXEC = "exec"
 
 TESTS_FILENAME = "bringup_tests.json"
+TESTS_MULTISET_MIN_COUNT = 1
 DEFAULT_TEST_SET = "default"
 EMPTY_STRING = ""
 TEST_LABEL_UNKNOWN = "unknown"
@@ -368,16 +403,7 @@ CMD_EXPORT = "export"
 CMD_DELETE = "delete"
 CMD_SET = "set"
 CMD_CLEAR = "clear"
-CMD_TOPOLOGY = "topology"
-CMD_NEIGHBOR_PORTS = "neighbor-ports"
-CMD_NEIGHBOR_AUTO = "neighbor-auto"
-CMD_NODE = "node"
-CANNECT_PORT_ONE = 1
-CANNECT_PORT_TWO = 2
-CANNECT_PORT_THREE = 3
 SHOW_TARGET_VERSION = "version"
-SHOW_TARGET_TOPOLOGY = "topology"
-SHOW_TARGET_VISIBILITY = "visibility"
 CMD_DEFAULT = PARSER_SPEC.cmd_default
 CMD_MESSAGES = "messages"
 CMD_MESSAGE_LEVEL = "message-level"
@@ -400,6 +426,7 @@ CMD_PATTERN = "pattern"
 CMD_BRIGHTNESS = "brightness"
 CMD_DURATION = "duration"
 CMD_ADD = "add"
+CMD_NEXT = "next"
 CMD_NO = "no"
 CMD_RENAME = "rename"
 CMD_VALIDATE = "validate"
@@ -426,7 +453,6 @@ CMD_MANUFACTURER = "manufacturer"
 CMD_DEVICE_TYPE_NAME = "device-type"
 CMD_DEVICE_TYPES = "device-types"
 CMD_DEVICE_USAGE = "device-usage"
-CMD_BINDING_USAGE = "binding-usage"
 CMD_SHOW_ALL = "show-all"
 CMD_WORKSPACE = "workspace"
 CMD_SESSION = "session"
@@ -436,6 +462,7 @@ CMD_LOCAL = "local"
 CMD_PUSH = "push"
 CMD_INIT = PARSER_SPEC.cmd_init
 CMD_ACTIVATE = PARSER_SPEC.cmd_activate
+CMD_ACTIVATE_PROFILE = PARSER_SPEC.cmd_activate_profile
 CMD_LOCAL_CONFIG = "local-config"
 CMD_SAVE_UNIFIED = "unified-config"
 CMD_VALIDATE_ALL = PARSER_SPEC.cmd_validate_all
@@ -445,12 +472,10 @@ CMD_ALL = "all"
 CMD_SCRIPT = "script"
 CMD_PROMPT = "--prompt"
 CMD_LOAD = "load"
-CMD_RELOAD = PARSER_SPEC.cmd_reload
 CMD_SAVE = "save"
 CMD_SOURCES = "sources"
 CMD_SAVEP = PARSER_SPEC.cmd_savep
 CMD_MERGE = "merge"
-CMD_IMPORT = "import"
 CMD_TEMPLATES = "templates"
 CMD_TEMPLATE = "template"
 CMD_INFO = "info"
@@ -465,8 +490,6 @@ FLAG_JSON = "--json"
 FLAG_DOT = "--dot"
 FLAG_FORCE = "--force"
 FLAG_REPAIR = "--repair"
-FLAG_MERGE = PARSER_SPEC.cmd_merge_flag
-FLAG_REPLACE = PARSER_SPEC.cmd_replace_flag
 QUESTION_MARK = "?"
 SUGGESTION_SEPARATOR = " | "
 MESSAGE_NEXT_ARGS_PREFIX = "Next args: "
@@ -475,7 +498,6 @@ HELP_INDENT = "  "
 PLACEHOLDER_NAME = "<name>"
 PLACEHOLDER_PROFILE = "<profile>"
 PLACEHOLDER_DEVICE = "<device>"
-PLACEHOLDER_INPUT = "<input>"
 PLACEHOLDER_GROUP = "<group>"
 PLACEHOLDER_TEST = "<test>"
 PLACEHOLDER_FIELD = "<field>"
@@ -508,12 +530,6 @@ PROFILE_EXPORT_JSON_FMT = "{profile}_profile.json"
 PROFILE_EXPORT_SCRIPT_FMT = "{profile}_profile.cli"
 PROFILE_EXPORT_SCRIPT_HEADER = "# bridge_cli profile export"
 PROFILE_EXPORT_SCRIPT_HEADER_ALL = "# bridge_cli profiles export"
-SCRIPT_LOAD_CONFIG_MERGE_FMT = 'load config "{path}" --merge'
-SCRIPT_LOAD_CONFIG_NOTE = "# NOTE: devices are derived from profiles; load config <path> --merge first."
-PROFILE_EXPORT_EMPTY_BINDINGS_FMT = "{profile}_bindings_empty.json"
-PROFILE_EXPORT_EMPTY_MAPPINGS_FMT = "{profile}_mappings_empty.json"
-PROFILES_EXPORT_EMPTY_BINDINGS_NAME = "bindings_empty.json"
-PROFILES_EXPORT_EMPTY_MAPPINGS_NAME = "mappings_empty.json"
 PROFILES_EXPORT_JSON_NAME = "profiles_export.json"
 PROFILES_EXPORT_SCRIPT_NAME = "profiles_export.cli"
 PROFILE_EXPORT_HEADER_PREFIX = "#"
@@ -604,13 +620,6 @@ PROFILE_EXPORT_PATH_SEPARATOR = " "
 PROFILE_EXPORT_JSON_SEP_COMMA = ","
 PROFILE_EXPORT_JSON_SEP_COLON = ":"
 PROFILE_EXPORT_JSON_SEPARATORS = (PROFILE_EXPORT_JSON_SEP_COMMA, PROFILE_EXPORT_JSON_SEP_COLON)
-BRACE_OPEN = "{"
-BRACE_CLOSE = "}"
-BRACKET_OPEN = "["
-BRACKET_CLOSE = "]"
-TOKEN_TRUE = "true"
-TOKEN_FALSE = "false"
-TOKEN_DOT = "."
 ATTR_SWEEP_START_DUTY = "start_duty"
 ATTR_SWEEP_MAX_DUTY = "max_duty"
 ATTR_SWEEP_STEP_DUTY = "step_duty"
@@ -642,6 +651,7 @@ PROFILE_EXPORT_FIELD_ORDER = (
 )
 
 CMD_PROFILES_APPLY = "profilesApply"
+CMD_PROFILE_ACTIVATE = "profileActivate"
 ARG_REGISTRY_JSON = "registryJson"
 ARG_ACTIVATE_PROFILE = "activateProfile"
 ARG_REGISTRY_HASH = "registryHash"
@@ -664,17 +674,6 @@ DIRTY_PROFILES = "profiles"
 DIRTY_TESTS = "tests"
 DIRTY_BINDINGS = "bindings"
 DIRTY_MAPPINGS = "can-mappings"
-KEY_CONTEXT = "context"
-KEY_CONTEXT_SOURCE = "source"
-KEY_CONTEXT_PROFILE = "profile"
-KEY_CONTEXT_TEST_SET = "testSet"
-KEY_CONTEXT_SELECTED_DEVICE = "selectedDevice"
-KEY_CONTEXT_SELECTED_MODE = "selectedMode"
-KEY_CONTEXT_DEFAULT_PROFILE = "defaultProfile"
-CONTEXT_SOURCE_LOCAL = "local"
-CONTEXT_SOURCE_ROBOT = "robot"
-SELECTED_MODE_ON = "on"
-SELECTED_MODE_OFF = "off"
 KEY_COMMANDS = "commands"
 KEY_TOPICS = "topics"
 KEY_CONTROLLERS = "controllers"
@@ -684,82 +683,24 @@ KEY_AXES = "axes"
 KEY_COMMAND = "command"
 KEY_CONTROLLER = "controller"
 KEY_INPUT = "input"
-KEY_AXIS = "axis"
-KEY_ALIAS = "alias"
 KEY_KIND = "kind"
 KEY_VALUE = "value"
 KEY_MODE = "mode"
 KEY_PORT = "port"
 KEY_DEADBAND = "deadband"
-INPUT_KIND_BUTTON = "button"
-INPUT_KIND_DPAD = "dpad"
-INPUT_KIND_COMBO = "combo"
-INPUT_KIND_AXIS = "axis"
-ALIAS_SEPARATOR = "."
-ALIAS_DPAD = "dpad"
-ALIAS_LEFT = "left"
-ALIAS_RIGHT = "right"
-ALIAS_TRIGGER = "trigger"
-ALIAS_AXIS_X = "x"
-ALIAS_AXIS_Y = "y"
-AXIS_ID_LEFT_X = "leftX"
-AXIS_ID_LEFT_Y = "leftY"
-AXIS_ID_RIGHT_X = "rightX"
-AXIS_ID_RIGHT_Y = "rightY"
-AXIS_ID_LEFT_TRIGGER = "leftTrigger"
-AXIS_ID_RIGHT_TRIGGER = "rightTrigger"
-CANONICAL_INPUT_KEYS = frozenset(
-    (
-        "driver.a",
-        "driver.b",
-        "driver.x",
-        "driver.y",
-        "driver.lb",
-        "driver.rb",
-        "driver.back",
-        "driver.start",
-        "driver.ls",
-        "driver.rs",
-        "driver.dpad.up",
-        "driver.dpad.right",
-        "driver.dpad.down",
-        "driver.dpad.left",
-        "driver.left.x",
-        "driver.left.y",
-        "driver.right.x",
-        "driver.right.y",
-        "driver.left.trigger",
-        "driver.right.trigger",
-        "operator.a",
-        "operator.b",
-        "operator.x",
-        "operator.y",
-        "operator.lb",
-        "operator.rb",
-        "operator.back",
-        "operator.start",
-        "operator.ls",
-        "operator.rs",
-        "operator.dpad.up",
-        "operator.dpad.right",
-        "operator.dpad.down",
-        "operator.dpad.left",
-        "operator.left.x",
-        "operator.left.y",
-        "operator.right.x",
-        "operator.right.y",
-        "operator.left.trigger",
-        "operator.right.trigger",
-        "ui.slider1",
-        "ui.slider2",
-        "ui.button1",
-        "ui.button2",
-    )
+LABEL_INPUT_PREFIX = "label="
+LABEL_INPUT_VENDOR_MARK = " vendor="
+LABEL_INPUT_TYPE_MARK = " type="
+LABEL_INPUT_ID_MARK = " id="
+LABEL_INPUT_MARKERS = (
+    LABEL_INPUT_VENDOR_MARK,
+    LABEL_INPUT_TYPE_MARK,
+    LABEL_INPUT_ID_MARK,
 )
+LABEL_INPUT_PAREN_REGEX = r"^(?P<label>.+?)\s*\([^)]*\bid=\d+\)\s*$"
 
 SHOW_TARGET_CONFIG = "config"
 SHOW_TARGET_RUNTIME = "runtime-state"
-SHOW_TARGET_RUNTIME_COMPONENTS = "runtime-components"
 SHOW_TARGET_CONFIG_RAW = "config-raw"
 SHOW_CONFIG_LOCAL_RAW = "local-raw"
 SHOW_TARGET_PROFILES = "profiles"
@@ -770,27 +711,6 @@ SHOW_CONFIG_DIRTY = "dirty"
 KEY_PROFILE_INFO = "profile"
 KEY_DIAGRAM = "diagram"
 KEY_DIAGRAM_PROFILES = "profiles"
-KEY_DIAGRAM_NODES = "nodes"
-KEY_NODE_TYPE = "nodeType"
-KEY_CATEGORY = "category"
-KEY_ROW = "row"
-KEY_X = "x"
-KEY_SCALE = "scale"
-KEY_PROFILE_VISIBLE = "profileVisible"
-KEY_SOURCE = "source"
-KEY_TOPOLOGY = "topology"
-KEY_NODES = "nodes"
-
-NODE_TYPE_DEVICE = "device"
-NODE_TYPE_DIAGRAM = "diagram"
-NODE_TYPE_CALLOUT = "callout"
-
-TOPOLOGY_HEADER = "Topology nodes:"
-TOPOLOGY_EMPTY = "Topology nodes: (none)"
-TOPOLOGY_NODE_FMT = "  {label} nodeType={node_type} category={category} id={node_id} bus={bus} row={row} tags={tags}"
-TOPOLOGY_NEIGHBORS_HEADER = "Topology neighbors:"
-TOPOLOGY_NEIGHBORS_EMPTY = "Topology neighbors: (none)"
-TOPOLOGY_NEIGHBOR_ENTRY_FMT = "  {node} {port} -> {neighbor} {neighbor_port}"
 KEY_ACTIVE = "active"
 KEY_DEFAULT = "default"
 KEY_AVAILABLE = "available"
@@ -810,48 +730,18 @@ SHOW_TARGET_GROUPS = "groups"
 SHOW_TARGET_GROUP = "group"
 SHOW_TARGET_DEVICES = "devices"
 SHOW_TARGET_DEVICE = "device"
-SHOW_TARGET_DEVICE_META = "device-meta"
-SHOW_TARGET_DEVICE_REGISTRY = "device-registry"
 SHOW_TARGET_DEVICE_GROUP = "device-group"
 SHOW_TARGET_BINDINGS = "bindings"
 SHOW_TARGET_CAN_MAPPINGS = "can-mappings"
 SHOW_TARGET_SELECTED_DEVICE = "selected-device"
 SHOW_TARGET_MESSAGE_LEVEL = "message-level"
 SHOW_TARGET_DEVICE_USAGE = "device-usage"
-SHOW_TARGET_BINDING_USAGE = "binding-usage"
-SHOW_TOPOLOGY_NEIGHBORS = "neighbors"
-SHOW_TARGET_INPUT_ALIASES = "input-aliases"
 SHOW_TARGET_COMMANDS = "commands"
 SHOW_TARGET_HELP = "help"
 SHOW_TARGET_WORKSPACE = "workspace"
 SHOW_TARGET_SESSION = "session"
 SHOW_TARGET_CONTROLLERS = "controllers"
 SHOW_TARGET_SOURCES = "sources"
-SHOW_VISIBILITY_SUMMARY = "summary"
-SHOW_VISIBILITY_DEVICE = "Device"
-SHOW_VISIBILITY_SOURCE = "Source"
-SHOW_VISIBILITY_LEGEND = "Legend: Y=visible, N=not visible, ?=source unavailable"
-SHOW_VISIBILITY_SCOPE_FMT = "Scope: {scope}"
-SHOW_VISIBILITY_TIMEOUT_FMT = "Visibility timeout: {timeout_ms} ms"
-SHOW_VISIBILITY_UNAVAILABLE = "Unavailable sources: {count}"
-SHOW_VISIBILITY_VALUE_YES = "Y"
-SHOW_VISIBILITY_VALUE_NO = "N"
-SHOW_VISIBILITY_VALUE_UNKNOWN = "?"
-SHOW_VISIBILITY_HEADER_DEVICE = "Device"
-SHOW_VISIBILITY_HEADER_VISIBLE = "Visible"
-SHOW_VISIBILITY_HEADER_AGE = "Age(s)"
-SHOW_VISIBILITY_HEADER_FPS = "FPS"
-MESSAGE_ERR_VISIBILITY_UNAVAILABLE = "ERROR: Visibility provider not available."
-MESSAGE_ERR_VISIBILITY_DEVICE_NOT_FOUND = "ERROR: Visibility target not found: {name}"
-SHOW_VISIBILITY_DEVICE_FMT = "Device: {name}"
-SHOW_VISIBILITY_SUMMARY_SOURCES_FMT = "Sources: {sources}"
-SHOW_VISIBILITY_SUMMARY_DEVICES_FMT = "Devices shown: {devices}"
-SHOW_VISIBILITY_SUMMARY_ALL_FMT = "Visible at all sources: {count}"
-SHOW_VISIBILITY_SUMMARY_SOME_FMT = "Visible at some sources only: {count}"
-SHOW_VISIBILITY_SUMMARY_NONE_FMT = "Visible at no sources: {count}"
-SHOW_VISIBILITY_PLACEHOLDER = "-"
-SHOW_VISIBILITY_AGE_FMT = "{value:.2f}"
-SHOW_VISIBILITY_FPS_FMT = "{value:.1f}"
 
 SHOW_SOURCE_ROBOT = "robot"
 SHOW_SOURCE_LOCAL = "local"
@@ -868,42 +758,77 @@ SHOW_SOURCE_FLAGS = {
 
 MESSAGE_ERR_UNKNOWN_SHOW = "ERROR: Unknown show command."
 MESSAGE_ERR_UNKNOWN_SHOW_SOURCE = "ERROR: Unknown show source."
+MESSAGE_ERR_SHOW_LOCAL_ONLY = "ERROR: show {target} is local-only; remove robot/local/both."
+MESSAGE_HINT_SHOW_SESSION_LOCAL = "show session [--json] [--pretty]"
+MESSAGE_ERR_BINDINGS_SHOW_LOCAL_ONLY = (
+    "ERROR: bindings show is local-only; remove robot/local/both."
+)
+MESSAGE_ERR_MAPPINGS_SHOW_LOCAL_ONLY = (
+    "ERROR: can-mappings show is local-only; remove robot/local/both."
+)
+MESSAGE_ERR_TEST_SHOW_LOCAL_ONLY = (
+    "ERROR: show test <name> is local-only; remove robot/local/both."
+)
+MESSAGE_ERR_SHOW_TESTS_ROBOT_ONLY = (
+    "ERROR: show tests robot requires an active TCP connection."
+)
+LOCAL_ONLY_SHOW_TARGETS = (
+    SHOW_TARGET_MESSAGE_LEVEL,
+    SHOW_TARGET_DEVICE_USAGE,
+    SHOW_TARGET_DEVICE,
+    SHOW_TARGET_CAN_MAPPINGS,
+    SHOW_TARGET_COMMANDS,
+    SHOW_TARGET_HELP,
+    SHOW_TARGET_WORKSPACE,
+    SHOW_TARGET_SESSION,
+    SHOW_TARGET_CONTROLLERS,
+    SHOW_TARGET_SOURCES,
+    SHOW_TARGET_CONFIG_RAW,
+    SHOW_TARGET_CONFIG_DIRTY,
+    CMD_TESTS,
+    CMD_TEST,
+)
 MESSAGE_ERR_SHOW_REQUIRES_TARGET = "ERROR: show requires a target."
 MESSAGE_ERR_PRETTY_REQUIRES_JSON = "ERROR: --pretty requires --json."
-MESSAGE_ERR_LOCAL_CONFIG_MISSING = "ERROR: Local config not loaded. Use load config <path> --merge|--replace."
-MESSAGE_ERR_LOCAL_CONFIG_MISSING_FIRST = "ERROR: Local config not loaded. Use load config <path> --merge|--replace first."
+MESSAGE_ERR_LOCAL_CONFIG_MISSING = "ERROR: Local config not loaded. Use merge/import config <bringup_system.json>."
 MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND = "ERROR: Local device not found."
-MESSAGE_ERR_TOPOLOGY_PROFILE_REQUIRED = "ERROR: Active profile required."
-MESSAGE_ERR_TOPOLOGY_MISSING = "ERROR: Topology diagram missing for active profile."
-MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND = "ERROR: Topology node not found: {label}"
-MESSAGE_ERR_NEIGHBOR_PORTS_SYNTAX = "ERROR: topology neighbor-ports expects set|delete|clear."
-MESSAGE_ERR_NEIGHBOR_PORTS_SET_ARGS = "ERROR: topology neighbor-ports set <node> <port> <neighbor> <neighborPort>"
-MESSAGE_ERR_NEIGHBOR_PORTS_DELETE_ARGS = "ERROR: topology neighbor-ports delete <node> <port>"
-MESSAGE_ERR_NEIGHBOR_PORTS_CLEAR_ARGS = "ERROR: topology neighbor-ports clear <node>"
-MESSAGE_ERR_NEIGHBOR_PORTS_SAME_LABEL = "ERROR: neighbor label must differ from source."
-MESSAGE_ERR_NEIGHBOR_PORTS_BUS = "ERROR: neighbor must be on the same bus segment."
-MESSAGE_ERR_NEIGHBOR_PORTS_NOT_ADJACENT = "ERROR: neighbor must be adjacent on the bus."
-MESSAGE_ERR_NEIGHBOR_PORTS_NODE_FIELDS = "ERROR: topology node missing bus or x for adjacency check."
-MESSAGE_NEIGHBOR_PORTS_SET_OK = "Updated neighbor port for {label}."
-MESSAGE_NEIGHBOR_PORTS_DELETE_OK = "Removed neighbor port for {label}."
-MESSAGE_NEIGHBOR_PORTS_CLEAR_OK = "Cleared neighbor ports for {label}."
-MESSAGE_ERR_NEIGHBOR_AUTO_SYNTAX = (
-    "ERROR: topology neighbor-auto expects all [label1,label2] | node <label>."
-)
-MESSAGE_ERR_NEIGHBOR_AUTO_NODE = "ERROR: topology neighbor-auto node <label>"
-MESSAGE_NEIGHBOR_AUTO_OK = "Auto-assigned neighbor ports."
-MESSAGE_ERR_RUNTIME_COMPONENTS_UNAVAILABLE = "ERROR: runtime-components unavailable."
-MESSAGE_RUNTIME_COMPONENTS_HEADER = "Local runtime-components:"
-MESSAGE_RUNTIME_COMPONENTS_LIST_HEADER = "  components:"
-MESSAGE_RUNTIME_THREADS_HEADER = "  threads:"
-MESSAGE_RUNTIME_COMPONENT_ENTRY = "    {name}: {status}"
-MESSAGE_RUNTIME_COMPONENT_ENTRY_DETAIL = "    {name}: {status} ({detail})"
-MESSAGE_RUNTIME_THREAD_ENTRY = "    {name} id={ident} daemon={daemon} alive={alive}"
-MESSAGE_RUNTIME_LIST_NONE = "    (none)"
 MESSAGE_OK_CONFIG_VALID = "OK: Config is valid."
 MESSAGE_ERR_CONFIG_VALIDATE = "ERROR: {message}"
 MESSAGE_STORE_ISSUE = "{location}: {message}"
-MESSAGE_ERR_REGISTRY_NOT_LOADED = "ERROR: Profiles not loaded. Use load config <path> --merge|--replace."
+MESSAGE_ERR_REGISTRY_NOT_LOADED = "ERROR: Profiles not loaded. Use merge/import config <bringup_system.json>."
+MESSAGE_INFO_RENAME_REFS = "INFO: Updated references for {old} -> {new}: {details}"
+MESSAGE_INFO_RENAME_REFS_NONE = "INFO: No references updated for {old} -> {new}."
+MESSAGE_INFO_RENAME_REFS_ITEM = "{label}({count})"
+MESSAGE_INFO_RENAME_REFS_LABEL_PROFILE_DEVICES = "profiles.devices"
+MESSAGE_INFO_RENAME_REFS_LABEL_ATTACHMENTS = "devices.attachments"
+MESSAGE_INFO_RENAME_REFS_LABEL_GROUPS = "bridgeConfig.groups"
+MESSAGE_INFO_RENAME_REFS_LABEL_SELECTED = "bridgeConfig.selectedDevice"
+MESSAGE_INFO_RENAME_REFS_LABEL_DIAGRAM = "diagram.nodes"
+MESSAGE_INFO_RENAME_REFS_LABEL_TEST_DEVICES = "tests.devices"
+MESSAGE_INFO_RENAME_REFS_LABEL_TEST_LIMIT_SWITCH = "tests.limitSwitch.id"
+MESSAGE_INFO_RENAME_REFS_LABEL_TEST_ROTATION_ENCODER = "tests.rotation.encoderKey"
+MESSAGE_INFO_RENAME_REFS_LABEL_TEST_DEADBAND_ENCODER = "tests.deadbandSweep.encoderKey"
+RENAME_REF_PROFILE_DEVICES = "profile_devices"
+RENAME_REF_ATTACHMENTS = "attachments"
+RENAME_REF_GROUPS = "groups"
+RENAME_REF_SELECTED = "selected"
+RENAME_REF_DIAGRAM = "diagram"
+RENAME_REF_TEST_DEVICES = "test_devices"
+RENAME_REF_TEST_LIMIT_SWITCH = "test_limit_switch"
+RENAME_REF_TEST_ROTATION_ENCODER = "test_rotation_encoder"
+RENAME_REF_TEST_DEADBAND_ENCODER = "test_deadband_encoder"
+RENAME_REF_ORDER = (
+    RENAME_REF_PROFILE_DEVICES,
+    RENAME_REF_ATTACHMENTS,
+    RENAME_REF_GROUPS,
+    RENAME_REF_SELECTED,
+    RENAME_REF_DIAGRAM,
+    RENAME_REF_TEST_DEVICES,
+    RENAME_REF_TEST_LIMIT_SWITCH,
+    RENAME_REF_TEST_ROTATION_ENCODER,
+    RENAME_REF_TEST_DEADBAND_ENCODER,
+)
+KEY_LIMIT_SWITCH_ID = "id"
 MESSAGE_LOCAL_PROFILES_EMPTY = "Local profiles: (none)"
 MESSAGE_LOCAL_PROFILES_HEADER = "Local profiles:"
 MESSAGE_LOCAL_PROFILE_HEADER = "Local profile:"
@@ -919,8 +844,6 @@ MESSAGE_DIRTY_ENTRY = "  {name}={value}"
 MESSAGE_DIRTY_NONE = "  (clean)"
 MESSAGE_DIRTY_PROMPT = "Unsaved changes in: {items}. Exit anyway?"
 MESSAGE_ERR_DEVICE_LABEL_REQUIRED = "ERROR: device name required."
-MESSAGE_ERR_BINDING_INPUT_REQUIRED = "ERROR: binding input required."
-MESSAGE_ERR_BINDING_INPUT_UNKNOWN = "ERROR: binding input not recognized."
 MESSAGE_ERR_DEVICE_PROFILE_REQUIRED = "ERROR: Profile not selected. Use 'profile <profile>'."
 MESSAGE_ERR_DEVICE_INTERFACE_INVALID = "ERROR: interface must be CAN, DIO, PWM, ANALOG, or INTERNAL."
 MESSAGE_ERR_DEVICE_FIELD_UNKNOWN = "ERROR: device set field not supported."
@@ -934,27 +857,8 @@ MESSAGE_SOURCE_LOCAL = "SOURCE: local"
 MESSAGE_LOCAL_CONFIG_RAW = "Local bridgeConfig (raw):"
 MESSAGE_LOCAL_REGISTRY_DEVICE = "Local registry device {label}:"
 MESSAGE_LOCAL_REGISTRY_EMPTY = "  (no fields)"
-MESSAGE_METADATA_NONE = "  metadata: (none)"
-MESSAGE_METADATA_HEADER = "  metadata:"
-MESSAGE_METADATA_HEADER_LEGACY = "  metadata (legacy):"
 MESSAGE_REGISTRY_FIELD_FMT = "  {key}={value}"
 MESSAGE_REGISTRY_FIELD_FMT_NAMED = "  {key}={value} ({name})"
-MESSAGE_LOCAL_REGISTRY_DEVICES_HEADER = "Local registry devices:"
-MESSAGE_LOCAL_REGISTRY_DEVICES_NONE = "  (none)"
-MESSAGE_LOCAL_REGISTRY_DEVICE_HEADER_FMT = "{label}"
-MESSAGE_LOCAL_REGISTRY_DEVICE_LABEL_FMT = "  {label}"
-MESSAGE_LOCAL_REGISTRY_ATTACHMENTS_HEADER = "  attachments:"
-MESSAGE_LOCAL_REGISTRY_ATTACHMENT_LABEL_FMT = "    {label}"
-MESSAGE_LOCAL_REGISTRY_FIELD_FMT = "{indent}{key}: {value}"
-MESSAGE_LOCAL_REGISTRY_FIELD_FMT_NAMED = "{indent}{key}: {value} ({name})"
-MESSAGE_LOCAL_REGISTRY_BLANK_LINE = ""
-INDENT_DEVICE_FIELD = "  "
-INDENT_ATTACHMENT_FIELD = "      "
-INDENT_DEVICE_ATTACHMENT = "    "
-MESSAGE_CONTROLLERS_HEADER = "Controllers:"
-MESSAGE_CONTROLLERS_DECLARED_HEADER = "Declared controllers:"
-MESSAGE_CONTROLLERS_INPUTS_HEADER = "Inputs:"
-MESSAGE_CONTROLLERS_DECLARED_ENTRY_FMT = "  {name} type={type} port={port}"
 MESSAGE_MAPPINGS_READ_FAIL = "WARNING: Failed to read CAN mappings: {path}"
 MESSAGE_ERR_BINDINGS_SUBCOMMAND = (
     "ERROR: bindings <show|controller|binding|axis|load|save|validate>"
@@ -1072,15 +976,18 @@ MESSAGE_HINT_SAVE = (
     "save all [--prompt] [--force] | save config <path> [--force] | save local-config <path> [--force] | "
     "save profiles <path> [--force] | save unified-config <path> [--force] | save sources [--force]"
 )
-MESSAGE_HINT_LOAD = "load config <path> --merge|--replace | reload sources"
-MESSAGE_HINT_SOURCES = "show sources | reload sources | save sources"
+MESSAGE_HINT_SOURCES = "show sources | load sources | save sources"
 MESSAGE_HINT_RECOVER = "recover list | recover last-good | recover from <timestamp>"
 MESSAGE_HINT_SHOW = "show <target> [--json] [--pretty] [robot|local|both]"
 MESSAGE_HINT_PROFILE = (
     "profile <profile> | profile create <profile> | profile delete <profile> | profile device delete <device> "
     "| profile device show-all <device> | profile export <profile> <path> | profile default <profile>"
 )
-MESSAGE_HINT_PROFILES = "profiles init | profiles push <path> [--activate <profile>]"
+MESSAGE_HINT_PROFILES = (
+    "profiles init | profiles push <path> [--activate <profile>] | profiles activate <profile>"
+)
+MESSAGE_ERR_PROFILES_ACTIVATE = "ERROR: profiles activate requires a profile name."
+MESSAGE_ERR_PROFILES_ACTIVATE_SEND = "ERROR: Failed to send profile activate command."
 MESSAGE_HINT_CAN_MAPPINGS = "can-mappings show [manufacturers|device-types] | can-mappings manufacturer set <id> <name>"
 MESSAGE_VALIDATE_ALL_HEADER = "Validate all:"
 MESSAGE_VALIDATE_ALL_ITEM_OK = "  {label}: OK"
@@ -1107,30 +1014,13 @@ MESSAGE_DEBUG_GRAMMAR_DOT_FAIL = "ERROR: Failed to write grammar DOT: {error}"
 MESSAGE_HINT_VALIDATE_CONFIG_PROFILE = "validate config expects a file path; did you mean `profile <profile>`?"
 MESSAGE_VALIDATE_OK = "OK"
 MESSAGE_VALIDATE_ROBOT_NOT_CONNECTED = "Robot not connected."
-MESSAGE_WARN_DEPRECATED_MERGE = "WARNING: 'merge config' is deprecated; use 'load config <path> --merge'."
-MESSAGE_WARN_DEPRECATED_IMPORT = "WARNING: 'import config' is deprecated; use 'load config <path> --replace'."
-MESSAGE_WARN_DEPRECATED_LOAD_SOURCES = "WARNING: 'load sources' is deprecated; use 'reload sources'."
-MESSAGE_ERR_LOAD_CONFIG_PATH = "ERROR: load config requires <path>."
-MESSAGE_ERR_LOAD_CONFIG_FLAG = "ERROR: load config requires --merge or --replace."
-MESSAGE_LOAD_CONFIG_DONE = (
-    "Loaded config: mode={mode} path={path} profile={profile} source={source}."
-)
-MESSAGE_RELOAD_SOURCES_DONE = "Reloaded sources: source={source}."
-MESSAGE_WARN_DEPRECATED_BINDINGS_SHOW = "WARNING: `bindings show` is deprecated; use `show bindings`."
-MESSAGE_WARN_DEPRECATED_MAPPINGS_SHOW = "WARNING: `can-mappings show` is deprecated; use `show can-mappings`."
-MESSAGE_WARN_DEPRECATED_SHOW_SOURCES = "WARNING: `show sources` is deprecated; use `show workspace`."
-MESSAGE_WARN_DEPRECATED_SHOW_SESSION = "WARNING: `show session` is deprecated; use `show workspace`."
-MESSAGE_ACTION_SUMMARY = "Action: {action} scope={scope} persistence={persistence} source={source}"
-ACTION_LOAD = "load"
-ACTION_RELOAD = "reload"
-ACTION_SAVE = "save"
-PERSISTENCE_MEMORY = "memory"
-PERSISTENCE_DISK = "disk"
 MESSAGE_VALIDATE_ROBOT_DEVICES_FETCH = "ERROR: Failed to fetch robot devices."
 MESSAGE_VALIDATE_PROFILES_MISSING = "  missing: {labels}"
 MESSAGE_VALIDATE_PROFILES_EXTRA = "  extra: {labels}"
 MESSAGE_VALIDATE_PROFILES_HEADER = "Profile devices do not match robot:"
 MESSAGE_LABEL_SHOW_DEVICES = "show devices"
+MESSAGE_LABEL_SHOW_TESTS = "show tests"
+MESSAGE_LABEL_SHOW_SOURCES = "show sources"
 MESSAGE_VALIDATE_SCHEMA_VERSION = "schema_version mismatch: expected {expected}, got {found}"
 MESSAGE_VALIDATE_DATA_VERSION = "data_version missing or empty"
 MESSAGE_VALIDATE_DATA_HASH = "data_hash missing or empty"
@@ -1158,24 +1048,6 @@ MESSAGE_DEVICE_USAGE_NONE = "    (none)"
 MESSAGE_DEVICE_USAGE_GROUP_ENTRY = "    {name}"
 MESSAGE_DEVICE_USAGE_TEST_ENTRY = "    {test_set}/{name} ({type})"
 MESSAGE_DEVICE_USAGE_TEST_ENTRY_SIMPLE = "    {test_set}/{name}"
-MESSAGE_BINDING_USAGE_HEADER = "Binding usage:"
-MESSAGE_BINDING_USAGE_INPUT = "  input={name}"
-MESSAGE_BINDING_USAGE_PROFILE = "  profile={name}"
-MESSAGE_BINDING_USAGE_GROUPS_HEADER = "  groups:"
-MESSAGE_BINDING_USAGE_GLOBAL_HEADER = "  global bindings:"
-MESSAGE_BINDING_USAGE_NONE = "    (none)"
-MESSAGE_BINDING_USAGE_GROUP_ENTRY = "    {name} kind={kind}"
-MESSAGE_BINDING_USAGE_GROUP_ENTRY_VALUE = "    {name} kind={kind} value={value}"
-MESSAGE_BINDING_USAGE_GLOBAL_ENTRY = (
-    "    {command} controller={controller} input={input} id={id} mode={mode}"
-)
-MESSAGE_BINDING_USAGE_GLOBAL_AXIS_ENTRY = (
-    "    {command} controller={controller} axis={axis} invert={invert} deadband={deadband}"
-)
-MESSAGE_INPUT_ALIASES_HEADER = "Input aliases:"
-MESSAGE_INPUT_ALIASES_PROFILE = "  profile={name}"
-MESSAGE_INPUT_ALIASES_ENTRY = "  {alias} -> {canonical}"
-MESSAGE_INPUT_ALIASES_NONE = "  (none)"
 MESSAGE_NO_KNOWN_VALUES = "No known values; see docs."
 MESSAGE_SOURCES_HEADER = "Sources:"
 MESSAGE_SOURCES_ENTRY = "  {name}: {value}"
@@ -1187,7 +1059,7 @@ MESSAGE_SOURCES_LOAD_OK = "Loaded {name} from {path}."
 MESSAGE_SOURCES_SAVE_OK = "Saved {name} to {path}."
 MESSAGE_SOURCES_SKIP_UNKNOWN = "ERROR: {name} has unknown source path."
 MESSAGE_SOURCES_SKIP_NOT_LOADED = "ERROR: {name} not loaded."
-MESSAGE_SOURCES_ROBOT_UNSUPPORTED = "ERROR: Robot does not report sources."
+MESSAGE_SOURCES_ROBOT_UNSUPPORTED = "ERROR: Robot sources unavailable."
 MESSAGE_SOURCES_DONE = "Done."
 MESSAGE_SAVE_BLOCKED = "ERROR: Save blocked; validation failed."
 MESSAGE_SAVE_FORCE_HINT = "Hint: Use --force to save anyway."
@@ -1219,11 +1091,62 @@ MESSAGE_VALIDATE_FILE_ERR = "ERROR: File validation failed: {message}"
 MESSAGE_VALIDATE_FILE_LOAD = "ERROR: Failed to read file: {path}"
 MESSAGE_VALIDATE_FILE_UNSUPPORTED = "ERROR: Unsupported file for validation: {path}"
 MESSAGE_VALIDATE_FILE_PATH_REQUIRED = "ERROR: validate file <path>"
-MESSAGE_WORKSPACE_DEFAULT_PROFILE = "Default profile: {profile}"
-MESSAGE_WORKSPACE_CONTEXT = (
-    "Active context: source={source} profile={profile} testSet={test_set} "
-    "selectedDevice={device} selectedMode={mode}"
-)
+SOURCE_DISPLAY_FMT = "{path} (exists={exists})"
+TEXT_STATUS_HEADER = "Bridge status:"
+TEXT_STATUS_BUILD = "  build={value}"
+TEXT_STATUS_PROFILE = "  profile={value}"
+TEXT_STATUS_ENABLED = "  enabled={value}"
+TEXT_STATUS_ESTOPPED = "  estopped={value}"
+TEXT_STATUS_MODE = "  mode={value}"
+TEXT_STATUS_GROUPS = "  groups={value}"
+TEXT_STATUS_SELECTED = "  selectedDevice={device} ({state})"
+TEXT_GROUPS_NONE = "Groups: (none)"
+TEXT_GROUPS_HEADER = "Groups:"
+TEXT_GROUPS_ENTRY = "  {name} ({state}) members={members} bindings={bindings}"
+TEXT_GROUP_HEADER = "Group {name} ({state})"
+TEXT_GROUP_MEMBERS_HEADER = "Members:"
+TEXT_GROUP_BINDINGS_HEADER = "Bindings:"
+TEXT_GROUP_NONE = "  (none)"
+TEXT_BINDINGS_NONE = "Bindings: (no groups)"
+TEXT_BINDINGS_HEADER = "Bindings:"
+TEXT_BINDINGS_GROUP = "  {name}"
+TEXT_BINDING_ENTRY = "    {input} {kind}"
+TEXT_BINDING_ENTRY_VALUE = "    {input} {kind} {value}"
+TEXT_SELECTED_DEVICE_PREFIX = "Selected device: "
+TEXT_DEVICE_NOT_FOUND = "Device: (not found)"
+TEXT_DEVICE_PREFIX = "Device "
+TEXT_DEVICE_ENTRY = "label={label} vendor={vendor} type={type} id={id}"
+TEXT_DEVICES_HEADER = "Devices:"
+TEXT_DEVICES_NONE = "Devices: (none)"
+TEXT_DEVICES_LIST_PREFIX = "  "
+TEXT_TESTS_HEADER = "=== Bringup Tests ==="
+TEXT_TESTS_FOOTER = "====================="
+TEXT_TESTS_ACTIVE_SET = "Active set: {active} (default: {default})"
+TEXT_TESTS_COUNTS = "Total: {total} Enabled: {enabled}"
+TEXT_TESTS_TABLE_HEADER = "Idx Sel En Type       Name                         HoldBtn                Motors"
+TEXT_TESTS_ROW_FMT = "{index:3d}  {sel}  {en}  {type:<9} {name:<28} {hold:<20} {motors}"
+TEXT_TESTS_NO_TESTS = "No tests loaded."
+TEXT_SOURCES_HEADER = "=== Sources ==="
+TEXT_SOURCES_FOOTER = "==============="
+TEXT_SOURCES_ENTRY = "  {name}: {path} (exists={exists})"
+TEXT_STATUS_ON = "on"
+TEXT_STATUS_OFF = "off"
+TEXT_STATUS_NONE = "(none)"
+TEXT_ENABLED = "enabled"
+TEXT_DISABLED = "disabled"
+TEXT_PAREN_OPEN = " ("
+TEXT_PAREN_CLOSE = ")"
+TEXT_BINDINGS_GROUP_NONE = "    (none)"
+TEXT_VERSION_PREFIX = "Robot version: "
+TEXT_BUILD_HEADER = "Build:"
+TEXT_TESTS_HOLD_DEFAULT = "-"
+TEXT_TESTS_MOTORS_EMPTY = "-"
+TEXT_TESTS_TYPE_UNKNOWN = "?"
+TEXT_TESTS_NAME_UNNAMED = "(unnamed)"
+TEXT_TESTS_SELECTED_MARK = "*"
+TEXT_TESTS_SELECTED_EMPTY = " "
+TEXT_TESTS_ENABLED_MARK = "Y"
+TEXT_TESTS_DISABLED_MARK = "N"
 
 KEY_SOURCES = "sources"
 KEY_SOURCE_NAME = "name"
@@ -1242,58 +1165,23 @@ KEY_DATA_HASH_CAMEL = "dataHash"
 SOURCE_STATUS_LOADED = "loaded"
 SOURCE_STATUS_NOT_LOADED = "not-loaded"
 SOURCE_STATUS_UNKNOWN = "unknown"
+SOURCE_NAME_PROFILES = "profiles"
 SOURCE_NAME_REGISTRY = "registry"
 SOURCE_NAME_CONFIG = "config"
 SOURCE_NAME_TESTS = "tests"
 SOURCE_NAME_BINDINGS = "bindings"
-SOURCE_NAME_CAN_MAPPINGS = "can-mappings"
+SOURCE_NAME_CAN_MAPPINGS = "canMappings"
 AUDIT_ACTION_SAVE = "save"
 AUDIT_ACTION_RECOVER = "recover"
 AUDIT_ACTION_REPAIR = "repair"
 HELP_TOPIC_DEVICE_USAGE = "device-usage"
 HELP_DEVICE_USAGE_TEXT = "show device-usage <device>\n  Show local group/test references for a device."
-HELP_TOPIC_BINDING_USAGE = "binding-usage"
-HELP_BINDING_USAGE_TEXT = (
-    "show binding-usage <input>\n"
-    "  Show local group bindings and global command bindings for an input."
-)
-HELP_TOPIC_INPUT_ALIASES = "input-aliases"
-HELP_INPUT_ALIASES_TEXT = (
-    "show input-aliases\n"
-    "  Show merged input alias map for the active profile."
-)
-HELP_TOPIC_TOPOLOGY = "topology"
-HELP_TOPOLOGY_TEXT = (
-    "show topology [neighbors]\n"
-    "  Show topology nodes or neighbor ports for the active profile."
-)
-HELP_TOPIC_TOPOLOGY_NEIGHBOR_PORTS = "topology neighbor-ports"
-HELP_TOPOLOGY_NEIGHBOR_PORTS_TEXT = (
-    "topology neighbor-ports set <node> <port> <neighbor> <neighborPort>\n"
-    "topology neighbor-ports delete <node> <port>\n"
-    "topology neighbor-ports clear <node>\n"
-    "  Edit neighbor port assignments (config mode)."
-)
-HELP_TOPIC_TOPOLOGY_NEIGHBOR_AUTO = "topology neighbor-auto"
-HELP_TOPOLOGY_NEIGHBOR_AUTO_TEXT = (
-    "topology neighbor-auto all [label1,label2]\n"
-    "topology neighbor-auto node <label>\n"
-    "  Auto-assign left/right neighbors from x-order (config mode)."
-)
 HELP_TOPIC_SOURCES = "sources"
 HELP_SOURCES_TEXT = (
     "show sources\n"
-    "reload sources\n"
-    "save sources\n"
-    "  Show and reload/save CLI data sources (local only)."
-)
-HELP_LOAD_SOURCES_TEXT = (
     "load sources\n"
-    "  Deprecated. Use `reload sources`."
-)
-HELP_SHOW_SOURCES_TEXT = (
-    "show sources\n"
-    "  Deprecated. Use `show workspace`."
+    "save sources\n"
+    "  Show and reload/save CLI data sources (show supports robot/local/both)."
 )
 HELP_TOPIC_PROFILE_DEVICE_DELETE = "profile device delete"
 HELP_PROFILE_DEVICE_DELETE_TEXT = (
@@ -1320,7 +1208,8 @@ HELP_PROFILE_DEFAULT_TEXT = (
 )
 HELP_TOPIC_PROFILES_PUSH = "profiles push"
 HELP_PROFILES_PUSH_TEXT = (
-    "profiles push <path> [--activate <profile>]\n  Push profiles/devices registry to robot (TCP only)."
+    "profiles push <path> [--activate <profile>]\n  Push profiles/devices registry to robot (TCP only).\n"
+    "profiles activate <profile>\n  Activate an already-loaded profile on the robot."
 )
 HELP_TOPIC_PROFILES_INIT = "profiles init"
 HELP_PROFILES_INIT_TEXT = (
@@ -1349,55 +1238,31 @@ HELP_VALIDATE_FILE_TEXT = (
 )
 HELP_TOPIC_QUICK = "quick"
 HELP_SHOW_TEXT = (
-    "show <status|groups|group <group>|devices|device <device>|device-group <device>|"
-    "device-usage <device>|binding-usage <input>|commands|help|bindings|selected-device|runtime-state|runtime-components|"
-    "config|config local-raw|config dirty|sources|profiles|profile|tests|test <test>|message-level|workspace|session|"
-    "controllers|topology> [--json] [--pretty] [robot|local|both]\n"
-    "  Defaults: robot if connected, otherwise local."
-)
-HELP_SUMMARY_TEXT = (
-    "Common: help, exit, end, quit, ping, echo, messages\n"
-    "Exec: show, diagnose, connect, disconnect, configure terminal\n"
-    "Config: profile, group, device, bindings, can-mappings, tests, no group, selected-device, "
-    "selected-mode, load/reload/export/save\n"
-    "Group: show, add device, no device, member, bind, no bind, enable, disable, run test\n"
-    "Device: show, set, no\n"
-    "Tips: help show | help sources | help group | help batch | help json"
+    "show <status|groups|group <group>|devices|device <device>|device-group <device>|device registry <device>|"
+    "device-usage <device>|commands|help|bindings|selected-device|runtime-state|config|config local-raw|config dirty|"
+    "sources|profiles|profile|tests|test <test>|message-level|workspace|session|controllers> "
+    "[--json] [--pretty] [robot|local|both]\n"
+    "  Defaults: robot if connected, otherwise local.\n"
+    "  Note: some targets are local-only (e.g., session/workspace)."
 )
 HELP_DIAGNOSE_TEXT = (
     "diagnose motor <label>\n"
     "diagnose device <label>\n"
     "  Analyze runtime telemetry to explain why a motor is not running."
 )
-HELP_LOAD_CONFIG_TEXT = (
-    "load config <bringup_system.json> --merge|--replace\n"
-    "  Load bridgeConfig.byProfile for the active profile.\n"
-    "  --merge keeps existing groups; --replace clears then loads."
-)
-HELP_MERGE_CONFIG_TEXT = (
-    "merge config <bringup_system.json>\n"
-    "  Deprecated. Use `load config <path> --merge`."
-)
-HELP_IMPORT_CONFIG_TEXT = (
-    "import config <bringup_system.json>\n"
-    "  Deprecated. Use `load config <path> --replace`."
-)
 MESSAGE_AUTO_MERGE_FAIL = "WARNING: Failed to auto-load default profiles: {path}"
 MESSAGE_AUTO_MERGE_OK = "Loaded default profiles: {path}"
 MESSAGE_ERR_PROFILE_MIX = (
-    "ERROR: Profiles mismatch. Use 'load config <path> --replace' to replace groups."
+    "ERROR: Profiles mismatch. Use 'import config <path>' to replace groups."
 )
 MESSAGE_ERR_PROFILE_HASH = (
     "ERROR: Profiles hash mismatch (local={local}, incoming={incoming}). "
-    "Use 'load config <path> --replace' to replace groups."
+    "Use 'import config <path>' to replace groups."
 )
 MESSAGE_ERR_PROFILE_MISSING_HASH = (
-    "ERROR: Local groups loaded without profiles; use 'load config <path> --replace' to replace groups."
+    "ERROR: Local groups loaded without profiles; use 'import config <path>' to replace groups."
 )
 MESSAGE_ERR_PROFILE_REQUIRED = "ERROR: Profile not selected. Use 'profile <profile>'."
-MESSAGE_ERR_UNIFIED_NO_PROFILES = (
-    "ERROR: No profiles loaded. Load config <path> --merge|--replace before saving unified config."
-)
 MESSAGE_PROFILE_DELETE_OK = "Deleted profile: {name}."
 MESSAGE_PROFILE_DELETE_MISSING = "WARNING: Profile not found: {name}."
 MESSAGE_PROFILE_DELETE_CONFIRM = "Delete profile '{name}'?"
@@ -1431,13 +1296,8 @@ FIELD_TERMINATOR = "terminator"
 FIELD_VENDOR = "vendor"
 FIELD_ROLE = "role"
 FIELD_NOTES = "notes"
-FIELD_BUS = "bus"
 FIELD_TAGS = "tags"
 FIELD_LIMITS = "limits"
-KEY_METADATA = "metadata"
-KEY_METADATA_SOURCE = "metadataSource"
-META_SOURCE_LOCAL = "local"
-META_SOURCE_REGISTRY = "registry-legacy"
 
 DEVICE_FIELD_INT = "int"
 DEVICE_FIELD_BOOL = "bool"
@@ -1469,7 +1329,6 @@ DEVICE_FIELDS_PROFILE = {
     FIELD_VENDOR,
     FIELD_ROLE,
     FIELD_NOTES,
-    FIELD_BUS,
     FIELD_TAGS,
     FIELD_LIMITS,
 }
@@ -1490,7 +1349,6 @@ DEVICE_FIELD_TYPES = {
     FIELD_VENDOR: DEVICE_FIELD_STR,
     FIELD_ROLE: DEVICE_FIELD_STR,
     FIELD_NOTES: DEVICE_FIELD_STR,
-    FIELD_BUS: DEVICE_FIELD_STR,
     FIELD_TAGS: DEVICE_FIELD_LIST,
     FIELD_LIMITS: DEVICE_FIELD_DICT,
 }
@@ -1503,7 +1361,6 @@ DEVICE_REQUIRED_DIO = (FIELD_INTERFACE, FIELD_DIO, FIELD_INVERT)
 DEVICE_REQUIRED_PWM = (FIELD_INTERFACE, FIELD_PWM)
 DEVICE_REQUIRED_ANALOG = (FIELD_INTERFACE, FIELD_ANALOG)
 DEVICE_REQUIRED_INTERNAL = (FIELD_INTERFACE,)
-DEVICE_META_FIELDS = (FIELD_VENDOR, FIELD_ROLE, FIELD_NOTES, FIELD_TAGS, FIELD_LIMITS, FIELD_BUS)
 
 TEST_TYPE_JOYSTICK = "joystick"
 TEST_TYPE_BUTTON = "button"
@@ -1552,11 +1409,6 @@ BINDINGS_EMPTY_PAYLOAD = {
     KEY_CONTROLLERS: [],
     KEY_BINDINGS: [],
     KEY_AXES: [],
-}
-BINDINGS_EMPTY_PAYLOAD_KEYS = (KEY_CONTROLLERS, KEY_BINDINGS, KEY_AXES)
-MAPPINGS_EMPTY_PAYLOAD = {
-    KEY_MANUFACTURERS: {},
-    KEY_DEVICE_TYPES: {},
 }
 BINDINGS_SHOW_CONTROLLERS = "controllers"
 BINDINGS_SHOW_BINDINGS = "bindings"
@@ -1630,6 +1482,10 @@ MESSAGE_SELECTED_TEST_SET = "Selected test set: {name}"
 MESSAGE_CANCELLED = "Cancelled."
 MESSAGE_DELETED_TEST = "Deleted test: {name}"
 MESSAGE_WROTE_TESTS = "Wrote tests to {path}."
+MESSAGE_ERR_TESTS_LEGACY = (
+    "ERROR: Legacy bringup_tests.json is not supported. "
+    "Tests live in bringup_system.json; use `save unified-config <path>`."
+)
 MESSAGE_TEST_SETS_HEADER = "Test sets:"
 MESSAGE_TEST_SETS_ENTRY = "  {name} ({count} tests)"
 MESSAGE_ACTIVE_TEST_SET = "Active test set: {name}"
@@ -1683,8 +1539,6 @@ class BridgeCli:
         echo_enabled: bool = False,
         message_level: Optional[str] = None,
         recovery_mode: bool = False,
-        visibility_provider: Optional[object] = None,
-        runtime_details_provider: Optional[callable] = None,
     ) -> None:
         self._session = session
         self._batch = batch
@@ -1697,7 +1551,6 @@ class BridgeCli:
         self._recovery_mode = recovery_mode
         self._tests_device_catalog: Dict[str, object] = {}
         self._tests_duplicate_labels: set[str] = set()
-        self._runtime_details_provider = runtime_details_provider
         self._parser_kind = CLI_PARSER_KIND
         self._parser = BridgeCliParser(strict=bool(CLI_PARSER_CONST["strict_default"]))
         self._ast_executor = BridgeCliAstExecutor(self)
@@ -1710,6 +1563,9 @@ class BridgeCli:
         self._local_root_path: Optional[str] = None
         self._local_root_hash: Optional[str] = None
         self._show_label_seq: Dict[int, str] = {}
+        self._show_pretty_json_seq: Dict[int, bool] = {}
+        self._last_show_pretty: bool = False
+        self._last_line_pretty: bool = False
         self._local_devices_locked: bool = False
         self._profiles_dirty: bool = False
         self._groups_dirty: bool = False
@@ -1733,7 +1589,33 @@ class BridgeCli:
         self._bindings_path: Optional[Path] = None
         self._bindings_dirty: bool = False
         self._version_printed = False
-        self._visibility_provider = visibility_provider
+        self._keepalive_stop = threading.Event()
+        self._keepalive_thread: Optional[threading.Thread] = None
+        self._proto_connect_attempts = COUNT_ZERO
+        self._proto_connect_failures = COUNT_ZERO
+        self._proto_connect_successes = COUNT_ZERO
+        self._proto_last_connect_at = PROTO_TIME_ZERO
+        self._proto_last_disconnect_at = PROTO_TIME_ZERO
+        self._proto_handshake_count = COUNT_ZERO
+        self._proto_last_handshake_at = PROTO_TIME_ZERO
+        self._proto_cmd_sent = COUNT_ZERO
+        self._proto_cmd_last = EMPTY_STRING
+        self._proto_cmd_last_at = PROTO_TIME_ZERO
+        self._proto_ack_count = COUNT_ZERO
+        self._proto_last_ack_at = PROTO_TIME_ZERO
+        self._proto_last_ack_seq = PROTO_LAST_SEQ_INIT
+        self._proto_out_count = COUNT_ZERO
+        self._proto_last_out_at = PROTO_TIME_ZERO
+        self._proto_last_out_seq = PROTO_LAST_SEQ_INIT
+        self._proto_timeout_count = COUNT_ZERO
+        self._proto_last_timeout_at = PROTO_TIME_ZERO
+        self._proto_keepalive_sent = COUNT_ZERO
+        self._proto_keepalive_fail = COUNT_ZERO
+        self._proto_keepalive_ack = COUNT_ZERO
+        self._proto_keepalive_out = COUNT_ZERO
+        self._proto_keepalive_last_sent_at = PROTO_TIME_ZERO
+        self._proto_keepalive_last_ack_at = PROTO_TIME_ZERO
+        self._proto_keepalive_last_out_at = PROTO_TIME_ZERO
 
     def run_interactive(self) -> int:
         """
@@ -1743,46 +1625,49 @@ class BridgeCli:
         self._print_version_banner()
         self._auto_merge_default_profiles()
         self._auto_load_default_sources()
-        while True:
-            try:
-                prompt = self._prompt()
-                if self._use_prompt_toolkit and self._prompt_session is not None:
-                    if self._pending_prompt_text is not None:
-                        line = self._prompt_session.prompt(prompt, default=self._pending_prompt_text)
-                        self._pending_prompt_text = None
+        try:
+            while True:
+                try:
+                    prompt = self._prompt()
+                    if self._use_prompt_toolkit and self._prompt_session is not None:
+                        if self._pending_prompt_text is not None:
+                            line = self._prompt_session.prompt(prompt, default=self._pending_prompt_text)
+                            self._pending_prompt_text = None
+                        else:
+                            line = self._prompt_session.prompt(prompt)
                     else:
-                        line = self._prompt_session.prompt(prompt)
-                else:
-                    if self._pending_prompt_text is not None:
-                        if not self._warned_prompt_toolkit:
-                            print(MESSAGE_WARN_PROMPT_TOOLKIT)
-                            self._warned_prompt_toolkit = True
-                        sys.stdout.write(self._prompt() + self._pending_prompt_text)
-                        sys.stdout.flush()
-                        self._pending_prompt_text = None
-                        line = input(MESSAGE_EMPTY_PROMPT)
-                    else:
-                        line = input(prompt)
-            except EOFError:
-                print()
-                result = self._execute_line("exit")
+                        if self._pending_prompt_text is not None:
+                            if not self._warned_prompt_toolkit:
+                                print(MESSAGE_WARN_PROMPT_TOOLKIT)
+                                self._warned_prompt_toolkit = True
+                            sys.stdout.write(self._prompt() + self._pending_prompt_text)
+                            sys.stdout.flush()
+                            self._pending_prompt_text = None
+                            line = input(MESSAGE_EMPTY_PROMPT)
+                        else:
+                            line = input(prompt)
+                except EOFError:
+                    print()
+                    result = self._execute_line("exit")
+                    self._emit_status(result)
+                    if result.exit_requested:
+                        return result.exit_code()
+                    continue
+                except KeyboardInterrupt:
+                    print()
+                    continue
+                line = line.strip()
+                if not line:
+                    continue
+                result = self._execute_line(line)
                 self._emit_status(result)
                 if result.exit_requested:
                     return result.exit_code()
-                continue
-            except KeyboardInterrupt:
-                print()
-                continue
-            line = line.strip()
-            if not line:
-                continue
-            result = self._execute_line(line)
-            self._emit_status(result)
-            if result.exit_requested:
-                return result.exit_code()
-            if not result.ok():
-                self._warn("WARNING: Command failed; staying in CLI.")
-                continue
+                if not result.ok():
+                    self._warn("WARNING: Command failed; staying in CLI.")
+                    continue
+        finally:
+            self._stop_keepalive()
 
     def _build_prompt_session(self) -> Optional[PromptSession]:
         """
@@ -1809,6 +1694,74 @@ class BridgeCli:
                 self._warned_prompt_toolkit = True
             return None
 
+    def _start_keepalive(self) -> None:
+        """
+        NAME
+            _start_keepalive - Start the background UI keepalive loop.
+
+        DESCRIPTION
+            Sends periodic uiPing messages to prevent TCP keepalive timeouts.
+        """
+        if self._keepalive_thread is not None and self._keepalive_thread.is_alive():
+            return
+        self._keepalive_stop.clear()
+        thread = threading.Thread(
+            target=self._keepalive_loop,
+            name=KEEPALIVE_THREAD_NAME,
+            daemon=True,
+        )
+        self._keepalive_thread = thread
+        thread.start()
+        self._keepalive_log(MESSAGE_KEEPALIVE_THREAD_START)
+
+    def _stop_keepalive(self) -> None:
+        """
+        NAME
+            _stop_keepalive - Stop the background UI keepalive loop.
+        """
+        if self._keepalive_thread is None:
+            return
+        self._keepalive_stop.set()
+        self._keepalive_thread.join(timeout=KEEPALIVE_JOIN_TIMEOUT_SEC)
+        if not self._keepalive_thread.is_alive():
+            self._keepalive_thread = None
+            self._keepalive_log(MESSAGE_KEEPALIVE_THREAD_STOP)
+
+    def _keepalive_loop(self) -> None:
+        """
+        NAME
+            _keepalive_loop - Background uiPing loop for CLI sessions.
+
+        DESCRIPTION
+            Periodically sends uiPing while the TCP session is connected.
+        """
+        last_ping = KEEPALIVE_LAST_INIT
+        was_connected: Optional[bool] = None
+        while not self._keepalive_stop.is_set():
+            is_connected = self._session.is_connected()
+            if was_connected is None or was_connected != is_connected:
+                if is_connected:
+                    self._keepalive_log(MESSAGE_KEEPALIVE_STATE_CONNECTED)
+                    self._proto_mark_tcp_state(now=time.time(), connected=True)
+                else:
+                    self._keepalive_log(MESSAGE_KEEPALIVE_STATE_DISCONNECTED)
+                    self._proto_mark_tcp_state(now=time.time(), connected=False)
+                was_connected = is_connected
+            if not is_connected:
+                self._keepalive_stop.wait(KEEPALIVE_DISCONNECTED_WAIT_SEC)
+                continue
+            now = time.time()
+            if (now - last_ping) >= KEEPALIVE_INTERVAL_SEC:
+                seq = ui_ping(self._session)
+                if seq is not None:
+                    last_ping = now
+                    self._keepalive_log(MESSAGE_KEEPALIVE_SEND_OK.format(seq=seq))
+                    self._proto_mark_keepalive_sent(seq=seq, now=now, ok=True)
+                else:
+                    self._keepalive_log(MESSAGE_KEEPALIVE_SEND_FAIL)
+                    self._proto_mark_keepalive_sent(seq=PROTO_LAST_SEQ_INIT, now=now, ok=False)
+            self._keepalive_stop.wait(KEEPALIVE_SLEEP_SEC)
+
     def _build_completer(self) -> Optional[object]:
         """
         NAME
@@ -1831,27 +1784,30 @@ class BridgeCli:
         self._print_version_banner()
         self._auto_merge_default_profiles()
         self._auto_load_default_sources()
-        lint_error = self._lint_script(lines)
-        if lint_error:
-            print(f"ERROR: {lint_error}")
-            result = StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(lint_error))
-            self._emit_status(result)
-            return result.exit_code()
-        for raw in lines:
-            line = raw.strip()
-            if line.startswith("\ufeff"):
-                line = line.lstrip("\ufeff").lstrip()
-            if not line or line.startswith("#"):
-                continue
-            if self._echo_enabled:
-                print(f">> {line}")
-            result = self._execute_line(line)
-            self._emit_status(result)
-            if result.exit_requested:
+        try:
+            lint_error = self._lint_script(lines)
+            if lint_error:
+                print(f"ERROR: {lint_error}")
+                result = StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(lint_error))
+                self._emit_status(result)
                 return result.exit_code()
-            if not result.ok():
-                return result.exit_code()
-        return StatusResult(code=SS__NORMAL).exit_code()
+            for raw in lines:
+                line = raw.strip()
+                if line.startswith("\ufeff"):
+                    line = line.lstrip("\ufeff").lstrip()
+                if not line or line.startswith("#"):
+                    continue
+                if self._echo_enabled:
+                    print(f">> {line}")
+                result = self._execute_line(line)
+                self._emit_status(result)
+                if result.exit_requested:
+                    return result.exit_code()
+                if not result.ok():
+                    return result.exit_code()
+            return StatusResult(code=SS__NORMAL).exit_code()
+        finally:
+            self._stop_keepalive()
 
     def _print_version_banner(self) -> None:
         """
@@ -2378,20 +2334,11 @@ class BridgeCli:
         NAME
             _require_active_profile - Return active profile or report error.
         """
-        profile = self._explicit_profile_name()
+        profile = self._active_profile_name()
         if not profile:
             print(MESSAGE_ERR_PROFILE_REQUIRED)
             return None
         return profile
-
-    def _explicit_profile_name(self) -> Optional[str]:
-        """
-        NAME
-            _explicit_profile_name - Return explicitly selected profile name.
-        """
-        if self._groups_profile:
-            return self._groups_profile
-        return None
 
     def _local_group_count(self) -> int:
         """
@@ -2685,6 +2632,8 @@ class BridgeCli:
     def _execute_line(self, line: str) -> StatusResult:
         if self._handle_question(line):
             return StatusResult(code=SS__NORMAL)
+        lower_line = line.lower() if isinstance(line, str) else ""
+        self._last_line_pretty = "--pretty" in lower_line and "--json" in lower_line
         try:
             parsed = self._parser.parse(line, mode=self._modes[-1].name)
             tokens = parsed.tokens
@@ -2701,9 +2650,6 @@ class BridgeCli:
             normalized = self._parser.normalize_tokens(tokens, self._modes[-1].name)
             if self._fallback_device_set(normalized):
                 return self._coerce_status(self._config_command(normalized))
-            if self._fallback_device_no(normalized):
-                result = self._clear_local_device_meta(normalized[COUNT_ONE], normalized[COUNT_THREE])
-                return self._coerce_status(result)
             result = StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(exc))
             self._maybe_print_failure_hint(line)
             return result
@@ -2763,14 +2709,6 @@ class BridgeCli:
             return self._coerce_status(self._diagnose_command(tokens))
         if self._is_test_authoring_command(tokens):
             return self._coerce_status(self._execute_test_authoring(tokens))
-        if (
-            self._modes[-1].name == MODE_CONFIG
-            and len(tokens) >= COUNT_FOUR
-            and tokens[COUNT_ZERO].lower() == CMD_DEVICE
-            and tokens[COUNT_TWO].lower() == CMD_NO
-        ):
-            result = self._clear_local_device_meta(tokens[COUNT_ONE], tokens[COUNT_THREE])
-            return self._coerce_status(result)
         if ast is not None:
             return self._coerce_status(self._ast_executor.execute(ast))
 
@@ -2805,23 +2743,6 @@ class BridgeCli:
             return False
         return True
 
-    def _fallback_device_no(self, tokens: List[str]) -> bool:
-        """
-        NAME
-            _fallback_device_no - Allow config-mode device no <field>.
-        """
-        if self._modes[-1].name != MODE_CONFIG:
-            return False
-        if len(tokens) < COUNT_FOUR:
-            return False
-        if tokens[COUNT_ZERO].lower() != CMD_DEVICE:
-            return False
-        if tokens[COUNT_TWO].lower() != CMD_NO:
-            return False
-        field = tokens[COUNT_THREE]
-        if field not in DEVICE_FIELDS_PROFILE:
-            return False
-        return True
 
     def _handle_question(self, line: str) -> bool:
         """
@@ -3177,51 +3098,51 @@ class BridgeCli:
             if len(tokens) == COUNT_ONE:
                 return [PLACEHOLDER_GROUP]
             if len(tokens) == COUNT_TWO:
-                return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
             return []
         if target == CMD_DEVICE:
             if len(tokens) == COUNT_ONE:
                 return [PLACEHOLDER_DEVICE]
             if len(tokens) == COUNT_TWO:
-                return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
             return []
         if target == SHOW_TARGET_DEVICE_GROUP:
             if len(tokens) == COUNT_ONE:
                 return [PLACEHOLDER_DEVICE]
             if len(tokens) == COUNT_TWO:
-                return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
             return []
         if target == CMD_DEVICE_USAGE:
             if len(tokens) == COUNT_ONE:
                 return [PLACEHOLDER_DEVICE]
             if len(tokens) == COUNT_TWO:
-                return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
             return []
         if target in (SHOW_TARGET_COMMANDS, SHOW_TARGET_HELP):
             if len(tokens) == COUNT_ONE:
-                return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
             return []
         if target == CMD_CONFIG:
             if len(tokens) == COUNT_ONE:
-                return [CMD_LOCAL_RAW, CMD_DIRTY] + self._show_flag_suggestions()
+                return [CMD_LOCAL_RAW, CMD_DIRTY] + self._show_flag_suggestions(target)
             if len(tokens) == COUNT_TWO and tokens[COUNT_ONE].lower() in (CMD_LOCAL_RAW, CMD_DIRTY):
-                return self._show_flag_suggestions()
-            return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
+            return self._show_flag_suggestions(target)
         if target == CMD_PROFILE:
             if len(tokens) == COUNT_ONE:
-                return [PLACEHOLDER_PROFILE] + self._show_flag_suggestions()
+                return [PLACEHOLDER_PROFILE] + self._show_flag_suggestions(target)
             if len(tokens) == COUNT_TWO:
-                return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
             return []
         if target == PARSER_SPEC.show_target_test:
             if len(tokens) == COUNT_ONE:
                 return [PLACEHOLDER_TEST]
             if len(tokens) == COUNT_TWO:
-                return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
             return []
         if target in PARSER_SPEC.show_targets:
             if len(tokens) == COUNT_ONE:
-                return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
             return []
         return []
 
@@ -3236,20 +3157,16 @@ class BridgeCli:
             CMD_GROUP + PARSER_SPEC.space_str + PLACEHOLDER_GROUP,
             PARSER_SPEC.show_target_devices,
             CMD_DEVICE + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
-            SHOW_TARGET_DEVICE_META + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
             PARSER_SPEC.show_target_commands,
             PARSER_SPEC.show_target_help,
             SHOW_TARGET_VERSION,
             SHOW_TARGET_SOURCES,
             CMD_DEVICE_USAGE + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
-            CMD_BINDING_USAGE + PARSER_SPEC.space_str + PLACEHOLDER_INPUT,
-            SHOW_TARGET_INPUT_ALIASES,
             SHOW_TARGET_DEVICE_GROUP + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
             PARSER_SPEC.show_target_bindings,
             SHOW_TARGET_CAN_MAPPINGS,
             PARSER_SPEC.show_target_selected_device,
             PARSER_SPEC.show_target_runtime_state,
-            SHOW_TARGET_RUNTIME_COMPONENTS,
             CMD_CONFIG,
             CMD_CONFIG + PARSER_SPEC.space_str + CMD_LOCAL_RAW,
             CMD_CONFIG + PARSER_SPEC.space_str + CMD_DIRTY,
@@ -3262,22 +3179,21 @@ class BridgeCli:
             SHOW_TARGET_WORKSPACE,
             SHOW_TARGET_SESSION,
             SHOW_TARGET_CONTROLLERS,
-            SHOW_TARGET_TOPOLOGY,
-            SHOW_TARGET_VISIBILITY,
         ]
 
-    def _show_flag_suggestions(self) -> List[str]:
+    def _show_flag_suggestions(self, target: Optional[str] = None) -> List[str]:
         """
         NAME
             _show_flag_suggestions - Suggest show flags.
         """
+        flags = [FLAG_JSON, FLAG_PRETTY, SHOW_FLAG_ALL]
+        if target in LOCAL_ONLY_SHOW_TARGETS:
+            return flags
         return [
             PARSER_SPEC.show_source_robot,
             PARSER_SPEC.show_source_local,
             PARSER_SPEC.show_source_both,
-            FLAG_JSON,
-            FLAG_PRETTY,
-            SHOW_FLAG_ALL,
+            *flags,
         ]
 
     def _suggest_bindings_args(self, tokens: List[str]) -> List[str]:
@@ -3415,8 +3331,6 @@ class BridgeCli:
             None on success, or a CLI exit code.
         """
 
-        if not self._require_active_profile():
-            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         mode = self._modes[-1].name
         if mode == MODE_TEST:
             return self._coerce_status(self._test_mode_command(tokens))
@@ -3438,9 +3352,7 @@ class BridgeCli:
             Loads tests from bridgeConfig.byProfile for the active profile.
         """
 
-        profile_name = self._tests_profile or self._require_active_profile()
-        if not profile_name:
-            return
+        profile_name = self._tests_profile or self._active_profile_name() or get_default_profile()
         if self._tests_model is not None and profile_name == self._tests_profile:
             return
         self._ensure_local_config()
@@ -3461,8 +3373,6 @@ class BridgeCli:
             _tests_command - Handle tests subcommands (templates/clear).
         """
 
-        if not self._require_active_profile():
-            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         self._ensure_tests_loaded()
         if len(tokens) < COUNT_TWO:
             print(MESSAGE_ERR_TESTS_SUBCOMMAND)
@@ -3534,70 +3444,16 @@ class BridgeCli:
         NAME
             _load_tests_from_path - Load tests JSON from a path.
         """
-
-        try:
-            payload = load_tests_payload(path)
-        except Exception:
-            return StatusResult(code=SS__CONFIG__INVALID)
-        model = model_from_payload(payload or {})
-        self._tests_model = model
-        self._tests_dirty = False
-        if not self._tests_profile:
-            self._refresh_tests_profile(self._active_profile_name() or get_default_profile())
-        else:
-            self._refresh_tests_profile(self._tests_profile)
-        default_set = model.default_test_set if model else EMPTY_STRING
-        self._tests_active_set = default_set or DEFAULT_TEST_SET
-        self._sync_store_tests()
-        return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_ERR_TESTS_LEGACY)
+        return StatusResult(code=SS__CONFIG__INVALID)
 
     def _merge_tests_from_path(self, path: Path) -> StatusResult:
         """
         NAME
             _merge_tests_from_path - Merge tests JSON into current model.
         """
-        try:
-            payload = load_tests_payload(path)
-        except Exception as exc:
-            print(f"ERROR: Failed to read tests: {exc}")
-            return StatusResult(code=SS__CONFIG__INVALID)
-        incoming = model_from_payload(payload or {})
-        dest = self._tests_model or TestAuthoringModel()
-        if not dest.default_test_set and incoming.default_test_set:
-            dest.default_test_set = incoming.default_test_set
-        for set_name, src_set in incoming.test_sets.items():
-            if set_name not in dest.test_sets:
-                dest.test_sets[set_name] = TestSetModel(
-                    name=set_name,
-                    tests=[copy.deepcopy(t) for t in src_set.tests],
-                )
-                continue
-            dst_set = dest.test_sets[set_name]
-            for src_test in src_set.tests:
-                existing_idx = None
-                for idx, test in enumerate(dst_set.tests):
-                    if test.name == src_test.name:
-                        existing_idx = idx
-                        break
-                if existing_idx is not None:
-                    dst_set.tests[existing_idx] = copy.deepcopy(src_test)
-                    self._warn(
-                        f"WARNING: Test '{src_test.name}' overwritten in set '{set_name}'."
-                    )
-                else:
-                    dst_set.tests.append(copy.deepcopy(src_test))
-        self._tests_model = dest
-        if not self._tests_active_set:
-            self._tests_active_set = dest.default_test_set or DEFAULT_TEST_SET
-        if self._tests_active_set not in dest.test_sets:
-            self._tests_active_set = dest.default_test_set or DEFAULT_TEST_SET
-        self._mark_tests_dirty()
-        self._sync_store_tests()
-        if not self._tests_profile:
-            self._refresh_tests_profile(self._active_profile_name() or get_default_profile())
-        else:
-            self._refresh_tests_profile(self._tests_profile)
-        return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_ERR_TESTS_LEGACY)
+        return StatusResult(code=SS__CONFIG__INVALID)
 
     def _ensure_bindings_loaded(self) -> bool:
         """
@@ -3687,6 +3543,9 @@ class BridgeCli:
         if not isinstance(self._bindings_payload, dict):
             print(MESSAGE_ERR_BINDINGS_LOAD.format(path=EMPTY_STRING))
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        if any(token.lower() in SHOW_SOURCE_FLAGS for token in tokens):
+            print(MESSAGE_ERR_BINDINGS_SHOW_LOCAL_ONLY)
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         _source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens)
         if not ok:
             return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
@@ -4303,6 +4162,9 @@ class BridgeCli:
         if not isinstance(self._can_mappings, dict):
             print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=EMPTY_STRING))
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        if any(token.lower() in SHOW_SOURCE_FLAGS for token in tokens):
+            print(MESSAGE_ERR_MAPPINGS_SHOW_LOCAL_ONLY)
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         _source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens)
         if not ok:
             return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
@@ -4440,8 +4302,6 @@ class BridgeCli:
             _config_test_command - Handle config-mode test authoring commands.
         """
 
-        if not self._require_active_profile():
-            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         self._ensure_tests_loaded()
         if len(tokens) < 2:
             print(MESSAGE_ERROR_TEST_SUBCOMMAND)
@@ -4514,8 +4374,6 @@ class BridgeCli:
             _test_mode_command - Handle test-mode configuration commands.
         """
 
-        if not self._require_active_profile():
-            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         self._ensure_tests_loaded()
         if not tokens:
             return StatusResult(code=SS__NORMAL)
@@ -4921,11 +4779,169 @@ class BridgeCli:
 
         if not label or not isinstance(label, str):
             return False
+        label = self._normalize_device_label_input(label)
         if self._tests_duplicate_labels:
             return False
         if not self._tests_device_catalog:
             return False
         return label in self._tests_device_catalog
+
+    def _normalize_device_label_input(self, label: str) -> str:
+        """
+        NAME
+            _normalize_device_label_input - Strip CLI-rendered metadata from a device label.
+
+        DESCRIPTION
+            Accepts labels formatted like:
+              - "LABEL (VENDOR TYPE id=25)"
+              - "label=LABEL vendor=VENDOR type=TYPE id=25"
+            Returns the raw LABEL for local lookups.
+        """
+        if not isinstance(label, str):
+            return label
+        raw = label.strip()
+        if raw.startswith(LABEL_INPUT_PREFIX):
+            trimmed = raw[len(LABEL_INPUT_PREFIX) :]
+            for marker in LABEL_INPUT_MARKERS:
+                idx = trimmed.find(marker)
+                if idx != -1:
+                    return trimmed[:idx].strip()
+            return trimmed.strip()
+        match = re.match(LABEL_INPUT_PAREN_REGEX, raw)
+        if match:
+            return match.group("label").strip()
+        return raw
+
+    def _print_tests_local(self, json_output: bool, pretty: bool, show_source: bool) -> StatusResult:
+        """
+        NAME
+            _print_tests_local - Print local tests output.
+        """
+        if show_source:
+            print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            payload = self._build_tests_overview_payload()
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        payload = self._build_tests_overview_payload()
+        print(self._format_tests_overview_text(payload))
+        return StatusResult(code=SS__NORMAL)
+
+    def _build_tests_overview_payload(self) -> Dict[str, object]:
+        """
+        NAME
+            _build_tests_overview_payload - Build tests overview matching robot schema.
+        """
+        self._ensure_tests_loaded()
+        model = self._tests_model or TestAuthoringModel()
+        active_set = self._tests_active_set or model.default_test_set or EMPTY_STRING
+        default_set = model.default_test_set or EMPTY_STRING
+        test_set = model.test_sets.get(active_set)
+        if not isinstance(test_set, TestSetModel):
+            test_set = TestSetModel(name=active_set, tests=[])
+        total_count = len(test_set.tests)
+        enabled_count = 0
+        rows = []
+        for index, test in enumerate(test_set.tests):
+            if not isinstance(test, TestModel):
+                continue
+            if test.enabled:
+                enabled_count += 1
+            rows.append(
+                {
+                    KEY_TESTS_INDEX: index,
+                    KEY_TESTS_NAME: test.name,
+                    KEY_TESTS_ENABLED: bool(test.enabled),
+                    KEY_TESTS_SELECTED: False,
+                    KEY_TESTS_TYPE: test.test_type,
+                    KEY_TESTS_STATUS: EMPTY_STRING,
+                    KEY_TESTS_MOTORS: list(test.devices) if isinstance(test.devices, list) else [],
+                }
+            )
+        return {
+            KEY_TESTS_ACTIVE_SET: active_set,
+            KEY_TESTS_DEFAULT_SET: default_set,
+            KEY_TESTS_USING_SETS: len(model.test_sets) > TESTS_MULTISET_MIN_COUNT,
+            KEY_TESTS_TOTAL_COUNT: total_count,
+            KEY_TESTS_ENABLED_COUNT: enabled_count,
+            KEY_TESTS_ROWS: rows,
+        }
+
+    def _format_tests_overview_text(self, payload: Dict[str, object]) -> str:
+        """
+        NAME
+            _format_tests_overview_text - Render tests overview text matching robot output.
+        """
+        if not isinstance(payload, dict):
+            return SEP_NEWLINE.join([TEXT_TESTS_HEADER, TEXT_TESTS_NO_TESTS, TEXT_TESTS_FOOTER])
+        rows = payload.get(KEY_TESTS_ROWS, [])
+        total_count = payload.get(KEY_TESTS_TOTAL_COUNT, 0)
+        enabled_count = payload.get(KEY_TESTS_ENABLED_COUNT, 0)
+        using_sets = bool(payload.get(KEY_TESTS_USING_SETS, False))
+        active_set = str(payload.get(KEY_TESTS_ACTIVE_SET, TEXT_STATUS_NONE)).strip()
+        default_set = str(payload.get(KEY_TESTS_DEFAULT_SET, TEXT_STATUS_NONE)).strip()
+        lines = [TEXT_TESTS_HEADER]
+        if using_sets:
+            lines.append(
+                TEXT_TESTS_ACTIVE_SET.format(
+                    active=active_set or TEXT_STATUS_NONE,
+                    default=default_set or TEXT_STATUS_NONE,
+                )
+            )
+        lines.append(
+            TEXT_TESTS_COUNTS.format(
+                total=total_count,
+                enabled=enabled_count,
+            )
+        )
+        lines.append(TEXT_TESTS_TABLE_HEADER)
+        if isinstance(rows, list):
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                index = int(row.get(KEY_TESTS_INDEX, 0))
+                selected = bool(row.get(KEY_TESTS_SELECTED, False))
+                enabled = bool(row.get(KEY_TESTS_ENABLED, False))
+                test_type = str(row.get(KEY_TESTS_TYPE, EMPTY_STRING)).strip() or TEXT_TESTS_TYPE_UNKNOWN
+                name = str(row.get(KEY_TESTS_NAME, EMPTY_STRING)).strip() or TEXT_TESTS_NAME_UNNAMED
+                motors = row.get(KEY_TESTS_MOTORS, [])
+                motor_text = (
+                    SEP_COMMA_SPACE.join([str(m) for m in motors if str(m).strip()])
+                    if isinstance(motors, list) and motors
+                    else TEXT_TESTS_MOTORS_EMPTY
+                )
+                sel_char = TEXT_TESTS_SELECTED_MARK if selected else TEXT_TESTS_SELECTED_EMPTY
+                en_char = TEXT_TESTS_ENABLED_MARK if enabled else TEXT_TESTS_DISABLED_MARK
+                lines.append(
+                    TEXT_TESTS_ROW_FMT.format(
+                        index=index,
+                        sel=sel_char,
+                        en=en_char,
+                        type=test_type,
+                        name=name,
+                        hold=TEXT_TESTS_HOLD_DEFAULT,
+                        motors=motor_text,
+                    )
+                )
+        lines.append(TEXT_TESTS_FOOTER)
+        return SEP_NEWLINE.join(lines)
+
+    def _show_tests_robot(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_tests_robot - Request tests overview from the robot.
+        """
+        seq = show_tests(self._session, json_output=json_output)
+        if seq is None:
+            print(MESSAGE_ERR_COMMAND_SEND_FAILED)
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        self._proto_mark_cmd_sent(CMD_SHOW_TESTS, now=time.time())
+        self._show_label_seq[int(seq)] = SHOW_SOURCE_ROBOT
+        self._show_pretty_json_seq[int(seq)] = bool(pretty)
+        event = self._wait_for_seq(seq)
+        if self._event_failed(event, MESSAGE_LABEL_SHOW_TESTS):
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        return StatusResult(code=SS__NORMAL)
 
     def _show_tests_command(self, tokens: List[str]) -> StatusResult:
         """
@@ -4933,21 +4949,31 @@ class BridgeCli:
             _show_tests_command - Render test authoring state.
         """
 
-        if not self._require_active_profile():
-            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         self._ensure_tests_loaded()
         source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens[1:])
         if not ok:
             return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
-        if source:
-            pass
-        if len(cleaned) >= 1 and cleaned[0].lower() == CMD_TESTS:
-            if json_output:
-                self._print_tests_json(pretty)
-                return StatusResult(code=SS__NORMAL)
-            self._print_tests()
-            return StatusResult(code=SS__NORMAL)
-        if len(cleaned) >= 2 and cleaned[0].lower() == CMD_TEST:
+        target = cleaned[0].lower() if cleaned else EMPTY_STRING
+        is_list = target == CMD_TESTS
+        is_single = target == CMD_TEST and len(cleaned) >= COUNT_TWO
+
+        if source in (SHOW_SOURCE_ROBOT, SHOW_SOURCE_BOTH):
+            if not self._session.is_connected():
+                print(MESSAGE_ERR_SHOW_TESTS_ROBOT_ONLY)
+                return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+            if is_single:
+                print(MESSAGE_ERR_TEST_SHOW_LOCAL_ONLY)
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            if not is_list:
+                print(MESSAGE_ERROR_SHOW_TESTS)
+                return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+            if source == SHOW_SOURCE_BOTH:
+                self._print_tests_local(json_output, pretty, show_source=True)
+            return self._show_tests_robot(json_output, pretty)
+
+        if is_list:
+            return self._print_tests_local(json_output, pretty, show_source=False)
+        if is_single:
             test_set = self._get_active_test_set()
             test = self._find_test(cleaned[1], test_set)
             if not test:
@@ -4966,17 +4992,8 @@ class BridgeCli:
         NAME
             _save_tests_command - Validate and persist tests JSON.
         """
-
-        if not self._require_active_profile():
-            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
-        cleaned, flags = self._strip_flags(tokens, [FLAG_FORCE])
-        force = FLAG_FORCE in flags
-        self._ensure_tests_loaded()
-        if len(cleaned) < 3 or cleaned[1].lower() != CMD_TESTS:
-            print("ERROR: save tests <path>")
-            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        path = Path(cleaned[2])
-        return self._save_tests_to_path(path, force=force)
+        print(MESSAGE_ERR_TESTS_LEGACY)
+        return StatusResult(code=SS__CONFIG__INVALID)
 
     def _save_tests_to_path(
         self,
@@ -5046,14 +5063,6 @@ class BridgeCli:
             False,
         )
         print(MESSAGE_WROTE_TESTS.format(path=path))
-        print(
-            MESSAGE_ACTION_SUMMARY.format(
-                action=ACTION_SAVE,
-                scope=CMD_TESTS,
-                persistence=PERSISTENCE_DISK,
-                source=self._active_source_label(),
-            )
-        )
         return StatusResult(code=SS__CONFIG__SAVED)
 
     def _write_tests_command(self, tokens: List[str]) -> StatusResult:
@@ -5061,9 +5070,8 @@ class BridgeCli:
         NAME
             _write_tests_command - Deprecated alias for save tests.
         """
-
-        print(MESSAGE_WARNING_WRITE_TESTS_DEPRECATED)
-        return self._save_tests_command(tokens)
+        print(MESSAGE_ERR_TESTS_LEGACY)
+        return StatusResult(code=SS__CONFIG__INVALID)
 
     def _get_active_test_set(self) -> TestSetModel:
         """
@@ -5244,17 +5252,25 @@ class BridgeCli:
     def _exec_command(self, tokens: List[str]) -> StatusResult:
         cmd = tokens[0].lower()
         if cmd == "connect":
+            self._proto_mark_connect_attempt()
             if not connect(self._session):
+                self._proto_mark_connect_failure()
                 print("ERROR: Failed to connect.")
                 return StatusResult(code=SS__NETWORK__CONNECT_FAILED)
             ok = self._session.ensure_handshake()
             if not ok:
+                self._proto_mark_connect_failure()
                 print("ERROR: Handshake failed.")
                 return StatusResult(code=SS__NETWORK__HANDSHAKE_FAILED)
+            self._proto_mark_connected(now=time.time())
+            self._proto_mark_handshake(now=time.time())
+            self._start_keepalive()
             print("Connected.")
             return StatusResult(code=SS__NORMAL)
         if cmd == "disconnect":
+            self._stop_keepalive()
             disconnect(self._session)
+            self._proto_mark_disconnected(now=time.time())
             print("Disconnected.")
             return StatusResult(code=SS__NORMAL)
         if cmd == "configure" and len(tokens) > 1 and tokens[1].lower() == "terminal":
@@ -5311,645 +5327,17 @@ class BridgeCli:
             if len(cleaned) < COUNT_THREE:
                 print(MESSAGE_ERR_SAVE_PATH_REQUIRED.format(target=CMD_CONFIG))
                 return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-            if not self._require_active_profile():
-                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             return self._save_runtime_config(cleaned[COUNT_TWO], force=force)
         if target == CMD_LOCAL_CONFIG:
             if len(cleaned) < COUNT_THREE:
                 print(MESSAGE_ERR_SAVE_PATH_REQUIRED.format(target=CMD_LOCAL_CONFIG))
                 return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-            if not self._require_active_profile():
-                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             return self._save_local_config(cleaned[COUNT_TWO], force=force)
         print(MESSAGE_HINT_SAVE)
         return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
 
-    def _load_config_with_mode(self, path: str, mode: str, warn_message: str = EMPTY_STRING) -> StatusResult:
-        """
-        NAME
-            _load_config_with_mode - Load config with explicit merge/replace mode.
-        """
-        if warn_message:
-            print(warn_message)
-        profile = self._require_active_profile()
-        if not profile:
-            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
-        if not mode:
-            print(MESSAGE_ERR_LOAD_CONFIG_FLAG)
-            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        if mode == FLAG_MERGE:
-            plan = merge_config(path, self._conflict_policy, self._active_profile_name())
-            result = self._apply_config_plan(plan, prompt_on_replace=True)
-            if result.ok():
-                print(
-                    MESSAGE_LOAD_CONFIG_DONE.format(
-                        mode=FLAG_MERGE,
-                        path=path,
-                        profile=profile,
-                        source=self._active_source_label(),
-                    )
-                )
-                print(
-                    MESSAGE_ACTION_SUMMARY.format(
-                        action=ACTION_LOAD,
-                        scope=CMD_CONFIG,
-                        persistence=PERSISTENCE_MEMORY,
-                        source=self._active_source_label(),
-                    )
-                )
-            return result
-        if mode == FLAG_REPLACE:
-            plan = import_config(path, self._conflict_policy, self._active_profile_name())
-            result = self._apply_config_plan(plan, prompt_on_replace=True)
-            if result.ok():
-                print(
-                    MESSAGE_LOAD_CONFIG_DONE.format(
-                        mode=FLAG_REPLACE,
-                        path=path,
-                        profile=profile,
-                        source=self._active_source_label(),
-                    )
-                )
-                print(
-                    MESSAGE_ACTION_SUMMARY.format(
-                        action=ACTION_LOAD,
-                        scope=CMD_CONFIG,
-                        persistence=PERSISTENCE_MEMORY,
-                        source=self._active_source_label(),
-                    )
-                )
-            return result
-        print(MESSAGE_ERR_LOAD_CONFIG_FLAG)
-        return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
-
-    def _load_config_merge_deprecated(self, path: str) -> StatusResult:
-        """
-        NAME
-            _load_config_merge_deprecated - Execute deprecated merge config path.
-        """
-        return self._load_config_with_mode(path, FLAG_MERGE, MESSAGE_WARN_DEPRECATED_MERGE)
-
-    def _load_config_replace_deprecated(self, path: str) -> StatusResult:
-        """
-        NAME
-            _load_config_replace_deprecated - Execute deprecated import config path.
-        """
-        return self._load_config_with_mode(path, FLAG_REPLACE, MESSAGE_WARN_DEPRECATED_IMPORT)
-
-    def _handle_load_command(self, tokens: List[str]) -> StatusResult:
-        """
-        NAME
-            _handle_load_command - Dispatch load/reload commands with explicit mode.
-        """
-        if len(tokens) < COUNT_TWO:
-            print(MESSAGE_HINT_LOAD)
-            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        cmd = tokens[COUNT_ZERO].lower()
-        target = tokens[COUNT_ONE].lower()
-        if cmd == CMD_RELOAD:
-            if target != CMD_SOURCES:
-                print(MESSAGE_HINT_LOAD)
-                return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
-            return self._load_sources()
-        if cmd == CMD_LOAD and target == CMD_SOURCES:
-            print(MESSAGE_WARN_DEPRECATED_LOAD_SOURCES)
-            return self._load_sources()
-        if cmd == CMD_LOAD and target == CMD_CONFIG:
-            if len(tokens) < COUNT_THREE:
-                print(MESSAGE_ERR_LOAD_CONFIG_PATH)
-                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-            path = tokens[COUNT_TWO]
-            mode = tokens[COUNT_THREE].lower() if len(tokens) >= COUNT_FOUR else EMPTY_STRING
-            return self._load_config_with_mode(path, mode)
-        print(MESSAGE_HINT_LOAD)
-        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
-
-    def _resolve_topology_label(self, labels: List[str], target: str) -> Optional[str]:
-        """
-        NAME
-            _resolve_topology_label - Resolve a label against topology nodes.
-        """
-        target_text = target.strip().lower()
-        if not target_text:
-            return None
-        for label in labels:
-            if label.strip().lower() == target_text:
-                return label
-        return None
-
-    def _topology_profile_entry(self) -> tuple[Optional[Dict[str, object]], Optional[List[str]]]:
-        """
-        NAME
-            _topology_profile_entry - Resolve the active profile topology entry.
-        """
-        payload = self._local_root_payload
-        if not isinstance(payload, dict):
-            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
-            return (None, None)
-        profile_name = self._active_profile_name()
-        if not profile_name:
-            print(MESSAGE_ERR_TOPOLOGY_PROFILE_REQUIRED)
-            return (None, None)
-        diagram = payload.get(KEY_DIAGRAM)
-        if not isinstance(diagram, dict):
-            print(MESSAGE_ERR_TOPOLOGY_MISSING)
-            return (None, None)
-        diag_profiles = diagram.get(KEY_DIAGRAM_PROFILES)
-        if not isinstance(diag_profiles, dict):
-            print(MESSAGE_ERR_TOPOLOGY_MISSING)
-            return (None, None)
-        diag_entry = diag_profiles.get(profile_name)
-        if not isinstance(diag_entry, dict):
-            print(MESSAGE_ERR_TOPOLOGY_MISSING)
-            return (None, None)
-        nodes_raw = parse_diagram_nodes(diag_entry)
-        labels: List[str] = []
-        for entry in nodes_raw:
-            if not isinstance(entry, dict):
-                continue
-            node_type = str(entry.get(KEY_NODE_TYPE) or NODE_TYPE_DEVICE)
-            if node_type == NODE_TYPE_CALLOUT:
-                continue
-            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
-            if label:
-                labels.append(label)
-        return (diag_entry, labels)
-
-    def _topology_neighbor_adjacent(
-        self,
-        diag_entry: Dict[str, object],
-        source_label: str,
-        neighbor_label: str,
-    ) -> tuple[bool, str]:
-        """
-        NAME
-            _topology_neighbor_adjacent - Validate adjacency on the same bus.
-        """
-        nodes_raw = parse_diagram_nodes(diag_entry)
-        device_links = diag_entry.get(KEY_DEVICE_LINKS)
-        nodes: List[Dict[str, object]] = []
-        for entry in nodes_raw:
-            if not isinstance(entry, dict):
-                continue
-            node_type = str(entry.get(KEY_NODE_TYPE) or NODE_TYPE_DEVICE)
-            if node_type == NODE_TYPE_CALLOUT:
-                continue
-            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
-            if not label:
-                continue
-            bus = entry.get(KEY_BUS)
-            x_value = entry.get(KEY_X)
-            nodes.append(
-                {
-                    KEY_LABEL: label,
-                    KEY_BUS: bus,
-                    KEY_X: x_value,
-                    KEY_NODE_KEY: entry.get(KEY_NODE_KEY),
-                }
-            )
-        if isinstance(device_links, list):
-            key_by_label = {
-                str(n.get(KEY_LABEL, EMPTY_STRING)).strip().lower(): n.get(KEY_NODE_KEY)
-                for n in nodes
-                if str(n.get(KEY_LABEL, EMPTY_STRING)).strip()
-            }
-            source_key = key_by_label.get(source_label.lower())
-            neighbor_key = key_by_label.get(neighbor_label.lower())
-            if source_key is not None and neighbor_key is not None:
-                for link in device_links:
-                    if not isinstance(link, dict):
-                        continue
-                    node_key = link.get(KEY_LINK_NODE)
-                    device_key = link.get(KEY_LINK_DEVICE)
-                    if (
-                        node_key == source_key
-                        and device_key == neighbor_key
-                        or node_key == neighbor_key
-                        and device_key == source_key
-                    ):
-                        return (True, EMPTY_STRING)
-        source = next(
-            (n for n in nodes if str(n.get(KEY_LABEL, EMPTY_STRING)).strip().lower() == source_label.lower()),
-            None,
-        )
-        neighbor = next(
-            (n for n in nodes if str(n.get(KEY_LABEL, EMPTY_STRING)).strip().lower() == neighbor_label.lower()),
-            None,
-        )
-        if source is None or neighbor is None:
-            return (False, MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(label=neighbor_label))
-        source_bus = source.get(KEY_BUS)
-        neighbor_bus = neighbor.get(KEY_BUS)
-        if source_bus != neighbor_bus:
-            return (False, MESSAGE_ERR_NEIGHBOR_PORTS_BUS)
-        source_x = source.get(KEY_X)
-        neighbor_x = neighbor.get(KEY_X)
-        if not isinstance(source_x, (int, float)) or not isinstance(neighbor_x, (int, float)):
-            return (False, MESSAGE_ERR_NEIGHBOR_PORTS_NODE_FIELDS)
-        same_bus = [
-            n
-            for n in nodes
-            if n.get(KEY_BUS) == source_bus and isinstance(n.get(KEY_X), (int, float))
-        ]
-        same_bus.sort(key=lambda n: (n.get(KEY_X), str(n.get(KEY_LABEL, EMPTY_STRING)).lower()))
-        labels = [str(n.get(KEY_LABEL, EMPTY_STRING)).strip().lower() for n in same_bus]
-        try:
-            src_index = labels.index(source_label.lower())
-            neighbor_index = labels.index(neighbor_label.lower())
-        except ValueError:
-            return (False, MESSAGE_ERR_NEIGHBOR_PORTS_NODE_FIELDS)
-        if abs(src_index - neighbor_index) != COUNT_ONE:
-            return (False, MESSAGE_ERR_NEIGHBOR_PORTS_NOT_ADJACENT)
-        return (True, EMPTY_STRING)
-
-    def _cannect_port_name(self, port: object) -> Optional[str]:
-        """
-        NAME
-            _cannect_port_name - Map CANnect port number to neighbor port name.
-        """
-        if not isinstance(port, int):
-            return None
-        if port == CANNECT_PORT_ONE:
-            return NEIGHBOR_PORT_NEXT
-        if port == CANNECT_PORT_TWO:
-            return NEIGHBOR_PORT_BRANCH1
-        if port == CANNECT_PORT_THREE:
-            return NEIGHBOR_PORT_BRANCH2
-        return None
-
-    def _topology_auto_neighbors(
-        self,
-        diag_entry: Dict[str, object],
-        target_labels: Optional[List[str]] = None,
-    ) -> List[Dict[str, object]]:
-        """
-        NAME
-            _topology_auto_neighbors - Build left/right neighbor ports from topology.
-        """
-        nodes_raw = parse_diagram_nodes(diag_entry)
-        device_links = diag_entry.get(KEY_DEVICE_LINKS)
-        nodes_all: List[Dict[str, object]] = []
-        for entry in nodes_raw:
-            if not isinstance(entry, dict):
-                continue
-            node_type = str(entry.get(KEY_NODE_TYPE) or NODE_TYPE_DEVICE)
-            if node_type == NODE_TYPE_CALLOUT:
-                continue
-            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
-            if not label:
-                continue
-            bus = entry.get(KEY_BUS)
-            x_value = entry.get(KEY_X)
-            nodes_all.append(
-                {
-                    KEY_LABEL: label,
-                    KEY_BUS: bus,
-                    KEY_X: x_value,
-                    KEY_NODE_KEY: entry.get(KEY_NODE_KEY),
-                }
-            )
-        by_bus: Dict[int, List[Dict[str, object]]] = {}
-        linked_devices: set[str] = set()
-        label_by_key: Dict[object, str] = {}
-        for node in nodes_all:
-            key = node.get(KEY_NODE_KEY)
-            label = str(node.get(KEY_LABEL, EMPTY_STRING)).strip()
-            if key is not None and label:
-                label_by_key[key] = label
-        for node in nodes_all:
-            bus = node.get(KEY_BUS)
-            if isinstance(bus, int):
-                by_bus.setdefault(bus, []).append(node)
-        if isinstance(device_links, list):
-            for link in device_links:
-                if not isinstance(link, dict):
-                    continue
-                device_key = link.get(KEY_LINK_DEVICE)
-                if device_key in label_by_key:
-                    linked_devices.add(label_by_key[device_key])
-        entries: List[Dict[str, object]] = []
-        for bus_nodes in by_bus.values():
-            bus_nodes.sort(key=lambda n: (n.get(KEY_X), str(n.get(KEY_LABEL, EMPTY_STRING)).lower()))
-            for idx, node in enumerate(bus_nodes):
-                label = str(node.get(KEY_LABEL, EMPTY_STRING)).strip()
-                if not label:
-                    continue
-                if target_labels is not None and label not in target_labels:
-                    continue
-                if label in linked_devices:
-                    continue
-                if idx > COUNT_ZERO:
-                    left = bus_nodes[idx - COUNT_ONE]
-                    left_label = str(left.get(KEY_LABEL, EMPTY_STRING)).strip()
-                    if left_label:
-                        entries.append(
-                            {
-                                KEY_LINK_NODE: label,
-                                KEY_LINK_PORT: NEIGHBOR_PORT_LEFT,
-                                KEY_LINK_NEIGHBOR: left_label,
-                                KEY_LINK_NEIGHBOR_PORT: NEIGHBOR_PORT_RIGHT,
-                            }
-                        )
-                if idx + COUNT_ONE < len(bus_nodes):
-                    right = bus_nodes[idx + COUNT_ONE]
-                    right_label = str(right.get(KEY_LABEL, EMPTY_STRING)).strip()
-                    if right_label:
-                        entries.append(
-                            {
-                                KEY_LINK_NODE: label,
-                                KEY_LINK_PORT: NEIGHBOR_PORT_RIGHT,
-                                KEY_LINK_NEIGHBOR: right_label,
-                                KEY_LINK_NEIGHBOR_PORT: NEIGHBOR_PORT_LEFT,
-                            }
-                        )
-        if isinstance(device_links, list):
-            for link in device_links:
-                if not isinstance(link, dict):
-                    continue
-                node_key = link.get(KEY_LINK_NODE)
-                device_key = link.get(KEY_LINK_DEVICE)
-                port = link.get(KEY_LINK_PORT)
-                node_label = label_by_key.get(node_key)
-                device_label = label_by_key.get(device_key)
-                if not node_label or not device_label:
-                    continue
-                if target_labels is not None:
-                    include_node = node_label in target_labels
-                    include_device = device_label in target_labels
-                    if not include_node and not include_device:
-                        continue
-                port_name = self._cannect_port_name(port)
-                if port_name is None:
-                    continue
-                if target_labels is None or node_label in target_labels:
-                    entries.append(
-                        {
-                            KEY_LINK_NODE: node_label,
-                            KEY_LINK_PORT: port_name,
-                            KEY_LINK_NEIGHBOR: device_label,
-                            KEY_LINK_NEIGHBOR_PORT: NEIGHBOR_PORT_NEXT,
-                        }
-                    )
-                if target_labels is None or device_label in target_labels:
-                    entries.append(
-                        {
-                            KEY_LINK_NODE: device_label,
-                            KEY_LINK_PORT: NEIGHBOR_PORT_NEXT,
-                            KEY_LINK_NEIGHBOR: node_label,
-                            KEY_LINK_NEIGHBOR_PORT: port_name,
-                        }
-                    )
-        return entries
-
-    def _config_topology_neighbor_auto(
-        self, diag_entry: Dict[str, object], labels: List[str], tokens: List[str]
-    ) -> StatusResult:
-        """
-        NAME
-            _config_topology_neighbor_auto - Auto assign neighbor ports.
-        """
-        if len(tokens) < COUNT_THREE:
-            print(MESSAGE_ERR_NEIGHBOR_AUTO_SYNTAX)
-            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        mode = tokens[COUNT_TWO].lower()
-        if mode == CMD_ALL:
-            target_labels: Optional[List[str]] = None
-            if len(tokens) >= COUNT_FOUR:
-                raw = tokens[COUNT_THREE]
-                parts = [part.strip() for part in str(raw).split(PROFILE_EXPORT_JSON_SEP_COMMA)]
-                resolved: List[str] = []
-                for part in parts:
-                    if not part:
-                        continue
-                    match = self._resolve_topology_label(labels, part)
-                    if match is None:
-                        print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(label=part))
-                        return StatusResult(code=SS__DEVICE__NOT_FOUND)
-                    if match not in resolved:
-                        resolved.append(match)
-                if resolved:
-                    target_labels = resolved
-            entries = self._topology_auto_neighbors(diag_entry, target_labels)
-            if target_labels is None:
-                diag_entry[KEY_NEIGHBOR_PORTS] = entries
-            else:
-                neighbor_ports = diag_entry.get(KEY_NEIGHBOR_PORTS)
-                if not isinstance(neighbor_ports, list):
-                    neighbor_ports = []
-                target_lower = {label.lower() for label in target_labels}
-                neighbor_ports = [
-                    entry
-                    for entry in neighbor_ports
-                    if not (
-                        isinstance(entry, dict)
-                        and str(entry.get(KEY_LINK_NODE, EMPTY_STRING)).strip().lower()
-                        in target_lower
-                    )
-                ]
-                neighbor_ports.extend(entries)
-                diag_entry[KEY_NEIGHBOR_PORTS] = neighbor_ports
-            self._profiles_dirty = True
-            print(MESSAGE_NEIGHBOR_AUTO_OK)
-            return StatusResult(code=SS__NORMAL)
-        if mode == CMD_NODE:
-            if len(tokens) < COUNT_FOUR:
-                print(MESSAGE_ERR_NEIGHBOR_AUTO_NODE)
-                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-            label = self._resolve_topology_label(labels, tokens[COUNT_THREE])
-            if label is None:
-                print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(label=tokens[COUNT_THREE]))
-                return StatusResult(code=SS__DEVICE__NOT_FOUND)
-            entries = self._topology_auto_neighbors(diag_entry, [label])
-            neighbor_ports = diag_entry.get(KEY_NEIGHBOR_PORTS)
-            if not isinstance(neighbor_ports, list):
-                neighbor_ports = []
-            neighbor_ports = [
-                entry
-                for entry in neighbor_ports
-                if not (
-                    isinstance(entry, dict)
-                    and str(entry.get(KEY_LINK_NODE, EMPTY_STRING)).strip().lower()
-                    == label.lower()
-                )
-            ]
-            neighbor_ports.extend(entries)
-            diag_entry[KEY_NEIGHBOR_PORTS] = neighbor_ports
-            self._profiles_dirty = True
-            print(MESSAGE_NEIGHBOR_AUTO_OK)
-            return StatusResult(code=SS__NORMAL)
-        print(MESSAGE_ERR_NEIGHBOR_AUTO_SYNTAX)
-        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
-
-    def _config_topology_neighbor_ports_set(
-        self,
-        diag_entry: Dict[str, object],
-        labels: List[str],
-        node_label: str,
-        port: str,
-        neighbor_label: str,
-        neighbor_port: str,
-    ) -> StatusResult:
-        """
-        NAME
-            _config_topology_neighbor_ports_set - Set a neighbor port entry.
-        """
-        source = self._resolve_topology_label(labels, node_label)
-        neighbor = self._resolve_topology_label(labels, neighbor_label)
-        if source is None:
-            print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(label=node_label))
-            return StatusResult(code=SS__DEVICE__NOT_FOUND)
-        if neighbor is None:
-            print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(label=neighbor_label))
-            return StatusResult(code=SS__DEVICE__NOT_FOUND)
-        if source.lower() == neighbor.lower():
-            print(MESSAGE_ERR_NEIGHBOR_PORTS_SAME_LABEL)
-            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-        ok, error = self._topology_neighbor_adjacent(diag_entry, source, neighbor)
-        if not ok:
-            print(error)
-            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-        neighbor_ports = diag_entry.get(KEY_NEIGHBOR_PORTS)
-        if not isinstance(neighbor_ports, list):
-            neighbor_ports = []
-        neighbor_ports = [
-            entry
-            for entry in neighbor_ports
-            if isinstance(entry, dict)
-            and not (
-                str(entry.get(KEY_LINK_NODE, EMPTY_STRING)).strip().lower() == source.lower()
-                and str(entry.get(KEY_LINK_PORT, EMPTY_STRING)).strip().lower() == port.lower()
-            )
-        ]
-        neighbor_ports.append(
-            {
-                KEY_LINK_NODE: source,
-                KEY_LINK_PORT: port,
-                KEY_LINK_NEIGHBOR: neighbor,
-                KEY_LINK_NEIGHBOR_PORT: neighbor_port,
-            }
-        )
-        diag_entry[KEY_NEIGHBOR_PORTS] = neighbor_ports
-        self._profiles_dirty = True
-        print(MESSAGE_NEIGHBOR_PORTS_SET_OK.format(label=source))
-        return StatusResult(code=SS__NORMAL)
-
-    def _config_topology_neighbor_ports_delete(
-        self, diag_entry: Dict[str, object], labels: List[str], node_label: str, port: str
-    ) -> StatusResult:
-        """
-        NAME
-            _config_topology_neighbor_ports_delete - Remove a neighbor port entry.
-        """
-        source = self._resolve_topology_label(labels, node_label)
-        if source is None:
-            print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(label=node_label))
-            return StatusResult(code=SS__DEVICE__NOT_FOUND)
-        neighbor_ports = diag_entry.get(KEY_NEIGHBOR_PORTS)
-        if not isinstance(neighbor_ports, list):
-            neighbor_ports = []
-        filtered = [
-            entry
-            for entry in neighbor_ports
-            if not (
-                isinstance(entry, dict)
-                and str(entry.get(KEY_LINK_NODE, EMPTY_STRING)).strip().lower() == source.lower()
-                and str(entry.get(KEY_LINK_PORT, EMPTY_STRING)).strip().lower() == port.lower()
-            )
-        ]
-        diag_entry[KEY_NEIGHBOR_PORTS] = filtered
-        self._profiles_dirty = True
-        print(MESSAGE_NEIGHBOR_PORTS_DELETE_OK.format(label=source))
-        return StatusResult(code=SS__NORMAL)
-
-    def _config_topology_neighbor_ports_clear(
-        self, diag_entry: Dict[str, object], labels: List[str], node_label: str
-    ) -> StatusResult:
-        """
-        NAME
-            _config_topology_neighbor_ports_clear - Clear neighbor port entries.
-        """
-        source = self._resolve_topology_label(labels, node_label)
-        if source is None:
-            print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(label=node_label))
-            return StatusResult(code=SS__DEVICE__NOT_FOUND)
-        neighbor_ports = diag_entry.get(KEY_NEIGHBOR_PORTS)
-        if not isinstance(neighbor_ports, list):
-            neighbor_ports = []
-        filtered = [
-            entry
-            for entry in neighbor_ports
-            if not (
-                isinstance(entry, dict)
-                and str(entry.get(KEY_LINK_NODE, EMPTY_STRING)).strip().lower() == source.lower()
-            )
-        ]
-        diag_entry[KEY_NEIGHBOR_PORTS] = filtered
-        self._profiles_dirty = True
-        print(MESSAGE_NEIGHBOR_PORTS_CLEAR_OK.format(label=source))
-        return StatusResult(code=SS__NORMAL)
-
-    def _config_topology_command(self, tokens: List[str]) -> StatusResult:
-        """
-        NAME
-            _config_topology_command - Handle topology configuration commands.
-        """
-        if len(tokens) < COUNT_TWO:
-            print(MESSAGE_ERR_NEIGHBOR_PORTS_SYNTAX)
-            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        sub = tokens[COUNT_ONE].lower()
-        if sub != CMD_NEIGHBOR_PORTS:
-            if sub == CMD_NEIGHBOR_AUTO:
-                diag_entry, labels = self._topology_profile_entry()
-                if diag_entry is None or labels is None:
-                    return StatusResult(code=SS__CONFIG__NOT_LOADED)
-                return self._config_topology_neighbor_auto(diag_entry, labels, tokens)
-            print(MESSAGE_ERR_NEIGHBOR_PORTS_SYNTAX)
-            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
-        if len(tokens) < COUNT_THREE:
-            print(MESSAGE_ERR_NEIGHBOR_PORTS_SYNTAX)
-            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        action = tokens[COUNT_TWO].lower()
-        diag_entry, labels = self._topology_profile_entry()
-        if diag_entry is None or labels is None:
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        if action == CMD_SET:
-            if len(tokens) < COUNT_SEVEN:
-                print(MESSAGE_ERR_NEIGHBOR_PORTS_SET_ARGS)
-                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-            return self._config_topology_neighbor_ports_set(
-                diag_entry,
-                labels,
-                tokens[COUNT_THREE],
-                tokens[COUNT_FOUR],
-                tokens[COUNT_FIVE],
-                tokens[COUNT_SIX],
-            )
-        if action == CMD_DELETE:
-            if len(tokens) < COUNT_FIVE:
-                print(MESSAGE_ERR_NEIGHBOR_PORTS_DELETE_ARGS)
-                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-            return self._config_topology_neighbor_ports_delete(
-                diag_entry,
-                labels,
-                tokens[COUNT_THREE],
-                tokens[COUNT_FOUR],
-            )
-        if action == CMD_CLEAR:
-            if len(tokens) < COUNT_FOUR:
-                print(MESSAGE_ERR_NEIGHBOR_PORTS_CLEAR_ARGS)
-                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-            return self._config_topology_neighbor_ports_clear(
-                diag_entry,
-                labels,
-                tokens[COUNT_THREE],
-            )
-        print(MESSAGE_ERR_NEIGHBOR_PORTS_SYNTAX)
-        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
-
     def _config_command(self, tokens: List[str]) -> StatusResult:
         cmd = tokens[0].lower()
-        if cmd == CMD_TOPOLOGY:
-            return self._config_topology_command(tokens)
         if cmd == CMD_BINDINGS:
             return self._config_bindings_command(tokens)
         if cmd == CMD_CAN_MAPPINGS:
@@ -5958,10 +5346,15 @@ class BridgeCli:
             return self._handle_save_command(tokens)
         if cmd == CMD_RECOVER:
             return self._handle_recover_command(tokens)
-        if cmd in (CMD_LOAD, CMD_RELOAD):
-            return self._handle_load_command(tokens)
+        if cmd == CMD_LOAD and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_SOURCES:
+            return self._load_sources()
         if cmd == CMD_PROFILES and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_INIT:
             return self._init_profiles_payload()
+        if cmd == CMD_PROFILES and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_ACTIVATE_PROFILE:
+            if len(tokens) < COUNT_THREE:
+                print(MESSAGE_ERR_PROFILES_ACTIVATE)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._profiles_activate(tokens[COUNT_TWO])
         if cmd == CMD_PROFILES and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_EXPORT:
             if len(tokens) < COUNT_THREE:
                 print(MESSAGE_ERR_PROFILES_EXPORT_PATH)
@@ -6018,8 +5411,6 @@ class BridgeCli:
             print(f"Active profile: {self._groups_profile}")
             return StatusResult(code=SS__NORMAL)
         if cmd == "group" and len(tokens) >= 2 and not self._session.is_connected():
-            if not self._require_active_profile():
-                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             name = tokens[1]
             result = self._select_or_create_local_group(name)
             if not result.ok():
@@ -6051,8 +5442,6 @@ class BridgeCli:
             print(f"Updated device {tokens[1]} {field}={value_raw}.")
             return StatusResult(code=SS__NORMAL)
         if cmd == "group" and len(tokens) >= 2:
-            if not self._require_active_profile():
-                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             name = tokens[1]
             seq = group_create(self._session, name)
             event = self._wait_for_seq(seq)
@@ -6068,8 +5457,6 @@ class BridgeCli:
             self._modes.append(CliMode("device", device=name))
             return StatusResult(code=SS__NORMAL)
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "group" and not self._session.is_connected():
-            if not self._require_active_profile():
-                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             name = tokens[2]
             if not self._confirm(f"Delete group '{name}'?"):
                 return StatusResult(code=SS__EXECUTOR__CANCELLED)
@@ -6079,8 +5466,6 @@ class BridgeCli:
             self._warn("WARNING: Robot not connected; local group deleted.")
             return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "group":
-            if not self._require_active_profile():
-                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             name = tokens[2]
             if not self._confirm(f"Delete group '{name}'?"):
                 return StatusResult(code=SS__EXECUTOR__CANCELLED)
@@ -6090,24 +5475,18 @@ class BridgeCli:
                 return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
             return StatusResult(code=SS__NORMAL)
         if cmd == "selected-device" and len(tokens) >= 2 and not self._session.is_connected():
-            if not self._require_active_profile():
-                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             result = self._set_local_selected_device(tokens[1])
             if not result.ok():
                 return result
             self._warn("WARNING: Robot not connected; local selected-device updated.")
             return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
         if cmd == "selected-device" and len(tokens) >= 2:
-            if not self._require_active_profile():
-                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             seq = selected_device_set(self._session, tokens[1])
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "selected-device"):
                 return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
             return StatusResult(code=SS__NORMAL)
         if cmd == "selected-mode" and len(tokens) >= 2 and not self._session.is_connected():
-            if not self._require_active_profile():
-                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             mode_value = tokens[1].lower()
             if mode_value not in ("on", "off"):
                 print("ERROR: selected-mode requires on/off.")
@@ -6119,8 +5498,6 @@ class BridgeCli:
             self._warn("WARNING: Robot not connected; local selected-mode updated.")
             return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
         if cmd == "selected-mode" and len(tokens) >= 2:
-            if not self._require_active_profile():
-                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             mode_value = tokens[1].lower()
             if mode_value not in ("on", "off"):
                 print("ERROR: selected-mode requires on/off.")
@@ -6131,13 +5508,13 @@ class BridgeCli:
             if self._event_failed(event, "selected-mode"):
                 return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
             return StatusResult(code=SS__NORMAL)
-        if cmd == CMD_MERGE and len(tokens) >= COUNT_THREE and tokens[COUNT_ONE].lower() == CMD_CONFIG:
-            return self._load_config_merge_deprecated(tokens[COUNT_TWO])
-        if cmd == CMD_IMPORT and len(tokens) >= COUNT_THREE and tokens[COUNT_ONE].lower() == CMD_CONFIG:
-            return self._load_config_replace_deprecated(tokens[COUNT_TWO])
+        if cmd == "merge" and len(tokens) >= 3 and tokens[1].lower() == "config":
+            plan = merge_config(tokens[2], self._conflict_policy, self._active_profile_name())
+            return self._coerce_status(self._apply_config_plan(plan, prompt_on_replace=True))
+        if cmd == "import" and len(tokens) >= 3 and tokens[1].lower() == "config":
+            plan = import_config(tokens[2], self._conflict_policy, self._active_profile_name())
+            return self._coerce_status(self._apply_config_plan(plan, prompt_on_replace=True))
         if cmd == "export" and len(tokens) >= 3 and tokens[1].lower() == "runtime-groups":
-            if not self._require_active_profile():
-                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             result = export_runtime_groups(self._session, tokens[2], self._active_profile_name())
             message = format_status_message(result.code) or result.message
             if message:
@@ -6196,7 +5573,7 @@ class BridgeCli:
                         ok, message, _config = validate_config_file(path)
                 else:
                     if not self._local_config:
-                        print(MESSAGE_ERR_LOCAL_CONFIG_MISSING_FIRST)
+                        print("ERROR: Local config not loaded. Use merge/import config <path> first.")
                         return StatusResult(code=SS__CONFIG__NOT_LOADED)
                     if use_all:
                         ok, message = validate_config_data_all(self._local_config, self._local_root_payload)
@@ -6344,7 +5721,6 @@ class BridgeCli:
         if sub == CMD_LS:
             sub = CMD_SHOW
         if sub == CMD_SHOW:
-            print(MESSAGE_WARN_DEPRECATED_BINDINGS_SHOW)
             return self._coerce_status(self._bindings_show(tokens[COUNT_TWO:]))
         if sub == CMD_CONTROLLER:
             return self._coerce_status(self._bindings_controller_command(tokens[COUNT_TWO:]))
@@ -6387,7 +5763,6 @@ class BridgeCli:
         if sub == CMD_LS:
             sub = CMD_SHOW
         if sub == CMD_SHOW:
-            print(MESSAGE_WARN_DEPRECATED_MAPPINGS_SHOW)
             return self._coerce_status(self._mappings_show(tokens[COUNT_TWO:]))
         if sub == CMD_MANUFACTURER:
             return self._coerce_status(self._mappings_entry_command(KEY_MANUFACTURERS, tokens[COUNT_TWO:]))
@@ -6437,14 +5812,15 @@ class BridgeCli:
                 return StatusResult(code=SS__NORMAL)
             return self._coerce_status(self._handle_show(tokens[1:]))
         if cmd == "add" and len(tokens) >= 3 and tokens[1].lower() == "device":
-            if not self._local_device_exists(tokens[2]):
+            device_label = self._normalize_device_label_input(tokens[2])
+            if not self._local_device_exists(device_label):
                 print("ERROR: Device not defined in local config. Use device <device> to create it.")
                 return StatusResult(code=SS__DEVICE__NOT_DEFINED)
             seq = group_add_device(
-                self._session, group, tokens[2], self._conflict_policy, force_move=False
+                self._session, group, device_label, self._conflict_policy, force_move=False
             )
             event = self._wait_for_seq(seq)
-            if self._handle_add_device_conflict(event, group, tokens[2]):
+            if self._handle_add_device_conflict(event, group, device_label):
                 return StatusResult(code=SS__GROUP__BINDING_INVALID)
             if self._event_failed(event, "add device"):
                 return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
@@ -6473,9 +5849,6 @@ class BridgeCli:
         if cmd == "bind" and len(tokens) >= 3:
             input_name = tokens[1]
             kind = tokens[2].lower()
-            if not self._is_valid_binding_input(input_name, self._active_profile_name()):
-                print(MESSAGE_ERR_BINDING_INPUT_UNKNOWN)
-                return StatusResult(code=SS__INPUT_BINDING__INVALID)
             value = None
             if kind != "analog":
                 if len(tokens) < 4:
@@ -6580,43 +5953,39 @@ class BridgeCli:
                 target = SHOW_TARGET_CONFIG_RAW
             elif name == SHOW_CONFIG_DIRTY:
                 target = SHOW_TARGET_CONFIG_DIRTY
+        if (
+            target == CMD_DEVICE
+            and len(tokens) >= 3
+            and tokens[1].lower() == CMD_REGISTRY
+        ):
+            target = SHOW_TARGET_DEVICE_REGISTRY
+            tokens = [SHOW_TARGET_DEVICE_REGISTRY, tokens[2]]
         if target == SHOW_TARGET_CONFIG:
             target = SHOW_TARGET_RUNTIME
-        if target == SHOW_TARGET_RUNTIME_COMPONENTS:
-            source = SHOW_SOURCE_LOCAL
         if target == SHOW_TARGET_MESSAGE_LEVEL:
             source = SHOW_SOURCE_LOCAL
         if target == SHOW_TARGET_DEVICE_USAGE:
             source = SHOW_SOURCE_LOCAL
         if target == SHOW_TARGET_DEVICE:
             source = SHOW_SOURCE_LOCAL
-        if target == SHOW_TARGET_DEVICE_META:
-            source = SHOW_SOURCE_LOCAL
-        if target == SHOW_TARGET_INPUT_ALIASES:
-            source = SHOW_SOURCE_LOCAL
         if target == SHOW_TARGET_CAN_MAPPINGS:
-            source = SHOW_SOURCE_LOCAL
-        if target == SHOW_TARGET_TOPOLOGY:
-            source = SHOW_SOURCE_LOCAL
-        if target == SHOW_TARGET_VISIBILITY:
             source = SHOW_SOURCE_LOCAL
         if target in (SHOW_TARGET_COMMANDS, SHOW_TARGET_HELP):
             source = SHOW_SOURCE_LOCAL
         if target in (SHOW_TARGET_WORKSPACE, SHOW_TARGET_SESSION, SHOW_TARGET_CONTROLLERS):
             source = SHOW_SOURCE_LOCAL
+        if has_source_flag and target in LOCAL_ONLY_SHOW_TARGETS:
+            print(MESSAGE_ERR_SHOW_LOCAL_ONLY.format(target=target))
+            if target == SHOW_TARGET_SESSION:
+                print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW_SESSION_LOCAL)
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         if target == SHOW_TARGET_SOURCES and not has_source_flag:
             source = SHOW_SOURCE_LOCAL
         if target in (SHOW_TARGET_CONFIG_RAW, SHOW_TARGET_CONFIG_DIRTY):
             source = SHOW_SOURCE_LOCAL
-        if target == SHOW_TARGET_SOURCES:
-            print(MESSAGE_WARN_DEPRECATED_SHOW_SOURCES)
-            target = SHOW_TARGET_WORKSPACE
-        if target == SHOW_TARGET_SESSION:
-            print(MESSAGE_WARN_DEPRECATED_SHOW_SESSION)
-            target = SHOW_TARGET_WORKSPACE
         if source == SHOW_SOURCE_BOTH:
             local_result = self._show_local(target, tokens, json_output, pretty)
-            robot_result = self._show_robot(target, tokens, json_output)
+            robot_result = self._show_robot(target, tokens, json_output, pretty)
             if self._batch and (not local_result.ok() or not robot_result.ok()):
                 return StatusResult(code=SS__EXECUTOR__FAILED)
             if not local_result.ok():
@@ -6630,7 +5999,7 @@ class BridgeCli:
                 return result
             return StatusResult(code=SS__NORMAL)
         if source == SHOW_SOURCE_ROBOT:
-            result = self._show_robot(target, tokens, json_output)
+            result = self._show_robot(target, tokens, json_output, pretty)
             if not result.ok():
                 return result
             return StatusResult(code=SS__NORMAL)
@@ -7111,6 +6480,18 @@ class BridgeCli:
             return StatusResult(code=SS__CONFIG__INVALID)
         registry_hash = self._hash_raw_registry(raw)
         registry_bytes = len(raw.encode(ENCODING_UTF8))
+        data_hash = payload.get(KEY_DATA_HASH)
+        if not isinstance(data_hash, str):
+            data_hash = EMPTY_STRING
+        resolved_path = str(Path(path).resolve())
+        self._debug_log(
+            MESSAGE_DEBUG_REGISTRY_PUSH.format(
+                path=resolved_path,
+                bytes=registry_bytes,
+                sha256=registry_hash,
+                data_hash=data_hash,
+            )
+        )
         args = {
             ARG_REGISTRY_JSON: raw,
             ARG_REGISTRY_HASH: registry_hash,
@@ -7122,6 +6503,7 @@ class BridgeCli:
         if seq is None:
             print(MESSAGE_ERR_PROFILES_PUSH_SEND)
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        self._proto_mark_cmd_sent(CMD_PROFILES_APPLY, now=time.time())
         event = self._wait_for_seq(seq)
         if self._event_failed(event, CMD_PROFILES_APPLY):
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
@@ -7131,6 +6513,26 @@ class BridgeCli:
         self._local_devices_locked = True
         self._sync_store_from_local()
         print(MESSAGE_INFO_PROFILES_PUSH_LOCAL.format(path=path))
+        return StatusResult(code=SS__NORMAL)
+
+    def _profiles_activate(self, profile_name: str) -> StatusResult:
+        """
+        NAME
+            _profiles_activate - Activate an already-loaded profile on the robot.
+        """
+        if not profile_name:
+            print(MESSAGE_ERR_PROFILES_ACTIVATE)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        if not self._session.is_connected():
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+        seq = profile_activate(self._session, profile_name)
+        if seq is None:
+            print(MESSAGE_ERR_PROFILES_ACTIVATE_SEND)
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        self._proto_mark_cmd_sent(CMD_PROFILE_ACTIVATE, now=time.time())
+        event = self._wait_for_seq(seq)
+        if self._event_failed(event, CMD_PROFILE_ACTIVATE):
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         return StatusResult(code=SS__NORMAL)
 
     def _config_push(self, path: str, activate_profile: str) -> StatusResult:
@@ -7217,6 +6619,7 @@ class BridgeCli:
         if seq is None:
             print(f"ERROR: Failed to send {command.name}.")
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        self._proto_mark_cmd_sent(command.name, now=time.time())
         event = self._wait_for_seq(seq)
         if self._event_failed(event, command.name):
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
@@ -7281,6 +6684,10 @@ class BridgeCli:
             for event in events:
                 if print_events:
                     self._print_event(event)
+                if event.type == EVENT_TYPE_ACK:
+                    self._proto_mark_ack(event.seq, now=time.time())
+                if event.type == EVENT_TYPE_OUT:
+                    self._proto_mark_out(event.seq, now=time.time())
                 if event.type in ("ack", "out"):
                     self._tracker.handle_event(event)
                 if event.seq == seq and event.type == "ack":
@@ -7291,6 +6698,7 @@ class BridgeCli:
                         event.status = ack_status
                         event.message = ack_message
                     return event
+            self._proto_mark_timeout(now=time.time())
             self._warn("WARNING: Timeout waiting for OUT.", essential=True)
         return None
 
@@ -7303,18 +6711,46 @@ class BridgeCli:
         return event.status == "error"
 
     def _print_event(self, event: BridgeEvent) -> None:
-        if event.type == "ack":
+        if event.type == EVENT_TYPE_ACK:
+            if event.name == CMD_UI_PING:
+                self._keepalive_log(MESSAGE_KEEPALIVE_RECV_ACK.format(seq=event.seq))
+                self._proto_mark_keepalive_ack(event.seq, now=time.time())
+                return
+            if self._last_seq and event.seq != self._last_seq:
+                return
             msg = event.message or event.status
             print(f"ACK {event.seq} {event.name} {event.status} {msg}".rstrip())
             return
-        if event.type == "out":
+        if event.type == EVENT_TYPE_OUT:
             source = self._show_label_seq.pop(event.seq, "")
             if source:
                 print(f"SOURCE: {source}")
+            pretty = self._show_pretty_json_seq.pop(event.seq, False)
+            if not pretty and event.seq == self._last_seq and self._last_show_pretty:
+                pretty = True
+            if not pretty and self._last_line_pretty:
+                pretty = True
             if event.text:
-                print(event.text.rstrip())
+                if pretty:
+                    try:
+                        payload = json.loads(event.text)
+                        print(self._dump_json(payload, pretty=True))
+                    except json.JSONDecodeError:
+                        print(event.text.rstrip())
+                else:
+                    print(event.text.rstrip())
             elif event.json_text:
-                print(event.json_text.rstrip())
+                if pretty:
+                    try:
+                        payload = json.loads(event.json_text)
+                        print(self._dump_json(payload, pretty=True))
+                    except json.JSONDecodeError:
+                        print(event.json_text.rstrip())
+                else:
+                    print(event.json_text.rstrip())
+            if event.name == CMD_UI_PING:
+                self._keepalive_log(MESSAGE_KEEPALIVE_RECV_OUT.format(seq=event.seq))
+                self._proto_mark_keepalive_out(event.seq, now=time.time())
             return
 
     def _confirm(self, prompt: str) -> bool:
@@ -7378,6 +6814,81 @@ class BridgeCli:
             return
         print(message)
 
+    def _keepalive_log(self, message: str) -> None:
+        """
+        NAME
+            _keepalive_log - Emit keepalive debug logging when enabled.
+        """
+        if self._message_level == MESSAGE_LEVEL_EXPERT:
+            return
+        print(message)
+
+    def _debug_log(self, message: str) -> None:
+        """
+        NAME
+            _debug_log - Emit debug logging at expert message level.
+        """
+        if self._message_level != MESSAGE_LEVEL_EXPERT:
+            return
+        print(message)
+
+    def _proto_mark_connect_attempt(self) -> None:
+        self._proto_connect_attempts += COUNT_ONE
+
+    def _proto_mark_connect_failure(self) -> None:
+        self._proto_connect_failures += COUNT_ONE
+
+    def _proto_mark_connected(self, now: float) -> None:
+        self._proto_connect_successes += COUNT_ONE
+        self._proto_last_connect_at = now
+
+    def _proto_mark_disconnected(self, now: float) -> None:
+        self._proto_last_disconnect_at = now
+
+    def _proto_mark_tcp_state(self, now: float, connected: bool) -> None:
+        if connected:
+            self._proto_last_connect_at = now
+        else:
+            self._proto_last_disconnect_at = now
+
+    def _proto_mark_handshake(self, now: float) -> None:
+        self._proto_handshake_count += COUNT_ONE
+        self._proto_last_handshake_at = now
+
+    def _proto_mark_cmd_sent(self, name: str, now: float) -> None:
+        self._proto_cmd_sent += COUNT_ONE
+        self._proto_cmd_last = name
+        self._proto_cmd_last_at = now
+
+    def _proto_mark_ack(self, seq: int, now: float) -> None:
+        self._proto_ack_count += COUNT_ONE
+        self._proto_last_ack_seq = seq
+        self._proto_last_ack_at = now
+
+    def _proto_mark_out(self, seq: int, now: float) -> None:
+        self._proto_out_count += COUNT_ONE
+        self._proto_last_out_seq = seq
+        self._proto_last_out_at = now
+
+    def _proto_mark_timeout(self, now: float) -> None:
+        self._proto_timeout_count += COUNT_ONE
+        self._proto_last_timeout_at = now
+
+    def _proto_mark_keepalive_sent(self, seq: int, now: float, ok: bool) -> None:
+        if ok:
+            self._proto_keepalive_sent += COUNT_ONE
+            self._proto_keepalive_last_sent_at = now
+        else:
+            self._proto_keepalive_fail += COUNT_ONE
+
+    def _proto_mark_keepalive_ack(self, seq: int, now: float) -> None:
+        self._proto_keepalive_ack += COUNT_ONE
+        self._proto_keepalive_last_ack_at = now
+
+    def _proto_mark_keepalive_out(self, seq: int, now: float) -> None:
+        self._proto_keepalive_out += COUNT_ONE
+        self._proto_keepalive_last_out_at = now
+
     def _tip(self, key: str, message: str) -> None:
         if self._batch:
             return
@@ -7419,18 +6930,6 @@ class BridgeCli:
         dirty = self._store.dirty_flags() if self._store else {}
         model = self._tests_model
         default_set = model.default_test_set if model else EMPTY_STRING
-        default_profile = self._default_profile_name() or EMPTY_STRING
-        active_profile = self._explicit_profile_name() or EMPTY_STRING
-        selected_device, selected_enabled = self._local_selected_device_state(active_profile)
-        selected_mode = SELECTED_MODE_ON if selected_enabled else SELECTED_MODE_OFF
-        context = {
-            KEY_CONTEXT_SOURCE: self._active_source_label(),
-            KEY_CONTEXT_PROFILE: active_profile,
-            KEY_CONTEXT_DEFAULT_PROFILE: default_profile,
-            KEY_CONTEXT_TEST_SET: self._tests_active_set or EMPTY_STRING,
-            KEY_CONTEXT_SELECTED_DEVICE: selected_device or EMPTY_STRING,
-            KEY_CONTEXT_SELECTED_MODE: selected_mode,
-        }
         test_count = 0
         if model:
             for test_set in model.test_sets.values():
@@ -7440,8 +6939,7 @@ class BridgeCli:
             "profiles": {
                 "path": profiles_path,
                 "loaded": bool(self._local_root_payload),
-                "activeProfile": active_profile,
-                "defaultProfile": default_profile,
+                "activeProfile": self._active_profile_name() or EMPTY_STRING,
                 "dirty": bool(dirty.get(DIRTY_PROFILES, False)),
                 "recoveryMode": bool(self._recovery_mode),
                 "loadWarnings": list(self._warnings),
@@ -7469,7 +6967,61 @@ class BridgeCli:
                 "messageLevel": self._message_level,
                 "echo": bool(self._echo_enabled),
             },
-            KEY_CONTEXT: context,
+        }
+        state = self._session.get_state_snapshot()
+        session_id = self._session.session_id() or EMPTY_STRING
+        nt_session_id = EMPTY_STRING
+        if isinstance(state, dict):
+            nt_session_id = str(state.get(NT_STATE_SESSION_ID, EMPTY_STRING))
+        payload[PROTO_KEY_PROTOCOL] = {
+            PROTO_KEY_TCP: {
+                PROTO_KEY_CONNECTED: bool(self._session.is_connected()),
+                PROTO_KEY_CONNECT_ATTEMPTS: self._proto_connect_attempts,
+                PROTO_KEY_CONNECT_FAILS: self._proto_connect_failures,
+                PROTO_KEY_CONNECT_SUCCESSES: self._proto_connect_successes,
+                PROTO_KEY_LAST_CONNECT_AT: self._proto_last_connect_at,
+                PROTO_KEY_LAST_DISCONNECT_AT: self._proto_last_disconnect_at,
+            },
+            PROTO_KEY_UI: {
+                PROTO_KEY_SESSION_ID: session_id,
+                PROTO_KEY_HANDSHAKES: self._proto_handshake_count,
+                PROTO_KEY_LAST_HANDSHAKE_AT: self._proto_last_handshake_at,
+            },
+            PROTO_KEY_NT: {
+                PROTO_KEY_SESSION_ID: nt_session_id,
+                NT_STATE_ENABLED: bool(state.get(NT_STATE_ENABLED, False)) if isinstance(state, dict) else False,
+                NT_STATE_ESTOPPED: bool(state.get(NT_STATE_ESTOPPED, False)) if isinstance(state, dict) else False,
+                NT_STATE_MODE: str(state.get(NT_STATE_MODE, EMPTY_STRING)) if isinstance(state, dict) else EMPTY_STRING,
+                NT_STATE_LAST_ACK_MS: float(state.get(NT_STATE_LAST_ACK_MS, PROTO_TIME_ZERO)) if isinstance(state, dict) else PROTO_TIME_ZERO,
+            },
+            PROTO_KEY_COMMANDS: {
+                PROTO_KEY_COMMANDS_SENT: self._proto_cmd_sent,
+                PROTO_KEY_COMMANDS_LAST: self._proto_cmd_last,
+                PROTO_KEY_COMMANDS_LAST_AT: self._proto_cmd_last_at,
+            },
+            PROTO_KEY_ACKS: {
+                PROTO_KEY_ACK_COUNT: self._proto_ack_count,
+                PROTO_KEY_LAST_ACK_AT: self._proto_last_ack_at,
+                PROTO_KEY_LAST_SEQ: self._proto_last_ack_seq,
+            },
+            PROTO_KEY_OUTS: {
+                PROTO_KEY_OUT_COUNT: self._proto_out_count,
+                PROTO_KEY_LAST_OUT_AT: self._proto_last_out_at,
+                PROTO_KEY_LAST_SEQ: self._proto_last_out_seq,
+            },
+            PROTO_KEY_TIMEOUTS: {
+                PROTO_KEY_TIMEOUT_COUNT: self._proto_timeout_count,
+                PROTO_KEY_LAST_TIMEOUT_AT: self._proto_last_timeout_at,
+            },
+            PROTO_KEY_KEEPALIVE: {
+                PROTO_KEY_KEEPALIVE_SENT: self._proto_keepalive_sent,
+                PROTO_KEY_KEEPALIVE_FAILED: self._proto_keepalive_fail,
+                PROTO_KEY_KEEPALIVE_ACKED: self._proto_keepalive_ack,
+                PROTO_KEY_KEEPALIVE_OUT: self._proto_keepalive_out,
+                PROTO_KEY_KEEPALIVE_LAST_SENT_AT: self._proto_keepalive_last_sent_at,
+                PROTO_KEY_KEEPALIVE_LAST_ACK_AT: self._proto_keepalive_last_ack_at,
+                PROTO_KEY_KEEPALIVE_LAST_OUT_AT: self._proto_keepalive_last_out_at,
+            },
         }
         if json_output:
             print(self._dump_json(payload, pretty))
@@ -7479,20 +7031,6 @@ class BridgeCli:
             f"({'loaded' if payload['profiles']['loaded'] else 'not loaded'})"
         )
         print(f"Active profile: {payload['profiles']['activeProfile'] or '(none)'}")
-        print(
-            MESSAGE_WORKSPACE_DEFAULT_PROFILE.format(
-                profile=payload["profiles"]["defaultProfile"] or "(none)"
-            )
-        )
-        print(
-            MESSAGE_WORKSPACE_CONTEXT.format(
-                source=context[KEY_CONTEXT_SOURCE] or "(none)",
-                profile=context[KEY_CONTEXT_PROFILE] or "(none)",
-                test_set=context[KEY_CONTEXT_TEST_SET] or "(none)",
-                device=context[KEY_CONTEXT_SELECTED_DEVICE] or "(none)",
-                mode=context[KEY_CONTEXT_SELECTED_MODE] or "(none)",
-            )
-        )
         tests_loaded = payload["tests"]["loaded"]
         tests_state = "loaded" if tests_loaded else "not loaded"
         if tests_loaded and payload["tests"]["empty"]:
@@ -7522,41 +7060,89 @@ class BridgeCli:
         )
         print(f"CLI: messages={self._message_level} echo={'on' if self._echo_enabled else 'off'}")
         print(f"Recovery mode: {'ON' if self._recovery_mode else 'OFF'}")
+        proto = payload.get(PROTO_KEY_PROTOCOL, {})
+        tcp = proto.get(PROTO_KEY_TCP, {}) if isinstance(proto, dict) else {}
+        ui = proto.get(PROTO_KEY_UI, {}) if isinstance(proto, dict) else {}
+        nt = proto.get(PROTO_KEY_NT, {}) if isinstance(proto, dict) else {}
+        cmds = proto.get(PROTO_KEY_COMMANDS, {}) if isinstance(proto, dict) else {}
+        acks = proto.get(PROTO_KEY_ACKS, {}) if isinstance(proto, dict) else {}
+        outs = proto.get(PROTO_KEY_OUTS, {}) if isinstance(proto, dict) else {}
+        timeouts = proto.get(PROTO_KEY_TIMEOUTS, {}) if isinstance(proto, dict) else {}
+        keepalive = proto.get(PROTO_KEY_KEEPALIVE, {}) if isinstance(proto, dict) else {}
+        print("Protocol:")
+        print(
+            "  TCP: connected={connected} attempts={attempts} ok={ok} fail={fail} "
+            "lastConnectAt={last_connect} lastDisconnectAt={last_disconnect}".format(
+                connected=tcp.get(PROTO_KEY_CONNECTED, False),
+                attempts=tcp.get(PROTO_KEY_CONNECT_ATTEMPTS, COUNT_ZERO),
+                ok=tcp.get(PROTO_KEY_CONNECT_SUCCESSES, COUNT_ZERO),
+                fail=tcp.get(PROTO_KEY_CONNECT_FAILS, COUNT_ZERO),
+                last_connect=tcp.get(PROTO_KEY_LAST_CONNECT_AT, PROTO_TIME_ZERO),
+                last_disconnect=tcp.get(PROTO_KEY_LAST_DISCONNECT_AT, PROTO_TIME_ZERO),
+            )
+        )
+        print(
+            "  UI: sessionId={session} handshakes={count} lastHandshakeAt={last}".format(
+                session=ui.get(PROTO_KEY_SESSION_ID, PROTO_EMPTY_ID),
+                count=ui.get(PROTO_KEY_HANDSHAKES, COUNT_ZERO),
+                last=ui.get(PROTO_KEY_LAST_HANDSHAKE_AT, PROTO_TIME_ZERO),
+            )
+        )
+        print(
+            "  NT: sessionId={session} enabled={enabled} estopped={estopped} mode={mode} lastAckMs={last_ack}".format(
+                session=nt.get(PROTO_KEY_SESSION_ID, PROTO_EMPTY_ID),
+                enabled=nt.get(NT_STATE_ENABLED, False),
+                estopped=nt.get(NT_STATE_ESTOPPED, False),
+                mode=nt.get(NT_STATE_MODE, EMPTY_STRING),
+                last_ack=nt.get(NT_STATE_LAST_ACK_MS, PROTO_TIME_ZERO),
+            )
+        )
+        print(
+            "  Commands: sent={sent} last={last} lastAt={last_at}".format(
+                sent=cmds.get(PROTO_KEY_COMMANDS_SENT, COUNT_ZERO),
+                last=cmds.get(PROTO_KEY_COMMANDS_LAST, EMPTY_STRING),
+                last_at=cmds.get(PROTO_KEY_COMMANDS_LAST_AT, PROTO_TIME_ZERO),
+            )
+        )
+        print(
+            "  ACKs: count={count} lastSeq={last_seq} lastAt={last_at}".format(
+                count=acks.get(PROTO_KEY_ACK_COUNT, COUNT_ZERO),
+                last_seq=acks.get(PROTO_KEY_LAST_SEQ, PROTO_LAST_SEQ_INIT),
+                last_at=acks.get(PROTO_KEY_LAST_ACK_AT, PROTO_TIME_ZERO),
+            )
+        )
+        print(
+            "  OUTs: count={count} lastSeq={last_seq} lastAt={last_at}".format(
+                count=outs.get(PROTO_KEY_OUT_COUNT, COUNT_ZERO),
+                last_seq=outs.get(PROTO_KEY_LAST_SEQ, PROTO_LAST_SEQ_INIT),
+                last_at=outs.get(PROTO_KEY_LAST_OUT_AT, PROTO_TIME_ZERO),
+            )
+        )
+        print(
+            "  Timeouts: count={count} lastAt={last_at}".format(
+                count=timeouts.get(PROTO_KEY_TIMEOUT_COUNT, COUNT_ZERO),
+                last_at=timeouts.get(PROTO_KEY_LAST_TIMEOUT_AT, PROTO_TIME_ZERO),
+            )
+        )
+        print(
+            "  Keepalive: sent={sent} acked={acked} out={out} failed={failed} "
+            "lastSentAt={last_sent} lastAckAt={last_ack} lastOutAt={last_out}".format(
+                sent=keepalive.get(PROTO_KEY_KEEPALIVE_SENT, COUNT_ZERO),
+                acked=keepalive.get(PROTO_KEY_KEEPALIVE_ACKED, COUNT_ZERO),
+                out=keepalive.get(PROTO_KEY_KEEPALIVE_OUT, COUNT_ZERO),
+                failed=keepalive.get(PROTO_KEY_KEEPALIVE_FAILED, COUNT_ZERO),
+                last_sent=keepalive.get(PROTO_KEY_KEEPALIVE_LAST_SENT_AT, PROTO_TIME_ZERO),
+                last_ack=keepalive.get(PROTO_KEY_KEEPALIVE_LAST_ACK_AT, PROTO_TIME_ZERO),
+                last_out=keepalive.get(PROTO_KEY_KEEPALIVE_LAST_OUT_AT, PROTO_TIME_ZERO),
+            )
+        )
         if payload["profiles"]["loadWarnings"]:
             print("Warnings:")
             for warning in payload["profiles"]["loadWarnings"]:
                 print(f"  {warning}")
         return StatusResult(code=SS__NORMAL)
 
-    def _active_source_label(self) -> str:
-        """
-        NAME
-            _active_source_label - Return active source label for context.
-        """
-        if self._session.is_connected():
-            return CONTEXT_SOURCE_ROBOT
-        return CONTEXT_SOURCE_LOCAL
-
-    def _local_selected_device_state(self, profile_name: str) -> tuple[str, bool]:
-        """
-        NAME
-            _local_selected_device_state - Return selected device and enable state.
-        """
-        if not profile_name:
-            return (EMPTY_STRING, False)
-        entry = self._local_profile_entry(profile_name)
-        if not isinstance(entry, dict):
-            return (EMPTY_STRING, False)
-        selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE)
-        if not isinstance(selected, dict):
-            return (EMPTY_STRING, False)
-        device = str(selected.get(KEY_DEVICE, EMPTY_STRING)).strip()
-        enabled = bool(selected.get(CMD_ENABLED, False))
-        return (device, enabled)
-
-    def _show_controllers(
-        self, json_output: bool, pretty: bool, show_all: bool
-    ) -> StatusResult:
+    def _show_controllers(self, json_output: bool, pretty: bool) -> StatusResult:
         controller_names = sorted(load_controller_names(self._bindings_path))
         inputs = sorted(AXIS_INPUTS | BUTTON_INPUTS)
         declared: List[Dict[str, object]] = []
@@ -7570,25 +7156,18 @@ class BridgeCli:
         if json_output:
             print(self._dump_json(payload, pretty))
             return StatusResult(code=SS__NORMAL)
-        print(MESSAGE_CONTROLLERS_HEADER)
+        print("Controllers:")
         for name in controller_names:
-            print(HELP_INDENT + str(name))
-        if not controller_names:
-            print(MESSAGE_BINDINGS_NONE)
-        if show_all:
-            if declared:
-                print(MESSAGE_CONTROLLERS_DECLARED_HEADER)
-                for entry in declared:
-                    name = entry.get(KEY_NAME)
-                    ctrl_type = entry.get(FIELD_TYPE)
-                    port = entry.get(KEY_PORT)
-                    print(
-                        MESSAGE_CONTROLLERS_DECLARED_ENTRY_FMT.format(
-                            name=name, type=ctrl_type, port=port
-                        )
-                    )
-            print(MESSAGE_CONTROLLERS_INPUTS_HEADER)
-            print(HELP_INDENT + SEP_COMMA_SPACE.join(inputs))
+            print(f"  {name}")
+        if declared:
+            print("Declared controllers:")
+            for entry in declared:
+                name = entry.get(KEY_NAME)
+                ctrl_type = entry.get(FIELD_TYPE)
+                port = entry.get(KEY_PORT)
+                print(f"  {name} type={ctrl_type} port={port}")
+        print("Inputs:")
+        print("  " + ", ".join(inputs))
         return StatusResult(code=SS__NORMAL)
 
     def _show_commands(self, json_output: bool, pretty: bool) -> StatusResult:
@@ -7735,320 +7314,6 @@ class BridgeCli:
                     )
         else:
             print(MESSAGE_DEVICE_USAGE_NONE)
-        return StatusResult(code=SS__NORMAL)
-
-    @staticmethod
-    def _normalize_alias_token(value: str) -> str:
-        """
-        NAME
-            _normalize_alias_token - Normalize alias keys/values for lookup.
-        """
-        return value.strip().lower()
-
-    def _load_input_aliases(self, profile: Optional[str]) -> Dict[str, str]:
-        """
-        NAME
-            _load_input_aliases - Load input aliases from bindings and profiles.
-        """
-        aliases: Dict[str, str] = {}
-        if self._ensure_bindings_loaded() and isinstance(self._bindings_payload, dict):
-            raw = self._bindings_payload.get(KEY_INPUT_ALIASES)
-            if isinstance(raw, dict):
-                for key, value in raw.items():
-                    if not isinstance(key, str) or not isinstance(value, str):
-                        continue
-                    key_norm = self._normalize_alias_token(key)
-                    value_norm = self._normalize_alias_token(value)
-                    if key_norm:
-                        aliases[key_norm] = value_norm
-        if (
-            profile
-            and isinstance(self._local_root_payload, dict)
-            and isinstance(self._local_root_payload.get(KEY_PROFILES), dict)
-        ):
-            profiles = self._local_root_payload.get(KEY_PROFILES)
-            profile_entry = profiles.get(profile) if isinstance(profiles, dict) else None
-            if isinstance(profile_entry, dict):
-                raw = profile_entry.get(KEY_INPUT_ALIASES)
-                if isinstance(raw, dict):
-                    for key, value in raw.items():
-                        if not isinstance(key, str) or not isinstance(value, str):
-                            continue
-                        key_norm = self._normalize_alias_token(key)
-                        value_norm = self._normalize_alias_token(value)
-                        if key_norm:
-                            aliases[key_norm] = value_norm
-        return aliases
-
-    def _resolve_input_alias(self, input_name: str, aliases: Dict[str, str]) -> str:
-        """
-        NAME
-            _resolve_input_alias - Resolve input aliases to a canonical key.
-
-        NOTES
-            Uses a single alias lookup; chaining is not supported.
-        """
-        if not input_name:
-            return EMPTY_STRING
-        key = self._normalize_alias_token(input_name)
-        if not aliases:
-            return key
-        target = aliases.get(key, EMPTY_STRING)
-        if not target:
-            return key
-        return self._normalize_alias_token(target)
-
-    @staticmethod
-    def _axis_alias_suffix(axis_id: str) -> str:
-        """
-        NAME
-            _axis_alias_suffix - Map axis IDs to alias suffixes.
-        """
-        if axis_id == AXIS_ID_LEFT_X:
-            return ALIAS_SEPARATOR.join((ALIAS_LEFT, ALIAS_AXIS_X))
-        if axis_id == AXIS_ID_LEFT_Y:
-            return ALIAS_SEPARATOR.join((ALIAS_LEFT, ALIAS_AXIS_Y))
-        if axis_id == AXIS_ID_RIGHT_X:
-            return ALIAS_SEPARATOR.join((ALIAS_RIGHT, ALIAS_AXIS_X))
-        if axis_id == AXIS_ID_RIGHT_Y:
-            return ALIAS_SEPARATOR.join((ALIAS_RIGHT, ALIAS_AXIS_Y))
-        if axis_id == AXIS_ID_LEFT_TRIGGER:
-            return ALIAS_SEPARATOR.join((ALIAS_LEFT, ALIAS_TRIGGER))
-        if axis_id == AXIS_ID_RIGHT_TRIGGER:
-            return ALIAS_SEPARATOR.join((ALIAS_RIGHT, ALIAS_TRIGGER))
-        return EMPTY_STRING
-
-    def _binding_alias_key(self, controller: str, input_kind: str, input_id: str) -> str:
-        """
-        NAME
-            _binding_alias_key - Build alias key for a binding entry.
-        """
-        if not controller or not input_kind or not input_id:
-            return EMPTY_STRING
-        controller_key = self._normalize_alias_token(controller)
-        if input_kind == INPUT_KIND_BUTTON:
-            return ALIAS_SEPARATOR.join((controller_key, input_id.lower()))
-        if input_kind == INPUT_KIND_DPAD:
-            return ALIAS_SEPARATOR.join(
-                (controller_key, ALIAS_DPAD, input_id.lower())
-            )
-        return EMPTY_STRING
-
-    def _is_valid_binding_input(self, input_name: str, profile: Optional[str]) -> bool:
-        """
-        NAME
-            _is_valid_binding_input - Validate a binding input using alias maps.
-        """
-        if not input_name:
-            return False
-        aliases = self._load_input_aliases(profile)
-        resolved = self._resolve_input_alias(input_name, aliases)
-        if not resolved:
-            return False
-        return resolved in CANONICAL_INPUT_KEYS
-
-    def _show_binding_usage(self, name: str, json_output: bool, pretty: bool) -> StatusResult:
-        """
-        NAME
-            _show_binding_usage - Show group/global bindings for a binding input.
-        """
-
-        input_name = str(name).strip()
-        if not input_name:
-            print(MESSAGE_ERR_BINDING_INPUT_REQUIRED)
-            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        profile = self._active_profile_name()
-        if not profile:
-            print(MESSAGE_ERR_PROFILE_REQUIRED)
-            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
-        aliases = self._load_input_aliases(profile)
-        target = self._resolve_input_alias(input_name, aliases)
-        group_hits: List[Dict[str, object]] = []
-        for group in self._local_groups(profile):
-            if not isinstance(group, dict):
-                continue
-            group_name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
-            if not group_name:
-                continue
-            for binding in group.get(KEY_BRIDGE_BINDINGS, []) or []:
-                if not isinstance(binding, dict):
-                    continue
-                binding_input = str(binding.get(KEY_INPUT, EMPTY_STRING)).strip()
-                if not binding_input:
-                    continue
-                resolved_binding = self._resolve_input_alias(binding_input, aliases)
-                if resolved_binding != target:
-                    continue
-                entry: Dict[str, object] = {
-                    KEY_NAME: group_name,
-                    KEY_KIND: binding.get(KEY_KIND),
-                }
-                if KEY_VALUE in binding:
-                    entry[KEY_VALUE] = binding.get(KEY_VALUE)
-                group_hits.append(entry)
-
-        global_hits: List[Dict[str, object]] = []
-        if self._ensure_bindings_loaded() and isinstance(self._bindings_payload, dict):
-            bindings_payload = self._bindings_payload
-            bindings = bindings_payload.get(KEY_BINDINGS, [])
-            if isinstance(bindings, list):
-                for entry in bindings:
-                    if not isinstance(entry, dict):
-                        continue
-                    entry_controller = str(entry.get(KEY_CONTROLLER, EMPTY_STRING)).strip()
-                    entry_input = str(entry.get(KEY_INPUT, EMPTY_STRING)).strip()
-                    entry_id = str(entry.get(KEY_ID, EMPTY_STRING)).strip()
-                    alias_key = self._binding_alias_key(
-                        entry_controller,
-                        entry_input.lower(),
-                        entry_id,
-                    )
-                    if not alias_key:
-                        continue
-                    resolved = self._resolve_input_alias(alias_key, aliases)
-                    if resolved != target:
-                        continue
-                    global_hits.append(
-                        {
-                            KEY_COMMAND: entry.get(KEY_COMMAND),
-                            KEY_CONTROLLER: entry_controller,
-                            KEY_INPUT: entry_input,
-                            KEY_ID: entry_id,
-                            KEY_MODE: entry.get(KEY_MODE),
-                        }
-                    )
-            axes = bindings_payload.get(KEY_AXES, [])
-            if isinstance(axes, list):
-                for entry in axes:
-                    if not isinstance(entry, dict):
-                        continue
-                    entry_controller = str(entry.get(KEY_CONTROLLER, EMPTY_STRING)).strip()
-                    entry_id = str(entry.get(KEY_ID, EMPTY_STRING)).strip()
-                    axis_suffix = self._axis_alias_suffix(entry_id)
-                    if not axis_suffix:
-                        continue
-                    alias_key = ALIAS_SEPARATOR.join(
-                        (self._normalize_alias_token(entry_controller), axis_suffix)
-                    )
-                    resolved = self._resolve_input_alias(alias_key, aliases)
-                    if resolved != target:
-                        continue
-                    global_hits.append(
-                        {
-                            KEY_COMMAND: entry.get(KEY_COMMAND),
-                            KEY_CONTROLLER: entry_controller,
-                            KEY_AXIS: entry_id,
-                            KEY_INVERT: entry.get(KEY_INVERT),
-                            KEY_DEADBAND: entry.get(KEY_DEADBAND),
-                        }
-                    )
-
-        group_hits_sorted = sorted(
-            group_hits,
-            key=lambda entry: (
-                str(entry.get(KEY_NAME, EMPTY_STRING)),
-                str(entry.get(KEY_KIND, EMPTY_STRING)),
-            ),
-        )
-        global_hits_sorted = sorted(
-            global_hits,
-            key=lambda entry: (
-                str(entry.get(KEY_COMMAND, EMPTY_STRING)),
-                str(entry.get(KEY_CONTROLLER, EMPTY_STRING)),
-            ),
-        )
-        print(MESSAGE_SOURCE_LOCAL)
-        if json_output:
-            payload = {
-                KEY_INPUT: input_name,
-                KEY_ALIAS: target,
-                KEY_PROFILE: profile,
-                KEY_GROUPS: group_hits_sorted,
-                KEY_BINDINGS: global_hits_sorted,
-            }
-            print(self._dump_json(payload, pretty))
-            return StatusResult(code=SS__NORMAL)
-        print(MESSAGE_BINDING_USAGE_HEADER)
-        print(MESSAGE_BINDING_USAGE_INPUT.format(name=input_name))
-        print(MESSAGE_BINDING_USAGE_PROFILE.format(name=profile))
-        print(MESSAGE_BINDING_USAGE_GROUPS_HEADER)
-        if group_hits_sorted:
-            for entry in group_hits_sorted:
-                group_name = str(entry.get(KEY_NAME, EMPTY_STRING)).strip()
-                kind = str(entry.get(KEY_KIND, EMPTY_STRING)).strip()
-                if KEY_VALUE in entry:
-                    value = self._format_cli_value(entry.get(KEY_VALUE))
-                    print(
-                        MESSAGE_BINDING_USAGE_GROUP_ENTRY_VALUE.format(
-                            name=group_name, kind=kind, value=value
-                        )
-                    )
-                else:
-                    print(
-                        MESSAGE_BINDING_USAGE_GROUP_ENTRY.format(
-                            name=group_name, kind=kind
-                        )
-                    )
-        else:
-            print(MESSAGE_BINDING_USAGE_NONE)
-        print(MESSAGE_BINDING_USAGE_GLOBAL_HEADER)
-        if global_hits_sorted:
-            for entry in global_hits_sorted:
-                if KEY_AXIS in entry:
-                    print(
-                        MESSAGE_BINDING_USAGE_GLOBAL_AXIS_ENTRY.format(
-                            command=entry.get(KEY_COMMAND),
-                            controller=entry.get(KEY_CONTROLLER),
-                            axis=entry.get(KEY_AXIS),
-                            invert=entry.get(KEY_INVERT),
-                            deadband=entry.get(KEY_DEADBAND),
-                        )
-                    )
-                else:
-                    print(
-                        MESSAGE_BINDING_USAGE_GLOBAL_ENTRY.format(
-                            command=entry.get(KEY_COMMAND),
-                            controller=entry.get(KEY_CONTROLLER),
-                            input=entry.get(KEY_INPUT),
-                            id=entry.get(KEY_ID),
-                            mode=entry.get(KEY_MODE),
-                        )
-                    )
-        else:
-            print(MESSAGE_BINDING_USAGE_NONE)
-        return StatusResult(code=SS__NORMAL)
-
-    def _show_input_aliases(self, json_output: bool, pretty: bool) -> StatusResult:
-        """
-        NAME
-            _show_input_aliases - Show merged input aliases for the active profile.
-        """
-        profile = self._active_profile_name()
-        if not profile:
-            print(MESSAGE_ERR_PROFILE_REQUIRED)
-            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
-        aliases = self._load_input_aliases(profile)
-        sorted_aliases = {key: aliases[key] for key in sorted(aliases)}
-        print(MESSAGE_SOURCE_LOCAL)
-        if json_output:
-            payload = {
-                KEY_PROFILE: profile,
-                KEY_INPUT_ALIASES: sorted_aliases,
-            }
-            print(self._dump_json(payload, pretty))
-            return StatusResult(code=SS__NORMAL)
-        print(MESSAGE_INPUT_ALIASES_HEADER)
-        print(MESSAGE_INPUT_ALIASES_PROFILE.format(name=profile))
-        if sorted_aliases:
-            for alias, canonical in sorted_aliases.items():
-                print(
-                    MESSAGE_INPUT_ALIASES_ENTRY.format(
-                        alias=alias,
-                        canonical=canonical,
-                    )
-                )
-        else:
-            print(MESSAGE_INPUT_ALIASES_NONE)
         return StatusResult(code=SS__NORMAL)
 
     def _show_profiles_device_all(self, name: str) -> StatusResult:
@@ -8220,7 +7485,14 @@ class BridgeCli:
             else:
                 print("Help: command not found.")
             return
-        print(HELP_SUMMARY_TEXT)
+        print(
+            "Common: help, exit, end, quit, ping, echo, messages\n"
+            "Exec: show, diagnose, connect, disconnect, configure terminal\n"
+            "Config: profile, group, device, bindings, can-mappings, tests, no group, selected-device, selected-mode, merge/import/export/save/load\n"
+            "Group: show, add device, no device, member, bind, no bind, enable, disable, run test\n"
+            "Device: show, set, no\n"
+            "Tips: help show | help sources | help group | help batch | help json"
+        )
 
     def _help_topic_map(self) -> Dict[str, str]:
         """
@@ -8237,12 +7509,10 @@ class BridgeCli:
             "debug grammar": "debug grammar [--json] [--dot <path>]\n  Dump the grammar model for the current mode.",
             "show message-level": "show message-level\n  Show current CLI message level.",
             "show workspace": "show workspace\n  Show loaded file paths, active profile/set, dirty flags, and recovery mode.",
-            "show session": "show session\n  Alias for show workspace.",
-            "show controllers": "show controllers [--all]\n  List controller names (default) or full controller inputs.",
+            "show session": "show session [--json] [--pretty]\n  Alias for show workspace.\n  Local-only; robot/local/both is not supported.",
+            "show controllers": "show controllers\n  List controller names and supported input IDs.",
             "sources": HELP_SOURCES_TEXT,
-            "show sources": HELP_SHOW_SOURCES_TEXT,
-            "reload sources": HELP_SOURCES_TEXT,
-            "load sources": HELP_LOAD_SOURCES_TEXT,
+            "show sources": HELP_SOURCES_TEXT,
             "diagnose": HELP_DIAGNOSE_TEXT,
             "group": "group <group>\n  Create/select a group (config mode).",
             "no group": "no group <group>\n  Delete group (config mode, prompts in interactive).",
@@ -8259,12 +7529,14 @@ class BridgeCli:
             ),
             "selected-device": "selected-device <device>\n  Set selected-device override.",
             "selected-mode": "selected-mode <on|off>\n  Enable/disable selected-device mode.",
-            "load config": HELP_LOAD_CONFIG_TEXT,
-            "merge config": HELP_MERGE_CONFIG_TEXT,
-            "import config": HELP_IMPORT_CONFIG_TEXT,
-            "topology": HELP_TOPOLOGY_TEXT,
-            "topology neighbor-ports": HELP_TOPOLOGY_NEIGHBOR_PORTS_TEXT,
-            "topology neighbor-auto": HELP_TOPOLOGY_NEIGHBOR_AUTO_TEXT,
+            "merge config": (
+                "merge config <bringup_system.json>\n"
+                "  Load bridgeConfig.byProfile for the active profile without clearing existing."
+            ),
+            "import config": (
+                "import config <bringup_system.json>\n"
+                "  Replace bridgeConfig.byProfile for the active profile (prompts in interactive)."
+            ),
             "export runtime-groups": (
                 "export runtime-groups <bridgeConfig.json>\n"
                 "  Write bridgeConfig.byProfile for the active profile."
@@ -8285,7 +7557,7 @@ class BridgeCli:
             ),
             "save tests": (
                 "save tests <path> [--force]\n"
-                "  Validate and save test sets."
+                "  Legacy bringup_tests.json is not supported; use `save unified-config <path>`."
             ),
             "save unified-config": (
                 "save unified-config <path> [--force]\n"
@@ -8309,11 +7581,6 @@ class BridgeCli:
                 "  Enter device mode to edit local device metadata."
             ),
             HELP_TOPIC_DEVICE_USAGE: HELP_DEVICE_USAGE_TEXT,
-            HELP_TOPIC_BINDING_USAGE: HELP_BINDING_USAGE_TEXT,
-            HELP_TOPIC_INPUT_ALIASES: HELP_INPUT_ALIASES_TEXT,
-            HELP_TOPIC_TOPOLOGY: HELP_TOPOLOGY_TEXT,
-            HELP_TOPIC_TOPOLOGY_NEIGHBOR_PORTS: HELP_TOPOLOGY_NEIGHBOR_PORTS_TEXT,
-            HELP_TOPIC_TOPOLOGY_NEIGHBOR_AUTO: HELP_TOPOLOGY_NEIGHBOR_AUTO_TEXT,
             HELP_TOPIC_PROFILE_DEVICE_DELETE: HELP_PROFILE_DEVICE_DELETE_TEXT,
             HELP_TOPIC_PROFILE_DEVICE_SHOW_ALL: HELP_PROFILE_DEVICE_SHOW_ALL_TEXT,
             HELP_TOPIC_PROFILE_DELETE: HELP_PROFILE_DELETE_TEXT,
@@ -8349,7 +7616,7 @@ class BridgeCli:
             "validate script": "validate script <path>\n  Lint a CLI script without executing it.",
             "write tests (legacy)": (
                 "write tests <path>\n"
-                "  Deprecated alias for `save tests <path>`."
+                "  Not supported; tests live in bringup_system.json."
             ),
             "bindings": (
                 "bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]\n"
@@ -8443,6 +7710,8 @@ class BridgeCli:
                 CMD_CONFIGURE,
                 CMD_CONNECT,
                 CMD_DISCONNECT,
+                f"{CMD_ADD} {CMD_NEXT}",
+                f"{CMD_ADD} {CMD_ALL}",
             ]
         lines = [MESSAGE_HELP_QUICK_HEADER]
         if not entries:
@@ -8493,31 +7762,40 @@ class BridgeCli:
             return json.dumps(payload, indent=JSON_PRETTY_INDENT)
         return json.dumps(payload)
 
-    def _show_robot(self, target: str, tokens: List[str], json_output: bool) -> StatusResult:
+    def _show_robot(self, target: str, tokens: List[str], json_output: bool, pretty: bool) -> StatusResult:
         if not self._session.is_connected():
             print("ERROR: Robot source unavailable (not connected).")
             return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
         if target == SHOW_TARGET_SOURCES:
-            print(MESSAGE_SOURCES_ROBOT_UNSUPPORTED)
-            return StatusResult(code=SS__EXECUTOR__NOT_SUPPORTED)
-        if target == SHOW_TARGET_STATUS:
+            seq = show_sources(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_SOURCES
+        elif target == SHOW_TARGET_STATUS:
             seq = show_status(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_STATUS
         elif target == SHOW_TARGET_GROUPS:
             seq = show_groups(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_GROUPS
         elif target == SHOW_TARGET_GROUP and len(tokens) >= 2:
             seq = show_group(self._session, tokens[1], json_output=json_output)
+            cmd_name = CMD_SHOW_GROUP
         elif target == SHOW_TARGET_DEVICES:
             seq = show_devices(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_DEVICES
         elif target == SHOW_TARGET_DEVICE_GROUP and len(tokens) >= 2:
             seq = show_device(self._session, tokens[1], json_output=json_output)
+            cmd_name = CMD_SHOW_DEVICE
         elif target == SHOW_TARGET_BINDINGS:
             seq = show_bindings(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_BINDINGS
         elif target == SHOW_TARGET_SELECTED_DEVICE:
             seq = show_selected_device(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_SELECTED_DEVICE
         elif target == SHOW_TARGET_RUNTIME:
             seq = show_runtime_state(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_RUNTIME_STATE
         elif target == SHOW_TARGET_VERSION:
             seq = show_version(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_VERSION
         else:
             print(MESSAGE_ERR_UNKNOWN_SHOW)
             print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW)
@@ -8525,7 +7803,10 @@ class BridgeCli:
         if seq is None:
             print("ERROR: Command failed to send.")
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        self._proto_mark_cmd_sent(cmd_name, now=time.time())
         self._show_label_seq[int(seq)] = "robot"
+        self._show_pretty_json_seq[int(seq)] = bool(pretty)
+        self._last_show_pretty = bool(pretty)
         event = self._wait_for_seq(seq)
         if self._event_failed(event, "show"):
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
@@ -8545,18 +7826,11 @@ class BridgeCli:
         if target in (SHOW_TARGET_WORKSPACE, SHOW_TARGET_SESSION):
             return self._show_workspace(json_output, pretty)
         if target == SHOW_TARGET_CONTROLLERS:
-            show_all = any(tok.lower() == SHOW_FLAG_ALL for tok in tokens[1:])
-            if show_all:
-                tokens = [tok for tok in tokens if tok.lower() != SHOW_FLAG_ALL]
-            return self._show_controllers(json_output, pretty, show_all)
+            return self._show_controllers(json_output, pretty)
         if target == SHOW_TARGET_MESSAGE_LEVEL:
             if self._show_message_level(json_output, pretty):
                 return StatusResult(code=SS__NORMAL)
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-        if target == SHOW_TARGET_VISIBILITY:
-            return self._show_local_visibility(tokens, json_output, pretty)
-        if target == SHOW_TARGET_RUNTIME_COMPONENTS:
-            return self._show_local_runtime_components(json_output, pretty)
         if not self._local_config:
             print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
@@ -8567,16 +7841,6 @@ class BridgeCli:
         if target == SHOW_TARGET_DEVICE_USAGE:
             name = tokens[COUNT_ONE] if len(tokens) >= COUNT_TWO else EMPTY_STRING
             return self._show_device_usage(name, json_output, pretty)
-        if target == SHOW_TARGET_BINDING_USAGE:
-            name = tokens[COUNT_ONE] if len(tokens) >= COUNT_TWO else EMPTY_STRING
-            return self._show_binding_usage(name, json_output, pretty)
-        if target == SHOW_TARGET_INPUT_ALIASES:
-            return self._show_input_aliases(json_output, pretty)
-        if target == SHOW_TARGET_TOPOLOGY:
-            show_neighbors = (
-                len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == SHOW_TOPOLOGY_NEIGHBORS
-            )
-            return self._show_local_topology(json_output, pretty, show_neighbors=show_neighbors)
         if target == SHOW_TARGET_CONFIG_RAW:
             return self._show_local_config_raw(json_output, pretty)
         if target == SHOW_TARGET_CONFIG_DIRTY:
@@ -8589,33 +7853,30 @@ class BridgeCli:
         if target == SHOW_TARGET_DEVICE:
             name = tokens[1] if len(tokens) >= 2 else ""
             return self._show_local_registry_device(name, json_output, pretty)
-        if target == SHOW_TARGET_DEVICE_META:
-            name = tokens[1] if len(tokens) >= 2 else ""
-            if name:
-                return self._show_local_device_entry(name)
-            return self._show_local_device_meta_list(json_output, pretty)
-        if target == SHOW_TARGET_DEVICES:
-            show_all = any(tok.lower() == SHOW_FLAG_ALL for tok in tokens[1:])
-            if show_all:
-                tokens = [tok for tok in tokens if tok.lower() != SHOW_FLAG_ALL]
-            return self._show_local_registry_devices(json_output, pretty, show_all)
         profile = self._active_profile_name()
         if not profile:
             print(MESSAGE_ERR_PROFILE_REQUIRED)
             return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
-        devices = self._profile_device_entries(profile)
         ok, error, payload = local_show_data(
-            target, tokens, self._local_config, profile, devices
+            target, tokens, self._local_config, profile, self._local_root_payload, self._can_mappings
         )
         if not ok:
             print(f"ERROR: {error}")
             print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW)
             return StatusResult(code=SS__CONFIG__INVALID)
-        groups = payload.get("groups", []) if isinstance(payload.get("groups"), list) else []
-        selected = payload.get("selectedDevice") if isinstance(payload.get("selectedDevice"), dict) else {}
-        selected_device = str(selected.get("device", "")).strip()
-        selected_enabled = bool(selected.get("enabled", False))
-        profile_name = str(payload.get(KEY_PROFILE, "")).strip()
+        groups = (
+            payload.get(KEY_BRIDGE_GROUPS, [])
+            if isinstance(payload.get(KEY_BRIDGE_GROUPS), list)
+            else []
+        )
+        selected = (
+            payload.get(KEY_BRIDGE_SELECTED_DEVICE)
+            if isinstance(payload.get(KEY_BRIDGE_SELECTED_DEVICE), dict)
+            else {}
+        )
+        selected_device = str(selected.get(KEY_DEVICE, EMPTY_STRING)).strip()
+        selected_enabled = bool(selected.get(KEY_ENABLED, False))
+        profile_name = str(payload.get(KEY_PROFILE, profile)).strip()
 
         def _print_local(payload_text: str, payload_json: Optional[Dict[str, object]]) -> None:
             print(MESSAGE_SOURCE_LOCAL)
@@ -8625,69 +7886,147 @@ class BridgeCli:
                 print(payload_text.rstrip())
 
         if target == SHOW_TARGET_STATUS:
-            text = (
-                "Local status:\n"
-                f"  profile={profile_name or '(none)'}\n"
-                f"  groups={payload.get('groupCount', len(groups))}\n"
-                f"  selectedDevice={selected_device or '(none)'} ({'on' if selected_enabled else 'off'})"
+            build_value = str(payload.get(KEY_BUILD, EMPTY_STRING))
+            enabled_value = str(bool(payload.get(KEY_ENABLED, False))).lower()
+            estopped_value = str(bool(payload.get(KEY_ESTOPPED, False))).lower()
+            mode_value = str(payload.get(KEY_MODE, EMPTY_STRING))
+            group_count = payload.get(KEY_GROUP_COUNT, len(groups))
+            selected_label = selected_device or TEXT_STATUS_NONE
+            selected_state = TEXT_STATUS_ON if selected_enabled else TEXT_STATUS_OFF
+            text = SEP_NEWLINE.join(
+                [
+                    TEXT_STATUS_HEADER,
+                    TEXT_STATUS_BUILD.format(value=build_value),
+                    TEXT_STATUS_PROFILE.format(value=profile_name or TEXT_STATUS_NONE),
+                    TEXT_STATUS_ENABLED.format(value=enabled_value),
+                    TEXT_STATUS_ESTOPPED.format(value=estopped_value),
+                    TEXT_STATUS_MODE.format(value=mode_value),
+                    TEXT_STATUS_GROUPS.format(value=group_count),
+                    TEXT_STATUS_SELECTED.format(device=selected_label, state=selected_state),
+                ]
             )
             _print_local(text, payload)
             return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_GROUPS:
-            lines = [f"Local groups (profile {profile_name or '(none)'}):"]
+            lines = []
             for group in groups:
                 if not isinstance(group, dict):
                     continue
-                name = str(group.get("name", "")).strip()
-                enabled = bool(group.get("enabled", True))
-                lines.append(f"  {name} ({'enabled' if enabled else 'disabled'})")
-            if len(lines) == 1:
-                lines.append("  (none)")
+                name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
+                enabled = bool(group.get(KEY_ENABLED, True))
+                members = group.get(KEY_MEMBER_COUNT, 0)
+                bindings = group.get(KEY_BINDING_COUNT, 0)
+                state = TEXT_ENABLED if enabled else TEXT_DISABLED
+                lines.append(
+                    TEXT_GROUPS_ENTRY.format(
+                        name=name,
+                        state=state,
+                        members=members,
+                        bindings=bindings,
+                    )
+                )
+            if not lines:
+                _print_local(TEXT_GROUPS_NONE, payload)
+                return StatusResult(code=SS__NORMAL)
+            lines.insert(0, TEXT_GROUPS_HEADER)
             _print_local("\n".join(lines), payload)
             return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_GROUP and len(tokens) >= 2:
             name = tokens[1]
-            match = payload.get("group") if isinstance(payload.get("group"), dict) else {}
-            members = match.get("members", []) or []
-            bindings = match.get("bindings", []) or []
+            match = payload if isinstance(payload, dict) else {}
+            members = match.get(KEY_MEMBERS, []) or []
+            bindings = match.get(KEY_BRIDGE_BINDINGS, []) or []
             lines = [
-                f"Local group {name} (profile {profile_name or '(none)'}):",
-                f"  enabled={'true' if match.get('enabled', True) else 'false'}",
-                f"  members={len(members)}",
-                f"  bindings={len(bindings)}",
+                TEXT_GROUP_HEADER.format(
+                    name=name,
+                    state=TEXT_ENABLED if match.get(KEY_ENABLED, True) else TEXT_DISABLED,
+                ),
             ]
+            lines.append(TEXT_GROUP_MEMBERS_HEADER)
             if members:
-                lines.append("  members:")
                 for member in members:
                     if isinstance(member, dict):
-                        device = str(member.get("device", "")).strip()
-                        enabled = bool(member.get("enabled", True))
+                        device = str(member.get(KEY_DEVICE, EMPTY_STRING)).strip()
+                        enabled = bool(member.get(KEY_ENABLED, True))
                     else:
                         device = str(member).strip()
                         enabled = True
                     if device:
-                        lines.append(f"    {device} ({'enabled' if enabled else 'disabled'})")
+                        state = TEXT_ENABLED if enabled else TEXT_DISABLED
+                        lines.append(f"  {device} [{state}]")
             else:
-                lines.append("  members: (none)")
+                lines.append(TEXT_GROUP_NONE)
+            lines.append(TEXT_GROUP_BINDINGS_HEADER)
+            if bindings:
+                for binding in bindings:
+                    if not isinstance(binding, dict):
+                        continue
+                    if KEY_VALUE in binding:
+                        lines.append(
+                            TEXT_BINDING_ENTRY_VALUE.format(
+                                input=binding.get(KEY_INPUT),
+                                kind=binding.get(KEY_KIND),
+                                value=binding.get(KEY_VALUE),
+                            )
+                        )
+                    else:
+                        lines.append(
+                            TEXT_BINDING_ENTRY.format(
+                                input=binding.get(KEY_INPUT),
+                                kind=binding.get(KEY_KIND),
+                            )
+                        )
+            else:
+                lines.append(TEXT_GROUP_NONE)
+            _print_local(SEP_NEWLINE.join(lines), payload)
+            return StatusResult(code=SS__NORMAL)
+
+        if target == SHOW_TARGET_DEVICES:
+            devices_raw = payload.get(KEY_DEVICES)
+            lines = [TEXT_DEVICES_HEADER]
+            if isinstance(devices_raw, list) and devices_raw:
+                for device in devices_raw:
+                    if not isinstance(device, dict):
+                        continue
+                    label = str(device.get(KEY_LABEL, EMPTY_STRING)).strip()
+                    if not label:
+                        continue
+                    vendor = str(device.get(KEY_VENDOR, EMPTY_STRING)).strip()
+                    dev_type = str(device.get(KEY_TYPE, EMPTY_STRING)).strip()
+                    dev_id = device.get(KEY_ID, EMPTY_STRING)
+                    lines.append(
+                        TEXT_DEVICES_LIST_PREFIX
+                        + TEXT_DEVICE_ENTRY.format(
+                            label=label,
+                            vendor=vendor,
+                            type=dev_type,
+                            id=dev_id,
+                        )
+                    )
+            else:
+                lines = [TEXT_DEVICES_NONE]
             _print_local("\n".join(lines), payload)
             return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_DEVICE_GROUP and len(tokens) >= 2:
             name = tokens[1]
-            device_payload = payload.get("device")
-            group_name = payload.get("group", "")
-            enabled = payload.get("enabled", None)
-            if isinstance(device_payload, dict):
-                if group_name:
-                    text = f"Local device {name}: group={group_name} enabled={enabled}".rstrip()
-                else:
-                    text = f"Local device {name}".rstrip()
-                _print_local(text, payload)
-                return StatusResult(code=SS__NORMAL)
-            if isinstance(device_payload, str):
-                text = f"Local device {name}: group={group_name} enabled={enabled}"
+            device_payload = payload if isinstance(payload, dict) else {}
+            label = str(device_payload.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if label:
+                vendor = str(device_payload.get(KEY_VENDOR, EMPTY_STRING)).strip()
+                dev_type = str(device_payload.get(KEY_TYPE, EMPTY_STRING)).strip()
+                dev_id = device_payload.get(KEY_ID, EMPTY_STRING)
+                text = (
+                    TEXT_DEVICE_PREFIX
+                    + TEXT_DEVICE_ENTRY.format(
+                        label=label,
+                        vendor=vendor,
+                        type=dev_type,
+                        id=dev_id,
+                    )
+                )
                 _print_local(text, payload)
                 return StatusResult(code=SS__NORMAL)
             print(MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND)
@@ -8701,21 +8040,37 @@ class BridgeCli:
             if show_all:
                 if self._ensure_bindings_loaded() and isinstance(self._bindings_payload, dict):
                     global_payload = self._bindings_payload
-            lines = [f"Local bindings (profile {profile_name or '(none)'}):"]
+            if not groups:
+                _print_local(TEXT_BINDINGS_NONE, payload)
+                return StatusResult(code=SS__NORMAL)
+            lines = [TEXT_BINDINGS_HEADER]
             for group in groups:
                 if not isinstance(group, dict):
                     continue
-                name = str(group.get("name", "")).strip()
-                bindings = group.get("bindings", []) or []
+                name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
+                lines.append(TEXT_BINDINGS_GROUP.format(name=name))
+                bindings = group.get(KEY_BRIDGE_BINDINGS, []) or []
+                if not bindings:
+                    lines.append(TEXT_BINDINGS_GROUP_NONE)
+                    continue
                 for binding in bindings:
                     if not isinstance(binding, dict):
                         continue
-                    line = f"  {name}: {binding.get('input')} {binding.get('kind')}"
-                    if "value" in binding:
-                        line += f" {binding.get('value')}"
-                    lines.append(line)
-            if len(lines) == 1:
-                lines.append("  (none)")
+                    if KEY_VALUE in binding:
+                        lines.append(
+                            TEXT_BINDING_ENTRY_VALUE.format(
+                                input=binding.get(KEY_INPUT),
+                                kind=binding.get(KEY_KIND),
+                                value=binding.get(KEY_VALUE),
+                            )
+                        )
+                    else:
+                        lines.append(
+                            TEXT_BINDING_ENTRY.format(
+                                input=binding.get(KEY_INPUT),
+                                kind=binding.get(KEY_KIND),
+                            )
+                        )
             payload_json = payload
             if show_all:
                 lines.append(MESSAGE_BINDINGS_GLOBAL_HEADER)
@@ -8795,164 +8150,70 @@ class BridgeCli:
             return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_SELECTED_DEVICE:
+            selected_device = str(payload.get(KEY_DEVICE, EMPTY_STRING)).strip()
+            selected_enabled = bool(payload.get(KEY_ENABLED, False))
+            device_text = selected_device or TEXT_STATUS_NONE
+            state = TEXT_STATUS_ON if selected_enabled else TEXT_STATUS_OFF
             text = (
-                f"Local selected device (profile {profile_name or '(none)'}): "
-                f"{selected_device or '(none)'} ({'on' if selected_enabled else 'off'})"
+                TEXT_SELECTED_DEVICE_PREFIX
+                + device_text
+                + TEXT_PAREN_OPEN
+                + state
+                + TEXT_PAREN_CLOSE
             )
             _print_local(text, payload)
             return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_RUNTIME:
-            lines = [
-                "Local runtime-state:",
-                f"  profile={profile_name or '(none)'}",
-                f"  selectedDevice={selected_device or '(none)'} ({'on' if selected_enabled else 'off'})",
-                f"  groups={len(groups)}",
+            selected = (
+                payload.get(KEY_BRIDGE_SELECTED_DEVICE)
+                if isinstance(payload.get(KEY_BRIDGE_SELECTED_DEVICE), dict)
+                else {}
+            )
+            selected_device = str(selected.get(KEY_DEVICE, EMPTY_STRING)).strip()
+            selected_enabled = bool(selected.get(KEY_ENABLED, False))
+            build_value = str(payload.get(KEY_BUILD, EMPTY_STRING))
+            enabled_value = str(bool(payload.get(KEY_ENABLED, False))).lower()
+            estopped_value = str(bool(payload.get(KEY_ESTOPPED, False))).lower()
+            mode_value = str(payload.get(KEY_MODE, EMPTY_STRING))
+            group_count = len(groups)
+            selected_label = selected_device or TEXT_STATUS_NONE
+            selected_state = TEXT_STATUS_ON if selected_enabled else TEXT_STATUS_OFF
+            status_lines = [
+                TEXT_STATUS_HEADER,
+                TEXT_STATUS_BUILD.format(value=build_value),
+                TEXT_STATUS_PROFILE.format(value=profile_name or TEXT_STATUS_NONE),
+                TEXT_STATUS_ENABLED.format(value=enabled_value),
+                TEXT_STATUS_ESTOPPED.format(value=estopped_value),
+                TEXT_STATUS_MODE.format(value=mode_value),
+                TEXT_STATUS_GROUPS.format(value=group_count),
+                TEXT_STATUS_SELECTED.format(device=selected_label, state=selected_state),
             ]
-            devices = payload.get("devices") if isinstance(payload, dict) else None
-            grouped_devices = set()
-            for group in groups:
-                if not isinstance(group, dict):
-                    continue
-                for member in group.get("members", []) or []:
-                    if isinstance(member, dict):
-                        name = str(member.get("device", "")).strip()
-                    else:
-                        name = str(member).strip()
-                    if name:
-                        grouped_devices.add(name.lower())
-            if isinstance(devices, list) and devices:
-                lines.append(f"  devices={len(devices)}")
-                lines.append("  devices:")
-                for device in devices:
-                    if not isinstance(device, dict):
-                        continue
-                    name = str(device.get("name", "")).strip()
-                    if not name:
-                        continue
-                    parts = [name]
-                    if name.lower() not in grouped_devices:
-                        parts.append("[ungrouped]")
-                    lines.append("    " + " ".join(parts))
+            group_lines = []
+            if not groups:
+                group_lines.append(TEXT_GROUPS_NONE)
             else:
-                lines.append("  devices=(none)")
-            for group in groups:
-                if not isinstance(group, dict):
-                    continue
-                name = str(group.get("name", "")).strip()
-                enabled = bool(group.get("enabled", True))
-                lines.append(f"  group {name} ({'enabled' if enabled else 'disabled'})")
-                members = group.get("members", []) or []
-                if members:
-                    lines.append("    members:")
-                    for member in members:
-                        if isinstance(member, dict):
-                            device = str(member.get("device", "")).strip()
-                            member_enabled = bool(member.get("enabled", True))
-                        else:
-                            device = str(member).strip()
-                            member_enabled = True
-                        if device:
-                            lines.append(
-                                f"      {device} ({'enabled' if member_enabled else 'disabled'})"
-                            )
-                else:
-                    lines.append("    members: (none)")
-                bindings = group.get("bindings", []) or []
-                if bindings:
-                    lines.append("    bindings:")
-                    for binding in bindings:
-                        if not isinstance(binding, dict):
-                            continue
-                        line = f"      {binding.get('input')} {binding.get('kind')}"
-                        if "value" in binding:
-                            line += f" {binding.get('value')}"
-                        lines.append(line)
-                else:
-                    lines.append("    bindings: (none)")
-            _print_local("\n".join(lines), payload)
+                group_lines.append(TEXT_GROUPS_HEADER)
+                for group in groups:
+                    if not isinstance(group, dict):
+                        continue
+                    name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
+                    enabled = bool(group.get(KEY_ENABLED, True))
+                    members = group.get(KEY_MEMBERS, []) or []
+                    bindings = group.get(KEY_BRIDGE_BINDINGS, []) or []
+                    group_lines.append(
+                        TEXT_GROUPS_ENTRY.format(
+                            name=name,
+                            state=TEXT_ENABLED if enabled else TEXT_DISABLED,
+                            members=len(members),
+                            bindings=len(bindings),
+                        )
+                    )
+            _print_local(SEP_NEWLINE.join(status_lines + [""] + group_lines), payload)
             return StatusResult(code=SS__NORMAL)
 
         print("ERROR: Unknown show command.")
         return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
-
-    def _show_local_runtime_components(self, json_output: bool, pretty: bool) -> StatusResult:
-        """
-        NAME
-            _show_local_runtime_components - Show runtime threads/components.
-        """
-        provider = self._runtime_details_provider
-        if provider is None:
-            print(MESSAGE_ERR_RUNTIME_COMPONENTS_UNAVAILABLE)
-            return StatusResult(code=SS__EXECUTOR__NOT_SUPPORTED)
-        snapshot = provider()
-        if not isinstance(snapshot, dict):
-            print(MESSAGE_ERR_RUNTIME_COMPONENTS_UNAVAILABLE)
-            return StatusResult(code=SS__EXECUTOR__NOT_SUPPORTED)
-        threads = snapshot.get(RUNTIME_KEY_THREADS)
-        components = snapshot.get(RUNTIME_KEY_COMPONENTS)
-        if not isinstance(threads, list):
-            threads = []
-        if not isinstance(components, list):
-            components = []
-        if json_output:
-            payload = {
-                KEY_SOURCE: SHOW_SOURCE_LOCAL,
-                RUNTIME_KEY_THREADS: threads,
-                RUNTIME_KEY_COMPONENTS: components,
-            }
-            print(self._dump_json(payload, pretty))
-            return StatusResult(code=SS__NORMAL)
-        lines = [MESSAGE_RUNTIME_COMPONENTS_HEADER]
-        lines.append(MESSAGE_RUNTIME_COMPONENTS_LIST_HEADER)
-        if components:
-            for entry in components:
-                if not isinstance(entry, dict):
-                    continue
-                name = str(entry.get(RUNTIME_KEY_NAME, EMPTY_STRING)).strip() or STRING_NONE
-                status = str(entry.get(RUNTIME_KEY_STATUS, EMPTY_STRING)).strip() or STRING_NONE
-                detail = str(entry.get(RUNTIME_KEY_DETAIL, EMPTY_STRING)).strip()
-                if detail:
-                    lines.append(
-                        MESSAGE_RUNTIME_COMPONENT_ENTRY_DETAIL.format(
-                            name=name,
-                            status=status,
-                            detail=detail,
-                        )
-                    )
-                else:
-                    lines.append(
-                        MESSAGE_RUNTIME_COMPONENT_ENTRY.format(
-                            name=name,
-                            status=status,
-                        )
-                    )
-        else:
-            lines.append(MESSAGE_RUNTIME_LIST_NONE)
-        lines.append(MESSAGE_RUNTIME_THREADS_HEADER)
-        if threads:
-            for entry in threads:
-                if not isinstance(entry, dict):
-                    continue
-                name = str(entry.get(RUNTIME_KEY_NAME, EMPTY_STRING)).strip() or STRING_NONE
-                ident = entry.get(RUNTIME_KEY_IDENT)
-                ident_text = str(ident) if isinstance(ident, int) else STRING_NONE
-                daemon = entry.get(RUNTIME_KEY_DAEMON)
-                alive = entry.get(RUNTIME_KEY_ALIVE)
-                daemon_text = str(bool(daemon)).lower()
-                alive_text = str(bool(alive)).lower()
-                lines.append(
-                    MESSAGE_RUNTIME_THREAD_ENTRY.format(
-                        name=name,
-                        ident=ident_text,
-                        daemon=daemon_text,
-                        alive=alive_text,
-                    )
-                )
-        else:
-            lines.append(MESSAGE_RUNTIME_LIST_NONE)
-        print(SEP_NEWLINE.join(lines))
-        return StatusResult(code=SS__NORMAL)
 
     def _show_local_config_dirty(self, json_output: bool, pretty: bool) -> StatusResult:
         """
@@ -8981,32 +8242,17 @@ class BridgeCli:
         NAME
             _show_local_version - Show local app version information.
         """
-        apps = []
         version = VERSIONS.get(VERSION_APP_NAME, EMPTY_STRING)
-        if version:
-            apps.append(
-                {
-                    VERSION_KEY_NAME: VERSION_APP_NAME,
-                    VERSION_KEY_VERSION: version,
-                }
-            )
-        payload = {VERSION_KEY_APPS: apps, KEY_BUILD: build_info_payload()}
+        payload = {KEY_VERSION: version, KEY_BUILD: build_info_payload()}
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             print(self._dump_json(payload, pretty))
             return StatusResult(code=SS__NORMAL)
-        print(VERSION_TITLE)
-        if not apps:
+        if not version:
             print(MESSAGE_VERSION_NONE)
             return StatusResult(code=SS__NORMAL)
-        for app in apps:
-            print(
-                format_version_line(
-                    str(app.get(VERSION_KEY_NAME, EMPTY_STRING)),
-                    str(app.get(VERSION_KEY_VERSION, EMPTY_STRING)),
-                )
-            )
-        print(BUILD_TITLE)
+        print(TEXT_VERSION_PREFIX + version)
+        print(TEXT_BUILD_HEADER)
         for line in build_lines():
             print(line)
         return StatusResult(code=SS__NORMAL)
@@ -9022,11 +8268,13 @@ class BridgeCli:
         if json_output:
             print(self._dump_json({KEY_SOURCES: entries}, pretty))
             return StatusResult(code=SS__NORMAL)
-        print(MESSAGE_SOURCES_HEADER)
+        print(TEXT_SOURCES_HEADER)
         for entry in entries:
-            name = str(entry.get(KEY_SOURCE_NAME, EMPTY_STRING))
-            value = self._source_display_value(entry)
-            print(MESSAGE_SOURCES_ENTRY.format(name=name, value=value))
+            name = str(entry.get(KEY_SOURCES_NAME, EMPTY_STRING))
+            path = str(entry.get(KEY_SOURCES_PATH, EMPTY_STRING))
+            exists = str(bool(entry.get(KEY_SOURCES_EXISTS, False))).lower()
+            print(TEXT_SOURCES_ENTRY.format(name=name, path=path, exists=exists))
+        print(TEXT_SOURCES_FOOTER)
         return StatusResult(code=SS__NORMAL)
 
     def _collect_sources(self) -> List[Dict[str, object]]:
@@ -9038,30 +8286,26 @@ class BridgeCli:
         sources: List[Dict[str, object]] = []
         sources.append(
             self._build_source_entry(
-                SOURCE_NAME_REGISTRY,
-                isinstance(self._local_root_payload, dict),
+                SOURCE_NAME_PROFILES,
                 self._local_root_path,
             )
         )
         sources.append(
             self._build_source_entry(
-                SOURCE_NAME_CONFIG,
-                isinstance(self._local_config, dict),
-                self._local_config_path,
-            )
-        )
-        sources.append(
-            self._build_source_entry(
                 SOURCE_NAME_BINDINGS,
-                isinstance(self._bindings_payload, dict),
                 self._bindings_path,
             )
         )
         sources.append(
             self._build_source_entry(
                 SOURCE_NAME_CAN_MAPPINGS,
-                isinstance(self._can_mappings, dict),
                 self._can_mappings_path,
+            )
+        )
+        sources.append(
+            self._build_source_entry(
+                SOURCE_NAME_TESTS,
+                self._local_root_path,
             )
         )
         return sources
@@ -9069,7 +8313,6 @@ class BridgeCli:
     def _build_source_entry(
         self,
         name: str,
-        loaded: bool,
         path: Optional[Path],
     ) -> Dict[str, object]:
         """
@@ -9077,17 +8320,12 @@ class BridgeCli:
             _build_source_entry - Create a source entry for display/JSON.
         """
 
-        if not loaded:
-            status = SOURCE_STATUS_NOT_LOADED
-        elif path is None:
-            status = SOURCE_STATUS_UNKNOWN
-        else:
-            status = SOURCE_STATUS_LOADED
         path_text = str(path) if path is not None else EMPTY_STRING
+        exists = bool(path is not None and path.exists())
         return {
-            KEY_SOURCE_NAME: name,
-            KEY_SOURCE_STATUS: status,
-            KEY_SOURCE_PATH: path_text,
+            KEY_SOURCES_NAME: name,
+            KEY_SOURCES_PATH: path_text,
+            KEY_SOURCES_EXISTS: exists,
         }
 
     @staticmethod
@@ -9097,13 +8335,9 @@ class BridgeCli:
             _source_display_value - Build display text for a source entry.
         """
 
-        status = str(entry.get(KEY_SOURCE_STATUS, EMPTY_STRING))
-        path = str(entry.get(KEY_SOURCE_PATH, EMPTY_STRING))
-        if status == SOURCE_STATUS_LOADED:
-            return path
-        if status == SOURCE_STATUS_UNKNOWN:
-            return MESSAGE_SOURCES_UNKNOWN
-        return MESSAGE_SOURCES_NOT_LOADED
+        path = str(entry.get(KEY_SOURCES_PATH, EMPTY_STRING))
+        exists = bool(entry.get(KEY_SOURCES_EXISTS, False))
+        return SOURCE_DISPLAY_FMT.format(path=path, exists=str(exists).lower())
 
     def _show_local_profiles(self, json_output: bool, pretty: bool) -> StatusResult:
         """
@@ -9172,331 +8406,6 @@ class BridgeCli:
         print(MESSAGE_LOCAL_PROFILE_AVAILABLE.format(count=count))
         return StatusResult(code=SS__NORMAL)
 
-    def _show_local_topology(
-        self, json_output: bool, pretty: bool, show_neighbors: bool = False
-    ) -> StatusResult:
-        """
-        NAME
-            _show_local_topology - Show diagram nodes for the active profile.
-        """
-        payload = self._local_root_payload if isinstance(self._local_root_payload, dict) else None
-        if payload is None:
-            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        profile_name = self._active_profile_name()
-        if not profile_name:
-            print(MESSAGE_ERR_PROFILE_REQUIRED)
-            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
-        diagram = payload.get(KEY_DIAGRAM)
-        if not isinstance(diagram, dict):
-            return self._show_local_topology_empty(json_output, pretty, profile_name)
-        diag_profiles = diagram.get(KEY_DIAGRAM_PROFILES)
-        if not isinstance(diag_profiles, dict):
-            return self._show_local_topology_empty(json_output, pretty, profile_name)
-        diag_entry = diag_profiles.get(profile_name)
-        if not isinstance(diag_entry, dict):
-            return self._show_local_topology_empty(json_output, pretty, profile_name)
-        nodes_raw = parse_diagram_nodes(diag_entry)
-        nodes: List[Dict[str, object]] = []
-        for entry in nodes_raw:
-            if not isinstance(entry, dict):
-                continue
-            node_type = str(entry.get(KEY_NODE_TYPE) or NODE_TYPE_DEVICE)
-            if node_type == NODE_TYPE_CALLOUT:
-                continue
-            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
-            category = str(entry.get(KEY_CATEGORY, EMPTY_STRING)).strip()
-            node_id = entry.get(KEY_ID) if isinstance(entry.get(KEY_ID), int) else None
-            bus = entry.get(KEY_BUS) if isinstance(entry.get(KEY_BUS), int) else None
-            row = entry.get(KEY_ROW) if isinstance(entry.get(KEY_ROW), int) else None
-            x = entry.get(KEY_X) if isinstance(entry.get(KEY_X), (int, float)) else None
-            scale = entry.get(KEY_SCALE) if isinstance(entry.get(KEY_SCALE), (int, float)) else None
-            tags = entry.get(KEY_TAGS) if isinstance(entry.get(KEY_TAGS), list) else []
-            profile_visible = entry.get(KEY_PROFILE_VISIBLE)
-            nodes.append(
-                {
-                    KEY_NODE_TYPE: node_type,
-                    KEY_CATEGORY: category,
-                    KEY_LABEL: label,
-                    KEY_ID: node_id,
-                    KEY_BUS: bus,
-                    KEY_ROW: row,
-                    KEY_X: x,
-                    KEY_SCALE: scale,
-                    KEY_TAGS: tags,
-                    KEY_PROFILE_VISIBLE: profile_visible,
-                }
-            )
-        neighbor_ports = parse_diagram_neighbor_ports(diag_entry)
-        if json_output:
-            print(
-                self._dump_json(
-                    {
-                        KEY_SOURCE: SHOW_SOURCE_LOCAL,
-                        KEY_PROFILE: profile_name,
-                        KEY_NODES: nodes,
-                        KEY_NEIGHBOR_PORTS: neighbor_ports,
-                    },
-                    pretty,
-                )
-            )
-            return StatusResult(code=SS__NORMAL)
-        print(MESSAGE_SOURCE_LOCAL)
-        if show_neighbors:
-            if not neighbor_ports:
-                print(TOPOLOGY_NEIGHBORS_EMPTY)
-                return StatusResult(code=SS__NORMAL)
-            print(TOPOLOGY_NEIGHBORS_HEADER)
-            for entry in neighbor_ports:
-                if not isinstance(entry, dict):
-                    continue
-                node = str(entry.get(KEY_LINK_NODE, STRING_NONE)).strip() or STRING_NONE
-                port = str(entry.get(KEY_LINK_PORT, STRING_NONE)).strip() or STRING_NONE
-                neighbor = str(entry.get(KEY_LINK_NEIGHBOR, STRING_NONE)).strip() or STRING_NONE
-                neighbor_port = str(entry.get(KEY_LINK_NEIGHBOR_PORT, STRING_NONE)).strip() or STRING_NONE
-                print(
-                    TOPOLOGY_NEIGHBOR_ENTRY_FMT.format(
-                        node=node,
-                        port=port,
-                        neighbor=neighbor,
-                        neighbor_port=neighbor_port,
-                    )
-                )
-            return StatusResult(code=SS__NORMAL)
-        if not nodes:
-            print(TOPOLOGY_EMPTY)
-            return StatusResult(code=SS__NORMAL)
-        print(TOPOLOGY_HEADER)
-        for entry in nodes:
-            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip() or STRING_NONE
-            node_type = str(entry.get(KEY_NODE_TYPE, STRING_NONE))
-            category = str(entry.get(KEY_CATEGORY, STRING_NONE))
-            node_id = entry.get(KEY_ID)
-            bus = entry.get(KEY_BUS)
-            row = entry.get(KEY_ROW)
-            tags = entry.get(KEY_TAGS, [])
-            id_text = str(node_id) if isinstance(node_id, int) else STRING_NONE
-            bus_text = str(bus) if isinstance(bus, int) else STRING_NONE
-            row_text = str(row) if isinstance(row, int) else STRING_NONE
-            tags_text = SEP_COMMA_SPACE.join([str(t) for t in tags]) if tags else STRING_NONE
-            print(
-                TOPOLOGY_NODE_FMT.format(
-                    label=label,
-                    node_type=node_type or STRING_NONE,
-                    category=category or STRING_NONE,
-                    node_id=id_text,
-                    bus=bus_text,
-                    row=row_text,
-                    tags=tags_text,
-                )
-            )
-        return StatusResult(code=SS__NORMAL)
-
-    def _show_local_topology_empty(
-        self, json_output: bool, pretty: bool, profile_name: str
-    ) -> StatusResult:
-        """
-        NAME
-            _show_local_topology_empty - Emit an empty topology response.
-        """
-        if json_output:
-            print(
-                self._dump_json(
-                    {
-                        KEY_SOURCE: SHOW_SOURCE_LOCAL,
-                        KEY_PROFILE: profile_name,
-                        KEY_NODES: [],
-                    },
-                    pretty,
-                )
-            )
-            return StatusResult(code=SS__NORMAL)
-        print(MESSAGE_SOURCE_LOCAL)
-        print(TOPOLOGY_EMPTY)
-        return StatusResult(code=SS__NORMAL)
-
-    def _show_local_visibility(self, tokens: List[str], json_output: bool, pretty: bool) -> StatusResult:
-        """
-        NAME
-            _show_local_visibility - Show multi-source visibility state.
-        """
-        if self._visibility_provider is None:
-            print(MESSAGE_ERR_VISIBILITY_UNAVAILABLE)
-            return StatusResult(code=SS__EXECUTOR__NOT_SUPPORTED)
-        name = tokens[COUNT_ONE] if len(tokens) >= COUNT_TWO else EMPTY_STRING
-        now_ms = int(time.time() * VIS_MS_PER_SEC)
-        if name.lower() == SHOW_VISIBILITY_SUMMARY:
-            summary = self._visibility_provider.summary(VIS_SCOPE_BOTH, now_ms)
-            if json_output:
-                payload = self._format_json(summary, pretty)
-                print(payload)
-                return StatusResult(code=SS__NORMAL)
-            return self._print_visibility_summary(summary)
-        if name:
-            snapshot = self._visibility_provider.snapshot_device(name, now_ms)
-            if not snapshot:
-                print(MESSAGE_ERR_VISIBILITY_DEVICE_NOT_FOUND.format(name=name))
-                return StatusResult(code=SS__DEVICE__NOT_FOUND)
-            if json_output:
-                payload = self._format_json(snapshot, pretty)
-                print(payload)
-                return StatusResult(code=SS__NORMAL)
-            return self._print_visibility_device(snapshot)
-        snapshot = self._visibility_provider.snapshot(VIS_SCOPE_BOTH, now_ms)
-        if json_output:
-            payload = self._format_json(snapshot, pretty)
-            print(payload)
-            return StatusResult(code=SS__NORMAL)
-        return self._print_visibility_matrix(snapshot)
-
-    def _print_visibility_matrix(self, snapshot: Dict[str, object]) -> StatusResult:
-        """
-        NAME
-            _print_visibility_matrix - Print the visibility matrix table.
-        """
-        sources = snapshot.get(VIS_KEY_SOURCES)
-        devices = snapshot.get(VIS_KEY_DEVICES)
-        if not isinstance(sources, list) or not isinstance(devices, list):
-            print(MESSAGE_ERR_VISIBILITY_UNAVAILABLE)
-            return StatusResult(code=SS__EXECUTOR__FAILED)
-        source_ids: List[str] = []
-        source_labels: Dict[str, str] = {}
-        source_available = COUNT_ZERO
-        for entry in sources:
-            if not isinstance(entry, dict):
-                continue
-            src_id = str(entry.get(VIS_KEY_ID, EMPTY_STRING)).strip()
-            if not src_id:
-                continue
-            source_ids.append(src_id)
-            label = str(entry.get(VIS_KEY_LABEL, src_id)).strip() or src_id
-            source_labels[src_id] = label
-            if bool(entry.get(VIS_KEY_AVAILABLE)):
-                source_available += COUNT_ONE
-        headers = [SHOW_VISIBILITY_HEADER_DEVICE] + [source_labels.get(sid, sid) for sid in source_ids]
-        rows: List[List[str]] = []
-        for device in devices:
-            if not isinstance(device, dict):
-                continue
-            label = str(device.get(VIS_KEY_LABEL, EMPTY_STRING)).strip()
-            key = str(device.get(VIS_KEY_KEY, EMPTY_STRING)).strip()
-            device_name = label or key
-            visibility = device.get(VIS_KEY_VISIBILITY)
-            if not isinstance(visibility, dict):
-                visibility = {}
-            values = [device_name]
-            for sid in source_ids:
-                value = visibility.get(sid)
-                if value is True:
-                    values.append(SHOW_VISIBILITY_VALUE_YES)
-                elif value is False:
-                    values.append(SHOW_VISIBILITY_VALUE_NO)
-                else:
-                    values.append(SHOW_VISIBILITY_VALUE_UNKNOWN)
-            rows.append(values)
-        print(MESSAGE_SOURCE_LOCAL)
-        self._print_table_simple(headers, rows)
-        scope = snapshot.get(VIS_KEY_SCOPE, EMPTY_STRING)
-        timeout_ms = snapshot.get(VIS_KEY_TIMEOUT_MS, EMPTY_STRING)
-        scope_text = SHOW_VISIBILITY_SCOPE_FMT.format(scope=scope)
-        print(scope_text)
-        print(SHOW_VISIBILITY_TIMEOUT_FMT.format(timeout_ms=timeout_ms))
-        print(SHOW_VISIBILITY_UNAVAILABLE.format(count=len(source_ids) - source_available))
-        print(SHOW_VISIBILITY_LEGEND)
-        return StatusResult(code=SS__NORMAL)
-
-    def _print_visibility_device(self, snapshot: Dict[str, object]) -> StatusResult:
-        """
-        NAME
-            _print_visibility_device - Print per-device visibility details.
-        """
-        device = (
-            snapshot.get(VIS_KEY_DEVICE)
-            if isinstance(snapshot.get(VIS_KEY_DEVICE), dict)
-            else {}
-        )
-        sources = snapshot.get(VIS_KEY_SOURCES) if isinstance(snapshot.get(VIS_KEY_SOURCES), list) else []
-        label = str(device.get(VIS_KEY_LABEL, EMPTY_STRING)).strip()
-        key = str(device.get(VIS_KEY_KEY, EMPTY_STRING)).strip()
-        print(MESSAGE_SOURCE_LOCAL)
-        print(SHOW_VISIBILITY_DEVICE_FMT.format(name=label or key))
-        headers = [
-            SHOW_VISIBILITY_SOURCE,
-            SHOW_VISIBILITY_HEADER_VISIBLE,
-            SHOW_VISIBILITY_HEADER_AGE,
-            SHOW_VISIBILITY_HEADER_FPS,
-        ]
-        rows: List[List[str]] = []
-        for entry in sources:
-            if not isinstance(entry, dict):
-                continue
-            src_label = str(entry.get(VIS_KEY_LABEL, EMPTY_STRING)).strip()
-            visible = entry.get(VIS_KEY_VISIBILITY)
-            age_ms = entry.get(VIS_KEY_AGE_MS)
-            fps = entry.get(VIS_KEY_FRAMES_PER_SEC)
-            visible_text = (
-                SHOW_VISIBILITY_VALUE_YES
-                if visible is True
-                else SHOW_VISIBILITY_VALUE_NO
-                if visible is False
-                else SHOW_VISIBILITY_VALUE_UNKNOWN
-            )
-            age_text = (
-                SHOW_VISIBILITY_AGE_FMT.format(value=float(age_ms) / VIS_MS_PER_SEC)
-                if isinstance(age_ms, (int, float))
-                else SHOW_VISIBILITY_PLACEHOLDER
-            )
-            fps_text = (
-                SHOW_VISIBILITY_FPS_FMT.format(value=float(fps))
-                if isinstance(fps, (int, float))
-                else SHOW_VISIBILITY_PLACEHOLDER
-            )
-            rows.append([src_label, visible_text, age_text, fps_text])
-        self._print_table_simple(headers, rows)
-        return StatusResult(code=SS__NORMAL)
-
-    def _print_table_simple(self, headers: List[str], rows: List[List[str]]) -> None:
-        """
-        NAME
-            _print_table_simple - Render a simple aligned table.
-        """
-        if not headers:
-            return
-        widths = [len(str(h)) for h in headers]
-        for row in rows:
-            for idx, cell in enumerate(row):
-                if idx >= len(widths):
-                    widths.append(len(str(cell)))
-                else:
-                    widths[idx] = max(widths[idx], len(str(cell)))
-        header_line = "  ".join(str(headers[idx]).ljust(widths[idx]) for idx in range(len(headers)))
-        print(header_line)
-        if rows:
-            for row in rows:
-                line = "  ".join(
-                    str(row[idx] if idx < len(row) else EMPTY_STRING).ljust(widths[idx])
-                    for idx in range(len(headers))
-                )
-                print(line)
-
-    def _print_visibility_summary(self, summary: Dict[str, object]) -> StatusResult:
-        """
-        NAME
-            _print_visibility_summary - Print visibility summary counts.
-        """
-        sources = summary.get(VIS_KEY_SOURCES_COUNT, COUNT_ZERO)
-        devices = summary.get(VIS_KEY_DEVICES_SHOWN, COUNT_ZERO)
-        visible_all = summary.get(VIS_KEY_VISIBLE_ALL, COUNT_ZERO)
-        visible_some = summary.get(VIS_KEY_VISIBLE_SOME, COUNT_ZERO)
-        visible_none = summary.get(VIS_KEY_VISIBLE_NONE, COUNT_ZERO)
-        print(MESSAGE_SOURCE_LOCAL)
-        print(SHOW_VISIBILITY_SUMMARY_SOURCES_FMT.format(sources=sources))
-        print(SHOW_VISIBILITY_SUMMARY_DEVICES_FMT.format(devices=devices))
-        print(SHOW_VISIBILITY_SUMMARY_ALL_FMT.format(count=visible_all))
-        print(SHOW_VISIBILITY_SUMMARY_SOME_FMT.format(count=visible_some))
-        print(SHOW_VISIBILITY_SUMMARY_NONE_FMT.format(count=visible_none))
-        return StatusResult(code=SS__NORMAL)
-
     def _show_local_config_raw(self, json_output: bool, pretty: bool) -> StatusResult:
         """
         NAME
@@ -9556,7 +8465,7 @@ class BridgeCli:
 
     def _group_command_local(self, tokens: List[str], group: str) -> StatusResult:
         if not self._local_config:
-            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         cmd = tokens[0].lower()
         if cmd == "show":
@@ -9613,7 +8522,7 @@ class BridgeCli:
 
     def _select_or_create_local_group(self, name: str) -> StatusResult:
         if not self._local_config:
-            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profile = self._require_active_profile()
         if not profile:
@@ -9632,7 +8541,7 @@ class BridgeCli:
 
     def _delete_local_group(self, name: str) -> StatusResult:
         if not self._local_config:
-            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profile = self._require_active_profile()
         if not profile:
@@ -9658,7 +8567,7 @@ class BridgeCli:
 
     def _set_local_selected_device(self, device: str) -> StatusResult:
         if not self._local_config:
-            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profile = self._require_active_profile()
         if not profile:
@@ -9672,7 +8581,7 @@ class BridgeCli:
 
     def _set_local_selected_mode(self, enabled: bool) -> StatusResult:
         if not self._local_config:
-            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         profile = self._require_active_profile()
         if not profile:
@@ -9778,9 +8687,6 @@ class BridgeCli:
             print("ERROR: Local group not found.")
             return StatusResult(code=SS__GROUP__NOT_FOUND)
         input_name = tokens[0]
-        if not self._is_valid_binding_input(input_name, self._active_profile_name()):
-            print(MESSAGE_ERR_BINDING_INPUT_UNKNOWN)
-            return StatusResult(code=SS__INPUT_BINDING__INVALID)
         kind = tokens[1]
         entry = {"input": input_name, "kind": kind}
         if kind != "analog":
@@ -9814,7 +8720,7 @@ class BridgeCli:
 
     def _rename_local_device(self, old: str, new: str) -> StatusResult:
         if not self._local_config:
-            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         if self._local_devices_locked:
             return self._rename_profiles_device(old, new)
@@ -9853,6 +8759,8 @@ class BridgeCli:
             return StatusResult(code=SS__CONFIG__DUPLICATE_LABEL)
 
         changed = False
+        groups_count = COUNT_ZERO
+        selected_count = COUNT_ZERO
         if isinstance(by_profile, dict):
             for entry in by_profile.values():
                 if not isinstance(entry, dict):
@@ -9866,25 +8774,43 @@ class BridgeCli:
                             if name.lower() == old_name.lower():
                                 member[KEY_DEVICE] = new_name
                                 changed = True
+                                groups_count += COUNT_ONE
                         elif isinstance(member, str):
                             if member.strip().lower() == old_name.lower():
                                 index = group["members"].index(member)
                                 group["members"][index] = new_name
                                 changed = True
+                                groups_count += COUNT_ONE
                 selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE)
                 if isinstance(selected, dict):
                     sel_name = str(selected.get(KEY_DEVICE, "")).strip()
                     if sel_name.lower() == old_name.lower():
                         selected[KEY_DEVICE] = new_name
                         changed = True
+                        selected_count += COUNT_ONE
         if not changed:
             print(f"ERROR: Device {old_name} not found in local config.")
             return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        rename_counts: Dict[str, int] = {
+            RENAME_REF_PROFILE_DEVICES: COUNT_ZERO,
+            RENAME_REF_ATTACHMENTS: COUNT_ZERO,
+            RENAME_REF_GROUPS: groups_count,
+            RENAME_REF_SELECTED: selected_count,
+            RENAME_REF_DIAGRAM: COUNT_ZERO,
+            RENAME_REF_TEST_DEVICES: COUNT_ZERO,
+            RENAME_REF_TEST_LIMIT_SWITCH: COUNT_ZERO,
+            RENAME_REF_TEST_ROTATION_ENCODER: COUNT_ZERO,
+            RENAME_REF_TEST_DEADBAND_ENCODER: COUNT_ZERO,
+        }
+        test_counts = self._update_tests_label_refs(old_name, new_name)
+        if test_counts:
+            rename_counts.update(test_counts)
+        self._print_rename_summary(old_name, new_name, rename_counts)
         return StatusResult(code=SS__NORMAL)
 
     def _delete_local_device(self, name: str) -> StatusResult:
         if not self._local_config:
-            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         if self._local_devices_locked:
             return self._delete_profiles_device(name)
@@ -10091,23 +9017,6 @@ class BridgeCli:
                 removed = True
         if removed:
             diag_profile["nodes"] = nodes
-        label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
-        if label:
-            neighbor_ports = diag_profile.get(KEY_NEIGHBOR_PORTS)
-            if isinstance(neighbor_ports, list):
-                diag_profile[KEY_NEIGHBOR_PORTS] = [
-                    link
-                    for link in neighbor_ports
-                    if not (
-                        isinstance(link, dict)
-                        and (
-                            str(link.get(KEY_LINK_NODE, EMPTY_STRING)).strip().lower()
-                            == label.lower()
-                            or str(link.get(KEY_LINK_NEIGHBOR, EMPTY_STRING)).strip().lower()
-                            == label.lower()
-                        )
-                    )
-                ]
 
     def _rename_profiles_device(self, old: str, new: str) -> StatusResult:
         """
@@ -10122,26 +9031,50 @@ class BridgeCli:
         if not new_label:
             print("ERROR: new device name required.")
             return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        old_label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
         entry["label"] = new_label
         self._profiles_dirty = True
-        self._update_diagram_label(entry, new_label, old_label)
-        self._update_bridge_groups_label(old, new_label)
+        rename_counts: Dict[str, int] = {
+            RENAME_REF_PROFILE_DEVICES: COUNT_ZERO,
+            RENAME_REF_ATTACHMENTS: COUNT_ZERO,
+            RENAME_REF_GROUPS: COUNT_ZERO,
+            RENAME_REF_SELECTED: COUNT_ZERO,
+            RENAME_REF_DIAGRAM: COUNT_ZERO,
+            RENAME_REF_TEST_DEVICES: COUNT_ZERO,
+            RENAME_REF_TEST_LIMIT_SWITCH: COUNT_ZERO,
+            RENAME_REF_TEST_ROTATION_ENCODER: COUNT_ZERO,
+            RENAME_REF_TEST_DEADBAND_ENCODER: COUNT_ZERO,
+        }
+        rename_counts[RENAME_REF_PROFILE_DEVICES] = self._update_profile_device_label(old, new_label)
+        rename_counts[RENAME_REF_ATTACHMENTS] = self._update_attachment_labels(old, new_label)
+        groups_count, selected_count = self._update_bridge_groups_label(old, new_label)
+        rename_counts[RENAME_REF_GROUPS] = groups_count
+        rename_counts[RENAME_REF_SELECTED] = selected_count
+        if self._update_diagram_label(entry, new_label):
+            rename_counts[RENAME_REF_DIAGRAM] = COUNT_ONE
+        test_counts = self._update_tests_label_refs(old, new_label)
+        if test_counts:
+            rename_counts.update(test_counts)
         self._refresh_devices_from_profiles()
+        profile_name = self._tests_profile or self._active_profile_name()
+        if profile_name:
+            self._refresh_tests_profile(profile_name)
+        self._print_rename_summary(old, new_label, rename_counts)
         return StatusResult(code=SS__NORMAL)
 
-    def _update_bridge_groups_label(self, old: str, new: str) -> None:
+    def _update_bridge_groups_label(self, old: str, new: str) -> tuple[int, int]:
         """
         NAME
             _update_bridge_groups_label - Update bridgeConfig group members after rename.
         """
         config = self._local_config
         if not isinstance(config, dict):
-            return
+            return COUNT_ZERO, COUNT_ZERO
         by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
         if not isinstance(by_profile, dict):
-            return
+            return COUNT_ZERO, COUNT_ZERO
         changed = False
+        groups_changed = COUNT_ZERO
+        selected_changed = COUNT_ZERO
         for entry in by_profile.values():
             if not isinstance(entry, dict):
                 continue
@@ -10154,55 +9087,54 @@ class BridgeCli:
                         if name.lower() == old.lower():
                             member[KEY_DEVICE] = new
                             changed = True
+                            groups_changed += COUNT_ONE
                     elif isinstance(member, str):
                         if member.strip().lower() == old.lower():
                             index = group["members"].index(member)
                             group["members"][index] = new
                             changed = True
+                            groups_changed += COUNT_ONE
             selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE)
             if isinstance(selected, dict):
                 sel_name = str(selected.get(KEY_DEVICE, "")).strip()
                 if sel_name.lower() == old.lower():
                     selected[KEY_DEVICE] = new
                     changed = True
+                    selected_changed += COUNT_ONE
         if changed:
             self._local_config = config
             self._mark_groups_dirty()
+        return groups_changed, selected_changed
 
-    def _update_diagram_label(
-        self, entry: Dict[str, object], new_label: str, old_label: str
-    ) -> None:
-        """
-        NAME
-            _update_diagram_label - Update topology diagram labels after rename.
-        """
+    def _update_diagram_label(self, entry: Dict[str, object], new_label: str) -> bool:
         payload = self._local_root_payload
         if not isinstance(payload, dict):
-            return
+            return False
         profiles, profile_name = self._profiles_root_and_name()
         if profiles is None or profile_name is None:
-            return
+            return False
         profile = profiles.get(profile_name)
         if not isinstance(profile, dict):
-            return
+            return False
         category = self._find_entry_category(profile, entry)
         if category is None:
-            return
+            return False
         device_id = entry.get("id")
         if device_id is None:
-            return
+            return False
         diagram = payload.get("diagram")
         if not isinstance(diagram, dict):
-            return
+            return False
         diag_profiles = diagram.get("profiles")
         if not isinstance(diag_profiles, dict):
-            return
+            return False
         diag_profile = diag_profiles.get(profile_name)
         if not isinstance(diag_profile, dict):
-            return
+            return False
         nodes = diag_profile.get("nodes")
         if not isinstance(nodes, list):
-            return
+            return False
+        updated = False
         for node in nodes:
             if not isinstance(node, dict):
                 continue
@@ -10210,18 +9142,141 @@ class BridgeCli:
                 continue
             if node.get("category") == category and node.get("id") == device_id:
                 node["label"] = new_label
-        if old_label:
-            neighbor_ports = diag_profile.get(KEY_NEIGHBOR_PORTS)
-            if isinstance(neighbor_ports, list):
-                for link in neighbor_ports:
-                    if not isinstance(link, dict):
+                updated = True
+        return updated
+
+    def _update_profile_device_label(self, old: str, new: str) -> int:
+        """
+        NAME
+            _update_profile_device_label - Replace label in active profile devices list.
+        """
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            return COUNT_ZERO
+        profiles, profile_name = self._profiles_root_and_name()
+        if profiles is None or profile_name is None:
+            return COUNT_ZERO
+        profile = profiles.get(profile_name)
+        if not isinstance(profile, dict):
+            return COUNT_ZERO
+        labels = profile.get(KEY_PROFILE_DEVICES)
+        if not isinstance(labels, list):
+            return COUNT_ZERO
+        replaced = COUNT_ZERO
+        for idx, label in enumerate(list(labels)):
+            if not isinstance(label, str):
+                continue
+            if label.strip().lower() == old.strip().lower():
+                labels[idx] = new
+                replaced += COUNT_ONE
+        profile[KEY_PROFILE_DEVICES] = labels
+        return replaced
+
+    def _update_attachment_labels(self, old: str, new: str) -> int:
+        """
+        NAME
+            _update_attachment_labels - Replace label in device attachments lists.
+        """
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            return COUNT_ZERO
+        devices = payload.get(KEY_DEVICES)
+        if not isinstance(devices, list):
+            return COUNT_ZERO
+        replaced = COUNT_ZERO
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            attachments = entry.get(KEY_ATTACHMENTS)
+            if not isinstance(attachments, list):
+                continue
+            for idx, label in enumerate(list(attachments)):
+                if not isinstance(label, str):
+                    continue
+                if label.strip().lower() == old.strip().lower():
+                    attachments[idx] = new
+                    replaced += COUNT_ONE
+            entry[KEY_ATTACHMENTS] = attachments
+        return replaced
+
+    def _update_tests_label_refs(self, old: str, new: str) -> Dict[str, int]:
+        """
+        NAME
+            _update_tests_label_refs - Update test references for renamed devices.
+        """
+        self._ensure_tests_loaded()
+        model = self._tests_model
+        if model is None:
+            return {}
+        old_key = old.strip().lower()
+        counts = {
+            RENAME_REF_TEST_DEVICES: COUNT_ZERO,
+            RENAME_REF_TEST_LIMIT_SWITCH: COUNT_ZERO,
+            RENAME_REF_TEST_ROTATION_ENCODER: COUNT_ZERO,
+            RENAME_REF_TEST_DEADBAND_ENCODER: COUNT_ZERO,
+        }
+        for test_set in model.test_sets.values():
+            if not isinstance(test_set, TestSetModel):
+                continue
+            for test in test_set.tests:
+                if not isinstance(test, TestModel):
+                    continue
+                for idx, label in enumerate(list(test.devices)):
+                    if not isinstance(label, str):
                         continue
-                    node_label = str(link.get(KEY_LINK_NODE, EMPTY_STRING)).strip()
-                    neighbor_label = str(link.get(KEY_LINK_NEIGHBOR, EMPTY_STRING)).strip()
-                    if node_label.lower() == old_label.lower():
-                        link[KEY_LINK_NODE] = new_label
-                    if neighbor_label.lower() == old_label.lower():
-                        link[KEY_LINK_NEIGHBOR] = new_label
+                    if label.strip().lower() == old_key:
+                        test.devices[idx] = new
+                        counts[RENAME_REF_TEST_DEVICES] += COUNT_ONE
+                term = test.termination
+                if term and isinstance(term.limit_switch, dict):
+                    limit_id = term.limit_switch.get(KEY_LIMIT_SWITCH_ID)
+                    if isinstance(limit_id, str) and limit_id.strip().lower() == old_key:
+                        term.limit_switch[KEY_LIMIT_SWITCH_ID] = new
+                        counts[RENAME_REF_TEST_LIMIT_SWITCH] += COUNT_ONE
+                if term and term.rotation_encoder_key:
+                    if str(term.rotation_encoder_key).strip().lower() == old_key:
+                        term.rotation_encoder_key = new
+                        counts[RENAME_REF_TEST_ROTATION_ENCODER] += COUNT_ONE
+                deadband = test.deadband_sweep
+                if deadband and deadband.encoder_key:
+                    if str(deadband.encoder_key).strip().lower() == old_key:
+                        deadband.encoder_key = new
+                        counts[RENAME_REF_TEST_DEADBAND_ENCODER] += COUNT_ONE
+        if any(count > COUNT_ZERO for count in counts.values()):
+            self._mark_tests_dirty()
+        return counts
+
+    def _print_rename_summary(self, old: str, new: str, counts: Dict[str, int]) -> None:
+        """
+        NAME
+            _print_rename_summary - Print rename reference updates.
+        """
+        label_map = {
+            RENAME_REF_PROFILE_DEVICES: MESSAGE_INFO_RENAME_REFS_LABEL_PROFILE_DEVICES,
+            RENAME_REF_ATTACHMENTS: MESSAGE_INFO_RENAME_REFS_LABEL_ATTACHMENTS,
+            RENAME_REF_GROUPS: MESSAGE_INFO_RENAME_REFS_LABEL_GROUPS,
+            RENAME_REF_SELECTED: MESSAGE_INFO_RENAME_REFS_LABEL_SELECTED,
+            RENAME_REF_DIAGRAM: MESSAGE_INFO_RENAME_REFS_LABEL_DIAGRAM,
+            RENAME_REF_TEST_DEVICES: MESSAGE_INFO_RENAME_REFS_LABEL_TEST_DEVICES,
+            RENAME_REF_TEST_LIMIT_SWITCH: MESSAGE_INFO_RENAME_REFS_LABEL_TEST_LIMIT_SWITCH,
+            RENAME_REF_TEST_ROTATION_ENCODER: MESSAGE_INFO_RENAME_REFS_LABEL_TEST_ROTATION_ENCODER,
+            RENAME_REF_TEST_DEADBAND_ENCODER: MESSAGE_INFO_RENAME_REFS_LABEL_TEST_DEADBAND_ENCODER,
+        }
+        parts: List[str] = []
+        for key in RENAME_REF_ORDER:
+            count = counts.get(key, COUNT_ZERO)
+            if count > COUNT_ZERO:
+                parts.append(
+                    MESSAGE_INFO_RENAME_REFS_ITEM.format(
+                        label=label_map.get(key, key),
+                        count=count,
+                    )
+                )
+        if not parts:
+            print(MESSAGE_INFO_RENAME_REFS_NONE.format(old=old, new=new))
+            return
+        details = SEP_COMMA_SPACE.join(parts)
+        print(MESSAGE_INFO_RENAME_REFS.format(old=old, new=new, details=details))
 
     def _find_entry_category(self, profile: Dict[str, object], entry: Dict[str, object]) -> Optional[str]:
         for key in (
@@ -10248,11 +9303,9 @@ class BridgeCli:
             _set_local_device_meta - Update metadata for a local device.
         """
         if not self._local_config:
-            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         field_key = field.strip()
-        if field_key in DEVICE_META_FIELDS:
-            return self._set_local_device_meta_entry(name, field_key, value_raw)
         if self._local_devices_locked:
             return self._set_profiles_device_meta(name, field_key, value_raw)
         if field_key == FIELD_LABEL:
@@ -10279,25 +9332,37 @@ class BridgeCli:
         elif field_type == DEVICE_FIELD_LIST:
             parsed = parse_json_arg(value_raw)
             if parsed is None or not isinstance(parsed, list):
-                parsed = self._parse_bracket_list(value_raw)
-            if parsed is None or not isinstance(parsed, list):
                 print(MESSAGE_ERR_DEVICE_FIELD_LIST)
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             value = parsed
         elif field_type == DEVICE_FIELD_DICT:
             parsed = parse_json_arg(value_raw)
             if parsed is None or not isinstance(parsed, dict):
-                parsed = self._parse_brace_dict(value_raw)
-            if parsed is None or not isinstance(parsed, dict):
                 print(MESSAGE_ERR_DEVICE_FIELD_DICT)
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             value = parsed
         else:
             value = value_raw
-        target = self._find_or_create_local_device_meta(name)
+        config = self._local_config
+        devices = config.get("devices")
+        if not isinstance(devices, list):
+            devices = []
+            config["devices"] = devices
+        target = None
+        for device in devices:
+            if not isinstance(device, dict):
+                continue
+            dev_name = str(device.get("name", "")).strip()
+            if dev_name.lower() == name.strip().lower():
+                target = device
+                break
         if target is None:
-            print("ERROR: Device not found in local config or groups.")
-            return StatusResult(code=SS__DEVICE__NOT_FOUND)
+            # Allow metadata edits for devices already referenced by groups.
+            if not self._device_in_groups(name):
+                print("ERROR: Device not found in local config or groups.")
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
+            target = {"name": name.strip()}
+            devices.append(target)
         target[store_key] = value
         if field_key == FIELD_INTERFACE and isinstance(target, dict):
             interface = str(target.get(KEY_INTERFACE, "")).strip()
@@ -10314,11 +9379,9 @@ class BridgeCli:
             _clear_local_device_meta - Clear metadata for a local device.
         """
         if not self._local_config:
-            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         field_key = field.strip()
-        if field_key in DEVICE_META_FIELDS:
-            return self._clear_local_device_meta_entry(name, field_key)
         if self._local_devices_locked:
             return self._clear_profiles_device_meta(name, field_key)
         if field_key == FIELD_LABEL:
@@ -10346,27 +9409,13 @@ class BridgeCli:
         print("ERROR: Device not found in local config.")
         return StatusResult(code=SS__DEVICE__NOT_FOUND)
 
-    def _clear_local_device_meta_entry(self, name: str, field_key: str) -> StatusResult:
-        """
-        NAME
-            _clear_local_device_meta_entry - Clear metadata fields in local device list.
-        """
-        target = self._find_local_device_meta_entry(name)
-        if target is None:
-            print("ERROR: Device not found in local config.")
-            return StatusResult(code=SS__DEVICE__NOT_FOUND)
-        if field_key in target:
-            target.pop(field_key, None)
-            self._mark_groups_dirty()
-        return StatusResult(code=SS__NORMAL)
-
     def _ensure_local_device_entry(self, name: str) -> StatusResult:
         """
         NAME
             _ensure_local_device_entry - Ensure a local device entry exists.
         """
         if not self._local_config:
-            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         if self._local_devices_locked:
             return self._ensure_profiles_device_entry(name)
@@ -10428,200 +9477,6 @@ class BridgeCli:
         print(MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND)
         return StatusResult(code=SS__DEVICE__NOT_FOUND)
 
-    def _set_local_device_meta_entry(self, name: str, field_key: str, value_raw: str) -> StatusResult:
-        """
-        NAME
-            _set_local_device_meta_entry - Update metadata fields in local device list.
-        """
-        store_key = field_key
-        field_type = DEVICE_FIELD_TYPES.get(field_key, DEVICE_FIELD_STR)
-        value: object
-        if field_type == DEVICE_FIELD_INT:
-            try:
-                value = int(value_raw, 0)
-            except ValueError:
-                print(MESSAGE_ERR_DEVICE_FIELD_INT)
-                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-        elif field_type == DEVICE_FIELD_BOOL:
-            parsed = self._parse_bool(value_raw)
-            if parsed is None:
-                print(MESSAGE_ERR_DEVICE_FIELD_BOOL)
-                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            value = parsed
-        elif field_type == DEVICE_FIELD_LIST:
-            parsed = parse_json_arg(value_raw)
-            if parsed is None or not isinstance(parsed, list):
-                parsed = self._parse_bracket_list(value_raw)
-            if parsed is None or not isinstance(parsed, list):
-                print(MESSAGE_ERR_DEVICE_FIELD_LIST)
-                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            value = parsed
-        elif field_type == DEVICE_FIELD_DICT:
-            parsed = parse_json_arg(value_raw)
-            if parsed is None or not isinstance(parsed, dict):
-                parsed = self._parse_brace_dict(value_raw)
-            if parsed is None or not isinstance(parsed, dict):
-                print(MESSAGE_ERR_DEVICE_FIELD_DICT)
-                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            value = parsed
-        else:
-            value = value_raw
-        target = self._find_or_create_local_device_meta(name)
-        if target is None:
-            print("ERROR: Device not found in local config or groups.")
-            return StatusResult(code=SS__DEVICE__NOT_FOUND)
-        target[store_key] = value
-        self._mark_groups_dirty()
-        return StatusResult(code=SS__NORMAL)
-
-    def _find_or_create_local_device_meta(self, name: str) -> Optional[Dict[str, object]]:
-        """
-        NAME
-            _find_or_create_local_device_meta - Find or create metadata entry.
-        """
-        if not self._local_config:
-            return None
-        config = self._local_config
-        devices = config.get("devices")
-        if not isinstance(devices, list):
-            devices = []
-            config["devices"] = devices
-        for device in devices:
-            if not isinstance(device, dict):
-                continue
-            dev_name = str(device.get("name", "")).strip()
-            if dev_name.lower() == name.strip().lower():
-                return device
-        # Allow metadata edits for devices already referenced by groups.
-        if not self._device_in_groups(name):
-            if self._find_profiles_device_entry(name) is None:
-                return None
-        entry = {"name": name.strip()}
-        devices.append(entry)
-        return entry
-
-    def _find_local_device_meta_entry(self, name: str) -> Optional[Dict[str, object]]:
-        """
-        NAME
-            _find_local_device_meta_entry - Find local metadata entry by name.
-        """
-        if not self._local_config:
-            return None
-        devices = self._local_config.get("devices")
-        if not isinstance(devices, list):
-            return None
-        for device in devices:
-            if not isinstance(device, dict):
-                continue
-            dev_name = str(device.get("name", "")).strip()
-            if dev_name.lower() == name.strip().lower():
-                return device
-        return None
-
-    def _show_local_device_meta_list(self, json_output: bool, pretty: bool) -> StatusResult:
-        """
-        NAME
-            _show_local_device_meta_list - Print all local device metadata entries.
-        """
-        if not self._local_config:
-            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        devices = self._local_config.get("devices")
-        if not isinstance(devices, list):
-            devices = []
-        payload = {"source": "local", "devices": devices}
-        print(MESSAGE_SOURCE_LOCAL)
-        if json_output:
-            print(self._dump_json(payload, pretty))
-            return StatusResult(code=SS__NORMAL)
-        lines = ["Local device metadata:"]
-        for device in devices:
-            if not isinstance(device, dict):
-                continue
-            name = str(device.get("name", "")).strip()
-            if not name:
-                continue
-            lines.append(f"  {name}:")
-            for key in ("vendor", "role", "notes", "bus", "tags", "limits"):
-                if key in device:
-                    lines.append(f"    {key}={device.get(key)}")
-        if len(lines) == 1:
-            lines.append("  (none)")
-        print("\n".join(lines))
-        return StatusResult(code=SS__NORMAL)
-
-    def _extract_registry_metadata(self, entry: Dict[str, object]) -> Dict[str, object]:
-        """
-        NAME
-            _extract_registry_metadata - Extract metadata-like fields from registry entry.
-        """
-        meta: Dict[str, object] = {}
-        for key in (FIELD_VENDOR, FIELD_ROLE, FIELD_NOTES, FIELD_BUS, FIELD_TAGS, FIELD_LIMITS):
-            if key in entry:
-                meta[key] = entry.get(key)
-        return meta
-
-    def _registry_without_metadata(self, entry: Dict[str, object]) -> Dict[str, object]:
-        """
-        NAME
-            _registry_without_metadata - Strip metadata fields from registry entry.
-        """
-        filtered = {key: value for key, value in entry.items() if key not in DEVICE_META_FIELDS}
-        return filtered
-
-    def _parse_bracket_list(self, value_raw: str) -> Optional[List[str]]:
-        """
-        NAME
-            _parse_bracket_list - Parse simple bracketed lists like [foo,bar].
-        """
-        text = value_raw.strip()
-        if len(text) < 2 or not (text.startswith(BRACKET_OPEN) and text.endswith(BRACKET_CLOSE)):
-            return None
-        inner = text[1:-1].strip()
-        if not inner:
-            return []
-        parts = [part.strip() for part in inner.split(PROFILE_EXPORT_JSON_SEP_COMMA)]
-        return [part for part in parts if part]
-
-    def _parse_brace_dict(self, value_raw: str) -> Optional[Dict[str, object]]:
-        """
-        NAME
-            _parse_brace_dict - Parse simple brace dicts like {key:1,other:2}.
-        """
-        text = value_raw.strip()
-        if len(text) < 2 or not (text.startswith(BRACE_OPEN) and text.endswith(BRACE_CLOSE)):
-            return None
-        inner = text[1:-1].strip()
-        if not inner:
-            return {}
-        result: Dict[str, object] = {}
-        items = [part.strip() for part in inner.split(PROFILE_EXPORT_JSON_SEP_COMMA)]
-        for item in items:
-            if PROFILE_EXPORT_JSON_SEP_COLON not in item:
-                return None
-            key_text, value_text = item.split(PROFILE_EXPORT_JSON_SEP_COLON, 1)
-            key = key_text.strip()
-            if not key:
-                return None
-            value_token = value_text.strip()
-            result[key] = self._parse_scalar_value(value_token)
-        return result
-
-    def _parse_scalar_value(self, token: str) -> object:
-        """
-        NAME
-            _parse_scalar_value - Parse a scalar token into int/float/bool/str.
-        """
-        lowered = token.lower()
-        if lowered in (TOKEN_TRUE, TOKEN_FALSE):
-            return lowered == TOKEN_TRUE
-        try:
-            if TOKEN_DOT in token:
-                return float(token)
-            return int(token, 0)
-        except ValueError:
-            return token
-
     def _show_local_registry_device(self, name: str, json_output: bool, pretty: bool) -> StatusResult:
         """
         NAME
@@ -10635,34 +9490,22 @@ class BridgeCli:
             print(MESSAGE_ERR_REGISTRY_DEVICE_NOT_FOUND)
             return StatusResult(code=SS__DEVICE__NOT_FOUND)
         label = str(entry.get(FIELD_LABEL, name)).strip() or name
-        meta = self._find_local_device_meta_entry(label)
-        legacy_meta = self._extract_registry_metadata(entry)
-        payload = {
-            KEY_DEVICE: self._registry_without_metadata(entry),
-            KEY_METADATA: meta,
-            "metadataLegacy": legacy_meta,
-            KEY_METADATA_SOURCE: (
-                META_SOURCE_LOCAL if meta else (META_SOURCE_REGISTRY if legacy_meta else EMPTY_STRING)
-            ),
-        }
+        payload = {KEY_DEVICE: entry}
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             print(self._dump_json(payload, pretty))
             return StatusResult(code=SS__NORMAL)
         lines = [MESSAGE_LOCAL_REGISTRY_DEVICE.format(label=label)]
-        lines.append("  registry:")
         mappings = self._load_can_mappings()
         manufacturers = mappings.get(KEY_MANUFACTURERS, {}) if mappings else {}
         device_types = mappings.get(KEY_DEVICE_TYPES, {}) if mappings else {}
-        registry_only = self._registry_without_metadata(entry)
-        for key in sorted(registry_only.keys()):
-            value = registry_only.get(key)
+        for key in sorted(entry.keys()):
+            value = entry.get(key)
             if key == FIELD_MANUFACTURER and isinstance(value, int):
                 name_value = manufacturers.get(str(value), "")
                 if name_value:
                     lines.append(
-                        "    "
-                        + MESSAGE_REGISTRY_FIELD_FMT_NAMED.format(
+                        MESSAGE_REGISTRY_FIELD_FMT_NAMED.format(
                             key=key, value=value, name=name_value
                         )
                     )
@@ -10671,142 +9514,14 @@ class BridgeCli:
                 name_value = device_types.get(str(value), "")
                 if name_value:
                     lines.append(
-                        "    "
-                        + MESSAGE_REGISTRY_FIELD_FMT_NAMED.format(
+                        MESSAGE_REGISTRY_FIELD_FMT_NAMED.format(
                             key=key, value=value, name=name_value
                         )
                     )
                     continue
-            lines.append("    " + MESSAGE_REGISTRY_FIELD_FMT.format(key=key, value=value))
+            lines.append(MESSAGE_REGISTRY_FIELD_FMT.format(key=key, value=value))
         if len(lines) == 1:
             lines.append(MESSAGE_LOCAL_REGISTRY_EMPTY)
-        if isinstance(meta, dict) and meta:
-            lines.append(MESSAGE_METADATA_HEADER)
-            for key in ("vendor", "role", "notes", "bus", "tags", "limits"):
-                if key in meta:
-                    lines.append(f"    {key}={meta.get(key)}")
-        else:
-            lines.append(MESSAGE_METADATA_NONE)
-        if isinstance(legacy_meta, dict) and legacy_meta:
-            lines.append(MESSAGE_METADATA_HEADER_LEGACY)
-            for key in ("vendor", "role", "notes", "bus", "tags", "limits"):
-                if key in legacy_meta:
-                    lines.append(f"    {key}={legacy_meta.get(key)}")
-        print("\n".join(lines))
-        return StatusResult(code=SS__NORMAL)
-
-    def _show_local_registry_devices(
-        self, json_output: bool, pretty: bool, show_all: bool
-    ) -> StatusResult:
-        """
-        NAME
-            _show_local_registry_devices - Print registry device entries.
-        """
-        if not isinstance(self._local_root_payload, dict):
-            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        devices = self._local_root_payload.get(KEY_DEVICES)
-        if not isinstance(devices, list):
-            devices = []
-        payload = {"source": "local", KEY_DEVICES: devices}
-        print(MESSAGE_SOURCE_LOCAL)
-        if json_output:
-            print(self._dump_json(payload, pretty))
-            return StatusResult(code=SS__NORMAL)
-        lines = [MESSAGE_LOCAL_REGISTRY_DEVICES_HEADER]
-        mappings = self._load_can_mappings()
-        manufacturers = mappings.get(KEY_MANUFACTURERS, {}) if mappings else {}
-        device_types = mappings.get(KEY_DEVICE_TYPES, {}) if mappings else {}
-        devices_by_label: Dict[str, Dict[str, object]] = {}
-        for entry in devices:
-            if not isinstance(entry, dict):
-                continue
-            label = str(entry.get(FIELD_LABEL, EMPTY_STRING)).strip()
-            if not label:
-                continue
-            devices_by_label[label] = entry
-
-        def _append_registry_field(
-            target: List[str],
-            key: str,
-            value: object,
-            indent: str,
-        ) -> None:
-            if key == FIELD_MANUFACTURER and isinstance(value, int):
-                name_value = manufacturers.get(str(value), EMPTY_STRING)
-                if name_value:
-                    target.append(
-                        MESSAGE_LOCAL_REGISTRY_FIELD_FMT_NAMED.format(
-                            indent=indent, key=key, value=value, name=name_value
-                        )
-                    )
-                    return
-            if key == FIELD_DEVICE_TYPE and isinstance(value, int):
-                name_value = device_types.get(str(value), EMPTY_STRING)
-                if name_value:
-                    target.append(
-                        MESSAGE_LOCAL_REGISTRY_FIELD_FMT_NAMED.format(
-                            indent=indent, key=key, value=value, name=name_value
-                        )
-                    )
-                    return
-            target.append(
-                MESSAGE_LOCAL_REGISTRY_FIELD_FMT.format(
-                    indent=indent, key=key, value=value
-                )
-            )
-
-        any_entry = False
-        for entry in devices:
-            if not isinstance(entry, dict):
-                continue
-            label = str(entry.get(FIELD_LABEL, EMPTY_STRING)).strip()
-            if not label:
-                continue
-            if not show_all:
-                lines.append(
-                    MESSAGE_LOCAL_REGISTRY_DEVICE_LABEL_FMT.format(label=label)
-                )
-                any_entry = True
-                continue
-            if any_entry:
-                lines.append(MESSAGE_LOCAL_REGISTRY_BLANK_LINE)
-            lines.append(MESSAGE_LOCAL_REGISTRY_DEVICE_HEADER_FMT.format(label=label))
-            any_entry = True
-            attachments = entry.get(FIELD_ATTACHMENTS)
-            for key in sorted(entry.keys()):
-                if key == FIELD_ATTACHMENTS:
-                    continue
-                value = entry.get(key)
-                _append_registry_field(lines, key, value, INDENT_DEVICE_FIELD)
-            if isinstance(attachments, list) and attachments:
-                lines.append(MESSAGE_LOCAL_REGISTRY_ATTACHMENTS_HEADER)
-                for attachment in attachments:
-                    if isinstance(attachment, dict):
-                        attachment_label = str(
-                            attachment.get(FIELD_LABEL, EMPTY_STRING)
-                        ).strip()
-                    else:
-                        attachment_label = str(attachment).strip()
-                    if not attachment_label:
-                        continue
-                    lines.append(
-                        MESSAGE_LOCAL_REGISTRY_ATTACHMENT_LABEL_FMT.format(
-                            label=attachment_label
-                        )
-                    )
-                    attachment_entry = devices_by_label.get(attachment_label)
-                    if not isinstance(attachment_entry, dict):
-                        continue
-                    for key in sorted(attachment_entry.keys()):
-                        if key == FIELD_ATTACHMENTS:
-                            continue
-                        value = attachment_entry.get(key)
-                        _append_registry_field(
-                            lines, key, value, INDENT_ATTACHMENT_FIELD
-                        )
-        if not any_entry:
-            lines.append(MESSAGE_LOCAL_REGISTRY_DEVICES_NONE)
         print("\n".join(lines))
         return StatusResult(code=SS__NORMAL)
 
@@ -10930,37 +9645,13 @@ class BridgeCli:
             payload = dict(self._local_root_payload)
             if isinstance(self._local_config, dict):
                 payload[KEY_BRIDGE_CONFIG] = self._ordered_bridge_config(
-                    self._local_config, include_devices=True
+                    self._local_config, include_devices=False
                 )
             self._store.set_profiles_payload(payload)
         self._sync_store_tests()
         self._sync_store_bindings()
         self._sync_store_mappings()
         self._store.set_dirty_flags(self._current_dirty_flags())
-
-    def _sync_local_from_store(self) -> None:
-        """
-        NAME
-            _sync_local_from_store - Sync store state back into CLI fields.
-        """
-
-        if not self._store:
-            return
-        payload = self._store.root_payload()
-        if payload and (KEY_SCHEMA_VERSION in payload or KEY_PROFILES in payload):
-            self._local_root_payload = payload
-        else:
-            self._local_root_payload = None
-        self._local_config = self._store.bridge_config() if self._local_root_payload else None
-        profile = self._tests_profile or self._explicit_profile_name() or self._default_profile_name()
-        if profile:
-            self._tests_model = self._store.tests_model(profile)
-            self._tests_profile = profile
-            model = self._tests_model
-            default_set = model.default_test_set if model else EMPTY_STRING
-            self._tests_active_set = default_set or DEFAULT_TEST_SET
-        self._bindings_payload = self._store.bindings()
-        self._can_mappings = self._store.can_mappings()
 
     def _sync_store_tests(self) -> None:
         """
@@ -10970,7 +9661,7 @@ class BridgeCli:
 
         if self._tests_model is None:
             return
-        profile = self._tests_profile or self._explicit_profile_name()
+        profile = self._tests_profile or self._active_profile_name() or get_default_profile()
         if not profile:
             return
         entry = self._local_profile_entry(profile, create=True)
@@ -11035,7 +9726,7 @@ class BridgeCli:
         self._sync_store_tests()
         payload = dict(self._local_root_payload)
         payload["bridgeConfig"] = self._ordered_bridge_config(
-            self._local_config, include_devices=True
+            self._local_config, include_devices=False
         )
         payload["schema_version"] = PROFILE_SCHEMA_VERSION
         payload["data_version"] = timestamp_version()
@@ -11237,8 +9928,11 @@ class BridgeCli:
         if cmd == CMD_SHOW:
             print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW)
             return
-        if cmd in (CMD_LOAD, CMD_RELOAD):
-            print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_LOAD)
+        if cmd == CMD_SOURCES:
+            print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SOURCES)
+            return
+        if cmd == CMD_LOAD:
+            print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SOURCES)
             return
         if cmd == CMD_PROFILE:
             print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_PROFILE)
@@ -11254,19 +9948,11 @@ class BridgeCli:
         NAME
             _set_profiles_device_meta - Update a device entry inside profiles.
         """
-        field_key = field.strip()
-        if field_key in DEVICE_META_FIELDS:
-            return self._set_local_device_meta_entry(name, field_key, value_raw)
         entry = self._find_profiles_device_entry(name)
         if entry is None:
-            result = self._ensure_profiles_device_entry(name)
-            if not result.ok():
-                return result
-            entry = self._find_profiles_device_entry(name)
-            if entry is None:
-                print(MESSAGE_ERR_DEVICE_NOT_FOUND)
-                return StatusResult(code=SS__DEVICE__NOT_FOUND)
+            return self._ensure_profiles_device_entry(name)
         self._ensure_profile_device_label(name)
+        field_key = field.strip()
         if field_key == FIELD_LABEL:
             print("ERROR: device label is managed by rename device.")
             return StatusResult(code=SS__DEVICE__INVALID_FIELD)
@@ -11290,15 +9976,11 @@ class BridgeCli:
         elif field_type == DEVICE_FIELD_LIST:
             parsed = parse_json_arg(value_raw)
             if parsed is None or not isinstance(parsed, list):
-                parsed = self._parse_bracket_list(value_raw)
-            if parsed is None or not isinstance(parsed, list):
                 print(MESSAGE_ERR_DEVICE_FIELD_LIST)
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             entry[store_key] = parsed
         elif field_type == DEVICE_FIELD_DICT:
             parsed = parse_json_arg(value_raw)
-            if parsed is None or not isinstance(parsed, dict):
-                parsed = self._parse_brace_dict(value_raw)
             if parsed is None or not isinstance(parsed, dict):
                 print(MESSAGE_ERR_DEVICE_FIELD_DICT)
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
@@ -11351,8 +10033,6 @@ class BridgeCli:
             print("ERROR: Device not found in profiles.")
             return StatusResult(code=SS__DEVICE__NOT_FOUND)
         field_key = field.strip()
-        if field_key in DEVICE_META_FIELDS:
-            return self._clear_local_device_meta_entry(name, field_key)
         if field_key == FIELD_LABEL:
             print("ERROR: device label is managed by rename device.")
             return StatusResult(code=SS__DEVICE__INVALID_FIELD)
@@ -11405,34 +10085,104 @@ class BridgeCli:
             _export_cli_script - Write a CLI batch script for the local config.
 
         DESCRIPTION
-            Emits a plain-text command script that recreates the full
-            local config (profiles, tests, bindings, mappings) when run
-            in batch mode.
+            Emits a plain-text command script that recreates the local
+            bridgeConfig when run in batch mode.
 
         PARAMETERS
             path: Output file path for the script.
         """
-        payload = self._local_root_payload
-        if not isinstance(payload, dict):
-            print(MESSAGE_PROFILE_EXPORT_NONE)
+        if not self._local_config:
+            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        profiles = payload.get(KEY_PROFILES)
-        if not isinstance(profiles, dict) or not profiles:
-            print(MESSAGE_PROFILE_EXPORT_NONE)
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        parent = Path(path).parent
-        if not parent.exists():
-            print(MESSAGE_PROFILE_EXPORT_PATH_INVALID.format(path=str(parent)))
-            return StatusResult(code=SS__CONFIG__INVALID)
-        empty_bindings, empty_mappings = self._write_export_clear_files(parent, EMPTY_STRING)
-        lines = self._profiles_export_script_lines(
-            json_path=EMPTY_STRING,
-            empty_bindings=empty_bindings,
-            empty_mappings=empty_mappings,
-        )
-        if not lines:
-            print(MESSAGE_PROFILE_EXPORT_NONE)
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        config = self._local_config
+        lines: List[str] = []
+        if self._local_devices_locked:
+            if self._local_root_path:
+                lines.append(f'merge config "{self._local_root_path}"')
+            else:
+                lines.append("# NOTE: devices are derived from profiles; merge a profiles file first.")
+        lines.append("configure terminal")
+        devices = config.get("devices") if isinstance(config, dict) else None
+        if isinstance(devices, list) and not self._local_devices_locked:
+            for device in devices:
+                if not isinstance(device, dict):
+                    continue
+                name = str(device.get("name", "")).strip()
+                if not name:
+                    continue
+                meta = []
+                if "vendor" in device:
+                    meta.append(("vendor", device.get("vendor")))
+                if "role" in device:
+                    meta.append(("role", device.get("role")))
+                if "notes" in device:
+                    meta.append(("notes", device.get("notes")))
+                if "bus" in device:
+                    meta.append(("bus", device.get("bus")))
+                if "tags" in device:
+                    meta.append(("tags", device.get("tags")))
+                if "limits" in device:
+                    meta.append(("limits", device.get("limits")))
+                lines.append(f'device "{name}"')
+                for field, value in meta:
+                    if field in ("tags", "limits"):
+                        encoded = json.dumps(value, separators=(",", ":"))
+                        lines.append(f"set {field} {encoded}")
+                    else:
+                        lines.append(f"set {field} {value}")
+                lines.append("exit")
+        by_profile = config.get(KEY_BRIDGE_BY_PROFILE) if isinstance(config, dict) else None
+        if isinstance(by_profile, dict):
+            for profile_name in sorted(by_profile.keys()):
+                entry = by_profile.get(profile_name)
+                if not isinstance(entry, dict):
+                    continue
+                lines.append(f"profile {profile_name}")
+                groups = entry.get(KEY_BRIDGE_GROUPS, []) or []
+                for group in groups:
+                    if not isinstance(group, dict):
+                        continue
+                    name = str(group.get("name", "")).strip()
+                    if not name:
+                        continue
+                    lines.append(f"group {name}")
+                    members = group.get("members", []) or []
+                    for member in members:
+                        if isinstance(member, dict):
+                            device = str(member.get(KEY_DEVICE, "")).strip()
+                            enabled = bool(member.get("enabled", True))
+                        else:
+                            device = str(member).strip()
+                            enabled = True
+                        if not device:
+                            continue
+                        lines.append(f'add device "{device}"')
+                        if not enabled:
+                            lines.append(f'member "{device}" disable')
+                    bindings = group.get(KEY_BRIDGE_BINDINGS, []) or []
+                    for binding in bindings:
+                        if not isinstance(binding, dict):
+                            continue
+                        input_name = str(binding.get("input", "")).strip()
+                        kind = str(binding.get("kind", "")).strip()
+                        if not input_name or not kind:
+                            continue
+                        if "value" in binding:
+                            lines.append(f"bind {input_name} {kind} {binding.get('value')}")
+                        else:
+                            lines.append(f"bind {input_name} {kind}")
+                    if group.get("enabled") is False:
+                        lines.append("disable")
+                    lines.append("exit")
+                selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE, {}) if isinstance(entry, dict) else {}
+                if isinstance(selected, dict):
+                    sel_name = str(selected.get(KEY_DEVICE, "")).strip()
+                    if sel_name:
+                        lines.append(f'selected-device "{sel_name}"')
+                    if selected.get("enabled") is True:
+                        lines.append("selected-mode on")
+                    elif selected.get("enabled") is False:
+                        lines.append("selected-mode off")
         try:
             Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
         except Exception as exc:
@@ -11490,15 +10240,7 @@ class BridgeCli:
             return StatusResult(code=SS__CONFIG__INVALID)
         try:
             write_json(Path(json_path), export_payload, indent=PROFILE_EXPORT_INDENT)
-            empty_bindings, empty_mappings = self._write_export_clear_files(
-                Path(json_path).parent, profile_name
-            )
-            script_lines = self._profile_export_script_lines(
-                profile_name,
-                json_path,
-                empty_bindings,
-                empty_mappings,
-            )
+            script_lines = self._profile_export_script_lines(profile_name, json_path)
             Path(script_path).write_text(
                 PROFILE_EXPORT_NEWLINE.join(script_lines) + PROFILE_EXPORT_NEWLINE,
                 encoding=ENCODING_UTF8,
@@ -11547,14 +10289,7 @@ class BridgeCli:
             return StatusResult(code=SS__CONFIG__INVALID)
         try:
             write_json(Path(json_path), export_payload, indent=PROFILE_EXPORT_INDENT)
-            empty_bindings, empty_mappings = self._write_export_clear_files(
-                Path(json_path).parent, EMPTY_STRING
-            )
-            script_lines = self._profiles_export_script_lines(
-                json_path,
-                empty_bindings,
-                empty_mappings,
-            )
+            script_lines = self._profiles_export_script_lines(json_path)
             Path(script_path).write_text(
                 PROFILE_EXPORT_NEWLINE.join(script_lines) + PROFILE_EXPORT_NEWLINE,
                 encoding=ENCODING_UTF8,
@@ -11632,35 +10367,7 @@ class BridgeCli:
             return (EMPTY_STRING, EMPTY_STRING, error)
         return (json_path, script_path, error)
 
-    def _write_export_clear_files(self, parent: Path, profile_name: str) -> tuple[str, str]:
-        """
-        NAME
-            _write_export_clear_files - Write empty bindings/mappings payloads for scripts.
-        """
-        if not parent.exists():
-            return (EMPTY_STRING, EMPTY_STRING)
-        if profile_name:
-            bindings_name = PROFILE_EXPORT_EMPTY_BINDINGS_FMT.format(profile=profile_name)
-            mappings_name = PROFILE_EXPORT_EMPTY_MAPPINGS_FMT.format(profile=profile_name)
-        else:
-            bindings_name = PROFILES_EXPORT_EMPTY_BINDINGS_NAME
-            mappings_name = PROFILES_EXPORT_EMPTY_MAPPINGS_NAME
-        bindings_path = parent / bindings_name
-        mappings_path = parent / mappings_name
-        try:
-            write_json(bindings_path, BINDINGS_EMPTY_PAYLOAD, indent=PROFILE_EXPORT_INDENT)
-            write_json(mappings_path, MAPPINGS_EMPTY_PAYLOAD, indent=PROFILE_EXPORT_INDENT)
-        except Exception:
-            return (EMPTY_STRING, EMPTY_STRING)
-        return (str(bindings_path), str(mappings_path))
-
-    def _profile_export_script_lines(
-        self,
-        profile_name: str,
-        json_path: str,
-        empty_bindings: str,
-        empty_mappings: str,
-    ) -> List[str]:
+    def _profile_export_script_lines(self, profile_name: str, json_path: str) -> List[str]:
         """
         NAME
             _profile_export_script_lines - Build a CLI batch script for profile import.
@@ -11681,22 +10388,6 @@ class BridgeCli:
             + PROFILE_EXPORT_PATH_SEPARATOR
             + CMD_INIT
         )
-        if empty_bindings:
-            lines.append(
-                CMD_BINDINGS
-                + PROFILE_EXPORT_PATH_SEPARATOR
-                + CMD_LOAD
-                + PROFILE_EXPORT_PATH_SEPARATOR
-                + self._quote_if_needed(empty_bindings)
-            )
-        if empty_mappings:
-            lines.append(
-                CMD_CAN_MAPPINGS
-                + PROFILE_EXPORT_PATH_SEPARATOR
-                + CMD_LOAD
-                + PROFILE_EXPORT_PATH_SEPARATOR
-                + self._quote_if_needed(empty_mappings)
-            )
         lines.extend(self._profile_export_global_lines())
         lines.append(
             PROFILE_EXPORT_CMD_PROFILE
@@ -11713,7 +10404,6 @@ class BridgeCli:
             + profile_token
         )
         lines.append(PROFILE_EXPORT_CMD_PROFILE + PROFILE_EXPORT_PATH_SEPARATOR + profile_token)
-        lines.append(CMD_TESTS + PROFILE_EXPORT_PATH_SEPARATOR + CMD_CLEAR)
         lines.extend(self._profile_export_device_lines(profile_name))
         lines.extend(self._profile_export_group_lines(profile_name))
         lines.extend(self._profile_export_tests_lines(profile_name))
@@ -11725,17 +10415,12 @@ class BridgeCli:
             + PROFILE_EXPORT_PATH_SEPARATOR
             + profile_token
         )
-        lines.append(CMD_VALIDATE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_ALL)
+        lines.append(CMD_VALIDATE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_VALIDATE_ALL)
         lines.append(CMD_SAVE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_SOURCES)
         lines.append(PROFILE_EXPORT_CMD_EXIT)
         return lines
 
-    def _profiles_export_script_lines(
-        self,
-        json_path: str,
-        empty_bindings: str,
-        empty_mappings: str,
-    ) -> List[str]:
+    def _profiles_export_script_lines(self, json_path: str) -> List[str]:
         """
         NAME
             _profiles_export_script_lines - Build a CLI batch script for all profiles.
@@ -11760,22 +10445,6 @@ class BridgeCli:
             + PROFILE_EXPORT_PATH_SEPARATOR
             + CMD_INIT
         )
-        if empty_bindings:
-            lines.append(
-                CMD_BINDINGS
-                + PROFILE_EXPORT_PATH_SEPARATOR
-                + CMD_LOAD
-                + PROFILE_EXPORT_PATH_SEPARATOR
-                + self._quote_if_needed(empty_bindings)
-            )
-        if empty_mappings:
-            lines.append(
-                CMD_CAN_MAPPINGS
-                + PROFILE_EXPORT_PATH_SEPARATOR
-                + CMD_LOAD
-                + PROFILE_EXPORT_PATH_SEPARATOR
-                + self._quote_if_needed(empty_mappings)
-            )
         lines.extend(self._profile_export_global_lines())
         for profile_name in sorted(profiles.keys()):
             profile_token = self._quote_if_needed(profile_name)
@@ -11794,7 +10463,6 @@ class BridgeCli:
                 + profile_token
             )
             lines.append(PROFILE_EXPORT_CMD_PROFILE + PROFILE_EXPORT_PATH_SEPARATOR + profile_token)
-            lines.append(CMD_TESTS + PROFILE_EXPORT_PATH_SEPARATOR + CMD_CLEAR)
             lines.extend(self._profile_export_device_lines(profile_name))
             lines.extend(self._profile_export_group_lines(profile_name))
             lines.extend(self._profile_export_tests_lines(profile_name))
@@ -11807,7 +10475,7 @@ class BridgeCli:
                 + PROFILE_EXPORT_PATH_SEPARATOR
                 + self._quote_if_needed(default_profile)
             )
-        lines.append(CMD_VALIDATE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_ALL)
+        lines.append(CMD_VALIDATE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_VALIDATE_ALL)
         lines.append(CMD_SAVE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_SOURCES)
         lines.append(PROFILE_EXPORT_CMD_EXIT)
         return lines
@@ -12601,13 +11269,9 @@ class BridgeCli:
             KEY_BRIDGE_GENERATED_AT: config.get(KEY_BRIDGE_GENERATED_AT),
         }
         by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
-        ordered[KEY_BRIDGE_BY_PROFILE] = (
-            dict(by_profile) if isinstance(by_profile, dict) else {}
-        )
-        if include_devices:
-            devices = config.get(KEY_DEVICES)
-            if isinstance(devices, list):
-                ordered[KEY_DEVICES] = deepcopy(devices)
+        ordered_by_profile = dict(by_profile) if isinstance(by_profile, dict) else {}
+        ordered_by_profile.pop(DEFAULT_PROFILE_LOCAL, None)
+        ordered[KEY_BRIDGE_BY_PROFILE] = ordered_by_profile
         return ordered
 
     def _local_device_exists(self, name: str) -> bool:
@@ -12615,6 +11279,7 @@ class BridgeCli:
         NAME
             _local_device_exists - Check if a device entry exists in local config.
         """
+        name = self._normalize_device_label_input(name)
         if self._local_root_payload is not None:
             profile = self._active_profile_name()
             if profile:
@@ -12672,23 +11337,23 @@ class BridgeCli:
             _build_unified_payload - Build a bringup_system.json payload from local state.
         """
         if not self._local_config:
-            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return None
-        self._sync_store_from_local()
-        payload: Dict[str, object] = deepcopy(self._store.root_payload()) if self._store else {}
-        if not payload or KEY_PROFILES not in payload:
-            print(MESSAGE_ERR_UNIFIED_NO_PROFILES)
+        self._sync_store_tests()
+        payload: Dict[str, object] = deepcopy(self._local_root_payload) if self._local_root_payload else {}
+        if "profiles" not in payload or not self._local_root_payload:
+            print("ERROR: No profiles loaded. Merge a bringup_system.json before saving unified config.")
             return None
-        if KEY_DIAGRAM not in payload:
-            payload[KEY_DIAGRAM] = {KEY_PROFILES: {}}
-        payload.setdefault(KEY_DEFAULT_PROFILE, get_default_profile())
-        payload[KEY_SCHEMA_VERSION] = PROFILE_SCHEMA_VERSION
-        payload[KEY_BRIDGE_CONFIG] = self._ordered_bridge_config(
+        if "diagram" not in payload:
+            payload["diagram"] = {"profiles": {}}
+        payload.setdefault("default_profile", "robot")
+        payload["schema_version"] = PROFILE_SCHEMA_VERSION
+        payload["bridgeConfig"] = self._ordered_bridge_config(
             self._local_config, include_devices=False
         )
-        if self._profiles_dirty or KEY_DATA_VERSION not in payload:
-            payload[KEY_DATA_VERSION] = timestamp_version()
-        payload[KEY_DATA_HASH] = compute_profiles_hash(payload)
+        if self._profiles_dirty or "data_version" not in payload:
+            payload["data_version"] = timestamp_version()
+        payload["data_hash"] = compute_profiles_hash(payload)
         return payload
 
     def _save_unified_config(
@@ -12734,14 +11399,6 @@ class BridgeCli:
             True,
         )
         print(f"Wrote unified config to {path}.")
-        print(
-            MESSAGE_ACTION_SUMMARY.format(
-                action=ACTION_SAVE,
-                scope=CMD_SAVE_UNIFIED,
-                persistence=PERSISTENCE_DISK,
-                source=self._active_source_label(),
-            )
-        )
         return StatusResult(code=SS__CONFIG__SAVED)
 
     def _save_local_config(
@@ -12759,7 +11416,7 @@ class BridgeCli:
         if validation_ok is None:
             validation_ok = True
         if not self._local_config:
-            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         self._sync_store_tests()
         try:
@@ -12792,14 +11449,6 @@ class BridgeCli:
             print(f"Wrote groups config to {path}.")
         else:
             print(f"Wrote bridgeConfig to {path}.")
-        print(
-            MESSAGE_ACTION_SUMMARY.format(
-                action=ACTION_SAVE,
-                scope=CMD_LOCAL_CONFIG,
-                persistence=PERSISTENCE_DISK,
-                source=self._active_source_label(),
-            )
-        )
         return StatusResult(code=SS__CONFIG__SAVED)
 
     def _save_runtime_config(self, path: str, *, force: bool = False) -> StatusResult:
@@ -12847,14 +11496,6 @@ class BridgeCli:
             True,
         )
         print(MESSAGE_SAVE_CONFIG_SAVED.format(path=path))
-        print(
-            MESSAGE_ACTION_SUMMARY.format(
-                action=ACTION_SAVE,
-                scope=CMD_CONFIG,
-                persistence=PERSISTENCE_DISK,
-                source=self._active_source_label(),
-            )
-        )
         return StatusResult(code=SS__CONFIG__SAVED)
 
     def _load_sources(self) -> StatusResult:
@@ -12883,18 +11524,8 @@ class BridgeCli:
                 ok = False
                 continue
             print(MESSAGE_SOURCES_LOAD_OK.format(name=name, path=path))
-        self._sync_local_from_store()
         if ok:
             print(MESSAGE_SOURCES_DONE)
-            print(MESSAGE_RELOAD_SOURCES_DONE.format(source=self._active_source_label()))
-            print(
-                MESSAGE_ACTION_SUMMARY.format(
-                    action=ACTION_RELOAD,
-                    scope=CMD_SOURCES,
-                    persistence=PERSISTENCE_MEMORY,
-                    source=self._active_source_label(),
-                )
-            )
             return StatusResult(code=SS__NORMAL)
         return StatusResult(code=SS__EXECUTOR__FAILED)
 
@@ -12989,14 +11620,6 @@ class BridgeCli:
             print(MESSAGE_SOURCES_SAVE_OK.format(name=name, path=path))
         if ok:
             print(MESSAGE_SOURCES_DONE)
-            print(
-                MESSAGE_ACTION_SUMMARY.format(
-                    action=ACTION_SAVE,
-                    scope=CMD_SOURCES,
-                    persistence=PERSISTENCE_DISK,
-                    source=self._active_source_label(),
-                )
-            )
             return StatusResult(code=SS__NORMAL)
         return StatusResult(code=SS__EXECUTOR__FAILED)
 

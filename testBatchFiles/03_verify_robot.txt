@@ -1,0 +1,7 @@
+echo on
+connect
+show sources
+show devices robot --json --pretty
+show runtime-state robot --json --pretty
+end
+

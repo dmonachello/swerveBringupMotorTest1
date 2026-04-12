@@ -1,0 +1,6 @@
+echo on
+connect
+configure terminal
+config push data\bringup_system.json --activate home_042126V1
+end
+

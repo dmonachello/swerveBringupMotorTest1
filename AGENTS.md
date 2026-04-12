@@ -71,6 +71,12 @@ Purpose: Keep spec reviews actionable with consistent inline markers.
 - Place markers inline near the relevant section (not at the end).
 - Remove `SID_QUESTION` lines once resolved in a follow-up edit.
 
+Testing Notes Workflow (Global)
+Purpose: Keep multiple test passes clean while preserving prior results.
+- Add new notes under `SID_COMMENT:` during a fresh pass.
+- After each pass, replace `SID_COMMENT:` with `TESTING_RESULTS:` to archive the run.
+- Leave `TESTING_RESULTS:` blocks in place; only `SID_COMMENT:` should be reused for the next pass.
+
 What to do first for any task that touches the Java-Python interface
 1) Inventory NetworkTables usage:
    - List every path written and read on the Java side.

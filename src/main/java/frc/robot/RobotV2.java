@@ -107,8 +107,6 @@ public class RobotV2 extends TimedRobot {
   public void robotInit() {
     // Load profile before anything instantiates devices.
     BringupUtil.applyProfileFromArgs();
-    String testsOverride = BringupUtil.extractBringupTestsFromCommand();
-    BringupTestRegistry.setOverrideTestsPath(testsOverride);
     core = new BringupCore();
     core.setRunTestBindingLabel(bindings.describeBinding(COMMAND_RUN_TEST));
     diagnostics = new DiagnosticsReporter(core, canHealth, diagTable);
