@@ -1,0 +1,36 @@
+echo on
+connect
+configure terminal
+profile create home_042126V1
+profile home_042126V1
+
+device "SPARKMAX/NEO 25"
+set manufacturer 5
+set deviceType 2
+set id 25
+set model "REV NEO"
+set type motor
+set interface CAN
+exit
+
+test create neo25_button
+type button
+device add "SPARKMAX/NEO 25"
+inputSource controller0.A
+duty 0.25
+termination time 2.0
+show
+exit
+
+test create all_motors
+type composite
+device add "SPARKMAX/NEO 25"
+inputSource controller0.X
+duty 0.25
+termination time 2.0
+show
+exit
+
+save unified-config data\bringup_system.json --force
+end
+

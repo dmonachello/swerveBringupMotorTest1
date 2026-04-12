@@ -6,19 +6,12 @@ SYNOPSIS
     python -m tools.bringup_test_wizard.gen_bringup_tests
 
 DESCRIPTION
-    Prompts for a test definition (composite or joystick) and appends it to
-    bringup_tests.json under the active test set.
+    Legacy wizard that wrote bringup_tests.json. This workflow is disabled.
+    Tests now live in bringup_system.json under bridgeConfig.byProfile.
 
 SIDE EFFECTS
     Reads and writes JSON files and prompts on stdin.
 """
-
-from pathlib import Path
-
-from tools.common.paths import tests_deploy_path
-from tools.common.tests_io import load_tests_payload, write_tests_payload
-
-TESTS_FILE = tests_deploy_path()
 
 
 def _prompt(text, default=None):
@@ -264,29 +257,9 @@ def main():
     NAME
         main - CLI entry point for the test generator.
     """
-    print("Bringup Test Wizard")
-    payload = _ensure_test_sets(_load_tests())
-    set_name = payload.get("default_test_set") or "default"
-    test_sets = payload.get("test_sets", {})
-    if not isinstance(test_sets, dict):
-        test_sets = {}
-    tests = test_sets.get(set_name, [])
-    if not isinstance(tests, list):
-        tests = []
-    test_type = _pick_type()
-    if test_type == "composite":
-        entry = _build_composite()
-    elif test_type == "joystick":
-        entry = _build_joystick()
-    else:
-        print("Unknown test type.")
-        return 1
-    tests.append(entry)
-    test_sets[set_name] = tests
-    payload["test_sets"] = test_sets
-    _save_tests(payload)
-    print(f"Wrote {TESTS_FILE}")
-    return 0
+    print("ERROR: bringup_tests.json is legacy and not supported.")
+    print("Use the CLI test authoring commands and `save unified-config` instead.")
+    return 2
 
 
 if __name__ == "__main__":

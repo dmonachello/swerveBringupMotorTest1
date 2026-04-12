@@ -1,16 +1,12 @@
 {
   "schema_version": 4,
+  "data_version": "2026-04-12_154709",
+  "data_hash": "861687e134f326199ed307da8a2eeb2fe57c549bd751c96fd556596f4a73677b",
+  "default_profile": "home_042126V1",
   "profiles": {
-    "home_031226": {
+    "home_042126V1": {
       "devices": [
-        "SPARKMAX/NEO 25",
-        "lmt1",
-        "SPARKMAX/NEO550 7",
-        "FALCON 9",
-        "candle",
-        "PDH",
-        "roboRIO",
-        "lmt2"
+        "SPARKMAX/NEO 25"
       ]
     }
   },
@@ -22,78 +18,12 @@
       "id": 25,
       "model": "REV NEO",
       "type": "motor",
-      "interface": "CAN",
-      "attachments": [
-        "lmt1"
-      ]
-    },
-    {
-      "label": "lmt1",
-      "type": "limitSwitch",
-      "dio": 0,
-      "invert": true,
-      "interface": "DIO"
-    },
-    {
-      "label": "SPARKMAX/NEO550 7",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 7,
-      "model": "REV NEO 550",
-      "type": "motor",
-      "interface": "CAN",
-      "attachments": [
-        "lmt1"
-      ]
-    },
-    {
-      "label": "FALCON 9",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 9,
-      "model": "CTRE Falcon 500",
-      "type": "motor",
-      "interface": "CAN",
-      "attachments": [
-        "lmt2"
-      ]
-    },
-    {
-      "label": "candle",
-      "manufacturer": 4,
-      "deviceType": 10,
-      "id": 2,
-      "terminator": false,
       "interface": "CAN"
-    },
-    {
-      "label": "PDH",
-      "manufacturer": 5,
-      "deviceType": 8,
-      "id": 1,
-      "terminator": true,
-      "interface": "CAN"
-    },
-    {
-      "label": "roboRIO",
-      "manufacturer": 0,
-      "deviceType": 1,
-      "id": 0,
-      "type": "roborio",
-      "interface": "CAN",
-      "terminator": true
-    },
-    {
-      "label": "lmt2",
-      "interface": "DIO",
-      "dio": 2,
-      "invert": false,
-      "type": "limitSwitch"
     }
   ],
   "diagram": {
     "profiles": {
-      "home_031226": {
+      "home_042126V1": {
         "busOffsets": [
           0.0
         ],
@@ -103,10 +33,10 @@
           40.0
         ],
         "busRights": [
-          1252.125
+          275.0
         ],
         "busConnectors": [],
-        "panY": -0.0,
+        "panY": -2.0,
         "zoom": 2.0,
         "dioFreeYMode": "rail",
         "nodes": [
@@ -118,113 +48,8 @@
             "id": 25,
             "bus": 0,
             "row": 0,
-            "x": 815.125,
-            "freeY": -66.56250000000001,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 2,
-            "category": "devices",
-            "label": "lmt1",
-            "id": -1,
-            "bus": 0,
-            "row": 0,
-            "x": 661.125,
-            "freeY": -271.75,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 3,
-            "category": "neo550s",
-            "label": "SPARKMAX/NEO550 7",
-            "id": 7,
-            "bus": 0,
-            "row": 0,
-            "x": 507.625,
-            "freeY": -81.25,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 4,
-            "category": "falcons",
-            "label": "FALCON 9",
-            "id": 9,
-            "bus": 0,
-            "row": 1,
-            "x": 286.12499999999943,
-            "freeY": 73.25,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 5,
-            "category": "candles",
-            "label": "candle",
-            "id": 2,
-            "bus": 0,
-            "row": 0,
-            "x": 977.625,
-            "freeY": -80.25,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 6,
-            "category": "pdh",
-            "label": "PDH",
-            "id": 1,
-            "bus": 0,
-            "row": 0,
-            "x": 1132.125,
-            "freeY": -69.25,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 7,
-            "category": "roborio",
-            "label": "roboRIO",
-            "id": 0,
-            "bus": 0,
-            "row": 0,
-            "x": 257.45833333333326,
-            "freeY": -85.25,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 8,
-            "category": "devices",
-            "label": "lmt2",
-            "id": -1,
-            "bus": 0,
-            "row": 0,
-            "x": 107.45833333333324,
-            "freeY": -46.75,
+            "x": 125.5,
+            "freeY": -55.25,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -234,41 +59,16 @@
         "ethernetLinks": [],
         "canLinks": [],
         "deviceLinks": [],
-        "attachmentLinks": [
-          {
-            "device": 4,
-            "attachment": 8
-          },
-          {
-            "device": 3,
-            "attachment": 2
-          },
-          {
-            "device": 1,
-            "attachment": 2
-          }
-        ],
-        "dioLinks": [
-          {
-            "roborio": 7,
-            "device": 2
-          },
-          {
-            "roborio": 7,
-            "device": 8
-          }
-        ]
+        "attachmentLinks": [],
+        "dioLinks": []
       }
     }
   },
-  "data_version": "2026-04-07_154555",
-  "data_hash": "5b059334a98110e793e577418d0d0a544693e8420da58ec21478496d21ee7ced",
-  "default_profile": "home_031226",
   "bridgeConfig": {
     "schemaVersion": 2,
     "generatedAt": null,
     "byProfile": {
-      "home_031226": {
+      "home_042126V1": {
         "groups": [],
         "selectedDevice": {
           "device": "",
@@ -279,168 +79,34 @@
           "test_sets": {
             "default": [
               {
-                "name": "Rotation only (internal)",
+                "name": "neo25_button",
                 "enabled": false,
                 "motorLabels": [
                   "SPARKMAX/NEO 25"
                 ],
                 "type": "composite",
-                "duty": 0.2,
-                "rotation": {
-                  "limitRot": 15.0,
-                  "encoderKey": "internal",
-                  "encoderMotorIndex": 0
-                }
-              },
-              {
-                "name": "Deadband sweep (internal)",
-                "enabled": false,
-                "motorLabels": [
-                  "SPARKMAX/NEO 25"
-                ],
-                "type": "composite",
-                "duty": 0.2,
-                "time": {
-                  "timeoutSec": 5.0,
-                  "onTimeout": "pass"
-                }
-              },
-              {
-                "name": "Rotation + Time",
-                "enabled": false,
-                "motorLabels": [
-                  "FALCON 9"
-                ],
-                "type": "composite",
-                "duty": 0.2,
-                "rotation": {
-                  "limitRot": 10.0,
-                  "encoderKey": "internal",
-                  "encoderMotorIndex": 0
-                },
+                "inputSource": "controller0.A",
+                "duty": 0.25,
                 "time": {
                   "timeoutSec": 2.0,
                   "onTimeout": "fail"
                 }
               },
               {
-                "name": "Time only",
-                "enabled": false,
-                "motorLabels": [
-                  "SPARKMAX/NEO550 7"
-                ],
-                "type": "composite",
-                "duty": 0.3,
-                "time": {
-                  "timeoutSec": 1.5,
-                  "onTimeout": "pass"
-                }
-              },
-              {
-                "name": "Nudge (0.2 for 0.5s)",
+                "name": "all_motors",
                 "enabled": false,
                 "motorLabels": [
                   "SPARKMAX/NEO 25"
                 ],
                 "type": "composite",
+                "inputSource": "controller0.X",
                 "duty": 0.2,
-                "time": {
-                  "timeoutSec": 0.5,
-                  "onTimeout": "pass"
-                }
-              },
-              {
-                "name": "Limit switch only",
-                "enabled": false,
-                "motorLabels": [
-                  "SPARKMAX/NEO550 7"
-                ],
-                "type": "composite",
-                "duty": 0.2,
-                "limitSwitch": {
-                  "enabled": true,
-                  "onHit": "pass",
-                  "id": "SPARKMAX/NEO550 7 limit fwd"
-                }
-              },
-              {
-                "name": "Hold to run",
-                "enabled": false,
-                "motorLabels": [
-                  "FALCON 9"
-                ],
-                "type": "composite",
-                "duty": 0.2,
-                "hold": {
-                  "enabled": true,
-                  "onRelease": "pass"
-                }
-              },
-              {
-                "name": "Rotation + Time + Limit",
-                "enabled": false,
-                "motorLabels": [
-                  "SPARKMAX/NEO550 7",
-                  "SPARKMAX/NEO 25",
-                  "FALCON 9"
-                ],
-                "type": "composite",
-                "duty": 0.2,
-                "rotation": {
-                  "limitRot": 10.0,
-                  "encoderKey": "internal",
-                  "encoderMotorIndex": 0
-                },
                 "time": {
                   "timeoutSec": 2.0,
                   "onTimeout": "fail"
-                },
-                "limitSwitch": {
-                  "enabled": true,
-                  "onHit": "pass",
-                  "id": "SPARKMAX/NEO550 7 limit fwd"
                 }
-              },
-              {
-                "name": "All checks",
-                "enabled": false,
-                "motorLabels": [
-                  "SPARKMAX/NEO550 7"
-                ],
-                "type": "composite",
-                "duty": 0.2,
-                "rotation": {
-                  "limitRot": 8.0,
-                  "encoderKey": "internal",
-                  "encoderMotorIndex": 0
-                },
-                "time": {
-                  "timeoutSec": 3.0,
-                  "onTimeout": "pass"
-                },
-                "hold": {
-                  "enabled": true,
-                  "onRelease": "pass"
-                },
-                "limitSwitch": {
-                  "enabled": true,
-                  "onHit": "pass",
-                  "id": "SPARKMAX/NEO550 7 limit fwd"
-                }
-              },
-              {
-                "name": "Joystick motor (controller0.leftY)",
-                "enabled": false,
-                "motorLabels": [
-                  "SPARKMAX/NEO 25",
-                  "FALCON 9"
-                ],
-                "type": "joystick",
-                "inputSource": "controller0.leftY",
-                "deadband": 0.12
               }
-            ],
-            "mini": []
+            ]
           }
         }
       }

@@ -14,6 +14,7 @@ DESCRIPTION
 """
 
 from typing import Dict, Optional
+import time
 
 from tools.can_nt.bridge_cli_parser import CommandAst, SPEC
 CMD_ALL = "all"
@@ -43,6 +44,8 @@ from tools.can_nt.status import (
     format_status_message,
 )
 from tools.can_nt.bridge_ops import (
+    add_all_devices,
+    add_next_motor,
     connect,
     disconnect,
     export_runtime_groups,
@@ -118,6 +121,8 @@ AST_EXEC_SPEC = {
     "fmt_clear_device": "Cleared device %s %s.",
     "label_group_create": "group create",
     "label_group_delete": "group delete",
+    "label_add_next": "add next",
+    "label_add_all": "add all",
     "label_selected_device": "selected-device",
     "label_selected_mode": "selected-mode",
     "label_add_device": "add device",
@@ -180,6 +185,8 @@ class BridgeCliAstExecutor:
             SPEC.kind_exec_connect: self._ast_exec_connect,
             SPEC.kind_exec_disconnect: self._ast_exec_disconnect,
             SPEC.kind_exec_configure_terminal: self._ast_exec_configure_terminal,
+            SPEC.kind_exec_add_next: self._ast_exec_add_next,
+            SPEC.kind_exec_add_all: self._ast_exec_add_all,
             SPEC.kind_show: self._ast_show,
             SPEC.kind_config_group: self._ast_config_group,
             SPEC.kind_config_no_group: self._ast_config_no_group,
@@ -238,18 +245,27 @@ class BridgeCliAstExecutor:
         return StatusResult(code=SS__NORMAL)
 
     def _ast_exec_connect(self, _ast: CommandAst) -> Optional[StatusResult]:
+        self._cli._proto_mark_connect_attempt()
         if not connect(self._cli._session):
+            self._cli._proto_mark_connect_failure()
             print(AST_EXEC_SPEC["msg_err_connect"])
             return StatusResult(code=SS__NETWORK__CONNECT_FAILED, message=AST_EXEC_SPEC["msg_err_connect"])
         ok = self._cli._session.ensure_handshake()
         if not ok:
+            self._cli._proto_mark_connect_failure()
             print(AST_EXEC_SPEC["msg_err_handshake"])
             return StatusResult(code=SS__NETWORK__HANDSHAKE_FAILED, message=AST_EXEC_SPEC["msg_err_handshake"])
+        now = time.time()
+        self._cli._proto_mark_connected(now=now)
+        self._cli._proto_mark_handshake(now=now)
+        self._cli._start_keepalive()
         print(AST_EXEC_SPEC["msg_connected"])
         return StatusResult(code=SS__NORMAL)
 
     def _ast_exec_disconnect(self, _ast: CommandAst) -> Optional[StatusResult]:
+        self._cli._stop_keepalive()
         disconnect(self._cli._session)
+        self._cli._proto_mark_disconnected(now=time.time())
         print(AST_EXEC_SPEC["msg_disconnected"])
         return StatusResult(code=SS__NORMAL)
 
@@ -258,6 +274,26 @@ class BridgeCliAstExecutor:
         mode_cls = type(self._cli._modes[SPEC.count_zero])
         self._cli._modes.append(mode_cls(SPEC.modes[SPEC.idx_config]))
         return StatusResult(code=SS__NORMAL)
+
+    def _ast_exec_add_next(self, _ast: CommandAst) -> Optional[int]:
+        if not self._cli._session.is_connected():
+            print(AST_EXEC_SPEC["msg_err_robot_unavailable"])
+            return AST_EXEC_SPEC["ret_err"]
+        seq = add_next_motor(self._cli._session)
+        event = self._cli._wait_for_seq(seq)
+        if self._cli._event_failed(event, AST_EXEC_SPEC["label_add_next"]):
+            return AST_EXEC_SPEC["ret_err"]
+        return None
+
+    def _ast_exec_add_all(self, _ast: CommandAst) -> Optional[int]:
+        if not self._cli._session.is_connected():
+            print(AST_EXEC_SPEC["msg_err_robot_unavailable"])
+            return AST_EXEC_SPEC["ret_err"]
+        seq = add_all_devices(self._cli._session)
+        event = self._cli._wait_for_seq(seq)
+        if self._cli._event_failed(event, AST_EXEC_SPEC["label_add_all"]):
+            return AST_EXEC_SPEC["ret_err"]
+        return None
 
     def _ast_show(self, ast: CommandAst) -> Optional[int]:
         return self._handle_show_ast(ast)
@@ -706,6 +742,8 @@ class BridgeCliAstExecutor:
             SPEC.show_target_device,
                 SPEC.show_target_device_group,
         ):
+            source = SPEC.show_source_local
+        if target == SPEC.show_target_sources:
             source = SPEC.show_source_local
         if target == SHOW_TARGET_VERSION and not source:
             source = SPEC.show_source_local

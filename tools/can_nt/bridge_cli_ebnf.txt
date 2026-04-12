@@ -23,6 +23,7 @@ exec           = show_exec
                | "cfg"
                | "connect"
                | "disconnect"
+               | "add" ws ("next" | "all")
                | "profile" ws "device" ws "show-all" ws name
                | "prof" ws "device" ws "show-all" ws name
                | diagnose ;
@@ -113,9 +114,11 @@ config         = "group" ws name
                | ("validate" | "val") ws "script" ws path
                | "recover" ws ("list" | "last-good" | "from" ws name)
                | "profiles" ws "init"
+               | "profiles" ws "activate" ws name
                | "profiles" ws "export" ws path
                | "profiles" ws "push" ws path [ ws "--activate" ws name ]
                | "config" ws "push" ws path [ ws "--activate" ws name ]
+               | "add" ws ("next" | "all")
                | ("show" | "ls") ws show_target [ ws show_flags ]
                | diagnose
                | "bindings" [ ws bindings_args ]

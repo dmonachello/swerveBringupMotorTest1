@@ -1,0 +1,53 @@
+{
+  "motors": [
+    {
+      "model": "REV NEO",
+      "nominalVoltage": 12.0,
+      "freeCurrentA": 1.8,
+      "stallCurrentA": 105.0,
+      "source": "REV NEO (v1.1) specs"
+    },
+    {
+      "model": "REV NEO 2.0",
+      "nominalVoltage": 12.0,
+      "freeCurrentA": 1.8,
+      "stallCurrentA": 150.0,
+      "source": "REV NEO 2.0 specs"
+    },
+    {
+      "model": "REV NEO 550",
+      "nominalVoltage": 12.0,
+      "freeCurrentA": 1.4,
+      "stallCurrentA": 100.0,
+      "source": "REV NEO 550 specs"
+    },
+    {
+      "model": "REV NEO Vortex",
+      "nominalVoltage": 12.0,
+      "freeCurrentA": 3.6,
+      "stallCurrentA": 211.0,
+      "source": "REV NEO Vortex specs"
+    },
+    {
+      "model": "CTRE Falcon 500",
+      "nominalVoltage": 12.0,
+      "freeCurrentA": 1.5,
+      "stallCurrentA": 257.0,
+      "source": "CTRE Falcon 500 specs"
+    },
+    {
+      "model": "CTRE Kraken X60",
+      "nominalVoltage": 12.0,
+      "freeCurrentA": 2.0,
+      "stallCurrentA": 366.0,
+      "source": "WCP Kraken X60 specs"
+    },
+    {
+      "model": "CTRE Kraken X44",
+      "nominalVoltage": 12.0,
+      "freeCurrentA": 1.4,
+      "stallCurrentA": 275.0,
+      "source": "WCP Kraken X44 specs"
+    }
+  ]
+}

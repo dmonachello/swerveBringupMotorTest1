@@ -6,10 +6,12 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.livewindow.LiveWindow;
 import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
 import frc.robot.input.BindingsManager;
 import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.BringupHealthFormat;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
 import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
@@ -17,7 +19,13 @@ import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 import frc.robot.tests.BringupTestRegistry;
 import frc.robot.ui.TcpUiServer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.time.DateTimeException;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -82,6 +90,9 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_BUILD_LABEL = "label";
   private static final String JSON_KEY_BUILD_VALUE = "value";
   private static final String CMD_SHOW_VERSION = "showVersion";
+  private static final String CMD_SHOW_TESTS = "showTests";
+  private static final String CMD_SHOW_SOURCES = "showSources";
+  private static final String CMD_PROFILE_ACTIVATE = "profileActivate";
   private static final int INDEX_START = 0;
   private static final String JSON_KEY_OK = "ok";
   private static final String JSON_KEY_MESSAGE = "message";
@@ -92,10 +103,31 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_OVERALL_OK = "overallOk";
   private static final String JSON_KEY_ACTIVE_PROFILE = "activeProfile";
   private static final String JSON_KEY_ACTIVATED = "activated";
+  private static final String JSON_KEY_EXPECTED_HASH = "expectedHash";
+  private static final String JSON_KEY_COMPUTED_HASH = "computedHash";
+  private static final String JSON_KEY_EXPECTED_BYTES = "expectedBytes";
+  private static final String JSON_KEY_COMPUTED_BYTES = "computedBytes";
   private static final String ARG_REGISTRY_JSON = "registryJson";
   private static final String ARG_REGISTRY_HASH = "registryHash";
   private static final String ARG_REGISTRY_BYTES = "registryBytes";
   private static final String ARG_ACTIVATE_PROFILE = "activateProfile";
+  private static final String JSON_KEY_TESTS_ACTIVE_SET = "activeSet";
+  private static final String JSON_KEY_TESTS_DEFAULT_SET = "defaultSet";
+  private static final String JSON_KEY_TESTS_USING_SETS = "usingTestSets";
+  private static final String JSON_KEY_TESTS_TOTAL_COUNT = "totalCount";
+  private static final String JSON_KEY_TESTS_ENABLED_COUNT = "enabledCount";
+  private static final String JSON_KEY_TESTS_ROWS = "rows";
+  private static final String JSON_KEY_TESTS_INDEX = "index";
+  private static final String JSON_KEY_TESTS_NAME = "name";
+  private static final String JSON_KEY_TESTS_ENABLED = "enabled";
+  private static final String JSON_KEY_TESTS_SELECTED = "selected";
+  private static final String JSON_KEY_TESTS_TYPE = "type";
+  private static final String JSON_KEY_TESTS_STATUS = "status";
+  private static final String JSON_KEY_TESTS_MOTORS = "motors";
+  private static final String JSON_KEY_SOURCES = "sources";
+  private static final String JSON_KEY_SOURCES_NAME = "name";
+  private static final String JSON_KEY_SOURCES_PATH = "path";
+  private static final String JSON_KEY_SOURCES_EXISTS = "exists";
   private static final String CMD_PROFILES_APPLY = "profilesApply";
   private static final String TEXT_SELECTED_DEVICE_PREFIX = "Selected device: ";
   private static final String TEXT_PAREN_OPEN = " (";
@@ -107,6 +139,9 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_VENDOR_SEP = " ";
   private static final String TEXT_TYPE_SEP = " ";
   private static final String TEXT_ID_PREFIX = " id=";
+  private static final String TEXT_LABEL_PREFIX = "label=";
+  private static final String TEXT_VENDOR_PREFIX = " vendor=";
+  private static final String TEXT_TYPE_PREFIX = " type=";
   private static final String TEXT_DEVICE_NOT_FOUND = "Device: (not found)";
   private static final String TEXT_DEVICES_NONE = "Devices: (none)";
   private static final String TEXT_DEVICES_HEADER = "Devices:\n";
@@ -115,6 +150,21 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_BUILD_HEADER = "Build:";
   private static final String TEXT_TESTS_INFO_PROFILE = "Profile: ";
   private static final String TEXT_TESTS_INFO_SOURCE = "Source: ";
+  private static final String TEXT_SOURCES_HEADER = "=== Sources ===";
+  private static final String TEXT_SOURCES_FOOTER = "===============";
+  private static final String TEXT_SOURCES_ENTRY = "  %s: %s (exists=%s)";
+  private static final String TEXT_REMOTE_CMD_DETAIL_FMT = "Remote command: %s (seq=%d, client=%s)";
+  private static final String TEXT_REMOTE_CMD_TIME_FMT = "[%s] ";
+  private static final String TEXT_TIME_PATTERN = "yyyy-MM-dd HH:mm:ss.SSS";
+  private static final DateTimeFormatter TEXT_TIME_FORMATTER =
+      DateTimeFormatter.ofPattern(TEXT_TIME_PATTERN);
+  private static final ZoneId TEXT_TIME_ZONE = ZoneId.systemDefault();
+  private static final String ARG_TIMEZONE_ID = "timezoneId";
+  private static final String ARG_TIMEZONE_OFFSET_MIN = "timezoneOffsetMin";
+  private static final int SECONDS_PER_MINUTE = 60;
+  private static final String ARG_PROFILE_NAME = "name";
+  private static final String TEXT_PROFILE_ACTIVATE_OK = "Profile activated: %s";
+  private static final String TEXT_PROFILE_ACTIVATE_FAIL = "Profile activation failed.";
   private static final String TEXT_PROFILES_APPLY_OK = "Profiles applied.";
   private static final String TEXT_PROFILES_APPLY_FAILED = "Profiles apply failed.";
   private static final String TEXT_PROFILES_APPLY_NOT_SUPPORTED = "profilesApply only supported over TCP.";
@@ -124,12 +174,23 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_PROFILES_APPLY_HASH_MISMATCH = "registryHash mismatch.";
   private static final String TEXT_PROFILES_APPLY_HASH_UNAVAILABLE = "registryHash unavailable.";
   private static final String TEXT_PROFILES_APPLY_BYTES_MISMATCH = "registryBytes mismatch.";
+  private static final String TEXT_PROFILES_APPLY_HASH_DETAIL =
+      " expectedHash=%s computedHash=%s expectedBytes=%d computedBytes=%d";
   private static final String TEXT_PROFILES_APPLY_DEVICES = " devices=";
   private static final String TEXT_PROFILES_APPLY_PROFILES = " profiles=";
   private static final String TEXT_PROFILES_APPLY_ACTIVE = " active=";
   private static final String JSON_KEY_DEVICES = "devices";
   private static final Gson GSON = new Gson();
   private static final double DEADBAND = BringupUtil.DEADBAND;
+  private static final String FILE_BINDINGS = "bringup_bindings.json";
+  private static final String FILE_CAN_MAPPINGS = "can_mappings.json";
+  private static final String SOURCE_NAME_PROFILES = "profiles";
+  private static final String SOURCE_NAME_BINDINGS = "bindings";
+  private static final String SOURCE_NAME_CAN_MAPPINGS = "canMappings";
+  private static final String SOURCE_NAME_TESTS = "tests";
+  private static final String DEV_PATH_SRC = "src";
+  private static final String DEV_PATH_MAIN = "main";
+  private static final String DEV_PATH_DEPLOY = "deploy";
 
   private BringupCore core;
   private DiagnosticsReporter diagnostics;
@@ -171,6 +232,7 @@ public class BridgeUiCommandHandler {
   private double uiFixedSpeed = Double.NaN;
   private double lastNeoSpeed = 0.0;
   private double lastKrakenSpeed = 0.0;
+  private ZoneId remoteCommandZone = null;
 
   /**
    * NAME
@@ -348,8 +410,8 @@ public class BridgeUiCommandHandler {
         lastTcpSeqByClient.put(cmdClient, command.seq);
       }
       if (!"uiPing".equals(cmdName) && !"uiPollLog".equals(cmdName)) {
-        String cmdInfo =
-            "Remote command: " + cmdName + " (seq=" + command.seq + ", client=" + cmdClient + ")";
+        String cmdInfo = formatRemoteCommandTimestamp()
+            + String.format(TEXT_REMOTE_CMD_DETAIL_FMT, cmdName, command.seq, cmdClient);
         BringupPrinter.enqueue(cmdInfo);
       }
       lastTcpSeq = command.seq;
@@ -382,6 +444,55 @@ public class BridgeUiCommandHandler {
       this.seq = seq;
       this.response = response;
     }
+  }
+
+  /**
+   * NAME
+   *   formatRemoteCommandTimestamp - Build the timestamp prefix for remote command logs.
+   *
+   * RETURNS
+   *   Prefix including brackets and trailing space for log lines.
+   */
+  private String formatRemoteCommandTimestamp() {
+    ZoneId zone = remoteCommandZone != null ? remoteCommandZone : TEXT_TIME_ZONE;
+    String timestamp = LocalDateTime.ofInstant(
+        Instant.ofEpochMilli(System.currentTimeMillis()),
+        zone).format(TEXT_TIME_FORMATTER);
+    return String.format(TEXT_REMOTE_CMD_TIME_FMT, timestamp);
+  }
+
+  /**
+   * NAME
+   *   resolveRemoteCommandZone - Resolve a ZoneId from uiHandshake args.
+   *
+   * PARAMETERS
+   *   args - Parsed uiHandshake args JSON.
+   *
+   * RETURNS
+   *   ZoneId when provided, otherwise null.
+   */
+  private ZoneId resolveRemoteCommandZone(JsonObject args) {
+    if (args == null) {
+      return null;
+    }
+    String zoneId = parseUiArgString(args, ARG_TIMEZONE_ID);
+    if (zoneId != null && !zoneId.isBlank()) {
+      try {
+        return ZoneId.of(zoneId);
+      } catch (DateTimeException ex) {
+        // Fall through to offset parsing.
+      }
+    }
+    Long offsetMin = parseUiArgLong(args, ARG_TIMEZONE_OFFSET_MIN);
+    if (offsetMin != null) {
+      try {
+        long seconds = offsetMin * SECONDS_PER_MINUTE;
+        return ZoneOffset.ofTotalSeconds(Math.toIntExact(seconds));
+      } catch (DateTimeException | ArithmeticException ex) {
+        return null;
+      }
+    }
+    return null;
   }
 
   /**
@@ -576,7 +687,7 @@ public class BridgeUiCommandHandler {
         result.outText = "";
         break;
       case "selectProfile": {
-        String profileName = parseUiArgString(args, "name");
+        String profileName = parseUiArgString(args, ARG_PROFILE_NAME);
         if (profileName == null || profileName.isBlank()) {
           result.ok = false;
           result.message = "selectProfile requires args.name.";
@@ -587,11 +698,37 @@ public class BridgeUiCommandHandler {
         result.outText = result.message;
         break;
       }
+      case CMD_PROFILE_ACTIVATE: {
+        String profileName = parseUiArgString(args, ARG_PROFILE_NAME);
+        if (profileName != null && !profileName.isBlank()) {
+          BringupUtil.selectCanProfile(profileName.trim());
+        }
+        BringupUtil.prepareActivationForSelectedProfile();
+        BringupUtil.activateSelectedProfile();
+        if (BringupUtil.isProfileActive() && profileActivateAction != null) {
+          profileActivateAction.run();
+        }
+        if (BringupUtil.isProfileActive()) {
+          result.message = String.format(
+              TEXT_PROFILE_ACTIVATE_OK,
+              BringupUtil.getActiveCanProfileLabel());
+          result.outText = result.message;
+        } else {
+          result.ok = false;
+          result.message = TEXT_PROFILE_ACTIVATE_FAIL;
+          result.outText = result.message;
+        }
+        break;
+      }
       case "uiHandshake":
         if (!locked) {
           activeUiClientId = client;
         }
         boolean reset = args != null && args.has("reset") && args.get("reset").getAsBoolean();
+        ZoneId tzOverride = resolveRemoteCommandZone(args);
+        if (tzOverride != null) {
+          remoteCommandZone = tzOverride;
+        }
         if (reset) {
           uiSessionId = UUID.randomUUID().toString();
         }
@@ -856,6 +993,17 @@ public class BridgeUiCommandHandler {
       case CMD_SHOW_VERSION: {
         boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
         applyShowResult(result, buildVersionText(), buildVersionJson(), wantsJson);
+        break;
+      }
+      case CMD_SHOW_TESTS: {
+        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
+        BringupCore.TestsOverview overview = core.buildTestsOverview();
+        applyShowResult(result, core.formatTestsOverview(overview), buildTestsOverviewJson(overview), wantsJson);
+        break;
+      }
+      case CMD_SHOW_SOURCES: {
+        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
+        applyShowResult(result, buildSourcesText(), buildSourcesJson(), wantsJson);
         break;
       }
       case "showGroups": {
@@ -1506,6 +1654,28 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
+   *   parseUiArgStringRaw - Parse args JSON for a raw string field.
+   *
+   * PARAMETERS
+   *   args - Parsed args object.
+   *   key - Field name.
+   *
+   * RETURNS
+   *   Raw string or null when missing/empty.
+   */
+  private String parseUiArgStringRaw(JsonObject args, String key) {
+    if (args == null || key == null || !args.has(key)) {
+      return null;
+    }
+    String value = args.get(key).getAsString();
+    if (value == null || value.isEmpty()) {
+      return null;
+    }
+    return value;
+  }
+
+  /**
+   * NAME
    *   parseUiArgBoolean - Parse args JSON for a boolean field.
    *
    * PARAMETERS
@@ -1581,10 +1751,12 @@ public class BridgeUiCommandHandler {
     }
     BringupUtil.RegistryStageResult transfer = new BringupUtil.RegistryStageResult();
     BringupUtil.RegistryApplyReport report = new BringupUtil.RegistryApplyReport();
-    String registryJson = parseUiArgString(args, ARG_REGISTRY_JSON);
+    String registryJson = parseUiArgStringRaw(args, ARG_REGISTRY_JSON);
     String registryHash = parseUiArgString(args, ARG_REGISTRY_HASH);
     Long registryBytes = parseUiArgLong(args, ARG_REGISTRY_BYTES);
     String activateProfile = parseUiArgString(args, ARG_ACTIVATE_PROFILE);
+    transfer.expectedHash = registryHash != null ? registryHash : TEXT_EMPTY;
+    transfer.expectedBytes = registryBytes != null ? registryBytes : BringupUtil.REGISTRY_BYTES_UNKNOWN;
     if (!isTcp) {
       transfer.message = TEXT_PROFILES_APPLY_NOT_SUPPORTED;
     } else if (registryJson == null || registryJson.isBlank()) {
@@ -1595,17 +1767,20 @@ public class BridgeUiCommandHandler {
       transfer.message = TEXT_PROFILES_APPLY_MISSING_BYTES;
     } else {
       String computedHash = TEXT_EMPTY;
+      long computedBytes = BringupUtil.REGISTRY_BYTES_UNKNOWN;
       try {
         computedHash = BringupUtil.computeRawRegistryHash(registryJson);
       } catch (RuntimeException ex) {
         computedHash = TEXT_EMPTY;
       }
+      computedBytes = registryJson.getBytes(StandardCharsets.UTF_8).length;
+      transfer.computedHash = computedHash;
+      transfer.computedBytes = computedBytes;
       if (computedHash.isBlank()) {
         transfer.message = TEXT_PROFILES_APPLY_HASH_UNAVAILABLE;
       } else if (!computedHash.equals(registryHash)) {
         transfer.message = TEXT_PROFILES_APPLY_HASH_MISMATCH;
       } else {
-        long computedBytes = registryJson.getBytes(StandardCharsets.UTF_8).length;
         if (registryBytes != computedBytes) {
           transfer.message = TEXT_PROFILES_APPLY_BYTES_MISMATCH;
         } else {
@@ -1658,6 +1833,16 @@ public class BridgeUiCommandHandler {
     String message = selectProfilesApplyFailureMessage(transfer, report);
     if (message.isBlank()) {
       return TEXT_PROFILES_APPLY_FAILED;
+    }
+    if (transfer != null && (TEXT_PROFILES_APPLY_HASH_MISMATCH.equals(message)
+        || TEXT_PROFILES_APPLY_BYTES_MISMATCH.equals(message))) {
+      return TEXT_PROFILES_APPLY_FAILED + TEXT_VENDOR_SEP + message
+          + String.format(
+              TEXT_PROFILES_APPLY_HASH_DETAIL,
+              BringupHealthFormat.safeText(transfer.expectedHash),
+              BringupHealthFormat.safeText(transfer.computedHash),
+              transfer.expectedBytes,
+              transfer.computedBytes);
     }
     return TEXT_PROFILES_APPLY_FAILED + TEXT_VENDOR_SEP + message;
   }
@@ -1719,6 +1904,20 @@ public class BridgeUiCommandHandler {
     String message = stage != null && stage.message != null ? stage.message : TEXT_EMPTY;
     obj.addProperty(JSON_KEY_OK, ok);
     obj.addProperty(JSON_KEY_MESSAGE, message);
+    if (stage != null) {
+      if (stage.expectedHash != null && !stage.expectedHash.isBlank()) {
+        obj.addProperty(JSON_KEY_EXPECTED_HASH, stage.expectedHash);
+      }
+      if (stage.computedHash != null && !stage.computedHash.isBlank()) {
+        obj.addProperty(JSON_KEY_COMPUTED_HASH, stage.computedHash);
+      }
+      if (stage.expectedBytes != BringupUtil.REGISTRY_BYTES_UNKNOWN) {
+        obj.addProperty(JSON_KEY_EXPECTED_BYTES, stage.expectedBytes);
+      }
+      if (stage.computedBytes != BringupUtil.REGISTRY_BYTES_UNKNOWN) {
+        obj.addProperty(JSON_KEY_COMPUTED_BYTES, stage.computedBytes);
+      }
+    }
     return obj;
   }
 
@@ -1760,6 +1959,7 @@ public class BridgeUiCommandHandler {
       case "groupDisable":
       case "selectedDeviceSet":
       case "selectedModeSet":
+      case CMD_PROFILE_ACTIVATE:
       case CMD_PROFILES_APPLY:
         return true;
       default:
@@ -2140,9 +2340,11 @@ public class BridgeUiCommandHandler {
       if (entry == null) {
         continue;
       }
-      sb.append(TEXT_DEVICE_LIST_PREFIX).append(entry.label)
-          .append(TEXT_PAREN_OPEN).append(entry.vendor).append(TEXT_VENDOR_SEP)
-          .append(entry.type).append(TEXT_ID_PREFIX).append(entry.id).append(TEXT_PAREN_CLOSE)
+      sb.append(TEXT_DEVICE_LIST_PREFIX)
+          .append(TEXT_LABEL_PREFIX).append(entry.label)
+          .append(TEXT_VENDOR_PREFIX).append(entry.vendor)
+          .append(TEXT_TYPE_PREFIX).append(entry.type)
+          .append(TEXT_ID_PREFIX).append(entry.id)
           .append("\n");
     }
     return sb.toString();
@@ -2181,9 +2383,10 @@ public class BridgeUiCommandHandler {
     if (entry == null) {
       return TEXT_DEVICE_NOT_FOUND;
     }
-    return TEXT_DEVICE_PREFIX + entry.label + TEXT_PAREN_OPEN
-        + entry.vendor + TEXT_VENDOR_SEP + entry.type + TEXT_ID_PREFIX + entry.id
-        + TEXT_PAREN_CLOSE;
+    return TEXT_DEVICE_PREFIX + TEXT_LABEL_PREFIX + entry.label
+        + TEXT_VENDOR_PREFIX + entry.vendor
+        + TEXT_TYPE_PREFIX + entry.type
+        + TEXT_ID_PREFIX + entry.id;
   }
 
   /**
@@ -2250,6 +2453,155 @@ public class BridgeUiCommandHandler {
     root.add("selectedDevice", buildSelectedDeviceJson());
     root.add("devices", buildRuntimeStateDevices(nowMs));
     return root;
+  }
+
+  /**
+   * NAME
+   *   buildTestsOverviewJson - Build JSON for bringup tests overview.
+   *
+   * PARAMETERS
+   *   overview - Snapshot of current bringup tests.
+   *
+   * RETURNS
+   *   JSON payload describing bringup tests overview.
+   */
+  private JsonObject buildTestsOverviewJson(BringupCore.TestsOverview overview) {
+    JsonObject root = new JsonObject();
+    if (overview == null) {
+      return root;
+    }
+    root.addProperty(
+        JSON_KEY_TESTS_ACTIVE_SET,
+        overview.activeTestSet != null ? overview.activeTestSet : TEXT_EMPTY);
+    root.addProperty(
+        JSON_KEY_TESTS_DEFAULT_SET,
+        overview.defaultTestSet != null ? overview.defaultTestSet : TEXT_EMPTY);
+    root.addProperty(JSON_KEY_TESTS_USING_SETS, overview.usingTestSets);
+    root.addProperty(JSON_KEY_TESTS_TOTAL_COUNT, overview.totalCount);
+    root.addProperty(JSON_KEY_TESTS_ENABLED_COUNT, overview.enabledCount);
+    JsonArray rows = new JsonArray();
+    int count = overview.rows.size();
+    for (int i = INDEX_START; i < count; i++) {
+      BringupCore.TestRow row = overview.rows.get(i);
+      if (row == null) {
+        continue;
+      }
+      JsonObject obj = new JsonObject();
+      obj.addProperty(JSON_KEY_TESTS_INDEX, row.index);
+      obj.addProperty(JSON_KEY_TESTS_NAME, row.name != null ? row.name : TEXT_EMPTY);
+      obj.addProperty(JSON_KEY_TESTS_ENABLED, row.enabled);
+      obj.addProperty(JSON_KEY_TESTS_SELECTED, row.selected);
+      obj.addProperty(JSON_KEY_TESTS_TYPE, row.type != null ? row.type : TEXT_EMPTY);
+      obj.addProperty(JSON_KEY_TESTS_STATUS, row.status != null ? row.status : TEXT_EMPTY);
+      JsonArray motors = new JsonArray();
+      if (row.motors != null) {
+        for (String motor : row.motors) {
+          if (motor != null && !motor.isBlank()) {
+            motors.add(motor);
+          }
+        }
+      }
+      obj.add(JSON_KEY_TESTS_MOTORS, motors);
+      rows.add(obj);
+    }
+    root.add(JSON_KEY_TESTS_ROWS, rows);
+    return root;
+  }
+
+  /**
+   * NAME
+   *   buildSourcesText - Build text describing robot config sources.
+   *
+   * RETURNS
+   *   Multiline text describing the resolved file paths.
+   */
+  private String buildSourcesText() {
+    StringBuilder sb = new StringBuilder(256);
+    ReportTextUtil.appendLine(sb, TEXT_SOURCES_HEADER);
+    appendSourceLine(sb, SOURCE_NAME_PROFILES, BringupUtil.getProfilePath());
+    appendSourceLine(sb, SOURCE_NAME_BINDINGS, resolveDeployPathForFile(FILE_BINDINGS));
+    appendSourceLine(sb, SOURCE_NAME_CAN_MAPPINGS, resolveDeployPathForFile(FILE_CAN_MAPPINGS));
+    BringupTestRegistry.TestsInfo info = BringupTestRegistry.getTestsInfo();
+    appendSourceLine(sb, SOURCE_NAME_TESTS, info != null ? info.path : null);
+    ReportTextUtil.appendLine(sb, TEXT_SOURCES_FOOTER);
+    return sb.toString();
+  }
+
+  /**
+   * NAME
+   *   buildSourcesJson - Build JSON describing robot config sources.
+   *
+   * RETURNS
+   *   JSON payload listing resolved file paths.
+   */
+  private JsonObject buildSourcesJson() {
+    JsonObject root = new JsonObject();
+    JsonArray sources = new JsonArray();
+    addSourceJson(sources, SOURCE_NAME_PROFILES, BringupUtil.getProfilePath());
+    addSourceJson(sources, SOURCE_NAME_BINDINGS, resolveDeployPathForFile(FILE_BINDINGS));
+    addSourceJson(sources, SOURCE_NAME_CAN_MAPPINGS, resolveDeployPathForFile(FILE_CAN_MAPPINGS));
+    BringupTestRegistry.TestsInfo info = BringupTestRegistry.getTestsInfo();
+    addSourceJson(sources, SOURCE_NAME_TESTS, info != null ? info.path : null);
+    root.add(JSON_KEY_SOURCES, sources);
+    return root;
+  }
+
+  /**
+   * NAME
+   *   appendSourceLine - Append a single source line to the text buffer.
+   *
+   * PARAMETERS
+   *   sb - StringBuilder to append to.
+   *   name - Source name.
+   *   path - Resolved file path, if available.
+   */
+  private void appendSourceLine(StringBuilder sb, String name, Path path) {
+    String pathText = path != null ? path.toString() : TEXT_NONE;
+    boolean exists = path != null && java.nio.file.Files.exists(path);
+    ReportTextUtil.appendLine(sb, String.format(TEXT_SOURCES_ENTRY, name, pathText, exists));
+  }
+
+  /**
+   * NAME
+   *   addSourceJson - Append a single source entry to the JSON list.
+   *
+   * PARAMETERS
+   *   sources - JSON array to append to.
+   *   name - Source name.
+   *   path - Resolved file path, if available.
+   */
+  private void addSourceJson(JsonArray sources, String name, Path path) {
+    JsonObject entry = new JsonObject();
+    entry.addProperty(JSON_KEY_SOURCES_NAME, name);
+    entry.addProperty(JSON_KEY_SOURCES_PATH, path != null ? path.toString() : "");
+    entry.addProperty(JSON_KEY_SOURCES_EXISTS, path != null && java.nio.file.Files.exists(path));
+    sources.add(entry);
+  }
+
+  /**
+   * NAME
+   *   resolveDeployPathForFile - Resolve a deploy path with dev fallback.
+   *
+   * PARAMETERS
+   *   fileName - File name to resolve.
+   *
+   * RETURNS
+   *   Path to the file, or a best-effort local path when deploy not found.
+   */
+  private Path resolveDeployPathForFile(String fileName) {
+    try {
+      Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(fileName);
+      if (java.nio.file.Files.exists(deployPath)) {
+        return deployPath;
+      }
+    } catch (Exception ex) {
+      // Fall through to local dev path.
+    }
+    Path devPath = Path.of(DEV_PATH_SRC, DEV_PATH_MAIN, DEV_PATH_DEPLOY, fileName);
+    if (java.nio.file.Files.exists(devPath)) {
+      return devPath;
+    }
+    return Path.of(fileName);
   }
 
   /**
@@ -2715,9 +3067,6 @@ public class BridgeUiCommandHandler {
     BringupTestRegistry.TestsInfo info = BringupTestRegistry.getTestsInfo();
     StringBuilder sb = new StringBuilder(256);
     ReportTextUtil.appendLine(sb, "=== Bringup Tests Info ===");
-    ReportTextUtil.appendLine(
-        sb,
-        "Override path: " + (info.overridePath != null ? info.overridePath : "(none)"));
     ReportTextUtil.appendLine(
         sb,
         "Resolved path: " + (info.path != null ? info.path.toString() : "(none)"));

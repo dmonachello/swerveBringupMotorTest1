@@ -18,6 +18,7 @@ import shlex
 import time
 import sys
 import re
+import threading
 from copy import deepcopy
 from pathlib import Path
 import copy
@@ -67,8 +68,12 @@ from tools.can_nt.bridge_ops import (
     show_runtime_state,
     show_selected_device,
     show_status,
+    show_sources,
+    show_tests,
     show_version,
+    ui_ping,
     parse_json_arg,
+    profile_activate,
 )
 from tools.can_nt.bridge_session import BridgeEvent, BridgeSession
 from tools.can_nt.motor_diag_constants import (
@@ -158,6 +163,34 @@ from tools.common.profile_constants import (
     KEY_DEFAULT_PROFILE,
     KEY_DEVICE_TYPE,
     KEY_DEVICES,
+    KEY_ENABLED,
+    KEY_ESTOPPED,
+    KEY_MODE,
+    KEY_GROUP_COUNT,
+    KEY_MEMBER_COUNT,
+    KEY_BINDING_COUNT,
+    KEY_INPUT,
+    KEY_KIND,
+    KEY_VALUE,
+    KEY_GENERATED_AT_MS,
+    KEY_SOURCES,
+    KEY_SOURCES_NAME,
+    KEY_SOURCES_PATH,
+    KEY_SOURCES_EXISTS,
+    KEY_TESTS_ACTIVE_SET,
+    KEY_TESTS_DEFAULT_SET,
+    KEY_TESTS_USING_SETS,
+    KEY_TESTS_TOTAL_COUNT,
+    KEY_TESTS_ENABLED_COUNT,
+    KEY_TESTS_ROWS,
+    KEY_TESTS_INDEX,
+    KEY_TESTS_NAME,
+    KEY_TESTS_ENABLED,
+    KEY_TESTS_SELECTED,
+    KEY_TESTS_TYPE,
+    KEY_TESTS_STATUS,
+    KEY_TESTS_MOTORS,
+    KEY_VERSION,
     KEY_ID,
     KEY_INTERFACE,
     KEY_INVERT,
@@ -185,7 +218,6 @@ from tools.common.profile_constants import (
     KEY_ROLE,
     KEY_TAGS,
 )
-from tools.common.tests_io import load_tests_payload, write_tests_payload
 from tools.common.test_authoring import (
     TestAuthoringModel,
     TestBindingButton,
@@ -234,6 +266,80 @@ COMPLETION_META_TEXT = ""
 COMPLETION_PREFIX_EMPTY = ""
 COMPLETION_SPACE = " "
 COMPLETION_START_POS_ZERO = 0
+KEEPALIVE_INTERVAL_SEC = 1.0
+KEEPALIVE_SLEEP_SEC = 0.1
+KEEPALIVE_DISCONNECTED_WAIT_SEC = 0.5
+KEEPALIVE_JOIN_TIMEOUT_SEC = 1.0
+KEEPALIVE_LAST_INIT = 0.0
+KEEPALIVE_THREAD_NAME = "BridgeCliKeepalive"
+CMD_UI_PING = "uiPing"
+EVENT_TYPE_ACK = "ack"
+EVENT_TYPE_OUT = "out"
+MESSAGE_KEEPALIVE_THREAD_START = "KEEPALIVE: thread started."
+MESSAGE_KEEPALIVE_THREAD_STOP = "KEEPALIVE: thread stopped."
+MESSAGE_KEEPALIVE_STATE_CONNECTED = "KEEPALIVE: session connected."
+MESSAGE_KEEPALIVE_STATE_DISCONNECTED = "KEEPALIVE: session disconnected."
+MESSAGE_KEEPALIVE_SEND_OK = "KEEPALIVE: uiPing sent (seq={seq})."
+MESSAGE_KEEPALIVE_SEND_FAIL = "KEEPALIVE: uiPing send failed."
+MESSAGE_KEEPALIVE_RECV_ACK = "KEEPALIVE: uiPing ack received (seq={seq})."
+MESSAGE_KEEPALIVE_RECV_OUT = "KEEPALIVE: uiPing out received (seq={seq})."
+MESSAGE_DEBUG_REGISTRY_PUSH = (
+    "DEBUG: registry push path={path} bytes={bytes} sha256={sha256} data_hash={data_hash}"
+)
+PROTO_TIME_ZERO = 0.0
+PROTO_LAST_SEQ_INIT = 0
+PROTO_EMPTY_ID = ""
+PROTO_KEY_TCP = "tcp"
+PROTO_KEY_NT = "nt"
+PROTO_KEY_UI = "ui"
+PROTO_KEY_KEEPALIVE = "keepalive"
+PROTO_KEY_COMMANDS = "commands"
+PROTO_KEY_ACKS = "acks"
+PROTO_KEY_OUTS = "outs"
+PROTO_KEY_TIMEOUTS = "timeouts"
+PROTO_KEY_PROTOCOL = "protocol"
+PROTO_KEY_CONNECTED = "connected"
+PROTO_KEY_CONNECT_ATTEMPTS = "connectAttempts"
+PROTO_KEY_CONNECT_FAILS = "connectFailures"
+PROTO_KEY_CONNECT_SUCCESSES = "connectSuccesses"
+PROTO_KEY_LAST_CONNECT_AT = "lastConnectAt"
+PROTO_KEY_LAST_DISCONNECT_AT = "lastDisconnectAt"
+PROTO_KEY_HANDSHAKES = "handshakes"
+PROTO_KEY_LAST_HANDSHAKE_AT = "lastHandshakeAt"
+PROTO_KEY_SESSION_ID = "sessionId"
+PROTO_KEY_COMMANDS_SENT = "sent"
+PROTO_KEY_COMMANDS_LAST = "last"
+PROTO_KEY_COMMANDS_LAST_AT = "lastAt"
+PROTO_KEY_LAST_SEQ = "lastSeq"
+PROTO_KEY_ACK_COUNT = "count"
+PROTO_KEY_OUT_COUNT = "count"
+PROTO_KEY_LAST_ACK_AT = "lastAckAt"
+PROTO_KEY_LAST_OUT_AT = "lastOutAt"
+PROTO_KEY_KEEPALIVE_SENT = "sent"
+PROTO_KEY_KEEPALIVE_FAILED = "failed"
+PROTO_KEY_KEEPALIVE_ACKED = "acked"
+PROTO_KEY_KEEPALIVE_OUT = "out"
+PROTO_KEY_KEEPALIVE_LAST_SENT_AT = "lastSentAt"
+PROTO_KEY_KEEPALIVE_LAST_ACK_AT = "lastAckAt"
+PROTO_KEY_KEEPALIVE_LAST_OUT_AT = "lastOutAt"
+PROTO_KEY_TIMEOUT_COUNT = "count"
+PROTO_KEY_LAST_TIMEOUT_AT = "lastTimeoutAt"
+NT_STATE_ENABLED = "enabled"
+NT_STATE_ESTOPPED = "estopped"
+NT_STATE_MODE = "mode"
+NT_STATE_LAST_ACK_MS = "lastAckMs"
+NT_STATE_SESSION_ID = "sessionId"
+CMD_SHOW_STATUS = "showStatus"
+CMD_SHOW_GROUPS = "showGroups"
+CMD_SHOW_GROUP = "showGroup"
+CMD_SHOW_DEVICES = "showDevices"
+CMD_SHOW_DEVICE = "showDevice"
+CMD_SHOW_BINDINGS = "showBindings"
+CMD_SHOW_SELECTED_DEVICE = "showSelectedDevice"
+CMD_SHOW_RUNTIME_STATE = "showRuntimeState"
+CMD_SHOW_VERSION = "showVersion"
+CMD_SHOW_TESTS = "showTests"
+CMD_SHOW_SOURCES = "showSources"
 
 try:
     from prompt_toolkit import prompt as prompt_toolkit_prompt
@@ -258,6 +364,7 @@ MODE_DEVICE = "device"
 MODE_EXEC = "exec"
 
 TESTS_FILENAME = "bringup_tests.json"
+TESTS_MULTISET_MIN_COUNT = 1
 DEFAULT_TEST_SET = "default"
 EMPTY_STRING = ""
 TEST_LABEL_UNKNOWN = "unknown"
@@ -319,6 +426,7 @@ CMD_PATTERN = "pattern"
 CMD_BRIGHTNESS = "brightness"
 CMD_DURATION = "duration"
 CMD_ADD = "add"
+CMD_NEXT = "next"
 CMD_NO = "no"
 CMD_RENAME = "rename"
 CMD_VALIDATE = "validate"
@@ -354,6 +462,7 @@ CMD_LOCAL = "local"
 CMD_PUSH = "push"
 CMD_INIT = PARSER_SPEC.cmd_init
 CMD_ACTIVATE = PARSER_SPEC.cmd_activate
+CMD_ACTIVATE_PROFILE = PARSER_SPEC.cmd_activate_profile
 CMD_LOCAL_CONFIG = "local-config"
 CMD_SAVE_UNIFIED = "unified-config"
 CMD_VALIDATE_ALL = PARSER_SPEC.cmd_validate_all
@@ -542,6 +651,7 @@ PROFILE_EXPORT_FIELD_ORDER = (
 )
 
 CMD_PROFILES_APPLY = "profilesApply"
+CMD_PROFILE_ACTIVATE = "profileActivate"
 ARG_REGISTRY_JSON = "registryJson"
 ARG_ACTIVATE_PROFILE = "activateProfile"
 ARG_REGISTRY_HASH = "registryHash"
@@ -578,6 +688,16 @@ KEY_VALUE = "value"
 KEY_MODE = "mode"
 KEY_PORT = "port"
 KEY_DEADBAND = "deadband"
+LABEL_INPUT_PREFIX = "label="
+LABEL_INPUT_VENDOR_MARK = " vendor="
+LABEL_INPUT_TYPE_MARK = " type="
+LABEL_INPUT_ID_MARK = " id="
+LABEL_INPUT_MARKERS = (
+    LABEL_INPUT_VENDOR_MARK,
+    LABEL_INPUT_TYPE_MARK,
+    LABEL_INPUT_ID_MARK,
+)
+LABEL_INPUT_PAREN_REGEX = r"^(?P<label>.+?)\s*\([^)]*\bid=\d+\)\s*$"
 
 SHOW_TARGET_CONFIG = "config"
 SHOW_TARGET_RUNTIME = "runtime-state"
@@ -638,6 +758,36 @@ SHOW_SOURCE_FLAGS = {
 
 MESSAGE_ERR_UNKNOWN_SHOW = "ERROR: Unknown show command."
 MESSAGE_ERR_UNKNOWN_SHOW_SOURCE = "ERROR: Unknown show source."
+MESSAGE_ERR_SHOW_LOCAL_ONLY = "ERROR: show {target} is local-only; remove robot/local/both."
+MESSAGE_HINT_SHOW_SESSION_LOCAL = "show session [--json] [--pretty]"
+MESSAGE_ERR_BINDINGS_SHOW_LOCAL_ONLY = (
+    "ERROR: bindings show is local-only; remove robot/local/both."
+)
+MESSAGE_ERR_MAPPINGS_SHOW_LOCAL_ONLY = (
+    "ERROR: can-mappings show is local-only; remove robot/local/both."
+)
+MESSAGE_ERR_TEST_SHOW_LOCAL_ONLY = (
+    "ERROR: show test <name> is local-only; remove robot/local/both."
+)
+MESSAGE_ERR_SHOW_TESTS_ROBOT_ONLY = (
+    "ERROR: show tests robot requires an active TCP connection."
+)
+LOCAL_ONLY_SHOW_TARGETS = (
+    SHOW_TARGET_MESSAGE_LEVEL,
+    SHOW_TARGET_DEVICE_USAGE,
+    SHOW_TARGET_DEVICE,
+    SHOW_TARGET_CAN_MAPPINGS,
+    SHOW_TARGET_COMMANDS,
+    SHOW_TARGET_HELP,
+    SHOW_TARGET_WORKSPACE,
+    SHOW_TARGET_SESSION,
+    SHOW_TARGET_CONTROLLERS,
+    SHOW_TARGET_SOURCES,
+    SHOW_TARGET_CONFIG_RAW,
+    SHOW_TARGET_CONFIG_DIRTY,
+    CMD_TESTS,
+    CMD_TEST,
+)
 MESSAGE_ERR_SHOW_REQUIRES_TARGET = "ERROR: show requires a target."
 MESSAGE_ERR_PRETTY_REQUIRES_JSON = "ERROR: --pretty requires --json."
 MESSAGE_ERR_LOCAL_CONFIG_MISSING = "ERROR: Local config not loaded. Use merge/import config <bringup_system.json>."
@@ -833,7 +983,11 @@ MESSAGE_HINT_PROFILE = (
     "profile <profile> | profile create <profile> | profile delete <profile> | profile device delete <device> "
     "| profile device show-all <device> | profile export <profile> <path> | profile default <profile>"
 )
-MESSAGE_HINT_PROFILES = "profiles init | profiles push <path> [--activate <profile>]"
+MESSAGE_HINT_PROFILES = (
+    "profiles init | profiles push <path> [--activate <profile>] | profiles activate <profile>"
+)
+MESSAGE_ERR_PROFILES_ACTIVATE = "ERROR: profiles activate requires a profile name."
+MESSAGE_ERR_PROFILES_ACTIVATE_SEND = "ERROR: Failed to send profile activate command."
 MESSAGE_HINT_CAN_MAPPINGS = "can-mappings show [manufacturers|device-types] | can-mappings manufacturer set <id> <name>"
 MESSAGE_VALIDATE_ALL_HEADER = "Validate all:"
 MESSAGE_VALIDATE_ALL_ITEM_OK = "  {label}: OK"
@@ -865,6 +1019,8 @@ MESSAGE_VALIDATE_PROFILES_MISSING = "  missing: {labels}"
 MESSAGE_VALIDATE_PROFILES_EXTRA = "  extra: {labels}"
 MESSAGE_VALIDATE_PROFILES_HEADER = "Profile devices do not match robot:"
 MESSAGE_LABEL_SHOW_DEVICES = "show devices"
+MESSAGE_LABEL_SHOW_TESTS = "show tests"
+MESSAGE_LABEL_SHOW_SOURCES = "show sources"
 MESSAGE_VALIDATE_SCHEMA_VERSION = "schema_version mismatch: expected {expected}, got {found}"
 MESSAGE_VALIDATE_DATA_VERSION = "data_version missing or empty"
 MESSAGE_VALIDATE_DATA_HASH = "data_hash missing or empty"
@@ -903,7 +1059,7 @@ MESSAGE_SOURCES_LOAD_OK = "Loaded {name} from {path}."
 MESSAGE_SOURCES_SAVE_OK = "Saved {name} to {path}."
 MESSAGE_SOURCES_SKIP_UNKNOWN = "ERROR: {name} has unknown source path."
 MESSAGE_SOURCES_SKIP_NOT_LOADED = "ERROR: {name} not loaded."
-MESSAGE_SOURCES_ROBOT_UNSUPPORTED = "ERROR: Robot does not report sources."
+MESSAGE_SOURCES_ROBOT_UNSUPPORTED = "ERROR: Robot sources unavailable."
 MESSAGE_SOURCES_DONE = "Done."
 MESSAGE_SAVE_BLOCKED = "ERROR: Save blocked; validation failed."
 MESSAGE_SAVE_FORCE_HINT = "Hint: Use --force to save anyway."
@@ -935,6 +1091,62 @@ MESSAGE_VALIDATE_FILE_ERR = "ERROR: File validation failed: {message}"
 MESSAGE_VALIDATE_FILE_LOAD = "ERROR: Failed to read file: {path}"
 MESSAGE_VALIDATE_FILE_UNSUPPORTED = "ERROR: Unsupported file for validation: {path}"
 MESSAGE_VALIDATE_FILE_PATH_REQUIRED = "ERROR: validate file <path>"
+SOURCE_DISPLAY_FMT = "{path} (exists={exists})"
+TEXT_STATUS_HEADER = "Bridge status:"
+TEXT_STATUS_BUILD = "  build={value}"
+TEXT_STATUS_PROFILE = "  profile={value}"
+TEXT_STATUS_ENABLED = "  enabled={value}"
+TEXT_STATUS_ESTOPPED = "  estopped={value}"
+TEXT_STATUS_MODE = "  mode={value}"
+TEXT_STATUS_GROUPS = "  groups={value}"
+TEXT_STATUS_SELECTED = "  selectedDevice={device} ({state})"
+TEXT_GROUPS_NONE = "Groups: (none)"
+TEXT_GROUPS_HEADER = "Groups:"
+TEXT_GROUPS_ENTRY = "  {name} ({state}) members={members} bindings={bindings}"
+TEXT_GROUP_HEADER = "Group {name} ({state})"
+TEXT_GROUP_MEMBERS_HEADER = "Members:"
+TEXT_GROUP_BINDINGS_HEADER = "Bindings:"
+TEXT_GROUP_NONE = "  (none)"
+TEXT_BINDINGS_NONE = "Bindings: (no groups)"
+TEXT_BINDINGS_HEADER = "Bindings:"
+TEXT_BINDINGS_GROUP = "  {name}"
+TEXT_BINDING_ENTRY = "    {input} {kind}"
+TEXT_BINDING_ENTRY_VALUE = "    {input} {kind} {value}"
+TEXT_SELECTED_DEVICE_PREFIX = "Selected device: "
+TEXT_DEVICE_NOT_FOUND = "Device: (not found)"
+TEXT_DEVICE_PREFIX = "Device "
+TEXT_DEVICE_ENTRY = "label={label} vendor={vendor} type={type} id={id}"
+TEXT_DEVICES_HEADER = "Devices:"
+TEXT_DEVICES_NONE = "Devices: (none)"
+TEXT_DEVICES_LIST_PREFIX = "  "
+TEXT_TESTS_HEADER = "=== Bringup Tests ==="
+TEXT_TESTS_FOOTER = "====================="
+TEXT_TESTS_ACTIVE_SET = "Active set: {active} (default: {default})"
+TEXT_TESTS_COUNTS = "Total: {total} Enabled: {enabled}"
+TEXT_TESTS_TABLE_HEADER = "Idx Sel En Type       Name                         HoldBtn                Motors"
+TEXT_TESTS_ROW_FMT = "{index:3d}  {sel}  {en}  {type:<9} {name:<28} {hold:<20} {motors}"
+TEXT_TESTS_NO_TESTS = "No tests loaded."
+TEXT_SOURCES_HEADER = "=== Sources ==="
+TEXT_SOURCES_FOOTER = "==============="
+TEXT_SOURCES_ENTRY = "  {name}: {path} (exists={exists})"
+TEXT_STATUS_ON = "on"
+TEXT_STATUS_OFF = "off"
+TEXT_STATUS_NONE = "(none)"
+TEXT_ENABLED = "enabled"
+TEXT_DISABLED = "disabled"
+TEXT_PAREN_OPEN = " ("
+TEXT_PAREN_CLOSE = ")"
+TEXT_BINDINGS_GROUP_NONE = "    (none)"
+TEXT_VERSION_PREFIX = "Robot version: "
+TEXT_BUILD_HEADER = "Build:"
+TEXT_TESTS_HOLD_DEFAULT = "-"
+TEXT_TESTS_MOTORS_EMPTY = "-"
+TEXT_TESTS_TYPE_UNKNOWN = "?"
+TEXT_TESTS_NAME_UNNAMED = "(unnamed)"
+TEXT_TESTS_SELECTED_MARK = "*"
+TEXT_TESTS_SELECTED_EMPTY = " "
+TEXT_TESTS_ENABLED_MARK = "Y"
+TEXT_TESTS_DISABLED_MARK = "N"
 
 KEY_SOURCES = "sources"
 KEY_SOURCE_NAME = "name"
@@ -953,11 +1165,12 @@ KEY_DATA_HASH_CAMEL = "dataHash"
 SOURCE_STATUS_LOADED = "loaded"
 SOURCE_STATUS_NOT_LOADED = "not-loaded"
 SOURCE_STATUS_UNKNOWN = "unknown"
+SOURCE_NAME_PROFILES = "profiles"
 SOURCE_NAME_REGISTRY = "registry"
 SOURCE_NAME_CONFIG = "config"
 SOURCE_NAME_TESTS = "tests"
 SOURCE_NAME_BINDINGS = "bindings"
-SOURCE_NAME_CAN_MAPPINGS = "can-mappings"
+SOURCE_NAME_CAN_MAPPINGS = "canMappings"
 AUDIT_ACTION_SAVE = "save"
 AUDIT_ACTION_RECOVER = "recover"
 AUDIT_ACTION_REPAIR = "repair"
@@ -968,7 +1181,7 @@ HELP_SOURCES_TEXT = (
     "show sources\n"
     "load sources\n"
     "save sources\n"
-    "  Show and reload/save CLI data sources (local only)."
+    "  Show and reload/save CLI data sources (show supports robot/local/both)."
 )
 HELP_TOPIC_PROFILE_DEVICE_DELETE = "profile device delete"
 HELP_PROFILE_DEVICE_DELETE_TEXT = (
@@ -995,7 +1208,8 @@ HELP_PROFILE_DEFAULT_TEXT = (
 )
 HELP_TOPIC_PROFILES_PUSH = "profiles push"
 HELP_PROFILES_PUSH_TEXT = (
-    "profiles push <path> [--activate <profile>]\n  Push profiles/devices registry to robot (TCP only)."
+    "profiles push <path> [--activate <profile>]\n  Push profiles/devices registry to robot (TCP only).\n"
+    "profiles activate <profile>\n  Activate an already-loaded profile on the robot."
 )
 HELP_TOPIC_PROFILES_INIT = "profiles init"
 HELP_PROFILES_INIT_TEXT = (
@@ -1028,7 +1242,8 @@ HELP_SHOW_TEXT = (
     "device-usage <device>|commands|help|bindings|selected-device|runtime-state|config|config local-raw|config dirty|"
     "sources|profiles|profile|tests|test <test>|message-level|workspace|session|controllers> "
     "[--json] [--pretty] [robot|local|both]\n"
-    "  Defaults: robot if connected, otherwise local."
+    "  Defaults: robot if connected, otherwise local.\n"
+    "  Note: some targets are local-only (e.g., session/workspace)."
 )
 HELP_DIAGNOSE_TEXT = (
     "diagnose motor <label>\n"
@@ -1267,6 +1482,10 @@ MESSAGE_SELECTED_TEST_SET = "Selected test set: {name}"
 MESSAGE_CANCELLED = "Cancelled."
 MESSAGE_DELETED_TEST = "Deleted test: {name}"
 MESSAGE_WROTE_TESTS = "Wrote tests to {path}."
+MESSAGE_ERR_TESTS_LEGACY = (
+    "ERROR: Legacy bringup_tests.json is not supported. "
+    "Tests live in bringup_system.json; use `save unified-config <path>`."
+)
 MESSAGE_TEST_SETS_HEADER = "Test sets:"
 MESSAGE_TEST_SETS_ENTRY = "  {name} ({count} tests)"
 MESSAGE_ACTIVE_TEST_SET = "Active test set: {name}"
@@ -1344,6 +1563,9 @@ class BridgeCli:
         self._local_root_path: Optional[str] = None
         self._local_root_hash: Optional[str] = None
         self._show_label_seq: Dict[int, str] = {}
+        self._show_pretty_json_seq: Dict[int, bool] = {}
+        self._last_show_pretty: bool = False
+        self._last_line_pretty: bool = False
         self._local_devices_locked: bool = False
         self._profiles_dirty: bool = False
         self._groups_dirty: bool = False
@@ -1367,6 +1589,33 @@ class BridgeCli:
         self._bindings_path: Optional[Path] = None
         self._bindings_dirty: bool = False
         self._version_printed = False
+        self._keepalive_stop = threading.Event()
+        self._keepalive_thread: Optional[threading.Thread] = None
+        self._proto_connect_attempts = COUNT_ZERO
+        self._proto_connect_failures = COUNT_ZERO
+        self._proto_connect_successes = COUNT_ZERO
+        self._proto_last_connect_at = PROTO_TIME_ZERO
+        self._proto_last_disconnect_at = PROTO_TIME_ZERO
+        self._proto_handshake_count = COUNT_ZERO
+        self._proto_last_handshake_at = PROTO_TIME_ZERO
+        self._proto_cmd_sent = COUNT_ZERO
+        self._proto_cmd_last = EMPTY_STRING
+        self._proto_cmd_last_at = PROTO_TIME_ZERO
+        self._proto_ack_count = COUNT_ZERO
+        self._proto_last_ack_at = PROTO_TIME_ZERO
+        self._proto_last_ack_seq = PROTO_LAST_SEQ_INIT
+        self._proto_out_count = COUNT_ZERO
+        self._proto_last_out_at = PROTO_TIME_ZERO
+        self._proto_last_out_seq = PROTO_LAST_SEQ_INIT
+        self._proto_timeout_count = COUNT_ZERO
+        self._proto_last_timeout_at = PROTO_TIME_ZERO
+        self._proto_keepalive_sent = COUNT_ZERO
+        self._proto_keepalive_fail = COUNT_ZERO
+        self._proto_keepalive_ack = COUNT_ZERO
+        self._proto_keepalive_out = COUNT_ZERO
+        self._proto_keepalive_last_sent_at = PROTO_TIME_ZERO
+        self._proto_keepalive_last_ack_at = PROTO_TIME_ZERO
+        self._proto_keepalive_last_out_at = PROTO_TIME_ZERO
 
     def run_interactive(self) -> int:
         """
@@ -1376,46 +1625,49 @@ class BridgeCli:
         self._print_version_banner()
         self._auto_merge_default_profiles()
         self._auto_load_default_sources()
-        while True:
-            try:
-                prompt = self._prompt()
-                if self._use_prompt_toolkit and self._prompt_session is not None:
-                    if self._pending_prompt_text is not None:
-                        line = self._prompt_session.prompt(prompt, default=self._pending_prompt_text)
-                        self._pending_prompt_text = None
+        try:
+            while True:
+                try:
+                    prompt = self._prompt()
+                    if self._use_prompt_toolkit and self._prompt_session is not None:
+                        if self._pending_prompt_text is not None:
+                            line = self._prompt_session.prompt(prompt, default=self._pending_prompt_text)
+                            self._pending_prompt_text = None
+                        else:
+                            line = self._prompt_session.prompt(prompt)
                     else:
-                        line = self._prompt_session.prompt(prompt)
-                else:
-                    if self._pending_prompt_text is not None:
-                        if not self._warned_prompt_toolkit:
-                            print(MESSAGE_WARN_PROMPT_TOOLKIT)
-                            self._warned_prompt_toolkit = True
-                        sys.stdout.write(self._prompt() + self._pending_prompt_text)
-                        sys.stdout.flush()
-                        self._pending_prompt_text = None
-                        line = input(MESSAGE_EMPTY_PROMPT)
-                    else:
-                        line = input(prompt)
-            except EOFError:
-                print()
-                result = self._execute_line("exit")
+                        if self._pending_prompt_text is not None:
+                            if not self._warned_prompt_toolkit:
+                                print(MESSAGE_WARN_PROMPT_TOOLKIT)
+                                self._warned_prompt_toolkit = True
+                            sys.stdout.write(self._prompt() + self._pending_prompt_text)
+                            sys.stdout.flush()
+                            self._pending_prompt_text = None
+                            line = input(MESSAGE_EMPTY_PROMPT)
+                        else:
+                            line = input(prompt)
+                except EOFError:
+                    print()
+                    result = self._execute_line("exit")
+                    self._emit_status(result)
+                    if result.exit_requested:
+                        return result.exit_code()
+                    continue
+                except KeyboardInterrupt:
+                    print()
+                    continue
+                line = line.strip()
+                if not line:
+                    continue
+                result = self._execute_line(line)
                 self._emit_status(result)
                 if result.exit_requested:
                     return result.exit_code()
-                continue
-            except KeyboardInterrupt:
-                print()
-                continue
-            line = line.strip()
-            if not line:
-                continue
-            result = self._execute_line(line)
-            self._emit_status(result)
-            if result.exit_requested:
-                return result.exit_code()
-            if not result.ok():
-                self._warn("WARNING: Command failed; staying in CLI.")
-                continue
+                if not result.ok():
+                    self._warn("WARNING: Command failed; staying in CLI.")
+                    continue
+        finally:
+            self._stop_keepalive()
 
     def _build_prompt_session(self) -> Optional[PromptSession]:
         """
@@ -1442,6 +1694,74 @@ class BridgeCli:
                 self._warned_prompt_toolkit = True
             return None
 
+    def _start_keepalive(self) -> None:
+        """
+        NAME
+            _start_keepalive - Start the background UI keepalive loop.
+
+        DESCRIPTION
+            Sends periodic uiPing messages to prevent TCP keepalive timeouts.
+        """
+        if self._keepalive_thread is not None and self._keepalive_thread.is_alive():
+            return
+        self._keepalive_stop.clear()
+        thread = threading.Thread(
+            target=self._keepalive_loop,
+            name=KEEPALIVE_THREAD_NAME,
+            daemon=True,
+        )
+        self._keepalive_thread = thread
+        thread.start()
+        self._keepalive_log(MESSAGE_KEEPALIVE_THREAD_START)
+
+    def _stop_keepalive(self) -> None:
+        """
+        NAME
+            _stop_keepalive - Stop the background UI keepalive loop.
+        """
+        if self._keepalive_thread is None:
+            return
+        self._keepalive_stop.set()
+        self._keepalive_thread.join(timeout=KEEPALIVE_JOIN_TIMEOUT_SEC)
+        if not self._keepalive_thread.is_alive():
+            self._keepalive_thread = None
+            self._keepalive_log(MESSAGE_KEEPALIVE_THREAD_STOP)
+
+    def _keepalive_loop(self) -> None:
+        """
+        NAME
+            _keepalive_loop - Background uiPing loop for CLI sessions.
+
+        DESCRIPTION
+            Periodically sends uiPing while the TCP session is connected.
+        """
+        last_ping = KEEPALIVE_LAST_INIT
+        was_connected: Optional[bool] = None
+        while not self._keepalive_stop.is_set():
+            is_connected = self._session.is_connected()
+            if was_connected is None or was_connected != is_connected:
+                if is_connected:
+                    self._keepalive_log(MESSAGE_KEEPALIVE_STATE_CONNECTED)
+                    self._proto_mark_tcp_state(now=time.time(), connected=True)
+                else:
+                    self._keepalive_log(MESSAGE_KEEPALIVE_STATE_DISCONNECTED)
+                    self._proto_mark_tcp_state(now=time.time(), connected=False)
+                was_connected = is_connected
+            if not is_connected:
+                self._keepalive_stop.wait(KEEPALIVE_DISCONNECTED_WAIT_SEC)
+                continue
+            now = time.time()
+            if (now - last_ping) >= KEEPALIVE_INTERVAL_SEC:
+                seq = ui_ping(self._session)
+                if seq is not None:
+                    last_ping = now
+                    self._keepalive_log(MESSAGE_KEEPALIVE_SEND_OK.format(seq=seq))
+                    self._proto_mark_keepalive_sent(seq=seq, now=now, ok=True)
+                else:
+                    self._keepalive_log(MESSAGE_KEEPALIVE_SEND_FAIL)
+                    self._proto_mark_keepalive_sent(seq=PROTO_LAST_SEQ_INIT, now=now, ok=False)
+            self._keepalive_stop.wait(KEEPALIVE_SLEEP_SEC)
+
     def _build_completer(self) -> Optional[object]:
         """
         NAME
@@ -1464,27 +1784,30 @@ class BridgeCli:
         self._print_version_banner()
         self._auto_merge_default_profiles()
         self._auto_load_default_sources()
-        lint_error = self._lint_script(lines)
-        if lint_error:
-            print(f"ERROR: {lint_error}")
-            result = StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(lint_error))
-            self._emit_status(result)
-            return result.exit_code()
-        for raw in lines:
-            line = raw.strip()
-            if line.startswith("\ufeff"):
-                line = line.lstrip("\ufeff").lstrip()
-            if not line or line.startswith("#"):
-                continue
-            if self._echo_enabled:
-                print(f">> {line}")
-            result = self._execute_line(line)
-            self._emit_status(result)
-            if result.exit_requested:
+        try:
+            lint_error = self._lint_script(lines)
+            if lint_error:
+                print(f"ERROR: {lint_error}")
+                result = StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(lint_error))
+                self._emit_status(result)
                 return result.exit_code()
-            if not result.ok():
-                return result.exit_code()
-        return StatusResult(code=SS__NORMAL).exit_code()
+            for raw in lines:
+                line = raw.strip()
+                if line.startswith("\ufeff"):
+                    line = line.lstrip("\ufeff").lstrip()
+                if not line or line.startswith("#"):
+                    continue
+                if self._echo_enabled:
+                    print(f">> {line}")
+                result = self._execute_line(line)
+                self._emit_status(result)
+                if result.exit_requested:
+                    return result.exit_code()
+                if not result.ok():
+                    return result.exit_code()
+            return StatusResult(code=SS__NORMAL).exit_code()
+        finally:
+            self._stop_keepalive()
 
     def _print_version_banner(self) -> None:
         """
@@ -2309,6 +2632,8 @@ class BridgeCli:
     def _execute_line(self, line: str) -> StatusResult:
         if self._handle_question(line):
             return StatusResult(code=SS__NORMAL)
+        lower_line = line.lower() if isinstance(line, str) else ""
+        self._last_line_pretty = "--pretty" in lower_line and "--json" in lower_line
         try:
             parsed = self._parser.parse(line, mode=self._modes[-1].name)
             tokens = parsed.tokens
@@ -2417,6 +2742,7 @@ class BridgeCli:
         if field not in DEVICE_FIELDS_PROFILE:
             return False
         return True
+
 
     def _handle_question(self, line: str) -> bool:
         """
@@ -2772,51 +3098,51 @@ class BridgeCli:
             if len(tokens) == COUNT_ONE:
                 return [PLACEHOLDER_GROUP]
             if len(tokens) == COUNT_TWO:
-                return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
             return []
         if target == CMD_DEVICE:
             if len(tokens) == COUNT_ONE:
                 return [PLACEHOLDER_DEVICE]
             if len(tokens) == COUNT_TWO:
-                return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
             return []
         if target == SHOW_TARGET_DEVICE_GROUP:
             if len(tokens) == COUNT_ONE:
                 return [PLACEHOLDER_DEVICE]
             if len(tokens) == COUNT_TWO:
-                return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
             return []
         if target == CMD_DEVICE_USAGE:
             if len(tokens) == COUNT_ONE:
                 return [PLACEHOLDER_DEVICE]
             if len(tokens) == COUNT_TWO:
-                return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
             return []
         if target in (SHOW_TARGET_COMMANDS, SHOW_TARGET_HELP):
             if len(tokens) == COUNT_ONE:
-                return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
             return []
         if target == CMD_CONFIG:
             if len(tokens) == COUNT_ONE:
-                return [CMD_LOCAL_RAW, CMD_DIRTY] + self._show_flag_suggestions()
+                return [CMD_LOCAL_RAW, CMD_DIRTY] + self._show_flag_suggestions(target)
             if len(tokens) == COUNT_TWO and tokens[COUNT_ONE].lower() in (CMD_LOCAL_RAW, CMD_DIRTY):
-                return self._show_flag_suggestions()
-            return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
+            return self._show_flag_suggestions(target)
         if target == CMD_PROFILE:
             if len(tokens) == COUNT_ONE:
-                return [PLACEHOLDER_PROFILE] + self._show_flag_suggestions()
+                return [PLACEHOLDER_PROFILE] + self._show_flag_suggestions(target)
             if len(tokens) == COUNT_TWO:
-                return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
             return []
         if target == PARSER_SPEC.show_target_test:
             if len(tokens) == COUNT_ONE:
                 return [PLACEHOLDER_TEST]
             if len(tokens) == COUNT_TWO:
-                return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
             return []
         if target in PARSER_SPEC.show_targets:
             if len(tokens) == COUNT_ONE:
-                return self._show_flag_suggestions()
+                return self._show_flag_suggestions(target)
             return []
         return []
 
@@ -2855,18 +3181,19 @@ class BridgeCli:
             SHOW_TARGET_CONTROLLERS,
         ]
 
-    def _show_flag_suggestions(self) -> List[str]:
+    def _show_flag_suggestions(self, target: Optional[str] = None) -> List[str]:
         """
         NAME
             _show_flag_suggestions - Suggest show flags.
         """
+        flags = [FLAG_JSON, FLAG_PRETTY, SHOW_FLAG_ALL]
+        if target in LOCAL_ONLY_SHOW_TARGETS:
+            return flags
         return [
             PARSER_SPEC.show_source_robot,
             PARSER_SPEC.show_source_local,
             PARSER_SPEC.show_source_both,
-            FLAG_JSON,
-            FLAG_PRETTY,
-            SHOW_FLAG_ALL,
+            *flags,
         ]
 
     def _suggest_bindings_args(self, tokens: List[str]) -> List[str]:
@@ -3117,70 +3444,16 @@ class BridgeCli:
         NAME
             _load_tests_from_path - Load tests JSON from a path.
         """
-
-        try:
-            payload = load_tests_payload(path)
-        except Exception:
-            return StatusResult(code=SS__CONFIG__INVALID)
-        model = model_from_payload(payload or {})
-        self._tests_model = model
-        self._tests_dirty = False
-        if not self._tests_profile:
-            self._refresh_tests_profile(self._active_profile_name() or get_default_profile())
-        else:
-            self._refresh_tests_profile(self._tests_profile)
-        default_set = model.default_test_set if model else EMPTY_STRING
-        self._tests_active_set = default_set or DEFAULT_TEST_SET
-        self._sync_store_tests()
-        return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_ERR_TESTS_LEGACY)
+        return StatusResult(code=SS__CONFIG__INVALID)
 
     def _merge_tests_from_path(self, path: Path) -> StatusResult:
         """
         NAME
             _merge_tests_from_path - Merge tests JSON into current model.
         """
-        try:
-            payload = load_tests_payload(path)
-        except Exception as exc:
-            print(f"ERROR: Failed to read tests: {exc}")
-            return StatusResult(code=SS__CONFIG__INVALID)
-        incoming = model_from_payload(payload or {})
-        dest = self._tests_model or TestAuthoringModel()
-        if not dest.default_test_set and incoming.default_test_set:
-            dest.default_test_set = incoming.default_test_set
-        for set_name, src_set in incoming.test_sets.items():
-            if set_name not in dest.test_sets:
-                dest.test_sets[set_name] = TestSetModel(
-                    name=set_name,
-                    tests=[copy.deepcopy(t) for t in src_set.tests],
-                )
-                continue
-            dst_set = dest.test_sets[set_name]
-            for src_test in src_set.tests:
-                existing_idx = None
-                for idx, test in enumerate(dst_set.tests):
-                    if test.name == src_test.name:
-                        existing_idx = idx
-                        break
-                if existing_idx is not None:
-                    dst_set.tests[existing_idx] = copy.deepcopy(src_test)
-                    self._warn(
-                        f"WARNING: Test '{src_test.name}' overwritten in set '{set_name}'."
-                    )
-                else:
-                    dst_set.tests.append(copy.deepcopy(src_test))
-        self._tests_model = dest
-        if not self._tests_active_set:
-            self._tests_active_set = dest.default_test_set or DEFAULT_TEST_SET
-        if self._tests_active_set not in dest.test_sets:
-            self._tests_active_set = dest.default_test_set or DEFAULT_TEST_SET
-        self._mark_tests_dirty()
-        self._sync_store_tests()
-        if not self._tests_profile:
-            self._refresh_tests_profile(self._active_profile_name() or get_default_profile())
-        else:
-            self._refresh_tests_profile(self._tests_profile)
-        return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_ERR_TESTS_LEGACY)
+        return StatusResult(code=SS__CONFIG__INVALID)
 
     def _ensure_bindings_loaded(self) -> bool:
         """
@@ -3270,6 +3543,9 @@ class BridgeCli:
         if not isinstance(self._bindings_payload, dict):
             print(MESSAGE_ERR_BINDINGS_LOAD.format(path=EMPTY_STRING))
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        if any(token.lower() in SHOW_SOURCE_FLAGS for token in tokens):
+            print(MESSAGE_ERR_BINDINGS_SHOW_LOCAL_ONLY)
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         _source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens)
         if not ok:
             return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
@@ -3886,6 +4162,9 @@ class BridgeCli:
         if not isinstance(self._can_mappings, dict):
             print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=EMPTY_STRING))
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        if any(token.lower() in SHOW_SOURCE_FLAGS for token in tokens):
+            print(MESSAGE_ERR_MAPPINGS_SHOW_LOCAL_ONLY)
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         _source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens)
         if not ok:
             return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
@@ -4500,11 +4779,169 @@ class BridgeCli:
 
         if not label or not isinstance(label, str):
             return False
+        label = self._normalize_device_label_input(label)
         if self._tests_duplicate_labels:
             return False
         if not self._tests_device_catalog:
             return False
         return label in self._tests_device_catalog
+
+    def _normalize_device_label_input(self, label: str) -> str:
+        """
+        NAME
+            _normalize_device_label_input - Strip CLI-rendered metadata from a device label.
+
+        DESCRIPTION
+            Accepts labels formatted like:
+              - "LABEL (VENDOR TYPE id=25)"
+              - "label=LABEL vendor=VENDOR type=TYPE id=25"
+            Returns the raw LABEL for local lookups.
+        """
+        if not isinstance(label, str):
+            return label
+        raw = label.strip()
+        if raw.startswith(LABEL_INPUT_PREFIX):
+            trimmed = raw[len(LABEL_INPUT_PREFIX) :]
+            for marker in LABEL_INPUT_MARKERS:
+                idx = trimmed.find(marker)
+                if idx != -1:
+                    return trimmed[:idx].strip()
+            return trimmed.strip()
+        match = re.match(LABEL_INPUT_PAREN_REGEX, raw)
+        if match:
+            return match.group("label").strip()
+        return raw
+
+    def _print_tests_local(self, json_output: bool, pretty: bool, show_source: bool) -> StatusResult:
+        """
+        NAME
+            _print_tests_local - Print local tests output.
+        """
+        if show_source:
+            print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            payload = self._build_tests_overview_payload()
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        payload = self._build_tests_overview_payload()
+        print(self._format_tests_overview_text(payload))
+        return StatusResult(code=SS__NORMAL)
+
+    def _build_tests_overview_payload(self) -> Dict[str, object]:
+        """
+        NAME
+            _build_tests_overview_payload - Build tests overview matching robot schema.
+        """
+        self._ensure_tests_loaded()
+        model = self._tests_model or TestAuthoringModel()
+        active_set = self._tests_active_set or model.default_test_set or EMPTY_STRING
+        default_set = model.default_test_set or EMPTY_STRING
+        test_set = model.test_sets.get(active_set)
+        if not isinstance(test_set, TestSetModel):
+            test_set = TestSetModel(name=active_set, tests=[])
+        total_count = len(test_set.tests)
+        enabled_count = 0
+        rows = []
+        for index, test in enumerate(test_set.tests):
+            if not isinstance(test, TestModel):
+                continue
+            if test.enabled:
+                enabled_count += 1
+            rows.append(
+                {
+                    KEY_TESTS_INDEX: index,
+                    KEY_TESTS_NAME: test.name,
+                    KEY_TESTS_ENABLED: bool(test.enabled),
+                    KEY_TESTS_SELECTED: False,
+                    KEY_TESTS_TYPE: test.test_type,
+                    KEY_TESTS_STATUS: EMPTY_STRING,
+                    KEY_TESTS_MOTORS: list(test.devices) if isinstance(test.devices, list) else [],
+                }
+            )
+        return {
+            KEY_TESTS_ACTIVE_SET: active_set,
+            KEY_TESTS_DEFAULT_SET: default_set,
+            KEY_TESTS_USING_SETS: len(model.test_sets) > TESTS_MULTISET_MIN_COUNT,
+            KEY_TESTS_TOTAL_COUNT: total_count,
+            KEY_TESTS_ENABLED_COUNT: enabled_count,
+            KEY_TESTS_ROWS: rows,
+        }
+
+    def _format_tests_overview_text(self, payload: Dict[str, object]) -> str:
+        """
+        NAME
+            _format_tests_overview_text - Render tests overview text matching robot output.
+        """
+        if not isinstance(payload, dict):
+            return SEP_NEWLINE.join([TEXT_TESTS_HEADER, TEXT_TESTS_NO_TESTS, TEXT_TESTS_FOOTER])
+        rows = payload.get(KEY_TESTS_ROWS, [])
+        total_count = payload.get(KEY_TESTS_TOTAL_COUNT, 0)
+        enabled_count = payload.get(KEY_TESTS_ENABLED_COUNT, 0)
+        using_sets = bool(payload.get(KEY_TESTS_USING_SETS, False))
+        active_set = str(payload.get(KEY_TESTS_ACTIVE_SET, TEXT_STATUS_NONE)).strip()
+        default_set = str(payload.get(KEY_TESTS_DEFAULT_SET, TEXT_STATUS_NONE)).strip()
+        lines = [TEXT_TESTS_HEADER]
+        if using_sets:
+            lines.append(
+                TEXT_TESTS_ACTIVE_SET.format(
+                    active=active_set or TEXT_STATUS_NONE,
+                    default=default_set or TEXT_STATUS_NONE,
+                )
+            )
+        lines.append(
+            TEXT_TESTS_COUNTS.format(
+                total=total_count,
+                enabled=enabled_count,
+            )
+        )
+        lines.append(TEXT_TESTS_TABLE_HEADER)
+        if isinstance(rows, list):
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                index = int(row.get(KEY_TESTS_INDEX, 0))
+                selected = bool(row.get(KEY_TESTS_SELECTED, False))
+                enabled = bool(row.get(KEY_TESTS_ENABLED, False))
+                test_type = str(row.get(KEY_TESTS_TYPE, EMPTY_STRING)).strip() or TEXT_TESTS_TYPE_UNKNOWN
+                name = str(row.get(KEY_TESTS_NAME, EMPTY_STRING)).strip() or TEXT_TESTS_NAME_UNNAMED
+                motors = row.get(KEY_TESTS_MOTORS, [])
+                motor_text = (
+                    SEP_COMMA_SPACE.join([str(m) for m in motors if str(m).strip()])
+                    if isinstance(motors, list) and motors
+                    else TEXT_TESTS_MOTORS_EMPTY
+                )
+                sel_char = TEXT_TESTS_SELECTED_MARK if selected else TEXT_TESTS_SELECTED_EMPTY
+                en_char = TEXT_TESTS_ENABLED_MARK if enabled else TEXT_TESTS_DISABLED_MARK
+                lines.append(
+                    TEXT_TESTS_ROW_FMT.format(
+                        index=index,
+                        sel=sel_char,
+                        en=en_char,
+                        type=test_type,
+                        name=name,
+                        hold=TEXT_TESTS_HOLD_DEFAULT,
+                        motors=motor_text,
+                    )
+                )
+        lines.append(TEXT_TESTS_FOOTER)
+        return SEP_NEWLINE.join(lines)
+
+    def _show_tests_robot(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_tests_robot - Request tests overview from the robot.
+        """
+        seq = show_tests(self._session, json_output=json_output)
+        if seq is None:
+            print(MESSAGE_ERR_COMMAND_SEND_FAILED)
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        self._proto_mark_cmd_sent(CMD_SHOW_TESTS, now=time.time())
+        self._show_label_seq[int(seq)] = SHOW_SOURCE_ROBOT
+        self._show_pretty_json_seq[int(seq)] = bool(pretty)
+        event = self._wait_for_seq(seq)
+        if self._event_failed(event, MESSAGE_LABEL_SHOW_TESTS):
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        return StatusResult(code=SS__NORMAL)
 
     def _show_tests_command(self, tokens: List[str]) -> StatusResult:
         """
@@ -4516,15 +4953,27 @@ class BridgeCli:
         source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens[1:])
         if not ok:
             return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
-        if source:
-            pass
-        if len(cleaned) >= 1 and cleaned[0].lower() == CMD_TESTS:
-            if json_output:
-                self._print_tests_json(pretty)
-                return StatusResult(code=SS__NORMAL)
-            self._print_tests()
-            return StatusResult(code=SS__NORMAL)
-        if len(cleaned) >= 2 and cleaned[0].lower() == CMD_TEST:
+        target = cleaned[0].lower() if cleaned else EMPTY_STRING
+        is_list = target == CMD_TESTS
+        is_single = target == CMD_TEST and len(cleaned) >= COUNT_TWO
+
+        if source in (SHOW_SOURCE_ROBOT, SHOW_SOURCE_BOTH):
+            if not self._session.is_connected():
+                print(MESSAGE_ERR_SHOW_TESTS_ROBOT_ONLY)
+                return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+            if is_single:
+                print(MESSAGE_ERR_TEST_SHOW_LOCAL_ONLY)
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            if not is_list:
+                print(MESSAGE_ERROR_SHOW_TESTS)
+                return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+            if source == SHOW_SOURCE_BOTH:
+                self._print_tests_local(json_output, pretty, show_source=True)
+            return self._show_tests_robot(json_output, pretty)
+
+        if is_list:
+            return self._print_tests_local(json_output, pretty, show_source=False)
+        if is_single:
             test_set = self._get_active_test_set()
             test = self._find_test(cleaned[1], test_set)
             if not test:
@@ -4543,15 +4992,8 @@ class BridgeCli:
         NAME
             _save_tests_command - Validate and persist tests JSON.
         """
-
-        cleaned, flags = self._strip_flags(tokens, [FLAG_FORCE])
-        force = FLAG_FORCE in flags
-        self._ensure_tests_loaded()
-        if len(cleaned) < 3 or cleaned[1].lower() != CMD_TESTS:
-            print("ERROR: save tests <path>")
-            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        path = Path(cleaned[2])
-        return self._save_tests_to_path(path, force=force)
+        print(MESSAGE_ERR_TESTS_LEGACY)
+        return StatusResult(code=SS__CONFIG__INVALID)
 
     def _save_tests_to_path(
         self,
@@ -4628,9 +5070,8 @@ class BridgeCli:
         NAME
             _write_tests_command - Deprecated alias for save tests.
         """
-
-        print(MESSAGE_WARNING_WRITE_TESTS_DEPRECATED)
-        return self._save_tests_command(tokens)
+        print(MESSAGE_ERR_TESTS_LEGACY)
+        return StatusResult(code=SS__CONFIG__INVALID)
 
     def _get_active_test_set(self) -> TestSetModel:
         """
@@ -4811,17 +5252,25 @@ class BridgeCli:
     def _exec_command(self, tokens: List[str]) -> StatusResult:
         cmd = tokens[0].lower()
         if cmd == "connect":
+            self._proto_mark_connect_attempt()
             if not connect(self._session):
+                self._proto_mark_connect_failure()
                 print("ERROR: Failed to connect.")
                 return StatusResult(code=SS__NETWORK__CONNECT_FAILED)
             ok = self._session.ensure_handshake()
             if not ok:
+                self._proto_mark_connect_failure()
                 print("ERROR: Handshake failed.")
                 return StatusResult(code=SS__NETWORK__HANDSHAKE_FAILED)
+            self._proto_mark_connected(now=time.time())
+            self._proto_mark_handshake(now=time.time())
+            self._start_keepalive()
             print("Connected.")
             return StatusResult(code=SS__NORMAL)
         if cmd == "disconnect":
+            self._stop_keepalive()
             disconnect(self._session)
+            self._proto_mark_disconnected(now=time.time())
             print("Disconnected.")
             return StatusResult(code=SS__NORMAL)
         if cmd == "configure" and len(tokens) > 1 and tokens[1].lower() == "terminal":
@@ -4901,6 +5350,11 @@ class BridgeCli:
             return self._load_sources()
         if cmd == CMD_PROFILES and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_INIT:
             return self._init_profiles_payload()
+        if cmd == CMD_PROFILES and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_ACTIVATE_PROFILE:
+            if len(tokens) < COUNT_THREE:
+                print(MESSAGE_ERR_PROFILES_ACTIVATE)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._profiles_activate(tokens[COUNT_TWO])
         if cmd == CMD_PROFILES and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_EXPORT:
             if len(tokens) < COUNT_THREE:
                 print(MESSAGE_ERR_PROFILES_EXPORT_PATH)
@@ -5358,14 +5812,15 @@ class BridgeCli:
                 return StatusResult(code=SS__NORMAL)
             return self._coerce_status(self._handle_show(tokens[1:]))
         if cmd == "add" and len(tokens) >= 3 and tokens[1].lower() == "device":
-            if not self._local_device_exists(tokens[2]):
+            device_label = self._normalize_device_label_input(tokens[2])
+            if not self._local_device_exists(device_label):
                 print("ERROR: Device not defined in local config. Use device <device> to create it.")
                 return StatusResult(code=SS__DEVICE__NOT_DEFINED)
             seq = group_add_device(
-                self._session, group, tokens[2], self._conflict_policy, force_move=False
+                self._session, group, device_label, self._conflict_policy, force_move=False
             )
             event = self._wait_for_seq(seq)
-            if self._handle_add_device_conflict(event, group, tokens[2]):
+            if self._handle_add_device_conflict(event, group, device_label):
                 return StatusResult(code=SS__GROUP__BINDING_INVALID)
             if self._event_failed(event, "add device"):
                 return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
@@ -5519,13 +5974,18 @@ class BridgeCli:
             source = SHOW_SOURCE_LOCAL
         if target in (SHOW_TARGET_WORKSPACE, SHOW_TARGET_SESSION, SHOW_TARGET_CONTROLLERS):
             source = SHOW_SOURCE_LOCAL
+        if has_source_flag and target in LOCAL_ONLY_SHOW_TARGETS:
+            print(MESSAGE_ERR_SHOW_LOCAL_ONLY.format(target=target))
+            if target == SHOW_TARGET_SESSION:
+                print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW_SESSION_LOCAL)
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         if target == SHOW_TARGET_SOURCES and not has_source_flag:
             source = SHOW_SOURCE_LOCAL
         if target in (SHOW_TARGET_CONFIG_RAW, SHOW_TARGET_CONFIG_DIRTY):
             source = SHOW_SOURCE_LOCAL
         if source == SHOW_SOURCE_BOTH:
             local_result = self._show_local(target, tokens, json_output, pretty)
-            robot_result = self._show_robot(target, tokens, json_output)
+            robot_result = self._show_robot(target, tokens, json_output, pretty)
             if self._batch and (not local_result.ok() or not robot_result.ok()):
                 return StatusResult(code=SS__EXECUTOR__FAILED)
             if not local_result.ok():
@@ -5539,7 +5999,7 @@ class BridgeCli:
                 return result
             return StatusResult(code=SS__NORMAL)
         if source == SHOW_SOURCE_ROBOT:
-            result = self._show_robot(target, tokens, json_output)
+            result = self._show_robot(target, tokens, json_output, pretty)
             if not result.ok():
                 return result
             return StatusResult(code=SS__NORMAL)
@@ -6020,6 +6480,18 @@ class BridgeCli:
             return StatusResult(code=SS__CONFIG__INVALID)
         registry_hash = self._hash_raw_registry(raw)
         registry_bytes = len(raw.encode(ENCODING_UTF8))
+        data_hash = payload.get(KEY_DATA_HASH)
+        if not isinstance(data_hash, str):
+            data_hash = EMPTY_STRING
+        resolved_path = str(Path(path).resolve())
+        self._debug_log(
+            MESSAGE_DEBUG_REGISTRY_PUSH.format(
+                path=resolved_path,
+                bytes=registry_bytes,
+                sha256=registry_hash,
+                data_hash=data_hash,
+            )
+        )
         args = {
             ARG_REGISTRY_JSON: raw,
             ARG_REGISTRY_HASH: registry_hash,
@@ -6031,6 +6503,7 @@ class BridgeCli:
         if seq is None:
             print(MESSAGE_ERR_PROFILES_PUSH_SEND)
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        self._proto_mark_cmd_sent(CMD_PROFILES_APPLY, now=time.time())
         event = self._wait_for_seq(seq)
         if self._event_failed(event, CMD_PROFILES_APPLY):
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
@@ -6040,6 +6513,26 @@ class BridgeCli:
         self._local_devices_locked = True
         self._sync_store_from_local()
         print(MESSAGE_INFO_PROFILES_PUSH_LOCAL.format(path=path))
+        return StatusResult(code=SS__NORMAL)
+
+    def _profiles_activate(self, profile_name: str) -> StatusResult:
+        """
+        NAME
+            _profiles_activate - Activate an already-loaded profile on the robot.
+        """
+        if not profile_name:
+            print(MESSAGE_ERR_PROFILES_ACTIVATE)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        if not self._session.is_connected():
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+        seq = profile_activate(self._session, profile_name)
+        if seq is None:
+            print(MESSAGE_ERR_PROFILES_ACTIVATE_SEND)
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        self._proto_mark_cmd_sent(CMD_PROFILE_ACTIVATE, now=time.time())
+        event = self._wait_for_seq(seq)
+        if self._event_failed(event, CMD_PROFILE_ACTIVATE):
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         return StatusResult(code=SS__NORMAL)
 
     def _config_push(self, path: str, activate_profile: str) -> StatusResult:
@@ -6126,6 +6619,7 @@ class BridgeCli:
         if seq is None:
             print(f"ERROR: Failed to send {command.name}.")
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        self._proto_mark_cmd_sent(command.name, now=time.time())
         event = self._wait_for_seq(seq)
         if self._event_failed(event, command.name):
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
@@ -6190,6 +6684,10 @@ class BridgeCli:
             for event in events:
                 if print_events:
                     self._print_event(event)
+                if event.type == EVENT_TYPE_ACK:
+                    self._proto_mark_ack(event.seq, now=time.time())
+                if event.type == EVENT_TYPE_OUT:
+                    self._proto_mark_out(event.seq, now=time.time())
                 if event.type in ("ack", "out"):
                     self._tracker.handle_event(event)
                 if event.seq == seq and event.type == "ack":
@@ -6200,6 +6698,7 @@ class BridgeCli:
                         event.status = ack_status
                         event.message = ack_message
                     return event
+            self._proto_mark_timeout(now=time.time())
             self._warn("WARNING: Timeout waiting for OUT.", essential=True)
         return None
 
@@ -6212,18 +6711,46 @@ class BridgeCli:
         return event.status == "error"
 
     def _print_event(self, event: BridgeEvent) -> None:
-        if event.type == "ack":
+        if event.type == EVENT_TYPE_ACK:
+            if event.name == CMD_UI_PING:
+                self._keepalive_log(MESSAGE_KEEPALIVE_RECV_ACK.format(seq=event.seq))
+                self._proto_mark_keepalive_ack(event.seq, now=time.time())
+                return
+            if self._last_seq and event.seq != self._last_seq:
+                return
             msg = event.message or event.status
             print(f"ACK {event.seq} {event.name} {event.status} {msg}".rstrip())
             return
-        if event.type == "out":
+        if event.type == EVENT_TYPE_OUT:
             source = self._show_label_seq.pop(event.seq, "")
             if source:
                 print(f"SOURCE: {source}")
+            pretty = self._show_pretty_json_seq.pop(event.seq, False)
+            if not pretty and event.seq == self._last_seq and self._last_show_pretty:
+                pretty = True
+            if not pretty and self._last_line_pretty:
+                pretty = True
             if event.text:
-                print(event.text.rstrip())
+                if pretty:
+                    try:
+                        payload = json.loads(event.text)
+                        print(self._dump_json(payload, pretty=True))
+                    except json.JSONDecodeError:
+                        print(event.text.rstrip())
+                else:
+                    print(event.text.rstrip())
             elif event.json_text:
-                print(event.json_text.rstrip())
+                if pretty:
+                    try:
+                        payload = json.loads(event.json_text)
+                        print(self._dump_json(payload, pretty=True))
+                    except json.JSONDecodeError:
+                        print(event.json_text.rstrip())
+                else:
+                    print(event.json_text.rstrip())
+            if event.name == CMD_UI_PING:
+                self._keepalive_log(MESSAGE_KEEPALIVE_RECV_OUT.format(seq=event.seq))
+                self._proto_mark_keepalive_out(event.seq, now=time.time())
             return
 
     def _confirm(self, prompt: str) -> bool:
@@ -6286,6 +6813,81 @@ class BridgeCli:
         if self._message_level == MESSAGE_LEVEL_EXPERT and not essential:
             return
         print(message)
+
+    def _keepalive_log(self, message: str) -> None:
+        """
+        NAME
+            _keepalive_log - Emit keepalive debug logging when enabled.
+        """
+        if self._message_level == MESSAGE_LEVEL_EXPERT:
+            return
+        print(message)
+
+    def _debug_log(self, message: str) -> None:
+        """
+        NAME
+            _debug_log - Emit debug logging at expert message level.
+        """
+        if self._message_level != MESSAGE_LEVEL_EXPERT:
+            return
+        print(message)
+
+    def _proto_mark_connect_attempt(self) -> None:
+        self._proto_connect_attempts += COUNT_ONE
+
+    def _proto_mark_connect_failure(self) -> None:
+        self._proto_connect_failures += COUNT_ONE
+
+    def _proto_mark_connected(self, now: float) -> None:
+        self._proto_connect_successes += COUNT_ONE
+        self._proto_last_connect_at = now
+
+    def _proto_mark_disconnected(self, now: float) -> None:
+        self._proto_last_disconnect_at = now
+
+    def _proto_mark_tcp_state(self, now: float, connected: bool) -> None:
+        if connected:
+            self._proto_last_connect_at = now
+        else:
+            self._proto_last_disconnect_at = now
+
+    def _proto_mark_handshake(self, now: float) -> None:
+        self._proto_handshake_count += COUNT_ONE
+        self._proto_last_handshake_at = now
+
+    def _proto_mark_cmd_sent(self, name: str, now: float) -> None:
+        self._proto_cmd_sent += COUNT_ONE
+        self._proto_cmd_last = name
+        self._proto_cmd_last_at = now
+
+    def _proto_mark_ack(self, seq: int, now: float) -> None:
+        self._proto_ack_count += COUNT_ONE
+        self._proto_last_ack_seq = seq
+        self._proto_last_ack_at = now
+
+    def _proto_mark_out(self, seq: int, now: float) -> None:
+        self._proto_out_count += COUNT_ONE
+        self._proto_last_out_seq = seq
+        self._proto_last_out_at = now
+
+    def _proto_mark_timeout(self, now: float) -> None:
+        self._proto_timeout_count += COUNT_ONE
+        self._proto_last_timeout_at = now
+
+    def _proto_mark_keepalive_sent(self, seq: int, now: float, ok: bool) -> None:
+        if ok:
+            self._proto_keepalive_sent += COUNT_ONE
+            self._proto_keepalive_last_sent_at = now
+        else:
+            self._proto_keepalive_fail += COUNT_ONE
+
+    def _proto_mark_keepalive_ack(self, seq: int, now: float) -> None:
+        self._proto_keepalive_ack += COUNT_ONE
+        self._proto_keepalive_last_ack_at = now
+
+    def _proto_mark_keepalive_out(self, seq: int, now: float) -> None:
+        self._proto_keepalive_out += COUNT_ONE
+        self._proto_keepalive_last_out_at = now
 
     def _tip(self, key: str, message: str) -> None:
         if self._batch:
@@ -6366,6 +6968,61 @@ class BridgeCli:
                 "echo": bool(self._echo_enabled),
             },
         }
+        state = self._session.get_state_snapshot()
+        session_id = self._session.session_id() or EMPTY_STRING
+        nt_session_id = EMPTY_STRING
+        if isinstance(state, dict):
+            nt_session_id = str(state.get(NT_STATE_SESSION_ID, EMPTY_STRING))
+        payload[PROTO_KEY_PROTOCOL] = {
+            PROTO_KEY_TCP: {
+                PROTO_KEY_CONNECTED: bool(self._session.is_connected()),
+                PROTO_KEY_CONNECT_ATTEMPTS: self._proto_connect_attempts,
+                PROTO_KEY_CONNECT_FAILS: self._proto_connect_failures,
+                PROTO_KEY_CONNECT_SUCCESSES: self._proto_connect_successes,
+                PROTO_KEY_LAST_CONNECT_AT: self._proto_last_connect_at,
+                PROTO_KEY_LAST_DISCONNECT_AT: self._proto_last_disconnect_at,
+            },
+            PROTO_KEY_UI: {
+                PROTO_KEY_SESSION_ID: session_id,
+                PROTO_KEY_HANDSHAKES: self._proto_handshake_count,
+                PROTO_KEY_LAST_HANDSHAKE_AT: self._proto_last_handshake_at,
+            },
+            PROTO_KEY_NT: {
+                PROTO_KEY_SESSION_ID: nt_session_id,
+                NT_STATE_ENABLED: bool(state.get(NT_STATE_ENABLED, False)) if isinstance(state, dict) else False,
+                NT_STATE_ESTOPPED: bool(state.get(NT_STATE_ESTOPPED, False)) if isinstance(state, dict) else False,
+                NT_STATE_MODE: str(state.get(NT_STATE_MODE, EMPTY_STRING)) if isinstance(state, dict) else EMPTY_STRING,
+                NT_STATE_LAST_ACK_MS: float(state.get(NT_STATE_LAST_ACK_MS, PROTO_TIME_ZERO)) if isinstance(state, dict) else PROTO_TIME_ZERO,
+            },
+            PROTO_KEY_COMMANDS: {
+                PROTO_KEY_COMMANDS_SENT: self._proto_cmd_sent,
+                PROTO_KEY_COMMANDS_LAST: self._proto_cmd_last,
+                PROTO_KEY_COMMANDS_LAST_AT: self._proto_cmd_last_at,
+            },
+            PROTO_KEY_ACKS: {
+                PROTO_KEY_ACK_COUNT: self._proto_ack_count,
+                PROTO_KEY_LAST_ACK_AT: self._proto_last_ack_at,
+                PROTO_KEY_LAST_SEQ: self._proto_last_ack_seq,
+            },
+            PROTO_KEY_OUTS: {
+                PROTO_KEY_OUT_COUNT: self._proto_out_count,
+                PROTO_KEY_LAST_OUT_AT: self._proto_last_out_at,
+                PROTO_KEY_LAST_SEQ: self._proto_last_out_seq,
+            },
+            PROTO_KEY_TIMEOUTS: {
+                PROTO_KEY_TIMEOUT_COUNT: self._proto_timeout_count,
+                PROTO_KEY_LAST_TIMEOUT_AT: self._proto_last_timeout_at,
+            },
+            PROTO_KEY_KEEPALIVE: {
+                PROTO_KEY_KEEPALIVE_SENT: self._proto_keepalive_sent,
+                PROTO_KEY_KEEPALIVE_FAILED: self._proto_keepalive_fail,
+                PROTO_KEY_KEEPALIVE_ACKED: self._proto_keepalive_ack,
+                PROTO_KEY_KEEPALIVE_OUT: self._proto_keepalive_out,
+                PROTO_KEY_KEEPALIVE_LAST_SENT_AT: self._proto_keepalive_last_sent_at,
+                PROTO_KEY_KEEPALIVE_LAST_ACK_AT: self._proto_keepalive_last_ack_at,
+                PROTO_KEY_KEEPALIVE_LAST_OUT_AT: self._proto_keepalive_last_out_at,
+            },
+        }
         if json_output:
             print(self._dump_json(payload, pretty))
             return StatusResult(code=SS__NORMAL)
@@ -6403,6 +7060,82 @@ class BridgeCli:
         )
         print(f"CLI: messages={self._message_level} echo={'on' if self._echo_enabled else 'off'}")
         print(f"Recovery mode: {'ON' if self._recovery_mode else 'OFF'}")
+        proto = payload.get(PROTO_KEY_PROTOCOL, {})
+        tcp = proto.get(PROTO_KEY_TCP, {}) if isinstance(proto, dict) else {}
+        ui = proto.get(PROTO_KEY_UI, {}) if isinstance(proto, dict) else {}
+        nt = proto.get(PROTO_KEY_NT, {}) if isinstance(proto, dict) else {}
+        cmds = proto.get(PROTO_KEY_COMMANDS, {}) if isinstance(proto, dict) else {}
+        acks = proto.get(PROTO_KEY_ACKS, {}) if isinstance(proto, dict) else {}
+        outs = proto.get(PROTO_KEY_OUTS, {}) if isinstance(proto, dict) else {}
+        timeouts = proto.get(PROTO_KEY_TIMEOUTS, {}) if isinstance(proto, dict) else {}
+        keepalive = proto.get(PROTO_KEY_KEEPALIVE, {}) if isinstance(proto, dict) else {}
+        print("Protocol:")
+        print(
+            "  TCP: connected={connected} attempts={attempts} ok={ok} fail={fail} "
+            "lastConnectAt={last_connect} lastDisconnectAt={last_disconnect}".format(
+                connected=tcp.get(PROTO_KEY_CONNECTED, False),
+                attempts=tcp.get(PROTO_KEY_CONNECT_ATTEMPTS, COUNT_ZERO),
+                ok=tcp.get(PROTO_KEY_CONNECT_SUCCESSES, COUNT_ZERO),
+                fail=tcp.get(PROTO_KEY_CONNECT_FAILS, COUNT_ZERO),
+                last_connect=tcp.get(PROTO_KEY_LAST_CONNECT_AT, PROTO_TIME_ZERO),
+                last_disconnect=tcp.get(PROTO_KEY_LAST_DISCONNECT_AT, PROTO_TIME_ZERO),
+            )
+        )
+        print(
+            "  UI: sessionId={session} handshakes={count} lastHandshakeAt={last}".format(
+                session=ui.get(PROTO_KEY_SESSION_ID, PROTO_EMPTY_ID),
+                count=ui.get(PROTO_KEY_HANDSHAKES, COUNT_ZERO),
+                last=ui.get(PROTO_KEY_LAST_HANDSHAKE_AT, PROTO_TIME_ZERO),
+            )
+        )
+        print(
+            "  NT: sessionId={session} enabled={enabled} estopped={estopped} mode={mode} lastAckMs={last_ack}".format(
+                session=nt.get(PROTO_KEY_SESSION_ID, PROTO_EMPTY_ID),
+                enabled=nt.get(NT_STATE_ENABLED, False),
+                estopped=nt.get(NT_STATE_ESTOPPED, False),
+                mode=nt.get(NT_STATE_MODE, EMPTY_STRING),
+                last_ack=nt.get(NT_STATE_LAST_ACK_MS, PROTO_TIME_ZERO),
+            )
+        )
+        print(
+            "  Commands: sent={sent} last={last} lastAt={last_at}".format(
+                sent=cmds.get(PROTO_KEY_COMMANDS_SENT, COUNT_ZERO),
+                last=cmds.get(PROTO_KEY_COMMANDS_LAST, EMPTY_STRING),
+                last_at=cmds.get(PROTO_KEY_COMMANDS_LAST_AT, PROTO_TIME_ZERO),
+            )
+        )
+        print(
+            "  ACKs: count={count} lastSeq={last_seq} lastAt={last_at}".format(
+                count=acks.get(PROTO_KEY_ACK_COUNT, COUNT_ZERO),
+                last_seq=acks.get(PROTO_KEY_LAST_SEQ, PROTO_LAST_SEQ_INIT),
+                last_at=acks.get(PROTO_KEY_LAST_ACK_AT, PROTO_TIME_ZERO),
+            )
+        )
+        print(
+            "  OUTs: count={count} lastSeq={last_seq} lastAt={last_at}".format(
+                count=outs.get(PROTO_KEY_OUT_COUNT, COUNT_ZERO),
+                last_seq=outs.get(PROTO_KEY_LAST_SEQ, PROTO_LAST_SEQ_INIT),
+                last_at=outs.get(PROTO_KEY_LAST_OUT_AT, PROTO_TIME_ZERO),
+            )
+        )
+        print(
+            "  Timeouts: count={count} lastAt={last_at}".format(
+                count=timeouts.get(PROTO_KEY_TIMEOUT_COUNT, COUNT_ZERO),
+                last_at=timeouts.get(PROTO_KEY_LAST_TIMEOUT_AT, PROTO_TIME_ZERO),
+            )
+        )
+        print(
+            "  Keepalive: sent={sent} acked={acked} out={out} failed={failed} "
+            "lastSentAt={last_sent} lastAckAt={last_ack} lastOutAt={last_out}".format(
+                sent=keepalive.get(PROTO_KEY_KEEPALIVE_SENT, COUNT_ZERO),
+                acked=keepalive.get(PROTO_KEY_KEEPALIVE_ACKED, COUNT_ZERO),
+                out=keepalive.get(PROTO_KEY_KEEPALIVE_OUT, COUNT_ZERO),
+                failed=keepalive.get(PROTO_KEY_KEEPALIVE_FAILED, COUNT_ZERO),
+                last_sent=keepalive.get(PROTO_KEY_KEEPALIVE_LAST_SENT_AT, PROTO_TIME_ZERO),
+                last_ack=keepalive.get(PROTO_KEY_KEEPALIVE_LAST_ACK_AT, PROTO_TIME_ZERO),
+                last_out=keepalive.get(PROTO_KEY_KEEPALIVE_LAST_OUT_AT, PROTO_TIME_ZERO),
+            )
+        )
         if payload["profiles"]["loadWarnings"]:
             print("Warnings:")
             for warning in payload["profiles"]["loadWarnings"]:
@@ -6776,7 +7509,7 @@ class BridgeCli:
             "debug grammar": "debug grammar [--json] [--dot <path>]\n  Dump the grammar model for the current mode.",
             "show message-level": "show message-level\n  Show current CLI message level.",
             "show workspace": "show workspace\n  Show loaded file paths, active profile/set, dirty flags, and recovery mode.",
-            "show session": "show session\n  Alias for show workspace.",
+            "show session": "show session [--json] [--pretty]\n  Alias for show workspace.\n  Local-only; robot/local/both is not supported.",
             "show controllers": "show controllers\n  List controller names and supported input IDs.",
             "sources": HELP_SOURCES_TEXT,
             "show sources": HELP_SOURCES_TEXT,
@@ -6824,7 +7557,7 @@ class BridgeCli:
             ),
             "save tests": (
                 "save tests <path> [--force]\n"
-                "  Validate and save test sets."
+                "  Legacy bringup_tests.json is not supported; use `save unified-config <path>`."
             ),
             "save unified-config": (
                 "save unified-config <path> [--force]\n"
@@ -6883,7 +7616,7 @@ class BridgeCli:
             "validate script": "validate script <path>\n  Lint a CLI script without executing it.",
             "write tests (legacy)": (
                 "write tests <path>\n"
-                "  Deprecated alias for `save tests <path>`."
+                "  Not supported; tests live in bringup_system.json."
             ),
             "bindings": (
                 "bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]\n"
@@ -6977,6 +7710,8 @@ class BridgeCli:
                 CMD_CONFIGURE,
                 CMD_CONNECT,
                 CMD_DISCONNECT,
+                f"{CMD_ADD} {CMD_NEXT}",
+                f"{CMD_ADD} {CMD_ALL}",
             ]
         lines = [MESSAGE_HELP_QUICK_HEADER]
         if not entries:
@@ -7027,31 +7762,40 @@ class BridgeCli:
             return json.dumps(payload, indent=JSON_PRETTY_INDENT)
         return json.dumps(payload)
 
-    def _show_robot(self, target: str, tokens: List[str], json_output: bool) -> StatusResult:
+    def _show_robot(self, target: str, tokens: List[str], json_output: bool, pretty: bool) -> StatusResult:
         if not self._session.is_connected():
             print("ERROR: Robot source unavailable (not connected).")
             return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
         if target == SHOW_TARGET_SOURCES:
-            print(MESSAGE_SOURCES_ROBOT_UNSUPPORTED)
-            return StatusResult(code=SS__EXECUTOR__NOT_SUPPORTED)
-        if target == SHOW_TARGET_STATUS:
+            seq = show_sources(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_SOURCES
+        elif target == SHOW_TARGET_STATUS:
             seq = show_status(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_STATUS
         elif target == SHOW_TARGET_GROUPS:
             seq = show_groups(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_GROUPS
         elif target == SHOW_TARGET_GROUP and len(tokens) >= 2:
             seq = show_group(self._session, tokens[1], json_output=json_output)
+            cmd_name = CMD_SHOW_GROUP
         elif target == SHOW_TARGET_DEVICES:
             seq = show_devices(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_DEVICES
         elif target == SHOW_TARGET_DEVICE_GROUP and len(tokens) >= 2:
             seq = show_device(self._session, tokens[1], json_output=json_output)
+            cmd_name = CMD_SHOW_DEVICE
         elif target == SHOW_TARGET_BINDINGS:
             seq = show_bindings(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_BINDINGS
         elif target == SHOW_TARGET_SELECTED_DEVICE:
             seq = show_selected_device(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_SELECTED_DEVICE
         elif target == SHOW_TARGET_RUNTIME:
             seq = show_runtime_state(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_RUNTIME_STATE
         elif target == SHOW_TARGET_VERSION:
             seq = show_version(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_VERSION
         else:
             print(MESSAGE_ERR_UNKNOWN_SHOW)
             print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW)
@@ -7059,7 +7803,10 @@ class BridgeCli:
         if seq is None:
             print("ERROR: Command failed to send.")
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        self._proto_mark_cmd_sent(cmd_name, now=time.time())
         self._show_label_seq[int(seq)] = "robot"
+        self._show_pretty_json_seq[int(seq)] = bool(pretty)
+        self._last_show_pretty = bool(pretty)
         event = self._wait_for_seq(seq)
         if self._event_failed(event, "show"):
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
@@ -7110,19 +7857,26 @@ class BridgeCli:
         if not profile:
             print(MESSAGE_ERR_PROFILE_REQUIRED)
             return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
-        devices = self._profile_device_entries(profile)
         ok, error, payload = local_show_data(
-            target, tokens, self._local_config, profile, devices
+            target, tokens, self._local_config, profile, self._local_root_payload, self._can_mappings
         )
         if not ok:
             print(f"ERROR: {error}")
             print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW)
             return StatusResult(code=SS__CONFIG__INVALID)
-        groups = payload.get("groups", []) if isinstance(payload.get("groups"), list) else []
-        selected = payload.get("selectedDevice") if isinstance(payload.get("selectedDevice"), dict) else {}
-        selected_device = str(selected.get("device", "")).strip()
-        selected_enabled = bool(selected.get("enabled", False))
-        profile_name = str(payload.get(KEY_PROFILE, "")).strip()
+        groups = (
+            payload.get(KEY_BRIDGE_GROUPS, [])
+            if isinstance(payload.get(KEY_BRIDGE_GROUPS), list)
+            else []
+        )
+        selected = (
+            payload.get(KEY_BRIDGE_SELECTED_DEVICE)
+            if isinstance(payload.get(KEY_BRIDGE_SELECTED_DEVICE), dict)
+            else {}
+        )
+        selected_device = str(selected.get(KEY_DEVICE, EMPTY_STRING)).strip()
+        selected_enabled = bool(selected.get(KEY_ENABLED, False))
+        profile_name = str(payload.get(KEY_PROFILE, profile)).strip()
 
         def _print_local(payload_text: str, payload_json: Optional[Dict[str, object]]) -> None:
             print(MESSAGE_SOURCE_LOCAL)
@@ -7132,88 +7886,147 @@ class BridgeCli:
                 print(payload_text.rstrip())
 
         if target == SHOW_TARGET_STATUS:
-            text = (
-                "Local status:\n"
-                f"  profile={profile_name or '(none)'}\n"
-                f"  groups={payload.get('groupCount', len(groups))}\n"
-                f"  selectedDevice={selected_device or '(none)'} ({'on' if selected_enabled else 'off'})"
+            build_value = str(payload.get(KEY_BUILD, EMPTY_STRING))
+            enabled_value = str(bool(payload.get(KEY_ENABLED, False))).lower()
+            estopped_value = str(bool(payload.get(KEY_ESTOPPED, False))).lower()
+            mode_value = str(payload.get(KEY_MODE, EMPTY_STRING))
+            group_count = payload.get(KEY_GROUP_COUNT, len(groups))
+            selected_label = selected_device or TEXT_STATUS_NONE
+            selected_state = TEXT_STATUS_ON if selected_enabled else TEXT_STATUS_OFF
+            text = SEP_NEWLINE.join(
+                [
+                    TEXT_STATUS_HEADER,
+                    TEXT_STATUS_BUILD.format(value=build_value),
+                    TEXT_STATUS_PROFILE.format(value=profile_name or TEXT_STATUS_NONE),
+                    TEXT_STATUS_ENABLED.format(value=enabled_value),
+                    TEXT_STATUS_ESTOPPED.format(value=estopped_value),
+                    TEXT_STATUS_MODE.format(value=mode_value),
+                    TEXT_STATUS_GROUPS.format(value=group_count),
+                    TEXT_STATUS_SELECTED.format(device=selected_label, state=selected_state),
+                ]
             )
             _print_local(text, payload)
             return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_GROUPS:
-            lines = [f"Local groups (profile {profile_name or '(none)'}):"]
+            lines = []
             for group in groups:
                 if not isinstance(group, dict):
                     continue
-                name = str(group.get("name", "")).strip()
-                enabled = bool(group.get("enabled", True))
-                lines.append(f"  {name} ({'enabled' if enabled else 'disabled'})")
-            if len(lines) == 1:
-                lines.append("  (none)")
+                name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
+                enabled = bool(group.get(KEY_ENABLED, True))
+                members = group.get(KEY_MEMBER_COUNT, 0)
+                bindings = group.get(KEY_BINDING_COUNT, 0)
+                state = TEXT_ENABLED if enabled else TEXT_DISABLED
+                lines.append(
+                    TEXT_GROUPS_ENTRY.format(
+                        name=name,
+                        state=state,
+                        members=members,
+                        bindings=bindings,
+                    )
+                )
+            if not lines:
+                _print_local(TEXT_GROUPS_NONE, payload)
+                return StatusResult(code=SS__NORMAL)
+            lines.insert(0, TEXT_GROUPS_HEADER)
             _print_local("\n".join(lines), payload)
             return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_GROUP and len(tokens) >= 2:
             name = tokens[1]
-            match = payload.get("group") if isinstance(payload.get("group"), dict) else {}
-            members = match.get("members", []) or []
-            bindings = match.get("bindings", []) or []
+            match = payload if isinstance(payload, dict) else {}
+            members = match.get(KEY_MEMBERS, []) or []
+            bindings = match.get(KEY_BRIDGE_BINDINGS, []) or []
             lines = [
-                f"Local group {name} (profile {profile_name or '(none)'}):",
-                f"  enabled={'true' if match.get('enabled', True) else 'false'}",
-                f"  members={len(members)}",
-                f"  bindings={len(bindings)}",
+                TEXT_GROUP_HEADER.format(
+                    name=name,
+                    state=TEXT_ENABLED if match.get(KEY_ENABLED, True) else TEXT_DISABLED,
+                ),
             ]
+            lines.append(TEXT_GROUP_MEMBERS_HEADER)
             if members:
-                lines.append("  members:")
                 for member in members:
                     if isinstance(member, dict):
-                        device = str(member.get("device", "")).strip()
-                        enabled = bool(member.get("enabled", True))
+                        device = str(member.get(KEY_DEVICE, EMPTY_STRING)).strip()
+                        enabled = bool(member.get(KEY_ENABLED, True))
                     else:
                         device = str(member).strip()
                         enabled = True
                     if device:
-                        lines.append(f"    {device} ({'enabled' if enabled else 'disabled'})")
+                        state = TEXT_ENABLED if enabled else TEXT_DISABLED
+                        lines.append(f"  {device} [{state}]")
             else:
-                lines.append("  members: (none)")
-            _print_local("\n".join(lines), payload)
+                lines.append(TEXT_GROUP_NONE)
+            lines.append(TEXT_GROUP_BINDINGS_HEADER)
+            if bindings:
+                for binding in bindings:
+                    if not isinstance(binding, dict):
+                        continue
+                    if KEY_VALUE in binding:
+                        lines.append(
+                            TEXT_BINDING_ENTRY_VALUE.format(
+                                input=binding.get(KEY_INPUT),
+                                kind=binding.get(KEY_KIND),
+                                value=binding.get(KEY_VALUE),
+                            )
+                        )
+                    else:
+                        lines.append(
+                            TEXT_BINDING_ENTRY.format(
+                                input=binding.get(KEY_INPUT),
+                                kind=binding.get(KEY_KIND),
+                            )
+                        )
+            else:
+                lines.append(TEXT_GROUP_NONE)
+            _print_local(SEP_NEWLINE.join(lines), payload)
             return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_DEVICES:
-            devices_raw = payload.get("devices")
-            lines = ["Local devices:"]
+            devices_raw = payload.get(KEY_DEVICES)
+            lines = [TEXT_DEVICES_HEADER]
             if isinstance(devices_raw, list) and devices_raw:
                 for device in devices_raw:
                     if not isinstance(device, dict):
                         continue
-                    name = str(device.get("name", "")).strip()
-                    if not name:
+                    label = str(device.get(KEY_LABEL, EMPTY_STRING)).strip()
+                    if not label:
                         continue
-                    lines.append(f"  {name}")
+                    vendor = str(device.get(KEY_VENDOR, EMPTY_STRING)).strip()
+                    dev_type = str(device.get(KEY_TYPE, EMPTY_STRING)).strip()
+                    dev_id = device.get(KEY_ID, EMPTY_STRING)
+                    lines.append(
+                        TEXT_DEVICES_LIST_PREFIX
+                        + TEXT_DEVICE_ENTRY.format(
+                            label=label,
+                            vendor=vendor,
+                            type=dev_type,
+                            id=dev_id,
+                        )
+                    )
             else:
-                if isinstance(devices_raw, list) and devices_raw:
-                    lines.extend(f"  {name}" for name in devices_raw if isinstance(name, str))
-                else:
-                    lines.append("  (none)")
+                lines = [TEXT_DEVICES_NONE]
             _print_local("\n".join(lines), payload)
             return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_DEVICE_GROUP and len(tokens) >= 2:
             name = tokens[1]
-            device_payload = payload.get("device")
-            group_name = payload.get("group", "")
-            enabled = payload.get("enabled", None)
-            if isinstance(device_payload, dict):
-                if group_name:
-                    text = f"Local device {name}: group={group_name} enabled={enabled}".rstrip()
-                else:
-                    text = f"Local device {name}".rstrip()
-                _print_local(text, payload)
-                return StatusResult(code=SS__NORMAL)
-            if isinstance(device_payload, str):
-                text = f"Local device {name}: group={group_name} enabled={enabled}"
+            device_payload = payload if isinstance(payload, dict) else {}
+            label = str(device_payload.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if label:
+                vendor = str(device_payload.get(KEY_VENDOR, EMPTY_STRING)).strip()
+                dev_type = str(device_payload.get(KEY_TYPE, EMPTY_STRING)).strip()
+                dev_id = device_payload.get(KEY_ID, EMPTY_STRING)
+                text = (
+                    TEXT_DEVICE_PREFIX
+                    + TEXT_DEVICE_ENTRY.format(
+                        label=label,
+                        vendor=vendor,
+                        type=dev_type,
+                        id=dev_id,
+                    )
+                )
                 _print_local(text, payload)
                 return StatusResult(code=SS__NORMAL)
             print(MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND)
@@ -7227,21 +8040,37 @@ class BridgeCli:
             if show_all:
                 if self._ensure_bindings_loaded() and isinstance(self._bindings_payload, dict):
                     global_payload = self._bindings_payload
-            lines = [f"Local bindings (profile {profile_name or '(none)'}):"]
+            if not groups:
+                _print_local(TEXT_BINDINGS_NONE, payload)
+                return StatusResult(code=SS__NORMAL)
+            lines = [TEXT_BINDINGS_HEADER]
             for group in groups:
                 if not isinstance(group, dict):
                     continue
-                name = str(group.get("name", "")).strip()
-                bindings = group.get("bindings", []) or []
+                name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
+                lines.append(TEXT_BINDINGS_GROUP.format(name=name))
+                bindings = group.get(KEY_BRIDGE_BINDINGS, []) or []
+                if not bindings:
+                    lines.append(TEXT_BINDINGS_GROUP_NONE)
+                    continue
                 for binding in bindings:
                     if not isinstance(binding, dict):
                         continue
-                    line = f"  {name}: {binding.get('input')} {binding.get('kind')}"
-                    if "value" in binding:
-                        line += f" {binding.get('value')}"
-                    lines.append(line)
-            if len(lines) == 1:
-                lines.append("  (none)")
+                    if KEY_VALUE in binding:
+                        lines.append(
+                            TEXT_BINDING_ENTRY_VALUE.format(
+                                input=binding.get(KEY_INPUT),
+                                kind=binding.get(KEY_KIND),
+                                value=binding.get(KEY_VALUE),
+                            )
+                        )
+                    else:
+                        lines.append(
+                            TEXT_BINDING_ENTRY.format(
+                                input=binding.get(KEY_INPUT),
+                                kind=binding.get(KEY_KIND),
+                            )
+                        )
             payload_json = payload
             if show_all:
                 lines.append(MESSAGE_BINDINGS_GLOBAL_HEADER)
@@ -7321,82 +8150,66 @@ class BridgeCli:
             return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_SELECTED_DEVICE:
+            selected_device = str(payload.get(KEY_DEVICE, EMPTY_STRING)).strip()
+            selected_enabled = bool(payload.get(KEY_ENABLED, False))
+            device_text = selected_device or TEXT_STATUS_NONE
+            state = TEXT_STATUS_ON if selected_enabled else TEXT_STATUS_OFF
             text = (
-                f"Local selected device (profile {profile_name or '(none)'}): "
-                f"{selected_device or '(none)'} ({'on' if selected_enabled else 'off'})"
+                TEXT_SELECTED_DEVICE_PREFIX
+                + device_text
+                + TEXT_PAREN_OPEN
+                + state
+                + TEXT_PAREN_CLOSE
             )
             _print_local(text, payload)
             return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_RUNTIME:
-            lines = [
-                "Local runtime-state:",
-                f"  profile={profile_name or '(none)'}",
-                f"  selectedDevice={selected_device or '(none)'} ({'on' if selected_enabled else 'off'})",
-                f"  groups={len(groups)}",
+            selected = (
+                payload.get(KEY_BRIDGE_SELECTED_DEVICE)
+                if isinstance(payload.get(KEY_BRIDGE_SELECTED_DEVICE), dict)
+                else {}
+            )
+            selected_device = str(selected.get(KEY_DEVICE, EMPTY_STRING)).strip()
+            selected_enabled = bool(selected.get(KEY_ENABLED, False))
+            build_value = str(payload.get(KEY_BUILD, EMPTY_STRING))
+            enabled_value = str(bool(payload.get(KEY_ENABLED, False))).lower()
+            estopped_value = str(bool(payload.get(KEY_ESTOPPED, False))).lower()
+            mode_value = str(payload.get(KEY_MODE, EMPTY_STRING))
+            group_count = len(groups)
+            selected_label = selected_device or TEXT_STATUS_NONE
+            selected_state = TEXT_STATUS_ON if selected_enabled else TEXT_STATUS_OFF
+            status_lines = [
+                TEXT_STATUS_HEADER,
+                TEXT_STATUS_BUILD.format(value=build_value),
+                TEXT_STATUS_PROFILE.format(value=profile_name or TEXT_STATUS_NONE),
+                TEXT_STATUS_ENABLED.format(value=enabled_value),
+                TEXT_STATUS_ESTOPPED.format(value=estopped_value),
+                TEXT_STATUS_MODE.format(value=mode_value),
+                TEXT_STATUS_GROUPS.format(value=group_count),
+                TEXT_STATUS_SELECTED.format(device=selected_label, state=selected_state),
             ]
-            devices = payload.get("devices") if isinstance(payload, dict) else None
-            grouped_devices = set()
-            for group in groups:
-                if not isinstance(group, dict):
-                    continue
-                for member in group.get("members", []) or []:
-                    if isinstance(member, dict):
-                        name = str(member.get("device", "")).strip()
-                    else:
-                        name = str(member).strip()
-                    if name:
-                        grouped_devices.add(name.lower())
-            if isinstance(devices, list) and devices:
-                lines.append(f"  devices={len(devices)}")
-                lines.append("  devices:")
-                for device in devices:
-                    if not isinstance(device, dict):
-                        continue
-                    name = str(device.get("name", "")).strip()
-                    if not name:
-                        continue
-                    parts = [name]
-                    if name.lower() not in grouped_devices:
-                        parts.append("[ungrouped]")
-                    lines.append("    " + " ".join(parts))
+            group_lines = []
+            if not groups:
+                group_lines.append(TEXT_GROUPS_NONE)
             else:
-                lines.append("  devices=(none)")
-            for group in groups:
-                if not isinstance(group, dict):
-                    continue
-                name = str(group.get("name", "")).strip()
-                enabled = bool(group.get("enabled", True))
-                lines.append(f"  group {name} ({'enabled' if enabled else 'disabled'})")
-                members = group.get("members", []) or []
-                if members:
-                    lines.append("    members:")
-                    for member in members:
-                        if isinstance(member, dict):
-                            device = str(member.get("device", "")).strip()
-                            member_enabled = bool(member.get("enabled", True))
-                        else:
-                            device = str(member).strip()
-                            member_enabled = True
-                        if device:
-                            lines.append(
-                                f"      {device} ({'enabled' if member_enabled else 'disabled'})"
-                            )
-                else:
-                    lines.append("    members: (none)")
-                bindings = group.get("bindings", []) or []
-                if bindings:
-                    lines.append("    bindings:")
-                    for binding in bindings:
-                        if not isinstance(binding, dict):
-                            continue
-                        line = f"      {binding.get('input')} {binding.get('kind')}"
-                        if "value" in binding:
-                            line += f" {binding.get('value')}"
-                        lines.append(line)
-                else:
-                    lines.append("    bindings: (none)")
-            _print_local("\n".join(lines), payload)
+                group_lines.append(TEXT_GROUPS_HEADER)
+                for group in groups:
+                    if not isinstance(group, dict):
+                        continue
+                    name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
+                    enabled = bool(group.get(KEY_ENABLED, True))
+                    members = group.get(KEY_MEMBERS, []) or []
+                    bindings = group.get(KEY_BRIDGE_BINDINGS, []) or []
+                    group_lines.append(
+                        TEXT_GROUPS_ENTRY.format(
+                            name=name,
+                            state=TEXT_ENABLED if enabled else TEXT_DISABLED,
+                            members=len(members),
+                            bindings=len(bindings),
+                        )
+                    )
+            _print_local(SEP_NEWLINE.join(status_lines + [""] + group_lines), payload)
             return StatusResult(code=SS__NORMAL)
 
         print("ERROR: Unknown show command.")
@@ -7429,32 +8242,17 @@ class BridgeCli:
         NAME
             _show_local_version - Show local app version information.
         """
-        apps = []
         version = VERSIONS.get(VERSION_APP_NAME, EMPTY_STRING)
-        if version:
-            apps.append(
-                {
-                    VERSION_KEY_NAME: VERSION_APP_NAME,
-                    VERSION_KEY_VERSION: version,
-                }
-            )
-        payload = {VERSION_KEY_APPS: apps, KEY_BUILD: build_info_payload()}
+        payload = {KEY_VERSION: version, KEY_BUILD: build_info_payload()}
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             print(self._dump_json(payload, pretty))
             return StatusResult(code=SS__NORMAL)
-        print(VERSION_TITLE)
-        if not apps:
+        if not version:
             print(MESSAGE_VERSION_NONE)
             return StatusResult(code=SS__NORMAL)
-        for app in apps:
-            print(
-                format_version_line(
-                    str(app.get(VERSION_KEY_NAME, EMPTY_STRING)),
-                    str(app.get(VERSION_KEY_VERSION, EMPTY_STRING)),
-                )
-            )
-        print(BUILD_TITLE)
+        print(TEXT_VERSION_PREFIX + version)
+        print(TEXT_BUILD_HEADER)
         for line in build_lines():
             print(line)
         return StatusResult(code=SS__NORMAL)
@@ -7470,11 +8268,13 @@ class BridgeCli:
         if json_output:
             print(self._dump_json({KEY_SOURCES: entries}, pretty))
             return StatusResult(code=SS__NORMAL)
-        print(MESSAGE_SOURCES_HEADER)
+        print(TEXT_SOURCES_HEADER)
         for entry in entries:
-            name = str(entry.get(KEY_SOURCE_NAME, EMPTY_STRING))
-            value = self._source_display_value(entry)
-            print(MESSAGE_SOURCES_ENTRY.format(name=name, value=value))
+            name = str(entry.get(KEY_SOURCES_NAME, EMPTY_STRING))
+            path = str(entry.get(KEY_SOURCES_PATH, EMPTY_STRING))
+            exists = str(bool(entry.get(KEY_SOURCES_EXISTS, False))).lower()
+            print(TEXT_SOURCES_ENTRY.format(name=name, path=path, exists=exists))
+        print(TEXT_SOURCES_FOOTER)
         return StatusResult(code=SS__NORMAL)
 
     def _collect_sources(self) -> List[Dict[str, object]]:
@@ -7486,30 +8286,26 @@ class BridgeCli:
         sources: List[Dict[str, object]] = []
         sources.append(
             self._build_source_entry(
-                SOURCE_NAME_REGISTRY,
-                isinstance(self._local_root_payload, dict),
+                SOURCE_NAME_PROFILES,
                 self._local_root_path,
             )
         )
         sources.append(
             self._build_source_entry(
-                SOURCE_NAME_CONFIG,
-                isinstance(self._local_config, dict),
-                self._local_config_path,
-            )
-        )
-        sources.append(
-            self._build_source_entry(
                 SOURCE_NAME_BINDINGS,
-                isinstance(self._bindings_payload, dict),
                 self._bindings_path,
             )
         )
         sources.append(
             self._build_source_entry(
                 SOURCE_NAME_CAN_MAPPINGS,
-                isinstance(self._can_mappings, dict),
                 self._can_mappings_path,
+            )
+        )
+        sources.append(
+            self._build_source_entry(
+                SOURCE_NAME_TESTS,
+                self._local_root_path,
             )
         )
         return sources
@@ -7517,7 +8313,6 @@ class BridgeCli:
     def _build_source_entry(
         self,
         name: str,
-        loaded: bool,
         path: Optional[Path],
     ) -> Dict[str, object]:
         """
@@ -7525,17 +8320,12 @@ class BridgeCli:
             _build_source_entry - Create a source entry for display/JSON.
         """
 
-        if not loaded:
-            status = SOURCE_STATUS_NOT_LOADED
-        elif path is None:
-            status = SOURCE_STATUS_UNKNOWN
-        else:
-            status = SOURCE_STATUS_LOADED
         path_text = str(path) if path is not None else EMPTY_STRING
+        exists = bool(path is not None and path.exists())
         return {
-            KEY_SOURCE_NAME: name,
-            KEY_SOURCE_STATUS: status,
-            KEY_SOURCE_PATH: path_text,
+            KEY_SOURCES_NAME: name,
+            KEY_SOURCES_PATH: path_text,
+            KEY_SOURCES_EXISTS: exists,
         }
 
     @staticmethod
@@ -7545,13 +8335,9 @@ class BridgeCli:
             _source_display_value - Build display text for a source entry.
         """
 
-        status = str(entry.get(KEY_SOURCE_STATUS, EMPTY_STRING))
-        path = str(entry.get(KEY_SOURCE_PATH, EMPTY_STRING))
-        if status == SOURCE_STATUS_LOADED:
-            return path
-        if status == SOURCE_STATUS_UNKNOWN:
-            return MESSAGE_SOURCES_UNKNOWN
-        return MESSAGE_SOURCES_NOT_LOADED
+        path = str(entry.get(KEY_SOURCES_PATH, EMPTY_STRING))
+        exists = bool(entry.get(KEY_SOURCES_EXISTS, False))
+        return SOURCE_DISPLAY_FMT.format(path=path, exists=str(exists).lower())
 
     def _show_local_profiles(self, json_output: bool, pretty: bool) -> StatusResult:
         """
@@ -10483,9 +11269,9 @@ class BridgeCli:
             KEY_BRIDGE_GENERATED_AT: config.get(KEY_BRIDGE_GENERATED_AT),
         }
         by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
-        ordered[KEY_BRIDGE_BY_PROFILE] = (
-            dict(by_profile) if isinstance(by_profile, dict) else {}
-        )
+        ordered_by_profile = dict(by_profile) if isinstance(by_profile, dict) else {}
+        ordered_by_profile.pop(DEFAULT_PROFILE_LOCAL, None)
+        ordered[KEY_BRIDGE_BY_PROFILE] = ordered_by_profile
         return ordered
 
     def _local_device_exists(self, name: str) -> bool:
@@ -10493,6 +11279,7 @@ class BridgeCli:
         NAME
             _local_device_exists - Check if a device entry exists in local config.
         """
+        name = self._normalize_device_label_input(name)
         if self._local_root_payload is not None:
             profile = self._active_profile_name()
             if profile:

@@ -7,6 +7,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 
@@ -19,6 +20,7 @@ import java.net.Socket;
  *   commands to a handler. Each command returns an ACK and OUT JSON line.
  */
 public final class TcpUiServer {
+  private static final boolean SOCKET_REUSE_ADDRESS = true;
   /**
    * NAME
    *   UiCommand - Parsed TCP UI command payload.
@@ -141,7 +143,9 @@ public final class TcpUiServer {
   }
 
   private void runServer() {
-    try (ServerSocket server = new ServerSocket(port)) {
+    try (ServerSocket server = new ServerSocket()) {
+      server.setReuseAddress(SOCKET_REUSE_ADDRESS);
+      server.bind(new InetSocketAddress(port));
       while (running) {
         try (Socket socket = server.accept()) {
           if (listener != null) {

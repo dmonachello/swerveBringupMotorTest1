@@ -14,6 +14,11 @@ DESCRIPTION
 from typing import Iterable, List, Tuple
 
 
+DEFAULT_BUS_LEFT = 40.0
+DEFAULT_BUS_RIGHT_PAD = 200.0
+DEFAULT_BUS_RIGHT_MIN = 480.0
+
+
 def _node_scale(node) -> float:
     return max(0.6, min(2.0, float(getattr(node, "scale", 1.0))))
 
@@ -90,9 +95,10 @@ def effective_bus_bounds(
         effective_bus_bounds - Compute bus left/right bounds with connectors.
     """
     if len(bus_lefts) < len(bus_offsets):
-        bus_lefts.extend([40.0] * (len(bus_offsets) - len(bus_lefts)))
+        bus_lefts.extend([DEFAULT_BUS_LEFT] * (len(bus_offsets) - len(bus_lefts)))
     if len(bus_rights) < len(bus_offsets):
-        bus_rights.extend([max_node_x + 200.0] * (len(bus_offsets) - len(bus_rights)))
+        default_right = max(max_node_x + DEFAULT_BUS_RIGHT_PAD, DEFAULT_BUS_RIGHT_MIN)
+        bus_rights.extend([default_right] * (len(bus_offsets) - len(bus_rights)))
     if len(bus_lefts) > len(bus_offsets):
         bus_lefts[:] = bus_lefts[: len(bus_offsets)]
     if len(bus_rights) > len(bus_offsets):

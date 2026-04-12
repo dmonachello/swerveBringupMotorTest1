@@ -6,8 +6,8 @@ SYNOPSIS
     python -m tools.test_template_wizard.copy_test_template
 
 DESCRIPTION
-    Prompts for a test template, lets the user edit key fields, and writes
-    bringup_tests.json to the deploy directory.
+    Legacy template copier that wrote bringup_tests.json. This workflow is disabled.
+    Tests now live in bringup_system.json under bridgeConfig.byProfile.
 
 SIDE EFFECTS
     Reads template files, prompts on stdin, writes JSON output.
@@ -15,11 +15,7 @@ SIDE EFFECTS
 
 from pathlib import Path
 
-from tools.common.paths import tests_deploy_path
-from tools.common.tests_io import load_tests_payload, write_tests_payload
-
 TEMPLATE_DIR = Path(__file__).resolve().parent / "test_templates"
-OUTPUT_FILE = tests_deploy_path()
 
 
 def _prompt(text, default=None):
@@ -132,18 +128,9 @@ def main():
     NAME
         main - CLI entry point for template copying.
     """
-    templates = _list_templates()
-    if not templates:
-        print("No templates found.")
-        return 1
-    tpl_path = _choose_template(templates)
-    payload = load_tests_payload(tpl_path)
-    payload = _ensure_test_sets(payload)
-    payload = _edit_tests(payload)
-    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    write_tests_payload(OUTPUT_FILE, payload)
-    print(f"Wrote {OUTPUT_FILE}")
-    return 0
+    print("ERROR: bringup_tests.json is legacy and not supported.")
+    print("Use the CLI test authoring commands and `save unified-config` instead.")
+    return 2
 
 
 if __name__ == "__main__":

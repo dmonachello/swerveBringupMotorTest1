@@ -31,6 +31,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -95,6 +97,14 @@ public final class BringupUtil {
   private static final String NT_LABEL_SAFE_CHARS = "-_.~";
   private static final String NT_LABEL_FALLBACK = "UNKNOWN";
   private static final String NT_LABEL_EMPTY = "";
+  public static final long REGISTRY_BYTES_UNKNOWN = -1L;
+  private static final int DIO_REFCOUNT_ZERO = 0;
+  private static final int DIO_REFCOUNT_ONE = 1;
+  private static final int DIO_REFCOUNT_INCREMENT = 1;
+  private static final Object DIO_INPUT_LOCK = new Object();
+  private static final Map<Integer, DigitalInput> DIO_INPUTS = new HashMap<>();
+  private static final Map<DigitalInput, Integer> DIO_INPUT_CHANNELS = new IdentityHashMap<>();
+  private static final Map<Integer, Integer> DIO_INPUT_REFCOUNT = new HashMap<>();
   private static final char NT_LABEL_PERCENT = '%';
   private static final String NT_LABEL_HEX = "0123456789ABCDEF";
   private static final int ASCII_0 = 48;
@@ -129,6 +139,16 @@ public final class BringupUtil {
       "devices missing or empty";
   private static final String MESSAGE_REGISTRY_DEVICE_LABEL_MISSING =
       "device label missing";
+  private static final String MESSAGE_REGISTRY_PERSIST_FAILED =
+      "Failed to persist bringup_system.json to deploy: %s";
+  private static final String MESSAGE_REGISTRY_PERSIST_FAILED_BOTH =
+      "Failed to persist bringup_system.json to deploy: %s; fallback: %s";
+  private static final String MESSAGE_REGISTRY_PERSIST_FALLBACK =
+      "Warning: failed to persist bringup_system.json to deploy (%s). Wrote to %s instead.";
+  private static final String MESSAGE_REGISTRY_PERSIST_PATH_MISSING =
+      "Deploy path unavailable; cannot persist bringup_system.json.";
+  private static final boolean REGISTRY_PERSIST_ON_APPLY = true;
+  private static final boolean REGISTRY_PERSIST_FALLBACK_ON_FAIL = true;
   private static final String MESSAGE_REGISTRY_DEVICE_LABEL_DUP =
       "duplicate device label: %s";
   private static final String MESSAGE_REGISTRY_PROFILES_MISSING =
@@ -1239,6 +1259,36 @@ public final class BringupUtil {
 
   /**
    * NAME
+   *   resolveProfilePersistPath - Resolve the profile JSON deploy path for writes.
+   *
+   * RETURNS
+   *   Deploy path for bringup_system.json when available, otherwise a local path.
+   */
+  private static Path resolveProfilePersistPath() {
+    try {
+      return Filesystem.getDeployDirectory().toPath().resolve(DEFAULT_PROFILE_FILE);
+    } catch (Exception ex) {
+      return Paths.get(DEFAULT_PROFILE_FILE);
+    }
+  }
+
+  /**
+   * NAME
+   *   resolveProfilePersistFallbackPath - Resolve fallback path for profile JSON writes.
+   *
+   * RETURNS
+   *   Operating directory path for bringup_system.json when available.
+   */
+  private static Path resolveProfilePersistFallbackPath() {
+    try {
+      return Filesystem.getOperatingDirectory().toPath().resolve(DEFAULT_PROFILE_FILE);
+    } catch (Exception ex) {
+      return Paths.get(DEFAULT_PROFILE_FILE);
+    }
+  }
+
+  /**
+   * NAME
    *   applyFallbackProfile - Populate built-in fallback profiles.
    */
   private static void applyFallbackProfile() {
@@ -1389,6 +1439,10 @@ public final class BringupUtil {
   public static final class RegistryStageResult {
     public boolean ok = false;
     public String message = NT_LABEL_EMPTY;
+    public String expectedHash = NT_LABEL_EMPTY;
+    public String computedHash = NT_LABEL_EMPTY;
+    public long expectedBytes = REGISTRY_BYTES_UNKNOWN;
+    public long computedBytes = REGISTRY_BYTES_UNKNOWN;
   }
 
   /**
@@ -1432,6 +1486,12 @@ public final class BringupUtil {
     boolean verified = verifyRegistryApply(activateProfile, report);
     if (!verified) {
       return report;
+    }
+    if (REGISTRY_PERSIST_ON_APPLY) {
+      boolean persisted = persistRegistryJson(rawJson, report);
+      if (!persisted) {
+        return report;
+      }
     }
     report.overallOk = true;
     report.activeProfile = safeText(activeProfile);
@@ -1719,6 +1779,54 @@ public final class BringupUtil {
     }
     report.postApplyCheck.ok = true;
     return true;
+  }
+
+  /**
+   * NAME
+   *   persistRegistryJson - Persist registry JSON to the deploy path.
+   *
+   * PARAMETERS
+   *   rawJson - Full bringup_system.json payload.
+   *   report - Registry apply report to update on failure.
+   *
+   * RETURNS
+   *   True when persisted, false when an error is reported.
+   */
+  private static boolean persistRegistryJson(String rawJson, RegistryApplyReport report) {
+    Path path = resolveProfilePersistPath();
+    if (path == null) {
+      report.postApplyCheck.ok = false;
+      report.postApplyCheck.message = MESSAGE_REGISTRY_PERSIST_PATH_MISSING;
+      return false;
+    }
+    try {
+      Files.writeString(path, rawJson, StandardCharsets.UTF_8);
+      report.postApplyCheck.ok = true;
+      return true;
+    } catch (IOException ex) {
+      String primaryError = safeText(ex.getMessage());
+      if (REGISTRY_PERSIST_FALLBACK_ON_FAIL) {
+        Path fallbackPath = resolveProfilePersistFallbackPath();
+        if (fallbackPath != null) {
+          try {
+            Files.writeString(fallbackPath, rawJson, StandardCharsets.UTF_8);
+            BringupPrinter.enqueue(
+                String.format(MESSAGE_REGISTRY_PERSIST_FALLBACK, primaryError, fallbackPath));
+            report.postApplyCheck.ok = true;
+            return true;
+          } catch (IOException fallbackEx) {
+            String fallbackError = safeText(fallbackEx.getMessage());
+            report.postApplyCheck.ok = false;
+            report.postApplyCheck.message =
+                String.format(MESSAGE_REGISTRY_PERSIST_FAILED_BOTH, primaryError, fallbackError);
+            return false;
+          }
+        }
+      }
+      report.postApplyCheck.ok = false;
+      report.postApplyCheck.message = String.format(MESSAGE_REGISTRY_PERSIST_FAILED, primaryError);
+      return false;
+    }
   }
 
   /**
@@ -2776,7 +2884,7 @@ public final class BringupUtil {
     if (input != null) {
       return input;
     }
-    return new DigitalInput(channel);
+    return acquireDioInput(channel);
   }
 
   /**
@@ -2806,14 +2914,24 @@ public final class BringupUtil {
     for (int i = 0; i < switches.size(); i++) {
       LimitSwitchConfig spec = switches.get(i);
       int channel = spec != null ? spec.dio : DISABLED_CAN_ID;
+      DigitalInput existing = resolved.get(i);
       if (channel < 0) {
+        if (existing != null) {
+          releaseDioInput(existing);
+          resolved.set(i, null);
+        }
         continue;
       }
-      resolved.set(i, ensureDioInput(resolved.get(i), channel));
+      Integer currentChannel = channelForDioInput(existing);
+      if (currentChannel != null && currentChannel != channel) {
+        releaseDioInput(existing);
+        existing = null;
+      }
+      resolved.set(i, ensureDioInput(existing, channel));
     }
     if (resolved.size() > switches.size()) {
       for (int i = switches.size(); i < resolved.size(); i++) {
-        closeIfPossible(resolved.get(i));
+        releaseDioInput(resolved.get(i));
       }
       resolved.subList(switches.size(), resolved.size()).clear();
     }
@@ -2832,9 +2950,88 @@ public final class BringupUtil {
       return;
     }
     for (DigitalInput input : inputs) {
-      closeIfPossible(input);
+      releaseDioInput(input);
     }
     inputs.clear();
+  }
+
+  /**
+   * NAME
+   *   acquireDioInput - Get a shared DigitalInput for a DIO channel.
+   *
+   * PARAMETERS
+   *   channel - DIO channel number (>=0).
+   *
+   * RETURNS
+   *   Shared DigitalInput instance for the channel.
+   *
+   * SIDE EFFECTS
+   *   Allocates and reference-counts the DIO input.
+   */
+  private static DigitalInput acquireDioInput(int channel) {
+    synchronized (DIO_INPUT_LOCK) {
+      DigitalInput input = DIO_INPUTS.get(channel);
+      if (input == null) {
+        input = new DigitalInput(channel);
+        DIO_INPUTS.put(channel, input);
+        DIO_INPUT_CHANNELS.put(input, channel);
+        DIO_INPUT_REFCOUNT.put(channel, DIO_REFCOUNT_ZERO);
+      }
+      int count = DIO_INPUT_REFCOUNT.getOrDefault(channel, DIO_REFCOUNT_ZERO);
+      DIO_INPUT_REFCOUNT.put(channel, count + DIO_REFCOUNT_INCREMENT);
+      return input;
+    }
+  }
+
+  /**
+   * NAME
+   *   releaseDioInput - Release a shared DigitalInput reference.
+   *
+   * PARAMETERS
+   *   input - Shared DigitalInput instance.
+   *
+   * SIDE EFFECTS
+   *   Decrements the reference count and closes when the count reaches zero.
+   */
+  private static void releaseDioInput(DigitalInput input) {
+    if (input == null) {
+      return;
+    }
+    synchronized (DIO_INPUT_LOCK) {
+      Integer channel = DIO_INPUT_CHANNELS.get(input);
+      if (channel == null) {
+        closeIfPossible(input);
+        return;
+      }
+      int count = DIO_INPUT_REFCOUNT.getOrDefault(channel, DIO_REFCOUNT_ZERO);
+      if (count <= DIO_REFCOUNT_ONE) {
+        DIO_INPUT_REFCOUNT.remove(channel);
+        DIO_INPUTS.remove(channel);
+        DIO_INPUT_CHANNELS.remove(input);
+        closeIfPossible(input);
+        return;
+      }
+      DIO_INPUT_REFCOUNT.put(channel, count - DIO_REFCOUNT_INCREMENT);
+    }
+  }
+
+  /**
+   * NAME
+   *   channelForDioInput - Lookup the channel for a shared DigitalInput.
+   *
+   * PARAMETERS
+   *   input - Shared DigitalInput instance.
+   *
+   * RETURNS
+   *   Channel number or null when unknown.
+   */
+  private static Integer channelForDioInput(DigitalInput input) {
+    if (input == null) {
+      return null;
+    }
+    synchronized (DIO_INPUT_LOCK) {
+      return DIO_INPUT_CHANNELS.get(input);
+    }
   }
 
   /**

@@ -1,0 +1,12 @@
+echo on
+connect
+configure terminal
+test create neo25_duty
+type button
+device add "SPARKMAX/NEO 25"
+duty 0.15
+termination time 2.0
+show
+exit
+save unified-config C:\Users\dmona\swerveBringupMotorTest1-main\data\bringup_system.json
+end

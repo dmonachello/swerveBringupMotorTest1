@@ -5,17 +5,13 @@ import frc.robot.BringupUtil;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.google.gson.annotations.SerializedName;
-import edu.wpi.first.wpilibj.Filesystem;
 import java.io.InputStream;
 import java.io.IOException;
-import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -28,19 +24,15 @@ import java.util.Map;
  *   BringupTestRegistry - Load and persist bringup tests from JSON.
  *
  * DESCRIPTION
- *   Handles reading tests from bringup_system.json bridgeConfig entries (or an
- *   override file), selecting test sets, and saving test enable state.
+ *   Handles reading tests from bringup_system.json bridgeConfig entries,
+ *   selecting test sets, and saving test enable state.
  */
 public final class BringupTestRegistry {
-  private static final String TESTS_FILE = "bringup_tests.json";
   private static final String KEY_BRIDGE_CONFIG = "bridgeConfig";
   private static final String KEY_BRIDGE_BY_PROFILE = "byProfile";
   private static final String KEY_BRIDGE_TESTS = "tests";
   private static final String TESTS_SOURCE_REGISTRY = "registry";
-  private static final String TESTS_SOURCE_OVERRIDE = "override";
-  private static final String TESTS_SOURCE_NONE = "none";
   private static final Gson GSON = new Gson();
-  private static String overrideTestsPath = null;
   private static boolean usingTestSets = false;
   private static String activeTestSetName = null;
 
@@ -77,38 +69,7 @@ public final class BringupTestRegistry {
    *   loadTestsRoot - Load tests payload from override or registry.
    */
   private static TestRootLoad loadTestsRoot() {
-    if (overrideTestsPath != null && !overrideTestsPath.isBlank()) {
-      Path override = resolveOverridePath(overrideTestsPath);
-      if (override != null && Files.exists(override)) {
-        TestRootLoad root = loadTestsRootFromOverride(override);
-        if (root != null) {
-          return root;
-        }
-      } else {
-        BringupPrinter.enqueue("Warning: bringup tests override not found: " + overrideTestsPath);
-      }
-    }
     return loadTestsRootFromRegistry();
-  }
-
-  /**
-   * NAME
-   *   loadTestsRootFromOverride - Load tests payload from an override file.
-   */
-  private static TestRootLoad loadTestsRootFromOverride(Path path) {
-    try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-      JsonElement parsed = JsonParser.parseReader(reader);
-      if (parsed != null && parsed.isJsonObject()) {
-        JsonObject root = parsed.getAsJsonObject();
-        if (root.has(KEY_BRIDGE_CONFIG)) {
-          return loadTestsRootFromRegistryObject(root);
-        }
-      }
-      return GSON.fromJson(parsed, TestRootLoad.class);
-    } catch (IOException | JsonParseException ex) {
-      BringupPrinter.enqueue("Warning: failed to read bringup tests JSON: " + ex.getMessage());
-      return null;
-    }
   }
 
   /**
@@ -159,56 +120,26 @@ public final class BringupTestRegistry {
 
   /**
    * NAME
-   *   setOverrideTestsPath - Override the path to tests JSON.
-   */
-  public static void setOverrideTestsPath(String path) {
-    if (path == null || path.isBlank()) {
-      overrideTestsPath = null;
-    } else {
-      overrideTestsPath = path.trim();
-    }
-  }
-
-  /**
-   * NAME
    *   getTestsInfo - Gather metadata about tests payload.
    */
   public static TestsInfo getTestsInfo() {
     TestsInfo info = new TestsInfo();
-    info.overridePath = overrideTestsPath;
     info.profileName = BringupUtil.getActiveCanProfile();
     TestRootLoad root = null;
-    if (overrideTestsPath != null && !overrideTestsPath.isBlank()) {
-      Path override = resolveOverridePath(overrideTestsPath);
-      info.source = TESTS_SOURCE_OVERRIDE;
-      info.path = override;
-      info.exists = override != null && Files.exists(override);
-      if (info.exists && override != null) {
-        try {
-          info.sizeBytes = Files.size(override);
-          info.lastModifiedMs = Files.getLastModifiedTime(override).toMillis();
-          info.sha256 = hashFile(override);
-        } catch (IOException ex) {
-          info.readError = ex.getMessage();
-        }
-        root = loadTestsRootFromOverride(override);
+    info.source = TESTS_SOURCE_REGISTRY;
+    Path profilePath = BringupUtil.getProfilePath();
+    info.path = profilePath;
+    info.exists = profilePath != null && Files.exists(profilePath);
+    if (info.exists && profilePath != null) {
+      try {
+        info.sizeBytes = Files.size(profilePath);
+        info.lastModifiedMs = Files.getLastModifiedTime(profilePath).toMillis();
+        info.sha256 = hashFile(profilePath);
+      } catch (IOException ex) {
+        info.readError = ex.getMessage();
       }
-    } else {
-      info.source = TESTS_SOURCE_REGISTRY;
-      Path profilePath = BringupUtil.getProfilePath();
-      info.path = profilePath;
-      info.exists = profilePath != null && Files.exists(profilePath);
-      if (info.exists && profilePath != null) {
-        try {
-          info.sizeBytes = Files.size(profilePath);
-          info.lastModifiedMs = Files.getLastModifiedTime(profilePath).toMillis();
-          info.sha256 = hashFile(profilePath);
-        } catch (IOException ex) {
-          info.readError = ex.getMessage();
-        }
-      }
-      root = loadTestsRootFromRegistry();
     }
+    root = loadTestsRootFromRegistry();
     if (root != null && root.testSets != null && !root.testSets.isEmpty()) {
       info.usingTestSets = true;
       info.activeTestSetName = resolveActiveSetName(root);
@@ -221,9 +152,6 @@ public final class BringupTestRegistry {
     } else if (root != null && root.tests != null) {
       info.usingTestSets = false;
       info.testCount = root.tests.size();
-    }
-    if (info.source == null) {
-      info.source = TESTS_SOURCE_NONE;
     }
     return info;
   }
@@ -556,34 +484,6 @@ public final class BringupTestRegistry {
 
   /**
    * NAME
-   *   resolveOverridePath - Resolve an override path into an absolute path.
-   */
-  private static Path resolveOverridePath(String path) {
-    try {
-      Path candidate = Paths.get(path);
-      if (candidate.isAbsolute()) {
-        return candidate;
-      }
-      try {
-        Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(candidate);
-        if (Files.exists(deployPath)) {
-          return deployPath;
-        }
-      } catch (Exception ex) {
-        // Fall through to dev path.
-      }
-      Path devPath = Paths.get("src", "main", "deploy").resolve(candidate);
-      if (Files.exists(devPath)) {
-        return devPath;
-      }
-      return candidate;
-    } catch (Exception ex) {
-      return null;
-    }
-  }
-
-  /**
-   * NAME
    *   hashFile - Compute SHA-256 for a file.
    */
   private static String hashFile(Path path) throws IOException {
@@ -614,7 +514,6 @@ public final class BringupTestRegistry {
    */
   public static final class TestsInfo {
     public Path path;
-    public String overridePath;
     public String profileName;
     public String source;
     public boolean exists;

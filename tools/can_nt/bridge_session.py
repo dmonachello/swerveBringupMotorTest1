@@ -12,6 +12,7 @@ DESCRIPTION
     snapshots for the bridge UI and CLI front ends.
 """
 
+import datetime
 import json
 import queue
 import socket
@@ -43,6 +44,31 @@ class BridgeEvent:
     session_id: str
     state: Dict[str, Any]
     raw: Dict[str, Any]
+
+
+TIMEZONE_ARG_ID = "timezoneId"
+TIMEZONE_ARG_OFFSET_MIN = "timezoneOffsetMin"
+SECONDS_PER_MINUTE = 60
+
+
+def _local_timezone_args() -> Dict[str, Any]:
+    """
+    NAME
+        _local_timezone_args - Build timezone args for uiHandshake.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc).astimezone()
+    offset = now.utcoffset()
+    offset_min = 0
+    if offset is not None:
+        offset_min = int(offset.total_seconds() / SECONDS_PER_MINUTE)
+    tzinfo = now.tzinfo
+    tz_id = ""
+    if tzinfo is not None:
+        tz_id = getattr(tzinfo, "key", "") or getattr(tzinfo, "zone", "") or ""
+    args = {TIMEZONE_ARG_OFFSET_MIN: offset_min}
+    if tz_id:
+        args[TIMEZONE_ARG_ID] = tz_id
+    return args
 
 
 class TcpCommandClient:
@@ -279,11 +305,13 @@ class BridgeSession:
         if not self.connect():
             return False
         seq = self._next_seq()
+        args = {"reset": bool(reset)}
+        args.update(_local_timezone_args())
         payload = {
             "type": "cmd",
             "seq": seq,
             "name": "uiHandshake",
-            "args": {"reset": bool(reset)},
+            "args": args,
             "ts": time.time(),
             "clientId": self._client_id,
         }
