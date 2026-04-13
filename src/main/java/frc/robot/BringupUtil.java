@@ -222,8 +222,6 @@ public final class BringupUtil {
   private static boolean activeProfileApplied = false;
   private static final Map<String, MotorSpec> MOTOR_SPECS = loadMotorSpecs();
   private static final CanMappings CAN_MAPPINGS = loadCanMappings();
-  private static final Map<String, Integer> MANUFACTURER_NAME_TO_ID = buildManufacturerNameToId();
-  private static final Map<String, Integer> DEVICE_TYPE_NAME_TO_ID = buildDeviceTypeNameToId();
   private static final Map<DeviceKey, List<DeviceConfig>> DEVICE_CONFIGS = new LinkedHashMap<>();
   private static final Map<String, DeviceDefinition> DEVICE_REGISTRY = new LinkedHashMap<>();
   private static final Map<DeviceInstanceKey, Object> DEVICE_INSTANCE_REGISTRY = new LinkedHashMap<>();
@@ -2541,47 +2539,6 @@ public final class BringupUtil {
     List<String> attachments = Collections.emptyList();
     List<String> tags = Collections.emptyList();
     Boolean terminator;
-  }
-
-  private static Map<String, Integer> buildManufacturerNameToId() {
-    Map<String, Integer> map = new LinkedHashMap<>();
-    if (CAN_MAPPINGS != null && CAN_MAPPINGS.manufacturers != null) {
-      for (Map.Entry<String, String> entry : CAN_MAPPINGS.manufacturers.entrySet()) {
-        String name = normalizeKey(entry.getValue());
-        if (name.isEmpty()) {
-          continue;
-        }
-        try {
-          int id = Integer.parseInt(entry.getKey());
-          map.put(name, id);
-        } catch (NumberFormatException ignored) {
-          // skip invalid id
-        }
-      }
-    }
-    map.putIfAbsent("NI", 1);
-    map.putIfAbsent("CTRE", 4);
-    map.putIfAbsent("REV", 5);
-    return map;
-  }
-
-  private static Map<String, Integer> buildDeviceTypeNameToId() {
-    Map<String, Integer> map = new LinkedHashMap<>();
-    if (CAN_MAPPINGS != null && CAN_MAPPINGS.deviceTypes != null) {
-      for (Map.Entry<String, String> entry : CAN_MAPPINGS.deviceTypes.entrySet()) {
-        String name = normalizeKey(entry.getValue());
-        if (name.isEmpty()) {
-          continue;
-        }
-        try {
-          int id = Integer.parseInt(entry.getKey());
-          map.put(name, id);
-        } catch (NumberFormatException ignored) {
-          // skip invalid id
-        }
-      }
-    }
-    return map;
   }
 
   private static String normalizeKey(String value) {
