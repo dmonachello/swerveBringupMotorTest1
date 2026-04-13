@@ -2,58 +2,110 @@
 
 Purpose: Validate CLI, topology editor, and CAN diagnostics against a real robot with a blank configuration.
 
-Scope
+## 1. Introduction
+Run a repeatable end-to-end bringup workflow that starts from an empty configuration and adds capability one device at a time.
+
+### 1.1 Guiding Principles
+Keep this plan stable and repeatable while driving toward an alpha-quality workflow.
+
+- Prefer one end-to-end “happy path” over many partial paths.
+- Add one device and one test at a time; repeat the loop.
+- If a step fails, stop and fix the root cause before adding more devices or features.
+- Expect a second pass for usability/clarity after the workflow is proven solid.
+
+### 1.2 User Story
+This document is primarily a test plan/procedure, not a formal user story backlog item.
+It can be treated as a user-story-style acceptance test:
+
+- As an operator, I want to bring up one device at a time and run a known-safe test so I can prove the toolchain works before scaling up to a full robot.
+
+### 1.3 Save and Sync Conventions
+The CLI has multiple save commands because they write different scopes (profiles vs tests vs bridgeConfig).
+For this plan, standardize on one canonical write plus one sync gate:
+
+- Host save (canonical): `save unified-config data\bringup_system.json --force`
+  - Writes profiles + tests + bridgeConfig to the canonical file.
+- Host sync to deploy: `python -m tools.validate_sync`
+  - Validates canonical and writes `src\main\deploy\bringup_system.json`.
+
+### 1.4 Terminology
+Purpose: Prevent "active profile" confusion across host tools and robot runtime.
+
+- Device: A labeled component in the device registry (for example a motor controller) referenced by label in profiles, groups, and tests.
+- CAN bus: The physical CAN network on the robot. Host tools must be passive (no CAN transmit).
+- Host context: Local editing/inspection state on the Driver Station PC (what profile the CLI/topology editor is operating on on disk).
+- Robot context: Runtime state on the roboRIO (active profile, selected test, and any actuation).
+- CLI editor: The Bridge CLI running on the PC (can edit local config and can send explicit TCP commands to the robot).
+- Topology editor: The PC GUI editor that authors profile devices and diagram metadata into `data\bringup_system.json`.
+- Bridge UI: The PC UI that displays runtime state and triggers robot actions via TCP (it does not directly edit config files).
+- Canonical config: `data\bringup_system.json` (single source of truth for host tools).
+- Deploy copy: `src\main\deploy\bringup_system.json` (derived artifact written by `python -m tools.validate_sync`).
+- Rule: host context MUST NOT change robot context unless an explicit TCP robot command is executed (for example `profiles activate <name>`).
+- Examples:
+  - Host: `show profile`, `show devices`, `show topology`, `show tests`.
+  - Robot: `connect`, `show status robot`, `tests select <name>`, `tests run`.
+- Offline-only variant: `docs/TESTING_WINDOWS_OFFLINE.md`.
+
+### 1.5 Scope
 - CLI config lifecycle, profiles, and bindings.
 - Topology editor save/load and neighbor ports.
 - Visibility matrix basics (single analyzer acceptable).
 - Robot-side interaction safety (no CAN transmit from PC tool).
 
-Pre-Flight
+### 1.6 Pre-Flight Checks
 - Robot and Driver Station PC on the same network.
 - CANable connected (if using live CAN). For CLI-only testing, use `--no-can`.
 - Robot code deployed and enabled to provide NetworkTables and bringup harness.
 - If using a blank config, back up existing files first.
 
-Files and Paths
-- Profiles: `src\main\deploy\bringup_system.json`
+### 1.7 Files and Paths
+- Canonical profiles/registry/tests: `data\bringup_system.json`
+- Deploy copy (robot fallback and tooling default): `src\main\deploy\bringup_system.json`
+- Validate + sync gate: `python -m tools.validate_sync`
 - Bindings: `src\main\deploy\bringup_bindings.json`
 - CLI entry: `python -m tools.can_nt.can_nt_bridge --cli`
 - Topology editor: `python -m tools.can_topology.can_top_editor`
 
-Safety Rules
+### 1.8 Safety Rules
 - Do not send CAN frames from the PC tool.
 - Keep motors disabled unless explicitly testing motion.
 - Use low duty cycles and short durations when you do test.
+- Driver Station E-stop: be ready to E-stop immediately for any unexpected motion.
 
----
+### 1.9 Document Change History
 
-## Phase 1: Blank Config → home_031226 (Main Test)
+| Version | Initials | Date (YYYY-MM-DD) | Comments |
+|---------|----------|-------------------|----------|
+| 0.1     | DRM      | 2026-04-13        | Initial version |
 
-Goal: Start empty and rebuild a working profile that matches `home_031226` without loading any prior config.
+## 2. Phase 1 (Host): Blank Config → home_031226 (Main Test)
 
-1. Start CLI.
+Goal: Start empty and build a minimal working profile for `home_031226` without loading any prior config.
+
+### 2.1 Start CLI
 
 ```powershell
 cd C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1
 python -m tools.can_nt.can_nt_bridge --cli
 ```
 
-2. Initialize a blank profile.
+### 2.2 Initialize profiles and create the target host profile
 
 ```
+configure terminal
 profiles init
-profile home_031226
+profile create home_031226
 show profile
 show devices
 show topology
 ```
 
 Expected
-- Active profile is `test_blank`.
+- Active host profile is `home_031226`.
 - Devices are empty.
 - Topology shows `(none)`.
 
-3. Build device registry entries from scratch.
+### 2.3 Add one device registry entry (start small)
 
 ```
 device "SPARKMAX/NEO 25"
@@ -64,64 +116,12 @@ set id 25
 set model "REV NEO"
 set type motor
 exit
-
-device "SPARKMAX/NEO550 7"
-set interface CAN
-set manufacturer 5
-set deviceType 2
-set id 7
-set model "REV NEO 550"
-set type motor
-exit
-
-device "lmSw1"
-set interface DIO
-set type limitSwitch
-set dio 0
-set invert true
-exit
-
-device "FALCON 9"
-set interface CAN
-set manufacturer 4
-set deviceType 2
-set id 9
-set model "CTRE Falcon 500 motor"
-set type motor
-exit
-
-device "PDH"
-set interface CAN
-set manufacturer 5
-set deviceType 8
-set id 1
-set model "REV PDH"
-set type power
-exit
-
-device "roboRIO"
-set interface CAN
-set manufacturer 0
-set deviceType 1
-set id 0
-set model "roboRIO"
-set type roborio
-exit
-
-device "candle"
-set interface CAN
-set manufacturer 4
-set deviceType 10
-set id 2
-set model "CTRE CANdle"
-set type misc
-exit
 ```
 
 Expected
-- `show devices` lists: `SPARKMAX/NEO 25`, `SPARKMAX/NEO550 7`, `FALCON 9`, `PDH`, `roboRIO`, `candle`, `lmSw1`.
+- `show devices` lists: `SPARKMAX/NEO 25`.
 
-4. Add topology (use the editor for layout).
+### 2.4 Add topology (use the editor for layout)
 
 ```powershell
 python -m tools.can_topology.can_top_editor
@@ -129,15 +129,19 @@ python -m tools.can_topology.can_top_editor
 
 In the editor:
 - Select profile `home_031226`.
-- Add nodes matching the labels above.
+- Add nodes matching your current device set (start with `SPARKMAX/NEO 25` only).
 - Place them on the bus.
-- Save to `src\main\deploy\bringup_system.json`.
+- File -> Save to Deploy (writes canonical + deploy copies).
 
 Back in the editor, confirm the topology is present for `home_031226`.
 
 No CLI reload is required for this test. Stay in the editor for topology validation.
 
-5. Auto-assign or manually set neighbor ports.
+### 2.5 Auto-assign or manually set neighbor ports
+
+Notes:
+- Neighbor ports are meaningful once the topology has at least two nodes.
+- If you only have one device so far, skip this step and return after adding more devices.
 
 ```
 conf terminal
@@ -148,32 +152,39 @@ show topology neighbors
 Expected
 - Neighbor entries exist.
 
-6. Save the profile after CLI + topology edits.
+### 2.6 Save host changes (canonical) and sync to deploy
+
+Notes:
+- If you used the topology editor “Save to Deploy”, you already wrote canonical + deploy.
+- Run these commands if you made additional CLI changes after the editor save (or to re-validate and stamp hashes).
 
 ```
-save profiles src\main\deploy\bringup_system.json --force
+save unified-config data\bringup_system.json --force
+end
+```
+
+```powershell
+python -m tools.validate_sync
 ```
 
 Expected
 - File saved with a backup snapshot created.
 
-----
-
-## Phase 3: Topology Editor Round-Trip
+## 3. Phase 2 (Host): Topology Editor Round-Trip
 
 Goal: Validate that the editor can open, modify, and save topology without breaking CLI parsing.
 
-1. Open the editor.
+### 3.1 Open the editor
 
 ```powershell
 python -m tools.can_topology.can_top_editor
 ```
 
-2. Load the target profile (host/editor context).
+### 3.2 Load, edit, and save the target profile (host/editor context)
 
 - Select profile `home_031226` in the editor and load it.
 - Move one node slightly.
-- Save back to `src\main\deploy\bringup_system.json`.
+- File -> Save to Deploy.
 
 Expected
 - Node positions updated in the editor.
@@ -181,13 +192,15 @@ Expected
 
 No CLI reload is required for this test. Stay in the editor for topology validation.
 
----
-
-## Phase 4: Neighbor Ports (Manual + Auto)
+## 4. Phase 3 (Host): Neighbor Ports (Manual + Auto)
 
 Goal: Validate neighbor auto-assign and manual overrides.
 
-1. Auto-assign all.
+Notes:
+- Neighbor ports are meaningful once the topology has at least two nodes.
+- If you only have one device so far, skip this phase and return after adding more devices.
+
+### 4.1 Auto-assign all
 
 ```
 conf terminal
@@ -195,17 +208,17 @@ topology neighbor-auto all
 show topology neighbors
 ```
 
-2. Auto-assign only selected labels.
+### 4.2 Auto-assign only selected labels
 
 ```
-topology neighbor-auto all PDH,roboRIO
+topology neighbor-auto all <label1>,<label2>
 show topology neighbors
 ```
 
-3. Manual override.
+### 4.3 Manual override
 
 ```
-topology neighbor-ports set "PDH" right "roboRIO" left
+topology neighbor-ports set <label1> right <label2> left
 show topology neighbors
 ```
 
@@ -216,13 +229,11 @@ Expected
 Note
 - For branched wiring, do not use auto-assign beyond the linear segments.
 
----
-
-## Phase 5: CANnect Device Links
+## 5. Phase 4 (Host): CANnect Device Links
 
 Goal: Ensure CANnect links appear as `next/branch1/branch2` neighbor ports.
 
-1. With CANnect nodes linked in the diagram.
+### 5.1 With CANnect nodes linked in the diagram
 
 ```
 show topology neighbors
@@ -231,19 +242,17 @@ show topology neighbors
 Expected
 - Neighbor entries for CANnect port links using `next/branch1/branch2`.
 
----
-
-## Phase 6: Visibility Matrix (Single Analyzer)
+## 6. Phase 5 (Host): Visibility Matrix (Single Analyzer)
 
 Goal: Confirm visibility output format and basic state changes.
 
-1. Start CLI with live CAN.
+### 6.1 Start CLI with live CAN
 
 ```powershell
 python -m tools.can_nt.can_nt_bridge --cli
 ```
 
-2. Show visibility.
+### 6.2 Show visibility
 
 ```
 show visibility
@@ -256,9 +265,7 @@ Expected
 - Visible devices show `Y`.
 - Missing devices show `N` or `?` depending on source availability.
 
----
-
-## Phase 7: Bindings and Inputs
+## 7. Phase 6 (Host): Bindings and Inputs
 
 Goal: Ensure bindings and alias behavior remain consistent.
 
@@ -273,19 +280,17 @@ Expected
 - Usage resolves aliases consistently.
 - Local bindings override global when they match the same input.
 
----
-
-## Phase 8: Tests (Create From Scratch)
+## 8. Phase 7 (Host): Tests (Create From Scratch)
 
 Goal: Create a minimal test set without loading templates.
 
-1. Verify bindings exist (controller0 must be present).
+### 8.1 Verify bindings exist (controller0 must be present)
 
 ```
 show bindings
 ```
 
-2. Create a simple motor pulse test.
+### 8.2 Create a simple motor pulse test
 
 ```
 conf terminal
@@ -298,84 +303,167 @@ termination time 1.0
 exit
 ```
 
-3. Create a limit-switch stop test.
+### 8.3 Create a reverse-direction pulse test
 
 ```
-test create neoLimit
+test create neoReversePulse
 type button
 device add "SPARKMAX/NEO 25"
 inputSource controller0.B
-duty 0.1
-termination limitswitch 0
+duty -0.1
+termination time 1.0
 exit
 ```
 
-4. Show and save tests.
+### 8.4 Show and save tests
 
 ```
 show tests
-save unified-config data/bringup_system.json
+save unified-config data\bringup_system.json --force
 ```
 
 Expected
-- Two tests exist and are listed.
+- Two tests exist and are listed (`neoPulse`, `neoReversePulse`).
 
-----
+## 9. Phase 8 (Host): Add a Limit Switch + Limit-Switch Test
 
-## Phase 9: Execute Tests (Robot + Bridge UI)
+Goal: Add a DIO limit switch device to the profile and create a motor test that terminates when the switch is hit.
+
+Notes:
+- Start with a single limit switch device and a single motor.
+- Use low duty and include a time-based fallback termination so the motor stops even if the switch wiring is wrong.
+
+### 9.1 Add a limit switch device (DIO)
+
+Hardware:
+- Wire the limit switch to a roboRIO DIO port (example: DIO 0).
+- Choose `invert` based on the switch type (normally-open vs normally-closed).
+
+In the CLI:
+
+```
+conf terminal
+device "lmSw1"
+set interface DIO
+set type limitSwitch
+set dio 0
+set invert true
+exit
+```
+
+Expected
+- `show devices` includes `lmSw1`.
+
+### 9.2 Create a limit-switch stop test
+
+In the CLI:
+
+```
+conf terminal
+test create neoLimitStop
+type button
+device add "SPARKMAX/NEO 25"
+inputSource controller0.X
+duty 0.1
+termination limitswitch 0
+termination time 2.0
+time onTimeout fail
+limitswitch onHit pass
+limitswitch id 0
+exit
+```
+
+Save:
+
+```
+save unified-config data\bringup_system.json --force
+```
+
+Expected
+- `show tests` lists `neoLimitStop`.
+
+### 9.3 Validate the limit switch behavior (host-side smoke check)
+
+Goal: Confirm the limit switch wiring/invert setting before running motion tests.
+
+- Use any available host visibility/diagnostics views that surface DIO/limit-switch state.
+- If the state is inverted (pressed reads as released), flip `invert` for `lmSw1`, save again, and re-check.
+
+## 10. Phase 9 (Robot): Execute Tests (Robot + Bridge UI)
 
 Goal: Run the tests on the robot and verify motion/behavior and UI updates.
 
-1. Ensure robot is enabled and safety is clear.
+### 10.1 Ensure robot is enabled and safety is clear
 
-2. Run from CLI (robot-connected).
+- Confirm the mechanism is safe to move and the area is clear.
+- Ensure Driver Station is ready to E-stop immediately.
+
+### 10.2 Run from CLI (robot context; requires TCP connection)
 
 ```
-run test neoPulse
-run test neoLimit
+connect
+show status robot
+tests select neoPulse
+tests run
+tests select neoReversePulse
+tests run
+tests select neoLimitStop
+tests run
 ```
 
 Expected
 - NEO motor pulses at low duty.
-- Motor stops when limit switch is triggered (neoLimit).
+- NEO motor pulses in reverse at low duty (neoReversePulse).
+- NEO motor runs at low duty until the limit switch is hit (neoLimitStop), then stops.
 
-3. Run from controller (robot side).
+### 10.3 Run from Bridge UI (robot side)
 
-- Use the configured controller binding for Run Test.
-- Use the configured controller binding for Run All Tests.
-
-Expected
-- Tests run without CLI and match configured behavior.
-
-4. Run from Bridge UI.
+Goal: Run tests from the Bridge UI without typing CLI commands.
 
 - Open the Bridge UI.
 - Select `neoPulse`, click Run.
-- Select `neoLimit`, click Run.
+- Select `neoReversePulse`, click Run.
+- Select `neoLimitStop`, click Run.
 - Run All Tests (if available).
 
 Expected
 - UI reflects active test and status changes.
 - Robot behavior matches test definitions.
 
-----
+### 10.4 Run directly on the robot using the Xbox controller
 
-## Phase 10: Save and Validate
+Goal: Prove you can run the same tests without the CLI/UI by using the configured `inputSource` buttons.
+
+- With the robot enabled, press:
+  - `controller0.A` to trigger `neoPulse`
+  - `controller0.B` to trigger `neoReversePulse`
+  - `controller0.X` to trigger `neoLimitStop`
+- For `neoLimitStop`, press and release the limit switch by hand and confirm the motor stops immediately.
+
+Expected
+- The motor stops immediately when the limit switch is hit.
+
+## 11. Phase 10 (Host): Save and Validate
 
 Goal: Confirm save and validation paths run clean.
 
 ```
-validate profiles --active
-save profiles src\main\deploy\bringup_system.json --force
+validate profiles local --active
+save unified-config data\bringup_system.json --force
+end
+```
+
+Then sync canonical -> deploy:
+
+```powershell
+python -m tools.validate_sync
 ```
 
 Expected
 - Validation should not crash. Any errors should be actionable.
 - Save produces a backup snapshot and writes the file.
 
----
-
-## Pass/Fail Summary
+## 12. Phase 11: Pass/Fail Summary
 
 Log the following:
 - CLI startup and profile load success.

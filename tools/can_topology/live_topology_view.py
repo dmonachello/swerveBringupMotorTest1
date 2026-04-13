@@ -20,7 +20,11 @@ import tkinter as tk
 from tkinter import ttk
 
 from tools.common.json_io import read_json
-from tools.common.paths import profiles_canonical_path, profiles_deploy_path, repo_root
+from tools.common.paths import (
+    legacy_profiles_canonical_path,
+    profiles_canonical_path,
+    repo_root,
+)
 import tkinter.font as tkfont
 
 from tools.common.profile_constants import (
@@ -169,7 +173,7 @@ def _load_profiles_payload() -> Tuple[Optional[Dict[str, object]], str]:
         return payload, EMPTY_STRING
     path = profiles_canonical_path()
     if not path.exists():
-        path = profiles_deploy_path()
+        path = legacy_profiles_canonical_path()
     if not path.exists():
         return None, f"Profiles file not found at {path}"
     try:

@@ -8,7 +8,7 @@ SYNOPSIS
     from tools.can_nt.can_profiles import get_profile, list_profiles
 
 DESCRIPTION
-    Reads bringup_system.json from the central data repository (deploy fallback)
+    Reads bringup_system.json from the central data repository (canonical)
     and provides CAN device entries for the diagnostics tool.
 """
 
@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Set, Tuple
 from tools.common.json_io import read_json
 from tools.common.paths import (
     profiles_canonical_path,
-    profiles_deploy_path,
+    legacy_profiles_canonical_path,
 )
 from tools.common.profile_constants import (
     INTERFACE_CAN,
@@ -45,7 +45,7 @@ from .can_frc_defs import uses_status_presence
 
 DEFAULT_PROFILE_NAME = "robot"
 CANONICAL_PROFILE_FILE = profiles_canonical_path()
-DEPLOY_PROFILE_FILE = profiles_deploy_path()
+LEGACY_PROFILE_FILE = legacy_profiles_canonical_path()
 _LOAD_ERROR: str = ""
 _DATA_VERSION: str = ""
 _DATA_HASH: str = ""
@@ -73,7 +73,7 @@ MSG_UNKNOWN_PROFILE = "Unknown profile: {profile}. Available: {profiles}"
 def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
     """
     NAME
-        _load_profiles - Load profiles from JSON with deploy fallback.
+        _load_profiles - Load profiles from JSON (canonical).
 
     RETURNS
         (default_profile_name, profiles_map).
@@ -84,7 +84,7 @@ def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
     _LOAD_ERROR = EMPTY_STRING
     _DATA_VERSION = EMPTY_STRING
     _DATA_HASH = EMPTY_STRING
-    path = CANONICAL_PROFILE_FILE if CANONICAL_PROFILE_FILE.exists() else DEPLOY_PROFILE_FILE
+    path = CANONICAL_PROFILE_FILE if CANONICAL_PROFILE_FILE.exists() else LEGACY_PROFILE_FILE
     if not path.exists():
         _LOAD_ERROR = MSG_LOAD_MISSING.format(path=path)
         return (_fallback_default(), _fallback_profiles())

@@ -25,7 +25,7 @@ from tools.common.profile_constants import (
     KEY_PROFILE_DEVICES,
 )
 from tools.common.json_io import read_json
-from tools.common.paths import profiles_canonical_path, profiles_deploy_path
+from tools.common.paths import legacy_profiles_canonical_path, profiles_canonical_path
 
 
 KEY_CONTROLLERS = "controllers"
@@ -55,7 +55,7 @@ def load_profile_devices(profile_name: str) -> Tuple[Dict[str, Dict[str, object]
     duplicates: Set[str] = set()
     path = profiles_canonical_path()
     if not path.exists():
-        path = profiles_deploy_path()
+        path = legacy_profiles_canonical_path()
     if not path.exists():
         return catalog, duplicates
     try:

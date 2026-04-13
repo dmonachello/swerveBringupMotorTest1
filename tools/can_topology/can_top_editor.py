@@ -1782,16 +1782,11 @@ class TopologyEditor(tk.Tk):
         canonical = self._canonical_profiles_path()
         if canonical.exists():
             return canonical
-        deploy = self._deploy_profiles_path()
-        if deploy.exists():
-            return deploy
         # LEGACY (remove after v3 unified file adoption).
         legacy = Path(__file__).resolve().parents[2] / "data" / "bringup_profiles.json"
         if legacy.exists():
             return legacy
-        # LEGACY (remove after v3 unified file adoption).
-        legacy_deploy = Path(__file__).resolve().parents[2] / "src" / "main" / "deploy" / "bringup_profiles.json"
-        return legacy_deploy if legacy_deploy.exists() else canonical
+        return canonical
 
     @staticmethod
     def _canonical_profiles_path() -> Path:

@@ -69,8 +69,8 @@ Purpose: Show fields not displayed on the boxes.
 
 ## Auto-Load
 Purpose: Start with your existing profile if present.
-- On startup, the editor reads `data/bringup_system.json` (deploy fallback) and loads
-  its `default_profile` automatically.
+- On startup, the editor reads `data/bringup_system.json` (canonical) and loads its
+  `default_profile` automatically.
 - Use File -> Open Profile... to pick a different profile.
 - If `data_hash` is missing or mismatched, the editor can still open the file for repair.
 

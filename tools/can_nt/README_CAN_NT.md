@@ -90,7 +90,10 @@ BRIDGE CLI
 
 CONFIG
     Device lists are loaded from data\bringup_system.json via --profile
-    (deploy fallback). This keeps the PC tool aligned with robot profiles.
+    (canonical). This keeps the PC tool aligned with authored profiles.
+
+    Host tooling treats src/main/deploy/bringup_system.json as a derived artifact
+    produced by validation/sync; it is not a default read target.
 
     Labels in profiles must be unique. bridgeConfig.byProfile groups reference
     those labels so CLI groups stay consistent across tools.

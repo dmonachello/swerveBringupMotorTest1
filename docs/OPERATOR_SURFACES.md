@@ -71,7 +71,7 @@ Purpose: Clarify which files each surface reads/writes and how often they change
 
 Bridge CLI
 - data/bringup_system.json: primary local config (profiles + device registry + groups). Change likelihood: high. Read: default.
-- src/main/deploy/bringup_system.json: deploy fallback. Change likelihood: medium. Read: fallback.
+- src/main/deploy/bringup_system.json: derived deploy copy (written by validate/sync). Change likelihood: medium. Read: not default.
 - bringup_system.json bridgeConfig.byProfile.<profile>.tests: tests edited by CLI. Change likelihood: high. Read: from the loaded bringup_system.json.
 - src/main/deploy/bringup_bindings.json: controller names/ports for inputSource validation. Change likelihood: low-medium. Read: default.
 - src/main/deploy/can_mappings.json: CAN manufacturer/device-type names. Change likelihood: low. Read: default.
@@ -79,20 +79,20 @@ Bridge CLI
 
 Bringup Control UI
 - data/bringup_system.json: profile list + labels for dropdowns/live view. Change likelihood: high. Read: default.
-- src/main/deploy/bringup_system.json: deploy fallback. Change likelihood: medium. Read: fallback.
+- src/main/deploy/bringup_system.json: derived deploy copy (written by validate/sync). Change likelihood: medium. Read: not default.
 - bringup_system.json bridgeConfig.byProfile.<profile>.tests: tests list for UI. Change likelihood: high. Read: from the loaded bringup_system.json.
 - src/main/deploy/bringup_bindings.json: controller labels. Change likelihood: low-medium. Read: default.
 - src/main/deploy/can_mappings.json: CAN vendor/type names. Change likelihood: low. Read: default.
 
 Topology Editor
 - data/bringup_system.json: canonical profiles + diagram + bridgeConfig.byProfile. Change likelihood: high. Read: default.
-- src/main/deploy/bringup_system.json: deploy fallback. Change likelihood: medium. Read: fallback.
+- src/main/deploy/bringup_system.json: derived deploy copy (written by validate/sync). Change likelihood: medium. Read: not default.
 - src/main/deploy/can_mappings.json: vendor/type dropdowns. Change likelihood: low. Read: default.
 - can_table.txt: import input only. Change likelihood: medium. Read: explicit (import command).
 - profile.json: single-profile import/export. Change likelihood: medium. Read: explicit (load/save).
 
 Live Topology View
-- data/bringup_system.json: diagram + profiles for overlays. Change likelihood: high. Read: default (fallback to deploy).
+- data/bringup_system.json: diagram + profiles for overlays. Change likelihood: high. Read: default.
 
 Data Flow
 Purpose: Explain how data moves between surfaces.
