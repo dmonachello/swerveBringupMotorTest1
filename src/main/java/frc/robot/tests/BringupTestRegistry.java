@@ -88,6 +88,7 @@ public final class BringupTestRegistry {
    * NAME
    *   loadTestsRootFromRegistryObject - Load tests payload from bringup_system.json root.
    */
+  @SuppressWarnings("unused")
   private static TestRootLoad loadTestsRootFromRegistryObject(JsonObject root) {
     if (root == null) {
       return null;

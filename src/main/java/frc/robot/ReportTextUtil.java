@@ -168,21 +168,6 @@ public final class ReportTextUtil {
 
   /**
    * NAME
-   *   truncate - Truncate a value for column display.
-   */
-  private static String truncate(String value, int width) {
-    // Truncate long values to fit a column.
-    if (value == null || width <= 0) {
-      return "";
-    }
-    if (value.length() <= width) {
-      return value;
-    }
-    return value.substring(0, width);
-  }
-
-  /**
-   * NAME
    *   wrapToLines - Wrap a value into fixed-width column lines.
    */
   private static String[] wrapToLines(String value, int width, int maxLines) {

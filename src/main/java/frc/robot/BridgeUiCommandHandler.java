@@ -12,7 +12,6 @@ import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.InputAliasResolver;
 import frc.robot.diag.snapshots.DeviceSnapshot;
-import frc.robot.BringupHealthFormat;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
 import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
@@ -138,7 +137,6 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_OFF = "off";
   private static final String TEXT_DEVICE_PREFIX = "Device ";
   private static final String TEXT_VENDOR_SEP = " ";
-  private static final String TEXT_TYPE_SEP = " ";
   private static final String TEXT_ID_PREFIX = " id=";
   private static final String TEXT_LABEL_PREFIX = "label=";
   private static final String TEXT_VENDOR_PREFIX = " vendor=";
@@ -660,7 +658,6 @@ public class BridgeUiCommandHandler {
     boolean isHandshake = "uiHandshake".equals(name);
     boolean isDisconnect = "uiDisconnect".equals(name);
     boolean isPing = "uiPing".equals(name);
-    boolean isSelectProfile = "selectProfile".equals(name);
     boolean allowWhenDisabled = isUiCommandAllowedWhenDisabled(name);
     boolean isEnabled = DriverStation.isEnabled();
     boolean isEStopped = DriverStation.isEStopped();

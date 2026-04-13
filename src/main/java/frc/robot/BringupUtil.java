@@ -1,6 +1,5 @@
 package frc.robot;
 
-import frc.robot.BringupPrinter;
 import com.ctre.phoenix6.SignalLogger;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.google.gson.Gson;
@@ -92,8 +91,6 @@ public final class BringupUtil {
   private static final String KEY_BRIDGE_TESTS = "tests";
   private static final String KEY_INPUT_ALIASES = "inputAliases";
   private static final String LABEL_UNKNOWN = "UNKNOWN";
-  private static final String LABEL_DEVICE = "Device";
-  private static final String LABEL_SEPARATOR = ":";
   private static final String LABEL_SPACE = " ";
   private static final String NT_LABEL_SAFE_CHARS = "-_.~";
   private static final String NT_LABEL_FALLBACK = "UNKNOWN";
@@ -179,12 +176,8 @@ public final class BringupUtil {
   private static final String CAN_MAPPINGS_FILE = "can_mappings.json";
   private static final String INTERFACE_CAN = "CAN";
   private static final String INTERFACE_DIO = "DIO";
-  private static final String INTERFACE_PWM = "PWM";
-  private static final String INTERFACE_ANALOG = "ANALOG";
-  private static final String INTERFACE_INTERNAL = "INTERNAL";
   private static final String DEVICE_TYPE_MOTOR = "motor";
   private static final String DEVICE_TYPE_LIMIT_SWITCH = "limitSwitch";
-  private static final String DEVICE_TYPE_ENCODER_INTERNAL = "encoderInternal";
   private static final String DEVICE_TYPE_ENCODER_EXTERNAL = "encoderExternal";
   private static final String DEVICE_VENDOR_NI = "NI";
   private static final String DEVICE_VENDOR_CTRE = "CTRE";
@@ -852,51 +845,6 @@ public final class BringupUtil {
       devices.add(new ExpectedDevice(entry.label, entry.manufacturer, entry.deviceType, entry.id));
     }
     return devices;
-  }
-
-  private static int resolveCanManufacturerId(String vendor) {
-    String key = normalizeKey(vendor);
-    if (key.isEmpty()) {
-      return -1;
-    }
-    Integer id = MANUFACTURER_NAME_TO_ID.get(key);
-    if (id != null) {
-      return id;
-    }
-    try {
-      return Integer.parseInt(vendor.trim());
-    } catch (NumberFormatException ignored) {
-      return -1;
-    }
-  }
-
-  private static int resolveCanDeviceTypeId(String type) {
-    String key = normalizeKey(type);
-    if (key.isEmpty()) {
-      return -1;
-    }
-    if (key.equals("NEO") || key.equals("NEO550") || key.equals("NEO550S")
-        || key.equals("FLEX") || key.equals("KRAKEN") || key.equals("FALCON")) {
-      return 2; // MotorController
-    }
-    if (key.equals("CANCODER") || key.equals("ENCODER")) {
-      return 7; // Encoder
-    }
-    if (key.equals("CANDLE")) {
-      return 10; // Miscellaneous
-    }
-    if (key.equals("PDH") || key.equals("PDP") || key.equals("PDM")
-        || key.equals("POWERDISTRIBUTIONMODULE")) {
-      return 8; // PowerDistributionModule
-    }
-    if (key.equals("PIGEON") || key.equals("IMU") || key.equals("GYROSENSOR")) {
-      return 4; // GyroSensor
-    }
-    if (key.equals("ROBORIO") || key.equals("ROBOTCONTROLLER")) {
-      return 1; // RobotController
-    }
-    Integer id = DEVICE_TYPE_NAME_TO_ID.get(key);
-    return id != null ? id : -1;
   }
 
   /**

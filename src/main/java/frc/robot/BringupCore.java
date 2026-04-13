@@ -1214,6 +1214,7 @@ public final class BringupCore {
    * NOTES
    *   Uses only robot-local vendor APIs (no PC sniffer data).
    */
+  @SuppressWarnings("unused")
   private void printHealthStatus() {
     requestHealthReport();
   }
@@ -2404,6 +2405,7 @@ public final class BringupCore {
    * NAME
    *   printCANCoderStatus - Enqueue absolute position report for CANCoders.
    */
+  @SuppressWarnings("unused")
   private void printCANCoderStatus() {
     StringBuilder sb = new StringBuilder(512);
     appendLine(sb, "=== Bringup CANCoder ===");

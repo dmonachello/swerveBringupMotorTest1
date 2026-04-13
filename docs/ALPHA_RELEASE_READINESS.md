@@ -1,14 +1,17 @@
 # Alpha Release Readiness
 
 ## Purpose
+
 Define the required features, bug fixes, and verification steps to reach an "alpha" release of this repo (robot Java + PC Python tool).
 
 ## Scope
+
 - Robot-side: WPILib Java bringup harness (roboRIO).
 - PC-side: Windows-first Python CANable sniffer + NetworkTables publisher + optional UI/CLI tooling.
 - Interfaces: NetworkTables under `bringup/diag/...` and the TCP command channel.
 
 ## Definition Of "Alpha"
+
 Purpose: Set the quality bar for an early release that a team can use repeatedly.
 
 - Intended users: internal team members (pit + dev laptop) with basic FRC tooling.
@@ -17,12 +20,14 @@ Purpose: Set the quality bar for an early release that a team can use repeatedly
 - Not acceptable: crashes on first run, broken docs, or unsafe defaults.
 
 ## Top Priorities (Alpha)
+
 Purpose: Focus effort on the two areas that most affect day-to-day usability.
 
 1. Device config + bringup test authoring must be fast, repeatable, and hard to mess up.
 2. PC tool first-run reliability on Windows must be “it just works” (no crashes, clear errors).
 
 ## Alpha Exit Criteria
+
 Purpose: Concrete pass/fail gates for declaring alpha.
 
 1. Fresh clone on Windows can run the PC tool without code edits.
@@ -31,13 +36,14 @@ Purpose: Concrete pass/fail gates for declaring alpha.
 4. Hardware profiles/tests are data-driven, validated, and syncable to deploy.
 5. Safety rules hold:
    - PC tool is CAN read-only by default.
-   - Robot fails soft when the PC tool is absent.
+	   - Robot fails soft when the PC tool is absent.
 
 ## Blocker Bug Fixes (Do First)
+
 Purpose: These must be fixed before any alpha tag is meaningful.
 
 1. Make device config + bringup test creation easy and reliable:
-   - One “happy path” workflow exists and is documented end-to-end.
+	   - One “happy path” workflow exists and is documented end-to-end.
    - Creating a new profile does not require code edits or manual JSON surgery.
    - Creating a matching bringup tests file is data-driven and validated.
    - Validators emit actionable, specific error messages (duplicate labels, missing fields, bad references).
@@ -59,12 +65,14 @@ Purpose: These must be fixed before any alpha tag is meaningful.
    - `docs/NT_CONTRACT.md` is a TODO stub. (done)
    - `docs/SETUP.md` is a TODO stub. (done)
 6. Fix confusing first-run warnings:
-   - `tools/can_topology/validate_profiles.py` emits a SyntaxWarning due to invalid escape sequences in the module docstring. (done)
+	   - `tools/can_topology/validate_profiles.py` emits a SyntaxWarning due to invalid escape sequences in the module docstring. (done)
 
 ## Required Alpha Features
+
 Purpose: Minimum product behavior for a usable alpha.
 
 ### Windows Entrypoints
+
 Purpose: Avoid fragile invocation patterns.
 
 - Provide and document one primary way to run the PC tool on Windows.
@@ -73,6 +81,7 @@ Purpose: Avoid fragile invocation patterns.
 - If shipping `.cmd` wrappers, ensure they do not embed user-specific paths and work with standard Python installs.
 
 ### NetworkTables Contract
+
 Purpose: Treat NT paths as an API contract between Java and Python.
 
 - Document every key published by the PC tool and read by Java:
@@ -82,18 +91,20 @@ Purpose: Treat NT paths as an API contract between Java and Python.
   - Update cadence expectations
   - Behavior when missing/stale
 - Include a reproducible inventory command in docs:
-  - PC side already supports `--list-keys` and `--dump-nt`.
+	  - PC side already supports `--list-keys` and `--dump-nt`.
 
 ### Profiles And Deploy Sync
+
 Purpose: Ensure hardware configuration is easy, safe, and repeatable.
 
 - `data/bringup_system.json` is canonical.
 - Deploy copy (`src/main/deploy/bringup_system.json`) must be kept in sync using `python -m tools.validate_sync` (recommended).
 - Legacy sync tool: `python tools/sync_profiles.py`.
 - Provide a documented validation workflow:
-  - Validate schema, required fields by interface, duplicate labels, and hash correctness.
+	  - Validate schema, required fields by interface, duplicate labels, and hash correctness.
 
 ### Bringup Tests Authoring
+
 Purpose: Make it easy to create tests that match the device registry and fail clearly when misconfigured.
 
 - A “create tests for this profile” workflow exists and is documented.
@@ -102,9 +113,10 @@ Purpose: Make it easy to create tests that match the device registry and fail cl
 - Validation exists and is easy to run:
   - Unknown device label references are rejected with specific messages.
   - Required fields per test type are enforced.
-  - The robot reports file/path errors and schema errors clearly when loading tests.
+	  - The robot reports file/path errors and schema errors clearly when loading tests.
 
 ### End-to-End Diagnostics Surfaces
+
 Purpose: The core workflows must work without surprises.
 
 - Robot:
@@ -113,9 +125,10 @@ Purpose: The core workflows must work without surprises.
   - JSON report output (`bringup_report.json`).
 - PC tool:
   - CAN presence/age/count publishing to NT under `bringup/diag/...`.
-  - CAN summary publishing and optional console monitor keys.
+	  - CAN summary publishing and optional console monitor keys.
 
 ### Reverse-Engineering Basics (As Advertised)
+
 Purpose: Keep implemented features aligned with repo claims.
 
 - Inventory dump:
@@ -125,6 +138,7 @@ Purpose: Keep implemented features aligned with repo claims.
 - Documentation includes examples and expected output shape.
 
 ## Reliability And Safety Must-Haves
+
 Purpose: Reduce pit-time surprises and enforce safety constraints.
 
 1. Robust Windows-first error handling:
@@ -135,12 +149,14 @@ Purpose: Reduce pit-time surprises and enforce safety constraints.
    - Docs must clearly mark transmit as non-default and risky.
 3. Robot "PC tool absent" behavior:
    - No tight-loop error spam when NT keys are missing.
-   - Reports remain useful using robot-local data alone.
+	   - Reports remain useful using robot-local data alone.
 
 ## Verification Required For Alpha
+
 Purpose: Define the minimum tests that make alpha credible.
 
 ### Windows Offline Smoke Checks
+
 Purpose: Validate core tooling without requiring robot hardware.
 
 - Python module import sanity:
@@ -154,21 +170,24 @@ Purpose: Validate core tooling without requiring robot hardware.
   - Validate deploy copy `src/main/deploy/bringup_system.json`.
 - Authoring workflows (offline):
   - Create a new minimal profile via the intended tool path and validate it.
-  - Create a minimal bringup tests file for that profile via the intended tool path and validate it.
+	  - Create a minimal bringup tests file for that profile via the intended tool path and validate it.
 
 ### Robot Build/Deploy Check
+
 Purpose: Ensure the primary robot workflow is intact.
 
 - Document the required JDK/WPILib setup and provide a one-command build check.
 - Confirm GradleRIO build succeeds with the supported toolchain.
 
 ### Repo Hygiene
+
 Purpose: Keep the repo usable across machines and CI.
 
 - No unowned/unexplained files in the root.
 - Any “local notes” files should be ignored via `.gitignore` or moved under a clear `notes/` area.
 
 ## Suggested Implementation Order
+
 Purpose: Preserve momentum by unblocking first-run paths early.
 
 1. Lock down the device config + tests authoring “happy path” (tools + validation + docs).
@@ -179,6 +198,7 @@ Purpose: Preserve momentum by unblocking first-run paths early.
 6. Tighten safety interlocks and "no PC tool" soft-fail behavior.
 
 ## Tradeoffs
+
 Purpose: Make the constraints explicit.
 
 - Being Windows-first limits reliance on Linux-only CAN tooling.
@@ -186,6 +206,7 @@ Purpose: Make the constraints explicit.
 - Adding analysis features increases CPU load on the PC; keep per-frame work O(1).
 
 ## Future Extensions (Post-Alpha)
+
 Purpose: Capture what’s valuable but not required for alpha.
 
 - Capture sessions (`--session`, `--session-dir`) for reproducible comparisons.

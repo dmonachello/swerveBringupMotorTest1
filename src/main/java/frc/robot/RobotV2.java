@@ -9,7 +9,6 @@ import edu.wpi.first.wpilibj.XboxController;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.ControllerManager;
 import frc.robot.input.InputAliasResolver;
-import frc.robot.tests.BringupTestRegistry;
 import frc.robot.ui.TcpUiServer;
 import java.util.HashMap;
 import java.util.Map;

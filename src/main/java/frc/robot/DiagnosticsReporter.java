@@ -935,6 +935,7 @@ final class DiagnosticsReporter {
    *   DeviceRow - Row data for NetworkTables device report.
    */
   private static final class DeviceRow {
+    @SuppressWarnings("unused")
     private final DeviceSpec spec;
     private final String label;
     private final String status;
