@@ -99,6 +99,13 @@ Batch mode:
 ## Command Mapping (Robot TCP)
 Purpose: Map CLI commands to robot-side TCP command names and args.
 
+Host vs Robot Context
+Purpose: Prevent "active profile" confusion when connected.
+
+- Host context: local editing/inspection selection used for groups/bindings/test authoring.
+- Robot context: runtime state on the roboRIO (active profile, selected test, run status).
+- Rule: `profile <name>` changes host context only; robot context changes only via explicit TCP commands (for example `profiles activate <name>` and `tests ...`).
+
 Exec / Show:
 - `show status` -> `showStatus`
 - `show groups` -> `showGroups`

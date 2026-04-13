@@ -59,6 +59,13 @@ Purpose: Specify who owns which data.
 - bridgeConfig.byProfile (groups, bindings, selectedDevice): owned by CLI and runtime tools.
 - Runtime state: owned by robot (TCP UI) and published to NT for dashboards.
 
+Host vs Robot Context
+Purpose: Prevent "active profile" confusion across surfaces.
+- Host context: local editing/inspection state (which profile the CLI/topology editor is operating on).
+- Robot context: runtime state on the roboRIO (which profile is active and which test is selected/running).
+- Rule: host context MUST NOT change robot context unless an explicit TCP robot command is executed (e.g., `profiles activate`, `tests select/run`).
+- Show commands support `[robot|local|both]` for many targets; `show workspace` is host-only.
+
 File Map (By Surface)
 Purpose: Clarify which files each surface reads/writes and how often they change.
 

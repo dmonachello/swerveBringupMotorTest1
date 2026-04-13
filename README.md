@@ -113,6 +113,18 @@ Purpose: Update profiles and device registry without redeploying robot code.
 - Robot validates payload, applies in-memory only, and reports per-stage status.
 - Activation happens only when requested and only after validation passes.
 
+## Host vs Robot Active Profile
+Purpose: Avoid confusing host-local editing context with robot runtime state.
+
+- Host context (PC CLI/topology editor): which profile you are editing/inspecting locally.
+- Robot context (roboRIO runtime): which profile is active for device instantiation and tests.
+- Host context does not change the robot unless you run an explicit TCP command.
+
+Examples:
+- `profile <name>` selects host context (editing) only.
+- `profiles activate <name>` selects robot context (runtime) over TCP.
+- `show workspace` is host-only; `show status robot` inspects the robot.
+
 ## Real-Time Printing Model
 Purpose: Prevent console output from breaking the 20ms control loop.
 

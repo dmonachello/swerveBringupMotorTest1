@@ -169,7 +169,7 @@ Goal: Validate that the editor can open, modify, and save topology without break
 python -m tools.can_topology.can_top_editor
 ```
 
-2. Load the active profile.
+2. Load the target profile (host/editor context).
 
 - Select profile `home_031226` in the editor and load it.
 - Move one node slightly.

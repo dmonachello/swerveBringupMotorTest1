@@ -33,6 +33,13 @@ Data sources and trust boundaries:
 - TCP command/output is a control/log channel, not a telemetry source.
 - The two telemetry sources are kept distinct in reporting and APIs.
 
+Host vs Robot Context
+Purpose: prevent confusion between host-local editing context and robot runtime state.
+
+- Host context: PC-side tools and operator surfaces selecting an "active profile" for local editing and inspection.
+- Robot context: the roboRIO runtime "active profile" and selected test used for actuation.
+- Rule: host context MUST NOT change robot context unless an explicit TCP robot command is executed (for example `profiles activate <name>`).
+
 ## Client/Server Boundary
 Purpose: define the ownership and responsibilities across the robot server and PC clients.
 

@@ -16,6 +16,14 @@ Purpose: Keep the interface stable and safe.
   - Robot owns `bringup/tests/...` and other robot-local bringup tables.
 - Java must fail soft when the PC tool is absent (missing keys are treated as stale/unavailable).
 
+## Host vs Robot Context (Non-NT)
+Purpose: Prevent confusion about what NetworkTables does and does not define.
+
+- NetworkTables is diagnostics/state visibility only.
+- The robot "active profile" is a robot runtime concept controlled via robot args/Xbox/TCP commands.
+- The CLI/topology editor "active profile" is host-local editing/inspection context.
+- Host context MUST NOT change robot context unless an explicit TCP robot command is executed (for example `profiles activate <name>`).
+
 ## PC Tool -> Robot (`bringup/diag/...`)
 Purpose: Publish passive CAN visibility/presence telemetry.
 

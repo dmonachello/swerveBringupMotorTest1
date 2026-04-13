@@ -106,6 +106,11 @@ Rules:
 - Groups are stored under the active profile.
 - If you do not select a profile, the CLI uses the default profile.
 
+Notes (Host vs Robot):
+- `profile <name>` selects the host (local) active profile for editing and inspection.
+- It does not change what the robot is running.
+- To change the robot active profile, use an explicit robot command such as `profiles activate <name>` (TCP).
+
 ## Inspecting State
 Purpose: Learn the inspection commands you will use constantly.
 
@@ -136,6 +141,10 @@ Output includes:
 - Active profile and active test set.
 - Dirty flags.
 - Recovery mode status.
+
+Notes (Host vs Robot):
+- `show workspace`/`show session` is host-only (local state and file paths).
+- To inspect robot runtime state, use `show status robot` or `show runtime-state robot`.
 
 ## Scoped Validation
 Purpose: Validate only the active profile or active test set.

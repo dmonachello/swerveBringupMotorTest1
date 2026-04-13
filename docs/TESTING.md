@@ -3,6 +3,13 @@
 This document provides a step-by-step checklist to verify the complete bringup diagnostics system:
 robot code, CAN sniffer tool, NetworkTables publishing, and config generation.
 
+## Terminology
+Purpose: prevent "active profile" confusion across host tools and robot runtime.
+
+- Host context: the CLI/topology editor local editing/inspection selection (profiles/groups/tests on disk).
+- Robot context: the roboRIO runtime selection used for actuation and tests (active profile, selected test).
+- Rule: host context MUST NOT change robot context unless an explicit TCP robot command is executed (for example `profiles activate <name>`).
+
 ## Test Setup
 
 Hardware:
@@ -61,8 +68,8 @@ Purpose: validate robot-side behavior, controller bindings, safety guards, and t
    - Expected: devices created once; no duplicate device errors.
    - Notes: `addAll` printed bringup reset, created NEO 25, NEO 550 7, FALCON 9, then printed `Added all configured devices` and the profile summary.
 6. Print state
-   - Action: controller0 `B` (edge).
-   - Expected: state shows active profile name and expected devices.
+	   - Action: controller0 `B` (edge).
+	   - Expected: state shows robot active profile name and expected devices.
    - Notes: examples below assume the selected profile is `home_030226`.
    - Example output:
      `=== Bringup State ===`
@@ -338,7 +345,7 @@ Purpose: generate or edit profiles with the topology editor before testing.
    - `python tools\can_topology\can_top_editor.py`
 2. Load an existing profile or create a new diagram.
 3. Add/edit nodes and callouts to match the physical CAN bus.
-4. Save the diagram to the active profile.
+4. Save the diagram to the active profile (host/editor context).
 5. Use **Save to Deploy** to append/replace the profile in `data/bringup_system.json` (syncs to deploy).
 6. If needed, check **Set As Default** so the new profile is selected on startup.
 7. Deploy robot code so the updated profile is on the roboRIO.
@@ -469,7 +476,7 @@ Expected:
 ### D) Joystick Motor Control (Non-Test Mode)
 Purpose: joystick-driven motor output still works outside tests.
 
-Config excerpt (motors in the active profile):
+Config excerpt (motors in the robot active profile):
 ```json
 // data/bringup_system.json
 {
@@ -731,7 +738,7 @@ Expected:
 - Hash update rewrites `metadata.inventory_hash` and `metadata.inventory_source`.
 
 ### N) PC Tool Config Auto-Gen
-Purpose: can_nt_config.json generation matches the active profile.
+Purpose: can_nt_config.json generation matches the selected `--profile` argument.
 
 1. Run:
    - `%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe tools\\can_nt\\can_nt_bridge.py --profile <profile> --dump-can-config tools\can_nt\can_nt_config.json`

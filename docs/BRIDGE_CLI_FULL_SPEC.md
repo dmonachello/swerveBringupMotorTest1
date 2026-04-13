@@ -14,6 +14,22 @@ Purpose: Define the operator outcomes.
 - Streaming output to console (no buffering).
 - `--json` output for show commands (one JSON blob per command). Use `--pretty` for pretty JSON output.
 
+## Host vs Robot Context
+Purpose: Ensure operators do not confuse host-local editing context with robot runtime state.
+
+Definitions:
+- Host context: the CLI's local working state loaded from disk (active profile for editing, active test set for authoring, dirty flags, file paths).
+- Robot context: the roboRIO runtime state over TCP (active profile, selected test, runAllActive, etc.).
+
+Rules:
+- Host-only commands MUST NOT change robot state as a side effect.
+- Robot state MUST change only via explicit robot-targeting commands over TCP.
+
+Examples:
+- `profile <name>` changes host context only.
+- `profiles activate <name>` changes robot active profile (TCP).
+- `show workspace` is host-only; `show status robot` inspects robot state.
+
 ## Non-Goals
 Purpose: Clarify what is out of scope.
 

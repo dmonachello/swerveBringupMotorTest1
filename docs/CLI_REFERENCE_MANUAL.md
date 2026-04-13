@@ -5,6 +5,21 @@ Purpose: Provide a complete reference for every Bridge CLI command and permutati
 ## Command List
 Purpose: Enumerate every supported command by mode. Every command may be suffixed with `?` to show valid next arguments.
 
+## Host vs Robot Context
+Purpose: Prevent confusion between host-local editing context and robot runtime state.
+
+Definitions:
+- Host context: the CLI's local working state loaded from disk (profiles/tests/groups/bindings).
+- Robot context: the roboRIO's runtime state over TCP (active profile, selected test, run status).
+
+Rules:
+- Host-only commands MUST NOT change robot state as a side effect.
+- Robot state MUST change only via explicit robot-targeting commands over TCP.
+
+Common mappings:
+- Host: `profile <name>`, `show workspace`, `save ...`, `validate profiles --active`.
+- Robot: `profiles activate <name>`, `tests select/toggle/run/run-all`, `show status robot`.
+
 ### Common (All Modes)
 - `help`
 - `help <topic>`
@@ -1563,7 +1578,9 @@ profile <name>
 
 DESCRIPTION
 
-Select the active profile context. This command is valid in Config Mode (`bridge(config-...)#`).
+Select the active profile context for host-local editing and inspection. This command is valid in Config Mode (`bridge(config-...)#`).
+
+This is host-only and does not change which profile the robot is running.
 
 PARAMETERS
 
@@ -1575,7 +1592,7 @@ Prints output to the console or updates in-memory state; errors are reported inl
 
 SIDE EFFECTS
 
-May update local in-memory config. If connected, some commands may send updates to the robot.
+Updates host-local in-memory selection for where groups/bindings edits apply.
 
 ERRORS
 
