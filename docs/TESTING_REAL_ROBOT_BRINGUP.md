@@ -314,7 +314,7 @@ exit
 
 ```
 show tests
-write tests data/bringup_tests.json
+save unified-config data/bringup_system.json
 ```
 
 Expected

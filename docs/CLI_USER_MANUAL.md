@@ -161,7 +161,7 @@ save all --prompt
 
 Notes:
 - Uses the current source paths.
-- If a path is missing, the CLI prints a one-line fix (for example: `write tests my_tests.json`).
+- If a path is missing, the CLI prints a one-line fix (for example: `save unified-config data/bringup_system.json`).
 - `show config local-raw`
 - `show config dirty`
 - `show profiles`
@@ -248,7 +248,7 @@ Purpose: Explain what each save command does.
 Use `show config dirty` before you exit to avoid losing work.
 
 ## Test Authoring (No JSON)
-Purpose: Create tests without editing `bringup_tests.json` directly.
+Purpose: Create tests without editing JSON directly.
 
 Create a test:
 ```
@@ -261,7 +261,7 @@ inputSource controller0.A
 duty 0.2
 termination time 1.5
 end
-write tests bringup_tests.json
+save unified-config data/bringup_system.json
 ```
 
 Inspect tests:
@@ -430,7 +430,7 @@ Purpose: Suggested path for new users.
 1. Run local-only CLI and list profiles.
 2. Create a simple group and save it.
 3. Inspect it with `show group` and `show config local-raw`.
-4. Create a simple test and `write tests`.
+4. Create a simple test and `save unified-config`.
 5. Connect to a robot and compare `show groups` local vs robot.
 
 ## Reference Pointers

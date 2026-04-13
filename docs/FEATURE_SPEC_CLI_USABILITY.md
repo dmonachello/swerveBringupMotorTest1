@@ -34,7 +34,8 @@ CLI-only changes in:
 
 ## Terminology
 - Profiles file: `data/bringup_system.json` (canonical).
-- Tests file: `bringup_tests.json` or custom file.
+- Tests source: `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests` (canonical).
+  - `bringup_tests.json` is a legacy import/export format only.
 - Active profile: currently selected profile in CLI.
 - Active test set: currently selected test set in CLI.
 - Dirty flags: indicate unsaved changes for profiles/tests/bindings/mappings.
@@ -92,7 +93,7 @@ Add command:
 Behavior:
 - Saves all dirty sections using their current source paths.
 - If a path is unknown, prints a single-line fix:
-  - “No tests destination set. Fix: `write tests my_tests.json`”
+  - “No unified-config destination set. Fix: `save unified-config data/bringup_system.json`”
 - No prompts in batch mode.
 - Optional `save all --prompt` to confirm per-section in interactive mode.
 
@@ -200,7 +201,7 @@ set deviceType ?
 ```
 Profiles: data/bringup_system.json (loaded, dirty)
 Active profile: example_default
-Tests: my_tests.json (loaded, clean)
+Tests: data/bringup_system.json (loaded, clean)
 Active set: default (default=default)
 Bindings: src/main/deploy/bringup_bindings.json (loaded, clean)
 Mappings: src/main/deploy/can_mappings.json (loaded, clean)
@@ -216,7 +217,7 @@ Fix: add device "pdp" or remove "PDP" from profile devices.
 
 ### save all (missing tests path)
 ```
-ERROR: No tests destination set. Fix: write tests my_tests.json
+ERROR: No unified-config destination set. Fix: save unified-config data/bringup_system.json
 Saved profiles to data/bringup_system.json.
 ```
 

@@ -2,7 +2,11 @@
 
 ## Purpose
 
-Provide a Windows-side workflow to create and edit `bringup_tests.json` via the Bridge UI and the Bridge CLI without requiring direct JSON editing. The UI must keep topology visible, allow multi-select device binding, validate tests locally before saving, and output a deployable tests file. The CLI must be context-sensitive (Cisco style) with explicit prompts that reflect the current mode.
+Provide a Windows-side workflow to create and edit bringup tests via the Bridge UI and the Bridge CLI without requiring direct JSON editing. The UI must keep topology visible, allow multi-select device binding, validate tests locally before saving, and output a deployable unified config.
+
+SID_COMMENT: Implementation note (current repo)
+- Tests are persisted inside `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
+- Standalone `bringup_tests.json` is treated as a legacy import/export format and is not the robot’s primary input.
 
 ## Goals
 
@@ -23,7 +27,7 @@ Provide a Windows-side workflow to create and edit `bringup_tests.json` via the 
 
 ## Editing and Persistence Model
 
-`bringup_tests.json` remains the canonical persisted format.
+`bringup_system.json` (bridgeConfig.byProfile.<profile>.tests) is the canonical persisted format.
 
 The user does not edit JSON directly. Instead, the Bridge UI and Bridge CLI provide structured editing workflows that:
 
@@ -37,7 +41,7 @@ The user does not edit JSON directly. Instead, the Bridge UI and Bridge CLI prov
 * JSON remains the storage and interchange format
 * UI and CLI must not require the user to hand-edit JSON
 * UI and CLI must use the same parser, validation logic, and JSON writer
-* Saving must always produce schema-compatible `bringup_tests.json`
+* Saving must always produce schema-compatible `bringup_system.json` (with tests embedded under bridgeConfig)
 
 ---
 
@@ -291,8 +295,8 @@ Warnings (do not block save):
 
 ## File Output
 
-* Save locally as `bringup_tests.json`
-* Default location: repository root (configurable)
+* Save locally as `bringup_system.json` (tests embedded under `bridgeConfig.byProfile.<profile>.tests`)
+* Default location: `data/bringup_system.json` (then sync to deploy)
 * New test name: appended to the selected test set without prompt
 * Existing test name: warn and prompt before overwrite (UI and CLI)
 
@@ -305,7 +309,7 @@ Purpose: move from `motorKeys` to label-only identifiers without ambiguity.
 Steps:
 1. Update `data/bringup_system.json` to ensure all device labels are unique.
 2. Update existing tests to use `motorLabels` only.
-3. Deploy the updated `bringup_tests.json`.
+3. Deploy the updated `bringup_system.json` (tests embedded under `bridgeConfig.byProfile.<profile>.tests`).
 4. Reject any remaining `motorKeys` entries; only `motorLabels` are supported.
 
 Notes:
@@ -358,7 +362,7 @@ Notes:
    * `termination limitswitch [id]`
    * `limitswitch onHit <pass|fail>`
 11. `end`
-12. `write tests <path>`
+12. `save unified-config <path>`
 
 ### Deadband Sweep Commands (CLI)
 
@@ -408,7 +412,7 @@ Examples:
 * `test <name>` enters edit mode
 * Changes apply to in-memory model
 * `end` exits edit mode without saving
-* `write tests` persists all changes
+* `save unified-config` persists all changes (tests are stored in `bringup_system.json`).
 
 ---
 

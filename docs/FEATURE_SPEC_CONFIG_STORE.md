@@ -21,8 +21,8 @@ Purpose: List files governed by the store.
 
 Included:
 - `data/bringup_system.json`
-- `bringup_tests.json` (repo root, when present)
-- `src/main/deploy/bringup_tests.json`
+- Legacy tests export/import (optional): `bringup_tests.json` (repo root, when present)
+- Legacy tests export/import (optional): `src/main/deploy/bringup_tests.json` (when present)
 - `bringup_bindings.json` (repo root, when present)
 - `src/main/deploy/bringup_bindings.json`
 - `src/main/deploy/can_mappings.json`
@@ -144,7 +144,7 @@ result = store.validate(strict=False)
 
 Save tests:
 ```
-store.save_tests("bringup_tests.json")
+store.save_profiles("data/bringup_system.json")
 ```
 
 ## Tradeoffs

@@ -14,8 +14,8 @@ flowchart LR
         SelectedDevice["bridgeConfig.byProfile.<name>.selectedDevice.device"]
     end
 
-    subgraph Tests["bringup_tests.json"]
-        TestMotorLabels["motorLabels[]"]
+    subgraph Tests["bringup_system.json (bridgeConfig tests)"]
+        TestMotorLabels["bridgeConfig.byProfile.<name>.tests.test_sets.<set>[].motorLabels[]"]
     end
 
     ProfileDevices --> DeviceRegistry

@@ -609,7 +609,7 @@ Config:
 - `save local-config <file>` -> local: write bridgeConfig-byProfile only
 - `save profiles <file>` -> local: write bringup_system.json (profiles + diagram + bridgeConfig.byProfile)
 - `save unified-config <file>` -> local: write bringup_system.json (profiles + bridgeConfig.byProfile)
-- `write tests <file>` -> local: validate and write bringup_tests.json
+- `write tests <file>` -> local: deprecated alias for exporting a standalone tests JSON (legacy); use `save unified-config <file>` to persist tests in bringup_system.json
 
 Group:
 - `add device <device>` -> `groupAddDevice` `{group, device, conflictPolicy, forceMove}`

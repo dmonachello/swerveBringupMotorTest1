@@ -32,7 +32,7 @@ Purpose: Convert existing profiles to schema v4.
 1) Update bringup_system.json to include a device registry at the root.
 2) Replace profile device lists with label-only arrays.
 3) Sync to deploy:
-   python tools\sync_profiles.py
+   python -m tools.validate_sync
 4) Validate:
    python tools\can_topology\validate_profiles.py --path data\bringup_system.json --strict
 

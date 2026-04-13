@@ -101,6 +101,8 @@ CMD_SCRIPT = "script"
 CMD_BINDINGS = "bindings"
 CMD_CAN_MAPPINGS = "can-mappings"
 CMD_TESTS = "tests"
+CMD_SELECT = "select"
+CMD_RUN_ALL = "run-all"
 CMD_PUSH = "push"
 CMD_ACTIVATE = "--activate"
 CMD_TERMINAL = "terminal"
@@ -623,6 +625,35 @@ class BridgeCliParser:
                 bool(SPEC.bool_false),
                 bool(SPEC.bool_false),
             )
+        if verb == SPEC.cmd_tests:
+            if len(tokens) < SPEC.count_two:
+                return (
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    bool(SPEC.bool_false),
+                    bool(SPEC.bool_false),
+                )
+            sub = tokens[SPEC.count_one].lower()
+            if sub == CMD_SELECT:
+                kind = SPEC.kind_exec_tests_select
+            elif sub == SPEC.cmd_toggle:
+                kind = SPEC.kind_exec_tests_toggle
+            elif sub == SPEC.cmd_run:
+                kind = SPEC.kind_exec_tests_run
+            elif sub == CMD_RUN_ALL:
+                kind = SPEC.kind_exec_tests_run_all
+            else:
+                kind = SPEC.empty_str
+            return (
+                kind,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
+            )
         return (
             SPEC.empty_str,
             SPEC.empty_str,
@@ -636,6 +667,51 @@ class BridgeCliParser:
         self, tokens: List[str]
     ) -> tuple[str, str, str, str, str, str, str, str, str, str, str, str, bool]:
         verb = tokens[SPEC.count_zero].lower()
+        if verb == SPEC.cmd_tests:
+            if len(tokens) < SPEC.count_two:
+                return (
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    SPEC.empty_str,
+                    bool(SPEC.bool_false),
+                    bool(SPEC.bool_false),
+                )
+            sub = tokens[SPEC.count_one].lower()
+            if sub == CMD_SELECT:
+                kind = SPEC.kind_exec_tests_select
+            elif sub == SPEC.cmd_toggle:
+                kind = SPEC.kind_exec_tests_toggle
+            elif sub == SPEC.cmd_run:
+                kind = SPEC.kind_exec_tests_run
+            elif sub == CMD_RUN_ALL:
+                kind = SPEC.kind_exec_tests_run_all
+            else:
+                kind = SPEC.empty_str
+            return (
+                kind,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
+            )
         if verb == SPEC.cmd_show:
             show_source, cleaned, show_json, show_pretty = self._parse_show_flags(
                 tokens[SPEC.count_one :]

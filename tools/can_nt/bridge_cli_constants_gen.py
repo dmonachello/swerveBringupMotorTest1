@@ -88,6 +88,7 @@ class ParserSpec:
     cmd_can_mappings: str
     cmd_tests: str
     cmd_load: str
+    cmd_reload: str
     cmd_create: str
     cmd_delete: str
     cmd_type: str
@@ -110,6 +111,8 @@ class ParserSpec:
     cmd_binding: str
     cmd_show_all: str
     cmd_validate_all: str
+    cmd_merge_flag: str
+    cmd_replace_flag: str
     show_target_group: str
     show_target_device: str
     strict_default: bool
@@ -136,6 +139,7 @@ class ParserSpec:
     msg_push_requires: str
     msg_save_requires: str
     msg_save_target: str
+    msg_load_requires: str
     msg_write_requires: str
     msg_rename_device: str
     msg_device_name: str
@@ -170,7 +174,6 @@ class ParserSpec:
     label_export: str
     label_save: str
     label_profiles_init: str
-    label_profiles_activate: str
     label_rename: str
     label_device: str
     label_device_set: str
@@ -202,6 +205,10 @@ class ParserSpec:
     kind_exec_configure_terminal: str
     kind_exec_add_next: str
     kind_exec_add_all: str
+    kind_exec_tests_select: str
+    kind_exec_tests_toggle: str
+    kind_exec_tests_run: str
+    kind_exec_tests_run_all: str
     kind_show: str
     kind_config_group: str
     kind_config_no_group: str
@@ -259,7 +266,7 @@ SPEC = ParserSpec(
     show_source_robot='robot',
     show_source_local='local',
     show_source_both='both',
-    show_targets=('status', 'groups', 'group', 'devices', 'device', 'commands', 'help', 'version', 'device-usage', 'device-registry', 'bindings', 'can-mappings', 'selected-device', 'runtime-state', 'tests', 'test', 'config', 'sources', 'profiles', 'profile', 'message-level', 'workspace', 'session', 'controllers', 'device-group'),
+    show_targets=('status', 'groups', 'group', 'devices', 'device', 'commands', 'help', 'version', 'device-usage', 'binding-usage', 'visibility', 'input-aliases', 'bindings', 'can-mappings', 'selected-device', 'runtime-state', 'runtime-components', 'tests', 'test', 'config', 'sources', 'profiles', 'profile', 'message-level', 'workspace', 'session', 'controllers', 'device-group', 'device-meta', 'topology'),
     show_target_config='config',
     show_target_runtime_state='runtime-state',
     show_target_tests='tests',
@@ -320,6 +327,7 @@ SPEC = ParserSpec(
     cmd_can_mappings='can-mappings',
     cmd_tests='tests',
     cmd_load='load',
+    cmd_reload='reload',
     cmd_create='create',
     cmd_delete='delete',
     cmd_type='type',
@@ -342,6 +350,8 @@ SPEC = ParserSpec(
     cmd_binding='binding',
     cmd_show_all='show-all',
     cmd_validate_all='--all',
+    cmd_merge_flag='--merge',
+    cmd_replace_flag='--replace',
     show_target_group='group',
     show_target_device='device',
     strict_default=False,
@@ -368,6 +378,7 @@ SPEC = ParserSpec(
     msg_push_requires='push requires path',
     msg_save_requires='save requires target and path (or sources/all)',
     msg_save_target='save requires all/config/local-config/profiles/unified-config/sources',
+    msg_load_requires='load requires sources or config <path> [--merge|--replace]',
     msg_write_requires='write requires tests <path>',
     msg_rename_device="rename requires 'device <old> <new>'",
     msg_device_name='device requires device label',
@@ -402,12 +413,11 @@ SPEC = ParserSpec(
     label_export='export',
     label_save='save',
     label_profiles_init='profiles init',
-    label_profiles_activate='profiles activate',
     label_rename='rename device',
     label_device='device',
     label_device_set='device set',
     label_device_delete='delete',
-    mode_exec_cmds=('add', 'cfg', 'configure', 'connect', 'diagnose', 'disconnect', 'ls', 'prof', 'profile', 'show'),
+    mode_exec_cmds=('add', 'cfg', 'configure', 'connect', 'diagnose', 'disconnect', 'ls', 'prof', 'profile', 'show', 'tests'),
     mode_config_cmds=('add', 'bindings', 'can-mappings', 'config', 'device', 'diagnose', 'export', 'group', 'import', 'load', 'ls', 'merge', 'no', 'prof', 'profile', 'profiles', 'recover', 'rename', 'save', 'savep', 'selected-device', 'selected-mode', 'show', 'test', 'tests', 'val', 'validate', 'write'),
     mode_group_cmds=('add', 'bind', 'disable', 'enable', 'ls', 'member', 'no', 'run', 'show'),
     mode_device_cmds=('delete', 'ls', 'no', 'set', 'show'),
@@ -434,6 +444,10 @@ SPEC = ParserSpec(
     kind_exec_configure_terminal='exec_configure_terminal',
     kind_exec_add_next='exec_add_next',
     kind_exec_add_all='exec_add_all',
+    kind_exec_tests_select='exec_tests_select',
+    kind_exec_tests_toggle='exec_tests_toggle',
+    kind_exec_tests_run='exec_tests_run',
+    kind_exec_tests_run_all='exec_tests_run_all',
     kind_show='show',
     kind_config_group='config_group',
     kind_config_no_group='config_no_group',

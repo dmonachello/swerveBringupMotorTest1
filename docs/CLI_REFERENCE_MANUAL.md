@@ -37,6 +37,10 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `show visibility <device> [local] [--json] [--pretty]`
 - `show tests [--json] [--pretty]`
 - `show test <name> [--json] [--pretty]`
+- `tests select <name>`
+- `tests toggle`
+- `tests run`
+- `tests run-all`
 - `show workspace [--json] [--pretty]`
 - `show session [--json] [--pretty]`
 - `show controllers [--json] [--pretty]`
@@ -3323,7 +3327,7 @@ Tests updated.
 
 NAME
 
-write tests <path> - Write the current tests to a JSON file.
+write tests <path> - Deprecated: export standalone tests JSON (legacy).
 
 SYNOPSIS
 
@@ -3331,7 +3335,7 @@ write tests <path>
 
 DESCRIPTION
 
-Write the current tests to a JSON file. This command is valid in Config Mode (`bridge(config-...)#`).
+Deprecated export. Writes the current tests to a standalone JSON file. The robot consumes tests from `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`; for deployable output, use `save unified-config <path>`.
 
 PARAMETERS
 
@@ -3355,7 +3359,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`write tests data/bringup_tests.json`
+`save unified-config data/bringup_system.json`
 
 EXAMPLE OUTPUT
 Wrote tests.
@@ -4292,7 +4296,7 @@ Test started.
 
 NAME
 
-write tests <path> - Write the current tests to a JSON file.
+write tests <path> - Deprecated: export standalone tests JSON (legacy).
 
 SYNOPSIS
 
@@ -4300,7 +4304,7 @@ write tests <path>
 
 DESCRIPTION
 
-Write the current tests to a JSON file. This command is valid in Group Mode (`bridge(config-...-group-...)#`).
+Deprecated export. Writes the current tests to a standalone JSON file. Exit to Config Mode first, then use `save unified-config <path>` to persist tests in `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
 
 PARAMETERS
 
@@ -4324,7 +4328,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`write tests data/bringup_tests.json`
+`save unified-config data/bringup_system.json`
 
 EXAMPLE OUTPUT
 Wrote tests.
@@ -4497,7 +4501,7 @@ Cleared.
 
 NAME
 
-write tests <path> - Write the current tests to a JSON file.
+write tests <path> - Deprecated: export standalone tests JSON (legacy).
 
 SYNOPSIS
 
@@ -4505,7 +4509,7 @@ write tests <path>
 
 DESCRIPTION
 
-Write the current tests to a JSON file. This command is valid in Device Mode (`bridge(config-device-...)#`).
+Deprecated export. Writes the current tests to a standalone JSON file. Exit to Config Mode first, then use `save unified-config <path>` to persist tests in `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
 
 PARAMETERS
 
@@ -4529,7 +4533,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`write tests data/bringup_tests.json`
+`save unified-config data/bringup_system.json`
 
 EXAMPLE OUTPUT
 Wrote tests.
@@ -6174,7 +6178,7 @@ Updated.
 
 NAME
 
-write tests <path> - Write the current tests to a JSON file.
+write tests <path> - Deprecated: export standalone tests JSON (legacy).
 
 SYNOPSIS
 
@@ -6182,7 +6186,7 @@ write tests <path>
 
 DESCRIPTION
 
-Write the current tests to a JSON file. This command is valid in Test Mode (`bridge(config-test-...)#`).
+Deprecated export. Writes the current tests to a standalone JSON file. Exit to Config Mode first, then use `save unified-config <path>` to persist tests in `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
 
 PARAMETERS
 
@@ -6206,7 +6210,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`write tests data/bringup_tests.json`
+`save unified-config data/bringup_system.json`
 
 EXAMPLE OUTPUT
 Wrote tests.
@@ -6247,6 +6251,10 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `show visibility <device> [local] [--json] [--pretty]`
 - `show tests [--json] [--pretty]`
 - `show test <name> [--json] [--pretty]`
+- `tests select <name>`
+- `tests toggle`
+- `tests run`
+- `tests run-all`
 - `diagnose motor <label>`
 - `diagnose device <label>`
 - `configure terminal`

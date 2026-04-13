@@ -268,6 +268,9 @@ KEY_BRIDGE_BY_PROFILE = (
 KEY_BRIDGE_GROUPS = (
     profile_consts.KEY_BRIDGE_GROUPS if profile_consts is not None else "groups"
 )
+KEY_BRIDGE_TESTS = (
+    profile_consts.KEY_BRIDGE_TESTS if profile_consts is not None else "tests"
+)
 KEY_BRIDGE_SELECTED_DEVICE = (
     profile_consts.KEY_BRIDGE_SELECTED_DEVICE
     if profile_consts is not None
@@ -277,6 +280,15 @@ KEY_DEVICE = profile_consts.KEY_DEVICE if profile_consts is not None else "devic
 KEY_LABEL = profile_consts.KEY_LABEL if profile_consts is not None else "label"
 KEY_BRIDGE_GROUP_MEMBERS = "members"
 KEY_SELECTED_ENABLED = "enabled"
+KEY_TEST_DEFAULT_SET = "default_test_set"
+KEY_TEST_SETS = "test_sets"
+KEY_TEST_MOTOR_LABELS = "motorLabels"
+KEY_TEST_ROTATION = "rotation"
+KEY_TEST_ENCODER_KEY = "encoderKey"
+KEY_TEST_DEADBAND_SWEEP = "deadbandSweep"
+KEY_TEST_LIMIT_SWITCH = "limitSwitch"
+KEY_TEST_LIMIT_SWITCH_ID = "id"
+ENCODER_KEY_INTERNAL = "internal"
 
 try:
     from tools.config.schema_store import ConfigSchemaStore
@@ -4534,9 +4546,12 @@ class TopologyEditor(tk.Tk):
         if node is None:
             messagebox.showinfo("Remove", "Select a node to remove.")
             return
+        removed_label = (node.label or TEXT_EMPTY).strip()
         self._push_undo()
         self._nodes = [n for n in self._nodes if n.key != node.key]
         self._selected_key = None
+        if removed_label:
+            self._prune_bridge_config_label(removed_label)
         self._prune_attachment_links()
         self._prune_dio_wiring_links()
         self._refresh_list()
@@ -4577,9 +4592,16 @@ class TopologyEditor(tk.Tk):
             return
         if not messagebox.askyesno("Remove", "Remove selected nodes/callouts?"):
             return
+        removed_labels = [
+            (n.label or TEXT_EMPTY).strip()
+            for n in self._nodes
+            if n.key in self._selected_nodes and (n.label or TEXT_EMPTY).strip()
+        ]
         self._push_undo()
         self._nodes = [n for n in self._nodes if n.key not in self._selected_nodes]
         self._clear_selection()
+        for label in removed_labels:
+            self._prune_bridge_config_label(label)
         self._prune_attachment_links()
         self._prune_dio_wiring_links()
         self._refresh_list()
@@ -5464,33 +5486,236 @@ class TopologyEditor(tk.Tk):
         by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
         if not isinstance(by_profile, dict):
             return COUNT_ZERO
-        profile_name = self._profile_name or TEXT_EMPTY
-        entry = by_profile.get(profile_name)
-        if not isinstance(entry, dict):
+        changed = COUNT_ZERO
+        for entry in by_profile.values():
+            if not isinstance(entry, dict):
+                continue
+            changed += self._update_bridge_config_entry_label_refs(entry, old, new)
+        if changed > COUNT_ZERO:
+            self._root_extras[KEY_BRIDGE_CONFIG] = config
+        return changed
+
+    def _update_bridge_config_entry_label_refs(self, entry: Dict[str, object], old: str, new: str) -> int:
+        """
+        NAME
+            _update_bridge_config_entry_label_refs - Update label refs in one byProfile entry.
+        """
+
+        if not old or not new or old == new:
             return COUNT_ZERO
         changed = COUNT_ZERO
+        old_lower = old.lower()
         for group in entry.get(KEY_BRIDGE_GROUPS, []) or []:
             if not isinstance(group, dict):
                 continue
-            for member in group.get(KEY_BRIDGE_GROUP_MEMBERS, []) or []:
+            members = group.get(KEY_BRIDGE_GROUP_MEMBERS, []) or []
+            if not isinstance(members, list):
+                continue
+            for idx, member in enumerate(list(members)):
                 if isinstance(member, dict):
                     name = str(member.get(KEY_DEVICE, TEXT_EMPTY)).strip()
-                    if name.lower() == old.lower():
+                    if name.lower() == old_lower:
                         member[KEY_DEVICE] = new
                         changed += COUNT_ONE
                 elif isinstance(member, str):
-                    if member.strip().lower() == old.lower():
-                        index = group[KEY_BRIDGE_GROUP_MEMBERS].index(member)
-                        group[KEY_BRIDGE_GROUP_MEMBERS][index] = new
+                    if member.strip().lower() == old_lower:
+                        members[idx] = new
                         changed += COUNT_ONE
+            group[KEY_BRIDGE_GROUP_MEMBERS] = members
         selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE)
         if isinstance(selected, dict):
             name = str(selected.get(KEY_DEVICE, TEXT_EMPTY)).strip()
-            if name.lower() == old.lower():
+            if name.lower() == old_lower:
                 selected[KEY_DEVICE] = new
                 changed += COUNT_ONE
+        tests = entry.get(KEY_BRIDGE_TESTS)
+        if isinstance(tests, dict):
+            changed += self._update_tests_label_refs(tests, old, new)
+        return changed
+
+    def _update_tests_label_refs(self, tests: Dict[str, object], old: str, new: str) -> int:
+        """
+        NAME
+            _update_tests_label_refs - Update test device references on rename.
+
+        DESCRIPTION
+            Updates known label-linked fields:
+            - motorLabels[]
+            - rotation.encoderKey
+            - deadbandSweep.encoderKey (when present)
+            - limitSwitch.id (when present)
+        """
+
+        changed = COUNT_ZERO
+        old_lower = old.lower()
+        test_sets = tests.get(KEY_TEST_SETS)
+        if not isinstance(test_sets, dict):
+            return COUNT_ZERO
+        for set_name, entries in test_sets.items():
+            _ = set_name
+            if not isinstance(entries, list):
+                continue
+            for test in entries:
+                if not isinstance(test, dict):
+                    continue
+                motor_labels = test.get(KEY_TEST_MOTOR_LABELS)
+                if isinstance(motor_labels, list):
+                    for idx, label in enumerate(list(motor_labels)):
+                        if isinstance(label, str) and label.strip().lower() == old_lower:
+                            motor_labels[idx] = new
+                            changed += COUNT_ONE
+                    test[KEY_TEST_MOTOR_LABELS] = motor_labels
+                rotation = test.get(KEY_TEST_ROTATION)
+                if isinstance(rotation, dict):
+                    encoder_key = rotation.get(KEY_TEST_ENCODER_KEY)
+                    if isinstance(encoder_key, str) and encoder_key.strip().lower() == old_lower:
+                        rotation[KEY_TEST_ENCODER_KEY] = new
+                        changed += COUNT_ONE
+                sweep = test.get(KEY_TEST_DEADBAND_SWEEP)
+                if isinstance(sweep, dict):
+                    encoder_key = sweep.get(KEY_TEST_ENCODER_KEY)
+                    if isinstance(encoder_key, str) and encoder_key.strip().lower() == old_lower:
+                        sweep[KEY_TEST_ENCODER_KEY] = new
+                        changed += COUNT_ONE
+                limit_switch = test.get(KEY_TEST_LIMIT_SWITCH)
+                if isinstance(limit_switch, dict):
+                    ref = limit_switch.get(KEY_TEST_LIMIT_SWITCH_ID)
+                    if isinstance(ref, str) and ref.strip().lower() == old_lower:
+                        limit_switch[KEY_TEST_LIMIT_SWITCH_ID] = new
+                        changed += COUNT_ONE
+        return changed
+
+    def _prune_bridge_config_label(self, label: str) -> int:
+        """
+        NAME
+            _prune_bridge_config_label - Remove label references from bridgeConfig.
+
+        DESCRIPTION
+            Used when a device is deleted. Removes references from:
+            - bridgeConfig.byProfile.*.groups members
+            - bridgeConfig.byProfile.*.selectedDevice.device
+            - bridgeConfig.byProfile.*.tests.test_sets entries (motorLabels, encoderKey, limitSwitch.id)
+        """
+
+        if not label:
+            return COUNT_ZERO
+        config = self._root_extras.get(KEY_BRIDGE_CONFIG)
+        if not isinstance(config, dict):
+            return COUNT_ZERO
+        by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
+        if not isinstance(by_profile, dict):
+            return COUNT_ZERO
+        changed = COUNT_ZERO
+        label_lower = label.lower()
+        for entry in by_profile.values():
+            if not isinstance(entry, dict):
+                continue
+            changed += self._prune_bridge_config_entry_label(entry, label, label_lower)
         if changed > COUNT_ZERO:
             self._root_extras[KEY_BRIDGE_CONFIG] = config
+        return changed
+
+    def _prune_bridge_config_entry_label(
+        self, entry: Dict[str, object], label: str, label_lower: str
+    ) -> int:
+        """
+        NAME
+            _prune_bridge_config_entry_label - Prune label refs in one byProfile entry.
+        """
+
+        changed = COUNT_ZERO
+        groups = entry.get(KEY_BRIDGE_GROUPS)
+        if isinstance(groups, list):
+            for group in groups:
+                if not isinstance(group, dict):
+                    continue
+                members = group.get(KEY_BRIDGE_GROUP_MEMBERS, []) or []
+                if not isinstance(members, list):
+                    continue
+                before = len(members)
+                members = [
+                    member
+                    for member in members
+                    if not (
+                        (isinstance(member, str) and member.strip().lower() == label_lower)
+                        or (
+                            isinstance(member, dict)
+                            and str(member.get(KEY_DEVICE, TEXT_EMPTY)).strip().lower()
+                            == label_lower
+                        )
+                    )
+                ]
+                if len(members) != before:
+                    group[KEY_BRIDGE_GROUP_MEMBERS] = members
+                    changed += before - len(members)
+        selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE)
+        if isinstance(selected, dict):
+            name = str(selected.get(KEY_DEVICE, TEXT_EMPTY)).strip()
+            if name.lower() == label_lower:
+                selected[KEY_DEVICE] = TEXT_EMPTY
+                selected[KEY_SELECTED_ENABLED] = False
+                changed += COUNT_ONE
+
+        tests = entry.get(KEY_BRIDGE_TESTS)
+        if isinstance(tests, dict):
+            changed += self._prune_tests_label_refs(tests, label, label_lower)
+        return changed
+
+    def _prune_tests_label_refs(self, tests: Dict[str, object], label: str, label_lower: str) -> int:
+        """
+        NAME
+            _prune_tests_label_refs - Remove deleted device refs from tests payload.
+        """
+
+        changed = COUNT_ZERO
+        test_sets = tests.get(KEY_TEST_SETS)
+        if not isinstance(test_sets, dict):
+            return COUNT_ZERO
+        for set_name, entries in list(test_sets.items()):
+            _ = set_name
+            if not isinstance(entries, list):
+                continue
+            new_entries: List[object] = []
+            for test in entries:
+                if not isinstance(test, dict):
+                    new_entries.append(test)
+                    continue
+                motor_labels = test.get(KEY_TEST_MOTOR_LABELS)
+                if isinstance(motor_labels, list):
+                    kept = [
+                        v
+                        for v in motor_labels
+                        if not (isinstance(v, str) and v.strip().lower() == label_lower)
+                    ]
+                    if len(kept) != len(motor_labels):
+                        changed += len(motor_labels) - len(kept)
+                        test[KEY_TEST_MOTOR_LABELS] = kept
+                    if not kept:
+                        # Drop the test entirely if it no longer targets any devices.
+                        changed += COUNT_ONE
+                        continue
+                rotation = test.get(KEY_TEST_ROTATION)
+                if isinstance(rotation, dict):
+                    encoder_key = rotation.get(KEY_TEST_ENCODER_KEY)
+                    if isinstance(encoder_key, str) and encoder_key.strip().lower() == label_lower:
+                        rotation[KEY_TEST_ENCODER_KEY] = ENCODER_KEY_INTERNAL
+                        changed += COUNT_ONE
+                sweep = test.get(KEY_TEST_DEADBAND_SWEEP)
+                if isinstance(sweep, dict):
+                    encoder_key = sweep.get(KEY_TEST_ENCODER_KEY)
+                    if isinstance(encoder_key, str) and encoder_key.strip().lower() == label_lower:
+                        sweep[KEY_TEST_ENCODER_KEY] = ENCODER_KEY_INTERNAL
+                        changed += COUNT_ONE
+                limit_switch = test.get(KEY_TEST_LIMIT_SWITCH)
+                if isinstance(limit_switch, dict):
+                    ref = limit_switch.get(KEY_TEST_LIMIT_SWITCH_ID)
+                    if isinstance(ref, str) and ref.strip().lower() == label_lower:
+                        limit_switch.pop(KEY_TEST_LIMIT_SWITCH_ID, None)
+                        limit_switch[KEY_SELECTED_ENABLED] = False
+                        changed += COUNT_ONE
+                new_entries.append(test)
+            test_sets[set_name] = new_entries
+        tests[KEY_TEST_SETS] = test_sets
         return changed
 
     def _update_callout_target_labels(self, old: str, new: str) -> int:

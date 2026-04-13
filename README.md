@@ -127,7 +127,8 @@ Purpose: Keep configuration easy to edit without code changes.
 
 - Source of truth: `data/bringup_system.json`.
 - Deploy copy: `src/main/deploy/bringup_system.json`.
-- Sync tool: `python tools/sync_profiles.py`.
+- Validate + sync gate (recommended): `python -m tools.validate_sync`.
+- Legacy sync tool (deprecated): `python tools/sync_profiles.py`.
 - GUI editor: `tools/can_topology/can_top_editor.py`.
 - Profiles apply in file order; press `Back` to rotate.
 - Runtime override: `--bringup-profile=<name>`.
@@ -189,7 +190,7 @@ Annotated example (shortened):
 15:57:32 ACK 470 printTestsInfo  -> Robot accepted command
 15:57:32 OUT 470 printTestsInfo  -> Robot output begins
 === Bringup Tests Info ===
-Resolved path: /home/lvuser/deploy/bringup_tests.json
+Resolved path: /home/lvuser/deploy/bringup_system.json (bridgeConfig.byProfile.<profile>.tests)
 Test count: 10
 ==========================
 ```
@@ -197,10 +198,19 @@ Test count: 10
 ## Bringup Tests
 Purpose: Manual, data-driven tests for motors and encoders.
 
-- File: `src/main/deploy/bringup_tests.json`.
-- Test sets selected via `default_test_set`.
-- Runtime override: `--bringup-tests=...`.
-- Wizards: `tools/bringup_test_wizard/run_bringup_test_wizard.bat` and `tools/test_template_wizard/run_test_template_wizard.bat`.
+- Tests live in `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
+  - Canonical: `data/bringup_system.json`
+  - Deploy: `src/main/deploy/bringup_system.json`
+- Test sets are selected via `default_test_set` inside that per-profile tests block.
+- Authoring:
+  - Use the Bridge CLI/UI test authoring workflow (see `docs/CLI_TEST_AUTHORING_USER_GUIDE.md`).
+  - Generate safe smoke tests (optional):
+    - `py -m tools.bringup_test_wizard.gen_bringup_tests --profile <name> --test-set smoke --replace`
+  - Apply a test template into `bringup_system.json` (optional):
+    - `py -m tools.test_template_wizard.copy_test_template --template <file> --profile <name>`
+  - After edits, run the validate+sync gate:
+    - `python -m tools.validate_sync`
+  - `bringup_tests.json`-only workflows are legacy and not used by the robot.
 
 ## Documentation Index
 Purpose: Find deep details without cluttering the README.
@@ -210,6 +220,8 @@ Purpose: Find deep details without cluttering the README.
 - `docs/USER_GUIDE.md`
 - `docs/OPERATOR_SURFACES.md`
 - `docs/TESTING.md`
+- `docs/TESTING_WINDOWS_OFFLINE.md`
+- `docs/ALPHA_RELEASE_READINESS.md`
 - `docs/AI_DIAGNOSIS.md`
 - `docs/CAN_BACKGROUND.md`
 - `docs/ProfileRegistryPushSpec.md`

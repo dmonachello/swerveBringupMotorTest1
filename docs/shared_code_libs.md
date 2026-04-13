@@ -37,7 +37,6 @@ Use for shared file locations so tools stay aligned.
 Examples:
 - `profiles_canonical_path()` -> `data/bringup_system.json`
 - `profiles_deploy_path()` -> `src/main/deploy/bringup_system.json`
-- `tests_deploy_path()` -> `src/main/deploy/bringup_tests.json`
 - `can_mappings_path()` -> `src/main/deploy/can_mappings.json`
 - `logs_dir()` -> `tools/can_nt/logs`
 
@@ -51,13 +50,14 @@ Examples:
 - `validate_profiles_schema(payload, schema_version=4)`
 
 ### tools/common/tests_io.py
-Purpose: Shared bringup_tests.json handling.
+Purpose: Shared legacy bringup_tests.json handling (import/export aid).
 
-Use to load/write tests payloads and extract test names without duplicating logic.
+Use to load/write standalone tests payloads and extract test names without duplicating logic.
+Note: the robot consumes tests from `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
 
 Examples:
-- `payload = load_tests_payload(tests_deploy_path())`
-- `write_tests_payload(tests_deploy_path(), payload)`
+- `payload = load_tests_payload(Path("tests_export.json"))`
+- `write_tests_payload(Path("tests_export.json"), payload)`
 - `names = extract_test_names(payload)`
 
 ### tools/common/time_utils.py

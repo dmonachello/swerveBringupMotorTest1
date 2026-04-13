@@ -23,7 +23,7 @@ from copy import deepcopy
 from pathlib import Path
 import copy
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from tools.can_nt.bridge_cmd_tracker import CommandTracker
 from tools.can_nt.bridge_cli_parser import BridgeCliParser, CliParseError
@@ -403,6 +403,8 @@ CMD_EXPORT = "export"
 CMD_DELETE = "delete"
 CMD_SET = "set"
 CMD_CLEAR = "clear"
+CMD_SELECT = "select"
+CMD_RUN_ALL = "run-all"
 SHOW_TARGET_VERSION = "version"
 CMD_DEFAULT = PARSER_SPEC.cmd_default
 CMD_MESSAGES = "messages"
@@ -427,6 +429,8 @@ CMD_BRIGHTNESS = "brightness"
 CMD_DURATION = "duration"
 CMD_ADD = "add"
 CMD_NEXT = "next"
+CMD_TOGGLE = PARSER_SPEC.cmd_toggle
+CMD_RUN = PARSER_SPEC.cmd_run
 CMD_NO = "no"
 CMD_RENAME = "rename"
 CMD_VALIDATE = "validate"
@@ -1024,7 +1028,7 @@ MESSAGE_LABEL_SHOW_SOURCES = "show sources"
 MESSAGE_VALIDATE_SCHEMA_VERSION = "schema_version mismatch: expected {expected}, got {found}"
 MESSAGE_VALIDATE_DATA_VERSION = "data_version missing or empty"
 MESSAGE_VALIDATE_DATA_HASH = "data_hash missing or empty"
-MESSAGE_VALIDATE_DATA_HASH_MISMATCH = "data_hash mismatch (run tools/sync_profiles.py)"
+MESSAGE_VALIDATE_DATA_HASH_MISMATCH = "data_hash mismatch (run python -m tools.validate_sync)"
 MESSAGE_VALIDATE_DEVICES_MISSING = "devices missing or empty"
 MESSAGE_VALIDATE_DEVICE_LABEL_MISSING = "device label missing"
 MESSAGE_VALIDATE_DEVICE_LABEL_DUP = "duplicate device label: {label}"
@@ -1477,7 +1481,10 @@ MESSAGE_ERR_PROFILE_EXISTS = "ERROR: Profile already exists: {name}."
 MESSAGE_PROFILE_CREATED = "Created profile: {name}."
 MESSAGE_ERROR_SHOW_TESTS = "ERROR: show tests | show test <test>"
 MESSAGE_ERROR_WRITE_TESTS = "ERROR: write tests <path>"
-MESSAGE_WARNING_WRITE_TESTS_DEPRECATED = "WARNING: `write tests` is deprecated; use `save tests <path>`."
+MESSAGE_WARNING_WRITE_TESTS_DEPRECATED = (
+    "WARNING: `write tests` is deprecated; use `save unified-config <path>` "
+    "(recommended) or `save tests <path>` (legacy export)."
+)
 MESSAGE_SELECTED_TEST_SET = "Selected test set: {name}"
 MESSAGE_CANCELLED = "Cancelled."
 MESSAGE_DELETED_TEST = "Deleted test: {name}"
@@ -1539,6 +1546,8 @@ class BridgeCli:
         echo_enabled: bool = False,
         message_level: Optional[str] = None,
         recovery_mode: bool = False,
+        visibility_provider: Optional[object] = None,
+        runtime_details_provider: Optional[Callable[[], Dict[str, Any]]] = None,
     ) -> None:
         self._session = session
         self._batch = batch
@@ -1549,6 +1558,9 @@ class BridgeCli:
         self._tips_suppressed: set[str] = set()
         self._warnings: List[str] = []
         self._recovery_mode = recovery_mode
+        # Optional helpers injected by can_nt_bridge (safe to be None).
+        self._visibility_provider = visibility_provider
+        self._runtime_details_provider = runtime_details_provider
         self._tests_device_catalog: Dict[str, object] = {}
         self._tests_duplicate_labels: set[str] = set()
         self._parser_kind = CLI_PARSER_KIND
@@ -3314,6 +3326,11 @@ class BridgeCli:
         if mode == MODE_CONFIG and tokens[0].lower() == CMD_TEST:
             return True
         if tokens[0].lower() == CMD_TESTS:
+            # Allow runtime test runner commands to flow through the AST executor.
+            if len(tokens) >= COUNT_TWO:
+                sub = tokens[COUNT_ONE].lower()
+                if sub in (CMD_SELECT, CMD_TOGGLE, CMD_RUN, CMD_RUN_ALL):
+                    return False
             return True
         if tokens[0].lower() == CMD_SHOW and len(tokens) > 1:
             return tokens[1].lower().startswith(CMD_TEST)
@@ -7487,7 +7504,7 @@ class BridgeCli:
             return
         print(
             "Common: help, exit, end, quit, ping, echo, messages\n"
-            "Exec: show, diagnose, connect, disconnect, configure terminal\n"
+            "Exec: show, diagnose, connect, disconnect, configure terminal, tests\n"
             "Config: profile, group, device, bindings, can-mappings, tests, no group, selected-device, selected-mode, merge/import/export/save/load\n"
             "Group: show, add device, no device, member, bind, no bind, enable, disable, run test\n"
             "Device: show, set, no\n"
@@ -7504,6 +7521,20 @@ class BridgeCli:
             "configure terminal": "configure terminal\n  Enter config mode.",
             "connect": "connect\n  Open TCP connection and perform handshake.",
             "disconnect": "disconnect\n  Close TCP connection.",
+            "tests": (
+                "tests select <name>\n"
+                "  Select a bringup test on the robot by name.\n"
+                "tests toggle\n"
+                "  Toggle enabled state of the selected test (robot).\n"
+                "tests run\n"
+                "  Run the selected test once (robot).\n"
+                "tests run-all\n"
+                "  Run all enabled tests sequentially (robot)."
+            ),
+            "tests select": "tests select <name>\n  Select a bringup test on the robot by name.",
+            "tests toggle": "tests toggle\n  Toggle enabled state of the selected test (robot).",
+            "tests run": "tests run\n  Run the selected test once (robot).",
+            "tests run-all": "tests run-all\n  Run all enabled tests sequentially (robot).",
             "echo": "echo on|off\n  Toggle echo for batch scripts (prints each command).",
             "messages": "messages <beginner|medium|expert>\n  Set CLI message level.",
             "debug grammar": "debug grammar [--json] [--dot <path>]\n  Dump the grammar model for the current mode.",

@@ -252,7 +252,9 @@ python tools\can_nt\can_nt_bridge.py --ui --no-can --rio 172.22.11.2
 
 Expected:
 - Test list populates.
-- If root `bringup_tests.json` exists, it is preferred over deploy copy.
+- Tests are loaded from `bringup_system.json` (`bridgeConfig.byProfile.<profile>.tests`).
+  - Canonical: `data/bringup_system.json`
+  - Fallback: `src/main/deploy/bringup_system.json`
 
 TESTING_RESULTS:
 Observed: UI launches when started with NT enabled (`--rio <ip>`), and the test list populates.

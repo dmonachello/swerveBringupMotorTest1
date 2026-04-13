@@ -205,16 +205,24 @@ File: `data/bringup_system.json`
 ## B5) Optional: Add to Tests (Windows)
 Purpose: Use the device in bringup tests.
 
-File: `bringup_tests.json`
+File: `data/bringup_system.json` (under `bridgeConfig.byProfile.<profile>.tests`)
 
 ```json
 {
   "name": "Spin NovaDrive",
-  "type": "button",
-  "devices": ["NovaDrive X1 21"],
-  "button": { "inputSource": "controller0.A", "duty": 0.2 },
-  "termination": { "timeSec": 1.0 }
+  "enabled": false,
+  "motorLabels": ["NovaDrive X1 21"],
+  "type": "composite",
+  "inputSource": "controller0.A",
+  "duty": 0.2,
+  "time": { "timeoutSec": 1.0, "onTimeout": "pass" }
 }
+```
+
+Optional fast path (safe smoke test template for motors):
+```powershell
+py -m tools.bringup_test_wizard.gen_bringup_tests --profile home_030226 --devices "NovaDrive X1 21" --test-set smoke --replace
+python -m tools.validate_sync
 ```
 
 ---
@@ -246,8 +254,8 @@ Purpose: Show what changes for a non-motor device.
 Purpose: Verify config and runtime behavior.
 
 Windows:
-```
-validate config
+```powershell
+python -m tools.validate_sync
 ```
 
 roboRIO:

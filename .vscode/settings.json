@@ -14,6 +14,34 @@
     "**/.factorypath": true,
     "**/*~": true
   },
+
+  "editor.cursorStyle": "block",
+
+  "workbench.colorCustomizations": {
+    "editorGroup.border": "#79b584",
+    "sideBar.border": "#79b584",
+    "panel.border": "#79b584",
+    "activityBar.border": "#79b584",
+    "tab.border": "#79b584",
+
+    "editorCursor.background": "#79b584",
+    "editorCursor.foreground": "#cc5454",
+
+    "list.activeSelectionBackground": "#79b584",
+    "list.activeSelectionForeground": "#c42323",
+
+    "list.inactiveSelectionBackground": "#30633f",
+    "list.hoverBackground": "#2f4f3a",
+
+    "list.focusIndicator": "#57d06d",
+
+    "list.focusOutline": "#57d06d",
+    "list.inactiveFocusOutline": "#29452e"
+
+
+  },
+
+
   "java.test.config": [
     {
       "name": "WPIlibUnitTests",
@@ -57,5 +85,8 @@
     "edu.wpi.first.math.**.proto.*",
     "edu.wpi.first.math.**.struct.*",
   ],
-  "java.dependency.enableDependencyCheckup": false
+  "java.dependency.enableDependencyCheckup": false,
+  "editor.editContext": false,
+
 }
+

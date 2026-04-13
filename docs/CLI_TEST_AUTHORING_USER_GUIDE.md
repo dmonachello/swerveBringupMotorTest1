@@ -14,7 +14,7 @@ Checklist:
 2. Confirm `data/bringup_system.json` matches the profile you want to use.
 3. Confirm `src/main/deploy/bringup_bindings.json` defines controller names you want to reference.
 4. Decide which test set under `test_sets` you will edit or create.
-5. Decide where to save `bringup_tests.json` on your Windows machine.
+5. Decide where to save the updated unified config (usually `data/bringup_system.json`).
 6. If you are testing a new device label, add it to the active profile first (see “Add a Device to the Active Profile” below).
 
 ## Core Concepts
@@ -22,8 +22,8 @@ Purpose: explain the minimum mental model for authoring.
 
 Key ideas:
 1. The CLI edits an in-memory model, not JSON directly.
-2. `write tests` validates and writes the JSON.
-3. `write tests` only works in config mode (not inside `config-test-*`). Use `end` or `exit` to leave test edit mode first.
+2. Tests are persisted inside `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
+3. Use `save unified-config <path>` to write a unified `bringup_system.json` (profiles + bridgeConfig.byProfile).
 3. Devices are chosen from `data/bringup_system.json`.
 4. Test names are unique within a test set.
 5. Inputs use a unified `inputSource` format: `controllerName.inputId`.
@@ -69,7 +69,7 @@ Commands:
 1. `tests templates` lists available templates.
 2. `tests load template <name>` loads a template into the editor.
 3. `tests load <path>` loads an existing tests JSON.
-4. `tests save` writes back to the currently loaded tests file.
+4. `save unified-config <path>` writes `bringup_system.json` with the edited tests included.
 
 Notes:
 - Templates live under `tools/test_template_wizard/test_templates`.
@@ -219,12 +219,12 @@ Steps:
 7. Set input: `inputSource controller0.leftY`
 8. Set deadband: `deadband 0.12`
 9. Exit test mode: `end`
-10. Save: `write tests bringup_tests.json`
+10. Save: `save unified-config data/bringup_system.json`
 
 Expected:
 - No parse errors.
 - Prompt changes to `bringup(config-test-DriveFrontLeft)#` while editing.
-- The file `bringup_tests.json` is updated or created.
+- `data/bringup_system.json` is updated (tests live under `bridgeConfig.byProfile.<profile>.tests`).
 
 ## Quick Start (Create a Button Test)
 Purpose: create a fixed-duty test with termination rules.
@@ -240,7 +240,7 @@ Steps:
 8. Add termination: `termination time 1.5`
 9. Add termination: `termination hold`
 10. Exit test mode: `end`
-11. Save: `write tests bringup_tests.json`
+11. Save: `save unified-config data/bringup_system.json`
 
 Expected:
 - The test runs when the bound button is pressed.
@@ -255,7 +255,7 @@ Steps:
 3. `test <existingName>` (existing tests only)
 4. Change fields as needed.
 5. `end`
-6. `write tests bringup_tests.json`
+6. `save unified-config data/bringup_system.json`
 
 Notes:
 - Use `show tests` to list all tests in the active set.
@@ -278,18 +278,16 @@ Warnings:
 - Device not found in the active profile.
 
 ## Saving Output
-Purpose: write a deployable tests file.
+Purpose: persist tests in the deployable unified config.
 
 Command:
-- `write tests <path>`
+- `save unified-config <path>`
 
 Notes:
-- `write tests` must be run from `bringup(config)#` or `bringup(config-profile-...)#`.
+- `save unified-config` must be run from `bringup(config)#` or `bringup(config-profile-...)#`.
 - If you are in `bringup(config-test-<name>)#`, run `end` or `exit` first.
-
-Notes:
-- Output is a standard `bringup_tests.json`.
-- Copy it to `src/main/deploy/bringup_tests.json` before deploying robot code.
+- Output is an updated `bringup_system.json` with tests stored under `bridgeConfig.byProfile.<profile>.tests`.
+- After saving, run `python -m tools.validate_sync` so `src/main/deploy/bringup_system.json` stays in sync.
 
 ## Example: CANdle LED Tests
 Purpose: create deviceAction tests for a CANdle LED controller.
@@ -305,7 +303,7 @@ device add "candle"
 action toggle_led
 enabled true
 end
-write tests bringup_tests.json
+save unified-config data/bringup_system.json
 ```
 
 Set solid color:
@@ -323,7 +321,7 @@ brightness 0.7
 duration 2.0
 enabled true
 end
-write tests bringup_tests.json
+save unified-config data/bringup_system.json
 ```
 
 ## Example Session (Full)
@@ -339,7 +337,7 @@ bringup(config-test-IntakePulse)# inputSource controller1.A
 bringup(config-test-IntakePulse)# duty 0.2
 bringup(config-test-IntakePulse)# termination time 1.5
 bringup(config-test-IntakePulse)# end
-bringup(config)# write tests bringup_tests.json
+bringup(config)# save unified-config data/bringup_system.json
 ```
 
 ## Troubleshooting
@@ -349,4 +347,4 @@ Issues:
 1. Unknown device label. Check `data/bringup_system.json` for the device label.
 2. Invalid command in this mode. Confirm the prompt matches the mode you expect.
 3. Save blocked by validation. Use `show test <name>` and correct missing fields.
-4. Tests not seen on robot. Deploy the updated `src/main/deploy/bringup_tests.json`.
+4. Tests not seen on robot. Run `python -m tools.validate_sync` and deploy the updated `src/main/deploy/bringup_system.json`.

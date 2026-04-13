@@ -104,6 +104,10 @@ CMD_SHOW_VERSION = "showVersion"
 CMD_SHOW_SOURCES = "showSources"
 CMD_ADD_MOTOR = "addMotor"
 CMD_ADD_ALL = "addAll"
+CMD_SELECT_TEST_BY_NAME = "selectTestByName"
+CMD_TOGGLE_TEST = "toggleTest"
+CMD_RUN_TEST = "runTest"
+CMD_RUN_ALL_TESTS = "runAllTests"
 MSG_DUPLICATE_DEVICE_NAMES = "Duplicate device names: {names}"
 MSG_MISSING_DEVICE_ENTRIES = "Missing device entries: {names}"
 MSG_MISSING_DEVICE_GROUP_HEADER = "Missing device references by group:"
@@ -331,7 +335,31 @@ def select_test_by_name(session: BridgeSession, name: str) -> Optional[int]:
     NAME
         select_test_by_name - Select a scripted test by name.
     """
-    return _send(session, "selectTestByName", {"name": name})
+    return _send(session, CMD_SELECT_TEST_BY_NAME, {"name": name})
+
+
+def toggle_test(session: BridgeSession) -> Optional[int]:
+    """
+    NAME
+        toggle_test - Toggle enabled state of the currently selected test.
+    """
+    return _send(session, CMD_TOGGLE_TEST, {})
+
+
+def run_test(session: BridgeSession) -> Optional[int]:
+    """
+    NAME
+        run_test - Run the currently selected test once.
+    """
+    return _send(session, CMD_RUN_TEST, {})
+
+
+def run_all_tests(session: BridgeSession) -> Optional[int]:
+    """
+    NAME
+        run_all_tests - Run all enabled tests sequentially.
+    """
+    return _send(session, CMD_RUN_ALL_TESTS, {})
 
 CMD_SHOW_TESTS = "showTests"
 

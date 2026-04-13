@@ -49,7 +49,7 @@ Clients (PC tools + local Xbox):
 Contracts across the boundary:
 - TCP command protocol: command/ACK/OUT exchange for UI/CLI.
 - NetworkTables: diagnostics/state only under `bringup/diag/...`.
-- JSON config: `bringup_system.json` and `bringup_tests.json` are shared inputs.
+- JSON config: `bringup_system.json` is the shared input (profiles + registry + diagram + tests under bridgeConfig).
 
 ## Safety Rules (Client/Server)
 Purpose: keep networked control safe and deterministic.
@@ -164,7 +164,7 @@ Purpose: JSON inputs define behavior and runtime configuration.
 - `bringup_system.json`: unified system config (profiles + diagram + bridgeConfig.byProfile). Stored in `data/` and synced to deploy.
 - Requires `schema_version` (4), `data_version`, and `data_hash` at the root.
 - Profiles reference devices by label only; the device registry owns the CAN identity fields.
-- `bringup_tests.json`: test definitions (composite/joystick) grouped into test sets.
+- Tests are stored inside `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
 - `motor_specs.json`: motor current specs for health checks.
 - `can_mappings.json`: manufacturer/device type names for CAN decoding.
 
@@ -207,7 +207,7 @@ Purpose: document the one-time startup sequence and core object construction.
 1. `Main` calls `RobotBase.startRobot(RobotV2::new)` to launch the active harness.
 2. `RobotV2.robotInit()` runs once:
    - Applies the active CAN profile (`BringupUtil.applyProfileFromArgs()`).
-   - Applies optional test file override (`BringupTestRegistry.setOverrideTestsPath(...)`).
+   - Loads tests from `bringup_system.json` (`bridgeConfig.byProfile.<profile>.tests`) when present.
    - Constructs `BringupCore` (see below) and `DiagnosticsReporter`.
    - Applies dashboard state, prints startup info, and validates CAN IDs.
 3. `BringupCore` construction:
@@ -222,10 +222,10 @@ Purpose: profiles, bindings, and tests load in a predictable order.
 1. Robot starts (`Robot` or `RobotV2`) and applies the active CAN profile:
    - `bringup_system.json` is loaded via `BringupUtil` (deploy copy; data is canonical).
    - `default_profile` is selected unless `--bringup-profile=...` is provided.
-2. Tests are loaded by `BringupTestRegistry`:
-   - Default: `bringup_tests.json` from deploy dir.
-   - Active set: `default_test_set` inside `bringup_tests.json`.
-   - Override: `--bringup-tests=...` if provided (loads another JSON file).
+2. Tests are loaded from `bringup_system.json`:
+   - Source: `bridgeConfig.byProfile.<profile>.tests`.
+   - Active set: `default_test_set` inside that per-profile tests block.
+   - Note: `bringup_tests.json`-only workflows are legacy and not used by the robot.
 3. Input configuration is loaded:
    - `bringup_bindings.json` defines controller roles, bindings, and axes.
 
@@ -300,7 +300,7 @@ Purpose: operator clients send commands without blocking the 20ms loop.
 Purpose: stable interfaces are identified to prevent uncoordinated changes.
 
 - NetworkTables keys under `bringup/diag/...` (robot and PC tool must stay in sync).
-- JSON schemas for `bringup_system.json` and `bringup_tests.json`.
+- JSON schema for `bringup_system.json` (including bridgeConfig tests).
 - Report output fields in `bringup_report.json`.
 - TCP command protocol (UI/CLI) and log output formats.
 

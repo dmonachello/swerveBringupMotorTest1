@@ -26,6 +26,7 @@ MESSAGE_VALIDATE_ALL_ITEM_OK = "  {label}: OK"
 MESSAGE_VALIDATE_ALL_ITEM_ERR = "  {label}: ERROR: {message}"
 MESSAGE_VALIDATE_ALL_SUMMARY_OK = "OK: All validations passed."
 MESSAGE_VALIDATE_ALL_SUMMARY_ERR = "ERROR: Validation failures: {count}"
+MSG_ERR_TESTS_SELECT_NAME = "ERROR: tests select requires a name."
 from tools.can_nt.status import (
     StatusResult,
     SS__CLI_PARSER__UNKNOWN_COMMAND,
@@ -63,6 +64,9 @@ from tools.can_nt.bridge_ops import (
     group_unbind,
     import_config,
     merge_config,
+    run_all_tests,
+    run_test,
+    select_test_by_name,
     selected_device_set,
     selected_mode_set,
     show_bindings,
@@ -74,6 +78,7 @@ from tools.can_nt.bridge_ops import (
     show_selected_device,
     show_status,
     show_version,
+    toggle_test,
 )
 
 SHOW_TARGET_VERSION = "version"
@@ -123,6 +128,10 @@ AST_EXEC_SPEC = {
     "label_group_delete": "group delete",
     "label_add_next": "add next",
     "label_add_all": "add all",
+    "label_tests_select": "tests select",
+    "label_tests_toggle": "tests toggle",
+    "label_tests_run": "tests run",
+    "label_tests_run_all": "tests run-all",
     "label_selected_device": "selected-device",
     "label_selected_mode": "selected-mode",
     "label_add_device": "add device",
@@ -187,6 +196,10 @@ class BridgeCliAstExecutor:
             SPEC.kind_exec_configure_terminal: self._ast_exec_configure_terminal,
             SPEC.kind_exec_add_next: self._ast_exec_add_next,
             SPEC.kind_exec_add_all: self._ast_exec_add_all,
+            SPEC.kind_exec_tests_select: self._ast_exec_tests_select,
+            SPEC.kind_exec_tests_toggle: self._ast_exec_tests_toggle,
+            SPEC.kind_exec_tests_run: self._ast_exec_tests_run,
+            SPEC.kind_exec_tests_run_all: self._ast_exec_tests_run_all,
             SPEC.kind_show: self._ast_show,
             SPEC.kind_config_group: self._ast_config_group,
             SPEC.kind_config_no_group: self._ast_config_no_group,
@@ -223,6 +236,50 @@ class BridgeCliAstExecutor:
             SPEC.kind_device_no: self._ast_device_no,
             SPEC.kind_device_delete: self._ast_device_delete,
         }
+
+    def _ast_exec_tests_select(self, ast: CommandAst) -> Optional[int]:
+        if not self._cli._session.is_connected():
+            print(AST_EXEC_SPEC["msg_err_robot_unavailable"])
+            return AST_EXEC_SPEC["ret_err"]
+        if not ast.args or len(ast.args) < 2:
+            print(MSG_ERR_TESTS_SELECT_NAME)
+            return AST_EXEC_SPEC["ret_err"]
+        name = SPEC.space_str.join(ast.args[1:])
+        seq = select_test_by_name(self._cli._session, name)
+        event = self._cli._wait_for_seq(seq)
+        if self._cli._event_failed(event, AST_EXEC_SPEC["label_tests_select"]):
+            return AST_EXEC_SPEC["ret_err"]
+        return None
+
+    def _ast_exec_tests_toggle(self, _ast: CommandAst) -> Optional[int]:
+        if not self._cli._session.is_connected():
+            print(AST_EXEC_SPEC["msg_err_robot_unavailable"])
+            return AST_EXEC_SPEC["ret_err"]
+        seq = toggle_test(self._cli._session)
+        event = self._cli._wait_for_seq(seq)
+        if self._cli._event_failed(event, AST_EXEC_SPEC["label_tests_toggle"]):
+            return AST_EXEC_SPEC["ret_err"]
+        return None
+
+    def _ast_exec_tests_run(self, _ast: CommandAst) -> Optional[int]:
+        if not self._cli._session.is_connected():
+            print(AST_EXEC_SPEC["msg_err_robot_unavailable"])
+            return AST_EXEC_SPEC["ret_err"]
+        seq = run_test(self._cli._session)
+        event = self._cli._wait_for_seq(seq)
+        if self._cli._event_failed(event, AST_EXEC_SPEC["label_tests_run"]):
+            return AST_EXEC_SPEC["ret_err"]
+        return None
+
+    def _ast_exec_tests_run_all(self, _ast: CommandAst) -> Optional[int]:
+        if not self._cli._session.is_connected():
+            print(AST_EXEC_SPEC["msg_err_robot_unavailable"])
+            return AST_EXEC_SPEC["ret_err"]
+        seq = run_all_tests(self._cli._session)
+        event = self._cli._wait_for_seq(seq)
+        if self._cli._event_failed(event, AST_EXEC_SPEC["label_tests_run_all"]):
+            return AST_EXEC_SPEC["ret_err"]
+        return None
 
     def _ast_common_exit(self, _ast: CommandAst) -> Optional[StatusResult]:
         if self._cli._modes[-1].name == SPEC.modes[SPEC.idx_exec]:

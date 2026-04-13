@@ -168,7 +168,7 @@ Notes:
 Example 1: Save vs Write vs Save Sources
 Current: `write tests <path>`, `save tests <path>`, `save sources`.
 Issue: Multiple verbs imply different persistence semantics for the same data.
-Proposed: `save tests <path>` as the canonical command. `write tests` becomes a deprecated alias with a warning. `save sources` is reserved for saving all currently loaded sources.
+Proposed: `save unified-config <path>` as the canonical persistence command. `save tests`/`write tests` become legacy export-only commands (deprecated with warnings). `save sources` is reserved for saving all currently loaded sources.
 Benefit: Clear persistence expectations and fewer ambiguous synonyms.
 
 Example 2: Load vs Import vs Merge
@@ -355,7 +355,7 @@ Purpose: Map old commands to new canonical forms.
 
 | Old Command | New Command | Notes |
 | --- | --- | --- |
-| `write tests <path>` | `save tests <path>` | Deprecate `write tests`. |
+| `write tests <path>` | `save unified-config <path>` | Deprecate `write tests` (legacy export). |
 | `savep <path>` | `save profiles <path>` or `save unified-config <path>` | Prefer unified root. |
 | `merge config <path>` | `load config <path> --merge` | Explicit merge flag. |
 | `import config <path>` | `load config <path> --replace` | Explicit replace flag. |

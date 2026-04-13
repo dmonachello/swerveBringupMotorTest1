@@ -12,7 +12,7 @@ NAME
     validate_profiles.py - Validate bringup_system.json compatibility.
 
 SYNOPSIS
-    python tools\can_topology\validate_profiles.py [--path PATH] [--strict]
+    python tools\\can_topology\\validate_profiles.py [--path PATH] [--strict]
 
 DESCRIPTION
     Checks bringup_system.json for schema errors, duplicate labels, and
@@ -59,7 +59,7 @@ MSG_ERR_JSON_PARSE = "Failed to parse JSON: {error}"
 MSG_ERR_SCHEMA = "Root 'schema_version' mismatch: expected {expected}, got {found}"
 MSG_ERR_DATA_VERSION = "Root 'data_version' missing or empty."
 MSG_ERR_DATA_HASH = "Root 'data_hash' missing or empty."
-MSG_ERR_HASH_MISMATCH = "Root 'data_hash' mismatch (run tools/sync_profiles.py)."
+MSG_ERR_HASH_MISMATCH = "Root 'data_hash' mismatch (run python -m tools.validate_sync)."
 MSG_ERR_DEVICES = "Root 'devices' must be a non-empty list."
 MSG_ERR_PROFILES = "Root 'profiles' must be a non-empty object."
 MSG_WARN_DEFAULT_PROFILE = "Root 'default_profile' is missing or empty."

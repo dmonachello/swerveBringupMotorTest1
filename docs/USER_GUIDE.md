@@ -86,17 +86,16 @@ Purpose: Clarify which files each surface reads/writes and how often they change
 Bridge CLI
 - data/bringup_system.json: primary local config (profiles + device registry + groups). Change likelihood: high. Read: default.
 - src/main/deploy/bringup_system.json: deploy fallback. Change likelihood: medium. Read: fallback.
-- bringup_tests.json (repo root or custom path): tests file edited by CLI. Change likelihood: high. Read: default if present; fallback to deploy.
-- src/main/deploy/bringup_tests.json: deploy tests. Change likelihood: medium. Read: fallback.
-- src/main/deploy/bringup_bindings.json: controller names/ports for inputSource validation. Change likelihood: low–medium. Read: default.
+- bringup_system.json bridgeConfig.byProfile.<profile>.tests: tests edited by CLI. Change likelihood: high. Read: from the loaded bringup_system.json.
+- src/main/deploy/bringup_bindings.json: controller names/ports for inputSource validation. Change likelihood: low-medium. Read: default.
 - src/main/deploy/can_mappings.json: CAN manufacturer/device-type names. Change likelihood: low. Read: default.
 - .bridge_cli_settings.json: CLI preferences (message level). Change likelihood: low. Read: default.
 
 Bringup Control UI
 - data/bringup_system.json: profile list + labels for dropdowns/live view. Change likelihood: high. Read: default.
 - src/main/deploy/bringup_system.json: deploy fallback. Change likelihood: medium. Read: fallback.
-- bringup_tests.json (repo root) or src/main/deploy/bringup_tests.json: tests list for UI. Change likelihood: high/medium. Read: default if present; fallback.
-- src/main/deploy/bringup_bindings.json: controller labels. Change likelihood: low–medium. Read: default.
+- bringup_system.json bridgeConfig.byProfile.<profile>.tests: tests list for UI. Change likelihood: high. Read: from the loaded bringup_system.json.
+- src/main/deploy/bringup_bindings.json: controller labels. Change likelihood: low-medium. Read: default.
 - src/main/deploy/can_mappings.json: CAN vendor/type names. Change likelihood: low. Read: default.
 
 Topology Editor
@@ -112,7 +111,7 @@ Live Topology View
 Profiles Migration (Schema v4)
 Purpose: Update bringup_system.json to schema v4 with a device registry and label-only profiles.
 Example:
-  python tools\sync_profiles.py
+  python -m tools.validate_sync
   python tools\can_topology\validate_profiles.py --path data\bringup_system.json --strict
 - The editor writes it; robot and PC tools consume it.
 - Diagram metadata is editor-only and ignored by robot/PC tools.
@@ -166,19 +165,19 @@ Purpose: Compare this system with related FRC tools.
 
 ### WPILib RobotBuilder
 Purpose: Contrast code-structure generation vs. hardware bringup.
-- RobotBuilder is a WPILib tool for creating robot programs using WPILib components. ?cite?turn1search0?
+- RobotBuilder is a WPILib tool for creating robot programs using WPILib components.
 - This system focuses on validating real CAN hardware and wiring with live diagnostics, not code scaffolding.
 
 ### Vendor Device Tools
 Purpose: Contrast vendor-specific configuration with multi-vendor bringup.
-- Phoenix Tuner (including Tuner X) is a companion application used to configure, analyze, update, and control CTRE devices. ?cite?turn1search12?
-- REV Hardware Client manages REV devices and provides device software updates. ?cite?turn1search1?
+- Phoenix Tuner (including Tuner X) is a companion application used to configure, analyze, update, and control CTRE devices.
+- REV Hardware Client manages REV devices and provides device software updates.
 - This system provides a vendor-agnostic profile and passive CAN diagnostics across mixed devices.
 
 ### Dashboards and Log Viewers
 Purpose: Contrast visualization-only tools with bringup workflows.
-- Shuffleboard is a customizable driveteam-focused dashboard. ?cite?turn5search0?
-- Glass is a dashboard and robot data visualization tool aimed at programmer debugging. ?cite?turn2search0?
+- Shuffleboard is a customizable driveteam-focused dashboard.
+- Glass is a dashboard and robot data visualization tool aimed at programmer debugging.
 - AdvantageScope is a data visualization tool for NetworkTables and WPILib/Driver Station logs. ?cite?turn6search1?
 - FRC Dashboard is an extendable, web-based driving interface for FRC robots. ?cite?turn3search1?
 - pynetworktables2js forwards NetworkTables key/value data over WebSocket for HTML/JavaScript dashboards. ?cite?turn3search3?

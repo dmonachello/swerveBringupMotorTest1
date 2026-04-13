@@ -24,6 +24,7 @@ exec           = show_exec
                | "connect"
                | "disconnect"
                | "add" ws ("next" | "all")
+               | "tests" ws ("select" ws name | "toggle" | "run" | "run-all")
                | "profile" ws "device" ws "show-all" ws name
                | "prof" ws "device" ws "show-all" ws name
                | diagnose ;
@@ -155,7 +156,11 @@ mappings_args  = ("show" | "ls") [ ws ("manufacturers" | "device-types" | "devic
                | "validate" [ ws path ] ;
 
 tests_args     = "templates"
-               | "clear" ;
+               | "clear"
+               | "select" ws name
+               | "toggle"
+               | "run"
+               | "run-all" ;
 
 group          = ("show" | "ls")
                | ("show" | "ls") ws "members"

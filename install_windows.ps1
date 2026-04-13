@@ -47,6 +47,7 @@ $deps = @(
     "pyserial",
     "pyntcore",
     "pynetworktables",
+    "prompt_toolkit",
     "reportlab",
     "lark"
 )

@@ -33,13 +33,12 @@ profile home_tests_033026
 Purpose: ensure you are not editing leftover in-memory tests from a previous session or file.
 
 ```text
-tests load bringup_tests.json
+load config data/bringup_system.json --merge
 tests clear
 ```
 
 Notes:
-- If `bringup_tests.json` does not exist yet, skip `tests load` and run `tests clear` only.
-- `tests load bringup_tests.json` ensures the CLI is working from a known file.
+- `load config ... --merge` loads the current unified bringup_system.json (including any existing tests under bridgeConfig.byProfile).
 - `tests clear` wipes all test sets in memory so you can start clean.
 - If you want to merge tests from another file instead of replacing, use `tests merge <path>`.
 
@@ -54,7 +53,7 @@ set id 26
 set model "REV NEO"
 set type motor
 exit
-save profiles data/bringup_system.json
+save unified-config data/bringup_system.json
 ```
 
 4) Refresh the Active Profile (so tests can see new devices)
@@ -114,10 +113,10 @@ bridge(config-profile-home_tests_033026)#
 ```
 
 
-8) Save Tests to a Custom File
+8) Save Unified Config
 
 ```text
-write tests my_tests.json
+save unified-config data/bringup_system.json
 ```
 
 ## Notes
@@ -125,8 +124,7 @@ write tests my_tests.json
 - `device add` must reference a label that exists in the active profile (step 2).
 - Controller names are explicit now: use `controller0.A`, not `primary.A`.
 - `show tests` lists all sets plus the active set.
-- `write tests` validates all sets in memory unless you ran `tests clear`.
-- `write tests` must be run from `bridge(config)#` or `bridge(config-profile-...)#` (not from `bridge(config-test-...)#`). Use `exit` or `end` to leave test edit mode first.
+- `save unified-config` writes `bringup_system.json` with profiles + bridgeConfig.byProfile (groups + tests).
 - Commands are case-insensitive (`inputSource`, `inputsource`, `InputSource` all work).
 - To delete a device:
   - `no device "<label>"` from config/profile mode, or
@@ -170,20 +168,14 @@ TBD Screenshot: `show devices` output with `Feeder Motor` present.
 Expected:
 - `Feeder Motor` is present.
 
-6) Load the tests file to verify
-
-```text
-tests load my_tests.json
-```
-
-7) Verify test sets and active set
+6) Verify test sets and active set
 
 ```text
 show tests
 ```
 
 Expected:
-- `default` contains `FeederSpin`.
+- The active test set contains `FeederSpin`.
 
 8) Inspect the test
 

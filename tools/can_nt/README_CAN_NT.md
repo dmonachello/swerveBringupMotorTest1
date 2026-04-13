@@ -280,7 +280,7 @@ UI OUTPUT EXAMPLES
         15:57:32 ACK 470 printTestsInfo ok OK
         15:57:32 OUT 470 printTestsInfo
         === Bringup Tests Info ===
-        Resolved path: /home/lvuser/deploy/bringup_tests.json
+        Resolved path: /home/lvuser/deploy/bringup_system.json (bridgeConfig.byProfile.<profile>.tests)
         Test count: 10
         ==========================
 
