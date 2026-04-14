@@ -83,7 +83,7 @@ Rules:
 2. The CLI resolves labels from `data/bringup_system.json`.
 3. Duplicate device adds are rejected with a warning.
 4. Duplicate labels in the active profile are errors.
-5. A device must exist in the active profile with required fields (CAN: `interface`, `manufacturer`, `deviceType`, `id`) before tests can reference it.
+5. A device must exist in the active profile with required fields (CAN: `deviceInterface`, `manufacturer`, `deviceType`, `id`) before tests can reference it.
 
 Examples:
 1. `device add SPARKMAX/NEO 25`

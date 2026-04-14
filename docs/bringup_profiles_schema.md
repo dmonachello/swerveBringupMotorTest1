@@ -23,7 +23,7 @@ classDiagram
 
     class DeviceDefinition {
         string label
-        string interface
+        string deviceInterface
         int? manufacturer
         int? deviceType
         int? id

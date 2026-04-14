@@ -321,13 +321,13 @@ Notes:
 - The CLI validates required fields when you create or edit a device.
 
 Required fields by interface:
-- CAN: `interface`, `manufacturer`, `deviceType`, `id`
-- DIO: `interface`, `dio`, `invert`
-- PWM: `interface`, `pwm`
-- ANALOG: `interface`, `analog`
+- CAN: `deviceInterface`, `manufacturer`, `deviceType`, `id`
+- DIO: `deviceInterface`, `dio`, `invert`
+- PWM: `deviceInterface`, `pwm`
+- ANALOG: `deviceInterface`, `analog`
 
 Supported `set` fields:
-- `interface`, `manufacturer`, `deviceType`, `id`, `model`, `type`
+- `interface` (writes `deviceInterface`), `manufacturer`, `deviceType`, `id`, `model`, `type`
 - `dio`, `invert`, `pwm`, `analog`
 - `attachments`, `terminator`
 - `vendor`, `role`, `notes`, `tags`, `limits`

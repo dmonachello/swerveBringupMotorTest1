@@ -39,6 +39,7 @@ from tools.common.profile_constants import (
     KEY_TERMINATOR,
     KEY_TYPE,
     PROFILE_SCHEMA_VERSION,
+    get_device_interface,
 )
 from tools.common.profile_io import compute_profiles_hash
 from .can_frc_defs import uses_status_presence
@@ -165,7 +166,7 @@ def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
                 _LOAD_ERROR = MSG_PROFILE_DEVICE_UNKNOWN.format(profile=name, label=label)
                 return (_fallback_default(), _fallback_profiles())
             device_copy = dict(entry)
-            if device_copy.get(KEY_INTERFACE) == INTERFACE_CAN:
+            if get_device_interface(device_copy) == INTERFACE_CAN:
                 manufacturer = device_copy.get(KEY_MANUFACTURER)
                 device_type = device_copy.get(KEY_DEVICE_TYPE)
                 if isinstance(manufacturer, int) and isinstance(device_type, int):
@@ -298,7 +299,7 @@ def get_profile(profile: str) -> Tuple[List[Dict[str, Any]], Set[int]]:
         devices = [
             entry
             for entry in PROFILE_DEVICES[profile]
-            if entry.get(KEY_INTERFACE) == INTERFACE_CAN
+            if get_device_interface(entry) == INTERFACE_CAN
         ]
         return (devices, set())
     raise ValueError(

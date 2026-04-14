@@ -278,6 +278,12 @@ KEY_BRIDGE_SELECTED_DEVICE = (
 )
 KEY_DEVICE = profile_consts.KEY_DEVICE if profile_consts is not None else "device"
 KEY_LABEL = profile_consts.KEY_LABEL if profile_consts is not None else "label"
+KEY_INTERFACE = (
+    profile_consts.KEY_INTERFACE if profile_consts is not None else "interface"
+)
+KEY_INTERFACE_LEGACY = (
+    profile_consts.KEY_INTERFACE_LEGACY if profile_consts is not None else "interface"
+)
 KEY_BRIDGE_GROUP_MEMBERS = "members"
 KEY_SELECTED_ENABLED = "enabled"
 KEY_TEST_DEFAULT_SET = "default_test_set"
@@ -2447,13 +2453,13 @@ class TopologyEditor(tk.Tk):
         return node
 
     def _is_can_device_entry(self, entry: Dict[str, object]) -> bool:
-        interface = str(entry.get("interface", "")).strip()
+        interface = str(entry.get(KEY_INTERFACE) or entry.get(KEY_INTERFACE_LEGACY) or "").strip()
         if profile_consts is not None:
             return interface.upper() == profile_consts.INTERFACE_CAN
         return interface.upper() == "CAN"
 
     def _is_dio_device_entry(self, entry: Dict[str, object]) -> bool:
-        interface = str(entry.get("interface", "")).strip()
+        interface = str(entry.get(KEY_INTERFACE) or entry.get(KEY_INTERFACE_LEGACY) or "").strip()
         if profile_consts is not None:
             return interface.upper() == profile_consts.INTERFACE_DIO
         return interface.upper() == INTERFACE_DIO
@@ -2532,12 +2538,13 @@ class TopologyEditor(tk.Tk):
         for node in self._device_nodes():
             entry = self._device_registry.get(node.label)
             if isinstance(entry, dict):
-                entry["label"] = node.label
-                entry["interface"] = (
+                entry[KEY_LABEL] = node.label
+                entry[KEY_INTERFACE] = (
                     profile_consts.INTERFACE_DIO if profile_consts is not None else INTERFACE_DIO
                 ) if node.interface == INTERFACE_DIO else (
                     profile_consts.INTERFACE_CAN if profile_consts is not None else INTERFACE_CAN
                 )
+                entry.pop(KEY_INTERFACE_LEGACY, None)
                 if node.interface == INTERFACE_DIO:
                     entry["dio"] = node.dio
                     entry["invert"] = bool(node.invert) if node.invert is not None else False
@@ -2696,11 +2703,12 @@ class TopologyEditor(tk.Tk):
         """
         if node.interface == INTERFACE_DIO:
             entry: Dict[str, object] = {
-                "label": node.label,
-                "interface": profile_consts.INTERFACE_DIO if profile_consts is not None else INTERFACE_DIO,
+                KEY_LABEL: node.label,
+                KEY_INTERFACE: profile_consts.INTERFACE_DIO if profile_consts is not None else INTERFACE_DIO,
                 "dio": node.dio,
                 "invert": bool(node.invert) if node.invert is not None else False,
             }
+            entry.pop(KEY_INTERFACE_LEGACY, None)
             if node.device_type and node.device_type.strip():
                 entry["type"] = node.device_type
             if node.tags:
@@ -2709,10 +2717,11 @@ class TopologyEditor(tk.Tk):
         manufacturer = self._manufacturer_id_from_vendor(node.vendor)
         device_type = self._device_type_id_from_name(node.device_type)
         entry = {
-            "label": node.label,
-            "interface": profile_consts.INTERFACE_CAN if profile_consts is not None else INTERFACE_CAN,
+            KEY_LABEL: node.label,
+            KEY_INTERFACE: profile_consts.INTERFACE_CAN if profile_consts is not None else INTERFACE_CAN,
             "id": node.can_id,
         }
+        entry.pop(KEY_INTERFACE_LEGACY, None)
         if manufacturer is not None:
             entry["manufacturer"] = manufacturer
         if device_type is not None:

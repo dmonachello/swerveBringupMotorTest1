@@ -35,6 +35,8 @@ Hard rules
   - Keep output schema and contracts stable and explicitly listed.
   - Include Tradeoffs and Future Extensions sections in architecture docs.
   - Printed docs rule: if a section or subsection would fit on one page, do not allow it to split across pages (keep heading and content together).
+  - Markdown linting (prevent MD022): Headings must be surrounded by blank lines (one empty line before and one empty line after).
+    - Also keep lists surrounded by blank lines when adjacent to headings/paragraphs to avoid MD032.
 
 Documentation Rules (Code)
 Purpose: Keep man-page style documentation consistent in Java and Python sources.

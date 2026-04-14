@@ -148,7 +148,7 @@ Example device entry (motor):
 ```json
 {
   "label": "NovaDrive X1 21",
-  "interface": "CAN",
+  "deviceInterface": "CAN",
   "manufacturer": 21,
   "deviceType": 2,
   "id": 21,
@@ -239,7 +239,7 @@ Purpose: Show what changes for a non-motor device.
 ```json
 {
   "label": "NovaSense Encoder 42",
-  "interface": "CAN",
+  "deviceInterface": "CAN",
   "manufacturer": 21,
   "deviceType": 7,
   "id": 42,

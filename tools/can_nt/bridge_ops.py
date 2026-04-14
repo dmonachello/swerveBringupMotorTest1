@@ -48,6 +48,7 @@ from tools.common.profile_constants import (
     KEY_LABEL,
     KEY_MODEL,
     KEY_INTERFACE,
+    KEY_INTERFACE_LEGACY,
     KEY_MANUFACTURER,
     KEY_DEVICE_TYPE,
     KEY_ID,
@@ -93,6 +94,7 @@ from tools.common.profile_constants import (
     INTERFACE_DIO,
     INTERFACE_INTERNAL,
     INTERFACE_PWM,
+    get_device_interface,
 )
 from tools.common.profile_io import validate_profiles_schema
 
@@ -1408,7 +1410,7 @@ def _validate_device_definitions(root_payload: Dict[str, Any]) -> List[str]:
             seen[key] = seen.get(key, 0) + 1
             if seen[key] == 2:
                 issues.append(MSG_DEVICE_DEF_LABEL_DUPLICATE)
-        interface = str(entry.get(KEY_INTERFACE, "")).strip()
+        interface = str(get_device_interface(entry) or entry.get(KEY_INTERFACE_LEGACY) or "").strip()
         if not interface:
             issues.append(MSG_DEVICE_DEF_INTERFACE_REQUIRED)
         elif interface not in (

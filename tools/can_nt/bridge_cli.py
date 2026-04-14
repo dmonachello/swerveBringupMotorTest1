@@ -193,6 +193,7 @@ from tools.common.profile_constants import (
     KEY_VERSION,
     KEY_ID,
     KEY_INTERFACE,
+    KEY_INTERFACE_LEGACY,
     KEY_INVERT,
     KEY_LABEL,
     KEY_LIMITS,
@@ -217,6 +218,7 @@ from tools.common.profile_constants import (
     KEY_VENDOR,
     KEY_ROLE,
     KEY_TAGS,
+    get_device_interface,
 )
 from tools.common.test_authoring import (
     TestAuthoringModel,
@@ -9396,7 +9398,7 @@ class BridgeCli:
             devices.append(target)
         target[store_key] = value
         if field_key == FIELD_INTERFACE and isinstance(target, dict):
-            interface = str(target.get(KEY_INTERFACE, "")).strip()
+            interface = str(get_device_interface(target) or target.get(KEY_INTERFACE_LEGACY) or "").strip()
             if interface and interface not in DEVICE_INTERFACE_ALLOWED:
                 print(MESSAGE_ERR_DEVICE_INTERFACE_INVALID)
                 return StatusResult(code=SS__DEVICE__INVALID_FIELD)
@@ -9606,7 +9608,7 @@ class BridgeCli:
             _device_missing_fields - Return missing required fields for a device.
         """
 
-        interface = str(entry.get(KEY_INTERFACE, "")).strip()
+        interface = str(get_device_interface(entry) or entry.get(KEY_INTERFACE_LEGACY) or "").strip()
         if not interface:
             return [FIELD_INTERFACE]
         required: tuple[str, ...]
@@ -9634,7 +9636,7 @@ class BridgeCli:
             _validate_device_entry - Validate a device definition after edits.
         """
 
-        interface = str(entry.get(KEY_INTERFACE, "")).strip()
+        interface = str(get_device_interface(entry) or entry.get(KEY_INTERFACE_LEGACY) or "").strip()
         if interface and interface not in DEVICE_INTERFACE_ALLOWED:
             print(MESSAGE_ERR_DEVICE_INTERFACE_INVALID)
             return
@@ -10019,7 +10021,7 @@ class BridgeCli:
         else:
             entry[store_key] = value_raw
         if field_key == FIELD_INTERFACE:
-            interface = str(entry.get(KEY_INTERFACE, "")).strip()
+            interface = str(get_device_interface(entry) or entry.get(KEY_INTERFACE_LEGACY) or "").strip()
             if interface and interface not in DEVICE_INTERFACE_ALLOWED:
                 print(MESSAGE_ERR_DEVICE_INTERFACE_INVALID)
                 return StatusResult(code=SS__DEVICE__INVALID_FIELD)

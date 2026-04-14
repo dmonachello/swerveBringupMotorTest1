@@ -557,7 +557,7 @@ Example:
   "data_hash": "...",
   "default_profile": "robot",
   "devices": [
-    { "label": "FL_DRIVE", "interface": "CAN", "manufacturer": 5, "deviceType": 2, "id": 1 }
+    { "label": "FL_DRIVE", "deviceInterface": "CAN", "manufacturer": 5, "deviceType": 2, "id": 1 }
   ],
   "profiles": {
     "robot": { "devices": ["FL_DRIVE"] }

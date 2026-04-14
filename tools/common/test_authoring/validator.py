@@ -17,7 +17,13 @@ import re
 from typing import Dict, List, Optional, Set
 
 from .device_catalog import load_profile_devices
-from tools.common.profile_constants import KEY_INTERFACE, KEY_TYPE, INTERFACE_DIO
+from tools.common.profile_constants import (
+    INTERFACE_DIO,
+    KEY_INTERFACE,
+    KEY_INTERFACE_LEGACY,
+    KEY_TYPE,
+    get_device_interface,
+)
 from .model import TestAuthoringModel, TestModel
 
 
@@ -517,6 +523,11 @@ def _validate_limit_switch(
             entry = catalog.get(limit_id)
             if isinstance(entry, dict):
                 interface = entry.get(KEY_INTERFACE)
+                if interface is None and entry.get(KEY_INTERFACE_LEGACY) is not None:
+                    entry[KEY_INTERFACE] = entry.get(KEY_INTERFACE_LEGACY)
+                    interface = entry.get(KEY_INTERFACE)
+                if interface is None:
+                    interface = get_device_interface(entry)
                 device_type = entry.get(KEY_TYPE)
                 if interface != INTERFACE_DIO or device_type != LIMIT_SWITCH_DEVICE_TYPE:
                     result.errors.append(

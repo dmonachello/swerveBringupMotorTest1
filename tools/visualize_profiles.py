@@ -43,6 +43,7 @@ from tools.common.profile_constants import (
     KEY_TAGS,
     KEY_TYPE,
     KEY_VENDOR,
+    get_device_interface,
 )
 from tools.common.topology_render import (
     fill_color_for_vendor,
@@ -86,7 +87,7 @@ def _collect_devices(
         entry = registry.get(label.strip().lower())
         if entry is None:
             continue
-        if entry.get(KEY_INTERFACE) != INTERFACE_CAN:
+        if get_device_interface(entry) != INTERFACE_CAN:
             continue
         can_id = entry.get(KEY_ID)
         if not isinstance(can_id, int):

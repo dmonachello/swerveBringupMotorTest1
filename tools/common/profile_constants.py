@@ -12,6 +12,8 @@ DESCRIPTION
     inline string or numeric literals.
 """
 
+from typing import Dict
+
 PROFILE_SCHEMA_VERSION = 4
 BRIDGE_CONFIG_SCHEMA_VERSION = 2
 
@@ -55,7 +57,8 @@ CANNECT_PORT_TWO = 2
 CANNECT_PORT_THREE = 3
 
 KEY_LABEL = "label"
-KEY_INTERFACE = "interface"
+KEY_INTERFACE = "deviceInterface"
+KEY_INTERFACE_LEGACY = "interface"
 KEY_ID = "id"
 KEY_MANUFACTURER = "manufacturer"
 KEY_DEVICE_TYPE = "deviceType"
@@ -115,3 +118,18 @@ TYPE_LIMIT_SWITCH = "limitSwitch"
 TYPE_ENCODER_INTERNAL = "encoderInternal"
 TYPE_ENCODER_EXTERNAL = "encoderExternal"
 TYPE_MOTOR = "motor"
+
+
+def get_device_interface(entry: Dict[str, object]) -> object:
+    """
+    NAME
+        get_device_interface - Read the device interface with backward compatibility.
+
+    DESCRIPTION
+        The canonical JSON key is deviceInterface. For one-iteration compatibility,
+        accept the legacy key 'interface' when present.
+    """
+    value = entry.get(KEY_INTERFACE)
+    if value is not None:
+        return value
+    return entry.get(KEY_INTERFACE_LEGACY)

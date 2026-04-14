@@ -44,6 +44,7 @@ from tools.common.profile_constants import (
     KEY_DIO,
     KEY_ID,
     KEY_INTERFACE,
+    KEY_INTERFACE_LEGACY,
     KEY_INVERT,
     KEY_LABEL,
     KEY_LIMITS,
@@ -66,6 +67,7 @@ from tools.common.profile_constants import (
     INTERFACE_INTERNAL,
     INTERFACE_PWM,
     PROFILE_SCHEMA_VERSION,
+    get_device_interface,
 )
 from tools.common.test_authoring import (
     TestAuthoringModel,
@@ -187,6 +189,7 @@ ALLOWED_MAPPINGS_KEYS = {KEY_MANUFACTURERS, KEY_DEVICE_TYPES}
 ALLOWED_DEVICE_KEYS = {
     KEY_LABEL,
     KEY_INTERFACE,
+    KEY_INTERFACE_LEGACY,
     KEY_MANUFACTURER,
     KEY_DEVICE_TYPE,
     KEY_ID,
@@ -650,8 +653,29 @@ class ConfigSchemaStore:
             payload = self._default_profiles_payload()
             self._db.set_payload(DOC_PROFILES, payload)
         self._ensure_bridge_config(payload)
+        self._normalize_device_interface_keys(payload)
         self._db.set_payload(DOC_PROFILES, payload)
         return payload
+
+    def _normalize_device_interface_keys(self, payload: Dict[str, object]) -> None:
+        """
+        NAME
+            _normalize_device_interface_keys - Normalize legacy 'interface' -> deviceInterface.
+
+        DESCRIPTION
+            For backward compatibility, accept the legacy JSON key 'interface' in
+            device registry entries and copy it into the canonical key
+            deviceInterface when the canonical key is missing.
+        """
+
+        devices = payload.get(KEY_DEVICES)
+        if not isinstance(devices, list):
+            return
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get(KEY_INTERFACE) is None and entry.get(KEY_INTERFACE_LEGACY) is not None:
+                entry[KEY_INTERFACE] = entry.get(KEY_INTERFACE_LEGACY)
 
     def _default_profiles_payload(self) -> Dict[str, object]:
         """
@@ -1202,7 +1226,10 @@ class ConfigSchemaStore:
             self._append_issue(issues, LOCATION_PROFILES, MESSAGE_DEVICE_LABEL_REQUIRED, SEVERITY_ERROR)
             return
         label_text = str(label).strip()
-        interface = entry.get(KEY_INTERFACE)
+        interface = get_device_interface(entry)
+        if interface is None and entry.get(KEY_INTERFACE_LEGACY) is not None:
+            entry[KEY_INTERFACE] = entry.get(KEY_INTERFACE_LEGACY)
+            interface = entry.get(KEY_INTERFACE)
         if not interface:
             self._append_issue(
                 issues,

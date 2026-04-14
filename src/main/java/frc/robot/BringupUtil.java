@@ -2527,7 +2527,7 @@ public final class BringupUtil {
    */
   private static final class DeviceDefinition {
     String label;
-    @SerializedName("interface")
+    @SerializedName(value = "deviceInterface", alternate = {"interface"})
     String deviceInterface;
     Integer manufacturer;
     Integer deviceType;

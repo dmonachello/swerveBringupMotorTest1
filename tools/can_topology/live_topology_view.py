@@ -39,6 +39,7 @@ from tools.common.profile_constants import (
     KEY_MODEL,
     KEY_PROFILES,
     KEY_PROFILE_DEVICES,
+    get_device_interface,
 )
 from tools.config.schema_store import ConfigSchemaStore
 from tools.common.topology_render import (
@@ -280,7 +281,7 @@ def _profile_devices(
         if not label:
             continue
         entry = registry.get(label.lower())
-        if not entry or entry.get(KEY_INTERFACE) != INTERFACE_CAN:
+        if not entry or get_device_interface(entry) != INTERFACE_CAN:
             continue
         can_id = entry.get(KEY_ID)
         nodes.append(

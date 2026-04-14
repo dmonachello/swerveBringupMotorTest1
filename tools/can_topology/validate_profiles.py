@@ -40,6 +40,7 @@ from tools.common.profile_constants import (
     KEY_DIO,
     KEY_ID,
     KEY_INTERFACE,
+    KEY_INTERFACE_LEGACY,
     KEY_INVERT,
     KEY_LABEL,
     KEY_MANUFACTURER,
@@ -49,6 +50,7 @@ from tools.common.profile_constants import (
     KEY_ANALOG,
     KEY_PWM,
     PROFILE_SCHEMA_VERSION,
+    get_device_interface,
 )
 from tools.common.profile_io import compute_profiles_hash
 
@@ -254,7 +256,10 @@ def validate_device_registry(
             reporter.fail(msg)
             continue
         registry[key] = entry
-        interface = entry.get(KEY_INTERFACE)
+        interface = get_device_interface(entry)
+        if interface is None and entry.get(KEY_INTERFACE_LEGACY) is not None:
+            entry[KEY_INTERFACE] = entry.get(KEY_INTERFACE_LEGACY)
+            interface = entry.get(KEY_INTERFACE)
         if not isinstance(interface, str) or not interface:
             msg = MSG_ERR_DEVICE_INTERFACE.format(label=label)
             errors.append(msg)
