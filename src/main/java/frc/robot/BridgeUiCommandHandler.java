@@ -92,6 +92,21 @@ public class BridgeUiCommandHandler {
   private static final String CMD_SHOW_VERSION = "showVersion";
   private static final String CMD_SHOW_TESTS = "showTests";
   private static final String CMD_SHOW_SOURCES = "showSources";
+  private static final String CMD_ACTIVE_ADD = "activeAdd";
+  private static final String CMD_ACTIVE_NEXT = "activeNext";
+  private static final String GROUP_ACTIVE = "active-group";
+  private static final String JSON_KEY_WARNINGS = "warnings";
+  private static final String JSON_KEY_GROUP = "group";
+  private static final String WARNING_WRAPPED = "WARNING: device list wrapped to first entry.";
+  private static final String WARNING_NO_ELIGIBLE_ADD = "WARNING: no eligible next device for active add.";
+  private static final String WARNING_NO_ELIGIBLE_NEXT = "WARNING: no eligible next device for active next.";
+  private static final String WARNING_DUPLICATE_PREFIX = "WARNING: device already in active-group: ";
+  private static final String WARNING_SKIPPED_PREFIX = "WARNING: skipped not-ready device: ";
+  private static final String WARNING_REJECT_TEST_RUNNING =
+      "WARNING: command rejected while TEST_RUNNING.";
+  private static final String MESSAGE_ACTIVE_ADDED_PREFIX = "Active group added device: ";
+  private static final String MESSAGE_ACTIVE_NEXT_PREFIX = "Active group rotated to device: ";
+  private static final String MESSAGE_ACTIVE_NOT_FOUND = "Active group not found.";
   private static final String CMD_PROFILE_ACTIVATE = "profileActivate";
   private static final String CMD_PROFILES_RELOAD = "profilesReload";
   private static final int INDEX_START = 0;
@@ -236,6 +251,7 @@ public class BridgeUiCommandHandler {
   private double lastNeoSpeed = 0.0;
   private double lastKrakenSpeed = 0.0;
   private ZoneId remoteCommandZone = null;
+  private int activeGroupCursor = INDEX_START;
 
   /**
    * NAME
@@ -1056,6 +1072,14 @@ public class BridgeUiCommandHandler {
         applyShowResult(result, buildGroupText(group), buildGroupJson(group), wantsJson);
         break;
       }
+      case CMD_ACTIVE_ADD: {
+        applyActiveAdd(result);
+        break;
+      }
+      case CMD_ACTIVE_NEXT: {
+        applyActiveNext(result);
+        break;
+      }
       case "showDevices": {
         boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
         applyShowResult(result, buildDevicesText(), buildDevicesJson(), wantsJson);
@@ -1416,6 +1440,208 @@ public class BridgeUiCommandHandler {
       }
     }
     return result;
+  }
+
+  /**
+   * NAME
+   *   applyActiveAdd - Add the next ready device to active-group.
+   *
+   * SIDE EFFECTS
+   *   Mutates runtime group membership and emits warning/status payloads.
+   */
+  private void applyActiveAdd(UiCommandResult result) {
+    if (core != null && core.isTestRunning()) {
+      result.ok = false;
+      result.message = WARNING_REJECT_TEST_RUNNING;
+      result.outText = result.message;
+      setActiveResultJson(result, null, List.of(WARNING_REJECT_TEST_RUNNING));
+      return;
+    }
+    BridgeGroupManager.Group group = ensureActiveGroupDefined();
+    if (group == null) {
+      result.ok = false;
+      result.message = MESSAGE_ACTIVE_NOT_FOUND;
+      result.outText = result.message;
+      return;
+    }
+    List<String> warnings = new ArrayList<>();
+    ActiveNextCandidate candidate = selectNextReadyActiveCandidate(warnings);
+    if (candidate == null) {
+      result.ok = true;
+      result.message = WARNING_NO_ELIGIBLE_ADD;
+      warnings.add(WARNING_NO_ELIGIBLE_ADD);
+      result.outText = result.message;
+      setActiveResultJson(result, group, warnings);
+      return;
+    }
+    if (candidate.wrapped) {
+      warnings.add(WARNING_WRAPPED);
+    }
+    String deviceKey = candidate.device.trim().toLowerCase(java.util.Locale.ROOT);
+    if (group.members.containsKey(deviceKey)) {
+      String warning = WARNING_DUPLICATE_PREFIX + candidate.device;
+      warnings.add(warning);
+      result.ok = true;
+      result.message = warning;
+      result.outText = warning;
+      setActiveResultJson(result, group, warnings);
+      return;
+    }
+    bridgeGroups.addDevice(GROUP_ACTIVE, candidate.device, false);
+    BridgeGroupManager.Group updated = bridgeGroups.getGroup(GROUP_ACTIVE);
+    result.ok = true;
+    result.message = MESSAGE_ACTIVE_ADDED_PREFIX + candidate.device;
+    result.outText = result.message;
+    setActiveResultJson(result, updated, warnings);
+  }
+
+  /**
+   * NAME
+   *   applyActiveNext - Rotate active-group to the next ready device.
+   *
+   * SIDE EFFECTS
+   *   Stops/deactivates current primary device, updates membership, and emits
+   *   warning/status payloads.
+   */
+  private void applyActiveNext(UiCommandResult result) {
+    if (core != null && core.isTestRunning()) {
+      result.ok = false;
+      result.message = WARNING_REJECT_TEST_RUNNING;
+      result.outText = result.message;
+      setActiveResultJson(result, null, List.of(WARNING_REJECT_TEST_RUNNING));
+      return;
+    }
+    BridgeGroupManager.Group group = ensureActiveGroupDefined();
+    if (group == null) {
+      result.ok = false;
+      result.message = MESSAGE_ACTIVE_NOT_FOUND;
+      result.outText = result.message;
+      return;
+    }
+    if (!group.members.isEmpty()) {
+      BridgeGroupManager.MemberState primary = group.members.values().iterator().next();
+      if (primary != null && primary.device != null && !primary.device.isBlank()) {
+        var device = core != null ? core.findDeviceByLabel(primary.device) : null;
+        if (device != null) {
+          device.stop();
+          device.deactivate();
+        }
+        bridgeGroups.removeDevice(GROUP_ACTIVE, primary.device);
+      }
+    }
+    List<String> warnings = new ArrayList<>();
+    ActiveNextCandidate candidate = selectNextReadyActiveCandidate(warnings);
+    if (candidate == null) {
+      warnings.add(WARNING_NO_ELIGIBLE_NEXT);
+      result.ok = true;
+      result.message = WARNING_NO_ELIGIBLE_NEXT;
+      result.outText = result.message;
+      setActiveResultJson(result, bridgeGroups.getGroup(GROUP_ACTIVE), warnings);
+      return;
+    }
+    if (candidate.wrapped) {
+      warnings.add(WARNING_WRAPPED);
+    }
+    bridgeGroups.addDevice(GROUP_ACTIVE, candidate.device, false);
+    BridgeGroupManager.Group updated = bridgeGroups.getGroup(GROUP_ACTIVE);
+    result.ok = true;
+    result.message = MESSAGE_ACTIVE_NEXT_PREFIX + candidate.device;
+    result.outText = result.message;
+    setActiveResultJson(result, updated, warnings);
+  }
+
+  /**
+   * NAME
+   *   ensureActiveGroupDefined - Ensure runtime active-group exists.
+   */
+  private BridgeGroupManager.Group ensureActiveGroupDefined() {
+    BridgeGroupManager.Group group = bridgeGroups.getGroup(GROUP_ACTIVE);
+    if (group != null) {
+      return group;
+    }
+    bridgeGroups.createGroup(GROUP_ACTIVE);
+    return bridgeGroups.getGroup(GROUP_ACTIVE);
+  }
+
+  /**
+   * NAME
+   *   selectNextReadyActiveCandidate - Select next ready device by active profile order.
+   */
+  private ActiveNextCandidate selectNextReadyActiveCandidate(List<String> warnings) {
+    List<BringupUtil.DeviceEntry> entries = BringupUtil.getActiveDevices();
+    if (entries == null || entries.isEmpty()) {
+      return null;
+    }
+    int count = entries.size();
+    boolean wrapped = false;
+    for (int i = INDEX_START; i < count; i++) {
+      int idx = (activeGroupCursor + i) % count;
+      if (activeGroupCursor + i >= count) {
+        wrapped = true;
+      }
+      BringupUtil.DeviceEntry entry = entries.get(idx);
+      String label = entry != null && entry.label != null ? entry.label.trim() : TEXT_EMPTY;
+      if (label.isBlank()) {
+        continue;
+      }
+      if (!isDeviceTotallyReady(label)) {
+        warnings.add(WARNING_SKIPPED_PREFIX + label);
+        continue;
+      }
+      activeGroupCursor = (idx + 1) % count;
+      return new ActiveNextCandidate(label, wrapped);
+    }
+    return null;
+  }
+
+  /**
+   * NAME
+   *   isDeviceTotallyReady - Check readiness for active-group operations.
+   */
+  private boolean isDeviceTotallyReady(String label) {
+    if (core == null || label == null || label.isBlank()) {
+      return false;
+    }
+    var device = core.findDeviceByLabel(label);
+    return device != null && device.isCreated();
+  }
+
+  /**
+   * NAME
+   *   setActiveResultJson - Publish active-group response JSON with warnings.
+   */
+  private void setActiveResultJson(
+      UiCommandResult result,
+      BridgeGroupManager.Group group,
+      List<String> warnings) {
+    JsonObject payload = new JsonObject();
+    if (group != null) {
+      payload.add(JSON_KEY_GROUP, buildGroupJson(group));
+    }
+    JsonArray warningArray = new JsonArray();
+    if (warnings != null) {
+      for (String warning : warnings) {
+        if (warning != null && !warning.isBlank()) {
+          warningArray.add(warning);
+        }
+      }
+    }
+    payload.add(JSON_KEY_WARNINGS, warningArray);
+    result.outJson = payload.toString();
+  }
+
+  /**
+   * NAME
+   *   ActiveNextCandidate - Next-device selection result for active-group commands.
+   */
+  private static final class ActiveNextCandidate {
+    private final String device;
+    private final boolean wrapped;
+
+    private ActiveNextCandidate(String device, boolean wrapped) {
+      this.device = device;
+      this.wrapped = wrapped;
+    }
   }
 
   /**
@@ -1969,6 +2195,8 @@ public class BridgeUiCommandHandler {
       case "showStatus":
       case "showGroups":
       case "showGroup":
+      case CMD_ACTIVE_ADD:
+      case CMD_ACTIVE_NEXT:
       case "showDevices":
       case "showDevice":
       case "showBindings":

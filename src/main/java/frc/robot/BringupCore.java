@@ -662,6 +662,7 @@ public final class BringupCore {
           "Test result #" + activeTestRunId + ": " + activeTest.getName() + " = " + result
               + " (" + activeTest.getStatus() + ")"
               + " time=" + String.format("%.2fs", elapsed));
+      stopOwnedActuation();
       activeTest = null;
       activeTestRunId = 0;
       activeTestStartSec = 0.0;
@@ -682,6 +683,21 @@ public final class BringupCore {
    */
   public void updateTests() {
     updateTests(false);
+  }
+
+  /**
+   * NAME
+   *   stopOwnedActuation - Stop/deactivate owned outputs on test->idle transition.
+   *
+   * SIDE EFFECTS
+   *   Commands all manufacturer groups to stop outputs and applies legacy motor
+   *   zeroing for consistency with existing safety behavior.
+   */
+  private void stopOwnedActuation() {
+    for (ManufacturerGroup group : manufacturerGroups) {
+      group.stopAll();
+    }
+    forceStopAllMotorOutputs();
   }
 
   /**

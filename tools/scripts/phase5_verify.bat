@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set REPO_ROOT=C:\Users\dmona\swerveBringupMotorTest1-main
+set REPO_ROOT=%USERPROFILE%\swerveBringupMotorTest1-main
 set PYTHON_EXE=python
 set BRIDGE_PATH=%REPO_ROOT%\tools\can_nt\can_nt_bridge.py
 set SCRIPT_PATH=%REPO_ROOT%\tools\scripts\phase5_verify.cli
@@ -19,3 +19,4 @@ pushd "%REPO_ROOT%"
 popd
 
 endlocal
+

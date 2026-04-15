@@ -1,7 +1,8 @@
 echo on
 connect
 configure terminal
-save unified-config C:\Users\dmona\swerveBringupMotorTest1-main\data\bringup_system.json --force
-config push C:\Users\dmona\swerveBringupMotorTest1-main\data\bringup_system.json --activate home_031226
+save unified-config %USERPROFILE%\swerveBringupMotorTest1-main\data\bringup_system.json --force
+config push %USERPROFILE%\swerveBringupMotorTest1-main\data\bringup_system.json --activate home_031226
 end
+
 

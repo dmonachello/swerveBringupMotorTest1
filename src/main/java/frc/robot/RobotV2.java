@@ -47,11 +47,14 @@ public class RobotV2 extends TimedRobot {
   private static final String COMMAND_FIXED_SPEED_75 = "fixedSpeed75";
   private static final String COMMAND_FIXED_SPEED_100 = "fixedSpeed100";
   private static final String COMMAND_PRINT_INPUTS = "printInputs";
+  private static final String MESSAGE_NON_TEST_ACTUATION_BLOCKED =
+      "Actuation blocked: no active test.";
   private static final String TEXT_EMPTY = "";
   private static final int POV_UP = 0;
   private static final int POV_RIGHT = 90;
   private static final int POV_DOWN = 180;
   private static final int POV_LEFT = 270;
+  private static final String ACTIVE_GROUP_NAME = "active-group";
   // ---------------------------------------------------
 
   // Driver Station controller input.
@@ -86,6 +89,7 @@ public class RobotV2 extends TimedRobot {
   private final TcpUiServer.CommandHandler uiCommandHandler = new UiCommandHandler();
   private final TcpUiServer.ConnectionListener uiConnectionListener = new UiConnectionListener();
   private final BringupPrinter.LineListener bringupLineListener = new BringupLineListener();
+  private boolean warnedNonTestActuationBlocked = false;
   private final Runnable profileToggleAction = new ProfileToggleAction();
   private final Runnable profileActivateAction = new ProfileActivateAction();
   private final Runnable bindingsPrinter = new BindingsPrinter();
@@ -130,6 +134,7 @@ public class RobotV2 extends TimedRobot {
         uiConnectionListener);
     uiTcpServer.start();
     uiHandler.applyDashboardUpdateState();
+    ensureActiveGroupDefined();
     refreshInputAliases();
     // Print bindings and validate IDs once at startup.
     uiHandler.printStartupInfo();
@@ -328,8 +333,14 @@ public class RobotV2 extends TimedRobot {
     // Feed test inputs (used by joystick-mode tests).
     core.setTestInputs(buildAxisInputs(controllerMap, neoSpeed, krakenSpeed));
 
-    // Apply speeds after inputs are processed.
-    core.setSpeeds(neoSpeed, krakenSpeed);
+    // Apply outputs only while a test is actively running.
+    if (core.isTestRunning()) {
+      core.setSpeeds(neoSpeed, krakenSpeed);
+      warnedNonTestActuationBlocked = false;
+    } else if (!warnedNonTestActuationBlocked) {
+      BringupPrinter.enqueue(MESSAGE_NON_TEST_ACTUATION_BLOCKED);
+      warnedNonTestActuationBlocked = true;
+    }
 
     BridgeGroupManager.InputSnapshot inputs = new BridgeGroupManager.InputSnapshot();
     inputs.driverLeftY = BringupUtil.deadband(-controller0.getLeftY(), DEADBAND);
@@ -376,7 +387,9 @@ public class RobotV2 extends TimedRobot {
       inputs.operatorDpadDown = operatorPov == POV_DOWN;
       inputs.operatorDpadLeft = operatorPov == POV_LEFT;
     }
-    bridgeGroups.applyBindings(inputs, core, bridgeSelected);
+    if (core.isTestRunning()) {
+      bridgeGroups.applyBindings(inputs, core, bridgeSelected);
+    }
 
     if (uiHandler != null) {
       uiHandler.publishTestsSelectionStatus();
@@ -398,6 +411,13 @@ public class RobotV2 extends TimedRobot {
     }
     refreshInputAliases();
     syncDefaultGroup();
+    ensureActiveGroupDefined();
+  }
+
+  private void ensureActiveGroupDefined() {
+    if (bridgeGroups.getGroup(ACTIVE_GROUP_NAME) == null) {
+      bridgeGroups.createGroup(ACTIVE_GROUP_NAME);
+    }
   }
 
   /**

@@ -36,12 +36,12 @@ def _build_sections() -> List[Tuple[str, Iterable[str]]]:
                 "NAME",
                 "    working_directory - Switch to repo root.",
                 "SYNOPSIS",
-                r"    cd C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1",
-                r"    Set-Location C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1",
+                r"    cd %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1",
+                r"    Set-Location %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1",
                 "DESCRIPTION",
                 "    Required so relative paths resolve consistently.",
                 "EXAMPLES",
-                r"    cd C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1",
+                r"    cd %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1",
             ],
         ),
         (
@@ -639,3 +639,4 @@ def main(argv: List[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

@@ -7,7 +7,7 @@ GRAMMAR = r'''
 line: ws? command ws? ( "?" )? 
 command: common | exec | config | group | device | test 
 common: "exit" | "end" | "help" ( ws name ( ws name )* )? | "ping" | "echo" ws ("on" | "off") | "messages" ws ("beginner" | "medium" | "expert") | "debug" ws "grammar" ( ws "--json" )? ( ws "--dot" ws path )? | "debug" ws "grammar" ( ws "--dot" ws path )? ( ws "--json" )? | "quit" 
-exec: show_exec | "configure" ws "terminal" | "cfg" | "connect" | "disconnect" | "add" ws ("next" | "all") | "tests" ws ("select" ws name | "toggle" | "run" | "run-all") | "profile" ws "device" ws "show-all" ws name | "prof" ws "device" ws "show-all" ws name | diagnose 
+exec: show_exec | "configure" ws "terminal" | "cfg" | "connect" | "disconnect" | "add" ws ("next" | "all") | "reset" ws "zero-config" ( ws "--yes" )? | "active" ws ("add" | "next" | ("show" ( ws "--json" )?)) | "tests" ws ("select" ws name | "toggle" | "run" | "run-all") | "profile" ws "device" ws "show-all" ws name | "prof" ws "device" ws "show-all" ws name | diagnose 
 show_exec: ("show" | "ls") ws show_target ( ws show_flags )? 
 show_target: "status" | "groups" | "group" ws name | "devices" | "device" ws name | "device" ws "registry" ws name | "commands" | "help" | "controllers" | "version" | "sources" | "controllers" | "version" | "sources" | "bindings" | "can-mappings" ( ws ("manufacturers" | "device-types" | "device-type") )? | "selected-device" | "runtime-state" | "config" | "config" ws "local-raw" | "config" ws "dirty" | "profiles" | "profile" ( ws name )? | "tests" | "test" ws name | "device-group" ws name | "device-usage" ws name | "message-level" | "workspace" | "session" 
 show_source: "robot" | "local" | "both" 

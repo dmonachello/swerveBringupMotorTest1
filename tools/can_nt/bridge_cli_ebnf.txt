@@ -24,6 +24,8 @@ exec           = show_exec
                | "connect"
                | "disconnect"
                | "add" ws ("next" | "all")
+               | "reset" ws "zero-config" [ ws "--yes" ]
+               | "active" ws ("add" | "next" | ("show" [ ws "--json" ]))
                | "run" ws "test" [ ws name ]
                | "tests" ws ("select" ws name | "toggle" | "run" | "run-all")
                | "profile" ws "device" ws "show-all" ws name

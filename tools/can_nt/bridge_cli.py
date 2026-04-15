@@ -71,6 +71,9 @@ from tools.can_nt.bridge_ops import (
     show_sources,
     show_tests,
     show_version,
+    active_add,
+    active_next,
+    active_show,
     ui_ping,
     parse_json_arg,
     profile_activate,
@@ -144,6 +147,7 @@ from tools.common.paths import (
     repo_root,
     logs_dir,
     profiles_canonical_path,
+    profiles_deploy_path,
     can_mappings_path,
     bindings_deploy_path,
     test_templates_dir,
@@ -432,6 +436,12 @@ CMD_BRIGHTNESS = "brightness"
 CMD_DURATION = "duration"
 CMD_ADD = "add"
 CMD_NEXT = "next"
+CMD_RESET = "reset"
+CMD_ZERO_CONFIG = "zero-config"
+CMD_ACTIVE_SHORT = "active"
+CMD_ACTIVE_SHOW_SHORT = "show"
+CMD_ACTIVE_ADD_SHORT = "add"
+CMD_ACTIVE_NEXT_SHORT = "next"
 CMD_TOGGLE = PARSER_SPEC.cmd_toggle
 CMD_RUN = PARSER_SPEC.cmd_run
 CMD_NO = "no"
@@ -499,6 +509,7 @@ FLAG_JSON = "--json"
 FLAG_DOT = "--dot"
 FLAG_FORCE = "--force"
 FLAG_REPAIR = "--repair"
+FLAG_YES = "--yes"
 QUESTION_MARK = "?"
 SUGGESTION_SEPARATOR = " | "
 MESSAGE_NEXT_ARGS_PREFIX = "Next args: "
@@ -989,6 +1000,7 @@ MESSAGE_HINT_SAVE = (
 )
 MESSAGE_HINT_SOURCES = "show sources | load sources | save sources"
 MESSAGE_HINT_RECOVER = "recover list | recover last-good | recover from <timestamp>"
+MESSAGE_HINT_RESET_ZERO_CONFIG = "reset zero-config [--yes]"
 MESSAGE_HINT_SHOW = "show <target> [--json] [--pretty] [robot|local|both]"
 MESSAGE_HINT_PROFILE = (
     "profile <profile> | profile create <profile> | profile delete <profile> | profile device delete <device> "
@@ -1024,6 +1036,16 @@ MESSAGE_DEBUG_GRAMMAR_USAGE = "ERROR: debug grammar [--json] [--dot <path>]"
 MESSAGE_DEBUG_GRAMMAR_DOT_REQUIRED = "ERROR: --dot requires a path."
 MESSAGE_DEBUG_GRAMMAR_DOT_SAVED = "Wrote grammar DOT to {path}."
 MESSAGE_DEBUG_GRAMMAR_DOT_FAIL = "ERROR: Failed to write grammar DOT: {error}"
+MESSAGE_RESET_ZERO_CONFIG_WARNING = (
+    "WARNING: This operation deletes bringup_system.json in canonical and deploy paths."
+)
+MESSAGE_RESET_ZERO_CONFIG_TARGET = "  - {path}"
+MESSAGE_RESET_ZERO_CONFIG_CONFIRM = "Proceed with zero-config reset?"
+MESSAGE_RESET_ZERO_CONFIG_CANCELLED = "Cancelled."
+MESSAGE_RESET_ZERO_CONFIG_DELETED = "Deleted: {path}"
+MESSAGE_RESET_ZERO_CONFIG_MISSING = "Already missing: {path}"
+MESSAGE_RESET_ZERO_CONFIG_DONE = "Zero-config reset complete. deleted={deleted} missing={missing}."
+MESSAGE_RESET_ZERO_CONFIG_FAILED = "ERROR: Failed to delete {path}: {error}"
 MESSAGE_HINT_VALIDATE_CONFIG_PROFILE = "validate config expects a file path; did you mean `profile <profile>`?"
 MESSAGE_VALIDATE_OK = "OK"
 MESSAGE_VALIDATE_ROBOT_NOT_CONNECTED = "Robot not connected."
@@ -1243,6 +1265,12 @@ HELP_PROFILES_EXPORT_TEXT = (
 HELP_TOPIC_CONFIG_PUSH = "config push"
 HELP_CONFIG_PUSH_TEXT = (
     "config push <path> [--activate <profile>]\n  Push registry then import groups/bindings."
+)
+HELP_TOPIC_RESET_ZERO_CONFIG = "reset zero-config"
+HELP_RESET_ZERO_CONFIG_TEXT = (
+    "reset zero-config [--yes]\n"
+    "  Delete data/bringup_system.json and src/main/deploy/bringup_system.json.\n"
+    "  Prompts for y/N unless --yes is provided."
 )
 HELP_TOPIC_RECOVER = "recover"
 HELP_RECOVER_TEXT = (
@@ -2662,6 +2690,12 @@ class BridgeCli:
     def _execute_line(self, line: str) -> StatusResult:
         if self._handle_question(line):
             return StatusResult(code=SS__NORMAL)
+        active_result = self._handle_active_command(line)
+        if active_result is not None:
+            return active_result
+        reset_result = self._handle_reset_zero_config_command(line)
+        if reset_result is not None:
+            return reset_result
         lower_line = line.lower() if isinstance(line, str) else ""
         self._last_line_pretty = "--pretty" in lower_line and "--json" in lower_line
         try:
@@ -2754,6 +2788,107 @@ class BridgeCli:
         if mode == MODE_TEST:
             return self._coerce_status(self._test_mode_command(tokens))
         return StatusResult(code=SS__EXECUTOR__NOT_SUPPORTED)
+
+    def _handle_active_command(self, line: str) -> Optional[StatusResult]:
+        """
+        NAME
+            _handle_active_command - Execute active-group shorthand commands.
+        """
+        if self._modes[-1].name != "exec":
+            return None
+        try:
+            tokens = self._split_command(line)
+        except Exception:
+            return None
+        if not tokens:
+            return None
+        if tokens[COUNT_ZERO].lower() != CMD_ACTIVE_SHORT:
+            return None
+        if len(tokens) < COUNT_TWO:
+            print("ERROR: active requires add/next/show.")
+            return StatusResult(code=SS__CLI_VALIDATOR__REQUIRED)
+        action = tokens[COUNT_ONE].lower()
+        if action == CMD_ACTIVE_SHOW_SHORT:
+            wants_json = FLAG_JSON in [token.lower() for token in tokens[COUNT_TWO:]]
+            seq = active_show(self._session, json_output=wants_json)
+            self._wait_for_seq(seq)
+            return StatusResult(code=SS__NORMAL)
+        if action == CMD_ACTIVE_ADD_SHORT:
+            seq = active_add(self._session)
+            self._wait_for_seq(seq)
+            return StatusResult(code=SS__NORMAL)
+        if action == CMD_ACTIVE_NEXT_SHORT:
+            seq = active_next(self._session)
+            self._wait_for_seq(seq)
+            return StatusResult(code=SS__NORMAL)
+        print("ERROR: active requires add/next/show.")
+        return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+
+    def _handle_reset_zero_config_command(self, line: str) -> Optional[StatusResult]:
+        """
+        NAME
+            _handle_reset_zero_config_command - Delete canonical/deploy unified config files.
+
+        DESCRIPTION
+            Handles exec-mode shorthand `reset zero-config [--yes]` before parser
+            execution so operators can perform a guarded zero-config reset from the
+            same CLI session used for bringup work.
+        """
+        if self._modes[-1].name != "exec":
+            return None
+        try:
+            tokens = self._split_command(line)
+        except Exception:
+            return None
+        if not tokens:
+            return None
+        if tokens[COUNT_ZERO].lower() != CMD_RESET:
+            return None
+        if len(tokens) < COUNT_TWO or tokens[COUNT_ONE].lower() != CMD_ZERO_CONFIG:
+            print(MESSAGE_HINT_RESET_ZERO_CONFIG)
+            return StatusResult(code=SS__CLI_VALIDATOR__REQUIRED)
+
+        force_yes = False
+        for token in tokens[COUNT_TWO:]:
+            token_lower = token.lower()
+            if token_lower == FLAG_YES:
+                force_yes = True
+                continue
+            print(MESSAGE_HINT_RESET_ZERO_CONFIG)
+            return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
+
+        canonical_path = profiles_canonical_path()
+        deploy_path = profiles_deploy_path()
+        print(MESSAGE_RESET_ZERO_CONFIG_WARNING)
+        print(MESSAGE_RESET_ZERO_CONFIG_TARGET.format(path=canonical_path))
+        print(MESSAGE_RESET_ZERO_CONFIG_TARGET.format(path=deploy_path))
+
+        if not force_yes and not self._confirm(MESSAGE_RESET_ZERO_CONFIG_CONFIRM):
+            print(MESSAGE_RESET_ZERO_CONFIG_CANCELLED)
+            return StatusResult(code=SS__EXECUTOR__CANCELLED)
+
+        deleted_count = COUNT_ZERO
+        missing_count = COUNT_ZERO
+        for target_path in (canonical_path, deploy_path):
+            if not target_path.exists():
+                print(MESSAGE_RESET_ZERO_CONFIG_MISSING.format(path=target_path))
+                missing_count += COUNT_ONE
+                continue
+            try:
+                target_path.unlink()
+            except OSError as error:
+                print(MESSAGE_RESET_ZERO_CONFIG_FAILED.format(path=target_path, error=error))
+                return StatusResult(code=SS__EXECUTOR__FAILED)
+            print(MESSAGE_RESET_ZERO_CONFIG_DELETED.format(path=target_path))
+            deleted_count += COUNT_ONE
+
+        print(
+            MESSAGE_RESET_ZERO_CONFIG_DONE.format(
+                deleted=deleted_count,
+                missing=missing_count,
+            )
+        )
+        return StatusResult(code=SS__NORMAL)
 
     def _fallback_device_set(self, tokens: List[str]) -> bool:
         """
@@ -7633,6 +7768,7 @@ class BridgeCli:
                 "  Write a unified bringup_system.json with profiles + bridgeConfig.byProfile."
             ),
             "save sources": "save sources [--force]\n  Save all local sources back to disk.",
+            "reset zero-config": HELP_RESET_ZERO_CONFIG_TEXT,
             "recover": HELP_RECOVER_TEXT,
             "validate file": HELP_VALIDATE_FILE_TEXT,
             "rename device": (
@@ -7660,6 +7796,7 @@ class BridgeCli:
             HELP_TOPIC_PROFILES_EXPORT: HELP_PROFILES_EXPORT_TEXT,
             HELP_TOPIC_PROFILES_RELOAD: HELP_PROFILES_RELOAD_TEXT,
             HELP_TOPIC_CONFIG_PUSH: HELP_CONFIG_PUSH_TEXT,
+            HELP_TOPIC_RESET_ZERO_CONFIG: HELP_RESET_ZERO_CONFIG_TEXT,
             HELP_TOPIC_RECOVER: HELP_RECOVER_TEXT,
             HELP_TOPIC_VALIDATE_FILE: HELP_VALIDATE_FILE_TEXT,
             HELP_TOPIC_QUICK: self._quick_help_text(),

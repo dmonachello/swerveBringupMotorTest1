@@ -3,5 +3,6 @@ connect
 messages expert
 configure terminal
 profile home_031226
-config push C:\Users\dmona\swerveBringupMotorTest1-main\data\bringup_system.json  --activate home_031226
+config push %USERPROFILE%\swerveBringupMotorTest1-main\data\bringup_system.json  --activate home_031226
+
 

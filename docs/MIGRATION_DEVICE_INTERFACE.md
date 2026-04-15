@@ -1,4 +1,4 @@
-﻿# Migration: `interface` → `deviceInterface` (bringup_system.json)
+# Migration: `interface` ? `deviceInterface` (bringup_system.json)
 
 Purpose: Migrate the device registry key name from legacy `interface` to canonical `deviceInterface` without breaking existing configs during the transition window.
 
@@ -9,11 +9,11 @@ Purpose: Get the repo back to a clean, validated state with `deviceInterface` ev
 1. Migrate the canonical config file.
 
    ```powershell
-   cd C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1
+   cd %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1
    python -m tools.migrate_device_interface_key --path data\bringup_system.json
    ```
 
-2. Validate + stamp + sync canonical → deploy.
+2. Validate + stamp + sync canonical ? deploy.
 
    ```powershell
    python -m tools.validate_sync
@@ -62,7 +62,7 @@ Purpose: Convert existing config files to the canonical key.
 ### Step 1: Migrate the canonical file
 
 ```powershell
-cd C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1
+cd %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1
 python -m tools.migrate_device_interface_key --path data\bringup_system.json
 ```
 
@@ -121,3 +121,4 @@ Purpose: Define the cleanup end-state.
 
 - Remove legacy read support for `interface` after the transition iteration.
 - Optionally bump `schema_version` and enforce `deviceInterface` only.
+

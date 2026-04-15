@@ -4,7 +4,7 @@
 Validate the new storage layers (JsonStore + Schema Store) and their CLI/UI integrations with explicit commands.
 
 ## Preconditions
-- Repo root: `C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1`
+- Repo root: `%USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1`
 - Python available on PATH.
 - Use `--no-can --no-nt` for local CLI testing.
 
@@ -42,7 +42,7 @@ TESTING_RESULTS:
 
 ### A1) Start the CLI (local only)
 ```
-cd C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1
+cd %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1
 python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
 ```
 
@@ -216,7 +216,7 @@ TESTING_RESULTS:
 Observed: Startup prints a warning before `connect` runs.
 Explanation: The CLI loads local config first and only connects after you issue `connect`, so the warning is expected until then.
 
-C:\Users\dmona\swerveBringupMotorTest1-main>python tools\can_nt\can_nt_bridge.py --cli --no-can --rio 172.22.11.2
+%USERPROFILE%\swerveBringupMotorTest1-main>python tools\can_nt\can_nt_bridge.py --cli --no-can --rio 172.22.11.2
 Version
 can_nt_bridge: 0.1.1
 git: status_codes-2026-04-02-dirty
@@ -233,11 +233,11 @@ git-sha: b04255a
 git-branch: status_codes
 git-dirty: dirty
 build-time: 2026-04-02T14:10:52-04:00
-Loaded 0 group(s) for profile home_031226 from C:\Users\dmona\swerveBringupMotorTest1-main\data\bringup_system.json.
+Loaded 0 group(s) for profile home_031226 from %USERPROFILE%\swerveBringupMotorTest1-main\data\bringup_system.json.
 WARNING: Robot not connected; local config loaded only.
-Loaded default profiles: C:\Users\dmona\swerveBringupMotorTest1-main\data\bringup_system.json
-Loaded bindings: C:\Users\dmona\swerveBringupMotorTest1-main\src\main\deploy\bringup_bindings.json
-Loaded CAN mappings: C:\Users\dmona\swerveBringupMotorTest1-main\src\main\deploy\can_mappings.json
+Loaded default profiles: %USERPROFILE%\swerveBringupMotorTest1-main\data\bringup_system.json
+Loaded bindings: %USERPROFILE%\swerveBringupMotorTest1-main\src\main\deploy\bringup_bindings.json
+Loaded CAN mappings: %USERPROFILE%\swerveBringupMotorTest1-main\src\main\deploy\can_mappings.json
 bridge-profile-home_031226>
 
 
@@ -246,7 +246,7 @@ bridge-profile-home_031226>
 ### B1) Bridge UI loads tests from store
 Command:
 ```
-cd C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1
+cd %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1
 python tools\can_nt\can_nt_bridge.py --ui --no-can --rio 172.22.11.2
 ```
 
@@ -259,14 +259,14 @@ Expected:
 TESTING_RESULTS:
 Observed: UI launches when started with NT enabled (`--rio <ip>`), and the test list populates.
 
-C:\Users\dmona\swerveBringupMotorTest1-main>
+%USERPROFILE%\swerveBringupMotorTest1-main>
 
 ## C) Topology Editor Tests
 
 ### C1) Open default profile path (store-backed)
 Command:
 ```
-cd C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1
+cd %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1
 python -m tools.can_topology.can_top_editor
 ```
 
@@ -283,10 +283,11 @@ Expected:
 ## D) Regression Compile Checks
 Command:
 ```
-cd C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1
+cd %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1
 python -m py_compile tools\config\json_store.py tools\config\schema_store.py tools\config\config_store.py tools\can_nt\bridge_cli.py tools\can_nt\bringup_ui.py tools\can_topology\live_topology_view.py tools\can_topology\can_top_editor.py
 ```
 
 Expected:
 - No syntax errors.
+
 

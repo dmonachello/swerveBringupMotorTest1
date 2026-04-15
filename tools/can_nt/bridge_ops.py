@@ -111,6 +111,9 @@ CMD_SELECT_TEST_BY_NAME = "selectTestByName"
 CMD_TOGGLE_TEST = "toggleTest"
 CMD_RUN_TEST = "runTest"
 CMD_RUN_ALL_TESTS = "runAllTests"
+CMD_ACTIVE_ADD = "activeAdd"
+CMD_ACTIVE_NEXT = "activeNext"
+ACTIVE_GROUP_NAME = "active-group"
 MSG_DUPLICATE_DEVICE_NAMES = "Duplicate device names: {names}"
 MSG_MISSING_DEVICE_ENTRIES = "Missing device entries: {names}"
 MSG_MISSING_DEVICE_GROUP_HEADER = "Missing device references by group:"
@@ -374,6 +377,30 @@ def run_all_tests(session: BridgeSession) -> Optional[int]:
         run_all_tests - Run all enabled tests sequentially.
     """
     return _send(session, CMD_RUN_ALL_TESTS, {})
+
+
+def active_add(session: BridgeSession) -> Optional[int]:
+    """
+    NAME
+        active_add - Add the next ready device to active-group.
+    """
+    return _send(session, CMD_ACTIVE_ADD, {})
+
+
+def active_next(session: BridgeSession) -> Optional[int]:
+    """
+    NAME
+        active_next - Rotate active-group to the next ready device.
+    """
+    return _send(session, CMD_ACTIVE_NEXT, {})
+
+
+def active_show(session: BridgeSession, json_output: bool = False) -> Optional[int]:
+    """
+    NAME
+        active_show - Show active-group details.
+    """
+    return show_group(session, ACTIVE_GROUP_NAME, json_output=json_output)
 
 CMD_SHOW_TESTS = "showTests"
 

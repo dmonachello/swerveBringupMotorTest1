@@ -34,13 +34,13 @@ Purpose: Prove the CLI runs in local mode without NT/CAN.
 Steps:
 1. Start CLI in offline mode.
 ```powershell
-cd C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1
+cd %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1
 python -m tools.can_nt.can_nt_bridge --cli --no-can --no-nt
 ```
 
 Example Output:
 ```
-C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1>python -m tools.can_nt.can_nt_bridge --cli --no-can --no-nt
+%USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1>python -m tools.can_nt.can_nt_bridge --cli --no-can --no-nt
 Version
 can_nt_bridge: 0.1.1
 git: status_codes-2026-04-02-dirty
@@ -58,11 +58,11 @@ git-sha: b04255a
 git-branch: status_codes
 git-dirty: dirty
 build-time: 2026-04-02T14:10:52-04:00
-Loaded 0 group(s) for profile home_031226 from C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1\data\bringup_system.json.
+Loaded 0 group(s) for profile home_031226 from %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\data\bringup_system.json.
 WARNING: Robot not connected; local config loaded only.
-Loaded default profiles: C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1\data\bringup_system.json
-Loaded bindings: C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1\src\main\deploy\bringup_bindings.json
-Loaded CAN mappings: C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1\src\main\deploy\can_mappings.json
+Loaded default profiles: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\data\bringup_system.json
+Loaded bindings: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\src\main\deploy\bringup_bindings.json
+Loaded CAN mappings: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\src\main\deploy\can_mappings.json
 bridge-profile-home_031226>
 ```
 
@@ -77,14 +77,14 @@ show devices
 Example Output:
 ```
 bridge-profile-home_031226> show workspace
-Profiles: C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1\data\bringup_system.json (loaded)
+Profiles: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\data\bringup_system.json (loaded)
 Active profile: home_031226
 Default profile: home_031226
 Active context: source=local profile=home_031226 testSet=(none) selectedDevice=(none) selectedMode=off
-Tests: C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1\data\bringup_system.json (not loaded)
+Tests: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\data\bringup_system.json (not loaded)
 Active set: (none) (default=(none))
-Bindings: C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1\src\main\deploy\bringup_bindings.json (loaded)
-Mappings: C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1\src\main\deploy\can_mappings.json (loaded)
+Bindings: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\src\main\deploy\bringup_bindings.json (loaded)
+Mappings: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\src\main\deploy\can_mappings.json (loaded)
 Dirty: profiles=False tests=False bindings=False mappings=False
 CLI: messages=beginner echo=off
 Recovery mode: OFF
@@ -196,7 +196,7 @@ save local-config tools\can_nt\logs\offline_local_config.json
 Example Output:
 ```
 bridge(config-profile-home_031226)# save local-config tools\can_nt\logs\offline_local_config.json
-Snapshot created: C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1\data\backups\offline_local_config.20260407_195312.json
+Snapshot created: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\data\backups\offline_local_config.20260407_195312.json
 Wrote groups config to tools\can_nt\logs\offline_local_config.json.
 Action: save scope=local-config persistence=disk source=local
 SUCCESS [EXECUTOR.SUCCESS]
@@ -295,3 +295,4 @@ Purpose: Document limitations of offline-only testing.
 Purpose: List safe follow-on improvements.
 - Add a canned offline fixture to validate visibility counts deterministically.
 - Add a local-only test script that covers every CLI show target.
+
