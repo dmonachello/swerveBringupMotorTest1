@@ -93,6 +93,7 @@ public class BridgeUiCommandHandler {
   private static final String CMD_SHOW_TESTS = "showTests";
   private static final String CMD_SHOW_SOURCES = "showSources";
   private static final String CMD_PROFILE_ACTIVATE = "profileActivate";
+  private static final String CMD_PROFILES_RELOAD = "profilesReload";
   private static final int INDEX_START = 0;
   private static final String JSON_KEY_OK = "ok";
   private static final String JSON_KEY_MESSAGE = "message";
@@ -164,6 +165,8 @@ public class BridgeUiCommandHandler {
   private static final String ARG_PROFILE_NAME = "name";
   private static final String TEXT_PROFILE_ACTIVATE_OK = "Profile activated: %s";
   private static final String TEXT_PROFILE_ACTIVATE_FAIL = "Profile activation failed.";
+  private static final String TEXT_PROFILES_RELOAD_OK = "Profiles reloaded.";
+  private static final String TEXT_PROFILES_RELOAD_FAILED = "Profiles reload failed: %s";
   private static final String TEXT_PROFILES_APPLY_OK = "Profiles applied.";
   private static final String TEXT_PROFILES_APPLY_FAILED = "Profiles apply failed.";
   private static final String TEXT_PROFILES_APPLY_NOT_SUPPORTED = "profilesApply only supported over TCP.";
@@ -728,6 +731,21 @@ public class BridgeUiCommandHandler {
           result.message = TEXT_PROFILE_ACTIVATE_FAIL;
           result.outText = result.message;
         }
+        break;
+      }
+      case CMD_PROFILES_RELOAD: {
+        String error = BringupUtil.reloadProfilesFromJson();
+        if (error != null && !error.isBlank()) {
+          result.ok = false;
+          result.message = String.format(TEXT_PROFILES_RELOAD_FAILED, error);
+          result.outText = result.message;
+          break;
+        }
+        if (profileActivateAction != null) {
+          profileActivateAction.run();
+        }
+        result.message = TEXT_PROFILES_RELOAD_OK;
+        result.outText = result.message;
         break;
       }
       case "uiHandshake":
@@ -1970,6 +1988,7 @@ public class BridgeUiCommandHandler {
       case "selectedDeviceSet":
       case "selectedModeSet":
       case CMD_PROFILE_ACTIVATE:
+      case CMD_PROFILES_RELOAD:
       case CMD_PROFILES_APPLY:
         return true;
       default:

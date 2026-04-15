@@ -193,6 +193,49 @@ public final class BridgeGroupManager {
 
   /**
    * NAME
+   *   syncGroupMembers - Replace group membership with a device list.
+   *
+   * DESCRIPTION
+   *   Ensures the group exists, clears its membership, and repopulates it
+   *   with the provided device labels. Devices already assigned to another
+   *   group are left untouched to preserve explicit group assignments.
+   *
+   * PARAMETERS
+   *   groupName - Group name to sync.
+   *   devices - Device labels to include.
+   */
+  public void syncGroupMembers(String groupName, List<String> devices) {
+    String key = normalize(groupName);
+    if (key.isEmpty()) {
+      return;
+    }
+    Group group = groups.get(key);
+    if (group == null) {
+      group = new Group(groupName);
+      groups.put(key, group);
+    }
+    for (MemberState member : group.members.values()) {
+      deviceToGroup.remove(normalize(member.device));
+    }
+    group.members.clear();
+    if (devices == null || devices.isEmpty()) {
+      return;
+    }
+    for (String device : devices) {
+      String deviceKey = normalize(device);
+      if (deviceKey.isEmpty()) {
+        continue;
+      }
+      if (deviceToGroup.containsKey(deviceKey)) {
+        continue;
+      }
+      deviceToGroup.put(deviceKey, group.name);
+      group.members.put(deviceKey, new MemberState(device, true));
+    }
+  }
+
+  /**
+   * NAME
    *   getGroups - Return all configured groups in insertion order.
    *
    * RETURNS

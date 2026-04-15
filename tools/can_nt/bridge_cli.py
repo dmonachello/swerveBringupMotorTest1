@@ -74,6 +74,7 @@ from tools.can_nt.bridge_ops import (
     ui_ping,
     parse_json_arg,
     profile_activate,
+    profiles_reload,
 )
 from tools.can_nt.bridge_session import BridgeEvent, BridgeSession
 from tools.can_nt.motor_diag_constants import (
@@ -469,6 +470,7 @@ CMD_PUSH = "push"
 CMD_INIT = PARSER_SPEC.cmd_init
 CMD_ACTIVATE = PARSER_SPEC.cmd_activate
 CMD_ACTIVATE_PROFILE = PARSER_SPEC.cmd_activate_profile
+CMD_PROFILES_RELOAD = "profilesReload"
 CMD_LOCAL_CONFIG = "local-config"
 CMD_SAVE_UNIFIED = "unified-config"
 CMD_VALIDATE_ALL = PARSER_SPEC.cmd_validate_all
@@ -478,6 +480,7 @@ CMD_ALL = "all"
 CMD_SCRIPT = "script"
 CMD_PROMPT = "--prompt"
 CMD_LOAD = "load"
+CMD_RELOAD = PARSER_SPEC.cmd_reload
 CMD_SAVE = "save"
 CMD_SOURCES = "sources"
 CMD_SAVEP = PARSER_SPEC.cmd_savep
@@ -851,7 +854,9 @@ MESSAGE_DIRTY_NONE = "  (clean)"
 MESSAGE_DIRTY_PROMPT = "Unsaved changes in: {items}. Exit anyway?"
 MESSAGE_ERR_DEVICE_LABEL_REQUIRED = "ERROR: device name required."
 MESSAGE_ERR_DEVICE_PROFILE_REQUIRED = "ERROR: Profile not selected. Use 'profile <profile>'."
-MESSAGE_ERR_DEVICE_INTERFACE_INVALID = "ERROR: interface must be CAN, DIO, PWM, ANALOG, or INTERNAL."
+MESSAGE_ERR_DEVICE_INTERFACE_INVALID = (
+    "ERROR: deviceInterface must be CAN, DIO, PWM, ANALOG, or INTERNAL."
+)
 MESSAGE_ERR_DEVICE_FIELD_UNKNOWN = "ERROR: device set field not supported."
 MESSAGE_ERR_DEVICE_FIELD_INT = "ERROR: device set value must be an integer."
 MESSAGE_ERR_DEVICE_FIELD_BOOL = "ERROR: device set value must be true/false."
@@ -990,10 +995,12 @@ MESSAGE_HINT_PROFILE = (
     "| profile device show-all <device> | profile export <profile> <path> | profile default <profile>"
 )
 MESSAGE_HINT_PROFILES = (
-    "profiles init | profiles push <path> [--activate <profile>] | profiles activate <profile>"
+    "profiles init | profiles push <path> [--activate <profile>] | profiles reload | profiles activate <profile>"
 )
 MESSAGE_ERR_PROFILES_ACTIVATE = "ERROR: profiles activate requires a profile name."
 MESSAGE_ERR_PROFILES_ACTIVATE_SEND = "ERROR: Failed to send profile activate command."
+MESSAGE_ERR_PROFILES_RELOAD_SEND = "ERROR: Failed to send profiles reload command."
+MESSAGE_INFO_PROFILES_RELOAD = "Profiles reloaded on robot."
 MESSAGE_HINT_CAN_MAPPINGS = "can-mappings show [manufacturers|device-types] | can-mappings manufacturer set <id> <name>"
 MESSAGE_VALIDATE_ALL_HEADER = "Validate all:"
 MESSAGE_VALIDATE_ALL_ITEM_OK = "  {label}: OK"
@@ -1215,7 +1222,14 @@ HELP_PROFILE_DEFAULT_TEXT = (
 HELP_TOPIC_PROFILES_PUSH = "profiles push"
 HELP_PROFILES_PUSH_TEXT = (
     "profiles push <path> [--activate <profile>]\n  Push profiles/devices registry to robot (TCP only).\n"
-    "profiles activate <profile>\n  Activate an already-loaded profile on the robot."
+    "profiles reload\n  Reload bringup_system.json on the robot (drops in-memory profiles).\n"
+    "profiles activate <profile>\n  Activate an already-loaded profile on the robot (no reload)."
+)
+HELP_TOPIC_PROFILES_RELOAD = "profiles reload"
+HELP_PROFILES_RELOAD_TEXT = (
+    "profiles reload\n"
+    "  Reload bringup_system.json on the robot (drops in-memory profiles).\n"
+    "  Use profiles activate to apply a profile after reload."
 )
 HELP_TOPIC_PROFILES_INIT = "profiles init"
 HELP_PROFILES_INIT_TEXT = (
@@ -1289,7 +1303,8 @@ FIELD_MANUFACTURER = "manufacturer"
 FIELD_DEVICE_TYPE = "deviceType"
 FIELD_DEVICE_ID = "deviceId"
 FIELD_ID = "id"
-FIELD_INTERFACE = "interface"
+FIELD_DEVICE_INTERFACE = KEY_INTERFACE
+FIELD_INTERFACE_LEGACY = KEY_INTERFACE_LEGACY
 FIELD_LABEL = "label"
 FIELD_TYPE = "type"
 FIELD_MODEL = "model"
@@ -1320,7 +1335,8 @@ DEVICE_INTERFACE_ALLOWED = {
 }
 
 DEVICE_FIELDS_PROFILE = {
-    FIELD_INTERFACE,
+    FIELD_DEVICE_INTERFACE,
+    FIELD_INTERFACE_LEGACY,
     FIELD_MANUFACTURER,
     FIELD_DEVICE_TYPE,
     FIELD_ID,
@@ -1340,7 +1356,8 @@ DEVICE_FIELDS_PROFILE = {
 }
 
 DEVICE_FIELD_TYPES = {
-    FIELD_INTERFACE: DEVICE_FIELD_STR,
+    FIELD_DEVICE_INTERFACE: DEVICE_FIELD_STR,
+    FIELD_INTERFACE_LEGACY: DEVICE_FIELD_STR,
     FIELD_MANUFACTURER: DEVICE_FIELD_INT,
     FIELD_DEVICE_TYPE: DEVICE_FIELD_INT,
     FIELD_ID: DEVICE_FIELD_INT,
@@ -1362,11 +1379,11 @@ DEVICE_FIELD_TYPES = {
 BOOL_TRUE_VALUES = {"true", "on", "1", "yes"}
 BOOL_FALSE_VALUES = {"false", "off", "0", "no"}
 
-DEVICE_REQUIRED_CAN = (FIELD_INTERFACE, FIELD_MANUFACTURER, FIELD_DEVICE_TYPE, FIELD_ID)
-DEVICE_REQUIRED_DIO = (FIELD_INTERFACE, FIELD_DIO, FIELD_INVERT)
-DEVICE_REQUIRED_PWM = (FIELD_INTERFACE, FIELD_PWM)
-DEVICE_REQUIRED_ANALOG = (FIELD_INTERFACE, FIELD_ANALOG)
-DEVICE_REQUIRED_INTERNAL = (FIELD_INTERFACE,)
+DEVICE_REQUIRED_CAN = (FIELD_DEVICE_INTERFACE, FIELD_MANUFACTURER, FIELD_DEVICE_TYPE, FIELD_ID)
+DEVICE_REQUIRED_DIO = (FIELD_DEVICE_INTERFACE, FIELD_DIO, FIELD_INVERT)
+DEVICE_REQUIRED_PWM = (FIELD_DEVICE_INTERFACE, FIELD_PWM)
+DEVICE_REQUIRED_ANALOG = (FIELD_DEVICE_INTERFACE, FIELD_ANALOG)
+DEVICE_REQUIRED_INTERNAL = (FIELD_DEVICE_INTERFACE,)
 
 TEST_TYPE_JOYSTICK = "joystick"
 TEST_TYPE_BUTTON = "button"
@@ -2133,9 +2150,8 @@ class BridgeCli:
             print(MESSAGE_ERR_PROFILE_REQUIRED)
             return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         if not isinstance(profiles, dict) or not profiles:
-            self._groups_profile = key
-            self._local_profile_entry(key, create=True)
-            return StatusResult(code=SS__NORMAL)
+            print(MESSAGE_ERR_PROFILE_UNKNOWN.format(name=name))
+            return StatusResult(code=SS__CONFIG__INVALID)
         if key not in profiles:
             print(MESSAGE_ERR_PROFILE_UNKNOWN.format(name=name))
             return StatusResult(code=SS__CONFIG__INVALID)
@@ -2909,7 +2925,7 @@ class BridgeCli:
             _device_field_values - Provide value lists for device fields.
         """
 
-        if field == FIELD_INTERFACE:
+        if field in (FIELD_DEVICE_INTERFACE, FIELD_INTERFACE_LEGACY):
             return sorted(DEVICE_INTERFACE_ALLOWED)
         if field == FIELD_MANUFACTURER:
             return self._mappings_values(KEY_MANUFACTURERS)
@@ -5369,6 +5385,8 @@ class BridgeCli:
             return self._load_sources()
         if cmd == CMD_PROFILES and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_INIT:
             return self._init_profiles_payload()
+        if cmd == CMD_PROFILES and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_RELOAD:
+            return self._profiles_reload()
         if cmd == CMD_PROFILES and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_ACTIVATE_PROFILE:
             if len(tokens) < COUNT_THREE:
                 print(MESSAGE_ERR_PROFILES_ACTIVATE)
@@ -6534,6 +6552,24 @@ class BridgeCli:
         print(MESSAGE_INFO_PROFILES_PUSH_LOCAL.format(path=path))
         return StatusResult(code=SS__NORMAL)
 
+    def _profiles_reload(self) -> StatusResult:
+        """
+        NAME
+            _profiles_reload - Reload profiles on the robot from deploy.
+        """
+        if not self._session.is_connected():
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+        seq = profiles_reload(self._session)
+        if seq is None:
+            print(MESSAGE_ERR_PROFILES_RELOAD_SEND)
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        self._proto_mark_cmd_sent(CMD_PROFILES_RELOAD, now=time.time())
+        event = self._wait_for_seq(seq)
+        if self._event_failed(event, CMD_PROFILES_RELOAD):
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        print(MESSAGE_INFO_PROFILES_RELOAD)
+        return StatusResult(code=SS__NORMAL)
+
     def _profiles_activate(self, profile_name: str) -> StatusResult:
         """
         NAME
@@ -7622,6 +7658,7 @@ class BridgeCli:
             HELP_TOPIC_PROFILES_PUSH: HELP_PROFILES_PUSH_TEXT,
             HELP_TOPIC_PROFILES_INIT: HELP_PROFILES_INIT_TEXT,
             HELP_TOPIC_PROFILES_EXPORT: HELP_PROFILES_EXPORT_TEXT,
+            HELP_TOPIC_PROFILES_RELOAD: HELP_PROFILES_RELOAD_TEXT,
             HELP_TOPIC_CONFIG_PUSH: HELP_CONFIG_PUSH_TEXT,
             HELP_TOPIC_RECOVER: HELP_RECOVER_TEXT,
             HELP_TOPIC_VALIDATE_FILE: HELP_VALIDATE_FILE_TEXT,
@@ -7745,6 +7782,7 @@ class BridgeCli:
                 CMD_DISCONNECT,
                 f"{CMD_ADD} {CMD_NEXT}",
                 f"{CMD_ADD} {CMD_ALL}",
+                f"{CMD_RUN} {CMD_TEST} {PLACEHOLDER_TEST}",
             ]
         lines = [MESSAGE_HELP_QUICK_HEADER]
         if not entries:
@@ -9330,6 +9368,19 @@ class BridgeCli:
             return "devices"
         return None
 
+    def _normalize_device_field(self, field: str) -> str:
+        """
+        NAME
+            _normalize_device_field - Map legacy device field names to canonical keys.
+
+        DESCRIPTION
+            Accepts legacy CLI field names (for example, interface) and returns
+            the canonical field key used by the profiles payload.
+        """
+        if field == FIELD_INTERFACE_LEGACY:
+            return FIELD_DEVICE_INTERFACE
+        return field
+
     def _set_local_device_meta(self, name: str, field: str, value_raw: str) -> StatusResult:
         """
         NAME
@@ -9338,7 +9389,7 @@ class BridgeCli:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        field_key = field.strip()
+        field_key = self._normalize_device_field(field.strip())
         if self._local_devices_locked:
             return self._set_profiles_device_meta(name, field_key, value_raw)
         if field_key == FIELD_LABEL:
@@ -9397,7 +9448,7 @@ class BridgeCli:
             target = {"name": name.strip()}
             devices.append(target)
         target[store_key] = value
-        if field_key == FIELD_INTERFACE and isinstance(target, dict):
+        if field_key == FIELD_DEVICE_INTERFACE and isinstance(target, dict):
             interface = str(get_device_interface(target) or target.get(KEY_INTERFACE_LEGACY) or "").strip()
             if interface and interface not in DEVICE_INTERFACE_ALLOWED:
                 print(MESSAGE_ERR_DEVICE_INTERFACE_INVALID)
@@ -9414,7 +9465,7 @@ class BridgeCli:
         if not self._local_config:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        field_key = field.strip()
+        field_key = self._normalize_device_field(field.strip())
         if self._local_devices_locked:
             return self._clear_profiles_device_meta(name, field_key)
         if field_key == FIELD_LABEL:
@@ -9610,7 +9661,7 @@ class BridgeCli:
 
         interface = str(get_device_interface(entry) or entry.get(KEY_INTERFACE_LEGACY) or "").strip()
         if not interface:
-            return [FIELD_INTERFACE]
+            return [FIELD_DEVICE_INTERFACE]
         required: tuple[str, ...]
         if interface == INTERFACE_CAN:
             required = DEVICE_REQUIRED_CAN
@@ -9624,7 +9675,7 @@ class BridgeCli:
             required = DEVICE_REQUIRED_INTERNAL
         missing: List[str] = []
         for field in required:
-            if field == FIELD_INTERFACE:
+            if field == FIELD_DEVICE_INTERFACE:
                 continue
             if entry.get(field) is None:
                 missing.append(field)
@@ -9985,7 +10036,7 @@ class BridgeCli:
         if entry is None:
             return self._ensure_profiles_device_entry(name)
         self._ensure_profile_device_label(name)
-        field_key = field.strip()
+        field_key = self._normalize_device_field(field.strip())
         if field_key == FIELD_LABEL:
             print("ERROR: device label is managed by rename device.")
             return StatusResult(code=SS__DEVICE__INVALID_FIELD)
@@ -10020,7 +10071,7 @@ class BridgeCli:
             entry[field_key] = parsed
         else:
             entry[store_key] = value_raw
-        if field_key == FIELD_INTERFACE:
+        if field_key == FIELD_DEVICE_INTERFACE:
             interface = str(get_device_interface(entry) or entry.get(KEY_INTERFACE_LEGACY) or "").strip()
             if interface and interface not in DEVICE_INTERFACE_ALLOWED:
                 print(MESSAGE_ERR_DEVICE_INTERFACE_INVALID)
@@ -10065,7 +10116,7 @@ class BridgeCli:
         if entry is None:
             print("ERROR: Device not found in profiles.")
             return StatusResult(code=SS__DEVICE__NOT_FOUND)
-        field_key = field.strip()
+        field_key = self._normalize_device_field(field.strip())
         if field_key == FIELD_LABEL:
             print("ERROR: device label is managed by rename device.")
             return StatusResult(code=SS__DEVICE__INVALID_FIELD)

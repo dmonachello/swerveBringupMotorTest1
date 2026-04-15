@@ -1,7 +1,7 @@
 {
   "schema_version": 4,
-  "data_version": "2026-04-12_154709",
-  "data_hash": "861687e134f326199ed307da8a2eeb2fe57c549bd751c96fd556596f4a73677b",
+  "data_version": "2026-04-14_112657",
+  "data_hash": "b3a8f1f5197e09bf665b31b971ed4079a2dd5b832dac92f4642d51c52a8a21e7",
   "default_profile": "home_042126V1",
   "profiles": {
     "home_042126V1": {
@@ -18,7 +18,7 @@
       "id": 25,
       "model": "REV NEO",
       "type": "motor",
-      "interface": "CAN"
+      "deviceInterface": "CAN"
     }
   ],
   "diagram": {
@@ -33,23 +33,23 @@
           40.0
         ],
         "busRights": [
-          275.0
+          200.0
         ],
         "busConnectors": [],
-        "panY": -2.0,
+        "panY": -0.0,
         "zoom": 2.0,
         "dioFreeYMode": "rail",
         "nodes": [
           {
             "nodeType": "device",
-            "key": 1,
+            "key": 2,
             "category": "neos",
             "label": "SPARKMAX/NEO 25",
             "id": 25,
             "bus": 0,
             "row": 0,
-            "x": 125.5,
-            "freeY": -55.25,
+            "x": 88.0,
+            "freeY": -53.5,
             "freeYRelative": true,
             "scale": 1.0,
             "tags": [],
@@ -89,7 +89,7 @@
                 "duty": 0.25,
                 "time": {
                   "timeoutSec": 2.0,
-                  "onTimeout": "fail"
+                  "onTimeout": "pass"
                 }
               },
               {
@@ -100,10 +100,10 @@
                 ],
                 "type": "composite",
                 "inputSource": "controller0.X",
-                "duty": 0.2,
+                "duty": 0.25,
                 "time": {
                   "timeoutSec": 2.0,
-                  "onTimeout": "fail"
+                  "onTimeout": "pass"
                 }
               }
             ]

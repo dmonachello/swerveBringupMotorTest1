@@ -6,10 +6,10 @@ This procedure uses profile `home_042126V1` and starts with `SPARKMAX/NEO 25`. I
 
 **Preconditions**
 Purpose: Ensure a clean starting state.
-- `src/main/deploy/can_mappings.json` exists.
-- `src/main/deploy/bringup_bindings.json` exists.
-- The canonical file `data/bringup_system.json` does not exist (we create it from scratch).
-- The deploy copy `src/main/deploy/bringup_system.json` does not exist (it will be generated).
+- `src\main\deploy\can_mappings.json` exists.
+- `src\main\deploy\bringup_bindings.json` exists.
+- The canonical file `data\bringup_system.json` does not exist (we create it from scratch).
+- The deploy copy `src\main\deploy\bringup_system.json` does not exist (it will be generated).
 
 **Robot Reset (Delete All Deploy Files)**
 Purpose: Force the robot to load only freshly deployed files.
@@ -17,7 +17,7 @@ Run these from PowerShell (NI‑Auth admin login required):
 ```powershell
 ssh admin@172.22.11.2
 # After NI-Auth login:
-rm -f /home/lvuser/deploy/*.json
+rm -f /home/lvuser/deploy/bringup_system.json
 find / -name "*.json" -print
 exit
 ```
@@ -59,12 +59,12 @@ Expected response: `SUCCESS` for each command. Prompt changes from `bridge>` to 
 3. Add the first motor device:
 ```text
 device "SPARKMAX/NEO 25"
-set manufacturer 5
-set deviceType 2
-set id 25
-set model "REV NEO"
-set type motor
-set interface CAN
+manufacturer 5
+deviceType 2
+id 25
+model "REV NEO"
+type motor
+deviceInterface CAN
 exit
 ```
 Expected response: `SUCCESS` after each `set` with `Updated device ...` messages. `exit` returns to config and may print
@@ -83,7 +83,8 @@ type button
 device add "SPARKMAX/NEO 25"
 inputSource controller0.A
 duty 0.25
-termination time 2.0
+time timeout 2.0
+time onTimeout pass
 show
 exit
 ```
@@ -97,7 +98,8 @@ type composite
 device add "SPARKMAX/NEO 25"
 inputSource controller0.X
 duty 0.25
-termination time 2.0
+time timeout 2.0
+time onTimeout pass
 show
 exit
 ```
@@ -138,13 +140,14 @@ cd C:\Users\dmona\swerveBringupMotorTest1-main
 python -m tools.can_topology.can_top_editor
 ```
 Expected response: The editor opens with no CLI output unless an error occurs.
-2. File → Open → `data/bringup_system.json`.
+2. File → Open → `data\bringup_system.json`.
 3. Move the motor node slightly as a visible change.
 4. File → Save to Deploy (this writes canonical + deploy).
 5. Close the editor.
 
 **Phase 3: Sync Canonical to Deploy**
 Purpose: Keep canonical and deploy copies identical.
+If you used the topology editor **Save to Deploy** in Phase 2, you can skip this step.
 ```powershell
 cd C:\Users\dmona\swerveBringupMotorTest1-main
 python -m tools.sync_profiles
@@ -157,6 +160,9 @@ dir .\src\main\deploy\bringup_system.json
 
 **Phase 4: Connect, Push, Activate**
 Purpose: Push the canonical config to the robot and activate it.
+Driver Station: Disabled (or robot not enabled).
+Note: If running the CLI on the Driver Station causes conflicts, run the CLI from another PC by SSH’ing into the host.
+See `docs\SPEC_SSH_DRIVER_STATION_CLI.md` for the recommended workflow.
 1. Start CLI online:
 ```powershell
 cd C:\Users\dmona\swerveBringupMotorTest1-main
@@ -171,6 +177,12 @@ config push data\bringup_system.json --activate home_042126V1
 end
 ```
 Expected response: `Connected.` then `Profiles applied. devices=... active=home_042126V1`. Use `end` to return to exec mode.
+SID_COMMENT: Migration note: if the robot reports old profiles after a successful deploy or push, force a disk reload.
+Example:
+```text
+profiles reload
+profiles activate home_042126V1
+```
 Optional: Verify the robot deploy folder has JSON files (NI‑Auth admin login required).
 ```powershell
 ssh admin@172.22.11.2
@@ -180,6 +192,7 @@ exit
 
 **Phase 5: Verify on Robot**
 Purpose: Confirm devices and runtime state are visible.
+Driver Station: Disabled is OK.
 ```text
 show devices robot --json --pretty
 show runtime-state robot --json --pretty
@@ -188,11 +201,13 @@ Expected response: `SOURCE: robot` plus JSON output containing the device list a
 
 **Phase 6: Run Tests (Controller)**
 Purpose: Run tests from the Xbox controller.
+Driver Station: Enabled (teleop).
 1. Enable the robot in Driver Station.
 2. Press `controller0.A` to run the button test.
 
 **Phase 7: Run Tests (Remote CLI)**
 Purpose: Run tests via the CLI.
+Driver Station: Enabled (teleop).
 ```text
 configure terminal
 group testgroup
@@ -206,6 +221,7 @@ Expected response: `SUCCESS` for group setup, then `run test` ACKs from the robo
 
 **Phase 8: Add the Next Motor**
 Purpose: Extend the config one motor at a time.
+Driver Station: Disabled (or robot not enabled) while editing and syncing. Enable only when running tests.
 1. Add the new device (same pattern as Phase 1, step 3).
 2. Add it to the profile device list.
 3. Edit `all_motors` and add the new device:
@@ -225,10 +241,10 @@ Purpose: Add limit switch when ready.
 ```text
 configure terminal
 device "lmtSw0"
-set type limitSwitch
-set interface DIO
-set dio 0
-set invert true
+type limitSwitch
+deviceInterface DIO
+dio 0
+invert true
 end
 profile device add "lmtSw0"
 save unified-config data\bringup_system.json
@@ -239,7 +255,46 @@ If you see an overwrite warning, re-run with `--force`.
 
 **Acceptance Checks**
 Purpose: Confirm the system is consistent after each cycle.
-1. `data/bringup_system.json` matches `src/main/deploy/bringup_system.json`.
+1. `data\bringup_system.json` matches `src\main\deploy\bringup_system.json`.
 2. `config push` succeeds and reports `active=home_042126V1`.
 3. `show devices robot` includes the new device.
 4. Both `neo25_button` and `all_motors` execute without safety stops.
+
+---
+
+Here’s the full end‑to‑end procedure from cd through verification, using real commands and files. This assumes you want the robot to run host changes immediately.
+
+cd C:\Users\dmona\swerveBringupMotorTest1-main
+
+python tools\can_nt\can_nt_bridge.py --cli --rio 172.22.11.2
+
+// In the CLI:
+
+connect
+configure terminal
+config push data\bringup_system.json --activate home_042126V1
+end
+// Make sure Driver Station is Enabled (teleop), then:
+
+profiles reload
+profiles activate home_042126V1
+
+// !!!SID!!! BUG? the next step makes the motor start running and I can't stop it until I disable from driverstation!
+// I think it's a bug and we shouldn't start running until we do a run test command!
+add all
+show runtime-state robot --json --pretty
+show devices robot
+// If show devices robot still shows none, repeat the push once:
+
+configure terminal
+config push data\bringup_system.json --activate home_042126V1
+end
+profiles reload
+profiles activate home_042126V1
+add all
+show runtime-state robot --json --pretty
+
+// Then run a test:
+
+run test neo25_button
+// That is the whole sequence, start to finish. If you want this as a .cli batch file, say the word.

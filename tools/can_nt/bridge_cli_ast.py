@@ -26,6 +26,7 @@ MESSAGE_VALIDATE_ALL_ITEM_OK = "  {label}: OK"
 MESSAGE_VALIDATE_ALL_ITEM_ERR = "  {label}: ERROR: {message}"
 MESSAGE_VALIDATE_ALL_SUMMARY_OK = "OK: All validations passed."
 MESSAGE_VALIDATE_ALL_SUMMARY_ERR = "ERROR: Validation failures: {count}"
+DEFAULT_GROUP_NAME = "defaultGroup"
 MSG_ERR_TESTS_SELECT_NAME = "ERROR: tests select requires a name."
 from tools.can_nt.status import (
     StatusResult,
@@ -132,6 +133,7 @@ AST_EXEC_SPEC = {
     "label_tests_toggle": "tests toggle",
     "label_tests_run": "tests run",
     "label_tests_run_all": "tests run-all",
+    "label_run_test_default": "run test",
     "label_selected_device": "selected-device",
     "label_selected_mode": "selected-mode",
     "label_add_device": "add device",
@@ -200,6 +202,7 @@ class BridgeCliAstExecutor:
             SPEC.kind_exec_tests_toggle: self._ast_exec_tests_toggle,
             SPEC.kind_exec_tests_run: self._ast_exec_tests_run,
             SPEC.kind_exec_tests_run_all: self._ast_exec_tests_run_all,
+            SPEC.kind_exec_run_test_default: self._ast_exec_run_test_default,
             SPEC.kind_show: self._ast_show,
             SPEC.kind_config_group: self._ast_config_group,
             SPEC.kind_config_no_group: self._ast_config_no_group,
@@ -278,6 +281,22 @@ class BridgeCliAstExecutor:
         seq = run_all_tests(self._cli._session)
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_tests_run_all"]):
+            return AST_EXEC_SPEC["ret_err"]
+        return None
+
+    def _ast_exec_run_test_default(self, ast: CommandAst) -> Optional[int]:
+        if not self._cli._session.is_connected():
+            print(AST_EXEC_SPEC["msg_err_robot_unavailable"])
+            return AST_EXEC_SPEC["ret_err"]
+        if not ast.args or ast.args[0].lower() != SPEC.cmd_test:
+            print(AST_EXEC_SPEC["msg_err_unknown_cmd"])
+            return AST_EXEC_SPEC["ret_err"]
+        name = None
+        if len(ast.args) > 1:
+            name = SPEC.space_str.join(ast.args[1:])
+        seq = group_run_test(self._cli._session, DEFAULT_GROUP_NAME, name)
+        event = self._cli._wait_for_seq(seq)
+        if self._cli._event_failed(event, AST_EXEC_SPEC["label_run_test_default"]):
             return AST_EXEC_SPEC["ret_err"]
         return None
 

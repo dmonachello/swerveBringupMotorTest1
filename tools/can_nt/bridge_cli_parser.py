@@ -243,6 +243,8 @@ class BridgeCliParser:
                 return self._handle_profile
             if cmd == SPEC.cmd_add.lower():
                 return self._handle_add_command
+            if cmd == SPEC.cmd_run.lower():
+                return self._handle_run_command
             return None
         if mode == SPEC.modes[SPEC.idx_config]:
             if cmd == SPEC.cmd_show.lower():
@@ -257,6 +259,8 @@ class BridgeCliParser:
                 return self._handle_profiles_command
             if cmd == SPEC.cmd_add.lower():
                 return self._handle_add_command
+            if cmd == SPEC.cmd_run.lower():
+                return self._handle_run_command
             if cmd == SPEC.cmd_selected_device.lower():
                 return self._handle_selected_device
             if cmd == SPEC.cmd_selected_mode.lower():
@@ -625,6 +629,18 @@ class BridgeCliParser:
                 bool(SPEC.bool_false),
                 bool(SPEC.bool_false),
             )
+        if verb == SPEC.cmd_run:
+            kind = SPEC.empty_str
+            if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() == SPEC.cmd_test:
+                kind = SPEC.kind_exec_run_test_default
+            return (
+                kind,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
+            )
         if verb == SPEC.cmd_tests:
             if len(tokens) < SPEC.count_two:
                 return (
@@ -696,6 +712,26 @@ class BridgeCliParser:
                 kind = SPEC.kind_exec_tests_run_all
             else:
                 kind = SPEC.empty_str
+            return (
+                kind,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
+            )
+        if verb == SPEC.cmd_run:
+            kind = SPEC.empty_str
+            if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() == SPEC.cmd_test:
+                kind = SPEC.kind_exec_run_test_default
             return (
                 kind,
                 SPEC.empty_str,
@@ -1475,6 +1511,18 @@ class BridgeCliParser:
                 bool(SPEC.bool_false),
                 bool(SPEC.bool_false),
             )
+        if verb not in (SPEC.cmd_no, SPEC.cmd_delete, SPEC.cmd_show, SPEC.cmd_set) and len(tokens) >= SPEC.count_two:
+            value = SPEC.space_str.join(tokens[SPEC.count_one :])
+            return (
+                SPEC.kind_device_set,
+                tokens[SPEC.count_zero],
+                value,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
+            )
         if verb == SPEC.cmd_no:
             return (
                 SPEC.kind_device_no,
@@ -1637,6 +1685,12 @@ class BridgeCliParser:
             raise CliParseError(SPEC.msg_parse_error)
         self._reject_extra(tokens, SPEC.count_two, LABEL_ADD)
 
+    def _handle_run_command(self, tokens: List[str]) -> None:
+        if len(tokens) < SPEC.count_two:
+            raise CliParseError(SPEC.msg_parse_error)
+        if tokens[SPEC.count_one].lower() != SPEC.cmd_test:
+            raise CliParseError(SPEC.msg_parse_error)
+
     def _handle_group_command(self, tokens: List[str]) -> None:
         self._require(tokens, SPEC.count_two, SPEC.msg_group_name)
         self._reject_extra(tokens, SPEC.count_two, SPEC.label_group)
@@ -1702,6 +1756,9 @@ class BridgeCliParser:
             raise CliParseError(SPEC.msg_push_requires)
         if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() == SPEC.cmd_init:
             self._reject_extra(tokens, SPEC.count_two, SPEC.label_profiles_init)
+            return
+        if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() == SPEC.cmd_reload:
+            self._reject_extra(tokens, SPEC.count_two, SPEC.label_profiles_reload)
             return
         if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() == SPEC.cmd_activate_profile:
             self._require(tokens, SPEC.count_three, SPEC.msg_profile_name)

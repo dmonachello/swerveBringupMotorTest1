@@ -10,7 +10,9 @@ import frc.robot.input.BindingsManager;
 import frc.robot.input.ControllerManager;
 import frc.robot.input.InputAliasResolver;
 import frc.robot.ui.TcpUiServer;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -93,6 +95,7 @@ public class RobotV2 extends TimedRobot {
   private final BringupCommandRouter.AddMotorHandler addMotorHandler = new AddMotorHandlerImpl();
   private Map<String, String> inputAliases = new HashMap<>();
   private String inputAliasProfile = TEXT_EMPTY;
+  private static final String DEFAULT_GROUP_NAME = "defaultGroup";
 
   /**
    * NAME
@@ -394,6 +397,7 @@ public class RobotV2 extends TimedRobot {
       uiHandler.printProfileInfo();
     }
     refreshInputAliases();
+    syncDefaultGroup();
   }
 
   /**
@@ -423,6 +427,27 @@ public class RobotV2 extends TimedRobot {
       }
     }
     return inputAliases;
+  }
+
+  /**
+   * NAME
+   *   syncDefaultGroup - Keep the default group aligned to active profile devices.
+   */
+  private void syncDefaultGroup() {
+    List<BringupUtil.DeviceEntry> devices = BringupUtil.getActiveDevices();
+    List<String> labels = new ArrayList<>();
+    if (devices != null) {
+      for (BringupUtil.DeviceEntry entry : devices) {
+        if (entry == null) {
+          continue;
+        }
+        String label = entry.label != null ? entry.label.trim() : TEXT_EMPTY;
+        if (!label.isBlank()) {
+          labels.add(label);
+        }
+      }
+    }
+    bridgeGroups.syncGroupMembers(DEFAULT_GROUP_NAME, labels);
   }
 
   /**

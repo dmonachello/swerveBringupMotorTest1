@@ -24,6 +24,7 @@ exec           = show_exec
                | "connect"
                | "disconnect"
                | "add" ws ("next" | "all")
+               | "run" ws "test" [ ws name ]
                | "tests" ws ("select" ws name | "toggle" | "run" | "run-all")
                | "profile" ws "device" ws "show-all" ws name
                | "prof" ws "device" ws "show-all" ws name
@@ -115,11 +116,13 @@ config         = "group" ws name
                | ("validate" | "val") ws "script" ws path
                | "recover" ws ("list" | "last-good" | "from" ws name)
                | "profiles" ws "init"
+               | "profiles" ws "reload"
                | "profiles" ws "activate" ws name
                | "profiles" ws "export" ws path
                | "profiles" ws "push" ws path [ ws "--activate" ws name ]
                | "config" ws "push" ws path [ ws "--activate" ws name ]
                | "add" ws ("next" | "all")
+               | "run" ws "test" [ ws name ]
                | ("show" | "ls") ws show_target [ ws show_flags ]
                | diagnose
                | "bindings" [ ws bindings_args ]
@@ -179,6 +182,7 @@ group          = ("show" | "ls")
 device         = ("show" | "ls")
                | ("show" | "ls") ws show_target [ ws show_flags ]
                | "set" ws device_field ws value_or_text
+               | device_field ws value_or_text
                | "no" ws device_field
                | "delete" ;
 
@@ -224,6 +228,7 @@ value_or_text  = number | value_text ;
 path           = token ;
 field          = token ;
 device_field   = "interface"
+               | "deviceInterface"
                | "manufacturer"
                | "deviceType"
                | "id"

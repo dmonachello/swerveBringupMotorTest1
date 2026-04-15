@@ -174,6 +174,8 @@ class ParserSpec:
     label_export: str
     label_save: str
     label_profiles_init: str
+    label_profiles_activate: str
+    label_profiles_reload: str
     label_rename: str
     label_device: str
     label_device_set: str
@@ -209,6 +211,7 @@ class ParserSpec:
     kind_exec_tests_toggle: str
     kind_exec_tests_run: str
     kind_exec_tests_run_all: str
+    kind_exec_run_test_default: str
     kind_show: str
     kind_config_group: str
     kind_config_no_group: str
@@ -413,12 +416,14 @@ SPEC = ParserSpec(
     label_export='export',
     label_save='save',
     label_profiles_init='profiles init',
+    label_profiles_activate='profiles activate',
+    label_profiles_reload='profiles reload',
     label_rename='rename device',
     label_device='device',
     label_device_set='device set',
     label_device_delete='delete',
-    mode_exec_cmds=('add', 'cfg', 'configure', 'connect', 'diagnose', 'disconnect', 'ls', 'prof', 'profile', 'show', 'tests'),
-    mode_config_cmds=('add', 'bindings', 'can-mappings', 'config', 'device', 'diagnose', 'export', 'group', 'import', 'load', 'ls', 'merge', 'no', 'prof', 'profile', 'profiles', 'recover', 'rename', 'save', 'savep', 'selected-device', 'selected-mode', 'show', 'test', 'tests', 'val', 'validate', 'write'),
+    mode_exec_cmds=('add', 'cfg', 'configure', 'connect', 'diagnose', 'disconnect', 'ls', 'prof', 'profile', 'run', 'show', 'tests'),
+    mode_config_cmds=('add', 'bindings', 'can-mappings', 'config', 'device', 'diagnose', 'export', 'group', 'import', 'load', 'ls', 'merge', 'no', 'prof', 'profile', 'profiles', 'recover', 'rename', 'run', 'save', 'savep', 'selected-device', 'selected-mode', 'show', 'test', 'tests', 'val', 'validate', 'write'),
     mode_group_cmds=('add', 'bind', 'disable', 'enable', 'ls', 'member', 'no', 'run', 'show'),
     mode_device_cmds=('delete', 'ls', 'no', 'set', 'show'),
     mode_test_cmds=('action', 'brightness', 'color', 'deadband', 'deadbandsweep', 'device', 'duration', 'duty', 'enabled', 'hold', 'inputsource', 'limitswitch', 'ls', 'no', 'pattern', 'rotation', 'show', 'termination', 'time', 'type'),
@@ -448,6 +453,7 @@ SPEC = ParserSpec(
     kind_exec_tests_toggle='exec_tests_toggle',
     kind_exec_tests_run='exec_tests_run',
     kind_exec_tests_run_all='exec_tests_run_all',
+    kind_exec_run_test_default='exec_run_test_default',
     kind_show='show',
     kind_config_group='config_group',
     kind_config_no_group='config_no_group',

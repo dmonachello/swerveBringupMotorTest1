@@ -106,6 +106,7 @@ CMD_SHOW_VERSION = "showVersion"
 CMD_SHOW_SOURCES = "showSources"
 CMD_ADD_MOTOR = "addMotor"
 CMD_ADD_ALL = "addAll"
+CMD_PROFILES_RELOAD = "profilesReload"
 CMD_SELECT_TEST_BY_NAME = "selectTestByName"
 CMD_TOGGLE_TEST = "toggleTest"
 CMD_RUN_TEST = "runTest"
@@ -273,6 +274,17 @@ def profile_activate(session: BridgeSession, profile_name: str) -> Optional[int]
         profile_activate - Activate a profile on the robot.
     """
     return _send(session, "profileActivate", {KEY_NAME: profile_name})
+
+
+def profiles_reload(session: BridgeSession) -> Optional[int]:
+    """
+    NAME
+        profiles_reload - Reload bringup_system.json on the robot.
+
+    DESCRIPTION
+        Asks the robot to drop its in-memory profiles and reload from deploy.
+    """
+    return _send(session, CMD_PROFILES_RELOAD, {})
 
 
 def add_next_motor(session: BridgeSession) -> Optional[int]:

@@ -171,6 +171,7 @@ public final class BringupUtil {
       "post-apply check failed: %s";
   private static final String MESSAGE_UNKNOWN_CAN_IDENTITY =
       "Warning: unable to map device to CAN identity (label=%s, id=%s).";
+  private static final String MESSAGE_RELOAD_FAILED = "profiles reload failed";
   private static final int PROFILE_SCHEMA_VERSION = 4;
   private static final String MOTOR_SPECS_FILE = "motor_specs.json";
   private static final String CAN_MAPPINGS_FILE = "can_mappings.json";
@@ -1183,6 +1184,31 @@ public final class BringupUtil {
       BringupPrinter.enqueue("ERROR: bringup_system.json invalid: " + ex.getMessage());
       BringupPrinter.enqueue("ERROR: Redeploy required. Robot code will stop.");
       throw new RuntimeException("Invalid bringup_system.json", ex);
+    }
+  }
+
+  /**
+   * NAME
+   *   reloadProfilesFromJson - Reload bringup_system.json from disk.
+   *
+   * RETURNS
+   *   Empty string when reload succeeds, otherwise a human-readable error.
+   *
+   * SIDE EFFECTS
+   *   Clears active profile state and device instances before reloading.
+   */
+  public static String reloadProfilesFromJson() {
+    deactivateActiveProfile();
+    clearDeviceInstanceRegistry();
+    try {
+      loadProfilesFromJson();
+      return NT_LABEL_EMPTY;
+    } catch (RuntimeException ex) {
+      String error = safeText(ex.getMessage());
+      if (error.isBlank()) {
+        return MESSAGE_RELOAD_FAILED;
+      }
+      return error;
     }
   }
 
