@@ -16,7 +16,6 @@ Purpose: Prevent unexpected movement during bringup.
 - Motion occurs only while an explicit test is running (`run test ...` / `run all tests`).
 - If no test is active, commands that would directly actuate outputs are blocked.
 
-
 **Preconditions**
 Purpose: Ensure a clean starting state.
 
@@ -446,3 +445,86 @@ Expected: Test ACKs and motion only while tests are active.
 
 Rule: `reset zero-config` must always print warning + y/N prompt before deleting files.
 
+---
+
+## Appendix B: Quick Workflow Procedure
+
+Purpose: Provide a short bringup cycle checklist for repeated iterations.
+
+1. Start clean (optional):
+   - In CLI exec mode: `reset zero-config`.
+   - Non-interactive option: `reset zero-config --yes`.
+
+2. Build/update config locally:
+   - Start offline CLI: `python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt`.
+   - Enter config mode, update profile/devices/tests.
+   - Save: `save unified-config data\bringup_system.json`, then `end`.
+
+3. Sync canonical to deploy:
+   - Run `python -m tools.sync_profiles`.
+
+4. Push and activate on robot:
+   - Start online CLI: `python tools\can_nt\can_nt_bridge.py --cli --rio <robot-ip>`.
+   - `connect` → `configure terminal` → `config push data\bringup_system.json --activate <profile>` → `end`.
+
+5. Verify robot state:
+   - `show devices robot --json --pretty`.
+   - `show runtime-state robot --json --pretty`.
+
+6. Runtime selection and test execution:
+   - `add all`.
+   - `active show --json`.
+   - `active add` (grow active-group) and `active next` (rotate active focus).
+   - `run test <test_name>` (or use controller binding).
+
+7. Iterate per new device:
+   - Add device, update test membership, save, sync, push, verify, run tests.
+
+---
+
+## Appendix C: Copy/Paste Command Block (Current Values)
+
+Purpose: Provide a ready-to-run command sequence using current team values.
+
+- Robot IP: `172.22.11.2`
+- Profile: `home_042126V1`
+
+Start CLI online:
+
+```powershell
+python tools\can_nt\can_nt_bridge.py --cli --rio 172.22.11.2
+```
+
+Then at `bridge>`:
+
+```text
+connect
+configure terminal
+config push data\bringup_system.json --activate home_042126V1
+end
+
+show devices robot --json --pretty
+show runtime-state robot --json --pretty
+
+add all
+active show --json
+active add
+active show
+active next
+active show
+
+run test neo25_button
+run test all_motors
+```
+
+Optional clean reset before rebuilding from scratch:
+
+```text
+reset zero-config
+```
+
+Non-interactive reset option:
+
+```text
+reset zero-config --yes
+```
