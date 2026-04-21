@@ -4,6 +4,20 @@ Purpose:
 
 Define a single control contract where any actuator action (motors now, non-motor actuators later) occurs only during an explicit test run, regardless of whether commands originate from CLI, UI, or direct Xbox controller bindings on the robot.
 
+## Group and Targeting V1 Update (April 20, 2026)
+
+Purpose:
+
+Add finalized group/targeting test constraints that affect test-owned actuation workflows.
+
+- Name resolution is exact and case-insensitive.
+- Device/group names share one global namespace.
+- `active` is reserved, always present, non-persistent, and reset on save/commit.
+- Group membership is set-based (duplicate add warn/no-op, missing remove warn/no-op).
+- `group delete active` must fail.
+- Device/group delete operations must fail when references exist in tests/groups.
+- Non-interactive copy into existing named group must fail with no mutation.
+
 ## Goal
 
 Purpose:
@@ -173,7 +187,7 @@ Define how each existing behavior is preserved without violating the new contrac
 
 - Keep the same Xbox control surfaces (same buttons/axes from operator perspective).
 - Replace direct output actions with equivalent test invocations.
-- Ensure those tests are always present in active profile/runtime test registry.
+- Ensure those tests are always present in active profile/runtime tests table.
 - During active test, axis/button reads continue exactly as before for driver feel consistency.
 
 ### Example Mapping Matrix

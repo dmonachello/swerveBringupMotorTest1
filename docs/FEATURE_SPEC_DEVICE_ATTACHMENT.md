@@ -65,7 +65,7 @@ Purpose: Prevent broken references after label changes.
   - `bridgeConfig.byProfile.<profile>.groups[].members[].device`
   - `bridgeConfig.byProfile.<profile>.selectedDevice.device`
   - callout target labels
-  - registry label mapping
+  - devices-table label mapping
 
 ## CLI Requirements
 ### Rename Device

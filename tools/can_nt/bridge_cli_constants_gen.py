@@ -174,8 +174,6 @@ class ParserSpec:
     label_export: str
     label_save: str
     label_profiles_init: str
-    label_profiles_activate: str
-    label_profiles_reload: str
     label_rename: str
     label_device: str
     label_device_set: str
@@ -416,16 +414,14 @@ SPEC = ParserSpec(
     label_export='export',
     label_save='save',
     label_profiles_init='profiles init',
-    label_profiles_activate='profiles activate',
-    label_profiles_reload='profiles reload',
     label_rename='rename device',
     label_device='device',
     label_device_set='device set',
     label_device_delete='delete',
-    mode_exec_cmds=('add', 'cfg', 'configure', 'connect', 'diagnose', 'disconnect', 'ls', 'prof', 'profile', 'run', 'show', 'tests'),
-    mode_config_cmds=('add', 'bindings', 'can-mappings', 'config', 'device', 'diagnose', 'export', 'group', 'import', 'load', 'ls', 'merge', 'no', 'prof', 'profile', 'profiles', 'recover', 'rename', 'run', 'save', 'savep', 'selected-device', 'selected-mode', 'show', 'test', 'tests', 'val', 'validate', 'write'),
-    mode_group_cmds=('add', 'bind', 'disable', 'enable', 'ls', 'member', 'no', 'run', 'show'),
-    mode_device_cmds=('delete', 'ls', 'no', 'set', 'show'),
+    mode_exec_cmds=('active', 'add', 'cfg', 'configure', 'connect', 'diagnose', 'disconnect', 'ls', 'prof', 'profile', 'reset', 'run', 'show', 'tests'),
+    mode_config_cmds=('add', 'bindings', 'can-mappings', 'config', 'copy', 'device', 'diagnose', 'export', 'group', 'import', 'load', 'ls', 'merge', 'no', 'prof', 'profile', 'profiles', 'recover', 'remove', 'rename', 'run', 'save', 'selected-device', 'selected-mode', 'show', 'test', 'tests', 'val', 'validate'),
+    mode_group_cmds=('add', 'bind', 'clear', 'disable', 'enable', 'ls', 'member', 'no', 'remove', 'run', 'show'),
+    mode_device_cmds=('analog', 'attachments', 'delete', 'deviceinterface', 'devicetype', 'dio', 'id', 'interface', 'invert', 'limits', 'ls', 'manufacturer', 'model', 'no', 'notes', 'pwm', 'role', 'set', 'show', 'tags', 'terminator', 'type', 'vendor'),
     mode_test_cmds=('action', 'brightness', 'color', 'deadband', 'deadbandsweep', 'device', 'duration', 'duty', 'enabled', 'hold', 'inputsource', 'limitswitch', 'ls', 'no', 'pattern', 'rotation', 'show', 'termination', 'time', 'type'),
     label_validate='validate config',
     label_show_members='show members/binding',

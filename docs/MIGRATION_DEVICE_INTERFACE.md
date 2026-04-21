@@ -1,6 +1,6 @@
 # Migration: `interface` ? `deviceInterface` (bringup_system.json)
 
-Purpose: Migrate the device registry key name from legacy `interface` to canonical `deviceInterface` without breaking existing configs during the transition window.
+Purpose: Migrate the devices-table key name from legacy `interface` to canonical `deviceInterface` without breaking existing configs during the transition window.
 
 ## Quick Procedure (Do This First)
 

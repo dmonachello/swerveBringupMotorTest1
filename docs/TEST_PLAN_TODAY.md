@@ -3,6 +3,17 @@
 ## Purpose
 Validate the new storage layers (JsonStore + Schema Store) and their CLI/UI integrations with explicit commands.
 
+## Group and Targeting V1 Update (April 20, 2026)
+
+Purpose: add required checks for finalized group and target semantics.
+
+- Enforce case-insensitive exact name matching.
+- Enforce one shared namespace for devices and groups.
+- Verify `active` is reserved, visible, non-persistent, and reset on save/commit.
+- Verify set semantics for members (duplicate add warn/no-op, missing remove warn/no-op).
+- Verify delete protections for referenced groups/devices.
+- Verify non-interactive copy to existing named group fails with no mutation.
+
 ## Preconditions
 - Repo root: `%USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1`
 - Python available on PATH.
@@ -276,7 +287,7 @@ Actions:
 
 Expected:
 - Loads without error.
-- Device registry and profiles populate.
+- devices table and profiles populate.
 
 ---
 

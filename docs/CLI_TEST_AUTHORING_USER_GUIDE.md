@@ -3,6 +3,17 @@
 ## Purpose
 Provide a step-by-step, no-JSON workflow for creating and editing bringup tests using the Bridge CLI.
 
+## Group and Targeting V1 Update (April 20, 2026)
+
+Purpose: document test-authoring assumptions that now depend on finalized group/targeting behavior.
+
+- Target name lookup is exact and case-insensitive.
+- Device and group names share one global namespace.
+- `active` is reserved, always available, non-persistent, and resets on save/commit.
+- Group membership is set-based with warning/no-op semantics for duplicates/missing removals.
+- Group and device deletion must fail while references remain in tests/groups.
+- Non-interactive copy into existing named groups must fail with no mutation.
+
 ## Audience
 Operators and developers who want to add tests without editing JSON.
 

@@ -78,13 +78,13 @@ TBD Screenshot: Topology editor with a loaded profile showing labeled devices, t
 Purpose: Describe how data moves between parts.
 - `data/bringup_system.json` is the shared configuration source (sync to deploy for roboRIO).
 - `schema_version` (4), `data_version` (`YYYY-MM-DD_HHMMSS`), and `data_hash` must be present and consistent across copies.
-- Profiles reference devices by label only; device identity lives in the device registry.
+- Profiles reference devices by label only; device identity lives in the devices table.
 
 ## File Map (By Surface)
 Purpose: Clarify which files each surface reads/writes and how often they change.
 
 Bridge CLI
-- data/bringup_system.json: primary local config (profiles + device registry + groups). Change likelihood: high. Read: default.
+- data/bringup_system.json: primary local config (profiles + devices table + groups). Change likelihood: high. Read: default.
 - src/main/deploy/bringup_system.json: derived deploy copy (written by validate/sync). Change likelihood: medium. Read: not default.
 - bringup_system.json bridgeConfig.byProfile.<profile>.tests: tests edited by CLI. Change likelihood: high. Read: from the loaded bringup_system.json.
 - src/main/deploy/bringup_bindings.json: controller names/ports for inputSource validation. Change likelihood: low-medium. Read: default.
@@ -109,7 +109,7 @@ Live Topology View
 - data/bringup_system.json: diagram + profiles for overlays. Change likelihood: high. Read: default.
 
 Profiles Migration (Schema v4)
-Purpose: Update bringup_system.json to schema v4 with a device registry and label-only profiles.
+Purpose: Update bringup_system.json to schema v4 with a devices table and label-only profiles.
 Example:
   python -m tools.validate_sync
   python tools\can_topology\validate_profiles.py --path data\bringup_system.json --strict

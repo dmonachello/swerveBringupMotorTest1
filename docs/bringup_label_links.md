@@ -4,7 +4,7 @@ Purpose: Visualize where device labels are used as references across bringup str
 
 ```mermaid
 flowchart LR
-    DeviceRegistry["devices[].label"]
+    DevicesTable["devices[].label"]
 
     subgraph Config["bringup_system.json"]
         ProfileDevices["profiles.<name>.devices[]"]
@@ -18,15 +18,15 @@ flowchart LR
         TestMotorLabels["bridgeConfig.byProfile.<name>.tests.test_sets.<set>[].motorLabels[]"]
     end
 
-    ProfileDevices --> DeviceRegistry
-    Attachments --> DeviceRegistry
-    DiagramNodes --> DeviceRegistry
-    GroupMembers --> DeviceRegistry
-    SelectedDevice --> DeviceRegistry
-    TestMotorLabels --> DeviceRegistry
+    ProfileDevices --> DevicesTable
+    Attachments --> DevicesTable
+    DiagramNodes --> DevicesTable
+    GroupMembers --> DevicesTable
+    SelectedDevice --> DevicesTable
+    TestMotorLabels --> DevicesTable
 ```
 
 Notes:
 - All label references must match exactly one entry in `devices[].label`.
-- Labels are globally unique within the device registry.
+- Labels are globally unique within the devices table.
 - Diagram nodes are label-linked only when the node represents a real device.

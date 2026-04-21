@@ -16,7 +16,7 @@ Purpose: decide scope, bucket, and whether you need code changes.
 If you are only adding a new motor model for an existing wrapper, skip to **Step 6**.
 
 Current profile model (bringup_system.json):
-- A device registry at the root defines each device (label + interface + identity).
+- A devices table at the root defines each device (label + interface + identity).
 - Profiles reference devices by label only.
 - Diagram categories remain for layout and visualization only.
 
@@ -40,7 +40,7 @@ If this is a **new vendor** (not REV or CTRE), add a manufacturer group that own
 
 If the vendor already exists (REV/CTRE), skip this step.
 
-Example registry entry:
+Example devices-table entry:
 ```java
 new ManufacturerFactory("ACME", AcmeDeviceGroup::new)
 ```
@@ -89,8 +89,9 @@ to an existing manufacturer group does not require any core edits.
 Only update `src/main/java/frc/robot/BringupCore.java` if you need custom output
 (e.g., a new encoder-specific status printout).
 
-## Step 5: Update BringupUtil (Registry + Mapping)
-Purpose: ensure the device registry can be resolved into runtime device configs.
+## Step 5: Update BringupUtil (Devices Table + Mapping)
+
+Purpose: ensure the devices table can be resolved into runtime device configs.
 Update:
 - `src/main/java/frc/robot/BringupUtil.java`
 
@@ -124,12 +125,12 @@ Add a new motor entry with:
 
 Then reference that motor model in your profile entry (see Step 8).
 
-## Step 8: Add Device Registry Entries + Profile Labels
+## Step 8: Add devices table Entries + Profile Labels
 Purpose: define device identity and include it in a profile.
 Update:
 - `data/bringup_system.json` (sync to `src/main/deploy/bringup_system.json`)
 
-Add a device entry to the registry and reference it by label in the profile.
+Add a device entry to the devices table and reference it by label in the profile.
 Example device entry:
 ```json
 {
@@ -213,5 +214,5 @@ Purpose: choose the smallest viable change set.
   Code changes: new wrapper + manufacturer group (if needed) + profile schema.
 
 - New **vendor**?  
-  Code changes: new manufacturer group + new device wrappers + can_mappings.json + registry entry.
+  Code changes: new manufacturer group + new device wrappers + can_mappings.json + devices-table entry.
 

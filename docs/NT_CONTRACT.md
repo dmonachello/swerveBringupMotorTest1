@@ -46,7 +46,7 @@ Purpose: Provide per-device presence/age by label identity.
 
 Label key encoding:
 - `labelKey = encode_label_for_nt(<device label>)`
-- The label comes from `bringup_system.json` device registry entries.
+- The label comes from `bringup_system.json` devices-table entries.
 
 Keys (per device):
 - `bringup/diag/dev/<labelKey>/label` (`string`)

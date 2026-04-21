@@ -81,10 +81,10 @@ BRIDGE CLI
     - show devices (local) lists the full profile-derived device inventory, not only group members.
     - show version prints the bridge_cli version; add --robot to query the roboRIO.
     - Windows EOF uses Ctrl+Z then Enter (Ctrl+D on POSIX shells).
-    - Registry push uses TCP only: `profiles push` / `config push` (no NT apply).
-    - Registry push applies in-memory on the robot and does not persist to disk.
+    - Tables push uses TCP only: `profiles push` / `config push` (no NT apply).
+    - Tables push applies in-memory on the robot and does not persist to disk.
 
-    Registry push (config mode):
+    Tables push (config mode):
         profiles push <path> [--activate <profile>]
         config push <path> [--activate <profile>]
 

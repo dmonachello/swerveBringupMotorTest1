@@ -376,19 +376,13 @@ class BridgeCliAstExecutor:
 
     def _ast_config_group(self, ast: CommandAst) -> Optional[int]:
         name = ast.group_name
-        if not self._cli._session.is_connected():
-            if not self._cli._select_or_create_local_group(name):
-                return AST_EXEC_SPEC["ret_err"]
-            mode_cls = type(self._cli._modes[SPEC.count_zero])
-            self._cli._modes.append(mode_cls(SPEC.modes[SPEC.idx_group], name))
-            print(AST_EXEC_SPEC["msg_warn_local_group"])
-            return None
-        seq = group_create(self._cli._session, name)
-        event = self._cli._wait_for_seq(seq)
-        if self._cli._event_failed(event, AST_EXEC_SPEC["label_group_create"]):
+        if not self._cli._group_exists_for_context(name):
+            print(f"ERROR: group \"{name}\" not found.")
             return AST_EXEC_SPEC["ret_err"]
         mode_cls = type(self._cli._modes[SPEC.count_zero])
         self._cli._modes.append(mode_cls(SPEC.modes[SPEC.idx_group], name))
+        if not self._cli._session.is_connected():
+            print(AST_EXEC_SPEC["msg_warn_local_group"])
         return None
 
     def _ast_config_no_group(self, ast: CommandAst) -> Optional[int]:
@@ -790,69 +784,17 @@ class BridgeCliAstExecutor:
         self._cli._pop_mode()
         return None
 
-    def _handle_show_ast(self, ast: CommandAst) -> Optional[int]:
-        target = ast.show_target.lower() if ast.show_target else SPEC.empty_str
-        if not target:
-            print(AST_EXEC_SPEC["msg_err_show_requires"])
-            return AST_EXEC_SPEC["ret_err"]
-        if ast.show_pretty and not ast.show_json:
-            print(AST_EXEC_SPEC["msg_err_pretty_requires_json"])
-            return AST_EXEC_SPEC["ret_err"]
-        if target == SPEC.show_target_config:
-            if ast.show_name:
-                name = ast.show_name.lower()
-                if name == SHOW_NAME_LOCAL_RAW:
-                    target = SHOW_TARGET_CONFIG_RAW
-                elif name == SHOW_NAME_DIRTY:
-                    target = SHOW_TARGET_CONFIG_DIRTY
-                else:
-                    target = SPEC.show_target_runtime_state
-            else:
-                target = SPEC.show_target_runtime_state
-        source = ast.show_source
-        if target in (
-            SHOW_TARGET_CONFIG_RAW,
-            SHOW_TARGET_CONFIG_DIRTY,
-            SHOW_TARGET_PROFILE,
-            SHOW_TARGET_PROFILES,
-            SPEC.show_target_device,
-                SPEC.show_target_device_group,
-        ):
-            source = SPEC.show_source_local
-        if target == SPEC.show_target_sources:
-            source = SPEC.show_source_local
-        if target == SHOW_TARGET_VERSION and not source:
-            source = SPEC.show_source_local
-        if not source:
-            source = SPEC.show_source_robot if self._cli._session.is_connected() else SPEC.show_source_local
-        if source == SPEC.show_source_both:
-            local_ok = self._show_local_ast(
-                target, ast.show_name, ast.show_json, ast.show_pretty
-            )
-            robot_result = self._show_robot_ast(target, ast.show_name, ast.show_json)
-            if isinstance(robot_result, StatusResult):
-                if self._cli._batch and not robot_result.ok():
-                    return robot_result
-                return robot_result
-            robot_ok = bool(robot_result)
-            if self._cli._batch and (not local_ok or not robot_ok):
-                return AST_EXEC_SPEC["ret_err"]
-            return None
-        if source == SPEC.show_source_local:
-            if not self._show_local_ast(
-                target, ast.show_name, ast.show_json, ast.show_pretty
-            ):
-                return AST_EXEC_SPEC["ret_err"]
-            return None
-        if source == SPEC.show_source_robot:
-            robot_result = self._show_robot_ast(target, ast.show_name, ast.show_json)
-            if isinstance(robot_result, StatusResult):
-                return robot_result
-            if not robot_result:
-                return AST_EXEC_SPEC["ret_err"]
-            return None
-        print(AST_EXEC_SPEC["msg_err_unknown_show_source"])
-        return AST_EXEC_SPEC["ret_err"]
+    def _handle_show_ast(self, ast: CommandAst) -> StatusResult:
+        """
+        NAME
+            _handle_show_ast - Delegate show execution to canonical CLI path.
+
+        DESCRIPTION
+            Uses bridge_cli.py show handling so AST and token execution share
+            identical semantics for multi-token targets (for example,
+            "show device registry <name>").
+        """
+        return self._cli._handle_show(list(ast.args))
 
     def _show_robot_ast(self, target: str, name: str, json_output: bool) -> object:
         if not self._cli._session.is_connected():

@@ -2,6 +2,17 @@
 
 Purpose: Validate Windows-hosted tools and local configuration workflows without a robot connection.
 
+## Group and Targeting V1 Update (April 20, 2026)
+
+Purpose: ensure offline validation includes finalized group/targeting rules.
+
+- Verify case-insensitive exact name resolution.
+- Verify global namespace collisions are blocked across devices and groups.
+- Verify `active` exists, is reserved, and is reset on save/commit.
+- Verify membership set semantics and warning/no-op behavior.
+- Verify delete protections for referenced groups/devices.
+- Verify non-interactive copy to existing named group fails without mutation.
+
 ## Scope
 Purpose: Define what is covered by this plan.
 - CLI local config lifecycle (load, edit, validate, save).
@@ -23,7 +34,7 @@ Purpose: Ensure a stable starting point.
 
 ## Files and Paths
 Purpose: List the files used by this plan.
-- Profiles and registry: `src\main\deploy\bringup_system.json`
+- Profiles and devices table: `src\main\deploy\bringup_system.json`
 - Bindings: `src\main\deploy\bringup_bindings.json`
 - CLI entry: `python -m tools.can_nt.can_nt_bridge --cli`
 - Topology editor: `python -m tools.can_topology.can_top_editor`
@@ -112,7 +123,7 @@ SUCCESS [EXECUTOR.SUCCESS]
 DETAIL: Success.
 bridge-profile-home_031226> show devices
 SOURCE: local
-Local registry devices:
+Local devices-table entries:
   SPARKMAX/NEO 25
   lmtSw1
   SPARKMAX/NEO550 7
@@ -283,7 +294,7 @@ Purpose: Provide quick checks to confirm success.
 
 Examples:
 - `show workspace` includes `local` source details and paths.
-- `show devices local` lists devices from the profile registry.
+- `show devices local` lists devices from the devices table filtered by profile context.
 - `validate profiles local --active` prints a success message.
 
 ## Tradeoffs

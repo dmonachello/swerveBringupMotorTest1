@@ -5,7 +5,7 @@ Purpose: Show a database-style ERD view of the bringup profiles JSON structure.
 ```mermaid
 erDiagram
     BRINGUP_SYSTEM ||--o{ PROFILE : contains
-    BRINGUP_SYSTEM ||--o{ DEVICE_DEFINITION : registry
+    BRINGUP_SYSTEM ||--o{ DEVICE_DEFINITION : devices_table
     PROFILE ||--o{ DEVICE_DEFINITION : references_by_label
     BRINGUP_SYSTEM ||--o| DIAGRAM : includes
     DIAGRAM ||--o{ DIAGRAM_PROFILE : contains
@@ -96,5 +96,5 @@ erDiagram
 Notes:
 - This ERD is a conceptual mapping of JSON objects to relational entities.
 - Root schema_version is 4.
-- Profiles only store device labels; identity fields live in the device registry.
+- Profiles only store device labels; identity fields live in the devices table.
 - Optional JSON fields are shown without nullable markers to keep the ERD compact.

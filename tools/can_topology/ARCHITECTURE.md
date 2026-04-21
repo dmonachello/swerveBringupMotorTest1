@@ -67,13 +67,13 @@ Purpose: Stable device configuration consumed by robot and PC tools.
 - `data_version` (string)
 - `data_hash` (string)
 - `default_profile` (string)
-- `devices` (device registry)
+- `devices` (devices table)
 - `profiles` (object of named profiles)
 - Optional `diagram` (editor-only layout metadata)
 - Optional `bridgeConfig` (per-profile groups/bindings metadata)
 
 Profile sections:
-- `profiles.<name>.devices` is a label-only list referencing the device registry.
+- `profiles.<name>.devices` is a label-only list referencing the devices table.
 
 Device entry schema:
 - Required: `label`, `interface`

@@ -2,6 +2,20 @@
 
 Purpose: validate the TCP UI command channel, single-client lock, error handling, and NT protocol monitor behavior.
 
+## Group and Targeting V1 Update (April 20, 2026)
+
+Purpose: align test expectations with the finalized group and target contract.
+
+- Name resolution is exact and case-insensitive.
+- The global namespace is shared across device names and group names.
+- `active` is reserved, always present, non-persistent, and resets to empty on save/commit.
+- Group membership uses set semantics: duplicate adds warn and no-op; missing removes warn and no-op.
+- `show groups` and `show group active` must include the active group.
+- `group delete active` must fail.
+- `device delete <name>` must fail if referenced by any group or test.
+- `group delete <name>` must fail if referenced by tests.
+- Non-interactive copy into an existing named group must fail with no mutation.
+
 ## Quick Test Plan (10?15 minutes)
 
 1) Basic connect + handshake

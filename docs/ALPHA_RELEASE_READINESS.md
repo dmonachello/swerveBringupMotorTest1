@@ -132,7 +132,7 @@ Purpose: Ensure hardware configuration is easy, safe, and repeatable.
 
 ### Bringup Tests Authoring
 
-Purpose: Make it easy to create tests that match the device registry and fail
+Purpose: Make it easy to create tests that match the devices table and fail
 clearly when misconfigured.
 
 - A “create tests for this profile” workflow exists and is documented.

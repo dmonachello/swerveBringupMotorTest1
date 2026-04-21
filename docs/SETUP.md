@@ -88,7 +88,7 @@ Notes:
 ## Device Config + Tests Authoring (Happy Path)
 Purpose: Make edits fast and hard to mess up.
 
-1. Edit device registry + profiles:
+1. Edit devices table + profiles:
    - Topology editor: `python -m tools.can_topology.can_top_editor`
 2. Create/update bringup tests:
    - Bridge CLI/UI authoring (primary), or

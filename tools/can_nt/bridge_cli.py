@@ -12,15 +12,22 @@ DESCRIPTION
     and bridge_ops layers. Output streams directly to console.
 """
 
+import sys
+from pathlib import Path
+import argparse
+
+SCRIPT_PATH = Path(__file__).resolve()
+REPO_ROOT = SCRIPT_PATH.parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 import json
 import hashlib
 import shlex
 import time
-import sys
 import re
 import threading
 from copy import deepcopy
-from pathlib import Path
 import copy
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
@@ -121,6 +128,7 @@ from tools.can_nt.status import (
     SS__CONFIG__VALID,
     SS__CONFIG__MERGED,
     SS__CONFIG__IMPORTED,
+    SS__CONFIG__DUPLICATE_LABEL,
     SS__DEVICE__INVALID_FIELD,
     SS__DEVICE__NOT_DEFINED,
     SS__DEVICE__NOT_FOUND,
@@ -198,7 +206,6 @@ from tools.common.profile_constants import (
     KEY_VERSION,
     KEY_ID,
     KEY_INTERFACE,
-    KEY_INTERFACE_LEGACY,
     KEY_INVERT,
     KEY_LABEL,
     KEY_LIMITS,
@@ -419,6 +426,7 @@ CMD_MESSAGE_LEVEL = "message-level"
 CMD_TYPE = "type"
 CMD_DEVICE = "device"
 CMD_DEVICES = "devices"
+CMD_REGISTRY = "registry"
 CMD_GROUP = "group"
 CMD_CONFIG = "config"
 CMD_LOCAL_RAW = "local-raw"
@@ -442,9 +450,11 @@ CMD_ACTIVE_SHORT = "active"
 CMD_ACTIVE_SHOW_SHORT = "show"
 CMD_ACTIVE_ADD_SHORT = "add"
 CMD_ACTIVE_NEXT_SHORT = "next"
+GROUP_NAME_ACTIVE = CMD_ACTIVE_SHORT
 CMD_TOGGLE = PARSER_SPEC.cmd_toggle
 CMD_RUN = PARSER_SPEC.cmd_run
 CMD_NO = "no"
+CMD_REMOVE = "remove"
 CMD_RENAME = "rename"
 CMD_VALIDATE = "validate"
 CMD_VAL = PARSER_SPEC.cmd_val
@@ -469,6 +479,26 @@ CMD_CAN_MAPPINGS = "can-mappings"
 CMD_MANUFACTURER = "manufacturer"
 CMD_DEVICE_TYPE_NAME = "device-type"
 CMD_DEVICE_TYPES = "device-types"
+TARGET_KIND_GROUP = "group"
+TARGET_KIND_DEVICE = "device"
+TARGET_KIND_TEST = "test"
+CMD_COPY = "copy"
+WARN_DUPLICATE_MEMBER = "WARNING: device already in group: {device}"
+WARN_MISSING_MEMBER = "WARNING: device not in group: {device}"
+WARN_LOCAL_GROUP_CLEARED = "WARNING: Robot not connected; local group cleared."
+ERR_RESERVED_ACTIVE_DELETE = "ERROR: group \"active\" cannot be deleted."
+ERR_RESERVED_ACTIVE_RENAME = "ERROR: group \"active\" cannot be renamed."
+ERR_ACTIVE_GROUP_MEMBERSHIP_ONLY = "ERROR: active group supports membership operations only."
+ERR_GROUP_REFERENCED_BY_TEST = "ERROR: group \"{name}\" referenced by test {test}."
+ERR_DEVICE_REFERENCED = "ERROR: device \"{name}\" referenced by {kind} {ref}."
+ERR_NAME_EXISTS = "ERROR: name \"{name}\" already exists."
+ERR_NAME_RESERVED = "ERROR: name \"{name}\" is reserved."
+ERR_GROUP_NOT_FOUND_FMT = "ERROR: group \"{name}\" not found."
+ERR_DEVICE_NOT_FOUND_FMT = "ERROR: device \"{name}\" not found."
+ERR_SOURCE_DEST_SAME = "ERROR: source and destination are the same."
+ERR_COPY_NON_INTERACTIVE = "ERROR: non-interactive copy to existing group requires failure by policy."
+ERR_NO_DEVICES_AVAILABLE = "ERROR: no device available for add next."
+ERR_GROUP_NAME_REQUIRED = "ERROR: group name required."
 CMD_DEVICE_USAGE = "device-usage"
 CMD_SHOW_ALL = "show-all"
 CMD_WORKSPACE = "workspace"
@@ -493,7 +523,6 @@ CMD_LOAD = "load"
 CMD_RELOAD = PARSER_SPEC.cmd_reload
 CMD_SAVE = "save"
 CMD_SOURCES = "sources"
-CMD_SAVEP = PARSER_SPEC.cmd_savep
 CMD_MERGE = "merge"
 CMD_TEMPLATES = "templates"
 CMD_TEMPLATE = "template"
@@ -510,6 +539,7 @@ FLAG_DOT = "--dot"
 FLAG_FORCE = "--force"
 FLAG_REPAIR = "--repair"
 FLAG_YES = "--yes"
+FLAG_CLEAR_MEMORY = "--clear-memory"
 QUESTION_MARK = "?"
 SUGGESTION_SEPARATOR = " | "
 MESSAGE_NEXT_ARGS_PREFIX = "Next args: "
@@ -523,7 +553,7 @@ PLACEHOLDER_TEST = "<test>"
 PLACEHOLDER_FIELD = "<field>"
 PLACEHOLDER_TEMPLATE = "<template>"
 PLACEHOLDER_PATH = "<path>"
-PLACEHOLDER_REGISTRY = "<registry>"
+PLACEHOLDER_REGISTRY = "<devices-table>"
 FLAG_JSON = "--json"
 FLAG_PRETTY = "--pretty"
 JSON_PRETTY_INDENT = 2
@@ -681,6 +711,7 @@ KEY_DEVICE = "device"
 KEY_NAME = "name"
 KEY_GROUPS = "groups"
 KEY_MEMBERS = "members"
+KEY_TEMP = "temp"
 KEY_BY_PROFILE = "byProfile"
 KEY_SELECTED_DEVICE = "selectedDevice"
 KEY_MANUFACTURERS = "manufacturers"
@@ -778,6 +809,9 @@ SHOW_SOURCE_FLAGS = {
 
 MESSAGE_ERR_UNKNOWN_SHOW = "ERROR: Unknown show command."
 MESSAGE_ERR_UNKNOWN_SHOW_SOURCE = "ERROR: Unknown show source."
+MESSAGE_ERR_SHOW_DEVICE_REGISTRY_REMOVED = (
+    "ERROR: 'show device registry <name>' was removed. Use 'show device <name>'."
+)
 MESSAGE_ERR_SHOW_LOCAL_ONLY = "ERROR: show {target} is local-only; remove robot/local/both."
 MESSAGE_HINT_SHOW_SESSION_LOCAL = "show session [--json] [--pretty]"
 MESSAGE_ERR_BINDINGS_SHOW_LOCAL_ONLY = (
@@ -815,7 +849,7 @@ MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND = "ERROR: Local device not found."
 MESSAGE_OK_CONFIG_VALID = "OK: Config is valid."
 MESSAGE_ERR_CONFIG_VALIDATE = "ERROR: {message}"
 MESSAGE_STORE_ISSUE = "{location}: {message}"
-MESSAGE_ERR_REGISTRY_NOT_LOADED = "ERROR: Profiles not loaded. Use merge/import config <bringup_system.json>."
+MESSAGE_ERR_REGISTRY_NOT_LOADED = "ERROR: Devices table not loaded. Use merge/import config <bringup_system.json>."
 MESSAGE_INFO_RENAME_REFS = "INFO: Updated references for {old} -> {new}: {details}"
 MESSAGE_INFO_RENAME_REFS_NONE = "INFO: No references updated for {old} -> {new}."
 MESSAGE_INFO_RENAME_REFS_ITEM = "{label}({count})"
@@ -874,10 +908,10 @@ MESSAGE_ERR_DEVICE_FIELD_BOOL = "ERROR: device set value must be true/false."
 MESSAGE_ERR_DEVICE_FIELD_LIST = "ERROR: device set value must be a JSON list."
 MESSAGE_ERR_DEVICE_FIELD_DICT = "ERROR: device set value must be a JSON object."
 MESSAGE_WARN_DEVICE_INCOMPLETE = "WARNING: Device {label} missing required fields: {fields}"
-MESSAGE_ERR_REGISTRY_DEVICE_NOT_FOUND = "ERROR: Device not found in registry."
+MESSAGE_ERR_REGISTRY_DEVICE_NOT_FOUND = "ERROR: Device not found in devices table."
 MESSAGE_SOURCE_LOCAL = "SOURCE: local"
 MESSAGE_LOCAL_CONFIG_RAW = "Local bridgeConfig (raw):"
-MESSAGE_LOCAL_REGISTRY_DEVICE = "Local registry device {label}:"
+MESSAGE_LOCAL_REGISTRY_DEVICE = "Local devices-table entry {label}:"
 MESSAGE_LOCAL_REGISTRY_EMPTY = "  (no fields)"
 MESSAGE_REGISTRY_FIELD_FMT = "  {key}={value}"
 MESSAGE_REGISTRY_FIELD_FMT_NAMED = "  {key}={value} ({name})"
@@ -1000,7 +1034,7 @@ MESSAGE_HINT_SAVE = (
 )
 MESSAGE_HINT_SOURCES = "show sources | load sources | save sources"
 MESSAGE_HINT_RECOVER = "recover list | recover last-good | recover from <timestamp>"
-MESSAGE_HINT_RESET_ZERO_CONFIG = "reset zero-config [--yes]"
+MESSAGE_HINT_RESET_ZERO_CONFIG = "reset zero-config [--yes] [--clear-memory]"
 MESSAGE_HINT_SHOW = "show <target> [--json] [--pretty] [robot|local|both]"
 MESSAGE_HINT_PROFILE = (
     "profile <profile> | profile create <profile> | profile delete <profile> | profile device delete <device> "
@@ -1045,6 +1079,7 @@ MESSAGE_RESET_ZERO_CONFIG_CANCELLED = "Cancelled."
 MESSAGE_RESET_ZERO_CONFIG_DELETED = "Deleted: {path}"
 MESSAGE_RESET_ZERO_CONFIG_MISSING = "Already missing: {path}"
 MESSAGE_RESET_ZERO_CONFIG_DONE = "Zero-config reset complete. deleted={deleted} missing={missing}."
+MESSAGE_RESET_ZERO_CONFIG_MEMORY_CLEARED = "Cleared in-memory local workspace state."
 MESSAGE_RESET_ZERO_CONFIG_FAILED = "ERROR: Failed to delete {path}: {error}"
 MESSAGE_HINT_VALIDATE_CONFIG_PROFILE = "validate config expects a file path; did you mean `profile <profile>`?"
 MESSAGE_VALIDATE_OK = "OK"
@@ -1201,7 +1236,7 @@ SOURCE_STATUS_LOADED = "loaded"
 SOURCE_STATUS_NOT_LOADED = "not-loaded"
 SOURCE_STATUS_UNKNOWN = "unknown"
 SOURCE_NAME_PROFILES = "profiles"
-SOURCE_NAME_REGISTRY = "registry"
+SOURCE_NAME_REGISTRY = "devices"
 SOURCE_NAME_CONFIG = "config"
 SOURCE_NAME_TESTS = "tests"
 SOURCE_NAME_BINDINGS = "bindings"
@@ -1268,9 +1303,10 @@ HELP_CONFIG_PUSH_TEXT = (
 )
 HELP_TOPIC_RESET_ZERO_CONFIG = "reset zero-config"
 HELP_RESET_ZERO_CONFIG_TEXT = (
-    "reset zero-config [--yes]\n"
+    "reset zero-config [--yes] [--clear-memory]\n"
     "  Delete data/bringup_system.json and src/main/deploy/bringup_system.json.\n"
-    "  Prompts for y/N unless --yes is provided."
+    "  Prompts for y/N unless --yes is provided.\n"
+    "  Use --clear-memory to also clear in-memory local config/tests/groups."
 )
 HELP_TOPIC_RECOVER = "recover"
 HELP_RECOVER_TEXT = (
@@ -1286,7 +1322,7 @@ HELP_VALIDATE_FILE_TEXT = (
 )
 HELP_TOPIC_QUICK = "quick"
 HELP_SHOW_TEXT = (
-    "show <status|groups|group <group>|devices|device <device>|device-group <device>|device registry <device>|"
+    "show <status|groups|group <group>|devices|device <device>|device-group <device>|"
     "device-usage <device>|commands|help|bindings|selected-device|runtime-state|config|config local-raw|config dirty|"
     "sources|profiles|profile|tests|test <test>|message-level|workspace|session|controllers> "
     "[--json] [--pretty] [robot|local|both]\n"
@@ -1332,7 +1368,6 @@ FIELD_DEVICE_TYPE = "deviceType"
 FIELD_DEVICE_ID = "deviceId"
 FIELD_ID = "id"
 FIELD_DEVICE_INTERFACE = KEY_INTERFACE
-FIELD_INTERFACE_LEGACY = KEY_INTERFACE_LEGACY
 FIELD_LABEL = "label"
 FIELD_TYPE = "type"
 FIELD_MODEL = "model"
@@ -1364,7 +1399,6 @@ DEVICE_INTERFACE_ALLOWED = {
 
 DEVICE_FIELDS_PROFILE = {
     FIELD_DEVICE_INTERFACE,
-    FIELD_INTERFACE_LEGACY,
     FIELD_MANUFACTURER,
     FIELD_DEVICE_TYPE,
     FIELD_ID,
@@ -1385,7 +1419,6 @@ DEVICE_FIELDS_PROFILE = {
 
 DEVICE_FIELD_TYPES = {
     FIELD_DEVICE_INTERFACE: DEVICE_FIELD_STR,
-    FIELD_INTERFACE_LEGACY: DEVICE_FIELD_STR,
     FIELD_MANUFACTURER: DEVICE_FIELD_INT,
     FIELD_DEVICE_TYPE: DEVICE_FIELD_INT,
     FIELD_ID: DEVICE_FIELD_INT,
@@ -1445,7 +1478,6 @@ PROMPT_OVERWRITE = "Test '{name}' exists. Overwrite? (y/N): "
 CONFIRM_YES = "y"
 TIME_ON_TIMEOUT_DEFAULT = "fail"
 GLOBAL_LABEL = "global"
-DEFAULT_PROFILE_LOCAL = "local"
 LIMIT_SWITCH_KEY_ENABLED = "enabled"
 LIMIT_SWITCH_KEY_ON_HIT = "onHit"
 LIMIT_SWITCH_KEY_ID = "id"
@@ -1527,18 +1559,13 @@ MESSAGE_ERR_PROFILE_CREATE_NAME = "ERROR: Profile name is required."
 MESSAGE_ERR_PROFILE_EXISTS = "ERROR: Profile already exists: {name}."
 MESSAGE_PROFILE_CREATED = "Created profile: {name}."
 MESSAGE_ERROR_SHOW_TESTS = "ERROR: show tests | show test <test>"
-MESSAGE_ERROR_WRITE_TESTS = "ERROR: write tests <path>"
-MESSAGE_WARNING_WRITE_TESTS_DEPRECATED = (
-    "WARNING: `write tests` is deprecated; use `save unified-config <path>` "
-    "(recommended) or `save tests <path>` (legacy export)."
-)
 MESSAGE_SELECTED_TEST_SET = "Selected test set: {name}"
 MESSAGE_CANCELLED = "Cancelled."
 MESSAGE_DELETED_TEST = "Deleted test: {name}"
 MESSAGE_WROTE_TESTS = "Wrote tests to {path}."
-MESSAGE_ERR_TESTS_LEGACY = (
-    "ERROR: Legacy bringup_tests.json is not supported. "
-    "Tests live in bringup_system.json; use `save unified-config <path>`."
+MESSAGE_ERR_TESTS_STANDALONE = (
+    "ERROR: Standalone tests files are not supported. "
+    "Use bringup_system.json and `save unified-config <path>`."
 )
 MESSAGE_TEST_SETS_HEADER = "Test sets:"
 MESSAGE_TEST_SETS_ENTRY = "  {name} ({count} tests)"
@@ -1628,6 +1655,8 @@ class BridgeCli:
         self._local_devices_locked: bool = False
         self._profiles_dirty: bool = False
         self._groups_dirty: bool = False
+        self._active_group_members: List[str] = []
+        self._active_add_cursor: int = COUNT_ZERO
         self._tracker = CommandTracker(timeout_sec=2.0, max_retries=0)
         self._store = ConfigSchemaStore()
         self._tests_model: Optional[TestAuthoringModel] = None
@@ -1990,17 +2019,49 @@ class BridgeCli:
     def _fallback_profile_name(self) -> Optional[str]:
         """
         NAME
-            _fallback_profile_name - Return a single local profile if present.
+            _fallback_profile_name - Legacy profile fallback (disabled).
         """
-        if not self._local_config:
-            return None
-        by_profile = self._local_config.get(KEY_BRIDGE_BY_PROFILE)
-        if not isinstance(by_profile, dict):
-            return None
-        names = [name for name in by_profile.keys() if isinstance(name, str)]
-        if len(names) == COUNT_ONE:
-            return names[COUNT_ZERO]
         return None
+
+    def _ensure_default_profile_context(self) -> None:
+        """
+        NAME
+            _ensure_default_profile_context - Ensure a real profiles default exists.
+
+        DESCRIPTION
+            Creates a default profile in the local profiles payload when none is
+            present so local editing never falls back to a synthetic legacy profile.
+        """
+        result = self._ensure_local_profiles_payload()
+        if not result.ok():
+            return
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            return
+        profiles = payload.get(KEY_PROFILES)
+        if not isinstance(profiles, dict):
+            return
+        if not profiles:
+            default_name = get_default_profile().strip() or CMD_PROFILE
+            profiles[default_name] = {KEY_PROFILE_DEVICES: []}
+            payload[KEY_DEFAULT_PROFILE] = default_name
+            self._profiles_dirty = True
+        default_profile = payload.get(KEY_DEFAULT_PROFILE)
+        if not isinstance(default_profile, str) or default_profile not in profiles:
+            payload[KEY_DEFAULT_PROFILE] = next(iter(profiles.keys()))
+        if not self._groups_profile:
+            self._groups_profile = str(payload.get(KEY_DEFAULT_PROFILE, EMPTY_STRING)).strip() or None
+        if self._groups_profile:
+            if isinstance(self._local_config, dict):
+                by_profile = self._local_config.get(KEY_BRIDGE_BY_PROFILE)
+                if not isinstance(by_profile, dict):
+                    by_profile = {}
+                    self._local_config[KEY_BRIDGE_BY_PROFILE] = by_profile
+                if self._groups_profile not in by_profile:
+                    by_profile[self._groups_profile] = {
+                        KEY_BRIDGE_GROUPS: [],
+                        KEY_BRIDGE_SELECTED_DEVICE: {KEY_DEVICE: EMPTY_STRING, CMD_ENABLED: False},
+                    }
 
     def _refresh_tests_profile(self, profile_name: Optional[str]) -> None:
         """
@@ -2414,6 +2475,366 @@ class BridgeCli:
             return COUNT_ZERO
         return len(groups)
 
+    def _is_active_group(self, name: str) -> bool:
+        """
+        NAME
+            _is_active_group - Check if a group name targets the reserved active group.
+        """
+        return name.strip().lower() == GROUP_NAME_ACTIVE
+
+    def _reset_transient_active_group(self) -> None:
+        """
+        NAME
+            _reset_transient_active_group - Reset non-persistent active group membership.
+        """
+        self._active_group_members = []
+        self._active_add_cursor = COUNT_ZERO
+
+    def _clear_in_memory_workspace_state(self) -> None:
+        """
+        NAME
+            _clear_in_memory_workspace_state - Clear local in-memory config and tests state.
+
+        DESCRIPTION
+            Leaves CLI process/session running while removing loaded local config,
+            profile/group/test state, and transient active-group membership.
+        """
+        self._local_config = None
+        self._local_config_path = None
+        self._local_root_payload = None
+        self._local_root_hash = None
+        self._local_root_path = None
+        self._local_loaded_at = None
+        self._local_devices_locked = True
+        self._profiles_dirty = False
+        self._groups_dirty = False
+        self._tests_dirty = False
+        self._groups_profile = None
+        self._tests_profile = None
+        self._tests_model = None
+        self._tests_active_set = EMPTY_STRING
+        self._tests_device_catalog = {}
+        self._tests_duplicate_labels = set()
+        self._reset_transient_active_group()
+        self._store = ConfigSchemaStore()
+
+    def _active_group_payload(self) -> Dict[str, object]:
+        """
+        NAME
+            _active_group_payload - Build a local payload for the reserved active group.
+        """
+        members_payload = []
+        for device in self._active_group_members:
+            members_payload.append({KEY_DEVICE: device, KEY_ENABLED: True})
+        return {
+            KEY_NAME: GROUP_NAME_ACTIVE,
+            KEY_ENABLED: True,
+            KEY_MEMBERS: members_payload,
+            KEY_BRIDGE_BINDINGS: [],
+            KEY_TEMP: True,
+        }
+
+    def _global_name_conflict(self, name: str, skip_group: Optional[str] = None) -> Optional[str]:
+        """
+        NAME
+            _global_name_conflict - Return first conflicting global namespace owner.
+        """
+        key = name.strip().lower()
+        if not key:
+            return None
+        if key == GROUP_NAME_ACTIVE:
+            return GROUP_NAME_ACTIVE
+        config = self._local_config or {}
+        if isinstance(config, dict):
+            devices = config.get(KEY_DEVICES)
+            if isinstance(devices, list):
+                for device in devices:
+                    if not isinstance(device, dict):
+                        continue
+                    device_name = str(device.get(KEY_NAME, EMPTY_STRING)).strip()
+                    if not device_name:
+                        device_name = str(device.get(KEY_LABEL, EMPTY_STRING)).strip()
+                    if device_name.lower() == key:
+                        return device_name
+        profile_name = self._active_profile_name()
+        if profile_name:
+            groups = self._local_groups(profile_name, create=True)
+            for group in groups:
+                if not isinstance(group, dict):
+                    continue
+                group_name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
+                if not group_name:
+                    continue
+                if skip_group and group_name.lower() == skip_group.strip().lower():
+                    continue
+                if group_name.lower() == key:
+                    return group_name
+        return None
+
+    def _find_named_local_group(self, name: str) -> Optional[Dict[str, object]]:
+        """
+        NAME
+            _find_named_local_group - Find a non-active local group by case-insensitive name.
+        """
+        if self._is_active_group(name):
+            return None
+        profile = self._active_profile_name()
+        if not profile or not self._local_config:
+            return None
+        groups = self._local_groups(profile, create=True)
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            group_name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
+            if group_name.lower() == name.strip().lower():
+                return group
+        return None
+
+    def _target_group_name(self, explicit_name: Optional[str] = None) -> str:
+        """
+        NAME
+            _target_group_name - Resolve target group using explicit arg, context, or active.
+        """
+        if explicit_name and explicit_name.strip():
+            return explicit_name.strip()
+        mode = self._modes[-1]
+        if mode.name == CMD_GROUP and mode.group:
+            return mode.group
+        return GROUP_NAME_ACTIVE
+
+    def _group_exists_for_context(self, name: str) -> bool:
+        """
+        NAME
+            _group_exists_for_context - Check whether a group can be entered as CLI context.
+        """
+        clean = name.strip()
+        if not clean:
+            return False
+        if self._is_active_group(clean):
+            return True
+        return self._find_named_local_group(clean) is not None
+
+    def _list_target_group_members(self, group_name: str) -> Optional[List[str]]:
+        """
+        NAME
+            _list_target_group_members - Return normalized member names for target group.
+        """
+        if self._is_active_group(group_name):
+            return list(self._active_group_members)
+        group = self._find_named_local_group(group_name)
+        if group is None:
+            return None
+        members = group.get(KEY_MEMBERS, []) or []
+        labels: List[str] = []
+        for member in members:
+            if isinstance(member, dict):
+                label = str(member.get(KEY_DEVICE, EMPTY_STRING)).strip()
+            else:
+                label = str(member).strip()
+            if label:
+                labels.append(label)
+        return labels
+
+    def _write_target_group_members(self, group_name: str, members: List[str]) -> StatusResult:
+        """
+        NAME
+            _write_target_group_members - Replace target group membership from a label list.
+        """
+        normalized: List[str] = []
+        seen: set[str] = set()
+        for label in members:
+            value = str(label).strip()
+            if not value:
+                continue
+            key = value.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(value)
+        if self._is_active_group(group_name):
+            self._active_group_members = normalized
+            return StatusResult(code=SS__NORMAL)
+        group = self._find_named_local_group(group_name)
+        if group is None:
+            print(ERR_GROUP_NOT_FOUND_FMT.format(name=group_name))
+            return StatusResult(code=SS__GROUP__NOT_FOUND)
+        group[KEY_MEMBERS] = [{KEY_DEVICE: label, KEY_ENABLED: True} for label in normalized]
+        self._mark_groups_dirty()
+        return StatusResult(code=SS__NORMAL)
+
+    def _device_sequence_labels(self) -> List[str]:
+        """
+        NAME
+            _device_sequence_labels - Return deterministic cyclic source list for add-next/add-all.
+        """
+        profile_name = self._active_profile_name()
+        labels: List[str] = []
+        if profile_name:
+            for entry in self._profile_device_entries(profile_name):
+                if not isinstance(entry, dict):
+                    continue
+                name = str(entry.get(KEY_NAME, EMPTY_STRING)).strip()
+                if not name:
+                    name = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+                if name:
+                    labels.append(name)
+        if not labels:
+            config = self._local_config or {}
+            devices = config.get(KEY_DEVICES) if isinstance(config, dict) else None
+            if isinstance(devices, list):
+                for entry in devices:
+                    if not isinstance(entry, dict):
+                        continue
+                    name = str(entry.get(KEY_NAME, EMPTY_STRING)).strip()
+                    if not name:
+                        name = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+                    if name:
+                        labels.append(name)
+        deduped: List[str] = []
+        seen: set[str] = set()
+        for label in labels:
+            key = label.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(label)
+        return deduped
+
+    def _next_device_label(self) -> Optional[str]:
+        """
+        NAME
+            _next_device_label - Select next device from deterministic cyclic list.
+        """
+        labels = self._device_sequence_labels()
+        if not labels:
+            return None
+        index = self._active_add_cursor % len(labels)
+        self._active_add_cursor = (index + COUNT_ONE) % len(labels)
+        return labels[index]
+
+    def _replace_tests_group_refs(self, old_name: str, new_name: str) -> int:
+        """
+        NAME
+            _replace_tests_group_refs - Update test target references for group rename.
+        """
+        self._ensure_tests_loaded()
+        model = self._tests_model
+        if model is None:
+            return COUNT_ZERO
+        old_key = old_name.strip().lower()
+        updates = COUNT_ZERO
+        for test_set in model.test_sets.values():
+            if not isinstance(test_set, TestSetModel):
+                continue
+            for test in test_set.tests:
+                if not isinstance(test, TestModel):
+                    continue
+                for idx, label in enumerate(list(test.devices)):
+                    if isinstance(label, str) and label.strip().lower() == old_key:
+                        test.devices[idx] = new_name
+                        updates += COUNT_ONE
+        if updates > COUNT_ZERO:
+            self._mark_tests_dirty()
+        return updates
+
+    def _rename_local_group(self, old_name: str, new_name: str) -> StatusResult:
+        """
+        NAME
+            _rename_local_group - Rename a local named group with atomic validation.
+        """
+        old_clean = old_name.strip()
+        new_clean = new_name.strip()
+        if not old_clean or not new_clean:
+            print(ERR_GROUP_NAME_REQUIRED)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        if self._is_active_group(old_clean):
+            print(ERR_RESERVED_ACTIVE_RENAME)
+            return StatusResult(code=SS__CONFIG__INVALID)
+        if self._is_active_group(new_clean):
+            print(ERR_NAME_RESERVED.format(name=new_clean))
+            return StatusResult(code=SS__CONFIG__INVALID)
+        group = self._find_named_local_group(old_clean)
+        if group is None:
+            print(ERR_GROUP_NOT_FOUND_FMT.format(name=old_clean))
+            return StatusResult(code=SS__GROUP__NOT_FOUND)
+        conflict = self._global_name_conflict(new_clean, skip_group=old_clean)
+        if conflict is not None:
+            print(ERR_NAME_EXISTS.format(name=new_clean))
+            return StatusResult(code=SS__CONFIG__DUPLICATE_LABEL)
+        snapshot_config = deepcopy(self._local_config)
+        snapshot_tests = deepcopy(self._tests_model)
+        group[KEY_NAME] = new_clean
+        self._replace_tests_group_refs(old_clean, new_clean)
+        if self._modes[-1].name == CMD_GROUP and self._modes[-1].group:
+            if self._modes[-1].group.strip().lower() == old_clean.lower():
+                self._modes[-1].group = new_clean
+        if isinstance(self._local_config, dict) and isinstance(self._local_root_payload, dict):
+            ok, message = validate_config_data_all(self._local_config, self._local_root_payload)
+            if not ok:
+                self._local_config = snapshot_config
+                self._tests_model = snapshot_tests
+                print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
+                return StatusResult(code=SS__CONFIG__INVALID)
+        self._mark_groups_dirty()
+        return StatusResult(code=SS__NORMAL)
+
+    def _create_local_group(self, name: str) -> StatusResult:
+        """
+        NAME
+            _create_local_group - Create a named group and fail when it already exists.
+        """
+        clean = name.strip()
+        if not clean:
+            print(ERR_GROUP_NAME_REQUIRED)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        if self._is_active_group(clean):
+            print(ERR_NAME_RESERVED.format(name=clean))
+            return StatusResult(code=SS__CONFIG__INVALID)
+        if self._find_named_local_group(clean) is not None:
+            print(ERR_NAME_EXISTS.format(name=clean))
+            return StatusResult(code=SS__CONFIG__DUPLICATE_LABEL)
+        conflict = self._global_name_conflict(clean)
+        if conflict is not None:
+            print(ERR_NAME_EXISTS.format(name=clean))
+            return StatusResult(code=SS__CONFIG__DUPLICATE_LABEL)
+        return self._select_or_create_local_group(clean)
+
+    def _copy_local_group(self, source: str, dest: str) -> StatusResult:
+        """
+        NAME
+            _copy_local_group - Copy group membership from source into destination.
+        """
+        source_clean = source.strip()
+        dest_clean = dest.strip()
+        if not source_clean or not dest_clean:
+            print(ERR_GROUP_NAME_REQUIRED)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        if source_clean.lower() == dest_clean.lower():
+            print(ERR_SOURCE_DEST_SAME)
+            return StatusResult(code=SS__CONFIG__INVALID)
+        source_members = self._list_target_group_members(source_clean)
+        if source_members is None:
+            print(ERR_GROUP_NOT_FOUND_FMT.format(name=source_clean))
+            return StatusResult(code=SS__GROUP__NOT_FOUND)
+        if self._is_active_group(dest_clean):
+            return self._write_target_group_members(dest_clean, source_members)
+        existing_dest = self._find_named_local_group(dest_clean)
+        if existing_dest is not None:
+            if self._batch:
+                print(ERR_COPY_NON_INTERACTIVE)
+                return StatusResult(code=SS__CONFIG__INVALID)
+            if not self._confirm(f"Overwrite group '{dest_clean}'?"):
+                return StatusResult(code=SS__EXECUTOR__CANCELLED)
+            return self._write_target_group_members(dest_clean, source_members)
+        conflict = self._global_name_conflict(dest_clean)
+        if conflict is not None:
+            print(ERR_NAME_EXISTS.format(name=dest_clean))
+            return StatusResult(code=SS__CONFIG__DUPLICATE_LABEL)
+        create_result = self._select_or_create_local_group(dest_clean)
+        if not create_result.ok():
+            return create_result
+        return self._write_target_group_members(dest_clean, source_members)
+
     def validate_config_file(self, path: str) -> tuple[bool, str, Optional[Dict[str, object]]]:
         """
         NAME
@@ -2693,6 +3114,9 @@ class BridgeCli:
         active_result = self._handle_active_command(line)
         if active_result is not None:
             return active_result
+        targeting_result = self._handle_group_targeting_command(line)
+        if targeting_result is not None:
+            return targeting_result
         reset_result = self._handle_reset_zero_config_command(line)
         if reset_result is not None:
             return reset_result
@@ -2824,6 +3248,114 @@ class BridgeCli:
         print("ERROR: active requires add/next/show.")
         return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
 
+    def _handle_group_targeting_command(self, line: str) -> Optional[StatusResult]:
+        """
+        NAME
+            _handle_group_targeting_command - Handle V1 group/targeting commands before parser.
+        """
+        mode = self._modes[-1].name
+        if mode not in (MODE_CONFIG, CMD_GROUP):
+            return None
+        try:
+            tokens = self._split_command(line)
+        except Exception:
+            return None
+        if not tokens:
+            return None
+        normalized = [token.lower() for token in tokens]
+        cmd = normalized[COUNT_ZERO]
+        self._ensure_local_config()
+        if not self._local_config:
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        profile = self._require_active_profile()
+        if not profile:
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
+
+        explicit_group: Optional[str] = None
+        if len(tokens) >= COUNT_FOUR and normalized[-2] == CMD_GROUP:
+            explicit_group = tokens[-1]
+
+        if cmd == CMD_GROUP and len(tokens) == COUNT_THREE and normalized[1] == CMD_CREATE:
+            result = self._create_local_group(tokens[2])
+            if not result.ok():
+                return result
+            self._modes.append(CliMode(CMD_GROUP, tokens[2]))
+            return StatusResult(code=SS__NORMAL)
+
+        if cmd == CMD_GROUP and len(tokens) == COUNT_THREE and normalized[1] == CMD_DELETE:
+            if not self._batch and not self._confirm(f"Delete group '{tokens[2]}'?"):
+                return StatusResult(code=SS__EXECUTOR__CANCELLED)
+            return self._delete_local_group(tokens[2])
+
+        if cmd == CMD_NO and len(tokens) == COUNT_THREE and normalized[1] == CMD_GROUP:
+            if not self._batch and not self._confirm(f"Delete group '{tokens[2]}'?"):
+                return StatusResult(code=SS__EXECUTOR__CANCELLED)
+            return self._delete_local_group(tokens[2])
+
+        if cmd == CMD_GROUP and len(tokens) == COUNT_FOUR and normalized[1] == CMD_RENAME:
+            return self._rename_local_group(tokens[2], tokens[3])
+
+        if cmd == CMD_GROUP and normalized[1:2] == [CMD_CLEAR]:
+            target_name = tokens[2] if len(tokens) >= COUNT_THREE else self._target_group_name(None)
+            return self._clear_local_group_members(target_name)
+
+        if cmd == CMD_COPY and len(tokens) == COUNT_FOUR and normalized[1] == CMD_GROUP:
+            return self._copy_local_group(tokens[2], tokens[3])
+
+        if cmd == CMD_ADD and len(tokens) >= COUNT_THREE and normalized[1] == CMD_DEVICE:
+            if explicit_group is not None:
+                target_name = explicit_group
+            else:
+                target_name = self._target_group_name(None)
+            return self._add_local_group_member(target_name, tokens[2])
+
+        if cmd == CMD_REMOVE and len(tokens) >= COUNT_THREE and normalized[1] == CMD_DEVICE:
+            if explicit_group is not None:
+                target_name = explicit_group
+            else:
+                target_name = self._target_group_name(None)
+            return self._remove_local_group_member(target_name, tokens[2])
+
+        if (
+            cmd == CMD_NO
+            and len(tokens) >= COUNT_THREE
+            and normalized[1] == CMD_DEVICE
+            and (mode == CMD_GROUP or explicit_group is not None)
+        ):
+            if explicit_group is not None:
+                target_name = explicit_group
+            else:
+                target_name = self._target_group_name(None)
+            return self._remove_local_group_member(target_name, tokens[2])
+
+        if cmd == CMD_ADD and len(tokens) >= COUNT_TWO and normalized[1] == CMD_ALL:
+            target_name = self._target_group_name(explicit_group)
+            labels = self._device_sequence_labels()
+            members = self._list_target_group_members(target_name)
+            if members is None:
+                print(ERR_GROUP_NOT_FOUND_FMT.format(name=target_name))
+                return StatusResult(code=SS__GROUP__NOT_FOUND)
+            seen = {label.lower() for label in members}
+            for label in labels:
+                key = label.lower()
+                if key in seen:
+                    print(WARN_DUPLICATE_MEMBER.format(device=label))
+                    continue
+                members.append(label)
+                seen.add(key)
+            return self._write_target_group_members(target_name, members)
+
+        if cmd == CMD_ADD and len(tokens) >= COUNT_TWO and normalized[1] == CMD_NEXT:
+            target_name = self._target_group_name(explicit_group)
+            next_label = self._next_device_label()
+            if not next_label:
+                print(ERR_NO_DEVICES_AVAILABLE)
+                return StatusResult(code=SS__CONFIG__INVALID)
+            return self._add_local_group_member(target_name, next_label)
+
+        return None
+
     def _handle_reset_zero_config_command(self, line: str) -> Optional[StatusResult]:
         """
         NAME
@@ -2849,10 +3381,14 @@ class BridgeCli:
             return StatusResult(code=SS__CLI_VALIDATOR__REQUIRED)
 
         force_yes = False
+        clear_memory = False
         for token in tokens[COUNT_TWO:]:
             token_lower = token.lower()
             if token_lower == FLAG_YES:
                 force_yes = True
+                continue
+            if token_lower == FLAG_CLEAR_MEMORY:
+                clear_memory = True
                 continue
             print(MESSAGE_HINT_RESET_ZERO_CONFIG)
             return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
@@ -2888,6 +3424,9 @@ class BridgeCli:
                 missing=missing_count,
             )
         )
+        if clear_memory:
+            self._clear_in_memory_workspace_state()
+            print(MESSAGE_RESET_ZERO_CONFIG_MEMORY_CLEARED)
         return StatusResult(code=SS__NORMAL)
 
     def _fallback_device_set(self, tokens: List[str]) -> bool:
@@ -3060,7 +3599,7 @@ class BridgeCli:
             _device_field_values - Provide value lists for device fields.
         """
 
-        if field in (FIELD_DEVICE_INTERFACE, FIELD_INTERFACE_LEGACY):
+        if field == FIELD_DEVICE_INTERFACE:
             return sorted(DEVICE_INTERFACE_ALLOWED)
         if field == FIELD_MANUFACTURER:
             return self._mappings_values(KEY_MANUFACTURERS)
@@ -3614,7 +4153,7 @@ class BridgeCli:
         NAME
             _load_tests_from_path - Load tests JSON from a path.
         """
-        print(MESSAGE_ERR_TESTS_LEGACY)
+        print(MESSAGE_ERR_TESTS_STANDALONE)
         return StatusResult(code=SS__CONFIG__INVALID)
 
     def _merge_tests_from_path(self, path: Path) -> StatusResult:
@@ -3622,7 +4161,7 @@ class BridgeCli:
         NAME
             _merge_tests_from_path - Merge tests JSON into current model.
         """
-        print(MESSAGE_ERR_TESTS_LEGACY)
+        print(MESSAGE_ERR_TESTS_STANDALONE)
         return StatusResult(code=SS__CONFIG__INVALID)
 
     def _ensure_bindings_loaded(self) -> bool:
@@ -5162,7 +5701,7 @@ class BridgeCli:
         NAME
             _save_tests_command - Validate and persist tests JSON.
         """
-        print(MESSAGE_ERR_TESTS_LEGACY)
+        print(MESSAGE_ERR_TESTS_STANDALONE)
         return StatusResult(code=SS__CONFIG__INVALID)
 
     def _save_tests_to_path(
@@ -5234,14 +5773,6 @@ class BridgeCli:
         )
         print(MESSAGE_WROTE_TESTS.format(path=path))
         return StatusResult(code=SS__CONFIG__SAVED)
-
-    def _write_tests_command(self, tokens: List[str]) -> StatusResult:
-        """
-        NAME
-            _write_tests_command - Deprecated alias for save tests.
-        """
-        print(MESSAGE_ERR_TESTS_LEGACY)
-        return StatusResult(code=SS__CONFIG__INVALID)
 
     def _get_active_test_set(self) -> TestSetModel:
         """
@@ -5582,14 +6113,16 @@ class BridgeCli:
                 return result
             print(f"Active profile: {self._groups_profile}")
             return StatusResult(code=SS__NORMAL)
-        if cmd == "group" and len(tokens) >= 2 and not self._session.is_connected():
+        if cmd == "group" and len(tokens) >= 2:
             name = tokens[1]
-            result = self._select_or_create_local_group(name)
-            if not result.ok():
-                return result
+            if not self._group_exists_for_context(name):
+                print(ERR_GROUP_NOT_FOUND_FMT.format(name=name))
+                return StatusResult(code=SS__GROUP__NOT_FOUND)
             self._modes.append(CliMode("group", name))
-            self._warn("WARNING: Robot not connected; local group selected.")
-            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+            if not self._session.is_connected():
+                self._warn("WARNING: Robot not connected; local group selected.")
+                return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+            return StatusResult(code=SS__NORMAL)
         if cmd == "rename" and len(tokens) >= 4 and tokens[1].lower() == "device":
             result = self._rename_local_device(tokens[2], tokens[3])
             if result.ok():
@@ -5615,10 +6148,9 @@ class BridgeCli:
             return StatusResult(code=SS__NORMAL)
         if cmd == "group" and len(tokens) >= 2:
             name = tokens[1]
-            seq = group_create(self._session, name)
-            event = self._wait_for_seq(seq)
-            if self._event_failed(event, "group create"):
-                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+            if not self._group_exists_for_context(name):
+                print(ERR_GROUP_NOT_FOUND_FMT.format(name=name))
+                return StatusResult(code=SS__GROUP__NOT_FOUND)
             self._modes.append(CliMode("group", name))
             return StatusResult(code=SS__NORMAL)
         if cmd == "device" and len(tokens) >= 2:
@@ -6125,13 +6657,9 @@ class BridgeCli:
                 target = SHOW_TARGET_CONFIG_RAW
             elif name == SHOW_CONFIG_DIRTY:
                 target = SHOW_TARGET_CONFIG_DIRTY
-        if (
-            target == CMD_DEVICE
-            and len(tokens) >= 3
-            and tokens[1].lower() == CMD_REGISTRY
-        ):
-            target = SHOW_TARGET_DEVICE_REGISTRY
-            tokens = [SHOW_TARGET_DEVICE_REGISTRY, tokens[2]]
+        if target == CMD_DEVICE and len(tokens) >= 3 and tokens[1].lower() == CMD_REGISTRY:
+            print(MESSAGE_ERR_SHOW_DEVICE_REGISTRY_REMOVED)
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
         if target == SHOW_TARGET_CONFIG:
             target = SHOW_TARGET_RUNTIME
         if target == SHOW_TARGET_MESSAGE_LEVEL:
@@ -7821,10 +8349,6 @@ class BridgeCli:
             "validate bindings": "validate bindings [path]\n  Validate bindings payload.",
             "validate can-mappings": "validate can-mappings [path]\n  Validate CAN mappings payload.",
             "validate script": "validate script <path>\n  Lint a CLI script without executing it.",
-            "write tests (legacy)": (
-                "write tests <path>\n"
-                "  Not supported; tests live in bringup_system.json."
-            ),
             "bindings": (
                 "bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]\n"
                 "bindings controller add <controller> <type> <port>\n"
@@ -8065,9 +8589,14 @@ class BridgeCli:
         if not profile:
             print(MESSAGE_ERR_PROFILE_REQUIRED)
             return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
-        ok, error, payload = local_show_data(
-            target, tokens, self._local_config, profile, self._local_root_payload, self._can_mappings
-        )
+        if target == SHOW_TARGET_GROUP and len(tokens) >= COUNT_TWO and self._is_active_group(tokens[1]):
+            ok = True
+            error = None
+            payload = self._active_group_payload()
+        else:
+            ok, error, payload = local_show_data(
+                target, tokens, self._local_config, profile, self._local_root_payload, self._can_mappings
+            )
         if not ok:
             print(f"ERROR: {error}")
             print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW)
@@ -8077,6 +8606,7 @@ class BridgeCli:
             if isinstance(payload.get(KEY_BRIDGE_GROUPS), list)
             else []
         )
+        active_group_payload = self._active_group_payload()
         selected = (
             payload.get(KEY_BRIDGE_SELECTED_DEVICE)
             if isinstance(payload.get(KEY_BRIDGE_SELECTED_DEVICE), dict)
@@ -8098,9 +8628,11 @@ class BridgeCli:
             enabled_value = str(bool(payload.get(KEY_ENABLED, False))).lower()
             estopped_value = str(bool(payload.get(KEY_ESTOPPED, False))).lower()
             mode_value = str(payload.get(KEY_MODE, EMPTY_STRING))
-            group_count = payload.get(KEY_GROUP_COUNT, len(groups))
+            group_count = len(groups) + COUNT_ONE
             selected_label = selected_device or TEXT_STATUS_NONE
             selected_state = TEXT_STATUS_ON if selected_enabled else TEXT_STATUS_OFF
+            payload_status = dict(payload)
+            payload_status[KEY_GROUP_COUNT] = group_count
             text = SEP_NEWLINE.join(
                 [
                     TEXT_STATUS_HEADER,
@@ -8113,11 +8645,30 @@ class BridgeCli:
                     TEXT_STATUS_SELECTED.format(device=selected_label, state=selected_state),
                 ]
             )
-            _print_local(text, payload)
+            _print_local(text, payload_status)
             return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_GROUPS:
             lines = []
+            active_count = len(self._active_group_members)
+            groups_payload = [
+                {
+                    KEY_NAME: GROUP_NAME_ACTIVE,
+                    KEY_ENABLED: True,
+                    KEY_MEMBER_COUNT: active_count,
+                    KEY_BINDING_COUNT: COUNT_ZERO,
+                    KEY_TEMP: True,
+                }
+            ]
+            active_members = active_group_payload.get(KEY_MEMBERS, [])
+            lines.append(
+                TEXT_GROUPS_ENTRY.format(
+                    name=GROUP_NAME_ACTIVE,
+                    state=TEXT_ENABLED,
+                    members=len(active_members) if isinstance(active_members, list) else COUNT_ZERO,
+                    bindings=COUNT_ZERO,
+                )
+            )
             for group in groups:
                 if not isinstance(group, dict):
                     continue
@@ -8134,16 +8685,20 @@ class BridgeCli:
                         bindings=bindings,
                     )
                 )
+                groups_payload.append(group)
             if not lines:
-                _print_local(TEXT_GROUPS_NONE, payload)
+                _print_local(TEXT_GROUPS_NONE, {KEY_BRIDGE_GROUPS: groups_payload})
                 return StatusResult(code=SS__NORMAL)
             lines.insert(0, TEXT_GROUPS_HEADER)
-            _print_local("\n".join(lines), payload)
+            _print_local("\n".join(lines), {KEY_BRIDGE_GROUPS: groups_payload})
             return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_GROUP and len(tokens) >= 2:
             name = tokens[1]
-            match = payload if isinstance(payload, dict) else {}
+            if self._is_active_group(name):
+                match = active_group_payload
+            else:
+                match = payload if isinstance(payload, dict) else {}
             members = match.get(KEY_MEMBERS, []) or []
             bindings = match.get(KEY_BRIDGE_BINDINGS, []) or []
             lines = [
@@ -8384,9 +8939,20 @@ class BridgeCli:
             enabled_value = str(bool(payload.get(KEY_ENABLED, False))).lower()
             estopped_value = str(bool(payload.get(KEY_ESTOPPED, False))).lower()
             mode_value = str(payload.get(KEY_MODE, EMPTY_STRING))
-            group_count = len(groups)
+            group_count = len(groups) + COUNT_ONE
             selected_label = selected_device or TEXT_STATUS_NONE
             selected_state = TEXT_STATUS_ON if selected_enabled else TEXT_STATUS_OFF
+            payload_runtime = dict(payload)
+            payload_runtime[KEY_GROUP_COUNT] = group_count
+            payload_runtime[KEY_BRIDGE_GROUPS] = [
+                {
+                    KEY_NAME: GROUP_NAME_ACTIVE,
+                    KEY_ENABLED: True,
+                    KEY_MEMBERS: list(self._active_group_members),
+                    KEY_BRIDGE_BINDINGS: [],
+                    KEY_TEMP: True,
+                }
+            ] + list(groups)
             status_lines = [
                 TEXT_STATUS_HEADER,
                 TEXT_STATUS_BUILD.format(value=build_value),
@@ -8402,6 +8968,15 @@ class BridgeCli:
                 group_lines.append(TEXT_GROUPS_NONE)
             else:
                 group_lines.append(TEXT_GROUPS_HEADER)
+                active_members = active_group_payload.get(KEY_MEMBERS, [])
+                group_lines.append(
+                    TEXT_GROUPS_ENTRY.format(
+                        name=GROUP_NAME_ACTIVE,
+                        state=TEXT_ENABLED,
+                        members=len(active_members) if isinstance(active_members, list) else COUNT_ZERO,
+                        bindings=COUNT_ZERO,
+                    )
+                )
                 for group in groups:
                     if not isinstance(group, dict):
                         continue
@@ -8417,7 +8992,7 @@ class BridgeCli:
                             bindings=len(bindings),
                         )
                     )
-            _print_local(SEP_NEWLINE.join(status_lines + [""] + group_lines), payload)
+            _print_local(SEP_NEWLINE.join(status_lines + [""] + group_lines), payload_runtime)
             return StatusResult(code=SS__NORMAL)
 
         print("ERROR: Unknown show command.")
@@ -8622,7 +9197,7 @@ class BridgeCli:
         if not self._local_config:
             print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        payload = self._ordered_bridge_config(self._local_config, include_devices=True)
+        payload = self._ordered_bridge_config(self._local_config)
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             print(self._dump_json(payload, pretty))
@@ -8722,6 +9297,12 @@ class BridgeCli:
                 self._warn("WARNING: Robot not connected; local group disabled.")
                 return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
             return result
+        if cmd == CMD_CLEAR:
+            result = self._clear_local_group_members(group)
+            if result.ok():
+                self._warn(WARN_LOCAL_GROUP_CLEARED)
+                return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+            return result
         if cmd == "run" and len(tokens) >= 2 and tokens[1].lower() == "test":
             print("ERROR: Cannot run tests without robot connection.")
             return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE)
@@ -8739,10 +9320,16 @@ class BridgeCli:
         if not key:
             print("ERROR: group name required.")
             return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        if self._is_active_group(key):
+            return StatusResult(code=SS__NORMAL)
         groups = self._local_groups(profile, create=True)
         for group in groups:
             if isinstance(group, dict) and str(group.get("name", "")).strip().lower() == key.lower():
                 return StatusResult(code=SS__NORMAL)
+        conflict = self._global_name_conflict(key)
+        if conflict is not None:
+            print(ERR_NAME_EXISTS.format(name=key))
+            return StatusResult(code=SS__CONFIG__INVALID)
         groups.append({"name": key, "enabled": True, "members": [], "bindings": []})
         self._mark_groups_dirty()
         return StatusResult(code=SS__NORMAL)
@@ -8755,6 +9342,13 @@ class BridgeCli:
         if not profile:
             return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         key = name.strip().lower()
+        if self._is_active_group(key):
+            print(ERR_RESERVED_ACTIVE_DELETE)
+            return StatusResult(code=SS__CONFIG__INVALID)
+        test_name = self._group_ref_test_name(name)
+        if test_name:
+            print(ERR_GROUP_REFERENCED_BY_TEST.format(name=name.strip(), test=test_name))
+            return StatusResult(code=SS__CONFIG__INVALID)
         groups = self._local_groups(profile, create=True)
         kept = []
         removed = False
@@ -8802,6 +9396,8 @@ class BridgeCli:
         return StatusResult(code=SS__NORMAL)
 
     def _find_local_group(self, name: str) -> Optional[Dict[str, object]]:
+        if self._is_active_group(name):
+            return self._active_group_payload()
         profile = self._active_profile_name()
         if not profile or not self._local_config:
             return None
@@ -8814,6 +9410,17 @@ class BridgeCli:
         return None
 
     def _add_local_group_member(self, group_name: str, device: str) -> StatusResult:
+        if self._is_active_group(group_name):
+            device_name = self._normalize_device_label_input(device)
+            if not self._local_device_exists(device_name):
+                print("ERROR: Device not defined in local config. Use device <device> to create it.")
+                return StatusResult(code=SS__DEVICE__NOT_DEFINED)
+            for existing in self._active_group_members:
+                if existing.lower() == device_name.lower():
+                    print(WARN_DUPLICATE_MEMBER.format(device=device_name))
+                    return StatusResult(code=SS__NORMAL)
+            self._active_group_members.append(device_name)
+            return StatusResult(code=SS__NORMAL)
         group = self._find_local_group(group_name)
         if group is None:
             print("ERROR: Local group not found.")
@@ -8828,6 +9435,7 @@ class BridgeCli:
             else:
                 name = str(member).strip()
             if name.lower() == device.lower():
+                print(WARN_DUPLICATE_MEMBER.format(device=device))
                 return StatusResult(code=SS__NORMAL)
         members.append({"device": device, "enabled": True})
         group["members"] = members
@@ -8835,6 +9443,18 @@ class BridgeCli:
         return StatusResult(code=SS__NORMAL)
 
     def _remove_local_group_member(self, group_name: str, device: str) -> StatusResult:
+        if self._is_active_group(group_name):
+            kept = []
+            removed = False
+            for existing in self._active_group_members:
+                if existing.lower() == device.lower():
+                    removed = True
+                    continue
+                kept.append(existing)
+            self._active_group_members = kept
+            if not removed:
+                print(WARN_MISSING_MEMBER.format(device=device))
+            return StatusResult(code=SS__NORMAL)
         group = self._find_local_group(group_name)
         if group is None:
             print("ERROR: Local group not found.")
@@ -8852,13 +9472,16 @@ class BridgeCli:
                 continue
             kept.append(member)
         if not removed:
-            print("ERROR: Device not in local group.")
-            return StatusResult(code=SS__GROUP__MEMBER_MISSING)
+            print(WARN_MISSING_MEMBER.format(device=device))
+            return StatusResult(code=SS__NORMAL)
         group["members"] = kept
         self._mark_groups_dirty()
         return StatusResult(code=SS__NORMAL)
 
     def _set_local_member_enabled(self, group_name: str, device: str, action: str) -> StatusResult:
+        if self._is_active_group(group_name):
+            print(ERR_ACTIVE_GROUP_MEMBERSHIP_ONLY)
+            return StatusResult(code=SS__CONFIG__INVALID)
         group = self._find_local_group(group_name)
         if group is None:
             print("ERROR: Local group not found.")
@@ -8887,6 +9510,9 @@ class BridgeCli:
         return StatusResult(code=SS__GROUP__MEMBER_MISSING)
 
     def _add_local_binding(self, group_name: str, tokens: List[str]) -> StatusResult:
+        if self._is_active_group(group_name):
+            print(ERR_ACTIVE_GROUP_MEMBERSHIP_ONLY)
+            return StatusResult(code=SS__CONFIG__INVALID)
         if len(tokens) < 2:
             print("ERROR: bind requires input and kind.")
             return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
@@ -8909,6 +9535,9 @@ class BridgeCli:
         return StatusResult(code=SS__NORMAL)
 
     def _clear_local_bindings(self, group_name: str) -> StatusResult:
+        if self._is_active_group(group_name):
+            print(ERR_ACTIVE_GROUP_MEMBERSHIP_ONLY)
+            return StatusResult(code=SS__CONFIG__INVALID)
         group = self._find_local_group(group_name)
         if group is None:
             print("ERROR: Local group not found.")
@@ -8918,6 +9547,9 @@ class BridgeCli:
         return StatusResult(code=SS__NORMAL)
 
     def _set_local_group_enabled(self, group_name: str, enabled: bool) -> StatusResult:
+        if self._is_active_group(group_name):
+            print(ERR_ACTIVE_GROUP_MEMBERSHIP_ONLY)
+            return StatusResult(code=SS__CONFIG__INVALID)
         group = self._find_local_group(group_name)
         if group is None:
             print("ERROR: Local group not found.")
@@ -8926,137 +9558,46 @@ class BridgeCli:
         self._mark_groups_dirty()
         return StatusResult(code=SS__NORMAL)
 
-    def _rename_local_device(self, old: str, new: str) -> StatusResult:
-        if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        if self._local_devices_locked:
-            return self._rename_profiles_device(old, new)
-        old_name = old.strip()
-        new_name = new.strip()
-        if not old_name or not new_name:
-            print("ERROR: rename device requires old and new names.")
-            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        if old_name.lower() == new_name.lower():
-            print("ERROR: New name matches existing name.")
-            return StatusResult(code=SS__CONFIG__DUPLICATE_LABEL)
-        config = self._local_config
-        existing_names = set()
-        by_profile = config.get(KEY_BRIDGE_BY_PROFILE) if isinstance(config, dict) else None
-        if isinstance(by_profile, dict):
-            for entry in by_profile.values():
-                if not isinstance(entry, dict):
-                    continue
-                for group in entry.get(KEY_BRIDGE_GROUPS, []) or []:
-                    if not isinstance(group, dict):
-                        continue
-                    for member in group.get("members", []) or []:
-                        if isinstance(member, dict):
-                            name = str(member.get(KEY_DEVICE, "")).strip()
-                        else:
-                            name = str(member).strip()
-                        if name:
-                            existing_names.add(name.lower())
-                selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE) if isinstance(entry, dict) else {}
-                if isinstance(selected, dict):
-                    sel_name = str(selected.get(KEY_DEVICE, "")).strip()
-                    if sel_name:
-                        existing_names.add(sel_name.lower())
-        if new_name.lower() in existing_names:
-            print(f"ERROR: Device name {new_name} already exists.")
-            return StatusResult(code=SS__CONFIG__DUPLICATE_LABEL)
-
-        changed = False
-        groups_count = COUNT_ZERO
-        selected_count = COUNT_ZERO
-        if isinstance(by_profile, dict):
-            for entry in by_profile.values():
-                if not isinstance(entry, dict):
-                    continue
-                for group in entry.get(KEY_BRIDGE_GROUPS, []) or []:
-                    if not isinstance(group, dict):
-                        continue
-                    for member in group.get("members", []) or []:
-                        if isinstance(member, dict):
-                            name = str(member.get(KEY_DEVICE, "")).strip()
-                            if name.lower() == old_name.lower():
-                                member[KEY_DEVICE] = new_name
-                                changed = True
-                                groups_count += COUNT_ONE
-                        elif isinstance(member, str):
-                            if member.strip().lower() == old_name.lower():
-                                index = group["members"].index(member)
-                                group["members"][index] = new_name
-                                changed = True
-                                groups_count += COUNT_ONE
-                selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE)
-                if isinstance(selected, dict):
-                    sel_name = str(selected.get(KEY_DEVICE, "")).strip()
-                    if sel_name.lower() == old_name.lower():
-                        selected[KEY_DEVICE] = new_name
-                        changed = True
-                        selected_count += COUNT_ONE
-        if not changed:
-            print(f"ERROR: Device {old_name} not found in local config.")
-            return StatusResult(code=SS__DEVICE__NOT_FOUND)
-        rename_counts: Dict[str, int] = {
-            RENAME_REF_PROFILE_DEVICES: COUNT_ZERO,
-            RENAME_REF_ATTACHMENTS: COUNT_ZERO,
-            RENAME_REF_GROUPS: groups_count,
-            RENAME_REF_SELECTED: selected_count,
-            RENAME_REF_DIAGRAM: COUNT_ZERO,
-            RENAME_REF_TEST_DEVICES: COUNT_ZERO,
-            RENAME_REF_TEST_LIMIT_SWITCH: COUNT_ZERO,
-            RENAME_REF_TEST_ROTATION_ENCODER: COUNT_ZERO,
-            RENAME_REF_TEST_DEADBAND_ENCODER: COUNT_ZERO,
-        }
-        test_counts = self._update_tests_label_refs(old_name, new_name)
-        if test_counts:
-            rename_counts.update(test_counts)
-        self._print_rename_summary(old_name, new_name, rename_counts)
+    def _clear_local_group_members(self, group_name: str) -> StatusResult:
+        """
+        NAME
+            _clear_local_group_members - Remove all members from a local group target.
+        """
+        if self._is_active_group(group_name):
+            self._active_group_members = []
+            self._active_add_cursor = COUNT_ZERO
+            return StatusResult(code=SS__NORMAL)
+        group = self._find_local_group(group_name)
+        if group is None:
+            print("ERROR: Local group not found.")
+            return StatusResult(code=SS__GROUP__NOT_FOUND)
+        group[KEY_MEMBERS] = []
+        self._mark_groups_dirty()
         return StatusResult(code=SS__NORMAL)
+
+    def _rename_local_device(self, old: str, new: str) -> StatusResult:
+        return self._rename_profiles_device(old, new)
 
     def _delete_local_device(self, name: str) -> StatusResult:
-        if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        if self._local_devices_locked:
-            return self._delete_profiles_device(name)
-        label = name.strip()
-        if not label:
-            print("ERROR: device name required.")
-            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        config = self._local_config
-        devices = config.get("devices")
-        if not isinstance(devices, list):
-            print("ERROR: No local devices are defined.")
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        removed = False
-        for idx, device in enumerate(list(devices)):
-            if not isinstance(device, dict):
-                continue
-            dev_name = str(device.get("name", "")).strip()
-            if dev_name.lower() == label.lower():
-                del devices[idx]
-                removed = True
-                break
-        if not removed:
-            print(f"ERROR: Device {label} not found in local config.")
-            return StatusResult(code=SS__DEVICE__NOT_FOUND)
-        group_result = self._remove_bridge_groups_device(label)
-        if group_result.ok():
-            self._mark_groups_dirty()
-        return StatusResult(code=SS__NORMAL)
+        return self._delete_profiles_device(name)
 
     def _delete_profiles_device(self, name: str) -> StatusResult:
+        group_name = self._device_ref_group_name(name)
+        if group_name:
+            print(
+                ERR_DEVICE_REFERENCED.format(
+                    name=name.strip(),
+                    kind=TARGET_KIND_GROUP,
+                    ref=group_name,
+                )
+            )
+            return StatusResult(code=SS__CONFIG__INVALID)
+        test_name = self._device_ref_test_name(name)
+        if test_name:
+            print(ERR_DEVICE_REFERENCED.format(name=name.strip(), kind=TARGET_KIND_TEST, ref=test_name))
+            return StatusResult(code=SS__CONFIG__INVALID)
         entry = self._find_profiles_device_entry(name)
         if entry is None:
-            bridge_result = self._delete_bridge_config_device(name)
-            if bridge_result.ok():
-                self._warn(
-                    f"WARNING: Device {name} not found in profiles; removed from local bridgeConfig devices."
-                )
-                return StatusResult(code=SS__NORMAL)
             print(f"ERROR: Device {name} not found in profiles.")
             return StatusResult(code=SS__DEVICE__NOT_FOUND)
         payload = self._local_root_payload
@@ -9120,29 +9661,6 @@ class BridgeCli:
         self._remove_bridge_groups_device(name)
         self._refresh_devices_from_profiles()
         return StatusResult(code=SS__NORMAL)
-
-    def _delete_bridge_config_device(self, name: str) -> StatusResult:
-        if not self._local_config:
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        devices = self._local_config.get("devices")
-        if not isinstance(devices, list):
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        label = name.strip()
-        if not label:
-            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        removed = False
-        for idx, device in enumerate(list(devices)):
-            if not isinstance(device, dict):
-                continue
-            dev_name = str(device.get("name", "")).strip()
-            if dev_name.lower() == label.lower():
-                del devices[idx]
-                removed = True
-                break
-        if removed:
-            self._local_config["devices"] = devices
-            return StatusResult(code=SS__NORMAL)
-        return StatusResult(code=SS__DEVICE__NOT_FOUND)
 
     def _remove_bridge_groups_device(self, name: str) -> StatusResult:
         config = self._local_config
@@ -9239,6 +9757,16 @@ class BridgeCli:
         if not new_label:
             print("ERROR: new device name required.")
             return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        if old.strip().lower() == new_label.lower():
+            print("ERROR: New name matches existing name.")
+            return StatusResult(code=SS__CONFIG__DUPLICATE_LABEL)
+        if self._is_active_group(new_label):
+            print(ERR_NAME_RESERVED.format(name=new_label))
+            return StatusResult(code=SS__CONFIG__INVALID)
+        conflict = self._global_name_conflict(new_label)
+        if conflict is not None and conflict.lower() != old.strip().lower():
+            print(ERR_NAME_EXISTS.format(name=new_label))
+            return StatusResult(code=SS__CONFIG__DUPLICATE_LABEL)
         entry["label"] = new_label
         self._profiles_dirty = True
         rename_counts: Dict[str, int] = {
@@ -9508,14 +10036,8 @@ class BridgeCli:
     def _normalize_device_field(self, field: str) -> str:
         """
         NAME
-            _normalize_device_field - Map legacy device field names to canonical keys.
-
-        DESCRIPTION
-            Accepts legacy CLI field names (for example, interface) and returns
-            the canonical field key used by the profiles payload.
+            _normalize_device_field - Validate canonical device field names.
         """
-        if field == FIELD_INTERFACE_LEGACY:
-            return FIELD_DEVICE_INTERFACE
         return field
 
     def _set_local_device_meta(self, name: str, field: str, value_raw: str) -> StatusResult:
@@ -9523,180 +10045,30 @@ class BridgeCli:
         NAME
             _set_local_device_meta - Update metadata for a local device.
         """
-        if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         field_key = self._normalize_device_field(field.strip())
-        if self._local_devices_locked:
-            return self._set_profiles_device_meta(name, field_key, value_raw)
-        if field_key == FIELD_LABEL:
-            print("ERROR: device label is managed by rename device.")
-            return StatusResult(code=SS__DEVICE__INVALID_FIELD)
-        if field_key not in DEVICE_FIELDS_PROFILE:
-            print(MESSAGE_ERR_DEVICE_FIELD_UNKNOWN)
-            return StatusResult(code=SS__DEVICE__INVALID_FIELD)
-        store_key = FIELD_TYPE if field_key == FIELD_ROLE else field_key
-        field_type = DEVICE_FIELD_TYPES.get(field_key, DEVICE_FIELD_STR)
-        value: object
-        if field_type == DEVICE_FIELD_INT:
-            try:
-                value = int(value_raw, 0)
-            except ValueError:
-                print(MESSAGE_ERR_DEVICE_FIELD_INT)
-                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-        elif field_type == DEVICE_FIELD_BOOL:
-            parsed = self._parse_bool(value_raw)
-            if parsed is None:
-                print(MESSAGE_ERR_DEVICE_FIELD_BOOL)
-                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            value = parsed
-        elif field_type == DEVICE_FIELD_LIST:
-            parsed = parse_json_arg(value_raw)
-            if parsed is None or not isinstance(parsed, list):
-                print(MESSAGE_ERR_DEVICE_FIELD_LIST)
-                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            value = parsed
-        elif field_type == DEVICE_FIELD_DICT:
-            parsed = parse_json_arg(value_raw)
-            if parsed is None or not isinstance(parsed, dict):
-                print(MESSAGE_ERR_DEVICE_FIELD_DICT)
-                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            value = parsed
-        else:
-            value = value_raw
-        config = self._local_config
-        devices = config.get("devices")
-        if not isinstance(devices, list):
-            devices = []
-            config["devices"] = devices
-        target = None
-        for device in devices:
-            if not isinstance(device, dict):
-                continue
-            dev_name = str(device.get("name", "")).strip()
-            if dev_name.lower() == name.strip().lower():
-                target = device
-                break
-        if target is None:
-            # Allow metadata edits for devices already referenced by groups.
-            if not self._device_in_groups(name):
-                print("ERROR: Device not found in local config or groups.")
-                return StatusResult(code=SS__DEVICE__NOT_FOUND)
-            target = {"name": name.strip()}
-            devices.append(target)
-        target[store_key] = value
-        if field_key == FIELD_DEVICE_INTERFACE and isinstance(target, dict):
-            interface = str(get_device_interface(target) or target.get(KEY_INTERFACE_LEGACY) or "").strip()
-            if interface and interface not in DEVICE_INTERFACE_ALLOWED:
-                print(MESSAGE_ERR_DEVICE_INTERFACE_INVALID)
-                return StatusResult(code=SS__DEVICE__INVALID_FIELD)
-        if not self._local_devices_locked:
-            self._mark_groups_dirty()
-        return StatusResult(code=SS__NORMAL)
+        return self._set_profiles_device_meta(name, field_key, value_raw)
 
     def _clear_local_device_meta(self, name: str, field: str) -> StatusResult:
         """
         NAME
             _clear_local_device_meta - Clear metadata for a local device.
         """
-        if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
         field_key = self._normalize_device_field(field.strip())
-        if self._local_devices_locked:
-            return self._clear_profiles_device_meta(name, field_key)
-        if field_key == FIELD_LABEL:
-            print("ERROR: device label is managed by rename device.")
-            return StatusResult(code=SS__DEVICE__INVALID_FIELD)
-        if field_key not in DEVICE_FIELDS_PROFILE:
-            print(MESSAGE_ERR_DEVICE_FIELD_UNKNOWN)
-            return StatusResult(code=SS__DEVICE__INVALID_FIELD)
-        store_key = FIELD_TYPE if field_key == FIELD_ROLE else field_key
-        devices = self._local_config.get("devices")
-        if not isinstance(devices, list):
-            print("ERROR: No local devices are defined.")
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        for device in devices:
-            if not isinstance(device, dict):
-                continue
-            dev_name = str(device.get("name", "")).strip()
-            if dev_name.lower() == name.strip().lower():
-                if store_key in device:
-                    device.pop(store_key, None)
-                    self._validate_device_entry(device)
-                    if not self._local_devices_locked:
-                        self._mark_groups_dirty()
-                return StatusResult(code=SS__NORMAL)
-        print("ERROR: Device not found in local config.")
-        return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        return self._clear_profiles_device_meta(name, field_key)
 
     def _ensure_local_device_entry(self, name: str) -> StatusResult:
         """
         NAME
             _ensure_local_device_entry - Ensure a local device entry exists.
         """
-        if not self._local_config:
-            print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        if self._local_devices_locked:
-            return self._ensure_profiles_device_entry(name)
-        config = self._local_config
-        devices = config.get("devices")
-        if not isinstance(devices, list):
-            devices = []
-            config["devices"] = devices
-        for device in devices:
-            if not isinstance(device, dict):
-                continue
-            dev_name = str(device.get("name", "")).strip()
-            if dev_name.lower() == name.strip().lower():
-                return StatusResult(code=SS__NORMAL)
-        devices.append({"name": name.strip()})
-        self._validate_device_entry(devices[-1])
-        return StatusResult(code=SS__NORMAL)
+        return self._ensure_profiles_device_entry(name)
 
     def _show_local_device_entry(self, name: str) -> StatusResult:
         """
         NAME
             _show_local_device_entry - Print the local device metadata.
         """
-        if not self._local_config:
-            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        devices = self._local_config.get("devices")
-        if not isinstance(devices, list):
-            print("ERROR: No local devices are defined.")
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        for device in devices:
-            if not isinstance(device, dict):
-                continue
-            dev_name = str(device.get("name", "")).strip()
-            if dev_name.lower() == name.strip().lower():
-                parts = [f"Local device {dev_name}:"]
-                vendor = device.get("vendor")
-                role = device.get("role")
-                notes = device.get("notes")
-                bus = device.get("bus")
-                tags = device.get("tags")
-                limits = device.get("limits")
-                if vendor is not None:
-                    parts.append(f"  vendor={vendor}")
-                if role is not None:
-                    parts.append(f"  role={role}")
-                if notes is not None:
-                    parts.append(f"  notes={notes}")
-                if bus is not None:
-                    parts.append(f"  bus={bus}")
-                if tags is not None:
-                    parts.append(f"  tags={tags}")
-                if limits is not None:
-                    parts.append(f"  limits={limits}")
-                if len(parts) == 1:
-                    parts.append("  (no metadata)")
-                print("\n".join(parts))
-                return StatusResult(code=SS__NORMAL)
-        print(MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND)
-        return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        return self._show_local_registry_device(name, json_output=False, pretty=False)
 
     def _show_local_registry_device(self, name: str, json_output: bool, pretty: bool) -> StatusResult:
         """
@@ -9796,7 +10168,7 @@ class BridgeCli:
             _device_missing_fields - Return missing required fields for a device.
         """
 
-        interface = str(get_device_interface(entry) or entry.get(KEY_INTERFACE_LEGACY) or "").strip()
+        interface = str(get_device_interface(entry) or "").strip()
         if not interface:
             return [FIELD_DEVICE_INTERFACE]
         required: tuple[str, ...]
@@ -9824,7 +10196,7 @@ class BridgeCli:
             _validate_device_entry - Validate a device definition after edits.
         """
 
-        interface = str(get_device_interface(entry) or entry.get(KEY_INTERFACE_LEGACY) or "").strip()
+        interface = str(get_device_interface(entry) or "").strip()
         if interface and interface not in DEVICE_INTERFACE_ALLOWED:
             print(MESSAGE_ERR_DEVICE_INTERFACE_INVALID)
             return
@@ -9865,9 +10237,7 @@ class BridgeCli:
         if self._local_root_payload is not None:
             payload = dict(self._local_root_payload)
             if isinstance(self._local_config, dict):
-                payload[KEY_BRIDGE_CONFIG] = self._ordered_bridge_config(
-                    self._local_config, include_devices=False
-                )
+                payload[KEY_BRIDGE_CONFIG] = self._ordered_bridge_config(self._local_config)
             self._store.set_profiles_payload(payload)
         self._sync_store_tests()
         self._sync_store_bindings()
@@ -9946,9 +10316,7 @@ class BridgeCli:
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         self._sync_store_tests()
         payload = dict(self._local_root_payload)
-        payload["bridgeConfig"] = self._ordered_bridge_config(
-            self._local_config, include_devices=False
-        )
+        payload["bridgeConfig"] = self._ordered_bridge_config(self._local_config)
         payload["schema_version"] = PROFILE_SCHEMA_VERSION
         payload["data_version"] = timestamp_version()
         payload["data_hash"] = compute_profiles_hash(payload)
@@ -10171,7 +10539,13 @@ class BridgeCli:
         """
         entry = self._find_profiles_device_entry(name)
         if entry is None:
-            return self._ensure_profiles_device_entry(name)
+            create_result = self._ensure_profiles_device_entry(name)
+            if not create_result.ok():
+                return create_result
+            entry = self._find_profiles_device_entry(name)
+            if entry is None:
+                print(MESSAGE_ERR_REGISTRY_DEVICE_NOT_FOUND)
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
         self._ensure_profile_device_label(name)
         field_key = self._normalize_device_field(field.strip())
         if field_key == FIELD_LABEL:
@@ -10209,7 +10583,7 @@ class BridgeCli:
         else:
             entry[store_key] = value_raw
         if field_key == FIELD_DEVICE_INTERFACE:
-            interface = str(get_device_interface(entry) or entry.get(KEY_INTERFACE_LEGACY) or "").strip()
+            interface = str(get_device_interface(entry) or "").strip()
             if interface and interface not in DEVICE_INTERFACE_ALLOWED:
                 print(MESSAGE_ERR_DEVICE_INTERFACE_INVALID)
                 return StatusResult(code=SS__DEVICE__INVALID_FIELD)
@@ -10323,35 +10697,6 @@ class BridgeCli:
             else:
                 lines.append("# NOTE: devices are derived from profiles; merge a profiles file first.")
         lines.append("configure terminal")
-        devices = config.get("devices") if isinstance(config, dict) else None
-        if isinstance(devices, list) and not self._local_devices_locked:
-            for device in devices:
-                if not isinstance(device, dict):
-                    continue
-                name = str(device.get("name", "")).strip()
-                if not name:
-                    continue
-                meta = []
-                if "vendor" in device:
-                    meta.append(("vendor", device.get("vendor")))
-                if "role" in device:
-                    meta.append(("role", device.get("role")))
-                if "notes" in device:
-                    meta.append(("notes", device.get("notes")))
-                if "bus" in device:
-                    meta.append(("bus", device.get("bus")))
-                if "tags" in device:
-                    meta.append(("tags", device.get("tags")))
-                if "limits" in device:
-                    meta.append(("limits", device.get("limits")))
-                lines.append(f'device "{name}"')
-                for field, value in meta:
-                    if field in ("tags", "limits"):
-                        encoded = json.dumps(value, separators=(",", ":"))
-                        lines.append(f"set {field} {encoded}")
-                    else:
-                        lines.append(f"set {field} {value}")
-                lines.append("exit")
         by_profile = config.get(KEY_BRIDGE_BY_PROFILE) if isinstance(config, dict) else None
         if isinstance(by_profile, dict):
             for profile_name in sorted(by_profile.keys()):
@@ -11455,32 +11800,91 @@ class BridgeCli:
         except ValueError as exc:
             raise CliParseError(str(exc)) from exc
 
-    def _device_in_groups(self, name: str) -> bool:
+    def _device_ref_group_name(self, name: str) -> Optional[str]:
         """
         NAME
-            _device_in_groups - Check if a device name is referenced in any group.
+            _device_ref_group_name - Return first group name that references a device.
         """
         config = self._local_config or {}
         by_profile = config.get(KEY_BRIDGE_BY_PROFILE) if isinstance(config, dict) else None
         if not isinstance(by_profile, dict):
-            return False
+            return None
         for entry in by_profile.values():
             if not isinstance(entry, dict):
                 continue
             for group in entry.get(KEY_BRIDGE_GROUPS, []) or []:
                 if not isinstance(group, dict):
                     continue
+                group_name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
                 for member in group.get("members", []) or []:
                     if isinstance(member, dict):
                         dev_name = str(member.get(KEY_DEVICE, "")).strip()
                     else:
                         dev_name = str(member).strip()
                     if dev_name.lower() == name.strip().lower():
-                        return True
-        return False
+                        return group_name
+        return None
+
+    def _device_ref_test_name(self, name: str) -> Optional[str]:
+        """
+        NAME
+            _device_ref_test_name - Return first test that references a device label.
+        """
+        self._ensure_tests_loaded()
+        model = self._tests_model
+        if model is None:
+            return None
+        key = name.strip().lower()
+        for test_set in model.test_sets.values():
+            if not isinstance(test_set, TestSetModel):
+                continue
+            for test in test_set.tests:
+                if not isinstance(test, TestModel):
+                    continue
+                for label in test.devices:
+                    if isinstance(label, str) and label.strip().lower() == key:
+                        return test.name
+                term = test.termination
+                if term and isinstance(term.limit_switch, dict):
+                    limit_id = term.limit_switch.get(KEY_LIMIT_SWITCH_ID)
+                    if isinstance(limit_id, str) and limit_id.strip().lower() == key:
+                        return test.name
+                if term and isinstance(term.rotation_encoder_key, str):
+                    if term.rotation_encoder_key.strip().lower() == key:
+                        return test.name
+                deadband = test.deadband_sweep
+                if deadband and isinstance(deadband.encoder_key, str):
+                    if deadband.encoder_key.strip().lower() == key:
+                        return test.name
+        return None
+
+    def _group_ref_test_name(self, name: str) -> Optional[str]:
+        """
+        NAME
+            _group_ref_test_name - Return first test that references a group name.
+
+        NOTES
+            V1 compatibility scans test device targets for an exact (case-insensitive)
+            group-name match.
+        """
+        self._ensure_tests_loaded()
+        model = self._tests_model
+        if model is None:
+            return None
+        key = name.strip().lower()
+        for test_set in model.test_sets.values():
+            if not isinstance(test_set, TestSetModel):
+                continue
+            for test in test_set.tests:
+                if not isinstance(test, TestModel):
+                    continue
+                for label in test.devices:
+                    if isinstance(label, str) and label.strip().lower() == key:
+                        return test.name
+        return None
 
     @staticmethod
-    def _ordered_bridge_config(config: Dict[str, object], include_devices: bool = True) -> Dict[str, object]:
+    def _ordered_bridge_config(config: Dict[str, object]) -> Dict[str, object]:
         """
         NAME
             _ordered_bridge_config - Normalize bridgeConfig key order for output.
@@ -11491,7 +11895,6 @@ class BridgeCli:
         }
         by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
         ordered_by_profile = dict(by_profile) if isinstance(by_profile, dict) else {}
-        ordered_by_profile.pop(DEFAULT_PROFILE_LOCAL, None)
         ordered[KEY_BRIDGE_BY_PROFILE] = ordered_by_profile
         return ordered
 
@@ -11505,16 +11908,6 @@ class BridgeCli:
             profile = self._active_profile_name()
             if profile:
                 return name.strip().lower() in self._profile_device_labels(profile)
-        config = self._local_config or {}
-        devices = config.get("devices") if isinstance(config, dict) else None
-        if not isinstance(devices, list):
-            return False
-        for device in devices:
-            if not isinstance(device, dict):
-                continue
-            dev_name = str(device.get("name", "")).strip()
-            if dev_name.lower() == name.strip().lower():
-                return True
         return False
 
     def _ensure_local_config(self) -> None:
@@ -11528,12 +11921,10 @@ class BridgeCli:
                 KEY_BRIDGE_GENERATED_AT: None,
                 KEY_BRIDGE_BY_PROFILE: {},
             }
-            self._local_devices_locked = False
+            self._local_devices_locked = True
             self._profiles_dirty = False
             self._groups_dirty = False
-        if self._groups_profile is None and self._local_root_payload is None:
-            self._groups_profile = DEFAULT_PROFILE_LOCAL
-            self._local_profile_entry(self._groups_profile, create=True)
+        self._ensure_default_profile_context()
 
     def _mark_groups_dirty(self) -> None:
         """
@@ -11569,9 +11960,7 @@ class BridgeCli:
             payload["diagram"] = {"profiles": {}}
         payload.setdefault("default_profile", "robot")
         payload["schema_version"] = PROFILE_SCHEMA_VERSION
-        payload["bridgeConfig"] = self._ordered_bridge_config(
-            self._local_config, include_devices=False
-        )
+        payload["bridgeConfig"] = self._ordered_bridge_config(self._local_config)
         if self._profiles_dirty or "data_version" not in payload:
             payload["data_version"] = timestamp_version()
         payload["data_hash"] = compute_profiles_hash(payload)
@@ -11641,9 +12030,7 @@ class BridgeCli:
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         self._sync_store_tests()
         try:
-            config_out = self._ordered_bridge_config(
-                self._local_config, include_devices=not self._local_devices_locked
-            )
+            config_out = self._ordered_bridge_config(self._local_config)
         except Exception as exc:
             print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=exc))
             return StatusResult(code=SS__CONFIG__INVALID)
@@ -12211,3 +12598,64 @@ else:
                     continue
                 start_pos = -len(prefix) if prefix else COMPLETION_START_POS_ZERO
                 yield Completion(item, start_position=start_pos, display_meta=COMPLETION_META_TEXT)
+
+
+DEFAULT_DIRECT_RIO_HOST = "172.22.11.2"
+DEFAULT_DIRECT_UI_TCP_PORT = 5809
+
+
+def _build_direct_parser() -> argparse.ArgumentParser:
+    """
+    NAME
+        _build_direct_parser - Build argparse parser for direct bridge_cli.py execution.
+    """
+    parser = argparse.ArgumentParser(description="Bridge CLI (direct mode).")
+    parser.add_argument("--rio", default=DEFAULT_DIRECT_RIO_HOST, help="Robot host/IP for TCP UI session.")
+    parser.add_argument(
+        "--ui-tcp-port",
+        type=int,
+        default=DEFAULT_DIRECT_UI_TCP_PORT,
+        help="TCP port for robot UI command channel.",
+    )
+    parser.add_argument("--batch", action="store_true", help="Run non-interactive batch script mode.")
+    parser.add_argument("--script", default="", help="Path to batch script when --batch is set.")
+    parser.add_argument("--conflict-policy", default="error", help="Conflict policy for config merges.")
+    parser.add_argument("--cli-echo", action="store_true", help="Enable CLI echo mode.")
+    parser.add_argument("--cli-messages", default="", help="CLI message level override.")
+    parser.add_argument("--no-can", action="store_true", help="Accepted for compatibility; ignored here.")
+    parser.add_argument("--no-nt", action="store_true", help="Accepted for compatibility; ignored here.")
+    parser.add_argument("--cli", action="store_true", help="Accepted for compatibility; ignored here.")
+    return parser
+
+
+def _run_direct_cli(argv: List[str]) -> int:
+    """
+    NAME
+        _run_direct_cli - Entrypoint for direct execution of bridge_cli.py.
+    """
+    parser = _build_direct_parser()
+    args = parser.parse_args(argv)
+    if args.batch and not args.script:
+        print("ERROR: --batch requires --script <file>.")
+        return EXIT_CODE_ERROR
+    session = BridgeSession(args.rio, int(args.ui_tcp_port))
+    cli = BridgeCli(
+        session,
+        batch=bool(args.batch),
+        conflict_policy=str(args.conflict_policy),
+        echo_enabled=bool(args.cli_echo),
+        message_level=(args.cli_messages or None),
+    )
+    if args.batch:
+        try:
+            with open(args.script, "r", encoding="utf-8") as handle:
+                lines = handle.readlines()
+        except Exception as exc:
+            print(f"ERROR: Failed to read script: {exc}")
+            return EXIT_CODE_ERROR
+        return int(cli.run_batch(lines))
+    return int(cli.run_interactive())
+
+
+if __name__ == "__main__":
+    raise SystemExit(_run_direct_cli(sys.argv[1:]))

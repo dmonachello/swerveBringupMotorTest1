@@ -615,7 +615,7 @@ show device <name> [local] [--json] [--pretty]
 
 DESCRIPTION
 
-Display the device definition from the profiles registry. This command is valid in Exec Mode (`bridge>`).
+Display the device definition from the devices table. This command is valid in Exec Mode (`bridge>`).
 
 PARAMETERS
 
@@ -643,7 +643,7 @@ EXAMPLE
 
 EXAMPLE OUTPUT
 SOURCE: local
-Local registry device SPARKMAX/NEO 25:
+local devices-table entry SPARKMAX/NEO 25:
   interface=CAN
   manufacturer=5
   deviceType=2

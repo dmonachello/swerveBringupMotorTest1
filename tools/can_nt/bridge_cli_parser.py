@@ -57,7 +57,6 @@ SHOW_TARGET_GROUP = "group"
 SHOW_TARGET_TEST = "test"
 SHOW_TARGET_DEVICE_USAGE = "device-usage"
 SHOW_TARGET_BINDING_USAGE = "binding-usage"
-SHOW_TARGET_REGISTRY = "registry"
 CMD_CONFIG = "config"
 CMD_SHOW = "show"
 CMD_LS = "ls"
@@ -277,8 +276,6 @@ class BridgeCliParser:
                 return self._handle_load
             if cmd == SPEC.cmd_reload.lower():
                 return self._handle_load
-            if cmd == SPEC.cmd_write.lower():
-                return self._handle_write
             if cmd == SPEC.cmd_config.lower():
                 return self._handle_config_command
             if cmd == SPEC.cmd_rename.lower():
@@ -303,8 +300,6 @@ class BridgeCliParser:
                 return self._handle_group_toggle
             if cmd == SPEC.cmd_run.lower():
                 return self._handle_group_run
-            if cmd == SPEC.cmd_write.lower():
-                return self._handle_write
             return self._handle_test_any
         if mode == SPEC.modes[SPEC.idx_device]:
             if cmd == SPEC.cmd_show.lower():
@@ -315,12 +310,8 @@ class BridgeCliParser:
                 return self._handle_device_no
             if cmd == SPEC.cmd_delete.lower():
                 return self._handle_device_delete
-            if cmd == SPEC.cmd_write.lower():
-                return self._handle_write
             return self._handle_test_any
         if mode == SPEC.modes[SPEC.idx_test]:
-            if cmd == SPEC.cmd_write.lower():
-                return self._handle_write
             return self._handle_test_any
         return None
 
@@ -1634,8 +1625,6 @@ class BridgeCliParser:
             return [SPEC.cmd_profile] + tokens[SPEC.count_one :]
         if cmd == SPEC.cmd_val:
             return [SPEC.cmd_validate] + tokens[SPEC.count_one :]
-        if cmd == SPEC.cmd_savep:
-            return [SPEC.cmd_save, SPEC.cmd_save_profiles] + tokens[SPEC.count_one :]
         return tokens
 
     def _allowed_modes_for_cmd(self, cmd: str) -> List[str]:
@@ -1789,11 +1778,6 @@ class BridgeCliParser:
                 self._reject_extra(tokens, SPEC.count_three, SPEC.label_push)
             return
         self._reject_extra(tokens, SPEC.count_three, SPEC.label_push)
-
-    def _handle_write(self, tokens: List[str]) -> None:
-        if len(tokens) < SPEC.count_three or tokens[SPEC.count_one].lower() != SPEC.cmd_tests:
-            raise CliParseError(SPEC.msg_write_requires)
-        self._reject_extra(tokens, SPEC.count_three, SPEC.cmd_write)
 
     def _handle_merge_import(self, tokens: List[str]) -> None:
         cmd = tokens[SPEC.count_zero].lower()
@@ -2034,13 +2018,6 @@ class BridgeCliParser:
         if not core:
             raise CliParseError(SPEC.msg_show_requires)
         target = core[SPEC.count_zero].lower()
-        if (
-            len(core) >= SPEC.count_three
-            and target == SHOW_TARGET_DEVICE
-            and core[SPEC.count_one].lower() == SHOW_TARGET_REGISTRY
-        ):
-            core = [SHOW_TARGET_DEVICE, core[SPEC.count_two]]
-            target = SHOW_TARGET_DEVICE
         if target not in self._show_targets:
             raise CliParseError(SPEC.msg_unknown_show)
         if target in (

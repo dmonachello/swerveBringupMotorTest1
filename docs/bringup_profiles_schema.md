@@ -81,7 +81,7 @@ classDiagram
 
 Notes:
 - `schema_version`, `data_version`, and `data_hash` are required at the root (schema_version=4).
-- `devices` is the central registry; labels must be unique.
+- `devices` is the central devices table; labels must be unique.
 - Profiles list device labels only under `profiles.<name>.devices`.
 - Limit switches are DIO devices with `type=limitSwitch` and are referenced by label in `attachments` on the CAN device.
 - `diagram` is editor-only and ignored by robot/PC tools.

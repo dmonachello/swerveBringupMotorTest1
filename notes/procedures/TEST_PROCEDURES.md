@@ -2,6 +2,17 @@
 
 Purpose: step-by-step bringup tests cover motors, encoders, and CAN diagnostics.
 
+## Group and Targeting V1 Update (April 20, 2026)
+
+Purpose: keep procedure checks aligned with finalized group and target semantics.
+
+- Use exact, case-insensitive name matching for device/group references.
+- Treat device and group names as one global namespace.
+- Treat `active` as reserved, always available, non-persistent, and reset on save/commit.
+- Validate set semantics for group members (duplicate add warn/no-op, missing remove warn/no-op).
+- Validate delete protection for referenced groups/devices.
+- Treat non-interactive copy into existing named groups as fail/no-mutation.
+
 ## Scope
 Purpose: teleop tests run via bringup controls and JSON-driven definitions.
 

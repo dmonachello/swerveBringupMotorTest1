@@ -112,7 +112,7 @@ Exec / Show:
 - `show group <name>` -> `showGroup` `{name}`
 - `show devices` -> `showDevices`
 - `show device-group <name>` -> `showDevice` `{name}`
-- `show device <name>` -> local-only registry lookup (definition)
+- `show device <name>` -> local-only devices-table lookup (definition)
 - `show bindings` -> `showBindings`
 - `show workspace` / `show session` -> local-only (loaded paths, active profile/set, dirty flags)
 - `show controllers` -> local-only (declared controllers + supported inputs)

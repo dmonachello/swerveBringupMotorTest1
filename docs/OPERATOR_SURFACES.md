@@ -55,7 +55,7 @@ Purpose: Store profiles, diagram, and bridgeConfig.byProfile in one file.
 
 Data Ownership
 Purpose: Specify who owns which data.
-- Device registry + profiles + diagram: owned by topology editor or manual JSON edits.
+- devices table + profiles + diagram: owned by topology editor or manual JSON edits.
 - bridgeConfig.byProfile (groups, bindings, selectedDevice): owned by CLI and runtime tools.
 - Runtime state: owned by robot (TCP UI) and published to NT for dashboards.
 
@@ -70,7 +70,7 @@ File Map (By Surface)
 Purpose: Clarify which files each surface reads/writes and how often they change.
 
 Bridge CLI
-- data/bringup_system.json: primary local config (profiles + device registry + groups). Change likelihood: high. Read: default.
+- data/bringup_system.json: primary local config (profiles + devices table + groups). Change likelihood: high. Read: default.
 - src/main/deploy/bringup_system.json: derived deploy copy (written by validate/sync). Change likelihood: medium. Read: not default.
 - bringup_system.json bridgeConfig.byProfile.<profile>.tests: tests edited by CLI. Change likelihood: high. Read: from the loaded bringup_system.json.
 - src/main/deploy/bringup_bindings.json: controller names/ports for inputSource validation. Change likelihood: low-medium. Read: default.

@@ -55,8 +55,9 @@ Clients (PC tools + local Xbox):
 
 Contracts across the boundary:
 - TCP command protocol: command/ACK/OUT exchange for UI/CLI.
+- TCP protocol details (wire framing, schemas, and examples): `docs/TCP_UI_PROTOCOL.md`.
 - NetworkTables: diagnostics/state only under `bringup/diag/...`.
-- JSON config: `bringup_system.json` is the shared input (profiles + registry + diagram + tests under bridgeConfig).
+- JSON config: `bringup_system.json` is the shared input (profiles + devices table + diagram + tests under bridgeConfig).
 
 ## Safety Rules (Client/Server)
 Purpose: keep networked control safe and deterministic.
@@ -146,7 +147,7 @@ Steps:
 2. Register it in `src/main/java/frc/robot/manufacturers/ManufacturerRegistry.java`.
 3. Use standard `DeviceRegistration` + `DeviceTypeBucket` APIs inside the group.
 
-Example registry entry:
+Example manufacturer entry:
 ```java
 new ManufacturerFactory("ACME", AcmeDeviceGroup::new)
 ```
@@ -170,7 +171,7 @@ Purpose: JSON inputs define behavior and runtime configuration.
 
 - `bringup_system.json`: unified system config (profiles + diagram + bridgeConfig.byProfile). Stored in `data/` and synced to deploy.
 - Requires `schema_version` (4), `data_version`, and `data_hash` at the root.
-- Profiles reference devices by label only; the device registry owns the CAN identity fields.
+- Profiles reference devices by label only; the devices table owns the CAN identity fields.
 - Tests are stored inside `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
 - `motor_specs.json`: motor current specs for health checks.
 - `can_mappings.json`: manufacturer/device type names for CAN decoding.
@@ -369,7 +370,7 @@ Purpose: known design costs are acknowledged explicitly.
 ## Future Extensions
 Purpose: future extensions are identified without breaking contracts.
 
-- Add decoder registry for CAN reverse engineering outputs.
+- Add decoder table for CAN reverse engineering outputs.
 - Add more controller types in `bringup_bindings.json` (beyond Xbox).
 - Add new test check types without changing existing JSON fields.
 - Add dashboard widgets for live test status and PC tool health.
@@ -378,4 +379,3 @@ Purpose: future extensions are identified without breaking contracts.
   - REV PDH, PH, and SparkMax alternate encoder paths.
   - WPILib I/O (DIO, analog input, relay) and roboRIO health signals.
   - Third-party CAN encoders and IMUs (WCP CANandmag, navX, etc.).
-

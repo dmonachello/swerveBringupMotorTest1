@@ -139,7 +139,7 @@ Example:
 
 ---
 
-## B2) Add Device to Registry (Windows)
+## B2) Add Device to Devices Table (Windows)
 Purpose: Define the device once and reference it by label everywhere.
 
 File: `data/bringup_system.json`

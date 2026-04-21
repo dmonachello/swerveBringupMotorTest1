@@ -17,7 +17,7 @@ Purpose: Keep data formats and interfaces stable.
 
 ## Feature Specs
 Purpose: Track design intent for major features.
-- `docs/ProfileRegistryPushSpec.md`
+- `docs/ProfileTablesPushSpec.md`
 - `docs/FEATURE_SPEC_BYTE_FINGERPRINTING.md`
 - `docs/FEATURE_SPEC_LIVE_TOPOLOGY_OPS.md`
 - `docs/FEATURE_SPEC_CONFIG_STORE.md`

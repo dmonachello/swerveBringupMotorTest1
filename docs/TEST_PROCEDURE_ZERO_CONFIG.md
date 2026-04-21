@@ -16,6 +16,20 @@ Purpose: Prevent unexpected movement during bringup.
 - Motion occurs only while an explicit test is running (`run test ...` / `run all tests`).
 - If no test is active, commands that would directly actuate outputs are blocked.
 
+## Group and Targeting V1 Update (April 20, 2026)
+
+Purpose: keep zero-config procedure checks aligned with finalized targeting behavior.
+
+- Name resolution is exact and case-insensitive.
+- Device and group names share one global namespace.
+- `active` is reserved, always exists, is not persisted, and resets on save/commit.
+- Group members are a set: duplicate add warns/no-op; missing remove warns/no-op.
+- Include `show groups` and `show group active` in verification steps.
+- `group delete active` must fail.
+- `device delete <name>` must fail when referenced by any group/test.
+- `group delete <name>` must fail when referenced by tests.
+- Non-interactive copy into existing named groups must fail without mutation.
+
 **Preconditions**
 Purpose: Ensure a clean starting state.
 
@@ -81,7 +95,7 @@ python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
 Note: If `bringup_system.json` is missing, the CLI will start in **recovery mode**. That is expected for this procedure.
 You can continue creating a new profile in config mode, but robot‑facing operations that depend on profiles/tests
 will be blocked or unreliable until recovery is cleared. Recovery mode exists to prevent sending robot commands
-without a valid local registry (devices/tests/groups). Recovery mode will clear once a valid
+without a valid local tables payload (devices/tests/groups). Recovery mode will clear once a valid
 `bringup_system.json` is saved and synced to deploy, then the CLI is restarted.
 Expected response: Version banner, a warning about missing `bringup_system.json`, and a `bridge>` prompt.
 

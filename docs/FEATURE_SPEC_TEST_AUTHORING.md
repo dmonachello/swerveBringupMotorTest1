@@ -4,6 +4,17 @@
 
 Provide a Windows-side workflow to create and edit bringup tests via the Bridge UI and the Bridge CLI without requiring direct JSON editing. The UI must keep topology visible, allow multi-select device binding, validate tests locally before saving, and output a deployable unified config.
 
+## Group and Targeting V1 Update (April 20, 2026)
+
+Purpose: align authoring behavior with the finalized group/targeting contract.
+
+- Name matching is exact and case-insensitive.
+- Device and group names share one global namespace.
+- `active` is a reserved group, always present, non-persistent, and reset on save/commit.
+- Group membership is set-based with warning/no-op semantics for duplicate add and missing remove.
+- Group/device deletion must fail when references still exist in tests/groups.
+- Non-interactive copy to existing named groups must fail with no mutation.
+
 SID_COMMENT: Implementation note (current repo)
 - Tests are persisted inside `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
 - Standalone `bringup_tests.json` is treated as a legacy import/export format and is not the robot’s primary input.

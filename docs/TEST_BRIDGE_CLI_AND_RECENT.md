@@ -1,5 +1,19 @@
 Purpose: Full test plan for the Bridge CLI feature and other changes added since Saturday.
 
+## Group and Targeting V1 Update (April 20, 2026)
+
+Purpose: align Bridge CLI test coverage with finalized group/targeting behavior.
+
+- Name matching is exact and case-insensitive.
+- Device names and group names share one global namespace.
+- `active` is reserved, always present, non-persistent, and reset on save/commit.
+- Group members are a set (duplicate add warns/no-op, missing remove warns/no-op).
+- `show groups` includes `active`, and `show group active` is required coverage.
+- `group delete active` must fail.
+- `device delete` must fail when referenced by any group or test.
+- `group delete` must fail when referenced by tests.
+- Non-interactive copy into existing named groups must fail with no mutation.
+
 ## Scope
 Purpose: List what this test plan covers.
 

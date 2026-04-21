@@ -298,8 +298,8 @@ Purpose: Explain when to use device mode.
 Device edits apply to the loaded profiles. You must save afterward.
 
 Rules:
-- `device <label>` creates the device in the registry and adds it to the active profile.
-- Labels must be unique across the entire registry.
+- `device <label>` creates the device in the devices table and adds it to the active profile.
+- Labels must be unique across the entire devices table.
 
 Example (create a new CAN device):
 ```

@@ -3,6 +3,20 @@
 This document provides a step-by-step checklist to verify the complete bringup diagnostics system:
 robot code, CAN sniffer tool, NetworkTables publishing, and config generation.
 
+## Group and Targeting V1 Update (April 20, 2026)
+
+Purpose: capture mandatory verification points for the finalized group/targeting contract.
+
+- Names resolve by exact match with case-insensitive comparison.
+- Device and group names share one global namespace.
+- `active` is reserved, always visible, never persisted, and reset on save/commit.
+- Membership is a set: duplicate add warns/no-op; missing remove warns/no-op.
+- `show groups` and `show group active` must expose active membership clearly.
+- `group delete active` must fail.
+- `device delete` must fail if referenced by any group/test.
+- `group delete` must fail if referenced by tests.
+- Non-interactive copy into existing named group must fail with no mutation.
+
 ## Terminology
 Purpose: prevent "active profile" confusion across host tools and robot runtime.
 

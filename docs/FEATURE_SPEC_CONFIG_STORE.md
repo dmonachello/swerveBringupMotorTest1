@@ -102,7 +102,7 @@ Lenient mode:
 - Missing required fields are errors.
 
 Validation targets:
-- Profiles and device registry coherence.
+- Profiles and devices table coherence.
 - Group references to device labels.
 - Test definitions and termination rules.
 - Bindings controllers and axes consistency.

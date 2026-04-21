@@ -24,7 +24,7 @@ exec           = show_exec
                | "connect"
                | "disconnect"
                | "add" ws ("next" | "all")
-               | "reset" ws "zero-config" [ ws "--yes" ]
+               | "reset" ws "zero-config" [ ws ("--yes" | "--clear-memory") ] [ ws ("--yes" | "--clear-memory") ]
                | "active" ws ("add" | "next" | ("show" [ ws "--json" ]))
                | "run" ws "test" [ ws name ]
                | "tests" ws ("select" ws name | "toggle" | "run" | "run-all")
@@ -39,7 +39,6 @@ show_target    = "status"
                | "group" ws name
                | "devices"
                | "device" ws name
-               | "device" ws "registry" ws name
                | "commands"
                | "help"
                | "controllers"
@@ -70,8 +69,17 @@ show_flags     = show_flag { ws show_flag } ;
 show_flag      = show_source | "--json" | "--pretty" | "--all" ;
 
 config         = "group" ws name
+               | "group" ws "create" ws name
+               | "group" ws "delete" ws name
+               | "group" ws "rename" ws name ws name
+               | "group" ws "clear" [ ws name ]
                | "no" ws "group" ws name
                | "no" ws "device" ws name
+               | "remove" ws "device" ws name [ ws "group" ws name ]
+               | "add" ws "device" ws name [ ws "group" ws name ]
+               | "add" ws "all" [ ws "group" ws name ]
+               | "add" ws "next" [ ws "group" ws name ]
+               | "copy" ws "group" ws name ws name
                | "profile" ws name
                | "profile" ws "default" ws name
                | "profile" ws "create" ws name
@@ -101,9 +109,7 @@ config         = "group" ws name
                | "save" ws "sources" [ ws "--force" ]
                | "save" ws "all" [ ws "--prompt" ] [ ws "--force" ]
                | "save" ws "sources" [ ws "--force" ]
-               | "savep" ws path
                | "load" ws "sources"
-               | "write" ws "tests" ws path
                | "rename" ws "device" ws name ws name
                | "rename" ws name ws name
                | "device" ws name
@@ -172,7 +178,11 @@ group          = ("show" | "ls")
                | ("show" | "ls") ws "binding"
                | ("show" | "ls") ws show_target [ ws show_flags ]
                | "add" ws "device" ws name
+               | "remove" ws "device" ws name
                | "no" ws "device" ws name
+               | "add" ws "all"
+               | "add" ws "next"
+               | "clear"
                | "member" ws name ws ("enable" | "disable" | "toggle")
                | "bind" ws input ws "analog"
                | "bind" ws input ws ("hold" | "toggle" | "jog-forward" | "jog-reverse") ws value

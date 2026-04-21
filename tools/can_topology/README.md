@@ -31,11 +31,11 @@ python tools\\can_topology\\validate_profiles.py --strict
 python tools\\can_topology\\validate_profiles.py --verbose
 ```
 Checks:
-- JSON parses and contains `profiles` plus a device registry.
+- JSON parses and contains `profiles` plus a devices table.
 - Root `schema_version` matches the expected value (4).
 - Root `data_version` is present and non-empty.
 - Root `data_hash` is present and matches the computed value.
-- Device registry labels are unique.
+- devices table labels are unique.
 - Profiles reference known device labels only and may not repeat labels.
 - Device entries include required fields per interface (CAN, DIO, PWM, ANALOG).
 - Attachment references must point at known device labels.
@@ -58,7 +58,7 @@ Purpose: Describe the shortest path from sketch to JSON.
 6. Use `Set As Default` to update `default_profile` on save.
 7. Use File -> `Export PDF...` to write a printable PDF (requires `reportlab`).
 8. Use File -> `Print Diagram...` to print without a manual export step.
-Optional: Apply the updated registry without redeploy using the Bridge CLI `profiles push <path>`.
+Optional: Apply the updated devices/profiles tables payload without redeploy using the Bridge CLI `profiles push <path>`.
 
 ## Details Panel
 Purpose: Show fields not displayed on the boxes.
@@ -108,7 +108,7 @@ Purpose: Document limitations up front.
 - Select a node and use the Scale controls to resize that node's box; scale is saved
   in the diagram metadata.
 - Select a callout and use the Callout Scale controls to resize it; scale is saved.
-- Device registry labels must be unique.
+- devices table labels must be unique.
 - `terminator` is an optional per-node flag (true/false) to mark a bus end.
 - Vendor and device type fields use dropdowns populated from `src/main/deploy/can_mappings.json`
   (you can also type a custom value).

@@ -137,7 +137,7 @@ When profiles fail to load:
 - Print a short banner:
   - What failed.
   - The active file.
-  - The next command to inspect or fix (`show devices`, `show device-registry`, `validate profiles --active`).
+  - The next command to inspect or fix (`show devices`, `show device <name>`, `validate profiles --active`).
 
 ### 8) Validation Output Quality
 Validation errors must be:

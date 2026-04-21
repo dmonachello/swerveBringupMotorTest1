@@ -20,7 +20,7 @@ Excludes:
 - Robot-side persistence changes (unless required by simplification)
 
 ## Current Pain Points
-- Overlapping concepts: profiles, tests, bindings, and config sources feel duplicated. Examples: tests/bindings reference device labels defined in profiles; groups/tests live in separate files but execute together; registry and local config can drift.
+- Overlapping concepts: profiles, tests, bindings, and config sources feel duplicated. Examples: tests/bindings reference device labels defined in profiles; groups/tests live in separate files but execute together; devices table and local config can drift.
 - Multiple states: local vs loaded vs active vs dirty causes confusion and recovery needs.
 - Command ambiguity: similar actions spread across save/load/merge/import, etc. Examples: `write tests` vs `save tests`, `merge/import/load config`, `save profiles` vs `save unified-config`.
 - Output ambiguity: commands do not always say what changed or where it persists. Fix: enforce an output contract (action, scope, persistence, source).
@@ -125,7 +125,7 @@ Work Items:
 - Make persistence status explicit in outputs and status views.
 
 Notes:
-- Data chunks include: profile registry (devices + profiles), bridgeConfig (groups/selected state), tests payload, bindings payload, and CAN mappings.
+- Data chunks include: profiles/devices tables (devices + profiles), bridgeConfig (groups/selected state), tests payload, bindings payload, and CAN mappings.
 - This does not remove data chunks; it clarifies their ownership and cross-file consistency.
 
 ### Work Item 3: Normalize Command Semantics
@@ -174,7 +174,7 @@ Benefit: Clear persistence expectations and fewer ambiguous synonyms.
 Example 2: Load vs Import vs Merge
 Current: `load sources`, `import config <path>`, `merge config <path>`.
 Issue: Overlapping verbs make it hard to predict whether data is replaced or merged.
-Current behavior note: `merge config <path>` keeps existing config intact and adds to it, while `import config <path>` replaces the current config. `load sources` reloads all previously configured source paths (registry/config/bindings/mappings/tests) and uses replace semantics for the registry.
+Current behavior note: `merge config <path>` keeps existing config intact and adds to it, while `import config <path>` replaces the current config. `load sources` reloads all previously configured source paths (devices/config/bindings/mappings/tests) and uses replace semantics for the devices table.
 Proposed: Single entry point for config ingestion (for example `load config <path>`) with explicit mode flags such as `--merge` or `--replace`. Rename `load sources` to `reload sources` to make its "refresh existing paths" behavior explicit.
 Benefit: One mental model for ingestion and a consistent contract across sources.
 
@@ -230,9 +230,9 @@ Responsibility overlaps:
 
 | Responsibility | Overlap | Risk |
 | --- | --- | --- |
-| Profile registry vs tests payload | Tests reference device labels defined in profiles. | Tests can become invalid when profiles change. |
-| Profile registry vs bindings | Bindings reference devices/controllers defined elsewhere. | Bindings can point to missing or renamed devices. |
-| bridgeConfig vs registry | Groups/selected state stored separately from device registry. | Group membership can drift from device definitions. |
+| profiles/devices tables vs tests payload | Tests reference device labels defined in profiles. | Tests can become invalid when profiles change. |
+| profiles/devices tables vs bindings | Bindings reference devices/controllers defined elsewhere. | Bindings can point to missing or renamed devices. |
+| bridgeConfig vs devices table | Groups/selected state stored separately from devices table. | Group membership can drift from device definitions. |
 | Local vs robot state | Local and robot can diverge across connect/disconnect. | Confusion about what is authoritative. |
 | Default vs active selection | Default profile/test set stored in config while active selection can differ in memory. | Commands may target unexpected context if not explicit. |
 
