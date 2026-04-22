@@ -302,11 +302,12 @@ Config:
 - `import config <bringup_system.json>`
 - `export runtime-groups <bridgeConfig.json>`
 - `export cli-script <path>`
-- `save config <bridgeConfig.json>`
+- `save runtime-groups <runtime_groups.json>`
 - `save all [--prompt]`
-- `save local-config <path>` (local-only; writes groups-only when profiles are loaded)
+- `save bridge-config <path>` (local-only; writes groups-only when profiles are loaded)
+- `save runtime-groups <path>` (robot snapshot; writes current runtime groups)
 - `save profiles <path>` (profiles-only; preserves bridgeConfig)
-- `save unified-config <path>`
+- `save config <path>`
 - `rename device <old> <new>` (local-only; updates profiles when loaded)
 - `device <name>`
 - `device <name> set <field> <value>`
@@ -698,11 +699,11 @@ Config:
 - `merge config <file>` -> local: read config, emit group commands
 - `import config <file>` -> local: delete groups, then emit group commands
 - `export runtime-groups <file>` -> local: `showRuntimeState --json`, write file
-- `save config <file>` -> local: `showRuntimeState --json`, write file
-- `save local-config <file>` -> local: write bridgeConfig-byProfile only
+- `save runtime-groups <file>` -> local: `showRuntimeState --json`, write file
+- `save bridge-config <file>` -> local: write bridgeConfig-byProfile only
 - `save profiles <file>` -> local: write bringup_system.json (profiles + diagram + bridgeConfig.byProfile)
-- `save unified-config <file>` -> local: write bringup_system.json (profiles + bridgeConfig.byProfile)
-- `write tests <file>` -> local: deprecated alias for exporting a standalone tests JSON (legacy); use `save unified-config <file>` to persist tests in bringup_system.json
+- `save config <file>` -> local: write bringup_system.json (profiles + bridgeConfig.byProfile)
+- `write tests <file>` -> local: deprecated alias for exporting a standalone tests JSON (legacy); use `save config <file>` to persist tests in bringup_system.json
 
 Group:
 
@@ -872,9 +873,9 @@ config         = "group" ws name
                | "export" ws "cli-script" ws path
                | "save" ws "all" [ ws "--prompt" ]
                | "save" ws "config" ws path
-               | "save" ws "local-config" ws path
+               | "save" ws "bridge-config" ws path
                | "save" ws "profiles" ws path
-               | "save" ws "unified-config" ws path
+               | "save" ws "config" ws path
                | "rename" ws "device" ws name ws name
                | "device" ws name
                | "device" ws name ws "set" ws field ws value_text
@@ -1018,5 +1019,6 @@ Purpose: Document the steps to update the CLI grammar and regenerate code.
 5. Commit updated generated files:
    - `tools/can_nt/bridge_cli_grammar_gen.py`
    - `tools/can_nt/bridge_cli_constants_gen.py`
+
 
 

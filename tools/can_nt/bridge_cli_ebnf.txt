@@ -92,9 +92,10 @@ config         = "group" ws name
                | "export" ws "cli-script" ws path
                | "save" ws "tests" ws path [ ws "--force" ]
                | "save" ws "config" ws path [ ws "--force" ]
-               | "save" ws "local-config" ws path [ ws "--force" ]
+               | "save" ws "bridge-config" ws path [ ws "--force" ]
+               | "save" ws "runtime-groups" ws path [ ws "--force" ]
                | "save" ws "profiles" [ ws path ] [ ws "--force" ]
-               | "save" ws "unified-config" ws path [ ws "--force" ]
+               
                | "save" ws "all" [ ws "--prompt" ] [ ws "--force" ]
                | "save" ws "sources" [ ws "--force" ]
                | "load" ws "sources"
@@ -253,3 +254,4 @@ token_char     = ? any non-whitespace character ? ;
 number         = ["+"|"-"] digit { digit } [ "." digit { digit } ] ;
 digit          = "0"..."9" ;
 ws             = { " " | "\t" } ;
+

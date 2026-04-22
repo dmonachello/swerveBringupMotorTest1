@@ -23,6 +23,7 @@ Purpose: Explain the few ideas you must remember.
 - Groups live under `bridgeConfig.byProfile.<profileName>`.
 - Local edits are in memory until you save.
 - `show config local-raw` shows the raw bridgeConfig data.
+- Groups deep-dive: see [GROUPS_GUIDE.md](./GROUPS_GUIDE.md).
 
 ## Quick Start (Local-Only, No Robot)
 
@@ -56,12 +57,12 @@ Example:
 python tools\can_nt\can_nt_bridge.py --cli --rio 172.22.11.2
 connect
 show groups
-save config runtime_groups.json
+save runtime-groups runtime_groups.json
 ```
 
 Notes:
 
-- `save config` captures runtime groups from the robot.
+- `save runtime-groups` captures runtime groups from the robot.
 - Use `import config` to replace groups with a file.
 
 ## Modes and Prompts
@@ -194,7 +195,7 @@ save all --prompt
 Notes:
 
 - Uses the current source paths.
-- If a path is missing, the CLI prints a one-line fix (for example: `save unified-config data/bringup_system.json`).
+- If a path is missing, the CLI prints a one-line fix (for example: `save config data/bringup_system.json`).
 - `show config local-raw`
 - `show config dirty`
 - `show profiles`
@@ -276,11 +277,11 @@ Purpose: Explain what each save command does.
 
 - `save profiles <path>`
   Writes `bringup_system.json` with updated `bridgeConfig.byProfile`.
-- `save local-config <path>`
+- `save bridge-config <path>`
   Writes a bridgeConfig-only file for local reuse.
-- `save config <path>`
+- `save runtime-groups <path>`
   Captures runtime groups from the robot.
-- `save unified-config <path>`
+- `save config <path>`
   Writes a full bringup_system.json with profiles + bridgeConfig.
 
 Use `show config dirty` before you exit to avoid losing work.
@@ -300,7 +301,7 @@ inputSource controller0.A
 duty 0.2
 termination time 1.5
 end
-save unified-config data/bringup_system.json
+save config data/bringup_system.json
 ```
 
 Inspect tests:
@@ -482,7 +483,7 @@ Purpose: Suggested path for new users.
 1. Run local-only CLI and list profiles.
 2. Create a simple group and save it.
 3. Inspect it with `show group` and `show config local-raw`.
-4. Create a simple test and `save unified-config`.
+4. Create a simple test and `save config`.
 5. Connect to a robot and compare `show groups` local vs robot.
 
 ## Reference Pointers
@@ -492,3 +493,4 @@ Purpose: Where to find deeper specs.
 - Full command list: `docs/BRIDGE_CLI_FULL_SPEC.md`
 - Test authoring tutorial: `docs/CLI_TEST_AUTHORING_USER_GUIDE.md`
 - Profiles schema: `docs/bringup_profiles_schema.md`
+

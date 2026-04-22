@@ -163,10 +163,10 @@ Config:
 - `merge config <bringup_system.json>` -> local: read bridgeConfig.byProfile, emit group commands for the active profile
 - `import config <bringup_system.json>` -> local: delete groups, then emit group commands
 - `export runtime-groups <bridgeConfig.json>` -> local: update bridgeConfig.byProfile for the active profile
-- `save config <bridgeConfig.json>` -> local: update bridgeConfig.byProfile for the active profile
-- `save local-config <path>` -> local: update bridgeConfig.byProfile only
+- `save runtime-groups <runtime_groups.json>` -> local: snapshot robot runtime groups to file
+- `save bridge-config <path>` -> local: update bridgeConfig.byProfile only
 - `save profiles <path>` -> local: update profiles/diagram only
-- `save unified-config <path>` -> local: update shared bringup_system.json
+- `save config <path>` -> local: update shared bringup_system.json
 - `rename device <old> <new>` -> local: rename device in profiles when loaded, update bridgeConfig references
 
 Group:
@@ -218,3 +218,4 @@ Purpose: Track safe, compatible next steps.
 - Expand `?` help to include all bounded values and numeric ranges (now supported).
 - NDJSON stream mode for long show commands.
 - GUI reuse of CLI command help strings for consistency.
+

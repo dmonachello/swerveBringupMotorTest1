@@ -113,7 +113,7 @@ Behavior:
 
 - Saves all dirty sections using their current source paths.
 - If a path is unknown, prints a single-line fix:
-  - “No unified-config destination set. Fix: `save unified-config data/bringup_system.json`”
+  - “No config destination set. Fix: `save config data/bringup_system.json`”
 - No prompts in batch mode.
 - Optional `save all --prompt` to confirm per-section in interactive mode.
 
@@ -263,7 +263,7 @@ Fix: add device "pdp" or remove "PDP" from profile devices.
 ### save all (missing tests path)
 
 ```
-ERROR: No unified-config destination set. Fix: save unified-config data/bringup_system.json
+ERROR: No config destination set. Fix: save config data/bringup_system.json
 Saved profiles to data/bringup_system.json.
 ```
 
@@ -304,3 +304,4 @@ Saved profiles to data/bringup_system.json.
 
 - Update docs first or in the same change set.
 - Add release notes entry describing new commands and behaviors.
+

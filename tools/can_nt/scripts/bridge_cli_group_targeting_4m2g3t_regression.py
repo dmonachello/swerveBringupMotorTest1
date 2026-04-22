@@ -86,7 +86,7 @@ CMD_TEST_DEVICE_ADD_3 = "device add motor3"
 CMD_TEST_ENABLED_TRUE = "enabled true"
 CMD_TEST_TERMINATION_HOLD = "termination hold"
 
-CMD_SAVE_LOCAL_CONFIG_PREFIX = "save local-config "
+CMD_SAVE_LOCAL_CONFIG_PREFIX = "save bridge-config "
 
 OUTCOME_PASS = "PASS"
 OUTCOME_FAIL = "FAIL"
@@ -298,4 +298,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 

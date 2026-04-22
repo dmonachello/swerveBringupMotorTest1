@@ -76,7 +76,7 @@ When leaving config/test mode with unsaved changes:
 - beginner:
   - warning + tip
   - example:
-    - “You have unsaved changes. Use `save unified-config ...` to save.”
+    - “You have unsaved changes. Use `save config ...` to save.”
 - medium:
   - warning only
 - expert:
@@ -84,7 +84,7 @@ When leaving config/test mode with unsaved changes:
 
 ## Example Beginner Tips
 - On exit with unsaved changes:
-  - “You have unsaved changes. Use `save unified-config ...` to save.”
+  - “You have unsaved changes. Use `save config ...` to save.”
 - After save:
   - “Saved. Use `show config dirty` to confirm.”
 - After validation failure:
@@ -95,3 +95,4 @@ When leaving config/test mode with unsaved changes:
 - Must not suppress actual errors
 - Must not interfere with scripting or batch workflows
 - Must not introduce duplicate or noisy output
+

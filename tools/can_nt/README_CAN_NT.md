@@ -101,7 +101,7 @@ CONFIG
     matching profile device list.
     Profiles schema_version is 4 (see docs/PROFILE_SCHEMA_REFACTOR.md).
     Device edits update profiles when a profiles file is loaded; use save profiles.
-    save local-config writes groups-only output when profiles are loaded.
+    save bridge-config writes groups-only output when profiles are loaded.
 
     If you need a standalone can_nt_config.json-style file for reference or
     external tooling, generate one from a profile:
@@ -411,4 +411,5 @@ NOTES
     - RobotV2 prints status=NO_DATA, ageSec=-, msgCount=- until a device is seen.
     - can/pc/heartbeat increments once per publish; can/pc/lastFrameAgeSec is seconds since last frame.
     - CANable Pro V2 ships with slcan firmware by default.
+
 

@@ -91,7 +91,7 @@ Lock command meaning so behavior is predictable across interfaces.
   - Enters `TEST_RUNNING` for selected test.
   - Uses per-test `targetMode`.
   - Default `targetMode` is `test-defined`, where the test's own device list is authoritative.
-  - Optional `targetMode=active-group` allows the test to target the runtime `active-group` membership.
+  - `targetMode=active-group` remains a design option and is not the standard operator flow in current docs.
 - `run all tests`:
   - Runs tests sequentially under test-owned control.
 - `stop`/test end/abort:

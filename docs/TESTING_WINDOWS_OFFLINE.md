@@ -200,16 +200,16 @@ DETAIL: Success.
 bridge(config-profile-home_031226)#
 ```
 
-3. Save local-config only.
+3. Save bridge-config only.
 ```
-save local-config tools\can_nt\logs\offline_local_config.json
+save bridge-config tools\can_nt\logs\offline_local_config.json
 ```
 Example Output:
 ```
-bridge(config-profile-home_031226)# save local-config tools\can_nt\logs\offline_local_config.json
+bridge(config-profile-home_031226)# save bridge-config tools\can_nt\logs\offline_local_config.json
 Snapshot created: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\data\backups\offline_local_config.20260407_195312.json
 Wrote groups config to tools\can_nt\logs\offline_local_config.json.
-Action: save scope=local-config persistence=disk source=local
+Action: save scope=bridge-config persistence=disk source=local
 SUCCESS [EXECUTOR.SUCCESS]
 DETAIL: Success.
 bridge(config-profile-home_031226)#
@@ -306,4 +306,5 @@ Purpose: Document limitations of offline-only testing.
 Purpose: List safe follow-on improvements.
 - Add a canned offline fixture to validate visibility counts deterministically.
 - Add a local-only test script that covers every CLI show target.
+
 

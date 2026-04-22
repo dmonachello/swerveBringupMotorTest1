@@ -53,7 +53,7 @@ set id 26
 set model "REV NEO"
 set type motor
 exit
-save unified-config data/bringup_system.json
+save config data/bringup_system.json
 ```
 
 4) Refresh the Active Profile (so tests can see new devices)
@@ -116,7 +116,7 @@ bridge(config-profile-home_tests_033026)#
 8) Save Unified Config
 
 ```text
-save unified-config data/bringup_system.json
+save config data/bringup_system.json
 ```
 
 ## Notes
@@ -124,7 +124,7 @@ save unified-config data/bringup_system.json
 - `device add` must reference a label that exists in the active profile (step 2).
 - Controller names are explicit now: use `controller0.A`, not `primary.A`.
 - `show tests` lists all sets plus the active set.
-- `save unified-config` writes `bringup_system.json` with profiles + bridgeConfig.byProfile (groups + tests).
+- `save config` writes `bringup_system.json` with profiles + bridgeConfig.byProfile (groups + tests).
 - Commands are case-insensitive (`inputSource`, `inputsource`, `InputSource` all work).
 - To delete a device:
   - `no device "<label>"` from config/profile mode, or
@@ -188,3 +188,4 @@ Expected:
 - `inputSource: controller0.A`
 - `duty: 0.2`
 - `time: {'timeoutSec': 2.0, 'onTimeout': 'pass'}`
+

@@ -129,7 +129,7 @@ Constraints:
 - These commands MUST require an active robot connection.
 - These commands MUST NOT modify host-local test definitions.
 
-SID_COMMENT: Host test authoring already exists separately (configure/test mode + save unified-config).
+SID_COMMENT: Host test authoring already exists separately (configure/test mode + save config).
 
 ## Outputs And Surfaces
 
@@ -234,3 +234,4 @@ Purpose: Capture follow-on ideas without coupling them to this change.
   - `profiles push <path> --activate <name>` as the single-step happy path.
 - Add UI parity:
   - Surface host vs robot profile mismatch in the Bringup Control UI status bar.
+

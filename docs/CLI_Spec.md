@@ -236,11 +236,12 @@ No prompting allowed in batch mode.
 - `merge config <bringup_system.json>`
 - `import config <bringup_system.json>`
 - `export runtime-groups <bridgeConfig.json>`
-- `save config <bridgeConfig.json>`
+- `save runtime-groups <runtime_groups.json>`
 - `save all [--prompt]`
-- `save local-config <path>`
+- `save bridge-config <path>`
+- `save runtime-groups <path>`
 - `save profiles <path>`
-- `save unified-config <path>`
+- `save config <path>`
 - `rename device <old> <new>`
 - `device <name>`
 - `device <name> set <field> <value>`
@@ -596,3 +597,4 @@ avoids prompts in batch mode
 uses structured output for automation
 
 remains simple, predictable, and operator-friendly
+

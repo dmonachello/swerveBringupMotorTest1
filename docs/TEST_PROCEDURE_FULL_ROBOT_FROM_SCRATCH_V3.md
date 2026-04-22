@@ -69,13 +69,24 @@ Minimum backup targets:
 
 ### Step 1B: Reset to zero-config baseline
 
-Start CLI and run:
+From PowerShell, start CLI:
 
-- `reset zero-config --yes`
+```powershell
+cd %USERPROFILE%\swerveBringupMotorTest1-main
+python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
+```
+
+Then in CLI, run:
+
+```text
+reset zero-config --yes
+```
 
 Optional full workspace clear in the same session:
 
-- `reset zero-config --yes --clear-memory`
+```text
+reset zero-config --yes --clear-memory
+```
 
 Expected:
 
@@ -85,9 +96,11 @@ Expected:
 
 In CLI, run:
 
-- `configure terminal`
-- `show groups local`
-- `show tests local`
+```text
+configure terminal
+show groups local
+show tests local
+```
 
 Expected:
 
@@ -110,7 +123,9 @@ Example known baseline after reset (profile-dependent):
 
 Command:
 
-`python tools/can_nt/scripts/bridge_cli_v1_group_targeting_regression.py`
+```powershell
+python tools/can_nt/scripts/bridge_cli_v1_group_targeting_regression.py
+```
 
 Note: script filename still uses `v1`; this procedure treats it as the current regression gate until renamed.
 
@@ -122,13 +137,17 @@ Expected:
 
 Command:
 
-`python tools/can_nt/bridge_cli.py --no-can --no-nt`
+```powershell
+python tools/can_nt/bridge_cli.py --no-can --no-nt
+```
 
 ## Phase 2: Build Local Config and Groups
 
 ### Step 4: Enter config mode
 
-`configure terminal`
+```text
+configure terminal
+```
 
 ### Step 5: Create valid baseline devices
 
@@ -136,22 +155,24 @@ Create at least two fully valid devices so validation and save/push checks are m
 
 Example:
 
-- `device motor1`
-- `deviceInterface CAN`
-- `manufacturer 5`
-- `deviceType 2`
-- `id 25`
-- `model "REV NEO"`
-- `type motor`
-- `exit`
-- `device motor2`
-- `deviceInterface CAN`
-- `manufacturer 4`
-- `deviceType 2`
-- `id 26`
-- `model "CTRE Falcon 500"`
-- `type motor`
-- `exit`
+```text
+device motor1
+deviceInterface CAN
+manufacturer 5
+deviceType 2
+id 25
+model "REV NEO"
+type motor
+exit
+device motor2
+deviceInterface CAN
+manufacturer 4
+deviceType 2
+id 9
+model "CTRE Falcon 500"
+type motor
+exit
+```
 
 Expected:
 
@@ -160,10 +181,12 @@ Expected:
 
 ### Step 6: Create groups
 
-- `group create intake`
-- `exit`
-- `group create shooter`
-- `exit`
+```text
+group create intake
+exit
+group create shooter
+exit
+```
 
 Expected:
 
@@ -172,9 +195,11 @@ Expected:
 
 ### Step 7: Validate `active` behavior
 
-- `group active`
-- `show group active`
-- `exit`
+```text
+group active
+show group active
+exit
+```
 
 Expected:
 
@@ -184,9 +209,11 @@ Expected:
 
 ### Step 8: Populate groups
 
-- `add device motor1 group intake`
-- `add device motor2 group intake`
-- `add all group shooter`
+```text
+add device motor1 group intake
+add device motor2 group intake
+add all group shooter
+```
 
 Expected:
 
@@ -195,8 +222,10 @@ Expected:
 
 ### Step 9: Copy flow checks
 
-- `copy group intake active`
-- `show group active`
+```text
+copy group intake active
+show group active
+```
 
 Expected:
 
@@ -204,8 +233,10 @@ Expected:
 
 ### Step 10: Save local config and verify active preservation
 
-- `save local-config .\scratch_v1_local.json --force`
-- `show group active`
+```text
+save bridge-config .\scratch_v1_local.json --force
+show group active
+```
 
 Expected:
 
@@ -222,19 +253,25 @@ Note:
 
 Command:
 
-`python tools/can_nt/bridge_cli.py --rio 172.22.11.2`
+```powershell
+python tools/can_nt/bridge_cli.py --rio 172.22.11.2
+```
 
 Use your team IP as needed.
 
 ### Step 12: Enter config mode
 
-`configure terminal`
+```text
+configure terminal
+```
 
 ### Step 13: Confirm context parity behavior
 
-- `group active`
-- `exit`
-- `group intake`
+```text
+group active
+exit
+group intake
+```
 
 Expected:
 
@@ -245,10 +282,18 @@ Expected:
 
 Run and verify:
 
-- `group rename intake intake_v2`
-- `copy group intake_v2 active`
-- `group clear active`
-- `group delete active` (must fail)
+```text
+group rename intake intake_v2
+copy group intake_v2 active
+group clear active
+group delete active
+```
+
+Expected failure in this block:
+
+```text
+group delete active
+```
 
 Expected:
 
@@ -258,7 +303,9 @@ Expected:
 
 ### Step 15: Save sources
 
-`save sources --force`
+```text
+save sources --force
+```
 
 Expected:
 
@@ -268,10 +315,12 @@ Expected:
 
 Example flow:
 
-- `profiles activate <profile-name>`
-- `show groups`
-- `show group active`
-- `run test <known-safe-test>`
+```text
+profiles activate <profile-name>
+show groups
+show group active
+run test <known-safe-test>
+```
 
 Expected:
 
@@ -301,3 +350,4 @@ All criteria must pass:
 - If save blocks on validation, use `--force` for procedure-only verification and log failures.
 - If group context fails unexpectedly, verify group exists in current local state.
 - If runtime tests do not actuate, confirm selected test and enabled state.
+

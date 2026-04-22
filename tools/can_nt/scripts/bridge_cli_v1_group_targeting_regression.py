@@ -80,7 +80,7 @@ CMD_SHOW_DEVICE_MOTOR1_JSON = "show device motor1 --json --pretty"
 CMD_SHOW_DEVICE_REGISTRY_MOTOR1 = "show device registry motor1"
 CMD_ADD_DEVICE_MOTOR1 = "add device motor1"
 CMD_REMOVE_DEVICE_MOTOR1 = "remove device motor1"
-CMD_SAVE_LOCAL_CONFIG_PREFIX = "save local-config "
+CMD_SAVE_LOCAL_CONFIG_PREFIX = "save bridge-config "
 FLAG_FORCE = " --force"
 EXPECTED_CONFIG_RELATIVE_PATH = Path(
     "tests/regression/expected/group_targeting_local_expected_config.json"
@@ -490,3 +490,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

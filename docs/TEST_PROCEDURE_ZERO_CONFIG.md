@@ -180,7 +180,7 @@ to stay in config mode. `exit` may warn: `WARNING: Unsaved changes in: profiles,
 1. Save the unified config locally (do not save legacy test files):
 
 ```text
-save unified-config data\bringup_system.json
+save config data\bringup_system.json
 end
 
 ```
@@ -377,7 +377,7 @@ dio 0
 invert true
 end
 profile device add "lmtSw0"
-save unified-config data\bringup_system.json
+save config data\bringup_system.json
 end
 
 ```
@@ -472,7 +472,7 @@ Purpose: Provide a short bringup cycle checklist for repeated iterations.
 2. Build/update config locally:
    - Start offline CLI: `python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt`.
    - Enter config mode, update profile/devices/tests.
-   - Save: `save unified-config data\bringup_system.json`, then `end`.
+   - Save: `save config data\bringup_system.json`, then `end`.
 
 3. Sync canonical to deploy:
    - Run `python -m tools.sync_profiles`.
@@ -542,3 +542,4 @@ Non-interactive reset option:
 ```text
 reset zero-config --yes
 ```
+

@@ -200,7 +200,7 @@ Expected:
 
 ### Step 10: Save local config and verify active preservation
 
-- `save local-config .\scratch_v1_local.json --force`
+- `save bridge-config .\scratch_v1_local.json --force`
 - `show group active`
 
 Expected:
@@ -290,3 +290,4 @@ All criteria must pass:
 - If save blocks on validation, use `--force` for procedure-only verification and log failures.
 - If group context fails unexpectedly, verify group exists in current local state.
 - If runtime tests do not actuate, confirm selected test and enabled state.
+

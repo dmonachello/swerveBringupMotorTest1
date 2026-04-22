@@ -26,7 +26,7 @@ Excludes:
 
 - Overlapping concepts: profiles, tests, bindings, and config sources feel duplicated. Examples: tests/bindings reference device labels defined in profiles; groups/tests live in separate files but execute together; devices table and local config can drift.
 - Multiple states: local vs loaded vs active vs dirty causes confusion and recovery needs.
-- Command ambiguity: similar actions spread across save/load/merge/import, etc. Examples: `write tests` vs `save tests`, `merge/import/load config`, `save profiles` vs `save unified-config`.
+- Command ambiguity: similar actions spread across save/load/merge/import, etc. Examples: `write tests` vs `save tests`, `merge/import/load config`, `save profiles` vs `save config`.
 - Output ambiguity: commands do not always say what changed or where it persists. Fix: enforce an output contract (action, scope, persistence, source).
 
 ## Goals
@@ -165,7 +165,7 @@ Examples:
 
 - `write tests <path>` vs `save tests <path>` (same intent, different verb).
 - `merge config <path>` keeps existing config intact and adds to it, while `import config <path>` replaces the current config.
-- `save profiles <path>` vs `save unified-config <path>` (different roots).
+- `save profiles <path>` vs `save config <path>` (different roots).
 - `show sources` vs `show workspace` (overlapping status views).
 
 Benefits:
@@ -198,7 +198,7 @@ Notes:
 Example 1: Save vs Write vs Save Sources
 Current: `write tests <path>`, `save tests <path>`, `save sources`.
 Issue: Multiple verbs imply different persistence semantics for the same data.
-Proposed: `save unified-config <path>` as the canonical persistence command. `save tests`/`write tests` become legacy export-only commands (deprecated with warnings). `save sources` is reserved for saving all currently loaded sources.
+Proposed: `save config <path>` as the canonical persistence command. `save tests`/`write tests` become legacy export-only commands (deprecated with warnings). `save sources` is reserved for saving all currently loaded sources.
 Benefit: Clear persistence expectations and fewer ambiguous synonyms.
 
 Example 2: Load vs Import vs Merge
@@ -209,7 +209,7 @@ Proposed: Single entry point for config ingestion (for example `load config <pat
 Benefit: One mental model for ingestion and a consistent contract across sources.
 
 Example 3: Profiles vs Unified Config
-Current: `save profiles`, `save config`, `save unified-config`, `profiles init`.
+Current: `save profiles`, `save config`, `save config`, `profiles init`.
 Issue: Multiple roots create ambiguity about the authoritative config graph.
 Proposed: A single canonical root (unified config). Profile-only save becomes a scoped operation on the unified root rather than a separate file type.
 Benefit: Fewer sources of truth and less need for recovery tooling.
@@ -253,7 +253,7 @@ Command-level overlaps:
 | `show bindings` vs `bindings show` | Same data, two entry points. | Keep `show bindings`, deprecate `bindings show` or make one alias. |
 | `show can-mappings` vs `can-mappings show` | Same data, two entry points. | Keep `show can-mappings`, deprecate `can-mappings show` or make one alias. |
 | `merge config <path>` vs `import config <path>` vs `load sources` | Multiple ingest paths with unclear replace/merge semantics. | Replace with `load config <path> --merge|--replace` and rename `load sources` to `reload sources`. |
-| `save profiles` vs `save unified-config` vs `save config` vs `save local-config` | Multiple persistence roots. | Keep one canonical root (unified config). |
+| `save profiles` vs `save config` vs `save config` vs `save bridge-config` | Multiple persistence roots. | Keep one canonical root (unified config). |
 | `ls` vs `show`, `val` vs `validate`, `prof` vs `profile`, `cfg` vs `configure terminal` | Hard aliases that duplicate grammar. | Enforce canonical form and hard-error removed aliases. |
 
 Responsibility overlaps:
@@ -389,8 +389,8 @@ Purpose: Map old commands to new canonical forms.
 
 | Old Command | New Command | Notes |
 | --- | --- | --- |
-| `write tests <path>` | `save unified-config <path>` | Deprecate `write tests` (legacy export). |
-| `savep <path>` | `save profiles <path>` or `save unified-config <path>` | Prefer unified root. |
+| `write tests <path>` | `save config <path>` | Deprecate `write tests` (legacy export). |
+| `savep <path>` | `save profiles <path>` or `save config <path>` | Prefer unified root. |
 | `merge config <path>` | `load config <path> --merge` | Explicit merge flag. |
 | `import config <path>` | `load config <path> --replace` | Explicit replace flag. |
 | `load sources` | `reload sources` | Refresh existing configured paths. |
@@ -445,3 +445,4 @@ Rules:
 - Inventory redundant commands and overlapping responsibilities.
 - Propose a reduced command set with explicit behavior tables.
 - Draft a migration plan with deprecation timeline.
+

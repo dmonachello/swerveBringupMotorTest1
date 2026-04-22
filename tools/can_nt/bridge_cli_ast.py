@@ -594,6 +594,8 @@ class BridgeCliAstExecutor:
             print(AST_EXEC_SPEC["msg_err_unknown_cmd"])
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         if ok:
+            if message and message != AST_EXEC_SPEC["msg_ok_config"]:
+                print(message)
             print(AST_EXEC_SPEC["msg_ok_config"])
             return StatusResult(code=SS__CONFIG__VALID)
         print(AST_EXEC_SPEC["msg_err_fmt"] % message)

@@ -107,10 +107,10 @@ Purpose: Show common workflows.
 Example: Topology -> CLI
 - Edit devices and layout in topology editor.
 - Save to data/bringup_system.json.
-- CLI: merge config data/bringup_system.json, add groups, then save unified-config.
+- CLI: merge config data/bringup_system.json, add groups, then save config.
 
 Example: CLI-only
-- CLI: create devices/groups, then save unified-config data/bringup_system.json.
+- CLI: create devices/groups, then save config data/bringup_system.json.
 - Optional: open topology editor and load canonical file for layout.
 
 Example: Sniffer bootstrap
@@ -140,3 +140,4 @@ Purpose: Track safe next steps.
 - Add a small operator-surface "status" panel that shows which file is loaded and last saved.
 - Add a spec-to-code checklist test to guard shared-layer usage.
 - Add a UI-only indicator when bridgeConfig.byProfile groups are missing from the canonical file.
+

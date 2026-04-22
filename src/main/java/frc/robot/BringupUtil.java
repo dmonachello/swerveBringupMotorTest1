@@ -1586,14 +1586,8 @@ public final class BringupUtil {
       report.contentValidation.message = MESSAGE_REGISTRY_PROFILES_MISSING;
       return null;
     }
-    String active = safeText(activeProfile);
-    if (activateProfile == null || activateProfile.isBlank()) {
-      if (!active.isBlank() && !root.profiles.containsKey(active)) {
-        report.contentValidation.message =
-            String.format(MESSAGE_REGISTRY_ACTIVE_UNKNOWN, active);
-        return null;
-      }
-    } else if (!root.profiles.containsKey(activateProfile)) {
+    if (activateProfile != null && !activateProfile.isBlank()
+        && !root.profiles.containsKey(activateProfile)) {
       report.contentValidation.message =
           String.format(MESSAGE_REGISTRY_ACTIVATE_UNKNOWN, activateProfile);
       return null;
@@ -1722,6 +1716,11 @@ public final class BringupUtil {
       defaultProfile = nextDefault;
       if (selectedProfile == null || selectedProfile.isBlank() || !profiles.containsKey(selectedProfile)) {
         selectedProfile = defaultProfile;
+      }
+      if ((activateProfile == null || activateProfile.isBlank())
+          && (activeProfile == null || activeProfile.isBlank() || !profiles.containsKey(activeProfile))) {
+        activeProfile = selectedProfile;
+        activeProfileApplied = false;
       }
       DEVICE_REGISTRY.clear();
       DEVICE_REGISTRY.putAll(payload.registry);

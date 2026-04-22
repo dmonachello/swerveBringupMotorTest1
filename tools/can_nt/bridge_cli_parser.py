@@ -110,9 +110,9 @@ LABEL_ADD = "add"
 EXPORT_TARGET_RUNTIME_GROUPS = "runtime-groups"
 EXPORT_TARGET_CLI_SCRIPT = "cli-script"
 SAVE_TARGET_CONFIG = "config"
-SAVE_TARGET_LOCAL_CONFIG = "local-config"
+SAVE_TARGET_BRIDGE_CONFIG = "bridge-config"
+SAVE_TARGET_RUNTIME_GROUPS = "runtime-groups"
 SAVE_TARGET_PROFILES = "profiles"
-SAVE_TARGET_UNIFIED = "unified-config"
 KIND_EXEC_RUN_TEST_DEFAULT = "exec_run_test_default"
 
 
@@ -1817,10 +1817,10 @@ class BridgeCliParser:
         if len(cleaned) < SPEC.count_three:
             raise CliParseError(SPEC.msg_save_requires)
         if target not in (
-            SPEC.cmd_save_config,
-            SPEC.cmd_save_local_config,
+            SAVE_TARGET_CONFIG,
+            SAVE_TARGET_BRIDGE_CONFIG,
+            SAVE_TARGET_RUNTIME_GROUPS,
             SPEC.cmd_save_profiles,
-            SPEC.cmd_save_unified,
             SPEC.cmd_save_tests,
         ):
             raise CliParseError(SPEC.msg_save_target)

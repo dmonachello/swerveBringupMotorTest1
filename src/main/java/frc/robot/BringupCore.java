@@ -58,6 +58,10 @@ public final class BringupCore {
   private static final String VIRTUAL_PRESENT_LINE_PREFIX = "  roboRIO CAN ";
   private static final String VIRTUAL_PRESENT_LINE_SUFFIX = " PRESENT (no local API)";
   private static final String VIRTUAL_HEALTH_LINE_SUFFIX = ": present=YES (virtual, no local API)";
+  private static final String TESTS_OVERVIEW_TABLE_HEADER =
+      "Idx Sel En Type       Name                         HoldBtn                Motors";
+  private static final String TESTS_OVERVIEW_ROW_FORMAT =
+      "%3d  %s  %s  %-9.9s %-28.28s %-20.20s %s";
 
   private final List<ManufacturerGroup> manufacturerGroups = ManufacturerRegistry.buildGroups();
   private final Map<String, ManufacturerGroup> manufacturerByVendor =
@@ -697,7 +701,7 @@ public final class BringupCore {
     for (ManufacturerGroup group : manufacturerGroups) {
       group.stopAll();
     }
-    forceStopAllMotorOutputs();
+    stopCreatedMotorOutputs();
   }
 
   /**
@@ -976,7 +980,7 @@ public final class BringupCore {
         sb,
         "Total: " + overview.totalCount +
         " Enabled: " + overview.enabledCount);
-    appendLine(sb, "Idx Sel En Type       Name                         HoldBtn                Motors");
+    appendLine(sb, TESTS_OVERVIEW_TABLE_HEADER);
     for (TestRow row : overview.rows) {
       String sel = row.selected ? "*" : " ";
       String en = row.enabled ? "Y" : "N";
@@ -989,7 +993,7 @@ public final class BringupCore {
       appendLine(
           sb,
           String.format(
-              "%3d  %s  %s  %-9s %-28s %-20s %s",
+              TESTS_OVERVIEW_ROW_FORMAT,
               row.index,
               sel,
               en,
@@ -2772,7 +2776,7 @@ public final class BringupCore {
   private void forceStopAllMotorOutputs() {
     StopCounts counts = new StopCounts();
     for (ManufacturerGroup group : manufacturerGroups) {
-      forceStopAllMotorOutputs(group, counts);
+      forceStopAllMotorOutputs(group, counts, true, true);
     }
     if (counts.stopped > 0) {
       String message =
@@ -2789,7 +2793,11 @@ public final class BringupCore {
    *   group - Manufacturer group to scan.
    *   counts - Accumulator for created/stopped devices.
    */
-  private void forceStopAllMotorOutputs(ManufacturerGroup group, StopCounts counts) {
+  private void forceStopAllMotorOutputs(
+      ManufacturerGroup group,
+      StopCounts counts,
+      boolean createIfMissing,
+      boolean closeAfterStop) {
     if (group == null || counts == null) {
       return;
     }
@@ -2803,11 +2811,16 @@ public final class BringupCore {
         }
         try {
           if (!device.isCreated()) {
+            if (!createIfMissing) {
+              continue;
+            }
             device.ensureCreated();
             counts.created++;
           }
           device.stop();
-          device.close();
+          if (closeAfterStop) {
+            device.close();
+          }
           counts.stopped++;
         } catch (Exception ex) {
           String message =
@@ -2815,6 +2828,21 @@ public final class BringupCore {
           logWarningThrottled("forceStop:" + device.getCanId(), message);
         }
       }
+    }
+  }
+
+  /**
+   * NAME
+   *   stopCreatedMotorOutputs - Stop created motor outputs without closing handles.
+   *
+   * DESCRIPTION
+   *   Used on normal test completion to keep instantiated devices alive for
+   *   quick reruns while still forcing output to zero.
+   */
+  private void stopCreatedMotorOutputs() {
+    StopCounts counts = new StopCounts();
+    for (ManufacturerGroup group : manufacturerGroups) {
+      forceStopAllMotorOutputs(group, counts, false, false);
     }
   }
 

@@ -110,6 +110,10 @@ public class BridgeUiCommandHandler {
   private static final String MESSAGE_ACTIVE_ADDED_PREFIX = "Active group added device: ";
   private static final String MESSAGE_ACTIVE_NEXT_PREFIX = "Active group rotated to device: ";
   private static final String MESSAGE_ACTIVE_NOT_FOUND = "Active group not found.";
+  private static final String MESSAGE_ACTIVE_ADD_FAILED_PREFIX =
+      "Failed to add device to active-group: ";
+  private static final String MESSAGE_PROFILE_INACTIVE_ADD =
+      "Cannot add devices: profile is not active.";
   private static final String CMD_PROFILE_ACTIVATE = "profileActivate";
   private static final String CMD_PROFILES_RELOAD = "profilesReload";
   private static final int INDEX_START = 0;
@@ -848,6 +852,12 @@ public class BridgeUiCommandHandler {
             profileActivateAction.run();
           }
         }
+        if (!BringupUtil.isProfileActive()) {
+          result.ok = false;
+          result.message = MESSAGE_PROFILE_INACTIVE_ADD;
+          result.outText = result.message;
+          break;
+        }
         core.addNextMotorCommand();
         result.message = "Add motor.";
         break;
@@ -859,8 +869,14 @@ public class BridgeUiCommandHandler {
             profileActivateAction.run();
           }
         }
+        if (!BringupUtil.isProfileActive()) {
+          result.ok = false;
+          result.message = MESSAGE_PROFILE_INACTIVE_ADD;
+          result.outText = result.message;
+          break;
+        }
         core.addAllDevicesCommand();
-        result.message = "Add all motors.";
+        result.message = "Instantiated all configured devices. Use active add to populate active-group.";
         break;
       case "printState":
         String stateReport = core.buildStateReportText();
@@ -1513,7 +1529,21 @@ public class BridgeUiCommandHandler {
       setActiveResultJson(result, group, warnings);
       return;
     }
-    bridgeGroups.addDevice(GROUP_ACTIVE, candidate.device, false);
+    boolean added = bridgeGroups.addDevice(GROUP_ACTIVE, candidate.device, false);
+    if (!added) {
+      String owner = bridgeGroups.getDeviceGroup(candidate.device);
+      String detail = candidate.device;
+      if (owner != null && !owner.isBlank()) {
+        detail += " (already in group: " + owner + ")";
+      }
+      String failure = MESSAGE_ACTIVE_ADD_FAILED_PREFIX + detail;
+      warnings.add(failure);
+      result.ok = false;
+      result.message = failure;
+      result.outText = failure;
+      setActiveResultJson(result, bridgeGroups.getGroup(GROUP_ACTIVE), warnings);
+      return;
+    }
     BridgeGroupManager.Group updated = bridgeGroups.getGroup(GROUP_ACTIVE);
     result.ok = true;
     result.message = MESSAGE_ACTIVE_ADDED_PREFIX + candidate.device;
@@ -1568,7 +1598,21 @@ public class BridgeUiCommandHandler {
     if (candidate.wrapped) {
       warnings.add(WARNING_WRAPPED);
     }
-    bridgeGroups.addDevice(GROUP_ACTIVE, candidate.device, false);
+    boolean added = bridgeGroups.addDevice(GROUP_ACTIVE, candidate.device, false);
+    if (!added) {
+      String owner = bridgeGroups.getDeviceGroup(candidate.device);
+      String detail = candidate.device;
+      if (owner != null && !owner.isBlank()) {
+        detail += " (already in group: " + owner + ")";
+      }
+      String failure = MESSAGE_ACTIVE_ADD_FAILED_PREFIX + detail;
+      warnings.add(failure);
+      result.ok = false;
+      result.message = failure;
+      result.outText = failure;
+      setActiveResultJson(result, bridgeGroups.getGroup(GROUP_ACTIVE), warnings);
+      return;
+    }
     BridgeGroupManager.Group updated = bridgeGroups.getGroup(GROUP_ACTIVE);
     result.ok = true;
     result.message = MESSAGE_ACTIVE_NEXT_PREFIX + candidate.device;

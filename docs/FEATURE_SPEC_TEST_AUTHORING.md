@@ -373,7 +373,7 @@ Notes:
    * `termination limitswitch [id]`
    * `limitswitch onHit <pass|fail>`
 11. `end`
-12. `save unified-config <path>`
+12. `save config <path>`
 
 ### Deadband Sweep Commands (CLI)
 
@@ -423,7 +423,7 @@ Examples:
 * `test <name>` enters edit mode
 * Changes apply to in-memory model
 * `end` exits edit mode without saving
-* `save unified-config` persists all changes (tests are stored in `bringup_system.json`).
+* `save config` persists all changes (tests are stored in `bringup_system.json`).
 
 ---
 
@@ -455,3 +455,4 @@ Examples:
 * Add direct deploy to roboRIO
 * Live profile sync via NetworkTables
 * Test templates and presets
+

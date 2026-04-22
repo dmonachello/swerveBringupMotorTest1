@@ -521,8 +521,8 @@ CMD_INIT = PARSER_SPEC.cmd_init
 CMD_ACTIVATE = PARSER_SPEC.cmd_activate
 CMD_ACTIVATE_PROFILE = PARSER_SPEC.cmd_activate_profile
 CMD_PROFILES_RELOAD = "profilesReload"
-CMD_LOCAL_CONFIG = "local-config"
-CMD_SAVE_UNIFIED = "unified-config"
+CMD_SAVE_BRIDGE_CONFIG = "bridge-config"
+CMD_SAVE_RUNTIME_GROUPS = "runtime-groups"
 CMD_VALIDATE_ALL = PARSER_SPEC.cmd_validate_all
 CMD_ACTIVE = "--active"
 CMD_ACTIVE_SET = "--active-set"
@@ -595,7 +595,7 @@ PROFILES_EXPORT_SCRIPT_NAME = "profiles_export.cli"
 PROFILE_EXPORT_HEADER_PREFIX = "#"
 PROFILE_EXPORT_HEADER_ECHO = "# echo on"
 PROFILE_EXPORT_HEADER_INIT = "# profiles init"
-PROFILE_EXPORT_HEADER_SAVE_NEW = "# save unified-config <path>"
+PROFILE_EXPORT_HEADER_SAVE_NEW = "# save config <path>"
 PROFILE_EXPORT_CMD_MERGE = "merge"
 PROFILE_EXPORT_CMD_CONFIG = "config"
 PROFILE_EXPORT_CMD_PROFILE = "profile"
@@ -1036,8 +1036,9 @@ MESSAGE_HINT_VALIDATE = (
 )
 from tools.common.test_authoring.validator import AXIS_INPUTS, BUTTON_INPUTS, LIMIT_SWITCH_DEVICE_TYPE
 MESSAGE_HINT_SAVE = (
-    "save all [--prompt] [--force] | save config <path> [--force] | save local-config <path> [--force] | "
-    "save profiles <path> [--force] | save unified-config <path> [--force] | save sources [--force]"
+    "save all [--prompt] [--force] | save config <path> [--force] | "
+    "save bridge-config <path> [--force] | save runtime-groups <path> [--force] | "
+    "save profiles <path> [--force] | save sources [--force]"
 )
 MESSAGE_HINT_SOURCES = "show sources | load sources | save sources"
 MESSAGE_HINT_RECOVER = "recover list | recover last-good | recover from <timestamp>"
@@ -1572,7 +1573,7 @@ MESSAGE_DELETED_TEST = "Deleted test: {name}"
 MESSAGE_WROTE_TESTS = "Wrote tests to {path}."
 MESSAGE_ERR_TESTS_STANDALONE = (
     "ERROR: Standalone tests files are not supported. "
-    "Use bringup_system.json and `save unified-config <path>`."
+    "Use bringup_system.json and `save config <path>`."
 )
 MESSAGE_TEST_SETS_HEADER = "Test sets:"
 MESSAGE_TEST_SETS_ENTRY = "  {name} ({count} tests)"
@@ -3965,7 +3966,14 @@ class BridgeCli:
             _suggest_save_args - Suggest save targets.
         """
         if not tokens:
-            return [CMD_ALL, CMD_CONFIG, CMD_LOCAL_CONFIG, CMD_PROFILES, CMD_SAVE_UNIFIED, CMD_SOURCES]
+            return [
+                CMD_ALL,
+                CMD_CONFIG,
+                CMD_SAVE_BRIDGE_CONFIG,
+                CMD_SAVE_RUNTIME_GROUPS,
+                CMD_PROFILES,
+                CMD_SOURCES,
+            ]
         if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() == CMD_ALL:
             return [CMD_PROMPT]
         if len(tokens) == COUNT_ONE:
@@ -6030,19 +6038,19 @@ class BridgeCli:
                     return StatusResult(code=SS__EXECUTOR__CANCELLED)
                 path = str(self._local_root_path)
             return self._save_profiles(path, force=force)
-        if target == CMD_SAVE_UNIFIED:
-            if len(cleaned) < COUNT_THREE:
-                print(MESSAGE_ERR_SAVE_PATH_REQUIRED.format(target=CMD_SAVE_UNIFIED))
-                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-            return self._save_unified_config(cleaned[COUNT_TWO], force=force)
         if target == CMD_CONFIG:
             if len(cleaned) < COUNT_THREE:
                 print(MESSAGE_ERR_SAVE_PATH_REQUIRED.format(target=CMD_CONFIG))
                 return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-            return self._save_runtime_config(cleaned[COUNT_TWO], force=force)
-        if target == CMD_LOCAL_CONFIG:
+            return self._save_unified_config(cleaned[COUNT_TWO], force=force)
+        if target == CMD_SAVE_RUNTIME_GROUPS:
             if len(cleaned) < COUNT_THREE:
-                print(MESSAGE_ERR_SAVE_PATH_REQUIRED.format(target=CMD_LOCAL_CONFIG))
+                print(MESSAGE_ERR_SAVE_PATH_REQUIRED.format(target=CMD_SAVE_RUNTIME_GROUPS))
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._save_runtime_config(cleaned[COUNT_TWO], force=force)
+        if target == CMD_SAVE_BRIDGE_CONFIG:
+            if len(cleaned) < COUNT_THREE:
+                print(MESSAGE_ERR_SAVE_PATH_REQUIRED.format(target=CMD_SAVE_BRIDGE_CONFIG))
                 return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             return self._save_local_config(cleaned[COUNT_TWO], force=force)
         print(MESSAGE_HINT_SAVE)
@@ -6256,8 +6264,19 @@ class BridgeCli:
             if not result.ok():
                 return result
             return StatusResult(code=SS__NORMAL)
-        if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == CMD_SAVE_UNIFIED:
+        if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == CMD_CONFIG:
             result = self._save_unified_config(tokens[2])
+            if not result.ok():
+                return result
+            return StatusResult(code=SS__NORMAL)
+        if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == CMD_SAVE_RUNTIME_GROUPS:
+            result = save_config(self._session, tokens[2], self._active_profile_name())
+            message = format_status_message(result.code, **result.message_args) or result.message
+            if message:
+                print(message)
+            return StatusResult(code=SS__CONFIG__SAVED if result.ok() else SS__CONFIG__INVALID)
+        if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == CMD_SAVE_BRIDGE_CONFIG:
+            result = self._save_local_config(tokens[2])
             if not result.ok():
                 return result
             return StatusResult(code=SS__NORMAL)
@@ -6405,17 +6424,6 @@ class BridgeCli:
                 except OSError as exc:
                     print(MESSAGE_DEBUG_GRAMMAR_DOT_FAIL.format(error=exc))
                     return StatusResult(code=SS__EXECUTOR__INTERNAL_ERROR)
-            return StatusResult(code=SS__NORMAL)
-        if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == "config":
-            result = save_config(self._session, tokens[2], self._active_profile_name())
-            message = format_status_message(result.code, **result.message_args) or result.message
-            if message:
-                print(message)
-            return StatusResult(code=SS__CONFIG__SAVED if result.ok() else SS__CONFIG__INVALID)
-        if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == CMD_LOCAL_CONFIG:
-            result = self._save_local_config(tokens[2])
-            if not result.ok():
-                return result
             return StatusResult(code=SS__NORMAL)
         if cmd == "show":
             return self._coerce_status(self._handle_show(tokens[1:]))
@@ -8278,14 +8286,21 @@ class BridgeCli:
                 "  Write bridgeConfig.byProfile for the active profile."
             ),
             "save config": (
-                "save config <bridgeConfig.json> [--force]\n"
+                "save config <bringup_system.json> [--force]\n"
+                "  Write full unified config (profiles + bridgeConfig.byProfile)."
+            ),
+            "save bridge-config": (
+                "save bridge-config <bridgeConfig.json> [--force]\n"
                 "  Write bridgeConfig.byProfile for the active profile."
+            ),
+            "save runtime-groups": (
+                "save runtime-groups <runtime_groups.json> [--force]\n"
+                "  Save runtime groups from the connected robot."
             ),
             "save all": (
                 "save all [--prompt] [--force]\n"
                 "  Save all dirty sections using current file paths."
             ),
-            "save local-config": "save local-config <path> [--force]\n  Save local per-profile groups config.",
             "save profiles": (
                 "save profiles [path] [--force]\n"
                 "  Save bringup_system.json (profiles + bridgeConfig.byProfile).\n"
@@ -8293,11 +8308,7 @@ class BridgeCli:
             ),
             "save tests": (
                 "save tests <path> [--force]\n"
-                "  Legacy bringup_tests.json is not supported; use `save unified-config <path>`."
-            ),
-            "save unified-config": (
-                "save unified-config <path> [--force]\n"
-                "  Write a unified bringup_system.json with profiles + bridgeConfig.byProfile."
+                "  Legacy bringup_tests.json is not supported; use `save config <path>`."
             ),
             "save sources": "save sources [--force]\n  Save all local sources back to disk.",
             "reset zero-config": HELP_RESET_ZERO_CONFIG_TEXT,

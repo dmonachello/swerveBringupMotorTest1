@@ -307,9 +307,9 @@ SPEC = ParserSpec(
     cmd_export_cli_script='cli-script',
     cmd_save='save',
     cmd_save_config='config',
-    cmd_save_local_config='local-config',
+    cmd_save_local_config='bridge-config',
     cmd_save_profiles='profiles',
-    cmd_save_unified='unified-config',
+    cmd_save_unified='runtime-groups',
     cmd_save_tests='tests',
     cmd_savep='savep',
     cmd_push='push',
@@ -377,7 +377,7 @@ SPEC = ParserSpec(
     msg_export_target='export requires runtime-groups or cli-script',
     msg_push_requires='push requires path',
     msg_save_requires='save requires target and path (or sources/all)',
-    msg_save_target='save requires all/config/local-config/profiles/unified-config/sources',
+    msg_save_target='save requires all/config/bridge-config/runtime-groups/profiles/sources',
     msg_load_requires='load requires sources or config <path> [--merge|--replace]',
     msg_write_requires='write requires tests <path>',
     msg_rename_device="rename requires 'device <old> <new>'",
@@ -484,3 +484,4 @@ SPEC = ParserSpec(
     kind_device_no='device_no',
     kind_device_delete='device_delete',
 )
+

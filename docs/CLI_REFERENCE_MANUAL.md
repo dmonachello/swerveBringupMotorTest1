@@ -87,9 +87,9 @@ Common mappings:
 - `export cli-script <path>`
 - `save all [--prompt]`
 - `save config <path>`
-- `save local-config <path>`
+- `save bridge-config <path>`
+- `save runtime-groups <path>`
 - `save profiles <path>`
-- `save unified-config <path>`
 - `rename device <old> <new>`
 - `device <name>`
 - `device <name> set <field> <value>`
@@ -1906,19 +1906,19 @@ EXAMPLE
 EXAMPLE OUTPUT
 Exported CLI script.
 
-### save config <path>
+### save runtime-groups <path>
 
 NAME
 
-save config <path> - Write the current configuration state to a file.
+save runtime-groups <path> - Write current robot runtime groups to a file.
 
 SYNOPSIS
 
-save config <path>
+save runtime-groups <path>
 
 DESCRIPTION
 
-Write the current configuration state to a file. This command is valid in Config Mode (`bridge(config-...)#`).
+Write current robot runtime groups to a file. This command is valid in Config Mode (`bridge(config-...)#`) while connected.
 
 PARAMETERS
 
@@ -1942,20 +1942,20 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`save config <path>`
+`save runtime-groups <path>`
 
 EXAMPLE OUTPUT
 Saved.
 
-### save local-config <path>
+### save bridge-config <path>
 
 NAME
 
-save local-config <path> - Write the current configuration state to a file.
+save bridge-config <path> - Write the current configuration state to a file.
 
 SYNOPSIS
 
-save local-config <path>
+save bridge-config <path>
 
 DESCRIPTION
 
@@ -1983,7 +1983,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`save local-config <path>`
+`save bridge-config <path>`
 
 EXAMPLE OUTPUT
 Saved.
@@ -2029,15 +2029,15 @@ EXAMPLE
 EXAMPLE OUTPUT
 Saved.
 
-### save unified-config <path>
+### save config <path>
 
 NAME
 
-save unified-config <path> - Write the current configuration state to a file.
+save config <path> - Write the current configuration state to a file.
 
 SYNOPSIS
 
-save unified-config <path>
+save config <path>
 
 DESCRIPTION
 
@@ -2065,7 +2065,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`save unified-config <path>`
+`save config <path>`
 
 EXAMPLE OUTPUT
 Saved.
@@ -3370,7 +3370,7 @@ write tests <path>
 
 DESCRIPTION
 
-Deprecated export. Writes the current tests to a standalone JSON file. The robot consumes tests from `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`; for deployable output, use `save unified-config <path>`.
+Deprecated export. Writes the current tests to a standalone JSON file. The robot consumes tests from `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`; for deployable output, use `save config <path>`.
 
 PARAMETERS
 
@@ -3394,7 +3394,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`save unified-config data/bringup_system.json`
+`save config data/bringup_system.json`
 
 EXAMPLE OUTPUT
 Wrote tests.
@@ -4253,7 +4253,7 @@ OK
 
 NAME
 
-run test - Run a test by name or the group test if defined.
+run test - Run the selected/default test in the current group context.
 
 SYNOPSIS
 
@@ -4261,7 +4261,7 @@ run test
 
 DESCRIPTION
 
-Run a test by name or the group test if defined. This command is valid in Group Mode (`bridge(config-...-group-...)#`).
+Run the selected/default test in the current group context. This command is valid in Group Mode (`bridge(config-...-group-...)#`).
 
 RETURNS
 
@@ -4290,7 +4290,7 @@ Test started.
 
 NAME
 
-run test <name> - Run a test by name or the group test if defined.
+run test <name> - Run the named test in the current group context.
 
 SYNOPSIS
 
@@ -4298,7 +4298,7 @@ run test <name>
 
 DESCRIPTION
 
-Run a test by name or the group test if defined. This command is valid in Group Mode (`bridge(config-...-group-...)#`).
+Run the named test in the current group context. This command is valid in Group Mode (`bridge(config-...-group-...)#`).
 
 PARAMETERS
 
@@ -4339,7 +4339,7 @@ write tests <path>
 
 DESCRIPTION
 
-Deprecated export. Writes the current tests to a standalone JSON file. Exit to Config Mode first, then use `save unified-config <path>` to persist tests in `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
+Deprecated export. Writes the current tests to a standalone JSON file. Exit to Config Mode first, then use `save config <path>` to persist tests in `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
 
 PARAMETERS
 
@@ -4363,7 +4363,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`save unified-config data/bringup_system.json`
+`save config data/bringup_system.json`
 
 EXAMPLE OUTPUT
 Wrote tests.
@@ -4544,7 +4544,7 @@ write tests <path>
 
 DESCRIPTION
 
-Deprecated export. Writes the current tests to a standalone JSON file. Exit to Config Mode first, then use `save unified-config <path>` to persist tests in `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
+Deprecated export. Writes the current tests to a standalone JSON file. Exit to Config Mode first, then use `save config <path>` to persist tests in `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
 
 PARAMETERS
 
@@ -4568,7 +4568,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`save unified-config data/bringup_system.json`
+`save config data/bringup_system.json`
 
 EXAMPLE OUTPUT
 Wrote tests.
@@ -6221,7 +6221,7 @@ write tests <path>
 
 DESCRIPTION
 
-Deprecated export. Writes the current tests to a standalone JSON file. Exit to Config Mode first, then use `save unified-config <path>` to persist tests in `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
+Deprecated export. Writes the current tests to a standalone JSON file. Exit to Config Mode first, then use `save config <path>` to persist tests in `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
 
 PARAMETERS
 
@@ -6245,7 +6245,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`save unified-config data/bringup_system.json`
+`save config data/bringup_system.json`
 
 EXAMPLE OUTPUT
 Wrote tests.
@@ -6315,9 +6315,9 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `export runtime-groups <path>`
 - `export cli-script <path>`
 - `save config <path>`
-- `save local-config <path>`
+- `save bridge-config <path>`
+- `save runtime-groups <path>`
 - `save profiles <path>`
-- `save unified-config <path>`
 - `rename device <old> <new>`
 - `device <name>`
 - `device <name> set <field> <value>`
@@ -6430,3 +6430,4 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `termination rotation <value>`
 - `termination limitswitch [id]`
 - `write tests <path>`
+

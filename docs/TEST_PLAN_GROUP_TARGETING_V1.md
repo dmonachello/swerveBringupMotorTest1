@@ -188,7 +188,7 @@ Expected:
 
 - active has at least one member
 
-`save local-config .\tmp_group_v1_config.json --force`
+`save bridge-config .\tmp_group_v1_config.json --force`
 
 `show group active`
 
@@ -204,6 +204,7 @@ Expected:
 
 ## Troubleshooting
 
-- If `save local-config` fails validation, retry with `--force` for this test plan.
+- If `save bridge-config` fails validation, retry with `--force` for this test plan.
 - If CLI parser hints appear unexpectedly, confirm command was entered in config mode.
 - If active membership changes unexpectedly on save, capture logs and file a regression.
+
