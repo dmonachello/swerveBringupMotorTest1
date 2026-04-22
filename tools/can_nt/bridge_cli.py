@@ -3092,7 +3092,7 @@ class BridgeCli:
         """
         include_raw = STATUS_INCLUDE_RAW_DEFAULT or bool(result.code & FLAG_PRINT_MESSAGE)
         print(format_status(result.code, include_raw=include_raw))
-        status_message = format_status_message(result.code)
+        status_message = format_status_message(result.code, **result.message_args)
         if status_message:
             print(STATUS_DETAIL_PREFIX + status_message)
         elif result.message:
@@ -6231,7 +6231,7 @@ class BridgeCli:
             return self._coerce_status(self._apply_config_plan(plan, prompt_on_replace=True))
         if cmd == "export" and len(tokens) >= 3 and tokens[1].lower() == "runtime-groups":
             result = export_runtime_groups(self._session, tokens[2], self._active_profile_name())
-            message = format_status_message(result.code) or result.message
+            message = format_status_message(result.code, **result.message_args) or result.message
             if message:
                 print(message)
             return StatusResult(code=SS__NORMAL if result.ok() else SS__NETWORK__COMMAND_SEND_FAILED)
@@ -6408,7 +6408,7 @@ class BridgeCli:
             return StatusResult(code=SS__NORMAL)
         if cmd == "save" and len(tokens) >= 3 and tokens[1].lower() == "config":
             result = save_config(self._session, tokens[2], self._active_profile_name())
-            message = format_status_message(result.code) or result.message
+            message = format_status_message(result.code, **result.message_args) or result.message
             if message:
                 print(message)
             return StatusResult(code=SS__CONFIG__SAVED if result.ok() else SS__CONFIG__INVALID)
@@ -12091,7 +12091,7 @@ class BridgeCli:
         temp_path = target_path.with_name(target_path.name + BACKUP_SUFFIX_TMP)
         result = save_config(self._session, str(temp_path), self._active_profile_name())
         if not result.ok():
-            message = format_status_message(result.code) or result.message
+            message = format_status_message(result.code, **result.message_args) or result.message
             if message:
                 print(message)
             return StatusResult(code=SS__CONFIG__INVALID)

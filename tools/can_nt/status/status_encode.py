@@ -11,6 +11,7 @@ DESCRIPTION
 
 from __future__ import annotations
 
+import re
 from typing import Dict
 
 from tools.can_nt.status.status_catalog import FAC, SEV, MSG
@@ -35,6 +36,7 @@ UNKNOWN_MESSAGE = "UNKNOWN_MESSAGE"
 UNKNOWN_SEVERITY = "UNKNOWN_SEVERITY"
 UNKNOWN_TEMPLATE = ""
 EMPTY_MAPPING: Dict[str, int] = {}
+REGEX_PLACEHOLDER = re.compile(r"\{([A-Za-z0-9_]+)\}")
 
 FLAG_PRINT_MESSAGE = 1 << 28
 FLAG_LOG_ONLY = 1 << 29
@@ -79,8 +81,15 @@ def format_status_message(value: int, *args: object, **kwargs: object) -> str | 
     template = get_message_template(value) or UNKNOWN_TEMPLATE
     if not template:
         return None
+    if kwargs:
+        safe_kwargs = dict(kwargs)
+    else:
+        safe_kwargs = {}
+    for key in REGEX_PLACEHOLDER.findall(template):
+        if key not in safe_kwargs:
+            safe_kwargs[key] = key
     try:
-        return template.format(*args, **kwargs)
+        return template.format(*args, **safe_kwargs)
     except (KeyError, IndexError, ValueError):
         return template
 

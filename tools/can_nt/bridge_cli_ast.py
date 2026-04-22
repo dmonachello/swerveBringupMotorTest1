@@ -485,7 +485,7 @@ class BridgeCliAstExecutor:
             result = export_runtime_groups(
                 self._cli._session, ast.path, self._cli._active_profile_name()
             )
-            message = format_status_message(result.code) or result.message
+            message = format_status_message(result.code, **result.message_args) or result.message
             if message:
                 print(message)
             return AST_EXEC_SPEC["ret_err"] if not result.ok() else None

@@ -1,10 +1,8 @@
-# Test Procedure: Full Robot Bringup from Scratch (V2)
-
-> Superseded: Use `docs/TEST_PROCEDURE_FULL_ROBOT_FROM_SCRATCH_V3.md`.
+# Test Procedure: Full Robot Bringup from Scratch (V3)
 
 ## Purpose
 
-Provide a complete, start-to-finish test flow from a clean host setup to an on-robot bringup run, including Group and Targeting V2 validation.
+Provide a complete, start-to-finish test flow from a clean host setup to an on-robot bringup run, including Group and Targeting validation with canonical CLI commands.
 
 ## Scope
 
@@ -15,6 +13,12 @@ This procedure covers:
 - save and push workflow
 - robot-connected command validation
 - execution-time checks for target resolution
+
+## Version Notes
+
+- This is the current from-scratch procedure.
+- Command examples use canonical CLI forms only (`show`, `profile`, `configure terminal`, `validate`).
+- Alias forms (`ls`, `prof`, `cfg`, `val`, `show session`) are removed and hard-error.
 
 ## Clean Start Requirement
 
@@ -108,7 +112,7 @@ Command:
 
 `python tools/can_nt/scripts/bridge_cli_v1_group_targeting_regression.py`
 
-Note: script filename still uses `v1`; this procedure treats it as the current V2 regression gate until renamed.
+Note: script filename still uses `v1`; this procedure treats it as the current regression gate until renamed.
 
 Expected:
 
@@ -237,7 +241,7 @@ Expected:
 - context enter succeeds only for existing groups
 - `group <name>` does not implicitly create remote groups
 
-### Step 14: Validate V2 commands while connected
+### Step 14: Validate connected commands
 
 Run and verify:
 
@@ -248,7 +252,7 @@ Run and verify:
 
 Expected:
 
-- same behavior as local mode for V2 semantics
+- same behavior as local mode for current semantics
 
 ## Phase 4: Push and Runtime Validation
 
@@ -274,12 +278,19 @@ Expected:
 - target and resolved devices are visible
 - empty target groups fail safely with clear error
 
+## Status Message Notes
+
+The CLI status system supports template placeholders in canonical messages (for example `{arg}`).
+
+- If a handler provides placeholder args, output is fully resolved.
+- If a handler does not provide args, fallback rendering substitutes placeholder names to avoid raw braces in operator output.
+
 ## Phase 5: End-to-End Success Criteria
 
 All criteria must pass:
 
-- Group and Targeting V2 regression script passes.
-- Local and connected CLI behavior is consistent for V2 commands.
+- Group and Targeting regression script passes.
+- Local and connected CLI behavior is consistent for canonical commands.
 - `active` remains non-persistent and is not written to saved config.
 - No silent mutation on protected operations.
 - Robot command path remains responsive and safe.

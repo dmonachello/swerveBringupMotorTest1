@@ -11,7 +11,7 @@ DESCRIPTION
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Optional
 
 from tools.can_nt.status.status_encode import decode
@@ -27,6 +27,7 @@ SEVERITY_FATAL = 4
 @dataclass(frozen=True)
 class StatusResult:
     code: int
+    message_args: Dict[str, object] = field(default_factory=dict)
     message: str = ""
     detail: str = ""
     payload: Optional[Dict[str, object]] = None
