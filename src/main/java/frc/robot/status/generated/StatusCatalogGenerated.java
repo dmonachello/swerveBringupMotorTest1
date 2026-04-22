@@ -1,8 +1,8 @@
 package frc.robot.status.generated;
 
-/** Generated file. Do not edit manually. */
+/** AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration. */
 public final class StatusCatalogGenerated {
-  public static final String GENERATED_FROM_HASH = "38ceaf85de3b06b2fc8f854415ceb5506f44f104387d4754b94c998794e79964";
+  public static final String GENERATED_FROM_HASH = "b6ad8dd4a8eadd0e1c360a5c352c5dc481ff11ff358c40fc49d9c6e9e49660e0";
 
   public static final class Severity {
     public static final int SUCCESS = 0;

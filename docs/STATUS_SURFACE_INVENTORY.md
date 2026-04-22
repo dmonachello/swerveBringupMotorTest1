@@ -1,14 +1,16 @@
 # Status Surface Inventory
 
+> AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration.
+
 ## Purpose
 
 Inventory canonical status-coded definitions and unstructured status/error string surfaces across Python and Java.
 
 ## Summary
 
-- Generated At (UTC): `2026-04-22T15:00:00.624272+00:00`
+- Generated At (UTC): `2026-04-22T18:00:15.302637+00:00`
 - Canonical Python status message entries: `36`
-- Unstructured Python candidates: `1606`
+- Unstructured Python candidates: `1607`
 - Unstructured Java text candidates: `503`
 - Java ack/status literal candidates: `0`
 

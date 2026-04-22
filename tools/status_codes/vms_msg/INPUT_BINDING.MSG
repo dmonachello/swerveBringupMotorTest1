@@ -1,5 +1,5 @@
 ! Generated from Python status catalog and status templates.
-! Do not hand-edit generated files.
+! AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration.
 .TITLE INPUT_BINDING_STATUS_MESSAGES
 .IDENT /INPUT_BINDING-V1/
 .FACILITY INPUT_BINDING,6 /PREFIX=INPUT_BINDING_

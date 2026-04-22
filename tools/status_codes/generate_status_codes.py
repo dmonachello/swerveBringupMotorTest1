@@ -21,9 +21,11 @@ KEY_FACILITIES = "facilities"
 KEY_MESSAGES = "messages"
 KEY_VERSION = "version"
 KEY_GENERATED_FROM = "generatedFrom"
+KEY_GENERATED_NOTICE = "_generatedNotice"
 KEY_DATA = "data"
 
 DEFAULT_VERSION = "1"
+GENERATED_NOTICE_TEXT = "AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration."
 
 FILE_SOURCE = "status_codes_source.json"
 FILE_GENERATED = "status_codes.generated.json"
@@ -94,6 +96,7 @@ def generate(catalog: Dict[str, object]) -> Dict[str, object]:
     return {
         KEY_VERSION: DEFAULT_VERSION,
         KEY_GENERATED_FROM: FILE_SOURCE,
+        KEY_GENERATED_NOTICE: GENERATED_NOTICE_TEXT,
         KEY_DATA: catalog,
     }
 

@@ -1,5 +1,5 @@
 ! Generated from Python status catalog and status templates.
-! Do not hand-edit generated files.
+! AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration.
 .TITLE GROUP_STATUS_MESSAGES
 .IDENT /GROUP-V1/
 .FACILITY GROUP,5 /PREFIX=GROUP_

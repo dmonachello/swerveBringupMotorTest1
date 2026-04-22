@@ -1,6 +1,6 @@
 ! Generated from full-surface status inventory.
-! Do not hand-edit generated files.
-! Source inventory generated_at_utc: 2026-04-22T03:59:49.997800+00:00
+! AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration.
+! Source inventory generated_at_utc: 2026-04-22T18:00:15.302637+00:00
 .TITLE PY_CANONICAL_SURFACE
 .IDENT /PY-CANONICAL-V1/
 .FACILITY PYCANON,401 /PREFIX=PYCANON_

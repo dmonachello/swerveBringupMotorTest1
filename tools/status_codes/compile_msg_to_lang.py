@@ -93,6 +93,7 @@ EXIT_STALE = 2
 
 KEY_VERSION = "version"
 KEY_GENERATED_FROM = "generatedFrom"
+KEY_GENERATED_NOTICE = "_generatedNotice"
 KEY_SOURCE_HASH = "sourceHash"
 KEY_SOURCES = "sources"
 KEY_DATA = "data"
@@ -102,6 +103,7 @@ KEY_MESSAGES = "messages"
 KEY_MESSAGE_TEXT = "messageText"
 
 CATALOG_VERSION = "1"
+GENERATED_NOTICE_TEXT = "AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration."
 
 
 @dataclass
@@ -267,7 +269,7 @@ def _render_python_catalog(
     definitions: Sequence[MsgDefinition],
 ) -> str:
     lines: List[str] = []
-    lines.append('"""Generated file. Do not edit manually."""')
+    lines.append(f'"""{GENERATED_NOTICE_TEXT}"""')
     lines.append("")
     lines.append(f"GENERATED_FROM_HASH = \"{source_hash}\"")
     lines.append("")
@@ -301,7 +303,7 @@ def _render_python_catalog(
 
 def _render_python_messages(source_hash: str, message_text: Dict[int, str]) -> str:
     lines: List[str] = []
-    lines.append('"""Generated file. Do not edit manually."""')
+    lines.append(f'"""{GENERATED_NOTICE_TEXT}"""')
     lines.append("")
     lines.append(f"GENERATED_FROM_HASH = \"{source_hash}\"")
     lines.append("")
@@ -323,7 +325,7 @@ def _render_java_catalog(
     lines: List[str] = []
     lines.append("package frc.robot.status.generated;")
     lines.append("")
-    lines.append("/** Generated file. Do not edit manually. */")
+    lines.append("/** AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration. */")
     lines.append("public final class StatusCatalogGenerated {")
     lines.append("  public static final String GENERATED_FROM_HASH = \"%s\";" % source_hash)
     lines.append("")
@@ -379,7 +381,7 @@ def _render_java_messages(source_hash: str, message_text: Dict[int, str]) -> str
     lines.append("import java.util.HashMap;")
     lines.append("import java.util.Map;")
     lines.append("")
-    lines.append("/** Generated file. Do not edit manually. */")
+    lines.append("/** AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration. */")
     lines.append("public final class StatusMessagesGenerated {")
     lines.append("  public static final String GENERATED_FROM_HASH = \"%s\";" % source_hash)
     lines.append("  private static final Map<Integer, String> TABLE = new HashMap<>();")
@@ -405,6 +407,7 @@ def _compose_catalog_payload(source_hash: str, files: Sequence[Path], facilities
     return {
         KEY_VERSION: CATALOG_VERSION,
         KEY_GENERATED_FROM: "msg",
+        KEY_GENERATED_NOTICE: GENERATED_NOTICE_TEXT,
         KEY_SOURCE_HASH: source_hash,
         KEY_SOURCES: sources,
         KEY_DATA: {

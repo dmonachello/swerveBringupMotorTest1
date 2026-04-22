@@ -68,6 +68,7 @@ SKIP_DIR_NAMES = {
 }
 
 MARKDOWN_HEADER = "# Status Surface Inventory\n"
+GENERATED_NOTICE_TEXT = "AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration."
 
 
 @dataclass
@@ -162,6 +163,8 @@ def _render_markdown(payload: Dict[str, object]) -> str:
     lines: List[str] = [
         MARKDOWN_HEADER.strip(),
         "",
+        f"> {GENERATED_NOTICE_TEXT}",
+        "",
         "## Purpose",
         "",
         "Inventory canonical status-coded definitions and unstructured status/error string surfaces across Python and Java.",
@@ -231,6 +234,7 @@ def main() -> int:
 
     payload = {
         "generated_at_utc": generated_at,
+        "generated_notice": GENERATED_NOTICE_TEXT,
         "canonical_python_status_messages": [_hit_to_dict(item) for item in canonical_hits],
         "unstructured_python_candidates": [_hit_to_dict(item) for item in py_hits],
         "unstructured_java_candidates": {

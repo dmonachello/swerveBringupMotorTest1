@@ -81,7 +81,7 @@ SEVERITY_ORDER = {
 }
 
 HEADER_COMMENT = "! Generated from full-surface status inventory."
-HEADER_COMMENT_2 = "! Do not hand-edit generated files."
+HEADER_COMMENT_2 = "! AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration."
 
 LINE_TITLE_FMT = ".TITLE {title}"
 LINE_IDENT_FMT = ".IDENT /{ident}/"
@@ -321,4 +321,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

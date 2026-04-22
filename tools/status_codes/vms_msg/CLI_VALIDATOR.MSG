@@ -1,5 +1,5 @@
 ! Generated from Python status catalog and status templates.
-! Do not hand-edit generated files.
+! AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration.
 .TITLE CLI_VALIDATOR_STATUS_MESSAGES
 .IDENT /CLI_VALIDATOR-V1/
 .FACILITY CLI_VALIDATOR,2 /PREFIX=CLI_VALIDATOR_

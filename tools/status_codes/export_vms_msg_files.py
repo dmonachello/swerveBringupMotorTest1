@@ -54,7 +54,7 @@ SEVERITY_ORDER = {
 }
 
 HEADER_COMMENT = "! Generated from Python status catalog and status templates."
-HEADER_COMMENT_2 = "! Do not hand-edit generated files."
+HEADER_COMMENT_2 = "! AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration."
 
 
 def _reverse_lookup(mapping: Dict[str, int], value: int) -> str:
