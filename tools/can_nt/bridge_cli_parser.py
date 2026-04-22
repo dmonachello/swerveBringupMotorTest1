@@ -113,6 +113,7 @@ SAVE_TARGET_CONFIG = "config"
 SAVE_TARGET_LOCAL_CONFIG = "local-config"
 SAVE_TARGET_PROFILES = "profiles"
 SAVE_TARGET_UNIFIED = "unified-config"
+KIND_EXEC_RUN_TEST_DEFAULT = "exec_run_test_default"
 
 
 class CliParseError(ValueError):
@@ -623,7 +624,7 @@ class BridgeCliParser:
         if verb == SPEC.cmd_run:
             kind = SPEC.empty_str
             if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() == SPEC.cmd_test:
-                kind = SPEC.kind_exec_run_test_default
+                kind = KIND_EXEC_RUN_TEST_DEFAULT
             return (
                 kind,
                 SPEC.empty_str,
@@ -722,7 +723,7 @@ class BridgeCliParser:
         if verb == SPEC.cmd_run:
             kind = SPEC.empty_str
             if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() == SPEC.cmd_test:
-                kind = SPEC.kind_exec_run_test_default
+                kind = KIND_EXEC_RUN_TEST_DEFAULT
             return (
                 kind,
                 SPEC.empty_str,
@@ -1614,17 +1615,6 @@ class BridgeCliParser:
         handler(tokens)
 
     def _expand_alias_tokens(self, tokens: List[str]) -> List[str]:
-        if not tokens:
-            return tokens
-        cmd = tokens[SPEC.count_zero].lower()
-        if cmd == SPEC.cmd_ls:
-            return [SPEC.cmd_show] + tokens[SPEC.count_one :]
-        if cmd == SPEC.cmd_cfg:
-            return [SPEC.cmd_configure, SPEC.cmd_terminal] + tokens[SPEC.count_one :]
-        if cmd == SPEC.cmd_prof:
-            return [SPEC.cmd_profile] + tokens[SPEC.count_one :]
-        if cmd == SPEC.cmd_val:
-            return [SPEC.cmd_validate] + tokens[SPEC.count_one :]
         return tokens
 
     def _allowed_modes_for_cmd(self, cmd: str) -> List[str]:

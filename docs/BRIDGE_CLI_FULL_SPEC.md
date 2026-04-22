@@ -1,11 +1,13 @@
 Purpose: Single reference for the Bridge CLI feature, including requirements, restrictions, design, and implementation notes.
 
 ## Summary
+
 Purpose: Describe the feature at a high level.
 
 Add a Cisco-style CLI mode inside the bridge app. The CLI is a second operator surface alongside the GUI and must share the same core session, runtime state, and business logic. The CLI is a front end only, not a separate system.
 
 ## Goals
+
 Purpose: Define the operator outcomes.
 
 - Contextual prompts and hierarchical modes.
@@ -15,22 +17,27 @@ Purpose: Define the operator outcomes.
 - `--json` output for show commands (one JSON blob per command). Use `--pretty` for pretty JSON output.
 
 ## Host vs Robot Context
+
 Purpose: Ensure operators do not confuse host-local editing context with robot runtime state.
 
 Definitions:
+
 - Host context: the CLI's local working state loaded from disk (active profile for editing, active test set for authoring, dirty flags, file paths).
 - Robot context: the roboRIO runtime state over TCP (active profile, selected test, runAllActive, etc.).
 
 Rules:
+
 - Host-only commands MUST NOT change robot state as a side effect.
 - Robot state MUST change only via explicit robot-targeting commands over TCP.
 
 Examples:
+
 - `profile <name>` changes host context only.
 - `profiles activate <name>` changes robot active profile (TCP).
 - `show workspace` is host-only; `show status robot` inspects robot state.
 
 ## Non-Goals
+
 Purpose: Clarify what is out of scope.
 
 - Separate standalone bridge implementation.
@@ -41,6 +48,7 @@ Purpose: Clarify what is out of scope.
 - Per-command force flags.
 
 ## Restrictions
+
 Purpose: Hard rules that must not be violated.
 
 - CLI must not duplicate send/receive logic.
@@ -50,6 +58,7 @@ Purpose: Hard rules that must not be violated.
 - GUI and CLI must share the same session and operations layers.
 
 ## No-Regression Guarantee
+
 Purpose: Ensure current behavior remains unchanged when CLI/groups are unused.
 
 - Existing GUI behavior remains unchanged.
@@ -58,9 +67,11 @@ Purpose: Ensure current behavior remains unchanged when CLI/groups are unused.
 - CLI is additive only.
 
 ## Architecture
+
 Purpose: Define required layers and responsibilities.
 
 ### Bridge Core / Session Layer
+
 Purpose: Centralize connect/send/receive and runtime state.
 
 - Connect/disconnect.
@@ -70,7 +81,9 @@ Purpose: Centralize connect/send/receive and runtime state.
 - Maintain runtime state snapshot (merge TCP state + NT state).
 
 ### Shared Operations Layer
+
 Purpose: Centralize domain logic for all front ends.
+
 - Group operations.
 - Device membership operations.
 - Binding operations.
@@ -80,6 +93,7 @@ Purpose: Centralize domain logic for all front ends.
 - Conflict policy handling.
 
 ### CLI Module
+
 Purpose: Provide a Cisco-style operator surface only.
 
 - Prompt loop and mode handling.
@@ -88,6 +102,7 @@ Purpose: Provide a Cisco-style operator surface only.
 - Invokes shared operations only.
 
 ### Parser Generation
+
 Purpose: Keep the CLI grammar and parser constants in sync with the EBNF spec.
 
 - Canonical EBNF: `tools/can_nt/bridge_cli_ebnf.txt`
@@ -96,6 +111,7 @@ Purpose: Keep the CLI grammar and parser constants in sync with the EBNF spec.
 - Generated outputs: `tools/can_nt/bridge_cli_grammar_gen.py` and `tools/can_nt/bridge_cli_constants_gen.py`
 
 ### EBNF Rationale
+
 Purpose: Justify the choice of EBNF for the CLI grammar.
 
 - EBNF is compact and human-readable, making command syntax reviewable in diffs.
@@ -106,19 +122,23 @@ Purpose: Justify the choice of EBNF for the CLI grammar.
 - The EBNF is the heart of the CLI: defining the language shapes how the CLI functions.
 
 Tradeoffs:
+
 - EBNF alone cannot express runtime validation or mode transitions.
 - Some behavior (errors, labels) still lives in metadata.
 
 
 ### GUI Front End
+
 Purpose: Remain a thin front end.
 
 - Invokes shared operations only.
 
 ## Modes
+
 Purpose: Define CLI contexts and prompts.
 
 ### Mode Transitions
+
 Purpose: Show how operators enter and exit each mode.
 
 - Exec -> Config: `configure terminal`
@@ -128,18 +148,23 @@ Purpose: Show how operators enter and exit each mode.
 - Device -> Config: `exit`
 - Any Mode -> Exec: `end`
 - Exec -> Exit CLI: `exit` or `quit`
+
 ### Exec
+
 Prompt: `bridge>` or `bridge-profile-<name>>` when a profile is active/default.
 
 Purpose:
+
 - inspection
 - connection status
 - entry to config mode
 
 ### Config
+
 Prompt: `bridge(config-profile-<name>)#`
 
 Purpose:
+
 - structural edits
 - group creation/selection
 - selected device control
@@ -147,29 +172,36 @@ Purpose:
 - profile selection (`profile <name>`)
 
 ### Group Config
+
 Prompt: `bridge(config-profile-<name>-group-<name>)#`
 
 Purpose:
+
 - manage a single group
 - membership and bindings
 - enable/disable
 - run tests
 
 ### Device Config
+
 Prompt: `bridge(config-device-<name>)#`
 
 Purpose:
+
 - edit device metadata
 - inspect device fields
 
 ### Test Config
+
 Prompt: `bridge(config-test-<name>)#`
 
 Purpose:
+
 - create and edit bringup tests
 - edit bindings and termination settings
 
 ### Batch
+
 Purpose: Run scripts deterministically without prompts.
 
 - Invoked via `bridge.py --batch --script <file>`
@@ -178,6 +210,7 @@ Purpose: Run scripts deterministically without prompts.
 - Uses conflict policy.
 
 ## Output Handling
+
 Purpose: Specify streaming and formatting rules.
 
 - All output streams directly to console.
@@ -186,28 +219,35 @@ Purpose: Specify streaming and formatting rules.
 - No buffering unless required for formatting.
 
 ## Conflict Policy
+
 Purpose: Define device ownership handling.
 
 Policies:
+
 - `error` (default): warn, do not move.
 - `move`: warn, automatically move.
 
 Interactive prompts:
+
 - moving devices between groups
 - deleting groups
 - clearing groups
 
 Rules:
+
 - default answer is no
 - operations must be atomic
 
 Batch mode:
+
 - no prompts allowed
 
 ## Command Set
+
 Purpose: Define CLI commands by mode.
 
 Common:
+
 - `exit`
 - `end`
 - `help`
@@ -220,6 +260,7 @@ Common:
 - For bounded values, `?` prints the full inline list and any numeric ranges.
 
 Exec:
+
 - `show status [robot|local|both]`
 - `show groups [robot|local|both]`
 - `show group <name> [robot|local|both]`
@@ -244,13 +285,13 @@ Exec:
 - `show tests [--json] [--pretty]`
 - `show test <name> [--json] [--pretty]`
 - `show workspace [--json] [--pretty]`
-- `show session [--json] [--pretty]`
 - `show controllers [--json] [--pretty]`
 - `configure terminal`
 - `connect`
 - `disconnect`
 
 Config:
+
 - `group <name>`
 - `no group <name>`
 - `profile <name>`
@@ -314,6 +355,7 @@ Config:
 - `test <name>` (edit existing)
 
 Show Output Notes:
+
 - `show group` text output includes members and bindings.
 - `show devices` (local) lists the full profile-derived device inventory, not only group members.
 - `show device` returns the full device definition from bringup_system.json (local only).
@@ -323,6 +365,7 @@ Show Output Notes:
 - `validate config [path]`
 
 Group:
+
 - `show`
 - `show members`
 - `show binding`
@@ -345,6 +388,7 @@ Group:
 - `write tests <path>`
 
 Device:
+
 - `show`
 - `show <target> [--json] [--pretty]`
 - `set <field> <value>`
@@ -352,6 +396,7 @@ Device:
 - `write tests <path>`
 
 Test:
+
 - `show`
 - `type joystick`
 - `type button`
@@ -396,9 +441,11 @@ Test:
 - `write tests <path>`
 
 ## Control Identifiers
+
 Purpose: Define allowed input names.
 
 Examples:
+
 - `controller0.leftY`
 - `controller0.rightY`
 - `controller0.A`
@@ -421,9 +468,11 @@ Examples:
 - `ui.Button2`
 
 ## Binding Rules
+
 Purpose: Define supported binding behaviors.
 
 Behaviors:
+
 - `analog`
 - `hold`
 - `toggle`
@@ -431,51 +480,63 @@ Behaviors:
 - `jog-reverse`
 
 Rules:
+
 - `analog` uses live input value.
 - button bindings require a value.
 - value belongs to the binding, not the device or group.
 
 Semantics:
+
 - `hold`: output = value while pressed, else 0
 - `toggle`: toggles value on/off
 - `jog-forward`: +value while pressed
 - `jog-reverse`: -value while pressed
 
 ## Device Ownership Rule
+
 Purpose: Enforce one group per device.
 
 Interactive:
+
 - warn and prompt
 
 Batch:
+
 - `error` or `move` policy
 
 Multiple group membership is not allowed.
 
 ## Per-Member Enable
+
 Purpose: Control participation without changing membership.
 
 Commands:
+
 - `member <device> enable`
 - `member <device> disable`
 - `member <device> toggle`
 
 ## Selected Device Mode
+
 Purpose: Override group control for a single device.
 
 Commands:
+
 - `selected-device <device>`
 - `selected-mode on`
 - `selected-mode off`
 
 Behavior:
+
 - selected device overrides group control
 - group output suppressed for that device
 
 ## Response Handling
+
 Purpose: Define the response pipeline.
 
 Pipeline:
+
 - `CMD`
 - `ACK`
 - `OUT`
@@ -484,24 +545,30 @@ Pipeline:
 All output is printed directly.
 
 ## Show Sources
+
 Purpose: Choose whether show commands read from robot, local config, or both.
 
 Sources:
+
 - `robot` (live from roboRIO)
 - `local` (Windows-side config snapshot from merge/import)
 - `both` (local first, then robot)
 
 Defaults:
+
 - robot if connected
 - local if not connected
 
 Output labeling:
+
 - each show output includes a `SOURCE: <robot|local>` line before its payload.
 
 ## Structured Output
+
 Purpose: Define JSON output rules.
 
 Commands:
+
 - `show status --json`
 - `show groups --json`
 - `show group <name> --json`
@@ -524,6 +591,7 @@ Commands:
 JSON is one blob per command.
 
 ## Shared Config (bringup_system.json)
+
 Purpose: Store bridge group config inside the single shared data file.
 
 - The shared file is `data/bringup_system.json`.
@@ -532,21 +600,25 @@ Purpose: Store bridge group config inside the single shared data file.
 - `data_hash` is computed from profiles + diagram; `bridgeConfig` changes do not affect it.
 
 `bridgeConfig` object:
+
 - `schemaVersion` (required, current: 2)
 - `byProfile` (map of profile name -> per-profile config)
 - `generatedAt` (optional timestamp)
 
 Per-profile config object:
+
 - `groups` (list of group objects)
 - `selectedDevice` (selected-device override)
 
 Group object:
+
 - `name` (string, required)
 - `enabled` (boolean, default true)
 - `members` (list of `{device, enabled}`)
 - `bindings` (list of `{input, kind, value?}`)
 
 Device object (optional, local-only):
+
 - `name` (string, required)
 
 Example:
@@ -591,9 +663,11 @@ Example:
 ```
 
 ## Errors
+
 Purpose: Require specific, actionable errors.
 
 Examples:
+
 - `unknown device FL_DRIEV, did you mean FL_DRIVE?`
 - `hold binding requires value`
 - `device already in group swerve_drive`
@@ -601,9 +675,11 @@ Examples:
 Avoid generic syntax errors.
 
 ## Robot Command Mapping (TCP UI)
+
 Purpose: Map CLI commands to robot-side TCP command names and args.
 
 Show:
+
 - `show status` -> `showStatus`
 - `show groups` -> `showGroups`
 - `show group <name>` -> `showGroup` `{name}`
@@ -614,6 +690,7 @@ Show:
 - `show runtime-state` -> `showRuntimeState`
 
 Config:
+
 - `group <name>` -> `groupCreate` `{name}`
 - `no group <name>` -> `groupDelete` `{name, confirm}`
 - `selected-device <device>` -> `selectedDeviceSet` `{name}`
@@ -628,6 +705,7 @@ Config:
 - `write tests <file>` -> local: deprecated alias for exporting a standalone tests JSON (legacy); use `save unified-config <file>` to persist tests in bringup_system.json
 
 Group:
+
 - `add device <device>` -> `groupAddDevice` `{group, device, conflictPolicy, forceMove}`
 - `no device <device>` -> `groupRemoveDevice` `{group, device}`
 - `member <device> enable` -> `groupMemberEnable` `{group, device}`
@@ -645,24 +723,30 @@ Group:
 - `run test <name>` -> `groupRunTest` `{group, name}`
 
 ## Response Schema
+
 Purpose: Standardize ACK/OUT payloads.
 
 ACK:
+
 - `type, seq, name, status, message, ts, sessionId, state`
 
 OUT:
+
 - `type, seq, name, text, ts, sessionId, json (optional), state`
 
 State:
+
 - `enabled, estopped, mode`
 
 Runtime-state JSON:
+
 - `schemaVersion, generatedAtMs, build, profile`
 - `groups[]` with members/bindings
 - `selectedDevice`
 - `devices[]` (label + interface/identity fields)
 
 ## Implementation Notes
+
 Purpose: Provide guidance to avoid duplication.
 
 - Extract shared TCP send/receive and response parsing into a single session module.
@@ -672,6 +756,7 @@ Purpose: Provide guidance to avoid duplication.
 - Keep existing UI commands unchanged.
 
 ## Examples
+
 Purpose: Show the target usage.
 
 Interactive:
@@ -706,6 +791,7 @@ end
 ```
 
 ## Tradeoffs
+
 Purpose: Record known design tradeoffs.
 
 - Robot-side group commands increase protocol surface area but provide a single source of truth.
@@ -713,6 +799,7 @@ Purpose: Record known design tradeoffs.
 - JSON outputs are per-command blobs for simplicity.
 
 ## Future Extensions
+
 Purpose: Track compatible next steps.
 
 - Optional `?` shorthand.
@@ -720,6 +807,7 @@ Purpose: Track compatible next steps.
 - GUI reuse of CLI help text strings.
 
 ## Appendix A: CLI Formal Grammar
+
 Purpose: Provide a precise EBNF reference for the CLI command language.
 
 ```
@@ -899,19 +987,24 @@ number         = ["+"|"-"] digit { digit } [ "." digit { digit } ] ;
 digit          = "0"..."9" ;
 ws             = { " " | "\t" } ;
 ```
+
 ## Appendix B: EBNF References
+
 Purpose: Provide approachable books and articles for learning BNF/EBNF.
 
 Books:
+
 - Niklaus Wirth, *Compiler Construction*.
 - Alfred V. Aho, Ravi Sethi, Jeffrey D. Ullman, *Compilers: Principles, Techniques, and Tools*.
 - Terence Parr, *The Definitive ANTLR 4 Reference*.
 
 Articles / Tutorials:
+
 - Lars Marius Garshol, *BNF and EBNF: What are they and how do they work?*
 - W3C, *Extensible Markup Language (XML) 1.0 (Fifth Edition)*, Appendix on notation.
 
 ## Appendix C: EBNF Change Workflow
+
 Purpose: Document the steps to update the CLI grammar and regenerate code.
 
 1. Edit the canonical grammar:

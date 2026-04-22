@@ -3,24 +3,30 @@
 Purpose: Provide a complete reference for every Bridge CLI command and permutation.
 
 ## Command List
+
 Purpose: Enumerate every supported command by mode. Every command may be suffixed with `?` to show valid next arguments.
 
 ## Host vs Robot Context
+
 Purpose: Prevent confusion between host-local editing context and robot runtime state.
 
 Definitions:
+
 - Host context: the CLI's local working state loaded from disk (profiles/tests/groups/bindings).
 - Robot context: the roboRIO's runtime state over TCP (active profile, selected test, run status).
 
 Rules:
+
 - Host-only commands MUST NOT change robot state as a side effect.
 - Robot state MUST change only via explicit robot-targeting commands over TCP.
 
 Common mappings:
+
 - Host: `profile <name>`, `show workspace`, `save ...`, `validate profiles --active`.
 - Robot: `profiles activate <name>`, `tests select/toggle/run/run-all`, `show status robot`.
 
 ### Common (All Modes)
+
 - `help`
 - `help <topic>`
 - `ping`
@@ -29,6 +35,7 @@ Common mappings:
 - `quit`
 
 ### Exec Mode (`bridge>`)
+
 - `show status [robot|local|both] [--json] [--pretty]`
 - `show groups [robot|local|both] [--json] [--pretty]`
 - `show group <name> [robot|local|both] [--json] [--pretty]`
@@ -57,7 +64,6 @@ Common mappings:
 - `tests run`
 - `tests run-all`
 - `show workspace [--json] [--pretty]`
-- `show session [--json] [--pretty]`
 - `show controllers [--json] [--pretty]`
 - `diagnose motor <label>`
 - `diagnose device <label>`
@@ -66,6 +72,7 @@ Common mappings:
 - `disconnect`
 
 ### Config Mode (`bridge(config-...)#`)
+
 - `group <name>`
 - `no group <name>`
 - `profile <name>`
@@ -128,6 +135,7 @@ Common mappings:
 - `test <name>`
 
 ### Group Mode (`bridge(config-...-group-...)#`)
+
 - `show`
 - `show members`
 - `show binding`
@@ -150,6 +158,7 @@ Common mappings:
 - `write tests <path>`
 
 ### Device Mode (`bridge(config-device-...)#`)
+
 - `show`
 - `show <target> [robot|local|both] [--json] [--pretty]`
 - `set <field> <value>`
@@ -157,6 +166,7 @@ Common mappings:
 - `write tests <path>`
 
 ### Test Mode (`bridge(config-test-...)#`)
+
 - `show`
 - `type joystick`
 - `type button`
@@ -199,7 +209,9 @@ Common mappings:
 - `termination rotation <value>`
 - `termination limitswitch [id]`
 - `write tests <path>`
+
 ## Command Details
+
 Purpose: Provide UNIX-style man page entries for every command.
 
 ### help
@@ -1114,6 +1126,7 @@ show topology [local] [--json] [--pretty] - Display diagram nodes for the active
 show topology [local] [--json] [--pretty]
 
 Notes:
+
 - Output includes diagram-only nodes (for example analyzers) and device nodes.
 - Callouts are excluded.
 - JSON output includes `neighborPorts` when present.
@@ -1133,6 +1146,7 @@ show topology neighbors [local] [--json] [--pretty] - Display neighbor port assi
 show topology neighbors [local] [--json] [--pretty]
 
 Notes:
+
 - Only neighbor ports are shown; no device list.
 - JSON output includes `neighborPorts` plus the node list.
 
@@ -1152,6 +1166,7 @@ topology neighbor-ports delete <node> <port>
 topology neighbor-ports clear <node>
 
 Notes:
+
 - Enforces same bus segment and adjacency by x-order.
 
 ### topology neighbor-auto all|node
@@ -1162,6 +1177,7 @@ topology neighbor-auto all [label1,label2]
 topology neighbor-auto node <label>
 
 Notes:
+
 - Overwrites existing neighborPorts for the target node(s).
 - If label1,label2 is provided, only those labels are updated; omit to update all nodes.
 - Provide the label list as a single token (comma-separated) or wrap it in quotes if it includes spaces.
@@ -1437,6 +1453,7 @@ EXAMPLE
 
 EXAMPLE OUTPUT
 Likely causes:
+
 1) NO_MOTION (medium)
   Evidence: appliedV=2.4, velRpm=0.0
 
@@ -1480,6 +1497,7 @@ EXAMPLE
 
 EXAMPLE OUTPUT
 Likely causes:
+
 1) UNKNOWN (low)
 Missing fields:
   appliedV, motorCurrentA, velRpm
@@ -6235,10 +6253,13 @@ Wrote tests.
 
 
 ## Appendix A: Command List
+
 ## Command List
+
 Purpose: Enumerate every supported command by mode. Every command may be suffixed with `?` to show valid next arguments.
 
 ### Common (All Modes)
+
 - `help`
 - `help <topic>`
 - `ping`
@@ -6247,6 +6268,7 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `quit`
 
 ### Exec Mode (`bridge>`)
+
 - `show status [robot|local|both] [--json] [--pretty]`
 - `show groups [robot|local|both] [--json] [--pretty]`
 - `show group <name> [robot|local|both] [--json] [--pretty]`
@@ -6279,6 +6301,7 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `disconnect`
 
 ### Config Mode (`bridge(config-...)#`)
+
 - `group <name>`
 - `no group <name>`
 - `profile <name>`
@@ -6333,6 +6356,7 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `test <name>`
 
 ### Group Mode (`bridge(config-...-group-...)#`)
+
 - `show`
 - `show members`
 - `show binding`
@@ -6355,6 +6379,7 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `write tests <path>`
 
 ### Device Mode (`bridge(config-device-...)#`)
+
 - `show`
 - `show <target> [robot|local|both] [--json] [--pretty]`
 - `set <field> <value>`
@@ -6362,6 +6387,7 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `write tests <path>`
 
 ### Test Mode (`bridge(config-test-...)#`)
+
 - `show`
 - `type joystick`
 - `type button`

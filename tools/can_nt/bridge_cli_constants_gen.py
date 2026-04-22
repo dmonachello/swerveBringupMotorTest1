@@ -209,7 +209,6 @@ class ParserSpec:
     kind_exec_tests_toggle: str
     kind_exec_tests_run: str
     kind_exec_tests_run_all: str
-    kind_exec_run_test_default: str
     kind_show: str
     kind_config_group: str
     kind_config_no_group: str
@@ -267,7 +266,7 @@ SPEC = ParserSpec(
     show_source_robot='robot',
     show_source_local='local',
     show_source_both='both',
-    show_targets=('status', 'groups', 'group', 'devices', 'device', 'commands', 'help', 'version', 'device-usage', 'binding-usage', 'visibility', 'input-aliases', 'bindings', 'can-mappings', 'selected-device', 'runtime-state', 'runtime-components', 'tests', 'test', 'config', 'sources', 'profiles', 'profile', 'message-level', 'workspace', 'session', 'controllers', 'device-group', 'device-meta', 'topology'),
+    show_targets=('status', 'groups', 'group', 'devices', 'device', 'commands', 'help', 'version', 'device-usage', 'binding-usage', 'visibility', 'input-aliases', 'bindings', 'can-mappings', 'selected-device', 'runtime-state', 'runtime-components', 'tests', 'test', 'config', 'sources', 'profiles', 'profile', 'message-level', 'workspace', 'controllers', 'device-group', 'device-meta', 'topology'),
     show_target_config='config',
     show_target_runtime_state='runtime-state',
     show_target_tests='tests',
@@ -418,11 +417,11 @@ SPEC = ParserSpec(
     label_device='device',
     label_device_set='device set',
     label_device_delete='delete',
-    mode_exec_cmds=('active', 'add', 'cfg', 'configure', 'connect', 'diagnose', 'disconnect', 'ls', 'prof', 'profile', 'reset', 'run', 'show', 'tests'),
-    mode_config_cmds=('add', 'bindings', 'can-mappings', 'config', 'copy', 'device', 'diagnose', 'export', 'group', 'import', 'load', 'ls', 'merge', 'no', 'prof', 'profile', 'profiles', 'recover', 'remove', 'rename', 'run', 'save', 'selected-device', 'selected-mode', 'show', 'test', 'tests', 'val', 'validate'),
-    mode_group_cmds=('add', 'bind', 'clear', 'disable', 'enable', 'ls', 'member', 'no', 'remove', 'run', 'show'),
-    mode_device_cmds=('analog', 'attachments', 'delete', 'deviceinterface', 'devicetype', 'dio', 'id', 'interface', 'invert', 'limits', 'ls', 'manufacturer', 'model', 'no', 'notes', 'pwm', 'role', 'set', 'show', 'tags', 'terminator', 'type', 'vendor'),
-    mode_test_cmds=('action', 'brightness', 'color', 'deadband', 'deadbandsweep', 'device', 'duration', 'duty', 'enabled', 'hold', 'inputsource', 'limitswitch', 'ls', 'no', 'pattern', 'rotation', 'show', 'termination', 'time', 'type'),
+    mode_exec_cmds=('active', 'add', 'configure', 'connect', 'diagnose', 'disconnect', 'profile', 'reset', 'run', 'show', 'tests'),
+    mode_config_cmds=('add', 'bindings', 'can-mappings', 'config', 'copy', 'device', 'diagnose', 'export', 'group', 'import', 'load', 'ls', 'merge', 'no', 'profile', 'profiles', 'recover', 'remove', 'rename', 'run', 'save', 'selected-device', 'selected-mode', 'show', 'test', 'tests', 'val', 'validate'),
+    mode_group_cmds=('add', 'bind', 'clear', 'disable', 'enable', 'member', 'no', 'remove', 'run', 'show'),
+    mode_device_cmds=('analog', 'attachments', 'delete', 'deviceinterface', 'devicetype', 'dio', 'id', 'interface', 'invert', 'limits', 'manufacturer', 'model', 'no', 'notes', 'pwm', 'role', 'set', 'show', 'tags', 'terminator', 'type', 'vendor'),
+    mode_test_cmds=('action', 'brightness', 'color', 'deadband', 'deadbandsweep', 'device', 'duration', 'duty', 'enabled', 'hold', 'inputsource', 'limitswitch', 'no', 'pattern', 'rotation', 'show', 'termination', 'time', 'type'),
     label_validate='validate config',
     label_show_members='show members/binding',
     label_add_device='add device',
@@ -449,7 +448,6 @@ SPEC = ParserSpec(
     kind_exec_tests_toggle='exec_tests_toggle',
     kind_exec_tests_run='exec_tests_run',
     kind_exec_tests_run_all='exec_tests_run_all',
-    kind_exec_run_test_default='exec_run_test_default',
     kind_show='show',
     kind_config_group='config_group',
     kind_config_no_group='config_no_group',

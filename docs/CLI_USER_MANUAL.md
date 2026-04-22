@@ -3,9 +3,11 @@ CLI User Manual (Bringup Bridge CLI)
 Purpose: Teach operators how to use the Bridge CLI to inspect, edit, and save bringup configs and tests.
 
 ## What This CLI Is
+
 Purpose: Give a simple mental model of what the CLI does.
 
 The Bridge CLI is a Windows-side tool for:
+
 - Inspecting robot runtime groups and local configs.
 - Editing per-profile groups and bindings.
 - Authoring bringup tests without editing JSON.
@@ -13,6 +15,7 @@ The Bridge CLI is a Windows-side tool for:
 It does not replace the topology tool. It consumes `bringup_system.json` and writes updates back when you save.
 
 ## Core Concepts
+
 Purpose: Explain the few ideas you must remember.
 
 - Labels are the only identifiers. Every device reference is a label string.
@@ -22,6 +25,7 @@ Purpose: Explain the few ideas you must remember.
 - `show config local-raw` shows the raw bridgeConfig data.
 
 ## Quick Start (Local-Only, No Robot)
+
 Purpose: Get a minimal group edited and saved quickly.
 
 Example:
@@ -39,10 +43,12 @@ end
 ```
 
 Notes:
+
 - Use quotes for labels with spaces.
 - `save profiles` persists groups into `bringup_system.json`.
 
 ## Quick Start (Robot-Connected)
+
 Purpose: Read and snapshot live robot groups.
 
 Example:
@@ -54,13 +60,16 @@ save config runtime_groups.json
 ```
 
 Notes:
+
 - `save config` captures runtime groups from the robot.
 - Use `import config` to replace groups with a file.
 
 ## Modes and Prompts
+
 Purpose: Show how the CLI indicates context.
 
 Prompts:
+
 - Exec: `bridge>` or `bridge-profile-<name>>`
 - Config: `bridge(config-profile-<name>)#`
 - Group: `bridge(config-profile-<name>-group-<name>)#`
@@ -68,11 +77,13 @@ Prompts:
 - Test: `bridge(config-test-<name>)#`
 
 Navigation:
+
 - `configure terminal` enters config mode.
 - `exit` goes up one level.
 - `end` returns to exec mode.
 
 ## Inline Help (`?`)
+
 Purpose: Discover valid next arguments without leaving the command line.
 
 Use a trailing `?` to list valid next tokens.
@@ -87,12 +98,14 @@ can-mappings ?
 ```
 
 Notes:
+
 - The `?` help does not execute the command.
 - It only shows valid next arguments for the current context.
 - `prompt_toolkit` enables inline prefill so the text is editable after the `?`.
 - For bounded values, `?` prints the full inline list (including numeric ranges).
 
 ## How to Choose a Profile
+
 Purpose: Ensure groups are tied to the right profile.
 
 Commands:
@@ -103,20 +116,24 @@ show profile
 ```
 
 Rules:
+
 - Groups are stored under the active profile.
 - If you do not select a profile, the CLI uses the default profile.
 
 Notes (Host vs Robot):
+
 - `profile <name>` selects the host (local) active profile for editing and inspection.
 - It does not change what the robot is running.
 - To change the robot active profile, use an explicit robot command such as `profiles activate <name>` (TCP).
 
 ## Inspecting State
+
 Purpose: Learn the inspection commands you will use constantly.
 
 Common show commands:
+
 - `show status`
-- `show workspace` (alias `show session`)
+- `show workspace`
 - `show groups`
 - `show group <name>`
 - `show devices`
@@ -128,6 +145,7 @@ Common show commands:
 - `diagnose motor <label>`
 
 ## Workspace View
+
 Purpose: See loaded files, active profile/set, and dirty flags.
 
 Commands:
@@ -137,16 +155,19 @@ show workspace --json --pretty
 ```
 
 Output includes:
+
 - Profiles/tests/bindings/mappings source paths.
 - Active profile and active test set.
 - Dirty flags.
 - Recovery mode status.
 
 Notes (Host vs Robot):
-- `show workspace`/`show session` is host-only (local state and file paths).
+
+- `show workspace` is host-only (local state and file paths).
 - To inspect robot runtime state, use `show status robot` or `show runtime-state robot`.
 
 ## Scoped Validation
+
 Purpose: Validate only the active profile or active test set.
 
 Commands:
@@ -156,10 +177,12 @@ validate tests --active-set
 ```
 
 Notes:
+
 - Scoped validation reduces noise from unrelated profiles/sets.
 - Output includes the exact profile/test set name.
 
 ## Save All
+
 Purpose: Persist all dirty sections in one step.
 
 Commands:
@@ -169,6 +192,7 @@ save all --prompt
 ```
 
 Notes:
+
 - Uses the current source paths.
 - If a path is missing, the CLI prints a one-line fix (for example: `save unified-config data/bringup_system.json`).
 - `show config local-raw`
@@ -182,11 +206,13 @@ Notes:
 - `can-mappings show`
 
 Notes:
+
 - Use `--json` for machine-readable output.
 - `show config local-raw` prints `bridgeConfig.byProfile`.
 - `show config dirty` shows unsaved local changes.
 
 ## Motor Diagnosis (Runtime Telemetry)
+
 Purpose: Explain how to get a quick motor diagnosis summary.
 
 Commands:
@@ -208,10 +234,12 @@ Likely causes:
 ```
 
 Notes:
+
 - Requires a robot connection (runtime-state data).
 - If telemetry is missing, the output shows `UNKNOWN` plus a missing-fields list.
 
 ## Creating and Editing Groups
+
 Purpose: Teach the everyday workflow.
 
 Create a group:
@@ -243,6 +271,7 @@ save profiles data/bringup_system.json
 ```
 
 ## Saving and Files
+
 Purpose: Explain what each save command does.
 
 - `save profiles <path>`
@@ -257,6 +286,7 @@ Purpose: Explain what each save command does.
 Use `show config dirty` before you exit to avoid losing work.
 
 ## Test Authoring (No JSON)
+
 Purpose: Create tests without editing JSON directly.
 
 Create a test:
@@ -287,17 +317,20 @@ limitswitch id limitA
 ```
 
 Notes:
+
 - Validation rejects invalid `onHit` values and empty ids.
 - Use `show test <name>` to infer CLI commands from current settings.
 - Use `tests templates` to list available templates.
 - Use `tests load template <name>` to load a template into the editor.
 
 ## Device Metadata Editing
+
 Purpose: Explain when to use device mode.
 
 Device edits apply to the loaded profiles. You must save afterward.
 
 Rules:
+
 - `device <label>` creates the device in the devices table and adds it to the active profile.
 - Labels must be unique across the entire devices table.
 
@@ -318,21 +351,25 @@ save profiles data/bringup_system.json
 ```
 
 Notes:
+
 - The CLI validates required fields when you create or edit a device.
 
 Required fields by interface:
+
 - CAN: `deviceInterface`, `manufacturer`, `deviceType`, `id`
 - DIO: `deviceInterface`, `dio`, `invert`
 - PWM: `deviceInterface`, `pwm`
 - ANALOG: `deviceInterface`, `analog`
 
 Supported `set` fields:
+
 - `interface` (writes `deviceInterface`), `manufacturer`, `deviceType`, `id`, `model`, `type`
 - `dio`, `invert`, `pwm`, `analog`
 - `attachments`, `terminator`
 - `vendor`, `role`, `notes`, `tags`, `limits`
 
 ## Controller Bindings (bringup_bindings.json)
+
 Purpose: Edit controller bindings without touching JSON.
 
 Show bindings:
@@ -373,10 +410,12 @@ bindings validate
 ```
 
 Notes:
+
 - Controller names must exist before bindings/axes reference them.
 - Indexes are 1-based and shown in `bindings show`.
 
 ## CAN Mappings (can_mappings.json)
+
 Purpose: Edit manufacturer and device type lookup tables.
 
 Show mappings:
@@ -402,6 +441,7 @@ can-mappings validate
 ```
 
 ## Validation
+
 Purpose: Explain how to catch mistakes.
 
 Validate the current local config:
@@ -410,6 +450,7 @@ validate config
 ```
 
 Typical errors:
+
 - Missing device entries in a group.
 - Duplicate device labels in a profile.
 - Invalid test parameters.
@@ -419,6 +460,7 @@ Typical errors:
 The validator reports profile and group context for missing device labels.
 
 ## Troubleshooting
+
 Purpose: Common errors and fixes.
 
 - `ERROR: Profile not selected`  
@@ -434,6 +476,7 @@ Purpose: Common errors and fixes.
   Verify the label exists in `bringup_system.json` for the active profile.
 
 ## Learning Path
+
 Purpose: Suggested path for new users.
 
 1. Run local-only CLI and list profiles.
@@ -443,6 +486,7 @@ Purpose: Suggested path for new users.
 5. Connect to a robot and compare `show groups` local vs robot.
 
 ## Reference Pointers
+
 Purpose: Where to find deeper specs.
 
 - Full command list: `docs/BRIDGE_CLI_FULL_SPEC.md`

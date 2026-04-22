@@ -30,7 +30,7 @@ import threading
 from copy import deepcopy
 import copy
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from tools.can_nt.bridge_cmd_tracker import CommandTracker
 from tools.can_nt.bridge_cli_parser import BridgeCliParser, CliParseError
@@ -405,7 +405,7 @@ VERSION_APP_NAME = APP_BRIDGE_CLI_NAME
 BUILD_TITLE = "Build"
 
 CMD_SHOW = "show"
-CMD_LS = PARSER_SPEC.cmd_ls
+CMD_LS = "ls"
 CMD_CONNECT = "connect"
 CMD_DISCONNECT = "disconnect"
 CMD_WRITE = "write"
@@ -433,10 +433,10 @@ CMD_LOCAL_RAW = "local-raw"
 CMD_DIRTY = "dirty"
 CMD_PROFILES = "profiles"
 CMD_PROFILE = "profile"
-CMD_PROF = PARSER_SPEC.cmd_prof
+CMD_PROF = "prof"
 CMD_CONFIGURE = "configure"
 CMD_TERMINAL = "terminal"
-CMD_CFG = PARSER_SPEC.cmd_cfg
+CMD_CFG = "cfg"
 CMD_ACTION = "action"
 CMD_COLOR = "color"
 CMD_PATTERN = "pattern"
@@ -457,7 +457,7 @@ CMD_NO = "no"
 CMD_REMOVE = "remove"
 CMD_RENAME = "rename"
 CMD_VALIDATE = "validate"
-CMD_VAL = PARSER_SPEC.cmd_val
+CMD_VAL = "val"
 CMD_INPUT_SOURCE = "inputsource"
 CMD_DEADBAND = "deadband"
 CMD_DUTY = "duty"
@@ -504,6 +504,16 @@ CMD_SHOW_ALL = "show-all"
 CMD_WORKSPACE = "workspace"
 CMD_SESSION = "session"
 CMD_CONTROLLERS = "controllers"
+ALIAS_REPLACEMENTS = {
+    CMD_LS: CMD_SHOW,
+    CMD_CFG: f"{CMD_CONFIGURE} {CMD_TERMINAL}",
+    CMD_PROF: CMD_PROFILE,
+    CMD_VAL: CMD_VALIDATE,
+    f"{CMD_SHOW} {CMD_SESSION}": f"{CMD_SHOW} {CMD_WORKSPACE}",
+    f"{CMD_BINDINGS} {CMD_LS}": f"{CMD_BINDINGS} {CMD_SHOW}",
+    f"{CMD_CAN_MAPPINGS} {CMD_LS}": f"{CMD_CAN_MAPPINGS} {CMD_SHOW}",
+}
+MESSAGE_ERR_ALIAS_REMOVED = "ERROR: Command '{alias}' was removed. Use '{canonical}'."
 CMD_ROBOT = "robot"
 CMD_LOCAL = "local"
 CMD_PUSH = "push"
@@ -790,7 +800,6 @@ SHOW_TARGET_DEVICE_USAGE = "device-usage"
 SHOW_TARGET_COMMANDS = "commands"
 SHOW_TARGET_HELP = "help"
 SHOW_TARGET_WORKSPACE = "workspace"
-SHOW_TARGET_SESSION = "session"
 SHOW_TARGET_CONTROLLERS = "controllers"
 SHOW_TARGET_SOURCES = "sources"
 
@@ -813,7 +822,6 @@ MESSAGE_ERR_SHOW_DEVICE_REGISTRY_REMOVED = (
     "ERROR: 'show device registry <name>' was removed. Use 'show device <name>'."
 )
 MESSAGE_ERR_SHOW_LOCAL_ONLY = "ERROR: show {target} is local-only; remove robot/local/both."
-MESSAGE_HINT_SHOW_SESSION_LOCAL = "show session [--json] [--pretty]"
 MESSAGE_ERR_BINDINGS_SHOW_LOCAL_ONLY = (
     "ERROR: bindings show is local-only; remove robot/local/both."
 )
@@ -834,7 +842,6 @@ LOCAL_ONLY_SHOW_TARGETS = (
     SHOW_TARGET_COMMANDS,
     SHOW_TARGET_HELP,
     SHOW_TARGET_WORKSPACE,
-    SHOW_TARGET_SESSION,
     SHOW_TARGET_CONTROLLERS,
     SHOW_TARGET_SOURCES,
     SHOW_TARGET_CONFIG_RAW,
@@ -1324,10 +1331,10 @@ HELP_TOPIC_QUICK = "quick"
 HELP_SHOW_TEXT = (
     "show <status|groups|group <group>|devices|device <device>|device-group <device>|"
     "device-usage <device>|commands|help|bindings|selected-device|runtime-state|config|config local-raw|config dirty|"
-    "sources|profiles|profile|tests|test <test>|message-level|workspace|session|controllers> "
+    "sources|profiles|profile|tests|test <test>|message-level|workspace|controllers> "
     "[--json] [--pretty] [robot|local|both]\n"
     "  Defaults: robot if connected, otherwise local.\n"
-    "  Note: some targets are local-only (e.g., session/workspace)."
+    "  Note: some targets are local-only (e.g., workspace)."
 )
 HELP_DIAGNOSE_TEXT = (
     "diagnose motor <label>\n"
@@ -3135,6 +3142,11 @@ class BridgeCli:
                 result = StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(split_exc))
                 self._maybe_print_failure_hint(line)
                 return result
+            alias_hit = self._alias_replacement(tokens)
+            if alias_hit is not None:
+                alias_name, canonical = alias_hit
+                print(MESSAGE_ERR_ALIAS_REMOVED.format(alias=alias_name, canonical=canonical))
+                return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
             normalized = self._parser.normalize_tokens(tokens, self._modes[-1].name)
             if self._fallback_device_set(normalized):
                 return self._coerce_status(self._config_command(normalized))
@@ -3881,7 +3893,6 @@ class BridgeCli:
             PARSER_SPEC.show_target_test + PARSER_SPEC.space_str + PLACEHOLDER_TEST,
             PARSER_SPEC.show_target_message_level,
             SHOW_TARGET_WORKSPACE,
-            SHOW_TARGET_SESSION,
             SHOW_TARGET_CONTROLLERS,
         ]
 
@@ -6422,8 +6433,6 @@ class BridgeCli:
         if len(tokens) == COUNT_ONE:
             return self._coerce_status(self._bindings_show([]))
         sub = tokens[COUNT_ONE].lower()
-        if sub == CMD_LS:
-            sub = CMD_SHOW
         if sub == CMD_SHOW:
             return self._coerce_status(self._bindings_show(tokens[COUNT_TWO:]))
         if sub == CMD_CONTROLLER:
@@ -6464,8 +6473,6 @@ class BridgeCli:
         if len(tokens) == COUNT_ONE:
             return self._coerce_status(self._mappings_show([]))
         sub = tokens[COUNT_ONE].lower()
-        if sub == CMD_LS:
-            sub = CMD_SHOW
         if sub == CMD_SHOW:
             return self._coerce_status(self._mappings_show(tokens[COUNT_TWO:]))
         if sub == CMD_MANUFACTURER:
@@ -6672,12 +6679,10 @@ class BridgeCli:
             source = SHOW_SOURCE_LOCAL
         if target in (SHOW_TARGET_COMMANDS, SHOW_TARGET_HELP):
             source = SHOW_SOURCE_LOCAL
-        if target in (SHOW_TARGET_WORKSPACE, SHOW_TARGET_SESSION, SHOW_TARGET_CONTROLLERS):
+        if target in (SHOW_TARGET_WORKSPACE, SHOW_TARGET_CONTROLLERS):
             source = SHOW_SOURCE_LOCAL
         if has_source_flag and target in LOCAL_ONLY_SHOW_TARGETS:
             print(MESSAGE_ERR_SHOW_LOCAL_ONLY.format(target=target))
-            if target == SHOW_TARGET_SESSION:
-                print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW_SESSION_LOCAL)
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         if target == SHOW_TARGET_SOURCES and not has_source_flag:
             source = SHOW_SOURCE_LOCAL
@@ -8241,7 +8246,6 @@ class BridgeCli:
             "debug grammar": "debug grammar [--json] [--dot <path>]\n  Dump the grammar model for the current mode.",
             "show message-level": "show message-level\n  Show current CLI message level.",
             "show workspace": "show workspace\n  Show loaded file paths, active profile/set, dirty flags, and recovery mode.",
-            "show session": "show session [--json] [--pretty]\n  Alias for show workspace.\n  Local-only; robot/local/both is not supported.",
             "show controllers": "show controllers\n  List controller names and supported input IDs.",
             "sources": HELP_SOURCES_TEXT,
             "show sources": HELP_SOURCES_TEXT,
@@ -8555,7 +8559,7 @@ class BridgeCli:
             if not self._ensure_can_mappings_loaded():
                 return StatusResult(code=SS__CONFIG__NOT_LOADED)
             return self._show_local_mappings(tokens, json_output, pretty)
-        if target in (SHOW_TARGET_WORKSPACE, SHOW_TARGET_SESSION):
+        if target == SHOW_TARGET_WORKSPACE:
             return self._show_workspace(json_output, pretty)
         if target == SHOW_TARGET_CONTROLLERS:
             return self._show_controllers(json_output, pretty)
@@ -10531,6 +10535,22 @@ class BridgeCli:
             return
         if cmd == CMD_CAN_MAPPINGS:
             print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_CAN_MAPPINGS)
+
+    def _alias_replacement(self, tokens: List[str]) -> Optional[Tuple[str, str]]:
+        """
+        NAME
+            _alias_replacement - Resolve removed alias commands to canonical replacements.
+        """
+        if not tokens:
+            return None
+        first = tokens[COUNT_ZERO].lower()
+        if first in ALIAS_REPLACEMENTS:
+            return first, ALIAS_REPLACEMENTS[first]
+        if len(tokens) >= COUNT_TWO:
+            alias_key = f"{first} {tokens[COUNT_ONE].lower()}"
+            if alias_key in ALIAS_REPLACEMENTS:
+                return alias_key, ALIAS_REPLACEMENTS[alias_key]
+        return None
 
     def _set_profiles_device_meta(self, name: str, field: str, value_raw: str) -> StatusResult:
         """

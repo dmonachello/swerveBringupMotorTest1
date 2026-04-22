@@ -148,6 +148,8 @@ AST_EXEC_SPEC = {
     "label_show_group": "show group",
 }
 
+KIND_EXEC_RUN_TEST_DEFAULT = "exec_run_test_default"
+
 SHOW_TARGET_CONFIG_RAW = "config-raw"
 SHOW_NAME_LOCAL_RAW = "local-raw"
 SHOW_TARGET_CONFIG_DIRTY = "config-dirty"
@@ -202,7 +204,7 @@ class BridgeCliAstExecutor:
             SPEC.kind_exec_tests_toggle: self._ast_exec_tests_toggle,
             SPEC.kind_exec_tests_run: self._ast_exec_tests_run,
             SPEC.kind_exec_tests_run_all: self._ast_exec_tests_run_all,
-            SPEC.kind_exec_run_test_default: self._ast_exec_run_test_default,
+            KIND_EXEC_RUN_TEST_DEFAULT: self._ast_exec_run_test_default,
             SPEC.kind_show: self._ast_show,
             SPEC.kind_config_group: self._ast_config_group,
             SPEC.kind_config_no_group: self._ast_config_no_group,

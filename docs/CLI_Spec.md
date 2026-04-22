@@ -7,6 +7,7 @@ Add an interactive Cisco-style CLI mode to the bridge app.
 This CLI is not a separate tool. It is a second operator surface inside the bridge app, alongside the Windows UI.
 
 The CLI and GUI must:
+
 - share the same core command/send/receive logic
 - share the same runtime state
 - not duplicate business logic
@@ -14,6 +15,7 @@ The CLI and GUI must:
 ## Goals
 
 Provide a live operator console with:
+
 - contextual prompts
 - hierarchical modes
 - command parsing
@@ -70,6 +72,7 @@ The CLI must be implemented as a separate module from the main bridge code and i
 The CLI module must not reimplement bridge logic.
 
 Do not:
+
 - duplicate command send/receive logic
 - duplicate response parsing
 - duplicate runtime state management
@@ -80,12 +83,14 @@ The CLI is a front end only, not a separate system.
 ### Constraint
 
 Do not:
+
 - duplicate logic in CLI
 - create a separate command path
 
 ## CLI Style
 
 Use a Cisco-like CLI:
+
 - hierarchical modes
 - contextual prompts
 - `show ...` for inspection
@@ -96,6 +101,7 @@ Use a Cisco-like CLI:
 - Windows EOF: Ctrl+Z then Enter behaves like `exit` (Ctrl+D on POSIX shells).
 
 Do not implement:
+
 - privilege levels
 - fuzzy abbreviations
 
@@ -107,6 +113,7 @@ Prompt:
 `bridge>`
 
 Purpose:
+
 - inspection
 - connection status
 - enter config mode
@@ -117,6 +124,7 @@ Prompt:
 `bridge(config)#`
 
 Purpose:
+
 - structural edits
 - group entry/creation
 - selected-device config
@@ -128,6 +136,7 @@ Prompt:
 `bridge(config-group-<name>)#`
 
 Purpose:
+
 - edit one group
 - membership
 - bindings
@@ -142,6 +151,7 @@ Entered via:
 or script execution.
 
 Rules:
+
 - no prompts
 - deterministic behavior
 - uses conflict policy
@@ -149,6 +159,7 @@ Rules:
 ## Batch Conflict Policy
 
 Supported:
+
 - `error` (default)
 - `move`
 
@@ -167,11 +178,13 @@ No per-command `--force`. Batch mode replaces it.
 ## Interactive Prompting
 
 In interactive mode, prompt user for:
+
 - device move between groups
 - deleting groups
 - clearing groups
 
 Rules:
+
 - default = no
 - no partial state changes
 - moves must be atomic
@@ -207,7 +220,6 @@ No prompting allowed in batch mode.
 - `show tests`
 - `show test <name>`
 - `show workspace`
-- `show session`
 - `show controllers`
 - `configure terminal`
 - `connect`
@@ -308,6 +320,7 @@ Purpose: Point to the canonical grammar and highlight subcommand parsing for com
 ## Control Identifiers
 
 Examples:
+
 - `controller0.leftY`
 - `controller0.rightY`
 - `controller1.leftY`
@@ -371,10 +384,12 @@ A device belongs to one group only.
 When adding:
 
 ### Interactive mode
+
 - warn
 - prompt y/n
 
 ### Batch mode
+
 - error -> fail
 - move -> auto move
 
@@ -383,22 +398,26 @@ Never allow multiple group membership.
 ## Per-Member Enable
 
 Commands:
+
 - `member <device> enable`
 - `member <device> disable`
 - `member <device> toggle`
 
 Effects:
+
 - controls participation
 - does not change membership
 
 ## Selected Device Mode
 
 Commands:
+
 - `selected-device <device>`
 - `selected-mode on`
 - `selected-mode off`
 
 Rules:
+
 - overrides group control for that device
 - group output suppressed for selected device
 
@@ -407,6 +426,7 @@ Rules:
 CLI must use same logic as GUI.
 
 Display:
+
 - `CMD`
 - `ACK`
 - `OUT`
@@ -417,10 +437,12 @@ No separate protocol.
 ## Help System
 
 Support:
+
 - `help`
 - `help <command>`
 
 Also:
+
 - trailing `?` shows valid next arguments (e.g., `show groups ?`).
 - `?` is part of the command line grammar and may follow any command.
 - When a field has a bounded/known value set, `?` prints the full inline list.
@@ -431,11 +453,13 @@ Also:
 Errors must be specific.
 
 Good:
+
 - `unknown device FL_DRIEV, did you mean FL_DRIVE?`
 - `hold binding requires value`
 - `device already in group swerve_drive`
 
 Bad:
+
 - `syntax error`
 
 ## Batch / Script Support
@@ -445,6 +469,7 @@ Bad:
 `bridge.py --batch --script setup.txt`
 
 ### Rules
+
 - no prompts
 - deterministic behavior
 - uses conflict policy
@@ -571,4 +596,3 @@ avoids prompts in batch mode
 uses structured output for automation
 
 remains simple, predictable, and operator-friendly
-
