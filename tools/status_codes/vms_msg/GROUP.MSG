@@ -1,0 +1,14 @@
+! Generated from Python status catalog and status templates.
+! Do not hand-edit generated files.
+.TITLE GROUP_STATUS_MESSAGES
+.IDENT /GROUP-V1/
+.FACILITY GROUP,5 /PREFIX=GROUP_
+
+.SEVERITY WARNING
+EMPTY, "Group has no members: {group}."
+.SEVERITY ERROR
+BINDING_INVALID, "Invalid binding."
+MEMBER_MISSING, "Group member not found: {device}."
+NOT_FOUND, "Group not found: {group}."
+
+.END

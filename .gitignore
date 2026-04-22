@@ -210,6 +210,11 @@ tools/save/
 saved/
 *.bak
 *.json
+!tests/regression/
+!tests/regression/expected/
+!tests/regression/expected/*.json
+!tests/regression/fixtures/
+!tests/regression/fixtures/*.json
 *.cli
 *.cmd
 # Local config byproducts

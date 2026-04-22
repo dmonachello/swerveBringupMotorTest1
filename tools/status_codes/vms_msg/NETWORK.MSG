@@ -1,0 +1,16 @@
+! Generated from Python status catalog and status templates.
+! Do not hand-edit generated files.
+.TITLE NETWORK_STATUS_MESSAGES
+.IDENT /NETWORK-V1/
+.FACILITY NETWORK,7 /PREFIX=NETWORK_
+
+.SEVERITY WARNING
+NOT_CONNECTED, "Robot not connected."
+.SEVERITY ERROR
+COMMAND_SEND_FAILED, "Failed to send command."
+CONNECT_FAILED, "Failed to connect."
+HANDSHAKE_FAILED, "Handshake failed."
+ROBOT_UNAVAILABLE, "Robot unavailable."
+TIMEOUT, "Command timed out."
+
+.END

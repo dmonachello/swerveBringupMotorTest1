@@ -1,0 +1,48 @@
+! Generated from full-surface status inventory.
+! Do not hand-edit generated files.
+! Source inventory generated_at_utc: 2026-04-22T03:59:49.997800+00:00
+.TITLE PY_CANONICAL_SURFACE
+.IDENT /PY-CANONICAL-V1/
+.FACILITY PYCANON,401 /PREFIX=PYCANON_
+
+.SEVERITY SUCCESS
+SS_NORMAL, "Success."
+.SEVERITY INFORMATION
+SS_CLI_PARSER_INVALID_FLAG, "Invalid flag: {flag}."
+SS_CLI_PARSER_INVALID_SYNTAX, "Invalid command syntax."
+SS_CLI_PARSER_MISSING_ARGUMENT, "Missing required argument: {arg}."
+SS_CLI_PARSER_UNKNOWN_COMMAND, "Unknown command."
+SS_CLI_VALIDATOR_INVALID_VALUE, "Invalid value: {value}."
+SS_CLI_VALIDATOR_OUT_OF_RANGE, "Value out of range: {value}."
+SS_CLI_VALIDATOR_REQUIRED, "Required value missing: {field}."
+SS_CONFIG_DUPLICATE_LABEL, "Duplicate label: {label}."
+SS_CONFIG_IMPORTED, "Config imported."
+SS_CONFIG_INVALID, "Config invalid: {detail}."
+SS_CONFIG_MERGED, "Config merged."
+SS_CONFIG_MISSING_DEVICE, "Missing device: {device}."
+SS_CONFIG_NOT_LOADED, "Config not loaded."
+SS_CONFIG_PROFILE_REQUIRED, "Active profile required."
+SS_CONFIG_SAVED, "Config saved."
+SS_CONFIG_VALID, "Config valid."
+SS_DEVICE_INVALID_FIELD, "Invalid device field: {field}."
+SS_DEVICE_NOT_DEFINED, "Device not defined: {device}."
+SS_DEVICE_NOT_FOUND, "Device not found: {device}."
+SS_EXECUTOR_CANCELLED, "Operation cancelled."
+SS_EXECUTOR_FAILED, "Command failed."
+SS_EXECUTOR_NOT_SUPPORTED, "Operation not supported."
+SS_GROUP_BINDING_INVALID, "Invalid binding."
+SS_GROUP_EMPTY, "Group has no members: {group}."
+SS_GROUP_MEMBER_MISSING, "Group member not found: {device}."
+SS_GROUP_NOT_FOUND, "Group not found: {group}."
+SS_INPUT_BINDING_INVALID, "Invalid input binding."
+SS_INPUT_BINDING_NOT_FOUND, "Input binding not found: {binding}."
+SS_NETWORK_COMMAND_SEND_FAILED, "Failed to send command."
+SS_NETWORK_CONNECT_FAILED, "Failed to connect."
+SS_NETWORK_HANDSHAKE_FAILED, "Handshake failed."
+SS_NETWORK_NOT_CONNECTED, "Robot not connected."
+SS_NETWORK_ROBOT_UNAVAILABLE, "Robot unavailable."
+SS_NETWORK_TIMEOUT, "Command timed out."
+.SEVERITY ERROR
+SS_EXECUTOR_INTERNAL_ERROR, "Internal error."
+
+.END

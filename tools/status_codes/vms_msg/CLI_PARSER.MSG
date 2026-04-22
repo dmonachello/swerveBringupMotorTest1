@@ -1,0 +1,13 @@
+! Generated from Python status catalog and status templates.
+! Do not hand-edit generated files.
+.TITLE CLI_PARSER_STATUS_MESSAGES
+.IDENT /CLI_PARSER-V1/
+.FACILITY CLI_PARSER,1 /PREFIX=CLI_PARSER_
+
+.SEVERITY ERROR
+INVALID_FLAG, "Invalid flag: {flag}."
+INVALID_SYNTAX, "Invalid command syntax."
+MISSING_ARGUMENT, "Missing required argument: {arg}."
+UNKNOWN_COMMAND, "Unknown command."
+
+.END

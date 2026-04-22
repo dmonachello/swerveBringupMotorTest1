@@ -12,6 +12,7 @@ import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.InputAliasResolver;
 import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.status.StatusRuntime;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
 import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
@@ -84,6 +85,8 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_CHANNEL_FAULT = "channelFault";
   private static final String JSON_KEY_CHANNEL_STICKY_FAULT = "channelStickyFault";
   private static final String JSON_KEY_JSON = "json";
+  private static final String JSON_KEY_CODE = "code";
+  private static final String JSON_KEY_CODE_TEXT = "codeText";
   private static final String JSON_KEY_VERSION = "version";
   private static final String JSON_KEY_BUILD = "build";
   private static final String JSON_KEY_BUILD_FIELDS = "fields";
@@ -162,6 +165,15 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_DEVICES_HEADER = "Devices:\n";
   private static final String TEXT_DEVICE_LIST_PREFIX = "  ";
   private static final String TEXT_EMPTY = "";
+  private static final String NT_KEY_ACK_SEQ = "ack/seq";
+  private static final String NT_KEY_ACK_STATUS = "ack/status";
+  private static final String NT_KEY_ACK_CODE = "ack/code";
+  private static final String NT_KEY_ACK_CODE_TEXT = "ack/codeText";
+  private static final String NT_KEY_ACK_MESSAGE = "ack/message";
+  private static final String NT_KEY_ACK_NAME = "ack/name";
+  private static final String NT_KEY_ACK_TS = "ack/ts";
+  private static final String NT_KEY_TCP_LAST_STATUS = "lastStatus";
+  private static final String NT_KEY_TCP_LAST_CODE = "lastCode";
   private static final String TEXT_BUILD_HEADER = "Build:";
   private static final String TEXT_TESTS_INFO_PROFILE = "Profile: ";
   private static final String TEXT_TESTS_INFO_SOURCE = "Source: ";
@@ -601,7 +613,9 @@ public class BridgeUiCommandHandler {
     ack.addProperty("type", "ack");
     ack.addProperty("seq", command.seq);
     ack.addProperty("name", command.name != null ? command.name : "");
-    ack.addProperty("status", result.ok ? "ok" : "error");
+    ack.addProperty("status", StatusRuntime.ackLabel(result.ok));
+    ack.addProperty(JSON_KEY_CODE, result.code);
+    ack.addProperty(JSON_KEY_CODE_TEXT, StatusRuntime.messageFor(result.code));
     ack.addProperty("message", result.message != null ? result.message : "");
     ack.addProperty("ts", command.ts);
     ack.addProperty("sessionId", uiSessionId);
@@ -648,6 +662,7 @@ public class BridgeUiCommandHandler {
    */
   private static final class UiCommandResult {
     private boolean ok = true;
+    private int code = StatusRuntime.ackCode(true);
     private String message = "OK";
     private String outText = "OK";
     private String outJson = "";
@@ -666,6 +681,7 @@ public class BridgeUiCommandHandler {
     UiCommandResult result = new UiCommandResult();
     if (name == null || name.isBlank()) {
       result.ok = false;
+      result.code = StatusRuntime.ackCode(false);
       result.message = "Missing command name.";
       result.outText = result.message;
       return result;
@@ -683,20 +699,25 @@ public class BridgeUiCommandHandler {
 
     if (!hasClient) {
       result.ok = false;
+      result.code = StatusRuntime.ackCode(false);
       result.message = "Missing clientId.";
     } else if (locked && !activeUiClientId.equals(client)) {
       result.ok = false;
+      result.code = StatusRuntime.ackCode(false);
       result.message = "UI locked by another client. Disconnect or reboot to switch.";
     } else if (!locked && !isHandshake && !isDisconnect && !isPing) {
       result.ok = false;
+      result.code = StatusRuntime.ackCode(false);
       result.message = "UI handshake required before commands.";
     } else if (isTcp && isTcpStartCommand(name, args) && stopLatchActive) {
       result.ok = false;
+      result.code = StatusRuntime.ackCode(false);
       result.message = "Stop latch active"
           + (stopLatchReason.isBlank() ? "." : " (" + stopLatchReason + ").")
           + " Clear from Xbox or UI to resume.";
     } else if (!isHandshake && !isDisconnect && !allowWhenDisabled && !isEnabled) {
       result.ok = false;
+      result.code = StatusRuntime.ackCode(false);
       result.message = isEStopped ? "Robot disabled (E-Stop)." : "Robot disabled.";
     }
 
@@ -1439,6 +1460,11 @@ public class BridgeUiCommandHandler {
         result.outText = "";
       }
     }
+    if (result.ok) {
+      result.code = StatusRuntime.ackCode(true);
+    } else {
+      result.code = StatusRuntime.ackCode(false);
+    }
     return result;
   }
 
@@ -1802,7 +1828,8 @@ public class BridgeUiCommandHandler {
     uiTcpTable.getEntry("connected").setBoolean(true);
     uiTcpTable.getEntry("lastSeq").setInteger(seq);
     uiTcpTable.getEntry("lastName").setString(name != null ? name : "");
-    uiTcpTable.getEntry("lastStatus").setString(result.ok ? "ok" : "error");
+    uiTcpTable.getEntry(NT_KEY_TCP_LAST_STATUS).setString(StatusRuntime.ackLabel(result.ok));
+    uiTcpTable.getEntry(NT_KEY_TCP_LAST_CODE).setInteger(result.code);
     uiTcpTable.getEntry("lastMessage").setString(result.message != null ? result.message : "");
     uiTcpTable.getEntry("activeClientId").setString(clientId != null ? clientId : "");
   }
@@ -1812,11 +1839,14 @@ public class BridgeUiCommandHandler {
    *   publishUiAck - Publish UI command acknowledgements to NetworkTables.
    */
   private void publishUiAck(long seq, boolean ok, String message, String name, double cmdTs) {
-    uiTable.getEntry("ack/seq").setInteger(seq);
-    uiTable.getEntry("ack/status").setString(ok ? "ok" : "error");
-    uiTable.getEntry("ack/message").setString(message != null ? message : "");
-    uiTable.getEntry("ack/name").setString(name != null ? name : "");
-    uiTable.getEntry("ack/ts").setDouble(cmdTs);
+    int statusCode = StatusRuntime.ackCode(ok);
+    uiTable.getEntry(NT_KEY_ACK_SEQ).setInteger(seq);
+    uiTable.getEntry(NT_KEY_ACK_STATUS).setString(StatusRuntime.ackLabel(ok));
+    uiTable.getEntry(NT_KEY_ACK_CODE).setInteger(statusCode);
+    uiTable.getEntry(NT_KEY_ACK_CODE_TEXT).setString(StatusRuntime.messageFor(statusCode));
+    uiTable.getEntry(NT_KEY_ACK_MESSAGE).setString(message != null ? message : "");
+    uiTable.getEntry(NT_KEY_ACK_NAME).setString(name != null ? name : "");
+    uiTable.getEntry(NT_KEY_ACK_TS).setDouble(cmdTs);
     publishUiState(seq);
   }
 

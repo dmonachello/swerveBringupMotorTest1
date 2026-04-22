@@ -1,0 +1,12 @@
+! Generated from Python status catalog and status templates.
+! Do not hand-edit generated files.
+.TITLE CLI_VALIDATOR_STATUS_MESSAGES
+.IDENT /CLI_VALIDATOR-V1/
+.FACILITY CLI_VALIDATOR,2 /PREFIX=CLI_VALIDATOR_
+
+.SEVERITY ERROR
+INVALID_VALUE, "Invalid value: {value}."
+OUT_OF_RANGE, "Value out of range: {value}."
+REQUIRED, "Required value missing: {field}."
+
+.END

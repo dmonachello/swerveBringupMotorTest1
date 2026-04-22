@@ -1,0 +1,12 @@
+! Generated from Python status catalog and status templates.
+! Do not hand-edit generated files.
+.TITLE DEVICE_STATUS_MESSAGES
+.IDENT /DEVICE-V1/
+.FACILITY DEVICE,4 /PREFIX=DEVICE_
+
+.SEVERITY ERROR
+INVALID_FIELD, "Invalid device field: {field}."
+NOT_DEFINED, "Device not defined: {device}."
+NOT_FOUND, "Device not found: {device}."
+
+.END

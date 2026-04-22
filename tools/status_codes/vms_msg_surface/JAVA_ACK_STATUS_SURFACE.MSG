@@ -1,0 +1,12 @@
+! Generated from full-surface status inventory.
+! Do not hand-edit generated files.
+! Source inventory generated_at_utc: 2026-04-22T03:59:49.997800+00:00
+.TITLE JAVA_ACK_STATUS_SURFACE
+.IDENT /JAVA-ACK-V1/
+.FACILITY JAVACK,404 /PREFIX=JAVACK_
+
+.SEVERITY INFORMATION
+ACK_BRIDGEUICOMMANDHANDLER_L1816, "ack/status"
+ACK_BRIDGEUICOMMANDHANDLER_L604, "status"
+
+.END

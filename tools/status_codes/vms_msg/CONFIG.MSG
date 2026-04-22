@@ -1,0 +1,20 @@
+! Generated from Python status catalog and status templates.
+! Do not hand-edit generated files.
+.TITLE CONFIG_STATUS_MESSAGES
+.IDENT /CONFIG-V1/
+.FACILITY CONFIG,8 /PREFIX=CONFIG_
+
+.SEVERITY SUCCESS
+VALID, "Config valid."
+.SEVERITY INFORMATION
+IMPORTED, "Config imported."
+MERGED, "Config merged."
+SAVED, "Config saved."
+.SEVERITY ERROR
+DUPLICATE_LABEL, "Duplicate label: {label}."
+INVALID, "Config invalid: {detail}."
+MISSING_DEVICE, "Missing device: {device}."
+NOT_LOADED, "Config not loaded."
+PROFILE_REQUIRED, "Active profile required."
+
+.END

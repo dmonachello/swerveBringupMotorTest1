@@ -16,6 +16,7 @@ NOTES
 """
 
 import io
+import json
 import sys
 import tempfile
 from contextlib import redirect_stdout
@@ -81,6 +82,26 @@ CMD_ADD_DEVICE_MOTOR1 = "add device motor1"
 CMD_REMOVE_DEVICE_MOTOR1 = "remove device motor1"
 CMD_SAVE_LOCAL_CONFIG_PREFIX = "save local-config "
 FLAG_FORCE = " --force"
+EXPECTED_CONFIG_RELATIVE_PATH = Path(
+    "tests/regression/expected/group_targeting_local_expected_config.json"
+)
+
+KEY_SCHEMA_VERSION = "schemaVersion"
+KEY_GENERATED_AT = "generatedAt"
+KEY_BY_PROFILE = "byProfile"
+KEY_ROBOT_PROFILE = "robot"
+KEY_GROUPS = "groups"
+KEY_NAME = "name"
+KEY_ENABLED = "enabled"
+KEY_MEMBERS = "members"
+KEY_BINDINGS = "bindings"
+KEY_DEVICE = "device"
+KEY_SELECTED_DEVICE = "selectedDevice"
+KEY_TESTS = "tests"
+
+TEXT_EXPECTED_CONFIG_MISSING = "expected config fixture missing"
+TEXT_EXPECTED_CONFIG_LOAD_FAILED = "expected config fixture load failed"
+TEXT_ACTUAL_CONFIG_LOAD_FAILED = "actual saved config load failed"
 
 MSG_WARNING_DUPLICATE = "WARNING: device already in group"
 MSG_WARNING_MISSING = "WARNING: device not in group"
@@ -171,6 +192,72 @@ def _new_cli() -> BridgeCli:
     """
     session = BridgeSession(RIO_HOST_LOOPBACK, TCP_PORT_DUMMY, auto_handshake=False)
     return BridgeCli(session, batch=True)
+
+
+def _load_json_file(path: Path) -> Tuple[bool, object]:
+    """
+    NAME
+        _load_json_file - Read JSON payload from disk.
+    """
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            return True, json.load(handle)
+    except Exception:
+        return False, None
+
+
+def _normalize_group_payload(payload: object) -> object:
+    """
+    NAME
+        _normalize_group_payload - Keep stable fields and deterministic ordering.
+    """
+    if not isinstance(payload, dict):
+        return payload
+    by_profile = payload.get(KEY_BY_PROFILE)
+    if not isinstance(by_profile, dict):
+        return payload
+    robot = by_profile.get(KEY_ROBOT_PROFILE)
+    if not isinstance(robot, dict):
+        return payload
+    groups_raw = robot.get(KEY_GROUPS)
+    groups = groups_raw if isinstance(groups_raw, list) else []
+    normalized_groups = []
+    for item in groups:
+        if not isinstance(item, dict):
+            continue
+        members_raw = item.get(KEY_MEMBERS)
+        members = members_raw if isinstance(members_raw, list) else []
+        normalized_members = []
+        for member in members:
+            if not isinstance(member, dict):
+                continue
+            normalized_members.append(
+                {
+                    KEY_DEVICE: str(member.get(KEY_DEVICE, "")).strip(),
+                    KEY_ENABLED: bool(member.get(KEY_ENABLED, True)),
+                }
+            )
+        normalized_members.sort(key=lambda value: value.get(KEY_DEVICE, ""))
+        normalized_groups.append(
+            {
+                KEY_NAME: str(item.get(KEY_NAME, "")).strip(),
+                KEY_ENABLED: bool(item.get(KEY_ENABLED, True)),
+                KEY_MEMBERS: normalized_members,
+                KEY_BINDINGS: item.get(KEY_BINDINGS, []) if isinstance(item.get(KEY_BINDINGS), list) else [],
+            }
+        )
+    normalized_groups.sort(key=lambda value: value.get(KEY_NAME, ""))
+    selected = robot.get(KEY_SELECTED_DEVICE)
+    return {
+        KEY_SCHEMA_VERSION: payload.get(KEY_SCHEMA_VERSION),
+        KEY_GENERATED_AT: payload.get(KEY_GENERATED_AT),
+        KEY_BY_PROFILE: {
+            KEY_ROBOT_PROFILE: {
+                KEY_GROUPS: normalized_groups,
+                KEY_SELECTED_DEVICE: selected if isinstance(selected, dict) else {},
+            }
+        },
+    }
 
 
 def _run_regression() -> List[CheckResult]:
@@ -328,6 +415,49 @@ def _run_regression() -> List[CheckResult]:
         is_preserved = active_count > 0
         details = f"active_count_after_save={active_count}"
         results.append(CheckResult(label="active preserved on save", ok=is_preserved, details=details))
+
+        expected_path = REPO_ROOT / EXPECTED_CONFIG_RELATIVE_PATH
+        if not expected_path.exists():
+            results.append(
+                CheckResult(
+                    label="saved config matches expected",
+                    ok=False,
+                    details=TEXT_EXPECTED_CONFIG_MISSING,
+                )
+            )
+        else:
+            ok_expected, expected_payload = _load_json_file(expected_path)
+            ok_actual, actual_payload = _load_json_file(Path(path))
+            if not ok_expected:
+                results.append(
+                    CheckResult(
+                        label="saved config matches expected",
+                        ok=False,
+                        details=TEXT_EXPECTED_CONFIG_LOAD_FAILED,
+                    )
+                )
+            elif not ok_actual:
+                results.append(
+                    CheckResult(
+                        label="saved config matches expected",
+                        ok=False,
+                        details=TEXT_ACTUAL_CONFIG_LOAD_FAILED,
+                    )
+                )
+            else:
+                normalized_expected = _normalize_group_payload(expected_payload)
+                normalized_actual = _normalize_group_payload(actual_payload)
+                matches = normalized_expected == normalized_actual
+                compare_details = "normalized config equality"
+                if not matches:
+                    compare_details = compare_details + " mismatch"
+                results.append(
+                    CheckResult(
+                        label="saved config matches expected",
+                        ok=matches,
+                        details=compare_details,
+                    )
+                )
 
     return results
 

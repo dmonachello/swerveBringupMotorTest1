@@ -1,0 +1,11 @@
+! Generated from Python status catalog and status templates.
+! Do not hand-edit generated files.
+.TITLE INPUT_BINDING_STATUS_MESSAGES
+.IDENT /INPUT_BINDING-V1/
+.FACILITY INPUT_BINDING,6 /PREFIX=INPUT_BINDING_
+
+.SEVERITY ERROR
+INVALID, "Invalid input binding."
+NOT_FOUND, "Input binding not found: {binding}."
+
+.END

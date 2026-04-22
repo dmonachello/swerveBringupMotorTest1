@@ -13,7 +13,6 @@ DESCRIPTION
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict
 
@@ -23,29 +22,19 @@ KEY_DATA = "data"
 KEY_SEVERITIES = "severities"
 KEY_FACILITIES = "facilities"
 KEY_MESSAGES = "messages"
+KEY_SOURCE_HASH = "sourceHash"
 
 CATALOG_PATH = Path(repo_root()) / "tools" / "status_codes" / "status_codes.generated.json"
+COMPILED_CATALOG_PATH = (
+    Path(repo_root()) / "tools" / "status_codes" / "generated" / "status_catalog.compiled.json"
+)
 
 
-@dataclass(frozen=True)
-class SeverityCodes:
-    SUCCESS: int
-    INFO: int
-    WARNING: int
-    ERROR: int
-    FATAL: int
-
-
-@dataclass(frozen=True)
-class FacilityCodes:
-    CLI_PARSER: int
-    CLI_VALIDATOR: int
-    EXECUTOR: int
-    DEVICE: int
-    GROUP: int
-    INPUT_BINDING: int
-    NETWORK: int
-    CONFIG: int
+class _Codes:
+    def __init__(self, raw: Dict[str, int]) -> None:
+        self._raw = raw
+        for key, value in raw.items():
+            setattr(self, key, value)
 
 
 class MessageCodes:
@@ -56,16 +45,11 @@ class MessageCodes:
             setattr(self, facility, obj)
 
 
-@dataclass(frozen=True)
-class StatusCatalog:
-    severities: Dict[str, int]
-    facilities: Dict[str, int]
-    messages: Dict[str, Dict[str, int]]
-
-
-payload = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+payload_path = COMPILED_CATALOG_PATH if COMPILED_CATALOG_PATH.exists() else CATALOG_PATH
+payload = json.loads(payload_path.read_text(encoding="utf-8"))
 _data = payload.get(KEY_DATA, {})
+SOURCE_HASH = payload.get(KEY_SOURCE_HASH, "")
 
-FAC = FacilityCodes(**_data.get(KEY_FACILITIES, {}))
-SEV = SeverityCodes(**_data.get(KEY_SEVERITIES, {}))
+FAC = _Codes(_data.get(KEY_FACILITIES, {}))
+SEV = _Codes(_data.get(KEY_SEVERITIES, {}))
 MSG = MessageCodes(_data.get(KEY_MESSAGES, {}))

@@ -1,0 +1,16 @@
+! Generated from Python status catalog and status templates.
+! Do not hand-edit generated files.
+.TITLE EXECUTOR_STATUS_MESSAGES
+.IDENT /EXECUTOR-V1/
+.FACILITY EXECUTOR,3 /PREFIX=EXECUTOR_
+
+.SEVERITY SUCCESS
+SUCCESS, "Success."
+.SEVERITY WARNING
+CANCELLED, "Operation cancelled."
+.SEVERITY ERROR
+FAILED, "Command failed."
+INTERNAL_ERROR, "Internal error."
+NOT_SUPPORTED, "Operation not supported."
+
+.END
