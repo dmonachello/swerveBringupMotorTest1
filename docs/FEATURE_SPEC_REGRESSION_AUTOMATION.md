@@ -131,6 +131,63 @@ Characteristics:
 - uses only non-motion commands (`show`, `validate`, mode transitions, connect/disconnect)
 - fails fast if robot unavailable
 
+## Topology Editor and UI Addendum
+
+Purpose: define how regression automation extends beyond CLI-only coverage.
+
+### Topology Editor Scope
+
+V1 target: prioritize model/data regressions over visual automation.
+
+Candidate checks:
+
+- load fixture JSON and validate parse + schema acceptance
+- round-trip save and compare normalized JSON content
+- profile import/export consistency
+- label rename propagation to known references
+- reference integrity checks (no dangling labels after edits)
+
+Preferred assertion style:
+
+- structured JSON comparison after canonical normalization
+- explicit status/result codes from editor-side validation helpers
+- targeted text assertions for warnings/errors when needed
+
+### Bringup UI Scope
+
+V1 target: non-motion workflow regressions using command/state paths.
+
+Candidate checks:
+
+- connect/disconnect behavior and failure handling
+- state-refresh behavior for runtime status panes
+- non-motion command routes (`show`, `validate`, profile/group navigation)
+- source-mode visibility checks (`local`, `robot`, `both`) where applicable
+
+Out of scope in V1:
+
+- pixel-accurate screenshot comparisons
+- full visual diffing across layout/theme changes
+- motion command automation
+
+### Phased Rollout
+
+Phase 1:
+
+- shared fixture and expected framework for CLI/local and robot non-motion scripts
+
+Phase 2:
+
+- migrate topology editor data-transform checks into the same fixture/expected model
+
+Phase 3:
+
+- add targeted UI workflow regression checks backed by stable state assertions
+
+SID_QUESTION: Should topology editor regressions run in the same runner process, or as a dedicated sub-runner invoked by the main runner?
+
+SID_QUESTION: For UI regressions, should V1 require a mock session playback mode to reduce dependence on live robot availability?
+
 ## Runner Behavior
 
 Purpose: standardize invocation and exit semantics.
@@ -206,4 +263,3 @@ SID_QUESTION: Should robot suite require explicit `--ack-non-motion` flag as an 
 - Trend reporting across runs (pass/fail history and flaky detection).
 - Schema validation for fixture/expected files.
 - CI matrix split (`local`, `robot-non-motion`) with artifact upload.
-

@@ -1,0 +1,43 @@
+"""Generated file. Do not edit manually."""
+
+GENERATED_FROM_HASH = "38ceaf85de3b06b2fc8f854415ceb5506f44f104387d4754b94c998794e79964"
+
+MESSAGE_TABLE = {
+    65547: "Invalid flag: {flag}.",
+    65555: "Invalid command syntax.",
+    65563: "Missing required argument: {arg}.",
+    65571: "Unknown command.",
+    131083: "Invalid value: {value}.",
+    131091: "Value out of range: {value}.",
+    131099: "Required value missing: {field}.",
+    196616: "Success.",
+    196626: "Operation cancelled.",
+    196635: "Command failed.",
+    196643: "Internal error.",
+    196651: "Operation not supported.",
+    262155: "Invalid device field: {field}.",
+    262163: "Device not defined: {device}.",
+    262171: "Device not found: {device}.",
+    327690: "Group has no members: {group}.",
+    327699: "Invalid binding.",
+    327707: "Group member not found: {device}.",
+    327715: "Group not found: {group}.",
+    393227: "Invalid input binding.",
+    393235: "Input binding not found: {binding}.",
+    458762: "Robot not connected.",
+    458771: "Failed to send command.",
+    458779: "Failed to connect.",
+    458787: "Handshake failed.",
+    458795: "Robot unavailable.",
+    458803: "Command timed out.",
+    524296: "Config valid.",
+    524305: "Config imported.",
+    524313: "Config merged.",
+    524321: "Config saved.",
+    524331: "Duplicate label: {label}.",
+    524339: "Config invalid: {detail}.",
+    524347: "Missing device: {device}.",
+    524355: "Config not loaded.",
+    524363: "Active profile required.",
+}
+

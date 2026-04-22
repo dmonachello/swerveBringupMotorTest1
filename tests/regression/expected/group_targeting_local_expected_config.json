@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": null,
+  "byProfile": {
+    "robot": {
+      "groups": [
+        {
+          "name": "intake_v2",
+          "enabled": true,
+          "members": [],
+          "bindings": []
+        },
+        {
+          "name": "shooter",
+          "enabled": true,
+          "members": [],
+          "bindings": []
+        }
+      ],
+      "selectedDevice": {
+        "device": "",
+        "enabled": false
+      },
+      "tests": {}
+    }
+  }
+}

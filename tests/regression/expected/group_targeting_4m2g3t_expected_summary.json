@@ -1,0 +1,25 @@
+{
+  "devices": [
+    "motor1",
+    "motor2",
+    "motor3",
+    "motor4"
+  ],
+  "groups": {
+    "aux": [
+      "motor3",
+      "motor4"
+    ],
+    "drive": [
+      "motor1",
+      "motor2"
+    ]
+  },
+  "tests": {
+    "default": [
+      "spin_motor1",
+      "spin_motor2",
+      "spin_motor3"
+    ]
+  }
+}
