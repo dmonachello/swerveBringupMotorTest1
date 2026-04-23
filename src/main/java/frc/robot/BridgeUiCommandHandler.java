@@ -169,15 +169,6 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_DEVICES_HEADER = "Devices:\n";
   private static final String TEXT_DEVICE_LIST_PREFIX = "  ";
   private static final String TEXT_EMPTY = "";
-  private static final String NT_KEY_ACK_SEQ = "ack/seq";
-  private static final String NT_KEY_ACK_STATUS = "ack/status";
-  private static final String NT_KEY_ACK_CODE = "ack/code";
-  private static final String NT_KEY_ACK_CODE_TEXT = "ack/codeText";
-  private static final String NT_KEY_ACK_MESSAGE = "ack/message";
-  private static final String NT_KEY_ACK_NAME = "ack/name";
-  private static final String NT_KEY_ACK_TS = "ack/ts";
-  private static final String NT_KEY_TCP_LAST_STATUS = "lastStatus";
-  private static final String NT_KEY_TCP_LAST_CODE = "lastCode";
   private static final String TEXT_BUILD_HEADER = "Build:";
   private static final String TEXT_TESTS_INFO_PROFILE = "Profile: ";
   private static final String TEXT_TESTS_INFO_SOURCE = "Source: ";
@@ -233,6 +224,10 @@ public class BridgeUiCommandHandler {
   private final NetworkTable testsTable;
   private final NetworkTable uiTable;
   private final NetworkTable uiTcpTable;
+  private final BridgeUiIngressPolicy uiIngressPolicy;
+  private final BridgeUiCommandDispatcher uiCommandDispatcher;
+  private final BridgeUiCommandExecutor uiExecuteFacade;
+  private final BridgeUiOutputFacade uiOutputFacade;
   private final Runnable profileToggleAction;
   private final Runnable profileActivateAction;
   private Map<String, String> inputAliases = new HashMap<>();
@@ -292,6 +287,638 @@ public class BridgeUiCommandHandler {
     this.testsTable = testsTable;
     this.uiTable = uiTable;
     this.uiTcpTable = uiTcpTable;
+    this.uiIngressPolicy =
+        new BridgeUiIngressPolicy(
+            new BridgeUiIngressPolicy.Dependencies() {
+              @Override
+              public JsonObject parseUiArgs(String argsJson) {
+                return BridgeUiCommandHandler.this.parseUiArgs(argsJson);
+              }
+
+              @Override
+              public String getActiveUiClientId() {
+                return activeUiClientId;
+              }
+
+              @Override
+              public boolean stopLatchActive() {
+                return stopLatchActive;
+              }
+
+              @Override
+              public String stopLatchReason() {
+                return stopLatchReason;
+              }
+
+              @Override
+              public boolean isUiCommandAllowedWhenDisabled(String name) {
+                return BridgeUiCommandHandler.this.isUiCommandAllowedWhenDisabled(name);
+              }
+
+              @Override
+              public boolean isTcpStartCommand(String name, JsonObject args) {
+                return BridgeUiCommandHandler.this.isTcpStartCommand(name, args);
+              }
+
+              @Override
+              public boolean isTcpStopCommand(String name, JsonObject args) {
+                return BridgeUiCommandHandler.this.isTcpStopCommand(name, args);
+              }
+
+              @Override
+              public boolean isRobotEnabled() {
+                return DriverStation.isEnabled();
+              }
+
+              @Override
+              public boolean isRobotEStopped() {
+                return DriverStation.isEStopped();
+              }
+
+              @Override
+              public void setStopLatch(String reason) {
+                BridgeUiCommandHandler.this.setStopLatch(reason);
+              }
+
+              @Override
+              public void applySafetyStop(String reason) {
+                BridgeUiCommandHandler.this.applySafetyStop(reason);
+              }
+            });
+    BridgeUiSessionCommands sessionCommands = new BridgeUiSessionCommands(new BridgeUiSessionCommands.Dependencies() {
+      @Override
+      public String getActiveUiClientId() {
+        return activeUiClientId;
+      }
+
+      @Override
+      public void setActiveUiClientId(String clientId) {
+        activeUiClientId = clientId;
+      }
+
+      @Override
+      public boolean isUiProtocolMonitorEnabled() {
+        return uiProtocolMonitorEnabled;
+      }
+
+      @Override
+      public void setUiProtocolMonitorEnabled(boolean enabled) {
+        uiProtocolMonitorEnabled = enabled;
+      }
+
+      @Override
+      public NetworkTable getUiTcpTable() {
+        return uiTcpTable;
+      }
+
+      @Override
+      public ZoneId resolveRemoteCommandZone(JsonObject args) {
+        return BridgeUiCommandHandler.this.resolveRemoteCommandZone(args);
+      }
+
+      @Override
+      public void setRemoteCommandZone(ZoneId zone) {
+        remoteCommandZone = zone;
+      }
+
+      @Override
+      public String getUiSessionId() {
+        return uiSessionId;
+      }
+
+      @Override
+      public void setUiSessionId(String sessionId) {
+        uiSessionId = sessionId;
+      }
+
+      @Override
+      public long getLastUiSeq() {
+        return lastUiSeq;
+      }
+
+      @Override
+      public long getLastTcpSeq() {
+        return lastTcpSeq;
+      }
+
+      @Override
+      public int getUiProtocolVersion() {
+        return UI_PROTOCOL_VERSION;
+      }
+
+      @Override
+      public String drainUiLog() {
+        return BridgeUiCommandHandler.this.drainUiLog();
+      }
+    });
+
+    BridgeUiProfileCommands profileCommands =
+        new BridgeUiProfileCommands(new BridgeUiProfileCommands.Dependencies() {
+          @Override
+          public String parseUiArgString(JsonObject args, String key) {
+            return BridgeUiCommandHandler.this.parseUiArgString(args, key);
+          }
+
+          @Override
+          public void selectCanProfile(String profileName) {
+            BringupUtil.selectCanProfile(profileName);
+          }
+
+          @Override
+          public void prepareActivationForSelectedProfile() {
+            BringupUtil.prepareActivationForSelectedProfile();
+          }
+
+          @Override
+          public void activateSelectedProfile() {
+            BringupUtil.activateSelectedProfile();
+          }
+
+          @Override
+          public boolean isProfileActive() {
+            return BringupUtil.isProfileActive();
+          }
+
+          @Override
+          public String getActiveCanProfileLabel() {
+            return BringupUtil.getActiveCanProfileLabel();
+          }
+
+          @Override
+          public String reloadProfilesFromJson() {
+            return BringupUtil.reloadProfilesFromJson();
+          }
+
+          @Override
+          public void runProfileActivateAction() {
+            if (profileActivateAction != null) {
+              profileActivateAction.run();
+            }
+          }
+
+          @Override
+          public void runProfileToggleAction() {
+            if (profileToggleAction != null) {
+              profileToggleAction.run();
+            }
+          }
+
+          @Override
+          public void selectNextProfile() {
+            BringupUtil.selectNextProfile();
+          }
+
+          @Override
+          public void applyProfilesApplyCommand(BridgeUiCommandResult result, JsonObject args, boolean isTcp) {
+            BridgeUiCommandHandler.this.applyProfilesApplyCommand(result, args, isTcp);
+          }
+        });
+
+    BridgeUiTestCommands testCommands = new BridgeUiTestCommands(new BridgeUiTestCommands.Dependencies() {
+      @Override
+      public void toggleSelectedBringupTestEnabled() {
+        core.toggleSelectedBringupTestEnabled();
+      }
+
+      @Override
+      public String printTestsOverview() {
+        return BridgeUiCommandHandler.this.printTestsOverview();
+      }
+
+      @Override
+      public void enqueuePrint(String text) {
+        BringupPrinter.enqueue(text);
+      }
+
+      @Override
+      public void runSelectedBringupTest() {
+        core.runSelectedBringupTest();
+      }
+
+      @Override
+      public void runAllBringupTests() {
+        core.runAllBringupTests();
+      }
+
+      @Override
+      public void selectPrevBringupTest() {
+        core.selectPrevBringupTest();
+      }
+
+      @Override
+      public void selectNextBringupTest() {
+        core.selectNextBringupTest();
+      }
+
+      @Override
+      public String getSelectedBringupTestName() {
+        return core.getSelectedBringupTestName();
+      }
+
+      @Override
+      public String buildNextTestReportText() {
+        return core.buildNextTestReportText();
+      }
+
+      @Override
+      public void requestTextReport(String text, int batchSize) {
+        core.requestTextReport(text, batchSize);
+      }
+
+      @Override
+      public String printTestsInfo() {
+        return BridgeUiCommandHandler.this.printTestsInfo();
+      }
+
+      @Override
+      public String parseUiArgName(JsonObject args) {
+        return BridgeUiCommandHandler.this.parseUiArgName(args);
+      }
+
+      @Override
+      public boolean selectBringupTestByName(String testName) {
+        return core.selectBringupTestByName(testName);
+      }
+
+      @Override
+      public Boolean parseUiArgBoolean(JsonObject args, String key) {
+        return BridgeUiCommandHandler.this.parseUiArgBoolean(args, key);
+      }
+
+      @Override
+      public BringupCore.TestsOverview buildTestsOverview() {
+        return core.buildTestsOverview();
+      }
+
+      @Override
+      public String formatTestsOverview(BringupCore.TestsOverview overview) {
+        return core.formatTestsOverview(overview);
+      }
+
+      @Override
+      public JsonObject buildTestsOverviewJson(BringupCore.TestsOverview overview) {
+        return BridgeUiCommandHandler.this.buildTestsOverviewJson(overview);
+      }
+
+      @Override
+      public void applyShowResult(BridgeUiCommandResult result, String text, JsonObject json, boolean wantsJson) {
+        BridgeUiCommandHandler.this.applyShowResult(result, text, json, wantsJson);
+      }
+    });
+
+    BridgeUiGroupCommands groupCommands = new BridgeUiGroupCommands(new BridgeUiGroupCommands.Dependencies() {
+      @Override
+      public Boolean parseUiArgBoolean(JsonObject args, String key) {
+        return BridgeUiCommandHandler.this.parseUiArgBoolean(args, key);
+      }
+
+      @Override
+      public String parseUiArgString(JsonObject args, String key) {
+        return BridgeUiCommandHandler.this.parseUiArgString(args, key);
+      }
+
+      @Override
+      public Double parseUiArgDouble(JsonObject args, String key) {
+        return BridgeUiCommandHandler.this.parseUiArgDouble(args, key);
+      }
+
+      @Override
+      public void applyShowResult(BridgeUiCommandResult result, String text, JsonObject json, boolean wantsJson) {
+        BridgeUiCommandHandler.this.applyShowResult(result, text, json, wantsJson);
+      }
+
+      @Override
+      public String buildGroupsText() {
+        return BridgeUiCommandHandler.this.buildGroupsText();
+      }
+
+      @Override
+      public JsonObject buildGroupsJson() {
+        return BridgeUiCommandHandler.this.buildGroupsJson();
+      }
+
+      @Override
+      public String buildGroupText(BridgeGroupManager.Group group) {
+        return BridgeUiCommandHandler.this.buildGroupText(group);
+      }
+
+      @Override
+      public JsonObject buildGroupJson(BridgeGroupManager.Group group) {
+        return BridgeUiCommandHandler.this.buildGroupJson(group);
+      }
+
+      @Override
+      public void applyActiveAdd(BridgeUiCommandResult result) {
+        BridgeUiCommandHandler.this.applyActiveAdd(result);
+      }
+
+      @Override
+      public void applyActiveNext(BridgeUiCommandResult result) {
+        BridgeUiCommandHandler.this.applyActiveNext(result);
+      }
+
+      @Override
+      public String buildDevicesText() {
+        return BridgeUiCommandHandler.this.buildDevicesText();
+      }
+
+      @Override
+      public JsonObject buildDevicesJson() {
+        return BridgeUiCommandHandler.this.buildDevicesJson();
+      }
+
+      @Override
+      public BringupUtil.DeviceEntry findDeviceEntryByLabel(String label) {
+        return BridgeUiCommandHandler.this.findDeviceEntryByLabel(label);
+      }
+
+      @Override
+      public String buildDeviceText(BringupUtil.DeviceEntry entry) {
+        return BridgeUiCommandHandler.this.buildDeviceText(entry);
+      }
+
+      @Override
+      public JsonObject buildDeviceJson(BringupUtil.DeviceEntry entry) {
+        return BridgeUiCommandHandler.this.buildDeviceJson(entry);
+      }
+
+      @Override
+      public String buildBindingsText() {
+        return BridgeUiCommandHandler.this.buildBindingsText();
+      }
+
+      @Override
+      public JsonObject buildBindingsJson() {
+        return BridgeUiCommandHandler.this.buildBindingsJson();
+      }
+
+      @Override
+      public String buildSelectedDeviceText() {
+        return BridgeUiCommandHandler.this.buildSelectedDeviceText();
+      }
+
+      @Override
+      public JsonObject buildSelectedDeviceJson() {
+        return BridgeUiCommandHandler.this.buildSelectedDeviceJson();
+      }
+
+      @Override
+      public String buildStatusText() {
+        return BridgeUiCommandHandler.this.buildStatusText();
+      }
+
+      @Override
+      public JsonObject buildRuntimeStateJson() {
+        return BridgeUiCommandHandler.this.buildRuntimeStateJson();
+      }
+
+      @Override
+      public BridgeGroupManager getBridgeGroups() {
+        return bridgeGroups;
+      }
+
+      @Override
+      public boolean isValidBindingInput(String input) {
+        return BridgeUiCommandHandler.this.isValidBindingInput(input);
+      }
+
+      @Override
+      public boolean selectBringupTestByName(String name) {
+        return core.selectBringupTestByName(name);
+      }
+
+      @Override
+      public void runSelectedBringupTest() {
+        core.runSelectedBringupTest();
+      }
+
+      @Override
+      public BridgeGroupManager.SelectedState getBridgeSelected() {
+        return bridgeSelected;
+      }
+    });
+
+    BridgeUiReportCommands reportCommands = new BridgeUiReportCommands(new BridgeUiReportCommands.Dependencies() {
+      @Override
+      public String buildStateReportText() {
+        return core.buildStateReportText();
+      }
+
+      @Override
+      public String buildQuickSummary() {
+        return diagnostics.buildQuickSummary();
+      }
+
+      @Override
+      public String buildHealthReportText() {
+        return core.buildHealthReportText();
+      }
+
+      @Override
+      public String buildCANCoderReportText() {
+        return core.buildCANCoderReportText();
+      }
+
+      @Override
+      public double getLastNeoSpeed() {
+        return lastNeoSpeed;
+      }
+
+      @Override
+      public double getLastKrakenSpeed() {
+        return lastKrakenSpeed;
+      }
+
+      @Override
+      public String printBindings() {
+        return BridgeUiCommandHandler.this.printBindings();
+      }
+
+      @Override
+      public String printProfileDevices() {
+        return BridgeUiCommandHandler.this.printProfileDevices();
+      }
+
+      @Override
+      public String buildNetworkDiagnosticsReportIfReady() {
+        return diagnostics.buildNetworkDiagnosticsReportIfReady();
+      }
+
+      @Override
+      public String appendUiTcpStats(String report) {
+        return BridgeUiCommandHandler.this.appendUiTcpStats(report);
+      }
+
+      @Override
+      public String buildCanDiagnosticsReportIfReady() {
+        return diagnostics.buildCanDiagnosticsReportIfReady();
+      }
+
+      @Override
+      public long getCanDiagCooldownRemainingMs() {
+        return diagnostics.getCanDiagCooldownRemainingMs();
+      }
+
+      @Override
+      public String buildReportJsonForDump() {
+        return diagnostics.buildReportJsonForDump();
+      }
+
+      @Override
+      public boolean writeReportJsonToFile(String json) {
+        return diagnostics.writeReportJsonToFile(json);
+      }
+
+      @Override
+      public String getReportPath() {
+        return diagnostics.getReportPath();
+      }
+
+      @Override
+      public void requestTextReport(String text, int batchSize) {
+        core.requestTextReport(text, batchSize);
+      }
+
+      @Override
+      public Boolean parseUiArgBoolean(JsonObject args, String key) {
+        return BridgeUiCommandHandler.this.parseUiArgBoolean(args, key);
+      }
+
+      @Override
+      public void applyShowResult(BridgeUiCommandResult result, String text, JsonObject json, boolean wantsJson) {
+        BridgeUiCommandHandler.this.applyShowResult(result, text, json, wantsJson);
+      }
+
+      @Override
+      public String buildStatusText() {
+        return BridgeUiCommandHandler.this.buildStatusText();
+      }
+
+      @Override
+      public JsonObject buildStatusJson() {
+        return BridgeUiCommandHandler.this.buildStatusJson();
+      }
+
+      @Override
+      public String buildVersionText() {
+        return BridgeUiCommandHandler.this.buildVersionText();
+      }
+
+      @Override
+      public JsonObject buildVersionJson() {
+        return BridgeUiCommandHandler.this.buildVersionJson();
+      }
+
+      @Override
+      public String buildSourcesText() {
+        return BridgeUiCommandHandler.this.buildSourcesText();
+      }
+
+      @Override
+      public JsonObject buildSourcesJson() {
+        return BridgeUiCommandHandler.this.buildSourcesJson();
+      }
+
+      @Override
+      public boolean hasDiagnostics() {
+        return diagnostics != null;
+      }
+    });
+
+    BridgeUiRuntimeCommands runtimeCommands = new BridgeUiRuntimeCommands(new BridgeUiRuntimeCommands.Dependencies() {
+      @Override
+      public void prepareActivationForSelectedProfile() {
+        BringupUtil.prepareActivationForSelectedProfile();
+      }
+
+      @Override
+      public void activateSelectedProfile() {
+        BringupUtil.activateSelectedProfile();
+      }
+
+      @Override
+      public boolean isProfileActive() {
+        return BringupUtil.isProfileActive();
+      }
+
+      @Override
+      public void runProfileActivateAction() {
+        if (profileActivateAction != null) {
+          profileActivateAction.run();
+        }
+      }
+
+      @Override
+      public void addNextMotorCommand() {
+        core.addNextMotorCommand();
+      }
+
+      @Override
+      public void addAllDevicesCommand() {
+        core.addAllDevicesCommand();
+      }
+
+      @Override
+      public void setDashboardUpdatesEnabled(boolean enabled) {
+        dashboardUpdatesEnabled = enabled;
+      }
+
+      @Override
+      public boolean isDashboardUpdatesEnabled() {
+        return dashboardUpdatesEnabled;
+      }
+
+      @Override
+      public void applyDashboardUpdateState() {
+        BridgeUiCommandHandler.this.applyDashboardUpdateState();
+      }
+
+      @Override
+      public void enqueuePrint(String text) {
+        BringupPrinter.enqueue(text);
+      }
+
+      @Override
+      public void clearAllFaults() {
+        core.clearAllFaults();
+      }
+
+      @Override
+      public boolean clearStopLatchFromUi(String reason) {
+        return BridgeUiCommandHandler.this.clearStopLatchFromUi(reason);
+      }
+
+      @Override
+      public String buildCanPingSweepReportText() {
+        return core.buildCanPingSweepReportText();
+      }
+
+      @Override
+      public void requestTextReport(String text, int batchSize) {
+        core.requestTextReport(text, batchSize);
+      }
+
+      @Override
+      public double getUiFixedSpeed() {
+        return uiFixedSpeed;
+      }
+
+      @Override
+      public void setUiFixedSpeed(double speed) {
+        uiFixedSpeed = speed;
+      }
+    });
+
+    this.uiCommandDispatcher = new BridgeUiCommandDispatcher(List.of(
+        sessionCommands,
+        profileCommands,
+        testCommands,
+        groupCommands,
+        reportCommands,
+        runtimeCommands));
+
+    this.uiExecuteFacade = new BridgeUiCommandExecutor(uiIngressPolicy, uiCommandDispatcher);
+    this.uiOutputFacade = new BridgeUiOutputFacade(uiTable, uiTcpTable, UI_PROTOCOL_VERSION);
     this.profileToggleAction = profileToggleAction;
     this.profileActivateAction = profileActivateAction;
   }
@@ -361,7 +988,7 @@ public class BridgeUiCommandHandler {
     String argsJson = uiTable.getEntry("cmd/args/json").getString("");
     double cmdTs = uiTable.getEntry("cmd/ts").getDouble(0.0);
     String clientId = uiTable.getEntry("cmd/clientId").getString("");
-    UiCommandResult result = processUiCommand(name, argsJson, cmdTs, clientId, false);
+    BridgeUiCommandResult result = uiExecuteFacade.executeRaw(name, argsJson, cmdTs, clientId, false);
     publishUiAck(seq, result.ok, result.message, name, cmdTs);
     publishUiOut(seq, name, result.outText, cmdTs, result.outJson);
   }
@@ -381,14 +1008,14 @@ public class BridgeUiCommandHandler {
     } catch (TimeoutException ex) {
       pending.cancelled = true;
       tcpCommandTimeouts++;
-      UiCommandResult result = new UiCommandResult();
+      BridgeUiCommandResult result = new BridgeUiCommandResult();
       result.ok = false;
       result.message = "Robot loop timeout.";
       result.outText = result.message;
       return buildTcpResponse(command, result);
     } catch (Exception ex) {
       pending.cancelled = true;
-      UiCommandResult result = new UiCommandResult();
+      BridgeUiCommandResult result = new BridgeUiCommandResult();
       result.ok = false;
       result.message = "UI command failed: " + ex.getMessage();
       result.outText = result.message;
@@ -463,7 +1090,7 @@ public class BridgeUiCommandHandler {
       lastTcpSeq = command.seq;
       lastTcpCommandMs = System.currentTimeMillis();
       lastTcpKeepaliveMs = lastTcpCommandMs;
-      UiCommandResult result = processUiCommand(
+      BridgeUiCommandResult result = uiExecuteFacade.executeRaw(
           cmdName,
           command.argsJson,
           command.ts,
@@ -611,7 +1238,7 @@ public class BridgeUiCommandHandler {
    * NAME
    *   buildTcpResponse - Build ACK/OUT payloads for TCP responses.
    */
-  private TcpUiServer.UiResponse buildTcpResponse(TcpUiServer.UiCommand command, UiCommandResult result) {
+  private TcpUiServer.UiResponse buildTcpResponse(TcpUiServer.UiCommand command, BridgeUiCommandResult result) {
     JsonObject state = buildUiStateJson();
     JsonObject ack = new JsonObject();
     ack.addProperty("type", "ack");
@@ -662,812 +1289,13 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
-   *   UiCommandResult - Result bundle for UI command handling.
+   *   executeUiCommandSwitch - Execute command switch for validated ingress.
    */
-  private static final class UiCommandResult {
-    private boolean ok = true;
-    private int code = StatusRuntime.ackCode(true);
-    private String message = "OK";
-    private String outText = "OK";
-    private String outJson = "";
-  }
-
-  /**
-   * NAME
-   *   processUiCommand - Execute a UI command and return the result.
-   */
-  private UiCommandResult processUiCommand(
-      String name,
-      String argsJson,
+  private BridgeUiCommandResult executeUiCommandSwitch(
+      BridgeUiIngressPolicy.Ingress ingress,
       double cmdTs,
-      String clientId,
       boolean isTcp) {
-    UiCommandResult result = new UiCommandResult();
-    if (name == null || name.isBlank()) {
-      result.ok = false;
-      result.code = StatusRuntime.ackCode(false);
-      result.message = "Missing command name.";
-      result.outText = result.message;
-      return result;
-    }
-    JsonObject args = parseUiArgs(argsJson);
-    String client = clientId != null ? clientId.trim() : "";
-    boolean hasClient = !client.isEmpty();
-    boolean locked = activeUiClientId != null && !activeUiClientId.isBlank();
-    boolean isHandshake = "uiHandshake".equals(name);
-    boolean isDisconnect = "uiDisconnect".equals(name);
-    boolean isPing = "uiPing".equals(name);
-    boolean allowWhenDisabled = isUiCommandAllowedWhenDisabled(name);
-    boolean isEnabled = DriverStation.isEnabled();
-    boolean isEStopped = DriverStation.isEStopped();
-
-    if (!hasClient) {
-      result.ok = false;
-      result.code = StatusRuntime.ackCode(false);
-      result.message = "Missing clientId.";
-    } else if (locked && !activeUiClientId.equals(client)) {
-      result.ok = false;
-      result.code = StatusRuntime.ackCode(false);
-      result.message = "UI locked by another client. Disconnect or reboot to switch.";
-    } else if (!locked && !isHandshake && !isDisconnect && !isPing) {
-      result.ok = false;
-      result.code = StatusRuntime.ackCode(false);
-      result.message = "UI handshake required before commands.";
-    } else if (isTcp && isTcpStartCommand(name, args) && stopLatchActive) {
-      result.ok = false;
-      result.code = StatusRuntime.ackCode(false);
-      result.message = "Stop latch active"
-          + (stopLatchReason.isBlank() ? "." : " (" + stopLatchReason + ").")
-          + " Clear from Xbox or UI to resume.";
-    } else if (!isHandshake && !isDisconnect && !allowWhenDisabled && !isEnabled) {
-      result.ok = false;
-      result.code = StatusRuntime.ackCode(false);
-      result.message = isEStopped ? "Robot disabled (E-Stop)." : "Robot disabled.";
-    }
-
-    if (!result.ok) {
-      result.outText = result.message;
-      return result;
-    }
-
-    if (isTcp && isTcpStopCommand(name, args)) {
-      setStopLatch("tcpStop");
-      applySafetyStop("tcpStop");
-    }
-
-    switch (name) {
-      case "uiPing":
-        result.message = "OK";
-        result.outText = "";
-        break;
-      case "selectProfile": {
-        String profileName = parseUiArgString(args, ARG_PROFILE_NAME);
-        if (profileName == null || profileName.isBlank()) {
-          result.ok = false;
-          result.message = "selectProfile requires args.name.";
-          break;
-        }
-        BringupUtil.selectCanProfile(profileName.trim());
-        result.message = "Selected profile: " + BringupUtil.getActiveCanProfileLabel();
-        result.outText = result.message;
-        break;
-      }
-      case CMD_PROFILE_ACTIVATE: {
-        String profileName = parseUiArgString(args, ARG_PROFILE_NAME);
-        if (profileName != null && !profileName.isBlank()) {
-          BringupUtil.selectCanProfile(profileName.trim());
-        }
-        BringupUtil.prepareActivationForSelectedProfile();
-        BringupUtil.activateSelectedProfile();
-        if (BringupUtil.isProfileActive() && profileActivateAction != null) {
-          profileActivateAction.run();
-        }
-        if (BringupUtil.isProfileActive()) {
-          result.message = String.format(
-              TEXT_PROFILE_ACTIVATE_OK,
-              BringupUtil.getActiveCanProfileLabel());
-          result.outText = result.message;
-        } else {
-          result.ok = false;
-          result.message = TEXT_PROFILE_ACTIVATE_FAIL;
-          result.outText = result.message;
-        }
-        break;
-      }
-      case CMD_PROFILES_RELOAD: {
-        String error = BringupUtil.reloadProfilesFromJson();
-        if (error != null && !error.isBlank()) {
-          result.ok = false;
-          result.message = String.format(TEXT_PROFILES_RELOAD_FAILED, error);
-          result.outText = result.message;
-          break;
-        }
-        if (profileActivateAction != null) {
-          profileActivateAction.run();
-        }
-        result.message = TEXT_PROFILES_RELOAD_OK;
-        result.outText = result.message;
-        break;
-      }
-      case "uiHandshake":
-        if (!locked) {
-          activeUiClientId = client;
-        }
-        boolean reset = args != null && args.has("reset") && args.get("reset").getAsBoolean();
-        ZoneId tzOverride = resolveRemoteCommandZone(args);
-        if (tzOverride != null) {
-          remoteCommandZone = tzOverride;
-        }
-        if (reset) {
-          uiSessionId = UUID.randomUUID().toString();
-        }
-        long baseSeq = Math.max(lastUiSeq, lastTcpSeq);
-        JsonObject payload = new JsonObject();
-        payload.addProperty("sessionId", uiSessionId);
-        payload.addProperty("lastAckSeq", baseSeq);
-        payload.addProperty("minNextSeq", baseSeq + 1);
-        payload.addProperty("protocolVersion", UI_PROTOCOL_VERSION);
-        result.outJson = payload.toString();
-        result.message = reset ? "UI session reset." : "UI handshake OK.";
-        break;
-      case "uiDisconnect":
-        if (locked && activeUiClientId.equals(client)) {
-          activeUiClientId = null;
-          result.message = "UI lock released.";
-          if (uiProtocolMonitorEnabled) {
-            uiTcpTable.getEntry("connected").setBoolean(false);
-          }
-        } else if (!locked) {
-          result.message = "No active UI lock.";
-        } else {
-          result.ok = false;
-          result.message = "UI lock held by another client.";
-        }
-        break;
-      case "uiMonitorEnable":
-        uiProtocolMonitorEnabled = true;
-        result.message = "Protocol monitor enabled.";
-        break;
-      case "uiMonitorDisable":
-        uiProtocolMonitorEnabled = false;
-        uiTcpTable.getEntry("enabled").setBoolean(false);
-        uiTcpTable.getEntry("connected").setBoolean(false);
-        result.message = "Protocol monitor disabled.";
-        break;
-      case "uiPollLog":
-        result.outText = drainUiLog();
-        break;
-      case "profileToggle":
-        BringupUtil.selectNextProfile();
-        if (profileToggleAction != null) {
-          profileToggleAction.run();
-        }
-        result.message = "Profile selected.";
-        break;
-      case "addMotor":
-        if (!BringupUtil.isProfileActive()) {
-          BringupUtil.prepareActivationForSelectedProfile();
-          BringupUtil.activateSelectedProfile();
-          if (BringupUtil.isProfileActive() && profileActivateAction != null) {
-            profileActivateAction.run();
-          }
-        }
-        if (!BringupUtil.isProfileActive()) {
-          result.ok = false;
-          result.message = MESSAGE_PROFILE_INACTIVE_ADD;
-          result.outText = result.message;
-          break;
-        }
-        core.addNextMotorCommand();
-        result.message = "Add motor.";
-        break;
-      case "addAll":
-        if (!BringupUtil.isProfileActive()) {
-          BringupUtil.prepareActivationForSelectedProfile();
-          BringupUtil.activateSelectedProfile();
-          if (BringupUtil.isProfileActive() && profileActivateAction != null) {
-            profileActivateAction.run();
-          }
-        }
-        if (!BringupUtil.isProfileActive()) {
-          result.ok = false;
-          result.message = MESSAGE_PROFILE_INACTIVE_ADD;
-          result.outText = result.message;
-          break;
-        }
-        core.addAllDevicesCommand();
-        result.message = "Instantiated all configured devices. Use active add to populate active-group.";
-        break;
-      case "printState":
-        String stateReport = core.buildStateReportText();
-        core.requestTextReport(stateReport, 4);
-        result.outText = stateReport;
-        break;
-      case "printSummary":
-        if (diagnostics != null) {
-          String summary = diagnostics.buildQuickSummary();
-          core.requestTextReport(summary, 4);
-          result.outText = summary;
-        } else {
-          result.ok = false;
-          result.message = "Diagnostics unavailable.";
-        }
-        break;
-      case "printHealth":
-        String healthReport = core.buildHealthReportText();
-        core.requestTextReport(healthReport, 4);
-        result.outText = healthReport;
-        break;
-      case "printCANcoder":
-        String canCoderReport = core.buildCANCoderReportText();
-        core.requestTextReport(canCoderReport, 4);
-        result.outText = canCoderReport;
-        break;
-      case "printInputs":
-        String inputsReport =
-            "Inputs: leftY=" + String.format("%.2f", lastNeoSpeed) +
-            " rightY=" + String.format("%.2f", lastKrakenSpeed) +
-            " (NEO/FLEX=" + String.format("%.2f", lastNeoSpeed) +
-            ", KRAKEN/FALCON=" + String.format("%.2f", lastKrakenSpeed) + ")";
-        core.requestTextReport(inputsReport, 4);
-        result.outText = inputsReport;
-        break;
-      case "toggleTest":
-        core.toggleSelectedBringupTestEnabled();
-        printTestsOverview();
-        break;
-      case "runTest":
-        BringupPrinter.enqueue("Command: runTest (UI)");
-        core.runSelectedBringupTest();
-        break;
-      case "runAllTests":
-        BringupPrinter.enqueue("Command: runAllTests (UI)");
-        core.runAllBringupTests();
-        break;
-      case "selectTestPrev":
-        core.selectPrevBringupTest();
-        result.outText = "Selected test: " + core.getSelectedBringupTestName();
-        break;
-      case "selectTestNext":
-        core.selectNextBringupTest();
-        result.outText = "Selected test: " + core.getSelectedBringupTestName();
-        break;
-      case "printNextTest":
-        String nextTestReport = core.buildNextTestReportText();
-        core.requestTextReport(nextTestReport, 4);
-        result.outText = nextTestReport;
-        break;
-      case "printBindings":
-        result.outText = printBindings();
-        break;
-      case "printProfileDevices":
-        result.outText = printProfileDevices();
-        break;
-      case "printTestsInfo":
-        result.outText = printTestsInfo();
-        break;
-      case "printTestsOverview":
-        result.outText = printTestsOverview();
-        break;
-      case "selectTestByName":
-        String testName = parseUiArgName(args);
-        if (testName == null || testName.isBlank()) {
-          result.ok = false;
-          result.message = "selectTestByName requires args.name.";
-        } else {
-          boolean selected = core.selectBringupTestByName(testName);
-          if (!selected) {
-            result.ok = false;
-            result.message = "Test not found: " + testName;
-          } else {
-            result.message = "Selected test: " + testName;
-            printTestsOverview();
-          }
-        }
-        break;
-      case "toggleDashboard":
-        dashboardUpdatesEnabled = !dashboardUpdatesEnabled;
-        applyDashboardUpdateState();
-        BringupPrinter.enqueue(
-            "Dashboard/Shuffleboard updates: " + (dashboardUpdatesEnabled ? "ON" : "OFF"));
-        break;
-      case "clearFaults":
-        core.clearAllFaults();
-        BringupPrinter.enqueue("Cleared device faults (current + sticky).");
-        break;
-      case "clearStopLatch":
-        if (clearStopLatchFromUi("uiClear")) {
-          result.message = "Stop latch cleared.";
-        } else {
-          result.message = "Stop latch not active.";
-        }
-        result.outText = result.message;
-        break;
-      case "canSweep":
-        BringupPrinter.enqueue("Command: canSweep (UI)");
-        String sweepReport = core.buildCanPingSweepReportText();
-        core.requestTextReport(sweepReport, 6);
-        result.outText = sweepReport;
-        break;
-      case "fixedSpeed25":
-        uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 0.25);
-        result.message = uiFixedSpeedActiveMessage();
-        break;
-      case "fixedSpeed50":
-        uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 0.50);
-        result.message = uiFixedSpeedActiveMessage();
-        break;
-      case "fixedSpeed75":
-        uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 0.75);
-        result.message = uiFixedSpeedActiveMessage();
-        break;
-      case "fixedSpeed100":
-        uiFixedSpeed = toggleUiFixedSpeed(uiFixedSpeed, 1.00);
-        result.message = uiFixedSpeedActiveMessage();
-        break;
-      case "printNTdiag":
-        if (diagnostics != null) {
-          String report = diagnostics.buildNetworkDiagnosticsReportIfReady();
-          if (report != null) {
-            report = appendUiTcpStats(report);
-            core.requestTextReport(report, 4);
-            result.outText = report;
-          } else {
-            String message = "Network diagnostics rate-limited; try again shortly.";
-            core.requestTextReport(message, 4);
-            result.outText = message;
-          }
-        } else {
-          result.ok = false;
-          result.message = "Diagnostics unavailable.";
-        }
-        break;
-      case "printCANdiag":
-        if (diagnostics != null) {
-          String report = diagnostics.buildCanDiagnosticsReportIfReady();
-          if (report != null) {
-            core.requestTextReport(report, 4);
-            result.outText = report;
-          } else {
-            long remainingMs = diagnostics.getCanDiagCooldownRemainingMs();
-            String message;
-            if (remainingMs > 0) {
-              double remainingSec = remainingMs / 1000.0;
-              message = String.format("CAN diagnostics rate-limited, try again in %.1fs.", remainingSec);
-            } else {
-              message = "CAN diagnostics not ready yet.";
-            }
-            core.requestTextReport(message, 4);
-            result.outText = message;
-          }
-        } else {
-          result.ok = false;
-          result.message = "Diagnostics unavailable.";
-        }
-        break;
-      case "dumpReport":
-        if (diagnostics != null) {
-          String json = diagnostics.buildReportJsonForDump();
-          String wrapped = ReportTextUtil.wrapLongLine(json, 120);
-          core.requestTextReport(wrapped, 4);
-          StringBuilder dumpOut = new StringBuilder(wrapped);
-          if (diagnostics.writeReportJsonToFile(json)) {
-            core.requestTextReport("Wrote CAN report JSON to " + diagnostics.getReportPath(), 4);
-            dumpOut.append('\n')
-                .append("Wrote CAN report JSON to ")
-                .append(diagnostics.getReportPath());
-          } else {
-            core.requestTextReport("Failed to write CAN report JSON.", 4);
-            dumpOut.append('\n').append("Failed to write CAN report JSON.");
-          }
-          result.outText = dumpOut.toString();
-        } else {
-          result.ok = false;
-          result.message = "Diagnostics unavailable.";
-        }
-        break;
-      case "showStatus": {
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
-        applyShowResult(result, buildStatusText(), buildStatusJson(), wantsJson);
-        break;
-      }
-      case CMD_SHOW_VERSION: {
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
-        applyShowResult(result, buildVersionText(), buildVersionJson(), wantsJson);
-        break;
-      }
-      case CMD_SHOW_TESTS: {
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
-        BringupCore.TestsOverview overview = core.buildTestsOverview();
-        applyShowResult(result, core.formatTestsOverview(overview), buildTestsOverviewJson(overview), wantsJson);
-        break;
-      }
-      case CMD_SHOW_SOURCES: {
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
-        applyShowResult(result, buildSourcesText(), buildSourcesJson(), wantsJson);
-        break;
-      }
-      case "showGroups": {
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
-        applyShowResult(result, buildGroupsText(), buildGroupsJson(), wantsJson);
-        break;
-      }
-      case "showGroup": {
-        String groupName = parseUiArgString(args, "name");
-        if (groupName == null) {
-          result.ok = false;
-          result.message = "showGroup requires args.name.";
-          break;
-        }
-        BridgeGroupManager.Group group = bridgeGroups.getGroup(groupName);
-        if (group == null) {
-          result.ok = false;
-          result.message = "Group not found: " + groupName;
-          break;
-        }
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
-        applyShowResult(result, buildGroupText(group), buildGroupJson(group), wantsJson);
-        break;
-      }
-      case CMD_ACTIVE_ADD: {
-        applyActiveAdd(result);
-        break;
-      }
-      case CMD_ACTIVE_NEXT: {
-        applyActiveNext(result);
-        break;
-      }
-      case "showDevices": {
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
-        applyShowResult(result, buildDevicesText(), buildDevicesJson(), wantsJson);
-        break;
-      }
-      case "showDevice": {
-        String deviceName = parseUiArgString(args, "name");
-        if (deviceName == null) {
-          result.ok = false;
-          result.message = "showDevice requires args.name.";
-          break;
-        }
-        BringupUtil.DeviceEntry entry = findDeviceEntryByLabel(deviceName);
-        if (entry == null) {
-          result.ok = false;
-          result.message = "Device not found: " + deviceName;
-          break;
-        }
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
-        applyShowResult(result, buildDeviceText(entry), buildDeviceJson(entry), wantsJson);
-        break;
-      }
-      case "showBindings": {
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
-        applyShowResult(result, buildBindingsText(), buildBindingsJson(), wantsJson);
-        break;
-      }
-      case "showSelectedDevice": {
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
-        applyShowResult(result, buildSelectedDeviceText(), buildSelectedDeviceJson(), wantsJson);
-        break;
-      }
-      case "showRuntimeState": {
-        boolean wantsJson = Boolean.TRUE.equals(parseUiArgBoolean(args, JSON_KEY_JSON));
-        String text = buildStatusText() + "\n" + buildGroupsText();
-        applyShowResult(result, text, buildRuntimeStateJson(), wantsJson);
-        break;
-      }
-      case CMD_PROFILES_APPLY: {
-        applyProfilesApplyCommand(result, args, isTcp);
-        break;
-      }
-      case "groupCreate": {
-        String groupName = parseUiArgString(args, "name");
-        if (groupName == null) {
-          result.ok = false;
-          result.message = "groupCreate requires args.name.";
-          break;
-        }
-        if (bridgeGroups.getGroup(groupName) != null) {
-          result.ok = false;
-          result.message = "Group already exists: " + groupName;
-          break;
-        }
-        boolean created = bridgeGroups.createGroup(groupName);
-        if (!created) {
-          result.ok = false;
-          result.message = "Failed to create group: " + groupName;
-        } else {
-          result.message = "Group created: " + groupName;
-          result.outText = result.message;
-        }
-        break;
-      }
-      case "groupDelete": {
-        String groupName = parseUiArgString(args, "name");
-        Boolean confirm = parseUiArgBoolean(args, "confirm");
-        if (groupName == null) {
-          result.ok = false;
-          result.message = "groupDelete requires args.name.";
-          break;
-        }
-        if (!Boolean.TRUE.equals(confirm)) {
-          result.ok = false;
-          result.message = "groupDelete requires confirm=true.";
-          break;
-        }
-        boolean removed = bridgeGroups.deleteGroup(groupName);
-        if (!removed) {
-          result.ok = false;
-          result.message = "Group not found: " + groupName;
-        } else {
-          result.message = "Group deleted: " + groupName;
-          result.outText = result.message;
-        }
-        break;
-      }
-      case "groupAddDevice": {
-        String groupName = parseUiArgString(args, "group");
-        String deviceName = parseUiArgString(args, "device");
-        String policy = parseUiArgString(args, "conflictPolicy");
-        Boolean forceMove = parseUiArgBoolean(args, "forceMove");
-        if (groupName == null || deviceName == null) {
-          result.ok = false;
-          result.message = "groupAddDevice requires args.group and args.device.";
-          break;
-        }
-        if (bridgeGroups.getGroup(groupName) == null) {
-          result.ok = false;
-          result.message = "Group not found: " + groupName;
-          break;
-        }
-        if (findDeviceEntryByLabel(deviceName) == null) {
-          result.ok = false;
-          result.message = "Unknown device: " + deviceName;
-          break;
-        }
-        String existing = bridgeGroups.getDeviceGroup(deviceName);
-        boolean sameGroup = existing != null && existing.equalsIgnoreCase(groupName);
-        boolean wantsMove = Boolean.TRUE.equals(forceMove)
-            || (policy != null && policy.equalsIgnoreCase("move"));
-        if (!sameGroup && existing != null && !existing.isBlank() && !wantsMove) {
-          result.ok = false;
-          result.message = "Device already in group " + existing + ".";
-          JsonObject conflict = new JsonObject();
-          conflict.addProperty("conflict", true);
-          conflict.addProperty("device", deviceName);
-          conflict.addProperty("currentGroup", existing);
-          conflict.addProperty("requestedGroup", groupName);
-          conflict.addProperty("policy", policy != null ? policy : "error");
-          result.outJson = conflict.toString();
-          break;
-        }
-        boolean added = bridgeGroups.addDevice(groupName, deviceName, wantsMove);
-        if (!added) {
-          result.ok = false;
-          result.message = "Failed to add device to group.";
-          break;
-        }
-        JsonObject info = new JsonObject();
-        info.addProperty("device", deviceName);
-        info.addProperty("group", groupName);
-        if (!sameGroup && existing != null && !existing.isBlank()) {
-          info.addProperty("moved", true);
-          info.addProperty("previousGroup", existing);
-        } else {
-          info.addProperty("moved", false);
-        }
-        result.outJson = info.toString();
-        result.message = "Device added: " + deviceName + " -> " + groupName;
-        result.outText = result.message;
-        break;
-      }
-      case "groupRemoveDevice": {
-        String groupName = parseUiArgString(args, "group");
-        String deviceName = parseUiArgString(args, "device");
-        if (groupName == null || deviceName == null) {
-          result.ok = false;
-          result.message = "groupRemoveDevice requires args.group and args.device.";
-          break;
-        }
-        BridgeGroupManager.Group group = bridgeGroups.getGroup(groupName);
-        if (group == null) {
-          result.ok = false;
-          result.message = "Group not found: " + groupName;
-          break;
-        }
-        String current = bridgeGroups.getDeviceGroup(deviceName);
-        if (current == null || !current.equalsIgnoreCase(groupName)) {
-          result.ok = false;
-          result.message = "Device not in group: " + deviceName;
-          break;
-        }
-        bridgeGroups.removeDevice(groupName, deviceName);
-        result.message = "Device removed: " + deviceName + " from " + groupName;
-        result.outText = result.message;
-        break;
-      }
-      case "groupMemberEnable":
-      case "groupMemberDisable":
-      case "groupMemberToggle": {
-        String groupName = parseUiArgString(args, "group");
-        String deviceName = parseUiArgString(args, "device");
-        if (groupName == null || deviceName == null) {
-          result.ok = false;
-          result.message = name + " requires args.group and args.device.";
-          break;
-        }
-        BridgeGroupManager.Group group = bridgeGroups.getGroup(groupName);
-        if (group == null) {
-          result.ok = false;
-          result.message = "Group not found: " + groupName;
-          break;
-        }
-        String current = bridgeGroups.getDeviceGroup(deviceName);
-        if (current == null || !current.equalsIgnoreCase(groupName)) {
-          result.ok = false;
-          result.message = "Device not in group: " + deviceName;
-          break;
-        }
-        boolean ok;
-        if ("groupMemberEnable".equals(name)) {
-          ok = bridgeGroups.setMemberEnabled(groupName, deviceName, true);
-        } else if ("groupMemberDisable".equals(name)) {
-          ok = bridgeGroups.setMemberEnabled(groupName, deviceName, false);
-        } else {
-          ok = bridgeGroups.toggleMember(groupName, deviceName);
-        }
-        if (!ok) {
-          result.ok = false;
-          result.message = "Failed to update member: " + deviceName;
-          break;
-        }
-        result.message = "Member updated: " + deviceName;
-        result.outText = result.message;
-        break;
-      }
-      case "groupBind": {
-        String groupName = parseUiArgString(args, "group");
-        String input = parseUiArgString(args, "input");
-        String kindRaw = parseUiArgString(args, "kind");
-        Double value = parseUiArgDouble(args, "value");
-        if (groupName == null || input == null || kindRaw == null) {
-          result.ok = false;
-          result.message = "groupBind requires args.group, args.input, args.kind.";
-          break;
-        }
-        BridgeGroupManager.Group group = bridgeGroups.getGroup(groupName);
-        if (group == null) {
-          result.ok = false;
-          result.message = "Group not found: " + groupName;
-          break;
-        }
-        if (!isValidBindingInput(input)) {
-          result.ok = false;
-          result.message = "Unknown input: " + input;
-          break;
-        }
-        BridgeGroupManager.BindingKind kind = BridgeGroupManager.BindingKind.parse(kindRaw);
-        if (kind == null) {
-          result.ok = false;
-          result.message = "Unknown binding kind: " + kindRaw;
-          break;
-        }
-        if (kind != BridgeGroupManager.BindingKind.ANALOG && value == null) {
-          result.ok = false;
-          result.message = "Binding value required for " + kind.label() + ".";
-          break;
-        }
-        double bindValue = value != null ? value : 0.0;
-        boolean ok = bridgeGroups.addBinding(groupName, input, kind, bindValue);
-        if (!ok) {
-          result.ok = false;
-          result.message = "Failed to add binding.";
-          break;
-        }
-        result.message = "Binding added.";
-        result.outText = result.message;
-        break;
-      }
-      case "groupUnbind": {
-        String groupName = parseUiArgString(args, "group");
-        if (groupName == null) {
-          result.ok = false;
-          result.message = "groupUnbind requires args.group.";
-          break;
-        }
-        boolean ok = bridgeGroups.clearBindings(groupName);
-        if (!ok) {
-          result.ok = false;
-          result.message = "Group not found: " + groupName;
-          break;
-        }
-        result.message = "Bindings cleared for " + groupName;
-        result.outText = result.message;
-        break;
-      }
-      case "groupEnable":
-      case "groupDisable": {
-        String groupName = parseUiArgString(args, "group");
-        if (groupName == null) {
-          result.ok = false;
-          result.message = name + " requires args.group.";
-          break;
-        }
-        boolean enabled = "groupEnable".equals(name);
-        boolean ok = bridgeGroups.setGroupEnabled(groupName, enabled);
-        if (!ok) {
-          result.ok = false;
-          result.message = "Group not found: " + groupName;
-          break;
-        }
-        result.message = "Group " + groupName + " " + (enabled ? "enabled" : "disabled") + ".";
-        result.outText = result.message;
-        break;
-      }
-      case "groupRunTest": {
-        String groupName = parseUiArgString(args, "group");
-        if (groupName == null) {
-          result.ok = false;
-          result.message = "groupRunTest requires args.group.";
-          break;
-        }
-        if (bridgeGroups.getGroup(groupName) == null) {
-          result.ok = false;
-          result.message = "Group not found: " + groupName;
-          break;
-        }
-        String groupTestName = parseUiArgString(args, "name");
-        if (groupTestName != null && !groupTestName.isBlank()) {
-          boolean selected = core.selectBringupTestByName(groupTestName);
-          if (!selected) {
-            result.ok = false;
-            result.message = "Test not found: " + groupTestName;
-            break;
-          }
-        }
-        core.runSelectedBringupTest();
-        result.message = "Test started.";
-        result.outText = result.message;
-        break;
-      }
-      case "selectedDeviceSet": {
-        String deviceName = parseUiArgString(args, "name");
-        if (deviceName == null) {
-          result.ok = false;
-          result.message = "selectedDeviceSet requires args.name.";
-          break;
-        }
-        if (findDeviceEntryByLabel(deviceName) == null) {
-          result.ok = false;
-          result.message = "Unknown device: " + deviceName;
-          break;
-        }
-        bridgeSelected.device = deviceName;
-        result.message = "Selected device: " + deviceName;
-        result.outText = result.message;
-        break;
-      }
-      case "selectedModeSet": {
-        Boolean enabled = parseUiArgBoolean(args, "enabled");
-        if (enabled == null) {
-          result.ok = false;
-          result.message = "selectedModeSet requires args.enabled.";
-          break;
-        }
-        if (enabled && (bridgeSelected.device == null || bridgeSelected.device.isBlank())) {
-          result.ok = false;
-          result.message = "No selected device set.";
-          break;
-        }
-        bridgeSelected.enabled = enabled;
-        result.message = "Selected mode " + (enabled ? "on" : "off") + ".";
-        result.outText = result.message;
-        break;
-      }
-      default:
-        result.ok = false;
-        result.message = "Unknown command: " + name;
-        break;
-    }
+    BridgeUiCommandResult result = uiCommandDispatcher.dispatch(ingress, cmdTs, isTcp);
 
     if (result.outText == null || result.outText.isBlank()) {
       if (!result.ok) {
@@ -1491,7 +1319,7 @@ public class BridgeUiCommandHandler {
    * SIDE EFFECTS
    *   Mutates runtime group membership and emits warning/status payloads.
    */
-  private void applyActiveAdd(UiCommandResult result) {
+  private void applyActiveAdd(BridgeUiCommandResult result) {
     if (core != null && core.isTestRunning()) {
       result.ok = false;
       result.message = WARNING_REJECT_TEST_RUNNING;
@@ -1559,7 +1387,7 @@ public class BridgeUiCommandHandler {
    *   Stops/deactivates current primary device, updates membership, and emits
    *   warning/status payloads.
    */
-  private void applyActiveNext(UiCommandResult result) {
+  private void applyActiveNext(BridgeUiCommandResult result) {
     if (core != null && core.isTestRunning()) {
       result.ok = false;
       result.message = WARNING_REJECT_TEST_RUNNING;
@@ -1681,7 +1509,7 @@ public class BridgeUiCommandHandler {
    *   setActiveResultJson - Publish active-group response JSON with warnings.
    */
   private void setActiveResultJson(
-      UiCommandResult result,
+      BridgeUiCommandResult result,
       BridgeGroupManager.Group group,
       List<String> warnings) {
     JsonObject payload = new JsonObject();
@@ -1867,15 +1695,15 @@ public class BridgeUiCommandHandler {
    * NAME
    *   publishUiTcpMonitor - Publish TCP protocol monitor entries to NT.
    */
-  private void publishUiTcpMonitor(long seq, String name, String clientId, UiCommandResult result) {
-    uiTcpTable.getEntry("enabled").setBoolean(uiProtocolMonitorEnabled);
-    uiTcpTable.getEntry("connected").setBoolean(true);
-    uiTcpTable.getEntry("lastSeq").setInteger(seq);
-    uiTcpTable.getEntry("lastName").setString(name != null ? name : "");
-    uiTcpTable.getEntry(NT_KEY_TCP_LAST_STATUS).setString(StatusRuntime.ackLabel(result.ok));
-    uiTcpTable.getEntry(NT_KEY_TCP_LAST_CODE).setInteger(result.code);
-    uiTcpTable.getEntry("lastMessage").setString(result.message != null ? result.message : "");
-    uiTcpTable.getEntry("activeClientId").setString(clientId != null ? clientId : "");
+  private void publishUiTcpMonitor(long seq, String name, String clientId, BridgeUiCommandResult result) {
+    uiOutputFacade.publishUiTcpMonitor(
+        seq,
+        name,
+        clientId,
+        uiProtocolMonitorEnabled,
+        result.ok,
+        result.code,
+        result.message);
   }
 
   /**
@@ -1883,15 +1711,8 @@ public class BridgeUiCommandHandler {
    *   publishUiAck - Publish UI command acknowledgements to NetworkTables.
    */
   private void publishUiAck(long seq, boolean ok, String message, String name, double cmdTs) {
-    int statusCode = StatusRuntime.ackCode(ok);
-    uiTable.getEntry(NT_KEY_ACK_SEQ).setInteger(seq);
-    uiTable.getEntry(NT_KEY_ACK_STATUS).setString(StatusRuntime.ackLabel(ok));
-    uiTable.getEntry(NT_KEY_ACK_CODE).setInteger(statusCode);
-    uiTable.getEntry(NT_KEY_ACK_CODE_TEXT).setString(StatusRuntime.messageFor(statusCode));
-    uiTable.getEntry(NT_KEY_ACK_MESSAGE).setString(message != null ? message : "");
-    uiTable.getEntry(NT_KEY_ACK_NAME).setString(name != null ? name : "");
-    uiTable.getEntry(NT_KEY_ACK_TS).setDouble(cmdTs);
-    publishUiState(seq);
+    lastUiAckMs =
+        uiOutputFacade.publishUiAck(seq, ok, message, name, cmdTs, uiSessionId, activeUiClientId);
   }
 
   /**
@@ -1902,28 +1723,7 @@ public class BridgeUiCommandHandler {
    *   Emits at least one output entry per command to release the UI.
    */
   private void publishUiOut(long seq, String name, String text, double cmdTs, String jsonText) {
-    uiTable.getEntry("out/seq").setInteger(seq);
-    uiTable.getEntry("out/name").setString(name != null ? name : "");
-    uiTable.getEntry("out/text").setString(text != null ? text : "");
-    uiTable.getEntry("out/ts").setDouble(cmdTs);
-    uiTable.getEntry("out/json").setString(jsonText != null ? jsonText : "");
-  }
-
-  /**
-   * NAME
-   *   publishUiState - Publish UI command state/heartbeat.
-   *
-   * PARAMETERS
-   *   seq - Most recent processed command sequence.
-   */
-  private void publishUiState(long seq) {
-    lastUiAckMs = System.currentTimeMillis();
-    uiTable.getEntry("state/lastAckSeq").setInteger(seq);
-    uiTable.getEntry("state/lastAckMs").setDouble(lastUiAckMs);
-    uiTable.getEntry("state/sessionId").setString(uiSessionId);
-    uiTable.getEntry("state/protocolVersion").setInteger(UI_PROTOCOL_VERSION);
-    uiTable.getEntry("state/activeClientId").setString(
-        activeUiClientId != null ? activeUiClientId : "");
+    uiOutputFacade.publishUiOut(seq, name, text, cmdTs, jsonText);
   }
 
   /**
@@ -2073,7 +1873,7 @@ public class BridgeUiCommandHandler {
    *   args - Parsed args JSON.
    *   isTcp - True when invoked over TCP.
    */
-  private void applyProfilesApplyCommand(UiCommandResult result, JsonObject args, boolean isTcp) {
+  private void applyProfilesApplyCommand(BridgeUiCommandResult result, JsonObject args, boolean isTcp) {
     if (result == null) {
       return;
     }
@@ -2329,7 +2129,7 @@ public class BridgeUiCommandHandler {
    * NAME
    *   applyShowResult - Populate OUT text/JSON for show commands.
    */
-  private void applyShowResult(UiCommandResult result, String text, JsonObject json, boolean wantsJson) {
+  private void applyShowResult(BridgeUiCommandResult result, String text, JsonObject json, boolean wantsJson) {
     if (result == null) {
       return;
     }
@@ -3109,31 +2909,6 @@ public class BridgeUiCommandHandler {
       }
     }
     return null;
-  }
-
-  /**
-   * NAME
-   *   toggleUiFixedSpeed - Toggle a fixed-speed override.
-   */
-  private double toggleUiFixedSpeed(double current, double value) {
-    if (Double.isNaN(current)) {
-      return value;
-    }
-    if (Math.abs(current - value) < 1e-6) {
-      return Double.NaN;
-    }
-    return value;
-  }
-
-  /**
-   * NAME
-   *   uiFixedSpeedActiveMessage - Build a status message for fixed speed state.
-   */
-  private String uiFixedSpeedActiveMessage() {
-    if (Double.isNaN(uiFixedSpeed)) {
-      return "Fixed speed: OFF.";
-    }
-    return "Fixed speed: " + String.format("%.2f", uiFixedSpeed);
   }
 
   /**

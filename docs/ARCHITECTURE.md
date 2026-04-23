@@ -12,6 +12,7 @@ Purpose: the system is a client/server architecture with a robot-side server and
 - The PC tool also includes console monitoring, capture utilities, and offline analysis helpers.
 - The topology editor and live topology view are part of the PC-side solution and share the same profile JSON contract.
 - See OPERATOR_SURFACES.md for a focused view of CLI/GUI/topology surface responsibilities.
+- See COMMAND_HANDLER_ARCHITECTURE.md for the detailed command parsing/execution split used by the Python CLI and Java UI handler.
 - The Xbox controller input is a local client of the robot server (same process, local transport).
 
 ## 1000-Foot View
@@ -113,6 +114,147 @@ Message format:
 - Payloads contain binary metadata plus printable text; text is decoded as UTF-8 (errors ignored).
 - The parser splits payloads into lines and matches each line against regex rules.
 
+## Layered Architecture (System-Wide)
+Purpose: describe the full-system layering model across robot code, PC tools, workflows, and operator surfaces.
+
+The project is best understood as two cooperating stacks (robot-side and PC-side) constrained by shared contracts. Across both sides, the system can be described in six layers:
+
+### 1) Hardware and Transport Layer
+Purpose: define the physical devices and raw communication channels the software depends on.
+
+Includes:
+- Robot hardware: motors, encoders, CAN devices, power devices, gyro, roboRIO, controller input.
+- PC hardware: CANable and Windows host.
+- Raw transports: CAN bus, serial/slcan, TCP, NetworkTables, filesystem.
+
+Responsibilities:
+- Real-world I/O.
+- Physical device communication.
+- Socket, serial, and table transport.
+
+Examples:
+- roboRIO + Xbox controller.
+- CANable over COM/slcan.
+- TCP UI socket.
+- NetworkTables transport.
+
+### 2) Adapter and Protocol Layer
+Purpose: convert raw transport/vendor behavior into stable internal interfaces and parsed payloads.
+
+Robot-side examples:
+- Device wrappers over vendor SDKs.
+- Manufacturer grouping abstractions.
+- UI ingress parsing and protocol adaptation.
+
+PC-side examples:
+- CAN ID decoding.
+- TCP ACK/OUT parsing.
+- Profile/config loading.
+- Console-monitor parsing.
+
+Responsibilities:
+- Hide raw vendor and wire details.
+- Parse and normalize protocol payloads.
+- Present a more stable surface to domain logic.
+
+Examples:
+- `devices/ctre/...`, `devices/rev/...`
+- `manufacturers/...`
+- `BridgeUiIngressPolicy`
+- `bridge_session.py`
+- `can_profiles.py`
+- `visibility_provider.py`
+
+### 3) Domain Logic Layer
+Purpose: own the meaning of commands, profiles, tests, diagnostics, groups, and safety rules.
+
+This is where the product's real semantics live.
+
+Responsibilities:
+- Command-family behavior.
+- Profile/test/group/runtime semantics.
+- Safety rules such as stop latch, disabled gating, and ownership/lock behavior.
+- Diagnostics meaning such as visible vs missing vs stale.
+
+Robot-side examples:
+- `BringupCore`
+- `BridgeGroupManager`
+- `BridgeUiSessionCommands`
+- `BridgeUiProfileCommands`
+- `BridgeUiTestCommands`
+- `BridgeUiGroupCommands`
+- `BridgeUiReportCommands`
+- `BridgeUiRuntimeCommands`
+
+PC-side examples:
+- `bridge_ops.py`
+- `bridge_robot_control_facade.py`
+- profile/test validation logic
+- diagnostics normalization
+
+### 4) Workflow and Application Service Layer
+Purpose: coordinate domain actions into repeatable operator workflows.
+
+This layer answers questions like:
+- How does a user bring up a brand new robot one component at a time?
+- How does a user edit config, validate it, sync it, deploy it, and verify behavior?
+- How does a user capture evidence after a failure?
+
+Responsibilities:
+- Sequence domain actions into supported workflows.
+- Reduce tool-by-tool ambiguity.
+- Make the product feel like a system of workflows, not just a set of features.
+
+Current examples are split across:
+- workflow docs
+- validate/sync scripts
+- CLI/UI command sequences
+- test-authoring paths
+
+Important note:
+- This is the layer the project still needs to strengthen the most in code. The primary example today is `docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md`.
+
+### 5) Presentation and Operator Surface Layer
+Purpose: provide the user-facing surfaces for interaction, control, and visualization.
+
+Includes:
+- Bridge CLI.
+- Bringup Control UI.
+- Topology editor.
+- Live topology view.
+- Robot-side printed reports.
+- Dashboards.
+
+Responsibilities:
+- Collect user intent.
+- Render results.
+- Present status, diagnostics, and workflow guidance.
+
+Rule:
+- Presentation surfaces should stay as thin as possible. They should ask for outcomes, not re-own business semantics.
+
+### 6) Contract and Specification Layer
+Purpose: define the stable contracts that constrain both implementations and operator expectations.
+
+Includes:
+- TCP UI protocol.
+- NetworkTables contract.
+- Config/profile schema.
+- Status code catalog.
+- Architecture, workflow, and readiness specs.
+
+Responsibilities:
+- Keep Java, Python, tests, and docs aligned.
+- Define what is stable and shared.
+- Provide the source of truth for cross-language/cross-process behavior.
+
+Examples:
+- `docs/TCP_UI_PROTOCOL.md`
+- `docs/NT_CONTRACT.md`
+- `docs/COMMAND_HANDLER_ARCHITECTURE.md`
+- `docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md`
+- `docs/RELEASE_1_0_READINESS.md`
+
 ## Layered Design (Robot Server)
 Purpose: the robot server architecture uses internal layers with clear responsibilities.
 
@@ -195,6 +337,7 @@ Purpose: describe the operator-facing surfaces beyond the core CAN bridge.
 
 - Bringup Control UI (TCP): issues commands, displays log output, and can poll runtime state.
 - Bridge CLI (TCP): scriptable command interface for bringup actions and reports.
+- Command handler split details for these surfaces live in `docs/COMMAND_HANDLER_ARCHITECTURE.md`.
 - NetConsole monitor: surfaces warnings/errors and health cues not present on CAN.
 - Live topology view: read-only diagram view with runtime overlays driven by robot state.
 

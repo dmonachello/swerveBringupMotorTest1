@@ -35,6 +35,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from tools.can_nt.bridge_cmd_tracker import CommandTracker
 from tools.can_nt.bridge_cli_parser import BridgeCliParser, CliParseError
 from tools.can_nt.bridge_cli_ast import BridgeCliAstExecutor, AST_EXEC_SPEC
+from tools.can_nt.bridge_cli_facades import (
+    BridgeCliParseContext,
+    BridgeCliExecuteFacade,
+    BridgeCliOutputFacade,
+    BridgeCliParseFacade,
+    BridgeCliValidateFacade,
+)
+from tools.can_nt.bridge_robot_control_facade import BridgeRobotControlTransport
 from tools.can_nt.bridge_cli_constants import CLI_PARSER_CONST
 from tools.can_nt.bridge_cli_constants_gen import SPEC as PARSER_SPEC
 from tools.can_nt.can_profiles import get_default_profile
@@ -110,9 +118,7 @@ from tools.can_nt.motor_diag_constants import (
 from tools.can_nt.motor_diag_normalize import collect_profile_labels, normalize_runtime_state
 from tools.can_nt.motor_diag_rules import diagnose_motor
 from tools.can_nt.status import (
-    FLAG_PRINT_MESSAGE,
     StatusResult,
-    format_status,
     format_status_message,
     SS__CLI_PARSER__UNKNOWN_COMMAND,
     SS__CLI_PARSER__INVALID_SYNTAX,
@@ -1649,6 +1655,29 @@ class BridgeCli:
         self._parser = BridgeCliParser(strict=bool(CLI_PARSER_CONST["strict_default"]))
         self._ast_executor = BridgeCliAstExecutor(self)
         self._modes: List[CliMode] = [CliMode("exec")]
+        self._parse_facade = BridgeCliParseFacade()
+        self._validate_facade = BridgeCliValidateFacade()
+        self._execute_facade = BridgeCliExecuteFacade()
+        self._output_facade = BridgeCliOutputFacade()
+        self._parse_context = BridgeCliParseContext(
+            parse_line=lambda line, mode: self._parser.parse(line, mode=mode),
+            split_command=self._split_command,
+            maybe_print_failure_hint=self._maybe_print_failure_hint,
+            alias_replacement=self._alias_replacement,
+            print_alias_removed=self._print_alias_removed,
+            normalize_tokens=lambda tokens, mode: self._parser.normalize_tokens(tokens, mode),
+            fallback_device_set=self._fallback_device_set,
+            config_command=self._config_command,
+            coerce_status=self._coerce_status,
+            mode_name=self._modes[-1].name,
+        )
+        self._robot_control_transport = BridgeRobotControlTransport(
+            send_command=lambda command_name, command_args: self._session.send_command(command_name, command_args),
+            mark_command_sent=lambda command_name, now: self._proto_mark_cmd_sent(command_name, now=now),
+            wait_for_seq=self._wait_for_seq,
+            event_failed=self._event_failed,
+            handle_add_device_conflict=self._handle_add_device_conflict,
+        )
         self._last_seq: Optional[int] = None
         self._local_config: Optional[Dict[str, object]] = None
         self._local_config_path: Optional[str] = None
@@ -3091,15 +3120,14 @@ class BridgeCli:
         NAME
             _emit_status - Print a structured status code line.
         """
-        include_raw = STATUS_INCLUDE_RAW_DEFAULT or bool(result.code & FLAG_PRINT_MESSAGE)
-        print(format_status(result.code, include_raw=include_raw))
-        status_message = format_status_message(result.code, **result.message_args)
-        if status_message:
-            print(STATUS_DETAIL_PREFIX + status_message)
-        elif result.message:
-            print(STATUS_DETAIL_PREFIX + result.message)
-        if result.detail:
-            print(STATUS_DETAIL_PREFIX + result.detail)
+        self._output_facade.emit_status(result, STATUS_INCLUDE_RAW_DEFAULT)
+
+    def _print_alias_removed(self, alias_name: str, canonical: str) -> None:
+        """
+        NAME
+            _print_alias_removed - Print removed alias replacement guidance.
+        """
+        print(MESSAGE_ERR_ALIAS_REMOVED.format(alias=alias_name, canonical=canonical))
 
     def _coerce_status(self, outcome: Optional[object]) -> StatusResult:
         """
@@ -3128,34 +3156,25 @@ class BridgeCli:
         reset_result = self._handle_reset_zero_config_command(line)
         if reset_result is not None:
             return reset_result
-        lower_line = line.lower() if isinstance(line, str) else ""
-        self._last_line_pretty = "--pretty" in lower_line and "--json" in lower_line
-        try:
-            parsed = self._parser.parse(line, mode=self._modes[-1].name)
-            tokens = parsed.tokens
-            ast = parsed.ast
-            if ast is not None and (not ast.verb or not ast.kind):
-                ast = None
-        except (CliParseError, ValueError) as exc:
-            try:
-                tokens = self._split_command(line)
-            except Exception as split_exc:
-                result = StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(split_exc))
-                self._maybe_print_failure_hint(line)
-                return result
-            alias_hit = self._alias_replacement(tokens)
-            if alias_hit is not None:
-                alias_name, canonical = alias_hit
-                print(MESSAGE_ERR_ALIAS_REMOVED.format(alias=alias_name, canonical=canonical))
-                return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
-            normalized = self._parser.normalize_tokens(tokens, self._modes[-1].name)
-            if self._fallback_device_set(normalized):
-                return self._coerce_status(self._config_command(normalized))
-            result = StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX, message=str(exc))
-            self._maybe_print_failure_hint(line)
-            return result
-        if not tokens:
-            return StatusResult(code=SS__NORMAL)
+        self._parse_context = BridgeCliParseContext(
+            parse_line=self._parse_context.parse_line,
+            split_command=self._parse_context.split_command,
+            maybe_print_failure_hint=self._parse_context.maybe_print_failure_hint,
+            alias_replacement=self._parse_context.alias_replacement,
+            print_alias_removed=self._parse_context.print_alias_removed,
+            normalize_tokens=self._parse_context.normalize_tokens,
+            fallback_device_set=self._parse_context.fallback_device_set,
+            config_command=self._parse_context.config_command,
+            coerce_status=self._parse_context.coerce_status,
+            mode_name=self._modes[-1].name,
+        )
+        parsed_line = self._parse_facade.parse_line(self._parse_context, line)
+        self._last_line_pretty = parsed_line.line_pretty
+        parsed_validation = self._validate_facade.validate_parsed_line(parsed_line)
+        if parsed_validation is not None:
+            return parsed_validation
+        tokens = parsed_line.tokens
+        ast = parsed_line.ast
         cmd = tokens[0].lower()
         if cmd in ("quit", "exit"):
             if self._modes[-1].name == "exec":
@@ -7346,20 +7365,7 @@ class BridgeCli:
         NAME
             _execute_command - Send a BridgeCommand and wait for output.
         """
-        seq = self._session.send_command(command.name, command.args)
-        if seq is None:
-            print(f"ERROR: Failed to send {command.name}.")
-            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
-        self._proto_mark_cmd_sent(command.name, now=time.time())
-        event = self._wait_for_seq(seq)
-        if self._event_failed(event, command.name):
-            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
-        if command.name == "groupAddDevice":
-            device = str(command.args.get("device", ""))
-            group = str(command.args.get("group", ""))
-            if self._handle_add_device_conflict(event, group, device):
-                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
-        return StatusResult(code=SS__NORMAL)
+        return self._execute_facade.execute_command(self._robot_control_transport, command)
 
     def _handle_add_device_conflict(
         self,
