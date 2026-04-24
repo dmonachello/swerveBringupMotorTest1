@@ -15,6 +15,7 @@ class Workflow01ServiceTests(unittest.TestCase):
             profile_selected=False,
             robot_connected=False,
             test_selected=False,
+            handshake_done=False,
         )
         self.assertEqual(result.state, "blocked")
         self.assertGreaterEqual(len(result.blocking_reasons), 1)
@@ -26,12 +27,29 @@ class Workflow01ServiceTests(unittest.TestCase):
             profile_selected=True,
             robot_connected=True,
             test_selected=True,
+            handshake_done=True,
+            session_mismatch=False,
+            robot_enabled=True,
+            robot_estopped=False,
+            has_unsaved_changes=False,
         )
         self.assertEqual(result.state, "ready")
         self.assertEqual(result.blocking_reasons, [])
         self.assertGreaterEqual(len(result.next_steps), 3)
 
+    def test_assess_blocked_when_connected_without_handshake(self) -> None:
+        service = Workflow01Service()
+        result = service.assess(
+            config_loaded=True,
+            profile_selected=True,
+            robot_connected=True,
+            test_selected=True,
+            handshake_done=False,
+        )
+        self.assertEqual(result.state, "blocked")
+        joined = " ".join(result.blocking_reasons)
+        self.assertIn("handshake", joined.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
-
