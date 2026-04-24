@@ -56,6 +56,19 @@ Purpose: describe the PC-side command stack used by `tools/can_nt/bridge_cli.py`
 - `tools/can_nt/bridge_cli_ast.py`
 - `tools/can_nt/bridge_ops.py`
 
+### Shared Host Services
+
+- `tools/common/config_lifecycle/service.py`
+- `tools/common/workflows/workflow01_service.py`
+- `tools/common/tests_domain/semantics.py`
+- `tools/common/diagnostics/normalize.py`
+
+Purpose:
+
+- keep config/profile lifecycle semantics centralized and reusable across CLI/UI/tooling
+- keep workflow guidance out of parser/transport code paths
+- keep test-domain and diagnostics-normalization logic out of presentation-heavy modules
+
 ### Responsibilities by Layer
 Purpose: make each Python boundary explicit.
 

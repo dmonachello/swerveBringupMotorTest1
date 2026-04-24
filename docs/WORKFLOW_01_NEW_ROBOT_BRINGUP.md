@@ -60,6 +60,19 @@ Recommended command surfaces:
 - Runtime bring-up actions: Bringup Control UI or Bridge CLI
 - Passive CAN observation: `python -m tools.can_nt.can_nt_bridge ...`
 
+## Workflow Service Mapping
+
+Purpose: map the documented workflow to shared application-service ownership in host-side code.
+
+- Workflow sequencing service: `tools/common/workflows/workflow01_service.py`
+- Config lifecycle service: `tools/common/config_lifecycle/service.py`
+- Shared test-domain semantics: `tools/common/tests_domain/semantics.py`
+- Shared diagnostics normalization: `tools/common/diagnostics/normalize.py`
+
+Implementation rule:
+
+- operator surfaces should consume these shared services instead of re-owning workflow/config/test/diagnostics semantics inline
+
 ## Standard Loop
 
 Purpose: describe the repeated one-component-at-a-time bring-up loop.

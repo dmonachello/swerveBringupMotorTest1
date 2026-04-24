@@ -166,6 +166,10 @@ from tools.common.paths import (
     bindings_deploy_path,
     test_templates_dir,
 )
+from tools.common.config_lifecycle import ConfigLifecycleService
+from tools.common.workflows import Workflow01Service
+from tools.common.tests_domain import collect_available_tests
+from tools.common.diagnostics import normalize_device_attachments, summarize_attachment_metrics
 from tools.common.profile_constants import (
     BRIDGE_CONFIG_SCHEMA_VERSION,
     KEY_BRIDGE_BY_PROFILE,
@@ -742,6 +746,12 @@ DIRTY_TESTS = "tests"
 DIRTY_BINDINGS = "bindings"
 DIRTY_MAPPINGS = "can-mappings"
 KEY_COMMANDS = "commands"
+KEY_WORKFLOW01 = "workflow01"
+KEY_STATE = "state"
+KEY_BLOCKING_REASONS = "blockingReasons"
+KEY_NEXT_STEPS = "nextSteps"
+KEY_TEST_OVERVIEW = "testOverview"
+KEY_TEST_SELECTED = "testSelected"
 KEY_TOPICS = "topics"
 KEY_CONTROLLERS = "controllers"
 KEY_BINDINGS = "bindings"
@@ -1659,6 +1669,8 @@ class BridgeCli:
         self._validate_facade = BridgeCliValidateFacade()
         self._execute_facade = BridgeCliExecuteFacade()
         self._output_facade = BridgeCliOutputFacade()
+        self._config_lifecycle = ConfigLifecycleService()
+        self._workflow01 = Workflow01Service()
         self._parse_context = BridgeCliParseContext(
             parse_line=lambda line, mode: self._parser.parse(line, mode=mode),
             split_command=self._split_command,
@@ -7672,6 +7684,19 @@ class BridgeCli:
             for test_set in model.test_sets.values():
                 test_count += len(test_set.tests)
         tests_empty = bool(model is not None and test_count == 0)
+        tests_payload = model_to_payload(model) if model is not None else {}
+        available_tests = collect_available_tests(tests_payload if isinstance(tests_payload, dict) else {})
+        test_selected = bool(self._tests_active_set and available_tests)
+        workflow = self._workflow01.assess(
+            config_loaded=bool(self._local_root_payload),
+            profile_selected=bool(self._active_profile_name()),
+            robot_connected=bool(self._session.is_connected()),
+            test_selected=test_selected,
+        )
+        diagnostics_rows = normalize_device_attachments(
+            self._local_root_payload if isinstance(self._local_root_payload, dict) else {}
+        )
+        diagnostics_summary = summarize_attachment_metrics(diagnostics_rows)
         payload = {
             "profiles": {
                 "path": profiles_path,
@@ -7689,6 +7714,10 @@ class BridgeCli:
                 "dirty": bool(dirty.get(DIRTY_TESTS, False)),
                 "testCount": test_count,
                 "empty": tests_empty,
+                KEY_TEST_SELECTED: test_selected,
+                KEY_TEST_OVERVIEW: {
+                    "available": len(available_tests),
+                },
             },
             "bindings": {
                 "path": bindings_path,
@@ -7704,6 +7733,12 @@ class BridgeCli:
                 "messageLevel": self._message_level,
                 "echo": bool(self._echo_enabled),
             },
+            KEY_WORKFLOW01: {
+                KEY_STATE: workflow.state,
+                KEY_BLOCKING_REASONS: list(workflow.blocking_reasons),
+                KEY_NEXT_STEPS: list(workflow.next_steps),
+            },
+            "diagnostics": diagnostics_summary,
         }
         state = self._session.get_state_snapshot()
         session_id = self._session.session_id() or EMPTY_STRING
@@ -7797,6 +7832,15 @@ class BridgeCli:
         )
         print(f"CLI: messages={self._message_level} echo={'on' if self._echo_enabled else 'off'}")
         print(f"Recovery mode: {'ON' if self._recovery_mode else 'OFF'}")
+        workflow_payload = payload.get(KEY_WORKFLOW01, {})
+        print(f"Workflow01: state={workflow_payload.get(KEY_STATE, EMPTY_STRING)}")
+        for blocking in workflow_payload.get(KEY_BLOCKING_REASONS, []):
+            print(f"  BLOCKED: {blocking}")
+        next_steps = workflow_payload.get(KEY_NEXT_STEPS, [])
+        if next_steps:
+            print("  Next steps:")
+            for step in next_steps:
+                print(f"    - {step}")
         proto = payload.get(PROTO_KEY_PROTOCOL, {})
         tcp = proto.get(PROTO_KEY_TCP, {}) if isinstance(proto, dict) else {}
         ui = proto.get(PROTO_KEY_UI, {}) if isinstance(proto, dict) else {}
@@ -9086,51 +9130,15 @@ class BridgeCli:
         NAME
             _collect_sources - Collect local source info for CLI data.
         """
-
-        sources: List[Dict[str, object]] = []
-        sources.append(
-            self._build_source_entry(
-                SOURCE_NAME_PROFILES,
-                self._local_root_path,
-            )
+        entries = self._config_lifecycle.collect_source_entries(
+            [
+                (SOURCE_NAME_PROFILES, self._local_root_path),
+                (SOURCE_NAME_BINDINGS, self._bindings_path),
+                (SOURCE_NAME_CAN_MAPPINGS, self._can_mappings_path),
+                (SOURCE_NAME_TESTS, self._local_root_path),
+            ]
         )
-        sources.append(
-            self._build_source_entry(
-                SOURCE_NAME_BINDINGS,
-                self._bindings_path,
-            )
-        )
-        sources.append(
-            self._build_source_entry(
-                SOURCE_NAME_CAN_MAPPINGS,
-                self._can_mappings_path,
-            )
-        )
-        sources.append(
-            self._build_source_entry(
-                SOURCE_NAME_TESTS,
-                self._local_root_path,
-            )
-        )
-        return sources
-
-    def _build_source_entry(
-        self,
-        name: str,
-        path: Optional[Path],
-    ) -> Dict[str, object]:
-        """
-        NAME
-            _build_source_entry - Create a source entry for display/JSON.
-        """
-
-        path_text = str(path) if path is not None else EMPTY_STRING
-        exists = bool(path is not None and path.exists())
-        return {
-            KEY_SOURCES_NAME: name,
-            KEY_SOURCES_PATH: path_text,
-            KEY_SOURCES_EXISTS: exists,
-        }
+        return self._config_lifecycle.source_entries_to_dicts(entries)
 
     @staticmethod
     def _source_display_value(entry: Dict[str, object]) -> str:

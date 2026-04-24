@@ -3,6 +3,7 @@ NAME
     tools.common - Shared helpers for Python tooling.
 
 DESCRIPTION
-    Small, dependency-free utilities used across multiple tools. Modules here
-    should avoid business logic and only provide common IO and path helpers.
+    Shared modules used across multiple host-side tools. Includes IO/path
+    utilities plus layered-service modules for config lifecycle, workflow,
+    test-domain semantics, and diagnostics normalization.
 """

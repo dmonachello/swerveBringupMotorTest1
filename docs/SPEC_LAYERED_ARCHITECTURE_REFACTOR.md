@@ -20,6 +20,27 @@ The system-wide layering model is:
 
 This spec focuses on making the code follow those layers more consistently.
 
+## Important Current-State Note
+
+This spec has **not** yet been executed as a full layered-architecture refactor plan.
+
+However, the repo is also **not** at a blank starting point. Before this spec is applied, the codebase already includes meaningful architecture progress, especially in the Java command path:
+- `BridgeUiIngressPolicy`
+- `BridgeUiCommandExecutor`
+- `BridgeUiCommandDispatcher`
+- Java command-family extraction
+- Java command-path tests
+- Python-side facade and transport-boundary improvements
+
+Therefore, this spec must be executed from the **current repo baseline**, not from an assumed pre-refactor state.
+
+Implications:
+- The Java/roboRIO side is already partially advanced in layering for the UI command path.
+- The biggest remaining architectural value is now on the Driver Station PC / Python side.
+- Workflow/Application Service Layer work is now the highest-priority architectural gap.
+- Java work under this spec should be treated primarily as cleanup, hardening, ownership tightening, and selective layering improvements where they clearly pay off.
+- Python/PC work under this spec should be treated as the primary frontier for layered-architecture progress.
+
 ## Key Principle
 
 Do **not** reorganize the project just to make folders match the layer names.
@@ -40,6 +61,22 @@ The refactor should improve these architectural properties:
 - Shared config/test/diagnostic semantics are centralized.
 - Cross-language and cross-surface contracts are easier to reason about.
 - Operator workflows become easier to support consistently.
+
+## Priority Guidance From Current Baseline
+
+When tradeoffs are required, prioritize the refactor work in this order:
+
+1. Shared config/profile lifecycle semantics.
+2. Workflow/Application Service Layer for primary workflows, especially `WORKFLOW_01_NEW_ROBOT_BRINGUP`.
+3. Shared test-domain semantics.
+4. Shared diagnostics normalization semantics.
+5. Thinning Python presentation layers (`bridge_cli.py`, `bringup_ui.py`, related host-side surfaces).
+6. Java-side cleanup/hardening/ownership tightening where it clearly improves layering.
+7. Cosmetic file/package moves.
+
+Interpretation rule:
+- If a Java-side layered split is already materially present, do not redo it just because the spec mentions that architectural direction.
+- Prefer to spend effort where the architecture is still weak in practice, which is now primarily the PC/Python and workflow/application layers.
 
 ## Non-Goals
 
@@ -62,10 +99,13 @@ The project already has strong pieces in place:
 
 The biggest current layering gaps are:
 - Workflow/Application Service Layer is weak in code.
-- Presentation layers still know too much in places.
+- Presentation layers still know too much in places, especially on the PC/Python side.
 - Shared config lifecycle semantics are still spread across tools.
 - Shared diagnostics/test semantics are not centralized enough.
 - Some orchestration classes still contain family-specific helper leakage.
+
+Important interpretation:
+- The orchestration/leakage point still applies to both sides, but it is now more urgent on the host-side Python surfaces than on the already-improved Java command path.
 
 ## Required Refactor Strategy
 
@@ -76,6 +116,25 @@ Each pass should:
 - preserve behavior
 - include tests where appropriate
 - leave the repo buildable/runnable
+
+## Execution Cadence and Quality Gates
+
+Treat this refactor as a sequence of small, mergeable milestones.
+
+Each milestone should be scoped to one clear ownership move (for example, one service extraction or one surface-thinning update).
+
+For each milestone:
+
+- run targeted tests for the changed area before and after the refactor
+- run a broader compile/test pass before merging
+- keep protocol/contract behavior stable unless a correctness bug is fixed
+- avoid bundling unrelated cleanup in the same milestone
+
+Recommended weighting for implementation effort:
+
+- 40% high-value ownership changes (shared config/workflow services)
+- 40% boundary and regression test coverage
+- 20% docs/alignment and cleanup
 
 ## Pass 1: Establish Shared Layer Ownership Rules
 
@@ -99,6 +158,10 @@ A lightweight ownership cleanup that makes it easier to implement the later pass
 
 ### Objective
 Centralize domain semantics that are currently spread across surfaces or helper code.
+
+### Current-state interpretation
+- On the Java side, this pass is partly advanced already in the UI command path. Treat further Java work here as selective cleanup and hardening, not wholesale restructuring.
+- On the Python side, this pass is still a major architectural task and should receive most of the implementation effort.
 
 ### Required targets
 
@@ -172,6 +235,10 @@ Make the product workflows explicit in code, not just in docs.
 
 This is the most important architectural gap.
 
+### Current-state interpretation
+This pass is now the highest-value unfinished architectural work in the repo.
+It should be treated as the center of gravity of this spec.
+
 ## A. Workflow 01 service: New robot bring-up
 Create a first-class workflow/application service for the incremental new-robot bring-up flow.
 
@@ -220,6 +287,10 @@ Reduce the amount of workflow meaning scattered across CLI/UI/docs.
 ### Objective
 Make presentation layers ask for outcomes instead of re-owning meaning-heavy logic.
 
+### Current-state interpretation
+This pass now applies most strongly to the host-side Python surfaces.
+For Java, most presentation-layer work under this spec should be interpreted as cleanup of residual orchestration/helper leakage, not major new decomposition unless clearly justified.
+
 ## A. Bridge CLI
 Refactor `tools/can_nt/bridge_cli.py` further so it becomes more clearly:
 - parser/orchestrator/presenter
@@ -262,6 +333,10 @@ Do not force topology-editor behavior into runtime layers, but do reduce duplica
 
 ### Objective
 Reduce residual helper leakage in orchestration classes that still carry too much lower-layer behavior.
+
+### Current-state interpretation
+- `BridgeUiCommandHandler.java` is now primarily a cleanup/hardening target under this spec.
+- `tools/can_nt/bridge_cli.py` and related Python host-side surfaces remain major architectural targets under this pass.
 
 ## Targets
 - `BridgeUiCommandHandler.java`
@@ -371,6 +446,10 @@ src/main/java/frc/robot/
 
 Do not force risky package moves if the benefit is low. Prioritize ownership correctness over cosmetic movement.
 
+Current-state note:
+- Because the Java command path has already been materially improved, package reshaping on the Java side is now optional and lower priority than host-side service/workflow layering.
+- Prefer Java ownership cleanup, dependency narrowing, and hardening over broad package churn.
+
 ## Layer Ownership Rules
 
 Codex must follow these rules during the refactor:
@@ -445,6 +524,12 @@ Should constrain both Java and Python implementation.
 
 This refactor effort should produce:
 
+### Important delivery rule
+Do not treat the deliverables as requiring equal effort on both sides.
+From the current baseline:
+- Java deliverables are mainly selective ownership cleanup, hardening, and tests where useful.
+- Python/PC deliverables are the primary implementation focus for the layered refactor.
+
 ### Production code changes
 - new or expanded shared config/profile lifecycle modules
 - new or expanded tests domain modules
@@ -475,12 +560,29 @@ Use this order unless a strong code reason requires a different one:
 
 1. establish ownership comments and module intent
 2. centralize config/profile lifecycle semantics
-3. centralize test-domain semantics
-4. centralize diagnostics semantics
-5. introduce workflow/application services for Workflow 01 and validate/sync
+3. introduce workflow/application services for Workflow 01 and validate/sync
+4. centralize test-domain semantics
+5. centralize diagnostics semantics
 6. refactor CLI/UI to consume those services
 7. trim orchestration/helper leakage
 8. align docs and tests
+
+Implementation note from current baseline:
+- Steps 2, 3, 4, 5, and 6 should be understood as primarily PC/Python-side work unless a Java-side ownership problem clearly blocks them.
+- Java-side work under step 7 should be incremental and justified by clear ownership leakage, not by architectural purity alone.
+
+## Verification Cadence
+
+Use this test cadence throughout implementation:
+
+1. after each pass, run targeted tests for that pass
+2. after each phase boundary, run full Java compile/tests and relevant Python regressions
+3. after any contract-sensitive change, rerun protocol/regression checks immediately
+4. before finalizing, run full compile/tests/regressions end-to-end
+
+Minimum commands per phase boundary should include project compile/tests and the current CLI regression suite used by the team.
+
+The refactor is not considered complete for a pass until its tests are green.
 
 ## Constraints
 
@@ -505,18 +607,36 @@ This layered-architecture refactor is successful when:
 - docs and code ownership align more clearly with the layered model
 - builds/tests/regressions still pass
 
+From the current repo baseline, the strongest evidence of success should come from:
+- new shared host-side services and workflow modules
+- thinner Python presentation surfaces
+- clearer central ownership of config/test/diagnostics semantics
+- Java-side cleanup/hardening that improves ownership without unnecessary churn
+- each pass has explicit test evidence (targeted + boundary/full-suite where applicable)
+
 ## Implementation Note For Codex
 
 Treat this as an incremental architecture refactor, not a rewrite.
 
 The main architectural gap to close is the weak Workflow/Application Service Layer.
 
+Important current-state reminder:
+- This spec has not yet been executed as a whole.
+- However, the current repo already includes meaningful Java-side command-path layering progress.
+- Therefore, do not spend equal effort on both sides by default.
+
+Default interpretation for implementation:
+- Java/roboRIO side: selective cleanup, hardening, ownership tightening, and test improvements where useful.
+- Driver Station PC / Python side: primary implementation focus for layered-architecture progress.
+
 If tradeoffs are required, prioritize in this order:
 1. shared config/profile lifecycle semantics
 2. workflow/application services for Workflow 01
-3. thinner presentation layers
-4. diagnostics/test domain centralization
-5. cosmetic package/file moves
+3. shared test-domain semantics
+4. shared diagnostics normalization
+5. thinner Python presentation layers
+6. Java-side cleanup/hardening where ownership is still weak
+7. cosmetic package/file moves
 
 At the end, report:
 - modules/services added or expanded
@@ -524,3 +644,4 @@ At the end, report:
 - surfaces made thinner
 - docs updated
 - remaining gaps that should be deferred to later passes
+- which work was primarily Java-side vs PC/Python-side

@@ -37,8 +37,9 @@ import argparse
 from pathlib import Path
 from typing import List
 
-from tools.common.json_io import read_json, write_json
+from tools.common.json_io import read_json
 from tools.common.paths import repo_root as repo_root_path
+from tools.common.config_lifecycle import ConfigLifecycleService
 from tools.common.profile_constants import (
     KEY_DATA_HASH,
     KEY_DATA_VERSION,
@@ -54,13 +55,6 @@ from tools.config.schema_store import (
     SEVERITY_ERROR,
 )
 
-
-# Constants (paths).
-DIR_DATA = "data"
-DIR_SRC = "src"
-DIR_MAIN = "main"
-DIR_DEPLOY = "deploy"
-FILE_BRINGUP_SYSTEM = "bringup_system.json"
 
 # Constants (CLI).
 ARG_LENIENT = "--lenient"
@@ -142,8 +136,10 @@ def main() -> int:
 
     args = _parse_args()
     repo_root = repo_root_path()
-    canonical_path = repo_root / DIR_DATA / FILE_BRINGUP_SYSTEM
-    deploy_path = repo_root / DIR_SRC / DIR_MAIN / DIR_DEPLOY / FILE_BRINGUP_SYSTEM
+    lifecycle = ConfigLifecycleService()
+    lifecycle_paths = lifecycle.default_paths()
+    canonical_path = lifecycle_paths.canonical_profiles_path
+    deploy_path = lifecycle_paths.deploy_profiles_path
 
     store = ConfigSchemaStore()
     store.load(repo_root)
@@ -196,9 +192,12 @@ def main() -> int:
         return EXIT_OK
 
     try:
-        deploy_path.parent.mkdir(parents=True, exist_ok=True)
-        write_json(canonical_path, payload)
-        write_json(deploy_path, payload)
+        lifecycle.sync_profiles_payload(
+            payload,
+            canonical_path=canonical_path,
+            deploy_path=deploy_path,
+            stamp=False,
+        )
     except Exception as exc:
         print(MSG_ERR_WRITE.format(error=exc))
         return EXIT_ERROR

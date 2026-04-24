@@ -211,6 +211,13 @@ Current examples are split across:
 - CLI/UI command sequences
 - test-authoring paths
 
+Current shared service examples:
+
+- `tools/common/workflows/workflow01_service.py`
+- `tools/common/config_lifecycle/service.py`
+- `tools/common/tests_domain/semantics.py`
+- `tools/common/diagnostics/normalize.py`
+
 Important note:
 - This is the layer the project still needs to strengthen the most in code. The primary example today is `docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md`.
 

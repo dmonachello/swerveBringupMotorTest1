@@ -41,7 +41,9 @@ from .bridge_session import BridgeEvent, BridgeSession
 from tools.common.json_io import read_json
 from tools.common.nt_labels import encode_label_for_nt
 from tools.common.paths import repo_root, tests_deploy_path
-from tools.common.tests_io import extract_test_names
+from tools.common.tests_domain import collect_available_tests
+from tools.common.config_lifecycle import ConfigLifecycleService
+from tools.common.profiles import list_profile_names
 from tools.common.time_utils import timestamp_hms
 from tools.common.app_versions import (
     APP_BRINGUP_UI_NAME,
@@ -148,6 +150,14 @@ def _load_profiles() -> List[str]:
         if err:
             print(f"ERROR: bringup_system.json load failed: {err}")
         return []
+    service = ConfigLifecycleService()
+    try:
+        payload = service.load_profiles_payload(service.default_paths().canonical_profiles_path)
+        names = list_profile_names(payload)
+        if names:
+            return names
+    except Exception:
+        pass
     return sorted(name for name in list_profiles() if name)
 
 
@@ -162,7 +172,7 @@ def _load_tests(profile_name: str) -> List[str]:
     try:
         path = tests_deploy_path()
         data = read_json(path)
-        return extract_test_names(data)
+        return collect_available_tests(data)
     except Exception:
         pass
     return []
