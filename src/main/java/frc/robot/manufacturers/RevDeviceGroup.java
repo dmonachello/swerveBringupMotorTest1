@@ -5,6 +5,7 @@ import frc.robot.BringupHealthFormat;
 import frc.robot.BringupUtil;
 import frc.robot.BringupUtil.DeviceConfig;
 import frc.robot.devices.DeviceUnit;
+import frc.robot.devices.rev.RevPdhDevice;
 import frc.robot.devices.rev.RevFlexVortexDevice;
 import frc.robot.devices.rev.RevSparkMaxNeoDevice;
 import frc.robot.devices.rev.RevSparkMaxNeo550Device;
@@ -76,6 +77,15 @@ public final class RevDeviceGroup implements ManufacturerGroup {
           config.getMotor(),
           config.getLimits()));
 
+  private static final DeviceRegistration PDH_REGISTRATION = new DeviceRegistration(
+      RevPdhDevice.HEADER,
+      "REV",
+      "PDH",
+      "PDH",
+      DeviceRole.POWER,
+      false,
+      config -> new RevPdhDevice(config.getId(), config.getLabel()));
+
   private final List<DeviceTypeBucket> buckets = new ArrayList<>();
   private final List<DeviceTypeBucket> motorBuckets = new ArrayList<>();
 
@@ -93,6 +103,7 @@ public final class RevDeviceGroup implements ManufacturerGroup {
     register(NEO_REGISTRATION, true);
     register(NEO550_REGISTRATION, true);
     register(FLEX_REGISTRATION, true);
+    register(PDH_REGISTRATION, false);
   }
 
   @Override

@@ -6,9 +6,6 @@ import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.EncoderAttachment;
 import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.diag.snapshots.MotorSpecAttachment;
-import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
-import frc.robot.manufacturers.ctre.util.PdpStatusReader;
-import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
 import frc.robot.manufacturers.DeviceAddResult;
 import frc.robot.manufacturers.DeviceRole;
 import frc.robot.manufacturers.DeviceTypeBucket;
@@ -22,7 +19,6 @@ import frc.robot.tests.BringupTestRegistry;
 import frc.robot.tests.BringupTestResult;
 import frc.robot.tests.CompositeTest;
 import frc.robot.tests.JoystickTest;
-import frc.robot.manufacturers.rev.util.PdhStatusReader;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -40,37 +36,38 @@ import java.util.Map;
  */
 public final class BringupCore {
   private static final String BUILD_MARKER = "bringup-core-state-v3";
-  private static final int NI_MANUFACTURER = 1;
-  private static final int TYPE_ROBOT_CONTROLLER = 1;
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
   private static final int REPORT_BATCH = 2;
   private static final String VENDOR_REV = "REV";
   private static final String VENDOR_CTRE = "CTRE";
-  private static final String VENDOR_NI = "NI";
-  private static final String DEVICE_TYPE_PDH = "PDH";
-  private static final String DEVICE_TYPE_PDP = "PDP";
-  private static final String DEVICE_TYPE_ROBORIO = "roboRIO";
-  private static final String NOTE_PDH_READ_FAIL_PREFIX = "PDH read failed: ";
-  private static final String NOTE_PDH_NOT_INITIALIZED = "PDH not initialized";
-  private static final String NOTE_PDP_READ_FAIL_PREFIX = "PDP read failed: ";
-  private static final String NOTE_PDP_NOT_INITIALIZED = "PDP not initialized";
-  private static final String NOTE_VIRTUAL = "virtual";
-  private static final String VIRTUAL_PRESENT_LINE_PREFIX = "  roboRIO CAN ";
-  private static final String VIRTUAL_PRESENT_LINE_SUFFIX = " PRESENT (no local API)";
-  private static final String VIRTUAL_HEALTH_LINE_SUFFIX = ": present=YES (virtual, no local API)";
   private static final String TESTS_OVERVIEW_TABLE_HEADER =
       "Idx Sel En Type       Name                         HoldBtn                Motors";
   private static final String TESTS_OVERVIEW_ROW_FORMAT =
       "%3d  %s  %s  %-9.9s %-28.28s %-20.20s %s";
+  private static final long PROFILE_GENERATION_UNLOADED = Long.MIN_VALUE;
+  private static final long TEST_RUN_ID_NONE = 0L;
+  private static final double TEST_START_SEC_NONE = 0.0;
+  private static final boolean INSTANTIATE_ALL_DEVICES = true;
+  private static final String TEST_RUN_STATE_IDLE = "idle";
+  private static final String TEST_RUN_STATE_RUNNING = "running";
+  private static final String TEST_RUN_STATE_PASSED = "passed";
+  private static final String TEST_RUN_STATE_FAILED = "failed";
+  private static final String TEST_RUN_STATE_BLOCKED = "blocked";
+  private static final String TEST_RUN_STATE_ABORTED = "aborted";
+  private static final String TEST_RUN_RESULT_PASS = "PASS";
+  private static final String TEST_RUN_RESULT_FAIL = "FAIL";
+  private static final String MESSAGE_TEST_ALREADY_RUNNING = "Test already running: ";
+  private static final String MESSAGE_TEST_DISABLED = "Test disabled: ";
+  private static final String MESSAGE_TEST_NOT_SELECTED = "No bringup test selected.";
+  private static final String MESSAGE_TEST_SKIPPED = "Test skipped: ";
+  private static final String MESSAGE_TEST_ABORTED = "Test aborted: ";
+  private static final String MESSAGE_PROFILE_RUNTIME_RELOADED = "Profile runtime reloaded.";
+  private static final String MESSAGE_TEST_BLOCKED_NO_DEVICES = "test blocked (no devices instantiated).";
+  private static final String MESSAGE_TEST_BLOCKED_MOTORS = "test blocked (motor(s) not instantiated): ";
 
-  private final List<ManufacturerGroup> manufacturerGroups = ManufacturerRegistry.buildGroups();
-  private final Map<String, ManufacturerGroup> manufacturerByVendor =
+  private List<ManufacturerGroup> manufacturerGroups = ManufacturerRegistry.buildGroups();
+  private Map<String, ManufacturerGroup> manufacturerByVendor =
       ManufacturerRegistry.indexByVendor(manufacturerGroups);
-  private PdhStatusReader pdhReader;
-  private int pdhReaderCanId = BringupUtil.DISABLED_CAN_ID;
-  private PdpStatusReader pdpReader;
-  private int pdpReaderCanId = BringupUtil.DISABLED_CAN_ID;
-
   private int nextMotorGroupIndex = 0;
 
   private boolean prevAdd = false;
@@ -94,13 +91,15 @@ public final class BringupCore {
   private boolean runAllActive = false;
   private final List<BringupTest> runAllQueue = new ArrayList<>();
   private int runAllIndex = 0;
+  private long loadedProfileGeneration = PROFILE_GENERATION_UNLOADED;
   private long testRunCounter = 0L;
   private long activeTestRunId = 0L;
   private double activeTestStartSec = 0.0;
+  private TestRunSnapshot latestTestRun = TestRunSnapshot.idle();
   private final Map<String, Double> warningLastSec = new HashMap<>();
   private static final double WARNING_COOLDOWN_SEC = 1.0;
   private static final double SAFETY_COOLDOWN_SEC = 5.0;
-  private final BringupTestContext testContext;
+  private BringupTestContext testContext;
 
   /**
    * NAME
@@ -111,9 +110,7 @@ public final class BringupCore {
    */
   public BringupCore() {
     testContext = new BringupTestContext(manufacturerGroups);
-    bringupTests.addAll(BringupTestRegistry.loadTests());
-    refreshSelectableTests();
-    refreshTestDevices();
+    syncProfileRuntimeFromRegistry();
   }
 
   /**
@@ -427,8 +424,11 @@ public final class BringupCore {
           "Warning: stopping active test '" + activeTest.getName() + "' due to reset (" + reason + ").";
       BringupPrinter.enqueue(message);
       activeTest.stop(testContext);
+      latestTestRun = TestRunSnapshot.aborted(activeTestRunId, activeTest.getName(), activeTest.getStatus(), message);
     }
     activeTest = null;
+    activeTestRunId = TEST_RUN_ID_NONE;
+    activeTestStartSec = TEST_START_SEC_NONE;
     refreshSelectableTests();
     for (ManufacturerGroup group : manufacturerGroups) {
       group.stopAll();
@@ -470,8 +470,11 @@ public final class BringupCore {
           "Safety: stopping active test '" + activeTest.getName() + "' (" + label + ").";
       BringupPrinter.enqueue(message);
       activeTest.stop(testContext);
+      latestTestRun = TestRunSnapshot.aborted(activeTestRunId, activeTest.getName(), activeTest.getStatus(), message);
     }
     activeTest = null;
+    activeTestRunId = TEST_RUN_ID_NONE;
+    activeTestStartSec = TEST_START_SEC_NONE;
     refreshSelectableTests();
     for (ManufacturerGroup group : manufacturerGroups) {
       group.stopAll();
@@ -532,6 +535,7 @@ public final class BringupCore {
    *   selectNextBringupTest - Advance selection through bringup tests.
    */
   public void selectNextBringupTest() {
+    syncProfileRuntimeFromRegistry();
     if (selectableTests.isEmpty()) {
       BringupPrinter.enqueue("No enabled bringup tests.");
       return;
@@ -550,6 +554,7 @@ public final class BringupCore {
    *   selectPrevBringupTest - Move selection backward through bringup tests.
    */
   public void selectPrevBringupTest() {
+    syncProfileRuntimeFromRegistry();
     if (selectableTests.isEmpty()) {
       BringupPrinter.enqueue("No enabled bringup tests.");
       return;
@@ -574,6 +579,7 @@ public final class BringupCore {
    *   True when a matching test was selected.
    */
   public boolean selectBringupTestByName(String name) {
+    syncProfileRuntimeFromRegistry();
     if (name == null || name.isBlank()) {
       BringupPrinter.enqueue("No test name provided.");
       return false;
@@ -607,39 +613,66 @@ public final class BringupCore {
    * SIDE EFFECTS
    *   Starts a test and enqueues a status message.
    */
-  public void runSelectedBringupTest() {
+  public TestRunSnapshot runSelectedBringupTest() {
+    syncProfileRuntimeFromRegistry();
     if (activeTest != null && activeTest.isRunning()) {
-      BringupPrinter.enqueue("Test already running: " + activeTest.getName());
-      return;
+      String message = MESSAGE_TEST_ALREADY_RUNNING + activeTest.getName();
+      BringupPrinter.enqueue(message);
+      latestTestRun = TestRunSnapshot.blocked(
+          activeTestRunId,
+          activeTest.getName(),
+          activeTest.getStatus(),
+          message);
+      return latestTestRun;
     }
     BringupTest test = getSelectedBringupTest();
     if (test == null) {
-      runNextNonMotorTest();
-      return;
+      BringupPrinter.enqueue(MESSAGE_TEST_NOT_SELECTED);
+      latestTestRun = TestRunSnapshot.blocked(TEST_RUN_ID_NONE, "", "", MESSAGE_TEST_NOT_SELECTED);
+      return latestTestRun;
     }
     if (!test.isEnabled()) {
-      BringupPrinter.enqueue("Test disabled: " + test.getName());
-      return;
+      String message = MESSAGE_TEST_DISABLED + test.getName();
+      BringupPrinter.enqueue(message);
+      latestTestRun = TestRunSnapshot.blocked(TEST_RUN_ID_NONE, test.getName(), test.getStatus(), message);
+      return latestTestRun;
     }
-    if (!ensureTestDevicesInstantiated(test)) {
-      return;
+    String blockReason = testBlockReason(test);
+    if (blockReason != null) {
+      logTestBlockReason(test, blockReason);
+      latestTestRun = TestRunSnapshot.blocked(TEST_RUN_ID_NONE, test.getName(), test.getStatus(), blockReason);
+      return latestTestRun;
     }
     runAllActive = false;
     long candidateRunId = testRunCounter + 1;
     testContext.setRunId(candidateRunId);
     double startSec = Timer.getFPGATimestamp();
-    boolean started = test.start(testContext, startSec);
+    boolean started = false;
+    try {
+      started = test.start(testContext, startSec);
+    } catch (RuntimeException ex) {
+      String message = MESSAGE_TEST_ABORTED + test.getName() + " (" + ex.getMessage() + ")";
+      BringupPrinter.enqueue(message);
+      stopOwnedActuation();
+      latestTestRun = TestRunSnapshot.aborted(candidateRunId, test.getName(), test.getStatus(), message);
+      testContext.setRunId(TEST_RUN_ID_NONE);
+      return latestTestRun;
+    }
     if (started) {
       activeTest = test;
       testRunCounter = candidateRunId;
       activeTestRunId = candidateRunId;
       activeTestStartSec = startSec;
+      latestTestRun = TestRunSnapshot.running(candidateRunId, test.getName(), test.getStatus());
       BringupPrinter.enqueue("Test #" + activeTestRunId + ": " + test.getName());
-      return;
+      return latestTestRun;
     }
-    testContext.setRunId(0);
-    activeTestStartSec = 0.0;
-    BringupPrinter.enqueue("Test skipped: " + test.getName() + " (" + test.getStatus() + ")");
+    testContext.setRunId(TEST_RUN_ID_NONE);
+    activeTestStartSec = TEST_START_SEC_NONE;
+    String message = MESSAGE_TEST_SKIPPED + test.getName() + " (" + test.getStatus() + ")";
+    latestTestRun = TestRunSnapshot.blocked(candidateRunId, test.getName(), test.getStatus(), message);
+    BringupPrinter.enqueue(message);
+    return latestTestRun;
   }
 
   /**
@@ -658,18 +691,41 @@ public final class BringupCore {
     }
     activeTest.onHoldSignal(holdSignal);
     double now = Timer.getFPGATimestamp();
-    activeTest.update(testContext, now);
+    try {
+      activeTest.update(testContext, now);
+    } catch (RuntimeException ex) {
+      String message = MESSAGE_TEST_ABORTED + activeTest.getName() + " (" + ex.getMessage() + ")";
+      BringupPrinter.enqueue(message);
+      latestTestRun = TestRunSnapshot.aborted(
+          activeTestRunId,
+          activeTest.getName(),
+          activeTest.getStatus(),
+          message);
+      stopOwnedActuation();
+      activeTest = null;
+      activeTestRunId = TEST_RUN_ID_NONE;
+      activeTestStartSec = TEST_START_SEC_NONE;
+      runAllActive = false;
+      runAllQueue.clear();
+      runAllIndex = 0;
+      return;
+    }
     if (activeTest.isFinished()) {
       BringupTestResult result = activeTest.getResult();
       double elapsed = activeTestStartSec > 0.0 ? Math.max(0.0, now - activeTestStartSec) : 0.0;
+      latestTestRun = TestRunSnapshot.finished(
+          activeTestRunId,
+          activeTest.getName(),
+          activeTest.getStatus(),
+          result);
       BringupPrinter.enqueue(
           "Test result #" + activeTestRunId + ": " + activeTest.getName() + " = " + result
               + " (" + activeTest.getStatus() + ")"
               + " time=" + String.format("%.2fs", elapsed));
       stopOwnedActuation();
       activeTest = null;
-      activeTestRunId = 0;
-      activeTestStartSec = 0.0;
+      activeTestRunId = TEST_RUN_ID_NONE;
+      activeTestStartSec = TEST_START_SEC_NONE;
       if (runAllActive) {
         if (!startNextRunAllTest()) {
           runAllActive = false;
@@ -712,6 +768,7 @@ public final class BringupCore {
    *   Starts tests and enqueues status updates.
    */
   public void runAllBringupTests() {
+    syncProfileRuntimeFromRegistry();
     if (activeTest != null && activeTest.isRunning()) {
       BringupPrinter.enqueue("Test already running: " + activeTest.getName());
       return;
@@ -752,6 +809,26 @@ public final class BringupCore {
 
   /**
    * NAME
+   *   reloadActiveProfileRuntime - Fully replace runtime state from active profile.
+   *
+   * PARAMETERS
+   *   reason - Reset reason label for operator output.
+   *
+   * SIDE EFFECTS
+   *   Stops and closes current devices, clears instance claims, rebuilds
+   *   device/test runtime state, and instantiates every active profile device.
+   */
+  public void reloadActiveProfileRuntime(String reason) {
+    resetState(reason);
+    loadedProfileGeneration = PROFILE_GENERATION_UNLOADED;
+    syncProfileRuntimeFromRegistry();
+    if (INSTANTIATE_ALL_DEVICES) {
+      addAllDevices();
+    }
+  }
+
+  /**
+   * NAME
    *   refreshTestDevices - Rebuild the list of non-motor test devices.
    */
   private void refreshTestDevices() {
@@ -774,6 +851,54 @@ public final class BringupCore {
       }
     }
     selectedTestIndex = selectableTests.isEmpty() ? -1 : 0;
+  }
+
+  /**
+   * NAME
+   *   syncProfileRuntimeFromRegistry - Replace runtime profile state from registry.
+   *
+   * DESCRIPTION
+   *   The active BringupUtil registry is the source of truth. When its
+   *   generation changes, profile-derived runtime state is discarded and
+   *   rebuilt from the active registry.
+   *
+   * SIDE EFFECTS
+   *   Stops any active test and rebuilds test selection state.
+   */
+  private void syncProfileRuntimeFromRegistry() {
+    long activeGeneration = BringupUtil.getActiveProfileGeneration();
+    if (loadedProfileGeneration == activeGeneration) {
+      return;
+    }
+    if (activeTest != null && activeTest.isRunning()) {
+      activeTest.stop(testContext);
+      latestTestRun = TestRunSnapshot.aborted(
+          activeTestRunId,
+          activeTest.getName(),
+          activeTest.getStatus(),
+          MESSAGE_PROFILE_RUNTIME_RELOADED);
+    }
+    activeTest = null;
+    for (ManufacturerGroup group : manufacturerGroups) {
+      group.stopAll();
+      group.closeAll();
+    }
+    BringupUtil.clearDeviceInstanceRegistry();
+    manufacturerGroups = ManufacturerRegistry.buildGroups();
+    manufacturerByVendor = ManufacturerRegistry.indexByVendor(manufacturerGroups);
+    testContext = new BringupTestContext(manufacturerGroups);
+    runAllActive = false;
+    runAllQueue.clear();
+    runAllIndex = 0;
+    nextBringupTestIndex = 0;
+    testContext.setRunId(TEST_RUN_ID_NONE);
+    activeTestRunId = TEST_RUN_ID_NONE;
+    activeTestStartSec = TEST_START_SEC_NONE;
+    bringupTests.clear();
+    bringupTests.addAll(BringupTestRegistry.loadTests());
+    loadedProfileGeneration = activeGeneration;
+    refreshSelectableTests();
+    refreshTestDevices();
   }
 
   /**
@@ -868,6 +993,7 @@ public final class BringupCore {
    *   Updates test metadata and attempts to persist to JSON.
    */
   public Boolean toggleSelectedBringupTestEnabled() {
+    syncProfileRuntimeFromRegistry();
     BringupTest test = getSelectedBringupTest();
     if (test == null) {
       BringupPrinter.enqueue("No bringup tests available.");
@@ -895,6 +1021,7 @@ public final class BringupCore {
    *   Updates test enable flags and may write bringup_system.json.
    */
   public void disableAllBringupTests(boolean persist) {
+    syncProfileRuntimeFromRegistry();
     if (bringupTests.isEmpty()) {
       BringupPrinter.enqueue("No bringup tests available.");
       return;
@@ -923,6 +1050,7 @@ public final class BringupCore {
    *   TestsOverview with row entries and counts.
    */
   public TestsOverview buildTestsOverview() {
+    syncProfileRuntimeFromRegistry();
     TestsOverview overview = new TestsOverview();
     BringupTestRegistry.TestsInfo info = BringupTestRegistry.getTestsInfo();
     if (info != null) {
@@ -930,6 +1058,7 @@ public final class BringupCore {
       overview.defaultTestSet = info.defaultTestSetName;
       overview.usingTestSets = info.usingTestSets;
     }
+    overview.run = latestTestRun != null ? latestTestRun.copy() : TestRunSnapshot.idle();
     overview.totalCount = bringupTests.size();
     int enabledCount = 0;
     for (int i = 0; i < bringupTests.size(); i++) {
@@ -1065,6 +1194,7 @@ public final class BringupCore {
     public boolean usingTestSets;
     public int totalCount;
     public int enabledCount;
+    public TestRunSnapshot run = TestRunSnapshot.idle();
     public final List<TestRow> rows = new ArrayList<>();
   }
 
@@ -1081,6 +1211,90 @@ public final class BringupCore {
     public String status;
     public List<String> motors = new ArrayList<>();
     public String holdBinding;
+  }
+
+  /**
+   * NAME
+   *   TestRunSnapshot - Lifecycle state for the latest robot-side test run.
+   */
+  public static final class TestRunSnapshot {
+    public long runId;
+    public String state;
+    public String test;
+    public String result;
+    public String status;
+    public String message;
+    public long startedAtMs;
+    public long finishedAtMs;
+
+    public static TestRunSnapshot idle() {
+      TestRunSnapshot snapshot = new TestRunSnapshot();
+      snapshot.runId = TEST_RUN_ID_NONE;
+      snapshot.state = TEST_RUN_STATE_IDLE;
+      snapshot.test = "";
+      snapshot.result = "";
+      snapshot.status = "";
+      snapshot.message = "";
+      snapshot.startedAtMs = 0L;
+      snapshot.finishedAtMs = 0L;
+      return snapshot;
+    }
+
+    private static TestRunSnapshot running(long runId, String test, String status) {
+      TestRunSnapshot snapshot = idle();
+      snapshot.runId = runId;
+      snapshot.state = TEST_RUN_STATE_RUNNING;
+      snapshot.test = test != null ? test : "";
+      snapshot.status = status != null ? status : "";
+      snapshot.startedAtMs = System.currentTimeMillis();
+      return snapshot;
+    }
+
+    private static TestRunSnapshot blocked(long runId, String test, String status, String message) {
+      TestRunSnapshot snapshot = idle();
+      snapshot.runId = runId;
+      snapshot.state = TEST_RUN_STATE_BLOCKED;
+      snapshot.test = test != null ? test : "";
+      snapshot.status = status != null ? status : "";
+      snapshot.message = message != null ? message : "";
+      snapshot.finishedAtMs = System.currentTimeMillis();
+      return snapshot;
+    }
+
+    private static TestRunSnapshot aborted(long runId, String test, String status, String message) {
+      TestRunSnapshot snapshot = blocked(runId, test, status, message);
+      snapshot.state = TEST_RUN_STATE_ABORTED;
+      snapshot.result = TEST_RUN_RESULT_FAIL;
+      return snapshot;
+    }
+
+    private static TestRunSnapshot finished(
+        long runId,
+        String test,
+        String status,
+        BringupTestResult result) {
+      TestRunSnapshot snapshot = idle();
+      snapshot.runId = runId;
+      snapshot.state = result == BringupTestResult.PASS ? TEST_RUN_STATE_PASSED : TEST_RUN_STATE_FAILED;
+      snapshot.test = test != null ? test : "";
+      snapshot.result = result != null ? result.name() : "";
+      snapshot.status = status != null ? status : "";
+      snapshot.finishedAtMs = System.currentTimeMillis();
+      return snapshot;
+    }
+
+    private TestRunSnapshot copy() {
+      TestRunSnapshot snapshot = new TestRunSnapshot();
+      snapshot.runId = runId;
+      snapshot.state = state;
+      snapshot.test = test;
+      snapshot.result = result;
+      snapshot.status = status;
+      snapshot.message = message;
+      snapshot.startedAtMs = startedAtMs;
+      snapshot.finishedAtMs = finishedAtMs;
+      return snapshot;
+    }
   }
 
   /**
@@ -1102,18 +1316,34 @@ public final class BringupCore {
       long candidateRunId = testRunCounter + 1;
       testContext.setRunId(candidateRunId);
       double startSec = Timer.getFPGATimestamp();
-      boolean started = test.start(testContext, startSec);
+      boolean started = false;
+      try {
+        started = test.start(testContext, startSec);
+      } catch (RuntimeException ex) {
+        String message = MESSAGE_TEST_ABORTED + test.getName() + " (" + ex.getMessage() + ")";
+        BringupPrinter.enqueue(message);
+        latestTestRun = TestRunSnapshot.aborted(candidateRunId, test.getName(), test.getStatus(), message);
+        stopOwnedActuation();
+        testContext.setRunId(TEST_RUN_ID_NONE);
+        runAllActive = false;
+        runAllQueue.clear();
+        runAllIndex = 0;
+        return false;
+      }
       if (started) {
         activeTest = test;
         testRunCounter = candidateRunId;
         activeTestRunId = candidateRunId;
         activeTestStartSec = startSec;
+        latestTestRun = TestRunSnapshot.running(candidateRunId, test.getName(), test.getStatus());
         BringupPrinter.enqueue("Test #" + activeTestRunId + ": " + test.getName());
         return true;
       }
-      testContext.setRunId(0);
-      activeTestStartSec = 0.0;
-      BringupPrinter.enqueue("Test skipped: " + test.getName() + " (" + test.getStatus() + ")");
+      testContext.setRunId(TEST_RUN_ID_NONE);
+      activeTestStartSec = TEST_START_SEC_NONE;
+      String message = MESSAGE_TEST_SKIPPED + test.getName() + " (" + test.getStatus() + ")";
+      latestTestRun = TestRunSnapshot.blocked(candidateRunId, test.getName(), test.getStatus(), message);
+      BringupPrinter.enqueue(message);
     }
     return false;
   }
@@ -1123,6 +1353,7 @@ public final class BringupCore {
    *   buildRunAllQueue - Build the run-all queue from enabled tests.
    */
   private void buildRunAllQueue() {
+    syncProfileRuntimeFromRegistry();
     runAllQueue.clear();
     runAllIndex = 0;
     if (selectableTests.isEmpty()) {
@@ -1148,6 +1379,7 @@ public final class BringupCore {
    *   True when a test is started.
    */
   private boolean startNextBringupTest() {
+    syncProfileRuntimeFromRegistry();
     if (bringupTests.isEmpty()) {
       return false;
     }
@@ -1182,6 +1414,7 @@ public final class BringupCore {
    *   Creates devices and enqueues status messages.
    */
   private void addNextMotor() {
+    syncProfileRuntimeFromRegistry();
     int count = manufacturerGroups.size();
     if (count == 0) {
       BringupPrinter.enqueue("No manufacturers registered.");
@@ -1211,6 +1444,7 @@ public final class BringupCore {
    *   addAllDevices - Instantiate all configured devices. (motors + sensors + misc).
    */
   private void addAllDevices() {
+    syncProfileRuntimeFromRegistry();
     for (ManufacturerGroup group : manufacturerGroups) {
       group.addAll();
     }
@@ -2237,7 +2471,6 @@ public final class BringupCore {
     public void run() {
       StringBuilder sb = job.buffer;
       appendLine(sb, "Next add will be: " + getNextAddLabel());
-      appendVirtualDevices(sb);
     }
   }
 
@@ -2273,9 +2506,7 @@ public final class BringupCore {
     }
 
     @Override
-    public void run() {
-      appendVirtualDeviceHealth(job.buffer);
-    }
+    public void run() {}
   }
 
   /**
@@ -2530,123 +2761,7 @@ public final class BringupCore {
     for (ManufacturerGroup group : manufacturerGroups) {
       devices.addAll(group.captureSnapshots(nowSec));
     }
-
-    if (BringupUtil.isEnabledCanId(BringupUtil.PDH_CAN_ID)) {
-      DeviceSnapshot snap = new DeviceSnapshot();
-      snap.vendor = VENDOR_REV;
-      snap.deviceType = DEVICE_TYPE_PDH;
-      snap.canId = BringupUtil.PDH_CAN_ID;
-      ensurePdhReader();
-      if (pdhReader != null) {
-        try {
-          PdhStatusAttachment pdhStatus = pdhReader.snapshot();
-          snap.present = true;
-          snap.addAttachment(pdhStatus);
-        } catch (RuntimeException ex) {
-          snap.present = false;
-          snap.note = NOTE_PDH_READ_FAIL_PREFIX + ex.getMessage();
-        }
-      } else {
-        snap.present = false;
-        snap.note = NOTE_PDH_NOT_INITIALIZED;
-      }
-      devices.add(snap);
-    }
-
-    if (BringupUtil.isEnabledCanId(BringupUtil.PDP_CAN_ID)) {
-      DeviceSnapshot snap = new DeviceSnapshot();
-      snap.vendor = VENDOR_CTRE;
-      snap.deviceType = DEVICE_TYPE_PDP;
-      snap.canId = BringupUtil.PDP_CAN_ID;
-      ensurePdpReader();
-      if (pdpReader != null) {
-        try {
-          PdpStatusAttachment pdpStatus = pdpReader.snapshot();
-          snap.present = true;
-          snap.addAttachment(pdpStatus);
-        } catch (RuntimeException ex) {
-          snap.present = false;
-          snap.note = NOTE_PDP_READ_FAIL_PREFIX + ex.getMessage();
-        }
-      } else {
-        snap.present = false;
-        snap.note = NOTE_PDP_NOT_INITIALIZED;
-      }
-      devices.add(snap);
-    }
-
-    if (BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
-      DeviceSnapshot snap = new DeviceSnapshot();
-      snap.vendor = VENDOR_NI;
-      snap.deviceType = DEVICE_TYPE_ROBORIO;
-      snap.canId = BringupUtil.ROBORIO_CAN_ID;
-      snap.present = true;
-      snap.note = NOTE_VIRTUAL;
-      devices.add(snap);
-    }
-
     return devices;
-  }
-
-  /**
-   * NAME
-   *   ensurePdhReader - Ensure PDH reader matches current CAN ID.
-   */
-  private void ensurePdhReader() {
-    int canId = BringupUtil.PDH_CAN_ID;
-    if (!BringupUtil.isEnabledCanId(canId)) {
-      pdhReader = null;
-      pdhReaderCanId = BringupUtil.DISABLED_CAN_ID;
-      return;
-    }
-    if (pdhReader == null || pdhReaderCanId != canId) {
-      pdhReader = new PdhStatusReader(canId);
-      pdhReaderCanId = canId;
-    }
-  }
-
-  /**
-   * NAME
-   *   ensurePdpReader - Ensure PDP reader matches current CAN ID.
-   */
-  private void ensurePdpReader() {
-    int canId = BringupUtil.PDP_CAN_ID;
-    if (!BringupUtil.isEnabledCanId(canId)) {
-      pdpReader = null;
-      pdpReaderCanId = BringupUtil.DISABLED_CAN_ID;
-      return;
-    }
-    if (pdpReader == null || pdpReaderCanId != canId) {
-      pdpReader = new PdpStatusReader(canId);
-      pdpReaderCanId = canId;
-    }
-  }
-
-  /**
-   * NAME
-   *   appendVirtualDevices - Append virtual device entries to state output.
-   */
-  private void appendVirtualDevices(StringBuilder sb) {
-    if (!BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
-      return;
-    }
-    appendLine(sb, "Virtual devices:");
-    appendLine(
-        sb,
-        VIRTUAL_PRESENT_LINE_PREFIX + BringupUtil.ROBORIO_CAN_ID + VIRTUAL_PRESENT_LINE_SUFFIX);
-  }
-
-  /**
-   * NAME
-   *   appendVirtualDeviceHealth - Append virtual device entries to health output.
-   */
-  private void appendVirtualDeviceHealth(StringBuilder sb) {
-    if (!BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)) {
-      return;
-    }
-    appendLine(
-        sb,
-        VIRTUAL_PRESENT_LINE_PREFIX + BringupUtil.ROBORIO_CAN_ID + VIRTUAL_HEALTH_LINE_SUFFIX);
   }
 
   /**
@@ -2662,11 +2777,6 @@ public final class BringupCore {
    *   True when the device is created in local vendor APIs.
    */
   public boolean isDeviceInstantiated(int manufacturer, int deviceType, int deviceId) {
-    if (manufacturer == NI_MANUFACTURER && deviceType == TYPE_ROBOT_CONTROLLER) {
-      return BringupUtil.isEnabledCanId(BringupUtil.ROBORIO_CAN_ID)
-          && deviceId == BringupUtil.ROBORIO_CAN_ID;
-    }
-
     String vendor = BringupUtil.getCanManufacturerName(manufacturer);
     String category = BringupUtil.getCanDeviceTypeName(deviceType);
     if (vendor == null || category == null) {
@@ -2735,16 +2845,31 @@ public final class BringupCore {
    *   Enqueues a status message when devices are missing.
    */
   private boolean ensureTestDevicesInstantiated(BringupTest test) {
-    if (test == null) {
+    String reason = testBlockReason(test);
+    if (reason != null) {
+      logTestBlockReason(test, reason);
       return false;
+    }
+    return true;
+  }
+
+  /**
+   * NAME
+   *   testBlockReason - Explain why a test cannot start.
+   *
+   * RETURNS
+   *   Null when the test can start; otherwise a human-readable reason.
+   */
+  private String testBlockReason(BringupTest test) {
+    if (test == null) {
+      return MESSAGE_TEST_NOT_SELECTED;
     }
     List<String> labels = test.getMotorKeys();
     if (labels == null || labels.isEmpty()) {
       if (hasInstantiatedDevices()) {
-        return true;
+        return null;
       }
-      logWarningThrottled("noDevices", "Warning: test blocked (no devices instantiated).");
-      return false;
+      return MESSAGE_TEST_BLOCKED_NO_DEVICES;
     }
     List<String> missing = new ArrayList<>();
     for (String label : labels) {
@@ -2754,12 +2879,26 @@ public final class BringupCore {
       }
     }
     if (!missing.isEmpty()) {
-      logWarningThrottled(
-          "missingMotors:" + String.join(",", missing),
-          "Warning: test blocked (motor(s) not instantiated): " + String.join(", ", missing));
-      return false;
+      return MESSAGE_TEST_BLOCKED_MOTORS + String.join(", ", missing);
     }
-    return true;
+    return null;
+  }
+
+  /**
+   * NAME
+   *   logTestBlockReason - Emit a throttled operator warning for a blocked test.
+   */
+  private void logTestBlockReason(BringupTest test, String reason) {
+    if (reason == null || reason.isBlank()) {
+      return;
+    }
+    if (reason.startsWith(MESSAGE_TEST_BLOCKED_MOTORS)) {
+      logWarningThrottled(
+          "missingMotors:" + (test != null ? String.join(",", test.getMotorKeys()) : ""),
+          "Warning: " + reason);
+      return;
+    }
+    logWarningThrottled("testBlocked:" + reason, "Warning: " + reason);
   }
 
   /**
@@ -2934,6 +3073,12 @@ public final class BringupCore {
     }
     if ("Encoder".equalsIgnoreCase(category)) {
       return DeviceRole.ENCODER;
+    }
+    if ("PowerDistributionModule".equalsIgnoreCase(category)) {
+      return DeviceRole.POWER;
+    }
+    if ("RobotController".equalsIgnoreCase(category)) {
+      return DeviceRole.MISC;
     }
     if ("Miscellaneous".equalsIgnoreCase(category)) {
       return DeviceRole.MISC;

@@ -22,6 +22,17 @@ final class BridgeUiTestCommands implements BridgeUiCommandDispatcher.CommandFam
 
   private static final String ARG_NAME = "name";
   private static final String JSON_KEY_JSON = "json";
+  private static final String JSON_KEY_RUN_ID = "runId";
+  private static final String JSON_KEY_STATE = "state";
+  private static final String JSON_KEY_TEST = "test";
+  private static final String JSON_KEY_RESULT = "result";
+  private static final String JSON_KEY_STATUS = "status";
+  private static final String JSON_KEY_MESSAGE = "message";
+  private static final String JSON_KEY_STARTED_AT_MS = "startedAtMs";
+  private static final String JSON_KEY_FINISHED_AT_MS = "finishedAtMs";
+  private static final String RUN_STATE_BLOCKED = "blocked";
+  private static final String RUN_STATE_ABORTED = "aborted";
+  private static final String TEXT_EMPTY = "";
 
   private static final String MESSAGE_RUN_TEST = "Command: runTest (UI)";
   private static final String MESSAGE_RUN_ALL_TESTS = "Command: runAllTests (UI)";
@@ -52,7 +63,7 @@ final class BridgeUiTestCommands implements BridgeUiCommandDispatcher.CommandFam
 
     void enqueuePrint(String text);
 
-    void runSelectedBringupTest();
+    BringupCore.TestRunSnapshot runSelectedBringupTest();
 
     void runAllBringupTests();
 
@@ -109,7 +120,7 @@ final class BridgeUiTestCommands implements BridgeUiCommandDispatcher.CommandFam
         break;
       case CMD_RUN_TEST:
         dependencies.enqueuePrint(MESSAGE_RUN_TEST);
-        dependencies.runSelectedBringupTest();
+        applyRunSnapshot(result, dependencies.runSelectedBringupTest());
         break;
       case CMD_RUN_ALL_TESTS:
         dependencies.enqueuePrint(MESSAGE_RUN_ALL_TESTS);
@@ -172,6 +183,29 @@ final class BridgeUiTestCommands implements BridgeUiCommandDispatcher.CommandFam
         dependencies.formatTestsOverview(overview),
         dependencies.buildTestsOverviewJson(overview),
         wantsJson);
+  }
+
+  private void applyRunSnapshot(BridgeUiCommandResult result, BringupCore.TestRunSnapshot snapshot) {
+    if (snapshot == null) {
+      return;
+    }
+    result.message = snapshot.message != null && !snapshot.message.isBlank()
+        ? snapshot.message
+        : snapshot.state;
+    result.outText = result.message;
+    JsonObject obj = new JsonObject();
+    obj.addProperty(JSON_KEY_RUN_ID, snapshot.runId);
+    obj.addProperty(JSON_KEY_STATE, snapshot.state != null ? snapshot.state : TEXT_EMPTY);
+    obj.addProperty(JSON_KEY_TEST, snapshot.test != null ? snapshot.test : TEXT_EMPTY);
+    obj.addProperty(JSON_KEY_RESULT, snapshot.result != null ? snapshot.result : TEXT_EMPTY);
+    obj.addProperty(JSON_KEY_STATUS, snapshot.status != null ? snapshot.status : TEXT_EMPTY);
+    obj.addProperty(JSON_KEY_MESSAGE, snapshot.message != null ? snapshot.message : TEXT_EMPTY);
+    obj.addProperty(JSON_KEY_STARTED_AT_MS, snapshot.startedAtMs);
+    obj.addProperty(JSON_KEY_FINISHED_AT_MS, snapshot.finishedAtMs);
+    result.outJson = obj.toString();
+    if (RUN_STATE_BLOCKED.equals(snapshot.state) || RUN_STATE_ABORTED.equals(snapshot.state)) {
+      result.ok = false;
+    }
   }
 }
 

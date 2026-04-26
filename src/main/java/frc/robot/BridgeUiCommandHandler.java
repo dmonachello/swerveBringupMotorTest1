@@ -51,6 +51,8 @@ public class BridgeUiCommandHandler {
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
   private static final int UI_PROTOCOL_VERSION = 1;
   private static final long TCP_CMD_TIMEOUT_MS = 1000;
+  private static final long TCP_PROFILE_APPLY_TIMEOUT_MS = 10000;
+  private static final long TCP_RUNTIME_STATE_TIMEOUT_MS = 10000;
   private static final long TCP_LEASE_TIMEOUT_MS = 750;
   private static final long TCP_TIMEOUT_STOP_COOLDOWN_MS = 5000;
   private static final long TCP_KEEPALIVE_INTERVAL_MS = 1000;
@@ -147,11 +149,21 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_TESTS_TYPE = "type";
   private static final String JSON_KEY_TESTS_STATUS = "status";
   private static final String JSON_KEY_TESTS_MOTORS = "motors";
+  private static final String JSON_KEY_TESTS_RUN = "run";
+  private static final String JSON_KEY_RUN_ID = "runId";
+  private static final String JSON_KEY_RUN_STATE = "state";
+  private static final String JSON_KEY_RUN_TEST = "test";
+  private static final String JSON_KEY_RUN_RESULT = "result";
+  private static final String JSON_KEY_RUN_STATUS = "status";
+  private static final String JSON_KEY_RUN_MESSAGE = "message";
+  private static final String JSON_KEY_RUN_STARTED_AT_MS = "startedAtMs";
+  private static final String JSON_KEY_RUN_FINISHED_AT_MS = "finishedAtMs";
   private static final String JSON_KEY_SOURCES = "sources";
   private static final String JSON_KEY_SOURCES_NAME = "name";
   private static final String JSON_KEY_SOURCES_PATH = "path";
   private static final String JSON_KEY_SOURCES_EXISTS = "exists";
   private static final String CMD_PROFILES_APPLY = "profilesApply";
+  private static final String CMD_SHOW_RUNTIME_STATE = "showRuntimeState";
   private static final String TEXT_SELECTED_DEVICE_PREFIX = "Selected device: ";
   private static final String TEXT_PAREN_OPEN = " (";
   private static final String TEXT_PAREN_CLOSE = ")";
@@ -187,6 +199,7 @@ public class BridgeUiCommandHandler {
   private static final String ARG_PROFILE_NAME = "name";
   private static final String TEXT_PROFILE_ACTIVATE_OK = "Profile activated: %s";
   private static final String TEXT_PROFILE_ACTIVATE_FAIL = "Profile activation failed.";
+  private static final String TEXT_PROFILE_ACTIVATE_RESET_REASON = "profilesApplyActivate";
   private static final String TEXT_PROFILES_RELOAD_OK = "Profiles reloaded.";
   private static final String TEXT_PROFILES_RELOAD_FAILED = "Profiles reload failed: %s";
   private static final String TEXT_PROFILES_APPLY_OK = "Profiles applied.";
@@ -195,6 +208,7 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_PROFILES_APPLY_MISSING_REGISTRY = "profilesApply requires registryJson.";
   private static final String TEXT_PROFILES_APPLY_MISSING_HASH = "profilesApply requires registryHash.";
   private static final String TEXT_PROFILES_APPLY_MISSING_BYTES = "profilesApply requires registryBytes.";
+  private static final double SPEED_ZERO = 0.0;
   private static final String TEXT_PROFILES_APPLY_HASH_MISMATCH = "registryHash mismatch.";
   private static final String TEXT_PROFILES_APPLY_HASH_UNAVAILABLE = "registryHash unavailable.";
   private static final String TEXT_PROFILES_APPLY_BYTES_MISMATCH = "registryBytes mismatch.";
@@ -216,11 +230,8 @@ public class BridgeUiCommandHandler {
   private static final String DEV_PATH_MAIN = "main";
   private static final String DEV_PATH_DEPLOY = "deploy";
 
-  private BringupCore core;
-  private DiagnosticsReporter diagnostics;
+  private final BringupRuntime runtime;
   private final BindingsManager bindings;
-  private final BridgeGroupManager bridgeGroups;
-  private final BridgeGroupManager.SelectedState bridgeSelected;
   private final NetworkTable testsTable;
   private final NetworkTable uiTable;
   private final NetworkTable uiTcpTable;
@@ -269,21 +280,15 @@ public class BridgeUiCommandHandler {
    *   BridgeUiCommandHandler - Create a handler for UI commands.
    */
   public BridgeUiCommandHandler(
-      BringupCore core,
-      DiagnosticsReporter diagnostics,
+      BringupRuntime runtime,
       BindingsManager bindings,
-      BridgeGroupManager bridgeGroups,
-      BridgeGroupManager.SelectedState bridgeSelected,
       NetworkTable testsTable,
       NetworkTable uiTable,
       NetworkTable uiTcpTable,
       Runnable profileToggleAction,
       Runnable profileActivateAction) {
-    this.core = core;
-    this.diagnostics = diagnostics;
+    this.runtime = runtime;
     this.bindings = bindings;
-    this.bridgeGroups = bridgeGroups;
-    this.bridgeSelected = bridgeSelected;
     this.testsTable = testsTable;
     this.uiTable = uiTable;
     this.uiTcpTable = uiTcpTable;
@@ -431,7 +436,7 @@ public class BridgeUiCommandHandler {
 
           @Override
           public void activateSelectedProfile() {
-            BringupUtil.activateSelectedProfile();
+            runtime.activateSelectedProfile(TEXT_PROFILE_ACTIVATE_RESET_REASON);
           }
 
           @Override
@@ -472,12 +477,41 @@ public class BridgeUiCommandHandler {
           public void applyProfilesApplyCommand(BridgeUiCommandResult result, JsonObject args, boolean isTcp) {
             BridgeUiCommandHandler.this.applyProfilesApplyCommand(result, args, isTcp);
           }
+
+          @Override
+          public Boolean parseUiArgBoolean(JsonObject args, String key) {
+            return BridgeUiCommandHandler.this.parseUiArgBoolean(args, key);
+          }
+
+          @Override
+          public void applyShowResult(
+              BridgeUiCommandResult result,
+              String text,
+              JsonObject json,
+              boolean wantsJson) {
+            BridgeUiCommandHandler.this.applyShowResult(result, text, json, wantsJson);
+          }
+
+          @Override
+          public String getDefaultCanProfile() {
+            return BringupUtil.getDefaultCanProfile();
+          }
+
+          @Override
+          public List<String> getProfileNames() {
+            return BringupUtil.getProfileNames();
+          }
+
+          @Override
+          public List<BringupUtil.DeviceEntry> getProfileDevicesSorted(String profileName) {
+            return BringupUtil.getProfileDevicesSorted(profileName);
+          }
         });
 
     BridgeUiTestCommands testCommands = new BridgeUiTestCommands(new BridgeUiTestCommands.Dependencies() {
       @Override
       public void toggleSelectedBringupTestEnabled() {
-        core.toggleSelectedBringupTestEnabled();
+        runtime.toggleSelectedTestEnabled();
       }
 
       @Override
@@ -491,38 +525,38 @@ public class BridgeUiCommandHandler {
       }
 
       @Override
-      public void runSelectedBringupTest() {
-        core.runSelectedBringupTest();
+      public BringupCore.TestRunSnapshot runSelectedBringupTest() {
+        return runtime.runSelectedTest();
       }
 
       @Override
       public void runAllBringupTests() {
-        core.runAllBringupTests();
+        runtime.runAllTests();
       }
 
       @Override
       public void selectPrevBringupTest() {
-        core.selectPrevBringupTest();
+        runtime.selectPreviousTest();
       }
 
       @Override
       public void selectNextBringupTest() {
-        core.selectNextBringupTest();
+        runtime.selectNextTest();
       }
 
       @Override
       public String getSelectedBringupTestName() {
-        return core.getSelectedBringupTestName();
+        return core().getSelectedBringupTestName();
       }
 
       @Override
       public String buildNextTestReportText() {
-        return core.buildNextTestReportText();
+        return core().buildNextTestReportText();
       }
 
       @Override
       public void requestTextReport(String text, int batchSize) {
-        core.requestTextReport(text, batchSize);
+        runtime.requestTextReport(text, batchSize);
       }
 
       @Override
@@ -537,7 +571,7 @@ public class BridgeUiCommandHandler {
 
       @Override
       public boolean selectBringupTestByName(String testName) {
-        return core.selectBringupTestByName(testName);
+        return runtime.selectTestByName(testName);
       }
 
       @Override
@@ -547,12 +581,12 @@ public class BridgeUiCommandHandler {
 
       @Override
       public BringupCore.TestsOverview buildTestsOverview() {
-        return core.buildTestsOverview();
+        return core().buildTestsOverview();
       }
 
       @Override
       public String formatTestsOverview(BringupCore.TestsOverview overview) {
-        return core.formatTestsOverview(overview);
+        return core().formatTestsOverview(overview);
       }
 
       @Override
@@ -674,7 +708,7 @@ public class BridgeUiCommandHandler {
 
       @Override
       public BridgeGroupManager getBridgeGroups() {
-        return bridgeGroups;
+        return bridgeGroups();
       }
 
       @Override
@@ -684,39 +718,39 @@ public class BridgeUiCommandHandler {
 
       @Override
       public boolean selectBringupTestByName(String name) {
-        return core.selectBringupTestByName(name);
+        return runtime.selectTestByName(name);
       }
 
       @Override
       public void runSelectedBringupTest() {
-        core.runSelectedBringupTest();
+        runtime.runSelectedTest();
       }
 
       @Override
       public BridgeGroupManager.SelectedState getBridgeSelected() {
-        return bridgeSelected;
+        return bridgeSelected();
       }
     });
 
     BridgeUiReportCommands reportCommands = new BridgeUiReportCommands(new BridgeUiReportCommands.Dependencies() {
       @Override
       public String buildStateReportText() {
-        return core.buildStateReportText();
+        return core().buildStateReportText();
       }
 
       @Override
       public String buildQuickSummary() {
-        return diagnostics.buildQuickSummary();
+        return diagnostics().buildQuickSummary();
       }
 
       @Override
       public String buildHealthReportText() {
-        return core.buildHealthReportText();
+        return core().buildHealthReportText();
       }
 
       @Override
       public String buildCANCoderReportText() {
-        return core.buildCANCoderReportText();
+        return core().buildCANCoderReportText();
       }
 
       @Override
@@ -741,7 +775,7 @@ public class BridgeUiCommandHandler {
 
       @Override
       public String buildNetworkDiagnosticsReportIfReady() {
-        return diagnostics.buildNetworkDiagnosticsReportIfReady();
+        return diagnostics().buildNetworkDiagnosticsReportIfReady();
       }
 
       @Override
@@ -751,32 +785,32 @@ public class BridgeUiCommandHandler {
 
       @Override
       public String buildCanDiagnosticsReportIfReady() {
-        return diagnostics.buildCanDiagnosticsReportIfReady();
+        return diagnostics().buildCanDiagnosticsReportIfReady();
       }
 
       @Override
       public long getCanDiagCooldownRemainingMs() {
-        return diagnostics.getCanDiagCooldownRemainingMs();
+        return diagnostics().getCanDiagCooldownRemainingMs();
       }
 
       @Override
       public String buildReportJsonForDump() {
-        return diagnostics.buildReportJsonForDump();
+        return diagnostics().buildReportJsonForDump();
       }
 
       @Override
       public boolean writeReportJsonToFile(String json) {
-        return diagnostics.writeReportJsonToFile(json);
+        return diagnostics().writeReportJsonToFile(json);
       }
 
       @Override
       public String getReportPath() {
-        return diagnostics.getReportPath();
+        return diagnostics().getReportPath();
       }
 
       @Override
       public void requestTextReport(String text, int batchSize) {
-        core.requestTextReport(text, batchSize);
+        runtime.requestTextReport(text, batchSize);
       }
 
       @Override
@@ -821,7 +855,7 @@ public class BridgeUiCommandHandler {
 
       @Override
       public boolean hasDiagnostics() {
-        return diagnostics != null;
+        return diagnostics() != null;
       }
     });
 
@@ -833,7 +867,7 @@ public class BridgeUiCommandHandler {
 
       @Override
       public void activateSelectedProfile() {
-        BringupUtil.activateSelectedProfile();
+        runtime.activateSelectedProfile(TEXT_PROFILE_ACTIVATE_RESET_REASON);
       }
 
       @Override
@@ -850,12 +884,12 @@ public class BridgeUiCommandHandler {
 
       @Override
       public void addNextMotorCommand() {
-        core.addNextMotorCommand();
+        runtime.addNextMotorCommand();
       }
 
       @Override
       public void addAllDevicesCommand() {
-        core.addAllDevicesCommand();
+        runtime.addAllDevicesCommand();
       }
 
       @Override
@@ -880,7 +914,7 @@ public class BridgeUiCommandHandler {
 
       @Override
       public void clearAllFaults() {
-        core.clearAllFaults();
+        runtime.clearAllFaults();
       }
 
       @Override
@@ -890,12 +924,12 @@ public class BridgeUiCommandHandler {
 
       @Override
       public String buildCanPingSweepReportText() {
-        return core.buildCanPingSweepReportText();
+        return core().buildCanPingSweepReportText();
       }
 
       @Override
       public void requestTextReport(String text, int batchSize) {
-        core.requestTextReport(text, batchSize);
+        runtime.requestTextReport(text, batchSize);
       }
 
       @Override
@@ -925,18 +959,34 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
-   *   setCore - Update the active bringup core reference.
+   *   core - Return the current runtime core.
    */
-  public void setCore(BringupCore core) {
-    this.core = core;
+  private BringupCore core() {
+    return runtime.getCore();
   }
 
   /**
    * NAME
-   *   setDiagnostics - Update diagnostics reporter reference.
+   *   diagnostics - Return the current runtime diagnostics reporter.
    */
-  public void setDiagnostics(DiagnosticsReporter diagnostics) {
-    this.diagnostics = diagnostics;
+  private DiagnosticsReporter diagnostics() {
+    return runtime.getDiagnostics();
+  }
+
+  /**
+   * NAME
+   *   bridgeGroups - Return current shared group state.
+   */
+  private BridgeGroupManager bridgeGroups() {
+    return runtime.getBridgeGroups();
+  }
+
+  /**
+   * NAME
+   *   bridgeSelected - Return current selected-device state.
+   */
+  private BridgeGroupManager.SelectedState bridgeSelected() {
+    return runtime.getBridgeSelected();
   }
 
   /**
@@ -948,6 +998,26 @@ public class BridgeUiCommandHandler {
    */
   public void setInputAliases(Map<String, String> aliases) {
     inputAliases = aliases != null ? new HashMap<>(aliases) : new HashMap<>();
+  }
+
+  /**
+   * NAME
+   *   resetProfileRuntimeUiState - Clear profile-derived UI runtime state.
+   *
+   * SIDE EFFECTS
+   *   Clears selected device state, fixed speed overrides, cached speed
+   *   reports, active-group cursor state, and any stop latch from the
+   *   previous active profile.
+   */
+  public void resetProfileRuntimeUiState() {
+    bridgeSelected().device = TEXT_EMPTY;
+    bridgeSelected().enabled = false;
+    uiFixedSpeed = Double.NaN;
+    lastNeoSpeed = SPEED_ZERO;
+    lastKrakenSpeed = SPEED_ZERO;
+    activeGroupCursor = INDEX_START;
+    stopLatchActive = false;
+    stopLatchReason = TEXT_EMPTY;
   }
 
   /**
@@ -1004,7 +1074,7 @@ public class BridgeUiCommandHandler {
     TcpPendingCommand pending = new TcpPendingCommand(command);
     tcpCommandQueue.add(pending);
     try {
-      return pending.future.get(TCP_CMD_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+      return pending.future.get(tcpCommandTimeoutMs(command), TimeUnit.MILLISECONDS);
     } catch (TimeoutException ex) {
       pending.cancelled = true;
       tcpCommandTimeouts++;
@@ -1021,6 +1091,31 @@ public class BridgeUiCommandHandler {
       result.outText = result.message;
       return buildTcpResponse(command, result);
     }
+  }
+
+  /**
+   * NAME
+   *   tcpCommandTimeoutMs - Select TCP wait timeout for queued robot-loop commands.
+   *
+   * DESCRIPTION
+   *   Most UI commands are expected to finish in one or two robot cycles. A
+   *   profile apply is intentionally heavier because it validates, persists,
+   *   activates, and instantiates a complete runtime configuration.
+   *
+   * PARAMETERS
+   *   command - TCP command envelope.
+   *
+   * RETURNS
+   *   Timeout in milliseconds for the caller waiting on the command result.
+   */
+  private long tcpCommandTimeoutMs(TcpUiServer.UiCommand command) {
+    if (command != null && CMD_PROFILES_APPLY.equals(command.name)) {
+      return TCP_PROFILE_APPLY_TIMEOUT_MS;
+    }
+    if (command != null && CMD_SHOW_RUNTIME_STATE.equals(command.name)) {
+      return TCP_RUNTIME_STATE_TIMEOUT_MS;
+    }
+    return TCP_CMD_TIMEOUT_MS;
   }
 
   /**
@@ -1320,7 +1415,7 @@ public class BridgeUiCommandHandler {
    *   Mutates runtime group membership and emits warning/status payloads.
    */
   private void applyActiveAdd(BridgeUiCommandResult result) {
-    if (core != null && core.isTestRunning()) {
+    if (core() != null && core().isTestRunning()) {
       result.ok = false;
       result.message = WARNING_REJECT_TEST_RUNNING;
       result.outText = result.message;
@@ -1357,9 +1452,9 @@ public class BridgeUiCommandHandler {
       setActiveResultJson(result, group, warnings);
       return;
     }
-    boolean added = bridgeGroups.addDevice(GROUP_ACTIVE, candidate.device, false);
+    boolean added = bridgeGroups().addDevice(GROUP_ACTIVE, candidate.device, false);
     if (!added) {
-      String owner = bridgeGroups.getDeviceGroup(candidate.device);
+      String owner = bridgeGroups().getDeviceGroup(candidate.device);
       String detail = candidate.device;
       if (owner != null && !owner.isBlank()) {
         detail += " (already in group: " + owner + ")";
@@ -1369,10 +1464,10 @@ public class BridgeUiCommandHandler {
       result.ok = false;
       result.message = failure;
       result.outText = failure;
-      setActiveResultJson(result, bridgeGroups.getGroup(GROUP_ACTIVE), warnings);
+      setActiveResultJson(result, bridgeGroups().getGroup(GROUP_ACTIVE), warnings);
       return;
     }
-    BridgeGroupManager.Group updated = bridgeGroups.getGroup(GROUP_ACTIVE);
+    BridgeGroupManager.Group updated = bridgeGroups().getGroup(GROUP_ACTIVE);
     result.ok = true;
     result.message = MESSAGE_ACTIVE_ADDED_PREFIX + candidate.device;
     result.outText = result.message;
@@ -1388,7 +1483,7 @@ public class BridgeUiCommandHandler {
    *   warning/status payloads.
    */
   private void applyActiveNext(BridgeUiCommandResult result) {
-    if (core != null && core.isTestRunning()) {
+    if (core() != null && core().isTestRunning()) {
       result.ok = false;
       result.message = WARNING_REJECT_TEST_RUNNING;
       result.outText = result.message;
@@ -1405,12 +1500,12 @@ public class BridgeUiCommandHandler {
     if (!group.members.isEmpty()) {
       BridgeGroupManager.MemberState primary = group.members.values().iterator().next();
       if (primary != null && primary.device != null && !primary.device.isBlank()) {
-        var device = core != null ? core.findDeviceByLabel(primary.device) : null;
+        var device = core() != null ? core().findDeviceByLabel(primary.device) : null;
         if (device != null) {
           device.stop();
           device.deactivate();
         }
-        bridgeGroups.removeDevice(GROUP_ACTIVE, primary.device);
+        bridgeGroups().removeDevice(GROUP_ACTIVE, primary.device);
       }
     }
     List<String> warnings = new ArrayList<>();
@@ -1420,15 +1515,15 @@ public class BridgeUiCommandHandler {
       result.ok = true;
       result.message = WARNING_NO_ELIGIBLE_NEXT;
       result.outText = result.message;
-      setActiveResultJson(result, bridgeGroups.getGroup(GROUP_ACTIVE), warnings);
+      setActiveResultJson(result, bridgeGroups().getGroup(GROUP_ACTIVE), warnings);
       return;
     }
     if (candidate.wrapped) {
       warnings.add(WARNING_WRAPPED);
     }
-    boolean added = bridgeGroups.addDevice(GROUP_ACTIVE, candidate.device, false);
+    boolean added = bridgeGroups().addDevice(GROUP_ACTIVE, candidate.device, false);
     if (!added) {
-      String owner = bridgeGroups.getDeviceGroup(candidate.device);
+      String owner = bridgeGroups().getDeviceGroup(candidate.device);
       String detail = candidate.device;
       if (owner != null && !owner.isBlank()) {
         detail += " (already in group: " + owner + ")";
@@ -1438,10 +1533,10 @@ public class BridgeUiCommandHandler {
       result.ok = false;
       result.message = failure;
       result.outText = failure;
-      setActiveResultJson(result, bridgeGroups.getGroup(GROUP_ACTIVE), warnings);
+      setActiveResultJson(result, bridgeGroups().getGroup(GROUP_ACTIVE), warnings);
       return;
     }
-    BridgeGroupManager.Group updated = bridgeGroups.getGroup(GROUP_ACTIVE);
+    BridgeGroupManager.Group updated = bridgeGroups().getGroup(GROUP_ACTIVE);
     result.ok = true;
     result.message = MESSAGE_ACTIVE_NEXT_PREFIX + candidate.device;
     result.outText = result.message;
@@ -1453,12 +1548,12 @@ public class BridgeUiCommandHandler {
    *   ensureActiveGroupDefined - Ensure runtime active-group exists.
    */
   private BridgeGroupManager.Group ensureActiveGroupDefined() {
-    BridgeGroupManager.Group group = bridgeGroups.getGroup(GROUP_ACTIVE);
+    BridgeGroupManager.Group group = bridgeGroups().getGroup(GROUP_ACTIVE);
     if (group != null) {
       return group;
     }
-    bridgeGroups.createGroup(GROUP_ACTIVE);
-    return bridgeGroups.getGroup(GROUP_ACTIVE);
+    bridgeGroups().createGroup(GROUP_ACTIVE);
+    return bridgeGroups().getGroup(GROUP_ACTIVE);
   }
 
   /**
@@ -1497,10 +1592,10 @@ public class BridgeUiCommandHandler {
    *   isDeviceTotallyReady - Check readiness for active-group operations.
    */
   private boolean isDeviceTotallyReady(String label) {
-    if (core == null || label == null || label.isBlank()) {
+    if (core() == null || label == null || label.isBlank()) {
       return false;
     }
-    var device = core.findDeviceByLabel(label);
+    var device = core().findDeviceByLabel(label);
     return device != null && device.isCreated();
   }
 
@@ -1623,13 +1718,13 @@ public class BridgeUiCommandHandler {
    *   applySafetyStop - Stop outputs on safety events.
    */
   private void applySafetyStop(String reason) {
-    if (core == null) {
+    if (core() == null) {
       return;
     }
     if (!DriverStation.isEnabled() || DriverStation.isEStopped()) {
       return;
     }
-    core.safetyStop(reason);
+    core().safetyStop(reason);
   }
 
   /**
@@ -1916,7 +2011,16 @@ public class BridgeUiCommandHandler {
         }
       }
     }
-    if (transfer.ok) {
+    boolean activateRequested = activateProfile != null && !activateProfile.isBlank();
+    if (transfer.ok && activateRequested) {
+      report = runtime.applyAndActivateRegistry(
+          registryJson,
+          activateProfile,
+          TEXT_PROFILE_ACTIVATE_RESET_REASON);
+      if (profileActivateAction != null) {
+        profileActivateAction.run();
+      }
+    } else if (transfer.ok) {
       report = BringupUtil.applyRegistryJson(registryJson, activateProfile);
     }
     boolean overallOk = transfer.ok && report.overallOk;
@@ -1931,9 +2035,6 @@ public class BridgeUiCommandHandler {
     }
     result.outText = buildProfilesApplyText(overallOk, transfer, report);
     result.outJson = buildProfilesApplyJson(overallOk, transfer, report);
-    if (overallOk && report.activated && profileActivateAction != null) {
-      profileActivateAction.run();
-    }
   }
 
   /**
@@ -2075,7 +2176,9 @@ public class BridgeUiCommandHandler {
       case "showDevice":
       case "showBindings":
       case "showSelectedDevice":
-      case "showRuntimeState":
+      case CMD_SHOW_RUNTIME_STATE:
+      case "showProfiles":
+      case "showProfile":
       case "groupCreate":
       case "groupDelete":
       case "groupAddDevice":
@@ -2160,11 +2263,11 @@ public class BridgeUiCommandHandler {
     sb.append("  mode=").append(DriverStation.isAutonomous() ? "auto"
         : DriverStation.isTeleop() ? "teleop"
         : DriverStation.isTest() ? "test" : "disabled").append('\n');
-    sb.append("  groups=").append(bridgeGroups.getGroups().size()).append('\n');
+    sb.append("  groups=").append(bridgeGroups().getGroups().size()).append('\n');
     sb.append("  selectedDevice=").append(
-        bridgeSelected.device != null ? bridgeSelected.device : "(none)")
+        bridgeSelected().device != null ? bridgeSelected().device : "(none)")
         .append(" (")
-        .append(bridgeSelected.enabled ? "on" : "off")
+        .append(bridgeSelected().enabled ? "on" : "off")
         .append(")\n");
     return sb.toString();
   }
@@ -2182,7 +2285,7 @@ public class BridgeUiCommandHandler {
     root.addProperty("mode", DriverStation.isAutonomous() ? "auto"
         : DriverStation.isTeleop() ? "teleop"
         : DriverStation.isTest() ? "test" : "disabled");
-    root.addProperty("groupCount", bridgeGroups.getGroups().size());
+    root.addProperty("groupCount", bridgeGroups().getGroups().size());
     root.add("selectedDevice", buildSelectedDeviceJson());
     return root;
   }
@@ -2266,7 +2369,7 @@ public class BridgeUiCommandHandler {
    *   buildGroupsText - Build the show groups text output.
    */
   private String buildGroupsText() {
-    List<BridgeGroupManager.Group> groups = bridgeGroups.getGroups();
+    List<BridgeGroupManager.Group> groups = bridgeGroups().getGroups();
     if (groups.isEmpty()) {
       return "Groups: (none)";
     }
@@ -2293,7 +2396,7 @@ public class BridgeUiCommandHandler {
   private JsonObject buildGroupsJson() {
     JsonObject root = new JsonObject();
     JsonArray array = new JsonArray();
-    for (BridgeGroupManager.Group group : bridgeGroups.getGroups()) {
+    for (BridgeGroupManager.Group group : bridgeGroups().getGroups()) {
       JsonObject g = new JsonObject();
       g.addProperty("name", group.name);
       g.addProperty("enabled", group.enabled);
@@ -2379,7 +2482,7 @@ public class BridgeUiCommandHandler {
    *   buildBindingsText - Build a summary of all bindings.
    */
   private String buildBindingsText() {
-    List<BridgeGroupManager.Group> groups = bridgeGroups.getGroups();
+    List<BridgeGroupManager.Group> groups = bridgeGroups().getGroups();
     if (groups.isEmpty()) {
       return "Bindings: (no groups)";
     }
@@ -2410,7 +2513,7 @@ public class BridgeUiCommandHandler {
   private JsonObject buildBindingsJson() {
     JsonObject root = new JsonObject();
     JsonArray groups = new JsonArray();
-    for (BridgeGroupManager.Group group : bridgeGroups.getGroups()) {
+    for (BridgeGroupManager.Group group : bridgeGroups().getGroups()) {
       JsonObject g = new JsonObject();
       g.addProperty("name", group.name);
       JsonArray bindings = new JsonArray();
@@ -2517,9 +2620,9 @@ public class BridgeUiCommandHandler {
    *   buildSelectedDeviceText - Build text for selected-device state.
    */
   private String buildSelectedDeviceText() {
-    String device = bridgeSelected.device != null ? bridgeSelected.device : TEXT_NONE;
+    String device = bridgeSelected().device != null ? bridgeSelected().device : TEXT_NONE;
     return TEXT_SELECTED_DEVICE_PREFIX + device + TEXT_PAREN_OPEN
-        + (bridgeSelected.enabled ? TEXT_ON : TEXT_OFF) + TEXT_PAREN_CLOSE;
+        + (bridgeSelected().enabled ? TEXT_ON : TEXT_OFF) + TEXT_PAREN_CLOSE;
   }
 
   /**
@@ -2528,8 +2631,8 @@ public class BridgeUiCommandHandler {
    */
   private JsonObject buildSelectedDeviceJson() {
     JsonObject obj = new JsonObject();
-    obj.addProperty(JSON_KEY_DEVICE, bridgeSelected.device != null ? bridgeSelected.device : "");
-    obj.addProperty(JSON_KEY_ENABLED, bridgeSelected.enabled);
+    obj.addProperty(JSON_KEY_DEVICE, bridgeSelected().device != null ? bridgeSelected().device : "");
+    obj.addProperty(JSON_KEY_ENABLED, bridgeSelected().enabled);
     return obj;
   }
 
@@ -2550,7 +2653,7 @@ public class BridgeUiCommandHandler {
         : DriverStation.isTeleop() ? "teleop"
         : DriverStation.isTest() ? "test" : "disabled");
     JsonArray groups = new JsonArray();
-    for (BridgeGroupManager.Group group : bridgeGroups.getGroups()) {
+    for (BridgeGroupManager.Group group : bridgeGroups().getGroups()) {
       JsonObject g = buildGroupJson(group);
       if (g != null) {
         groups.add(g);
@@ -2586,6 +2689,7 @@ public class BridgeUiCommandHandler {
     root.addProperty(JSON_KEY_TESTS_USING_SETS, overview.usingTestSets);
     root.addProperty(JSON_KEY_TESTS_TOTAL_COUNT, overview.totalCount);
     root.addProperty(JSON_KEY_TESTS_ENABLED_COUNT, overview.enabledCount);
+    root.add(JSON_KEY_TESTS_RUN, buildTestRunJson(overview.run));
     JsonArray rows = new JsonArray();
     int count = overview.rows.size();
     for (int i = INDEX_START; i < count; i++) {
@@ -2613,6 +2717,24 @@ public class BridgeUiCommandHandler {
     }
     root.add(JSON_KEY_TESTS_ROWS, rows);
     return root;
+  }
+
+  /**
+   * NAME
+   *   buildTestRunJson - Build JSON for the current test run lifecycle.
+   */
+  private JsonObject buildTestRunJson(BringupCore.TestRunSnapshot run) {
+    JsonObject obj = new JsonObject();
+    BringupCore.TestRunSnapshot snapshot = run != null ? run : BringupCore.TestRunSnapshot.idle();
+    obj.addProperty(JSON_KEY_RUN_ID, snapshot.runId);
+    obj.addProperty(JSON_KEY_RUN_STATE, snapshot.state != null ? snapshot.state : TEXT_EMPTY);
+    obj.addProperty(JSON_KEY_RUN_TEST, snapshot.test != null ? snapshot.test : TEXT_EMPTY);
+    obj.addProperty(JSON_KEY_RUN_RESULT, snapshot.result != null ? snapshot.result : TEXT_EMPTY);
+    obj.addProperty(JSON_KEY_RUN_STATUS, snapshot.status != null ? snapshot.status : TEXT_EMPTY);
+    obj.addProperty(JSON_KEY_RUN_MESSAGE, snapshot.message != null ? snapshot.message : TEXT_EMPTY);
+    obj.addProperty(JSON_KEY_RUN_STARTED_AT_MS, snapshot.startedAtMs);
+    obj.addProperty(JSON_KEY_RUN_FINISHED_AT_MS, snapshot.finishedAtMs);
+    return obj;
   }
 
   /**
@@ -2716,7 +2838,7 @@ public class BridgeUiCommandHandler {
    *   buildRuntimeStateDevices - Build device entries with live telemetry.
    */
   private JsonArray buildRuntimeStateDevices(long nowMs) {
-    List<DeviceSnapshot> snapshots = core != null ? core.captureSnapshots() : new ArrayList<>();
+    List<DeviceSnapshot> snapshots = core() != null ? core().captureSnapshots() : new ArrayList<>();
     Map<String, DeviceSnapshot> byLabel = new HashMap<>();
     Map<Integer, DeviceSnapshot> byId = new HashMap<>();
     for (DeviceSnapshot snap : snapshots) {
@@ -2911,11 +3033,6 @@ public class BridgeUiCommandHandler {
     return null;
   }
 
-  /**
-   * NAME
-   *   resetCoreForProfile - Rebuild core and diagnostics after profile changes.
-   */
-
   public void printStartupInfo() {
     long nowMs = System.currentTimeMillis();
     if (nowMs - lastStartupPrintMs < MIN_PRINT_INTERVAL_MS) {
@@ -2931,7 +3048,7 @@ public class BridgeUiCommandHandler {
     ReportTextUtil.appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
     appendDeviceSummary(sb);
     ReportTextUtil.appendLine(sb, "=========================");
-    core.requestTextReport(sb.toString(), 4);
+    runtime.requestTextReport(sb.toString(), 4);
   }
 
   /**
@@ -2959,7 +3076,7 @@ public class BridgeUiCommandHandler {
     }
     ReportTextUtil.appendLine(sb, "========================");
     String report = sb.toString();
-    core.requestTextReport(report, 4);
+    runtime.requestTextReport(report, 4);
     return report;
   }
 
@@ -2982,7 +3099,7 @@ public class BridgeUiCommandHandler {
     ReportTextUtil.appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
     appendDeviceSummary(sb);
     ReportTextUtil.appendLine(sb, "========================");
-    core.requestTextReport(sb.toString(), 4);
+    runtime.requestTextReport(sb.toString(), 4);
   }
 
   /**
@@ -3087,7 +3204,7 @@ public class BridgeUiCommandHandler {
     appendDeviceSummary(sb);
     ReportTextUtil.appendLine(sb, "===============================");
     String report = sb.toString();
-    core.requestTextReport(report, 4);
+    runtime.requestTextReport(report, 4);
     return report;
   }
 
@@ -3187,7 +3304,7 @@ public class BridgeUiCommandHandler {
     }
     ReportTextUtil.appendLine(sb, "==========================");
     String report = sb.toString();
-    core.requestTextReport(report, 4);
+    runtime.requestTextReport(report, 4);
     return report;
   }
 
@@ -3202,9 +3319,9 @@ public class BridgeUiCommandHandler {
    *   Enqueues a text report and updates NetworkTables.
    */
   public String printTestsOverview() {
-    BringupCore.TestsOverview overview = core.buildTestsOverview();
-    String text = core.formatTestsOverview(overview);
-    core.requestTextReport(text, 6);
+    BringupCore.TestsOverview overview = core().buildTestsOverview();
+    String text = core().formatTestsOverview(overview);
+    runtime.requestTextReport(text, 6);
     publishTestsOverview(overview);
     return text;
   }
@@ -3230,11 +3347,11 @@ public class BridgeUiCommandHandler {
     testsTable.getEntry("usingTestSets").setBoolean(overview.usingTestSets);
     testsTable.getEntry("totalCount").setNumber(overview.totalCount);
     testsTable.getEntry("enabledCount").setNumber(overview.enabledCount);
-    testsTable.getEntry("selectedIndex").setNumber(core.getSelectedBringupTestIndex());
-    testsTable.getEntry("selectedName").setString(core.getSelectedBringupTestName());
-    testsTable.getEntry("activeName").setString(core.getActiveBringupTestName());
-    testsTable.getEntry("activeStatus").setString(core.getActiveBringupTestStatus());
-    testsTable.getEntry("runAllActive").setBoolean(core.isRunAllActive());
+    testsTable.getEntry("selectedIndex").setNumber(core().getSelectedBringupTestIndex());
+    testsTable.getEntry("selectedName").setString(core().getSelectedBringupTestName());
+    testsTable.getEntry("activeName").setString(core().getActiveBringupTestName());
+    testsTable.getEntry("activeStatus").setString(core().getActiveBringupTestStatus());
+    testsTable.getEntry("runAllActive").setBoolean(core().isRunAllActive());
     NetworkTable rowsTable = testsTable.getSubTable("rows");
     int count = overview.rows.size();
     for (int i = 0; i < count; i++) {
@@ -3271,11 +3388,11 @@ public class BridgeUiCommandHandler {
    *   Writes selected and active test info to NetworkTables.
    */
   public void publishTestsSelectionStatus() {
-    testsTable.getEntry("selectedIndex").setNumber(core.getSelectedBringupTestIndex());
-    testsTable.getEntry("selectedName").setString(core.getSelectedBringupTestName());
-    testsTable.getEntry("activeName").setString(core.getActiveBringupTestName());
-    testsTable.getEntry("activeStatus").setString(core.getActiveBringupTestStatus());
-    testsTable.getEntry("runAllActive").setBoolean(core.isRunAllActive());
+    testsTable.getEntry("selectedIndex").setNumber(core().getSelectedBringupTestIndex());
+    testsTable.getEntry("selectedName").setString(core().getSelectedBringupTestName());
+    testsTable.getEntry("activeName").setString(core().getActiveBringupTestName());
+    testsTable.getEntry("activeStatus").setString(core().getActiveBringupTestStatus());
+    testsTable.getEntry("runAllActive").setBoolean(core().isRunAllActive());
   }
 
   //@SuppressWarnings("removal")
@@ -3295,5 +3412,4 @@ public class BridgeUiCommandHandler {
       Shuffleboard.disableActuatorWidgets();
     }
   }
-
 }

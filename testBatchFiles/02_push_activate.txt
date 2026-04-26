@@ -1,6 +1,5 @@
 echo on
 connect
 configure terminal
-config push data\bringup_system.json --activate home_042126V1
+config push data\bringup_system.json --activate demo_board_042526
 end
-

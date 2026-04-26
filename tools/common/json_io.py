@@ -39,4 +39,5 @@ def write_json(path: Path, payload: Any, *, indent: int = 2, trailing_newline: b
     text = json.dumps(payload, indent=indent)
     if trailing_newline:
         text += "\n"
-    path.write_text(text, encoding="utf-8")
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)

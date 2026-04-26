@@ -209,6 +209,8 @@ public final class BringupUtil {
   private static final int DEVTYPE_POWER_ID = 8;
   private static final int DEVTYPE_MISC_ID = 10;
   private static final int INDEX_ZERO = 0;
+  private static final long PROFILE_CONFIG_GENERATION_INITIAL = 0L;
+  private static final long PROFILE_CONFIG_GENERATION_INCREMENT = 1L;
 
   // JSON parser for bringup_system.json.
   private static final Gson GSON = new Gson();
@@ -226,6 +228,7 @@ public final class BringupUtil {
   private static final Map<DeviceKey, List<DeviceConfig>> DEVICE_CONFIGS = new LinkedHashMap<>();
   private static final Map<String, DeviceDefinition> DEVICE_REGISTRY = new LinkedHashMap<>();
   private static final Map<DeviceInstanceKey, Object> DEVICE_INSTANCE_REGISTRY = new LinkedHashMap<>();
+  private static long activeProfileGeneration = PROFILE_CONFIG_GENERATION_INITIAL;
 
   // Currently active profile name.
   private static String activeProfile = DEFAULT_PROFILE_NAME;
@@ -345,6 +348,26 @@ public final class BringupUtil {
     activeProfile = profileName;
     selectedProfile = profileName;
     activeProfileApplied = true;
+    bumpActiveProfileGeneration();
+  }
+
+  /**
+   * NAME
+   *   getActiveProfileGeneration - Return active profile registry generation.
+   *
+   * RETURNS
+   *   Monotonic generation incremented when profile-derived runtime config changes.
+   */
+  public static long getActiveProfileGeneration() {
+    return activeProfileGeneration;
+  }
+
+  /**
+   * NAME
+   *   bumpActiveProfileGeneration - Mark profile-derived runtime config dirty.
+   */
+  private static void bumpActiveProfileGeneration() {
+    activeProfileGeneration += PROFILE_CONFIG_GENERATION_INCREMENT;
   }
 
   /**
@@ -417,6 +440,14 @@ public final class BringupUtil {
 
   /**
    * NAME
+   *   getDefaultCanProfile - Return the configured default profile name.
+   */
+  public static String getDefaultCanProfile() {
+    return defaultProfile;
+  }
+
+  /**
+   * NAME
    *   selectNextProfile - Advance selected profile without activating.
    */
   public static void selectNextProfile() {
@@ -479,6 +510,7 @@ public final class BringupUtil {
     PIGEON_CAN_ID = DISABLED_CAN_ID;
     ROBORIO_CAN_ID = DISABLED_CAN_ID;
     activeProfileApplied = false;
+    bumpActiveProfileGeneration();
   }
 
   /**
@@ -506,6 +538,17 @@ public final class BringupUtil {
    */
   public static int getProfileCount() {
     return profiles.size();
+  }
+
+  /**
+   * NAME
+   *   getProfileNames - Return profile names in registry order.
+   *
+   * RETURNS
+   *   Unmodifiable list of profile names.
+   */
+  public static List<String> getProfileNames() {
+    return Collections.unmodifiableList(profileOrder);
   }
 
   /**
@@ -1180,6 +1223,7 @@ public final class BringupUtil {
       selectedProfile = defaultProfile;
       activeProfile = DEFAULT_PROFILE_NAME;
       activeProfileApplied = false;
+      bumpActiveProfileGeneration();
     } catch (IOException | JsonParseException ex) {
       BringupPrinter.enqueue("ERROR: bringup_system.json invalid: " + ex.getMessage());
       BringupPrinter.enqueue("ERROR: Redeploy required. Robot code will stop.");
@@ -1393,6 +1437,7 @@ public final class BringupUtil {
     PDH_CAN_ID = resolveSingletonIdByMfgType(merged, MFG_REV_ID, DEVTYPE_POWER_ID);
     PIGEON_CAN_ID = resolveSingletonIdByMfgType(merged, MFG_CTRE_ID, DEVTYPE_GYRO_ID);
     ROBORIO_CAN_ID = resolveSingletonIdByMfgType(merged, MFG_NI_ID, DEVTYPE_ROBORIO_ID);
+    bumpActiveProfileGeneration();
   }
 
   private static void addFallbackCanDevices(
@@ -1726,6 +1771,7 @@ public final class BringupUtil {
       DEVICE_REGISTRY.putAll(payload.registry);
       setProfileTests(payload.testsByProfile);
       clearDeviceInstanceRegistry();
+      bumpActiveProfileGeneration();
       if (activateProfile != null && !activateProfile.isBlank()) {
         String error = applyActiveProfileStrict(activateProfile);
         if (!error.isBlank()) {

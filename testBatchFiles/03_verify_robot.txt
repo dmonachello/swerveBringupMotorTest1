@@ -1,7 +1,6 @@
 echo on
 connect
-show sources
+show profile demo_board_042526 robot --json --pretty
 show devices robot --json --pretty
 show runtime-state robot --json --pretty
 end
-

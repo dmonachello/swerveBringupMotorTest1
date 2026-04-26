@@ -7,7 +7,7 @@ import frc.robot.input.BindingsManager;
  *   BringupCommandRouter - Map bindings to bringup actions.
  *
  * DESCRIPTION
- *   Applies controller bindings to core actions, report requests, and
+ *   Applies controller bindings to runtime actions, report requests, and
  *   diagnostics outputs.
  */
 public final class BringupCommandRouter {
@@ -45,8 +45,7 @@ public final class BringupCommandRouter {
    *
    * PARAMETERS
    *   bind - Current binding state snapshot.
-   *   core - BringupCore instance.
-   *   diagnostics - Optional DiagnosticsReporter.
+   *   runtime - Shared runtime/action owner.
    *   printBindings - Callback to print bindings.
    *   printTestsInfo - Callback to print tests info.
    *   printTestsOverview - Callback to print tests overview.
@@ -57,6 +56,139 @@ public final class BringupCommandRouter {
    *
    * RETURNS
    *   Summary of binding-driven actions for downstream safety handling.
+   */
+  public static CommonResult applyCommon(
+      BindingsManager.BindingState bind,
+      BringupRuntime runtime,
+      Runnable printBindings,
+      Runnable printTestsInfo,
+      Runnable printTestsOverview,
+      boolean runHeld,
+      AddAllHandler addAllHandler,
+      AddMotorHandler addMotorHandler) {
+    CommonResult result = new CommonResult();
+
+    if (bind.pressed("addMotor")) {
+      BringupPrinter.enqueue("Command: addMotor");
+      if (addMotorHandler != null) {
+        addMotorHandler.handleAddMotor(true);
+      } else {
+        runtime.addMotor(true);
+      }
+    } else {
+      if (addMotorHandler != null) {
+        addMotorHandler.handleAddMotor(false);
+      } else {
+        runtime.addMotor(false);
+      }
+    }
+    if (bind.pressed("addAll")) {
+      BringupPrinter.enqueue("Command: addAll");
+      if (addAllHandler != null) {
+        addAllHandler.handleAddAll(true);
+      } else {
+        runtime.addAllDevices(true);
+      }
+    } else {
+      if (addAllHandler != null) {
+        addAllHandler.handleAddAll(false);
+      } else {
+        runtime.addAllDevices(false);
+      }
+    }
+    DiagnosticsReporter diagnostics = runtime.getDiagnostics();
+    runtime.handlePrint(bind.pressed("printState"));
+    runtime.handleHealth(bind.pressed("printHealth"));
+    runtime.handleCANCoder(runHeld ? false : bind.pressed("printCANcoder"));
+
+    if (bind.pressed("selectTestPrev")) {
+      runtime.selectPreviousTest();
+      if (printTestsOverview != null) {
+        printTestsOverview.run();
+      }
+    }
+    if (bind.pressed("selectTestNext")) {
+      runtime.selectNextTest();
+      if (printTestsOverview != null) {
+        printTestsOverview.run();
+      }
+    }
+    if (bind.pressed("toggleTest")) {
+      result.toggledTestEnabled = runtime.toggleSelectedTestEnabled();
+      if (printTestsOverview != null) {
+        printTestsOverview.run();
+      }
+    }
+    if (bind.pressed("runTest")) {
+      BringupPrinter.enqueue("Command: runTest");
+      runtime.runSelectedTest();
+      result.runTestPressed = true;
+    }
+    if (bind.pressed("runAllTests")) {
+      BringupPrinter.enqueue("Command: runAllTests");
+      runtime.runAllTests();
+      result.runAllPressed = true;
+    }
+
+    if (bind.pressed("printBindings") && printBindings != null) {
+      printBindings.run();
+    }
+    if (bind.pressed("printTestsInfo") && printTestsInfo != null) {
+      printTestsInfo.run();
+    }
+    if (bind.pressed("printTestsOverview") && printTestsOverview != null) {
+      printTestsOverview.run();
+    }
+    if (bind.pressed("printNextTest")) {
+      runtime.printNextTestReport();
+    }
+
+    if (diagnostics != null) {
+      if (bind.pressed("printNTdiag")) {
+        String report = diagnostics.buildNetworkDiagnosticsReportIfReady();
+        if (report != null) {
+          runtime.requestTextReport(report, 4);
+        }
+      }
+      if (bind.pressed("printCANdiag")) {
+        String report = diagnostics.buildCanDiagnosticsReportIfReady();
+        if (report != null) {
+          runtime.requestTextReport(report, 4);
+        }
+      }
+      if (bind.pressed("dumpReport")) {
+        String json = diagnostics.buildReportJsonForDump();
+        String wrapped = ReportTextUtil.wrapLongLine(json, 120);
+        runtime.requestTextReport(wrapped, 4);
+        if (diagnostics.writeReportJsonToFile(json)) {
+          runtime.requestTextReport("Wrote CAN report JSON to " + diagnostics.getReportPath(), 4);
+        } else {
+          runtime.requestTextReport("Failed to write CAN report JSON.", 4);
+        }
+      }
+    }
+
+    if (bind.pressed("clearFaults")) {
+      BringupPrinter.enqueue("Command: clearFaults");
+      runtime.clearAllFaults();
+      BringupPrinter.enqueue("Cleared device faults (current + sticky).");
+    }
+    if (bind.pressed("canSweep")) {
+      BringupPrinter.enqueue("Command: canSweep");
+      runtime.runCanPingSweep();
+    }
+
+    runtime.updateReportsAndTests(runHeld || bind.held("runTest"));
+    return result;
+  }
+
+  /**
+   * NAME
+   *   applyCommon - Legacy core-based compatibility path.
+   *
+   * DESCRIPTION
+   *   Supports the older Robot entry point. RobotV2 and UI/CLI paths use the
+   *   BringupRuntime overload so they share current runtime ownership.
    */
   public static CommonResult applyCommon(
       BindingsManager.BindingState bind,
@@ -77,12 +209,10 @@ public final class BringupCommandRouter {
       } else {
         core.handleAdd(true);
       }
+    } else if (addMotorHandler != null) {
+      addMotorHandler.handleAddMotor(false);
     } else {
-      if (addMotorHandler != null) {
-        addMotorHandler.handleAddMotor(false);
-      } else {
-        core.handleAdd(false);
-      }
+      core.handleAdd(false);
     }
     if (bind.pressed("addAll")) {
       BringupPrinter.enqueue("Command: addAll");
@@ -91,12 +221,10 @@ public final class BringupCommandRouter {
       } else {
         core.handleAddAll(true);
       }
+    } else if (addAllHandler != null) {
+      addAllHandler.handleAddAll(false);
     } else {
-      if (addAllHandler != null) {
-        addAllHandler.handleAddAll(false);
-      } else {
-        core.handleAddAll(false);
-      }
+      core.handleAddAll(false);
     }
     core.handlePrint(bind.pressed("printState"));
     core.handleHealth(bind.pressed("printHealth"));

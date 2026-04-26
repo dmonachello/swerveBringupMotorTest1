@@ -13,6 +13,7 @@ common         = "exit"
                | "help" [ ws name { ws name } ]
                | "ping"
                | "echo" ws ("on" | "off")
+               | "sleep" ws number
                | "messages" ws ("beginner" | "medium" | "expert")
                | "debug" ws "grammar" [ ws "--json" ] [ ws "--dot" ws path ]
                | "debug" ws "grammar" [ ws "--dot" ws path ] [ ws "--json" ]
@@ -26,7 +27,8 @@ exec           = show_exec
                | "reset" ws "zero-config" [ ws ("--yes" | "--clear-memory") ] [ ws ("--yes" | "--clear-memory") ]
                | "active" ws ("add" | "next" | ("show" [ ws "--json" ]))
                | "run" ws "test" [ ws name ]
-               | "tests" ws ("select" ws name | "toggle" | "run" | "run-all")
+               | "tests" ws ("select" ws name | "toggle" | "run" | "run-all" | tests_wait_args)
+               | "profile" ws "export" ws name ws path [ ws "--install-robot" ]
                | "profile" ws "device" ws "show-all" ws name
                | diagnose ;
 
@@ -81,7 +83,7 @@ config         = "group" ws name
                | "profile" ws "default" ws name
                | "profile" ws "create" ws name
                | "profile" ws "delete" ws name
-               | "profile" ws "export" ws name ws path
+               | "profile" ws "export" ws name ws path [ ws "--install-robot" ]
                | "profile" ws "device" ws "delete" ws name
                | "profile" ws "device" ws "show-all" ws name
                | "selected-device" ws name
@@ -133,6 +135,7 @@ config         = "group" ws name
 diagnose       = "diagnose" ws name ws name ;
 
 bindings_args  = "show" [ ws ("controllers" | "bindings" | "axes") ] [ ws show_flags ]
+               | "clear"
                | "controller" ws ("add" ws name ws name ws number
                                    | "set" ws name ws field ws value_text
                                    | "rename" ws name ws name
@@ -149,6 +152,7 @@ bindings_args  = "show" [ ws ("controllers" | "bindings" | "axes") ] [ ws show_f
                | "validate" [ ws path ] ;
 
 mappings_args  = "show" [ ws ("manufacturers" | "device-types" | "device-type") ] [ ws show_flags ]
+               | "clear"
                | "manufacturer" ws ("set" ws number ws value_text | "delete" ws number | "no" ws number)
                | "device-type" ws ("set" ws number ws value_text | "delete" ws number | "no" ws number)
                | "load" ws path
@@ -160,7 +164,14 @@ tests_args     = "templates"
                | "select" ws name
                | "toggle"
                | "run"
-               | "run-all" ;
+               | "run-all"
+               | tests_wait_args ;
+
+tests_wait_args = "wait"
+                | "wait" ws "--run" ws number
+                | "wait" ws "--timeout" ws number
+                | "wait" ws "--run" ws number ws "--timeout" ws number
+                | "wait" ws "--timeout" ws number ws "--run" ws number ;
 
 group          = "show"
                | "show" ws "members"

@@ -104,6 +104,8 @@ SEP_NEWLINE = "\n"
 MSG_OK = "OK"
 CMD_SHOW_VERSION = "showVersion"
 CMD_SHOW_SOURCES = "showSources"
+CMD_SHOW_PROFILES = "showProfiles"
+CMD_SHOW_PROFILE = "showProfile"
 CMD_ADD_MOTOR = "addMotor"
 CMD_ADD_ALL = "addAll"
 CMD_PROFILES_RELOAD = "profilesReload"
@@ -427,6 +429,22 @@ def show_sources(session: BridgeSession, json_output: bool = False) -> Optional[
         show_sources - Request robot sources output.
     """
     return _send(session, CMD_SHOW_SOURCES, _json_arg(json_output))
+
+
+def show_profiles(session: BridgeSession, json_output: bool = False) -> Optional[int]:
+    """
+    NAME
+        show_profiles - Request robot profile summary output.
+    """
+    return _send(session, CMD_SHOW_PROFILES, _json_arg(json_output))
+
+
+def show_profile(session: BridgeSession, name: str, json_output: bool = False) -> Optional[int]:
+    """
+    NAME
+        show_profile - Request one robot profile by name.
+    """
+    return _send(session, CMD_SHOW_PROFILE, _json_arg(json_output, name=name))
 
 
 def show_groups(session: BridgeSession, json_output: bool = False) -> Optional[int]:

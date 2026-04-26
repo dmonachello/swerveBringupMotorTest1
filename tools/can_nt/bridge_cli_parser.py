@@ -88,6 +88,7 @@ CMD_LIST = "list"
 CMD_FILE = "file"
 CMD_NEXT = "next"
 FLAG_FORCE = "--force"
+FLAG_INSTALL_ROBOT = "--install-robot"
 FLAG_REPAIR = "--repair"
 FLAG_MERGE = SPEC.cmd_merge_flag
 FLAG_REPLACE = SPEC.cmd_replace_flag
@@ -498,6 +499,29 @@ class BridgeCliParser:
 
         if verb in self._common:
             kind = self._common_kind(verb)
+        elif (
+            mode == SPEC.modes[SPEC.idx_exec]
+            and verb == SPEC.cmd_profile
+            and len(tokens) > SPEC.count_one
+            and tokens[SPEC.count_one].lower() == SPEC.cmd_export
+        ):
+            values = _pad(self._build_config_ast(tokens), 14)
+            (
+                kind,
+                group_name,
+                profile_name,
+                device_name,
+                field,
+                value,
+                save_target,
+                export_target,
+                path,
+                show_target,
+                show_name,
+                show_source,
+                show_json,
+                show_pretty,
+            ) = values
         elif mode == SPEC.modes[SPEC.idx_exec]:
             values = _pad(self._build_exec_ast(tokens), 6)
             kind, show_target, show_name, show_source, show_json, show_pretty = values
@@ -566,13 +590,13 @@ class BridgeCliParser:
         )
 
     def _common_kind(self, verb: str) -> str:
-        if verb in (SPEC.common[SPEC.count_zero], SPEC.common[SPEC.count_four]):
+        if verb in ("exit", "quit"):
             return SPEC.kind_common_exit
-        if verb == SPEC.common[SPEC.count_one]:
+        if verb == "end":
             return SPEC.kind_common_end
-        if verb == SPEC.common[SPEC.count_two]:
+        if verb == "help":
             return SPEC.kind_common_help
-        if verb == SPEC.common[SPEC.count_three]:
+        if verb == "ping":
             return SPEC.kind_common_ping
         return SPEC.empty_str
 
@@ -1711,8 +1735,9 @@ class BridgeCliParser:
             self._reject_extra(tokens, SPEC.count_three, SPEC.cmd_profile)
             return
         if tokens[SPEC.count_one].lower() == SPEC.cmd_export:
-            self._require(tokens, SPEC.count_four, SPEC.msg_profile_name)
-            self._reject_extra(tokens, SPEC.count_four, SPEC.cmd_profile)
+            cleaned, _flags = self._strip_flags(tokens, [FLAG_INSTALL_ROBOT])
+            self._require(cleaned, SPEC.count_four, SPEC.msg_profile_name)
+            self._reject_extra(cleaned, SPEC.count_four, SPEC.cmd_profile)
             return
         if (
             len(tokens) >= SPEC.count_four
@@ -1737,11 +1762,11 @@ class BridgeCliParser:
             self._reject_extra(tokens, SPEC.count_two, SPEC.label_profiles_init)
             return
         if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() == SPEC.cmd_reload:
-            self._reject_extra(tokens, SPEC.count_two, SPEC.label_profiles_reload)
+            self._reject_extra(tokens, SPEC.count_two, SPEC.cmd_profiles)
             return
         if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() == SPEC.cmd_activate_profile:
             self._require(tokens, SPEC.count_three, SPEC.msg_profile_name)
-            self._reject_extra(tokens, SPEC.count_three, SPEC.label_profiles_activate)
+            self._reject_extra(tokens, SPEC.count_three, SPEC.cmd_activate_profile)
             return
         if tokens[SPEC.count_one].lower() == SPEC.cmd_export:
             if len(tokens) < SPEC.count_three:
@@ -1754,9 +1779,9 @@ class BridgeCliParser:
             return
         if len(tokens) == SPEC.count_five:
             if tokens[SPEC.count_three].lower() != SPEC.cmd_activate:
-                self._reject_extra(tokens, SPEC.count_three, SPEC.label_push)
+                self._reject_extra(tokens, SPEC.count_three, SPEC.cmd_push)
             return
-        self._reject_extra(tokens, SPEC.count_three, SPEC.label_push)
+        self._reject_extra(tokens, SPEC.count_three, SPEC.cmd_push)
 
     def _handle_config_command(self, tokens: List[str]) -> None:
         if len(tokens) < SPEC.count_three or tokens[SPEC.count_one].lower() != SPEC.cmd_push:
@@ -1765,9 +1790,9 @@ class BridgeCliParser:
             return
         if len(tokens) == SPEC.count_five:
             if tokens[SPEC.count_three].lower() != SPEC.cmd_activate:
-                self._reject_extra(tokens, SPEC.count_three, SPEC.label_push)
+                self._reject_extra(tokens, SPEC.count_three, SPEC.cmd_push)
             return
-        self._reject_extra(tokens, SPEC.count_three, SPEC.label_push)
+        self._reject_extra(tokens, SPEC.count_three, SPEC.cmd_push)
 
     def _handle_merge_import(self, tokens: List[str]) -> None:
         cmd = tokens[SPEC.count_zero].lower()
