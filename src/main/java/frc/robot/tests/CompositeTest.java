@@ -237,9 +237,7 @@ public final class CompositeTest implements BringupTest {
     startTime = nowSec;
     result = BringupTestResult.RUNNING;
     status = "Running";
-    for (DeviceUnit device : motors) {
-      device.setDuty(clampDuty(config.duty));
-    }
+    applyConfiguredDuty();
     long runId = context != null ? context.getRunId() : 0;
     String prefix = runId > 0 ? ("Test started #" + runId + ": ") : "Test started: ";
     BringupPrinter.enqueue(prefix + getName());
@@ -292,8 +290,11 @@ public final class CompositeTest implements BringupTest {
         status = "Time limit reached";
         result = passOrFail(config.time.onTimeout);
         stop(context);
+        return;
       }
     }
+
+    applyConfiguredDuty();
   }
 
   /**
@@ -304,6 +305,13 @@ public final class CompositeTest implements BringupTest {
   public void stop(BringupTestContext context) {
     for (DeviceUnit device : motors) {
       device.stop();
+    }
+  }
+
+  private void applyConfiguredDuty() {
+    double duty = clampDuty(config.duty);
+    for (DeviceUnit device : motors) {
+      device.setDuty(duty);
     }
   }
 

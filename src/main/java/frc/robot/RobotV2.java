@@ -37,6 +37,7 @@ public class RobotV2 extends TimedRobot {
   private static final double SPEED_FIXED_50 = 0.50;
   private static final double SPEED_FIXED_75 = 0.75;
   private static final double SPEED_FIXED_100 = 1.00;
+  private static final double ACTUATION_REQUEST_EPSILON = 1e-6;
   private static final String BINDING_LEFT_DRIVE = "leftDrive";
   private static final String BINDING_RIGHT_DRIVE = "rightDrive";
   private static final String COMMAND_RUN_TEST = "runTest";
@@ -326,13 +327,16 @@ public class RobotV2 extends TimedRobot {
     // Feed test inputs (used by joystick-mode tests).
     core().setTestInputs(buildAxisInputs(controllerMap, neoSpeed, krakenSpeed));
 
+    boolean actuationRequested = isActuationRequested(neoSpeed, krakenSpeed);
     // Apply outputs only while a test is actively running.
     if (core().isTestRunning()) {
       core().setSpeeds(neoSpeed, krakenSpeed);
       warnedNonTestActuationBlocked = false;
-    } else if (!warnedNonTestActuationBlocked) {
+    } else if (actuationRequested && !warnedNonTestActuationBlocked) {
       BringupPrinter.enqueue(MESSAGE_NON_TEST_ACTUATION_BLOCKED);
       warnedNonTestActuationBlocked = true;
+    } else if (!actuationRequested) {
+      warnedNonTestActuationBlocked = false;
     }
 
     BridgeGroupManager.InputSnapshot inputs = new BridgeGroupManager.InputSnapshot();
@@ -387,6 +391,11 @@ public class RobotV2 extends TimedRobot {
     if (uiHandler != null) {
       uiHandler.publishTestsSelectionStatus();
     }
+  }
+
+  private static boolean isActuationRequested(double neoSpeed, double krakenSpeed) {
+    return Math.abs(neoSpeed) > ACTUATION_REQUEST_EPSILON
+        || Math.abs(krakenSpeed) > ACTUATION_REQUEST_EPSILON;
   }
 
   private void resetCoreForProfile(String reason) {

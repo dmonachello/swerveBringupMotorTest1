@@ -46,10 +46,23 @@ ERR_DIO_INT = "{} must be an integer."
 ERR_DIO_RANGE = "{} must be -1 or greater."
 ERR_DIO_REQUIRED = "DIO channel is required."
 ERR_DIO_TYPE_INVALID = "DIO device type must be limitSwitch or encoderExternal."
+ERR_INT_FIELD = "{} must be an integer."
+ERR_FLOAT_FIELD = "{} must be a number."
+ERR_SCALE_RANGE = "Scale must be between 0.6 and 2.0."
 CAN_ID_DIAGRAM_DEFAULT = -1
 LABEL_INTERFACE = "Interface"
 LABEL_DIO = "DIO"
 LABEL_INVERT = "Invert"
+LABEL_KEY = "Key"
+LABEL_NODE_TYPE = "Node Type"
+LABEL_BUS = "Bus"
+LABEL_ROW = "Row"
+LABEL_X = "X"
+LABEL_SCALE = "Scale"
+LABEL_FREE_Y = "Free Y"
+LABEL_PROFILE_VISIBLE = "Profile Visible"
+NODE_TYPE_DEVICE = "device"
+NODE_TYPE_DIAGRAM = "diagram"
 
 
 class NodeDialog(tk.Toplevel):
@@ -111,65 +124,108 @@ class NodeDialog(tk.Toplevel):
         self.var_terminator = tk.BooleanVar(
             value=bool(initial.terminator) if initial and initial.terminator is not None else False
         )
+        self.var_key = tk.StringVar(value=str(initial.key) if initial else TEXT_EMPTY)
+        self.var_node_type = tk.StringVar(
+            value=initial.node_type if initial else NODE_TYPE_DEVICE
+        )
+        self.var_bus = tk.StringVar(value=str(initial.bus_index) if initial else "0")
+        self.var_row = tk.StringVar(value=str(initial.row) if initial else "0")
+        self.var_x = tk.StringVar(value=str(initial.x) if initial else "0.0")
+        self.var_scale = tk.StringVar(value=str(initial.scale) if initial else "1.0")
+        self.var_free_y = tk.StringVar(
+            value=str(initial.free_y) if initial and initial.free_y is not None else TEXT_EMPTY
+        )
+        self.var_profile_visible = tk.BooleanVar(
+            value=bool(initial.profile_visible) if initial else True
+        )
 
-        ttk.Label(frame, text="Category").grid(row=0, column=0, sticky="w")
+        ttk.Label(frame, text=LABEL_KEY).grid(row=0, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_key, width=10, state="readonly").grid(
+            row=0, column=1, sticky="w", pady=(0, 4)
+        )
+
+        ttk.Label(frame, text=LABEL_NODE_TYPE).grid(row=1, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_node_type, width=14, state="readonly").grid(
+            row=1, column=1, sticky="w", pady=(0, 4)
+        )
+
+        ttk.Label(frame, text="Category").grid(row=2, column=0, sticky="w")
         self.combo_category = ttk.Combobox(
             frame, textvariable=self.var_category, values=categories, state="readonly", width=22
         )
-        self.combo_category.grid(row=0, column=1, sticky="w", pady=(0, 4))
+        self.combo_category.grid(row=2, column=1, sticky="w", pady=(0, 4))
 
-        ttk.Label(frame, text=LABEL_INTERFACE).grid(row=1, column=0, sticky="w")
+        ttk.Label(frame, text=LABEL_INTERFACE).grid(row=3, column=0, sticky="w")
         self.combo_interface = ttk.Combobox(
             frame, textvariable=self.var_interface, values=[INTERFACE_CAN, INTERFACE_DIO], state="readonly", width=22
         )
-        self.combo_interface.grid(row=1, column=1, sticky="w", pady=(0, 4))
+        self.combo_interface.grid(row=3, column=1, sticky="w", pady=(0, 4))
 
-        ttk.Label(frame, text="Label").grid(row=2, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.var_label, width=24).grid(row=2, column=1, sticky="w")
+        ttk.Label(frame, text="Label").grid(row=4, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_label, width=24).grid(row=4, column=1, sticky="w")
 
-        ttk.Label(frame, text="CAN ID").grid(row=3, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.var_can_id, width=10).grid(row=3, column=1, sticky="w")
+        ttk.Label(frame, text="CAN ID").grid(row=5, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_can_id, width=10).grid(row=5, column=1, sticky="w")
 
-        ttk.Label(frame, text=LABEL_DIO).grid(row=4, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.var_dio, width=10).grid(row=4, column=1, sticky="w")
+        ttk.Label(frame, text=LABEL_DIO).grid(row=6, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_dio, width=10).grid(row=6, column=1, sticky="w")
 
         ttk.Checkbutton(frame, text=LABEL_INVERT, variable=self.var_dio_invert).grid(
-            row=5, column=0, columnspan=2, sticky="w"
+            row=7, column=0, columnspan=2, sticky="w"
         )
 
-        ttk.Label(frame, text="Vendor").grid(row=6, column=0, sticky="w")
+        ttk.Label(frame, text="Vendor").grid(row=8, column=0, sticky="w")
         self.combo_vendor = ttk.Combobox(
             frame, textvariable=self.var_vendor, values=SUPPORTED_MANUFACTURERS, width=22
         )
-        self.combo_vendor.grid(row=6, column=1, sticky="w")
+        self.combo_vendor.grid(row=8, column=1, sticky="w")
 
-        ttk.Label(frame, text="Device Type").grid(row=7, column=0, sticky="w")
+        ttk.Label(frame, text="Device Type").grid(row=9, column=0, sticky="w")
         self.combo_type = ttk.Combobox(
             frame, textvariable=self.var_type, values=SUPPORTED_DEVICE_TYPES, width=22
         )
-        self.combo_type.grid(row=7, column=1, sticky="w")
+        self.combo_type.grid(row=9, column=1, sticky="w")
 
-        ttk.Label(frame, text="Motor").grid(row=8, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.var_motor, width=24).grid(row=8, column=1, sticky="w")
+        ttk.Label(frame, text="Motor").grid(row=10, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_motor, width=24).grid(row=10, column=1, sticky="w")
 
-        ttk.Label(frame, text="Fwd Limit").grid(row=9, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.var_fwd, width=12).grid(row=9, column=1, sticky="w")
+        ttk.Label(frame, text="Fwd Limit").grid(row=11, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_fwd, width=12).grid(row=11, column=1, sticky="w")
 
-        ttk.Label(frame, text="Rev Limit").grid(row=10, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.var_rev, width=12).grid(row=10, column=1, sticky="w")
+        ttk.Label(frame, text="Rev Limit").grid(row=12, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_rev, width=12).grid(row=12, column=1, sticky="w")
 
         ttk.Checkbutton(frame, text="Invert Limits", variable=self.var_limits_invert).grid(
-            row=11, column=0, columnspan=2, sticky="w"
+            row=13, column=0, columnspan=2, sticky="w"
         )
         ttk.Checkbutton(frame, text="Bus Terminator", variable=self.var_terminator).grid(
-            row=12, column=0, columnspan=2, sticky="w"
+            row=14, column=0, columnspan=2, sticky="w"
         )
 
-        ttk.Label(frame, text="Tags").grid(row=13, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.var_tags, width=24).grid(row=13, column=1, sticky="w")
+        ttk.Label(frame, text=LABEL_BUS).grid(row=15, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_bus, width=10).grid(row=15, column=1, sticky="w")
+
+        ttk.Label(frame, text=LABEL_ROW).grid(row=16, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_row, width=10).grid(row=16, column=1, sticky="w")
+
+        ttk.Label(frame, text=LABEL_X).grid(row=17, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_x, width=12).grid(row=17, column=1, sticky="w")
+
+        ttk.Label(frame, text=LABEL_SCALE).grid(row=18, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_scale, width=12).grid(row=18, column=1, sticky="w")
+
+        ttk.Label(frame, text=LABEL_FREE_Y).grid(row=19, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_free_y, width=12).grid(row=19, column=1, sticky="w")
+
+        ttk.Checkbutton(frame, text=LABEL_PROFILE_VISIBLE, variable=self.var_profile_visible).grid(
+            row=20, column=0, columnspan=2, sticky="w"
+        )
+
+        ttk.Label(frame, text="Tags").grid(row=21, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_tags, width=24).grid(row=21, column=1, sticky="w")
 
         button_row = ttk.Frame(frame)
-        button_row.grid(row=14, column=0, columnspan=2, sticky="e", pady=(8, 0))
+        button_row.grid(row=22, column=0, columnspan=2, sticky="e", pady=(8, 0))
         ttk.Button(button_row, text="Cancel", command=self._on_cancel).pack(side="right", padx=(4, 0))
         ttk.Button(button_row, text="OK", command=self._on_ok).pack(side="right")
         self._sync_device_type_choices()
@@ -244,6 +300,18 @@ class NodeDialog(tk.Toplevel):
             if self.var_type.get().strip() not in DIO_DEVICE_TYPES:
                 messagebox.showerror(DIALOG_TITLE_INVALID, ERR_DIO_TYPE_INVALID)
                 return
+        try:
+            bus_index = self._parse_int_field(self.var_bus.get().strip(), LABEL_BUS)
+            row = self._parse_int_field(self.var_row.get().strip(), LABEL_ROW)
+            x = self._parse_float_field(self.var_x.get().strip(), LABEL_X)
+            scale = self._parse_float_field(self.var_scale.get().strip(), LABEL_SCALE)
+            free_y = self._parse_optional_float_field(self.var_free_y.get().strip(), LABEL_FREE_Y)
+        except ValueError as exc:
+            messagebox.showerror(DIALOG_TITLE_INVALID, str(exc))
+            return
+        if scale < 0.6 or scale > 2.0:
+            messagebox.showerror(DIALOG_TITLE_INVALID, ERR_SCALE_RANGE)
+            return
         self.result = {
             "category": category,
             "interface": interface,
@@ -256,6 +324,12 @@ class NodeDialog(tk.Toplevel):
             "dio": dio_value,
             "dio_invert": bool(self.var_dio_invert.get()),
             "terminator": self.var_terminator.get(),
+            "bus_index": bus_index,
+            "row": row,
+            "x": x,
+            "scale": scale,
+            "free_y": free_y,
+            "profile_visible": bool(self.var_profile_visible.get()),
             "tags": self._parse_tags(self.var_tags.get()),
         }
         self.destroy()
@@ -305,6 +379,38 @@ class NodeDialog(tk.Toplevel):
         if dio < -1:
             raise ValueError(ERR_DIO_RANGE.format(label))
         return dio
+
+    @staticmethod
+    def _parse_int_field(text: str, label: str) -> int:
+        """
+        NAME
+            _parse_int_field - Parse a required integer dialog field.
+        """
+        try:
+            return int(text)
+        except ValueError as exc:
+            raise ValueError(ERR_INT_FIELD.format(label)) from exc
+
+    @staticmethod
+    def _parse_float_field(text: str, label: str) -> float:
+        """
+        NAME
+            _parse_float_field - Parse a required numeric dialog field.
+        """
+        try:
+            return float(text)
+        except ValueError as exc:
+            raise ValueError(ERR_FLOAT_FIELD.format(label)) from exc
+
+    @staticmethod
+    def _parse_optional_float_field(text: str, label: str) -> Optional[float]:
+        """
+        NAME
+            _parse_optional_float_field - Parse an optional numeric field.
+        """
+        if not text:
+            return None
+        return NodeDialog._parse_float_field(text, label)
 
     @staticmethod
     def _parse_tags(value: str) -> List[str]:

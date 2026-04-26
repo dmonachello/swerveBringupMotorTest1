@@ -23,6 +23,7 @@ import argparse
 import hashlib
 import json
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -30,6 +31,16 @@ from typing import Dict, List, Optional, Tuple
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox, simpledialog
+
+SCRIPT_PACKAGE_NAME = "tools.can_topology"
+SCRIPT_REPO_ROOT_PARENT_INDEX = 2
+
+if __package__ in (None, ""):
+    repo_root_path = Path(__file__).resolve().parents[SCRIPT_REPO_ROOT_PARENT_INDEX]
+    repo_root_text = str(repo_root_path)
+    if repo_root_text not in sys.path:
+        sys.path.insert(0, repo_root_text)
+    __package__ = SCRIPT_PACKAGE_NAME
 
 ENABLE_CANNECT_BUS_LINKS = True
 ENABLE_CANNECT_FREE_FLOAT = True
@@ -41,6 +52,7 @@ MENU_LABEL_ADD_ANALYZER = "Add Analyzer"
 MENU_LABEL_ADD_DEVICE = "Add Node..."
 MENU_LABEL_ADD_DIO_DEVICE = "Add DIO Device..."
 MENU_LABEL_SET_CANNECT_PORT = "Set CANnect Port..."
+MENU_LABEL_POPULATE_NEIGHBORS = "Populate Neighbors from Layout"
 DIALOG_TITLE_ADD_DIO = "Add DIO Device"
 DIALOG_TITLE_REPLACE = "Replace"
 ANALYZER_LABEL_PREFIX = "Analyzer"
@@ -97,6 +109,21 @@ MSG_FIX_CANNECT_TITLE = "Fix CANnect Conflicts"
 MSG_FIX_CANNECT_NONE = "No Ethernet-linked CANnect Inject nodes found."
 MSG_FIX_CANNECT_REMOVED = "Removed {} CAN trunk link(s) from Ethernet-linked CANnect Inject nodes."
 MSG_FIX_CANNECT_NO_REMOVE = "No CAN trunk links needed removal."
+TITLE_POPULATE_NEIGHBORS = "Populate Neighbors"
+MSG_POPULATE_NEIGHBORS_EMPTY = "No CAN nodes are available to populate neighbors."
+MSG_POPULATE_NEIGHBORS_DONE = (
+    "Populated {} neighbor link(s) and {} neighbor port link(s)."
+)
+TITLE_NEIGHBORS_STALE = "Neighbor Metadata Stale"
+MSG_NEIGHBORS_STALE_SAVE = (
+    "Neighbor metadata was generated before the latest layout change.\n\n"
+    "Choose Yes to rebuild neighbors from the current layout before saving.\n"
+    "Choose No to save the existing stale neighbor metadata.\n"
+    "Choose Cancel to stop the save."
+)
+NEIGHBOR_STATUS_NOT_POPULATED = "Neighbors: not populated"
+NEIGHBOR_STATUS_CURRENT = "Neighbors: current"
+NEIGHBOR_STATUS_STALE = "Neighbors: stale"
 MSG_INVALID_DIO_CHANNEL = "Invalid DIO channel for {}."
 MSG_MISSING_DIO_TYPE = "Missing DIO device type for {}."
 MSG_INVALID_DIO_TYPE = "Invalid DIO device type for {}."
@@ -119,15 +146,27 @@ TITLE_WIRE_DIO = "Wire DIO"
 TITLE_REMOVE_DIO_WIRE = "Remove DIO Wire"
 KEY_ATTACHMENT_LINKS = "attachmentLinks"
 KEY_DIO_LINKS = "dioLinks"
+KEY_DIAGRAM_NEIGHBOR_LINKS = "neighborLinks"
+KEY_DIAGRAM_NEIGHBOR_PORTS = "neighborPorts"
 KEY_LINK_DEVICE = "device"
 KEY_LINK_ATTACHMENT = "attachment"
 KEY_LINK_ROBORIO = "roborio"
+KEY_LINK_A = "a"
+KEY_LINK_B = "b"
+KEY_LINK_NODE = "node"
+KEY_LINK_PORT = "port"
+KEY_LINK_NEIGHBOR = "neighbor"
+KEY_LINK_NEIGHBOR_PORT = "neighborPort"
 KEY_ATTACHMENTS = "attachments"
+NEIGHBOR_PORT_LEFT = "left"
+NEIGHBOR_PORT_RIGHT = "right"
 KEY_UNDO_INTERFACE = "interface"
 KEY_UNDO_DIO = "dio"
 KEY_UNDO_INVERT = "invert"
 KEY_UNDO_ATTACHMENT_LINKS = "attachment_links"
 KEY_UNDO_DIO_LINKS = "dio_links"
+KEY_UNDO_NEIGHBOR_LINKS = "neighbor_links"
+KEY_UNDO_NEIGHBOR_PORTS = "neighbor_ports"
 ATTACH_LINE_COLOR = "#7a5d00"
 WIRE_LINE_COLOR = "#1f6feb"
 LINK_LINE_WIDTH = 2
@@ -151,6 +190,36 @@ MSG_DIO_WARN_NO_ROBORIO = "No roboRIO node present for DIO wiring."
 MSG_DIO_WARN_PROMPT = "Continue saving?"
 KEY_DIO_FREEY_MODE = "dioFreeYMode"
 DIO_FREEY_MODE_RAIL = "rail"
+KEY_DIAGRAM_BUS_COUNT = "busCount"
+KEY_DIAGRAM_BUS_SPACING = "busSpacing"
+KEY_DIAGRAM_BUS_OFFSETS = "busOffsets"
+KEY_DIAGRAM_BUS_LEFTS = "busLefts"
+KEY_DIAGRAM_BUS_RIGHTS = "busRights"
+KEY_DIAGRAM_BUS_CONNECTORS = "busConnectors"
+KEY_DIAGRAM_NODES = "nodes"
+KEY_DIAGRAM_CALLOUTS = "callouts"
+KEY_DIAGRAM_ETHERNET_LINKS = "ethernetLinks"
+KEY_DIAGRAM_CAN_LINKS = "canLinks"
+KEY_DIAGRAM_DEVICE_LINKS = "deviceLinks"
+DIAGRAM_CONTENT_LIST_KEYS = (
+    KEY_DIAGRAM_BUS_OFFSETS,
+    KEY_DIAGRAM_BUS_LEFTS,
+    KEY_DIAGRAM_BUS_RIGHTS,
+    KEY_DIAGRAM_BUS_CONNECTORS,
+    KEY_DIAGRAM_NODES,
+    KEY_DIAGRAM_CALLOUTS,
+    KEY_DIAGRAM_ETHERNET_LINKS,
+    KEY_DIAGRAM_CAN_LINKS,
+    KEY_DIAGRAM_DEVICE_LINKS,
+    KEY_ATTACHMENT_LINKS,
+    KEY_DIO_LINKS,
+    KEY_DIAGRAM_NEIGHBOR_LINKS,
+    KEY_DIAGRAM_NEIGHBOR_PORTS,
+)
+DIAGRAM_CONTENT_SCALAR_KEYS = (
+    KEY_DIAGRAM_BUS_COUNT,
+    KEY_DIAGRAM_BUS_SPACING,
+)
 BUS_LINE_COLOR = "#444444"
 MFG_NI = 1
 MFG_CTRE = 4
@@ -429,6 +498,9 @@ class TopologyEditor(tk.Tk):
         self._cannect_device_links: List[Dict[str, int]] = []
         self._attachment_links: List[Dict[str, int]] = []
         self._dio_wiring_links: List[Dict[str, int]] = []
+        self._neighbor_links: List[Dict[str, int]] = []
+        self._neighbor_ports: List[Dict[str, object]] = []
+        self._neighbors_dirty = False
         self._profile_name = "drawn_profile"
         self._profile_source_path: Optional[str] = None
         self._suppress_profile_select = False
@@ -465,6 +537,8 @@ class TopologyEditor(tk.Tk):
         self._drag_undo_pending = False
         self._dirty = False
         self._zoom_label_var = tk.StringVar(value="Zoom: 100%")
+        self._neighbor_status_var = tk.StringVar(value=NEIGHBOR_STATUS_NOT_POPULATED)
+        self._neighbor_status_label: Optional[ttk.Label] = None
         self._selected_nodes: set[int] = set()
         self._selected_buses: set[int] = set()
         self._selection_rect: Optional[int] = None
@@ -580,7 +654,9 @@ class TopologyEditor(tk.Tk):
         ttk.Checkbutton(bottom, text="Set As Default", variable=self.var_set_default).pack(
             anchor="w", pady=(4, 8)
         )
-        ttk.Label(bottom, textvariable=self._zoom_label_var).pack(anchor="w", pady=(2, 6))
+        ttk.Label(bottom, textvariable=self._zoom_label_var).pack(anchor="w", pady=(2, 2))
+        self._neighbor_status_label = ttk.Label(bottom, textvariable=self._neighbor_status_var)
+        self._neighbor_status_label.pack(anchor="w", pady=(0, 6))
 
         button_row = ttk.Frame(bottom)
         button_row.pack(fill="x")
@@ -710,6 +786,11 @@ class TopologyEditor(tk.Tk):
         edit_menu.add_command(label="Remove Attachment Link", command=self._remove_attachment_link)
         edit_menu.add_command(label="Wire DIO to roboRIO", command=self._wire_dio_to_roborio)
         edit_menu.add_command(label="Remove DIO Wire", command=self._remove_dio_wire)
+        edit_menu.add_separator()
+        edit_menu.add_command(
+            label=MENU_LABEL_POPULATE_NEIGHBORS,
+            command=self._populate_neighbors_from_layout,
+        )
         menu.add_cascade(label="Edit", menu=edit_menu)
         tags_menu = tk.Menu(menu, tearoff=False)
         tags_menu.add_command(label="Select by Tag...", command=self._select_by_tag)
@@ -1033,6 +1114,43 @@ class TopologyEditor(tk.Tk):
         """
         action()
 
+    def _has_neighbor_metadata(self) -> bool:
+        """
+        NAME
+            _has_neighbor_metadata - Return True when saved neighbor data exists.
+        """
+        return bool(self._neighbor_links or self._neighbor_ports)
+
+    def _refresh_neighbor_status(self) -> None:
+        """
+        NAME
+            _refresh_neighbor_status - Update neighbor freshness indicator.
+        """
+        if not self._has_neighbor_metadata():
+            status = NEIGHBOR_STATUS_NOT_POPULATED
+        elif self._neighbors_dirty:
+            status = NEIGHBOR_STATUS_STALE
+        else:
+            status = NEIGHBOR_STATUS_CURRENT
+        self._neighbor_status_var.set(status)
+
+    def _mark_neighbors_stale(self) -> None:
+        """
+        NAME
+            _mark_neighbors_stale - Mark generated neighbor metadata as stale.
+        """
+        if self._has_neighbor_metadata():
+            self._neighbors_dirty = True
+        self._refresh_neighbor_status()
+
+    def _mark_neighbors_current(self) -> None:
+        """
+        NAME
+            _mark_neighbors_current - Mark neighbor metadata as matching layout.
+        """
+        self._neighbors_dirty = False
+        self._refresh_neighbor_status()
+
     def _nudge_callout_scale(self, delta: float) -> None:
         """
         NAME
@@ -1089,6 +1207,9 @@ class TopologyEditor(tk.Tk):
             "cannect_device_links": list(self._cannect_device_links),
             KEY_UNDO_ATTACHMENT_LINKS: list(self._attachment_links),
             KEY_UNDO_DIO_LINKS: list(self._dio_wiring_links),
+            KEY_UNDO_NEIGHBOR_LINKS: list(self._neighbor_links),
+            KEY_UNDO_NEIGHBOR_PORTS: list(self._neighbor_ports),
+            "neighbors_dirty": self._neighbors_dirty,
             "bus_offsets": list(self._bus_offsets),
             "bus_lefts": list(self._bus_lefts),
             "bus_rights": list(self._bus_rights),
@@ -1185,6 +1306,9 @@ class TopologyEditor(tk.Tk):
             and isinstance(link.get(KEY_LINK_ROBORIO), int)
             and isinstance(link.get(KEY_LINK_DEVICE), int)
         ]
+        self._neighbor_links = self._normalize_neighbor_links(snap.get(KEY_UNDO_NEIGHBOR_LINKS, []))
+        self._neighbor_ports = self._normalize_neighbor_ports(snap.get(KEY_UNDO_NEIGHBOR_PORTS, []))
+        self._neighbors_dirty = bool(snap.get("neighbors_dirty", False))
         self._bus_offsets = snap["bus_offsets"]
         self._bus_lefts = snap.get("bus_lefts", [])
         self._bus_rights = snap.get("bus_rights", [])
@@ -1200,6 +1324,8 @@ class TopologyEditor(tk.Tk):
         if hasattr(self, "_callout_details_panel"):
             self._callout_details_panel.pack_forget()
         self._redraw_canvas()
+        self._refresh_neighbor_status()
+
     def _new_diagram(self) -> None:
         """
         NAME
@@ -1213,6 +1339,9 @@ class TopologyEditor(tk.Tk):
         self._cannect_device_links = []
         self._attachment_links = []
         self._dio_wiring_links = []
+        self._neighbor_links = []
+        self._neighbor_ports = []
+        self._neighbors_dirty = False
         self._next_key = 1
         self._selected_key = None
         self._callout_scale_var.set("--")
@@ -1232,6 +1361,7 @@ class TopologyEditor(tk.Tk):
         self._details_layout_shift = False
         self._dirty = False
         self._root_extras = {}
+        self._refresh_neighbor_status()
         self._refresh_list()
         self._update_details_panel(None)
         self._redraw_canvas()
@@ -1660,6 +1790,9 @@ class TopologyEditor(tk.Tk):
         self._can_bus_links = []
         self._cannect_device_links = []
         self._attachment_links = []
+        self._neighbor_links = []
+        self._neighbor_ports = []
+        self._neighbors_dirty = False
         self._dio_wiring_links = []
         diagram_applied = False
         diagram_profiles = {}
@@ -1668,10 +1801,18 @@ class TopologyEditor(tk.Tk):
             diagram_profiles = diagram.get("profiles") or {}
         if isinstance(diagram_profiles, dict):
             diag = diagram_profiles.get(name)
-            if isinstance(diag, dict):
+            if isinstance(diag, dict) and self._diagram_has_saved_content(diag):
                 self._apply_diagram_snapshot(diag)
                 diagram_applied = True
                 self._zoom_label_var.set(f"Zoom: {int(self._zoom * 100)}%")
+                if not self._profile_device_nodes():
+                    self._nodes = self._nodes_from_profile(profile)
+                    self._ethernet_links = []
+                    self._can_bus_links = []
+                    self._cannect_device_links = []
+                    self._attachment_links = []
+                    self._dio_wiring_links = []
+                    diagram_applied = False
         if not diagram_applied:
             self._rebuild_attachment_links_from_registry()
             self._ensure_dio_wiring_links()
@@ -1708,6 +1849,7 @@ class TopologyEditor(tk.Tk):
         self.update_idletasks()
         self._pending_fit_to_window = True
         self._dirty = False
+        self._refresh_neighbor_status()
         self.update_idletasks()
         self.canvas.xview_moveto(0.0)
         self.canvas.yview_moveto(0.0)
@@ -1752,6 +1894,26 @@ class TopologyEditor(tk.Tk):
     @staticmethod
     def _root_known_keys() -> set[str]:
         return {"schema_version", "data_version", "data_hash", "default_profile", "profiles", "diagram", "devices"}
+
+    @staticmethod
+    def _diagram_has_saved_content(diagram: Dict[str, object]) -> bool:
+        """
+        NAME
+            _diagram_has_saved_content - Check whether a diagram snapshot has layout data.
+
+        DESCRIPTION
+            Empty per-profile diagram objects are placeholders, not layouts.
+            Treating them as applied suppresses the normal profile-driven
+            topology build and can leave the editor blank.
+        """
+        for key in DIAGRAM_CONTENT_LIST_KEYS:
+            value = diagram.get(key)
+            if isinstance(value, list) and value:
+                return True
+        for key in DIAGRAM_CONTENT_SCALAR_KEYS:
+            if key in diagram:
+                return True
+        return False
 
     def _stash_root_extras(self, payload: Dict[str, object]) -> None:
         """
@@ -1937,6 +2099,8 @@ class TopologyEditor(tk.Tk):
             return
         if not self._confirm_terminators():
             return
+        if not self._confirm_neighbors_current_for_save():
+            return
         path = filedialog.asksaveasfilename(
             title="Save Bringup Profiles JSON",
             defaultextension=".json",
@@ -1996,6 +2160,8 @@ class TopologyEditor(tk.Tk):
         if not self._confirm_can_id_collisions(nodes=selected_devices):
             return
         if not self._confirm_terminators(nodes=selected_devices):
+            return
+        if not self._confirm_neighbors_current_for_save():
             return
         path = filedialog.asksaveasfilename(
             title="Save Bringup Profiles JSON",
@@ -2139,6 +2305,8 @@ class TopologyEditor(tk.Tk):
         if not self._confirm_terminators():
             return
         if not self._confirm_dio_warnings():
+            return
+        if not self._confirm_neighbors_current_for_save():
             return
         data = {}
         if path.exists():
@@ -2871,6 +3039,8 @@ class TopologyEditor(tk.Tk):
             "canLinks": list(self._can_bus_links),
             KEY_ATTACHMENT_LINKS: list(self._attachment_links),
             KEY_DIO_LINKS: list(self._dio_wiring_links),
+            KEY_DIAGRAM_NEIGHBOR_LINKS: list(self._neighbor_links),
+            KEY_DIAGRAM_NEIGHBOR_PORTS: list(self._neighbor_ports),
         }
         return snapshot
 
@@ -2935,6 +3105,8 @@ class TopologyEditor(tk.Tk):
                 "Missing Profile",
                 f"Profile '{profile_name}' not found in the source file.",
             )
+            return
+        if not self._confirm_neighbors_current_for_save():
             return
         diagram = data.get("diagram")
         if not isinstance(diagram, dict):
@@ -3022,6 +3194,8 @@ class TopologyEditor(tk.Tk):
             "deviceLinks": list(self._cannect_device_links),
             KEY_ATTACHMENT_LINKS: list(self._attachment_links),
             KEY_DIO_LINKS: list(self._dio_wiring_links),
+            KEY_DIAGRAM_NEIGHBOR_LINKS: list(self._neighbor_links),
+            KEY_DIAGRAM_NEIGHBOR_PORTS: list(self._neighbor_ports),
         }
 
     def _apply_diagram_snapshot(self, diagram: Dict[str, object]) -> None:
@@ -3462,12 +3636,97 @@ class TopologyEditor(tk.Tk):
                     {KEY_LINK_ROBORIO: int(robo_key), KEY_LINK_DEVICE: int(dev_key)}
                 )
 
+        self._neighbor_links = self._normalize_neighbor_links(
+            diagram.get(KEY_DIAGRAM_NEIGHBOR_LINKS), device_key_remap
+        )
+        self._neighbor_ports = self._normalize_neighbor_ports(
+            diagram.get(KEY_DIAGRAM_NEIGHBOR_PORTS), device_key_remap
+        )
+        self._mark_neighbors_current()
         self._prune_attachment_links()
         self._prune_dio_wiring_links()
         self._ensure_dio_wiring_links()
         self._fix_cannect_conflicts(notify=False)
         self._apply_cannect_free_float()
         self._resolve_overlaps()
+
+    @staticmethod
+    def _normalize_neighbor_links(
+        entries: object,
+        key_remap: Optional[Dict[int, int]] = None,
+    ) -> List[Dict[str, int]]:
+        """
+        NAME
+            _normalize_neighbor_links - Validate undirected neighbor links.
+        """
+        normalized: List[Dict[str, int]] = []
+        seen: set[Tuple[int, int]] = set()
+        if not isinstance(entries, list):
+            return normalized
+        key_remap = key_remap or {}
+        for entry in entries:
+            if isinstance(entry, dict):
+                a = entry.get(KEY_LINK_A)
+                b = entry.get(KEY_LINK_B)
+            elif isinstance(entry, (list, tuple)) and len(entry) == 2:
+                a, b = entry
+            else:
+                continue
+            if isinstance(a, int) and a in key_remap:
+                a = key_remap[a]
+            if isinstance(b, int) and b in key_remap:
+                b = key_remap[b]
+            if not isinstance(a, int) or not isinstance(b, int) or a == b:
+                continue
+            pair = (min(a, b), max(a, b))
+            if pair in seen:
+                continue
+            seen.add(pair)
+            normalized.append({KEY_LINK_A: pair[0], KEY_LINK_B: pair[1]})
+        return normalized
+
+    @staticmethod
+    def _normalize_neighbor_ports(
+        entries: object,
+        key_remap: Optional[Dict[int, int]] = None,
+    ) -> List[Dict[str, object]]:
+        """
+        NAME
+            _normalize_neighbor_ports - Validate directed port neighbor links.
+        """
+        normalized: List[Dict[str, object]] = []
+        seen: set[Tuple[str, str, str, str]] = set()
+        if not isinstance(entries, list):
+            return normalized
+        key_remap = key_remap or {}
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            node = entry.get(KEY_LINK_NODE)
+            port = entry.get(KEY_LINK_PORT)
+            neighbor = entry.get(KEY_LINK_NEIGHBOR)
+            neighbor_port = entry.get(KEY_LINK_NEIGHBOR_PORT)
+            if isinstance(node, int) and node in key_remap:
+                node = key_remap[node]
+            if isinstance(neighbor, int) and neighbor in key_remap:
+                neighbor = key_remap[neighbor]
+            if not isinstance(node, (int, str)) or not isinstance(neighbor, (int, str)):
+                continue
+            if not isinstance(port, str) or not isinstance(neighbor_port, str):
+                continue
+            key = (str(node), port, str(neighbor), neighbor_port)
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(
+                {
+                    KEY_LINK_NODE: node,
+                    KEY_LINK_PORT: port,
+                    KEY_LINK_NEIGHBOR: neighbor,
+                    KEY_LINK_NEIGHBOR_PORT: neighbor_port,
+                }
+            )
+        return normalized
 
     def _confirm_discard(self) -> bool:
         """
@@ -3535,7 +3794,7 @@ class TopologyEditor(tk.Tk):
             bus_index=len(self._nodes) % max(len(self._bus_offsets), 1),
             scale=1.0,
             tags=tags,
-            profile_visible=False if is_diagram_category else True,
+            profile_visible=bool(data.get("profile_visible", False if is_diagram_category else True)),
         )
         self._next_key += 1
         self._nodes.append(node)
@@ -3544,6 +3803,7 @@ class TopologyEditor(tk.Tk):
         self._prune_dio_wiring_links()
         self._ensure_dio_wiring_links()
         self._refresh_list()
+        self._mark_neighbors_stale()
         self._redraw_canvas()
         self._select_node(node.key)
 
@@ -3589,6 +3849,7 @@ class TopologyEditor(tk.Tk):
         self._nodes.append(node)
         self._layout_width = max(self._layout_width, node.x + 200)
         self._refresh_list()
+        self._mark_neighbors_stale()
         self._redraw_canvas()
         self._select_node(node.key)
 
@@ -3615,6 +3876,7 @@ class TopologyEditor(tk.Tk):
         self._nodes.append(node)
         self._layout_width = max(self._layout_width, node.x + LAYOUT_PAD_X)
         self._refresh_list()
+        self._mark_neighbors_stale()
         self._redraw_canvas()
         self._select_node(node.key)
 
@@ -3686,6 +3948,7 @@ class TopologyEditor(tk.Tk):
         self._prune_dio_wiring_links()
         self._ensure_dio_wiring_links()
         self._refresh_list()
+        self._mark_neighbors_stale()
         self._redraw_canvas()
         self._select_node(node.key)
 
@@ -4212,6 +4475,112 @@ class TopologyEditor(tk.Tk):
             messagebox.showinfo(TITLE_REMOVE_DIO_WIRE, MSG_WIRE_NONE)
         self._redraw_canvas()
 
+    def _populate_neighbors_from_layout(self) -> None:
+        """
+        NAME
+            _populate_neighbors_from_layout - Create neighbor metadata from layout.
+
+        DESCRIPTION
+            Uses each CAN-capable node's bus index and x coordinate to build
+            explicit left/right adjacency metadata for the current diagram.
+        """
+        self._rebuild_neighbors_from_layout(push_undo=True, notify=True)
+
+    def _rebuild_neighbors_from_layout(self, push_undo: bool, notify: bool) -> bool:
+        """
+        NAME
+            _rebuild_neighbors_from_layout - Refresh neighbor metadata cache.
+
+        RETURNS
+            True when neighbor data was rebuilt or cleared.
+        """
+        neighbor_links, neighbor_ports = self._build_layout_neighbor_metadata(self._nodes)
+        if not neighbor_links:
+            if notify:
+                messagebox.showinfo(TITLE_POPULATE_NEIGHBORS, MSG_POPULATE_NEIGHBORS_EMPTY)
+            if self._has_neighbor_metadata():
+                if push_undo:
+                    self._push_undo()
+                self._neighbor_links = []
+                self._neighbor_ports = []
+                self._mark_neighbors_current()
+            return False
+        if push_undo:
+            self._push_undo()
+        self._neighbor_links = neighbor_links
+        self._neighbor_ports = neighbor_ports
+        self._mark_neighbors_current()
+        if notify:
+            messagebox.showinfo(
+                TITLE_POPULATE_NEIGHBORS,
+                MSG_POPULATE_NEIGHBORS_DONE.format(len(neighbor_links), len(neighbor_ports)),
+            )
+        return True
+
+    def _confirm_neighbors_current_for_save(self) -> bool:
+        """
+        NAME
+            _confirm_neighbors_current_for_save - Guard saves with stale neighbors.
+
+        RETURNS
+            True when the save should continue.
+        """
+        if not self._has_neighbor_metadata() or not self._neighbors_dirty:
+            return True
+        choice = messagebox.askyesnocancel(TITLE_NEIGHBORS_STALE, MSG_NEIGHBORS_STALE_SAVE)
+        if choice is None:
+            return False
+        if choice:
+            self._rebuild_neighbors_from_layout(push_undo=False, notify=False)
+        return True
+
+    @staticmethod
+    def _build_layout_neighbor_metadata(
+        nodes: List[Node],
+    ) -> Tuple[List[Dict[str, int]], List[Dict[str, object]]]:
+        """
+        NAME
+            _build_layout_neighbor_metadata - Infer adjacency from drawn order.
+
+        DESCRIPTION
+            Groups CAN-capable non-callout nodes by bus, sorts each group by
+            x coordinate, and connects adjacent nodes with both undirected
+            links and directed left/right port links.
+        """
+        grouped: Dict[int, List[Node]] = {}
+        for node in nodes:
+            if node.node_type == NODE_TYPE_CALLOUT:
+                continue
+            if getattr(node, "interface", INTERFACE_CAN) != INTERFACE_CAN:
+                continue
+            grouped.setdefault(int(node.bus_index), []).append(node)
+
+        neighbor_links: List[Dict[str, int]] = []
+        neighbor_ports: List[Dict[str, object]] = []
+        for _bus, bus_nodes in sorted(grouped.items()):
+            ordered = sorted(bus_nodes, key=lambda item: (float(item.x), int(item.key)))
+            for left, right in zip(ordered, ordered[1:]):
+                a = min(int(left.key), int(right.key))
+                b = max(int(left.key), int(right.key))
+                neighbor_links.append({KEY_LINK_A: a, KEY_LINK_B: b})
+                neighbor_ports.append(
+                    {
+                        KEY_LINK_NODE: int(left.key),
+                        KEY_LINK_PORT: NEIGHBOR_PORT_RIGHT,
+                        KEY_LINK_NEIGHBOR: int(right.key),
+                        KEY_LINK_NEIGHBOR_PORT: NEIGHBOR_PORT_LEFT,
+                    }
+                )
+                neighbor_ports.append(
+                    {
+                        KEY_LINK_NODE: int(right.key),
+                        KEY_LINK_PORT: NEIGHBOR_PORT_LEFT,
+                        KEY_LINK_NEIGHBOR: int(left.key),
+                        KEY_LINK_NEIGHBOR_PORT: NEIGHBOR_PORT_RIGHT,
+                    }
+                )
+        return neighbor_links, neighbor_ports
+
     def _is_dio_node(self, node: Node) -> bool:
         """
         NAME
@@ -4449,9 +4818,6 @@ class TopologyEditor(tk.Tk):
         if node is None:
             messagebox.showinfo("Edit", "Select a node to edit.")
             return
-        if self._is_swyft_node(node):
-            self._edit_diagram_node(node)
-            return
         dialog = NodeDialog(self, "Edit Node", initial=node)
         self.wait_window(dialog)
         if not dialog.result:
@@ -4471,6 +4837,7 @@ class TopologyEditor(tk.Tk):
         node.category = category
         node.label = new_label or str(data["label"])
         node.can_id = int(data["can_id"])
+        node.node_type = ANALYZER_NODE_TYPE if category in DIAGRAM_CATEGORIES else NODE_TYPE_DEVICE
         node.interface = str(data.get("interface", INTERFACE_CAN)).strip() or INTERFACE_CAN
         node.vendor = str(data.get("vendor", ""))
         node.device_type = str(data.get("device_type", ""))
@@ -4481,6 +4848,12 @@ class TopologyEditor(tk.Tk):
         node.terminator = (
             bool(data.get("terminator")) if data.get("terminator") is not None else None
         )
+        node.bus_index = int(data.get("bus_index", node.bus_index))
+        node.row = int(data.get("row", node.row))
+        node.x = float(data.get("x", node.x))
+        node.scale = max(0.6, min(2.0, float(data.get("scale", node.scale))))
+        node.free_y = data.get("free_y") if isinstance(data.get("free_y"), (int, float)) else None
+        node.profile_visible = bool(data.get("profile_visible"))
         node.tags = self._normalize_tags(data.get("tags", []))
         if old_label and new_label and old_label != new_label:
             self._rename_registry_label(old_label, new_label)
@@ -4560,6 +4933,7 @@ class TopologyEditor(tk.Tk):
         self._prune_dio_wiring_links()
         self._refresh_list()
         self._update_details_panel(None)
+        self._mark_neighbors_stale()
         self._redraw_canvas()
 
     def _on_edit_selected(self) -> None:
@@ -4589,6 +4963,7 @@ class TopologyEditor(tk.Tk):
                 return
             self._refresh_list()
             self._update_details_panel(None)
+            self._mark_neighbors_stale()
             self._redraw_canvas()
             return
         if not self._selected_nodes:
@@ -4612,6 +4987,7 @@ class TopologyEditor(tk.Tk):
         self._update_details_panel(None)
         if hasattr(self, "_callout_details_panel"):
             self._preserve_canvas_view(self._callout_details_panel.pack_forget)
+        self._mark_neighbors_stale()
         self._redraw_canvas()
 
     def _remove_selected_buses(self) -> bool:
@@ -5001,6 +5377,7 @@ class TopologyEditor(tk.Tk):
         max_x = max((n.x for n in self._nodes), default=0.0)
         self._layout_width = max(self._layout_width, max_x + 200)
         self._clear_guides()
+        self._mark_neighbors_stale()
         self._redraw_canvas()
 
     def _layout_single_bus(self) -> None:
@@ -5035,6 +5412,7 @@ class TopologyEditor(tk.Tk):
         max_x = max((n.x for n in self._nodes), default=0.0)
         self._layout_width = max(self._layout_width, max_x + 200)
         self._clear_guides()
+        self._mark_neighbors_stale()
         self._redraw_canvas()
 
     def _selected_device_nodes(self) -> List[Node]:
@@ -5130,6 +5508,7 @@ class TopologyEditor(tk.Tk):
         self._layout_width = max(self._layout_width, max_x + 200)
         self._dirty = True
         self._clear_guides()
+        self._mark_neighbors_stale()
         self._redraw_canvas()
         return "break"
 
@@ -5201,6 +5580,7 @@ class TopologyEditor(tk.Tk):
         max_x = max((n.x for n in self._nodes), default=0.0)
         self._layout_width = max(self._layout_width, max_x + 200)
         self._clear_guides()
+        self._mark_neighbors_stale()
         self._redraw_canvas()
 
     def _distribute_selected_horizontally(self) -> None:
@@ -5229,6 +5609,7 @@ class TopologyEditor(tk.Tk):
         max_x = max((n.x for n in self._nodes), default=0.0)
         self._layout_width = max(self._layout_width, max_x + 200)
         self._clear_guides()
+        self._mark_neighbors_stale()
         self._redraw_canvas()
 
     def _tidy_selection(self) -> None:
@@ -5254,6 +5635,7 @@ class TopologyEditor(tk.Tk):
         max_x = max((n.x for n in self._nodes), default=0.0)
         self._layout_width = max(self._layout_width, max_x + 200)
         self._clear_guides()
+        self._mark_neighbors_stale()
         self._redraw_canvas()
 
     def _tidy_all(self) -> None:
@@ -8576,6 +8958,10 @@ class TopologyEditor(tk.Tk):
             self._selection_start = None
             self._apply_marquee_selection(x0, y0, x1, y1, additive=True)
             return
+        layout_dragged = bool(
+            self._dragging_active
+            and (self._drag_state is not None or self._multi_drag is not None or self._bus_drag is not None or self._bus_resize is not None)
+        )
         if self._bus_drag is not None:
             if not self._bus_connectors or all(self._bus_connectors):
                 self._reorder_buses_by_y()
@@ -8607,6 +8993,8 @@ class TopologyEditor(tk.Tk):
         self._clear_guides()
         if self._selected_key is not None:
             self._update_details_panel(self._get_selected_node())
+        if layout_dragged:
+            self._mark_neighbors_stale()
         self._redraw_canvas()
         if dragged_key is not None:
             self._maybe_link_dragged_device_to_cannect(dragged_key)
@@ -8700,6 +9088,7 @@ class TopologyEditor(tk.Tk):
         self._pending_bus_after = None
         self._pending_cannect_direct = None
         self._pending_bus_island = False
+        self._mark_neighbors_stale()
         self._redraw_canvas()
 
     def _on_add_callout(self) -> None:
@@ -8919,6 +9308,7 @@ class TopologyEditor(tk.Tk):
         self._selected_nodes = set(new_nodes)
         self._selected_buses = set(new_bus_indices)
         self._sync_selection_state()
+        self._mark_neighbors_stale()
         self._redraw_canvas()
 
     def _node_snapshot(self, node: Node) -> Dict[str, object]:

@@ -237,11 +237,22 @@ from tools.common.profile_constants import (
     INTERFACE_INTERNAL,
     INTERFACE_PWM,
     KEY_ATTACHMENTS,
+    KEY_BUS,
     KEY_TERMINATOR,
     KEY_TYPE,
     KEY_VENDOR,
     KEY_ROLE,
     KEY_TAGS,
+    KEY_DIAGRAM,
+    KEY_NEIGHBOR_LINKS,
+    KEY_NEIGHBOR_PORTS,
+    KEY_LINK_A,
+    KEY_LINK_B,
+    KEY_LINK_NODE,
+    KEY_LINK_PORT,
+    KEY_LINK_NEIGHBOR,
+    KEY_LINK_NEIGHBOR_PORT,
+    KEY_NODE_KEY,
     get_device_interface,
 )
 from tools.common.test_authoring import (
@@ -983,6 +994,11 @@ MESSAGE_LOCAL_REGISTRY_DEVICE = "Local devices-table entry {label}:"
 MESSAGE_LOCAL_REGISTRY_EMPTY = "  (no fields)"
 MESSAGE_REGISTRY_FIELD_FMT = "  {key}={value}"
 MESSAGE_REGISTRY_FIELD_FMT_NAMED = "  {key}={value} ({name})"
+MESSAGE_REGISTRY_TOPOLOGY_HEADER = "  topology:"
+MESSAGE_REGISTRY_TOPOLOGY_FIELD_FMT = "    {key}={value}"
+MESSAGE_REGISTRY_TOPOLOGY_NEIGHBOR_FMT = (
+    "    neighbor {port}: {label} (key={key}, port={neighbor_port})"
+)
 MESSAGE_MAPPINGS_READ_FAIL = "WARNING: Failed to read CAN mappings: {path}"
 MESSAGE_ERR_BINDINGS_SUBCOMMAND = (
     "ERROR: bindings <show|controller|binding|axis|load|save|validate>"
@@ -10401,7 +10417,10 @@ class BridgeCli:
             print(MESSAGE_ERR_REGISTRY_DEVICE_NOT_FOUND)
             return StatusResult(code=SS__DEVICE__NOT_FOUND)
         label = str(entry.get(FIELD_LABEL, name)).strip() or name
+        topology = self._local_device_topology(label)
         payload = {KEY_DEVICE: entry}
+        if topology:
+            payload["topology"] = topology
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             print(self._dump_json(payload, pretty))
@@ -10431,10 +10450,177 @@ class BridgeCli:
                     )
                     continue
             lines.append(MESSAGE_REGISTRY_FIELD_FMT.format(key=key, value=value))
+        if topology:
+            lines.extend(self._format_device_topology_lines(topology))
         if len(lines) == 1:
             lines.append(MESSAGE_LOCAL_REGISTRY_EMPTY)
         print("\n".join(lines))
         return StatusResult(code=SS__NORMAL)
+
+    def _local_device_topology(self, label: str) -> Dict[str, object]:
+        """
+        NAME
+            _local_device_topology - Return diagram topology details for a label.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            return {}
+        profile = self._active_profile_name()
+        if not profile:
+            return {}
+        diagram = self._diagram_for_profile(profile)
+        if not diagram:
+            return {}
+        nodes = diagram.get("nodes")
+        if not isinstance(nodes, list):
+            return {}
+        node_by_key: Dict[int, Dict[str, object]] = {}
+        target_node: Optional[Dict[str, object]] = None
+        label_key = label.strip().lower()
+        for raw in nodes:
+            if not isinstance(raw, dict):
+                continue
+            key = raw.get(KEY_NODE_KEY)
+            if isinstance(key, int):
+                node_by_key[key] = raw
+            node_label = str(raw.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if node_label.lower() == label_key:
+                target_node = raw
+        if target_node is None:
+            return {}
+        node_key = target_node.get(KEY_NODE_KEY)
+        if not isinstance(node_key, int):
+            return {}
+        topology: Dict[str, object] = {
+            KEY_NODE_KEY: node_key,
+            KEY_BUS: target_node.get(KEY_BUS),
+            "row": target_node.get("row"),
+            "x": target_node.get("x"),
+        }
+        neighbor_links = self._device_neighbor_links(diagram, node_key, node_by_key)
+        neighbor_ports = self._device_neighbor_ports(diagram, node_key, node_by_key)
+        if neighbor_links:
+            topology[KEY_NEIGHBOR_LINKS] = neighbor_links
+        if neighbor_ports:
+            topology[KEY_NEIGHBOR_PORTS] = neighbor_ports
+        return topology
+
+    def _diagram_for_profile(self, profile: str) -> Dict[str, object]:
+        """
+        NAME
+            _diagram_for_profile - Return current profile diagram metadata.
+        """
+        diagram_root = self._local_root_payload.get(KEY_DIAGRAM)
+        if not isinstance(diagram_root, dict):
+            return {}
+        profiles = diagram_root.get(KEY_PROFILES)
+        if not isinstance(profiles, dict):
+            return {}
+        diagram = profiles.get(profile)
+        return diagram if isinstance(diagram, dict) else {}
+
+    def _device_neighbor_links(
+        self,
+        diagram: Dict[str, object],
+        node_key: int,
+        node_by_key: Dict[int, Dict[str, object]],
+    ) -> List[Dict[str, object]]:
+        """
+        NAME
+            _device_neighbor_links - Return undirected neighbors for one node.
+        """
+        entries = diagram.get(KEY_NEIGHBOR_LINKS)
+        if not isinstance(entries, list):
+            return []
+        neighbors: List[Dict[str, object]] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            a = entry.get(KEY_LINK_A)
+            b = entry.get(KEY_LINK_B)
+            if not isinstance(a, int) or not isinstance(b, int):
+                continue
+            if a == node_key:
+                other = b
+            elif b == node_key:
+                other = a
+            else:
+                continue
+            neighbors.append(self._topology_neighbor_entry(other, node_by_key))
+        return neighbors
+
+    def _device_neighbor_ports(
+        self,
+        diagram: Dict[str, object],
+        node_key: int,
+        node_by_key: Dict[int, Dict[str, object]],
+    ) -> List[Dict[str, object]]:
+        """
+        NAME
+            _device_neighbor_ports - Return port-aware neighbors for one node.
+        """
+        entries = diagram.get(KEY_NEIGHBOR_PORTS)
+        if not isinstance(entries, list):
+            return []
+        neighbors: List[Dict[str, object]] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            node = entry.get(KEY_LINK_NODE)
+            neighbor = entry.get(KEY_LINK_NEIGHBOR)
+            if node != node_key or not isinstance(neighbor, int):
+                continue
+            neighbor_entry = self._topology_neighbor_entry(neighbor, node_by_key)
+            neighbor_entry[KEY_LINK_PORT] = entry.get(KEY_LINK_PORT)
+            neighbor_entry[KEY_LINK_NEIGHBOR_PORT] = entry.get(KEY_LINK_NEIGHBOR_PORT)
+            neighbors.append(neighbor_entry)
+        return neighbors
+
+    def _topology_neighbor_entry(
+        self,
+        key: int,
+        node_by_key: Dict[int, Dict[str, object]],
+    ) -> Dict[str, object]:
+        """
+        NAME
+            _topology_neighbor_entry - Build one neighbor summary.
+        """
+        node = node_by_key.get(key, {})
+        return {
+            KEY_NODE_KEY: key,
+            KEY_LABEL: str(node.get(KEY_LABEL, EMPTY_STRING)).strip(),
+            KEY_BUS: node.get(KEY_BUS),
+            "row": node.get("row"),
+            "x": node.get("x"),
+        }
+
+    def _format_device_topology_lines(self, topology: Dict[str, object]) -> List[str]:
+        """
+        NAME
+            _format_device_topology_lines - Format topology metadata for text show.
+        """
+        lines = [MESSAGE_REGISTRY_TOPOLOGY_HEADER]
+        for key in (KEY_NODE_KEY, KEY_BUS, "row", "x"):
+            if key in topology:
+                lines.append(
+                    MESSAGE_REGISTRY_TOPOLOGY_FIELD_FMT.format(
+                        key=key,
+                        value=topology.get(key),
+                    )
+                )
+        neighbor_ports = topology.get(KEY_NEIGHBOR_PORTS)
+        if isinstance(neighbor_ports, list) and neighbor_ports:
+            for entry in neighbor_ports:
+                if not isinstance(entry, dict):
+                    continue
+                lines.append(
+                    MESSAGE_REGISTRY_TOPOLOGY_NEIGHBOR_FMT.format(
+                        port=entry.get(KEY_LINK_PORT, EMPTY_STRING),
+                        label=entry.get(KEY_LABEL, EMPTY_STRING),
+                        key=entry.get(KEY_NODE_KEY, EMPTY_STRING),
+                        neighbor_port=entry.get(KEY_LINK_NEIGHBOR_PORT, EMPTY_STRING),
+                    )
+                )
+        return lines
 
     def _load_can_mappings(self) -> Dict[str, Dict[str, str]]:
         """

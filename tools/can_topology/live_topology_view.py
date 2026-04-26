@@ -1083,7 +1083,8 @@ class LiveTopologyView(ttk.Frame):
             )
 
         for node in self._nodes:
-            if node.node_type != "device":
+            is_analyzer_node = node.category.lower() == CATEGORY_ANALYZER
+            if node.node_type != "device" and not is_analyzer_node:
                 continue
             if node.key in linked_devices:
                 continue
