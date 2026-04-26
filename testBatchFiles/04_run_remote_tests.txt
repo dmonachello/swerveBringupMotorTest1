@@ -1,10 +1,10 @@
 echo on
 connect
-configure terminal
-group testgroup
-add device "SPARKMAX/NEO 25"
-enable
-run test neo25_button
-run test all_motors
-end
-
+tests select neo25_spin_low
+tests run
+tests select neo5507_spin_low
+tests run
+tests select falcon9_spin_low
+tests run
+tests select all_three_spin_low
+tests run

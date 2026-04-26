@@ -80,6 +80,8 @@ from tools.can_nt.bridge_ops import (
     show_devices,
     show_group,
     show_groups,
+    show_profile,
+    show_profiles,
     show_runtime_state,
     show_selected_device,
     show_status,
@@ -235,11 +237,22 @@ from tools.common.profile_constants import (
     INTERFACE_INTERNAL,
     INTERFACE_PWM,
     KEY_ATTACHMENTS,
+    KEY_BUS,
     KEY_TERMINATOR,
     KEY_TYPE,
     KEY_VENDOR,
     KEY_ROLE,
     KEY_TAGS,
+    KEY_DIAGRAM,
+    KEY_NEIGHBOR_LINKS,
+    KEY_NEIGHBOR_PORTS,
+    KEY_LINK_A,
+    KEY_LINK_B,
+    KEY_LINK_NODE,
+    KEY_LINK_PORT,
+    KEY_LINK_NEIGHBOR,
+    KEY_LINK_NEIGHBOR_PORT,
+    KEY_NODE_KEY,
     get_device_interface,
 )
 from tools.common.test_authoring import (
@@ -294,6 +307,14 @@ KEEPALIVE_INTERVAL_SEC = 1.0
 KEEPALIVE_SLEEP_SEC = 0.1
 KEEPALIVE_DISCONNECTED_WAIT_SEC = 0.5
 KEEPALIVE_JOIN_TIMEOUT_SEC = 1.0
+ROBOT_COMMAND_TIMEOUT_SEC = 2.0
+ROBOT_LONG_COMMAND_TIMEOUT_SEC = 12.0
+PROFILE_EXPORT_TEST_RUN_WAIT_SEC = 2.0
+TEST_WAIT_DEFAULT_TIMEOUT_SEC = 10.0
+TEST_WAIT_POLL_SEC = 0.1
+SLEEP_MIN_SEC = 0.0
+SLEEP_MAX_SEC = 3600.0
+SLEEP_ARG_COUNT = 2
 KEEPALIVE_LAST_INIT = 0.0
 KEEPALIVE_THREAD_NAME = "BridgeCliKeepalive"
 CMD_UI_PING = "uiPing"
@@ -364,6 +385,8 @@ CMD_SHOW_RUNTIME_STATE = "showRuntimeState"
 CMD_SHOW_VERSION = "showVersion"
 CMD_SHOW_TESTS = "showTests"
 CMD_SHOW_SOURCES = "showSources"
+CMD_SHOW_PROFILES = "showProfiles"
+CMD_SHOW_PROFILE = "showProfile"
 
 try:
     from prompt_toolkit import prompt as prompt_toolkit_prompt
@@ -432,6 +455,8 @@ CMD_RUN_ALL = "run-all"
 SHOW_TARGET_VERSION = "version"
 CMD_DEFAULT = PARSER_SPEC.cmd_default
 CMD_MESSAGES = "messages"
+CMD_SLEEP = "sleep"
+CMD_WAIT = "wait"
 CMD_MESSAGE_LEVEL = "message-level"
 CMD_TYPE = "type"
 CMD_DEVICE = "device"
@@ -480,6 +505,7 @@ CMD_DEADBAND_SWEEP = "deadbandsweep"
 CMD_ENABLED = "enabled"
 CMD_EXIT = "exit"
 CMD_END = "end"
+CMD_QUIT = "quit"
 CMD_BINDINGS = "bindings"
 CMD_CONTROLLER = "controller"
 CMD_BINDING = "binding"
@@ -536,6 +562,8 @@ CMD_SAVE_RUNTIME_GROUPS = "runtime-groups"
 CMD_VALIDATE_ALL = PARSER_SPEC.cmd_validate_all
 CMD_ACTIVE = "--active"
 CMD_ACTIVE_SET = "--active-set"
+FLAG_RUN = "--run"
+FLAG_TIMEOUT = "--timeout"
 CMD_ALL = "all"
 CMD_SCRIPT = "script"
 CMD_PROMPT = "--prompt"
@@ -557,6 +585,7 @@ CMD_FILE = "file"
 FLAG_JSON = "--json"
 FLAG_DOT = "--dot"
 FLAG_FORCE = "--force"
+FLAG_INSTALL_ROBOT = "--install-robot"
 FLAG_REPAIR = "--repair"
 FLAG_YES = "--yes"
 FLAG_CLEAR_MEMORY = "--clear-memory"
@@ -603,9 +632,10 @@ PROFILE_EXPORT_SCRIPT_HEADER_ALL = "# bridge_cli profiles export"
 PROFILES_EXPORT_JSON_NAME = "profiles_export.json"
 PROFILES_EXPORT_SCRIPT_NAME = "profiles_export.cli"
 PROFILE_EXPORT_HEADER_PREFIX = "#"
-PROFILE_EXPORT_HEADER_ECHO = "# echo on"
+PROFILE_EXPORT_HEADER_ECHO = "echo on"
 PROFILE_EXPORT_HEADER_INIT = "# profiles init"
 PROFILE_EXPORT_HEADER_SAVE_NEW = "# save config <path>"
+PROFILE_EXPORT_HEADER_INSTALL_ROBOT = "# robot install and verification"
 PROFILE_EXPORT_CMD_MERGE = "merge"
 PROFILE_EXPORT_CMD_CONFIG = "config"
 PROFILE_EXPORT_CMD_PROFILE = "profile"
@@ -627,6 +657,7 @@ PROFILE_EXPORT_CMD_SELECTED_DEVICE = "selected-device"
 PROFILE_EXPORT_CMD_SELECTED_MODE = "selected-mode"
 PROFILE_EXPORT_CMD_TEST = "test"
 PROFILE_EXPORT_CMD_TESTS = "tests"
+PROFILE_EXPORT_CMD_SHOW = "show"
 PROFILE_EXPORT_CMD_TEST_CREATE = "create"
 PROFILE_EXPORT_CMD_TEST_SET = "set"
 PROFILE_EXPORT_CMD_TYPE = "type"
@@ -748,6 +779,31 @@ DIRTY_MAPPINGS = "can-mappings"
 KEY_COMMANDS = "commands"
 KEY_WORKFLOW01 = "workflow01"
 KEY_STATE = "state"
+KEY_TESTS_RUN = "run"
+KEY_RUN_ID = "runId"
+KEY_RUN_STATE = "state"
+KEY_RUN_TEST = "test"
+KEY_RUN_RESULT = "result"
+KEY_RUN_STATUS = "status"
+KEY_RUN_MESSAGE = "message"
+KEY_RUN_STARTED_AT_MS = "startedAtMs"
+KEY_RUN_FINISHED_AT_MS = "finishedAtMs"
+RUN_STATE_IDLE = "idle"
+RUN_STATE_STARTING = "starting"
+RUN_STATE_RUNNING = "running"
+RUN_STATE_PASSED = "passed"
+RUN_STATE_FAILED = "failed"
+RUN_STATE_BLOCKED = "blocked"
+RUN_STATE_ABORTED = "aborted"
+RUN_STATE_TIMEOUT = "timeout"
+RUN_TERMINAL_STATES = {
+    RUN_STATE_PASSED,
+    RUN_STATE_FAILED,
+    RUN_STATE_BLOCKED,
+    RUN_STATE_ABORTED,
+    RUN_STATE_TIMEOUT,
+}
+RUN_SUCCESS_STATES = {RUN_STATE_PASSED}
 KEY_BLOCKING_REASONS = "blockingReasons"
 KEY_NEXT_STEPS = "nextSteps"
 KEY_TEST_OVERVIEW = "testOverview"
@@ -938,6 +994,11 @@ MESSAGE_LOCAL_REGISTRY_DEVICE = "Local devices-table entry {label}:"
 MESSAGE_LOCAL_REGISTRY_EMPTY = "  (no fields)"
 MESSAGE_REGISTRY_FIELD_FMT = "  {key}={value}"
 MESSAGE_REGISTRY_FIELD_FMT_NAMED = "  {key}={value} ({name})"
+MESSAGE_REGISTRY_TOPOLOGY_HEADER = "  topology:"
+MESSAGE_REGISTRY_TOPOLOGY_FIELD_FMT = "    {key}={value}"
+MESSAGE_REGISTRY_TOPOLOGY_NEIGHBOR_FMT = (
+    "    neighbor {port}: {label} (key={key}, port={neighbor_port})"
+)
 MESSAGE_MAPPINGS_READ_FAIL = "WARNING: Failed to read CAN mappings: {path}"
 MESSAGE_ERR_BINDINGS_SUBCOMMAND = (
     "ERROR: bindings <show|controller|binding|axis|load|save|validate>"
@@ -1062,7 +1123,8 @@ MESSAGE_HINT_RESET_ZERO_CONFIG = "reset zero-config [--yes] [--clear-memory]"
 MESSAGE_HINT_SHOW = "show <target> [--json] [--pretty] [robot|local|both]"
 MESSAGE_HINT_PROFILE = (
     "profile <profile> | profile create <profile> | profile delete <profile> | profile device delete <device> "
-    "| profile device show-all <device> | profile export <profile> <path> | profile default <profile>"
+    "| profile device show-all <device> | profile export <profile> <path> [--install-robot] | "
+    "profile default <profile>"
 )
 MESSAGE_HINT_PROFILES = (
     "profiles init | profiles push <path> [--activate <profile>] | profiles reload | profiles activate <profile>"
@@ -1291,8 +1353,9 @@ HELP_PROFILE_DELETE_TEXT = (
 )
 HELP_TOPIC_PROFILE_EXPORT = "profile export"
 HELP_PROFILE_EXPORT_TEXT = (
-    "profile export <profile> <path>\n"
+    "profile export <profile> <path> [--install-robot]\n"
     "  Write a JSON snapshot plus CLI script for the profile.\n"
+    "  --install-robot appends robot push, verify, and test-run commands.\n"
     "  Includes global bindings and CAN mappings.\n"
     "  If <path> is a directory, files are created under it."
 )
@@ -1712,6 +1775,7 @@ class BridgeCli:
         self._tests_dirty: bool = False
         self._tests_active_set: str = ""
         self._tests_profile: Optional[str] = None
+        self._last_test_run_id: Optional[int] = None
         self._load_message_level(message_level)
         self._groups_profile: Optional[str] = None
         self._pending_prompt_text: Optional[str] = None
@@ -2246,7 +2310,7 @@ class BridgeCli:
         """
         labels = set()
         for device in self._profile_device_entries(profile_name):
-            name = str(device.get("name", "")).strip()
+            name = str(device.get(KEY_LABEL, "")).strip() or str(device.get("name", "")).strip()
             if name:
                 labels.add(name.lower())
         return labels
@@ -2349,7 +2413,14 @@ class BridgeCli:
         if not key:
             print(MESSAGE_ERR_PROFILE_CREATE_NAME)
             return StatusResult(code=SS__CONFIG__INVALID)
-        self._ensure_local_config()
+        if self._local_config is None:
+            self._local_config = {
+                KEY_BRIDGE_SCHEMA_VERSION: BRIDGE_CONFIG_SCHEMA_VERSION,
+                KEY_BRIDGE_GENERATED_AT: None,
+                KEY_BRIDGE_BY_PROFILE: {},
+            }
+            self._local_devices_locked = True
+            self._groups_dirty = False
         payload_result = self._ensure_local_profiles_payload()
         if not payload_result.ok():
             return payload_result
@@ -3083,10 +3154,14 @@ class BridgeCli:
                 if verb == CMD_GROUP and len(tokens) > COUNT_ONE:
                     mode_stack.append(MODE_GROUP)
                     continue
-                if verb == CMD_DEVICE and len(tokens) > COUNT_ONE:
+                if verb == CMD_DEVICE and len(tokens) == COUNT_TWO:
                     mode_stack.append(MODE_DEVICE)
                     continue
-                if verb == CMD_TEST and len(tokens) > COUNT_ONE:
+                if (
+                    verb == CMD_TEST
+                    and len(tokens) > COUNT_ONE
+                    and tokens[COUNT_ONE].lower() not in (CMD_SET, CMD_DELETE)
+                ):
                     mode_stack.append(MODE_TEST)
                     continue
         return (not errors, errors)
@@ -3227,6 +3302,8 @@ class BridgeCli:
                 return StatusResult(code=SS__NORMAL)
             print("ERROR: echo requires on/off.")
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+        if cmd == CMD_SLEEP:
+            return self._handle_sleep_command(tokens)
         if cmd == CMD_MESSAGES:
             if len(tokens) < 2:
                 print(MESSAGE_MESSAGE_LEVEL_ERROR)
@@ -3239,6 +3316,12 @@ class BridgeCli:
 
         if cmd == CMD_DIAGNOSE:
             return self._coerce_status(self._diagnose_command(tokens))
+        if (
+            cmd == CMD_TESTS
+            and len(tokens) >= COUNT_TWO
+            and tokens[COUNT_ONE].lower() == CMD_WAIT
+        ):
+            return self._handle_tests_wait_command(tokens)
         if self._is_test_authoring_command(tokens):
             return self._coerce_status(self._execute_test_authoring(tokens))
         if ast is not None:
@@ -3256,6 +3339,149 @@ class BridgeCli:
         if mode == MODE_TEST:
             return self._coerce_status(self._test_mode_command(tokens))
         return StatusResult(code=SS__EXECUTOR__NOT_SUPPORTED)
+
+    def _handle_sleep_command(self, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _handle_sleep_command - Pause local CLI execution.
+
+        DESCRIPTION
+            Lets batch scripts wait for robot-side asynchronous work to finish
+            before sending the next command.
+        """
+        if len(tokens) != SLEEP_ARG_COUNT:
+            print("ERROR: sleep <seconds>")
+            return StatusResult(code=SS__CLI_VALIDATOR__REQUIRED)
+        try:
+            seconds = float(tokens[COUNT_ONE])
+        except ValueError:
+            print("ERROR: sleep seconds must be numeric.")
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+        if seconds < SLEEP_MIN_SEC or seconds > SLEEP_MAX_SEC:
+            print(f"ERROR: sleep seconds must be between {SLEEP_MIN_SEC} and {SLEEP_MAX_SEC}.")
+            return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
+        time.sleep(seconds)
+        return StatusResult(code=SS__NORMAL)
+
+    def _record_test_run_event(self, event: Optional[BridgeEvent]) -> None:
+        """
+        NAME
+            _record_test_run_event - Remember the latest robot test run id.
+        """
+        payload = self._event_json_payload(event)
+        if not isinstance(payload, dict):
+            return
+        run_id = self._safe_int(payload.get(KEY_RUN_ID), None)
+        if run_id and run_id > COUNT_ZERO:
+            self._last_test_run_id = run_id
+
+    def _handle_tests_wait_command(self, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _handle_tests_wait_command - Wait for a robot-side test run to finish.
+
+        DESCRIPTION
+            Polls showTests JSON and watches the shared robot run lifecycle
+            instead of relying on a fixed sleep.
+        """
+        if not self._session.is_connected():
+            print(MESSAGE_ERR_SHOW_TESTS_ROBOT_NOT_CONNECTED)
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+        run_id, timeout_sec, error = self._parse_tests_wait_args(tokens)
+        if error:
+            print(error)
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+        if run_id is None:
+            run_id = self._last_test_run_id
+        deadline = time.time() + timeout_sec
+        last_run: Dict[str, object] = {}
+        while time.time() <= deadline:
+            seq = show_tests(self._session, json_output=True)
+            event = self._wait_for_seq(seq, print_events=False)
+            payload = self._event_json_payload(event)
+            run = payload.get(KEY_TESTS_RUN) if isinstance(payload, dict) else None
+            if isinstance(run, dict):
+                last_run = run
+                observed_run_id = self._safe_int(run.get(KEY_RUN_ID), COUNT_ZERO)
+                state = str(run.get(KEY_RUN_STATE, EMPTY_STRING)).strip().lower()
+                if observed_run_id and observed_run_id > COUNT_ZERO:
+                    self._last_test_run_id = observed_run_id
+                if run_id is not None and observed_run_id != run_id:
+                    time.sleep(TEST_WAIT_POLL_SEC)
+                    continue
+                if state in RUN_TERMINAL_STATES:
+                    return self._finish_tests_wait(run)
+            time.sleep(TEST_WAIT_POLL_SEC)
+        return self._tests_wait_timeout(run_id, last_run)
+
+    def _parse_tests_wait_args(
+        self,
+        tokens: List[str],
+    ) -> tuple[Optional[int], float, Optional[str]]:
+        run_id: Optional[int] = None
+        timeout_sec = TEST_WAIT_DEFAULT_TIMEOUT_SEC
+        index = COUNT_TWO
+        while index < len(tokens):
+            flag = tokens[index].lower()
+            if flag not in (FLAG_RUN, FLAG_TIMEOUT):
+                return (None, timeout_sec, "ERROR: tests wait [--run <id>] [--timeout <seconds>]")
+            if index + COUNT_ONE >= len(tokens):
+                return (None, timeout_sec, "ERROR: tests wait flag requires a value.")
+            value = tokens[index + COUNT_ONE]
+            try:
+                if flag == FLAG_RUN:
+                    run_id = int(float(value))
+                else:
+                    timeout_sec = float(value)
+            except ValueError:
+                return (None, timeout_sec, "ERROR: tests wait values must be numeric.")
+            index += COUNT_TWO
+        if timeout_sec <= SLEEP_MIN_SEC or timeout_sec > SLEEP_MAX_SEC:
+            return (None, timeout_sec, f"ERROR: timeout must be between {SLEEP_MIN_SEC} and {SLEEP_MAX_SEC}.")
+        return (run_id, timeout_sec, None)
+
+    def _finish_tests_wait(self, run: Dict[str, object]) -> StatusResult:
+        state = str(run.get(KEY_RUN_STATE, EMPTY_STRING)).strip().lower()
+        run_id = self._safe_int(run.get(KEY_RUN_ID), COUNT_ZERO)
+        test_name = str(run.get(KEY_RUN_TEST, EMPTY_STRING)).strip()
+        result = str(run.get(KEY_RUN_RESULT, EMPTY_STRING)).strip()
+        message = str(run.get(KEY_RUN_MESSAGE, EMPTY_STRING)).strip()
+        status = str(run.get(KEY_RUN_STATUS, EMPTY_STRING)).strip()
+        summary = (
+            f"Test run finished: runId={run_id} state={state} test={test_name} "
+            f"result={result} status={status}"
+        ).strip()
+        if message:
+            summary = f"{summary} message={message}"
+        print(summary)
+        if state in RUN_SUCCESS_STATES:
+            return StatusResult(code=SS__NORMAL)
+        return StatusResult(code=SS__EXECUTOR__FAILED)
+
+    def _tests_wait_timeout(
+        self,
+        run_id: Optional[int],
+        last_run: Dict[str, object],
+    ) -> StatusResult:
+        state = str(last_run.get(KEY_RUN_STATE, EMPTY_STRING)).strip().lower() if last_run else ""
+        observed = self._safe_int(last_run.get(KEY_RUN_ID), COUNT_ZERO) if last_run else COUNT_ZERO
+        print(f"ERROR: Timeout waiting for test run runId={run_id or observed} state={state or RUN_STATE_TIMEOUT}.")
+        return StatusResult(code=SS__EXECUTOR__FAILED)
+
+    def _event_json_payload(self, event: Optional[BridgeEvent]) -> Dict[str, object]:
+        if event is None or not event.json_text:
+            return {}
+        try:
+            payload = json.loads(event.json_text)
+        except Exception:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _safe_int(self, value: object, default: Optional[int]) -> Optional[int]:
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return default
 
     def _handle_active_command(self, line: str) -> Optional[StatusResult]:
         """
@@ -3308,6 +3534,20 @@ class BridgeCli:
             return None
         normalized = [token.lower() for token in tokens]
         cmd = normalized[COUNT_ZERO]
+        if cmd not in (CMD_GROUP, CMD_NO, CMD_COPY, CMD_ADD, CMD_REMOVE):
+            return None
+        if cmd == CMD_ADD and normalized[COUNT_ONE:COUNT_TWO] not in (
+            [CMD_DEVICE],
+            [CMD_ALL],
+            [CMD_NEXT],
+        ):
+            return None
+        if cmd == CMD_REMOVE and normalized[COUNT_ONE:COUNT_TWO] != [CMD_DEVICE]:
+            return None
+        if cmd == CMD_COPY and normalized[COUNT_ONE:COUNT_TWO] != [CMD_GROUP]:
+            return None
+        if cmd == CMD_NO and normalized[COUNT_ONE:COUNT_TWO] not in ([CMD_GROUP], [CMD_DEVICE]):
+            return None
         self._ensure_local_config()
         if not self._local_config:
             print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
@@ -6118,12 +6358,17 @@ class BridgeCli:
                 print(MESSAGE_ERR_PROFILE_REQUIRED)
                 return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
             if tokens[COUNT_ONE].lower() == CMD_EXPORT:
-                if len(tokens) < COUNT_FOUR:
+                cleaned, flags = self._strip_flags(tokens, [FLAG_INSTALL_ROBOT])
+                if len(cleaned) < COUNT_FOUR:
                     print(MESSAGE_ERR_PROFILE_REQUIRED)
                     return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-                profile_name = tokens[COUNT_TWO]
-                path = tokens[COUNT_THREE]
-                return self._export_profile_bundle(profile_name, path)
+                profile_name = cleaned[COUNT_TWO]
+                path = cleaned[COUNT_THREE]
+                return self._export_profile_bundle(
+                    profile_name,
+                    path,
+                    install_robot=FLAG_INSTALL_ROBOT in flags,
+                )
             if (
                 len(tokens) >= COUNT_FOUR
                 and tokens[COUNT_ONE].lower() == CMD_DEVICE
@@ -6472,6 +6717,11 @@ class BridgeCli:
         if len(tokens) == COUNT_ONE:
             return self._coerce_status(self._bindings_show([]))
         sub = tokens[COUNT_ONE].lower()
+        if sub == CMD_CLEAR:
+            self._bindings_payload = deepcopy(BINDINGS_EMPTY_PAYLOAD)
+            self._bindings_dirty = True
+            self._sync_store_bindings()
+            return StatusResult(code=SS__NORMAL)
         if sub == CMD_SHOW:
             return self._coerce_status(self._bindings_show(tokens[COUNT_TWO:]))
         if sub == CMD_CONTROLLER:
@@ -6512,6 +6762,14 @@ class BridgeCli:
         if len(tokens) == COUNT_ONE:
             return self._coerce_status(self._mappings_show([]))
         sub = tokens[COUNT_ONE].lower()
+        if sub == CMD_CLEAR:
+            self._can_mappings = {
+                KEY_MANUFACTURERS: {},
+                KEY_DEVICE_TYPES: {},
+            }
+            self._can_mappings_dirty = True
+            self._sync_store_mappings()
+            return StatusResult(code=SS__NORMAL)
         if sub == CMD_SHOW:
             return self._coerce_status(self._mappings_show(tokens[COUNT_TWO:]))
         if sub == CMD_MANUFACTURER:
@@ -7414,7 +7672,7 @@ class BridgeCli:
     def _wait_for_seq(
         self,
         seq: Optional[int],
-        timeout_sec: float = 2.0,
+        timeout_sec: float = ROBOT_COMMAND_TIMEOUT_SEC,
         print_events: bool = True,
     ) -> Optional[BridgeEvent]:
         if seq is None:
@@ -8278,7 +8536,7 @@ class BridgeCli:
                 print("Help: command not found.")
             return
         print(
-            "Common: help, exit, end, quit, ping, echo, messages\n"
+            "Common: help, exit, end, quit, ping, echo, sleep, messages\n"
             "Exec: show, diagnose, connect, disconnect, configure terminal, tests\n"
             "Config: profile, group, device, bindings, can-mappings, tests, no group, selected-device, selected-mode, merge/import/export/save/load\n"
             "Group: show, add device, no device, member, bind, no bind, enable, disable, run test\n"
@@ -8303,14 +8561,21 @@ class BridgeCli:
                 "  Toggle enabled state of the selected test (robot).\n"
                 "tests run\n"
                 "  Run the selected test once (robot).\n"
+                "tests wait [--run <id>] [--timeout <seconds>]\n"
+                "  Wait until a robot-side test run reaches a terminal state.\n"
                 "tests run-all\n"
                 "  Run all enabled tests sequentially (robot)."
             ),
             "tests select": "tests select <name>\n  Select a bringup test on the robot by name.",
             "tests toggle": "tests toggle\n  Toggle enabled state of the selected test (robot).",
             "tests run": "tests run\n  Run the selected test once (robot).",
+            "tests wait": (
+                "tests wait [--run <id>] [--timeout <seconds>]\n"
+                "  Poll robot test lifecycle until pass/fail/blocked/aborted."
+            ),
             "tests run-all": "tests run-all\n  Run all enabled tests sequentially (robot).",
             "echo": "echo on|off\n  Toggle echo for batch scripts (prints each command).",
+            "sleep": "sleep <seconds>\n  Pause batch execution without sending a robot command.",
             "messages": "messages <beginner|medium|expert>\n  Set CLI message level.",
             "debug grammar": "debug grammar [--json] [--dot <path>]\n  Dump the grammar model for the current mode.",
             "show message-level": "show message-level\n  Show current CLI message level.",
@@ -8329,7 +8594,7 @@ class BridgeCli:
                 "  Set the default profile name in bringup_system.json.\n"
                 "profile create <profile>\n"
                 "  Create a new empty profile and select it.\n"
-                "profile export <profile> <path>\n"
+                "profile export <profile> <path> [--install-robot]\n"
                 "  Write a JSON snapshot plus CLI script for the profile."
             ),
             "selected-device": "selected-device <device>\n  Set selected-device override.",
@@ -8604,6 +8869,17 @@ class BridgeCli:
         elif target == SHOW_TARGET_VERSION:
             seq = show_version(self._session, json_output=json_output)
             cmd_name = CMD_SHOW_VERSION
+        elif target == SHOW_TARGET_PROFILES:
+            seq = show_profiles(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_PROFILES
+        elif target == SHOW_TARGET_PROFILE:
+            name = tokens[1] if len(tokens) >= 2 else EMPTY_STRING
+            if name:
+                seq = show_profile(self._session, name, json_output=json_output)
+                cmd_name = CMD_SHOW_PROFILE
+            else:
+                seq = show_profiles(self._session, json_output=json_output)
+                cmd_name = CMD_SHOW_PROFILES
         else:
             print(MESSAGE_ERR_UNKNOWN_SHOW)
             print(MESSAGE_HINT_PREFIX + MESSAGE_HINT_SHOW)
@@ -8615,10 +8891,24 @@ class BridgeCli:
         self._show_label_seq[int(seq)] = "robot"
         self._show_pretty_json_seq[int(seq)] = bool(pretty)
         self._last_show_pretty = bool(pretty)
-        event = self._wait_for_seq(seq)
+        event = self._wait_for_seq(seq, timeout_sec=self._robot_show_timeout_sec(cmd_name))
         if self._event_failed(event, "show"):
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         return StatusResult(code=SS__NORMAL)
+
+    def _robot_show_timeout_sec(self, cmd_name: str) -> float:
+        """
+        NAME
+            _robot_show_timeout_sec - Select CLI wait timeout for robot show commands.
+
+        DESCRIPTION
+            Runtime-state JSON can be expensive immediately after profile apply
+            because the robot has just rebuilt devices, tests, and telemetry
+            state. Keep ordinary show commands on the short default timeout.
+        """
+        if cmd_name == CMD_SHOW_RUNTIME_STATE:
+            return ROBOT_LONG_COMMAND_TIMEOUT_SEC
+        return ROBOT_COMMAND_TIMEOUT_SEC
 
     def _show_local(
         self, target: str, tokens: List[str], json_output: bool, pretty: bool
@@ -9141,15 +9431,30 @@ class BridgeCli:
         NAME
             _collect_sources - Collect local source info for CLI data.
         """
-        entries = self._config_lifecycle.collect_source_entries(
-            [
-                (SOURCE_NAME_PROFILES, self._local_root_path),
-                (SOURCE_NAME_BINDINGS, self._bindings_path),
-                (SOURCE_NAME_CAN_MAPPINGS, self._can_mappings_path),
-                (SOURCE_NAME_TESTS, self._local_root_path),
-            ]
-        )
-        return self._config_lifecycle.source_entries_to_dicts(entries)
+        def source_entry(name: str, path: object, loaded: bool) -> Dict[str, object]:
+            source_path = Path(path) if path else None
+            exists = bool(source_path is not None and source_path.exists())
+            if loaded and source_path is not None:
+                status = SOURCE_STATUS_LOADED
+            elif source_path is None:
+                status = SOURCE_STATUS_UNKNOWN
+            else:
+                status = SOURCE_STATUS_NOT_LOADED
+            return {
+                KEY_SOURCE_NAME: name,
+                KEY_SOURCE_PATH: str(source_path) if source_path is not None else EMPTY_STRING,
+                KEY_SOURCES_EXISTS: exists,
+                KEY_SOURCE_STATUS: status,
+            }
+
+        root_loaded = bool(self._local_root_payload)
+        return [
+            source_entry(SOURCE_NAME_REGISTRY, self._local_root_path, root_loaded),
+            source_entry(SOURCE_NAME_CONFIG, self._local_root_path, bool(self._local_config)),
+            source_entry(SOURCE_NAME_BINDINGS, self._bindings_path, bool(self._bindings_payload)),
+            source_entry(SOURCE_NAME_CAN_MAPPINGS, self._can_mappings_path, bool(self._can_mappings)),
+            source_entry(SOURCE_NAME_TESTS, self._local_root_path, self._tests_model is not None),
+        ]
 
     @staticmethod
     def _source_display_value(entry: Dict[str, object]) -> str:
@@ -10123,7 +10428,10 @@ class BridgeCli:
             print(MESSAGE_ERR_REGISTRY_DEVICE_NOT_FOUND)
             return StatusResult(code=SS__DEVICE__NOT_FOUND)
         label = str(entry.get(FIELD_LABEL, name)).strip() or name
+        topology = self._local_device_topology(label)
         payload = {KEY_DEVICE: entry}
+        if topology:
+            payload["topology"] = topology
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             print(self._dump_json(payload, pretty))
@@ -10153,10 +10461,177 @@ class BridgeCli:
                     )
                     continue
             lines.append(MESSAGE_REGISTRY_FIELD_FMT.format(key=key, value=value))
+        if topology:
+            lines.extend(self._format_device_topology_lines(topology))
         if len(lines) == 1:
             lines.append(MESSAGE_LOCAL_REGISTRY_EMPTY)
         print("\n".join(lines))
         return StatusResult(code=SS__NORMAL)
+
+    def _local_device_topology(self, label: str) -> Dict[str, object]:
+        """
+        NAME
+            _local_device_topology - Return diagram topology details for a label.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            return {}
+        profile = self._active_profile_name()
+        if not profile:
+            return {}
+        diagram = self._diagram_for_profile(profile)
+        if not diagram:
+            return {}
+        nodes = diagram.get("nodes")
+        if not isinstance(nodes, list):
+            return {}
+        node_by_key: Dict[int, Dict[str, object]] = {}
+        target_node: Optional[Dict[str, object]] = None
+        label_key = label.strip().lower()
+        for raw in nodes:
+            if not isinstance(raw, dict):
+                continue
+            key = raw.get(KEY_NODE_KEY)
+            if isinstance(key, int):
+                node_by_key[key] = raw
+            node_label = str(raw.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if node_label.lower() == label_key:
+                target_node = raw
+        if target_node is None:
+            return {}
+        node_key = target_node.get(KEY_NODE_KEY)
+        if not isinstance(node_key, int):
+            return {}
+        topology: Dict[str, object] = {
+            KEY_NODE_KEY: node_key,
+            KEY_BUS: target_node.get(KEY_BUS),
+            "row": target_node.get("row"),
+            "x": target_node.get("x"),
+        }
+        neighbor_links = self._device_neighbor_links(diagram, node_key, node_by_key)
+        neighbor_ports = self._device_neighbor_ports(diagram, node_key, node_by_key)
+        if neighbor_links:
+            topology[KEY_NEIGHBOR_LINKS] = neighbor_links
+        if neighbor_ports:
+            topology[KEY_NEIGHBOR_PORTS] = neighbor_ports
+        return topology
+
+    def _diagram_for_profile(self, profile: str) -> Dict[str, object]:
+        """
+        NAME
+            _diagram_for_profile - Return current profile diagram metadata.
+        """
+        diagram_root = self._local_root_payload.get(KEY_DIAGRAM)
+        if not isinstance(diagram_root, dict):
+            return {}
+        profiles = diagram_root.get(KEY_PROFILES)
+        if not isinstance(profiles, dict):
+            return {}
+        diagram = profiles.get(profile)
+        return diagram if isinstance(diagram, dict) else {}
+
+    def _device_neighbor_links(
+        self,
+        diagram: Dict[str, object],
+        node_key: int,
+        node_by_key: Dict[int, Dict[str, object]],
+    ) -> List[Dict[str, object]]:
+        """
+        NAME
+            _device_neighbor_links - Return undirected neighbors for one node.
+        """
+        entries = diagram.get(KEY_NEIGHBOR_LINKS)
+        if not isinstance(entries, list):
+            return []
+        neighbors: List[Dict[str, object]] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            a = entry.get(KEY_LINK_A)
+            b = entry.get(KEY_LINK_B)
+            if not isinstance(a, int) or not isinstance(b, int):
+                continue
+            if a == node_key:
+                other = b
+            elif b == node_key:
+                other = a
+            else:
+                continue
+            neighbors.append(self._topology_neighbor_entry(other, node_by_key))
+        return neighbors
+
+    def _device_neighbor_ports(
+        self,
+        diagram: Dict[str, object],
+        node_key: int,
+        node_by_key: Dict[int, Dict[str, object]],
+    ) -> List[Dict[str, object]]:
+        """
+        NAME
+            _device_neighbor_ports - Return port-aware neighbors for one node.
+        """
+        entries = diagram.get(KEY_NEIGHBOR_PORTS)
+        if not isinstance(entries, list):
+            return []
+        neighbors: List[Dict[str, object]] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            node = entry.get(KEY_LINK_NODE)
+            neighbor = entry.get(KEY_LINK_NEIGHBOR)
+            if node != node_key or not isinstance(neighbor, int):
+                continue
+            neighbor_entry = self._topology_neighbor_entry(neighbor, node_by_key)
+            neighbor_entry[KEY_LINK_PORT] = entry.get(KEY_LINK_PORT)
+            neighbor_entry[KEY_LINK_NEIGHBOR_PORT] = entry.get(KEY_LINK_NEIGHBOR_PORT)
+            neighbors.append(neighbor_entry)
+        return neighbors
+
+    def _topology_neighbor_entry(
+        self,
+        key: int,
+        node_by_key: Dict[int, Dict[str, object]],
+    ) -> Dict[str, object]:
+        """
+        NAME
+            _topology_neighbor_entry - Build one neighbor summary.
+        """
+        node = node_by_key.get(key, {})
+        return {
+            KEY_NODE_KEY: key,
+            KEY_LABEL: str(node.get(KEY_LABEL, EMPTY_STRING)).strip(),
+            KEY_BUS: node.get(KEY_BUS),
+            "row": node.get("row"),
+            "x": node.get("x"),
+        }
+
+    def _format_device_topology_lines(self, topology: Dict[str, object]) -> List[str]:
+        """
+        NAME
+            _format_device_topology_lines - Format topology metadata for text show.
+        """
+        lines = [MESSAGE_REGISTRY_TOPOLOGY_HEADER]
+        for key in (KEY_NODE_KEY, KEY_BUS, "row", "x"):
+            if key in topology:
+                lines.append(
+                    MESSAGE_REGISTRY_TOPOLOGY_FIELD_FMT.format(
+                        key=key,
+                        value=topology.get(key),
+                    )
+                )
+        neighbor_ports = topology.get(KEY_NEIGHBOR_PORTS)
+        if isinstance(neighbor_ports, list) and neighbor_ports:
+            for entry in neighbor_ports:
+                if not isinstance(entry, dict):
+                    continue
+                lines.append(
+                    MESSAGE_REGISTRY_TOPOLOGY_NEIGHBOR_FMT.format(
+                        port=entry.get(KEY_LINK_PORT, EMPTY_STRING),
+                        label=entry.get(KEY_LABEL, EMPTY_STRING),
+                        key=entry.get(KEY_NODE_KEY, EMPTY_STRING),
+                        neighbor_port=entry.get(KEY_LINK_NEIGHBOR_PORT, EMPTY_STRING),
+                    )
+                )
+        return lines
 
     def _load_can_mappings(self) -> Dict[str, Dict[str, str]]:
         """
@@ -10813,7 +11288,13 @@ class BridgeCli:
         print(f"Wrote CLI script to {path}.")
         return StatusResult(code=SS__NORMAL)
 
-    def _export_profile_bundle(self, profile_name: str, path: str) -> StatusResult:
+    def _export_profile_bundle(
+        self,
+        profile_name: str,
+        path: str,
+        *,
+        install_robot: bool = False,
+    ) -> StatusResult:
         """
         NAME
             _export_profile_bundle - Export a profile JSON snapshot and CLI script.
@@ -10830,7 +11311,7 @@ class BridgeCli:
         if not isinstance(profile_entry, dict):
             print(MESSAGE_PROFILE_EXPORT_UNKNOWN.format(name=profile_name))
             return StatusResult(code=SS__CONFIG__INVALID)
-        device_entries = self._profile_device_entries(profile_name)
+        device_entries = self._profile_export_registry_entries(profile_name)
         self._ensure_local_config()
         bridge_entry = self._local_profile_entry(profile_name, create=True)
         bridge_config = {
@@ -10862,7 +11343,11 @@ class BridgeCli:
             return StatusResult(code=SS__CONFIG__INVALID)
         try:
             write_json(Path(json_path), export_payload, indent=PROFILE_EXPORT_INDENT)
-            script_lines = self._profile_export_script_lines(profile_name, json_path)
+            script_lines = self._profile_export_script_lines(
+                profile_name,
+                json_path,
+                install_robot=install_robot,
+            )
             Path(script_path).write_text(
                 PROFILE_EXPORT_NEWLINE.join(script_lines) + PROFILE_EXPORT_NEWLINE,
                 encoding=ENCODING_UTF8,
@@ -10989,7 +11474,13 @@ class BridgeCli:
             return (EMPTY_STRING, EMPTY_STRING, error)
         return (json_path, script_path, error)
 
-    def _profile_export_script_lines(self, profile_name: str, json_path: str) -> List[str]:
+    def _profile_export_script_lines(
+        self,
+        profile_name: str,
+        json_path: str,
+        *,
+        install_robot: bool = False,
+    ) -> List[str]:
         """
         NAME
             _profile_export_script_lines - Build a CLI batch script for profile import.
@@ -11010,14 +11501,9 @@ class BridgeCli:
             + PROFILE_EXPORT_PATH_SEPARATOR
             + CMD_INIT
         )
+        lines.append(CMD_BINDINGS + PROFILE_EXPORT_PATH_SEPARATOR + CMD_CLEAR)
+        lines.append(CMD_CAN_MAPPINGS + PROFILE_EXPORT_PATH_SEPARATOR + CMD_CLEAR)
         lines.extend(self._profile_export_global_lines())
-        lines.append(
-            PROFILE_EXPORT_CMD_PROFILE
-            + PROFILE_EXPORT_PATH_SEPARATOR
-            + PROFILE_EXPORT_CMD_DELETE
-            + PROFILE_EXPORT_PATH_SEPARATOR
-            + profile_token
-        )
         lines.append(
             PROFILE_EXPORT_CMD_PROFILE
             + PROFILE_EXPORT_PATH_SEPARATOR
@@ -11037,10 +11523,139 @@ class BridgeCli:
             + PROFILE_EXPORT_PATH_SEPARATOR
             + profile_token
         )
-        lines.append(CMD_VALIDATE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_VALIDATE_ALL)
-        lines.append(CMD_SAVE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_SOURCES)
+        lines.append(CMD_VALIDATE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_ALL)
+        lines.extend(self._profile_export_save_source_lines())
+        if install_robot:
+            lines.extend(self._profile_export_robot_install_lines(profile_name, json_path))
         lines.append(PROFILE_EXPORT_CMD_EXIT)
         return lines
+
+    def _profile_export_robot_install_lines(self, profile_name: str, json_path: str) -> List[str]:
+        """
+        NAME
+            _profile_export_robot_install_lines - Build robot install/test commands.
+        """
+        profile_token = self._quote_if_needed(profile_name)
+        json_token = self._quote_if_needed(json_path)
+        lines = [
+            PROFILE_EXPORT_HEADER_INSTALL_ROBOT,
+            CMD_END,
+            CMD_CONNECT,
+            (
+                PROFILE_EXPORT_CMD_CONFIGURE
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + PROFILE_EXPORT_CMD_TERMINAL
+            ),
+            (
+                PROFILE_EXPORT_CMD_CONFIG
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_PUSH
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + json_token
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_ACTIVATE
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + profile_token
+            ),
+            (
+                PROFILE_EXPORT_CMD_SHOW
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + SHOW_TARGET_PROFILE
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + profile_token
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_ROBOT
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + FLAG_JSON
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + FLAG_PRETTY
+            ),
+            (
+                PROFILE_EXPORT_CMD_SHOW
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + SHOW_TARGET_DEVICES
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_ROBOT
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + FLAG_JSON
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + FLAG_PRETTY
+            ),
+            (
+                PROFILE_EXPORT_CMD_SHOW
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_TESTS
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_ROBOT
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + FLAG_JSON
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + FLAG_PRETTY
+            ),
+            (
+                PROFILE_EXPORT_CMD_SHOW
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + SHOW_TARGET_RUNTIME
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_ROBOT
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + FLAG_JSON
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + FLAG_PRETTY
+            ),
+        ]
+        for test_name in self._profile_export_test_names(profile_name):
+            test_token = self._quote_if_needed(test_name)
+            lines.append(
+                CMD_TESTS
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_SELECT
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + test_token
+            )
+            lines.append(CMD_TESTS + PROFILE_EXPORT_PATH_SEPARATOR + CMD_RUN)
+            lines.append(
+                CMD_TESTS
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_WAIT
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + FLAG_TIMEOUT
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + str(TEST_WAIT_DEFAULT_TIMEOUT_SEC)
+            )
+            lines.append(
+                PROFILE_EXPORT_CMD_SHOW
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_TESTS
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_ROBOT
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + FLAG_JSON
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + FLAG_PRETTY
+            )
+        return lines
+
+    def _profile_export_test_names(self, profile_name: str) -> List[str]:
+        """
+        NAME
+            _profile_export_test_names - Return exported test names for a profile.
+        """
+        self._ensure_local_config()
+        entry = self._local_profile_entry(profile_name, create=True)
+        tests_payload = entry.get(KEY_BRIDGE_TESTS) if isinstance(entry, dict) else None
+        model = model_from_payload(tests_payload or {})
+        names: List[str] = []
+        if not model or not model.test_sets:
+            return names
+        for set_name in sorted(model.test_sets.keys()):
+            test_set = model.test_sets.get(set_name)
+            if not test_set:
+                continue
+            for test in test_set.tests:
+                if test and test.name:
+                    names.append(test.name)
+        return names
 
     def _profiles_export_script_lines(self, json_path: str) -> List[str]:
         """
@@ -11067,16 +11682,11 @@ class BridgeCli:
             + PROFILE_EXPORT_PATH_SEPARATOR
             + CMD_INIT
         )
+        lines.append(CMD_BINDINGS + PROFILE_EXPORT_PATH_SEPARATOR + CMD_CLEAR)
+        lines.append(CMD_CAN_MAPPINGS + PROFILE_EXPORT_PATH_SEPARATOR + CMD_CLEAR)
         lines.extend(self._profile_export_global_lines())
         for profile_name in sorted(profiles.keys()):
             profile_token = self._quote_if_needed(profile_name)
-            lines.append(
-                PROFILE_EXPORT_CMD_PROFILE
-                + PROFILE_EXPORT_PATH_SEPARATOR
-                + PROFILE_EXPORT_CMD_DELETE
-                + PROFILE_EXPORT_PATH_SEPARATOR
-                + profile_token
-            )
             lines.append(
                 PROFILE_EXPORT_CMD_PROFILE
                 + PROFILE_EXPORT_PATH_SEPARATOR
@@ -11097,10 +11707,42 @@ class BridgeCli:
                 + PROFILE_EXPORT_PATH_SEPARATOR
                 + self._quote_if_needed(default_profile)
             )
-        lines.append(CMD_VALIDATE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_VALIDATE_ALL)
-        lines.append(CMD_SAVE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_SOURCES)
+        lines.append(CMD_VALIDATE + PROFILE_EXPORT_PATH_SEPARATOR + CMD_ALL)
+        lines.extend(self._profile_export_save_source_lines())
         lines.append(PROFILE_EXPORT_CMD_EXIT)
         return lines
+
+    def _profile_export_save_source_lines(self) -> List[str]:
+        """
+        NAME
+            _profile_export_save_source_lines - Build explicit save commands.
+        """
+        profiles_path = self._local_root_path or profiles_canonical_path()
+        bindings_path = self._bindings_path or bindings_deploy_path()
+        mappings_path = self._can_mappings_path or can_mappings_path()
+        return [
+            (
+                CMD_SAVE
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_CONFIG
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + self._quote_if_needed(str(profiles_path))
+            ),
+            (
+                CMD_BINDINGS
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_SAVE
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + self._quote_if_needed(str(bindings_path))
+            ),
+            (
+                CMD_CAN_MAPPINGS
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + CMD_SAVE
+                + PROFILE_EXPORT_PATH_SEPARATOR
+                + self._quote_if_needed(str(mappings_path))
+            ),
+        ]
 
     def _profile_export_device_lines(self, profile_name: str) -> List[str]:
         """
@@ -12260,7 +12902,7 @@ class BridgeCli:
             if not result.ok():
                 ok = False
             else:
-                skip_names.update({SOURCE_NAME_REGISTRY, SOURCE_NAME_CONFIG})
+                skip_names.update({SOURCE_NAME_REGISTRY, SOURCE_NAME_CONFIG, SOURCE_NAME_TESTS})
                 for name in (SOURCE_NAME_REGISTRY, SOURCE_NAME_CONFIG):
                     print(MESSAGE_SOURCES_SAVE_OK.format(name=name, path=registry_path))
         for entry in entries:

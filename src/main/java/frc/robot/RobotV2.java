@@ -37,6 +37,7 @@ public class RobotV2 extends TimedRobot {
   private static final double SPEED_FIXED_50 = 0.50;
   private static final double SPEED_FIXED_75 = 0.75;
   private static final double SPEED_FIXED_100 = 1.00;
+  private static final double ACTUATION_REQUEST_EPSILON = 1e-6;
   private static final String BINDING_LEFT_DRIVE = "leftDrive";
   private static final String BINDING_RIGHT_DRIVE = "rightDrive";
   private static final String COMMAND_RUN_TEST = "runTest";
@@ -64,11 +65,8 @@ public class RobotV2 extends TimedRobot {
   // Optional second controller for fixed-speed test buttons.
   private final XboxController controller1 = controllerMap.get("controller1");
   private final BindingsManager bindings = new BindingsManager();
-  // Local bringup behaviors for device creation and health.
-  private BringupCore core;
-  // Runtime groups and bindings for bridge CLI/GUI.
-  private final BridgeGroupManager bridgeGroups = new BridgeGroupManager();
-  private final BridgeGroupManager.SelectedState bridgeSelected = new BridgeGroupManager.SelectedState();
+  // Shared runtime state used by Xbox, CLI, and UI commands.
+  private BringupRuntime runtime;
   // Samples roboRIO CAN controller health.
   private final CanBusHealth canHealth = new CanBusHealth();
   // Builds reports, JSON snapshots, and optional NT telemetry.
@@ -80,7 +78,6 @@ public class RobotV2 extends TimedRobot {
       NetworkTableInstance.getDefault().getTable("bringup").getSubTable("ui");
   private final NetworkTable uiTcpTable =
       NetworkTableInstance.getDefault().getTable("bringup").getSubTable("ui_tcp");
-  private DiagnosticsReporter diagnostics;
   private BridgeUiCommandHandler uiHandler;
   // Edge-detect state for buttons that should fire once per press.
   private final EdgeTrigger edge = new EdgeTrigger();
@@ -113,15 +110,13 @@ public class RobotV2 extends TimedRobot {
   public void robotInit() {
     // Load profile before anything instantiates devices.
     BringupUtil.applyProfileFromArgs();
-    core = new BringupCore();
-    core.setRunTestBindingLabel(bindings.describeBinding(COMMAND_RUN_TEST));
-    diagnostics = new DiagnosticsReporter(core, canHealth, diagTable);
+    runtime = new BringupRuntime(
+        canHealth,
+        diagTable,
+        bindings.describeBinding(COMMAND_RUN_TEST));
     uiHandler = new BridgeUiCommandHandler(
-        core,
-        diagnostics,
+        runtime,
         bindings,
-        bridgeGroups,
-        bridgeSelected,
         testsTable,
         uiTable,
         uiTcpTable,
@@ -152,9 +147,9 @@ public class RobotV2 extends TimedRobot {
   @Override
   public void teleopInit() {
     // Reset state whenever teleop is entered.
-    core.resetState("teleopInit");
-    if (diagnostics != null) {
-      diagnostics.resetState();
+    core().resetState("teleopInit");
+    if (diagnostics() != null) {
+      diagnostics().resetState();
     }
     edge.reset();
   }
@@ -169,10 +164,10 @@ public class RobotV2 extends TimedRobot {
   @Override
   public void disabledInit() {
     // Keep behavior symmetric in disabled and teleop to avoid stale state.
-    core.disableAllBringupTests(true);
-    core.resetState("disabledInit");
-    if (diagnostics != null) {
-      diagnostics.resetState();
+    core().disableAllBringupTests(true);
+    core().resetState("disabledInit");
+    if (diagnostics() != null) {
+      diagnostics().resetState();
     }
     edge.reset();
   }
@@ -187,8 +182,8 @@ public class RobotV2 extends TimedRobot {
   @Override
   public void robotPeriodic() {
     // Sample and publish CAN health every loop.
-    if (diagnostics != null) {
-      diagnostics.update();
+    if (diagnostics() != null) {
+      diagnostics().update();
     }
     if (uiHandler != null) {
       uiHandler.processTcpCommands();
@@ -217,15 +212,14 @@ public class RobotV2 extends TimedRobot {
     }
     Map<String, String> aliases = refreshInputAliases();
     Set<String> localOverrides =
-        InputAliasResolver.resolveAll(bridgeGroups.getActiveBindingInputs(), aliases);
+        InputAliasResolver.resolveAll(bridgeGroups().getActiveBindingInputs(), aliases);
     BindingsManager.BindingState bind =
         bindings.sample(controllerMap, edge, localOverrides, aliases);
 
     boolean runHeld = bind.held(COMMAND_RUN_TEST);
     BringupCommandRouter.CommonResult commonResult = BringupCommandRouter.applyCommon(
         bind,
-        core,
-        diagnostics,
+        runtime,
         bindingsPrinter,
         testsInfoPrinter,
         testsOverviewPrinter,
@@ -305,7 +299,7 @@ public class RobotV2 extends TimedRobot {
 
     // D-pad Right: print current stick inputs.
     if (bind.pressed(COMMAND_PRINT_INPUTS)) {
-      core.requestTextReport(
+      runtime.requestTextReport(
           "Inputs: leftY=" + String.format("%.2f", neoSpeed) +
           " rightY=" + String.format("%.2f", krakenSpeed) +
           " (NEO/FLEX=" + String.format("%.2f", neoSpeed) +
@@ -331,15 +325,18 @@ public class RobotV2 extends TimedRobot {
     // core update and diagnostics handled by BringupCommandRouter
 
     // Feed test inputs (used by joystick-mode tests).
-    core.setTestInputs(buildAxisInputs(controllerMap, neoSpeed, krakenSpeed));
+    core().setTestInputs(buildAxisInputs(controllerMap, neoSpeed, krakenSpeed));
 
+    boolean actuationRequested = isActuationRequested(neoSpeed, krakenSpeed);
     // Apply outputs only while a test is actively running.
-    if (core.isTestRunning()) {
-      core.setSpeeds(neoSpeed, krakenSpeed);
+    if (core().isTestRunning()) {
+      core().setSpeeds(neoSpeed, krakenSpeed);
       warnedNonTestActuationBlocked = false;
-    } else if (!warnedNonTestActuationBlocked) {
+    } else if (actuationRequested && !warnedNonTestActuationBlocked) {
       BringupPrinter.enqueue(MESSAGE_NON_TEST_ACTUATION_BLOCKED);
       warnedNonTestActuationBlocked = true;
+    } else if (!actuationRequested) {
+      warnedNonTestActuationBlocked = false;
     }
 
     BridgeGroupManager.InputSnapshot inputs = new BridgeGroupManager.InputSnapshot();
@@ -387,8 +384,8 @@ public class RobotV2 extends TimedRobot {
       inputs.operatorDpadDown = operatorPov == POV_DOWN;
       inputs.operatorDpadLeft = operatorPov == POV_LEFT;
     }
-    if (core.isTestRunning()) {
-      bridgeGroups.applyBindings(inputs, core, bridgeSelected);
+    if (core().isTestRunning()) {
+      bridgeGroups().applyBindings(inputs, core(), bridgeSelected());
     }
 
     if (uiHandler != null) {
@@ -396,17 +393,15 @@ public class RobotV2 extends TimedRobot {
     }
   }
 
+  private static boolean isActuationRequested(double neoSpeed, double krakenSpeed) {
+    return Math.abs(neoSpeed) > ACTUATION_REQUEST_EPSILON
+        || Math.abs(krakenSpeed) > ACTUATION_REQUEST_EPSILON;
+  }
+
   private void resetCoreForProfile(String reason) {
-    core.resetState(reason);
-    core = new BringupCore();
-    if (diagnostics != null) {
-      diagnostics.setCore(core);
-      diagnostics.resetState();
-    }
-    validateCanIds();
+    runtime.resetAndInstantiateForProfile(reason);
     if (uiHandler != null) {
-      uiHandler.setCore(core);
-      uiHandler.setDiagnostics(diagnostics);
+      uiHandler.resetProfileRuntimeUiState();
       uiHandler.printProfileInfo();
     }
     refreshInputAliases();
@@ -414,9 +409,33 @@ public class RobotV2 extends TimedRobot {
     ensureActiveGroupDefined();
   }
 
+  /**
+   * NAME
+   *   activateSelectedProfileForAllSurfaces - Activate selected profile through shared runtime.
+   *
+   * PARAMETERS
+   *   reason - Reset reason label.
+   *
+   * SIDE EFFECTS
+   *   Activates the selected profile, fully rebuilds runtime state, refreshes
+   *   aliases/groups, and instantiates the active profile devices.
+   */
+  private void activateSelectedProfileForAllSurfaces(String reason) {
+    runtime.activateSelectedProfile(reason);
+    if (BringupUtil.isProfileActive()) {
+      if (uiHandler != null) {
+        uiHandler.resetProfileRuntimeUiState();
+        uiHandler.printProfileInfo();
+      }
+      refreshInputAliases();
+      syncDefaultGroup();
+      ensureActiveGroupDefined();
+    }
+  }
+
   private void ensureActiveGroupDefined() {
-    if (bridgeGroups.getGroup(ACTIVE_GROUP_NAME) == null) {
-      bridgeGroups.createGroup(ACTIVE_GROUP_NAME);
+    if (bridgeGroups().getGroup(ACTIVE_GROUP_NAME) == null) {
+      bridgeGroups().createGroup(ACTIVE_GROUP_NAME);
     }
   }
 
@@ -441,7 +460,7 @@ public class RobotV2 extends TimedRobot {
         merged.putAll(profileAliases);
       }
       inputAliases = merged;
-      bridgeGroups.setInputAliases(inputAliases);
+      bridgeGroups().setInputAliases(inputAliases);
       if (uiHandler != null) {
         uiHandler.setInputAliases(inputAliases);
       }
@@ -467,7 +486,7 @@ public class RobotV2 extends TimedRobot {
         }
       }
     }
-    bridgeGroups.syncGroupMembers(DEFAULT_GROUP_NAME, labels);
+    bridgeGroups().syncGroupMembers(DEFAULT_GROUP_NAME, labels);
   }
 
   /**
@@ -523,10 +542,16 @@ public class RobotV2 extends TimedRobot {
 
   /**
    * NAME
-   *   handleProfileActivate - Adapter for profile activation.
+   *   handleProfileActivate - Refresh state after shared runtime activation.
    */
   private void handleProfileActivate() {
-    resetCoreForProfile("profileActivate");
+    if (uiHandler != null) {
+      uiHandler.resetProfileRuntimeUiState();
+      uiHandler.printProfileInfo();
+    }
+    refreshInputAliases();
+    syncDefaultGroup();
+    ensureActiveGroupDefined();
   }
 
   private Map<String, Map<String, Double>> buildAxisInputs(
@@ -567,14 +592,10 @@ public class RobotV2 extends TimedRobot {
     @Override
     public void handleAddAll(boolean addAllNow) {
       if (addAllNow && !BringupUtil.isProfileActive()) {
-        BringupUtil.prepareActivationForSelectedProfile();
-        BringupUtil.activateSelectedProfile();
-        if (BringupUtil.isProfileActive()) {
-          resetCoreForProfile("profileActivate");
-        }
+        activateSelectedProfileForAllSurfaces("profileActivate");
       }
-      if (core != null) {
-        core.handleAddAll(addAllNow);
+      if (core() != null) {
+        runtime.addAllDevices(addAllNow);
       }
     }
   }
@@ -587,14 +608,10 @@ public class RobotV2 extends TimedRobot {
     @Override
     public void handleAddMotor(boolean addMotorNow) {
       if (addMotorNow && !BringupUtil.isProfileActive()) {
-        BringupUtil.prepareActivationForSelectedProfile();
-        BringupUtil.activateSelectedProfile();
-        if (BringupUtil.isProfileActive()) {
-          resetCoreForProfile("profileActivate");
-        }
+        activateSelectedProfileForAllSurfaces("profileActivate");
       }
-      if (core != null) {
-        core.handleAdd(addMotorNow);
+      if (core() != null) {
+        runtime.addMotor(addMotorNow);
       }
     }
   }
@@ -697,6 +714,22 @@ public class RobotV2 extends TimedRobot {
   private void validateCanIds() {
     // Warn on duplicate CAN IDs in the active profile.
     BringupUtil.validateCanIds(BringupUtil.getActiveDevices());
+  }
+
+  private BringupCore core() {
+    return runtime.getCore();
+  }
+
+  private DiagnosticsReporter diagnostics() {
+    return runtime.getDiagnostics();
+  }
+
+  private BridgeGroupManager bridgeGroups() {
+    return runtime.getBridgeGroups();
+  }
+
+  private BridgeGroupManager.SelectedState bridgeSelected() {
+    return runtime.getBridgeSelected();
   }
 
 }

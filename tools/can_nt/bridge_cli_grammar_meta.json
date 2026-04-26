@@ -12,6 +12,7 @@
     "help",
     "ping",
     "echo",
+    "sleep",
     "messages",
     "quit"
   ],

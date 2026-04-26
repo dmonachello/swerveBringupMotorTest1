@@ -105,6 +105,12 @@ try:
         format_version_line,
     )
     from tools.common.build_info import build_lines
+    from tools.common.profile_constants import (
+        KEY_DEVICE_TYPE,
+        KEY_ID,
+        KEY_LABEL,
+        KEY_MANUFACTURER,
+    )
     from tools.can_nt.bridge_cli import BridgeCli
     from tools.can_nt.bridge_session import BridgeSession
 except ModuleNotFoundError:
@@ -183,6 +189,12 @@ except ModuleNotFoundError:
         format_version_line,
     )
     from tools.common.build_info import build_lines
+    from tools.common.profile_constants import (
+        KEY_DEVICE_TYPE,
+        KEY_ID,
+        KEY_LABEL,
+        KEY_MANUFACTURER,
+    )
     from tools.can_nt.bridge_cli import BridgeCli
     from tools.can_nt.bridge_session import BridgeSession
 
@@ -198,10 +210,10 @@ VERSION_TITLE = VERSION_HEADER
 VERSION_ARG_ATTR = "version"
 
 # Constants (device keys).
-DEVICE_KEY_LABEL = "label"
-DEVICE_KEY_MFG = "manufacturer"
-DEVICE_KEY_TYPE = "device_type"
-DEVICE_KEY_ID = "device_id"
+DEVICE_KEY_LABEL = KEY_LABEL
+DEVICE_KEY_MFG = KEY_MANUFACTURER
+DEVICE_KEY_TYPE = KEY_DEVICE_TYPE
+DEVICE_KEY_ID = KEY_ID
 DEVICE_KEY_PREFER_STATUS = "prefer_status"
 
 # Constants (unknown label handling).

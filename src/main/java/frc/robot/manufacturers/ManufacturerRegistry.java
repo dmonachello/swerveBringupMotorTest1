@@ -26,7 +26,8 @@ import java.util.function.Supplier;
 public final class ManufacturerRegistry {
   private static final List<ManufacturerFactory> FACTORIES = List.of(
       new ManufacturerFactory("REV", RevDeviceGroup::new),
-      new ManufacturerFactory("CTRE", CtreDeviceGroup::new));
+      new ManufacturerFactory("CTRE", CtreDeviceGroup::new),
+      new ManufacturerFactory("NI", NiDeviceGroup::new));
 
   private ManufacturerRegistry() {
   }

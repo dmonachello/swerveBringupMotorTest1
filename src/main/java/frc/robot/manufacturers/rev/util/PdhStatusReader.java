@@ -12,7 +12,7 @@ import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
  * DESCRIPTION
  *   Provides snapshot data for REV PDH via the WPILib PowerDistribution API.
  */
-public final class PdhStatusReader {
+public final class PdhStatusReader implements AutoCloseable {
   private final PowerDistribution pdh;
   private final int canId;
 
@@ -74,6 +74,15 @@ public final class PdhStatusReader {
    */
   public int getCanId() {
     return canId;
+  }
+
+  /**
+   * NAME
+   *   close - Release the WPILib PDH allocation.
+   */
+  @Override
+  public void close() {
+    pdh.close();
   }
 }
 

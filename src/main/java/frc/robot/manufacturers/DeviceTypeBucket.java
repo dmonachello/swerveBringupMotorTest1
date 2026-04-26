@@ -15,6 +15,11 @@ import java.util.List;
  * Tracks construction status and optional low-current timers for a device type.
  */
 public final class DeviceTypeBucket {
+  private static final String MESSAGE_CREATE_FAILED_PREFIX = "Device create failed: ";
+  private static final String MESSAGE_INDEX_PREFIX = " index ";
+  private static final String MESSAGE_CAN_PREFIX = " CAN ";
+  private static final String MESSAGE_REASON_PREFIX = ": ";
+
   private final DeviceRegistration registration;
   private final List<DeviceUnit> devices;
   private final double[] lowCurrentStartSec;
@@ -102,7 +107,10 @@ public final class DeviceTypeBucket {
     if (nextIndex < devices.size() && !devices.get(nextIndex).isCreated()) {
       int index = nextIndex;
       DeviceUnit device = devices.get(nextIndex);
-      device.ensureCreated();
+      if (!tryEnsureCreated(device, index)) {
+        nextIndex++;
+        return null;
+      }
       BringupPrinter.enqueue(
           "Device created: " + registration.displayName() +
           " index " + index +
@@ -129,13 +137,33 @@ public final class DeviceTypeBucket {
       if (device.isCreated()) {
         continue;
       }
-      device.ensureCreated();
+      if (!tryEnsureCreated(device, i)) {
+        continue;
+      }
       BringupPrinter.enqueue(
           "Device created: " + registration.displayName() +
           " index " + i +
           " CAN " + device.getCanId());
     }
     nextIndex = devices.size();
+  }
+
+  private boolean tryEnsureCreated(DeviceUnit device, int index) {
+    try {
+      device.ensureCreated();
+      return device.isCreated();
+    } catch (RuntimeException ex) {
+      BringupPrinter.enqueue(
+          MESSAGE_CREATE_FAILED_PREFIX
+              + registration.displayName()
+              + MESSAGE_INDEX_PREFIX
+              + index
+              + MESSAGE_CAN_PREFIX
+              + device.getCanId()
+              + MESSAGE_REASON_PREFIX
+              + ex.getMessage());
+      return false;
+    }
   }
 
   /**

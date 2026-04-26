@@ -12,7 +12,7 @@ import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
  * DESCRIPTION
  *   Provides snapshot data for CTRE PDP via the WPILib PowerDistribution API.
  */
-public final class PdpStatusReader {
+public final class PdpStatusReader implements AutoCloseable {
   private static final int INDEX_START = 0;
   private static final int MIN_CHANNELS = 1;
   private final PowerDistribution pdp;
@@ -73,5 +73,14 @@ public final class PdpStatusReader {
    */
   public int getCanId() {
     return pdp.getModule();
+  }
+
+  /**
+   * NAME
+   *   close - Release the WPILib PDP allocation.
+   */
+  @Override
+  public void close() {
+    pdp.close();
   }
 }

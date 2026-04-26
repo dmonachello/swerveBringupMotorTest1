@@ -10,5 +10,6 @@ package frc.robot.manufacturers;
 public enum DeviceRole {
   MOTOR,
   ENCODER,
+  POWER,
   MISC
 }

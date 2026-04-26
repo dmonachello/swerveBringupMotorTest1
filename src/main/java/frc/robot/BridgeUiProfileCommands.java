@@ -1,6 +1,8 @@
 package frc.robot;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -14,15 +16,32 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
   private static final String CMD_PROFILES_RELOAD = "profilesReload";
   private static final String CMD_PROFILE_TOGGLE = "profileToggle";
   private static final String CMD_PROFILES_APPLY = "profilesApply";
+  private static final String CMD_SHOW_PROFILES = "showProfiles";
+  private static final String CMD_SHOW_PROFILE = "showProfile";
 
   private static final String ARG_NAME = "name";
+  private static final String ARG_JSON = "json";
+  private static final String JSON_KEY_PROFILE = "profile";
+  private static final String JSON_KEY_ACTIVE = "active";
+  private static final String JSON_KEY_DEFAULT = "default";
+  private static final String JSON_KEY_AVAILABLE = "available";
+  private static final String JSON_KEY_PROFILE_DEVICES = "profile_devices";
+  private static final String TEXT_PROFILE_HEADER = "Profile:";
+  private static final String TEXT_PROFILE_ACTIVE_FMT = "  active=%s";
+  private static final String TEXT_PROFILE_DEFAULT_FMT = "  default=%s";
+  private static final String TEXT_PROFILE_AVAILABLE_FMT = "  available=%d";
+  private static final String TEXT_PROFILE_NAME_FMT = "  name=%s";
+  private static final String TEXT_PROFILE_DEVICES_HEADER_FMT = "  devices=%d";
+  private static final String TEXT_PROFILE_DEVICE_FMT = "    %s";
 
   private static final String TEXT_PROFILE_ACTIVATE_OK = "Profile activated: %s";
   private static final String TEXT_PROFILE_ACTIVATE_FAIL = "Profile activation failed.";
   private static final String TEXT_PROFILES_RELOAD_OK = "Profiles reloaded.";
   private static final String TEXT_PROFILES_RELOAD_FAILED = "Profiles reload failed: %s";
+  private static final String MESSAGE_PROFILE_NOT_FOUND = "Profile not found.";
 
   private static final String MESSAGE_SELECT_PROFILE_REQUIRED = "selectProfile requires args.name.";
+  private static final String MESSAGE_SHOW_PROFILE_REQUIRED = "showProfile requires args.name.";
   private static final String MESSAGE_SELECTED_PROFILE_PREFIX = "Selected profile: ";
   private static final String MESSAGE_PROFILE_SELECTED = "Profile selected.";
 
@@ -31,7 +50,9 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
       CMD_PROFILE_ACTIVATE,
       CMD_PROFILES_RELOAD,
       CMD_PROFILE_TOGGLE,
-      CMD_PROFILES_APPLY);
+      CMD_PROFILES_APPLY,
+      CMD_SHOW_PROFILES,
+      CMD_SHOW_PROFILE);
 
   /**
    * NAME
@@ -59,6 +80,16 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
     void selectNextProfile();
 
     void applyProfilesApplyCommand(BridgeUiCommandResult result, JsonObject args, boolean isTcp);
+
+    Boolean parseUiArgBoolean(JsonObject args, String key);
+
+    void applyShowResult(BridgeUiCommandResult result, String text, JsonObject json, boolean wantsJson);
+
+    String getDefaultCanProfile();
+
+    List<String> getProfileNames();
+
+    List<BringupUtil.DeviceEntry> getProfileDevicesSorted(String profileName);
   }
 
   private final Dependencies dependencies;
@@ -97,6 +128,12 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
         break;
       case CMD_PROFILES_APPLY:
         dependencies.applyProfilesApplyCommand(result, args, isTcp);
+        break;
+      case CMD_SHOW_PROFILES:
+        executeShowProfiles(args, result);
+        break;
+      case CMD_SHOW_PROFILE:
+        executeShowProfile(args, result);
         break;
       default:
         result.ok = false;
@@ -147,6 +184,90 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
     dependencies.runProfileActivateAction();
     result.message = TEXT_PROFILES_RELOAD_OK;
     result.outText = result.message;
+  }
+
+  private void executeShowProfiles(JsonObject args, BridgeUiCommandResult result) {
+    boolean wantsJson = Boolean.TRUE.equals(dependencies.parseUiArgBoolean(args, ARG_JSON));
+    List<String> names = dependencies.getProfileNames();
+    dependencies.applyShowResult(result, buildProfilesText(names), buildProfilesJson(names), wantsJson);
+  }
+
+  private void executeShowProfile(JsonObject args, BridgeUiCommandResult result) {
+    String profileName = dependencies.parseUiArgString(args, ARG_NAME);
+    if (profileName == null || profileName.isBlank()) {
+      result.ok = false;
+      result.message = MESSAGE_SHOW_PROFILE_REQUIRED;
+      result.outText = result.message;
+      return;
+    }
+    String selected = profileName.trim();
+    List<String> names = dependencies.getProfileNames();
+    if (!names.contains(selected)) {
+      result.ok = false;
+      result.message = MESSAGE_PROFILE_NOT_FOUND;
+      result.outText = result.message;
+      return;
+    }
+    List<BringupUtil.DeviceEntry> devices = dependencies.getProfileDevicesSorted(selected);
+    boolean wantsJson = Boolean.TRUE.equals(dependencies.parseUiArgBoolean(args, ARG_JSON));
+    dependencies.applyShowResult(
+        result,
+        buildProfileText(selected, devices),
+        buildProfileJson(selected, devices),
+        wantsJson);
+  }
+
+  private String buildProfilesText(List<String> names) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(TEXT_PROFILE_HEADER).append('\n');
+    sb.append(String.format(
+        TEXT_PROFILE_ACTIVE_FMT,
+        dependencies.getActiveCanProfileLabel())).append('\n');
+    sb.append(String.format(
+        TEXT_PROFILE_DEFAULT_FMT,
+        dependencies.getDefaultCanProfile())).append('\n');
+    sb.append(String.format(TEXT_PROFILE_AVAILABLE_FMT, names.size()));
+    return sb.toString();
+  }
+
+  private JsonObject buildProfilesJson(List<String> names) {
+    JsonObject info = new JsonObject();
+    info.addProperty(JSON_KEY_ACTIVE, dependencies.getActiveCanProfileLabel());
+    info.addProperty(JSON_KEY_DEFAULT, dependencies.getDefaultCanProfile());
+    JsonArray available = new JsonArray();
+    for (String name : names) {
+      available.add(name);
+    }
+    info.add(JSON_KEY_AVAILABLE, available);
+    JsonObject root = new JsonObject();
+    root.add(JSON_KEY_PROFILE, info);
+    return root;
+  }
+
+  private String buildProfileText(String profileName, List<BringupUtil.DeviceEntry> devices) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(TEXT_PROFILE_HEADER).append('\n');
+    sb.append(String.format(TEXT_PROFILE_NAME_FMT, profileName)).append('\n');
+    sb.append(String.format(TEXT_PROFILE_DEVICES_HEADER_FMT, devices.size()));
+    for (BringupUtil.DeviceEntry entry : devices) {
+      if (entry != null && entry.label != null && !entry.label.isBlank()) {
+        sb.append('\n').append(String.format(TEXT_PROFILE_DEVICE_FMT, entry.label));
+      }
+    }
+    return sb.toString();
+  }
+
+  private JsonObject buildProfileJson(String profileName, List<BringupUtil.DeviceEntry> devices) {
+    JsonObject root = new JsonObject();
+    root.addProperty(JSON_KEY_PROFILE, profileName);
+    JsonArray labels = new JsonArray();
+    for (BringupUtil.DeviceEntry entry : devices) {
+      if (entry != null && entry.label != null && !entry.label.isBlank()) {
+        labels.add(entry.label);
+      }
+    }
+    root.add(JSON_KEY_PROFILE_DEVICES, labels);
+    return root;
   }
 }
 

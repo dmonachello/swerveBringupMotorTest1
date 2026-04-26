@@ -7,6 +7,7 @@ import frc.robot.BringupUtil.DeviceConfig;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.devices.ctre.CtreCANCoderDevice;
 import frc.robot.devices.ctre.CtreCANdleDevice;
+import frc.robot.devices.ctre.CtrePdpDevice;
 import frc.robot.devices.ctre.CtreTalonFxDevice;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.LimitsAttachment;
@@ -89,6 +90,15 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
           config.getLabel(),
           config.getLimits()));
 
+  private static final DeviceRegistration PDP_REGISTRATION = new DeviceRegistration(
+      CtrePdpDevice.HEADER,
+      "CTRE",
+      "PDP",
+      "PDP",
+      DeviceRole.POWER,
+      false,
+      config -> new CtrePdpDevice(config.getId(), config.getLabel()));
+
   private final List<DeviceTypeBucket> buckets = new ArrayList<>();
   private final List<DeviceTypeBucket> motorBuckets = new ArrayList<>();
 
@@ -107,6 +117,7 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
     register(FALCON_REGISTRATION, false);
     register(CANCODER_REGISTRATION, false);
     register(CANDLE_REGISTRATION, false);
+    register(PDP_REGISTRATION, false);
   }
 
   @Override

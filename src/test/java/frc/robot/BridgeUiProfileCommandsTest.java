@@ -5,12 +5,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
+import java.util.Collections;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class BridgeUiProfileCommandsTest {
 
   private static final String CMD_SELECT_PROFILE = "selectProfile";
   private static final String CMD_PROFILE_ACTIVATE = "profileActivate";
+  private static final String CMD_SHOW_PROFILE = "showProfile";
 
   @Test
   void selectProfileRequiresName() {
@@ -61,6 +64,31 @@ class BridgeUiProfileCommandsTest {
     assertTrue(result.message.startsWith("Profile activated:"));
   }
 
+  @Test
+  void showProfileJsonIncludesDeviceLabels() {
+    ProfileDeps deps = new ProfileDeps();
+    deps.nextName = "alpha";
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_SHOW_PROFILE,
+        new JsonObject(),
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(result.outJson.contains("\"profile\":\"alpha\""));
+    assertTrue(result.outJson.contains("\"driveA\""));
+  }
+
   private static final class ProfileDeps implements BridgeUiProfileCommands.Dependencies {
     private String nextName;
     private boolean profileActive;
@@ -108,6 +136,49 @@ class BridgeUiProfileCommandsTest {
 
     @Override
     public void applyProfilesApplyCommand(BridgeUiCommandResult result, JsonObject args, boolean isTcp) {}
+
+    @Override
+    public Boolean parseUiArgBoolean(JsonObject args, String key) {
+      return true;
+    }
+
+    @Override
+    public void applyShowResult(
+        BridgeUiCommandResult result,
+        String text,
+        JsonObject json,
+        boolean wantsJson) {
+      if (wantsJson) {
+        result.outJson = json.toString();
+      } else {
+        result.outText = text;
+      }
+    }
+
+    @Override
+    public String getDefaultCanProfile() {
+      return "alpha";
+    }
+
+    @Override
+    public List<String> getProfileNames() {
+      return List.of("alpha");
+    }
+
+    @Override
+    public List<BringupUtil.DeviceEntry> getProfileDevicesSorted(String profileName) {
+      return List.of(new BringupUtil.DeviceEntry(
+          1,
+          5,
+          2,
+          "REV",
+          "motor",
+          "driveA",
+          "",
+          null,
+          Collections.emptyList(),
+          null));
+    }
   }
 }
 
