@@ -124,6 +124,16 @@ MSG_NEIGHBORS_STALE_SAVE = (
 NEIGHBOR_STATUS_NOT_POPULATED = "Neighbors: not populated"
 NEIGHBOR_STATUS_CURRENT = "Neighbors: current"
 NEIGHBOR_STATUS_STALE = "Neighbors: stale"
+LEFT_BOTTOM_SCROLL_HEIGHT = 300
+LEFT_BOTTOM_SCROLL_BORDER = 0
+LEFT_BOTTOM_WINDOW_ORIGIN = (0, 0)
+LEFT_BOTTOM_PACK_PAD_Y = (6, 0)
+LEFT_BOTTOM_SCROLL_DELTA = -1
+LEFT_BOTTOM_MOUSEWHEEL_UNIT = "units"
+LEFT_BOTTOM_MOUSEWHEEL_DIVISOR = 120
+TK_EVENT_CONFIGURE = "<Configure>"
+TK_EVENT_MOUSEWHEEL = "<MouseWheel>"
+TK_BBOX_ALL = "all"
 MSG_INVALID_DIO_CHANNEL = "Invalid DIO channel for {}."
 MSG_MISSING_DIO_TYPE = "Missing DIO device type for {}."
 MSG_INVALID_DIO_TYPE = "Invalid DIO device type for {}."
@@ -502,6 +512,7 @@ class TopologyEditor(tk.Tk):
         self._neighbor_ports: List[Dict[str, object]] = []
         self._neighbors_dirty = False
         self._profile_name = "drawn_profile"
+        self._default_profile_name: Optional[str] = None
         self._profile_source_path: Optional[str] = None
         self._suppress_profile_select = False
         self._profile_names: List[str] = []
@@ -552,6 +563,7 @@ class TopologyEditor(tk.Tk):
         self._last_base_y: Optional[float] = None
         self._details_layout_shift = False
         self._last_canvas_height: Optional[int] = None
+        self._pending_fit_to_window = False
         self._suppress_list_select = False
         self._syncing_selection = False
         self._zoom = 1.0
@@ -627,8 +639,43 @@ class TopologyEditor(tk.Tk):
         self.node_list.bind("<Double-1>", self._on_list_edit_start)
         self.node_list.bind("<F2>", self._on_list_edit_start)
 
-        bottom = ttk.Frame(left)
-        bottom.pack(fill="x", side="bottom", pady=(6, 0))
+        bottom_shell = ttk.Frame(left)
+        bottom_shell.pack(fill=tk.X, side=tk.BOTTOM, pady=LEFT_BOTTOM_PACK_PAD_Y)
+        bottom_canvas = tk.Canvas(
+            bottom_shell,
+            borderwidth=LEFT_BOTTOM_SCROLL_BORDER,
+            highlightthickness=LEFT_BOTTOM_SCROLL_BORDER,
+            height=LEFT_BOTTOM_SCROLL_HEIGHT,
+        )
+        bottom_scroll = ttk.Scrollbar(
+            bottom_shell, orient=tk.VERTICAL, command=bottom_canvas.yview
+        )
+        bottom = ttk.Frame(bottom_canvas)
+        bottom_window = bottom_canvas.create_window(
+            LEFT_BOTTOM_WINDOW_ORIGIN, window=bottom, anchor=tk.NW
+        )
+        bottom_canvas.configure(yscrollcommand=bottom_scroll.set)
+        bottom_canvas.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        bottom_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        def _sync_bottom_scroll_region(_event: tk.Event) -> None:
+            bottom_canvas.configure(scrollregion=bottom_canvas.bbox(TK_BBOX_ALL))
+
+        def _sync_bottom_width(event: tk.Event) -> None:
+            bottom_canvas.itemconfigure(bottom_window, width=event.width)
+
+        def _on_bottom_mousewheel(event: tk.Event) -> None:
+            bottom_canvas.yview_scroll(
+                int(
+                    LEFT_BOTTOM_SCROLL_DELTA
+                    * (event.delta / LEFT_BOTTOM_MOUSEWHEEL_DIVISOR)
+                ),
+                LEFT_BOTTOM_MOUSEWHEEL_UNIT,
+            )
+
+        bottom.bind(TK_EVENT_CONFIGURE, _sync_bottom_scroll_region)
+        bottom_canvas.bind(TK_EVENT_CONFIGURE, _sync_bottom_width)
+        bottom_canvas.bind(TK_EVENT_MOUSEWHEEL, _on_bottom_mousewheel)
 
         ttk.Separator(bottom, orient="horizontal").pack(fill="x", pady=(0, 6))
         ttk.Label(bottom, text="Profile Name").pack(anchor="w")
@@ -654,6 +701,7 @@ class TopologyEditor(tk.Tk):
         ttk.Checkbutton(bottom, text="Set As Default", variable=self.var_set_default).pack(
             anchor="w", pady=(4, 8)
         )
+        self._refresh_default_checkbox()
         ttk.Label(bottom, textvariable=self._zoom_label_var).pack(anchor="w", pady=(2, 2))
         self._neighbor_status_label = ttk.Label(bottom, textvariable=self._neighbor_status_var)
         self._neighbor_status_label.pack(anchor="w", pady=(0, 6))
@@ -1753,17 +1801,18 @@ class TopologyEditor(tk.Tk):
             return
         names = sorted(profiles.keys())
         default_name = data.get("default_profile")
+        default_profile_name = default_name if isinstance(default_name, str) else None
         if selected_name:
             if selected_name not in profiles:
                 messagebox.showerror("Error", f"Profile '{selected_name}' not found in JSON.")
                 return
             name = selected_name
         elif ask_profile:
-            name = self._choose_profile_name(names, default_name)
+            name = self._choose_profile_name(names, default_profile_name)
             if not name:
                 return
         else:
-            name = default_name if default_name in profiles else names[0]
+            name = default_profile_name if default_profile_name in profiles else names[0]
         profile = profiles.get(name)
         if not isinstance(profile, dict):
             messagebox.showerror("Error", "Profile data is not a JSON object.")
@@ -1818,6 +1867,7 @@ class TopologyEditor(tk.Tk):
             self._ensure_dio_wiring_links()
         self._next_key = 1 + max([n.key for n in self._nodes], default=0)
         self._profile_name = name
+        self._default_profile_name = default_profile_name
         self._profile_source_path = path
         self._set_profile_names(names)
         self._suppress_profile_select = True
@@ -1849,6 +1899,7 @@ class TopologyEditor(tk.Tk):
         self.update_idletasks()
         self._pending_fit_to_window = True
         self._dirty = False
+        self._refresh_default_checkbox()
         self._refresh_neighbor_status()
         self.update_idletasks()
         self.canvas.xview_moveto(0.0)
@@ -1985,20 +2036,37 @@ class TopologyEditor(tk.Tk):
 
     def _refresh_profile_choices(self, keep_selection: bool = True) -> None:
         names, default_name = self._read_profile_index()
+        self._default_profile_name = default_name
         self.profile_combo["values"] = names
         if not names:
             self._profile_pick_var.set("")
+            self._refresh_default_checkbox()
             return
         current = self._profile_pick_var.get()
         if keep_selection and current in names:
+            self._refresh_default_checkbox()
             return
         if self._profile_name in names:
             self._profile_pick_var.set(self._profile_name)
+            self._refresh_default_checkbox()
             return
         if default_name in names:
             self._profile_pick_var.set(default_name)
+            self._refresh_default_checkbox()
             return
         self._profile_pick_var.set(names[0])
+        self._refresh_default_checkbox()
+
+    def _refresh_default_checkbox(self) -> None:
+        """
+        NAME
+            _refresh_default_checkbox - Mirror the current profile default state.
+        """
+        if not hasattr(self, "var_set_default"):
+            return
+        self.var_set_default.set(
+            bool(self._profile_name and self._profile_name == self._default_profile_name)
+        )
 
     def _on_profile_pick(self, _event: tk.Event) -> None:
         name = self._profile_pick_var.get().strip()
@@ -2344,6 +2412,8 @@ class TopologyEditor(tk.Tk):
         data["diagram"] = {"profiles": diagram_profiles}
         if self.var_set_default.get() or "default_profile" not in data:
             data["default_profile"] = profile_name
+        default_name = data.get("default_profile")
+        self._default_profile_name = default_name if isinstance(default_name, str) else None
         if not self._write_profiles_payload(path, data, include_extras=True):
             return
         self._dirty = False
@@ -2351,6 +2421,7 @@ class TopologyEditor(tk.Tk):
             self._profile_source_path = str(path)
         self._set_profile_names(sorted(profiles.keys()))
         self._refresh_profile_choices(keep_selection=False)
+        self._refresh_default_checkbox()
         messagebox.showinfo("Saved", f"Updated {path} with profile '{profile_name}'.")
 
     def _validate_nodes(self, nodes: Optional[List[Node]] = None) -> Optional[str]:
