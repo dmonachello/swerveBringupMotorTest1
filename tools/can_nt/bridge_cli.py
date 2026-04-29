@@ -7946,11 +7946,27 @@ class BridgeCli:
         tests_payload = model_to_payload(model) if model is not None else {}
         available_tests = collect_available_tests(tests_payload if isinstance(tests_payload, dict) else {})
         test_selected = bool(self._tests_active_set and available_tests)
+        has_unsaved = any(bool(flag) for flag in dirty.values())
+        state = self._session.get_state_snapshot()
+        session_id = self._session.session_id() or EMPTY_STRING
+        nt_session_id = EMPTY_STRING
+        robot_enabled = False
+        robot_estopped = False
+        if isinstance(state, dict):
+            nt_session_id = str(state.get(NT_STATE_SESSION_ID, EMPTY_STRING))
+            robot_enabled = bool(state.get(NT_STATE_ENABLED, False))
+            robot_estopped = bool(state.get(NT_STATE_ESTOPPED, False))
+        session_mismatch = bool(session_id) and bool(nt_session_id) and session_id != nt_session_id
         workflow = self._workflow01.assess(
             config_loaded=bool(self._local_root_payload),
             profile_selected=bool(self._active_profile_name()),
             robot_connected=bool(self._session.is_connected()),
             test_selected=test_selected,
+            handshake_done=bool(self._session.handshake_done()),
+            session_mismatch=session_mismatch,
+            robot_enabled=robot_enabled,
+            robot_estopped=robot_estopped,
+            has_unsaved_changes=has_unsaved,
         )
         diagnostics_rows = normalize_device_attachments(
             self._local_root_payload if isinstance(self._local_root_payload, dict) else {}
@@ -7999,11 +8015,6 @@ class BridgeCli:
             },
             "diagnostics": diagnostics_summary,
         }
-        state = self._session.get_state_snapshot()
-        session_id = self._session.session_id() or EMPTY_STRING
-        nt_session_id = EMPTY_STRING
-        if isinstance(state, dict):
-            nt_session_id = str(state.get(NT_STATE_SESSION_ID, EMPTY_STRING))
         payload[PROTO_KEY_PROTOCOL] = {
             PROTO_KEY_TCP: {
                 PROTO_KEY_CONNECTED: bool(self._session.is_connected()),

@@ -4,6 +4,7 @@ This repo is one system with two cooperating parts:
 
 - Robot-side WPILib Java bringup harness that actively runs motors/sensors on the roboRIO.
 - PC-side Python tool that passively listens to the robot CAN bus via CANable (slcan over COM port) and publishes diagnostics to NetworkTables for the robot code and dashboards.
+- Shared docs/specs that define CLI behavior, layered architecture, operator workflows, and pit-side diagnosis direction.
 
 Real-time structure (20ms loop + scheduler)
 Purpose: Explain why console output is throttled and how long reports are produced safely.
@@ -27,9 +28,10 @@ Hard rules
 - Windows is the primary host for the Python tool (Driver Station Windows PC). Avoid Linux-only assumptions (SocketCAN, can0, etc) unless explicitly requested.
 - Prefer small, reversible diffs. No sweeping refactors unless asked.
 - When CLI syntax changes, update the formal grammar in `tools/can_nt/bridge_cli_ebnf.txt` in the same change (and keep generated grammar artifacts in sync).
+- When status definitions or generated command/status artifacts change, update all generated outputs in the same change. See `docs/GENERATED_ARTIFACTS_POLICY.md`.
 - Keep hardware configuration easy to customize: adding a team's device list/profile should be data-driven and clearly documented, not code surgery.
 - The JSON report exposes telemetry under `devices[].attachments` (e.g., `type=revMotor` / `ctreMotor`) with fields such as `cmdDuty`, `appliedDuty`, and `motorCurrentA`.
-- AI diagnosis guidance lives in `AI_DIAGNOSIS.md`.
+- AI diagnosis guidance lives in `docs/AI_DIAGNOSIS.md`.
 - Enforce no string or numeric literals in executable code paths. All literals must be defined in a dedicated constants section/file and referenced symbolically. (Documentation and constant definitions are exempt.)
 - Documentation rules:
   - Use short headings and clear section hierarchy.
@@ -113,11 +115,52 @@ Definition of done
 - Python tool still runs on Windows with CANable slcan COM port and FRC bitrate 1,000,000.
 - Python tool still publishes bringup/diag keys without breaking existing dashboards/prints.
 - PCAP/PCAPNG output (if enabled) still opens in Wireshark.
+- Relevant CLI regression scripts pass, or any hardware/network dependency is explicitly called out.
+- If Java tests are run on Windows, `JAVA_HOME` must point at the JDK root (for example `C:\Users\Public\wpilib\2024\jdk`), not the `bin` directory.
 
 Where things live
 
 - Java bringup code: src/main/java/... (look for RobotV2 and BringupUtil)
 - Python CAN tool: tools/can_nt/ (entrypoint can_nt_bridge.py)
+- Shared Python domain/service code: tools/common/
+- Regression fixtures/expected outputs: tests/regression/
+
+Current regression commands
+
+Purpose: Keep local behavior checked with the same gates used by recent work.
+
+- Local group/targeting regression:
+  - `python tools/can_nt/scripts/bridge_cli_v1_group_targeting_regression.py`
+- Expanded local group/test regression:
+  - `python tools/can_nt/scripts/bridge_cli_group_targeting_4m2g3t_regression.py`
+- Connected non-motion robot regression (requires reachable roboRIO TCP UI endpoint):
+  - `python tools/can_nt/scripts/bridge_cli_robot_non_motion_regression.py --rio 172.22.11.2`
+- Java unit tests:
+  - `.\gradlew.bat test`
+- Robot-connected tests are optional unless the task explicitly touches robot TCP/UI behavior or the user asks for connected validation.
+
+Layered architecture direction
+
+Purpose: Keep new work aligned with the current architecture docs without forcing a sweeping rewrite.
+
+- The practical target is the layered model described in `docs/ARCHITECTURE.md` and `docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md`.
+- Python/PC-side services are the current main frontier for layered progress:
+  - shared config lifecycle
+  - workflow services
+  - test/profile/group domain semantics
+  - status and command handling
+- Prefer moving reusable host-side behavior into shared services instead of duplicating it inside CLI/UI surfaces.
+- Do not redo Java-side architecture just because a spec mentions a split; preserve existing working boundaries unless the task requires a change.
+- Preserve command semantics, status codes, batch behavior, and regression script compatibility during refactors.
+
+CLI and status contract
+
+Purpose: Keep operator-facing commands and machine-readable outcomes stable.
+
+- Prefer canonical command forms documented in the CLI specs and manuals.
+- Keep parser, help text, docs, grammar, and regression fixtures aligned when command syntax changes.
+- Status-code behavior is part of the API contract. Do not replace code-based outcomes with text-only checks.
+- Existing batch scripts and regression scripts must keep exercising the same command path as interactive use.
 
 Shuffleboard layouts (profile-specific)
 Purpose: Provide a default dashboard layout that includes per-device presenceConfidence tiles and a scrolling bringup tree.
@@ -229,4 +272,22 @@ Stage 5: Publish insights
 
 - Publish the inventory and key findings to NetworkTables under bringup/diag/can/... without breaking existing keys.
 - Java consumption is optional and must fail soft if the publisher is absent.
+
+Pit robot diagnosis direction
+
+Purpose: Capture the current spec/research direction for pit-side fault localization.
+
+- Current pit-diagnosis work is still spec/research unless a task explicitly asks for implementation.
+- Relevant specs:
+  - `docs/FEATURE_SPEC_MULTI_OBSERVER_CAN_FAULT_LOCALIZATION.md`
+  - `docs/SPEC_TOPOLOGY_FAULT_INFERENCE_MODEL.md`
+  - `docs/SPEC_OPERATOR_CLUES_MODEL.md`
+  - `docs/SPEC_BREAK_AND_ERROR_OPERATOR_SURFACES.md`
+  - `docs/SPEC_BREAK_ERROR_IMPLEMENTATION_TRACE.md`
+  - `docs/FEATURE_SPEC_PIT_ROBOT_DIAGNOSIS_FIRST_PASS.md` when present
+- Treat the product concept as multi-observer, topology-aware CAN fault localization with operator-supplied field clues.
+- Use `neighborPorts` as the preferred semantic topology graph for inference. Treat `neighborLinks` as a lower-fidelity compatibility/fallback source.
+- Output candidate fault regions and evidence provenance; do not overclaim exact electrical causes from passive evidence alone.
+- Operator clues are weighted evidence, not truth. Preserve passive evidence and surface conflicts when clues disagree with telemetry.
+- New pit-diagnosis outputs should be additive and should not break existing bringup, dashboard, CLI, or JSON report behavior.
 
