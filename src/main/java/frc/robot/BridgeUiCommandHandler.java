@@ -50,9 +50,9 @@ public class BridgeUiCommandHandler {
 
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
   private static final int UI_PROTOCOL_VERSION = 1;
-  private static final long TCP_CMD_TIMEOUT_MS = 1000;
-  private static final long TCP_PROFILE_APPLY_TIMEOUT_MS = 10000;
-  private static final long TCP_RUNTIME_STATE_TIMEOUT_MS = 10000;
+  private static final long TCP_CMD_TIMEOUT_MS = 2000;
+  private static final long TCP_PROFILE_APPLY_TIMEOUT_MS = 15000;
+  private static final long TCP_RUNTIME_STATE_TIMEOUT_MS = 15000;
   private static final long TCP_LEASE_TIMEOUT_MS = 750;
   private static final long TCP_TIMEOUT_STOP_COOLDOWN_MS = 5000;
   private static final long TCP_KEEPALIVE_INTERVAL_MS = 1000;

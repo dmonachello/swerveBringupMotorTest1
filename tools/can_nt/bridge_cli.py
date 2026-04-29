@@ -307,8 +307,8 @@ KEEPALIVE_INTERVAL_SEC = 1.0
 KEEPALIVE_SLEEP_SEC = 0.1
 KEEPALIVE_DISCONNECTED_WAIT_SEC = 0.5
 KEEPALIVE_JOIN_TIMEOUT_SEC = 1.0
-ROBOT_COMMAND_TIMEOUT_SEC = 2.0
-ROBOT_LONG_COMMAND_TIMEOUT_SEC = 12.0
+ROBOT_COMMAND_TIMEOUT_SEC = 3.5
+ROBOT_LONG_COMMAND_TIMEOUT_SEC = 20.0
 PROFILE_EXPORT_TEST_RUN_WAIT_SEC = 2.0
 TEST_WAIT_DEFAULT_TIMEOUT_SEC = 10.0
 TEST_WAIT_POLL_SEC = 0.1
@@ -328,6 +328,7 @@ MESSAGE_KEEPALIVE_SEND_OK = "KEEPALIVE: uiPing sent (seq={seq})."
 MESSAGE_KEEPALIVE_SEND_FAIL = "KEEPALIVE: uiPing send failed."
 MESSAGE_KEEPALIVE_RECV_ACK = "KEEPALIVE: uiPing ack received (seq={seq})."
 MESSAGE_KEEPALIVE_RECV_OUT = "KEEPALIVE: uiPing out received (seq={seq})."
+MESSAGE_WAITING_FOR_OUT = "WARNING: Timeout waiting for OUT."
 MESSAGE_DEBUG_REGISTRY_PUSH = (
     "DEBUG: registry push path={path} bytes={bytes} sha256={sha256} data_hash={data_hash}"
 )
@@ -5937,7 +5938,7 @@ class BridgeCli:
         self._proto_mark_cmd_sent(CMD_SHOW_TESTS, now=time.time())
         self._show_label_seq[int(seq)] = SHOW_SOURCE_ROBOT
         self._show_pretty_json_seq[int(seq)] = bool(pretty)
-        event = self._wait_for_seq(seq)
+        event = self._wait_for_seq(seq, timeout_sec=ROBOT_LONG_COMMAND_TIMEOUT_SEC)
         if self._event_failed(event, MESSAGE_LABEL_SHOW_TESTS):
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         return StatusResult(code=SS__NORMAL)
@@ -7506,7 +7507,7 @@ class BridgeCli:
             print(MESSAGE_ERR_PROFILES_PUSH_SEND)
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         self._proto_mark_cmd_sent(CMD_PROFILES_APPLY, now=time.time())
-        event = self._wait_for_seq(seq)
+        event = self._wait_for_seq(seq, timeout_sec=ROBOT_LONG_COMMAND_TIMEOUT_SEC)
         if self._event_failed(event, CMD_PROFILES_APPLY):
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         self._local_root_payload = payload
@@ -7529,7 +7530,7 @@ class BridgeCli:
             print(MESSAGE_ERR_PROFILES_RELOAD_SEND)
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         self._proto_mark_cmd_sent(CMD_PROFILES_RELOAD, now=time.time())
-        event = self._wait_for_seq(seq)
+        event = self._wait_for_seq(seq, timeout_sec=ROBOT_LONG_COMMAND_TIMEOUT_SEC)
         if self._event_failed(event, CMD_PROFILES_RELOAD):
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         print(MESSAGE_INFO_PROFILES_RELOAD)
@@ -7550,7 +7551,7 @@ class BridgeCli:
             print(MESSAGE_ERR_PROFILES_ACTIVATE_SEND)
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         self._proto_mark_cmd_sent(CMD_PROFILE_ACTIVATE, now=time.time())
-        event = self._wait_for_seq(seq)
+        event = self._wait_for_seq(seq, timeout_sec=ROBOT_LONG_COMMAND_TIMEOUT_SEC)
         if self._event_failed(event, CMD_PROFILE_ACTIVATE):
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         return StatusResult(code=SS__NORMAL)
@@ -7706,7 +7707,7 @@ class BridgeCli:
                         event.message = ack_message
                     return event
             self._proto_mark_timeout(now=time.time())
-            self._warn("WARNING: Timeout waiting for OUT.", essential=True)
+            self._debug_log(MESSAGE_WAITING_FOR_OUT)
         return None
 
     def _event_failed(self, event: Optional[BridgeEvent], context: str) -> bool:
