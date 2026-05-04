@@ -101,8 +101,11 @@ CMD_SCRIPT = "script"
 CMD_BINDINGS = "bindings"
 CMD_CAN_MAPPINGS = "can-mappings"
 CMD_TESTS = "tests"
+CMD_CLEAR = "clear"
 CMD_SELECT = "select"
 CMD_RUN_ALL = "run-all"
+CMD_STOP_LATCH = "stop-latch"
+CMD_SAFETY_LATCH = "safety-latch"
 CMD_PUSH = "push"
 CMD_ACTIVATE = "--activate"
 CMD_TERMINAL = "terminal"
@@ -115,6 +118,7 @@ SAVE_TARGET_BRIDGE_CONFIG = "bridge-config"
 SAVE_TARGET_RUNTIME_GROUPS = "runtime-groups"
 SAVE_TARGET_PROFILES = "profiles"
 KIND_EXEC_RUN_TEST_DEFAULT = "exec_run_test_default"
+KIND_EXEC_CLEAR_STOP_LATCH = "exec_clear_stop_latch"
 
 
 class CliParseError(ValueError):
@@ -244,6 +248,8 @@ class BridgeCliParser:
                 return self._handle_profile
             if cmd == SPEC.cmd_add.lower():
                 return self._handle_add_command
+            if cmd == CMD_CLEAR:
+                return self._handle_clear_command
             if cmd == SPEC.cmd_run.lower():
                 return self._handle_run_command
             return None
@@ -260,6 +266,8 @@ class BridgeCliParser:
                 return self._handle_profiles_command
             if cmd == SPEC.cmd_add.lower():
                 return self._handle_add_command
+            if cmd == CMD_CLEAR:
+                return self._handle_clear_command
             if cmd == SPEC.cmd_run.lower():
                 return self._handle_run_command
             if cmd == SPEC.cmd_selected_device.lower():
@@ -645,6 +653,15 @@ class BridgeCliParser:
                 bool(SPEC.bool_false),
                 bool(SPEC.bool_false),
             )
+        if verb == CMD_CLEAR:
+            return (
+                KIND_EXEC_CLEAR_STOP_LATCH,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
+            )
         if verb == SPEC.cmd_run:
             kind = SPEC.empty_str
             if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() == SPEC.cmd_test:
@@ -789,6 +806,23 @@ class BridgeCliParser:
             kind = self._build_add_kind(tokens)
             return (
                 kind,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
+            )
+        if verb == CMD_CLEAR:
+            return (
+                KIND_EXEC_CLEAR_STOP_LATCH,
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
@@ -1687,6 +1721,18 @@ class BridgeCliParser:
         if target not in (CMD_NEXT, CMD_ALL):
             raise CliParseError(SPEC.msg_parse_error)
         self._reject_extra(tokens, SPEC.count_two, LABEL_ADD)
+
+    def _handle_clear_command(self, tokens: List[str]) -> None:
+        """
+        NAME
+            _handle_clear_command - Validate robot-side clear commands.
+        """
+        if len(tokens) < SPEC.count_two:
+            raise CliParseError(SPEC.msg_parse_error)
+        target = tokens[SPEC.count_one].lower()
+        if target not in (CMD_STOP_LATCH, CMD_SAFETY_LATCH):
+            raise CliParseError(SPEC.msg_parse_error)
+        self._reject_extra(tokens, SPEC.count_two, CMD_CLEAR)
 
     def _handle_run_command(self, tokens: List[str]) -> None:
         if len(tokens) < SPEC.count_two:

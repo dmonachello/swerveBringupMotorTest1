@@ -47,6 +47,7 @@
     "bindings",
     "can-mappings",
     "selected-device",
+    "safety-latch",
     "runtime-state",
     "runtime-components",
     "tests",

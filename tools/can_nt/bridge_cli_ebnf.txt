@@ -24,6 +24,7 @@ exec           = show_exec
                | "connect"
                | "disconnect"
                | "add" ws ("next" | "all")
+               | "clear" ws ("stop-latch" | "safety-latch")
                | "reset" ws "zero-config" [ ws ("--yes" | "--clear-memory") ] [ ws ("--yes" | "--clear-memory") ]
                | "active" ws ("add" | "next" | ("show" [ ws "--json" ]))
                | "run" ws "test" [ ws name ]
@@ -50,6 +51,7 @@ show_target    = "status"
                | "bindings"
                | "can-mappings" [ ws ("manufacturers" | "device-types" | "device-type") ]
                | "selected-device"
+               | "safety-latch"
                | "runtime-state"
                | "config"
                | "config" ws "local-raw"
@@ -78,6 +80,7 @@ config         = "group" ws name
                | "add" ws "device" ws name [ ws "group" ws name ]
                | "add" ws "all" [ ws "group" ws name ]
                | "add" ws "next" [ ws "group" ws name ]
+               | "clear" ws ("stop-latch" | "safety-latch")
                | "copy" ws "group" ws name ws name
                | "profile" ws name
                | "profile" ws "default" ws name

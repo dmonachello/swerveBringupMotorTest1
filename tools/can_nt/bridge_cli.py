@@ -868,6 +868,7 @@ SHOW_TARGET_DEVICE_GROUP = "device-group"
 SHOW_TARGET_BINDINGS = "bindings"
 SHOW_TARGET_CAN_MAPPINGS = "can-mappings"
 SHOW_TARGET_SELECTED_DEVICE = "selected-device"
+SHOW_TARGET_SAFETY_LATCH = "safety-latch"
 SHOW_TARGET_MESSAGE_LEVEL = "message-level"
 SHOW_TARGET_DEVICE_USAGE = "device-usage"
 SHOW_TARGET_COMMANDS = "commands"
@@ -1411,7 +1412,7 @@ HELP_VALIDATE_FILE_TEXT = (
 HELP_TOPIC_QUICK = "quick"
 HELP_SHOW_TEXT = (
     "show <status|groups|group <group>|devices|device <device>|device-group <device>|"
-    "device-usage <device>|commands|help|bindings|selected-device|runtime-state|config|config local-raw|config dirty|"
+    "device-usage <device>|commands|help|bindings|selected-device|safety-latch|runtime-state|config|config local-raw|config dirty|"
     "sources|profiles|profile|tests|test <test>|message-level|workspace|controllers> "
     "[--json] [--pretty] [robot|local|both]\n"
     "  Defaults: robot if connected, otherwise local.\n"
@@ -6967,6 +6968,8 @@ class BridgeCli:
             return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
         if target == SHOW_TARGET_CONFIG:
             target = SHOW_TARGET_RUNTIME
+        if target == SHOW_TARGET_SAFETY_LATCH:
+            source = SHOW_SOURCE_ROBOT
         if target == SHOW_TARGET_MESSAGE_LEVEL:
             source = SHOW_SOURCE_LOCAL
         if target == SHOW_TARGET_DEVICE_USAGE:
@@ -8538,11 +8541,11 @@ class BridgeCli:
             return
         print(
             "Common: help, exit, end, quit, ping, echo, sleep, messages\n"
-            "Exec: show, diagnose, connect, disconnect, configure terminal, tests\n"
-            "Config: profile, group, device, bindings, can-mappings, tests, no group, selected-device, selected-mode, merge/import/export/save/load\n"
+            "Exec: show, diagnose, connect, disconnect, configure terminal, add all, clear stop-latch, tests\n"
+            "Config: profile, group, device, add all, clear stop-latch, bindings, can-mappings, tests, no group, selected-device, selected-mode, merge/import/export/save/load\n"
             "Group: show, add device, no device, member, bind, no bind, enable, disable, run test\n"
             "Device: show, set, no\n"
-            "Tips: help show | help sources | help group | help batch | help json"
+            "Tips: help show | help add all | help clear stop-latch | help batch | help json"
         )
 
     def _help_topic_map(self) -> Dict[str, str]:
@@ -8555,6 +8558,18 @@ class BridgeCli:
             "configure terminal": "configure terminal\n  Enter config mode.",
             "connect": "connect\n  Open TCP connection and perform handshake.",
             "disconnect": "disconnect\n  Close TCP connection.",
+            "add all": "add all\n  Instantiate all configured robot devices for the active profile.",
+            "clear stop-latch": (
+                "clear stop-latch\n"
+                "  Clear the robot safety stop latch through the runtime command path.\n"
+                "clear safety-latch\n"
+                "  Alias for clear stop-latch."
+            ),
+            "clear safety-latch": "clear safety-latch\n  Alias for clear stop-latch.",
+            "show safety-latch": (
+                "show safety-latch [--json] [--pretty]\n"
+                "  Show robot safety latch active state and reason."
+            ),
             "tests": (
                 "tests select <name>\n"
                 "  Select a bringup test on the robot by name.\n"
@@ -8864,6 +8879,9 @@ class BridgeCli:
         elif target == SHOW_TARGET_SELECTED_DEVICE:
             seq = show_selected_device(self._session, json_output=json_output)
             cmd_name = CMD_SHOW_SELECTED_DEVICE
+        elif target == SHOW_TARGET_SAFETY_LATCH:
+            seq = show_status(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_STATUS
         elif target == SHOW_TARGET_RUNTIME:
             seq = show_runtime_state(self._session, json_output=json_output)
             cmd_name = CMD_SHOW_RUNTIME_STATE

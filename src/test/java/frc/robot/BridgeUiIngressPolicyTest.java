@@ -14,6 +14,7 @@ class BridgeUiIngressPolicyTest {
   private static final String CMD_UI_PING = "uiPing";
   private static final String CMD_UI_HANDSHAKE = "uiHandshake";
   private static final String CMD_SHOW_STATUS = "showStatus";
+  private static final String CMD_SHOW_TESTS = "showTests";
   private static final String CMD_START = "startCommand";
   private static final String CMD_STOP = "stopCommand";
 
@@ -127,6 +128,19 @@ class BridgeUiIngressPolicyTest {
   }
 
   @Test
+  void allowsDisabledRobotForShowTestsCommand() {
+    TestDeps deps = new TestDeps();
+    deps.robotEnabled = false;
+    deps.activeUiClientId = "clientA";
+    BridgeUiIngressPolicy policy = new BridgeUiIngressPolicy(deps);
+
+    BridgeUiIngressPolicy.Ingress ingress = policy.parseIngress(CMD_SHOW_TESTS, "{}", "clientA");
+    BridgeUiIngressPolicy.ValidationFailure failure = policy.validateIngress(ingress, true);
+
+    assertNull(failure);
+  }
+
+  @Test
   void appliesTcpStopPreExecutionSideEffects() {
     TestDeps deps = new TestDeps();
     deps.activeUiClientId = "clientA";
@@ -174,7 +188,7 @@ class BridgeUiIngressPolicyTest {
 
     @Override
     public boolean isUiCommandAllowedWhenDisabled(String name) {
-      return CMD_UI_PING.equals(name);
+      return CMD_UI_PING.equals(name) || CMD_SHOW_TESTS.equals(name);
     }
 
     @Override

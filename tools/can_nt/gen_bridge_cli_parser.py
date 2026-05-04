@@ -281,7 +281,7 @@ def _convert_expr(expr: str) -> str:
             out.append(")?")
         else:
             out.append(ch)
-    return "".join(out)
+    return "".join(out).strip()
 
 
 def _build_lark(text: str) -> str:

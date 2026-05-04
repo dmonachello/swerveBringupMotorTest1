@@ -16,7 +16,7 @@ DESCRIPTION
 from typing import Dict, Optional
 import time
 
-from tools.can_nt.bridge_cli_parser import CommandAst, SPEC
+from tools.can_nt.bridge_cli_parser import CommandAst, KIND_EXEC_CLEAR_STOP_LATCH, SPEC
 CMD_ALL = "all"
 CMD_FILE = "file"
 FLAG_FORCE = "--force"
@@ -49,6 +49,7 @@ from tools.can_nt.status import (
 from tools.can_nt.bridge_ops import (
     add_all_devices,
     add_next_motor,
+    clear_stop_latch,
     connect,
     disconnect,
     export_runtime_groups,
@@ -130,6 +131,7 @@ AST_EXEC_SPEC = {
     "label_group_delete": "group delete",
     "label_add_next": "add next",
     "label_add_all": "add all",
+    "label_clear_stop_latch": "clear stop-latch",
     "label_tests_select": "tests select",
     "label_tests_toggle": "tests toggle",
     "label_tests_run": "tests run",
@@ -201,6 +203,7 @@ class BridgeCliAstExecutor:
             SPEC.kind_exec_configure_terminal: self._ast_exec_configure_terminal,
             SPEC.kind_exec_add_next: self._ast_exec_add_next,
             SPEC.kind_exec_add_all: self._ast_exec_add_all,
+            KIND_EXEC_CLEAR_STOP_LATCH: self._ast_exec_clear_stop_latch,
             SPEC.kind_exec_tests_select: self._ast_exec_tests_select,
             SPEC.kind_exec_tests_toggle: self._ast_exec_tests_toggle,
             SPEC.kind_exec_tests_run: self._ast_exec_tests_run,
@@ -373,6 +376,16 @@ class BridgeCliAstExecutor:
         seq = add_all_devices(self._cli._session)
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_add_all"]):
+            return AST_EXEC_SPEC["ret_err"]
+        return None
+
+    def _ast_exec_clear_stop_latch(self, _ast: CommandAst) -> Optional[int]:
+        if not self._cli._session.is_connected():
+            print(AST_EXEC_SPEC["msg_err_robot_unavailable"])
+            return AST_EXEC_SPEC["ret_err"]
+        seq = clear_stop_latch(self._cli._session)
+        event = self._cli._wait_for_seq(seq)
+        if self._cli._event_failed(event, AST_EXEC_SPEC["label_clear_stop_latch"]):
             return AST_EXEC_SPEC["ret_err"]
         return None
 

@@ -90,6 +90,9 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_CODE = "code";
   private static final String JSON_KEY_CODE_TEXT = "codeText";
   private static final String JSON_KEY_VERSION = "version";
+  private static final String JSON_KEY_SAFETY_LATCH = "safetyLatch";
+  private static final String JSON_KEY_ACTIVE = "active";
+  private static final String JSON_KEY_REASON = "reason";
   private static final String JSON_KEY_BUILD = "build";
   private static final String JSON_KEY_BUILD_FIELDS = "fields";
   private static final String JSON_KEY_BUILD_LABEL = "label";
@@ -118,6 +121,8 @@ public class BridgeUiCommandHandler {
       "Cannot add devices: profile is not active.";
   private static final String CMD_PROFILE_ACTIVATE = "profileActivate";
   private static final String CMD_PROFILES_RELOAD = "profilesReload";
+  private static final String TEXT_SAFETY_LATCH = "  safetyLatch=";
+  private static final String TEXT_REASON_PREFIX = " reason=";
   private static final int INDEX_START = 0;
   private static final String JSON_KEY_OK = "ok";
   private static final String JSON_KEY_MESSAGE = "message";
@@ -1783,7 +1788,19 @@ public class BridgeUiCommandHandler {
     state.addProperty("mode", DriverStation.isAutonomous() ? "auto"
         : DriverStation.isTeleop() ? "teleop"
         : DriverStation.isTest() ? "test" : "disabled");
+    state.add(JSON_KEY_SAFETY_LATCH, buildSafetyLatchJson());
     return state;
+  }
+
+  /**
+   * NAME
+   *   buildSafetyLatchJson - Build safety latch state for UI and CLI status.
+   */
+  private JsonObject buildSafetyLatchJson() {
+    JsonObject latch = new JsonObject();
+    latch.addProperty(JSON_KEY_ACTIVE, stopLatchActive);
+    latch.addProperty(JSON_KEY_REASON, stopLatchReason != null ? stopLatchReason : TEXT_EMPTY);
+    return latch;
   }
 
   /**
@@ -2176,6 +2193,7 @@ public class BridgeUiCommandHandler {
       case "showDevice":
       case "showBindings":
       case "showSelectedDevice":
+      case CMD_SHOW_TESTS:
       case CMD_SHOW_RUNTIME_STATE:
       case "showProfiles":
       case "showProfile":
@@ -2264,6 +2282,11 @@ public class BridgeUiCommandHandler {
         : DriverStation.isTeleop() ? "teleop"
         : DriverStation.isTest() ? "test" : "disabled").append('\n');
     sb.append("  groups=").append(bridgeGroups().getGroups().size()).append('\n');
+    sb.append(TEXT_SAFETY_LATCH).append(stopLatchActive ? TEXT_ON : TEXT_OFF);
+    if (stopLatchActive && stopLatchReason != null && !stopLatchReason.isBlank()) {
+      sb.append(TEXT_REASON_PREFIX).append(stopLatchReason);
+    }
+    sb.append('\n');
     sb.append("  selectedDevice=").append(
         bridgeSelected().device != null ? bridgeSelected().device : "(none)")
         .append(" (")
@@ -2286,6 +2309,7 @@ public class BridgeUiCommandHandler {
         : DriverStation.isTeleop() ? "teleop"
         : DriverStation.isTest() ? "test" : "disabled");
     root.addProperty("groupCount", bridgeGroups().getGroups().size());
+    root.add(JSON_KEY_SAFETY_LATCH, buildSafetyLatchJson());
     root.add("selectedDevice", buildSelectedDeviceJson());
     return root;
   }
@@ -2652,6 +2676,7 @@ public class BridgeUiCommandHandler {
     root.addProperty("mode", DriverStation.isAutonomous() ? "auto"
         : DriverStation.isTeleop() ? "teleop"
         : DriverStation.isTest() ? "test" : "disabled");
+    root.add(JSON_KEY_SAFETY_LATCH, buildSafetyLatchJson());
     JsonArray groups = new JsonArray();
     for (BridgeGroupManager.Group group : bridgeGroups().getGroups()) {
       JsonObject g = buildGroupJson(group);

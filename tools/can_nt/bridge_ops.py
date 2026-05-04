@@ -108,6 +108,7 @@ CMD_SHOW_PROFILES = "showProfiles"
 CMD_SHOW_PROFILE = "showProfile"
 CMD_ADD_MOTOR = "addMotor"
 CMD_ADD_ALL = "addAll"
+CMD_CLEAR_STOP_LATCH = "clearStopLatch"
 CMD_PROFILES_RELOAD = "profilesReload"
 CMD_SELECT_TEST_BY_NAME = "selectTestByName"
 CMD_TOGGLE_TEST = "toggleTest"
@@ -314,6 +315,18 @@ def add_all_devices(session: BridgeSession) -> Optional[int]:
         on the robot.
     """
     return _send(session, CMD_ADD_ALL, {})
+
+
+def clear_stop_latch(session: BridgeSession) -> Optional[int]:
+    """
+    NAME
+        clear_stop_latch - Ask the robot to clear its safety stop latch.
+
+    DESCRIPTION
+        Sends the clearStopLatch command through the same robot-side runtime
+        command path used by the UI.
+    """
+    return _send(session, CMD_CLEAR_STOP_LATCH, {})
 
 
 def ui_disconnect(session: BridgeSession) -> Optional[int]:
