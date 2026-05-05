@@ -14,7 +14,7 @@ DESCRIPTION
 
 from dataclasses import dataclass, field
 import re
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 from .device_catalog import load_profile_devices
 from tools.common.profile_constants import (
@@ -22,9 +22,27 @@ from tools.common.profile_constants import (
     KEY_INTERFACE,
     KEY_INTERFACE_LEGACY,
     KEY_TYPE,
+    TYPE_ENCODER_EXTERNAL,
+    TYPE_LIMIT_SWITCH,
+    TYPE_MOTOR,
     get_device_interface,
 )
-from .model import TestAuthoringModel, TestModel
+from .model import (
+    BUILTIN_TIMER_NAME,
+    CONDITION_OPERATOR_EQ,
+    CONDITION_OPERATOR_GT,
+    CONDITION_OPERATOR_GTE,
+    CONDITION_OPERATOR_LT,
+    CONDITION_OPERATOR_LTE,
+    CONDITION_OPERATOR_NE,
+    DEVICE_ROLE_OBSERVER,
+    DEVICE_ROLE_PRIMARY,
+    PSEUDO_DEVICE_TYPE_TEST_TIMER,
+    TestAuthoringModel,
+    TestCommandModel,
+    TestConditionModel,
+    TestModel,
+)
 
 
 NAME_PATTERN = re.compile(r"^.+$")
@@ -73,6 +91,17 @@ FIELD_LIMIT_SWITCH_ON_HIT = "onHit"
 FIELD_LIMIT_SWITCH_ID = "id"
 FIELD_TYPE = "type"
 FIELD_DEADBAND_SWEEP = "deadbandSweep"
+FIELD_DSL_COMMANDS = "commands"
+FIELD_DSL_EXPECT = "expect"
+FIELD_DSL_UNTIL = "until"
+FIELD_DSL_SUCCESS = "success"
+FIELD_DSL_ABORT = "abort"
+FIELD_DSL_PASSIVE = "passive"
+FIELD_DSL_MANUAL_STOP = "manualStop"
+FIELD_DSL_OBSERVERS = "observerDevices"
+FIELD_DSL_CREATED_DEVICES = "createdDevices"
+FIELD_DSL_ROLE = "role"
+FIELD_DSL_DEVICE_TYPE = "deviceType"
 
 MESSAGE_NAME_REQUIRED = "Test name is required."
 MESSAGE_NAME_INVALID = "Test name must be non-empty."
@@ -122,6 +151,31 @@ MESSAGE_LIMIT_SWITCH_NOT_FOUND = (
     "profile device list and define it in the device registry."
 )
 MESSAGE_LIMIT_SWITCH_TYPE_INVALID = "limitSwitch.id must reference a limitSwitch device."
+MESSAGE_DSL_COMPOSITE_ONLY = "DSL conditions and commands are supported only on composite tests."
+MESSAGE_DSL_UNKNOWN_DEVICE = "Unknown device."
+MESSAGE_DSL_DUPLICATE_DEVICE = "Duplicate device reference."
+MESSAGE_DSL_DUPLICATE_CREATED_DEVICE = "Duplicate created device."
+MESSAGE_DSL_RESERVED_DEVICE = "Reserved built-in device name."
+MESSAGE_DSL_CREATED_TYPE = "Created device type is not supported."
+MESSAGE_DSL_EXPECT_WITHOUT_UNTIL = "expect without until is invalid."
+MESSAGE_DSL_STOP_REQUIRED = "A runnable DSL test requires abort, success, or until unless manualStop is true."
+MESSAGE_DSL_COMMAND_OR_PASSIVE = "A runnable DSL test requires a command unless passive is true."
+MESSAGE_DSL_UNKNOWN_SIGNAL = "Unknown signal."
+MESSAGE_DSL_INVALID_OPERATOR = "Invalid operator."
+MESSAGE_DSL_DEVICE_REQUIRED = "Device-scoped signal requires a bound device."
+MESSAGE_DSL_EXPLICIT_DEVICE_REQUIRED = "Explicit device reference must resolve to a bound device."
+MESSAGE_DSL_READ_ONLY_COMMAND = "Command targets a read-only signal."
+MESSAGE_DSL_UNSUPPORTED_COMMAND = "Unsupported command for targeted device."
+MESSAGE_DSL_UNSUPPORTED_EXPANDED_SIGNAL = "Unsupported expanded signal."
+MESSAGE_DSL_MIXED_SUPPORT = "Mixed primary-device support for expanded signal."
+MESSAGE_DSL_BOOLEAN_OPERATOR = "Boolean signals require == or !=."
+MESSAGE_DSL_BOOLEAN_VALUE = "Boolean signal requires true or false."
+MESSAGE_DSL_NUMERIC_VALUE = "Numeric signal requires a numeric value."
+MESSAGE_DSL_NO_PRIMARY = "Unqualified signal requires at least one primary device."
+MESSAGE_DSL_SUCCESS_TIMER = "success using timer.elapsed is discouraged."
+MESSAGE_DSL_UNTIL_WITHOUT_EXPECT = "until without expect."
+MESSAGE_DSL_MANUAL_STOP_WARNING = "No declared stop condition; external stop is required."
+MESSAGE_DSL_COLLISION_CREATED_DEVICE = "Created device collides with an existing bound device."
 
 TEST_TYPE_JOYSTICK = "joystick"
 TEST_TYPE_BUTTON = "button"
@@ -147,6 +201,31 @@ PATTERN_ALLOWED = {PATTERN_SOLID}
 COLOR_PREFIX = "#"
 COLOR_HEX_LEN = 7
 COLOR_HEX_REGEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
+DSL_COMPARISON_OPERATORS = {
+    CONDITION_OPERATOR_GT,
+    CONDITION_OPERATOR_GTE,
+    CONDITION_OPERATOR_LT,
+    CONDITION_OPERATOR_LTE,
+    CONDITION_OPERATOR_EQ,
+    CONDITION_OPERATOR_NE,
+}
+DSL_NUMERIC_SIGNALS = {
+    "velocity_actual",
+    "current_actual",
+    "position_actual",
+    "position_delta",
+    "elapsed",
+    "output_percent_cmd",
+}
+DSL_BOOLEAN_SIGNALS = {
+    "pressed",
+}
+DSL_COMMAND_SIGNALS = {
+    "output_percent_cmd",
+}
+DSL_TIMER_SIGNALS = {
+    "elapsed",
+}
 
 
 @dataclass
@@ -268,20 +347,33 @@ def _validate_test(
     else:
         seen_names.add(test.name)
 
-    if not test.devices:
-        result.errors.append(ValidationIssue(MESSAGE_DEVICES_REQUIRED, test.name, FIELD_DEVICES))
-    else:
-        _validate_devices(test, result, catalog)
+    if test.test_type == TEST_TYPE_COMPOSITE or _uses_dsl(test):
+        _validate_dsl_test(test, result, catalog)
+        return
 
     if test.test_type == TEST_TYPE_JOYSTICK:
+        if not test.devices:
+            result.errors.append(ValidationIssue(MESSAGE_DEVICES_REQUIRED, test.name, FIELD_DEVICES))
+        else:
+            _validate_devices(test, result, catalog)
         _validate_joystick(test, result, controller_names)
     elif test.test_type == TEST_TYPE_BUTTON:
+        if not test.devices:
+            result.errors.append(ValidationIssue(MESSAGE_DEVICES_REQUIRED, test.name, FIELD_DEVICES))
+        else:
+            _validate_devices(test, result, catalog)
         _validate_button(test, result, controller_names, catalog)
-    elif test.test_type == TEST_TYPE_COMPOSITE:
-        _validate_composite(test, result, controller_names, catalog)
     elif test.test_type == TEST_TYPE_DEADBAND_SWEEP:
+        if not test.devices:
+            result.errors.append(ValidationIssue(MESSAGE_DEVICES_REQUIRED, test.name, FIELD_DEVICES))
+        else:
+            _validate_devices(test, result, catalog)
         _validate_deadband_sweep(test, result)
     elif test.test_type == TEST_TYPE_DEVICE_ACTION:
+        if not test.devices:
+            result.errors.append(ValidationIssue(MESSAGE_DEVICES_REQUIRED, test.name, FIELD_DEVICES))
+        else:
+            _validate_devices(test, result, catalog)
         _validate_device_action(test, result)
     else:
         result.errors.append(ValidationIssue(MESSAGE_TEST_TYPE_UNKNOWN, test.name, FIELD_TYPE))
@@ -310,6 +402,367 @@ def _validate_devices(
             result.warnings.append(
                 ValidationIssue(MESSAGE_DEVICE_NOT_IN_PROFILE, test.name, FIELD_DEVICES)
             )
+
+
+def _uses_dsl(test: TestModel) -> bool:
+    """
+    NAME
+        _uses_dsl - Return True when a test uses DSL-only fields.
+    """
+
+    return bool(
+        test.observers
+        or test.pseudo_devices
+        or test.commands
+        or test.until_conditions
+        or test.expect_conditions
+        or test.success_conditions
+        or test.abort_conditions
+        or test.passive
+        or test.manual_stop
+    )
+
+
+def _validate_dsl_test(
+    test: TestModel,
+    result: ValidationResult,
+    catalog: Dict[str, object],
+) -> None:
+    """
+    NAME
+        _validate_dsl_test - Validate DSL-style test declarations.
+    """
+
+    if test.test_type != TEST_TYPE_COMPOSITE:
+        result.errors.append(
+            ValidationIssue(MESSAGE_DSL_COMPOSITE_ONLY, test.name, FIELD_TYPE)
+        )
+    _validate_dsl_bound_devices(test, result, catalog)
+    _validate_dsl_created_devices(test, result)
+    _validate_dsl_commands(test, result, catalog)
+    _validate_dsl_conditions(test, result, catalog)
+    if test.expect_conditions and not test.until_conditions:
+        result.errors.append(
+            ValidationIssue(MESSAGE_DSL_EXPECT_WITHOUT_UNTIL, test.name, FIELD_DSL_EXPECT)
+        )
+    if not _has_dsl_stop_condition(test):
+        if test.manual_stop:
+            result.warnings.append(
+                ValidationIssue(MESSAGE_DSL_MANUAL_STOP_WARNING, test.name, FIELD_DSL_MANUAL_STOP)
+            )
+        else:
+            result.errors.append(
+                ValidationIssue(MESSAGE_DSL_STOP_REQUIRED, test.name, FIELD_DSL_MANUAL_STOP)
+            )
+    elif test.until_conditions and not test.expect_conditions:
+        result.warnings.append(
+            ValidationIssue(MESSAGE_DSL_UNTIL_WITHOUT_EXPECT, test.name, FIELD_DSL_UNTIL)
+        )
+    if not test.commands and not test.passive:
+        result.errors.append(
+            ValidationIssue(MESSAGE_DSL_COMMAND_OR_PASSIVE, test.name, FIELD_DSL_COMMANDS)
+        )
+
+
+def _validate_dsl_bound_devices(
+    test: TestModel,
+    result: ValidationResult,
+    catalog: Dict[str, object],
+) -> None:
+    """
+    NAME
+        _validate_dsl_bound_devices - Validate primary and observer device bindings.
+    """
+
+    seen: Set[str] = set()
+    for field_name, labels in (
+        (FIELD_DEVICES, test.devices),
+        (FIELD_DSL_OBSERVERS, test.observers),
+    ):
+        for label in labels:
+            normalized = _normalized_name(label)
+            if not normalized:
+                result.errors.append(
+                    ValidationIssue(MESSAGE_DEVICE_LABEL_INVALID, test.name, field_name)
+                )
+                continue
+            if normalized in seen:
+                result.errors.append(
+                    ValidationIssue(MESSAGE_DSL_DUPLICATE_DEVICE, test.name, field_name)
+                )
+            else:
+                seen.add(normalized)
+            if catalog and label not in catalog:
+                result.errors.append(
+                    ValidationIssue(MESSAGE_DSL_UNKNOWN_DEVICE, test.name, field_name)
+                )
+
+
+def _validate_dsl_created_devices(test: TestModel, result: ValidationResult) -> None:
+    """
+    NAME
+        _validate_dsl_created_devices - Validate pseudo-device declarations.
+    """
+
+    seen: Set[str] = set()
+    bound = {_normalized_name(label) for label in list(test.devices) + list(test.observers)}
+    for device in test.pseudo_devices:
+        normalized = _normalized_name(device.name)
+        if not normalized:
+            result.errors.append(
+                ValidationIssue(MESSAGE_DEVICE_LABEL_INVALID, test.name, FIELD_DSL_CREATED_DEVICES)
+            )
+            continue
+        if normalized == BUILTIN_TIMER_NAME.lower():
+            result.errors.append(
+                ValidationIssue(MESSAGE_DSL_RESERVED_DEVICE, test.name, FIELD_DSL_CREATED_DEVICES)
+            )
+        if normalized in seen:
+            result.errors.append(
+                ValidationIssue(
+                    MESSAGE_DSL_DUPLICATE_CREATED_DEVICE, test.name, FIELD_DSL_CREATED_DEVICES
+                )
+            )
+        else:
+            seen.add(normalized)
+        if normalized in bound:
+            result.errors.append(
+                ValidationIssue(
+                    MESSAGE_DSL_COLLISION_CREATED_DEVICE, test.name, FIELD_DSL_CREATED_DEVICES
+                )
+            )
+        if device.device_type != PSEUDO_DEVICE_TYPE_TEST_TIMER:
+            result.errors.append(
+                ValidationIssue(MESSAGE_DSL_CREATED_TYPE, test.name, FIELD_DSL_DEVICE_TYPE)
+            )
+
+
+def _validate_dsl_commands(
+    test: TestModel,
+    result: ValidationResult,
+    catalog: Dict[str, object],
+) -> None:
+    """
+    NAME
+        _validate_dsl_commands - Validate command assignments.
+    """
+
+    for command in test.commands:
+        targets, signal_name, explicit = _resolve_signal_targets(test, command.signal, catalog)
+        if targets is None:
+            result.errors.append(
+                ValidationIssue(MESSAGE_DSL_DEVICE_REQUIRED, test.name, FIELD_DSL_COMMANDS)
+            )
+            continue
+        if signal_name not in DSL_COMMAND_SIGNALS:
+            result.errors.append(
+                ValidationIssue(MESSAGE_DSL_READ_ONLY_COMMAND, test.name, FIELD_DSL_COMMANDS)
+            )
+            continue
+        if not explicit and not targets:
+            result.errors.append(
+                ValidationIssue(MESSAGE_DSL_NO_PRIMARY, test.name, FIELD_DSL_COMMANDS)
+            )
+            continue
+        for target_name, target_kind in targets:
+            if not _device_supports_signal(target_kind, signal_name):
+                result.errors.append(
+                    ValidationIssue(
+                        MESSAGE_DSL_UNSUPPORTED_COMMAND, test.name, FIELD_DSL_COMMANDS
+                    )
+                )
+                break
+        if not _is_numeric_value(command.value):
+            result.errors.append(
+                ValidationIssue(MESSAGE_DSL_NUMERIC_VALUE, test.name, FIELD_DSL_COMMANDS)
+            )
+
+
+def _validate_dsl_conditions(
+    test: TestModel,
+    result: ValidationResult,
+    catalog: Dict[str, object],
+) -> None:
+    """
+    NAME
+        _validate_dsl_conditions - Validate abort/success/until/expect conditions.
+    """
+
+    for field_name, conditions in (
+        (FIELD_DSL_ABORT, test.abort_conditions),
+        (FIELD_DSL_SUCCESS, test.success_conditions),
+        (FIELD_DSL_UNTIL, test.until_conditions),
+        (FIELD_DSL_EXPECT, test.expect_conditions),
+    ):
+        for condition in conditions:
+            _validate_dsl_condition(test, result, catalog, field_name, condition)
+            if (
+                field_name == FIELD_DSL_SUCCESS
+                and condition.signal == BUILTIN_TIMER_NAME + INPUT_SEPARATOR + "elapsed"
+            ):
+                result.warnings.append(
+                    ValidationIssue(MESSAGE_DSL_SUCCESS_TIMER, test.name, FIELD_DSL_SUCCESS)
+                )
+
+
+def _validate_dsl_condition(
+    test: TestModel,
+    result: ValidationResult,
+    catalog: Dict[str, object],
+    field_name: str,
+    condition: TestConditionModel,
+) -> None:
+    """
+    NAME
+        _validate_dsl_condition - Validate one DSL condition expression.
+    """
+
+    if condition.operator not in DSL_COMPARISON_OPERATORS:
+        result.errors.append(
+            ValidationIssue(MESSAGE_DSL_INVALID_OPERATOR, test.name, field_name)
+        )
+        return
+    targets, signal_name, explicit = _resolve_signal_targets(test, condition.signal, catalog)
+    if targets is None:
+        message = MESSAGE_DSL_EXPLICIT_DEVICE_REQUIRED if _is_explicit_signal(condition.signal) else MESSAGE_DSL_DEVICE_REQUIRED
+        result.errors.append(ValidationIssue(message, test.name, field_name))
+        return
+    if not explicit and not targets:
+        result.errors.append(ValidationIssue(MESSAGE_DSL_NO_PRIMARY, test.name, field_name))
+        return
+    supports = [_device_supports_signal(target_kind, signal_name) for _, target_kind in targets]
+    if not all(supports):
+        message = MESSAGE_DSL_UNSUPPORTED_EXPANDED_SIGNAL
+        if not explicit and any(supports):
+            message = MESSAGE_DSL_MIXED_SUPPORT
+        result.errors.append(ValidationIssue(message, test.name, field_name))
+        return
+    if signal_name in DSL_BOOLEAN_SIGNALS:
+        if condition.operator not in (CONDITION_OPERATOR_EQ, CONDITION_OPERATOR_NE):
+            result.errors.append(
+                ValidationIssue(MESSAGE_DSL_BOOLEAN_OPERATOR, test.name, field_name)
+            )
+        if not isinstance(condition.value, bool):
+            result.errors.append(
+                ValidationIssue(MESSAGE_DSL_BOOLEAN_VALUE, test.name, field_name)
+            )
+    elif signal_name in DSL_NUMERIC_SIGNALS:
+        if not _is_numeric_value(condition.value):
+            result.errors.append(
+                ValidationIssue(MESSAGE_DSL_NUMERIC_VALUE, test.name, field_name)
+            )
+    else:
+        result.errors.append(
+            ValidationIssue(MESSAGE_DSL_UNKNOWN_SIGNAL, test.name, field_name)
+        )
+
+
+def _has_dsl_stop_condition(test: TestModel) -> bool:
+    """
+    NAME
+        _has_dsl_stop_condition - Return True when the DSL test can stop normally.
+    """
+
+    return bool(test.abort_conditions or test.success_conditions or test.until_conditions)
+
+
+def _resolve_signal_targets(
+    test: TestModel,
+    signal_ref: str,
+    catalog: Dict[str, object],
+) -> Tuple[Optional[List[Tuple[str, str]]], str, bool]:
+    """
+    NAME
+        _resolve_signal_targets - Resolve signal targets and signal name.
+    """
+
+    if not isinstance(signal_ref, str) or not signal_ref.strip():
+        return (None, "", False)
+    raw = signal_ref.strip()
+    if _is_explicit_signal(raw):
+        device_name, signal_name = raw.rsplit(INPUT_SEPARATOR, 1)
+        target_kind = _resolve_device_kind(test, catalog, device_name)
+        if target_kind is None:
+            return (None, signal_name, True)
+        return ([(device_name, target_kind)], signal_name, True)
+    primary_targets = []
+    for device_name in test.devices:
+        target_kind = _resolve_device_kind(test, catalog, device_name)
+        if target_kind is not None:
+            primary_targets.append((device_name, target_kind))
+    return (primary_targets, raw, False)
+
+
+def _resolve_device_kind(
+    test: TestModel,
+    catalog: Dict[str, object],
+    device_name: str,
+) -> Optional[str]:
+    """
+    NAME
+        _resolve_device_kind - Resolve device kind for DSL signal validation.
+    """
+
+    normalized = _normalized_name(device_name)
+    if not normalized:
+        return None
+    if normalized == BUILTIN_TIMER_NAME.lower():
+        return PSEUDO_DEVICE_TYPE_TEST_TIMER
+    for device in test.pseudo_devices:
+        if _normalized_name(device.name) == normalized:
+            return device.device_type
+    entry = catalog.get(device_name)
+    if isinstance(entry, dict):
+        device_type = entry.get(KEY_TYPE)
+        if isinstance(device_type, str) and device_type.strip():
+            return device_type.strip()
+    return None
+
+
+def _device_supports_signal(device_kind: str, signal_name: str) -> bool:
+    """
+    NAME
+        _device_supports_signal - Return True when a device kind supports a signal.
+    """
+
+    if device_kind == PSEUDO_DEVICE_TYPE_TEST_TIMER:
+        return signal_name in DSL_TIMER_SIGNALS
+    if device_kind == TYPE_MOTOR:
+        return signal_name in DSL_NUMERIC_SIGNALS
+    if device_kind == TYPE_LIMIT_SWITCH:
+        return signal_name in DSL_BOOLEAN_SIGNALS
+    if device_kind == TYPE_ENCODER_EXTERNAL:
+        return signal_name in {"position_actual", "position_delta"}
+    return False
+
+
+def _normalized_name(value: object) -> str:
+    """
+    NAME
+        _normalized_name - Normalize a device-like name.
+    """
+
+    if not isinstance(value, str):
+        return ""
+    return value.strip().lower()
+
+
+def _is_explicit_signal(signal_ref: str) -> bool:
+    """
+    NAME
+        _is_explicit_signal - Return True when a signal ref includes a device prefix.
+    """
+
+    return isinstance(signal_ref, str) and INPUT_SEPARATOR in signal_ref
+
+
+def _is_numeric_value(value: object) -> bool:
+    """
+    NAME
+        _is_numeric_value - Return True for int/float excluding bool.
+    """
+
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def _validate_joystick(
@@ -363,40 +816,6 @@ def _validate_button(
         controller_names=controller_names,
         allow_ui=True,
     )
-    if binding.duty < DUTY_MIN or binding.duty > DUTY_MAX:
-        result.errors.append(ValidationIssue(MESSAGE_DUTY_RANGE, test.name, FIELD_DUTY))
-    if not _has_termination(test):
-        result.errors.append(
-            ValidationIssue(MESSAGE_TERMINATION_REQUIRED, test.name, FIELD_TERMINATION)
-        )
-    _validate_limit_switch(test, result, catalog)
-
-
-def _validate_composite(
-    test: TestModel,
-    result: ValidationResult,
-    controller_names: Optional[Set[str]],
-    catalog: Dict[str, object],
-) -> None:
-    """
-    NAME
-        _validate_composite - Validate composite test settings.
-    """
-
-    binding = test.button
-    if binding is None:
-        result.errors.append(
-            ValidationIssue(MESSAGE_BINDING_BUTTON_REQUIRED, test.name, FIELD_BUTTON)
-        )
-        return
-    if test.input_source:
-        _validate_input_source(
-            test,
-            result,
-            allowed_inputs=BUTTON_INPUTS,
-            controller_names=controller_names,
-            allow_ui=True,
-        )
     if binding.duty < DUTY_MIN or binding.duty > DUTY_MAX:
         result.errors.append(ValidationIssue(MESSAGE_DUTY_RANGE, test.name, FIELD_DUTY))
     if not _has_termination(test):

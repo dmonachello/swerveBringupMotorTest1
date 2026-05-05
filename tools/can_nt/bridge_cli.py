@@ -256,11 +256,24 @@ from tools.common.profile_constants import (
     get_device_interface,
 )
 from tools.common.test_authoring import (
+    BUILTIN_TIMER_NAME,
+    CONDITION_OPERATOR_EQ,
+    CONDITION_OPERATOR_GT,
+    CONDITION_OPERATOR_GTE,
+    CONDITION_OPERATOR_LT,
+    CONDITION_OPERATOR_LTE,
+    CONDITION_OPERATOR_NE,
+    DEVICE_ROLE_OBSERVER,
+    DEVICE_ROLE_PRIMARY,
+    PSEUDO_DEVICE_TYPE_TEST_TIMER,
+    TestCommandModel,
+    TestConditionModel,
     TestAuthoringModel,
     TestBindingButton,
     TestBindingJoystick,
     DeviceActionModel,
     TestModel,
+    TestPseudoDeviceModel,
     TestSetModel,
     TerminationModel,
     model_from_payload,
@@ -455,6 +468,8 @@ CMD_SELECT = "select"
 CMD_RUN_ALL = "run-all"
 SHOW_TARGET_VERSION = "version"
 CMD_DEFAULT = PARSER_SPEC.cmd_default
+CMD_ON = PARSER_SPEC.cmd_on
+CMD_OFF = PARSER_SPEC.cmd_off
 CMD_MESSAGES = "messages"
 CMD_SLEEP = "sleep"
 CMD_WAIT = "wait"
@@ -495,6 +510,7 @@ CMD_RENAME = "rename"
 CMD_VALIDATE = "validate"
 CMD_VAL = "val"
 CMD_INPUT_SOURCE = "inputsource"
+CMD_COMMAND = "command"
 CMD_DEADBAND = "deadband"
 CMD_DUTY = "duty"
 CMD_TERMINATION = "termination"
@@ -502,6 +518,13 @@ CMD_ROTATION = "rotation"
 CMD_TIME = "time"
 CMD_HOLD = "hold"
 CMD_LIMITSWITCH = "limitswitch"
+CMD_UNTIL = "until"
+CMD_EXPECT = "expect"
+CMD_SUCCESS = "success"
+CMD_ABORT = "abort"
+CMD_PASSIVE = "passive"
+CMD_MANUAL_STOP = "manual_stop"
+CMD_ROLE = "role"
 CMD_DEADBAND_SWEEP = "deadbandsweep"
 CMD_ENABLED = "enabled"
 CMD_EXIT = "exit"
@@ -588,6 +611,17 @@ FLAG_DOT = "--dot"
 FLAG_FORCE = "--force"
 FLAG_INSTALL_ROBOT = "--install-robot"
 FLAG_REPAIR = "--repair"
+TOKEN_EQUALS = "="
+BOOLEAN_TRUE = "true"
+BOOLEAN_FALSE = "false"
+DSL_ALLOWED_OPERATORS = {
+    CONDITION_OPERATOR_GT,
+    CONDITION_OPERATOR_GTE,
+    CONDITION_OPERATOR_LT,
+    CONDITION_OPERATOR_LTE,
+    CONDITION_OPERATOR_EQ,
+    CONDITION_OPERATOR_NE,
+}
 FLAG_YES = "--yes"
 FLAG_CLEAR_MEMORY = "--clear-memory"
 QUESTION_MARK = "?"
@@ -1667,6 +1701,15 @@ MESSAGE_TEST_DEVICES = "  devices: {devices}"
 MESSAGE_TEST_INPUT_SOURCE = "  inputSource: {source}"
 MESSAGE_TEST_DEADBAND = "  deadband: {deadband}"
 MESSAGE_TEST_DUTY = "  duty: {duty}"
+MESSAGE_TEST_OBSERVERS = "  observers: {devices}"
+MESSAGE_TEST_CREATED_DEVICES = "  createdDevices: {devices}"
+MESSAGE_TEST_COMMANDS = "  commands: {items}"
+MESSAGE_TEST_UNTIL = "  until: {items}"
+MESSAGE_TEST_EXPECT = "  expect: {items}"
+MESSAGE_TEST_SUCCESS = "  success: {items}"
+MESSAGE_TEST_ABORT = "  abort: {items}"
+MESSAGE_TEST_PASSIVE = "  passive: {value}"
+MESSAGE_TEST_MANUAL_STOP = "  manualStop: {value}"
 MESSAGE_TEST_TERMINATION = "  termination: hold={hold} time={time} rotation={rotation}"
 MESSAGE_TEST_LIMIT_SWITCH = "  limitSwitch: {limit}"
 MESSAGE_TEST_ROTATION = "  rotation: {rotation}"
@@ -1678,6 +1721,17 @@ MESSAGE_TEST_COLOR = "  color: {color}"
 MESSAGE_TEST_PATTERN = "  pattern: {pattern}"
 MESSAGE_TEST_BRIGHTNESS = "  brightness: {brightness}"
 MESSAGE_TEST_DURATION = "  durationSec: {duration}"
+MESSAGE_ERROR_DSL_DEVICE_ROLE = "ERROR: device add role must be primary or observer."
+MESSAGE_ERROR_DSL_DEVICE_CREATE = "ERROR: device create <name> type TestTimer"
+MESSAGE_ERROR_DSL_COMMAND = "ERROR: command <signal> = <value>"
+MESSAGE_ERROR_DSL_CONDITION = "ERROR: {kind} <signal> <operator> <value>"
+MESSAGE_ERROR_DSL_OPERATOR = "ERROR: invalid operator."
+MESSAGE_ERROR_DSL_BOOLEAN = "ERROR: boolean value must be true or false."
+MESSAGE_ERROR_DSL_PASSIVE = "ERROR: passive requires true/false."
+MESSAGE_ERROR_DSL_MANUAL_STOP = "ERROR: manual_stop requires true/false."
+MESSAGE_ERROR_DSL_CREATED_DEVICE_EXISTS = "ERROR: created device already exists."
+MESSAGE_ERROR_DSL_CREATED_DEVICE_RESERVED = "ERROR: created device name is reserved."
+MESSAGE_ERROR_DSL_CREATED_DEVICE_COLLISION = "ERROR: created device collides with bound device."
 
 MESSAGE_LEVEL_BEGINNER = "beginner"
 MESSAGE_LEVEL_MEDIUM = "medium"
@@ -5341,8 +5395,6 @@ class BridgeCli:
                     name=name,
                     test_type=TEST_TYPE_COMPOSITE,
                     devices=[],
-                    button=TestBindingButton(),
-                    termination=TerminationModel(),
                     enabled=False,
                 )
             )
@@ -5423,7 +5475,6 @@ class BridgeCli:
                 test.button = None
                 test.deadband_sweep = None
             else:
-                test.button = test.button or TestBindingButton()
                 test.joystick = None
                 test.deadband_sweep = None
                 test.device_action = None
@@ -5431,16 +5482,50 @@ class BridgeCli:
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_DEVICE and len(tokens) >= 3 and tokens[1].lower() == CMD_ADD:
             label = tokens[2]
+            role = DEVICE_ROLE_PRIMARY
+            if len(tokens) >= 5:
+                if tokens[3].lower() != CMD_ROLE or tokens[4].lower() not in (
+                    DEVICE_ROLE_PRIMARY,
+                    DEVICE_ROLE_OBSERVER,
+                ):
+                    print(MESSAGE_ERROR_DSL_DEVICE_ROLE)
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+                role = tokens[4].lower()
+            elif len(tokens) == 4:
+                print(MESSAGE_ERROR_DSL_DEVICE_ROLE)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             if not self._is_device_label_valid(label):
                 if self._tests_duplicate_labels:
                     print(MESSAGE_ERROR_DEVICE_LABEL_DUPLICATE)
                 else:
                     print(MESSAGE_ERROR_DEVICE_LABEL)
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            if label in test.devices:
+            if label in test.devices or label in test.observers:
                 self._warn(MESSAGE_ERROR_DEVICE_DUP)
                 return StatusResult(code=SS__NORMAL)
-            test.devices.append(label)
+            if role == DEVICE_ROLE_OBSERVER:
+                test.observers.append(label)
+            else:
+                test.devices.append(label)
+            self._mark_tests_dirty()
+            return StatusResult(code=SS__NORMAL)
+        if cmd == CMD_DEVICE and len(tokens) >= 5 and tokens[1].lower() == CMD_CREATE:
+            name = tokens[2]
+            if tokens[3].lower() != CMD_TYPE or tokens[4] != PSEUDO_DEVICE_TYPE_TEST_TIMER:
+                print(MESSAGE_ERROR_DSL_DEVICE_CREATE)
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            if name.strip().lower() == BUILTIN_TIMER_NAME:
+                print(MESSAGE_ERROR_DSL_CREATED_DEVICE_RESERVED)
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            if name in test.devices or name in test.observers:
+                print(MESSAGE_ERROR_DSL_CREATED_DEVICE_COLLISION)
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            if any(device.name == name for device in test.pseudo_devices):
+                print(MESSAGE_ERROR_DSL_CREATED_DEVICE_EXISTS)
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            test.pseudo_devices.append(
+                TestPseudoDeviceModel(name=name, device_type=PSEUDO_DEVICE_TYPE_TEST_TIMER)
+            )
             self._mark_tests_dirty()
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_NO and len(tokens) >= 3 and tokens[1].lower() == CMD_DEVICE:
@@ -5448,6 +5533,50 @@ class BridgeCli:
             if label in test.devices:
                 test.devices.remove(label)
                 self._mark_tests_dirty()
+            if label in test.observers:
+                test.observers.remove(label)
+                self._mark_tests_dirty()
+            removed_pseudo = [device for device in test.pseudo_devices if device.name == label]
+            if removed_pseudo:
+                test.pseudo_devices = [device for device in test.pseudo_devices if device.name != label]
+                self._mark_tests_dirty()
+            return StatusResult(code=SS__NORMAL)
+        if cmd == CMD_COMMAND:
+            command_model = self._parse_test_command(tokens)
+            if command_model is None:
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            test.commands.append(command_model)
+            self._mark_tests_dirty()
+            return StatusResult(code=SS__NORMAL)
+        if cmd in (CMD_UNTIL, CMD_EXPECT, CMD_SUCCESS, CMD_ABORT):
+            condition_model = self._parse_test_condition(cmd, tokens)
+            if condition_model is None:
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            if cmd == CMD_UNTIL:
+                test.until_conditions.append(condition_model)
+            elif cmd == CMD_EXPECT:
+                test.expect_conditions.append(condition_model)
+            elif cmd == CMD_SUCCESS:
+                test.success_conditions.append(condition_model)
+            else:
+                test.abort_conditions.append(condition_model)
+            self._mark_tests_dirty()
+            return StatusResult(code=SS__NORMAL)
+        if cmd == CMD_PASSIVE and len(tokens) >= 2:
+            value = self._parse_bool_token(tokens[1])
+            if value is None:
+                print(MESSAGE_ERROR_DSL_PASSIVE)
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            test.passive = value
+            self._mark_tests_dirty()
+            return StatusResult(code=SS__NORMAL)
+        if cmd == CMD_MANUAL_STOP and len(tokens) >= 2:
+            value = self._parse_bool_token(tokens[1])
+            if value is None:
+                print(MESSAGE_ERROR_DSL_MANUAL_STOP)
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            test.manual_stop = value
+            self._mark_tests_dirty()
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_INPUT_SOURCE:
             if test.test_type not in (TEST_TYPE_JOYSTICK, TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE):
@@ -5765,6 +5894,81 @@ class BridgeCli:
             return StatusResult(code=SS__NORMAL)
         print(MESSAGE_ERROR_UNKNOWN_TEST)
         return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+
+    def _parse_test_command(self, tokens: List[str]) -> Optional[TestCommandModel]:
+        """
+        NAME
+            _parse_test_command - Parse a DSL command assignment line.
+        """
+
+        if len(tokens) < COUNT_FOUR or tokens[COUNT_TWO] != TOKEN_EQUALS:
+            print(MESSAGE_ERROR_DSL_COMMAND)
+            return None
+        signal = tokens[COUNT_ONE].strip()
+        if not signal:
+            print(MESSAGE_ERROR_DSL_COMMAND)
+            return None
+        value = self._parse_scalar_token(tokens[COUNT_THREE])
+        if value is None:
+            print(MESSAGE_ERROR_DSL_COMMAND)
+            return None
+        return TestCommandModel(signal=signal, value=value)
+
+    def _parse_test_condition(
+        self,
+        kind: str,
+        tokens: List[str],
+    ) -> Optional[TestConditionModel]:
+        """
+        NAME
+            _parse_test_condition - Parse a DSL condition expression.
+        """
+
+        if len(tokens) < COUNT_FOUR:
+            print(MESSAGE_ERROR_DSL_CONDITION.format(kind=kind))
+            return None
+        signal = tokens[COUNT_ONE].strip()
+        operator = tokens[COUNT_TWO].strip()
+        if operator not in DSL_ALLOWED_OPERATORS:
+            print(MESSAGE_ERROR_DSL_OPERATOR)
+            return None
+        value = self._parse_scalar_token(tokens[COUNT_THREE])
+        if value is None:
+            print(MESSAGE_ERROR_DSL_CONDITION.format(kind=kind))
+            return None
+        return TestConditionModel(signal=signal, operator=operator, value=value)
+
+    def _parse_bool_token(self, token: str) -> Optional[bool]:
+        """
+        NAME
+            _parse_bool_token - Parse a CLI true/false token.
+        """
+
+        value = token.strip().lower()
+        if value in (BOOLEAN_TRUE, CMD_ON, "1", "yes"):
+            return True
+        if value in (BOOLEAN_FALSE, CMD_OFF, "0", "no"):
+            return False
+        return None
+
+    def _parse_scalar_token(self, token: str) -> Optional[object]:
+        """
+        NAME
+            _parse_scalar_token - Parse a DSL scalar token.
+        """
+
+        bool_value = self._parse_bool_token(token)
+        if bool_value is not None:
+            return bool_value
+        raw = token.strip()
+        if not raw:
+            return None
+        try:
+            if raw.isdigit() or (raw.startswith("-") and raw[1:].isdigit()):
+                return int(raw)
+            return float(raw)
+        except ValueError:
+            return raw
 
     def _is_device_label_valid(self, label: str) -> bool:
         """
@@ -6170,13 +6374,63 @@ class BridgeCli:
         if test.devices:
             devices = DEVICE_JOIN_SEPARATOR.join(test.devices)
             print(MESSAGE_TEST_DEVICES.format(devices=devices))
+        if test.observers:
+            observers = DEVICE_JOIN_SEPARATOR.join(test.observers)
+            print(MESSAGE_TEST_OBSERVERS.format(devices=observers))
+        if test.pseudo_devices:
+            created = DEVICE_JOIN_SEPARATOR.join(
+                [f"{device.name}:{device.device_type}" for device in test.pseudo_devices]
+            )
+            print(MESSAGE_TEST_CREATED_DEVICES.format(devices=created))
         if test.input_source:
             print(MESSAGE_TEST_INPUT_SOURCE.format(source=test.input_source))
-        else:
-            print(MESSAGE_TEST_INPUT_SOURCE.format(source=STRING_NONE))
+        if test.commands:
+            print(
+                MESSAGE_TEST_COMMANDS.format(
+                    items=DEVICE_JOIN_SEPARATOR.join(
+                        [self._format_test_command(command) for command in test.commands]
+                    )
+                )
+            )
+        if test.until_conditions:
+            print(
+                MESSAGE_TEST_UNTIL.format(
+                    items=DEVICE_JOIN_SEPARATOR.join(
+                        [self._format_test_condition(condition) for condition in test.until_conditions]
+                    )
+                )
+            )
+        if test.expect_conditions:
+            print(
+                MESSAGE_TEST_EXPECT.format(
+                    items=DEVICE_JOIN_SEPARATOR.join(
+                        [self._format_test_condition(condition) for condition in test.expect_conditions]
+                    )
+                )
+            )
+        if test.success_conditions:
+            print(
+                MESSAGE_TEST_SUCCESS.format(
+                    items=DEVICE_JOIN_SEPARATOR.join(
+                        [self._format_test_condition(condition) for condition in test.success_conditions]
+                    )
+                )
+            )
+        if test.abort_conditions:
+            print(
+                MESSAGE_TEST_ABORT.format(
+                    items=DEVICE_JOIN_SEPARATOR.join(
+                        [self._format_test_condition(condition) for condition in test.abort_conditions]
+                    )
+                )
+            )
+        if test.passive:
+            print(MESSAGE_TEST_PASSIVE.format(value=test.passive))
+        if test.manual_stop:
+            print(MESSAGE_TEST_MANUAL_STOP.format(value=test.manual_stop))
         if test.test_type == TEST_TYPE_JOYSTICK and test.joystick:
             print(MESSAGE_TEST_DEADBAND.format(deadband=test.joystick.deadband))
-        if test.test_type in (TEST_TYPE_BUTTON, TEST_TYPE_COMPOSITE) and test.button:
+        if test.test_type == TEST_TYPE_BUTTON and test.button:
             print(MESSAGE_TEST_DUTY.format(duty=test.button.duty))
             term = test.termination
             print(
@@ -6221,6 +6475,22 @@ class BridgeCli:
             print(MESSAGE_TEST_PATTERN.format(pattern=pattern))
             print(MESSAGE_TEST_BRIGHTNESS.format(brightness=brightness))
             print(MESSAGE_TEST_DURATION.format(duration=duration))
+
+    def _format_test_command(self, command: TestCommandModel) -> str:
+        """
+        NAME
+            _format_test_command - Render one DSL command.
+        """
+
+        return f"{command.signal} {TOKEN_EQUALS} {command.value}"
+
+    def _format_test_condition(self, condition: TestConditionModel) -> str:
+        """
+        NAME
+            _format_test_condition - Render one DSL condition.
+        """
+
+        return f"{condition.signal} {condition.operator} {condition.value}"
 
     def _print_test_json(self, test: TestModel, pretty: bool) -> None:
         """
@@ -8309,9 +8579,10 @@ class BridgeCli:
                 for test in test_set.tests:
                     if not isinstance(test, TestModel):
                         continue
-                    if not test.devices:
+                    device_refs = list(test.devices) + list(test.observers)
+                    if not device_refs:
                         continue
-                    for label in test.devices:
+                    for label in device_refs:
                         if str(label).strip().lower() == target:
                             tests_hits.append(
                                 {

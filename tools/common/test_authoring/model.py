@@ -13,13 +13,26 @@ DESCRIPTION
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 
 DEFAULT_DEADBAND = 0.12
 DEFAULT_DUTY = 0.2
 DEFAULT_TEST_SET = "default"
 DEFAULT_BRIGHTNESS = 1.0
+DEFAULT_DEVICE_ROLE = "primary"
+DEVICE_ROLE_PRIMARY = "primary"
+DEVICE_ROLE_OBSERVER = "observer"
+PSEUDO_DEVICE_TYPE_TEST_TIMER = "TestTimer"
+BUILTIN_TIMER_NAME = "timer"
+CONDITION_OPERATOR_GT = ">"
+CONDITION_OPERATOR_GTE = ">="
+CONDITION_OPERATOR_LT = "<"
+CONDITION_OPERATOR_LTE = "<="
+CONDITION_OPERATOR_EQ = "=="
+CONDITION_OPERATOR_NE = "!="
+
+DslScalar = Union[bool, float, int, str]
 
 
 @dataclass
@@ -95,6 +108,51 @@ class DeviceActionModel:
 
 
 @dataclass
+class TestDeviceRef:
+    """
+    NAME
+        TestDeviceRef - Configured device bound into a test.
+    """
+
+    name: str
+    role: str = DEFAULT_DEVICE_ROLE
+
+
+@dataclass
+class TestPseudoDeviceModel:
+    """
+    NAME
+        TestPseudoDeviceModel - Test-local pseudo-device instance.
+    """
+
+    name: str
+    device_type: str
+
+
+@dataclass
+class TestCommandModel:
+    """
+    NAME
+        TestCommandModel - Latched start-of-test command assignment.
+    """
+
+    signal: str
+    value: DslScalar
+
+
+@dataclass
+class TestConditionModel:
+    """
+    NAME
+        TestConditionModel - Single DSL condition expression.
+    """
+
+    signal: str
+    operator: str
+    value: DslScalar
+
+
+@dataclass
 class TestModel:
     """
     NAME
@@ -110,6 +168,15 @@ class TestModel:
     termination: TerminationModel = field(default_factory=TerminationModel)
     deadband_sweep: Optional[DeadbandSweepModel] = None
     device_action: Optional[DeviceActionModel] = None
+    observers: List[str] = field(default_factory=list)
+    pseudo_devices: List[TestPseudoDeviceModel] = field(default_factory=list)
+    commands: List[TestCommandModel] = field(default_factory=list)
+    until_conditions: List[TestConditionModel] = field(default_factory=list)
+    expect_conditions: List[TestConditionModel] = field(default_factory=list)
+    success_conditions: List[TestConditionModel] = field(default_factory=list)
+    abort_conditions: List[TestConditionModel] = field(default_factory=list)
+    passive: bool = False
+    manual_stop: bool = False
     enabled: bool = False
 
 

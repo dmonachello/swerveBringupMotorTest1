@@ -10,9 +10,11 @@ This spec defines test declaration syntax and test-definition semantics only.
 
 Includes:
 
+- One unified DSL test model
 - Test object structure
 - Device binding and pseudo-device lifecycle
 - Signal reference syntax
+- Test-wide input binding syntax
 - Command semantics
 - Stop and expectation semantics
 - Validation rules
@@ -20,6 +22,7 @@ Includes:
 Excludes:
 
 - Execution engine behavior beyond declaration-time semantics
+- Staged or multi-step execution
 - Provider or hardware API details
 - Network transport, dashboard, or UI behavior
 - Logging and report rendering
@@ -28,6 +31,7 @@ Excludes:
 ## Goals
 
 - Keep the test model device-centric and internally consistent
+- Replace the old test-type split with one DSL model
 - Eliminate free-floating signal namespaces
 - Make expansion behavior deterministic
 - Separate configured devices from test-local pseudo-devices
@@ -39,14 +43,19 @@ Excludes:
 - Define signal provider implementations
 - Replace the current persisted schema in this spec
 - Add arbitrary pseudo-device types in v1
+- Support staged procedures or deadband sweep in v1
 
 ## Core Model
 
+- There is one DSL test model for v1.
 - All signals belong to device types.
 - All signal references resolve through device instances.
 - There are no free-floating signals.
 - Quotes are lexical only. They allow spaces or special characters in names and do not change meaning.
 - Quoted and unquoted names both refer to device instances.
+- Tests are flat single-body definitions in v1.
+- V1 does not define separate test types such as `composite`, `joystick`, `button`, `deadbandSweep`, or `deviceAction`.
+- Old functionality must be expressed through the DSL constructs defined here, not through type-specific behavior.
 
 Examples:
 
@@ -250,6 +259,9 @@ test create <name>
 device add "<device_name>" [role primary|observer]
 device create "<device_name>" type TestTimer
 
+input bind <input_source> -> <signal> [scale <number>] [deadband <number>]
+input bind <input_source> -> <signal> when-pressed <value> [when-released <value>]
+
 command <signal> = <value>
 
 until <condition>
@@ -267,6 +279,35 @@ exit
 Only `test create <name>` is required to declare a test object.
 
 Additional rules for runnable tests are defined below.
+
+V1 test bodies are flat. There are no `step` blocks or staged sub-sections in this release.
+
+## Input Bindings
+
+Input bindings map live operator input to writable command signals.
+
+Forms:
+
+```text
+input bind <input_source> -> <signal>
+input bind <input_source> -> <signal> scale <number> deadband <number>
+input bind <input_source> -> <signal> when-pressed <value> [when-released <value>]
+```
+
+Examples:
+
+- `input bind xbox1.leftY -> output_percent_cmd`
+- `input bind xbox1.leftY -> output_percent_cmd scale -1.0 deadband 0.12`
+- `input bind xbox1.A -> output_percent_cmd when-pressed 0.25 when-released 0.0`
+
+Rules:
+
+- Input bindings are test-wide.
+- Input bindings target writable command signals only.
+- An input binding may use an unqualified signal, which expands across primary devices.
+- All targeted devices must support the bound command signal.
+- Input shaping is optional. Defaults should be applied by the implementation when shaping terms are omitted.
+- V1 does not support step-local or staged input bindings.
 
 ## Conditions
 
@@ -418,7 +459,7 @@ A runnable test must satisfy all of the following:
   - `success`
   - `until`
 - unless `manual_stop true`
-- it must include at least one command unless `passive true`
+- it must include at least one command or input binding unless `passive true`
 - it must include device bindings if device signals are used
 
 ### passive
@@ -430,6 +471,7 @@ passive true
 means no command is required.
 
 `passive` does not waive the declared stop-condition requirement.
+`passive` also means no input binding is required.
 
 ### manual_stop
 
@@ -452,6 +494,8 @@ Errors:
 - `expect` without `until`
 - command on read-only signal
 - unsupported command on a targeted device
+- input binding on read-only signal
+- unsupported input-bound signal on a targeted device
 - unsupported expanded signal
 - mixed primary-device support for an unqualified signal
 - invalid operator
@@ -474,7 +518,7 @@ Warnings:
 test create manual_spin
 device add "FALCON 9"
 
-command output_percent_cmd = 0.25
+input bind xbox1.leftY -> output_percent_cmd scale -1.0 deadband 0.12
 
 manual_stop true
 enabled true
@@ -624,13 +668,13 @@ exit
 
 ```text
 test create sensor_check
-device add "encoder1"
+device add "encoder1" role observer
 
 passive true
 
 until timer.elapsed >= 5.0
 
-expect position_actual >= 0
+expect encoder1.position_actual >= 0
 
 exit
 ```
@@ -661,18 +705,25 @@ Purpose: Keep this spec aligned with the current layered architecture and existi
 - The parser and validator should resolve all device references before serialization.
 - Expansion should be performed against the test's primary-device set only.
 - Signal capability checks should occur during validation, not deferred to runtime where avoidable.
+- V1 execution shape is a flat single-body test. Staged execution is deferred beyond this release.
 - `timer` behavior belongs to the test-definition contract; interrupted-run rendering does not.
 
 ## Tradeoffs
 
 - Requiring explicit observer roles keeps expansion deterministic, but adds authoring verbosity for sensor devices.
 - Restricting `device create` to `TestTimer` keeps lifecycle simple in v1, but defers richer pseudo-device scenarios.
+- Folding manual-input workflows into the DSL keeps the model unified, but requires input binding semantics in addition to latched startup commands.
 - Treating unsupported expanded signals as errors avoids silent narrowing of intent at the cost of stricter authoring.
 
 ## Future Extensions
 
-- Formal EBNF for the DSL syntax
+Features intentionally pushed beyond v1 are tracked in [FEATURE_SPEC_TEST_CREATION_DSL_POST_V1.md](./FEATURE_SPEC_TEST_CREATION_DSL_POST_V1.md).
+
+Known post-v1 areas include:
+
+- Explicit `step` blocks
+- Staged procedures
+- Deadband sweep replacement
+- Step-local `abort`
 - Additional approved pseudo-device types
-- Optional explicit promotion or demotion of devices between primary and observer roles
 - Richer condition operators such as ranges or tolerances
-- Structured compile target from DSL to the persisted test schema

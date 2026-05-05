@@ -207,8 +207,13 @@ test           = "show"
                             | "composite"
                             | "deadbandsweep" | "deadbandSweep"
                             | "deviceaction" | "deviceAction")
-               | "device" ws "add" ws name
+               | "device" ws "add" ws name [ ws "role" ws ("primary" | "observer") ]
+               | "device" ws "create" ws name ws "type" ws "TestTimer"
                | "no" ws "device" ws name
+               | "command" ws name ws "=" ws value_or_text
+               | ("until" | "expect" | "success" | "abort") ws name ws ("==" | "!=" | ">=" | ">" | "<=" | "<") ws value_or_text
+               | "passive" ws ("true" | "false" | "on" | "off")
+               | "manual_stop" ws ("true" | "false" | "on" | "off")
                | "inputsource" ws name
                | "deadband" ws number
                | "duty" ws number

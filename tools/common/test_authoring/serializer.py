@@ -16,13 +16,20 @@ DESCRIPTION
 from typing import Any, Dict, List, Optional
 
 from .model import (
+    BUILTIN_TIMER_NAME,
     DeadbandSweepModel,
+    DEVICE_ROLE_OBSERVER,
+    DEVICE_ROLE_PRIMARY,
     DeviceActionModel,
+    PSEUDO_DEVICE_TYPE_TEST_TIMER,
     TerminationModel,
     TestAuthoringModel,
     TestBindingButton,
     TestBindingJoystick,
+    TestCommandModel,
+    TestConditionModel,
     TestModel,
+    TestPseudoDeviceModel,
     TestSetModel,
 )
 
@@ -48,6 +55,19 @@ KEY_LIMIT_SWITCH = "limitSwitch"
 KEY_TIMEOUT_SEC = "timeoutSec"
 KEY_ON_TIMEOUT = "onTimeout"
 KEY_DURATION_SEC = "durationSec"
+KEY_OBSERVER_DEVICES = "observerDevices"
+KEY_PSEUDO_DEVICES = "createdDevices"
+KEY_DEVICE_TYPE_DSL = "deviceType"
+KEY_COMMANDS = "commands"
+KEY_SIGNAL = "signal"
+KEY_VALUE = "value"
+KEY_UNTIL = "until"
+KEY_EXPECT = "expect"
+KEY_SUCCESS = "success"
+KEY_ABORT = "abort"
+KEY_OPERATOR = "operator"
+KEY_PASSIVE = "passive"
+KEY_MANUAL_STOP = "manualStop"
 KEY_LIMIT_ROT = "limitRot"
 KEY_ENCODER_KEY = "encoderKey"
 KEY_ENCODER_SOURCE = "encoderSource"
@@ -153,6 +173,15 @@ def _parse_tests(entries: List[Dict[str, Any]]) -> List[TestModel]:
         test = TestModel(name=name, test_type=test_type)
         test.enabled = bool(entry.get(KEY_ENABLED, False))
         test.devices = list(entry.get(KEY_MOTOR_LABELS, []) or [])
+        test.observers = _parse_string_list(entry.get(KEY_OBSERVER_DEVICES))
+        test.pseudo_devices = _parse_pseudo_devices(entry.get(KEY_PSEUDO_DEVICES))
+        test.commands = _parse_commands(entry.get(KEY_COMMANDS))
+        test.until_conditions = _parse_conditions(entry.get(KEY_UNTIL))
+        test.expect_conditions = _parse_conditions(entry.get(KEY_EXPECT))
+        test.success_conditions = _parse_conditions(entry.get(KEY_SUCCESS))
+        test.abort_conditions = _parse_conditions(entry.get(KEY_ABORT))
+        test.passive = bool(entry.get(KEY_PASSIVE, False))
+        test.manual_stop = bool(entry.get(KEY_MANUAL_STOP, False))
         if test_type == TYPE_JOYSTICK:
             test.joystick = TestBindingJoystick(
                 deadband=float(entry.get(KEY_DEADBAND, DEFAULT_DEADBAND)),
@@ -172,7 +201,7 @@ def _parse_tests(entries: List[Dict[str, Any]]) -> List[TestModel]:
                 brightness=float(brightness) if isinstance(brightness, (int, float)) else None,
                 duration_sec=float(duration) if isinstance(duration, (int, float)) else None,
             )
-        else:
+        elif test_type == TYPE_BUTTON:
             test.button = TestBindingButton(duty=float(entry.get(KEY_DUTY, DEFAULT_DUTY)))
             test.termination = _parse_termination(entry)
         test.input_source = entry.get(KEY_INPUT_SOURCE)
@@ -236,6 +265,24 @@ def _test_to_entry(test: TestModel) -> Dict[str, Any]:
         KEY_ENABLED: bool(test.enabled),
         KEY_MOTOR_LABELS: list(test.devices),
     }
+    if test.observers:
+        entry[KEY_OBSERVER_DEVICES] = list(test.observers)
+    if test.pseudo_devices:
+        entry[KEY_PSEUDO_DEVICES] = _pseudo_devices_entry(test.pseudo_devices)
+    if test.commands:
+        entry[KEY_COMMANDS] = _commands_entry(test.commands)
+    if test.until_conditions:
+        entry[KEY_UNTIL] = _conditions_entry(test.until_conditions)
+    if test.expect_conditions:
+        entry[KEY_EXPECT] = _conditions_entry(test.expect_conditions)
+    if test.success_conditions:
+        entry[KEY_SUCCESS] = _conditions_entry(test.success_conditions)
+    if test.abort_conditions:
+        entry[KEY_ABORT] = _conditions_entry(test.abort_conditions)
+    if test.passive:
+        entry[KEY_PASSIVE] = True
+    if test.manual_stop:
+        entry[KEY_MANUAL_STOP] = True
     if test.test_type == TYPE_JOYSTICK:
         entry[KEY_TYPE] = TYPE_JOYSTICK
         if test.input_source:
@@ -266,21 +313,6 @@ def _test_to_entry(test: TestModel) -> Dict[str, Any]:
         return entry
 
     entry[KEY_TYPE] = TYPE_COMPOSITE
-    if test.input_source:
-        entry[KEY_INPUT_SOURCE] = test.input_source
-    binding = test.button or TestBindingButton()
-    entry[KEY_DUTY] = binding.duty
-    term = test.termination or TerminationModel()
-    if term.rotation_limit is not None or term.rotation_encoder_key:
-        entry[KEY_ROTATION] = _rotation_entry(term)
-    if term.time_sec is not None:
-        entry[KEY_TIME] = _time_entry(term)
-    if term.hold_enabled:
-        hold = {KEY_ENABLED: True}
-        hold[KEY_ON_RELEASE] = term.hold_on_release or DEFAULT_ON_RELEASE
-        entry[KEY_HOLD] = hold
-    if term.limit_switch:
-        entry[KEY_LIMIT_SWITCH] = dict(term.limit_switch)
     return entry
 
 
@@ -385,3 +417,149 @@ def _deadband_sweep_entry(sweep: DeadbandSweepModel) -> Dict[str, Any]:
     if sweep.encoder_motor_index is not None:
         entry[KEY_ENCODER_MOTOR_INDEX] = sweep.encoder_motor_index
     return entry
+
+
+def _parse_string_list(raw: Any) -> List[str]:
+    """
+    NAME
+        _parse_string_list - Parse a list of non-empty strings.
+    """
+
+    if not isinstance(raw, list):
+        return []
+    values: List[str] = []
+    for entry in raw:
+        if isinstance(entry, str) and entry.strip():
+            values.append(entry.strip())
+    return values
+
+
+def _parse_pseudo_devices(raw: Any) -> List[TestPseudoDeviceModel]:
+    """
+    NAME
+        _parse_pseudo_devices - Parse created pseudo-device entries.
+    """
+
+    if not isinstance(raw, list):
+        return []
+    devices: List[TestPseudoDeviceModel] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get(KEY_NAME)
+        device_type = entry.get(KEY_DEVICE_TYPE_DSL)
+        if not isinstance(name, str) or not name.strip():
+            continue
+        if not isinstance(device_type, str) or not device_type.strip():
+            continue
+        devices.append(
+            TestPseudoDeviceModel(
+                name=name.strip(),
+                device_type=device_type.strip(),
+            )
+        )
+    return devices
+
+
+def _parse_commands(raw: Any) -> List[TestCommandModel]:
+    """
+    NAME
+        _parse_commands - Parse DSL command assignments.
+    """
+
+    if not isinstance(raw, list):
+        return []
+    commands: List[TestCommandModel] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        signal = entry.get(KEY_SIGNAL)
+        if not isinstance(signal, str) or not signal.strip():
+            continue
+        if KEY_VALUE not in entry:
+            continue
+        commands.append(TestCommandModel(signal=signal.strip(), value=entry.get(KEY_VALUE)))
+    return commands
+
+
+def _parse_conditions(raw: Any) -> List[TestConditionModel]:
+    """
+    NAME
+        _parse_conditions - Parse DSL condition lists.
+    """
+
+    if not isinstance(raw, list):
+        return []
+    conditions: List[TestConditionModel] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        signal = entry.get(KEY_SIGNAL)
+        operator = entry.get(KEY_OPERATOR)
+        if not isinstance(signal, str) or not signal.strip():
+            continue
+        if not isinstance(operator, str) or not operator.strip():
+            continue
+        if KEY_VALUE not in entry:
+            continue
+        conditions.append(
+            TestConditionModel(
+                signal=signal.strip(),
+                operator=operator.strip(),
+                value=entry.get(KEY_VALUE),
+            )
+        )
+    return conditions
+
+
+def _pseudo_devices_entry(devices: List[TestPseudoDeviceModel]) -> List[Dict[str, Any]]:
+    """
+    NAME
+        _pseudo_devices_entry - Serialize created pseudo-devices.
+    """
+
+    entries: List[Dict[str, Any]] = []
+    for device in devices:
+        entries.append(
+            {
+                KEY_NAME: device.name,
+                KEY_DEVICE_TYPE_DSL: device.device_type,
+            }
+        )
+    return entries
+
+
+def _commands_entry(commands: List[TestCommandModel]) -> List[Dict[str, Any]]:
+    """
+    NAME
+        _commands_entry - Serialize DSL commands.
+    """
+
+    entries: List[Dict[str, Any]] = []
+    for command in commands:
+        entries.append(
+            {
+                KEY_SIGNAL: command.signal,
+                KEY_VALUE: command.value,
+            }
+        )
+    return entries
+
+
+def _conditions_entry(conditions: List[TestConditionModel]) -> List[Dict[str, Any]]:
+    """
+    NAME
+        _conditions_entry - Serialize DSL conditions.
+    """
+
+    entries: List[Dict[str, Any]] = []
+    for condition in conditions:
+        entries.append(
+            {
+                KEY_SIGNAL: condition.signal,
+                KEY_OPERATOR: condition.operator,
+                KEY_VALUE: condition.value,
+            }
+        )
+    return entries
+
