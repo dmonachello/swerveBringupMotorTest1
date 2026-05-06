@@ -95,6 +95,8 @@ from tools.can_nt.bridge_ops import (
     parse_json_arg,
     profile_activate,
     profiles_reload,
+    run_all_tests,
+    run_test,
 )
 from tools.can_nt.bridge_session import BridgeEvent, BridgeSession
 from tools.can_nt.motor_diag_constants import (
@@ -184,6 +186,11 @@ from tools.common.profile_constants import (
     KEY_BRIDGE_BINDINGS,
     KEY_DATA_HASH,
     KEY_DATA_VERSION,
+    KEY_DSL_DEFAULT_SET,
+    KEY_DSL_TEST_SET,
+    KEY_DSL_TEST_SETS,
+    KEY_DSL_TESTS,
+    KEY_DSL_TESTS_BY_NAME,
     KEY_DIO,
     KEY_DEFAULT_PROFILE,
     KEY_DEVICE_TYPE,
@@ -255,6 +262,16 @@ from tools.common.profile_constants import (
     KEY_NODE_KEY,
     get_device_interface,
 )
+from tools.common.robot_test_dsl import (
+    DEFAULT_TEST_SET as DSL_DEFAULT_TEST_SET,
+    RobotTestDslEntry,
+    RobotTestDslStore,
+    compile_source as compile_robot_test_dsl_source,
+    source_hash as robot_test_dsl_source_hash,
+    store_from_payload as robot_test_dsl_store_from_payload,
+    store_to_payload as robot_test_dsl_store_to_payload,
+    validate_store as validate_robot_test_dsl_store,
+)
 from tools.common.test_authoring import (
     BUILTIN_TIMER_NAME,
     CONDITION_OPERATOR_EQ,
@@ -325,6 +342,8 @@ ROBOT_LONG_COMMAND_TIMEOUT_SEC = 20.0
 PROFILE_EXPORT_TEST_RUN_WAIT_SEC = 2.0
 TEST_WAIT_DEFAULT_TIMEOUT_SEC = 10.0
 TEST_WAIT_POLL_SEC = 0.1
+TEST_WAIT_RUN_ALL_SETTLE_POLLS = 3
+TEST_WAIT_PROGRESS_PERIOD_SEC = 1.0
 SLEEP_MIN_SEC = 0.0
 SLEEP_MAX_SEC = 3600.0
 SLEEP_ARG_COUNT = 2
@@ -337,10 +356,7 @@ MESSAGE_KEEPALIVE_THREAD_START = "KEEPALIVE: thread started."
 MESSAGE_KEEPALIVE_THREAD_STOP = "KEEPALIVE: thread stopped."
 MESSAGE_KEEPALIVE_STATE_CONNECTED = "KEEPALIVE: session connected."
 MESSAGE_KEEPALIVE_STATE_DISCONNECTED = "KEEPALIVE: session disconnected."
-MESSAGE_KEEPALIVE_SEND_OK = "KEEPALIVE: uiPing sent (seq={seq})."
 MESSAGE_KEEPALIVE_SEND_FAIL = "KEEPALIVE: uiPing send failed."
-MESSAGE_KEEPALIVE_RECV_ACK = "KEEPALIVE: uiPing ack received (seq={seq})."
-MESSAGE_KEEPALIVE_RECV_OUT = "KEEPALIVE: uiPing out received (seq={seq})."
 MESSAGE_WAITING_FOR_OUT = "WARNING: Timeout waiting for OUT."
 MESSAGE_DEBUG_REGISTRY_PUSH = (
     "DEBUG: registry push path={path} bytes={bytes} sha256={sha256} data_hash={data_hash}"
@@ -460,6 +476,7 @@ CMD_SAVE_TESTS = "save-tests"
 CMD_TEST = "test"
 CMD_TESTS = "tests"
 CMD_CREATE = "create"
+CMD_IMPORT = "import"
 CMD_EXPORT = "export"
 CMD_DELETE = "delete"
 CMD_SET = "set"
@@ -588,6 +605,7 @@ CMD_ACTIVE = "--active"
 CMD_ACTIVE_SET = "--active-set"
 FLAG_RUN = "--run"
 FLAG_TIMEOUT = "--timeout"
+FLAG_WAIT = "--wait"
 CMD_ALL = "all"
 CMD_SCRIPT = "script"
 CMD_PROMPT = "--prompt"
@@ -823,6 +841,7 @@ KEY_RUN_STATUS = "status"
 KEY_RUN_MESSAGE = "message"
 KEY_RUN_STARTED_AT_MS = "startedAtMs"
 KEY_RUN_FINISHED_AT_MS = "finishedAtMs"
+KEY_RUN_DETAILS = "details"
 RUN_STATE_IDLE = "idle"
 RUN_STATE_STARTING = "starting"
 RUN_STATE_RUNNING = "running"
@@ -1637,6 +1656,27 @@ MESSAGE_ERROR_TEST_EXISTS = "ERROR: Test already exists."
 MESSAGE_ERROR_TEST_NOT_FOUND = "ERROR: Test not found."
 MESSAGE_ERROR_UNKNOWN_TEST = "ERROR: Unknown test command."
 MESSAGE_ERROR_INVALID_TEST_COMMAND = "ERROR: Invalid test authoring command."
+MESSAGE_ERROR_LEGACY_TEST_AUTHORING_REMOVED = (
+    "ERROR: legacy local test authoring was removed. "
+    "Use tools/can_nt/scripts/dsl_tests_config_tool.py for DSL import/export/validate."
+)
+MESSAGE_ERROR_DSL_CLI_USAGE = "ERROR: test import|export|validate|delete|set ..."
+MESSAGE_ERROR_DSL_SHOW_USAGE = "ERROR: show tests | show test <name> [normalized] | show test sets"
+MESSAGE_ERROR_DSL_PROFILE_REQUIRED = "ERROR: active profile required."
+MESSAGE_ERROR_DSL_CONFIG_REQUIRED = "ERROR: local bringup_system.json must be loaded first (merge/import config)."
+MESSAGE_ERROR_DSL_TEST_NOT_FOUND = "ERROR: test not found: {name}"
+MESSAGE_ERROR_DSL_SET_NOT_FOUND = "ERROR: test set not found: {name}"
+MESSAGE_ERROR_DSL_PROFILE_UNKNOWN = "ERROR: unknown profile: {name}"
+MESSAGE_ERROR_DSL_LOCAL_ONLY = "ERROR: DSL show commands are local-only."
+MESSAGE_DSL_TEST_IMPORTED = "Imported DSL test: {name}"
+MESSAGE_DSL_TEST_DELETED = "Deleted DSL test: {name}"
+MESSAGE_DSL_SET_CREATED = "Created test set: {name}"
+MESSAGE_DSL_SET_DELETED = "Deleted test set: {name}"
+MESSAGE_DSL_SET_DEFAULT = "Default test set: {name}"
+MESSAGE_DSL_SET_MEMBER_ADDED = "Added test {test} to set {name}"
+MESSAGE_DSL_SET_MEMBER_REMOVED = "Removed test {test} from set {name}"
+MESSAGE_DSL_TEST_EXPORTED = "Exported DSL test: {name}"
+ROBOT_TEST_DSL_SIGNALS_PATH = repo_root() / "tools" / "common" / "generated" / "robot_test_dsl_signals.json"
 MESSAGE_ERROR_WITH_TEXT = "ERROR: {message}"
 MESSAGE_ERROR_WITH_TEST = "ERROR: {message} ({test})"
 MESSAGE_WARNING_WITH_TEST = "WARNING: {message} ({test})"
@@ -1873,6 +1913,9 @@ class BridgeCli:
         self._proto_keepalive_last_sent_at = PROTO_TIME_ZERO
         self._proto_keepalive_last_ack_at = PROTO_TIME_ZERO
         self._proto_keepalive_last_out_at = PROTO_TIME_ZERO
+        trace_setter = getattr(self._session, "set_trace_logger", None)
+        if callable(trace_setter):
+            trace_setter(self._debug_log)
 
     def run_interactive(self) -> int:
         """
@@ -2012,7 +2055,6 @@ class BridgeCli:
                 seq = ui_ping(self._session)
                 if seq is not None:
                     last_ping = now
-                    self._keepalive_log(MESSAGE_KEEPALIVE_SEND_OK.format(seq=seq))
                     self._proto_mark_keepalive_sent(seq=seq, now=now, ok=True)
                 else:
                     self._keepalive_log(MESSAGE_KEEPALIVE_SEND_FAIL)
@@ -3272,6 +3314,19 @@ class BridgeCli:
         """
         print(MESSAGE_ERR_ALIAS_REMOVED.format(alias=alias_name, canonical=canonical))
 
+    def _handshake_error_text(self) -> str:
+        """
+        NAME
+            _handshake_error_text - Return a specific handshake failure detail when available.
+        """
+        getter = getattr(self._session, "last_handshake_error", None)
+        if not callable(getter):
+            return "Handshake failed."
+        detail = str(getter() or "").strip()
+        if not detail:
+            return "Handshake failed."
+        return f"Handshake failed: {detail}"
+
     def _coerce_status(self, outcome: Optional[object]) -> StatusResult:
         """
         NAME
@@ -3293,6 +3348,9 @@ class BridgeCli:
         active_result = self._handle_active_command(line)
         if active_result is not None:
             return active_result
+        tests_run_result = self._handle_tests_run_command(line)
+        if tests_run_result is not None:
+            return tests_run_result
         targeting_result = self._handle_group_targeting_command(line)
         if targeting_result is not None:
             return targeting_result
@@ -3451,9 +3509,10 @@ class BridgeCli:
             run_id = self._last_test_run_id
         deadline = time.time() + timeout_sec
         last_run: Dict[str, object] = {}
+        self._tests_wait_progress_next_sec = 0.0
         while time.time() <= deadline:
             seq = show_tests(self._session, json_output=True)
-            event = self._wait_for_seq(seq, print_events=False)
+            event = self._wait_for_seq(seq, print_events=False, suppress_timeout_warning=True)
             payload = self._event_json_payload(event)
             run = payload.get(KEY_TESTS_RUN) if isinstance(payload, dict) else None
             if isinstance(run, dict):
@@ -3466,9 +3525,57 @@ class BridgeCli:
                     time.sleep(TEST_WAIT_POLL_SEC)
                     continue
                 if state in RUN_TERMINAL_STATES:
-                    return self._finish_tests_wait(run)
+                    return self._finish_tests_wait(run, payload=payload)
+            self._print_tests_wait_progress(last_run, run_id, deadline)
             time.sleep(TEST_WAIT_POLL_SEC)
         return self._tests_wait_timeout(run_id, last_run)
+
+    def _handle_tests_run_command(self, line: str) -> Optional[StatusResult]:
+        """
+        NAME
+            _handle_tests_run_command - Handle tests run/run-all with optional wait flags.
+
+        DESCRIPTION
+            Keeps the default asynchronous robot command behavior, but adds an
+            opt-in wait path so operators can see the finished run summary
+            without issuing a separate command.
+        """
+        mode = self._modes[-1].name
+        if mode not in ("exec", MODE_CONFIG):
+            return None
+        try:
+            tokens = self._split_command(line)
+        except Exception:
+            return None
+        if len(tokens) < COUNT_TWO or tokens[COUNT_ZERO].lower() != CMD_TESTS:
+            return None
+        action = tokens[COUNT_ONE].lower()
+        if action not in (CMD_RUN, CMD_RUN_ALL):
+            return None
+        wait_flag, timeout_sec, error = self._parse_tests_run_args(tokens)
+        if error:
+            print(error)
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+        if not self._session.is_connected():
+            print(MESSAGE_ERR_SHOW_TESTS_ROBOT_NOT_CONNECTED)
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+        if action == CMD_RUN:
+            seq = run_test(self._session)
+        else:
+            seq = run_all_tests(self._session)
+        event = self._wait_for_seq(seq)
+        self._record_test_run_event(event)
+        label = "tests run" if action == CMD_RUN else "tests run-all"
+        if self._event_failed(event, label):
+            return StatusResult(code=SS__EXECUTOR__FAILED)
+        run_payload = self._event_json_payload(event)
+        run_id = self._safe_int(run_payload.get(KEY_RUN_ID), None)
+        if run_id and run_id > COUNT_ZERO:
+            self._last_test_run_id = run_id
+        if wait_flag:
+            return self._wait_for_test_run_completion(run_id, timeout_sec, run_all=(action == CMD_RUN_ALL))
+        self._print_tests_run_started(action, run_id)
+        return StatusResult(code=SS__NORMAL)
 
     def _parse_tests_wait_args(
         self,
@@ -3496,23 +3603,218 @@ class BridgeCli:
             return (None, timeout_sec, f"ERROR: timeout must be between {SLEEP_MIN_SEC} and {SLEEP_MAX_SEC}.")
         return (run_id, timeout_sec, None)
 
-    def _finish_tests_wait(self, run: Dict[str, object]) -> StatusResult:
+    def _parse_tests_run_args(
+        self,
+        tokens: List[str],
+    ) -> tuple[bool, float, Optional[str]]:
+        wait_flag = False
+        timeout_sec = TEST_WAIT_DEFAULT_TIMEOUT_SEC
+        index = COUNT_TWO
+        while index < len(tokens):
+            flag = tokens[index].lower()
+            if flag == FLAG_WAIT:
+                wait_flag = True
+                index += COUNT_ONE
+                continue
+            if flag == FLAG_TIMEOUT:
+                if index + COUNT_ONE >= len(tokens):
+                    return (False, timeout_sec, "ERROR: tests run --timeout requires a value.")
+                try:
+                    timeout_sec = float(tokens[index + COUNT_ONE])
+                except ValueError:
+                    return (False, timeout_sec, "ERROR: tests run timeout must be numeric.")
+                index += COUNT_TWO
+                continue
+            return (False, timeout_sec, "ERROR: tests run [--wait] [--timeout <seconds>]")
+        if timeout_sec <= SLEEP_MIN_SEC or timeout_sec > SLEEP_MAX_SEC:
+            return (False, timeout_sec, f"ERROR: timeout must be between {SLEEP_MIN_SEC} and {SLEEP_MAX_SEC}.")
+        return (wait_flag, timeout_sec, None)
+
+    def _wait_for_test_run_completion(
+        self,
+        run_id: Optional[int],
+        timeout_sec: float,
+        run_all: bool,
+    ) -> StatusResult:
+        deadline = time.time() + timeout_sec
+        last_run: Dict[str, object] = {}
+        last_payload: Dict[str, object] = {}
+        last_terminal_key: tuple[int, str] | None = None
+        terminal_polls = COUNT_ZERO
+        self._tests_wait_progress_next_sec = 0.0
+        while time.time() <= deadline:
+            seq = show_tests(self._session, json_output=True)
+            event = self._wait_for_seq(seq, print_events=False, suppress_timeout_warning=True)
+            payload = self._event_json_payload(event)
+            run = payload.get(KEY_TESTS_RUN) if isinstance(payload, dict) else None
+            if isinstance(run, dict):
+                last_run = run
+                last_payload = payload if isinstance(payload, dict) else {}
+                observed_run_id = self._safe_int(run.get(KEY_RUN_ID), COUNT_ZERO)
+                state = str(run.get(KEY_RUN_STATE, EMPTY_STRING)).strip().lower()
+                if observed_run_id and observed_run_id > COUNT_ZERO:
+                    self._last_test_run_id = observed_run_id
+                if run_all:
+                    if run_id is not None and observed_run_id < run_id:
+                        time.sleep(TEST_WAIT_POLL_SEC)
+                        continue
+                    if state in RUN_TERMINAL_STATES:
+                        current_key = (observed_run_id, state)
+                        if current_key == last_terminal_key:
+                            terminal_polls += COUNT_ONE
+                        else:
+                            last_terminal_key = current_key
+                            terminal_polls = COUNT_ONE
+                        if terminal_polls >= TEST_WAIT_RUN_ALL_SETTLE_POLLS:
+                            return self._finish_tests_wait(run, payload=last_payload, run_all=True)
+                    else:
+                        last_terminal_key = None
+                        terminal_polls = COUNT_ZERO
+                else:
+                    if run_id is not None and observed_run_id != run_id:
+                        time.sleep(TEST_WAIT_POLL_SEC)
+                        continue
+                    if state in RUN_TERMINAL_STATES:
+                        return self._finish_tests_wait(run, payload=last_payload)
+            self._print_tests_wait_progress(last_run, run_id, deadline, run_all=run_all)
+            time.sleep(TEST_WAIT_POLL_SEC)
+        return self._tests_wait_timeout(run_id, last_run)
+
+    def _print_tests_run_started(self, action: str, run_id: Optional[int]) -> None:
+        if action == CMD_RUN_ALL:
+            if run_id and run_id > COUNT_ZERO:
+                print(f"Run-all started: first runId={run_id}. Use `tests wait --run {run_id}` for completion summary.")
+                return
+            print("Run-all started. Use `tests wait` for completion summary.")
+            return
+        if run_id and run_id > COUNT_ZERO:
+            print(f"Test run started: runId={run_id}. Use `tests wait --run {run_id}` for completion summary.")
+            return
+        print("Test run started. Use `tests wait` for completion summary.")
+
+    def _print_tests_wait_progress(
+        self,
+        run: Dict[str, object],
+        run_id: Optional[int],
+        deadline: float,
+        run_all: bool = False,
+    ) -> None:
+        now = time.time()
+        next_due = getattr(self, "_tests_wait_progress_next_sec", 0.0)
+        if now < next_due:
+            return
+        self._tests_wait_progress_next_sec = now + TEST_WAIT_PROGRESS_PERIOD_SEC
+        observed_run_id = self._safe_int(run.get(KEY_RUN_ID), COUNT_ZERO) if run else COUNT_ZERO
+        state = str(run.get(KEY_RUN_STATE, EMPTY_STRING)).strip().lower() if run else ""
+        test_name = str(run.get(KEY_RUN_TEST, EMPTY_STRING)).strip() if run else ""
+        remaining = max(0.0, deadline - now)
+        label = "run-all" if run_all else "test"
+        effective_run_id = run_id or observed_run_id or 0
+        state_text = state or RUN_STATE_STARTING
+        if test_name:
+            print(
+                f"Waiting for {label} completion: runId={effective_run_id} "
+                f"state={state_text} test={test_name} remaining={remaining:.1f}s"
+            )
+            return
+        print(
+            f"Waiting for {label} completion: runId={effective_run_id} "
+            f"state={state_text} remaining={remaining:.1f}s"
+        )
+
+    def _finish_tests_wait(
+        self,
+        run: Dict[str, object],
+        payload: Optional[Dict[str, object]] = None,
+        run_all: bool = False,
+    ) -> StatusResult:
         state = str(run.get(KEY_RUN_STATE, EMPTY_STRING)).strip().lower()
         run_id = self._safe_int(run.get(KEY_RUN_ID), COUNT_ZERO)
         test_name = str(run.get(KEY_RUN_TEST, EMPTY_STRING)).strip()
         result = str(run.get(KEY_RUN_RESULT, EMPTY_STRING)).strip()
         message = str(run.get(KEY_RUN_MESSAGE, EMPTY_STRING)).strip()
         status = str(run.get(KEY_RUN_STATUS, EMPTY_STRING)).strip()
-        summary = (
-            f"Test run finished: runId={run_id} state={state} test={test_name} "
-            f"result={result} status={status}"
-        ).strip()
+        started_ms = self._safe_int(run.get(KEY_RUN_STARTED_AT_MS), COUNT_ZERO) or COUNT_ZERO
+        finished_ms = self._safe_int(run.get(KEY_RUN_FINISHED_AT_MS), COUNT_ZERO) or COUNT_ZERO
+        elapsed_sec: Optional[float] = None
+        if started_ms > 0 and finished_ms >= started_ms:
+            elapsed_sec = (finished_ms - started_ms) / 1000.0
+        header = "Run-all complete:" if run_all else "Test run complete:"
+        print(header)
+        print(f"  runId: {run_id}")
+        if test_name:
+            print(f"  test: {test_name}")
+        print(f"  state: {state}")
+        if result:
+            print(f"  result: {result}")
+        if elapsed_sec is not None:
+            print(f"  elapsed: {elapsed_sec:.2f}s")
+        if status:
+            print(f"  status: {status}")
         if message:
-            summary = f"{summary} message={message}"
-        print(summary)
+            print(f"  message: {message}")
+        details = run.get(KEY_RUN_DETAILS)
+        self._print_test_run_details(details)
+        if run_all:
+            self._print_run_all_rows_summary(payload)
         if state in RUN_SUCCESS_STATES:
             return StatusResult(code=SS__NORMAL)
         return StatusResult(code=SS__EXECUTOR__FAILED)
+
+    def _print_test_run_details(self, details: object) -> None:
+        if not isinstance(details, dict):
+            return
+        requires = details.get("requires")
+        if isinstance(requires, list) and requires:
+            print("  require:")
+            for entry in requires:
+                if not isinstance(entry, dict):
+                    continue
+                ident = str(entry.get("id", EMPTY_STRING)).strip()
+                text = str(entry.get("text", EMPTY_STRING)).strip()
+                satisfied = bool(entry.get("satisfied", False))
+                sample = entry.get("sampleValue")
+                when_sec = entry.get("satisfiedAtSec")
+                label = "PASS" if satisfied else "FAIL"
+                line = f"    {ident or '(unnamed)'} {label}"
+                if text:
+                    line = f"{line}  {text}"
+                if satisfied and when_sec is not None:
+                    line = f"{line}  at={when_sec}"
+                if sample is not None:
+                    line = f"{line}  sample={sample}"
+                print(line)
+        last_samples = details.get("lastSamples")
+        if isinstance(last_samples, dict) and last_samples:
+            print("  lastSamples:")
+            for key in sorted(last_samples.keys()):
+                print(f"    {key}: {last_samples[key]}")
+        unsafe_exit = details.get("unsafeExit")
+        if isinstance(unsafe_exit, list) and unsafe_exit:
+            print("  unsafeExit:")
+            for entry in unsafe_exit:
+                if not isinstance(entry, dict):
+                    continue
+                text = str(entry.get("text", EMPTY_STRING)).strip()
+                if text:
+                    print(f"    {text}")
+
+    def _print_run_all_rows_summary(self, payload: Optional[Dict[str, object]]) -> None:
+        if not isinstance(payload, dict):
+            return
+        rows = payload.get("rows")
+        if not isinstance(rows, list) or not rows:
+            return
+        print("  tests:")
+        for entry in rows:
+            if not isinstance(entry, dict):
+                continue
+            name = str(entry.get(KEY_TESTS_NAME, EMPTY_STRING)).strip()
+            status = str(entry.get(KEY_TESTS_STATUS, EMPTY_STRING)).strip()
+            enabled = bool(entry.get(KEY_TESTS_ENABLED, False))
+            if not enabled:
+                continue
+            print(f"    {name}: {status}")
 
     def _tests_wait_timeout(
         self,
@@ -3669,7 +3971,12 @@ class BridgeCli:
                 target_name = self._target_group_name(None)
             return self._remove_local_group_member(target_name, tokens[2])
 
-        if cmd == CMD_ADD and len(tokens) >= COUNT_TWO and normalized[1] == CMD_ALL:
+        if (
+            cmd == CMD_ADD
+            and len(tokens) >= COUNT_TWO
+            and normalized[1] == CMD_ALL
+            and (mode == CMD_GROUP or explicit_group is not None)
+        ):
             target_name = self._target_group_name(explicit_group)
             labels = self._device_sequence_labels()
             members = self._list_target_group_members(target_name)
@@ -4371,7 +4678,7 @@ class BridgeCli:
                     return False
             return True
         if tokens[0].lower() == CMD_SHOW and len(tokens) > 1:
-            return tokens[1].lower().startswith(CMD_TEST)
+            return tokens[1].lower() in (CMD_TEST, CMD_TESTS)
         return False
 
     def _execute_test_authoring(self, tokens: List[str]) -> StatusResult:
@@ -4387,16 +4694,337 @@ class BridgeCli:
         """
 
         mode = self._modes[-1].name
-        if mode == MODE_TEST:
-            return self._coerce_status(self._test_mode_command(tokens))
-        if mode == MODE_CONFIG and tokens[0].lower() == CMD_TEST:
-            return self._coerce_status(self._config_test_command(tokens))
-        if tokens[0].lower() == CMD_TESTS:
-            return self._tests_command(tokens)
-        if tokens[0].lower() == CMD_SHOW:
-            return self._show_tests_command(tokens)
-        print(MESSAGE_ERROR_INVALID_TEST_COMMAND)
+        cmd = tokens[COUNT_ZERO].lower()
+        if cmd == CMD_SHOW:
+            return self._dsl_show_command(tokens)
+        if cmd == CMD_TESTS:
+            print(MESSAGE_ERROR_LEGACY_TEST_AUTHORING_REMOVED)
+            return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+        if cmd == CMD_TEST and mode == MODE_CONFIG:
+            return self._dsl_test_command(tokens)
+        print(MESSAGE_ERROR_DSL_CLI_USAGE)
         return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+
+    def _dsl_require_local_root(self) -> Optional[Dict[str, object]]:
+        self._ensure_local_config()
+        if self._local_root_payload is None:
+            print(MESSAGE_ERROR_DSL_CONFIG_REQUIRED)
+            return None
+        return self._local_root_payload
+
+    def _dsl_active_profile(self) -> Optional[str]:
+        profile_name = self._active_profile_name()
+        if not profile_name:
+            print(MESSAGE_ERROR_DSL_PROFILE_REQUIRED)
+            return None
+        return profile_name
+
+    def _dsl_store(self) -> RobotTestDslStore:
+        payload = {}
+        if isinstance(self._local_root_payload, dict):
+            payload = self._local_root_payload.get(KEY_DSL_TESTS)
+            if not isinstance(payload, dict):
+                payload = {}
+        return robot_test_dsl_store_from_payload(payload)
+
+    def _dsl_write_store(self, store: RobotTestDslStore) -> None:
+        if self._local_root_payload is None:
+            return
+        self._local_root_payload[KEY_DSL_TESTS] = robot_test_dsl_store_to_payload(store)
+        self._tests_dirty = True
+        self._profiles_dirty = True
+
+    def _dsl_signal_catalog(self) -> Dict[str, Dict[str, object]]:
+        payload = read_json(ROBOT_TEST_DSL_SIGNALS_PATH)
+        if not isinstance(payload, dict):
+            return {}
+        device_types = payload.get("deviceTypes")
+        if not isinstance(device_types, dict):
+            return {}
+        return {str(name): value for name, value in device_types.items() if isinstance(value, dict)}
+
+    def _dsl_device_catalog(self, profile_name: str) -> Dict[str, Dict[str, object]]:
+        payload = self._local_root_payload if isinstance(self._local_root_payload, dict) else {}
+        profiles = payload.get(KEY_PROFILES)
+        devices = payload.get(KEY_DEVICES)
+        if not isinstance(profiles, dict) or not isinstance(devices, list):
+            return {}
+        profile = profiles.get(profile_name)
+        if not isinstance(profile, dict):
+            return {}
+        selected = profile.get(KEY_PROFILE_DEVICES, [])
+        by_label = {
+            str(item.get(KEY_LABEL)): item
+            for item in devices
+            if isinstance(item, dict) and isinstance(item.get(KEY_LABEL), str)
+        }
+        result: Dict[str, Dict[str, object]] = {}
+        if isinstance(selected, list):
+            for label in selected:
+                if isinstance(label, str) and label in by_label:
+                    result[label] = by_label[label]
+        return result
+
+    def _dsl_validate_store(self, store: RobotTestDslStore, profile_name: str):
+        payload = self._local_root_payload if isinstance(self._local_root_payload, dict) else {}
+        profiles = payload.get(KEY_PROFILES)
+        if isinstance(profiles, dict) and profile_name not in profiles:
+            from tools.common.robot_test_dsl import ValidationResult, ValidationIssue
+
+            return ValidationResult(errors=[ValidationIssue(MESSAGE_ERROR_DSL_PROFILE_UNKNOWN.format(name=profile_name))])
+        return validate_robot_test_dsl_store(
+            store,
+            self._dsl_device_catalog(profile_name),
+            self._dsl_signal_catalog(),
+        )
+
+    def _dsl_print_validation(self, result, json_output: bool, pretty: bool) -> None:
+        payload = {
+            "errors": [issue.__dict__ for issue in result.errors],
+            "warnings": [issue.__dict__ for issue in result.warnings],
+        }
+        if json_output:
+            print(self._dump_json(payload, pretty))
+            return
+        if not result.errors and not result.warnings:
+            print("OK")
+            return
+        for issue in result.errors:
+            prefix = issue.test_name or "-"
+            print(f"ERROR: {prefix}: {issue.message}")
+        for issue in result.warnings:
+            prefix = issue.test_name or "-"
+            print(f"WARNING: {prefix}: {issue.message}")
+
+    def _dsl_show_command(self, tokens: List[str]) -> StatusResult:
+        root = self._dsl_require_local_root()
+        if root is None:
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens[COUNT_ONE:])
+        if not ok:
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+        explicit_source = any(
+            tok.lower() in (SHOW_SOURCE_ROBOT, SHOW_SOURCE_LOCAL, SHOW_SOURCE_BOTH, "--robot", "--local", "--both")
+            for tok in tokens[COUNT_ONE:]
+        )
+        if not explicit_source:
+            source = SHOW_SOURCE_LOCAL
+        if source in (SHOW_SOURCE_ROBOT, SHOW_SOURCE_BOTH):
+            print(MESSAGE_ERROR_DSL_LOCAL_ONLY)
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+        if not cleaned:
+            print(MESSAGE_ERROR_DSL_SHOW_USAGE)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        store = self._dsl_store()
+        target = cleaned[COUNT_ZERO].lower()
+        if target == CMD_TESTS:
+            payload = {
+                "defaultSet": store.default_set,
+                "testSets": store.test_sets,
+                "tests": sorted(store.tests_by_name.keys()),
+            }
+            if json_output:
+                print(self._dump_json(payload, pretty))
+            else:
+                print("DSL tests:")
+                for name in sorted(store.tests_by_name.keys()):
+                    print(f"  {name}")
+            return StatusResult(code=SS__NORMAL)
+        if target != CMD_TEST:
+            print(MESSAGE_ERROR_DSL_SHOW_USAGE)
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+        if len(cleaned) >= COUNT_TWO and cleaned[COUNT_ONE].lower() == "sets":
+            payload = {
+                "defaultSet": store.default_set,
+                "testSets": store.test_sets,
+                "activeProfile": self._active_profile_name() or EMPTY_STRING,
+            }
+            if json_output:
+                print(self._dump_json(payload, pretty))
+            else:
+                print(f"default set: {store.default_set}")
+                for set_name, names in store.test_sets.items():
+                    print(f"  {set_name}: {', '.join(names) if names else '-'}")
+            return StatusResult(code=SS__NORMAL)
+        if len(cleaned) < COUNT_TWO:
+            print(MESSAGE_ERROR_DSL_SHOW_USAGE)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        test_name = cleaned[COUNT_ONE]
+        entry = store.tests_by_name.get(test_name)
+        if entry is None:
+            print(MESSAGE_ERROR_DSL_TEST_NOT_FOUND.format(name=test_name))
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+        wants_normalized = len(cleaned) >= 3 and cleaned[2].lower() == "normalized"
+        if wants_normalized:
+            payload = robot_test_dsl_store_to_payload(
+                RobotTestDslStore(
+                    tests_by_name={test_name: entry},
+                    test_sets={},
+                    default_set=store.default_set,
+                )
+            )[KEY_DSL_TESTS_BY_NAME][test_name]["normalized"]
+            print(self._dump_json(payload, pretty if json_output else True))
+            return StatusResult(code=SS__NORMAL)
+        if json_output:
+            print(self._dump_json({"name": test_name, "source": entry.source}, pretty))
+        else:
+            print(entry.source)
+        return StatusResult(code=SS__NORMAL)
+
+    def _dsl_test_command(self, tokens: List[str]) -> StatusResult:
+        root = self._dsl_require_local_root()
+        if root is None:
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        profile_name = self._dsl_active_profile()
+        if profile_name is None:
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
+        if len(tokens) < COUNT_TWO:
+            print(MESSAGE_ERROR_DSL_CLI_USAGE)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        store = self._dsl_store()
+        sub = tokens[COUNT_ONE].lower()
+        if sub == CMD_IMPORT:
+            if len(tokens) < 4:
+                print("ERROR: test import <name> <path> [set <set_name>]")
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            test_name = tokens[2]
+            source_path = Path(tokens[3])
+            set_name = store.default_set or DSL_DEFAULT_TEST_SET
+            if len(tokens) >= 6:
+                if tokens[4].lower() != CMD_SET:
+                    print("ERROR: test import <name> <path> [set <set_name>]")
+                    return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+                set_name = tokens[5]
+            try:
+                source = source_path.read_text(encoding=ENCODING_UTF8)
+                normalized = compile_robot_test_dsl_source(test_name, source)
+            except Exception as exc:
+                print(f"ERROR: {exc}")
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            store.tests_by_name[test_name] = RobotTestDslEntry(
+                name=test_name,
+                source=source,
+                normalized=normalized,
+                source_hash=robot_test_dsl_source_hash(source),
+            )
+            names = list(store.test_sets.get(set_name, []))
+            if test_name not in names:
+                names.append(test_name)
+            store.test_sets[set_name] = names
+            if not store.default_set:
+                store.default_set = set_name
+            profiles = root.get(KEY_PROFILES)
+            if isinstance(profiles, dict):
+                profile = profiles.get(profile_name)
+                if isinstance(profile, dict):
+                    profile[KEY_DSL_TEST_SET] = set_name
+            result = self._dsl_validate_store(store, profile_name)
+            if not result.ok():
+                self._dsl_print_validation(result, False, False)
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            self._dsl_write_store(store)
+            print(MESSAGE_DSL_TEST_IMPORTED.format(name=test_name))
+            return StatusResult(code=SS__NORMAL)
+        if sub == CMD_EXPORT:
+            if len(tokens) < 4:
+                print("ERROR: test export <name> <path>")
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            test_name = tokens[2]
+            entry = store.tests_by_name.get(test_name)
+            if entry is None:
+                print(MESSAGE_ERROR_DSL_TEST_NOT_FOUND.format(name=test_name))
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            Path(tokens[3]).write_text(entry.source, encoding=ENCODING_UTF8)
+            print(MESSAGE_DSL_TEST_EXPORTED.format(name=test_name))
+            return StatusResult(code=SS__NORMAL)
+        if sub == CMD_VALIDATE:
+            source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens[COUNT_TWO:])
+            _ = source
+            if not ok:
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            result = self._dsl_validate_store(store, profile_name)
+            if cleaned:
+                test_name = cleaned[COUNT_ZERO]
+                from tools.common.robot_test_dsl import ValidationResult
+
+                filtered = ValidationResult(
+                    errors=[item for item in result.errors if item.test_name in (None, test_name)],
+                    warnings=[item for item in result.warnings if item.test_name in (None, test_name)],
+                )
+                result = filtered
+            self._dsl_print_validation(result, json_output, pretty)
+            return StatusResult(code=SS__NORMAL if result.ok() else SS__CLI_VALIDATOR__INVALID_VALUE)
+        if sub == CMD_DELETE:
+            if len(tokens) < 3:
+                print("ERROR: test delete <name>")
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            test_name = tokens[2]
+            if test_name not in store.tests_by_name:
+                print(MESSAGE_ERROR_DSL_TEST_NOT_FOUND.format(name=test_name))
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            del store.tests_by_name[test_name]
+            for set_names in store.test_sets.values():
+                while test_name in set_names:
+                    set_names.remove(test_name)
+            self._dsl_write_store(store)
+            print(MESSAGE_DSL_TEST_DELETED.format(name=test_name))
+            return StatusResult(code=SS__NORMAL)
+        if sub == CMD_SET:
+            if len(tokens) < 4:
+                print("ERROR: test set create|delete|add|remove|default ...")
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            action = tokens[2].lower()
+            set_name = tokens[3]
+            if action == CMD_CREATE:
+                store.test_sets.setdefault(set_name, [])
+                if not store.default_set:
+                    store.default_set = set_name
+                self._dsl_write_store(store)
+                print(MESSAGE_DSL_SET_CREATED.format(name=set_name))
+                return StatusResult(code=SS__NORMAL)
+            if action == CMD_DELETE:
+                if set_name not in store.test_sets:
+                    print(MESSAGE_ERROR_DSL_SET_NOT_FOUND.format(name=set_name))
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+                del store.test_sets[set_name]
+                if store.default_set == set_name:
+                    store.default_set = next(iter(store.test_sets.keys()), EMPTY_STRING)
+                self._dsl_write_store(store)
+                print(MESSAGE_DSL_SET_DELETED.format(name=set_name))
+                return StatusResult(code=SS__NORMAL)
+            if action == CMD_DEFAULT:
+                if set_name not in store.test_sets:
+                    print(MESSAGE_ERROR_DSL_SET_NOT_FOUND.format(name=set_name))
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+                store.default_set = set_name
+                self._dsl_write_store(store)
+                print(MESSAGE_DSL_SET_DEFAULT.format(name=set_name))
+                return StatusResult(code=SS__NORMAL)
+            if action in (CMD_ADD, CMD_REMOVE):
+                if len(tokens) < 5:
+                    print(f"ERROR: test set {action} <set_name> <test_name>")
+                    return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+                test_name = tokens[4]
+                if set_name not in store.test_sets:
+                    print(MESSAGE_ERROR_DSL_SET_NOT_FOUND.format(name=set_name))
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+                if test_name not in store.tests_by_name:
+                    print(MESSAGE_ERROR_DSL_TEST_NOT_FOUND.format(name=test_name))
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+                names = list(store.test_sets.get(set_name, []))
+                if action == CMD_ADD and test_name not in names:
+                    names.append(test_name)
+                    print(MESSAGE_DSL_SET_MEMBER_ADDED.format(test=test_name, name=set_name))
+                if action == CMD_REMOVE and test_name in names:
+                    names.remove(test_name)
+                    print(MESSAGE_DSL_SET_MEMBER_REMOVED.format(test=test_name, name=set_name))
+                store.test_sets[set_name] = names
+                self._dsl_write_store(store)
+                return StatusResult(code=SS__NORMAL)
+            print("ERROR: test set create|delete|add|remove|default ...")
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+        print(MESSAGE_ERROR_DSL_CLI_USAGE)
+        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
 
     def _ensure_tests_loaded(self) -> None:
         """
@@ -6523,8 +7151,9 @@ class BridgeCli:
             ok = self._session.ensure_handshake()
             if not ok:
                 self._proto_mark_connect_failure()
-                print("ERROR: Handshake failed.")
-                return StatusResult(code=SS__NETWORK__HANDSHAKE_FAILED)
+                message = self._handshake_error_text()
+                print(f"ERROR: {message}")
+                return StatusResult(code=SS__NETWORK__HANDSHAKE_FAILED, message=message)
             self._proto_mark_connected(now=time.time())
             self._proto_mark_handshake(now=time.time())
             self._start_keepalive()
@@ -7948,6 +8577,7 @@ class BridgeCli:
         seq: Optional[int],
         timeout_sec: float = ROBOT_COMMAND_TIMEOUT_SEC,
         print_events: bool = True,
+        suppress_timeout_warning: bool = False,
     ) -> Optional[BridgeEvent]:
         if seq is None:
             print("ERROR: Command failed to send.")
@@ -7980,7 +8610,8 @@ class BridgeCli:
                         event.message = ack_message
                     return event
             self._proto_mark_timeout(now=time.time())
-            self._debug_log(MESSAGE_WAITING_FOR_OUT)
+            if not suppress_timeout_warning:
+                self._debug_log(MESSAGE_WAITING_FOR_OUT)
         return None
 
     def _event_failed(self, event: Optional[BridgeEvent], context: str) -> bool:
@@ -7994,7 +8625,6 @@ class BridgeCli:
     def _print_event(self, event: BridgeEvent) -> None:
         if event.type == EVENT_TYPE_ACK:
             if event.name == CMD_UI_PING:
-                self._keepalive_log(MESSAGE_KEEPALIVE_RECV_ACK.format(seq=event.seq))
                 self._proto_mark_keepalive_ack(event.seq, now=time.time())
                 return
             if self._last_seq and event.seq != self._last_seq:
@@ -8030,7 +8660,6 @@ class BridgeCli:
                 else:
                     print(event.json_text.rstrip())
             if event.name == CMD_UI_PING:
-                self._keepalive_log(MESSAGE_KEEPALIVE_RECV_OUT.format(seq=event.seq))
                 self._proto_mark_keepalive_out(event.seq, now=time.time())
             return
 
@@ -8846,21 +9475,27 @@ class BridgeCli:
                 "  Select a bringup test on the robot by name.\n"
                 "tests toggle\n"
                 "  Toggle enabled state of the selected test (robot).\n"
-                "tests run\n"
+                "tests run [--wait] [--timeout <seconds>]\n"
                 "  Run the selected test once (robot).\n"
                 "tests wait [--run <id>] [--timeout <seconds>]\n"
-                "  Wait until a robot-side test run reaches a terminal state.\n"
-                "tests run-all\n"
+                "  Wait until a robot-side test run reaches a terminal state and print a summary.\n"
+                "tests run-all [--wait] [--timeout <seconds>]\n"
                 "  Run all enabled tests sequentially (robot)."
             ),
             "tests select": "tests select <name>\n  Select a bringup test on the robot by name.",
             "tests toggle": "tests toggle\n  Toggle enabled state of the selected test (robot).",
-            "tests run": "tests run\n  Run the selected test once (robot).",
+            "tests run": (
+                "tests run [--wait] [--timeout <seconds>]\n"
+                "  Run the selected test once (robot). Use --wait to print the finished run summary."
+            ),
             "tests wait": (
                 "tests wait [--run <id>] [--timeout <seconds>]\n"
-                "  Poll robot test lifecycle until pass/fail/blocked/aborted."
+                "  Poll robot test lifecycle until pass/fail/blocked/aborted and print a finished-run summary."
             ),
-            "tests run-all": "tests run-all\n  Run all enabled tests sequentially (robot).",
+            "tests run-all": (
+                "tests run-all [--wait] [--timeout <seconds>]\n"
+                "  Run all enabled tests sequentially (robot). Use --wait to print the finished summary after run-all settles."
+            ),
             "echo": "echo on|off\n  Toggle echo for batch scripts (prints each command).",
             "sleep": "sleep <seconds>\n  Pause batch execution without sending a robot command.",
             "messages": "messages <beginner|medium|expert>\n  Set CLI message level.",

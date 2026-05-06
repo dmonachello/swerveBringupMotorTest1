@@ -37,6 +37,7 @@ from tools.common.profile_constants import (
     KEY_DATA_HASH,
     KEY_DATA_VERSION,
     KEY_DEFAULT_PROFILE,
+    KEY_DSL_TESTS,
     KEY_DIAGRAM,
     KEY_DEVICE,
     KEY_DEVICE_TYPE,
@@ -179,6 +180,7 @@ ALLOWED_ROOT_KEYS = {
     KEY_DEFAULT_PROFILE,
     KEY_DEVICES,
     KEY_PROFILES,
+    KEY_DSL_TESTS,
     KEY_BRIDGE_CONFIG,
     KEY_DIAGRAM,
 }

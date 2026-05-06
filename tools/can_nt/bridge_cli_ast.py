@@ -337,8 +337,9 @@ class BridgeCliAstExecutor:
         ok = self._cli._session.ensure_handshake()
         if not ok:
             self._cli._proto_mark_connect_failure()
-            print(AST_EXEC_SPEC["msg_err_handshake"])
-            return StatusResult(code=SS__NETWORK__HANDSHAKE_FAILED, message=AST_EXEC_SPEC["msg_err_handshake"])
+            message = self._cli._handshake_error_text()
+            print(f"ERROR: {message}")
+            return StatusResult(code=SS__NETWORK__HANDSHAKE_FAILED, message=message)
         now = time.time()
         self._cli._proto_mark_connected(now=now)
         self._cli._proto_mark_handshake(now=now)

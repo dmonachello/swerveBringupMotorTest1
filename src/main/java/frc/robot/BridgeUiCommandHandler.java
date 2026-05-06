@@ -100,6 +100,8 @@ public class BridgeUiCommandHandler {
   private static final String CMD_SHOW_VERSION = "showVersion";
   private static final String CMD_SHOW_TESTS = "showTests";
   private static final String CMD_SHOW_SOURCES = "showSources";
+  private static final String CMD_UI_PING = "uiPing";
+  private static final String CMD_UI_POLL_LOG = "uiPollLog";
   private static final String CMD_ACTIVE_ADD = "activeAdd";
   private static final String CMD_ACTIVE_NEXT = "activeNext";
   private static final String GROUP_ACTIVE = "active-group";
@@ -163,6 +165,7 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_RUN_MESSAGE = "message";
   private static final String JSON_KEY_RUN_STARTED_AT_MS = "startedAtMs";
   private static final String JSON_KEY_RUN_FINISHED_AT_MS = "finishedAtMs";
+  private static final String JSON_KEY_RUN_DETAILS = "details";
   private static final String JSON_KEY_SOURCES = "sources";
   private static final String JSON_KEY_SOURCES_NAME = "name";
   private static final String JSON_KEY_SOURCES_PATH = "path";
@@ -222,6 +225,25 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_PROFILES_APPLY_DEVICES = " devices=";
   private static final String TEXT_PROFILES_APPLY_PROFILES = " profiles=";
   private static final String TEXT_PROFILES_APPLY_ACTIVE = " active=";
+  private static final String TEXT_TCP_UI_CONNECT = "TCP UI connect:";
+  private static final String TEXT_TCP_UI_DISCONNECT = "TCP UI disconnect.";
+  private static final String TEXT_TCP_UI_REMOTE_UNKNOWN = "(unknown)";
+  private static final String TEXT_TCP_UI_REMOTE_PREFIX = " remote=";
+  private static final String TEXT_TCP_UI_CMD_RECEIVED = "TCP UI recv:";
+  private static final String TEXT_TCP_UI_CMD_TIMEOUT = "TCP UI timeout:";
+  private static final String TEXT_TCP_UI_CMD_FAILED = "TCP UI failed:";
+  private static final String TEXT_TCP_UI_RESPOND = "TCP UI respond:";
+  private static final String TEXT_TCP_UI_SEQ_PREFIX = " seq=";
+  private static final String TEXT_TCP_UI_NAME_PREFIX = " name=";
+  private static final String TEXT_TCP_UI_CLIENT_PREFIX = " client=";
+  private static final String TEXT_TCP_UI_STATUS_PREFIX = " status=";
+  private static final String TEXT_TCP_UI_MESSAGE_PREFIX = " message=";
+  private static final String TEXT_TCP_UI_OUT_JSON_PREFIX = " outJson=";
+  private static final String TEXT_ACK_OK = "ok";
+  private static final String TEXT_ACK_ERROR = "error";
+  private static final String TEXT_BOOL_TRUE = "true";
+  private static final String TEXT_BOOL_FALSE = "false";
+  private static final String TEXT_SPACE = " ";
   private static final String JSON_KEY_DEVICES = "devices";
   private static final Gson GSON = new Gson();
   private static final double DEADBAND = BringupUtil.DEADBAND;
@@ -1076,6 +1098,9 @@ public class BridgeUiCommandHandler {
     if (command == null) {
       return null;
     }
+    if (shouldLogTcpCommand(command)) {
+      BringupPrinter.enqueue(formatTcpCommandLog(TEXT_TCP_UI_CMD_RECEIVED, command));
+    }
     TcpPendingCommand pending = new TcpPendingCommand(command);
     tcpCommandQueue.add(pending);
     try {
@@ -1087,6 +1112,7 @@ public class BridgeUiCommandHandler {
       result.ok = false;
       result.message = "Robot loop timeout.";
       result.outText = result.message;
+      BringupPrinter.enqueue(formatTcpResultLog(TEXT_TCP_UI_CMD_TIMEOUT, command, result));
       return buildTcpResponse(command, result);
     } catch (Exception ex) {
       pending.cancelled = true;
@@ -1094,6 +1120,7 @@ public class BridgeUiCommandHandler {
       result.ok = false;
       result.message = "UI command failed: " + ex.getMessage();
       result.outText = result.message;
+      BringupPrinter.enqueue(formatTcpResultLog(TEXT_TCP_UI_CMD_FAILED, command, result));
       return buildTcpResponse(command, result);
     }
   }
@@ -1131,6 +1158,7 @@ public class BridgeUiCommandHandler {
     tcpConnected = true;
     tcpSocket = socket;
     lastTcpKeepaliveMs = System.currentTimeMillis();
+    BringupPrinter.enqueue(formatTcpSocketLog(TEXT_TCP_UI_CONNECT, socket));
     if (uiProtocolMonitorEnabled) {
       uiTcpTable.getEntry("connected").setBoolean(true);
       if (socket != null && socket.getRemoteSocketAddress() != null) {
@@ -1148,6 +1176,7 @@ public class BridgeUiCommandHandler {
     tcpConnected = false;
     tcpSocket = null;
     lastTcpKeepaliveMs = 0L;
+    BringupPrinter.enqueue(TEXT_TCP_UI_DISCONNECT);
     setStopLatch("tcpDisconnect");
     applySafetyStop("tcpDisconnect");
     if (uiProtocolMonitorEnabled) {
@@ -1368,7 +1397,74 @@ public class BridgeUiCommandHandler {
       publishUiTcpMonitor(command.seq, command.name, command.clientId, result);
     }
 
+    if (shouldLogTcpCommand(command) || (result != null && !result.ok)) {
+      BringupPrinter.enqueue(formatTcpResultLog(TEXT_TCP_UI_RESPOND, command, result));
+    }
     return new TcpUiServer.UiResponse(ack.toString(), out.toString());
+  }
+
+  /**
+   * NAME
+   *   shouldLogTcpCommand - Decide whether a TCP command should be printed.
+   */
+  private boolean shouldLogTcpCommand(TcpUiServer.UiCommand command) {
+    if (command == null) {
+      return false;
+    }
+    String name = command.name != null ? command.name : TEXT_EMPTY;
+    return !CMD_UI_PING.equals(name) && !CMD_UI_POLL_LOG.equals(name);
+  }
+
+  /**
+   * NAME
+   *   formatTcpSocketLog - Build a concise TCP socket lifecycle log line.
+   */
+  private String formatTcpSocketLog(String prefix, java.net.Socket socket) {
+    String remote = TEXT_TCP_UI_REMOTE_UNKNOWN;
+    if (socket != null && socket.getRemoteSocketAddress() != null) {
+      remote = socket.getRemoteSocketAddress().toString();
+    }
+    return prefix + TEXT_TCP_UI_REMOTE_PREFIX + remote;
+  }
+
+  /**
+   * NAME
+   *   formatTcpCommandLog - Build a concise TCP command receipt log line.
+   */
+  private String formatTcpCommandLog(String prefix, TcpUiServer.UiCommand command) {
+    StringBuilder sb = new StringBuilder(128);
+    sb.append(prefix);
+    if (command == null) {
+      return sb.toString();
+    }
+    sb.append(TEXT_TCP_UI_SEQ_PREFIX).append(command.seq);
+    sb.append(TEXT_TCP_UI_NAME_PREFIX).append(command.name != null ? command.name : TEXT_EMPTY);
+    sb.append(TEXT_TCP_UI_CLIENT_PREFIX).append(command.clientId != null ? command.clientId : TEXT_EMPTY);
+    return sb.toString();
+  }
+
+  /**
+   * NAME
+   *   formatTcpResultLog - Build a concise TCP result emission log line.
+   */
+  private String formatTcpResultLog(
+      String prefix,
+      TcpUiServer.UiCommand command,
+      BridgeUiCommandResult result) {
+    StringBuilder sb = new StringBuilder(192);
+    sb.append(prefix);
+    if (command != null) {
+      sb.append(TEXT_TCP_UI_SEQ_PREFIX).append(command.seq);
+      sb.append(TEXT_TCP_UI_NAME_PREFIX).append(command.name != null ? command.name : TEXT_EMPTY);
+      sb.append(TEXT_TCP_UI_CLIENT_PREFIX).append(command.clientId != null ? command.clientId : TEXT_EMPTY);
+    }
+    if (result != null) {
+      sb.append(TEXT_TCP_UI_STATUS_PREFIX).append(result.ok ? TEXT_ACK_OK : TEXT_ACK_ERROR);
+      sb.append(TEXT_TCP_UI_MESSAGE_PREFIX).append(result.message != null ? result.message : TEXT_EMPTY);
+      sb.append(TEXT_TCP_UI_OUT_JSON_PREFIX)
+          .append(result.outJson != null && !result.outJson.isBlank() ? TEXT_BOOL_TRUE : TEXT_BOOL_FALSE);
+    }
+    return sb.toString();
   }
 
   /**
@@ -2759,6 +2855,7 @@ public class BridgeUiCommandHandler {
     obj.addProperty(JSON_KEY_RUN_MESSAGE, snapshot.message != null ? snapshot.message : TEXT_EMPTY);
     obj.addProperty(JSON_KEY_RUN_STARTED_AT_MS, snapshot.startedAtMs);
     obj.addProperty(JSON_KEY_RUN_FINISHED_AT_MS, snapshot.finishedAtMs);
+    obj.add(JSON_KEY_RUN_DETAILS, snapshot.details != null ? snapshot.details.deepCopy() : new JsonObject());
     return obj;
   }
 

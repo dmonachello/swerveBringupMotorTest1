@@ -1,5 +1,8 @@
 package frc.robot;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import edu.wpi.first.wpilibj.Timer;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.snapshots.DeviceSnapshot;
@@ -17,8 +20,7 @@ import frc.robot.tests.BringupTest;
 import frc.robot.tests.BringupTestContext;
 import frc.robot.tests.BringupTestRegistry;
 import frc.robot.tests.BringupTestResult;
-import frc.robot.tests.CompositeTest;
-import frc.robot.tests.JoystickTest;
+import frc.robot.tests.dsl.DslBringupTest;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -35,6 +37,7 @@ import java.util.Map;
  *   report output using robot-local vendor APIs only.
  */
 public final class BringupCore {
+  private static final Gson GSON = new Gson();
   private static final String BUILD_MARKER = "bringup-core-state-v3";
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
   private static final int REPORT_BATCH = 2;
@@ -52,10 +55,12 @@ public final class BringupCore {
   private static final String TEST_RUN_STATE_RUNNING = "running";
   private static final String TEST_RUN_STATE_PASSED = "passed";
   private static final String TEST_RUN_STATE_FAILED = "failed";
+  private static final String TEST_RUN_STATE_INTERRUPTED = "interrupted";
   private static final String TEST_RUN_STATE_BLOCKED = "blocked";
   private static final String TEST_RUN_STATE_ABORTED = "aborted";
   private static final String TEST_RUN_RESULT_PASS = "PASS";
   private static final String TEST_RUN_RESULT_FAIL = "FAIL";
+  private static final String TEST_RUN_RESULT_INTERRUPTED = "INTERRUPTED";
   private static final String MESSAGE_TEST_ALREADY_RUNNING = "Test already running: ";
   private static final String MESSAGE_TEST_DISABLED = "Test disabled: ";
   private static final String MESSAGE_TEST_NOT_SELECTED = "No bringup test selected.";
@@ -322,29 +327,7 @@ public final class BringupCore {
    *   axisInputs - Controller axis values keyed by controller name.
    */
   public void setTestInputs(Map<String, Map<String, Double>> axisInputs) {
-    if (!(activeTest instanceof frc.robot.tests.JoystickTest joystick)) {
-      return;
-    }
-    double value = resolveAxisInput(joystick.getInputSource(), axisInputs);
-    joystick.setInputValue(value);
-  }
-
-  private double resolveAxisInput(String inputSource, Map<String, Map<String, Double>> axisInputs) {
-    if (inputSource == null || inputSource.isBlank() || axisInputs == null) {
-      return 0.0;
-    }
-    int separator = inputSource.indexOf('.');
-    if (separator <= 0 || separator == inputSource.length() - 1) {
-      return 0.0;
-    }
-    String controller = inputSource.substring(0, separator);
-    String axis = inputSource.substring(separator + 1);
-    Map<String, Double> inputs = axisInputs.get(controller);
-    if (inputs == null) {
-      return 0.0;
-    }
-    Double value = inputs.get(axis);
-    return value != null ? value.doubleValue() : 0.0;
+    return;
   }
 
   // Clear current and sticky faults on all instantiated devices where supported.
@@ -419,21 +402,25 @@ public final class BringupCore {
    *   Stops tests, closes devices, and enqueues a reset report.
    */
   public void resetState(String reason) {
+    boolean skipGlobalStop = activeTest instanceof DslBringupTest;
     if (activeTest != null && activeTest.isRunning()) {
       String message =
           "Warning: stopping active test '" + activeTest.getName() + "' due to reset (" + reason + ").";
       BringupPrinter.enqueue(message);
       activeTest.stop(testContext);
       latestTestRun = TestRunSnapshot.aborted(activeTestRunId, activeTest.getName(), activeTest.getStatus(), message);
+      TestRunSnapshot.applyDetails(latestTestRun, buildTestRunDetails(activeTest));
     }
     activeTest = null;
     activeTestRunId = TEST_RUN_ID_NONE;
     activeTestStartSec = TEST_START_SEC_NONE;
     refreshSelectableTests();
-    for (ManufacturerGroup group : manufacturerGroups) {
-      group.stopAll();
+    if (!skipGlobalStop) {
+      for (ManufacturerGroup group : manufacturerGroups) {
+        group.stopAll();
+      }
+      forceStopAllMotorOutputs();
     }
-    forceStopAllMotorOutputs();
     for (ManufacturerGroup group : manufacturerGroups) {
       group.closeAll();
     }
@@ -464,6 +451,7 @@ public final class BringupCore {
    *   Stops tests, commands motor outputs to zero, and emits a safety message.
    */
   public void safetyStop(String reason) {
+    boolean skipGlobalStop = activeTest instanceof DslBringupTest;
     if (activeTest != null && activeTest.isRunning()) {
       String label = reason != null && !reason.isBlank() ? reason : "safetyStop";
       String message =
@@ -471,15 +459,18 @@ public final class BringupCore {
       BringupPrinter.enqueue(message);
       activeTest.stop(testContext);
       latestTestRun = TestRunSnapshot.aborted(activeTestRunId, activeTest.getName(), activeTest.getStatus(), message);
+      TestRunSnapshot.applyDetails(latestTestRun, buildTestRunDetails(activeTest));
     }
     activeTest = null;
     activeTestRunId = TEST_RUN_ID_NONE;
     activeTestStartSec = TEST_START_SEC_NONE;
     refreshSelectableTests();
-    for (ManufacturerGroup group : manufacturerGroups) {
-      group.stopAll();
+    if (!skipGlobalStop) {
+      for (ManufacturerGroup group : manufacturerGroups) {
+        group.stopAll();
+      }
+      forceStopAllMotorOutputs();
     }
-    forceStopAllMotorOutputs();
     String label = reason != null && !reason.isBlank() ? reason : "safetyStop";
     logSafetyThrottled("safetyStop:" + label, "Safety: outputs stopped (" + label + ").");
   }
@@ -653,8 +644,11 @@ public final class BringupCore {
     } catch (RuntimeException ex) {
       String message = MESSAGE_TEST_ABORTED + test.getName() + " (" + ex.getMessage() + ")";
       BringupPrinter.enqueue(message);
-      stopOwnedActuation();
+      if (!(test instanceof DslBringupTest dsl) || !dsl.skipGlobalStopOnFinish()) {
+        stopOwnedActuation();
+      }
       latestTestRun = TestRunSnapshot.aborted(candidateRunId, test.getName(), test.getStatus(), message);
+      TestRunSnapshot.applyDetails(latestTestRun, buildTestRunDetails(test));
       testContext.setRunId(TEST_RUN_ID_NONE);
       return latestTestRun;
     }
@@ -664,6 +658,7 @@ public final class BringupCore {
       activeTestRunId = candidateRunId;
       activeTestStartSec = startSec;
       latestTestRun = TestRunSnapshot.running(candidateRunId, test.getName(), test.getStatus());
+      TestRunSnapshot.applyDetails(latestTestRun, buildTestRunDetails(test));
       BringupPrinter.enqueue("Test #" + activeTestRunId + ": " + test.getName());
       return latestTestRun;
     }
@@ -701,6 +696,7 @@ public final class BringupCore {
           activeTest.getName(),
           activeTest.getStatus(),
           message);
+      TestRunSnapshot.applyDetails(latestTestRun, buildTestRunDetails(activeTest));
       stopOwnedActuation();
       activeTest = null;
       activeTestRunId = TEST_RUN_ID_NONE;
@@ -710,7 +706,11 @@ public final class BringupCore {
       runAllIndex = 0;
       return;
     }
+    if (latestTestRun != null && TEST_RUN_STATE_RUNNING.equals(latestTestRun.state)) {
+      TestRunSnapshot.applyDetails(latestTestRun, buildTestRunDetails(activeTest));
+    }
     if (activeTest.isFinished()) {
+      boolean skipGlobalStop = activeTest instanceof DslBringupTest dsl && dsl.skipGlobalStopOnFinish();
       BringupTestResult result = activeTest.getResult();
       double elapsed = activeTestStartSec > 0.0 ? Math.max(0.0, now - activeTestStartSec) : 0.0;
       latestTestRun = TestRunSnapshot.finished(
@@ -718,11 +718,14 @@ public final class BringupCore {
           activeTest.getName(),
           activeTest.getStatus(),
           result);
+      TestRunSnapshot.applyDetails(latestTestRun, buildTestRunDetails(activeTest));
       BringupPrinter.enqueue(
           "Test result #" + activeTestRunId + ": " + activeTest.getName() + " = " + result
               + " (" + activeTest.getStatus() + ")"
               + " time=" + String.format("%.2fs", elapsed));
-      stopOwnedActuation();
+      if (!skipGlobalStop) {
+        stopOwnedActuation();
+      }
       activeTest = null;
       activeTestRunId = TEST_RUN_ID_NONE;
       activeTestStartSec = TEST_START_SEC_NONE;
@@ -877,6 +880,7 @@ public final class BringupCore {
           activeTest.getName(),
           activeTest.getStatus(),
           MESSAGE_PROFILE_RUNTIME_RELOADED);
+      TestRunSnapshot.applyDetails(latestTestRun, buildTestRunDetails(activeTest));
     }
     activeTest = null;
     for (ManufacturerGroup group : manufacturerGroups) {
@@ -994,20 +998,8 @@ public final class BringupCore {
    */
   public Boolean toggleSelectedBringupTestEnabled() {
     syncProfileRuntimeFromRegistry();
-    BringupTest test = getSelectedBringupTest();
-    if (test == null) {
-      BringupPrinter.enqueue("No bringup tests available.");
-      return null;
-    }
-    boolean newValue = !test.isEnabled();
-    test.setEnabled(newValue);
-    BringupPrinter.enqueue(
-        "Test " + (newValue ? "enabled: " : "disabled: ") + test.getName());
-    boolean saved = BringupTestRegistry.saveTests(bringupTests);
-    if (!saved) {
-      BringupPrinter.enqueue("Warning: failed to persist bringup test enable state.");
-    }
-    return newValue;
+    BringupPrinter.enqueue("Test enable/disable is not supported by the DSL runtime.");
+    return null;
   }
 
   /**
@@ -1022,24 +1014,7 @@ public final class BringupCore {
    */
   public void disableAllBringupTests(boolean persist) {
     syncProfileRuntimeFromRegistry();
-    if (bringupTests.isEmpty()) {
-      BringupPrinter.enqueue("No bringup tests available.");
-      return;
-    }
-    int changed = 0;
-    for (BringupTest test : bringupTests) {
-      if (test != null && test.isEnabled()) {
-        test.setEnabled(false);
-        changed++;
-      }
-    }
-    BringupPrinter.enqueue("Disabled bringup tests: " + changed);
-    if (persist) {
-      boolean saved = BringupTestRegistry.saveTests(bringupTests);
-      if (!saved) {
-        BringupPrinter.enqueue("Warning: failed to persist bringup test enable state.");
-      }
-    }
+    BringupPrinter.enqueue("Disable-all is not supported by the DSL runtime.");
   }
 
   /**
@@ -1140,17 +1115,8 @@ public final class BringupCore {
    *   resolveTestType - Resolve a human-readable test type name.
    */
   private static String resolveTestType(BringupTest test) {
-    if (test instanceof CompositeTest) {
-      return CompositeTest.TYPE;
-    }
-    if (test instanceof JoystickTest) {
-      return JoystickTest.TYPE;
-    }
-    if (test instanceof frc.robot.tests.DeadbandSweepTest) {
-      return frc.robot.tests.DeadbandSweepTest.TYPE;
-    }
-    if (test instanceof frc.robot.tests.DeviceActionTest) {
-      return frc.robot.tests.DeviceActionTest.TYPE;
+    if (test instanceof DslBringupTest) {
+      return "dsl";
     }
     return test != null ? test.getClass().getSimpleName() : "?";
   }
@@ -1166,22 +1132,7 @@ public final class BringupCore {
    *   Binding label when hold is enabled, or "-" when not applicable.
    */
   private String resolveHoldBinding(BringupTest test) {
-    if (!(test instanceof CompositeTest composite)) {
-      return "-";
-    }
-    Map<String, Object> entry = composite.toEntry();
-    if (entry == null) {
-      return "-";
-    }
-    Object hold = entry.get("hold");
-    if (!(hold instanceof Map<?, ?> holdMap)) {
-      return "-";
-    }
-    Object enabled = holdMap.get("enabled");
-    if (enabled instanceof Boolean && !((Boolean) enabled)) {
-      return "-";
-    }
-    return runTestBindingLabel != null ? runTestBindingLabel : "-";
+    return "-";
   }
 
   /**
@@ -1226,6 +1177,7 @@ public final class BringupCore {
     public String message;
     public long startedAtMs;
     public long finishedAtMs;
+    public JsonObject details;
 
     public static TestRunSnapshot idle() {
       TestRunSnapshot snapshot = new TestRunSnapshot();
@@ -1237,6 +1189,7 @@ public final class BringupCore {
       snapshot.message = "";
       snapshot.startedAtMs = 0L;
       snapshot.finishedAtMs = 0L;
+      snapshot.details = new JsonObject();
       return snapshot;
     }
 
@@ -1263,8 +1216,8 @@ public final class BringupCore {
 
     private static TestRunSnapshot aborted(long runId, String test, String status, String message) {
       TestRunSnapshot snapshot = blocked(runId, test, status, message);
-      snapshot.state = TEST_RUN_STATE_ABORTED;
-      snapshot.result = TEST_RUN_RESULT_FAIL;
+      snapshot.state = TEST_RUN_STATE_INTERRUPTED;
+      snapshot.result = TEST_RUN_RESULT_INTERRUPTED;
       return snapshot;
     }
 
@@ -1275,12 +1228,25 @@ public final class BringupCore {
         BringupTestResult result) {
       TestRunSnapshot snapshot = idle();
       snapshot.runId = runId;
-      snapshot.state = result == BringupTestResult.PASS ? TEST_RUN_STATE_PASSED : TEST_RUN_STATE_FAILED;
+      if (result == BringupTestResult.PASS) {
+        snapshot.state = TEST_RUN_STATE_PASSED;
+      } else if (result == BringupTestResult.INTERRUPTED) {
+        snapshot.state = TEST_RUN_STATE_INTERRUPTED;
+      } else {
+        snapshot.state = TEST_RUN_STATE_FAILED;
+      }
       snapshot.test = test != null ? test : "";
       snapshot.result = result != null ? result.name() : "";
       snapshot.status = status != null ? status : "";
       snapshot.finishedAtMs = System.currentTimeMillis();
       return snapshot;
+    }
+
+    private static void applyDetails(TestRunSnapshot snapshot, JsonObject details) {
+      if (snapshot == null) {
+        return;
+      }
+      snapshot.details = details != null ? details.deepCopy() : new JsonObject();
     }
 
     private TestRunSnapshot copy() {
@@ -1293,8 +1259,17 @@ public final class BringupCore {
       snapshot.message = message;
       snapshot.startedAtMs = startedAtMs;
       snapshot.finishedAtMs = finishedAtMs;
+      snapshot.details = details != null ? details.deepCopy() : new JsonObject();
       return snapshot;
     }
+  }
+
+  private JsonObject buildTestRunDetails(BringupTest test) {
+    if (!(test instanceof DslBringupTest dsl)) {
+      return new JsonObject();
+    }
+    JsonElement element = GSON.toJsonTree(dsl.buildRunDetails());
+    return element != null && element.isJsonObject() ? element.getAsJsonObject() : new JsonObject();
   }
 
   /**
@@ -1323,6 +1298,7 @@ public final class BringupCore {
         String message = MESSAGE_TEST_ABORTED + test.getName() + " (" + ex.getMessage() + ")";
         BringupPrinter.enqueue(message);
         latestTestRun = TestRunSnapshot.aborted(candidateRunId, test.getName(), test.getStatus(), message);
+        TestRunSnapshot.applyDetails(latestTestRun, buildTestRunDetails(test));
         stopOwnedActuation();
         testContext.setRunId(TEST_RUN_ID_NONE);
         runAllActive = false;
@@ -1336,6 +1312,7 @@ public final class BringupCore {
         activeTestRunId = candidateRunId;
         activeTestStartSec = startSec;
         latestTestRun = TestRunSnapshot.running(candidateRunId, test.getName(), test.getStatus());
+        TestRunSnapshot.applyDetails(latestTestRun, buildTestRunDetails(test));
         BringupPrinter.enqueue("Test #" + activeTestRunId + ": " + test.getName());
         return true;
       }
@@ -2012,20 +1989,15 @@ public final class BringupCore {
     List<String> motors = test.getMotorKeys();
     lines.add("  motors: " + (motors == null || motors.isEmpty() ? "-" : String.join(", ", motors)));
 
-    if (test instanceof CompositeTest composite) {
-      Map<String, Object> entry = composite.toEntry();
-      appendCompositeDetails(lines, test, entry);
-      return;
+    if (test instanceof DslBringupTest dsl) {
+      appendDslDetails(lines, dsl);
     }
-    if (test instanceof JoystickTest joystick) {
-      Map<String, Object> entry = joystick.toEntry();
-      appendJoystickDetails(lines, entry);
-      return;
-    }
-    if (test instanceof frc.robot.tests.DeadbandSweepTest sweep) {
-      Map<String, Object> entry = sweep.toEntry();
-      appendDeadbandDetails(lines, entry);
-    }
+  }
+
+  private void appendDslDetails(List<String> lines, DslBringupTest test) {
+    Map<String, Object> details = test.buildRunDetails();
+    lines.add("  dsl: true");
+    lines.add("  details: " + String.valueOf(details));
   }
 
   /**

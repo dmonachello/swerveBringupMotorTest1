@@ -50,6 +50,9 @@ class BridgeEvent:
 TIMEZONE_ARG_ID = "timezoneId"
 TIMEZONE_ARG_OFFSET_MIN = "timezoneOffsetMin"
 SECONDS_PER_MINUTE = 60
+HANDSHAKE_TIMEOUT_SEC_DEFAULT = 3.5
+TRACE_CMD_UI_PING = "uiPing"
+TRACE_CMD_UI_POLL_LOG = "uiPollLog"
 
 
 def _local_timezone_args() -> Dict[str, Any]:
@@ -72,6 +75,15 @@ def _local_timezone_args() -> Dict[str, Any]:
     return args
 
 
+def _trace_should_log_name(name: str) -> bool:
+    """
+    NAME
+        _trace_should_log_name - Suppress noisy keepalive command names from raw traces.
+    """
+    value = (name or "").strip()
+    return value not in (TRACE_CMD_UI_PING, TRACE_CMD_UI_POLL_LOG)
+
+
 class TcpCommandClient:
     """
     NAME
@@ -86,6 +98,27 @@ class TcpCommandClient:
         self._queue: "queue.Queue[Dict[str, Any]]" = queue.Queue()
         self._connected = False
         self._lock = threading.Lock()
+        self._trace_logger: Optional[callable] = None
+
+    def set_trace_logger(self, logger: Optional[callable]) -> None:
+        """
+        NAME
+            set_trace_logger - Install a best-effort raw TCP trace logger.
+        """
+        self._trace_logger = logger
+
+    def _trace(self, message: str) -> None:
+        """
+        NAME
+            _trace - Emit a raw TCP trace message when enabled.
+        """
+        logger = self._trace_logger
+        if not callable(logger):
+            return
+        try:
+            logger(message)
+        except Exception:
+            return
 
     def is_connected(self) -> bool:
         """
@@ -107,6 +140,7 @@ class TcpCommandClient:
             sock.settimeout(None)
             self._sock = sock
             self._connected = True
+            self._trace(f"TCP CONNECT OK host={self._host} port={self._port}")
             self._reader = threading.Thread(
                 target=self._read_loop,
                 name=THREAD_NAME_TCP_READER,
@@ -117,6 +151,7 @@ class TcpCommandClient:
         except Exception:
             self._connected = False
             self._sock = None
+            self._trace(f"TCP CONNECT FAIL host={self._host} port={self._port}")
             return False
 
     def close(self) -> None:
@@ -144,13 +179,17 @@ class TcpCommandClient:
         """
         if not self._connected or self._sock is None:
             return False
-        data = (json.dumps(payload) + "\n").encode("utf-8")
+        line = json.dumps(payload)
+        if _trace_should_log_name(str(payload.get("name", ""))):
+            self._trace(f"TCP SEND RAW {line}")
+        data = (line + "\n").encode("utf-8")
         with self._lock:
             try:
                 self._sock.sendall(data)
                 return True
             except Exception:
                 self._connected = False
+                self._trace("TCP SEND FAIL socket write failed")
                 return False
 
     def poll(self) -> List[Dict[str, Any]]:
@@ -183,8 +222,11 @@ class TcpCommandClient:
                     try:
                         payload = json.loads(line)
                         if isinstance(payload, dict):
+                            if _trace_should_log_name(str(payload.get("name", ""))):
+                                self._trace(f"TCP RECV RAW {line}")
                             self._queue.put(payload)
                     except Exception:
+                        self._trace(f"TCP RECV RAW {line}")
                         continue
         except Exception:
             pass
@@ -222,6 +264,7 @@ class BridgeSession:
         self._client_id = str(uuid.uuid4())
         self._seq = 0
         self._handshake_done = False
+        self._last_handshake_error = ""
         self._session_id = ""
         self._last_state: Dict[str, Any] = {}
         self._nt_state_reader = nt_state_reader
@@ -242,12 +285,26 @@ class BridgeSession:
         """
         return self._handshake_done
 
+    def last_handshake_error(self) -> str:
+        """
+        NAME
+            last_handshake_error - Return the most recent handshake failure detail.
+        """
+        return self._last_handshake_error
+
     def session_id(self) -> str:
         """
         NAME
             session_id - Return the current UI session ID.
         """
         return self._session_id
+
+    def set_trace_logger(self, logger: Optional[callable]) -> None:
+        """
+        NAME
+            set_trace_logger - Install a best-effort raw TCP trace logger.
+        """
+        self._tcp.set_trace_logger(logger)
 
     def connect(self) -> bool:
         """
@@ -274,6 +331,7 @@ class BridgeSession:
             reset_handshake - Clear the stored handshake state.
         """
         self._handshake_done = False
+        self._last_handshake_error = ""
         self._session_id = ""
 
     def mark_handshake_done(
@@ -300,14 +358,20 @@ class BridgeSession:
         if cid:
             self._client_id = cid
 
-    def ensure_handshake(self, reset: bool = False, timeout_sec: float = 1.5) -> bool:
+    def ensure_handshake(
+        self,
+        reset: bool = False,
+        timeout_sec: float = HANDSHAKE_TIMEOUT_SEC_DEFAULT,
+    ) -> bool:
         """
         NAME
             ensure_handshake - Send uiHandshake if required and wait for ACK/OUT.
         """
         if self._handshake_done and not reset:
+            self._last_handshake_error = ""
             return True
         if not self.connect():
+            self._last_handshake_error = "TCP connect failed."
             return False
         seq = self._next_seq()
         args = {"reset": bool(reset)}
@@ -321,17 +385,23 @@ class BridgeSession:
             "clientId": self._client_id,
         }
         if not self._tcp.send(payload):
+            self._last_handshake_error = "Failed to send uiHandshake."
             return False
         deadline = time.time() + timeout_sec
         seen_ack = False
+        ack_status = ""
+        ack_message = ""
         while time.time() < deadline:
             for event in self._drain_events():
                 if event.seq != seq:
                     continue
                 if event.type == "ack":
                     seen_ack = True
+                    ack_status = event.status or ""
+                    ack_message = event.message or ""
                 if event.type == "out":
                     self._handshake_done = True
+                    self._last_handshake_error = ""
                     self._session_id = event.session_id or self._session_id
                     payload_json = _parse_json_text(event.json_text)
                     min_next = None
@@ -344,6 +414,19 @@ class BridgeSession:
                 time.sleep(0.01)
             else:
                 time.sleep(0.02)
+        if seen_ack:
+            if ack_status and ack_status.lower() == "error":
+                self._last_handshake_error = (
+                    f"uiHandshake ACK error: {ack_message or 'no message'}."
+                )
+            else:
+                self._last_handshake_error = (
+                    f"uiHandshake ACK received but no OUT within {timeout_sec:.1f}s."
+                )
+        else:
+            self._last_handshake_error = (
+                f"uiHandshake timed out waiting for ACK/OUT within {timeout_sec:.1f}s."
+            )
         return False
 
     def send_command(self, name: str, args: Optional[Dict[str, Any]] = None) -> Optional[int]:

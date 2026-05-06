@@ -30,8 +30,10 @@ final class BridgeUiTestCommands implements BridgeUiCommandDispatcher.CommandFam
   private static final String JSON_KEY_MESSAGE = "message";
   private static final String JSON_KEY_STARTED_AT_MS = "startedAtMs";
   private static final String JSON_KEY_FINISHED_AT_MS = "finishedAtMs";
+  private static final String JSON_KEY_DETAILS = "details";
   private static final String RUN_STATE_BLOCKED = "blocked";
   private static final String RUN_STATE_ABORTED = "aborted";
+  private static final String RUN_STATE_INTERRUPTED = "interrupted";
   private static final String TEXT_EMPTY = "";
 
   private static final String MESSAGE_RUN_TEST = "Command: runTest (UI)";
@@ -202,8 +204,11 @@ final class BridgeUiTestCommands implements BridgeUiCommandDispatcher.CommandFam
     obj.addProperty(JSON_KEY_MESSAGE, snapshot.message != null ? snapshot.message : TEXT_EMPTY);
     obj.addProperty(JSON_KEY_STARTED_AT_MS, snapshot.startedAtMs);
     obj.addProperty(JSON_KEY_FINISHED_AT_MS, snapshot.finishedAtMs);
+    obj.add(JSON_KEY_DETAILS, snapshot.details != null ? snapshot.details.deepCopy() : new JsonObject());
     result.outJson = obj.toString();
-    if (RUN_STATE_BLOCKED.equals(snapshot.state) || RUN_STATE_ABORTED.equals(snapshot.state)) {
+    if (RUN_STATE_BLOCKED.equals(snapshot.state)
+        || RUN_STATE_ABORTED.equals(snapshot.state)
+        || RUN_STATE_INTERRUPTED.equals(snapshot.state)) {
       result.ok = false;
     }
   }

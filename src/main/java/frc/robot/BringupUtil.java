@@ -89,6 +89,8 @@ public final class BringupUtil {
   private static final String KEY_BRIDGE_CONFIG = "bridgeConfig";
   private static final String KEY_BRIDGE_BY_PROFILE = "byProfile";
   private static final String KEY_BRIDGE_TESTS = "tests";
+  private static final String KEY_DSL_TESTS = "dslTests";
+  private static final String KEY_DSL_TEST_SET = "dslTestSet";
   private static final String KEY_INPUT_ALIASES = "inputAliases";
   private static final String LABEL_UNKNOWN = "UNKNOWN";
   private static final String LABEL_SPACE = " ";
@@ -220,6 +222,7 @@ public final class BringupUtil {
   private static Map<String, ProfileConfig> profiles = new LinkedHashMap<>();
   private static List<String> profileOrder = new ArrayList<>();
   private static final Map<String, JsonElement> PROFILE_TESTS = new LinkedHashMap<>();
+  private static JsonObject dslTestsRoot = null;
   private static String defaultProfile = DEFAULT_PROFILE_NAME;
   private static String selectedProfile = DEFAULT_PROFILE_NAME;
   private static boolean activeProfileApplied = false;
@@ -436,6 +439,81 @@ public final class BringupUtil {
    */
   public static String getSelectedCanProfile() {
     return selectedProfile;
+  }
+
+  /**
+   * NAME
+   *   getConfiguredDeviceTypeByLabel - Return the configured logical device type for a label.
+   *
+   * PARAMETERS
+   *   label - Device label from bringup_system.json.
+   *
+   * RETURNS
+   *   Configured logical type such as motor or limitSwitch, or empty string when unknown.
+   */
+  public static String getConfiguredDeviceTypeByLabel(String label) {
+    if (label == null || label.isBlank()) {
+      return "";
+    }
+    DeviceDefinition def = DEVICE_REGISTRY.get(normalizeKey(label));
+    if (def == null || def.type == null) {
+      return "";
+    }
+    return def.type;
+  }
+
+  /**
+   * NAME
+   *   getSelectedDslTestSetForProfile - Return the DSL test set referenced by a profile.
+   *
+   * PARAMETERS
+   *   profileName - Profile name from bringup_system.json.
+   *
+   * RETURNS
+   *   Referenced set name or empty string when unset.
+   */
+  public static String getSelectedDslTestSetForProfile(String profileName) {
+    if (profileName == null || profileName.isBlank()) {
+      return "";
+    }
+    ProfileConfig config = profiles.get(profileName);
+    if (config == null || config.dslTestSet == null) {
+      return "";
+    }
+    return config.dslTestSet;
+  }
+
+  /**
+   * NAME
+   *   readDslTestsRoot - Read the top-level DSL tests payload from bringup_system.json.
+   *
+   * RETURNS
+   *   JSON object for the DSL tests root, or null when missing.
+   */
+  public static JsonObject readDslTestsRoot() {
+    if (dslTestsRoot != null) {
+      return dslTestsRoot.deepCopy();
+    }
+    Path path = getProfilePath();
+    if (path == null || !Files.exists(path)) {
+      return null;
+    }
+    try {
+      String rawJson = Files.readString(path, StandardCharsets.UTF_8);
+      JsonElement parsed = JsonParser.parseString(rawJson);
+      if (parsed == null || !parsed.isJsonObject()) {
+        return null;
+      }
+      JsonObject root = parsed.getAsJsonObject();
+      JsonElement dslElement = root.get(KEY_DSL_TESTS);
+      if (dslElement == null || !dslElement.isJsonObject()) {
+        return null;
+      }
+      return dslElement.getAsJsonObject().deepCopy();
+    } catch (IOException | JsonParseException ex) {
+      BringupPrinter.enqueue("Warning: failed to read dslTests: " + ex.getMessage());
+      return null;
+    }
   }
 
   /**
@@ -1188,6 +1266,7 @@ public final class BringupUtil {
       String rawJson = Files.readString(path, StandardCharsets.UTF_8);
       JsonElement parsed = JsonParser.parseString(rawJson);
       setProfileTests(extractProfileTests(parsed));
+      dslTestsRoot = extractDslTestsRoot(parsed);
       ProfileRoot root = GSON.fromJson(rawJson, ProfileRoot.class);
       if (root == null || root.profiles == null || root.profiles.isEmpty()) {
         throw new JsonParseException("No profiles found");
@@ -1335,6 +1414,7 @@ public final class BringupUtil {
     profiles = new LinkedHashMap<>();
     DEVICE_REGISTRY.clear();
     setProfileTests(new LinkedHashMap<>());
+    dslTestsRoot = null;
     List<String> robotLabels = new ArrayList<>();
     addFallbackCanDevices(
         FALLBACK_ROBOT_NEO_CAN_IDS,
@@ -1550,14 +1630,17 @@ public final class BringupUtil {
     private final ProfileRoot root;
     private final Map<String, DeviceDefinition> registry;
     private final Map<String, JsonElement> testsByProfile;
+    private final JsonObject dslTestsRoot;
 
     private RegistryPayload(
         ProfileRoot root,
         Map<String, DeviceDefinition> registry,
-        Map<String, JsonElement> testsByProfile) {
+        Map<String, JsonElement> testsByProfile,
+        JsonObject dslTestsRoot) {
       this.root = root;
       this.registry = registry;
       this.testsByProfile = testsByProfile;
+      this.dslTestsRoot = dslTestsRoot;
     }
   }
 
@@ -1666,7 +1749,8 @@ public final class BringupUtil {
       }
     }
     Map<String, JsonElement> testsByProfile = extractProfileTests(parsed);
-    return new RegistryPayload(root, registry, testsByProfile);
+    JsonObject nextDslTestsRoot = extractDslTestsRoot(parsed);
+    return new RegistryPayload(root, registry, testsByProfile, nextDslTestsRoot);
   }
 
   /**
@@ -1733,6 +1817,19 @@ public final class BringupUtil {
 
   /**
    * NAME
+   *   extractDslTestsRoot - Extract top-level DSL tests root from JSON.
+   */
+  private static JsonObject extractDslTestsRoot(JsonElement parsed) {
+    if (parsed == null || !parsed.isJsonObject()) {
+      return null;
+    }
+    JsonObject root = parsed.getAsJsonObject();
+    JsonElement dslElement = root.get(KEY_DSL_TESTS);
+    return dslElement != null && dslElement.isJsonObject() ? dslElement.getAsJsonObject().deepCopy() : null;
+  }
+
+  /**
+   * NAME
    *   setProfileTests - Replace profile tests cache.
    */
   private static void setProfileTests(Map<String, JsonElement> testsByProfile) {
@@ -1770,6 +1867,7 @@ public final class BringupUtil {
       DEVICE_REGISTRY.clear();
       DEVICE_REGISTRY.putAll(payload.registry);
       setProfileTests(payload.testsByProfile);
+      dslTestsRoot = payload.dslTestsRoot != null ? payload.dslTestsRoot.deepCopy() : null;
       clearDeviceInstanceRegistry();
       bumpActiveProfileGeneration();
       if (activateProfile != null && !activateProfile.isBlank()) {
@@ -2590,6 +2688,8 @@ public final class BringupUtil {
     List<String> devices = Collections.emptyList();
     @SerializedName(KEY_INPUT_ALIASES)
     Map<String, String> inputAliases = Collections.emptyMap();
+    @SerializedName(KEY_DSL_TEST_SET)
+    String dslTestSet = "";
   }
 
   /**
