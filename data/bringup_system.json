@@ -1,0 +1,159 @@
+{
+  "schema_version": 4,
+  "profiles": {
+    "dsl_demo_050426": {
+      "devices": [
+        "FALCON 9",
+        "SPARKMAX/NEO 25",
+        "lmtSw0"
+      ],
+      "dslTestSet": "default"
+    }
+  },
+  "devices": [
+    {
+      "label": "FALCON 9",
+      "manufacturer": 4,
+      "deviceType": 2,
+      "id": 9,
+      "model": "FALCON 500",
+      "type": "motor",
+      "deviceInterface": "CAN"
+    },
+    {
+      "label": "SPARKMAX/NEO 25",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 25,
+      "model": "REV NEO",
+      "type": "motor",
+      "deviceInterface": "CAN"
+    },
+    {
+      "label": "lmtSw0",
+      "type": "limitSwitch",
+      "deviceInterface": "DIO",
+      "dio": 0,
+      "invert": false
+    }
+  ],
+  "diagram": {
+    "profiles": {
+      "dsl_demo_050426": {}
+    }
+  },
+  "data_version": "2026-05-06_191354",
+  "data_hash": "6f44c29b0f6bac5a5389c67726205afaf14a0396de8b5f6d3a3504bc7785a72e",
+  "default_profile": "dsl_demo_050426",
+  "bridgeConfig": {
+    "schemaVersion": 2,
+    "generatedAt": null,
+    "byProfile": {
+      "dsl_demo_050426": {
+        "groups": [],
+        "selectedDevice": {
+          "device": "",
+          "enabled": false
+        },
+        "tests": {
+          "default_test_set": "default",
+          "test_sets": {}
+        }
+      }
+    }
+  },
+  "dslTests": {
+    "schemaVersion": 1,
+    "defaultSet": "default",
+    "testSets": {
+      "default": [
+        "spin_up_motor1"
+      ]
+    },
+    "testsByName": {
+      "spin_up_motor1": {
+        "source": "test \"spin_up_motor1\"\ndevice \"FALCON 9\"\n\nmain:\n    set \"FALCON 9\".output = 0.5\n    until timer.elapsed >= 3.0\n    require \"FALCON 9\".velocity > 1000\n\n",
+        "sourceHash": "77403ce626c0a4787b83f4ba5c4028ee6aa7a45477e88ea4fb90c885597a834c",
+        "normalized": {
+          "name": "spin_up_motor1",
+          "devices": [
+            {
+              "name": "FALCON 9"
+            }
+          ],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "set_1",
+                "text": "set \"FALCON 9\".output = 0.5",
+                "target": {
+                  "device": "FALCON 9",
+                  "signal": "output",
+                  "text": "FALCON 9.output"
+                },
+                "literal": {
+                  "value": 0.5,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [
+              {
+                "id": "until_1",
+                "kind": "until",
+                "text": "until timer.elapsed >= 3.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "operator": ">=",
+                "literal": {
+                  "value": 3.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "requires": [
+              {
+                "id": "require_1",
+                "kind": "require",
+                "text": "require \"FALCON 9\".velocity > 1000",
+                "reference": {
+                  "device": "FALCON 9",
+                  "signal": "velocity",
+                  "text": "FALCON 9.velocity"
+                },
+                "operator": ">",
+                "literal": {
+                  "value": 1000,
+                  "valueType": "number"
+                }
+              }
+            ]
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        }
+      }
+    }
+  }
+}
