@@ -5,10 +5,10 @@ import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.ControllerManager;
+import frc.robot.manufacturers.microsoft.XboxControllerDevice;
 import frc.robot.tests.BringupTestRegistry;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -145,40 +145,10 @@ public class Robot extends TimedRobot {
     // core update handled by BringupCommandRouter
 
     // Feed test inputs (used by joystick-mode tests).
-    core.setTestInputs(buildAxisInputs(controllerMap, neoSpeed, krakenSpeed));
+    core.setTestInputs(XboxControllerDevice.buildControllerInputs(controllerMap, neoSpeed, krakenSpeed));
 
     // Apply speeds after inputs are processed.
     core.setSpeeds(neoSpeed, krakenSpeed);
-  }
-
-  private Map<String, Map<String, Double>> buildAxisInputs(
-      Map<String, XboxController> controllers,
-      double leftDrive,
-      double rightDrive) {
-    Map<String, Map<String, Double>> axisInputs = new HashMap<>();
-    if (controllers == null) {
-      return axisInputs;
-    }
-    for (Map.Entry<String, XboxController> entry : controllers.entrySet()) {
-      String name = entry.getKey();
-      XboxController controller = entry.getValue();
-      if (name == null || controller == null) {
-        continue;
-      }
-      Map<String, Double> values = new HashMap<>();
-      values.put("leftX", controller.getLeftX());
-      values.put("leftY", controller.getLeftY());
-      values.put("rightX", controller.getRightX());
-      values.put("rightY", controller.getRightY());
-      values.put("leftTrigger", controller.getLeftTriggerAxis());
-      values.put("rightTrigger", controller.getRightTriggerAxis());
-      if ("controller0".equals(name)) {
-        values.put("leftY", leftDrive);
-        values.put("rightY", rightDrive);
-      }
-      axisInputs.put(name, values);
-    }
-    return axisInputs;
   }
 
   /**

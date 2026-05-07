@@ -179,12 +179,15 @@ public final class BringupUtil {
   private static final String CAN_MAPPINGS_FILE = "can_mappings.json";
   private static final String INTERFACE_CAN = "CAN";
   private static final String INTERFACE_DIO = "DIO";
+  private static final String INTERFACE_USB = "USB";
   private static final String DEVICE_TYPE_MOTOR = "motor";
   private static final String DEVICE_TYPE_LIMIT_SWITCH = "limitSwitch";
   private static final String DEVICE_TYPE_ENCODER_EXTERNAL = "encoderExternal";
+  private static final String DEVICE_TYPE_XBOX_CONTROLLER = "xboxController";
   private static final String DEVICE_VENDOR_NI = "NI";
   private static final String DEVICE_VENDOR_CTRE = "CTRE";
   private static final String DEVICE_VENDOR_REV = "REV";
+  private static final String DEVICE_VENDOR_MICROSOFT = "Microsoft";
   private static final String DEVICE_TYPE_ROBORIO = "roboRIO";
   private static final String DEVICE_TYPE_PDH = "PDH";
   private static final String DEVICE_TYPE_PDP = "PDP";
@@ -2225,7 +2228,7 @@ public final class BringupUtil {
       return;
     }
     for (DeviceDefinition def : defs) {
-      if (def == null || !isCanDevice(def)) {
+      if (def == null || !isRuntimeDevice(def)) {
         continue;
       }
       DeviceEntry entry = buildDeviceEntry(def);
@@ -2246,7 +2249,7 @@ public final class BringupUtil {
       return entries;
     }
     for (DeviceDefinition def : defs) {
-      if (def == null || !isCanDevice(def)) {
+      if (def == null || !isRuntimeDevice(def)) {
         continue;
       }
       entries.add(buildDeviceEntry(def));
@@ -2301,11 +2304,23 @@ public final class BringupUtil {
     return devices;
   }
 
+  private static boolean isRuntimeDevice(DeviceDefinition def) {
+    return isCanDevice(def) || isXboxControllerDevice(def);
+  }
+
   private static boolean isCanDevice(DeviceDefinition def) {
     if (def == null || def.deviceInterface == null) {
       return false;
     }
     return INTERFACE_CAN.equalsIgnoreCase(def.deviceInterface);
+  }
+
+  private static boolean isXboxControllerDevice(DeviceDefinition def) {
+    if (def == null || def.deviceInterface == null) {
+      return false;
+    }
+    return INTERFACE_USB.equalsIgnoreCase(def.deviceInterface)
+        && DEVICE_TYPE_XBOX_CONTROLLER.equalsIgnoreCase(safeText(def.type));
   }
 
   private static boolean isLimitSwitch(DeviceDefinition def) {
@@ -2346,6 +2361,9 @@ public final class BringupUtil {
 
   private static String resolveVendorName(DeviceDefinition def) {
     if (def == null || def.manufacturer == null) {
+      if (isXboxControllerDevice(def)) {
+        return DEVICE_VENDOR_MICROSOFT;
+      }
       return LABEL_UNKNOWN;
     }
     String name = getCanManufacturerName(def.manufacturer);
@@ -2367,6 +2385,9 @@ public final class BringupUtil {
   private static String resolveDeviceTypeLabel(DeviceDefinition def) {
     if (def == null) {
       return LABEL_UNKNOWN;
+    }
+    if (isXboxControllerDevice(def)) {
+      return DEVICE_TYPE_XBOX_CONTROLLER;
     }
     int manufacturer = def.manufacturer != null ? def.manufacturer : DISABLED_CAN_ID;
     int devType = def.deviceType != null ? def.deviceType : DISABLED_CAN_ID;

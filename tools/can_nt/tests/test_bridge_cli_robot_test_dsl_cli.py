@@ -32,7 +32,7 @@ class _FakeSession:
 
 
 class BridgeCliRobotTestDslCliTests(unittest.TestCase):
-    def _build_cli(self, connected: bool = False) -> BridgeCli:
+    def _build_cli(self, connected: bool = False, include_controller: bool = False) -> BridgeCli:
         cli = BridgeCli(_FakeSession(connected=connected), batch=True)
         cli._modes = [CliMode(MODE_CONFIG)]
         cli._local_root_payload = {
@@ -71,9 +71,20 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
                     "model": "DIO Limit Switch",
                     "type": "limitSwitch",
                     "deviceInterface": "DIO",
+                },
+                {
+                    "label": "controller0",
+                    "manufacturer": 1,
+                    "deviceType": 1,
+                    "id": 0,
+                    "model": "Xbox Controller",
+                    "type": "xboxController",
+                    "deviceInterface": "USB",
                 }
             ],
         }
+        if include_controller:
+            cli._local_root_payload["profiles"]["dsl_demo_050426"]["devices"].append("controller0")
         return cli
 
     def test_import_validate_and_show_normalized(self) -> None:
@@ -110,6 +121,25 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
             cli._dsl_print_validation(result, False, False)
         self.assertFalse(result.ok())
         self.assertIn("unknown profile: missing_profile", output.getvalue())
+
+    def test_import_accepts_controller_signal_device(self) -> None:
+        cli = self._build_cli(include_controller=True)
+        source = (
+            'test "controller_confirm"\n'
+            'device "controller0"\n\n'
+            "main:\n"
+            "    success controller0.A\n"
+            "    abort timer.elapsed >= 5.0\n"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = Path(temp_dir) / "controller_confirm.dsl"
+            source_path.write_text(source, encoding="utf-8")
+
+            result = cli._dsl_test_command(["test", "import", "controller_confirm", str(source_path)])
+
+            self.assertEqual(result.code, SS__NORMAL)
+            entry = cli._local_root_payload["dslTests"]["testsByName"]["controller_confirm"]
+            self.assertEqual(entry["normalized"]["devices"][0]["name"], "controller0")
 
     def test_config_mode_add_all_uses_robot_path_when_not_in_group_context(self) -> None:
         cli = self._build_cli(connected=True)

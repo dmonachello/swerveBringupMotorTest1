@@ -28,9 +28,9 @@ import java.util.Map;
  */
 public final class DslBringupTest implements BringupTest {
   private static final String BUILTIN_TIMER_NAME = "timer";
-
   private final DslNormalizedTest test;
   private final Map<String, DeviceUnit> devices = new LinkedHashMap<>();
+  private final Map<String, String> declaredDeviceTypes = new LinkedHashMap<>();
   private final Map<String, Double> startPositions = new HashMap<>();
   private final Map<String, Boolean> requireSatisfied = new LinkedHashMap<>();
   private final Map<String, Double> requireSatisfiedAt = new LinkedHashMap<>();
@@ -81,7 +81,7 @@ public final class DslBringupTest implements BringupTest {
       return names;
     }
     for (DslModels.DslDeviceRef device : test.devices) {
-      if (device != null && device.name != null) {
+      if (device != null && device.name != null && isRequiredHardwareDeviceName(device.name)) {
         names.add(device.name);
       }
     }
@@ -96,6 +96,7 @@ public final class DslBringupTest implements BringupTest {
       return false;
     }
     devices.clear();
+    declaredDeviceTypes.clear();
     startPositions.clear();
     requireSatisfied.clear();
     requireSatisfiedAt.clear();
@@ -105,6 +106,10 @@ public final class DslBringupTest implements BringupTest {
       if (ref == null || ref.name == null || ref.name.isBlank()) {
         continue;
       }
+      String deviceType = resolveDeviceType(ref.name);
+      if (deviceType != null && !deviceType.isBlank()) {
+        declaredDeviceTypes.put(ref.name, deviceType);
+      }
       DeviceUnit device = context.findDeviceByLabel(ref.name);
       if (device == null) {
         status = "Device not found: " + ref.name;
@@ -113,7 +118,7 @@ public final class DslBringupTest implements BringupTest {
       }
       device.ensureCreated();
       devices.put(ref.name, device);
-      Object position = readSignalValue(ref.name, DslSignalRegistry.SIGNAL_POSITION, nowSec);
+      Object position = readSignalValue(context, ref.name, DslSignalRegistry.SIGNAL_POSITION, nowSec);
       if (position instanceof Number numberValue) {
         startPositions.put(ref.name, numberValue.doubleValue());
       }
@@ -139,7 +144,7 @@ public final class DslBringupTest implements BringupTest {
       return;
     }
     applySets(test.main.sets, nowSec);
-    Map<String, Object> samples = sampleAll(nowSec);
+    Map<String, Object> samples = sampleAll(context, nowSec);
     for (DslCondition require : test.main.requires) {
       if (!Boolean.TRUE.equals(requireSatisfied.get(require.id)) && evaluateCondition(require, samples, nowSec)) {
         requireSatisfied.put(require.id, true);
@@ -312,12 +317,12 @@ public final class DslBringupTest implements BringupTest {
     return false;
   }
 
-  private Map<String, Object> sampleAll(double nowSec) {
+  private Map<String, Object> sampleAll(BringupTestContext context, double nowSec) {
     Map<String, Object> samples = new LinkedHashMap<>();
     for (DslCondition condition : allConditions()) {
       String key = condition.reference.text;
       if (!samples.containsKey(key)) {
-        samples.put(key, readSignalValue(condition.reference.device, condition.reference.signal, nowSec));
+        samples.put(key, readSignalValue(context, condition.reference.device, condition.reference.signal, nowSec));
       }
     }
     lastSampleValues.clear();
@@ -370,7 +375,7 @@ public final class DslBringupTest implements BringupTest {
     return false;
   }
 
-  private Object readSignalValue(String deviceName, String signalName, double nowSec) {
+  private Object readSignalValue(BringupTestContext context, String deviceName, String signalName, double nowSec) {
     if (BUILTIN_TIMER_NAME.equalsIgnoreCase(deviceName) && DslSignalRegistry.SIGNAL_ELAPSED.equals(signalName)) {
       return nowSec - startSec;
     }
@@ -379,6 +384,10 @@ public final class DslBringupTest implements BringupTest {
       return null;
     }
     String deviceType = resolveDeviceType(deviceName);
+    Object deviceSignal = device.readDslSignal(signalName);
+    if (deviceSignal != null) {
+      return deviceSignal;
+    }
     if (DslSignalRegistry.DEVICE_TYPE_MOTOR.equals(deviceType)) {
       if (DslSignalRegistry.SIGNAL_POSITION.equals(signalName)) {
         Double position = device.getPositionRotations();
@@ -438,9 +447,18 @@ public final class DslBringupTest implements BringupTest {
     return null;
   }
 
+  private boolean isRequiredHardwareDeviceName(String deviceName) {
+    String deviceType = resolveDeviceType(deviceName);
+    return !DslSignalRegistry.DEVICE_TYPE_TEST_TIMER.equals(deviceType);
+  }
+
   private String resolveDeviceType(String deviceName) {
     if (BUILTIN_TIMER_NAME.equalsIgnoreCase(deviceName)) {
       return DslSignalRegistry.DEVICE_TYPE_TEST_TIMER;
+    }
+    String declared = declaredDeviceTypes.get(deviceName);
+    if (declared != null && !declared.isBlank()) {
+      return declared;
     }
     String configured = BringupUtil.getConfiguredDeviceTypeByLabel(deviceName);
     if (configured != null && !configured.isBlank()) {

@@ -20,7 +20,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from tools.common.json_io import read_json, write_json
 from tools.common.profile_constants import (
-KEY_DEFAULT_PROFILE,
+    KEY_DEFAULT_PROFILE,
     KEY_DSL_DEFAULT_SET,
     KEY_DSL_TEST_SET,
     KEY_DSL_TEST_SETS,

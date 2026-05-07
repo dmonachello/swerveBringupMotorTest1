@@ -237,4 +237,21 @@ public interface DeviceUnit extends HasRegistrationHeader {
   default Double getPositionRotations(String encoderSource, Integer countsPerRev) {
     return getPositionRotations();
   }
+
+  /**
+   * NAME
+   *   readDslSignal
+   *
+   * SYNOPSIS
+   * Return a named DSL signal exposed by this device.
+   *
+   * PARAMETERS
+   *   signalName - DSL signal name.
+   *
+   * RETURNS
+   *   Signal value, or null when unsupported or unavailable.
+   */
+  default Object readDslSignal(String signalName) {
+    return null;
+  }
 }

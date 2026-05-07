@@ -15,6 +15,7 @@ import frc.robot.manufacturers.DeviceTypeBucket;
 import frc.robot.manufacturers.ManufacturerGroup;
 import frc.robot.manufacturers.ManufacturerRegistry;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
+import frc.robot.manufacturers.microsoft.XboxControllerDevice;
 import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 import frc.robot.tests.BringupTest;
 import frc.robot.tests.BringupTestContext;
@@ -327,7 +328,7 @@ public final class BringupCore {
    *   axisInputs - Controller axis values keyed by controller name.
    */
   public void setTestInputs(Map<String, Map<String, Double>> axisInputs) {
-    return;
+    XboxControllerDevice.setControllerInputs(axisInputs);
   }
 
   // Clear current and sticky faults on all instantiated devices where supported.
