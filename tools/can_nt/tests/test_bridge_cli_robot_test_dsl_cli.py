@@ -88,12 +88,13 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
         return cli
 
     def test_import_validate_and_show_normalized(self) -> None:
-        cli = self._build_cli()
+        cli = self._build_cli(include_controller=True)
         source = (
             'test "spin_up_motor1"\n'
             'device "FALCON 9"\n\n'
+            'device "controller0"\n\n'
             "main:\n"
-            '    set "FALCON 9".output = 0.5\n'
+            '    set "FALCON 9".output = controller0.leftY scaled 0.25 default 0.0\n'
             "    until timer.elapsed >= 3.0\n"
             '    require "FALCON 9".velocity > 1000\n'
         )
@@ -106,6 +107,8 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
 
             entry = cli._local_root_payload["dslTests"]["testsByName"]["spin_up_motor1"]
             self.assertEqual(entry["normalized"]["name"], "spin_up_motor1")
+            self.assertEqual(entry["normalized"]["devices"][1]["name"], "controller0")
+            self.assertEqual(entry["normalized"]["main"]["sets"][0]["source"]["signal"], "leftY")
 
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
@@ -140,6 +143,40 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
             self.assertEqual(result.code, SS__NORMAL)
             entry = cli._local_root_payload["dslTests"]["testsByName"]["controller_confirm"]
             self.assertEqual(entry["normalized"]["devices"][0]["name"], "controller0")
+
+    def test_import_accepts_signal_driven_set(self) -> None:
+        cli = self._build_cli(include_controller=True)
+        source = (
+            'test "controller_drive"\n'
+            'device "FALCON 9"\n'
+            'device "controller0"\n\n'
+            "init:\n"
+            '    set "FALCON 9".output = controller0.leftY deadband 0.05 scaled 0.1 default 0.0\n'
+            "main:\n"
+            '    set "FALCON 9".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n'
+            '    abort "FALCON 9".current > 35\n'
+            '    abort controller0.B\n'
+            '    require controller0.A\n'
+            "    until timer.elapsed >= 3.0\n"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = Path(temp_dir) / "controller_drive.dsl"
+            source_path.write_text(source, encoding="utf-8")
+
+            result = cli._dsl_test_command(["test", "import", "controller_drive", str(source_path)])
+
+            self.assertEqual(result.code, SS__NORMAL)
+            entry = cli._local_root_payload["dslTests"]["testsByName"]["controller_drive"]
+            init_statement = entry["normalized"]["init"]["sets"][0]
+            main_statement = entry["normalized"]["main"]["sets"][0]
+            self.assertEqual(init_statement["deadband"], 0.05)
+            self.assertEqual(init_statement["scale"], 0.1)
+            self.assertEqual(main_statement["target"]["signal"], "output")
+            self.assertEqual(main_statement["source"]["device"], "controller0")
+            self.assertEqual(main_statement["source"]["signal"], "leftY")
+            self.assertEqual(main_statement["deadband"], 0.08)
+            self.assertEqual(main_statement["scale"], 0.25)
+            self.assertEqual(main_statement["defaultLiteral"]["value"], 0.0)
 
     def test_config_mode_add_all_uses_robot_path_when_not_in_group_context(self) -> None:
         cli = self._build_cli(connected=True)

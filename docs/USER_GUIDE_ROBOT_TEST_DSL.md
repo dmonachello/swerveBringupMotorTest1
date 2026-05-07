@@ -1,5 +1,7 @@
 # Robot Test DSL User Guide
 
+Note: The signal-set deadband feature described in this guide was implemented with pi.
+
 ## 1. Purpose
 
 Purpose: Explain how to write robot diagnostic tests using the Robot Test DSL.
@@ -256,17 +258,22 @@ Syntax:
 
 ```text
 set device.signal = value
+set device.signal = source.signal scaled number default value
+set device.signal = source.signal deadband number scaled number default value
 ```
 
 Purpose:
 
 - write a writable signal
+- optionally drive a writable numeric signal from a readable numeric signal
 
 Examples:
 
 ```text
 set "FALCON 9".output = 0.15
 set "FALCON 9".output = 0.5
+set "FALCON 9".output = controller0.leftY scaled 0.25 default 0.0
+set "FALCON 9".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0
 ```
 
 Meaning by phase:
@@ -292,6 +299,22 @@ main:
 ```
 
 If you put a `set` in `main`, the engine reasserts it every tick.
+
+Signal-driven `set` rules:
+
+- the target must be a writable numeric signal
+- the source must be a readable numeric signal
+- the source value is whatever the device exposes at runtime
+- `deadband` is optional
+- when `deadband` is present, values with magnitude smaller than the deadband resolve to `0.0`
+- deadband is applied before scaling
+- `scaled` is required
+- `default` is required
+- if the source is unavailable in `init`, test startup fails
+- if the source is unavailable in `main`, the runtime uses `default`
+- if the source is unavailable in `close`, that write is skipped
+- if fallback is still active when an `until` stops the test, the test fails
+- runtime warnings are emitted while fallback is active
 
 ### 7.2 `abort`
 
@@ -656,10 +679,12 @@ unsafe-exit <device>.<signal>
 
 init:
     set <device>.<signal> = <value>
+    set <device>.<signal> = <source>.<signal> scaled <number> default <value>
     clear <device>.<signal>
 
 main:
     set <device>.<signal> = <value>
+    set <device>.<signal> = <source>.<signal> scaled <number> default <value>
     abort <condition>
     success <condition>
     until <condition>
@@ -667,6 +692,7 @@ main:
 
 close:
     set <device>.<signal> = <value>
+    set <device>.<signal> = <source>.<signal> scaled <number> default <value>
     clear <device>.<signal>
 ```
 
@@ -956,6 +982,27 @@ Meaning:
 
 - pass if the left Y axis rises above `0.5`
 - otherwise fail after 5 seconds
+
+### 13.17 Controller axis drives motor output
+
+```text
+test "falcon_axis_drive"
+device "FALCON 9"
+device "controller0"
+
+main:
+    set "FALCON 9".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0
+    abort "FALCON 9".current > 35
+    abort "FALCON 9".temperature > 80
+    until timer.elapsed >= 3.0
+```
+
+Meaning:
+
+- motor output follows the device-exposed `controller0.leftY` value times `0.25`
+- values with magnitude smaller than `0.08` resolve to `0.0` before scaling
+- if the controller signal is unavailable during `main`, output falls back to `0.0`
+- if fallback is still active at the normal stop boundary, the test fails
 
 ## 14. Common Authoring Mistakes
 

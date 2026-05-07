@@ -2,6 +2,16 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-05-06
+
+### Added
+
+- Added Robot Test DSL signal-set deadband support for signal-driven writes such as `controller0.leftY deadband 0.08 scaled 0.25 default 0.0`.
+
+### Notes
+
+- This feature implementation was done with pi.
+
 ## 2026-04-22
 
 ### Added

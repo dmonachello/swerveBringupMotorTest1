@@ -18,9 +18,11 @@ import frc.robot.tests.dsl.DslModels.DslUnsafeExit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * NAME
@@ -28,12 +30,22 @@ import java.util.Map;
  */
 public final class DslBringupTest implements BringupTest {
   private static final String BUILTIN_TIMER_NAME = "timer";
+  private static final String PHASE_INIT = "init";
+  private static final String PHASE_MAIN = "main";
+  private static final String PHASE_CLOSE = "close";
+  private static final double WARNING_COOLDOWN_SEC = 1.0;
+  private static final double MOTOR_OUTPUT_MIN = -1.0;
+  private static final double MOTOR_OUTPUT_MAX = 1.0;
   private final DslNormalizedTest test;
   private final Map<String, DeviceUnit> devices = new LinkedHashMap<>();
   private final Map<String, String> declaredDeviceTypes = new LinkedHashMap<>();
   private final Map<String, Double> startPositions = new HashMap<>();
   private final Map<String, Boolean> requireSatisfied = new LinkedHashMap<>();
   private final Map<String, Double> requireSatisfiedAt = new LinkedHashMap<>();
+  private final Map<String, Double> warningLastSec = new HashMap<>();
+  private final Map<String, Boolean> fallbackActiveBySetId = new LinkedHashMap<>();
+  private final Map<String, Double> lastResolvedSetValues = new LinkedHashMap<>();
+  private final Set<String> fallbackActiveThisTick = new HashSet<>();
   private BringupTestResult result = BringupTestResult.NOT_RUN;
   private String status = "";
   private double startSec = 0.0;
@@ -101,7 +113,12 @@ public final class DslBringupTest implements BringupTest {
     requireSatisfied.clear();
     requireSatisfiedAt.clear();
     lastSampleValues.clear();
+    warningLastSec.clear();
+    fallbackActiveBySetId.clear();
+    lastResolvedSetValues.clear();
+    fallbackActiveThisTick.clear();
     finalized = false;
+    startSec = nowSec;
     for (DslModels.DslDeviceRef ref : test.devices) {
       if (ref == null || ref.name == null || ref.name.isBlank()) {
         continue;
@@ -125,8 +142,9 @@ public final class DslBringupTest implements BringupTest {
     }
     applySafeValues(nowSec, false);
     applyClears(test.init.clears);
-    applySets(test.init.sets, nowSec);
-    startSec = nowSec;
+    if (!applySets(context, test.init.sets, nowSec, PHASE_INIT)) {
+      return false;
+    }
     for (DslCondition require : test.main.requires) {
       requireSatisfied.put(require.id, false);
     }
@@ -143,7 +161,11 @@ public final class DslBringupTest implements BringupTest {
     if (result != BringupTestResult.RUNNING) {
       return;
     }
-    applySets(test.main.sets, nowSec);
+    fallbackActiveThisTick.clear();
+    if (!applySets(context, test.main.sets, nowSec, PHASE_MAIN)) {
+      stop(context);
+      return;
+    }
     Map<String, Object> samples = sampleAll(context, nowSec);
     for (DslCondition require : test.main.requires) {
       if (!Boolean.TRUE.equals(requireSatisfied.get(require.id)) && evaluateCondition(require, samples, nowSec)) {
@@ -177,7 +199,12 @@ public final class DslBringupTest implements BringupTest {
           }
         }
         status = "until " + condition.id + ": " + condition.text;
-        result = allSatisfied ? BringupTestResult.PASS : BringupTestResult.FAIL;
+        if (!fallbackActiveThisTick.isEmpty()) {
+          status = status + " (fallback active)";
+          result = BringupTestResult.FAIL;
+        } else {
+          result = allSatisfied ? BringupTestResult.PASS : BringupTestResult.FAIL;
+        }
         stop(context);
         return;
       }
@@ -194,7 +221,7 @@ public final class DslBringupTest implements BringupTest {
       status = status == null || status.isBlank() ? "Interrupted" : status;
     }
     applyClears(test.close.clears);
-    applySets(test.close.sets, startSec);
+    applySets(context, test.close.sets, startSec, PHASE_CLOSE);
     applySafeValues(startSec, true);
     finalized = true;
   }
@@ -210,6 +237,8 @@ public final class DslBringupTest implements BringupTest {
     details.put("result", result != null ? result.name() : "");
     details.put("requires", buildRequireDetails());
     details.put("lastSamples", new LinkedHashMap<>(lastSampleValues));
+    details.put("lastResolvedSets", new LinkedHashMap<>(lastResolvedSetValues));
+    details.put("signalSetFallbacks", buildSignalSetFallbackDetails());
     details.put("unsafeExit", buildUnsafeExitDetails());
     return details;
   }
@@ -254,20 +283,34 @@ public final class DslBringupTest implements BringupTest {
     return rows;
   }
 
-  private void applySets(List<DslSetStatement> sets, double nowSec) {
+  private List<Map<String, Object>> buildSignalSetFallbackDetails() {
+    List<Map<String, Object>> rows = new ArrayList<>();
+    for (Map.Entry<String, Boolean> entry : fallbackActiveBySetId.entrySet()) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("id", entry.getKey());
+      row.put("active", Boolean.TRUE.equals(entry.getValue()));
+      rows.add(row);
+    }
+    return rows;
+  }
+
+  private boolean applySets(BringupTestContext context, List<DslSetStatement> sets, double nowSec, String phaseName) {
     for (DslSetStatement statement : sets) {
-      if (statement == null || statement.target == null || statement.literal == null) {
+      if (statement == null || statement.target == null) {
         continue;
       }
-      String deviceType = resolveDeviceType(statement.target.device);
-      if (DslSignalRegistry.DEVICE_TYPE_MOTOR.equals(deviceType)
-          && DslSignalRegistry.SIGNAL_OUTPUT.equals(statement.target.signal)) {
-        DeviceUnit device = devices.get(statement.target.device);
-        if (device != null && statement.literal.value instanceof Number numberValue) {
-          device.setDuty(numberValue.doubleValue());
-        }
+      ResolvedSetValue resolved = resolveSetValue(context, statement, nowSec, phaseName);
+      if (!resolved.continueExecution) {
+        return false;
+      }
+      if (!resolved.shouldWrite) {
+        continue;
+      }
+      if (!writeTargetSignal(statement, resolved.value)) {
+        return false;
       }
     }
+    return true;
   }
 
   private void applyClears(List<DslClearStatement> clears) {
@@ -315,6 +358,156 @@ public final class DslBringupTest implements BringupTest {
       }
     }
     return false;
+  }
+
+  private ResolvedSetValue resolveSetValue(
+      BringupTestContext context,
+      DslSetStatement statement,
+      double nowSec,
+      String phaseName) {
+    if (statement.literal != null) {
+      if (!(statement.literal.value instanceof Number numberValue)) {
+        status = "Set literal is not numeric: " + statement.text;
+        result = BringupTestResult.FAIL;
+        return ResolvedSetValue.fail();
+      }
+      double value = numberValue.doubleValue();
+      if (!isTargetValueInRange(statement.target.device, statement.target.signal, value)) {
+        return handleOutOfRange(statement, value, phaseName, nowSec);
+      }
+      lastResolvedSetValues.put(statement.id, value);
+      return ResolvedSetValue.write(value);
+    }
+    if (statement.source == null || statement.scale == null || statement.defaultLiteral == null) {
+      status = "Signal set incomplete: " + statement.text;
+      result = BringupTestResult.FAIL;
+      return ResolvedSetValue.fail();
+    }
+    Object sourceValue = readSignalValue(context, statement.source.device, statement.source.signal, nowSec);
+    if (!(sourceValue instanceof Number numberValue)) {
+      return handleUnavailableSource(statement, phaseName, nowSec);
+    }
+    double source = applyDeadband(numberValue.doubleValue(), statement.deadband);
+    double resolved = source * statement.scale.doubleValue();
+    if (!isTargetValueInRange(statement.target.device, statement.target.signal, resolved)) {
+      return handleOutOfRange(statement, resolved, phaseName, nowSec);
+    }
+    lastResolvedSetValues.put(statement.id, resolved);
+    clearFallbackWarning(statement, nowSec);
+    return ResolvedSetValue.write(resolved);
+  }
+
+  private ResolvedSetValue handleUnavailableSource(DslSetStatement statement, String phaseName, double nowSec) {
+    if (PHASE_INIT.equals(phaseName)) {
+      status = "Signal set source unavailable at startup: " + statement.source.text;
+      result = BringupTestResult.FAIL;
+      return ResolvedSetValue.fail();
+    }
+    if (PHASE_CLOSE.equals(phaseName)) {
+      return ResolvedSetValue.skip();
+    }
+    if (!(statement.defaultLiteral.value instanceof Number defaultNumber)) {
+      status = "Signal set default is not numeric: " + statement.text;
+      result = BringupTestResult.FAIL;
+      return ResolvedSetValue.fail();
+    }
+    double fallback = defaultNumber.doubleValue();
+    if (!isTargetValueInRange(statement.target.device, statement.target.signal, fallback)) {
+      status = "Signal set default out of range: " + statement.text;
+      result = BringupTestResult.FAIL;
+      return ResolvedSetValue.fail();
+    }
+    lastResolvedSetValues.put(statement.id, fallback);
+    markFallbackWarning(statement, fallback, nowSec);
+    return ResolvedSetValue.write(fallback);
+  }
+
+  private ResolvedSetValue handleOutOfRange(
+      DslSetStatement statement,
+      double value,
+      String phaseName,
+      double nowSec) {
+    String message =
+        "Signal set produced out-of-range value: target="
+            + statement.target.text
+            + " value="
+            + value;
+    if (PHASE_CLOSE.equals(phaseName)) {
+      logWarningThrottled(statement.id + ":range", message, nowSec);
+      return ResolvedSetValue.skip();
+    }
+    status = message;
+    result = BringupTestResult.FAIL;
+    return ResolvedSetValue.fail();
+  }
+
+  private boolean writeTargetSignal(DslSetStatement statement, double value) {
+    String deviceType = resolveDeviceType(statement.target.device);
+    DeviceUnit device = devices.get(statement.target.device);
+    if (device == null) {
+      status = "Device not found: " + statement.target.device;
+      result = BringupTestResult.FAIL;
+      return false;
+    }
+    if (DslSignalRegistry.DEVICE_TYPE_MOTOR.equals(deviceType)
+        && DslSignalRegistry.SIGNAL_OUTPUT.equals(statement.target.signal)) {
+      device.setDuty(value);
+      return true;
+    }
+    status = "Unsupported writable DSL target at runtime: " + statement.target.text;
+    result = BringupTestResult.FAIL;
+    return false;
+  }
+
+  private boolean isTargetValueInRange(String deviceName, String signalName, double value) {
+    String deviceType = resolveDeviceType(deviceName);
+    if (DslSignalRegistry.DEVICE_TYPE_MOTOR.equals(deviceType)
+        && DslSignalRegistry.SIGNAL_OUTPUT.equals(signalName)) {
+      return value >= MOTOR_OUTPUT_MIN && value <= MOTOR_OUTPUT_MAX;
+    }
+    return true;
+  }
+
+  private double applyDeadband(double value, Double deadband) {
+    if (deadband == null) {
+      return value;
+    }
+    return Math.abs(value) < deadband.doubleValue() ? 0.0 : value;
+  }
+
+  private void markFallbackWarning(DslSetStatement statement, double fallback, double nowSec) {
+    fallbackActiveThisTick.add(statement.id);
+    fallbackActiveBySetId.put(statement.id, true);
+    logWarningThrottled(
+        statement.id + ":fallback",
+        "Signal set fallback active: target="
+            + statement.target.text
+            + " source="
+            + statement.source.text
+            + " default="
+            + fallback,
+        nowSec);
+  }
+
+  private void clearFallbackWarning(DslSetStatement statement, double nowSec) {
+    if (!Boolean.TRUE.equals(fallbackActiveBySetId.get(statement.id))) {
+      return;
+    }
+    fallbackActiveBySetId.put(statement.id, false);
+    BringupPrinter.enqueue(
+        "Signal set source recovered: target="
+            + statement.target.text
+            + " source="
+            + statement.source.text);
+  }
+
+  private void logWarningThrottled(String key, String message, double nowSec) {
+    Double last = warningLastSec.get(key);
+    if (last != null && (nowSec - last.doubleValue()) < WARNING_COOLDOWN_SEC) {
+      return;
+    }
+    warningLastSec.put(key, nowSec);
+    BringupPrinter.enqueue(message);
   }
 
   private Map<String, Object> sampleAll(BringupTestContext context, double nowSec) {
@@ -465,5 +658,29 @@ public final class DslBringupTest implements BringupTest {
       return configured;
     }
     return devices.containsKey(deviceName) ? DslSignalRegistry.DEVICE_TYPE_MOTOR : null;
+  }
+
+  private static final class ResolvedSetValue {
+    private final boolean continueExecution;
+    private final boolean shouldWrite;
+    private final double value;
+
+    private ResolvedSetValue(boolean continueExecution, boolean shouldWrite, double value) {
+      this.continueExecution = continueExecution;
+      this.shouldWrite = shouldWrite;
+      this.value = value;
+    }
+
+    private static ResolvedSetValue write(double value) {
+      return new ResolvedSetValue(true, true, value);
+    }
+
+    private static ResolvedSetValue skip() {
+      return new ResolvedSetValue(true, false, 0.0);
+    }
+
+    private static ResolvedSetValue fail() {
+      return new ResolvedSetValue(false, false, 0.0);
+    }
   }
 }

@@ -1,6 +1,7 @@
 package frc.robot;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import frc.robot.devices.DeviceUnit;
@@ -102,6 +103,119 @@ class DslBringupTestTest {
     assertEquals(BringupTestResult.PASS, test.getResult());
   }
 
+  @Test
+  void dslTestUsesXboxControllerAxisForSignalSet() {
+    seedConfiguredDeviceType(CONTROLLER_LABEL, CONTROLLER_TYPE);
+    RecordingDevice motor = new RecordingDevice();
+    BringupTestContext context = combinedContext(motor, new XboxControllerDevice(0, CONTROLLER_LABEL));
+    XboxControllerDevice.setControllerInputs(Map.of(CONTROLLER_LABEL, Map.of(SIGNAL_LEFT_Y, 0.8)));
+    DslBringupTest test = new DslBringupTest(buildSignalSetMainTest(0.25, 0.0, false));
+
+    assertTrue(test.start(context, START_SEC));
+    test.update(context, UPDATE_SEC);
+    test.update(context, 11.1);
+
+    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(2, motor.dutyWrites);
+    assertEquals(0.2, motor.lastDuty, 0.0001);
+  }
+
+  @Test
+  void dslSignalSetFailsStartupWhenInitSourceUnavailable() {
+    seedConfiguredDeviceType(CONTROLLER_LABEL, CONTROLLER_TYPE);
+    RecordingDevice motor = new RecordingDevice();
+    BringupTestContext context = combinedContext(motor, new XboxControllerDevice(0, CONTROLLER_LABEL));
+    DslBringupTest test = new DslBringupTest(buildSignalSetMainTest(0.25, 0.0, true));
+
+    assertFalse(test.start(context, START_SEC));
+    assertEquals(BringupTestResult.FAIL, test.getResult());
+    assertEquals("Signal set source unavailable at startup: controller0.leftY", test.getStatus());
+  }
+
+  @Test
+  void dslSignalSetFailsNormalStopWhenFallbackStillActive() {
+    seedConfiguredDeviceType(CONTROLLER_LABEL, CONTROLLER_TYPE);
+    RecordingDevice motor = new RecordingDevice();
+    BringupTestContext context = combinedContext(motor, new XboxControllerDevice(0, CONTROLLER_LABEL));
+    DslBringupTest test = new DslBringupTest(buildSignalSetMainTest(0.25, 0.0, false));
+
+    assertTrue(test.start(context, START_SEC));
+    test.update(context, 11.1);
+
+    assertEquals(BringupTestResult.FAIL, test.getResult());
+    assertEquals("until until_1: timer.elapsed >= 1.0 (fallback active)", test.getStatus());
+    assertEquals(1, motor.dutyWrites);
+    assertEquals(0.0, motor.lastDuty, 0.0001);
+    assertTrue(test.buildRunDetails().toString().contains("signalSetFallbacks"));
+  }
+
+  @Test
+  void dslSignalSetPassesAfterFallbackRecoversBeforeNormalStop() {
+    seedConfiguredDeviceType(CONTROLLER_LABEL, CONTROLLER_TYPE);
+    RecordingDevice motor = new RecordingDevice();
+    BringupTestContext context = combinedContext(motor, new XboxControllerDevice(0, CONTROLLER_LABEL));
+    DslBringupTest test = new DslBringupTest(buildSignalSetMainTest(0.25, 0.0, false));
+
+    assertTrue(test.start(context, START_SEC));
+    test.update(context, UPDATE_SEC);
+    XboxControllerDevice.setControllerInputs(Map.of(CONTROLLER_LABEL, Map.of(SIGNAL_LEFT_Y, 0.6)));
+    test.update(context, 10.5);
+    test.update(context, 11.1);
+
+    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(3, motor.dutyWrites);
+    assertEquals(0.15, motor.lastDuty, 0.0001);
+  }
+
+  @Test
+  void dslSignalSetAppliesDeadbandBeforeScaling() {
+    seedConfiguredDeviceType(CONTROLLER_LABEL, CONTROLLER_TYPE);
+    RecordingDevice motor = new RecordingDevice();
+    BringupTestContext context = combinedContext(motor, new XboxControllerDevice(0, CONTROLLER_LABEL));
+    XboxControllerDevice.setControllerInputs(Map.of(CONTROLLER_LABEL, Map.of(SIGNAL_LEFT_Y, 0.05)));
+    DslBringupTest test = new DslBringupTest(buildSignalSetMainTest(0.25, 0.0, false, 0.08));
+
+    assertTrue(test.start(context, START_SEC));
+    test.update(context, UPDATE_SEC);
+    test.update(context, 11.1);
+
+    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(2, motor.dutyWrites);
+    assertEquals(0.0, motor.lastDuty, 0.0001);
+  }
+
+  @Test
+  void dslSignalSetLeavesValuesOutsideDeadbandUnchangedBeforeScaling() {
+    seedConfiguredDeviceType(CONTROLLER_LABEL, CONTROLLER_TYPE);
+    RecordingDevice motor = new RecordingDevice();
+    BringupTestContext context = combinedContext(motor, new XboxControllerDevice(0, CONTROLLER_LABEL));
+    XboxControllerDevice.setControllerInputs(Map.of(CONTROLLER_LABEL, Map.of(SIGNAL_LEFT_Y, 0.1)));
+    DslBringupTest test = new DslBringupTest(buildSignalSetMainTest(0.25, 0.0, false, 0.08));
+
+    assertTrue(test.start(context, START_SEC));
+    test.update(context, UPDATE_SEC);
+    test.update(context, 11.1);
+
+    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(2, motor.dutyWrites);
+    assertEquals(0.025, motor.lastDuty, 0.0001);
+  }
+
+  @Test
+  void dslSignalSetFailsWhenResolvedValueIsOutOfRange() {
+    seedConfiguredDeviceType(CONTROLLER_LABEL, CONTROLLER_TYPE);
+    RecordingDevice motor = new RecordingDevice();
+    BringupTestContext context = combinedContext(motor, new XboxControllerDevice(0, CONTROLLER_LABEL));
+    XboxControllerDevice.setControllerInputs(Map.of(CONTROLLER_LABEL, Map.of(SIGNAL_LEFT_Y, 0.8)));
+    DslBringupTest test = new DslBringupTest(buildSignalSetMainTest(2.0, 0.0, false));
+
+    assertTrue(test.start(context, START_SEC));
+    test.update(context, UPDATE_SEC);
+
+    assertEquals(BringupTestResult.FAIL, test.getResult());
+    assertEquals("Signal set produced out-of-range value: target=motor-a.output value=1.6", test.getStatus());
+  }
+
   private static DslModels.DslNormalizedTest buildTest() {
     DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
     test.name = TEST_NAME;
@@ -158,6 +272,56 @@ class DslBringupTestTest {
     success.operator = ">";
     success.literal = numberLiteral(0.5);
     test.main.successes.add(success);
+    return test;
+  }
+
+  private static DslModels.DslNormalizedTest buildSignalSetMainTest(
+      double scale,
+      double defaultValue,
+      boolean setInInit) {
+    return buildSignalSetMainTest(scale, defaultValue, setInInit, null);
+  }
+
+  private static DslModels.DslNormalizedTest buildSignalSetMainTest(
+      double scale,
+      double defaultValue,
+      boolean setInInit,
+      Double deadband) {
+    DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
+    test.name = "controller_drive";
+    DslModels.DslDeviceRef motor = new DslModels.DslDeviceRef();
+    motor.name = MOTOR_LABEL;
+    test.devices.add(motor);
+    DslModels.DslDeviceRef controller = new DslModels.DslDeviceRef();
+    controller.name = CONTROLLER_LABEL;
+    test.devices.add(controller);
+
+    DslModels.DslSetStatement set = new DslModels.DslSetStatement();
+    set.id = "set_1";
+    set.text =
+        "set motor-a.output = controller0.leftY scaled "
+            + scale
+            + " default "
+            + defaultValue;
+    set.target = reference(MOTOR_LABEL, "output");
+    set.source = reference(CONTROLLER_LABEL, SIGNAL_LEFT_Y);
+    set.deadband = deadband;
+    set.scale = scale;
+    set.defaultLiteral = numberLiteral(defaultValue);
+    if (setInInit) {
+      test.init.sets.add(set);
+    } else {
+      test.main.sets.add(set);
+    }
+
+    DslModels.DslCondition until = new DslModels.DslCondition();
+    until.id = "until_1";
+    until.kind = "until";
+    until.text = "timer.elapsed >= 1.0";
+    until.reference = reference("timer", "elapsed");
+    until.operator = ">=";
+    until.literal = numberLiteral(1.0);
+    test.main.untils.add(until);
     return test;
   }
 
@@ -233,6 +397,28 @@ class DslBringupTestTest {
             null);
     DeviceTypeBucket bucket = new DeviceTypeBucket(registration, List.of(device), false);
     return new BringupTestContext(List.of(new SingleGroup(MicrosoftDeviceGroup.HEADER, bucket)));
+  }
+
+  private static BringupTestContext combinedContext(DeviceUnit motor, DeviceUnit controller) {
+    RegistrationHeader motorHeader =
+        new RegistrationHeader(VENDOR, VENDOR, DEVICE_TYPE, SOURCE, OWNER, EMPTY, EMPTY);
+    DeviceRegistration motorRegistration =
+        new DeviceRegistration(motorHeader, VENDOR, DEVICE_TYPE, DEVICE_TYPE, DeviceRole.MOTOR, false, null);
+    DeviceTypeBucket motorBucket = new DeviceTypeBucket(motorRegistration, List.of(motor), false);
+    DeviceRegistration controllerRegistration =
+        new DeviceRegistration(
+            XboxControllerDevice.HEADER,
+            MicrosoftDeviceGroup.VENDOR,
+            CONTROLLER_TYPE,
+            CONTROLLER_TYPE,
+            DeviceRole.MISC,
+            false,
+            null);
+    DeviceTypeBucket controllerBucket = new DeviceTypeBucket(controllerRegistration, List.of(controller), false);
+    return new BringupTestContext(
+        List.of(
+            new SingleGroup(motorHeader, motorBucket),
+            new SingleGroup(MicrosoftDeviceGroup.HEADER, controllerBucket)));
   }
 
   private static final class RecordingDevice implements DeviceUnit {

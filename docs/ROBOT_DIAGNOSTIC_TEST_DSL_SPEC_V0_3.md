@@ -82,9 +82,26 @@ A device with writable command outputs must provide safe-state metadata or a saf
 
 ```text
 set device.signal = value
+set device.signal = source.signal scaled number default value
+set device.signal = source.signal deadband number scaled number default value
 ```
 
 Semantics:
+
+Literal-valued `set` writes the authored literal value.
+
+Signal-driven `set` reads a source signal and writes a derived target value.
+
+For signal-driven `set`:
+
+- `scaled` is required
+- `default` is required
+- `deadband` is optional
+- if `deadband` is present, values with `abs(source) < deadband` resolve to `0.0`
+- deadband is applied before scaling
+- if the source is unavailable in `init`, startup fails
+- if the source is unavailable in `main`, the authored default value is used
+- if the source is unavailable in `close`, that write is skipped
 
 In `init`:
 
@@ -216,9 +233,10 @@ Units are inferred from signal metadata.
 
 Per tick:
 
-1. command -> apply `main` `set` statements
-2. sample -> read signals
-3. evaluate -> `abort`, `success`, `until`, `require`
+1. command preparation -> resolve source values needed by signal-driven `set`
+2. command -> apply `main` `set` statements
+3. sample -> read signals for conditions
+4. evaluate -> `abort`, `success`, `until`, `require`
 
 Priority:
 

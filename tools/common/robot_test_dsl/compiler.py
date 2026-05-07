@@ -45,6 +45,10 @@ RE_DEVICE = re.compile(r'^device\s+"([^"\n]+)"\s*$')
 RE_PHASE = re.compile(r'^(init|main|close):\s*$')
 RE_UNSAFE_EXIT = re.compile(r'^unsafe-exit\s+(.+?)\s*$')
 RE_SET = re.compile(r'^set\s+(.+?)\s*=\s*(.+?)\s*$')
+RE_SET_SIGNAL = re.compile(
+    r'^(?P<source>"[^"\n]+"|[A-Za-z][A-Za-z0-9_\-]*\.[A-Za-z][A-Za-z0-9_\-]*|"[^"\n]+"'
+    r'\.[A-Za-z][A-Za-z0-9_\-]*)(?:\s+deadband\s+(?P<deadband>.+?))?\s+scaled\s+(?P<scale>.+?)\s+default\s+(?P<default>.+?)\s*$'
+)
 RE_CLEAR = re.compile(r'^clear\s+(.+?)\s*$')
 RE_KEYWORD_EXPR = re.compile(r'^(abort|success|until|require)\s+(.+?)\s*$')
 
@@ -123,14 +127,37 @@ def compile_source(name: str, source: str) -> RobotTestDslNormalized:
         if match:
             set_count += 1
             target = _parse_reference(match.group(1), line_number)
-            literal = _parse_literal(match.group(2))
-            target_phase.sets.append(
-                RobotTestDslSetStatement(
+            rhs = match.group(2)
+            signal_match = RE_SET_SIGNAL.match(rhs)
+            if signal_match:
+                source = _parse_reference(signal_match.group("source"), line_number)
+                deadband = signal_match.group("deadband")
+                deadband_literal = _parse_literal(deadband) if deadband is not None else None
+                if deadband_literal is not None and deadband_literal.value_type != "number":
+                    raise CompileError("deadband value must be numeric", line_number)
+                scale_literal = _parse_literal(signal_match.group("scale"))
+                if scale_literal.value_type != "number":
+                    raise CompileError("scaled value must be numeric", line_number)
+                default_literal = _parse_literal(signal_match.group("default"))
+                statement = RobotTestDslSetStatement(
+                    statement_id=f"set_{set_count}",
+                    text=line,
+                    target=target,
+                    source=source,
+                    deadband=float(deadband_literal.value) if deadband_literal is not None else None,
+                    scale=float(scale_literal.value),
+                    default_literal=default_literal,
+                )
+            else:
+                literal = _parse_literal(rhs)
+                statement = RobotTestDslSetStatement(
                     statement_id=f"set_{set_count}",
                     text=line,
                     target=target,
                     literal=literal,
                 )
+            target_phase.sets.append(
+                statement
             )
             continue
         match = RE_CLEAR.match(line)

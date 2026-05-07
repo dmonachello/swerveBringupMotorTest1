@@ -1,3 +1,4 @@
+# Note: deadband support used in this example was implemented with pi.
 test "falcon9_xbox_controller_smoke"
 device "FALCON 9"
 device "controller0"
@@ -7,8 +8,9 @@ init:
     clear "FALCON 9".faults
 
 main:
-    # Command a low Falcon output while watching for basic motion evidence.
-    set "FALCON 9".output = 0.12
+    # Command Falcon output from the live left Y controller value.
+    # If controller input is temporarily unavailable, fall back to zero output.
+    set "FALCON 9".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0
 
     # Fail immediately if the motor looks unsafe.
     abort "FALCON 9".current > 35

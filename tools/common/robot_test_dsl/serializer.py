@@ -181,21 +181,40 @@ def _condition_to_payload(condition: RobotTestDslCondition) -> Dict[str, Any]:
 
 
 def _set_from_payload(payload: Dict[str, Any]) -> RobotTestDslSetStatement:
+    literal = payload.get("literal")
+    source = payload.get("source")
+    deadband = payload.get("deadband")
+    default_literal = payload.get("defaultLiteral")
+    scale = payload.get("scale")
     return RobotTestDslSetStatement(
         statement_id=str(payload.get("id", "")),
         text=str(payload.get("text", "")),
         target=_reference_from_payload(payload.get("target", {})),
-        literal=_literal_from_payload(payload.get("literal", {})),
+        literal=_literal_from_payload(literal) if isinstance(literal, dict) else None,
+        source=_reference_from_payload(source) if isinstance(source, dict) else None,
+        deadband=float(deadband) if isinstance(deadband, (int, float)) else None,
+        scale=float(scale) if isinstance(scale, (int, float)) else None,
+        default_literal=_literal_from_payload(default_literal) if isinstance(default_literal, dict) else None,
     )
 
 
 def _set_to_payload(statement: RobotTestDslSetStatement) -> Dict[str, Any]:
-    return {
+    data: Dict[str, Any] = {
         "id": statement.statement_id,
         "text": statement.text,
         "target": _reference_to_payload(statement.target),
-        "literal": _literal_to_payload(statement.literal),
     }
+    if statement.literal is not None:
+        data["literal"] = _literal_to_payload(statement.literal)
+    if statement.source is not None:
+        data["source"] = _reference_to_payload(statement.source)
+    if statement.deadband is not None:
+        data["deadband"] = statement.deadband
+    if statement.scale is not None:
+        data["scale"] = statement.scale
+    if statement.default_literal is not None:
+        data["defaultLiteral"] = _literal_to_payload(statement.default_literal)
+    return data
 
 
 def _clear_from_payload(payload: Dict[str, Any]) -> RobotTestDslClearStatement:

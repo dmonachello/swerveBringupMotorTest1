@@ -70,7 +70,12 @@ public final class DslModels {
     public String id = "";
     public String text = "";
     public DslReference target = new DslReference();
-    public DslLiteral literal = new DslLiteral();
+    public DslLiteral literal;
+    public DslReference source;
+    public Double deadband;
+    public Double scale;
+    @SerializedName("defaultLiteral")
+    public DslLiteral defaultLiteral;
   }
 
   public static final class DslClearStatement {

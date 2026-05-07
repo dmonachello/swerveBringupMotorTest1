@@ -5,7 +5,8 @@
       "devices": [
         "FALCON 9",
         "SPARKMAX/NEO 25",
-        "lmtSw0"
+        "lmtSw0",
+        "controller0"
       ],
       "dslTestSet": "default"
     }
@@ -35,6 +36,15 @@
       "deviceInterface": "DIO",
       "dio": 0,
       "invert": false
+    },
+    {
+      "label": "controller0",
+      "manufacturer": 1,
+      "deviceType": 1,
+      "id": 0,
+      "model": "Xbox Controller",
+      "type": "xboxController",
+      "deviceInterface": "USB"
     }
   ],
   "diagram": {
@@ -42,8 +52,8 @@
       "dsl_demo_050426": {}
     }
   },
-  "data_version": "2026-05-06_191354",
-  "data_hash": "6f44c29b0f6bac5a5389c67726205afaf14a0396de8b5f6d3a3504bc7785a72e",
+  "data_version": "2026-05-06_233408",
+  "data_hash": "54c2d897f5d70732c288e29bd2b994e31086ce9952464820bebd23e4d1053e1e",
   "default_profile": "dsl_demo_050426",
   "bridgeConfig": {
     "schemaVersion": 2,
@@ -67,7 +77,8 @@
     "defaultSet": "default",
     "testSets": {
       "default": [
-        "spin_up_motor1"
+        "spin_up_motor1",
+        "spin_up_motor1_controller_leftY"
       ]
     },
     "testsByName": {
@@ -104,6 +115,99 @@
                   "value": 0.5,
                   "valueType": "number"
                 }
+              }
+            ],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [
+              {
+                "id": "until_1",
+                "kind": "until",
+                "text": "until timer.elapsed >= 3.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "operator": ">=",
+                "literal": {
+                  "value": 3.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "requires": [
+              {
+                "id": "require_1",
+                "kind": "require",
+                "text": "require \"FALCON 9\".velocity > 1000",
+                "reference": {
+                  "device": "FALCON 9",
+                  "signal": "velocity",
+                  "text": "FALCON 9.velocity"
+                },
+                "operator": ">",
+                "literal": {
+                  "value": 1000,
+                  "valueType": "number"
+                }
+              }
+            ]
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        }
+      },
+      "spin_up_motor1_controller_leftY": {
+        "source": "test \"spin_up_motor1_controller_leftY\"\ndevice \"FALCON 9\"\ndevice \"controller0\"\n\nmain:\n    set \"FALCON 9\".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n    until timer.elapsed >= 3.0\n    require \"FALCON 9\".velocity > 1000\n\n",
+        "sourceHash": "a92026f022ce18145d29487d0f3365dd2fbdf8a633c1674aac371c118cac2413",
+        "normalized": {
+          "name": "spin_up_motor1_controller_leftY",
+          "devices": [
+            {
+              "name": "FALCON 9"
+            },
+            {
+              "name": "controller0"
+            }
+          ],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "set_1",
+                "text": "set \"FALCON 9\".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0",
+                "target": {
+                  "device": "FALCON 9",
+                  "signal": "output",
+                  "text": "FALCON 9.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "leftY",
+                  "text": "controller0.leftY"
+                },
+                "scale": 0.25,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                },
+                "deadband": 0.08
               }
             ],
             "clears": [],

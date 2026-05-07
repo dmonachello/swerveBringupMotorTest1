@@ -44,7 +44,11 @@ class RobotTestDslSetStatement:
     statement_id: str
     text: str
     target: RobotTestDslReference
-    literal: RobotTestDslLiteral
+    literal: Optional[RobotTestDslLiteral] = None
+    source: Optional[RobotTestDslReference] = None
+    deadband: Optional[float] = None
+    scale: Optional[float] = None
+    default_literal: Optional[RobotTestDslLiteral] = None
 
 
 @dataclass

@@ -14,6 +14,10 @@ set "FALCON 9".output = controller0.leftY scaled 0.25 default 0.0
 This lets a configured Xbox controller axis drive a known motor output while
 the DSL still owns safety checks, stop conditions, and final safing.
 
+Deadband support is now implemented as an additive extension. See:
+
+- [FEATURE_SPEC_ROBOT_TEST_DSL_SIGNAL_SET_DEADBAND.md](./FEATURE_SPEC_ROBOT_TEST_DSL_SIGNAL_SET_DEADBAND.md)
+
 ## 2. Problem
 
 The current DSL supports only literal writes:
@@ -69,7 +73,6 @@ This first pass does not add:
 - functions
 - compound expressions
 - signal inversion syntax beyond scaling with a negative factor
-- deadband syntax
 - clamping syntax
 - unit conversion syntax
 - multi-source mixing
@@ -90,17 +93,25 @@ set "FALCON 9".output = 0.12
 
 ### 5.2 Signal Set
 
-New syntax:
+Base syntax:
 
 ```text
 set <target_device>.<target_signal> = <source_device>.<source_signal>
     scaled <scale> default <default_value>
 ```
 
-Example:
+Implemented extension syntax:
+
+```text
+set <target_device>.<target_signal> = <source_device>.<source_signal>
+    deadband <deadband_value> scaled <scale> default <default_value>
+```
+
+Examples:
 
 ```text
 set "FALCON 9".output = controller0.leftY scaled 0.25 default 0.0
+set "FALCON 9".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0
 ```
 
 Meaning:
@@ -115,6 +126,12 @@ If the source value is unavailable:
 - use `0.0` instead
 - keep the test running
 - issue rate-limited warnings that fallback is active
+
+If the source value is available and a deadband is authored:
+
+- values with `abs(source) < deadband` resolve to `0.0`
+- deadband is applied before scaling
+- values outside the deadband are not remapped
 
 ### 5.3 Required Scaling
 
@@ -286,12 +303,12 @@ Existing literal set:
 }
 ```
 
-Proposed signal set:
+Signal set example:
 
 ```json
 {
   "id": "set_1",
-  "text": "set \"FALCON 9\".output = controller0.leftY scaled 0.25 default 0.0",
+  "text": "set \"FALCON 9\".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0",
   "target": {
     "device": "FALCON 9",
     "signal": "output",
@@ -302,6 +319,7 @@ Proposed signal set:
     "signal": "leftY",
     "text": "controller0.leftY"
   },
+  "deadband": 0.08,
   "scale": 0.25,
   "defaultLiteral": {
     "value": 0.0,
@@ -313,6 +331,7 @@ Proposed signal set:
 Rules:
 
 - `literal` and `source` are mutually exclusive.
+- `deadband` is optional when `source` exists.
 - `scale` is required when `source` exists.
 - `defaultLiteral` is required when `source` exists.
 - old normalized payloads without `source` remain valid.
@@ -323,6 +342,7 @@ Robot-side execution must:
 
 - read the source signal through the same device signal path used by conditions
 - use the exact source value returned by the source device
+- optionally apply deadband in the source domain
 - multiply source by scale
 - use the authored default value when the source is unavailable
 - write the target signal through the existing write path
@@ -375,11 +395,12 @@ Signal set produced out-of-range value: target=FALCON 9.output value=1.25
 
 ## 11. Host Compiler
 
-The host compiler must parse both forms:
+The host compiler must parse all supported forms:
 
 ```text
 set device.signal = value
 set device.signal = device.signal scaled number default number
+set device.signal = device.signal deadband number scaled number default number
 ```
 
 The compiler should preserve author text in normalized `text` fields so CLI
@@ -390,6 +411,7 @@ The host compiler and robot-side normalized model must both support:
 - literal-valued `set`
 - signal-valued `set`
 - source reference
+- deadband
 - scale
 - default literal
 
@@ -406,7 +428,7 @@ init:
     clear "FALCON 9".faults
 
 main:
-    set "FALCON 9".output = controller0.leftY scaled 0.25 default 0.0
+    set "FALCON 9".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0
     abort "FALCON 9".current > 35
     abort "FALCON 9".temperature > 80
     abort controller0.B
@@ -461,9 +483,8 @@ main:
 Keeping the first pass to `scaled` signal writes has a narrow implementation
 surface and avoids creating a general expression language too early.
 
-The tradeoff is that authors cannot directly express common input cleanup such
-as deadband or clamp. Those can be added later with explicit syntax and clear
-runtime semantics.
+The tradeoff is that authors still cannot directly express clamp or richer
+transform pipelines. Deadband is now supported as a small explicit extension.
 
 Requiring scale is slightly verbose, but it makes motor-output risk visible in
 the source file.
@@ -479,7 +500,6 @@ future design.
 
 Potential extensions:
 
-- optional `deadband <value>`
 - optional `clamp <min> <max>`
 - named transform profiles
 - boolean-to-number mapping
