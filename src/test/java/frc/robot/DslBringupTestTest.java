@@ -10,12 +10,19 @@ import frc.robot.manufacturers.DeviceRegistration;
 import frc.robot.manufacturers.DeviceRole;
 import frc.robot.manufacturers.DeviceTypeBucket;
 import frc.robot.manufacturers.ManufacturerGroup;
+import frc.robot.manufacturers.microsoft.MicrosoftDeviceGroup;
+import frc.robot.manufacturers.microsoft.XboxControllerDevice;
 import frc.robot.registry.RegistrationHeader;
 import frc.robot.tests.BringupTestContext;
 import frc.robot.tests.BringupTestResult;
 import frc.robot.tests.dsl.DslBringupTest;
 import frc.robot.tests.dsl.DslModels;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 class DslBringupTestTest {
@@ -26,11 +33,32 @@ class DslBringupTestTest {
   private static final String SOURCE = "test";
   private static final String OWNER = "unit";
   private static final String EMPTY = "";
+  private static final String CONTROLLER_LABEL = "controller0";
+  private static final String CONTROLLER_TYPE = "xboxController";
+  private static final String SIGNAL_A = "A";
+  private static final String SIGNAL_LEFT_Y = "leftY";
+  private static final String FIELD_DEVICE_REGISTRY = "DEVICE_REGISTRY";
+  private static final String CLASS_DEVICE_DEFINITION = "frc.robot.BringupUtil$DeviceDefinition";
+  private static final String FIELD_LABEL = "label";
+  private static final String FIELD_TYPE = "type";
   private static final int CAN_ID = 25;
   private static final double DUTY = 0.15;
   private static final double START_SEC = 10.0;
   private static final double UPDATE_SEC = 10.02;
   private static final double FINISH_SEC = 11.51;
+  private Map<String, Object> originalDeviceRegistry;
+
+  @AfterEach
+  void restoreDeviceRegistry() throws Exception {
+    XboxControllerDevice.setControllerInputs(Map.of());
+    if (originalDeviceRegistry == null) {
+      return;
+    }
+    Map<String, Object> registry = deviceRegistry();
+    registry.clear();
+    registry.putAll(originalDeviceRegistry);
+    originalDeviceRegistry = null;
+  }
 
   @Test
   void dslTestReappliesDutyUntilFinished() {
@@ -46,6 +74,32 @@ class DslBringupTestTest {
     assertEquals(2, device.dutyWrites);
     assertEquals(2, device.stopWrites);
     assertEquals(DUTY, device.lastDuty);
+  }
+
+  @Test
+  void dslTestReadsXboxControllerButtonSignal() {
+    seedConfiguredDeviceType(CONTROLLER_LABEL, CONTROLLER_TYPE);
+    BringupTestContext context = controllerContext();
+    XboxControllerDevice.setControllerInputs(Map.of(CONTROLLER_LABEL, Map.of(SIGNAL_A, 1.0)));
+    DslBringupTest test = new DslBringupTest(buildControllerButtonTest());
+
+    assertTrue(test.start(context, START_SEC));
+    test.update(context, UPDATE_SEC);
+
+    assertEquals(BringupTestResult.PASS, test.getResult());
+  }
+
+  @Test
+  void dslTestReadsXboxControllerAxisSignal() {
+    seedConfiguredDeviceType(CONTROLLER_LABEL, CONTROLLER_TYPE);
+    BringupTestContext context = controllerContext();
+    XboxControllerDevice.setControllerInputs(Map.of(CONTROLLER_LABEL, Map.of(SIGNAL_LEFT_Y, 0.7)));
+    DslBringupTest test = new DslBringupTest(buildControllerAxisTest());
+
+    assertTrue(test.start(context, START_SEC));
+    test.update(context, UPDATE_SEC);
+
+    assertEquals(BringupTestResult.PASS, test.getResult());
   }
 
   private static DslModels.DslNormalizedTest buildTest() {
@@ -73,6 +127,75 @@ class DslBringupTestTest {
     return test;
   }
 
+  private static DslModels.DslNormalizedTest buildControllerButtonTest() {
+    DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
+    test.name = "controller_button";
+    DslModels.DslDeviceRef device = new DslModels.DslDeviceRef();
+    device.name = CONTROLLER_LABEL;
+    test.devices.add(device);
+
+    DslModels.DslCondition success = new DslModels.DslCondition();
+    success.id = "success_1";
+    success.kind = "success";
+    success.text = "success controller0.A";
+    success.reference = reference(CONTROLLER_LABEL, SIGNAL_A);
+    test.main.successes.add(success);
+    return test;
+  }
+
+  private static DslModels.DslNormalizedTest buildControllerAxisTest() {
+    DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
+    test.name = "controller_axis";
+    DslModels.DslDeviceRef device = new DslModels.DslDeviceRef();
+    device.name = CONTROLLER_LABEL;
+    test.devices.add(device);
+
+    DslModels.DslCondition success = new DslModels.DslCondition();
+    success.id = "success_1";
+    success.kind = "success";
+    success.text = "success controller0.leftY > 0.5";
+    success.reference = reference(CONTROLLER_LABEL, SIGNAL_LEFT_Y);
+    success.operator = ">";
+    success.literal = numberLiteral(0.5);
+    test.main.successes.add(success);
+    return test;
+  }
+
+  private void seedConfiguredDeviceType(String label, String type) {
+    try {
+      Map<String, Object> registry = deviceRegistry();
+      if (originalDeviceRegistry == null) {
+        originalDeviceRegistry = new LinkedHashMap<>(registry);
+      }
+      Class<?> definitionClass = Class.forName(CLASS_DEVICE_DEFINITION);
+      Constructor<?> constructor = definitionClass.getDeclaredConstructor();
+      constructor.setAccessible(true);
+      Object definition = constructor.newInstance();
+      setField(definition, FIELD_LABEL, label);
+      setField(definition, FIELD_TYPE, type);
+      registry.put(normalizeKey(label), definition);
+    } catch (ReflectiveOperationException ex) {
+      throw new AssertionError(ex);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> deviceRegistry() throws ReflectiveOperationException {
+    Field field = BringupUtil.class.getDeclaredField(FIELD_DEVICE_REGISTRY);
+    field.setAccessible(true);
+    return (Map<String, Object>) field.get(null);
+  }
+
+  private static void setField(Object target, String name, Object value) throws ReflectiveOperationException {
+    Field field = target.getClass().getDeclaredField(name);
+    field.setAccessible(true);
+    field.set(target, value);
+  }
+
+  private static String normalizeKey(String value) {
+    return value == null ? EMPTY : value.trim().toUpperCase().replaceAll("[^A-Z0-9]+", EMPTY);
+  }
+
   private static DslModels.DslReference reference(String device, String signal) {
     DslModels.DslReference reference = new DslModels.DslReference();
     reference.device = device;
@@ -95,6 +218,21 @@ class DslBringupTestTest {
         new DeviceRegistration(header, VENDOR, DEVICE_TYPE, DEVICE_TYPE, DeviceRole.MOTOR, false, null);
     DeviceTypeBucket bucket = new DeviceTypeBucket(registration, List.of(device), false);
     return new BringupTestContext(List.of(new SingleGroup(header, bucket)));
+  }
+
+  private static BringupTestContext controllerContext() {
+    DeviceUnit device = new XboxControllerDevice(0, CONTROLLER_LABEL);
+    DeviceRegistration registration =
+        new DeviceRegistration(
+            XboxControllerDevice.HEADER,
+            MicrosoftDeviceGroup.VENDOR,
+            CONTROLLER_TYPE,
+            CONTROLLER_TYPE,
+            DeviceRole.MISC,
+            false,
+            null);
+    DeviceTypeBucket bucket = new DeviceTypeBucket(registration, List.of(device), false);
+    return new BringupTestContext(List.of(new SingleGroup(MicrosoftDeviceGroup.HEADER, bucket)));
   }
 
   private static final class RecordingDevice implements DeviceUnit {

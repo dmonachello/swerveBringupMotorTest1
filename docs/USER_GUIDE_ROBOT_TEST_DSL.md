@@ -160,6 +160,54 @@ These mean the same thing if the device name is valid both ways:
 lmtSw0.pressed
 ```
 
+### 5.1 Signal Catalog
+
+Purpose: list the device signals currently available to DSL authors.
+
+Use these signal names in explicit `device.signal` references.
+
+<!-- markdownlint-disable MD013 -->
+
+| Device type | Signal | Value type | Readable | Writable | Clearable | Safe value | Unsafe exit | Runtime support |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `motor` | `output` | number | no | yes | no | `0.0` | yes | yes |
+| `motor` | `current` | number | yes | no | no | none | no | yes |
+| `motor` | `temperature` | number | yes | no | no | none | no | yes |
+| `motor` | `velocity` | number | yes | no | no | none | no | yes |
+| `motor` | `position` | number | yes | no | no | none | no | yes |
+| `motor` | `faults` | boolean | no | no | yes | none | no | yes for `clear` |
+| `limitSwitch` | `pressed` | boolean | yes | no | no | none | no | yes |
+| `encoderExternal` | `position` | number | yes | no | no | none | no | yes |
+| `xboxController` | `A` | boolean | yes | no | no | none | no | yes |
+| `xboxController` | `B` | boolean | yes | no | no | none | no | yes |
+| `xboxController` | `leftY` | number | yes | no | no | none | no | yes |
+| `xboxController` | `rightY` | number | yes | no | no | none | no | yes |
+| `TestTimer` | `elapsed` | number | yes | no | no | none | no | yes |
+
+<!-- markdownlint-enable MD013 -->
+
+Notes:
+
+- `timer.elapsed` is built in and does not require a `device` declaration.
+- `motor.output` is the only writable signal currently defined.
+- `motor.faults` is clearable with `clear`.
+- `unsafe-exit` is currently allowed only for `motor.output`.
+- Controller signals use the live controller snapshots passed into the
+  robot-side test runtime.
+- Controllers must be defined as configured devices in `bringup_system.json`
+  and included in the active profile.
+- Controller labels normally use `controller0`, `controller1`, and so on.
+
+Example configured controller device:
+
+```json
+{
+  "label": "controller0",
+  "type": "xboxController",
+  "deviceInterface": "USB"
+}
+```
+
 ## 6. Phases
 
 ### 6.1 `init`
@@ -219,7 +267,6 @@ Examples:
 ```text
 set "FALCON 9".output = 0.15
 set "FALCON 9".output = 0.5
-set "FALCON 9".brake_mode = true
 ```
 
 Meaning by phase:
@@ -435,12 +482,12 @@ Default behavior:
 Example:
 
 ```text
-unsafe-exit "FALCON 9".brake_mode
+unsafe-exit "FALCON 9".output
 ```
 
 Meaning:
 
-- after `close`, do not apply final safe-state to `brake_mode`
+- after `close`, do not apply final safe-state to `output`
 
 Use this sparingly.
 
@@ -808,25 +855,25 @@ Meaning:
 
 - cleanup happens after the verdict is already determined
 
-### 13.11 Retain a signal after exit
+### 13.11 Retain motor output after exit
 
 ```text
-test "hold_brake_mode"
+test "retain_motor_output_advanced"
 device "FALCON 9"
-unsafe-exit "FALCON 9".brake_mode
-
-close:
-    set "FALCON 9".brake_mode = true
+unsafe-exit "FALCON 9".output
 
 main:
+    set "FALCON 9".output = 0.05
     until timer.elapsed >= 0.5
 ```
 
 Meaning:
 
 - test ends normally
-- `close` sets brake mode
-- final safe-state does not overwrite that signal
+- final safe-state does not stop motor output
+- the last commanded output may remain active after the test exits
+
+Do not use this for normal motor bringup tests.
 
 ### 13.12 Forever test with manual stop
 
@@ -875,6 +922,40 @@ main:
 Meaning:
 
 - stop when the timer expires or the switch is hit
+
+### 13.15 Controller button success
+
+```text
+test "operator_confirms_sensor"
+device "controller0"
+
+main:
+    success controller0.A
+    abort controller0.B
+    abort timer.elapsed >= 10.0
+```
+
+Meaning:
+
+- pass immediately when `controller0` button `A` is pressed
+- fail immediately when `controller0` button `B` is pressed
+- fail after 10 seconds if neither button is pressed
+
+### 13.16 Controller axis threshold
+
+```text
+test "operator_axis_threshold"
+device "controller0"
+
+main:
+    success controller0.leftY > 0.5
+    abort timer.elapsed >= 5.0
+```
+
+Meaning:
+
+- pass if the left Y axis rises above `0.5`
+- otherwise fail after 5 seconds
 
 ## 14. Common Authoring Mistakes
 

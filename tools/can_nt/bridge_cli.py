@@ -4744,21 +4744,21 @@ class BridgeCli:
         return {str(name): value for name, value in device_types.items() if isinstance(value, dict)}
 
     def _dsl_device_catalog(self, profile_name: str) -> Dict[str, Dict[str, object]]:
+        result: Dict[str, Dict[str, object]] = {}
         payload = self._local_root_payload if isinstance(self._local_root_payload, dict) else {}
         profiles = payload.get(KEY_PROFILES)
         devices = payload.get(KEY_DEVICES)
         if not isinstance(profiles, dict) or not isinstance(devices, list):
-            return {}
+            return result
         profile = profiles.get(profile_name)
         if not isinstance(profile, dict):
-            return {}
+            return result
         selected = profile.get(KEY_PROFILE_DEVICES, [])
         by_label = {
             str(item.get(KEY_LABEL)): item
             for item in devices
             if isinstance(item, dict) and isinstance(item.get(KEY_LABEL), str)
         }
-        result: Dict[str, Dict[str, object]] = {}
         if isinstance(selected, list):
             for label in selected:
                 if isinstance(label, str) and label in by_label:

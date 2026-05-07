@@ -1,5 +1,6 @@
 package frc.robot.manufacturers;
 
+import frc.robot.manufacturers.microsoft.MicrosoftDeviceGroup;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -27,7 +28,8 @@ public final class ManufacturerRegistry {
   private static final List<ManufacturerFactory> FACTORIES = List.of(
       new ManufacturerFactory("REV", RevDeviceGroup::new),
       new ManufacturerFactory("CTRE", CtreDeviceGroup::new),
-      new ManufacturerFactory("NI", NiDeviceGroup::new));
+      new ManufacturerFactory("NI", NiDeviceGroup::new),
+      new ManufacturerFactory("Microsoft", MicrosoftDeviceGroup::new));
 
   private ManufacturerRegistry() {
   }
