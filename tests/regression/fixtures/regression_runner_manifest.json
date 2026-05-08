@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "commands": {
+    "dsl-unit": {
+      "label": "dsl-unit",
+      "mode": "local",
+      "features": [
+        "dsl compiler",
+        "dsl validator",
+        "signal-driven set",
+        "deadband"
+      ],
+      "argv": [
+        "{python}",
+        "-m",
+        "unittest",
+        "tools.can_nt.tests.test_robot_test_dsl"
+      ]
+    },
+    "cli-unit": {
+      "label": "cli-unit",
+      "mode": "local",
+      "features": [
+        "dsl cli import/validate/show",
+        "controller device config",
+        "connected command dispatch"
+      ],
+      "argv": [
+        "{python}",
+        "-m",
+        "unittest",
+        "tools.can_nt.tests.test_bridge_cli_robot_test_dsl_cli"
+      ]
+    },
+    "java-unit": {
+      "label": "java-unit",
+      "mode": "local",
+      "features": [
+        "robot runtime",
+        "java unit surface"
+      ],
+      "argv": [
+        "{gradlew}",
+        "test"
+      ]
+    },
+    "java-dsl-unit": {
+      "label": "java-unit",
+      "mode": "local",
+      "features": [
+        "dsl runtime semantics",
+        "xbox device runtime",
+        "signal-driven set runtime",
+        "deadband runtime"
+      ],
+      "argv": [
+        "{gradlew}",
+        "test",
+        "--tests",
+        "frc.robot.DslBringupTestTest"
+      ]
+    },
+    "group-targeting-v1": {
+      "label": "group-targeting-v1",
+      "mode": "local",
+      "features": [
+        "group targeting v1",
+        "local group save",
+        "group rename/copy/clear"
+      ],
+      "argv": [
+        "{python}",
+        "{repo}/tools/can_nt/scripts/bridge_cli_v1_group_targeting_regression.py"
+      ]
+    },
+    "group-targeting-4m2g3t": {
+      "label": "group-targeting-4m2g3t",
+      "mode": "local",
+      "features": [
+        "group summary regression",
+        "dsl test import",
+        "full config save"
+      ],
+      "argv": [
+        "{python}",
+        "{repo}/tools/can_nt/scripts/bridge_cli_group_targeting_4m2g3t_regression.py"
+      ]
+    },
+    "topology-editor": {
+      "label": "topology-editor",
+      "mode": "local",
+      "features": [
+        "topology editor profile load",
+        "topology show metadata",
+        "topology fixture validation"
+      ],
+      "argv": [
+        "{python}",
+        "{repo}/tools/can_nt/scripts/topology_editor_regression.py"
+      ]
+    },
+    "changelog-guard": {
+      "label": "changelog-guard",
+      "mode": "local",
+      "features": [
+        "changelog publication policy",
+        "major push guard"
+      ],
+      "argv": [
+        "{python}",
+        "{repo}/tools/can_nt/scripts/changelog_guard.py"
+      ]
+    },
+    "robot-non-motion": {
+      "label": "robot-non-motion",
+      "mode": "connected",
+      "features": [
+        "robot tcp ui",
+        "connected non-motion workflow"
+      ],
+      "argv": [
+        "{python}",
+        "{repo}/tools/can_nt/scripts/bridge_cli_robot_non_motion_regression.py",
+        "--rio",
+        "{rio}"
+      ]
+    }
+  },
+  "suites": {
+    "dsl": [
+      "dsl-unit",
+      "java-dsl-unit"
+    ],
+    "cli": [
+      "cli-unit",
+      "group-targeting-v1",
+      "group-targeting-4m2g3t"
+    ],
+    "java": [
+      "java-unit"
+    ],
+    "topology": [
+      "topology-editor"
+    ],
+    "changelog": [
+      "changelog-guard"
+    ],
+    "local": [
+      "dsl-unit",
+      "cli-unit",
+      "java-unit",
+      "group-targeting-v1",
+      "group-targeting-4m2g3t",
+      "topology-editor",
+      "changelog-guard"
+    ],
+    "robot-non-motion": [
+      "robot-non-motion"
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "suite": "cli",
+  "results": [
+    {
+      "commandId": "cli-unit",
+      "label": "cli-unit",
+      "mode": "local",
+      "argv": [
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-m",
+        "unittest",
+        "tools.can_nt.tests.test_bridge_cli_robot_test_dsl_cli"
+      ],
+      "expectedExitCode": 0
+    },
+    {
+      "commandId": "group-targeting-v1",
+      "label": "group-targeting-v1",
+      "mode": "local",
+      "argv": [
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "C:\\Users\\dmona\\swerveBringupMotorTest\\swerveBringupMotorTest1/tools/can_nt/scripts/bridge_cli_v1_group_targeting_regression.py"
+      ],
+      "expectedExitCode": 0
+    },
+    {
+      "commandId": "group-targeting-4m2g3t",
+      "label": "group-targeting-4m2g3t",
+      "mode": "local",
+      "argv": [
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "C:\\Users\\dmona\\swerveBringupMotorTest\\swerveBringupMotorTest1/tools/can_nt/scripts/bridge_cli_group_targeting_4m2g3t_regression.py"
+      ],
+      "expectedExitCode": 0
+    }
+  ]
+}

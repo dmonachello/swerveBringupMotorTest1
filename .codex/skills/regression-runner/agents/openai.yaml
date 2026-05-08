@@ -1,0 +1,4 @@
+version: 1
+display_name: Regression Runner
+short_description: Run the repo's unified regression bundles.
+default_prompt: Run the appropriate regression suite for the current change, summarize failures, and distinguish new breakage from existing red regressions when possible.

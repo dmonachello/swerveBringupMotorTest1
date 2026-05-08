@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "suite": "java",
+  "results": [
+    {
+      "commandId": "java-unit",
+      "label": "java-unit",
+      "mode": "local",
+      "argv": [
+        "C:\\Users\\dmona\\swerveBringupMotorTest\\swerveBringupMotorTest1\\gradlew.bat",
+        "test"
+      ],
+      "expectedExitCode": 0
+    }
+  ]
+}

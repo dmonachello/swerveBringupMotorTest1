@@ -1,0 +1,94 @@
+{
+  "schema_version": 4,
+  "data_version": "2026-05-08_topology_fixture",
+  "data_hash": "69e83b433ef1e5ee28076eddbb30e11a4a76b075aa076b4c928afdcef2864114",
+  "default_profile": "demo_topology",
+  "profiles": {
+    "demo_topology": {
+      "devices": [
+        "roborio",
+        "PDP",
+        "motor1"
+      ]
+    }
+  },
+  "devices": [
+    {
+      "label": "roborio",
+      "deviceInterface": "CAN",
+      "manufacturer": 1,
+      "deviceType": 1,
+      "id": 0,
+      "model": "NI roboRIO"
+    },
+    {
+      "label": "PDP",
+      "deviceInterface": "CAN",
+      "manufacturer": 4,
+      "deviceType": 8,
+      "id": 0,
+      "model": "CTRE PDP"
+    },
+    {
+      "label": "motor1",
+      "deviceInterface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 25,
+      "model": "REV NEO"
+    }
+  ],
+  "diagram": {
+    "profiles": {
+      "demo_topology": {
+        "nodes": [
+          {
+            "key": 1,
+            "label": "roborio",
+            "bus": 0,
+            "row": 0,
+            "x": 10.0
+          },
+          {
+            "key": 2,
+            "label": "PDP",
+            "bus": 0,
+            "row": 0,
+            "x": 20.0
+          },
+          {
+            "key": 3,
+            "label": "motor1",
+            "bus": 0,
+            "row": 0,
+            "x": 30.0
+          }
+        ],
+        "neighborLinks": [
+          {
+            "a": 1,
+            "b": 2
+          },
+          {
+            "a": 2,
+            "b": 3
+          }
+        ],
+        "neighborPorts": [
+          {
+            "node": 2,
+            "port": "left",
+            "neighbor": 1,
+            "neighborPort": "right"
+          },
+          {
+            "node": 2,
+            "port": "right",
+            "neighbor": 3,
+            "neighborPort": "left"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "generatedAt": null,
   "byProfile": {
-    "robot": {
+    "dsl_demo_050426": {
       "groups": [
         {
           "name": "intake_v2",
@@ -21,7 +21,10 @@
         "device": "",
         "enabled": false
       },
-      "tests": {}
+      "tests": {
+        "default_test_set": "default",
+        "test_sets": {}
+      }
     }
   }
 }

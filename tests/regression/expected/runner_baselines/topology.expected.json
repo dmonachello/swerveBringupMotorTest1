@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "suite": "topology",
+  "results": [
+    {
+      "commandId": "topology-editor",
+      "label": "topology-editor",
+      "mode": "local",
+      "argv": [
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "C:\\Users\\dmona\\swerveBringupMotorTest\\swerveBringupMotorTest1/tools/can_nt/scripts/topology_editor_regression.py"
+      ],
+      "features": [
+        "topology editor profile load",
+        "topology show metadata",
+        "deploy config topology validation"
+      ],
+      "expectedExitCode": 0
+    }
+  ]
+}

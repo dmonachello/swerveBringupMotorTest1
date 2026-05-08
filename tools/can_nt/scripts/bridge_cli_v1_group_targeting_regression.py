@@ -89,7 +89,7 @@ EXPECTED_CONFIG_RELATIVE_PATH = Path(
 KEY_SCHEMA_VERSION = "schemaVersion"
 KEY_GENERATED_AT = "generatedAt"
 KEY_BY_PROFILE = "byProfile"
-KEY_ROBOT_PROFILE = "robot"
+KEY_DEFAULT_PROFILE = "default_profile"
 KEY_GROUPS = "groups"
 KEY_NAME = "name"
 KEY_ENABLED = "enabled"
@@ -216,10 +216,13 @@ def _normalize_group_payload(payload: object) -> object:
     by_profile = payload.get(KEY_BY_PROFILE)
     if not isinstance(by_profile, dict):
         return payload
-    robot = by_profile.get(KEY_ROBOT_PROFILE)
-    if not isinstance(robot, dict):
+    profile_name = next(iter(sorted(by_profile.keys())), "")
+    if not profile_name:
         return payload
-    groups_raw = robot.get(KEY_GROUPS)
+    profile_payload = by_profile.get(profile_name)
+    if not isinstance(profile_payload, dict):
+        return payload
+    groups_raw = profile_payload.get(KEY_GROUPS)
     groups = groups_raw if isinstance(groups_raw, list) else []
     normalized_groups = []
     for item in groups:
@@ -247,14 +250,17 @@ def _normalize_group_payload(payload: object) -> object:
             }
         )
     normalized_groups.sort(key=lambda value: value.get(KEY_NAME, ""))
-    selected = robot.get(KEY_SELECTED_DEVICE)
+    selected = profile_payload.get(KEY_SELECTED_DEVICE)
+    tests_payload = profile_payload.get(KEY_TESTS)
+    normalized_tests = tests_payload if isinstance(tests_payload, dict) else {}
     return {
         KEY_SCHEMA_VERSION: payload.get(KEY_SCHEMA_VERSION),
         KEY_GENERATED_AT: payload.get(KEY_GENERATED_AT),
         KEY_BY_PROFILE: {
-            KEY_ROBOT_PROFILE: {
+            profile_name: {
                 KEY_GROUPS: normalized_groups,
                 KEY_SELECTED_DEVICE: selected if isinstance(selected, dict) else {},
+                KEY_TESTS: normalized_tests,
             }
         },
     }
@@ -490,4 +496,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "suite": "changelog",
+  "results": [
+    {
+      "commandId": "changelog-guard",
+      "label": "changelog-guard",
+      "mode": "local",
+      "argv": [
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "C:\\Users\\dmona\\swerveBringupMotorTest\\swerveBringupMotorTest1/tools/can_nt/scripts/changelog_guard.py"
+      ],
+      "features": [
+        "changelog publication policy",
+        "major push guard"
+      ],
+      "expectedExitCode": 0
+    }
+  ]
+}
