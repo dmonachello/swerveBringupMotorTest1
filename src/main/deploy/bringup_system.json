@@ -5,9 +5,10 @@
       "devices": [
         "FALCON 9",
         "SPARKMAX/NEO 25",
-        "lmtSw0"
-      ],
-      "dslTestSet": "default"
+        "lmtSw0",
+        "roborio",
+        "PDP"
+      ]
     }
   },
   "devices": [
@@ -35,15 +36,199 @@
       "deviceInterface": "DIO",
       "dio": 0,
       "invert": false
+    },
+    {
+      "label": "controller0",
+      "manufacturer": 1,
+      "deviceType": 1,
+      "id": 0,
+      "model": "Xbox Controller",
+      "type": "xboxController",
+      "deviceInterface": "USB"
+    },
+    {
+      "label": "roborio",
+      "deviceInterface": "CAN",
+      "id": 0,
+      "terminator": true,
+      "attachments": [
+        "lmtSw0"
+      ]
+    },
+    {
+      "label": "PDP",
+      "deviceInterface": "CAN",
+      "id": 1,
+      "terminator": true
     }
   ],
   "diagram": {
     "profiles": {
-      "dsl_demo_050426": {}
+      "dsl_demo_050426": {
+        "busOffsets": [
+          0.0
+        ],
+        "busCount": 1,
+        "busSpacing": 160.0,
+        "busLefts": [
+          40.0
+        ],
+        "busRights": [
+          816.9298245614034
+        ],
+        "busConnectors": [],
+        "panY": -0.0,
+        "zoom": 0.7073936314977775,
+        "dioFreeYMode": "rail",
+        "nodes": [
+          {
+            "nodeType": "device",
+            "key": 1,
+            "category": "falcons",
+            "label": "FALCON 9",
+            "id": 9,
+            "bus": 0,
+            "row": 0,
+            "x": 428.2894736842106,
+            "freeY": -66.77631578947368,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 2,
+            "category": "neos",
+            "label": "SPARKMAX/NEO 25",
+            "id": 25,
+            "bus": 0,
+            "row": 0,
+            "x": 600.0,
+            "freeY": -57.26461988304094,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 3,
+            "category": "devices",
+            "label": "lmtSw0",
+            "id": -1,
+            "bus": 0,
+            "row": 0,
+            "x": 278.2894736842106,
+            "freeY": -11.25,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 4,
+            "category": "roborio",
+            "label": "roborio",
+            "id": 0,
+            "bus": 0,
+            "row": 0,
+            "x": 0.0,
+            "freeY": null,
+            "freeYRelative": false,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 5,
+            "category": "pdp",
+            "label": "PDP",
+            "id": 1,
+            "bus": 0,
+            "row": 1,
+            "x": 696.9298245614034,
+            "freeY": 94.75877192982456,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          }
+        ],
+        "ethernetLinks": [],
+        "canLinks": [],
+        "deviceLinks": [],
+        "attachmentLinks": [
+          {
+            "device": 4,
+            "attachment": 3
+          }
+        ],
+        "dioLinks": [
+          {
+            "roborio": 4,
+            "device": 3
+          }
+        ],
+        "neighborLinks": [
+          {
+            "a": 1,
+            "b": 4
+          },
+          {
+            "a": 1,
+            "b": 2
+          },
+          {
+            "a": 2,
+            "b": 5
+          }
+        ],
+        "neighborPorts": [
+          {
+            "node": 4,
+            "port": "right",
+            "neighbor": 1,
+            "neighborPort": "left"
+          },
+          {
+            "node": 1,
+            "port": "left",
+            "neighbor": 4,
+            "neighborPort": "right"
+          },
+          {
+            "node": 1,
+            "port": "right",
+            "neighbor": 2,
+            "neighborPort": "left"
+          },
+          {
+            "node": 2,
+            "port": "left",
+            "neighbor": 1,
+            "neighborPort": "right"
+          },
+          {
+            "node": 2,
+            "port": "right",
+            "neighbor": 5,
+            "neighborPort": "left"
+          },
+          {
+            "node": 5,
+            "port": "left",
+            "neighbor": 2,
+            "neighborPort": "right"
+          }
+        ]
+      }
     }
   },
-  "data_version": "2026-05-06_191354",
-  "data_hash": "6f44c29b0f6bac5a5389c67726205afaf14a0396de8b5f6d3a3504bc7785a72e",
+  "data_version": "2026-05-07_013734",
+  "data_hash": "29f5d81652adc475ab4246633b3a9df8771927e7171370b19c7164d55eeaf0f2",
   "default_profile": "dsl_demo_050426",
   "bridgeConfig": {
     "schemaVersion": 2,
@@ -67,7 +252,8 @@
     "defaultSet": "default",
     "testSets": {
       "default": [
-        "spin_up_motor1"
+        "spin_up_motor1",
+        "spin_up_motor1_controller_leftY"
       ]
     },
     "testsByName": {
@@ -104,6 +290,99 @@
                   "value": 0.5,
                   "valueType": "number"
                 }
+              }
+            ],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [
+              {
+                "id": "until_1",
+                "kind": "until",
+                "text": "until timer.elapsed >= 3.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "operator": ">=",
+                "literal": {
+                  "value": 3.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "requires": [
+              {
+                "id": "require_1",
+                "kind": "require",
+                "text": "require \"FALCON 9\".velocity > 1000",
+                "reference": {
+                  "device": "FALCON 9",
+                  "signal": "velocity",
+                  "text": "FALCON 9.velocity"
+                },
+                "operator": ">",
+                "literal": {
+                  "value": 1000,
+                  "valueType": "number"
+                }
+              }
+            ]
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        }
+      },
+      "spin_up_motor1_controller_leftY": {
+        "source": "test \"spin_up_motor1_controller_leftY\"\ndevice \"FALCON 9\"\ndevice \"controller0\"\n\nmain:\n    set \"FALCON 9\".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n    until timer.elapsed >= 3.0\n    require \"FALCON 9\".velocity > 1000\n\n",
+        "sourceHash": "a92026f022ce18145d29487d0f3365dd2fbdf8a633c1674aac371c118cac2413",
+        "normalized": {
+          "name": "spin_up_motor1_controller_leftY",
+          "devices": [
+            {
+              "name": "FALCON 9"
+            },
+            {
+              "name": "controller0"
+            }
+          ],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "set_1",
+                "text": "set \"FALCON 9\".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0",
+                "target": {
+                  "device": "FALCON 9",
+                  "signal": "output",
+                  "text": "FALCON 9.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "leftY",
+                  "text": "controller0.leftY"
+                },
+                "scale": 0.25,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                },
+                "deadband": 0.08
               }
             ],
             "clears": [],

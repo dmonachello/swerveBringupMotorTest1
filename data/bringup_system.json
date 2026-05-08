@@ -6,9 +6,9 @@
         "FALCON 9",
         "SPARKMAX/NEO 25",
         "lmtSw0",
-        "controller0"
-      ],
-      "dslTestSet": "default"
+        "roborio",
+        "PDP"
+      ]
     }
   },
   "devices": [
@@ -45,15 +45,190 @@
       "model": "Xbox Controller",
       "type": "xboxController",
       "deviceInterface": "USB"
+    },
+    {
+      "label": "roborio",
+      "deviceInterface": "CAN",
+      "id": 0,
+      "terminator": true,
+      "attachments": [
+        "lmtSw0"
+      ]
+    },
+    {
+      "label": "PDP",
+      "deviceInterface": "CAN",
+      "id": 1,
+      "terminator": true
     }
   ],
   "diagram": {
     "profiles": {
-      "dsl_demo_050426": {}
+      "dsl_demo_050426": {
+        "busOffsets": [
+          0.0
+        ],
+        "busCount": 1,
+        "busSpacing": 160.0,
+        "busLefts": [
+          40.0
+        ],
+        "busRights": [
+          816.9298245614034
+        ],
+        "busConnectors": [],
+        "panY": -0.0,
+        "zoom": 0.7073936314977775,
+        "dioFreeYMode": "rail",
+        "nodes": [
+          {
+            "nodeType": "device",
+            "key": 1,
+            "category": "falcons",
+            "label": "FALCON 9",
+            "id": 9,
+            "bus": 0,
+            "row": 0,
+            "x": 428.2894736842106,
+            "freeY": -66.77631578947368,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 2,
+            "category": "neos",
+            "label": "SPARKMAX/NEO 25",
+            "id": 25,
+            "bus": 0,
+            "row": 0,
+            "x": 600.0,
+            "freeY": -57.26461988304094,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 3,
+            "category": "devices",
+            "label": "lmtSw0",
+            "id": -1,
+            "bus": 0,
+            "row": 0,
+            "x": 278.2894736842106,
+            "freeY": -11.25,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 4,
+            "category": "roborio",
+            "label": "roborio",
+            "id": 0,
+            "bus": 0,
+            "row": 0,
+            "x": 0.0,
+            "freeY": null,
+            "freeYRelative": false,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          },
+          {
+            "nodeType": "device",
+            "key": 5,
+            "category": "pdp",
+            "label": "PDP",
+            "id": 1,
+            "bus": 0,
+            "row": 1,
+            "x": 696.9298245614034,
+            "freeY": 94.75877192982456,
+            "freeYRelative": true,
+            "scale": 1.0,
+            "tags": [],
+            "profileVisible": true
+          }
+        ],
+        "ethernetLinks": [],
+        "canLinks": [],
+        "deviceLinks": [],
+        "attachmentLinks": [
+          {
+            "device": 4,
+            "attachment": 3
+          }
+        ],
+        "dioLinks": [
+          {
+            "roborio": 4,
+            "device": 3
+          }
+        ],
+        "neighborLinks": [
+          {
+            "a": 1,
+            "b": 4
+          },
+          {
+            "a": 1,
+            "b": 2
+          },
+          {
+            "a": 2,
+            "b": 5
+          }
+        ],
+        "neighborPorts": [
+          {
+            "node": 4,
+            "port": "right",
+            "neighbor": 1,
+            "neighborPort": "left"
+          },
+          {
+            "node": 1,
+            "port": "left",
+            "neighbor": 4,
+            "neighborPort": "right"
+          },
+          {
+            "node": 1,
+            "port": "right",
+            "neighbor": 2,
+            "neighborPort": "left"
+          },
+          {
+            "node": 2,
+            "port": "left",
+            "neighbor": 1,
+            "neighborPort": "right"
+          },
+          {
+            "node": 2,
+            "port": "right",
+            "neighbor": 5,
+            "neighborPort": "left"
+          },
+          {
+            "node": 5,
+            "port": "left",
+            "neighbor": 2,
+            "neighborPort": "right"
+          }
+        ]
+      }
     }
   },
-  "data_version": "2026-05-06_233408",
-  "data_hash": "54c2d897f5d70732c288e29bd2b994e31086ce9952464820bebd23e4d1053e1e",
+  "data_version": "2026-05-07_013734",
+  "data_hash": "29f5d81652adc475ab4246633b3a9df8771927e7171370b19c7164d55eeaf0f2",
   "default_profile": "dsl_demo_050426",
   "bridgeConfig": {
     "schemaVersion": 2,

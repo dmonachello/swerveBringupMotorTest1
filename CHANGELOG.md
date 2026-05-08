@@ -22,6 +22,8 @@ All notable user-facing changes are documented in this file.
   config save paths.
 - Tightened DSL host validation so malformed numeric `set` syntax is rejected
   before runtime.
+- Synced the checked-in bringup config copies to include controller-aware DSL
+  test content and richer topology data for the demo profile.
 
 ## 2026-05-06
 
