@@ -221,6 +221,41 @@ class RobotTestDslTests(unittest.TestCase):
         self.assertFalse(result.ok())
         self.assertTrue(any("deadband out of range" in issue.message for issue in result.errors))
 
+    def test_validate_store_rejects_malformed_signal_set_syntax(self) -> None:
+        source = '\n'.join(
+            [
+                'test "bad_drive"',
+                'device "motor1"',
+                "main:",
+                "  set motor1.output = 0.5 deadband 0.08 scaled 0.25 default 0.0",
+                "  until timer.elapsed >= 1.0",
+            ]
+        )
+        store = RobotTestDslStore(
+            tests_by_name={
+                "bad_drive": RobotTestDslEntry(
+                    name="bad_drive",
+                    source=source,
+                    normalized=compile_source("bad_drive", source),
+                    source_hash=source_hash(source),
+                )
+            },
+            test_sets={"default": ["bad_drive"]},
+            default_set="default",
+        )
+        result = validate_store(
+            store,
+            device_catalog={"motor1": {"type": "motor"}},
+            signal_catalog={
+                "motor": {
+                    "output": {"writable": True, "safeValue": 0.0, "valueType": "number"},
+                },
+                "TestTimer": {"elapsed": {"writable": False, "valueType": "number"}},
+            },
+        )
+        self.assertFalse(result.ok())
+        self.assertTrue(any("set literal must be numeric" in issue.message for issue in result.errors))
+
 
 if __name__ == "__main__":
     unittest.main()

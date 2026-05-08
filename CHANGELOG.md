@@ -20,6 +20,8 @@ All notable user-facing changes are documented in this file.
   each regression command as it runs.
 - Updated stale group-targeting regression scripts to the current DSL and
   config save paths.
+- Tightened DSL host validation so malformed numeric `set` syntax is rejected
+  before runtime.
 
 ## 2026-05-06
 

@@ -185,6 +185,8 @@ def _validate_set_statement(
     if statement.source is None:
         if statement.literal is None:
             result.errors.append(ValidationIssue("set statement missing literal", test_name=test_name, field=statement.text))
+        elif target_meta.get("valueType") == SIGNAL_CATEGORY_NUMBER and statement.literal.value_type != SIGNAL_CATEGORY_NUMBER:
+            result.errors.append(ValidationIssue("set literal must be numeric", test_name=test_name, field=statement.text))
         if statement.deadband is not None:
             result.errors.append(ValidationIssue("deadband not allowed on literal set", test_name=test_name, field=statement.text))
         return
