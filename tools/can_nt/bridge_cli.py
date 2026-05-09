@@ -202,7 +202,6 @@ from tools.common.profile_constants import (
     KEY_DSL_TEST_SETS,
     KEY_DSL_TESTS,
     KEY_DSL_TESTS_BY_NAME,
-    KEY_DIO,
     KEY_DEFAULT_PROFILE,
     KEY_DEVICE_TYPE,
     KEY_DEVICES,
@@ -254,6 +253,7 @@ from tools.common.profile_constants import (
     INTERFACE_DIO,
     INTERFACE_INTERNAL,
     INTERFACE_PWM,
+    INTERFACE_USB,
     KEY_ATTACHMENTS,
     KEY_BUS,
     KEY_TERMINATOR,
@@ -821,7 +821,6 @@ PROFILE_EXPORT_FIELD_ORDER = (
     KEY_ID,
     KEY_MODEL,
     KEY_TYPE,
-    KEY_DIO,
     KEY_INVERT,
     KEY_PWM,
     KEY_ANALOG,
@@ -1442,6 +1441,7 @@ SOURCE_NAME_CONFIG = "config"
 SOURCE_NAME_TESTS = "tests"
 SOURCE_NAME_BINDINGS = "bindings"
 SOURCE_NAME_CAN_MAPPINGS = "canMappings"
+TOPOLOGY_SOURCE_LOCAL = "local"
 AUDIT_ACTION_SAVE = "save"
 AUDIT_ACTION_RECOVER = "recover"
 AUDIT_ACTION_REPAIR = "repair"
@@ -1573,7 +1573,6 @@ FIELD_DEVICE_INTERFACE = KEY_INTERFACE
 FIELD_LABEL = "label"
 FIELD_TYPE = "type"
 FIELD_MODEL = "model"
-FIELD_DIO = "dio"
 FIELD_INVERT = "invert"
 FIELD_PWM = "pwm"
 FIELD_ANALOG = "analog"
@@ -1597,6 +1596,7 @@ DEVICE_INTERFACE_ALLOWED = {
     INTERFACE_PWM,
     INTERFACE_ANALOG,
     INTERFACE_INTERNAL,
+    INTERFACE_USB,
 }
 
 DEVICE_FIELDS_PROFILE = {
@@ -1606,7 +1606,6 @@ DEVICE_FIELDS_PROFILE = {
     FIELD_ID,
     FIELD_MODEL,
     FIELD_TYPE,
-    FIELD_DIO,
     FIELD_INVERT,
     FIELD_PWM,
     FIELD_ANALOG,
@@ -1626,7 +1625,6 @@ DEVICE_FIELD_TYPES = {
     FIELD_ID: DEVICE_FIELD_INT,
     FIELD_MODEL: DEVICE_FIELD_STR,
     FIELD_TYPE: DEVICE_FIELD_STR,
-    FIELD_DIO: DEVICE_FIELD_INT,
     FIELD_INVERT: DEVICE_FIELD_BOOL,
     FIELD_PWM: DEVICE_FIELD_INT,
     FIELD_ANALOG: DEVICE_FIELD_INT,
@@ -1643,10 +1641,11 @@ BOOL_TRUE_VALUES = {"true", "on", "1", "yes"}
 BOOL_FALSE_VALUES = {"false", "off", "0", "no"}
 
 DEVICE_REQUIRED_CAN = (FIELD_DEVICE_INTERFACE, FIELD_MANUFACTURER, FIELD_DEVICE_TYPE, FIELD_ID)
-DEVICE_REQUIRED_DIO = (FIELD_DEVICE_INTERFACE, FIELD_DIO, FIELD_INVERT)
+DEVICE_REQUIRED_DIO = (FIELD_DEVICE_INTERFACE, FIELD_ID, FIELD_INVERT)
 DEVICE_REQUIRED_PWM = (FIELD_DEVICE_INTERFACE, FIELD_PWM)
 DEVICE_REQUIRED_ANALOG = (FIELD_DEVICE_INTERFACE, FIELD_ANALOG)
 DEVICE_REQUIRED_INTERNAL = (FIELD_DEVICE_INTERFACE,)
+DEVICE_REQUIRED_USB = (FIELD_DEVICE_INTERFACE, FIELD_ID)
 
 TEST_TYPE_JOYSTICK = "joystick"
 TEST_TYPE_BUTTON = "button"
@@ -2533,7 +2532,11 @@ class BridgeCli:
                 KEY_DEFAULT_PROFILE: EMPTY_STRING,
                 KEY_PROFILES: {},
                 KEY_DEVICES: [],
-                KEY_DIAGRAM: {KEY_DIAGRAM_PROFILES: {}},
+                KEY_TOPOLOGY: {
+                    KEY_TOPOLOGY_VERSION: COUNT_ONE,
+                    KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                    KEY_TOPOLOGY_PROFILES: {},
+                },
             }
             self._local_root_hash = None
             self._local_devices_locked = True
@@ -2554,10 +2557,14 @@ class BridgeCli:
         elif not isinstance(devices, list):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        diagram = payload.get(KEY_DIAGRAM)
-        if diagram is None:
-            payload[KEY_DIAGRAM] = {KEY_DIAGRAM_PROFILES: {}}
-        elif not isinstance(diagram, dict):
+        topology_root = payload.get(KEY_TOPOLOGY)
+        if topology_root is None:
+            payload[KEY_TOPOLOGY] = {
+                KEY_TOPOLOGY_VERSION: COUNT_ONE,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {},
+            }
+        elif not isinstance(topology_root, dict):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         return StatusResult(code=SS__NORMAL)
@@ -2597,13 +2604,27 @@ class BridgeCli:
         default_profile = payload.get(KEY_DEFAULT_PROFILE)
         if not isinstance(default_profile, str) or not default_profile.strip():
             payload[KEY_DEFAULT_PROFILE] = key
-        diagram = payload.get(KEY_DIAGRAM)
-        if isinstance(diagram, dict):
-            diag_profiles = diagram.get(KEY_DIAGRAM_PROFILES)
-            if not isinstance(diag_profiles, dict):
-                diag_profiles = {}
-                diagram[KEY_DIAGRAM_PROFILES] = diag_profiles
-            diag_profiles.setdefault(key, {})
+        topology_root = payload.get(KEY_TOPOLOGY)
+        if not isinstance(topology_root, dict):
+            topology_root = {
+                KEY_TOPOLOGY_VERSION: COUNT_ONE,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {},
+            }
+            payload[KEY_TOPOLOGY] = topology_root
+        topology_profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
+        if not isinstance(topology_profiles, dict):
+            topology_profiles = {}
+            topology_root[KEY_TOPOLOGY_PROFILES] = topology_profiles
+        topology_profiles.setdefault(
+            key,
+            {
+                KEY_TOPOLOGY_VERSION: COUNT_ONE,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_NODES: [],
+                KEY_TOPOLOGY_EDGES: [],
+            },
+        )
         self._profiles_dirty = True
         self._local_devices_locked = True
         self._groups_profile = key
@@ -2639,11 +2660,11 @@ class BridgeCli:
             by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
             if isinstance(by_profile, dict):
                 by_profile.pop(key, None)
-        diagram = payload.get(KEY_DIAGRAM)
-        if isinstance(diagram, dict):
-            diag_profiles = diagram.get(KEY_DIAGRAM_PROFILES)
-            if isinstance(diag_profiles, dict):
-                diag_profiles.pop(key, None)
+        topology_root = payload.get(KEY_TOPOLOGY)
+        if isinstance(topology_root, dict):
+            topology_profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
+            if isinstance(topology_profiles, dict):
+                topology_profiles.pop(key, None)
         default_profile = payload.get(KEY_DEFAULT_PROFILE)
         if default_profile == key:
             payload.pop(KEY_DEFAULT_PROFILE, None)
@@ -2670,7 +2691,11 @@ class BridgeCli:
             KEY_SCHEMA_VERSION: PROFILE_SCHEMA_VERSION,
             KEY_PROFILES: {},
             KEY_DEVICES: [],
-            KEY_DIAGRAM: {KEY_DIAGRAM_PROFILES: {}},
+            KEY_TOPOLOGY: {
+                KEY_TOPOLOGY_VERSION: COUNT_ONE,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {},
+            },
             KEY_DATA_VERSION: timestamp_version(),
         }
         try:
@@ -11078,41 +11103,53 @@ class BridgeCli:
         payload = self._local_root_payload
         if not isinstance(payload, dict):
             return
-        profiles, profile_name = self._profiles_root_and_name()
-        if profiles is None or profile_name is None:
+        label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+        if not label:
             return
-        profile = profiles.get(profile_name)
-        if not isinstance(profile, dict):
+        topology_root = payload.get(KEY_TOPOLOGY)
+        if not isinstance(topology_root, dict):
             return
-        category = self._find_entry_category(profile, entry)
-        if category is None:
+        topology_profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
+        if not isinstance(topology_profiles, dict):
             return
-        device_id = entry.get("id")
-        if device_id is None:
-            return
-        diagram = payload.get("diagram")
-        if not isinstance(diagram, dict):
-            return
-        diag_profiles = diagram.get("profiles")
-        if not isinstance(diag_profiles, dict):
-            return
-        diag_profile = diag_profiles.get(profile_name)
-        if not isinstance(diag_profile, dict):
-            return
-        nodes = diag_profile.get("nodes")
-        if not isinstance(nodes, list):
-            return
-        removed = False
-        for node in list(nodes):
-            if not isinstance(node, dict):
+        for topology_profile in topology_profiles.values():
+            if not isinstance(topology_profile, dict):
                 continue
-            if node.get("nodeType") != "device":
+            nodes = topology_profile.get(KEY_TOPOLOGY_NODES)
+            if not isinstance(nodes, list):
                 continue
-            if node.get("category") == category and node.get("id") == device_id:
-                nodes.remove(node)
-                removed = True
-        if removed:
-            diag_profile["nodes"] = nodes
+            filtered: List[Dict[str, object]] = []
+            removed_keys: set[int] = set()
+            for node in nodes:
+                if not isinstance(node, dict):
+                    filtered.append(node)
+                    continue
+                if node.get(KEY_NODE_TYPE) != NODE_TYPE_DEVICE:
+                    filtered.append(node)
+                    continue
+                device_ref = str(node.get(KEY_DEVICE_REF, EMPTY_STRING)).strip()
+                if device_ref.lower() == label.lower():
+                    key_value = node.get(KEY_NODE_KEY)
+                    if isinstance(key_value, int):
+                        removed_keys.add(key_value)
+                    continue
+                filtered.append(node)
+            if len(filtered) == len(nodes):
+                continue
+            topology_profile[KEY_TOPOLOGY_NODES] = filtered
+            edges = topology_profile.get(KEY_TOPOLOGY_EDGES)
+            if isinstance(edges, list) and removed_keys:
+                topology_profile[KEY_TOPOLOGY_EDGES] = [
+                    edge
+                    for edge in edges
+                    if not (
+                        isinstance(edge, dict)
+                        and (
+                            edge.get(KEY_FROM_NODE) in removed_keys
+                            or edge.get(KEY_TO_NODE) in removed_keys
+                        )
+                    )
+                ]
 
     def _rename_profiles_device(self, old: str, new: str) -> StatusResult:
         """
@@ -11155,7 +11192,7 @@ class BridgeCli:
         groups_count, selected_count = self._update_bridge_groups_label(old, new_label)
         rename_counts[RENAME_REF_GROUPS] = groups_count
         rename_counts[RENAME_REF_SELECTED] = selected_count
-        if self._update_diagram_label(entry, new_label):
+        if self._update_diagram_label(old, new_label):
             rename_counts[RENAME_REF_DIAGRAM] = COUNT_ONE
         test_counts = self._update_tests_label_refs(old, new_label)
         if test_counts:
@@ -11212,43 +11249,34 @@ class BridgeCli:
             self._mark_groups_dirty()
         return groups_changed, selected_changed
 
-    def _update_diagram_label(self, entry: Dict[str, object], new_label: str) -> bool:
+    def _update_diagram_label(self, old_label: str, new_label: str) -> bool:
         payload = self._local_root_payload
         if not isinstance(payload, dict):
             return False
-        profiles, profile_name = self._profiles_root_and_name()
-        if profiles is None or profile_name is None:
+        if not old_label.strip():
             return False
-        profile = profiles.get(profile_name)
-        if not isinstance(profile, dict):
+        topology_root = payload.get(KEY_TOPOLOGY)
+        if not isinstance(topology_root, dict):
             return False
-        category = self._find_entry_category(profile, entry)
-        if category is None:
-            return False
-        device_id = entry.get("id")
-        if device_id is None:
-            return False
-        diagram = payload.get("diagram")
-        if not isinstance(diagram, dict):
-            return False
-        diag_profiles = diagram.get("profiles")
-        if not isinstance(diag_profiles, dict):
-            return False
-        diag_profile = diag_profiles.get(profile_name)
-        if not isinstance(diag_profile, dict):
-            return False
-        nodes = diag_profile.get("nodes")
-        if not isinstance(nodes, list):
+        topology_profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
+        if not isinstance(topology_profiles, dict):
             return False
         updated = False
-        for node in nodes:
-            if not isinstance(node, dict):
+        for topology_profile in topology_profiles.values():
+            if not isinstance(topology_profile, dict):
                 continue
-            if node.get("nodeType") != "device":
+            nodes = topology_profile.get(KEY_TOPOLOGY_NODES)
+            if not isinstance(nodes, list):
                 continue
-            if node.get("category") == category and node.get("id") == device_id:
-                node["label"] = new_label
-                updated = True
+            for node in nodes:
+                if not isinstance(node, dict):
+                    continue
+                if node.get(KEY_NODE_TYPE) != NODE_TYPE_DEVICE:
+                    continue
+                device_ref = str(node.get(KEY_DEVICE_REF, EMPTY_STRING)).strip()
+                if device_ref.lower() == old_label.strip().lower():
+                    node[KEY_DEVICE_REF] = new_label
+                    updated = True
         return updated
 
     def _update_profile_device_label(self, old: str, new: str) -> int:
@@ -11845,6 +11873,7 @@ class BridgeCli:
         if not isinstance(edges, list):
             edges = []
         preserved: List[Dict[str, object]] = []
+        reusable_ids: List[str] = []
         for edge in edges:
             if not isinstance(edge, dict):
                 continue
@@ -11861,6 +11890,9 @@ class BridgeCli:
             from_node = edge.get(KEY_FROM_NODE)
             to_node = edge.get(KEY_TO_NODE)
             if from_node in selected_keys or to_node in selected_keys:
+                edge_id = str(edge.get(KEY_EDGE_ID, EMPTY_STRING)).strip()
+                if edge_id:
+                    reusable_ids.append(edge_id)
                 continue
             preserved.append(edge)
         device_nodes: List[Tuple[int, Dict[str, object]]] = []
@@ -11876,15 +11908,15 @@ class BridgeCli:
         for key, layout in device_nodes:
             bus = int(layout.get(KEY_BUS, 0))
             by_bus.setdefault(bus, []).append((key, layout))
-        edge_counter = len(preserved) + COUNT_ONE
         for bus_nodes in by_bus.values():
             ordered = sorted(bus_nodes, key=lambda item: (float(item[1].get("x", 0.0)), int(item[0])))
             for idx in range(len(ordered) - 1):
                 left_key = ordered[idx][0]
                 right_key = ordered[idx + 1][0]
+                edge_id = reusable_ids.pop(0) if reusable_ids else self._next_topology_edge_id(preserved)
                 preserved.append(
                     {
-                        KEY_EDGE_ID: f"edge_{edge_counter}",
+                        KEY_EDGE_ID: edge_id,
                         KEY_FROM_NODE: left_key,
                         KEY_FROM_PORT: NEIGHBOR_PORT_RIGHT,
                         KEY_TO_NODE: right_key,
@@ -11892,7 +11924,6 @@ class BridgeCli:
                         KEY_EDGE_TYPE: EDGE_TYPE_CAN_TRUNK,
                     }
                 )
-                edge_counter += COUNT_ONE
         topology_profile[KEY_TOPOLOGY_EDGES] = preserved
         self._profiles_dirty = True
         print(MESSAGE_INFO_TOPOLOGY_NEIGHBOR_AUTO)
@@ -12191,6 +12222,8 @@ class BridgeCli:
             required = DEVICE_REQUIRED_PWM
         elif interface == INTERFACE_ANALOG:
             required = DEVICE_REQUIRED_ANALOG
+        elif interface == INTERFACE_USB:
+            required = DEVICE_REQUIRED_USB
         else:
             required = DEVICE_REQUIRED_INTERNAL
         missing: List[str] = []
@@ -12823,14 +12856,18 @@ class BridgeCli:
             KEY_DEVICES: deepcopy(device_entries),
             KEY_BRIDGE_CONFIG: bridge_config,
         }
-        diagram = payload.get(KEY_DIAGRAM)
-        if isinstance(diagram, dict):
-            diag_profiles = diagram.get(KEY_DIAGRAM_PROFILES)
-            if isinstance(diag_profiles, dict):
-                diag_entry = diag_profiles.get(profile_name)
-                if isinstance(diag_entry, dict):
-                    export_payload[KEY_DIAGRAM] = {
-                        KEY_DIAGRAM_PROFILES: {profile_name: deepcopy(diag_entry)}
+        topology_root = payload.get(KEY_TOPOLOGY)
+        if isinstance(topology_root, dict):
+            topology_profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
+            if isinstance(topology_profiles, dict):
+                topology_entry = topology_profiles.get(profile_name)
+                if isinstance(topology_entry, dict):
+                    export_payload[KEY_TOPOLOGY] = {
+                        KEY_TOPOLOGY_VERSION: topology_root.get(KEY_TOPOLOGY_VERSION, COUNT_ONE),
+                        KEY_TOPOLOGY_SOURCE: topology_root.get(
+                            KEY_TOPOLOGY_SOURCE, TOPOLOGY_SOURCE_LOCAL
+                        ),
+                        KEY_TOPOLOGY_PROFILES: {profile_name: deepcopy(topology_entry)},
                     }
         export_payload[KEY_DATA_HASH] = compute_profiles_hash(export_payload)
         json_path, script_path, error = self._resolve_profile_export_paths(profile_name, path)
@@ -12882,9 +12919,9 @@ class BridgeCli:
         bridge_config = payload.get(KEY_BRIDGE_CONFIG)
         if isinstance(bridge_config, dict):
             export_payload[KEY_BRIDGE_CONFIG] = deepcopy(bridge_config)
-        diagram = payload.get(KEY_DIAGRAM)
-        if isinstance(diagram, dict):
-            export_payload[KEY_DIAGRAM] = deepcopy(diagram)
+        topology_root = payload.get(KEY_TOPOLOGY)
+        if isinstance(topology_root, dict):
+            export_payload[KEY_TOPOLOGY] = deepcopy(topology_root)
         export_payload[KEY_DATA_HASH] = compute_profiles_hash(export_payload)
         json_path, script_path, error = self._resolve_profiles_export_paths(path)
         if error:
@@ -14150,8 +14187,12 @@ class BridgeCli:
         if "profiles" not in payload or not self._local_root_payload:
             print("ERROR: No profiles loaded. Merge a bringup_system.json before saving unified config.")
             return None
-        if "diagram" not in payload:
-            payload["diagram"] = {"profiles": {}}
+        if KEY_TOPOLOGY not in payload:
+            payload[KEY_TOPOLOGY] = {
+                KEY_TOPOLOGY_VERSION: COUNT_ONE,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {},
+            }
         payload.setdefault("default_profile", "robot")
         payload["schema_version"] = PROFILE_SCHEMA_VERSION
         payload["bridgeConfig"] = self._ordered_bridge_config(self._local_config)

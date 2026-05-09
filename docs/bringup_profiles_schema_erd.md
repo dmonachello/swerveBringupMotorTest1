@@ -36,7 +36,6 @@ erDiagram
         int id
         string model
         string type
-        int dio
         bool invert
         string[] attachments
         string[] tags
@@ -59,7 +58,6 @@ erDiagram
         string nodeType
         string category
         string label
-        int id
         int bus
         int row
         float x
@@ -97,4 +95,6 @@ Notes:
 - This ERD is a conceptual mapping of JSON objects to relational entities.
 - Root schema_version is 4.
 - Profiles only store device labels; identity fields live in the devices table.
+- `DEVICE_DEFINITION.id` is the single interface-local identifier field across CAN, DIO, USB, and similar interfaces.
+- Topology `NODE` records for `nodeType=device` resolve device identity by `label` and do not store a duplicated hardware id.
 - Optional JSON fields are shown without nullable markers to keep the ERD compact.

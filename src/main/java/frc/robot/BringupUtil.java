@@ -1734,19 +1734,23 @@ public final class BringupUtil {
       }
       Set<String> seen = new java.util.HashSet<>();
       for (String label : labels) {
-        String normalized = safeText(label);
+        String display = safeText(label);
+        if (display.isEmpty()) {
+          continue;
+        }
+        String normalized = normalizeKey(display);
         if (normalized.isEmpty()) {
           continue;
         }
         if (seen.contains(normalized)) {
           report.contentValidation.message =
-              String.format(MESSAGE_REGISTRY_PROFILE_DEVICE_DUP, profileName, normalized);
+              String.format(MESSAGE_REGISTRY_PROFILE_DEVICE_DUP, profileName, display);
           return null;
         }
         seen.add(normalized);
         if (!registry.containsKey(normalized)) {
           report.contentValidation.message =
-              String.format(MESSAGE_REGISTRY_PROFILE_DEVICE_UNKNOWN, profileName, normalized);
+              String.format(MESSAGE_REGISTRY_PROFILE_DEVICE_UNKNOWN, profileName, display);
           return null;
         }
       }
@@ -1773,12 +1777,17 @@ public final class BringupUtil {
         report.contentValidation.message = MESSAGE_REGISTRY_DEVICE_LABEL_MISSING;
         return null;
       }
-      if (registry.containsKey(label)) {
+      String lookup = normalizeKey(label);
+      if (lookup.isEmpty()) {
+        report.contentValidation.message = MESSAGE_REGISTRY_DEVICE_LABEL_MISSING;
+        return null;
+      }
+      if (registry.containsKey(lookup)) {
         report.contentValidation.message =
             String.format(MESSAGE_REGISTRY_DEVICE_LABEL_DUP, label);
         return null;
       }
-      registry.put(label, def);
+      registry.put(lookup, def);
     }
     return registry;
   }
@@ -2049,7 +2058,7 @@ public final class BringupUtil {
     if (def == null) {
       return;
     }
-    String label = safeText(def.label);
+    String label = normalizeKey(def.label);
     if (label.isEmpty()) {
       return;
     }
@@ -2074,13 +2083,14 @@ public final class BringupUtil {
     Map<String, List<String>> seen = new LinkedHashMap<>();
     Map<Integer, List<String>> seenById = new LinkedHashMap<>();
     for (String label : config.devices) {
-      String normalized = safeText(label);
-      if (normalized.isEmpty()) {
+      String lookup = normalizeKey(label);
+      String display = safeText(label);
+      if (lookup.isEmpty()) {
         continue;
       }
-      DeviceDefinition def = DEVICE_REGISTRY.get(normalized);
+      DeviceDefinition def = DEVICE_REGISTRY.get(lookup);
       if (def == null) {
-        throw new JsonParseException(String.format(MESSAGE_UNKNOWN_DEVICE, profileName, normalized));
+        throw new JsonParseException(String.format(MESSAGE_UNKNOWN_DEVICE, profileName, display));
       }
       if (!isCanDevice(def)) {
         continue;
@@ -2092,8 +2102,8 @@ public final class BringupUtil {
       String vendor = resolveVendorName(def);
       String type = resolveDeviceTypeLabel(def);
       String key = deviceKey(vendor, type, canId);
-      addSeenLabel(seen, key, normalized);
-      addSeenLabelById(seenById, canId, normalized);
+      addSeenLabel(seen, key, display);
+      addSeenLabelById(seenById, canId, display);
     }
 
     for (Map.Entry<String, List<String>> entry : seen.entrySet()) {
@@ -2165,7 +2175,7 @@ public final class BringupUtil {
       if (def == null) {
         continue;
       }
-      String label = safeText(def.label);
+      String label = normalizeKey(def.label);
       if (label.isEmpty()) {
         throw new JsonParseException("Device registry contains entry with empty label.");
       }
@@ -2292,11 +2302,11 @@ public final class BringupUtil {
     }
     List<DeviceDefinition> devices = new ArrayList<>();
     for (String label : labels) {
-      String normalized = safeText(label);
-      if (normalized.isEmpty()) {
+      String lookup = normalizeKey(label);
+      if (lookup.isEmpty()) {
         continue;
       }
-      DeviceDefinition def = DEVICE_REGISTRY.get(normalized);
+      DeviceDefinition def = DEVICE_REGISTRY.get(lookup);
       if (def != null) {
         devices.add(def);
       }
@@ -2344,17 +2354,17 @@ public final class BringupUtil {
     }
     List<LimitSwitchConfig> switches = new ArrayList<>();
     for (String label : def.attachments) {
-      String normalized = safeText(label);
-      if (normalized.isEmpty()) {
+      String lookup = normalizeKey(label);
+      if (lookup.isEmpty()) {
         continue;
       }
-      DeviceDefinition attachment = DEVICE_REGISTRY.get(normalized);
+      DeviceDefinition attachment = DEVICE_REGISTRY.get(lookup);
       if (attachment == null || !isLimitSwitch(attachment)) {
         continue;
       }
-      int dio = attachment.dio != null ? attachment.dio : DISABLED_CAN_ID;
+      int dio = attachment.id != null ? attachment.id : DISABLED_CAN_ID;
       boolean invert = attachment.invert != null ? attachment.invert : false;
-      switches.add(new LimitSwitchConfig(normalized, dio, invert));
+      switches.add(new LimitSwitchConfig(safeText(attachment.label), dio, invert));
     }
     return switches;
   }
@@ -2726,7 +2736,6 @@ public final class BringupUtil {
     Integer id;
     String model;
     String type;
-    Integer dio;
     Boolean invert;
     List<String> attachments = Collections.emptyList();
     List<String> tags = Collections.emptyList();

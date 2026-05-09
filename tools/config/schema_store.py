@@ -40,9 +40,9 @@ from tools.common.profile_constants import (
     KEY_DSL_TESTS,
     KEY_DIAGRAM,
     KEY_DEVICE,
+    KEY_DEVICE_REF,
     KEY_DEVICE_TYPE,
     KEY_DEVICES,
-    KEY_DIO,
     KEY_ID,
     KEY_INTERFACE,
     KEY_INVERT,
@@ -57,6 +57,10 @@ from tools.common.profile_constants import (
     KEY_PWM,
     KEY_ROLE,
     KEY_SCHEMA_VERSION,
+    KEY_TOPOLOGY,
+    KEY_TOPOLOGY_EDGES,
+    KEY_TOPOLOGY_NODES,
+    KEY_TOPOLOGY_PROFILES,
     KEY_TAGS,
     KEY_TERMINATOR,
     KEY_TYPE,
@@ -66,6 +70,7 @@ from tools.common.profile_constants import (
     INTERFACE_DIO,
     INTERFACE_INTERNAL,
     INTERFACE_PWM,
+    INTERFACE_USB,
     PROFILE_SCHEMA_VERSION,
     get_device_interface,
 )
@@ -126,21 +131,18 @@ MESSAGE_DEVICE_INTERFACE_INVALID_FMT = "Device {label}: interface is invalid."
 MESSAGE_DEVICE_MANUFACTURER_REQUIRED = "Device manufacturer is required."
 MESSAGE_DEVICE_DEVICE_TYPE_REQUIRED = "Device deviceType is required."
 MESSAGE_DEVICE_ID_REQUIRED = "Device id is required."
-MESSAGE_DEVICE_DIO_REQUIRED = "Device dio is required."
 MESSAGE_DEVICE_INVERT_REQUIRED = "Device invert is required."
 MESSAGE_DEVICE_PWM_REQUIRED = "Device pwm is required."
 MESSAGE_DEVICE_ANALOG_REQUIRED = "Device analog is required."
 MESSAGE_DEVICE_MANUFACTURER_TYPE = "Device manufacturer must be int."
 MESSAGE_DEVICE_DEVICE_TYPE_TYPE = "Device deviceType must be int."
 MESSAGE_DEVICE_ID_TYPE = "Device id must be int."
-MESSAGE_DEVICE_DIO_TYPE = "Device dio must be int."
 MESSAGE_DEVICE_INVERT_TYPE = "Device invert must be bool."
 MESSAGE_DEVICE_PWM_TYPE = "Device pwm must be int."
 MESSAGE_DEVICE_ANALOG_TYPE = "Device analog must be int."
 MESSAGE_DEVICE_MANUFACTURER_TYPE_FMT = "Device {label}: manufacturer must be int."
 MESSAGE_DEVICE_DEVICE_TYPE_TYPE_FMT = "Device {label}: deviceType must be int."
 MESSAGE_DEVICE_ID_TYPE_FMT = "Device {label}: id must be int."
-MESSAGE_DEVICE_DIO_TYPE_FMT = "Device {label}: dio must be int."
 MESSAGE_DEVICE_INVERT_TYPE_FMT = "Device {label}: invert must be bool."
 MESSAGE_DEVICE_PWM_TYPE_FMT = "Device {label}: pwm must be int."
 MESSAGE_DEVICE_ANALOG_TYPE_FMT = "Device {label}: analog must be int."
@@ -168,10 +170,11 @@ ATTR_FIELD = "field"
 ATTR_MESSAGE = "message"
 
 DEVICE_REQUIRED_CAN = (KEY_INTERFACE, KEY_MANUFACTURER, KEY_DEVICE_TYPE, KEY_ID)
-DEVICE_REQUIRED_DIO = (KEY_INTERFACE, KEY_DIO, KEY_INVERT)
+DEVICE_REQUIRED_DIO = (KEY_INTERFACE, KEY_ID, KEY_INVERT)
 DEVICE_REQUIRED_PWM = (KEY_INTERFACE, KEY_PWM)
 DEVICE_REQUIRED_ANALOG = (KEY_INTERFACE, KEY_ANALOG)
 DEVICE_REQUIRED_INTERNAL = (KEY_INTERFACE,)
+DEVICE_REQUIRED_USB = (KEY_INTERFACE, KEY_ID)
 
 ALLOWED_ROOT_KEYS = {
     KEY_SCHEMA_VERSION,
@@ -183,6 +186,7 @@ ALLOWED_ROOT_KEYS = {
     KEY_DSL_TESTS,
     KEY_BRIDGE_CONFIG,
     KEY_DIAGRAM,
+    KEY_TOPOLOGY,
 }
 ALLOWED_TESTS_KEYS = {KEY_DEFAULT_TEST_SET, KEY_TEST_SETS, KEY_TESTS}
 ALLOWED_BINDINGS_KEYS = {KEY_CONTROLLERS, KEY_BINDINGS, KEY_AXES, KEY_INPUT_ALIASES}
@@ -202,7 +206,6 @@ ALLOWED_DEVICE_KEYS = {
     KEY_TERMINATOR,
     KEY_LIMITS,
     KEY_BUS,
-    KEY_DIO,
     KEY_INVERT,
     KEY_PWM,
     KEY_ANALOG,
@@ -219,6 +222,16 @@ DEADBAND_MAX = 1.0
 EMPTY_STRING = ""
 BOOL_TRUE = True
 BOOL_FALSE = False
+KEY_DIAGRAM_PROFILES = "profiles"
+KEY_DIAGRAM_NODES = "nodes"
+KEY_NODE_TYPE = "nodeType"
+NODE_TYPE_DEVICE = "device"
+MESSAGE_DEVICE_LABEL_DUPLICATE_CASEFOLD = "Duplicate device label: {label}"
+MESSAGE_DIAGRAM_NODE_DEVICE_LABEL_REQUIRED = "Diagram node device label is required."
+MESSAGE_DIAGRAM_NODE_DEVICE_UNKNOWN = "Diagram node device label not found: {label}"
+MESSAGE_DIAGRAM_NODE_DEVICE_ID_FORBIDDEN = "Diagram node device id is not allowed: {label}"
+MESSAGE_TOPOLOGY_NODE_DEVICE_REF_REQUIRED = "Topology deviceRef is required."
+MESSAGE_TOPOLOGY_NODE_DEVICE_UNKNOWN = "Topology deviceRef not found: {label}"
 
 FILE_TESTS_ROOT = "bringup_tests.json"
 FILE_BINDINGS_ROOT = "bringup_bindings.json"
@@ -669,6 +682,10 @@ class ConfigSchemaStore:
             KEY_DEFAULT_PROFILE: EMPTY_STRING,
             KEY_DEVICES: list(),
             KEY_PROFILES: dict(),
+            KEY_TOPOLOGY: {
+                KEY_TOPOLOGY_VERSION: COUNT_ONE,
+                KEY_TOPOLOGY_PROFILES: dict(),
+            },
             KEY_BRIDGE_CONFIG: {
                 KEY_BRIDGE_SCHEMA_VERSION: BRIDGE_CONFIG_SCHEMA_VERSION,
                 KEY_BRIDGE_GENERATED_AT: None,
@@ -836,6 +853,7 @@ class ConfigSchemaStore:
                 )
                 active_profile = None
         catalog, duplicates = self._build_device_catalog(devices)
+        catalog_keys = {str(label).strip().lower() for label in catalog.keys()}
         active_labels: Optional[Set[str]] = None
         if target_profile and active_profile is None:
             active_labels = set()
@@ -862,7 +880,7 @@ class ConfigSchemaStore:
                 attachments = entry.get(KEY_ATTACHMENTS)
                 if isinstance(attachments, list):
                     for attachment in attachments:
-                        if attachment not in catalog:
+                        if str(attachment).strip().lower() not in catalog_keys:
                             self._append_issue(
                                 issues,
                                 LOCATION_PROFILES,
@@ -893,7 +911,7 @@ class ConfigSchemaStore:
                     )
                     continue
                 for label in labels:
-                    if label not in catalog:
+                    if str(label).strip().lower() not in catalog_keys:
                         self._append_issue(
                             issues,
                             LOCATION_PROFILES,
@@ -903,6 +921,26 @@ class ConfigSchemaStore:
                             ),
                             SEVERITY_ERROR,
                         )
+        diagram = payload.get(KEY_DIAGRAM)
+        if isinstance(diagram, dict):
+            diagram_profiles = diagram.get(KEY_DIAGRAM_PROFILES)
+            if isinstance(diagram_profiles, dict):
+                for profile_name, diagram_profile in diagram_profiles.items():
+                    if target_profile is not None and profile_name != target_profile:
+                        continue
+                    if not isinstance(diagram_profile, dict):
+                        continue
+                    self._validate_diagram_profile(diagram_profile, catalog, issues)
+        topology = payload.get(KEY_TOPOLOGY)
+        if isinstance(topology, dict):
+            topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+            if isinstance(topology_profiles, dict):
+                for topology_profile_name, topology_profile in topology_profiles.items():
+                    if target_profile is not None and topology_profile_name != target_profile:
+                        continue
+                    if not isinstance(topology_profile, dict):
+                        continue
+                    self._validate_topology_profile(topology_profile, catalog, issues)
         by_profile = self._bridge_by_profile()
         for profile_name, entry in by_profile.items():
             if target_profile is not None and profile_name != target_profile:
@@ -925,7 +963,7 @@ class ConfigSchemaStore:
             selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE)
             if isinstance(selected, dict):
                 device_label = selected.get(KEY_DEVICE)
-                if device_label and device_label not in catalog:
+                if device_label and str(device_label).strip().lower() not in catalog_keys:
                     self._append_issue(
                         issues,
                         LOCATION_PROFILES,
@@ -1180,17 +1218,108 @@ class ConfigSchemaStore:
 
         catalog: Dict[str, object] = dict()
         duplicates: Set[str] = set()
+        label_by_key: Dict[str, str] = dict()
         for entry in devices:
             if not isinstance(entry, dict):
                 continue
             label = entry.get(KEY_LABEL)
             if not label or not isinstance(label, str):
                 continue
-            if label in catalog:
-                duplicates.add(label)
+            clean = label.strip()
+            if not clean:
                 continue
-            catalog[label] = entry
+            key = clean.lower()
+            prior = label_by_key.get(key)
+            if prior is not None:
+                duplicates.add(prior)
+                duplicates.add(clean)
+                continue
+            label_by_key[key] = clean
+            catalog[clean] = entry
         return catalog, duplicates
+
+    def _validate_diagram_profile(
+        self,
+        diagram_profile: Dict[str, object],
+        catalog: Dict[str, object],
+        issues: List[ValidationIssue],
+    ) -> None:
+        """
+        NAME
+            _validate_diagram_profile - Validate device-node diagram references.
+        """
+
+        catalog_keys = {str(label).strip().lower() for label in catalog.keys()}
+        nodes = diagram_profile.get(KEY_DIAGRAM_NODES)
+        if not isinstance(nodes, list):
+            return
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            if node.get(KEY_NODE_TYPE) != NODE_TYPE_DEVICE:
+                continue
+            label = node.get(KEY_LABEL)
+            if not isinstance(label, str) or not label.strip():
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_DIAGRAM_NODE_DEVICE_LABEL_REQUIRED,
+                    SEVERITY_ERROR,
+                )
+                continue
+            label_text = label.strip()
+            if label_text.lower() not in catalog_keys:
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_DIAGRAM_NODE_DEVICE_UNKNOWN.format(label=label_text),
+                    SEVERITY_ERROR,
+                )
+            if KEY_ID in node:
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_DIAGRAM_NODE_DEVICE_ID_FORBIDDEN.format(label=label_text),
+                    SEVERITY_ERROR,
+                )
+
+    def _validate_topology_profile(
+        self,
+        topology_profile: Dict[str, object],
+        catalog: Dict[str, object],
+        issues: List[ValidationIssue],
+    ) -> None:
+        """
+        NAME
+            _validate_topology_profile - Validate device-node topology references.
+        """
+
+        catalog_keys = {str(label).strip().lower() for label in catalog.keys()}
+        nodes = topology_profile.get(KEY_TOPOLOGY_NODES)
+        if not isinstance(nodes, list):
+            return
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            if node.get(KEY_NODE_TYPE) != NODE_TYPE_DEVICE:
+                continue
+            device_ref = node.get(KEY_DEVICE_REF)
+            if not isinstance(device_ref, str) or not device_ref.strip():
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_TOPOLOGY_NODE_DEVICE_REF_REQUIRED,
+                    SEVERITY_ERROR,
+                )
+                continue
+            label_text = device_ref.strip()
+            if label_text.lower() not in catalog_keys:
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_TOPOLOGY_NODE_DEVICE_UNKNOWN.format(label=label_text),
+                    SEVERITY_ERROR,
+                )
 
     def _validate_device_entry(self, entry: Dict[str, object], issues: List[ValidationIssue]) -> None:
         """
@@ -1252,11 +1381,11 @@ class ConfigSchemaStore:
                     SEVERITY_ERROR,
                 )
         if interface == INTERFACE_DIO:
-            if entry.get(KEY_DIO) is not None and not isinstance(entry.get(KEY_DIO), int):
+            if not isinstance(entry.get(KEY_ID), int):
                 self._append_issue(
                     issues,
                     LOCATION_PROFILES,
-                    MESSAGE_DEVICE_DIO_TYPE_FMT.format(label=label_text),
+                    MESSAGE_DEVICE_ID_TYPE_FMT.format(label=label_text),
                     SEVERITY_ERROR,
                 )
             if entry.get(KEY_INVERT) is not None and not isinstance(entry.get(KEY_INVERT), bool):
@@ -1264,6 +1393,14 @@ class ConfigSchemaStore:
                     issues,
                     LOCATION_PROFILES,
                     MESSAGE_DEVICE_INVERT_TYPE_FMT.format(label=label_text),
+                    SEVERITY_ERROR,
+                )
+        if interface == INTERFACE_USB:
+            if not isinstance(entry.get(KEY_ID), int):
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_DEVICE_ID_TYPE_FMT.format(label=label_text),
                     SEVERITY_ERROR,
                 )
         if interface == INTERFACE_PWM:
@@ -1288,6 +1425,7 @@ class ConfigSchemaStore:
             INTERFACE_PWM,
             INTERFACE_ANALOG,
             INTERFACE_INTERNAL,
+            INTERFACE_USB,
         ):
             self._append_issue(
                 issues,
@@ -1318,6 +1456,8 @@ class ConfigSchemaStore:
             return DEVICE_REQUIRED_PWM
         if interface == INTERFACE_ANALOG:
             return DEVICE_REQUIRED_ANALOG
+        if interface == INTERFACE_USB:
+            return DEVICE_REQUIRED_USB
         if interface == INTERFACE_INTERNAL:
             return DEVICE_REQUIRED_INTERNAL
         return DEVICE_REQUIRED_INTERNAL

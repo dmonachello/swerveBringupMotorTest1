@@ -66,7 +66,6 @@ VALIDATE_TOPOLOGY = "validate topology"
 NODE_TYPE_DEVICE = "device"
 INTERFACE_CAN = "CAN"
 INTERFACE_DIO = "DIO"
-KEY_DIO = "dio"
 RIGHT = "right"
 LEFT = "left"
 BUILD_VERSION = "2026.05.09"
@@ -103,7 +102,7 @@ def _build_root_payload() -> dict[str, object]:
             {
                 KEY_LABEL: "limit0",
                 KEY_INTERFACE: INTERFACE_DIO,
-                KEY_DIO: 0,
+                KEY_ID: 0,
                 KEY_INVERT: False,
                 KEY_ENABLED: True,
             },
@@ -290,6 +289,40 @@ class BridgeCliTopologyShowTests(unittest.TestCase):
 
         self.assertEqual(result.code, SS__CONFIG__VALID)
         self.assertIn("OK: topology is valid.", stream.getvalue())
+
+    def test_topology_neighbor_auto_reuses_existing_can_edge_ids(self) -> None:
+        cli = _build_cli()
+        stream = io.StringIO()
+
+        with redirect_stdout(stream):
+            result = cli._config_command(["topology", "neighbor-auto", "all"])
+
+        edges = cli._active_topology_profile(create=False)[KEY_TOPOLOGY_EDGES]
+        can_edges = [
+            edge for edge in edges
+            if isinstance(edge, dict) and edge.get(KEY_EDGE_TYPE) == EDGE_TYPE_CAN_TRUNK
+        ]
+
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertEqual(
+            [edge.get(KEY_EDGE_ID) for edge in can_edges],
+            ["edge_1", "edge_2"],
+        )
+        self.assertEqual(
+            [
+                (
+                    edge.get(KEY_FROM_NODE),
+                    edge.get(KEY_FROM_PORT),
+                    edge.get(KEY_TO_NODE),
+                    edge.get(KEY_TO_PORT),
+                )
+                for edge in can_edges
+            ],
+            [
+                (1, RIGHT, 2, LEFT),
+                (2, RIGHT, 3, LEFT),
+            ],
+        )
 
 
 if __name__ == "__main__":
