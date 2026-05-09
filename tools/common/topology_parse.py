@@ -2,215 +2,347 @@ from __future__ import annotations
 
 """
 NAME
-    topology_parse.py - Shared diagram/profile parsing helpers.
+    topology_parse.py - Shared topology graph and compatibility parsing helpers.
 
 SYNOPSIS
-    from tools.common.topology_parse import parse_diagram_nodes
+    from tools.common.topology_parse import topology_profile_from_payload
 
 DESCRIPTION
-    Extracts nodes and link metadata from bringup_system.json diagram sections.
+    Reads the canonical root-level topology graph and exposes both graph-native
+    helpers and compatibility views used by older topology renderers.
 """
 
-from typing import Dict, Iterable, List, Tuple, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from tools.common.profile_constants import (
+    EDGE_TYPE_ANALOG,
+    EDGE_TYPE_CAN_DROP,
+    EDGE_TYPE_CAN_TAP,
+    EDGE_TYPE_CAN_TRUNK,
+    EDGE_TYPE_DIO,
+    EDGE_TYPE_POWER,
+    EDGE_TYPE_PWM,
+    EDGE_TYPE_UNKNOWN,
+    EDGE_TYPE_VIRTUAL,
     KEY_BRIDGE_BY_PROFILE,
+    KEY_BRIDGE_CONFIG,
     KEY_BRIDGE_GROUPS,
-    KEY_DEVICE_LINKS,
+    KEY_BUS,
+    KEY_DEVICE_REF,
+    KEY_EDGE_ID,
+    KEY_EDGE_TYPE,
+    KEY_FROM_NODE,
+    KEY_FROM_PORT,
     KEY_LABEL,
+    KEY_LAYOUT,
     KEY_LINK_A,
     KEY_LINK_B,
-    KEY_LINK_DEVICE,
     KEY_LINK_NEIGHBOR,
     KEY_LINK_NEIGHBOR_PORT,
     KEY_LINK_NODE,
     KEY_LINK_PORT,
+    KEY_MODEL,
     KEY_NODE_KEY,
-    KEY_NEIGHBOR_LINKS,
-    KEY_NEIGHBOR_PORTS,
-    NEIGHBOR_PORT_BRANCH1,
-    NEIGHBOR_PORT_BRANCH2,
-    NEIGHBOR_PORT_NEXT,
-    CANNECT_PORT_ONE,
-    CANNECT_PORT_TWO,
-    CANNECT_PORT_THREE,
+    KEY_NODE_TYPE,
+    KEY_TO_NODE,
+    KEY_TO_PORT,
+    KEY_TOPOLOGY,
+    KEY_TOPOLOGY_EDGES,
+    KEY_TOPOLOGY_NODES,
+    KEY_TOPOLOGY_PROFILES,
+    KEY_VENDOR,
+    LAYOUT_KEY_ROW,
+    LAYOUT_KEY_X,
+    LAYOUT_KEY_Y,
+    NODE_TYPE_DEVICE,
 )
 
-LINK_PAIR_LEN = 2
 EMPTY_STRING = ""
+GRAPH_LAYOUT_KEYS = (KEY_BUS, LAYOUT_KEY_ROW, LAYOUT_KEY_X, LAYOUT_KEY_Y)
+CAN_EDGE_TYPES = {
+    EDGE_TYPE_CAN_TRUNK,
+    EDGE_TYPE_CAN_DROP,
+    EDGE_TYPE_CAN_TAP,
+}
+SUPPORTED_EDGE_TYPES = {
+    EDGE_TYPE_CAN_TRUNK,
+    EDGE_TYPE_CAN_DROP,
+    EDGE_TYPE_CAN_TAP,
+    EDGE_TYPE_DIO,
+    EDGE_TYPE_PWM,
+    EDGE_TYPE_ANALOG,
+    EDGE_TYPE_POWER,
+    EDGE_TYPE_VIRTUAL,
+    EDGE_TYPE_UNKNOWN,
+}
+
+
+def topology_root_from_payload(payload: Dict[str, object]) -> Dict[str, object]:
+    """
+    NAME
+        topology_root_from_payload - Return the root topology section.
+    """
+    topology = payload.get(KEY_TOPOLOGY)
+    return topology if isinstance(topology, dict) else {}
+
+
+def topology_profile_from_payload(payload: Dict[str, object], profile_name: Optional[str]) -> Dict[str, object]:
+    """
+    NAME
+        topology_profile_from_payload - Return one profile topology graph.
+    """
+    if not isinstance(profile_name, str) or not profile_name.strip():
+        return {}
+    topology_root = topology_root_from_payload(payload)
+    profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
+    if not isinstance(profiles, dict):
+        return {}
+    profile = profiles.get(profile_name)
+    return profile if isinstance(profile, dict) else {}
+
+
+def topology_nodes(topology_profile: Dict[str, object]) -> List[Dict[str, object]]:
+    """
+    NAME
+        topology_nodes - Return raw topology node dicts.
+    """
+    nodes = topology_profile.get(KEY_TOPOLOGY_NODES)
+    if isinstance(nodes, list):
+        return [entry for entry in nodes if isinstance(entry, dict)]
+    return []
+
+
+def topology_edges(topology_profile: Dict[str, object]) -> List[Dict[str, object]]:
+    """
+    NAME
+        topology_edges - Return raw topology edge dicts.
+    """
+    edges = topology_profile.get(KEY_TOPOLOGY_EDGES)
+    if isinstance(edges, list):
+        return [entry for entry in edges if isinstance(entry, dict)]
+    return []
+
+
+def topology_node_lookup(
+    topology_profile: Dict[str, object],
+    registry: Optional[Dict[str, Dict[str, object]]] = None,
+) -> Dict[int, Dict[str, object]]:
+    """
+    NAME
+        topology_node_lookup - Build a resolved lookup keyed by topology node key.
+
+    DESCRIPTION
+        Device-backed topology nodes are resolved against the device registry so
+        consumers can render labels and vendor/model details without duplicating
+        those fields inside the topology node itself.
+    """
+    resolved: Dict[int, Dict[str, object]] = {}
+    registry = registry or {}
+    for entry in topology_nodes(topology_profile):
+        key = entry.get(KEY_NODE_KEY)
+        if not isinstance(key, int):
+            continue
+        layout = entry.get(KEY_LAYOUT)
+        layout_dict = layout if isinstance(layout, dict) else {}
+        resolved_entry = dict(entry)
+        resolved_entry[KEY_LAYOUT] = layout_dict
+        if entry.get(KEY_NODE_TYPE) == NODE_TYPE_DEVICE:
+            device_ref = str(entry.get(KEY_DEVICE_REF, EMPTY_STRING)).strip()
+            if device_ref:
+                device = registry.get(device_ref.lower())
+                if isinstance(device, dict):
+                    resolved_entry[KEY_LABEL] = device_ref
+                    resolved_entry[KEY_VENDOR] = device.get(KEY_VENDOR, EMPTY_STRING)
+                    resolved_entry[KEY_MODEL] = device.get(KEY_MODEL, EMPTY_STRING)
+        resolved[key] = resolved_entry
+    return resolved
+
+
+def topology_neighbor_ports(
+    topology_profile: Dict[str, object],
+    node_key: int,
+) -> List[Dict[str, object]]:
+    """
+    NAME
+        topology_neighbor_ports - Derive directed neighbor entries from edges.
+    """
+    neighbors: List[Dict[str, object]] = []
+    for edge in topology_edges(topology_profile):
+        from_node = edge.get(KEY_FROM_NODE)
+        to_node = edge.get(KEY_TO_NODE)
+        from_port = edge.get(KEY_FROM_PORT)
+        to_port = edge.get(KEY_TO_PORT)
+        if not isinstance(from_node, int) or not isinstance(to_node, int):
+            continue
+        if not isinstance(from_port, str) or not isinstance(to_port, str):
+            continue
+        if from_node == node_key:
+            neighbors.append(
+                {
+                    KEY_LINK_NODE: from_node,
+                    KEY_LINK_PORT: from_port,
+                    KEY_LINK_NEIGHBOR: to_node,
+                    KEY_LINK_NEIGHBOR_PORT: to_port,
+                    KEY_EDGE_ID: edge.get(KEY_EDGE_ID),
+                    KEY_EDGE_TYPE: edge.get(KEY_EDGE_TYPE),
+                }
+            )
+        elif to_node == node_key:
+            neighbors.append(
+                {
+                    KEY_LINK_NODE: to_node,
+                    KEY_LINK_PORT: to_port,
+                    KEY_LINK_NEIGHBOR: from_node,
+                    KEY_LINK_NEIGHBOR_PORT: from_port,
+                    KEY_EDGE_ID: edge.get(KEY_EDGE_ID),
+                    KEY_EDGE_TYPE: edge.get(KEY_EDGE_TYPE),
+                }
+            )
+    return neighbors
+
+
+def topology_neighbor_links(topology_profile: Dict[str, object], node_key: int) -> List[Tuple[int, int]]:
+    """
+    NAME
+        topology_neighbor_links - Derive undirected neighbor links from edges.
+    """
+    pairs: List[Tuple[int, int]] = []
+    seen: set[Tuple[int, int]] = set()
+    for edge in topology_edges(topology_profile):
+        from_node = edge.get(KEY_FROM_NODE)
+        to_node = edge.get(KEY_TO_NODE)
+        if not isinstance(from_node, int) or not isinstance(to_node, int):
+            continue
+        if node_key not in (from_node, to_node) or from_node == to_node:
+            continue
+        pair = (min(from_node, to_node), max(from_node, to_node))
+        if pair in seen:
+            continue
+        seen.add(pair)
+        pairs.append(pair)
+    return pairs
 
 
 def parse_diagram_nodes(diagram: Dict[str, object]) -> List[Dict[str, object]]:
     """
     NAME
-        parse_diagram_nodes - Return raw node dicts from diagram metadata.
-    """
-    nodes = diagram.get("nodes")
-    if isinstance(nodes, list):
-        return [entry for entry in nodes if isinstance(entry, dict)]
-    return []
+        parse_diagram_nodes - Return compatibility node dicts from topology data.
 
-def parse_diagram_links(diagram: Dict[str, object]) -> Tuple[List[Tuple[int, int]], List[Dict[str, int]], List[Dict[str, int]]]:
+    DESCRIPTION
+        The historical parser name is retained so live/read-only surfaces can
+        consume the new graph model without a full caller rename.
+    """
+    nodes: List[Dict[str, object]] = []
+    for entry in topology_nodes(diagram):
+        layout = entry.get(KEY_LAYOUT)
+        layout_dict = layout if isinstance(layout, dict) else {}
+        compat = {
+            KEY_NODE_KEY: entry.get(KEY_NODE_KEY),
+            KEY_NODE_TYPE: entry.get(KEY_NODE_TYPE),
+            KEY_BUS: layout_dict.get(KEY_BUS, 0),
+            LAYOUT_KEY_ROW: layout_dict.get(LAYOUT_KEY_ROW, 0),
+            LAYOUT_KEY_X: layout_dict.get(LAYOUT_KEY_X, 0.0),
+        }
+        if entry.get(KEY_NODE_TYPE) == NODE_TYPE_DEVICE:
+            compat[KEY_LABEL] = str(entry.get(KEY_DEVICE_REF, EMPTY_STRING)).strip()
+        else:
+            compat[KEY_LABEL] = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if KEY_VENDOR in entry:
+                compat[KEY_VENDOR] = entry.get(KEY_VENDOR)
+            if KEY_MODEL in entry:
+                compat[KEY_MODEL] = entry.get(KEY_MODEL)
+        nodes.append(compat)
+    return nodes
+
+
+def parse_diagram_links(
+    diagram: Dict[str, object],
+) -> Tuple[List[Tuple[int, int]], List[Dict[str, int]], List[Dict[str, int]]]:
     """
     NAME
-        parse_diagram_links - Extract ethernet/can/device links from diagram metadata.
+        parse_diagram_links - Return compatibility link lists from topology data.
+
+    DESCRIPTION
+        This preserves the older return shape used by the read-only topology
+        view. Ethernet and device-link buckets do not exist in the canonical
+        graph and therefore return empty lists for now.
     """
-    ethernet = [
-        (int(link.get("a")), int(link.get("b")))
-        for link in (diagram.get("ethernetLinks") or [])
-        if isinstance(link, dict) and "a" in link and "b" in link
-    ]
-    can_links = [
-        {"node": int(link.get("node")), "bus": int(link.get("bus")), "port": int(link.get("port", 1))}
-        for link in (diagram.get("canLinks") or [])
-        if isinstance(link, dict) and "node" in link and "bus" in link
-    ]
-    device_links = [
-        {"node": int(link.get("node")), "device": int(link.get("device")), "port": int(link.get("port", 1))}
-        for link in (diagram.get("deviceLinks") or [])
-        if isinstance(link, dict) and "node" in link and "device" in link
-    ]
-    return ethernet, can_links, device_links
+    can_links: List[Dict[str, int]] = []
+    for edge in topology_edges(diagram):
+        edge_type = str(edge.get(KEY_EDGE_TYPE, EMPTY_STRING)).strip()
+        from_node = edge.get(KEY_FROM_NODE)
+        if edge_type not in CAN_EDGE_TYPES or not isinstance(from_node, int):
+            continue
+        bus_index = _edge_bus_index(diagram, edge)
+        if bus_index is None:
+            continue
+        can_links.append(
+            {
+                KEY_LINK_NODE: from_node,
+                KEY_BUS: bus_index,
+                KEY_LINK_PORT: 1,
+            }
+        )
+    return [], can_links, []
 
 
 def parse_diagram_neighbor_links(diagram: Dict[str, object]) -> List[Tuple[int, int]]:
     """
     NAME
-        parse_diagram_neighbor_links - Extract neighbor links from diagram metadata.
+        parse_diagram_neighbor_links - Extract neighbor pairs from edges.
     """
-    neighbor_links: List[Tuple[int, int]] = []
-    entries = diagram.get(KEY_NEIGHBOR_LINKS)
-    if not isinstance(entries, list):
-        return neighbor_links
-    for entry in entries:
-        if isinstance(entry, dict):
-            a = entry.get(KEY_LINK_A)
-            b = entry.get(KEY_LINK_B)
-        elif isinstance(entry, (list, tuple)) and len(entry) == LINK_PAIR_LEN:
-            a, b = entry
-        else:
+    links: List[Tuple[int, int]] = []
+    seen: set[Tuple[int, int]] = set()
+    for edge in topology_edges(diagram):
+        from_node = edge.get(KEY_FROM_NODE)
+        to_node = edge.get(KEY_TO_NODE)
+        if not isinstance(from_node, int) or not isinstance(to_node, int):
             continue
-        if not isinstance(a, int) or not isinstance(b, int):
+        if from_node == to_node:
             continue
-        if a == b:
+        pair = (min(from_node, to_node), max(from_node, to_node))
+        if pair in seen:
             continue
-        link = (min(a, b), max(a, b))
-        if link not in neighbor_links:
-            neighbor_links.append(link)
-    return neighbor_links
+        seen.add(pair)
+        links.append(pair)
+    return links
 
 
 def parse_diagram_neighbor_ports(diagram: Dict[str, object]) -> List[Dict[str, object]]:
     """
     NAME
-        parse_diagram_neighbor_ports - Extract neighbor port links from diagram metadata.
-
-    NOTES
-        CANnect device links are expanded into neighborPorts entries (next/branch1/branch2)
-        using diagram node labels for readability.
+        parse_diagram_neighbor_ports - Extract directed edge endpoints.
     """
-    entries = diagram.get(KEY_NEIGHBOR_PORTS)
-    if not isinstance(entries, list):
-        entries = []
     links: List[Dict[str, object]] = []
-    for entry in entries:
-        if not isinstance(entry, dict):
+    for edge in topology_edges(diagram):
+        from_node = edge.get(KEY_FROM_NODE)
+        to_node = edge.get(KEY_TO_NODE)
+        from_port = edge.get(KEY_FROM_PORT)
+        to_port = edge.get(KEY_TO_PORT)
+        if not isinstance(from_node, int) or not isinstance(to_node, int):
             continue
-        node_key = entry.get(KEY_LINK_NODE)
-        port = entry.get(KEY_LINK_PORT)
-        neighbor_key = entry.get(KEY_LINK_NEIGHBOR)
-        neighbor_port = entry.get(KEY_LINK_NEIGHBOR_PORT)
-        if not isinstance(node_key, (int, str)) or not isinstance(neighbor_key, (int, str)):
+        if not isinstance(from_port, str) or not isinstance(to_port, str):
             continue
-        if not isinstance(port, str) or not isinstance(neighbor_port, str):
-            continue
-        if isinstance(node_key, str):
-            node_key = node_key.strip()
-        if isinstance(neighbor_key, str):
-            neighbor_key = neighbor_key.strip()
         links.append(
             {
-                KEY_LINK_NODE: node_key,
-                KEY_LINK_PORT: port,
-                KEY_LINK_NEIGHBOR: neighbor_key,
-                KEY_LINK_NEIGHBOR_PORT: neighbor_port,
+                KEY_LINK_NODE: from_node,
+                KEY_LINK_PORT: from_port,
+                KEY_LINK_NEIGHBOR: to_node,
+                KEY_LINK_NEIGHBOR_PORT: to_port,
+                KEY_EDGE_ID: edge.get(KEY_EDGE_ID),
+                KEY_EDGE_TYPE: edge.get(KEY_EDGE_TYPE),
             }
         )
-    device_links = diagram.get(KEY_DEVICE_LINKS)
-    if not isinstance(device_links, list):
-        return links
-    nodes = parse_diagram_nodes(diagram)
-    label_by_key: Dict[object, str] = {}
-    for node in nodes:
-        if not isinstance(node, dict):
-            continue
-        key = node.get(KEY_NODE_KEY)
-        label = node.get(KEY_LABEL)
-        if key is None or not isinstance(label, str):
-            continue
-        label_text = label.strip()
-        if not label_text:
-            continue
-        label_by_key[key] = label_text
-    port_map = {
-        CANNECT_PORT_ONE: NEIGHBOR_PORT_NEXT,
-        CANNECT_PORT_TWO: NEIGHBOR_PORT_BRANCH1,
-        CANNECT_PORT_THREE: NEIGHBOR_PORT_BRANCH2,
-    }
-    existing = {
-        (
-            str(entry.get(KEY_LINK_NODE, EMPTY_STRING)).strip().lower(),
-            str(entry.get(KEY_LINK_PORT, EMPTY_STRING)).strip().lower(),
-            str(entry.get(KEY_LINK_NEIGHBOR, EMPTY_STRING)).strip().lower(),
-            str(entry.get(KEY_LINK_NEIGHBOR_PORT, EMPTY_STRING)).strip().lower(),
+        links.append(
+            {
+                KEY_LINK_NODE: to_node,
+                KEY_LINK_PORT: to_port,
+                KEY_LINK_NEIGHBOR: from_node,
+                KEY_LINK_NEIGHBOR_PORT: from_port,
+                KEY_EDGE_ID: edge.get(KEY_EDGE_ID),
+                KEY_EDGE_TYPE: edge.get(KEY_EDGE_TYPE),
+            }
         )
-        for entry in links
-    }
-    for link in device_links:
-        if not isinstance(link, dict):
-            continue
-        node_key = link.get(KEY_LINK_NODE)
-        device_key = link.get(KEY_LINK_DEVICE)
-        port = link.get(KEY_LINK_PORT)
-        node_label = label_by_key.get(node_key)
-        device_label = label_by_key.get(device_key)
-        if not node_label or not device_label:
-            continue
-        port_name = port_map.get(port)
-        if port_name is None:
-            continue
-        forward = (
-            node_label.lower(),
-            port_name.lower(),
-            device_label.lower(),
-            NEIGHBOR_PORT_NEXT.lower(),
-        )
-        if forward not in existing:
-            links.append(
-                {
-                    KEY_LINK_NODE: node_label,
-                    KEY_LINK_PORT: port_name,
-                    KEY_LINK_NEIGHBOR: device_label,
-                    KEY_LINK_NEIGHBOR_PORT: NEIGHBOR_PORT_NEXT,
-                }
-            )
-            existing.add(forward)
-        reverse = (
-            device_label.lower(),
-            NEIGHBOR_PORT_NEXT.lower(),
-            node_label.lower(),
-            port_name.lower(),
-        )
-        if reverse not in existing:
-            links.append(
-                {
-                    KEY_LINK_NODE: device_label,
-                    KEY_LINK_PORT: NEIGHBOR_PORT_NEXT,
-                    KEY_LINK_NEIGHBOR: node_label,
-                    KEY_LINK_NEIGHBOR_PORT: port_name,
-                }
-            )
-            existing.add(reverse)
     return links
 
 
@@ -219,7 +351,7 @@ def parse_bridge_groups(payload: Dict[str, object], profile_name: Optional[str])
     NAME
         parse_bridge_groups - Return per-profile bridgeConfig group metadata.
     """
-    bridge = payload.get("bridgeConfig")
+    bridge = payload.get(KEY_BRIDGE_CONFIG)
     if not isinstance(bridge, dict):
         return []
     by_profile = bridge.get(KEY_BRIDGE_BY_PROFILE)
@@ -230,5 +362,24 @@ def parse_bridge_groups(payload: Dict[str, object], profile_name: Optional[str])
         return []
     groups = entry.get(KEY_BRIDGE_GROUPS)
     if isinstance(groups, list):
-        return [entry for entry in groups if isinstance(entry, dict)]
+        return [group for group in groups if isinstance(group, dict)]
     return []
+
+
+def _edge_bus_index(topology_profile: Dict[str, object], edge: Dict[str, object]) -> Optional[int]:
+    """
+    NAME
+        _edge_bus_index - Resolve the bus index for one edge from node layout.
+    """
+    node_by_key = {entry.get(KEY_NODE_KEY): entry for entry in topology_nodes(topology_profile)}
+    for key_name in (KEY_FROM_NODE, KEY_TO_NODE):
+        node = node_by_key.get(edge.get(key_name))
+        if not isinstance(node, dict):
+            continue
+        layout = node.get(KEY_LAYOUT)
+        if not isinstance(layout, dict):
+            continue
+        bus_index = layout.get(KEY_BUS)
+        if isinstance(bus_index, int):
+            return bus_index
+    return None

@@ -31,6 +31,8 @@ TOPOLOGY_FIXTURE_RELATIVE = Path("tests/regression/fixtures/topology_editor_regr
 
 MODULE_TOPOLOGY_EDITOR_LOAD = "tools.can_topology.tests.test_can_top_editor_profile_load"
 MODULE_TOPOLOGY_SHOW = "tools.can_nt.tests.test_bridge_cli_topology_show"
+MODULE_TOPOLOGY_VALIDATE = "tools.can_topology.tests.test_validate_profiles_topology"
+MODULE_LIVE_TOPOLOGY_VIEW = "tools.can_topology.tests.test_live_topology_view"
 
 LABEL_FIXTURE_VALIDATE = "topology-fixture-validate"
 LABEL_TOPOLOGY_UNIT = "topology-editor-unit"
@@ -104,7 +106,14 @@ def _run_regression() -> List[CheckResult]:
     """
     return [
         _validate_topology_fixture(),
-        _run_unit_modules((MODULE_TOPOLOGY_EDITOR_LOAD, MODULE_TOPOLOGY_SHOW)),
+        _run_unit_modules(
+            (
+                MODULE_TOPOLOGY_EDITOR_LOAD,
+                MODULE_TOPOLOGY_SHOW,
+                MODULE_TOPOLOGY_VALIDATE,
+                MODULE_LIVE_TOPOLOGY_VIEW,
+            )
+        ),
     ]
 
 

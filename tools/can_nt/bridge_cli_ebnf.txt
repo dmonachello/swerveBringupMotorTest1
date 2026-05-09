@@ -61,6 +61,12 @@ show_target    = "status"
                | "tests"
                | "test" ws "sets"
                | "test" ws name [ ws "normalized" ]
+               | "topology"
+               | "topology" ws "neighbors"
+               | "topology" ws "nodes"
+               | "topology" ws "edges"
+               | "topology" ws "node" ws name
+               | "neighbors" ws name
                | "device-group" ws name
                | "device-usage" ws name
                | "message-level"
@@ -114,6 +120,7 @@ config         = "group" ws name
                | ("validate" | "val") ws "file" ws path [ ws "--repair" ]
                | ("validate" | "val") ws "profiles" [ ws ("robot" | "local") ] [ ws "--active" ]
                | ("validate" | "val") ws "tests" [ ws "--active-set" ]
+               | ("validate" | "val") ws "topology"
                | ("validate" | "val") ws "bindings" [ ws path ]
                | ("validate" | "val") ws "can-mappings" [ ws path ]
                | ("validate" | "val") ws "script" ws path
@@ -126,6 +133,11 @@ config         = "group" ws name
                | "config" ws "push" ws path [ ws "--activate" ws name ]
                | "add" ws ("next" | "all")
                | "run" ws "test" [ ws name ]
+               | "topology" ws "neighbor-ports" ws "set" ws name ws name ws name ws name
+               | "topology" ws "neighbor-ports" ws "delete" ws name ws name
+               | "topology" ws "neighbor-ports" ws "clear" ws name
+               | "topology" ws "neighbor-auto" ws "all" [ ws name ]
+               | "topology" ws "neighbor-auto" ws "node" ws name
                | ("show" | "ls") ws show_target [ ws show_flags ]
                | diagnose
                | "bindings" [ ws bindings_args ]

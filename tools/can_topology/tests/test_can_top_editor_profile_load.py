@@ -19,6 +19,17 @@ class _StringVarStub:
         self.value = value
 
 
+class _BoolVarStub:
+    def __init__(self, value: bool) -> None:
+        self.value = value
+
+    def get(self) -> bool:
+        return self.value
+
+    def set(self, value: bool) -> None:
+        self.value = bool(value)
+
+
 class TopologyEditorProfileLoadTests(unittest.TestCase):
     """
     NAME
@@ -30,6 +41,13 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
     def test_minimal_diagram_snapshot_is_layout_content(self) -> None:
         self.assertTrue(TopologyEditor._diagram_has_saved_content({"nodes": [{"key": 1}]}))
+
+    def test_minimal_topology_snapshot_is_layout_content(self) -> None:
+        self.assertTrue(
+            TopologyEditor._topology_has_saved_content(
+                {"nodes": [{"key": 1, "nodeType": "device", "deviceRef": "motor1"}], "edges": []}
+            )
+        )
 
     def test_schema_v4_label_list_profile_loads_registry_devices(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)
@@ -113,6 +131,149 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
         self.assertTrue(editor._neighbors_dirty)
         self.assertEqual(editor._neighbor_status_var.value, "Neighbors: stale")
+
+    def test_topology_snapshot_uses_device_refs_without_duplicate_labels(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor._neighbor_links = []
+        editor._neighbor_ports = [
+            {"node": 1, "port": "right", "neighbor": 2, "neighborPort": "left"},
+        ]
+        editor._attachment_links = [{"device": 2, "attachment": 3}]
+        editor._power_links = [{"a": 1, "b": 2}]
+        editor._dio_wiring_links = []
+        editor._bus_offsets = [0.0]
+        editor._bus_lefts = []
+        editor._bus_rights = []
+        editor._bus_connectors = [True]
+        editor._bus_spacing = 160.0
+        editor._pan_y = 0.0
+        editor._zoom = 1.0
+        editor._connection_filter_vars = {
+            "can": _BoolVarStub(True),
+            "power": _BoolVarStub(True),
+            "dio": _BoolVarStub(True),
+            "pwm": _BoolVarStub(True),
+            "analog": _BoolVarStub(True),
+            "virtual": _BoolVarStub(True),
+        }
+        editor._node_from_device_label = lambda label: object() if label in ("roborio", "motor1", "lsw1") else None
+        nodes = [
+            Node(key=1, category="roborio", label="roborio", can_id=0, x=10.0, bus_index=0),
+            Node(key=2, category="neos", label="motor1", can_id=25, x=30.0, bus_index=0),
+            Node(key=3, category="devices", label="lsw1", can_id=-1, interface=INTERFACE_DIO, x=50.0, row=1, bus_index=0),
+        ]
+
+        topology = editor._topology_snapshot_from_nodes(nodes)
+
+        self.assertEqual(
+            topology["nodes"],
+            [
+                {"key": 1, "nodeType": "device", "deviceRef": "roborio", "layout": {"bus": 0, "row": 0, "x": 10.0}},
+                {"key": 2, "nodeType": "device", "deviceRef": "motor1", "layout": {"bus": 0, "row": 0, "x": 30.0}},
+                {"key": 3, "nodeType": "device", "deviceRef": "lsw1", "layout": {"bus": 0, "row": 1, "x": 50.0}},
+            ],
+        )
+        self.assertEqual(
+            topology["edges"],
+            [
+                {
+                    "id": "edge_1",
+                    "fromNode": 1,
+                    "fromPort": "right",
+                    "toNode": 2,
+                    "toPort": "left",
+                    "edgeType": "can_trunk",
+                },
+                {
+                    "id": "edge_2",
+                    "fromNode": 1,
+                    "fromPort": "power",
+                    "toNode": 2,
+                    "toPort": "power",
+                    "edgeType": "power",
+                },
+                {
+                    "id": "edge_3",
+                    "fromNode": 2,
+                    "fromPort": "attachment",
+                    "toNode": 3,
+                    "toPort": "attachment",
+                    "edgeType": "virtual",
+                },
+            ],
+        )
+        self.assertEqual(
+            topology["view"]["connectionFilters"],
+            ["analog", "can", "dio", "power", "pwm", "virtual"],
+        )
+
+    def test_apply_topology_snapshot_restores_attachment_links(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor._nodes = [
+            Node(key=10, category="roborio", label="roborio", can_id=0, x=0.0, bus_index=0),
+            Node(key=11, category="pdp", label="PDP", can_id=1, x=20.0, bus_index=0),
+            Node(
+                key=12,
+                category="devices",
+                label="lsw1",
+                can_id=-1,
+                interface=INTERFACE_DIO,
+                x=40.0,
+                bus_index=0,
+            ),
+        ]
+        editor._connection_filter_vars = {
+            "can": _BoolVarStub(True),
+            "power": _BoolVarStub(True),
+            "dio": _BoolVarStub(True),
+            "pwm": _BoolVarStub(True),
+            "analog": _BoolVarStub(True),
+            "virtual": _BoolVarStub(True),
+        }
+        editor._ensure_bus_connectors = lambda _count: None
+        editor._editor_category_for_topology_node = lambda entry: "devices"
+        editor._normalize_tags = lambda value: []
+        editor._mark_neighbors_current = lambda: None
+        editor._prune_attachment_links = lambda: False
+        editor._prune_power_links = lambda: False
+        editor._prune_dio_wiring_links = lambda: False
+        editor._ensure_dio_wiring_links = lambda: False
+        editor._fix_cannect_conflicts = lambda notify=False: None
+        editor._apply_cannect_free_float = lambda: None
+        editor._resolve_overlaps = lambda: None
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+
+        editor._apply_topology_snapshot(
+            {
+                "nodes": [
+                    {"key": 1, "nodeType": "device", "deviceRef": "roborio", "layout": {"bus": 0, "row": 0, "x": 0.0}},
+                    {"key": 2, "nodeType": "device", "deviceRef": "PDP", "layout": {"bus": 0, "row": 0, "x": 20.0}},
+                    {"key": 3, "nodeType": "device", "deviceRef": "lsw1", "layout": {"bus": 0, "row": 1, "x": 40.0}},
+                ],
+                "edges": [
+                    {
+                        "id": "edge_1",
+                        "fromNode": 1,
+                        "fromPort": "power",
+                        "toNode": 2,
+                        "toPort": "power",
+                        "edgeType": "power",
+                    },
+                    {
+                        "id": "edge_2",
+                        "fromNode": 2,
+                        "fromPort": "attachment",
+                        "toNode": 3,
+                        "toPort": "attachment",
+                        "edgeType": "virtual",
+                    }
+                ],
+                "view": {},
+            }
+        )
+
+        self.assertEqual(editor._attachment_links, [{"device": 2, "attachment": 3}])
+        self.assertEqual(editor._power_links, [{"a": 1, "b": 2}])
 
 
 if __name__ == "__main__":

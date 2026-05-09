@@ -26,29 +26,62 @@ from typing import Any, Dict, List, Optional, Tuple
 from tools.common.cli_helpers import add_path_arg
 from tools.common.json_io import read_json
 from tools.common.profile_constants import (
+    EDGE_TYPE_ANALOG,
+    EDGE_TYPE_CAN_DROP,
+    EDGE_TYPE_CAN_TAP,
+    EDGE_TYPE_CAN_TRUNK,
+    EDGE_TYPE_DIO,
+    EDGE_TYPE_POWER,
+    EDGE_TYPE_PWM,
+    EDGE_TYPE_UNKNOWN,
+    EDGE_TYPE_VIRTUAL,
     INTERFACE_ANALOG,
     INTERFACE_CAN,
     INTERFACE_DIO,
     INTERFACE_INTERNAL,
     INTERFACE_PWM,
     KEY_ATTACHMENTS,
+    KEY_BUS,
     KEY_DATA_HASH,
     KEY_DATA_VERSION,
     KEY_DEFAULT_PROFILE,
+    KEY_DEVICE_REF,
     KEY_DEVICE_TYPE,
     KEY_DEVICES,
     KEY_DIO,
+    KEY_EDGE_ID,
+    KEY_EDGE_TYPE,
+    KEY_FROM_NODE,
+    KEY_FROM_PORT,
     KEY_ID,
     KEY_INTERFACE,
     KEY_INTERFACE_LEGACY,
     KEY_INVERT,
     KEY_LABEL,
+    KEY_LAYOUT,
     KEY_MANUFACTURER,
+    KEY_MODEL,
+    KEY_NODE_KEY,
+    KEY_NODE_TYPE,
     KEY_PROFILE_DEVICES,
     KEY_PROFILES,
     KEY_SCHEMA_VERSION,
     KEY_ANALOG,
     KEY_PWM,
+    KEY_TO_NODE,
+    KEY_TO_PORT,
+    KEY_TOPOLOGY,
+    KEY_TOPOLOGY_EDGES,
+    KEY_TOPOLOGY_NODES,
+    KEY_TOPOLOGY_PROFILES,
+    KEY_VENDOR,
+    LAYOUT_KEY_ROW,
+    LAYOUT_KEY_X,
+    NODE_TYPE_ANALYZER,
+    NODE_TYPE_DEVICE,
+    NODE_TYPE_JUNCTION,
+    NODE_TYPE_POWER,
+    NODE_TYPE_VIRTUAL,
     PROFILE_SCHEMA_VERSION,
     get_device_interface,
 )
@@ -83,6 +116,42 @@ MSG_PASS_DATA_VERSION = "Root 'data_version' is present."
 MSG_PASS_DATA_HASH = "Root 'data_hash' matches computed value."
 MSG_PASS_PROFILES = "Root 'profiles' is a non-empty object."
 MSG_PASS_DEFAULT_PROFILE = "Root 'default_profile' present in profiles."
+MSG_WARN_TOPOLOGY_MISSING = "Root 'topology' missing; topology graph not authored."
+MSG_ERR_TOPOLOGY_OBJECT = "Root 'topology' must be an object when present."
+MSG_ERR_TOPOLOGY_PROFILES = "Root 'topology.profiles' must be an object."
+MSG_ERR_TOPOLOGY_PROFILE_OBJECT = "Topology profile '{name}' must be an object."
+MSG_ERR_TOPOLOGY_NODES = "Topology profile '{name}' missing nodes list."
+MSG_ERR_TOPOLOGY_EDGES = "Topology profile '{name}' missing edges list."
+MSG_ERR_TOPOLOGY_NODE_KEY_DUP = "Topology profile '{name}' has duplicate node key '{key}'."
+MSG_ERR_TOPOLOGY_DEVICE_REF = "Topology profile '{name}' device node '{key}' missing deviceRef."
+MSG_ERR_TOPOLOGY_DEVICE_UNKNOWN = "Topology profile '{name}' deviceRef '{label}' not found in devices."
+MSG_ERR_TOPOLOGY_DEVICE_LABEL_DUP = "Topology profile '{name}' has multiple device nodes for '{label}'."
+MSG_ERR_TOPOLOGY_NODE_LABEL = "Topology profile '{name}' node '{key}' missing label."
+MSG_ERR_TOPOLOGY_EDGE_ID_DUP = "Topology profile '{name}' has duplicate edge id '{edge_id}'."
+MSG_ERR_TOPOLOGY_EDGE_ENDPOINT = "Topology profile '{name}' edge '{edge_id}' references missing node endpoint."
+MSG_ERR_TOPOLOGY_EDGE_PORT = "Topology profile '{name}' edge '{edge_id}' missing port names."
+MSG_ERR_TOPOLOGY_PORT_REUSE = "Topology profile '{name}' reuses node '{node}' port '{port}'."
+MSG_WARN_TOPOLOGY_EDGE_TYPE = "Topology profile '{name}' edge '{edge_id}' uses unknown edgeType '{edge_type}'."
+MSG_WARN_TOPOLOGY_NODE_LAYOUT = "Topology profile '{name}' node '{key}' missing layout field '{field}'."
+
+TOPOLOGY_NODE_TYPES = {
+    NODE_TYPE_DEVICE,
+    NODE_TYPE_JUNCTION,
+    NODE_TYPE_ANALYZER,
+    NODE_TYPE_POWER,
+    NODE_TYPE_VIRTUAL,
+}
+TOPOLOGY_EDGE_TYPES = {
+    EDGE_TYPE_CAN_TRUNK,
+    EDGE_TYPE_CAN_DROP,
+    EDGE_TYPE_CAN_TAP,
+    EDGE_TYPE_DIO,
+    EDGE_TYPE_PWM,
+    EDGE_TYPE_ANALOG,
+    EDGE_TYPE_POWER,
+    EDGE_TYPE_VIRTUAL,
+    EDGE_TYPE_UNKNOWN,
+}
 
 
 def _compute_data_hash(payload: Dict[str, Any]) -> str:
@@ -220,6 +289,10 @@ def validate_profiles(payload: Dict[str, Any], reporter: "Reporter") -> Tuple[Li
         profile_errors, profile_warnings = validate_profile(name, profile, registry, reporter)
         errors.extend(profile_errors)
         warnings.extend(profile_warnings)
+
+    topology_errors, topology_warnings = validate_topology(payload, profiles, registry, reporter)
+    errors.extend(topology_errors)
+    warnings.extend(topology_warnings)
 
     return errors, warnings
 
@@ -364,6 +437,165 @@ def validate_profile(
 
     return errors, warnings
 
+
+def validate_topology(
+    payload: Dict[str, Any],
+    profiles: Dict[str, Any],
+    registry: Dict[str, Dict[str, Any]],
+    reporter: "Reporter",
+) -> Tuple[List[str], List[str]]:
+    """
+    NAME
+        validate_topology - Validate the root topology graph when present.
+    """
+    errors: List[str] = []
+    warnings: List[str] = []
+    topology = payload.get(KEY_TOPOLOGY)
+    if topology is None:
+        warnings.append(MSG_WARN_TOPOLOGY_MISSING)
+        reporter.warn(MSG_WARN_TOPOLOGY_MISSING)
+        return errors, warnings
+    if not isinstance(topology, dict):
+        errors.append(MSG_ERR_TOPOLOGY_OBJECT)
+        reporter.fail(MSG_ERR_TOPOLOGY_OBJECT)
+        return errors, warnings
+    topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+    if not isinstance(topology_profiles, dict):
+        errors.append(MSG_ERR_TOPOLOGY_PROFILES)
+        reporter.fail(MSG_ERR_TOPOLOGY_PROFILES)
+        return errors, warnings
+    for name, entry in topology_profiles.items():
+        if name not in profiles:
+            continue
+        profile_errors, profile_warnings = validate_topology_profile(name, entry, registry, reporter)
+        errors.extend(profile_errors)
+        warnings.extend(profile_warnings)
+    return errors, warnings
+
+
+def validate_topology_profile(
+    name: str,
+    entry: Any,
+    registry: Dict[str, Dict[str, Any]],
+    reporter: "Reporter",
+) -> Tuple[List[str], List[str]]:
+    """
+    NAME
+        validate_topology_profile - Validate one profile topology graph.
+    """
+    errors: List[str] = []
+    warnings: List[str] = []
+    if not isinstance(entry, dict):
+        msg = MSG_ERR_TOPOLOGY_PROFILE_OBJECT.format(name=name)
+        errors.append(msg)
+        reporter.fail(msg)
+        return errors, warnings
+    nodes = entry.get(KEY_TOPOLOGY_NODES)
+    edges = entry.get(KEY_TOPOLOGY_EDGES)
+    if not isinstance(nodes, list):
+        msg = MSG_ERR_TOPOLOGY_NODES.format(name=name)
+        errors.append(msg)
+        reporter.fail(msg)
+        return errors, warnings
+    if not isinstance(edges, list):
+        msg = MSG_ERR_TOPOLOGY_EDGES.format(name=name)
+        errors.append(msg)
+        reporter.fail(msg)
+        return errors, warnings
+
+    node_by_key: Dict[int, Dict[str, Any]] = {}
+    seen_device_refs: Dict[str, int] = {}
+    for raw in nodes:
+        if not isinstance(raw, dict):
+            continue
+        key = raw.get(KEY_NODE_KEY)
+        if not isinstance(key, int):
+            continue
+        if key in node_by_key:
+            msg = MSG_ERR_TOPOLOGY_NODE_KEY_DUP.format(name=name, key=key)
+            errors.append(msg)
+            reporter.fail(msg)
+            continue
+        node_by_key[key] = raw
+        node_type = str(raw.get(KEY_NODE_TYPE, "")).strip()
+        layout = raw.get(KEY_LAYOUT)
+        layout_dict = layout if isinstance(layout, dict) else {}
+        for field_name in (KEY_BUS, LAYOUT_KEY_ROW, LAYOUT_KEY_X):
+            if field_name not in layout_dict:
+                msg = MSG_WARN_TOPOLOGY_NODE_LAYOUT.format(name=name, key=key, field=field_name)
+                warnings.append(msg)
+                reporter.warn(msg)
+        if node_type == NODE_TYPE_DEVICE:
+            device_ref = str(raw.get(KEY_DEVICE_REF, "")).strip()
+            if not device_ref:
+                msg = MSG_ERR_TOPOLOGY_DEVICE_REF.format(name=name, key=key)
+                errors.append(msg)
+                reporter.fail(msg)
+                continue
+            device_key = device_ref.lower()
+            if device_key not in registry:
+                msg = MSG_ERR_TOPOLOGY_DEVICE_UNKNOWN.format(name=name, label=device_ref)
+                errors.append(msg)
+                reporter.fail(msg)
+                continue
+            seen_device_refs[device_key] = seen_device_refs.get(device_key, 0) + 1
+            if seen_device_refs[device_key] > 1:
+                msg = MSG_ERR_TOPOLOGY_DEVICE_LABEL_DUP.format(name=name, label=device_ref)
+                errors.append(msg)
+                reporter.fail(msg)
+        else:
+            label = str(raw.get(KEY_LABEL, "")).strip()
+            if not label:
+                msg = MSG_ERR_TOPOLOGY_NODE_LABEL.format(name=name, key=key)
+                errors.append(msg)
+                reporter.fail(msg)
+
+    seen_edge_ids: set[str] = set()
+    used_ports: set[Tuple[int, str]] = set()
+    for raw in edges:
+        if not isinstance(raw, dict):
+            continue
+        edge_id = str(raw.get(KEY_EDGE_ID, "")).strip()
+        if not edge_id:
+            edge_id = "<missing>"
+        if edge_id in seen_edge_ids:
+            msg = MSG_ERR_TOPOLOGY_EDGE_ID_DUP.format(name=name, edge_id=edge_id)
+            errors.append(msg)
+            reporter.fail(msg)
+            continue
+        seen_edge_ids.add(edge_id)
+        from_node = raw.get(KEY_FROM_NODE)
+        to_node = raw.get(KEY_TO_NODE)
+        from_port = raw.get(KEY_FROM_PORT)
+        to_port = raw.get(KEY_TO_PORT)
+        if not isinstance(from_node, int) or not isinstance(to_node, int):
+            msg = MSG_ERR_TOPOLOGY_EDGE_ENDPOINT.format(name=name, edge_id=edge_id)
+            errors.append(msg)
+            reporter.fail(msg)
+            continue
+        if from_node not in node_by_key or to_node not in node_by_key:
+            msg = MSG_ERR_TOPOLOGY_EDGE_ENDPOINT.format(name=name, edge_id=edge_id)
+            errors.append(msg)
+            reporter.fail(msg)
+            continue
+        if not isinstance(from_port, str) or not from_port.strip() or not isinstance(to_port, str) or not to_port.strip():
+            msg = MSG_ERR_TOPOLOGY_EDGE_PORT.format(name=name, edge_id=edge_id)
+            errors.append(msg)
+            reporter.fail(msg)
+            continue
+        for port_key in ((from_node, from_port.strip()), (to_node, to_port.strip())):
+            if port_key in used_ports:
+                msg = MSG_ERR_TOPOLOGY_PORT_REUSE.format(name=name, node=port_key[0], port=port_key[1])
+                errors.append(msg)
+                reporter.fail(msg)
+            used_ports.add(port_key)
+        edge_type = str(raw.get(KEY_EDGE_TYPE, "")).strip()
+        if edge_type not in TOPOLOGY_EDGE_TYPES:
+            msg = MSG_WARN_TOPOLOGY_EDGE_TYPE.format(name=name, edge_id=edge_id, edge_type=edge_type)
+            warnings.append(msg)
+            reporter.warn(msg)
+
+    return errors, warnings
 
 
 def _has_can_fields(entry: Dict[str, Any]) -> bool:

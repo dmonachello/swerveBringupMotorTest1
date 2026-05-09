@@ -92,7 +92,9 @@
       "features": [
         "topology editor profile load",
         "topology show metadata",
-        "topology fixture validation"
+        "topology fixture validation",
+        "topology graph validation negatives",
+        "live topology filter behavior"
       ],
       "argv": [
         "{python}",

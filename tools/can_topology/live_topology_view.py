@@ -65,6 +65,7 @@ from tools.common.topology_parse import (
     parse_bridge_groups,
     parse_diagram_links,
     parse_diagram_nodes,
+    topology_profile_from_payload,
 )
 from tools.common.topology_draw import draw_bus_segments, draw_group_overlays, draw_links
 from tools.can_nt.visibility_constants import (
@@ -98,6 +99,28 @@ VIS_COLOR_ALL = "#16a34a"
 VIS_COLOR_SOME = "#f59e0b"
 VIS_COLOR_NONE = "#dc2626"
 VIS_COLOR_UNKNOWN = "#9ca3af"
+FILTER_CAN = "can"
+FILTER_POWER = "power"
+FILTER_DIO = "dio"
+FILTER_PWM = "pwm"
+FILTER_ANALOG = "analog"
+FILTER_VIRTUAL = "virtual"
+CONNECTION_FILTERS_ORDER = (
+    FILTER_CAN,
+    FILTER_POWER,
+    FILTER_DIO,
+    FILTER_PWM,
+    FILTER_ANALOG,
+    FILTER_VIRTUAL,
+)
+CONNECTION_FILTER_LABELS = {
+    FILTER_CAN: "CAN",
+    FILTER_POWER: "Power",
+    FILTER_DIO: "DIO",
+    FILTER_PWM: "PWM",
+    FILTER_ANALOG: "Analog",
+    FILTER_VIRTUAL: "Virtual",
+}
 
 CATEGORY_NEOS = "neos"
 CATEGORY_NEO550S = "neo550s"
@@ -412,6 +435,9 @@ class LiveTopologyView(ttk.Frame):
         self._bridge_groups: List[Dict[str, object]] = []
         self._show_groups = True
         self._runtime_fingerprint: Optional[Tuple[object, ...]] = None
+        self._connection_filter_vars = {
+            key: tk.BooleanVar(value=True) for key in CONNECTION_FILTERS_ORDER
+        }
 
         header = ttk.Frame(self)
         header.pack(fill="x", padx=8, pady=(8, 0))
@@ -420,6 +446,17 @@ class LiveTopologyView(ttk.Frame):
         )
         self._status_label = ttk.Label(header, text="Profile: --")
         self._status_label.pack(side="left", padx=(12, 0))
+        filter_frame = ttk.Frame(header)
+        filter_frame.pack(side="right")
+        ttk.Button(filter_frame, text="All", command=self._enable_all_connection_filters).pack(side="left")
+        ttk.Button(filter_frame, text="None", command=self._disable_all_connection_filters).pack(side="left", padx=(4, 8))
+        for filter_key in CONNECTION_FILTERS_ORDER:
+            ttk.Checkbutton(
+                filter_frame,
+                text=CONNECTION_FILTER_LABELS[filter_key],
+                variable=self._connection_filter_vars[filter_key],
+                command=self._redraw,
+            ).pack(side="left")
 
         body = ttk.Frame(self)
         body.pack(fill="both", expand=True, padx=8, pady=8)
@@ -500,6 +537,9 @@ class LiveTopologyView(ttk.Frame):
         diagram = payload.get("diagram") if isinstance(payload.get("diagram"), dict) else {}
         diagram_profiles = diagram.get("profiles") if isinstance(diagram.get("profiles"), dict) else {}
         diag = diagram_profiles.get(self._profile_name)
+        if not isinstance(diag, dict):
+            topology_profile = topology_profile_from_payload(payload, self._profile_name)
+            diag = topology_profile if isinstance(topology_profile, dict) else None
         if isinstance(diag, dict):
             nodes, meta = _diagram_nodes(diag, registry)
             self._nodes = nodes
@@ -512,6 +552,19 @@ class LiveTopologyView(ttk.Frame):
             self._pan_y = float(meta.get("panY") or 0.0)
             self._zoom = float(meta.get("zoom") or 1.0)
             self._ethernet_links, self._can_links, self._device_links = parse_diagram_links(meta)
+            if isinstance(meta, dict):
+                view = meta.get("view")
+                view_dict = view if isinstance(view, dict) else meta.get("view", {})
+                if isinstance(view_dict, dict):
+                    saved_filters = view_dict.get("connectionFilters")
+                    if isinstance(saved_filters, list):
+                        active = {
+                            str(entry).strip().lower()
+                            for entry in saved_filters
+                            if isinstance(entry, str)
+                        }
+                        for filter_key, var in self._connection_filter_vars.items():
+                            var.set(filter_key in active)
         else:
             self._nodes = _profile_devices(
                 raw_profile if isinstance(raw_profile, dict) else {},
@@ -565,6 +618,38 @@ class LiveTopologyView(ttk.Frame):
         if enabled == self._visibility_enabled:
             return
         self._visibility_enabled = enabled
+        self._redraw()
+
+    def _active_connection_filters(self) -> set[str]:
+        """
+        NAME
+            _active_connection_filters - Return enabled connection filter keys.
+        """
+        vars_map = getattr(self, "_connection_filter_vars", None)
+        if not isinstance(vars_map, dict):
+            return set(CONNECTION_FILTERS_ORDER)
+        return {
+            filter_key
+            for filter_key, var in vars_map.items()
+            if bool(var.get())
+        }
+
+    def _enable_all_connection_filters(self) -> None:
+        """
+        NAME
+            _enable_all_connection_filters - Enable every connection filter.
+        """
+        for var in self._connection_filter_vars.values():
+            var.set(True)
+        self._redraw()
+
+    def _disable_all_connection_filters(self) -> None:
+        """
+        NAME
+            _disable_all_connection_filters - Disable every connection filter.
+        """
+        for var in self._connection_filter_vars.values():
+            var.set(False)
         self._redraw()
 
     def set_visibility_snapshot(self, snapshot: Optional[Dict[str, object]]) -> None:
@@ -887,6 +972,8 @@ class LiveTopologyView(ttk.Frame):
         height = max(self._canvas.winfo_height(), 1)
         scale = self._zoom
         base_y = height * 0.5 + self._pan_y
+        active_filters = self._active_connection_filters()
+        show_can = FILTER_CAN in active_filters
         bus_count = max((n.bus_index for n in self._nodes), default=0) + 1
         while len(self._bus_offsets) < bus_count:
             self._bus_offsets.append(0.0)
@@ -902,16 +989,17 @@ class LiveTopologyView(ttk.Frame):
             list(self._bus_rights),
             max_x,
         )
-        draw_bus_segments(
-            self._canvas,
-            bus_ys_list,
-            eff_lefts,
-            eff_rights,
-            scale=scale,
-            min_x=min_x,
-            max_x=max_x,
-            x_shift=x_shift,
-        )
+        if show_can:
+            draw_bus_segments(
+                self._canvas,
+                bus_ys_list,
+                eff_lefts,
+                eff_rights,
+                scale=scale,
+                min_x=min_x,
+                max_x=max_x,
+                x_shift=x_shift,
+            )
 
         bounds = []
         node_centers: Dict[int, Tuple[float, float]] = {}
@@ -1070,16 +1158,19 @@ class LiveTopologyView(ttk.Frame):
             for node in self._nodes
             if node.category in ("cannect_direct", "cannect_inject")
         ]
-        if self._ethernet_links or self._can_links or self._device_links or cannect_nodes:
+        filtered_can_links = self._can_links if show_can else []
+        filtered_device_links = self._device_links if show_can else []
+        filtered_cannect_nodes = cannect_nodes if show_can else []
+        if self._ethernet_links or filtered_can_links or filtered_device_links or filtered_cannect_nodes:
             draw_links(
                 self._canvas,
                 node_centers,
                 self._node_bounds,
                 bus_ys_list,
                 self._ethernet_links,
-                self._can_links,
-                self._device_links,
-                cannect_nodes,
+                filtered_can_links,
+                filtered_device_links,
+                filtered_cannect_nodes,
             )
 
         for node in self._nodes:
@@ -1098,4 +1189,5 @@ class LiveTopologyView(ttk.Frame):
                 continue
             x0, y0, x1, y1 = bounds
             line_y = y0 if cy > bus_y else y1
-            self._canvas.create_line(cx, bus_y, cx, line_y, width=2, fill="#444444")
+            if show_can:
+                self._canvas.create_line(cx, bus_y, cx, line_y, width=2, fill="#444444")

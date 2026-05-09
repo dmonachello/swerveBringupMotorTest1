@@ -2,6 +2,26 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-05-09
+
+### Added - 2026-05-09
+
+- Added a canonical root-level topology graph model under
+  `topology.profiles.<profile>.nodes/edges`.
+- Added topology node and edge validation for device references, endpoints,
+  duplicate ports, and edge identity.
+- Added topology regression coverage for malformed graph inputs and live
+  topology filter behavior.
+
+### Improved - 2026-05-09
+
+- Upgraded the topology editor and live topology view to load the new graph
+  model directly instead of relying on `diagram` neighbor metadata as the main
+  truth.
+- Added connection-type filters to the topology editor and live topology UI,
+  including persisted filter state in topology view metadata.
+- Updated CLI topology inspection to derive neighbor views from graph edges.
+
 ## 2026-05-08
 
 ### Added - 2026-05-08

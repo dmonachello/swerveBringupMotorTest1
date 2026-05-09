@@ -9,6 +9,15 @@
         "roborio",
         "PDP"
       ]
+    },
+    "drawn_profile": {
+      "devices": [
+        "FALCON 9",
+        "SPARKMAX/NEO 25",
+        "lmtSw0",
+        "roborio",
+        "PDP"
+      ]
     }
   },
   "devices": [
@@ -51,185 +60,21 @@
       "deviceInterface": "CAN",
       "id": 0,
       "terminator": true,
-      "attachments": [
-        "lmtSw0"
-      ]
+      "manufacturer": 1,
+      "deviceType": 1
     },
     {
       "label": "PDP",
       "deviceInterface": "CAN",
       "id": 1,
-      "terminator": true
+      "terminator": true,
+      "manufacturer": 4,
+      "deviceType": 8
     }
   ],
-  "diagram": {
-    "profiles": {
-      "dsl_demo_050426": {
-        "busOffsets": [
-          0.0
-        ],
-        "busCount": 1,
-        "busSpacing": 160.0,
-        "busLefts": [
-          40.0
-        ],
-        "busRights": [
-          816.9298245614034
-        ],
-        "busConnectors": [],
-        "panY": -0.0,
-        "zoom": 0.7073936314977775,
-        "dioFreeYMode": "rail",
-        "nodes": [
-          {
-            "nodeType": "device",
-            "key": 1,
-            "category": "falcons",
-            "label": "FALCON 9",
-            "id": 9,
-            "bus": 0,
-            "row": 0,
-            "x": 428.2894736842106,
-            "freeY": -66.77631578947368,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 2,
-            "category": "neos",
-            "label": "SPARKMAX/NEO 25",
-            "id": 25,
-            "bus": 0,
-            "row": 0,
-            "x": 600.0,
-            "freeY": -57.26461988304094,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 3,
-            "category": "devices",
-            "label": "lmtSw0",
-            "id": -1,
-            "bus": 0,
-            "row": 0,
-            "x": 278.2894736842106,
-            "freeY": -11.25,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 4,
-            "category": "roborio",
-            "label": "roborio",
-            "id": 0,
-            "bus": 0,
-            "row": 0,
-            "x": 0.0,
-            "freeY": null,
-            "freeYRelative": false,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          },
-          {
-            "nodeType": "device",
-            "key": 5,
-            "category": "pdp",
-            "label": "PDP",
-            "id": 1,
-            "bus": 0,
-            "row": 1,
-            "x": 696.9298245614034,
-            "freeY": 94.75877192982456,
-            "freeYRelative": true,
-            "scale": 1.0,
-            "tags": [],
-            "profileVisible": true
-          }
-        ],
-        "ethernetLinks": [],
-        "canLinks": [],
-        "deviceLinks": [],
-        "attachmentLinks": [
-          {
-            "device": 4,
-            "attachment": 3
-          }
-        ],
-        "dioLinks": [
-          {
-            "roborio": 4,
-            "device": 3
-          }
-        ],
-        "neighborLinks": [
-          {
-            "a": 1,
-            "b": 4
-          },
-          {
-            "a": 1,
-            "b": 2
-          },
-          {
-            "a": 2,
-            "b": 5
-          }
-        ],
-        "neighborPorts": [
-          {
-            "node": 4,
-            "port": "right",
-            "neighbor": 1,
-            "neighborPort": "left"
-          },
-          {
-            "node": 1,
-            "port": "left",
-            "neighbor": 4,
-            "neighborPort": "right"
-          },
-          {
-            "node": 1,
-            "port": "right",
-            "neighbor": 2,
-            "neighborPort": "left"
-          },
-          {
-            "node": 2,
-            "port": "left",
-            "neighbor": 1,
-            "neighborPort": "right"
-          },
-          {
-            "node": 2,
-            "port": "right",
-            "neighbor": 5,
-            "neighborPort": "left"
-          },
-          {
-            "node": 5,
-            "port": "left",
-            "neighbor": 2,
-            "neighborPort": "right"
-          }
-        ]
-      }
-    }
-  },
-  "data_version": "2026-05-07_013734",
-  "data_hash": "29f5d81652adc475ab4246633b3a9df8771927e7171370b19c7164d55eeaf0f2",
-  "default_profile": "dsl_demo_050426",
+  "data_version": "2026-05-09_012214",
+  "data_hash": "56c8922ec1b77b915d0d291416e7c2c0daf48840e7ecaa7b7f669be794a381a8",
+  "default_profile": "drawn_profile",
   "bridgeConfig": {
     "schemaVersion": 2,
     "generatedAt": null,
@@ -431,6 +276,227 @@
             "untils": [],
             "requires": []
           }
+        }
+      }
+    }
+  },
+  "topology": {
+    "version": 1,
+    "source": "local",
+    "profiles": {
+      "dsl_demo_050426": {
+        "version": 1,
+        "source": "local",
+        "nodes": [
+          {
+            "key": 1,
+            "nodeType": "device",
+            "deviceRef": "FALCON 9",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 428.2894736842106,
+              "y": -66.77631578947368
+            }
+          },
+          {
+            "key": 2,
+            "nodeType": "device",
+            "deviceRef": "SPARKMAX/NEO 25",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 600.0,
+              "y": -57.26461988304094
+            }
+          },
+          {
+            "key": 3,
+            "nodeType": "device",
+            "deviceRef": "lmtSw0",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 278.2894736842106,
+              "y": -11.25
+            }
+          },
+          {
+            "key": 4,
+            "nodeType": "device",
+            "deviceRef": "roborio",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 0.0
+            }
+          },
+          {
+            "key": 5,
+            "nodeType": "device",
+            "deviceRef": "PDP",
+            "layout": {
+              "bus": 0,
+              "row": 1,
+              "x": 696.9298245614034,
+              "y": 94.75877192982456
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "edge_1",
+            "fromNode": 4,
+            "fromPort": "right",
+            "toNode": 1,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_2",
+            "fromNode": 1,
+            "fromPort": "right",
+            "toNode": 2,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_3",
+            "fromNode": 2,
+            "fromPort": "right",
+            "toNode": 5,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_4",
+            "fromNode": 4,
+            "fromPort": "dio",
+            "toNode": 3,
+            "toPort": "dio",
+            "edgeType": "dio"
+          }
+        ],
+        "view": {
+          "busOffsets": [
+            0.0
+          ],
+          "busCount": 1,
+          "busSpacing": 160.0,
+          "busLefts": [
+            40.0
+          ],
+          "busRights": [
+            816.9298245614034
+          ],
+          "busConnectors": [],
+          "panY": 0.0,
+          "zoom": 0.7073936314977775,
+          "connectionFilters": [
+            "analog",
+            "can",
+            "dio",
+            "power",
+            "pwm",
+            "virtual"
+          ],
+          "callouts": []
+        }
+      },
+      "drawn_profile": {
+        "version": 1,
+        "source": "local",
+        "nodes": [
+          {
+            "key": 1,
+            "nodeType": "device",
+            "deviceRef": "FALCON 9",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 332.2054221811847,
+              "y": -65.73426438904278
+            }
+          },
+          {
+            "key": 2,
+            "nodeType": "device",
+            "deviceRef": "SPARKMAX/NEO 25",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 517.3922745460152,
+              "y": -68.56154457781881
+            }
+          },
+          {
+            "key": 3,
+            "nodeType": "device",
+            "deviceRef": "lmtSw0",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 171.0504514209501,
+              "y": -47.19753513901715
+            }
+          },
+          {
+            "key": 4,
+            "nodeType": "device",
+            "deviceRef": "roborio",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 131.4685287780855,
+              "y": -69.97518467220682
+            }
+          },
+          {
+            "key": 5,
+            "nodeType": "device",
+            "deviceRef": "PDP",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 720.9564481378898,
+              "y": -68.56154457781881
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "edge_1",
+            "fromNode": 4,
+            "fromPort": "dio",
+            "toNode": 3,
+            "toPort": "dio",
+            "edgeType": "dio"
+          }
+        ],
+        "view": {
+          "busOffsets": [
+            0.0
+          ],
+          "busCount": 1,
+          "busSpacing": 160.0,
+          "busLefts": [
+            40.0
+          ],
+          "busRights": [
+            816.9298245614034
+          ],
+          "busConnectors": [],
+          "panY": 0.0,
+          "zoom": 0.7073936314977775,
+          "connectionFilters": [
+            "analog",
+            "can",
+            "dio",
+            "power",
+            "pwm",
+            "virtual"
+          ],
+          "callouts": []
         }
       }
     }

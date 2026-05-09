@@ -174,8 +174,19 @@ from tools.common.config_lifecycle import ConfigLifecycleService
 from tools.common.workflows import Workflow01Service
 from tools.common.tests_domain import collect_available_tests
 from tools.common.diagnostics import normalize_device_attachments, summarize_attachment_metrics
+from tools.common.topology_parse import (
+    topology_edges,
+    topology_nodes,
+    topology_neighbor_links,
+    topology_neighbor_ports,
+    topology_node_lookup,
+    topology_profile_from_payload,
+)
 from tools.common.profile_constants import (
     BRIDGE_CONFIG_SCHEMA_VERSION,
+    EDGE_TYPE_CAN_DROP,
+    EDGE_TYPE_CAN_TAP,
+    EDGE_TYPE_CAN_TRUNK,
     KEY_BRIDGE_BY_PROFILE,
     KEY_BRIDGE_CONFIG,
     KEY_BRIDGE_GENERATED_AT,
@@ -260,8 +271,27 @@ from tools.common.profile_constants import (
     KEY_LINK_NEIGHBOR,
     KEY_LINK_NEIGHBOR_PORT,
     KEY_NODE_KEY,
+    KEY_NODE_TYPE,
+    KEY_DEVICE_REF,
+    KEY_LAYOUT,
+    KEY_EDGE_TYPE,
+    KEY_EDGE_ID,
+    KEY_TOPOLOGY,
+    KEY_TOPOLOGY_PROFILES,
+    KEY_TOPOLOGY_VERSION,
+    KEY_TOPOLOGY_SOURCE,
+    KEY_TOPOLOGY_NODES,
+    KEY_TOPOLOGY_EDGES,
+    KEY_FROM_NODE,
+    KEY_FROM_PORT,
+    KEY_TO_NODE,
+    KEY_TO_PORT,
+    NEIGHBOR_PORT_LEFT,
+    NEIGHBOR_PORT_RIGHT,
+    NODE_TYPE_DEVICE,
     get_device_interface,
 )
+from tools.can_topology.validate_profiles import Reporter, validate_profiles
 from tools.common.robot_test_dsl import (
     DEFAULT_TEST_SET as DSL_DEFAULT_TEST_SET,
     RobotTestDslEntry,
@@ -929,6 +959,15 @@ SHOW_TARGET_HELP = "help"
 SHOW_TARGET_WORKSPACE = "workspace"
 SHOW_TARGET_CONTROLLERS = "controllers"
 SHOW_TARGET_SOURCES = "sources"
+SHOW_TARGET_TOPOLOGY = "topology"
+SHOW_TARGET_NEIGHBORS = "neighbors"
+CMD_TOPOLOGY = "topology"
+CMD_NEIGHBORS = "neighbors"
+CMD_NEIGHBOR_PORTS = "neighbor-ports"
+CMD_NEIGHBOR_AUTO = "neighbor-auto"
+CMD_NODES = "nodes"
+CMD_EDGES = "edges"
+CMD_NODE = "node"
 
 SHOW_SOURCE_ROBOT = "robot"
 SHOW_SOURCE_LOCAL = "local"
@@ -970,6 +1009,7 @@ LOCAL_ONLY_SHOW_TARGETS = (
     SHOW_TARGET_HELP,
     SHOW_TARGET_WORKSPACE,
     SHOW_TARGET_CONTROLLERS,
+    SHOW_TARGET_TOPOLOGY,
     SHOW_TARGET_SOURCES,
     SHOW_TARGET_CONFIG_RAW,
     SHOW_TARGET_CONFIG_DIRTY,
@@ -977,6 +1017,26 @@ LOCAL_ONLY_SHOW_TARGETS = (
     CMD_TEST,
 )
 MESSAGE_ERR_SHOW_REQUIRES_TARGET = "ERROR: show requires a target."
+MESSAGE_ERR_TOPOLOGY_PROFILE_REQUIRED = "ERROR: Active profile required for topology commands."
+MESSAGE_ERR_TOPOLOGY_NOT_LOADED = "ERROR: Topology not loaded for the active profile."
+MESSAGE_ERR_TOPOLOGY_LOCAL_ONLY = "ERROR: topology commands are local-only right now."
+MESSAGE_ERR_TOPOLOGY_USAGE = "ERROR: topology neighbor-ports set|delete|clear ... or topology neighbor-auto all|node ..."
+MESSAGE_ERR_TOPOLOGY_NODE_REQUIRED = "ERROR: topology node label required."
+MESSAGE_ERR_TOPOLOGY_NEIGHBOR_PORTS_SET = "ERROR: topology neighbor-ports set <node> <port> <neighbor> <neighborPort>"
+MESSAGE_ERR_TOPOLOGY_NEIGHBOR_PORTS_DELETE = "ERROR: topology neighbor-ports delete <node> <port>"
+MESSAGE_ERR_TOPOLOGY_NEIGHBOR_PORTS_CLEAR = "ERROR: topology neighbor-ports clear <node>"
+MESSAGE_ERR_TOPOLOGY_NEIGHBOR_AUTO = "ERROR: topology neighbor-auto all [label1,label2] | topology neighbor-auto node <label>"
+MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND = "ERROR: topology node '{name}' not found in the active profile."
+MESSAGE_INFO_TOPOLOGY_NEIGHBOR_PORT_SET = "INFO: topology neighbor port updated."
+MESSAGE_INFO_TOPOLOGY_NEIGHBOR_PORT_DELETE = "INFO: topology neighbor port removed."
+MESSAGE_INFO_TOPOLOGY_NEIGHBOR_PORT_CLEAR = "INFO: topology node neighbor ports cleared."
+MESSAGE_INFO_TOPOLOGY_NEIGHBOR_AUTO = "INFO: topology neighbors rebuilt from layout."
+MESSAGE_INFO_TOPOLOGY_VALIDATE_OK = "OK: topology is valid."
+MESSAGE_TOPOLOGY_HEADER = "Topology:"
+MESSAGE_TOPOLOGY_NODES_HEADER = "Nodes:"
+MESSAGE_TOPOLOGY_EDGES_HEADER = "Edges:"
+MESSAGE_TOPOLOGY_NEIGHBORS_HEADER = "Neighbors:"
+MESSAGE_TOPOLOGY_NONE = "  (none)"
 MESSAGE_ERR_PRETTY_REQUIRES_JSON = "ERROR: --pretty requires --json."
 MESSAGE_ERR_LOCAL_CONFIG_MISSING = "ERROR: Local config not loaded. Use merge/import config <bringup_system.json>."
 MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND = "ERROR: Local device not found."
@@ -4407,6 +4467,7 @@ class BridgeCli:
                 CMD_CAN_MAPPINGS,
                 CMD_TESTS,
                 CMD_TEST,
+                CMD_TOPOLOGY,
                 CMD_WRITE,
                 CMD_VALIDATE,
             ]
@@ -4491,6 +4552,22 @@ class BridgeCli:
             if len(tokens) == COUNT_TWO:
                 return self._show_flag_suggestions(target)
             return []
+        if target == SHOW_TARGET_TOPOLOGY:
+            if len(tokens) == COUNT_ONE:
+                return [CMD_NEIGHBORS, CMD_NODES, CMD_EDGES, CMD_NODE + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE] + self._show_flag_suggestions(target)
+            if len(tokens) == COUNT_TWO and tokens[COUNT_ONE].lower() in (CMD_NEIGHBORS, CMD_NODES, CMD_EDGES):
+                return self._show_flag_suggestions(target)
+            if len(tokens) == COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_NODE:
+                return [PLACEHOLDER_DEVICE]
+            if len(tokens) == COUNT_THREE and tokens[COUNT_ONE].lower() == CMD_NODE:
+                return self._show_flag_suggestions(target)
+            return []
+        if target == SHOW_TARGET_NEIGHBORS:
+            if len(tokens) == COUNT_ONE:
+                return [PLACEHOLDER_DEVICE]
+            if len(tokens) == COUNT_TWO:
+                return self._show_flag_suggestions(target)
+            return []
         if target in PARSER_SPEC.show_targets:
             if len(tokens) == COUNT_ONE:
                 return self._show_flag_suggestions(target)
@@ -4529,6 +4606,9 @@ class BridgeCli:
             PARSER_SPEC.show_target_message_level,
             SHOW_TARGET_WORKSPACE,
             SHOW_TARGET_CONTROLLERS,
+            SHOW_TARGET_TOPOLOGY,
+            SHOW_TARGET_TOPOLOGY + PARSER_SPEC.space_str + CMD_NEIGHBORS,
+            SHOW_TARGET_NEIGHBORS + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
         ]
 
     def _show_flag_suggestions(self, target: Optional[str] = None) -> List[str]:
@@ -4581,7 +4661,15 @@ class BridgeCli:
             _suggest_validate_args - Suggest validate subcommands.
         """
         if not tokens:
-            return [CMD_ALL, CMD_CONFIG, CMD_PROFILES, CMD_TESTS, CMD_BINDINGS, CMD_CAN_MAPPINGS]
+            return [
+                CMD_ALL,
+                CMD_CONFIG,
+                CMD_PROFILES,
+                CMD_TESTS,
+                CMD_BINDINGS,
+                CMD_CAN_MAPPINGS,
+                CMD_TOPOLOGY,
+            ]
         if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() == CMD_CONFIG:
             return [PLACEHOLDER_PATH, CMD_VALIDATE_ALL]
         if len(tokens) == COUNT_TWO and tokens[COUNT_ZERO].lower() == CMD_CONFIG:
@@ -7532,6 +7620,8 @@ class BridgeCli:
                     return StatusResult(code=SS__CONFIG__VALID)
                 print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
                 return StatusResult(code=SS__CONFIG__INVALID)
+            if target == CMD_TOPOLOGY:
+                return self._validate_topology()
             if target == CMD_BINDINGS:
                 ok, message = self.validate_bindings_only(path or None)
                 if ok:
@@ -7564,6 +7654,8 @@ class BridgeCli:
             return self._save_all(prompt)
         if cmd == CMD_SAVE and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_TESTS:
             return self._coerce_status(self._save_tests_command(tokens))
+        if cmd == CMD_TOPOLOGY:
+            return self._topology_command(tokens)
         if cmd == CMD_DEBUG:
             if len(tokens) < COUNT_TWO or tokens[COUNT_ONE].lower() != CMD_GRAMMAR:
                 print(MESSAGE_DEBUG_GRAMMAR_USAGE)
@@ -7881,7 +7973,11 @@ class BridgeCli:
             source = SHOW_SOURCE_LOCAL
         if target in (SHOW_TARGET_WORKSPACE, SHOW_TARGET_CONTROLLERS):
             source = SHOW_SOURCE_LOCAL
-        if has_source_flag and target in LOCAL_ONLY_SHOW_TARGETS:
+        if (
+            has_source_flag
+            and target in LOCAL_ONLY_SHOW_TARGETS
+            and source != SHOW_SOURCE_LOCAL
+        ):
             print(MESSAGE_ERR_SHOW_LOCAL_ONLY.format(target=target))
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         if target == SHOW_TARGET_SOURCES and not has_source_flag:
@@ -9876,6 +9972,10 @@ class BridgeCli:
         if target == SHOW_TARGET_DEVICE:
             name = tokens[1] if len(tokens) >= 2 else ""
             return self._show_local_registry_device(name, json_output, pretty)
+        if target == SHOW_TARGET_TOPOLOGY:
+            return self._show_local_topology(tokens, json_output, pretty)
+        if target == SHOW_TARGET_NEIGHBORS:
+            return self._show_local_neighbors(tokens, json_output, pretty)
         profile = self._active_profile_name()
         if not profile:
             print(MESSAGE_ERR_PROFILE_REQUIRED)
@@ -11393,70 +11493,546 @@ class BridgeCli:
         print("\n".join(lines))
         return StatusResult(code=SS__NORMAL)
 
+    def _active_topology_profile(self, create: bool = False) -> Dict[str, object]:
+        """
+        NAME
+            _active_topology_profile - Return the active profile topology object.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            return {}
+        profile_name = self._active_profile_name()
+        if not profile_name:
+            return {}
+        topology_root = self._local_root_payload.get(KEY_TOPOLOGY)
+        if not isinstance(topology_root, dict):
+            if not create:
+                return {}
+            topology_root = {
+                KEY_TOPOLOGY_VERSION: 1,
+                KEY_TOPOLOGY_SOURCE: SHOW_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {},
+            }
+            self._local_root_payload[KEY_TOPOLOGY] = topology_root
+        profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
+        if not isinstance(profiles, dict):
+            if not create:
+                return {}
+            profiles = {}
+            topology_root[KEY_TOPOLOGY_PROFILES] = profiles
+        profile = profiles.get(profile_name)
+        if not isinstance(profile, dict):
+            if not create:
+                return {}
+            profile = {
+                KEY_TOPOLOGY_NODES: [],
+                KEY_TOPOLOGY_EDGES: [],
+            }
+            profiles[profile_name] = profile
+        if not isinstance(profile.get(KEY_TOPOLOGY_NODES), list):
+            profile[KEY_TOPOLOGY_NODES] = []
+        if not isinstance(profile.get(KEY_TOPOLOGY_EDGES), list):
+            profile[KEY_TOPOLOGY_EDGES] = []
+        return profile
+
+    def _active_topology_registry(self) -> Dict[str, Dict[str, object]]:
+        """
+        NAME
+            _active_topology_registry - Build the active device registry map.
+        """
+        return self._local_registry_by_label()
+
+    def _show_local_topology(self, tokens: List[str], json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_local_topology - Show topology nodes/edges for the active profile.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        profile_name = self._active_profile_name()
+        if not profile_name:
+            print(MESSAGE_ERR_TOPOLOGY_PROFILE_REQUIRED)
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
+        topology_profile = self._active_topology_profile(create=False)
+        if not topology_profile:
+            print(MESSAGE_ERR_TOPOLOGY_NOT_LOADED)
+            return StatusResult(code=SS__CONFIG__INVALID)
+        subtarget = tokens[1].lower() if len(tokens) >= COUNT_TWO else EMPTY_STRING
+        registry = self._active_topology_registry()
+        node_map = topology_node_lookup(topology_profile, registry)
+        payload: Dict[str, object] = {
+            KEY_PROFILE: profile_name,
+            KEY_TOPOLOGY_NODES: topology_nodes(topology_profile),
+            KEY_TOPOLOGY_EDGES: topology_edges(topology_profile),
+        }
+        if subtarget == CMD_NEIGHBORS:
+            neighbor_payload: List[Dict[str, object]] = []
+            for node_key, node in sorted(node_map.items()):
+                entry = self._topology_neighbor_entry(node_key, node_map)
+                entry[KEY_NEIGHBOR_PORTS] = self._device_neighbor_ports(topology_profile, node_key, node_map)
+                neighbor_payload.append(entry)
+            payload = {KEY_PROFILE: profile_name, KEY_NEIGHBOR_PORTS: neighbor_payload}
+            if json_output:
+                print(MESSAGE_SOURCE_LOCAL)
+                print(self._dump_json(payload, pretty))
+                return StatusResult(code=SS__NORMAL)
+            lines = [MESSAGE_SOURCE_LOCAL, MESSAGE_TOPOLOGY_NEIGHBORS_HEADER]
+            if not neighbor_payload:
+                lines.append(MESSAGE_TOPOLOGY_NONE)
+            for entry in neighbor_payload:
+                lines.append(f"  {entry.get(KEY_LABEL, EMPTY_STRING)}:")
+                ports = entry.get(KEY_NEIGHBOR_PORTS, [])
+                if not isinstance(ports, list) or not ports:
+                    lines.append(MESSAGE_TOPOLOGY_NONE)
+                    continue
+                for port in ports:
+                    lines.append(
+                        f"    {port.get(KEY_LINK_PORT, EMPTY_STRING)} -> "
+                        f"{port.get(KEY_LABEL, EMPTY_STRING)}.{port.get(KEY_LINK_NEIGHBOR_PORT, EMPTY_STRING)} "
+                        f"[{port.get(KEY_EDGE_TYPE, EMPTY_STRING)}]"
+                    )
+            print("\n".join(lines))
+            return StatusResult(code=SS__NORMAL)
+        if subtarget == CMD_NODE:
+            if len(tokens) < COUNT_THREE:
+                print(MESSAGE_ERR_TOPOLOGY_NODE_REQUIRED)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._show_local_neighbors([SHOW_TARGET_NEIGHBORS, tokens[2]], json_output, pretty)
+        if subtarget == CMD_EDGES:
+            payload = {KEY_PROFILE: profile_name, KEY_TOPOLOGY_EDGES: topology_edges(topology_profile)}
+        elif subtarget == CMD_NODES:
+            payload = {KEY_PROFILE: profile_name, KEY_TOPOLOGY_NODES: topology_nodes(topology_profile)}
+        if json_output:
+            print(MESSAGE_SOURCE_LOCAL)
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        lines = [MESSAGE_SOURCE_LOCAL, MESSAGE_TOPOLOGY_HEADER, f"  profile: {profile_name}"]
+        lines.append(MESSAGE_TOPOLOGY_NODES_HEADER)
+        nodes_list = payload.get(KEY_TOPOLOGY_NODES, [])
+        if isinstance(nodes_list, list) and nodes_list:
+            for raw in nodes_list:
+                if not isinstance(raw, dict):
+                    continue
+                key = raw.get(KEY_NODE_KEY, EMPTY_STRING)
+                label = self._topology_node_label(node_map.get(key, raw) if isinstance(key, int) else raw)
+                node_type = raw.get(KEY_NODE_TYPE, EMPTY_STRING)
+                lines.append(f"  {key}: {label} [{node_type}]")
+        else:
+            lines.append(MESSAGE_TOPOLOGY_NONE)
+        if subtarget in (EMPTY_STRING, CMD_EDGES):
+            lines.append(MESSAGE_TOPOLOGY_EDGES_HEADER)
+            edges_list = payload.get(KEY_TOPOLOGY_EDGES, [])
+            if isinstance(edges_list, list) and edges_list:
+                for edge in edges_list:
+                    if not isinstance(edge, dict):
+                        continue
+                    from_key = edge.get(KEY_FROM_NODE, EMPTY_STRING)
+                    to_key = edge.get(KEY_TO_NODE, EMPTY_STRING)
+                    from_label = self._topology_node_label(node_map.get(from_key, {})) if isinstance(from_key, int) else EMPTY_STRING
+                    to_label = self._topology_node_label(node_map.get(to_key, {})) if isinstance(to_key, int) else EMPTY_STRING
+                    lines.append(
+                        f"  {edge.get(KEY_EDGE_ID, EMPTY_STRING)}: "
+                        f"{from_label}.{edge.get(KEY_FROM_PORT, EMPTY_STRING)} -> "
+                        f"{to_label}.{edge.get(KEY_TO_PORT, EMPTY_STRING)} "
+                        f"[{edge.get(KEY_EDGE_TYPE, EMPTY_STRING)}]"
+                    )
+            else:
+                lines.append(MESSAGE_TOPOLOGY_NONE)
+        print("\n".join(lines))
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_local_neighbors(self, tokens: List[str], json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_local_neighbors - Show neighbor data for one topology node.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        if len(tokens) < COUNT_TWO:
+            print(MESSAGE_ERR_TOPOLOGY_NODE_REQUIRED)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        label = tokens[1]
+        topology = self._local_device_topology(label)
+        if not topology:
+            print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(name=label))
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        payload = {
+            KEY_LABEL: label,
+            KEY_NODE_KEY: topology.get(KEY_NODE_KEY),
+            KEY_NEIGHBOR_LINKS: topology.get(KEY_NEIGHBOR_LINKS, []),
+            KEY_NEIGHBOR_PORTS: topology.get(KEY_NEIGHBOR_PORTS, []),
+        }
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        lines = [f"{MESSAGE_TOPOLOGY_NEIGHBORS_HEADER} {label}"]
+        ports = payload.get(KEY_NEIGHBOR_PORTS, [])
+        if isinstance(ports, list) and ports:
+            for entry in ports:
+                if not isinstance(entry, dict):
+                    continue
+                lines.append(
+                    f"  {entry.get(KEY_LINK_PORT, EMPTY_STRING)} -> "
+                    f"{entry.get(KEY_LABEL, EMPTY_STRING)}.{entry.get(KEY_LINK_NEIGHBOR_PORT, EMPTY_STRING)} "
+                    f"[{entry.get(KEY_EDGE_TYPE, EMPTY_STRING)}]"
+                )
+        else:
+            lines.append(MESSAGE_TOPOLOGY_NONE)
+        print("\n".join(lines))
+        return StatusResult(code=SS__NORMAL)
+
+    def _validate_topology(self) -> StatusResult:
+        """
+        NAME
+            _validate_topology - Validate the current local topology payload.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        reporter = Reporter(False)
+        errors, warnings = validate_profiles(self._local_root_payload, reporter)
+        if errors:
+            for message in errors:
+                print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
+            for message in warnings:
+                print(MESSAGE_WARNING_PREFIX + message)
+            return StatusResult(code=SS__CONFIG__INVALID)
+        for message in warnings:
+            print(MESSAGE_WARNING_PREFIX + message)
+        print(MESSAGE_INFO_TOPOLOGY_VALIDATE_OK)
+        return StatusResult(code=SS__CONFIG__VALID)
+
+    def _topology_command(self, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _topology_command - Handle topology editing commands in config mode.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        profile_name = self._active_profile_name()
+        if not profile_name:
+            print(MESSAGE_ERR_TOPOLOGY_PROFILE_REQUIRED)
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
+        if len(tokens) < COUNT_TWO:
+            print(MESSAGE_ERR_TOPOLOGY_USAGE)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        sub = tokens[COUNT_ONE].lower()
+        if sub == CMD_NEIGHBOR_PORTS:
+            return self._topology_neighbor_ports_command(tokens[COUNT_TWO:])
+        if sub == CMD_NEIGHBOR_AUTO:
+            return self._topology_neighbor_auto_command(tokens[COUNT_TWO:])
+        print(MESSAGE_ERR_TOPOLOGY_USAGE)
+        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+
+    def _topology_neighbor_ports_command(self, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _topology_neighbor_ports_command - Edit one explicit neighbor port edge.
+        """
+        if not tokens:
+            print(MESSAGE_ERR_TOPOLOGY_USAGE)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        action = tokens[COUNT_ZERO].lower()
+        topology_profile = self._active_topology_profile(create=True)
+        edges = topology_profile.get(KEY_TOPOLOGY_EDGES, [])
+        if not isinstance(edges, list):
+            edges = []
+            topology_profile[KEY_TOPOLOGY_EDGES] = edges
+        registry = self._active_topology_registry()
+        node_map = topology_node_lookup(topology_profile, registry)
+        if action == CMD_SET:
+            if len(tokens) < 5:
+                print(MESSAGE_ERR_TOPOLOGY_NEIGHBOR_PORTS_SET)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            node = self._resolve_topology_node_key(tokens[1], node_map)
+            neighbor = self._resolve_topology_node_key(tokens[3], node_map)
+            if node is None:
+                print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(name=tokens[1]))
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
+            if neighbor is None:
+                print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(name=tokens[3]))
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
+            port = tokens[2]
+            neighbor_port = tokens[4]
+            self._remove_neighbor_edge(edges, node, port)
+            self._remove_neighbor_edge(edges, neighbor, neighbor_port)
+            edges.append(
+                {
+                    KEY_EDGE_ID: self._next_topology_edge_id(edges),
+                    KEY_FROM_NODE: node,
+                    KEY_FROM_PORT: port,
+                    KEY_TO_NODE: neighbor,
+                    KEY_TO_PORT: neighbor_port,
+                    KEY_EDGE_TYPE: self._infer_topology_edge_type(port, neighbor_port),
+                }
+            )
+            self._profiles_dirty = True
+            print(MESSAGE_INFO_TOPOLOGY_NEIGHBOR_PORT_SET)
+            return StatusResult(code=SS__NORMAL)
+        if action == CMD_DELETE:
+            if len(tokens) < 3:
+                print(MESSAGE_ERR_TOPOLOGY_NEIGHBOR_PORTS_DELETE)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            node = self._resolve_topology_node_key(tokens[1], node_map)
+            if node is None:
+                print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(name=tokens[1]))
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
+            removed = self._remove_neighbor_edge(edges, node, tokens[2])
+            if not removed:
+                print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(name=f"{tokens[1]}:{tokens[2]}"))
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
+            self._profiles_dirty = True
+            print(MESSAGE_INFO_TOPOLOGY_NEIGHBOR_PORT_DELETE)
+            return StatusResult(code=SS__NORMAL)
+        if action == CMD_CLEAR:
+            if len(tokens) < 2:
+                print(MESSAGE_ERR_TOPOLOGY_NEIGHBOR_PORTS_CLEAR)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            node = self._resolve_topology_node_key(tokens[1], node_map)
+            if node is None:
+                print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(name=tokens[1]))
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
+            topology_profile[KEY_TOPOLOGY_EDGES] = [
+                edge
+                for edge in edges
+                if not (
+                    isinstance(edge, dict)
+                    and (edge.get(KEY_FROM_NODE) == node or edge.get(KEY_TO_NODE) == node)
+                )
+            ]
+            self._profiles_dirty = True
+            print(MESSAGE_INFO_TOPOLOGY_NEIGHBOR_PORT_CLEAR)
+            return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_ERR_TOPOLOGY_USAGE)
+        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+
+    def _topology_neighbor_auto_command(self, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _topology_neighbor_auto_command - Auto-generate CAN neighbor edges from layout.
+        """
+        if not tokens:
+            print(MESSAGE_ERR_TOPOLOGY_NEIGHBOR_AUTO)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        action = tokens[COUNT_ZERO].lower()
+        topology_profile = self._active_topology_profile(create=True)
+        registry = self._active_topology_registry()
+        node_map = topology_node_lookup(topology_profile, registry)
+        selected_labels: Optional[set[str]] = None
+        if action == CMD_ALL and len(tokens) >= COUNT_TWO:
+            selected_labels = {name.strip().lower() for name in tokens[1].split(",") if name.strip()}
+        elif action == CMD_NODE:
+            if len(tokens) < COUNT_TWO:
+                print(MESSAGE_ERR_TOPOLOGY_NEIGHBOR_AUTO)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            selected_labels = {tokens[1].strip().lower()}
+        elif action != CMD_ALL:
+            print(MESSAGE_ERR_TOPOLOGY_NEIGHBOR_AUTO)
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+        selected_keys: Optional[set[int]] = None
+        if selected_labels is not None:
+            selected_keys = set()
+            for key, node in node_map.items():
+                if self._topology_node_label(node).strip().lower() in selected_labels:
+                    selected_keys.add(key)
+            if not selected_keys:
+                print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(name=SEP_COMMA_SPACE.join(sorted(selected_labels))))
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        edges = topology_profile.get(KEY_TOPOLOGY_EDGES, [])
+        if not isinstance(edges, list):
+            edges = []
+        preserved: List[Dict[str, object]] = []
+        for edge in edges:
+            if not isinstance(edge, dict):
+                continue
+            edge_type = str(edge.get(KEY_EDGE_TYPE, EMPTY_STRING)).strip()
+            if edge_type not in (
+                EDGE_TYPE_CAN_TRUNK,
+                EDGE_TYPE_CAN_DROP,
+                EDGE_TYPE_CAN_TAP,
+            ):
+                preserved.append(edge)
+                continue
+            if selected_keys is None:
+                continue
+            from_node = edge.get(KEY_FROM_NODE)
+            to_node = edge.get(KEY_TO_NODE)
+            if from_node in selected_keys or to_node in selected_keys:
+                continue
+            preserved.append(edge)
+        device_nodes: List[Tuple[int, Dict[str, object]]] = []
+        for key, node in node_map.items():
+            if str(node.get(KEY_NODE_TYPE, EMPTY_STRING)).strip() != NODE_TYPE_DEVICE:
+                continue
+            if selected_keys is not None and key not in selected_keys:
+                continue
+            layout = node.get(KEY_LAYOUT)
+            layout_dict = layout if isinstance(layout, dict) else {}
+            device_nodes.append((key, layout_dict))
+        by_bus: Dict[int, List[Tuple[int, Dict[str, object]]]] = {}
+        for key, layout in device_nodes:
+            bus = int(layout.get(KEY_BUS, 0))
+            by_bus.setdefault(bus, []).append((key, layout))
+        edge_counter = len(preserved) + COUNT_ONE
+        for bus_nodes in by_bus.values():
+            ordered = sorted(bus_nodes, key=lambda item: (float(item[1].get("x", 0.0)), int(item[0])))
+            for idx in range(len(ordered) - 1):
+                left_key = ordered[idx][0]
+                right_key = ordered[idx + 1][0]
+                preserved.append(
+                    {
+                        KEY_EDGE_ID: f"edge_{edge_counter}",
+                        KEY_FROM_NODE: left_key,
+                        KEY_FROM_PORT: NEIGHBOR_PORT_RIGHT,
+                        KEY_TO_NODE: right_key,
+                        KEY_TO_PORT: NEIGHBOR_PORT_LEFT,
+                        KEY_EDGE_TYPE: EDGE_TYPE_CAN_TRUNK,
+                    }
+                )
+                edge_counter += COUNT_ONE
+        topology_profile[KEY_TOPOLOGY_EDGES] = preserved
+        self._profiles_dirty = True
+        print(MESSAGE_INFO_TOPOLOGY_NEIGHBOR_AUTO)
+        return StatusResult(code=SS__NORMAL)
+
+    def _resolve_topology_node_key(
+        self,
+        label: str,
+        node_map: Dict[int, Dict[str, object]],
+    ) -> Optional[int]:
+        """
+        NAME
+            _resolve_topology_node_key - Resolve a node label to topology key.
+        """
+        label_key = str(label).strip().lower()
+        for key, node in node_map.items():
+            if self._topology_node_label(node).strip().lower() == label_key:
+                return key
+        return None
+
+    @staticmethod
+    def _next_topology_edge_id(edges: List[Dict[str, object]]) -> str:
+        """
+        NAME
+            _next_topology_edge_id - Allocate the next simple edge id.
+        """
+        max_value = 0
+        for edge in edges:
+            if not isinstance(edge, dict):
+                continue
+            raw = str(edge.get(KEY_EDGE_ID, EMPTY_STRING)).strip()
+            if raw.startswith("edge_"):
+                tail = raw.split("_", 1)[1]
+                if tail.isdigit():
+                    max_value = max(max_value, int(tail))
+        return f"edge_{max_value + COUNT_ONE}"
+
+    @staticmethod
+    def _infer_topology_edge_type(from_port: str, to_port: str) -> str:
+        """
+        NAME
+            _infer_topology_edge_type - Infer edge type from port names.
+        """
+        ports = {str(from_port).strip().lower(), str(to_port).strip().lower()}
+        if "tap" in ports:
+            return EDGE_TYPE_CAN_TAP
+        if any(name.startswith("drop") or name.startswith("branch") for name in ports):
+            return EDGE_TYPE_CAN_DROP
+        return EDGE_TYPE_CAN_TRUNK
+
+    @staticmethod
+    def _remove_neighbor_edge(edges: List[Dict[str, object]], node_key: int, port: str) -> bool:
+        """
+        NAME
+            _remove_neighbor_edge - Remove one edge matching a node/port endpoint.
+        """
+        removed = False
+        kept: List[Dict[str, object]] = []
+        port_key = str(port).strip().lower()
+        for edge in edges:
+            if not isinstance(edge, dict):
+                kept.append(edge)
+                continue
+            from_node = edge.get(KEY_FROM_NODE)
+            to_node = edge.get(KEY_TO_NODE)
+            from_port = str(edge.get(KEY_FROM_PORT, EMPTY_STRING)).strip().lower()
+            to_port = str(edge.get(KEY_TO_PORT, EMPTY_STRING)).strip().lower()
+            if (from_node == node_key and from_port == port_key) or (to_node == node_key and to_port == port_key):
+                removed = True
+                continue
+            kept.append(edge)
+        if removed:
+            edges[:] = kept
+        return removed
+
     def _local_device_topology(self, label: str) -> Dict[str, object]:
         """
         NAME
-            _local_device_topology - Return diagram topology details for a label.
+            _local_device_topology - Return topology graph details for a device label.
         """
         if not isinstance(self._local_root_payload, dict):
             return {}
         profile = self._active_profile_name()
         if not profile:
             return {}
-        diagram = self._diagram_for_profile(profile)
-        if not diagram:
+        topology_profile = topology_profile_from_payload(self._local_root_payload, profile)
+        if not topology_profile:
             return {}
-        nodes = diagram.get("nodes")
-        if not isinstance(nodes, list):
-            return {}
-        node_by_key: Dict[int, Dict[str, object]] = {}
+        registry = self._local_registry_by_label()
+        node_by_key = topology_node_lookup(topology_profile, registry)
         target_node: Optional[Dict[str, object]] = None
         label_key = label.strip().lower()
-        for raw in nodes:
-            if not isinstance(raw, dict):
-                continue
-            key = raw.get(KEY_NODE_KEY)
-            if isinstance(key, int):
-                node_by_key[key] = raw
-            node_label = str(raw.get(KEY_LABEL, EMPTY_STRING)).strip()
+        for raw in node_by_key.values():
+            node_label = self._topology_node_label(raw)
             if node_label.lower() == label_key:
                 target_node = raw
+                break
         if target_node is None:
             return {}
         node_key = target_node.get(KEY_NODE_KEY)
         if not isinstance(node_key, int):
             return {}
+        layout = target_node.get(KEY_LAYOUT)
+        layout_dict = layout if isinstance(layout, dict) else {}
         topology: Dict[str, object] = {
             KEY_NODE_KEY: node_key,
-            KEY_BUS: target_node.get(KEY_BUS),
-            "row": target_node.get("row"),
-            "x": target_node.get("x"),
+            KEY_BUS: layout_dict.get(KEY_BUS),
+            "row": layout_dict.get("row"),
+            "x": layout_dict.get("x"),
+            KEY_NODE_TYPE: target_node.get(KEY_NODE_TYPE),
         }
-        neighbor_links = self._device_neighbor_links(diagram, node_key, node_by_key)
-        neighbor_ports = self._device_neighbor_ports(diagram, node_key, node_by_key)
+        neighbor_links = self._device_neighbor_links(topology_profile, node_key, node_by_key)
+        neighbor_ports = self._device_neighbor_ports(topology_profile, node_key, node_by_key)
         if neighbor_links:
             topology[KEY_NEIGHBOR_LINKS] = neighbor_links
         if neighbor_ports:
             topology[KEY_NEIGHBOR_PORTS] = neighbor_ports
         return topology
 
-    def _diagram_for_profile(self, profile: str) -> Dict[str, object]:
+    def _local_registry_by_label(self) -> Dict[str, Dict[str, object]]:
         """
         NAME
-            _diagram_for_profile - Return current profile diagram metadata.
+            _local_registry_by_label - Build a label-keyed device registry map.
         """
-        diagram_root = self._local_root_payload.get(KEY_DIAGRAM)
-        if not isinstance(diagram_root, dict):
-            return {}
-        profiles = diagram_root.get(KEY_PROFILES)
-        if not isinstance(profiles, dict):
-            return {}
-        diagram = profiles.get(profile)
-        return diagram if isinstance(diagram, dict) else {}
+        registry: Dict[str, Dict[str, object]] = {}
+        devices = self._local_root_payload.get(KEY_DEVICES)
+        if not isinstance(devices, list):
+            return registry
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if not label:
+                continue
+            registry[label.lower()] = entry
+        return registry
 
     def _device_neighbor_links(
         self,
-        diagram: Dict[str, object],
+        topology_profile: Dict[str, object],
         node_key: int,
         node_by_key: Dict[int, Dict[str, object]],
     ) -> List[Dict[str, object]]:
@@ -11464,29 +12040,15 @@ class BridgeCli:
         NAME
             _device_neighbor_links - Return undirected neighbors for one node.
         """
-        entries = diagram.get(KEY_NEIGHBOR_LINKS)
-        if not isinstance(entries, list):
-            return []
         neighbors: List[Dict[str, object]] = []
-        for entry in entries:
-            if not isinstance(entry, dict):
-                continue
-            a = entry.get(KEY_LINK_A)
-            b = entry.get(KEY_LINK_B)
-            if not isinstance(a, int) or not isinstance(b, int):
-                continue
-            if a == node_key:
-                other = b
-            elif b == node_key:
-                other = a
-            else:
-                continue
+        for a, b in topology_neighbor_links(topology_profile, node_key):
+            other = b if a == node_key else a
             neighbors.append(self._topology_neighbor_entry(other, node_by_key))
         return neighbors
 
     def _device_neighbor_ports(
         self,
-        diagram: Dict[str, object],
+        topology_profile: Dict[str, object],
         node_key: int,
         node_by_key: Dict[int, Dict[str, object]],
     ) -> List[Dict[str, object]]:
@@ -11494,20 +12056,18 @@ class BridgeCli:
         NAME
             _device_neighbor_ports - Return port-aware neighbors for one node.
         """
-        entries = diagram.get(KEY_NEIGHBOR_PORTS)
-        if not isinstance(entries, list):
-            return []
         neighbors: List[Dict[str, object]] = []
-        for entry in entries:
-            if not isinstance(entry, dict):
-                continue
-            node = entry.get(KEY_LINK_NODE)
+        for entry in topology_neighbor_ports(topology_profile, node_key):
             neighbor = entry.get(KEY_LINK_NEIGHBOR)
-            if node != node_key or not isinstance(neighbor, int):
+            if not isinstance(neighbor, int):
                 continue
             neighbor_entry = self._topology_neighbor_entry(neighbor, node_by_key)
             neighbor_entry[KEY_LINK_PORT] = entry.get(KEY_LINK_PORT)
             neighbor_entry[KEY_LINK_NEIGHBOR_PORT] = entry.get(KEY_LINK_NEIGHBOR_PORT)
+            if KEY_EDGE_TYPE in entry:
+                neighbor_entry[KEY_EDGE_TYPE] = entry.get(KEY_EDGE_TYPE)
+            if KEY_EDGE_ID in entry:
+                neighbor_entry[KEY_EDGE_ID] = entry.get(KEY_EDGE_ID)
             neighbors.append(neighbor_entry)
         return neighbors
 
@@ -11521,13 +12081,24 @@ class BridgeCli:
             _topology_neighbor_entry - Build one neighbor summary.
         """
         node = node_by_key.get(key, {})
+        layout = node.get(KEY_LAYOUT)
+        layout_dict = layout if isinstance(layout, dict) else node
         return {
             KEY_NODE_KEY: key,
-            KEY_LABEL: str(node.get(KEY_LABEL, EMPTY_STRING)).strip(),
-            KEY_BUS: node.get(KEY_BUS),
-            "row": node.get("row"),
-            "x": node.get("x"),
+            KEY_LABEL: self._topology_node_label(node),
+            KEY_BUS: layout_dict.get(KEY_BUS),
+            "row": layout_dict.get("row"),
+            "x": layout_dict.get("x"),
         }
+
+    def _topology_node_label(self, node: Dict[str, object]) -> str:
+        """
+        NAME
+            _topology_node_label - Resolve the display label for one topology node.
+        """
+        if str(node.get(KEY_NODE_TYPE, EMPTY_STRING)).strip() == NODE_TYPE_DEVICE:
+            return str(node.get(KEY_DEVICE_REF, EMPTY_STRING)).strip()
+        return str(node.get(KEY_LABEL, EMPTY_STRING)).strip()
 
     def _format_device_topology_lines(self, topology: Dict[str, object]) -> List[str]:
         """
