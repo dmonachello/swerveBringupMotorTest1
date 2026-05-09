@@ -13,6 +13,9 @@ All notable user-facing changes are documented in this file.
   major user-visible worktree changes.
 - Added machine-readable regression reports and refreshable suite baselines for
   the unified runner.
+- Added local regression failure history tracking that records first-failure,
+  changed-failure, and recovery transitions without storing full green-run
+  history.
 
 ### Improved - 2026-05-08
 

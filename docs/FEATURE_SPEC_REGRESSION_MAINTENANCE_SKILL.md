@@ -75,12 +75,18 @@ Out of scope:
 
 - Contract-first: regressions protect operator-visible and machine-visible
   behavior.
+- Negative-path by design: regressions must intentionally try malformed input,
+  unsupported input, missing prerequisites, and other user mistakes for
+  user-facing surfaces.
 - Small and frequent: update regressions as part of feature work, not later.
 - Deterministic by default: local regressions must remain the primary fast gate.
 - Explicit hardware separation: robot-connected regressions are opt-in and must
   stay non-motion unless separately approved.
 - Runnable anytime: the same regression surface must be callable manually and
   through a skill.
+- Recovery-oriented errors: tests should verify that failures produce useful
+  corrective guidance, not just a hard failure code, when the surface is meant
+  for students or non-expert operators.
 
 ## Required Regression Categories
 
@@ -146,11 +152,22 @@ Required rule:
 
 - if behavior changes, at least one regression must be added or updated to
   prove the intended outcome
+- if the behavior is user-facing, at least one regression must exercise an
+  invalid, malformed, or missing-input path and verify that the error handling
+  is safe and helpful
 
 Preferred rule:
 
 - each feature spec should name the expected regression category and runner
   target
+
+Additional rule for this project:
+
+- because this project is intended to be used by students and non-computer
+  skilled operators, user-facing features should be assumed to receive
+  unexpected input and misuse during normal operation
+- regressions should therefore include "try to break it" cases for parser,
+  CLI, config, workflow, and connected command surfaces whenever practical
 
 ## Maintenance Cadence
 

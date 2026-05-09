@@ -2,7 +2,9 @@
 
 ## Purpose
 
-Define a data-driven regression framework for the bringup CLI and robot-connected command path, using fixture configs and expected results as stable comparison artifacts.
+Define a data-driven regression framework for the bringup CLI and
+robot-connected command path, using fixture configs and expected results as
+stable comparison artifacts.
 
 ## Status
 
@@ -109,6 +111,15 @@ Priority order:
 
 Avoid full raw-output equality except when explicitly justified.
 
+Required negative-path rule:
+
+- suites for user-facing features must include intentional invalid or malformed
+  inputs when practical
+- expected files should verify both failure detection and recovery guidance
+  when the product surface is intended for students or non-expert operators
+- for this repo, "passing" does not only mean accepting good input; it also
+  means rejecting bad input safely and helpfully
+
 ## Suite Types
 
 ### Local Deterministic Suite
@@ -184,9 +195,11 @@ Phase 3:
 
 - add targeted UI workflow regression checks backed by stable state assertions
 
-SID_QUESTION: Should topology editor regressions run in the same runner process, or as a dedicated sub-runner invoked by the main runner?
+SID_QUESTION: Should topology editor regressions run in the same runner
+process, or as a dedicated sub-runner invoked by the main runner?
 
-SID_QUESTION: For UI regressions, should V1 require a mock session playback mode to reduce dependence on live robot availability?
+SID_QUESTION: For UI regressions, should V1 require a mock session playback
+mode to reduce dependence on live robot availability?
 
 ## Runner Behavior
 
@@ -195,8 +208,10 @@ Purpose: standardize invocation and exit semantics.
 Proposed CLI:
 
 - `python tools/can_nt/scripts/run_regressions.py --suite local`
-- `python tools/can_nt/scripts/run_regressions.py --suite robot-non-motion --rio 172.22.11.2`
-- `python tools/can_nt/scripts/run_regressions.py --suite all --include-robot --rio 172.22.11.2`
+- `python tools/can_nt/scripts/run_regressions.py --suite robot-non-motion`
+  `--rio 172.22.11.2`
+- `python tools/can_nt/scripts/run_regressions.py --suite all --include-robot`
+  `--rio 172.22.11.2`
 - `python tools/can_nt/scripts/run_regressions.py --refresh-expected --suite local`
 
 Exit code contract:
@@ -218,7 +233,8 @@ Flow:
 
 ## Safety Rules
 
-- Robot-connected suite must remain non-motion unless explicitly expanded in a future spec.
+- Robot-connected suite must remain non-motion unless explicitly expanded in a
+  future spec.
 - No CAN transmit behavior is added to regression tooling.
 - No hidden baseline refresh in normal compare mode.
 - Runner must clearly print which suite type is active.
@@ -245,16 +261,20 @@ Flow:
 
 ## Open Questions
 
-SID_QUESTION: Should expected files support regex matchers, or stay exact-fragment only in V1?
+SID_QUESTION: Should expected files support regex matchers, or stay
+exact-fragment only in V1?
 
-SID_QUESTION: Should local suite runner auto-bootstrap a temporary workspace copy for isolation?
+SID_QUESTION: Should local suite runner auto-bootstrap a temporary workspace
+copy for isolation?
 
-SID_QUESTION: Should robot suite require explicit `--ack-non-motion` flag as an extra safety gate?
+SID_QUESTION: Should robot suite require explicit `--ack-non-motion` flag as
+an extra safety gate?
 
 ## Tradeoffs
 
 - More fixtures and expected files increase repo size, but improve reviewability.
-- Baseline refresh workflow adds process overhead, but prevents silent behavior drift.
+- Baseline refresh workflow adds process overhead, but prevents silent
+  behavior drift.
 - Unified runner centralizes logic, but introduces framework maintenance cost.
 
 ## Future Extensions

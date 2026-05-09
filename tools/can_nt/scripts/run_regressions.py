@@ -35,11 +35,13 @@ from tools.can_nt.scripts.lib.regression_framework import (
     available_suites,
     build_suite_commands,
     compare_results_to_baseline,
+    collect_run_metadata,
     load_suite_baseline,
     refresh_suite_baseline,
     run_commands,
     summarize_results,
     suite_baseline_path,
+    write_history_for_run,
     write_json_report,
 )
 
@@ -50,6 +52,7 @@ ARG_UI_TCP_PORT = "--ui-tcp-port"
 ARG_VERBOSE = "--verbose"
 ARG_REFRESH_EXPECTED = "--refresh-expected"
 ARG_JSON_OUT = "--json-out"
+ARG_NO_HISTORY = "--no-history"
 
 HELP_SUITE = "Regression suite to run."
 HELP_INCLUDE_ROBOT = "Include robot-connected non-motion suite when using --suite all."
@@ -58,6 +61,7 @@ HELP_UI_TCP_PORT = "Optional TCP UI port for robot-connected non-motion regressi
 HELP_VERBOSE = "Print stdout and stderr for passing commands."
 HELP_REFRESH_EXPECTED = "Refresh the stored expected baseline for the selected suite."
 HELP_JSON_OUT = "Write a machine-readable JSON report to the given path."
+HELP_NO_HISTORY = "Skip local failure-history updates for this run."
 
 MSG_COMMAND = "COMMAND"
 MSG_PASS = "PASS"
@@ -70,6 +74,7 @@ MSG_FEATURES = "FEATURES"
 MSG_BASELINE = "BASELINE"
 MSG_NOTE = "NOTE"
 MSG_REFRESHED = "REFRESHED"
+MSG_HISTORY = "HISTORY"
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -90,6 +95,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(ARG_VERBOSE, action="store_true", help=HELP_VERBOSE)
     parser.add_argument(ARG_REFRESH_EXPECTED, action="store_true", help=HELP_REFRESH_EXPECTED)
     parser.add_argument(ARG_JSON_OUT, help=HELP_JSON_OUT)
+    parser.add_argument(ARG_NO_HISTORY, action="store_true", help=HELP_NO_HISTORY)
     return parser.parse_args(argv)
 
 
@@ -133,6 +139,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_USAGE
 
     results = run_commands(commands)
+    metadata = collect_run_metadata()
     baseline = None if bool(args.refresh_expected) else load_suite_baseline(str(args.suite))
     comparisons = compare_results_to_baseline(commands, results, baseline)
     for result, comparison in zip(results, comparisons):
@@ -158,7 +165,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             summary=summary,
             comparisons=comparisons,
             baseline_path=baseline_path,
+            metadata=metadata,
         )
+
+    if not bool(args.refresh_expected) and not bool(args.no_history):
+        history = write_history_for_run(
+            suite_name=str(args.suite),
+            results=results,
+            summary=summary,
+            comparisons=comparisons,
+            baseline_path=baseline_path,
+            metadata=metadata,
+        )
+        print(f"{MSG_HISTORY}: run={history['runPath']} event={history['event']['eventType']}")
+        event_path = history["event"]["eventPath"]
+        if event_path:
+            print(f"{MSG_HISTORY}: eventPath={event_path}")
 
     print(
         f"{MSG_SUMMARY}: suite={args.suite} passed={summary['passed']} failed={summary['failed']} total={summary['total']}"

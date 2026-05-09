@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-Purpose: Specify the implemented support for treating an Xbox controller as a
+Purpose: Specify the support for treating an Xbox controller as a
 configured Robot Test DSL device.
 
 This feature lets DSL tests declare controller devices the same way they

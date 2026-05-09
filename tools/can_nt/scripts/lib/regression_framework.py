@@ -56,6 +56,12 @@ GRADLEW_WINDOWS = "gradlew.bat"
 MANIFEST_RELATIVE_PATH = Path("tests/regression/fixtures/regression_runner_manifest.json")
 BASELINE_DIRECTORY_RELATIVE = Path("tests/regression/expected/runner_baselines")
 BASELINE_FILE_SUFFIX = ".expected.json"
+HISTORY_DIRECTORY_RELATIVE = Path(".codex/logs/regressions")
+HISTORY_INDEX_FILE_NAME = "index.json"
+HISTORY_EVENTS_DIRECTORY_NAME = "events"
+HISTORY_LATEST_DIRECTORY_NAME = "latest"
+HISTORY_LATEST_FILE_SUFFIX = ".latest.json"
+HISTORY_LAST_GREEN_FILE_SUFFIX = ".last_green.json"
 
 KEY_SCHEMA_VERSION = "schemaVersion"
 KEY_COMMANDS = "commands"
@@ -75,6 +81,7 @@ KEY_STATUS = "status"
 KEY_BASELINE_PATH = "baselinePath"
 KEY_REPORT_VERSION = "reportVersion"
 KEY_REPORT_GENERATED_AT = "generatedAt"
+KEY_REPORT_METADATA = "metadata"
 KEY_COMMANDS_TOTAL = "commandsTotal"
 KEY_MATCHES = "matches"
 KEY_REGRESSIONS = "regressions"
@@ -82,6 +89,35 @@ KEY_KNOWN_FAILURES = "knownFailures"
 KEY_FIXED = "fixed"
 KEY_MISSING_BASELINE = "missingBaseline"
 KEY_COMMAND_DRIFT = "commandDrift"
+KEY_GIT = "git"
+KEY_COMMIT = "commit"
+KEY_BRANCH = "branch"
+KEY_DIRTY = "dirty"
+KEY_CHANGED_FILES = "changedFiles"
+KEY_HISTORY_VERSION = "historyVersion"
+KEY_HISTORY = "history"
+KEY_EVENT = "event"
+KEY_EVENT_TYPE = "eventType"
+KEY_EVENT_PATH = "eventPath"
+KEY_EVENT_AT = "eventAt"
+KEY_LAST_RUN_PATH = "lastRunPath"
+KEY_LAST_RUN_AT = "lastRunAt"
+KEY_LAST_GREEN_PATH = "lastGreenPath"
+KEY_LAST_GREEN_AT = "lastGreenAt"
+KEY_LAST_GREEN_COMMIT = "lastGreenCommit"
+KEY_ACTIVE_FAILURE = "activeFailure"
+KEY_FAILURE_SIGNATURE = "failureSignature"
+KEY_FIRST_OBSERVED_AT = "firstObservedAt"
+KEY_FIRST_OBSERVED_COMMIT = "firstObservedCommit"
+KEY_FIRST_REPORT_PATH = "firstReportPath"
+KEY_LAST_OBSERVED_AT = "lastObservedAt"
+KEY_LAST_OBSERVED_COMMIT = "lastObservedCommit"
+KEY_LAST_REPORT_PATH = "lastReportPath"
+KEY_PREVIOUS_GREEN_COMMIT = "previousGreenCommit"
+KEY_PREVIOUS_GREEN_PATH = "previousGreenPath"
+KEY_SUITES_STATE = "suites"
+KEY_RUN_PATH = "runPath"
+KEY_OK = "ok"
 
 TOKEN_PYTHON = "{python}"
 TOKEN_GRADLEW = "{gradlew}"
@@ -99,6 +135,11 @@ STATUS_COMMAND_DRIFT = "command_drift"
 REPORT_VERSION = 1
 BASELINE_SCHEMA_VERSION = 1
 MANIFEST_SCHEMA_VERSION = 1
+HISTORY_SCHEMA_VERSION = 1
+
+EVENT_FIRST_FAILURE = "first_failure"
+EVENT_CHANGED_FAILURE = "changed_failure"
+EVENT_RECOVERED = "recovered"
 
 
 @dataclass(frozen=True)
@@ -415,6 +456,7 @@ def write_json_report(
     summary: Mapping[str, int],
     comparisons: Sequence[RegressionComparison],
     baseline_path: Optional[Path],
+    metadata: Optional[Mapping[str, object]] = None,
 ) -> None:
     """
     NAME
@@ -427,6 +469,7 @@ def write_json_report(
         KEY_REPORT_GENERATED_AT: _utc_timestamp(),
         KEY_SUITE: suite_name,
         KEY_SUMMARY: dict(summary),
+        KEY_REPORT_METADATA: dict(metadata) if metadata is not None else {},
         KEY_BASELINE: {
             KEY_BASELINE_PATH: str(baseline_path) if baseline_path is not None else None,
             KEY_SUMMARY: summarize_comparisons(comparisons),
@@ -449,6 +492,318 @@ def write_json_report(
     with path.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2)
         handle.write("\n")
+
+
+def history_root_path() -> Path:
+    """
+    NAME
+        history_root_path - Resolve the local regression-history root directory.
+    """
+    return REPO_ROOT / HISTORY_DIRECTORY_RELATIVE
+
+
+def collect_run_metadata() -> Dict[str, object]:
+    """
+    NAME
+        collect_run_metadata - Capture repo/worktree metadata for one run.
+    """
+    changed_files = _git_changed_files()
+    return {
+        KEY_GIT: {
+            KEY_COMMIT: _git_command_output("rev-parse", "HEAD"),
+            KEY_BRANCH: _git_command_output("rev-parse", "--abbrev-ref", "HEAD"),
+            KEY_DIRTY: len(changed_files) > 0,
+            KEY_CHANGED_FILES: changed_files,
+        }
+    }
+
+
+def write_history_for_run(
+    suite_name: str,
+    results: Sequence[RegressionResult],
+    summary: Mapping[str, int],
+    comparisons: Sequence[RegressionComparison],
+    baseline_path: Optional[Path],
+    metadata: Mapping[str, object],
+) -> Mapping[str, object]:
+    """
+    NAME
+        write_history_for_run - Maintain local latest pointers and failure-transition history.
+    """
+    root = history_root_path()
+    latest_directory = root / HISTORY_LATEST_DIRECTORY_NAME
+    events_directory = root / HISTORY_EVENTS_DIRECTORY_NAME / suite_name
+    root.mkdir(parents=True, exist_ok=True)
+    latest_directory.mkdir(parents=True, exist_ok=True)
+    events_directory.mkdir(parents=True, exist_ok=True)
+
+    timestamp = _utc_timestamp()
+    latest_path = latest_directory / f"{suite_name}{HISTORY_LATEST_FILE_SUFFIX}"
+    write_json_report(
+        latest_path,
+        suite_name=suite_name,
+        results=results,
+        summary=summary,
+        comparisons=comparisons,
+        baseline_path=baseline_path,
+        metadata=metadata,
+    )
+
+    index = _load_history_index(root)
+    suites_state = _history_suites_state(index)
+    suite_state = _history_suite_state(suites_state, suite_name)
+    suite_state[KEY_LAST_RUN_PATH] = _relative_history_path(latest_path, root)
+    suite_state[KEY_LAST_RUN_AT] = timestamp
+
+    failure_signature = _failure_signature(results, comparisons)
+    previous_active = suite_state.get(KEY_ACTIVE_FAILURE)
+    history_event: Dict[str, object] = {
+        KEY_EVENT_TYPE: "none",
+        KEY_EVENT_PATH: None,
+    }
+
+    if summary.get("failed", 0) == 0:
+        last_green_path = latest_directory / f"{suite_name}{HISTORY_LAST_GREEN_FILE_SUFFIX}"
+        write_json_report(
+            last_green_path,
+            suite_name=suite_name,
+            results=results,
+            summary=summary,
+            comparisons=comparisons,
+            baseline_path=baseline_path,
+            metadata=metadata,
+        )
+        suite_state[KEY_LAST_GREEN_PATH] = _relative_history_path(last_green_path, root)
+        suite_state[KEY_LAST_GREEN_AT] = timestamp
+        suite_state[KEY_LAST_GREEN_COMMIT] = _git_commit_from_metadata(metadata)
+        if isinstance(previous_active, dict):
+            event_path = events_directory / f"{_history_file_timestamp(timestamp)}_{EVENT_RECOVERED}.json"
+            event_payload = _history_event_payload(
+                suite_name=suite_name,
+                event_type=EVENT_RECOVERED,
+                timestamp=timestamp,
+                run_path=latest_path,
+                metadata=metadata,
+                summary=summary,
+                previous_active=previous_active,
+            )
+            _write_json(event_path, event_payload)
+            history_event = {
+                KEY_EVENT_TYPE: EVENT_RECOVERED,
+                KEY_EVENT_PATH: _relative_history_path(event_path, root),
+            }
+        suite_state.pop(KEY_ACTIVE_FAILURE, None)
+    else:
+        current_signature = failure_signature
+        previous_signature = _failure_signature_from_state(previous_active)
+        if current_signature != previous_signature:
+            event_type = EVENT_FIRST_FAILURE if previous_signature is None else EVENT_CHANGED_FAILURE
+            event_path = events_directory / f"{_history_file_timestamp(timestamp)}_{event_type}.json"
+            event_payload = _history_event_payload(
+                suite_name=suite_name,
+                event_type=event_type,
+                timestamp=timestamp,
+                run_path=latest_path,
+                metadata=metadata,
+                summary=summary,
+                current_signature=current_signature,
+                previous_active=previous_active if isinstance(previous_active, dict) else None,
+                previous_green_commit=_optional_str(suite_state.get(KEY_LAST_GREEN_COMMIT)),
+                previous_green_path=_optional_str(suite_state.get(KEY_LAST_GREEN_PATH)),
+            )
+            _write_json(event_path, event_payload)
+            history_event = {
+                KEY_EVENT_TYPE: event_type,
+                KEY_EVENT_PATH: _relative_history_path(event_path, root),
+            }
+            suite_state[KEY_ACTIVE_FAILURE] = {
+                KEY_FAILURE_SIGNATURE: list(current_signature),
+                KEY_FIRST_OBSERVED_AT: timestamp if previous_signature is None else previous_active.get(KEY_FIRST_OBSERVED_AT),
+                KEY_FIRST_OBSERVED_COMMIT: _git_commit_from_metadata(metadata) if previous_signature is None else previous_active.get(KEY_FIRST_OBSERVED_COMMIT),
+                KEY_FIRST_REPORT_PATH: _relative_history_path(event_path, root) if previous_signature is None else previous_active.get(KEY_FIRST_REPORT_PATH),
+                KEY_LAST_OBSERVED_AT: timestamp,
+                KEY_LAST_OBSERVED_COMMIT: _git_commit_from_metadata(metadata),
+                KEY_LAST_REPORT_PATH: _relative_history_path(event_path, root),
+                KEY_PREVIOUS_GREEN_COMMIT: _optional_str(suite_state.get(KEY_LAST_GREEN_COMMIT)),
+                KEY_PREVIOUS_GREEN_PATH: _optional_str(suite_state.get(KEY_LAST_GREEN_PATH)),
+            }
+        elif isinstance(previous_active, dict):
+            previous_active[KEY_LAST_OBSERVED_AT] = timestamp
+            previous_active[KEY_LAST_OBSERVED_COMMIT] = _git_commit_from_metadata(metadata)
+            suite_state[KEY_ACTIVE_FAILURE] = previous_active
+
+    _write_history_index(root, index)
+    return {
+        KEY_RUN_PATH: str(latest_path),
+        KEY_EVENT: history_event,
+    }
+
+
+def _load_history_index(root: Path) -> Dict[str, object]:
+    index_path = root / HISTORY_INDEX_FILE_NAME
+    if not index_path.exists():
+        return {
+            KEY_HISTORY_VERSION: HISTORY_SCHEMA_VERSION,
+            KEY_SUITES_STATE: {},
+        }
+    with index_path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict):
+        return {
+            KEY_HISTORY_VERSION: HISTORY_SCHEMA_VERSION,
+            KEY_SUITES_STATE: {},
+        }
+    payload.setdefault(KEY_HISTORY_VERSION, HISTORY_SCHEMA_VERSION)
+    payload.setdefault(KEY_SUITES_STATE, {})
+    return payload
+
+
+def _write_history_index(root: Path, payload: Mapping[str, object]) -> None:
+    index_path = root / HISTORY_INDEX_FILE_NAME
+    _write_json(index_path, payload)
+
+
+def _history_suites_state(index: Dict[str, object]) -> Dict[str, object]:
+    suites = index.get(KEY_SUITES_STATE)
+    if isinstance(suites, dict):
+        return suites
+    suites = {}
+    index[KEY_SUITES_STATE] = suites
+    return suites
+
+
+def _history_suite_state(suites: Dict[str, object], suite_name: str) -> Dict[str, object]:
+    suite_state = suites.get(suite_name)
+    if isinstance(suite_state, dict):
+        return suite_state
+    suite_state = {}
+    suites[suite_name] = suite_state
+    return suite_state
+
+
+def _failure_signature(results: Sequence[RegressionResult], comparisons: Sequence[RegressionComparison]) -> List[str]:
+    items: List[str] = []
+    comparison_by_id = {comparison.command_id: comparison for comparison in comparisons}
+    for result in results:
+        if result.ok:
+            continue
+        comparison = comparison_by_id.get(result.command_id)
+        comparison_status = comparison.status if comparison is not None else STATUS_MISSING_BASELINE
+        items.append(f"{result.command_id}:{result.exit_code}:{comparison_status}")
+    return items
+
+
+def _failure_signature_from_state(active_failure: object) -> Optional[List[str]]:
+    if not isinstance(active_failure, dict):
+        return None
+    value = active_failure.get(KEY_FAILURE_SIGNATURE)
+    if not isinstance(value, list):
+        return None
+    return [str(item) for item in value]
+
+
+def _history_event_payload(
+    suite_name: str,
+    event_type: str,
+    timestamp: str,
+    run_path: Path,
+    metadata: Mapping[str, object],
+    summary: Mapping[str, int],
+    current_signature: Optional[Sequence[str]] = None,
+    previous_active: Optional[Mapping[str, object]] = None,
+    previous_green_commit: Optional[str] = None,
+    previous_green_path: Optional[str] = None,
+) -> Dict[str, object]:
+    payload: Dict[str, object] = {
+        KEY_HISTORY_VERSION: HISTORY_SCHEMA_VERSION,
+        KEY_SUITE: suite_name,
+        KEY_EVENT_TYPE: event_type,
+        KEY_EVENT_AT: timestamp,
+        KEY_RUN_PATH: str(run_path),
+        KEY_SUMMARY: dict(summary),
+        KEY_REPORT_METADATA: dict(metadata),
+    }
+    if current_signature is not None:
+        payload[KEY_FAILURE_SIGNATURE] = list(current_signature)
+    if previous_active is not None:
+        payload[KEY_ACTIVE_FAILURE] = dict(previous_active)
+    if previous_green_commit is not None:
+        payload[KEY_PREVIOUS_GREEN_COMMIT] = previous_green_commit
+    if previous_green_path is not None:
+        payload[KEY_PREVIOUS_GREEN_PATH] = previous_green_path
+    return payload
+
+
+def _write_json(path: Path, payload: Mapping[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+        handle.write("\n")
+
+
+def _relative_history_path(path: Path, root: Path) -> str:
+    return str(path.relative_to(root)).replace("\\", "/")
+
+
+def _optional_str(value: object) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text if text else None
+
+
+def _git_command_output(*argv: str) -> str:
+    try:
+        completed = subprocess.run(
+            ("git", *argv),
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+    except OSError:
+        return "unknown"
+    if completed.returncode != EXIT_OK:
+        return "unknown"
+    text = completed.stdout.strip()
+    return text if text else "unknown"
+
+
+def _git_changed_files() -> List[str]:
+    try:
+        completed = subprocess.run(
+            ("git", "status", "--short"),
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+    except OSError:
+        return []
+    if completed.returncode != EXIT_OK:
+        return []
+    lines = [line.rstrip() for line in completed.stdout.splitlines() if line.strip()]
+    files: List[str] = []
+    for line in lines:
+        if len(line) <= 3:
+            continue
+        files.append(line[3:])
+    return files
+
+
+def _git_commit_from_metadata(metadata: Mapping[str, object]) -> str:
+    git_info = metadata.get(KEY_GIT)
+    if isinstance(git_info, dict):
+        commit = _optional_str(git_info.get(KEY_COMMIT))
+        if commit is not None:
+            return commit
+    return "unknown"
+
+
+def _history_file_timestamp(timestamp: str) -> str:
+    return timestamp.replace(":", "").replace("-", "").replace("T", "_").replace("Z", "")
 
 
 def _manifest_context(rio: Optional[str], ui_tcp_port: Optional[int]) -> Dict[str, Optional[str]]:

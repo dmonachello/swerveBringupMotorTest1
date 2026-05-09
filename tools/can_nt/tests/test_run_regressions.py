@@ -9,10 +9,20 @@ from unittest.mock import patch
 from tools.can_nt.scripts.lib.regression_framework import (
     EXIT_OK,
     KEY_COMMANDS_TOTAL,
+    KEY_EVENT_PATH,
+    KEY_EVENT_TYPE,
+    KEY_GIT,
     KEY_KNOWN_FAILURES,
     KEY_MATCHES,
     KEY_MISSING_BASELINE,
     KEY_REGRESSIONS,
+    KEY_SUITES_STATE,
+    EVENT_CHANGED_FAILURE,
+    EVENT_FIRST_FAILURE,
+    EVENT_RECOVERED,
+    HISTORY_EVENTS_DIRECTORY_NAME,
+    HISTORY_INDEX_FILE_NAME,
+    HISTORY_LATEST_DIRECTORY_NAME,
     MANIFEST_RELATIVE_PATH,
     RegressionCommand,
     RegressionResult,
@@ -33,6 +43,7 @@ from tools.can_nt.scripts.lib.regression_framework import (
     refresh_suite_baseline,
     summarize_comparisons,
     summarize_results,
+    write_history_for_run,
     write_json_report,
 )
 from tools.can_nt.scripts.run_regressions import main
@@ -42,6 +53,13 @@ MODE_LOCAL = "local"
 RIO_IP = "172.22.11.2"
 TEXT_REFRESH = "--refresh-expected"
 ARG_JSON_OUT = "--json-out"
+ARG_NO_HISTORY = "--no-history"
+KEY_ACTIVE_FAILURE = "activeFailure"
+KEY_FAILURE_SIGNATURE = "failureSignature"
+KEY_LAST_GREEN_COMMIT = "lastGreenCommit"
+KEY_LAST_GREEN_PATH = "lastGreenPath"
+KEY_LAST_RUN_PATH = "lastRunPath"
+KEY_PREVIOUS_GREEN_COMMIT = "previousGreenCommit"
 
 
 class RunRegressionsTests(unittest.TestCase):
@@ -379,6 +397,186 @@ class RunRegressionsTests(unittest.TestCase):
 
         self.assertEqual(EXIT_OK, exit_code)
         self.assertEqual(SUITE_DSL, payload["suite"])
+
+    @patch("tools.can_nt.scripts.run_regressions.write_history_for_run")
+    @patch("tools.can_nt.scripts.run_regressions.run_commands")
+    def test_main_skips_history_when_requested(self, run_commands_mock, write_history_mock) -> None:
+        run_commands_mock.return_value = [
+            RegressionResult(
+                label="dsl-unit",
+                argv=("python",),
+                mode=MODE_LOCAL,
+                exit_code=0,
+                duration_sec=0.1,
+                stdout="",
+                stderr="",
+                command_id="dsl-unit",
+                features=(),
+            )
+        ]
+
+        exit_code = main(["--suite", SUITE_DSL, ARG_NO_HISTORY])
+
+        self.assertEqual(EXIT_OK, exit_code)
+        write_history_mock.assert_not_called()
+
+    def test_write_history_for_run_records_first_failure_and_last_green(self) -> None:
+        result = RegressionResult(
+            label="dsl-unit",
+            argv=("python",),
+            mode=MODE_LOCAL,
+            exit_code=1,
+            duration_sec=0.1,
+            stdout="",
+            stderr="",
+            command_id="dsl-unit",
+            features=(),
+        )
+        command = RegressionCommand(label="dsl-unit", argv=("python",), mode=MODE_LOCAL, command_id="dsl-unit", features=())
+        comparisons = compare_results_to_baseline([command], [result], {"results": [{"commandId": "dsl-unit", "argv": ["python"], "expectedExitCode": 0}]})
+        metadata = {KEY_GIT: {"commit": "abc123", "branch": "main", "dirty": False, "changedFiles": []}}
+        with tempfile.TemporaryDirectory() as temp_dir:
+            history_root = Path(temp_dir)
+            with patch("tools.can_nt.scripts.lib.regression_framework.history_root_path", return_value=history_root), patch(
+                "tools.can_nt.scripts.lib.regression_framework._utc_timestamp", return_value="2026-05-08T16:00:00Z"
+            ):
+                history = write_history_for_run(
+                    suite_name=SUITE_DSL,
+                    results=[result],
+                    summary={"passed": 0, "failed": 1, "total": 1},
+                    comparisons=comparisons,
+                    baseline_path=history_root / "dsl.expected.json",
+                    metadata=metadata,
+                )
+            index = json.loads((history_root / HISTORY_INDEX_FILE_NAME).read_text(encoding="utf-8"))
+
+        self.assertEqual(EVENT_FIRST_FAILURE, history["event"][KEY_EVENT_TYPE])
+        self.assertTrue(history["event"][KEY_EVENT_PATH])
+        suite_state = index[KEY_SUITES_STATE][SUITE_DSL]
+        self.assertEqual(["dsl-unit:1:regression"], suite_state[KEY_ACTIVE_FAILURE][KEY_FAILURE_SIGNATURE])
+        self.assertIsNone(suite_state[KEY_ACTIVE_FAILURE][KEY_PREVIOUS_GREEN_COMMIT])
+
+    def test_write_history_for_run_uses_previous_green_and_records_recovery(self) -> None:
+        command = RegressionCommand(label="dsl-unit", argv=("python",), mode=MODE_LOCAL, command_id="dsl-unit", features=())
+        fail_result = RegressionResult(
+            label="dsl-unit",
+            argv=("python",),
+            mode=MODE_LOCAL,
+            exit_code=1,
+            duration_sec=0.1,
+            stdout="",
+            stderr="",
+            command_id="dsl-unit",
+            features=(),
+        )
+        pass_result = RegressionResult(
+            label="dsl-unit",
+            argv=("python",),
+            mode=MODE_LOCAL,
+            exit_code=0,
+            duration_sec=0.1,
+            stdout="",
+            stderr="",
+            command_id="dsl-unit",
+            features=(),
+        )
+        fail_comparisons = compare_results_to_baseline([command], [fail_result], {"results": [{"commandId": "dsl-unit", "argv": ["python"], "expectedExitCode": 0}]})
+        pass_comparisons = compare_results_to_baseline([command], [pass_result], {"results": [{"commandId": "dsl-unit", "argv": ["python"], "expectedExitCode": 0}]})
+        with tempfile.TemporaryDirectory() as temp_dir:
+            history_root = Path(temp_dir)
+            with patch("tools.can_nt.scripts.lib.regression_framework.history_root_path", return_value=history_root), patch(
+                "tools.can_nt.scripts.lib.regression_framework._utc_timestamp",
+                side_effect=[
+                    "2026-05-08T15:00:00Z",
+                    "2026-05-08T15:00:00Z",
+                    "2026-05-08T15:00:00Z",
+                    "2026-05-08T16:00:00Z",
+                    "2026-05-08T16:00:00Z",
+                ],
+            ):
+                write_history_for_run(
+                    suite_name=SUITE_DSL,
+                    results=[pass_result],
+                    summary={"passed": 1, "failed": 0, "total": 1},
+                    comparisons=pass_comparisons,
+                    baseline_path=history_root / "dsl.expected.json",
+                    metadata={KEY_GIT: {"commit": "good1", "branch": "main", "dirty": False, "changedFiles": []}},
+                )
+                failure_history = write_history_for_run(
+                    suite_name=SUITE_DSL,
+                    results=[fail_result],
+                    summary={"passed": 0, "failed": 1, "total": 1},
+                    comparisons=fail_comparisons,
+                    baseline_path=history_root / "dsl.expected.json",
+                    metadata={KEY_GIT: {"commit": "bad1", "branch": "main", "dirty": False, "changedFiles": []}},
+                )
+            with patch("tools.can_nt.scripts.lib.regression_framework.history_root_path", return_value=history_root), patch(
+                "tools.can_nt.scripts.lib.regression_framework._utc_timestamp", return_value="2026-05-08T17:00:00Z"
+            ):
+                recovery_history = write_history_for_run(
+                    suite_name=SUITE_DSL,
+                    results=[pass_result],
+                    summary={"passed": 1, "failed": 0, "total": 1},
+                    comparisons=pass_comparisons,
+                    baseline_path=history_root / "dsl.expected.json",
+                    metadata={KEY_GIT: {"commit": "good2", "branch": "main", "dirty": False, "changedFiles": []}},
+                )
+            index = json.loads((history_root / HISTORY_INDEX_FILE_NAME).read_text(encoding="utf-8"))
+            last_green_exists = (history_root / HISTORY_LATEST_DIRECTORY_NAME / f"{SUITE_DSL}.last_green.json").exists()
+
+        self.assertEqual(EVENT_FIRST_FAILURE, failure_history["event"][KEY_EVENT_TYPE])
+        suite_state = index[KEY_SUITES_STATE][SUITE_DSL]
+        self.assertEqual("good2", suite_state[KEY_LAST_GREEN_COMMIT])
+        self.assertNotIn(KEY_ACTIVE_FAILURE, suite_state)
+        self.assertEqual(EVENT_RECOVERED, recovery_history["event"][KEY_EVENT_TYPE])
+        self.assertTrue(last_green_exists)
+
+    def test_write_history_for_run_does_not_duplicate_repeat_failure(self) -> None:
+        command = RegressionCommand(label="dsl-unit", argv=("python",), mode=MODE_LOCAL, command_id="dsl-unit", features=())
+        fail_result = RegressionResult(
+            label="dsl-unit",
+            argv=("python",),
+            mode=MODE_LOCAL,
+            exit_code=1,
+            duration_sec=0.1,
+            stdout="",
+            stderr="",
+            command_id="dsl-unit",
+            features=(),
+        )
+        fail_comparisons = compare_results_to_baseline([command], [fail_result], {"results": [{"commandId": "dsl-unit", "argv": ["python"], "expectedExitCode": 0}]})
+        with tempfile.TemporaryDirectory() as temp_dir:
+            history_root = Path(temp_dir)
+            with patch("tools.can_nt.scripts.lib.regression_framework.history_root_path", return_value=history_root), patch(
+                "tools.can_nt.scripts.lib.regression_framework._utc_timestamp",
+                side_effect=[
+                    "2026-05-08T18:00:00Z",
+                    "2026-05-08T18:00:00Z",
+                    "2026-05-08T19:00:00Z",
+                    "2026-05-08T19:00:00Z",
+                ],
+            ):
+                first_history = write_history_for_run(
+                    suite_name=SUITE_DSL,
+                    results=[fail_result],
+                    summary={"passed": 0, "failed": 1, "total": 1},
+                    comparisons=fail_comparisons,
+                    baseline_path=history_root / "dsl.expected.json",
+                    metadata={KEY_GIT: {"commit": "bad1", "branch": "main", "dirty": False, "changedFiles": []}},
+                )
+                repeat_history = write_history_for_run(
+                    suite_name=SUITE_DSL,
+                    results=[fail_result],
+                    summary={"passed": 0, "failed": 1, "total": 1},
+                    comparisons=fail_comparisons,
+                    baseline_path=history_root / "dsl.expected.json",
+                    metadata={KEY_GIT: {"commit": "bad2", "branch": "main", "dirty": False, "changedFiles": []}},
+                )
+            event_files = list((history_root / HISTORY_EVENTS_DIRECTORY_NAME / SUITE_DSL).glob("*.json"))
+
+        self.assertEqual(EVENT_FIRST_FAILURE, first_history["event"][KEY_EVENT_TYPE])
+        self.assertEqual("none", repeat_history["event"][KEY_EVENT_TYPE])
+        self.assertEqual(1, len(event_files))
 
 
 if __name__ == "__main__":
