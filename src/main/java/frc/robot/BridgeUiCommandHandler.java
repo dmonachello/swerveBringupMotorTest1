@@ -155,7 +155,7 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_TESTS_SELECTED = "selected";
   private static final String JSON_KEY_TESTS_TYPE = "type";
   private static final String JSON_KEY_TESTS_STATUS = "status";
-  private static final String JSON_KEY_TESTS_MOTORS = "motors";
+  private static final String JSON_KEY_TESTS_REQUIRED_DEVICES = "requiredDevices";
   private static final String JSON_KEY_TESTS_RUN = "run";
   private static final String JSON_KEY_RUN_ID = "runId";
   private static final String JSON_KEY_RUN_STATE = "state";
@@ -2825,15 +2825,15 @@ public class BridgeUiCommandHandler {
       obj.addProperty(JSON_KEY_TESTS_SELECTED, row.selected);
       obj.addProperty(JSON_KEY_TESTS_TYPE, row.type != null ? row.type : TEXT_EMPTY);
       obj.addProperty(JSON_KEY_TESTS_STATUS, row.status != null ? row.status : TEXT_EMPTY);
-      JsonArray motors = new JsonArray();
-      if (row.motors != null) {
-        for (String motor : row.motors) {
-          if (motor != null && !motor.isBlank()) {
-            motors.add(motor);
+      JsonArray requiredDevices = new JsonArray();
+      if (row.requiredDevices != null) {
+        for (String label : row.requiredDevices) {
+          if (label != null && !label.isBlank()) {
+            requiredDevices.add(label);
           }
         }
       }
-      obj.add(JSON_KEY_TESTS_MOTORS, motors);
+      obj.add(JSON_KEY_TESTS_REQUIRED_DEVICES, requiredDevices);
       rows.add(obj);
     }
     root.add(JSON_KEY_TESTS_ROWS, rows);
@@ -3485,9 +3485,11 @@ public class BridgeUiCommandHandler {
       rowTable.getEntry("selected").setBoolean(row.selected);
       rowTable.getEntry("type").setString(row.type != null ? row.type : "");
       rowTable.getEntry("status").setString(row.status != null ? row.status : "");
-      String motors =
-          (row.motors == null || row.motors.isEmpty()) ? "" : String.join(", ", row.motors);
-      rowTable.getEntry("motors").setString(motors);
+      String requiredDevices =
+          (row.requiredDevices == null || row.requiredDevices.isEmpty())
+              ? ""
+              : String.join(", ", row.requiredDevices);
+      rowTable.getEntry("requiredDevices").setString(requiredDevices);
     }
     for (int i = count; i < lastTestsCount; i++) {
       NetworkTable rowTable = rowsTable.getSubTable(String.valueOf(i));
@@ -3497,7 +3499,7 @@ public class BridgeUiCommandHandler {
       rowTable.getEntry("selected").setBoolean(false);
       rowTable.getEntry("type").setString("");
       rowTable.getEntry("status").setString("");
-      rowTable.getEntry("motors").setString("");
+      rowTable.getEntry("requiredDevices").setString("");
     }
     lastTestsCount = count;
   }

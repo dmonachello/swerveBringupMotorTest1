@@ -36,6 +36,7 @@ class DslBringupTestTest {
   private static final String EMPTY = "";
   private static final String CONTROLLER_LABEL = "controller0";
   private static final String CONTROLLER_TYPE = "xboxController";
+  private static final String DSL_MOTOR_TYPE = "motor";
   private static final String SIGNAL_A = "A";
   private static final String SIGNAL_LEFT_Y = "leftY";
   private static final String FIELD_DEVICE_REGISTRY = "DEVICE_REGISTRY";
@@ -118,6 +119,15 @@ class DslBringupTestTest {
     assertEquals(BringupTestResult.PASS, test.getResult());
     assertEquals(2, motor.dutyWrites);
     assertEquals(0.2, motor.lastDuty, 0.0001);
+  }
+
+  @Test
+  void dslSignalSetRequiredDevicesIncludeControllerInputs() {
+    seedConfiguredDeviceType(CONTROLLER_LABEL, CONTROLLER_TYPE);
+    seedConfiguredDeviceType(MOTOR_LABEL, DSL_MOTOR_TYPE);
+    DslBringupTest test = new DslBringupTest(buildSignalSetMainTest(0.25, 0.0, false));
+
+    assertEquals(List.of(MOTOR_LABEL, CONTROLLER_LABEL), test.getRequiredDeviceKeys());
   }
 
   @Test

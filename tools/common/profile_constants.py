@@ -144,7 +144,7 @@ KEY_TESTS_ENABLED = "enabled"
 KEY_TESTS_SELECTED = "selected"
 KEY_TESTS_TYPE = "type"
 KEY_TESTS_STATUS = "status"
-KEY_TESTS_MOTORS = "motors"
+KEY_TESTS_REQUIRED_DEVICES = "requiredDevices"
 KEY_VERSION = "version"
 
 INTERFACE_CAN = "CAN"

@@ -87,7 +87,7 @@ public final class DslBringupTest implements BringupTest {
   }
 
   @Override
-  public List<String> getMotorKeys() {
+  public List<String> getRequiredDeviceKeys() {
     List<String> names = new ArrayList<>();
     if (test == null || test.devices == null) {
       return names;

@@ -1,24 +1,13 @@
 {
   "schema_version": 4,
   "profiles": {
-    "dsl_demo_050426": {
+    "scratch": {
       "devices": [
         "FALCON 9",
-        "SPARKMAX/NEO 25",
-        "lmtSw0",
-        "roborio",
-        "PDP"
-      ]
-    },
-    "drawn_profile": {
-      "devices": [
-        "FALCON 9",
-        "SPARKMAX/NEO 25",
-        "lmtSw0",
-        "roborio",
-        "PDP",
-        "controller0"
-      ]
+        "controller0",
+        "lmtSw0"
+      ],
+      "dslTestSet": "default"
     }
   },
   "devices": [
@@ -29,29 +18,7 @@
       "id": 9,
       "model": "FALCON 500",
       "type": "motor",
-      "deviceInterface": "CAN",
-      "attachments": [
-        "lmtSw0"
-      ]
-    },
-    {
-      "label": "SPARKMAX/NEO 25",
-      "manufacturer": 5,
-      "deviceType": 2,
-      "id": 25,
-      "model": "REV NEO",
-      "type": "motor",
-      "deviceInterface": "CAN",
-      "attachments": [
-        "lmtSw0"
-      ]
-    },
-    {
-      "label": "lmtSw0",
-      "type": "limitSwitch",
-      "deviceInterface": "DIO",
-      "invert": false,
-      "id": 0
+      "deviceInterface": "CAN"
     },
     {
       "label": "controller0",
@@ -63,41 +30,22 @@
       "deviceInterface": "USB"
     },
     {
-      "label": "roborio",
-      "deviceInterface": "CAN",
-      "manufacturer": 1,
-      "deviceType": 1,
+      "label": "lmtSw0",
       "id": 0,
-      "terminator": true
-    },
-    {
-      "label": "PDP",
-      "deviceInterface": "CAN",
-      "manufacturer": 4,
-      "deviceType": 8,
-      "id": 1,
-      "terminator": true
+      "model": "Limit Switch",
+      "type": "limitSwitch",
+      "deviceInterface": "DIO",
+      "invert": true
     }
   ],
-  "data_version": "2026-05-09_175416",
-  "data_hash": "c7ffc3b8439bba237420dab106f59a90540766f70fcab26d251431221752c868",
-  "default_profile": "drawn_profile",
+  "data_version": "2026-05-10_120735",
+  "data_hash": "86d06f9026a7528868b29187be538308ea19578ac27715d43514caca2d9e0785",
+  "default_profile": "scratch",
   "bridgeConfig": {
     "schemaVersion": 2,
     "generatedAt": null,
     "byProfile": {
-      "dsl_demo_050426": {
-        "groups": [],
-        "selectedDevice": {
-          "device": "",
-          "enabled": false
-        },
-        "tests": {
-          "default_test_set": "default",
-          "test_sets": {}
-        }
-      },
-      "drawn_profile": {
+      "scratch": {
         "groups": [],
         "selectedDevice": {
           "device": "",
@@ -115,16 +63,17 @@
     "defaultSet": "default",
     "testSets": {
       "default": [
-        "spin_up_motor1",
-        "spin_up_motor1_controller_leftY"
+        "falcon9_run_025",
+        "falcon9_leftY_15s",
+        "falcon9_to_limit_or_30s"
       ]
     },
     "testsByName": {
-      "spin_up_motor1": {
-        "source": "test \"spin_up_motor1\"\ndevice \"FALCON 9\"\n\nmain:\n    set \"FALCON 9\".output = 0.5\n    until timer.elapsed >= 3.0\n    require \"FALCON 9\".velocity > 1000\n\n",
-        "sourceHash": "77403ce626c0a4787b83f4ba5c4028ee6aa7a45477e88ea4fb90c885597a834c",
+      "falcon9_run_025": {
+        "source": "test \"falcon9_run_025\"\ndevice \"FALCON 9\"\n\nmain:\n    set \"FALCON 9\".output = 0.25\n    until timer.elapsed >= 5.0\n",
+        "sourceHash": "d0e935752dddd55399af05e7eeb59281c9986566656b1411a56757efc19d3aa3",
         "normalized": {
-          "name": "spin_up_motor1",
+          "name": "falcon9_run_025",
           "devices": [
             {
               "name": "FALCON 9"
@@ -143,14 +92,14 @@
             "sets": [
               {
                 "id": "set_1",
-                "text": "set \"FALCON 9\".output = 0.5",
+                "text": "set \"FALCON 9\".output = 0.25",
                 "target": {
                   "device": "FALCON 9",
                   "signal": "output",
                   "text": "FALCON 9.output"
                 },
                 "literal": {
-                  "value": 0.5,
+                  "value": 0.25,
                   "valueType": "number"
                 }
               }
@@ -162,7 +111,7 @@
               {
                 "id": "until_1",
                 "kind": "until",
-                "text": "until timer.elapsed >= 3.0",
+                "text": "until timer.elapsed >= 5.0",
                 "reference": {
                   "device": "timer",
                   "signal": "elapsed",
@@ -170,28 +119,12 @@
                 },
                 "operator": ">=",
                 "literal": {
-                  "value": 3.0,
+                  "value": 5.0,
                   "valueType": "number"
                 }
               }
             ],
-            "requires": [
-              {
-                "id": "require_1",
-                "kind": "require",
-                "text": "require \"FALCON 9\".velocity > 1000",
-                "reference": {
-                  "device": "FALCON 9",
-                  "signal": "velocity",
-                  "text": "FALCON 9.velocity"
-                },
-                "operator": ">",
-                "literal": {
-                  "value": 1000,
-                  "valueType": "number"
-                }
-              }
-            ]
+            "requires": []
           },
           "close": {
             "sets": [],
@@ -203,11 +136,11 @@
           }
         }
       },
-      "spin_up_motor1_controller_leftY": {
-        "source": "test \"spin_up_motor1_controller_leftY\"\ndevice \"FALCON 9\"\ndevice \"controller0\"\n\nmain:\n    set \"FALCON 9\".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n    until timer.elapsed >= 3.0\n    require \"FALCON 9\".velocity > 1000\n\n",
-        "sourceHash": "a92026f022ce18145d29487d0f3365dd2fbdf8a633c1674aac371c118cac2413",
+      "falcon9_leftY_15s": {
+        "source": "test \"falcon9_leftY_15s\"\ndevice \"FALCON 9\"\ndevice \"controller0\"\n\nmain:\n    set \"FALCON 9\".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n    until timer.elapsed >= 15.0\n",
+        "sourceHash": "deda1848fa5a52b6574f1e220e52dd9bbd11b97c1c499b68634857db8d89d9bd",
         "normalized": {
-          "name": "spin_up_motor1_controller_leftY",
+          "name": "falcon9_leftY_15s",
           "devices": [
             {
               "name": "FALCON 9"
@@ -240,12 +173,12 @@
                   "signal": "leftY",
                   "text": "controller0.leftY"
                 },
+                "deadband": 0.08,
                 "scale": 0.25,
                 "defaultLiteral": {
                   "value": 0.0,
                   "valueType": "number"
-                },
-                "deadband": 0.08
+                }
               }
             ],
             "clears": [],
@@ -255,7 +188,7 @@
               {
                 "id": "until_1",
                 "kind": "until",
-                "text": "until timer.elapsed >= 3.0",
+                "text": "until timer.elapsed >= 15.0",
                 "reference": {
                   "device": "timer",
                   "signal": "elapsed",
@@ -263,28 +196,95 @@
                 },
                 "operator": ">=",
                 "literal": {
-                  "value": 3.0,
+                  "value": 15.0,
                   "valueType": "number"
                 }
               }
             ],
-            "requires": [
+            "requires": []
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        }
+      },
+      "falcon9_to_limit_or_30s": {
+        "source": "test \"falcon9_to_limit_or_30s\"\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\n\nmain:\n    set \"FALCON 9\".output = 0.25\n    success lmtSw0.pressed\n    until timer.elapsed >= 30.0\n",
+        "sourceHash": "56536b8a11443ffadf0af4dd577174f47a86fd39a59df85fdd8df8819696869b",
+        "normalized": {
+          "name": "falcon9_to_limit_or_30s",
+          "devices": [
+            {
+              "name": "FALCON 9"
+            },
+            {
+              "name": "lmtSw0"
+            }
+          ],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
               {
-                "id": "require_1",
-                "kind": "require",
-                "text": "require \"FALCON 9\".velocity > 1000",
-                "reference": {
+                "id": "set_1",
+                "text": "set \"FALCON 9\".output = 0.25",
+                "target": {
                   "device": "FALCON 9",
-                  "signal": "velocity",
-                  "text": "FALCON 9.velocity"
+                  "signal": "output",
+                  "text": "FALCON 9.output"
                 },
-                "operator": ">",
                 "literal": {
-                  "value": 1000,
+                  "value": 0.25,
                   "valueType": "number"
                 }
               }
-            ]
+            ],
+            "clears": [],
+            "aborts": [],
+            "successes": [
+              {
+                "id": "success_1",
+                "kind": "success",
+                "text": "success lmtSw0.pressed",
+                "reference": {
+                  "device": "lmtSw0",
+                  "signal": "pressed",
+                  "text": "lmtSw0.pressed"
+                },
+                "operator": "",
+                "literal": null
+              }
+            ],
+            "untils": [
+              {
+                "id": "until_1",
+                "kind": "until",
+                "text": "until timer.elapsed >= 30.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "operator": ">=",
+                "literal": {
+                  "value": 30.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "requires": []
           },
           "close": {
             "sets": [],
@@ -302,99 +302,11 @@
     "version": 1,
     "source": "local",
     "profiles": {
-      "dsl_demo_050426": {
+      "scratch": {
         "version": 1,
         "source": "local",
-        "nodes": [
-          {
-            "key": 1,
-            "nodeType": "device",
-            "deviceRef": "FALCON 9",
-            "layout": {
-              "bus": 0,
-              "row": 0,
-              "x": 428.2894736842106,
-              "y": -66.77631578947368
-            }
-          },
-          {
-            "key": 2,
-            "nodeType": "device",
-            "deviceRef": "SPARKMAX/NEO 25",
-            "layout": {
-              "bus": 0,
-              "row": 0,
-              "x": 600.0,
-              "y": -57.26461988304094
-            }
-          },
-          {
-            "key": 3,
-            "nodeType": "device",
-            "deviceRef": "lmtSw0",
-            "layout": {
-              "bus": 0,
-              "row": 0,
-              "x": 278.2894736842106,
-              "y": -11.25
-            }
-          },
-          {
-            "key": 4,
-            "nodeType": "device",
-            "deviceRef": "roborio",
-            "layout": {
-              "bus": 0,
-              "row": 0,
-              "x": 0.0
-            }
-          },
-          {
-            "key": 5,
-            "nodeType": "device",
-            "deviceRef": "PDP",
-            "layout": {
-              "bus": 0,
-              "row": 1,
-              "x": 696.9298245614034,
-              "y": 94.75877192982456
-            }
-          }
-        ],
-        "edges": [
-          {
-            "id": "edge_1",
-            "fromNode": 4,
-            "fromPort": "right",
-            "toNode": 1,
-            "toPort": "left",
-            "edgeType": "can_trunk"
-          },
-          {
-            "id": "edge_2",
-            "fromNode": 1,
-            "fromPort": "right",
-            "toNode": 2,
-            "toPort": "left",
-            "edgeType": "can_trunk"
-          },
-          {
-            "id": "edge_3",
-            "fromNode": 2,
-            "fromPort": "right",
-            "toNode": 5,
-            "toPort": "left",
-            "edgeType": "can_trunk"
-          },
-          {
-            "id": "edge_4",
-            "fromNode": 4,
-            "fromPort": "dio",
-            "toNode": 3,
-            "toPort": "dio",
-            "edgeType": "dio"
-          }
-        ],
+        "nodes": [],
+        "edges": [],
         "view": {
           "busOffsets": [
             0.0
@@ -405,171 +317,11 @@
             40.0
           ],
           "busRights": [
-            816.9298245614034
+            360.0
           ],
           "busConnectors": [],
           "panY": 0.0,
-          "zoom": 0.7073936314977775,
-          "connectionFilters": [
-            "analog",
-            "can",
-            "dio",
-            "power",
-            "pwm",
-            "virtual"
-          ],
-          "callouts": []
-        }
-      },
-      "drawn_profile": {
-        "version": 1,
-        "source": "local",
-        "nodes": [
-          {
-            "key": 1,
-            "nodeType": "device",
-            "deviceRef": "FALCON 9",
-            "layout": {
-              "bus": 0,
-              "row": 0,
-              "x": 445.7342643890428,
-              "y": -45.789473684210535
-            }
-          },
-          {
-            "key": 2,
-            "nodeType": "device",
-            "deviceRef": "SPARKMAX/NEO 25",
-            "layout": {
-              "bus": 0,
-              "row": 0,
-              "x": 607.6013965835641,
-              "y": -50.5263157894737
-            }
-          },
-          {
-            "key": 3,
-            "nodeType": "device",
-            "deviceRef": "lmtSw0",
-            "layout": {
-              "bus": 0,
-              "row": 0,
-              "x": 283.8671321945214,
-              "y": -245.26315789473688
-            }
-          },
-          {
-            "key": 4,
-            "nodeType": "device",
-            "deviceRef": "roborio",
-            "layout": {
-              "bus": 0,
-              "row": 0,
-              "x": 122.0,
-              "y": -199.50312787425375
-            }
-          },
-          {
-            "key": 5,
-            "nodeType": "device",
-            "deviceRef": "PDP",
-            "layout": {
-              "bus": 0,
-              "row": 0,
-              "x": 769.4685287780856,
-              "y": -199.50312787425372
-            }
-          }
-        ],
-        "edges": [
-          {
-            "id": "edge_1",
-            "fromNode": 4,
-            "fromPort": "right",
-            "toNode": 1,
-            "toPort": "left",
-            "edgeType": "can_trunk"
-          },
-          {
-            "id": "edge_2",
-            "fromNode": 1,
-            "fromPort": "right",
-            "toNode": 2,
-            "toPort": "left",
-            "edgeType": "can_trunk"
-          },
-          {
-            "id": "edge_3",
-            "fromNode": 2,
-            "fromPort": "right",
-            "toNode": 5,
-            "toPort": "left",
-            "edgeType": "can_trunk"
-          },
-          {
-            "id": "edge_4",
-            "fromNode": 4,
-            "fromPort": "dio",
-            "toNode": 3,
-            "toPort": "dio",
-            "edgeType": "dio"
-          },
-          {
-            "id": "edge_5",
-            "fromNode": 2,
-            "fromPort": "power",
-            "toNode": 5,
-            "toPort": "power",
-            "edgeType": "power"
-          },
-          {
-            "id": "edge_6",
-            "fromNode": 1,
-            "fromPort": "power",
-            "toNode": 5,
-            "toPort": "power",
-            "edgeType": "power"
-          },
-          {
-            "id": "edge_7",
-            "fromNode": 4,
-            "fromPort": "power",
-            "toNode": 5,
-            "toPort": "power",
-            "edgeType": "power"
-          },
-          {
-            "id": "edge_8",
-            "fromNode": 1,
-            "fromPort": "attachment",
-            "toNode": 3,
-            "toPort": "attachment",
-            "edgeType": "virtual"
-          },
-          {
-            "id": "edge_9",
-            "fromNode": 2,
-            "fromPort": "attachment",
-            "toNode": 3,
-            "toPort": "attachment",
-            "edgeType": "virtual"
-          }
-        ],
-        "view": {
-          "busOffsets": [
-            -19.07894736842104
-          ],
-          "busCount": 1,
-          "busSpacing": 160.0,
-          "busLefts": [
-            40.0
-          ],
-          "busRights": [
-            851.4685287780856
-          ],
-          "busConnectors": [],
-          "panY": 151.04440303947877,
-          "zoom": 1.5223273317244048,
+          "zoom": 1.0,
           "connectionFilters": [
             "analog",
             "can",

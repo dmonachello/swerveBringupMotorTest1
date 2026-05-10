@@ -90,11 +90,9 @@ public interface BringupTest {
 
   /**
    * NAME
-   *   getMotorKeys - Return motor labels used by the test.
+   *   getRequiredDeviceKeys - Return all device labels that must be instantiated before start.
    */
-  default java.util.List<String> getMotorKeys() {
-    return java.util.Collections.emptyList();
-  }
+  java.util.List<String> getRequiredDeviceKeys();
 
   /**
    * NAME

@@ -231,7 +231,7 @@ from tools.common.profile_constants import (
     KEY_TESTS_SELECTED,
     KEY_TESTS_TYPE,
     KEY_TESTS_STATUS,
-    KEY_TESTS_MOTORS,
+    KEY_TESTS_REQUIRED_DEVICES,
     KEY_VERSION,
     KEY_ID,
     KEY_INTERFACE,
@@ -1393,8 +1393,8 @@ TEXT_TESTS_HEADER = "=== Bringup Tests ==="
 TEXT_TESTS_FOOTER = "====================="
 TEXT_TESTS_ACTIVE_SET = "Active set: {active} (default: {default})"
 TEXT_TESTS_COUNTS = "Total: {total} Enabled: {enabled}"
-TEXT_TESTS_TABLE_HEADER = "Idx Sel En Type       Name                         HoldBtn                Motors"
-TEXT_TESTS_ROW_FMT = "{index:3d}  {sel}  {en}  {type:<9} {name:<28} {hold:<20} {motors}"
+TEXT_TESTS_TABLE_HEADER = "Idx Sel En Type       Name                         HoldBtn                Devices"
+TEXT_TESTS_ROW_FMT = "{index:3d}  {sel}  {en}  {type:<9} {name:<28} {hold:<20} {devices}"
 TEXT_TESTS_NO_TESTS = "No tests loaded."
 TEXT_SOURCES_HEADER = "=== Sources ==="
 TEXT_SOURCES_FOOTER = "==============="
@@ -1410,7 +1410,7 @@ TEXT_BINDINGS_GROUP_NONE = "    (none)"
 TEXT_VERSION_PREFIX = "Robot version: "
 TEXT_BUILD_HEADER = "Build:"
 TEXT_TESTS_HOLD_DEFAULT = "-"
-TEXT_TESTS_MOTORS_EMPTY = "-"
+TEXT_TESTS_DEVICES_EMPTY = "-"
 TEXT_TESTS_TYPE_UNKNOWN = "?"
 TEXT_TESTS_NAME_UNNAMED = "(unnamed)"
 TEXT_TESTS_SELECTED_MARK = "*"
@@ -6801,7 +6801,7 @@ class BridgeCli:
                     KEY_TESTS_SELECTED: False,
                     KEY_TESTS_TYPE: test.test_type,
                     KEY_TESTS_STATUS: EMPTY_STRING,
-                    KEY_TESTS_MOTORS: list(test.devices) if isinstance(test.devices, list) else [],
+                    KEY_TESTS_REQUIRED_DEVICES: list(test.devices) if isinstance(test.devices, list) else [],
                 }
             )
         return {
@@ -6850,11 +6850,11 @@ class BridgeCli:
                 enabled = bool(row.get(KEY_TESTS_ENABLED, False))
                 test_type = str(row.get(KEY_TESTS_TYPE, EMPTY_STRING)).strip() or TEXT_TESTS_TYPE_UNKNOWN
                 name = str(row.get(KEY_TESTS_NAME, EMPTY_STRING)).strip() or TEXT_TESTS_NAME_UNNAMED
-                motors = row.get(KEY_TESTS_MOTORS, [])
-                motor_text = (
-                    SEP_COMMA_SPACE.join([str(m) for m in motors if str(m).strip()])
-                    if isinstance(motors, list) and motors
-                    else TEXT_TESTS_MOTORS_EMPTY
+                required_devices = row.get(KEY_TESTS_REQUIRED_DEVICES, [])
+                required_devices_text = (
+                    SEP_COMMA_SPACE.join([str(d) for d in required_devices if str(d).strip()])
+                    if isinstance(required_devices, list) and required_devices
+                    else TEXT_TESTS_DEVICES_EMPTY
                 )
                 sel_char = TEXT_TESTS_SELECTED_MARK if selected else TEXT_TESTS_SELECTED_EMPTY
                 en_char = TEXT_TESTS_ENABLED_MARK if enabled else TEXT_TESTS_DISABLED_MARK
@@ -6866,7 +6866,7 @@ class BridgeCli:
                         type=test_type,
                         name=name,
                         hold=TEXT_TESTS_HOLD_DEFAULT,
-                        motors=motor_text,
+                        devices=required_devices_text,
                     )
                 )
         lines.append(TEXT_TESTS_FOOTER)

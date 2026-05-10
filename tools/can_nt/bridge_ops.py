@@ -84,7 +84,6 @@ from tools.common.profile_constants import (
     KEY_TESTS_SELECTED,
     KEY_TESTS_TYPE,
     KEY_TESTS_STATUS,
-    KEY_TESTS_MOTORS,
     KEY_NAME,
     KEY_ESTOPPED,
     KEY_MODE,

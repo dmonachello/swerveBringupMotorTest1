@@ -2248,7 +2248,7 @@ public final class BringupUtil {
         continue;
       }
       DeviceKey key = new DeviceKey(entry.vendor, entry.type);
-      DeviceConfig config = new DeviceConfig(entry.id, entry.label, entry.motor, entry.limits);
+      DeviceConfig config = new DeviceConfig(entry.id, entry.label, entry.motor, entry.limits, def.invert);
       DEVICE_CONFIGS.computeIfAbsent(key, ignored -> new ArrayList<>()).add(config);
     }
   }
@@ -2315,7 +2315,7 @@ public final class BringupUtil {
   }
 
   private static boolean isRuntimeDevice(DeviceDefinition def) {
-    return isCanDevice(def) || isXboxControllerDevice(def);
+    return isCanDevice(def) || isXboxControllerDevice(def) || isLimitSwitch(def);
   }
 
   private static boolean isCanDevice(DeviceDefinition def) {
@@ -2370,10 +2370,13 @@ public final class BringupUtil {
   }
 
   private static String resolveVendorName(DeviceDefinition def) {
+    if (isXboxControllerDevice(def)) {
+      return DEVICE_VENDOR_MICROSOFT;
+    }
+    if (isLimitSwitch(def)) {
+      return DEVICE_VENDOR_NI;
+    }
     if (def == null || def.manufacturer == null) {
-      if (isXboxControllerDevice(def)) {
-        return DEVICE_VENDOR_MICROSOFT;
-      }
       return LABEL_UNKNOWN;
     }
     String name = getCanManufacturerName(def.manufacturer);
@@ -2398,6 +2401,9 @@ public final class BringupUtil {
     }
     if (isXboxControllerDevice(def)) {
       return DEVICE_TYPE_XBOX_CONTROLLER;
+    }
+    if (isLimitSwitch(def)) {
+      return DEVICE_TYPE_LIMIT_SWITCH;
     }
     int manufacturer = def.manufacturer != null ? def.manufacturer : DISABLED_CAN_ID;
     int devType = def.deviceType != null ? def.deviceType : DISABLED_CAN_ID;
@@ -2866,6 +2872,7 @@ public final class BringupUtil {
     private final String label;
     private final String motor;
     private final LimitConfig limits;
+    private final boolean invert;
 
     /**
      * NAME
@@ -2876,12 +2883,14 @@ public final class BringupUtil {
      *   label - Display label.
      *   motor - Optional motor model override.
      *   limits - Optional limit config.
+     *   invert - Optional standalone inversion flag.
      */
-    public DeviceConfig(int id, String label, String motor, LimitConfig limits) {
+    public DeviceConfig(int id, String label, String motor, LimitConfig limits, Boolean invert) {
       this.id = id;
       this.label = label;
       this.motor = motor;
       this.limits = limits != null ? limits : new LimitConfig();
+      this.invert = invert != null ? invert.booleanValue() : false;
     }
 
     public int getId() {
@@ -2898,6 +2907,10 @@ public final class BringupUtil {
 
     public LimitConfig getLimits() {
       return limits;
+    }
+
+    public boolean isInvert() {
+      return invert;
     }
   }
 
@@ -3182,6 +3195,31 @@ public final class BringupUtil {
     }
     boolean raw = input.get();
     return invert ? !raw : raw;
+  }
+
+  /**
+   * NAME
+   *   acquireSharedDioInput - Acquire a shared DIO input for a standalone device.
+   *
+   * PARAMETERS
+   *   channel - DIO channel number.
+   *
+   * RETURNS
+   *   Shared DigitalInput instance.
+   */
+  public static DigitalInput acquireSharedDioInput(int channel) {
+    return acquireDioInput(channel);
+  }
+
+  /**
+   * NAME
+   *   releaseSharedDioInput - Release a shared DIO input for a standalone device.
+   *
+   * PARAMETERS
+   *   input - Shared DigitalInput instance.
+   */
+  public static void releaseSharedDioInput(DigitalInput input) {
+    releaseDioInput(input);
   }
 
   /**
