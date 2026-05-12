@@ -22,7 +22,9 @@
         "backLeft Encoder",
         "backRight Drive Motor",
         "backRight Angle Motor",
-        "backRight Encoder"
+        "backRight Encoder",
+        "roborio",
+        "pdh"
       ]
     }
   },
@@ -163,75 +165,29 @@
       "deviceInterface": "CAN"
     },
     {
-      "label": "CANnect Inject",
-      "deviceInterface": "CAN",
-      "id": -1,
-      "model": "Wiring",
-      "type": "",
-      "tags": [
-        "swyft",
-        "cannect",
-        "inject"
-      ]
-    },
-    {
-      "label": "CANnect Direct",
-      "deviceInterface": "CAN",
-      "id": -1,
-      "model": "Wiring",
-      "type": "",
-      "tags": []
-    },
-    {
-      "label": "inject",
-      "deviceInterface": "CAN",
-      "id": -1,
-      "model": "Wiring",
-      "type": "",
-      "tags": []
-    },
-    {
       "label": "pdh",
       "deviceInterface": "CAN",
-      "id": -1,
+      "id": 1,
       "manufacturer": 5,
-      "terminator": true
-    },
-    {
-      "label": "cannect 2",
-      "deviceInterface": "CAN",
-      "id": -1,
-      "model": "Wiring",
+      "terminator": true,
+      "deviceType": 8,
+      "model": "PDH",
       "type": ""
     },
     {
-      "label": "cannect 3",
+      "label": "roborio",
       "deviceInterface": "CAN",
-      "id": -1,
-      "model": "Wiring",
+      "id": 0,
+      "manufacturer": 1,
+      "deviceType": 1,
+      "model": "RobotController",
       "type": "",
-      "tags": [
-        "swyft",
-        "cannect",
-        "direct"
-      ]
-    },
-    {
-      "label": "cannect 4",
-      "deviceInterface": "CAN",
-      "id": -1,
-      "model": "Wiring",
-      "type": "",
-      "tags": [
-        "swyft",
-        "cannect",
-        "direct"
-      ]
+      "terminator": true
     }
   ],
-  "data_version": "2026-05-12_032944",
-  "data_hash": "50e728153045235be12c0fa0ea0a43b5ce887492fa5f6930616384f1d5ea4f25",
-  "default_profile": "scratch",
+  "data_version": "2026-05-12_165130",
+  "data_hash": "b90860cb39082391cc4a47855fbf20485da86fd0d6eb7e8f73a5e33d52bc9c12",
+  "default_profile": "robot_2026_swerve",
   "bridgeConfig": {
     "schemaVersion": 2,
     "generatedAt": null,
@@ -546,8 +502,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 105.0,
-              "y": 393.75
+              "x": 147.85714285714286,
+              "y": 275.3214285714286
             }
           },
           {
@@ -557,8 +513,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 255.0,
-              "y": 390.75
+              "x": 297.8571428571428,
+              "y": 271.0714285714285
             }
           },
           {
@@ -568,8 +524,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 407.0,
-              "y": 390.75
+              "x": 445.0000000000002,
+              "y": 282.5
             }
           },
           {
@@ -579,8 +535,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 716.0,
-              "y": 266.75
+              "x": 1303.5714285714278,
+              "y": 266.7857142857142
             }
           },
           {
@@ -590,8 +546,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 872.0,
-              "y": 261.75
+              "x": 1452.1428571428567,
+              "y": 272.5
             }
           },
           {
@@ -601,8 +557,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1030.0,
-              "y": 273.75
+              "x": 1602.1428571428567,
+              "y": 269.6428571428571
             }
           },
           {
@@ -612,8 +568,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 200.0,
-              "y": 689.75
+              "x": 119.2857142857145,
+              "y": 1009.642857142857
             }
           },
           {
@@ -623,8 +579,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 373.0,
-              "y": 694.75
+              "x": 276.4285714285712,
+              "y": 1006.7857142857143
             }
           },
           {
@@ -634,8 +590,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 559.0,
-              "y": 702.75
+              "x": 423.5714285714283,
+              "y": 1009.642857142857
             }
           },
           {
@@ -645,8 +601,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 966.3636363636365,
-              "y": 516.75
+              "x": 1282.1428571428576,
+              "y": 1033.9285714285713
             }
           },
           {
@@ -656,8 +612,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1129.3636363636365,
-              "y": 517.75
+              "x": 1429.2857142857163,
+              "y": 1033.9285714285713
             }
           },
           {
@@ -667,8 +623,19 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1294.3636363636365,
-              "y": 520.75
+              "x": 1576.428571428572,
+              "y": 1032.5
+            }
+          },
+          {
+            "key": 34,
+            "nodeType": "device",
+            "deviceRef": "roborio",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 159.8571428571426,
+              "y": -66.14285714285715
             }
           },
           {
@@ -681,8 +648,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1010.3636363636365,
-              "y": 717.0
+              "x": 1360.7142857142858,
+              "y": 1132.857142857143
             }
           },
           {
@@ -695,22 +662,19 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1547.0,
-              "y": 502.5
+              "x": 1972.142857142857,
+              "y": 292.6428571428572
             }
           },
           {
             "key": 18,
-            "label": "pdh",
-            "category": "pdh",
-            "nodeType": "virtual",
-            "vendor": "REV",
-            "model": "",
+            "nodeType": "device",
+            "deviceRef": "pdh",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 279.0000000000001,
-              "y": 63.25
+              "x": 2400.7142857142867,
+              "y": 135.28571428571428
             }
           },
           {
@@ -719,12 +683,12 @@
             "category": "cannect_direct",
             "nodeType": "junction",
             "vendor": "SWYFT",
-            "model": "",
+            "model": "Wiring",
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 384.0,
-              "y": 867.5
+              "x": 118.28571428571433,
+              "y": 1144.7857142857142
             }
           },
           {
@@ -733,12 +697,12 @@
             "category": "cannect_direct",
             "nodeType": "junction",
             "vendor": "SWYFT",
-            "model": "",
+            "model": "Wiring",
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 211.0,
-              "y": 499.5
+              "x": 253.85714285714286,
+              "y": 381.0714285714286
             }
           },
           {
@@ -747,12 +711,12 @@
             "category": "cannect_direct",
             "nodeType": "junction",
             "vendor": "SWYFT",
-            "model": "",
+            "model": "Wiring",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 911.0,
-              "y": 354.5
+              "x": 1447.857142857143,
+              "y": 380.3571428571429
             }
           }
         ],
@@ -796,6 +760,22 @@
             "toNode": 21,
             "toPort": "power",
             "edgeType": "power"
+          },
+          {
+            "id": "edge_6",
+            "fromNode": 11,
+            "fromPort": "power",
+            "toNode": 19,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_7",
+            "fromNode": 5,
+            "fromPort": "power",
+            "toNode": 20,
+            "toPort": "power",
+            "edgeType": "power"
           }
         ],
         "view": {
@@ -808,11 +788,11 @@
             40.0
           ],
           "busRights": [
-            2188.3636363636365
+            2475.0
           ],
           "busConnectors": [],
           "panY": -226.25,
-          "zoom": 1.0,
+          "zoom": 0.7000000000000001,
           "ethernetLinks": [
             {
               "a": 16,

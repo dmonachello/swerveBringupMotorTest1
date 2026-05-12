@@ -21,6 +21,63 @@ All notable user-facing changes are documented in this file.
 - Added connection-type filters to the topology editor and live topology UI,
   including persisted filter state in topology view metadata.
 - Updated CLI topology inspection to derive neighbor views from graph edges.
+- Restored the checked-in bringup config to the root-level topology graph
+  model and removed the regressed `diagram`-style topology persistence from the
+  active config copies.
+- Tightened profile/config validation around edge-based topology data and
+  aligned the local CLI/config save paths to preserve the canonical topology
+  graph shape.
+- Fixed robot-side registry profile apply so pushed profile device labels are
+  resolved consistently during activation.
+
+## 2026-05-10
+
+### Added - 2026-05-10
+
+- Added standalone DIO limit switch runtime support so a DIO-backed limit
+  switch can be instantiated as a real bringup device and referenced directly
+  by DSL tests.
+
+### Improved - 2026-05-10
+
+- Generalized DSL test required-device handling away from motor-only
+  assumptions so controller, sensor, and other non-motor dependencies are
+  validated through the same device-instantiation gate.
+- Updated robot-side test and UI reporting surfaces to use generic
+  required-device semantics instead of special motor lists.
+
+## 2026-05-12
+
+### Added - 2026-05-12
+
+- Added a new `robot_2026_swerve` profile with the 2026 swerve module device
+  inventory for real-robot data gathering.
+- Added a DSL device signal interface spec describing the direction toward a
+  device-owned read/write signal contract and away from snapshot-backed DSL
+  execution.
+- Added a component model unification spec defining a shared canonical
+  component/topology interpretation model for device versus infrastructure
+  handling.
+
+### Improved - 2026-05-12
+
+- Fixed topology editor save/load persistence for CANnect Ethernet links, CAN
+  bus links, and CANnect device links.
+- Preserved CANnect node kind across save/reload so direct and inject nodes are
+  restored as topology infrastructure rather than generic nodes.
+- Fixed topology editor and shared topology parsing so infrastructure nodes stay
+  out of runtime device registries while remaining visible in topology and live
+  views.
+- Fixed CANnect topology interpretation so Ethernet links remain between
+  CANnect nodes and only the inject node retains a CAN backbone trunk link.
+- Fixed topology power-link validation to allow PDH/PDP power links to motors
+  and other non-DIO consumers while keeping CANnect Direct limited to low-power
+  devices.
+- Fixed topology editor profile load behavior to restore the last saved view
+  without forcing an automatic fit-to-window reset.
+- Fixed CAN device registry round-trip updates in the topology editor so power
+  devices such as PDH keep their typed fields instead of degrading back to
+  generic device entries.
 
 ## 2026-05-08
 

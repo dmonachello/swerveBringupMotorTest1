@@ -28,15 +28,20 @@ from tools.common.profile_constants import (
     KEY_BRIDGE_CONFIG,
     KEY_BRIDGE_GROUPS,
     KEY_BUS,
+    KEY_CAN_LINKS,
+    KEY_CATEGORY,
     KEY_DEVICE_REF,
+    KEY_DEVICE_LINKS,
     KEY_EDGE_ID,
     KEY_EDGE_TYPE,
+    KEY_ETHERNET_LINKS,
     KEY_FROM_NODE,
     KEY_FROM_PORT,
     KEY_LABEL,
     KEY_LAYOUT,
     KEY_LINK_A,
     KEY_LINK_B,
+    KEY_LINK_DEVICE,
     KEY_LINK_NEIGHBOR,
     KEY_LINK_NEIGHBOR_PORT,
     KEY_LINK_NODE,
@@ -50,6 +55,7 @@ from tools.common.profile_constants import (
     KEY_TOPOLOGY_EDGES,
     KEY_TOPOLOGY_NODES,
     KEY_TOPOLOGY_PROFILES,
+    KEY_TOPOLOGY_VIEW,
     KEY_VENDOR,
     LAYOUT_KEY_ROW,
     LAYOUT_KEY_X,
@@ -247,6 +253,8 @@ def parse_diagram_nodes(diagram: Dict[str, object]) -> List[Dict[str, object]]:
             compat[KEY_LABEL] = str(entry.get(KEY_DEVICE_REF, EMPTY_STRING)).strip()
         else:
             compat[KEY_LABEL] = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if KEY_CATEGORY in entry:
+                compat[KEY_CATEGORY] = entry.get(KEY_CATEGORY)
             if KEY_VENDOR in entry:
                 compat[KEY_VENDOR] = entry.get(KEY_VENDOR)
             if KEY_MODEL in entry:
@@ -267,7 +275,62 @@ def parse_diagram_links(
         view. Ethernet and device-link buckets do not exist in the canonical
         graph and therefore return empty lists for now.
     """
+    view = diagram.get(KEY_TOPOLOGY_VIEW)
+    view_dict = view if isinstance(view, dict) else {}
+    ethernet_links: List[Tuple[int, int]] = []
+    raw_ethernet_links = view_dict.get(KEY_ETHERNET_LINKS)
+    if isinstance(raw_ethernet_links, list):
+        for entry in raw_ethernet_links:
+            if not isinstance(entry, dict):
+                continue
+            a = entry.get(KEY_LINK_A)
+            b = entry.get(KEY_LINK_B)
+            if not isinstance(a, int) or not isinstance(b, int):
+                continue
+            ethernet_links.append((min(a, b), max(a, b)))
     can_links: List[Dict[str, int]] = []
+    raw_can_links = view_dict.get(KEY_CAN_LINKS)
+    if isinstance(raw_can_links, list):
+        for entry in raw_can_links:
+            if not isinstance(entry, dict):
+                continue
+            node = entry.get(KEY_LINK_NODE)
+            bus = entry.get(KEY_BUS)
+            port = entry.get(KEY_LINK_PORT, 1)
+            if not isinstance(node, int) or not isinstance(bus, int):
+                continue
+            if not isinstance(port, int):
+                port = 1
+            can_links.append(
+                {
+                    KEY_LINK_NODE: node,
+                    KEY_BUS: bus,
+                    KEY_LINK_PORT: port,
+                }
+            )
+    device_links: List[Dict[str, int]] = []
+    raw_device_links = view_dict.get(KEY_DEVICE_LINKS)
+    if isinstance(raw_device_links, list):
+        for entry in raw_device_links:
+            if not isinstance(entry, dict):
+                continue
+            node = entry.get(KEY_LINK_NODE)
+            device = entry.get(KEY_LINK_DEVICE)
+            port = entry.get(KEY_LINK_PORT, 1)
+            if not isinstance(node, int) or not isinstance(device, int):
+                continue
+            if not isinstance(port, int):
+                port = 1
+            device_links.append(
+                {
+                    KEY_LINK_NODE: node,
+                    KEY_LINK_DEVICE: device,
+                    KEY_LINK_PORT: port,
+                }
+            )
+    if ethernet_links or can_links or device_links:
+        return ethernet_links, can_links, device_links
+    can_links = []
     for edge in topology_edges(diagram):
         edge_type = str(edge.get(KEY_EDGE_TYPE, EMPTY_STRING)).strip()
         from_node = edge.get(KEY_FROM_NODE)
