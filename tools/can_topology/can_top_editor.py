@@ -192,6 +192,7 @@ KEY_DIO = "dio"
 KEY_POWER = "power"
 KEY_NODE_KEY = "key"
 KEY_ID = "id"
+KEY_CATEGORY = "category"
 KEY_DEVICE_TYPE = "deviceType"
 TOPOLOGY_VERSION = 1
 TOPOLOGY_SOURCE_LOCAL = "local"
@@ -433,6 +434,8 @@ KEY_BRIDGE_SELECTED_DEVICE = (
 )
 KEY_DEVICE = profile_consts.KEY_DEVICE if profile_consts is not None else "device"
 KEY_LABEL = profile_consts.KEY_LABEL if profile_consts is not None else "label"
+KEY_VENDOR = profile_consts.KEY_VENDOR if profile_consts is not None else "vendor"
+KEY_MODEL = profile_consts.KEY_MODEL if profile_consts is not None else "model"
 KEY_INTERFACE = (
     profile_consts.KEY_INTERFACE if profile_consts is not None else "interface"
 )
@@ -3388,6 +3391,7 @@ class TopologyEditor(tk.Tk):
                 {
                     KEY_NODE_KEY: node.key,
                     KEY_LABEL: node.label,
+                    KEY_CATEGORY: node.category,
                     KEY_TOPOLOGY_NODE_TYPE: self._topology_node_type_for_editor_node(node),
                     KEY_VENDOR: node.vendor,
                     KEY_MODEL: node.motor,
@@ -3430,6 +3434,9 @@ class TopologyEditor(tk.Tk):
                 "busConnectors": list(self._bus_connectors),
                 "panY": self._pan_y,
                 "zoom": self._zoom,
+                KEY_DIAGRAM_ETHERNET_LINKS: [{"a": a, "b": b} for a, b in self._ethernet_links],
+                "canLinks": list(self._can_bus_links),
+                "deviceLinks": list(self._cannect_device_links),
                 KEY_TOPOLOGY_FILTERS: sorted(self._active_connection_filters()),
                 "callouts": callouts,
             },
@@ -3678,18 +3685,49 @@ class TopologyEditor(tk.Tk):
         saved_neighbor_links = deepcopy(diagram.get(KEY_DIAGRAM_NEIGHBOR_LINKS, []))
         saved_neighbor_ports = deepcopy(diagram.get(KEY_DIAGRAM_NEIGHBOR_PORTS, []))
         saved_dio_links = deepcopy(diagram.get(KEY_DIO_LINKS, []))
+        saved_ethernet_links = deepcopy(diagram.get(KEY_DIAGRAM_ETHERNET_LINKS, []))
+        saved_can_links = deepcopy(diagram.get("canLinks", []))
+        saved_device_links = deepcopy(diagram.get("deviceLinks", []))
+        saved_attachment_links = deepcopy(diagram.get(KEY_ATTACHMENT_LINKS, []))
+        saved_power_links = deepcopy(diagram.get(KEY_POWER_LINKS, []))
         original_neighbor_links = self._neighbor_links
         original_neighbor_ports = self._neighbor_ports
         original_dio_links = self._dio_wiring_links
+        original_ethernet_links = self._ethernet_links
+        original_can_links = self._can_bus_links
+        original_device_links = self._cannect_device_links
+        original_attachment_links = self._attachment_links
+        original_power_links = self._power_links
         try:
             self._neighbor_links = saved_neighbor_links if isinstance(saved_neighbor_links, list) else []
             self._neighbor_ports = saved_neighbor_ports if isinstance(saved_neighbor_ports, list) else []
             self._dio_wiring_links = saved_dio_links if isinstance(saved_dio_links, list) else []
+            self._ethernet_links = []
+            if isinstance(saved_ethernet_links, list):
+                for entry in saved_ethernet_links:
+                    if isinstance(entry, dict):
+                        a = entry.get("a")
+                        b = entry.get("b")
+                        if isinstance(a, int) and isinstance(b, int):
+                            self._ethernet_links.append((a, b))
+            self._can_bus_links = saved_can_links if isinstance(saved_can_links, list) else []
+            self._cannect_device_links = (
+                saved_device_links if isinstance(saved_device_links, list) else []
+            )
+            self._attachment_links = (
+                saved_attachment_links if isinstance(saved_attachment_links, list) else []
+            )
+            self._power_links = saved_power_links if isinstance(saved_power_links, list) else []
             return self._topology_snapshot_from_nodes(nodes)
         finally:
             self._neighbor_links = original_neighbor_links
             self._neighbor_ports = original_neighbor_ports
             self._dio_wiring_links = original_dio_links
+            self._ethernet_links = original_ethernet_links
+            self._can_bus_links = original_can_links
+            self._cannect_device_links = original_device_links
+            self._attachment_links = original_attachment_links
+            self._power_links = original_power_links
 
     def _diagram_snapshot_minimal(self) -> Dict[str, object]:
         """
@@ -4425,6 +4463,47 @@ class TopologyEditor(tk.Tk):
         self._power_links = []
         self._neighbor_links = []
         self._neighbor_ports = []
+        links = view_dict.get(KEY_DIAGRAM_ETHERNET_LINKS)
+        if isinstance(links, list):
+            for entry in links:
+                if not isinstance(entry, dict):
+                    continue
+                a = entry.get("a")
+                b = entry.get("b")
+                if isinstance(a, int) and isinstance(b, int):
+                    link = (min(a, b), max(a, b))
+                    if link not in self._ethernet_links:
+                        self._ethernet_links.append(link)
+        can_links = view_dict.get("canLinks")
+        if isinstance(can_links, list):
+            for entry in can_links:
+                if not isinstance(entry, dict):
+                    continue
+                node_key = entry.get("node")
+                bus_index = entry.get("bus")
+                port = entry.get("port", 1)
+                if not isinstance(node_key, int) or not isinstance(bus_index, int):
+                    continue
+                if not isinstance(port, int) or port < 1:
+                    port = 1
+                self._can_bus_links.append(
+                    {"node": int(node_key), "bus": int(bus_index), "port": int(port)}
+                )
+        device_links = view_dict.get("deviceLinks")
+        if isinstance(device_links, list):
+            for entry in device_links:
+                if not isinstance(entry, dict):
+                    continue
+                node_key = entry.get("node")
+                device_key = entry.get("device")
+                port = entry.get("port", 1)
+                if not isinstance(node_key, int) or not isinstance(device_key, int):
+                    continue
+                if not isinstance(port, int) or port < 1:
+                    port = 1
+                self._cannect_device_links.append(
+                    {"node": int(node_key), "device": int(device_key), "port": int(port)}
+                )
 
         device_by_label = {node.label.lower(): node for node in self._device_nodes()}
         reserved_keys: set[int] = set()
@@ -4575,6 +4654,9 @@ class TopologyEditor(tk.Tk):
         NAME
             _editor_category_for_topology_node - Map topology node types to editor categories.
         """
+        category = str(entry.get(KEY_CATEGORY, EMPTY_STRING)).strip()
+        if category:
+            return category
         node_type = str(entry.get(KEY_TOPOLOGY_NODE_TYPE, EMPTY_STRING)).strip()
         if node_type == TOPOLOGY_NODE_ANALYZER:
             return DIAGRAM_CATEGORY_ANALYZER
@@ -5373,7 +5455,7 @@ class TopologyEditor(tk.Tk):
         if any(self._is_dio_node(node) for node in selected):
             messagebox.showinfo(TITLE_POWER_LINK, MSG_POWER_INVALID)
             return
-        if not any(self._is_power_node(node) for node in selected):
+        if not self._is_valid_power_link_pair(selected[0], selected[1]):
             messagebox.showinfo(TITLE_POWER_LINK, MSG_POWER_INVALID)
             return
         link = self._normalize_power_link({KEY_LINK_A: selected[0].key, KEY_LINK_B: selected[1].key})
@@ -5575,6 +5657,33 @@ class TopologyEditor(tk.Tk):
             _is_power_node - Return True when a node should participate in power links.
         """
         return node.category in {"pdh", "pdp"} or node.category == TOPOLOGY_NODE_POWER
+
+    def _is_power_source_node(self, node: Node) -> bool:
+        """
+        NAME
+            _is_power_source_node - Return True for nodes allowed to source power links.
+        """
+        return node.category in {"pdh", "pdp", DIAGRAM_CATEGORY_CANNECT_DIRECT} or (
+            node.category == TOPOLOGY_NODE_POWER
+        )
+
+    def _is_low_power_device_node(self, node: Node) -> bool:
+        """
+        NAME
+            _is_low_power_device_node - Return True for low-power CAN endpoints.
+        """
+        return node.category in {"cancoders", "candles", "pigeon"}
+
+    def _is_valid_power_link_pair(self, left: Node, right: Node) -> bool:
+        """
+        NAME
+            _is_valid_power_link_pair - Validate one source/consumer power-link pair.
+        """
+        return (
+            self._is_power_source_node(left) and self._is_low_power_device_node(right)
+        ) or (
+            self._is_power_source_node(right) and self._is_low_power_device_node(left)
+        )
 
     def _roborio_node(self) -> Optional[Node]:
         """
