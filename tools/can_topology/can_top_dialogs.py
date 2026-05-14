@@ -55,6 +55,9 @@ LABEL_DIO = "DIO"
 LABEL_INVERT = "Invert"
 LABEL_KEY = "Key"
 LABEL_NODE_TYPE = "Node Type"
+LABEL_CATEGORY = "Category"
+LABEL_CAN_DEVICE_TYPE = "CAN Device Type"
+LABEL_MODEL = "Model"
 LABEL_BUS = "Bus"
 LABEL_ROW = "Row"
 LABEL_X = "X"
@@ -149,15 +152,15 @@ class NodeDialog(tk.Toplevel):
             row=1, column=1, sticky="w", pady=(0, 4)
         )
 
-        ttk.Label(frame, text="Category").grid(row=2, column=0, sticky="w")
+        ttk.Label(frame, text=LABEL_CATEGORY).grid(row=2, column=0, sticky="w")
         self.combo_category = ttk.Combobox(
-            frame, textvariable=self.var_category, values=categories, state="readonly", width=22
+            frame, textvariable=self.var_category, values=categories, state="readonly", width=30
         )
         self.combo_category.grid(row=2, column=1, sticky="w", pady=(0, 4))
 
         ttk.Label(frame, text=LABEL_INTERFACE).grid(row=3, column=0, sticky="w")
         self.combo_interface = ttk.Combobox(
-            frame, textvariable=self.var_interface, values=[INTERFACE_CAN, INTERFACE_DIO], state="readonly", width=22
+            frame, textvariable=self.var_interface, values=[INTERFACE_CAN, INTERFACE_DIO], state="readonly", width=30
         )
         self.combo_interface.grid(row=3, column=1, sticky="w", pady=(0, 4))
 
@@ -176,18 +179,18 @@ class NodeDialog(tk.Toplevel):
 
         ttk.Label(frame, text="Vendor").grid(row=8, column=0, sticky="w")
         self.combo_vendor = ttk.Combobox(
-            frame, textvariable=self.var_vendor, values=SUPPORTED_MANUFACTURERS, width=22
+            frame, textvariable=self.var_vendor, values=SUPPORTED_MANUFACTURERS, width=30
         )
         self.combo_vendor.grid(row=8, column=1, sticky="w")
 
-        ttk.Label(frame, text="Device Type").grid(row=9, column=0, sticky="w")
+        ttk.Label(frame, text=LABEL_CAN_DEVICE_TYPE).grid(row=9, column=0, sticky="w")
         self.combo_type = ttk.Combobox(
-            frame, textvariable=self.var_type, values=SUPPORTED_DEVICE_TYPES, width=22
+            frame, textvariable=self.var_type, values=SUPPORTED_DEVICE_TYPES, width=30
         )
         self.combo_type.grid(row=9, column=1, sticky="w")
 
-        ttk.Label(frame, text="Motor").grid(row=10, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.var_motor, width=24).grid(row=10, column=1, sticky="w")
+        ttk.Label(frame, text=LABEL_MODEL).grid(row=10, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.var_motor, width=32).grid(row=10, column=1, sticky="w")
 
         ttk.Label(frame, text="Fwd Limit").grid(row=11, column=0, sticky="w")
         ttk.Entry(frame, textvariable=self.var_fwd, width=12).grid(row=11, column=1, sticky="w")

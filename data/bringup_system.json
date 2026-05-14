@@ -1,14 +1,6 @@
 {
   "schema_version": 4,
   "profiles": {
-    "scratch": {
-      "devices": [
-        "FALCON 9",
-        "controller0",
-        "lmtSw0"
-      ],
-      "dslTestSet": "default"
-    },
     "robot_2026_swerve": {
       "devices": [
         "frontLeft Drive Motor",
@@ -24,182 +16,159 @@
         "backRight Angle Motor",
         "backRight Encoder",
         "roborio",
-        "pdh"
+        "pdh",
+        "lmtSw0"
       ]
     }
   },
   "devices": [
     {
-      "label": "FALCON 9",
-      "manufacturer": 4,
-      "deviceType": 2,
-      "id": 9,
-      "model": "FALCON 500",
-      "type": "motor",
-      "deviceInterface": "CAN"
-    },
-    {
-      "label": "controller0",
-      "manufacturer": 1,
-      "deviceType": 1,
-      "id": 0,
-      "model": "Xbox Controller",
-      "type": "xboxController",
-      "deviceInterface": "USB"
-    },
-    {
-      "label": "lmtSw0",
-      "id": 0,
-      "model": "Limit Switch",
-      "type": "limitSwitch",
-      "deviceInterface": "DIO",
-      "invert": true
-    },
-    {
       "label": "frontLeft Drive Motor",
+      "deviceInterface": "CAN",
+      "attachments": [
+        "lmtSw0"
+      ],
+      "id": 2,
       "manufacturer": 4,
       "deviceType": 2,
-      "id": 2,
       "model": "CTRE Kraken X60",
-      "type": "motor",
-      "deviceInterface": "CAN"
+      "type": "motor"
     },
     {
       "label": "frontLeft Angle Motor",
+      "deviceInterface": "CAN",
+      "id": 1,
       "manufacturer": 5,
       "deviceType": 2,
-      "id": 1,
       "model": "REV NEO",
-      "type": "motor",
-      "deviceInterface": "CAN"
+      "type": "motor"
     },
     {
       "label": "frontLeft Encoder",
+      "deviceInterface": "CAN",
+      "id": 3,
       "manufacturer": 4,
       "deviceType": 7,
-      "id": 3,
       "model": "CTRE CANCoder",
-      "type": "encoderExternal",
-      "deviceInterface": "CAN"
+      "type": "encoderExternal"
     },
     {
       "label": "frontRight Drive Motor",
+      "deviceInterface": "CAN",
+      "terminator": false,
+      "id": 11,
       "manufacturer": 4,
       "deviceType": 2,
-      "id": 11,
       "model": "CTRE Kraken X60",
-      "type": "motor",
-      "deviceInterface": "CAN",
-      "terminator": false
+      "type": "motor"
     },
     {
       "label": "frontRight Angle Motor",
+      "deviceInterface": "CAN",
+      "id": 10,
       "manufacturer": 5,
       "deviceType": 2,
-      "id": 10,
       "model": "REV NEO",
-      "type": "motor",
-      "deviceInterface": "CAN"
+      "type": "motor"
     },
     {
       "label": "frontRight Encoder",
+      "deviceInterface": "CAN",
+      "id": 12,
       "manufacturer": 4,
       "deviceType": 7,
-      "id": 12,
       "model": "CTRE CANCoder",
-      "type": "encoderExternal",
-      "deviceInterface": "CAN"
+      "type": "encoderExternal"
     },
     {
       "label": "backLeft Drive Motor",
+      "deviceInterface": "CAN",
+      "id": 5,
       "manufacturer": 4,
       "deviceType": 2,
-      "id": 5,
       "model": "CTRE Kraken X60",
-      "type": "motor",
-      "deviceInterface": "CAN"
+      "type": "motor"
     },
     {
       "label": "backLeft Angle Motor",
+      "deviceInterface": "CAN",
+      "id": 4,
       "manufacturer": 5,
       "deviceType": 2,
-      "id": 4,
       "model": "REV NEO",
-      "type": "motor",
-      "deviceInterface": "CAN"
+      "type": "motor"
     },
     {
       "label": "backLeft Encoder",
+      "deviceInterface": "CAN",
+      "id": 6,
       "manufacturer": 4,
       "deviceType": 7,
-      "id": 6,
       "model": "CTRE CANCoder",
-      "type": "encoderExternal",
-      "deviceInterface": "CAN"
+      "type": "encoderExternal"
     },
     {
       "label": "backRight Drive Motor",
+      "deviceInterface": "CAN",
+      "id": 8,
       "manufacturer": 4,
       "deviceType": 2,
-      "id": 8,
       "model": "CTRE Kraken X60",
-      "type": "motor",
-      "deviceInterface": "CAN"
+      "type": "motor"
     },
     {
       "label": "backRight Angle Motor",
+      "deviceInterface": "CAN",
+      "id": 7,
       "manufacturer": 5,
       "deviceType": 2,
-      "id": 7,
       "model": "REV NEO",
-      "type": "motor",
-      "deviceInterface": "CAN"
+      "type": "motor"
     },
     {
       "label": "backRight Encoder",
+      "deviceInterface": "CAN",
+      "id": 9,
       "manufacturer": 4,
       "deviceType": 7,
-      "id": 9,
       "model": "CTRE CANCoder",
-      "type": "encoderExternal",
-      "deviceInterface": "CAN"
+      "type": "encoderExternal"
     },
     {
       "label": "pdh",
       "deviceInterface": "CAN",
+      "terminator": true,
       "id": 1,
       "manufacturer": 5,
-      "terminator": true
+      "deviceType": 8,
+      "model": "PDH",
+      "type": ""
     },
     {
       "label": "roborio",
       "deviceInterface": "CAN",
+      "terminator": true,
       "id": 0,
       "manufacturer": 1,
       "deviceType": 1,
       "model": "RobotController",
-      "type": "",
-      "terminator": true
+      "type": ""
+    },
+    {
+      "label": "lmtSw0",
+      "deviceInterface": "DIO",
+      "id": 0,
+      "invert": false,
+      "type": "limitSwitch"
     }
   ],
-  "data_version": "2026-05-12_170106",
-  "data_hash": "46fbfc171f5173b3d1e248fa63099df0bcb5297bd4d5a323d5296a142651c80a",
+  "data_version": "2026-05-13_165157",
+  "data_hash": "2f99127c696d01bf29e27c3329e55e01024c967e7685beaeb3987f5f1d203fef",
   "default_profile": "robot_2026_swerve",
   "bridgeConfig": {
     "schemaVersion": 2,
     "generatedAt": null,
     "byProfile": {
-      "scratch": {
-        "groups": [],
-        "selectedDevice": {
-          "device": "",
-          "enabled": false
-        },
-        "tests": {
-          "default_test_set": "default",
-          "test_sets": {}
-        }
-      },
       "robot_2026_swerve": {
         "groups": [],
         "selectedDevice": {
@@ -213,281 +182,10 @@
       }
     }
   },
-  "dslTests": {
-    "schemaVersion": 1,
-    "defaultSet": "default",
-    "testSets": {
-      "default": [
-        "falcon9_run_025",
-        "falcon9_leftY_15s",
-        "falcon9_to_limit_or_30s"
-      ]
-    },
-    "testsByName": {
-      "falcon9_run_025": {
-        "source": "test \"falcon9_run_025\"\ndevice \"FALCON 9\"\n\nmain:\n    set \"FALCON 9\".output = 0.25\n    until timer.elapsed >= 5.0\n",
-        "sourceHash": "d0e935752dddd55399af05e7eeb59281c9986566656b1411a56757efc19d3aa3",
-        "normalized": {
-          "name": "falcon9_run_025",
-          "devices": [
-            {
-              "name": "FALCON 9"
-            }
-          ],
-          "unsafeExit": [],
-          "init": {
-            "sets": [],
-            "clears": [],
-            "aborts": [],
-            "successes": [],
-            "untils": [],
-            "requires": []
-          },
-          "main": {
-            "sets": [
-              {
-                "id": "set_1",
-                "text": "set \"FALCON 9\".output = 0.25",
-                "target": {
-                  "device": "FALCON 9",
-                  "signal": "output",
-                  "text": "FALCON 9.output"
-                },
-                "literal": {
-                  "value": 0.25,
-                  "valueType": "number"
-                }
-              }
-            ],
-            "clears": [],
-            "aborts": [],
-            "successes": [],
-            "untils": [
-              {
-                "id": "until_1",
-                "kind": "until",
-                "text": "until timer.elapsed >= 5.0",
-                "reference": {
-                  "device": "timer",
-                  "signal": "elapsed",
-                  "text": "timer.elapsed"
-                },
-                "operator": ">=",
-                "literal": {
-                  "value": 5.0,
-                  "valueType": "number"
-                }
-              }
-            ],
-            "requires": []
-          },
-          "close": {
-            "sets": [],
-            "clears": [],
-            "aborts": [],
-            "successes": [],
-            "untils": [],
-            "requires": []
-          }
-        }
-      },
-      "falcon9_leftY_15s": {
-        "source": "test \"falcon9_leftY_15s\"\ndevice \"FALCON 9\"\ndevice \"controller0\"\n\nmain:\n    set \"FALCON 9\".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n    until timer.elapsed >= 15.0\n",
-        "sourceHash": "deda1848fa5a52b6574f1e220e52dd9bbd11b97c1c499b68634857db8d89d9bd",
-        "normalized": {
-          "name": "falcon9_leftY_15s",
-          "devices": [
-            {
-              "name": "FALCON 9"
-            },
-            {
-              "name": "controller0"
-            }
-          ],
-          "unsafeExit": [],
-          "init": {
-            "sets": [],
-            "clears": [],
-            "aborts": [],
-            "successes": [],
-            "untils": [],
-            "requires": []
-          },
-          "main": {
-            "sets": [
-              {
-                "id": "set_1",
-                "text": "set \"FALCON 9\".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0",
-                "target": {
-                  "device": "FALCON 9",
-                  "signal": "output",
-                  "text": "FALCON 9.output"
-                },
-                "source": {
-                  "device": "controller0",
-                  "signal": "leftY",
-                  "text": "controller0.leftY"
-                },
-                "deadband": 0.08,
-                "scale": 0.25,
-                "defaultLiteral": {
-                  "value": 0.0,
-                  "valueType": "number"
-                }
-              }
-            ],
-            "clears": [],
-            "aborts": [],
-            "successes": [],
-            "untils": [
-              {
-                "id": "until_1",
-                "kind": "until",
-                "text": "until timer.elapsed >= 15.0",
-                "reference": {
-                  "device": "timer",
-                  "signal": "elapsed",
-                  "text": "timer.elapsed"
-                },
-                "operator": ">=",
-                "literal": {
-                  "value": 15.0,
-                  "valueType": "number"
-                }
-              }
-            ],
-            "requires": []
-          },
-          "close": {
-            "sets": [],
-            "clears": [],
-            "aborts": [],
-            "successes": [],
-            "untils": [],
-            "requires": []
-          }
-        }
-      },
-      "falcon9_to_limit_or_30s": {
-        "source": "test \"falcon9_to_limit_or_30s\"\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\n\nmain:\n    set \"FALCON 9\".output = 0.25\n    success lmtSw0.pressed\n    until timer.elapsed >= 30.0\n",
-        "sourceHash": "56536b8a11443ffadf0af4dd577174f47a86fd39a59df85fdd8df8819696869b",
-        "normalized": {
-          "name": "falcon9_to_limit_or_30s",
-          "devices": [
-            {
-              "name": "FALCON 9"
-            },
-            {
-              "name": "lmtSw0"
-            }
-          ],
-          "unsafeExit": [],
-          "init": {
-            "sets": [],
-            "clears": [],
-            "aborts": [],
-            "successes": [],
-            "untils": [],
-            "requires": []
-          },
-          "main": {
-            "sets": [
-              {
-                "id": "set_1",
-                "text": "set \"FALCON 9\".output = 0.25",
-                "target": {
-                  "device": "FALCON 9",
-                  "signal": "output",
-                  "text": "FALCON 9.output"
-                },
-                "literal": {
-                  "value": 0.25,
-                  "valueType": "number"
-                }
-              }
-            ],
-            "clears": [],
-            "aborts": [],
-            "successes": [
-              {
-                "id": "success_1",
-                "kind": "success",
-                "text": "success lmtSw0.pressed",
-                "reference": {
-                  "device": "lmtSw0",
-                  "signal": "pressed",
-                  "text": "lmtSw0.pressed"
-                },
-                "operator": "",
-                "literal": null
-              }
-            ],
-            "untils": [
-              {
-                "id": "until_1",
-                "kind": "until",
-                "text": "until timer.elapsed >= 30.0",
-                "reference": {
-                  "device": "timer",
-                  "signal": "elapsed",
-                  "text": "timer.elapsed"
-                },
-                "operator": ">=",
-                "literal": {
-                  "value": 30.0,
-                  "valueType": "number"
-                }
-              }
-            ],
-            "requires": []
-          },
-          "close": {
-            "sets": [],
-            "clears": [],
-            "aborts": [],
-            "successes": [],
-            "untils": [],
-            "requires": []
-          }
-        }
-      }
-    }
-  },
   "topology": {
     "version": 1,
     "source": "local",
     "profiles": {
-      "scratch": {
-        "version": 1,
-        "source": "local",
-        "nodes": [],
-        "edges": [],
-        "view": {
-          "busOffsets": [
-            0.0
-          ],
-          "busCount": 1,
-          "busSpacing": 160.0,
-          "busLefts": [
-            40.0
-          ],
-          "busRights": [
-            360.0
-          ],
-          "busConnectors": [],
-          "panY": 0.0,
-          "zoom": 1.0,
-          "connectionFilters": [
-            "analog",
-            "can",
-            "dio",
-            "power",
-            "pwm",
-            "virtual"
-          ],
-          "callouts": []
-        }
-      },
       "robot_2026_swerve": {
         "version": 1,
         "source": "local",
@@ -499,8 +197,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 104.2857142857145,
-              "y": 512.5
+              "x": 126.64357501794709,
+              "y": 926.55918320966,
+              "yRelative": false
             }
           },
           {
@@ -510,8 +209,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 404.28571428571445,
-              "y": 426.5
+              "x": 292.4964106245518,
+              "y": 931.5275967057116,
+              "yRelative": false
             }
           },
           {
@@ -521,8 +221,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 704.2857142857144,
-              "y": 569.0
+              "x": 450.8966259870797,
+              "y": 936.4960102017633,
+              "yRelative": false
             }
           },
           {
@@ -532,8 +233,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1562.1428571428576,
-              "y": 563.2857142857142
+              "x": 1850.3108399138534,
+              "y": 938.9802169497891,
+              "yRelative": false
             }
           },
           {
@@ -543,8 +245,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 2162.142857142858,
-              "y": 558.4999999999999
+              "x": 2005.6378320172307,
+              "y": 946.4328371938666,
+              "yRelative": false
             }
           },
           {
@@ -554,8 +257,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 2466.142857142858,
-              "y": 566.1428571428571
+              "x": 2155.6378320172307,
+              "y": 936.4960102017633,
+              "yRelative": false
             }
           },
           {
@@ -566,7 +270,8 @@
               "bus": 0,
               "row": 1,
               "x": 116.2857142857145,
-              "y": 1076.6351984829137
+              "y": 1466.6057241189912,
+              "yRelative": false
             }
           },
           {
@@ -576,8 +281,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 416.2857142857145,
-              "y": 1079.2156537389603
+              "x": 324.37006460875847,
+              "y": 1460.6636340352165,
+              "yRelative": false
             }
           },
           {
@@ -587,8 +293,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 716.2857142857144,
-              "y": 1076.6351984829137
+              "x": 510.09655419956584,
+              "y": 1463.1478407832424,
+              "yRelative": false
             }
           },
           {
@@ -598,8 +305,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1412.1428571428576,
-              "y": 1106.4285714285713
+              "x": 1553.7426417803297,
+              "y": 1495.4425285075783,
+              "yRelative": false
             }
           },
           {
@@ -609,8 +317,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1862.1428571428576,
-              "y": 1106.4285714285713
+              "x": 1723.0272792534113,
+              "y": 1483.021494767449,
+              "yRelative": false
             }
           },
           {
@@ -620,8 +329,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 2316.142857142858,
-              "y": 1105.0
+              "x": 1886.3750897343893,
+              "y": 1473.0846677753457,
+              "yRelative": false
             }
           },
           {
@@ -632,7 +342,8 @@
               "bus": 0,
               "row": 0,
               "x": 305.28571428571433,
-              "y": -66.14285714285715
+              "y": -66.14285714285715,
+              "yRelative": true
             }
           },
           {
@@ -642,8 +353,21 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 2766.142857142858,
-              "y": 43.64671820535992
+              "x": 2415.8697056712163,
+              "y": 79.49461593682707,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 35,
+            "nodeType": "device",
+            "deviceRef": "lmtSw0",
+            "layout": {
+              "bus": 0,
+              "row": 1,
+              "x": 164.36146649386478,
+              "y": 41.25404416074849,
+              "yRelative": true
             }
           },
           {
@@ -657,7 +381,8 @@
               "bus": 0,
               "row": 1,
               "x": 1712.1428571428576,
-              "y": 1205.357142857143
+              "y": 1595.3276684932205,
+              "yRelative": false
             }
           },
           {
@@ -670,8 +395,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 2614.142857142858,
-              "y": 1201.142857142857
+              "x": 2301.1328068916014,
+              "y": 1593.5975895269605,
+              "yRelative": false
             }
           },
           {
@@ -685,7 +411,8 @@
               "bus": 0,
               "row": 0,
               "x": 155.28571428571433,
-              "y": 1211.7780556257708
+              "y": 1601.7485812618484,
+              "yRelative": false
             }
           },
           {
@@ -699,7 +426,8 @@
               "bus": 0,
               "row": 0,
               "x": 293.28571428571433,
-              "y": 667.5714285714287
+              "y": 1057.5419542075063,
+              "yRelative": false
             }
           },
           {
@@ -713,13 +441,166 @@
               "bus": 0,
               "row": 1,
               "x": 2012.1428571428576,
-              "y": 676.8571428571429
+              "y": 1066.8276684932205,
+              "yRelative": false
             }
           }
         ],
         "edges": [
           {
             "id": "edge_1",
+            "fromNode": 9,
+            "fromPort": "right",
+            "toNode": 3,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_2",
+            "fromNode": 3,
+            "fromPort": "right",
+            "toNode": 19,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_3",
+            "fromNode": 19,
+            "fromPort": "right",
+            "toNode": 4,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_4",
+            "fromNode": 4,
+            "fromPort": "right",
+            "toNode": 20,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_5",
+            "fromNode": 20,
+            "fromPort": "right",
+            "toNode": 34,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_6",
+            "fromNode": 34,
+            "fromPort": "right",
+            "toNode": 10,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_7",
+            "fromNode": 10,
+            "fromPort": "right",
+            "toNode": 5,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_8",
+            "fromNode": 5,
+            "fromPort": "right",
+            "toNode": 11,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_9",
+            "fromNode": 11,
+            "fromPort": "right",
+            "toNode": 12,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_10",
+            "fromNode": 12,
+            "fromPort": "right",
+            "toNode": 16,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_11",
+            "fromNode": 16,
+            "fromPort": "right",
+            "toNode": 13,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_12",
+            "fromNode": 13,
+            "fromPort": "right",
+            "toNode": 6,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_13",
+            "fromNode": 6,
+            "fromPort": "right",
+            "toNode": 14,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_14",
+            "fromNode": 14,
+            "fromPort": "right",
+            "toNode": 7,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_15",
+            "fromNode": 7,
+            "fromPort": "right",
+            "toNode": 21,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_16",
+            "fromNode": 21,
+            "fromPort": "right",
+            "toNode": 8,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_17",
+            "fromNode": 8,
+            "fromPort": "right",
+            "toNode": 17,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_18",
+            "fromNode": 17,
+            "fromPort": "right",
+            "toNode": 18,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_19",
+            "fromNode": 34,
+            "fromPort": "dio",
+            "toNode": 35,
+            "toPort": "dio",
+            "edgeType": "dio"
+          },
+          {
+            "id": "edge_20",
             "fromNode": 17,
             "fromPort": "power",
             "toNode": 18,
@@ -727,7 +608,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_2",
+            "id": "edge_21",
             "fromNode": 12,
             "fromPort": "power",
             "toNode": 18,
@@ -735,7 +616,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_3",
+            "id": "edge_22",
             "fromNode": 13,
             "fromPort": "power",
             "toNode": 18,
@@ -743,7 +624,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_4",
+            "id": "edge_23",
             "fromNode": 14,
             "fromPort": "power",
             "toNode": 16,
@@ -751,7 +632,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_5",
+            "id": "edge_24",
             "fromNode": 8,
             "fromPort": "power",
             "toNode": 21,
@@ -759,7 +640,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_6",
+            "id": "edge_25",
             "fromNode": 11,
             "fromPort": "power",
             "toNode": 19,
@@ -767,7 +648,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_7",
+            "id": "edge_26",
             "fromNode": 5,
             "fromPort": "power",
             "toNode": 20,
@@ -775,7 +656,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_8",
+            "id": "edge_27",
             "fromNode": 7,
             "fromPort": "power",
             "toNode": 18,
@@ -783,7 +664,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_9",
+            "id": "edge_28",
             "fromNode": 6,
             "fromPort": "power",
             "toNode": 18,
@@ -791,7 +672,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_10",
+            "id": "edge_29",
             "fromNode": 4,
             "fromPort": "power",
             "toNode": 18,
@@ -799,7 +680,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_11",
+            "id": "edge_30",
             "fromNode": 3,
             "fromPort": "power",
             "toNode": 18,
@@ -807,7 +688,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_12",
+            "id": "edge_31",
             "fromNode": 10,
             "fromPort": "power",
             "toNode": 18,
@@ -815,17 +696,25 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_13",
+            "id": "edge_32",
             "fromNode": 9,
             "fromPort": "power",
             "toNode": 18,
             "toPort": "power",
             "edgeType": "power"
+          },
+          {
+            "id": "edge_33",
+            "fromNode": 3,
+            "fromPort": "attachment",
+            "toNode": 35,
+            "toPort": "attachment",
+            "edgeType": "virtual"
           }
         ],
         "view": {
           "busOffsets": [
-            151.5
+            389.9705256360775
           ],
           "busCount": 1,
           "busSpacing": 160.0,
@@ -833,11 +722,11 @@
             40.0
           ],
           "busRights": [
-            2886.142857142858
+            2558.2275664034464
           ],
           "busConnectors": [],
-          "panY": -226.25,
-          "zoom": 0.5000000000000001,
+          "panY": -598.3990077819991,
+          "zoom": 0.6293242841295362,
           "ethernetLinks": [
             {
               "a": 16,

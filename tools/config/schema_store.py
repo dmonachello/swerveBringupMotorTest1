@@ -50,6 +50,7 @@ from tools.common.profile_constants import (
     KEY_LIMITS,
     KEY_MANUFACTURER,
     KEY_MODEL,
+    KEY_NODE_KEY,
     KEY_NOTES,
     KEY_INPUT_ALIASES,
     KEY_PROFILE_DEVICES,
@@ -227,11 +228,22 @@ KEY_DIAGRAM_NODES = "nodes"
 KEY_NODE_TYPE = "nodeType"
 NODE_TYPE_DEVICE = "device"
 MESSAGE_DEVICE_LABEL_DUPLICATE_CASEFOLD = "Duplicate device label: {label}"
-MESSAGE_DIAGRAM_NODE_DEVICE_LABEL_REQUIRED = "Diagram node device label is required."
-MESSAGE_DIAGRAM_NODE_DEVICE_UNKNOWN = "Diagram node device label not found: {label}"
-MESSAGE_DIAGRAM_NODE_DEVICE_ID_FORBIDDEN = "Diagram node device id is not allowed: {label}"
-MESSAGE_TOPOLOGY_NODE_DEVICE_REF_REQUIRED = "Topology deviceRef is required."
-MESSAGE_TOPOLOGY_NODE_DEVICE_UNKNOWN = "Topology deviceRef not found: {label}"
+MESSAGE_DIAGRAM_NODE_DEVICE_LABEL_REQUIRED = (
+    "Profile {profile} diagram node {key}: device label is required."
+)
+MESSAGE_DIAGRAM_NODE_DEVICE_UNKNOWN = (
+    "Profile {profile} diagram node {key}: device label not found: {label}"
+)
+MESSAGE_DIAGRAM_NODE_DEVICE_ID_FORBIDDEN = (
+    "Profile {profile} diagram node {key}: device id is not allowed: {label}"
+)
+MESSAGE_TOPOLOGY_NODE_DEVICE_REF_REQUIRED = (
+    "Profile {profile} topology node {key}: deviceRef is required."
+)
+MESSAGE_TOPOLOGY_NODE_DEVICE_UNKNOWN = (
+    "Profile {profile} topology node {key}: deviceRef not found: {label}"
+)
+MESSAGE_PROFILE_DEVICES_TYPE_INVALID = "Profile {profile}: Invalid type for devices"
 
 FILE_TESTS_ROOT = "bringup_tests.json"
 FILE_BINDINGS_ROOT = "bringup_bindings.json"
@@ -906,7 +918,7 @@ class ConfigSchemaStore:
                     self._append_issue(
                         issues,
                         LOCATION_PROFILES,
-                        MESSAGE_TYPE_INVALID.format(key=KEY_PROFILE_DEVICES),
+                        MESSAGE_PROFILE_DEVICES_TYPE_INVALID.format(profile=profile_name),
                         SEVERITY_ERROR,
                     )
                     continue
@@ -930,7 +942,7 @@ class ConfigSchemaStore:
                         continue
                     if not isinstance(diagram_profile, dict):
                         continue
-                    self._validate_diagram_profile(diagram_profile, catalog, issues)
+                    self._validate_diagram_profile(diagram_profile, catalog, issues, profile_name)
         topology = payload.get(KEY_TOPOLOGY)
         if isinstance(topology, dict):
             topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
@@ -940,7 +952,12 @@ class ConfigSchemaStore:
                         continue
                     if not isinstance(topology_profile, dict):
                         continue
-                    self._validate_topology_profile(topology_profile, catalog, issues)
+                    self._validate_topology_profile(
+                        topology_profile,
+                        catalog,
+                        issues,
+                        topology_profile_name,
+                    )
         by_profile = self._bridge_by_profile()
         for profile_name, entry in by_profile.items():
             if target_profile is not None and profile_name != target_profile:
@@ -1243,6 +1260,7 @@ class ConfigSchemaStore:
         diagram_profile: Dict[str, object],
         catalog: Dict[str, object],
         issues: List[ValidationIssue],
+        profile_name: str,
     ) -> None:
         """
         NAME
@@ -1258,12 +1276,16 @@ class ConfigSchemaStore:
                 continue
             if node.get(KEY_NODE_TYPE) != NODE_TYPE_DEVICE:
                 continue
+            node_key = node.get(KEY_NODE_KEY, "?")
             label = node.get(KEY_LABEL)
             if not isinstance(label, str) or not label.strip():
                 self._append_issue(
                     issues,
                     LOCATION_PROFILES,
-                    MESSAGE_DIAGRAM_NODE_DEVICE_LABEL_REQUIRED,
+                    MESSAGE_DIAGRAM_NODE_DEVICE_LABEL_REQUIRED.format(
+                        profile=profile_name,
+                        key=node_key,
+                    ),
                     SEVERITY_ERROR,
                 )
                 continue
@@ -1272,14 +1294,22 @@ class ConfigSchemaStore:
                 self._append_issue(
                     issues,
                     LOCATION_PROFILES,
-                    MESSAGE_DIAGRAM_NODE_DEVICE_UNKNOWN.format(label=label_text),
+                    MESSAGE_DIAGRAM_NODE_DEVICE_UNKNOWN.format(
+                        profile=profile_name,
+                        key=node_key,
+                        label=label_text,
+                    ),
                     SEVERITY_ERROR,
                 )
             if KEY_ID in node:
                 self._append_issue(
                     issues,
                     LOCATION_PROFILES,
-                    MESSAGE_DIAGRAM_NODE_DEVICE_ID_FORBIDDEN.format(label=label_text),
+                    MESSAGE_DIAGRAM_NODE_DEVICE_ID_FORBIDDEN.format(
+                        profile=profile_name,
+                        key=node_key,
+                        label=label_text,
+                    ),
                     SEVERITY_ERROR,
                 )
 
@@ -1288,6 +1318,7 @@ class ConfigSchemaStore:
         topology_profile: Dict[str, object],
         catalog: Dict[str, object],
         issues: List[ValidationIssue],
+        profile_name: str,
     ) -> None:
         """
         NAME
@@ -1303,12 +1334,16 @@ class ConfigSchemaStore:
                 continue
             if node.get(KEY_NODE_TYPE) != NODE_TYPE_DEVICE:
                 continue
+            node_key = node.get(KEY_NODE_KEY, "?")
             device_ref = node.get(KEY_DEVICE_REF)
             if not isinstance(device_ref, str) or not device_ref.strip():
                 self._append_issue(
                     issues,
                     LOCATION_PROFILES,
-                    MESSAGE_TOPOLOGY_NODE_DEVICE_REF_REQUIRED,
+                    MESSAGE_TOPOLOGY_NODE_DEVICE_REF_REQUIRED.format(
+                        profile=profile_name,
+                        key=node_key,
+                    ),
                     SEVERITY_ERROR,
                 )
                 continue
@@ -1317,7 +1352,11 @@ class ConfigSchemaStore:
                 self._append_issue(
                     issues,
                     LOCATION_PROFILES,
-                    MESSAGE_TOPOLOGY_NODE_DEVICE_UNKNOWN.format(label=label_text),
+                    MESSAGE_TOPOLOGY_NODE_DEVICE_UNKNOWN.format(
+                        profile=profile_name,
+                        key=node_key,
+                        label=label_text,
+                    ),
                     SEVERITY_ERROR,
                 )
 

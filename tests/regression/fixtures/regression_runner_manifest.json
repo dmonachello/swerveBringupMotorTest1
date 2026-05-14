@@ -101,6 +101,20 @@
         "{repo}/tools/can_nt/scripts/topology_editor_regression.py"
       ]
     },
+    "cross-surface": {
+      "label": "cross-surface",
+      "mode": "local",
+      "features": [
+        "topology editor save/load contract",
+        "cli bringup_system reader compatibility",
+        "schema store profile compatibility",
+        "shared bringup config round-trip"
+      ],
+      "argv": [
+        "{python}",
+        "{repo}/tools/can_nt/scripts/cross_surface_regression.py"
+      ]
+    },
     "changelog-guard": {
       "label": "changelog-guard",
       "mode": "local",
@@ -144,6 +158,9 @@
     "topology": [
       "topology-editor"
     ],
+    "cross-surface": [
+      "cross-surface"
+    ],
     "changelog": [
       "changelog-guard"
     ],
@@ -154,6 +171,7 @@
       "group-targeting-v1",
       "group-targeting-4m2g3t",
       "topology-editor",
+      "cross-surface",
       "changelog-guard"
     ],
     "robot-non-motion": [

@@ -88,7 +88,7 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
 
         self.assertFalse(result.ok())
         messages = [issue.message for issue in result.errors()]
-        self.assertIn("Diagram node device id is not allowed: lmtSw0", messages)
+        self.assertIn("Profile demo diagram node 1: device id is not allowed: lmtSw0", messages)
 
     def test_diagram_device_node_label_must_resolve(self) -> None:
         payload = self._base_payload()
@@ -98,7 +98,39 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
 
         self.assertFalse(result.ok())
         messages = [issue.message for issue in result.errors()]
-        self.assertIn("Diagram node device label not found: missing", messages)
+        self.assertIn("Profile demo diagram node 1: device label not found: missing", messages)
+
+    def test_topology_device_ref_error_names_profile_and_node(self) -> None:
+        payload = self._base_payload()
+        payload["topology"] = {
+            "profiles": {
+                "demo": {
+                    "nodes": [
+                        {
+                            "key": 7,
+                            "nodeType": "device",
+                            "deviceRef": "missing",
+                        }
+                    ]
+                }
+            }
+        }
+
+        result = self._validate(payload)
+
+        self.assertFalse(result.ok())
+        messages = [issue.message for issue in result.errors()]
+        self.assertIn("Profile demo topology node 7: deviceRef not found: missing", messages)
+
+    def test_profile_devices_type_error_names_profile(self) -> None:
+        payload = self._base_payload()
+        payload["profiles"]["demo"]["devices"] = "lmtSw0"
+
+        result = self._validate(payload)
+
+        self.assertFalse(result.ok())
+        messages = [issue.message for issue in result.errors()]
+        self.assertIn("Profile demo: Invalid type for devices", messages)
 
 
 if __name__ == "__main__":

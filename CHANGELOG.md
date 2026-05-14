@@ -79,6 +79,23 @@ All notable user-facing changes are documented in this file.
   devices such as PDH keep their typed fields instead of degrading back to
   generic device entries.
 
+## 2026-05-13
+
+### Added - 2026-05-13
+
+- Added an automated `cross-surface` regression suite that round-trips
+  topology-editor output through shared profile validation, schema-store load,
+  and CLI bringup-system consumers.
+
+### Improved - 2026-05-13
+
+- Fixed topology editor blank-space clicks to clear selection without undoing
+  fit-to-window or shifting the current canvas view.
+- Expanded topology regression coverage for viewport preservation, blank-space
+  deselection, and fit-to-window interaction behavior.
+- Made regression command baseline comparison treat `gradlew.bat` paths as
+  checkout-local so Java regression runs do not drift across machines.
+
 ## 2026-05-08
 
 ### Added - 2026-05-08

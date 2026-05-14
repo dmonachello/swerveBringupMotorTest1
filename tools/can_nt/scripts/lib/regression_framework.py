@@ -39,6 +39,7 @@ SUITE_DSL = "dsl"
 SUITE_CLI = "cli"
 SUITE_JAVA = "java"
 SUITE_TOPOLOGY = "topology"
+SUITE_CROSS_SURFACE = "cross-surface"
 SUITE_CHANGELOG = "changelog"
 SUITE_ROBOT_NON_MOTION = "robot-non-motion"
 SUITE_ALL = "all"
@@ -50,8 +51,14 @@ TEXT_MODE_LOCAL = "local"
 TEXT_MODE_CONNECTED = "connected"
 
 JAVA_HOME_ENV = "JAVA_HOME"
+REGRESSION_VERBOSE_ENV = "BRINGUP_REGRESSION_VERBOSE"
+TEXT_TRUE = "1"
 JAVA_BIN_SUFFIX = "bin"
+PYTHON_EXE_STEM = "python"
+WINDOWS_EXE_SUFFIX = ".exe"
 GRADLEW_WINDOWS = "gradlew.bat"
+TOOLS_PATH_MARKER = "/tools/"
+TESTS_PATH_MARKER = "/tests/"
 
 MANIFEST_RELATIVE_PATH = Path("tests/regression/fixtures/regression_runner_manifest.json")
 BASELINE_DIRECTORY_RELATIVE = Path("tests/regression/expected/runner_baselines")
@@ -78,6 +85,7 @@ KEY_RESULTS = "results"
 KEY_SUMMARY = "summary"
 KEY_BASELINE = "baseline"
 KEY_STATUS = "status"
+KEY_STATUS_REASON = "statusReason"
 KEY_BASELINE_PATH = "baselinePath"
 KEY_REPORT_VERSION = "reportVersion"
 KEY_REPORT_GENERATED_AT = "generatedAt"
@@ -131,6 +139,13 @@ STATUS_KNOWN_FAILURE = "known_failure"
 STATUS_FIXED = "fixed_since_baseline"
 STATUS_MISSING_BASELINE = "missing_baseline"
 STATUS_COMMAND_DRIFT = "command_drift"
+REASON_NO_BASELINE = "no baseline loaded for this suite"
+REASON_NO_BASELINE_ENTRY = "no baseline entry for commandId={command_id}"
+REASON_MATCH = "expected exit code and command argv match baseline"
+REASON_KNOWN_FAILURE = "command still fails with baseline expected exit code {exit_code}"
+REASON_FIXED = "baseline expected exit code {expected}; actual exit code is 0"
+REASON_REGRESSION = "baseline expected exit code {expected}; actual exit code is {actual}"
+REASON_COMMAND_DRIFT = "command argv differs from baseline"
 
 REPORT_VERSION = 1
 BASELINE_SCHEMA_VERSION = 1
@@ -191,6 +206,9 @@ class RegressionComparison:
     actual_exit_code: int
     status: str
     argv_matches: bool
+    status_reason: str
+    expected_argv: Sequence[str]
+    actual_argv: Sequence[str]
 
 
 RunnerFunction = Callable[[RegressionCommand, Path], RegressionResult]
@@ -207,6 +225,7 @@ def available_suites() -> Sequence[str]:
         SUITE_CLI,
         SUITE_JAVA,
         SUITE_TOPOLOGY,
+        SUITE_CROSS_SURFACE,
         SUITE_CHANGELOG,
         SUITE_ROBOT_NON_MOTION,
         SUITE_ALL,
@@ -237,31 +256,63 @@ def build_suite_commands(
 def run_commands(
     commands: Iterable[RegressionCommand],
     runner: Optional[RunnerFunction] = None,
+    verbose: bool = False,
 ) -> List[RegressionResult]:
     """
     NAME
         run_commands - Execute regression commands in order.
     """
-    active_runner = runner or execute_command
     results: List[RegressionResult] = []
     for command in commands:
-        results.append(active_runner(command, REPO_ROOT))
+        if runner is not None:
+            results.append(runner(command, REPO_ROOT))
+        else:
+            results.append(execute_command(command, REPO_ROOT, verbose=verbose))
     return results
 
 
-def execute_command(command: RegressionCommand, workdir: Path) -> RegressionResult:
+def execute_command(command: RegressionCommand, workdir: Path, verbose: bool = False) -> RegressionResult:
     """
     NAME
         execute_command - Run one subprocess-backed regression command.
     """
     start_sec = time.monotonic()
+    env = _subprocess_env_for_command(command, verbose=verbose)
+    if verbose:
+        process = subprocess.Popen(
+            list(command.argv),
+            cwd=str(workdir),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            env=env,
+        )
+        stdout_parts: List[str] = []
+        if process.stdout is not None:
+            for line in process.stdout:
+                print(line, end="")
+                stdout_parts.append(line)
+        exit_code = int(process.wait())
+        duration_sec = time.monotonic() - start_sec
+        return RegressionResult(
+            label=command.label,
+            argv=list(command.argv),
+            mode=command.mode,
+            exit_code=exit_code,
+            duration_sec=duration_sec,
+            stdout="".join(stdout_parts),
+            stderr="",
+            command_id=command.command_id,
+            features=tuple(command.features),
+        )
     completed = subprocess.run(
         list(command.argv),
         cwd=str(workdir),
         capture_output=True,
         text=True,
         encoding="utf-8",
-        env=_subprocess_env_for_command(command),
+        env=env,
     )
     duration_sec = time.monotonic() - start_sec
     return RegressionResult(
@@ -377,6 +428,9 @@ def compare_results_to_baseline(
                 actual_exit_code=int(result.exit_code),
                 status=STATUS_MISSING_BASELINE,
                 argv_matches=False,
+                status_reason=REASON_NO_BASELINE,
+                expected_argv=(),
+                actual_argv=tuple(command.argv),
             )
             for command, result in zip(commands, results)
         ]
@@ -402,13 +456,22 @@ def compare_results_to_baseline(
                     actual_exit_code=int(result.exit_code),
                     status=STATUS_MISSING_BASELINE,
                     argv_matches=False,
+                    status_reason=REASON_NO_BASELINE_ENTRY.format(command_id=command.command_id),
+                    expected_argv=(),
+                    actual_argv=tuple(command.argv),
                 )
             )
             continue
         expected_exit_code = int(baseline_entry.get(KEY_EXPECTED_EXIT_CODE, 0))
         expected_argv = baseline_entry.get(KEY_ARGV)
-        argv_matches = list(command.argv) == (expected_argv if isinstance(expected_argv, list) else [])
+        expected_argv_list = expected_argv if isinstance(expected_argv, list) else []
+        argv_matches = _argv_matches_portably(command.argv, expected_argv_list)
         status = _comparison_status(expected_exit_code, int(result.exit_code), argv_matches)
+        reason = _comparison_reason(
+            status=status,
+            expected_exit_code=expected_exit_code,
+            actual_exit_code=int(result.exit_code),
+        )
         comparisons.append(
             RegressionComparison(
                 command_id=command.command_id,
@@ -417,6 +480,9 @@ def compare_results_to_baseline(
                 actual_exit_code=int(result.exit_code),
                 status=status,
                 argv_matches=argv_matches,
+                status_reason=reason,
+                expected_argv=tuple(str(part) for part in expected_argv_list),
+                actual_argv=tuple(command.argv),
             )
         )
     return comparisons
@@ -873,8 +939,10 @@ def _resolve_manifest_token(token: str, context: Mapping[str, Optional[str]], co
     return resolved
 
 
-def _subprocess_env_for_command(command: RegressionCommand) -> Dict[str, str]:
+def _subprocess_env_for_command(command: RegressionCommand, verbose: bool = False) -> Dict[str, str]:
     env = dict(os.environ)
+    if verbose:
+        env[REGRESSION_VERBOSE_ENV] = TEXT_TRUE
     if not command.argv:
         return env
     executable = str(command.argv[0]).lower()
@@ -895,6 +963,47 @@ def _normalized_java_home(value: Optional[str]) -> Optional[str]:
     return str(candidate.parent)
 
 
+def _argv_matches_portably(actual: Sequence[str], expected: Sequence[object]) -> bool:
+    """
+    NAME
+        _argv_matches_portably - Compare command argv without machine-local paths.
+
+    DESCRIPTION
+        Baselines are written with resolved paths, but Python install locations
+        and repo checkout roots vary across machines. Normalize those stable
+        command roles before deciding whether the command changed.
+    """
+    return _portable_argv(actual) == _portable_argv(expected)
+
+
+def _portable_argv(argv: Sequence[object]) -> List[str]:
+    """
+    NAME
+        _portable_argv - Normalize argv entries for baseline comparison.
+    """
+    return [_portable_argv_part(str(part)) for part in argv]
+
+
+def _portable_argv_part(value: str) -> str:
+    """
+    NAME
+        _portable_argv_part - Normalize one argv entry for baseline comparison.
+    """
+    normalized = value.replace("\\", "/")
+    name = Path(normalized).name.lower()
+    if name.startswith(PYTHON_EXE_STEM) and (
+        name == PYTHON_EXE_STEM or name.endswith(WINDOWS_EXE_SUFFIX)
+    ):
+        return TOKEN_PYTHON
+    if name == GRADLEW_WINDOWS:
+        return TOKEN_GRADLEW
+    for marker in (TOOLS_PATH_MARKER, TESTS_PATH_MARKER):
+        marker_index = normalized.find(marker)
+        if marker_index >= 0:
+            return TOKEN_REPO + normalized[marker_index:]
+    return normalized
+
+
 def _comparison_status(expected_exit_code: int, actual_exit_code: int, argv_matches: bool) -> str:
     if not argv_matches:
         return STATUS_COMMAND_DRIFT
@@ -905,6 +1014,22 @@ def _comparison_status(expected_exit_code: int, actual_exit_code: int, argv_matc
     if expected_exit_code == EXIT_OK and actual_exit_code != EXIT_OK:
         return STATUS_REGRESSION
     return STATUS_REGRESSION
+
+
+def _comparison_reason(status: str, expected_exit_code: int, actual_exit_code: int) -> str:
+    """
+    NAME
+        _comparison_reason - Explain why a baseline comparison status was chosen.
+    """
+    if status == STATUS_COMMAND_DRIFT:
+        return REASON_COMMAND_DRIFT
+    if status == STATUS_MATCH:
+        return REASON_MATCH
+    if status == STATUS_KNOWN_FAILURE:
+        return REASON_KNOWN_FAILURE.format(exit_code=actual_exit_code)
+    if status == STATUS_FIXED:
+        return REASON_FIXED.format(expected=expected_exit_code)
+    return REASON_REGRESSION.format(expected=expected_exit_code, actual=actual_exit_code)
 
 
 def _utc_timestamp() -> str:

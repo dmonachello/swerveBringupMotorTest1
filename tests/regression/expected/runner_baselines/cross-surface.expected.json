@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "suite": "cross-surface",
+  "results": [
+    {
+      "commandId": "cross-surface",
+      "label": "cross-surface",
+      "mode": "local",
+      "argv": [
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "C:\\Users\\dmona\\swerveBringupMotorTest1-main\\tools\\can_nt\\scripts\\cross_surface_regression.py"
+      ],
+      "features": [
+        "topology editor save/load contract",
+        "cli bringup_system reader compatibility",
+        "schema store profile compatibility",
+        "shared bringup config round-trip"
+      ],
+      "expectedExitCode": 0
+    }
+  ]
+}

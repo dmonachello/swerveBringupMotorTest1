@@ -134,7 +134,21 @@ LEFT_BOTTOM_MOUSEWHEEL_UNIT = "units"
 LEFT_BOTTOM_MOUSEWHEEL_DIVISOR = 120
 TK_EVENT_CONFIGURE = "<Configure>"
 TK_EVENT_MOUSEWHEEL = "<MouseWheel>"
+TK_EVENT_CONTROL_MOUSEWHEEL = "<Control-MouseWheel>"
+TK_EVENT_BUTTON_4 = "<Button-4>"
+TK_EVENT_BUTTON_5 = "<Button-5>"
+TK_EVENT_MIDDLE_BUTTON_PRESS = "<ButtonPress-2>"
+TK_EVENT_MIDDLE_BUTTON_DRAG = "<B2-Motion>"
+TK_EVENT_MIDDLE_BUTTON_RELEASE = "<ButtonRelease-2>"
 TK_BBOX_ALL = "all"
+MOUSEWHEEL_UP_NUM = 4
+MOUSEWHEEL_DOWN_NUM = 5
+ZOOM_WHEEL_STEP = 0.1
+PAN_SCROLLREGION_PAD_VIEWPORTS = 1.0
+SCROLLREGION_FIELD_COUNT = 4
+SCROLLREGION_MIN_INDEX = 0
+SCROLLREGION_MAX_INDEX = 2
+SCROLLREGION_MIN_SPAN = 1.0
 MSG_INVALID_DIO_CHANNEL = "Invalid DIO channel for {}."
 MSG_MISSING_DIO_TYPE = "Missing DIO device type for {}."
 MSG_INVALID_DIO_TYPE = "Invalid DIO device type for {}."
@@ -188,6 +202,7 @@ KEY_TOPOLOGY_BUS = "bus"
 KEY_TOPOLOGY_ROW = "row"
 KEY_TOPOLOGY_X = "x"
 KEY_TOPOLOGY_Y = "y"
+KEY_TOPOLOGY_Y_RELATIVE = "yRelative"
 KEY_DIO = "dio"
 KEY_POWER = "power"
 KEY_NODE_KEY = "key"
@@ -730,7 +745,7 @@ class TopologyEditor(tk.Tk):
             selectmode="extended",
         )
         self.node_list.heading("can_id", text="CAN ID")
-        self.node_list.heading("type", text="Type")
+        self.node_list.heading("type", text="Category")
         self.node_list.heading("label", text="Label")
         self.node_list.heading("tags", text="Tags")
         self.node_list.column("can_id", width=60, anchor="center")
@@ -840,6 +855,9 @@ class TopologyEditor(tk.Tk):
         self.canvas.bind("<ButtonPress-1>", self._on_canvas_press)
         self.canvas.bind("<B1-Motion>", self._on_canvas_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_canvas_release)
+        self.canvas.bind(TK_EVENT_MIDDLE_BUTTON_PRESS, self._on_canvas_pan_press)
+        self.canvas.bind(TK_EVENT_MIDDLE_BUTTON_DRAG, self._on_canvas_pan_drag)
+        self.canvas.bind(TK_EVENT_MIDDLE_BUTTON_RELEASE, self._on_canvas_pan_release)
         self.canvas.bind("<Control-c>", lambda _e: self._on_copy())
         self.canvas.bind("<Control-v>", lambda _e: self._on_paste())
         self.bind_all("<Control-z>", lambda _e: self._undo_last())
@@ -867,8 +885,11 @@ class TopologyEditor(tk.Tk):
         self.bind_all("<Control-P>", lambda _e: self._print_pdf_shortcut())
         self.bind_all("<Delete>", self._on_delete_key)
         self.bind_all("<BackSpace>", self._on_delete_key)
-        self.canvas.bind("<Configure>", self._on_canvas_configure)
-        self.canvas.bind("<Control-MouseWheel>", self._on_zoom_wheel)
+        self.canvas.bind(TK_EVENT_CONFIGURE, self._on_canvas_configure)
+        self.canvas.bind(TK_EVENT_MOUSEWHEEL, self._on_zoom_wheel)
+        self.canvas.bind(TK_EVENT_CONTROL_MOUSEWHEEL, self._on_zoom_wheel)
+        self.canvas.bind(TK_EVENT_BUTTON_4, self._on_zoom_wheel)
+        self.canvas.bind(TK_EVENT_BUTTON_5, self._on_zoom_wheel)
         self.canvas.bind("<Left>", lambda e: self._nudge_selection("left", e))
         self.canvas.bind("<Right>", lambda e: self._nudge_selection("right", e))
         self.canvas.bind("<Up>", lambda e: self._nudge_selection("up", e))
@@ -1072,7 +1093,7 @@ class TopologyEditor(tk.Tk):
             ("DIO", "dio"),
             ("Invert", "invert"),
             ("Vendor", "vendor"),
-            ("Device Type", "type"),
+            ("CAN Device Type", "type"),
             ("Motor", "motor"),
             ("Limits", "limits"),
             ("Terminator", "terminator"),
@@ -1268,7 +1289,24 @@ class TopologyEditor(tk.Tk):
         NAME
             _preserve_canvas_view - Run an action without shifting canvas view.
         """
+        xview_getter = getattr(self.canvas, "xview", None)
+        yview_getter = getattr(self.canvas, "yview", None)
+        xview = xview_getter() if callable(xview_getter) else None
+        yview = yview_getter() if callable(yview_getter) else None
         action()
+        self.update_idletasks()
+        if (
+            isinstance(xview, tuple)
+            and len(xview) == 2
+            and hasattr(self.canvas, "xview_moveto")
+        ):
+            self.canvas.xview_moveto(float(xview[0]))
+        if (
+            isinstance(yview, tuple)
+            and len(yview) == 2
+            and hasattr(self.canvas, "yview_moveto")
+        ):
+            self.canvas.yview_moveto(float(yview[0]))
 
     def _has_neighbor_metadata(self) -> bool:
         """
@@ -2969,7 +3007,9 @@ class TopologyEditor(tk.Tk):
         if self._is_dio_device_entry(entry):
             label = str(entry.get("label", "")).strip()
             device_type = str(entry.get("type", "")).strip()
-            dio_value = entry.get("dio")
+            dio_value = entry.get(KEY_ID)
+            if not isinstance(dio_value, int):
+                dio_value = entry.get(KEY_DIO)
             invert = entry.get("invert")
             tags = self._normalize_tags(entry.get("tags", []))
             node = Node(
@@ -3094,7 +3134,7 @@ class TopologyEditor(tk.Tk):
         if device_type == DEVTYPE_MISC:
             return "CANdle"
         if device_type == DEVTYPE_POWER:
-            return "PDP" if manufacturer == MFG_CTRE else "PDH"
+            return "PowerDistributionModule"
         if device_type == DEVTYPE_GYRO:
             return "Pigeon"
         if device_type == DEVTYPE_ROBORIO:
@@ -3106,8 +3146,10 @@ class TopologyEditor(tk.Tk):
         NAME
             _apply_node_updates_to_registry - Update device registry entries from nodes.
         """
-        if not self._device_registry_list:
-            return
+        if not isinstance(self._device_registry_list, list):
+            self._device_registry_list = []
+        if not isinstance(self._device_registry, dict):
+            self._device_registry = {}
         self._prune_infrastructure_registry_entries()
         for node in self._device_nodes():
             if not self._is_registry_device_node(node):
@@ -3122,11 +3164,12 @@ class TopologyEditor(tk.Tk):
                 )
                 entry.pop(KEY_INTERFACE_LEGACY, None)
                 if node.interface == INTERFACE_DIO:
-                    entry["dio"] = node.dio
+                    entry[KEY_ID] = node.dio
+                    entry.pop(KEY_DIO, None)
                     entry["invert"] = bool(node.invert) if node.invert is not None else False
                     if node.device_type and node.device_type.strip():
                         entry["type"] = node.device_type
-                    for key in ("manufacturer", "deviceType", "id", "model", "terminator"):
+                    for key in ("manufacturer", "deviceType", "model", "terminator"):
                         entry.pop(key, None)
                 else:
                     generated_entry = self._device_entry_from_node(node)
@@ -3354,7 +3397,7 @@ class TopologyEditor(tk.Tk):
             entry: Dict[str, object] = {
                 KEY_LABEL: node.label,
                 KEY_INTERFACE: profile_consts.INTERFACE_DIO if profile_consts is not None else INTERFACE_DIO,
-                "dio": node.dio,
+                KEY_ID: node.dio,
                 "invert": bool(node.invert) if node.invert is not None else False,
             }
             entry.pop(KEY_INTERFACE_LEGACY, None)
@@ -3511,9 +3554,10 @@ class TopologyEditor(tk.Tk):
             }
             if isinstance(node.free_y, (int, float)):
                 layout[KEY_TOPOLOGY_Y] = float(node.free_y)
-            if self._is_registry_device_node(node) and isinstance(
-                self._device_registry.get(node.label), dict
-            ):
+                layout[KEY_TOPOLOGY_Y_RELATIVE] = bool(
+                    getattr(node, "free_y_relative", True)
+                )
+            if self._is_registry_device_node(node):
                 topology_nodes.append(
                     {
                         KEY_NODE_KEY: node.key,
@@ -4675,6 +4719,12 @@ class TopologyEditor(tk.Tk):
                             infrastructure_match.x = float(layout_dict.get(KEY_TOPOLOGY_X))
                         if isinstance(layout_dict.get(KEY_TOPOLOGY_Y), (int, float)):
                             infrastructure_match.free_y = float(layout_dict.get(KEY_TOPOLOGY_Y))
+                            infrastructure_match.free_y_relative = bool(
+                                layout_dict.get(KEY_TOPOLOGY_Y_RELATIVE, True)
+                            )
+                            infrastructure_match.topology_y_relative_explicit = (
+                                KEY_TOPOLOGY_Y_RELATIVE in layout_dict
+                            )
                         self._nodes.append(infrastructure_match)
                         reserved_keys.add(key)
                         continue
@@ -4688,6 +4738,12 @@ class TopologyEditor(tk.Tk):
                         match.x = float(layout_dict.get(KEY_TOPOLOGY_X))
                     if isinstance(layout_dict.get(KEY_TOPOLOGY_Y), (int, float)):
                         match.free_y = float(layout_dict.get(KEY_TOPOLOGY_Y))
+                        match.free_y_relative = bool(
+                            layout_dict.get(KEY_TOPOLOGY_Y_RELATIVE, True)
+                        )
+                        match.topology_y_relative_explicit = (
+                            KEY_TOPOLOGY_Y_RELATIVE in layout_dict
+                        )
                     continue
                 label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
                 node = Node(
@@ -4708,7 +4764,9 @@ class TopologyEditor(tk.Tk):
                     else None,
                     profile_visible=False,
                 )
+                node.free_y_relative = bool(layout_dict.get(KEY_TOPOLOGY_Y_RELATIVE, True))
                 self._nodes.append(node)
+                node.topology_y_relative_explicit = KEY_TOPOLOGY_Y_RELATIVE in layout_dict
                 reserved_keys.add(key)
 
         self._next_key = max([node.key for node in self._nodes], default=0) + 1
@@ -4802,6 +4860,7 @@ class TopologyEditor(tk.Tk):
         self._prune_dio_wiring_links()
         self._ensure_dio_wiring_links()
         self._fix_cannect_conflicts(notify=False)
+        self._restore_legacy_cannect_free_y_mode()
         self._apply_cannect_free_float()
         self._resolve_overlaps()
 
@@ -5242,6 +5301,24 @@ class TopologyEditor(tk.Tk):
             return
         node.free_y = node_center_y_unscaled(node, self._bus_offsets, self._box_h)
         node.free_y_relative = False
+
+    def _restore_legacy_cannect_free_y_mode(self) -> None:
+        """
+        NAME
+            _restore_legacy_cannect_free_y_mode - Preserve old absolute CANnect Y values.
+
+        DESCRIPTION
+            Topology files written before yRelative existed stored CANnect cluster
+            free-Y positions as absolute coordinates. Mark those as absolute before
+            free-float normalization runs, otherwise reload adds the bus offset.
+        """
+        for node in self._nodes:
+            if node.free_y is None:
+                continue
+            if getattr(node, "topology_y_relative_explicit", False):
+                continue
+            if self._is_cannect_cluster_member(node):
+                node.free_y_relative = False
 
     def _apply_cannect_free_float(self) -> None:
         """
@@ -7112,9 +7189,36 @@ class TopologyEditor(tk.Tk):
         """
         if node.node_type == "callout":
             return False
+        if self._is_swyft_node(node):
+            return True
         if node.node_type == "diagram" or not getattr(node, "profile_visible", True):
             return False
         return True
+
+    def _clamp_nodes_to_bus_bounds(self, bus_indices: set[int]) -> None:
+        """
+        NAME
+            _clamp_nodes_to_bus_bounds - Persist node positions inside resized bus spans.
+
+        DESCRIPTION
+            Redraw clamps visible node positions to the bus segment. When a bus
+            endpoint is resized, persist the same clamp so diagram-only CANnect
+            modules and their link ports follow the segment instead of snapping
+            back on the next redraw or reload.
+        """
+        for node in self._device_nodes():
+            if not self._should_clamp_node_to_bus(node):
+                continue
+            bus_index = min(max(node.bus_index, 0), max(len(self._bus_offsets) - 1, 0))
+            if bus_index not in bus_indices:
+                continue
+            if bus_index >= len(self._bus_lefts) or bus_index >= len(self._bus_rights):
+                continue
+            seg_left = min(self._bus_lefts[bus_index], self._bus_rights[bus_index])
+            seg_right = max(self._bus_lefts[bus_index], self._bus_rights[bus_index])
+            min_x = min(seg_left + 20.0, seg_right - 20.0)
+            max_x = max(seg_left + 20.0, seg_right - 20.0)
+            node.x = min(max(node.x, min_x), max_x)
 
     def _node_box_y(self, node: Node, bus_y: float, box_h: float, scale: float) -> Tuple[float, float]:
         """
@@ -7465,18 +7569,23 @@ class TopologyEditor(tk.Tk):
             groups.setdefault((node.bus_index, node.row), []).append(node)
         for (bus_index, _row), nodes in groups.items():
             nodes.sort(key=lambda n: (n.x, n.key))
-            prev_x = None
-            prev_w = 0.0
+            placed: List[Tuple[float, float, float, float]] = []
             for node in nodes:
                 node_scale = max(0.6, min(2.0, node.scale))
                 base_w = 180.0 if node.node_type == "callout" else float(self._box_w)
                 cur_w = base_w * node_scale
-                if prev_x is not None:
-                    min_spacing = prev_w / 2 + cur_w / 2 + min_gap
-                    if node.x - prev_x < min_spacing:
-                        node.x = prev_x + min_spacing
-                prev_x = node.x
-                prev_w = cur_w
+                cur_h = (50.0 if node.node_type == "callout" else float(self._box_h)) * node_scale
+                center_y = self._node_center_y_unscaled(node)
+                y0 = center_y - cur_h / 2.0
+                y1 = center_y + cur_h / 2.0
+                for other_x, other_half_w, other_y0, other_y1 in placed:
+                    vertical_overlap = y0 < other_y1 + min_gap and y1 > other_y0 - min_gap
+                    if not vertical_overlap:
+                        continue
+                    min_spacing = other_half_w + cur_w / 2.0 + min_gap
+                    if node.x - other_x < min_spacing:
+                        node.x = other_x + min_spacing
+                placed.append((node.x, cur_w / 2.0, y0, y1))
             if 0 <= bus_index < len(self._bus_rights):
                 max_x = max(n.x for n in nodes)
                 self._bus_rights[bus_index] = max(self._bus_rights[bus_index], max_x + 120.0)
@@ -8242,7 +8351,7 @@ class TopologyEditor(tk.Tk):
         row += 1
 
         var_apply_type = tk.BooleanVar(value=False)
-        _row("Device Type", row)
+        _row("CAN Device Type", row)
         ttk.Checkbutton(container, variable=var_apply_type).grid(row=row, column=1, sticky="w")
         type_value = tk.StringVar()
         type_combo = ttk.Combobox(
@@ -8256,7 +8365,7 @@ class TopologyEditor(tk.Tk):
         row += 1
 
         var_apply_motor = tk.BooleanVar(value=False)
-        _row("Motor", row)
+        _row("Model", row)
         ttk.Checkbutton(container, variable=var_apply_motor).grid(row=row, column=1, sticky="w")
         motor_value = tk.StringVar()
         ttk.Entry(container, textvariable=motor_value, width=24).grid(row=row, column=2, sticky="w")
@@ -9148,35 +9257,36 @@ class TopologyEditor(tk.Tk):
                 )
                 self.canvas.tag_lower(line)
 
-        for a, b in self._ethernet_links:
-            if a not in ethernet_ports or b not in ethernet_ports:
-                continue
-            if a not in node_centers or b not in node_centers:
-                continue
-            ax, _ = node_centers[a]
-            bx, _ = node_centers[b]
-            ports_a = ethernet_ports[a]
-            ports_b = ethernet_ports[b]
-            if "in" in ports_a and "out" in ports_a:
-                pa = ports_a["in"] if bx < ax else ports_a["out"]
-            else:
-                pa = ports_a.get("out") or ports_a.get("in")
-            if "in" in ports_b and "out" in ports_b:
-                pb = ports_b["in"] if ax < bx else ports_b["out"]
-            else:
-                pb = ports_b.get("out") or ports_b.get("in")
-            if not pa or not pb:
-                continue
-            line = self.canvas.create_line(
-                pa[0],
-                pa[1],
-                pb[0],
-                pb[1],
-                width=2,
-                fill="#1c6ba8",
-                dash=(6, 4),
-            )
-            self.canvas.tag_lower(line)
+        if show_virtual:
+            for a, b in self._ethernet_links:
+                if a not in ethernet_ports or b not in ethernet_ports:
+                    continue
+                if a not in node_centers or b not in node_centers:
+                    continue
+                ax, _ = node_centers[a]
+                bx, _ = node_centers[b]
+                ports_a = ethernet_ports[a]
+                ports_b = ethernet_ports[b]
+                if "in" in ports_a and "out" in ports_a:
+                    pa = ports_a["in"] if bx < ax else ports_a["out"]
+                else:
+                    pa = ports_a.get("out") or ports_a.get("in")
+                if "in" in ports_b and "out" in ports_b:
+                    pb = ports_b["in"] if ax < bx else ports_b["out"]
+                else:
+                    pb = ports_b.get("out") or ports_b.get("in")
+                if not pa or not pb:
+                    continue
+                line = self.canvas.create_line(
+                    pa[0],
+                    pa[1],
+                    pb[0],
+                    pb[1],
+                    width=2,
+                    fill="#1c6ba8",
+                    dash=(6, 4),
+                )
+                self.canvas.tag_lower(line)
         for callout in self._callout_nodes():
             cx = callout.x * scale
             bus_index = min(max(callout.bus_index, 0), max(len(bus_ys) - 1, 0))
@@ -10057,6 +10167,104 @@ class TopologyEditor(tk.Tk):
             points, fill=fill, outline=outline, width=width, joinstyle="round"
         )
 
+    def _on_canvas_pan_press(self, event: tk.Event) -> str:
+        """
+        NAME
+            _on_canvas_pan_press - Begin whole-diagram canvas panning.
+        """
+        self.canvas.focus_set()
+        self._ensure_horizontal_pan_room()
+        self.canvas.scan_mark(event.x, event.y)
+        self._pan_drag = None
+        self._drag_state = None
+        self._multi_drag = None
+        self._bus_drag = None
+        self._bus_resize = None
+        self._selection_start = None
+        return "break"
+
+    def _on_canvas_pan_drag(self, event: tk.Event) -> str:
+        """
+        NAME
+            _on_canvas_pan_drag - Pan the canvas with the middle mouse button.
+        """
+        self.canvas.scan_dragto(event.x, event.y, gain=1)
+        return "break"
+
+    def _on_canvas_pan_release(self, _event: tk.Event) -> str:
+        """
+        NAME
+            _on_canvas_pan_release - Finish whole-diagram canvas panning.
+        """
+        return "break"
+
+    def _ensure_horizontal_pan_room(self) -> None:
+        """
+        NAME
+            _ensure_horizontal_pan_room - Expand scrollregion for middle-button pan.
+
+        DESCRIPTION
+            Fit-to-window can make the horizontal scrollregion no wider than
+            the viewport. Tk canvas scanning cannot move horizontally in that
+            state, so add temporary left/right blank space while preserving the
+            current viewport origin.
+        """
+        try:
+            raw_region = self.canvas.cget("scrollregion")
+        except Exception:
+            return
+        parts = str(raw_region).split()
+        if len(parts) != SCROLLREGION_FIELD_COUNT:
+            return
+        try:
+            region = [float(part) for part in parts]
+        except ValueError:
+            return
+        width = max(float(self.canvas.winfo_width()), SCROLLREGION_MIN_SPAN)
+        current_left = float(self.canvas.canvasx(0))
+        pad = width * PAN_SCROLLREGION_PAD_VIEWPORTS
+        old_min_x = region[SCROLLREGION_MIN_INDEX]
+        old_max_x = region[SCROLLREGION_MAX_INDEX]
+        new_min_x = min(old_min_x, current_left - pad)
+        new_max_x = max(old_max_x, current_left + width + pad)
+        new_span = max(new_max_x - new_min_x, SCROLLREGION_MIN_SPAN)
+        if new_min_x == old_min_x and new_max_x == old_max_x:
+            return
+        region[SCROLLREGION_MIN_INDEX] = new_min_x
+        region[SCROLLREGION_MAX_INDEX] = new_max_x
+        self.canvas.configure(scrollregion=tuple(region))
+        fraction = (current_left - new_min_x) / new_span
+        self.canvas.xview_moveto(max(0.0, min(1.0, fraction)))
+
+    def _set_canvas_xview_left(self, desired_left: float) -> None:
+        """
+        NAME
+            _set_canvas_xview_left - Position the canvas viewport at an X coordinate.
+        """
+        try:
+            raw_region = self.canvas.cget("scrollregion")
+        except Exception:
+            return
+        parts = str(raw_region).split()
+        if len(parts) != SCROLLREGION_FIELD_COUNT:
+            return
+        try:
+            region = [float(part) for part in parts]
+        except ValueError:
+            return
+        width = max(float(self.canvas.winfo_width()), SCROLLREGION_MIN_SPAN)
+        old_min_x = region[SCROLLREGION_MIN_INDEX]
+        old_max_x = region[SCROLLREGION_MAX_INDEX]
+        new_min_x = min(old_min_x, desired_left)
+        new_max_x = max(old_max_x, desired_left + width)
+        new_span = max(new_max_x - new_min_x, SCROLLREGION_MIN_SPAN)
+        if new_min_x != old_min_x or new_max_x != old_max_x:
+            region[SCROLLREGION_MIN_INDEX] = new_min_x
+            region[SCROLLREGION_MAX_INDEX] = new_max_x
+            self.canvas.configure(scrollregion=tuple(region))
+        fraction = (desired_left - new_min_x) / new_span
+        self.canvas.xview_moveto(max(0.0, min(1.0, fraction)))
+
     def _on_canvas_press(self, event: tk.Event) -> None:
         """
         NAME
@@ -10116,9 +10324,8 @@ class TopologyEditor(tk.Tk):
                 bus_y = bus_ys[bus_index] if bus_ys else cy
                 self._bus_drag = (bus_index, bus_y, self._bus_offsets[bus_index])
             else:
-                self._pan_drag = (cy, self._pan_y)
-            if bus_index is None:
                 self._clear_selection()
+                return
             return
         if key in self._selected_nodes and total_selected > 1:
             self._start_multi_drag(cx, cy)
@@ -10261,12 +10468,15 @@ class TopologyEditor(tk.Tk):
                 right = new_pos
 
             # Apply to neighbors when dragging a connector end.
+            resized_bus_indices = {bus_index}
             if connector_with_next and bus_index + 1 < len(self._bus_offsets):
+                resized_bus_indices.add(bus_index + 1)
                 if (bus_index + 1) % 2 == 0:
                     self._bus_lefts[bus_index + 1] = new_pos
                 else:
                     self._bus_rights[bus_index + 1] = new_pos
             if connector_with_prev and bus_index - 1 >= 0:
+                resized_bus_indices.add(bus_index - 1)
                 if (bus_index - 1) % 2 == 0:
                     self._bus_rights[bus_index - 1] = new_pos
                 else:
@@ -10274,6 +10484,7 @@ class TopologyEditor(tk.Tk):
 
             self._bus_lefts[bus_index] = left
             self._bus_rights[bus_index] = right
+            self._clamp_nodes_to_bus_bounds(resized_bus_indices)
             self._layout_width = max(self._layout_width, right + 200)
             self._dirty = True
             self._redraw_canvas()
@@ -11941,13 +12152,21 @@ class TopologyEditor(tk.Tk):
         self._pending_fit_to_window = False
         self._redraw_canvas()
 
-    def _on_zoom_wheel(self, event: tk.Event) -> None:
+    def _on_zoom_wheel(self, event: tk.Event) -> str:
         """
         NAME
-            _on_zoom_wheel - Handle Ctrl+MouseWheel zoom.
+            _on_zoom_wheel - Handle mouse-wheel zoom.
         """
-        delta = 0.1 if event.delta > 0 else -0.1
+        wheel_delta = getattr(event, "delta", 0)
+        button_num = getattr(event, "num", None)
+        if wheel_delta > 0 or button_num == MOUSEWHEEL_UP_NUM:
+            delta = ZOOM_WHEEL_STEP
+        elif wheel_delta < 0 or button_num == MOUSEWHEEL_DOWN_NUM:
+            delta = -ZOOM_WHEEL_STEP
+        else:
+            return "break"
         self._zoom_step(delta)
+        return "break"
 
     def _zoom_step(self, delta: float) -> None:
         """
@@ -11990,17 +12209,12 @@ class TopologyEditor(tk.Tk):
         for node in device_nodes:
             node_scale = max(0.6, min(2.0, node.scale))
             half_w = (self._box_w * node_scale) / 2.0
-            bus_offset = self._bus_offsets[node.bus_index] if self._bus_offsets else 0.0
-            if node.row == 1:
-                y0 = bus_offset + 30.0
-                y1 = y0 + self._box_h * node_scale
-            else:
-                y1 = bus_offset - 30.0
-                y0 = y1 - self._box_h * node_scale
+            half_h = (self._box_h * node_scale) / 2.0
+            center_y = self._node_center_y_unscaled(node)
             min_x = min(min_x, node.x - half_w)
             max_x = max(max_x, node.x + half_w)
-            min_y = min(min_y, y0)
-            max_y = max(max_y, y1)
+            min_y = min(min_y, center_y - half_h)
+            max_y = max(max_y, center_y + half_h)
 
         for callout in callouts:
             callout_scale = max(0.6, min(2.0, callout.scale))
@@ -12055,7 +12269,9 @@ class TopologyEditor(tk.Tk):
         self._dirty = True
         self._redraw_canvas()
         self.update_idletasks()
-        self.canvas.xview_moveto(0.0)
+        content_center_x = ((min_x + max_x) / 2.0) * self._zoom
+        self._set_canvas_xview_left(content_center_x - width / 2.0)
+        self.canvas.yview_moveto(0.0)
 
     @staticmethod
     def _tag_to_key(tags: Tuple[str, ...]) -> Optional[int]:

@@ -70,6 +70,8 @@ MSG_STDOUT = "STDOUT"
 MSG_STDERR = "STDERR"
 MSG_SUMMARY = "SUMMARY"
 MSG_STATUS = "STATUS"
+MSG_STATUS_REASON = "STATUS_REASON"
+MSG_EXPECTED_COMMAND = "EXPECTED_COMMAND"
 MSG_FEATURES = "FEATURES"
 MSG_BASELINE = "BASELINE"
 MSG_NOTE = "NOTE"
@@ -110,7 +112,10 @@ def print_result(result: RegressionResult, comparison: RegressionComparison, ver
     if result.features:
         print(f"{MSG_FEATURES}: {', '.join(result.features)}")
     print(f"{MSG_STATUS}: {comparison.status}")
-    if verbose or not result.ok:
+    print(f"{MSG_STATUS_REASON}: {comparison.status_reason}")
+    if not comparison.argv_matches and comparison.expected_argv:
+        print(f"{MSG_EXPECTED_COMMAND}: {' '.join(comparison.expected_argv)}")
+    if (verbose and not result.stdout) or not result.ok:
         stdout_text = result.stdout.strip()
         stderr_text = result.stderr.strip()
         if stdout_text:
@@ -138,7 +143,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"ERROR: {ex}")
         return EXIT_USAGE
 
-    results = run_commands(commands)
+    results = run_commands(commands, verbose=bool(args.verbose))
     metadata = collect_run_metadata()
     baseline = None if bool(args.refresh_expected) else load_suite_baseline(str(args.suite))
     comparisons = compare_results_to_baseline(commands, results, baseline)
