@@ -37,7 +37,8 @@ The current topology shape is useful but too weak as long-term semantic truth.
 Current limitations:
 
 - topology is still framed partly as editor/diagram metadata
-- adjacency is stored primarily as `neighborLinks` / `neighborPorts`
+- adjacency language still leaks into some surfaces as `neighborLinks` /
+  `neighborPorts` rather than explicit endpoint-to-endpoint edge records
 - branching semantics are not first-class
 - analyzer locations are not first-class topology entities
 - non-CAN connections are not modeled as part of the same general graph
@@ -54,6 +55,8 @@ Result:
 - Graph truth: topology is a graph, not a left/right list.
 - Serial-first UX: the most common FRC serial CAN case must remain easy to
   author.
+- Physical truth: port count, port labels, and terminator state are separate
+  concepts and must not be conflated.
 - Typed connections: every connection type must have explicit semantics.
 - Mixed-network support: CAN and non-CAN links belong in the same topology
   system.
@@ -69,6 +72,7 @@ Result:
 - canonical topology graph model
 - persisted JSON contract for topology
 - node and edge typing
+- explicit port-to-port edge semantics
 - serial-first authoring rules
 - junction and analyzer support
 - non-CAN link modeling
@@ -93,13 +97,50 @@ The graph contains:
 
 - nodes
 - edges
-- ports
+- declared ports
 - layout metadata
 - source metadata
 
 Neighbor displays, left/right chains, and branch summaries are derived views.
 
+`neighborLinks` and `neighborPorts` are not canonical record types in the
+target design.
+
 Topology is not "just the drawing."
+
+The graph must distinguish between:
+
+- declared physical port capacity on a node
+- actual wired edges in the active profile topology
+- optional bus/junction helper nodes used to represent branch structure
+- electrical end-of-bus state indicated by the device `terminator` field
+
+Port count does not imply terminator state.
+
+Terminator state does not imply port count.
+
+### 6.1 Graph normalization
+
+All topology consumers must use one shared graph normalization layer.
+
+That layer must:
+
+- parse raw topology JSON
+- build node-key lookup maps
+- build label and `deviceRef` lookup maps
+- resolve `deviceRef` references into configured device records
+- resolve effective port declarations
+- validate edge endpoint references
+- derive neighbor views
+- derive filtered views
+- derive traversal and path structures
+- preserve unknown or invalid references for actionable diagnostics
+
+Rule:
+
+- no CLI, editor, GUI, or diagnostic code may walk raw topology JSON directly
+  for semantic decisions
+- semantic decisions must operate on normalized graph objects
 
 ## 7. Canonical Persisted JSON Shape
 
@@ -202,6 +243,17 @@ Example:
 }
 ```
 
+### 8.1 Profile membership rule
+
+Topology is per profile.
+
+Rules:
+
+- every `device` node `deviceRef` must belong to that profile's device list
+- non-device nodes do not require profile membership
+- the same configured device may appear in more than one profile
+- topology nodes are not shared across profiles in V1
+
 ## 9. Node Types
 
 Minimum node types:
@@ -280,6 +332,7 @@ Optional by type:
 - `label` for non-device nodes
 - `manufacturer`
 - `model`
+- `ports`
 - `notes`
 - `tags`
 
@@ -288,6 +341,8 @@ Rules:
 - `key` must be unique within the profile topology
 - non-device node `label` values must be unique within the profile topology
 - for `device` nodes, `deviceRef` must reference a configured device label
+- node-level `ports` may be omitted only when the node can be resolved from a
+  known device or node class that provides default port definitions
 
 ## 11. Record Types and Ownership
 
@@ -321,6 +376,14 @@ Owns device identity and hardware/config fields such as:
 - `deviceType`
 - `id`
 - `model`
+- `terminator`
+
+May also own device-class physical-capacity fields such as:
+
+- `canPorts`
+- `canPortCount`
+- `canPortLabels`
+- `canPortMode`
 
 ### 11.3 Profile record
 
@@ -391,6 +454,7 @@ For `device` nodes, do not duplicate:
 - `deviceType`
 - `id`
 - `model`
+- `terminator`
 
 Those fields are owned by the referenced device record.
 
@@ -419,6 +483,15 @@ So in V1:
 - any record type that refers to a configured device uses `deviceRef` the same
   way
 
+Graph identity rules:
+
+- persisted edges use node keys
+- CLI input accepts labels and resolves them to node keys
+- labels are user-facing identity and display text
+- node keys are graph identity
+- `deviceRef` links a topology node to a configured device record but is not
+  itself graph identity
+
 ### 12.2 Why this rule exists
 
 This avoids duplicated truth between:
@@ -427,6 +500,14 @@ This avoids duplicated truth between:
 - the topology graph
 
 Without this rule, rename drift and stale copied fields become likely.
+
+### 12.3 Rename behavior
+
+If a configured device label changes through supported config flows:
+
+- all `deviceRef` references must be updated in the same operation
+- validation must fail if a `deviceRef` points to a missing configured device
+- migration and repair tools must report stale `deviceRef` values clearly
 
 ## 13. Standalone Topology Nodes
 
@@ -477,6 +558,16 @@ Rationale:
 - non-CAN links are part of the robot connection topology
 - filtering and diagnostics need typed edges
 
+### 14.1 Edge families
+
+Minimum edge-family groupings:
+
+- physical-forwarding: `can_trunk`, `can_drop`, `dio`, `pwm`, `analog`,
+  `power`
+- observer: `can_tap`
+- diagnostic-only: `virtual`
+- unknown: `unknown`
+
 ## 15. Edge Fields
 
 Required edge fields:
@@ -502,18 +593,33 @@ Rules:
 - both endpoints must reference existing node keys
 - the same node/port cannot be reused by multiple edges unless explicitly
   allowed by node type
+- a node cannot exceed its declared CAN port capacity
+- port-usage validation is based on declared node/device ports, not on
+  inferred left/right chain position
+
+### 15.1 Edge id rule
+
+Edge ids must remain stable across load/save round trips.
+
+Recommended rules:
+
+- imported or migrated topology should use deterministic ids derived from
+  endpoints where practical
+- interactively created topology may use monotonic ids such as `edge_<N>`
+- layout-only edits must not rewrite edge ids
 
 ## 16. Ports
 
-Ports are strings.
+Ports are strings with declared per-node semantics.
 
-Do not over-model ports in V1.
+V1 must support explicit port declarations even if some nodes still use
+class-default ports.
 
 Common ports:
 
-- `left`
-- `right`
 - `can`
+- `canA`
+- `canB`
 - `trunkIn`
 - `trunkOut`
 - `drop1`
@@ -526,10 +632,106 @@ Common ports:
 - `power`
 - `unknown`
 
+### 16.1 Port declarations
+
+Each topology-capable node class must have a resolved set of allowed ports.
+
+That set may come from:
+
+- the referenced device record
+- a built-in device-class mapping
+- explicit `ports` declared on the topology node for non-device nodes
+
+Example device-class port shapes:
+
+- 1-port endpoint-capable device: `["can"]`
+- 2-port inline-capable device: `["canA", "canB"]`
+- 6-port CANnect device: `["1", "2", "3", "4", "5", "6"]`
+
+### 16.1.1 Port capability metadata
+
+Ports are not just names.
+
+Each resolved port should carry enough metadata for validation.
+
+Minimum target fields:
+
+- `name`
+- `family`
+- `maxConnections`
+- `allowedEdgeTypes`
+
+Possible later fields:
+
+- `role`
+- `direction`
+
+### 16.2 Port count versus terminator
+
+Port count and `terminator` are independent.
+
+Rules:
+
+- a 1-port CAN device may or may not be a terminator
+- a 2-port CAN device may be configured as a terminator in the current profile
+- `terminator=true` means the device is intended to sit at a terminated bus
+  end in the configured wiring
+- `terminator=false` means the device is not marked as a terminated end by
+  configuration
+
+The topology graph defines connectivity.
+
+The device record defines terminator state.
+
+The system must not infer terminator state from port count alone.
+
+### 16.3 Port usage rules
+
+Default V1 rules:
+
+- each declared CAN port may be used by at most one CAN-family edge
+- a device may not have more CAN edges than its declared CAN ports allow
+- node classes that intentionally support branch fanout must declare the
+  corresponding ports explicitly
+- if a node class allows shared or multiplexed usage later, that must be
+  explicit in schema and validation rather than inferred
+
+### 16.3.1 Edge-family compatibility rules
+
+Validation must enforce family compatibility between edges and ports.
+
+Examples:
+
+- `can_trunk`, `can_drop`, and `can_tap` require CAN-capable ports
+- `dio` requires DIO-capable ports
+- `pwm` requires PWM-capable ports
+- `analog` requires analog-capable ports
+- `power` requires power-capable ports
+- `virtual` may connect any family, but must be marked diagnostic-only
+
+Impossible combinations must fail validation.
+
+Examples:
+
+- `edgeType=dio` connected to a CAN-only port
+- `edgeType=power` connected to a CAN-only port
+
 Validation:
 
 - unknown ports warn in V1
 - invalid endpoint references fail
+- edges that overuse a node's declared port capacity fail
+
+### 16.4 Bus and junction usage
+
+The model must support both:
+
+- direct device-port to device-port CAN edges for ordinary serial authoring
+- bus/junction helper nodes when the wiring contains explicit branch or
+  distribution structure
+
+This means bus/junction nodes are supported but not mandatory for every simple
+serial chain.
 
 ## 17. Serial-First Authoring Rule
 
@@ -550,10 +752,13 @@ In other words:
 
 - simple serial is the easiest authoring mode
 - graph is still the underlying truth
+- bus/junction helper nodes may remain implicit in the common serial case
+- explicit junction modeling is required when branch structure or multi-port
+  distribution hardware needs to be represented faithfully
 
 ## 18. Swyft / CANnect Rule
 
-Swyft CANnect modules are represented as `junction` nodes.
+Swyft CANnect modules must be represented with explicit multi-port semantics.
 
 Example:
 
@@ -565,11 +770,28 @@ roborio -- CANnect A -- CANnect B -- PDH
 
 Canonical representation:
 
-- `CANnect A` is a node with `nodeType = "junction"`
-- `trunkIn` and `trunkOut` connect the main path
-- `drop1`, `drop2`, ... connect devices
+- `CANnect A` may be represented as a `junction` node or another explicit
+  multi-port node class, but it must expose its real CAN attachment points
+- the representation must support up to the real hardware port count
+- each used CANnect port must be individually addressable in edges
+- trunk and drop semantics may be represented by port names, edge types, or
+  both, but must remain machine-readable
 
 This is the primary reason the topology model must be graph-based.
+
+### 18.1 Mixed-capacity device rule
+
+The topology system must correctly support at least these physical patterns:
+
+- 1-port CAN device
+- 2-port CAN device
+- 6-port CAN distribution device
+
+The system must not force all CAN devices into one of these false models:
+
+- every device has `left` and `right`
+- every 1-port device is always a terminator
+- every branch must be flattened into a serial neighbor list
 
 ## 19. Non-CAN Connection Rule
 
@@ -588,6 +810,13 @@ This allows:
 - one consistent topology model
 - multi-type filtering
 - future richer diagnostics
+
+Minimum V1 non-CAN scope:
+
+- schema support for `dio`, `pwm`, `analog`, and `power`
+- validation support for basic port-family matching
+- editor display and filtering support
+- no requirement for advanced non-CAN diagnostics in V1
 
 ## 20. Layout Metadata
 
@@ -614,6 +843,20 @@ Rule:
 - layout affects rendering
 - layout does not define semantic connectivity
 
+### 20.1 Bus versus layout
+
+`layout.bus` must not become the long-term semantic network model.
+
+If used in V1, it is a rendering-grouping field only.
+
+Rules:
+
+- layout fields are view metadata
+- semantic connectivity comes from edges
+- network identity should be a separate semantic concept when introduced
+- code must not treat `layout.bus` as authoritative network identity for graph
+  semantics
+
 ## 21. Source Model
 
 V1 source values:
@@ -628,11 +871,24 @@ Planned later:
 
 Every topology response in CLI or GUI context should include its source.
 
+### 21.1 Unknown handling
+
+Unknown topology content is allowed only under controlled rules.
+
+Rules:
+
+- `unknown` edge types may be allowed as warnings in authoring mode
+- strict or deploy validation may warn or fail on unknown edge types
+- diagnostics must ignore unknown edges unless explicitly enabled
+
 ## 22. Derived Neighbor View
 
 Neighbors are derived from graph edges.
 
 Do not keep a second independent neighbor truth table as the primary model.
+
+The word "neighbor" is read/query vocabulary, not persisted connection-truth
+vocabulary.
 
 For a node, the neighbor view should show:
 
@@ -650,6 +906,23 @@ neighbor can:
   edgeType: can_drop
 ```
 
+### 22.1 Traversal rules
+
+Traversal and path queries must distinguish between edge families.
+
+Default traversal behavior:
+
+- physical-forwarding edges participate in normal connectivity and path queries
+- observer edges do not act as path-through connections
+- diagnostic-only edges are excluded unless explicitly requested
+- unknown edges are excluded unless explicitly requested
+
+Analyzer rule:
+
+- analyzer nodes attach through observer/tap edges
+- analyzers must not be treated as traffic-forwarding nodes during normal
+  connectivity traversal
+
 ## 23. CLI Surface
 
 Required V1 commands:
@@ -658,9 +931,13 @@ Required V1 commands:
 - `show topology --json`
 - `show topology nodes`
 - `show topology edges`
+- `topology edge set "<nodeA>" <portA> "<nodeB>" <portB> type <edgeType>`
+- `topology edge delete "<node>" <port>`
+- `topology edge clear "<node>"`
 - `show topology node "<label>"`
 - `show neighbors "<label>"`
 - `validate topology`
+- `validate topology --strict`
 
 Later candidates:
 
@@ -672,6 +949,29 @@ Later candidates:
 User-facing CLI should accept labels.
 
 Internal graph operations should use stable node keys.
+
+Rule:
+
+- write/edit commands must use edge-native vocabulary
+- neighbor-oriented commands are read/query convenience surfaces only
+- do not expose `neighborLinks` or `neighborPorts` as canonical editable
+  records in the final design
+
+Command error behavior:
+
+- semantic failures must report semantic errors, not generic syntax errors
+- unknown labels must report the unresolved label
+- conflicting port reuse must report the conflicting node/port or edge id
+- delete behavior must be explicitly defined rather than assumed idempotent
+
+JSON output contracts must be documented and tested for:
+
+- `show topology --json`
+- `show topology nodes --json`
+- `show topology edges --json`
+- `show topology node "<label>" --json`
+- `show neighbors "<label>" --json`
+- `validate topology --json`
 
 ## 24. Validation Rules
 
@@ -686,6 +986,10 @@ Internal graph operations should use stable node keys.
 - device node `deviceRef` does not exist in configured devices table
 - same node port used by multiple edges unless explicitly allowed
 - edge endpoint references unknown node
+- edge references a port not declared for that node
+- node exceeds declared CAN port capacity
+- edge type is incompatible with either endpoint port family
+- duplicate reciprocal migration creates conflicting edges
 
 ### Warnings
 
@@ -697,6 +1001,26 @@ Internal graph operations should use stable node keys.
 - device has no edges
 - layout position missing
 - topology disconnected from roboRIO for topologies that include roboRIO
+- device terminator configuration appears inconsistent with graph position
+- ambiguous one-sided migrated neighbor records
+
+### Validation modes
+
+Support two validation modes:
+
+- authoring
+- strict/deploy
+
+Authoring mode:
+
+- allows incomplete work in progress
+- reports warnings for unknown or provisional content where safe
+
+Strict/deploy mode:
+
+- blocks broken endpoint references
+- blocks graph-integrity failures
+- blocks impossible edge-family and port-family combinations
 
 ## 25. Editor Requirements
 
@@ -709,9 +1033,29 @@ The topology editor must:
 - edit node position
 - edit node type
 - edit ports and edges
+- expose or derive per-node port definitions during authoring
 - support serial chain authoring
 - support branch/junction authoring
 - support non-CAN connection authoring
+
+Editor behavior rules:
+
+- common 1-port, 2-port, and CANnect-class nodes must be easy to author
+- the editor must not imply that all CAN devices have `left` and `right`
+- the editor must validate port overuse with device-specific error messages
+- the editor should allow simple serial authoring without forcing visible
+  junction nodes unless needed
+- filtering must never mutate saved graph truth
+
+Headless editor tests must cover:
+
+- load graph fixture
+- move node
+- add edge
+- delete edge
+- save
+- reload
+- compare normalized graph
 
 Minimum visual forms:
 
@@ -763,6 +1107,20 @@ Rule:
 - filtering changes rendering only
 - filtering must not change validation or inference semantics
 
+Recommended saved view shape:
+
+```json
+{
+  "view": {
+    "filters": {
+      "edgeTypes": ["can_trunk", "can_drop"],
+      "showVirtual": false,
+      "showAnalyzers": true
+    }
+  }
+}
+```
+
 ## 28. Internal Model Rule
 
 The codebase must use a shared canonical graph normalization layer.
@@ -770,8 +1128,13 @@ The codebase must use a shared canonical graph normalization layer.
 That layer should:
 
 - parse persisted topology JSON
+- build node-key maps
+- build label and `deviceRef` lookup maps
+- resolve device references
+- resolve effective ports
 - expose normalized nodes and edges
 - derive neighbor views
+- derive traversal and path structures
 - support validation
 - support filtering
 - support future diagnostic overlays
@@ -780,23 +1143,40 @@ Expected location:
 
 - `tools/common/` shared topology graph helpers
 
-Current `neighborLinks` / `neighborPorts` handling should be treated as legacy
-input compatibility, not the final semantic model.
+The canonical persisted connection model is:
+
+- nodes
+- declared ports
+- edges
+
+Everything neighbor-oriented is derived from that model.
 
 ## 29. Migration Rule
 
-This branch is allowed to migrate aggressively.
+This branch is expected to switch fully to the graph-native model.
 
-Migration expectations:
+Implementation expectations:
 
-- move semantic truth from `diagram.profiles` adjacency fields into
-  `topology.profiles`
-- retain import support for older diagram-adjacency data where practical
+- move semantic truth fully into `topology.profiles`
 - update topology editor, CLI, validation, and tests together
+- replace neighbor-oriented write semantics with edge-native write semantics
+- remove any requirement to preserve `neighborLinks` / `neighborPorts` as
+  authoritative or first-class persisted connection records
+- define deterministic conversion from old neighbor-shaped data to edge records
 - prefer coherent final model over minimizing change count
 
-If temporary compatibility adapters exist, they should be clearly marked as
-legacy migration paths.
+This spec does not require gradual compatibility steps inside the branch
+target.
+
+Migration from older topology data must:
+
+- create one node per topology-bearing device
+- preserve key and layout coordinates where available
+- convert left/right or neighbor pairs into explicit edges
+- avoid duplicate reciprocal edges
+- assign deterministic edge ids
+- preserve legacy port names only when true device-port mapping is unknown
+- emit warnings for ambiguous or one-sided records
 
 ## 30. Regression Requirements
 
@@ -805,9 +1185,19 @@ Required regression coverage:
 - topology fixture validation with the new graph schema
 - topology editor load/save round-trip tests
 - CLI `show topology` and `show neighbors` tests
+- CLI edge-edit command tests
 - node-type and edge-type validation tests
 - filter-state behavior tests where headless validation is practical
 - negative-path tests for malformed graph input and broken references
+- JSON output contract tests for topology CLI commands
+- headless normalized-graph round-trip tests
+
+Round-trip expectations:
+
+- load -> normalize -> save must not unexpectedly change valid topology
+- editor position changes must not rewrite edge identity
+- filtering must not affect saved graph truth
+- neighbor views must not be persisted as authoritative graph truth
 
 Because this project is used by students and non-expert operators, topology
 errors must be tested for:
@@ -822,19 +1212,30 @@ The feature is considered implemented when:
 - topology is stored as first-class graph data in unified config
 - the topology editor loads and saves nodes and edges from the new graph model
 - CLI topology commands operate on the graph model
+- CLI write/edit topology commands operate on explicit edges, not neighbor
+  records
 - neighbor views are derived from edges
 - serial CAN layouts remain easy to author
+- 1-port, 2-port, and CANnect-class multi-port devices are represented without
+  false left/right assumptions
 - Swyft / CANnect layouts are modeled with junction nodes and branch edges
 - analyzer nodes are supported
 - non-CAN links are supported
 - GUI/live topology surfaces can filter by connection type
 - validation reports graph errors and warnings correctly
+- shared graph normalization is used by all topology consumers
 - regression coverage exists for the new topology model
 
 ## 32. Tradeoffs
 
 - A graph model is more complex than simple left/right adjacency, but it is
   semantically correct for branch layouts and diagnostic growth.
+- Keeping neighbors only as a derived read/query concept is a cleaner mental
+  model, but it requires renaming or replacing older neighbor-oriented edit
+  surfaces.
+- Supporting explicit per-device port capacity adds schema and validator
+  complexity, but prevents incorrect assumptions about 1-port, 2-port, and
+  multi-port hardware.
 - Supporting non-CAN links in the same system increases scope, but avoids
   building a second incompatible wiring model later.
 - This branch will require broader changes, but it avoids preserving a weak
@@ -848,3 +1249,238 @@ The feature is considered implemented when:
 - live evidence overlays
 - suspect edge / suspect branch scoring
 - topology-aware fault-localization CLI and GUI surfaces
+
+## 34. Implementation Plan
+
+Purpose: define the recommended execution order for implementing this spec in
+the `topology_upgrade` branch.
+
+This plan assumes the branch switches fully to edge-native topology truth and
+does not preserve neighbor-shaped records as authoritative model state.
+
+### 34.1 Phase 1: shared graph core
+
+Implement the shared normalized graph layer first.
+
+Primary targets:
+
+- `tools/common/profile_constants.py`
+- new shared topology graph helpers under `tools/common/`
+- `tools/common/topology_parse.py`
+
+Required outcomes:
+
+- normalized node-key map
+- normalized label and `deviceRef` lookup maps
+- resolved device-backed node view
+- resolved port declarations and capability metadata
+- edge-family classification
+- derived neighbor and traversal helpers
+
+Gate:
+
+- no topology consumer should need to walk raw topology JSON directly for
+  semantic decisions once this phase lands
+
+### 34.2 Phase 2: validation
+
+Implement shared topology validation on top of the normalized graph.
+
+Primary targets:
+
+- `tools/config/schema_store.py`
+- `tools/can_topology/validate_profiles.py`
+- shared validation helpers under `tools/common/`
+
+Required outcomes:
+
+- authoring validation mode
+- strict/deploy validation mode
+- endpoint reference validation
+- device membership validation
+- port-capacity validation
+- edge-family versus port-family validation
+- deterministic and actionable diagnostics
+
+Gate:
+
+- CLI and editor validation must call the shared validation layer rather than
+  maintaining separate semantic rules
+
+### 34.3 Phase 3: migration
+
+Implement deterministic conversion from older topology-bearing records into the
+canonical `nodes` / `edges` model.
+
+Primary targets:
+
+- migration logic in shared topology helpers
+- topology editor load paths
+- CLI/local config load paths
+
+Required outcomes:
+
+- old `neighborLinks` / `neighborPorts` convert into edges
+- duplicate reciprocal edges are suppressed
+- deterministic edge ids are assigned
+- legacy port names are preserved only when real port mapping is unknown
+- ambiguous or one-sided old records emit warnings
+
+Gate:
+
+- load -> normalize -> save must preserve valid topology semantics without
+  recreating neighbor-shaped truth
+
+### 34.4 Phase 4: CLI read surfaces
+
+Move all topology read/report behavior onto the normalized graph.
+
+Primary targets:
+
+- `tools/can_nt/bridge_cli.py`
+
+Required outcomes:
+
+- `show topology`
+- `show topology nodes`
+- `show topology edges`
+- `show topology node "<label>"`
+- `show neighbors "<label>"`
+- stable JSON output contracts for all of the above
+
+Gate:
+
+- neighbor output must be clearly derived from edges, not loaded from stored
+  neighbor tables
+
+### 34.5 Phase 5: CLI write surfaces
+
+Replace neighbor-oriented write commands with edge-native edit commands.
+
+Primary targets:
+
+- `tools/can_nt/bridge_cli.py`
+- CLI docs and grammar artifacts when command text changes
+
+Required outcomes:
+
+- `topology edge set "<nodeA>" <portA> "<nodeB>" <portB> type <edgeType>`
+- `topology edge delete "<node>" <port>`
+- `topology edge clear "<node>"`
+- semantic error messages that name unresolved labels, conflicting ports, or
+  conflicting edges
+
+Gate:
+
+- no canonical topology write path should require `neighborLinks` or
+  `neighborPorts` command semantics
+
+### 34.6 Phase 6: editor load/save and editing model
+
+Move the topology editor fully onto canonical graph truth.
+
+Primary targets:
+
+- `tools/can_topology/can_top_editor.py`
+- shared topology helpers under `tools/common/`
+
+Required outcomes:
+
+- load canonical `topology.profiles.<profile>`
+- save canonical `topology.profiles.<profile>`
+- use resolved port definitions during editing
+- enforce device-specific port limits
+- keep filtering/view state separate from graph truth
+- preserve edge identity across layout-only edits
+
+Gate:
+
+- editor save must not persist neighbor-shaped authoritative topology state
+
+### 34.7 Phase 7: filtering and traversal behavior
+
+Finalize filtered views and traversal semantics on the normalized graph.
+
+Primary targets:
+
+- shared topology helpers under `tools/common/`
+- editor and live view surfaces
+
+Required outcomes:
+
+- connection-type filtering that does not mutate graph truth
+- observer-edge traversal rules for analyzers
+- explicit handling of `virtual` and `unknown` edges
+- path and neighbor derivation behavior consistent across CLI and GUI surfaces
+
+Gate:
+
+- filtering changes only rendering/query views, never saved graph truth
+
+### 34.8 Phase 8: regression and fixtures
+
+Add fixtures and tests after the core semantics are stable.
+
+Primary targets:
+
+- `tests/regression/`
+- topology-related Python tests under `tools/common/tests/`,
+  `tools/can_nt/tests/`, and `tools/can_topology/`
+
+Required outcomes:
+
+- simple serial fixture
+- one-branch serial fixture
+- Swyft CANnect trunk-with-drops fixture
+- round-trip tests
+- migration tests
+- strict validation tests
+- CLI JSON contract tests
+- headless editor graph tests
+
+Gate:
+
+- the topology regression suite must fail on semantic drift in graph shape,
+  validation behavior, or edge-edit behavior
+
+## 35. Example Fixtures
+
+The spec should maintain concrete example fixtures for at least:
+
+- simple serial CAN chain
+- serial chain with one branch
+- Swyft CANnect trunk with drops
+
+These examples are test and implementation anchors, not optional illustrations.
+
+## 36. Diagnostics Terminology
+
+Standard terms:
+
+- suspect edge
+- suspect branch
+- suspect junction
+- suspect downstream segment
+- observed visibility
+- inferred boundary
+- confidence
+
+Avoid overclaiming physical causes such as:
+
+- bad wire
+- broken connector
+- short
+- termination failure
+
+unless supported by physical-layer evidence.
+
+## 37. Do Not Do
+
+Do not:
+
+- store neighbor tables as authoritative topology truth
+- duplicate device identity fields into topology nodes
+- infer terminator state from port count
+- assume all CAN devices have left/right ports
+- let filtering mutate saved graph data
+- make diagnostics scrape rendered neighbor text

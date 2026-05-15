@@ -3,11 +3,17 @@
   "profiles": {
     "scratch": {
       "devices": [
-        "FALCON 9",
-        "controller0",
-        "lmtSw0"
-      ],
-      "dslTestSet": "default"
+        "pdh",
+        "ROBORIO",
+        "front-left-neo-steer"
+      ]
+    },
+    "robot_2026": {
+      "devices": [
+        "pdh",
+        "ROBORIO",
+        "front-left-neo-steer"
+      ]
     }
   },
   "devices": [
@@ -30,22 +36,65 @@
       "deviceInterface": "USB"
     },
     {
-      "label": "lmtSw0",
+      "label": "pdp",
+      "deviceInterface": "CAN",
       "id": 0,
-      "model": "Limit Switch",
-      "type": "limitSwitch",
-      "deviceInterface": "DIO",
-      "invert": true
+      "manufacturer": 4,
+      "model": "PowerDistributionModule",
+      "type": "",
+      "terminator": true,
+      "deviceType": 8
+    },
+    {
+      "label": "pdh",
+      "deviceInterface": "CAN",
+      "terminator": true,
+      "id": 0,
+      "manufacturer": 4,
+      "deviceType": 8,
+      "model": "PowerDistributionModule",
+      "type": ""
+    },
+    {
+      "label": "ROBORIO",
+      "deviceInterface": "CAN",
+      "terminator": true,
+      "id": 1,
+      "manufacturer": 1,
+      "deviceType": 1,
+      "model": "RobotController",
+      "type": ""
+    },
+    {
+      "label": "front-left-neo-steer",
+      "deviceInterface": "CAN",
+      "terminator": false,
+      "id": 1,
+      "manufacturer": 5,
+      "deviceType": 2,
+      "model": "MotorController",
+      "type": "motor"
     }
   ],
-  "data_version": "2026-05-10_120735",
-  "data_hash": "86d06f9026a7528868b29187be538308ea19578ac27715d43514caca2d9e0785",
-  "default_profile": "scratch",
+  "data_version": "2026-05-12_193645",
+  "data_hash": "e4b17e2e58fcb3efb14270e9c0a02b0888678571be0a39dfabb8b70c735cb417",
+  "default_profile": "robot_2026",
   "bridgeConfig": {
     "schemaVersion": 2,
     "generatedAt": null,
     "byProfile": {
       "scratch": {
+        "groups": [],
+        "selectedDevice": {
+          "device": "",
+          "enabled": false
+        },
+        "tests": {
+          "default_test_set": "default",
+          "test_sets": {}
+        }
+      },
+      "robot_2026": {
         "groups": [],
         "selectedDevice": {
           "device": "",
@@ -65,7 +114,8 @@
       "default": [
         "falcon9_run_025",
         "falcon9_leftY_15s",
-        "falcon9_to_limit_or_30s"
+        "falcon9_to_limit_or_30s",
+        "front_left_neo_steer_run_025_5s"
       ]
     },
     "testsByName": {
@@ -295,6 +345,89 @@
             "requires": []
           }
         }
+      },
+      "front_left_neo_steer_run_025_5s": {
+        "source": "test \"front_left_neo_steer_run_025_5s\"\ndevice \"front-left-neo-steer\"\n\nmain:\n    set \"front-left-neo-steer\".output = 0.25\n    require \"front-left-neo-steer\".velocity > 1000\n    until timer.elapsed >= 5.0\n",
+        "sourceHash": "e6f36dcc82915017573abfe261b2bec186068a85f86bd48b5c39de2707a53d90",
+        "normalized": {
+          "name": "front_left_neo_steer_run_025_5s",
+          "devices": [
+            {
+              "name": "front-left-neo-steer"
+            }
+          ],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "set_1",
+                "text": "set \"front-left-neo-steer\".output = 0.25",
+                "target": {
+                  "device": "front-left-neo-steer",
+                  "signal": "output",
+                  "text": "front-left-neo-steer.output"
+                },
+                "literal": {
+                  "value": 0.25,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [
+              {
+                "id": "until_1",
+                "kind": "until",
+                "text": "until timer.elapsed >= 5.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "operator": ">=",
+                "literal": {
+                  "value": 5.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "requires": [
+              {
+                "id": "require_1",
+                "kind": "require",
+                "text": "require \"front-left-neo-steer\".velocity > 1000",
+                "reference": {
+                  "device": "front-left-neo-steer",
+                  "signal": "velocity",
+                  "text": "front-left-neo-steer.velocity"
+                },
+                "operator": ">",
+                "literal": {
+                  "value": 1000,
+                  "valueType": "number"
+                }
+              }
+            ]
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        }
       }
     }
   },
@@ -305,8 +438,104 @@
       "scratch": {
         "version": 1,
         "source": "local",
-        "nodes": [],
-        "edges": [],
+        "nodes": [
+          {
+            "key": 1,
+            "label": "pdh",
+            "category": "pdh",
+            "nodeType": "virtual",
+            "vendor": "CTRE",
+            "model": "",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 658.9,
+              "y": -101.875
+            }
+          },
+          {
+            "key": 2,
+            "label": "ROBORIO",
+            "category": "roborio",
+            "nodeType": "virtual",
+            "vendor": "NI",
+            "model": "",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 85.39999999999998,
+              "y": -100.5
+            }
+          },
+          {
+            "key": 3,
+            "label": "inject",
+            "category": "cannect_inject",
+            "nodeType": "junction",
+            "vendor": "SWYFT",
+            "model": "",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 649.15,
+              "y": 91.25
+            }
+          },
+          {
+            "key": 4,
+            "label": "cannect1",
+            "category": "cannect_direct",
+            "nodeType": "junction",
+            "vendor": "SWYFT",
+            "model": "",
+            "layout": {
+              "bus": 0,
+              "row": 1,
+              "x": 351.4,
+              "y": 163.75
+            }
+          },
+          {
+            "key": 5,
+            "label": "front-left-neo-steer",
+            "category": "neos",
+            "nodeType": "virtual",
+            "vendor": "REV",
+            "model": "",
+            "layout": {
+              "bus": 0,
+              "row": 1,
+              "x": 193.89999999999998,
+              "y": 73.125
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "edge_1",
+            "fromNode": 1,
+            "fromPort": "power",
+            "toNode": 3,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_2",
+            "fromNode": 1,
+            "fromPort": "power",
+            "toNode": 5,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_3",
+            "fromNode": 1,
+            "fromPort": "power",
+            "toNode": 2,
+            "toPort": "power",
+            "edgeType": "power"
+          }
+        ],
         "view": {
           "busOffsets": [
             0.0
@@ -317,11 +546,195 @@
             40.0
           ],
           "busRights": [
-            360.0
+            614.0
           ],
           "busConnectors": [],
           "panY": 0.0,
-          "zoom": 1.0,
+          "zoom": 0.8,
+          "ethernetLinks": [
+            {
+              "a": 3,
+              "b": 4
+            }
+          ],
+          "canLinks": [],
+          "deviceLinks": [
+            {
+              "node": 4,
+              "device": 5,
+              "port": 1
+            }
+          ],
+          "connectionFilters": [
+            "analog",
+            "can",
+            "dio",
+            "power",
+            "pwm",
+            "virtual"
+          ],
+          "callouts": []
+        }
+      },
+      "robot_2026": {
+        "version": 1,
+        "source": "local",
+        "nodes": [
+          {
+            "key": 1,
+            "nodeType": "device",
+            "deviceRef": "pdh",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 727.9,
+              "y": -101.875
+            }
+          },
+          {
+            "key": 2,
+            "nodeType": "device",
+            "deviceRef": "ROBORIO",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 140.0,
+              "y": -98.75
+            }
+          },
+          {
+            "key": 5,
+            "nodeType": "device",
+            "deviceRef": "front-left-neo-steer",
+            "layout": {
+              "bus": 0,
+              "row": 1,
+              "x": 332.65,
+              "y": -64.375
+            }
+          },
+          {
+            "key": 3,
+            "label": "inject",
+            "category": "cannect_inject",
+            "nodeType": "junction",
+            "vendor": "SWYFT",
+            "model": "",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 575.4,
+              "y": 50.0
+            }
+          },
+          {
+            "key": 4,
+            "label": "cannect1",
+            "category": "cannect_direct",
+            "nodeType": "junction",
+            "vendor": "SWYFT",
+            "model": "",
+            "layout": {
+              "bus": 0,
+              "row": 1,
+              "x": 370.15,
+              "y": 132.5
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "edge_1",
+            "fromNode": 2,
+            "fromPort": "right",
+            "toNode": 5,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_2",
+            "fromNode": 5,
+            "fromPort": "right",
+            "toNode": 4,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_3",
+            "fromNode": 4,
+            "fromPort": "right",
+            "toNode": 3,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_4",
+            "fromNode": 3,
+            "fromPort": "right",
+            "toNode": 1,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_5",
+            "fromNode": 1,
+            "fromPort": "power",
+            "toNode": 3,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_6",
+            "fromNode": 1,
+            "fromPort": "power",
+            "toNode": 5,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_7",
+            "fromNode": 1,
+            "fromPort": "power",
+            "toNode": 2,
+            "toPort": "power",
+            "edgeType": "power"
+          }
+        ],
+        "view": {
+          "busOffsets": [
+            -14.375
+          ],
+          "busCount": 1,
+          "busSpacing": 160.0,
+          "busLefts": [
+            40.0
+          ],
+          "busRights": [
+            847.9
+          ],
+          "busConnectors": [],
+          "panY": 0.0,
+          "zoom": 0.8,
+          "ethernetLinks": [
+            {
+              "a": 3,
+              "b": 4
+            }
+          ],
+          "canLinks": [
+            {
+              "node": 3,
+              "bus": 0,
+              "port": 1
+            }
+          ],
+          "deviceLinks": [
+            {
+              "node": 4,
+              "device": 5,
+              "port": 1
+            }
+          ],
           "connectionFilters": [
             "analog",
             "can",
