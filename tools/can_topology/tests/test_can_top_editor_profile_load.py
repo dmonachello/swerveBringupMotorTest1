@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import tempfile
 import unittest
@@ -1826,6 +1827,125 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
         self.assertEqual(editor._attachment_links, [{"device": 2, "attachment": 3}])
         self.assertEqual(editor._power_links, [{"a": 1, "b": 2}])
+
+    def test_print_or_open_pdf_opens_when_pdf_print_handler_missing(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor._windows_pdf_print_handler_available = lambda: False
+        startfile_calls: list[tuple[object, ...]] = []
+        info_calls: list[tuple[object, ...]] = []
+
+        def _startfile_stub(*args: object) -> None:
+            startfile_calls.append(args)
+
+        messagebox_stub = type(
+            "_PrintMessageBoxStub",
+            (),
+            {
+                "showinfo": staticmethod(lambda *args, **_kwargs: info_calls.append(args)),
+                "showerror": staticmethod(lambda *args, **_kwargs: (_ for _ in ()).throw(RuntimeError(str(args)))),
+            },
+        )
+        original_startfile = os.startfile
+        original_messagebox = can_top_editor.messagebox
+        os.startfile = _startfile_stub
+        can_top_editor.messagebox = messagebox_stub
+        try:
+            editor._print_or_open_pdf("C:\\temp\\diagram.pdf", can_top_editor.MSG_PRINTED_DIAGRAM)
+        finally:
+            os.startfile = original_startfile
+            can_top_editor.messagebox = original_messagebox
+
+        self.assertEqual(startfile_calls, [("C:\\temp\\diagram.pdf",)])
+        self.assertEqual(info_calls, [("Print", can_top_editor.MSG_PRINT_NO_HANDLER)])
+
+    def test_print_or_open_pdf_uses_print_verb_when_handler_exists(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor._windows_pdf_print_handler_available = lambda: True
+        startfile_calls: list[tuple[object, ...]] = []
+        info_calls: list[tuple[object, ...]] = []
+
+        def _startfile_stub(*args: object) -> None:
+            startfile_calls.append(args)
+
+        messagebox_stub = type(
+            "_PrintMessageBoxStub",
+            (),
+            {
+                "showinfo": staticmethod(lambda *args, **_kwargs: info_calls.append(args)),
+                "showerror": staticmethod(lambda *args, **_kwargs: (_ for _ in ()).throw(RuntimeError(str(args)))),
+            },
+        )
+        original_startfile = os.startfile
+        original_messagebox = can_top_editor.messagebox
+        os.startfile = _startfile_stub
+        can_top_editor.messagebox = messagebox_stub
+        try:
+            editor._print_or_open_pdf("C:\\temp\\diagram.pdf", can_top_editor.MSG_PRINTED_DIAGRAM)
+        finally:
+            os.startfile = original_startfile
+            can_top_editor.messagebox = original_messagebox
+
+        self.assertEqual(startfile_calls, [("C:\\temp\\diagram.pdf", "print")])
+        self.assertEqual(
+            info_calls,
+            [("Printed", can_top_editor.MSG_PRINTED_DIAGRAM.format("C:\\temp\\diagram.pdf"))],
+        )
+
+    def test_export_pdf_handles_attachment_links_without_name_error(self) -> None:
+        editor = self._headless_editor("pdf_export")
+        editor._zoom = 1.0
+        editor._pan_y = 0.0
+        editor._box_w = 90
+        editor._box_h = 34
+        editor._bus_offsets = [0.0]
+        editor._bus_lefts = [40.0]
+        editor._bus_rights = [500.0]
+        editor._show_warn_badges_var = _BoolVarStub(False)
+        editor._node_bounds = {}
+        editor._redraw_canvas = lambda: None
+        editor._tags_to_string = lambda tags: ",".join(tags or [])
+        editor._list_sort_var.set("can_id")
+        editor._attachment_links = [{"device": 1, "attachment": 2}]
+        editor._power_links = []
+        editor._dio_wiring_links = []
+        editor._ethernet_links = []
+        editor._cannect_device_links = []
+        editor._can_bus_links = []
+        editor._nodes = [
+            Node(
+                key=1,
+                category="krakens",
+                label="driveMotor",
+                can_id=2,
+                interface=INTERFACE_CAN,
+                vendor="CTRE",
+                device_type="Kraken X60",
+                motor="Kraken X60",
+                x=120.0,
+                free_y=100.0,
+            ),
+            Node(
+                key=2,
+                category="devices",
+                label="limit0",
+                can_id=-1,
+                interface=INTERFACE_DIO,
+                device_type="limitSwitch",
+                dio=0,
+                x=260.0,
+                free_y=160.0,
+            ),
+        ]
+        original_messagebox = can_top_editor.messagebox
+        can_top_editor.messagebox = _MessageBoxStub
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                path = Path(temp_dir) / "diagram.pdf"
+                editor._export_pdf(print_after=False, path_override=str(path))
+                self.assertTrue(path.exists())
+                self.assertGreater(path.stat().st_size, 0)
+        finally:
+            can_top_editor.messagebox = original_messagebox
 
 
 if __name__ == "__main__":

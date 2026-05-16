@@ -258,6 +258,27 @@ KEY_LINK_NEIGHBOR = "neighbor"
 KEY_LINK_NEIGHBOR_PORT = "neighborPort"
 KEY_ATTACHMENTS = "attachments"
 NEIGHBOR_PORT_LEFT = "left"
+PDF_FILE_EXTENSION = ".pdf"
+TEMP_PRINT_DIAGRAM_PREFIX = "can_topology_"
+TEMP_PRINT_NODE_LIST_PREFIX = "can_topology_nodes_"
+TEMP_PRINT_CLEANUP_DELAY_MS = 30000
+WINDOWS_NO_ASSOCIATION_ERROR = 1155
+WINDOWS_REGKEY_CURRENT_USER_USERCHOICE = (
+    r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf\UserChoice"
+)
+WINDOWS_REGKEY_CLASSES_ROOT_PDF = r".pdf"
+WINDOWS_REGKEY_SHELL_PRINT_SUFFIX = r"\shell\print\command"
+WINDOWS_REGVALUE_PROGID = "ProgId"
+MSG_PRINT_OPENED_MANUAL = (
+    "No default PDF print handler is available for the current .pdf association.\n\n"
+    "Opened the PDF so you can print manually."
+)
+MSG_PRINT_NO_HANDLER = (
+    "Saved PDF, but the current .pdf association does not expose a print action.\n\n"
+    "Opened the PDF so you can print manually."
+)
+MSG_PRINTED_DIAGRAM = "Queued PDF for printing: {}"
+MSG_PRINTED_NODE_LIST = "Queued node list for printing: {}"
 NEIGHBOR_PORT_RIGHT = "right"
 KEY_UNDO_INTERFACE = "interface"
 KEY_UNDO_DIO = "dio"
@@ -8942,6 +8963,7 @@ class TopologyEditor(tk.Tk):
         self._node_bounds = rendered["node_bounds"]
         node_centers = rendered["node_centers"]
         self._group_overlay_regions = rendered["group_overlay_regions"]
+        self._render_scene = rendered
         if self._show_warn_badges_var.get():
             for node in self._device_nodes():
                 bounds = self._node_bounds.get(node.key)
@@ -10694,6 +10716,80 @@ class TopologyEditor(tk.Tk):
         """
         self._export_pdf(print_after=True, path_override="")
 
+    def _windows_pdf_print_handler_available(self) -> bool:
+        """
+        NAME
+            _windows_pdf_print_handler_available - Return whether Windows has a print verb for .pdf.
+
+        RETURNS
+            True when the current .pdf association exposes a shell print command.
+        """
+        if not sys.platform.startswith("win"):
+            return False
+        try:
+            import winreg
+        except Exception:
+            return False
+
+        prog_id = None
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, WINDOWS_REGKEY_CURRENT_USER_USERCHOICE) as key:
+                prog_id = winreg.QueryValueEx(key, WINDOWS_REGVALUE_PROGID)[0]
+        except Exception:
+            prog_id = None
+        if not prog_id:
+            try:
+                with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, WINDOWS_REGKEY_CLASSES_ROOT_PDF) as key:
+                    prog_id = winreg.QueryValue(key, EMPTY_STRING)
+            except Exception:
+                prog_id = None
+        if not prog_id:
+            return False
+        try:
+            with winreg.OpenKey(
+                winreg.HKEY_CLASSES_ROOT,
+                prog_id + WINDOWS_REGKEY_SHELL_PRINT_SUFFIX,
+            ):
+                return True
+        except Exception:
+            return False
+
+    def _print_or_open_pdf(self, path: str, printed_message: str) -> None:
+        """
+        NAME
+            _print_or_open_pdf - Print a PDF when possible, otherwise open it for manual printing.
+
+        PARAMETERS
+            path: PDF file path.
+            printed_message: Success message format string with one '{}' placeholder for the path.
+        """
+        import os
+
+        if not self._windows_pdf_print_handler_available():
+            os.startfile(path)
+            messagebox.showinfo("Print", MSG_PRINT_NO_HANDLER)
+            return
+        try:
+            os.startfile(path, "print")
+            messagebox.showinfo("Printed", printed_message.format(path))
+        except OSError as exc:
+            if getattr(exc, "winerror", None) == WINDOWS_NO_ASSOCIATION_ERROR:
+                try:
+                    os.startfile(path)
+                    messagebox.showinfo("Print", MSG_PRINT_OPENED_MANUAL)
+                    return
+                except Exception:
+                    pass
+            messagebox.showerror(
+                "Print Failed",
+                f"Saved PDF but failed to print:\n{exc}",
+            )
+        except Exception as exc:
+            messagebox.showerror(
+                "Print Failed",
+                f"Saved PDF but failed to print:\n{exc}",
+            )
+
     def _export_pdf(self, print_after: bool, path_override: Optional[str]) -> None:
         """
         NAME
@@ -10724,7 +10820,10 @@ class TopologyEditor(tk.Tk):
         elif path_override == "":
             import tempfile
 
-            fd, temp_path = tempfile.mkstemp(prefix="can_topology_", suffix=".pdf")
+            fd, temp_path = tempfile.mkstemp(
+                prefix=TEMP_PRINT_DIAGRAM_PREFIX,
+                suffix=PDF_FILE_EXTENSION,
+            )
             try:
                 Path(temp_path).unlink(missing_ok=True)
             except Exception:
@@ -10741,47 +10840,51 @@ class TopologyEditor(tk.Tk):
         width = max(self.canvas.winfo_width(), 1)
         height = max(self.canvas.winfo_height(), 1)
         scale = self._zoom
+        render_scene = self.__dict__.get("_render_scene", {})
+        draw_state = self.__dict__.get("_draw_state", {})
+        show_can = self._connection_filter_allows(TOPOLOGY_FILTER_CAN)
+        show_dio = self._connection_filter_allows(TOPOLOGY_FILTER_DIO)
+        show_virtual = self._connection_filter_allows(TOPOLOGY_FILTER_VIRTUAL)
+        show_power = self._connection_filter_allows(TOPOLOGY_FILTER_POWER)
+        show_groups = bool(self.__dict__.get("_show_group_overlays_var", None) and self._show_group_overlays_var.get())
+        groups = self._bridge_groups() if "_root_extras" in self.__dict__ else []
+        bus_ys = list(draw_state.get("bus_ys", []))
+        eff_lefts = list(draw_state.get("bus_lefts", self._bus_lefts))
+        eff_rights = list(draw_state.get("bus_rights", self._bus_rights))
+        node_bounds = dict(render_scene.get("node_bounds", self._node_bounds))
+        node_centers = dict(render_scene.get("node_centers", {}))
+        ethernet_ports = dict(render_scene.get("ethernet_ports", {}))
+        can_ports = dict(render_scene.get("can_ports", {}))
         max_node_x = max((n.x for n in self._nodes), default=0.0)
-        if len(self._bus_lefts) < len(self._bus_offsets):
-            self._bus_lefts.extend([40.0] * (len(self._bus_offsets) - len(self._bus_lefts)))
-        if len(self._bus_rights) < len(self._bus_offsets):
-            self._bus_rights.extend(
-                [max_node_x + 200.0] * (len(self._bus_offsets) - len(self._bus_rights))
-            )
-        if len(self._bus_lefts) > len(self._bus_offsets):
-            self._bus_lefts = self._bus_lefts[: len(self._bus_offsets)]
-        if len(self._bus_rights) > len(self._bus_offsets):
-            self._bus_rights = self._bus_rights[: len(self._bus_offsets)]
-        eff_lefts = list(self._bus_lefts)
-        eff_rights = list(self._bus_rights)
-        for idx in range(len(eff_lefts) - 1):
-            if idx % 2 == 0:
-                shared = eff_rights[idx]
-                eff_rights[idx + 1] = shared
-            else:
-                shared = eff_lefts[idx]
-                eff_lefts[idx + 1] = shared
         min_left = min(eff_lefts, default=40.0)
         max_right = max(eff_rights, default=max_node_x + 200.0)
         total_width = max(
             width,
-            int(max(max_right, max_node_x + 200.0) * scale),
+            int(max_right * scale),
+            int(max((bounds[2] for bounds in node_bounds.values()), default=width)),
         )
         base_y = height * 0.5 + self._pan_y
-        bus_ys = bus_ys_for_offsets(base_y, self._bus_offsets, scale)
-        box_w = self._box_w * scale
         box_h = self._box_h * scale
         span = box_h + 60 * scale
         min_y = min((y - span for y in bus_ys), default=0.0)
         max_y = max((y + span for y in bus_ys), default=height)
-        for node in self._nodes:
-            if not bus_ys:
-                break
-            bus_index = min(max(node.bus_index, 0), max(len(bus_ys) - 1, 0))
-            bus_y = bus_ys[bus_index]
-            _, node_box_h = self._node_box_dims(node, scale)
-            node_bus_y = self._node_bus_y(node, bus_y, scale)
-            y0, y1 = self._node_box_y(node, node_bus_y, node_box_h, scale)
+        for bounds in node_bounds.values():
+            min_y = min(min_y, bounds[1])
+            max_y = max(max_y, bounds[3])
+        for callout in self._callout_nodes():
+            bus_index = min(max(callout.bus_index, 0), max(len(bus_ys) - 1, 0))
+            bus_y = bus_ys[bus_index] if bus_ys else base_y
+            box_w_callout, box_h_callout = self._node_box_dims(callout, scale)
+            if callout.key in self._drag_free_y:
+                cy = base_y + self._drag_free_y[callout.key] * scale
+                y0 = cy - box_h_callout / 2
+                y1 = cy + box_h_callout / 2
+            elif callout.free_y is not None:
+                cy = base_y + self._node_center_y_unscaled(callout) * scale
+                y0 = cy - box_h_callout / 2
+                y1 = cy + box_h_callout / 2
+            else:
+                y0, y1 = self._node_box_y(callout, bus_y, box_h_callout, scale)
             min_y = min(min_y, y0)
             max_y = max(max_y, y1)
         margin = 20.0
@@ -11008,38 +11111,103 @@ class TopologyEditor(tk.Tk):
             tx, ty = _to_pdf(cx, cy + 1)
             c.drawCentredString(tx, ty, "!")
 
+        def _draw_pdf_group_overlays() -> None:
+            if not show_groups or not groups:
+                return
+            palette = ["#1f6feb", "#f97316", "#16a34a", "#a855f7", "#0ea5e9", "#e11d48"]
+            label_bounds: Dict[str, Tuple[float, float, float, float]] = {}
+            for node in self._device_nodes():
+                bounds = node_bounds.get(node.key)
+                if bounds is not None:
+                    label_bounds[node.label] = bounds
+            if not label_bounds:
+                return
+            pad = 10.0
+            for idx, group in enumerate(groups):
+                if not isinstance(group, dict):
+                    continue
+                name = str(group.get("name", "")).strip()
+                if not name:
+                    continue
+                members = group.get("members", []) or []
+                bounds_list = []
+                for member in members:
+                    label = member.get("device") if isinstance(member, dict) else member
+                    if not isinstance(label, str):
+                        continue
+                    bounds = label_bounds.get(label.strip())
+                    if bounds:
+                        bounds_list.append(bounds)
+                if not bounds_list:
+                    continue
+                x0 = min(b[0] for b in bounds_list) - pad
+                y0 = min(b[1] for b in bounds_list) - pad
+                x1 = max(b[2] for b in bounds_list) + pad
+                y1 = max(b[3] for b in bounds_list) + pad
+                color = palette[idx % len(palette)]
+                rx0, ry0 = _to_pdf(x0, y0)
+                rx1, ry1 = _to_pdf(x1, y1)
+                c.setStrokeColor(_pdf_color(color))
+                c.setLineWidth(2 * fit_scale)
+                try:
+                    c.setDash(6 * fit_scale, 4 * fit_scale)
+                except Exception:
+                    pass
+                c.rect(min(rx0, rx1), min(ry0, ry1), abs(rx1 - rx0), abs(ry1 - ry0), fill=0, stroke=1)
+                try:
+                    c.setDash()
+                except Exception:
+                    pass
+                label_font = max(10, int(12 * scale * fit_scale))
+                label_pad_x = max(6.0, 6.0 * scale)
+                label_h = max(18.0, 18.0 * scale)
+                label_w = max(36.0, len(name) * max(7.5, 8.5 * scale))
+                lx0 = x0 + 4.0
+                ly1 = y0 - 4.0
+                ly0 = ly1 - label_h
+                lx1 = lx0 + label_w
+                lrx0, lry0 = _to_pdf(lx0, ly0)
+                lrx1, lry1 = _to_pdf(lx1, ly1)
+                c.setFillColor(_pdf_color("#ffffff"))
+                c.setStrokeColor(_pdf_color(color))
+                c.setLineWidth(1 * fit_scale)
+                c.rect(min(lrx0, lrx1), min(lry0, lry1), abs(lrx1 - lrx0), abs(lry1 - lry0), fill=1, stroke=1)
+                c.setFillColor(_pdf_color(color))
+                c.setFont("Helvetica", label_font)
+                text_x, text_y = _to_pdf(lx0 + label_pad_x, ly0 + 4.0)
+                c.drawString(text_x, text_y, name)
+
         c = pdfcanvas.Canvas(path, pagesize=(page_w, page_h))
         gray = Color(0.27, 0.27, 0.27)
 
-        x_left = min_left * scale
-        x_right = max_right * scale
-        turn_radius = max(8.0, 18 * scale)
-        c.setStrokeColor(gray)
-        c.setLineWidth(4 * fit_scale)
-        for idx, bus_y in enumerate(bus_ys):
-            seg_left = eff_lefts[idx] * scale
-            seg_right = eff_rights[idx] * scale
-            if idx % 2 == 0:
-                start_x, end_x = seg_left, seg_right
-            else:
-                start_x, end_x = seg_right, seg_left
-            x0, y0 = _to_pdf(start_x, bus_y)
-            x1, y1 = _to_pdf(end_x, bus_y)
-            c.line(x0, y0, x1, y1)
-            if idx + 1 < len(bus_ys):
-                next_y = bus_ys[idx + 1]
-                connector_x = end_x
-                offset = turn_radius if idx % 2 == 0 else -turn_radius
-                path_obj = c.beginPath()
-                p0 = _to_pdf(connector_x, bus_y)
-                p1 = _to_pdf(connector_x + offset, bus_y + turn_radius)
-                p2 = _to_pdf(connector_x + offset, next_y - turn_radius)
-                p3 = _to_pdf(connector_x, next_y)
-                path_obj.moveTo(p0[0], p0[1])
-                path_obj.curveTo(p1[0], p1[1], p2[0], p2[1], p3[0], p3[1])
-                c.setLineWidth(5 * fit_scale)
-                c.drawPath(path_obj)
-                c.setLineWidth(4 * fit_scale)
+        if show_can:
+            turn_radius = max(8.0, 18 * scale)
+            c.setStrokeColor(gray)
+            c.setLineWidth(4 * fit_scale)
+            for idx, bus_y in enumerate(bus_ys):
+                seg_left = eff_lefts[idx] * scale
+                seg_right = eff_rights[idx] * scale
+                if idx % 2 == 0:
+                    start_x, end_x = seg_left, seg_right
+                else:
+                    start_x, end_x = seg_right, seg_left
+                x0, y0 = _to_pdf(start_x, bus_y)
+                x1, y1 = _to_pdf(end_x, bus_y)
+                c.line(x0, y0, x1, y1)
+                if idx + 1 < len(bus_ys):
+                    next_y = bus_ys[idx + 1]
+                    connector_x = end_x
+                    offset = turn_radius if idx % 2 == 0 else -turn_radius
+                    path_obj = c.beginPath()
+                    p0 = _to_pdf(connector_x, bus_y)
+                    p1 = _to_pdf(connector_x + offset, bus_y + turn_radius)
+                    p2 = _to_pdf(connector_x + offset, next_y - turn_radius)
+                    p3 = _to_pdf(connector_x, next_y)
+                    path_obj.moveTo(p0[0], p0[1])
+                    path_obj.curveTo(p1[0], p1[1], p2[0], p2[1], p3[0], p3[1])
+                    c.setLineWidth(5 * fit_scale)
+                    c.drawPath(path_obj)
+                    c.setLineWidth(4 * fit_scale)
 
         dup_keys: set[Tuple[str, str, int]] = set()
         key_counts: Dict[Tuple[str, str, int], int] = {}
@@ -11053,35 +11221,27 @@ class TopologyEditor(tk.Tk):
         dup_keys = {key for key, count in key_counts.items() if count > 1}
         warn_ids = {can_id for can_id, count in numeric_counts.items() if count > 1}
 
-        ethernet_ports: Dict[int, Dict[str, Tuple[float, float]]] = {}
-        can_ports: Dict[int, Dict[int, Tuple[float, float]]] = {}
-        node_centers = {}
         linked_devices = {link.get("device") for link in self._cannect_device_links}
         for node in self._device_nodes():
+            bounds = node_bounds.get(node.key)
+            center_entry = node_centers.get(node.key)
+            if bounds is None or center_entry is None:
+                continue
             bus_index = min(max(node.bus_index, 0), max(len(bus_ys) - 1, 0))
             bus_y = bus_ys[bus_index] if bus_ys else base_y
-            node_bus_y = self._node_bus_y(node, bus_y, scale)
+            node_bus_y = center_entry[1]
             node_scale = max(0.6, min(2.0, node.scale))
-            node_box_w = box_w * node_scale
-            node_box_h = box_h * node_scale
-            seg_left = eff_lefts[bus_index] * scale
-            seg_right = eff_rights[bus_index] * scale
-            node_x = min(max(node.x * scale, seg_left + 20), seg_right - 20)
-            x0 = node_x - node_box_w / 2
-            x1 = node_x + node_box_w / 2
-            if node.row == 1:
-                y0 = node_bus_y + 30 * scale
-                y1 = y0 + node_box_h
-                if node.key not in linked_devices and not self._is_dio_node(node):
+            x0, y0, x1, y1 = bounds
+            node_x = (x0 + x1) / 2.0
+            node_box_w = x1 - x0
+            allow_trunk = (not self._is_swyft_node(node)) or (node.category == "cannect_inject")
+            if node.key not in linked_devices and allow_trunk and not self._is_dio_node(node):
+                if node_bus_y >= bus_y:
                     x0l, y0l = _to_pdf(node_x, bus_y)
                     x1l, y1l = _to_pdf(node_x, y0)
-            else:
-                y1 = node_bus_y - 30 * scale
-                y0 = y1 - node_box_h
-                if node.key not in linked_devices and not self._is_dio_node(node):
+                else:
                     x0l, y0l = _to_pdf(node_x, y1)
                     x1l, y1l = _to_pdf(node_x, bus_y)
-            if node.key not in linked_devices and not self._is_dio_node(node):
                 c.setLineWidth(2 * fit_scale)
                 c.line(x0l, y0l, x1l, y1l)
 
@@ -11119,7 +11279,7 @@ class TopologyEditor(tk.Tk):
                     ports["in"] = (x0, cy)
                     ports["out"] = (x1, cy)
                     ports["power_out"] = (node_x, y1)
-                ethernet_ports[node.key] = ports
+                ports = ethernet_ports.get(node.key, ports)
                 port_w = 6 * scale
                 port_h = 10 * scale
                 for port_name, (px, py) in ports.items():
@@ -11137,14 +11297,9 @@ class TopologyEditor(tk.Tk):
                         fill=1,
                         stroke=1,
                     )
-                can_count = 1 if node.category == "cannect_inject" else 3
-                can_ports[node.key] = {}
-                if can_count > 0:
-                    inset = 12 * scale
-                    step = (node_box_w - inset * 2) / max(can_count, 1)
-                    for idx in range(can_count):
-                        px = x0 + inset + step * (idx + 0.5)
-                        can_ports[node.key][idx + 1] = (px, y0 - 10 * scale)
+                port_map = can_ports.get(node.key, {})
+                if port_map:
+                    for port_idx, (px, _py) in sorted(port_map.items()):
                         p0 = _to_pdf(px - 3 * scale, y0)
                         p1 = _to_pdf(px - 3 * scale, y0 - 10 * scale)
                         p2 = _to_pdf(px + 3 * scale, y0)
@@ -11156,7 +11311,7 @@ class TopologyEditor(tk.Tk):
                         c.setFillColor(_pdf_color("#2f7a2f"))
                         c.setFont("Helvetica", max(6, int(7 * scale * fit_scale)))
                         tpos = _to_pdf(px, y0 - 12 * scale)
-                        c.drawCentredString(tpos[0], tpos[1], f"C{idx + 1}")
+                        c.drawCentredString(tpos[0], tpos[1], f"C{port_idx}")
                 power_text = "Power In" if node.category == "cannect_inject" else "Power Out"
                 power_key = "power_in" if node.category == "cannect_inject" else "power_out"
                 power_pos = ports.get(power_key)
@@ -11182,10 +11337,9 @@ class TopologyEditor(tk.Tk):
                 else:
                     _draw_pdf_warning_badge(badge_x, badge_y)
 
-            node_centers[node.key] = (node_x, node_bus_y)
-
-        linked_devices = {link.get("device") for link in self._cannect_device_links}
-        if ENABLE_CANNECT_BUS_LINKS:
+        node_by_key = {node.key: node for node in self._device_nodes()}
+        _draw_pdf_group_overlays()
+        if show_can and ENABLE_CANNECT_BUS_LINKS:
             for link in self._can_bus_links:
                 node_key = link.get("node")
                 bus_index = link.get("bus")
@@ -11205,145 +11359,150 @@ class TopologyEditor(tk.Tk):
                 c.setLineWidth(2 * fit_scale)
                 c.line(p0[0], p0[1], p1[0], p1[1])
 
-        for link in self._cannect_device_links:
-            node_key = link.get("node")
-            device_key = link.get("device")
-            port = link.get("port", 1)
-            if node_key not in can_ports or device_key not in self._node_bounds:
-                continue
-            port_pos = can_ports[node_key].get(int(port))
-            if not port_pos:
-                continue
-            px, py = port_pos
-            dx0, dy0, dx1, dy1 = self._node_bounds[device_key]
-            tx = (dx0 + dx1) / 2.0
-            ty = dy0
-            p0 = _to_pdf(px, py)
-            p1 = _to_pdf(tx, ty)
-            c.setStrokeColor(_pdf_color("#2f7a2f"))
-            c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
-            c.line(p0[0], p0[1], p1[0], p1[1])
-
-        for link in self._power_links:
-            a_key = link.get(KEY_LINK_A)
-            b_key = link.get(KEY_LINK_B)
-            if a_key not in node_centers or b_key not in node_centers:
-                continue
-            a_bounds = self._node_bounds.get(a_key)
-            b_bounds = self._node_bounds.get(b_key)
-            if a_bounds:
-                ax = (a_bounds[0] + a_bounds[2]) / 2.0
-                ay = (a_bounds[1] + a_bounds[3]) / 2.0
-            else:
-                ax, ay = node_centers[a_key]
-            if b_bounds:
-                bx = (b_bounds[0] + b_bounds[2]) / 2.0
-                by = (b_bounds[1] + b_bounds[3]) / 2.0
-            else:
-                bx, by = node_centers[b_key]
-            p0 = _to_pdf(ax, ay)
-            p1 = _to_pdf(bx, by)
-            c.setStrokeColor(_pdf_color(POWER_LINE_COLOR))
-            c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
-            c.line(p0[0], p0[1], p1[0], p1[1])
-
-        for link in self._attachment_links:
-            host_key = link.get(KEY_LINK_DEVICE)
-            attach_key = link.get(KEY_LINK_ATTACHMENT)
-            if host_key not in node_centers or attach_key not in node_centers:
-                continue
-            host_node = node_by_key.get(host_key)
-            attach_node = node_by_key.get(attach_key)
-            if host_node and self._is_dio_node(host_node):
-                continue
-            if attach_node and self._is_dio_node(attach_node):
-                if host_node and host_node.category == CATEGORY_ROBORIO:
+        if show_can:
+            for link in self._cannect_device_links:
+                node_key = link.get("node")
+                device_key = link.get("device")
+                port = link.get("port", 1)
+                if node_key not in can_ports or device_key not in node_bounds:
                     continue
-            if attach_node and self._is_dio_node(attach_node) and host_node is None:
-                continue
-            host_bounds = self._node_bounds.get(host_key)
-            attach_bounds = self._node_bounds.get(attach_key)
-            if host_bounds:
-                hx = (host_bounds[0] + host_bounds[2]) / 2.0
-                hy = (host_bounds[1] + host_bounds[3]) / 2.0
-            else:
-                hx, hy = node_centers[host_key]
-            if attach_bounds:
-                ax = (attach_bounds[0] + attach_bounds[2]) / 2.0
-                ay = (attach_bounds[1] + attach_bounds[3]) / 2.0
-            else:
-                ax, ay = node_centers[attach_key]
-            p0 = _to_pdf(hx, hy)
-            p1 = _to_pdf(ax, ay)
-            c.setStrokeColor(_pdf_color(ATTACH_LINE_COLOR))
-            c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
-            try:
-                c.setDash(LINK_DASH[0] * fit_scale, LINK_DASH[1] * fit_scale)
-            except Exception:
-                pass
-            c.line(p0[0], p0[1], p1[0], p1[1])
-            c.setDash()
+                port_pos = can_ports[node_key].get(int(port))
+                if not port_pos:
+                    continue
+                px, py = port_pos
+                dx0, dy0, dx1, dy1 = node_bounds[device_key]
+                tx = (dx0 + dx1) / 2.0
+                ty = dy0
+                p0 = _to_pdf(px, py)
+                p1 = _to_pdf(tx, ty)
+                c.setStrokeColor(_pdf_color("#2f7a2f"))
+                c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
+                c.line(p0[0], p0[1], p1[0], p1[1])
 
-        for link in self._dio_wiring_links:
-            robo_key = link.get(KEY_LINK_ROBORIO)
-            dev_key = link.get(KEY_LINK_DEVICE)
-            if robo_key not in node_centers or dev_key not in node_centers:
-                continue
-            robo_bounds = self._node_bounds.get(robo_key)
-            if robo_bounds:
-                rx = (robo_bounds[0] + robo_bounds[2]) / 2.0
-                ry = robo_bounds[1]
-            else:
-                rx, ry = node_centers[robo_key]
-            dev_bounds = self._node_bounds.get(dev_key)
-            if dev_bounds:
-                dx = (dev_bounds[0] + dev_bounds[2]) / 2.0
-                dy = dev_bounds[1]
-            else:
-                dx, dy = node_centers[dev_key]
-            p0 = _to_pdf(rx, ry)
-            p1 = _to_pdf(dx, dy)
-            c.setStrokeColor(_pdf_color(WIRE_LINE_COLOR))
-            c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
-            try:
-                c.setDash(LINK_DASH[0] * fit_scale, LINK_DASH[1] * fit_scale)
-            except Exception:
-                pass
-            c.line(p0[0], p0[1], p1[0], p1[1])
-            c.setDash()
+        if show_power:
+            for link in self._power_links:
+                a_key = link.get(KEY_LINK_A)
+                b_key = link.get(KEY_LINK_B)
+                if a_key not in node_centers or b_key not in node_centers:
+                    continue
+                a_bounds = node_bounds.get(a_key)
+                b_bounds = node_bounds.get(b_key)
+                if a_bounds:
+                    ax = (a_bounds[0] + a_bounds[2]) / 2.0
+                    ay = (a_bounds[1] + a_bounds[3]) / 2.0
+                else:
+                    ax, ay = node_centers[a_key]
+                if b_bounds:
+                    bx = (b_bounds[0] + b_bounds[2]) / 2.0
+                    by = (b_bounds[1] + b_bounds[3]) / 2.0
+                else:
+                    bx, by = node_centers[b_key]
+                p0 = _to_pdf(ax, ay)
+                p1 = _to_pdf(bx, by)
+                c.setStrokeColor(_pdf_color(POWER_LINE_COLOR))
+                c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
+                c.line(p0[0], p0[1], p1[0], p1[1])
 
-        for a, b in self._ethernet_links:
-            if a not in ethernet_ports or b not in ethernet_ports:
-                continue
-            if a not in node_centers or b not in node_centers:
-                continue
-            ax, _ = node_centers[a]
-            bx, _ = node_centers[b]
-            ports_a = ethernet_ports[a]
-            ports_b = ethernet_ports[b]
-            if "in" in ports_a and "out" in ports_a:
-                pa = ports_a["in"] if bx < ax else ports_a["out"]
-            else:
-                pa = ports_a.get("out") or ports_a.get("in")
-            if "in" in ports_b and "out" in ports_b:
-                pb = ports_b["in"] if ax < bx else ports_b["out"]
-            else:
-                pb = ports_b.get("out") or ports_b.get("in")
-            if not pa or not pb:
-                continue
-            p0 = _to_pdf(pa[0], pa[1])
-            p1 = _to_pdf(pb[0], pb[1])
-            c.setStrokeColor(_pdf_color("#1c6ba8"))
-            c.setLineWidth(2 * fit_scale)
-            try:
-                c.setDash(6 * fit_scale, 4 * fit_scale)
-            except Exception:
-                pass
-            c.line(p0[0], p0[1], p1[0], p1[1])
-            try:
+        if show_virtual:
+            for link in self._attachment_links:
+                host_key = link.get(KEY_LINK_DEVICE)
+                attach_key = link.get(KEY_LINK_ATTACHMENT)
+                if host_key not in node_centers or attach_key not in node_centers:
+                    continue
+                host_node = node_by_key.get(host_key)
+                attach_node = node_by_key.get(attach_key)
+                if host_node and self._is_dio_node(host_node):
+                    continue
+                if attach_node and self._is_dio_node(attach_node):
+                    if host_node and host_node.category == CATEGORY_ROBORIO:
+                        continue
+                if attach_node and self._is_dio_node(attach_node) and host_node is None:
+                    continue
+                host_bounds = node_bounds.get(host_key)
+                attach_bounds = node_bounds.get(attach_key)
+                if host_bounds:
+                    hx = (host_bounds[0] + host_bounds[2]) / 2.0
+                    hy = (host_bounds[1] + host_bounds[3]) / 2.0
+                else:
+                    hx, hy = node_centers[host_key]
+                if attach_bounds:
+                    ax = (attach_bounds[0] + attach_bounds[2]) / 2.0
+                    ay = (attach_bounds[1] + attach_bounds[3]) / 2.0
+                else:
+                    ax, ay = node_centers[attach_key]
+                p0 = _to_pdf(hx, hy)
+                p1 = _to_pdf(ax, ay)
+                c.setStrokeColor(_pdf_color(ATTACH_LINE_COLOR))
+                c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
+                try:
+                    c.setDash(LINK_DASH[0] * fit_scale, LINK_DASH[1] * fit_scale)
+                except Exception:
+                    pass
+                c.line(p0[0], p0[1], p1[0], p1[1])
                 c.setDash()
-            except Exception:
-                pass
+
+        if show_dio:
+            for link in self._dio_wiring_links:
+                robo_key = link.get(KEY_LINK_ROBORIO)
+                dev_key = link.get(KEY_LINK_DEVICE)
+                if robo_key not in node_centers or dev_key not in node_centers:
+                    continue
+                robo_bounds = node_bounds.get(robo_key)
+                if robo_bounds:
+                    rx = (robo_bounds[0] + robo_bounds[2]) / 2.0
+                    ry = robo_bounds[1]
+                else:
+                    rx, ry = node_centers[robo_key]
+                dev_bounds = node_bounds.get(dev_key)
+                if dev_bounds:
+                    dx = (dev_bounds[0] + dev_bounds[2]) / 2.0
+                    dy = dev_bounds[1]
+                else:
+                    dx, dy = node_centers[dev_key]
+                p0 = _to_pdf(rx, ry)
+                p1 = _to_pdf(dx, dy)
+                c.setStrokeColor(_pdf_color(WIRE_LINE_COLOR))
+                c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
+                try:
+                    c.setDash(LINK_DASH[0] * fit_scale, LINK_DASH[1] * fit_scale)
+                except Exception:
+                    pass
+                c.line(p0[0], p0[1], p1[0], p1[1])
+                c.setDash()
+
+        if show_virtual:
+            for a, b in self._ethernet_links:
+                if a not in ethernet_ports or b not in ethernet_ports:
+                    continue
+                if a not in node_centers or b not in node_centers:
+                    continue
+                ax, _ = node_centers[a]
+                bx, _ = node_centers[b]
+                ports_a = ethernet_ports[a]
+                ports_b = ethernet_ports[b]
+                if "in" in ports_a and "out" in ports_a:
+                    pa = ports_a["in"] if bx < ax else ports_a["out"]
+                else:
+                    pa = ports_a.get("out") or ports_a.get("in")
+                if "in" in ports_b and "out" in ports_b:
+                    pb = ports_b["in"] if ax < bx else ports_b["out"]
+                else:
+                    pb = ports_b.get("out") or ports_b.get("in")
+                if not pa or not pb:
+                    continue
+                p0 = _to_pdf(pa[0], pa[1])
+                p1 = _to_pdf(pb[0], pb[1])
+                c.setStrokeColor(_pdf_color("#1c6ba8"))
+                c.setLineWidth(2 * fit_scale)
+                try:
+                    c.setDash(6 * fit_scale, 4 * fit_scale)
+                except Exception:
+                    pass
+                c.line(p0[0], p0[1], p1[0], p1[1])
+                try:
+                    c.setDash()
+                except Exception:
+                    pass
 
         for callout in self._callout_nodes():
             cx = callout.x * scale
@@ -11395,44 +11554,15 @@ class TopologyEditor(tk.Tk):
         c.showPage()
         c.save()
         if print_after:
-            try:
-                import os
+            self._print_or_open_pdf(path, MSG_PRINTED_DIAGRAM)
 
-                os.startfile(path, "print")
-                messagebox.showinfo(
-                    "Printed",
-                    f"Queued PDF for printing: {path}",
-                )
+            def _cleanup() -> None:
+                try:
+                    Path(path).unlink()
+                except Exception:
+                    pass
 
-                def _cleanup() -> None:
-                    try:
-                        Path(path).unlink()
-                    except Exception:
-                        pass
-
-                # Best-effort cleanup after spooler has likely consumed the file.
-                self.after(30000, _cleanup)
-            except OSError as exc:
-                if getattr(exc, "winerror", None) == 1155:
-                    try:
-                        os.startfile(path)
-                        messagebox.showinfo(
-                            "Print",
-                            "No default PDF print handler is associated.\n\n"
-                            "Opened the PDF so you can print manually.",
-                        )
-                        return
-                    except Exception:
-                        pass
-                messagebox.showerror(
-                    "Print Failed",
-                    f"Saved PDF but failed to print:\n{exc}",
-                )
-            except Exception as exc:
-                messagebox.showerror(
-                    "Print Failed",
-                    f"Saved PDF but failed to print:\n{exc}",
-                )
+            self.after(TEMP_PRINT_CLEANUP_DELAY_MS, _cleanup)
         else:
             messagebox.showinfo("Exported", f"Wrote PDF to {path}")
 
@@ -11473,7 +11603,10 @@ class TopologyEditor(tk.Tk):
         elif path_override == "":
             import tempfile
 
-            fd, temp_path = tempfile.mkstemp(prefix="can_topology_nodes_", suffix=".pdf")
+            fd, temp_path = tempfile.mkstemp(
+                prefix=TEMP_PRINT_NODE_LIST_PREFIX,
+                suffix=PDF_FILE_EXTENSION,
+            )
             try:
                 Path(temp_path).unlink(missing_ok=True)
             except Exception:
@@ -11608,43 +11741,15 @@ class TopologyEditor(tk.Tk):
         c.save()
 
         if print_after:
-            try:
-                import os
+            self._print_or_open_pdf(path, MSG_PRINTED_NODE_LIST)
 
-                os.startfile(path, "print")
-                messagebox.showinfo(
-                    "Printed",
-                    f"Queued node list for printing: {path}",
-                )
+            def _cleanup() -> None:
+                try:
+                    Path(path).unlink()
+                except Exception:
+                    pass
 
-                def _cleanup() -> None:
-                    try:
-                        Path(path).unlink()
-                    except Exception:
-                        pass
-
-                self.after(30000, _cleanup)
-            except OSError as exc:
-                if getattr(exc, "winerror", None) == 1155:
-                    try:
-                        os.startfile(path)
-                        messagebox.showinfo(
-                            "Print",
-                            "No default PDF print handler is associated.\n\n"
-                            "Opened the PDF so you can print manually.",
-                        )
-                        return
-                    except Exception:
-                        pass
-                messagebox.showerror(
-                    "Print Failed",
-                    f"Saved PDF but failed to print:\n{exc}",
-                )
-            except Exception as exc:
-                messagebox.showerror(
-                    "Print Failed",
-                    f"Saved PDF but failed to print:\n{exc}",
-                )
+            self.after(TEMP_PRINT_CLEANUP_DELAY_MS, _cleanup)
         else:
             messagebox.showinfo("Exported", f"Wrote PDF to {path}")
 
