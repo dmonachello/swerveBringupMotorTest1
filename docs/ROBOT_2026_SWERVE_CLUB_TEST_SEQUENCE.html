@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>robot_2026_swerve Club Test Sequence</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.35;
+      margin: 0.6in;
+      color: #111;
+    }
+    h1, h2, h3 {
+      page-break-after: avoid;
+      margin-top: 1.1em;
+      margin-bottom: 0.4em;
+    }
+    p, ul, ol, pre {
+      page-break-inside: avoid;
+    }
+    pre {
+      background: #f5f5f5;
+      border: 1px solid #ccc;
+      padding: 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    code {
+      font-family: Consolas, monospace;
+    }
+    .section {
+      page-break-inside: avoid;
+    }
+  </style>
+</head>
+<body>
+  <h1>robot_2026_swerve Club Test Sequence</h1>
+
+  <div class="section">
+    <h2>Purpose</h2>
+    <p>Bring up the <code>robot_2026_swerve</code> profile on a real robot using the Bridge CLI, staged motor instantiation, and joystick-driven vendor groups.</p>
+  </div>
+
+  <div class="section">
+    <h2>Scope</h2>
+    <ul>
+      <li>Only the swerve drive hardware is connected.</li>
+      <li>The active profile is <code>robot_2026_swerve</code>.</li>
+      <li>The Kraken drive motors are controlled from the Xbox left stick.</li>
+      <li>The REV angle motors are controlled from the Xbox right stick.</li>
+      <li>Testing is incremental, one drive motor and one angle motor at a time.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Important Model</h2>
+    <ul>
+      <li><code>krakens</code> is the drive motor group.</li>
+      <li><code>neos</code> is the angle motor group.</li>
+      <li><code>leftDrive</code> is the left joystick input binding.</li>
+      <li><code>rightDrive</code> is the right joystick input binding.</li>
+      <li><code>add next</code> instantiates the next motor in profile order.</li>
+      <li>Group member <code>enable</code> / <code>disable</code> determines which instantiated motors respond.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Important Safety Notes</h2>
+    <ul>
+      <li>Group bindings can command any enabled group member.</li>
+      <li>Group bindings can also force creation of a configured device if that group member is enabled.</li>
+      <li>Because of that, disable all group members first, then enable only the motor pair currently under test.</li>
+      <li>The two DSL tests remain available, but they are bulk tests. Do not use them for staged one-motor-at-a-time bringup.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Profile Motor Order</h2>
+    <ol>
+      <li><code>frontLeft Drive Motor</code></li>
+      <li><code>frontLeft Angle Motor</code></li>
+      <li><code>frontRight Drive Motor</code></li>
+      <li><code>frontRight Angle Motor</code></li>
+      <li><code>backLeft Drive Motor</code></li>
+      <li><code>backLeft Angle Motor</code></li>
+      <li><code>backRight Drive Motor</code></li>
+      <li><code>backRight Angle Motor</code></li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>Start The CLI</h2>
+    <pre><code>python tools\can_nt\bridge_cli.py --rio 172.22.11.2</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>Connect And Inspect</h2>
+    <pre><code>connect
+show status
+show profile robot_2026_swerve
+show group krakens
+show group neos</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>One-Time Group Binding Setup</h2>
+    <pre><code>configure terminal
+group krakens
+no bind
+bind leftDrive analog
+member "frontLeft Drive Motor" disable
+member "frontRight Drive Motor" disable
+member "backLeft Drive Motor" disable
+member "backRight Drive Motor" disable
+enable
+group neos
+no bind
+bind rightDrive analog
+member "frontLeft Angle Motor" disable
+member "frontRight Angle Motor" disable
+member "backLeft Angle Motor" disable
+member "backRight Angle Motor" disable
+enable
+end
+show group krakens
+show group neos</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>Test Front Left</h2>
+    <pre><code>add next
+add next
+configure terminal
+group krakens
+member "frontLeft Drive Motor" enable
+group neos
+member "frontLeft Angle Motor" enable
+end
+show status
+show runtime-state</code></pre>
+    <p>Expected behavior: left joystick Y controls <code>frontLeft Drive Motor</code>; right joystick Y controls <code>frontLeft Angle Motor</code>.</p>
+  </div>
+
+  <div class="section">
+    <h2>Test Front Right</h2>
+    <pre><code>add next
+add next
+configure terminal
+group krakens
+member "frontLeft Drive Motor" disable
+member "frontRight Drive Motor" enable
+group neos
+member "frontLeft Angle Motor" disable
+member "frontRight Angle Motor" enable
+end</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>Test Back Left</h2>
+    <pre><code>add next
+add next
+configure terminal
+group krakens
+member "frontRight Drive Motor" disable
+member "backLeft Drive Motor" enable
+group neos
+member "frontRight Angle Motor" disable
+member "backLeft Angle Motor" enable
+end</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>Test Back Right</h2>
+    <pre><code>add next
+add next
+configure terminal
+group krakens
+member "backLeft Drive Motor" disable
+member "backRight Drive Motor" enable
+group neos
+member "backLeft Angle Motor" disable
+member "backRight Angle Motor" enable
+end</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>Enable All Drive Motors</h2>
+    <pre><code>configure terminal
+group krakens
+member "frontLeft Drive Motor" enable
+member "frontRight Drive Motor" enable
+member "backLeft Drive Motor" enable
+member "backRight Drive Motor" enable
+end</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>Enable All Angle Motors</h2>
+    <pre><code>configure terminal
+group neos
+member "frontLeft Angle Motor" enable
+member "frontRight Angle Motor" enable
+member "backLeft Angle Motor" enable
+member "backRight Angle Motor" enable
+end</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>Emergency / Recovery Commands</h2>
+    <pre><code>show status
+show runtime-state
+clear stop-latch
+
+configure terminal
+group krakens
+disable
+group neos
+disable
+end</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>Shutdown</h2>
+    <pre><code>disconnect
+quit</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>Short Version</h2>
+    <pre><code>python tools\can_nt\bridge_cli.py --rio 172.22.11.2
+connect
+configure terminal
+group krakens
+no bind
+bind leftDrive analog
+member "frontLeft Drive Motor" disable
+member "frontRight Drive Motor" disable
+member "backLeft Drive Motor" disable
+member "backRight Drive Motor" disable
+enable
+group neos
+no bind
+bind rightDrive analog
+member "frontLeft Angle Motor" disable
+member "frontRight Angle Motor" disable
+member "backLeft Angle Motor" disable
+member "backRight Angle Motor" disable
+enable
+end
+add next
+add next
+configure terminal
+group krakens
+member "frontLeft Drive Motor" enable
+group neos
+member "frontLeft Angle Motor" enable
+end</code></pre>
+  </div>
+</body>
+</html>

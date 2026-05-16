@@ -17,8 +17,10 @@
         "backRight Encoder",
         "roborio",
         "pdh",
-        "lmtSw0"
-      ]
+        "lmtSw0",
+        "controller0"
+      ],
+      "dslTestSet": "robot_2026_swerve"
     }
   },
   "devices": [
@@ -160,10 +162,19 @@
       "id": 0,
       "invert": false,
       "type": "limitSwitch"
+    },
+    {
+      "label": "controller0",
+      "deviceInterface": "USB",
+      "id": 0,
+      "manufacturer": 1,
+      "deviceType": 1,
+      "model": "Xbox Controller",
+      "type": "xboxController"
     }
   ],
-  "data_version": "2026-05-15_153155",
-  "data_hash": "d0d3274aa6bd34b5d9ed426fca323ad13815b6e7a685c620d563417594ae6f48",
+  "data_version": "2026-05-16_114923",
+  "data_hash": "f98601e0b00ed65865c70ba02488999572f59f22fb1c8da8f2fc42289f0aba9c",
   "default_profile": "robot_2026_swerve",
   "bridgeConfig": {
     "schemaVersion": 2,
@@ -225,6 +236,62 @@
               }
             ],
             "bindings": []
+          },
+          {
+            "name": "krakens",
+            "enabled": true,
+            "members": [
+              {
+                "device": "frontLeft Drive Motor",
+                "enabled": false
+              },
+              {
+                "device": "frontRight Drive Motor",
+                "enabled": false
+              },
+              {
+                "device": "backLeft Drive Motor",
+                "enabled": false
+              },
+              {
+                "device": "backRight Drive Motor",
+                "enabled": false
+              }
+            ],
+            "bindings": [
+              {
+                "input": "leftDrive",
+                "kind": "analog"
+              }
+            ]
+          },
+          {
+            "name": "neos",
+            "enabled": true,
+            "members": [
+              {
+                "device": "frontLeft Angle Motor",
+                "enabled": false
+              },
+              {
+                "device": "frontRight Angle Motor",
+                "enabled": false
+              },
+              {
+                "device": "backLeft Angle Motor",
+                "enabled": false
+              },
+              {
+                "device": "backRight Angle Motor",
+                "enabled": false
+              }
+            ],
+            "bindings": [
+              {
+                "input": "rightDrive",
+                "kind": "analog"
+              }
+            ]
           }
         ],
         "selectedDevice": {
@@ -232,8 +299,405 @@
           "enabled": false
         },
         "tests": {
-          "default_test_set": "default",
-          "test_sets": {}
+          "default_test_set": "robot_2026_swerve",
+          "test_sets": {
+            "robot_2026_swerve": [
+              {
+                "name": "Swerve Krakens Left Joystick",
+                "enabled": true,
+                "motorLabels": [
+                  "frontLeft Drive Motor",
+                  "frontRight Drive Motor",
+                  "backLeft Drive Motor",
+                  "backRight Drive Motor"
+                ],
+                "type": "joystick",
+                "inputSource": "controller0.leftY",
+                "deadband": 0.12
+              },
+              {
+                "name": "Swerve NEOs Right Joystick",
+                "enabled": true,
+                "motorLabels": [
+                  "frontLeft Angle Motor",
+                  "frontRight Angle Motor",
+                  "backLeft Angle Motor",
+                  "backRight Angle Motor"
+                ],
+                "type": "joystick",
+                "inputSource": "controller0.rightY",
+                "deadband": 0.12
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "dslTests": {
+    "schemaVersion": 1,
+    "defaultSet": "robot_2026_swerve",
+    "testSets": {
+      "robot_2026_swerve": [
+        "Swerve Krakens Left Joystick",
+        "Swerve NEOs Right Joystick"
+      ]
+    },
+    "testsByName": {
+      "Swerve Krakens Left Joystick": {
+        "source": "test \"Swerve Krakens Left Joystick\"\ndevice \"frontLeft Drive Motor\"\ndevice \"frontRight Drive Motor\"\ndevice \"backLeft Drive Motor\"\ndevice \"backRight Drive Motor\"\ndevice \"controller0\"\n\nunsafe-exit \"frontLeft Drive Motor\".output\nunsafe-exit \"frontRight Drive Motor\".output\nunsafe-exit \"backLeft Drive Motor\".output\nunsafe-exit \"backRight Drive Motor\".output\n\nmain:\n    set \"frontLeft Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0\n    set \"frontRight Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0\n    set \"backLeft Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0\n    set \"backRight Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0\n    abort controller0.B\n",
+        "sourceHash": "75d7c7136aa514bf559facb375f724cbd0b0767a6b4f06c35cc2055f43061760",
+        "normalized": {
+          "name": "Swerve Krakens Left Joystick",
+          "devices": [
+            {
+              "name": "frontLeft Drive Motor"
+            },
+            {
+              "name": "frontRight Drive Motor"
+            },
+            {
+              "name": "backLeft Drive Motor"
+            },
+            {
+              "name": "backRight Drive Motor"
+            },
+            {
+              "name": "controller0"
+            }
+          ],
+          "unsafeExit": [
+            {
+              "id": "unsafe_exit_1",
+              "text": "unsafe-exit \"frontLeft Drive Motor\".output",
+              "target": {
+                "device": "frontLeft Drive Motor",
+                "signal": "output",
+                "text": "frontLeft Drive Motor.output"
+              }
+            },
+            {
+              "id": "unsafe_exit_2",
+              "text": "unsafe-exit \"frontRight Drive Motor\".output",
+              "target": {
+                "device": "frontRight Drive Motor",
+                "signal": "output",
+                "text": "frontRight Drive Motor.output"
+              }
+            },
+            {
+              "id": "unsafe_exit_3",
+              "text": "unsafe-exit \"backLeft Drive Motor\".output",
+              "target": {
+                "device": "backLeft Drive Motor",
+                "signal": "output",
+                "text": "backLeft Drive Motor.output"
+              }
+            },
+            {
+              "id": "unsafe_exit_4",
+              "text": "unsafe-exit \"backRight Drive Motor\".output",
+              "target": {
+                "device": "backRight Drive Motor",
+                "signal": "output",
+                "text": "backRight Drive Motor.output"
+              }
+            }
+          ],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "set_1",
+                "text": "set \"frontLeft Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "frontLeft Drive Motor",
+                  "signal": "output",
+                  "text": "frontLeft Drive Motor.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "leftY",
+                  "text": "controller0.leftY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "set_2",
+                "text": "set \"frontRight Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "frontRight Drive Motor",
+                  "signal": "output",
+                  "text": "frontRight Drive Motor.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "leftY",
+                  "text": "controller0.leftY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "set_3",
+                "text": "set \"backLeft Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "backLeft Drive Motor",
+                  "signal": "output",
+                  "text": "backLeft Drive Motor.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "leftY",
+                  "text": "controller0.leftY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "set_4",
+                "text": "set \"backRight Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "backRight Drive Motor",
+                  "signal": "output",
+                  "text": "backRight Drive Motor.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "leftY",
+                  "text": "controller0.leftY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "clears": [],
+            "aborts": [
+              {
+                "id": "abort_1",
+                "kind": "abort",
+                "text": "abort controller0.B",
+                "reference": {
+                  "device": "controller0",
+                  "signal": "B",
+                  "text": "controller0.B"
+                }
+              }
+            ],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        }
+      },
+      "Swerve NEOs Right Joystick": {
+        "source": "test \"Swerve NEOs Right Joystick\"\ndevice \"frontLeft Angle Motor\"\ndevice \"frontRight Angle Motor\"\ndevice \"backLeft Angle Motor\"\ndevice \"backRight Angle Motor\"\ndevice \"controller0\"\n\nunsafe-exit \"frontLeft Angle Motor\".output\nunsafe-exit \"frontRight Angle Motor\".output\nunsafe-exit \"backLeft Angle Motor\".output\nunsafe-exit \"backRight Angle Motor\".output\n\nmain:\n    set \"frontLeft Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"frontRight Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"backLeft Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"backRight Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    abort controller0.B\n",
+        "sourceHash": "75df498447b126b8c4c36bca8879acf16a1135b5beb69f715386816631a9c09d",
+        "normalized": {
+          "name": "Swerve NEOs Right Joystick",
+          "devices": [
+            {
+              "name": "frontLeft Angle Motor"
+            },
+            {
+              "name": "frontRight Angle Motor"
+            },
+            {
+              "name": "backLeft Angle Motor"
+            },
+            {
+              "name": "backRight Angle Motor"
+            },
+            {
+              "name": "controller0"
+            }
+          ],
+          "unsafeExit": [
+            {
+              "id": "unsafe_exit_1",
+              "text": "unsafe-exit \"frontLeft Angle Motor\".output",
+              "target": {
+                "device": "frontLeft Angle Motor",
+                "signal": "output",
+                "text": "frontLeft Angle Motor.output"
+              }
+            },
+            {
+              "id": "unsafe_exit_2",
+              "text": "unsafe-exit \"frontRight Angle Motor\".output",
+              "target": {
+                "device": "frontRight Angle Motor",
+                "signal": "output",
+                "text": "frontRight Angle Motor.output"
+              }
+            },
+            {
+              "id": "unsafe_exit_3",
+              "text": "unsafe-exit \"backLeft Angle Motor\".output",
+              "target": {
+                "device": "backLeft Angle Motor",
+                "signal": "output",
+                "text": "backLeft Angle Motor.output"
+              }
+            },
+            {
+              "id": "unsafe_exit_4",
+              "text": "unsafe-exit \"backRight Angle Motor\".output",
+              "target": {
+                "device": "backRight Angle Motor",
+                "signal": "output",
+                "text": "backRight Angle Motor.output"
+              }
+            }
+          ],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "set_1",
+                "text": "set \"frontLeft Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "frontLeft Angle Motor",
+                  "signal": "output",
+                  "text": "frontLeft Angle Motor.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "rightY",
+                  "text": "controller0.rightY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "set_2",
+                "text": "set \"frontRight Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "frontRight Angle Motor",
+                  "signal": "output",
+                  "text": "frontRight Angle Motor.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "rightY",
+                  "text": "controller0.rightY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "set_3",
+                "text": "set \"backLeft Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "backLeft Angle Motor",
+                  "signal": "output",
+                  "text": "backLeft Angle Motor.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "rightY",
+                  "text": "controller0.rightY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "set_4",
+                "text": "set \"backRight Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "backRight Angle Motor",
+                  "signal": "output",
+                  "text": "backRight Angle Motor.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "rightY",
+                  "text": "controller0.rightY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "clears": [],
+            "aborts": [
+              {
+                "id": "abort_1",
+                "kind": "abort",
+                "text": "abort controller0.B",
+                "reference": {
+                  "device": "controller0",
+                  "signal": "B",
+                  "text": "controller0.B"
+                }
+              }
+            ],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
         }
       }
     }

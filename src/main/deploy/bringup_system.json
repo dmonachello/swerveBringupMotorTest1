@@ -16,14 +16,20 @@
         "backRight Angle Motor",
         "backRight Encoder",
         "roborio",
-        "pdh"
-      ]
+        "pdh",
+        "lmtSw0",
+        "controller0"
+      ],
+      "dslTestSet": "robot_2026_swerve"
     }
   },
   "devices": [
     {
       "label": "frontLeft Drive Motor",
       "deviceInterface": "CAN",
+      "attachments": [
+        "lmtSw0"
+      ],
       "id": 2,
       "manufacturer": 4,
       "deviceType": 2,
@@ -149,24 +155,539 @@
       "deviceType": 1,
       "model": "RobotController",
       "type": ""
+    },
+    {
+      "label": "lmtSw0",
+      "deviceInterface": "DIO",
+      "id": 0,
+      "invert": false,
+      "type": "limitSwitch"
+    },
+    {
+      "label": "controller0",
+      "deviceInterface": "USB",
+      "id": 0,
+      "manufacturer": 1,
+      "deviceType": 1,
+      "model": "Xbox Controller",
+      "type": "xboxController"
     }
   ],
-  "data_version": "2026-05-13_151835",
-  "data_hash": "0f1c89ac46c2ae0193a09757669825750cf383325001707c032d23efe5d69316",
+  "data_version": "2026-05-16_110915",
+  "data_hash": "5de59628ce1be01b74ebc849f13207887eb79e57c51290473dced2c5180a7c7d",
   "default_profile": "robot_2026_swerve",
   "bridgeConfig": {
     "schemaVersion": 2,
     "generatedAt": null,
     "byProfile": {
       "robot_2026_swerve": {
-        "groups": [],
+        "groups": [
+          {
+            "name": "driveTrain",
+            "enabled": true,
+            "members": [
+              {
+                "device": "frontLeft Drive Motor",
+                "enabled": true
+              },
+              {
+                "device": "frontLeft Angle Motor",
+                "enabled": true
+              },
+              {
+                "device": "frontLeft Encoder",
+                "enabled": true
+              },
+              {
+                "device": "frontRight Drive Motor",
+                "enabled": true
+              },
+              {
+                "device": "frontRight Angle Motor",
+                "enabled": true
+              },
+              {
+                "device": "frontRight Encoder",
+                "enabled": true
+              },
+              {
+                "device": "backLeft Drive Motor",
+                "enabled": true
+              },
+              {
+                "device": "backLeft Angle Motor",
+                "enabled": true
+              },
+              {
+                "device": "backLeft Encoder",
+                "enabled": true
+              },
+              {
+                "device": "backRight Drive Motor",
+                "enabled": true
+              },
+              {
+                "device": "backRight Angle Motor",
+                "enabled": true
+              },
+              {
+                "device": "backRight Encoder",
+                "enabled": true
+              }
+            ],
+            "bindings": []
+          },
+          {
+            "name": "krakens",
+            "enabled": true,
+            "members": [
+              {
+                "device": "frontLeft Drive Motor",
+                "enabled": true
+              },
+              {
+                "device": "frontRight Drive Motor",
+                "enabled": true
+              },
+              {
+                "device": "backLeft Drive Motor",
+                "enabled": true
+              },
+              {
+                "device": "backRight Drive Motor",
+                "enabled": true
+              }
+            ],
+            "bindings": []
+          },
+          {
+            "name": "neos",
+            "enabled": true,
+            "members": [
+              {
+                "device": "frontLeft Angle Motor",
+                "enabled": true
+              },
+              {
+                "device": "frontRight Angle Motor",
+                "enabled": true
+              },
+              {
+                "device": "backLeft Angle Motor",
+                "enabled": true
+              },
+              {
+                "device": "backRight Angle Motor",
+                "enabled": true
+              }
+            ],
+            "bindings": []
+          }
+        ],
         "selectedDevice": {
           "device": "",
           "enabled": false
         },
         "tests": {
-          "default_test_set": "default",
-          "test_sets": {}
+          "default_test_set": "robot_2026_swerve",
+          "test_sets": {
+            "robot_2026_swerve": [
+              {
+                "name": "Swerve Krakens Left Joystick",
+                "enabled": true,
+                "motorLabels": [
+                  "frontLeft Drive Motor",
+                  "frontRight Drive Motor",
+                  "backLeft Drive Motor",
+                  "backRight Drive Motor"
+                ],
+                "type": "joystick",
+                "inputSource": "controller0.leftY",
+                "deadband": 0.12
+              },
+              {
+                "name": "Swerve NEOs Right Joystick",
+                "enabled": true,
+                "motorLabels": [
+                  "frontLeft Angle Motor",
+                  "frontRight Angle Motor",
+                  "backLeft Angle Motor",
+                  "backRight Angle Motor"
+                ],
+                "type": "joystick",
+                "inputSource": "controller0.rightY",
+                "deadband": 0.12
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "dslTests": {
+    "schemaVersion": 1,
+    "defaultSet": "robot_2026_swerve",
+    "testSets": {
+      "robot_2026_swerve": [
+        "Swerve Krakens Left Joystick",
+        "Swerve NEOs Right Joystick"
+      ]
+    },
+    "testsByName": {
+      "Swerve Krakens Left Joystick": {
+        "source": "test \"Swerve Krakens Left Joystick\"\ndevice \"frontLeft Drive Motor\"\ndevice \"frontRight Drive Motor\"\ndevice \"backLeft Drive Motor\"\ndevice \"backRight Drive Motor\"\ndevice \"controller0\"\n\nunsafe-exit \"frontLeft Drive Motor\".output\nunsafe-exit \"frontRight Drive Motor\".output\nunsafe-exit \"backLeft Drive Motor\".output\nunsafe-exit \"backRight Drive Motor\".output\n\nmain:\n    set \"frontLeft Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0\n    set \"frontRight Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0\n    set \"backLeft Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0\n    set \"backRight Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0\n    abort controller0.B\n",
+        "sourceHash": "75d7c7136aa514bf559facb375f724cbd0b0767a6b4f06c35cc2055f43061760",
+        "normalized": {
+          "name": "Swerve Krakens Left Joystick",
+          "devices": [
+            {
+              "name": "frontLeft Drive Motor"
+            },
+            {
+              "name": "frontRight Drive Motor"
+            },
+            {
+              "name": "backLeft Drive Motor"
+            },
+            {
+              "name": "backRight Drive Motor"
+            },
+            {
+              "name": "controller0"
+            }
+          ],
+          "unsafeExit": [
+            {
+              "id": "unsafe_exit_1",
+              "text": "unsafe-exit \"frontLeft Drive Motor\".output",
+              "target": {
+                "device": "frontLeft Drive Motor",
+                "signal": "output",
+                "text": "frontLeft Drive Motor.output"
+              }
+            },
+            {
+              "id": "unsafe_exit_2",
+              "text": "unsafe-exit \"frontRight Drive Motor\".output",
+              "target": {
+                "device": "frontRight Drive Motor",
+                "signal": "output",
+                "text": "frontRight Drive Motor.output"
+              }
+            },
+            {
+              "id": "unsafe_exit_3",
+              "text": "unsafe-exit \"backLeft Drive Motor\".output",
+              "target": {
+                "device": "backLeft Drive Motor",
+                "signal": "output",
+                "text": "backLeft Drive Motor.output"
+              }
+            },
+            {
+              "id": "unsafe_exit_4",
+              "text": "unsafe-exit \"backRight Drive Motor\".output",
+              "target": {
+                "device": "backRight Drive Motor",
+                "signal": "output",
+                "text": "backRight Drive Motor.output"
+              }
+            }
+          ],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "set_1",
+                "text": "set \"frontLeft Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "frontLeft Drive Motor",
+                  "signal": "output",
+                  "text": "frontLeft Drive Motor.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "leftY",
+                  "text": "controller0.leftY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "set_2",
+                "text": "set \"frontRight Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "frontRight Drive Motor",
+                  "signal": "output",
+                  "text": "frontRight Drive Motor.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "leftY",
+                  "text": "controller0.leftY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "set_3",
+                "text": "set \"backLeft Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "backLeft Drive Motor",
+                  "signal": "output",
+                  "text": "backLeft Drive Motor.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "leftY",
+                  "text": "controller0.leftY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "set_4",
+                "text": "set \"backRight Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "backRight Drive Motor",
+                  "signal": "output",
+                  "text": "backRight Drive Motor.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "leftY",
+                  "text": "controller0.leftY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "clears": [],
+            "aborts": [
+              {
+                "id": "abort_1",
+                "kind": "abort",
+                "text": "abort controller0.B",
+                "reference": {
+                  "device": "controller0",
+                  "signal": "B",
+                  "text": "controller0.B"
+                }
+              }
+            ],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        }
+      },
+      "Swerve NEOs Right Joystick": {
+        "source": "test \"Swerve NEOs Right Joystick\"\ndevice \"frontLeft Angle Motor\"\ndevice \"frontRight Angle Motor\"\ndevice \"backLeft Angle Motor\"\ndevice \"backRight Angle Motor\"\ndevice \"controller0\"\n\nunsafe-exit \"frontLeft Angle Motor\".output\nunsafe-exit \"frontRight Angle Motor\".output\nunsafe-exit \"backLeft Angle Motor\".output\nunsafe-exit \"backRight Angle Motor\".output\n\nmain:\n    set \"frontLeft Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"frontRight Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"backLeft Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"backRight Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    abort controller0.B\n",
+        "sourceHash": "75df498447b126b8c4c36bca8879acf16a1135b5beb69f715386816631a9c09d",
+        "normalized": {
+          "name": "Swerve NEOs Right Joystick",
+          "devices": [
+            {
+              "name": "frontLeft Angle Motor"
+            },
+            {
+              "name": "frontRight Angle Motor"
+            },
+            {
+              "name": "backLeft Angle Motor"
+            },
+            {
+              "name": "backRight Angle Motor"
+            },
+            {
+              "name": "controller0"
+            }
+          ],
+          "unsafeExit": [
+            {
+              "id": "unsafe_exit_1",
+              "text": "unsafe-exit \"frontLeft Angle Motor\".output",
+              "target": {
+                "device": "frontLeft Angle Motor",
+                "signal": "output",
+                "text": "frontLeft Angle Motor.output"
+              }
+            },
+            {
+              "id": "unsafe_exit_2",
+              "text": "unsafe-exit \"frontRight Angle Motor\".output",
+              "target": {
+                "device": "frontRight Angle Motor",
+                "signal": "output",
+                "text": "frontRight Angle Motor.output"
+              }
+            },
+            {
+              "id": "unsafe_exit_3",
+              "text": "unsafe-exit \"backLeft Angle Motor\".output",
+              "target": {
+                "device": "backLeft Angle Motor",
+                "signal": "output",
+                "text": "backLeft Angle Motor.output"
+              }
+            },
+            {
+              "id": "unsafe_exit_4",
+              "text": "unsafe-exit \"backRight Angle Motor\".output",
+              "target": {
+                "device": "backRight Angle Motor",
+                "signal": "output",
+                "text": "backRight Angle Motor.output"
+              }
+            }
+          ],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "set_1",
+                "text": "set \"frontLeft Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "frontLeft Angle Motor",
+                  "signal": "output",
+                  "text": "frontLeft Angle Motor.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "rightY",
+                  "text": "controller0.rightY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "set_2",
+                "text": "set \"frontRight Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "frontRight Angle Motor",
+                  "signal": "output",
+                  "text": "frontRight Angle Motor.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "rightY",
+                  "text": "controller0.rightY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "set_3",
+                "text": "set \"backLeft Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "backLeft Angle Motor",
+                  "signal": "output",
+                  "text": "backLeft Angle Motor.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "rightY",
+                  "text": "controller0.rightY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "set_4",
+                "text": "set \"backRight Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "backRight Angle Motor",
+                  "signal": "output",
+                  "text": "backRight Angle Motor.output"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "rightY",
+                  "text": "controller0.rightY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "clears": [],
+            "aborts": [
+              {
+                "id": "abort_1",
+                "kind": "abort",
+                "text": "abort controller0.B",
+                "reference": {
+                  "device": "controller0",
+                  "signal": "B",
+                  "text": "controller0.B"
+                }
+              }
+            ],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
         }
       }
     }
@@ -186,8 +707,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 104.2857142857145,
-              "y": 512.5
+              "x": 93.78917200035471,
+              "y": 57.54138499118162,
+              "yRelative": false
             }
           },
           {
@@ -197,8 +719,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 404.28571428571445,
-              "y": 426.5
+              "x": 258.41364633305875,
+              "y": 60.02784718105283,
+              "yRelative": false
             }
           },
           {
@@ -208,8 +731,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 704.2857142857144,
-              "y": 569.0
+              "x": 416.81386169558675,
+              "y": 64.99626067710447,
+              "yRelative": false
             }
           },
           {
@@ -219,8 +743,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1562.1428571428576,
-              "y": 563.2857142857142
+              "x": 591.937065648567,
+              "y": 65.20432054144837,
+              "yRelative": false
             }
           },
           {
@@ -230,8 +755,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 2162.142857142858,
-              "y": 558.4999999999999
+              "x": 746.0356964780434,
+              "y": 64.91155263458536,
+              "yRelative": false
             }
           },
           {
@@ -241,8 +767,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 2466.142857142858,
-              "y": 566.1428571428571
+              "x": 897.2640577519443,
+              "y": 62.72011379342254,
+              "yRelative": false
             }
           },
           {
@@ -252,8 +779,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 116.2857142857145,
-              "y": 1076.6351984829137
+              "x": 111.56589136923523,
+              "y": 470.2707730217912,
+              "yRelative": false
             }
           },
           {
@@ -263,8 +791,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 416.2857142857145,
-              "y": 1079.2156537389603
+              "x": 261.56589136923526,
+              "y": 472.72749556959246,
+              "yRelative": false
             }
           },
           {
@@ -274,8 +803,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 716.2857142857144,
-              "y": 1076.6351984829137
+              "x": 411.56589136923526,
+              "y": 475.18421811739375,
+              "yRelative": false
             }
           },
           {
@@ -285,8 +815,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1412.1428571428576,
-              "y": 1106.4285714285713
+              "x": 596.8959475717021,
+              "y": 477.640940665195,
+              "yRelative": false
             }
           },
           {
@@ -296,8 +827,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1862.1428571428576,
-              "y": 1106.4285714285713
+              "x": 753.3630409394563,
+              "y": 478.86930193909564,
+              "yRelative": false
             }
           },
           {
@@ -307,8 +839,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 2316.142857142858,
-              "y": 1105.0
+              "x": 904.6692024657967,
+              "y": 478.86930193909564,
+              "yRelative": false
             }
           },
           {
@@ -318,8 +851,9 @@
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 305.28571428571433,
-              "y": -66.14285714285715
+              "x": 74.35379479239774,
+              "y": -68.28311219495697,
+              "yRelative": true
             }
           },
           {
@@ -329,8 +863,21 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 2766.142857142858,
-              "y": 43.64671820535992
+              "x": 1167.3996371333114,
+              "y": 49.63957009950292,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 35,
+            "nodeType": "device",
+            "deviceRef": "lmtSw0",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 173.99098256247217,
+              "y": -18.660194903198544,
+              "yRelative": true
             }
           },
           {
@@ -343,8 +890,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1712.1428571428576,
-              "y": 1205.357142857143
+              "x": 750.9666530025316,
+              "y": 383.06638020185903,
+              "yRelative": false
             }
           },
           {
@@ -357,8 +905,9 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 2614.142857142858,
-              "y": 1201.142857142857
+              "x": 1100.8345890607604,
+              "y": 382.1379650761637,
+              "yRelative": false
             }
           },
           {
@@ -371,8 +920,9 @@
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 155.28571428571433,
-              "y": 1211.7780556257708
+              "x": 224.07155048020635,
+              "y": 379.4760575759854,
+              "yRelative": false
             }
           },
           {
@@ -385,8 +935,9 @@
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 293.28571428571433,
-              "y": 667.5714285714287
+              "x": 259.2029499942213,
+              "y": 186.04220468284757,
+              "yRelative": false
             }
           },
           {
@@ -399,14 +950,167 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 2012.1428571428576,
-              "y": 676.8571428571429
+              "x": 753.7690828775711,
+              "y": 193.05177208487964,
+              "yRelative": false
             }
           }
         ],
         "edges": [
           {
             "id": "edge_1",
+            "fromNode": 34,
+            "fromPort": "right",
+            "toNode": 3,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_2",
+            "fromNode": 3,
+            "fromPort": "right",
+            "toNode": 9,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_3",
+            "fromNode": 9,
+            "fromPort": "right",
+            "toNode": 19,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_4",
+            "fromNode": 19,
+            "fromPort": "right",
+            "toNode": 4,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_5",
+            "fromNode": 4,
+            "fromPort": "right",
+            "toNode": 20,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_6",
+            "fromNode": 20,
+            "fromPort": "right",
+            "toNode": 10,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_7",
+            "fromNode": 10,
+            "fromPort": "right",
+            "toNode": 11,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_8",
+            "fromNode": 11,
+            "fromPort": "right",
+            "toNode": 5,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_9",
+            "fromNode": 5,
+            "fromPort": "right",
+            "toNode": 6,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_10",
+            "fromNode": 6,
+            "fromPort": "right",
+            "toNode": 12,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_11",
+            "fromNode": 12,
+            "fromPort": "right",
+            "toNode": 7,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_12",
+            "fromNode": 7,
+            "fromPort": "right",
+            "toNode": 16,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_13",
+            "fromNode": 16,
+            "fromPort": "right",
+            "toNode": 13,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_14",
+            "fromNode": 13,
+            "fromPort": "right",
+            "toNode": 21,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_15",
+            "fromNode": 21,
+            "fromPort": "right",
+            "toNode": 8,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_16",
+            "fromNode": 8,
+            "fromPort": "right",
+            "toNode": 14,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_17",
+            "fromNode": 14,
+            "fromPort": "right",
+            "toNode": 17,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_18",
+            "fromNode": 17,
+            "fromPort": "right",
+            "toNode": 18,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_19",
+            "fromNode": 34,
+            "fromPort": "dio",
+            "toNode": 35,
+            "toPort": "dio",
+            "edgeType": "dio"
+          },
+          {
+            "id": "edge_20",
             "fromNode": 17,
             "fromPort": "power",
             "toNode": 18,
@@ -414,7 +1118,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_2",
+            "id": "edge_21",
             "fromNode": 12,
             "fromPort": "power",
             "toNode": 18,
@@ -422,7 +1126,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_3",
+            "id": "edge_22",
             "fromNode": 13,
             "fromPort": "power",
             "toNode": 18,
@@ -430,7 +1134,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_4",
+            "id": "edge_23",
             "fromNode": 14,
             "fromPort": "power",
             "toNode": 16,
@@ -438,7 +1142,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_5",
+            "id": "edge_24",
             "fromNode": 8,
             "fromPort": "power",
             "toNode": 21,
@@ -446,7 +1150,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_6",
+            "id": "edge_25",
             "fromNode": 11,
             "fromPort": "power",
             "toNode": 19,
@@ -454,7 +1158,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_7",
+            "id": "edge_26",
             "fromNode": 5,
             "fromPort": "power",
             "toNode": 20,
@@ -462,7 +1166,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_8",
+            "id": "edge_27",
             "fromNode": 7,
             "fromPort": "power",
             "toNode": 18,
@@ -470,7 +1174,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_9",
+            "id": "edge_28",
             "fromNode": 6,
             "fromPort": "power",
             "toNode": 18,
@@ -478,7 +1182,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_10",
+            "id": "edge_29",
             "fromNode": 4,
             "fromPort": "power",
             "toNode": 18,
@@ -486,7 +1190,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_11",
+            "id": "edge_30",
             "fromNode": 3,
             "fromPort": "power",
             "toNode": 18,
@@ -494,7 +1198,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_12",
+            "id": "edge_31",
             "fromNode": 10,
             "fromPort": "power",
             "toNode": 18,
@@ -502,17 +1206,25 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_13",
+            "id": "edge_32",
             "fromNode": 9,
             "fromPort": "power",
             "toNode": 18,
             "toPort": "power",
             "edgeType": "power"
+          },
+          {
+            "id": "edge_33",
+            "fromNode": 3,
+            "fromPort": "attachment",
+            "toNode": 35,
+            "toPort": "attachment",
+            "edgeType": "virtual"
           }
         ],
         "view": {
           "busOffsets": [
-            151.5
+            -234.80859819716682
           ],
           "busCount": 1,
           "busSpacing": 160.0,
@@ -520,11 +1232,11 @@
             40.0
           ],
           "busRights": [
-            2886.142857142858
+            1287.3996371333114
           ],
           "busConnectors": [],
-          "panY": -226.25,
-          "zoom": 0.5000000000000001,
+          "panY": -58.84402399667054,
+          "zoom": 0.8140927439242125,
           "ethernetLinks": [
             {
               "a": 16,
