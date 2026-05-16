@@ -65,6 +65,12 @@ from tools.common.profile_constants import (
 
 EMPTY_STRING = ""
 GRAPH_LAYOUT_KEYS = (KEY_BUS, LAYOUT_KEY_ROW, LAYOUT_KEY_X, LAYOUT_KEY_Y)
+LAYOUT_KEY_Y_RELATIVE = "yRelative"
+KEY_FREE_Y = "freeY"
+KEY_FREE_Y_RELATIVE = "freeYRelative"
+KEY_PROFILE_VISIBLE = "profileVisible"
+KEY_SCALE = "scale"
+KEY_TEXT = "text"
 CAN_EDGE_TYPES = {
     EDGE_TYPE_CAN_TRUNK,
     EDGE_TYPE_CAN_DROP,
@@ -249,6 +255,9 @@ def parse_diagram_nodes(diagram: Dict[str, object]) -> List[Dict[str, object]]:
             LAYOUT_KEY_ROW: layout_dict.get(LAYOUT_KEY_ROW, 0),
             LAYOUT_KEY_X: layout_dict.get(LAYOUT_KEY_X, 0.0),
         }
+        if LAYOUT_KEY_Y in layout_dict:
+            compat[KEY_FREE_Y] = layout_dict.get(LAYOUT_KEY_Y)
+            compat[KEY_FREE_Y_RELATIVE] = bool(layout_dict.get(LAYOUT_KEY_Y_RELATIVE, False))
         if entry.get(KEY_NODE_TYPE) == NODE_TYPE_DEVICE:
             compat[KEY_LABEL] = str(entry.get(KEY_DEVICE_REF, EMPTY_STRING)).strip()
         else:
@@ -259,6 +268,12 @@ def parse_diagram_nodes(diagram: Dict[str, object]) -> List[Dict[str, object]]:
                 compat[KEY_VENDOR] = entry.get(KEY_VENDOR)
             if KEY_MODEL in entry:
                 compat[KEY_MODEL] = entry.get(KEY_MODEL)
+            if KEY_TEXT in entry:
+                compat[KEY_TEXT] = entry.get(KEY_TEXT)
+        if KEY_PROFILE_VISIBLE in entry:
+            compat[KEY_PROFILE_VISIBLE] = entry.get(KEY_PROFILE_VISIBLE)
+        if KEY_SCALE in entry:
+            compat[KEY_SCALE] = entry.get(KEY_SCALE)
         nodes.append(compat)
     return nodes
 
@@ -347,6 +362,32 @@ def parse_diagram_links(
             }
         )
     return [], can_links, []
+
+
+def parse_diagram_aux_links(
+    diagram: Dict[str, object],
+) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]], List[Tuple[int, int]]]:
+    """
+    NAME
+        parse_diagram_aux_links - Extract power, attachment, and DIO edge pairs.
+    """
+    power_links: List[Tuple[int, int]] = []
+    attachment_links: List[Tuple[int, int]] = []
+    dio_links: List[Tuple[int, int]] = []
+    for edge in topology_edges(diagram):
+        from_node = edge.get(KEY_FROM_NODE)
+        to_node = edge.get(KEY_TO_NODE)
+        edge_type = str(edge.get(KEY_EDGE_TYPE, EMPTY_STRING)).strip()
+        if not isinstance(from_node, int) or not isinstance(to_node, int):
+            continue
+        pair = (from_node, to_node)
+        if edge_type == EDGE_TYPE_POWER:
+            power_links.append(pair)
+        elif edge_type == EDGE_TYPE_VIRTUAL:
+            attachment_links.append(pair)
+        elif edge_type == EDGE_TYPE_DIO:
+            dio_links.append(pair)
+    return power_links, attachment_links, dio_links
 
 
 def parse_diagram_neighbor_links(diagram: Dict[str, object]) -> List[Tuple[int, int]]:

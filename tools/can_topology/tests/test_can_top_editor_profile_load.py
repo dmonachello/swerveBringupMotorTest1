@@ -8,7 +8,8 @@ from pathlib import Path
 
 import tools.can_topology.can_top_editor as can_top_editor
 from tools.can_topology.can_top_editor import TopologyEditor
-from tools.can_topology.can_top_models import INTERFACE_CAN, INTERFACE_DIO, Node
+from tools.can_topology.can_top_models import GENERIC_CATEGORY, INTERFACE_CAN, INTERFACE_DIO, Node
+from tools.common.topology_draw import draw_group_overlays
 from tools.config.schema_store import ConfigSchemaStore, DOC_PROFILES
 
 
@@ -65,6 +66,7 @@ class _CanvasStub:
         self.scan_dragto_args = None
         self.scrollregion = "0 0 1000 500"
         self.lines: list[dict[str, object]] = []
+        self.texts: list[dict[str, object]] = []
         self._next_item_id = 1
 
     def winfo_width(self) -> int:
@@ -104,6 +106,7 @@ class _CanvasStub:
     def create_text(self, *_args: object, **_kwargs: object) -> int:
         item_id = self._next_item_id
         self._next_item_id += 1
+        self.texts.append({"args": _args, "kwargs": _kwargs})
         return item_id
 
     def create_line(self, *args: object, **kwargs: object) -> int:
@@ -116,6 +119,9 @@ class _CanvasStub:
         pass
 
     def tag_lower(self, *_args: object) -> None:
+        pass
+
+    def tag_raise(self, *_args: object) -> None:
         pass
 
     def scan_mark(self, x: int, y: int) -> None:
@@ -220,6 +226,96 @@ class _MessageBoxStub:
     @staticmethod
     def askyesno(*_args: object, **_kwargs: object) -> bool:
         return True
+
+
+class _DialogStub:
+    """
+    NAME
+        _DialogStub - Minimal toplevel stand-in for bulk-edit tests.
+    """
+
+    def title(self, *_args: object) -> None:
+        pass
+
+    def resizable(self, *_args: object) -> None:
+        pass
+
+    def transient(self, *_args: object) -> None:
+        pass
+
+    def grab_set(self) -> None:
+        pass
+
+    def destroy(self) -> None:
+        pass
+
+
+class _TkVarStub:
+    """
+    NAME
+        _TkVarStub - Minimal Tk variable stand-in.
+    """
+
+    instances: list["_TkVarStub"] = []
+
+    def __init__(self, value: object = "") -> None:
+        self.value = value
+        self.__class__.instances.append(self)
+
+    def get(self) -> object:
+        return self.value
+
+    def set(self, value: object) -> None:
+        self.value = value
+
+
+class _WidgetStub:
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        pass
+
+    def grid(self, *_args: object, **_kwargs: object) -> None:
+        pass
+
+    def pack(self, *_args: object, **_kwargs: object) -> None:
+        pass
+
+
+class _ComboboxStub(_WidgetStub):
+    """
+    NAME
+        _ComboboxStub - Minimal combobox stand-in for bulk-edit tests.
+    """
+
+    instances: list["_ComboboxStub"] = []
+
+    def __init__(self, *_args: object, textvariable: object = None, **_kwargs: object) -> None:
+        super().__init__()
+        self.value = ""
+        self.textvariable = textvariable
+        self.__class__.instances.append(self)
+
+    def set(self, value: str) -> None:
+        self.value = value
+        if self.textvariable is not None and hasattr(self.textvariable, "set"):
+            self.textvariable.set(value)
+
+    def get(self) -> str:
+        if self.textvariable is not None and hasattr(self.textvariable, "get"):
+            return str(self.textvariable.get())
+        return self.value
+
+
+class _ButtonStub(_WidgetStub):
+    """
+    NAME
+        _ButtonStub - Minimal button stand-in that captures commands.
+    """
+
+    commands_by_text: dict[str, object] = {}
+
+    def __init__(self, *_args: object, text: str = "", command: object = None, **_kwargs: object) -> None:
+        super().__init__()
+        self.commands_by_text[text] = command
 
 
 class TopologyEditorProfileLoadTests(unittest.TestCase):
@@ -607,6 +703,229 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         self.assertEqual(callouts[0]["freeY"], 210.0)
         self.assertTrue(callouts[0]["freeYRelative"])
 
+    def test_validate_nodes_names_generic_device_missing_vendor_type(self) -> None:
+        editor = self._headless_editor("generic_validation")
+        editor._nodes = [
+            Node(
+                key=1,
+                category=GENERIC_CATEGORY,
+                label="mysteryThing",
+                can_id=9,
+                interface=INTERFACE_CAN,
+                vendor="",
+                device_type="",
+            )
+        ]
+
+        validation_error = editor._validate_nodes()
+
+        self.assertEqual(
+            validation_error,
+            "Generic device 'mysteryThing' requires vendor and device type.",
+        )
+
+    def test_bulk_edit_names_generic_device_missing_vendor_type(self) -> None:
+        editor = self._headless_editor("bulk_generic_validation")
+        editor._nodes = [
+            Node(
+                key=1,
+                category="krakens",
+                label="mysteryThing",
+                can_id=9,
+                interface=INTERFACE_CAN,
+                vendor="",
+                device_type="",
+            )
+        ]
+        editor._selected_nodes = {1}
+        editor._push_undo = lambda: None
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._normalize_tags = lambda value: list(value) if isinstance(value, list) else []
+        editor._normalize_limits = lambda value: value
+
+        original_toplevel = can_top_editor.tk.Toplevel
+        original_boolvar = can_top_editor.tk.BooleanVar
+        original_stringvar = can_top_editor.tk.StringVar
+        original_frame = can_top_editor.ttk.Frame
+        original_label = can_top_editor.ttk.Label
+        original_checkbutton = can_top_editor.ttk.Checkbutton
+        original_combobox = can_top_editor.ttk.Combobox
+        original_entry = can_top_editor.ttk.Entry
+        original_button = can_top_editor.ttk.Button
+        original_messagebox = can_top_editor.messagebox
+        _TkVarStub.instances = []
+        _ComboboxStub.instances = []
+        _ButtonStub.commands_by_text = {}
+        can_top_editor.tk.Toplevel = lambda *_args, **_kwargs: _DialogStub()
+        can_top_editor.tk.BooleanVar = _TkVarStub
+        can_top_editor.tk.StringVar = _TkVarStub
+        can_top_editor.ttk.Frame = _WidgetStub
+        can_top_editor.ttk.Label = _WidgetStub
+        can_top_editor.ttk.Checkbutton = _WidgetStub
+        can_top_editor.ttk.Combobox = _ComboboxStub
+        can_top_editor.ttk.Entry = _WidgetStub
+        can_top_editor.ttk.Button = _ButtonStub
+        can_top_editor.messagebox = _MessageBoxStub
+        try:
+
+            def wait_window(_dialog: object) -> None:
+                _TkVarStub.instances[0].set(True)
+                _ComboboxStub.instances[0].set(GENERIC_CATEGORY)
+                ok = _ButtonStub.commands_by_text["OK"]
+                ok()
+
+            editor.wait_window = wait_window
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "Generic device 'mysteryThing' requires vendor and device type.",
+            ):
+                editor._bulk_edit_selection()
+        finally:
+            can_top_editor.tk.Toplevel = original_toplevel
+            can_top_editor.tk.BooleanVar = original_boolvar
+            can_top_editor.tk.StringVar = original_stringvar
+            can_top_editor.ttk.Frame = original_frame
+            can_top_editor.ttk.Label = original_label
+            can_top_editor.ttk.Checkbutton = original_checkbutton
+            can_top_editor.ttk.Combobox = original_combobox
+            can_top_editor.ttk.Entry = original_entry
+            can_top_editor.ttk.Button = original_button
+            can_top_editor.messagebox = original_messagebox
+
+    def test_node_groups_by_label_maps_bridge_group_memberships(self) -> None:
+        editor = self._headless_editor("group_memberships")
+        editor._root_extras = {
+            "bridgeConfig": {
+                "byProfile": {
+                    "group_memberships": {
+                        "groups": [
+                            {
+                                "name": "leftModule",
+                                "members": [{"device": "frontLeft Drive Motor", "enabled": True}],
+                            },
+                            {
+                                "name": "rightModule",
+                                "members": ["frontRight Drive Motor"],
+                            },
+                            {
+                                "name": "drive",
+                                "members": [
+                                    {"device": "frontLeft Drive Motor", "enabled": True},
+                                    {"device": "frontRight Drive Motor", "enabled": True},
+                                ],
+                            },
+                        ]
+                    }
+                }
+            }
+        }
+        editor._profile_name = "group_memberships"
+
+        groups = editor._node_groups_by_label()
+
+        self.assertEqual(groups["frontLeft Drive Motor"], ["leftModule", "drive"])
+        self.assertEqual(groups["frontRight Drive Motor"], ["rightModule", "drive"])
+
+    def test_group_overlay_label_bounds_are_above_group_box(self) -> None:
+        canvas = _CanvasStub()
+        overlays = draw_group_overlays(
+            canvas,
+            {"drive": (100.0, 200.0, 180.0, 240.0)},
+            [{"name": "leftModule", "members": [{"device": "drive"}]}],
+            zoom=1.0,
+        )
+
+        self.assertEqual(len(overlays), 1)
+        bounds = overlays[0]["bounds"]
+        label_bounds = overlays[0]["label_bounds"]
+        self.assertLess(label_bounds[3], bounds[1])
+
+    def test_group_overlay_press_selects_and_starts_group_drag(self) -> None:
+        editor = self._headless_editor("group_drag")
+        editor._nodes = [
+            Node(
+                key=0,
+                category="cannect_direct",
+                label="cannect 3",
+                can_id=-1,
+                node_type="diagram",
+                interface=INTERFACE_CAN,
+                x=60.0,
+                row=1,
+                bus_index=0,
+                profile_visible=False,
+            ),
+            Node(
+                key=1,
+                category="krakens",
+                label="frontLeft Drive Motor",
+                can_id=2,
+                interface=INTERFACE_CAN,
+                x=100.0,
+                free_y=100.0,
+            ),
+            Node(
+                key=2,
+                category="neos",
+                label="frontLeft Angle Motor",
+                can_id=1,
+                interface=INTERFACE_CAN,
+                x=200.0,
+                free_y=100.0,
+            ),
+        ]
+        editor._root_extras = {
+            "bridgeConfig": {
+                "byProfile": {
+                    "group_drag": {
+                        "groups": [
+                            {
+                                "name": "frontLeft",
+                                "members": [
+                                    {"device": "frontLeft Drive Motor", "enabled": True},
+                                    {"device": "frontLeft Angle Motor", "enabled": True},
+                                ],
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+        editor._cannect_device_links = [
+            {"node": 0, "device": 1, "port": 1},
+            {"node": 0, "device": 2, "port": 2},
+        ]
+        editor.canvas = _CanvasStub()
+        editor._clear_guides = lambda: None
+        editor._selection_rect = None
+        editor._selection_start = None
+        editor._add_bus_mode = False
+        editor._selected_nodes = set()
+        editor._selected_buses = set()
+        editor._bus_hit_test = lambda _cy: None
+        editor._shift_held = TopologyEditor._shift_held.__get__(editor, TopologyEditor)
+        editor._sync_selection_state = lambda: None
+        editor._push_undo = lambda: None
+        editor._tag_to_key = TopologyEditor._tag_to_key
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._node_center_y_unscaled = TopologyEditor._node_center_y_unscaled.__get__(editor, TopologyEditor)
+        editor._bus_offsets = [0.0]
+        editor._box_h = 34
+        editor._group_overlay_regions = [
+            {
+                "name": "frontLeft",
+                "bounds": (50.0, 50.0, 260.0, 180.0),
+                "label_bounds": (56.0, 56.0, 130.0, 76.0),
+            }
+        ]
+
+        editor._on_canvas_press(_PointerEventStub(60, 60))
+
+        self.assertEqual(editor._selected_nodes, {0, 1, 2})
+        self.assertIsNotNone(editor._multi_drag)
+        self.assertEqual(editor._multi_drag.get("anchor"), 0)
+
     def test_schema_v4_label_list_profile_loads_registry_devices(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)
         editor._next_key = 1
@@ -952,6 +1271,92 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         self.assertLess(editor._pan_y, -100.0)
         self.assertIsNotNone(editor.canvas.xview_value)
         self.assertEqual(editor.canvas.yview_value, 0.0)
+
+    def test_swyft_power_label_is_placed_at_power_port(self) -> None:
+        editor = self._headless_editor("swyft_ports")
+        editor.canvas = _CanvasStub(width=1000, height=500)
+        editor._box_w = 90
+        editor._box_h = 34
+        editor._bus_offsets = [0.0]
+        editor._bus_lefts = [40.0]
+        editor._bus_rights = [400.0]
+        editor._bus_connectors = []
+        editor._layout_width = 600.0
+        editor._zoom = 1.0
+        editor._pan_y = 0.0
+        editor._dirty = False
+        editor._selected_nodes = set()
+        editor._selected_buses = set()
+        editor._show_group_overlays_var = _BoolVarStub(False)
+        editor._show_warn_badges_var = _BoolVarStub(False)
+        editor._smart_guides_var = _BoolVarStub(False)
+        editor._guide_x = None
+        editor._guide_bus = None
+        editor._draw_state = {"bus_ys": [], "y_shift": 0.0, "scale": 1.0}
+        editor._node_bounds = {}
+        editor._bus_ys = []
+        editor._group_overlay_regions = []
+        editor._connection_filter_vars = {
+            key: _BoolVarStub(True)
+            for key in ("can", "power", "dio", "pwm", "analog", "virtual")
+        }
+        editor._draw_device_shape_on = TopologyEditor._draw_device_shape_on.__get__(editor, TopologyEditor)
+        editor._shape_kind_for_node = TopologyEditor._shape_kind_for_node.__get__(editor, TopologyEditor)
+        editor._fill_color_for_node = TopologyEditor._fill_color_for_node.__get__(editor, TopologyEditor)
+        editor._text_color_for_fill = TopologyEditor._text_color_for_fill
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._callout_nodes = TopologyEditor._callout_nodes.__get__(editor, TopologyEditor)
+        editor._node_center_y_unscaled = TopologyEditor._node_center_y_unscaled.__get__(editor, TopologyEditor)
+        editor._node_box_dims = TopologyEditor._node_box_dims.__get__(editor, TopologyEditor)
+        editor._node_bus_y = TopologyEditor._node_bus_y.__get__(editor, TopologyEditor)
+        editor._node_box_y = TopologyEditor._node_box_y.__get__(editor, TopologyEditor)
+        editor._should_clamp_node_to_bus = TopologyEditor._should_clamp_node_to_bus.__get__(editor, TopologyEditor)
+        editor._is_swyft_node = TopologyEditor._is_swyft_node
+        editor._is_dio_node = TopologyEditor._is_dio_node.__get__(editor, TopologyEditor)
+        editor._connection_filter_allows = TopologyEditor._connection_filter_allows.__get__(editor, TopologyEditor)
+        editor._dup_key_for_node = TopologyEditor._dup_key_for_node.__get__(editor, TopologyEditor)
+        editor._fit_font_size = lambda _text, _max_w, _max_h, base_size: base_size
+        editor._wrap_label_lines = lambda text, _font, _width: [text]
+        editor._draw_error_badge = lambda _x, _y: []
+        editor._draw_warning_badge = lambda _x, _y: []
+        editor._draw_group_overlays = lambda: None
+        editor._clear_guides = lambda: None
+        editor._redraw_canvas = TopologyEditor._redraw_canvas.__get__(editor, TopologyEditor)
+        editor._nodes = [
+            Node(
+                key=1,
+                category="cannect_inject",
+                label="inject",
+                can_id=-1,
+                node_type="diagram",
+                interface=INTERFACE_CAN,
+                x=200.0,
+                row=1,
+                bus_index=0,
+                profile_visible=False,
+            ),
+            Node(
+                key=2,
+                category="cannect_direct",
+                label="direct",
+                can_id=-1,
+                node_type="diagram",
+                interface=INTERFACE_CAN,
+                x=320.0,
+                row=1,
+                bus_index=0,
+                profile_visible=False,
+            ),
+        ]
+
+        editor._redraw_canvas()
+
+        power_texts = [entry for entry in editor.canvas.texts if entry["kwargs"].get("text") in {"Power In", "Power Out"}]
+        labels = {entry["kwargs"].get("text"): entry["args"][:2] for entry in power_texts}
+        inject_bounds = editor._node_bounds[1]
+        direct_bounds = editor._node_bounds[2]
+        self.assertEqual(labels["Power In"], (200.0, inject_bounds[3] + 10.0))
+        self.assertEqual(labels["Power Out"], (320.0, direct_bounds[3] + 10.0))
 
     def test_topology_snapshot_persists_free_y_relative_mode(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)

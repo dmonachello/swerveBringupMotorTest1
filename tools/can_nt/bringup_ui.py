@@ -376,6 +376,7 @@ class BringupControlUI(tk.Tk):
         self._poll_interval_active = 0.25
         self._poll_interval_idle = 1.0
         self._live_view: Optional[LiveTopologyView] = None
+        self._visibility_live_view: Optional[LiveTopologyView] = None
         self._profile_devices: Dict[str, Dict[str, Any]] = {}
         self._build_menu()
         self._build_ui()
@@ -579,6 +580,9 @@ class BringupControlUI(tk.Tk):
         ttk.Button(controls, text="Reset Zoom", command=self._zoom_reset).pack(
             side="left", padx=(4, 0)
         )
+        ttk.Button(controls, text="Fit to Window", command=self._fit_live_view).pack(
+            side="left", padx=(4, 0)
+        )
 
         profile_name = self._profile_box.get() if hasattr(self, "_profile_box") else ""
         self._live_view = LiveTopologyView(parent, profile_name)
@@ -595,8 +599,20 @@ class BringupControlUI(tk.Tk):
         header.pack(fill=VIS_FILL_X)
         ttk.Label(header, textvariable=self._visibility_summary_var).pack(anchor=VIS_TREE_ANCHOR_W)
 
-        table_frame = ttk.Frame(parent, padding=VIS_PAD_TABLE)
-        table_frame.pack(fill=VIS_FILL_BOTH, expand=True)
+        body = ttk.Panedwindow(parent, orient="horizontal")
+        body.pack(fill=VIS_FILL_BOTH, expand=True, padx=8, pady=8)
+
+        topology_frame = ttk.Frame(body)
+        body.add(topology_frame, weight=3)
+
+        profile_name = self._profile_box.get() if hasattr(self, "_profile_box") else ""
+        self._visibility_live_view = LiveTopologyView(topology_frame, profile_name)
+        self._visibility_live_view.set_show_groups(self._live_groups_var.get())
+        self._visibility_live_view.set_visibility_enabled(True)
+        self._visibility_live_view.pack(fill="both", expand=True)
+
+        table_frame = ttk.Frame(body, padding=VIS_PAD_TABLE)
+        body.add(table_frame, weight=2)
         self._visibility_table = ttk.Treeview(
             table_frame,
             columns=(),
@@ -621,8 +637,9 @@ class BringupControlUI(tk.Tk):
         name = self._profile_box.get().strip() if hasattr(self, "_profile_box") else ""
         self._refresh_profile_devices()
         self._refresh_tests_for_profile(name)
-        if self._live_view is not None and name:
-            self._live_view.reload_profile(name)
+        if name:
+            for live_view in self._iter_live_views():
+                live_view.reload_profile(name)
         if not name or name == self._last_selected_profile:
             return
         self._last_selected_profile = name
@@ -659,15 +676,29 @@ class BringupControlUI(tk.Tk):
             mapping[label.lower()] = device
         self._profile_devices = mapping
 
+    def _iter_live_views(self) -> List[LiveTopologyView]:
+        """
+        NAME
+            _iter_live_views - Return all instantiated topology views.
+        """
+        views: List[LiveTopologyView] = []
+        if self._live_view is not None:
+            views.append(self._live_view)
+        if self._visibility_live_view is not None:
+            views.append(self._visibility_live_view)
+        return views
+
     def _poll_presence_overrides(self) -> None:
         """
         NAME
             _poll_presence_overrides - Read presence confidence from NT diagnostics.
         """
-        if self._live_view is None:
+        live_views = self._iter_live_views()
+        if not live_views:
             return
         if not self._live_enabled_var.get():
-            self._live_view.set_presence_overrides({})
+            for live_view in live_views:
+                live_view.set_presence_overrides({})
             return
         source = self._live_source_var.get()
         if source == LIVE_SOURCE_FILE:
@@ -685,10 +716,12 @@ class BringupControlUI(tk.Tk):
                         break
                 if isinstance(active, dict):
                     overrides = dict(active.get(PRESENCE_FILE_KEY_OVERRIDES_BLOCK, {}))
-            self._live_view.set_presence_overrides(overrides or {})
+            for live_view in live_views:
+                live_view.set_presence_overrides(overrides or {})
             return
         if self._diag_table is None:
-            self._live_view.set_presence_overrides({})
+            for live_view in live_views:
+                live_view.set_presence_overrides({})
             return
         overrides: Dict[str, str] = {}
         for label, device in self._profile_devices.items():
@@ -700,7 +733,8 @@ class BringupControlUI(tk.Tk):
             value = self._diag_table.getEntry(path).getString(NT_VALUE_EMPTY)
             if value in PRESENCE_VALUES:
                 overrides[label] = value
-        self._live_view.set_presence_overrides(overrides)
+        for live_view in live_views:
+            live_view.set_presence_overrides(overrides)
 
     def _poll_visibility_snapshot(self, now: float) -> None:
         """
@@ -781,8 +815,8 @@ class BringupControlUI(tk.Tk):
                     values.append(VIS_VALUE_UNKNOWN)
             self._visibility_table.insert(VIS_TREE_ROOT, VIS_TREE_END, values=values)
         self._update_visibility_summary(summary)
-        if self._live_view is not None:
-            self._live_view.set_visibility_snapshot(snapshot)
+        for live_view in self._iter_live_views():
+            live_view.set_visibility_snapshot(snapshot)
 
     def _update_visibility_summary(self, summary: Dict[str, object]) -> None:
         """
@@ -917,42 +951,50 @@ class BringupControlUI(tk.Tk):
         NAME
             _apply_live_group_toggle - Toggle group overlays in the live view.
         """
-        if self._live_view is None:
-            return
-        self._live_view.set_show_groups(self._live_groups_var.get())
+        for live_view in self._iter_live_views():
+            live_view.set_show_groups(self._live_groups_var.get())
 
     def _apply_visibility_mode_toggle(self) -> None:
         """
         NAME
             _apply_visibility_mode_toggle - Toggle visibility mode in the live view.
         """
-        if self._live_view is None:
-            return
-        self._live_view.set_visibility_enabled(self._visibility_enabled_var.get())
+        if self._live_view is not None:
+            self._live_view.set_visibility_enabled(self._visibility_enabled_var.get())
+        if self._visibility_live_view is not None:
+            self._visibility_live_view.set_visibility_enabled(True)
 
     def _zoom_in(self) -> None:
         """
         NAME
             _zoom_in - Zoom in the live topology view.
         """
-        if self._live_view is not None:
-            self._live_view._nudge_zoom(0.1)
+        for live_view in self._iter_live_views():
+            live_view._nudge_zoom(0.1)
 
     def _zoom_out(self) -> None:
         """
         NAME
             _zoom_out - Zoom out the live topology view.
         """
-        if self._live_view is not None:
-            self._live_view._nudge_zoom(-0.1)
+        for live_view in self._iter_live_views():
+            live_view._nudge_zoom(-0.1)
 
     def _zoom_reset(self) -> None:
         """
         NAME
             _zoom_reset - Reset zoom in the live topology view.
         """
-        if self._live_view is not None:
-            self._live_view._reset_zoom()
+        for live_view in self._iter_live_views():
+            live_view._reset_zoom()
+
+    def _fit_live_view(self) -> None:
+        """
+        NAME
+            _fit_live_view - Fit live topology views to their current viewport.
+        """
+        for live_view in self._iter_live_views():
+            live_view._fit_to_window()
 
     def _attach_tooltip(self, widget: tk.Widget, text: str) -> None:
         """
@@ -1168,8 +1210,8 @@ class BringupControlUI(tk.Tk):
             self._profile_box.set(profiles[0])
         self._last_selected_profile = self._profile_box.get()
         self._refresh_tests_for_profile(self._profile_box.get())
-        if self._live_view is not None:
-            self._live_view.reload_profile(self._profile_box.get())
+        for live_view in self._iter_live_views():
+            live_view.reload_profile(self._profile_box.get())
 
     def _refresh_tests_for_profile(self, profile_name: str) -> None:
         """
@@ -1817,9 +1859,12 @@ class BringupControlUI(tk.Tk):
         NAME
             _apply_runtime_state_payload - Apply live runtime-state JSON.
         """
-        if self._live_view is None:
+        live_views = self._iter_live_views()
+        if not live_views:
             return
-        changed = self._live_view.update_runtime_state(payload)
+        changed = False
+        for live_view in live_views:
+            changed = live_view.update_runtime_state(payload) or changed
         if changed:
             self._runtime_state_backoff = 1.0
             self._runtime_state_idle_count = 0

@@ -27,6 +27,7 @@ Hard rules
 - NetworkTables paths are an API contract. If any key path changes, update both sides in the same change and keep backward compatibility for at least one iteration.
 - Windows is the primary host for the Python tool (Driver Station Windows PC). Avoid Linux-only assumptions (SocketCAN, can0, etc) unless explicitly requested.
 - Prefer small, reversible diffs. No sweeping refactors unless asked.
+- For behavior exposed through multiple surfaces (for example editor, live UI, CLI, reports), common code must own the full shared contract, not just helper primitives. If two surfaces are supposed to show or interpret the same topology/config state, they must share the same scene/model-building path or an explicitly documented compatibility adapter. Do not add or preserve independent render/composition pipelines for the same artifact unless the difference is intentional and documented.
 - When CLI syntax changes, update the formal grammar in `tools/can_nt/bridge_cli_ebnf.txt` in the same change (and keep generated grammar artifacts in sync).
 - When status definitions or generated command/status artifacts change, update all generated outputs in the same change. See `docs/GENERATED_ARTIFACTS_POLICY.md`.
 - Keep hardware configuration easy to customize: adding a team's device list/profile should be data-driven and clearly documented, not code surgery.

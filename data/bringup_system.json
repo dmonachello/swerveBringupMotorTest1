@@ -162,15 +162,71 @@
       "type": "limitSwitch"
     }
   ],
-  "data_version": "2026-05-13_165157",
-  "data_hash": "2f99127c696d01bf29e27c3329e55e01024c967e7685beaeb3987f5f1d203fef",
+  "data_version": "2026-05-15_153155",
+  "data_hash": "d0d3274aa6bd34b5d9ed426fca323ad13815b6e7a685c620d563417594ae6f48",
   "default_profile": "robot_2026_swerve",
   "bridgeConfig": {
     "schemaVersion": 2,
     "generatedAt": null,
     "byProfile": {
       "robot_2026_swerve": {
-        "groups": [],
+        "groups": [
+          {
+            "name": "driveTrain",
+            "enabled": true,
+            "members": [
+              {
+                "device": "frontLeft Drive Motor",
+                "enabled": true
+              },
+              {
+                "device": "frontLeft Angle Motor",
+                "enabled": true
+              },
+              {
+                "device": "frontLeft Encoder",
+                "enabled": true
+              },
+              {
+                "device": "frontRight Drive Motor",
+                "enabled": true
+              },
+              {
+                "device": "frontRight Angle Motor",
+                "enabled": true
+              },
+              {
+                "device": "frontRight Encoder",
+                "enabled": true
+              },
+              {
+                "device": "backLeft Drive Motor",
+                "enabled": true
+              },
+              {
+                "device": "backLeft Angle Motor",
+                "enabled": true
+              },
+              {
+                "device": "backLeft Encoder",
+                "enabled": true
+              },
+              {
+                "device": "backRight Drive Motor",
+                "enabled": true
+              },
+              {
+                "device": "backRight Angle Motor",
+                "enabled": true
+              },
+              {
+                "device": "backRight Encoder",
+                "enabled": true
+              }
+            ],
+            "bindings": []
+          }
+        ],
         "selectedDevice": {
           "device": "",
           "enabled": false
@@ -197,8 +253,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 126.64357501794709,
-              "y": 926.55918320966,
+              "x": 93.78917200035471,
+              "y": 57.54138499118162,
               "yRelative": false
             }
           },
@@ -209,8 +265,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 292.4964106245518,
-              "y": 931.5275967057116,
+              "x": 258.41364633305875,
+              "y": 60.02784718105283,
               "yRelative": false
             }
           },
@@ -221,8 +277,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 450.8966259870797,
-              "y": 936.4960102017633,
+              "x": 416.81386169558675,
+              "y": 64.99626067710447,
               "yRelative": false
             }
           },
@@ -233,8 +289,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1850.3108399138534,
-              "y": 938.9802169497891,
+              "x": 591.937065648567,
+              "y": 65.20432054144837,
               "yRelative": false
             }
           },
@@ -245,8 +301,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 2005.6378320172307,
-              "y": 946.4328371938666,
+              "x": 746.0356964780434,
+              "y": 64.91155263458536,
               "yRelative": false
             }
           },
@@ -257,8 +313,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 2155.6378320172307,
-              "y": 936.4960102017633,
+              "x": 897.2640577519443,
+              "y": 62.72011379342254,
               "yRelative": false
             }
           },
@@ -269,8 +325,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 116.2857142857145,
-              "y": 1466.6057241189912,
+              "x": 111.56589136923523,
+              "y": 470.2707730217912,
               "yRelative": false
             }
           },
@@ -281,8 +337,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 324.37006460875847,
-              "y": 1460.6636340352165,
+              "x": 261.56589136923526,
+              "y": 472.72749556959246,
               "yRelative": false
             }
           },
@@ -293,8 +349,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 510.09655419956584,
-              "y": 1463.1478407832424,
+              "x": 411.56589136923526,
+              "y": 475.18421811739375,
               "yRelative": false
             }
           },
@@ -305,8 +361,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1553.7426417803297,
-              "y": 1495.4425285075783,
+              "x": 596.8959475717021,
+              "y": 477.640940665195,
               "yRelative": false
             }
           },
@@ -317,8 +373,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1723.0272792534113,
-              "y": 1483.021494767449,
+              "x": 753.3630409394563,
+              "y": 478.86930193909564,
               "yRelative": false
             }
           },
@@ -329,8 +385,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1886.3750897343893,
-              "y": 1473.0846677753457,
+              "x": 904.6692024657967,
+              "y": 478.86930193909564,
               "yRelative": false
             }
           },
@@ -341,8 +397,8 @@
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 305.28571428571433,
-              "y": -66.14285714285715,
+              "x": 74.35379479239774,
+              "y": -68.28311219495697,
               "yRelative": true
             }
           },
@@ -353,8 +409,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 2415.8697056712163,
-              "y": 79.49461593682707,
+              "x": 1167.3996371333114,
+              "y": 49.63957009950292,
               "yRelative": true
             }
           },
@@ -364,9 +420,9 @@
             "deviceRef": "lmtSw0",
             "layout": {
               "bus": 0,
-              "row": 1,
-              "x": 164.36146649386478,
-              "y": 41.25404416074849,
+              "row": 0,
+              "x": 173.99098256247217,
+              "y": -18.660194903198544,
               "yRelative": true
             }
           },
@@ -380,8 +436,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1712.1428571428576,
-              "y": 1595.3276684932205,
+              "x": 750.9666530025316,
+              "y": 383.06638020185903,
               "yRelative": false
             }
           },
@@ -395,8 +451,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 2301.1328068916014,
-              "y": 1593.5975895269605,
+              "x": 1100.8345890607604,
+              "y": 382.1379650761637,
               "yRelative": false
             }
           },
@@ -410,8 +466,8 @@
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 155.28571428571433,
-              "y": 1601.7485812618484,
+              "x": 224.07155048020635,
+              "y": 379.4760575759854,
               "yRelative": false
             }
           },
@@ -425,8 +481,8 @@
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 293.28571428571433,
-              "y": 1057.5419542075063,
+              "x": 259.2029499942213,
+              "y": 186.04220468284757,
               "yRelative": false
             }
           },
@@ -440,8 +496,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 2012.1428571428576,
-              "y": 1066.8276684932205,
+              "x": 753.7690828775711,
+              "y": 193.05177208487964,
               "yRelative": false
             }
           }
@@ -449,7 +505,7 @@
         "edges": [
           {
             "id": "edge_1",
-            "fromNode": 9,
+            "fromNode": 34,
             "fromPort": "right",
             "toNode": 3,
             "toPort": "left",
@@ -459,12 +515,20 @@
             "id": "edge_2",
             "fromNode": 3,
             "fromPort": "right",
-            "toNode": 19,
+            "toNode": 9,
             "toPort": "left",
             "edgeType": "can_trunk"
           },
           {
             "id": "edge_3",
+            "fromNode": 9,
+            "fromPort": "right",
+            "toNode": 19,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_4",
             "fromNode": 19,
             "fromPort": "right",
             "toNode": 4,
@@ -472,7 +536,7 @@
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_4",
+            "id": "edge_5",
             "fromNode": 4,
             "fromPort": "right",
             "toNode": 20,
@@ -480,16 +544,8 @@
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_5",
-            "fromNode": 20,
-            "fromPort": "right",
-            "toNode": 34,
-            "toPort": "left",
-            "edgeType": "can_trunk"
-          },
-          {
             "id": "edge_6",
-            "fromNode": 34,
+            "fromNode": 20,
             "fromPort": "right",
             "toNode": 10,
             "toPort": "left",
@@ -499,36 +555,52 @@
             "id": "edge_7",
             "fromNode": 10,
             "fromPort": "right",
-            "toNode": 5,
-            "toPort": "left",
-            "edgeType": "can_trunk"
-          },
-          {
-            "id": "edge_8",
-            "fromNode": 5,
-            "fromPort": "right",
             "toNode": 11,
             "toPort": "left",
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_9",
+            "id": "edge_8",
             "fromNode": 11,
+            "fromPort": "right",
+            "toNode": 5,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_9",
+            "fromNode": 5,
+            "fromPort": "right",
+            "toNode": 6,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_10",
+            "fromNode": 6,
             "fromPort": "right",
             "toNode": 12,
             "toPort": "left",
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_10",
+            "id": "edge_11",
             "fromNode": 12,
+            "fromPort": "right",
+            "toNode": 7,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_12",
+            "fromNode": 7,
             "fromPort": "right",
             "toNode": 16,
             "toPort": "left",
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_11",
+            "id": "edge_13",
             "fromNode": 16,
             "fromPort": "right",
             "toNode": 13,
@@ -536,39 +608,15 @@
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_12",
-            "fromNode": 13,
-            "fromPort": "right",
-            "toNode": 6,
-            "toPort": "left",
-            "edgeType": "can_trunk"
-          },
-          {
-            "id": "edge_13",
-            "fromNode": 6,
-            "fromPort": "right",
-            "toNode": 14,
-            "toPort": "left",
-            "edgeType": "can_trunk"
-          },
-          {
             "id": "edge_14",
-            "fromNode": 14,
-            "fromPort": "right",
-            "toNode": 7,
-            "toPort": "left",
-            "edgeType": "can_trunk"
-          },
-          {
-            "id": "edge_15",
-            "fromNode": 7,
+            "fromNode": 13,
             "fromPort": "right",
             "toNode": 21,
             "toPort": "left",
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_16",
+            "id": "edge_15",
             "fromNode": 21,
             "fromPort": "right",
             "toNode": 8,
@@ -576,8 +624,16 @@
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_17",
+            "id": "edge_16",
             "fromNode": 8,
+            "fromPort": "right",
+            "toNode": 14,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_17",
+            "fromNode": 14,
             "fromPort": "right",
             "toNode": 17,
             "toPort": "left",
@@ -714,7 +770,7 @@
         ],
         "view": {
           "busOffsets": [
-            389.9705256360775
+            -234.80859819716682
           ],
           "busCount": 1,
           "busSpacing": 160.0,
@@ -722,11 +778,11 @@
             40.0
           ],
           "busRights": [
-            2558.2275664034464
+            1287.3996371333114
           ],
           "busConnectors": [],
-          "panY": -598.3990077819991,
-          "zoom": 0.6293242841295362,
+          "panY": -58.84402399667054,
+          "zoom": 0.8140927439242125,
           "ethernetLinks": [
             {
               "a": 16,

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Topology Editor Manual Retest Checklist</title>
+  <style>
+    @page {
+      size: letter;
+      margin: 0.5in;
+    }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 11pt;
+      line-height: 1.25;
+      color: #111;
+      margin: 0;
+    }
+
+    h1, h2 {
+      margin: 0 0 0.15in 0;
+      page-break-after: avoid;
+    }
+
+    h1 {
+      font-size: 18pt;
+      border-bottom: 1px solid #999;
+      padding-bottom: 0.08in;
+    }
+
+    h2 {
+      font-size: 13pt;
+      margin-top: 0.18in;
+    }
+
+    p, ul {
+      margin: 0 0 0.12in 0;
+    }
+
+    ul {
+      padding-left: 0.22in;
+    }
+
+    .section {
+      page-break-inside: avoid;
+      break-inside: avoid;
+      margin-bottom: 0.12in;
+    }
+
+    .notes {
+      border: 1px solid #888;
+      height: 0.65in;
+      margin-top: 0.08in;
+    }
+
+    .checklist {
+      list-style: none;
+      padding-left: 0;
+      margin-left: 0;
+    }
+
+    .checklist li {
+      margin: 0 0 0.05in 0;
+    }
+
+    .box {
+      display: inline-block;
+      width: 0.16in;
+      height: 0.16in;
+      border: 1px solid #111;
+      margin-right: 0.08in;
+      vertical-align: middle;
+    }
+
+    .sub {
+      margin-left: 0.28in;
+    }
+  </style>
+</head>
+<body>
+  <h1>Topology Editor Manual Retest Checklist</h1>
+  <p><strong>Purpose:</strong> Targeted manual retest after topology editor changes and after review of the <code>can-topology-editor-20260515</code> branch.</p>
+
+  <div class="section">
+    <h2>Test Setup</h2>
+    <ul>
+      <li>Launch: <code>python -m tools.can_topology.can_top_editor</code></li>
+      <li>Primary profile: <code>robot_2026_swerve</code></li>
+      <li>Suggested screen coverage: normal desktop width and maximized on a wide monitor</li>
+      <li>Record for each step: pass/fail, notes, screenshot path if needed</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>1. Load / Save / Restart</h2>
+    <ul class="checklist">
+      <li><span class="box"></span>Launch the editor.</li>
+      <li><span class="box"></span>Load <code>robot_2026_swerve</code>.</li>
+      <li><span class="box"></span>Verify the expected large profile appears: 8 motors, 4 CANnect nodes, roboRIO, PDH, expected callouts and links.</li>
+      <li><span class="box"></span>Save the profile.</li>
+      <li><span class="box"></span>Quit the editor.</li>
+      <li><span class="box"></span>Relaunch the editor.</li>
+      <li><span class="box"></span>Reload <code>robot_2026_swerve</code>.</li>
+      <li><span class="box"></span>Verify nothing disappeared and no load exception occurred.</li>
+    </ul>
+    <div class="notes"></div>
+  </div>
+
+  <div class="section">
+    <h2>2. Fit / Zoom / Pan Stability</h2>
+    <ul class="checklist">
+      <li><span class="box"></span>Use <code>Fit to Window</code>.</li>
+      <li><span class="box"></span>Verify the diagram is framed sensibly.</li>
+      <li><span class="box"></span>Click empty canvas and verify the viewport does not jump.</li>
+      <li><span class="box"></span>Zoom in with the scroll wheel.</li>
+      <li><span class="box"></span>Click empty canvas and verify zoom/view is preserved.</li>
+      <li><span class="box"></span>Pan with the middle mouse button.</li>
+      <li><span class="box"></span>Click empty canvas and verify the pan is preserved.</li>
+    </ul>
+    <div class="notes"></div>
+  </div>
+
+  <div class="section">
+    <h2>3. Selection Behavior</h2>
+    <ul class="checklist">
+      <li><span class="box"></span>Select one node, then click empty canvas and verify selection clears.</li>
+      <li><span class="box"></span>Shift-select multiple nodes, then click empty canvas and verify all clear.</li>
+      <li><span class="box"></span>Select a bus segment, then click empty canvas and verify selection clears.</li>
+    </ul>
+    <div class="notes"></div>
+  </div>
+
+  <div class="section">
+    <h2>4. Wide-Screen Layout</h2>
+    <ul class="checklist">
+      <li><span class="box"></span>Maximize on a wide display.</li>
+      <li><span class="box"></span>Use <code>Fit to Window</code>.</li>
+      <li><span class="box"></span>Verify the diagram is reasonably centered.</li>
+      <li><span class="box"></span>Verify content is not shoved hard left with excessive blank space on the right.</li>
+      <li><span class="box"></span>Verify important devices are not off-screen by default.</li>
+    </ul>
+    <div class="notes"></div>
+  </div>
+
+  <div class="section">
+    <h2>5. Bus Resize Behavior</h2>
+    <ul class="checklist">
+      <li><span class="box"></span>Resize a bus segment left and right.</li>
+      <li><span class="box"></span>Verify attached normal devices follow the segment bounds.</li>
+      <li><span class="box"></span>Verify CANnect Direct and CANnect Inject nodes also follow the segment bounds.</li>
+      <li><span class="box"></span>Verify linked device connectors still line up.</li>
+      <li><span class="box"></span>Save, quit, reload, and verify the resized geometry is retained.</li>
+    </ul>
+    <div class="notes"></div>
+  </div>
+
+  <div class="section">
+    <h2>6. CANnect / Inject Behavior</h2>
+    <ul class="checklist">
+      <li><span class="box"></span>Add one CANnect Direct node.</li>
+      <li><span class="box"></span>Add one CANnect Inject node.</li>
+      <li><span class="box"></span>Link a device to a CANnect node.</li>
+      <li><span class="box"></span>Add CAN bus links and set a CANnect port.</li>
+      <li><span class="box"></span>Save, quit, reload, and verify nodes, bus links, device links, and port assignment are retained.</li>
+    </ul>
+    <div class="notes"></div>
+  </div>
+
+  <div class="section">
+    <h2>7. Connection Filters</h2>
+    <ul class="checklist">
+      <li><span class="box"></span>Click <code>None</code>.</li>
+      <li><span class="box"></span>Verify all connection types disappear.</li>
+      <li><span class="box"></span>Specifically verify the blue virtual/ethernet links disappear.</li>
+      <li><span class="box"></span>Re-enable CAN, Power, DIO, PWM, Analog, and Virtual one by one.</li>
+      <li><span class="box"></span>Verify each category displays only its expected links.</li>
+    </ul>
+    <div class="notes"></div>
+  </div>
+
+  <div class="section">
+    <h2>8. Component Editing and Retention</h2>
+    <ul class="checklist">
+      <li><span class="box"></span>Edit one CAN motor device.</li>
+      <li><span class="box"></span>Edit one encoder device.</li>
+      <li><span class="box"></span>Edit the PDH device.</li>
+      <li><span class="box"></span>Edit one DIO device.</li>
+      <li><span class="box"></span>For at least one device, change label, CAN ID or DIO, vendor, device type, model, and tags.</li>
+      <li><span class="box"></span>Save, quit, reload, and verify edited values are retained exactly.</li>
+    </ul>
+    <div class="notes"></div>
+  </div>
+
+  <div class="section">
+    <h2>9. Validation Messaging</h2>
+    <ul class="checklist">
+      <li><span class="box"></span>Create or edit a generic device so vendor and device type are missing.</li>
+      <li><span class="box"></span>Trigger save or validation.</li>
+      <li><span class="box"></span>Verify the error message names the exact device label.</li>
+      <li><span class="box"></span>If practical, also test one invalid DIO device.</li>
+      <li><span class="box"></span>Verify validation failures identify the offending configured entity clearly.</li>
+    </ul>
+    <div class="notes"></div>
+  </div>
+
+  <div class="section">
+    <h2>10. Callouts</h2>
+    <ul class="checklist">
+      <li><span class="box"></span>Add or edit a callout.</li>
+      <li><span class="box"></span>Point one callout at a device.</li>
+      <li><span class="box"></span>If supported, point one callout at a bus.</li>
+      <li><span class="box"></span>Save, quit, reload, and verify text, target, and placement are retained.</li>
+    </ul>
+    <div class="notes"></div>
+  </div>
+
+  <div class="section">
+    <h2>11. Basic Edit Operations</h2>
+    <ul class="checklist">
+      <li><span class="box"></span>Add a node.</li>
+      <li><span class="box"></span>Edit that node.</li>
+      <li><span class="box"></span>Remove that node.</li>
+      <li><span class="box"></span>If undo/redo is available, verify it works for at least one edit.</li>
+      <li><span class="box"></span>Save and reload.</li>
+      <li><span class="box"></span>Verify no exception occurs.</li>
+    </ul>
+    <div class="notes"></div>
+  </div>
+
+  <div class="section">
+    <h2>Highest-Priority Quick Pass</h2>
+    <ul class="checklist">
+      <li><span class="box"></span>Load / save / quit / reload <code>robot_2026_swerve</code>.</li>
+      <li><span class="box"></span><code>Fit to Window</code> then click empty canvas.</li>
+      <li><span class="box"></span>Middle-mouse pan then click empty canvas.</li>
+      <li><span class="box"></span>Resize a bus with CANnect/inject nodes present.</li>
+      <li><span class="box"></span>Use <code>None</code> filter and verify blue virtual links disappear.</li>
+      <li><span class="box"></span>Trigger invalid generic-device validation and verify the label appears in the error.</li>
+    </ul>
+  </div>
+</body>
+</html>
