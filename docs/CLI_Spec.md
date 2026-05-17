@@ -204,11 +204,16 @@ No prompting allowed in batch mode.
 ### Exec Mode Commands
 
 - `show status`
+- `show active`
 - `show groups`
 - `show group <name>`
 - `show devices`
 - `show device <name>` (definition, local only)
 - `show device-group <name>` (group usage)
+- `show instantiated`
+- `show faults`
+- `show signals`
+- `show signal <name>`
 - `show bindings`
 - `show selected-device`
 - `show runtime-state`
@@ -221,6 +226,9 @@ No prompting allowed in batch mode.
 - `show test <name>`
 - `show workspace`
 - `show controllers`
+- `bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]`
+- `tiu on`
+- `tiu off`
 - `configure terminal`
 - `connect`
 - `disconnect`
@@ -238,17 +246,19 @@ No prompting allowed in batch mode.
 - `export runtime-groups <bridgeConfig.json>`
 - `save runtime-groups <runtime_groups.json>`
 - `save all [--prompt]`
+- `save sources`
 - `save bridge-config <path>`
 - `save runtime-groups <path>`
 - `save profiles <path>`
 - `save config <path>`
+- `revert`
 - `rename device <old> <new>`
 - `device <name>`
 - `device <name> set <field> <value>`
 - `validate config [path] [--all]`
 - `validate profiles [robot|local] [--active]`
 - `validate tests [--active-set]`
-- `bindings show [controllers|bindings|axes] [--json] [--pretty]`
+- `bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]`
 - `bindings controller add <name> <type> <port>`
 - `bindings controller set <name> <field> <value>`
 - `bindings controller rename <old> <new>`
@@ -285,6 +295,9 @@ No prompting allowed in batch mode.
 - `show`
 - `show members`
 - `show binding`
+- `bind list`
+- `bind explain <binding>`
+- `bind test <binding>`
 - `add device <device>`
 - `no device <device>`
 - `member <device> enable`
@@ -597,4 +610,3 @@ avoids prompts in batch mode
 uses structured output for automation
 
 remains simple, predictable, and operator-friendly
-

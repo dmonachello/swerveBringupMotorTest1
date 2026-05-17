@@ -88,10 +88,20 @@ public final class BringupUtil {
   private static final String LEGACY_PROFILE_FILE = "bringup_profiles.json";
   private static final String KEY_BRIDGE_CONFIG = "bridgeConfig";
   private static final String KEY_BRIDGE_BY_PROFILE = "byProfile";
+  private static final String KEY_BRIDGE_GROUPS = "groups";
+  private static final String KEY_BRIDGE_SELECTED_DEVICE = "selectedDevice";
+  private static final String KEY_BRIDGE_BINDINGS = "bindings";
   private static final String KEY_BRIDGE_TESTS = "tests";
   private static final String KEY_DSL_TESTS = "dslTests";
   private static final String KEY_DSL_TEST_SET = "dslTestSet";
   private static final String KEY_INPUT_ALIASES = "inputAliases";
+  private static final String KEY_DEVICE = "device";
+  private static final String KEY_ENABLED = "enabled";
+  private static final String KEY_INPUT = "input";
+  private static final String KEY_KIND = "kind";
+  private static final String KEY_MEMBERS = "members";
+  private static final String KEY_NAME = "name";
+  private static final String KEY_VALUE = "value";
   private static final String LABEL_UNKNOWN = "UNKNOWN";
   private static final String LABEL_SPACE = " ";
   private static final String NT_LABEL_SAFE_CHARS = "-_.~";
@@ -225,6 +235,8 @@ public final class BringupUtil {
   private static Map<String, ProfileConfig> profiles = new LinkedHashMap<>();
   private static List<String> profileOrder = new ArrayList<>();
   private static final Map<String, JsonElement> PROFILE_TESTS = new LinkedHashMap<>();
+  private static final Map<String, BridgeProfileRuntimeConfig> PROFILE_BRIDGE_CONFIGS =
+      new LinkedHashMap<>();
   private static JsonObject dslTestsRoot = null;
   private static String defaultProfile = DEFAULT_PROFILE_NAME;
   private static String selectedProfile = DEFAULT_PROFILE_NAME;
@@ -640,13 +652,7 @@ public final class BringupUtil {
    *   Unmodifiable map of alias->canonical entries.
    */
   public static Map<String, String> getProfileInputAliases(String profileName) {
-    String name = safeText(profileName);
-    if (name.isBlank()) {
-      name = safeText(activeProfile);
-    }
-    if (name.isBlank()) {
-      name = safeText(defaultProfile);
-    }
+    String name = resolveProfileNameOrActive(profileName);
     ProfileConfig config = profiles.get(name);
     if (config == null || config.inputAliases == null) {
       return Collections.emptyMap();
@@ -656,16 +662,26 @@ public final class BringupUtil {
 
   /**
    * NAME
+   *   getProfileBridgeConfig - Return runtime bridgeConfig state for a profile.
+   *
+   * RETURNS
+   *   Immutable bridgeConfig snapshot for the resolved profile.
+   */
+  public static BridgeProfileRuntimeConfig getProfileBridgeConfig(String profileName) {
+    String name = resolveProfileNameOrActive(profileName);
+    BridgeProfileRuntimeConfig config = PROFILE_BRIDGE_CONFIGS.get(name);
+    if (config == null) {
+      return BridgeProfileRuntimeConfig.empty();
+    }
+    return config;
+  }
+
+  /**
+   * NAME
    *   getProfileTestsPayload - Return tests payload for a profile.
    */
   public static JsonElement getProfileTestsPayload(String profileName) {
-    String name = safeText(profileName);
-    if (name.isBlank()) {
-      name = safeText(activeProfile);
-    }
-    if (name.isBlank()) {
-      name = safeText(defaultProfile);
-    }
+    String name = resolveProfileNameOrActive(profileName);
     return PROFILE_TESTS.get(name);
   }
 
@@ -687,6 +703,17 @@ public final class BringupUtil {
    */
   public static Path getProfilePath() {
     return resolveProfilePath();
+  }
+
+  private static String resolveProfileNameOrActive(String profileName) {
+    String name = safeText(profileName);
+    if (name.isBlank()) {
+      name = safeText(activeProfile);
+    }
+    if (name.isBlank()) {
+      name = safeText(defaultProfile);
+    }
+    return name;
   }
 
   /**
@@ -1269,6 +1296,7 @@ public final class BringupUtil {
       String rawJson = Files.readString(path, StandardCharsets.UTF_8);
       JsonElement parsed = JsonParser.parseString(rawJson);
       setProfileTests(extractProfileTests(parsed));
+      setProfileBridgeConfigs(extractProfileBridgeConfigs(parsed));
       dslTestsRoot = extractDslTestsRoot(parsed);
       ProfileRoot root = GSON.fromJson(rawJson, ProfileRoot.class);
       if (root == null || root.profiles == null || root.profiles.isEmpty()) {
@@ -1417,6 +1445,7 @@ public final class BringupUtil {
     profiles = new LinkedHashMap<>();
     DEVICE_REGISTRY.clear();
     setProfileTests(new LinkedHashMap<>());
+    setProfileBridgeConfigs(new LinkedHashMap<>());
     dslTestsRoot = null;
     List<String> robotLabels = new ArrayList<>();
     addFallbackCanDevices(
@@ -1633,17 +1662,148 @@ public final class BringupUtil {
     private final ProfileRoot root;
     private final Map<String, DeviceDefinition> registry;
     private final Map<String, JsonElement> testsByProfile;
+    private final Map<String, BridgeProfileRuntimeConfig> bridgeConfigsByProfile;
     private final JsonObject dslTestsRoot;
 
     private RegistryPayload(
         ProfileRoot root,
         Map<String, DeviceDefinition> registry,
         Map<String, JsonElement> testsByProfile,
+        Map<String, BridgeProfileRuntimeConfig> bridgeConfigsByProfile,
         JsonObject dslTestsRoot) {
       this.root = root;
       this.registry = registry;
       this.testsByProfile = testsByProfile;
+      this.bridgeConfigsByProfile = bridgeConfigsByProfile;
       this.dslTestsRoot = dslTestsRoot;
+    }
+  }
+
+  /**
+   * NAME
+   *   BridgeProfileMemberConfig - Immutable group member snapshot.
+   */
+  public static final class BridgeProfileMemberConfig {
+    public final String device;
+    public final boolean enabled;
+
+    public BridgeProfileMemberConfig(String device, boolean enabled) {
+      this.device = safeText(device);
+      this.enabled = enabled;
+    }
+  }
+
+  /**
+   * NAME
+   *   BridgeProfileBindingConfig - Immutable group binding snapshot.
+   */
+  public static final class BridgeProfileBindingConfig {
+    public final String input;
+    public final String kind;
+    public final boolean hasValue;
+    public final double value;
+
+    public BridgeProfileBindingConfig(String input, String kind, boolean hasValue, double value) {
+      this.input = safeText(input);
+      this.kind = safeText(kind);
+      this.hasValue = hasValue;
+      this.value = value;
+    }
+  }
+
+  /**
+   * NAME
+   *   BridgeProfileGroupConfig - Immutable bridge group snapshot.
+   */
+  public static final class BridgeProfileGroupConfig {
+    public final String name;
+    public final boolean enabled;
+    public final List<BridgeProfileMemberConfig> members;
+    public final List<BridgeProfileBindingConfig> bindings;
+
+    public BridgeProfileGroupConfig(
+        String name,
+        boolean enabled,
+        List<BridgeProfileMemberConfig> members,
+        List<BridgeProfileBindingConfig> bindings) {
+      this.name = safeText(name);
+      this.enabled = enabled;
+      this.members = Collections.unmodifiableList(new ArrayList<>(members));
+      this.bindings = Collections.unmodifiableList(new ArrayList<>(bindings));
+    }
+  }
+
+  /**
+   * NAME
+   *   BridgeProfileSelectedDeviceConfig - Immutable selected-device snapshot.
+   */
+  public static final class BridgeProfileSelectedDeviceConfig {
+    public final String device;
+    public final boolean enabled;
+
+    public BridgeProfileSelectedDeviceConfig(String device, boolean enabled) {
+      this.device = safeText(device);
+      this.enabled = enabled;
+    }
+  }
+
+  /**
+   * NAME
+   *   BridgeProfileRuntimeConfig - Immutable per-profile bridge runtime config.
+   */
+  public static final class BridgeProfileRuntimeConfig {
+    private static final BridgeProfileRuntimeConfig EMPTY =
+        new BridgeProfileRuntimeConfig(
+            Collections.emptyList(),
+            new BridgeProfileSelectedDeviceConfig(NT_LABEL_EMPTY, false));
+
+    public final List<BridgeProfileGroupConfig> groups;
+    public final BridgeProfileSelectedDeviceConfig selectedDevice;
+
+    public BridgeProfileRuntimeConfig(
+        List<BridgeProfileGroupConfig> groups,
+        BridgeProfileSelectedDeviceConfig selectedDevice) {
+      this.groups = Collections.unmodifiableList(new ArrayList<>(groups));
+      this.selectedDevice = selectedDevice != null
+          ? selectedDevice
+          : new BridgeProfileSelectedDeviceConfig(NT_LABEL_EMPTY, false);
+    }
+
+    public static BridgeProfileRuntimeConfig empty() {
+      return EMPTY;
+    }
+  }
+
+  private static String readJsonString(JsonObject object, String key) {
+    if (object == null || key == null || !object.has(key) || object.get(key).isJsonNull()) {
+      return NT_LABEL_EMPTY;
+    }
+    try {
+      return object.get(key).getAsString();
+    } catch (Exception ex) {
+      return NT_LABEL_EMPTY;
+    }
+  }
+
+  private static boolean readJsonBoolean(JsonObject object, String key, boolean defaultValue) {
+    if (object == null || key == null || !object.has(key) || object.get(key).isJsonNull()) {
+      return defaultValue;
+    }
+    try {
+      return object.get(key).getAsBoolean();
+    } catch (Exception ex) {
+      return defaultValue;
+    }
+  }
+
+  private static double readJsonDouble(JsonObject object, String key, double defaultValue) {
+    if (object == null || key == null || !object.has(key) || object.get(key).isJsonNull()) {
+      return defaultValue;
+    }
+    try {
+      return object.get(key).getAsDouble();
+    } catch (Exception ex) {
+      return defaultValue;
     }
   }
 
@@ -1756,8 +1916,15 @@ public final class BringupUtil {
       }
     }
     Map<String, JsonElement> testsByProfile = extractProfileTests(parsed);
+    Map<String, BridgeProfileRuntimeConfig> bridgeConfigsByProfile =
+        extractProfileBridgeConfigs(parsed);
     JsonObject nextDslTestsRoot = extractDslTestsRoot(parsed);
-    return new RegistryPayload(root, registry, testsByProfile, nextDslTestsRoot);
+    return new RegistryPayload(
+        root,
+        registry,
+        testsByProfile,
+        bridgeConfigsByProfile,
+        nextDslTestsRoot);
   }
 
   /**
@@ -1829,6 +1996,109 @@ public final class BringupUtil {
 
   /**
    * NAME
+   *   extractProfileBridgeConfigs - Extract per-profile bridgeConfig payloads.
+   */
+  private static Map<String, BridgeProfileRuntimeConfig> extractProfileBridgeConfigs(
+      JsonElement parsed) {
+    Map<String, BridgeProfileRuntimeConfig> configs = new LinkedHashMap<>();
+    if (parsed == null || !parsed.isJsonObject()) {
+      return configs;
+    }
+    JsonObject root = parsed.getAsJsonObject();
+    JsonElement bridgeElement = root.get(KEY_BRIDGE_CONFIG);
+    if (bridgeElement == null || !bridgeElement.isJsonObject()) {
+      return configs;
+    }
+    JsonObject bridge = bridgeElement.getAsJsonObject();
+    JsonElement byProfileElement = bridge.get(KEY_BRIDGE_BY_PROFILE);
+    if (byProfileElement == null || !byProfileElement.isJsonObject()) {
+      return configs;
+    }
+    JsonObject byProfile = byProfileElement.getAsJsonObject();
+    for (Map.Entry<String, JsonElement> entry : byProfile.entrySet()) {
+      JsonElement profileElement = entry.getValue();
+      if (profileElement == null || !profileElement.isJsonObject()) {
+        continue;
+      }
+      configs.put(entry.getKey(), parseBridgeProfileRuntimeConfig(profileElement.getAsJsonObject()));
+    }
+    return configs;
+  }
+
+  private static BridgeProfileRuntimeConfig parseBridgeProfileRuntimeConfig(JsonObject profile) {
+    List<BridgeProfileGroupConfig> groups = new ArrayList<>();
+    JsonElement groupsElement = profile.get(KEY_BRIDGE_GROUPS);
+    if (groupsElement != null && groupsElement.isJsonArray()) {
+      for (JsonElement groupElement : groupsElement.getAsJsonArray()) {
+        if (groupElement == null || !groupElement.isJsonObject()) {
+          continue;
+        }
+        JsonObject group = groupElement.getAsJsonObject();
+        String name = safeText(readJsonString(group, KEY_NAME));
+        if (name.isBlank()) {
+          continue;
+        }
+        boolean enabled = readJsonBoolean(group, KEY_ENABLED, true);
+        List<BridgeProfileMemberConfig> members = new ArrayList<>();
+        JsonElement membersElement = group.get(KEY_MEMBERS);
+        if (membersElement != null && membersElement.isJsonArray()) {
+          for (JsonElement memberElement : membersElement.getAsJsonArray()) {
+            if (memberElement == null) {
+              continue;
+            }
+            if (memberElement.isJsonPrimitive()) {
+              String device = safeText(memberElement.getAsString());
+              if (!device.isBlank()) {
+                members.add(new BridgeProfileMemberConfig(device, true));
+              }
+              continue;
+            }
+            if (!memberElement.isJsonObject()) {
+              continue;
+            }
+            JsonObject member = memberElement.getAsJsonObject();
+            String device = safeText(readJsonString(member, KEY_DEVICE));
+            if (device.isBlank()) {
+              continue;
+            }
+            members.add(
+                new BridgeProfileMemberConfig(device, readJsonBoolean(member, KEY_ENABLED, true)));
+          }
+        }
+        List<BridgeProfileBindingConfig> bindings = new ArrayList<>();
+        JsonElement bindingsElement = group.get(KEY_BRIDGE_BINDINGS);
+        if (bindingsElement != null && bindingsElement.isJsonArray()) {
+          for (JsonElement bindingElement : bindingsElement.getAsJsonArray()) {
+            if (bindingElement == null || !bindingElement.isJsonObject()) {
+              continue;
+            }
+            JsonObject binding = bindingElement.getAsJsonObject();
+            String input = safeText(readJsonString(binding, KEY_INPUT));
+            String kind = safeText(readJsonString(binding, KEY_KIND));
+            if (input.isBlank() || kind.isBlank()) {
+              continue;
+            }
+            boolean hasValue = binding.has(KEY_VALUE) && !binding.get(KEY_VALUE).isJsonNull();
+            double value = hasValue ? readJsonDouble(binding, KEY_VALUE, 0.0) : 0.0;
+            bindings.add(new BridgeProfileBindingConfig(input, kind, hasValue, value));
+          }
+        }
+        groups.add(new BridgeProfileGroupConfig(name, enabled, members, bindings));
+      }
+    }
+    JsonObject selected = profile.has(KEY_BRIDGE_SELECTED_DEVICE)
+        && profile.get(KEY_BRIDGE_SELECTED_DEVICE).isJsonObject()
+            ? profile.getAsJsonObject(KEY_BRIDGE_SELECTED_DEVICE)
+            : null;
+    String device = selected != null ? safeText(readJsonString(selected, KEY_DEVICE)) : NT_LABEL_EMPTY;
+    boolean enabled = selected != null && readJsonBoolean(selected, KEY_ENABLED, false);
+    return new BridgeProfileRuntimeConfig(
+        groups,
+        new BridgeProfileSelectedDeviceConfig(device, enabled));
+  }
+
+  /**
+   * NAME
    *   extractDslTestsRoot - Extract top-level DSL tests root from JSON.
    */
   private static JsonObject extractDslTestsRoot(JsonElement parsed) {
@@ -1850,6 +2120,19 @@ public final class BringupUtil {
       return;
     }
     PROFILE_TESTS.putAll(testsByProfile);
+  }
+
+  /**
+   * NAME
+   *   setProfileBridgeConfigs - Replace bridgeConfig cache.
+   */
+  private static void setProfileBridgeConfigs(
+      Map<String, BridgeProfileRuntimeConfig> configsByProfile) {
+    PROFILE_BRIDGE_CONFIGS.clear();
+    if (configsByProfile == null || configsByProfile.isEmpty()) {
+      return;
+    }
+    PROFILE_BRIDGE_CONFIGS.putAll(configsByProfile);
   }
 
   /**
@@ -1879,6 +2162,7 @@ public final class BringupUtil {
       DEVICE_REGISTRY.clear();
       DEVICE_REGISTRY.putAll(payload.registry);
       setProfileTests(payload.testsByProfile);
+      setProfileBridgeConfigs(payload.bridgeConfigsByProfile);
       dslTestsRoot = payload.dslTestsRoot != null ? payload.dslTestsRoot.deepCopy() : null;
       clearDeviceInstanceRegistry();
       bumpActiveProfileGeneration();

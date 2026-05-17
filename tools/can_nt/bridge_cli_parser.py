@@ -87,6 +87,7 @@ CMD_RECOVER = "recover"
 CMD_LAST_GOOD = "last-good"
 CMD_FROM = "from"
 CMD_LIST = "list"
+CMD_EXPLAIN = "explain"
 CMD_FILE = "file"
 CMD_NEXT = "next"
 FLAG_FORCE = "--force"
@@ -104,6 +105,9 @@ CMD_BINDINGS = "bindings"
 CMD_CAN_MAPPINGS = "can-mappings"
 CMD_TESTS = "tests"
 CMD_TOPOLOGY = "topology"
+KIND_GROUP_BIND_LIST = "group_bind_list"
+KIND_GROUP_BIND_EXPLAIN = "group_bind_explain"
+KIND_GROUP_BIND_TEST = "group_bind_test"
 CMD_NEIGHBORS = "neighbors"
 CMD_NEIGHBOR_PORTS = "neighbor-ports"
 CMD_NEIGHBOR_AUTO = "neighbor-auto"
@@ -710,6 +714,15 @@ class BridgeCliParser:
                 kind = SPEC.empty_str
             return (
                 kind,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
+            )
+        if verb == SPEC.cmd_bindings:
+            return (
+                SPEC.kind_config_bindings,
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
@@ -1453,6 +1466,47 @@ class BridgeCliParser:
                 bool(SPEC.bool_false),
             )
         if verb == SPEC.cmd_bind:
+            if len(tokens) >= SPEC.count_two:
+                action = tokens[SPEC.count_one].lower()
+                if action == CMD_LIST:
+                    return (
+                        KIND_GROUP_BIND_LIST,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        bool(SPEC.bool_false),
+                    )
+                if action == CMD_EXPLAIN:
+                    return (
+                        KIND_GROUP_BIND_EXPLAIN,
+                        tokens[SPEC.count_two] if len(tokens) > SPEC.count_two else SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        bool(SPEC.bool_false),
+                    )
+                if action == SPEC.cmd_test:
+                    return (
+                        KIND_GROUP_BIND_TEST,
+                        tokens[SPEC.count_two] if len(tokens) > SPEC.count_two else SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        bool(SPEC.bool_false),
+                    )
             bind_value = tokens[SPEC.count_three] if len(tokens) > SPEC.count_three else SPEC.empty_str
             return (
                 SPEC.kind_group_bind,
@@ -2087,6 +2141,19 @@ class BridgeCliParser:
         self._reject_extra(tokens, SPEC.count_three, SPEC.label_member)
 
     def _handle_group_bind(self, tokens: List[str]) -> None:
+        if len(tokens) >= SPEC.count_two:
+            action = tokens[SPEC.count_one].lower()
+            if action == CMD_LIST:
+                self._reject_extra(tokens, SPEC.count_two, SPEC.label_bind)
+                return
+            if action == CMD_EXPLAIN:
+                self._require(tokens, SPEC.count_three, SPEC.msg_bind)
+                self._reject_extra(tokens, SPEC.count_three, SPEC.label_bind)
+                return
+            if action == SPEC.cmd_test:
+                self._require(tokens, SPEC.count_three, SPEC.msg_bind)
+                self._reject_extra(tokens, SPEC.count_three, SPEC.label_bind)
+                return
         self._require(tokens, SPEC.count_three, SPEC.msg_bind)
         kind = tokens[SPEC.count_two].lower()
         if kind not in self._bind_kinds:

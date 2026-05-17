@@ -30,6 +30,8 @@ Common mappings:
 - `help`
 - `help <topic>`
 - `ping`
+- `tiu on`
+- `tiu off`
 - `exit`
 - `end`
 - `quit`
@@ -37,11 +39,16 @@ Common mappings:
 ### Exec Mode (`bridge>`)
 
 - `show status [robot|local|both] [--json] [--pretty]`
+- `show active [robot|local|both] [--json] [--pretty]`
 - `show groups [robot|local|both] [--json] [--pretty]`
 - `show group <name> [robot|local|both] [--json] [--pretty]`
 - `show devices [robot|local|both] [--json] [--pretty]`
 - `show device <name> [local] [--json] [--pretty]`
 - `show device-group <name> [robot|local|both] [--json] [--pretty]`
+- `show instantiated [robot|local|both] [--json] [--pretty]`
+- `show faults [robot|local|both] [--json] [--pretty]`
+- `show signals [local] [--json] [--pretty]`
+- `show signal <name> [local] [--json] [--pretty]`
 - `show bindings [robot|local|both] [--json] [--pretty]`
 - `show selected-device [robot|local|both] [--json] [--pretty]`
 - `show runtime-state [robot|local|both] [--json] [--pretty]`
@@ -67,6 +74,7 @@ Common mappings:
 - `show controllers [--json] [--pretty]`
 - `diagnose motor <label>`
 - `diagnose device <label>`
+- `bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]`
 - `configure terminal`
 - `connect`
 - `disconnect`
@@ -90,6 +98,8 @@ Common mappings:
 - `save bridge-config <path>`
 - `save runtime-groups <path>`
 - `save profiles <path>`
+- `save sources`
+- `revert`
 - `rename device <old> <new>`
 - `device <name>`
 - `device <name> set <field> <value>`
@@ -102,7 +112,7 @@ Common mappings:
 - `validate profiles [robot|local] [--active]`
 - `validate tests [--active-set]`
 - `show <target> [robot|local|both] [--json] [--pretty]`
-- `bindings show [controllers|bindings|axes] [--json] [--pretty]`
+- `bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]`
 - `bindings controller add <name> <type> <port>`
 - `bindings controller set <name> <field> <value>`
 - `bindings controller rename <old> <new>`
@@ -145,6 +155,9 @@ Common mappings:
 - `member <device> enable`
 - `member <device> disable`
 - `member <device> toggle`
+- `bind list`
+- `bind explain <binding>`
+- `bind test <binding>`
 - `bind <input> analog`
 - `bind <input> hold <value>`
 - `bind <input> toggle <value>`
@@ -2278,15 +2291,15 @@ EXAMPLE OUTPUT
 SOURCE: local
 {...json...}
 
-### bindings show [controllers|bindings|axes] [--json] [--pretty]
+### bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]
 
 NAME
 
-bindings show [controllers|bindings|axes] [--json] [--pretty] - Configure or validate controller bindings.
+bindings show [controllers|bindings|axes] [--all] [--json] [--pretty] - Inspect the local global bindings payload.
 
 SYNOPSIS
 
-bindings show [controllers|bindings|axes] [--json] [--pretty]
+bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]
 
 DESCRIPTION
 
@@ -2310,7 +2323,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`bindings show [controllers|bindings|axes] [--json] [--pretty]`
+`bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]`
 
 EXAMPLE OUTPUT
 Bindings updated.
@@ -6318,12 +6331,14 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `save bridge-config <path>`
 - `save runtime-groups <path>`
 - `save profiles <path>`
+- `save sources`
+- `revert`
 - `rename device <old> <new>`
 - `device <name>`
 - `device <name> set <field> <value>`
 - `validate config [path]`
 - `show <target> [robot|local|both] [--json] [--pretty]`
-- `bindings show [controllers|bindings|axes] [--json] [--pretty]`
+- `bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]`
 - `bindings controller add <name> <type> <port>`
 - `bindings controller set <name> <field> <value>`
 - `bindings controller rename <old> <new>`
@@ -6366,6 +6381,9 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `member <device> enable`
 - `member <device> disable`
 - `member <device> toggle`
+- `bind list`
+- `bind explain <binding>`
+- `bind test <binding>`
 - `bind <input> analog`
 - `bind <input> hold <value>`
 - `bind <input> toggle <value>`

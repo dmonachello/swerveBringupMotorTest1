@@ -65,8 +65,10 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_ID = "id";
   private static final String JSON_KEY_DEVICE = "device";
   private static final String JSON_KEY_ENABLED = "enabled";
+  private static final String JSON_KEY_INSTANTIATED = "instantiated";
   private static final String JSON_KEY_PRESENCE_CONF = "presenceConfidence";
   private static final String JSON_KEY_LAST_SEEN_MS = "lastSeenMs";
+  private static final String JSON_KEY_ATTACHMENTS = "attachments";
   private static final String JSON_KEY_MOTOR_CURRENT_A = "motorCurrentA";
   private static final String JSON_KEY_CMD_DUTY = "cmdDuty";
   private static final String JSON_KEY_APPLIED_DUTY = "appliedDuty";
@@ -2993,10 +2995,14 @@ public class BridgeUiCommandHandler {
       if (snap == null && entry.id >= 0) {
         snap = byId.get(entry.id);
       }
+      obj.addProperty(JSON_KEY_INSTANTIATED, snap != null);
       if (snap != null) {
         obj.addProperty(JSON_KEY_PRESENCE_CONF, snap.present ? 1.0 : 0.0);
         if (snap.present) {
           obj.addProperty(JSON_KEY_LAST_SEEN_MS, nowMs);
+        }
+        if (snap.attachments != null && !snap.attachments.isEmpty()) {
+          obj.add(JSON_KEY_ATTACHMENTS, GSON.toJsonTree(snap.attachments));
         }
         RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
         if (rev != null) {

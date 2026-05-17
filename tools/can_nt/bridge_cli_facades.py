@@ -36,6 +36,8 @@ from tools.can_nt.status import (
 LINE_FLAG_PRETTY = "--pretty"
 LINE_FLAG_JSON = "--json"
 STATUS_DETAIL_PREFIX = "DETAIL: "
+CMD_REVERT = "revert"
+CMD_TIU = "tiu"
 
 
 @dataclass(frozen=True)
@@ -146,6 +148,8 @@ class BridgeCliParseFacade:
             result = StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
             return ParsedLineResult(tokens=tokens, ast=None, status=result, line_pretty=line_pretty)
         normalized = context.normalize_tokens(tokens, context.mode_name)
+        if normalized and normalized[0].lower() in (CMD_REVERT, CMD_TIU):
+            return ParsedLineResult(tokens=tokens, ast=None, status=None, line_pretty=line_pretty)
         if context.fallback_device_set(normalized):
             status = context.coerce_status(context.config_command(normalized))
             return ParsedLineResult(tokens=tokens, ast=None, status=status, line_pretty=line_pretty)

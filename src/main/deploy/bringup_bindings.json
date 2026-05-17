@@ -4,11 +4,6 @@
       "name": "controller0",
       "type": "XBOX",
       "port": 0
-    },
-    {
-      "name": "controller1",
-      "type": "XBOX",
-      "port": 1
     }
   ],
   "bindings": [
@@ -29,8 +24,8 @@
     {
       "command": "printState",
       "controller": "controller0",
-      "input": "button",
-      "id": "B",
+      "input": "combo",
+      "id": "LB+X",
       "mode": "edge"
     },
     {

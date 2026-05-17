@@ -11,6 +11,7 @@ The Bridge CLI is a Windows-side tool for:
 - Inspecting robot runtime groups and local configs.
 - Editing per-profile groups and bindings.
 - Authoring bringup tests without editing JSON.
+- Showing operator visibility state such as provenance, instantiation, faults, and signals.
 
 It does not replace the topology tool. It consumes `bringup_system.json` and writes updates back when you save.
 
@@ -82,6 +83,7 @@ Navigation:
 - `configure terminal` enters config mode.
 - `exit` goes up one level.
 - `end` returns to exec mode.
+- `tiu on` and `tiu off` enable or disable the terminal dashboard view.
 
 ## Inline Help (`?`)
 
@@ -134,15 +136,20 @@ Purpose: Learn the inspection commands you will use constantly.
 Common show commands:
 
 - `show status`
+- `show active`
 - `show workspace`
 - `show groups`
 - `show group <name>`
 - `show devices`
 - `show device <name>` (definition)
 - `show device-group <name>` (group usage)
+- `show instantiated`
+- `show faults`
 - `show bindings`
 - `show controllers`
 - `show runtime-state`
+- `show signals`
+- `show signal <name>`
 - `diagnose motor <label>`
 
 ## Workspace View
@@ -153,6 +160,7 @@ Commands:
 ```
 show workspace
 show workspace --json --pretty
+show config dirty
 ```
 
 Output includes:
@@ -160,6 +168,7 @@ Output includes:
 - Profiles/tests/bindings/mappings source paths.
 - Active profile and active test set.
 - Dirty flags.
+- Last modified / last saved / last pushed provenance.
 - Recovery mode status.
 
 Notes (Host vs Robot):
@@ -196,6 +205,7 @@ Notes:
 
 - Uses the current source paths.
 - If a path is missing, the CLI prints a one-line fix (for example: `save config data/bringup_system.json`).
+- Use `revert` to discard unsaved in-memory changes and return to the last loaded or saved disk state.
 - `show config local-raw`
 - `show config dirty`
 - `show profiles`
@@ -252,8 +262,16 @@ add device "Drive Motor (swerve-front-left)"
 add device "Angle Motor (swerve-front-left)"
 add device "Encoder (CANCoder) (swerve-front-left)"
 bind controller0.leftY analog
+bind list
+bind explain 1
 exit
 ```
+
+Notes:
+
+- `bindings ...` edits the global controller catalog in `bringup_bindings.json`.
+- `bind ...` edits the current group binding behavior in the active profile.
+- `bind list`, `bind explain`, and `bind test` are local diagnostic surfaces for current-group bindings.
 
 Modify a group:
 ```

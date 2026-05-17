@@ -15,6 +15,7 @@ common         = "exit"
                | "echo" ws ("on" | "off")
                | "sleep" ws number
                | "messages" ws ("beginner" | "medium" | "expert")
+               | "tiu" ws ("on" | "off")
                | "debug" ws "grammar" [ ws "--json" ] [ ws "--dot" ws path ]
                | "debug" ws "grammar" [ ws "--dot" ws path ] [ ws "--json" ]
                | "quit" ;
@@ -31,6 +32,7 @@ exec           = show_exec
                | "tests" ws ("select" ws name | "toggle" | tests_run_args | tests_wait_args)
                | "profile" ws "export" ws name ws path [ ws "--install-robot" ]
                | "profile" ws "device" ws "show-all" ws name
+               | "bindings" [ ws bindings_args ]
                | diagnose ;
 
 show_exec      = "show" ws show_target [ ws show_flags ] ;
@@ -40,6 +42,8 @@ show_target    = "status"
                | "group" ws name
                | "devices"
                | "device" ws name
+               | "signals"
+               | "signal" ws name
                | "commands"
                | "help"
                | "controllers"
@@ -49,6 +53,9 @@ show_target    = "status"
                | "version"
                | "sources"
                | "bindings"
+               | "active"
+               | "instantiated"
+               | "faults"
                | "can-mappings" [ ws ("manufacturers" | "device-types" | "device-type") ]
                | "selected-device"
                | "safety-latch"
@@ -158,11 +165,12 @@ diagnose       = "diagnose" ws name ws name ;
 
 bindings_args  = "show" [ ws ("controllers" | "bindings" | "axes") ] [ ws show_flags ]
                | "clear"
-               | "controller" ws ("add" ws name ws name ws number
-                                   | "set" ws name ws field ws value_text
-                                   | "rename" ws name ws name
-                                   | "list"
-                                   | "no" ws name)
+                | "controller" ws ("add" ws name ws name ws number
+                                    | "set" ws name ws field ws value_text
+                                    | "rename" ws name ws name
+                                    | "list"
+                                    | "no" ws name)
+               | "no" ws "controller" ws name
                | "binding" ws ("add" ws name ws name ws name ws name ws name
                                 | "set" ws number ws field ws value_text
                                 | "delete" ws number)
@@ -210,6 +218,9 @@ group          = "show"
                | "add" ws "next"
                | "clear"
                | "member" ws name ws ("enable" | "disable" | "toggle")
+               | "bind" ws "list"
+               | "bind" ws "explain" ws input
+               | "bind" ws "test" ws input
                | "bind" ws input ws "analog"
                | "bind" ws input ws ("hold" | "toggle" | "jog-forward" | "jog-reverse") ws value
                | "no" ws "bind"

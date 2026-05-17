@@ -51,12 +51,15 @@ public class RobotV2 extends TimedRobot {
   private static final String COMMAND_PRINT_INPUTS = "printInputs";
   private static final String MESSAGE_NON_TEST_ACTUATION_BLOCKED =
       "Actuation blocked: no active test.";
+  private static final String REASON_PROFILE_ACTIVATE = "profileActivate";
+  private static final String REASON_STARTUP_PROFILE_LOAD = "robotInitProfileLoad";
   private static final String TEXT_EMPTY = "";
   private static final int POV_UP = 0;
   private static final int POV_RIGHT = 90;
   private static final int POV_DOWN = 180;
   private static final int POV_LEFT = 270;
   private static final String ACTIVE_GROUP_NAME = "active-group";
+  private static final double BINDING_VALUE_ANALOG = 0.0;
   // ---------------------------------------------------
 
   // Driver Station controller input.
@@ -130,8 +133,7 @@ public class RobotV2 extends TimedRobot {
         uiConnectionListener);
     uiTcpServer.start();
     uiHandler.applyDashboardUpdateState();
-    ensureActiveGroupDefined();
-    refreshInputAliases();
+    activateSelectedProfileForAllSurfaces(REASON_STARTUP_PROFILE_LOAD);
     // Print bindings and validate IDs once at startup.
     uiHandler.printStartupInfo();
     validateCanIds();
@@ -424,13 +426,7 @@ public class RobotV2 extends TimedRobot {
   private void activateSelectedProfileForAllSurfaces(String reason) {
     runtime.activateSelectedProfile(reason);
     if (BringupUtil.isProfileActive()) {
-      if (uiHandler != null) {
-        uiHandler.resetProfileRuntimeUiState();
-        uiHandler.printProfileInfo();
-      }
-      refreshInputAliases();
-      syncDefaultGroup();
-      ensureActiveGroupDefined();
+      handleProfileActivate();
     }
   }
 
@@ -488,6 +484,63 @@ public class RobotV2 extends TimedRobot {
       }
     }
     bridgeGroups().syncGroupMembers(DEFAULT_GROUP_NAME, labels);
+  }
+
+  /**
+   * NAME
+   *   syncRuntimeBridgeConfig - Rebuild runtime groups from active bridgeConfig.
+   *
+   * SIDE EFFECTS
+   *   Clears runtime group/selected-device state and loads the active profile's
+   *   bridgeConfig groups, bindings, and selected-device settings. Falls back
+   *   to the legacy default group only when the profile defines no groups.
+   */
+  private void syncRuntimeBridgeConfig() {
+    bridgeGroups().clear();
+    bridgeSelected().device = TEXT_EMPTY;
+    bridgeSelected().enabled = false;
+    BringupUtil.BridgeProfileRuntimeConfig config =
+        BringupUtil.getProfileBridgeConfig(BringupUtil.getActiveCanProfile());
+    boolean loadedGroups = false;
+    for (BringupUtil.BridgeProfileGroupConfig group : config.groups) {
+      if (group == null || group.name == null || group.name.isBlank()) {
+        continue;
+      }
+      bridgeGroups().createGroup(group.name);
+      for (BringupUtil.BridgeProfileMemberConfig member : group.members) {
+        if (member == null || member.device == null || member.device.isBlank()) {
+          continue;
+        }
+        bridgeGroups().addDevice(group.name, member.device, true);
+        if (!member.enabled) {
+          bridgeGroups().setMemberEnabled(group.name, member.device, false);
+        }
+      }
+      for (BringupUtil.BridgeProfileBindingConfig binding : group.bindings) {
+        if (binding == null || binding.input == null || binding.kind == null) {
+          continue;
+        }
+        BridgeGroupManager.BindingKind kind = BridgeGroupManager.BindingKind.parse(binding.kind);
+        if (kind == null) {
+          continue;
+        }
+        double value = binding.hasValue ? binding.value : BINDING_VALUE_ANALOG;
+        bridgeGroups().addBinding(group.name, binding.input, kind, value);
+      }
+      if (!group.enabled) {
+        bridgeGroups().setGroupEnabled(group.name, false);
+      }
+      loadedGroups = true;
+    }
+    if (config.selectedDevice != null
+        && config.selectedDevice.device != null
+        && !config.selectedDevice.device.isBlank()) {
+      bridgeSelected().device = config.selectedDevice.device;
+      bridgeSelected().enabled = config.selectedDevice.enabled;
+    }
+    if (!loadedGroups) {
+      syncDefaultGroup();
+    }
   }
 
   /**
@@ -551,7 +604,7 @@ public class RobotV2 extends TimedRobot {
       uiHandler.printProfileInfo();
     }
     refreshInputAliases();
-    syncDefaultGroup();
+    syncRuntimeBridgeConfig();
     ensureActiveGroupDefined();
   }
 
@@ -563,7 +616,7 @@ public class RobotV2 extends TimedRobot {
     @Override
     public void handleAddAll(boolean addAllNow) {
       if (addAllNow && !BringupUtil.isProfileActive()) {
-        activateSelectedProfileForAllSurfaces("profileActivate");
+        activateSelectedProfileForAllSurfaces(REASON_PROFILE_ACTIVATE);
       }
       if (core() != null) {
         runtime.addAllDevices(addAllNow);
@@ -579,7 +632,7 @@ public class RobotV2 extends TimedRobot {
     @Override
     public void handleAddMotor(boolean addMotorNow) {
       if (addMotorNow && !BringupUtil.isProfileActive()) {
-        activateSelectedProfileForAllSurfaces("profileActivate");
+        activateSelectedProfileForAllSurfaces(REASON_PROFILE_ACTIVATE);
       }
       if (core() != null) {
         runtime.addMotor(addMotorNow);
