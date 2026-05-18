@@ -46,6 +46,7 @@ ENABLE_CANNECT_BUS_LINKS = True
 ENABLE_CANNECT_FREE_FLOAT = True
 ENABLE_CANNECT_CLUSTER_DRAG = True
 TEXT_EMPTY = ""
+EMPTY_STRING = TEXT_EMPTY
 NODE_TYPE_DEVICE = "device"
 NODE_TYPE_CALLOUT = "callout"
 MENU_LABEL_ADD_ANALYZER = "Add Analyzer"
@@ -133,8 +134,25 @@ LEFT_BOTTOM_MOUSEWHEEL_UNIT = "units"
 LEFT_BOTTOM_MOUSEWHEEL_DIVISOR = 120
 TK_EVENT_CONFIGURE = "<Configure>"
 TK_EVENT_MOUSEWHEEL = "<MouseWheel>"
+TK_EVENT_CONTROL_MOUSEWHEEL = "<Control-MouseWheel>"
+TK_EVENT_BUTTON_4 = "<Button-4>"
+TK_EVENT_BUTTON_5 = "<Button-5>"
+TK_EVENT_MIDDLE_BUTTON_PRESS = "<ButtonPress-2>"
+TK_EVENT_MIDDLE_BUTTON_DRAG = "<B2-Motion>"
+TK_EVENT_MIDDLE_BUTTON_RELEASE = "<ButtonRelease-2>"
 TK_BBOX_ALL = "all"
+MOUSEWHEEL_UP_NUM = 4
+MOUSEWHEEL_DOWN_NUM = 5
+ZOOM_WHEEL_STEP = 0.1
+PAN_SCROLLREGION_PAD_VIEWPORTS = 1.0
+SCROLLREGION_FIELD_COUNT = 4
+SCROLLREGION_MIN_INDEX = 0
+SCROLLREGION_MAX_INDEX = 2
+SCROLLREGION_MIN_SPAN = 1.0
 MSG_INVALID_DIO_CHANNEL = "Invalid DIO channel for {}."
+MSG_GENERIC_DEVICE_VENDOR_TYPE_REQUIRED = (
+    "Generic device '{}' requires vendor and device type."
+)
 MSG_MISSING_DIO_TYPE = "Missing DIO device type for {}."
 MSG_INVALID_DIO_TYPE = "Invalid DIO device type for {}."
 MSG_ATTACH_SELECT = "Select exactly two nodes (one DIO device and one host device)."
@@ -147,6 +165,11 @@ MSG_WIRE_NO_ROBORIO = "No roboRIO node found in the diagram."
 MSG_WIRE_DUP = "DIO wiring link already exists."
 MSG_WIRE_NONE = "No DIO wiring links were removed."
 MSG_WIRE_REMOVE_SELECT = "Select one or more nodes to remove DIO wiring links."
+MSG_POWER_SELECT = "Select exactly two non-DIO nodes, with at least one power node."
+MSG_POWER_INVALID = "Power links require two non-DIO nodes and at least one power node."
+MSG_POWER_DUP = "Power link already exists."
+MSG_POWER_NONE = "No power links were removed."
+MSG_POWER_REMOVE_SELECT = "Select one or more nodes to remove power links."
 MSG_DIO_ATTACH_REQUIRED = "DIO device {} must be attached to a host device."
 MSG_DIO_WIRE_REQUIRED = "DIO device {} must be wired to roboRIO."
 MSG_DIO_NO_ROBORIO = "DIO devices require a roboRIO node."
@@ -154,10 +177,76 @@ TITLE_ATTACH_DEVICE = "Attach Device"
 TITLE_REMOVE_ATTACHMENT = "Remove Attachment"
 TITLE_WIRE_DIO = "Wire DIO"
 TITLE_REMOVE_DIO_WIRE = "Remove DIO Wire"
+TITLE_POWER_LINK = "Power Link"
+TITLE_REMOVE_POWER_LINK = "Remove Power Link"
 KEY_ATTACHMENT_LINKS = "attachmentLinks"
 KEY_DIO_LINKS = "dioLinks"
+KEY_POWER_LINKS = "powerLinks"
 KEY_DIAGRAM_NEIGHBOR_LINKS = "neighborLinks"
 KEY_DIAGRAM_NEIGHBOR_PORTS = "neighborPorts"
+KEY_TOPOLOGY = "topology"
+KEY_TOPOLOGY_PROFILES = "profiles"
+KEY_TOPOLOGY_NODES = "nodes"
+KEY_TOPOLOGY_EDGES = "edges"
+KEY_TOPOLOGY_VERSION = "version"
+KEY_TOPOLOGY_SOURCE = "source"
+KEY_TOPOLOGY_LAYOUT = "layout"
+KEY_TOPOLOGY_NODE_TYPE = "nodeType"
+KEY_TOPOLOGY_DEVICE_REF = "deviceRef"
+KEY_TOPOLOGY_EDGE_ID = "id"
+KEY_TOPOLOGY_EDGE_TYPE = "edgeType"
+KEY_TOPOLOGY_FROM_NODE = "fromNode"
+KEY_TOPOLOGY_FROM_PORT = "fromPort"
+KEY_TOPOLOGY_TO_NODE = "toNode"
+KEY_TOPOLOGY_TO_PORT = "toPort"
+KEY_TOPOLOGY_VIEW = "view"
+KEY_TOPOLOGY_FILTERS = "connectionFilters"
+KEY_TOPOLOGY_BUS = "bus"
+KEY_TOPOLOGY_ROW = "row"
+KEY_TOPOLOGY_X = "x"
+KEY_TOPOLOGY_Y = "y"
+KEY_TOPOLOGY_Y_RELATIVE = "yRelative"
+KEY_DIO = "dio"
+KEY_POWER = "power"
+KEY_NODE_KEY = "key"
+KEY_ID = "id"
+KEY_CATEGORY = "category"
+KEY_DEVICE_TYPE = "deviceType"
+TOPOLOGY_VERSION = 1
+TOPOLOGY_SOURCE_LOCAL = "local"
+TOPOLOGY_NODE_DEVICE = "device"
+TOPOLOGY_NODE_JUNCTION = "junction"
+TOPOLOGY_NODE_ANALYZER = "analyzer"
+TOPOLOGY_NODE_POWER = "power"
+TOPOLOGY_NODE_VIRTUAL = "virtual"
+TOPOLOGY_EDGE_CAN_TRUNK = "can_trunk"
+TOPOLOGY_EDGE_CAN_DROP = "can_drop"
+TOPOLOGY_EDGE_CAN_TAP = "can_tap"
+TOPOLOGY_EDGE_DIO = "dio"
+TOPOLOGY_EDGE_POWER = "power"
+TOPOLOGY_EDGE_VIRTUAL = "virtual"
+TOPOLOGY_FILTER_CAN = "can"
+TOPOLOGY_FILTER_POWER = "power"
+TOPOLOGY_FILTER_DIO = "dio"
+TOPOLOGY_FILTER_PWM = "pwm"
+TOPOLOGY_FILTER_ANALOG = "analog"
+TOPOLOGY_FILTER_VIRTUAL = "virtual"
+TOPOLOGY_FILTERS_ORDER = (
+    TOPOLOGY_FILTER_CAN,
+    TOPOLOGY_FILTER_POWER,
+    TOPOLOGY_FILTER_DIO,
+    TOPOLOGY_FILTER_PWM,
+    TOPOLOGY_FILTER_ANALOG,
+    TOPOLOGY_FILTER_VIRTUAL,
+)
+TOPOLOGY_FILTER_LABELS = {
+    TOPOLOGY_FILTER_CAN: "CAN",
+    TOPOLOGY_FILTER_POWER: "Power",
+    TOPOLOGY_FILTER_DIO: "DIO",
+    TOPOLOGY_FILTER_PWM: "PWM",
+    TOPOLOGY_FILTER_ANALOG: "Analog",
+    TOPOLOGY_FILTER_VIRTUAL: "Virtual",
+}
 KEY_LINK_DEVICE = "device"
 KEY_LINK_ATTACHMENT = "attachment"
 KEY_LINK_ROBORIO = "roborio"
@@ -169,16 +258,39 @@ KEY_LINK_NEIGHBOR = "neighbor"
 KEY_LINK_NEIGHBOR_PORT = "neighborPort"
 KEY_ATTACHMENTS = "attachments"
 NEIGHBOR_PORT_LEFT = "left"
+PDF_FILE_EXTENSION = ".pdf"
+TEMP_PRINT_DIAGRAM_PREFIX = "can_topology_"
+TEMP_PRINT_NODE_LIST_PREFIX = "can_topology_nodes_"
+TEMP_PRINT_CLEANUP_DELAY_MS = 30000
+WINDOWS_NO_ASSOCIATION_ERROR = 1155
+WINDOWS_REGKEY_CURRENT_USER_USERCHOICE = (
+    r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf\UserChoice"
+)
+WINDOWS_REGKEY_CLASSES_ROOT_PDF = r".pdf"
+WINDOWS_REGKEY_SHELL_PRINT_SUFFIX = r"\shell\print\command"
+WINDOWS_REGVALUE_PROGID = "ProgId"
+MSG_PRINT_OPENED_MANUAL = (
+    "No default PDF print handler is available for the current .pdf association.\n\n"
+    "Opened the PDF so you can print manually."
+)
+MSG_PRINT_NO_HANDLER = (
+    "Saved PDF, but the current .pdf association does not expose a print action.\n\n"
+    "Opened the PDF so you can print manually."
+)
+MSG_PRINTED_DIAGRAM = "Queued PDF for printing: {}"
+MSG_PRINTED_NODE_LIST = "Queued node list for printing: {}"
 NEIGHBOR_PORT_RIGHT = "right"
 KEY_UNDO_INTERFACE = "interface"
 KEY_UNDO_DIO = "dio"
 KEY_UNDO_INVERT = "invert"
 KEY_UNDO_ATTACHMENT_LINKS = "attachment_links"
 KEY_UNDO_DIO_LINKS = "dio_links"
+KEY_UNDO_POWER_LINKS = "power_links"
 KEY_UNDO_NEIGHBOR_LINKS = "neighbor_links"
 KEY_UNDO_NEIGHBOR_PORTS = "neighbor_ports"
 ATTACH_LINE_COLOR = "#7a5d00"
 WIRE_LINE_COLOR = "#1f6feb"
+POWER_LINE_COLOR = "#c05000"
 LINK_LINE_WIDTH = 2
 LINK_DASH = (6, 4)
 DIO_RAIL_OFFSET = 120.0
@@ -229,6 +341,10 @@ DIAGRAM_CONTENT_LIST_KEYS = (
 DIAGRAM_CONTENT_SCALAR_KEYS = (
     KEY_DIAGRAM_BUS_COUNT,
     KEY_DIAGRAM_BUS_SPACING,
+)
+TOPOLOGY_CONTENT_LIST_KEYS = (
+    KEY_TOPOLOGY_NODES,
+    KEY_TOPOLOGY_EDGES,
 )
 BUS_LINE_COLOR = "#444444"
 MFG_NI = 1
@@ -286,7 +402,7 @@ try:
         truncate_to_width as truncate_to_width_shared,
         wrap_label_lines as wrap_label_lines_shared,
     )
-    from tools.common.topology_draw import draw_group_overlays
+    from tools.common.topology_draw import draw_group_overlays, render_topology_canvas_common
 except ImportError:  # Allow running as a script from this folder.
     import sys
     from pathlib import Path as _Path
@@ -312,7 +428,7 @@ except ImportError:  # Allow running as a script from this folder.
         truncate_to_width as truncate_to_width_shared,
         wrap_label_lines as wrap_label_lines_shared,
     )
-    from common.topology_draw import draw_group_overlays  # type: ignore
+    from common.topology_draw import draw_group_overlays, render_topology_canvas_common  # type: ignore
 try:
     from tools.common.paths import profiles_canonical_path, profiles_deploy_path, repo_root
     from tools.common.profile_io import compute_profiles_hash
@@ -357,6 +473,8 @@ KEY_BRIDGE_SELECTED_DEVICE = (
 )
 KEY_DEVICE = profile_consts.KEY_DEVICE if profile_consts is not None else "device"
 KEY_LABEL = profile_consts.KEY_LABEL if profile_consts is not None else "label"
+KEY_VENDOR = profile_consts.KEY_VENDOR if profile_consts is not None else "vendor"
+KEY_MODEL = profile_consts.KEY_MODEL if profile_consts is not None else "model"
 KEY_INTERFACE = (
     profile_consts.KEY_INTERFACE if profile_consts is not None else "interface"
 )
@@ -455,6 +573,14 @@ except ImportError:  # Allow running as a script from this folder.
         tags_to_string,
     )
 
+INFRASTRUCTURE_NODE_CATEGORIES = (
+    DIAGRAM_CATEGORY_CANNECT_INJECT,
+    DIAGRAM_CATEGORY_CANNECT_DIRECT,
+    DIAGRAM_CATEGORY_ANALYZER,
+)
+INFRASTRUCTURE_MODEL_WIRING = DIAGRAM_DEVICE_WIRING.lower()
+INFRASTRUCTURE_LABEL_ANALYZER = ANALYZER_LABEL_PREFIX.lower()
+
 try:
     from tools.common.time_utils import timestamp_version
 except ImportError:  # Allow running as a script from this folder.
@@ -503,11 +629,13 @@ class TopologyEditor(tk.Tk):
         self._selected_key: Optional[int] = None
         self._drag_state: Optional[Tuple[int, float, float]] = None
         self._drag_free_y: Dict[int, float] = {}
+        self._group_overlay_regions: List[Dict[str, object]] = []
         self._ethernet_links: List[Tuple[int, int]] = []
         self._can_bus_links: List[Dict[str, int]] = []
         self._cannect_device_links: List[Dict[str, int]] = []
         self._attachment_links: List[Dict[str, int]] = []
         self._dio_wiring_links: List[Dict[str, int]] = []
+        self._power_links: List[Dict[str, int]] = []
         self._neighbor_links: List[Dict[str, int]] = []
         self._neighbor_ports: List[Dict[str, object]] = []
         self._neighbors_dirty = False
@@ -578,6 +706,9 @@ class TopologyEditor(tk.Tk):
         self._tag_filter_fn: Optional[object] = None
         self._tag_filter_var = tk.StringVar(value="Filter: All")
         self._tag_filter_button: Optional[ttk.Button] = None
+        self._connection_filter_vars = {
+            key: tk.BooleanVar(value=True) for key in TOPOLOGY_FILTERS_ORDER
+        }
         self._list_sort_var = tk.StringVar(value="can_id")
         self._root_extras: Dict[str, object] = {}
         self._show_group_overlays_var = tk.BooleanVar(value=True)
@@ -614,23 +745,40 @@ class TopologyEditor(tk.Tk):
             tag_filter, text="Clear", command=self._clear_tag_filter
         )
         self._tag_filter_button.pack(side="right")
+        connection_filter = ttk.LabelFrame(left, text="Connections")
+        connection_filter.pack(fill="x", pady=(0, 6))
+        button_row = ttk.Frame(connection_filter)
+        button_row.pack(fill="x", padx=4, pady=(2, 4))
+        ttk.Button(button_row, text="All", command=self._enable_all_connection_filters).pack(side="left")
+        ttk.Button(button_row, text="None", command=self._disable_all_connection_filters).pack(side="left", padx=(4, 0))
+        filter_grid = ttk.Frame(connection_filter)
+        filter_grid.pack(fill="x", padx=4, pady=(0, 4))
+        for index, filter_key in enumerate(TOPOLOGY_FILTERS_ORDER):
+            ttk.Checkbutton(
+                filter_grid,
+                text=TOPOLOGY_FILTER_LABELS[filter_key],
+                variable=self._connection_filter_vars[filter_key],
+                command=self._on_connection_filters_changed,
+            ).grid(row=index // 2, column=index % 2, sticky="w", padx=(0, 10), pady=1)
         list_frame = ttk.Frame(left)
         list_frame.pack(fill="both", expand=True, pady=(4, 6))
         self.node_list = ttk.Treeview(
             list_frame,
-            columns=("can_id", "type", "label", "tags"),
+            columns=("can_id", "type", "label", "group", "tags"),
             show="headings",
             height=12,
             selectmode="extended",
         )
         self.node_list.heading("can_id", text="CAN ID")
-        self.node_list.heading("type", text="Type")
+        self.node_list.heading("type", text="Category")
         self.node_list.heading("label", text="Label")
+        self.node_list.heading("group", text="Group")
         self.node_list.heading("tags", text="Tags")
         self.node_list.column("can_id", width=60, anchor="center")
         self.node_list.column("type", width=80, anchor="w")
-        self.node_list.column("label", width=160, anchor="w")
-        self.node_list.column("tags", width=120, anchor="w")
+        self.node_list.column("label", width=150, anchor="w")
+        self.node_list.column("group", width=120, anchor="w")
+        self.node_list.column("tags", width=100, anchor="w")
         self.node_list.pack(side="left", fill="both", expand=True)
         node_scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.node_list.yview)
         node_scroll.pack(side="right", fill="y")
@@ -734,6 +882,9 @@ class TopologyEditor(tk.Tk):
         self.canvas.bind("<ButtonPress-1>", self._on_canvas_press)
         self.canvas.bind("<B1-Motion>", self._on_canvas_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_canvas_release)
+        self.canvas.bind(TK_EVENT_MIDDLE_BUTTON_PRESS, self._on_canvas_pan_press)
+        self.canvas.bind(TK_EVENT_MIDDLE_BUTTON_DRAG, self._on_canvas_pan_drag)
+        self.canvas.bind(TK_EVENT_MIDDLE_BUTTON_RELEASE, self._on_canvas_pan_release)
         self.canvas.bind("<Control-c>", lambda _e: self._on_copy())
         self.canvas.bind("<Control-v>", lambda _e: self._on_paste())
         self.bind_all("<Control-z>", lambda _e: self._undo_last())
@@ -761,8 +912,11 @@ class TopologyEditor(tk.Tk):
         self.bind_all("<Control-P>", lambda _e: self._print_pdf_shortcut())
         self.bind_all("<Delete>", self._on_delete_key)
         self.bind_all("<BackSpace>", self._on_delete_key)
-        self.canvas.bind("<Configure>", self._on_canvas_configure)
-        self.canvas.bind("<Control-MouseWheel>", self._on_zoom_wheel)
+        self.canvas.bind(TK_EVENT_CONFIGURE, self._on_canvas_configure)
+        self.canvas.bind(TK_EVENT_MOUSEWHEEL, self._on_zoom_wheel)
+        self.canvas.bind(TK_EVENT_CONTROL_MOUSEWHEEL, self._on_zoom_wheel)
+        self.canvas.bind(TK_EVENT_BUTTON_4, self._on_zoom_wheel)
+        self.canvas.bind(TK_EVENT_BUTTON_5, self._on_zoom_wheel)
         self.canvas.bind("<Left>", lambda e: self._nudge_selection("left", e))
         self.canvas.bind("<Right>", lambda e: self._nudge_selection("right", e))
         self.canvas.bind("<Up>", lambda e: self._nudge_selection("up", e))
@@ -832,6 +986,8 @@ class TopologyEditor(tk.Tk):
         edit_menu.add_separator()
         edit_menu.add_command(label="Attach Device (Logical)", command=self._attach_device_link)
         edit_menu.add_command(label="Remove Attachment Link", command=self._remove_attachment_link)
+        edit_menu.add_command(label="Add Power Link", command=self._add_power_link)
+        edit_menu.add_command(label="Remove Power Link", command=self._remove_power_link)
         edit_menu.add_command(label="Wire DIO to roboRIO", command=self._wire_dio_to_roborio)
         edit_menu.add_command(label="Remove DIO Wire", command=self._remove_dio_wire)
         edit_menu.add_separator()
@@ -964,7 +1120,7 @@ class TopologyEditor(tk.Tk):
             ("DIO", "dio"),
             ("Invert", "invert"),
             ("Vendor", "vendor"),
-            ("Device Type", "type"),
+            ("CAN Device Type", "type"),
             ("Motor", "motor"),
             ("Limits", "limits"),
             ("Terminator", "terminator"),
@@ -1160,7 +1316,24 @@ class TopologyEditor(tk.Tk):
         NAME
             _preserve_canvas_view - Run an action without shifting canvas view.
         """
+        xview_getter = getattr(self.canvas, "xview", None)
+        yview_getter = getattr(self.canvas, "yview", None)
+        xview = xview_getter() if callable(xview_getter) else None
+        yview = yview_getter() if callable(yview_getter) else None
         action()
+        self.update_idletasks()
+        if (
+            isinstance(xview, tuple)
+            and len(xview) == 2
+            and hasattr(self.canvas, "xview_moveto")
+        ):
+            self.canvas.xview_moveto(float(xview[0]))
+        if (
+            isinstance(yview, tuple)
+            and len(yview) == 2
+            and hasattr(self.canvas, "yview_moveto")
+        ):
+            self.canvas.yview_moveto(float(yview[0]))
 
     def _has_neighbor_metadata(self) -> bool:
         """
@@ -1255,6 +1428,7 @@ class TopologyEditor(tk.Tk):
             "cannect_device_links": list(self._cannect_device_links),
             KEY_UNDO_ATTACHMENT_LINKS: list(self._attachment_links),
             KEY_UNDO_DIO_LINKS: list(self._dio_wiring_links),
+            KEY_UNDO_POWER_LINKS: list(self._power_links),
             KEY_UNDO_NEIGHBOR_LINKS: list(self._neighbor_links),
             KEY_UNDO_NEIGHBOR_PORTS: list(self._neighbor_ports),
             "neighbors_dirty": self._neighbors_dirty,
@@ -1354,6 +1528,16 @@ class TopologyEditor(tk.Tk):
             and isinstance(link.get(KEY_LINK_ROBORIO), int)
             and isinstance(link.get(KEY_LINK_DEVICE), int)
         ]
+        self._power_links = [
+            {
+                KEY_LINK_A: int(link.get(KEY_LINK_A)),
+                KEY_LINK_B: int(link.get(KEY_LINK_B)),
+            }
+            for link in snap.get(KEY_UNDO_POWER_LINKS, [])
+            if isinstance(link, dict)
+            and isinstance(link.get(KEY_LINK_A), int)
+            and isinstance(link.get(KEY_LINK_B), int)
+        ]
         self._neighbor_links = self._normalize_neighbor_links(snap.get(KEY_UNDO_NEIGHBOR_LINKS, []))
         self._neighbor_ports = self._normalize_neighbor_ports(snap.get(KEY_UNDO_NEIGHBOR_PORTS, []))
         self._neighbors_dirty = bool(snap.get("neighbors_dirty", False))
@@ -1387,6 +1571,7 @@ class TopologyEditor(tk.Tk):
         self._cannect_device_links = []
         self._attachment_links = []
         self._dio_wiring_links = []
+        self._power_links = []
         self._neighbor_links = []
         self._neighbor_ports = []
         self._neighbors_dirty = False
@@ -1564,17 +1749,27 @@ class TopologyEditor(tk.Tk):
             messagebox.showerror("Error", "Selected profile is not an object.")
             return
         incoming_diagram = None
+        incoming_topology = None
         diagram = incoming.get("diagram")
         if isinstance(diagram, dict):
             diagram_profiles = diagram.get("profiles")
             if isinstance(diagram_profiles, dict):
                 incoming_diagram = diagram_profiles.get(name)
+        topology = incoming.get(KEY_TOPOLOGY)
+        if isinstance(topology, dict):
+            topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+            if isinstance(topology_profiles, dict):
+                incoming_topology = topology_profiles.get(name)
 
         dest_path = self._canonical_profiles_path()
         dest = self._load_profiles_payload(dest_path) if dest_path.exists() else {
             "default_profile": name,
             "profiles": {},
-            "diagram": {"profiles": {}},
+            KEY_TOPOLOGY: {
+                KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {},
+            },
         }
         if dest is None:
             return
@@ -1587,6 +1782,16 @@ class TopologyEditor(tk.Tk):
         diagram_profiles = diagram.get("profiles")
         if not isinstance(diagram_profiles, dict):
             diagram_profiles = {}
+        topology = dest.get(KEY_TOPOLOGY)
+        if not isinstance(topology, dict):
+            topology = {
+                KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {},
+            }
+        topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+        if not isinstance(topology_profiles, dict):
+            topology_profiles = {}
 
         target_name = name
         if target_name in profiles:
@@ -1607,10 +1812,16 @@ class TopologyEditor(tk.Tk):
 
         self._backup_profiles_file(dest_path)
         profiles[target_name] = profile
-        if incoming_diagram is not None:
-            diagram_profiles[target_name] = incoming_diagram
+        if incoming_topology is not None:
+            topology_profiles[target_name] = incoming_topology
+        elif incoming_diagram is not None:
+            topology_profiles[target_name] = self._topology_entry_from_legacy_diagram(incoming_diagram)
         dest["profiles"] = profiles
-        dest["diagram"] = {"profiles": diagram_profiles}
+        dest[KEY_TOPOLOGY] = {
+            KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+            KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+            KEY_TOPOLOGY_PROFILES: topology_profiles,
+        }
         if dest.get("default_profile") is None:
             dest["default_profile"] = target_name
         if not self._write_profiles_payload(dest_path, dest, include_extras=True):
@@ -1641,11 +1852,17 @@ class TopologyEditor(tk.Tk):
             messagebox.showerror("Error", "Selected profile is not an object.")
             return
         diag = None
+        topology_entry = None
         diagram = src.get("diagram")
         if isinstance(diagram, dict):
             diagram_profiles = diagram.get("profiles")
             if isinstance(diagram_profiles, dict):
                 diag = diagram_profiles.get(name)
+        topology = src.get(KEY_TOPOLOGY)
+        if isinstance(topology, dict):
+            topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+            if isinstance(topology_profiles, dict):
+                topology_entry = topology_profiles.get(name)
 
         path = filedialog.asksaveasfilename(
             title="Export Profile",
@@ -1658,8 +1875,18 @@ class TopologyEditor(tk.Tk):
             "default_profile": name,
             "profiles": {name: profile},
         }
-        if diag is not None:
-            payload["diagram"] = {"profiles": {name: diag}}
+        if topology_entry is not None:
+            payload[KEY_TOPOLOGY] = {
+                KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {name: topology_entry},
+            }
+        elif diag is not None:
+            payload[KEY_TOPOLOGY] = {
+                KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {name: self._topology_entry_from_legacy_diagram(diag)},
+            }
         if not self._write_profiles_payload(Path(path), payload, include_extras=False):
             return
         messagebox.showinfo("Exported", f"Wrote {path}")
@@ -1703,6 +1930,12 @@ class TopologyEditor(tk.Tk):
             if isinstance(diagram_profiles, dict) and old_name in diagram_profiles:
                 diagram_profiles[new_name] = diagram_profiles.pop(old_name)
                 data["diagram"] = {"profiles": diagram_profiles}
+        topology = data.get(KEY_TOPOLOGY)
+        if isinstance(topology, dict):
+            topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+            if isinstance(topology_profiles, dict) and old_name in topology_profiles:
+                topology_profiles[new_name] = topology_profiles.pop(old_name)
+                data[KEY_TOPOLOGY] = topology
         data["profiles"] = profiles
         if not self._write_profiles_payload(path, data, include_extras=True):
             return
@@ -1746,6 +1979,12 @@ class TopologyEditor(tk.Tk):
             if isinstance(diagram_profiles, dict):
                 diagram_profiles.pop(target, None)
                 data["diagram"] = {"profiles": diagram_profiles}
+        topology = data.get(KEY_TOPOLOGY)
+        if isinstance(topology, dict):
+            topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+            if isinstance(topology_profiles, dict):
+                topology_profiles.pop(target, None)
+                data[KEY_TOPOLOGY] = topology
         data["profiles"] = profiles
         if not self._write_profiles_payload(path, data, include_extras=True):
             return
@@ -1839,20 +2078,25 @@ class TopologyEditor(tk.Tk):
         self._can_bus_links = []
         self._cannect_device_links = []
         self._attachment_links = []
+        self._power_links = []
         self._neighbor_links = []
         self._neighbor_ports = []
         self._neighbors_dirty = False
         self._dio_wiring_links = []
-        diagram_applied = False
+        topology_applied = False
         diagram_profiles = {}
+        topology_profiles = {}
+        topology_root = data.get(KEY_TOPOLOGY)
+        if isinstance(topology_root, dict):
+            topology_profiles = topology_root.get(KEY_TOPOLOGY_PROFILES) or {}
         diagram = data.get("diagram")
         if isinstance(diagram, dict):
             diagram_profiles = diagram.get("profiles") or {}
-        if isinstance(diagram_profiles, dict):
-            diag = diagram_profiles.get(name)
-            if isinstance(diag, dict) and self._diagram_has_saved_content(diag):
-                self._apply_diagram_snapshot(diag)
-                diagram_applied = True
+        if isinstance(topology_profiles, dict):
+            topology_entry = topology_profiles.get(name)
+            if isinstance(topology_entry, dict) and self._topology_has_saved_content(topology_entry):
+                self._apply_topology_snapshot(topology_entry)
+                topology_applied = True
                 self._zoom_label_var.set(f"Zoom: {int(self._zoom * 100)}%")
                 if not self._profile_device_nodes():
                     self._nodes = self._nodes_from_profile(profile)
@@ -1861,8 +2105,24 @@ class TopologyEditor(tk.Tk):
                     self._cannect_device_links = []
                     self._attachment_links = []
                     self._dio_wiring_links = []
-                    diagram_applied = False
-        if not diagram_applied:
+                    self._power_links = []
+                    topology_applied = False
+        if not topology_applied and isinstance(diagram_profiles, dict):
+            diag = diagram_profiles.get(name)
+            if isinstance(diag, dict) and self._diagram_has_saved_content(diag):
+                self._apply_diagram_snapshot(diag)
+                topology_applied = True
+                self._zoom_label_var.set(f"Zoom: {int(self._zoom * 100)}%")
+                if not self._profile_device_nodes():
+                    self._nodes = self._nodes_from_profile(profile)
+                    self._ethernet_links = []
+                    self._can_bus_links = []
+                    self._cannect_device_links = []
+                    self._attachment_links = []
+                    self._dio_wiring_links = []
+                    self._power_links = []
+                    topology_applied = False
+        if not topology_applied:
             self._rebuild_attachment_links_from_registry()
             self._ensure_dio_wiring_links()
         self._next_key = 1 + max([n.key for n in self._nodes], default=0)
@@ -1886,7 +2146,7 @@ class TopologyEditor(tk.Tk):
                 self._profile_pick_var.set(name)
         self._refresh_list()
         self._update_details_panel(None)
-        if not diagram_applied:
+        if not topology_applied:
             self._layout_even()
         else:
             max_node_x = max((n.x for n in self._nodes), default=0.0)
@@ -1897,7 +2157,15 @@ class TopologyEditor(tk.Tk):
         except tk.TclError:
             pass
         self.update_idletasks()
-        self._pending_fit_to_window = True
+        self._pending_fit_to_window = False
+        if topology_applied:
+            self._zoom_label_var.set(f"Zoom: {int(self._zoom * 100)}%")
+            self._redraw_canvas()
+        else:
+            self._zoom = 1.0
+            self._pan_y = 0.0
+            self._zoom_label_var.set("Zoom: 100%")
+            self._redraw_canvas()
         self._dirty = False
         self._refresh_default_checkbox()
         self._refresh_neighbor_status()
@@ -1944,7 +2212,16 @@ class TopologyEditor(tk.Tk):
 
     @staticmethod
     def _root_known_keys() -> set[str]:
-        return {"schema_version", "data_version", "data_hash", "default_profile", "profiles", "diagram", "devices"}
+        return {
+            "schema_version",
+            "data_version",
+            "data_hash",
+            "default_profile",
+            "profiles",
+            "diagram",
+            KEY_TOPOLOGY,
+            "devices",
+        }
 
     @staticmethod
     def _diagram_has_saved_content(diagram: Dict[str, object]) -> bool:
@@ -1963,6 +2240,18 @@ class TopologyEditor(tk.Tk):
                 return True
         for key in DIAGRAM_CONTENT_SCALAR_KEYS:
             if key in diagram:
+                return True
+        return False
+
+    @staticmethod
+    def _topology_has_saved_content(topology_profile: Dict[str, object]) -> bool:
+        """
+        NAME
+            _topology_has_saved_content - Check whether a topology entry has graph data.
+        """
+        for key in TOPOLOGY_CONTENT_LIST_KEYS:
+            value = topology_profile.get(key)
+            if isinstance(value, list) and value:
                 return True
         return False
 
@@ -2311,6 +2600,14 @@ class TopologyEditor(tk.Tk):
             if link.get(KEY_LINK_DEVICE) in selected_keys
             and link.get(KEY_LINK_ROBORIO) in selected_keys
         ]
+        diag_profile[KEY_POWER_LINKS] = [
+            {
+                KEY_LINK_A: link.get(KEY_LINK_A),
+                KEY_LINK_B: link.get(KEY_LINK_B),
+            }
+            for link in self._power_links
+            if link.get(KEY_LINK_A) in selected_keys and link.get(KEY_LINK_B) in selected_keys
+        ]
         try:
             with open(path, "w", encoding="utf-8") as handle:
                 json.dump(data, handle, indent=2)
@@ -2397,6 +2694,16 @@ class TopologyEditor(tk.Tk):
         diagram_profiles = diagram.get("profiles")
         if not isinstance(diagram_profiles, dict):
             diagram_profiles = {}
+        topology = data.get(KEY_TOPOLOGY)
+        if not isinstance(topology, dict):
+            topology = {
+                KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {},
+            }
+        topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+        if not isinstance(topology_profiles, dict):
+            topology_profiles = {}
 
         if prompt_replace and profile_name in profiles:
             replace = messagebox.askyesno(
@@ -2407,9 +2714,13 @@ class TopologyEditor(tk.Tk):
                 return
 
         profiles[profile_name] = self._profile_from_nodes()
-        diagram_profiles[profile_name] = self._diagram_snapshot()
         data["profiles"] = profiles
-        data["diagram"] = {"profiles": diagram_profiles}
+        topology_profiles[profile_name] = self._topology_snapshot()
+        data[KEY_TOPOLOGY] = {
+            KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+            KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+            KEY_TOPOLOGY_PROFILES: topology_profiles,
+        }
         if self.var_set_default.get() or "default_profile" not in data:
             data["default_profile"] = profile_name
         default_name = data.get("default_profile")
@@ -2442,7 +2753,7 @@ class TopologyEditor(tk.Tk):
                 seen_singletons[node.category] = node
             if node.interface != INTERFACE_DIO and node.category == GENERIC_CATEGORY:
                 if not node.vendor or not node.device_type:
-                    return "Generic devices require vendor and device type."
+                    return MSG_GENERIC_DEVICE_VENDOR_TYPE_REQUIRED.format(node.label)
             if node.interface == INTERFACE_DIO:
                 if node.dio is None or not isinstance(node.dio, int) or node.dio < 0:
                     return MSG_INVALID_DIO_CHANNEL.format(node.label)
@@ -2486,8 +2797,8 @@ class TopologyEditor(tk.Tk):
         NAME
             _profile_from_nodes_list - Build a bringup profile from a node list.
         """
-        nodes = [n for n in nodes if getattr(n, "profile_visible", True)]
-        labels = [n.label for n in nodes if n.node_type == "device"]
+        nodes = [n for n in nodes if self._is_registry_device_node(n)]
+        labels = [n.label for n in nodes if n.node_type == NODE_TYPE_DEVICE]
         return {"devices": labels}
 
     def _node_to_entry(self, node: Node) -> Dict[str, object]:
@@ -2629,6 +2940,92 @@ class TopologyEditor(tk.Tk):
             return None
         return self._node_from_device_def(entry)
 
+    @staticmethod
+    def _infrastructure_category_from_label(label: str) -> Optional[str]:
+        """
+        NAME
+            _infrastructure_category_from_label - Infer infrastructure category from a label.
+        """
+        label_norm = label.strip().lower()
+        if not label_norm:
+            return None
+        if TAG_INJECT in label_norm:
+            return DIAGRAM_CATEGORY_CANNECT_INJECT
+        if TAG_CANNECT in label_norm:
+            return DIAGRAM_CATEGORY_CANNECT_DIRECT
+        if INFRASTRUCTURE_LABEL_ANALYZER in label_norm:
+            return DIAGRAM_CATEGORY_ANALYZER
+        return None
+
+    @staticmethod
+    def _is_infrastructure_category(category: str) -> bool:
+        """
+        NAME
+            _is_infrastructure_category - Return true for topology-only infrastructure categories.
+        """
+        return category.strip().lower() in INFRASTRUCTURE_NODE_CATEGORIES
+
+    def _is_infrastructure_device_entry(self, entry: Dict[str, object]) -> bool:
+        """
+        NAME
+            _is_infrastructure_device_entry - Detect leaked infrastructure pseudo-devices.
+        """
+        label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+        if self._infrastructure_category_from_label(label) is not None:
+            return True
+        tags = {
+            str(tag).strip().lower()
+            for tag in entry.get("tags", [])
+            if isinstance(tag, str)
+        }
+        if tags.intersection({TAG_SWYFT, TAG_CANNECT, TAG_INJECT, TAG_DIRECT, TAG_ANALYZER}):
+            return True
+        model = str(entry.get(KEY_MODEL, entry.get("model", EMPTY_STRING))).strip().lower()
+        return model == INFRASTRUCTURE_MODEL_WIRING
+
+    def _node_from_infrastructure_entry(self, entry: Dict[str, object]) -> Optional[Node]:
+        """
+        NAME
+            _node_from_infrastructure_entry - Convert a leaked infrastructure entry into a topology node.
+        """
+        label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+        category = self._infrastructure_category_from_label(label)
+        if category is None:
+            tags = {
+                str(tag).strip().lower()
+                for tag in entry.get("tags", [])
+                if isinstance(tag, str)
+            }
+            if TAG_INJECT in tags:
+                category = DIAGRAM_CATEGORY_CANNECT_INJECT
+            elif TAG_ANALYZER in tags:
+                category = DIAGRAM_CATEGORY_ANALYZER
+            else:
+                category = DIAGRAM_CATEGORY_CANNECT_DIRECT
+        vendor = DIAGRAM_VENDOR_ANALYZER if category == DIAGRAM_CATEGORY_ANALYZER else DIAGRAM_VENDOR_SWYFT
+        motor = DIAGRAM_DEVICE_ANALYZER if category == DIAGRAM_CATEGORY_ANALYZER else DIAGRAM_DEVICE_WIRING
+        tags = self._normalize_tags(entry.get("tags", []))
+        node = Node(
+            key=self._next_key,
+            category=category,
+            label=label,
+            can_id=CAN_ID_DIAGRAM_DEFAULT,
+            node_type=ANALYZER_NODE_TYPE,
+            interface=INTERFACE_CAN,
+            vendor=vendor,
+            device_type=TEXT_EMPTY,
+            motor=motor,
+            limits=None,
+            terminator=None,
+            x=0.0,
+            row=0,
+            scale=1.0,
+            tags=tags,
+            profile_visible=False,
+        )
+        self._next_key += 1
+        return node
+
     def _node_from_device_def(self, entry: Dict[str, object]) -> Optional[Node]:
         """
         NAME
@@ -2637,7 +3034,9 @@ class TopologyEditor(tk.Tk):
         if self._is_dio_device_entry(entry):
             label = str(entry.get("label", "")).strip()
             device_type = str(entry.get("type", "")).strip()
-            dio_value = entry.get("dio")
+            dio_value = entry.get(KEY_ID)
+            if not isinstance(dio_value, int):
+                dio_value = entry.get(KEY_DIO)
             invert = entry.get("invert")
             tags = self._normalize_tags(entry.get("tags", []))
             node = Node(
@@ -2665,6 +3064,8 @@ class TopologyEditor(tk.Tk):
         can_id = entry.get("id")
         if not isinstance(can_id, int):
             return None
+        if self._is_infrastructure_device_entry(entry):
+            return self._node_from_infrastructure_entry(entry)
         label = str(entry.get("label", "")).strip()
         category = self._category_for_device(entry)
         vendor = self._vendor_for_device(entry)
@@ -2760,7 +3161,7 @@ class TopologyEditor(tk.Tk):
         if device_type == DEVTYPE_MISC:
             return "CANdle"
         if device_type == DEVTYPE_POWER:
-            return "PDP" if manufacturer == MFG_CTRE else "PDH"
+            return "PowerDistributionModule"
         if device_type == DEVTYPE_GYRO:
             return "Pigeon"
         if device_type == DEVTYPE_ROBORIO:
@@ -2772,9 +3173,14 @@ class TopologyEditor(tk.Tk):
         NAME
             _apply_node_updates_to_registry - Update device registry entries from nodes.
         """
-        if not self._device_registry_list:
-            return
+        if not isinstance(self._device_registry_list, list):
+            self._device_registry_list = []
+        if not isinstance(self._device_registry, dict):
+            self._device_registry = {}
+        self._prune_infrastructure_registry_entries()
         for node in self._device_nodes():
+            if not self._is_registry_device_node(node):
+                continue
             entry = self._device_registry.get(node.label)
             if isinstance(entry, dict):
                 entry[KEY_LABEL] = node.label
@@ -2785,14 +3191,21 @@ class TopologyEditor(tk.Tk):
                 )
                 entry.pop(KEY_INTERFACE_LEGACY, None)
                 if node.interface == INTERFACE_DIO:
-                    entry["dio"] = node.dio
+                    entry[KEY_ID] = node.dio
+                    entry.pop(KEY_DIO, None)
                     entry["invert"] = bool(node.invert) if node.invert is not None else False
                     if node.device_type and node.device_type.strip():
                         entry["type"] = node.device_type
-                    for key in ("manufacturer", "deviceType", "id", "model", "terminator"):
+                    for key in ("manufacturer", "deviceType", "model", "terminator"):
                         entry.pop(key, None)
                 else:
-                    entry["id"] = node.can_id
+                    generated_entry = self._device_entry_from_node(node)
+                    for key in ("manufacturer", "deviceType", "id", "model", "type"):
+                        entry.pop(key, None)
+                    for key, value in generated_entry.items():
+                        if key in (KEY_LABEL, KEY_INTERFACE, KEY_INTERFACE_LEGACY, "tags", "terminator"):
+                            continue
+                        entry[key] = value
                 if node.tags:
                     entry["tags"] = list(node.tags)
                 elif "tags" in entry:
@@ -2806,6 +3219,43 @@ class TopologyEditor(tk.Tk):
             self._device_registry_list.append(new_entry)
             self._device_registry[node.label] = new_entry
         self._sync_attachment_links_to_registry()
+
+    def _prune_infrastructure_registry_entries(self) -> None:
+        """
+        NAME
+            _prune_infrastructure_registry_entries - Remove infrastructure nodes from devices[].
+        """
+        if not self._device_registry_list:
+            return
+        kept_entries: List[Dict[str, object]] = []
+        kept_registry: Dict[str, Dict[str, object]] = {}
+        for entry in self._device_registry_list:
+            if not isinstance(entry, dict):
+                continue
+            if self._is_infrastructure_device_entry(entry):
+                continue
+            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+            kept_entries.append(entry)
+            if label:
+                kept_registry[label] = entry
+        self._device_registry_list[:] = kept_entries
+        self._device_registry = kept_registry
+
+    @staticmethod
+    def _normalize_power_link(link: Dict[str, object]) -> Optional[Dict[str, int]]:
+        """
+        NAME
+            _normalize_power_link - Normalize one power link into stable endpoint order.
+        """
+        if not isinstance(link, dict):
+            return None
+        a = link.get(KEY_LINK_A)
+        b = link.get(KEY_LINK_B)
+        if not isinstance(a, int) or not isinstance(b, int) or a == b:
+            return None
+        low = min(a, b)
+        high = max(a, b)
+        return {KEY_LINK_A: low, KEY_LINK_B: high}
 
     def _sync_attachment_links_to_registry(self) -> None:
         """
@@ -2890,6 +3340,36 @@ class TopologyEditor(tk.Tk):
         ]
         return len(self._attachment_links) != before
 
+    def _prune_power_links(self) -> bool:
+        """
+        NAME
+            _prune_power_links - Drop invalid power links.
+
+        RETURNS
+            True when any links were removed.
+        """
+        node_by_key = {n.key: n for n in self._device_nodes()}
+        before = len(self._power_links)
+        normalized: List[Dict[str, int]] = []
+        seen: set[Tuple[int, int]] = set()
+        for entry in self._power_links:
+            link = self._normalize_power_link(entry)
+            if link is None:
+                continue
+            a = link[KEY_LINK_A]
+            b = link[KEY_LINK_B]
+            if a not in node_by_key or b not in node_by_key:
+                continue
+            if self._is_dio_node(node_by_key[a]) or self._is_dio_node(node_by_key[b]):
+                continue
+            key = (a, b)
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(link)
+        self._power_links = normalized
+        return len(self._power_links) != before
+
     def _prune_dio_wiring_links(self) -> bool:
         """
         NAME
@@ -2944,7 +3424,7 @@ class TopologyEditor(tk.Tk):
             entry: Dict[str, object] = {
                 KEY_LABEL: node.label,
                 KEY_INTERFACE: profile_consts.INTERFACE_DIO if profile_consts is not None else INTERFACE_DIO,
-                "dio": node.dio,
+                KEY_ID: node.dio,
                 "invert": bool(node.invert) if node.invert is not None else False,
             }
             entry.pop(KEY_INTERFACE_LEGACY, None)
@@ -3041,7 +3521,7 @@ class TopologyEditor(tk.Tk):
             return DEVTYPE_ENCODER
         if "CANDLE" in key:
             return DEVTYPE_MISC
-        if "PDH" in key or "PDP" in key:
+        if "PDH" in key or "PDP" in key or "POWERDISTRIBUTION" in key:
             return DEVTYPE_POWER
         if "PIGEON" in key or "IMU" in key or "GYRO" in key:
             return DEVTYPE_GYRO
@@ -3068,6 +3548,393 @@ class TopologyEditor(tk.Tk):
             Diagram metadata dict stored under the profile name.
         """
         return self._diagram_snapshot_from_nodes(self._nodes)
+
+    def _topology_snapshot(self) -> Dict[str, object]:
+        """
+        NAME
+            _topology_snapshot - Capture the canonical topology graph for persistence.
+        """
+        return self._topology_snapshot_from_nodes(self._nodes)
+
+    def _topology_snapshot_minimal(self) -> Dict[str, object]:
+        """
+        NAME
+            _topology_snapshot_minimal - Capture a reduced canonical topology graph.
+        """
+        devices = [node for node in self._nodes if node.node_type != "callout"]
+        return self._topology_snapshot_from_nodes(devices)
+
+    def _topology_snapshot_from_nodes(self, nodes_list: List[Node]) -> Dict[str, object]:
+        """
+        NAME
+            _topology_snapshot_from_nodes - Translate editor state into topology graph data.
+        """
+        topology_nodes: List[Dict[str, object]] = []
+        node_by_key = {node.key: node for node in nodes_list if node.node_type != "callout"}
+        for node in nodes_list:
+            if node.node_type == "callout":
+                continue
+            layout = {
+                KEY_TOPOLOGY_BUS: node.bus_index,
+                KEY_TOPOLOGY_ROW: node.row,
+                KEY_TOPOLOGY_X: float(node.x),
+            }
+            if isinstance(node.free_y, (int, float)):
+                layout[KEY_TOPOLOGY_Y] = float(node.free_y)
+                layout[KEY_TOPOLOGY_Y_RELATIVE] = bool(
+                    getattr(node, "free_y_relative", True)
+                )
+            if self._is_registry_device_node(node):
+                topology_nodes.append(
+                    {
+                        KEY_NODE_KEY: node.key,
+                        KEY_TOPOLOGY_NODE_TYPE: TOPOLOGY_NODE_DEVICE,
+                        KEY_TOPOLOGY_DEVICE_REF: node.label,
+                        KEY_TOPOLOGY_LAYOUT: layout,
+                    }
+                )
+                continue
+            topology_nodes.append(
+                {
+                    KEY_NODE_KEY: node.key,
+                    KEY_LABEL: node.label,
+                    KEY_CATEGORY: node.category,
+                    KEY_TOPOLOGY_NODE_TYPE: self._topology_node_type_for_editor_node(node),
+                    KEY_VENDOR: node.vendor,
+                    KEY_MODEL: node.motor,
+                    KEY_TOPOLOGY_LAYOUT: layout,
+                }
+            )
+        edges = self._topology_edges_from_editor_state(node_by_key)
+        callouts = [
+            {
+                "text": node.callout_text,
+                "targetType": node.callout_target_type,
+                "targetBus": node.callout_target_bus,
+                "targetNodeKey": node.callout_target_node_key,
+                "targetCategory": node.callout_target_category,
+                "targetLabel": node.callout_target_label,
+                "targetId": node.callout_target_id,
+                "x": node.x,
+                "y": node.callout_y,
+                "freeY": node.free_y,
+                "freeYRelative": node.free_y is not None,
+                "bus": node.bus_index,
+                "row": node.row,
+                "scale": node.scale,
+                "tags": list(node.tags or []),
+            }
+            for node in nodes_list
+            if node.node_type == "callout"
+        ]
+        return {
+            KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+            KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+            KEY_TOPOLOGY_NODES: topology_nodes,
+            KEY_TOPOLOGY_EDGES: edges,
+            KEY_TOPOLOGY_VIEW: {
+                "busOffsets": list(self._bus_offsets),
+                "busCount": len(self._bus_offsets),
+                "busSpacing": self._bus_spacing,
+                "busLefts": list(self._bus_lefts),
+                "busRights": list(self._bus_rights),
+                "busConnectors": list(self._bus_connectors),
+                "panY": self._pan_y,
+                "zoom": self._zoom,
+                KEY_DIAGRAM_ETHERNET_LINKS: [{"a": a, "b": b} for a, b in self._ethernet_links],
+                "canLinks": list(self._can_bus_links),
+                "deviceLinks": list(self._cannect_device_links),
+                KEY_TOPOLOGY_FILTERS: sorted(self._active_connection_filters()),
+                "callouts": callouts,
+            },
+        }
+
+    def _topology_node_type_for_editor_node(self, node: Node) -> str:
+        """
+        NAME
+            _topology_node_type_for_editor_node - Map an editor node to a topology node type.
+        """
+        if node.category == DIAGRAM_CATEGORY_ANALYZER:
+            return TOPOLOGY_NODE_ANALYZER
+        if node.category in (DIAGRAM_CATEGORY_CANNECT_DIRECT, DIAGRAM_CATEGORY_CANNECT_INJECT):
+            return TOPOLOGY_NODE_JUNCTION
+        return TOPOLOGY_NODE_VIRTUAL
+
+    def _active_connection_filters(self) -> set[str]:
+        """
+        NAME
+            _active_connection_filters - Return the enabled connection filter keys.
+        """
+        vars_map = getattr(self, "_connection_filter_vars", None)
+        if not isinstance(vars_map, dict):
+            return set(TOPOLOGY_FILTERS_ORDER)
+        return {
+            filter_key
+            for filter_key, var in vars_map.items()
+            if bool(var.get())
+        }
+
+    def _on_connection_filters_changed(self) -> None:
+        """
+        NAME
+            _on_connection_filters_changed - Redraw after a filter toggle.
+        """
+        self._redraw_canvas()
+
+    def _enable_all_connection_filters(self) -> None:
+        """
+        NAME
+            _enable_all_connection_filters - Enable every connection filter.
+        """
+        for var in self._connection_filter_vars.values():
+            var.set(True)
+        self._redraw_canvas()
+
+    def _disable_all_connection_filters(self) -> None:
+        """
+        NAME
+            _disable_all_connection_filters - Disable every connection filter.
+        """
+        for var in self._connection_filter_vars.values():
+            var.set(False)
+        self._redraw_canvas()
+
+    def _connection_filter_allows(self, filter_key: str) -> bool:
+        """
+        NAME
+            _connection_filter_allows - Check whether one filter category is enabled.
+        """
+        var = self._connection_filter_vars.get(filter_key)
+        return bool(var.get()) if var is not None else False
+
+    def _topology_edges_from_editor_state(self, node_by_key: Dict[int, Node]) -> List[Dict[str, object]]:
+        """
+        NAME
+            _topology_edges_from_editor_state - Build canonical edges from editor links.
+        """
+        edges: List[Dict[str, object]] = []
+        seen: set[Tuple[int, str, int, str]] = set()
+        edge_index = 1
+        for entry in self._neighbor_ports:
+            if not isinstance(entry, dict):
+                continue
+            from_node = entry.get(KEY_LINK_NODE)
+            to_node = entry.get(KEY_LINK_NEIGHBOR)
+            from_port = entry.get(KEY_LINK_PORT)
+            to_port = entry.get(KEY_LINK_NEIGHBOR_PORT)
+            if not isinstance(from_node, int) or not isinstance(to_node, int):
+                continue
+            if not isinstance(from_port, str) or not isinstance(to_port, str):
+                continue
+            reverse_key = (to_node, to_port, from_node, from_port)
+            current_key = (from_node, from_port, to_node, to_port)
+            if current_key in seen or reverse_key in seen:
+                continue
+            seen.add(current_key)
+            edges.append(
+                {
+                    KEY_TOPOLOGY_EDGE_ID: f"edge_{edge_index}",
+                    KEY_TOPOLOGY_FROM_NODE: from_node,
+                    KEY_TOPOLOGY_FROM_PORT: from_port,
+                    KEY_TOPOLOGY_TO_NODE: to_node,
+                    KEY_TOPOLOGY_TO_PORT: to_port,
+                    KEY_TOPOLOGY_EDGE_TYPE: self._topology_edge_type_for_ports(
+                        node_by_key.get(from_node),
+                        node_by_key.get(to_node),
+                        from_port,
+                        to_port,
+                    ),
+                }
+            )
+            edge_index += 1
+        for entry in self._dio_wiring_links:
+            if not isinstance(entry, dict):
+                continue
+            from_node = entry.get(KEY_LINK_ROBORIO)
+            to_node = entry.get(KEY_LINK_DEVICE)
+            if not isinstance(from_node, int) or not isinstance(to_node, int):
+                continue
+            edges.append(
+                {
+                    KEY_TOPOLOGY_EDGE_ID: f"edge_{edge_index}",
+                    KEY_TOPOLOGY_FROM_NODE: from_node,
+                    KEY_TOPOLOGY_FROM_PORT: KEY_DIO.lower(),
+                    KEY_TOPOLOGY_TO_NODE: to_node,
+                    KEY_TOPOLOGY_TO_PORT: KEY_DIO.lower(),
+                    KEY_TOPOLOGY_EDGE_TYPE: TOPOLOGY_EDGE_DIO,
+                }
+            )
+            edge_index += 1
+        for entry in self._power_links:
+            link = self._normalize_power_link(entry)
+            if link is None:
+                continue
+            edges.append(
+                {
+                    KEY_TOPOLOGY_EDGE_ID: f"edge_{edge_index}",
+                    KEY_TOPOLOGY_FROM_NODE: link[KEY_LINK_A],
+                    KEY_TOPOLOGY_FROM_PORT: KEY_POWER,
+                    KEY_TOPOLOGY_TO_NODE: link[KEY_LINK_B],
+                    KEY_TOPOLOGY_TO_PORT: KEY_POWER,
+                    KEY_TOPOLOGY_EDGE_TYPE: TOPOLOGY_EDGE_POWER,
+                }
+            )
+            edge_index += 1
+        for entry in self._attachment_links:
+            if not isinstance(entry, dict):
+                continue
+            from_node = entry.get(KEY_LINK_DEVICE)
+            to_node = entry.get(KEY_LINK_ATTACHMENT)
+            if not isinstance(from_node, int) or not isinstance(to_node, int):
+                continue
+            edges.append(
+                {
+                    KEY_TOPOLOGY_EDGE_ID: f"edge_{edge_index}",
+                    KEY_TOPOLOGY_FROM_NODE: from_node,
+                    KEY_TOPOLOGY_FROM_PORT: KEY_LINK_ATTACHMENT,
+                    KEY_TOPOLOGY_TO_NODE: to_node,
+                    KEY_TOPOLOGY_TO_PORT: KEY_LINK_ATTACHMENT,
+                    KEY_TOPOLOGY_EDGE_TYPE: TOPOLOGY_EDGE_VIRTUAL,
+                }
+            )
+            edge_index += 1
+        return edges
+
+    def _topology_edge_type_for_ports(
+        self,
+        from_node: Optional[Node],
+        to_node: Optional[Node],
+        from_port: str,
+        to_port: str,
+    ) -> str:
+        """
+        NAME
+            _topology_edge_type_for_ports - Infer canonical edge type from ports/nodes.
+        """
+        port_names = {from_port.lower(), to_port.lower()}
+        if "tap" in port_names or (
+            from_node is not None and from_node.category == DIAGRAM_CATEGORY_ANALYZER
+        ) or (
+            to_node is not None and to_node.category == DIAGRAM_CATEGORY_ANALYZER
+        ):
+            return TOPOLOGY_EDGE_CAN_TAP
+        if any(name.startswith("drop") or name.startswith("branch") for name in port_names):
+            return TOPOLOGY_EDGE_CAN_DROP
+        return TOPOLOGY_EDGE_CAN_TRUNK
+
+    def _topology_entry_from_legacy_diagram(self, diagram: object) -> Dict[str, object]:
+        """
+        NAME
+            _topology_entry_from_legacy_diagram - Convert legacy diagram metadata to topology.
+        """
+        if not isinstance(diagram, dict):
+            return {
+                KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_NODES: [],
+                KEY_TOPOLOGY_EDGES: [],
+                KEY_TOPOLOGY_VIEW: {},
+            }
+        legacy_nodes = diagram.get(KEY_DIAGRAM_NODES)
+        nodes: List[Node] = []
+        if isinstance(legacy_nodes, list):
+            for entry in legacy_nodes:
+                if not isinstance(entry, dict):
+                    continue
+                node_type = str(entry.get(KEY_TOPOLOGY_NODE_TYPE, "device")).strip()
+                if node_type == "callout":
+                    nodes.append(
+                        Node(
+                            key=int(entry.get(KEY_NODE_KEY, 0)),
+                            category="callout",
+                            label=str(entry.get("text", EMPTY_STRING)),
+                            can_id=CAN_ID_DIAGRAM_DEFAULT,
+                            node_type="callout",
+                            x=float(entry.get(KEY_TOPOLOGY_X, 0.0)),
+                            row=int(entry.get(KEY_TOPOLOGY_ROW, 0)),
+                            bus_index=int(entry.get(KEY_TOPOLOGY_BUS, 0)),
+                            scale=float(entry.get("scale", 1.0)),
+                            callout_text=str(entry.get("text", EMPTY_STRING)),
+                            callout_target_type=str(entry.get("targetType", "node")),
+                            callout_target_bus=int(entry.get("targetBus", 0) or 0),
+                            callout_target_node_key=entry.get("targetNodeKey"),
+                            callout_target_category=str(entry.get("targetCategory", EMPTY_STRING)),
+                            callout_target_label=str(entry.get("targetLabel", EMPTY_STRING)),
+                            callout_target_id=entry.get("targetId"),
+                            callout_y=float(entry.get(KEY_TOPOLOGY_Y, 0.0)),
+                            free_y=float(entry.get("freeY"))
+                            if isinstance(entry.get("freeY"), (int, float))
+                            else None,
+                        )
+                    )
+                    continue
+                nodes.append(
+                    Node(
+                        key=int(entry.get(KEY_NODE_KEY, 0)),
+                        category=str(entry.get("category", GENERIC_CATEGORY)),
+                        label=str(entry.get(KEY_LABEL, EMPTY_STRING)),
+                        can_id=int(entry.get(KEY_ID, CAN_ID_DIAGRAM_DEFAULT))
+                        if str(entry.get(KEY_ID, EMPTY_STRING)).strip() != EMPTY_STRING
+                        else CAN_ID_DIAGRAM_DEFAULT,
+                        node_type="device",
+                        vendor=str(entry.get(KEY_VENDOR, EMPTY_STRING)),
+                        motor=str(entry.get(KEY_MODEL, EMPTY_STRING)),
+                        x=float(entry.get(KEY_TOPOLOGY_X, 0.0)),
+                        row=int(entry.get(KEY_TOPOLOGY_ROW, 0)),
+                        bus_index=int(entry.get(KEY_TOPOLOGY_BUS, 0)),
+                        scale=float(entry.get("scale", 1.0)),
+                        free_y=float(entry.get("freeY"))
+                        if isinstance(entry.get("freeY"), (int, float))
+                        else None,
+                        profile_visible=bool(entry.get("profileVisible", True)),
+                    )
+                )
+        saved_neighbor_links = deepcopy(diagram.get(KEY_DIAGRAM_NEIGHBOR_LINKS, []))
+        saved_neighbor_ports = deepcopy(diagram.get(KEY_DIAGRAM_NEIGHBOR_PORTS, []))
+        saved_dio_links = deepcopy(diagram.get(KEY_DIO_LINKS, []))
+        saved_ethernet_links = deepcopy(diagram.get(KEY_DIAGRAM_ETHERNET_LINKS, []))
+        saved_can_links = deepcopy(diagram.get("canLinks", []))
+        saved_device_links = deepcopy(diagram.get("deviceLinks", []))
+        saved_attachment_links = deepcopy(diagram.get(KEY_ATTACHMENT_LINKS, []))
+        saved_power_links = deepcopy(diagram.get(KEY_POWER_LINKS, []))
+        original_neighbor_links = self._neighbor_links
+        original_neighbor_ports = self._neighbor_ports
+        original_dio_links = self._dio_wiring_links
+        original_ethernet_links = self._ethernet_links
+        original_can_links = self._can_bus_links
+        original_device_links = self._cannect_device_links
+        original_attachment_links = self._attachment_links
+        original_power_links = self._power_links
+        try:
+            self._neighbor_links = saved_neighbor_links if isinstance(saved_neighbor_links, list) else []
+            self._neighbor_ports = saved_neighbor_ports if isinstance(saved_neighbor_ports, list) else []
+            self._dio_wiring_links = saved_dio_links if isinstance(saved_dio_links, list) else []
+            self._ethernet_links = []
+            if isinstance(saved_ethernet_links, list):
+                for entry in saved_ethernet_links:
+                    if isinstance(entry, dict):
+                        a = entry.get("a")
+                        b = entry.get("b")
+                        if isinstance(a, int) and isinstance(b, int):
+                            self._ethernet_links.append((a, b))
+            self._can_bus_links = saved_can_links if isinstance(saved_can_links, list) else []
+            self._cannect_device_links = (
+                saved_device_links if isinstance(saved_device_links, list) else []
+            )
+            self._attachment_links = (
+                saved_attachment_links if isinstance(saved_attachment_links, list) else []
+            )
+            self._power_links = saved_power_links if isinstance(saved_power_links, list) else []
+            return self._topology_snapshot_from_nodes(nodes)
+        finally:
+            self._neighbor_links = original_neighbor_links
+            self._neighbor_ports = original_neighbor_ports
+            self._dio_wiring_links = original_dio_links
+            self._ethernet_links = original_ethernet_links
+            self._can_bus_links = original_can_links
+            self._cannect_device_links = original_device_links
+            self._attachment_links = original_attachment_links
+            self._power_links = original_power_links
 
     def _diagram_snapshot_minimal(self) -> Dict[str, object]:
         """
@@ -3110,6 +3977,7 @@ class TopologyEditor(tk.Tk):
             "canLinks": list(self._can_bus_links),
             KEY_ATTACHMENT_LINKS: list(self._attachment_links),
             KEY_DIO_LINKS: list(self._dio_wiring_links),
+            KEY_POWER_LINKS: list(self._power_links),
             KEY_DIAGRAM_NEIGHBOR_LINKS: list(self._neighbor_links),
             KEY_DIAGRAM_NEIGHBOR_PORTS: list(self._neighbor_ports),
         }
@@ -3179,14 +4047,22 @@ class TopologyEditor(tk.Tk):
             return
         if not self._confirm_neighbors_current_for_save():
             return
-        diagram = data.get("diagram")
-        if not isinstance(diagram, dict):
-            diagram = {}
-        diagram_profiles = diagram.get("profiles")
-        if not isinstance(diagram_profiles, dict):
-            diagram_profiles = {}
-        diagram_profiles[profile_name] = self._diagram_snapshot_minimal()
-        data["diagram"] = {"profiles": diagram_profiles}
+        topology = data.get(KEY_TOPOLOGY)
+        if not isinstance(topology, dict):
+            topology = {
+                KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {},
+            }
+        topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+        if not isinstance(topology_profiles, dict):
+            topology_profiles = {}
+        topology_profiles[profile_name] = self._topology_snapshot_minimal()
+        data[KEY_TOPOLOGY] = {
+            KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+            KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+            KEY_TOPOLOGY_PROFILES: topology_profiles,
+        }
         try:
             with open(path, "w", encoding="utf-8") as handle:
                 json.dump(data, handle, indent=2)
@@ -3265,6 +4141,7 @@ class TopologyEditor(tk.Tk):
             "deviceLinks": list(self._cannect_device_links),
             KEY_ATTACHMENT_LINKS: list(self._attachment_links),
             KEY_DIO_LINKS: list(self._dio_wiring_links),
+            KEY_POWER_LINKS: list(self._power_links),
             KEY_DIAGRAM_NEIGHBOR_LINKS: list(self._neighbor_links),
             KEY_DIAGRAM_NEIGHBOR_PORTS: list(self._neighbor_ports),
         }
@@ -3307,9 +4184,7 @@ class TopologyEditor(tk.Tk):
         dio_free_y_legacy = dio_free_y_mode != DIO_FREEY_MODE_RAIL
 
         # Drop existing callout/diagram-only nodes before applying snapshot data.
-        self._nodes = [
-            n for n in self._nodes if n.node_type == "device" and getattr(n, "profile_visible", True)
-        ]
+        self._nodes = [n for n in self._nodes if self._is_registry_device_node(n)]
         device_keys = {n.key for n in self._nodes}
 
         nodes = diagram.get("nodes")
@@ -3335,7 +4210,9 @@ class TopologyEditor(tk.Tk):
                     continue
                 device_entries.append(entry)
             device_by_tuple = {
-                (n.category, n.label, n.can_id): n for n in self._device_nodes()
+                (n.category, n.label, n.can_id): n
+                for n in self._device_nodes()
+                if self._is_registry_device_node(n)
             }
             used_keys: set[int] = set()
             for entry in device_entries:
@@ -3454,6 +4331,8 @@ class TopologyEditor(tk.Tk):
                 label = entry.get("label")
                 node_id = entry.get("id")
                 for node in self._device_nodes():
+                    if not self._is_registry_device_node(node):
+                        continue
                     if node.category == cat and node.label == label and node.can_id == node_id:
                         tags_raw = entry.get("tags", None)
                         tags = node.tags if tags_raw is None else self._normalize_tags(tags_raw)
@@ -3686,6 +4565,26 @@ class TopologyEditor(tk.Tk):
         if not attachment_from_diagram:
             self._rebuild_attachment_links_from_registry()
 
+        self._power_links = []
+        power_links = diagram.get(KEY_POWER_LINKS)
+        if isinstance(power_links, list):
+            node_keys = {n.key for n in self._nodes}
+            for entry in power_links:
+                link = self._normalize_power_link(entry)
+                if link is None:
+                    continue
+                a = link[KEY_LINK_A]
+                b = link[KEY_LINK_B]
+                if a in device_key_remap:
+                    a = device_key_remap[a]
+                if b in device_key_remap:
+                    b = device_key_remap[b]
+                if a not in node_keys or b not in node_keys:
+                    continue
+                normalized = self._normalize_power_link({KEY_LINK_A: a, KEY_LINK_B: b})
+                if normalized is not None:
+                    self._power_links.append(normalized)
+
         self._dio_wiring_links = []
         dio_links = diagram.get(KEY_DIO_LINKS)
         if isinstance(dio_links, list):
@@ -3715,11 +4614,297 @@ class TopologyEditor(tk.Tk):
         )
         self._mark_neighbors_current()
         self._prune_attachment_links()
+        self._prune_power_links()
+        self._prune_power_links()
         self._prune_dio_wiring_links()
         self._ensure_dio_wiring_links()
         self._fix_cannect_conflicts(notify=False)
         self._apply_cannect_free_float()
         self._resolve_overlaps()
+
+    def _apply_topology_snapshot(self, topology: Dict[str, object]) -> None:
+        """
+        NAME
+            _apply_topology_snapshot - Restore editor layout from canonical topology data.
+        """
+        view = topology.get(KEY_TOPOLOGY_VIEW)
+        view_dict = view if isinstance(view, dict) else {}
+        bus_offsets = view_dict.get("busOffsets")
+        if isinstance(bus_offsets, list) and bus_offsets:
+            self._bus_offsets = [float(x) for x in bus_offsets if isinstance(x, (int, float))]
+        else:
+            self._bus_offsets = [0.0]
+        spacing = view_dict.get("busSpacing")
+        if isinstance(spacing, (int, float)) and spacing > 0:
+            self._bus_spacing = float(spacing)
+        bus_lefts = view_dict.get("busLefts")
+        if isinstance(bus_lefts, list):
+            self._bus_lefts = [float(x) for x in bus_lefts if isinstance(x, (int, float))]
+        bus_rights = view_dict.get("busRights")
+        if isinstance(bus_rights, list):
+            self._bus_rights = [float(x) for x in bus_rights if isinstance(x, (int, float))]
+        bus_connectors = view_dict.get("busConnectors")
+        if isinstance(bus_connectors, list):
+            self._bus_connectors = [bool(x) for x in bus_connectors]
+        else:
+            self._bus_connectors = []
+        self._ensure_bus_connectors(len(self._bus_offsets))
+        pan_y = view_dict.get("panY")
+        if isinstance(pan_y, (int, float)):
+            self._pan_y = float(pan_y)
+        zoom = view_dict.get("zoom")
+        if isinstance(zoom, (int, float)):
+            self._zoom = max(0.1, min(2.0, float(zoom)))
+        saved_filters = view_dict.get(KEY_TOPOLOGY_FILTERS)
+        if isinstance(saved_filters, list):
+            active = {str(entry).strip().lower() for entry in saved_filters if isinstance(entry, str)}
+            for filter_key, var in self._connection_filter_vars.items():
+                var.set(filter_key in active)
+
+        self._nodes = [node for node in self._nodes if self._is_registry_device_node(node)]
+        self._ethernet_links = []
+        self._can_bus_links = []
+        self._cannect_device_links = []
+        self._attachment_links = []
+        self._dio_wiring_links = []
+        self._power_links = []
+        self._neighbor_links = []
+        self._neighbor_ports = []
+        links = view_dict.get(KEY_DIAGRAM_ETHERNET_LINKS)
+        if isinstance(links, list):
+            for entry in links:
+                if not isinstance(entry, dict):
+                    continue
+                a = entry.get("a")
+                b = entry.get("b")
+                if isinstance(a, int) and isinstance(b, int):
+                    link = (min(a, b), max(a, b))
+                    if link not in self._ethernet_links:
+                        self._ethernet_links.append(link)
+        can_links = view_dict.get("canLinks")
+        if isinstance(can_links, list):
+            for entry in can_links:
+                if not isinstance(entry, dict):
+                    continue
+                node_key = entry.get("node")
+                bus_index = entry.get("bus")
+                port = entry.get("port", 1)
+                if not isinstance(node_key, int) or not isinstance(bus_index, int):
+                    continue
+                if not isinstance(port, int) or port < 1:
+                    port = 1
+                self._can_bus_links.append(
+                    {"node": int(node_key), "bus": int(bus_index), "port": int(port)}
+                )
+        device_links = view_dict.get("deviceLinks")
+        if isinstance(device_links, list):
+            for entry in device_links:
+                if not isinstance(entry, dict):
+                    continue
+                node_key = entry.get("node")
+                device_key = entry.get("device")
+                port = entry.get("port", 1)
+                if not isinstance(node_key, int) or not isinstance(device_key, int):
+                    continue
+                if not isinstance(port, int) or port < 1:
+                    port = 1
+                self._cannect_device_links.append(
+                    {"node": int(node_key), "device": int(device_key), "port": int(port)}
+                )
+
+        device_by_label = {
+            node.label.lower(): node
+            for node in self._device_nodes()
+            if self._is_registry_device_node(node)
+        }
+        reserved_keys: set[int] = set()
+        topology_nodes = topology.get(KEY_TOPOLOGY_NODES)
+        if isinstance(topology_nodes, list):
+            for entry in topology_nodes:
+                if not isinstance(entry, dict):
+                    continue
+                key = entry.get(KEY_NODE_KEY)
+                layout = entry.get(KEY_TOPOLOGY_LAYOUT)
+                layout_dict = layout if isinstance(layout, dict) else {}
+                if not isinstance(key, int):
+                    continue
+                node_type = str(entry.get(KEY_TOPOLOGY_NODE_TYPE, EMPTY_STRING)).strip()
+                if node_type == TOPOLOGY_NODE_DEVICE:
+                    device_ref_text = str(entry.get(KEY_TOPOLOGY_DEVICE_REF, EMPTY_STRING)).strip()
+                    device_ref = device_ref_text.lower()
+                    match = device_by_label.get(device_ref)
+                    if match is None:
+                        infrastructure_match = self._node_from_device_label(device_ref_text)
+                        if infrastructure_match is None or not self._is_infrastructure_node(infrastructure_match):
+                            continue
+                        infrastructure_match.key = key
+                        if isinstance(layout_dict.get(KEY_TOPOLOGY_BUS), int):
+                            infrastructure_match.bus_index = int(layout_dict.get(KEY_TOPOLOGY_BUS))
+                        if isinstance(layout_dict.get(KEY_TOPOLOGY_ROW), int):
+                            infrastructure_match.row = int(layout_dict.get(KEY_TOPOLOGY_ROW))
+                        if isinstance(layout_dict.get(KEY_TOPOLOGY_X), (int, float)):
+                            infrastructure_match.x = float(layout_dict.get(KEY_TOPOLOGY_X))
+                        if isinstance(layout_dict.get(KEY_TOPOLOGY_Y), (int, float)):
+                            infrastructure_match.free_y = float(layout_dict.get(KEY_TOPOLOGY_Y))
+                            infrastructure_match.free_y_relative = bool(
+                                layout_dict.get(KEY_TOPOLOGY_Y_RELATIVE, True)
+                            )
+                            infrastructure_match.topology_y_relative_explicit = (
+                                KEY_TOPOLOGY_Y_RELATIVE in layout_dict
+                            )
+                        self._nodes.append(infrastructure_match)
+                        reserved_keys.add(key)
+                        continue
+                    reserved_keys.add(key)
+                    match.key = key
+                    if isinstance(layout_dict.get(KEY_TOPOLOGY_BUS), int):
+                        match.bus_index = int(layout_dict.get(KEY_TOPOLOGY_BUS))
+                    if isinstance(layout_dict.get(KEY_TOPOLOGY_ROW), int):
+                        match.row = int(layout_dict.get(KEY_TOPOLOGY_ROW))
+                    if isinstance(layout_dict.get(KEY_TOPOLOGY_X), (int, float)):
+                        match.x = float(layout_dict.get(KEY_TOPOLOGY_X))
+                    if isinstance(layout_dict.get(KEY_TOPOLOGY_Y), (int, float)):
+                        match.free_y = float(layout_dict.get(KEY_TOPOLOGY_Y))
+                        match.free_y_relative = bool(
+                            layout_dict.get(KEY_TOPOLOGY_Y_RELATIVE, True)
+                        )
+                        match.topology_y_relative_explicit = (
+                            KEY_TOPOLOGY_Y_RELATIVE in layout_dict
+                        )
+                    continue
+                label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+                node = Node(
+                    key=key,
+                    category=self._editor_category_for_topology_node(entry),
+                    label=label,
+                    can_id=CAN_ID_DIAGRAM_DEFAULT,
+                    node_type="diagram",
+                    interface=INTERFACE_CAN,
+                    vendor=str(entry.get(KEY_VENDOR, EMPTY_STRING)).strip(),
+                    device_type=str(entry.get(KEY_DEVICE_TYPE, EMPTY_STRING)).strip(),
+                    motor=str(entry.get(KEY_MODEL, EMPTY_STRING)).strip(),
+                    x=float(layout_dict.get(KEY_TOPOLOGY_X, 0.0)),
+                    row=int(layout_dict.get(KEY_TOPOLOGY_ROW, 0)),
+                    bus_index=int(layout_dict.get(KEY_TOPOLOGY_BUS, 0)),
+                    free_y=float(layout_dict.get(KEY_TOPOLOGY_Y))
+                    if isinstance(layout_dict.get(KEY_TOPOLOGY_Y), (int, float))
+                    else None,
+                    profile_visible=False,
+                )
+                node.free_y_relative = bool(layout_dict.get(KEY_TOPOLOGY_Y_RELATIVE, True))
+                self._nodes.append(node)
+                node.topology_y_relative_explicit = KEY_TOPOLOGY_Y_RELATIVE in layout_dict
+                reserved_keys.add(key)
+
+        self._next_key = max([node.key for node in self._nodes], default=0) + 1
+
+        topology_edges = topology.get(KEY_TOPOLOGY_EDGES)
+        if isinstance(topology_edges, list):
+            for entry in topology_edges:
+                if not isinstance(entry, dict):
+                    continue
+                from_node = entry.get(KEY_TOPOLOGY_FROM_NODE)
+                to_node = entry.get(KEY_TOPOLOGY_TO_NODE)
+                from_port = entry.get(KEY_TOPOLOGY_FROM_PORT)
+                to_port = entry.get(KEY_TOPOLOGY_TO_PORT)
+                edge_type = str(entry.get(KEY_TOPOLOGY_EDGE_TYPE, EMPTY_STRING)).strip()
+                if not isinstance(from_node, int) or not isinstance(to_node, int):
+                    continue
+                if edge_type == TOPOLOGY_EDGE_DIO:
+                    self._dio_wiring_links.append(
+                        {KEY_LINK_ROBORIO: from_node, KEY_LINK_DEVICE: to_node}
+                    )
+                    continue
+                if edge_type == TOPOLOGY_EDGE_POWER:
+                    link = self._normalize_power_link({KEY_LINK_A: from_node, KEY_LINK_B: to_node})
+                    if link is not None:
+                        self._power_links.append(link)
+                    continue
+                if edge_type == TOPOLOGY_EDGE_VIRTUAL:
+                    self._attachment_links.append(
+                        {KEY_LINK_DEVICE: from_node, KEY_LINK_ATTACHMENT: to_node}
+                    )
+                    continue
+                self._neighbor_links.append(
+                    {KEY_LINK_A: min(from_node, to_node), KEY_LINK_B: max(from_node, to_node)}
+                )
+                if isinstance(from_port, str) and isinstance(to_port, str):
+                    self._neighbor_ports.append(
+                        {
+                            KEY_LINK_NODE: from_node,
+                            KEY_LINK_PORT: from_port,
+                            KEY_LINK_NEIGHBOR: to_node,
+                            KEY_LINK_NEIGHBOR_PORT: to_port,
+                        }
+                    )
+                    self._neighbor_ports.append(
+                        {
+                            KEY_LINK_NODE: to_node,
+                            KEY_LINK_PORT: to_port,
+                            KEY_LINK_NEIGHBOR: from_node,
+                            KEY_LINK_NEIGHBOR_PORT: from_port,
+                        }
+                    )
+        if not self._attachment_links:
+            self._rebuild_attachment_links_from_registry()
+        self._restore_missing_cannect_bus_links()
+
+        callouts = view_dict.get("callouts")
+        if isinstance(callouts, list):
+            for entry in callouts:
+                if not isinstance(entry, dict):
+                    continue
+                callout = Node(
+                    key=self._next_key,
+                    category="callout",
+                    label=str(entry.get("text", EMPTY_STRING)),
+                    can_id=CAN_ID_DIAGRAM_DEFAULT,
+                    node_type="callout",
+                    x=float(entry.get("x", 0.0)),
+                    row=int(entry.get("row", 0)),
+                    bus_index=int(entry.get("bus", 0)),
+                    scale=float(entry.get("scale", 1.0)),
+                    callout_text=str(entry.get("text", EMPTY_STRING)),
+                    callout_target_type=str(entry.get("targetType", "node")),
+                    callout_target_bus=int(entry.get("targetBus", 0) or 0),
+                    callout_target_node_key=entry.get("targetNodeKey"),
+                    callout_target_category=str(entry.get("targetCategory", EMPTY_STRING)),
+                    callout_target_label=str(entry.get("targetLabel", EMPTY_STRING)),
+                    callout_target_id=entry.get("targetId"),
+                    callout_y=float(entry.get("y", 0.0)),
+                    free_y=float(entry.get("freeY"))
+                    if isinstance(entry.get("freeY"), (int, float))
+                    else None,
+                    tags=self._normalize_tags(entry.get("tags", [])),
+                )
+                self._next_key += 1
+                self._nodes.append(callout)
+
+        self._mark_neighbors_current()
+        self._prune_attachment_links()
+        self._prune_power_links()
+        self._prune_power_links()
+        self._prune_dio_wiring_links()
+        self._ensure_dio_wiring_links()
+        self._fix_cannect_conflicts(notify=False)
+        self._restore_legacy_cannect_free_y_mode()
+        self._apply_cannect_free_float()
+        self._resolve_overlaps()
+
+    def _editor_category_for_topology_node(self, entry: Dict[str, object]) -> str:
+        """
+        NAME
+            _editor_category_for_topology_node - Map topology node types to editor categories.
+        """
+        category = str(entry.get(KEY_CATEGORY, EMPTY_STRING)).strip()
+        if category:
+            return category
+        node_type = str(entry.get(KEY_TOPOLOGY_NODE_TYPE, EMPTY_STRING)).strip()
+        if node_type == TOPOLOGY_NODE_ANALYZER:
+            return DIAGRAM_CATEGORY_ANALYZER
+        if node_type == TOPOLOGY_NODE_JUNCTION:
+            return DIAGRAM_CATEGORY_CANNECT_DIRECT
+        return GENERIC_CATEGORY
 
     @staticmethod
     def _normalize_neighbor_links(
@@ -3871,6 +5056,7 @@ class TopologyEditor(tk.Tk):
         self._nodes.append(node)
         self._layout_width = max(self._layout_width, node.x + 200)
         self._prune_attachment_links()
+        self._prune_power_links()
         self._prune_dio_wiring_links()
         self._ensure_dio_wiring_links()
         self._refresh_list()
@@ -4016,6 +5202,7 @@ class TopologyEditor(tk.Tk):
         self._nodes.append(node)
         self._layout_width = max(self._layout_width, node.x + 200)
         self._prune_attachment_links()
+        self._prune_power_links()
         self._prune_dio_wiring_links()
         self._ensure_dio_wiring_links()
         self._refresh_list()
@@ -4141,6 +5328,24 @@ class TopologyEditor(tk.Tk):
             return
         node.free_y = node_center_y_unscaled(node, self._bus_offsets, self._box_h)
         node.free_y_relative = False
+
+    def _restore_legacy_cannect_free_y_mode(self) -> None:
+        """
+        NAME
+            _restore_legacy_cannect_free_y_mode - Preserve old absolute CANnect Y values.
+
+        DESCRIPTION
+            Topology files written before yRelative existed stored CANnect cluster
+            free-Y positions as absolute coordinates. Mark those as absolute before
+            free-float normalization runs, otherwise reload adds the bus offset.
+        """
+        for node in self._nodes:
+            if node.free_y is None:
+                continue
+            if getattr(node, "topology_y_relative_explicit", False):
+                continue
+            if self._is_cannect_cluster_member(node):
+                node.free_y_relative = False
 
     def _apply_cannect_free_float(self) -> None:
         """
@@ -4498,6 +5703,53 @@ class TopologyEditor(tk.Tk):
             messagebox.showinfo(TITLE_REMOVE_ATTACHMENT, MSG_ATTACH_NONE)
         self._redraw_canvas()
 
+    def _add_power_link(self) -> None:
+        """
+        NAME
+            _add_power_link - Create a logical power link between two nodes.
+        """
+        selected = [n for n in self._device_nodes() if n.key in self._selected_nodes]
+        if len(selected) != 2:
+            messagebox.showinfo(TITLE_POWER_LINK, MSG_POWER_SELECT)
+            return
+        if any(self._is_dio_node(node) for node in selected):
+            messagebox.showinfo(TITLE_POWER_LINK, MSG_POWER_INVALID)
+            return
+        if not self._is_valid_power_link_pair(selected[0], selected[1]):
+            messagebox.showinfo(TITLE_POWER_LINK, MSG_POWER_INVALID)
+            return
+        link = self._normalize_power_link({KEY_LINK_A: selected[0].key, KEY_LINK_B: selected[1].key})
+        if link is None:
+            messagebox.showinfo(TITLE_POWER_LINK, MSG_POWER_INVALID)
+            return
+        if link in self._power_links:
+            messagebox.showinfo(TITLE_POWER_LINK, MSG_POWER_DUP)
+            return
+        self._push_undo()
+        self._power_links.append(link)
+        self._dirty = True
+        self._redraw_canvas()
+
+    def _remove_power_link(self) -> None:
+        """
+        NAME
+            _remove_power_link - Remove power links for selected nodes.
+        """
+        selected_keys = {n.key for n in self._device_nodes() if n.key in self._selected_nodes}
+        if not selected_keys:
+            messagebox.showinfo(TITLE_REMOVE_POWER_LINK, MSG_POWER_REMOVE_SELECT)
+            return
+        before = len(self._power_links)
+        self._push_undo()
+        self._power_links = [
+            link
+            for link in self._power_links
+            if link.get(KEY_LINK_A) not in selected_keys and link.get(KEY_LINK_B) not in selected_keys
+        ]
+        if len(self._power_links) == before:
+            messagebox.showinfo(TITLE_REMOVE_POWER_LINK, MSG_POWER_NONE)
+        self._redraw_canvas()
+
     def _wire_dio_to_roborio(self) -> None:
         """
         NAME
@@ -4658,6 +5910,62 @@ class TopologyEditor(tk.Tk):
             _is_dio_node - Return True when a node is a DIO device.
         """
         return node.interface == INTERFACE_DIO
+
+    def _is_power_node(self, node: Node) -> bool:
+        """
+        NAME
+            _is_power_node - Return True when a node should participate in power links.
+        """
+        return node.category in {"pdh", "pdp"} or node.category == TOPOLOGY_NODE_POWER
+
+    def _is_power_source_node(self, node: Node) -> bool:
+        """
+        NAME
+            _is_power_source_node - Return True for nodes allowed to source power links.
+        """
+        return node.category in {"pdh", "pdp", DIAGRAM_CATEGORY_CANNECT_DIRECT} or (
+            node.category == TOPOLOGY_NODE_POWER
+        )
+
+    def _is_primary_power_source_node(self, node: Node) -> bool:
+        """
+        NAME
+            _is_primary_power_source_node - Return True for full-power sources like PDH/PDP.
+        """
+        return node.category in {"pdh", "pdp"} or node.category == TOPOLOGY_NODE_POWER
+
+    def _is_low_power_device_node(self, node: Node) -> bool:
+        """
+        NAME
+            _is_low_power_device_node - Return True for low-power CAN endpoints.
+        """
+        return node.category in {"cancoders", "candles", "pigeon"}
+
+    def _is_power_consumer_node(self, node: Node) -> bool:
+        """
+        NAME
+            _is_power_consumer_node - Return True for nodes allowed to receive power links.
+        """
+        if self._is_dio_node(node):
+            return False
+        if self._is_power_source_node(node):
+            return False
+        return node.node_type != NODE_TYPE_CALLOUT
+
+    def _is_valid_power_link_pair(self, left: Node, right: Node) -> bool:
+        """
+        NAME
+            _is_valid_power_link_pair - Validate one source/consumer power-link pair.
+        """
+        if self._is_primary_power_source_node(left) and self._is_power_consumer_node(right):
+            return True
+        if self._is_primary_power_source_node(right) and self._is_power_consumer_node(left):
+            return True
+        return (
+            self._is_power_source_node(left) and self._is_low_power_device_node(right)
+        ) or (
+            self._is_power_source_node(right) and self._is_low_power_device_node(left)
+        )
 
     def _roborio_node(self) -> Optional[Node]:
         """
@@ -4931,6 +6239,7 @@ class TopologyEditor(tk.Tk):
             self._update_bridge_config_label_refs(old_label, new_label)
             self._update_callout_target_labels(old_label, new_label)
         self._prune_attachment_links()
+        self._prune_power_links()
         self._prune_dio_wiring_links()
         self._ensure_dio_wiring_links()
         self._refresh_list()
@@ -5001,6 +6310,7 @@ class TopologyEditor(tk.Tk):
         if removed_label:
             self._prune_bridge_config_label(removed_label)
         self._prune_attachment_links()
+        self._prune_power_links()
         self._prune_dio_wiring_links()
         self._refresh_list()
         self._update_details_panel(None)
@@ -5053,6 +6363,7 @@ class TopologyEditor(tk.Tk):
         for label in removed_labels:
             self._prune_bridge_config_label(label)
         self._prune_attachment_links()
+        self._prune_power_links()
         self._prune_dio_wiring_links()
         self._refresh_list()
         self._update_details_panel(None)
@@ -5195,6 +6506,28 @@ class TopologyEditor(tk.Tk):
         self._can_bus_links.append({"node": node.key, "bus": bus_index, "port": port})
         self._sync_cannect_bus_index(node)
 
+    def _restore_missing_cannect_bus_links(self) -> None:
+        """
+        NAME
+            _restore_missing_cannect_bus_links - Rebuild only missing CANnect Inject trunk links.
+        """
+        linked_nodes = {
+            int(link.get("node"))
+            for link in self._can_bus_links
+            if isinstance(link.get("node"), int)
+        }
+        max_bus_index = len(self._bus_offsets) - BUS_INDEX_FLOOR
+        for node in self._device_nodes():
+            if node.category != DIAGRAM_CATEGORY_CANNECT_INJECT:
+                continue
+            if node.key in linked_nodes:
+                continue
+            if not isinstance(node.bus_index, int) or node.bus_index < COUNT_ZERO or node.bus_index > max_bus_index:
+                continue
+            self._can_bus_links.append(
+                {"node": int(node.key), "bus": int(node.bus_index), "port": CANNECT_PORT_MIN}
+            )
+
     def _sync_cannect_bus_index(self, cannect: Node) -> None:
         """
         NAME
@@ -5225,19 +6558,49 @@ class TopologyEditor(tk.Tk):
         self._destroy_inline_editor()
         for item in self.node_list.get_children():
             self.node_list.delete(item)
+        node_groups = self._node_groups_by_label()
         nodes = list(self._device_nodes())
         if self._tag_filter_fn is not None:
             nodes = [n for n in nodes if self._tag_filter_fn(n)]
         nodes = sort_nodes(nodes, self._list_sort_var.get())
         for node in nodes:
             can_id = "" if not isinstance(node.can_id, int) or node.can_id < 0 else str(node.can_id)
+            groups = SEP_COMMA_SPACE.join(node_groups.get(node.label, []))
             tags = self._tags_to_string(node.tags)
             self.node_list.insert(
                 "",
                 "end",
                 iid=str(node.key),
-                values=(can_id, node.category, node.label, tags),
+                values=(can_id, node.category, node.label, groups, tags),
             )
+
+    def _node_groups_by_label(self) -> Dict[str, List[str]]:
+        """
+        NAME
+            _node_groups_by_label - Return bridge group names keyed by device label.
+        """
+        groups_by_label: Dict[str, List[str]] = {}
+        for group in self._bridge_groups():
+            if not isinstance(group, dict):
+                continue
+            group_name = str(group.get("name", TEXT_EMPTY)).strip()
+            if not group_name:
+                continue
+            members = group.get(KEY_BRIDGE_GROUP_MEMBERS, []) or []
+            if not isinstance(members, list):
+                continue
+            for member in members:
+                label = TEXT_EMPTY
+                if isinstance(member, dict):
+                    label = str(member.get(KEY_DEVICE, TEXT_EMPTY)).strip()
+                elif isinstance(member, str):
+                    label = member.strip()
+                if not label:
+                    continue
+                names = groups_by_label.setdefault(label, [])
+                if group_name not in names:
+                    names.append(group_name)
+        return groups_by_label
 
     def _on_list_edit_start(self, event: tk.Event) -> None:
         """
@@ -5860,7 +7223,7 @@ class TopologyEditor(tk.Tk):
         NAME
             _profile_device_nodes - Return nodes that belong in bringup profiles.
         """
-        return [n for n in self._device_nodes() if getattr(n, "profile_visible", True)]
+        return [n for n in self._device_nodes() if self._is_registry_device_node(n)]
 
     def _callout_nodes(self) -> List[Node]:
         """
@@ -5883,9 +7246,36 @@ class TopologyEditor(tk.Tk):
         """
         if node.node_type == "callout":
             return False
+        if self._is_swyft_node(node):
+            return True
         if node.node_type == "diagram" or not getattr(node, "profile_visible", True):
             return False
         return True
+
+    def _clamp_nodes_to_bus_bounds(self, bus_indices: set[int]) -> None:
+        """
+        NAME
+            _clamp_nodes_to_bus_bounds - Persist node positions inside resized bus spans.
+
+        DESCRIPTION
+            Redraw clamps visible node positions to the bus segment. When a bus
+            endpoint is resized, persist the same clamp so diagram-only CANnect
+            modules and their link ports follow the segment instead of snapping
+            back on the next redraw or reload.
+        """
+        for node in self._device_nodes():
+            if not self._should_clamp_node_to_bus(node):
+                continue
+            bus_index = min(max(node.bus_index, 0), max(len(self._bus_offsets) - 1, 0))
+            if bus_index not in bus_indices:
+                continue
+            if bus_index >= len(self._bus_lefts) or bus_index >= len(self._bus_rights):
+                continue
+            seg_left = min(self._bus_lefts[bus_index], self._bus_rights[bus_index])
+            seg_right = max(self._bus_lefts[bus_index], self._bus_rights[bus_index])
+            min_x = min(seg_left + 20.0, seg_right - 20.0)
+            max_x = max(seg_left + 20.0, seg_right - 20.0)
+            node.x = min(max(node.x, min_x), max_x)
 
     def _node_box_y(self, node: Node, bus_y: float, box_h: float, scale: float) -> Tuple[float, float]:
         """
@@ -6236,18 +7626,23 @@ class TopologyEditor(tk.Tk):
             groups.setdefault((node.bus_index, node.row), []).append(node)
         for (bus_index, _row), nodes in groups.items():
             nodes.sort(key=lambda n: (n.x, n.key))
-            prev_x = None
-            prev_w = 0.0
+            placed: List[Tuple[float, float, float, float]] = []
             for node in nodes:
                 node_scale = max(0.6, min(2.0, node.scale))
                 base_w = 180.0 if node.node_type == "callout" else float(self._box_w)
                 cur_w = base_w * node_scale
-                if prev_x is not None:
-                    min_spacing = prev_w / 2 + cur_w / 2 + min_gap
-                    if node.x - prev_x < min_spacing:
-                        node.x = prev_x + min_spacing
-                prev_x = node.x
-                prev_w = cur_w
+                cur_h = (50.0 if node.node_type == "callout" else float(self._box_h)) * node_scale
+                center_y = self._node_center_y_unscaled(node)
+                y0 = center_y - cur_h / 2.0
+                y1 = center_y + cur_h / 2.0
+                for other_x, other_half_w, other_y0, other_y1 in placed:
+                    vertical_overlap = y0 < other_y1 + min_gap and y1 > other_y0 - min_gap
+                    if not vertical_overlap:
+                        continue
+                    min_spacing = other_half_w + cur_w / 2.0 + min_gap
+                    if node.x - other_x < min_spacing:
+                        node.x = other_x + min_spacing
+                placed.append((node.x, cur_w / 2.0, y0, y1))
             if 0 <= bus_index < len(self._bus_rights):
                 max_x = max(n.x for n in nodes)
                 self._bus_rights[bus_index] = max(self._bus_rights[bus_index], max_x + 120.0)
@@ -7013,7 +8408,7 @@ class TopologyEditor(tk.Tk):
         row += 1
 
         var_apply_type = tk.BooleanVar(value=False)
-        _row("Device Type", row)
+        _row("CAN Device Type", row)
         ttk.Checkbutton(container, variable=var_apply_type).grid(row=row, column=1, sticky="w")
         type_value = tk.StringVar()
         type_combo = ttk.Combobox(
@@ -7027,7 +8422,7 @@ class TopologyEditor(tk.Tk):
         row += 1
 
         var_apply_motor = tk.BooleanVar(value=False)
-        _row("Motor", row)
+        _row("Model", row)
         ttk.Checkbutton(container, variable=var_apply_motor).grid(row=row, column=1, sticky="w")
         motor_value = tk.StringVar()
         ttk.Entry(container, textvariable=motor_value, width=24).grid(row=row, column=2, sticky="w")
@@ -7210,7 +8605,7 @@ class TopologyEditor(tk.Tk):
                 if not node.vendor or not node.device_type:
                     messagebox.showerror(
                         "Bulk Edit",
-                        "Generic devices require vendor and device type.",
+                        MSG_GENERIC_DEVICE_VENDOR_TYPE_REQUIRED.format(node.label),
                     )
                     return
 
@@ -7496,43 +8891,13 @@ class TopologyEditor(tk.Tk):
             "bus_lefts": eff_lefts,
             "bus_rights": eff_rights,
         }
+        show_can = self._connection_filter_allows(TOPOLOGY_FILTER_CAN)
+        show_dio = self._connection_filter_allows(TOPOLOGY_FILTER_DIO)
+        show_virtual = self._connection_filter_allows(TOPOLOGY_FILTER_VIRTUAL)
         x_left = min_left * scale
         x_right = max_right * scale
         turn_radius = max(8.0, 18 * scale)
         self._bus_ys = list(bus_ys)
-        for idx, bus_y in enumerate(bus_ys):
-            bus_color = "#1f6feb" if idx in self._selected_buses else "#444444"
-            bus_width = 5 if idx in self._selected_buses else 4
-            seg_left = eff_lefts[idx] * scale
-            seg_right = eff_rights[idx] * scale
-            if idx % 2 == 0:
-                start_x, end_x = seg_left, seg_right
-            else:
-                start_x, end_x = seg_right, seg_left
-            self.canvas.create_line(
-                start_x, bus_y, end_x, bus_y, width=bus_width, fill=bus_color
-            )
-            if idx + 1 < len(bus_ys) and self._bus_connectors:
-                if idx < len(self._bus_connectors) and not self._bus_connectors[idx]:
-                    continue
-                next_y = bus_ys[idx + 1]
-                connector_x = end_x
-                offset = turn_radius if idx % 2 == 0 else -turn_radius
-                self.canvas.create_line(
-                    connector_x,
-                    bus_y,
-                    connector_x + offset,
-                    bus_y + turn_radius,
-                    connector_x + offset,
-                    next_y - turn_radius,
-                    connector_x,
-                    next_y,
-                    width=bus_width,
-                    fill="#444444",
-                    smooth=True,
-                    splinesteps=12,
-                )
-
         dup_keys: set[Tuple[str, str, int]] = set()
         key_counts: Dict[Tuple[str, str, int], int] = {}
         numeric_counts: Dict[int, int] = {}
@@ -7544,198 +8909,70 @@ class TopologyEditor(tk.Tk):
             numeric_counts[key[2]] = numeric_counts.get(key[2], 0) + 1
         dup_keys = {key for key, count in key_counts.items() if count > 1}
         warn_ids = {can_id for can_id, count in numeric_counts.items() if count > 1}
-        ethernet_ports: Dict[int, Dict[str, Tuple[float, float]]] = {}
-        can_ports: Dict[int, Dict[int, Tuple[float, float]]] = {}
-        linked_devices = {link.get("device") for link in self._cannect_device_links}
-        for node in self._device_nodes():
-            node_x = node.x * scale
-            bus_index = min(max(node.bus_index, 0), max(len(bus_ys) - 1, 0))
-            node.bus_index = bus_index
-            bus_y = bus_ys[bus_index] if bus_ys else base_y
-            node_bus_y = self._node_bus_y(node, bus_y, scale)
-            node_scale = max(0.6, min(2.0, node.scale))
-            node_box_w = box_w * node_scale
-            node_box_h = box_h * node_scale
-            seg_left = eff_lefts[bus_index] * scale
-            seg_right = eff_rights[bus_index] * scale
-            if self._should_clamp_node_to_bus(node):
-                node_x = min(max(node_x, seg_left + 20), seg_right - 20)
-            x0 = node_x - node_box_w / 2
-            x1 = node_x + node_box_w / 2
-            if node.key in self._drag_free_y:
-                center_y = base_y + self._drag_free_y[node.key] * scale
-                if self._is_dio_node(node):
-                    center_y += DIO_RAIL_OFFSET * scale
-                y0 = center_y - node_box_h / 2
-                y1 = center_y + node_box_h / 2
-                allow_trunk = (not self._is_swyft_node(node)) or node.category == "cannect_inject"
-                if (
-                    node.key not in linked_devices
-                    and allow_trunk
-                    and not self._is_dio_node(node)
-                ):
-                    line_y = y0 if center_y > bus_y else y1
-                    self.canvas.create_line(node_x, bus_y, node_x, line_y, width=2, fill="#444444")
-            else:
-                if node.free_y is not None:
-                    center_y = base_y + self._node_center_y_unscaled(node) * scale
-                    if self._is_dio_node(node):
-                        center_y += DIO_RAIL_OFFSET * scale
-                    y0 = center_y - node_box_h / 2
-                    y1 = center_y + node_box_h / 2
-                    allow_trunk = (not self._is_swyft_node(node)) or node.category == "cannect_inject"
-                    if (
-                        node.key not in linked_devices
-                        and allow_trunk
-                        and not self._is_dio_node(node)
-                    ):
-                        line_y = y0 if center_y > bus_y else y1
-                        self.canvas.create_line(node_x, bus_y, node_x, line_y, width=2, fill="#444444")
-                else:
-                    if node.row == 1:
-                        y0 = node_bus_y + 30 * scale
-                        y1 = y0 + node_box_h
-                        allow_trunk = (not self._is_swyft_node(node)) or node.category == "cannect_inject"
-                        if (
-                            node.key not in linked_devices
-                            and allow_trunk
-                            and not self._is_dio_node(node)
-                        ):
-                            self.canvas.create_line(node_x, bus_y, node_x, y0, width=2, fill="#444444")
-                    else:
-                        y1 = node_bus_y - 30 * scale
-                        y0 = y1 - node_box_h
-                        allow_trunk = (not self._is_swyft_node(node)) or node.category == "cannect_inject"
-                        if (
-                            node.key not in linked_devices
-                            and allow_trunk
-                            and not self._is_dio_node(node)
-                        ):
-                            self.canvas.create_line(node_x, y1, node_x, bus_y, width=2, fill="#444444")
-            outline = "#1f6feb" if node.key in self._selected_nodes else "#222222"
-            shape_kind = self._shape_kind_for_node(node)
-            fill = self._fill_color_for_node(node)
-            text_color = self._text_color_for_fill(fill)
-            shape_ids = self._draw_device_shape_on(
-                self.canvas, x0, y0, x1, y1, shape_kind, fill=fill, outline=outline, width=2
-            )
-            if self._is_swyft_node(node):
-                cy = (y0 + y1) / 2.0
-                ports: Dict[str, Tuple[float, float]] = {}
-                if node.category == "cannect_inject":
-                    ports["out"] = (x1, cy)
-                else:
-                    ports["in"] = (x0, cy)
-                    ports["out"] = (x1, cy)
-                ethernet_ports[node.key] = ports
-                port_w = 6 * scale
-                port_h = 10 * scale
-                for _, (px, py) in ports.items():
-                    self.canvas.create_rectangle(
-                        px - port_w / 2,
-                        py - port_h / 2,
-                        px + port_w / 2,
-                        py + port_h / 2,
-                        fill="#4aa3df",
-                        outline="#1c6ba8",
-                        width=1,
-                    )
-                can_count = 1 if node.category == "cannect_inject" else 3
-                can_ports[node.key] = {}
-                if can_count > 0:
-                    inset = 12 * scale
-                    step = (node_box_w - inset * 2) / max(can_count, 1)
-                    for idx in range(can_count):
-                        px = x0 + inset + step * (idx + 0.5)
-                        can_ports[node.key][idx + 1] = (px, y0 - 10 * scale)
-                        self.canvas.create_line(
-                            px - 3 * scale,
-                            y0,
-                            px - 3 * scale,
-                            y0 - 10 * scale,
-                            width=2,
-                            fill="#2f7a2f",
-                        )
-                        self.canvas.create_line(
-                            px + 3 * scale,
-                            y0,
-                            px + 3 * scale,
-                            y0 - 10 * scale,
-                            width=2,
-                            fill="#2f7a2f",
-                        )
-                        self.canvas.create_text(
-                            px,
-                            y0 - 12 * scale,
-                            text=f"C{idx + 1}",
-                            font=("Segoe UI", max(7, int(7 * scale))),
-                            fill="#2f7a2f",
-                        )
-                power_text = "Power In" if node.category == "cannect_inject" else "Power Out"
-                self.canvas.create_text(
-                    node_x,
-                    y1 + 10 * scale,
-                    text=power_text,
-                    font=("Segoe UI", max(7, int(7 * scale))),
-                    fill="#555555",
-                )
-            label_text = node.display_text()
-            if node.node_type != "callout" and isinstance(node.can_id, int) and node.can_id >= 0:
-                # Reserve space for a smaller ID line at the bottom of the node.
-                id_font_size = max(6, int(8 * scale * node_scale))
-                id_font = tkfont.Font(family="Segoe UI", size=id_font_size)
-                id_line_h = id_font.metrics("linespace")
-                label_max_h = max(8.0, node_box_h - id_line_h - 6 * scale)
-                label_font_size = max(6, int(9 * scale * node_scale))
-                label_font = tkfont.Font(family="Segoe UI", size=label_font_size)
-                label_lines = self._wrap_label_lines(label_text, label_font, node_box_w - 12)
-                label_text_wrapped = "\n".join(label_lines)
-                label_font_size = self._fit_font_size(
-                    label_text_wrapped,
-                    node_box_w - 12,
-                    label_max_h,
-                    label_font_size,
-                )
-                label_y = (y0 + y1) / 2 - id_line_h * 0.4
-                text = self.canvas.create_text(
-                    node_x,
-                    label_y,
-                    text=label_text_wrapped,
-                    font=("Segoe UI", label_font_size),
-                    fill=text_color,
-                    justify="center",
-                    width=max(40, int(node_box_w - 12)),
-                )
-                id_text = f"ID {node.can_id}"
-                self.canvas.create_text(
-                    node_x,
-                    y1 - id_line_h * 0.6,
-                    text=id_text,
-                    font=("Segoe UI", id_font_size),
-                    fill=text_color,
-                    justify="center",
-                )
-            else:
-                font_size = self._fit_font_size(
-                    label_text, node_box_w - 10, node_box_h - 10, int(9 * scale * node_scale)
-                )
-                text = self.canvas.create_text(
-                    node_x,
-                    (y0 + y1) / 2,
-                    text=label_text,
-                    font=("Segoe UI", font_size),
-                    fill=text_color,
-                    justify="center",
-                    width=max(40, int(node_box_w - 10)),
-                )
-            self._node_bounds[node.key] = (x0, y0, x1, y1)
-            for shape_id in shape_ids:
-                self.canvas.addtag_withtag(f"node_{node.key}", shape_id)
-            self.canvas.addtag_withtag(f"node_{node.key}", text)
-            dup_key = self._dup_key_for_node(node)
-            if self._show_warn_badges_var.get() and (
-                dup_key in dup_keys or (dup_key and dup_key[2] in warn_ids)
-            ):
+        groups = self._bridge_groups() if "_root_extras" in self.__dict__ else []
+        rendered = render_topology_canvas_common(
+            canvas=self.canvas,
+            nodes=self._nodes,
+            bus_ys=bus_ys,
+            base_y=base_y,
+            scale=scale,
+            x_shift=0.0,
+            eff_lefts=eff_lefts,
+            eff_rights=eff_rights,
+            show_can=show_can,
+            show_dio=show_dio,
+            show_virtual=show_virtual,
+            show_power=self._connection_filter_allows(TOPOLOGY_FILTER_POWER),
+            groups=groups,
+            selected_node_keys=self._selected_nodes,
+            selected_bus_indices=self._selected_buses,
+            drag_free_y=self._drag_free_y,
+            bus_connectors=self._bus_connectors,
+            bus_lefts=eff_lefts,
+            bus_rights=eff_rights,
+            min_x=min_left,
+            max_x=max_right,
+            bus_offsets=self._bus_offsets,
+            box_w_base=self._box_w,
+            box_h_base=self._box_h,
+            linked_devices={link.get("device") for link in self._cannect_device_links},
+            can_bus_links=self._can_bus_links if ENABLE_CANNECT_BUS_LINKS else [],
+            device_links=self._cannect_device_links if show_can else [],
+            power_links=[(link.get(KEY_LINK_A), link.get(KEY_LINK_B)) for link in self._power_links],
+            attachment_links=[(link.get(KEY_LINK_DEVICE), link.get(KEY_LINK_ATTACHMENT)) for link in self._attachment_links],
+            dio_links=[(link.get(KEY_LINK_ROBORIO), link.get(KEY_LINK_DEVICE)) for link in self._dio_wiring_links],
+            ethernet_links=self._ethernet_links if show_virtual else [],
+            show_groups=self._show_group_overlays_var.get(),
+            node_box_dims_fn=self._node_box_dims,
+            node_bus_y_fn=self._node_bus_y,
+            node_box_y_fn=self._node_box_y,
+            node_center_y_unscaled_fn=self._node_center_y_unscaled,
+            should_clamp_node_to_bus_fn=self._should_clamp_node_to_bus,
+            is_swyft_node_fn=self._is_swyft_node,
+            is_dio_node_fn=self._is_dio_node,
+            shape_kind_fn=self._shape_kind_for_node,
+            fill_color_fn=self._fill_color_for_node,
+            outline_color_fn=self._outline_color_for_node,
+            text_color_fn=self._text_color_for_fill,
+            label_text_fn=lambda node: node.display_text(),
+            fit_font_size_fn=self._fit_font_size,
+            wrap_label_lines_fn=self._wrap_label_lines,
+            node_tag_name_fn=lambda key: f"node_{key}",
+            is_callout_fn=lambda node: node.node_type == "callout",
+        )
+        self._node_bounds = rendered["node_bounds"]
+        node_centers = rendered["node_centers"]
+        self._group_overlay_regions = rendered["group_overlay_regions"]
+        self._render_scene = rendered
+        if self._show_warn_badges_var.get():
+            for node in self._device_nodes():
+                bounds = self._node_bounds.get(node.key)
+                if bounds is None:
+                    continue
+                x0, y0, x1, _y1 = bounds
+                dup_key = self._dup_key_for_node(node)
+                if dup_key not in dup_keys and not (dup_key and dup_key[2] in warn_ids):
+                    continue
                 badge_x = min(x1 + 12, x_right - 8)
                 badge_y = max(y0 - 12, min_y + 8)
                 self.canvas.create_line(
@@ -7746,170 +8983,9 @@ class TopologyEditor(tk.Tk):
                     width=1,
                     fill="#444444",
                 )
-                if dup_key in dup_keys:
-                    badge = self._draw_error_badge(badge_x, badge_y)
-                else:
-                    badge = self._draw_warning_badge(badge_x, badge_y)
+                badge = self._draw_error_badge(badge_x, badge_y) if dup_key in dup_keys else self._draw_warning_badge(badge_x, badge_y)
                 for badge_id in badge:
                     self.canvas.addtag_withtag(f"node_{node.key}", badge_id)
-
-        node_centers = {}
-        for n in self._device_nodes():
-            seg_left = eff_lefts[n.bus_index] * scale
-            seg_right = eff_rights[n.bus_index] * scale
-            bus_y = bus_ys[n.bus_index] if bus_ys else base_y
-            node_bus_y = self._node_bus_y(n, bus_y, scale)
-            node_centers[n.key] = (
-                min(max(n.x * scale, seg_left + 20), seg_right - 20),
-                node_bus_y,
-            )
-        linked_devices = {link.get("device") for link in self._cannect_device_links}
-        if ENABLE_CANNECT_BUS_LINKS:
-            for link in self._can_bus_links:
-                node_key = link.get("node")
-                bus_index = link.get("bus")
-                port = link.get("port", 1)
-                if node_key not in can_ports:
-                    continue
-                if not isinstance(bus_index, int) or bus_index < 0 or bus_index >= len(bus_ys):
-                    continue
-                port_pos = can_ports[node_key].get(int(port))
-                if not port_pos:
-                    continue
-                px, py = port_pos
-                bus_y = bus_ys[bus_index]
-                line = self.canvas.create_line(
-                    px,
-                    py,
-                    px,
-                    bus_y,
-                    width=2,
-                    fill="#2f7a2f",
-                )
-                self.canvas.tag_lower(line)
-
-        for link in self._cannect_device_links:
-            node_key = link.get("node")
-            device_key = link.get("device")
-            port = link.get("port", 1)
-            if node_key not in can_ports or device_key not in self._node_bounds:
-                continue
-            port_pos = can_ports[node_key].get(int(port))
-            if not port_pos:
-                continue
-            px, py = port_pos
-            dx0, dy0, dx1, dy1 = self._node_bounds[device_key]
-            tx = (dx0 + dx1) / 2.0
-            ty = dy0
-            line = self.canvas.create_line(
-                px,
-                py,
-                tx,
-                ty,
-                width=LINK_LINE_WIDTH,
-                fill="#2f7a2f",
-            )
-            self.canvas.tag_lower(line)
-
-        node_by_key = {node.key: node for node in self._nodes}
-        for link in self._attachment_links:
-            host_key = link.get(KEY_LINK_DEVICE)
-            attach_key = link.get(KEY_LINK_ATTACHMENT)
-            if host_key not in node_centers or attach_key not in node_centers:
-                continue
-            host_node = node_by_key.get(host_key)
-            attach_node = node_by_key.get(attach_key)
-            if host_node and self._is_dio_node(host_node):
-                continue
-            if attach_node and self._is_dio_node(attach_node):
-                if host_node and host_node.category == CATEGORY_ROBORIO:
-                    continue
-            if attach_node and self._is_dio_node(attach_node) is False and host_node and host_node.category == CATEGORY_ROBORIO:
-                # Allow non-DIO attachments to roboRIO, but keep DIO attachments off the roboRIO.
-                pass
-            elif attach_node and self._is_dio_node(attach_node) and host_node is None:
-                continue
-            host_bounds = self._node_bounds.get(host_key)
-            attach_bounds = self._node_bounds.get(attach_key)
-            if host_bounds:
-                hx = (host_bounds[0] + host_bounds[2]) / 2.0
-                hy = (host_bounds[1] + host_bounds[3]) / 2.0
-            else:
-                hx, hy = node_centers[host_key]
-            if attach_bounds:
-                ax = (attach_bounds[0] + attach_bounds[2]) / 2.0
-                ay = (attach_bounds[1] + attach_bounds[3]) / 2.0
-            else:
-                ax, ay = node_centers[attach_key]
-            line = self.canvas.create_line(
-                hx,
-                hy,
-                ax,
-                ay,
-                width=LINK_LINE_WIDTH,
-                fill=ATTACH_LINE_COLOR,
-                dash=LINK_DASH,
-            )
-            self.canvas.tag_lower(line)
-
-        node_by_key = {node.key: node for node in self._nodes}
-        for link in self._dio_wiring_links:
-            robo_key = link.get(KEY_LINK_ROBORIO)
-            dev_key = link.get(KEY_LINK_DEVICE)
-            if robo_key not in node_centers or dev_key not in node_centers:
-                continue
-            robo_bounds = self._node_bounds.get(robo_key)
-            if robo_bounds:
-                rx = (robo_bounds[0] + robo_bounds[2]) / 2.0
-                ry = robo_bounds[1]
-            else:
-                rx, ry = node_centers[robo_key]
-            dev_bounds = self._node_bounds.get(dev_key)
-            if dev_bounds:
-                dx = (dev_bounds[0] + dev_bounds[2]) / 2.0
-                dy = dev_bounds[1]
-            else:
-                dx, dy = node_centers[dev_key]
-            line = self.canvas.create_line(
-                rx,
-                ry,
-                dx,
-                dy,
-                width=LINK_LINE_WIDTH,
-                fill=WIRE_LINE_COLOR,
-                dash=LINK_DASH,
-            )
-            self.canvas.tag_lower(line)
-
-        for a, b in self._ethernet_links:
-            if a not in ethernet_ports or b not in ethernet_ports:
-                continue
-            if a not in node_centers or b not in node_centers:
-                continue
-            ax, _ = node_centers[a]
-            bx, _ = node_centers[b]
-            ports_a = ethernet_ports[a]
-            ports_b = ethernet_ports[b]
-            if "in" in ports_a and "out" in ports_a:
-                pa = ports_a["in"] if bx < ax else ports_a["out"]
-            else:
-                pa = ports_a.get("out") or ports_a.get("in")
-            if "in" in ports_b and "out" in ports_b:
-                pb = ports_b["in"] if ax < bx else ports_b["out"]
-            else:
-                pb = ports_b.get("out") or ports_b.get("in")
-            if not pa or not pb:
-                continue
-            line = self.canvas.create_line(
-                pa[0],
-                pa[1],
-                pb[0],
-                pb[1],
-                width=2,
-                fill="#1c6ba8",
-                dash=(6, 4),
-            )
-            self.canvas.tag_lower(line)
         for callout in self._callout_nodes():
             cx = callout.x * scale
             bus_index = min(max(callout.bus_index, 0), max(len(bus_ys) - 1, 0))
@@ -8002,6 +9078,7 @@ class TopologyEditor(tk.Tk):
             self.canvas.addtag_withtag(f"node_{callout.key}", rect)
             self.canvas.addtag_withtag(f"node_{callout.key}", text_id)
 
+        self._group_overlay_regions = []
         if self._show_group_overlays_var.get():
             self._draw_group_overlays()
 
@@ -8032,12 +9109,91 @@ class TopologyEditor(tk.Tk):
             bounds = self._node_bounds.get(node.key)
             if bounds:
                 label_bounds[node.label] = bounds
-        draw_group_overlays(
+        self._group_overlay_regions = draw_group_overlays(
             self.canvas,
             label_bounds,
             groups,
             zoom=self._zoom,
         )
+
+    def _group_member_keys_by_name(self, name: str) -> set[int]:
+        """
+        NAME
+            _group_member_keys_by_name - Resolve a bridge group name to current node keys.
+        """
+        target = str(name or TEXT_EMPTY).strip().lower()
+        if not target:
+            return set()
+        labels: set[str] = set()
+        for group in self._bridge_groups():
+            if not isinstance(group, dict):
+                continue
+            group_name = str(group.get("name", TEXT_EMPTY)).strip()
+            if group_name.lower() != target:
+                continue
+            members = group.get(KEY_BRIDGE_GROUP_MEMBERS, []) or []
+            if not isinstance(members, list):
+                continue
+            for member in members:
+                label = TEXT_EMPTY
+                if isinstance(member, dict):
+                    label = str(member.get(KEY_DEVICE, TEXT_EMPTY)).strip()
+                elif isinstance(member, str):
+                    label = member.strip()
+                if label:
+                    labels.add(label)
+        if not labels:
+            return set()
+        member_keys = {node.key for node in self._device_nodes() if node.label in labels}
+        if not member_keys:
+            return set()
+        changed = True
+        while changed:
+            changed = False
+            for link in self._cannect_device_links:
+                node_key = link.get("node")
+                device_key = link.get("device")
+                if not isinstance(node_key, int) or not isinstance(device_key, int):
+                    continue
+                if node_key in member_keys or device_key in member_keys:
+                    before = len(member_keys)
+                    member_keys.add(node_key)
+                    member_keys.add(device_key)
+                    changed = changed or len(member_keys) != before
+        return member_keys
+
+    def _group_overlay_hit_test(self, cx: float, cy: float) -> Optional[str]:
+        """
+        NAME
+            _group_overlay_hit_test - Return the group name when a group label/outline is clicked.
+        """
+        regions = list(self.__dict__.get("_group_overlay_regions", []) or [])
+        if not regions:
+            return None
+        border_tol = 8.0
+        for region in sorted(
+            regions,
+            key=lambda entry: (
+                (entry.get("bounds", (0.0, 0.0, 0.0, 0.0))[2] - entry.get("bounds", (0.0, 0.0, 0.0, 0.0))[0])
+                * (entry.get("bounds", (0.0, 0.0, 0.0, 0.0))[3] - entry.get("bounds", (0.0, 0.0, 0.0, 0.0))[1])
+            ),
+        ):
+            bounds = region.get("bounds")
+            label_bounds = region.get("label_bounds")
+            if not isinstance(bounds, tuple) or len(bounds) != 4:
+                continue
+            x0, y0, x1, y1 = [float(value) for value in bounds]
+            if isinstance(label_bounds, tuple) and len(label_bounds) == 4:
+                lx0, ly0, lx1, ly1 = [float(value) for value in label_bounds]
+                if lx0 <= cx <= lx1 and ly0 <= cy <= ly1:
+                    return str(region.get("name", TEXT_EMPTY)).strip() or None
+            on_left = abs(cx - x0) <= border_tol and y0 - border_tol <= cy <= y1 + border_tol
+            on_right = abs(cx - x1) <= border_tol and y0 - border_tol <= cy <= y1 + border_tol
+            on_top = abs(cy - y0) <= border_tol and x0 - border_tol <= cx <= x1 + border_tol
+            on_bottom = abs(cy - y1) <= border_tol and x0 - border_tol <= cx <= x1 + border_tol
+            if on_left or on_right or on_top or on_bottom:
+                return str(region.get("name", TEXT_EMPTY)).strip() or None
+        return None
 
     def _shape_kind_for_node(self, node: Node) -> str:
         """
@@ -8056,6 +9212,26 @@ class TopologyEditor(tk.Tk):
         if node.node_type == NODE_TYPE_CALLOUT:
             return False
         return category in (DIAGRAM_CATEGORY_CANNECT_INJECT, DIAGRAM_CATEGORY_CANNECT_DIRECT)
+
+    def _is_infrastructure_node(self, node: Node) -> bool:
+        """
+        NAME
+            _is_infrastructure_node - Identify topology-only infrastructure nodes.
+        """
+        if node.node_type == NODE_TYPE_CALLOUT:
+            return False
+        return self._is_infrastructure_category(node.category or EMPTY_STRING)
+
+    def _is_registry_device_node(self, node: Node) -> bool:
+        """
+        NAME
+            _is_registry_device_node - Identify nodes that belong in devices[] and profile devices.
+        """
+        if node.node_type == NODE_TYPE_CALLOUT:
+            return False
+        if not getattr(node, "profile_visible", True):
+            return False
+        return not self._is_infrastructure_node(node)
 
     def _fill_color_for_node(self, node: Node) -> str:
         """
@@ -8770,6 +9946,104 @@ class TopologyEditor(tk.Tk):
             points, fill=fill, outline=outline, width=width, joinstyle="round"
         )
 
+    def _on_canvas_pan_press(self, event: tk.Event) -> str:
+        """
+        NAME
+            _on_canvas_pan_press - Begin whole-diagram canvas panning.
+        """
+        self.canvas.focus_set()
+        self._ensure_horizontal_pan_room()
+        self.canvas.scan_mark(event.x, event.y)
+        self._pan_drag = None
+        self._drag_state = None
+        self._multi_drag = None
+        self._bus_drag = None
+        self._bus_resize = None
+        self._selection_start = None
+        return "break"
+
+    def _on_canvas_pan_drag(self, event: tk.Event) -> str:
+        """
+        NAME
+            _on_canvas_pan_drag - Pan the canvas with the middle mouse button.
+        """
+        self.canvas.scan_dragto(event.x, event.y, gain=1)
+        return "break"
+
+    def _on_canvas_pan_release(self, _event: tk.Event) -> str:
+        """
+        NAME
+            _on_canvas_pan_release - Finish whole-diagram canvas panning.
+        """
+        return "break"
+
+    def _ensure_horizontal_pan_room(self) -> None:
+        """
+        NAME
+            _ensure_horizontal_pan_room - Expand scrollregion for middle-button pan.
+
+        DESCRIPTION
+            Fit-to-window can make the horizontal scrollregion no wider than
+            the viewport. Tk canvas scanning cannot move horizontally in that
+            state, so add temporary left/right blank space while preserving the
+            current viewport origin.
+        """
+        try:
+            raw_region = self.canvas.cget("scrollregion")
+        except Exception:
+            return
+        parts = str(raw_region).split()
+        if len(parts) != SCROLLREGION_FIELD_COUNT:
+            return
+        try:
+            region = [float(part) for part in parts]
+        except ValueError:
+            return
+        width = max(float(self.canvas.winfo_width()), SCROLLREGION_MIN_SPAN)
+        current_left = float(self.canvas.canvasx(0))
+        pad = width * PAN_SCROLLREGION_PAD_VIEWPORTS
+        old_min_x = region[SCROLLREGION_MIN_INDEX]
+        old_max_x = region[SCROLLREGION_MAX_INDEX]
+        new_min_x = min(old_min_x, current_left - pad)
+        new_max_x = max(old_max_x, current_left + width + pad)
+        new_span = max(new_max_x - new_min_x, SCROLLREGION_MIN_SPAN)
+        if new_min_x == old_min_x and new_max_x == old_max_x:
+            return
+        region[SCROLLREGION_MIN_INDEX] = new_min_x
+        region[SCROLLREGION_MAX_INDEX] = new_max_x
+        self.canvas.configure(scrollregion=tuple(region))
+        fraction = (current_left - new_min_x) / new_span
+        self.canvas.xview_moveto(max(0.0, min(1.0, fraction)))
+
+    def _set_canvas_xview_left(self, desired_left: float) -> None:
+        """
+        NAME
+            _set_canvas_xview_left - Position the canvas viewport at an X coordinate.
+        """
+        try:
+            raw_region = self.canvas.cget("scrollregion")
+        except Exception:
+            return
+        parts = str(raw_region).split()
+        if len(parts) != SCROLLREGION_FIELD_COUNT:
+            return
+        try:
+            region = [float(part) for part in parts]
+        except ValueError:
+            return
+        width = max(float(self.canvas.winfo_width()), SCROLLREGION_MIN_SPAN)
+        old_min_x = region[SCROLLREGION_MIN_INDEX]
+        old_max_x = region[SCROLLREGION_MAX_INDEX]
+        new_min_x = min(old_min_x, desired_left)
+        new_max_x = max(old_max_x, desired_left + width)
+        new_span = max(new_max_x - new_min_x, SCROLLREGION_MIN_SPAN)
+        if new_min_x != old_min_x or new_max_x != old_max_x:
+            region[SCROLLREGION_MIN_INDEX] = new_min_x
+            region[SCROLLREGION_MAX_INDEX] = new_max_x
+            self.canvas.configure(scrollregion=tuple(region))
+        fraction = (desired_left - new_min_x) / new_span
+        self.canvas.xview_moveto(max(0.0, min(1.0, fraction)))
+
     def _on_canvas_press(self, event: tk.Event) -> None:
         """
         NAME
@@ -8806,6 +10080,15 @@ class TopologyEditor(tk.Tk):
             )
             return
         if key is None:
+            group_name = self._group_overlay_hit_test(cx, cy)
+            if group_name:
+                member_keys = self._group_member_keys_by_name(group_name)
+                if member_keys:
+                    self._selected_nodes = set(member_keys)
+                    self._selected_buses = set()
+                    self._sync_selection_state()
+                    self._start_multi_drag(cx, cy)
+                    return
             # Check if we clicked near a bus line to drag it.
             bus_index = self._bus_hit_test(cy)
             if bus_index is not None:
@@ -8829,9 +10112,8 @@ class TopologyEditor(tk.Tk):
                 bus_y = bus_ys[bus_index] if bus_ys else cy
                 self._bus_drag = (bus_index, bus_y, self._bus_offsets[bus_index])
             else:
-                self._pan_drag = (cy, self._pan_y)
-            if bus_index is None:
                 self._clear_selection()
+                return
             return
         if key in self._selected_nodes and total_selected > 1:
             self._start_multi_drag(cx, cy)
@@ -8974,12 +10256,15 @@ class TopologyEditor(tk.Tk):
                 right = new_pos
 
             # Apply to neighbors when dragging a connector end.
+            resized_bus_indices = {bus_index}
             if connector_with_next and bus_index + 1 < len(self._bus_offsets):
+                resized_bus_indices.add(bus_index + 1)
                 if (bus_index + 1) % 2 == 0:
                     self._bus_lefts[bus_index + 1] = new_pos
                 else:
                     self._bus_rights[bus_index + 1] = new_pos
             if connector_with_prev and bus_index - 1 >= 0:
+                resized_bus_indices.add(bus_index - 1)
                 if (bus_index - 1) % 2 == 0:
                     self._bus_rights[bus_index - 1] = new_pos
                 else:
@@ -8987,6 +10272,7 @@ class TopologyEditor(tk.Tk):
 
             self._bus_lefts[bus_index] = left
             self._bus_rights[bus_index] = right
+            self._clamp_nodes_to_bus_bounds(resized_bus_indices)
             self._layout_width = max(self._layout_width, right + 200)
             self._dirty = True
             self._redraw_canvas()
@@ -9430,6 +10716,80 @@ class TopologyEditor(tk.Tk):
         """
         self._export_pdf(print_after=True, path_override="")
 
+    def _windows_pdf_print_handler_available(self) -> bool:
+        """
+        NAME
+            _windows_pdf_print_handler_available - Return whether Windows has a print verb for .pdf.
+
+        RETURNS
+            True when the current .pdf association exposes a shell print command.
+        """
+        if not sys.platform.startswith("win"):
+            return False
+        try:
+            import winreg
+        except Exception:
+            return False
+
+        prog_id = None
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, WINDOWS_REGKEY_CURRENT_USER_USERCHOICE) as key:
+                prog_id = winreg.QueryValueEx(key, WINDOWS_REGVALUE_PROGID)[0]
+        except Exception:
+            prog_id = None
+        if not prog_id:
+            try:
+                with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, WINDOWS_REGKEY_CLASSES_ROOT_PDF) as key:
+                    prog_id = winreg.QueryValue(key, EMPTY_STRING)
+            except Exception:
+                prog_id = None
+        if not prog_id:
+            return False
+        try:
+            with winreg.OpenKey(
+                winreg.HKEY_CLASSES_ROOT,
+                prog_id + WINDOWS_REGKEY_SHELL_PRINT_SUFFIX,
+            ):
+                return True
+        except Exception:
+            return False
+
+    def _print_or_open_pdf(self, path: str, printed_message: str) -> None:
+        """
+        NAME
+            _print_or_open_pdf - Print a PDF when possible, otherwise open it for manual printing.
+
+        PARAMETERS
+            path: PDF file path.
+            printed_message: Success message format string with one '{}' placeholder for the path.
+        """
+        import os
+
+        if not self._windows_pdf_print_handler_available():
+            os.startfile(path)
+            messagebox.showinfo("Print", MSG_PRINT_NO_HANDLER)
+            return
+        try:
+            os.startfile(path, "print")
+            messagebox.showinfo("Printed", printed_message.format(path))
+        except OSError as exc:
+            if getattr(exc, "winerror", None) == WINDOWS_NO_ASSOCIATION_ERROR:
+                try:
+                    os.startfile(path)
+                    messagebox.showinfo("Print", MSG_PRINT_OPENED_MANUAL)
+                    return
+                except Exception:
+                    pass
+            messagebox.showerror(
+                "Print Failed",
+                f"Saved PDF but failed to print:\n{exc}",
+            )
+        except Exception as exc:
+            messagebox.showerror(
+                "Print Failed",
+                f"Saved PDF but failed to print:\n{exc}",
+            )
+
     def _export_pdf(self, print_after: bool, path_override: Optional[str]) -> None:
         """
         NAME
@@ -9460,7 +10820,10 @@ class TopologyEditor(tk.Tk):
         elif path_override == "":
             import tempfile
 
-            fd, temp_path = tempfile.mkstemp(prefix="can_topology_", suffix=".pdf")
+            fd, temp_path = tempfile.mkstemp(
+                prefix=TEMP_PRINT_DIAGRAM_PREFIX,
+                suffix=PDF_FILE_EXTENSION,
+            )
             try:
                 Path(temp_path).unlink(missing_ok=True)
             except Exception:
@@ -9477,47 +10840,51 @@ class TopologyEditor(tk.Tk):
         width = max(self.canvas.winfo_width(), 1)
         height = max(self.canvas.winfo_height(), 1)
         scale = self._zoom
+        render_scene = self.__dict__.get("_render_scene", {})
+        draw_state = self.__dict__.get("_draw_state", {})
+        show_can = self._connection_filter_allows(TOPOLOGY_FILTER_CAN)
+        show_dio = self._connection_filter_allows(TOPOLOGY_FILTER_DIO)
+        show_virtual = self._connection_filter_allows(TOPOLOGY_FILTER_VIRTUAL)
+        show_power = self._connection_filter_allows(TOPOLOGY_FILTER_POWER)
+        show_groups = bool(self.__dict__.get("_show_group_overlays_var", None) and self._show_group_overlays_var.get())
+        groups = self._bridge_groups() if "_root_extras" in self.__dict__ else []
+        bus_ys = list(draw_state.get("bus_ys", []))
+        eff_lefts = list(draw_state.get("bus_lefts", self._bus_lefts))
+        eff_rights = list(draw_state.get("bus_rights", self._bus_rights))
+        node_bounds = dict(render_scene.get("node_bounds", self._node_bounds))
+        node_centers = dict(render_scene.get("node_centers", {}))
+        ethernet_ports = dict(render_scene.get("ethernet_ports", {}))
+        can_ports = dict(render_scene.get("can_ports", {}))
         max_node_x = max((n.x for n in self._nodes), default=0.0)
-        if len(self._bus_lefts) < len(self._bus_offsets):
-            self._bus_lefts.extend([40.0] * (len(self._bus_offsets) - len(self._bus_lefts)))
-        if len(self._bus_rights) < len(self._bus_offsets):
-            self._bus_rights.extend(
-                [max_node_x + 200.0] * (len(self._bus_offsets) - len(self._bus_rights))
-            )
-        if len(self._bus_lefts) > len(self._bus_offsets):
-            self._bus_lefts = self._bus_lefts[: len(self._bus_offsets)]
-        if len(self._bus_rights) > len(self._bus_offsets):
-            self._bus_rights = self._bus_rights[: len(self._bus_offsets)]
-        eff_lefts = list(self._bus_lefts)
-        eff_rights = list(self._bus_rights)
-        for idx in range(len(eff_lefts) - 1):
-            if idx % 2 == 0:
-                shared = eff_rights[idx]
-                eff_rights[idx + 1] = shared
-            else:
-                shared = eff_lefts[idx]
-                eff_lefts[idx + 1] = shared
         min_left = min(eff_lefts, default=40.0)
         max_right = max(eff_rights, default=max_node_x + 200.0)
         total_width = max(
             width,
-            int(max(max_right, max_node_x + 200.0) * scale),
+            int(max_right * scale),
+            int(max((bounds[2] for bounds in node_bounds.values()), default=width)),
         )
         base_y = height * 0.5 + self._pan_y
-        bus_ys = bus_ys_for_offsets(base_y, self._bus_offsets, scale)
-        box_w = self._box_w * scale
         box_h = self._box_h * scale
         span = box_h + 60 * scale
         min_y = min((y - span for y in bus_ys), default=0.0)
         max_y = max((y + span for y in bus_ys), default=height)
-        for node in self._nodes:
-            if not bus_ys:
-                break
-            bus_index = min(max(node.bus_index, 0), max(len(bus_ys) - 1, 0))
-            bus_y = bus_ys[bus_index]
-            _, node_box_h = self._node_box_dims(node, scale)
-            node_bus_y = self._node_bus_y(node, bus_y, scale)
-            y0, y1 = self._node_box_y(node, node_bus_y, node_box_h, scale)
+        for bounds in node_bounds.values():
+            min_y = min(min_y, bounds[1])
+            max_y = max(max_y, bounds[3])
+        for callout in self._callout_nodes():
+            bus_index = min(max(callout.bus_index, 0), max(len(bus_ys) - 1, 0))
+            bus_y = bus_ys[bus_index] if bus_ys else base_y
+            box_w_callout, box_h_callout = self._node_box_dims(callout, scale)
+            if callout.key in self._drag_free_y:
+                cy = base_y + self._drag_free_y[callout.key] * scale
+                y0 = cy - box_h_callout / 2
+                y1 = cy + box_h_callout / 2
+            elif callout.free_y is not None:
+                cy = base_y + self._node_center_y_unscaled(callout) * scale
+                y0 = cy - box_h_callout / 2
+                y1 = cy + box_h_callout / 2
+            else:
+                y0, y1 = self._node_box_y(callout, bus_y, box_h_callout, scale)
             min_y = min(min_y, y0)
             max_y = max(max_y, y1)
         margin = 20.0
@@ -9744,38 +11111,103 @@ class TopologyEditor(tk.Tk):
             tx, ty = _to_pdf(cx, cy + 1)
             c.drawCentredString(tx, ty, "!")
 
+        def _draw_pdf_group_overlays() -> None:
+            if not show_groups or not groups:
+                return
+            palette = ["#1f6feb", "#f97316", "#16a34a", "#a855f7", "#0ea5e9", "#e11d48"]
+            label_bounds: Dict[str, Tuple[float, float, float, float]] = {}
+            for node in self._device_nodes():
+                bounds = node_bounds.get(node.key)
+                if bounds is not None:
+                    label_bounds[node.label] = bounds
+            if not label_bounds:
+                return
+            pad = 10.0
+            for idx, group in enumerate(groups):
+                if not isinstance(group, dict):
+                    continue
+                name = str(group.get("name", "")).strip()
+                if not name:
+                    continue
+                members = group.get("members", []) or []
+                bounds_list = []
+                for member in members:
+                    label = member.get("device") if isinstance(member, dict) else member
+                    if not isinstance(label, str):
+                        continue
+                    bounds = label_bounds.get(label.strip())
+                    if bounds:
+                        bounds_list.append(bounds)
+                if not bounds_list:
+                    continue
+                x0 = min(b[0] for b in bounds_list) - pad
+                y0 = min(b[1] for b in bounds_list) - pad
+                x1 = max(b[2] for b in bounds_list) + pad
+                y1 = max(b[3] for b in bounds_list) + pad
+                color = palette[idx % len(palette)]
+                rx0, ry0 = _to_pdf(x0, y0)
+                rx1, ry1 = _to_pdf(x1, y1)
+                c.setStrokeColor(_pdf_color(color))
+                c.setLineWidth(2 * fit_scale)
+                try:
+                    c.setDash(6 * fit_scale, 4 * fit_scale)
+                except Exception:
+                    pass
+                c.rect(min(rx0, rx1), min(ry0, ry1), abs(rx1 - rx0), abs(ry1 - ry0), fill=0, stroke=1)
+                try:
+                    c.setDash()
+                except Exception:
+                    pass
+                label_font = max(10, int(12 * scale * fit_scale))
+                label_pad_x = max(6.0, 6.0 * scale)
+                label_h = max(18.0, 18.0 * scale)
+                label_w = max(36.0, len(name) * max(7.5, 8.5 * scale))
+                lx0 = x0 + 4.0
+                ly1 = y0 - 4.0
+                ly0 = ly1 - label_h
+                lx1 = lx0 + label_w
+                lrx0, lry0 = _to_pdf(lx0, ly0)
+                lrx1, lry1 = _to_pdf(lx1, ly1)
+                c.setFillColor(_pdf_color("#ffffff"))
+                c.setStrokeColor(_pdf_color(color))
+                c.setLineWidth(1 * fit_scale)
+                c.rect(min(lrx0, lrx1), min(lry0, lry1), abs(lrx1 - lrx0), abs(lry1 - lry0), fill=1, stroke=1)
+                c.setFillColor(_pdf_color(color))
+                c.setFont("Helvetica", label_font)
+                text_x, text_y = _to_pdf(lx0 + label_pad_x, ly0 + 4.0)
+                c.drawString(text_x, text_y, name)
+
         c = pdfcanvas.Canvas(path, pagesize=(page_w, page_h))
         gray = Color(0.27, 0.27, 0.27)
 
-        x_left = min_left * scale
-        x_right = max_right * scale
-        turn_radius = max(8.0, 18 * scale)
-        c.setStrokeColor(gray)
-        c.setLineWidth(4 * fit_scale)
-        for idx, bus_y in enumerate(bus_ys):
-            seg_left = eff_lefts[idx] * scale
-            seg_right = eff_rights[idx] * scale
-            if idx % 2 == 0:
-                start_x, end_x = seg_left, seg_right
-            else:
-                start_x, end_x = seg_right, seg_left
-            x0, y0 = _to_pdf(start_x, bus_y)
-            x1, y1 = _to_pdf(end_x, bus_y)
-            c.line(x0, y0, x1, y1)
-            if idx + 1 < len(bus_ys):
-                next_y = bus_ys[idx + 1]
-                connector_x = end_x
-                offset = turn_radius if idx % 2 == 0 else -turn_radius
-                path_obj = c.beginPath()
-                p0 = _to_pdf(connector_x, bus_y)
-                p1 = _to_pdf(connector_x + offset, bus_y + turn_radius)
-                p2 = _to_pdf(connector_x + offset, next_y - turn_radius)
-                p3 = _to_pdf(connector_x, next_y)
-                path_obj.moveTo(p0[0], p0[1])
-                path_obj.curveTo(p1[0], p1[1], p2[0], p2[1], p3[0], p3[1])
-                c.setLineWidth(5 * fit_scale)
-                c.drawPath(path_obj)
-                c.setLineWidth(4 * fit_scale)
+        if show_can:
+            turn_radius = max(8.0, 18 * scale)
+            c.setStrokeColor(gray)
+            c.setLineWidth(4 * fit_scale)
+            for idx, bus_y in enumerate(bus_ys):
+                seg_left = eff_lefts[idx] * scale
+                seg_right = eff_rights[idx] * scale
+                if idx % 2 == 0:
+                    start_x, end_x = seg_left, seg_right
+                else:
+                    start_x, end_x = seg_right, seg_left
+                x0, y0 = _to_pdf(start_x, bus_y)
+                x1, y1 = _to_pdf(end_x, bus_y)
+                c.line(x0, y0, x1, y1)
+                if idx + 1 < len(bus_ys):
+                    next_y = bus_ys[idx + 1]
+                    connector_x = end_x
+                    offset = turn_radius if idx % 2 == 0 else -turn_radius
+                    path_obj = c.beginPath()
+                    p0 = _to_pdf(connector_x, bus_y)
+                    p1 = _to_pdf(connector_x + offset, bus_y + turn_radius)
+                    p2 = _to_pdf(connector_x + offset, next_y - turn_radius)
+                    p3 = _to_pdf(connector_x, next_y)
+                    path_obj.moveTo(p0[0], p0[1])
+                    path_obj.curveTo(p1[0], p1[1], p2[0], p2[1], p3[0], p3[1])
+                    c.setLineWidth(5 * fit_scale)
+                    c.drawPath(path_obj)
+                    c.setLineWidth(4 * fit_scale)
 
         dup_keys: set[Tuple[str, str, int]] = set()
         key_counts: Dict[Tuple[str, str, int], int] = {}
@@ -9789,35 +11221,27 @@ class TopologyEditor(tk.Tk):
         dup_keys = {key for key, count in key_counts.items() if count > 1}
         warn_ids = {can_id for can_id, count in numeric_counts.items() if count > 1}
 
-        ethernet_ports: Dict[int, Dict[str, Tuple[float, float]]] = {}
-        can_ports: Dict[int, Dict[int, Tuple[float, float]]] = {}
-        node_centers = {}
         linked_devices = {link.get("device") for link in self._cannect_device_links}
         for node in self._device_nodes():
+            bounds = node_bounds.get(node.key)
+            center_entry = node_centers.get(node.key)
+            if bounds is None or center_entry is None:
+                continue
             bus_index = min(max(node.bus_index, 0), max(len(bus_ys) - 1, 0))
             bus_y = bus_ys[bus_index] if bus_ys else base_y
-            node_bus_y = self._node_bus_y(node, bus_y, scale)
+            node_bus_y = center_entry[1]
             node_scale = max(0.6, min(2.0, node.scale))
-            node_box_w = box_w * node_scale
-            node_box_h = box_h * node_scale
-            seg_left = eff_lefts[bus_index] * scale
-            seg_right = eff_rights[bus_index] * scale
-            node_x = min(max(node.x * scale, seg_left + 20), seg_right - 20)
-            x0 = node_x - node_box_w / 2
-            x1 = node_x + node_box_w / 2
-            if node.row == 1:
-                y0 = node_bus_y + 30 * scale
-                y1 = y0 + node_box_h
-                if node.key not in linked_devices and not self._is_dio_node(node):
+            x0, y0, x1, y1 = bounds
+            node_x = (x0 + x1) / 2.0
+            node_box_w = x1 - x0
+            allow_trunk = (not self._is_swyft_node(node)) or (node.category == "cannect_inject")
+            if node.key not in linked_devices and allow_trunk and not self._is_dio_node(node):
+                if node_bus_y >= bus_y:
                     x0l, y0l = _to_pdf(node_x, bus_y)
                     x1l, y1l = _to_pdf(node_x, y0)
-            else:
-                y1 = node_bus_y - 30 * scale
-                y0 = y1 - node_box_h
-                if node.key not in linked_devices and not self._is_dio_node(node):
+                else:
                     x0l, y0l = _to_pdf(node_x, y1)
                     x1l, y1l = _to_pdf(node_x, bus_y)
-            if node.key not in linked_devices and not self._is_dio_node(node):
                 c.setLineWidth(2 * fit_scale)
                 c.line(x0l, y0l, x1l, y1l)
 
@@ -9850,13 +11274,17 @@ class TopologyEditor(tk.Tk):
                 ports: Dict[str, Tuple[float, float]] = {}
                 if node.category == "cannect_inject":
                     ports["out"] = (x1, cy)
+                    ports["power_in"] = (node_x, y1)
                 else:
                     ports["in"] = (x0, cy)
                     ports["out"] = (x1, cy)
-                ethernet_ports[node.key] = ports
+                    ports["power_out"] = (node_x, y1)
+                ports = ethernet_ports.get(node.key, ports)
                 port_w = 6 * scale
                 port_h = 10 * scale
-                for _, (px, py) in ports.items():
+                for port_name, (px, py) in ports.items():
+                    if port_name.startswith("power_"):
+                        continue
                     r0 = _to_pdf(px - port_w / 2, py - port_h / 2)
                     r1 = _to_pdf(px + port_w / 2, py + port_h / 2)
                     c.setFillColor(_pdf_color("#4aa3df"))
@@ -9869,14 +11297,9 @@ class TopologyEditor(tk.Tk):
                         fill=1,
                         stroke=1,
                     )
-                can_count = 1 if node.category == "cannect_inject" else 3
-                can_ports[node.key] = {}
-                if can_count > 0:
-                    inset = 12 * scale
-                    step = (node_box_w - inset * 2) / max(can_count, 1)
-                    for idx in range(can_count):
-                        px = x0 + inset + step * (idx + 0.5)
-                        can_ports[node.key][idx + 1] = (px, y0 - 10 * scale)
+                port_map = can_ports.get(node.key, {})
+                if port_map:
+                    for port_idx, (px, _py) in sorted(port_map.items()):
                         p0 = _to_pdf(px - 3 * scale, y0)
                         p1 = _to_pdf(px - 3 * scale, y0 - 10 * scale)
                         p2 = _to_pdf(px + 3 * scale, y0)
@@ -9888,12 +11311,15 @@ class TopologyEditor(tk.Tk):
                         c.setFillColor(_pdf_color("#2f7a2f"))
                         c.setFont("Helvetica", max(6, int(7 * scale * fit_scale)))
                         tpos = _to_pdf(px, y0 - 12 * scale)
-                        c.drawCentredString(tpos[0], tpos[1], f"C{idx + 1}")
+                        c.drawCentredString(tpos[0], tpos[1], f"C{port_idx}")
                 power_text = "Power In" if node.category == "cannect_inject" else "Power Out"
-                c.setFillColor(_pdf_color("#555555"))
-                c.setFont("Helvetica", max(6, int(7 * scale * fit_scale)))
-                tpos = _to_pdf(node_x, y1 + 10 * scale)
-                c.drawCentredString(tpos[0], tpos[1], power_text)
+                power_key = "power_in" if node.category == "cannect_inject" else "power_out"
+                power_pos = ports.get(power_key)
+                if power_pos is not None:
+                    c.setFillColor(_pdf_color("#555555"))
+                    c.setFont("Helvetica", max(6, int(7 * scale * fit_scale)))
+                    tpos = _to_pdf(power_pos[0], power_pos[1] + 10 * scale)
+                    c.drawCentredString(tpos[0], tpos[1], power_text)
 
             dup_key = self._dup_key_for_node(node)
             if self._show_warn_badges_var.get() and (
@@ -9911,10 +11337,9 @@ class TopologyEditor(tk.Tk):
                 else:
                     _draw_pdf_warning_badge(badge_x, badge_y)
 
-            node_centers[node.key] = (node_x, node_bus_y)
-
-        linked_devices = {link.get("device") for link in self._cannect_device_links}
-        if ENABLE_CANNECT_BUS_LINKS:
+        node_by_key = {node.key: node for node in self._device_nodes()}
+        _draw_pdf_group_overlays()
+        if show_can and ENABLE_CANNECT_BUS_LINKS:
             for link in self._can_bus_links:
                 node_key = link.get("node")
                 bus_index = link.get("bus")
@@ -9934,122 +11359,150 @@ class TopologyEditor(tk.Tk):
                 c.setLineWidth(2 * fit_scale)
                 c.line(p0[0], p0[1], p1[0], p1[1])
 
-        for link in self._cannect_device_links:
-            node_key = link.get("node")
-            device_key = link.get("device")
-            port = link.get("port", 1)
-            if node_key not in can_ports or device_key not in self._node_bounds:
-                continue
-            port_pos = can_ports[node_key].get(int(port))
-            if not port_pos:
-                continue
-            px, py = port_pos
-            dx0, dy0, dx1, dy1 = self._node_bounds[device_key]
-            tx = (dx0 + dx1) / 2.0
-            ty = dy0
-            p0 = _to_pdf(px, py)
-            p1 = _to_pdf(tx, ty)
-            c.setStrokeColor(_pdf_color("#2f7a2f"))
-            c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
-            c.line(p0[0], p0[1], p1[0], p1[1])
-
-        for link in self._attachment_links:
-            host_key = link.get(KEY_LINK_DEVICE)
-            attach_key = link.get(KEY_LINK_ATTACHMENT)
-            if host_key not in node_centers or attach_key not in node_centers:
-                continue
-            host_node = node_by_key.get(host_key)
-            attach_node = node_by_key.get(attach_key)
-            if host_node and self._is_dio_node(host_node):
-                continue
-            if attach_node and self._is_dio_node(attach_node):
-                if host_node and host_node.category == CATEGORY_ROBORIO:
+        if show_can:
+            for link in self._cannect_device_links:
+                node_key = link.get("node")
+                device_key = link.get("device")
+                port = link.get("port", 1)
+                if node_key not in can_ports or device_key not in node_bounds:
                     continue
-            if attach_node and self._is_dio_node(attach_node) and host_node is None:
-                continue
-            host_bounds = self._node_bounds.get(host_key)
-            attach_bounds = self._node_bounds.get(attach_key)
-            if host_bounds:
-                hx = (host_bounds[0] + host_bounds[2]) / 2.0
-                hy = (host_bounds[1] + host_bounds[3]) / 2.0
-            else:
-                hx, hy = node_centers[host_key]
-            if attach_bounds:
-                ax = (attach_bounds[0] + attach_bounds[2]) / 2.0
-                ay = (attach_bounds[1] + attach_bounds[3]) / 2.0
-            else:
-                ax, ay = node_centers[attach_key]
-            p0 = _to_pdf(hx, hy)
-            p1 = _to_pdf(ax, ay)
-            c.setStrokeColor(_pdf_color(ATTACH_LINE_COLOR))
-            c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
-            try:
-                c.setDash(LINK_DASH[0] * fit_scale, LINK_DASH[1] * fit_scale)
-            except Exception:
-                pass
-            c.line(p0[0], p0[1], p1[0], p1[1])
-            c.setDash()
+                port_pos = can_ports[node_key].get(int(port))
+                if not port_pos:
+                    continue
+                px, py = port_pos
+                dx0, dy0, dx1, dy1 = node_bounds[device_key]
+                tx = (dx0 + dx1) / 2.0
+                ty = dy0
+                p0 = _to_pdf(px, py)
+                p1 = _to_pdf(tx, ty)
+                c.setStrokeColor(_pdf_color("#2f7a2f"))
+                c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
+                c.line(p0[0], p0[1], p1[0], p1[1])
 
-        for link in self._dio_wiring_links:
-            robo_key = link.get(KEY_LINK_ROBORIO)
-            dev_key = link.get(KEY_LINK_DEVICE)
-            if robo_key not in node_centers or dev_key not in node_centers:
-                continue
-            robo_bounds = self._node_bounds.get(robo_key)
-            if robo_bounds:
-                rx = (robo_bounds[0] + robo_bounds[2]) / 2.0
-                ry = robo_bounds[1]
-            else:
-                rx, ry = node_centers[robo_key]
-            dev_bounds = self._node_bounds.get(dev_key)
-            if dev_bounds:
-                dx = (dev_bounds[0] + dev_bounds[2]) / 2.0
-                dy = dev_bounds[1]
-            else:
-                dx, dy = node_centers[dev_key]
-            p0 = _to_pdf(rx, ry)
-            p1 = _to_pdf(dx, dy)
-            c.setStrokeColor(_pdf_color(WIRE_LINE_COLOR))
-            c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
-            try:
-                c.setDash(LINK_DASH[0] * fit_scale, LINK_DASH[1] * fit_scale)
-            except Exception:
-                pass
-            c.line(p0[0], p0[1], p1[0], p1[1])
-            c.setDash()
+        if show_power:
+            for link in self._power_links:
+                a_key = link.get(KEY_LINK_A)
+                b_key = link.get(KEY_LINK_B)
+                if a_key not in node_centers or b_key not in node_centers:
+                    continue
+                a_bounds = node_bounds.get(a_key)
+                b_bounds = node_bounds.get(b_key)
+                if a_bounds:
+                    ax = (a_bounds[0] + a_bounds[2]) / 2.0
+                    ay = (a_bounds[1] + a_bounds[3]) / 2.0
+                else:
+                    ax, ay = node_centers[a_key]
+                if b_bounds:
+                    bx = (b_bounds[0] + b_bounds[2]) / 2.0
+                    by = (b_bounds[1] + b_bounds[3]) / 2.0
+                else:
+                    bx, by = node_centers[b_key]
+                p0 = _to_pdf(ax, ay)
+                p1 = _to_pdf(bx, by)
+                c.setStrokeColor(_pdf_color(POWER_LINE_COLOR))
+                c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
+                c.line(p0[0], p0[1], p1[0], p1[1])
 
-        for a, b in self._ethernet_links:
-            if a not in ethernet_ports or b not in ethernet_ports:
-                continue
-            if a not in node_centers or b not in node_centers:
-                continue
-            ax, _ = node_centers[a]
-            bx, _ = node_centers[b]
-            ports_a = ethernet_ports[a]
-            ports_b = ethernet_ports[b]
-            if "in" in ports_a and "out" in ports_a:
-                pa = ports_a["in"] if bx < ax else ports_a["out"]
-            else:
-                pa = ports_a.get("out") or ports_a.get("in")
-            if "in" in ports_b and "out" in ports_b:
-                pb = ports_b["in"] if ax < bx else ports_b["out"]
-            else:
-                pb = ports_b.get("out") or ports_b.get("in")
-            if not pa or not pb:
-                continue
-            p0 = _to_pdf(pa[0], pa[1])
-            p1 = _to_pdf(pb[0], pb[1])
-            c.setStrokeColor(_pdf_color("#1c6ba8"))
-            c.setLineWidth(2 * fit_scale)
-            try:
-                c.setDash(6 * fit_scale, 4 * fit_scale)
-            except Exception:
-                pass
-            c.line(p0[0], p0[1], p1[0], p1[1])
-            try:
+        if show_virtual:
+            for link in self._attachment_links:
+                host_key = link.get(KEY_LINK_DEVICE)
+                attach_key = link.get(KEY_LINK_ATTACHMENT)
+                if host_key not in node_centers or attach_key not in node_centers:
+                    continue
+                host_node = node_by_key.get(host_key)
+                attach_node = node_by_key.get(attach_key)
+                if host_node and self._is_dio_node(host_node):
+                    continue
+                if attach_node and self._is_dio_node(attach_node):
+                    if host_node and host_node.category == CATEGORY_ROBORIO:
+                        continue
+                if attach_node and self._is_dio_node(attach_node) and host_node is None:
+                    continue
+                host_bounds = node_bounds.get(host_key)
+                attach_bounds = node_bounds.get(attach_key)
+                if host_bounds:
+                    hx = (host_bounds[0] + host_bounds[2]) / 2.0
+                    hy = (host_bounds[1] + host_bounds[3]) / 2.0
+                else:
+                    hx, hy = node_centers[host_key]
+                if attach_bounds:
+                    ax = (attach_bounds[0] + attach_bounds[2]) / 2.0
+                    ay = (attach_bounds[1] + attach_bounds[3]) / 2.0
+                else:
+                    ax, ay = node_centers[attach_key]
+                p0 = _to_pdf(hx, hy)
+                p1 = _to_pdf(ax, ay)
+                c.setStrokeColor(_pdf_color(ATTACH_LINE_COLOR))
+                c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
+                try:
+                    c.setDash(LINK_DASH[0] * fit_scale, LINK_DASH[1] * fit_scale)
+                except Exception:
+                    pass
+                c.line(p0[0], p0[1], p1[0], p1[1])
                 c.setDash()
-            except Exception:
-                pass
+
+        if show_dio:
+            for link in self._dio_wiring_links:
+                robo_key = link.get(KEY_LINK_ROBORIO)
+                dev_key = link.get(KEY_LINK_DEVICE)
+                if robo_key not in node_centers or dev_key not in node_centers:
+                    continue
+                robo_bounds = node_bounds.get(robo_key)
+                if robo_bounds:
+                    rx = (robo_bounds[0] + robo_bounds[2]) / 2.0
+                    ry = robo_bounds[1]
+                else:
+                    rx, ry = node_centers[robo_key]
+                dev_bounds = node_bounds.get(dev_key)
+                if dev_bounds:
+                    dx = (dev_bounds[0] + dev_bounds[2]) / 2.0
+                    dy = dev_bounds[1]
+                else:
+                    dx, dy = node_centers[dev_key]
+                p0 = _to_pdf(rx, ry)
+                p1 = _to_pdf(dx, dy)
+                c.setStrokeColor(_pdf_color(WIRE_LINE_COLOR))
+                c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
+                try:
+                    c.setDash(LINK_DASH[0] * fit_scale, LINK_DASH[1] * fit_scale)
+                except Exception:
+                    pass
+                c.line(p0[0], p0[1], p1[0], p1[1])
+                c.setDash()
+
+        if show_virtual:
+            for a, b in self._ethernet_links:
+                if a not in ethernet_ports or b not in ethernet_ports:
+                    continue
+                if a not in node_centers or b not in node_centers:
+                    continue
+                ax, _ = node_centers[a]
+                bx, _ = node_centers[b]
+                ports_a = ethernet_ports[a]
+                ports_b = ethernet_ports[b]
+                if "in" in ports_a and "out" in ports_a:
+                    pa = ports_a["in"] if bx < ax else ports_a["out"]
+                else:
+                    pa = ports_a.get("out") or ports_a.get("in")
+                if "in" in ports_b and "out" in ports_b:
+                    pb = ports_b["in"] if ax < bx else ports_b["out"]
+                else:
+                    pb = ports_b.get("out") or ports_b.get("in")
+                if not pa or not pb:
+                    continue
+                p0 = _to_pdf(pa[0], pa[1])
+                p1 = _to_pdf(pb[0], pb[1])
+                c.setStrokeColor(_pdf_color("#1c6ba8"))
+                c.setLineWidth(2 * fit_scale)
+                try:
+                    c.setDash(6 * fit_scale, 4 * fit_scale)
+                except Exception:
+                    pass
+                c.line(p0[0], p0[1], p1[0], p1[1])
+                try:
+                    c.setDash()
+                except Exception:
+                    pass
 
         for callout in self._callout_nodes():
             cx = callout.x * scale
@@ -10101,44 +11554,15 @@ class TopologyEditor(tk.Tk):
         c.showPage()
         c.save()
         if print_after:
-            try:
-                import os
+            self._print_or_open_pdf(path, MSG_PRINTED_DIAGRAM)
 
-                os.startfile(path, "print")
-                messagebox.showinfo(
-                    "Printed",
-                    f"Queued PDF for printing: {path}",
-                )
+            def _cleanup() -> None:
+                try:
+                    Path(path).unlink()
+                except Exception:
+                    pass
 
-                def _cleanup() -> None:
-                    try:
-                        Path(path).unlink()
-                    except Exception:
-                        pass
-
-                # Best-effort cleanup after spooler has likely consumed the file.
-                self.after(30000, _cleanup)
-            except OSError as exc:
-                if getattr(exc, "winerror", None) == 1155:
-                    try:
-                        os.startfile(path)
-                        messagebox.showinfo(
-                            "Print",
-                            "No default PDF print handler is associated.\n\n"
-                            "Opened the PDF so you can print manually.",
-                        )
-                        return
-                    except Exception:
-                        pass
-                messagebox.showerror(
-                    "Print Failed",
-                    f"Saved PDF but failed to print:\n{exc}",
-                )
-            except Exception as exc:
-                messagebox.showerror(
-                    "Print Failed",
-                    f"Saved PDF but failed to print:\n{exc}",
-                )
+            self.after(TEMP_PRINT_CLEANUP_DELAY_MS, _cleanup)
         else:
             messagebox.showinfo("Exported", f"Wrote PDF to {path}")
 
@@ -10179,7 +11603,10 @@ class TopologyEditor(tk.Tk):
         elif path_override == "":
             import tempfile
 
-            fd, temp_path = tempfile.mkstemp(prefix="can_topology_nodes_", suffix=".pdf")
+            fd, temp_path = tempfile.mkstemp(
+                prefix=TEMP_PRINT_NODE_LIST_PREFIX,
+                suffix=PDF_FILE_EXTENSION,
+            )
             try:
                 Path(temp_path).unlink(missing_ok=True)
             except Exception:
@@ -10314,43 +11741,15 @@ class TopologyEditor(tk.Tk):
         c.save()
 
         if print_after:
-            try:
-                import os
+            self._print_or_open_pdf(path, MSG_PRINTED_NODE_LIST)
 
-                os.startfile(path, "print")
-                messagebox.showinfo(
-                    "Printed",
-                    f"Queued node list for printing: {path}",
-                )
+            def _cleanup() -> None:
+                try:
+                    Path(path).unlink()
+                except Exception:
+                    pass
 
-                def _cleanup() -> None:
-                    try:
-                        Path(path).unlink()
-                    except Exception:
-                        pass
-
-                self.after(30000, _cleanup)
-            except OSError as exc:
-                if getattr(exc, "winerror", None) == 1155:
-                    try:
-                        os.startfile(path)
-                        messagebox.showinfo(
-                            "Print",
-                            "No default PDF print handler is associated.\n\n"
-                            "Opened the PDF so you can print manually.",
-                        )
-                        return
-                    except Exception:
-                        pass
-                messagebox.showerror(
-                    "Print Failed",
-                    f"Saved PDF but failed to print:\n{exc}",
-                )
-            except Exception as exc:
-                messagebox.showerror(
-                    "Print Failed",
-                    f"Saved PDF but failed to print:\n{exc}",
-                )
+            self.after(TEMP_PRINT_CLEANUP_DELAY_MS, _cleanup)
         else:
             messagebox.showinfo("Exported", f"Wrote PDF to {path}")
 
@@ -10631,13 +12030,21 @@ class TopologyEditor(tk.Tk):
         self._pending_fit_to_window = False
         self._redraw_canvas()
 
-    def _on_zoom_wheel(self, event: tk.Event) -> None:
+    def _on_zoom_wheel(self, event: tk.Event) -> str:
         """
         NAME
-            _on_zoom_wheel - Handle Ctrl+MouseWheel zoom.
+            _on_zoom_wheel - Handle mouse-wheel zoom.
         """
-        delta = 0.1 if event.delta > 0 else -0.1
+        wheel_delta = getattr(event, "delta", 0)
+        button_num = getattr(event, "num", None)
+        if wheel_delta > 0 or button_num == MOUSEWHEEL_UP_NUM:
+            delta = ZOOM_WHEEL_STEP
+        elif wheel_delta < 0 or button_num == MOUSEWHEEL_DOWN_NUM:
+            delta = -ZOOM_WHEEL_STEP
+        else:
+            return "break"
         self._zoom_step(delta)
+        return "break"
 
     def _zoom_step(self, delta: float) -> None:
         """
@@ -10680,17 +12087,12 @@ class TopologyEditor(tk.Tk):
         for node in device_nodes:
             node_scale = max(0.6, min(2.0, node.scale))
             half_w = (self._box_w * node_scale) / 2.0
-            bus_offset = self._bus_offsets[node.bus_index] if self._bus_offsets else 0.0
-            if node.row == 1:
-                y0 = bus_offset + 30.0
-                y1 = y0 + self._box_h * node_scale
-            else:
-                y1 = bus_offset - 30.0
-                y0 = y1 - self._box_h * node_scale
+            half_h = (self._box_h * node_scale) / 2.0
+            center_y = self._node_center_y_unscaled(node)
             min_x = min(min_x, node.x - half_w)
             max_x = max(max_x, node.x + half_w)
-            min_y = min(min_y, y0)
-            max_y = max(max_y, y1)
+            min_y = min(min_y, center_y - half_h)
+            max_y = max(max_y, center_y + half_h)
 
         for callout in callouts:
             callout_scale = max(0.6, min(2.0, callout.scale))
@@ -10745,7 +12147,9 @@ class TopologyEditor(tk.Tk):
         self._dirty = True
         self._redraw_canvas()
         self.update_idletasks()
-        self.canvas.xview_moveto(0.0)
+        content_center_x = ((min_x + max_x) / 2.0) * self._zoom
+        self._set_canvas_xview_left(content_center_x - width / 2.0)
+        self.canvas.yview_moveto(0.0)
 
     @staticmethod
     def _tag_to_key(tags: Tuple[str, ...]) -> Optional[int]:

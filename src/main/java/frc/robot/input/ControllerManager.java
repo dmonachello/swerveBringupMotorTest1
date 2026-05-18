@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.XboxController;
+import frc.robot.BringupPrinter;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
@@ -28,7 +29,12 @@ public final class ControllerManager {
   private static final String CONTROLLERS_FILE = "bringup_controllers.json";
   private static final String BINDINGS_FILE = "bringup_bindings.json";
   private static final String DEFAULT_CONTROLLER_PREFIX = "controller";
-  private static final int DEFAULT_CONTROLLER_COUNT = 6;
+  private static final String MESSAGE_NO_CONTROLLER_CONFIG =
+      "Warning: no controller configuration loaded; robot will run with no configured Xbox controllers.";
+  private static final String MESSAGE_INVALID_CONTROLLER_CONFIG_FORMAT =
+      "Warning: failed to load controller config %s: %s";
+  private static final String MESSAGE_DROPPED_CONTROLLER_SPEC_FORMAT =
+      "Warning: dropped invalid controller spec from %s at index %d: %s";
   private static final Gson GSON = new Gson();
 
   private final List<ControllerSpec> specs = new ArrayList<>();
@@ -92,21 +98,7 @@ public final class ControllerManager {
       normalizeSpecNames();
       return;
     }
-    addDefaultSpecs();
-  }
-
-  /**
-   * NAME
-   *   addDefaultSpecs - Add default controller0..controller5 Xbox specs.
-   */
-  private void addDefaultSpecs() {
-    for (int port = 0; port < DEFAULT_CONTROLLER_COUNT; port++) {
-      ControllerSpec spec = new ControllerSpec();
-      spec.type = ControllerType.XBOX;
-      spec.port = port;
-      spec.name = DEFAULT_CONTROLLER_PREFIX + port;
-      specs.add(spec);
-    }
+    BringupPrinter.enqueue(MESSAGE_NO_CONTROLLER_CONFIG);
   }
 
   /**
@@ -117,7 +109,7 @@ public final class ControllerManager {
     xboxControllers.clear();
     xboxByName.clear();
     for (ControllerSpec spec : specs) {
-      if (spec == null || spec.type == null) {
+      if (spec == null || spec.type == null || spec.port == null) {
         continue;
       }
       if (spec.type == ControllerType.XBOX) {
@@ -144,8 +136,12 @@ public final class ControllerManager {
       if (root == null || root.controllers == null || root.controllers.isEmpty()) {
         return Collections.emptyList();
       }
-      return new ArrayList<>(root.controllers);
+      return sanitizeSpecs(root.controllers, path.toString());
     } catch (IOException | JsonParseException ex) {
+      BringupPrinter.enqueue(String.format(
+          MESSAGE_INVALID_CONTROLLER_CONFIG_FORMAT,
+          path,
+          ex.getMessage()));
       return Collections.emptyList();
     }
   }
@@ -164,10 +160,48 @@ public final class ControllerManager {
       if (root == null || root.controllers == null || root.controllers.isEmpty()) {
         return Collections.emptyList();
       }
-      return new ArrayList<>(root.controllers);
+      return sanitizeSpecs(root.controllers, path.toString());
     } catch (IOException | JsonParseException ex) {
+      BringupPrinter.enqueue(String.format(
+          MESSAGE_INVALID_CONTROLLER_CONFIG_FORMAT,
+          path,
+          ex.getMessage()));
       return Collections.emptyList();
     }
+  }
+
+  private List<ControllerSpec> sanitizeSpecs(List<ControllerSpec> rawSpecs, String sourceLabel) {
+    List<ControllerSpec> sanitized = new ArrayList<>();
+    for (int index = 0; index < rawSpecs.size(); index++) {
+      ControllerSpec spec = rawSpecs.get(index);
+      String reason = getInvalidSpecReason(spec);
+      if (reason != null) {
+        BringupPrinter.enqueue(String.format(
+            MESSAGE_DROPPED_CONTROLLER_SPEC_FORMAT,
+            sourceLabel,
+            index,
+            reason));
+        continue;
+      }
+      sanitized.add(spec);
+    }
+    return sanitized;
+  }
+
+  private String getInvalidSpecReason(ControllerSpec spec) {
+    if (spec == null) {
+      return "entry was null";
+    }
+    if (spec.type == null) {
+      return "missing type";
+    }
+    if (spec.port == null) {
+      return "missing port";
+    }
+    if (spec.port < 0) {
+      return "negative port";
+    }
+    return null;
   }
 
   private void normalizeSpecNames() {
@@ -175,7 +209,7 @@ public final class ControllerManager {
       if (spec == null) {
         continue;
       }
-      if (spec.name == null || spec.name.isBlank()) {
+      if ((spec.name == null || spec.name.isBlank()) && spec.port != null && spec.port >= 0) {
         spec.name = DEFAULT_CONTROLLER_PREFIX + spec.port;
       }
     }

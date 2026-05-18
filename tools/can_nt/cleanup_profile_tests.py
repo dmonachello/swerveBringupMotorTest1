@@ -47,7 +47,7 @@ ARG_APPLY = "--apply"
 ARG_DEST_PROFILES_PATH = "profiles_path"
 ARG_DEST_APPLY = "apply"
 
-DEFAULT_PROFILES_FILENAME = "data/bringup_system.json"
+DEFAULT_PROFILES_FILENAME = "src/main/deploy/bringup_system.json"
 
 MESSAGE_NO_PROFILES = "ERROR: No profiles found."
 MESSAGE_DRY_RUN = "Dry run only. Re-run with --apply to write changes."

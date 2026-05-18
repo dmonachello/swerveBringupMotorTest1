@@ -3,6 +3,7 @@ package frc.robot.manufacturers;
 import frc.robot.BringupUtil;
 import frc.robot.BringupUtil.DeviceConfig;
 import frc.robot.devices.DeviceUnit;
+import frc.robot.devices.ni.DioLimitSwitchDevice;
 import frc.robot.devices.ni.RoboRioDevice;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.registry.RegistrationHeader;
@@ -37,6 +38,15 @@ public final class NiDeviceGroup implements ManufacturerGroup {
       false,
       config -> new RoboRioDevice(config.getId(), config.getLabel()));
 
+  private static final DeviceRegistration LIMIT_SWITCH_REGISTRATION = new DeviceRegistration(
+      DioLimitSwitchDevice.HEADER,
+      "NI",
+      DioLimitSwitchDevice.DEVICE_TYPE,
+      "Limit Switch",
+      DeviceRole.MISC,
+      false,
+      config -> new DioLimitSwitchDevice(config.getId(), config.getLabel(), config.isInvert()));
+
   private final List<DeviceTypeBucket> buckets = new ArrayList<>();
 
   /**
@@ -45,6 +55,7 @@ public final class NiDeviceGroup implements ManufacturerGroup {
    */
   public NiDeviceGroup() {
     register(ROBORIO_REGISTRATION);
+    register(LIMIT_SWITCH_REGISTRATION);
   }
 
   @Override

@@ -45,7 +45,7 @@ Examples:
 Purpose: Fast recovery without Git.
 
 Behavior:
-- On any save, write a timestamped snapshot in `data/backups/`
+- On any save, write a timestamped snapshot in `backup_data/backups/`
 - Maintain a `last_good` copy per source
 
 Naming:
@@ -81,7 +81,7 @@ Repair actions:
 Purpose: Traceability for all changes.
 
 Location:
-- `data/backups/index.json`
+- `backup_data/backups/index.json`
 
 Content:
 - timestamp
@@ -137,7 +137,7 @@ Purpose: Sequenced rollout plan with clear exit criteria.
 ## Implementation Checklist
 
 ### Phase 0 - Design & Scaffolding
-- [ ] Create `data/backups/` convention and index schema
+- [ ] Create `backup_data/backups/` convention and index schema
 - [ ] Add helper utilities: `atomic_write`, `snapshot_write`, `audit_log_append`
 - [ ] Add CLI stubs for recovery/repair commands
 

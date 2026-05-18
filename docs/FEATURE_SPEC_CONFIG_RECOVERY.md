@@ -46,7 +46,7 @@ Examples:
 Purpose: Provide fast recovery without Git.
 
 Behavior:
-- On any save, write a timestamped snapshot in `data/backups/`
+- On any save, write a timestamped snapshot in `backup_data/backups/`
 - Maintain a `last_good` copy per source
 
 Example snapshot names:
@@ -81,7 +81,7 @@ Repair actions:
 Purpose: Provide traceability and user visibility.
 
 Audit log:
-- `data/backups/index.json`
+- `backup_data/backups/index.json`
 - Records time, action, source, hash, validation status
 
 CLI notifications:

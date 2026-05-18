@@ -52,7 +52,6 @@ from tools.common.profile_constants import (
     KEY_MANUFACTURER,
     KEY_DEVICE_TYPE,
     KEY_ID,
-    KEY_DIO,
     KEY_INVERT,
     KEY_PWM,
     KEY_ANALOG,
@@ -85,7 +84,6 @@ from tools.common.profile_constants import (
     KEY_TESTS_SELECTED,
     KEY_TESTS_TYPE,
     KEY_TESTS_STATUS,
-    KEY_TESTS_MOTORS,
     KEY_NAME,
     KEY_ESTOPPED,
     KEY_MODE,
@@ -94,6 +92,7 @@ from tools.common.profile_constants import (
     INTERFACE_DIO,
     INTERFACE_INTERNAL,
     INTERFACE_PWM,
+    INTERFACE_USB,
     get_device_interface,
 )
 from tools.common.profile_io import validate_profiles_schema
@@ -140,14 +139,12 @@ MSG_DEVICE_DEF_INTERFACE_INVALID = "interface invalid"
 MSG_DEVICE_DEF_MANUFACTURER_REQUIRED = "manufacturer required"
 MSG_DEVICE_DEF_DEVICE_TYPE_REQUIRED = "deviceType required"
 MSG_DEVICE_DEF_ID_REQUIRED = "id required"
-MSG_DEVICE_DEF_DIO_REQUIRED = "dio required"
 MSG_DEVICE_DEF_INVERT_REQUIRED = "invert required"
 MSG_DEVICE_DEF_PWM_REQUIRED = "pwm required"
 MSG_DEVICE_DEF_ANALOG_REQUIRED = "analog required"
 MSG_DEVICE_DEF_MANUFACTURER_TYPE = "manufacturer must be int"
 MSG_DEVICE_DEF_DEVICE_TYPE_TYPE = "deviceType must be int"
 MSG_DEVICE_DEF_ID_TYPE = "id must be int"
-MSG_DEVICE_DEF_DIO_TYPE = "dio must be int"
 MSG_DEVICE_DEF_INVERT_TYPE = "invert must be bool"
 MSG_DEVICE_DEF_PWM_TYPE = "pwm must be int"
 MSG_DEVICE_DEF_ANALOG_TYPE = "analog must be int"
@@ -196,10 +193,11 @@ KEY_CAN_MAPPINGS_MANUFACTURERS = "manufacturers"
 KEY_CAN_MAPPINGS_DEVICE_TYPES = "device_types"
 
 DEVICE_REQUIRED_CAN = (KEY_MANUFACTURER, KEY_DEVICE_TYPE, KEY_ID)
-DEVICE_REQUIRED_DIO = (KEY_DIO, KEY_INVERT)
+DEVICE_REQUIRED_DIO = (KEY_ID, KEY_INVERT)
 DEVICE_REQUIRED_PWM = (KEY_PWM,)
 DEVICE_REQUIRED_ANALOG = (KEY_ANALOG,)
 DEVICE_REQUIRED_INTERNAL = tuple()
+DEVICE_REQUIRED_USB = (KEY_ID,)
 
 
 @dataclass(frozen=True)
@@ -1489,6 +1487,7 @@ def _validate_device_definitions(root_payload: Dict[str, Any]) -> List[str]:
             INTERFACE_PWM,
             INTERFACE_ANALOG,
             INTERFACE_INTERNAL,
+            INTERFACE_USB,
         ):
             issues.append(MSG_DEVICE_DEF_INTERFACE_INVALID)
         required: tuple[str, ...]
@@ -1500,6 +1499,8 @@ def _validate_device_definitions(root_payload: Dict[str, Any]) -> List[str]:
             required = DEVICE_REQUIRED_PWM
         elif interface == INTERFACE_ANALOG:
             required = DEVICE_REQUIRED_ANALOG
+        elif interface == INTERFACE_USB:
+            required = DEVICE_REQUIRED_USB
         else:
             required = DEVICE_REQUIRED_INTERNAL
         for field in required:
@@ -1510,8 +1511,6 @@ def _validate_device_definitions(root_payload: Dict[str, Any]) -> List[str]:
                     issues.append(MSG_DEVICE_DEF_DEVICE_TYPE_REQUIRED)
                 elif field == KEY_ID:
                     issues.append(MSG_DEVICE_DEF_ID_REQUIRED)
-                elif field == KEY_DIO:
-                    issues.append(MSG_DEVICE_DEF_DIO_REQUIRED)
                 elif field == KEY_INVERT:
                     issues.append(MSG_DEVICE_DEF_INVERT_REQUIRED)
                 elif field == KEY_PWM:
@@ -1529,12 +1528,16 @@ def _validate_device_definitions(root_payload: Dict[str, Any]) -> List[str]:
             if device_id is not None and not isinstance(device_id, int):
                 issues.append(MSG_DEVICE_DEF_ID_TYPE)
         if interface == INTERFACE_DIO:
-            dio = entry.get(KEY_DIO)
+            dio = entry.get(KEY_ID)
             invert = entry.get(KEY_INVERT)
             if dio is not None and not isinstance(dio, int):
-                issues.append(MSG_DEVICE_DEF_DIO_TYPE)
+                issues.append(MSG_DEVICE_DEF_ID_TYPE)
             if invert is not None and not isinstance(invert, bool):
                 issues.append(MSG_DEVICE_DEF_INVERT_TYPE)
+        if interface == INTERFACE_USB:
+            device_id = entry.get(KEY_ID)
+            if device_id is not None and not isinstance(device_id, int):
+                issues.append(MSG_DEVICE_DEF_ID_TYPE)
         if interface == INTERFACE_PWM:
             pwm = entry.get(KEY_PWM)
             if pwm is not None and not isinstance(pwm, int):

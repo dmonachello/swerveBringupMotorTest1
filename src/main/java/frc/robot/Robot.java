@@ -29,6 +29,7 @@ public class Robot extends TimedRobot {
 
 
   private static final double DEADBAND = BringupUtil.DEADBAND;
+  private static final double SPEED_ZERO = 0.0;
   private static final String TEXT_TESTS_INFO_PROFILE = "Profile: ";
   private static final String TEXT_TESTS_INFO_SOURCE = "Source: ";
   // Driver Station controller input.
@@ -127,10 +128,10 @@ public class Robot extends TimedRobot {
     // --- Analog input to motor outputs ---
     double neoSpeed = bind.hasAxis("leftDrive")
         ? bind.axis("leftDrive")
-        : BringupUtil.deadband(-controller0.getLeftY(), DEADBAND);
+        : SPEED_ZERO;
     double krakenSpeed = bind.hasAxis("rightDrive")
         ? bind.axis("rightDrive")
-        : BringupUtil.deadband(-controller0.getRightY(), DEADBAND);
+        : SPEED_ZERO;
 
     // --- Print current stick inputs on demand ---
     if (bind.pressed("printInputs")) {
@@ -145,7 +146,7 @@ public class Robot extends TimedRobot {
     // core update handled by BringupCommandRouter
 
     // Feed test inputs (used by joystick-mode tests).
-    core.setTestInputs(XboxControllerDevice.buildControllerInputs(controllerMap, neoSpeed, krakenSpeed));
+    core.setTestInputs(XboxControllerDevice.buildControllerInputs(controllerMap));
 
     // Apply speeds after inputs are processed.
     core.setSpeeds(neoSpeed, krakenSpeed);

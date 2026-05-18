@@ -54,7 +54,7 @@ from tools.common.profile_io import compute_profiles_hash, validate_profiles_sch
 from tools.common.time_utils import timestamp_version
 
 
-DEFAULT_CANONICAL_PATH = Path("data") / "bringup_system.json"
+DEFAULT_CANONICAL_PATH = Path("src") / "main" / "deploy" / "bringup_system.json"
 DEFAULT_DEPLOY_PATH = Path("src") / "main" / "deploy" / "bringup_system.json"
 DEFAULT_TEST_SET = "smoke"
 
@@ -354,8 +354,9 @@ def _finalize_and_write(payload: Dict[str, object], canonical_path: Path, deploy
     payload[KEY_DATA_VERSION] = timestamp_version()
     payload[KEY_DATA_HASH] = compute_profiles_hash(payload)
     write_json(canonical_path, payload)
-    deploy_path.parent.mkdir(parents=True, exist_ok=True)
-    write_json(deploy_path, payload)
+    if canonical_path.resolve() != deploy_path.resolve():
+        deploy_path.parent.mkdir(parents=True, exist_ok=True)
+        write_json(deploy_path, payload)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -363,7 +364,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--path",
         default=str(DEFAULT_CANONICAL_PATH),
-        help="Path to canonical bringup_system.json (default: data/bringup_system.json).",
+        help="Path to active bringup_system.json (default: src/main/deploy/bringup_system.json).",
     )
     parser.add_argument(
         "--deploy",

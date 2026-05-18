@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from unittest.mock import patch
 
 from tools.can_nt.scripts.lib.regression_framework import (
@@ -27,16 +29,19 @@ from tools.can_nt.scripts.lib.regression_framework import (
     RegressionCommand,
     RegressionResult,
     STATUS_FIXED,
+    STATUS_COMMAND_DRIFT,
     STATUS_MATCH,
     STATUS_MISSING_BASELINE,
     STATUS_REGRESSION,
     SUITE_CHANGELOG,
     SUITE_ALL,
+    SUITE_CROSS_SURFACE,
     SUITE_DSL,
     SUITE_LOCAL,
     SUITE_ROBOT_NON_MOTION,
     SUITE_TOPOLOGY,
     _normalized_java_home,
+    _argv_matches_portably,
     build_suite_commands,
     compare_results_to_baseline,
     load_manifest,
@@ -72,7 +77,16 @@ class RunRegressionsTests(unittest.TestCase):
 
         labels = [command.label for command in commands]
         self.assertEqual(
-            ["dsl-unit", "cli-unit", "java-unit", "group-targeting-v1", "group-targeting-4m2g3t", "topology-editor", "changelog-guard"],
+            [
+                "dsl-unit",
+                "cli-unit",
+                "java-unit",
+                "group-targeting-v1",
+                "group-targeting-4m2g3t",
+                "topology-editor",
+                "cross-surface",
+                "changelog-guard",
+            ],
             labels,
         )
 
@@ -88,6 +102,13 @@ class RunRegressionsTests(unittest.TestCase):
         self.assertEqual(1, len(commands))
         self.assertEqual("topology-editor", commands[0].label)
         self.assertIn("topology_editor_regression.py", commands[0].argv[1])
+
+    def test_build_suite_commands_cross_surface_contains_regression_script(self) -> None:
+        commands = build_suite_commands(SUITE_CROSS_SURFACE)
+
+        self.assertEqual(1, len(commands))
+        self.assertEqual("cross-surface", commands[0].label)
+        self.assertIn("cross_surface_regression.py", commands[0].argv[1])
 
     def test_build_suite_commands_changelog_contains_guard_script(self) -> None:
         commands = build_suite_commands(SUITE_CHANGELOG)
@@ -149,6 +170,24 @@ class RunRegressionsTests(unittest.TestCase):
 
         self.assertEqual(r"C:\Users\Public\wpilib\2024\jdk", normalized)
 
+    def test_argv_matches_portably_ignores_python_and_repo_locations(self) -> None:
+        actual = (
+            r"C:\Users\dmona\AppData\Local\Programs\Python\Python313\python.exe",
+            r"C:\Users\dmona\swerveBringupMotorTest1-main\tools\can_nt\scripts\topology_editor_regression.py",
+        )
+        expected = (
+            r"D:\Python312\python.exe",
+            r"D:\checkout\swerveBringupMotorTest1\tools\can_nt\scripts\topology_editor_regression.py",
+        )
+
+        self.assertTrue(_argv_matches_portably(actual, expected))
+
+    def test_argv_matches_portably_ignores_gradlew_checkout_root(self) -> None:
+        actual = (r"C:\Users\dmona\swerveBringupMotorTest1-main\gradlew.bat", "test")
+        expected = (r"D:\checkout\swerveBringupMotorTest1\gradlew.bat", "test")
+
+        self.assertTrue(_argv_matches_portably(actual, expected))
+
     @patch("tools.can_nt.scripts.run_regressions.run_commands")
     def test_main_refresh_expected_returns_success(self, run_commands_mock) -> None:
         run_commands_mock.return_value = [
@@ -193,6 +232,62 @@ class RunRegressionsTests(unittest.TestCase):
 
         self.assertEqual(EXIT_OK, exit_code)
         run_commands_mock.assert_called_once()
+
+    @patch("tools.can_nt.scripts.run_regressions.write_history_for_run")
+    @patch("tools.can_nt.scripts.run_regressions.load_suite_baseline")
+    @patch("tools.can_nt.scripts.run_regressions.build_suite_commands")
+    @patch("tools.can_nt.scripts.run_regressions.run_commands")
+    def test_main_prints_command_drift_reason(
+        self,
+        run_commands_mock,
+        build_suite_commands_mock,
+        load_suite_baseline_mock,
+        write_history_mock,
+    ) -> None:
+        command = RegressionCommand(
+            label="dsl-unit",
+            argv=("python", "-m", "unittest", "tools.can_nt.tests.test_bridge_cli_facades"),
+            mode=MODE_LOCAL,
+            command_id="dsl-unit",
+            features=(),
+        )
+        build_suite_commands_mock.return_value = [command]
+        run_commands_mock.return_value = [
+            RegressionResult(
+                label="dsl-unit",
+                argv=("python", "-m", "unittest", "tools.can_nt.tests.test_bridge_cli_facades"),
+                mode=MODE_LOCAL,
+                exit_code=0,
+                duration_sec=0.1,
+                stdout="",
+                stderr="",
+                command_id="dsl-unit",
+                features=(),
+            )
+        ]
+        load_suite_baseline_mock.return_value = {
+            "results": [
+                {
+                    "commandId": "dsl-unit",
+                    "argv": ["python", "-m", "unittest", "tools.can_nt.tests.test_robot_test_dsl"],
+                    "expectedExitCode": 0,
+                }
+            ]
+        }
+        write_history_mock.return_value = {
+            "runPath": "latest/dsl.latest.json",
+            "event": {"eventType": "none", "eventPath": None},
+        }
+        output = io.StringIO()
+
+        with redirect_stdout(output):
+            exit_code = main(["--suite", SUITE_DSL])
+
+        text = output.getvalue()
+        self.assertEqual(EXIT_OK, exit_code)
+        self.assertIn("STATUS: command_drift", text)
+        self.assertIn("STATUS_REASON: command argv differs from baseline", text)
+        self.assertIn("EXPECTED_COMMAND: python -m unittest tools.can_nt.tests.test_robot_test_dsl", text)
 
     def test_execute_result_preserves_command_metadata(self) -> None:
         captured = []
@@ -288,6 +383,96 @@ class RunRegressionsTests(unittest.TestCase):
         comparisons = compare_results_to_baseline(commands, results, None)
 
         self.assertEqual(STATUS_MISSING_BASELINE, comparisons[0].status)
+        self.assertIn("no baseline", comparisons[0].status_reason)
+
+    def test_compare_results_to_baseline_explains_command_drift(self) -> None:
+        commands = [
+            RegressionCommand(
+                label="dsl-unit",
+                argv=("python", "-m", "unittest", "tools.can_nt.tests.test_bridge_cli_facades"),
+                mode=MODE_LOCAL,
+                command_id="dsl-unit",
+                features=(),
+            )
+        ]
+        results = [
+            RegressionResult(
+                label="dsl-unit",
+                argv=("python", "-m", "unittest", "tools.can_nt.tests.test_bridge_cli_facades"),
+                mode=MODE_LOCAL,
+                exit_code=0,
+                duration_sec=0.1,
+                stdout="",
+                stderr="",
+                command_id="dsl-unit",
+                features=(),
+            )
+        ]
+        baseline = {
+            "results": [
+                {
+                    "commandId": "dsl-unit",
+                    "argv": ["python", "-m", "unittest", "tools.can_nt.tests.test_robot_test_dsl"],
+                    "expectedExitCode": 0,
+                }
+            ]
+        }
+
+        comparisons = compare_results_to_baseline(commands, results, baseline)
+
+        self.assertEqual(STATUS_COMMAND_DRIFT, comparisons[0].status)
+        self.assertEqual("command argv differs from baseline", comparisons[0].status_reason)
+        self.assertEqual(
+            ("python", "-m", "unittest", "tools.can_nt.tests.test_robot_test_dsl"),
+            tuple(comparisons[0].expected_argv),
+        )
+        self.assertEqual(
+            ("python", "-m", "unittest", "tools.can_nt.tests.test_bridge_cli_facades"),
+            tuple(comparisons[0].actual_argv),
+        )
+
+    def test_compare_results_to_baseline_ignores_machine_specific_command_paths(self) -> None:
+        commands = [
+            RegressionCommand(
+                label="topology-editor",
+                argv=(
+                    r"C:\Users\dmona\AppData\Local\Programs\Python\Python313\python.exe",
+                    r"C:\Users\dmona\swerveBringupMotorTest1-main\tools\can_nt\scripts\topology_editor_regression.py",
+                ),
+                mode=MODE_LOCAL,
+                command_id="topology-editor",
+                features=(),
+            )
+        ]
+        results = [
+            RegressionResult(
+                label="topology-editor",
+                argv=commands[0].argv,
+                mode=MODE_LOCAL,
+                exit_code=0,
+                duration_sec=0.1,
+                stdout="",
+                stderr="",
+                command_id="topology-editor",
+                features=(),
+            )
+        ]
+        baseline = {
+            "results": [
+                {
+                    "commandId": "topology-editor",
+                    "argv": [
+                        r"D:\Python312\python.exe",
+                        r"D:\checkout\swerveBringupMotorTest1\tools\can_nt\scripts\topology_editor_regression.py",
+                    ],
+                    "expectedExitCode": 0,
+                }
+            ]
+        }
+
+        comparisons = compare_results_to_baseline(commands, results, baseline)
+
+        self.assertEqual(STATUS_MATCH, comparisons[0].status)
 
     def test_summarize_comparisons_counts_statuses(self) -> None:
         commands = [RegressionCommand(label="dsl-unit", argv=("python",), mode=MODE_LOCAL, command_id="dsl-unit", features=())]

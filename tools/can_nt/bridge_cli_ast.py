@@ -19,6 +19,9 @@ import time
 from tools.can_nt.bridge_cli_parser import CommandAst, KIND_EXEC_CLEAR_STOP_LATCH, SPEC
 CMD_ALL = "all"
 CMD_FILE = "file"
+KIND_GROUP_BIND_LIST = "group_bind_list"
+KIND_GROUP_BIND_EXPLAIN = "group_bind_explain"
+KIND_GROUP_BIND_TEST = "group_bind_test"
 FLAG_FORCE = "--force"
 FLAG_INSTALL_ROBOT = "--install-robot"
 FLAG_REPAIR = "--repair"
@@ -236,6 +239,9 @@ class BridgeCliAstExecutor:
             SPEC.kind_group_no_device: self._ast_group_no_device,
             SPEC.kind_group_member: self._ast_group_member,
             SPEC.kind_group_bind: self._ast_group_bind,
+            KIND_GROUP_BIND_LIST: self._ast_group_bind_diag,
+            KIND_GROUP_BIND_EXPLAIN: self._ast_group_bind_diag,
+            KIND_GROUP_BIND_TEST: self._ast_group_bind_diag,
             SPEC.kind_group_no_bind: self._ast_group_no_bind,
             SPEC.kind_group_enable: self._ast_group_enable,
             SPEC.kind_group_disable: self._ast_group_disable,
@@ -735,6 +741,9 @@ class BridgeCliAstExecutor:
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_bind"]):
             return AST_EXEC_SPEC["ret_err"]
         return None
+
+    def _ast_group_bind_diag(self, ast: CommandAst) -> Optional[StatusResult]:
+        return self._cli._group_command(list(ast.tokens))
 
     def _ast_group_no_bind(self, _ast: CommandAst) -> Optional[int]:
         group = self._cli._modes[-1].group

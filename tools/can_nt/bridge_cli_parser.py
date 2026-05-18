@@ -55,6 +55,8 @@ SHOW_TARGET_CONFIG = "config"
 SHOW_TARGET_PROFILE = "profile"
 SHOW_TARGET_GROUP = "group"
 SHOW_TARGET_TEST = "test"
+SHOW_TARGET_TOPOLOGY = "topology"
+SHOW_TARGET_NEIGHBORS = "neighbors"
 SHOW_TARGET_DEVICE_USAGE = "device-usage"
 SHOW_TARGET_BINDING_USAGE = "binding-usage"
 CMD_CONFIG = "config"
@@ -85,6 +87,7 @@ CMD_RECOVER = "recover"
 CMD_LAST_GOOD = "last-good"
 CMD_FROM = "from"
 CMD_LIST = "list"
+CMD_EXPLAIN = "explain"
 CMD_FILE = "file"
 CMD_NEXT = "next"
 FLAG_FORCE = "--force"
@@ -101,6 +104,16 @@ CMD_SCRIPT = "script"
 CMD_BINDINGS = "bindings"
 CMD_CAN_MAPPINGS = "can-mappings"
 CMD_TESTS = "tests"
+CMD_TOPOLOGY = "topology"
+KIND_GROUP_BIND_LIST = "group_bind_list"
+KIND_GROUP_BIND_EXPLAIN = "group_bind_explain"
+KIND_GROUP_BIND_TEST = "group_bind_test"
+CMD_NEIGHBORS = "neighbors"
+CMD_NEIGHBOR_PORTS = "neighbor-ports"
+CMD_NEIGHBOR_AUTO = "neighbor-auto"
+CMD_NODE = "node"
+CMD_NODES = "nodes"
+CMD_EDGES = "edges"
 CMD_CLEAR = "clear"
 CMD_SELECT = "select"
 CMD_RUN_ALL = "run-all"
@@ -203,6 +216,7 @@ class BridgeCliParser:
         self._common = {cmd.lower() for cmd in SPEC.common}
         self._show_flags = set(SPEC.show_flags)
         self._show_targets = set(SPEC.show_targets)
+        self._show_targets.add(SHOW_TARGET_NEIGHBORS)
         self._bind_kinds = set(SPEC.bind_kinds)
         self._modes = set(SPEC.modes)
         self._mode = SPEC.modes[SPEC.idx_exec]
@@ -213,6 +227,7 @@ class BridgeCliParser:
             SPEC.modes[SPEC.idx_device]: set(SPEC.mode_device_cmds),
             SPEC.modes[SPEC.idx_test]: set(SPEC.mode_test_cmds),
         }
+        self._mode_cmds[SPEC.modes[SPEC.idx_config]].add(CMD_TOPOLOGY)
         self._dispatch = self._build_dispatch()
         self._grammar = CliGrammarModel.from_ebnf(EBNF_PATH)
 
@@ -256,6 +271,8 @@ class BridgeCliParser:
         if mode == SPEC.modes[SPEC.idx_config]:
             if cmd == SPEC.cmd_show.lower():
                 return self._handle_show_command
+            if cmd == CMD_TOPOLOGY:
+                return self._handle_topology_command
             if cmd == SPEC.cmd_group.lower():
                 return self._handle_group_command
             if cmd == SPEC.cmd_no.lower():
@@ -697,6 +714,15 @@ class BridgeCliParser:
                 kind = SPEC.empty_str
             return (
                 kind,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                SPEC.empty_str,
+                bool(SPEC.bool_false),
+                bool(SPEC.bool_false),
+            )
+        if verb == SPEC.cmd_bindings:
+            return (
+                SPEC.kind_config_bindings,
                 SPEC.empty_str,
                 SPEC.empty_str,
                 SPEC.empty_str,
@@ -1440,6 +1466,47 @@ class BridgeCliParser:
                 bool(SPEC.bool_false),
             )
         if verb == SPEC.cmd_bind:
+            if len(tokens) >= SPEC.count_two:
+                action = tokens[SPEC.count_one].lower()
+                if action == CMD_LIST:
+                    return (
+                        KIND_GROUP_BIND_LIST,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        bool(SPEC.bool_false),
+                    )
+                if action == CMD_EXPLAIN:
+                    return (
+                        KIND_GROUP_BIND_EXPLAIN,
+                        tokens[SPEC.count_two] if len(tokens) > SPEC.count_two else SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        bool(SPEC.bool_false),
+                    )
+                if action == SPEC.cmd_test:
+                    return (
+                        KIND_GROUP_BIND_TEST,
+                        tokens[SPEC.count_two] if len(tokens) > SPEC.count_two else SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        SPEC.empty_str,
+                        bool(SPEC.bool_false),
+                    )
             bind_value = tokens[SPEC.count_three] if len(tokens) > SPEC.count_three else SPEC.empty_str
             return (
                 SPEC.kind_group_bind,
@@ -1840,6 +1907,41 @@ class BridgeCliParser:
             return
         self._reject_extra(tokens, SPEC.count_three, SPEC.cmd_push)
 
+    def _handle_topology_command(self, tokens: List[str]) -> None:
+        if len(tokens) < SPEC.count_two:
+            raise CliParseError(SPEC.msg_parse_error)
+        sub = tokens[SPEC.count_one].lower()
+        if sub == CMD_NEIGHBOR_PORTS:
+            if len(tokens) < SPEC.count_three:
+                raise CliParseError(SPEC.msg_parse_error)
+            action = tokens[SPEC.count_two].lower()
+            if action == SPEC.cmd_set:
+                self._require(tokens, 6, SPEC.msg_parse_error)
+                self._reject_extra(tokens, 6, CMD_TOPOLOGY)
+                return
+            if action == SPEC.cmd_delete:
+                self._require(tokens, 5, SPEC.msg_parse_error)
+                self._reject_extra(tokens, 5, CMD_TOPOLOGY)
+                return
+            if action == CMD_CLEAR:
+                self._require(tokens, 4, SPEC.msg_parse_error)
+                self._reject_extra(tokens, 4, CMD_TOPOLOGY)
+                return
+            raise CliParseError(SPEC.msg_parse_error)
+        if sub == CMD_NEIGHBOR_AUTO:
+            if len(tokens) < SPEC.count_three:
+                raise CliParseError(SPEC.msg_parse_error)
+            action = tokens[SPEC.count_two].lower()
+            if action == CMD_ALL:
+                self._reject_extra(tokens, 4 if len(tokens) > 3 else 3, CMD_TOPOLOGY)
+                return
+            if action == CMD_NODE:
+                self._require(tokens, 4, SPEC.msg_parse_error)
+                self._reject_extra(tokens, 4, CMD_TOPOLOGY)
+                return
+            raise CliParseError(SPEC.msg_parse_error)
+        raise CliParseError(SPEC.msg_parse_error)
+
     def _handle_merge_import(self, tokens: List[str]) -> None:
         cmd = tokens[SPEC.count_zero].lower()
         if len(tokens) < SPEC.count_three or tokens[SPEC.count_one].lower() != SPEC.cmd_config:
@@ -2001,6 +2103,9 @@ class BridgeCliParser:
         if target == SPEC.cmd_tests:
             self._reject_extra(cleaned, SPEC.count_two, SPEC.label_validate)
             return
+        if target == CMD_TOPOLOGY:
+            self._reject_extra(cleaned, SPEC.count_two, SPEC.label_validate)
+            return
         raise CliParseError(SPEC.msg_validate_config)
 
     def _handle_group_show(self, tokens: List[str]) -> None:
@@ -2036,6 +2141,19 @@ class BridgeCliParser:
         self._reject_extra(tokens, SPEC.count_three, SPEC.label_member)
 
     def _handle_group_bind(self, tokens: List[str]) -> None:
+        if len(tokens) >= SPEC.count_two:
+            action = tokens[SPEC.count_one].lower()
+            if action == CMD_LIST:
+                self._reject_extra(tokens, SPEC.count_two, SPEC.label_bind)
+                return
+            if action == CMD_EXPLAIN:
+                self._require(tokens, SPEC.count_three, SPEC.msg_bind)
+                self._reject_extra(tokens, SPEC.count_three, SPEC.label_bind)
+                return
+            if action == SPEC.cmd_test:
+                self._require(tokens, SPEC.count_three, SPEC.msg_bind)
+                self._reject_extra(tokens, SPEC.count_three, SPEC.label_bind)
+                return
         self._require(tokens, SPEC.count_three, SPEC.msg_bind)
         kind = tokens[SPEC.count_two].lower()
         if kind not in self._bind_kinds:
@@ -2091,6 +2209,14 @@ class BridgeCliParser:
             raise CliParseError(SPEC.msg_show_name % target)
         if target == SHOW_TARGET_BINDING_USAGE and len(core) < SPEC.count_two:
             raise CliParseError(SPEC.msg_show_name % target)
+        if target == SHOW_TARGET_TOPOLOGY:
+            if len(core) >= SPEC.count_two and core[SPEC.count_one].lower() == CMD_NODE:
+                if len(core) < 3:
+                    raise CliParseError(SPEC.msg_show_name % target)
+            elif len(core) > 1 and core[SPEC.count_one].lower() not in (CMD_NEIGHBORS, CMD_NODES, CMD_EDGES):
+                raise CliParseError(SPEC.msg_show_too_many)
+        if target == SHOW_TARGET_NEIGHBORS and len(core) < SPEC.count_two:
+            raise CliParseError(SPEC.msg_show_name % target)
         if target == "profiles" and len(core) > SPEC.count_one and self._strict:
             raise CliParseError(SPEC.msg_show_too_many)
         if target == SPEC.show_target_config and len(core) > SPEC.count_one:
@@ -2116,7 +2242,15 @@ class BridgeCliParser:
                     SPEC.show_target_device_usage,
                     SPEC.show_target_test,
                     SHOW_TARGET_BINDING_USAGE,
+                    SHOW_TARGET_NEIGHBORS,
                 ) else SPEC.count_one
+                if target == SHOW_TARGET_TOPOLOGY:
+                    if len(core) >= 2 and core[SPEC.count_one].lower() == CMD_NODE:
+                        max_len = 3
+                    elif len(core) >= 2 and core[SPEC.count_one].lower() in (CMD_NEIGHBORS, CMD_NODES, CMD_EDGES):
+                        max_len = 2
+                    else:
+                        max_len = 1
             if len(core) > max_len:
                 raise CliParseError(SPEC.msg_show_too_many)
 

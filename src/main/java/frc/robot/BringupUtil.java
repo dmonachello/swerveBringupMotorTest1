@@ -47,53 +47,27 @@ import java.util.Set;
  */
 public final class BringupUtil {
   private BringupUtil() {}
-
-
-  // CAN ID (6 bits) range - spark - 1 - 62, kracken 0 - 62
-  // ---------------- CAN ID DEFINITIONS ----------------
-  // front right neo - 10
-  // front left neo  -  1
-  // back right neo  -  7
-  // back left neo   -  4
-
-  // front right kraken - 11
-  // front left kraken - 2
-  // back right kraken - 8
-  // back left kraken - 5
-
-  // front right cancoder - 12
-  // front left cancoder - 3 
-  // back right cancoder - 9
-  // back left cancoder - 6
-  // ---------------------------------------------------
-  
-  // Fallback profiles used when JSON is missing or invalid.
-  private static final int[] FALLBACK_ROBOT_NEO_CAN_IDS = { 10, 1, 7, 4 };
-  private static final int[] FALLBACK_ROBOT_KRAKEN_CAN_IDS = { 11, 2, 8, 5 };
-  private static final int[] FALLBACK_ROBOT_CANCODER_CAN_IDS = { 12, 3, 9, 6 };
-
-  private static final int[] FALLBACK_DEMO_NEO_CAN_IDS = { 25, 22, 10, -1 };
-  private static final int[] FALLBACK_DEMO_KRAKEN_CAN_IDS = { -1, -1, -1, -1 };
-  private static final int[] FALLBACK_DEMO_CANCODER_CAN_IDS = { -1, -1, -1, -1 };
-
-  private static final int FALLBACK_PDH_CAN_ID = 1;
-  private static final int FALLBACK_PDP_CAN_ID = 0;
-  private static final int FALLBACK_PIGEON_CAN_ID = 1;
-  private static final int FALLBACK_ROBORIO_CAN_ID = 0;
-
   // Default profile names and file location.
-  private static final String DEFAULT_PROFILE_NAME = "robot";
   private static final String DEFAULT_PROFILE_FILE = "bringup_system.json";
   // LEGACY (remove after v3 unified file adoption).
   private static final String LEGACY_PROFILE_FILE = "bringup_profiles.json";
   private static final String KEY_BRIDGE_CONFIG = "bridgeConfig";
   private static final String KEY_BRIDGE_BY_PROFILE = "byProfile";
+  private static final String KEY_BRIDGE_GROUPS = "groups";
+  private static final String KEY_BRIDGE_SELECTED_DEVICE = "selectedDevice";
+  private static final String KEY_BRIDGE_BINDINGS = "bindings";
   private static final String KEY_BRIDGE_TESTS = "tests";
   private static final String KEY_DSL_TESTS = "dslTests";
   private static final String KEY_DSL_TEST_SET = "dslTestSet";
   private static final String KEY_INPUT_ALIASES = "inputAliases";
+  private static final String KEY_DEVICE = "device";
+  private static final String KEY_ENABLED = "enabled";
+  private static final String KEY_INPUT = "input";
+  private static final String KEY_KIND = "kind";
+  private static final String KEY_MEMBERS = "members";
+  private static final String KEY_NAME = "name";
+  private static final String KEY_VALUE = "value";
   private static final String LABEL_UNKNOWN = "UNKNOWN";
-  private static final String LABEL_SPACE = " ";
   private static final String NT_LABEL_SAFE_CHARS = "-_.~";
   private static final String NT_LABEL_FALLBACK = "UNKNOWN";
   private static final String NT_LABEL_EMPTY = "";
@@ -174,6 +148,14 @@ public final class BringupUtil {
   private static final String MESSAGE_UNKNOWN_CAN_IDENTITY =
       "Warning: unable to map device to CAN identity (label=%s, id=%s).";
   private static final String MESSAGE_RELOAD_FAILED = "profiles reload failed";
+  private static final String MESSAGE_SAFE_MODE_APPLIED =
+      "Warning: no valid bringup profiles loaded. Entering empty safe mode.";
+  private static final String MESSAGE_REGISTRY_DEFAULT_PROFILE_MISSING =
+      "Warning: default_profile not found in JSON. Using first available profile.";
+  private static final String MESSAGE_UNKNOWN_PROFILE_DEFAULT =
+      "Warning: unknown CAN profile '%s'. Using default.";
+  private static final String MESSAGE_DEFAULT_PROFILE_MISSING =
+      "Warning: default CAN profile missing. Entering empty safe mode.";
   private static final int PROFILE_SCHEMA_VERSION = 4;
   private static final String MOTOR_SPECS_FILE = "motor_specs.json";
   private static final String CAN_MAPPINGS_FILE = "can_mappings.json";
@@ -225,9 +207,11 @@ public final class BringupUtil {
   private static Map<String, ProfileConfig> profiles = new LinkedHashMap<>();
   private static List<String> profileOrder = new ArrayList<>();
   private static final Map<String, JsonElement> PROFILE_TESTS = new LinkedHashMap<>();
+  private static final Map<String, BridgeProfileRuntimeConfig> PROFILE_BRIDGE_CONFIGS =
+      new LinkedHashMap<>();
   private static JsonObject dslTestsRoot = null;
-  private static String defaultProfile = DEFAULT_PROFILE_NAME;
-  private static String selectedProfile = DEFAULT_PROFILE_NAME;
+  private static String defaultProfile = NT_LABEL_EMPTY;
+  private static String selectedProfile = NT_LABEL_EMPTY;
   private static boolean activeProfileApplied = false;
   private static final Map<String, MotorSpec> MOTOR_SPECS = loadMotorSpecs();
   private static final CanMappings CAN_MAPPINGS = loadCanMappings();
@@ -237,21 +221,25 @@ public final class BringupUtil {
   private static long activeProfileGeneration = PROFILE_CONFIG_GENERATION_INITIAL;
 
   // Currently active profile name.
-  private static String activeProfile = DEFAULT_PROFILE_NAME;
+  private static String activeProfile = NT_LABEL_EMPTY;
 
   // Active device list built from the selected profile.
   private static final List<DeviceEntry> ACTIVE_DEVICES = new ArrayList<>();
-  public static int PDH_CAN_ID = FALLBACK_PDH_CAN_ID;
-  public static int PDP_CAN_ID = FALLBACK_PDP_CAN_ID;
-  public static int PIGEON_CAN_ID = FALLBACK_PIGEON_CAN_ID;
-  public static int ROBORIO_CAN_ID = FALLBACK_ROBORIO_CAN_ID;
   public static final int DISABLED_CAN_ID = -1;
+  public static int PDH_CAN_ID = DISABLED_CAN_ID;
+  public static int PDP_CAN_ID = DISABLED_CAN_ID;
+  public static int PIGEON_CAN_ID = DISABLED_CAN_ID;
+  public static int ROBORIO_CAN_ID = DISABLED_CAN_ID;
   public static final double DEADBAND = 0.12;
 
   // Initialize logging suppression and load the profile JSON.
   static {
     disableVendorLogging();
-    loadProfilesFromJson();
+    try {
+      loadProfilesFromJson();
+    } catch (RuntimeException ex) {
+      applyEmptySafeMode();
+    }
   }
 
   // Disable vendor auto-logging to avoid extra files on the roboRIO.
@@ -326,14 +314,13 @@ public final class BringupUtil {
     }
     ProfileConfig config = profiles.get(profileName);
     if (config == null) {
-      BringupPrinter.enqueue("Warning: unknown CAN profile '" + profileName + "'. Using default.");
+      BringupPrinter.enqueue(String.format(MESSAGE_UNKNOWN_PROFILE_DEFAULT, profileName));
       config = profiles.get(defaultProfile);
       profileName = defaultProfile;
     }
     if (config == null) {
-      BringupPrinter.enqueue("Warning: default CAN profile missing; using fallback IDs.");
-      applyFallbackProfile();
-      activeProfile = DEFAULT_PROFILE_NAME;
+      BringupPrinter.enqueue(MESSAGE_DEFAULT_PROFILE_MISSING);
+      applyEmptySafeMode();
       return;
     }
     try {
@@ -640,13 +627,7 @@ public final class BringupUtil {
    *   Unmodifiable map of alias->canonical entries.
    */
   public static Map<String, String> getProfileInputAliases(String profileName) {
-    String name = safeText(profileName);
-    if (name.isBlank()) {
-      name = safeText(activeProfile);
-    }
-    if (name.isBlank()) {
-      name = safeText(defaultProfile);
-    }
+    String name = resolveProfileNameOrActive(profileName);
     ProfileConfig config = profiles.get(name);
     if (config == null || config.inputAliases == null) {
       return Collections.emptyMap();
@@ -656,16 +637,26 @@ public final class BringupUtil {
 
   /**
    * NAME
+   *   getProfileBridgeConfig - Return runtime bridgeConfig state for a profile.
+   *
+   * RETURNS
+   *   Immutable bridgeConfig snapshot for the resolved profile.
+   */
+  public static BridgeProfileRuntimeConfig getProfileBridgeConfig(String profileName) {
+    String name = resolveProfileNameOrActive(profileName);
+    BridgeProfileRuntimeConfig config = PROFILE_BRIDGE_CONFIGS.get(name);
+    if (config == null) {
+      return BridgeProfileRuntimeConfig.empty();
+    }
+    return config;
+  }
+
+  /**
+   * NAME
    *   getProfileTestsPayload - Return tests payload for a profile.
    */
   public static JsonElement getProfileTestsPayload(String profileName) {
-    String name = safeText(profileName);
-    if (name.isBlank()) {
-      name = safeText(activeProfile);
-    }
-    if (name.isBlank()) {
-      name = safeText(defaultProfile);
-    }
+    String name = resolveProfileNameOrActive(profileName);
     return PROFILE_TESTS.get(name);
   }
 
@@ -687,6 +678,17 @@ public final class BringupUtil {
    */
   public static Path getProfilePath() {
     return resolveProfilePath();
+  }
+
+  private static String resolveProfileNameOrActive(String profileName) {
+    String name = safeText(profileName);
+    if (name.isBlank()) {
+      name = safeText(activeProfile);
+    }
+    if (name.isBlank()) {
+      name = safeText(defaultProfile);
+    }
+    return name;
   }
 
   /**
@@ -1261,14 +1263,14 @@ public final class BringupUtil {
     // Load bringup_system.json from deploy or dev path.
     Path path = resolveProfilePath();
     if (path == null || !Files.exists(path)) {
-      BringupPrinter.enqueue("Warning: CAN profile JSON not found. Using fallback IDs.");
-      applyFallbackProfile();
-      return;
+      BringupPrinter.enqueue(MESSAGE_REGISTRY_JSON_MISSING);
+      throw new RuntimeException(MESSAGE_REGISTRY_JSON_MISSING);
     }
     try {
       String rawJson = Files.readString(path, StandardCharsets.UTF_8);
       JsonElement parsed = JsonParser.parseString(rawJson);
       setProfileTests(extractProfileTests(parsed));
+      setProfileBridgeConfigs(extractProfileBridgeConfigs(parsed));
       dslTestsRoot = extractDslTestsRoot(parsed);
       ProfileRoot root = GSON.fromJson(rawJson, ProfileRoot.class);
       if (root == null || root.profiles == null || root.profiles.isEmpty()) {
@@ -1297,13 +1299,14 @@ public final class BringupUtil {
       }
       profiles = new LinkedHashMap<>(root.profiles);
       profileOrder = new ArrayList<>(profiles.keySet());
-      defaultProfile = root.defaultProfile != null ? root.defaultProfile : DEFAULT_PROFILE_NAME;
+      defaultProfile =
+          root.defaultProfile != null ? root.defaultProfile : NT_LABEL_EMPTY;
       if (!profiles.containsKey(defaultProfile)) {
-        BringupPrinter.enqueue("Warning: default_profile not found in JSON. Using 'robot'.");
-        defaultProfile = DEFAULT_PROFILE_NAME;
+        BringupPrinter.enqueue(MESSAGE_REGISTRY_DEFAULT_PROFILE_MISSING);
+        defaultProfile = profileOrder.isEmpty() ? NT_LABEL_EMPTY : profileOrder.get(INDEX_ZERO);
       }
       selectedProfile = defaultProfile;
-      activeProfile = DEFAULT_PROFILE_NAME;
+      activeProfile = NT_LABEL_EMPTY;
       activeProfileApplied = false;
       bumpActiveProfileGeneration();
     } catch (IOException | JsonParseException ex) {
@@ -1410,146 +1413,27 @@ public final class BringupUtil {
 
   /**
    * NAME
-   *   applyFallbackProfile - Populate built-in fallback profiles.
+   *   applyEmptySafeMode - Clear profile state when no valid JSON config exists.
    */
-  private static void applyFallbackProfile() {
-    // Populate default profiles in-memory when JSON is unavailable.
+  private static void applyEmptySafeMode() {
     profiles = new LinkedHashMap<>();
+    profileOrder = new ArrayList<>();
     DEVICE_REGISTRY.clear();
+    DEVICE_CONFIGS.clear();
+    ACTIVE_DEVICES.clear();
     setProfileTests(new LinkedHashMap<>());
+    setProfileBridgeConfigs(new LinkedHashMap<>());
     dslTestsRoot = null;
-    List<String> robotLabels = new ArrayList<>();
-    addFallbackCanDevices(
-        FALLBACK_ROBOT_NEO_CAN_IDS,
-        robotLabels,
-        MFG_REV_ID,
-        DEVTYPE_MOTOR_ID,
-        DEVICE_TYPE_NEO,
-        MODEL_NEO,
-        DEVICE_TYPE_MOTOR);
-    addFallbackCanDevices(
-        FALLBACK_ROBOT_KRAKEN_CAN_IDS,
-        robotLabels,
-        MFG_CTRE_ID,
-        DEVTYPE_MOTOR_ID,
-        DEVICE_TYPE_KRAKEN,
-        MODEL_KRAKEN,
-        DEVICE_TYPE_MOTOR);
-    addFallbackCanDevices(
-        FALLBACK_ROBOT_CANCODER_CAN_IDS,
-        robotLabels,
-        MFG_CTRE_ID,
-        DEVTYPE_ENCODER_ID,
-        DEVICE_TYPE_CANCODER,
-        null,
-        DEVICE_TYPE_ENCODER_EXTERNAL);
-    addFallbackSingleton(
-        robotLabels,
-        DEVICE_TYPE_PDH,
-        MFG_REV_ID,
-        DEVTYPE_POWER_ID,
-        FALLBACK_PDH_CAN_ID);
-    addFallbackSingleton(
-        robotLabels,
-        DEVICE_TYPE_PIGEON,
-        MFG_CTRE_ID,
-        DEVTYPE_GYRO_ID,
-        FALLBACK_PIGEON_CAN_ID);
-    addFallbackSingleton(
-        robotLabels,
-        DEVICE_TYPE_ROBORIO,
-        MFG_NI_ID,
-        DEVTYPE_ROBORIO_ID,
-        FALLBACK_ROBORIO_CAN_ID);
-    ProfileConfig robotProfile = new ProfileConfig();
-    robotProfile.devices = robotLabels;
-    profiles.put("robot", robotProfile);
-
-    List<String> demoLabels = new ArrayList<>();
-    addFallbackCanDevices(
-        FALLBACK_DEMO_NEO_CAN_IDS,
-        demoLabels,
-        MFG_REV_ID,
-        DEVTYPE_MOTOR_ID,
-        DEVICE_TYPE_NEO,
-        MODEL_NEO,
-        DEVICE_TYPE_MOTOR);
-    addFallbackCanDevices(
-        FALLBACK_DEMO_KRAKEN_CAN_IDS,
-        demoLabels,
-        MFG_CTRE_ID,
-        DEVTYPE_MOTOR_ID,
-        DEVICE_TYPE_KRAKEN,
-        MODEL_KRAKEN,
-        DEVICE_TYPE_MOTOR);
-    addFallbackCanDevices(
-        FALLBACK_DEMO_CANCODER_CAN_IDS,
-        demoLabels,
-        MFG_CTRE_ID,
-        DEVTYPE_ENCODER_ID,
-        DEVICE_TYPE_CANCODER,
-        null,
-        DEVICE_TYPE_ENCODER_EXTERNAL);
-    addFallbackSingleton(
-        demoLabels,
-        DEVICE_TYPE_ROBORIO,
-        MFG_NI_ID,
-        DEVTYPE_ROBORIO_ID,
-        FALLBACK_ROBORIO_CAN_ID);
-    ProfileConfig demoProfile = new ProfileConfig();
-    demoProfile.devices = demoLabels;
-    profiles.put("demo_club", demoProfile);
-
-    List<String> homeLabels = new ArrayList<>();
-    addFallbackSingleton(
-        homeLabels,
-        DEVICE_TYPE_ROBORIO,
-        MFG_NI_ID,
-        DEVTYPE_ROBORIO_ID,
-        FALLBACK_ROBORIO_CAN_ID);
-    ProfileConfig homeProfile = new ProfileConfig();
-    homeProfile.devices = homeLabels;
-    profiles.put("demo_home", homeProfile);
-    profileOrder = new ArrayList<>(profiles.keySet());
-    defaultProfile = DEFAULT_PROFILE_NAME;
-    selectedProfile = defaultProfile;
-    activeProfile = DEFAULT_PROFILE_NAME;
+    defaultProfile = NT_LABEL_EMPTY;
+    selectedProfile = NT_LABEL_EMPTY;
+    activeProfile = NT_LABEL_EMPTY;
     activeProfileApplied = false;
-    List<DeviceDefinition> merged = resolveProfileDevices(profiles.get(DEFAULT_PROFILE_NAME));
-    buildDeviceConfigs(merged);
-    PDH_CAN_ID = resolveSingletonIdByMfgType(merged, MFG_REV_ID, DEVTYPE_POWER_ID);
-    PIGEON_CAN_ID = resolveSingletonIdByMfgType(merged, MFG_CTRE_ID, DEVTYPE_GYRO_ID);
-    ROBORIO_CAN_ID = resolveSingletonIdByMfgType(merged, MFG_NI_ID, DEVTYPE_ROBORIO_ID);
+    PDH_CAN_ID = DISABLED_CAN_ID;
+    PDP_CAN_ID = DISABLED_CAN_ID;
+    PIGEON_CAN_ID = DISABLED_CAN_ID;
+    ROBORIO_CAN_ID = DISABLED_CAN_ID;
+    BringupPrinter.enqueue(MESSAGE_SAFE_MODE_APPLIED);
     bumpActiveProfileGeneration();
-  }
-
-  private static void addFallbackCanDevices(
-      int[] ids,
-      List<String> labels,
-      int manufacturer,
-      int deviceType,
-      String labelPrefix,
-      String model,
-      String type) {
-    if (ids == null) {
-      return;
-    }
-    for (int id : ids) {
-      if (!isEnabledCanId(id)) {
-        continue;
-      }
-      String label = buildFallbackLabel(labelPrefix, id);
-      DeviceDefinition def = buildDeviceDefinition(
-          label,
-          INTERFACE_CAN,
-          manufacturer,
-          deviceType,
-          id,
-          model,
-          type);
-      addToRegistry(def);
-      labels.add(label);
-    }
   }
 
   /**
@@ -1633,17 +1517,148 @@ public final class BringupUtil {
     private final ProfileRoot root;
     private final Map<String, DeviceDefinition> registry;
     private final Map<String, JsonElement> testsByProfile;
+    private final Map<String, BridgeProfileRuntimeConfig> bridgeConfigsByProfile;
     private final JsonObject dslTestsRoot;
 
     private RegistryPayload(
         ProfileRoot root,
         Map<String, DeviceDefinition> registry,
         Map<String, JsonElement> testsByProfile,
+        Map<String, BridgeProfileRuntimeConfig> bridgeConfigsByProfile,
         JsonObject dslTestsRoot) {
       this.root = root;
       this.registry = registry;
       this.testsByProfile = testsByProfile;
+      this.bridgeConfigsByProfile = bridgeConfigsByProfile;
       this.dslTestsRoot = dslTestsRoot;
+    }
+  }
+
+  /**
+   * NAME
+   *   BridgeProfileMemberConfig - Immutable group member snapshot.
+   */
+  public static final class BridgeProfileMemberConfig {
+    public final String device;
+    public final boolean enabled;
+
+    public BridgeProfileMemberConfig(String device, boolean enabled) {
+      this.device = safeText(device);
+      this.enabled = enabled;
+    }
+  }
+
+  /**
+   * NAME
+   *   BridgeProfileBindingConfig - Immutable group binding snapshot.
+   */
+  public static final class BridgeProfileBindingConfig {
+    public final String input;
+    public final String kind;
+    public final boolean hasValue;
+    public final double value;
+
+    public BridgeProfileBindingConfig(String input, String kind, boolean hasValue, double value) {
+      this.input = safeText(input);
+      this.kind = safeText(kind);
+      this.hasValue = hasValue;
+      this.value = value;
+    }
+  }
+
+  /**
+   * NAME
+   *   BridgeProfileGroupConfig - Immutable bridge group snapshot.
+   */
+  public static final class BridgeProfileGroupConfig {
+    public final String name;
+    public final boolean enabled;
+    public final List<BridgeProfileMemberConfig> members;
+    public final List<BridgeProfileBindingConfig> bindings;
+
+    public BridgeProfileGroupConfig(
+        String name,
+        boolean enabled,
+        List<BridgeProfileMemberConfig> members,
+        List<BridgeProfileBindingConfig> bindings) {
+      this.name = safeText(name);
+      this.enabled = enabled;
+      this.members = Collections.unmodifiableList(new ArrayList<>(members));
+      this.bindings = Collections.unmodifiableList(new ArrayList<>(bindings));
+    }
+  }
+
+  /**
+   * NAME
+   *   BridgeProfileSelectedDeviceConfig - Immutable selected-device snapshot.
+   */
+  public static final class BridgeProfileSelectedDeviceConfig {
+    public final String device;
+    public final boolean enabled;
+
+    public BridgeProfileSelectedDeviceConfig(String device, boolean enabled) {
+      this.device = safeText(device);
+      this.enabled = enabled;
+    }
+  }
+
+  /**
+   * NAME
+   *   BridgeProfileRuntimeConfig - Immutable per-profile bridge runtime config.
+   */
+  public static final class BridgeProfileRuntimeConfig {
+    private static final BridgeProfileRuntimeConfig EMPTY =
+        new BridgeProfileRuntimeConfig(
+            Collections.emptyList(),
+            new BridgeProfileSelectedDeviceConfig(NT_LABEL_EMPTY, false));
+
+    public final List<BridgeProfileGroupConfig> groups;
+    public final BridgeProfileSelectedDeviceConfig selectedDevice;
+
+    public BridgeProfileRuntimeConfig(
+        List<BridgeProfileGroupConfig> groups,
+        BridgeProfileSelectedDeviceConfig selectedDevice) {
+      this.groups = Collections.unmodifiableList(new ArrayList<>(groups));
+      this.selectedDevice = selectedDevice != null
+          ? selectedDevice
+          : new BridgeProfileSelectedDeviceConfig(NT_LABEL_EMPTY, false);
+    }
+
+    public static BridgeProfileRuntimeConfig empty() {
+      return EMPTY;
+    }
+  }
+
+  private static String readJsonString(JsonObject object, String key) {
+    if (object == null || key == null || !object.has(key) || object.get(key).isJsonNull()) {
+      return NT_LABEL_EMPTY;
+    }
+    try {
+      return object.get(key).getAsString();
+    } catch (Exception ex) {
+      return NT_LABEL_EMPTY;
+    }
+  }
+
+  private static boolean readJsonBoolean(JsonObject object, String key, boolean defaultValue) {
+    if (object == null || key == null || !object.has(key) || object.get(key).isJsonNull()) {
+      return defaultValue;
+    }
+    try {
+      return object.get(key).getAsBoolean();
+    } catch (Exception ex) {
+      return defaultValue;
+    }
+  }
+
+  private static double readJsonDouble(JsonObject object, String key, double defaultValue) {
+    if (object == null || key == null || !object.has(key) || object.get(key).isJsonNull()) {
+      return defaultValue;
+    }
+    try {
+      return object.get(key).getAsDouble();
+    } catch (Exception ex) {
+      return defaultValue;
     }
   }
 
@@ -1734,26 +1749,37 @@ public final class BringupUtil {
       }
       Set<String> seen = new java.util.HashSet<>();
       for (String label : labels) {
-        String normalized = safeText(label);
+        String display = safeText(label);
+        if (display.isEmpty()) {
+          continue;
+        }
+        String normalized = normalizeKey(display);
         if (normalized.isEmpty()) {
           continue;
         }
         if (seen.contains(normalized)) {
           report.contentValidation.message =
-              String.format(MESSAGE_REGISTRY_PROFILE_DEVICE_DUP, profileName, normalized);
+              String.format(MESSAGE_REGISTRY_PROFILE_DEVICE_DUP, profileName, display);
           return null;
         }
         seen.add(normalized);
         if (!registry.containsKey(normalized)) {
           report.contentValidation.message =
-              String.format(MESSAGE_REGISTRY_PROFILE_DEVICE_UNKNOWN, profileName, normalized);
+              String.format(MESSAGE_REGISTRY_PROFILE_DEVICE_UNKNOWN, profileName, display);
           return null;
         }
       }
     }
     Map<String, JsonElement> testsByProfile = extractProfileTests(parsed);
+    Map<String, BridgeProfileRuntimeConfig> bridgeConfigsByProfile =
+        extractProfileBridgeConfigs(parsed);
     JsonObject nextDslTestsRoot = extractDslTestsRoot(parsed);
-    return new RegistryPayload(root, registry, testsByProfile, nextDslTestsRoot);
+    return new RegistryPayload(
+        root,
+        registry,
+        testsByProfile,
+        bridgeConfigsByProfile,
+        nextDslTestsRoot);
   }
 
   /**
@@ -1773,12 +1799,17 @@ public final class BringupUtil {
         report.contentValidation.message = MESSAGE_REGISTRY_DEVICE_LABEL_MISSING;
         return null;
       }
-      if (registry.containsKey(label)) {
+      String lookup = normalizeKey(label);
+      if (lookup.isEmpty()) {
+        report.contentValidation.message = MESSAGE_REGISTRY_DEVICE_LABEL_MISSING;
+        return null;
+      }
+      if (registry.containsKey(lookup)) {
         report.contentValidation.message =
             String.format(MESSAGE_REGISTRY_DEVICE_LABEL_DUP, label);
         return null;
       }
-      registry.put(label, def);
+      registry.put(lookup, def);
     }
     return registry;
   }
@@ -1820,6 +1851,109 @@ public final class BringupUtil {
 
   /**
    * NAME
+   *   extractProfileBridgeConfigs - Extract per-profile bridgeConfig payloads.
+   */
+  private static Map<String, BridgeProfileRuntimeConfig> extractProfileBridgeConfigs(
+      JsonElement parsed) {
+    Map<String, BridgeProfileRuntimeConfig> configs = new LinkedHashMap<>();
+    if (parsed == null || !parsed.isJsonObject()) {
+      return configs;
+    }
+    JsonObject root = parsed.getAsJsonObject();
+    JsonElement bridgeElement = root.get(KEY_BRIDGE_CONFIG);
+    if (bridgeElement == null || !bridgeElement.isJsonObject()) {
+      return configs;
+    }
+    JsonObject bridge = bridgeElement.getAsJsonObject();
+    JsonElement byProfileElement = bridge.get(KEY_BRIDGE_BY_PROFILE);
+    if (byProfileElement == null || !byProfileElement.isJsonObject()) {
+      return configs;
+    }
+    JsonObject byProfile = byProfileElement.getAsJsonObject();
+    for (Map.Entry<String, JsonElement> entry : byProfile.entrySet()) {
+      JsonElement profileElement = entry.getValue();
+      if (profileElement == null || !profileElement.isJsonObject()) {
+        continue;
+      }
+      configs.put(entry.getKey(), parseBridgeProfileRuntimeConfig(profileElement.getAsJsonObject()));
+    }
+    return configs;
+  }
+
+  private static BridgeProfileRuntimeConfig parseBridgeProfileRuntimeConfig(JsonObject profile) {
+    List<BridgeProfileGroupConfig> groups = new ArrayList<>();
+    JsonElement groupsElement = profile.get(KEY_BRIDGE_GROUPS);
+    if (groupsElement != null && groupsElement.isJsonArray()) {
+      for (JsonElement groupElement : groupsElement.getAsJsonArray()) {
+        if (groupElement == null || !groupElement.isJsonObject()) {
+          continue;
+        }
+        JsonObject group = groupElement.getAsJsonObject();
+        String name = safeText(readJsonString(group, KEY_NAME));
+        if (name.isBlank()) {
+          continue;
+        }
+        boolean enabled = readJsonBoolean(group, KEY_ENABLED, true);
+        List<BridgeProfileMemberConfig> members = new ArrayList<>();
+        JsonElement membersElement = group.get(KEY_MEMBERS);
+        if (membersElement != null && membersElement.isJsonArray()) {
+          for (JsonElement memberElement : membersElement.getAsJsonArray()) {
+            if (memberElement == null) {
+              continue;
+            }
+            if (memberElement.isJsonPrimitive()) {
+              String device = safeText(memberElement.getAsString());
+              if (!device.isBlank()) {
+                members.add(new BridgeProfileMemberConfig(device, true));
+              }
+              continue;
+            }
+            if (!memberElement.isJsonObject()) {
+              continue;
+            }
+            JsonObject member = memberElement.getAsJsonObject();
+            String device = safeText(readJsonString(member, KEY_DEVICE));
+            if (device.isBlank()) {
+              continue;
+            }
+            members.add(
+                new BridgeProfileMemberConfig(device, readJsonBoolean(member, KEY_ENABLED, true)));
+          }
+        }
+        List<BridgeProfileBindingConfig> bindings = new ArrayList<>();
+        JsonElement bindingsElement = group.get(KEY_BRIDGE_BINDINGS);
+        if (bindingsElement != null && bindingsElement.isJsonArray()) {
+          for (JsonElement bindingElement : bindingsElement.getAsJsonArray()) {
+            if (bindingElement == null || !bindingElement.isJsonObject()) {
+              continue;
+            }
+            JsonObject binding = bindingElement.getAsJsonObject();
+            String input = safeText(readJsonString(binding, KEY_INPUT));
+            String kind = safeText(readJsonString(binding, KEY_KIND));
+            if (input.isBlank() || kind.isBlank()) {
+              continue;
+            }
+            boolean hasValue = binding.has(KEY_VALUE) && !binding.get(KEY_VALUE).isJsonNull();
+            double value = hasValue ? readJsonDouble(binding, KEY_VALUE, 0.0) : 0.0;
+            bindings.add(new BridgeProfileBindingConfig(input, kind, hasValue, value));
+          }
+        }
+        groups.add(new BridgeProfileGroupConfig(name, enabled, members, bindings));
+      }
+    }
+    JsonObject selected = profile.has(KEY_BRIDGE_SELECTED_DEVICE)
+        && profile.get(KEY_BRIDGE_SELECTED_DEVICE).isJsonObject()
+            ? profile.getAsJsonObject(KEY_BRIDGE_SELECTED_DEVICE)
+            : null;
+    String device = selected != null ? safeText(readJsonString(selected, KEY_DEVICE)) : NT_LABEL_EMPTY;
+    boolean enabled = selected != null && readJsonBoolean(selected, KEY_ENABLED, false);
+    return new BridgeProfileRuntimeConfig(
+        groups,
+        new BridgeProfileSelectedDeviceConfig(device, enabled));
+  }
+
+  /**
+   * NAME
    *   extractDslTestsRoot - Extract top-level DSL tests root from JSON.
    */
   private static JsonObject extractDslTestsRoot(JsonElement parsed) {
@@ -1845,6 +1979,19 @@ public final class BringupUtil {
 
   /**
    * NAME
+   *   setProfileBridgeConfigs - Replace bridgeConfig cache.
+   */
+  private static void setProfileBridgeConfigs(
+      Map<String, BridgeProfileRuntimeConfig> configsByProfile) {
+    PROFILE_BRIDGE_CONFIGS.clear();
+    if (configsByProfile == null || configsByProfile.isEmpty()) {
+      return;
+    }
+    PROFILE_BRIDGE_CONFIGS.putAll(configsByProfile);
+  }
+
+  /**
+   * NAME
    *   applyRegistryPayload - Replace in-memory registry from payload data.
    */
   private static boolean applyRegistryPayload(
@@ -1856,7 +2003,7 @@ public final class BringupUtil {
       profileOrder = new ArrayList<>(profiles.keySet());
       String nextDefault = safeText(payload.root.defaultProfile);
       if (nextDefault.isBlank() || !profiles.containsKey(nextDefault)) {
-        nextDefault = profiles.isEmpty() ? DEFAULT_PROFILE_NAME : profileOrder.get(INDEX_ZERO);
+        nextDefault = profiles.isEmpty() ? NT_LABEL_EMPTY : profileOrder.get(INDEX_ZERO);
       }
       defaultProfile = nextDefault;
       if (selectedProfile == null || selectedProfile.isBlank() || !profiles.containsKey(selectedProfile)) {
@@ -1870,6 +2017,7 @@ public final class BringupUtil {
       DEVICE_REGISTRY.clear();
       DEVICE_REGISTRY.putAll(payload.registry);
       setProfileTests(payload.testsByProfile);
+      setProfileBridgeConfigs(payload.bridgeConfigsByProfile);
       dslTestsRoot = payload.dslTestsRoot != null ? payload.dslTestsRoot.deepCopy() : null;
       clearDeviceInstanceRegistry();
       bumpActiveProfileGeneration();
@@ -2001,61 +2149,6 @@ public final class BringupUtil {
     return NT_LABEL_EMPTY;
   }
 
-  private static void addFallbackSingleton(
-      List<String> labels,
-      String label,
-      int manufacturer,
-      int deviceType,
-      int id) {
-    if (!isEnabledCanId(id)) {
-      return;
-    }
-    DeviceDefinition def = buildDeviceDefinition(
-        label,
-        INTERFACE_CAN,
-        manufacturer,
-        deviceType,
-        id,
-        null,
-        null);
-    addToRegistry(def);
-    labels.add(label);
-  }
-
-  private static String buildFallbackLabel(String prefix, int id) {
-    return prefix + LABEL_SPACE + id;
-  }
-
-  private static DeviceDefinition buildDeviceDefinition(
-      String label,
-      String deviceInterface,
-      int manufacturer,
-      int deviceType,
-      int id,
-      String model,
-      String type) {
-    DeviceDefinition def = new DeviceDefinition();
-    def.label = label;
-    def.deviceInterface = deviceInterface;
-    def.manufacturer = manufacturer;
-    def.deviceType = deviceType;
-    def.id = id;
-    def.model = model;
-    def.type = type;
-    return def;
-  }
-
-  private static void addToRegistry(DeviceDefinition def) {
-    if (def == null) {
-      return;
-    }
-    String label = safeText(def.label);
-    if (label.isEmpty()) {
-      return;
-    }
-    DEVICE_REGISTRY.put(label, def);
-  }
-
   /**
    * NAME
    *   validateProfileCanIdsStrict - Fail fast on duplicate CAN IDs in a profile.
@@ -2074,13 +2167,14 @@ public final class BringupUtil {
     Map<String, List<String>> seen = new LinkedHashMap<>();
     Map<Integer, List<String>> seenById = new LinkedHashMap<>();
     for (String label : config.devices) {
-      String normalized = safeText(label);
-      if (normalized.isEmpty()) {
+      String lookup = normalizeKey(label);
+      String display = safeText(label);
+      if (lookup.isEmpty()) {
         continue;
       }
-      DeviceDefinition def = DEVICE_REGISTRY.get(normalized);
+      DeviceDefinition def = DEVICE_REGISTRY.get(lookup);
       if (def == null) {
-        throw new JsonParseException(String.format(MESSAGE_UNKNOWN_DEVICE, profileName, normalized));
+        throw new JsonParseException(String.format(MESSAGE_UNKNOWN_DEVICE, profileName, display));
       }
       if (!isCanDevice(def)) {
         continue;
@@ -2092,8 +2186,8 @@ public final class BringupUtil {
       String vendor = resolveVendorName(def);
       String type = resolveDeviceTypeLabel(def);
       String key = deviceKey(vendor, type, canId);
-      addSeenLabel(seen, key, normalized);
-      addSeenLabelById(seenById, canId, normalized);
+      addSeenLabel(seen, key, display);
+      addSeenLabelById(seenById, canId, display);
     }
 
     for (Map.Entry<String, List<String>> entry : seen.entrySet()) {
@@ -2165,7 +2259,7 @@ public final class BringupUtil {
       if (def == null) {
         continue;
       }
-      String label = safeText(def.label);
+      String label = normalizeKey(def.label);
       if (label.isEmpty()) {
         throw new JsonParseException("Device registry contains entry with empty label.");
       }
@@ -2238,7 +2332,7 @@ public final class BringupUtil {
         continue;
       }
       DeviceKey key = new DeviceKey(entry.vendor, entry.type);
-      DeviceConfig config = new DeviceConfig(entry.id, entry.label, entry.motor, entry.limits);
+      DeviceConfig config = new DeviceConfig(entry.id, entry.label, entry.motor, entry.limits, def.invert);
       DEVICE_CONFIGS.computeIfAbsent(key, ignored -> new ArrayList<>()).add(config);
     }
   }
@@ -2292,11 +2386,11 @@ public final class BringupUtil {
     }
     List<DeviceDefinition> devices = new ArrayList<>();
     for (String label : labels) {
-      String normalized = safeText(label);
-      if (normalized.isEmpty()) {
+      String lookup = normalizeKey(label);
+      if (lookup.isEmpty()) {
         continue;
       }
-      DeviceDefinition def = DEVICE_REGISTRY.get(normalized);
+      DeviceDefinition def = DEVICE_REGISTRY.get(lookup);
       if (def != null) {
         devices.add(def);
       }
@@ -2305,7 +2399,7 @@ public final class BringupUtil {
   }
 
   private static boolean isRuntimeDevice(DeviceDefinition def) {
-    return isCanDevice(def) || isXboxControllerDevice(def);
+    return isCanDevice(def) || isXboxControllerDevice(def) || isLimitSwitch(def);
   }
 
   private static boolean isCanDevice(DeviceDefinition def) {
@@ -2344,26 +2438,29 @@ public final class BringupUtil {
     }
     List<LimitSwitchConfig> switches = new ArrayList<>();
     for (String label : def.attachments) {
-      String normalized = safeText(label);
-      if (normalized.isEmpty()) {
+      String lookup = normalizeKey(label);
+      if (lookup.isEmpty()) {
         continue;
       }
-      DeviceDefinition attachment = DEVICE_REGISTRY.get(normalized);
+      DeviceDefinition attachment = DEVICE_REGISTRY.get(lookup);
       if (attachment == null || !isLimitSwitch(attachment)) {
         continue;
       }
-      int dio = attachment.dio != null ? attachment.dio : DISABLED_CAN_ID;
+      int dio = attachment.id != null ? attachment.id : DISABLED_CAN_ID;
       boolean invert = attachment.invert != null ? attachment.invert : false;
-      switches.add(new LimitSwitchConfig(normalized, dio, invert));
+      switches.add(new LimitSwitchConfig(safeText(attachment.label), dio, invert));
     }
     return switches;
   }
 
   private static String resolveVendorName(DeviceDefinition def) {
+    if (isXboxControllerDevice(def)) {
+      return DEVICE_VENDOR_MICROSOFT;
+    }
+    if (isLimitSwitch(def)) {
+      return DEVICE_VENDOR_NI;
+    }
     if (def == null || def.manufacturer == null) {
-      if (isXboxControllerDevice(def)) {
-        return DEVICE_VENDOR_MICROSOFT;
-      }
       return LABEL_UNKNOWN;
     }
     String name = getCanManufacturerName(def.manufacturer);
@@ -2388,6 +2485,9 @@ public final class BringupUtil {
     }
     if (isXboxControllerDevice(def)) {
       return DEVICE_TYPE_XBOX_CONTROLLER;
+    }
+    if (isLimitSwitch(def)) {
+      return DEVICE_TYPE_LIMIT_SWITCH;
     }
     int manufacturer = def.manufacturer != null ? def.manufacturer : DISABLED_CAN_ID;
     int devType = def.deviceType != null ? def.deviceType : DISABLED_CAN_ID;
@@ -2726,7 +2826,6 @@ public final class BringupUtil {
     Integer id;
     String model;
     String type;
-    Integer dio;
     Boolean invert;
     List<String> attachments = Collections.emptyList();
     List<String> tags = Collections.emptyList();
@@ -2857,6 +2956,7 @@ public final class BringupUtil {
     private final String label;
     private final String motor;
     private final LimitConfig limits;
+    private final boolean invert;
 
     /**
      * NAME
@@ -2867,12 +2967,14 @@ public final class BringupUtil {
      *   label - Display label.
      *   motor - Optional motor model override.
      *   limits - Optional limit config.
+     *   invert - Optional standalone inversion flag.
      */
-    public DeviceConfig(int id, String label, String motor, LimitConfig limits) {
+    public DeviceConfig(int id, String label, String motor, LimitConfig limits, Boolean invert) {
       this.id = id;
       this.label = label;
       this.motor = motor;
       this.limits = limits != null ? limits : new LimitConfig();
+      this.invert = invert != null ? invert.booleanValue() : false;
     }
 
     public int getId() {
@@ -2889,6 +2991,10 @@ public final class BringupUtil {
 
     public LimitConfig getLimits() {
       return limits;
+    }
+
+    public boolean isInvert() {
+      return invert;
     }
   }
 
@@ -3173,6 +3279,31 @@ public final class BringupUtil {
     }
     boolean raw = input.get();
     return invert ? !raw : raw;
+  }
+
+  /**
+   * NAME
+   *   acquireSharedDioInput - Acquire a shared DIO input for a standalone device.
+   *
+   * PARAMETERS
+   *   channel - DIO channel number.
+   *
+   * RETURNS
+   *   Shared DigitalInput instance.
+   */
+  public static DigitalInput acquireSharedDioInput(int channel) {
+    return acquireDioInput(channel);
+  }
+
+  /**
+   * NAME
+   *   releaseSharedDioInput - Release a shared DIO input for a standalone device.
+   *
+   * PARAMETERS
+   *   input - Shared DigitalInput instance.
+   */
+  public static void releaseSharedDioInput(DigitalInput input) {
+    releaseDioInput(input);
   }
 
   /**

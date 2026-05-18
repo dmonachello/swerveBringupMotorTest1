@@ -252,6 +252,8 @@ Common:
 - `end`
 - `help`
 - `ping`
+- `tiu on`
+- `tiu off`
 - `echo on`
 - `echo off`
 - `quit`
@@ -262,11 +264,16 @@ Common:
 Exec:
 
 - `show status [robot|local|both]`
+- `show active [robot|local|both]`
 - `show groups [robot|local|both]`
 - `show group <name> [robot|local|both]`
 - `show devices [robot|local|both]`
 - `show device <name> [local]`
 - `show device-group <name> [robot|local|both]`
+- `show instantiated [robot|local|both]`
+- `show faults [robot|local|both]`
+- `show signals [local]`
+- `show signal <name> [local]`
 - `show bindings [robot|local|both]`
 - `show selected-device [robot|local|both]`
 - `show runtime-state [robot|local|both]`
@@ -286,6 +293,7 @@ Exec:
 - `show test <name> [--json] [--pretty]`
 - `show workspace [--json] [--pretty]`
 - `show controllers [--json] [--pretty]`
+- `bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]`
 - `configure terminal`
 - `connect`
 - `disconnect`
@@ -304,10 +312,12 @@ Config:
 - `export cli-script <path>`
 - `save runtime-groups <runtime_groups.json>`
 - `save all [--prompt]`
+- `save sources`
 - `save bridge-config <path>` (local-only; writes groups-only when profiles are loaded)
 - `save runtime-groups <path>` (robot snapshot; writes current runtime groups)
 - `save profiles <path>` (profiles-only; preserves bridgeConfig)
 - `save config <path>`
+- `revert`
 - `rename device <old> <new>` (local-only; updates profiles when loaded)
 - `device <name>`
 - `device <name> set <field> <value>`
@@ -322,7 +332,7 @@ Config:
 - `validate config [path] [--all]`
 - `validate profiles [robot|local] [--active]`
 - `validate tests [--active-set]`
-- `bindings show [controllers|bindings|axes] [--json] [--pretty]`
+- `bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]`
 - `bindings controller add <name> <type> <port>`
 - `bindings controller set <name> <field> <value>`
 - `bindings controller rename <old> <new>`
@@ -361,7 +371,7 @@ Show Output Notes:
 - `show devices` (local) lists the full profile-derived device inventory, not only group members.
 - `show device` returns the full device definition from bringup_system.json (local only).
 - `show device-group` returns the device’s group membership/usage info.
-- The CLI auto-imports `data/bringup_system.json` on startup when present (replaces groups).
+- The CLI auto-imports `src/main/deploy/bringup_system.json` on startup when present (replaces groups).
 - merge config is only allowed when the incoming profiles hash matches the loaded profiles; otherwise use import config.
 - `validate config [path]`
 
@@ -376,6 +386,9 @@ Group:
 - `member <device> enable`
 - `member <device> disable`
 - `member <device> toggle`
+- `bind list`
+- `bind explain <binding>`
+- `bind test <binding>`
 - `bind <input> analog`
 - `bind <input> hold <value>`
 - `bind <input> toggle <value>`
@@ -595,7 +608,7 @@ JSON is one blob per command.
 
 Purpose: Store bridge group config inside the single shared data file.
 
-- The shared file is `data/bringup_system.json`.
+- The shared file is `src/main/deploy/bringup_system.json`.
 - The bridge CLI reads/writes a top-level `bridgeConfig` object.
 - Other tools ignore unknown fields; `bridgeConfig` is optional.
 - `data_hash` is computed from profiles + diagram; `bridgeConfig` changes do not affect it.

@@ -65,8 +65,10 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_ID = "id";
   private static final String JSON_KEY_DEVICE = "device";
   private static final String JSON_KEY_ENABLED = "enabled";
+  private static final String JSON_KEY_INSTANTIATED = "instantiated";
   private static final String JSON_KEY_PRESENCE_CONF = "presenceConfidence";
   private static final String JSON_KEY_LAST_SEEN_MS = "lastSeenMs";
+  private static final String JSON_KEY_ATTACHMENTS = "attachments";
   private static final String JSON_KEY_MOTOR_CURRENT_A = "motorCurrentA";
   private static final String JSON_KEY_CMD_DUTY = "cmdDuty";
   private static final String JSON_KEY_APPLIED_DUTY = "appliedDuty";
@@ -155,7 +157,7 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_TESTS_SELECTED = "selected";
   private static final String JSON_KEY_TESTS_TYPE = "type";
   private static final String JSON_KEY_TESTS_STATUS = "status";
-  private static final String JSON_KEY_TESTS_MOTORS = "motors";
+  private static final String JSON_KEY_TESTS_REQUIRED_DEVICES = "requiredDevices";
   private static final String JSON_KEY_TESTS_RUN = "run";
   private static final String JSON_KEY_RUN_ID = "runId";
   private static final String JSON_KEY_RUN_STATE = "state";
@@ -296,7 +298,6 @@ public class BridgeUiCommandHandler {
   private final ConcurrentLinkedQueue<String> uiLogQueue = new ConcurrentLinkedQueue<>();
   private final AtomicInteger uiLogCount = new AtomicInteger(0);
   private boolean uiProtocolMonitorEnabled = false;
-  private double uiFixedSpeed = Double.NaN;
   private double lastNeoSpeed = 0.0;
   private double lastKrakenSpeed = 0.0;
   private ZoneId remoteCommandZone = null;
@@ -959,15 +960,6 @@ public class BridgeUiCommandHandler {
         runtime.requestTextReport(text, batchSize);
       }
 
-      @Override
-      public double getUiFixedSpeed() {
-        return uiFixedSpeed;
-      }
-
-      @Override
-      public void setUiFixedSpeed(double speed) {
-        uiFixedSpeed = speed;
-      }
     });
 
     this.uiCommandDispatcher = new BridgeUiCommandDispatcher(List.of(
@@ -1032,27 +1024,18 @@ public class BridgeUiCommandHandler {
    *   resetProfileRuntimeUiState - Clear profile-derived UI runtime state.
    *
    * SIDE EFFECTS
-   *   Clears selected device state, fixed speed overrides, cached speed
-   *   reports, active-group cursor state, and any stop latch from the
+   *   Clears selected device state, cached speed reports, active-group
+   *   cursor state, and any stop latch from the
    *   previous active profile.
    */
   public void resetProfileRuntimeUiState() {
     bridgeSelected().device = TEXT_EMPTY;
     bridgeSelected().enabled = false;
-    uiFixedSpeed = Double.NaN;
     lastNeoSpeed = SPEED_ZERO;
     lastKrakenSpeed = SPEED_ZERO;
     activeGroupCursor = INDEX_START;
     stopLatchActive = false;
     stopLatchReason = TEXT_EMPTY;
-  }
-
-  /**
-   * NAME
-   *   getUiFixedSpeed - Return fixed-speed override value.
-   */
-  public double getUiFixedSpeed() {
-    return uiFixedSpeed;
   }
 
   /**
@@ -2825,15 +2808,15 @@ public class BridgeUiCommandHandler {
       obj.addProperty(JSON_KEY_TESTS_SELECTED, row.selected);
       obj.addProperty(JSON_KEY_TESTS_TYPE, row.type != null ? row.type : TEXT_EMPTY);
       obj.addProperty(JSON_KEY_TESTS_STATUS, row.status != null ? row.status : TEXT_EMPTY);
-      JsonArray motors = new JsonArray();
-      if (row.motors != null) {
-        for (String motor : row.motors) {
-          if (motor != null && !motor.isBlank()) {
-            motors.add(motor);
+      JsonArray requiredDevices = new JsonArray();
+      if (row.requiredDevices != null) {
+        for (String label : row.requiredDevices) {
+          if (label != null && !label.isBlank()) {
+            requiredDevices.add(label);
           }
         }
       }
-      obj.add(JSON_KEY_TESTS_MOTORS, motors);
+      obj.add(JSON_KEY_TESTS_REQUIRED_DEVICES, requiredDevices);
       rows.add(obj);
     }
     root.add(JSON_KEY_TESTS_ROWS, rows);
@@ -2993,10 +2976,14 @@ public class BridgeUiCommandHandler {
       if (snap == null && entry.id >= 0) {
         snap = byId.get(entry.id);
       }
+      obj.addProperty(JSON_KEY_INSTANTIATED, snap != null);
       if (snap != null) {
         obj.addProperty(JSON_KEY_PRESENCE_CONF, snap.present ? 1.0 : 0.0);
         if (snap.present) {
           obj.addProperty(JSON_KEY_LAST_SEEN_MS, nowMs);
+        }
+        if (snap.attachments != null && !snap.attachments.isEmpty()) {
+          obj.add(JSON_KEY_ATTACHMENTS, GSON.toJsonTree(snap.attachments));
         }
         RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
         if (rev != null) {
@@ -3485,9 +3472,11 @@ public class BridgeUiCommandHandler {
       rowTable.getEntry("selected").setBoolean(row.selected);
       rowTable.getEntry("type").setString(row.type != null ? row.type : "");
       rowTable.getEntry("status").setString(row.status != null ? row.status : "");
-      String motors =
-          (row.motors == null || row.motors.isEmpty()) ? "" : String.join(", ", row.motors);
-      rowTable.getEntry("motors").setString(motors);
+      String requiredDevices =
+          (row.requiredDevices == null || row.requiredDevices.isEmpty())
+              ? ""
+              : String.join(", ", row.requiredDevices);
+      rowTable.getEntry("requiredDevices").setString(requiredDevices);
     }
     for (int i = count; i < lastTestsCount; i++) {
       NetworkTable rowTable = rowsTable.getSubTable(String.valueOf(i));
@@ -3497,7 +3486,7 @@ public class BridgeUiCommandHandler {
       rowTable.getEntry("selected").setBoolean(false);
       rowTable.getEntry("type").setString("");
       rowTable.getEntry("status").setString("");
-      rowTable.getEntry("motors").setString("");
+      rowTable.getEntry("requiredDevices").setString("");
     }
     lastTestsCount = count;
   }

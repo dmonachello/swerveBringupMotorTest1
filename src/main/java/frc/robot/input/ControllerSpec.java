@@ -5,7 +5,7 @@ package frc.robot.input;
  *   ControllerSpec - JSON-friendly controller configuration.
  */
 public final class ControllerSpec {
-  public ControllerType type = ControllerType.XBOX;
-  public int port = 0;
-  public String name = "controller0";
+  public ControllerType type;
+  public Integer port;
+  public String name;
 }

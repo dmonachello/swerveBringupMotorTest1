@@ -49,7 +49,7 @@ ARG_PROFILES = "--profiles"
 ARG_APPLY = "--apply"
 
 DEFAULT_TESTS_FILENAME = "bringup_tests.json"
-DEFAULT_PROFILES_FILENAME = "data/bringup_system.json"
+DEFAULT_PROFILES_FILENAME = "src/main/deploy/bringup_system.json"
 
 PROMPT_ASSIGN = "Select profile (name/number), or 'skip'/'delete': "
 PROMPT_OVERWRITE = "Profile '{profile}' already has tests. Overwrite? (y/N): "

@@ -4,11 +4,6 @@
       "name": "controller0",
       "type": "XBOX",
       "port": 0
-    },
-    {
-      "name": "controller1",
-      "type": "XBOX",
-      "port": 1
     }
   ],
   "bindings": [
@@ -29,8 +24,8 @@
     {
       "command": "printState",
       "controller": "controller0",
-      "input": "button",
-      "id": "B",
+      "input": "combo",
+      "id": "LB+X",
       "mode": "edge"
     },
     {
@@ -165,34 +160,6 @@
       "input": "button",
       "id": "START",
       "mode": "edge"
-    },
-    {
-      "command": "fixedSpeed25",
-      "controller": "controller1",
-      "input": "dpad",
-      "id": "UP",
-      "mode": "hold"
-    },
-    {
-      "command": "fixedSpeed50",
-      "controller": "controller1",
-      "input": "dpad",
-      "id": "RIGHT",
-      "mode": "hold"
-    },
-    {
-      "command": "fixedSpeed75",
-      "controller": "controller1",
-      "input": "dpad",
-      "id": "DOWN",
-      "mode": "hold"
-    },
-    {
-      "command": "fixedSpeed100",
-      "controller": "controller1",
-      "input": "dpad",
-      "id": "LEFT",
-      "mode": "hold"
     }
   ],
   "axes": [

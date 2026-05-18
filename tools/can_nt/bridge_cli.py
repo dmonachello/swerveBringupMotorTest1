@@ -27,6 +27,10 @@ import shlex
 import time
 import re
 import threading
+import io
+import contextlib
+import shutil
+from collections import deque
 from copy import deepcopy
 import copy
 from dataclasses import dataclass
@@ -167,6 +171,7 @@ from tools.common.paths import (
     profiles_canonical_path,
     profiles_deploy_path,
     can_mappings_path,
+    bindings_canonical_path,
     bindings_deploy_path,
     test_templates_dir,
 )
@@ -174,8 +179,19 @@ from tools.common.config_lifecycle import ConfigLifecycleService
 from tools.common.workflows import Workflow01Service
 from tools.common.tests_domain import collect_available_tests
 from tools.common.diagnostics import normalize_device_attachments, summarize_attachment_metrics
+from tools.common.topology_parse import (
+    topology_edges,
+    topology_nodes,
+    topology_neighbor_links,
+    topology_neighbor_ports,
+    topology_node_lookup,
+    topology_profile_from_payload,
+)
 from tools.common.profile_constants import (
     BRIDGE_CONFIG_SCHEMA_VERSION,
+    EDGE_TYPE_CAN_DROP,
+    EDGE_TYPE_CAN_TAP,
+    EDGE_TYPE_CAN_TRUNK,
     KEY_BRIDGE_BY_PROFILE,
     KEY_BRIDGE_CONFIG,
     KEY_BRIDGE_GENERATED_AT,
@@ -191,7 +207,6 @@ from tools.common.profile_constants import (
     KEY_DSL_TEST_SETS,
     KEY_DSL_TESTS,
     KEY_DSL_TESTS_BY_NAME,
-    KEY_DIO,
     KEY_DEFAULT_PROFILE,
     KEY_DEVICE_TYPE,
     KEY_DEVICES,
@@ -221,7 +236,7 @@ from tools.common.profile_constants import (
     KEY_TESTS_SELECTED,
     KEY_TESTS_TYPE,
     KEY_TESTS_STATUS,
-    KEY_TESTS_MOTORS,
+    KEY_TESTS_REQUIRED_DEVICES,
     KEY_VERSION,
     KEY_ID,
     KEY_INTERFACE,
@@ -243,6 +258,7 @@ from tools.common.profile_constants import (
     INTERFACE_DIO,
     INTERFACE_INTERNAL,
     INTERFACE_PWM,
+    INTERFACE_USB,
     KEY_ATTACHMENTS,
     KEY_BUS,
     KEY_TERMINATOR,
@@ -260,8 +276,27 @@ from tools.common.profile_constants import (
     KEY_LINK_NEIGHBOR,
     KEY_LINK_NEIGHBOR_PORT,
     KEY_NODE_KEY,
+    KEY_NODE_TYPE,
+    KEY_DEVICE_REF,
+    KEY_LAYOUT,
+    KEY_EDGE_TYPE,
+    KEY_EDGE_ID,
+    KEY_TOPOLOGY,
+    KEY_TOPOLOGY_PROFILES,
+    KEY_TOPOLOGY_VERSION,
+    KEY_TOPOLOGY_SOURCE,
+    KEY_TOPOLOGY_NODES,
+    KEY_TOPOLOGY_EDGES,
+    KEY_FROM_NODE,
+    KEY_FROM_PORT,
+    KEY_TO_NODE,
+    KEY_TO_PORT,
+    NEIGHBOR_PORT_LEFT,
+    NEIGHBOR_PORT_RIGHT,
+    NODE_TYPE_DEVICE,
     get_device_interface,
 )
+from tools.can_topology.validate_profiles import Reporter, validate_profiles
 from tools.common.robot_test_dsl import (
     DEFAULT_TEST_SET as DSL_DEFAULT_TEST_SET,
     RobotTestDslEntry,
@@ -421,15 +456,31 @@ CMD_SHOW_PROFILE = "showProfile"
 try:
     from prompt_toolkit import prompt as prompt_toolkit_prompt
     from prompt_toolkit import PromptSession
+    from prompt_toolkit.application import Application
     from prompt_toolkit.completion import Completer, Completion
     from prompt_toolkit.history import FileHistory
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.layout import HSplit, Layout, VSplit, Window
+    from prompt_toolkit.layout.controls import FormattedTextControl
+    from prompt_toolkit.layout.dimension import Dimension
+    from prompt_toolkit.widgets import Frame, TextArea
     PROMPT_TOOLKIT_AVAILABLE = True
 except Exception:
     prompt_toolkit_prompt = None
     PromptSession = None
+    Application = None
     Completer = None
     Completion = None
     FileHistory = None
+    KeyBindings = None
+    HSplit = None
+    Layout = None
+    VSplit = None
+    Window = None
+    FormattedTextControl = None
+    Dimension = None
+    Frame = None
+    TextArea = None
 
 # Parser selection (comment out one of the two lines below).
 CLI_PARSER_KIND = CLI_PARSER_CONST["ebnf"]
@@ -455,6 +506,10 @@ COUNT_SIX = 6
 COUNT_SEVEN = 7
 COUNT_EIGHT = 8
 COUNT_NINE = 9
+COUNT_THOUSAND = 1000
+COUNT_TEN = 10
+COUNT_TWELVE = 12
+COUNT_FIFTEEN = 15
 STATUS_INCLUDE_RAW_DEFAULT = False
 STATUS_DETAIL_PREFIX = "DETAIL: "
 STATUS_OK_MESSAGE = "OK"
@@ -551,6 +606,7 @@ CMD_BINDINGS = "bindings"
 CMD_CONTROLLER = "controller"
 CMD_BINDING = "binding"
 CMD_BIND = PARSER_SPEC.cmd_bind
+CMD_EXPLAIN = "explain"
 CMD_AXIS = "axis"
 CMD_CAN_MAPPINGS = "can-mappings"
 CMD_MANUFACTURER = "manufacturer"
@@ -652,7 +708,9 @@ PLACEHOLDER_PROFILE = "<profile>"
 PLACEHOLDER_DEVICE = "<device>"
 PLACEHOLDER_GROUP = "<group>"
 PLACEHOLDER_TEST = "<test>"
+PLACEHOLDER_INPUT = "<input>"
 PLACEHOLDER_FIELD = "<field>"
+PLACEHOLDER_BINDING = "<binding>"
 PLACEHOLDER_TEMPLATE = "<template>"
 PLACEHOLDER_PATH = "<path>"
 PLACEHOLDER_REGISTRY = "<devices-table>"
@@ -664,7 +722,7 @@ HISTORY_FILENAME = "bridge_cli_history.txt"
 ENCODING_UTF8 = "utf-8"
 FILE_MODE_WRITE = "w"
 FILE_MODE_READ = "r"
-BACKUP_DIR_PARENT = "data"
+BACKUP_DIR_PARENT = "backup_data"
 BACKUP_DIR_NAME = "backups"
 BACKUP_INDEX_NAME = "index.json"
 BACKUP_SUFFIX_TMP = ".tmp"
@@ -771,6 +829,7 @@ PROFILE_EXPORT_NEWLINE = "\n"
 PROFILE_EXPORT_QUOTE = "\""
 PROFILE_EXPORT_INDENT = 2
 PROFILE_EXPORT_PATH_SEPARATOR = " "
+CONTROL_SIGNAL_SEPARATOR = "."
 PROFILE_EXPORT_JSON_SEP_COMMA = ","
 PROFILE_EXPORT_JSON_SEP_COLON = ":"
 PROFILE_EXPORT_JSON_SEPARATORS = (PROFILE_EXPORT_JSON_SEP_COMMA, PROFILE_EXPORT_JSON_SEP_COLON)
@@ -791,7 +850,6 @@ PROFILE_EXPORT_FIELD_ORDER = (
     KEY_ID,
     KEY_MODEL,
     KEY_TYPE,
-    KEY_DIO,
     KEY_INVERT,
     KEY_PWM,
     KEY_ANALOG,
@@ -901,9 +959,26 @@ KEY_DIAGRAM_PROFILES = "profiles"
 KEY_ACTIVE = "active"
 KEY_DEFAULT = "default"
 KEY_AVAILABLE = "available"
+KEY_PROVENANCE = "provenance"
+KEY_LAST_MODIFIED_AT = "lastModifiedAt"
+KEY_LAST_SAVED = "lastSaved"
+KEY_LAST_PUSHED = "lastPushed"
+KEY_MATCH = "match"
+KEY_LOCAL_VS_SAVED = "localVsSaved"
+KEY_LOCAL_VS_PUSHED = "localVsPushed"
+KEY_ROBOT_VS_PUSHED = "robotVsPushed"
+KEY_AT = "at"
+KEY_HASH = "hash"
+KEY_PROFILE_NAME = "profile"
 STRING_NONE = "(none)"
 SEP_NEWLINE = "\n"
+SEP_DOUBLE_SPACE = "  "
+MATCH_STATE_YES = "YES"
+MATCH_STATE_NO = "NO"
+MATCH_STATE_UNKNOWN = "UNKNOWN"
 
+PROMPT_LABEL_BRIDGE = "bridge"
+PROMPT_DIRTY_MARK = "*"
 PROMPT_EXEC = "bridge> "
 PROMPT_EXEC_WITH_PROFILE_FMT = "bridge{suffix}> "
 PROMPT_CONFIG_PREFIX = "bridge(config"
@@ -929,6 +1004,20 @@ SHOW_TARGET_HELP = "help"
 SHOW_TARGET_WORKSPACE = "workspace"
 SHOW_TARGET_CONTROLLERS = "controllers"
 SHOW_TARGET_SOURCES = "sources"
+SHOW_TARGET_TOPOLOGY = "topology"
+SHOW_TARGET_NEIGHBORS = "neighbors"
+SHOW_TARGET_ACTIVE = "active"
+SHOW_TARGET_INSTANTIATED = "instantiated"
+SHOW_TARGET_FAULTS = "faults"
+SHOW_TARGET_SIGNALS = "signals"
+SHOW_TARGET_SIGNAL = "signal"
+CMD_TOPOLOGY = "topology"
+CMD_NEIGHBORS = "neighbors"
+CMD_NEIGHBOR_PORTS = "neighbor-ports"
+CMD_NEIGHBOR_AUTO = "neighbor-auto"
+CMD_NODES = "nodes"
+CMD_EDGES = "edges"
+CMD_NODE = "node"
 
 SHOW_SOURCE_ROBOT = "robot"
 SHOW_SOURCE_LOCAL = "local"
@@ -965,18 +1054,80 @@ LOCAL_ONLY_SHOW_TARGETS = (
     SHOW_TARGET_MESSAGE_LEVEL,
     SHOW_TARGET_DEVICE_USAGE,
     SHOW_TARGET_DEVICE,
+    SHOW_TARGET_SIGNALS,
+    SHOW_TARGET_SIGNAL,
     SHOW_TARGET_CAN_MAPPINGS,
     SHOW_TARGET_COMMANDS,
     SHOW_TARGET_HELP,
     SHOW_TARGET_WORKSPACE,
     SHOW_TARGET_CONTROLLERS,
+    SHOW_TARGET_TOPOLOGY,
     SHOW_TARGET_SOURCES,
     SHOW_TARGET_CONFIG_RAW,
     SHOW_TARGET_CONFIG_DIRTY,
     CMD_TESTS,
     CMD_TEST,
 )
+KEY_INSTANTIATED = "instantiated"
+KEY_REASON = "reason"
+KEY_STATUS = "status"
+KEY_RUNTIME = "runtime"
+KEY_RUNTIME_COMPONENTS = "components"
+KEY_RUNTIME_THREADS = "threads"
+KEY_VISIBILITY = "visibility"
+KEY_SUMMARY = "summary"
+KEY_SIGNALS = "signals"
+KEY_FAULTS = "faults"
+KEY_RECOVERY_MODE = "recoveryMode"
+KEY_COMPONENT_COUNT = "componentCount"
+KEY_ACTIVE_GROUP = "activeGroup"
+KEY_ACTIVE_TEST_SET = "activeTestSet"
+KEY_PRESENT = "present"
+KEY_WARNING_COUNT = "warningCount"
+KEY_FAULT_COUNT = "faultCount"
+KEY_LAST_SEEN_MS = "lastSeenMs"
+KEY_PRESENCE_CONF = "presenceConfidence"
+KEY_FAULT_FLAGS = "faultFlags"
+KEY_STICKY_FAULT_FLAGS = "stickyFaultFlags"
+KEY_WARNING_FLAGS = "warningFlags"
+KEY_STICKY_WARNING_FLAGS = "stickyWarningFlags"
+KEY_FAULTS_RAW = "faultsRaw"
+KEY_STICKY_FAULTS_RAW = "stickyFaultsRaw"
+KEY_WARNINGS_RAW = "warningsRaw"
+KEY_STICKY_WARNINGS_RAW = "stickyWarningsRaw"
+KEY_CHANNEL_FAULT = "channelFault"
+KEY_CHANNEL_STICKY_FAULT = "channelStickyFault"
+KEY_BROWNOUT = "brownout"
+KEY_CAN_WARNING = "canWarning"
+KEY_HARDWARE_FAULT = "hardwareFault"
+KEY_STICKY_BROWNOUT = "stickyBrownout"
+KEY_STICKY_CAN_WARNING = "stickyCanWarning"
+KEY_STICKY_CAN_BUS_OFF = "stickyCanBusOff"
+KEY_STICKY_HAS_RESET = "stickyHasReset"
+KEY_DETAILS = "details"
+VALUE_UNAVAILABLE = "unavailable"
+VALUE_ACTIVE = "ACTIVE"
 MESSAGE_ERR_SHOW_REQUIRES_TARGET = "ERROR: show requires a target."
+MESSAGE_ERR_TOPOLOGY_PROFILE_REQUIRED = "ERROR: Active profile required for topology commands."
+MESSAGE_ERR_TOPOLOGY_NOT_LOADED = "ERROR: Topology not loaded for the active profile."
+MESSAGE_ERR_TOPOLOGY_LOCAL_ONLY = "ERROR: topology commands are local-only right now."
+MESSAGE_ERR_TOPOLOGY_USAGE = "ERROR: topology neighbor-ports set|delete|clear ... or topology neighbor-auto all|node ..."
+MESSAGE_ERR_TOPOLOGY_NODE_REQUIRED = "ERROR: topology node label required."
+MESSAGE_ERR_TOPOLOGY_NEIGHBOR_PORTS_SET = "ERROR: topology neighbor-ports set <node> <port> <neighbor> <neighborPort>"
+MESSAGE_ERR_TOPOLOGY_NEIGHBOR_PORTS_DELETE = "ERROR: topology neighbor-ports delete <node> <port>"
+MESSAGE_ERR_TOPOLOGY_NEIGHBOR_PORTS_CLEAR = "ERROR: topology neighbor-ports clear <node>"
+MESSAGE_ERR_TOPOLOGY_NEIGHBOR_AUTO = "ERROR: topology neighbor-auto all [label1,label2] | topology neighbor-auto node <label>"
+MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND = "ERROR: topology node '{name}' not found in the active profile."
+MESSAGE_INFO_TOPOLOGY_NEIGHBOR_PORT_SET = "INFO: topology neighbor port updated."
+MESSAGE_INFO_TOPOLOGY_NEIGHBOR_PORT_DELETE = "INFO: topology neighbor port removed."
+MESSAGE_INFO_TOPOLOGY_NEIGHBOR_PORT_CLEAR = "INFO: topology node neighbor ports cleared."
+MESSAGE_INFO_TOPOLOGY_NEIGHBOR_AUTO = "INFO: topology neighbors rebuilt from layout."
+MESSAGE_INFO_TOPOLOGY_VALIDATE_OK = "OK: topology is valid."
+MESSAGE_TOPOLOGY_HEADER = "Topology:"
+MESSAGE_TOPOLOGY_NODES_HEADER = "Nodes:"
+MESSAGE_TOPOLOGY_EDGES_HEADER = "Edges:"
+MESSAGE_TOPOLOGY_NEIGHBORS_HEADER = "Neighbors:"
+MESSAGE_TOPOLOGY_NONE = "  (none)"
 MESSAGE_ERR_PRETTY_REQUIRES_JSON = "ERROR: --pretty requires --json."
 MESSAGE_ERR_LOCAL_CONFIG_MISSING = "ERROR: Local config not loaded. Use merge/import config <bringup_system.json>."
 MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND = "ERROR: Local device not found."
@@ -1031,6 +1182,9 @@ MESSAGE_DIRTY_HEADER = "Local dirty state:"
 MESSAGE_DIRTY_ENTRY = "  {name}={value}"
 MESSAGE_DIRTY_NONE = "  (clean)"
 MESSAGE_DIRTY_PROMPT = "Unsaved changes in: {items}. Exit anyway?"
+MESSAGE_DIRTY_LAST_MODIFIED = "  last-modified={value}"
+MESSAGE_DIRTY_LAST_SAVED = "  last-saved={value}"
+MESSAGE_DIRTY_LAST_PUSHED = "  last-pushed={value}"
 MESSAGE_ERR_DEVICE_LABEL_REQUIRED = "ERROR: device name required."
 MESSAGE_ERR_DEVICE_PROFILE_REQUIRED = "ERROR: Profile not selected. Use 'profile <profile>'."
 MESSAGE_ERR_DEVICE_INTERFACE_INVALID = (
@@ -1058,7 +1212,9 @@ MESSAGE_MAPPINGS_READ_FAIL = "WARNING: Failed to read CAN mappings: {path}"
 MESSAGE_ERR_BINDINGS_SUBCOMMAND = (
     "ERROR: bindings <show|controller|binding|axis|load|save|validate>"
 )
-MESSAGE_ERR_BINDINGS_SHOW = "ERROR: bindings show [controllers|bindings|axes] [--json] [--pretty]"
+MESSAGE_ERR_BINDINGS_SHOW = (
+    "ERROR: bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]"
+)
 MESSAGE_ERR_BINDINGS_CONTROLLER_ADD = "ERROR: bindings controller add <controller> <type> <port>"
 MESSAGE_ERR_BINDINGS_CONTROLLER_SET = "ERROR: bindings controller set <controller> <field> <value>"
 MESSAGE_ERR_BINDINGS_CONTROLLER_RENAME = "ERROR: bindings controller rename <old> <new>"
@@ -1088,6 +1244,7 @@ MESSAGE_ERR_BINDINGS_WRITE = "ERROR: Failed to write bindings: {path}: {error}"
 MESSAGE_ERR_BINDINGS_VALIDATE = "ERROR: bindings validation failed: {message}"
 MESSAGE_INFO_BINDINGS_LOADED = "Loaded bindings: {path}"
 MESSAGE_INFO_BINDINGS_SAVED = "Wrote bindings to {path}."
+MESSAGE_INFO_BINDINGS_MIRRORED = "Mirrored bindings to {path}."
 MESSAGE_BINDINGS_HEADER = "Local bindings config:"
 MESSAGE_BINDINGS_CONTROLLERS_HEADER = "  controllers:"
 MESSAGE_BINDINGS_BINDINGS_HEADER = "  bindings:"
@@ -1127,9 +1284,70 @@ MESSAGE_TESTS_TEMPLATE_ENTRY = "  {name}"
 MESSAGE_TESTS_CLEARED = "Tests cleared."
 MESSAGE_TIP_UNSAVED = "You have unsaved changes. Use `save profiles ...` or `save sources` to save."
 MESSAGE_ERR_TESTS_EDIT_MODE = "ERROR: tests templates/clear not allowed in test edit mode. Use `exit` or `end` first."
-MESSAGE_SAVE_ALL_PROFILES_MISSING = "ERROR: No profiles destination set. Fix: save profiles data/bringup_system.json"
+MESSAGE_SAVE_ALL_PROFILES_MISSING = "ERROR: No profiles destination set. Fix: save profiles src/main/deploy/bringup_system.json"
 MESSAGE_SAVE_PROFILES_PATH_REQUIRED = "ERROR: No profiles path set. Fix: save profiles <path>."
 MESSAGE_SAVE_PROFILES_CONFIRM = "Save profiles to {path}?"
+MESSAGE_INFO_PROFILES_MIRRORED = "Mirrored profiles to {path}."
+MESSAGE_PUSH_DIRTY_BLOCKED = "ERROR: push config refused: local config is dirty. Save to disk first."
+MESSAGE_REVERT_START = "Reverting local unsaved state from disk sources."
+MESSAGE_REVERT_DONE = "Revert complete."
+MESSAGE_REVERT_NOTHING = "Nothing to revert."
+MESSAGE_PUSH_STAGE = "  {stage}: {status}"
+MESSAGE_PUSH_STAGE_DETAIL = "    detail: {detail}"
+MESSAGE_PUSH_STAGE_ACTIVE = "  active robot profile: {profile}"
+MESSAGE_PUSH_STAGE_DATA_VERSION = "  local config version: {version}"
+MESSAGE_TIU_USAGE = "ERROR: tiu on|off"
+MESSAGE_TIU_ON = "TIU mode enabled."
+MESSAGE_TIU_OFF = "TIU mode disabled."
+MESSAGE_TIU_HEADER_FMT = "{prompt} {rule} {clock}"
+MESSAGE_TIU_SECTIONS = "[x] Host  [x] Save/Push  [x] Robot  [x] Runtime  [x] Devices  [x] Faults  [x] Events  [x] CLI"
+MESSAGE_TIU_HOST = "HOST"
+MESSAGE_TIU_SAVE_PUSH = "SAVE / PUSH"
+MESSAGE_TIU_ROBOT = "ROBOT"
+MESSAGE_TIU_RUNTIME = "RUNTIME"
+MESSAGE_TIU_DEVICES = "DEVICES"
+MESSAGE_TIU_FAULTS = "DEVICE FAULTS"
+MESSAGE_TIU_EVENTS = "RECENT EVENTS"
+MESSAGE_TIU_CLI = "CLI OUTPUT"
+MESSAGE_TIU_NONE = "  (none)"
+MESSAGE_TIU_UNAVAILABLE = "  unavailable"
+MESSAGE_TIU_MATCH_FMT = "  Match: local=saved {saved}   local=pushed {pushed}   robot=pushed {robot}"
+MESSAGE_TIU_SOURCES_FMT = "  Sources: registry={registry} bindings={bindings} mappings={mappings} tests={tests}"
+MESSAGE_TIU_HOST_STATE_FMT = "  Profile: {profile}   Dirty: {dirty}   Recovery: {recovery}"
+MESSAGE_TIU_SAVE_MODIFIED_FMT = "  Last modified: {value}"
+MESSAGE_TIU_SAVE_SAVED_FMT = "  Last save:     {value}"
+MESSAGE_TIU_SAVE_PUSHED_FMT = "  Last push:     {value}"
+MESSAGE_TIU_ROBOT_STATE_FMT = "  Connected: {connected}   Enabled: {enabled}   EStopped: {estopped}   Mode: {mode}"
+MESSAGE_TIU_ROBOT_PROFILE_FMT = "  Active profile: {profile}"
+MESSAGE_TIU_RUNTIME_FMT = "  Active group members: {members}   Active test set: {test_set}   Runtime components: {components}"
+MESSAGE_TIU_DEVICES_FMT = "  Configured: {configured}   Instantiated: {instantiated}   Unavailable: {unavailable}   Visible: {visible}"
+MESSAGE_TIU_FAULTS_FMT = "  Faulted devices: {faulted}"
+MESSAGE_TIU_FAULT_ROW_FMT = "  {label}  faults={faults} warnings={warnings}"
+MESSAGE_TIU_EVENT_ROW_FMT = "  {line}"
+MESSAGE_TIU_OUTPUT_ROW_FMT = "  {line}"
+MESSAGE_TIU_SECTION_RULE = "-"
+MESSAGE_TIU_CLEAR_SCREEN = "\x1b[2J\x1b[H"
+MESSAGE_TIU_CURSOR_FMT = "\x1b[{row};1H"
+MESSAGE_TIU_CLEAR_LINE = "\x1b[2K"
+MESSAGE_TIU_CLEAR_TO_END = "\x1b[J"
+MESSAGE_TIU_UNSET = "(none)"
+MESSAGE_TIU_BOOL_YES = "YES"
+MESSAGE_TIU_BOOL_NO = "NO"
+MESSAGE_TIU_STATUS_CONNECTED = "YES"
+MESSAGE_TIU_STATUS_DISCONNECTED = "NO"
+MESSAGE_TIU_STATUS_DIRTY = "YES"
+MESSAGE_TIU_STATUS_CLEAN = "NO"
+MESSAGE_TIU_EVENT_ENABLED = "INFO: TIU mode enabled."
+MESSAGE_TIU_EVENT_DISABLED = "INFO: TIU mode disabled."
+TIU_OUTPUT_MAX_LINES = 400
+TIU_EVENT_MAX_LINES = 50
+TIU_DEVICE_DETAIL_MAX = 6
+TIU_FAULT_DETAIL_MAX = 4
+TIU_LINE_MAX_FALLBACK = 120
+TIU_SECTION_MARGIN = 4
+TIU_RUNTIME_CACHE_SEC = 0.75
+TIU_RENDER_RESERVED_LINES = 6
+TIU_PROMPT_ROW_OFFSET = 2
 MESSAGE_SAVE_ALL_BINDINGS_MISSING = (
     "ERROR: No bindings destination set. Fix: bindings save src/main/deploy/bringup_bindings.json"
 )
@@ -1212,7 +1430,7 @@ MESSAGE_DEBUG_GRAMMAR_DOT_REQUIRED = "ERROR: --dot requires a path."
 MESSAGE_DEBUG_GRAMMAR_DOT_SAVED = "Wrote grammar DOT to {path}."
 MESSAGE_DEBUG_GRAMMAR_DOT_FAIL = "ERROR: Failed to write grammar DOT: {error}"
 MESSAGE_RESET_ZERO_CONFIG_WARNING = (
-    "WARNING: This operation deletes bringup_system.json in canonical and deploy paths."
+    "WARNING: This operation deletes bringup_system.json in the active deploy path."
 )
 MESSAGE_RESET_ZERO_CONFIG_TARGET = "  - {path}"
 MESSAGE_RESET_ZERO_CONFIG_CONFIRM = "Proceed with zero-config reset?"
@@ -1334,12 +1552,17 @@ TEXT_TESTS_HEADER = "=== Bringup Tests ==="
 TEXT_TESTS_FOOTER = "====================="
 TEXT_TESTS_ACTIVE_SET = "Active set: {active} (default: {default})"
 TEXT_TESTS_COUNTS = "Total: {total} Enabled: {enabled}"
-TEXT_TESTS_TABLE_HEADER = "Idx Sel En Type       Name                         HoldBtn                Motors"
-TEXT_TESTS_ROW_FMT = "{index:3d}  {sel}  {en}  {type:<9} {name:<28} {hold:<20} {motors}"
+TEXT_TESTS_TABLE_HEADER = "Idx Sel En Type       Name                         HoldBtn                Devices"
+TEXT_TESTS_ROW_FMT = "{index:3d}  {sel}  {en}  {type:<9} {name:<28} {hold:<20} {devices}"
 TEXT_TESTS_NO_TESTS = "No tests loaded."
 TEXT_SOURCES_HEADER = "=== Sources ==="
 TEXT_SOURCES_FOOTER = "==============="
 TEXT_SOURCES_ENTRY = "  {name}: {path} (exists={exists})"
+TEXT_PROVENANCE_HEADER = "Provenance:"
+TEXT_PROVENANCE_MODIFIED = "  Last modified: {value}"
+TEXT_PROVENANCE_SAVED = "  Last save:     {value}"
+TEXT_PROVENANCE_PUSHED = "  Last push:     {value}"
+TEXT_PROVENANCE_MATCH = "  Match: local=saved {saved}   local=pushed {pushed}   robot=pushed {robot}"
 TEXT_STATUS_ON = "on"
 TEXT_STATUS_OFF = "off"
 TEXT_STATUS_NONE = "(none)"
@@ -1348,10 +1571,45 @@ TEXT_DISABLED = "disabled"
 TEXT_PAREN_OPEN = " ("
 TEXT_PAREN_CLOSE = ")"
 TEXT_BINDINGS_GROUP_NONE = "    (none)"
+TEXT_BIND_LIST_HEADER = "Binding diagnostics:"
+TEXT_BIND_LIST_NONE = "  (no bindings)"
+TEXT_BIND_LIST_ENTRY = "  {index}. {input} {kind}{value} status={status} reason={reason}"
+TEXT_BIND_EXPLAIN_HEADER = "Binding {index}"
+TEXT_BIND_EXPLAIN_GROUP = "  group: {group}"
+TEXT_BIND_EXPLAIN_INPUT = "  input: {input}"
+TEXT_BIND_EXPLAIN_KIND = "  kind: {kind}"
+TEXT_BIND_EXPLAIN_VALUE = "  value: {value}"
+TEXT_BIND_EXPLAIN_CONTROLLER = "  controller: {controller} found={found}"
+TEXT_BIND_EXPLAIN_SIGNAL = "  signal: {signal} found={found}"
+TEXT_BIND_EXPLAIN_GROUP_ENABLED = "  group enabled: {enabled}"
+TEXT_BIND_EXPLAIN_MEMBERS = "  enabled members: {enabled}/{total}"
+TEXT_BIND_EXPLAIN_STATUS = "  status: {status}"
+TEXT_BIND_EXPLAIN_REASON = "  reason: {reason}"
+TEXT_BIND_EXPLAIN_LAST_INPUT = "  last input value: unavailable"
+TEXT_BIND_EXPLAIN_LAST_OUTPUT = "  last output value: unavailable"
+TEXT_BIND_TEST_PASS = "Binding test result: PASS"
+TEXT_BIND_TEST_FAIL = "Binding test result: FAIL"
+TEXT_BIND_VALUE_PREFIX = " "
+TEXT_BIND_VALUE_NONE = "(none)"
+BIND_DIAG_STATUS_ACTIVE = "ACTIVE"
+BIND_DIAG_STATUS_BLOCKED = "BLOCKED"
+BIND_DIAG_STATUS_UNRESOLVED = "UNRESOLVED"
+BIND_DIAG_STATUS_DISABLED = "DISABLED"
+BIND_BOOL_YES = "yes"
+BIND_BOOL_NO = "no"
+ERR_BIND_EXPLAIN_USAGE = "ERROR: bind explain <binding>"
+ERR_BIND_TEST_USAGE = "ERROR: bind test <binding>"
+ERR_BIND_NOT_FOUND = "ERROR: binding not found."
+ERR_BIND_CONTROLLER_PREFIX = "binding input must include controller.signal"
+ERR_BIND_CONTROLLER_MISSING = "controller not found"
+ERR_BIND_SIGNAL_MISSING = "signal not found"
+ERR_BIND_GROUP_DISABLED = "group disabled"
+ERR_BIND_NO_ENABLED_MEMBERS = "group has no enabled members"
+ERR_BIND_READY_LOCAL_ONLY = "binding resolves in local config; runtime values unavailable"
 TEXT_VERSION_PREFIX = "Robot version: "
 TEXT_BUILD_HEADER = "Build:"
 TEXT_TESTS_HOLD_DEFAULT = "-"
-TEXT_TESTS_MOTORS_EMPTY = "-"
+TEXT_TESTS_DEVICES_EMPTY = "-"
 TEXT_TESTS_TYPE_UNKNOWN = "?"
 TEXT_TESTS_NAME_UNNAMED = "(unnamed)"
 TEXT_TESTS_SELECTED_MARK = "*"
@@ -1382,6 +1640,7 @@ SOURCE_NAME_CONFIG = "config"
 SOURCE_NAME_TESTS = "tests"
 SOURCE_NAME_BINDINGS = "bindings"
 SOURCE_NAME_CAN_MAPPINGS = "canMappings"
+TOPOLOGY_SOURCE_LOCAL = "local"
 AUDIT_ACTION_SAVE = "save"
 AUDIT_ACTION_RECOVER = "recover"
 AUDIT_ACTION_REPAIR = "repair"
@@ -1465,11 +1724,17 @@ HELP_VALIDATE_FILE_TEXT = (
 HELP_TOPIC_QUICK = "quick"
 HELP_SHOW_TEXT = (
     "show <status|groups|group <group>|devices|device <device>|device-group <device>|"
-    "device-usage <device>|commands|help|bindings|selected-device|safety-latch|runtime-state|config|config local-raw|config dirty|"
+    "device-usage <device>|signals|signal <device>|commands|help|bindings|active|instantiated|faults|selected-device|safety-latch|runtime-state|config|config local-raw|config dirty|"
     "sources|profiles|profile|tests|test <test>|message-level|workspace|controllers> "
     "[--json] [--pretty] [robot|local|both]\n"
     "  Defaults: robot if connected, otherwise local.\n"
     "  Note: some targets are local-only (e.g., workspace)."
+)
+HELP_TIU_TEXT = (
+    "tiu on\n"
+    "  Enable the terminal information utility dashboard while preserving normal CLI commands.\n"
+    "tiu off\n"
+    "  Return to the normal CLI presentation."
 )
 HELP_DIAGNOSE_TEXT = (
     "diagnose motor <label>\n"
@@ -1513,7 +1778,6 @@ FIELD_DEVICE_INTERFACE = KEY_INTERFACE
 FIELD_LABEL = "label"
 FIELD_TYPE = "type"
 FIELD_MODEL = "model"
-FIELD_DIO = "dio"
 FIELD_INVERT = "invert"
 FIELD_PWM = "pwm"
 FIELD_ANALOG = "analog"
@@ -1537,6 +1801,7 @@ DEVICE_INTERFACE_ALLOWED = {
     INTERFACE_PWM,
     INTERFACE_ANALOG,
     INTERFACE_INTERNAL,
+    INTERFACE_USB,
 }
 
 DEVICE_FIELDS_PROFILE = {
@@ -1546,7 +1811,6 @@ DEVICE_FIELDS_PROFILE = {
     FIELD_ID,
     FIELD_MODEL,
     FIELD_TYPE,
-    FIELD_DIO,
     FIELD_INVERT,
     FIELD_PWM,
     FIELD_ANALOG,
@@ -1566,7 +1830,6 @@ DEVICE_FIELD_TYPES = {
     FIELD_ID: DEVICE_FIELD_INT,
     FIELD_MODEL: DEVICE_FIELD_STR,
     FIELD_TYPE: DEVICE_FIELD_STR,
-    FIELD_DIO: DEVICE_FIELD_INT,
     FIELD_INVERT: DEVICE_FIELD_BOOL,
     FIELD_PWM: DEVICE_FIELD_INT,
     FIELD_ANALOG: DEVICE_FIELD_INT,
@@ -1583,10 +1846,11 @@ BOOL_TRUE_VALUES = {"true", "on", "1", "yes"}
 BOOL_FALSE_VALUES = {"false", "off", "0", "no"}
 
 DEVICE_REQUIRED_CAN = (FIELD_DEVICE_INTERFACE, FIELD_MANUFACTURER, FIELD_DEVICE_TYPE, FIELD_ID)
-DEVICE_REQUIRED_DIO = (FIELD_DEVICE_INTERFACE, FIELD_DIO, FIELD_INVERT)
+DEVICE_REQUIRED_DIO = (FIELD_DEVICE_INTERFACE, FIELD_ID, FIELD_INVERT)
 DEVICE_REQUIRED_PWM = (FIELD_DEVICE_INTERFACE, FIELD_PWM)
 DEVICE_REQUIRED_ANALOG = (FIELD_DEVICE_INTERFACE, FIELD_ANALOG)
 DEVICE_REQUIRED_INTERNAL = (FIELD_DEVICE_INTERFACE,)
+DEVICE_REQUIRED_USB = (FIELD_DEVICE_INTERFACE, FIELD_ID)
 
 TEST_TYPE_JOYSTICK = "joystick"
 TEST_TYPE_BUTTON = "button"
@@ -1856,6 +2120,14 @@ class BridgeCli:
         self._local_root_payload: Optional[Dict[str, object]] = None
         self._local_root_path: Optional[str] = None
         self._local_root_hash: Optional[str] = None
+        self._last_modified_at: Optional[float] = None
+        self._last_saved_at: Optional[float] = None
+        self._last_saved_path: Optional[str] = None
+        self._last_saved_hash: Optional[str] = None
+        self._last_pushed_at: Optional[float] = None
+        self._last_pushed_path: Optional[str] = None
+        self._last_pushed_hash: Optional[str] = None
+        self._last_pushed_profile: Optional[str] = None
         self._show_label_seq: Dict[int, str] = {}
         self._show_pretty_json_seq: Dict[int, bool] = {}
         self._last_show_pretty: bool = False
@@ -1879,6 +2151,17 @@ class BridgeCli:
         self._warned_prompt_toolkit: bool = False
         self._warned_history: bool = False
         self._prompt_session = self._build_prompt_session()
+        self._tiu_enabled: bool = False
+        self._tiu_recent_events: List[str] = []
+        self._tiu_cli_output: List[str] = []
+        self._tiu_runtime_cache: Optional[Dict[str, object]] = None
+        self._tiu_runtime_cache_at: float = 0.0
+        self._tiu_app: Optional[object] = None
+        self._tiu_dashboard_view: Optional[object] = None
+        self._tiu_output_view: Optional[object] = None
+        self._tiu_input_view: Optional[object] = None
+        self._tiu_exit_code: Optional[int] = None
+        self._tiu_output_follow_tail: bool = True
         self._can_mappings: Optional[Dict[str, Dict[str, str]]] = None
         self._can_mappings_path: Optional[Path] = None
         self._can_mappings_dirty: bool = False
@@ -1928,24 +2211,30 @@ class BridgeCli:
         try:
             while True:
                 try:
-                    prompt = self._prompt()
-                    if self._use_prompt_toolkit and self._prompt_session is not None:
-                        if self._pending_prompt_text is not None:
-                            line = self._prompt_session.prompt(prompt, default=self._pending_prompt_text)
-                            self._pending_prompt_text = None
-                        else:
-                            line = self._prompt_session.prompt(prompt)
+                    if self._tiu_enabled:
+                        tiu_exit_code = self._run_tiu_application()
+                        if tiu_exit_code is not None:
+                            return tiu_exit_code
+                        continue
                     else:
-                        if self._pending_prompt_text is not None:
-                            if not self._warned_prompt_toolkit:
-                                print(MESSAGE_WARN_PROMPT_TOOLKIT)
-                                self._warned_prompt_toolkit = True
-                            sys.stdout.write(self._prompt() + self._pending_prompt_text)
-                            sys.stdout.flush()
-                            self._pending_prompt_text = None
-                            line = input(MESSAGE_EMPTY_PROMPT)
+                        prompt = self._prompt()
+                        if self._use_prompt_toolkit and self._prompt_session is not None:
+                            if self._pending_prompt_text is not None:
+                                line = self._prompt_session.prompt(prompt, default=self._pending_prompt_text)
+                                self._pending_prompt_text = None
+                            else:
+                                line = self._prompt_session.prompt(prompt)
                         else:
-                            line = input(prompt)
+                            if self._pending_prompt_text is not None:
+                                if not self._warned_prompt_toolkit:
+                                    print(MESSAGE_WARN_PROMPT_TOOLKIT)
+                                    self._warned_prompt_toolkit = True
+                                sys.stdout.write(self._prompt() + self._pending_prompt_text)
+                                sys.stdout.flush()
+                                self._pending_prompt_text = None
+                                line = input(MESSAGE_EMPTY_PROMPT)
+                            else:
+                                line = input(prompt)
                 except EOFError:
                     print()
                     result = self._execute_line("exit")
@@ -1959,8 +2248,7 @@ class BridgeCli:
                 line = line.strip()
                 if not line:
                     continue
-                result = self._execute_line(line)
-                self._emit_status(result)
+                result = self._execute_line_with_tiu_capture(line)
                 if result.exit_requested:
                     return result.exit_code()
                 if not result.ok():
@@ -2129,20 +2417,22 @@ class BridgeCli:
         if mode.name == "exec":
             suffix = self._profile_prompt_suffix(use_active=True)
             if suffix:
-                return PROMPT_EXEC_WITH_PROFILE_FMT.format(suffix=suffix)
-            return PROMPT_EXEC
+                prompt = PROMPT_EXEC_WITH_PROFILE_FMT.format(suffix=suffix)
+            else:
+                prompt = PROMPT_EXEC
+            return self._decorate_prompt_dirty(self._decorate_prompt_tiu(prompt))
         if mode.name == MODE_CONFIG:
             suffix = self._profile_prompt_suffix()
-            return f"{PROMPT_CONFIG_PREFIX}{suffix}{PROMPT_SUFFIX}"
+            return self._decorate_prompt_dirty(self._decorate_prompt_tiu(f"{PROMPT_CONFIG_PREFIX}{suffix}{PROMPT_SUFFIX}"))
         if mode.name == "group":
             suffix = self._profile_prompt_suffix()
-            return f"{PROMPT_CONFIG_PREFIX}{suffix}{PROMPT_GROUP_SEGMENT}{mode.group}{PROMPT_SUFFIX}"
+            return self._decorate_prompt_dirty(self._decorate_prompt_tiu(f"{PROMPT_CONFIG_PREFIX}{suffix}{PROMPT_GROUP_SEGMENT}{mode.group}{PROMPT_SUFFIX}"))
         if mode.name == "device":
-            return f"{PROMPT_DEVICE_PREFIX}{mode.device}{PROMPT_SUFFIX}"
+            return self._decorate_prompt_dirty(self._decorate_prompt_tiu(f"{PROMPT_DEVICE_PREFIX}{mode.device}{PROMPT_SUFFIX}"))
         if mode.name == MODE_TEST:
             label = mode.test or TEST_LABEL_UNKNOWN
-            return f"{PROMPT_TEST_PREFIX}{label}{PROMPT_SUFFIX}"
-        return PROMPT_EXEC
+            return self._decorate_prompt_dirty(self._decorate_prompt_tiu(f"{PROMPT_TEST_PREFIX}{label}{PROMPT_SUFFIX}"))
+        return self._decorate_prompt_dirty(self._decorate_prompt_tiu(PROMPT_EXEC))
 
     def _profile_prompt_suffix(self, use_active: bool = False) -> str:
         """
@@ -2156,6 +2446,155 @@ class BridgeCli:
             return f"{PROMPT_PROFILE_PREFIX}{profile}"
         return ""
 
+    def _has_dirty_state(self) -> bool:
+        """
+        NAME
+            _has_dirty_state - Return whether any local section is dirty.
+        """
+        return any(bool(flag) for flag in self._current_dirty_flags().values())
+
+    def _decorate_prompt_dirty(self, prompt: str) -> str:
+        """
+        NAME
+            _decorate_prompt_dirty - Add a dirty marker to the prompt label.
+        """
+        if not self._has_dirty_state():
+            return prompt
+        return prompt.replace(PROMPT_LABEL_BRIDGE, PROMPT_LABEL_BRIDGE + PROMPT_DIRTY_MARK, COUNT_ONE)
+
+    def _decorate_prompt_tiu(self, prompt: str) -> str:
+        """
+        NAME
+            _decorate_prompt_tiu - Add TIU mode marker to the prompt label.
+        """
+        if not self._tiu_enabled:
+            return prompt
+        return prompt.replace(PROMPT_LABEL_BRIDGE, PROMPT_LABEL_BRIDGE + "(tiu)", COUNT_ONE)
+
+    def _record_last_modified(self) -> None:
+        """
+        NAME
+            _record_last_modified - Update in-memory modification timestamp.
+        """
+        self._last_modified_at = time.time()
+
+    def _mark_profiles_dirty(self) -> None:
+        """
+        NAME
+            _mark_profiles_dirty - Mark local profiles state dirty.
+        """
+        self._profiles_dirty = True
+        self._record_last_modified()
+
+    def _mark_bindings_dirty(self) -> None:
+        """
+        NAME
+            _mark_bindings_dirty - Mark local bindings state dirty.
+        """
+        self._bindings_dirty = True
+        self._record_last_modified()
+
+    def _mark_mappings_dirty(self) -> None:
+        """
+        NAME
+            _mark_mappings_dirty - Mark local mappings state dirty.
+        """
+        self._can_mappings_dirty = True
+        self._record_last_modified()
+
+    def _current_workspace_hash(self) -> str:
+        """
+        NAME
+            _current_workspace_hash - Compute the current local workspace hash when available.
+        """
+        if not isinstance(self._local_root_payload, dict) or not isinstance(self._local_config, dict):
+            return EMPTY_STRING
+        payload = dict(self._local_root_payload)
+        payload[KEY_BRIDGE_CONFIG] = self._ordered_bridge_config(self._local_config)
+        payload[KEY_SCHEMA_VERSION] = PROFILE_SCHEMA_VERSION
+        if KEY_DATA_VERSION not in payload:
+            payload[KEY_DATA_VERSION] = timestamp_version()
+        try:
+            return compute_profiles_hash(payload)
+        except Exception:
+            return EMPTY_STRING
+
+    def _match_label(self, current_hash: str, reference_hash: Optional[str]) -> str:
+        """
+        NAME
+            _match_label - Format a YES/NO/UNKNOWN comparison label for hashes.
+        """
+        if not current_hash or not reference_hash:
+            return MATCH_STATE_UNKNOWN
+        return MATCH_STATE_YES if current_hash == reference_hash else MATCH_STATE_NO
+
+    def _format_provenance_value(
+        self,
+        timestamp: Optional[float],
+        path: Optional[str] = None,
+        hash_value: Optional[str] = None,
+        profile_name: Optional[str] = None,
+    ) -> str:
+        """
+        NAME
+            _format_provenance_value - Format one provenance line for text output.
+        """
+        if timestamp is None:
+            return STRING_NONE
+        parts = [time.strftime("%H:%M:%S", time.localtime(timestamp))]
+        if path:
+            parts.append(path)
+        if profile_name:
+            parts.append(f"profile={profile_name}")
+        if hash_value:
+            parts.append(f"hash={hash_value[:8]}")
+        return SEP_DOUBLE_SPACE.join(parts)
+
+    def _record_last_save(self, path: Path) -> None:
+        """
+        NAME
+            _record_last_save - Record successful local save provenance.
+        """
+        self._last_saved_at = time.time()
+        self._last_saved_path = str(path)
+        self._last_saved_hash = self._hash_file(path)
+
+    def _record_last_push(self, path: str, hash_value: str, profile_name: str) -> None:
+        """
+        NAME
+            _record_last_push - Record successful push provenance.
+        """
+        self._last_pushed_at = time.time()
+        self._last_pushed_path = path
+        self._last_pushed_hash = hash_value
+        self._last_pushed_profile = profile_name
+
+    def _build_provenance_payload(self) -> Dict[str, object]:
+        """
+        NAME
+            _build_provenance_payload - Build provenance summary for workspace/status surfaces.
+        """
+        current_hash = self._current_workspace_hash()
+        return {
+            KEY_LAST_MODIFIED_AT: self._last_modified_at,
+            KEY_LAST_SAVED: {
+                KEY_AT: self._last_saved_at,
+                KEY_SOURCE_PATH: self._last_saved_path or EMPTY_STRING,
+                KEY_HASH: self._last_saved_hash or EMPTY_STRING,
+            },
+            KEY_LAST_PUSHED: {
+                KEY_AT: self._last_pushed_at,
+                KEY_SOURCE_PATH: self._last_pushed_path or EMPTY_STRING,
+                KEY_HASH: self._last_pushed_hash or EMPTY_STRING,
+                KEY_PROFILE_NAME: self._last_pushed_profile or EMPTY_STRING,
+            },
+            KEY_MATCH: {
+                KEY_LOCAL_VS_SAVED: self._match_label(current_hash, self._last_saved_hash),
+                KEY_LOCAL_VS_PUSHED: self._match_label(current_hash, self._last_pushed_hash),
+                KEY_ROBOT_VS_PUSHED: MATCH_STATE_YES if self._last_pushed_hash else MATCH_STATE_UNKNOWN,
+            },
+        }
+
     def _auto_merge_default_profiles(self) -> None:
         """
         NAME
@@ -2166,13 +2605,7 @@ class BridgeCli:
         path = profiles_canonical_path()
         if not path.exists():
             return
-        plan = import_config(str(path), self._conflict_policy, self._active_profile_name())
-        if not plan.ok:
-            self._warn(MESSAGE_AUTO_MERGE_FAIL.format(path=path))
-            return
-        result = self._apply_config_plan(plan, prompt_on_replace=False)
-        if result.ok():
-            print(MESSAGE_AUTO_MERGE_OK.format(path=path))
+        self._load_profiles_from_path(path, announce=True)
 
 
     def _auto_load_default_sources(self) -> None:
@@ -2186,6 +2619,62 @@ class BridgeCli:
         mappings_path = can_mappings_path()
         if mappings_path.exists():
             self._load_can_mappings_from_path(mappings_path)
+
+    def _load_profiles_from_path(self, path: Path, announce: bool = True) -> StatusResult:
+        """
+        NAME
+            _load_profiles_from_path - Load profiles JSON with salvage-first recovery.
+        """
+
+        payload: object = None
+        read_failed = False
+        if path.exists():
+            try:
+                payload = read_json(path)
+            except Exception:
+                read_failed = True
+                self._warn(MESSAGE_ERR_PROFILES_PUSH_READ.format(path=path), essential=True)
+        sanitized, warnings, changed = self._store.sanitize_profiles_payload(payload)
+        self._install_loaded_profiles_payload(path, sanitized)
+        self._recovery_mode = bool(read_failed or changed)
+        self._profiles_dirty = bool(changed)
+        self._groups_dirty = False
+        if changed:
+            self._local_root_hash = None
+        for warning in warnings:
+            self._warnings.append(warning)
+            self._warn(f"WARNING: {warning}", essential=True)
+        if announce:
+            print(MESSAGE_AUTO_MERGE_OK.format(path=path))
+        return StatusResult(
+            code=SS__CONFIG__IMPORTED if not changed and not read_failed else SS__CONFIG__INVALID
+        )
+
+    def _install_loaded_profiles_payload(
+        self, path: Path, payload: Dict[str, object]
+    ) -> None:
+        """
+        NAME
+            _install_loaded_profiles_payload - Install sanitized profiles payload into local CLI state.
+        """
+
+        self._local_root_payload = payload
+        self._local_root_path = path
+        self._local_root_hash = self._profiles_hash(payload)
+        self._local_loaded_at = time.time()
+        self._local_devices_locked = True
+        bridge = payload.get(KEY_BRIDGE_CONFIG)
+        self._local_config = dict(bridge) if isinstance(bridge, dict) else None
+        self._local_config_path = path
+        self._tests_profile = None
+        self._tests_model = None
+        self._tests_active_set = DEFAULT_TEST_SET
+        self._tests_device_catalog = {}
+        self._tests_duplicate_labels = set()
+        self._sync_group_profile()
+        if self._groups_profile:
+            self._refresh_tests_profile(self._groups_profile)
+        self._sync_store_from_local()
 
     def _profiles_hash(self, payload: Optional[Dict[str, object]]) -> Optional[str]:
         """
@@ -2256,7 +2745,7 @@ class BridgeCli:
             default_name = get_default_profile().strip() or CMD_PROFILE
             profiles[default_name] = {KEY_PROFILE_DEVICES: []}
             payload[KEY_DEFAULT_PROFILE] = default_name
-            self._profiles_dirty = True
+            self._mark_profiles_dirty()
         default_profile = payload.get(KEY_DEFAULT_PROFILE)
         if not isinstance(default_profile, str) or default_profile not in profiles:
             payload[KEY_DEFAULT_PROFILE] = next(iter(profiles.keys()))
@@ -2473,11 +2962,15 @@ class BridgeCli:
                 KEY_DEFAULT_PROFILE: EMPTY_STRING,
                 KEY_PROFILES: {},
                 KEY_DEVICES: [],
-                KEY_DIAGRAM: {KEY_DIAGRAM_PROFILES: {}},
+                KEY_TOPOLOGY: {
+                    KEY_TOPOLOGY_VERSION: COUNT_ONE,
+                    KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                    KEY_TOPOLOGY_PROFILES: {},
+                },
             }
             self._local_root_hash = None
             self._local_devices_locked = True
-            self._profiles_dirty = True
+            self._mark_profiles_dirty()
         payload = self._local_root_payload
         if not isinstance(payload, dict):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
@@ -2494,10 +2987,14 @@ class BridgeCli:
         elif not isinstance(devices, list):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        diagram = payload.get(KEY_DIAGRAM)
-        if diagram is None:
-            payload[KEY_DIAGRAM] = {KEY_DIAGRAM_PROFILES: {}}
-        elif not isinstance(diagram, dict):
+        topology_root = payload.get(KEY_TOPOLOGY)
+        if topology_root is None:
+            payload[KEY_TOPOLOGY] = {
+                KEY_TOPOLOGY_VERSION: COUNT_ONE,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {},
+            }
+        elif not isinstance(topology_root, dict):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         return StatusResult(code=SS__NORMAL)
@@ -2537,14 +3034,28 @@ class BridgeCli:
         default_profile = payload.get(KEY_DEFAULT_PROFILE)
         if not isinstance(default_profile, str) or not default_profile.strip():
             payload[KEY_DEFAULT_PROFILE] = key
-        diagram = payload.get(KEY_DIAGRAM)
-        if isinstance(diagram, dict):
-            diag_profiles = diagram.get(KEY_DIAGRAM_PROFILES)
-            if not isinstance(diag_profiles, dict):
-                diag_profiles = {}
-                diagram[KEY_DIAGRAM_PROFILES] = diag_profiles
-            diag_profiles.setdefault(key, {})
-        self._profiles_dirty = True
+        topology_root = payload.get(KEY_TOPOLOGY)
+        if not isinstance(topology_root, dict):
+            topology_root = {
+                KEY_TOPOLOGY_VERSION: COUNT_ONE,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {},
+            }
+            payload[KEY_TOPOLOGY] = topology_root
+        topology_profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
+        if not isinstance(topology_profiles, dict):
+            topology_profiles = {}
+            topology_root[KEY_TOPOLOGY_PROFILES] = topology_profiles
+        topology_profiles.setdefault(
+            key,
+            {
+                KEY_TOPOLOGY_VERSION: COUNT_ONE,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_NODES: [],
+                KEY_TOPOLOGY_EDGES: [],
+            },
+        )
+        self._mark_profiles_dirty()
         self._local_devices_locked = True
         self._groups_profile = key
         self._local_profile_entry(key, create=True)
@@ -2579,11 +3090,11 @@ class BridgeCli:
             by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
             if isinstance(by_profile, dict):
                 by_profile.pop(key, None)
-        diagram = payload.get(KEY_DIAGRAM)
-        if isinstance(diagram, dict):
-            diag_profiles = diagram.get(KEY_DIAGRAM_PROFILES)
-            if isinstance(diag_profiles, dict):
-                diag_profiles.pop(key, None)
+        topology_root = payload.get(KEY_TOPOLOGY)
+        if isinstance(topology_root, dict):
+            topology_profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
+            if isinstance(topology_profiles, dict):
+                topology_profiles.pop(key, None)
         default_profile = payload.get(KEY_DEFAULT_PROFILE)
         if default_profile == key:
             payload.pop(KEY_DEFAULT_PROFILE, None)
@@ -2591,7 +3102,7 @@ class BridgeCli:
                 payload[KEY_DEFAULT_PROFILE] = next(iter(profiles.keys()))
         if self._groups_profile == key:
             self._groups_profile = self._default_profile_name()
-        self._profiles_dirty = True
+        self._mark_profiles_dirty()
         self._local_devices_locked = True
         self._refresh_devices_from_profiles()
         self._sync_store_from_local()
@@ -2610,7 +3121,11 @@ class BridgeCli:
             KEY_SCHEMA_VERSION: PROFILE_SCHEMA_VERSION,
             KEY_PROFILES: {},
             KEY_DEVICES: [],
-            KEY_DIAGRAM: {KEY_DIAGRAM_PROFILES: {}},
+            KEY_TOPOLOGY: {
+                KEY_TOPOLOGY_VERSION: COUNT_ONE,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {},
+            },
             KEY_DATA_VERSION: timestamp_version(),
         }
         try:
@@ -2621,7 +3136,7 @@ class BridgeCli:
         self._local_root_hash = self._profiles_hash(payload)
         self._local_loaded_at = time.time()
         self._local_devices_locked = True
-        self._profiles_dirty = True
+        self._mark_profiles_dirty()
         self._groups_dirty = False
         self._tests_dirty = False
         self._local_config = {
@@ -2660,7 +3175,7 @@ class BridgeCli:
             print(MESSAGE_ERR_PROFILE_UNKNOWN.format(name=key))
             return StatusResult(code=SS__CONFIG__INVALID)
         payload[KEY_DEFAULT_PROFILE] = key
-        self._profiles_dirty = True
+        self._mark_profiles_dirty()
         self._local_devices_locked = True
         self._sync_store_from_local()
         print(MESSAGE_PROFILE_DEFAULT_SET.format(name=key))
@@ -3307,6 +3822,797 @@ class BridgeCli:
         """
         self._output_facade.emit_status(result, STATUS_INCLUDE_RAW_DEFAULT)
 
+    def _execute_line_with_tiu_capture(self, line: str) -> StatusResult:
+        """
+        NAME
+            _execute_line_with_tiu_capture - Execute one line and capture output into TIU buffers.
+        """
+        if not self._tiu_enabled:
+            result = self._execute_line(line)
+            self._emit_status(result)
+            return result
+        result, output_text = self._execute_line_captured(line)
+        self._tiu_store_output(output_text)
+        if result.ok():
+            self._tiu_add_event(f"OK: {line}")
+        else:
+            self._tiu_add_event(f"FAIL {result.code}: {line}")
+        self._render_tiu_if_needed()
+        return result
+
+    def _execute_line_captured(self, line: str) -> Tuple[StatusResult, str]:
+        """
+        NAME
+            _execute_line_captured - Execute one line and return captured stdout text.
+        """
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            result = self._execute_line(line)
+            self._emit_status(result)
+        return result, buffer.getvalue()
+
+    def _run_tiu_application(self) -> Optional[int]:
+        """
+        NAME
+            _run_tiu_application - Run TIU as a full-screen prompt_toolkit application when available.
+        """
+        if not self._tiu_enabled:
+            return None
+        if (
+            not self._use_prompt_toolkit
+            or Application is None
+            or TextArea is None
+            or Frame is None
+            or Layout is None
+            or HSplit is None
+            or VSplit is None
+            or Window is None
+            or FormattedTextControl is None
+            or KeyBindings is None
+            or Dimension is None
+        ):
+            line = self._tiu_input_line()
+            line = line.strip()
+            if not line:
+                return None
+            result = self._execute_line_with_tiu_capture(line)
+            if result.exit_requested:
+                return result.exit_code()
+            return None
+        self._tiu_exit_code = None
+        app = self._build_tiu_application()
+        self._tiu_app = app
+        try:
+            app.run()
+        finally:
+            self._tiu_app = None
+            self._tiu_dashboard_view = None
+            self._tiu_output_view = None
+            self._tiu_input_view = None
+        return self._tiu_exit_code
+
+    def _build_tiu_application(self) -> object:
+        """
+        NAME
+            _build_tiu_application - Build the prompt_toolkit TIU full-screen application.
+        """
+        output_view = TextArea(
+            text=self._tiu_output_text(),
+            read_only=True,
+            focusable=False,
+            scrollbar=True,
+            wrap_lines=False,
+        )
+        dashboard_view = TextArea(
+            text=self._tiu_status_text(),
+            read_only=True,
+            focusable=False,
+            scrollbar=False,
+            wrap_lines=False,
+        )
+        input_view = TextArea(
+            text=self._pending_prompt_text or EMPTY_STRING,
+            multiline=False,
+            wrap_lines=False,
+            completer=self._build_completer(),
+            complete_while_typing=COMPLETION_WHILE_TYPING,
+            history=self._build_prompt_history(),
+        )
+        self._pending_prompt_text = None
+        self._tiu_dashboard_view = dashboard_view
+        self._tiu_output_view = output_view
+        self._tiu_input_view = input_view
+        input_focus_target = input_view.control
+
+        prompt_control = FormattedTextControl(text=lambda: self._prompt())
+        prompt_window = Window(content=prompt_control, width=Dimension(min=1, preferred=24))
+
+        bindings = KeyBindings()
+
+        @bindings.add("enter")
+        def _tiu_accept(event) -> None:
+            if not event.app.layout.has_focus(input_focus_target):
+                return
+            line = self._tiu_commit_input_line(input_view)
+            if not line:
+                return
+            self._tiu_store_output(f"{self._prompt()}{line}")
+            result, output_text = self._execute_line_captured(line)
+            self._tiu_store_output(output_text)
+            if result.ok():
+                self._tiu_add_event(f"OK: {line}")
+            else:
+                self._tiu_add_event(f"FAIL {result.code}: {line}")
+            self._refresh_tiu_views()
+            if result.exit_requested:
+                self._tiu_exit_code = result.exit_code()
+                event.app.exit()
+                return
+            if not self._tiu_enabled:
+                event.app.exit()
+                return
+
+        @bindings.add("escape")
+        def _tiu_focus_input(event) -> None:
+            self._tiu_output_follow_tail = True
+            event.app.layout.focus(input_focus_target)
+            self._tiu_move_output_to_end()
+
+        @bindings.add("pageup")
+        def _tiu_output_page_up(event) -> None:
+            self._tiu_output_follow_tail = False
+            self._tiu_move_output_cursor(lines=-10)
+
+        @bindings.add("pagedown")
+        def _tiu_output_page_down(event) -> None:
+            self._tiu_move_output_cursor(lines=10)
+
+        @bindings.add("home")
+        def _tiu_output_home(event) -> None:
+            self._tiu_output_follow_tail = False
+            self._tiu_output_set_scroll_line(COUNT_ZERO)
+            self._refresh_tiu_views()
+
+        @bindings.add("end")
+        def _tiu_output_end(event) -> None:
+            self._tiu_output_follow_tail = True
+            self._tiu_move_output_to_end()
+
+        @bindings.add("<scroll-up>")
+        def _tiu_mouse_scroll_up(event) -> None:
+            self._tiu_output_follow_tail = False
+            self._tiu_move_output_cursor(lines=-3)
+
+        @bindings.add("<scroll-down>")
+        def _tiu_mouse_scroll_down(event) -> None:
+            self._tiu_move_output_cursor(lines=3)
+
+        body = HSplit(
+            [
+                Frame(dashboard_view, title="TIU Status", height=Dimension(preferred=12, max=14)),
+                Frame(output_view, title="TIU Output / Scrollback"),
+                VSplit(
+                    [
+                        prompt_window,
+                        input_view,
+                    ],
+                    height=Dimension.exact(COUNT_ONE),
+                ),
+            ]
+        )
+        app = Application(
+            layout=Layout(body, focused_element=input_focus_target),
+            key_bindings=bindings,
+            full_screen=True,
+            mouse_support=True,
+        )
+        self._refresh_tiu_views()
+        return app
+
+    @staticmethod
+    def _tiu_commit_input_line(input_view: object) -> str:
+        """
+        NAME
+            _tiu_commit_input_line - Normalize, persist, and reset one TIU input line.
+        """
+        buffer = getattr(input_view, "buffer", None)
+        if buffer is None:
+            return EMPTY_STRING
+        raw_text = str(getattr(input_view, "text", EMPTY_STRING) or EMPTY_STRING)
+        line = raw_text.strip()
+        if line and hasattr(input_view, "text"):
+            input_view.text = line
+        reset_method = getattr(buffer, "reset", None)
+        if callable(reset_method):
+            reset_method(append_to_history=True)
+            BridgeCli._tiu_rebuild_buffer_history(buffer)
+        elif hasattr(input_view, "text"):
+            input_view.text = EMPTY_STRING
+        return line
+
+    @staticmethod
+    def _tiu_rebuild_buffer_history(buffer: object) -> None:
+        """
+        NAME
+            _tiu_rebuild_buffer_history - Rebuild prompt_toolkit working history after TIU commits.
+        """
+        history = getattr(buffer, "history", None)
+        if history is None or not hasattr(history, "load_history_strings"):
+            return
+        try:
+            loaded = list(history.load_history_strings())
+        except Exception:
+            return
+        working_lines = deque([EMPTY_STRING])
+        for item in loaded:
+            if isinstance(item, str):
+                working_lines.appendleft(item)
+        if not hasattr(buffer, "_working_lines"):
+            return
+        setattr(buffer, "_working_lines", working_lines)
+        if hasattr(buffer, "_Buffer__working_index"):
+            setattr(buffer, "_Buffer__working_index", len(working_lines) - COUNT_ONE)
+
+    def _build_prompt_history(self) -> Optional[object]:
+        """
+        NAME
+            _build_prompt_history - Build a prompt_toolkit file history object when available.
+        """
+        if FileHistory is None:
+            return None
+        history_path = logs_dir() / HISTORY_FILENAME
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        return FileHistory(str(history_path))
+
+    def _tiu_move_output_to_end(self) -> None:
+        """
+        NAME
+            _tiu_move_output_to_end - Move the TIU output cursor to the end of scrollback.
+        """
+        if self._tiu_output_view is None:
+            return
+        self._tiu_output_view.buffer.cursor_position = len(self._tiu_output_view.text)
+        self._tiu_output_set_scroll_line(max(self._tiu_output_line_count() - COUNT_ONE, COUNT_ZERO))
+        self._refresh_tiu_views()
+
+    def _tiu_move_output_cursor(self, lines: int) -> None:
+        """
+        NAME
+            _tiu_move_output_cursor - Move the TIU output window scroll by a line count.
+        """
+        if self._tiu_output_view is None:
+            return
+        window = getattr(self._tiu_output_view, "window", None)
+        if window is None:
+            return
+        if lines < COUNT_ZERO:
+            scroll_up = getattr(window, "_scroll_up", None)
+            if callable(scroll_up):
+                for _ in range(abs(lines)):
+                    scroll_up()
+            else:
+                line_count = self._tiu_output_line_count()
+                next_scroll = max(COUNT_ZERO, int(getattr(window, "vertical_scroll", COUNT_ZERO)) + lines)
+                resolved_scroll = min(next_scroll, max(line_count - COUNT_ONE, COUNT_ZERO))
+                self._tiu_output_set_scroll_line(resolved_scroll)
+            self._tiu_output_follow_tail = False
+            self._refresh_tiu_views()
+            return
+        scroll_down = getattr(window, "_scroll_down", None)
+        if callable(scroll_down):
+            for _ in range(lines):
+                scroll_down()
+        else:
+            line_count = self._tiu_output_line_count()
+            next_scroll = max(COUNT_ZERO, int(getattr(window, "vertical_scroll", COUNT_ZERO)) + lines)
+            resolved_scroll = min(next_scroll, max(line_count - COUNT_ONE, COUNT_ZERO))
+            self._tiu_output_set_scroll_line(resolved_scroll)
+        current_scroll = int(getattr(window, "vertical_scroll", COUNT_ZERO))
+        if current_scroll >= max(self._tiu_output_line_count() - COUNT_ONE, COUNT_ZERO):
+            self._tiu_output_follow_tail = True
+        self._refresh_tiu_views()
+
+    def _tiu_output_line_count(self) -> int:
+        """
+        NAME
+            _tiu_output_line_count - Return the current output pane logical line count.
+        """
+        text = self._tiu_output_text()
+        if not text:
+            return COUNT_ONE
+        return max(len(text.splitlines()), COUNT_ONE)
+
+    def _tiu_output_set_scroll_line(self, line_index: int, *, sync_cursor: bool = True) -> None:
+        """
+        NAME
+            _tiu_output_set_scroll_line - Sync TIU output cursor and window scroll to a logical line.
+        """
+        if self._tiu_output_view is None:
+            return
+        window = getattr(self._tiu_output_view, "window", None)
+        buffer = getattr(self._tiu_output_view, "buffer", None)
+        if window is None or buffer is None:
+            return
+        clamped_line = max(COUNT_ZERO, min(line_index, max(self._tiu_output_line_count() - COUNT_ONE, COUNT_ZERO)))
+        if sync_cursor:
+            document = getattr(buffer, "document", None)
+            if document is not None and hasattr(document, "translate_row_col_to_index"):
+                try:
+                    buffer.cursor_position = document.translate_row_col_to_index(clamped_line, COUNT_ZERO)
+                except Exception:
+                    pass
+        window.vertical_scroll = clamped_line
+
+    def _refresh_tiu_views(self) -> None:
+        """
+        NAME
+            _refresh_tiu_views - Refresh TIU prompt_toolkit widgets from current state.
+        """
+        if self._tiu_dashboard_view is not None:
+            self._tiu_dashboard_view.text = self._tiu_status_text()
+        if self._tiu_output_view is not None:
+            previous_cursor = self._tiu_output_view.buffer.cursor_position
+            previous_scroll = COUNT_ZERO
+            if hasattr(self._tiu_output_view, "window") and self._tiu_output_view.window is not None:
+                previous_scroll = int(getattr(self._tiu_output_view.window, "vertical_scroll", COUNT_ZERO))
+            self._tiu_output_view.text = self._tiu_output_text()
+            text_length = len(self._tiu_output_view.text)
+            if self._tiu_output_follow_tail:
+                self._tiu_output_view.buffer.cursor_position = text_length
+                self._tiu_output_set_scroll_line(
+                    max(self._tiu_output_line_count() - COUNT_ONE, COUNT_ZERO),
+                    sync_cursor=False,
+                )
+            else:
+                self._tiu_output_view.buffer.cursor_position = min(previous_cursor, text_length)
+                self._tiu_output_set_scroll_line(
+                    min(
+                        previous_scroll,
+                        max(self._tiu_output_line_count() - COUNT_ONE, COUNT_ZERO),
+                    )
+                )
+        if self._tiu_app is not None:
+            invalidate = getattr(self._tiu_app, "invalidate", None)
+            if callable(invalidate):
+                invalidate()
+
+    def _render_tiu_if_needed(self) -> None:
+        """
+        NAME
+            _render_tiu_if_needed - Redraw the TIU dashboard when the mode is active.
+        """
+        if not self._tiu_enabled:
+            return
+        if hasattr(sys.stdout, "isatty") and not sys.stdout.isatty():
+            return
+        sys.stdout.write(MESSAGE_TIU_CLEAR_SCREEN)
+        for line in self._tiu_dashboard_lines():
+            sys.stdout.write(line + "\n")
+        sys.stdout.flush()
+
+    def _tiu_input_line(self) -> str:
+        """
+        NAME
+            _tiu_input_line - Render TIU and read one command line at a fixed screen row.
+        """
+        self._render_tiu_if_needed()
+        prompt_row = self._tiu_prompt_row()
+        prompt = self._prompt()
+        sys.stdout.write(MESSAGE_TIU_CURSOR_FMT.format(row=prompt_row))
+        sys.stdout.write(MESSAGE_TIU_CLEAR_LINE)
+        sys.stdout.write(prompt)
+        if self._pending_prompt_text is not None:
+            sys.stdout.write(self._pending_prompt_text)
+            sys.stdout.flush()
+            self._pending_prompt_text = None
+            line = input(MESSAGE_EMPTY_PROMPT)
+        else:
+            sys.stdout.write(MESSAGE_TIU_CLEAR_TO_END)
+            sys.stdout.flush()
+            line = input(MESSAGE_EMPTY_PROMPT)
+        return line
+
+    def _tiu_prompt_row(self) -> int:
+        """
+        NAME
+            _tiu_prompt_row - Return the fixed prompt row used while TIU mode is active.
+        """
+        terminal_height = max(shutil.get_terminal_size((TIU_LINE_MAX_FALLBACK, 30)).lines or 30, 12)
+        return max(terminal_height - TIU_PROMPT_ROW_OFFSET, COUNT_ONE)
+
+    def _tiu_store_output(self, text: str) -> None:
+        """
+        NAME
+            _tiu_store_output - Append command output lines to the bounded TIU output pane.
+        """
+        if not text:
+            return
+        lines = [line.rstrip() for line in text.splitlines() if line.strip()]
+        if not lines:
+            return
+        self._tiu_cli_output.extend(lines)
+        if len(self._tiu_cli_output) > TIU_OUTPUT_MAX_LINES:
+            self._tiu_cli_output = self._tiu_cli_output[-TIU_OUTPUT_MAX_LINES:]
+
+    def _tiu_output_text(self) -> str:
+        """
+        NAME
+            _tiu_output_text - Build the TIU scrollback pane text.
+        """
+        return "\n".join(self._tiu_cli_output[-TIU_OUTPUT_MAX_LINES:])
+
+    def _tiu_status_text(self) -> str:
+        """
+        NAME
+            _tiu_status_text - Build the compact fixed TIU status pane text.
+        """
+        provenance = self._build_provenance_payload()
+        match = provenance.get(KEY_MATCH, {}) if isinstance(provenance, dict) else {}
+        last_saved = provenance.get(KEY_LAST_SAVED, {}) if isinstance(provenance, dict) else {}
+        last_pushed = provenance.get(KEY_LAST_PUSHED, {}) if isinstance(provenance, dict) else {}
+        state = self._session.get_state_snapshot()
+        runtime_payload = self._tiu_runtime_payload()
+        runtime_details = self._runtime_details_snapshot_local()
+        visibility = self._visibility_snapshot_local()
+        visible_devices = visibility.get(KEY_DEVICES, []) if isinstance(visibility, dict) else []
+        visible_count = len(visible_devices) if isinstance(visible_devices, list) else COUNT_ZERO
+        configured_labels = self._active_profile_labels()
+        indexed_runtime = self._device_runtime_index(runtime_payload) if isinstance(runtime_payload, dict) else {}
+        instantiated_count = len(
+            [
+                label
+                for label in configured_labels
+                if bool(indexed_runtime.get(label.lower(), {}).get(KEY_INSTANTIATED, False))
+            ]
+        )
+        fault_rows = self._collect_runtime_fault_rows(runtime_payload) if isinstance(runtime_payload, dict) else []
+        active_group = self._active_group_payload()
+        members = active_group.get(KEY_MEMBERS, []) if isinstance(active_group, dict) else []
+        components = runtime_details.get(KEY_RUNTIME_COMPONENTS, []) if isinstance(runtime_details, dict) else []
+        recent_event = self._tiu_recent_events[-1] if self._tiu_recent_events else MESSAGE_TIU_UNSET
+        output_count = len(self._tiu_cli_output)
+        lines = [
+            f"{self._prompt()}  {time.strftime('%H:%M:%S', time.localtime(time.time()))}",
+            MESSAGE_TIU_SECTIONS,
+            (
+                f"host: profile={self._active_profile_name() or MESSAGE_TIU_UNSET} "
+                f"dirty={MESSAGE_TIU_STATUS_DIRTY if self._has_dirty_state() else MESSAGE_TIU_STATUS_CLEAN} "
+                f"recovery={self._tiu_bool_text(bool(self._recovery_mode))} "
+                f"sources=r:{self._tiu_source_status(SOURCE_NAME_REGISTRY)} "
+                f"b:{self._tiu_source_status(SOURCE_NAME_BINDINGS)} "
+                f"m:{self._tiu_source_status(SOURCE_NAME_CAN_MAPPINGS)} "
+                f"t:{self._tiu_source_status(SOURCE_NAME_TESTS)}"
+            ),
+            (
+                f"save/push: modified={self._format_provenance_value(self._last_modified_at)} "
+                f"saved={self._format_provenance_value(last_saved.get(KEY_AT) if isinstance(last_saved, dict) else None)} "
+                f"pushed={self._format_provenance_value(last_pushed.get(KEY_AT) if isinstance(last_pushed, dict) else None)}"
+            ),
+            (
+                f"match: local-saved={str(match.get(KEY_LOCAL_VS_SAVED, MATCH_STATE_UNKNOWN)).upper()} "
+                f"local-pushed={str(match.get(KEY_LOCAL_VS_PUSHED, MATCH_STATE_UNKNOWN)).upper()} "
+                f"robot-pushed={str(match.get(KEY_ROBOT_VS_PUSHED, MATCH_STATE_UNKNOWN)).upper()}"
+            ),
+            (
+                f"robot: connected={MESSAGE_TIU_STATUS_CONNECTED if self._session.is_connected() else MESSAGE_TIU_STATUS_DISCONNECTED} "
+                f"enabled={self._tiu_bool_text(bool(state.get(NT_STATE_ENABLED, False))) if isinstance(state, dict) else VALUE_UNAVAILABLE} "
+                f"estopped={self._tiu_bool_text(bool(state.get(NT_STATE_ESTOPPED, False))) if isinstance(state, dict) else VALUE_UNAVAILABLE} "
+                f"mode={str(state.get(NT_STATE_MODE, EMPTY_STRING)).strip() if isinstance(state, dict) else VALUE_UNAVAILABLE} "
+                f"profile={str(runtime_payload.get(KEY_PROFILE, EMPTY_STRING)).strip() if isinstance(runtime_payload, dict) else MESSAGE_TIU_UNSET}"
+            ),
+            (
+                f"runtime: group-members={len(members) if isinstance(members, list) else COUNT_ZERO} "
+                f"active-test-set={self._tests_active_set or MESSAGE_TIU_UNSET} "
+                f"components={len(components) if isinstance(components, list) else COUNT_ZERO}"
+            ),
+            (
+                f"devices: configured={len(configured_labels)} "
+                f"instantiated={instantiated_count if isinstance(runtime_payload, dict) else VALUE_UNAVAILABLE} "
+                f"visible={visible_count} faults={len(fault_rows) if isinstance(runtime_payload, dict) else VALUE_UNAVAILABLE}"
+            ),
+            f"events: latest={recent_event}",
+            f"scrollback: lines={output_count} PageUp/PageDown/Home/End or mouse wheel scroll output",
+        ]
+        return "\n".join(lines)
+
+    def _tiu_source_status(self, name: str) -> str:
+        """
+        NAME
+            _tiu_source_status - Return a compact one-word source status for TIU summaries.
+        """
+        for entry in self._collect_sources():
+            if str(entry.get(KEY_SOURCE_NAME, EMPTY_STRING)) != name:
+                continue
+            value = str(entry.get(KEY_SOURCE_STATUS, EMPTY_STRING)).strip()
+            return value or VALUE_UNAVAILABLE
+        return VALUE_UNAVAILABLE
+
+    def _tiu_add_event(self, message: str) -> None:
+        """
+        NAME
+            _tiu_add_event - Append one recent-event entry to the bounded TIU event pane.
+        """
+        line = str(message or EMPTY_STRING).strip()
+        if not line:
+            return
+        timestamp = time.strftime("%H:%M:%S", time.localtime(time.time()))
+        self._tiu_recent_events.append(f"{timestamp} {line}")
+        if len(self._tiu_recent_events) > TIU_EVENT_MAX_LINES:
+            self._tiu_recent_events = self._tiu_recent_events[-TIU_EVENT_MAX_LINES:]
+
+    def _tiu_runtime_payload(self) -> Optional[Dict[str, object]]:
+        """
+        NAME
+            _tiu_runtime_payload - Return a lightly cached robot runtime-state payload for TIU.
+        """
+        now = time.time()
+        if self._tiu_runtime_cache is not None and (now - self._tiu_runtime_cache_at) < TIU_RUNTIME_CACHE_SEC:
+            return self._tiu_runtime_cache
+        payload = self._fetch_robot_runtime_payload()
+        if isinstance(payload, dict):
+            self._tiu_runtime_cache = payload
+            self._tiu_runtime_cache_at = now
+            return payload
+        self._tiu_runtime_cache = None
+        self._tiu_runtime_cache_at = now
+        return None
+
+    def _tiu_bool_text(self, value: bool) -> str:
+        """
+        NAME
+            _tiu_bool_text - Render a compact TIU YES/NO value.
+        """
+        return MESSAGE_TIU_BOOL_YES if value else MESSAGE_TIU_BOOL_NO
+
+    @staticmethod
+    def _tiu_clip(text: str, width: int) -> str:
+        """
+        NAME
+            _tiu_clip - Clip one TIU line to the available terminal width.
+        """
+        if width <= COUNT_ZERO:
+            return EMPTY_STRING
+        if len(text) <= width:
+            return text
+        if width <= COUNT_THREE:
+            return text[:width]
+        return text[: width - COUNT_THREE] + "..."
+
+    def _tiu_section_block(
+        self,
+        title: str,
+        body: List[str],
+        width: int,
+        max_body_lines: Optional[int] = None,
+    ) -> List[str]:
+        """
+        NAME
+            _tiu_section_block - Build a titled TIU section with clipped lines.
+        """
+        clipped_width = max(width - TIU_SECTION_MARGIN, COUNT_ONE)
+        if max_body_lines is not None:
+            if max_body_lines <= COUNT_ZERO:
+                body = []
+            else:
+                body = body[:max_body_lines]
+        lines = [title]
+        if body:
+            lines.extend(self._tiu_clip(line, clipped_width) for line in body)
+        else:
+            lines.append(self._tiu_clip(MESSAGE_TIU_NONE, clipped_width))
+        return lines
+
+    def _tiu_dashboard_lines(self) -> List[str]:
+        """
+        NAME
+            _tiu_dashboard_lines - Build the current TIU dashboard text lines.
+        """
+        terminal_size = shutil.get_terminal_size((TIU_LINE_MAX_FALLBACK, 30))
+        terminal_width = terminal_size.columns or TIU_LINE_MAX_FALLBACK
+        terminal_height = max(terminal_size.lines or 30, 12)
+        rule = MESSAGE_TIU_SECTION_RULE * max(
+            terminal_width - len(self._prompt()) - len(time.strftime("%H:%M:%S")) - COUNT_TWO,
+            COUNT_TEN,
+        )
+        lines: List[str] = [
+            self._tiu_clip(
+                MESSAGE_TIU_HEADER_FMT.format(
+                    prompt=self._prompt(),
+                    rule=rule,
+                    clock=time.strftime("%H:%M:%S", time.localtime(time.time())),
+                ),
+                terminal_width,
+            ),
+            self._tiu_clip(MESSAGE_TIU_SECTIONS, terminal_width),
+        ]
+        fixed_sections = [
+            self._tiu_section_block(MESSAGE_TIU_HOST, self._tiu_host_lines(), terminal_width, max_body_lines=2),
+            self._tiu_section_block(MESSAGE_TIU_SAVE_PUSH, self._tiu_save_push_lines(), terminal_width, max_body_lines=4),
+            self._tiu_section_block(MESSAGE_TIU_ROBOT, self._tiu_robot_lines(), terminal_width, max_body_lines=2),
+            self._tiu_section_block(MESSAGE_TIU_RUNTIME, self._tiu_runtime_lines(), terminal_width, max_body_lines=1),
+            self._tiu_section_block(MESSAGE_TIU_DEVICES, self._tiu_device_lines(), terminal_width, max_body_lines=2),
+            self._tiu_section_block(MESSAGE_TIU_FAULTS, self._tiu_fault_lines(), terminal_width, max_body_lines=2),
+        ]
+        for section in fixed_sections:
+            lines.extend(section)
+        reserved_footer_lines = TIU_RENDER_RESERVED_LINES
+        remaining_lines = max(terminal_height - len(lines) - reserved_footer_lines, 2)
+        event_budget = max(1, remaining_lines // 3)
+        cli_budget = max(1, remaining_lines - event_budget)
+        lines.extend(
+            self._tiu_section_block(
+                MESSAGE_TIU_EVENTS,
+                self._tiu_recent_event_lines(),
+                terminal_width,
+                max_body_lines=event_budget,
+            )
+        )
+        lines.extend(
+            self._tiu_section_block(
+                MESSAGE_TIU_CLI,
+                self._tiu_cli_output_lines(),
+                terminal_width,
+                max_body_lines=cli_budget,
+            )
+        )
+        max_dashboard_lines = max(terminal_height - TIU_RENDER_RESERVED_LINES, COUNT_ONE)
+        return lines[:max_dashboard_lines]
+
+    def _tiu_host_lines(self) -> List[str]:
+        provenance = self._build_provenance_payload()
+        sources = self._collect_sources()
+        sources_by_name = {
+            str(entry.get(KEY_SOURCE_NAME, EMPTY_STRING)): str(entry.get(KEY_SOURCE_STATUS, EMPTY_STRING))
+            for entry in sources
+            if isinstance(entry, dict)
+        }
+        return [
+            MESSAGE_TIU_HOST_STATE_FMT.format(
+                profile=self._active_profile_name() or MESSAGE_TIU_UNSET,
+                dirty=MESSAGE_TIU_STATUS_DIRTY if self._has_dirty_state() else MESSAGE_TIU_STATUS_CLEAN,
+                recovery=self._tiu_bool_text(bool(self._recovery_mode)),
+            ),
+            MESSAGE_TIU_SOURCES_FMT.format(
+                registry=sources_by_name.get(SOURCE_NAME_REGISTRY, VALUE_UNAVAILABLE),
+                bindings=sources_by_name.get(SOURCE_NAME_BINDINGS, VALUE_UNAVAILABLE),
+                mappings=sources_by_name.get(SOURCE_NAME_CAN_MAPPINGS, VALUE_UNAVAILABLE),
+                tests=sources_by_name.get(SOURCE_NAME_TESTS, VALUE_UNAVAILABLE),
+            ),
+        ]
+
+    def _tiu_save_push_lines(self) -> List[str]:
+        provenance = self._build_provenance_payload()
+        last_saved = provenance.get(KEY_LAST_SAVED, {}) if isinstance(provenance, dict) else {}
+        last_pushed = provenance.get(KEY_LAST_PUSHED, {}) if isinstance(provenance, dict) else {}
+        match = provenance.get(KEY_MATCH, {}) if isinstance(provenance, dict) else {}
+        return [
+            MESSAGE_TIU_SAVE_MODIFIED_FMT.format(value=self._format_provenance_value(self._last_modified_at)),
+            MESSAGE_TIU_SAVE_SAVED_FMT.format(
+                value=self._format_provenance_value(
+                    last_saved.get(KEY_AT) if isinstance(last_saved, dict) else None,
+                    str(last_saved.get(KEY_SOURCE_PATH, EMPTY_STRING)) if isinstance(last_saved, dict) else EMPTY_STRING,
+                    str(last_saved.get(KEY_HASH, EMPTY_STRING)) if isinstance(last_saved, dict) else EMPTY_STRING,
+                )
+            ),
+            MESSAGE_TIU_SAVE_PUSHED_FMT.format(
+                value=self._format_provenance_value(
+                    last_pushed.get(KEY_AT) if isinstance(last_pushed, dict) else None,
+                    str(last_pushed.get(KEY_SOURCE_PATH, EMPTY_STRING)) if isinstance(last_pushed, dict) else EMPTY_STRING,
+                    str(last_pushed.get(KEY_HASH, EMPTY_STRING)) if isinstance(last_pushed, dict) else EMPTY_STRING,
+                    str(last_pushed.get(KEY_PROFILE_NAME, EMPTY_STRING)) if isinstance(last_pushed, dict) else EMPTY_STRING,
+                )
+            ),
+            MESSAGE_TIU_MATCH_FMT.format(
+                saved=str(match.get(KEY_LOCAL_VS_SAVED, MATCH_STATE_UNKNOWN)).upper(),
+                pushed=str(match.get(KEY_LOCAL_VS_PUSHED, MATCH_STATE_UNKNOWN)).upper(),
+                robot=str(match.get(KEY_ROBOT_VS_PUSHED, MATCH_STATE_UNKNOWN)).upper(),
+            ),
+        ]
+
+    def _tiu_robot_lines(self) -> List[str]:
+        state = self._session.get_state_snapshot()
+        runtime_payload = self._tiu_runtime_payload()
+        mode_value = str(state.get(NT_STATE_MODE, EMPTY_STRING)).strip() if isinstance(state, dict) else EMPTY_STRING
+        profile_value = EMPTY_STRING
+        if isinstance(runtime_payload, dict):
+            profile_value = str(runtime_payload.get(KEY_PROFILE, EMPTY_STRING)).strip()
+        return [
+            MESSAGE_TIU_ROBOT_STATE_FMT.format(
+                connected=MESSAGE_TIU_STATUS_CONNECTED if self._session.is_connected() else MESSAGE_TIU_STATUS_DISCONNECTED,
+                enabled=self._tiu_bool_text(bool(state.get(NT_STATE_ENABLED, False))) if isinstance(state, dict) else VALUE_UNAVAILABLE,
+                estopped=self._tiu_bool_text(bool(state.get(NT_STATE_ESTOPPED, False))) if isinstance(state, dict) else VALUE_UNAVAILABLE,
+                mode=mode_value or VALUE_UNAVAILABLE,
+            ),
+            MESSAGE_TIU_ROBOT_PROFILE_FMT.format(profile=profile_value or MESSAGE_TIU_UNSET),
+        ]
+
+    def _tiu_runtime_lines(self) -> List[str]:
+        runtime_details = self._runtime_details_snapshot_local()
+        active_group = self._active_group_payload()
+        members = active_group.get(KEY_MEMBERS, []) if isinstance(active_group, dict) else []
+        components = runtime_details.get(KEY_RUNTIME_COMPONENTS, []) if isinstance(runtime_details, dict) else []
+        return [
+            MESSAGE_TIU_RUNTIME_FMT.format(
+                members=len(members) if isinstance(members, list) else COUNT_ZERO,
+                test_set=self._tests_active_set or MESSAGE_TIU_UNSET,
+                components=len(components) if isinstance(components, list) else COUNT_ZERO,
+            )
+        ]
+
+    def _tiu_device_lines(self) -> List[str]:
+        configured_labels = self._active_profile_labels()
+        visibility = self._visibility_snapshot_local()
+        visible_devices = visibility.get(KEY_DEVICES, []) if isinstance(visibility, dict) else []
+        visible_count = len(visible_devices) if isinstance(visible_devices, list) else COUNT_ZERO
+        runtime_payload = self._tiu_runtime_payload()
+        rows: List[str] = []
+        instantiated_count = COUNT_ZERO
+        unavailable_count = COUNT_ZERO
+        if isinstance(runtime_payload, dict):
+            indexed = self._device_runtime_index(runtime_payload)
+            for label in configured_labels[:TIU_DEVICE_DETAIL_MAX]:
+                runtime_entry = indexed.get(label.lower(), {})
+                instantiated = runtime_entry.get(KEY_INSTANTIATED) if isinstance(runtime_entry, dict) else None
+                if instantiated is True:
+                    instantiated_count += COUNT_ONE
+                elif instantiated is not False:
+                    unavailable_count += COUNT_ONE
+                rows.append(
+                    MESSAGE_TIU_EVENT_ROW_FMT.format(
+                        line=f"{label} instantiated={VALUE_UNAVAILABLE if instantiated is None else self._bool_text(bool(instantiated)).lower()}"
+                    )
+                )
+            if len(configured_labels) > TIU_DEVICE_DETAIL_MAX:
+                rows.append(MESSAGE_TIU_EVENT_ROW_FMT.format(line=f"... {len(configured_labels) - TIU_DEVICE_DETAIL_MAX} more"))
+            return [
+                MESSAGE_TIU_DEVICES_FMT.format(
+                    configured=len(configured_labels),
+                    instantiated=instantiated_count,
+                    unavailable=unavailable_count,
+                    visible=visible_count,
+                )
+            ] + rows
+        return [
+            MESSAGE_TIU_DEVICES_FMT.format(
+                configured=len(configured_labels),
+                instantiated=VALUE_UNAVAILABLE,
+                unavailable=len(configured_labels),
+                visible=visible_count,
+            ),
+            MESSAGE_TIU_UNAVAILABLE,
+        ]
+
+    def _tiu_fault_lines(self) -> List[str]:
+        runtime_payload = self._tiu_runtime_payload()
+        if not isinstance(runtime_payload, dict):
+            return [MESSAGE_TIU_UNAVAILABLE]
+        rows = self._collect_runtime_fault_rows(runtime_payload)
+        output = [MESSAGE_TIU_FAULTS_FMT.format(faulted=len(rows))]
+        if not rows:
+            output.append(MESSAGE_TIU_NONE)
+            return output
+        for row in rows[:TIU_FAULT_DETAIL_MAX]:
+            output.append(
+                MESSAGE_TIU_FAULT_ROW_FMT.format(
+                    label=str(row.get(KEY_LABEL, EMPTY_STRING)).strip() or MESSAGE_TIU_UNSET,
+                    faults=row.get(KEY_FAULT_COUNT, COUNT_ZERO),
+                    warnings=row.get(KEY_WARNING_COUNT, COUNT_ZERO),
+                )
+            )
+        if len(rows) > TIU_FAULT_DETAIL_MAX:
+            output.append(MESSAGE_TIU_EVENT_ROW_FMT.format(line=f"... {len(rows) - TIU_FAULT_DETAIL_MAX} more"))
+        return output
+
+    def _tiu_recent_event_lines(self) -> List[str]:
+        if not self._tiu_recent_events:
+            return [MESSAGE_TIU_NONE]
+        return [MESSAGE_TIU_EVENT_ROW_FMT.format(line=line) for line in self._tiu_recent_events[-TIU_EVENT_MAX_LINES:]]
+
+    def _tiu_cli_output_lines(self) -> List[str]:
+        if not self._tiu_cli_output:
+            return [MESSAGE_TIU_NONE]
+        return [MESSAGE_TIU_OUTPUT_ROW_FMT.format(line=line) for line in self._tiu_cli_output[-TIU_OUTPUT_MAX_LINES:]]
+
     def _print_alias_removed(self, alias_name: str, canonical: str) -> None:
         """
         NAME
@@ -3377,6 +4683,10 @@ class BridgeCli:
         tokens = parsed_line.tokens
         ast = parsed_line.ast
         cmd = tokens[0].lower()
+        if cmd == "revert":
+            return self._revert_all()
+        if cmd == "tiu":
+            return self._handle_tiu_command(tokens)
         if cmd in ("quit", "exit"):
             if self._modes[-1].name == "exec":
                 dirty = {name: flag for name, flag in self._dirty_state().items() if flag}
@@ -4367,6 +5677,13 @@ class BridgeCli:
         if contextual is not None:
             return contextual
         mode = self._modes[-1].name
+        lowered = [token.lower() for token in tokens]
+        if lowered:
+            cmd = lowered[COUNT_ZERO]
+            if cmd == CMD_BINDINGS:
+                return self._suggest_bindings_args(lowered[COUNT_ONE:])
+            if mode == MODE_GROUP and cmd == CMD_BIND:
+                return self._suggest_group_bind_args(tokens[COUNT_ONE:])
         return self._parser.expected_suggestions(tokens, mode)
 
     def _suggest_diagnose_args(self, tokens: List[str]) -> List[str]:
@@ -4407,6 +5724,7 @@ class BridgeCli:
                 CMD_CAN_MAPPINGS,
                 CMD_TESTS,
                 CMD_TEST,
+                CMD_TOPOLOGY,
                 CMD_WRITE,
                 CMD_VALIDATE,
             ]
@@ -4491,6 +5809,22 @@ class BridgeCli:
             if len(tokens) == COUNT_TWO:
                 return self._show_flag_suggestions(target)
             return []
+        if target == SHOW_TARGET_TOPOLOGY:
+            if len(tokens) == COUNT_ONE:
+                return [CMD_NEIGHBORS, CMD_NODES, CMD_EDGES, CMD_NODE + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE] + self._show_flag_suggestions(target)
+            if len(tokens) == COUNT_TWO and tokens[COUNT_ONE].lower() in (CMD_NEIGHBORS, CMD_NODES, CMD_EDGES):
+                return self._show_flag_suggestions(target)
+            if len(tokens) == COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_NODE:
+                return [PLACEHOLDER_DEVICE]
+            if len(tokens) == COUNT_THREE and tokens[COUNT_ONE].lower() == CMD_NODE:
+                return self._show_flag_suggestions(target)
+            return []
+        if target == SHOW_TARGET_NEIGHBORS:
+            if len(tokens) == COUNT_ONE:
+                return [PLACEHOLDER_DEVICE]
+            if len(tokens) == COUNT_TWO:
+                return self._show_flag_suggestions(target)
+            return []
         if target in PARSER_SPEC.show_targets:
             if len(tokens) == COUNT_ONE:
                 return self._show_flag_suggestions(target)
@@ -4527,8 +5861,16 @@ class BridgeCli:
             PARSER_SPEC.show_target_tests,
             PARSER_SPEC.show_target_test + PARSER_SPEC.space_str + PLACEHOLDER_TEST,
             PARSER_SPEC.show_target_message_level,
+            SHOW_TARGET_ACTIVE,
+            SHOW_TARGET_INSTANTIATED,
+            SHOW_TARGET_FAULTS,
+            SHOW_TARGET_SIGNALS,
+            SHOW_TARGET_SIGNAL + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
             SHOW_TARGET_WORKSPACE,
             SHOW_TARGET_CONTROLLERS,
+            SHOW_TARGET_TOPOLOGY,
+            SHOW_TARGET_TOPOLOGY + PARSER_SPEC.space_str + CMD_NEIGHBORS,
+            SHOW_TARGET_NEIGHBORS + PARSER_SPEC.space_str + PLACEHOLDER_DEVICE,
         ]
 
     def _show_flag_suggestions(self, target: Optional[str] = None) -> List[str]:
@@ -4555,7 +5897,12 @@ class BridgeCli:
             return [CMD_SHOW, CMD_CONTROLLER, CMD_BINDING, CMD_AXIS, CMD_LOAD, CMD_SAVE, CMD_VALIDATE]
         sub = tokens[COUNT_ZERO].lower()
         if sub == CMD_SHOW and len(tokens) == COUNT_ONE:
-            return [BINDINGS_SHOW_CONTROLLERS, BINDINGS_SHOW_BINDINGS, BINDINGS_SHOW_AXES, FLAG_JSON]
+            return [SHOW_FLAG_ALL, FLAG_JSON, FLAG_PRETTY, BINDINGS_SHOW_CONTROLLERS, BINDINGS_SHOW_BINDINGS, BINDINGS_SHOW_AXES]
+        if sub == CMD_SHOW and len(tokens) == COUNT_TWO:
+            target = tokens[COUNT_ONE].lower()
+            if target in BINDINGS_SHOW_TARGETS:
+                return [SHOW_FLAG_ALL, FLAG_JSON, FLAG_PRETTY]
+            return [SHOW_FLAG_ALL, FLAG_JSON, FLAG_PRETTY, BINDINGS_SHOW_CONTROLLERS, BINDINGS_SHOW_BINDINGS, BINDINGS_SHOW_AXES]
         if sub == CMD_CONTROLLER and len(tokens) == COUNT_ONE:
             return [CMD_ADD, CMD_SET, CMD_RENAME, CMD_NO]
         if sub == CMD_BINDING and len(tokens) == COUNT_ONE:
@@ -4565,6 +5912,52 @@ class BridgeCli:
         if sub in (CMD_LOAD, CMD_SAVE, CMD_VALIDATE) and len(tokens) == COUNT_ONE:
             return [PLACEHOLDER_PATH]
         return []
+
+    def _suggest_group_bind_args(self, tokens: List[str]) -> List[str]:
+        """
+        NAME
+            _suggest_group_bind_args - Suggest bind subcommands in group mode.
+        """
+        if not tokens:
+            return [CMD_LIST, CMD_EXPLAIN, CMD_TEST, PLACEHOLDER_INPUT]
+        action = tokens[COUNT_ZERO].lower()
+        if action == CMD_LIST:
+            return []
+        if action in (CMD_EXPLAIN, CMD_TEST):
+            if len(tokens) == COUNT_ONE:
+                return self._group_binding_selector_suggestions()
+            return []
+        if len(tokens) == COUNT_ONE:
+            return [PROFILE_EXPORT_CMD_BIND_ANALOG, PROFILE_EXPORT_CMD_BIND_HOLD, PROFILE_EXPORT_CMD_BIND_TOGGLE, PROFILE_EXPORT_CMD_BIND_JOG_FORWARD, PROFILE_EXPORT_CMD_BIND_JOG_REVERSE]
+        return []
+
+    def _group_binding_selector_suggestions(self) -> List[str]:
+        """
+        NAME
+            _group_binding_selector_suggestions - Suggest current-group binding selectors.
+        """
+        if not self._modes or self._modes[-1].name != MODE_GROUP or not self._modes[-1].group:
+            return [PLACEHOLDER_BINDING]
+        diagnostics = self._evaluate_group_bindings(self._modes[-1].group)
+        if not diagnostics:
+            return [PLACEHOLDER_BINDING]
+        suggestions: List[str] = []
+        for diag in diagnostics:
+            index = str(diag.get("index", EMPTY_STRING)).strip()
+            input_name = str(diag.get(KEY_INPUT, EMPTY_STRING)).strip()
+            if index:
+                suggestions.append(index)
+            if input_name:
+                suggestions.append(input_name)
+        seen: set[str] = set()
+        unique: List[str] = []
+        for suggestion in suggestions:
+            lowered = suggestion.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            unique.append(suggestion)
+        return unique or [PLACEHOLDER_BINDING]
 
     def _suggest_configure_args(self, tokens: List[str]) -> List[str]:
         """
@@ -4581,7 +5974,15 @@ class BridgeCli:
             _suggest_validate_args - Suggest validate subcommands.
         """
         if not tokens:
-            return [CMD_ALL, CMD_CONFIG, CMD_PROFILES, CMD_TESTS, CMD_BINDINGS, CMD_CAN_MAPPINGS]
+            return [
+                CMD_ALL,
+                CMD_CONFIG,
+                CMD_PROFILES,
+                CMD_TESTS,
+                CMD_BINDINGS,
+                CMD_CAN_MAPPINGS,
+                CMD_TOPOLOGY,
+            ]
         if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() == CMD_CONFIG:
             return [PLACEHOLDER_PATH, CMD_VALIDATE_ALL]
         if len(tokens) == COUNT_TWO and tokens[COUNT_ZERO].lower() == CMD_CONFIG:
@@ -4731,8 +6132,8 @@ class BridgeCli:
         if self._local_root_payload is None:
             return
         self._local_root_payload[KEY_DSL_TESTS] = robot_test_dsl_store_to_payload(store)
-        self._tests_dirty = True
-        self._profiles_dirty = True
+        self._mark_tests_dirty()
+        self._mark_profiles_dirty()
 
     def _dsl_signal_catalog(self) -> Dict[str, Dict[str, object]]:
         payload = read_json(ROBOT_TEST_DSL_SIGNALS_PATH)
@@ -5155,29 +6556,28 @@ class BridgeCli:
             _load_bindings_from_path - Load bindings config from a path.
         """
 
-        payload = deepcopy(BINDINGS_EMPTY_PAYLOAD)
+        payload: object = BINDINGS_EMPTY_PAYLOAD
+        read_failed = False
         if path.exists():
             try:
-                loaded = read_json(path)
+                payload = read_json(path)
             except Exception:
-                print(MESSAGE_ERR_BINDINGS_LOAD.format(path=path))
-                return StatusResult(code=SS__CONFIG__INVALID)
-            if isinstance(loaded, dict):
-                payload.update(loaded)
-        payload[KEY_CONTROLLERS] = (
-            payload.get(KEY_CONTROLLERS) if isinstance(payload.get(KEY_CONTROLLERS), list) else []
-        )
-        payload[KEY_BINDINGS] = (
-            payload.get(KEY_BINDINGS) if isinstance(payload.get(KEY_BINDINGS), list) else []
-        )
-        payload[KEY_AXES] = payload.get(KEY_AXES) if isinstance(payload.get(KEY_AXES), list) else []
-        self._bindings_payload = payload
+                read_failed = True
+                self._warn(MESSAGE_ERR_BINDINGS_LOAD.format(path=path), essential=True)
+        sanitized, warnings, changed = self._store.sanitize_bindings_payload(payload)
+        self._bindings_payload = sanitized
         self._bindings_path = path
-        self._bindings_dirty = False
+        self._bindings_dirty = bool(changed)
+        self._recovery_mode = bool(self._recovery_mode or read_failed or changed)
+        for warning in warnings:
+            self._warnings.append(warning)
+            self._warn(f"WARNING: {warning}", essential=True)
         self._sync_store_bindings()
         if announce:
             print(MESSAGE_INFO_BINDINGS_LOADED.format(path=path))
-        return StatusResult(code=SS__CONFIG__IMPORTED)
+        return StatusResult(
+            code=SS__CONFIG__IMPORTED if not changed and not read_failed else SS__CONFIG__INVALID
+        )
 
     def _save_bindings_to_path(self, path: Path, *, validation_ok: bool = True) -> StatusResult:
         """
@@ -5202,6 +6602,21 @@ class BridgeCli:
         if not ok:
             print(MESSAGE_ERR_BINDINGS_WRITE.format(path=path, error=error))
             return StatusResult(code=SS__CONFIG__INVALID)
+        mirror_path = self._mirror_repo_save_target(
+            path,
+            bindings_canonical_path(),
+            bindings_deploy_path(),
+        )
+        if mirror_path is not None:
+            ok, error = self._atomic_write_json(
+                mirror_path,
+                payload,
+                JSON_PRETTY_INDENT,
+                True,
+            )
+            if not ok:
+                print(MESSAGE_ERR_BINDINGS_WRITE.format(path=mirror_path, error=error))
+                return StatusResult(code=SS__CONFIG__INVALID)
         self._bindings_dirty = False
         self._bindings_path = path
         self._sync_store_bindings()
@@ -5214,7 +6629,10 @@ class BridgeCli:
             JSON_PRETTY_INDENT,
             True,
         )
+        self._record_last_save(path)
         print(MESSAGE_INFO_BINDINGS_SAVED.format(path=path))
+        if mirror_path is not None:
+            print(MESSAGE_INFO_BINDINGS_MIRRORED.format(path=mirror_path))
         return StatusResult(code=SS__CONFIG__SAVED)
 
     def _bindings_show(self, tokens: List[str]) -> StatusResult:
@@ -5229,6 +6647,7 @@ class BridgeCli:
         if any(token.lower() in SHOW_SOURCE_FLAGS for token in tokens):
             print(MESSAGE_ERR_BINDINGS_SHOW_LOCAL_ONLY)
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+        tokens = [token for token in tokens if token.lower() != SHOW_FLAG_ALL]
         _source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens)
         if not ok:
             return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
@@ -5344,7 +6763,7 @@ class BridgeCli:
                 return StatusResult(code=SS__INPUT_BINDING__INVALID)
             controllers.append({KEY_NAME: name, FIELD_TYPE: ctrl_type, KEY_PORT: port})
             self._bindings_payload[KEY_CONTROLLERS] = controllers
-            self._bindings_dirty = True
+            self._mark_bindings_dirty()
             return StatusResult(code=SS__NORMAL)
         if action == CMD_SET:
             if len(tokens) < COUNT_FOUR:
@@ -5370,13 +6789,18 @@ class BridgeCli:
             else:
                 print(MESSAGE_ERR_BINDINGS_FIELD_UNKNOWN)
                 return StatusResult(code=SS__INPUT_BINDING__INVALID)
-            self._bindings_dirty = True
+            self._mark_bindings_dirty()
             return StatusResult(code=SS__NORMAL)
         if action == CMD_RENAME:
             if len(tokens) < COUNT_THREE:
                 print(MESSAGE_ERR_BINDINGS_CONTROLLER_RENAME)
                 return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             return self._bindings_rename_controller(tokens[COUNT_ONE], tokens[COUNT_TWO])
+        if action == CMD_NO:
+            if len(tokens) < COUNT_TWO:
+                print(MESSAGE_ERR_BINDINGS_CONTROLLER_DELETE)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._bindings_delete_controller(tokens[COUNT_ONE])
         print(MESSAGE_ERR_BINDINGS_SUBCOMMAND)
         return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
@@ -5396,7 +6820,7 @@ class BridgeCli:
             return StatusResult(code=SS__INPUT_BINDING__INVALID)
         controllers.remove(entry)
         self._bindings_payload[KEY_CONTROLLERS] = controllers
-        self._bindings_dirty = True
+        self._mark_bindings_dirty()
         return StatusResult(code=SS__NORMAL)
 
     def _bindings_binding_command(self, tokens: List[str]) -> StatusResult:
@@ -5426,7 +6850,7 @@ class BridgeCli:
                 return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
             bindings.append(entry)
             self._bindings_payload[KEY_BINDINGS] = bindings
-            self._bindings_dirty = True
+            self._mark_bindings_dirty()
             return StatusResult(code=SS__NORMAL)
         if action == CMD_SET:
             if len(tokens) < COUNT_FOUR:
@@ -5448,7 +6872,7 @@ class BridgeCli:
                 print(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=value))
                 return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
             entry[field] = value
-            self._bindings_dirty = True
+            self._mark_bindings_dirty()
             return StatusResult(code=SS__NORMAL)
         if action == CMD_DELETE:
             if len(tokens) < COUNT_TWO:
@@ -5462,7 +6886,7 @@ class BridgeCli:
                 print(MESSAGE_ERR_BINDINGS_BINDING_INDEX)
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             bindings.remove(entry)
-            self._bindings_dirty = True
+            self._mark_bindings_dirty()
             return StatusResult(code=SS__NORMAL)
         print(MESSAGE_ERR_BINDINGS_SUBCOMMAND)
         return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
@@ -5513,7 +6937,7 @@ class BridgeCli:
             }
             axes.append(entry)
             self._bindings_payload[KEY_AXES] = axes
-            self._bindings_dirty = True
+            self._mark_bindings_dirty()
             return StatusResult(code=SS__NORMAL)
         if action == CMD_SET:
             if len(tokens) < COUNT_FOUR:
@@ -5536,7 +6960,7 @@ class BridgeCli:
                     print(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=value))
                     return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
                 entry[field] = value
-                self._bindings_dirty = True
+                self._mark_bindings_dirty()
                 return StatusResult(code=SS__NORMAL)
             if field == KEY_INVERT:
                 parsed = self._parse_bool(value)
@@ -5544,7 +6968,7 @@ class BridgeCli:
                     print(MESSAGE_ERR_BINDINGS_INVERT)
                     return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
                 entry[field] = parsed
-                self._bindings_dirty = True
+                self._mark_bindings_dirty()
                 return StatusResult(code=SS__NORMAL)
             if field == KEY_DEADBAND:
                 try:
@@ -5556,10 +6980,10 @@ class BridgeCli:
                     print(MESSAGE_ERR_BINDINGS_DEADBAND)
                     return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
                 entry[field] = deadband
-                self._bindings_dirty = True
+                self._mark_bindings_dirty()
                 return StatusResult(code=SS__NORMAL)
             entry[field] = value
-            self._bindings_dirty = True
+            self._mark_bindings_dirty()
             return StatusResult(code=SS__NORMAL)
         if action == CMD_DELETE:
             if len(tokens) < COUNT_TWO:
@@ -5573,7 +6997,7 @@ class BridgeCli:
                 print(MESSAGE_ERR_BINDINGS_AXIS_INDEX)
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             axes.remove(entry)
-            self._bindings_dirty = True
+            self._mark_bindings_dirty()
             return StatusResult(code=SS__NORMAL)
         print(MESSAGE_ERR_BINDINGS_SUBCOMMAND)
         return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
@@ -5730,7 +7154,7 @@ class BridgeCli:
         for axis in self._bindings_payload.get(KEY_AXES, []):
             if isinstance(axis, dict) and axis.get(KEY_CONTROLLER) == old:
                 axis[KEY_CONTROLLER] = new
-        self._bindings_dirty = True
+        self._mark_bindings_dirty()
         return StatusResult(code=SS__NORMAL)
 
     def _bindings_entry_at(
@@ -5778,26 +7202,27 @@ class BridgeCli:
             _load_can_mappings_from_path - Load CAN mappings from a path.
         """
 
-        payload: Dict[str, object] = {}
+        payload: object = dict()
+        read_failed = False
         if path.exists():
             try:
-                loaded = read_json(path)
+                payload = read_json(path)
             except Exception:
-                print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=path))
-                return StatusResult(code=SS__CONFIG__INVALID)
-            if isinstance(loaded, dict):
-                payload = loaded
-        manufacturers = payload.get(KEY_MANUFACTURERS)
-        device_types = payload.get(KEY_DEVICE_TYPES)
-        self._can_mappings = {
-            KEY_MANUFACTURERS: manufacturers if isinstance(manufacturers, dict) else {},
-            KEY_DEVICE_TYPES: device_types if isinstance(device_types, dict) else {},
-        }
+                read_failed = True
+                self._warn(MESSAGE_ERR_MAPPINGS_LOAD.format(path=path), essential=True)
+        sanitized, warnings, changed = self._store.sanitize_mappings_payload(payload)
+        self._can_mappings = sanitized
         self._can_mappings_path = path
-        self._can_mappings_dirty = False
+        self._can_mappings_dirty = bool(changed)
+        self._recovery_mode = bool(self._recovery_mode or read_failed or changed)
+        for warning in warnings:
+            self._warnings.append(warning)
+            self._warn(f"WARNING: {warning}", essential=True)
         self._sync_store_mappings()
         print(MESSAGE_INFO_MAPPINGS_LOADED.format(path=path))
-        return StatusResult(code=SS__CONFIG__IMPORTED)
+        return StatusResult(
+            code=SS__CONFIG__IMPORTED if not changed and not read_failed else SS__CONFIG__INVALID
+        )
 
     def _save_can_mappings_to_path(self, path: Path, *, validation_ok: bool = True) -> StatusResult:
         """
@@ -5833,6 +7258,7 @@ class BridgeCli:
             JSON_PRETTY_INDENT,
             True,
         )
+        self._record_last_save(path)
         print(MESSAGE_INFO_MAPPINGS_SAVED.format(path=path))
         return StatusResult(code=SS__CONFIG__SAVED)
 
@@ -5915,7 +7341,7 @@ class BridgeCli:
             name = " ".join(tokens[COUNT_TWO:]).strip()
             entries = self._can_mappings.setdefault(target_key, {})
             entries[str(key)] = name
-            self._can_mappings_dirty = True
+            self._mark_mappings_dirty()
             return StatusResult(code=SS__NORMAL)
         if action in (CMD_DELETE, CMD_NO):
             if len(tokens) < COUNT_TWO:
@@ -5928,7 +7354,7 @@ class BridgeCli:
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             entries = self._can_mappings.setdefault(target_key, {})
             entries.pop(str(key), None)
-            self._can_mappings_dirty = True
+            self._mark_mappings_dirty()
             return StatusResult(code=SS__NORMAL)
         print(MESSAGE_ERR_MAPPINGS_SUBCOMMAND)
         return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
@@ -6688,7 +8114,7 @@ class BridgeCli:
                     KEY_TESTS_SELECTED: False,
                     KEY_TESTS_TYPE: test.test_type,
                     KEY_TESTS_STATUS: EMPTY_STRING,
-                    KEY_TESTS_MOTORS: list(test.devices) if isinstance(test.devices, list) else [],
+                    KEY_TESTS_REQUIRED_DEVICES: list(test.devices) if isinstance(test.devices, list) else [],
                 }
             )
         return {
@@ -6737,11 +8163,11 @@ class BridgeCli:
                 enabled = bool(row.get(KEY_TESTS_ENABLED, False))
                 test_type = str(row.get(KEY_TESTS_TYPE, EMPTY_STRING)).strip() or TEXT_TESTS_TYPE_UNKNOWN
                 name = str(row.get(KEY_TESTS_NAME, EMPTY_STRING)).strip() or TEXT_TESTS_NAME_UNNAMED
-                motors = row.get(KEY_TESTS_MOTORS, [])
-                motor_text = (
-                    SEP_COMMA_SPACE.join([str(m) for m in motors if str(m).strip()])
-                    if isinstance(motors, list) and motors
-                    else TEXT_TESTS_MOTORS_EMPTY
+                required_devices = row.get(KEY_TESTS_REQUIRED_DEVICES, [])
+                required_devices_text = (
+                    SEP_COMMA_SPACE.join([str(d) for d in required_devices if str(d).strip()])
+                    if isinstance(required_devices, list) and required_devices
+                    else TEXT_TESTS_DEVICES_EMPTY
                 )
                 sel_char = TEXT_TESTS_SELECTED_MARK if selected else TEXT_TESTS_SELECTED_EMPTY
                 en_char = TEXT_TESTS_ENABLED_MARK if enabled else TEXT_TESTS_DISABLED_MARK
@@ -6753,7 +8179,7 @@ class BridgeCli:
                         type=test_type,
                         name=name,
                         hold=TEXT_TESTS_HOLD_DEFAULT,
-                        motors=motor_text,
+                        devices=required_devices_text,
                     )
                 )
         lines.append(TEXT_TESTS_FOOTER)
@@ -7148,7 +8574,7 @@ class BridgeCli:
                 self._proto_mark_connect_failure()
                 print("ERROR: Failed to connect.")
                 return StatusResult(code=SS__NETWORK__CONNECT_FAILED)
-            ok = self._session.ensure_handshake()
+            ok = self._session.ensure_handshake(reset=True)
             if not ok:
                 self._proto_mark_connect_failure()
                 message = self._handshake_error_text()
@@ -7169,6 +8595,8 @@ class BridgeCli:
             self._ensure_local_config()
             self._modes.append(CliMode("config"))
             return StatusResult(code=SS__NORMAL)
+        if cmd == CMD_BINDINGS:
+            return self._config_bindings_command(tokens)
         if cmd == "show":
             return self._coerce_status(self._handle_show(tokens[1:]))
         print(f"ERROR: Unknown command: {' '.join(tokens)}")
@@ -7183,8 +8611,7 @@ class BridgeCli:
         force = FLAG_FORCE in flags
         prompt = CMD_PROMPT in flags
         if len(cleaned) < COUNT_TWO:
-            print(MESSAGE_HINT_SAVE)
-            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+            return self._save_all(prompt, force=force)
         target = cleaned[COUNT_ONE].lower()
         if prompt and target != CMD_ALL:
             print(MESSAGE_ERR_SAVE_PROMPT)
@@ -7532,6 +8959,8 @@ class BridgeCli:
                     return StatusResult(code=SS__CONFIG__VALID)
                 print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
                 return StatusResult(code=SS__CONFIG__INVALID)
+            if target == CMD_TOPOLOGY:
+                return self._validate_topology()
             if target == CMD_BINDINGS:
                 ok, message = self.validate_bindings_only(path or None)
                 if ok:
@@ -7564,6 +8993,8 @@ class BridgeCli:
             return self._save_all(prompt)
         if cmd == CMD_SAVE and len(tokens) >= COUNT_TWO and tokens[COUNT_ONE].lower() == CMD_TESTS:
             return self._coerce_status(self._save_tests_command(tokens))
+        if cmd == CMD_TOPOLOGY:
+            return self._topology_command(tokens)
         if cmd == CMD_DEBUG:
             if len(tokens) < COUNT_TWO or tokens[COUNT_ONE].lower() != CMD_GRAMMAR:
                 print(MESSAGE_DEBUG_GRAMMAR_USAGE)
@@ -7620,7 +9051,7 @@ class BridgeCli:
         sub = tokens[COUNT_ONE].lower()
         if sub == CMD_CLEAR:
             self._bindings_payload = deepcopy(BINDINGS_EMPTY_PAYLOAD)
-            self._bindings_dirty = True
+            self._mark_bindings_dirty()
             self._sync_store_bindings()
             return StatusResult(code=SS__NORMAL)
         if sub == CMD_SHOW:
@@ -7668,7 +9099,7 @@ class BridgeCli:
                 KEY_MANUFACTURERS: {},
                 KEY_DEVICE_TYPES: {},
             }
-            self._can_mappings_dirty = True
+            self._mark_mappings_dirty()
             self._sync_store_mappings()
             return StatusResult(code=SS__NORMAL)
         if sub == CMD_SHOW:
@@ -7696,6 +9127,10 @@ class BridgeCli:
     def _group_command(self, tokens: List[str]) -> StatusResult:
         group = self._modes[-1].group
         cmd = tokens[0].lower()
+        if cmd == CMD_BIND and len(tokens) >= COUNT_TWO:
+            action = tokens[COUNT_ONE].lower()
+            if action in (CMD_LIST, CMD_EXPLAIN, CMD_TEST):
+                return self._coerce_status(self._handle_group_bind_diagnostics(group, tokens))
         if not self._session.is_connected():
             return self._coerce_status(self._group_command_local(tokens, group))
         if cmd == "show":
@@ -7875,19 +9310,36 @@ class BridgeCli:
             source = SHOW_SOURCE_LOCAL
         if target == SHOW_TARGET_DEVICE:
             source = SHOW_SOURCE_LOCAL
+        if target in (SHOW_TARGET_SIGNALS, SHOW_TARGET_SIGNAL):
+            source = SHOW_SOURCE_LOCAL
+        if target == SHOW_TARGET_BINDINGS and len(tokens) >= COUNT_TWO:
+            sub_target = tokens[COUNT_ONE].lower()
+            if sub_target in BINDINGS_SHOW_TARGETS:
+                source = SHOW_SOURCE_LOCAL
         if target == SHOW_TARGET_CAN_MAPPINGS:
             source = SHOW_SOURCE_LOCAL
         if target in (SHOW_TARGET_COMMANDS, SHOW_TARGET_HELP):
             source = SHOW_SOURCE_LOCAL
         if target in (SHOW_TARGET_WORKSPACE, SHOW_TARGET_CONTROLLERS):
             source = SHOW_SOURCE_LOCAL
-        if has_source_flag and target in LOCAL_ONLY_SHOW_TARGETS:
+        if (
+            has_source_flag
+            and target in LOCAL_ONLY_SHOW_TARGETS
+            and source != SHOW_SOURCE_LOCAL
+        ):
             print(MESSAGE_ERR_SHOW_LOCAL_ONLY.format(target=target))
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         if target == SHOW_TARGET_SOURCES and not has_source_flag:
             source = SHOW_SOURCE_LOCAL
         if target in (SHOW_TARGET_CONFIG_RAW, SHOW_TARGET_CONFIG_DIRTY):
             source = SHOW_SOURCE_LOCAL
+        if target == SHOW_TARGET_BINDINGS and len(tokens) >= COUNT_TWO:
+            sub_target = tokens[COUNT_ONE].lower()
+            if sub_target in BINDINGS_SHOW_TARGETS:
+                result = self._bindings_show(tokens[COUNT_ONE:])
+                if not result.ok():
+                    return result
+                return StatusResult(code=SS__NORMAL)
         if source == SHOW_SOURCE_BOTH:
             local_result = self._show_local(target, tokens, json_output, pretty)
             robot_result = self._show_robot(target, tokens, json_output, pretty)
@@ -8374,20 +9826,30 @@ class BridgeCli:
         """
         if not self._session.is_connected():
             return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+        print(MESSAGE_PUSH_STAGE.format(stage="local config loaded", status=MATCH_STATE_YES))
         ok, error, raw, payload = self._read_registry_raw(path)
         if not ok:
+            print(MESSAGE_PUSH_STAGE.format(stage="local config loaded", status=MATCH_STATE_NO))
+            print(MESSAGE_PUSH_STAGE_DETAIL.format(detail=error))
             print(error)
             return StatusResult(code=SS__CONFIG__INVALID)
         assert payload is not None
         valid, message = self._validate_registry_payload(payload, activate_profile)
         if not valid:
+            print(MESSAGE_PUSH_STAGE.format(stage="schema validation", status=MATCH_STATE_NO))
+            print(MESSAGE_PUSH_STAGE_DETAIL.format(detail=message))
             print(MESSAGE_ERR_PROFILES_PUSH_VALIDATE.format(detail=message))
             return StatusResult(code=SS__CONFIG__INVALID)
+        print(MESSAGE_PUSH_STAGE.format(stage="schema validation", status=MATCH_STATE_YES))
+        print(MESSAGE_PUSH_STAGE.format(stage="semantic validation", status=MATCH_STATE_YES))
         registry_hash = self._hash_raw_registry(raw)
         registry_bytes = len(raw.encode(ENCODING_UTF8))
         data_hash = payload.get(KEY_DATA_HASH)
         if not isinstance(data_hash, str):
             data_hash = EMPTY_STRING
+        data_version = payload.get(KEY_DATA_VERSION)
+        if isinstance(data_version, str) and data_version.strip():
+            print(MESSAGE_PUSH_STAGE_DATA_VERSION.format(version=data_version))
         resolved_path = str(Path(path).resolve())
         self._debug_log(
             MESSAGE_DEBUG_REGISTRY_PUSH.format(
@@ -8404,18 +9866,24 @@ class BridgeCli:
         }
         if activate_profile:
             args[ARG_ACTIVATE_PROFILE] = activate_profile
+        print(MESSAGE_PUSH_STAGE.format(stage="config sent to robot", status=MATCH_STATE_YES))
         seq = self._session.send_command(CMD_PROFILES_APPLY, args)
         if seq is None:
+            print(MESSAGE_PUSH_STAGE.format(stage="config sent to robot", status=MATCH_STATE_NO))
             print(MESSAGE_ERR_PROFILES_PUSH_SEND)
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         self._proto_mark_cmd_sent(CMD_PROFILES_APPLY, now=time.time())
         event = self._wait_for_seq(seq, timeout_sec=ROBOT_LONG_COMMAND_TIMEOUT_SEC)
+        event_payload = self._parse_event_json_payload(event)
+        if event_payload:
+            self._print_profiles_apply_stages(event_payload)
         if self._event_failed(event, CMD_PROFILES_APPLY):
-            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+            return StatusResult(code=SS__CONFIG__INVALID)
         self._local_root_payload = payload
         self._local_root_path = path
         self._local_root_hash = self._profiles_hash(payload)
         self._local_devices_locked = True
+        self._record_last_push(path, registry_hash, activate_profile or self._active_profile_name() or EMPTY_STRING)
         self._sync_store_from_local()
         print(MESSAGE_INFO_PROFILES_PUSH_LOCAL.format(path=path))
         return StatusResult(code=SS__NORMAL)
@@ -8463,14 +9931,22 @@ class BridgeCli:
         NAME
             _config_push - Push registry then bridgeConfig groups to robot.
         """
+        if self._has_dirty_state():
+            print(MESSAGE_PUSH_DIRTY_BLOCKED)
+            return StatusResult(code=SS__CONFIG__INVALID)
+        resolved_profile = activate_profile or self._active_profile_name()
         print(MESSAGE_INFO_CONFIG_PUSH_START.format(path=path))
-        result = self._profiles_push(path, activate_profile)
-        if not result.ok():
-            return result
-        plan = import_config(path, self._conflict_policy, self._active_profile_name())
+        plan = import_config(path, self._conflict_policy, resolved_profile)
         if not plan.ok:
+            print(MESSAGE_PUSH_STAGE.format(stage="config semantic validation", status=MATCH_STATE_NO))
+            print(MESSAGE_PUSH_STAGE_DETAIL.format(detail=plan.message))
             print(plan.message)
             return StatusResult(code=SS__CONFIG__INVALID)
+        print(MESSAGE_PUSH_STAGE.format(stage="config semantic validation", status=MATCH_STATE_YES))
+        result = self._profiles_push(path, resolved_profile)
+        if not result.ok():
+            return result
+        print(MESSAGE_PUSH_STAGE.format(stage="bridge config applied locally", status=MATCH_STATE_YES))
         return self._apply_config_plan(plan)
 
     def _clear_existing_groups(self) -> StatusResult:
@@ -8837,7 +10313,7 @@ class BridgeCli:
         tests_path = profiles_path
         bindings_path = str(self._bindings_path) if self._bindings_path else EMPTY_STRING
         mappings_path = str(self._can_mappings_path) if self._can_mappings_path else EMPTY_STRING
-        dirty = self._store.dirty_flags() if self._store else {}
+        dirty = self._current_dirty_flags()
         model = self._tests_model
         default_set = model.default_test_set if model else EMPTY_STRING
         test_count = 0
@@ -8910,6 +10386,7 @@ class BridgeCli:
                 "messageLevel": self._message_level,
                 "echo": bool(self._echo_enabled),
             },
+            KEY_PROVENANCE: self._build_provenance_payload(),
             KEY_WORKFLOW01: {
                 KEY_STATE: workflow.state,
                 KEY_BLOCKING_REASONS: list(workflow.blocking_reasons),
@@ -9000,6 +10477,42 @@ class BridgeCli:
                 tests=payload["tests"]["dirty"],
                 bindings=payload["bindings"]["dirty"],
                 mappings=payload["mappings"]["dirty"],
+            )
+        )
+        provenance = payload.get(KEY_PROVENANCE, {})
+        matches = provenance.get(KEY_MATCH, {}) if isinstance(provenance, dict) else {}
+        last_saved = provenance.get(KEY_LAST_SAVED, {}) if isinstance(provenance, dict) else {}
+        last_pushed = provenance.get(KEY_LAST_PUSHED, {}) if isinstance(provenance, dict) else {}
+        print(TEXT_PROVENANCE_HEADER)
+        print(
+            TEXT_PROVENANCE_MODIFIED.format(
+                value=self._format_provenance_value(provenance.get(KEY_LAST_MODIFIED_AT) if isinstance(provenance, dict) else None)
+            )
+        )
+        print(
+            TEXT_PROVENANCE_SAVED.format(
+                value=self._format_provenance_value(
+                    last_saved.get(KEY_AT) if isinstance(last_saved, dict) else None,
+                    path=last_saved.get(KEY_SOURCE_PATH) if isinstance(last_saved, dict) else None,
+                    hash_value=last_saved.get(KEY_HASH) if isinstance(last_saved, dict) else None,
+                )
+            )
+        )
+        print(
+            TEXT_PROVENANCE_PUSHED.format(
+                value=self._format_provenance_value(
+                    last_pushed.get(KEY_AT) if isinstance(last_pushed, dict) else None,
+                    path=last_pushed.get(KEY_SOURCE_PATH) if isinstance(last_pushed, dict) else None,
+                    hash_value=last_pushed.get(KEY_HASH) if isinstance(last_pushed, dict) else None,
+                    profile_name=last_pushed.get(KEY_PROFILE_NAME) if isinstance(last_pushed, dict) else None,
+                )
+            )
+        )
+        print(
+            TEXT_PROVENANCE_MATCH.format(
+                saved=matches.get(KEY_LOCAL_VS_SAVED, MATCH_STATE_UNKNOWN) if isinstance(matches, dict) else MATCH_STATE_UNKNOWN,
+                pushed=matches.get(KEY_LOCAL_VS_PUSHED, MATCH_STATE_UNKNOWN) if isinstance(matches, dict) else MATCH_STATE_UNKNOWN,
+                robot=matches.get(KEY_ROBOT_VS_PUSHED, MATCH_STATE_UNKNOWN) if isinstance(matches, dict) else MATCH_STATE_UNKNOWN,
             )
         )
         print(f"CLI: messages={self._message_level} echo={'on' if self._echo_enabled else 'off'}")
@@ -9499,10 +11012,15 @@ class BridgeCli:
             "echo": "echo on|off\n  Toggle echo for batch scripts (prints each command).",
             "sleep": "sleep <seconds>\n  Pause batch execution without sending a robot command.",
             "messages": "messages <beginner|medium|expert>\n  Set CLI message level.",
+            "tiu": HELP_TIU_TEXT,
+            "tiu on": "tiu on\n  Enable the TIU dashboard while keeping normal CLI command entry.",
+            "tiu off": "tiu off\n  Disable the TIU dashboard and return to the normal CLI presentation.",
             "debug grammar": "debug grammar [--json] [--dot <path>]\n  Dump the grammar model for the current mode.",
             "show message-level": "show message-level\n  Show current CLI message level.",
             "show workspace": "show workspace\n  Show loaded file paths, active profile/set, dirty flags, and recovery mode.",
             "show controllers": "show controllers\n  List controller names and supported input IDs.",
+            "show signals": "show signals [--json] [--pretty]\n  List configured devices and their supported DSL signals.",
+            "show signal": "show signal <device>\n  Show supported DSL signals for one configured device.",
             "sources": HELP_SOURCES_TEXT,
             "show sources": HELP_SOURCES_TEXT,
             "diagnose": HELP_DIAGNOSE_TEXT,
@@ -9649,8 +11167,11 @@ class BridgeCli:
             "no device": "no device <device>\n  Remove device from current group.",
             "member": "member <device> <enable|disable|toggle>\n  Control per-member enable state.",
             "bind": (
+                "bind list\n"
+                "bind explain <binding>\n"
+                "bind test <binding>\n"
                 "bind <input> <analog|hold|toggle|jog-forward|jog-reverse> [value]\n"
-                "  Create a binding. Button bindings require a value."
+                "  Create a binding or inspect one current-group binding."
             ),
             "no bind": "no bind\n  Clear all bindings from current group.",
             "enable": "enable\n  Enable current group.",
@@ -9757,10 +11278,472 @@ class BridgeCli:
             return json.dumps(payload, indent=JSON_PRETTY_INDENT)
         return json.dumps(payload)
 
+    def _fetch_robot_runtime_payload(self) -> Optional[Dict[str, object]]:
+        """
+        NAME
+            _fetch_robot_runtime_payload - Fetch runtime-state JSON from the robot.
+        """
+        if not self._session.is_connected():
+            return None
+        seq = show_runtime_state(self._session, json_output=True)
+        if seq is None:
+            return None
+        self._proto_mark_cmd_sent(CMD_SHOW_RUNTIME_STATE, now=time.time())
+        event = self._wait_for_seq(seq, timeout_sec=self._robot_show_timeout_sec(CMD_SHOW_RUNTIME_STATE))
+        if self._event_failed(event, "show runtime-state"):
+            return None
+        payload = parse_json_arg(event.json_text or event.text or EMPTY_STRING)
+        if isinstance(payload, dict):
+            return payload
+        return None
+
+    def _runtime_details_snapshot_local(self) -> Dict[str, object]:
+        """
+        NAME
+            _runtime_details_snapshot_local - Read host runtime component details when available.
+        """
+        if self._runtime_details_provider is None:
+            return {}
+        try:
+            payload = self._runtime_details_provider()
+        except Exception:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _visibility_snapshot_local(self) -> Dict[str, object]:
+        """
+        NAME
+            _visibility_snapshot_local - Read host visibility snapshot + summary when available.
+        """
+        provider = self._visibility_provider
+        if provider is None:
+            return {}
+        now_ms = int(time.time() * COUNT_THOUSAND)
+        snapshot = {}
+        summary = {}
+        try:
+            if hasattr(provider, "snapshot"):
+                raw_snapshot = provider.snapshot("expected", now_ms)
+                if isinstance(raw_snapshot, dict):
+                    snapshot = raw_snapshot
+            if hasattr(provider, "summary"):
+                raw_summary = provider.summary("expected", now_ms)
+                if isinstance(raw_summary, dict):
+                    summary = raw_summary
+        except Exception:
+            return {}
+        return {
+            KEY_SUMMARY: summary,
+            KEY_DEVICES: snapshot.get(KEY_DEVICES, []) if isinstance(snapshot.get(KEY_DEVICES), list) else [],
+            KEY_SOURCES: snapshot.get(KEY_SOURCES, []) if isinstance(snapshot.get(KEY_SOURCES), list) else [],
+        }
+
+    @staticmethod
+    def _device_runtime_index(runtime_payload: Dict[str, object]) -> Dict[str, Dict[str, object]]:
+        """
+        NAME
+            _device_runtime_index - Index runtime-state devices by normalized label.
+        """
+        devices = runtime_payload.get(KEY_DEVICES)
+        if not isinstance(devices, list):
+            return {}
+        indexed: Dict[str, Dict[str, object]] = {}
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip().lower()
+            if label:
+                indexed[label] = entry
+        return indexed
+
+    @staticmethod
+    def _fault_flag_count(attachment: Dict[str, object], key: str) -> int:
+        """
+        NAME
+            _fault_flag_count - Count list-style fault flag fields.
+        """
+        values = attachment.get(key)
+        if not isinstance(values, list):
+            return COUNT_ZERO
+        return len([item for item in values if isinstance(item, str) and item.strip()])
+
+    def _collect_runtime_fault_rows(self, runtime_payload: Dict[str, object]) -> List[Dict[str, object]]:
+        """
+        NAME
+            _collect_runtime_fault_rows - Extract device fault rows from runtime-state JSON.
+        """
+        devices = runtime_payload.get(KEY_DEVICES)
+        if not isinstance(devices, list):
+            return []
+        rows: List[Dict[str, object]] = []
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+            attachments = entry.get(KEY_ATTACHMENTS)
+            found = False
+            if isinstance(attachments, list):
+                for attachment in attachments:
+                    if not isinstance(attachment, dict):
+                        continue
+                    fault_count = COUNT_ZERO
+                    warning_count = COUNT_ZERO
+                    raw_faults = attachment.get(KEY_FAULTS_RAW)
+                    raw_sticky_faults = attachment.get(KEY_STICKY_FAULTS_RAW)
+                    raw_warnings = attachment.get(KEY_WARNINGS_RAW)
+                    raw_sticky_warnings = attachment.get(KEY_STICKY_WARNINGS_RAW)
+                    if isinstance(raw_faults, int) and raw_faults != COUNT_ZERO:
+                        fault_count += COUNT_ONE
+                    if isinstance(raw_sticky_faults, int) and raw_sticky_faults != COUNT_ZERO:
+                        fault_count += COUNT_ONE
+                    if isinstance(raw_warnings, int) and raw_warnings != COUNT_ZERO:
+                        warning_count += COUNT_ONE
+                    if isinstance(raw_sticky_warnings, int) and raw_sticky_warnings != COUNT_ZERO:
+                        warning_count += COUNT_ONE
+                    fault_count += self._fault_flag_count(attachment, KEY_FAULT_FLAGS)
+                    fault_count += self._fault_flag_count(attachment, KEY_STICKY_FAULT_FLAGS)
+                    warning_count += self._fault_flag_count(attachment, KEY_WARNING_FLAGS)
+                    warning_count += self._fault_flag_count(attachment, KEY_STICKY_WARNING_FLAGS)
+                    if fault_count > COUNT_ZERO or warning_count > COUNT_ZERO:
+                        rows.append(
+                            {
+                                KEY_LABEL: label,
+                                KEY_TYPE: str(attachment.get(KEY_TYPE, EMPTY_STRING)).strip(),
+                                KEY_FAULT_COUNT: fault_count,
+                                KEY_WARNING_COUNT: warning_count,
+                                KEY_DETAILS: attachment,
+                            }
+                        )
+                        found = True
+            power_fault = any(
+                bool(entry.get(key, False))
+                for key in (
+                    KEY_BROWNOUT,
+                    KEY_CAN_WARNING,
+                    KEY_HARDWARE_FAULT,
+                    KEY_STICKY_BROWNOUT,
+                    KEY_STICKY_CAN_WARNING,
+                    KEY_STICKY_CAN_BUS_OFF,
+                    KEY_STICKY_HAS_RESET,
+                )
+            )
+            channel_fault = any(bool(value) for value in entry.get(KEY_CHANNEL_FAULT, []) or [])
+            channel_sticky_fault = any(
+                bool(value) for value in entry.get(KEY_CHANNEL_STICKY_FAULT, []) or []
+            )
+            if not found and (power_fault or channel_fault or channel_sticky_fault):
+                rows.append(
+                    {
+                        KEY_LABEL: label,
+                        KEY_TYPE: str(entry.get(KEY_TYPE, EMPTY_STRING)).strip(),
+                        KEY_FAULT_COUNT: COUNT_ONE if (power_fault or channel_fault or channel_sticky_fault) else COUNT_ZERO,
+                        KEY_WARNING_COUNT: COUNT_ZERO,
+                        KEY_DETAILS: entry,
+                    }
+                )
+        return rows
+
+    @staticmethod
+    def _parse_event_json_payload(event: Optional[BridgeEvent]) -> Dict[str, object]:
+        """
+        NAME
+            _parse_event_json_payload - Parse event JSON payload when present.
+        """
+        if event is None or not event.json_text:
+            return {}
+        payload = parse_json_arg(event.json_text)
+        return payload if isinstance(payload, dict) else {}
+
+    def _print_profiles_apply_stages(self, payload: Dict[str, object]) -> None:
+        """
+        NAME
+            _print_profiles_apply_stages - Print staged profilesApply results from robot JSON.
+        """
+        stages = [
+            ("transfer check", "transferCheck"),
+            ("content validation", "contentValidation"),
+            ("apply", "apply"),
+            ("post-apply check", "postApplyCheck"),
+        ]
+        for label, key in stages:
+            stage_payload = payload.get(key)
+            if not isinstance(stage_payload, dict):
+                print(MESSAGE_PUSH_STAGE.format(stage=label, status=VALUE_UNAVAILABLE))
+                continue
+            ok = bool(stage_payload.get(KEY_OK, False))
+            status = MATCH_STATE_YES if ok else MATCH_STATE_NO
+            print(MESSAGE_PUSH_STAGE.format(stage=label, status=status))
+            detail = str(stage_payload.get(KEY_MESSAGE, EMPTY_STRING)).strip()
+            if detail:
+                print(MESSAGE_PUSH_STAGE_DETAIL.format(detail=detail))
+        active_profile = str(payload.get("activeProfile", EMPTY_STRING)).strip()
+        if active_profile:
+            print(MESSAGE_PUSH_STAGE_ACTIVE.format(profile=active_profile))
+
+    @staticmethod
+    def _bool_text(value: bool) -> str:
+        """
+        NAME
+            _bool_text - Render YES/NO for human-readable output.
+        """
+        return MATCH_STATE_YES if value else MATCH_STATE_NO
+
+    def _active_profile_labels(self) -> List[str]:
+        """
+        NAME
+            _active_profile_labels - Return configured device labels for the active profile.
+        """
+        profile_name = self._active_profile_name()
+        if not isinstance(self._local_root_payload, dict) or not profile_name:
+            return []
+        profiles = self._local_root_payload.get(KEY_PROFILES)
+        if not isinstance(profiles, dict):
+            return []
+        entry = profiles.get(profile_name)
+        if not isinstance(entry, dict):
+            return []
+        labels = entry.get(KEY_PROFILE_DEVICES)
+        if not isinstance(labels, list):
+            return []
+        return [str(label).strip() for label in labels if isinstance(label, str) and str(label).strip()]
+
+    def _show_active_local(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_active_local - Show effective local active state summary.
+        """
+        runtime_details = self._runtime_details_snapshot_local()
+        visibility = self._visibility_snapshot_local()
+        active_group = self._active_group_payload()
+        members = active_group.get(KEY_MEMBERS, []) if isinstance(active_group, dict) else []
+        payload = {
+            KEY_PROFILE: self._active_profile_name() or EMPTY_STRING,
+            KEY_RECOVERY_MODE: bool(self._recovery_mode),
+            KEY_DIRTY: self._current_dirty_flags(),
+            KEY_ACTIVE_GROUP: {
+                KEY_NAME: GROUP_NAME_ACTIVE,
+                KEY_MEMBER_COUNT: len(members) if isinstance(members, list) else COUNT_ZERO,
+            },
+            KEY_ACTIVE_TEST_SET: self._tests_active_set or EMPTY_STRING,
+            KEY_RUNTIME: runtime_details,
+            KEY_VISIBILITY: visibility,
+        }
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        component_count = len(runtime_details.get(KEY_RUNTIME_COMPONENTS, [])) if isinstance(runtime_details.get(KEY_RUNTIME_COMPONENTS), list) else COUNT_ZERO
+        visible_summary = visibility.get(KEY_SUMMARY, {}) if isinstance(visibility, dict) else {}
+        print("Active state:")
+        print(f"  profile: {payload[KEY_PROFILE] or STRING_NONE}")
+        print(f"  recovery mode: {self._bool_text(bool(payload[KEY_RECOVERY_MODE]))}")
+        print(f"  dirty: {self._bool_text(self._has_dirty_state())}")
+        print(f"  active group members: {payload[KEY_ACTIVE_GROUP][KEY_MEMBER_COUNT]}")
+        print(f"  active test set: {payload[KEY_ACTIVE_TEST_SET] or STRING_NONE}")
+        print(f"  runtime components: {component_count}")
+        if isinstance(visible_summary, dict) and visible_summary:
+            print(
+                "  visibility: devices={devices} all={all_seen} some={some_seen} none={none_seen}".format(
+                    devices=visible_summary.get("devicesShown", COUNT_ZERO),
+                    all_seen=visible_summary.get("visibleAll", COUNT_ZERO),
+                    some_seen=visible_summary.get("visibleSome", COUNT_ZERO),
+                    none_seen=visible_summary.get("visibleNone", COUNT_ZERO),
+                )
+            )
+        else:
+            print(f"  visibility: {VALUE_UNAVAILABLE}")
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_active_robot(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_active_robot - Show robot runtime active state summary.
+        """
+        payload = self._fetch_robot_runtime_payload()
+        if not isinstance(payload, dict):
+            print("ERROR: Robot runtime-state unavailable.")
+            return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE)
+        devices = payload.get(KEY_DEVICES, []) if isinstance(payload.get(KEY_DEVICES), list) else []
+        groups = payload.get(KEY_BRIDGE_GROUPS, []) if isinstance(payload.get(KEY_BRIDGE_GROUPS), list) else []
+        selected = payload.get(KEY_BRIDGE_SELECTED_DEVICE, {}) if isinstance(payload.get(KEY_BRIDGE_SELECTED_DEVICE), dict) else {}
+        summary = {
+            KEY_PROFILE: str(payload.get(KEY_PROFILE, EMPTY_STRING)).strip(),
+            KEY_ENABLED: bool(payload.get(KEY_ENABLED, False)),
+            KEY_ESTOPPED: bool(payload.get(KEY_ESTOPPED, False)),
+            KEY_MODE: str(payload.get(KEY_MODE, EMPTY_STRING)).strip(),
+            KEY_DEVICE_COUNT: len(devices),
+            KEY_GROUP_COUNT: len(groups),
+            KEY_BRIDGE_SELECTED_DEVICE: selected,
+            KEY_DEVICES: devices,
+            KEY_BRIDGE_GROUPS: groups,
+        }
+        print(MESSAGE_SOURCE_ROBOT)
+        if json_output:
+            print(self._dump_json(summary, pretty))
+            return StatusResult(code=SS__NORMAL)
+        print("Active state:")
+        print(f"  profile: {summary[KEY_PROFILE] or STRING_NONE}")
+        print(f"  enabled: {self._bool_text(bool(summary[KEY_ENABLED]))}")
+        print(f"  estopped: {self._bool_text(bool(summary[KEY_ESTOPPED]))}")
+        print(f"  mode: {summary[KEY_MODE] or STRING_NONE}")
+        print(f"  runtime devices: {summary[KEY_DEVICE_COUNT]}")
+        print(f"  groups: {summary[KEY_GROUP_COUNT]}")
+        print(
+            "  selected device: {device} ({state})".format(
+                device=str(selected.get(KEY_DEVICE, EMPTY_STRING)).strip() or STRING_NONE,
+                state=TEXT_STATUS_ON if bool(selected.get(KEY_ENABLED, False)) else TEXT_STATUS_OFF,
+            )
+        )
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_instantiated_local(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_instantiated_local - Show configured devices with local visibility state.
+        """
+        labels = self._active_profile_labels()
+        visibility = self._visibility_snapshot_local()
+        visible_devices = visibility.get(KEY_DEVICES, []) if isinstance(visibility.get(KEY_DEVICES), list) else []
+        visible_by_label = {
+            str(entry.get(KEY_LABEL, EMPTY_STRING)).strip().lower(): entry
+            for entry in visible_devices
+            if isinstance(entry, dict)
+        }
+        rows: List[Dict[str, object]] = []
+        for label in labels:
+            vis_entry = visible_by_label.get(label.lower(), {})
+            visibility_map = vis_entry.get(KEY_VISIBILITY, {}) if isinstance(vis_entry, dict) else {}
+            present = any(value is True for value in visibility_map.values()) if isinstance(visibility_map, dict) else False
+            rows.append(
+                {
+                    KEY_LABEL: label,
+                    KEY_INSTANTIATED: None,
+                    KEY_PRESENT: present,
+                    KEY_REASON: "robot runtime instantiation unavailable from local source",
+                    KEY_VISIBILITY: visibility_map if isinstance(visibility_map, dict) else {},
+                }
+            )
+        payload = {KEY_PROFILE: self._active_profile_name() or EMPTY_STRING, KEY_DEVICES: rows}
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        print("Instantiated devices:")
+        if not rows:
+            print(f"  {STRING_NONE}")
+            return StatusResult(code=SS__NORMAL)
+        for row in rows:
+            print(
+                "  {label}: instantiated={instantiated} present={present} reason={reason}".format(
+                    label=row[KEY_LABEL],
+                    instantiated=VALUE_UNAVAILABLE,
+                    present=self._bool_text(bool(row[KEY_PRESENT])),
+                    reason=row[KEY_REASON],
+                )
+            )
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_instantiated_robot(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_instantiated_robot - Show robot runtime instantiated device state.
+        """
+        payload = self._fetch_robot_runtime_payload()
+        if not isinstance(payload, dict):
+            print("ERROR: Robot runtime-state unavailable.")
+            return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE)
+        devices = payload.get(KEY_DEVICES, []) if isinstance(payload.get(KEY_DEVICES), list) else []
+        rows: List[Dict[str, object]] = []
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            rows.append(
+                {
+                    KEY_LABEL: str(entry.get(KEY_LABEL, EMPTY_STRING)).strip(),
+                    KEY_TYPE: str(entry.get(KEY_TYPE, EMPTY_STRING)).strip(),
+                    KEY_ID: entry.get(KEY_ID),
+                    KEY_INSTANTIATED: bool(entry.get(KEY_INSTANTIATED, False)),
+                    KEY_PRESENT: float(entry.get(KEY_PRESENCE_CONF, 0.0)) > 0.0,
+                    KEY_LAST_SEEN_MS: entry.get(KEY_LAST_SEEN_MS),
+                }
+            )
+        result_payload = {KEY_PROFILE: str(payload.get(KEY_PROFILE, EMPTY_STRING)).strip(), KEY_DEVICES: rows}
+        print(MESSAGE_SOURCE_ROBOT)
+        if json_output:
+            print(self._dump_json(result_payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        print("Instantiated devices:")
+        if not rows:
+            print(f"  {STRING_NONE}")
+            return StatusResult(code=SS__NORMAL)
+        for row in rows:
+            print(
+                "  {label}: instantiated={instantiated} present={present} id={id}".format(
+                    label=row[KEY_LABEL] or STRING_NONE,
+                    instantiated=self._bool_text(bool(row[KEY_INSTANTIATED])),
+                    present=self._bool_text(bool(row[KEY_PRESENT])),
+                    id=row[KEY_ID],
+                )
+            )
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_faults_local(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_faults_local - Show local fault visibility availability.
+        """
+        payload = {
+            KEY_FAULTS: [],
+            KEY_REASON: "local source does not have robot fault attachments; use show faults robot",
+        }
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        print("Faults:")
+        print(f"  {VALUE_UNAVAILABLE}: {payload[KEY_REASON]}")
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_faults_robot(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_faults_robot - Show robot runtime fault summary.
+        """
+        payload = self._fetch_robot_runtime_payload()
+        if not isinstance(payload, dict):
+            print("ERROR: Robot runtime-state unavailable.")
+            return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE)
+        rows = self._collect_runtime_fault_rows(payload)
+        result_payload = {KEY_PROFILE: str(payload.get(KEY_PROFILE, EMPTY_STRING)).strip(), KEY_FAULTS: rows}
+        print(MESSAGE_SOURCE_ROBOT)
+        if json_output:
+            print(self._dump_json(result_payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        print("Faults:")
+        if not rows:
+            print("  none")
+            return StatusResult(code=SS__NORMAL)
+        for row in rows:
+            print(
+                "  {label}: faults={faults} warnings={warnings} type={type}".format(
+                    label=row.get(KEY_LABEL, STRING_NONE),
+                    faults=row.get(KEY_FAULT_COUNT, COUNT_ZERO),
+                    warnings=row.get(KEY_WARNING_COUNT, COUNT_ZERO),
+                    type=row.get(KEY_TYPE, EMPTY_STRING) or STRING_NONE,
+                )
+            )
+        return StatusResult(code=SS__NORMAL)
+
     def _show_robot(self, target: str, tokens: List[str], json_output: bool, pretty: bool) -> StatusResult:
         if not self._session.is_connected():
             print("ERROR: Robot source unavailable (not connected).")
             return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+        if target == SHOW_TARGET_ACTIVE:
+            return self._show_active_robot(json_output, pretty)
+        if target == SHOW_TARGET_INSTANTIATED:
+            return self._show_instantiated_robot(json_output, pretty)
+        if target == SHOW_TARGET_FAULTS:
+            return self._show_faults_robot(json_output, pretty)
         if target == SHOW_TARGET_SOURCES:
             seq = show_sources(self._session, json_output=json_output)
             cmd_name = CMD_SHOW_SOURCES
@@ -9850,6 +11833,12 @@ class BridgeCli:
             return self._show_workspace(json_output, pretty)
         if target == SHOW_TARGET_CONTROLLERS:
             return self._show_controllers(json_output, pretty)
+        if target == SHOW_TARGET_ACTIVE:
+            return self._show_active_local(json_output, pretty)
+        if target == SHOW_TARGET_INSTANTIATED:
+            return self._show_instantiated_local(json_output, pretty)
+        if target == SHOW_TARGET_FAULTS:
+            return self._show_faults_local(json_output, pretty)
         if target == SHOW_TARGET_MESSAGE_LEVEL:
             if self._show_message_level(json_output, pretty):
                 return StatusResult(code=SS__NORMAL)
@@ -9864,6 +11853,11 @@ class BridgeCli:
         if target == SHOW_TARGET_DEVICE_USAGE:
             name = tokens[COUNT_ONE] if len(tokens) >= COUNT_TWO else EMPTY_STRING
             return self._show_device_usage(name, json_output, pretty)
+        if target == SHOW_TARGET_SIGNALS:
+            return self._show_local_signals(json_output, pretty)
+        if target == SHOW_TARGET_SIGNAL:
+            name = tokens[COUNT_ONE] if len(tokens) >= COUNT_TWO else EMPTY_STRING
+            return self._show_local_signal_device(name, json_output, pretty)
         if target == SHOW_TARGET_CONFIG_RAW:
             return self._show_local_config_raw(json_output, pretty)
         if target == SHOW_TARGET_CONFIG_DIRTY:
@@ -9876,6 +11870,10 @@ class BridgeCli:
         if target == SHOW_TARGET_DEVICE:
             name = tokens[1] if len(tokens) >= 2 else ""
             return self._show_local_registry_device(name, json_output, pretty)
+        if target == SHOW_TARGET_TOPOLOGY:
+            return self._show_local_topology(tokens, json_output, pretty)
+        if target == SHOW_TARGET_NEIGHBORS:
+            return self._show_local_neighbors(tokens, json_output, pretty)
         profile = self._active_profile_name()
         if not profile:
             print(MESSAGE_ERR_PROFILE_REQUIRED)
@@ -10307,6 +12305,30 @@ class BridgeCli:
             if value:
                 any_dirty = True
             print(MESSAGE_DIRTY_ENTRY.format(name=name, value=str(value).lower()))
+        print(
+            MESSAGE_DIRTY_LAST_MODIFIED.format(
+                value=self._format_provenance_value(self._last_modified_at)
+            )
+        )
+        print(
+            MESSAGE_DIRTY_LAST_SAVED.format(
+                value=self._format_provenance_value(
+                    self._last_saved_at,
+                    path=self._last_saved_path,
+                    hash_value=self._last_saved_hash,
+                )
+            )
+        )
+        print(
+            MESSAGE_DIRTY_LAST_PUSHED.format(
+                value=self._format_provenance_value(
+                    self._last_pushed_at,
+                    path=self._last_pushed_path,
+                    hash_value=self._last_pushed_hash,
+                    profile_name=self._last_pushed_profile,
+                )
+            )
+        )
         if not any_dirty:
             print(MESSAGE_DIRTY_NONE)
         return StatusResult(code=SS__NORMAL)
@@ -10521,6 +12543,10 @@ class BridgeCli:
             print("ERROR: Local config not loaded. Use merge/import config <bringup_system.json>.")
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         cmd = tokens[0].lower()
+        if cmd == CMD_BIND and len(tokens) >= COUNT_TWO:
+            action = tokens[COUNT_ONE].lower()
+            if action in (CMD_LIST, CMD_EXPLAIN, CMD_TEST):
+                return self._coerce_status(self._handle_group_bind_diagnostics(group, tokens))
         if cmd == "show":
             return self._coerce_status(self._handle_show(["group", group] + tokens[1:]))
         if cmd == "add" and len(tokens) >= 3 and tokens[1].lower() == "device":
@@ -10578,6 +12604,204 @@ class BridgeCli:
             return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE)
         print(f"ERROR: Unknown command: {' '.join(tokens)}")
         return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+
+    def _handle_group_bind_diagnostics(self, group_name: str, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _handle_group_bind_diagnostics - Inspect current-group bindings.
+        """
+        if len(tokens) < COUNT_TWO:
+            print(ERR_BIND_EXPLAIN_USAGE)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        action = tokens[COUNT_ONE].lower()
+        diagnostics = self._evaluate_group_bindings(group_name)
+        if action == CMD_LIST:
+            print(TEXT_BIND_LIST_HEADER)
+            if not diagnostics:
+                print(TEXT_BIND_LIST_NONE)
+                return StatusResult(code=SS__NORMAL)
+            for diag in diagnostics:
+                value = diag[KEY_VALUE]
+                value_text = (
+                    TEXT_BIND_VALUE_PREFIX + str(value)
+                    if value is not None
+                    else EMPTY_STRING
+                )
+                print(
+                    TEXT_BIND_LIST_ENTRY.format(
+                        index=diag["index"],
+                        input=diag[KEY_INPUT],
+                        kind=diag[KEY_KIND],
+                        value=value_text,
+                        status=diag[KEY_STATUS],
+                        reason=diag[KEY_REASON],
+                    )
+                )
+            return StatusResult(code=SS__NORMAL)
+        if action == CMD_EXPLAIN:
+            if len(tokens) < COUNT_THREE:
+                print(ERR_BIND_EXPLAIN_USAGE)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            diag = self._select_group_binding_diagnostic(diagnostics, tokens[COUNT_TWO])
+            if diag is None:
+                print(ERR_BIND_NOT_FOUND)
+                return StatusResult(code=SS__GROUP__BINDING_INVALID)
+            self._print_group_binding_diagnostic(diag)
+            return StatusResult(code=SS__NORMAL)
+        if action == CMD_TEST:
+            if len(tokens) < COUNT_THREE:
+                print(ERR_BIND_TEST_USAGE)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            diag = self._select_group_binding_diagnostic(diagnostics, tokens[COUNT_TWO])
+            if diag is None:
+                print(ERR_BIND_NOT_FOUND)
+                return StatusResult(code=SS__GROUP__BINDING_INVALID)
+            self._print_group_binding_diagnostic(diag)
+            if diag[KEY_STATUS] == BIND_DIAG_STATUS_ACTIVE:
+                print(TEXT_BIND_TEST_PASS)
+                return StatusResult(code=SS__NORMAL)
+            print(TEXT_BIND_TEST_FAIL)
+            return StatusResult(code=SS__CONFIG__INVALID)
+        print(f"ERROR: Unknown command: {' '.join(tokens)}")
+        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+
+    def _known_controller_names(self) -> set[str]:
+        names: set[str] = set()
+        if self._ensure_bindings_loaded() and isinstance(self._bindings_payload, dict):
+            controllers = self._bindings_payload.get(KEY_CONTROLLERS, [])
+            if isinstance(controllers, list):
+                for entry in controllers:
+                    if not isinstance(entry, dict):
+                        continue
+                    name = str(entry.get(KEY_NAME, EMPTY_STRING)).strip()
+                    if name:
+                        names.add(name)
+        for name in load_controller_names(self._bindings_path):
+            clean = str(name).strip()
+            if clean:
+                names.add(clean)
+        return names
+
+    def _evaluate_group_bindings(self, group_name: str) -> List[Dict[str, object]]:
+        group = self._find_local_group(group_name)
+        if group is None:
+            return []
+        bindings = group.get(KEY_BRIDGE_BINDINGS, []) or []
+        members = group.get(KEY_MEMBERS, []) or []
+        total_members = COUNT_ZERO
+        enabled_members = COUNT_ZERO
+        for member in members:
+            if isinstance(member, dict):
+                total_members += COUNT_ONE
+                if bool(member.get(KEY_ENABLED, True)):
+                    enabled_members += COUNT_ONE
+            elif isinstance(member, str):
+                total_members += COUNT_ONE
+                enabled_members += COUNT_ONE
+        group_enabled = bool(group.get(KEY_ENABLED, True))
+        controller_names = self._known_controller_names()
+        diagnostics: List[Dict[str, object]] = []
+        for index, binding in enumerate(bindings, start=COUNT_ONE):
+            if not isinstance(binding, dict):
+                continue
+            input_name = str(binding.get(KEY_INPUT, EMPTY_STRING)).strip()
+            kind = str(binding.get(KEY_KIND, EMPTY_STRING)).strip()
+            value = binding.get(KEY_VALUE)
+            controller_name = EMPTY_STRING
+            signal_name = EMPTY_STRING
+            if CONTROL_SIGNAL_SEPARATOR in input_name:
+                controller_name, signal_name = input_name.split(CONTROL_SIGNAL_SEPARATOR, maxsplit=1)
+            controller_found = bool(controller_name) and controller_name in controller_names
+            signal_found = bool(signal_name) and signal_name in (AXIS_INPUTS | BUTTON_INPUTS)
+            status = BIND_DIAG_STATUS_ACTIVE
+            reason = ERR_BIND_READY_LOCAL_ONLY
+            if CONTROL_SIGNAL_SEPARATOR not in input_name:
+                status = BIND_DIAG_STATUS_UNRESOLVED
+                reason = ERR_BIND_CONTROLLER_PREFIX
+            elif not controller_found:
+                status = BIND_DIAG_STATUS_UNRESOLVED
+                reason = ERR_BIND_CONTROLLER_MISSING
+            elif not signal_found:
+                status = BIND_DIAG_STATUS_UNRESOLVED
+                reason = ERR_BIND_SIGNAL_MISSING
+            elif not group_enabled:
+                status = BIND_DIAG_STATUS_DISABLED
+                reason = ERR_BIND_GROUP_DISABLED
+            elif enabled_members <= COUNT_ZERO:
+                status = BIND_DIAG_STATUS_BLOCKED
+                reason = ERR_BIND_NO_ENABLED_MEMBERS
+            diagnostics.append(
+                {
+                    "index": index,
+                    "group": group_name,
+                    KEY_INPUT: input_name,
+                    KEY_KIND: kind,
+                    KEY_VALUE: value,
+                    KEY_STATUS: status,
+                    KEY_REASON: reason,
+                    "controller": controller_name,
+                    "controllerFound": controller_found,
+                    "signal": signal_name,
+                    "signalFound": signal_found,
+                    "groupEnabled": group_enabled,
+                    "enabledMembers": enabled_members,
+                    "totalMembers": total_members,
+                }
+            )
+        return diagnostics
+
+    def _select_group_binding_diagnostic(
+        self, diagnostics: List[Dict[str, object]], selector: str
+    ) -> Optional[Dict[str, object]]:
+        try:
+            index = int(selector)
+        except ValueError:
+            index = COUNT_ZERO
+        if index > COUNT_ZERO:
+            for diag in diagnostics:
+                if int(diag.get("index", COUNT_ZERO)) == index:
+                    return diag
+        lowered = selector.strip().lower()
+        for diag in diagnostics:
+            input_name = str(diag.get(KEY_INPUT, EMPTY_STRING)).strip().lower()
+            if input_name == lowered:
+                return diag
+        return None
+
+    def _print_group_binding_diagnostic(self, diag: Dict[str, object]) -> None:
+        print(TEXT_BIND_EXPLAIN_HEADER.format(index=diag["index"]))
+        print(TEXT_BIND_EXPLAIN_GROUP.format(group=diag["group"]))
+        print(TEXT_BIND_EXPLAIN_INPUT.format(input=diag[KEY_INPUT]))
+        print(TEXT_BIND_EXPLAIN_KIND.format(kind=diag[KEY_KIND]))
+        value = diag.get(KEY_VALUE)
+        print(TEXT_BIND_EXPLAIN_VALUE.format(value=value if value is not None else TEXT_BIND_VALUE_NONE))
+        print(
+            TEXT_BIND_EXPLAIN_CONTROLLER.format(
+                controller=diag["controller"] or TEXT_BIND_VALUE_NONE,
+                found=BIND_BOOL_YES if diag["controllerFound"] else BIND_BOOL_NO,
+            )
+        )
+        print(
+            TEXT_BIND_EXPLAIN_SIGNAL.format(
+                signal=diag["signal"] or TEXT_BIND_VALUE_NONE,
+                found=BIND_BOOL_YES if diag["signalFound"] else BIND_BOOL_NO,
+            )
+        )
+        print(
+            TEXT_BIND_EXPLAIN_GROUP_ENABLED.format(
+                enabled=BIND_BOOL_YES if diag["groupEnabled"] else BIND_BOOL_NO
+            )
+        )
+        print(
+            TEXT_BIND_EXPLAIN_MEMBERS.format(
+                enabled=diag["enabledMembers"],
+                total=diag["totalMembers"],
+            )
+        )
+        print(TEXT_BIND_EXPLAIN_STATUS.format(status=diag[KEY_STATUS]))
+        print(TEXT_BIND_EXPLAIN_REASON.format(reason=diag[KEY_REASON]))
+        print(TEXT_BIND_EXPLAIN_LAST_INPUT)
+        print(TEXT_BIND_EXPLAIN_LAST_OUTPUT)
 
     def _select_or_create_local_group(self, name: str) -> StatusResult:
         if not self._local_config:
@@ -10926,7 +13150,7 @@ class BridgeCli:
         if not removed:
             print(f"ERROR: Device {name} not found in profiles.")
             return StatusResult(code=SS__DEVICE__NOT_FOUND)
-        self._profiles_dirty = True
+        self._mark_profiles_dirty()
         self._remove_diagram_device(entry)
         self._remove_bridge_groups_device(name)
         self._refresh_devices_from_profiles()
@@ -10978,41 +13202,53 @@ class BridgeCli:
         payload = self._local_root_payload
         if not isinstance(payload, dict):
             return
-        profiles, profile_name = self._profiles_root_and_name()
-        if profiles is None or profile_name is None:
+        label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+        if not label:
             return
-        profile = profiles.get(profile_name)
-        if not isinstance(profile, dict):
+        topology_root = payload.get(KEY_TOPOLOGY)
+        if not isinstance(topology_root, dict):
             return
-        category = self._find_entry_category(profile, entry)
-        if category is None:
+        topology_profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
+        if not isinstance(topology_profiles, dict):
             return
-        device_id = entry.get("id")
-        if device_id is None:
-            return
-        diagram = payload.get("diagram")
-        if not isinstance(diagram, dict):
-            return
-        diag_profiles = diagram.get("profiles")
-        if not isinstance(diag_profiles, dict):
-            return
-        diag_profile = diag_profiles.get(profile_name)
-        if not isinstance(diag_profile, dict):
-            return
-        nodes = diag_profile.get("nodes")
-        if not isinstance(nodes, list):
-            return
-        removed = False
-        for node in list(nodes):
-            if not isinstance(node, dict):
+        for topology_profile in topology_profiles.values():
+            if not isinstance(topology_profile, dict):
                 continue
-            if node.get("nodeType") != "device":
+            nodes = topology_profile.get(KEY_TOPOLOGY_NODES)
+            if not isinstance(nodes, list):
                 continue
-            if node.get("category") == category and node.get("id") == device_id:
-                nodes.remove(node)
-                removed = True
-        if removed:
-            diag_profile["nodes"] = nodes
+            filtered: List[Dict[str, object]] = []
+            removed_keys: set[int] = set()
+            for node in nodes:
+                if not isinstance(node, dict):
+                    filtered.append(node)
+                    continue
+                if node.get(KEY_NODE_TYPE) != NODE_TYPE_DEVICE:
+                    filtered.append(node)
+                    continue
+                device_ref = str(node.get(KEY_DEVICE_REF, EMPTY_STRING)).strip()
+                if device_ref.lower() == label.lower():
+                    key_value = node.get(KEY_NODE_KEY)
+                    if isinstance(key_value, int):
+                        removed_keys.add(key_value)
+                    continue
+                filtered.append(node)
+            if len(filtered) == len(nodes):
+                continue
+            topology_profile[KEY_TOPOLOGY_NODES] = filtered
+            edges = topology_profile.get(KEY_TOPOLOGY_EDGES)
+            if isinstance(edges, list) and removed_keys:
+                topology_profile[KEY_TOPOLOGY_EDGES] = [
+                    edge
+                    for edge in edges
+                    if not (
+                        isinstance(edge, dict)
+                        and (
+                            edge.get(KEY_FROM_NODE) in removed_keys
+                            or edge.get(KEY_TO_NODE) in removed_keys
+                        )
+                    )
+                ]
 
     def _rename_profiles_device(self, old: str, new: str) -> StatusResult:
         """
@@ -11038,7 +13274,7 @@ class BridgeCli:
             print(ERR_NAME_EXISTS.format(name=new_label))
             return StatusResult(code=SS__CONFIG__DUPLICATE_LABEL)
         entry["label"] = new_label
-        self._profiles_dirty = True
+        self._mark_profiles_dirty()
         rename_counts: Dict[str, int] = {
             RENAME_REF_PROFILE_DEVICES: COUNT_ZERO,
             RENAME_REF_ATTACHMENTS: COUNT_ZERO,
@@ -11055,7 +13291,7 @@ class BridgeCli:
         groups_count, selected_count = self._update_bridge_groups_label(old, new_label)
         rename_counts[RENAME_REF_GROUPS] = groups_count
         rename_counts[RENAME_REF_SELECTED] = selected_count
-        if self._update_diagram_label(entry, new_label):
+        if self._update_diagram_label(old, new_label):
             rename_counts[RENAME_REF_DIAGRAM] = COUNT_ONE
         test_counts = self._update_tests_label_refs(old, new_label)
         if test_counts:
@@ -11112,43 +13348,34 @@ class BridgeCli:
             self._mark_groups_dirty()
         return groups_changed, selected_changed
 
-    def _update_diagram_label(self, entry: Dict[str, object], new_label: str) -> bool:
+    def _update_diagram_label(self, old_label: str, new_label: str) -> bool:
         payload = self._local_root_payload
         if not isinstance(payload, dict):
             return False
-        profiles, profile_name = self._profiles_root_and_name()
-        if profiles is None or profile_name is None:
+        if not old_label.strip():
             return False
-        profile = profiles.get(profile_name)
-        if not isinstance(profile, dict):
+        topology_root = payload.get(KEY_TOPOLOGY)
+        if not isinstance(topology_root, dict):
             return False
-        category = self._find_entry_category(profile, entry)
-        if category is None:
-            return False
-        device_id = entry.get("id")
-        if device_id is None:
-            return False
-        diagram = payload.get("diagram")
-        if not isinstance(diagram, dict):
-            return False
-        diag_profiles = diagram.get("profiles")
-        if not isinstance(diag_profiles, dict):
-            return False
-        diag_profile = diag_profiles.get(profile_name)
-        if not isinstance(diag_profile, dict):
-            return False
-        nodes = diag_profile.get("nodes")
-        if not isinstance(nodes, list):
+        topology_profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
+        if not isinstance(topology_profiles, dict):
             return False
         updated = False
-        for node in nodes:
-            if not isinstance(node, dict):
+        for topology_profile in topology_profiles.values():
+            if not isinstance(topology_profile, dict):
                 continue
-            if node.get("nodeType") != "device":
+            nodes = topology_profile.get(KEY_TOPOLOGY_NODES)
+            if not isinstance(nodes, list):
                 continue
-            if node.get("category") == category and node.get("id") == device_id:
-                node["label"] = new_label
-                updated = True
+            for node in nodes:
+                if not isinstance(node, dict):
+                    continue
+                if node.get(KEY_NODE_TYPE) != NODE_TYPE_DEVICE:
+                    continue
+                device_ref = str(node.get(KEY_DEVICE_REF, EMPTY_STRING)).strip()
+                if device_ref.lower() == old_label.strip().lower():
+                    node[KEY_DEVICE_REF] = new_label
+                    updated = True
         return updated
 
     def _update_profile_device_label(self, old: str, new: str) -> int:
@@ -11393,70 +13620,694 @@ class BridgeCli:
         print("\n".join(lines))
         return StatusResult(code=SS__NORMAL)
 
+    def _signal_catalog_entry(self, device_entry: Dict[str, object]) -> Tuple[str, Dict[str, object]]:
+        """
+        NAME
+            _signal_catalog_entry - Resolve DSL signal metadata for one configured device entry.
+        """
+        device_type = str(device_entry.get(KEY_TYPE, EMPTY_STRING)).strip()
+        catalog = self._dsl_signal_catalog()
+        entry = catalog.get(device_type, {}) if device_type else {}
+        return device_type, entry if isinstance(entry, dict) else {}
+
+    def _iter_signal_device_entries(self) -> List[Dict[str, object]]:
+        """
+        NAME
+            _iter_signal_device_entries - Return configured device registry entries for signal inspection.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            return []
+        devices = self._local_root_payload.get(KEY_DEVICES)
+        if not isinstance(devices, list):
+            return []
+        active_labels = {label.lower(): index for index, label in enumerate(self._active_profile_labels())}
+        result: List[Tuple[int, Dict[str, object]]] = []
+        fallback_index = len(active_labels)
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if not label:
+                continue
+            order = active_labels.get(label.lower(), fallback_index)
+            if label.lower() not in active_labels:
+                fallback_index += COUNT_ONE
+            result.append((order, entry))
+        result.sort(key=lambda item: (item[0], str(item[1].get(KEY_LABEL, EMPTY_STRING)).lower()))
+        return [entry for _, entry in result]
+
+    @staticmethod
+    def _signal_meta_summary(signal_name: str, meta: Dict[str, object]) -> str:
+        """
+        NAME
+            _signal_meta_summary - Build a compact summary for one supported signal.
+        """
+        flags: List[str] = []
+        if bool(meta.get("readable", False)):
+            flags.append("read")
+        if bool(meta.get("writable", False)):
+            flags.append("write")
+        if bool(meta.get("clearable", False)):
+            flags.append("clear")
+        value_type = str(meta.get("valueType", EMPTY_STRING)).strip() or VALUE_UNAVAILABLE
+        flags_text = SEP_COMMA_SPACE.join(flags) if flags else VALUE_UNAVAILABLE
+        return f"{signal_name} ({value_type}; {flags_text})"
+
+    def _show_local_signals(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_local_signals - Show supported DSL signals for configured devices.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        rows: List[Dict[str, object]] = []
+        for entry in self._iter_signal_device_entries():
+            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+            device_type, signal_meta = self._signal_catalog_entry(entry)
+            signals = []
+            for signal_name in sorted(signal_meta.keys(), key=lambda value: value.lower()):
+                meta = signal_meta.get(signal_name)
+                if isinstance(meta, dict):
+                    signals.append({KEY_NAME: signal_name, KEY_DETAILS: meta})
+            rows.append(
+                {
+                    KEY_LABEL: label,
+                    KEY_TYPE: device_type,
+                    KEY_SIGNALS: signals,
+                }
+            )
+        payload = {KEY_DEVICES: rows}
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        print("Supported signals:")
+        if not rows:
+            print(f"  {STRING_NONE}")
+            return StatusResult(code=SS__NORMAL)
+        for row in rows:
+            label = str(row.get(KEY_LABEL, EMPTY_STRING)).strip() or STRING_NONE
+            device_type = str(row.get(KEY_TYPE, EMPTY_STRING)).strip() or VALUE_UNAVAILABLE
+            signals = row.get(KEY_SIGNALS, [])
+            print(f"  {label} ({device_type})")
+            if not isinstance(signals, list) or not signals:
+                print(f"    {VALUE_UNAVAILABLE}")
+                continue
+            for signal in signals:
+                if not isinstance(signal, dict):
+                    continue
+                signal_name = str(signal.get(KEY_NAME, EMPTY_STRING)).strip()
+                meta = signal.get(KEY_DETAILS, {})
+                if signal_name and isinstance(meta, dict):
+                    print(f"    {self._signal_meta_summary(signal_name, meta)}")
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_local_signal_device(self, name: str, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_local_signal_device - Show supported DSL signals for one configured device.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        clean_name = str(name or EMPTY_STRING).strip()
+        if not clean_name:
+            print(MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND)
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        entry = self._find_profiles_device_entry(clean_name)
+        if entry is None:
+            print(MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND)
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        device_type, signal_meta = self._signal_catalog_entry(entry)
+        signals = []
+        for signal_name in sorted(signal_meta.keys(), key=lambda value: value.lower()):
+            meta = signal_meta.get(signal_name)
+            if isinstance(meta, dict):
+                signals.append({KEY_NAME: signal_name, KEY_DETAILS: meta})
+        payload = {
+            KEY_LABEL: str(entry.get(KEY_LABEL, clean_name)).strip() or clean_name,
+            KEY_TYPE: device_type,
+            KEY_SIGNALS: signals,
+        }
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        print(f"Supported signals: {payload[KEY_LABEL]} ({device_type or VALUE_UNAVAILABLE})")
+        if not signals:
+            print(f"  {VALUE_UNAVAILABLE}")
+            return StatusResult(code=SS__NORMAL)
+        for signal in signals:
+            signal_name = str(signal.get(KEY_NAME, EMPTY_STRING)).strip()
+            meta = signal.get(KEY_DETAILS, {})
+            if signal_name and isinstance(meta, dict):
+                print(f"  {self._signal_meta_summary(signal_name, meta)}")
+        return StatusResult(code=SS__NORMAL)
+
+    def _active_topology_profile(self, create: bool = False) -> Dict[str, object]:
+        """
+        NAME
+            _active_topology_profile - Return the active profile topology object.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            return {}
+        profile_name = self._active_profile_name()
+        if not profile_name:
+            return {}
+        topology_root = self._local_root_payload.get(KEY_TOPOLOGY)
+        if not isinstance(topology_root, dict):
+            if not create:
+                return {}
+            topology_root = {
+                KEY_TOPOLOGY_VERSION: 1,
+                KEY_TOPOLOGY_SOURCE: SHOW_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {},
+            }
+            self._local_root_payload[KEY_TOPOLOGY] = topology_root
+        profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
+        if not isinstance(profiles, dict):
+            if not create:
+                return {}
+            profiles = {}
+            topology_root[KEY_TOPOLOGY_PROFILES] = profiles
+        profile = profiles.get(profile_name)
+        if not isinstance(profile, dict):
+            if not create:
+                return {}
+            profile = {
+                KEY_TOPOLOGY_NODES: [],
+                KEY_TOPOLOGY_EDGES: [],
+            }
+            profiles[profile_name] = profile
+        if not isinstance(profile.get(KEY_TOPOLOGY_NODES), list):
+            profile[KEY_TOPOLOGY_NODES] = []
+        if not isinstance(profile.get(KEY_TOPOLOGY_EDGES), list):
+            profile[KEY_TOPOLOGY_EDGES] = []
+        return profile
+
+    def _active_topology_registry(self) -> Dict[str, Dict[str, object]]:
+        """
+        NAME
+            _active_topology_registry - Build the active device registry map.
+        """
+        return self._local_registry_by_label()
+
+    def _show_local_topology(self, tokens: List[str], json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_local_topology - Show topology nodes/edges for the active profile.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        profile_name = self._active_profile_name()
+        if not profile_name:
+            print(MESSAGE_ERR_TOPOLOGY_PROFILE_REQUIRED)
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
+        topology_profile = self._active_topology_profile(create=False)
+        if not topology_profile:
+            print(MESSAGE_ERR_TOPOLOGY_NOT_LOADED)
+            return StatusResult(code=SS__CONFIG__INVALID)
+        subtarget = tokens[1].lower() if len(tokens) >= COUNT_TWO else EMPTY_STRING
+        registry = self._active_topology_registry()
+        node_map = topology_node_lookup(topology_profile, registry)
+        payload: Dict[str, object] = {
+            KEY_PROFILE: profile_name,
+            KEY_TOPOLOGY_NODES: topology_nodes(topology_profile),
+            KEY_TOPOLOGY_EDGES: topology_edges(topology_profile),
+        }
+        if subtarget == CMD_NEIGHBORS:
+            neighbor_payload: List[Dict[str, object]] = []
+            for node_key, node in sorted(node_map.items()):
+                entry = self._topology_neighbor_entry(node_key, node_map)
+                entry[KEY_NEIGHBOR_PORTS] = self._device_neighbor_ports(topology_profile, node_key, node_map)
+                neighbor_payload.append(entry)
+            payload = {KEY_PROFILE: profile_name, KEY_NEIGHBOR_PORTS: neighbor_payload}
+            if json_output:
+                print(MESSAGE_SOURCE_LOCAL)
+                print(self._dump_json(payload, pretty))
+                return StatusResult(code=SS__NORMAL)
+            lines = [MESSAGE_SOURCE_LOCAL, MESSAGE_TOPOLOGY_NEIGHBORS_HEADER]
+            if not neighbor_payload:
+                lines.append(MESSAGE_TOPOLOGY_NONE)
+            for entry in neighbor_payload:
+                lines.append(f"  {entry.get(KEY_LABEL, EMPTY_STRING)}:")
+                ports = entry.get(KEY_NEIGHBOR_PORTS, [])
+                if not isinstance(ports, list) or not ports:
+                    lines.append(MESSAGE_TOPOLOGY_NONE)
+                    continue
+                for port in ports:
+                    lines.append(
+                        f"    {port.get(KEY_LINK_PORT, EMPTY_STRING)} -> "
+                        f"{port.get(KEY_LABEL, EMPTY_STRING)}.{port.get(KEY_LINK_NEIGHBOR_PORT, EMPTY_STRING)} "
+                        f"[{port.get(KEY_EDGE_TYPE, EMPTY_STRING)}]"
+                    )
+            print("\n".join(lines))
+            return StatusResult(code=SS__NORMAL)
+        if subtarget == CMD_NODE:
+            if len(tokens) < COUNT_THREE:
+                print(MESSAGE_ERR_TOPOLOGY_NODE_REQUIRED)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._show_local_neighbors([SHOW_TARGET_NEIGHBORS, tokens[2]], json_output, pretty)
+        if subtarget == CMD_EDGES:
+            payload = {KEY_PROFILE: profile_name, KEY_TOPOLOGY_EDGES: topology_edges(topology_profile)}
+        elif subtarget == CMD_NODES:
+            payload = {KEY_PROFILE: profile_name, KEY_TOPOLOGY_NODES: topology_nodes(topology_profile)}
+        if json_output:
+            print(MESSAGE_SOURCE_LOCAL)
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        lines = [MESSAGE_SOURCE_LOCAL, MESSAGE_TOPOLOGY_HEADER, f"  profile: {profile_name}"]
+        lines.append(MESSAGE_TOPOLOGY_NODES_HEADER)
+        nodes_list = payload.get(KEY_TOPOLOGY_NODES, [])
+        if isinstance(nodes_list, list) and nodes_list:
+            for raw in nodes_list:
+                if not isinstance(raw, dict):
+                    continue
+                key = raw.get(KEY_NODE_KEY, EMPTY_STRING)
+                label = self._topology_node_label(node_map.get(key, raw) if isinstance(key, int) else raw)
+                node_type = raw.get(KEY_NODE_TYPE, EMPTY_STRING)
+                lines.append(f"  {key}: {label} [{node_type}]")
+        else:
+            lines.append(MESSAGE_TOPOLOGY_NONE)
+        if subtarget in (EMPTY_STRING, CMD_EDGES):
+            lines.append(MESSAGE_TOPOLOGY_EDGES_HEADER)
+            edges_list = payload.get(KEY_TOPOLOGY_EDGES, [])
+            if isinstance(edges_list, list) and edges_list:
+                for edge in edges_list:
+                    if not isinstance(edge, dict):
+                        continue
+                    from_key = edge.get(KEY_FROM_NODE, EMPTY_STRING)
+                    to_key = edge.get(KEY_TO_NODE, EMPTY_STRING)
+                    from_label = self._topology_node_label(node_map.get(from_key, {})) if isinstance(from_key, int) else EMPTY_STRING
+                    to_label = self._topology_node_label(node_map.get(to_key, {})) if isinstance(to_key, int) else EMPTY_STRING
+                    lines.append(
+                        f"  {edge.get(KEY_EDGE_ID, EMPTY_STRING)}: "
+                        f"{from_label}.{edge.get(KEY_FROM_PORT, EMPTY_STRING)} -> "
+                        f"{to_label}.{edge.get(KEY_TO_PORT, EMPTY_STRING)} "
+                        f"[{edge.get(KEY_EDGE_TYPE, EMPTY_STRING)}]"
+                    )
+            else:
+                lines.append(MESSAGE_TOPOLOGY_NONE)
+        print("\n".join(lines))
+        return StatusResult(code=SS__NORMAL)
+
+    def _show_local_neighbors(self, tokens: List[str], json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_local_neighbors - Show neighbor data for one topology node.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        if len(tokens) < COUNT_TWO:
+            print(MESSAGE_ERR_TOPOLOGY_NODE_REQUIRED)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        label = tokens[1]
+        topology = self._local_device_topology(label)
+        if not topology:
+            print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(name=label))
+            return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        payload = {
+            KEY_LABEL: label,
+            KEY_NODE_KEY: topology.get(KEY_NODE_KEY),
+            KEY_NEIGHBOR_LINKS: topology.get(KEY_NEIGHBOR_LINKS, []),
+            KEY_NEIGHBOR_PORTS: topology.get(KEY_NEIGHBOR_PORTS, []),
+        }
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        lines = [f"{MESSAGE_TOPOLOGY_NEIGHBORS_HEADER} {label}"]
+        ports = payload.get(KEY_NEIGHBOR_PORTS, [])
+        if isinstance(ports, list) and ports:
+            for entry in ports:
+                if not isinstance(entry, dict):
+                    continue
+                lines.append(
+                    f"  {entry.get(KEY_LINK_PORT, EMPTY_STRING)} -> "
+                    f"{entry.get(KEY_LABEL, EMPTY_STRING)}.{entry.get(KEY_LINK_NEIGHBOR_PORT, EMPTY_STRING)} "
+                    f"[{entry.get(KEY_EDGE_TYPE, EMPTY_STRING)}]"
+                )
+        else:
+            lines.append(MESSAGE_TOPOLOGY_NONE)
+        print("\n".join(lines))
+        return StatusResult(code=SS__NORMAL)
+
+    def _validate_topology(self) -> StatusResult:
+        """
+        NAME
+            _validate_topology - Validate the current local topology payload.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        reporter = Reporter(False)
+        errors, warnings = validate_profiles(self._local_root_payload, reporter)
+        if errors:
+            for message in errors:
+                print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
+            for message in warnings:
+                print(MESSAGE_WARNING_PREFIX + message)
+            return StatusResult(code=SS__CONFIG__INVALID)
+        for message in warnings:
+            print(MESSAGE_WARNING_PREFIX + message)
+        print(MESSAGE_INFO_TOPOLOGY_VALIDATE_OK)
+        return StatusResult(code=SS__CONFIG__VALID)
+
+    def _topology_command(self, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _topology_command - Handle topology editing commands in config mode.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        profile_name = self._active_profile_name()
+        if not profile_name:
+            print(MESSAGE_ERR_TOPOLOGY_PROFILE_REQUIRED)
+            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
+        if len(tokens) < COUNT_TWO:
+            print(MESSAGE_ERR_TOPOLOGY_USAGE)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        sub = tokens[COUNT_ONE].lower()
+        if sub == CMD_NEIGHBOR_PORTS:
+            return self._topology_neighbor_ports_command(tokens[COUNT_TWO:])
+        if sub == CMD_NEIGHBOR_AUTO:
+            return self._topology_neighbor_auto_command(tokens[COUNT_TWO:])
+        print(MESSAGE_ERR_TOPOLOGY_USAGE)
+        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+
+    def _topology_neighbor_ports_command(self, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _topology_neighbor_ports_command - Edit one explicit neighbor port edge.
+        """
+        if not tokens:
+            print(MESSAGE_ERR_TOPOLOGY_USAGE)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        action = tokens[COUNT_ZERO].lower()
+        topology_profile = self._active_topology_profile(create=True)
+        edges = topology_profile.get(KEY_TOPOLOGY_EDGES, [])
+        if not isinstance(edges, list):
+            edges = []
+            topology_profile[KEY_TOPOLOGY_EDGES] = edges
+        registry = self._active_topology_registry()
+        node_map = topology_node_lookup(topology_profile, registry)
+        if action == CMD_SET:
+            if len(tokens) < 5:
+                print(MESSAGE_ERR_TOPOLOGY_NEIGHBOR_PORTS_SET)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            node = self._resolve_topology_node_key(tokens[1], node_map)
+            neighbor = self._resolve_topology_node_key(tokens[3], node_map)
+            if node is None:
+                print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(name=tokens[1]))
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
+            if neighbor is None:
+                print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(name=tokens[3]))
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
+            port = tokens[2]
+            neighbor_port = tokens[4]
+            self._remove_neighbor_edge(edges, node, port)
+            self._remove_neighbor_edge(edges, neighbor, neighbor_port)
+            edges.append(
+                {
+                    KEY_EDGE_ID: self._next_topology_edge_id(edges),
+                    KEY_FROM_NODE: node,
+                    KEY_FROM_PORT: port,
+                    KEY_TO_NODE: neighbor,
+                    KEY_TO_PORT: neighbor_port,
+                    KEY_EDGE_TYPE: self._infer_topology_edge_type(port, neighbor_port),
+                }
+            )
+            self._mark_profiles_dirty()
+            print(MESSAGE_INFO_TOPOLOGY_NEIGHBOR_PORT_SET)
+            return StatusResult(code=SS__NORMAL)
+        if action == CMD_DELETE:
+            if len(tokens) < 3:
+                print(MESSAGE_ERR_TOPOLOGY_NEIGHBOR_PORTS_DELETE)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            node = self._resolve_topology_node_key(tokens[1], node_map)
+            if node is None:
+                print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(name=tokens[1]))
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
+            removed = self._remove_neighbor_edge(edges, node, tokens[2])
+            if not removed:
+                print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(name=f"{tokens[1]}:{tokens[2]}"))
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
+            self._mark_profiles_dirty()
+            print(MESSAGE_INFO_TOPOLOGY_NEIGHBOR_PORT_DELETE)
+            return StatusResult(code=SS__NORMAL)
+        if action == CMD_CLEAR:
+            if len(tokens) < 2:
+                print(MESSAGE_ERR_TOPOLOGY_NEIGHBOR_PORTS_CLEAR)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            node = self._resolve_topology_node_key(tokens[1], node_map)
+            if node is None:
+                print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(name=tokens[1]))
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
+            topology_profile[KEY_TOPOLOGY_EDGES] = [
+                edge
+                for edge in edges
+                if not (
+                    isinstance(edge, dict)
+                    and (edge.get(KEY_FROM_NODE) == node or edge.get(KEY_TO_NODE) == node)
+                )
+            ]
+            self._mark_profiles_dirty()
+            print(MESSAGE_INFO_TOPOLOGY_NEIGHBOR_PORT_CLEAR)
+            return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_ERR_TOPOLOGY_USAGE)
+        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+
+    def _topology_neighbor_auto_command(self, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _topology_neighbor_auto_command - Auto-generate CAN neighbor edges from layout.
+        """
+        if not tokens:
+            print(MESSAGE_ERR_TOPOLOGY_NEIGHBOR_AUTO)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        action = tokens[COUNT_ZERO].lower()
+        topology_profile = self._active_topology_profile(create=True)
+        registry = self._active_topology_registry()
+        node_map = topology_node_lookup(topology_profile, registry)
+        selected_labels: Optional[set[str]] = None
+        if action == CMD_ALL and len(tokens) >= COUNT_TWO:
+            selected_labels = {name.strip().lower() for name in tokens[1].split(",") if name.strip()}
+        elif action == CMD_NODE:
+            if len(tokens) < COUNT_TWO:
+                print(MESSAGE_ERR_TOPOLOGY_NEIGHBOR_AUTO)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            selected_labels = {tokens[1].strip().lower()}
+        elif action != CMD_ALL:
+            print(MESSAGE_ERR_TOPOLOGY_NEIGHBOR_AUTO)
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+        selected_keys: Optional[set[int]] = None
+        if selected_labels is not None:
+            selected_keys = set()
+            for key, node in node_map.items():
+                if self._topology_node_label(node).strip().lower() in selected_labels:
+                    selected_keys.add(key)
+            if not selected_keys:
+                print(MESSAGE_ERR_TOPOLOGY_NODE_NOT_FOUND.format(name=SEP_COMMA_SPACE.join(sorted(selected_labels))))
+                return StatusResult(code=SS__DEVICE__NOT_FOUND)
+        edges = topology_profile.get(KEY_TOPOLOGY_EDGES, [])
+        if not isinstance(edges, list):
+            edges = []
+        preserved: List[Dict[str, object]] = []
+        reusable_ids: List[str] = []
+        for edge in edges:
+            if not isinstance(edge, dict):
+                continue
+            edge_type = str(edge.get(KEY_EDGE_TYPE, EMPTY_STRING)).strip()
+            if edge_type not in (
+                EDGE_TYPE_CAN_TRUNK,
+                EDGE_TYPE_CAN_DROP,
+                EDGE_TYPE_CAN_TAP,
+            ):
+                preserved.append(edge)
+                continue
+            if selected_keys is None:
+                continue
+            from_node = edge.get(KEY_FROM_NODE)
+            to_node = edge.get(KEY_TO_NODE)
+            if from_node in selected_keys or to_node in selected_keys:
+                edge_id = str(edge.get(KEY_EDGE_ID, EMPTY_STRING)).strip()
+                if edge_id:
+                    reusable_ids.append(edge_id)
+                continue
+            preserved.append(edge)
+        device_nodes: List[Tuple[int, Dict[str, object]]] = []
+        for key, node in node_map.items():
+            if str(node.get(KEY_NODE_TYPE, EMPTY_STRING)).strip() != NODE_TYPE_DEVICE:
+                continue
+            if selected_keys is not None and key not in selected_keys:
+                continue
+            layout = node.get(KEY_LAYOUT)
+            layout_dict = layout if isinstance(layout, dict) else {}
+            device_nodes.append((key, layout_dict))
+        by_bus: Dict[int, List[Tuple[int, Dict[str, object]]]] = {}
+        for key, layout in device_nodes:
+            bus = int(layout.get(KEY_BUS, 0))
+            by_bus.setdefault(bus, []).append((key, layout))
+        for bus_nodes in by_bus.values():
+            ordered = sorted(bus_nodes, key=lambda item: (float(item[1].get("x", 0.0)), int(item[0])))
+            for idx in range(len(ordered) - 1):
+                left_key = ordered[idx][0]
+                right_key = ordered[idx + 1][0]
+                edge_id = reusable_ids.pop(0) if reusable_ids else self._next_topology_edge_id(preserved)
+                preserved.append(
+                    {
+                        KEY_EDGE_ID: edge_id,
+                        KEY_FROM_NODE: left_key,
+                        KEY_FROM_PORT: NEIGHBOR_PORT_RIGHT,
+                        KEY_TO_NODE: right_key,
+                        KEY_TO_PORT: NEIGHBOR_PORT_LEFT,
+                        KEY_EDGE_TYPE: EDGE_TYPE_CAN_TRUNK,
+                    }
+                )
+        topology_profile[KEY_TOPOLOGY_EDGES] = preserved
+        self._mark_profiles_dirty()
+        print(MESSAGE_INFO_TOPOLOGY_NEIGHBOR_AUTO)
+        return StatusResult(code=SS__NORMAL)
+
+    def _resolve_topology_node_key(
+        self,
+        label: str,
+        node_map: Dict[int, Dict[str, object]],
+    ) -> Optional[int]:
+        """
+        NAME
+            _resolve_topology_node_key - Resolve a node label to topology key.
+        """
+        label_key = str(label).strip().lower()
+        for key, node in node_map.items():
+            if self._topology_node_label(node).strip().lower() == label_key:
+                return key
+        return None
+
+    @staticmethod
+    def _next_topology_edge_id(edges: List[Dict[str, object]]) -> str:
+        """
+        NAME
+            _next_topology_edge_id - Allocate the next simple edge id.
+        """
+        max_value = 0
+        for edge in edges:
+            if not isinstance(edge, dict):
+                continue
+            raw = str(edge.get(KEY_EDGE_ID, EMPTY_STRING)).strip()
+            if raw.startswith("edge_"):
+                tail = raw.split("_", 1)[1]
+                if tail.isdigit():
+                    max_value = max(max_value, int(tail))
+        return f"edge_{max_value + COUNT_ONE}"
+
+    @staticmethod
+    def _infer_topology_edge_type(from_port: str, to_port: str) -> str:
+        """
+        NAME
+            _infer_topology_edge_type - Infer edge type from port names.
+        """
+        ports = {str(from_port).strip().lower(), str(to_port).strip().lower()}
+        if "tap" in ports:
+            return EDGE_TYPE_CAN_TAP
+        if any(name.startswith("drop") or name.startswith("branch") for name in ports):
+            return EDGE_TYPE_CAN_DROP
+        return EDGE_TYPE_CAN_TRUNK
+
+    @staticmethod
+    def _remove_neighbor_edge(edges: List[Dict[str, object]], node_key: int, port: str) -> bool:
+        """
+        NAME
+            _remove_neighbor_edge - Remove one edge matching a node/port endpoint.
+        """
+        removed = False
+        kept: List[Dict[str, object]] = []
+        port_key = str(port).strip().lower()
+        for edge in edges:
+            if not isinstance(edge, dict):
+                kept.append(edge)
+                continue
+            from_node = edge.get(KEY_FROM_NODE)
+            to_node = edge.get(KEY_TO_NODE)
+            from_port = str(edge.get(KEY_FROM_PORT, EMPTY_STRING)).strip().lower()
+            to_port = str(edge.get(KEY_TO_PORT, EMPTY_STRING)).strip().lower()
+            if (from_node == node_key and from_port == port_key) or (to_node == node_key and to_port == port_key):
+                removed = True
+                continue
+            kept.append(edge)
+        if removed:
+            edges[:] = kept
+        return removed
+
     def _local_device_topology(self, label: str) -> Dict[str, object]:
         """
         NAME
-            _local_device_topology - Return diagram topology details for a label.
+            _local_device_topology - Return topology graph details for a device label.
         """
         if not isinstance(self._local_root_payload, dict):
             return {}
         profile = self._active_profile_name()
         if not profile:
             return {}
-        diagram = self._diagram_for_profile(profile)
-        if not diagram:
+        topology_profile = topology_profile_from_payload(self._local_root_payload, profile)
+        if not topology_profile:
             return {}
-        nodes = diagram.get("nodes")
-        if not isinstance(nodes, list):
-            return {}
-        node_by_key: Dict[int, Dict[str, object]] = {}
+        registry = self._local_registry_by_label()
+        node_by_key = topology_node_lookup(topology_profile, registry)
         target_node: Optional[Dict[str, object]] = None
         label_key = label.strip().lower()
-        for raw in nodes:
-            if not isinstance(raw, dict):
-                continue
-            key = raw.get(KEY_NODE_KEY)
-            if isinstance(key, int):
-                node_by_key[key] = raw
-            node_label = str(raw.get(KEY_LABEL, EMPTY_STRING)).strip()
+        for raw in node_by_key.values():
+            node_label = self._topology_node_label(raw)
             if node_label.lower() == label_key:
                 target_node = raw
+                break
         if target_node is None:
             return {}
         node_key = target_node.get(KEY_NODE_KEY)
         if not isinstance(node_key, int):
             return {}
+        layout = target_node.get(KEY_LAYOUT)
+        layout_dict = layout if isinstance(layout, dict) else {}
         topology: Dict[str, object] = {
             KEY_NODE_KEY: node_key,
-            KEY_BUS: target_node.get(KEY_BUS),
-            "row": target_node.get("row"),
-            "x": target_node.get("x"),
+            KEY_BUS: layout_dict.get(KEY_BUS),
+            "row": layout_dict.get("row"),
+            "x": layout_dict.get("x"),
+            KEY_NODE_TYPE: target_node.get(KEY_NODE_TYPE),
         }
-        neighbor_links = self._device_neighbor_links(diagram, node_key, node_by_key)
-        neighbor_ports = self._device_neighbor_ports(diagram, node_key, node_by_key)
+        neighbor_links = self._device_neighbor_links(topology_profile, node_key, node_by_key)
+        neighbor_ports = self._device_neighbor_ports(topology_profile, node_key, node_by_key)
         if neighbor_links:
             topology[KEY_NEIGHBOR_LINKS] = neighbor_links
         if neighbor_ports:
             topology[KEY_NEIGHBOR_PORTS] = neighbor_ports
         return topology
 
-    def _diagram_for_profile(self, profile: str) -> Dict[str, object]:
+    def _local_registry_by_label(self) -> Dict[str, Dict[str, object]]:
         """
         NAME
-            _diagram_for_profile - Return current profile diagram metadata.
+            _local_registry_by_label - Build a label-keyed device registry map.
         """
-        diagram_root = self._local_root_payload.get(KEY_DIAGRAM)
-        if not isinstance(diagram_root, dict):
-            return {}
-        profiles = diagram_root.get(KEY_PROFILES)
-        if not isinstance(profiles, dict):
-            return {}
-        diagram = profiles.get(profile)
-        return diagram if isinstance(diagram, dict) else {}
+        registry: Dict[str, Dict[str, object]] = {}
+        devices = self._local_root_payload.get(KEY_DEVICES)
+        if not isinstance(devices, list):
+            return registry
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if not label:
+                continue
+            registry[label.lower()] = entry
+        return registry
 
     def _device_neighbor_links(
         self,
-        diagram: Dict[str, object],
+        topology_profile: Dict[str, object],
         node_key: int,
         node_by_key: Dict[int, Dict[str, object]],
     ) -> List[Dict[str, object]]:
@@ -11464,29 +14315,15 @@ class BridgeCli:
         NAME
             _device_neighbor_links - Return undirected neighbors for one node.
         """
-        entries = diagram.get(KEY_NEIGHBOR_LINKS)
-        if not isinstance(entries, list):
-            return []
         neighbors: List[Dict[str, object]] = []
-        for entry in entries:
-            if not isinstance(entry, dict):
-                continue
-            a = entry.get(KEY_LINK_A)
-            b = entry.get(KEY_LINK_B)
-            if not isinstance(a, int) or not isinstance(b, int):
-                continue
-            if a == node_key:
-                other = b
-            elif b == node_key:
-                other = a
-            else:
-                continue
+        for a, b in topology_neighbor_links(topology_profile, node_key):
+            other = b if a == node_key else a
             neighbors.append(self._topology_neighbor_entry(other, node_by_key))
         return neighbors
 
     def _device_neighbor_ports(
         self,
-        diagram: Dict[str, object],
+        topology_profile: Dict[str, object],
         node_key: int,
         node_by_key: Dict[int, Dict[str, object]],
     ) -> List[Dict[str, object]]:
@@ -11494,20 +14331,18 @@ class BridgeCli:
         NAME
             _device_neighbor_ports - Return port-aware neighbors for one node.
         """
-        entries = diagram.get(KEY_NEIGHBOR_PORTS)
-        if not isinstance(entries, list):
-            return []
         neighbors: List[Dict[str, object]] = []
-        for entry in entries:
-            if not isinstance(entry, dict):
-                continue
-            node = entry.get(KEY_LINK_NODE)
+        for entry in topology_neighbor_ports(topology_profile, node_key):
             neighbor = entry.get(KEY_LINK_NEIGHBOR)
-            if node != node_key or not isinstance(neighbor, int):
+            if not isinstance(neighbor, int):
                 continue
             neighbor_entry = self._topology_neighbor_entry(neighbor, node_by_key)
             neighbor_entry[KEY_LINK_PORT] = entry.get(KEY_LINK_PORT)
             neighbor_entry[KEY_LINK_NEIGHBOR_PORT] = entry.get(KEY_LINK_NEIGHBOR_PORT)
+            if KEY_EDGE_TYPE in entry:
+                neighbor_entry[KEY_EDGE_TYPE] = entry.get(KEY_EDGE_TYPE)
+            if KEY_EDGE_ID in entry:
+                neighbor_entry[KEY_EDGE_ID] = entry.get(KEY_EDGE_ID)
             neighbors.append(neighbor_entry)
         return neighbors
 
@@ -11521,13 +14356,24 @@ class BridgeCli:
             _topology_neighbor_entry - Build one neighbor summary.
         """
         node = node_by_key.get(key, {})
+        layout = node.get(KEY_LAYOUT)
+        layout_dict = layout if isinstance(layout, dict) else node
         return {
             KEY_NODE_KEY: key,
-            KEY_LABEL: str(node.get(KEY_LABEL, EMPTY_STRING)).strip(),
-            KEY_BUS: node.get(KEY_BUS),
-            "row": node.get("row"),
-            "x": node.get("x"),
+            KEY_LABEL: self._topology_node_label(node),
+            KEY_BUS: layout_dict.get(KEY_BUS),
+            "row": layout_dict.get("row"),
+            "x": layout_dict.get("x"),
         }
+
+    def _topology_node_label(self, node: Dict[str, object]) -> str:
+        """
+        NAME
+            _topology_node_label - Resolve the display label for one topology node.
+        """
+        if str(node.get(KEY_NODE_TYPE, EMPTY_STRING)).strip() == NODE_TYPE_DEVICE:
+            return str(node.get(KEY_DEVICE_REF, EMPTY_STRING)).strip()
+        return str(node.get(KEY_LABEL, EMPTY_STRING)).strip()
 
     def _format_device_topology_lines(self, topology: Dict[str, object]) -> List[str]:
         """
@@ -11620,6 +14466,8 @@ class BridgeCli:
             required = DEVICE_REQUIRED_PWM
         elif interface == INTERFACE_ANALOG:
             required = DEVICE_REQUIRED_ANALOG
+        elif interface == INTERFACE_USB:
+            required = DEVICE_REQUIRED_USB
         else:
             required = DEVICE_REQUIRED_INTERNAL
         missing: List[str] = []
@@ -11769,6 +14617,21 @@ class BridgeCli:
         if not ok:
             print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=error))
             return StatusResult(code=SS__CONFIG__INVALID)
+        mirror_path = self._mirror_repo_save_target(
+            Path(path),
+            profiles_canonical_path(),
+            profiles_deploy_path(),
+        )
+        if mirror_path is not None:
+            ok, error = self._atomic_write_json(
+                mirror_path,
+                payload,
+                JSON_PRETTY_INDENT,
+                True,
+            )
+            if not ok:
+                print(MESSAGE_ERR_SAVE_WRITE.format(path=mirror_path, error=error))
+                return StatusResult(code=SS__CONFIG__INVALID)
         self._profiles_dirty = False
         self._groups_dirty = False
         self._tests_dirty = False
@@ -11782,7 +14645,10 @@ class BridgeCli:
             JSON_PRETTY_INDENT,
             True,
         )
+        self._record_last_save(Path(path))
         print(f"Wrote profiles to {path}.")
+        if mirror_path is not None:
+            print(MESSAGE_INFO_PROFILES_MIRRORED.format(path=mirror_path))
         return StatusResult(code=SS__CONFIG__SAVED)
 
     def _save_all(self, prompt: bool, force: bool = False) -> StatusResult:
@@ -11901,7 +14767,7 @@ class BridgeCli:
                     profile[KEY_PROFILE_DEVICES] = labels
                 if existing and existing not in labels:
                     labels.append(existing)
-                    self._profiles_dirty = True
+                    self._mark_profiles_dirty()
                 return StatusResult(code=SS__NORMAL)
         entry = {KEY_LABEL: label}
         devices.append(entry)
@@ -11911,7 +14777,7 @@ class BridgeCli:
             profile[KEY_PROFILE_DEVICES] = labels
         if label not in labels:
             labels.append(label)
-        self._profiles_dirty = True
+        self._mark_profiles_dirty()
         self._refresh_devices_from_profiles()
         self._validate_device_entry(entry)
         return StatusResult(code=SS__NORMAL)
@@ -12043,7 +14909,7 @@ class BridgeCli:
             if interface and interface not in DEVICE_INTERFACE_ALLOWED:
                 print(MESSAGE_ERR_DEVICE_INTERFACE_INVALID)
                 return StatusResult(code=SS__DEVICE__INVALID_FIELD)
-        self._profiles_dirty = True
+        self._mark_profiles_dirty()
         self._refresh_devices_from_profiles()
         self._validate_device_entry(entry)
         return StatusResult(code=SS__NORMAL)
@@ -12071,7 +14937,7 @@ class BridgeCli:
             profile[KEY_PROFILE_DEVICES] = labels
         if name not in labels:
             labels.append(name)
-            self._profiles_dirty = True
+            self._mark_profiles_dirty()
             self._refresh_devices_from_profiles()
 
     def _clear_profiles_device_meta(self, name: str, field: str) -> StatusResult:
@@ -12092,7 +14958,7 @@ class BridgeCli:
             return StatusResult(code=SS__DEVICE__INVALID_FIELD)
         store_key = FIELD_TYPE if field_key == FIELD_ROLE else field_key
         entry.pop(store_key, None)
-        self._profiles_dirty = True
+        self._mark_profiles_dirty()
         self._refresh_devices_from_profiles()
         self._validate_device_entry(entry)
         return StatusResult(code=SS__NORMAL)
@@ -12252,14 +15118,18 @@ class BridgeCli:
             KEY_DEVICES: deepcopy(device_entries),
             KEY_BRIDGE_CONFIG: bridge_config,
         }
-        diagram = payload.get(KEY_DIAGRAM)
-        if isinstance(diagram, dict):
-            diag_profiles = diagram.get(KEY_DIAGRAM_PROFILES)
-            if isinstance(diag_profiles, dict):
-                diag_entry = diag_profiles.get(profile_name)
-                if isinstance(diag_entry, dict):
-                    export_payload[KEY_DIAGRAM] = {
-                        KEY_DIAGRAM_PROFILES: {profile_name: deepcopy(diag_entry)}
+        topology_root = payload.get(KEY_TOPOLOGY)
+        if isinstance(topology_root, dict):
+            topology_profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
+            if isinstance(topology_profiles, dict):
+                topology_entry = topology_profiles.get(profile_name)
+                if isinstance(topology_entry, dict):
+                    export_payload[KEY_TOPOLOGY] = {
+                        KEY_TOPOLOGY_VERSION: topology_root.get(KEY_TOPOLOGY_VERSION, COUNT_ONE),
+                        KEY_TOPOLOGY_SOURCE: topology_root.get(
+                            KEY_TOPOLOGY_SOURCE, TOPOLOGY_SOURCE_LOCAL
+                        ),
+                        KEY_TOPOLOGY_PROFILES: {profile_name: deepcopy(topology_entry)},
                     }
         export_payload[KEY_DATA_HASH] = compute_profiles_hash(export_payload)
         json_path, script_path, error = self._resolve_profile_export_paths(profile_name, path)
@@ -12311,9 +15181,9 @@ class BridgeCli:
         bridge_config = payload.get(KEY_BRIDGE_CONFIG)
         if isinstance(bridge_config, dict):
             export_payload[KEY_BRIDGE_CONFIG] = deepcopy(bridge_config)
-        diagram = payload.get(KEY_DIAGRAM)
-        if isinstance(diagram, dict):
-            export_payload[KEY_DIAGRAM] = deepcopy(diagram)
+        topology_root = payload.get(KEY_TOPOLOGY)
+        if isinstance(topology_root, dict):
+            export_payload[KEY_TOPOLOGY] = deepcopy(topology_root)
         export_payload[KEY_DATA_HASH] = compute_profiles_hash(export_payload)
         json_path, script_path, error = self._resolve_profiles_export_paths(path)
         if error:
@@ -13556,6 +16426,7 @@ class BridgeCli:
         """
 
         self._groups_dirty = True
+        self._record_last_modified()
 
     def _mark_tests_dirty(self) -> None:
         """
@@ -13564,7 +16435,30 @@ class BridgeCli:
         """
 
         self._tests_dirty = True
+        self._record_last_modified()
         self._sync_store_tests()
+
+    def _mirror_repo_save_target(
+        self,
+        primary_path: Path,
+        canonical_path: Path,
+        deploy_path: Path,
+    ) -> Optional[Path]:
+        """
+        NAME
+            _mirror_repo_save_target - Return repo sibling path for mirrored saves.
+        """
+
+        primary = primary_path.resolve()
+        canonical = canonical_path.resolve()
+        deploy = deploy_path.resolve()
+        if canonical == deploy:
+            return None
+        if primary == canonical:
+            return deploy
+        if primary == deploy:
+            return canonical
+        return None
 
     def _build_unified_payload(self) -> Optional[Dict[str, object]]:
         """
@@ -13579,8 +16473,12 @@ class BridgeCli:
         if "profiles" not in payload or not self._local_root_payload:
             print("ERROR: No profiles loaded. Merge a bringup_system.json before saving unified config.")
             return None
-        if "diagram" not in payload:
-            payload["diagram"] = {"profiles": {}}
+        if KEY_TOPOLOGY not in payload:
+            payload[KEY_TOPOLOGY] = {
+                KEY_TOPOLOGY_VERSION: COUNT_ONE,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {},
+            }
         payload.setdefault("default_profile", "robot")
         payload["schema_version"] = PROFILE_SCHEMA_VERSION
         payload["bridgeConfig"] = self._ordered_bridge_config(self._local_config)
@@ -13631,6 +16529,7 @@ class BridgeCli:
             JSON_PRETTY_INDENT,
             True,
         )
+        self._record_last_save(Path(path))
         print(f"Wrote unified config to {path}.")
         return StatusResult(code=SS__CONFIG__SAVED)
 
@@ -13676,6 +16575,7 @@ class BridgeCli:
             JSON_PRETTY_INDENT,
             True,
         )
+        self._record_last_save(Path(path))
         if self._local_devices_locked:
             print(f"Wrote groups config to {path}.")
         else:
@@ -13726,6 +16626,7 @@ class BridgeCli:
             JSON_PRETTY_INDENT,
             True,
         )
+        self._record_last_save(target_path)
         print(MESSAGE_SAVE_CONFIG_SAVED.format(path=path))
         return StatusResult(code=SS__CONFIG__SAVED)
 
@@ -13759,6 +16660,43 @@ class BridgeCli:
             print(MESSAGE_SOURCES_DONE)
             return StatusResult(code=SS__NORMAL)
         return StatusResult(code=SS__EXECUTOR__FAILED)
+
+    def _revert_all(self) -> StatusResult:
+        """
+        NAME
+            _revert_all - Discard unsaved local state by reloading known disk sources.
+        """
+        if not self._has_dirty_state():
+            print(MESSAGE_REVERT_NOTHING)
+            return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_REVERT_START)
+        result = self._load_sources()
+        if result.ok():
+            self._last_modified_at = None
+            print(MESSAGE_REVERT_DONE)
+        return result
+
+    def _handle_tiu_command(self, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _handle_tiu_command - Toggle TIU presentation mode on or off.
+        """
+        if len(tokens) != COUNT_TWO:
+            print(MESSAGE_TIU_USAGE)
+            return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+        value = tokens[COUNT_ONE].strip().lower()
+        if value == TEXT_STATUS_ON:
+            self._tiu_enabled = True
+            self._tiu_add_event(MESSAGE_TIU_EVENT_ENABLED)
+            print(MESSAGE_TIU_ON)
+            return StatusResult(code=SS__NORMAL)
+        if value == TEXT_STATUS_OFF:
+            self._tiu_enabled = False
+            self._tiu_add_event(MESSAGE_TIU_EVENT_DISABLED)
+            print(MESSAGE_TIU_OFF)
+            return StatusResult(code=SS__NORMAL)
+        print(MESSAGE_TIU_USAGE)
+        return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
 
     def _reload_source(self, name: str, path: str) -> StatusResult:
         """
@@ -13982,9 +16920,10 @@ class BridgeCli:
             return False
         self._local_root_path = source_path
         self._local_config_path = source_path
-        self._profiles_dirty = True
+        self._mark_profiles_dirty()
         self._groups_dirty = True
         self._tests_dirty = True
+        self._record_last_modified()
         self._sync_store_from_local()
         valid, _message = self._validate_registry_payload(
             self._local_root_payload or {},
@@ -14004,7 +16943,7 @@ class BridgeCli:
             self._warn(MESSAGE_RECOVER_FAILED.format(source=SOURCE_NAME_BINDINGS, path=snapshot_path))
             return False
         self._bindings_path = source_path
-        self._bindings_dirty = True
+        self._mark_bindings_dirty()
         self._sync_store_bindings()
         valid, _message = self.validate_bindings_only(None)
         self._append_audit_log(AUDIT_ACTION_RECOVER, SOURCE_NAME_BINDINGS, snapshot_path, valid)
@@ -14020,7 +16959,7 @@ class BridgeCli:
             self._warn(MESSAGE_RECOVER_FAILED.format(source=SOURCE_NAME_CAN_MAPPINGS, path=snapshot_path))
             return False
         self._can_mappings_path = source_path
-        self._can_mappings_dirty = True
+        self._mark_mappings_dirty()
         self._sync_store_mappings()
         valid, _message = self.validate_mappings_only(None)
         self._append_audit_log(AUDIT_ACTION_RECOVER, SOURCE_NAME_CAN_MAPPINGS, snapshot_path, valid)
@@ -14088,51 +17027,17 @@ class BridgeCli:
             _repair_profiles_payload - Repair missing required profile fields.
         """
         repaired = deepcopy(payload)
-        changed = False
-        schema_version = repaired.get(KEY_SCHEMA_VERSION)
-        if not isinstance(schema_version, int):
-            alt = repaired.get(KEY_BRIDGE_SCHEMA_VERSION)
-            if isinstance(alt, int):
-                schema_version = alt
-            else:
-                schema_version = PROFILE_SCHEMA_VERSION
-            repaired[KEY_SCHEMA_VERSION] = schema_version
-            changed = True
-        data_version = repaired.get(KEY_DATA_VERSION)
-        if not isinstance(data_version, str) or not data_version.strip():
-            repaired[KEY_DATA_VERSION] = timestamp_version()
-            changed = True
-        devices = repaired.get(KEY_DEVICES)
-        if not isinstance(devices, list):
-            repaired[KEY_DEVICES] = []
-            changed = True
-        profiles = repaired.get(KEY_PROFILES)
-        if not isinstance(profiles, dict):
-            repaired[KEY_PROFILES] = {}
-            profiles = repaired.get(KEY_PROFILES)
-            changed = True
-        if isinstance(profiles, dict):
-            for entry in profiles.values():
-                if not isinstance(entry, dict):
-                    continue
-                labels = entry.get(KEY_PROFILE_DEVICES)
-                if not isinstance(labels, list):
-                    entry[KEY_PROFILE_DEVICES] = []
-                    changed = True
+        changed = BOOL_FALSE
         if KEY_DATA_VERSION_CAMEL in repaired and KEY_DATA_VERSION not in repaired:
             repaired[KEY_DATA_VERSION] = repaired.get(KEY_DATA_VERSION_CAMEL)
-            changed = True
+            changed = BOOL_TRUE
         if KEY_DATA_HASH_CAMEL in repaired and KEY_DATA_HASH not in repaired:
             repaired[KEY_DATA_HASH] = repaired.get(KEY_DATA_HASH_CAMEL)
-            changed = True
-        try:
-            computed_hash = compute_profiles_hash(repaired)
-        except Exception:
-            computed_hash = EMPTY_STRING
-        if repaired.get(KEY_DATA_HASH) != computed_hash:
-            repaired[KEY_DATA_HASH] = computed_hash
-            changed = True
-        return (repaired, changed)
+            changed = BOOL_TRUE
+        repaired, salvage_warnings, salvage_changed = self._store.sanitize_profiles_payload(repaired)
+        for warning in salvage_warnings:
+            self._warnings.append(warning)
+        return repaired, bool(changed or salvage_changed)
 
     def _apply_config_plan_local(self, plan: ConfigPlan) -> StatusResult:
         """

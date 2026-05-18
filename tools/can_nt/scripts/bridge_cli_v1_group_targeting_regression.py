@@ -89,6 +89,7 @@ EXPECTED_CONFIG_RELATIVE_PATH = Path(
 KEY_SCHEMA_VERSION = "schemaVersion"
 KEY_GENERATED_AT = "generatedAt"
 KEY_BY_PROFILE = "byProfile"
+KEY_PROFILE = "profile"
 KEY_DEFAULT_PROFILE = "default_profile"
 KEY_GROUPS = "groups"
 KEY_NAME = "name"
@@ -257,7 +258,7 @@ def _normalize_group_payload(payload: object) -> object:
         KEY_SCHEMA_VERSION: payload.get(KEY_SCHEMA_VERSION),
         KEY_GENERATED_AT: payload.get(KEY_GENERATED_AT),
         KEY_BY_PROFILE: {
-            profile_name: {
+            KEY_PROFILE: {
                 KEY_GROUPS: normalized_groups,
                 KEY_SELECTED_DEVICE: selected if isinstance(selected, dict) else {},
                 KEY_TESTS: normalized_tests,

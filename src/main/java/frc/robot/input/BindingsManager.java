@@ -26,11 +26,18 @@ import java.util.Set;
  *
  * DESCRIPTION
  *   Parses bringup_bindings.json and provides runtime sampling of buttons
- *   and axes into named commands.
+ *   and axes into named commands. Missing or invalid config results in an
+ *   empty binding set instead of code-defined controller defaults.
  */
 public final class BindingsManager {
   private static final String BINDINGS_FILE = "bringup_bindings.json";
   private static final String JSON_KEY_INPUT_ALIASES = "inputAliases";
+  private static final String MESSAGE_BINDINGS_CONFIG_MISSING_FORMAT =
+      "Warning: bindings config not found: %s. Robot will run with no controller bindings.";
+  private static final String MESSAGE_BINDINGS_CONFIG_EMPTY_FORMAT =
+      "Warning: bindings config root was empty: %s. Robot will run with no controller bindings.";
+  private static final String MESSAGE_BINDINGS_CONFIG_INVALID_FORMAT =
+      "Warning: failed to load bindings config %s: %s. Robot will run with no controller bindings.";
   private static final Gson GSON = new Gson();
 
   private final List<BindingSpec> bindings = new ArrayList<>();
@@ -220,17 +227,16 @@ public final class BindingsManager {
   }
 
   private void loadBindings() {
-    bindings.clear();
-    axes.clear();
+    clearLoadedBindings();
     Path path = resolvePath();
     if (path == null || !Files.exists(path)) {
-      loadDefaultBindings();
+      loadEmptyBindings(String.format(MESSAGE_BINDINGS_CONFIG_MISSING_FORMAT, path));
       return;
     }
     try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
       BindingRoot root = GSON.fromJson(reader, BindingRoot.class);
       if (root == null) {
-        loadDefaultBindings();
+        loadEmptyBindings(String.format(MESSAGE_BINDINGS_CONFIG_EMPTY_FORMAT, path));
         return;
       }
       if (root.bindings != null) {
@@ -244,52 +250,26 @@ public final class BindingsManager {
       } else {
         inputAliases = new HashMap<>();
       }
-      if (bindings.isEmpty() && axes.isEmpty()) {
-        loadDefaultBindings();
-      }
       validateBindings();
     } catch (IOException | JsonParseException ex) {
-      loadDefaultBindings();
+      loadEmptyBindings(String.format(
+          MESSAGE_BINDINGS_CONFIG_INVALID_FORMAT,
+          path,
+          ex.getMessage()));
     }
   }
 
-  private void loadDefaultBindings() {
+  private void clearLoadedBindings() {
     bindings.clear();
     axes.clear();
     inputAliases = new HashMap<>();
+  }
 
-    bindings.add(BindingSpec.edge("addMotor", "controller0", "button", "A"));
-    bindings.add(BindingSpec.edge("addAll", "controller0", "button", "START"));
-    bindings.add(BindingSpec.edge("printState", "controller0", "button", "B"));
-    bindings.add(BindingSpec.edge("printHealth", "controller0", "dpad", "LEFT"));
-    bindings.add(BindingSpec.edge("printCANcoder", "controller0", "button", "RB"));
-    bindings.add(BindingSpec.edge("printNTdiag", "controller0", "dpad", "DOWN"));
-    bindings.add(BindingSpec.edge("printCANdiag", "controller0", "dpad", "UP"));
-    bindings.add(BindingSpec.edge("printInputs", "controller0", "dpad", "RIGHT"));
-    bindings.add(BindingSpec.edge("printBindings", "controller0", "button", "LB"));
-    bindings.add(BindingSpec.edge("printTestsInfo", "controller0", "combo", "LB+RB"));
-    bindings.add(BindingSpec.edge("printTestsOverview", "controller0", "button", "LS"));
-    bindings.add(BindingSpec.edge("clearFaults", "controller0", "button", "RS"));
-    bindings.add(BindingSpec.edge("dumpReport", "controller0", "button", "X"));
-    bindings.add(BindingSpec.edge("toggleDashboard", "controller0", "button", "Y"));
-    bindings.add(BindingSpec.edge("profileToggle", "controller0", "button", "BACK"));
-
-    bindings.add(BindingSpec.edge("canSweep", "controller1", "button", "Y"));
-
-    bindings.add(BindingSpec.edge("selectTestPrev", "controller1", "button", "LB"));
-    bindings.add(BindingSpec.edge("selectTestNext", "controller1", "button", "RB"));
-    bindings.add(BindingSpec.edge("toggleTest", "controller1", "button", "X"));
-    bindings.add(BindingSpec.hold("runTest", "controller1", "button", "A"));
-    bindings.add(BindingSpec.edge("runAllTests", "controller1", "button", "B"));
-    bindings.add(BindingSpec.edge("printNextTest", "controller1", "button", "START"));
-
-    bindings.add(BindingSpec.hold("fixedSpeed25", "controller1", "dpad", "UP"));
-    bindings.add(BindingSpec.hold("fixedSpeed50", "controller1", "dpad", "RIGHT"));
-    bindings.add(BindingSpec.hold("fixedSpeed75", "controller1", "dpad", "DOWN"));
-    bindings.add(BindingSpec.hold("fixedSpeed100", "controller1", "dpad", "LEFT"));
-
-    axes.add(AxisSpec.axis("leftDrive", "controller0", "leftY", true, 0.12));
-    axes.add(AxisSpec.axis("rightDrive", "controller0", "rightY", true, 0.12));
+  private void loadEmptyBindings(String warningText) {
+    clearLoadedBindings();
+    if (warningText != null && !warningText.isBlank()) {
+      BringupPrinter.enqueue(warningText);
+    }
   }
 
   private void validateBindings() {
@@ -316,10 +296,7 @@ public final class BindingsManager {
         "toggleTest",
         "runTest",
         "runAllTests",
-        "fixedSpeed25",
-        "fixedSpeed50",
-        "fixedSpeed75",
-        "fixedSpeed100"
+        "printNextTest"
     );
     Map<String, Integer> bindingCounts = new HashMap<>();
     for (BindingSpec spec : bindings) {
@@ -506,26 +483,6 @@ public final class BindingsManager {
     String id;
     String mode;
 
-    static BindingSpec edge(String command, String controller, String input, String id) {
-      BindingSpec spec = new BindingSpec();
-      spec.command = command;
-      spec.controller = controller;
-      spec.input = input;
-      spec.id = id;
-      spec.mode = "edge";
-      return spec;
-    }
-
-    static BindingSpec hold(String command, String controller, String input, String id) {
-      BindingSpec spec = new BindingSpec();
-      spec.command = command;
-      spec.controller = controller;
-      spec.input = input;
-      spec.id = id;
-      spec.mode = "hold";
-      return spec;
-    }
-
     boolean isHoldMode() {
       return mode != null && mode.trim().equalsIgnoreCase("hold");
     }
@@ -541,16 +498,6 @@ public final class BindingsManager {
     String id;
     boolean invert = false;
     double deadband = 0.0;
-
-    static AxisSpec axis(String command, String controller, String id, boolean invert, double deadband) {
-      AxisSpec spec = new AxisSpec();
-      spec.command = command;
-      spec.controller = controller;
-      spec.id = id;
-      spec.invert = invert;
-      spec.deadband = deadband;
-      return spec;
-    }
   }
 
 }

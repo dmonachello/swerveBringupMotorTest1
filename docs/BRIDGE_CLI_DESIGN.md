@@ -131,11 +131,16 @@ Purpose: Prevent "active profile" confusion when connected.
 Exec / Show:
 
 - `show status` -> `showStatus`
+- `show active` -> local/robot summary composed from shared status paths
 - `show groups` -> `showGroups`
 - `show group <name>` -> `showGroup` `{name}`
 - `show devices` -> `showDevices`
 - `show device-group <name>` -> `showDevice` `{name}`
 - `show device <name>` -> local-only devices-table lookup (definition)
+- `show instantiated` -> local or robot instantiation-focused view
+- `show faults` -> local or robot fault-focused view
+- `show signals` -> local signal-catalog view
+- `show signal <name>` -> local signal-catalog view for one device
 - `show bindings` -> `showBindings`
 - `show workspace` -> local-only (loaded paths, active profile/set, dirty flags)
 - `show controllers` -> local-only (declared controllers + supported inputs)
@@ -167,6 +172,8 @@ Config:
 - `save bridge-config <path>` -> local: update bridgeConfig.byProfile only
 - `save profiles <path>` -> local: update profiles/diagram only
 - `save config <path>` -> local: update shared bringup_system.json
+- `save sources` -> local: save dirty canonical source files where known
+- `revert` -> local: discard unsaved in-memory state and reload from disk sources
 - `rename device <old> <new>` -> local: rename device in profiles when loaded, update bridgeConfig references
 
 Group:
@@ -176,6 +183,9 @@ Group:
 - `member <device> enable` -> `groupMemberEnable` `{group, device}`
 - `member <device> disable` -> `groupMemberDisable` `{group, device}`
 - `member <device> toggle` -> `groupMemberToggle` `{group, device}`
+- `bind list` -> local-only current-group binding diagnostics
+- `bind explain <binding>` -> local-only current-group binding explanation
+- `bind test <binding>` -> local-only current-group binding pass/fail check
 - `bind <input> analog` -> `groupBind` `{group, input, kind:"analog"}`
 - `bind <input> hold <value>` -> `groupBind` `{group, input, kind:"hold", value}`
 - `bind <input> toggle <value>` -> `groupBind` `{group, input, kind:"toggle", value}`
@@ -186,6 +196,10 @@ Group:
 - `disable` -> `groupDisable` `{group}`
 - `run test` -> `groupRunTest` `{group}`
 - `run test <name>` -> `groupRunTest` `{group, name}`
+
+Common presentation:
+
+- `tiu on|off` -> CLI presentation-only dashboard mode; no robot command is sent
 
 ## Response Schema
 
@@ -218,4 +232,3 @@ Purpose: Track safe, compatible next steps.
 - Expand `?` help to include all bounded values and numeric ranges (now supported).
 - NDJSON stream mode for long show commands.
 - GUI reuse of CLI command help strings for consistency.
-

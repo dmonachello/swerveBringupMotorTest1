@@ -114,8 +114,9 @@ class ConfigLifecycleService:
         canonical = canonical_path if canonical_path is not None else paths.canonical_profiles_path
         deploy = deploy_path if deploy_path is not None else paths.deploy_profiles_path
         stamped = self.stamp_profiles_payload(payload, stamp=stamp)
-        deploy.parent.mkdir(parents=True, exist_ok=True)
         write_json(canonical, stamped)
-        write_json(deploy, stamped)
+        if canonical.resolve() != deploy.resolve():
+            deploy.parent.mkdir(parents=True, exist_ok=True)
+            write_json(deploy, stamped)
         return stamped
 

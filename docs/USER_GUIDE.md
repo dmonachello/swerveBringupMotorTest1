@@ -60,7 +60,7 @@ Live Topology (offline):
 ### Topology Editor (Python/Tkinter)
 Purpose: Author and maintain device profiles and layouts.
 - Location: `tools/can_topology/` (entry: `can_top_editor.py`).
-- Edits `data/bringup_system.json` plus editor-only diagram metadata.
+- Edits `src/main/deploy/bringup_system.json` plus editor-only diagram metadata.
 - Supports tags, filters, layout tools, and bulk edits to keep diagrams organized.
 - Link devices to CANnect nodes by dragging onto them or using Edit -> `Link Device to CANnect`.
 - Inline edit the node list (double-click or `F2`) and multi-select for bulk edits.
@@ -76,7 +76,8 @@ TBD Screenshot: Topology editor with a loaded profile showing labeled devices, t
 
 ## Data Flow
 Purpose: Describe how data moves between parts.
-- `data/bringup_system.json` is the shared configuration source (sync to deploy for roboRIO).
+- `src/main/deploy/bringup_system.json` is the shared configuration source for host tools and roboRIO deploys.
+- `backup_data/backups/` holds timestamped save snapshots and is not an active config source.
 - `schema_version` (4), `data_version` (`YYYY-MM-DD_HHMMSS`), and `data_hash` must be present and consistent across copies.
 - Profiles reference devices by label only; device identity lives in the devices table.
 
@@ -84,35 +85,32 @@ Purpose: Describe how data moves between parts.
 Purpose: Clarify which files each surface reads/writes and how often they change.
 
 Bridge CLI
-- data/bringup_system.json: primary local config (profiles + devices table + groups). Change likelihood: high. Read: default.
-- src/main/deploy/bringup_system.json: derived deploy copy (written by validate/sync). Change likelihood: medium. Read: not default.
+- src/main/deploy/bringup_system.json: primary local config (profiles + devices table + groups). Change likelihood: high. Read: default.
 - bringup_system.json bridgeConfig.byProfile.<profile>.tests: tests edited by CLI. Change likelihood: high. Read: from the loaded bringup_system.json.
 - src/main/deploy/bringup_bindings.json: controller names/ports for inputSource validation. Change likelihood: low-medium. Read: default.
 - src/main/deploy/can_mappings.json: CAN manufacturer/device-type names. Change likelihood: low. Read: default.
 - .bridge_cli_settings.json: CLI preferences (message level). Change likelihood: low. Read: default.
 
 Bringup Control UI
-- data/bringup_system.json: profile list + labels for dropdowns/live view. Change likelihood: high. Read: default.
-- src/main/deploy/bringup_system.json: derived deploy copy (written by validate/sync). Change likelihood: medium. Read: not default.
+- src/main/deploy/bringup_system.json: profile list + labels for dropdowns/live view. Change likelihood: high. Read: default.
 - bringup_system.json bridgeConfig.byProfile.<profile>.tests: tests list for UI. Change likelihood: high. Read: from the loaded bringup_system.json.
 - src/main/deploy/bringup_bindings.json: controller labels. Change likelihood: low-medium. Read: default.
 - src/main/deploy/can_mappings.json: CAN vendor/type names. Change likelihood: low. Read: default.
 
 Topology Editor
-- data/bringup_system.json: canonical profiles + diagram + bridgeConfig.byProfile. Change likelihood: high. Read: default.
-- src/main/deploy/bringup_system.json: derived deploy copy (written by validate/sync). Change likelihood: medium. Read: not default.
+- src/main/deploy/bringup_system.json: profiles + diagram + bridgeConfig.byProfile. Change likelihood: high. Read: default.
 - src/main/deploy/can_mappings.json: vendor/type dropdowns. Change likelihood: low. Read: default.
 - can_table.txt: import input only. Change likelihood: medium. Read: explicit (import command).
 - profile.json: single-profile import/export. Change likelihood: medium. Read: explicit (load/save).
 
 Live Topology View
-- data/bringup_system.json: diagram + profiles for overlays. Change likelihood: high. Read: default.
+- src/main/deploy/bringup_system.json: diagram + profiles for overlays. Change likelihood: high. Read: default.
 
 Profiles Migration (Schema v4)
 Purpose: Update bringup_system.json to schema v4 with a devices table and label-only profiles.
 Example:
   python -m tools.validate_sync
-  python tools\can_topology\validate_profiles.py --path data\bringup_system.json --strict
+  python tools\can_topology\validate_profiles.py --path src\main\deploy\bringup_system.json --strict
 - The editor writes it; robot and PC tools consume it.
 - Diagram metadata is editor-only and ignored by robot/PC tools.
 - bridgeConfig.byProfile groups can be edited in the topology editor or CLI for operator workflows.
@@ -125,7 +123,7 @@ Purpose: Show how a user plans, brings up, and troubleshoots a robot.
 ### 1) Plan the Robot (Offline)
 Purpose: Define a clear, shareable device layout.
 - Open the topology editor: `tools/can_topology/can_top_editor.py`.
-- Build or update the team profile in `data/bringup_system.json`.
+- Build or update the team profile in `src/main/deploy/bringup_system.json`.
 - Use tags to group devices (e.g., `swerve`, `intake`, `left`, `right`).
 - Use tidy/align tools to keep columns clean and readable.
 

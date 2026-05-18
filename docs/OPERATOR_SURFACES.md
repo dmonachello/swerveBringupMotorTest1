@@ -70,29 +70,26 @@ File Map (By Surface)
 Purpose: Clarify which files each surface reads/writes and how often they change.
 
 Bridge CLI
-- data/bringup_system.json: primary local config (profiles + devices table + groups). Change likelihood: high. Read: default.
-- src/main/deploy/bringup_system.json: derived deploy copy (written by validate/sync). Change likelihood: medium. Read: not default.
+- src/main/deploy/bringup_system.json: primary local config (profiles + devices table + groups). Change likelihood: high. Read: default.
 - bringup_system.json bridgeConfig.byProfile.<profile>.tests: tests edited by CLI. Change likelihood: high. Read: from the loaded bringup_system.json.
 - src/main/deploy/bringup_bindings.json: controller names/ports for inputSource validation. Change likelihood: low-medium. Read: default.
 - src/main/deploy/can_mappings.json: CAN manufacturer/device-type names. Change likelihood: low. Read: default.
 - .bridge_cli_settings.json: CLI preferences (message level). Change likelihood: low. Read: default.
 
 Bringup Control UI
-- data/bringup_system.json: profile list + labels for dropdowns/live view. Change likelihood: high. Read: default.
-- src/main/deploy/bringup_system.json: derived deploy copy (written by validate/sync). Change likelihood: medium. Read: not default.
+- src/main/deploy/bringup_system.json: profile list + labels for dropdowns/live view. Change likelihood: high. Read: default.
 - bringup_system.json bridgeConfig.byProfile.<profile>.tests: tests list for UI. Change likelihood: high. Read: from the loaded bringup_system.json.
 - src/main/deploy/bringup_bindings.json: controller labels. Change likelihood: low-medium. Read: default.
 - src/main/deploy/can_mappings.json: CAN vendor/type names. Change likelihood: low. Read: default.
 
 Topology Editor
-- data/bringup_system.json: canonical profiles + diagram + bridgeConfig.byProfile. Change likelihood: high. Read: default.
-- src/main/deploy/bringup_system.json: derived deploy copy (written by validate/sync). Change likelihood: medium. Read: not default.
+- src/main/deploy/bringup_system.json: profiles + diagram + bridgeConfig.byProfile. Change likelihood: high. Read: default.
 - src/main/deploy/can_mappings.json: vendor/type dropdowns. Change likelihood: low. Read: default.
 - can_table.txt: import input only. Change likelihood: medium. Read: explicit (import command).
 - profile.json: single-profile import/export. Change likelihood: medium. Read: explicit (load/save).
 
 Live Topology View
-- data/bringup_system.json: diagram + profiles for overlays. Change likelihood: high. Read: default.
+- src/main/deploy/bringup_system.json: diagram + profiles for overlays. Change likelihood: high. Read: default.
 
 Data Flow
 Purpose: Explain how data moves between surfaces.
@@ -106,12 +103,12 @@ Purpose: Show common workflows.
 
 Example: Topology -> CLI
 - Edit devices and layout in topology editor.
-- Save to data/bringup_system.json.
-- CLI: merge config data/bringup_system.json, add groups, then save config.
+- Save to src/main/deploy/bringup_system.json.
+- CLI: merge config src/main/deploy/bringup_system.json, add groups, then save config.
 
 Example: CLI-only
-- CLI: create devices/groups, then save config data/bringup_system.json.
-- Optional: open topology editor and load canonical file for layout.
+- CLI: create devices/groups, then save config src/main/deploy/bringup_system.json.
+- Optional: open topology editor and load the active deploy file for layout.
 
 Example: Sniffer bootstrap
 - Run sniffer --dump-profile to create a profile.
@@ -139,5 +136,5 @@ Future Extensions
 Purpose: Track safe next steps.
 - Add a small operator-surface "status" panel that shows which file is loaded and last saved.
 - Add a spec-to-code checklist test to guard shared-layer usage.
-- Add a UI-only indicator when bridgeConfig.byProfile groups are missing from the canonical file.
+- Add a UI-only indicator when bridgeConfig.byProfile groups are missing from the active deploy file.
 

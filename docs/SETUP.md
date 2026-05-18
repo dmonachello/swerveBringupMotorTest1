@@ -15,7 +15,7 @@ Purpose: Verify the tooling works without touching robot hardware.
 .\install_windows.cmd
 ```
 
-2. Validate + sync config to deploy:
+2. Validate config:
 ```powershell
 python -m tools.validate_sync
 ```
@@ -82,8 +82,8 @@ Purpose: Push robot code and deploy JSON config files.
 ```
 
 Notes:
-- `src/main/deploy/bringup_system.json` is the deploy copy used by the roboRIO.
-- Keep it in sync with the canonical `data/bringup_system.json` by running `python -m tools.validate_sync`.
+- `src/main/deploy/bringup_system.json` is the active host and roboRIO config file.
+- `backup_data/backups/` stores timestamped snapshots created by save operations.
 
 ## Device Config + Tests Authoring (Happy Path)
 Purpose: Make edits fast and hard to mess up.
@@ -93,7 +93,7 @@ Purpose: Make edits fast and hard to mess up.
 2. Create/update bringup tests:
    - Bridge CLI/UI authoring (primary), or
    - Smoke generation wizard (motors): `py -m tools.bringup_test_wizard.gen_bringup_tests --profile <name> --test-set smoke --replace`
-3. Validate + sync:
+3. Validate:
 ```powershell
 python -m tools.validate_sync
 ```

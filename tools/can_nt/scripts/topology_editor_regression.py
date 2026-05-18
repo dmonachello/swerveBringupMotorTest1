@@ -13,6 +13,8 @@ DESCRIPTION
 """
 
 import io
+import argparse
+import os
 import sys
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -31,12 +33,17 @@ TOPOLOGY_FIXTURE_RELATIVE = Path("tests/regression/fixtures/topology_editor_regr
 
 MODULE_TOPOLOGY_EDITOR_LOAD = "tools.can_topology.tests.test_can_top_editor_profile_load"
 MODULE_TOPOLOGY_SHOW = "tools.can_nt.tests.test_bridge_cli_topology_show"
+MODULE_TOPOLOGY_VALIDATE = "tools.can_topology.tests.test_validate_profiles_topology"
+MODULE_LIVE_TOPOLOGY_VIEW = "tools.can_topology.tests.test_live_topology_view"
 
 LABEL_FIXTURE_VALIDATE = "topology-fixture-validate"
 LABEL_TOPOLOGY_UNIT = "topology-editor-unit"
 LABEL_SUMMARY = "SUMMARY"
 OUTCOME_PASS = "PASS"
 OUTCOME_FAIL = "FAIL"
+ARG_VERBOSE = "--verbose"
+ENV_REGRESSION_VERBOSE = "BRINGUP_REGRESSION_VERBOSE"
+TEXT_TRUE = "1"
 
 DETAIL_VALIDATION_PASSED = "topology fixture validation passed"
 DETAIL_VALIDATION_LOAD_FAILED = "topology fixture load failed"
@@ -58,12 +65,14 @@ class CheckResult:
         self.details = details
 
 
-def _validate_topology_fixture() -> CheckResult:
+def _validate_topology_fixture(verbose: bool = False) -> CheckResult:
     """
     NAME
         _validate_topology_fixture - Validate the committed topology fixture.
     """
     path = REPO_ROOT / TOPOLOGY_FIXTURE_RELATIVE
+    if verbose:
+        print(f"CHECK {LABEL_FIXTURE_VALIDATE}: {path}")
     try:
         payload = load_profiles_json(path)
     except ValueError as exc:
@@ -77,13 +86,20 @@ def _validate_topology_fixture() -> CheckResult:
     return CheckResult(LABEL_FIXTURE_VALIDATE, True, DETAIL_VALIDATION_PASSED)
 
 
-def _run_unit_modules(module_names: Sequence[str]) -> CheckResult:
+def _run_unit_modules(module_names: Sequence[str], verbose: bool = False) -> CheckResult:
     """
     NAME
         _run_unit_modules - Run focused topology/editor unittest modules.
     """
     loader = unittest.defaultTestLoader
     suite = unittest.TestSuite(loader.loadTestsFromName(name) for name in module_names)
+    if verbose:
+        for module_name in module_names:
+            print(f"CHECK {LABEL_TOPOLOGY_UNIT}: {module_name}")
+        result = unittest.TextTestRunner(stream=sys.stdout, verbosity=2).run(suite)
+        if result.wasSuccessful():
+            return CheckResult(LABEL_TOPOLOGY_UNIT, True, DETAIL_UNIT_TESTS_PASSED)
+        return CheckResult(LABEL_TOPOLOGY_UNIT, False, DETAIL_UNIT_TESTS_FAILED)
     output = io.StringIO()
     with redirect_stdout(output), redirect_stderr(output):
         result = unittest.TextTestRunner(stream=output, verbosity=1).run(suite)
@@ -97,14 +113,22 @@ def _run_unit_modules(module_names: Sequence[str]) -> CheckResult:
     )
 
 
-def _run_regression() -> List[CheckResult]:
+def _run_regression(verbose: bool = False) -> List[CheckResult]:
     """
     NAME
         _run_regression - Execute the topology regression checks.
     """
     return [
-        _validate_topology_fixture(),
-        _run_unit_modules((MODULE_TOPOLOGY_EDITOR_LOAD, MODULE_TOPOLOGY_SHOW)),
+        _validate_topology_fixture(verbose=verbose),
+        _run_unit_modules(
+            (
+                MODULE_TOPOLOGY_EDITOR_LOAD,
+                MODULE_TOPOLOGY_SHOW,
+                MODULE_TOPOLOGY_VALIDATE,
+                MODULE_LIVE_TOPOLOGY_VIEW,
+            ),
+            verbose=verbose,
+        ),
     ]
 
 
@@ -126,12 +150,24 @@ def _print_results(results: Iterable[CheckResult]) -> int:
     return 0 if failures == 0 else 1
 
 
-def main() -> int:
+def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """
+    NAME
+        _parse_args - Parse topology regression command-line flags.
+    """
+    parser = argparse.ArgumentParser(description="Run topology editor regression checks.")
+    parser.add_argument(ARG_VERBOSE, action="store_true", help="Print per-test progress.")
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
     """
     NAME
         main - Entrypoint for topology editor regression checks.
     """
-    return _print_results(_run_regression())
+    args = _parse_args(argv)
+    verbose = bool(args.verbose) or os.environ.get(ENV_REGRESSION_VERBOSE) == TEXT_TRUE
+    return _print_results(_run_regression(verbose=verbose))
 
 
 if __name__ == "__main__":

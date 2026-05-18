@@ -213,25 +213,18 @@ DeviceUnit.readDslSignal(...)
 `XboxControllerDevice.readDslSignal(...)` then resolves the value for its own
 configured label.
 
-## 10. Processed Axis Behavior
+## 10. Raw Axis Behavior
 
-For `controller0`, the runtime snapshot stores processed drive values for:
-
-- `leftY`
-- `rightY`
-
-Those processed values are the same `leftDrive` and `rightDrive` values used by
-the robot bringup loop.
+Controller DSL signals expose raw WPILib controller values.
 
 Current behavior:
 
-- `controller0.leftY` uses processed `leftDrive`
-- `controller0.rightY` uses processed `rightDrive`
-- other controller labels use raw WPILib axis reads
+- `controller0.leftY` uses the raw physical `leftY` axis
+- `controller0.rightY` uses the raw physical `rightY` axis
+- other controller labels also use raw WPILib axis reads
 
-SID_QUESTION: Should DSL controller axis signals use raw physical controller
-values or processed bringup drive values? The current implementation uses
-processed values for `controller0.leftY` and `controller0.rightY`.
+This keeps explicit DSL controller signals independent of JSON axis bindings and
+avoids hidden operator-binding fallback behavior in code.
 
 ## 11. Host Validation
 

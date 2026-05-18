@@ -28,6 +28,7 @@ from tools.common.paths import (
 import tkinter.font as tkfont
 
 from tools.common.profile_constants import (
+    KEY_CATEGORY,
     INTERFACE_CAN,
     KEY_DEFAULT_PROFILE,
     KEY_DEVICE_TYPE,
@@ -35,11 +36,17 @@ from tools.common.profile_constants import (
     KEY_ID,
     KEY_INTERFACE,
     KEY_LABEL,
+    KEY_LAYOUT,
     KEY_MANUFACTURER,
     KEY_MODEL,
+    KEY_NODE_TYPE,
     KEY_PROFILES,
     KEY_PROFILE_DEVICES,
+    KEY_TOPOLOGY_VIEW,
     get_device_interface,
+    LAYOUT_KEY_Y,
+    NODE_TYPE_ANALYZER,
+    NODE_TYPE_JUNCTION,
 )
 from tools.config.schema_store import ConfigSchemaStore
 from tools.common.topology_render import (
@@ -63,10 +70,18 @@ from tools.common.topology_text import (
 )
 from tools.common.topology_parse import (
     parse_bridge_groups,
+    parse_diagram_aux_links,
     parse_diagram_links,
     parse_diagram_nodes,
+    topology_profile_from_payload,
 )
-from tools.common.topology_draw import draw_bus_segments, draw_group_overlays, draw_links
+from tools.common.topology_draw import (
+    draw_bus_segments,
+    draw_canvas_shape_for_kind,
+    draw_group_overlays,
+    draw_links,
+    render_topology_canvas_common,
+)
 from tools.can_nt.visibility_constants import (
     VIS_KEY_AVAILABLE,
     VIS_KEY_DEVICES,
@@ -88,6 +103,31 @@ PRESENCE_STALE_MS = 2000
 PRESENCE_MIN_CONF = 0.05
 PRESENCE_HIGH_CONF = 0.5
 EMPTY_STRING = ""
+LEGACY_NODE_TYPE_DIAGRAM = "diagram"
+LEGACY_NODE_TYPE_CALLOUT = "callout"
+NODE_BOX_BASE_W = 140.0
+NODE_BOX_BASE_H = 60.0
+SWYFT_PORT_BOX_W = 6.0
+SWYFT_PORT_BOX_H = 10.0
+SWYFT_PORT_INSET = 12.0
+SWYFT_PORT_LINE_HALF_WIDTH = 3.0
+SWYFT_PORT_LINE_LEN = 10.0
+SWYFT_POWER_LABEL_Y = 10.0
+SWYFT_FONT_BASE_PX = 7
+POWER_LINE_COLOR = "#c05000"
+ATTACH_LINE_COLOR = "#7a5d00"
+WIRE_LINE_COLOR = "#1f6feb"
+LINK_LINE_WIDTH = 2
+LINK_DASH = (6, 4)
+CANVAS_FIT_MARGIN = 24.0
+CANVAS_PAN_GAIN = 1
+ZOOM_MIN = 0.1
+ZOOM_MAX = 2.0
+ZOOM_STEP = 0.1
+SCROLLREGION_FIELD_COUNT = 4
+SCROLLREGION_MIN_INDEX = 0
+SCROLLREGION_MAX_INDEX = 2
+SCROLLREGION_MIN_SPAN = 1.0
 
 # Constants (visibility overlay).
 VIS_STATE_ALL = "all"
@@ -98,6 +138,28 @@ VIS_COLOR_ALL = "#16a34a"
 VIS_COLOR_SOME = "#f59e0b"
 VIS_COLOR_NONE = "#dc2626"
 VIS_COLOR_UNKNOWN = "#9ca3af"
+FILTER_CAN = "can"
+FILTER_POWER = "power"
+FILTER_DIO = "dio"
+FILTER_PWM = "pwm"
+FILTER_ANALOG = "analog"
+FILTER_VIRTUAL = "virtual"
+CONNECTION_FILTERS_ORDER = (
+    FILTER_CAN,
+    FILTER_POWER,
+    FILTER_DIO,
+    FILTER_PWM,
+    FILTER_ANALOG,
+    FILTER_VIRTUAL,
+)
+CONNECTION_FILTER_LABELS = {
+    FILTER_CAN: "CAN",
+    FILTER_POWER: "Power",
+    FILTER_DIO: "DIO",
+    FILTER_PWM: "PWM",
+    FILTER_ANALOG: "Analog",
+    FILTER_VIRTUAL: "Virtual",
+}
 
 CATEGORY_NEOS = "neos"
 CATEGORY_NEO550S = "neo550s"
@@ -159,6 +221,7 @@ class LiveNode:
     node_type: str = "device"
     y: Optional[float] = None
     free_y: Optional[float] = None
+    interface: str = INTERFACE_CAN
 
 
 def _load_profiles_payload() -> Tuple[Optional[Dict[str, object]], str]:
@@ -296,6 +359,7 @@ def _profile_devices(
                 vendor=_vendor_for_device(entry),
                 device_type=str(entry.get(KEY_DEVICE_TYPE) or ""),
                 node_type="device",
+                interface=str(entry.get(KEY_INTERFACE) or INTERFACE_CAN),
             )
         )
         key += 1
@@ -312,13 +376,22 @@ def _diagram_nodes(
     """
     nodes: List[LiveNode] = []
     key = 1
+    view_dict = diagram.get(KEY_TOPOLOGY_VIEW)
+    view_meta = view_dict if isinstance(view_dict, dict) else {}
+    raw_bus_offsets = diagram.get("busOffsets")
+    if not isinstance(raw_bus_offsets, list):
+        raw_bus_offsets = view_meta.get("busOffsets")
+    bus_offsets = raw_bus_offsets if isinstance(raw_bus_offsets, list) else []
     for entry in parse_diagram_nodes(diagram):
         if not isinstance(entry, dict):
             continue
-        node_type = str(entry.get("nodeType") or "device")
+        raw_node_type = str(entry.get(KEY_NODE_TYPE) or "device")
+        node_type = raw_node_type
+        if raw_node_type in (NODE_TYPE_JUNCTION, NODE_TYPE_ANALYZER):
+            node_type = LEGACY_NODE_TYPE_DIAGRAM
         if entry.get("profileVisible") is False and node_type != "diagram":
             continue
-        if node_type == "callout":
+        if node_type == LEGACY_NODE_TYPE_CALLOUT:
             text = str(entry.get("text") or "")
             if not text:
                 continue
@@ -334,7 +407,7 @@ def _diagram_nodes(
                     row=int(entry.get("row") or 0),
                     x=float(entry.get("x") or 0.0),
                     scale=float(entry.get("scale") or 1.0),
-                    node_type="callout",
+                    node_type=LEGACY_NODE_TYPE_CALLOUT,
                     y=float(entry.get("y")) if isinstance(entry.get("y"), (int, float)) else None,
                 )
             )
@@ -350,7 +423,7 @@ def _diagram_nodes(
         if isinstance(free_val, (int, float)):
             free_y = float(free_val)
             if not isinstance(free_rel, bool) or free_rel is False:
-                bus_offset = float(diagram.get("busOffsets", [0.0])[bus_index]) if diagram.get("busOffsets") else 0.0
+                bus_offset = float(bus_offsets[bus_index]) if bus_index < len(bus_offsets) else 0.0
                 free_y = free_y - bus_offset
         raw_key = entry.get("key")
         node_key = int(raw_key) if isinstance(raw_key, int) else key
@@ -360,10 +433,23 @@ def _diagram_nodes(
             reg_id = registry_entry.get(KEY_ID)
             if isinstance(reg_id, int):
                 can_id = reg_id
+        category = str(entry.get(KEY_CATEGORY) or CATEGORY_DEVICES)
+        vendor = str(entry.get("vendor") or "")
+        device_type = str(entry.get(KEY_DEVICE_TYPE) or "")
+        if isinstance(registry_entry, dict):
+            if category == CATEGORY_DEVICES:
+                category = _category_for_device(registry_entry)
+            if not vendor:
+                vendor = _vendor_for_device(registry_entry)
+            if not device_type:
+                device_type = str(registry_entry.get(KEY_DEVICE_TYPE) or "")
+        interface = str(entry.get(KEY_INTERFACE) or INTERFACE_CAN)
+        if isinstance(registry_entry, dict):
+            interface = str(registry_entry.get(KEY_INTERFACE) or interface or INTERFACE_CAN)
         nodes.append(
             LiveNode(
                 key=node_key,
-                category=str(entry.get("category") or CATEGORY_DEVICES),
+                category=category,
                 label=label,
                 can_id=int(can_id) if isinstance(can_id, int) else NODE_CAN_ID_DEFAULT,
                 bus_index=bus_index,
@@ -372,6 +458,9 @@ def _diagram_nodes(
                 scale=float(entry.get("scale") or 1.0),
                 node_type=node_type,
                 free_y=free_y,
+                vendor=vendor,
+                device_type=device_type,
+                interface=interface,
             )
         )
         key += 1
@@ -409,9 +498,15 @@ class LiveTopologyView(ttk.Frame):
         self._ethernet_links: List[Tuple[int, int]] = []
         self._can_links: List[Dict[str, int]] = []
         self._device_links: List[Dict[str, int]] = []
+        self._power_links: List[Tuple[int, int]] = []
+        self._attachment_links: List[Tuple[int, int]] = []
+        self._dio_links: List[Tuple[int, int]] = []
         self._bridge_groups: List[Dict[str, object]] = []
         self._show_groups = True
         self._runtime_fingerprint: Optional[Tuple[object, ...]] = None
+        self._connection_filter_vars = {
+            key: tk.BooleanVar(value=True) for key in CONNECTION_FILTERS_ORDER
+        }
 
         header = ttk.Frame(self)
         header.pack(fill="x", padx=8, pady=(8, 0))
@@ -420,6 +515,17 @@ class LiveTopologyView(ttk.Frame):
         )
         self._status_label = ttk.Label(header, text="Profile: --")
         self._status_label.pack(side="left", padx=(12, 0))
+        filter_frame = ttk.Frame(header)
+        filter_frame.pack(side="right")
+        ttk.Button(filter_frame, text="All", command=self._enable_all_connection_filters).pack(side="left")
+        ttk.Button(filter_frame, text="None", command=self._disable_all_connection_filters).pack(side="left", padx=(4, 8))
+        for filter_key in CONNECTION_FILTERS_ORDER:
+            ttk.Checkbutton(
+                filter_frame,
+                text=CONNECTION_FILTER_LABELS[filter_key],
+                variable=self._connection_filter_vars[filter_key],
+                command=self._redraw,
+            ).pack(side="left")
 
         body = ttk.Frame(self)
         body.pack(fill="both", expand=True, padx=8, pady=8)
@@ -435,9 +541,12 @@ class LiveTopologyView(ttk.Frame):
         self._canvas.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
         self._canvas.bind("<Configure>", self._redraw)
         self._canvas.bind("<Button-1>", self._on_canvas_click)
+        self._canvas.bind("<ButtonPress-2>", self._on_canvas_pan_press)
+        self._canvas.bind("<B2-Motion>", self._on_canvas_pan_drag)
+        self._canvas.bind("<ButtonRelease-2>", self._on_canvas_pan_release)
         self._canvas.bind("<Control-MouseWheel>", self._on_mousewheel_zoom)
-        self._canvas.bind("<Control-Button-4>", lambda _e: self._nudge_zoom(0.1))
-        self._canvas.bind("<Control-Button-5>", lambda _e: self._nudge_zoom(-0.1))
+        self._canvas.bind("<Control-Button-4>", lambda _e: self._nudge_zoom(ZOOM_STEP))
+        self._canvas.bind("<Control-Button-5>", lambda _e: self._nudge_zoom(-ZOOM_STEP))
 
         details = ttk.LabelFrame(body, text="Selection", padding=8)
         details.pack(side="right", fill="y")
@@ -500,18 +609,34 @@ class LiveTopologyView(ttk.Frame):
         diagram = payload.get("diagram") if isinstance(payload.get("diagram"), dict) else {}
         diagram_profiles = diagram.get("profiles") if isinstance(diagram.get("profiles"), dict) else {}
         diag = diagram_profiles.get(self._profile_name)
+        if not isinstance(diag, dict):
+            topology_profile = topology_profile_from_payload(payload, self._profile_name)
+            diag = topology_profile if isinstance(topology_profile, dict) else None
         if isinstance(diag, dict):
             nodes, meta = _diagram_nodes(diag, registry)
             self._nodes = nodes
             self._diagram_meta = meta
             self._use_diagram_layout = True
-            self._bus_spacing = float(meta.get("busSpacing") or 160.0)
-            self._bus_offsets = [float(v) for v in (meta.get("busOffsets") or [0.0])]
-            self._bus_lefts = [float(v) for v in (meta.get("busLefts") or [])]
-            self._bus_rights = [float(v) for v in (meta.get("busRights") or [])]
-            self._pan_y = float(meta.get("panY") or 0.0)
-            self._zoom = float(meta.get("zoom") or 1.0)
+            view_dict = meta.get(KEY_TOPOLOGY_VIEW)
+            view_meta = view_dict if isinstance(view_dict, dict) else meta
+            self._bus_spacing = float(view_meta.get("busSpacing") or 160.0)
+            self._bus_offsets = [float(v) for v in (view_meta.get("busOffsets") or [0.0])]
+            self._bus_lefts = [float(v) for v in (view_meta.get("busLefts") or [])]
+            self._bus_rights = [float(v) for v in (view_meta.get("busRights") or [])]
+            self._pan_y = float(view_meta.get("panY") or 0.0)
+            self._zoom = float(view_meta.get("zoom") or 1.0)
             self._ethernet_links, self._can_links, self._device_links = parse_diagram_links(meta)
+            self._power_links, self._attachment_links, self._dio_links = parse_diagram_aux_links(meta)
+            if isinstance(view_meta, dict):
+                saved_filters = view_meta.get("connectionFilters")
+                if isinstance(saved_filters, list):
+                    active = {
+                        str(entry).strip().lower()
+                        for entry in saved_filters
+                        if isinstance(entry, str)
+                    }
+                    for filter_key, var in self._connection_filter_vars.items():
+                        var.set(filter_key in active)
         else:
             self._nodes = _profile_devices(
                 raw_profile if isinstance(raw_profile, dict) else {},
@@ -528,6 +653,9 @@ class LiveTopologyView(ttk.Frame):
             self._ethernet_links = []
             self._can_links = []
             self._device_links = []
+            self._power_links = []
+            self._attachment_links = []
+            self._dio_links = []
         self._bridge_groups = parse_bridge_groups(payload, self._profile_name)
         self._redraw()
 
@@ -565,6 +693,38 @@ class LiveTopologyView(ttk.Frame):
         if enabled == self._visibility_enabled:
             return
         self._visibility_enabled = enabled
+        self._redraw()
+
+    def _active_connection_filters(self) -> set[str]:
+        """
+        NAME
+            _active_connection_filters - Return enabled connection filter keys.
+        """
+        vars_map = getattr(self, "_connection_filter_vars", None)
+        if not isinstance(vars_map, dict):
+            return set(CONNECTION_FILTERS_ORDER)
+        return {
+            filter_key
+            for filter_key, var in vars_map.items()
+            if bool(var.get())
+        }
+
+    def _enable_all_connection_filters(self) -> None:
+        """
+        NAME
+            _enable_all_connection_filters - Enable every connection filter.
+        """
+        for var in self._connection_filter_vars.values():
+            var.set(True)
+        self._redraw()
+
+    def _disable_all_connection_filters(self) -> None:
+        """
+        NAME
+            _disable_all_connection_filters - Disable every connection filter.
+        """
+        for var in self._connection_filter_vars.values():
+            var.set(False)
         self._redraw()
 
     def set_visibility_snapshot(self, snapshot: Optional[Dict[str, object]]) -> None:
@@ -744,7 +904,7 @@ class LiveTopologyView(ttk.Frame):
         NAME
             _on_mousewheel_zoom - Zoom with Ctrl + mouse wheel.
         """
-        delta = 0.1 if event.delta > 0 else -0.1
+        delta = ZOOM_STEP if event.delta > 0 else -ZOOM_STEP
         self._nudge_zoom(delta)
 
     def _nudge_zoom(self, delta: float) -> None:
@@ -752,7 +912,7 @@ class LiveTopologyView(ttk.Frame):
         NAME
             _nudge_zoom - Increment zoom with clamping.
         """
-        new_zoom = max(0.1, min(2.0, self._zoom + delta))
+        new_zoom = max(ZOOM_MIN, min(ZOOM_MAX, self._zoom + delta))
         if abs(new_zoom - self._zoom) < 1e-6:
             return
         self._zoom = new_zoom
@@ -765,6 +925,119 @@ class LiveTopologyView(ttk.Frame):
         """
         self._zoom = 1.0
         self._redraw()
+
+    def _on_canvas_pan_press(self, event: tk.Event) -> str:
+        """
+        NAME
+            _on_canvas_pan_press - Begin whole-diagram canvas panning.
+        """
+        self._canvas.scan_mark(event.x, event.y)
+        return "break"
+
+    def _on_canvas_pan_drag(self, event: tk.Event) -> str:
+        """
+        NAME
+            _on_canvas_pan_drag - Pan the canvas with the middle mouse button.
+        """
+        self._canvas.scan_dragto(event.x, event.y, gain=CANVAS_PAN_GAIN)
+        return "break"
+
+    def _on_canvas_pan_release(self, _event: tk.Event) -> str:
+        """
+        NAME
+            _on_canvas_pan_release - Finish whole-diagram canvas panning.
+        """
+        return "break"
+
+    def _set_canvas_xview_left(self, desired_left: float) -> None:
+        """
+        NAME
+            _set_canvas_xview_left - Position the canvas viewport at an X coordinate.
+        """
+        try:
+            raw_region = self._canvas.cget("scrollregion")
+        except Exception:
+            return
+        parts = str(raw_region).split()
+        if len(parts) != SCROLLREGION_FIELD_COUNT:
+            return
+        try:
+            region = [float(part) for part in parts]
+        except ValueError:
+            return
+        width = max(float(self._canvas.winfo_width()), SCROLLREGION_MIN_SPAN)
+        old_min_x = region[SCROLLREGION_MIN_INDEX]
+        old_max_x = region[SCROLLREGION_MAX_INDEX]
+        new_min_x = min(old_min_x, desired_left)
+        new_max_x = max(old_max_x, desired_left + width)
+        new_span = max(new_max_x - new_min_x, SCROLLREGION_MIN_SPAN)
+        if new_min_x != old_min_x or new_max_x != old_max_x:
+            region[SCROLLREGION_MIN_INDEX] = new_min_x
+            region[SCROLLREGION_MAX_INDEX] = new_max_x
+            self._canvas.configure(scrollregion=tuple(region))
+        fraction = (desired_left - new_min_x) / new_span
+        self._canvas.xview_moveto(max(0.0, min(1.0, fraction)))
+
+    def _fit_to_window(self) -> None:
+        """
+        NAME
+            _fit_to_window - Fit the diagram to the current canvas size.
+        """
+        width = max(self._canvas.winfo_width(), 1)
+        height = max(self._canvas.winfo_height(), 1)
+        nodes = list(self._nodes)
+        if not nodes and not self._bus_offsets:
+            return
+        min_x = float("inf")
+        max_x = float("-inf")
+        min_y = float("inf")
+        max_y = float("-inf")
+        for node in nodes:
+            node_scale = max(0.6, min(2.0, float(getattr(node, "scale", 1.0))))
+            if node.node_type == LEGACY_NODE_TYPE_CALLOUT:
+                half_w = (180.0 * node_scale) / 2.0
+                half_h = (50.0 * node_scale) / 2.0
+            else:
+                half_w = (NODE_BOX_BASE_W * node_scale) / 2.0
+                half_h = (NODE_BOX_BASE_H * node_scale) / 2.0
+            center_y = node_center_y_unscaled(node, self._bus_offsets, NODE_BOX_BASE_H)
+            min_x = min(min_x, node.x - half_w)
+            max_x = max(max_x, node.x + half_w)
+            min_y = min(min_y, center_y - half_h)
+            max_y = max(max_y, center_y + half_h)
+        if self._bus_offsets:
+            bus_min = min(self._bus_offsets) - (NODE_BOX_BASE_H + 60.0)
+            bus_max = max(self._bus_offsets) + (NODE_BOX_BASE_H + 60.0)
+            min_y = min(min_y, bus_min)
+            max_y = max(max_y, bus_max)
+        max_node_x = max((n.x for n in nodes), default=0.0)
+        bus_lefts = list(self._bus_lefts)
+        bus_rights = list(self._bus_rights)
+        if len(bus_lefts) < len(self._bus_offsets):
+            bus_lefts.extend([40.0] * (len(self._bus_offsets) - len(bus_lefts)))
+        if len(bus_rights) < len(self._bus_offsets):
+            bus_rights.extend([max_node_x + 200.0] * (len(self._bus_offsets) - len(bus_rights)))
+        if self._bus_offsets:
+            min_x = min(min_x, min(bus_lefts, default=40.0))
+            max_x = max(max_x, max(bus_rights, default=max_node_x + 200.0))
+        max_x = max(max_x, max_node_x + 200.0)
+        min_x = min(min_x, 0.0)
+        if min_x == float("inf") or max_x == float("-inf"):
+            min_x, max_x = 0.0, 400.0
+        if min_y == float("inf") or max_y == float("-inf"):
+            min_y, max_y = -200.0, 200.0
+        content_w = max(1.0, max_x - min_x)
+        content_h = max(1.0, max_y - min_y)
+        zoom_x = (width - CANVAS_FIT_MARGIN * 2.0) / content_w
+        zoom_y = (height - CANVAS_FIT_MARGIN * 2.0) / content_h
+        self._zoom = max(ZOOM_MIN, min(ZOOM_MAX, min(zoom_x, zoom_y)))
+        center_y = (min_y + max_y) / 2.0
+        self._pan_y = -center_y * self._zoom
+        self._redraw()
+        self.update_idletasks()
+        content_center_x = ((min_x + max_x) / 2.0) * self._zoom
+        self._set_canvas_xview_left(content_center_x - width / 2.0)
+        self._canvas.yview_moveto(0.0)
 
     def _update_details(self) -> None:
         """
@@ -887,6 +1160,8 @@ class LiveTopologyView(ttk.Frame):
         height = max(self._canvas.winfo_height(), 1)
         scale = self._zoom
         base_y = height * 0.5 + self._pan_y
+        active_filters = self._active_connection_filters()
+        show_can = FILTER_CAN in active_filters
         bus_count = max((n.bus_index for n in self._nodes), default=0) + 1
         while len(self._bus_offsets) < bus_count:
             self._bus_offsets.append(0.0)
@@ -902,200 +1177,59 @@ class LiveTopologyView(ttk.Frame):
             list(self._bus_rights),
             max_x,
         )
-        draw_bus_segments(
-            self._canvas,
-            bus_ys_list,
-            eff_lefts,
-            eff_rights,
+        selected_keys = {
+            node.key
+            for node in self._nodes
+            if self._selected_label and node.label.strip().lower() == self._selected_label
+        }
+        rendered = render_topology_canvas_common(
+            canvas=self._canvas,
+            nodes=self._nodes,
+            bus_ys=bus_ys_list,
+            base_y=base_y,
             scale=scale,
+            x_shift=x_shift,
+            eff_lefts=eff_lefts,
+            eff_rights=eff_rights,
+            show_can=show_can,
+            show_dio=FILTER_DIO in active_filters,
+            show_virtual=FILTER_VIRTUAL in active_filters,
+            show_power=FILTER_POWER in active_filters,
+            groups=self._bridge_groups,
+            selected_node_keys=selected_keys,
+            selected_bus_indices=set(),
+            drag_free_y={},
+            bus_connectors=[],
+            bus_lefts=eff_lefts,
+            bus_rights=eff_rights,
             min_x=min_x,
             max_x=max_x,
-            x_shift=x_shift,
+            bus_offsets=self._bus_offsets,
+            box_w_base=NODE_BOX_BASE_W,
+            box_h_base=NODE_BOX_BASE_H,
+            linked_devices={int(link.get("device")) for link in self._device_links if "device" in link},
+            can_bus_links=self._can_links,
+            device_links=self._device_links,
+            power_links=self._power_links,
+            attachment_links=self._attachment_links,
+            dio_links=self._dio_links,
+            ethernet_links=self._ethernet_links,
+            show_groups=self._show_groups,
+            node_box_dims_fn=lambda node, scale_value: node_box_dims(node, NODE_BOX_BASE_W, NODE_BOX_BASE_H, scale_value),
+            node_bus_y_fn=lambda _node, bus_y_value, _scale: bus_y_value,
+            node_box_y_fn=node_box_y,
+            node_center_y_unscaled_fn=lambda node: node_center_y_unscaled(node, self._bus_offsets, NODE_BOX_BASE_H),
+            should_clamp_node_to_bus_fn=lambda _node: False,
+            is_swyft_node_fn=lambda node: node.category in ("cannect_direct", "cannect_inject"),
+            is_dio_node_fn=lambda node: getattr(node, "interface", INTERFACE_CAN) != INTERFACE_CAN,
+            shape_kind_fn=lambda node: shape_kind_for_category(node.category),
+            fill_color_fn=lambda node: self._live_fill(node, now_ms) or fill_color_for_vendor(vendor_key_for_category(node.category, node.vendor)),
+            outline_color_fn=lambda node: outline_color_for_vendor(vendor_key_for_category(node.category, node.vendor)),
+            text_color_fn=text_color_for_fill,
+            label_text_fn=lambda node: node.label,
+            fit_font_size_fn=fit_font_size,
+            wrap_label_lines_fn=wrap_label_lines,
+            is_callout_fn=lambda node: node.node_type == LEGACY_NODE_TYPE_CALLOUT,
+            show_selection_box=True,
         )
-
-        bounds = []
-        node_centers: Dict[int, Tuple[float, float]] = {}
-        for node in self._nodes:
-            base_w = 140.0
-            base_h = 60.0
-            box_w, box_h = node_box_dims(node, base_w, base_h, scale)
-            node_x = (node.x - x_shift) * scale
-            bus_index = min(max(node.bus_index, 0), max(len(bus_ys_list) - 1, 0))
-            bus_y = bus_ys_list[bus_index] if bus_ys_list else base_y
-            if node.node_type == "callout" and node.y is not None:
-                center_y = base_y + node.y * scale
-            elif node.free_y is not None:
-                center_y = base_y + node_center_y_unscaled(node, self._bus_offsets, base_h) * scale
-            else:
-                y0, y1 = node_box_y(node, bus_y, box_h, scale)
-                center_y = (y0 + y1) / 2.0
-            x0 = node_x - box_w / 2
-            x1 = node_x + box_w / 2
-            y0 = center_y - box_h / 2
-            y1 = center_y + box_h / 2
-            node_centers[node.key] = (node_x, center_y)
-            vendor_key = vendor_key_for_category(node.category, node.vendor)
-            base_fill = fill_color_for_vendor(vendor_key)
-            outline = outline_color_for_vendor(vendor_key)
-            live_fill = self._live_fill(node, now_ms)
-            fill = live_fill or base_fill
-            text_color = text_color_for_fill(fill)
-            kind = shape_kind_for_category(node.category)
-            if node.node_type == "callout":
-                self._canvas.create_text(
-                    (x0 + x1) / 2,
-                    (y0 + y1) / 2,
-                    text=node.label,
-                    fill="#1f2937",
-                    font=("Segoe UI", 9),
-                    justify="center",
-                )
-            elif kind == "motor":
-                self._canvas.create_polygon(
-                    x0 + 10,
-                    y0,
-                    x1 - 10,
-                    y0,
-                    x1,
-                    y0 + 10,
-                    x1,
-                    y1 - 10,
-                    x1 - 10,
-                    y1,
-                    x0 + 10,
-                    y1,
-                    x0,
-                    y1 - 10,
-                    x0,
-                    y0 + 10,
-                    fill=fill,
-                    outline=outline,
-                    width=2,
-                )
-            else:
-                self._canvas.create_rectangle(x0, y0, x1, y1, fill=fill, outline=outline, width=2)
-            if node.node_type == "diagram":
-                font_size = fit_font_size(
-                    node.label, box_w - 10, box_h - 10, int(9 * scale * max(0.6, min(2.0, node.scale)))
-                )
-                self._canvas.create_text(
-                    (x0 + x1) / 2,
-                    (y0 + y1) / 2,
-                    text=node.label,
-                    fill=text_color,
-                    font=("Segoe UI", font_size),
-                    justify="center",
-                    width=max(40, int(box_w - 10)),
-                )
-            elif node.node_type != "callout":
-                label_text = node.label
-                if isinstance(node.can_id, int) and node.can_id >= 0:
-                    id_font_size = max(6, int(8 * scale * max(0.6, min(2.0, node.scale))))
-                    id_font = tkfont.Font(family="Segoe UI", size=id_font_size)
-                    id_line_h = id_font.metrics("linespace")
-                    label_max_h = max(8.0, box_h - id_line_h - 6 * scale)
-                    label_font_size = max(6, int(9 * scale * max(0.6, min(2.0, node.scale))))
-                    label_font = tkfont.Font(family="Segoe UI", size=label_font_size)
-                    label_lines = wrap_label_lines(label_text, label_font, box_w - 12)
-                    label_text_wrapped = "\n".join(label_lines)
-                    label_font_size = fit_font_size(
-                        label_text_wrapped, box_w - 12, label_max_h, label_font_size
-                    )
-                    label_y = (y0 + y1) / 2 - id_line_h * 0.4
-                    self._canvas.create_text(
-                        node_x,
-                        label_y,
-                        text=label_text_wrapped,
-                        font=("Segoe UI", label_font_size),
-                        fill=text_color,
-                        justify="center",
-                        width=max(40, int(box_w - 12)),
-                    )
-                    id_text = f"ID {node.can_id}"
-                    self._canvas.create_text(
-                        node_x,
-                        y1 - id_line_h * 0.6,
-                        text=id_text,
-                        font=("Segoe UI", id_font_size),
-                        fill=text_color,
-                        justify="center",
-                    )
-                else:
-                    font_size = fit_font_size(
-                        label_text, box_w - 10, box_h - 10, int(9 * scale * max(0.6, min(2.0, node.scale)))
-                    )
-                    self._canvas.create_text(
-                        (x0 + x1) / 2,
-                        (y0 + y1) / 2,
-                        text=label_text,
-                        fill=text_color,
-                        font=("Segoe UI", font_size),
-                        justify="center",
-                        width=max(40, int(box_w - 10)),
-                    )
-            if self._selected_label and node.label.strip().lower() == self._selected_label:
-                self._canvas.create_rectangle(
-                    x0 - 4, y0 - 4, x1 + 4, y1 + 4, outline="#2563eb", width=2
-                )
-            self._node_bounds[node.key] = (x0, y0, x1, y1)
-            bounds.append((x0, y0, x1, y1))
-
-        if self._show_groups and self._bridge_groups:
-            label_bounds: Dict[str, Tuple[float, float, float, float]] = {}
-            for node in self._nodes:
-                node_bounds = self._node_bounds.get(node.key)
-                if node_bounds:
-                    label_bounds[node.label] = node_bounds
-            draw_group_overlays(
-                self._canvas,
-                label_bounds,
-                self._bridge_groups,
-                zoom=scale,
-            )
-
-        if bounds:
-            min_x0 = min(b[0] for b in bounds) - 40
-            min_y0 = min(b[1] for b in bounds) - 40
-            max_x1 = max(b[2] for b in bounds) + 40
-            max_y1 = max(b[3] for b in bounds) + 40
-            self._canvas.configure(scrollregion=(min_x0, min_y0, max_x1, max_y1))
-
-        linked_devices = {int(link.get("device")) for link in self._device_links if "device" in link}
-        cannect_nodes = [
-            {
-                "node": node.key,
-                "bus": node.bus_index,
-                "kind": "inject" if node.category == "cannect_inject" else "direct",
-            }
-            for node in self._nodes
-            if node.category in ("cannect_direct", "cannect_inject")
-        ]
-        if self._ethernet_links or self._can_links or self._device_links or cannect_nodes:
-            draw_links(
-                self._canvas,
-                node_centers,
-                self._node_bounds,
-                bus_ys_list,
-                self._ethernet_links,
-                self._can_links,
-                self._device_links,
-                cannect_nodes,
-            )
-
-        for node in self._nodes:
-            is_analyzer_node = node.category.lower() == CATEGORY_ANALYZER
-            if node.node_type != "device" and not is_analyzer_node:
-                continue
-            if node.key in linked_devices:
-                continue
-            if node.key not in node_centers or not bus_ys_list:
-                continue
-            bus_index = min(max(node.bus_index, 0), max(len(bus_ys_list) - 1, 0))
-            bus_y = bus_ys_list[bus_index]
-            cx, cy = node_centers[node.key]
-            bounds = self._node_bounds.get(node.key)
-            if bounds is None:
-                continue
-            x0, y0, x1, y1 = bounds
-            line_y = y0 if cy > bus_y else y1
-            self._canvas.create_line(cx, bus_y, cx, line_y, width=2, fill="#444444")
+        self._node_bounds = rendered["node_bounds"]

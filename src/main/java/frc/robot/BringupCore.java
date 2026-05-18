@@ -26,8 +26,10 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * NAME
@@ -45,7 +47,7 @@ public final class BringupCore {
   private static final String VENDOR_REV = "REV";
   private static final String VENDOR_CTRE = "CTRE";
   private static final String TESTS_OVERVIEW_TABLE_HEADER =
-      "Idx Sel En Type       Name                         HoldBtn                Motors";
+      "Idx Sel En Type       Name                         HoldBtn                Devices";
   private static final String TESTS_OVERVIEW_ROW_FORMAT =
       "%3d  %s  %s  %-9.9s %-28.28s %-20.20s %s";
   private static final long PROFILE_GENERATION_UNLOADED = Long.MIN_VALUE;
@@ -69,7 +71,8 @@ public final class BringupCore {
   private static final String MESSAGE_TEST_ABORTED = "Test aborted: ";
   private static final String MESSAGE_PROFILE_RUNTIME_RELOADED = "Profile runtime reloaded.";
   private static final String MESSAGE_TEST_BLOCKED_NO_DEVICES = "test blocked (no devices instantiated).";
-  private static final String MESSAGE_TEST_BLOCKED_MOTORS = "test blocked (motor(s) not instantiated): ";
+  private static final String MESSAGE_TEST_BLOCKED_DEVICES =
+      "test blocked (device(s) not instantiated): ";
 
   private List<ManufacturerGroup> manufacturerGroups = ManufacturerRegistry.buildGroups();
   private Map<String, ManufacturerGroup> manufacturerByVendor =
@@ -874,6 +877,7 @@ public final class BringupCore {
     if (loadedProfileGeneration == activeGeneration) {
       return;
     }
+    Set<String> createdLabels = collectCreatedDeviceLabels();
     if (activeTest != null && activeTest.isRunning()) {
       activeTest.stop(testContext);
       latestTestRun = TestRunSnapshot.aborted(
@@ -892,6 +896,7 @@ public final class BringupCore {
     manufacturerGroups = ManufacturerRegistry.buildGroups();
     manufacturerByVendor = ManufacturerRegistry.indexByVendor(manufacturerGroups);
     testContext = new BringupTestContext(manufacturerGroups);
+    restoreCreatedDevices(createdLabels);
     runAllActive = false;
     runAllQueue.clear();
     runAllIndex = 0;
@@ -904,6 +909,47 @@ public final class BringupCore {
     loadedProfileGeneration = activeGeneration;
     refreshSelectableTests();
     refreshTestDevices();
+  }
+
+  private Set<String> collectCreatedDeviceLabels() {
+    Set<String> labels = new HashSet<>();
+    for (ManufacturerGroup group : manufacturerGroups) {
+      if (group == null) {
+        continue;
+      }
+      for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
+        if (bucket == null) {
+          continue;
+        }
+        for (DeviceUnit device : bucket.getDevices()) {
+          if (device == null || !device.isCreated()) {
+            continue;
+          }
+          String label = device.getLabel();
+          if (label != null && !label.isBlank()) {
+            labels.add(label.trim());
+          }
+        }
+      }
+    }
+    return labels;
+  }
+
+  private void restoreCreatedDevices(Set<String> labels) {
+    if (labels == null || labels.isEmpty()) {
+      return;
+    }
+    for (String label : labels) {
+      DeviceUnit device = findDeviceByLabel(label);
+      if (device == null) {
+        continue;
+      }
+      try {
+        device.ensureCreated();
+      } catch (RuntimeException ignored) {
+        // Leave the device uncreated; later add-all/run-gate reporting will surface it.
+      }
+    }
   }
 
   /**
@@ -1049,7 +1095,7 @@ public final class BringupCore {
       row.selected = (i == selectedTestIndex);
       row.type = resolveTestType(test);
       row.status = test.getStatus();
-      row.motors = test.getMotorKeys();
+      row.requiredDevices = test.getRequiredDeviceKeys();
       row.holdBinding = resolveHoldBinding(test);
       if (row.enabled) {
         enabledCount++;
@@ -1092,9 +1138,9 @@ public final class BringupCore {
       String type = row.type != null ? row.type : "?";
       String name = row.name != null ? row.name : "(unnamed)";
       String hold = row.holdBinding != null ? row.holdBinding : "-";
-      String motors = (row.motors == null || row.motors.isEmpty())
+      String devices = (row.requiredDevices == null || row.requiredDevices.isEmpty())
           ? "-"
-          : String.join(", ", row.motors);
+          : String.join(", ", row.requiredDevices);
       appendLine(
           sb,
           String.format(
@@ -1105,7 +1151,7 @@ public final class BringupCore {
               type,
               name,
               hold,
-              motors));
+              devices));
     }
     appendLine(sb, "=====================");
     return sb.toString();
@@ -1161,7 +1207,7 @@ public final class BringupCore {
     public boolean selected;
     public String type;
     public String status;
-    public List<String> motors = new ArrayList<>();
+    public List<String> requiredDevices = new ArrayList<>();
     public String holdBinding;
   }
 
@@ -1987,8 +2033,8 @@ public final class BringupCore {
     lines.add("  type: " + resolveTestType(test));
     lines.add("  enabled: " + (test.isEnabled() ? "YES" : "NO"));
     lines.add("  status: " + test.getStatus());
-    List<String> motors = test.getMotorKeys();
-    lines.add("  motors: " + (motors == null || motors.isEmpty() ? "-" : String.join(", ", motors)));
+    List<String> devices = test.getRequiredDeviceKeys();
+    lines.add("  devices: " + (devices == null || devices.isEmpty() ? "-" : String.join(", ", devices)));
 
     if (test instanceof DslBringupTest dsl) {
       appendDslDetails(lines, dsl);
@@ -2151,9 +2197,9 @@ public final class BringupCore {
       if (idx instanceof Number num) {
         index = Math.max(0, num.intValue());
       }
-      List<String> motors = test.getMotorKeys();
-      if (motors != null && index < motors.size()) {
-        return motors.get(index);
+      List<String> devices = test.getRequiredDeviceKeys();
+      if (devices != null && index < devices.size()) {
+        return devices.get(index);
       }
       return "(internal, index " + index + ")";
     }
@@ -2837,7 +2883,7 @@ public final class BringupCore {
     if (test == null) {
       return MESSAGE_TEST_NOT_SELECTED;
     }
-    List<String> labels = test.getMotorKeys();
+    List<String> labels = test.getRequiredDeviceKeys();
     if (labels == null || labels.isEmpty()) {
       if (hasInstantiatedDevices()) {
         return null;
@@ -2852,7 +2898,7 @@ public final class BringupCore {
       }
     }
     if (!missing.isEmpty()) {
-      return MESSAGE_TEST_BLOCKED_MOTORS + String.join(", ", missing);
+      return MESSAGE_TEST_BLOCKED_DEVICES + String.join(", ", missing);
     }
     return null;
   }
@@ -2865,9 +2911,9 @@ public final class BringupCore {
     if (reason == null || reason.isBlank()) {
       return;
     }
-    if (reason.startsWith(MESSAGE_TEST_BLOCKED_MOTORS)) {
+    if (reason.startsWith(MESSAGE_TEST_BLOCKED_DEVICES)) {
       logWarningThrottled(
-          "missingMotors:" + (test != null ? String.join(",", test.getMotorKeys()) : ""),
+          "missingDevices:" + (test != null ? String.join(",", test.getRequiredDeviceKeys()) : ""),
           "Warning: " + reason);
       return;
     }
