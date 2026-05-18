@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Dict, Optional, Set, Tuple
 
 from tools.can_nt.can_profiles import reload_profiles
-from tools.common.paths import repo_root
+from tools.common.paths import bindings_deploy_path
 from tools.common.profile_constants import (
     KEY_DEVICES,
     KEY_LABEL,
@@ -113,7 +113,7 @@ def load_controller_names(bindings_path: Optional[Path] = None) -> Set[str]:
         Set of controller names for validation.
     """
 
-    path = bindings_path or (repo_root() / "src" / "main" / "deploy" / "bringup_bindings.json")
+    path = bindings_path or bindings_deploy_path()
     names: Set[str] = set()
     payload: Dict[str, object] = {}
     if path.exists():

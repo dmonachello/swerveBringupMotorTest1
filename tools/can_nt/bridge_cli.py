@@ -171,6 +171,7 @@ from tools.common.paths import (
     profiles_canonical_path,
     profiles_deploy_path,
     can_mappings_path,
+    bindings_canonical_path,
     bindings_deploy_path,
     test_templates_dir,
 )
@@ -707,6 +708,7 @@ PLACEHOLDER_PROFILE = "<profile>"
 PLACEHOLDER_DEVICE = "<device>"
 PLACEHOLDER_GROUP = "<group>"
 PLACEHOLDER_TEST = "<test>"
+PLACEHOLDER_INPUT = "<input>"
 PLACEHOLDER_FIELD = "<field>"
 PLACEHOLDER_BINDING = "<binding>"
 PLACEHOLDER_TEMPLATE = "<template>"
@@ -720,7 +722,7 @@ HISTORY_FILENAME = "bridge_cli_history.txt"
 ENCODING_UTF8 = "utf-8"
 FILE_MODE_WRITE = "w"
 FILE_MODE_READ = "r"
-BACKUP_DIR_PARENT = "data"
+BACKUP_DIR_PARENT = "backup_data"
 BACKUP_DIR_NAME = "backups"
 BACKUP_INDEX_NAME = "index.json"
 BACKUP_SUFFIX_TMP = ".tmp"
@@ -1242,6 +1244,7 @@ MESSAGE_ERR_BINDINGS_WRITE = "ERROR: Failed to write bindings: {path}: {error}"
 MESSAGE_ERR_BINDINGS_VALIDATE = "ERROR: bindings validation failed: {message}"
 MESSAGE_INFO_BINDINGS_LOADED = "Loaded bindings: {path}"
 MESSAGE_INFO_BINDINGS_SAVED = "Wrote bindings to {path}."
+MESSAGE_INFO_BINDINGS_MIRRORED = "Mirrored bindings to {path}."
 MESSAGE_BINDINGS_HEADER = "Local bindings config:"
 MESSAGE_BINDINGS_CONTROLLERS_HEADER = "  controllers:"
 MESSAGE_BINDINGS_BINDINGS_HEADER = "  bindings:"
@@ -1281,9 +1284,10 @@ MESSAGE_TESTS_TEMPLATE_ENTRY = "  {name}"
 MESSAGE_TESTS_CLEARED = "Tests cleared."
 MESSAGE_TIP_UNSAVED = "You have unsaved changes. Use `save profiles ...` or `save sources` to save."
 MESSAGE_ERR_TESTS_EDIT_MODE = "ERROR: tests templates/clear not allowed in test edit mode. Use `exit` or `end` first."
-MESSAGE_SAVE_ALL_PROFILES_MISSING = "ERROR: No profiles destination set. Fix: save profiles data/bringup_system.json"
+MESSAGE_SAVE_ALL_PROFILES_MISSING = "ERROR: No profiles destination set. Fix: save profiles src/main/deploy/bringup_system.json"
 MESSAGE_SAVE_PROFILES_PATH_REQUIRED = "ERROR: No profiles path set. Fix: save profiles <path>."
 MESSAGE_SAVE_PROFILES_CONFIRM = "Save profiles to {path}?"
+MESSAGE_INFO_PROFILES_MIRRORED = "Mirrored profiles to {path}."
 MESSAGE_PUSH_DIRTY_BLOCKED = "ERROR: push config refused: local config is dirty. Save to disk first."
 MESSAGE_REVERT_START = "Reverting local unsaved state from disk sources."
 MESSAGE_REVERT_DONE = "Revert complete."
@@ -1426,7 +1430,7 @@ MESSAGE_DEBUG_GRAMMAR_DOT_REQUIRED = "ERROR: --dot requires a path."
 MESSAGE_DEBUG_GRAMMAR_DOT_SAVED = "Wrote grammar DOT to {path}."
 MESSAGE_DEBUG_GRAMMAR_DOT_FAIL = "ERROR: Failed to write grammar DOT: {error}"
 MESSAGE_RESET_ZERO_CONFIG_WARNING = (
-    "WARNING: This operation deletes bringup_system.json in canonical and deploy paths."
+    "WARNING: This operation deletes bringup_system.json in the active deploy path."
 )
 MESSAGE_RESET_ZERO_CONFIG_TARGET = "  - {path}"
 MESSAGE_RESET_ZERO_CONFIG_CONFIRM = "Proceed with zero-config reset?"
@@ -6598,6 +6602,21 @@ class BridgeCli:
         if not ok:
             print(MESSAGE_ERR_BINDINGS_WRITE.format(path=path, error=error))
             return StatusResult(code=SS__CONFIG__INVALID)
+        mirror_path = self._mirror_repo_save_target(
+            path,
+            bindings_canonical_path(),
+            bindings_deploy_path(),
+        )
+        if mirror_path is not None:
+            ok, error = self._atomic_write_json(
+                mirror_path,
+                payload,
+                JSON_PRETTY_INDENT,
+                True,
+            )
+            if not ok:
+                print(MESSAGE_ERR_BINDINGS_WRITE.format(path=mirror_path, error=error))
+                return StatusResult(code=SS__CONFIG__INVALID)
         self._bindings_dirty = False
         self._bindings_path = path
         self._sync_store_bindings()
@@ -6612,6 +6631,8 @@ class BridgeCli:
         )
         self._record_last_save(path)
         print(MESSAGE_INFO_BINDINGS_SAVED.format(path=path))
+        if mirror_path is not None:
+            print(MESSAGE_INFO_BINDINGS_MIRRORED.format(path=mirror_path))
         return StatusResult(code=SS__CONFIG__SAVED)
 
     def _bindings_show(self, tokens: List[str]) -> StatusResult:
@@ -14596,6 +14617,21 @@ class BridgeCli:
         if not ok:
             print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=error))
             return StatusResult(code=SS__CONFIG__INVALID)
+        mirror_path = self._mirror_repo_save_target(
+            Path(path),
+            profiles_canonical_path(),
+            profiles_deploy_path(),
+        )
+        if mirror_path is not None:
+            ok, error = self._atomic_write_json(
+                mirror_path,
+                payload,
+                JSON_PRETTY_INDENT,
+                True,
+            )
+            if not ok:
+                print(MESSAGE_ERR_SAVE_WRITE.format(path=mirror_path, error=error))
+                return StatusResult(code=SS__CONFIG__INVALID)
         self._profiles_dirty = False
         self._groups_dirty = False
         self._tests_dirty = False
@@ -14611,6 +14647,8 @@ class BridgeCli:
         )
         self._record_last_save(Path(path))
         print(f"Wrote profiles to {path}.")
+        if mirror_path is not None:
+            print(MESSAGE_INFO_PROFILES_MIRRORED.format(path=mirror_path))
         return StatusResult(code=SS__CONFIG__SAVED)
 
     def _save_all(self, prompt: bool, force: bool = False) -> StatusResult:
@@ -16399,6 +16437,28 @@ class BridgeCli:
         self._tests_dirty = True
         self._record_last_modified()
         self._sync_store_tests()
+
+    def _mirror_repo_save_target(
+        self,
+        primary_path: Path,
+        canonical_path: Path,
+        deploy_path: Path,
+    ) -> Optional[Path]:
+        """
+        NAME
+            _mirror_repo_save_target - Return repo sibling path for mirrored saves.
+        """
+
+        primary = primary_path.resolve()
+        canonical = canonical_path.resolve()
+        deploy = deploy_path.resolve()
+        if canonical == deploy:
+            return None
+        if primary == canonical:
+            return deploy
+        if primary == deploy:
+            return canonical
+        return None
 
     def _build_unified_payload(self) -> Optional[Dict[str, object]]:
         """

@@ -21,36 +21,54 @@ Highlights:
 - TCP registry push (`profiles push` / `config push`) with staged validation on the robot.
 
 ## Feature Matrix
-Purpose: Show the high-value capabilities at a glance.
-| Capability | Robot (Java) | PC Tool (Python) |
-| --- | --- | --- |
-| Motor bringup and actuator control | Yes | No |
-| Local device health (faults/current/temp) | Yes | No |
-| CAN visibility (seen/missing/age/fps) | No | Yes |
-| NetworkTables diagnostics publishing | Reads | Writes |
-| TCP console parsing (warnings/errors) | Produces | Parses |
-| PCAP/PCAPNG capture + Wireshark | No | Yes |
-| bringup_report.json snapshot | Yes | No |
-| Reverse-engineering inventory output | No | Yes |
-| TCP registry apply (profiles/config) | Yes | Initiates |
+Purpose: Show the main feature families, what they do, and which surface owns them today.
 
-## What It Gives You
-Purpose: Fast, repeatable visibility into device health and CAN behavior.
+| Feature Area | What You Can Do | Main Surfaces | Robot Required | CANable Required |
+| --- | --- | --- | --- | --- |
+| Incremental bringup control | Add one device at a time, add all devices, stop safely, and exercise hardware in controlled steps | Robot runtime, Bringup UI, Bridge CLI | Yes | No |
+| Manual group control | Create profile-scoped groups, bind controller inputs, and enable only selected members for ad hoc motion checks | Bridge CLI, robot runtime, topology editor for group authoring | Yes | No |
+| Scripted bringup tests | Create, select, run, and iterate repeatable tests instead of driving hardware manually every time | Robot runtime, Bringup UI, Bridge CLI, config files | Yes | No |
+| Robot Test DSL | Define richer scripted test flows with explicit sequencing, conditions, and stop behavior | Robot runtime, Bridge CLI authoring, config files | Yes | No |
+| Profiles, devices, and topology | Define devices, CAN IDs, attachments, diagrams, tags, groups, and profile metadata in one shared config | Topology editor, Bridge CLI, shared `bringup_system.json` | No | No |
+| Runtime config apply | Push profiles or full config to the robot over TCP without redeploying code | Bridge CLI, robot TCP UI handler | Yes | No |
+| Local and robot diagnostics | Inspect local health, inputs, bindings, instantiated devices, faults, and report output | Robot runtime, Bringup UI, Bridge CLI | Yes | No |
+| Passive CAN diagnostics | Observe device presence, rates, stale/missing devices, and CAN-side evidence without transmitting frames | CAN tool, NetworkTables, robot diagnostic consumers | No | Yes |
+| Evidence capture and reporting | Dump `bringup_report.json`, capture PCAP/PCAPNG, save inventory snapshots, and keep artifacts for later analysis | Robot runtime, CAN tool, host scripts | Partial | Partial |
+| Live topology and visibility | View topology overlays, profile structure, and passive visibility evidence against the authored model | Bringup UI live topology, topology editor, CLI show surfaces | No | No |
+| Reverse-engineering support | Generate API inventories, top talkers, and byte-level evidence for unknown CAN traffic | CAN tool and analysis scripts | No | Yes |
+| Regression and validation tooling | Run maintained local/full regression bundles and cross-surface config checks before shipping changes | Host regression scripts, validation tools | No | No |
+| Pit diagnosis direction | Combine robot-local state, passive CAN evidence, topology, and operator clues for fault localization workflows | Specs, reports, topology model, future diagnosis surfaces | Partial | Partial |
 
-- Controlled motor bringup (add one or all, known inputs).
-- Local health checks (bus voltage, current, temperature, faults, last error).
-- CAN-bus visibility (seen/missing, age, msgCount, fps).
-- TCP console parsing for warnings and errors from the roboRIO.
-- Device presence confidence and best-effort LED/CAN suspicion inference.
-- Profile registry push to the robot over TCP (no redeploy required).
+## What You Can Do Today
+Purpose: Answer the practical question: what jobs this repo already supports.
+
+- Bring up a new robot one component at a time instead of energizing the whole system blindly.
+- Define and edit profiles, device registries, groups, topology, and test metadata in a shared config.
+- Run quick manual motor checks with group bindings and per-member enable/disable.
+- Author repeatable bringup tests, including richer DSL-driven tests, and run them on the robot.
+- Push config changes to a running robot over TCP without rebuilding code for every iteration.
+- Passively watch the CAN bus from a Windows laptop with a CANable and compare bus evidence against robot-local behavior.
+- Capture evidence artifacts such as streamed reports, `bringup_report.json`, PCAP/PCAPNG, and inventory snapshots.
+- Use the same repo for authoring, execution, diagnostics, evidence capture, and regression verification.
+
+## Which Tool For Which Job
+Purpose: Point operators and developers to the right surface first.
+
+- **Topology editor**: use when you are defining devices, CAN IDs, attachments, tags, layout, or groups in the shared config.
+- **Bridge CLI**: use when you want text-driven config edits, group bindings, test authoring, push/apply commands, or scriptable workflows.
+- **Bringup Control UI**: use when you want clickable control of reports, profile/test selection, and robot-connected bringup actions.
+- **Robot runtime on the roboRIO**: use when you need actual device instantiation, actuation, test execution, and local vendor-API diagnostics.
+- **CAN tool (`can_nt_bridge.py`)**: use when you need passive CAN visibility, NT publishing, PCAP capture, or reverse-engineering inventories.
+- **Validation and regression scripts**: use when you changed behavior and need confidence that config, CLI, topology, DSL, and shared contracts still hold.
 
 ## What It Does Not Do
-Purpose: Avoid confusion about scope.
+Purpose: Avoid confusion about scope and current limits.
 
-- Fix robot logic or tuning problems.
-- Replace vendor tools (REV Hardware Client, CTRE Tuner X).
-- Transmit CAN frames from the PC tool (read-only by design).
-- Persist registry changes on the roboRIO filesystem (in-memory only, for now).
+- It does not replace vendor-specific setup and firmware tools.
+- It does not transmit CAN frames from the PC side.
+- It does not make robot config persistent on the roboRIO after a TCP apply; apply is in-memory.
+- It does not eliminate the need for disciplined hardware isolation and safety checks during bringup.
+- It does not mean every legacy helper or old doc in the repo has already been cleaned up to the newest workflow model.
 
 ## Quick Start
 Purpose: Get a first bringup run in minutes.
@@ -112,6 +130,7 @@ Purpose: Update profiles and device registry without redeploying robot code.
 - TCP-only; NetworkTables is not used for apply.
 - Robot validates payload, applies in-memory only, and reports per-stage status.
 - Activation happens only when requested and only after validation passes.
+- Runtime apply does not persist files on the roboRIO; redeploy or another push is still needed after reboot.
 
 ## Host vs Robot Active Profile
 Purpose: Avoid confusing host-local editing context with robot runtime state.
@@ -137,11 +156,12 @@ Purpose: Prevent console output from breaking the 20ms control loop.
 ## Hardware Profiles (Data-Driven)
 Purpose: Keep configuration easy to edit without code changes.
 
-- Source of truth: `data/bringup_system.json`.
-- Deploy copy: `src/main/deploy/bringup_system.json`.
-- Validate + sync gate (recommended): `python -m tools.validate_sync`.
-- Legacy sync tool (deprecated): `python tools/sync_profiles.py`.
+- Source of truth: `src/main/deploy/bringup_system.json`.
+- Bindings source: `src/main/deploy/bringup_bindings.json`.
+- Snapshots: `backup_data/backups/`.
+- Validation helper: `python -m tools.validate_sync`.
 - GUI editor: `tools/can_topology/can_top_editor.py`.
+- CLI editor: `python -m tools.can_nt.can_nt_bridge --cli --no-can --no-nt`.
 - Profiles apply in file order; press `Back` to rotate.
 - Runtime override: `--bringup-profile=<name>`.
 
@@ -151,6 +171,7 @@ Purpose: Passive CAN sniffing and diagnostics on Windows.
 - Hardware: CANable Pro V2 (slcan firmware by default).
 - Read-only by design. Never transmits CAN frames.
 - Publishes diagnostics to NetworkTables under `bringup/diag/...`.
+- Can run CLI and UI surfaces without CAN access for local config/test authoring.
 - Optional PCAP/PCAPNG capture and named pipe for Wireshark.
 - Windows is the primary host; default workflows use slcan over a COM port.
 
@@ -211,8 +232,7 @@ Test count: 10
 Purpose: Manual, data-driven tests for motors and encoders.
 
 - Tests live in `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
-  - Canonical: `data/bringup_system.json`
-  - Deploy: `src/main/deploy/bringup_system.json`
+  - Active file: `src/main/deploy/bringup_system.json`
 - Test sets are selected via `default_test_set` inside that per-profile tests block.
 - Authoring:
   - Use the Bridge CLI/UI test authoring workflow (see `docs/CLI_TEST_AUTHORING_USER_GUIDE.md`).
@@ -220,9 +240,17 @@ Purpose: Manual, data-driven tests for motors and encoders.
     - `py -m tools.bringup_test_wizard.gen_bringup_tests --profile <name> --test-set smoke --replace`
   - Apply a test template into `bringup_system.json` (optional):
     - `py -m tools.test_template_wizard.copy_test_template --template <file> --profile <name>`
-  - After edits, run the validate+sync gate:
+  - After edits, run the validation helper:
     - `python -m tools.validate_sync`
   - `bringup_tests.json`-only workflows are legacy and not used by the robot.
+
+## Current Boundaries
+Purpose: Call out the most important present-day constraints.
+
+- `src/main/deploy/` is the active config location for host tools and roboRIO deploys.
+- `backup_data/backups/` is for snapshots only; it is not a live config source.
+- Some older helper scripts and low-traffic docs still use legacy `data/` wording.
+- The maintained regression bundle passes against the current deploy-only workflow.
 
 ## Documentation Index
 Purpose: Find deep details without cluttering the README.

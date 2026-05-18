@@ -342,6 +342,18 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
     def _repo_root() -> Path:
         return Path(__file__).resolve().parents[3]
 
+    @classmethod
+    def _regression_fixture_path(cls, profile_name: str, filename: str) -> Path:
+        return (
+            cls._repo_root()
+            / "tests"
+            / "regression"
+            / "fixtures"
+            / "config_catalog"
+            / profile_name
+            / filename
+        )
+
     @staticmethod
     def _canonical_roundtrip_payload(editor: TopologyEditor) -> dict[str, object]:
         payload = {
@@ -424,7 +436,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
     def test_robot_2026_swerve_save_restart_roundtrip_retains_values(self) -> None:
         profile_name = "robot_2026_swerve"
-        source_path = self._repo_root() / "data" / "bringup_system.json"
+        source_path = self._regression_fixture_path(profile_name, "bringup_system.json")
         original_messagebox = can_top_editor.messagebox
         can_top_editor.messagebox = _MessageBoxStub
         try:

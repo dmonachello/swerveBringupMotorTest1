@@ -195,10 +195,10 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         cli = self._build_cli()
         cli._last_modified_at = 1.0
         cli._last_saved_at = 2.0
-        cli._last_saved_path = "data/bringup_system.json"
+        cli._last_saved_path = "src/main/deploy/bringup_system.json"
         cli._last_saved_hash = "abcd1234"
         cli._last_pushed_at = 3.0
-        cli._last_pushed_path = "data/bringup_system.json"
+        cli._last_pushed_path = "src/main/deploy/bringup_system.json"
         cli._last_pushed_hash = "abcd1234"
         cli._last_pushed_profile = PROFILE_NAME
 
@@ -211,7 +211,10 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         provenance = payload[KEY_PROVENANCE]
         self.assertEqual(provenance[KEY_LAST_MODIFIED_AT], 1.0)
         self.assertEqual(provenance[KEY_LAST_SAVED][KEY_AT], 2.0)
-        self.assertEqual(provenance[KEY_LAST_SAVED][KEY_SOURCE_PATH], "data/bringup_system.json")
+        self.assertEqual(
+            provenance[KEY_LAST_SAVED][KEY_SOURCE_PATH],
+            "src/main/deploy/bringup_system.json",
+        )
         self.assertEqual(provenance[KEY_LAST_PUSHED][KEY_AT], 3.0)
 
     def test_save_without_target_uses_save_all(self) -> None:
@@ -235,7 +238,7 @@ class BridgeCliVisibilityTests(unittest.TestCase):
 
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
-            result = cli._config_push("data/bringup_system.json", PROFILE_NAME)
+            result = cli._config_push("src/main/deploy/bringup_system.json", PROFILE_NAME)
 
         self.assertEqual(result.code, SS__CONFIG__INVALID)
         self.assertIn("push config refused", output.getvalue())
@@ -250,6 +253,50 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         self.assertEqual(result.code, SS__CONFIG__SAVED)
         self.assertEqual(cli._last_saved_path, str(path))
         self.assertTrue(bool(cli._last_saved_hash))
+
+    def test_save_profiles_does_not_mirror_when_canonical_matches_deploy(self) -> None:
+        cli = self._build_cli()
+        cli._local_devices_locked = True
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            deploy_path = repo_root / "src" / "main" / "deploy" / "bringup_system.json"
+            deploy_path.parent.mkdir(parents=True, exist_ok=True)
+            with patch("tools.can_nt.bridge_cli.profiles_canonical_path", return_value=deploy_path), patch(
+                "tools.can_nt.bridge_cli.profiles_deploy_path", return_value=deploy_path
+            ):
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    result = cli._save_profiles(str(deploy_path), skip_validation=True)
+
+            self.assertEqual(result.code, SS__CONFIG__SAVED)
+            self.assertTrue(deploy_path.exists())
+            self.assertIn("Wrote profiles to", output.getvalue())
+            self.assertNotIn("Mirrored profiles to", output.getvalue())
+
+    def test_save_bindings_does_not_mirror_when_canonical_matches_deploy(self) -> None:
+        cli = self._build_cli()
+        cli._bindings_payload = {
+            "controllers": [{"name": "driver0", "type": "XBOX", "port": 0}],
+            "bindings": [],
+            "axes": [],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            deploy_path = repo_root / "src" / "main" / "deploy" / "bringup_bindings.json"
+            deploy_path.parent.mkdir(parents=True, exist_ok=True)
+            with patch("tools.can_nt.bridge_cli.bindings_canonical_path", return_value=deploy_path), patch(
+                "tools.can_nt.bridge_cli.bindings_deploy_path", return_value=deploy_path
+            ):
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    result = cli._save_bindings_to_path(deploy_path)
+
+            self.assertEqual(result.code, SS__CONFIG__SAVED)
+            self.assertTrue(deploy_path.exists())
+            self.assertIn("Wrote bindings to", output.getvalue())
+            self.assertNotIn("Mirrored bindings to", output.getvalue())
 
     def test_show_active_json_reports_local_state(self) -> None:
         cli = self._build_cli()
@@ -710,6 +757,17 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         self.assertNotIn("analog", test_output.getvalue())
         self.assertIn("1", test_output.getvalue())
         self.assertIn("controller0.leftY", test_output.getvalue())
+
+    def test_group_bind_top_level_suggestions_include_input_placeholder(self) -> None:
+        cli = self._build_cli()
+        cli._modes = [CliMode("group", group="motion")]
+
+        suggestions = cli._suggest_group_bind_args([])
+
+        self.assertIn("list", suggestions)
+        self.assertIn("explain", suggestions)
+        self.assertIn("test", suggestions)
+        self.assertIn("<input>", suggestions)
 
     def test_bindings_show_robot_is_rejected(self) -> None:
         cli = self._build_cli()

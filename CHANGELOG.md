@@ -2,6 +2,24 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-05-18
+
+### Improved - 2026-05-18
+
+- Fixed the V1 group-targeting regression normalization so saved
+  `bridgeConfig.byProfile` comparisons stay stable when the active profile name
+  comes from the loaded bringup config instead of a synthetic placeholder.
+- Fixed schema-store test validation to fail soft when controller bindings are
+  absent during topology-editor round-trip validation, preserving cross-surface
+  compatibility for standalone bringup-system saves.
+- Moved the `robot_2026_swerve` topology-editor and cross-surface regression
+  paths onto regression-owned config fixtures so those tests no longer depend
+  on the active local install copies under `data/` or `src/main/deploy/`.
+- Cut host-side config ownership over to `src/main/deploy/` for
+  `bringup_system.json` and `bringup_bindings.json`, removing the active
+  dependency on `data/` paths in shared path resolution and default tool
+  workflows.
+
 ## 2026-05-09
 
 ### Added - 2026-05-09

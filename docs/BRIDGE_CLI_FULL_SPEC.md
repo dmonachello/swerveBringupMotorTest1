@@ -371,7 +371,7 @@ Show Output Notes:
 - `show devices` (local) lists the full profile-derived device inventory, not only group members.
 - `show device` returns the full device definition from bringup_system.json (local only).
 - `show device-group` returns the device’s group membership/usage info.
-- The CLI auto-imports `data/bringup_system.json` on startup when present (replaces groups).
+- The CLI auto-imports `src/main/deploy/bringup_system.json` on startup when present (replaces groups).
 - merge config is only allowed when the incoming profiles hash matches the loaded profiles; otherwise use import config.
 - `validate config [path]`
 
@@ -608,7 +608,7 @@ JSON is one blob per command.
 
 Purpose: Store bridge group config inside the single shared data file.
 
-- The shared file is `data/bringup_system.json`.
+- The shared file is `src/main/deploy/bringup_system.json`.
 - The bridge CLI reads/writes a top-level `bridgeConfig` object.
 - Other tools ignore unknown fields; `bridgeConfig` is optional.
 - `data_hash` is computed from profiles + diagram; `bridgeConfig` changes do not affect it.

@@ -2308,6 +2308,8 @@ class ConfigSchemaStore:
                 name = entry.get(KEY_NAME)
                 if isinstance(name, str) and name:
                     names.add(name)
+        if not names:
+            return None
         return names
 
     def _append_issue(

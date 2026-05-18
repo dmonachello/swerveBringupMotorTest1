@@ -22,10 +22,15 @@ from tools.config.schema_store import ConfigSchemaStore
 REPO_ROOT_DEPTH = 3
 PROFILE_NAME = "robot_2026_swerve"
 BRINGUP_FILENAME = "bringup_system.json"
+BRINGUP_BINDINGS_FILENAME = "bringup_bindings.json"
 DIR_DATA = "data"
 DIR_SRC = "src"
 DIR_MAIN = "main"
 DIR_DEPLOY = "deploy"
+DIR_TESTS = "tests"
+DIR_REGRESSION = "regression"
+DIR_FIXTURES = "fixtures"
+DIR_CONFIG_CATALOG = "config_catalog"
 MESSAGE_VALIDATE_STORE = "cross-surface store validation errors"
 MESSAGE_VALIDATE_PROFILE = "cross-surface profile validation errors"
 MESSAGE_VALIDATE_CLI = "cross-surface CLI validation failed"
@@ -56,15 +61,39 @@ class CrossSurfaceRegressionTests(unittest.TestCase):
 
     @classmethod
     def _source_profiles_path(cls) -> Path:
-        return cls._repo_root() / DIR_DATA / BRINGUP_FILENAME
+        return (
+            cls._repo_root()
+            / DIR_TESTS
+            / DIR_REGRESSION
+            / DIR_FIXTURES
+            / DIR_CONFIG_CATALOG
+            / PROFILE_NAME
+            / BRINGUP_FILENAME
+        )
+
+    @classmethod
+    def _source_bindings_path(cls) -> Path:
+        return (
+            cls._repo_root()
+            / DIR_TESTS
+            / DIR_REGRESSION
+            / DIR_FIXTURES
+            / DIR_CONFIG_CATALOG
+            / PROFILE_NAME
+            / BRINGUP_BINDINGS_FILENAME
+        )
 
     @staticmethod
-    def _temp_repo_paths(root: Path) -> tuple[Path, Path]:
+    def _temp_repo_paths(root: Path) -> tuple[Path, Path, Path, Path]:
         data_path = root / DIR_DATA / BRINGUP_FILENAME
         deploy_path = root / DIR_SRC / DIR_MAIN / DIR_DEPLOY / BRINGUP_FILENAME
+        root_bindings_path = root / BRINGUP_BINDINGS_FILENAME
+        deploy_bindings_path = root / DIR_SRC / DIR_MAIN / DIR_DEPLOY / BRINGUP_BINDINGS_FILENAME
         data_path.parent.mkdir(parents=True, exist_ok=True)
         deploy_path.parent.mkdir(parents=True, exist_ok=True)
-        return data_path, deploy_path
+        root_bindings_path.parent.mkdir(parents=True, exist_ok=True)
+        deploy_bindings_path.parent.mkdir(parents=True, exist_ok=True)
+        return data_path, deploy_path, root_bindings_path, deploy_bindings_path
 
     @staticmethod
     def _build_cli(payload: dict[str, object]) -> BridgeCli:
@@ -111,8 +140,15 @@ class CrossSurfaceRegressionTests(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_root = Path(temp_dir)
-                temp_data_path, temp_deploy_path = self._temp_repo_paths(temp_root)
+                (
+                    temp_data_path,
+                    temp_deploy_path,
+                    temp_root_bindings_path,
+                    temp_deploy_bindings_path,
+                ) = self._temp_repo_paths(temp_root)
                 shutil.copy2(self._source_profiles_path(), temp_data_path)
+                shutil.copy2(self._source_bindings_path(), temp_root_bindings_path)
+                shutil.copy2(self._source_bindings_path(), temp_deploy_bindings_path)
 
                 editor = topology_profile_load_tests.TopologyEditorProfileLoadTests._headless_editor(
                     PROFILE_NAME

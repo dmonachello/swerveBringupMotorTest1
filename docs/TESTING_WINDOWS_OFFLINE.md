@@ -69,9 +69,9 @@ git-sha: b04255a
 git-branch: status_codes
 git-dirty: dirty
 build-time: 2026-04-02T14:10:52-04:00
-Loaded 0 group(s) for profile home_031226 from %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\data\bringup_system.json.
+Loaded 0 group(s) for profile home_031226 from %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\src\main\deploy\bringup_system.json.
 WARNING: Robot not connected; local config loaded only.
-Loaded default profiles: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\data\bringup_system.json
+Loaded default profiles: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\src\main\deploy\bringup_system.json
 Loaded bindings: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\src\main\deploy\bringup_bindings.json
 Loaded CAN mappings: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\src\main\deploy\can_mappings.json
 bridge-profile-home_031226>
@@ -88,11 +88,11 @@ show devices
 Example Output:
 ```
 bridge-profile-home_031226> show workspace
-Profiles: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\data\bringup_system.json (loaded)
+Profiles: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\src\main\deploy\bringup_system.json (loaded)
 Active profile: home_031226
 Default profile: home_031226
 Active context: source=local profile=home_031226 testSet=(none) selectedDevice=(none) selectedMode=off
-Tests: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\data\bringup_system.json (not loaded)
+Tests: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\src\main\deploy\bringup_system.json (not loaded)
 Active set: (none) (default=(none))
 Bindings: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\src\main\deploy\bringup_bindings.json (loaded)
 Mappings: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\src\main\deploy\can_mappings.json (loaded)
@@ -207,7 +207,7 @@ save bridge-config tools\can_nt\logs\offline_local_config.json
 Example Output:
 ```
 bridge(config-profile-home_031226)# save bridge-config tools\can_nt\logs\offline_local_config.json
-Snapshot created: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\data\backups\offline_local_config.20260407_195312.json
+Snapshot created: %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1\backup_data\backups\offline_local_config.20260407_195312.json
 Wrote groups config to tools\can_nt\logs\offline_local_config.json.
 Action: save scope=bridge-config persistence=disk source=local
 SUCCESS [EXECUTOR.SUCCESS]

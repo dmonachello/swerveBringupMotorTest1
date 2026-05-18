@@ -89,11 +89,8 @@ BRIDGE CLI
         config push <path> [--activate <profile>]
 
 CONFIG
-    Device lists are loaded from data\bringup_system.json via --profile
-    (canonical). This keeps the PC tool aligned with authored profiles.
-
-    Host tooling treats src/main/deploy/bringup_system.json as a derived artifact
-    produced by validation/sync; it is not a default read target.
+    Device lists are loaded from src\main\deploy\bringup_system.json via --profile.
+    This keeps the PC tool aligned with the same file the roboRIO deploy uses.
 
     Labels in profiles must be unique. bridgeConfig.byProfile groups reference
     those labels so CLI groups stay consistent across tools.
@@ -122,7 +119,7 @@ EXAMPLES
     Use a custom config:
         python tools\\can_nt\\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json
 
-    Choose a profile from bringup_system.json:
+    Choose a profile from the deploy-owned bringup_system.json:
         python tools\\can_nt\\can_nt_bridge.py --profile demo_club
 
     Publish unknown devices seen on the bus:
