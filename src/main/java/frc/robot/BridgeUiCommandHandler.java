@@ -298,7 +298,6 @@ public class BridgeUiCommandHandler {
   private final ConcurrentLinkedQueue<String> uiLogQueue = new ConcurrentLinkedQueue<>();
   private final AtomicInteger uiLogCount = new AtomicInteger(0);
   private boolean uiProtocolMonitorEnabled = false;
-  private double uiFixedSpeed = Double.NaN;
   private double lastNeoSpeed = 0.0;
   private double lastKrakenSpeed = 0.0;
   private ZoneId remoteCommandZone = null;
@@ -961,15 +960,6 @@ public class BridgeUiCommandHandler {
         runtime.requestTextReport(text, batchSize);
       }
 
-      @Override
-      public double getUiFixedSpeed() {
-        return uiFixedSpeed;
-      }
-
-      @Override
-      public void setUiFixedSpeed(double speed) {
-        uiFixedSpeed = speed;
-      }
     });
 
     this.uiCommandDispatcher = new BridgeUiCommandDispatcher(List.of(
@@ -1034,27 +1024,18 @@ public class BridgeUiCommandHandler {
    *   resetProfileRuntimeUiState - Clear profile-derived UI runtime state.
    *
    * SIDE EFFECTS
-   *   Clears selected device state, fixed speed overrides, cached speed
-   *   reports, active-group cursor state, and any stop latch from the
+   *   Clears selected device state, cached speed reports, active-group
+   *   cursor state, and any stop latch from the
    *   previous active profile.
    */
   public void resetProfileRuntimeUiState() {
     bridgeSelected().device = TEXT_EMPTY;
     bridgeSelected().enabled = false;
-    uiFixedSpeed = Double.NaN;
     lastNeoSpeed = SPEED_ZERO;
     lastKrakenSpeed = SPEED_ZERO;
     activeGroupCursor = INDEX_START;
     stopLatchActive = false;
     stopLatchReason = TEXT_EMPTY;
-  }
-
-  /**
-   * NAME
-   *   getUiFixedSpeed - Return fixed-speed override value.
-   */
-  public double getUiFixedSpeed() {
-    return uiFixedSpeed;
   }
 
   /**

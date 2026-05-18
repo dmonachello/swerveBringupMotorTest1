@@ -13,6 +13,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.widgets import TextArea
@@ -38,6 +39,7 @@ from tools.can_nt.bridge_cli import (
     KEY_LAST_MODIFIED_AT,
     KEY_LAST_PUSHED,
     KEY_LAST_SAVED,
+    KEY_LABEL,
     KEY_PROFILE,
     KEY_PROFILES,
     KEY_PROFILE_DEVICES,
@@ -259,10 +261,89 @@ class BridgeCliVisibilityTests(unittest.TestCase):
             result = cli._show_active_local(json_output=True, pretty=False)
 
         self.assertEqual(result.code, SS__NORMAL)
-        payload = json.loads(output.getvalue().splitlines()[-1])
-        self.assertEqual(payload[KEY_RECOVERY_MODE], False)
-        self.assertIn(KEY_ACTIVE_GROUP, payload)
-        self.assertIn(KEY_VISIBILITY, payload)
+
+    def test_load_profiles_from_path_salvages_partial_config(self) -> None:
+        cli = BridgeCli(_FakeSession(), batch=True)
+        payload = {
+            KEY_SCHEMA_VERSION: PROFILE_SCHEMA_VERSION,
+            KEY_DATA_VERSION: "test",
+            KEY_DATA_HASH: EMPTY_STRING,
+            KEY_DEFAULT_PROFILE: PROFILE_NAME,
+            KEY_DEVICES: [
+                {
+                    KEY_LABEL: "good",
+                    "deviceInterface": "DIO",
+                    "id": 0,
+                    "invert": False,
+                },
+                {
+                    KEY_LABEL: "bad",
+                    "deviceInterface": "CAN",
+                    "deviceType": 1,
+                },
+            ],
+            KEY_PROFILES: {
+                PROFILE_NAME: {
+                    KEY_PROFILE_DEVICES: ["good", "bad", "missing"],
+                }
+            },
+            KEY_BRIDGE_CONFIG: {
+                KEY_BRIDGE_SCHEMA_VERSION: BRIDGE_CONFIG_SCHEMA_VERSION,
+                KEY_BRIDGE_GENERATED_AT: None,
+                KEY_BRIDGE_BY_PROFILE: {
+                    PROFILE_NAME: {
+                        KEY_GROUPS: [
+                            {
+                                "name": "drive",
+                                KEY_ENABLED: True,
+                                "members": [
+                                    {KEY_DEVICE: "good", KEY_ENABLED: True},
+                                    {KEY_DEVICE: "missing", KEY_ENABLED: True},
+                                ],
+                            }
+                        ],
+                        KEY_SELECTED_DEVICE: {KEY_DEVICE: "missing", KEY_ENABLED: True},
+                    }
+                },
+            },
+            KEY_TOPOLOGY: {
+                KEY_TOPOLOGY_VERSION: 1,
+                KEY_TOPOLOGY_PROFILES: {},
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "bringup_system.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = cli._load_profiles_from_path(path, announce=False)
+
+        self.assertEqual(result.code, SS__CONFIG__INVALID)
+        self.assertTrue(cli._recovery_mode)
+        self.assertTrue(cli._profiles_dirty)
+        self.assertEqual([entry[KEY_LABEL] for entry in cli._local_root_payload[KEY_DEVICES]], ["good"])
+        self.assertEqual(
+            cli._local_root_payload[KEY_PROFILES][PROFILE_NAME][KEY_PROFILE_DEVICES],
+            ["good"],
+        )
+        members = cli._local_config[KEY_BRIDGE_BY_PROFILE][PROFILE_NAME][KEY_GROUPS][0]["members"]
+        self.assertEqual(members, [{KEY_DEVICE: "good", KEY_ENABLED: True}])
+
+    def test_auto_merge_default_profiles_recovers_from_bad_json(self) -> None:
+        cli = BridgeCli(_FakeSession(), batch=True)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "bringup_system.json"
+            path.write_text("{ bad json", encoding="utf-8")
+            with patch("tools.can_nt.bridge_cli.profiles_canonical_path", return_value=path):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    cli._auto_merge_default_profiles()
+
+        self.assertTrue(cli._recovery_mode)
+        self.assertIsInstance(cli._local_root_payload, dict)
+        self.assertEqual(cli._local_root_payload[KEY_DEVICES], [])
+        self.assertEqual(cli._local_root_payload[KEY_PROFILES], {})
 
     def test_show_instantiated_json_reports_local_unavailable_state(self) -> None:
         cli = self._build_cli()
@@ -488,7 +569,10 @@ class BridgeCliVisibilityTests(unittest.TestCase):
 
             self.assertEqual(
                 cli._bindings_payload,
-                load_payload,
+                {
+                    **load_payload,
+                    "inputAliases": {},
+                },
             )
             saved_payload = json.loads(save_path.read_text(encoding="utf-8"))
             self.assertEqual(

@@ -30,7 +30,6 @@ public final class XboxControllerDevice implements DeviceUnit {
   private static final String HEADER_OWNER = "Team";
   private static final String HEADER_VERSION = "2026-05-06";
   private static final String HEADER_DESCRIPTION = "Microsoft Xbox controller input wrapper.";
-  private static final String PRIMARY_CONTROLLER_LABEL = "controller0";
   public static final RegistrationHeader HEADER = new RegistrationHeader(
       DEVICE_DISPLAY_NAME,
       MicrosoftDeviceGroup.VENDOR,
@@ -91,16 +90,12 @@ public final class XboxControllerDevice implements DeviceUnit {
    *
    * PARAMETERS
    *   controllers - WPILib Xbox controller map keyed by configured label.
-   *   leftDrive - Optional processed left drive value for controller0.
-   *   rightDrive - Optional processed right drive value for controller0.
    *
    * RETURNS
    *   Snapshot keyed by controller label and DSL signal name.
    */
   public static Map<String, Map<String, Double>> buildControllerInputs(
-      Map<String, edu.wpi.first.wpilibj.XboxController> controllers,
-      double leftDrive,
-      double rightDrive) {
+      Map<String, edu.wpi.first.wpilibj.XboxController> controllers) {
     Map<String, Map<String, Double>> axisInputs = new HashMap<>();
     if (controllers == null) {
       return axisInputs;
@@ -120,10 +115,6 @@ public final class XboxControllerDevice implements DeviceUnit {
       values.put(SIGNAL_RIGHT_Y, controller.getRightY());
       values.put(SIGNAL_LEFT_TRIGGER, controller.getLeftTriggerAxis());
       values.put(SIGNAL_RIGHT_TRIGGER, controller.getRightTriggerAxis());
-      if (PRIMARY_CONTROLLER_LABEL.equals(name)) {
-        values.put(SIGNAL_LEFT_Y, leftDrive);
-        values.put(SIGNAL_RIGHT_Y, rightDrive);
-      }
       axisInputs.put(name, values);
     }
     return axisInputs;

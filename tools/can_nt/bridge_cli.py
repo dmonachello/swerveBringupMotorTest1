@@ -2601,13 +2601,7 @@ class BridgeCli:
         path = profiles_canonical_path()
         if not path.exists():
             return
-        plan = import_config(str(path), self._conflict_policy, self._active_profile_name())
-        if not plan.ok:
-            self._warn(MESSAGE_AUTO_MERGE_FAIL.format(path=path))
-            return
-        result = self._apply_config_plan(plan, prompt_on_replace=False)
-        if result.ok():
-            print(MESSAGE_AUTO_MERGE_OK.format(path=path))
+        self._load_profiles_from_path(path, announce=True)
 
 
     def _auto_load_default_sources(self) -> None:
@@ -2621,6 +2615,62 @@ class BridgeCli:
         mappings_path = can_mappings_path()
         if mappings_path.exists():
             self._load_can_mappings_from_path(mappings_path)
+
+    def _load_profiles_from_path(self, path: Path, announce: bool = True) -> StatusResult:
+        """
+        NAME
+            _load_profiles_from_path - Load profiles JSON with salvage-first recovery.
+        """
+
+        payload: object = None
+        read_failed = False
+        if path.exists():
+            try:
+                payload = read_json(path)
+            except Exception:
+                read_failed = True
+                self._warn(MESSAGE_ERR_PROFILES_PUSH_READ.format(path=path), essential=True)
+        sanitized, warnings, changed = self._store.sanitize_profiles_payload(payload)
+        self._install_loaded_profiles_payload(path, sanitized)
+        self._recovery_mode = bool(read_failed or changed)
+        self._profiles_dirty = bool(changed)
+        self._groups_dirty = False
+        if changed:
+            self._local_root_hash = None
+        for warning in warnings:
+            self._warnings.append(warning)
+            self._warn(f"WARNING: {warning}", essential=True)
+        if announce:
+            print(MESSAGE_AUTO_MERGE_OK.format(path=path))
+        return StatusResult(
+            code=SS__CONFIG__IMPORTED if not changed and not read_failed else SS__CONFIG__INVALID
+        )
+
+    def _install_loaded_profiles_payload(
+        self, path: Path, payload: Dict[str, object]
+    ) -> None:
+        """
+        NAME
+            _install_loaded_profiles_payload - Install sanitized profiles payload into local CLI state.
+        """
+
+        self._local_root_payload = payload
+        self._local_root_path = path
+        self._local_root_hash = self._profiles_hash(payload)
+        self._local_loaded_at = time.time()
+        self._local_devices_locked = True
+        bridge = payload.get(KEY_BRIDGE_CONFIG)
+        self._local_config = dict(bridge) if isinstance(bridge, dict) else None
+        self._local_config_path = path
+        self._tests_profile = None
+        self._tests_model = None
+        self._tests_active_set = DEFAULT_TEST_SET
+        self._tests_device_catalog = {}
+        self._tests_duplicate_labels = set()
+        self._sync_group_profile()
+        if self._groups_profile:
+            self._refresh_tests_profile(self._groups_profile)
+        self._sync_store_from_local()
 
     def _profiles_hash(self, payload: Optional[Dict[str, object]]) -> Optional[str]:
         """
@@ -6502,29 +6552,28 @@ class BridgeCli:
             _load_bindings_from_path - Load bindings config from a path.
         """
 
-        payload = deepcopy(BINDINGS_EMPTY_PAYLOAD)
+        payload: object = BINDINGS_EMPTY_PAYLOAD
+        read_failed = False
         if path.exists():
             try:
-                loaded = read_json(path)
+                payload = read_json(path)
             except Exception:
-                print(MESSAGE_ERR_BINDINGS_LOAD.format(path=path))
-                return StatusResult(code=SS__CONFIG__INVALID)
-            if isinstance(loaded, dict):
-                payload.update(loaded)
-        payload[KEY_CONTROLLERS] = (
-            payload.get(KEY_CONTROLLERS) if isinstance(payload.get(KEY_CONTROLLERS), list) else []
-        )
-        payload[KEY_BINDINGS] = (
-            payload.get(KEY_BINDINGS) if isinstance(payload.get(KEY_BINDINGS), list) else []
-        )
-        payload[KEY_AXES] = payload.get(KEY_AXES) if isinstance(payload.get(KEY_AXES), list) else []
-        self._bindings_payload = payload
+                read_failed = True
+                self._warn(MESSAGE_ERR_BINDINGS_LOAD.format(path=path), essential=True)
+        sanitized, warnings, changed = self._store.sanitize_bindings_payload(payload)
+        self._bindings_payload = sanitized
         self._bindings_path = path
-        self._bindings_dirty = False
+        self._bindings_dirty = bool(changed)
+        self._recovery_mode = bool(self._recovery_mode or read_failed or changed)
+        for warning in warnings:
+            self._warnings.append(warning)
+            self._warn(f"WARNING: {warning}", essential=True)
         self._sync_store_bindings()
         if announce:
             print(MESSAGE_INFO_BINDINGS_LOADED.format(path=path))
-        return StatusResult(code=SS__CONFIG__IMPORTED)
+        return StatusResult(
+            code=SS__CONFIG__IMPORTED if not changed and not read_failed else SS__CONFIG__INVALID
+        )
 
     def _save_bindings_to_path(self, path: Path, *, validation_ok: bool = True) -> StatusResult:
         """
@@ -7132,26 +7181,27 @@ class BridgeCli:
             _load_can_mappings_from_path - Load CAN mappings from a path.
         """
 
-        payload: Dict[str, object] = {}
+        payload: object = dict()
+        read_failed = False
         if path.exists():
             try:
-                loaded = read_json(path)
+                payload = read_json(path)
             except Exception:
-                print(MESSAGE_ERR_MAPPINGS_LOAD.format(path=path))
-                return StatusResult(code=SS__CONFIG__INVALID)
-            if isinstance(loaded, dict):
-                payload = loaded
-        manufacturers = payload.get(KEY_MANUFACTURERS)
-        device_types = payload.get(KEY_DEVICE_TYPES)
-        self._can_mappings = {
-            KEY_MANUFACTURERS: manufacturers if isinstance(manufacturers, dict) else {},
-            KEY_DEVICE_TYPES: device_types if isinstance(device_types, dict) else {},
-        }
+                read_failed = True
+                self._warn(MESSAGE_ERR_MAPPINGS_LOAD.format(path=path), essential=True)
+        sanitized, warnings, changed = self._store.sanitize_mappings_payload(payload)
+        self._can_mappings = sanitized
         self._can_mappings_path = path
-        self._can_mappings_dirty = False
+        self._can_mappings_dirty = bool(changed)
+        self._recovery_mode = bool(self._recovery_mode or read_failed or changed)
+        for warning in warnings:
+            self._warnings.append(warning)
+            self._warn(f"WARNING: {warning}", essential=True)
         self._sync_store_mappings()
         print(MESSAGE_INFO_MAPPINGS_LOADED.format(path=path))
-        return StatusResult(code=SS__CONFIG__IMPORTED)
+        return StatusResult(
+            code=SS__CONFIG__IMPORTED if not changed and not read_failed else SS__CONFIG__INVALID
+        )
 
     def _save_can_mappings_to_path(self, path: Path, *, validation_ok: bool = True) -> StatusResult:
         """
@@ -16917,51 +16967,17 @@ class BridgeCli:
             _repair_profiles_payload - Repair missing required profile fields.
         """
         repaired = deepcopy(payload)
-        changed = False
-        schema_version = repaired.get(KEY_SCHEMA_VERSION)
-        if not isinstance(schema_version, int):
-            alt = repaired.get(KEY_BRIDGE_SCHEMA_VERSION)
-            if isinstance(alt, int):
-                schema_version = alt
-            else:
-                schema_version = PROFILE_SCHEMA_VERSION
-            repaired[KEY_SCHEMA_VERSION] = schema_version
-            changed = True
-        data_version = repaired.get(KEY_DATA_VERSION)
-        if not isinstance(data_version, str) or not data_version.strip():
-            repaired[KEY_DATA_VERSION] = timestamp_version()
-            changed = True
-        devices = repaired.get(KEY_DEVICES)
-        if not isinstance(devices, list):
-            repaired[KEY_DEVICES] = []
-            changed = True
-        profiles = repaired.get(KEY_PROFILES)
-        if not isinstance(profiles, dict):
-            repaired[KEY_PROFILES] = {}
-            profiles = repaired.get(KEY_PROFILES)
-            changed = True
-        if isinstance(profiles, dict):
-            for entry in profiles.values():
-                if not isinstance(entry, dict):
-                    continue
-                labels = entry.get(KEY_PROFILE_DEVICES)
-                if not isinstance(labels, list):
-                    entry[KEY_PROFILE_DEVICES] = []
-                    changed = True
+        changed = BOOL_FALSE
         if KEY_DATA_VERSION_CAMEL in repaired and KEY_DATA_VERSION not in repaired:
             repaired[KEY_DATA_VERSION] = repaired.get(KEY_DATA_VERSION_CAMEL)
-            changed = True
+            changed = BOOL_TRUE
         if KEY_DATA_HASH_CAMEL in repaired and KEY_DATA_HASH not in repaired:
             repaired[KEY_DATA_HASH] = repaired.get(KEY_DATA_HASH_CAMEL)
-            changed = True
-        try:
-            computed_hash = compute_profiles_hash(repaired)
-        except Exception:
-            computed_hash = EMPTY_STRING
-        if repaired.get(KEY_DATA_HASH) != computed_hash:
-            repaired[KEY_DATA_HASH] = computed_hash
-            changed = True
-        return (repaired, changed)
+            changed = BOOL_TRUE
+        repaired, salvage_warnings, salvage_changed = self._store.sanitize_profiles_payload(repaired)
+        for warning in salvage_warnings:
+            self._warnings.append(warning)
+        return repaired, bool(changed or salvage_changed)
 
     def _apply_config_plan_local(self, plan: ConfigPlan) -> StatusResult:
         """

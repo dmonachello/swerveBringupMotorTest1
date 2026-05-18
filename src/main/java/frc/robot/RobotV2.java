@@ -34,20 +34,12 @@ public class RobotV2 extends TimedRobot {
   // ---------------- CAN ID DEFINITIONS ----------------
   private static final double DEADBAND = BringupUtil.DEADBAND;
   private static final double SPEED_ZERO = 0.0;
-  private static final double SPEED_FIXED_25 = 0.25;
-  private static final double SPEED_FIXED_50 = 0.50;
-  private static final double SPEED_FIXED_75 = 0.75;
-  private static final double SPEED_FIXED_100 = 1.00;
   private static final double ACTUATION_REQUEST_EPSILON = 1e-6;
   private static final String BINDING_LEFT_DRIVE = "leftDrive";
   private static final String BINDING_RIGHT_DRIVE = "rightDrive";
   private static final String COMMAND_RUN_TEST = "runTest";
   private static final String COMMAND_PROFILE_TOGGLE = "profileToggle";
   private static final String COMMAND_TOGGLE_DASHBOARD = "toggleDashboard";
-  private static final String COMMAND_FIXED_SPEED_25 = "fixedSpeed25";
-  private static final String COMMAND_FIXED_SPEED_50 = "fixedSpeed50";
-  private static final String COMMAND_FIXED_SPEED_75 = "fixedSpeed75";
-  private static final String COMMAND_FIXED_SPEED_100 = "fixedSpeed100";
   private static final String COMMAND_PRINT_INPUTS = "printInputs";
   private static final String MESSAGE_NON_TEST_ACTUATION_BLOCKED =
       "Actuation blocked: no active test.";
@@ -66,7 +58,6 @@ public class RobotV2 extends TimedRobot {
   private final ControllerManager controllers = new ControllerManager();
   private final java.util.Map<String, XboxController> controllerMap = controllers.getXboxControllers();
   private final XboxController controller0 = controllerMap.get("controller0");
-  // Optional second controller for fixed-speed test buttons.
   private final XboxController controller1 = controllerMap.get("controller1");
   private final BindingsManager bindings = new BindingsManager();
   // Shared runtime state used by Xbox, CLI, and UI commands.
@@ -255,37 +246,15 @@ public class RobotV2 extends TimedRobot {
     if (!driverLeftOverridden) {
       neoSpeed = bind.hasAxis(BINDING_LEFT_DRIVE)
           ? bind.axis(BINDING_LEFT_DRIVE)
-          : BringupUtil.deadband(-controller0.getLeftY(), DEADBAND);
+          : SPEED_ZERO;
     }
     double krakenSpeed = SPEED_ZERO;
     if (!driverRightOverridden) {
       krakenSpeed = bind.hasAxis(BINDING_RIGHT_DRIVE)
           ? bind.axis(BINDING_RIGHT_DRIVE)
-          : BringupUtil.deadband(-controller0.getRightY(), DEADBAND);
+          : SPEED_ZERO;
     }
 
-    boolean controller2Connected = controller1 != null && DriverStation.isJoystickConnected(1);
-    if (controller2Connected) {
-      double fixedSpeed = Double.NaN;
-      if (bind.held(COMMAND_FIXED_SPEED_25)) {
-        fixedSpeed = SPEED_FIXED_25;
-      } else if (bind.held(COMMAND_FIXED_SPEED_50)) {
-        fixedSpeed = SPEED_FIXED_50;
-      } else if (bind.held(COMMAND_FIXED_SPEED_75)) {
-        fixedSpeed = SPEED_FIXED_75;
-      } else if (bind.held(COMMAND_FIXED_SPEED_100)) {
-        fixedSpeed = SPEED_FIXED_100;
-      }
-      if (!Double.isNaN(fixedSpeed)) {
-        neoSpeed = fixedSpeed;
-        krakenSpeed = fixedSpeed;
-      }
-    }
-    double uiFixedSpeed = uiHandler != null ? uiHandler.getUiFixedSpeed() : Double.NaN;
-    if (!Double.isNaN(uiFixedSpeed)) {
-      neoSpeed = uiFixedSpeed;
-      krakenSpeed = uiFixedSpeed;
-    }
     if (uiHandler != null) {
       uiHandler.setLastSpeeds(neoSpeed, krakenSpeed);
       uiHandler.handleUiCommands();
@@ -310,25 +279,10 @@ public class RobotV2 extends TimedRobot {
           4);
     }
 
-    if (controller2Connected) {
-      if (bind.pressed(COMMAND_FIXED_SPEED_25)) {
-        BringupPrinter.enqueue("Fixed speed: 0.25 (Controller 2 A)");
-      }
-      if (bind.pressed(COMMAND_FIXED_SPEED_50)) {
-        BringupPrinter.enqueue("Fixed speed: 0.50 (Controller 2 B)");
-      }
-      if (bind.pressed(COMMAND_FIXED_SPEED_75)) {
-        BringupPrinter.enqueue("Fixed speed: 0.75 (Controller 2 X)");
-      }
-      if (bind.pressed(COMMAND_FIXED_SPEED_100)) {
-        BringupPrinter.enqueue("Fixed speed: 1.00 (Controller 2 Y)");
-      }
-    }
-
     // core update and diagnostics handled by BringupCommandRouter
 
     // Feed test inputs (used by joystick-mode tests).
-    core().setTestInputs(XboxControllerDevice.buildControllerInputs(controllerMap, neoSpeed, krakenSpeed));
+    core().setTestInputs(XboxControllerDevice.buildControllerInputs(controllerMap));
 
     boolean actuationRequested = isActuationRequested(neoSpeed, krakenSpeed);
     // Apply outputs only while a test is actively running.
@@ -364,6 +318,7 @@ public class RobotV2 extends TimedRobot {
     inputs.driverDpadRight = driverPov == POV_RIGHT;
     inputs.driverDpadDown = driverPov == POV_DOWN;
     inputs.driverDpadLeft = driverPov == POV_LEFT;
+    boolean controller2Connected = controller1 != null && DriverStation.isJoystickConnected(1);
     if (controller2Connected) {
       inputs.operatorLeftY = BringupUtil.deadband(-controller1.getLeftY(), DEADBAND);
       inputs.operatorRightY = BringupUtil.deadband(-controller1.getRightY(), DEADBAND);

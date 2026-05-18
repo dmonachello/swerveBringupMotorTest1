@@ -6,6 +6,10 @@ Provide one operator/developer-facing inventory of the user-visible features in 
 
 This document is organized by feature family and workflow, not by source file.
 
+See also:
+
+- [ROBOT_BASE_FUNCTIONALITY.md](./ROBOT_BASE_FUNCTIONALITY.md) for the robot-side execution engine that remains in code after config-driven cleanup.
+
 ## Surfaces
 
 - **Robot runtime**: roboRIO-side bringup execution, tests, groups, device creation, reporting.

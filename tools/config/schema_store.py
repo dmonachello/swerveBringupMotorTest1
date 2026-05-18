@@ -16,12 +16,14 @@ DESCRIPTION
     snapshot and can be strict or lenient.
 """
 
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from tools.common.json_io import write_json
 from tools.common.paths import repo_root as repo_root_path
+from tools.common.profile_io import compute_profiles_hash
 from tools.common.profile_constants import (
     BRIDGE_CONFIG_SCHEMA_VERSION,
     KEY_ANALOG,
@@ -33,6 +35,7 @@ from tools.common.profile_constants import (
     KEY_BRIDGE_GROUPS,
     KEY_BRIDGE_SCHEMA_VERSION,
     KEY_BRIDGE_SELECTED_DEVICE,
+    KEY_BRIDGE_BINDINGS,
     KEY_BUS,
     KEY_DATA_HASH,
     KEY_DATA_VERSION,
@@ -43,6 +46,7 @@ from tools.common.profile_constants import (
     KEY_DEVICE_REF,
     KEY_DEVICE_TYPE,
     KEY_DEVICES,
+    KEY_FROM_NODE,
     KEY_ID,
     KEY_INTERFACE,
     KEY_INVERT,
@@ -58,10 +62,12 @@ from tools.common.profile_constants import (
     KEY_PWM,
     KEY_ROLE,
     KEY_SCHEMA_VERSION,
+    KEY_TOPOLOGY_VERSION,
     KEY_TOPOLOGY,
     KEY_TOPOLOGY_EDGES,
     KEY_TOPOLOGY_NODES,
     KEY_TOPOLOGY_PROFILES,
+    KEY_TO_NODE,
     KEY_TAGS,
     KEY_TERMINATOR,
     KEY_TYPE,
@@ -103,6 +109,12 @@ KEY_MODE = "mode"
 KEY_TYPE = "type"
 KEY_PORT = "port"
 KEY_DEADBAND = "deadband"
+BINDINGS_EMPTY_PAYLOAD = {
+    KEY_CONTROLLERS: list(),
+    KEY_BINDINGS: list(),
+    KEY_AXES: list(),
+    KEY_INPUT_ALIASES: dict(),
+}
 
 DIRTY_PROFILES = "profiles"
 DIRTY_GROUPS = "groups"
@@ -244,6 +256,36 @@ MESSAGE_TOPOLOGY_NODE_DEVICE_UNKNOWN = (
     "Profile {profile} topology node {key}: deviceRef not found: {label}"
 )
 MESSAGE_PROFILE_DEVICES_TYPE_INVALID = "Profile {profile}: Invalid type for devices"
+MESSAGE_SALVAGE_PAYLOAD_RESET = "Dropped invalid {section} payload; starting empty."
+MESSAGE_SALVAGE_DEVICE_DROPPED = "Dropped invalid device '{label}': {reason}"
+MESSAGE_SALVAGE_DEVICE_DROPPED_INDEX = "Dropped invalid device at index {index}: {reason}"
+MESSAGE_SALVAGE_PROFILE_DROPPED = "Dropped invalid profile '{profile}': {reason}"
+MESSAGE_SALVAGE_PROFILE_DEVICE_REF = "Dropped missing device '{label}' from profile '{profile}'."
+MESSAGE_SALVAGE_DEFAULT_PROFILE = "Dropped invalid default profile '{profile}'."
+MESSAGE_SALVAGE_GROUP_DROPPED = "Dropped invalid group in profile '{profile}': {reason}"
+MESSAGE_SALVAGE_GROUP_MEMBER_DROPPED = (
+    "Dropped invalid group member '{label}' in profile '{profile}' group '{group}'."
+)
+MESSAGE_SALVAGE_SELECTED_DEVICE_RESET = (
+    "Dropped invalid selected device '{label}' in profile '{profile}'."
+)
+MESSAGE_SALVAGE_TESTS_DROPPED = "Dropped invalid tests payload in profile '{profile}'."
+MESSAGE_SALVAGE_TOPOLOGY_PROFILE_DROPPED = "Dropped invalid topology profile '{profile}'."
+MESSAGE_SALVAGE_TOPOLOGY_NODE_DROPPED = (
+    "Dropped invalid topology node in profile '{profile}' with key '{key}'."
+)
+MESSAGE_SALVAGE_DIAGRAM_PROFILE_DROPPED = "Dropped invalid diagram profile '{profile}'."
+MESSAGE_SALVAGE_DIAGRAM_NODE_DROPPED = (
+    "Dropped invalid diagram node in profile '{profile}' with key '{key}'."
+)
+MESSAGE_SALVAGE_BINDINGS_CONTROLLER_DROPPED = (
+    "Dropped invalid controller '{name}': {reason}"
+)
+MESSAGE_SALVAGE_BINDINGS_BINDING_DROPPED = "Dropped invalid binding at index {index}: {reason}"
+MESSAGE_SALVAGE_BINDINGS_AXIS_DROPPED = "Dropped invalid axis at index {index}: {reason}"
+MESSAGE_SALVAGE_MAPPINGS_ENTRY_DROPPED = (
+    "Dropped invalid {section} mapping '{key}': {reason}"
+)
 
 FILE_TESTS_ROOT = "bringup_tests.json"
 FILE_BINDINGS_ROOT = "bringup_bindings.json"
@@ -674,12 +716,10 @@ class ConfigSchemaStore:
         """
         self._db.load_document(DOC_PROFILES, path, None, None)
         payload = self._db.get_payload(DOC_PROFILES)
-        if not isinstance(payload, dict) or not payload:
-            payload = self._default_profiles_payload()
-            self._db.set_payload(DOC_PROFILES, payload)
-        self._ensure_bridge_config(payload)
-        self._db.set_payload(DOC_PROFILES, payload)
-        return payload
+        sanitized, warnings, _changed = self.sanitize_profiles_payload(payload)
+        self._warnings.extend(warnings)
+        self._db.set_payload(DOC_PROFILES, sanitized)
+        return sanitized
 
     def _default_profiles_payload(self) -> Dict[str, object]:
         """
@@ -705,6 +745,457 @@ class ConfigSchemaStore:
             },
         }
 
+    def sanitize_profiles_payload(
+        self, payload: object
+    ) -> Tuple[Dict[str, object], List[str], bool]:
+        """
+        NAME
+            sanitize_profiles_payload - Retain valid profile config and drop bad portions.
+        """
+
+        warnings: List[str] = list()
+        changed = BOOL_FALSE
+        if not isinstance(payload, dict):
+            warnings.append(
+                MESSAGE_SALVAGE_PAYLOAD_RESET.format(section=DOC_PROFILES)
+            )
+            return self._default_profiles_payload(), warnings, BOOL_TRUE
+        sanitized = deepcopy(payload)
+        base = self._default_profiles_payload()
+        for key, value in base.items():
+            sanitized.setdefault(key, deepcopy(value))
+        self._ensure_bridge_config(sanitized)
+        devices_input = sanitized.get(KEY_DEVICES)
+        profiles_input = sanitized.get(KEY_PROFILES)
+        valid_devices: List[Dict[str, object]] = list()
+        valid_labels: Set[str] = set()
+        if not isinstance(devices_input, list):
+            devices_input = list()
+            warnings.append(
+                MESSAGE_SALVAGE_PAYLOAD_RESET.format(section=KEY_DEVICES)
+            )
+            changed = BOOL_TRUE
+        for index, entry in enumerate(devices_input):
+            if not isinstance(entry, dict):
+                warnings.append(
+                    MESSAGE_SALVAGE_DEVICE_DROPPED_INDEX.format(
+                        index=index, reason=MESSAGE_TYPE_INVALID.format(key=KEY_DEVICE)
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            candidate = {
+                key: value
+                for key, value in entry.items()
+                if key in ALLOWED_DEVICE_KEYS
+            }
+            label = str(candidate.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if not label:
+                warnings.append(
+                    MESSAGE_SALVAGE_DEVICE_DROPPED_INDEX.format(
+                        index=index, reason=MESSAGE_DEVICE_LABEL_REQUIRED
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            folded = label.casefold()
+            if folded in valid_labels:
+                warnings.append(
+                    MESSAGE_SALVAGE_DEVICE_DROPPED.format(
+                        label=label, reason=MESSAGE_DEVICE_DUPLICATE.format(label=label)
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            interface = get_device_interface(candidate)
+            if not isinstance(interface, str) or not interface.strip():
+                warnings.append(
+                    MESSAGE_SALVAGE_DEVICE_DROPPED.format(
+                        label=label, reason=MESSAGE_DEVICE_INTERFACE_REQUIRED_FMT.format(label=label)
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            required = self._required_fields_for_interface(interface)
+            if required is None:
+                warnings.append(
+                    MESSAGE_SALVAGE_DEVICE_DROPPED.format(
+                        label=label, reason=MESSAGE_DEVICE_INTERFACE_INVALID_FMT.format(label=label)
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            invalid_reason = self._device_salvage_error(candidate, label, required)
+            if invalid_reason is not None:
+                warnings.append(
+                    MESSAGE_SALVAGE_DEVICE_DROPPED.format(label=label, reason=invalid_reason)
+                )
+                changed = BOOL_TRUE
+                continue
+            valid_labels.add(folded)
+            valid_devices.append(candidate)
+        sanitized[KEY_DEVICES] = valid_devices
+        valid_device_names = {entry[KEY_LABEL] for entry in valid_devices if KEY_LABEL in entry}
+        valid_profiles: Dict[str, Dict[str, object]] = dict()
+        if not isinstance(profiles_input, dict):
+            profiles_input = dict()
+            warnings.append(
+                MESSAGE_SALVAGE_PAYLOAD_RESET.format(section=KEY_PROFILES)
+            )
+            changed = BOOL_TRUE
+        for profile_name, entry in profiles_input.items():
+            if not isinstance(profile_name, str) or not profile_name.strip():
+                changed = BOOL_TRUE
+                continue
+            if not isinstance(entry, dict):
+                warnings.append(
+                    MESSAGE_SALVAGE_PROFILE_DROPPED.format(
+                        profile=profile_name,
+                        reason=MESSAGE_TYPE_INVALID.format(key=KEY_PROFILE),
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            profile_entry = dict(entry)
+            labels = profile_entry.get(KEY_PROFILE_DEVICES)
+            if not isinstance(labels, list):
+                warnings.append(
+                    MESSAGE_SALVAGE_PROFILE_DROPPED.format(
+                        profile=profile_name,
+                        reason=MESSAGE_PROFILE_DEVICES_TYPE_INVALID.format(profile=profile_name),
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            kept_labels: List[str] = list()
+            seen_labels: Set[str] = set()
+            for raw_label in labels:
+                if not isinstance(raw_label, str):
+                    changed = BOOL_TRUE
+                    continue
+                label = raw_label.strip()
+                if not label:
+                    changed = BOOL_TRUE
+                    continue
+                folded = label.casefold()
+                if folded in seen_labels:
+                    changed = BOOL_TRUE
+                    continue
+                seen_labels.add(folded)
+                if label not in valid_device_names:
+                    warnings.append(
+                        MESSAGE_SALVAGE_PROFILE_DEVICE_REF.format(
+                            label=label, profile=profile_name
+                        )
+                    )
+                    changed = BOOL_TRUE
+                    continue
+                kept_labels.append(label)
+            profile_entry[KEY_PROFILE_DEVICES] = kept_labels
+            valid_profiles[profile_name] = profile_entry
+        sanitized[KEY_PROFILES] = valid_profiles
+        default_profile = sanitized.get(KEY_DEFAULT_PROFILE)
+        if not isinstance(default_profile, str) or default_profile not in valid_profiles:
+            if isinstance(default_profile, str) and default_profile.strip():
+                warnings.append(
+                    MESSAGE_SALVAGE_DEFAULT_PROFILE.format(profile=default_profile)
+                )
+            sanitized[KEY_DEFAULT_PROFILE] = (
+                next(iter(valid_profiles.keys())) if valid_profiles else EMPTY_STRING
+            )
+            changed = BOOL_TRUE
+        bridge = sanitized.get(KEY_BRIDGE_CONFIG)
+        if not isinstance(bridge, dict):
+            bridge = deepcopy(base[KEY_BRIDGE_CONFIG])
+            sanitized[KEY_BRIDGE_CONFIG] = bridge
+            changed = BOOL_TRUE
+        self._ensure_bridge_config(sanitized)
+        by_profile = bridge.get(KEY_BRIDGE_BY_PROFILE)
+        if not isinstance(by_profile, dict):
+            by_profile = dict()
+            bridge[KEY_BRIDGE_BY_PROFILE] = by_profile
+            changed = BOOL_TRUE
+        valid_bridge: Dict[str, Dict[str, object]] = dict()
+        for profile_name in valid_profiles.keys():
+            entry = by_profile.get(profile_name)
+            if not isinstance(entry, dict):
+                entry = dict()
+                changed = BOOL_TRUE
+            profile_entry = dict(entry)
+            profile_entry[KEY_BRIDGE_GROUPS], groups_changed, group_warnings = self._sanitize_groups_payload(
+                profile_name,
+                profile_entry.get(KEY_BRIDGE_GROUPS),
+                {label.casefold() for label in valid_profiles.get(profile_name, {}).get(KEY_PROFILE_DEVICES, []) if isinstance(label, str)},
+            )
+            if groups_changed:
+                changed = BOOL_TRUE
+            warnings.extend(group_warnings)
+            selected = profile_entry.get(KEY_BRIDGE_SELECTED_DEVICE)
+            if not isinstance(selected, dict):
+                selected = {KEY_DEVICE: EMPTY_STRING, KEY_ENABLED: BOOL_FALSE}
+                changed = BOOL_TRUE
+            selected_label = selected.get(KEY_DEVICE)
+            if not isinstance(selected_label, str) or selected_label not in valid_profiles.get(profile_name, {}).get(KEY_PROFILE_DEVICES, []):
+                if isinstance(selected_label, str) and selected_label.strip():
+                    warnings.append(
+                        MESSAGE_SALVAGE_SELECTED_DEVICE_RESET.format(
+                            label=selected_label, profile=profile_name
+                        )
+                    )
+                selected = {KEY_DEVICE: EMPTY_STRING, KEY_ENABLED: BOOL_FALSE}
+                changed = BOOL_TRUE
+            else:
+                selected = {
+                    KEY_DEVICE: selected_label,
+                    KEY_ENABLED: bool(selected.get(KEY_ENABLED)),
+                }
+            profile_entry[KEY_BRIDGE_SELECTED_DEVICE] = selected
+            tests_payload = profile_entry.get(KEY_BRIDGE_TESTS)
+            if isinstance(tests_payload, dict):
+                try:
+                    profile_entry[KEY_BRIDGE_TESTS] = model_to_payload(
+                        model_from_payload(tests_payload)
+                    )
+                except Exception:
+                    profile_entry.pop(KEY_BRIDGE_TESTS, None)
+                    warnings.append(
+                        MESSAGE_SALVAGE_TESTS_DROPPED.format(profile=profile_name)
+                    )
+                    changed = BOOL_TRUE
+            elif KEY_BRIDGE_TESTS in profile_entry:
+                profile_entry.pop(KEY_BRIDGE_TESTS, None)
+                warnings.append(
+                    MESSAGE_SALVAGE_TESTS_DROPPED.format(profile=profile_name)
+                )
+                changed = BOOL_TRUE
+            valid_bridge[profile_name] = profile_entry
+        bridge[KEY_BRIDGE_BY_PROFILE] = valid_bridge
+        topology_changed, topology_warnings = self._sanitize_topology_payload(
+            sanitized, valid_device_names, set(valid_profiles.keys())
+        )
+        if topology_changed:
+            changed = BOOL_TRUE
+        warnings.extend(topology_warnings)
+        diagram_changed, diagram_warnings = self._sanitize_diagram_payload(
+            sanitized, valid_device_names, set(valid_profiles.keys())
+        )
+        if diagram_changed:
+            changed = BOOL_TRUE
+        warnings.extend(diagram_warnings)
+        if not isinstance(sanitized.get(KEY_SCHEMA_VERSION), int):
+            sanitized[KEY_SCHEMA_VERSION] = PROFILE_SCHEMA_VERSION
+            changed = BOOL_TRUE
+        if not isinstance(sanitized.get(KEY_DATA_VERSION), str):
+            sanitized[KEY_DATA_VERSION] = EMPTY_STRING
+            changed = BOOL_TRUE
+        computed_hash = compute_profiles_hash(sanitized)
+        if sanitized.get(KEY_DATA_HASH) != computed_hash:
+            sanitized[KEY_DATA_HASH] = computed_hash
+            changed = BOOL_TRUE
+        return sanitized, warnings, changed
+
+    def sanitize_bindings_payload(
+        self, payload: object
+    ) -> Tuple[Dict[str, object], List[str], bool]:
+        """
+        NAME
+            sanitize_bindings_payload - Retain valid controller bindings and drop bad entries.
+        """
+
+        warnings: List[str] = list()
+        changed = BOOL_FALSE
+        sanitized = deepcopy(BINDINGS_EMPTY_PAYLOAD)
+        if not isinstance(payload, dict):
+            warnings.append(
+                MESSAGE_SALVAGE_PAYLOAD_RESET.format(section=DOC_BINDINGS)
+            )
+            return sanitized, warnings, BOOL_TRUE
+        controllers_in = payload.get(KEY_CONTROLLERS)
+        bindings_in = payload.get(KEY_BINDINGS)
+        axes_in = payload.get(KEY_AXES)
+        aliases_in = payload.get(KEY_INPUT_ALIASES)
+        if not isinstance(controllers_in, list):
+            controllers_in = list()
+            changed = BOOL_TRUE
+        if not isinstance(bindings_in, list):
+            bindings_in = list()
+            changed = BOOL_TRUE
+        if not isinstance(axes_in, list):
+            axes_in = list()
+            changed = BOOL_TRUE
+        valid_controllers: List[Dict[str, object]] = list()
+        controller_names: Set[str] = set()
+        for entry in controllers_in:
+            if not isinstance(entry, dict):
+                changed = BOOL_TRUE
+                continue
+            name = str(entry.get(KEY_NAME, EMPTY_STRING)).strip()
+            ctrl_type = str(entry.get(KEY_TYPE, EMPTY_STRING)).strip()
+            port = entry.get(KEY_PORT)
+            if not name or not ctrl_type or not isinstance(port, int):
+                warnings.append(
+                    MESSAGE_SALVAGE_BINDINGS_CONTROLLER_DROPPED.format(
+                        name=name or EMPTY_STRING,
+                        reason=MESSAGE_BINDINGS_CONTROLLER_FIELDS,
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            folded = name.casefold()
+            if folded in controller_names:
+                warnings.append(
+                    MESSAGE_SALVAGE_BINDINGS_CONTROLLER_DROPPED.format(
+                        name=name, reason=MESSAGE_BINDINGS_CONTROLLER_DUP
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            controller_names.add(folded)
+            valid_controllers.append({KEY_NAME: name, KEY_TYPE: ctrl_type, KEY_PORT: port})
+        valid_bindings: List[Dict[str, object]] = list()
+        for index, entry in enumerate(bindings_in):
+            if not isinstance(entry, dict):
+                changed = BOOL_TRUE
+                continue
+            command = entry.get(KEY_COMMAND)
+            controller = entry.get(KEY_CONTROLLER)
+            input_name = entry.get(KEY_INPUT)
+            binding_id = entry.get(KEY_ID_STR)
+            mode = entry.get(KEY_MODE)
+            if not all(isinstance(value, str) and str(value).strip() for value in (command, controller, input_name, binding_id, mode)):
+                warnings.append(
+                    MESSAGE_SALVAGE_BINDINGS_BINDING_DROPPED.format(
+                        index=index, reason=MESSAGE_BINDINGS_BINDING_FIELDS
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            if str(controller).casefold() not in controller_names:
+                warnings.append(
+                    MESSAGE_SALVAGE_BINDINGS_BINDING_DROPPED.format(
+                        index=index,
+                        reason=MESSAGE_BINDINGS_CONTROLLER_REQUIRED.format(name=controller),
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            valid_bindings.append(
+                {
+                    KEY_COMMAND: str(command).strip(),
+                    KEY_CONTROLLER: str(controller).strip(),
+                    KEY_INPUT: str(input_name).strip(),
+                    KEY_ID_STR: str(binding_id).strip(),
+                    KEY_MODE: str(mode).strip(),
+                }
+            )
+        valid_axes: List[Dict[str, object]] = list()
+        for index, entry in enumerate(axes_in):
+            if not isinstance(entry, dict):
+                changed = BOOL_TRUE
+                continue
+            command = entry.get(KEY_COMMAND)
+            controller = entry.get(KEY_CONTROLLER)
+            axis_id = entry.get(KEY_ID_STR)
+            invert = entry.get(KEY_INVERT)
+            deadband = entry.get(KEY_DEADBAND)
+            if not all(isinstance(value, str) and str(value).strip() for value in (command, controller, axis_id)):
+                warnings.append(
+                    MESSAGE_SALVAGE_BINDINGS_AXIS_DROPPED.format(
+                        index=index, reason=MESSAGE_BINDINGS_AXIS_FIELDS
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            if str(controller).casefold() not in controller_names:
+                warnings.append(
+                    MESSAGE_SALVAGE_BINDINGS_AXIS_DROPPED.format(
+                        index=index,
+                        reason=MESSAGE_BINDINGS_CONTROLLER_REQUIRED.format(name=controller),
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            if not isinstance(invert, bool):
+                warnings.append(
+                    MESSAGE_SALVAGE_BINDINGS_AXIS_DROPPED.format(
+                        index=index, reason=MESSAGE_BINDINGS_INVERT_TYPE
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            if not isinstance(deadband, (int, float)) or deadband < DEADBAND_MIN or deadband > DEADBAND_MAX:
+                warnings.append(
+                    MESSAGE_SALVAGE_BINDINGS_AXIS_DROPPED.format(
+                        index=index, reason=MESSAGE_BINDINGS_DEADBAND_RANGE
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            valid_axes.append(
+                {
+                    KEY_COMMAND: str(command).strip(),
+                    KEY_CONTROLLER: str(controller).strip(),
+                    KEY_ID_STR: str(axis_id).strip(),
+                    KEY_INVERT: invert,
+                    KEY_DEADBAND: float(deadband),
+                }
+            )
+        sanitized[KEY_CONTROLLERS] = valid_controllers
+        sanitized[KEY_BINDINGS] = valid_bindings
+        sanitized[KEY_AXES] = valid_axes
+        sanitized[KEY_INPUT_ALIASES] = aliases_in if isinstance(aliases_in, dict) else dict()
+        if not isinstance(aliases_in, dict) and aliases_in is not None:
+            changed = BOOL_TRUE
+        return sanitized, warnings, changed
+
+    def sanitize_mappings_payload(
+        self, payload: object
+    ) -> Tuple[Dict[str, object], List[str], bool]:
+        """
+        NAME
+            sanitize_mappings_payload - Retain valid CAN mappings and drop bad entries.
+        """
+
+        warnings: List[str] = list()
+        changed = BOOL_FALSE
+        sanitized = {
+            KEY_MANUFACTURERS: dict(),
+            KEY_DEVICE_TYPES: dict(),
+        }
+        if not isinstance(payload, dict):
+            warnings.append(
+                MESSAGE_SALVAGE_PAYLOAD_RESET.format(section=DOC_MAPPINGS)
+            )
+            return sanitized, warnings, BOOL_TRUE
+        for section in (KEY_MANUFACTURERS, KEY_DEVICE_TYPES):
+            entries = payload.get(section)
+            if not isinstance(entries, dict):
+                changed = BOOL_TRUE
+                continue
+            kept: Dict[str, str] = dict()
+            for key, value in entries.items():
+                key_str = str(key).strip()
+                value_str = str(value).strip() if isinstance(value, str) else EMPTY_STRING
+                if not key_str.isdigit():
+                    warnings.append(
+                        MESSAGE_SALVAGE_MAPPINGS_ENTRY_DROPPED.format(
+                            section=section, key=key_str, reason=MESSAGE_MAPPINGS_KEY_TYPE
+                        )
+                    )
+                    changed = BOOL_TRUE
+                    continue
+                if not value_str:
+                    warnings.append(
+                        MESSAGE_SALVAGE_MAPPINGS_ENTRY_DROPPED.format(
+                            section=section, key=key_str, reason=MESSAGE_MAPPINGS_VALUE_TYPE
+                        )
+                    )
+                    changed = BOOL_TRUE
+                    continue
+                kept[key_str] = value_str
+            sanitized[section] = kept
+        return sanitized, warnings, changed
+
     def _ensure_bridge_config(self, payload: Dict[str, object]) -> None:
         """
         NAME
@@ -727,6 +1218,267 @@ class ConfigSchemaStore:
             bridge.get(KEY_BRIDGE_BY_PROFILE), dict
         ):
             bridge[KEY_BRIDGE_BY_PROFILE] = dict()
+
+    def _required_fields_for_interface(self, interface: object) -> Optional[Tuple[str, ...]]:
+        """
+        NAME
+            _required_fields_for_interface - Return required fields for a device interface.
+        """
+
+        if interface == INTERFACE_CAN:
+            return DEVICE_REQUIRED_CAN
+        if interface == INTERFACE_DIO:
+            return DEVICE_REQUIRED_DIO
+        if interface == INTERFACE_PWM:
+            return DEVICE_REQUIRED_PWM
+        if interface == INTERFACE_ANALOG:
+            return DEVICE_REQUIRED_ANALOG
+        if interface == INTERFACE_INTERNAL:
+            return DEVICE_REQUIRED_INTERNAL
+        if interface == INTERFACE_USB:
+            return DEVICE_REQUIRED_USB
+        return None
+
+    def _device_salvage_error(
+        self, entry: Dict[str, object], label: str, required: Tuple[str, ...]
+    ) -> Optional[str]:
+        """
+        NAME
+            _device_salvage_error - Return salvage failure reason for a device entry.
+        """
+
+        for field in required:
+            if field not in entry:
+                return MESSAGE_REQUIRED_FIELD_FMT.format(label=label, key=field)
+        if KEY_MANUFACTURER in required and not isinstance(entry.get(KEY_MANUFACTURER), int):
+            return MESSAGE_DEVICE_MANUFACTURER_TYPE_FMT.format(label=label)
+        if KEY_DEVICE_TYPE in required and not isinstance(entry.get(KEY_DEVICE_TYPE), int):
+            return MESSAGE_DEVICE_DEVICE_TYPE_TYPE_FMT.format(label=label)
+        if KEY_ID in required and not isinstance(entry.get(KEY_ID), int):
+            return MESSAGE_DEVICE_ID_TYPE_FMT.format(label=label)
+        if KEY_INVERT in required and not isinstance(entry.get(KEY_INVERT), bool):
+            return MESSAGE_DEVICE_INVERT_TYPE_FMT.format(label=label)
+        if KEY_PWM in required and not isinstance(entry.get(KEY_PWM), int):
+            return MESSAGE_DEVICE_PWM_TYPE_FMT.format(label=label)
+        if KEY_ANALOG in required and not isinstance(entry.get(KEY_ANALOG), int):
+            return MESSAGE_DEVICE_ANALOG_TYPE_FMT.format(label=label)
+        return None
+
+    def _sanitize_groups_payload(
+        self, profile_name: str, groups_payload: object, valid_labels: Set[str]
+    ) -> Tuple[List[Dict[str, object]], bool, List[str]]:
+        """
+        NAME
+            _sanitize_groups_payload - Retain valid groups and drop bad members.
+        """
+
+        warnings: List[str] = list()
+        changed = BOOL_FALSE
+        if not isinstance(groups_payload, list):
+            return list(), BOOL_TRUE, warnings
+        groups: List[Dict[str, object]] = list()
+        for entry in groups_payload:
+            if not isinstance(entry, dict):
+                changed = BOOL_TRUE
+                continue
+            name = str(entry.get(KEY_NAME, EMPTY_STRING)).strip()
+            if not name:
+                warnings.append(
+                    MESSAGE_SALVAGE_GROUP_DROPPED.format(
+                        profile=profile_name, reason=MESSAGE_REQUIRED_FIELD.format(key=KEY_NAME)
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            members_payload = entry.get(KEY_MEMBERS)
+            if not isinstance(members_payload, list):
+                warnings.append(
+                    MESSAGE_SALVAGE_GROUP_DROPPED.format(
+                        profile=profile_name, reason=MESSAGE_REQUIRED_FIELD.format(key=KEY_MEMBERS)
+                    )
+                )
+                changed = BOOL_TRUE
+                continue
+            kept_members: List[Dict[str, object]] = list()
+            for member in members_payload:
+                if not isinstance(member, dict):
+                    changed = BOOL_TRUE
+                    continue
+                label = member.get(KEY_DEVICE)
+                if not isinstance(label, str) or label.casefold() not in valid_labels:
+                    warnings.append(
+                        MESSAGE_SALVAGE_GROUP_MEMBER_DROPPED.format(
+                            label=str(label or EMPTY_STRING),
+                            profile=profile_name,
+                            group=name,
+                        )
+                    )
+                    changed = BOOL_TRUE
+                    continue
+                kept_members.append(
+                    {
+                        KEY_DEVICE: label,
+                        KEY_ENABLED: bool(member.get(KEY_ENABLED)),
+                    }
+                )
+            groups.append(
+                {
+                    KEY_NAME: name,
+                    KEY_ENABLED: bool(entry.get(KEY_ENABLED)),
+                    KEY_MEMBERS: kept_members,
+                    KEY_BRIDGE_BINDINGS: entry.get(KEY_BRIDGE_BINDINGS, [])
+                    if isinstance(entry.get(KEY_BRIDGE_BINDINGS), list)
+                    else [],
+                }
+            )
+        return groups, changed, warnings
+
+    def _sanitize_topology_payload(
+        self,
+        payload: Dict[str, object],
+        valid_device_names: Set[str],
+        valid_profiles: Set[str],
+    ) -> Tuple[bool, List[str]]:
+        """
+        NAME
+            _sanitize_topology_payload - Drop invalid topology profiles and device nodes.
+        """
+
+        warnings: List[str] = list()
+        changed = BOOL_FALSE
+        topology = payload.get(KEY_TOPOLOGY)
+        if topology is None:
+            return changed, warnings
+        if not isinstance(topology, dict):
+            payload[KEY_TOPOLOGY] = {
+                KEY_TOPOLOGY_VERSION: COUNT_ONE,
+                KEY_TOPOLOGY_PROFILES: dict(),
+            }
+            warnings.append(
+                MESSAGE_SALVAGE_PAYLOAD_RESET.format(section=KEY_TOPOLOGY)
+            )
+            return BOOL_TRUE, warnings
+        profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+        if not isinstance(profiles, dict):
+            topology[KEY_TOPOLOGY_PROFILES] = dict()
+            return BOOL_TRUE, warnings
+        kept_profiles: Dict[str, Dict[str, object]] = dict()
+        for profile_name, entry in profiles.items():
+            if profile_name not in valid_profiles or not isinstance(entry, dict):
+                warnings.append(
+                    MESSAGE_SALVAGE_TOPOLOGY_PROFILE_DROPPED.format(profile=profile_name)
+                )
+                changed = BOOL_TRUE
+                continue
+            nodes = entry.get(KEY_TOPOLOGY_NODES)
+            if not isinstance(nodes, list):
+                warnings.append(
+                    MESSAGE_SALVAGE_TOPOLOGY_PROFILE_DROPPED.format(profile=profile_name)
+                )
+                changed = BOOL_TRUE
+                continue
+            kept_nodes: List[Dict[str, object]] = list()
+            kept_keys: Set[object] = set()
+            for node in nodes:
+                if not isinstance(node, dict):
+                    changed = BOOL_TRUE
+                    continue
+                node_key = node.get(KEY_NODE_KEY)
+                node_type = node.get(KEY_NODE_TYPE)
+                if node_type == NODE_TYPE_DEVICE:
+                    device_ref = node.get(KEY_DEVICE_REF)
+                    if not isinstance(device_ref, str) or device_ref not in valid_device_names:
+                        warnings.append(
+                            MESSAGE_SALVAGE_TOPOLOGY_NODE_DROPPED.format(
+                                profile=profile_name,
+                                key=node_key,
+                            )
+                        )
+                        changed = BOOL_TRUE
+                        continue
+                kept_nodes.append(dict(node))
+                kept_keys.add(node_key)
+            edges = entry.get(KEY_TOPOLOGY_EDGES)
+            kept_edges: List[Dict[str, object]] = list()
+            if isinstance(edges, list):
+                for edge in edges:
+                    if not isinstance(edge, dict):
+                        changed = BOOL_TRUE
+                        continue
+                    if edge.get(KEY_FROM_NODE) not in kept_keys or edge.get(KEY_TO_NODE) not in kept_keys:
+                        changed = BOOL_TRUE
+                        continue
+                    kept_edges.append(dict(edge))
+            kept_entry = dict(entry)
+            kept_entry[KEY_TOPOLOGY_NODES] = kept_nodes
+            kept_entry[KEY_TOPOLOGY_EDGES] = kept_edges
+            kept_profiles[profile_name] = kept_entry
+        topology[KEY_TOPOLOGY_PROFILES] = kept_profiles
+        topology.setdefault(KEY_TOPOLOGY_VERSION, COUNT_ONE)
+        return changed, warnings
+
+    def _sanitize_diagram_payload(
+        self,
+        payload: Dict[str, object],
+        valid_device_names: Set[str],
+        valid_profiles: Set[str],
+    ) -> Tuple[bool, List[str]]:
+        """
+        NAME
+            _sanitize_diagram_payload - Drop invalid diagram profiles and device nodes.
+        """
+
+        warnings: List[str] = list()
+        changed = BOOL_FALSE
+        diagram = payload.get(KEY_DIAGRAM)
+        if diagram is None:
+            return changed, warnings
+        if not isinstance(diagram, dict):
+            payload.pop(KEY_DIAGRAM, None)
+            warnings.append(
+                MESSAGE_SALVAGE_PAYLOAD_RESET.format(section=KEY_DIAGRAM)
+            )
+            return BOOL_TRUE, warnings
+        profiles = diagram.get(KEY_DIAGRAM_PROFILES)
+        if not isinstance(profiles, dict):
+            payload.pop(KEY_DIAGRAM, None)
+            return BOOL_TRUE, warnings
+        kept_profiles: Dict[str, Dict[str, object]] = dict()
+        for profile_name, entry in profiles.items():
+            if profile_name not in valid_profiles or not isinstance(entry, dict):
+                warnings.append(
+                    MESSAGE_SALVAGE_DIAGRAM_PROFILE_DROPPED.format(profile=profile_name)
+                )
+                changed = BOOL_TRUE
+                continue
+            nodes = entry.get(KEY_DIAGRAM_NODES)
+            if not isinstance(nodes, list):
+                warnings.append(
+                    MESSAGE_SALVAGE_DIAGRAM_PROFILE_DROPPED.format(profile=profile_name)
+                )
+                changed = BOOL_TRUE
+                continue
+            kept_nodes: List[Dict[str, object]] = list()
+            for node in nodes:
+                if not isinstance(node, dict):
+                    changed = BOOL_TRUE
+                    continue
+                if node.get(KEY_NODE_TYPE) == NODE_TYPE_DEVICE:
+                    label = node.get(KEY_LABEL)
+                    if not isinstance(label, str) or label not in valid_device_names:
+                        warnings.append(
+                            MESSAGE_SALVAGE_DIAGRAM_NODE_DROPPED.format(
+                                profile=profile_name, key=node.get(KEY_NODE_KEY)
+                            )
+                        )
+                        changed = BOOL_TRUE
+                        continue
+                kept_nodes.append(dict(node))
+            kept_entry = dict(entry)
+            kept_entry[KEY_DIAGRAM_NODES] = kept_nodes
+            kept_profiles[profile_name] = kept_entry
+        diagram[KEY_DIAGRAM_PROFILES] = kept_profiles
+        return changed, warnings
 
     def _load_tests_from_profiles(
         self, profiles_payload: Dict[str, object]
@@ -765,7 +1517,11 @@ class ConfigSchemaStore:
         deploy_path = self._deploy_path(FILE_BINDINGS_ROOT)
         warnings = self._db.load_document(DOC_BINDINGS, root_path, deploy_path, self._merge_bindings)
         self._warnings.extend(warnings)
-        return self._db.get_payload(DOC_BINDINGS)
+        payload = self._db.get_payload(DOC_BINDINGS)
+        sanitized, sanitize_warnings, _changed = self.sanitize_bindings_payload(payload)
+        self._warnings.extend(sanitize_warnings)
+        self._db.set_payload(DOC_BINDINGS, sanitized)
+        return sanitized
 
     def _load_mappings(self, repo_root: Path) -> Dict[str, object]:
         """
@@ -775,7 +1531,11 @@ class ConfigSchemaStore:
 
         path = self._deploy_path(FILE_CAN_MAPPINGS_ROOT)
         self._db.load_document(DOC_MAPPINGS, path, None, None)
-        return self._db.get_payload(DOC_MAPPINGS)
+        payload = self._db.get_payload(DOC_MAPPINGS)
+        sanitized, warnings, _changed = self.sanitize_mappings_payload(payload)
+        self._warnings.extend(warnings)
+        self._db.set_payload(DOC_MAPPINGS, sanitized)
+        return sanitized
 
     def _write_tests_into_profiles(self, payload: Dict[str, object]) -> None:
         """

@@ -243,13 +243,9 @@ def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
             ],
         ),
         (
-            "Fixed Tests",
+            "Diagnostics",
             [
                 ("CAN Sweep", "canSweep"),
-                ("Fixed Speed 25%", "fixedSpeed25"),
-                ("Fixed Speed 50%", "fixedSpeed50"),
-                ("Fixed Speed 75%", "fixedSpeed75"),
-                ("Fixed Speed 100%", "fixedSpeed100"),
             ],
         ),
         (
@@ -1059,10 +1055,6 @@ class BringupControlUI(tk.Tk):
             "runAllTests": "Run all enabled tests.",
             "printNextTest": "Print the next test that would run.",
             "canSweep": "Run a vendor API device sweep.",
-            "fixedSpeed25": "Run motors at 25% output.",
-            "fixedSpeed50": "Run motors at 50% output.",
-            "fixedSpeed75": "Run motors at 75% output.",
-            "fixedSpeed100": "Run motors at 100% output.",
             "toggleDashboard": "Toggle dashboard reporting output.",
             "clearFaults": "Clear latched device faults.",
             "clearStopLatch": "Clear the safety stop latch.",
@@ -1332,10 +1324,10 @@ class BringupControlUI(tk.Tk):
             "  This does not use the PC sniffer; it is robot-side polling.",
             "  Output: per-device seen/missing results.",
             "",
-            "Fixed Speed 25/50/75/100:",
-            "  Runs motors at a fixed output for quick verification.",
-            "  Use with caution: ensure the mechanism is safe to spin.",
-            "  Output: ACK + OUT with the duty and duration.",
+            "Manual Motor Control:",
+            "  Use group bindings or explicit joystick/manual tests instead",
+            "  of vendor-wide fixed-speed commands.",
+            "  Group bindings keep the target motors explicit in config.",
         ]
         return "\n".join(lines)
 

@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Test;
 class BridgeUiRuntimeCommandsTest {
 
   private static final String CMD_ADD_MOTOR = "addMotor";
-  private static final String CMD_FIXED_SPEED_50 = "fixedSpeed50";
   private static final String CMD_CLEAR_STOP_LATCH = "clearStopLatch";
   private static final String CMD_TOGGLE_DASHBOARD = "toggleDashboard";
 
@@ -48,18 +47,6 @@ class BridgeUiRuntimeCommandsTest {
     assertEquals("Add motor.", result.message);
     assertEquals(1, deps.addNextMotorCalls);
     assertEquals(1, deps.runProfileActivateActionCalls);
-  }
-
-  @Test
-  void fixedSpeedCommandUpdatesSpeedAndMessage() {
-    TestDeps deps = new TestDeps();
-    BridgeUiRuntimeCommands commands = new BridgeUiRuntimeCommands(deps);
-
-    BridgeUiCommandResult result = commands.execute(ingress(CMD_FIXED_SPEED_50), 0.0, false);
-
-    assertTrue(result.ok);
-    assertEquals(0.5, deps.uiFixedSpeed, 0.0001);
-    assertEquals("Fixed speed: 0.50", result.message);
   }
 
   @Test
@@ -116,8 +103,6 @@ class BridgeUiRuntimeCommandsTest {
     private int applyDashboardStateCalls;
 
     private boolean clearStopLatchResult;
-
-    private double uiFixedSpeed;
 
     @Override
     public void prepareActivationForSelectedProfile() {
@@ -183,16 +168,6 @@ class BridgeUiRuntimeCommandsTest {
 
     @Override
     public void requestTextReport(String text, int batchSize) {}
-
-    @Override
-    public double getUiFixedSpeed() {
-      return uiFixedSpeed;
-    }
-
-    @Override
-    public void setUiFixedSpeed(double speed) {
-      uiFixedSpeed = speed;
-    }
 
   }
 }

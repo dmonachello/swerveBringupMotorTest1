@@ -132,6 +132,101 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
         messages = [issue.message for issue in result.errors()]
         self.assertIn("Profile demo: Invalid type for devices", messages)
 
+    def test_sanitize_profiles_payload_drops_invalid_entries_and_refs(self) -> None:
+        store = ConfigSchemaStore()
+        payload = self._base_payload()
+        payload["devices"].append(
+            {
+                "label": "badCan",
+                "deviceInterface": "CAN",
+                "deviceType": 1,
+            }
+        )
+        payload["profiles"]["demo"]["devices"].extend(["badCan", "missing"])
+        payload["bridgeConfig"] = {
+            "schemaVersion": 2,
+            "generatedAt": None,
+            "byProfile": {
+                "demo": {
+                    "groups": [
+                        {
+                            "name": "drive",
+                            "enabled": True,
+                            "members": [
+                                {"device": "lmtSw0", "enabled": True},
+                                {"device": "missing", "enabled": True},
+                            ],
+                        }
+                    ],
+                    "selectedDevice": {"device": "missing", "enabled": True},
+                }
+            },
+        }
+
+        sanitized, warnings, changed = store.sanitize_profiles_payload(payload)
+
+        self.assertTrue(changed)
+        self.assertEqual([device["label"] for device in sanitized["devices"]], ["lmtSw0"])
+        self.assertEqual(sanitized["profiles"]["demo"]["devices"], ["lmtSw0"])
+        members = sanitized["bridgeConfig"]["byProfile"]["demo"]["groups"][0]["members"]
+        self.assertEqual(members, [{"device": "lmtSw0", "enabled": True}])
+        self.assertEqual(
+            sanitized["bridgeConfig"]["byProfile"]["demo"]["selectedDevice"],
+            {"device": "", "enabled": False},
+        )
+        joined = "\n".join(warnings)
+        self.assertIn("Dropped invalid device 'badCan'", joined)
+        self.assertIn("Dropped missing device 'missing' from profile 'demo'.", joined)
+
+    def test_sanitize_bindings_payload_drops_invalid_entries(self) -> None:
+        store = ConfigSchemaStore()
+        payload = {
+            "controllers": [
+                {"name": "driver", "type": "xbox", "port": 0},
+                {"name": "bad", "type": "xbox"},
+            ],
+            "bindings": [
+                {
+                    "command": "printState",
+                    "controller": "driver",
+                    "input": "button",
+                    "id": "A",
+                    "mode": "press",
+                },
+                {
+                    "command": "bad",
+                    "controller": "missing",
+                    "input": "button",
+                    "id": "B",
+                    "mode": "press",
+                },
+            ],
+            "axes": [
+                {
+                    "command": "leftDrive",
+                    "controller": "driver",
+                    "id": "leftY",
+                    "invert": False,
+                    "deadband": 0.1,
+                },
+                {
+                    "command": "badAxis",
+                    "controller": "missing",
+                    "id": "rightY",
+                    "invert": False,
+                    "deadband": 0.1,
+                },
+            ],
+        }
+
+        sanitized, warnings, changed = store.sanitize_bindings_payload(payload)
+
+        self.assertTrue(changed)
+        self.assertEqual(len(sanitized["controllers"]), 1)
+        self.assertEqual(len(sanitized["bindings"]), 1)
+        self.assertEqual(len(sanitized["axes"]), 1)
+        self.assertIn("Dropped invalid controller 'bad'", "\n".join(warnings))
+
 
 if __name__ == "__main__":
     unittest.main()

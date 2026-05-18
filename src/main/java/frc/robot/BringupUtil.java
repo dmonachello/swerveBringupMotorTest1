@@ -47,42 +47,7 @@ import java.util.Set;
  */
 public final class BringupUtil {
   private BringupUtil() {}
-
-
-  // CAN ID (6 bits) range - spark - 1 - 62, kracken 0 - 62
-  // ---------------- CAN ID DEFINITIONS ----------------
-  // front right neo - 10
-  // front left neo  -  1
-  // back right neo  -  7
-  // back left neo   -  4
-
-  // front right kraken - 11
-  // front left kraken - 2
-  // back right kraken - 8
-  // back left kraken - 5
-
-  // front right cancoder - 12
-  // front left cancoder - 3 
-  // back right cancoder - 9
-  // back left cancoder - 6
-  // ---------------------------------------------------
-  
-  // Fallback profiles used when JSON is missing or invalid.
-  private static final int[] FALLBACK_ROBOT_NEO_CAN_IDS = { 10, 1, 7, 4 };
-  private static final int[] FALLBACK_ROBOT_KRAKEN_CAN_IDS = { 11, 2, 8, 5 };
-  private static final int[] FALLBACK_ROBOT_CANCODER_CAN_IDS = { 12, 3, 9, 6 };
-
-  private static final int[] FALLBACK_DEMO_NEO_CAN_IDS = { 25, 22, 10, -1 };
-  private static final int[] FALLBACK_DEMO_KRAKEN_CAN_IDS = { -1, -1, -1, -1 };
-  private static final int[] FALLBACK_DEMO_CANCODER_CAN_IDS = { -1, -1, -1, -1 };
-
-  private static final int FALLBACK_PDH_CAN_ID = 1;
-  private static final int FALLBACK_PDP_CAN_ID = 0;
-  private static final int FALLBACK_PIGEON_CAN_ID = 1;
-  private static final int FALLBACK_ROBORIO_CAN_ID = 0;
-
   // Default profile names and file location.
-  private static final String DEFAULT_PROFILE_NAME = "robot";
   private static final String DEFAULT_PROFILE_FILE = "bringup_system.json";
   // LEGACY (remove after v3 unified file adoption).
   private static final String LEGACY_PROFILE_FILE = "bringup_profiles.json";
@@ -103,7 +68,6 @@ public final class BringupUtil {
   private static final String KEY_NAME = "name";
   private static final String KEY_VALUE = "value";
   private static final String LABEL_UNKNOWN = "UNKNOWN";
-  private static final String LABEL_SPACE = " ";
   private static final String NT_LABEL_SAFE_CHARS = "-_.~";
   private static final String NT_LABEL_FALLBACK = "UNKNOWN";
   private static final String NT_LABEL_EMPTY = "";
@@ -184,6 +148,14 @@ public final class BringupUtil {
   private static final String MESSAGE_UNKNOWN_CAN_IDENTITY =
       "Warning: unable to map device to CAN identity (label=%s, id=%s).";
   private static final String MESSAGE_RELOAD_FAILED = "profiles reload failed";
+  private static final String MESSAGE_SAFE_MODE_APPLIED =
+      "Warning: no valid bringup profiles loaded. Entering empty safe mode.";
+  private static final String MESSAGE_REGISTRY_DEFAULT_PROFILE_MISSING =
+      "Warning: default_profile not found in JSON. Using first available profile.";
+  private static final String MESSAGE_UNKNOWN_PROFILE_DEFAULT =
+      "Warning: unknown CAN profile '%s'. Using default.";
+  private static final String MESSAGE_DEFAULT_PROFILE_MISSING =
+      "Warning: default CAN profile missing. Entering empty safe mode.";
   private static final int PROFILE_SCHEMA_VERSION = 4;
   private static final String MOTOR_SPECS_FILE = "motor_specs.json";
   private static final String CAN_MAPPINGS_FILE = "can_mappings.json";
@@ -238,8 +210,8 @@ public final class BringupUtil {
   private static final Map<String, BridgeProfileRuntimeConfig> PROFILE_BRIDGE_CONFIGS =
       new LinkedHashMap<>();
   private static JsonObject dslTestsRoot = null;
-  private static String defaultProfile = DEFAULT_PROFILE_NAME;
-  private static String selectedProfile = DEFAULT_PROFILE_NAME;
+  private static String defaultProfile = NT_LABEL_EMPTY;
+  private static String selectedProfile = NT_LABEL_EMPTY;
   private static boolean activeProfileApplied = false;
   private static final Map<String, MotorSpec> MOTOR_SPECS = loadMotorSpecs();
   private static final CanMappings CAN_MAPPINGS = loadCanMappings();
@@ -249,21 +221,25 @@ public final class BringupUtil {
   private static long activeProfileGeneration = PROFILE_CONFIG_GENERATION_INITIAL;
 
   // Currently active profile name.
-  private static String activeProfile = DEFAULT_PROFILE_NAME;
+  private static String activeProfile = NT_LABEL_EMPTY;
 
   // Active device list built from the selected profile.
   private static final List<DeviceEntry> ACTIVE_DEVICES = new ArrayList<>();
-  public static int PDH_CAN_ID = FALLBACK_PDH_CAN_ID;
-  public static int PDP_CAN_ID = FALLBACK_PDP_CAN_ID;
-  public static int PIGEON_CAN_ID = FALLBACK_PIGEON_CAN_ID;
-  public static int ROBORIO_CAN_ID = FALLBACK_ROBORIO_CAN_ID;
   public static final int DISABLED_CAN_ID = -1;
+  public static int PDH_CAN_ID = DISABLED_CAN_ID;
+  public static int PDP_CAN_ID = DISABLED_CAN_ID;
+  public static int PIGEON_CAN_ID = DISABLED_CAN_ID;
+  public static int ROBORIO_CAN_ID = DISABLED_CAN_ID;
   public static final double DEADBAND = 0.12;
 
   // Initialize logging suppression and load the profile JSON.
   static {
     disableVendorLogging();
-    loadProfilesFromJson();
+    try {
+      loadProfilesFromJson();
+    } catch (RuntimeException ex) {
+      applyEmptySafeMode();
+    }
   }
 
   // Disable vendor auto-logging to avoid extra files on the roboRIO.
@@ -338,14 +314,13 @@ public final class BringupUtil {
     }
     ProfileConfig config = profiles.get(profileName);
     if (config == null) {
-      BringupPrinter.enqueue("Warning: unknown CAN profile '" + profileName + "'. Using default.");
+      BringupPrinter.enqueue(String.format(MESSAGE_UNKNOWN_PROFILE_DEFAULT, profileName));
       config = profiles.get(defaultProfile);
       profileName = defaultProfile;
     }
     if (config == null) {
-      BringupPrinter.enqueue("Warning: default CAN profile missing; using fallback IDs.");
-      applyFallbackProfile();
-      activeProfile = DEFAULT_PROFILE_NAME;
+      BringupPrinter.enqueue(MESSAGE_DEFAULT_PROFILE_MISSING);
+      applyEmptySafeMode();
       return;
     }
     try {
@@ -1288,9 +1263,8 @@ public final class BringupUtil {
     // Load bringup_system.json from deploy or dev path.
     Path path = resolveProfilePath();
     if (path == null || !Files.exists(path)) {
-      BringupPrinter.enqueue("Warning: CAN profile JSON not found. Using fallback IDs.");
-      applyFallbackProfile();
-      return;
+      BringupPrinter.enqueue(MESSAGE_REGISTRY_JSON_MISSING);
+      throw new RuntimeException(MESSAGE_REGISTRY_JSON_MISSING);
     }
     try {
       String rawJson = Files.readString(path, StandardCharsets.UTF_8);
@@ -1325,13 +1299,14 @@ public final class BringupUtil {
       }
       profiles = new LinkedHashMap<>(root.profiles);
       profileOrder = new ArrayList<>(profiles.keySet());
-      defaultProfile = root.defaultProfile != null ? root.defaultProfile : DEFAULT_PROFILE_NAME;
+      defaultProfile =
+          root.defaultProfile != null ? root.defaultProfile : NT_LABEL_EMPTY;
       if (!profiles.containsKey(defaultProfile)) {
-        BringupPrinter.enqueue("Warning: default_profile not found in JSON. Using 'robot'.");
-        defaultProfile = DEFAULT_PROFILE_NAME;
+        BringupPrinter.enqueue(MESSAGE_REGISTRY_DEFAULT_PROFILE_MISSING);
+        defaultProfile = profileOrder.isEmpty() ? NT_LABEL_EMPTY : profileOrder.get(INDEX_ZERO);
       }
       selectedProfile = defaultProfile;
-      activeProfile = DEFAULT_PROFILE_NAME;
+      activeProfile = NT_LABEL_EMPTY;
       activeProfileApplied = false;
       bumpActiveProfileGeneration();
     } catch (IOException | JsonParseException ex) {
@@ -1438,147 +1413,27 @@ public final class BringupUtil {
 
   /**
    * NAME
-   *   applyFallbackProfile - Populate built-in fallback profiles.
+   *   applyEmptySafeMode - Clear profile state when no valid JSON config exists.
    */
-  private static void applyFallbackProfile() {
-    // Populate default profiles in-memory when JSON is unavailable.
+  private static void applyEmptySafeMode() {
     profiles = new LinkedHashMap<>();
+    profileOrder = new ArrayList<>();
     DEVICE_REGISTRY.clear();
+    DEVICE_CONFIGS.clear();
+    ACTIVE_DEVICES.clear();
     setProfileTests(new LinkedHashMap<>());
     setProfileBridgeConfigs(new LinkedHashMap<>());
     dslTestsRoot = null;
-    List<String> robotLabels = new ArrayList<>();
-    addFallbackCanDevices(
-        FALLBACK_ROBOT_NEO_CAN_IDS,
-        robotLabels,
-        MFG_REV_ID,
-        DEVTYPE_MOTOR_ID,
-        DEVICE_TYPE_NEO,
-        MODEL_NEO,
-        DEVICE_TYPE_MOTOR);
-    addFallbackCanDevices(
-        FALLBACK_ROBOT_KRAKEN_CAN_IDS,
-        robotLabels,
-        MFG_CTRE_ID,
-        DEVTYPE_MOTOR_ID,
-        DEVICE_TYPE_KRAKEN,
-        MODEL_KRAKEN,
-        DEVICE_TYPE_MOTOR);
-    addFallbackCanDevices(
-        FALLBACK_ROBOT_CANCODER_CAN_IDS,
-        robotLabels,
-        MFG_CTRE_ID,
-        DEVTYPE_ENCODER_ID,
-        DEVICE_TYPE_CANCODER,
-        null,
-        DEVICE_TYPE_ENCODER_EXTERNAL);
-    addFallbackSingleton(
-        robotLabels,
-        DEVICE_TYPE_PDH,
-        MFG_REV_ID,
-        DEVTYPE_POWER_ID,
-        FALLBACK_PDH_CAN_ID);
-    addFallbackSingleton(
-        robotLabels,
-        DEVICE_TYPE_PIGEON,
-        MFG_CTRE_ID,
-        DEVTYPE_GYRO_ID,
-        FALLBACK_PIGEON_CAN_ID);
-    addFallbackSingleton(
-        robotLabels,
-        DEVICE_TYPE_ROBORIO,
-        MFG_NI_ID,
-        DEVTYPE_ROBORIO_ID,
-        FALLBACK_ROBORIO_CAN_ID);
-    ProfileConfig robotProfile = new ProfileConfig();
-    robotProfile.devices = robotLabels;
-    profiles.put("robot", robotProfile);
-
-    List<String> demoLabels = new ArrayList<>();
-    addFallbackCanDevices(
-        FALLBACK_DEMO_NEO_CAN_IDS,
-        demoLabels,
-        MFG_REV_ID,
-        DEVTYPE_MOTOR_ID,
-        DEVICE_TYPE_NEO,
-        MODEL_NEO,
-        DEVICE_TYPE_MOTOR);
-    addFallbackCanDevices(
-        FALLBACK_DEMO_KRAKEN_CAN_IDS,
-        demoLabels,
-        MFG_CTRE_ID,
-        DEVTYPE_MOTOR_ID,
-        DEVICE_TYPE_KRAKEN,
-        MODEL_KRAKEN,
-        DEVICE_TYPE_MOTOR);
-    addFallbackCanDevices(
-        FALLBACK_DEMO_CANCODER_CAN_IDS,
-        demoLabels,
-        MFG_CTRE_ID,
-        DEVTYPE_ENCODER_ID,
-        DEVICE_TYPE_CANCODER,
-        null,
-        DEVICE_TYPE_ENCODER_EXTERNAL);
-    addFallbackSingleton(
-        demoLabels,
-        DEVICE_TYPE_ROBORIO,
-        MFG_NI_ID,
-        DEVTYPE_ROBORIO_ID,
-        FALLBACK_ROBORIO_CAN_ID);
-    ProfileConfig demoProfile = new ProfileConfig();
-    demoProfile.devices = demoLabels;
-    profiles.put("demo_club", demoProfile);
-
-    List<String> homeLabels = new ArrayList<>();
-    addFallbackSingleton(
-        homeLabels,
-        DEVICE_TYPE_ROBORIO,
-        MFG_NI_ID,
-        DEVTYPE_ROBORIO_ID,
-        FALLBACK_ROBORIO_CAN_ID);
-    ProfileConfig homeProfile = new ProfileConfig();
-    homeProfile.devices = homeLabels;
-    profiles.put("demo_home", homeProfile);
-    profileOrder = new ArrayList<>(profiles.keySet());
-    defaultProfile = DEFAULT_PROFILE_NAME;
-    selectedProfile = defaultProfile;
-    activeProfile = DEFAULT_PROFILE_NAME;
+    defaultProfile = NT_LABEL_EMPTY;
+    selectedProfile = NT_LABEL_EMPTY;
+    activeProfile = NT_LABEL_EMPTY;
     activeProfileApplied = false;
-    List<DeviceDefinition> merged = resolveProfileDevices(profiles.get(DEFAULT_PROFILE_NAME));
-    buildDeviceConfigs(merged);
-    PDH_CAN_ID = resolveSingletonIdByMfgType(merged, MFG_REV_ID, DEVTYPE_POWER_ID);
-    PIGEON_CAN_ID = resolveSingletonIdByMfgType(merged, MFG_CTRE_ID, DEVTYPE_GYRO_ID);
-    ROBORIO_CAN_ID = resolveSingletonIdByMfgType(merged, MFG_NI_ID, DEVTYPE_ROBORIO_ID);
+    PDH_CAN_ID = DISABLED_CAN_ID;
+    PDP_CAN_ID = DISABLED_CAN_ID;
+    PIGEON_CAN_ID = DISABLED_CAN_ID;
+    ROBORIO_CAN_ID = DISABLED_CAN_ID;
+    BringupPrinter.enqueue(MESSAGE_SAFE_MODE_APPLIED);
     bumpActiveProfileGeneration();
-  }
-
-  private static void addFallbackCanDevices(
-      int[] ids,
-      List<String> labels,
-      int manufacturer,
-      int deviceType,
-      String labelPrefix,
-      String model,
-      String type) {
-    if (ids == null) {
-      return;
-    }
-    for (int id : ids) {
-      if (!isEnabledCanId(id)) {
-        continue;
-      }
-      String label = buildFallbackLabel(labelPrefix, id);
-      DeviceDefinition def = buildDeviceDefinition(
-          label,
-          INTERFACE_CAN,
-          manufacturer,
-          deviceType,
-          id,
-          model,
-          type);
-      addToRegistry(def);
-      labels.add(label);
-    }
   }
 
   /**
@@ -2148,7 +2003,7 @@ public final class BringupUtil {
       profileOrder = new ArrayList<>(profiles.keySet());
       String nextDefault = safeText(payload.root.defaultProfile);
       if (nextDefault.isBlank() || !profiles.containsKey(nextDefault)) {
-        nextDefault = profiles.isEmpty() ? DEFAULT_PROFILE_NAME : profileOrder.get(INDEX_ZERO);
+        nextDefault = profiles.isEmpty() ? NT_LABEL_EMPTY : profileOrder.get(INDEX_ZERO);
       }
       defaultProfile = nextDefault;
       if (selectedProfile == null || selectedProfile.isBlank() || !profiles.containsKey(selectedProfile)) {
@@ -2292,61 +2147,6 @@ public final class BringupUtil {
     selectedProfile = resolved;
     activeProfileApplied = true;
     return NT_LABEL_EMPTY;
-  }
-
-  private static void addFallbackSingleton(
-      List<String> labels,
-      String label,
-      int manufacturer,
-      int deviceType,
-      int id) {
-    if (!isEnabledCanId(id)) {
-      return;
-    }
-    DeviceDefinition def = buildDeviceDefinition(
-        label,
-        INTERFACE_CAN,
-        manufacturer,
-        deviceType,
-        id,
-        null,
-        null);
-    addToRegistry(def);
-    labels.add(label);
-  }
-
-  private static String buildFallbackLabel(String prefix, int id) {
-    return prefix + LABEL_SPACE + id;
-  }
-
-  private static DeviceDefinition buildDeviceDefinition(
-      String label,
-      String deviceInterface,
-      int manufacturer,
-      int deviceType,
-      int id,
-      String model,
-      String type) {
-    DeviceDefinition def = new DeviceDefinition();
-    def.label = label;
-    def.deviceInterface = deviceInterface;
-    def.manufacturer = manufacturer;
-    def.deviceType = deviceType;
-    def.id = id;
-    def.model = model;
-    def.type = type;
-    return def;
-  }
-
-  private static void addToRegistry(DeviceDefinition def) {
-    if (def == null) {
-      return;
-    }
-    String label = normalizeKey(def.label);
-    if (label.isEmpty()) {
-      return;
-    }
-    DEVICE_REGISTRY.put(label, def);
   }
 
   /**
