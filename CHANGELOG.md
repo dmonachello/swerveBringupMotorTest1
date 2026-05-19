@@ -2,6 +2,22 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-05-19
+
+### Added - 2026-05-19
+
+- Added regression coverage for topology profile-pick cancel safety so the
+  editor keeps the previous save target when a profile switch is cancelled.
+- Added regression coverage for unified bindings controller validation so bad
+  controller names fail before deploy/save flows.
+
+### Improved - 2026-05-19
+
+- Expanded the maintained topology regression command to include group overlay
+  layout checks alongside topology fixture and topology metadata validation.
+- Expanded the maintained CLI regression command to cover controller-device
+  backed binding creation and validation in the unified config model.
+
 ## 2026-05-18
 
 ### Added - 2026-05-18

@@ -30,6 +30,7 @@ from tools.can_topology.validate_profiles import Reporter, load_profiles_json, v
 TOPOLOGY_FIXTURE_RELATIVE = Path("tests/regression/fixtures/topology_editor_regression_fixture.json")
 
 MODULE_TOPOLOGY_EDITOR_LOAD = "tools.can_topology.tests.test_can_top_editor_profile_load"
+MODULE_GROUP_OVERLAY_LAYOUT = "tools.can_topology.tests.test_group_overlay_layout"
 MODULE_TOPOLOGY_SHOW = "tools.can_nt.tests.test_bridge_cli_topology_show"
 
 LABEL_FIXTURE_VALIDATE = "topology-fixture-validate"
@@ -104,7 +105,13 @@ def _run_regression() -> List[CheckResult]:
     """
     return [
         _validate_topology_fixture(),
-        _run_unit_modules((MODULE_TOPOLOGY_EDITOR_LOAD, MODULE_TOPOLOGY_SHOW)),
+        _run_unit_modules(
+            (
+                MODULE_TOPOLOGY_EDITOR_LOAD,
+                MODULE_GROUP_OVERLAY_LAYOUT,
+                MODULE_TOPOLOGY_SHOW,
+            )
+        ),
     ]
 
 

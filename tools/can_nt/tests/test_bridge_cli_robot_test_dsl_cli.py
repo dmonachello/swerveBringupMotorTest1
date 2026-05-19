@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from tools.can_nt.bridge_cli import BridgeCli, CliMode, MODE_CONFIG
 from tools.can_nt.bridge_session import BridgeEvent
-from tools.can_nt.status import SS__NORMAL, StatusResult
+from tools.can_nt.status import SS__CONFIG__VALID, SS__NORMAL, StatusResult
 
 
 class _FakeSession:
@@ -336,3 +336,45 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
         text = output.getvalue()
         self.assertNotEqual(result.code, SS__NORMAL)
         self.assertIn("Handshake failed: uiHandshake ACK received but no OUT within 1.5s.", text)
+
+    def test_controller_device_backed_binding_workflow_validates_locally(self) -> None:
+        cli = self._build_cli()
+        cli._bindings_payload = {"bindings": [], "axes": []}
+        self.assertEqual(cli._ensure_local_device_entry("driver").code, SS__NORMAL)
+        driver_entry = next(
+            entry
+            for entry in cli._local_root_payload["devices"]
+            if isinstance(entry, dict) and entry.get("label") == "driver"
+        )
+        driver_entry["deviceInterface"] = "USB"
+        driver_entry["type"] = "xboxController"
+
+        add_result = cli._execute_line("bindings binding add runTest driver button A hold")
+
+        self.assertEqual(add_result.code, SS__NORMAL)
+        self.assertIn("driver", cli._local_root_payload["profiles"]["dsl_demo_050426"]["devices"])
+        self.assertTrue(
+            any(
+                isinstance(entry, dict)
+                and entry.get("label") == "driver"
+                and entry.get("deviceInterface") == "USB"
+                and entry.get("type") == "xboxController"
+                for entry in cli._local_root_payload["devices"]
+            )
+        )
+        self.assertIn(
+            {
+                "command": "runTest",
+                "controller": "driver",
+                "input": "button",
+                "id": "A",
+                "mode": "hold",
+            },
+            cli._bindings_payload.get("bindings", []),
+        )
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            validate_result = cli._execute_line("bindings validate")
+        self.assertEqual(validate_result.code, SS__CONFIG__VALID)
+        self.assertIn("config is valid", output.getvalue().lower())

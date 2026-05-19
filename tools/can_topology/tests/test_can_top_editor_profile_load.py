@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 from tools.can_topology.can_top_editor import TopologyEditor
 from tools.can_topology.can_top_models import INTERFACE_CAN, INTERFACE_DIO, Node
@@ -15,7 +16,29 @@ class _StringVarStub:
     def __init__(self) -> None:
         self.value = ""
 
+    def get(self) -> str:
+        return self.value
+
     def set(self, value: str) -> None:
+        self.value = value
+
+
+class _EntryStub:
+    """
+    NAME
+        _EntryStub - Minimal editable text entry stand-in for headless tests.
+    """
+
+    def __init__(self, value: str = "") -> None:
+        self.value = value
+
+    def get(self) -> str:
+        return self.value
+
+    def delete(self, _start: int, _end: object = None) -> None:
+        self.value = ""
+
+    def insert(self, _index: int, value: str) -> None:
         self.value = value
 
 
@@ -156,6 +179,21 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
         self.assertTrue(editor._neighbors_dirty)
         self.assertEqual(editor._neighbor_status_var.value, "Neighbors: stale")
+
+    def test_profile_pick_cancel_restores_previous_save_target(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor._profile_name = "dsl_demo_050426"
+        editor._profile_source_path = ""
+        editor._profile_pick_var = _StringVarStub()
+        editor._profile_pick_var.set("robot_2026_swerve")
+        editor.entry_profile = _EntryStub("dsl_demo_050426")
+        editor._default_profiles_path = lambda: Path("src/main/deploy/bringup_system.json")
+        editor._load_profile_from_path = lambda *args, **kwargs: None
+
+        editor._on_profile_pick(None)
+
+        self.assertEqual("dsl_demo_050426", editor.entry_profile.get())
+        self.assertEqual("dsl_demo_050426", editor._profile_pick_var.value)
 
 
 if __name__ == "__main__":

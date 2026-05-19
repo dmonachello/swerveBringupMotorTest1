@@ -23,13 +23,16 @@
       "features": [
         "dsl cli import/validate/show",
         "controller device config",
+        "controller binding workflow",
+        "unified bindings schema validation",
         "connected command dispatch"
       ],
       "argv": [
         "{python}",
         "-m",
         "unittest",
-        "tools.can_nt.tests.test_bridge_cli_robot_test_dsl_cli"
+        "tools.can_nt.tests.test_bridge_cli_robot_test_dsl_cli",
+        "tools.config.tests.test_schema_store_bindings"
       ]
     },
     "java-unit": {
@@ -91,6 +94,8 @@
       "mode": "local",
       "features": [
         "topology editor profile load",
+        "profile picker cancel safety",
+        "group overlay layout",
         "topology show metadata",
         "topology fixture validation"
       ],
