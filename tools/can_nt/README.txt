@@ -10,7 +10,7 @@ What this is
 
 Folder contents
 - can_nt_bridge.py        Main program (run this)
-- can_profiles.py         Profile device tables loaded from data/bringup_system.json (canonical)
+- can_profiles.py         Profile device tables loaded from src/main/deploy/bringup_system.json
 - can_analyzer.py         Tracks arbitration IDs: rates, stale/missing, changing bytes
 - can_logging.py          PCAP/PCAPNG logging wrapper
 - can_nt_publish.py       NetworkTables publishing helpers

@@ -25,11 +25,14 @@ import java.util.Set;
  *   BindingsManager - Load and evaluate controller bindings.
  *
  * DESCRIPTION
- *   Parses bringup_bindings.json and provides runtime sampling of buttons
- *   and axes into named commands.
+ *   Parses the unified bringup_system.json bindings subtree and provides
+ *   runtime sampling of buttons and axes into named commands.
  */
 public final class BindingsManager {
-  private static final String BINDINGS_FILE = "bringup_bindings.json";
+  private static final String BINDINGS_FILE = "bringup_system.json";
+  private static final String JSON_KEY_BINDINGS_ROOT = "bindings";
+  private static final String JSON_KEY_BINDINGS = "bindings";
+  private static final String JSON_KEY_AXES = "axes";
   private static final String JSON_KEY_INPUT_ALIASES = "inputAliases";
   private static final Gson GSON = new Gson();
 
@@ -224,72 +227,32 @@ public final class BindingsManager {
     axes.clear();
     Path path = resolvePath();
     if (path == null || !Files.exists(path)) {
-      loadDefaultBindings();
+      inputAliases = new HashMap<>();
       return;
     }
     try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-      BindingRoot root = GSON.fromJson(reader, BindingRoot.class);
-      if (root == null) {
-        loadDefaultBindings();
+      UnifiedRoot root = GSON.fromJson(reader, UnifiedRoot.class);
+      if (root == null || root.bindings == null) {
+        inputAliases = new HashMap<>();
         return;
       }
-      if (root.bindings != null) {
-        bindings.addAll(root.bindings);
+      if (root.bindings.bindings != null) {
+        bindings.addAll(root.bindings.bindings);
       }
-      if (root.axes != null) {
-        axes.addAll(root.axes);
+      if (root.bindings.axes != null) {
+        axes.addAll(root.bindings.axes);
       }
-      if (root.inputAliases != null) {
-        inputAliases = new HashMap<>(root.inputAliases);
+      if (root.bindings.inputAliases != null) {
+        inputAliases = new HashMap<>(root.bindings.inputAliases);
       } else {
         inputAliases = new HashMap<>();
       }
-      if (bindings.isEmpty() && axes.isEmpty()) {
-        loadDefaultBindings();
-      }
       validateBindings();
     } catch (IOException | JsonParseException ex) {
-      loadDefaultBindings();
+      bindings.clear();
+      axes.clear();
+      inputAliases = new HashMap<>();
     }
-  }
-
-  private void loadDefaultBindings() {
-    bindings.clear();
-    axes.clear();
-    inputAliases = new HashMap<>();
-
-    bindings.add(BindingSpec.edge("addMotor", "controller0", "button", "A"));
-    bindings.add(BindingSpec.edge("addAll", "controller0", "button", "START"));
-    bindings.add(BindingSpec.edge("printState", "controller0", "button", "B"));
-    bindings.add(BindingSpec.edge("printHealth", "controller0", "dpad", "LEFT"));
-    bindings.add(BindingSpec.edge("printCANcoder", "controller0", "button", "RB"));
-    bindings.add(BindingSpec.edge("printNTdiag", "controller0", "dpad", "DOWN"));
-    bindings.add(BindingSpec.edge("printCANdiag", "controller0", "dpad", "UP"));
-    bindings.add(BindingSpec.edge("printInputs", "controller0", "dpad", "RIGHT"));
-    bindings.add(BindingSpec.edge("printBindings", "controller0", "button", "LB"));
-    bindings.add(BindingSpec.edge("printTestsInfo", "controller0", "combo", "LB+RB"));
-    bindings.add(BindingSpec.edge("printTestsOverview", "controller0", "button", "LS"));
-    bindings.add(BindingSpec.edge("clearFaults", "controller0", "button", "RS"));
-    bindings.add(BindingSpec.edge("dumpReport", "controller0", "button", "X"));
-    bindings.add(BindingSpec.edge("toggleDashboard", "controller0", "button", "Y"));
-    bindings.add(BindingSpec.edge("profileToggle", "controller0", "button", "BACK"));
-
-    bindings.add(BindingSpec.edge("canSweep", "controller1", "button", "Y"));
-
-    bindings.add(BindingSpec.edge("selectTestPrev", "controller1", "button", "LB"));
-    bindings.add(BindingSpec.edge("selectTestNext", "controller1", "button", "RB"));
-    bindings.add(BindingSpec.edge("toggleTest", "controller1", "button", "X"));
-    bindings.add(BindingSpec.hold("runTest", "controller1", "button", "A"));
-    bindings.add(BindingSpec.edge("runAllTests", "controller1", "button", "B"));
-    bindings.add(BindingSpec.edge("printNextTest", "controller1", "button", "START"));
-
-    bindings.add(BindingSpec.hold("fixedSpeed25", "controller1", "dpad", "UP"));
-    bindings.add(BindingSpec.hold("fixedSpeed50", "controller1", "dpad", "RIGHT"));
-    bindings.add(BindingSpec.hold("fixedSpeed75", "controller1", "dpad", "DOWN"));
-    bindings.add(BindingSpec.hold("fixedSpeed100", "controller1", "dpad", "LEFT"));
-
-    axes.add(AxisSpec.axis("leftDrive", "controller0", "leftY", true, 0.12));
-    axes.add(AxisSpec.axis("rightDrive", "controller0", "rightY", true, 0.12));
   }
 
   private void validateBindings() {
@@ -488,8 +451,15 @@ public final class BindingsManager {
     }
   }
 
+  private static final class UnifiedRoot {
+    @com.google.gson.annotations.SerializedName(JSON_KEY_BINDINGS_ROOT)
+    BindingRoot bindings;
+  }
+
   private static final class BindingRoot {
+    @com.google.gson.annotations.SerializedName(JSON_KEY_BINDINGS)
     List<BindingSpec> bindings = Collections.emptyList();
+    @com.google.gson.annotations.SerializedName(JSON_KEY_AXES)
     List<AxisSpec> axes = Collections.emptyList();
     @com.google.gson.annotations.SerializedName(JSON_KEY_INPUT_ALIASES)
     Map<String, String> inputAliases = Collections.emptyMap();

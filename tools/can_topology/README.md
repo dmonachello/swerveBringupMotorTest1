@@ -47,9 +47,9 @@ Purpose: Describe the shortest path from sketch to JSON.
 3. Set the profile name (dropdown lists profiles from the loaded file).
 4. File -> Save Profile As...
 5. File -> Save Selection As... writes only selected nodes/callouts.
-6. Or use File -> `Save to Deploy` to append/replace in `data/bringup_system.json` and sync to deploy.
+6. Or use File -> `Save to Deploy` to append/replace in `src/main/deploy/bringup_system.json`.
 7. Save Selection As... never overwrites an existing file; it auto-suffixes `_1`, `_2`, etc.
-8. File -> `Reload Canonical` reloads `data/bringup_system.json` into the editor.
+8. File -> `Reload Canonical` reloads `src/main/deploy/bringup_system.json` into the editor.
 9. Profiles menu: Import Profile... (external file -> canonical, with diagram metadata if present).
 10. Profiles menu: Export Profile... (single profile to external file).
 11. Profiles menu: Rename Profile... (non-default only).
@@ -69,7 +69,7 @@ Purpose: Show fields not displayed on the boxes.
 
 ## Auto-Load
 Purpose: Start with your existing profile if present.
-- On startup, the editor reads `data/bringup_system.json` (canonical) and loads its
+- On startup, the editor reads `src/main/deploy/bringup_system.json` and loads its
   `default_profile` automatically.
 - Use File -> Open Profile... to pick a different profile.
 - If `data_hash` is missing or mismatched, the editor can still open the file for repair.

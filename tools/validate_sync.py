@@ -11,7 +11,7 @@ DESCRIPTION
     Provides a single "validate + sync" gate for device configuration and tests.
 
     Validates the canonical unified config:
-      data/bringup_system.json
+      src/main/deploy/bringup_system.json
 
     Validation covers:
     - Schema version and required root fields.
@@ -23,7 +23,7 @@ DESCRIPTION
     - data_hash
 
     Then writes both:
-    - data/bringup_system.json (canonical)
+    - src/main/deploy/bringup_system.json (unified)
     - src/main/deploy/bringup_system.json (deploy copy)
 
 SIDE EFFECTS

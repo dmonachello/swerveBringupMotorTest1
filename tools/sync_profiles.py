@@ -12,7 +12,7 @@ DESCRIPTION
     the roboRIO deploy folder so the Java code can load it on the robot.
 
 PARAMETERS
-    --source: Path to canonical bringup_system.json (default: data/bringup_system.json).
+    --source: Path to unified bringup_system.json (default: src/main/deploy/bringup_system.json).
     --dest: Path to deploy bringup_system.json (default: src/main/deploy/bringup_system.json).
 
 SIDE EFFECTS

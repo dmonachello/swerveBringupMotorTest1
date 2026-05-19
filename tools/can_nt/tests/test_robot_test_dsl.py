@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 from tools.common.robot_test_dsl import (
@@ -15,6 +16,42 @@ from tools.common.robot_test_dsl import (
 
 
 class RobotTestDslTests(unittest.TestCase):
+    def test_generated_signal_catalog_lists_expected_device_types(self) -> None:
+        signals_path = Path("tools/common/generated/robot_test_dsl_signals.json")
+        payload = json.loads(signals_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            {"motor", "limitSwitch", "encoderExternal", "xboxController", "TestTimer"},
+            set(payload["deviceTypes"].keys()),
+        )
+
+    def test_generated_xbox_signal_catalog_lists_full_surface(self) -> None:
+        signals_path = Path("tools/common/generated/robot_test_dsl_signals.json")
+        payload = json.loads(signals_path.read_text(encoding="utf-8"))
+        xbox_signals = payload["deviceTypes"]["xboxController"]
+        expected = {
+            "A",
+            "B",
+            "X",
+            "Y",
+            "LB",
+            "RB",
+            "BACK",
+            "START",
+            "LS",
+            "RS",
+            "D_UP",
+            "D_RIGHT",
+            "D_DOWN",
+            "D_LEFT",
+            "leftX",
+            "leftY",
+            "rightX",
+            "rightY",
+            "leftTrigger",
+            "rightTrigger",
+        }
+        self.assertTrue(expected.issubset(set(xbox_signals.keys())))
+
     def test_compile_source(self) -> None:
         normalized = compile_source(
             "spin",

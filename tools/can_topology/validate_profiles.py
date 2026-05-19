@@ -30,6 +30,7 @@ from tools.common.profile_constants import (
     INTERFACE_CAN,
     INTERFACE_DIO,
     INTERFACE_INTERNAL,
+    INTERFACE_TOPOLOGY,
     INTERFACE_PWM,
     KEY_ATTACHMENTS,
     KEY_DATA_HASH,
@@ -286,6 +287,8 @@ def validate_device_registry(
                 errors.append(msg)
                 reporter.fail(msg)
         elif interface == INTERFACE_INTERNAL:
+            pass
+        elif interface == INTERFACE_TOPOLOGY:
             pass
 
     for entry in devices:

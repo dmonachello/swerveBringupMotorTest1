@@ -251,7 +251,52 @@ public interface DeviceUnit extends HasRegistrationHeader {
    * RETURNS
    *   Signal value, or null when unsupported or unavailable.
    */
-  default Object readDslSignal(String signalName) {
-    return null;
-  }
+  Object readDslSignal(String signalName);
+
+  /**
+   * NAME
+   *   writeDslSignal
+   *
+   * SYNOPSIS
+   * Apply a writable DSL signal target on this device.
+   *
+   * PARAMETERS
+   *   signalName - DSL signal name.
+   *   value - Numeric value to apply.
+   *
+   * RETURNS
+   *   True when the signal is supported and the value was applied.
+   */
+  boolean writeDslSignal(String signalName, double value);
+
+  /**
+   * NAME
+   *   clearDslSignal
+   *
+   * SYNOPSIS
+   * Clear a clearable DSL signal on this device.
+   *
+   * PARAMETERS
+   *   signalName - DSL signal name.
+   *
+   * RETURNS
+   *   True when the signal is supported and the clear was applied.
+   */
+  boolean clearDslSignal(String signalName);
+
+  /**
+   * NAME
+   *   isDslWritableValueInRange
+   *
+   * SYNOPSIS
+   * Validate a numeric write value for a DSL signal before applying it.
+   *
+   * PARAMETERS
+   *   signalName - DSL signal name.
+   *   value - Numeric value to validate.
+   *
+   * RETURNS
+   *   True when the value is acceptable for the writable signal.
+   */
+  boolean isDslWritableValueInRange(String signalName, double value);
 }

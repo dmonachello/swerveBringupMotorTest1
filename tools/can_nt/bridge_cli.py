@@ -225,6 +225,7 @@ from tools.common.profile_constants import (
     KEY_VERSION,
     KEY_ID,
     KEY_INTERFACE,
+    KEY_INPUT_ALIASES,
     KEY_INVERT,
     KEY_LABEL,
     KEY_LIMITS,
@@ -242,7 +243,9 @@ from tools.common.profile_constants import (
     INTERFACE_CAN,
     INTERFACE_DIO,
     INTERFACE_INTERNAL,
+    INTERFACE_TOPOLOGY,
     INTERFACE_PWM,
+    INTERFACE_USB,
     KEY_ATTACHMENTS,
     KEY_BUS,
     KEY_TERMINATOR,
@@ -260,6 +263,8 @@ from tools.common.profile_constants import (
     KEY_LINK_NEIGHBOR,
     KEY_LINK_NEIGHBOR_PORT,
     KEY_NODE_KEY,
+    KEY_PORT,
+    TYPE_XBOX_CONTROLLER,
     get_device_interface,
 )
 from tools.common.robot_test_dsl import (
@@ -299,6 +304,12 @@ from tools.common.test_authoring import (
     validate_test_name,
 )
 from tools.common.test_authoring.device_catalog import load_controller_names, load_profile_devices
+from tools.common.topology_parse import (
+    parse_diagram_neighbor_links,
+    parse_diagram_neighbor_ports,
+    parse_diagram_nodes,
+    topology_profile_from_payload,
+)
 from tools.common.time_utils import timestamp_version
 from tools.common.app_versions import (
     APP_BRIDGE_CLI_NAME,
@@ -1034,7 +1045,7 @@ MESSAGE_DIRTY_PROMPT = "Unsaved changes in: {items}. Exit anyway?"
 MESSAGE_ERR_DEVICE_LABEL_REQUIRED = "ERROR: device name required."
 MESSAGE_ERR_DEVICE_PROFILE_REQUIRED = "ERROR: Profile not selected. Use 'profile <profile>'."
 MESSAGE_ERR_DEVICE_INTERFACE_INVALID = (
-    "ERROR: deviceInterface must be CAN, DIO, PWM, ANALOG, or INTERNAL."
+    "ERROR: deviceInterface must be CAN, DIO, PWM, ANALOG, INTERNAL, or TOPOLOGY."
 )
 MESSAGE_ERR_DEVICE_FIELD_UNKNOWN = "ERROR: device set field not supported."
 MESSAGE_ERR_DEVICE_FIELD_INT = "ERROR: device set value must be an integer."
@@ -1059,9 +1070,9 @@ MESSAGE_ERR_BINDINGS_SUBCOMMAND = (
     "ERROR: bindings <show|controller|binding|axis|load|save|validate>"
 )
 MESSAGE_ERR_BINDINGS_SHOW = "ERROR: bindings show [controllers|bindings|axes] [--json] [--pretty]"
-MESSAGE_ERR_BINDINGS_CONTROLLER_ADD = "ERROR: bindings controller add <controller> <type> <port>"
-MESSAGE_ERR_BINDINGS_CONTROLLER_SET = "ERROR: bindings controller set <controller> <field> <value>"
-MESSAGE_ERR_BINDINGS_CONTROLLER_RENAME = "ERROR: bindings controller rename <old> <new>"
+MESSAGE_ERR_BINDINGS_CONTROLLER_ADD = "ERROR: controller definitions live in bringup_system.json device entries."
+MESSAGE_ERR_BINDINGS_CONTROLLER_SET = "ERROR: controller definitions live in bringup_system.json device entries."
+MESSAGE_ERR_BINDINGS_CONTROLLER_RENAME = "ERROR: controller definitions live in bringup_system.json device entries."
 MESSAGE_ERR_BINDINGS_CONTROLLER_DELETE = "ERROR: bindings no controller <controller>"
 MESSAGE_ERR_BINDINGS_CONTROLLER_PORT = "ERROR: controller port must be an integer."
 MESSAGE_ERR_BINDINGS_CONTROLLER_EXISTS = "ERROR: controller already exists."
@@ -1127,11 +1138,11 @@ MESSAGE_TESTS_TEMPLATE_ENTRY = "  {name}"
 MESSAGE_TESTS_CLEARED = "Tests cleared."
 MESSAGE_TIP_UNSAVED = "You have unsaved changes. Use `save profiles ...` or `save sources` to save."
 MESSAGE_ERR_TESTS_EDIT_MODE = "ERROR: tests templates/clear not allowed in test edit mode. Use `exit` or `end` first."
-MESSAGE_SAVE_ALL_PROFILES_MISSING = "ERROR: No profiles destination set. Fix: save profiles data/bringup_system.json"
+MESSAGE_SAVE_ALL_PROFILES_MISSING = "ERROR: No profiles destination set. Fix: save profiles src/main/deploy/bringup_system.json"
 MESSAGE_SAVE_PROFILES_PATH_REQUIRED = "ERROR: No profiles path set. Fix: save profiles <path>."
 MESSAGE_SAVE_PROFILES_CONFIRM = "Save profiles to {path}?"
 MESSAGE_SAVE_ALL_BINDINGS_MISSING = (
-    "ERROR: No bindings destination set. Fix: bindings save src/main/deploy/bringup_bindings.json"
+    "ERROR: No bindings destination set. Fix: bindings save src/main/deploy/bringup_system.json"
 )
 MESSAGE_SAVE_ALL_MAPPINGS_MISSING = (
     "ERROR: No mappings destination set. Fix: can-mappings save src/main/deploy/can_mappings.json"
@@ -1446,7 +1457,7 @@ HELP_CONFIG_PUSH_TEXT = (
 HELP_TOPIC_RESET_ZERO_CONFIG = "reset zero-config"
 HELP_RESET_ZERO_CONFIG_TEXT = (
     "reset zero-config [--yes] [--clear-memory]\n"
-    "  Delete data/bringup_system.json and src/main/deploy/bringup_system.json.\n"
+    "  Delete src/main/deploy/bringup_system.json.\n"
     "  Prompts for y/N unless --yes is provided.\n"
     "  Use --clear-memory to also clear in-memory local config/tests/groups."
 )
@@ -1537,6 +1548,7 @@ DEVICE_INTERFACE_ALLOWED = {
     INTERFACE_PWM,
     INTERFACE_ANALOG,
     INTERFACE_INTERNAL,
+    INTERFACE_TOPOLOGY,
 }
 
 DEVICE_FIELDS_PROFILE = {
@@ -1587,6 +1599,7 @@ DEVICE_REQUIRED_DIO = (FIELD_DEVICE_INTERFACE, FIELD_DIO, FIELD_INVERT)
 DEVICE_REQUIRED_PWM = (FIELD_DEVICE_INTERFACE, FIELD_PWM)
 DEVICE_REQUIRED_ANALOG = (FIELD_DEVICE_INTERFACE, FIELD_ANALOG)
 DEVICE_REQUIRED_INTERNAL = (FIELD_DEVICE_INTERFACE,)
+DEVICE_REQUIRED_TOPOLOGY = (FIELD_DEVICE_INTERFACE, FIELD_TYPE)
 
 TEST_TYPE_JOYSTICK = "joystick"
 TEST_TYPE_BUTTON = "button"
@@ -1631,9 +1644,9 @@ LIMIT_SWITCH_DEFAULT = {
 DEVICE_JOIN_SEPARATOR = ", "
 
 BINDINGS_EMPTY_PAYLOAD = {
-    KEY_CONTROLLERS: [],
     KEY_BINDINGS: [],
     KEY_AXES: [],
+    KEY_INPUT_ALIASES: {},
 }
 BINDINGS_SHOW_CONTROLLERS = "controllers"
 BINDINGS_SHOW_BINDINGS = "bindings"
@@ -2474,6 +2487,7 @@ class BridgeCli:
                 KEY_PROFILES: {},
                 KEY_DEVICES: [],
                 KEY_DIAGRAM: {KEY_DIAGRAM_PROFILES: {}},
+                KEY_BINDINGS: deepcopy(BINDINGS_EMPTY_PAYLOAD),
             }
             self._local_root_hash = None
             self._local_devices_locked = True
@@ -2611,6 +2625,7 @@ class BridgeCli:
             KEY_PROFILES: {},
             KEY_DEVICES: [],
             KEY_DIAGRAM: {KEY_DIAGRAM_PROFILES: {}},
+            KEY_BINDINGS: deepcopy(BINDINGS_EMPTY_PAYLOAD),
             KEY_DATA_VERSION: timestamp_version(),
         }
         try:
@@ -2635,6 +2650,9 @@ class BridgeCli:
         self._tests_active_set = EMPTY_STRING
         self._tests_device_catalog = {}
         self._tests_duplicate_labels = set()
+        self._bindings_payload = deepcopy(BINDINGS_EMPTY_PAYLOAD)
+        self._bindings_path = root_path
+        self._bindings_dirty = True
         self._sync_store_from_local()
         print(MESSAGE_PROFILES_INIT_OK)
         return StatusResult(code=SS__NORMAL)
@@ -3147,7 +3165,7 @@ class BridgeCli:
                 return (False, f"Test set not found: {active_set}")
             model = TestAuthoringModel(default_test_set=active_set, test_sets={active_set: test_set})
         profile_name = self._tests_profile or self._active_profile_name()
-        controller_names = load_controller_names()
+        controller_names = load_controller_names(payload=self._local_root_payload, profile_name=profile_name)
         result = validate_model(
             model,
             profile_name=profile_name,
@@ -3180,18 +3198,19 @@ class BridgeCli:
         NAME
             validate_bindings_only - Validate bindings payload or file.
         """
-        payload = self._bindings_payload
+        payload = self._bindings_payload or deepcopy(BINDINGS_EMPTY_PAYLOAD)
         if path:
             try:
                 payload = read_json(Path(path))
             except Exception:
                 return (False, MESSAGE_VALIDATE_BINDINGS_LOAD.format(path=path))
-        self._store.set_bindings_payload(payload or {})
-        result = self._store.validate_bindings_only(strict=True)
-        errors = [issue for issue in result.errors() if issue.location == LOCATION_BINDINGS]
+            if isinstance(payload, dict) and isinstance(payload.get(KEY_BINDINGS), dict):
+                payload = payload.get(KEY_BINDINGS)
+        if not isinstance(payload, dict):
+            return (False, MESSAGE_VALIDATE_BINDINGS_LOAD.format(path=path or EMPTY_STRING))
+        errors = self._validate_bindings_payload(payload)
         if errors:
-            message = self._format_store_errors(errors)
-            return (False, message)
+            return (False, SEP_NEWLINE.join(sorted(set(errors))))
         return (True, MESSAGE_VALIDATE_OK)
 
     def validate_mappings_only(self, path: Optional[str]) -> tuple[bool, str]:
@@ -4322,7 +4341,7 @@ class BridgeCli:
             _input_source_values - Enumerate controller.inputSource values.
         """
 
-        controllers = sorted(load_controller_names(self._bindings_path))
+        controllers = sorted(self._controller_names())
         inputs = sorted(AXIS_INPUTS | BUTTON_INPUTS)
         if not controllers or not inputs:
             return [MESSAGE_NO_KNOWN_VALUES]
@@ -5141,7 +5160,7 @@ class BridgeCli:
     def _ensure_bindings_loaded(self) -> bool:
         """
         NAME
-            _ensure_bindings_loaded - Load bringup_bindings.json if needed.
+            _ensure_bindings_loaded - Load unified bindings config if needed.
         """
 
         if isinstance(self._bindings_payload, dict):
@@ -5163,14 +5182,18 @@ class BridgeCli:
                 print(MESSAGE_ERR_BINDINGS_LOAD.format(path=path))
                 return StatusResult(code=SS__CONFIG__INVALID)
             if isinstance(loaded, dict):
-                payload.update(loaded)
-        payload[KEY_CONTROLLERS] = (
-            payload.get(KEY_CONTROLLERS) if isinstance(payload.get(KEY_CONTROLLERS), list) else []
-        )
+                bindings_root = loaded.get(KEY_BINDINGS)
+                if isinstance(bindings_root, dict):
+                    payload.update(bindings_root)
+                else:
+                    payload.update(loaded)
         payload[KEY_BINDINGS] = (
             payload.get(KEY_BINDINGS) if isinstance(payload.get(KEY_BINDINGS), list) else []
         )
         payload[KEY_AXES] = payload.get(KEY_AXES) if isinstance(payload.get(KEY_AXES), list) else []
+        payload[KEY_INPUT_ALIASES] = (
+            payload.get(KEY_INPUT_ALIASES) if isinstance(payload.get(KEY_INPUT_ALIASES), dict) else {}
+        )
         self._bindings_payload = payload
         self._bindings_path = path
         self._bindings_dirty = False
@@ -5188,11 +5211,32 @@ class BridgeCli:
         if not isinstance(self._bindings_payload, dict):
             print(MESSAGE_ERR_BINDINGS_LOAD.format(path=path))
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        payload = {
-            KEY_CONTROLLERS: self._bindings_payload.get(KEY_CONTROLLERS, []),
+        bindings_payload = {
             KEY_BINDINGS: self._bindings_payload.get(KEY_BINDINGS, []),
             KEY_AXES: self._bindings_payload.get(KEY_AXES, []),
+            KEY_INPUT_ALIASES: self._bindings_payload.get(KEY_INPUT_ALIASES, {}),
         }
+        payload: Dict[str, object]
+        if (
+            isinstance(self._local_root_payload, dict)
+            and self._local_root_path is not None
+            and path.resolve() == self._local_root_path.resolve()
+        ):
+            payload = deepcopy(self._local_root_payload)
+        else:
+            payload = {}
+            if path.exists():
+                try:
+                    loaded = read_json(path)
+                except Exception:
+                    loaded = {}
+                if isinstance(loaded, dict):
+                    payload = loaded
+        payload[KEY_BINDINGS] = bindings_payload
+        if isinstance(self._local_root_payload, dict) and (
+            self._local_root_path is not None and path.resolve() == self._local_root_path.resolve()
+        ):
+            self._local_root_payload[KEY_BINDINGS] = deepcopy(bindings_payload)
         ok, error = self._atomic_write_json(
             path,
             payload,
@@ -5233,7 +5277,7 @@ class BridgeCli:
         if not ok:
             return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
         target = cleaned[COUNT_ZERO].lower() if cleaned else EMPTY_STRING
-        controllers = self._bindings_payload.get(KEY_CONTROLLERS, [])
+        controllers = self._controller_device_entries()
         bindings = self._bindings_payload.get(KEY_BINDINGS, [])
         axes = self._bindings_payload.get(KEY_AXES, [])
         print(MESSAGE_SOURCE_LOCAL)
@@ -5275,8 +5319,8 @@ class BridgeCli:
         for entry in controllers:
             if not isinstance(entry, dict):
                 continue
-            name = str(entry.get(KEY_NAME, "")).strip()
-            ctrl_type = str(entry.get(FIELD_TYPE, "")).strip()
+            name = str(entry.get(KEY_LABEL, "")).strip()
+            ctrl_type = str(entry.get(KEY_TYPE, "")).strip()
             port = entry.get(KEY_PORT)
             if name:
                 print(MESSAGE_BINDINGS_CONTROLLER_FMT.format(name=name, type=ctrl_type, port=port))
@@ -5320,84 +5364,20 @@ class BridgeCli:
     def _bindings_controller_command(self, tokens: List[str]) -> StatusResult:
         """
         NAME
-            _bindings_controller_command - Edit controller entries.
+            _bindings_controller_command - Reject controller-registry edits.
         """
-
-        if not tokens:
-            print(MESSAGE_ERR_BINDINGS_CONTROLLER_SET)
-            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        action = tokens[COUNT_ZERO].lower()
-        controllers = self._bindings_payload.get(KEY_CONTROLLERS, []) if self._bindings_payload else []
-        if action == CMD_ADD:
-            if len(tokens) < COUNT_FOUR:
-                print(MESSAGE_ERR_BINDINGS_CONTROLLER_ADD)
-                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-            name = tokens[COUNT_ONE].strip()
-            ctrl_type = tokens[COUNT_TWO].strip()
-            try:
-                port = int(tokens[COUNT_THREE])
-            except ValueError:
-                print(MESSAGE_ERR_BINDINGS_CONTROLLER_PORT)
-                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            if self._bindings_find_controller(name, controllers):
-                print(MESSAGE_ERR_BINDINGS_CONTROLLER_EXISTS)
-                return StatusResult(code=SS__INPUT_BINDING__INVALID)
-            controllers.append({KEY_NAME: name, FIELD_TYPE: ctrl_type, KEY_PORT: port})
-            self._bindings_payload[KEY_CONTROLLERS] = controllers
-            self._bindings_dirty = True
-            return StatusResult(code=SS__NORMAL)
-        if action == CMD_SET:
-            if len(tokens) < COUNT_FOUR:
-                print(MESSAGE_ERR_BINDINGS_CONTROLLER_SET)
-                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-            name = tokens[COUNT_ONE].strip()
-            field = tokens[COUNT_TWO].strip()
-            value = " ".join(tokens[COUNT_THREE:]).strip()
-            entry = self._bindings_find_controller(name, controllers)
-            if not entry:
-                print(MESSAGE_ERR_BINDINGS_CONTROLLER_NOT_FOUND)
-                return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
-            if field == KEY_NAME:
-                return self._bindings_rename_controller(name, value)
-            if field == FIELD_TYPE:
-                entry[FIELD_TYPE] = value
-            elif field == KEY_PORT:
-                try:
-                    entry[KEY_PORT] = int(value)
-                except ValueError:
-                    print(MESSAGE_ERR_BINDINGS_CONTROLLER_PORT)
-                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            else:
-                print(MESSAGE_ERR_BINDINGS_FIELD_UNKNOWN)
-                return StatusResult(code=SS__INPUT_BINDING__INVALID)
-            self._bindings_dirty = True
-            return StatusResult(code=SS__NORMAL)
-        if action == CMD_RENAME:
-            if len(tokens) < COUNT_THREE:
-                print(MESSAGE_ERR_BINDINGS_CONTROLLER_RENAME)
-                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-            return self._bindings_rename_controller(tokens[COUNT_ONE], tokens[COUNT_TWO])
-        print(MESSAGE_ERR_BINDINGS_SUBCOMMAND)
-        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+        _ = tokens
+        print("ERROR: controller definitions live in bringup_system.json device entries.")
+        return StatusResult(code=SS__EXECUTOR__NOT_SUPPORTED)
 
     def _bindings_delete_controller(self, name: str) -> StatusResult:
         """
         NAME
             _bindings_delete_controller - Remove a controller by name.
         """
-
-        controllers = self._bindings_payload.get(KEY_CONTROLLERS, []) if self._bindings_payload else []
-        entry = self._bindings_find_controller(name, controllers)
-        if not entry:
-            print(MESSAGE_ERR_BINDINGS_CONTROLLER_NOT_FOUND)
-            return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
-        if self._bindings_controller_in_use(name):
-            print(MESSAGE_ERR_BINDINGS_CONTROLLER_IN_USE)
-            return StatusResult(code=SS__INPUT_BINDING__INVALID)
-        controllers.remove(entry)
-        self._bindings_payload[KEY_CONTROLLERS] = controllers
-        self._bindings_dirty = True
-        return StatusResult(code=SS__NORMAL)
+        _ = name
+        print("ERROR: controller definitions live in bringup_system.json device entries.")
+        return StatusResult(code=SS__EXECUTOR__NOT_SUPPORTED)
 
     def _bindings_binding_command(self, tokens: List[str]) -> StatusResult:
         """
@@ -5594,12 +5574,10 @@ class BridgeCli:
             if not isinstance(loaded, dict):
                 print(MESSAGE_ERR_BINDINGS_VALIDATE.format(message=EMPTY_STRING))
                 return StatusResult(code=SS__CONFIG__INVALID)
-            payload = loaded
-        self._store.set_bindings_payload(payload or {})
-        result = self._store.validate_bindings_only(strict=True)
-        errors = [issue for issue in result.errors() if issue.location == LOCATION_BINDINGS]
+            payload = loaded.get(KEY_BINDINGS) if isinstance(loaded.get(KEY_BINDINGS), dict) else loaded
+        errors = self._validate_bindings_payload(payload or {})
         if errors:
-            message = self._format_store_errors(errors)
+            message = SEP_NEWLINE.join(sorted(set(errors)))
             print(MESSAGE_ERR_BINDINGS_VALIDATE.format(message=message))
             return StatusResult(code=SS__CONFIG__INVALID)
         print(AST_EXEC_SPEC["msg_ok_config"])
@@ -5612,25 +5590,9 @@ class BridgeCli:
         """
 
         errors: List[str] = []
-        controllers = payload.get(KEY_CONTROLLERS, [])
         bindings = payload.get(KEY_BINDINGS, [])
         axes = payload.get(KEY_AXES, [])
-        controller_names: set[str] = set()
-        if isinstance(controllers, list):
-            for entry in controllers:
-                if not isinstance(entry, dict):
-                    errors.append(MESSAGE_ERR_BINDINGS_CONTROLLER_NOT_FOUND)
-                    continue
-                name = str(entry.get(KEY_NAME, "")).strip()
-                ctrl_type = str(entry.get(FIELD_TYPE, "")).strip()
-                port = entry.get(KEY_PORT)
-                if not name or not ctrl_type:
-                    errors.append(MESSAGE_ERR_BINDINGS_CONTROLLER_SET)
-                if name in controller_names:
-                    errors.append(MESSAGE_ERR_BINDINGS_CONTROLLER_EXISTS)
-                controller_names.add(name)
-                if not isinstance(port, int):
-                    errors.append(MESSAGE_ERR_BINDINGS_CONTROLLER_PORT)
+        controller_names = self._controller_names()
         if isinstance(bindings, list):
             for entry in bindings:
                 if not isinstance(entry, dict):
@@ -5667,6 +5629,56 @@ class BridgeCli:
                     errors.append(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=controller))
         return errors
 
+    def _controller_device_entries(self, profile_name: Optional[str] = None) -> List[Dict[str, object]]:
+        """
+        NAME
+            _controller_device_entries - Return active-profile controller device entries.
+        """
+
+        payload = self._local_root_payload
+        if not isinstance(payload, dict):
+            return []
+        profile_name = profile_name or self._active_profile_name()
+        devices = payload.get(KEY_DEVICES)
+        profiles = payload.get(KEY_PROFILES)
+        if not isinstance(devices, list):
+            return []
+        allowed_labels: Optional[set[str]] = None
+        if profile_name and isinstance(profiles, dict):
+            profile_entry = profiles.get(profile_name)
+            if isinstance(profile_entry, dict):
+                labels = profile_entry.get(KEY_PROFILE_DEVICES)
+                if isinstance(labels, list):
+                    allowed_labels = {
+                        str(label).strip().lower()
+                        for label in labels
+                        if isinstance(label, str) and str(label).strip()
+                    }
+        controllers: List[Dict[str, object]] = []
+        for entry in devices:
+            if not isinstance(entry, dict):
+                continue
+            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+            if not label:
+                continue
+            if allowed_labels is not None and label.lower() not in allowed_labels:
+                continue
+            if str(entry.get(KEY_TYPE, EMPTY_STRING)).strip() != TYPE_XBOX_CONTROLLER:
+                continue
+            if str(entry.get(KEY_INTERFACE, EMPTY_STRING)).strip() != INTERFACE_USB:
+                continue
+            controllers.append(dict(entry))
+        return controllers
+
+    def _controller_names(self, profile_name: Optional[str] = None) -> set[str]:
+        """
+        NAME
+            _controller_names - Return configured controller device labels.
+        """
+
+        names = load_controller_names(payload=self._local_root_payload, profile_name=profile_name or self._active_profile_name())
+        return set(names)
+
     def _bindings_find_controller(
         self, name: str, controllers: List[Dict[str, object]]
     ) -> Optional[Dict[str, object]]:
@@ -5688,8 +5700,7 @@ class BridgeCli:
             _bindings_controller_exists - Check for a controller by name.
         """
 
-        controllers = self._bindings_payload.get(KEY_CONTROLLERS, []) if self._bindings_payload else []
-        return self._bindings_find_controller(name, controllers) is not None
+        return name in self._controller_names()
 
     def _bindings_controller_in_use(self, name: str) -> bool:
         """
@@ -5715,23 +5726,9 @@ class BridgeCli:
 
         if old == new:
             return StatusResult(code=SS__INPUT_BINDING__INVALID)
-        controllers = self._bindings_payload.get(KEY_CONTROLLERS, []) if self._bindings_payload else []
-        entry = self._bindings_find_controller(old, controllers)
-        if not entry:
-            print(MESSAGE_ERR_BINDINGS_CONTROLLER_NOT_FOUND)
-            return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
-        if self._bindings_find_controller(new, controllers):
-            print(MESSAGE_ERR_BINDINGS_CONTROLLER_EXISTS)
-            return StatusResult(code=SS__INPUT_BINDING__INVALID)
-        entry[KEY_NAME] = new
-        for binding in self._bindings_payload.get(KEY_BINDINGS, []):
-            if isinstance(binding, dict) and binding.get(KEY_CONTROLLER) == old:
-                binding[KEY_CONTROLLER] = new
-        for axis in self._bindings_payload.get(KEY_AXES, []):
-            if isinstance(axis, dict) and axis.get(KEY_CONTROLLER) == old:
-                axis[KEY_CONTROLLER] = new
-        self._bindings_dirty = True
-        return StatusResult(code=SS__NORMAL)
+        _ = (old, new)
+        print("ERROR: controller definitions live in bringup_system.json device entries.")
+        return StatusResult(code=SS__EXECUTOR__NOT_SUPPORTED)
 
     def _bindings_entry_at(
         self, entries: List[Dict[str, object]], index: int
@@ -6848,7 +6845,7 @@ class BridgeCli:
             validation_ok = True
         model = self._tests_model or TestAuthoringModel()
         profile = self._tests_profile
-        controller_names = load_controller_names()
+        controller_names = load_controller_names(payload=self._local_root_payload, profile_name=profile)
         result = validate_model(
             model,
             profile_name=profile,
@@ -7645,10 +7642,8 @@ class BridgeCli:
             path = Path(tokens[COUNT_TWO]) if len(tokens) >= COUNT_THREE else None
             return self._coerce_status(self._bindings_validate(path))
         if sub == CMD_NO and len(tokens) >= COUNT_THREE and tokens[COUNT_TWO].lower() == CMD_CONTROLLER:
-            if len(tokens) < COUNT_FOUR:
-                print(MESSAGE_ERR_BINDINGS_CONTROLLER_DELETE)
-                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-            return self._coerce_status(self._bindings_delete_controller(tokens[COUNT_THREE]))
+            print("ERROR: controller definitions live in bringup_system.json device entries.")
+            return StatusResult(code=SS__EXECUTOR__NOT_SUPPORTED)
         print(MESSAGE_ERR_BINDINGS_SUBCOMMAND)
         return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
 
@@ -9096,15 +9091,9 @@ class BridgeCli:
         return StatusResult(code=SS__NORMAL)
 
     def _show_controllers(self, json_output: bool, pretty: bool) -> StatusResult:
-        controller_names = sorted(load_controller_names(self._bindings_path))
+        controller_names = sorted(self._controller_names())
         inputs = sorted(AXIS_INPUTS | BUTTON_INPUTS)
-        declared: List[Dict[str, object]] = []
-        if isinstance(self._bindings_payload, dict):
-            controllers = self._bindings_payload.get(KEY_CONTROLLERS)
-            if isinstance(controllers, list):
-                for entry in controllers:
-                    if isinstance(entry, dict):
-                        declared.append(dict(entry))
+        declared = self._controller_device_entries()
         payload = {"controllers": controller_names, "declared": declared, "inputs": inputs}
         if json_output:
             print(self._dump_json(payload, pretty))
@@ -9115,8 +9104,8 @@ class BridgeCli:
         if declared:
             print("Declared controllers:")
             for entry in declared:
-                name = entry.get(KEY_NAME)
-                ctrl_type = entry.get(FIELD_TYPE)
+                name = entry.get(KEY_LABEL)
+                ctrl_type = entry.get(KEY_TYPE)
                 port = entry.get(KEY_PORT)
                 print(f"  {name} type={ctrl_type} port={port}")
         print("Inputs:")
@@ -9614,10 +9603,7 @@ class BridgeCli:
             "validate script": "validate script <path>\n  Lint a CLI script without executing it.",
             "bindings": (
                 "bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]\n"
-                "bindings controller add <controller> <type> <port>\n"
-                "bindings controller set <controller> <field> <value>\n"
-                "bindings controller rename <old> <new>\n"
-                "bindings no controller <controller>\n"
+                "bindings controller ... (removed; define controller devices in bringup_system.json)\n"
                 "bindings binding add <command> <controller> <input> <id> <mode>\n"
                 "bindings binding set <index> <field> <value>\n"
                 "bindings binding delete <index>\n"
@@ -10131,7 +10117,7 @@ class BridgeCli:
                 if not isinstance(global_payload, dict):
                     lines.append(MESSAGE_BINDINGS_GLOBAL_UNAVAILABLE)
                 else:
-                    controllers = global_payload.get(KEY_CONTROLLERS, [])
+                    controllers = self._controller_device_entries()
                     bindings = global_payload.get(KEY_BINDINGS, [])
                     axes = global_payload.get(KEY_AXES, [])
                     lines.append(MESSAGE_BINDINGS_CONTROLLERS_HEADER)
@@ -10141,7 +10127,7 @@ class BridgeCli:
                         for entry in controllers:
                             if not isinstance(entry, dict):
                                 continue
-                            name = str(entry.get(KEY_NAME, "")).strip()
+                            name = str(entry.get(KEY_LABEL, "")).strip()
                             ctrl_type = str(entry.get(FIELD_TYPE, "")).strip()
                             port = entry.get(KEY_PORT)
                             if name:
@@ -10187,9 +10173,7 @@ class BridgeCli:
                 payload_json = dict(payload)
                 payload_json[KEY_GLOBAL_BINDINGS] = (
                     {
-                        KEY_CONTROLLERS: global_payload.get(KEY_CONTROLLERS, [])
-                        if isinstance(global_payload, dict)
-                        else [],
+                        KEY_CONTROLLERS: self._controller_device_entries(),
                         KEY_BINDINGS: global_payload.get(KEY_BINDINGS, [])
                         if isinstance(global_payload, dict)
                         else [],
@@ -11403,10 +11387,10 @@ class BridgeCli:
         profile = self._active_profile_name()
         if not profile:
             return {}
-        diagram = self._diagram_for_profile(profile)
+        diagram, canonical = self._topology_view_for_profile(profile)
         if not diagram:
             return {}
-        nodes = diagram.get("nodes")
+        nodes = parse_diagram_nodes(diagram) if canonical else diagram.get("nodes")
         if not isinstance(nodes, list):
             return {}
         node_by_key: Dict[int, Dict[str, object]] = {}
@@ -11432,38 +11416,50 @@ class BridgeCli:
             "row": target_node.get("row"),
             "x": target_node.get("x"),
         }
-        neighbor_links = self._device_neighbor_links(diagram, node_key, node_by_key)
-        neighbor_ports = self._device_neighbor_ports(diagram, node_key, node_by_key)
+        neighbor_links = self._device_neighbor_links(diagram, node_key, node_by_key, canonical)
+        neighbor_ports = self._device_neighbor_ports(diagram, node_key, node_by_key, canonical)
         if neighbor_links:
             topology[KEY_NEIGHBOR_LINKS] = neighbor_links
         if neighbor_ports:
             topology[KEY_NEIGHBOR_PORTS] = neighbor_ports
         return topology
 
-    def _diagram_for_profile(self, profile: str) -> Dict[str, object]:
+    def _topology_view_for_profile(self, profile: str) -> Tuple[Dict[str, object], bool]:
         """
         NAME
-            _diagram_for_profile - Return current profile diagram metadata.
+            _topology_view_for_profile - Return profile topology payload and whether it is canonical.
         """
+        topology = topology_profile_from_payload(self._local_root_payload, profile)
+        if topology:
+            return topology, True
         diagram_root = self._local_root_payload.get(KEY_DIAGRAM)
         if not isinstance(diagram_root, dict):
-            return {}
+            return {}, False
         profiles = diagram_root.get(KEY_PROFILES)
         if not isinstance(profiles, dict):
-            return {}
+            return {}, False
         diagram = profiles.get(profile)
-        return diagram if isinstance(diagram, dict) else {}
+        return (diagram, False) if isinstance(diagram, dict) else ({}, False)
 
     def _device_neighbor_links(
         self,
         diagram: Dict[str, object],
         node_key: int,
         node_by_key: Dict[int, Dict[str, object]],
+        canonical: bool,
     ) -> List[Dict[str, object]]:
         """
         NAME
             _device_neighbor_links - Return undirected neighbors for one node.
         """
+        if canonical:
+            neighbors: List[Dict[str, object]] = []
+            for a, b in parse_diagram_neighbor_links(diagram):
+                if a == node_key:
+                    neighbors.append(self._topology_neighbor_entry(b, node_by_key))
+                elif b == node_key:
+                    neighbors.append(self._topology_neighbor_entry(a, node_by_key))
+            return neighbors
         entries = diagram.get(KEY_NEIGHBOR_LINKS)
         if not isinstance(entries, list):
             return []
@@ -11489,11 +11485,25 @@ class BridgeCli:
         diagram: Dict[str, object],
         node_key: int,
         node_by_key: Dict[int, Dict[str, object]],
+        canonical: bool,
     ) -> List[Dict[str, object]]:
         """
         NAME
             _device_neighbor_ports - Return port-aware neighbors for one node.
         """
+        if canonical:
+            neighbors: List[Dict[str, object]] = []
+            for entry in parse_diagram_neighbor_ports(diagram):
+                if not isinstance(entry, dict):
+                    continue
+                neighbor = entry.get(KEY_LINK_NEIGHBOR)
+                if entry.get(KEY_LINK_NODE) != node_key or not isinstance(neighbor, int):
+                    continue
+                neighbor_entry = self._topology_neighbor_entry(neighbor, node_by_key)
+                neighbor_entry[KEY_LINK_PORT] = entry.get(KEY_LINK_PORT)
+                neighbor_entry[KEY_LINK_NEIGHBOR_PORT] = entry.get(KEY_LINK_NEIGHBOR_PORT)
+                neighbors.append(neighbor_entry)
+            return neighbors
         entries = diagram.get(KEY_NEIGHBOR_PORTS)
         if not isinstance(entries, list):
             return []
@@ -11620,6 +11630,8 @@ class BridgeCli:
             required = DEVICE_REQUIRED_PWM
         elif interface == INTERFACE_ANALOG:
             required = DEVICE_REQUIRED_ANALOG
+        elif interface == INTERFACE_TOPOLOGY:
+            required = DEVICE_REQUIRED_TOPOLOGY
         else:
             required = DEVICE_REQUIRED_INTERNAL
         missing: List[str] = []
@@ -11757,6 +11769,8 @@ class BridgeCli:
         self._sync_store_tests()
         payload = dict(self._local_root_payload)
         payload["bridgeConfig"] = self._ordered_bridge_config(self._local_config)
+        if isinstance(self._bindings_payload, dict):
+            payload[KEY_BINDINGS] = deepcopy(self._bindings_payload)
         payload["schema_version"] = PROFILE_SCHEMA_VERSION
         payload["data_version"] = timestamp_version()
         payload["data_hash"] = compute_profiles_hash(payload)
@@ -12726,29 +12740,6 @@ class BridgeCli:
         if not isinstance(payload, dict):
             return []
         lines: List[str] = []
-        controllers = payload.get(KEY_CONTROLLERS, [])
-        if isinstance(controllers, list):
-            for entry in controllers:
-                if not isinstance(entry, dict):
-                    continue
-                name = str(entry.get(KEY_NAME, EMPTY_STRING)).strip()
-                ctrl_type = str(entry.get(FIELD_TYPE, EMPTY_STRING)).strip()
-                port = entry.get(KEY_PORT)
-                if not name or not ctrl_type or port is None:
-                    continue
-                lines.append(
-                    CMD_BINDINGS
-                    + PROFILE_EXPORT_PATH_SEPARATOR
-                    + CMD_CONTROLLER
-                    + PROFILE_EXPORT_PATH_SEPARATOR
-                    + CMD_ADD
-                    + PROFILE_EXPORT_PATH_SEPARATOR
-                    + self._quote_if_needed(name)
-                    + PROFILE_EXPORT_PATH_SEPARATOR
-                    + self._quote_if_needed(ctrl_type)
-                    + PROFILE_EXPORT_PATH_SEPARATOR
-                    + self._format_cli_value(port)
-                )
         bindings = payload.get(KEY_BINDINGS, [])
         if isinstance(bindings, list):
             for entry in bindings:
@@ -13584,6 +13575,8 @@ class BridgeCli:
         payload.setdefault("default_profile", "robot")
         payload["schema_version"] = PROFILE_SCHEMA_VERSION
         payload["bridgeConfig"] = self._ordered_bridge_config(self._local_config)
+        if isinstance(self._bindings_payload, dict):
+            payload[KEY_BINDINGS] = deepcopy(self._bindings_payload)
         if self._profiles_dirty or "data_version" not in payload:
             payload["data_version"] = timestamp_version()
         payload["data_hash"] = compute_profiles_hash(payload)

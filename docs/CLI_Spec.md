@@ -249,10 +249,7 @@ No prompting allowed in batch mode.
 - `validate profiles [robot|local] [--active]`
 - `validate tests [--active-set]`
 - `bindings show [controllers|bindings|axes] [--json] [--pretty]`
-- `bindings controller add <name> <type> <port>`
-- `bindings controller set <name> <field> <value>`
-- `bindings controller rename <old> <new>`
-- `bindings no controller <name>`
+- `bindings controller` is reserved but controller definitions now live in `bringup_system.json` device entries
 - `bindings binding add <command> <controller> <input> <id> <mode>`
 - `bindings binding set <index> <field> <value>`
 - `bindings binding delete <index>`
@@ -315,7 +312,7 @@ Purpose: Point to the canonical grammar and highlight subcommand parsing for com
 - `show devices` (local) lists the full profile-derived device inventory, not only group members.
 - `show device` returns the full device definition from bringup_system.json (local only).
 - `show device-group` returns the device’s group membership/usage info.
-- CLI auto-imports `data/bringup_system.json` on startup when present (replaces groups).
+- CLI auto-imports `src/main/deploy/bringup_system.json` on startup when present (replaces groups).
 - merge config is only allowed when the incoming profiles hash matches the loaded profiles; otherwise use import config.
 
 ## Control Identifiers
@@ -597,4 +594,3 @@ avoids prompts in batch mode
 uses structured output for automation
 
 remains simple, predictable, and operator-friendly
-

@@ -39,6 +39,7 @@ from tools.common.profile_constants import (
     KEY_DEFAULT_PROFILE,
     KEY_DSL_TESTS,
     KEY_DIAGRAM,
+    KEY_TOPOLOGY,
     KEY_DEVICE,
     KEY_DEVICE_TYPE,
     KEY_DEVICES,
@@ -52,6 +53,7 @@ from tools.common.profile_constants import (
     KEY_MODEL,
     KEY_NOTES,
     KEY_INPUT_ALIASES,
+    KEY_PORT,
     KEY_PROFILE_DEVICES,
     KEY_PROFILES,
     KEY_PWM,
@@ -65,8 +67,11 @@ from tools.common.profile_constants import (
     INTERFACE_CAN,
     INTERFACE_DIO,
     INTERFACE_INTERNAL,
+    INTERFACE_TOPOLOGY,
+    INTERFACE_USB,
     INTERFACE_PWM,
     PROFILE_SCHEMA_VERSION,
+    TYPE_XBOX_CONTROLLER,
     get_device_interface,
 )
 from tools.common.test_authoring import (
@@ -81,7 +86,6 @@ from tools.config.json_store import JsonStore
 KEY_TESTS = "tests"
 KEY_TEST_SETS = "test_sets"
 KEY_DEFAULT_TEST_SET = "default_test_set"
-KEY_CONTROLLERS = "controllers"
 KEY_BINDINGS = "bindings"
 KEY_AXES = "axes"
 KEY_MANUFACTURERS = "manufacturers"
@@ -149,14 +153,13 @@ MESSAGE_MISSING_DEVICE_REF = "Missing device in profile: {label}"
 MESSAGE_MISSING_DEVICE_REF_PROFILE = "Profile {profile}: Missing device in profile: {label}"
 MESSAGE_MISSING_ATTACHMENT_REF = "Device {label}: Missing attachment device: {attachment}"
 MESSAGE_PROFILE_UNKNOWN = "Profile not found: {profile}"
-MESSAGE_BINDINGS_CONTROLLER_DUP = "Duplicate controller name."
-MESSAGE_BINDINGS_CONTROLLER_REQUIRED = "Controller name not found: {name}"
-MESSAGE_BINDINGS_CONTROLLER_PORT = "Controller port must be int."
-MESSAGE_BINDINGS_CONTROLLER_FIELDS = "Controller entry missing required fields."
 MESSAGE_BINDINGS_BINDING_FIELDS = "Binding entry missing required fields."
 MESSAGE_BINDINGS_AXIS_FIELDS = "Axis entry missing required fields."
+MESSAGE_BINDINGS_CONTROLLER_REQUIRED = "Controller name not found: {name}"
 MESSAGE_BINDINGS_INVERT_TYPE = "Axis invert must be bool."
 MESSAGE_BINDINGS_DEADBAND_RANGE = "Axis deadband must be 0.0 to 1.0."
+MESSAGE_DEVICE_PORT_REQUIRED_FMT = "Device {label}: port is required."
+MESSAGE_DEVICE_PORT_TYPE_FMT = "Device {label}: port must be int."
 MESSAGE_MAPPINGS_KEY_TYPE = "Mapping id must be numeric string."
 MESSAGE_MAPPINGS_VALUE_TYPE = "Mapping value must be non-empty string."
 MESSAGE_TEST_ISSUE = "{name}: {message}"
@@ -172,6 +175,7 @@ DEVICE_REQUIRED_DIO = (KEY_INTERFACE, KEY_DIO, KEY_INVERT)
 DEVICE_REQUIRED_PWM = (KEY_INTERFACE, KEY_PWM)
 DEVICE_REQUIRED_ANALOG = (KEY_INTERFACE, KEY_ANALOG)
 DEVICE_REQUIRED_INTERNAL = (KEY_INTERFACE,)
+DEVICE_REQUIRED_TOPOLOGY = (KEY_INTERFACE, KEY_TYPE)
 
 ALLOWED_ROOT_KEYS = {
     KEY_SCHEMA_VERSION,
@@ -180,12 +184,14 @@ ALLOWED_ROOT_KEYS = {
     KEY_DEFAULT_PROFILE,
     KEY_DEVICES,
     KEY_PROFILES,
+    KEY_BINDINGS,
     KEY_DSL_TESTS,
     KEY_BRIDGE_CONFIG,
     KEY_DIAGRAM,
+    KEY_TOPOLOGY,
 }
 ALLOWED_TESTS_KEYS = {KEY_DEFAULT_TEST_SET, KEY_TEST_SETS, KEY_TESTS}
-ALLOWED_BINDINGS_KEYS = {KEY_CONTROLLERS, KEY_BINDINGS, KEY_AXES, KEY_INPUT_ALIASES}
+ALLOWED_BINDINGS_KEYS = {KEY_BINDINGS, KEY_AXES, KEY_INPUT_ALIASES}
 ALLOWED_MAPPINGS_KEYS = {KEY_MANUFACTURERS, KEY_DEVICE_TYPES}
 ALLOWED_DEVICE_KEYS = {
     KEY_LABEL,
@@ -206,6 +212,7 @@ ALLOWED_DEVICE_KEYS = {
     KEY_INVERT,
     KEY_PWM,
     KEY_ANALOG,
+    KEY_PORT,
     KEY_ATTACHMENTS,
 }
 ALLOWED_GROUP_KEYS = {KEY_NAME, KEY_ENABLED, KEY_MEMBERS, KEY_BINDINGS}
@@ -221,7 +228,6 @@ BOOL_TRUE = True
 BOOL_FALSE = False
 
 FILE_TESTS_ROOT = "bringup_tests.json"
-FILE_BINDINGS_ROOT = "bringup_bindings.json"
 FILE_CAN_MAPPINGS_ROOT = "can_mappings.json"
 FILE_PROFILES = "bringup_system.json"
 DIR_DATA = "data"
@@ -729,14 +735,17 @@ class ConfigSchemaStore:
     def _load_bindings(self, repo_root: Path) -> Dict[str, object]:
         """
         NAME
-            _load_bindings - Load and merge controller bindings payloads.
+            _load_bindings - Load bindings subtree from unified config.
         """
 
-        root_path = repo_root / FILE_BINDINGS_ROOT
-        deploy_path = self._deploy_path(FILE_BINDINGS_ROOT)
-        warnings = self._db.load_document(DOC_BINDINGS, root_path, deploy_path, self._merge_bindings)
-        self._warnings.extend(warnings)
-        return self._db.get_payload(DOC_BINDINGS)
+        _ = repo_root
+        profiles_payload = self._db.get_payload(DOC_PROFILES)
+        bindings = profiles_payload.get(KEY_BINDINGS) if isinstance(profiles_payload, dict) else None
+        payload = bindings if isinstance(bindings, dict) else dict()
+        unified_path = self._deploy_path(FILE_PROFILES)
+        self._db.load_document(DOC_BINDINGS, unified_path, None, None)
+        self._db.set_payload(DOC_BINDINGS, payload, dirty=BOOL_FALSE)
+        return payload
 
     def _load_mappings(self, repo_root: Path) -> Dict[str, object]:
         """
@@ -774,32 +783,6 @@ class ConfigSchemaStore:
                 entry = {}
                 by_profile[profile_name] = entry
             entry[KEY_BRIDGE_TESTS] = model_to_payload(model)
-
-    def _merge_bindings(
-        self, root_payload: Dict[str, object], deploy_payload: Dict[str, object]
-    ) -> Tuple[Dict[str, object], List[str]]:
-        """
-        NAME
-            _merge_bindings - Merge root/deploy bindings payloads with warnings.
-        """
-
-        merged: Dict[str, object] = dict()
-        warnings: List[str] = list()
-        if deploy_payload:
-            merged.update(deploy_payload)
-        if root_payload:
-            for key in (KEY_CONTROLLERS, KEY_BINDINGS, KEY_AXES):
-                if key in root_payload and key in deploy_payload:
-                    warnings.append(
-                        MESSAGE_MERGE_WARNING.format(
-                            label=key,
-                            root=FILE_BINDINGS_ROOT,
-                            deploy=str(self._deploy_path(FILE_BINDINGS_ROOT)),
-                        )
-                    )
-                if key in root_payload:
-                    merged[key] = root_payload.get(key)
-        return merged, warnings
 
     def _validate_profiles(
         self,
@@ -942,11 +925,11 @@ class ConfigSchemaStore:
         _ = strict
         if not self._tests_by_profile:
             return
-        controller_names = self._bindings_controller_names()
         for profile_name, model in self._tests_by_profile.items():
             if model is None:
                 continue
             device_catalog, duplicate_labels = self._device_catalog_for_profile(profile_name)
+            controller_names = self._controller_names_for_profile(device_catalog)
             result = validate_model(
                 model,
                 controller_names=controller_names,
@@ -981,27 +964,7 @@ class ConfigSchemaStore:
             self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_TYPE_INVALID.format(key=KEY_BINDINGS), SEVERITY_ERROR)
             return
         self._check_unknown_keys(payload, ALLOWED_BINDINGS_KEYS, LOCATION_BINDINGS, issues, strict)
-        controllers = payload.get(KEY_CONTROLLERS)
-        if controllers is None:
-            controllers = list()
-        if not isinstance(controllers, list):
-            self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_TYPE_INVALID.format(key=KEY_CONTROLLERS), SEVERITY_ERROR)
-            controllers = list()
-        controller_names: Set[str] = set()
-        for entry in controllers:
-            if not isinstance(entry, dict):
-                self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_BINDINGS_CONTROLLER_FIELDS, SEVERITY_ERROR)
-                continue
-            name = entry.get(KEY_NAME)
-            port = entry.get(KEY_PORT)
-            if not name or not isinstance(name, str):
-                self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_BINDINGS_CONTROLLER_FIELDS, SEVERITY_ERROR)
-                continue
-            if name in controller_names:
-                self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_BINDINGS_CONTROLLER_DUP, SEVERITY_ERROR)
-            controller_names.add(name)
-            if port is None or not isinstance(port, int):
-                self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_BINDINGS_CONTROLLER_PORT, SEVERITY_ERROR)
+        controller_names = self._bindings_controller_names()
         bindings = payload.get(KEY_BINDINGS)
         if bindings is None:
             bindings = list()
@@ -1282,12 +1245,29 @@ class ConfigSchemaStore:
                     MESSAGE_DEVICE_ANALOG_TYPE_FMT.format(label=label_text),
                     SEVERITY_ERROR,
                 )
+        if interface == INTERFACE_USB and str(entry.get(KEY_TYPE, EMPTY_STRING)).strip() == TYPE_XBOX_CONTROLLER:
+            if entry.get(KEY_PORT) is None:
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_DEVICE_PORT_REQUIRED_FMT.format(label=label_text),
+                    SEVERITY_ERROR,
+                )
+            elif not isinstance(entry.get(KEY_PORT), int):
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_DEVICE_PORT_TYPE_FMT.format(label=label_text),
+                    SEVERITY_ERROR,
+                )
         if interface not in (
             INTERFACE_CAN,
             INTERFACE_DIO,
             INTERFACE_PWM,
             INTERFACE_ANALOG,
             INTERFACE_INTERNAL,
+            INTERFACE_USB,
+            INTERFACE_TOPOLOGY,
         ):
             self._append_issue(
                 issues,
@@ -1318,6 +1298,10 @@ class ConfigSchemaStore:
             return DEVICE_REQUIRED_PWM
         if interface == INTERFACE_ANALOG:
             return DEVICE_REQUIRED_ANALOG
+        if interface == INTERFACE_USB:
+            return (KEY_INTERFACE, KEY_TYPE, KEY_PORT)
+        if interface == INTERFACE_TOPOLOGY:
+            return DEVICE_REQUIRED_TOPOLOGY
         if interface == INTERFACE_INTERNAL:
             return DEVICE_REQUIRED_INTERNAL
         return DEVICE_REQUIRED_INTERNAL
@@ -1351,24 +1335,44 @@ class ConfigSchemaStore:
                     SEVERITY_ERROR,
                 )
 
-    def _bindings_controller_names(self) -> Optional[Set[str]]:
+    def _controller_names_for_profile(
+        self, device_catalog: Dict[str, object]
+    ) -> Optional[Set[str]]:
         """
         NAME
-            _bindings_controller_names - Build controller name set.
+            _controller_names_for_profile - Build controller name set from profile devices.
         """
 
-        payload = self._db.get_payload(DOC_BINDINGS)
-        if not isinstance(payload, dict):
-            return None
-        controllers = payload.get(KEY_CONTROLLERS)
-        if not isinstance(controllers, list):
+        if not isinstance(device_catalog, dict):
             return None
         names: Set[str] = set()
-        for entry in controllers:
-            if isinstance(entry, dict):
-                name = entry.get(KEY_NAME)
-                if isinstance(name, str) and name:
-                    names.add(name)
+        for name, entry in device_catalog.items():
+            if not isinstance(name, str) or not isinstance(entry, dict):
+                continue
+            interface = get_device_interface(entry)
+            if interface != INTERFACE_USB:
+                continue
+            if str(entry.get(KEY_TYPE, EMPTY_STRING)).strip() != TYPE_XBOX_CONTROLLER:
+                continue
+            names.add(name)
+        return names
+
+    def _bindings_controller_names(self) -> Set[str]:
+        """
+        NAME
+            _bindings_controller_names - Build controller name set from all profile catalogs.
+        """
+
+        payload = self._db.get_payload(DOC_PROFILES)
+        profiles = payload.get(KEY_PROFILES) if isinstance(payload, dict) else None
+        if not isinstance(profiles, dict):
+            return set()
+        names: Set[str] = set()
+        for profile_name in profiles.keys():
+            device_catalog, _ = self._device_catalog_for_profile(profile_name)
+            profile_names = self._controller_names_for_profile(device_catalog)
+            if profile_names:
+                names.update(profile_names)
         return names
 
     def _append_issue(

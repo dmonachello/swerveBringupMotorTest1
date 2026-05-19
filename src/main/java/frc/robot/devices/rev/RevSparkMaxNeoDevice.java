@@ -7,6 +7,7 @@ import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.spark.SparkMax;
 import com.revrobotics.spark.config.SparkMaxConfig;
 import frc.robot.BringupUtil;
+import frc.robot.devices.DeviceDslSupport;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.manufacturers.rev.diag.RevSparkMaxReader;
 import frc.robot.diag.snapshots.DeviceSnapshot;
@@ -338,6 +339,26 @@ public final class RevSparkMaxNeoDevice implements DeviceUnit {
       return readAlternateEncoder(countsPerRev);
     }
     return getPositionRotations();
+  }
+
+  @Override
+  public Object readDslSignal(String signalName) {
+    return DeviceDslSupport.readMotorSignal(this, signalName);
+  }
+
+  @Override
+  public boolean writeDslSignal(String signalName, double value) {
+    return DeviceDslSupport.writeMotorSignal(this, signalName, value);
+  }
+
+  @Override
+  public boolean clearDslSignal(String signalName) {
+    return DeviceDslSupport.clearFaultSignal(this, signalName);
+  }
+
+  @Override
+  public boolean isDslWritableValueInRange(String signalName, double value) {
+    return DeviceDslSupport.isMotorWritableValueInRange(signalName, value);
   }
 
   /**

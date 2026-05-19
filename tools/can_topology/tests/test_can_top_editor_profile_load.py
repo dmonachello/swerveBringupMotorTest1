@@ -36,6 +36,8 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         editor._next_key = 1
         editor._device_registry = {}
         editor._device_registry_list = []
+        editor._bus_offsets = [0.0]
+        editor._box_h = 40.0
         payload = {
             "profiles": {
                 "demo_board_042526": {
@@ -101,6 +103,47 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
                 {"node": 4, "port": "left", "neighbor": 1, "neighborPort": "right"},
             ],
         )
+
+    def test_topology_interface_devices_load_as_profile_nodes(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor._next_key = 1
+        editor._device_registry = {}
+        editor._device_registry_list = []
+        editor._bus_offsets = [0.0]
+        editor._box_h = 40.0
+        payload = {
+            "profiles": {
+                "robot_2026_swerve": {
+                    "devices": [
+                        "cannect 2",
+                        "inject",
+                    ]
+                }
+            },
+            "devices": [
+                {
+                    "label": "cannect 2",
+                    "deviceInterface": "TOPOLOGY",
+                    "type": "cannectDirect",
+                    "vendor": "SWYFT",
+                    "model": "Wiring",
+                },
+                {
+                    "label": "inject",
+                    "deviceInterface": "TOPOLOGY",
+                    "type": "cannectInject",
+                    "vendor": "SWYFT",
+                    "model": "",
+                },
+            ],
+        }
+
+        editor._load_device_registry(payload)
+        nodes = editor._nodes_from_profile(payload["profiles"]["robot_2026_swerve"])
+
+        self.assertEqual([node.label for node in nodes], ["cannect 2", "inject"])
+        self.assertTrue(all(node.interface == "TOPOLOGY" for node in nodes))
+        self.assertEqual([node.category for node in nodes], ["cannect_direct", "cannect_inject"])
 
     def test_neighbor_status_marks_existing_metadata_stale(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)

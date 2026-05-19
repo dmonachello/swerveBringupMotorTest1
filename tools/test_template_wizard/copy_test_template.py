@@ -257,7 +257,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--path",
         default=str(DEFAULT_CANONICAL_PATH),
-        help="Path to canonical bringup_system.json (default: data/bringup_system.json).",
+        help="Path to unified bringup_system.json (default: src/main/deploy/bringup_system.json).",
     )
     parser.add_argument(
         "--deploy",

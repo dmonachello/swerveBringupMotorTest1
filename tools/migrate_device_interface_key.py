@@ -5,7 +5,7 @@ NAME
     migrate_device_interface_key.py - Migrate bringup_system.json device key interface -> deviceInterface.
 
 SYNOPSIS
-    python -m tools.migrate_device_interface_key --path data/bringup_system.json
+    python -m tools.migrate_device_interface_key --path src/main/deploy/bringup_system.json
 
 DESCRIPTION
     Updates device registry entries in bringup_system.json to use the canonical

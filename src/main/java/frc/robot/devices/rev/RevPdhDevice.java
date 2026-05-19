@@ -112,6 +112,26 @@ public final class RevPdhDevice implements DeviceUnit {
     return snap;
   }
 
+  @Override
+  public Object readDslSignal(String signalName) {
+    return null;
+  }
+
+  @Override
+  public boolean writeDslSignal(String signalName, double value) {
+    return false;
+  }
+
+  @Override
+  public boolean clearDslSignal(String signalName) {
+    return false;
+  }
+
+  @Override
+  public boolean isDslWritableValueInRange(String signalName, double value) {
+    return true;
+  }
+
   private DeviceSnapshot baseSnapshot() {
     DeviceSnapshot snap = new DeviceSnapshot();
     snap.vendor = VENDOR;

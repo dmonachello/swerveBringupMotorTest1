@@ -19,21 +19,21 @@ from typing import Dict, Optional, Set, Tuple
 from tools.can_nt.can_profiles import reload_profiles
 from tools.common.paths import repo_root
 from tools.common.profile_constants import (
+    KEY_DEFAULT_PROFILE,
     KEY_DEVICES,
+    KEY_INTERFACE,
     KEY_LABEL,
     KEY_PROFILES,
     KEY_PROFILE_DEVICES,
+    KEY_TYPE,
+    INTERFACE_USB,
+    TYPE_XBOX_CONTROLLER,
 )
 from tools.common.json_io import read_json
 from tools.common.paths import legacy_profiles_canonical_path, profiles_canonical_path
 
 
-KEY_CONTROLLERS = "controllers"
-KEY_NAME = "name"
-KEY_PORT = "port"
 EMPTY_STRING = ""
-DEFAULT_CONTROLLER_PREFIX = "controller"
-DEFAULT_CONTROLLER_COUNT = 6
 
 
 def load_profile_devices(profile_name: str) -> Tuple[Dict[str, Dict[str, object]], Set[str]]:
@@ -101,38 +101,68 @@ def load_profile_devices(profile_name: str) -> Tuple[Dict[str, Dict[str, object]
     return catalog, duplicates
 
 
-def load_controller_names(bindings_path: Optional[Path] = None) -> Set[str]:
+def load_controller_names(
+    payload: Optional[Dict[str, object]] = None,
+    profile_name: Optional[str] = None,
+    config_path: Optional[Path] = None,
+) -> Set[str]:
     """
     NAME
-        load_controller_names - Load controller names from bringup_bindings.json.
+        load_controller_names - Load controller device names from bringup_system.json.
 
     PARAMETERS
-        bindings_path - Optional path override for bindings file.
+        payload - Optional already-loaded unified config payload.
+        profile_name - Optional profile name used to limit labels to one profile.
+        config_path - Optional path override for bringup_system.json.
 
     RETURNS
         Set of controller names for validation.
     """
 
-    path = bindings_path or (repo_root() / "src" / "main" / "deploy" / "bringup_bindings.json")
-    names: Set[str] = set()
-    payload: Dict[str, object] = {}
-    if path.exists():
+    loaded_payload: Dict[str, object] = {}
+    if isinstance(payload, dict):
+        loaded_payload = payload
+    else:
+        path = config_path or profiles_canonical_path()
+        if not path.exists():
+            path = legacy_profiles_canonical_path()
+        if not path.exists():
+            return set()
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
+            loaded_payload = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
-            payload = {}
-    controllers = payload.get(KEY_CONTROLLERS) if isinstance(payload, dict) else None
-    if isinstance(controllers, list):
-        for entry in controllers:
-            if not isinstance(entry, dict):
-                continue
-            name = entry.get(KEY_NAME)
-            if isinstance(name, str) and name:
-                names.add(name)
-                continue
-            port = entry.get(KEY_PORT)
-            if isinstance(port, int) and 0 <= port < DEFAULT_CONTROLLER_COUNT:
-                names.add(f"{DEFAULT_CONTROLLER_PREFIX}{port}")
-    if names:
-        return names
-    return {f"{DEFAULT_CONTROLLER_PREFIX}{idx}" for idx in range(DEFAULT_CONTROLLER_COUNT)}
+            return set()
+    if not isinstance(loaded_payload, dict):
+        return set()
+    devices = loaded_payload.get(KEY_DEVICES)
+    profiles = loaded_payload.get(KEY_PROFILES)
+    if not isinstance(devices, list):
+        return set()
+    if not profile_name and isinstance(loaded_payload.get(KEY_DEFAULT_PROFILE), str):
+        profile_name = str(loaded_payload.get(KEY_DEFAULT_PROFILE)).strip() or None
+    allowed_labels: Optional[Set[str]] = None
+    if profile_name and isinstance(profiles, dict):
+        profile = profiles.get(profile_name)
+        if isinstance(profile, dict):
+            labels = profile.get(KEY_PROFILE_DEVICES)
+            if isinstance(labels, list):
+                allowed_labels = {
+                    str(label).strip().lower()
+                    for label in labels
+                    if isinstance(label, str) and str(label).strip()
+                }
+    names: Set[str] = set()
+    for entry in devices:
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+        if not label:
+            continue
+        if allowed_labels is not None and label.lower() not in allowed_labels:
+            continue
+        if str(entry.get(KEY_TYPE, EMPTY_STRING)).strip() != TYPE_XBOX_CONTROLLER:
+            continue
+        if str(entry.get(KEY_INTERFACE, EMPTY_STRING)).strip() != INTERFACE_USB:
+            continue
+        names.add(label)
+    return names

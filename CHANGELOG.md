@@ -2,6 +2,27 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-05-18
+
+### Added - 2026-05-18
+
+- Added a modular Robot Test DSL signal provider layout plus a documented
+  extension workflow for adding device signal contracts.
+
+### Improved - 2026-05-18
+
+- Unified bringup config ownership on `src/main/deploy/bringup_system.json`
+  so devices, controller devices, and bindings resolve through one model.
+- Moved Xbox controller ownership into the shared devices table and expanded
+  DSL-visible Xbox signals to the full controller input surface.
+- Standardized device-side DSL runtime behavior on a required
+  read/write/clear/range interface template for supported devices.
+- Restored the `robot_2026_swerve` unified profile on `main`, including its
+  swerve device list, bridge group layout, and DSL joystick test set.
+- Restored the canonical `robot_2026_swerve` SWYFT/CANnect topology graph from
+  `topology_upgrade` and accepted root-level `topology` in unified config
+  validation so the editor and saved config use the same topology contract.
+
 ## 2026-05-08
 
 ### Added - 2026-05-08

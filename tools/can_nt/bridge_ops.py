@@ -93,6 +93,7 @@ from tools.common.profile_constants import (
     INTERFACE_CAN,
     INTERFACE_DIO,
     INTERFACE_INTERNAL,
+    INTERFACE_TOPOLOGY,
     INTERFACE_PWM,
     get_device_interface,
 )
@@ -200,6 +201,7 @@ DEVICE_REQUIRED_DIO = (KEY_DIO, KEY_INVERT)
 DEVICE_REQUIRED_PWM = (KEY_PWM,)
 DEVICE_REQUIRED_ANALOG = (KEY_ANALOG,)
 DEVICE_REQUIRED_INTERNAL = tuple()
+DEVICE_REQUIRED_TOPOLOGY = (KEY_TYPE,)
 
 
 @dataclass(frozen=True)
@@ -1489,6 +1491,7 @@ def _validate_device_definitions(root_payload: Dict[str, Any]) -> List[str]:
             INTERFACE_PWM,
             INTERFACE_ANALOG,
             INTERFACE_INTERNAL,
+            INTERFACE_TOPOLOGY,
         ):
             issues.append(MSG_DEVICE_DEF_INTERFACE_INVALID)
         required: tuple[str, ...]
@@ -1500,6 +1503,8 @@ def _validate_device_definitions(root_payload: Dict[str, Any]) -> List[str]:
             required = DEVICE_REQUIRED_PWM
         elif interface == INTERFACE_ANALOG:
             required = DEVICE_REQUIRED_ANALOG
+        elif interface == INTERFACE_TOPOLOGY:
+            required = DEVICE_REQUIRED_TOPOLOGY
         else:
             required = DEVICE_REQUIRED_INTERNAL
         for field in required:

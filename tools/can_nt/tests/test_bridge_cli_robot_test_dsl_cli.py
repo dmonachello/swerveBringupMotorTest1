@@ -77,6 +77,7 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
                     "manufacturer": 1,
                     "deviceType": 1,
                     "id": 0,
+                    "port": 0,
                     "model": "Xbox Controller",
                     "type": "xboxController",
                     "deviceInterface": "USB",

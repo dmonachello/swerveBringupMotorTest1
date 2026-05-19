@@ -60,8 +60,7 @@ Purpose: Define the JSON structures written by the editor.
 
 ### bringup_system.json
 Purpose: Stable device configuration consumed by robot and PC tools.
-- Canonical location: `data/bringup_system.json`.
-- RoboRIO deploy copy: `src/main/deploy/bringup_system.json` (synced from `data/`).
+- Unified location: `src/main/deploy/bringup_system.json`.
 - Root fields:
 - `schema_version` (int, 4)
 - `data_version` (string)

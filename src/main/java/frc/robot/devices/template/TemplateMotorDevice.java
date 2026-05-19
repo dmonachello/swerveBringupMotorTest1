@@ -1,6 +1,7 @@
 package frc.robot.devices.template;
 
 import frc.robot.devices.DeviceUnit;
+import frc.robot.devices.DeviceDslSupport;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.registry.RegistrationHeader;
 import frc.robot.diag.snapshots.LimitsAttachment;
@@ -227,6 +228,26 @@ public final class TemplateMotorDevice implements DeviceUnit {
     }
     addLimitAttachment(snap);
     return snap;
+  }
+
+  @Override
+  public Object readDslSignal(String signalName) {
+    return DeviceDslSupport.readMotorSignal(this, signalName);
+  }
+
+  @Override
+  public boolean writeDslSignal(String signalName, double value) {
+    return DeviceDslSupport.writeMotorSignal(this, signalName, value);
+  }
+
+  @Override
+  public boolean clearDslSignal(String signalName) {
+    return DeviceDslSupport.clearFaultSignal(this, signalName);
+  }
+
+  @Override
+  public boolean isDslWritableValueInRange(String signalName, double value) {
+    return DeviceDslSupport.isMotorWritableValueInRange(signalName, value);
   }
 
   /**

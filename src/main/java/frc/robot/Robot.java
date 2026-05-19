@@ -244,7 +244,7 @@ public class Robot extends TimedRobot {
   private void printStartupInfo() {
     StringBuilder sb = new StringBuilder(512);
     appendLine(sb, "=== Swerve Bringup ===");
-    appendLine(sb, "Bindings (from bringup_bindings.json):");
+    appendLine(sb, "Bindings (from bringup_system.json bindings subtree):");
     for (String line : bindings.describeBindings()) {
       appendLine(sb, "  " + line);
     }

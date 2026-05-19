@@ -146,11 +146,7 @@ diagnose       = "diagnose" ws name ws name ;
 
 bindings_args  = "show" [ ws ("controllers" | "bindings" | "axes") ] [ ws show_flags ]
                | "clear"
-               | "controller" ws ("add" ws name ws name ws number
-                                   | "set" ws name ws field ws value_text
-                                   | "rename" ws name ws name
-                                   | "list"
-                                   | "no" ws name)
+               | "controller"
                | "binding" ws ("add" ws name ws name ws name ws name ws name
                                 | "set" ws number ws field ws value_text
                                 | "delete" ws number)

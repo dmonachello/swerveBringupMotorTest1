@@ -446,6 +446,39 @@ public final class BringupUtil {
 
   /**
    * NAME
+   *   getConfiguredControllerPorts - Return configured Xbox controller labels and ports.
+   *
+   * DESCRIPTION
+   *   Resolves controller devices from the currently selected profile, or the
+   *   active/default profile when no explicit selection exists.
+   *
+   * RETURNS
+   *   Ordered map of controller label to USB port.
+   */
+  public static Map<String, Integer> getConfiguredControllerPorts() {
+    String profileName = selectedProfile;
+    if (profileName == null || profileName.isBlank()) {
+      profileName = activeProfileApplied ? activeProfile : defaultProfile;
+    }
+    ProfileConfig config = profiles.get(profileName);
+    if (config == null) {
+      config = profiles.get(defaultProfile);
+    }
+    LinkedHashMap<String, Integer> controllers = new LinkedHashMap<>();
+    for (DeviceDefinition def : resolveProfileDevices(config)) {
+      if (!isXboxControllerDevice(def) || def.label == null || def.label.isBlank()) {
+        continue;
+      }
+      if (def.port == null) {
+        continue;
+      }
+      controllers.put(def.label.trim(), def.port);
+    }
+    return controllers;
+  }
+
+  /**
+   * NAME
    *   getConfiguredDeviceTypeByLabel - Return the configured logical device type for a label.
    *
    * PARAMETERS
@@ -2724,6 +2757,7 @@ public final class BringupUtil {
     Integer manufacturer;
     Integer deviceType;
     Integer id;
+    Integer port;
     String model;
     String type;
     Integer dio;

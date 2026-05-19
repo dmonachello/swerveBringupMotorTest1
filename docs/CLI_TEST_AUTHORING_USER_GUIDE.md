@@ -22,10 +22,10 @@ Purpose: ensure the CLI can resolve devices and save tests correctly.
 
 Checklist:
 1. Use a working copy of the repo on Windows.
-2. Confirm `data/bringup_system.json` matches the profile you want to use.
-3. Confirm `src/main/deploy/bringup_bindings.json` defines controller names you want to reference.
+2. Confirm `src/main/deploy/bringup_system.json` matches the profile you want to use.
+3. Confirm the same file defines the controller devices you want to reference.
 4. Decide which test set under `test_sets` you will edit or create.
-5. Decide where to save the updated unified config (usually `data/bringup_system.json`).
+5. Decide where to save the updated unified config (usually `src/main/deploy/bringup_system.json`).
 6. If you are testing a new device label, add it to the active profile first (see “Add a Device to the Active Profile” below).
 
 ## Core Concepts
@@ -35,7 +35,7 @@ Key ideas:
 1. The CLI edits an in-memory model, not JSON directly.
 2. Tests are persisted inside `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
 3. Use `save config <path>` to write a unified `bringup_system.json` (profiles + bridgeConfig.byProfile).
-3. Devices are chosen from `data/bringup_system.json`.
+3. Devices are chosen from `src/main/deploy/bringup_system.json`.
 4. Test names are unique within a test set.
 5. Inputs use a unified `inputSource` format: `controllerName.inputId`.
 6. `show workspace` reveals which tests file is loaded and whether it is dirty.
@@ -91,7 +91,7 @@ Purpose: bind tests to device labels from the active profile.
 
 Rules:
 1. Devices are referenced by their label from `bringup_system.json`.
-2. The CLI resolves labels from `data/bringup_system.json`.
+2. The CLI resolves labels from `src/main/deploy/bringup_system.json`.
 3. Duplicate device adds are rejected with a warning.
 4. Duplicate labels in the active profile are errors.
 5. A device must exist in the active profile with required fields (CAN: `deviceInterface`, `manufacturer`, `deviceType`, `id`) before tests can reference it.
@@ -116,8 +116,8 @@ Examples:
 3. `inputSource tech.D_LEFT`
 
 Notes:
-- Controller names come from `bringup_bindings.json`.
-- Default controller names are `controller0` through `controller5` when omitted in bindings.
+- Controller names come from controller devices in `bringup_system.json`.
+- Controller devices must declare `deviceInterface: USB`, `type: xboxController`, and `port`.
 
 ## Add a Device to the Active Profile
 Purpose: ensure a new device label is usable in tests.
@@ -134,7 +134,7 @@ set id 26
 set model "REV NEO"
 set type motor
 exit
-save profiles data/bringup_system.json
+save profiles src/main/deploy/bringup_system.json
 ```
 
 Notes:
@@ -230,12 +230,12 @@ Steps:
 7. Set input: `inputSource controller0.leftY`
 8. Set deadband: `deadband 0.12`
 9. Exit test mode: `end`
-10. Save: `save config data/bringup_system.json`
+10. Save: `save config src/main/deploy/bringup_system.json`
 
 Expected:
 - No parse errors.
 - Prompt changes to `bringup(config-test-DriveFrontLeft)#` while editing.
-- `data/bringup_system.json` is updated (tests live under `bridgeConfig.byProfile.<profile>.tests`).
+- `src/main/deploy/bringup_system.json` is updated (tests live under `bridgeConfig.byProfile.<profile>.tests`).
 
 ## Quick Start (Create a Button Test)
 Purpose: create a fixed-duty test with termination rules.
@@ -251,7 +251,7 @@ Steps:
 8. Add termination: `termination time 1.5`
 9. Add termination: `termination hold`
 10. Exit test mode: `end`
-11. Save: `save config data/bringup_system.json`
+11. Save: `save config src/main/deploy/bringup_system.json`
 
 Expected:
 - The test runs when the bound button is pressed.
@@ -266,7 +266,7 @@ Steps:
 3. `test <existingName>` (existing tests only)
 4. Change fields as needed.
 5. `end`
-6. `save config data/bringup_system.json`
+6. `save config src/main/deploy/bringup_system.json`
 
 Notes:
 - Use `show tests` to list all tests in the active set.
@@ -314,7 +314,7 @@ device add "candle"
 action toggle_led
 enabled true
 end
-save config data/bringup_system.json
+save config src/main/deploy/bringup_system.json
 ```
 
 Set solid color:
@@ -332,7 +332,7 @@ brightness 0.7
 duration 2.0
 enabled true
 end
-save config data/bringup_system.json
+save config src/main/deploy/bringup_system.json
 ```
 
 ## Example Session (Full)
@@ -348,14 +348,14 @@ bringup(config-test-IntakePulse)# inputSource controller1.A
 bringup(config-test-IntakePulse)# duty 0.2
 bringup(config-test-IntakePulse)# termination time 1.5
 bringup(config-test-IntakePulse)# end
-bringup(config)# save config data/bringup_system.json
+bringup(config)# save config src/main/deploy/bringup_system.json
 ```
 
 ## Troubleshooting
 Purpose: resolve common issues quickly.
 
 Issues:
-1. Unknown device label. Check `data/bringup_system.json` for the device label.
+1. Unknown device label. Check `src/main/deploy/bringup_system.json` for the device label.
 2. Invalid command in this mode. Confirm the prompt matches the mode you expect.
 3. Save blocked by validation. Use `show test <name>` and correct missing fields.
 4. Tests not seen on robot. Run `python -m tools.validate_sync` and deploy the updated `src/main/deploy/bringup_system.json`.

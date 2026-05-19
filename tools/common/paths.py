@@ -30,9 +30,9 @@ def repo_root() -> Path:
 def profiles_canonical_path() -> Path:
     """
     NAME
-        profiles_canonical_path - Path to data/bringup_system.json.
+        profiles_canonical_path - Path to the unified deploy bringup_system.json.
     """
-    return repo_root() / "data" / "bringup_system.json"
+    return profiles_deploy_path()
 
 
 def profiles_deploy_path() -> Path:
@@ -72,9 +72,9 @@ def tests_deploy_path() -> Path:
 def bindings_deploy_path() -> Path:
     """
     NAME
-        bindings_deploy_path - Path to src/main/deploy/bringup_bindings.json.
+        bindings_deploy_path - Path to the unified config file that owns bindings.
     """
-    return repo_root() / "src" / "main" / "deploy" / "bringup_bindings.json"
+    return profiles_deploy_path()
 
 
 def can_mappings_path() -> Path:

@@ -3,6 +3,7 @@ package frc.robot.devices.ctre;
 import com.ctre.phoenix6.hardware.CANcoder;
 import edu.wpi.first.units.Units;
 import frc.robot.BringupUtil;
+import frc.robot.devices.DeviceDslSupport;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.manufacturers.ctre.diag.CtreCANCoderReader;
 import frc.robot.diag.snapshots.DeviceSnapshot;
@@ -217,6 +218,30 @@ public final class CtreCANCoderDevice implements DeviceUnit {
    */
   private void initLimitInputs() {
     BringupUtil.ensureDioInputs(limitInputs, limitConfig.switches);
+  }
+
+  @Override
+  public Object readDslSignal(String signalName) {
+    Object encoderSignal = DeviceDslSupport.readEncoderSignal(this, signalName);
+    if (encoderSignal != null) {
+      return encoderSignal;
+    }
+    return DeviceDslSupport.readLimitSwitchSignal(this, signalName);
+  }
+
+  @Override
+  public boolean writeDslSignal(String signalName, double value) {
+    return false;
+  }
+
+  @Override
+  public boolean clearDslSignal(String signalName) {
+    return false;
+  }
+
+  @Override
+  public boolean isDslWritableValueInRange(String signalName, double value) {
+    return true;
   }
 
   /**

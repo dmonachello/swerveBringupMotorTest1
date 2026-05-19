@@ -247,7 +247,7 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_DEVICES = "devices";
   private static final Gson GSON = new Gson();
   private static final double DEADBAND = BringupUtil.DEADBAND;
-  private static final String FILE_BINDINGS = "bringup_bindings.json";
+  private static final String FILE_BINDINGS = "bringup_system.json";
   private static final String FILE_CAN_MAPPINGS = "can_mappings.json";
   private static final String SOURCE_NAME_PROFILES = "profiles";
   private static final String SOURCE_NAME_BINDINGS = "bindings";

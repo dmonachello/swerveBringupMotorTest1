@@ -7,6 +7,7 @@ import com.revrobotics.spark.SparkFlex;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.spark.config.SparkFlexConfig;
 import frc.robot.BringupUtil;
+import frc.robot.devices.DeviceDslSupport;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.manufacturers.rev.diag.RevSparkFlexReader;
 import frc.robot.diag.snapshots.DeviceSnapshot;
@@ -328,6 +329,26 @@ public final class RevFlexVortexDevice implements DeviceUnit {
    */
   private void initLimitInputs() {
     BringupUtil.ensureDioInputs(limitInputs, limitConfig.switches);
+  }
+
+  @Override
+  public Object readDslSignal(String signalName) {
+    return DeviceDslSupport.readMotorSignal(this, signalName);
+  }
+
+  @Override
+  public boolean writeDslSignal(String signalName, double value) {
+    return DeviceDslSupport.writeMotorSignal(this, signalName, value);
+  }
+
+  @Override
+  public boolean clearDslSignal(String signalName) {
+    return DeviceDslSupport.clearFaultSignal(this, signalName);
+  }
+
+  @Override
+  public boolean isDslWritableValueInRange(String signalName, double value) {
+    return DeviceDslSupport.isMotorWritableValueInRange(signalName, value);
   }
 
   /**

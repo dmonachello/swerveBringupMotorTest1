@@ -5,7 +5,7 @@ NAME
     dsl_tests_config_tool.py - File-based import/export/validate tool for DSL tests.
 
 SYNOPSIS
-    python tools/can_nt/scripts/dsl_tests_config_tool.py import --config data/bringup_system.json --profile robot --test spin --source spin.dsl
+    python tools/can_nt/scripts/dsl_tests_config_tool.py import --config src/main/deploy/bringup_system.json --profile robot --test spin --source spin.dsl
 """
 
 import argparse

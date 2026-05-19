@@ -72,9 +72,9 @@ class DslBringupTestTest {
     test.update(context, FINISH_SEC);
 
     assertEquals(BringupTestResult.PASS, test.getResult());
-    assertEquals(2, device.dutyWrites);
-    assertEquals(2, device.stopWrites);
-    assertEquals(DUTY, device.lastDuty);
+    assertEquals(4, device.dutyWrites);
+    assertEquals(0, device.stopWrites);
+    assertEquals(0.0, device.lastDuty, 0.0001);
   }
 
   @Test
@@ -116,8 +116,8 @@ class DslBringupTestTest {
     test.update(context, 11.1);
 
     assertEquals(BringupTestResult.PASS, test.getResult());
-    assertEquals(2, motor.dutyWrites);
-    assertEquals(0.2, motor.lastDuty, 0.0001);
+    assertEquals(4, motor.dutyWrites);
+    assertEquals(0.0, motor.lastDuty, 0.0001);
   }
 
   @Test
@@ -144,7 +144,7 @@ class DslBringupTestTest {
 
     assertEquals(BringupTestResult.FAIL, test.getResult());
     assertEquals("until until_1: timer.elapsed >= 1.0 (fallback active)", test.getStatus());
-    assertEquals(1, motor.dutyWrites);
+    assertEquals(3, motor.dutyWrites);
     assertEquals(0.0, motor.lastDuty, 0.0001);
     assertTrue(test.buildRunDetails().toString().contains("signalSetFallbacks"));
   }
@@ -163,8 +163,8 @@ class DslBringupTestTest {
     test.update(context, 11.1);
 
     assertEquals(BringupTestResult.PASS, test.getResult());
-    assertEquals(3, motor.dutyWrites);
-    assertEquals(0.15, motor.lastDuty, 0.0001);
+    assertEquals(5, motor.dutyWrites);
+    assertEquals(0.0, motor.lastDuty, 0.0001);
   }
 
   @Test
@@ -180,7 +180,7 @@ class DslBringupTestTest {
     test.update(context, 11.1);
 
     assertEquals(BringupTestResult.PASS, test.getResult());
-    assertEquals(2, motor.dutyWrites);
+    assertEquals(4, motor.dutyWrites);
     assertEquals(0.0, motor.lastDuty, 0.0001);
   }
 
@@ -197,8 +197,8 @@ class DslBringupTestTest {
     test.update(context, 11.1);
 
     assertEquals(BringupTestResult.PASS, test.getResult());
-    assertEquals(2, motor.dutyWrites);
-    assertEquals(0.025, motor.lastDuty, 0.0001);
+    assertEquals(4, motor.dutyWrites);
+    assertEquals(0.0, motor.lastDuty, 0.0001);
   }
 
   @Test
@@ -477,6 +477,30 @@ class DslBringupTestTest {
     @Override
     public void stop() {
       stopWrites++;
+    }
+
+    @Override
+    public Object readDslSignal(String signalName) {
+      return null;
+    }
+
+    @Override
+    public boolean writeDslSignal(String signalName, double value) {
+      if (!"output".equals(signalName)) {
+        return false;
+      }
+      setDuty(value);
+      return true;
+    }
+
+    @Override
+    public boolean clearDslSignal(String signalName) {
+      return "faults".equals(signalName);
+    }
+
+    @Override
+    public boolean isDslWritableValueInRange(String signalName, double value) {
+      return !"output".equals(signalName) || (value >= -1.0 && value <= 1.0);
     }
   }
 

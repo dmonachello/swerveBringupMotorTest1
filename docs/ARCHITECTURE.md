@@ -312,15 +312,16 @@ Purpose: input actions, testing, and reporting are orchestrated without vendor c
 ## Input + Bindings (Local Client)
 Purpose: controller bindings remain data-driven and stable for the local Xbox client.
 
-- `bringup_bindings.json` defines controllers (type/port/role) plus command bindings/axes.
+- `src/main/deploy/bringup_system.json` defines controller devices plus the `bindings` subtree for commands and axes.
 - `BindingsManager` resolves bindings and axes each loop.
 
 ## Configuration Layer
 Purpose: JSON inputs define behavior and runtime configuration.
 
-- `bringup_system.json`: unified system config (profiles + diagram + bridgeConfig.byProfile). Stored in `data/` and synced to deploy.
+- `bringup_system.json`: unified system config (profiles + devices + diagram + bindings + bridgeConfig.byProfile). Stored in `src/main/deploy/`.
 - Requires `schema_version` (4), `data_version`, and `data_hash` at the root.
 - Profiles reference devices by label only; the devices table owns the CAN identity fields.
+- Controllers are ordinary device entries with `deviceInterface: USB`, `type: xboxController`, and `port`.
 - Tests are stored inside `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
 - `motor_specs.json`: motor current specs for health checks.
 - `can_mappings.json`: manufacturer/device type names for CAN decoding.
@@ -378,14 +379,15 @@ Purpose: document the one-time startup sequence and core object construction.
 Purpose: profiles, bindings, and tests load in a predictable order.
 
 1. Robot starts (`Robot` or `RobotV2`) and applies the active CAN profile:
-   - `bringup_system.json` is loaded via `BringupUtil` (deploy copy; data is canonical).
+   - `src/main/deploy/bringup_system.json` is loaded via `BringupUtil`.
    - `default_profile` is selected unless `--bringup-profile=...` is provided.
 2. Tests are loaded from `bringup_system.json`:
    - Source: `bridgeConfig.byProfile.<profile>.tests`.
    - Active set: `default_test_set` inside that per-profile tests block.
    - Note: `bringup_tests.json`-only workflows are legacy and not used by the robot.
 3. Input configuration is loaded:
-   - `bringup_bindings.json` defines controller roles, bindings, and axes.
+   - `bringup_system.json` controller devices define ports and names.
+   - `bringup_system.json.bindings` defines command bindings and axes.
 
 ### B) Input -> Action -> Device Command
 Purpose: controller inputs translate into bringup actions each loop.
@@ -521,7 +523,7 @@ Purpose: known design costs are acknowledged explicitly.
 Purpose: future extensions are identified without breaking contracts.
 
 - Add decoder table for CAN reverse engineering outputs.
-- Add more controller types in `bringup_bindings.json` (beyond Xbox).
+- Add more controller device types in `bringup_system.json` (beyond Xbox).
 - Add new test check types without changing existing JSON fields.
 - Add dashboard widgets for live test status and PC tool health.
 - Add support for additional device families:

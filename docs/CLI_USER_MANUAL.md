@@ -39,7 +39,7 @@ add device "SPARKMAX/NEO 25"
 add device "SPARKMAX/NEO550 7"
 add device "FALCON 9"
 exit
-save profiles data/bringup_system.json
+save profiles src/main/deploy/bringup_system.json
 end
 ```
 
@@ -195,7 +195,7 @@ save all --prompt
 Notes:
 
 - Uses the current source paths.
-- If a path is missing, the CLI prints a one-line fix (for example: `save config data/bringup_system.json`).
+- If a path is missing, the CLI prints a one-line fix (for example: `save config src/main/deploy/bringup_system.json`).
 - `show config local-raw`
 - `show config dirty`
 - `show profiles`
@@ -268,7 +268,7 @@ exit
 
 Save your changes:
 ```
-save profiles data/bringup_system.json
+save profiles src/main/deploy/bringup_system.json
 ```
 
 ## Saving and Files
@@ -301,7 +301,7 @@ inputSource controller0.A
 duty 0.2
 termination time 1.5
 end
-save config data/bringup_system.json
+save config src/main/deploy/bringup_system.json
 ```
 
 Inspect tests:
@@ -348,7 +348,7 @@ set vendor CTRE
 set role "swerve drive"
 set tags ["swerve","drive","front-left"]
 exit
-save profiles data/bringup_system.json
+save profiles src/main/deploy/bringup_system.json
 ```
 
 Notes:
@@ -369,7 +369,7 @@ Supported `set` fields:
 - `attachments`, `terminator`
 - `vendor`, `role`, `notes`, `tags`, `limits`
 
-## Controller Bindings (bringup_bindings.json)
+## Controller Bindings (bringup_system.json)
 
 Purpose: Edit controller bindings without touching JSON.
 
@@ -382,12 +382,13 @@ bindings show bindings
 bindings show axes
 ```
 
-Add or edit controllers:
+Define controller devices in the unified config:
 ```
-bindings controller add controller2 XBOX 2
-bindings controller set controller2 port 2
-bindings controller rename controller2 controller_op
-bindings no controller controller_op
+device controller2
+set interface USB
+set type xboxController
+set port 2
+rename device controller2 controller_op
 ```
 
 Add or edit bindings:
@@ -406,13 +407,13 @@ bindings axis delete 2
 
 Save or validate:
 ```
-bindings save src/main/deploy/bringup_bindings.json
+bindings save src/main/deploy/bringup_system.json
 bindings validate
 ```
 
 Notes:
 
-- Controller names must exist before bindings/axes reference them.
+- Controller labels must exist as controller devices before bindings/axes reference them.
 - Indexes are 1-based and shown in `bindings show`.
 
 ## CAN Mappings (can_mappings.json)
@@ -468,7 +469,7 @@ Purpose: Common errors and fixes.
   Run `profile <name>` in config mode.
 
 - Groups vanish after restart  
-  You forgot to save. Run `save profiles data/bringup_system.json`.
+  You forgot to save. Run `save profiles src/main/deploy/bringup_system.json`.
 
 - Exit prompts about unsaved changes  
   Run `show config dirty` and save profiles or tests.

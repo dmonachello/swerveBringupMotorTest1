@@ -19,12 +19,24 @@ public final class XboxControllerDevice implements DeviceUnit {
   public static final String DEVICE_TYPE = "xboxController";
   public static final String SIGNAL_A = "A";
   public static final String SIGNAL_B = "B";
+  public static final String SIGNAL_X = "X";
+  public static final String SIGNAL_Y = "Y";
+  public static final String SIGNAL_LB = "LB";
+  public static final String SIGNAL_RB = "RB";
+  public static final String SIGNAL_BACK = "BACK";
+  public static final String SIGNAL_START = "START";
+  public static final String SIGNAL_LS = "LS";
+  public static final String SIGNAL_RS = "RS";
+  public static final String SIGNAL_D_UP = "D_UP";
+  public static final String SIGNAL_D_RIGHT = "D_RIGHT";
+  public static final String SIGNAL_D_DOWN = "D_DOWN";
+  public static final String SIGNAL_D_LEFT = "D_LEFT";
+  public static final String SIGNAL_LEFT_X = "leftX";
   public static final String SIGNAL_LEFT_Y = "leftY";
+  public static final String SIGNAL_RIGHT_X = "rightX";
   public static final String SIGNAL_RIGHT_Y = "rightY";
-  private static final String SIGNAL_LEFT_X = "leftX";
-  private static final String SIGNAL_RIGHT_X = "rightX";
-  private static final String SIGNAL_LEFT_TRIGGER = "leftTrigger";
-  private static final String SIGNAL_RIGHT_TRIGGER = "rightTrigger";
+  public static final String SIGNAL_LEFT_TRIGGER = "leftTrigger";
+  public static final String SIGNAL_RIGHT_TRIGGER = "rightTrigger";
   private static final String DEVICE_DISPLAY_NAME = "Xbox Controller";
   private static final String HEADER_SOURCE = "WPILib";
   private static final String HEADER_OWNER = "Team";
@@ -114,6 +126,19 @@ public final class XboxControllerDevice implements DeviceUnit {
       Map<String, Double> values = new HashMap<>();
       values.put(SIGNAL_A, controller.getAButton() ? 1.0 : 0.0);
       values.put(SIGNAL_B, controller.getBButton() ? 1.0 : 0.0);
+      values.put(SIGNAL_X, controller.getXButton() ? 1.0 : 0.0);
+      values.put(SIGNAL_Y, controller.getYButton() ? 1.0 : 0.0);
+      values.put(SIGNAL_LB, controller.getLeftBumperButton() ? 1.0 : 0.0);
+      values.put(SIGNAL_RB, controller.getRightBumperButton() ? 1.0 : 0.0);
+      values.put(SIGNAL_BACK, controller.getBackButton() ? 1.0 : 0.0);
+      values.put(SIGNAL_START, controller.getStartButton() ? 1.0 : 0.0);
+      values.put(SIGNAL_LS, controller.getLeftStickButton() ? 1.0 : 0.0);
+      values.put(SIGNAL_RS, controller.getRightStickButton() ? 1.0 : 0.0);
+      int pov = controller.getPOV();
+      values.put(SIGNAL_D_UP, pov == 0 ? 1.0 : 0.0);
+      values.put(SIGNAL_D_RIGHT, pov == 90 ? 1.0 : 0.0);
+      values.put(SIGNAL_D_DOWN, pov == 180 ? 1.0 : 0.0);
+      values.put(SIGNAL_D_LEFT, pov == 270 ? 1.0 : 0.0);
       values.put(SIGNAL_LEFT_X, controller.getLeftX());
       values.put(SIGNAL_LEFT_Y, controller.getLeftY());
       values.put(SIGNAL_RIGHT_X, controller.getRightX());
@@ -189,9 +214,41 @@ public final class XboxControllerDevice implements DeviceUnit {
     if (value == null) {
       return null;
     }
-    if (SIGNAL_A.equals(signalName) || SIGNAL_B.equals(signalName)) {
+    if (isBooleanSignal(signalName)) {
       return value.doubleValue() >= BUTTON_ACTIVE_THRESHOLD;
     }
     return value;
+  }
+
+  @Override
+  public boolean writeDslSignal(String signalName, double value) {
+    return false;
+  }
+
+  @Override
+  public boolean clearDslSignal(String signalName) {
+    return false;
+  }
+
+  @Override
+  public boolean isDslWritableValueInRange(String signalName, double value) {
+    return true;
+  }
+
+  private boolean isBooleanSignal(String signalName) {
+    return SIGNAL_A.equals(signalName)
+        || SIGNAL_B.equals(signalName)
+        || SIGNAL_X.equals(signalName)
+        || SIGNAL_Y.equals(signalName)
+        || SIGNAL_LB.equals(signalName)
+        || SIGNAL_RB.equals(signalName)
+        || SIGNAL_BACK.equals(signalName)
+        || SIGNAL_START.equals(signalName)
+        || SIGNAL_LS.equals(signalName)
+        || SIGNAL_RS.equals(signalName)
+        || SIGNAL_D_UP.equals(signalName)
+        || SIGNAL_D_RIGHT.equals(signalName)
+        || SIGNAL_D_DOWN.equals(signalName)
+        || SIGNAL_D_LEFT.equals(signalName);
   }
 }

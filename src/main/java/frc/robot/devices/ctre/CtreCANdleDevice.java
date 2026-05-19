@@ -4,6 +4,7 @@ import com.ctre.phoenix6.controls.SolidColor;
 import com.ctre.phoenix6.hardware.CANdle;
 import com.ctre.phoenix6.signals.RGBWColor;
 import frc.robot.BringupUtil;
+import frc.robot.devices.DeviceDslSupport;
 import frc.robot.devices.DeviceActionRequest;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.manufacturers.ctre.diag.CtreCandleReader;
@@ -283,6 +284,26 @@ public final class CtreCANdleDevice implements DeviceUnit {
     snap.label = label;
     addLimitAttachment(snap);
     return snap;
+  }
+
+  @Override
+  public Object readDslSignal(String signalName) {
+    return DeviceDslSupport.readLimitSwitchSignal(this, signalName);
+  }
+
+  @Override
+  public boolean writeDslSignal(String signalName, double value) {
+    return false;
+  }
+
+  @Override
+  public boolean clearDslSignal(String signalName) {
+    return false;
+  }
+
+  @Override
+  public boolean isDslWritableValueInRange(String signalName, double value) {
+    return true;
   }
 
   /**
