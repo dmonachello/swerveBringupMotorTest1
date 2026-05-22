@@ -1,4 +1,6 @@
-﻿# Multi-Analyzer Visibility Matrix Spec
+﻿SPEC_STATUS: NOT_IMPLEMENTED
+
+# Multi-Analyzer Visibility Matrix Spec
 
 Purpose: Define a PC-local visibility matrix for multiple CAN analyzers.
 
@@ -602,3 +604,4 @@ Purpose: Provide common bus-level states inferred from the matrix.
 - Degraded: visibility is intermittent or low-rate across sources.
 - Device-specific failure: one or a few devices missing while others are visible.
 - Source unavailable: analyzers offline; visibility is unknown (`?`), not a bus state.
+

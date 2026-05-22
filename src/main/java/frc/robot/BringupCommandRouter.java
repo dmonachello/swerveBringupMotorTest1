@@ -1,16 +1,23 @@
 package frc.robot;
 
+import frc.robot.commands.local.RobotLocalCommandContext;
+import frc.robot.commands.local.RobotLocalCommandDispatcher;
 import frc.robot.input.BindingsManager;
 
 /**
  * NAME
- *   BringupCommandRouter - Map bindings to bringup actions.
+ *   BringupCommandRouter - Compatibility adapter for robot-local command dispatch.
  *
  * DESCRIPTION
- *   Applies controller bindings to runtime actions, report requests, and
- *   diagnostics outputs.
+ *   Preserves the historical call sites while delegating actual command
+ *   ownership to the canonical robot-local command dispatcher.
  */
 public final class BringupCommandRouter {
+  private static final int REPORT_BATCH_SIZE = 4;
+  private static final int DUMP_WRAP_COLUMNS = 120;
+  private static final String MESSAGE_REPORT_WRITE_OK_PREFIX = "Wrote CAN report JSON to ";
+  private static final String MESSAGE_REPORT_WRITE_FAILED = "Failed to write CAN report JSON.";
+
   private BringupCommandRouter() {}
 
   /**
@@ -33,6 +40,14 @@ public final class BringupCommandRouter {
 
   /**
    * NAME
+   *   GenericCmdHandler - Hook for example command activation behavior.
+   */
+  public interface GenericCmdHandler {
+    void handleGenericCmd(boolean genericCmdNow);
+  }
+
+  /**
+   * NAME
    *   AddMotorHandler - Hook for add-next activation behavior.
    */
   public interface AddMotorHandler {
@@ -41,21 +56,7 @@ public final class BringupCommandRouter {
 
   /**
    * NAME
-   *   applyCommon - Apply common binding-driven actions.
-   *
-   * PARAMETERS
-   *   bind - Current binding state snapshot.
-   *   runtime - Shared runtime/action owner.
-   *   printBindings - Callback to print bindings.
-   *   printTestsInfo - Callback to print tests info.
-   *   printTestsOverview - Callback to print tests overview.
-   *   runHeld - Whether run is currently held.
-   *
-   * SIDE EFFECTS
-   *   Enqueues prints, triggers device actions, and updates reports/tests.
-   *
-   * RETURNS
-   *   Summary of binding-driven actions for downstream safety handling.
+   *   applyCommon - Apply registered local commands to the shared runtime.
    */
   public static CommonResult applyCommon(
       BindingsManager.BindingState bind,
@@ -63,132 +64,32 @@ public final class BringupCommandRouter {
       Runnable printBindings,
       Runnable printTestsInfo,
       Runnable printTestsOverview,
-      boolean runHeld,
+      Runnable toggleProfile,
+      Runnable toggleDashboard,
+      Runnable printInputs,
       AddAllHandler addAllHandler,
+      GenericCmdHandler genericCmdHandler,
       AddMotorHandler addMotorHandler) {
-    CommonResult result = new CommonResult();
-
-    if (bind.pressed("addMotor")) {
-      BringupPrinter.enqueue("Command: addMotor");
-      if (addMotorHandler != null) {
-        addMotorHandler.handleAddMotor(true);
-      } else {
-        runtime.addMotor(true);
-      }
-    } else {
-      if (addMotorHandler != null) {
-        addMotorHandler.handleAddMotor(false);
-      } else {
-        runtime.addMotor(false);
-      }
-    }
-    if (bind.pressed("addAll")) {
-      BringupPrinter.enqueue("Command: addAll");
-      if (addAllHandler != null) {
-        addAllHandler.handleAddAll(true);
-      } else {
-        runtime.addAllDevices(true);
-      }
-    } else {
-      if (addAllHandler != null) {
-        addAllHandler.handleAddAll(false);
-      } else {
-        runtime.addAllDevices(false);
-      }
-    }
-    DiagnosticsReporter diagnostics = runtime.getDiagnostics();
-    runtime.handlePrint(bind.pressed("printState"));
-    runtime.handleHealth(bind.pressed("printHealth"));
-    runtime.handleCANCoder(runHeld ? false : bind.pressed("printCANcoder"));
-
-    if (bind.pressed("selectTestPrev")) {
-      runtime.selectPreviousTest();
-      if (printTestsOverview != null) {
-        printTestsOverview.run();
-      }
-    }
-    if (bind.pressed("selectTestNext")) {
-      runtime.selectNextTest();
-      if (printTestsOverview != null) {
-        printTestsOverview.run();
-      }
-    }
-    if (bind.pressed("toggleTest")) {
-      result.toggledTestEnabled = runtime.toggleSelectedTestEnabled();
-      if (printTestsOverview != null) {
-        printTestsOverview.run();
-      }
-    }
-    if (bind.pressed("runTest")) {
-      BringupPrinter.enqueue("Command: runTest");
-      runtime.runSelectedTest();
-      result.runTestPressed = true;
-    }
-    if (bind.pressed("runAllTests")) {
-      BringupPrinter.enqueue("Command: runAllTests");
-      runtime.runAllTests();
-      result.runAllPressed = true;
-    }
-
-    if (bind.pressed("printBindings") && printBindings != null) {
-      printBindings.run();
-    }
-    if (bind.pressed("printTestsInfo") && printTestsInfo != null) {
-      printTestsInfo.run();
-    }
-    if (bind.pressed("printTestsOverview") && printTestsOverview != null) {
-      printTestsOverview.run();
-    }
-    if (bind.pressed("printNextTest")) {
-      runtime.printNextTestReport();
-    }
-
-    if (diagnostics != null) {
-      if (bind.pressed("printNTdiag")) {
-        String report = diagnostics.buildNetworkDiagnosticsReportIfReady();
-        if (report != null) {
-          runtime.requestTextReport(report, 4);
-        }
-      }
-      if (bind.pressed("printCANdiag")) {
-        String report = diagnostics.buildCanDiagnosticsReportIfReady();
-        if (report != null) {
-          runtime.requestTextReport(report, 4);
-        }
-      }
-      if (bind.pressed("dumpReport")) {
-        String json = diagnostics.buildReportJsonForDump();
-        String wrapped = ReportTextUtil.wrapLongLine(json, 120);
-        runtime.requestTextReport(wrapped, 4);
-        if (diagnostics.writeReportJsonToFile(json)) {
-          runtime.requestTextReport("Wrote CAN report JSON to " + diagnostics.getReportPath(), 4);
-        } else {
-          runtime.requestTextReport("Failed to write CAN report JSON.", 4);
-        }
-      }
-    }
-
-    if (bind.pressed("clearFaults")) {
-      BringupPrinter.enqueue("Command: clearFaults");
-      runtime.clearAllFaults();
-      BringupPrinter.enqueue("Cleared device faults (current + sticky).");
-    }
-    if (bind.pressed("canSweep")) {
-      BringupPrinter.enqueue("Command: canSweep");
-      runtime.runCanPingSweep();
-    }
-
-    runtime.updateReportsAndTests(runHeld || bind.held("runTest"));
-    return result;
+    RobotLocalCommandDispatcher.CommonResult dispatchResult =
+        RobotLocalCommandDispatcher.dispatch(
+            bind,
+            buildRuntimeContext(
+                runtime,
+                printBindings,
+                printTestsInfo,
+                printTestsOverview,
+                toggleProfile,
+                toggleDashboard,
+                printInputs,
+                addAllHandler,
+                genericCmdHandler,
+                addMotorHandler));
+    return toCommonResult(dispatchResult);
   }
 
   /**
    * NAME
-   *   applyCommon - Legacy core-based compatibility path.
-   *
-   * DESCRIPTION
-   *   Supports the older Robot entry point. RobotV2 and UI/CLI paths use the
-   *   BringupRuntime overload so they share current runtime ownership.
+   *   applyCommon - Apply registered local commands to the legacy core path.
    */
   public static CommonResult applyCommon(
       BindingsManager.BindingState bind,
@@ -197,118 +98,408 @@ public final class BringupCommandRouter {
       Runnable printBindings,
       Runnable printTestsInfo,
       Runnable printTestsOverview,
-      boolean runHeld,
+      Runnable toggleProfile,
+      Runnable printInputs,
       AddAllHandler addAllHandler,
+      GenericCmdHandler genericCmdHandler,
       AddMotorHandler addMotorHandler) {
+    RobotLocalCommandDispatcher.CommonResult dispatchResult =
+        RobotLocalCommandDispatcher.dispatch(
+            bind,
+            buildCoreContext(
+                core,
+                diagnostics,
+                printBindings,
+                printTestsInfo,
+                printTestsOverview,
+                toggleProfile,
+                printInputs,
+                addAllHandler,
+                genericCmdHandler,
+                addMotorHandler));
+    return toCommonResult(dispatchResult);
+  }
+
+  private static CommonResult toCommonResult(
+      RobotLocalCommandDispatcher.CommonResult dispatchResult) {
     CommonResult result = new CommonResult();
+    result.toggledTestEnabled = dispatchResult.toggledTestEnabled;
+    result.runTestPressed = dispatchResult.runTestPressed;
+    result.runAllPressed = dispatchResult.runAllPressed;
+    return result;
+  }
 
-    if (bind.pressed("addMotor")) {
-      BringupPrinter.enqueue("Command: addMotor");
-      if (addMotorHandler != null) {
-        addMotorHandler.handleAddMotor(true);
-      } else {
-        core.handleAdd(true);
+  private static RobotLocalCommandContext buildRuntimeContext(
+      BringupRuntime runtime,
+      Runnable printBindings,
+      Runnable printTestsInfo,
+      Runnable printTestsOverview,
+      Runnable toggleProfile,
+      Runnable toggleDashboard,
+      Runnable printInputs,
+      AddAllHandler addAllHandler,
+      GenericCmdHandler genericCmdHandler,
+      AddMotorHandler addMotorHandler) {
+    return new RobotLocalCommandContext() {
+      @Override
+      public void enqueuePrint(String text) {
+        BringupPrinter.enqueue(text);
       }
-    } else if (addMotorHandler != null) {
-      addMotorHandler.handleAddMotor(false);
-    } else {
-      core.handleAdd(false);
-    }
-    if (bind.pressed("addAll")) {
-      BringupPrinter.enqueue("Command: addAll");
-      if (addAllHandler != null) {
-        addAllHandler.handleAddAll(true);
-      } else {
-        core.handleAddAll(true);
-      }
-    } else if (addAllHandler != null) {
-      addAllHandler.handleAddAll(false);
-    } else {
-      core.handleAddAll(false);
-    }
-    core.handlePrint(bind.pressed("printState"));
-    core.handleHealth(bind.pressed("printHealth"));
-    core.handleCANCoder(runHeld ? false : bind.pressed("printCANcoder"));
 
-    if (bind.pressed("selectTestPrev")) {
-      core.selectPrevBringupTest();
-      if (printTestsOverview != null) {
-        printTestsOverview.run();
+      @Override
+      public void handleAddMotor(boolean addMotorNow) {
+        if (addMotorHandler != null) {
+          addMotorHandler.handleAddMotor(addMotorNow);
+        } else {
+          runtime.addMotor(addMotorNow);
+        }
       }
-    }
-    if (bind.pressed("selectTestNext")) {
-      core.selectNextBringupTest();
-      if (printTestsOverview != null) {
-        printTestsOverview.run();
-      }
-    }
-    if (bind.pressed("toggleTest")) {
-      result.toggledTestEnabled = core.toggleSelectedBringupTestEnabled();
-      if (printTestsOverview != null) {
-        printTestsOverview.run();
-      }
-    }
-    if (bind.pressed("runTest")) {
-      BringupPrinter.enqueue("Command: runTest");
-      core.runSelectedBringupTest();
-      result.runTestPressed = true;
-    }
-    if (bind.pressed("runAllTests")) {
-      BringupPrinter.enqueue("Command: runAllTests");
-      core.runAllBringupTests();
-      result.runAllPressed = true;
-    }
 
-    if (bind.pressed("printBindings") && printBindings != null) {
-      printBindings.run();
-    }
-    if (bind.pressed("printTestsInfo") && printTestsInfo != null) {
-      printTestsInfo.run();
-    }
-    if (bind.pressed("printTestsOverview") && printTestsOverview != null) {
-      printTestsOverview.run();
-    }
-    if (bind.pressed("printNextTest")) {
-      core.printNextTestReport();
-    }
+      @Override
+      public void handleAddAll(boolean addAllNow) {
+        if (addAllHandler != null) {
+          addAllHandler.handleAddAll(addAllNow);
+        } else {
+          runtime.addAllDevices(addAllNow);
+        }
+      }
 
-    if (diagnostics != null) {
-      if (bind.pressed("printNTdiag")) {
+      @Override
+      public void handleGenericCmd(boolean genericCmdNow) {
+        if (genericCmdHandler != null) {
+          genericCmdHandler.handleGenericCmd(genericCmdNow);
+        } else {
+          runtime.addAllDevices(genericCmdNow);
+        }
+      }
+
+      @Override
+      public void printState() {
+        runtime.handlePrint(true);
+      }
+
+      @Override
+      public void printHealth() {
+        runtime.handleHealth(true);
+      }
+
+      @Override
+      public void printCANCoder() {
+        runtime.handleCANCoder(true);
+      }
+
+      @Override
+      public void selectPreviousTest() {
+        runtime.selectPreviousTest();
+      }
+
+      @Override
+      public void selectNextTest() {
+        runtime.selectNextTest();
+      }
+
+      @Override
+      public Boolean toggleSelectedTestEnabled() {
+        return runtime.toggleSelectedTestEnabled();
+      }
+
+      @Override
+      public void runSelectedTest() {
+        runtime.runSelectedTest();
+      }
+
+      @Override
+      public void runAllTests() {
+        runtime.runAllTests();
+      }
+
+      @Override
+      public void printBindings() {
+        if (printBindings != null) {
+          printBindings.run();
+        }
+      }
+
+      @Override
+      public void printTestsInfo() {
+        if (printTestsInfo != null) {
+          printTestsInfo.run();
+        }
+      }
+
+      @Override
+      public void printTestsOverview() {
+        if (printTestsOverview != null) {
+          printTestsOverview.run();
+        }
+      }
+
+      @Override
+      public void printNextTest() {
+        runtime.printNextTestReport();
+      }
+
+      @Override
+      public void printNtDiagnostics() {
+        DiagnosticsReporter diagnostics = runtime.getDiagnostics();
+        if (diagnostics == null) {
+          return;
+        }
         String report = diagnostics.buildNetworkDiagnosticsReportIfReady();
         if (report != null) {
-          core.requestTextReport(report, 4);
+          runtime.requestTextReport(report, REPORT_BATCH_SIZE);
         }
       }
-      if (bind.pressed("printCANdiag")) {
+
+      @Override
+      public void printCanDiagnostics() {
+        DiagnosticsReporter diagnostics = runtime.getDiagnostics();
+        if (diagnostics == null) {
+          return;
+        }
         String report = diagnostics.buildCanDiagnosticsReportIfReady();
         if (report != null) {
-          core.requestTextReport(report, 4);
+          runtime.requestTextReport(report, REPORT_BATCH_SIZE);
         }
       }
-      if (bind.pressed("dumpReport")) {
+
+      @Override
+      public void dumpReport() {
+        DiagnosticsReporter diagnostics = runtime.getDiagnostics();
+        if (diagnostics == null) {
+          return;
+        }
         String json = diagnostics.buildReportJsonForDump();
-        String wrapped = ReportTextUtil.wrapLongLine(json, 120);
-        core.requestTextReport(wrapped, 4);
+        String wrapped = ReportTextUtil.wrapLongLine(json, DUMP_WRAP_COLUMNS);
+        runtime.requestTextReport(wrapped, REPORT_BATCH_SIZE);
         if (diagnostics.writeReportJsonToFile(json)) {
-          core.requestTextReport("Wrote CAN report JSON to " + diagnostics.getReportPath(), 4);
+          runtime.requestTextReport(
+              MESSAGE_REPORT_WRITE_OK_PREFIX + diagnostics.getReportPath(),
+              REPORT_BATCH_SIZE);
         } else {
-          core.requestTextReport("Failed to write CAN report JSON.", 4);
+          runtime.requestTextReport(MESSAGE_REPORT_WRITE_FAILED, REPORT_BATCH_SIZE);
         }
       }
-    }
 
-    if (bind.pressed("clearFaults")) {
-      BringupPrinter.enqueue("Command: clearFaults");
-      core.clearAllFaults();
-      BringupPrinter.enqueue("Cleared device faults (current + sticky).");
-    }
-    if (bind.pressed("canSweep")) {
-      BringupPrinter.enqueue("Command: canSweep");
-      core.runCanPingSweep();
-    }
+      @Override
+      public void clearAllFaults() {
+        runtime.clearAllFaults();
+      }
 
-    core.updateReports();
-    core.updateTests(runHeld || bind.held("runTest"));
-    return result;
+      @Override
+      public void runCanSweep() {
+        runtime.runCanPingSweep();
+      }
+
+      @Override
+      public void toggleProfile() {
+        if (toggleProfile != null) {
+          toggleProfile.run();
+        }
+      }
+
+      @Override
+      public void toggleDashboard() {
+        if (toggleDashboard != null) {
+          toggleDashboard.run();
+        }
+      }
+
+      @Override
+      public void printInputs() {
+        if (printInputs != null) {
+          printInputs.run();
+        }
+      }
+
+      @Override
+      public void updateReportsAndTests(boolean runHeld) {
+        runtime.updateReportsAndTests(runHeld);
+      }
+    };
+  }
+
+  private static RobotLocalCommandContext buildCoreContext(
+      BringupCore core,
+      DiagnosticsReporter diagnostics,
+      Runnable printBindings,
+      Runnable printTestsInfo,
+      Runnable printTestsOverview,
+      Runnable toggleProfile,
+      Runnable printInputs,
+      AddAllHandler addAllHandler,
+      GenericCmdHandler genericCmdHandler,
+      AddMotorHandler addMotorHandler) {
+    return new RobotLocalCommandContext() {
+      @Override
+      public void enqueuePrint(String text) {
+        BringupPrinter.enqueue(text);
+      }
+
+      @Override
+      public void handleAddMotor(boolean addMotorNow) {
+        if (addMotorHandler != null) {
+          addMotorHandler.handleAddMotor(addMotorNow);
+        } else {
+          core.handleAdd(addMotorNow);
+        }
+      }
+
+      @Override
+      public void handleAddAll(boolean addAllNow) {
+        if (addAllHandler != null) {
+          addAllHandler.handleAddAll(addAllNow);
+        } else {
+          core.handleAddAll(addAllNow);
+        }
+      }
+
+      @Override
+      public void handleGenericCmd(boolean genericCmdNow) {
+        if (genericCmdHandler != null) {
+          genericCmdHandler.handleGenericCmd(genericCmdNow);
+        } else {
+          core.handleAddAll(genericCmdNow);
+        }
+      }
+
+      @Override
+      public void printState() {
+        core.handlePrint(true);
+      }
+
+      @Override
+      public void printHealth() {
+        core.handleHealth(true);
+      }
+
+      @Override
+      public void printCANCoder() {
+        core.handleCANCoder(true);
+      }
+
+      @Override
+      public void selectPreviousTest() {
+        core.selectPrevBringupTest();
+      }
+
+      @Override
+      public void selectNextTest() {
+        core.selectNextBringupTest();
+      }
+
+      @Override
+      public Boolean toggleSelectedTestEnabled() {
+        return core.toggleSelectedBringupTestEnabled();
+      }
+
+      @Override
+      public void runSelectedTest() {
+        core.runSelectedBringupTest();
+      }
+
+      @Override
+      public void runAllTests() {
+        core.runAllBringupTests();
+      }
+
+      @Override
+      public void printBindings() {
+        if (printBindings != null) {
+          printBindings.run();
+        }
+      }
+
+      @Override
+      public void printTestsInfo() {
+        if (printTestsInfo != null) {
+          printTestsInfo.run();
+        }
+      }
+
+      @Override
+      public void printTestsOverview() {
+        if (printTestsOverview != null) {
+          printTestsOverview.run();
+        }
+      }
+
+      @Override
+      public void printNextTest() {
+        core.printNextTestReport();
+      }
+
+      @Override
+      public void printNtDiagnostics() {
+        if (diagnostics == null) {
+          return;
+        }
+        String report = diagnostics.buildNetworkDiagnosticsReportIfReady();
+        if (report != null) {
+          core.requestTextReport(report, REPORT_BATCH_SIZE);
+        }
+      }
+
+      @Override
+      public void printCanDiagnostics() {
+        if (diagnostics == null) {
+          return;
+        }
+        String report = diagnostics.buildCanDiagnosticsReportIfReady();
+        if (report != null) {
+          core.requestTextReport(report, REPORT_BATCH_SIZE);
+        }
+      }
+
+      @Override
+      public void dumpReport() {
+        if (diagnostics == null) {
+          return;
+        }
+        String json = diagnostics.buildReportJsonForDump();
+        String wrapped = ReportTextUtil.wrapLongLine(json, DUMP_WRAP_COLUMNS);
+        core.requestTextReport(wrapped, REPORT_BATCH_SIZE);
+        if (diagnostics.writeReportJsonToFile(json)) {
+          core.requestTextReport(
+              MESSAGE_REPORT_WRITE_OK_PREFIX + diagnostics.getReportPath(),
+              REPORT_BATCH_SIZE);
+        } else {
+          core.requestTextReport(MESSAGE_REPORT_WRITE_FAILED, REPORT_BATCH_SIZE);
+        }
+      }
+
+      @Override
+      public void clearAllFaults() {
+        core.clearAllFaults();
+      }
+
+      @Override
+      public void runCanSweep() {
+        core.runCanPingSweep();
+      }
+
+      @Override
+      public void toggleProfile() {
+        if (toggleProfile != null) {
+          toggleProfile.run();
+        }
+      }
+
+      @Override
+      public void toggleDashboard() {}
+
+      @Override
+      public void printInputs() {
+        if (printInputs != null) {
+          printInputs.run();
+        }
+      }
+
+      @Override
+      public void updateReportsAndTests(boolean runHeld) {
+        core.updateReports();
+        core.updateTests(runHeld);
+      }
+    };
   }
 }

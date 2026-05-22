@@ -6,6 +6,8 @@ import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
+import frc.robot.commands.local.RobotLocalAxisCommandId;
+import frc.robot.commands.local.RobotLocalCommandRegistry;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.ControllerManager;
 import frc.robot.input.InputAliasResolver;
@@ -35,12 +37,12 @@ public class RobotV2 extends TimedRobot {
   private static final double DEADBAND = BringupUtil.DEADBAND;
   private static final double SPEED_ZERO = 0.0;
   private static final double ACTUATION_REQUEST_EPSILON = 1e-6;
-  private static final String BINDING_LEFT_DRIVE = "leftDrive";
-  private static final String BINDING_RIGHT_DRIVE = "rightDrive";
-  private static final String COMMAND_RUN_TEST = "runTest";
-  private static final String COMMAND_PROFILE_TOGGLE = "profileToggle";
-  private static final String COMMAND_TOGGLE_DASHBOARD = "toggleDashboard";
-  private static final String COMMAND_PRINT_INPUTS = "printInputs";
+  private static final String BINDING_LEFT_DRIVE =
+      RobotLocalAxisCommandId.LEFT_DRIVE.wireName();
+  private static final String BINDING_RIGHT_DRIVE =
+      RobotLocalAxisCommandId.RIGHT_DRIVE.wireName();
+  private static final String COMMAND_RUN_TEST =
+      RobotLocalCommandRegistry.COMMAND_RUN_TEST;
   private static final String MESSAGE_NON_TEST_ACTUATION_BLOCKED =
       "Actuation blocked: no active test.";
   private static final String REASON_PROFILE_ACTIVATE = "profileActivate";
@@ -88,6 +90,8 @@ public class RobotV2 extends TimedRobot {
   private final Runnable testsInfoPrinter = new TestsInfoPrinter();
   private final Runnable testsOverviewPrinter = new TestsOverviewPrinter();
   private final BringupCommandRouter.AddAllHandler addAllHandler = new AddAllHandlerImpl();
+  private final BringupCommandRouter.GenericCmdHandler genericCmdHandler =
+      new GenericCmdHandlerImpl();
   private final BringupCommandRouter.AddMotorHandler addMotorHandler = new AddMotorHandlerImpl();
   private Map<String, String> inputAliases = new HashMap<>();
   private String inputAliasProfile = TEXT_EMPTY;
@@ -210,79 +214,27 @@ public class RobotV2 extends TimedRobot {
     BindingsManager.BindingState bind =
         bindings.sample(controllerMap, edge, localOverrides, aliases);
 
-    boolean runHeld = bind.held(COMMAND_RUN_TEST);
-    BringupCommandRouter.CommonResult commonResult = BringupCommandRouter.applyCommon(
-        bind,
-        runtime,
-        bindingsPrinter,
-        testsInfoPrinter,
-        testsOverviewPrinter,
-        runHeld,
-        addAllHandler,
-        addMotorHandler);
-
-    // --- Profile switching ---
-    if (bind.pressed(COMMAND_PROFILE_TOGGLE)) {
-      BringupUtil.selectNextProfile();
-      if (uiHandler != null) {
-        uiHandler.printProfileInfo();
-      }
-    }
-
-    // --- Diagnostics / reporting ---
-
-    // Toggle dashboard updates to reduce periodic spam.
-    if (bind.pressed(COMMAND_TOGGLE_DASHBOARD)) {
-      if (uiHandler != null) {
-        uiHandler.toggleDashboardUpdates();
-      }
-    }
-
-    // --- Analog input to motor outputs ---
     boolean driverLeftOverridden = localOverrides.contains(InputAliasResolver.KEY_DRIVER_LEFT_Y);
     boolean driverRightOverridden = localOverrides.contains(InputAliasResolver.KEY_DRIVER_RIGHT_Y);
 
-    double neoSpeed = SPEED_ZERO;
-    if (!driverLeftOverridden) {
-      neoSpeed = bind.hasAxis(BINDING_LEFT_DRIVE)
-          ? bind.axis(BINDING_LEFT_DRIVE)
-          : SPEED_ZERO;
-    }
-    double krakenSpeed = SPEED_ZERO;
-    if (!driverRightOverridden) {
-      krakenSpeed = bind.hasAxis(BINDING_RIGHT_DRIVE)
-          ? bind.axis(BINDING_RIGHT_DRIVE)
-          : SPEED_ZERO;
-    }
+    final double neoSpeed = !driverLeftOverridden && bind.hasAxis(BINDING_LEFT_DRIVE)
+        ? bind.axis(BINDING_LEFT_DRIVE)
+        : SPEED_ZERO;
+    final double krakenSpeed = !driverRightOverridden && bind.hasAxis(BINDING_RIGHT_DRIVE)
+        ? bind.axis(BINDING_RIGHT_DRIVE)
+        : SPEED_ZERO;
 
     if (uiHandler != null) {
       uiHandler.setLastSpeeds(neoSpeed, krakenSpeed);
       uiHandler.handleUiCommands();
+      uiHandler.submitControllerBindings(bind);
+      uiHandler.stepRobotLocalCommands();
     }
-
-    if (uiHandler != null && commonResult != null) {
-      if (Boolean.FALSE.equals(commonResult.toggledTestEnabled)) {
-        uiHandler.setStopLatchFromXbox("xboxDisableTest");
-      }
-      if (commonResult.runTestPressed || commonResult.runAllPressed) {
-        uiHandler.clearStopLatchFromXbox("xboxRun");
-      }
-    }
-
-    // D-pad Right: print current stick inputs.
-    if (bind.pressed(COMMAND_PRINT_INPUTS)) {
-      runtime.requestTextReport(
-          "Inputs: leftY=" + String.format("%.2f", neoSpeed) +
-          " rightY=" + String.format("%.2f", krakenSpeed) +
-          " (NEO/FLEX=" + String.format("%.2f", neoSpeed) +
-          ", KRAKEN/FALCON=" + String.format("%.2f", krakenSpeed) + ")",
-          4);
-    }
-
-    // core update and diagnostics handled by BringupCommandRouter
 
     // Feed test inputs (used by joystick-mode tests).
     core().setTestInputs(XboxControllerDevice.buildControllerInputs(controllerMap));
+    runtime.updateReportsAndTests(
+        uiHandler != null && uiHandler.isRobotLocalCommandActive(COMMAND_RUN_TEST));
 
     boolean actuationRequested = isActuationRequested(neoSpeed, krakenSpeed);
     // Apply outputs only while a test is actively running.
@@ -354,6 +306,33 @@ public class RobotV2 extends TimedRobot {
   private static boolean isActuationRequested(double neoSpeed, double krakenSpeed) {
     return Math.abs(neoSpeed) > ACTUATION_REQUEST_EPSILON
         || Math.abs(krakenSpeed) > ACTUATION_REQUEST_EPSILON;
+  }
+
+  /**
+   * NAME
+   *   toggleDashboardUpdates - Apply the local dashboard toggle command.
+   */
+  private void toggleDashboardUpdates() {
+    if (uiHandler != null) {
+      uiHandler.toggleDashboardUpdates();
+    }
+  }
+
+  /**
+   * NAME
+   *   printCurrentInputs - Emit the current local stick-input report.
+   *
+   * PARAMETERS
+   *   neoSpeed - Current left-drive value after binding resolution.
+   *   krakenSpeed - Current right-drive value after binding resolution.
+   */
+  private void printCurrentInputs(double neoSpeed, double krakenSpeed) {
+    runtime.requestTextReport(
+        "Inputs: leftY=" + String.format("%.2f", neoSpeed) +
+        " rightY=" + String.format("%.2f", krakenSpeed) +
+        " (NEO/FLEX=" + String.format("%.2f", neoSpeed) +
+        ", KRAKEN/FALCON=" + String.format("%.2f", krakenSpeed) + ")",
+        4);
   }
 
   private void resetCoreForProfile(String reason) {
@@ -591,6 +570,22 @@ public class RobotV2 extends TimedRobot {
       }
       if (core() != null) {
         runtime.addMotor(addMotorNow);
+      }
+    }
+  }
+
+  /**
+   * NAME
+   *   GenericCmdHandlerImpl - Example command handler cloned from add-all.
+   */
+  private final class GenericCmdHandlerImpl implements BringupCommandRouter.GenericCmdHandler {
+    @Override
+    public void handleGenericCmd(boolean genericCmdNow) {
+      if (genericCmdNow && !BringupUtil.isProfileActive()) {
+        activateSelectedProfileForAllSurfaces(REASON_PROFILE_ACTIVATE);
+      }
+      if (core() != null) {
+        runtime.addAllDevices(genericCmdNow);
       }
     }
   }

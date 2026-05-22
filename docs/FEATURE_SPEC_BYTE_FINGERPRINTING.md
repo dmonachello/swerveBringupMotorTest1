@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: NOT_IMPLEMENTED
+
 ## Purpose
 Define byte fingerprinting for CAN frames to identify which bytes change, how often they change, and provide a simple variation score per (mfg, type, id, apiClass, apiIndex).
 
@@ -32,7 +34,7 @@ Excludes:
 
 ## Why This Exists
 Purpose: Explain what problems byte fingerprinting helps solve beyond simple presence/rate data.
-- A device can be “present” but the message meaning is still unknown.
+- A device can be â€œpresentâ€ but the message meaning is still unknown.
 - Status vs command-like frames are often distinguished by which bytes move and how fast.
 - Fingerprints give a stable, low-effort signal to guide experiments and decoder hypotheses.
 
@@ -40,13 +42,13 @@ Purpose: Explain what problems byte fingerprinting helps solve beyond simple pre
 Purpose: Clarify the decisions this feature supports.
 - Which bytes in a given frame ever change?
 - Which bytes change on every frame vs occasionally?
-- Which frames become “active” only when you command a device?
+- Which frames become â€œactiveâ€ only when you command a device?
 - Which frame types are likely control/command candidates?
 
 ## Questions It Cannot Answer
 Purpose: Set expectations about limitations.
 - Exact physical meaning or units of a byte.
-- Whether a change is “good” or “bad” without context.
+- Whether a change is â€œgoodâ€ or â€œbadâ€ without context.
 - Electrical-layer health (termination, noise, bus errors).
 - True sender identity beyond arbitration ID grouping.
 
@@ -67,7 +69,7 @@ Purpose: Show how teams should use the data.
 Purpose: Explain how to read the metrics without overfitting.
 - A high change rate on a byte suggests a frequently updated field (speed, position, or command).
 - A low change rate with occasional spikes may indicate state flags or rare events.
-- Frames with many changing bytes are more likely to be “status dumps.”
+- Frames with many changing bytes are more likely to be â€œstatus dumps.â€
 - Frames with a small changing subset are good command-candidate targets.
 
 ## Example Workflow
@@ -132,11 +134,11 @@ Minimum sample count per pair before emitting fingerprints:
 
 ## Decision Criteria
 Purpose: Provide simple thresholds to focus attention.
-- Flag as “command candidate” if:
+- Flag as â€œcommand candidateâ€ if:
   - `overallVariation >= 0.6`, and
   - `byteMask` has <= 2 bytes set, and
   - frame rate increases during command stimulus.
-- Flag as “status candidate” if:
+- Flag as â€œstatus candidateâ€ if:
   - `overallVariation <= 0.4`, and
   - `byteMask` has > 2 bytes set, and
   - frame rate is steady across experiments.
@@ -175,16 +177,17 @@ overallVariation: 0.94
 ## Risks and Misinterpretation
 Purpose: Call out common pitfalls.
 - High variation can be noise or packing effects, not necessarily a command.
-- A constant command may appear “status-like” if the setpoint is steady.
+- A constant command may appear â€œstatus-likeâ€ if the setpoint is steady.
 - Short captures can overfit; longer capture windows improve stability.
 
 ## Tradeoffs
-- Simple metrics are fast but can overestimate “meaningful” changes
+- Simple metrics are fast but can overestimate â€œmeaningfulâ€ changes
 - Entropy/variance is sensitive to noise and scaling
 - More samples improve accuracy but slow feedback
 
 ## Future Extensions
 - Per-byte change timing (lag correlation to commands)
-- Separate “command candidate” classifier
+- Separate â€œcommand candidateâ€ classifier
 - Multi-sniffer cross-validation of fingerprints
 - Export to Wireshark dissector hints
+

@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: NOT_IMPLEMENTED
+
 # Feature Spec: Unified Status Codes Across Python and Java (V1)
 
 ## Purpose
@@ -314,4 +316,5 @@ SID_QUESTION: Do we require a version field in ACK payloads when introducing can
 - Full schema versioning for command response payloads.
 - Auto-generated docs for facility/message catalogs.
 - Dashboard-native decode widgets using canonical code values.
+
 

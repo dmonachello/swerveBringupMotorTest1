@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: RESEARCH_ONLY
+
 # Feature Spec: Pit Robot Diagnosis (First Pass)
 
 ## Purpose
@@ -662,3 +664,4 @@ After that, implementation can proceed in staged milestones:
 - pattern detection
 - candidate fault localization
 - pit guidance surfaces
+

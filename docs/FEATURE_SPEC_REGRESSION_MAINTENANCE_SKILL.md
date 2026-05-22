@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: IMPLEMENTED
+
 # Feature Spec: Regression Maintenance and Skill Runner
 
 ## Purpose
@@ -318,7 +320,7 @@ Current expected connected command includes:
 - `python tools/can_nt/scripts/bridge_cli_robot_non_motion_regression.py --rio <ip>`
 
 This list may be centralized later in the unified runner, but the skill must
-not invent a different contract from the repo’s canonical commands.
+not invent a different contract from the repoâ€™s canonical commands.
 
 ## Ownership Model
 
@@ -402,3 +404,4 @@ This feature is done when:
 - baseline refresh helpers with explicit review prompts
 - machine-readable regression inventory files
 - richer skill modes for generated-artifact checks and release-readiness runs
+

@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: SUPERSEDED
+
 # Feature Spec: Configuration Recovery & Damage Prevention
 
 ## Purpose
@@ -170,3 +172,4 @@ Purpose: Sequenced rollout plan with clear exit criteria.
 ### Phase 6 - Notifications & UX
 - [ ] Standardize CLI messages for save/recover/repair outcomes
 - [ ] Update CLI help and docs
+

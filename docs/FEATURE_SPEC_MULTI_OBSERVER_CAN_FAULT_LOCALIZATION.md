@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: RESEARCH_ONLY
+
 # Feature Spec: Multi-Observer Topology-Aware CAN Fault Localization
 
 ## Purpose
@@ -121,7 +123,7 @@ It may be represented as:
 - between node X and node Y
 - on branch `branch1` of node N
 - downstream of segment S
-- not localizable beyond “subtree rooted at node N”
+- not localizable beyond â€œsubtree rooted at node Nâ€
 
 The system should avoid pretending to know more than the evidence supports.
 
@@ -563,3 +565,4 @@ Related detail specs:
 
 - `docs/SPEC_TOPOLOGY_FAULT_INFERENCE_MODEL.md`
 - `docs/SPEC_OPERATOR_CLUES_MODEL.md`
+

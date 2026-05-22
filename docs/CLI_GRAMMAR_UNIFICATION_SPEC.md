@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 **CLI Grammar Unification Spec**
 
 **Purpose**  
@@ -39,7 +41,7 @@ Purpose: Provide a shared, traversable structure for parser and completer.
   - Rule names.
   - Token classes.
   - Source locations (for diagnostics).
-  - Optional semantic tags (e.g., “requires config mode”).
+  - Optional semantic tags (e.g., â€œrequires config modeâ€).
 
 **Core Data Structure**
 Purpose: Provide a single model used by parsing, completion, and help.
@@ -65,7 +67,7 @@ Purpose: Produce a command AST from the grammar model.
   4. Emit a typed `CommandAst`.
 - Error handling:
   - Return expected tokens at the failure point.
-  - Provide a specific hint (e.g., “expected `config` after `import`”).
+  - Provide a specific hint (e.g., â€œexpected `config` after `import`â€).
 
 **Command Completion**
 Purpose: Use the grammar graph to produce valid next tokens.
@@ -104,8 +106,8 @@ Purpose: Show target behaviors clearly.
   - Input: `import config` -> suggestions: `<path>`.
   - Input: `show can-mappings` -> suggestions: `manufacturers`, `device-types`, flags.
 - Errors:
-  - Input: `save tests` -> error: “expected `<path>`.”
-  - Input: `validate` -> error: “expected `all|config|profiles|tests|bindings|can-mappings`.”
+  - Input: `save tests` -> error: â€œexpected `<path>`.â€
+  - Input: `validate` -> error: â€œexpected `all|config|profiles|tests|bindings|can-mappings`.â€
 
 **Implementation Plan**
 Purpose: Deliver in incremental, testable steps.
@@ -145,6 +147,7 @@ Purpose: Surface design costs explicitly.
 
 **Future Extensions**
 Purpose: Identify next logical steps.
-- Grammar-aware “did you mean” suggestions.
+- Grammar-aware â€œdid you meanâ€ suggestions.
 - Auto-generated CLI reference docs.
 - IDE/GUI integration using the grammar JSON.
+

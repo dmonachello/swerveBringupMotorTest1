@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Robot Diagnostic Test DSL Spec v0.3
 
 ## 1. Purpose
@@ -409,3 +411,4 @@ The engine owns:
 - safety
 - lifecycle
 - execution order
+

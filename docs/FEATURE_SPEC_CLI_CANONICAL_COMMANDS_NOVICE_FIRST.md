@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: IMPLEMENTED
+
 # Feature Spec: CLI Canonical Command Normalization (Novice-First)
 
 ## Summary
@@ -160,3 +162,4 @@ ERROR: Unknown command 'prof'. Use 'profile'.
 - Add an optional command-lint mode for batch scripts before execution.
 - Add a machine-readable command inventory export for docs/tests sync.
 - Add targeted onboarding tips keyed by novice workflow milestones.
+

@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Proposal: CLI Message Levels
 
 ## Purpose
@@ -76,7 +78,7 @@ When leaving config/test mode with unsaved changes:
 - beginner:
   - warning + tip
   - example:
-    - “You have unsaved changes. Use `save config ...` to save.”
+    - â€œYou have unsaved changes. Use `save config ...` to save.â€
 - medium:
   - warning only
 - expert:
@@ -84,9 +86,9 @@ When leaving config/test mode with unsaved changes:
 
 ## Example Beginner Tips
 - On exit with unsaved changes:
-  - “You have unsaved changes. Use `save config ...` to save.”
+  - â€œYou have unsaved changes. Use `save config ...` to save.â€
 - After save:
-  - “Saved. Use `show config dirty` to confirm.”
+  - â€œSaved. Use `show config dirty` to confirm.â€
 - After validation failure:
   - one short next-step hint (if applicable)
 
@@ -95,4 +97,5 @@ When leaving config/test mode with unsaved changes:
 - Must not suppress actual errors
 - Must not interfere with scripting or batch workflows
 - Must not introduce duplicate or noisy output
+
 

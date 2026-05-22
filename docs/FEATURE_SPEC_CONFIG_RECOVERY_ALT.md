@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: SUPERSEDED
+
 # Feature Spec: Config Recovery & Damage Prevention
 
 ## Purpose
@@ -115,3 +117,4 @@ Cons:
 - Auto-rollback on validation failure
 - Snapshot diff viewer
 - Cloud backup integration
+

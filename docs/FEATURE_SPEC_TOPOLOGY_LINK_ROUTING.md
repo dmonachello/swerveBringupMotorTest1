@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: NOT_IMPLEMENTED
+
 # Feature Spec: Topology Link Routing
 
 Purpose: define a routed-link feature for the CAN topology editor so connection lines avoid drawing straight through nodes.
@@ -316,3 +318,4 @@ Purpose: capture likely follow-on work without coupling it to Phase 1.
 - saved preferred routes
 - path smoothing after orthogonal route generation
 - localized reroute around selected nodes only
+

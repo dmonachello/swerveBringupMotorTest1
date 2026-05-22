@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: NOT_IMPLEMENTED
+
 # Feature Spec: MSG Compiler to Python and Java (V1)
 
 ## Purpose
@@ -267,4 +269,5 @@ Mitigations:
 - Emit markdown/HTML status catalog docs from same source.
 - Add localization layers by message key.
 - Add source map from generated symbol back to `.MSG` file and line.
+
 

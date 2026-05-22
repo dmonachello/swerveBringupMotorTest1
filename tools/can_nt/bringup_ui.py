@@ -37,8 +37,9 @@ from .bridge_ops import (
     ui_poll_log,
     ui_ping,
 )
+from .generated.robot_local_commands_generated import COMMANDS_BY_NAME, HOST_UI_SECTIONS
 from .bridge_session import BridgeEvent, BridgeSession
-from tools.common.json_io import read_json
+from tools.common.json_io import read_json, write_json
 from tools.common.nt_labels import encode_label_for_nt
 from tools.common.paths import repo_root, tests_deploy_path
 from tools.common.tests_domain import collect_available_tests
@@ -107,6 +108,11 @@ ABOUT_DESCRIPTION = "PC-side NetworkTables command panel for RobotV2 bringup."
 ABOUT_LAUNCH = "Launch via tools/can_nt/run_can_nt.cmd --ui"
 ABOUT_SEPARATOR = "\n"
 BUILD_TITLE = "Build"
+UI_PREFS_DIR = "backup_data"
+UI_PREFS_SUBDIR = "ui"
+UI_PREFS_FILE = "bringup_ui_command_prefs.json"
+UI_PREFS_KEY_COMMANDS = "commands"
+UI_PREFS_KEY_VISIBLE = "visible"
 
 # Constants (visibility UI).
 VIS_TAB_LABEL = "Visibility"
@@ -200,74 +206,59 @@ def _load_tests_from_store(profile_name: str) -> Optional[List[str]]:
     return sorted(set(names))
 
 
+def _ui_prefs_path() -> Path:
+    """
+    NAME
+        _ui_prefs_path - Return the repo-local UI command preferences path.
+    """
+    return repo_root() / UI_PREFS_DIR / UI_PREFS_SUBDIR / UI_PREFS_FILE
+
+
+def _load_ui_command_prefs() -> Dict[str, bool]:
+    """
+    NAME
+        _load_ui_command_prefs - Load per-command visibility preferences.
+    """
+    path = _ui_prefs_path()
+    if not path.exists():
+        return {}
+    try:
+        payload = read_json(path)
+    except Exception:
+        return {}
+    commands = payload.get(UI_PREFS_KEY_COMMANDS, {})
+    if not isinstance(commands, dict):
+        return {}
+    result: Dict[str, bool] = {}
+    for name, value in commands.items():
+        if isinstance(name, str):
+            result[name] = bool(value)
+    return result
+
+
 def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
     """
     NAME
         _action_sections - Build action sections with labels and commands.
     """
-    return [
-        (
-            "Profiles",
-            [
-                ("Toggle Profile", "profileToggle"),
-                ("Add Motor", "addMotor"),
-                ("Add All Motors", "addAll"),
-            ],
-        ),
-        (
-            "Reports",
-            [
-                ("State", "printState"),
-                ("Summary", "printSummary"),
-                ("Profile Devices", "printProfileDevices"),
-                ("CAN Bus", "printCANdiag"),
-                ("NT Diagnostics", "printNTdiag"),
-                ("Inputs", "printInputs"),
-                ("Health", "printHealth"),
-                ("Dump", "dumpReport"),
-                ("Bindings", "printBindings"),
-                ("CANcoder", "printCANcoder"),
-                ("Tests Info", "printTestsInfo"),
-                ("Tests Overview", "printTestsOverview"),
-            ],
-        ),
-        (
-            "Scriptable Tests",
-            [
-                ("Test Prev", "selectTestPrev"),
-                ("Test Next", "selectTestNext"),
-                ("Toggle Enabled", "toggleTest"),
-                ("Run Selected", "runTest"),
-                ("Run All", "runAllTests"),
-                ("Print Next", "printNextTest"),
-            ],
-        ),
-        (
-            "Diagnostics",
-            [
-                ("CAN Sweep", "canSweep"),
-            ],
-        ),
-        (
-            "System",
-            [
-                ("Toggle Dashboard", "toggleDashboard"),
-                ("Clear Faults", "clearFaults"),
-                ("Clear Stop Latch", "clearStopLatch"),
-                ("Reset UI Session", "uiHandshakeReset"),
-                ("Release UI Lock", "uiDisconnect"),
-                ("Protocol Monitor ON", "uiMonitorEnable"),
-                ("Protocol Monitor OFF", "uiMonitorDisable"),
-            ],
-        ),
-        (
-            "Drive Axes",
-            [
-                ("Left Drive (LY Axis)", None),
-                ("Right Drive (RY Axis)", None),
-            ],
-        ),
-    ]
+    sections: List[Tuple[str, List[Tuple[str, Optional[str]]]]] = []
+    for section in HOST_UI_SECTIONS:
+        title = str(section.get("section", "")).strip()
+        commands = section.get("commands", [])
+        if not title or not isinstance(commands, list):
+            continue
+        items: List[Tuple[str, Optional[str]]] = []
+        for row in commands:
+            if not isinstance(row, dict):
+                continue
+            label = str(row.get("uiLabel", row.get("name", ""))).strip()
+            command = str(row.get("name", "")).strip()
+            if not label or not command:
+                continue
+            items.append((label, command))
+        if items:
+            sections.append((title, items))
+    return sections
 
 
 class BringupControlUI(tk.Tk):
@@ -374,6 +365,8 @@ class BringupControlUI(tk.Tk):
         self._live_view: Optional[LiveTopologyView] = None
         self._visibility_live_view: Optional[LiveTopologyView] = None
         self._profile_devices: Dict[str, Dict[str, Any]] = {}
+        self._ui_command_prefs = _load_ui_command_prefs()
+        self._ui_pref_vars: Dict[str, tk.BooleanVar] = {}
         self._build_menu()
         self._build_ui()
         self._refresh_profile_devices()
@@ -399,10 +392,27 @@ class BringupControlUI(tk.Tk):
             _build_menu - Create the main menubar with a Help menu.
         """
         menubar = tk.Menu(self)
+        prefs_menu = tk.Menu(menubar, tearoff=False)
+        for _section, items in _action_sections():
+            for _label, command in items:
+                if not command:
+                    continue
+                metadata = COMMANDS_BY_NAME.get(command, {})
+                label = str(metadata.get("uiLabel", command))
+                default_visible = bool(metadata.get("showInHostUi", True))
+                visible = self._ui_command_prefs.get(command, default_visible)
+                var = tk.BooleanVar(value=visible)
+                self._ui_pref_vars[command] = var
+                prefs_menu.add_checkbutton(
+                    label=label,
+                    variable=var,
+                    command=lambda c=command, v=var: self._set_command_visibility(c, bool(v.get())),
+                )
         help_menu = tk.Menu(menubar, tearoff=False)
         help_menu.add_command(label="Help", command=self._show_help)
         help_menu.add_separator()
         help_menu.add_command(label="About", command=self._show_about)
+        menubar.add_cascade(label="Preferences", menu=prefs_menu)
         menubar.add_cascade(label="Help", menu=help_menu)
         self.config(menu=menubar)
 
@@ -472,24 +482,9 @@ class BringupControlUI(tk.Tk):
 
         self._action_buttons: List[ttk.Button] = []
         self._reset_button: Optional[ttk.Button] = None
-        for section, items in _action_sections():
-            ttk.Label(action_panel, text=section, foreground="#5b6672").pack(
-                anchor="w", pady=(8, 2)
-            )
-            for label, command in items:
-                btn = ttk.Button(
-                    action_panel,
-                    text=label,
-                    command=(lambda c=command: self._on_action(c)),
-                )
-                if command is None:
-                    btn.state(["disabled"])
-                else:
-                    self._action_buttons.append(btn)
-                    self._attach_tooltip(btn, self._tooltip_text(command))
-                    if command == "uiHandshakeReset":
-                        self._reset_button = btn
-                btn.pack(fill="x", pady=2)
+        self._actions_canvas = actions_canvas
+        self._action_panel = action_panel
+        self._render_action_buttons()
 
         def _on_actions_configure(_event=None) -> None:
             actions_canvas.configure(scrollregion=actions_canvas.bbox("all"))
@@ -1027,43 +1022,77 @@ class BringupControlUI(tk.Tk):
         widget.bind("<Enter>", _show)
         widget.bind("<Leave>", _hide)
 
+    def _command_visible(self, command: str) -> bool:
+        """
+        NAME
+            _command_visible - Return whether a generated UI command should be shown.
+        """
+        metadata = COMMANDS_BY_NAME.get(command, {})
+        return self._ui_command_prefs.get(command, bool(metadata.get("showInHostUi", True)))
+
+    def _set_command_visibility(self, command: str, visible: bool) -> None:
+        """
+        NAME
+            _set_command_visibility - Update and persist command visibility preference.
+        """
+        self._ui_command_prefs[command] = bool(visible)
+        self._save_ui_command_prefs()
+        self._render_action_buttons()
+
+    def _save_ui_command_prefs(self) -> None:
+        """
+        NAME
+            _save_ui_command_prefs - Persist command visibility preferences to disk.
+        """
+        path = _ui_prefs_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_json(path, {UI_PREFS_KEY_COMMANDS: self._ui_command_prefs})
+
+    def _render_action_buttons(self) -> None:
+        """
+        NAME
+            _render_action_buttons - Rebuild action buttons from generated metadata and preferences.
+        """
+        panel = getattr(self, "_action_panel", None)
+        if panel is None:
+            return
+        for child in panel.winfo_children():
+            child.destroy()
+        self._action_buttons = []
+        self._reset_button = None
+        for section, items in _action_sections():
+            visible_items = [
+                (label, command)
+                for label, command in items
+                if command and self._command_visible(command)
+            ]
+            if not visible_items:
+                continue
+            ttk.Label(panel, text=section, foreground="#5b6672").pack(
+                anchor="w", pady=(8, 2)
+            )
+            for label, command in visible_items:
+                btn = ttk.Button(
+                    panel,
+                    text=label,
+                    command=(lambda c=command: self._on_action(c)),
+                )
+                self._action_buttons.append(btn)
+                self._attach_tooltip(btn, self._tooltip_text(command))
+                btn.pack(fill="x", pady=2)
+        canvas = getattr(self, "_actions_canvas", None)
+        if canvas is not None:
+            self.update_idletasks()
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.configure(width=panel.winfo_reqwidth())
+
     def _tooltip_text(self, command: str) -> str:
         """
         NAME
             _tooltip_text - Return a short tooltip for a command.
         """
-        tooltips = {
-            "profileToggle": "Switch to the next bringup profile.",
-            "addMotor": "Add the next motor from the active profile.",
-            "addAll": "Add all motors from the active profile.",
-            "printState": "Print current bringup state summary.",
-            "printSummary": "Print a concise system summary.",
-            "printProfileDevices": "Print active profile devices.",
-            "printCANdiag": "Print local vendor API CAN diagnostics.",
-            "printNTdiag": "Print PC tool NetworkTables diagnostics.",
-            "printInputs": "Print controller and input status.",
-            "printHealth": "Print local device health snapshot.",
-            "dumpReport": "Print full bringup report (long).",
-            "printBindings": "Print controller bindings and UI mappings.",
-            "printCANcoder": "Print encoder status and readings.",
-            "printTestsInfo": "Print details for selected test.",
-            "printTestsOverview": "Print test list and enabled status.",
-            "selectTestPrev": "Select the previous test in the list.",
-            "selectTestNext": "Select the next test in the list.",
-            "toggleTest": "Enable/disable the selected test.",
-            "runTest": "Run the selected test once.",
-            "runAllTests": "Run all enabled tests.",
-            "printNextTest": "Print the next test that would run.",
-            "canSweep": "Run a vendor API device sweep.",
-            "toggleDashboard": "Toggle dashboard reporting output.",
-            "clearFaults": "Clear latched device faults.",
-            "clearStopLatch": "Clear the safety stop latch.",
-            "uiHandshakeReset": "Reset the UI session and resync seq.",
-            "uiDisconnect": "Release the UI lock for this client.",
-            "uiMonitorEnable": "Enable protocol status publishing to NT.",
-            "uiMonitorDisable": "Disable protocol status publishing to NT.",
-        }
-        return tooltips.get(command, "")
+        metadata = COMMANDS_BY_NAME.get(command, {})
+        return str(metadata.get("uiDescription", "")).strip()
 
     def _show_help(self) -> None:
         """
@@ -1609,8 +1638,12 @@ class BringupControlUI(tk.Tk):
         """
         if not command:
             return
-        if command == "uiHandshakeReset":
-            self._send_handshake(reset=True, force=True, log=True)
+        metadata = COMMANDS_BY_NAME.get(command, {})
+        args_json = str(metadata.get("uiArgsJson", "")).strip()
+        args = json.loads(args_json) if args_json else None
+        if command == "uiHandshake":
+            reset = bool(args.get("reset")) if isinstance(args, dict) else False
+            self._send_handshake(reset=reset, force=reset, log=True)
             return
         if command == "uiDisconnect":
             self._send_disconnect()
@@ -1629,11 +1662,11 @@ class BringupControlUI(tk.Tk):
             return
         ts = timestamp_hms()
         self._append_output(f"{ts} CMD {command}")
-        self._last_cmd = (command, None)
-        seq = send_command(self._session, command, None)
+        self._last_cmd = (command, args)
+        seq = send_command(self._session, command, args)
         if seq is not None:
             self._last_sent_seq = seq
-            self._tracker.start(command, None, seq, now=time.time())
+            self._tracker.start(command, args, seq, now=time.time())
 
     def _on_test_selected(self, _event=None) -> None:
         """

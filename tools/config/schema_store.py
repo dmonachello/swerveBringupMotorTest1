@@ -79,6 +79,7 @@ from tools.common.profile_constants import (
     INTERFACE_PWM,
     INTERFACE_USB,
     PROFILE_SCHEMA_VERSION,
+    TYPE_XBOX_CONTROLLER,
     get_device_interface,
 )
 from tools.common.test_authoring import (
@@ -1024,7 +1025,10 @@ class ConfigSchemaStore:
             axes_in = list()
             changed = BOOL_TRUE
         valid_controllers: List[Dict[str, object]] = list()
-        controller_names: Set[str] = set()
+        known_controller_names: Set[str] = {
+            name.casefold() for name in self._profile_controller_names()
+        }
+        legacy_controller_names: Set[str] = set()
         for entry in controllers_in:
             if not isinstance(entry, dict):
                 changed = BOOL_TRUE
@@ -1042,7 +1046,7 @@ class ConfigSchemaStore:
                 changed = BOOL_TRUE
                 continue
             folded = name.casefold()
-            if folded in controller_names:
+            if folded in legacy_controller_names:
                 warnings.append(
                     MESSAGE_SALVAGE_BINDINGS_CONTROLLER_DROPPED.format(
                         name=name, reason=MESSAGE_BINDINGS_CONTROLLER_DUP
@@ -1050,7 +1054,8 @@ class ConfigSchemaStore:
                 )
                 changed = BOOL_TRUE
                 continue
-            controller_names.add(folded)
+            legacy_controller_names.add(folded)
+            known_controller_names.add(folded)
             valid_controllers.append({KEY_NAME: name, KEY_TYPE: ctrl_type, KEY_PORT: port})
         valid_bindings: List[Dict[str, object]] = list()
         for index, entry in enumerate(bindings_in):
@@ -1070,7 +1075,7 @@ class ConfigSchemaStore:
                 )
                 changed = BOOL_TRUE
                 continue
-            if str(controller).casefold() not in controller_names:
+            if str(controller).casefold() not in known_controller_names:
                 warnings.append(
                     MESSAGE_SALVAGE_BINDINGS_BINDING_DROPPED.format(
                         index=index,
@@ -1106,7 +1111,7 @@ class ConfigSchemaStore:
                 )
                 changed = BOOL_TRUE
                 continue
-            if str(controller).casefold() not in controller_names:
+            if str(controller).casefold() not in known_controller_names:
                 warnings.append(
                     MESSAGE_SALVAGE_BINDINGS_AXIS_DROPPED.format(
                         index=index,
@@ -1802,7 +1807,8 @@ class ConfigSchemaStore:
         if not isinstance(controllers, list):
             self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_TYPE_INVALID.format(key=KEY_CONTROLLERS), SEVERITY_ERROR)
             controllers = list()
-        controller_names: Set[str] = set()
+        controller_names = self._bindings_controller_names()
+        legacy_controller_names: Set[str] = set()
         for entry in controllers:
             if not isinstance(entry, dict):
                 self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_BINDINGS_CONTROLLER_FIELDS, SEVERITY_ERROR)
@@ -1812,9 +1818,10 @@ class ConfigSchemaStore:
             if not name or not isinstance(name, str):
                 self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_BINDINGS_CONTROLLER_FIELDS, SEVERITY_ERROR)
                 continue
-            if name in controller_names:
+            if isinstance(name, str) and name in legacy_controller_names:
                 self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_BINDINGS_CONTROLLER_DUP, SEVERITY_ERROR)
-            controller_names.add(name)
+            if isinstance(name, str) and name:
+                legacy_controller_names.add(name)
             if port is None or not isinstance(port, int):
                 self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_BINDINGS_CONTROLLER_PORT, SEVERITY_ERROR)
         bindings = payload.get(KEY_BINDINGS)
@@ -2290,26 +2297,48 @@ class ConfigSchemaStore:
                     SEVERITY_ERROR,
                 )
 
-    def _bindings_controller_names(self) -> Optional[Set[str]]:
+    def _profile_controller_names(self) -> Set[str]:
         """
         NAME
-            _bindings_controller_names - Build controller name set.
+            _profile_controller_names - Build controller names from profile devices.
         """
 
+        names: Set[str] = set()
+        payload = self._db.get_payload(DOC_PROFILES)
+        profiles = payload.get(KEY_PROFILES) if isinstance(payload, dict) else None
+        if not isinstance(profiles, dict):
+            return names
+        for profile_name in profiles.keys():
+            device_catalog, _ = self._device_catalog_for_profile(profile_name)
+            for name, entry in device_catalog.items():
+                if not isinstance(name, str) or not isinstance(entry, dict):
+                    continue
+                interface = get_device_interface(entry)
+                if interface != INTERFACE_USB:
+                    continue
+                if str(entry.get(KEY_TYPE, EMPTY_STRING)).strip() != TYPE_XBOX_CONTROLLER:
+                    continue
+                names.add(name)
+        return names
+
+    def _bindings_controller_names(self) -> Set[str]:
+        """
+        NAME
+            _bindings_controller_names - Build controller names from profiles plus legacy bindings.
+        """
+
+        names = set(self._profile_controller_names())
         payload = self._db.get_payload(DOC_BINDINGS)
         if not isinstance(payload, dict):
-            return None
+            return names
         controllers = payload.get(KEY_CONTROLLERS)
         if not isinstance(controllers, list):
-            return None
-        names: Set[str] = set()
+            return names
         for entry in controllers:
             if isinstance(entry, dict):
                 name = entry.get(KEY_NAME)
                 if isinstance(name, str) and name:
                     names.add(name)
-        if not names:
-            return None
         return names
 
     def _append_issue(

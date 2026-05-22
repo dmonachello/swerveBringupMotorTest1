@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Feature Spec: Bridge UI + CLI Test Authoring (No Direct JSON Editing)
 
 ## Purpose
@@ -17,7 +19,7 @@ Purpose: align authoring behavior with the finalized group/targeting contract.
 
 SID_COMMENT: Implementation note (current repo)
 - Tests are persisted inside `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
-- Standalone `bringup_tests.json` is treated as a legacy import/export format and is not the robot’s primary input.
+- Standalone `bringup_tests.json` is treated as a legacy import/export format and is not the robotâ€™s primary input.
 
 ## Goals
 
@@ -455,4 +457,5 @@ Examples:
 * Add direct deploy to roboRIO
 * Live profile sync via NetworkTables
 * Test templates and presets
+
 

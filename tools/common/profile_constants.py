@@ -161,6 +161,7 @@ TYPE_LIMIT_SWITCH = "limitSwitch"
 TYPE_ENCODER_INTERNAL = "encoderInternal"
 TYPE_ENCODER_EXTERNAL = "encoderExternal"
 TYPE_MOTOR = "motor"
+TYPE_XBOX_CONTROLLER = "xboxController"
 
 
 def get_device_interface(entry: Dict[str, object]) -> object:

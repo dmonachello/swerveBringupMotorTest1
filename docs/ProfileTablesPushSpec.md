@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Profiles/Devices Tables Push (TCP UI Command) - Spec
 
 ## Purpose
@@ -269,3 +271,4 @@ Cons:
 - Diff-based updates
 - Versioned schema
 - Dry-run validation mode
+

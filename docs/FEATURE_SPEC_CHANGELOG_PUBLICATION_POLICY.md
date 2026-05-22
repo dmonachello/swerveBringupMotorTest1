@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: IMPLEMENTED
+
 # Feature Spec: Changelog Publication Policy
 
 ## Purpose
@@ -98,3 +100,4 @@ When the guard fails:
 - staged-only mode for pre-commit hooks
 - changelog section validation
 - optional integration with the changelog generator skill
+

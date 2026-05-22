@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Feature Matrix
 
 ## Purpose
@@ -65,7 +67,7 @@ Provide a quick lookup table for which surface exposes which feature and what th
 
 ## Fast Answers
 
-### If the goal is “make a motor move now”
+### If the goal is â€œmake a motor move nowâ€
 
 Prefer:
 
@@ -75,14 +77,14 @@ Prefer:
 
 Do not start with DSL tests unless the procedure must be scripted.
 
-### If the goal is “run a repeatable checked procedure”
+### If the goal is â€œrun a repeatable checked procedureâ€
 
 Prefer:
 
 - selected DSL test
 - run-all only after the individual cases are trusted
 
-### If the goal is “edit the robot config”
+### If the goal is â€œedit the robot configâ€
 
 Prefer:
 
@@ -90,7 +92,7 @@ Prefer:
 - CLI for text-oriented config and test authoring
 - `python -m tools.validate_sync --warnings` before handoff or deploy
 
-### If the goal is “see bus activity without commanding hardware”
+### If the goal is â€œsee bus activity without commanding hardwareâ€
 
 Prefer:
 
@@ -101,3 +103,4 @@ Prefer:
 ## Maintenance Rule
 
 When a feature is added, removed, or moved across surfaces, update this matrix in the same change.
+

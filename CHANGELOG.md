@@ -2,6 +2,29 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-05-22
+
+### Added - 2026-05-22
+
+- Added a unified robot-local command executor with a canonical Java registry,
+  a single active command slot, a single queued command slot, and standardized
+  request/result interfaces shared by controller and host-UI command paths.
+- Added generated robot-local command inventory artifacts for the host UI,
+  including a Java-emitted JSON inventory and generated Python metadata module
+  for button labels, sections, descriptions, and default UI args.
+
+### Improved - 2026-05-22
+
+- Replaced the `RobotV2` controller-side local command dispatch path with
+  shared executor submission while preserving the existing runtime
+  report/test-update loop and active-test actuation rules.
+- Moved host-UI command submission onto the same robot-local lookup and
+  executor path used by controller-originated commands, while keeping the
+  broader UI-only command families behind a compatibility adapter.
+- Updated the Python bringup UI to build its action surface from generated
+  command metadata and store per-command visibility preferences instead of
+  hardcoded button sections and tooltip maps.
+
 ## 2026-05-18
 
 ### Improved - 2026-05-18
@@ -19,6 +42,33 @@ All notable user-facing changes are documented in this file.
   `bringup_system.json` and `bringup_bindings.json`, removing the active
   dependency on `data/` paths in shared path resolution and default tool
   workflows.
+
+## 2026-05-19
+
+### Added - 2026-05-19
+
+- Added a provider-based DSL signal registry on the robot side, including
+  shared signal metadata plus timer, motor, limit-switch, encoder, and Xbox
+  controller signal providers.
+
+### Improved - 2026-05-19
+
+- Refactored DSL bringup execution to use device-owned DSL signal
+  read/write/clear hooks while preserving existing stop-on-safe-output runtime
+  behavior for motor-like devices.
+- Expanded robot-side controller signal support so DSL tests and signal-driven
+  set statements can resolve the broader Xbox button, stick, and D-pad surface
+  through the shared registry contract.
+- Tightened DSL runtime clear handling so unsupported clear targets fail
+  explicitly at test startup instead of being ignored, and aligned the live
+  Xbox controller snapshot builder with the expanded registry surface.
+- Shifted host-side controller-name discovery and bindings/schema validation
+  toward profile-owned `xboxController` devices in `bringup_system.json`,
+  while keeping the legacy bindings-side controller list as a compatibility
+  fallback.
+- Modularized robot-local controller commands behind a canonical registry and
+  dispatcher, and added `genericCmd` as a full end-to-end example for adding a
+  new button-driven robot command.
 
 ## 2026-05-09
 

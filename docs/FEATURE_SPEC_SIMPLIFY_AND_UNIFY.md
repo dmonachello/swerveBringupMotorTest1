@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Feature Spec: Simplify And Unify
 
 ## Purpose
@@ -445,4 +447,5 @@ Rules:
 - Inventory redundant commands and overlapping responsibilities.
 - Propose a reduced command set with explicit behavior tables.
 - Draft a migration plan with deprecation timeline.
+
 

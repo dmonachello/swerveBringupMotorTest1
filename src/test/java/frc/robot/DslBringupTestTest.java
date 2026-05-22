@@ -38,6 +38,9 @@ class DslBringupTestTest {
   private static final String CONTROLLER_TYPE = "xboxController";
   private static final String DSL_MOTOR_TYPE = "motor";
   private static final String SIGNAL_A = "A";
+  private static final String SIGNAL_X = "X";
+  private static final String SIGNAL_D_UP = "D_UP";
+  private static final String SIGNAL_FAULTS = "faults";
   private static final String SIGNAL_LEFT_Y = "leftY";
   private static final String FIELD_DEVICE_REGISTRY = "DEVICE_REGISTRY";
   private static final String CLASS_DEVICE_DEFINITION = "frc.robot.BringupUtil$DeviceDefinition";
@@ -89,6 +92,24 @@ class DslBringupTestTest {
     test.update(context, UPDATE_SEC);
 
     assertEquals(BringupTestResult.PASS, test.getResult());
+  }
+
+  @Test
+  void dslTestReadsXboxControllerExtendedButtonSignals() {
+    seedConfiguredDeviceType(CONTROLLER_LABEL, CONTROLLER_TYPE);
+    BringupTestContext context = controllerContext();
+    XboxControllerDevice.setControllerInputs(
+        Map.of(CONTROLLER_LABEL, Map.of(SIGNAL_X, 1.0, SIGNAL_D_UP, 1.0)));
+    DslBringupTest xButtonTest = new DslBringupTest(buildControllerButtonTest(SIGNAL_X));
+    DslBringupTest dpadUpTest = new DslBringupTest(buildControllerButtonTest(SIGNAL_D_UP));
+
+    assertTrue(xButtonTest.start(context, START_SEC));
+    xButtonTest.update(context, UPDATE_SEC);
+    assertEquals(BringupTestResult.PASS, xButtonTest.getResult());
+
+    assertTrue(dpadUpTest.start(context, START_SEC));
+    dpadUpTest.update(context, UPDATE_SEC);
+    assertEquals(BringupTestResult.PASS, dpadUpTest.getResult());
   }
 
   @Test
@@ -226,6 +247,17 @@ class DslBringupTestTest {
     assertEquals("Signal set produced out-of-range value: target=motor-a.output value=1.6", test.getStatus());
   }
 
+  @Test
+  void dslClearFailsWhenTargetDoesNotSupportRuntimeClear() {
+    RecordingDevice motor = new NonClearableRecordingDevice();
+    DslBringupTest test = new DslBringupTest(buildInitClearTest());
+    BringupTestContext context = context(motor);
+
+    assertFalse(test.start(context, START_SEC));
+    assertEquals(BringupTestResult.FAIL, test.getResult());
+    assertEquals("Unsupported clear DSL target at runtime: motor-a.faults", test.getStatus());
+  }
+
   private static DslModels.DslNormalizedTest buildTest() {
     DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
     test.name = TEST_NAME;
@@ -252,6 +284,10 @@ class DslBringupTestTest {
   }
 
   private static DslModels.DslNormalizedTest buildControllerButtonTest() {
+    return buildControllerButtonTest(SIGNAL_A);
+  }
+
+  private static DslModels.DslNormalizedTest buildControllerButtonTest(String signalName) {
     DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
     test.name = "controller_button";
     DslModels.DslDeviceRef device = new DslModels.DslDeviceRef();
@@ -261,8 +297,8 @@ class DslBringupTestTest {
     DslModels.DslCondition success = new DslModels.DslCondition();
     success.id = "success_1";
     success.kind = "success";
-    success.text = "success controller0.A";
-    success.reference = reference(CONTROLLER_LABEL, SIGNAL_A);
+    success.text = "success controller0." + signalName;
+    success.reference = reference(CONTROLLER_LABEL, signalName);
     test.main.successes.add(success);
     return test;
   }
@@ -332,6 +368,21 @@ class DslBringupTestTest {
     until.operator = ">=";
     until.literal = numberLiteral(1.0);
     test.main.untils.add(until);
+    return test;
+  }
+
+  private static DslModels.DslNormalizedTest buildInitClearTest() {
+    DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
+    test.name = "clear_faults";
+    DslModels.DslDeviceRef motor = new DslModels.DslDeviceRef();
+    motor.name = MOTOR_LABEL;
+    test.devices.add(motor);
+
+    DslModels.DslClearStatement clear = new DslModels.DslClearStatement();
+    clear.id = "clear_1";
+    clear.text = "clear motor-a.faults";
+    clear.target = reference(MOTOR_LABEL, SIGNAL_FAULTS);
+    test.init.clears.add(clear);
     return test;
   }
 
@@ -431,7 +482,7 @@ class DslBringupTestTest {
             new SingleGroup(MicrosoftDeviceGroup.HEADER, controllerBucket)));
   }
 
-  private static final class RecordingDevice implements DeviceUnit {
+  private static class RecordingDevice implements DeviceUnit {
     private int dutyWrites;
     private int stopWrites;
     private double lastDuty;
@@ -487,6 +538,13 @@ class DslBringupTestTest {
     @Override
     public void stop() {
       stopWrites++;
+    }
+  }
+
+  private static final class NonClearableRecordingDevice extends RecordingDevice {
+    @Override
+    public boolean clearDslSignal(String signalName) {
+      return false;
     }
   }
 

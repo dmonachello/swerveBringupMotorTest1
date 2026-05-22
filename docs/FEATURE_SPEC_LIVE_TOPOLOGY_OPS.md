@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 Live Topology Ops Feature Spec
 
 Purpose: Capture the initial plan to combine topology visualization with live operations.
@@ -113,3 +115,4 @@ Purpose: Track safe next steps.
 - Click-to-select with confirmation.
 - Inline group controls on group boxes.
 - Operator audit log for actions.
+

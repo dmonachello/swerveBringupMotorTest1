@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: IMPLEMENTED
+
 **Input Aliases Spec**
 Purpose: Define how controller input aliases are stored, resolved, and validated across the robot runtime and CLI.
 
@@ -151,3 +153,4 @@ Purpose: Document key tradeoffs.
 Purpose: Identify safe follow-on improvements.
 - Add schema validation to warn about alias cycles or duplicate canonical targets.
 - Allow alias profiles for controller families beyond Xbox if needed.
+

@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Spec: Incremental Refactor Toward Layered Architecture
 
 ## Purpose
@@ -645,3 +647,4 @@ At the end, report:
 - docs updated
 - remaining gaps that should be deferred to later passes
 - which work was primarily Java-side vs PC/Python-side
+

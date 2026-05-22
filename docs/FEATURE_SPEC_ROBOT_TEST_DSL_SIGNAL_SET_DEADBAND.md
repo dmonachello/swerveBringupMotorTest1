@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: IMPLEMENTED
+
 # Robot Test DSL Signal-Set Deadband Feature Spec
 
 Note: This spec was created with pi.
@@ -427,3 +429,4 @@ The feature is done when:
 - existing behavior without deadband is unchanged
 - unit tests cover parse, validate, serialize, and runtime behavior
 - user-facing docs and examples are updated
+

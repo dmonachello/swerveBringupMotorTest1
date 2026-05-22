@@ -3,6 +3,7 @@ package frc.robot;
 import edu.wpi.first.cameraserver.CameraServer;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
+import frc.robot.commands.local.RobotLocalAxisCommandId;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.ControllerManager;
 import frc.robot.manufacturers.microsoft.XboxControllerDevice;
@@ -32,6 +33,10 @@ public class Robot extends TimedRobot {
   private static final double SPEED_ZERO = 0.0;
   private static final String TEXT_TESTS_INFO_PROFILE = "Profile: ";
   private static final String TEXT_TESTS_INFO_SOURCE = "Source: ";
+  private static final String BINDING_LEFT_DRIVE =
+      RobotLocalAxisCommandId.LEFT_DRIVE.wireName();
+  private static final String BINDING_RIGHT_DRIVE =
+      RobotLocalAxisCommandId.RIGHT_DRIVE.wireName();
   // Driver Station controller input.
   private final ControllerManager controllers = new ControllerManager();
   private final java.util.Map<String, XboxController> controllerMap = controllers.getXboxControllers();
@@ -42,6 +47,8 @@ public class Robot extends TimedRobot {
   // Edge-detect state for one-shot actions.
   private final EdgeTrigger edge = new EdgeTrigger();
   private final BringupCommandRouter.AddAllHandler addAllHandler = new AddAllHandlerImpl();
+  private final BringupCommandRouter.GenericCmdHandler genericCmdHandler =
+      new GenericCmdHandlerImpl();
   private final BringupCommandRouter.AddMotorHandler addMotorHandler = new AddMotorHandlerImpl();
 
   /**
@@ -108,6 +115,13 @@ public class Robot extends TimedRobot {
     }
     BindingsManager.BindingState bind = bindings.sample(controllerMap, edge);
 
+    double neoSpeed = bind.hasAxis(BINDING_LEFT_DRIVE)
+        ? bind.axis(BINDING_LEFT_DRIVE)
+        : SPEED_ZERO;
+    double krakenSpeed = bind.hasAxis(BINDING_RIGHT_DRIVE)
+        ? bind.axis(BINDING_RIGHT_DRIVE)
+        : SPEED_ZERO;
+
     BringupCommandRouter.applyCommon(
         bind,
         core,
@@ -115,41 +129,39 @@ public class Robot extends TimedRobot {
         new StartupInfoPrinter(),
         new TestsInfoPrinter(),
         new TestsOverviewPrinter(),
-        bind.held("runTest"),
+        this::toggleProfile,
+        () -> printCurrentInputs(neoSpeed, krakenSpeed),
         addAllHandler,
+        genericCmdHandler,
         addMotorHandler);
-
-    // --- Profile switching ---
-    if (bind.pressed("profileToggle")) {
-      BringupUtil.selectNextProfile();
-      printProfileInfo();
-    }
-
-    // --- Analog input to motor outputs ---
-    double neoSpeed = bind.hasAxis("leftDrive")
-        ? bind.axis("leftDrive")
-        : SPEED_ZERO;
-    double krakenSpeed = bind.hasAxis("rightDrive")
-        ? bind.axis("rightDrive")
-        : SPEED_ZERO;
-
-    // --- Print current stick inputs on demand ---
-    if (bind.pressed("printInputs")) {
-      core.requestTextReport(
-          "Inputs: leftY=" + String.format("%.2f", neoSpeed) +
-          " rightY=" + String.format("%.2f", krakenSpeed) +
-          " (NEO/FLEX=" + String.format("%.2f", neoSpeed) +
-          ", KRAKEN/FALCON=" + String.format("%.2f", krakenSpeed) + ")",
-          4);
-    }
-
-    // core update handled by BringupCommandRouter
 
     // Feed test inputs (used by joystick-mode tests).
     core.setTestInputs(XboxControllerDevice.buildControllerInputs(controllerMap));
 
     // Apply speeds after inputs are processed.
     core.setSpeeds(neoSpeed, krakenSpeed);
+  }
+
+  /**
+   * NAME
+   *   toggleProfile - Apply the local profile-toggle command.
+   */
+  private void toggleProfile() {
+    BringupUtil.selectNextProfile();
+    printProfileInfo();
+  }
+
+  /**
+   * NAME
+   *   printCurrentInputs - Emit the current local stick-input report.
+   */
+  private void printCurrentInputs(double neoSpeed, double krakenSpeed) {
+    core.requestTextReport(
+        "Inputs: leftY=" + String.format("%.2f", neoSpeed) +
+        " rightY=" + String.format("%.2f", krakenSpeed) +
+        " (NEO/FLEX=" + String.format("%.2f", neoSpeed) +
+        ", KRAKEN/FALCON=" + String.format("%.2f", krakenSpeed) + ")",
+        4);
   }
 
   /**
@@ -194,6 +206,29 @@ public class Robot extends TimedRobot {
       }
       if (core != null) {
         core.handleAdd(addMotorNow);
+      }
+    }
+  }
+
+  /**
+   * NAME
+   *   GenericCmdHandlerImpl - Example command handler cloned from add-all.
+   */
+  private final class GenericCmdHandlerImpl implements BringupCommandRouter.GenericCmdHandler {
+    @Override
+    public void handleGenericCmd(boolean genericCmdNow) {
+      if (genericCmdNow && !BringupUtil.isProfileActive()) {
+        BringupUtil.prepareActivationForSelectedProfile();
+        BringupUtil.activateSelectedProfile();
+        if (BringupUtil.isProfileActive()) {
+          core.resetState("profileActivate");
+          core = new BringupCore();
+          validateCanIds();
+          printProfileInfo();
+        }
+      }
+      if (core != null) {
+        core.handleAddAll(genericCmdNow);
       }
     }
   }

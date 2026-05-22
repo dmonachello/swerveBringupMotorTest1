@@ -1,4 +1,6 @@
-﻿# SSH into Driver Station (superspec1) to Run CLI
+﻿SPEC_STATUS: NOT_IMPLEMENTED
+
+# SSH into Driver Station (superspec1) to Run CLI
 
 Purpose: Run the interactive bringup CLI on the Driver Station PC without interfering with Driver Station safety keyboard controls.
 
@@ -116,3 +118,4 @@ This setup works, but it’s a workaround. Better long-term options include:
 - TCP socket-based CLI (no SSH needed).
 - Web UI or remote command interface.
 - Dedicated input relay service.
+

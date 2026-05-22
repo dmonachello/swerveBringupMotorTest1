@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: IMPLEMENTED
+
 # Robot Test DSL CLI Spec
 
 ## 1. Purpose
@@ -424,3 +426,4 @@ The robot is responsible for:
 - executing normalized DSL tests
 - applying runtime safety rules
 - reporting run outcomes and details
+

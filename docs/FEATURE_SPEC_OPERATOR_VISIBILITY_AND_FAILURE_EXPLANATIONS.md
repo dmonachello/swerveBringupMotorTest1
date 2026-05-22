@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: RESEARCH_ONLY
+
 # Feature Spec: Operator Visibility and Failure Explanations
 
 ## Summary
@@ -222,7 +224,7 @@ Requirements:
 
 ### 3A. Active Runtime View
 
-Purpose: Provide one direct answer to “what is active right now?”
+Purpose: Provide one direct answer to â€œwhat is active right now?â€
 
 Requirements:
 
@@ -820,3 +822,4 @@ Purpose: Record decisions resolved during spec review.
 - If any dirty section lacks a known path, the command must fail with a direct fix.
 
 SID_COMMENT: This pass should prefer exposing current runtime truth and blocked reasons before changing bind, group, or test semantics.
+

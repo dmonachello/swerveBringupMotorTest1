@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: IMPLEMENTED
+
 # Group and Targeting Spec (V1 Final)
 
 ## 1. Goal
@@ -437,3 +439,4 @@ Examples:
 Output:
 
 `ERR target group is empty`
+

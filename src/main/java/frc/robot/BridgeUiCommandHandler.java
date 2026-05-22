@@ -9,6 +9,17 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.livewindow.LiveWindow;
 import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
+import frc.robot.commands.local.RobotLocalCommandExecutor;
+import frc.robot.commands.local.RobotLocalCommandHost;
+import frc.robot.commands.local.RobotLocalCommandRequest;
+import frc.robot.commands.local.RobotLocalCommandRegistry;
+import frc.robot.commands.local.RobotLocalControllerGateway;
+import frc.robot.commands.local.RobotLocalControllerValueProvider;
+import frc.robot.commands.local.RobotLocalCommandSource;
+import frc.robot.commands.local.RobotLocalDispatchMode;
+import frc.robot.commands.local.RobotLocalDispatchResult;
+import frc.robot.commands.local.RobotLocalExecutionResult;
+import frc.robot.commands.local.RobotLocalNoopValueProvider;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.InputAliasResolver;
 import frc.robot.diag.snapshots.DeviceSnapshot;
@@ -267,6 +278,10 @@ public class BridgeUiCommandHandler {
   private final BridgeUiIngressPolicy uiIngressPolicy;
   private final BridgeUiCommandDispatcher uiCommandDispatcher;
   private final BridgeUiCommandExecutor uiExecuteFacade;
+  private final RobotLocalCommandHost robotLocalHost;
+  private final RobotLocalCommandExecutor robotLocalExecutor;
+  private final RobotLocalControllerValueProvider controllerValueProvider;
+  private final RobotLocalControllerGateway controllerGateway;
   private final BridgeUiOutputFacade uiOutputFacade;
   private final Runnable profileToggleAction;
   private final Runnable profileActivateAction;
@@ -971,6 +986,213 @@ public class BridgeUiCommandHandler {
         runtimeCommands));
 
     this.uiExecuteFacade = new BridgeUiCommandExecutor(uiIngressPolicy, uiCommandDispatcher);
+    this.robotLocalHost =
+        new RobotLocalCommandHost() {
+          @Override
+          public boolean ensureActiveProfile(String reason) {
+            if (!BringupUtil.isProfileActive()) {
+              BringupUtil.prepareActivationForSelectedProfile();
+              runtime.activateSelectedProfile(reason);
+              if (BringupUtil.isProfileActive() && profileActivateAction != null) {
+                profileActivateAction.run();
+              }
+            }
+            return BringupUtil.isProfileActive();
+          }
+
+          @Override
+          public void addNextMotorCommand() {
+            runtime.addNextMotorCommand();
+          }
+
+          @Override
+          public void addAllDevicesCommand() {
+            runtime.addAllDevicesCommand();
+          }
+
+          @Override
+          public void runGenericCommand() {
+            runtime.addAllDevicesCommand();
+          }
+
+          @Override
+          public void clearAllFaults() {
+            runtime.clearAllFaults();
+          }
+
+          @Override
+          public void runCanSweep() {
+            BringupPrinter.enqueue("Command: canSweep");
+            String report = core().buildCanPingSweepReportText();
+            runtime.requestTextReport(report, 6);
+          }
+
+          @Override
+          public void toggleDashboard() {
+            BridgeUiCommandHandler.this.toggleDashboardUpdates();
+          }
+
+          @Override
+          public void toggleProfile() {
+            BringupUtil.selectNextProfile();
+            if (profileToggleAction != null) {
+              profileToggleAction.run();
+            }
+          }
+
+          @Override
+          public void printState() {
+            runtime.requestTextReport(core().buildStateReportText(), 4);
+          }
+
+          @Override
+          public void printHealth() {
+            runtime.requestTextReport(core().buildHealthReportText(), 4);
+          }
+
+          @Override
+          public void printCANCoder() {
+            runtime.requestTextReport(core().buildCANCoderReportText(), 4);
+          }
+
+          @Override
+          public void printNtDiagnostics() {
+            String report = diagnostics() != null ? diagnostics().buildNetworkDiagnosticsReportIfReady() : null;
+            if (report == null) {
+              report = "Network diagnostics rate-limited; try again shortly.";
+            } else {
+              report = appendUiTcpStats(report);
+            }
+            runtime.requestTextReport(report, 4);
+          }
+
+          @Override
+          public void printCanDiagnostics() {
+            String report = diagnostics() != null ? diagnostics().buildCanDiagnosticsReportIfReady() : null;
+            if (report == null) {
+              long remainingMs = diagnostics() != null ? diagnostics().getCanDiagCooldownRemainingMs() : 0L;
+              report =
+                  remainingMs > 0
+                      ? String.format("CAN diagnostics rate-limited, try again in %.1fs.", remainingMs / 1000.0)
+                      : "CAN diagnostics not ready yet.";
+            }
+            runtime.requestTextReport(report, 4);
+          }
+
+          @Override
+          public void printBindings() {
+            BridgeUiCommandHandler.this.printBindings();
+          }
+
+          @Override
+          public void printTestsInfo() {
+            BridgeUiCommandHandler.this.printTestsInfo();
+          }
+
+          @Override
+          public void printTestsOverview() {
+            BridgeUiCommandHandler.this.printTestsOverview();
+          }
+
+          @Override
+          public void printNextTest() {
+            runtime.printNextTestReport();
+          }
+
+          @Override
+          public void printInputs() {
+            String report = String.format(
+                "Inputs: leftY=%.2f rightY=%.2f (NEO/FLEX=%.2f, KRAKEN/FALCON=%.2f)",
+                lastNeoSpeed,
+                lastKrakenSpeed,
+                lastNeoSpeed,
+                lastKrakenSpeed);
+            runtime.requestTextReport(report, 4);
+          }
+
+          @Override
+          public void dumpReport() {
+            if (diagnostics() == null) {
+              runtime.requestTextReport("Diagnostics unavailable.", 4);
+              return;
+            }
+            String json = diagnostics().buildReportJsonForDump();
+            runtime.requestTextReport(ReportTextUtil.wrapLongLine(json, 120), 4);
+            diagnostics().writeReportJsonToFile(json);
+          }
+
+          @Override
+          public void selectPreviousTest() {
+            runtime.selectPreviousTest();
+          }
+
+          @Override
+          public void selectNextTest() {
+            runtime.selectNextTest();
+          }
+
+          @Override
+          public Boolean toggleSelectedTestEnabled() {
+            return runtime.toggleSelectedTestEnabled();
+          }
+
+          @Override
+          public RobotLocalExecutionResult runSelectedTest() {
+            BringupCore.TestRunSnapshot snapshot = runtime.runSelectedTest();
+            String message =
+                snapshot != null && snapshot.message != null && !snapshot.message.isBlank()
+                    ? snapshot.message
+                    : snapshot != null ? snapshot.state : "runTest";
+            return RobotLocalExecutionResult.complete(
+                message,
+                message,
+                snapshot != null ? GSON.toJson(snapshot) : "");
+          }
+
+          @Override
+          public RobotLocalExecutionResult runAllTests() {
+            runtime.runAllTests();
+            return RobotLocalExecutionResult.complete("Command: runAllTests");
+          }
+
+          @Override
+          public boolean isActiveTestRunning() {
+            return core() != null && core().isTestRunning();
+          }
+
+          @Override
+          public void updateReportsAndTests(boolean runHeld) {
+            runtime.updateReportsAndTests(runHeld);
+          }
+
+          @Override
+          public boolean clearStopLatch(String reason) {
+            return clearStopLatchFromUi(reason);
+          }
+
+          @Override
+          public void applyCommandStop(String reason, boolean latchSafety) {
+            if (latchSafety) {
+              setStopLatch(reason);
+            }
+            applySafetyStop(reason);
+          }
+
+          @Override
+          public RobotLocalExecutionResult executeLegacyUiCommand(
+              String commandName,
+              JsonObject args,
+              String clientId,
+              double timestampSec,
+              boolean isTcp) {
+            BridgeUiIngressPolicy.Ingress ingress =
+                uiIngressPolicy.parseIngress(commandName, args != null ? args.toString() : "", clientId);
+            return fromBridgeUiResult(executeUiCommandSwitch(ingress, timestampSec, isTcp));
+          }
+        };
+    this.robotLocalExecutor = new RobotLocalCommandExecutor(robotLocalHost);
+    this.controllerValueProvider = new RobotLocalControllerValueProvider();
+    this.controllerGateway = new RobotLocalControllerGateway(robotLocalExecutor, controllerValueProvider);
     this.uiOutputFacade = new BridgeUiOutputFacade(uiTable, uiTcpTable, UI_PROTOCOL_VERSION);
     this.profileToggleAction = profileToggleAction;
     this.profileActivateAction = profileActivateAction;
@@ -1058,6 +1280,30 @@ public class BridgeUiCommandHandler {
         "Dashboard/Shuffleboard updates: " + (dashboardUpdatesEnabled ? "ON" : "OFF"));
   }
 
+  /**
+   * NAME
+   *   submitControllerBindings - Submit controller-originated command edges.
+   */
+  public void submitControllerBindings(BindingsManager.BindingState bindingState) {
+    controllerGateway.submitFromBindings(bindingState);
+  }
+
+  /**
+   * NAME
+   *   stepRobotLocalCommands - Advance the shared robot-local executor one loop.
+   */
+  public void stepRobotLocalCommands() {
+    robotLocalExecutor.step();
+  }
+
+  /**
+   * NAME
+   *   isRobotLocalCommandActive - Return whether the named command is active.
+   */
+  public boolean isRobotLocalCommandActive(String commandName) {
+    return robotLocalExecutor.isActiveCommand(commandName);
+  }
+
   public void handleUiCommands() {
     long seq = (long) uiTable.getEntry("cmd/seq").getInteger(-1);
     if (seq <= lastUiSeq) {
@@ -1068,7 +1314,7 @@ public class BridgeUiCommandHandler {
     String argsJson = uiTable.getEntry("cmd/args/json").getString("");
     double cmdTs = uiTable.getEntry("cmd/ts").getDouble(0.0);
     String clientId = uiTable.getEntry("cmd/clientId").getString("");
-    BridgeUiCommandResult result = uiExecuteFacade.executeRaw(name, argsJson, cmdTs, clientId, false);
+    BridgeUiCommandResult result = executeUnifiedUiCommand(name, argsJson, cmdTs, clientId, false);
     publishUiAck(seq, result.ok, result.message, name, cmdTs);
     publishUiOut(seq, name, result.outText, cmdTs, result.outJson);
   }
@@ -1202,7 +1448,7 @@ public class BridgeUiCommandHandler {
       lastTcpSeq = command.seq;
       lastTcpCommandMs = System.currentTimeMillis();
       lastTcpKeepaliveMs = lastTcpCommandMs;
-      BridgeUiCommandResult result = uiExecuteFacade.executeRaw(
+      BridgeUiCommandResult result = executeUnifiedUiCommand(
           cmdName,
           command.argsJson,
           command.ts,
@@ -1489,6 +1735,92 @@ public class BridgeUiCommandHandler {
       result.code = StatusRuntime.ackCode(false);
     }
     return result;
+  }
+
+  /**
+   * NAME
+   *   executeUnifiedUiCommand - Validate and submit a UI command through the unified executor.
+   */
+  private BridgeUiCommandResult executeUnifiedUiCommand(
+      String name,
+      String argsJson,
+      double cmdTs,
+      String clientId,
+      boolean isTcp) {
+    BridgeUiIngressPolicy.Ingress ingress = uiIngressPolicy.parseIngress(name, argsJson, clientId);
+    BridgeUiIngressPolicy.ValidationFailure failure = uiIngressPolicy.validateIngress(ingress, isTcp);
+    if (failure != null) {
+      BridgeUiCommandResult result = new BridgeUiCommandResult();
+      result.ok = false;
+      result.message = failure.message;
+      result.outText = failure.message;
+      return result;
+    }
+    uiIngressPolicy.applyPreExecution(ingress, isTcp);
+    RobotLocalDispatchResult dispatchResult =
+        robotLocalExecutor.submit(
+            new RobotLocalCommandRequest(
+                name,
+                RobotLocalCommandSource.HOST_UI,
+                dispatchModeForUiCommand(name),
+                ingress.args,
+                RobotLocalNoopValueProvider.INSTANCE,
+                clientId,
+                cmdTs,
+                isTcp));
+    return toBridgeUiResult(dispatchResult);
+  }
+
+  private RobotLocalDispatchMode dispatchModeForUiCommand(String name) {
+    if (RobotLocalCommandRegistry.COMMAND_STOP.equals(name)) {
+      return RobotLocalDispatchMode.INTERRUPT;
+    }
+    return RobotLocalDispatchMode.IMMEDIATE;
+  }
+
+  private BridgeUiCommandResult toBridgeUiResult(RobotLocalDispatchResult dispatchResult) {
+    if (dispatchResult == null) {
+      BridgeUiCommandResult result = new BridgeUiCommandResult();
+      result.ok = false;
+      result.message = "No dispatch result.";
+      result.outText = result.message;
+      return result;
+    }
+    return toBridgeUiResult(dispatchResult.executionResult(), dispatchResult.message());
+  }
+
+  private BridgeUiCommandResult toBridgeUiResult(
+      RobotLocalExecutionResult executionResult,
+      String fallbackMessage) {
+    BridgeUiCommandResult result = new BridgeUiCommandResult();
+    if (executionResult == null) {
+      result.ok = true;
+      result.message = fallbackMessage != null ? fallbackMessage : "OK";
+      result.outText = result.message;
+      return result;
+    }
+    result.ok = executionResult.ok();
+    result.message =
+        executionResult.message() != null && !executionResult.message().isBlank()
+            ? executionResult.message()
+            : (fallbackMessage != null ? fallbackMessage : "OK");
+    result.outText =
+        executionResult.outText() != null && !executionResult.outText().isBlank()
+            ? executionResult.outText()
+            : result.message;
+    result.outJson = executionResult.outJson() != null ? executionResult.outJson() : "";
+    result.code = StatusRuntime.ackCode(result.ok);
+    return result;
+  }
+
+  private RobotLocalExecutionResult fromBridgeUiResult(BridgeUiCommandResult result) {
+    if (result == null) {
+      return RobotLocalExecutionResult.failed("No UI result.");
+    }
+    if (result.ok) {
+      return RobotLocalExecutionResult.complete(result.message, result.outText, result.outJson);
+    }
+    return RobotLocalExecutionResult.failed(result.message);
   }
 
   /**

@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: IMPLEMENTED
+
 # Robot Test DSL Signal Set Feature Spec
 
 ## 1. Purpose
@@ -530,3 +532,4 @@ The feature is complete when:
 - Python DSL tests cover parsing, serialization, validation, and stale
   normalized payload detection
 - user guide documents syntax, safety rules, and examples
+

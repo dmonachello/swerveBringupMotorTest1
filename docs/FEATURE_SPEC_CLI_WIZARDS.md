@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: NOT_IMPLEMENTED
+
 # Feature Spec: CLI Wizards for Student Operators
 
 ## Summary
@@ -664,4 +666,5 @@ Purpose: capture safe follow-on work after the first release.
 - add profile creation or profile selection wizard flows
 - add richer validation hints using device-type and test-type metadata
 - add export of generated wizard plans as reusable named procedures
+
 

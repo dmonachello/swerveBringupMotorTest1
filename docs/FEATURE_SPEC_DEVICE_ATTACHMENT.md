@@ -1,10 +1,12 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Device Attachment UX Improvements
 
 ## Purpose
 Define a consistent, low-friction workflow for DIO attachments and visual links in the topology editor and CLI.
 
 ## Background
-Current attachment behavior spans logical ownership (host → attachment) and physical wiring (DIO → roboRIO). DIO devices are not CAN devices, yet they appear in the topology view and require clear, stable linking and persistence rules.
+Current attachment behavior spans logical ownership (host â†’ attachment) and physical wiring (DIO â†’ roboRIO). DIO devices are not CAN devices, yet they appear in the topology view and require clear, stable linking and persistence rules.
 
 ## Goals
 - Make DIO attachment and wiring explicit and understandable.
@@ -18,7 +20,7 @@ Current attachment behavior spans logical ownership (host → attachment) and ph
 - Removing existing attachment or wiring concepts.
 
 ## Definitions
-- **Attachment link**: logical link from a host device to an attachment (e.g., motor → limit switch).
+- **Attachment link**: logical link from a host device to an attachment (e.g., motor â†’ limit switch).
 - **DIO wire**: physical wiring link from DIO device to roboRIO.
 - **DIO rail**: visual offset used to render DIO devices off the CAN bus.
 
@@ -43,9 +45,9 @@ Purpose: Show physical DIO wiring to roboRIO.
 ### Legend
 Purpose: Explain link semantics by color/line style.
 - Include legend entries for:
-  - Attachment (logical) — dashed brown line
-  - DIO wire (roboRIO) — dashed blue line
-  - CAN bus (physical) — solid black line
+  - Attachment (logical) â€” dashed brown line
+  - DIO wire (roboRIO) â€” dashed blue line
+  - CAN bus (physical) â€” solid black line
 
 ### DIO Placement (Persistence)
 Purpose: Keep DIO placement stable across restarts.
@@ -110,6 +112,7 @@ INFO: Updated references for old_label -> new_label: profiles.devices(1), device
 - Extra diagram metadata increases file size slightly, but avoids layout drift.
 
 ## Future Extensions
-- Optional per-device “requires host attachment” flag for stricter validation.
+- Optional per-device â€œrequires host attachmentâ€ flag for stricter validation.
 - Distinct line styles for DIO attachment vs DIO wiring.
 - Attachment direction arrows for clarity.
+

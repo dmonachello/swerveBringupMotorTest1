@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Bridge CLI Feature Specification
 
 ## Purpose
@@ -327,7 +329,7 @@ Purpose: Point to the canonical grammar and highlight subcommand parsing for com
 - `show group` text output includes member names and bindings.
 - `show devices` (local) lists the full profile-derived device inventory, not only group members.
 - `show device` returns the full device definition from bringup_system.json (local only).
-- `show device-group` returns the device’s group membership/usage info.
+- `show device-group` returns the deviceâ€™s group membership/usage info.
 - CLI auto-imports `data/bringup_system.json` on startup when present (replaces groups).
 - merge config is only allowed when the incoming profiles hash matches the loaded profiles; otherwise use import config.
 
@@ -610,3 +612,4 @@ avoids prompts in batch mode
 uses structured output for automation
 
 remains simple, predictable, and operator-friendly
+

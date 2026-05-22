@@ -1,12 +1,25 @@
 package frc.robot.tests.dsl;
 
 import com.google.gson.JsonObject;
+import frc.robot.tests.dsl.signals.DslDeviceSignalProvider;
+import frc.robot.tests.dsl.signals.DslSignalMeta;
+import frc.robot.tests.dsl.signals.EncoderExternalSignalProvider;
+import frc.robot.tests.dsl.signals.LimitSwitchSignalProvider;
+import frc.robot.tests.dsl.signals.MotorSignalProvider;
+import frc.robot.tests.dsl.signals.TestTimerSignalProvider;
+import frc.robot.tests.dsl.signals.XboxControllerSignalProvider;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * NAME
- *   DslSignalRegistry - Canonical Java-side signal capability registry for DSL tests.
+ *   DslSignalRegistry - Canonical DSL signal registry aggregator.
+ *
+ * DESCRIPTION
+ *   Owns stable device/signal names and aggregates explicit per-device-type
+ *   signal providers into the exported registry used by runtime and host-side
+ *   validation artifacts.
  */
 public final class DslSignalRegistry {
   public static final String DEVICE_TYPE_MOTOR = "motor";
@@ -24,29 +37,47 @@ public final class DslSignalRegistry {
   public static final String SIGNAL_FAULTS = "faults";
   public static final String SIGNAL_PRESSED = "pressed";
   public static final String SIGNAL_ELAPSED = "elapsed";
+  public static final String SIGNAL_A = "A";
+  public static final String SIGNAL_B = "B";
+  public static final String SIGNAL_X = "X";
+  public static final String SIGNAL_Y = "Y";
+  public static final String SIGNAL_LB = "LB";
+  public static final String SIGNAL_RB = "RB";
+  public static final String SIGNAL_BACK = "BACK";
+  public static final String SIGNAL_START = "START";
+  public static final String SIGNAL_LS = "LS";
+  public static final String SIGNAL_RS = "RS";
+  public static final String SIGNAL_D_UP = "D_UP";
+  public static final String SIGNAL_D_RIGHT = "D_RIGHT";
+  public static final String SIGNAL_D_DOWN = "D_DOWN";
+  public static final String SIGNAL_D_LEFT = "D_LEFT";
+  public static final String SIGNAL_LEFT_X = "leftX";
+  public static final String SIGNAL_LEFT_Y = "leftY";
+  public static final String SIGNAL_RIGHT_X = "rightX";
+  public static final String SIGNAL_RIGHT_Y = "rightY";
+  public static final String SIGNAL_LEFT_TRIGGER = "leftTrigger";
+  public static final String SIGNAL_RIGHT_TRIGGER = "rightTrigger";
 
-  public record SignalMeta(
-      String valueType,
-      boolean readable,
-      boolean writable,
-      boolean clearable,
-      Double safeValue,
-      boolean safeProvider,
-      boolean unsafeExitAllowed) {}
+  private static final List<DslDeviceSignalProvider> PROVIDERS = List.of(
+      new MotorSignalProvider(),
+      new LimitSwitchSignalProvider(),
+      new EncoderExternalSignalProvider(),
+      new XboxControllerSignalProvider(),
+      new TestTimerSignalProvider());
 
-  private static final Map<String, Map<String, SignalMeta>> REGISTRY = buildRegistry();
+  private static final Map<String, Map<String, DslSignalMeta>> REGISTRY = buildRegistry();
 
   private DslSignalRegistry() {}
 
-  public static Map<String, Map<String, SignalMeta>> registry() {
+  public static Map<String, Map<String, DslSignalMeta>> registry() {
     return REGISTRY;
   }
 
-  public static SignalMeta signal(String deviceType, String signalName) {
+  public static DslSignalMeta signal(String deviceType, String signalName) {
     if (deviceType == null || signalName == null) {
       return null;
     }
-    Map<String, SignalMeta> signals = REGISTRY.get(deviceType);
+    Map<String, DslSignalMeta> signals = REGISTRY.get(deviceType);
     return signals != null ? signals.get(signalName) : null;
   }
 
@@ -55,10 +86,10 @@ public final class DslSignalRegistry {
     root.addProperty("schemaVersion", 1);
     root.addProperty("generatedFrom", DslSignalRegistry.class.getName());
     JsonObject deviceTypes = new JsonObject();
-    for (Map.Entry<String, Map<String, SignalMeta>> entry : REGISTRY.entrySet()) {
+    for (Map.Entry<String, Map<String, DslSignalMeta>> entry : REGISTRY.entrySet()) {
       JsonObject signals = new JsonObject();
-      for (Map.Entry<String, SignalMeta> signalEntry : entry.getValue().entrySet()) {
-        SignalMeta meta = signalEntry.getValue();
+      for (Map.Entry<String, DslSignalMeta> signalEntry : entry.getValue().entrySet()) {
+        DslSignalMeta meta = signalEntry.getValue();
         JsonObject obj = new JsonObject();
         obj.addProperty("valueType", meta.valueType());
         obj.addProperty("readable", meta.readable());
@@ -79,30 +110,25 @@ public final class DslSignalRegistry {
     return root;
   }
 
-  private static Map<String, Map<String, SignalMeta>> buildRegistry() {
-    Map<String, Map<String, SignalMeta>> root = new LinkedHashMap<>();
-    root.put(DEVICE_TYPE_MOTOR, new LinkedHashMap<>());
-    root.get(DEVICE_TYPE_MOTOR).put(SIGNAL_OUTPUT, new SignalMeta(VALUE_TYPE_NUMBER, false, true, false, 0.0, false, true));
-    root.get(DEVICE_TYPE_MOTOR).put(SIGNAL_CURRENT, new SignalMeta(VALUE_TYPE_NUMBER, true, false, false, null, false, false));
-    root.get(DEVICE_TYPE_MOTOR).put(SIGNAL_TEMPERATURE, new SignalMeta(VALUE_TYPE_NUMBER, true, false, false, null, false, false));
-    root.get(DEVICE_TYPE_MOTOR).put(SIGNAL_VELOCITY, new SignalMeta(VALUE_TYPE_NUMBER, true, false, false, null, false, false));
-    root.get(DEVICE_TYPE_MOTOR).put(SIGNAL_POSITION, new SignalMeta(VALUE_TYPE_NUMBER, true, false, false, null, false, false));
-    root.get(DEVICE_TYPE_MOTOR).put(SIGNAL_FAULTS, new SignalMeta(VALUE_TYPE_BOOLEAN, false, false, true, null, false, false));
+  public static List<DslDeviceSignalProvider> providers() {
+    return PROVIDERS;
+  }
 
-    root.put(DEVICE_TYPE_LIMIT_SWITCH, new LinkedHashMap<>());
-    root.get(DEVICE_TYPE_LIMIT_SWITCH).put(SIGNAL_PRESSED, new SignalMeta(VALUE_TYPE_BOOLEAN, true, false, false, null, false, false));
-
-    root.put(DEVICE_TYPE_ENCODER_EXTERNAL, new LinkedHashMap<>());
-    root.get(DEVICE_TYPE_ENCODER_EXTERNAL).put(SIGNAL_POSITION, new SignalMeta(VALUE_TYPE_NUMBER, true, false, false, null, false, false));
-
-    root.put(DEVICE_TYPE_XBOX_CONTROLLER, new LinkedHashMap<>());
-    root.get(DEVICE_TYPE_XBOX_CONTROLLER).put("A", new SignalMeta(VALUE_TYPE_BOOLEAN, true, false, false, null, false, false));
-    root.get(DEVICE_TYPE_XBOX_CONTROLLER).put("B", new SignalMeta(VALUE_TYPE_BOOLEAN, true, false, false, null, false, false));
-    root.get(DEVICE_TYPE_XBOX_CONTROLLER).put("leftY", new SignalMeta(VALUE_TYPE_NUMBER, true, false, false, null, false, false));
-    root.get(DEVICE_TYPE_XBOX_CONTROLLER).put("rightY", new SignalMeta(VALUE_TYPE_NUMBER, true, false, false, null, false, false));
-
-    root.put(DEVICE_TYPE_TEST_TIMER, new LinkedHashMap<>());
-    root.get(DEVICE_TYPE_TEST_TIMER).put(SIGNAL_ELAPSED, new SignalMeta(VALUE_TYPE_NUMBER, true, false, false, null, false, false));
+  private static Map<String, Map<String, DslSignalMeta>> buildRegistry() {
+    Map<String, Map<String, DslSignalMeta>> root = new LinkedHashMap<>();
+    for (DslDeviceSignalProvider provider : PROVIDERS) {
+      if (provider == null) {
+        continue;
+      }
+      String deviceType = provider.deviceType();
+      if (deviceType == null || deviceType.isBlank()) {
+        throw new IllegalStateException("DSL signal provider returned blank device type");
+      }
+      if (root.containsKey(deviceType)) {
+        throw new IllegalStateException("Duplicate DSL signal provider for device type: " + deviceType);
+      }
+      root.put(deviceType, new LinkedHashMap<>(provider.signals()));
+    }
     return root;
   }
 }

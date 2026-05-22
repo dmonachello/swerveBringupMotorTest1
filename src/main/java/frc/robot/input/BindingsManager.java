@@ -6,6 +6,7 @@ import com.google.gson.JsonParseException;
 import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.XboxController;
 import frc.robot.EdgeTrigger;
+import frc.robot.commands.local.RobotLocalCommandRegistry;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
@@ -273,31 +274,6 @@ public final class BindingsManager {
   }
 
   private void validateBindings() {
-    List<String> knownCommands = List.of(
-        "addMotor",
-        "addAll",
-        "printState",
-        "printHealth",
-        "printCANcoder",
-        "printNTdiag",
-        "printCANdiag",
-        "printInputs",
-        "printBindings",
-        "printTestsInfo",
-        "printTestsOverview",
-        "printNextTest",
-        "clearFaults",
-        "dumpReport",
-        "toggleDashboard",
-        "profileToggle",
-        "canSweep",
-        "selectTestPrev",
-        "selectTestNext",
-        "toggleTest",
-        "runTest",
-        "runAllTests",
-        "printNextTest"
-    );
     Map<String, Integer> bindingCounts = new HashMap<>();
     for (BindingSpec spec : bindings) {
       if (spec == null || spec.command == null) {
@@ -305,7 +281,7 @@ public final class BindingsManager {
       }
       String command = spec.command.trim();
       bindingCounts.put(command, bindingCounts.getOrDefault(command, 0) + 1);
-      if (!knownCommands.contains(command)) {
+      if (!RobotLocalCommandRegistry.isKnownCommand(command)) {
         BringupPrinter.enqueue("Warning: unknown binding command '" + command + "'.");
       }
     }
@@ -319,7 +295,7 @@ public final class BindingsManager {
         continue;
       }
       String command = axis.command.trim();
-      if (!List.of("leftDrive", "rightDrive").contains(command)) {
+      if (!RobotLocalCommandRegistry.isKnownAxisCommand(command)) {
         BringupPrinter.enqueue("Warning: unknown axis command '" + command + "'.");
       }
     }

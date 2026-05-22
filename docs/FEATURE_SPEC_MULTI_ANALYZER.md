@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: NOT_IMPLEMENTED
+
 Multi-Analyzer Fault Inference Feature Spec
 
 Purpose: Define topology-aware multi-analyzer visibility and fault inference in the PC bridge app.
@@ -112,3 +114,4 @@ Purpose: List safe next steps.
 - Visual overlay in the topology UI.
 - Export inference snapshots to JSON for postmortem.
 - Replay PCAPs through multi-analyzer inference.
+

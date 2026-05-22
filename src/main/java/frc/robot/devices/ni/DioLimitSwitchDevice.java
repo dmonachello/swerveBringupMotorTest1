@@ -2,6 +2,7 @@ package frc.robot.devices.ni;
 
 import edu.wpi.first.wpilibj.DigitalInput;
 import frc.robot.BringupUtil;
+import frc.robot.devices.DeviceDslSupport;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.LimitsAttachment;
@@ -108,9 +109,6 @@ public final class DioLimitSwitchDevice implements DeviceUnit {
 
   @Override
   public Object readDslSignal(String signalName) {
-    if (!SIGNAL_PRESSED.equals(signalName)) {
-      return null;
-    }
-    return BringupUtil.readLimitInput(input, invert);
+    return DeviceDslSupport.readLimitSwitchSignal(this, signalName);
   }
 }

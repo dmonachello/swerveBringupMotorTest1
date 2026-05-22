@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Component Model Unification
 
 ## Purpose
@@ -675,3 +677,4 @@ This refactor/feature is done when:
 - Java has a matching canonical interpretation contract
 - representative fixtures produce the same interpretation across all consumers
 - old compatibility parsing paths for replaced models are removed
+

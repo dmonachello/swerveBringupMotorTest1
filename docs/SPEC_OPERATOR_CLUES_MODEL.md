@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: RESEARCH_ONLY
+
 # Spec: Operator Clues Model for Fault Localization
 
 Purpose: define a structured operator-clue evidence model for topology-aware CAN fault localization.
@@ -341,3 +343,4 @@ SID_QUESTION: Should persisted clues live inside `bringup_system.json` metadata,
 SID_QUESTION: Should clue confidence be operator-entered only, or partially auto-derived from clue type and consistency checks?
 
 SID_QUESTION: Should topology boundary clues allow both label targets and node-key targets, or normalize to one canonical ID form?
+

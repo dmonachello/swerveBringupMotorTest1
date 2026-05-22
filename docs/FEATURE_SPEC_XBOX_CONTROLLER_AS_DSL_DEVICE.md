@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: IMPLEMENTED
+
 # Xbox Controller as DSL Device Feature Spec
 
 ## 1. Purpose
@@ -330,3 +332,4 @@ This implemented first pass is complete when:
 - controller signals cannot be written, cleared, or used with `unsafe-exit`
 - Java tests cover button and axis reads
 - Python CLI tests cover configured controller import and validation
+

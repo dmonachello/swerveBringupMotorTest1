@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Feature Spec: CLI Usability and Configuration Workflow
 
 ## Summary
@@ -16,7 +18,7 @@ Users struggle to configure the system via the CLI because:
 
 ## Goals
 
-- Provide a single “workspace view” that answers: what’s loaded, what’s active, what’s dirty, and what to do next.
+- Provide a single â€œworkspace viewâ€ that answers: whatâ€™s loaded, whatâ€™s active, whatâ€™s dirty, and what to do next.
 - Make validation scoped and actionable.
 - Make save operations explicit and safe.
 - Improve discoverability of valid values for manufacturers/device types and input sources.
@@ -113,7 +115,7 @@ Behavior:
 
 - Saves all dirty sections using their current source paths.
 - If a path is unknown, prints a single-line fix:
-  - “No config destination set. Fix: `save config data/bringup_system.json`”
+  - â€œNo config destination set. Fix: `save config data/bringup_system.json`â€
 - No prompts in batch mode.
 - Optional `save all --prompt` to confirm per-section in interactive mode.
 
@@ -131,7 +133,7 @@ Applies to:
 Rules:
 
 - `?` prints full inline lists (no truncation).
-- If a list is empty or unknown, print: “No known values; see docs.”
+- If a list is empty or unknown, print: â€œNo known values; see docs.â€
 - If a value is numeric and has known ranges, print the range (example: `duty: -1.0..1.0`).
 
 Data sources:
@@ -157,7 +159,7 @@ Output:
 Improve guidance for common mis-modes:
 
 - `write tests` in `config-test-*` should print:
-  - “You are in test edit mode. Use `exit` or `end` first.”
+  - â€œYou are in test edit mode. Use `exit` or `end` first.â€
 - `tests load` and `tests merge` should be disallowed in test edit mode with a direct fix message.
 
 ### 7) Recovery Mode Clarity
@@ -186,15 +188,15 @@ Update these docs to match behavior:
 - `docs/CORRECTED_STEP_BY_STEP_CLI_BRINGUP.md`
 - `docs/CLI_REFERENCE_MANUAL.md` or `docs/CLI_USER_MANUAL.md` as applicable
 
-Add “Workspace” section:
+Add â€œWorkspaceâ€ section:
 
 - Explain loaded file sources and dirty flags.
 
-Add “Scoped validate” section:
+Add â€œScoped validateâ€ section:
 
 - Describe `--active` and `--active-set`.
 
-Add “Save all” section:
+Add â€œSave allâ€ section:
 
 - Explain expected behavior and error messages.
 
@@ -304,4 +306,5 @@ Saved profiles to data/bringup_system.json.
 
 - Update docs first or in the same change set.
 - Add release notes entry describing new commands and behaviors.
+
 

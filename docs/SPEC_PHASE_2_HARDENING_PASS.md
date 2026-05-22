@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Spec: Phase 2 Hardening Pass
 
 ## Purpose
@@ -311,3 +313,4 @@ At the end, report:
 - helpers/constants moved out of handler
 - dependency interfaces narrowed
 - any remaining handler leakage or follow-up opportunities
+

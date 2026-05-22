@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: RESEARCH_ONLY
+
 # Spec: Topology Fault Inference Model
 
 Purpose: define the research-to-implementation model for inferring break candidates and high-error fault regions from passive CAN observation, topology metadata, and operator clues.
@@ -220,3 +222,4 @@ Success criteria:
 - `docs/CAN Bus DIagnostic Feature Specification.md`
 - `docs/FEATURE_SPEC_MULTI_ANALYZER_VISIBILITY_MATRIX.md`
 - `docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md`
+

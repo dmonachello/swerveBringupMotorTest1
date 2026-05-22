@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Spec for Repo-Level Version Helper and Release Workflow Commands
 
 ## Purpose
@@ -576,3 +578,4 @@ If easy, add:
 ## Short rationale to include in commit or PR description
 
 This change promotes version operations from a thin wrapper into a small, stable repo command surface that works well for both humans and Codex. It adds read support, dry-run support, clearer output, a better help path, and a cleaner foundation for future release automation, while keeping update_versions.py as the underlying engine.
+

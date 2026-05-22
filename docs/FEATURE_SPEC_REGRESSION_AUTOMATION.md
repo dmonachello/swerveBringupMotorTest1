@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: IMPLEMENTED
+
 # Feature Spec: Regression Automation Framework (V1)
 
 ## Purpose
@@ -283,3 +285,4 @@ an extra safety gate?
 - Trend reporting across runs (pass/fail history and flaky detection).
 - Schema validation for fixture/expected files.
 - CI matrix split (`local`, `robot-non-motion`) with artifact upload.
+

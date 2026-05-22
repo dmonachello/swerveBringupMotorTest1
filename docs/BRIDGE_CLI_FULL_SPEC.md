@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 Purpose: Single reference for the Bridge CLI feature, including requirements, restrictions, design, and implementation notes.
 
 ## Summary
@@ -370,7 +372,7 @@ Show Output Notes:
 - `show group` text output includes members and bindings.
 - `show devices` (local) lists the full profile-derived device inventory, not only group members.
 - `show device` returns the full device definition from bringup_system.json (local only).
-- `show device-group` returns the device’s group membership/usage info.
+- `show device-group` returns the deviceâ€™s group membership/usage info.
 - The CLI auto-imports `src/main/deploy/bringup_system.json` on startup when present (replaces groups).
 - merge config is only allowed when the incoming profiles hash matches the loaded profiles; otherwise use import config.
 - `validate config [path]`
@@ -1032,6 +1034,7 @@ Purpose: Document the steps to update the CLI grammar and regenerate code.
 5. Commit updated generated files:
    - `tools/can_nt/bridge_cli_grammar_gen.py`
    - `tools/can_nt/bridge_cli_constants_gen.py`
+
 
 
 

@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # DSL Device Signal Interface Spec
 
 Purpose: define the boundary between snapshots, DSL-visible signals, and the per-device read/write contract used by robot diagnostic tests.
@@ -526,4 +528,5 @@ Possible future work:
 - structured read/write result types instead of raw `Object` and `boolean`
 - signal capability introspection directly from devices
 - stronger runtime detail fields such as `lastCommandWrites`
+
 

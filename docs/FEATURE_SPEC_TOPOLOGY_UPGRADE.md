@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: IMPLEMENTED
+
 # Feature Spec: Topology Upgrade (Branch Target)
 
 ## 1. Purpose
@@ -848,3 +850,4 @@ The feature is considered implemented when:
 - live evidence overlays
 - suspect edge / suspect branch scoring
 - topology-aware fault-localization CLI and GUI surfaces
+

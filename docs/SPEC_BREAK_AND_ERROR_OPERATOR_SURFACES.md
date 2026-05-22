@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: RESEARCH_ONLY
+
 # Spec: Break and High-Error Operator Surfaces
 
 Purpose: define how inferred break candidates and high-error conditions should be represented to operators in CLI and UI without changing existing protocol contracts.
@@ -187,3 +189,4 @@ Purpose: define acceptance checks for future implementation.
 - `docs/SPEC_OPERATOR_CLUES_MODEL.md`
 - `docs/FEATURE_SPEC_MULTI_OBSERVER_CAN_FAULT_LOCALIZATION.md`
 - `docs/OPERATOR_SURFACES.md`
+

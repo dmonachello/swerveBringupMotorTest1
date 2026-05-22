@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Feature Spec: Config Store (Windows Python)
 
 ## Purpose
@@ -160,3 +162,4 @@ Purpose: Document compatible next steps.
 - Add transaction boundaries and undo history.
 - Add schema version migration helpers.
 - Add optional JSON schema export.
+

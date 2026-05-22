@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: NOT_IMPLEMENTED
+
 # Feature Spec: Test Creation DSL V1
 
 ## Purpose
@@ -727,3 +729,4 @@ Known post-v1 areas include:
 - Step-local `abort`
 - Additional approved pseudo-device types
 - Richer condition operators such as ranges or tolerances
+

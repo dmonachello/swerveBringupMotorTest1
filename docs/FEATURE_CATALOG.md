@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Feature Catalog
 
 ## Purpose
@@ -43,7 +45,7 @@ Each feature entry includes:
 - **When to use it:** first hardware verification, one-motor-at-a-time bringup, partial robot wiring.
 - **Do not confuse with:** `Add All Motors` / `add all`.
 - **Dependencies:** active profile selected on the robot.
-- **Current limitations:** this path is motor-oriented, not a fully general “any device type one at a time” mechanism.
+- **Current limitations:** this path is motor-oriented, not a fully general â€œany device type one at a timeâ€ mechanism.
 
 ### Bulk Device Instantiation
 
@@ -484,3 +486,4 @@ Any new user-visible capability should update:
 - this catalog
 - `docs/FEATURE_MATRIX.md`
 - `docs/WORKFLOWS.md` when the capability changes how a task is performed
+

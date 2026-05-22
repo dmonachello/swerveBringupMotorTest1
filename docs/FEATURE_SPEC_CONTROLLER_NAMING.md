@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Feature Spec: Controller Naming + Unified Input Sources
 
 ## Purpose
@@ -132,3 +134,4 @@ inputSource = <controllerName>.<inputId>
 
 - Standard axes: `leftY/rightY/leftX/rightX` (confirmed).
 - Single unified `inputSource` syntax for axes + buttons (confirmed).
+

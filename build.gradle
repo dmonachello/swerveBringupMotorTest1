@@ -106,3 +106,10 @@ wpi.java.configureTestTasks(test)
 tasks.withType(JavaCompile) {
     options.compilerArgs.add '-XDstringConcat=inline'
 }
+
+tasks.register('emitRobotLocalCommandInventory', JavaExec) {
+    group = 'verification'
+    description = 'Print the robot-local command inventory JSON generated from the Java registry.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'frc.robot.commands.local.RobotLocalCommandInventoryMain'
+}

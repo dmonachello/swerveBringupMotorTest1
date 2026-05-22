@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: RESEARCH_ONLY
+
 # Spec: Break and Error Implementation Trace
 
 Purpose: provide a code-path reality map for break/high-error diagnostics so future implementation work starts from verified ownership and avoids doc-vs-code drift.
@@ -124,4 +126,5 @@ This trace should be revised when any of the following happen:
 - `docs/SPEC_OPERATOR_CLUES_MODEL.md`
 - `docs/CLI_REFERENCE_MANUAL.md`
 - `docs/BRIDGE_CLI_FULL_SPEC.md`
+
 

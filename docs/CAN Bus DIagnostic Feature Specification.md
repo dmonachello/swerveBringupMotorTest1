@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 CAN Bus DIagnostic Feature Specification (No Additional Low-Level Hardware)
 Purpose
 This specification defines the feature set for a CAN-based diagnostic system that operates without additional electrical-layer hardware. It relies entirely on CAN traffic observation, controlled stimulus, and topology-aware inference.
@@ -101,9 +103,9 @@ unexpected_node_or_id
 Capabilities
 Compare traffic visibility across observers
 Examples
-Seen at observer A but not B → possible break between A and B
-Seen at all observers → node likely present
-Seen at none → node missing or inactive
+Seen at observer A but not B â†’ possible break between A and B
+Seen at all observers â†’ node likely present
+Seen at none â†’ node missing or inactive
 ---
 6. Output Model
 System outputs structured diagnostic results.
@@ -140,3 +142,4 @@ Relies on observable traffic patterns
 ---
 Summary
 This system performs topology-aware, stimulus-driven inference using only CAN traffic observation. It replaces manual debugging heuristics with structured reasoning, without requiring additional hardware beyond existing CAN interfaces.
+

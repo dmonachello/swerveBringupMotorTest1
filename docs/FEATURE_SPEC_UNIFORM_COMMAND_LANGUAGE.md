@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # FEATURE_SPEC_UNIFORM_COMMAND_LANGUAGE
 
 **Purpose**
@@ -395,4 +397,5 @@ Capture decisions needed before implementation freeze.
 SID_QUESTION: Confirm final canonical resource naming for nested families (`bindings controller` vs flattened resource names).
 
 SID_QUESTION: Confirm whether `delete` is supported in all context modes or only where identity semantics are unambiguous.
+
 

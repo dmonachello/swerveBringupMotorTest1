@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: NOT_IMPLEMENTED
+
 # Test-Owned Actuation Control (CLI/UI/Xbox)
 
 Purpose:
@@ -282,3 +284,4 @@ Identify optional follow-on work once baseline contract is implemented.
 - Add explicit "manual mode test" templates auto-generated per profile.
 - Add test priority/ownership metadata for clearer arbitration diagnostics.
 - Add regression test scripts that validate the no-actuation-without-test invariant.
+

@@ -3,10 +3,6 @@ package frc.robot.tests.dsl;
 import frc.robot.BringupPrinter;
 import frc.robot.BringupUtil;
 import frc.robot.devices.DeviceUnit;
-import frc.robot.diag.snapshots.DeviceSnapshot;
-import frc.robot.diag.snapshots.LimitsAttachment;
-import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
-import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 import frc.robot.tests.BringupTest;
 import frc.robot.tests.BringupTestContext;
 import frc.robot.tests.BringupTestResult;
@@ -34,8 +30,7 @@ public final class DslBringupTest implements BringupTest {
   private static final String PHASE_MAIN = "main";
   private static final String PHASE_CLOSE = "close";
   private static final double WARNING_COOLDOWN_SEC = 1.0;
-  private static final double MOTOR_OUTPUT_MIN = -1.0;
-  private static final double MOTOR_OUTPUT_MAX = 1.0;
+  private static final double SAFE_STOP_OUTPUT = 0.0;
   private final DslNormalizedTest test;
   private final Map<String, DeviceUnit> devices = new LinkedHashMap<>();
   private final Map<String, String> declaredDeviceTypes = new LinkedHashMap<>();
@@ -141,7 +136,9 @@ public final class DslBringupTest implements BringupTest {
       }
     }
     applySafeValues(nowSec, false);
-    applyClears(test.init.clears);
+    if (!applyClears(test.init.clears)) {
+      return false;
+    }
     if (!applySets(context, test.init.sets, nowSec, PHASE_INIT)) {
       return false;
     }
@@ -313,40 +310,57 @@ public final class DslBringupTest implements BringupTest {
     return true;
   }
 
-  private void applyClears(List<DslClearStatement> clears) {
+  private boolean applyClears(List<DslClearStatement> clears) {
     for (DslClearStatement statement : clears) {
       if (statement == null || statement.target == null) {
         continue;
       }
-      if (DslSignalRegistry.SIGNAL_FAULTS.equals(statement.target.signal)) {
-        DeviceUnit device = devices.get(statement.target.device);
-        if (device != null) {
-          device.clearFaults();
-        }
+      DeviceUnit device = devices.get(statement.target.device);
+      if (device == null) {
+        status = "Device not found: " + statement.target.device;
+        result = BringupTestResult.FAIL;
+        return false;
+      }
+      if (!device.clearDslSignal(statement.target.signal)) {
+        status = "Unsupported clear DSL target at runtime: " + statement.target.text;
+        result = BringupTestResult.FAIL;
+        return false;
       }
     }
+    return true;
   }
 
   private void applySafeValues(double nowSec, boolean finalExit) {
     for (Map.Entry<String, DeviceUnit> entry : devices.entrySet()) {
       String deviceName = entry.getKey();
       String deviceType = resolveDeviceType(deviceName);
-      Map<String, DslSignalRegistry.SignalMeta> signals = DslSignalRegistry.registry().get(deviceType);
+      Map<String, frc.robot.tests.dsl.signals.DslSignalMeta> signals =
+          DslSignalRegistry.registry().get(deviceType);
       if (signals == null) {
         continue;
       }
-      for (Map.Entry<String, DslSignalRegistry.SignalMeta> signalEntry : signals.entrySet()) {
+      for (Map.Entry<String, frc.robot.tests.dsl.signals.DslSignalMeta> signalEntry : signals.entrySet()) {
         if (!signalEntry.getValue().writable()) {
           continue;
         }
         if (finalExit && isUnsafeExit(deviceName, signalEntry.getKey())) {
           continue;
         }
-        if (DslSignalRegistry.SIGNAL_OUTPUT.equals(signalEntry.getKey())) {
-          entry.getValue().stop();
+        Double safeValue = signalEntry.getValue().safeValue();
+        if (safeValue != null) {
+          if (shouldApplySafeStop(signalEntry.getKey(), safeValue.doubleValue())) {
+            entry.getValue().stop();
+          } else {
+            entry.getValue().writeDslSignal(signalEntry.getKey(), safeValue.doubleValue());
+          }
         }
       }
     }
+  }
+
+  private boolean shouldApplySafeStop(String signalName, double safeValue) {
+    return DslSignalRegistry.SIGNAL_OUTPUT.equals(signalName)
+        && Double.compare(safeValue, SAFE_STOP_OUTPUT) == 0;
   }
 
   private boolean isUnsafeExit(String deviceName, String signalName) {
@@ -442,16 +456,13 @@ public final class DslBringupTest implements BringupTest {
   }
 
   private boolean writeTargetSignal(DslSetStatement statement, double value) {
-    String deviceType = resolveDeviceType(statement.target.device);
     DeviceUnit device = devices.get(statement.target.device);
     if (device == null) {
       status = "Device not found: " + statement.target.device;
       result = BringupTestResult.FAIL;
       return false;
     }
-    if (DslSignalRegistry.DEVICE_TYPE_MOTOR.equals(deviceType)
-        && DslSignalRegistry.SIGNAL_OUTPUT.equals(statement.target.signal)) {
-      device.setDuty(value);
+    if (device.writeDslSignal(statement.target.signal, value)) {
       return true;
     }
     status = "Unsupported writable DSL target at runtime: " + statement.target.text;
@@ -460,12 +471,11 @@ public final class DslBringupTest implements BringupTest {
   }
 
   private boolean isTargetValueInRange(String deviceName, String signalName, double value) {
-    String deviceType = resolveDeviceType(deviceName);
-    if (DslSignalRegistry.DEVICE_TYPE_MOTOR.equals(deviceType)
-        && DslSignalRegistry.SIGNAL_OUTPUT.equals(signalName)) {
-      return value >= MOTOR_OUTPUT_MIN && value <= MOTOR_OUTPUT_MAX;
+    DeviceUnit device = devices.get(deviceName);
+    if (device == null) {
+      return false;
     }
-    return true;
+    return device.isDslWritableValueInRange(signalName, value);
   }
 
   private double applyDeadband(double value, Double deadband) {
@@ -578,66 +588,15 @@ public final class DslBringupTest implements BringupTest {
     }
     String deviceType = resolveDeviceType(deviceName);
     Object deviceSignal = device.readDslSignal(signalName);
-    if (deviceSignal != null) {
-      return deviceSignal;
-    }
-    if (DslSignalRegistry.DEVICE_TYPE_MOTOR.equals(deviceType)) {
-      if (DslSignalRegistry.SIGNAL_POSITION.equals(signalName)) {
-        Double position = device.getPositionRotations();
-        if (position == null) {
-          return null;
-        }
-        Double start = startPositions.get(deviceName);
-        return start != null ? position - start : position;
-      }
-      DeviceSnapshot snapshot = device.snapshot();
-      RevMotorAttachment rev = snapshot.getAttachment(RevMotorAttachment.class);
-      CtreMotorAttachment ctre = snapshot.getAttachment(CtreMotorAttachment.class);
-      if (DslSignalRegistry.SIGNAL_CURRENT.equals(signalName)) {
-        if (rev != null) {
-          return rev.motorCurrentA;
-        }
-        if (ctre != null) {
-          return ctre.motorCurrentA;
-        }
-      }
-      if (DslSignalRegistry.SIGNAL_TEMPERATURE.equals(signalName)) {
-        if (rev != null) {
-          return rev.tempC;
-        }
-        if (ctre != null) {
-          return ctre.tempC;
-        }
-      }
-      if (DslSignalRegistry.SIGNAL_VELOCITY.equals(signalName)) {
-        if (rev != null) {
-          return rev.velRpm;
-        }
-        if (ctre != null) {
-          return ctre.velRpm;
-        }
-      }
-    }
-    if (DslSignalRegistry.DEVICE_TYPE_LIMIT_SWITCH.equals(deviceType)
-        && DslSignalRegistry.SIGNAL_PRESSED.equals(signalName)) {
-      DeviceSnapshot snapshot = device.snapshot();
-      LimitsAttachment limits = snapshot.getAttachment(LimitsAttachment.class);
-      if (limits == null || limits.switches == null || limits.switches.isEmpty()) {
-        return null;
-      }
-      LimitsAttachment.LimitSwitchState state = limits.switches.get(0);
-      return state != null && Boolean.TRUE.equals(state.closed);
-    }
-    if (DslSignalRegistry.DEVICE_TYPE_ENCODER_EXTERNAL.equals(deviceType)
-        && DslSignalRegistry.SIGNAL_POSITION.equals(signalName)) {
-      Double position = device.getPositionRotations();
-      if (position == null) {
-        return null;
-      }
+    if (deviceSignal instanceof Number numberValue
+        && DslSignalRegistry.SIGNAL_POSITION.equals(signalName)
+        && (DslSignalRegistry.DEVICE_TYPE_MOTOR.equals(deviceType)
+            || DslSignalRegistry.DEVICE_TYPE_ENCODER_EXTERNAL.equals(deviceType))) {
       Double start = startPositions.get(deviceName);
-      return start != null ? position - start : position;
+      double position = numberValue.doubleValue();
+      return start != null ? position - start.doubleValue() : position;
     }
-    return null;
+    return deviceSignal;
   }
 
   private boolean isRequiredHardwareDeviceName(String deviceName) {

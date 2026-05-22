@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Motor Diagnosis Spec (CLI)
 
 ## Purpose
@@ -603,4 +605,5 @@ Purpose: Capture likely next steps.
 - Add profile-specific thresholds (motor spec based defaults).
 - Extend to non-motor devices once motor flow is stable.
 - Add scripted analysis plug-ins (post-normalization rule packs or DSL).
+
 

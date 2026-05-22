@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from tools.config.schema_store import ConfigSchemaStore, DOC_PROFILES
+from tools.config.schema_store import ConfigSchemaStore, DOC_BINDINGS, DOC_PROFILES
 
 
 class ConfigSchemaStoreProfilesTests(unittest.TestCase):
@@ -226,6 +226,116 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
         self.assertEqual(len(sanitized["bindings"]), 1)
         self.assertEqual(len(sanitized["axes"]), 1)
         self.assertIn("Dropped invalid controller 'bad'", "\n".join(warnings))
+
+    def test_bindings_validation_accepts_profile_owned_controller_names(self) -> None:
+        store = ConfigSchemaStore()
+        store._db.set_payload(
+            DOC_PROFILES,
+            {
+                "schema_version": 4,
+                "data_version": "test",
+                "data_hash": "test",
+                "default_profile": "demo",
+                "profiles": {"demo": {"devices": ["controller0", "controller1"]}},
+                "devices": [
+                    {
+                        "label": "controller0",
+                        "deviceInterface": "USB",
+                        "id": 0,
+                        "type": "xboxController",
+                    },
+                    {
+                        "label": "controller1",
+                        "deviceInterface": "USB",
+                        "id": 1,
+                        "type": "xboxController",
+                    },
+                ],
+            },
+        )
+        store._db.set_payload(
+            DOC_BINDINGS,
+            {
+                "controllers": [{"name": "controller0", "type": "XBOX", "port": 0}],
+                "bindings": [
+                    {
+                        "command": "runTest",
+                        "controller": "controller1",
+                        "input": "button",
+                        "id": "A",
+                        "mode": "hold",
+                    }
+                ],
+                "axes": [
+                    {
+                        "command": "rightDrive",
+                        "controller": "controller1",
+                        "id": "rightY",
+                        "invert": False,
+                        "deadband": 0.1,
+                    }
+                ],
+            },
+        )
+
+        result = store.validate_bindings_only(strict=True)
+
+        self.assertTrue(result.ok(), [issue.message for issue in result.errors()])
+
+    def test_sanitize_bindings_payload_keeps_profile_owned_controller_refs(self) -> None:
+        store = ConfigSchemaStore()
+        store._db.set_payload(
+            DOC_PROFILES,
+            {
+                "schema_version": 4,
+                "data_version": "test",
+                "data_hash": "test",
+                "default_profile": "demo",
+                "profiles": {"demo": {"devices": ["controller0", "controller1"]}},
+                "devices": [
+                    {
+                        "label": "controller0",
+                        "deviceInterface": "USB",
+                        "id": 0,
+                        "type": "xboxController",
+                    },
+                    {
+                        "label": "controller1",
+                        "deviceInterface": "USB",
+                        "id": 1,
+                        "type": "xboxController",
+                    },
+                ],
+            },
+        )
+        payload = {
+            "controllers": [{"name": "controller0", "type": "XBOX", "port": 0}],
+            "bindings": [
+                {
+                    "command": "runTest",
+                    "controller": "controller1",
+                    "input": "button",
+                    "id": "A",
+                    "mode": "hold",
+                }
+            ],
+            "axes": [
+                {
+                    "command": "rightDrive",
+                    "controller": "controller1",
+                    "id": "rightY",
+                    "invert": False,
+                    "deadband": 0.1,
+                }
+            ],
+        }
+
+        sanitized, warnings, changed = store.sanitize_bindings_payload(payload)
+
+        self.assertFalse(changed)
+        self.assertEqual(warnings, [])
+        self.assertEqual(len(sanitized["bindings"]), 1)
+        self.assertEqual(len(sanitized["axes"]), 1)
 
 
 if __name__ == "__main__":

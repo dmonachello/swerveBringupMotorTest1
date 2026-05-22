@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Spec: Phase 2 Java UI Command Refactor
 
 ## Purpose
@@ -353,7 +355,7 @@ Modify `BridgeUiCommandExecutor` so that after:
 - validate ingress
 - apply pre-execution
 
-…it delegates to the dispatcher instead of directly depending on handler-owned switch logic.
+â€¦it delegates to the dispatcher instead of directly depending on handler-owned switch logic.
 
 ### Target shape
 ```java
@@ -532,3 +534,4 @@ If incremental delivery is needed, use this sequence:
 4. profile + test commands
 5. group + report commands
 6. final cleanup and test pass
+

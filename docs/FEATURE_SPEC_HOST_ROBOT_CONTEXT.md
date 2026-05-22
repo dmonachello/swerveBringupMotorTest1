@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+
 # Feature Spec: Host/Robot Active Context Clarity
 
 ## Purpose
@@ -234,4 +236,5 @@ Purpose: Capture follow-on ideas without coupling them to this change.
   - `profiles push <path> --activate <name>` as the single-step happy path.
 - Add UI parity:
   - Surface host vs robot profile mismatch in the Bringup Control UI status bar.
+
 

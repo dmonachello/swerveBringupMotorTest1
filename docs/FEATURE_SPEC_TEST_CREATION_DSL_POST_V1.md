@@ -1,3 +1,5 @@
+﻿SPEC_STATUS: NOT_IMPLEMENTED
+
 # Feature Spec: Test Creation DSL Post-V1 Scope
 
 ## Purpose
@@ -126,3 +128,4 @@ A post-v1 staged execution release should not be considered complete until it de
 - Interaction with global `abort`
 - Validation errors for invalid step structure
 - CLI authoring, persistence, and runtime behavior
+

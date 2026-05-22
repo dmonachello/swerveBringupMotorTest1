@@ -179,12 +179,15 @@ Responsibilities:
 Robot-side examples:
 - `BringupCore`
 - `BridgeGroupManager`
+- `RobotLocalCommandRegistry`
+- `RobotLocalCommandExecutor`
+- `BridgeUiCommandHandler`
 - `BridgeUiSessionCommands`
 - `BridgeUiProfileCommands`
 - `BridgeUiTestCommands`
 - `BridgeUiGroupCommands`
 - `BridgeUiReportCommands`
-- `BridgeUiRuntimeCommands`
+- `BridgeUiRuntimeCommands` (legacy compatibility surface; active command semantics are moving into the unified robot-local executor)
 
 PC-side examples:
 - `bridge_ops.py`
@@ -307,18 +310,23 @@ Purpose: input actions, testing, and reporting are orchestrated without vendor c
 - `BringupCore` handles add/add-all, test selection/run-all, and local prints.
 - `BringupTestRegistry` loads tests from JSON and supports a runtime override path.
 - Tests are data-driven: composite and joystick tests with rotation/time/limit/hold checks.
-- `BringupCommandRouter` maps bindings to core actions.
+- `RobotLocalCommandRegistry` owns the canonical local-command table.
+- `RobotLocalCommandExecutor` owns single-active-command execution with one queued slot.
+- `BridgeUiCommandHandler` hosts the active command path used by both controller bindings and TCP host UI.
+- `BringupCommandRouter` remains legacy compatibility scaffolding and should not be treated as the primary extension path for new robot-local commands.
 
 ## Input + Bindings (Local Client)
 Purpose: controller bindings remain data-driven and stable for the local Xbox client.
 
 - `bringup_bindings.json` defines controllers (type/port/role) plus command bindings/axes.
 - `BindingsManager` resolves bindings and axes each loop.
+- Binding command names are validated against `RobotLocalCommandRegistry`.
+- `RobotV2` submits newly active controller commands into the shared robot-local executor.
 
 ## Configuration Layer
 Purpose: JSON inputs define behavior and runtime configuration.
 
-- `bringup_system.json`: unified system config (profiles + diagram + bridgeConfig.byProfile). Stored in `data/` and synced to deploy.
+- `bringup_system.json`: unified system config (profiles + diagram + bridgeConfig.byProfile). Active repo-owned copy lives in `src/main/deploy/`.
 - Requires `schema_version` (4), `data_version`, and `data_hash` at the root.
 - Profiles reference devices by label only; the devices table owns the CAN identity fields.
 - Tests are stored inside `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
@@ -331,7 +339,7 @@ Purpose: PC-side tools cover CAN capture, operator surfaces, and offline analysi
 - `tools/can_nt/can_nt_bridge.py` listens on CANable (SLCAN) and publishes `bringup/diag` keys.
 - `tools/can_nt/can_console_monitor.py` listens to the roboRIO NetConsole TCP stream and publishes console-derived warning/error counters.
 - `tools/can_nt/bridge_cli.py` provides a command-line interface for TCP UI commands and log polling.
-- `tools/can_nt/bringup_ui.py` provides a Windows-friendly GUI that mirrors bringup commands and log output over TCP (NT for state/diag only).
+- `tools/can_nt/bringup_ui.py` provides a Windows-friendly GUI that mirrors bringup commands and log output over TCP. Its robot-local button inventory is generated from the Java command registry; NT remains state/diag only.
 - `tools/can_nt/bridge_session.py` centralizes TCP command/session behavior for GUI and CLI.
 - PC tool output includes PCAP/PCAPNG capture, inventory JSON, and diffs.
 - Live Wireshark capture uses a Windows named pipe (`\\.\pipe\FRC_CAN`) via `--pcap-pipe`.
@@ -343,6 +351,7 @@ Purpose: PC-side tools cover CAN capture, operator surfaces, and offline analysi
 Purpose: describe the operator-facing surfaces beyond the core CAN bridge.
 
 - Bringup Control UI (TCP): issues commands, displays log output, and can poll runtime state.
+- Bringup Control UI command buttons are built from generated Python artifacts derived from the Java robot-local command registry.
 - Bridge CLI (TCP): scriptable command interface for bringup actions and reports.
 - Command handler split details for these surfaces live in `docs/COMMAND_HANDLER_ARCHITECTURE.md`.
 - NetConsole monitor: surfaces warnings/errors and health cues not present on CAN.
@@ -391,12 +400,13 @@ Purpose: profiles, bindings, and tests load in a predictable order.
 Purpose: controller inputs translate into bringup actions each loop.
 
 1. Each loop, `BindingsManager` samples controller inputs.
-2. `BringupCommandRouter` maps bindings to actions:
-   - Add motor / add all / print state / print health.
-   - Test selection, run, run-all, and enable toggle.
-3. `BringupCore` performs the action:
-   - Instantiates devices and updates internal lists.
-   - For tests, starts and updates the active test state.
+2. `RobotV2` and `BridgeUiCommandHandler` detect newly active controller commands and create `RobotLocalCommandRequest` objects.
+3. `RobotLocalCommandExecutor` performs registry lookup and admission control:
+   - one active command maximum
+   - one queued command maximum
+   - interrupt or stop when requested
+4. The selected grouped command implementation runs against `RobotLocalCommandHost`.
+5. `BringupCore` and related runtime services perform the actual add/report/test/profile work behind that host interface.
 
 ### C) Local Device Telemetry (Robot-only)
 Purpose: device health and snapshots are produced from vendor APIs and enrichments.
