@@ -45,6 +45,10 @@ public final class RobotLocalCommandExecutor {
     if (active == null) {
       active = candidate;
       RobotLocalExecutionResult executionResult = runActiveOnce(active);
+      if (isTerminal(executionResult)) {
+        active = null;
+        startQueuedIfPresent();
+      }
       return RobotLocalDispatchResult.accepted(
           RobotLocalDispatchStatus.ACCEPTED,
           executionResult.message(),
@@ -55,6 +59,10 @@ public final class RobotLocalCommandExecutor {
       interruptActive(active.definition, active.request, false, request.source());
       active = candidate;
       RobotLocalExecutionResult executionResult = runActiveOnce(active);
+      if (isTerminal(executionResult)) {
+        active = null;
+        startQueuedIfPresent();
+      }
       return RobotLocalDispatchResult.accepted(
           RobotLocalDispatchStatus.INTERRUPTED_AND_ACCEPTED,
           executionResult.message(),

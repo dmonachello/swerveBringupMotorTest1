@@ -41,11 +41,17 @@ ____________________________________________________________________________
 
 - [ ] Use `Fit to Window`.
 - [ ] Verify the diagram is framed sensibly.
+- [ ] Verify the left edge of the diagram is visible and not clipped.
 - [ ] Click empty canvas.
+- [ ] Verify the viewport does not jump.
+- [ ] Click a node without dragging it.
 - [ ] Verify the viewport does not jump.
 - [ ] Zoom in with the scroll wheel.
 - [ ] Click empty canvas.
 - [ ] Verify zoom/view is preserved.
+- [ ] Zoom out with the scroll wheel.
+- [ ] Click empty canvas.
+- [ ] Verify the zoomed-out view is preserved.
 - [ ] Pan with the middle mouse button.
 - [ ] Click empty canvas.
 - [ ] Verify the pan is preserved.
@@ -57,6 +63,7 @@ ____________________________________________________________________________
 ## 3. Selection Behavior
 
 - [ ] Select one node.
+- [ ] Verify a single click is enough to select it.
 - [ ] Click empty canvas.
 - [ ] Verify selection clears.
 - [ ] Shift-select multiple nodes.
@@ -65,6 +72,21 @@ ____________________________________________________________________________
 - [ ] Select a bus segment.
 - [ ] Click empty canvas.
 - [ ] Verify bus selection clears.
+
+Notes:
+
+____________________________________________________________________________
+
+## 3A. Drag Stability
+
+- [ ] Start from a sensible centered view.
+- [ ] Select `pdh`.
+- [ ] Drag `pdh` from the left side of the diagram toward the right.
+- [ ] Verify only `pdh` moves.
+- [ ] Verify the whole diagram does not jump left at drag start.
+- [ ] Use `Fit to Window`, then zoom out.
+- [ ] Drag `pdh` again.
+- [ ] Verify the zoomed-out view does not collapse or snap left on first drag.
 
 Notes:
 
@@ -198,6 +220,7 @@ If time is limited, run these first:
 
 - [ ] Load / save / quit / reload `robot_2026_swerve`
 - [ ] `Fit to Window` then click empty canvas
+- [ ] `Fit to Window`, zoom out, then drag `pdh`
 - [ ] Middle-mouse pan then click empty canvas
 - [ ] Resize a bus with CANnect/inject nodes present
 - [ ] Use `None` filter and verify blue virtual links disappear

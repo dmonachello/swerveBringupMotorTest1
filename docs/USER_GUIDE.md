@@ -62,15 +62,21 @@ Purpose: Author and maintain device profiles and layouts.
 - Location: `tools/can_topology/` (entry: `can_top_editor.py`).
 - Edits `src/main/deploy/bringup_system.json` plus editor-only diagram metadata.
 - Supports tags, filters, layout tools, and bulk edits to keep diagrams organized.
+- Supports device nodes, infrastructure nodes, callouts, and label-based group overlays.
 - Link devices to CANnect nodes by dragging onto them or using Edit -> `Link Device to CANnect`.
 - Inline edit the node list (double-click or `F2`) and multi-select for bulk edits.
 - Left list and canvas are separated by a draggable splitter.
 - Zoom range is 10% to 200%.
+- `Fit to Window` centers the diagram in the viewport.
+- `Ctrl+MouseWheel` zoom anchors on the mouse position.
+- Plain click and click-to-clear-selection should not move the diagram viewport.
 - Layout -> `Auto Layout (Readable)` groups nodes per bus and keeps CANnect clusters readable.
 - View -> `Show Warnings/Errors` toggles duplicate-ID badges.
+- View -> `Show Group Overlays` toggles solid colored outline boxes for groups.
+- View -> `Show Details Dock` shows the optional details panel when needed.
 - File -> `Print Diagram...` prints the current diagram (PDF handler required).
 - Node boxes show the label with a separate `ID` line instead of `(id X)` inline.
-- Groups -> `Create Group from Selection...` writes bridgeConfig.byProfile groups for CLI/UI use.
+- Groups -> `Create Group from Selection...` writes per-profile groups for CLI/UI use.
 - For Windows installs, use `install_windows.cmd` to install Python deps (includes `reportlab`).
 TBD Screenshot: Topology editor with a loaded profile showing labeled devices, the diagram canvas, and the groups/tags panel.
 
@@ -78,7 +84,7 @@ TBD Screenshot: Topology editor with a loaded profile showing labeled devices, t
 Purpose: Describe how data moves between parts.
 - `src/main/deploy/bringup_system.json` is the shared configuration source for host tools and roboRIO deploys.
 - `backup_data/backups/` holds timestamped save snapshots and is not an active config source.
-- `schema_version` (4), `data_version` (`YYYY-MM-DD_HHMMSS`), and `data_hash` must be present and consistent across copies.
+- `schema_version` (5), `data_version` (`YYYY-MM-DD_HHMMSS`), and `data_hash` must be present and consistent across copies.
 - Profiles reference devices by label only; device identity lives in the devices table.
 
 ## Config Structure
@@ -100,19 +106,19 @@ Purpose: Clarify which files each surface reads/writes and how often they change
 
 Bridge CLI
 - src/main/deploy/bringup_system.json: primary local config (profiles + devices table + groups). Change likelihood: high. Read: default.
-- bringup_system.json bridgeConfig.byProfile.<profile>.tests: tests edited by CLI. Change likelihood: high. Read: from the loaded bringup_system.json.
+- Loaded system config test section: tests edited by CLI. Change likelihood: high. Read: from the loaded system config.
 - src/main/deploy/bringup_bindings.json: controller names/ports for inputSource validation. Change likelihood: low-medium. Read: default.
 - src/main/deploy/can_mappings.json: CAN manufacturer/device-type names. Change likelihood: low. Read: default.
 - .bridge_cli_settings.json: CLI preferences (message level). Change likelihood: low. Read: default.
 
 Bringup Control UI
 - src/main/deploy/bringup_system.json: profile list + labels for dropdowns/live view. Change likelihood: high. Read: default.
-- bringup_system.json bridgeConfig.byProfile.<profile>.tests: tests list for UI. Change likelihood: high. Read: from the loaded bringup_system.json.
+- Loaded system config test section: tests list for UI. Change likelihood: high. Read: from the loaded system config.
 - src/main/deploy/bringup_bindings.json: controller labels. Change likelihood: low-medium. Read: default.
 - src/main/deploy/can_mappings.json: CAN vendor/type names. Change likelihood: low. Read: default.
 
 Topology Editor
-- src/main/deploy/bringup_system.json: profiles + diagram + bridgeConfig.byProfile. Change likelihood: high. Read: default.
+- src/main/deploy/bringup_system.json: profiles + diagram + per-profile bridge metadata. Change likelihood: high. Read: default.
 - src/main/deploy/can_mappings.json: vendor/type dropdowns. Change likelihood: low. Read: default.
 - can_table.txt: import input only. Change likelihood: medium. Read: explicit (import command).
 - profile.json: single-profile import/export. Change likelihood: medium. Read: explicit (load/save).
@@ -120,14 +126,14 @@ Topology Editor
 Live Topology View
 - src/main/deploy/bringup_system.json: diagram + profiles for overlays. Change likelihood: high. Read: default.
 
-Profiles Migration (Schema v4)
-Purpose: Update bringup_system.json to schema v4 with a devices table and label-only profiles.
+Profiles Migration (Schema v5)
+Purpose: Update bringup_system.json to schema v5 with a devices table, label-only profiles, and shared object metadata.
 Example:
   python -m tools.validate_sync
   python tools\can_topology\validate_profiles.py --path src\main\deploy\bringup_system.json --strict
 - The editor writes it; robot and PC tools consume it.
 - Diagram metadata is editor-only and ignored by robot/PC tools.
-- bridgeConfig.byProfile groups can be edited in the topology editor or CLI for operator workflows.
+- Per-profile group metadata can be edited in the topology editor or CLI for operator workflows.
 - The robot publishes local diagnostics; the PC publishes CAN-bus diagnostics.
 - Local robot data and PC CAN data are kept separate by design.
 
@@ -140,6 +146,7 @@ Purpose: Define a clear, shareable device layout.
 - Build or update the team profile in `src/main/deploy/bringup_system.json`.
 - Use tags to group devices (e.g., `swerve`, `intake`, `left`, `right`).
 - Use tidy/align tools to keep columns clean and readable.
+- Use groups when you want operator/runtime targeting overlays shared with CLI and live topology.
 
 ### 2) Bring Up the Robot (Active on roboRIO)
 Purpose: Exercise devices in controlled steps.
@@ -216,6 +223,7 @@ Purpose: Call out key rules and constraints.
 - The PC CAN tool must never transmit CAN frames.
 - NetworkTables keys are an API contract; changes must be coordinated.
 - Diagram metadata is editor-only and must not be consumed by robot/PC tools.
+- GUI behavior that affects viewport, drag, zoom, pan, redraw, and pane geometry is governed by `docs/FEATURE_SPEC_GUI_INTERACTION_AND_VIEWPORT_STABILITY.md`.
 
 
 

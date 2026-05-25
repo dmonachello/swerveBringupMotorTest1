@@ -5,11 +5,13 @@ Create a bringup profile JSON by sketching CAN nodes on a shared bus line.
 
 ## What It Does
 Purpose: Turn a diagram into a `bringup_system.json` file.
-- Add nodes (motors, sensors, PDH, etc.).
+- Add device nodes (motors, sensors, PDH, etc.).
+- Add infrastructure nodes such as SWYFT CANnect Direct and Inject.
 - Edit labels, CAN IDs, and optional fields.
+- Maintain topology, diagram layout, and per-profile group overlays.
 - Export a single profile JSON ready for deploy.
 - Edit-only: live overlays are shown in the Bringup Control UI.
-- Group overlays (bridgeConfig.byProfile) are shared with the UI live view.
+- Group overlays are shared with the UI live view.
 
 ## How To Run
 Purpose: Launch the editor without extra dependencies.
@@ -32,7 +34,7 @@ python tools\\can_topology\\validate_profiles.py --verbose
 ```
 Checks:
 - JSON parses and contains `profiles` plus a devices table.
-- Root `schema_version` matches the expected value (4).
+- Root `schema_version` matches the expected value (5).
 - Root `data_version` is present and non-empty.
 - Root `data_hash` is present and matches the computed value.
 - devices table labels are unique.
@@ -66,6 +68,17 @@ Purpose: Show fields not displayed on the boxes.
 - Diagram boxes show the label with a separate `ID` line; type remains in the left list.
 - Tags appear in the details panel for quick reference.
 - Callout selections show a callout details panel (including target debug fields).
+- The details dock is hidden by default and can be shown with View -> `Show Details Dock`.
+
+## Interaction Rules
+Purpose: Document the viewport and drag behavior the editor must preserve.
+- Plain click is a no-op for viewport position and zoom.
+- Clicking empty canvas may clear selection, but must not move the diagram.
+- Drag does not begin until pointer motion crosses a real threshold.
+- A real drag may move the selected object, bus, or connector, but must not shift the whole viewport.
+- `Fit to Window` centers the diagram in the viewport and scales it without flashing through a wrong view.
+- `Ctrl+MouseWheel` zoom anchors on the mouse position.
+- Menu and keyboard zoom actions anchor on viewport center.
 
 ## Auto-Load
 Purpose: Start with your existing profile if present.
@@ -89,6 +102,7 @@ Purpose: Document limitations up front.
 - Drag empty space to move the bus line and connected nodes up or down.
 - Use `Add Bus` and then click on the canvas to place a new bus segment (it will not shift existing buses).
 - Drag either curved end of a bus segment to resize it; connected segments stay aligned.
+- Drag the square bus-wrap handle to move the join side between connected bus segments.
 - File -> `Undo` restores the last change (nodes, buses, callouts, and drag moves).
 - Drag a node near a bus segment to move it to that bus (nearest bus wins).
 - Drag a bus line to move it; connected nodes move with it.
@@ -113,14 +127,17 @@ Purpose: Document limitations up front.
 - Vendor and device type fields use dropdowns populated from `src/main/deploy/can_mappings.json`
   (you can also type a custom value).
 - Group overlays (from bridgeConfig.byProfile) can be toggled via View -> Show Group Overlays.
+- Group overlays are rendered as solid colored outline boxes with separate labels.
 
 ## Groups (BridgeConfig)
 Purpose: Use the topology editor to create and visualize groups.
-- Multi-select device nodes, then use Groups -> Create Group from Selection...
-- Groups are stored under `bridgeConfig.byProfile.<profile>.groups` in `bringup_system.json`.
-- The editor draws dashed boxes around grouped devices (toggle in View menu).
-- Groups are optional and ignored by the robot code.
- - The Bringup Control UI live view can also show these groups (Show Groups toggle).
+- Multi-select device and infrastructure nodes, then use Groups -> Create Group from Selection...
+- Groups are saved as per-profile group metadata in `bringup_system.json`.
+- Group members are label-based and may include devices or infrastructure nodes.
+- The editor draws solid colored group outline boxes (toggle in View menu).
+- Runtime actions still depend on the member object type and supported function.
+- Groups are optional and ignored by the robot code unless CLI/runtime workflows use them.
+- The Bringup Control UI live view can also show these groups (Show Groups toggle).
 
 ## Keyboard Shortcuts
 Purpose: Keep shortcuts documented in one place.

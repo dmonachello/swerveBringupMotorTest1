@@ -18,6 +18,7 @@ NOTES
 """
 
 import json
+import pprint
 import subprocess
 from pathlib import Path
 
@@ -101,9 +102,9 @@ def _write_python(path: Path, inventory: dict, sections: list[dict]) -> None:
     commands_by_name = {row.get(JSON_KEY_NAME, ""): row for row in commands}
     parts = [
         PY_HEADER,
-        f"COMMANDS = {json.dumps(commands, indent=4, sort_keys=False)}\n\n",
-        f"COMMANDS_BY_NAME = {json.dumps(commands_by_name, indent=4, sort_keys=True)}\n\n",
-        f"HOST_UI_SECTIONS = {json.dumps(sections, indent=4, sort_keys=False)}\n",
+        "COMMANDS = " + pprint.pformat(commands, sort_dicts=False, width=120) + "\n\n",
+        "COMMANDS_BY_NAME = " + pprint.pformat(commands_by_name, sort_dicts=True, width=120) + "\n\n",
+        "HOST_UI_SECTIONS = " + pprint.pformat(sections, sort_dicts=False, width=120) + "\n",
     ]
     path.write_text("".join(parts), encoding="utf-8")
 

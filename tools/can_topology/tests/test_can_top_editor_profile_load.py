@@ -215,6 +215,79 @@ class _ComboStub:
         self.values = list(value) if isinstance(value, list) else list(value or [])
 
 
+class _ConfigSchemaStoreBlankStub:
+    """
+    NAME
+        _ConfigSchemaStoreBlankStub - Store stub that returns synthesized blank profiles payload.
+    """
+
+    def load(self, _repo_root: Path | None = None) -> list[str]:
+        return []
+
+    def root_payload(self) -> dict[str, object]:
+        return {
+            "schema_version": 5,
+            "data_version": "",
+            "data_hash": "blank",
+            "default_profile": "",
+            "devices": [],
+            "profiles": {},
+            "topology": {"version": 1, "source": "local", "profiles": {}},
+            "bridgeConfig": {"schema_version": 1, "generatedAt": None, "byProfile": {}},
+        }
+
+
+class _TreeviewStub:
+    """
+    NAME
+        _TreeviewStub - Minimal Treeview stand-in for node list tests.
+    """
+
+    def __init__(self) -> None:
+        self.columns = ("can_id", "type", "label", "group", "tags")
+        self.items: dict[str, tuple[object, ...]] = {}
+        self.selected: list[str] = []
+
+    def __getitem__(self, key: str) -> tuple[str, ...]:
+        if key != "columns":
+            raise KeyError(key)
+        return self.columns
+
+    def get_children(self) -> list[str]:
+        return list(self.items.keys())
+
+    def delete(self, item: str) -> None:
+        self.items.pop(item, None)
+        self.selected = [selected for selected in self.selected if selected != item]
+
+    def insert(self, _parent: str, _index: str, iid: str, values: tuple[object, ...]) -> None:
+        self.items[iid] = values
+
+    def selection(self) -> tuple[str, ...]:
+        return tuple(self.selected)
+
+    def selection_add(self, item: str) -> None:
+        if item not in self.selected:
+            self.selected.append(item)
+
+    def selection_remove(self, item: str) -> None:
+        self.selected = [selected for selected in self.selected if selected != item]
+
+    def exists(self, item: str) -> bool:
+        return item in self.items
+
+    def see(self, _item: str) -> None:
+        pass
+
+    def set(self, row_id: str, column_name: str) -> str:
+        values = self.items[row_id]
+        index = self.columns.index(column_name)
+        return str(values[index])
+
+    def identify_row(self, _y: object) -> str:
+        return next(iter(self.items.keys()), "")
+
+
 class _PanelStub:
     """
     NAME
@@ -398,9 +471,12 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         editor.profile_combo = _ComboStub()
         editor._profile_pick_var = _StringVarStub()
         editor._profile_pick_var.set(profile_name)
+        editor.node_list = _TreeviewStub()
         editor._callout_scale_var = _StringVarStub()
         editor._zoom_label_var = _StringVarStub()
         editor.var_set_default = _BoolVarStub(True)
+        editor._list_scope_var = _StringVarStub()
+        editor._list_scope_var.set("Current Profile")
         editor.canvas = _CanvasStub(width=1600, height=900)
         editor._connection_filter_vars = {
             key: _BoolVarStub(True)
@@ -418,6 +494,9 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         editor._nodes = []
         editor._device_registry = {}
         editor._device_registry_list = []
+        editor._non_topology_profile_labels = []
+        editor._pending_global_device_deletions = set()
+        editor._selected_inventory_label = None
         editor._next_key = 1
         editor._next_callout = 1
         editor._selected_nodes = set()
@@ -932,6 +1011,447 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
         self.assertEqual(groups["frontLeft Drive Motor"], ["leftModule", "drive"])
         self.assertEqual(groups["frontRight Drive Motor"], ["rightModule", "drive"])
+
+    def test_profile_from_nodes_preserves_non_topology_controller_labels(self) -> None:
+        editor = self._headless_editor("controller_profile")
+        editor._nodes = [
+            Node(
+                key=1,
+                category="krakens",
+                label="frontLeft Drive Motor",
+                can_id=2,
+                interface=INTERFACE_CAN,
+            )
+        ]
+        editor._non_topology_profile_labels = ["controller0"]
+
+        profile = TopologyEditor._profile_from_nodes(editor)
+
+        self.assertEqual(profile["devices"], ["frontLeft Drive Motor", "controller0"])
+
+    def test_refresh_list_includes_non_topology_controller_rows(self) -> None:
+        editor = self._headless_editor("controller_list")
+        editor._refresh_list = TopologyEditor._refresh_list.__get__(editor, TopologyEditor)
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._node_groups_by_label = TopologyEditor._node_groups_by_label.__get__(editor, TopologyEditor)
+        editor._tags_to_string = TopologyEditor._tags_to_string.__get__(editor, TopologyEditor)
+        editor._normalize_tags = TopologyEditor._normalize_tags.__get__(editor, TopologyEditor)
+        editor._inventory_entry_for_label = TopologyEditor._inventory_entry_for_label.__get__(editor, TopologyEditor)
+        editor._destroy_inline_editor = lambda: None
+        editor._nodes = []
+        editor._device_registry_list = [
+            {
+                "label": "controller0",
+                "deviceInterface": "USB",
+                "id": 0,
+                "model": "Xbox Controller",
+                "type": "xboxController",
+            }
+        ]
+        editor._device_registry = {"controller0": editor._device_registry_list[0]}
+        editor._non_topology_profile_labels = ["controller0"]
+
+        editor._refresh_list()
+
+        self.assertIn("inventory:controller0", editor.node_list.items)
+        self.assertEqual(
+            editor.node_list.items["inventory:controller0"][2],
+            "controller0",
+        )
+
+    def test_refresh_list_includes_out_of_profile_registry_device_rows(self) -> None:
+        editor = self._headless_editor("inventory_scope")
+        editor._refresh_list = TopologyEditor._refresh_list.__get__(editor, TopologyEditor)
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._node_groups_by_label = TopologyEditor._node_groups_by_label.__get__(editor, TopologyEditor)
+        editor._tags_to_string = TopologyEditor._tags_to_string.__get__(editor, TopologyEditor)
+        editor._normalize_tags = TopologyEditor._normalize_tags.__get__(editor, TopologyEditor)
+        editor._inventory_entry_for_label = TopologyEditor._inventory_entry_for_label.__get__(editor, TopologyEditor)
+        editor._destroy_inline_editor = lambda: None
+        editor._nodes = [
+            Node(
+                key=1,
+                category="krakens",
+                label="frontLeft Drive Motor",
+                can_id=2,
+                interface=INTERFACE_CAN,
+            )
+        ]
+        editor._device_registry_list = [
+            {
+                "label": "frontLeft Drive Motor",
+                "deviceInterface": "CAN",
+                "id": 2,
+                "manufacturer": 4,
+                "deviceType": 2,
+                "model": "Kraken X60",
+            },
+            {
+                "label": "backLeft Drive Motor",
+                "deviceInterface": "CAN",
+                "id": 5,
+                "manufacturer": 4,
+                "deviceType": 2,
+                "model": "Kraken X60",
+            },
+        ]
+        editor._device_registry = {
+            entry["label"]: entry for entry in editor._device_registry_list
+        }
+        editor._list_scope_var.set("Full Config")
+
+        editor._refresh_list()
+
+        self.assertIn("1", editor.node_list.items)
+        self.assertIn("inventory:backLeft Drive Motor", editor.node_list.items)
+        self.assertEqual(
+            editor.node_list.items["inventory:backLeft Drive Motor"][0],
+            "5",
+        )
+
+    def test_refresh_list_current_profile_scope_hides_out_of_profile_registry_rows(self) -> None:
+        editor = self._headless_editor("inventory_scope_profile")
+        editor._refresh_list = TopologyEditor._refresh_list.__get__(editor, TopologyEditor)
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._node_groups_by_label = TopologyEditor._node_groups_by_label.__get__(editor, TopologyEditor)
+        editor._tags_to_string = TopologyEditor._tags_to_string.__get__(editor, TopologyEditor)
+        editor._normalize_tags = TopologyEditor._normalize_tags.__get__(editor, TopologyEditor)
+        editor._inventory_entry_for_label = TopologyEditor._inventory_entry_for_label.__get__(editor, TopologyEditor)
+        editor._destroy_inline_editor = lambda: None
+        editor._nodes = [
+            Node(
+                key=1,
+                category="krakens",
+                label="frontLeft Drive Motor",
+                can_id=2,
+                interface=INTERFACE_CAN,
+            )
+        ]
+        editor._device_registry_list = [
+            {
+                "label": "frontLeft Drive Motor",
+                "deviceInterface": "CAN",
+                "id": 2,
+                "manufacturer": 4,
+                "deviceType": 2,
+                "model": "Kraken X60",
+            },
+            {
+                "label": "backLeft Drive Motor",
+                "deviceInterface": "CAN",
+                "id": 5,
+                "manufacturer": 4,
+                "deviceType": 2,
+                "model": "Kraken X60",
+            },
+        ]
+        editor._device_registry = {
+            entry["label"]: entry for entry in editor._device_registry_list
+        }
+        editor._list_scope_var.set("Current Profile")
+
+        editor._refresh_list()
+
+        self.assertIn("1", editor.node_list.items)
+        self.assertNotIn("inventory:backLeft Drive Motor", editor.node_list.items)
+
+    def test_add_inventory_label_to_canvas_adds_device_to_profile_nodes(self) -> None:
+        editor = self._headless_editor("inventory_drop")
+        editor._add_inventory_label_to_canvas = TopologyEditor._add_inventory_label_to_canvas.__get__(editor, TopologyEditor)
+        editor._inventory_entry_for_label = TopologyEditor._inventory_entry_for_label.__get__(editor, TopologyEditor)
+        editor._is_topology_capable_inventory_entry = TopologyEditor._is_topology_capable_inventory_entry.__get__(editor, TopologyEditor)
+        editor._is_can_device_entry = TopologyEditor._is_can_device_entry.__get__(editor, TopologyEditor)
+        editor._is_dio_device_entry = TopologyEditor._is_dio_device_entry.__get__(editor, TopologyEditor)
+        editor._node_from_device_def = TopologyEditor._node_from_device_def.__get__(editor, TopologyEditor)
+        editor._nearest_bus_and_row = TopologyEditor._nearest_bus_and_row.__get__(editor, TopologyEditor)
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._refresh_list = lambda: None
+        editor._mark_neighbors_stale = lambda: None
+        editor._redraw_canvas = lambda: None
+        editor._select_node = lambda key: setattr(editor, "_selected_key", key)
+        editor._push_undo = lambda: None
+        editor._prune_attachment_links = lambda: None
+        editor._prune_power_links = lambda: None
+        editor._prune_dio_wiring_links = lambda: None
+        editor._ensure_dio_wiring_links = lambda: None
+        editor._nodes = []
+        editor._device_registry_list = [
+            {
+                "label": "backLeft Drive Motor",
+                "deviceInterface": "CAN",
+                "id": 5,
+                "manufacturer": 4,
+                "deviceType": 2,
+                "model": "Kraken X60",
+            }
+        ]
+        editor._device_registry = {
+            "backLeft Drive Motor": editor._device_registry_list[0]
+        }
+        editor._non_topology_profile_labels = []
+        editor._draw_state = {"bus_ys": [100.0], "y_shift": 0.0, "scale": 1.0}
+
+        editor._add_inventory_label_to_canvas("backLeft Drive Motor", 250.0, 120.0)
+
+        self.assertEqual(len(editor._nodes), 1)
+        self.assertEqual(editor._nodes[0].label, "backLeft Drive Motor")
+        self.assertEqual(editor._selected_key, editor._nodes[0].key)
+
+    def test_nodes_from_profile_ignores_usb_controller_but_tracks_label(self) -> None:
+        editor = self._headless_editor("controller_load")
+        editor._device_registry_list = [
+            {
+                "label": "controller0",
+                "deviceInterface": "USB",
+                "id": 0,
+                "model": "Xbox Controller",
+                "type": "xboxController",
+            }
+        ]
+        editor._device_registry = {"controller0": editor._device_registry_list[0]}
+        profile = {"devices": ["controller0"]}
+
+        editor._nodes = TopologyEditor._nodes_from_profile(editor, profile)
+        TopologyEditor._sync_non_topology_profile_labels(editor, profile)
+
+        self.assertEqual(editor._nodes, [])
+        self.assertEqual(editor._non_topology_profile_labels, ["controller0"])
+
+    def test_add_xbox_controller_reuses_existing_global_controller_for_profile(self) -> None:
+        editor = self._headless_editor("controller_add_existing")
+        editor._device_registry_list = [
+            {
+                "label": "controller0",
+                "deviceInterface": "USB",
+                "id": 0,
+                "manufacturer": 1,
+                "deviceType": 1,
+                "model": "Xbox Controller",
+                "type": "xboxController",
+            }
+        ]
+        editor._device_registry = {"controller0": editor._device_registry_list[0]}
+        editor._non_topology_profile_labels = []
+        editor._selected_nodes = set()
+        editor._selected_buses = set()
+        editor._refresh_list = TopologyEditor._refresh_list.__get__(editor, TopologyEditor)
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._node_groups_by_label = TopologyEditor._node_groups_by_label.__get__(editor, TopologyEditor)
+        editor._tags_to_string = TopologyEditor._tags_to_string.__get__(editor, TopologyEditor)
+        editor._normalize_tags = TopologyEditor._normalize_tags.__get__(editor, TopologyEditor)
+        editor._inventory_entry_for_label = TopologyEditor._inventory_entry_for_label.__get__(editor, TopologyEditor)
+        editor._matching_xbox_controller_entry = TopologyEditor._matching_xbox_controller_entry.__get__(editor, TopologyEditor)
+        editor._controller_port_in_use = TopologyEditor._controller_port_in_use.__get__(editor, TopologyEditor)
+        editor._sync_selection_state = lambda: None
+
+        editor._prompt_xbox_controller_dialog = lambda *args, **kwargs: {
+            "Count": 1,
+            "Starting Port": 0,
+        }
+
+        TopologyEditor._on_add_xbox_controller(editor)
+
+        self.assertEqual(editor._non_topology_profile_labels, ["controller0"])
+        self.assertIn("inventory:controller0", editor.node_list.items)
+
+    def test_remove_selected_inventory_item_only_removes_from_current_profile(self) -> None:
+        original_messagebox = can_top_editor.messagebox
+        can_top_editor.messagebox = _MessageBoxStub
+        try:
+            editor = self._headless_editor("controller_remove_local")
+            editor._device_registry_list = [
+                {
+                    "label": "controller0",
+                    "deviceInterface": "USB",
+                    "id": 0,
+                    "manufacturer": 1,
+                    "deviceType": 1,
+                    "model": "Xbox Controller",
+                    "type": "xboxController",
+                }
+            ]
+            editor._device_registry = {"controller0": editor._device_registry_list[0]}
+            editor._non_topology_profile_labels = ["controller0"]
+            editor._selected_inventory_label = "controller0"
+            editor._root_extras = {
+                "bridgeConfig": {
+                    "byProfile": {
+                        "controller_remove_local": {
+                            "groups": [
+                                {
+                                    "name": "drivers",
+                                    "members": [{"label": "controller0", "enabled": True}],
+                                }
+                            ]
+                        },
+                        "other_profile": {
+                            "groups": [
+                                {
+                                    "name": "drivers",
+                                    "members": [{"label": "controller0", "enabled": True}],
+                                }
+                            ]
+                        },
+                    }
+                }
+            }
+            editor._inventory_entry_for_label = TopologyEditor._inventory_entry_for_label.__get__(editor, TopologyEditor)
+            editor._is_xbox_controller_entry = TopologyEditor._is_xbox_controller_entry.__get__(editor, TopologyEditor)
+            editor._prune_current_profile_bridge_config_label = TopologyEditor._prune_current_profile_bridge_config_label.__get__(editor, TopologyEditor)
+            editor._prune_bridge_config_entry_label = TopologyEditor._prune_bridge_config_entry_label.__get__(editor, TopologyEditor)
+            editor._refresh_list = lambda: None
+            editor._update_details_panel = lambda _node: None
+            editor._update_selection_overlays = lambda: None
+
+            result = TopologyEditor._remove_selected_inventory_item(editor)
+        finally:
+            can_top_editor.messagebox = original_messagebox
+
+        self.assertTrue(result)
+        self.assertEqual(editor._non_topology_profile_labels, [])
+        self.assertIn("controller0", editor._device_registry)
+        self.assertEqual(editor._pending_global_device_deletions, set())
+        self.assertEqual(
+            editor._root_extras["bridgeConfig"]["byProfile"]["controller_remove_local"]["groups"][0]["members"],
+            [],
+        )
+        self.assertEqual(
+            editor._root_extras["bridgeConfig"]["byProfile"]["other_profile"]["groups"][0]["members"],
+            [{"label": "controller0", "enabled": True}],
+        )
+
+    def test_remove_selected_node_only_prunes_current_profile_bridge_refs(self) -> None:
+        original_messagebox = can_top_editor.messagebox
+        can_top_editor.messagebox = _MessageBoxStub
+        try:
+            editor = self._headless_editor("node_remove_local")
+            editor._nodes = [
+                Node(
+                    key=1,
+                    category="krakens",
+                    label="frontLeft Drive Motor",
+                    can_id=2,
+                    interface=INTERFACE_CAN,
+                )
+            ]
+            editor._selected_nodes = {1}
+            editor._root_extras = {
+                "bridgeConfig": {
+                    "byProfile": {
+                        "node_remove_local": {
+                            "groups": [
+                                {
+                                    "name": "driveTrain",
+                                    "members": [{"label": "frontLeft Drive Motor", "enabled": True}],
+                                }
+                            ]
+                        },
+                        "other_profile": {
+                            "groups": [
+                                {
+                                    "name": "driveTrain",
+                                    "members": [{"label": "frontLeft Drive Motor", "enabled": True}],
+                                }
+                            ]
+                        },
+                    }
+                }
+            }
+            editor._push_undo = lambda: None
+            editor._clear_selection = lambda: editor._selected_nodes.clear()
+            editor._prune_current_profile_bridge_config_label = TopologyEditor._prune_current_profile_bridge_config_label.__get__(editor, TopologyEditor)
+            editor._prune_bridge_config_entry_label = TopologyEditor._prune_bridge_config_entry_label.__get__(editor, TopologyEditor)
+            editor._prune_attachment_links = lambda: None
+            editor._prune_power_links = lambda: None
+            editor._prune_dio_wiring_links = lambda: None
+            editor._refresh_list = lambda: None
+            editor._update_details_panel = lambda _node: None
+            editor._mark_neighbors_stale = lambda: None
+            editor._redraw_canvas = lambda: None
+
+            TopologyEditor._on_remove_selected(editor)
+        finally:
+            can_top_editor.messagebox = original_messagebox
+
+        self.assertEqual(editor._nodes, [])
+        self.assertEqual(
+            editor._root_extras["bridgeConfig"]["byProfile"]["node_remove_local"]["groups"][0]["members"],
+            [],
+        )
+        self.assertEqual(
+            editor._root_extras["bridgeConfig"]["byProfile"]["other_profile"]["groups"][0]["members"],
+            [{"label": "frontLeft Drive Motor", "enabled": True}],
+        )
+
+    def test_duplicate_rename_keeps_original_inventory_device_for_full_config(self) -> None:
+        editor = self._headless_editor("duplicate_rename")
+        editor._apply_node_label_change = TopologyEditor._apply_node_label_change.__get__(editor, TopologyEditor)
+        editor._should_split_device_on_rename = TopologyEditor._should_split_device_on_rename.__get__(editor, TopologyEditor)
+        editor._rename_registry_label = TopologyEditor._rename_registry_label.__get__(editor, TopologyEditor)
+        editor._profile_references_for_label = lambda _label: ["duplicate_rename"]
+        editor._update_bridge_config_label_refs = lambda *_args: (_ for _ in ()).throw(RuntimeError("global rename should not happen"))
+        editor._update_callout_target_labels = lambda *_args: (_ for _ in ()).throw(RuntimeError("callout relabel should not happen"))
+        node_original = Node(
+            key=1,
+            category="krakens",
+            label="frontLeft Drive Motor",
+            can_id=2,
+            interface=INTERFACE_CAN,
+        )
+        node_duplicate = Node(
+            key=2,
+            category="krakens",
+            label="frontLeft Drive Motor",
+            can_id=22,
+            interface=INTERFACE_CAN,
+        )
+        editor._nodes = [node_original, node_duplicate]
+        editor._device_registry_list = [
+            {
+                "label": "frontLeft Drive Motor",
+                "deviceInterface": "CAN",
+                "id": 2,
+                "manufacturer": 4,
+                "deviceType": 2,
+                "model": "Kraken X60",
+            }
+        ]
+        editor._device_registry = {"frontLeft Drive Motor": editor._device_registry_list[0]}
+        editor._non_topology_profile_labels = []
+
+        node_duplicate.label = "frontLeft Drive Motor Copy"
+        editor._apply_node_label_change(
+            node_duplicate,
+            "frontLeft Drive Motor",
+            "frontLeft Drive Motor Copy",
+        )
+
+        self.assertIn("frontLeft Drive Motor", editor._device_registry)
+        self.assertNotIn("frontLeft Drive Motor Copy", editor._device_registry)
+
+    def test_clamp_node_x_to_current_bus_bounds_preserves_bus_length(self) -> None:
+        editor = self._headless_editor("drag_clamp_bus")
+        editor._should_clamp_node_to_bus = TopologyEditor._should_clamp_node_to_bus.__get__(editor, TopologyEditor)
+        editor._clamp_node_x_to_current_bus_bounds = TopologyEditor._clamp_node_x_to_current_bus_bounds.__get__(editor, TopologyEditor)
+        editor._node_box_dims = TopologyEditor._node_box_dims.__get__(editor, TopologyEditor)
+        node = Node(
+            key=1,
+            category="krakens",
+            label="frontLeft Drive Motor",
+            can_id=2,
+            interface=INTERFACE_CAN,
+            x=100.0,
+            bus_index=0,
+        )
+        editor._nodes = [node]
+        editor._bus_lefts = [40.0]
+        editor._bus_rights = [240.0]
+        editor._draw_state = {"bus_lefts": [40.0], "bus_rights": [240.0]}
+
+        clamped = editor._clamp_node_x_to_current_bus_bounds(node, 260.0)
+
+        self.assertLess(clamped, 260.0)
+        self.assertEqual(editor._bus_rights[0], 240.0)
 
     def test_create_group_from_selection_refreshes_list(self) -> None:
         editor = self._headless_editor("group_create_refresh")
@@ -1648,6 +2168,206 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         result = store.validate(strict=True)
 
         self.assertTrue(result.ok(), [issue.message for issue in result.errors()])
+
+    def test_new_blank_profile_creates_empty_profile_in_existing_config(self) -> None:
+        profile_name = "blank_new"
+        original_messagebox = can_top_editor.messagebox
+        original_askstring = can_top_editor.simpledialog.askstring
+        can_top_editor.messagebox = _MessageBoxStub
+        can_top_editor.simpledialog.askstring = lambda *_args, **_kwargs: profile_name
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir) / "bringup_system.json"
+                payload = {
+                    "schema_version": 5,
+                    "data_version": "test",
+                    "data_hash": "test",
+                    "default_profile": "robot_2026_swerve",
+                    "profiles": {
+                        "robot_2026_swerve": {
+                            "devices": ["roborio"]
+                        }
+                    },
+                    "devices": [
+                        {
+                            "label": "roborio",
+                            "deviceInterface": "CAN",
+                            "id": 0,
+                            "manufacturer": 1,
+                            "deviceType": 1,
+                            "model": "NI roboRIO",
+                        }
+                    ],
+                    "topology": {
+                        "version": 1,
+                        "source": "local",
+                        "profiles": {
+                            "robot_2026_swerve": {
+                                "version": 1,
+                                "source": "local",
+                                "nodes": [],
+                                "edges": [],
+                                "view": {
+                                    "busOffsets": [0.0],
+                                    "busCount": 1,
+                                    "busSpacing": 160.0,
+                                    "busLefts": [],
+                                    "busRights": [],
+                                    "busConnectors": [],
+                                    "busConnectorSides": [],
+                                    "panY": 0.0,
+                                    "zoom": 1.0,
+                                    "ethernetLinks": [],
+                                    "canLinks": [],
+                                    "deviceLinks": [],
+                                    "connectionFilters": ["analog", "can", "dio", "power", "pwm", "virtual"],
+                                    "callouts": [],
+                                },
+                            }
+                        },
+                    },
+                }
+                temp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+                editor = self._headless_editor("robot_2026_swerve")
+                editor._profile_source_path = str(temp_path)
+                editor._confirm_discard = lambda: True
+
+                editor._new_blank_profile()
+
+                saved = json.loads(temp_path.read_text(encoding="utf-8"))
+        finally:
+            can_top_editor.messagebox = original_messagebox
+            can_top_editor.simpledialog.askstring = original_askstring
+
+        self.assertIn(profile_name, saved["profiles"])
+        self.assertEqual(saved["profiles"][profile_name]["devices"], [])
+        self.assertIn(profile_name, saved["topology"]["profiles"])
+        self.assertEqual(editor._profile_name, profile_name)
+        self.assertEqual(editor._nodes, [])
+
+    def test_new_blank_profile_accepts_schema_v4_without_prompt(self) -> None:
+        profile_name = "blank_from_v4"
+        original_messagebox = can_top_editor.messagebox
+        original_askstring = can_top_editor.simpledialog.askstring
+        can_top_editor.messagebox = _MessageBoxStub
+        can_top_editor.simpledialog.askstring = lambda *_args, **_kwargs: profile_name
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir) / "bringup_system.json"
+                payload = {
+                    "schema_version": 4,
+                    "data_version": "test",
+                    "data_hash": "test",
+                    "default_profile": "robot_2026_swerve",
+                    "profiles": {
+                        "robot_2026_swerve": {
+                            "devices": ["roborio"]
+                        }
+                    },
+                    "devices": [
+                        {
+                            "label": "roborio",
+                            "deviceInterface": "CAN",
+                            "id": 0,
+                            "manufacturer": 1,
+                            "deviceType": 1,
+                            "model": "NI roboRIO",
+                        }
+                    ],
+                    "topology": {
+                        "version": 1,
+                        "source": "local",
+                        "profiles": {
+                            "robot_2026_swerve": {
+                                "version": 1,
+                                "source": "local",
+                                "nodes": [],
+                                "edges": [],
+                                "view": {
+                                    "busOffsets": [0.0],
+                                    "busCount": 1,
+                                    "busSpacing": 160.0,
+                                    "busLefts": [],
+                                    "busRights": [],
+                                    "busConnectors": [],
+                                    "busConnectorSides": [],
+                                    "panY": 0.0,
+                                    "zoom": 1.0,
+                                    "ethernetLinks": [],
+                                    "canLinks": [],
+                                    "deviceLinks": [],
+                                    "connectionFilters": ["analog", "can", "dio", "power", "pwm", "virtual"],
+                                    "callouts": [],
+                                },
+                            }
+                        },
+                    },
+                }
+                temp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+                editor = self._headless_editor("robot_2026_swerve")
+                editor._profile_source_path = str(temp_path)
+                editor._confirm_discard = lambda: True
+                prompted = {"schema": False}
+
+                def _unexpected_prompt(title: str, message: str) -> bool:
+                    if title == "Schema Mismatch":
+                        prompted["schema"] = True
+                    return True
+
+                can_top_editor.messagebox.askyesno = _unexpected_prompt
+
+                editor._new_blank_profile()
+
+                saved = json.loads(temp_path.read_text(encoding="utf-8"))
+        finally:
+            can_top_editor.messagebox = original_messagebox
+            can_top_editor.simpledialog.askstring = original_askstring
+
+        self.assertFalse(prompted["schema"])
+        self.assertIn(profile_name, saved["profiles"])
+        self.assertEqual(saved["profiles"][profile_name]["devices"], [])
+
+    def test_load_profiles_payload_falls_back_to_requested_file_when_store_returns_blank(self) -> None:
+        original_messagebox = can_top_editor.messagebox
+        original_store = can_top_editor.ConfigSchemaStore
+        original_repo_root = can_top_editor.repo_root
+        can_top_editor.messagebox = _MessageBoxStub
+        can_top_editor.ConfigSchemaStore = _ConfigSchemaStoreBlankStub
+        can_top_editor.repo_root = lambda: Path.cwd()
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir) / "bringup_system.json"
+                payload = {
+                    "schema_version": 4,
+                    "data_version": "real",
+                    "data_hash": "realhash",
+                    "default_profile": "robot_2026_swerve",
+                    "profiles": {"robot_2026_swerve": {"devices": ["roborio"]}},
+                    "devices": [
+                        {
+                            "label": "roborio",
+                            "deviceInterface": "CAN",
+                            "id": 0,
+                            "manufacturer": 1,
+                            "deviceType": 1,
+                            "model": "NI roboRIO",
+                        }
+                    ],
+                    "topology": {"version": 1, "source": "local", "profiles": {}},
+                }
+                temp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+                editor = self._headless_editor("robot_2026_swerve")
+                editor._default_profiles_path = lambda: temp_path
+
+                loaded = editor._load_profiles_payload(temp_path)
+        finally:
+            can_top_editor.messagebox = original_messagebox
+            can_top_editor.ConfigSchemaStore = original_store
+            can_top_editor.repo_root = original_repo_root
+
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded["data_version"], "real")
+        self.assertEqual(loaded["default_profile"], "robot_2026_swerve")
 
     def test_fit_to_window_uses_free_y_device_bounds(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)

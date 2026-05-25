@@ -105,6 +105,8 @@ public final class RobotLocalCommandRegistry {
   public static final String COMMAND_GROUP_RUN_TEST = "groupRunTest";
   public static final String COMMAND_SELECTED_DEVICE_SET = "selectedDeviceSet";
   public static final String COMMAND_SELECTED_MODE_SET = "selectedModeSet";
+  public static final String COMMAND_MANUAL_DEVICE_DUTY_SET = "manualDeviceDutySet";
+  public static final String COMMAND_MANUAL_DEVICE_DUTY_CLEAR = "manualDeviceDutyClear";
   public static final String COMMAND_LEFT_DRIVE = "leftDrive";
   public static final String COMMAND_RIGHT_DRIVE = "rightDrive";
 
@@ -315,6 +317,8 @@ public final class RobotLocalCommandRegistry {
     register(rows, groupDefinition(COMMAND_GROUP_RUN_TEST, "Run Group Test", "Run the group test operation.", false, legacyUiGroup));
     register(rows, groupDefinition(COMMAND_SELECTED_DEVICE_SET, "Selected Device", "Set selected device.", false, legacyUiGroup));
     register(rows, groupDefinition(COMMAND_SELECTED_MODE_SET, "Selected Mode", "Toggle selected-device mode.", false, legacyUiGroup));
+    register(rows, groupDefinition(COMMAND_MANUAL_DEVICE_DUTY_SET, "Manual Device Duty Set", "Apply manual duty to one device.", false, legacyUiGroup));
+    register(rows, groupDefinition(COMMAND_MANUAL_DEVICE_DUTY_CLEAR, "Manual Device Duty Clear", "Clear manual duty for one device.", false, legacyUiGroup));
 
     register(rows, axisDefinition(COMMAND_LEFT_DRIVE));
     register(rows, axisDefinition(COMMAND_RIGHT_DRIVE));

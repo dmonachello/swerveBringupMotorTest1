@@ -14,7 +14,9 @@ Purpose: Explain where the editor fits in the system.
 - The editor produces `bringup_system.json` and diagram metadata.
 - The profiles are consumed by robot code and the PC tool.
 - Diagram metadata is editor-only and ignored by robot/PC tools.
-- bridgeConfig.byProfile groups are used by CLI and can be rendered in the PC UI live view.
+- bridgeConfig.byProfile groups are label-based and can include devices plus infrastructure nodes.
+- Those groups are used by CLI and can be rendered in the PC UI live view.
+- GUI interaction behavior is governed by `docs/FEATURE_SPEC_GUI_INTERACTION_AND_VIEWPORT_STABILITY.md`.
 
 ## Components
 Purpose: Describe major modules and responsibilities.
@@ -51,7 +53,10 @@ flowchart TD
 ## Data Model
 Purpose: Define the core node representation.
 - `Node` represents both devices and callouts.
+- Topology and diagram records use `objectType` as the canonical shared kind field.
+- `nodeType` remains a mirrored compatibility field where older payloads still expect it.
 - Devices are `node_type = "device"`.
+- Infrastructure nodes such as CANnect Direct and Inject are `node_type = "junction"`.
 - Callouts are `node_type = "callout"` and reference a node or bus.
 - Tags are freeform strings stored per node.
 
@@ -63,7 +68,7 @@ Purpose: Stable device configuration consumed by robot and PC tools.
 - Canonical location: `data/bringup_system.json`.
 - RoboRIO deploy copy: `src/main/deploy/bringup_system.json` (synced from `data/`).
 - Root fields:
-- `schema_version` (int, 4)
+- `schema_version` (int, 5)
 - `data_version` (string)
 - `data_hash` (string)
 - `default_profile` (string)
@@ -79,6 +84,7 @@ Device entry schema:
 - Required: `label`, `interface`
 - CAN devices require: `manufacturer`, `deviceType`, `id`
 - Optional: `model`, `terminator`, `tags`, `limits`, `attachments`
+- Group members under `bridgeConfig.byProfile.<profile>.groups[].members[]` are label-based object references.
 
 Example:
 ```json
@@ -99,6 +105,7 @@ Example:
 Purpose: Persist editor layout and callouts.
 - Stored under `diagram.profiles.<profileName>`.
 - Includes `busOffsets`, `busLefts`, `busRights`, `panY`, `zoom`.
+- Includes `busConnectors` and `busConnectorSides` for wrapped multi-segment bus layout.
 - Includes `nodes` list for devices and callouts (position, scale, tags).
 - Optional: `neighborLinks` (undirected adjacency between node keys).
 - Optional: `neighborPorts` (directed port adjacency, preferred for inference).
@@ -122,12 +129,15 @@ Purpose: Describe editor behavior at a high level.
 - Tidy actions align columns across buses or within selection.
 - Reset layout spreads nodes per bus segment without reassignment.
 - Tags enable selection, filtering, sorting, and tidy-by-tag actions.
+- Selection highlighting should update in place and must not require full-scene redraw.
+- Plain click and click-to-clear-selection must not move viewport state.
+- Drag start must be threshold-based and must not trigger pane resize or viewport jump.
 
 ## UI Concepts
 Purpose: Capture UI structure.
 - Left panel: node list with tags and filter state.
 - Right panel: canvas with buses, nodes, and callouts.
-- Details panel: selected node details including tags.
+- Optional details dock: selected node and callout details including tags.
 - Menus: File, Edit, Tags, Layout, View, Help.
 
 ## Contracts
@@ -135,6 +145,8 @@ Purpose: Declare stable API contracts.
 - `bringup_system.json` is the single source of truth; deploy copies must be synced from `data/`.
 - Diagram metadata is editor-only and must not be consumed by robot/PC tools.
 - Tags are optional and must not break existing tools when absent.
+- Ordinary interaction must not change pane geometry unless the user explicitly drags a splitter or opens/closes a major section.
+- Full-scene redraw is allowed only for true geometry or scene membership/layout changes.
 
 ## Tradeoffs
 Purpose: Document key architectural tradeoffs.

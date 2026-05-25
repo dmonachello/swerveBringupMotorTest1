@@ -11,6 +11,7 @@ final class BridgeUiIngressPolicy {
   private static final String CMD_UI_PING = "uiPing";
   private static final String CMD_UI_HANDSHAKE = "uiHandshake";
   private static final String CMD_UI_DISCONNECT = "uiDisconnect";
+  private static final String CMD_STOP = "stopCommand";
   private static final String TEXT_UI_MISSING_COMMAND_NAME = "Missing command name.";
   private static final String TEXT_UI_MISSING_CLIENT_ID = "Missing clientId.";
   private static final String TEXT_UI_LOCKED_BY_OTHER_CLIENT =
@@ -149,7 +150,11 @@ final class BridgeUiIngressPolicy {
     if (ingress.locked && !ingress.client.equals(activeClientId)) {
       return new ValidationFailure(TEXT_UI_LOCKED_BY_OTHER_CLIENT);
     }
-    if (!ingress.locked && !ingress.isHandshake && !ingress.isDisconnect && !ingress.isPing) {
+    if (!ingress.locked
+        && !ingress.isHandshake
+        && !ingress.isDisconnect
+        && !ingress.isPing
+        && !CMD_STOP.equals(ingress.name)) {
       return new ValidationFailure(TEXT_UI_HANDSHAKE_REQUIRED);
     }
     if (isTcp && dependencies.isTcpStartCommand(ingress.name, ingress.args) && dependencies.stopLatchActive()) {

@@ -53,9 +53,12 @@ NODE_TYPE_CALLOUT = "callout"
 MENU_LABEL_ADD_ANALYZER = "Add Analyzer"
 MENU_LABEL_ADD_DEVICE = "Add Node..."
 MENU_LABEL_ADD_DIO_DEVICE = "Add DIO Device..."
+MENU_LABEL_ADD_XBOX_CONTROLLER = "Add Xbox Controller..."
 MENU_LABEL_SET_CANNECT_PORT = "Set CANnect Port..."
 MENU_LABEL_POPULATE_NEIGHBORS = "Populate Neighbors from Layout"
 DIALOG_TITLE_ADD_DIO = "Add DIO Device"
+DIALOG_TITLE_ADD_XBOX_CONTROLLER = "Add Xbox Controller"
+DIALOG_TITLE_EDIT_XBOX_CONTROLLER = "Edit Xbox Controller"
 DIALOG_TITLE_REPLACE = "Replace"
 ANALYZER_LABEL_PREFIX = "Analyzer"
 ANALYZER_DEFAULT_CAN_ID = -1
@@ -135,6 +138,8 @@ LEFT_BOTTOM_PACK_PAD_Y = (6, 0)
 LEFT_BOTTOM_SCROLL_DELTA = -1
 LEFT_BOTTOM_MOUSEWHEEL_UNIT = "units"
 LEFT_BOTTOM_MOUSEWHEEL_DIVISOR = 120
+PROFILE_SCHEMA_VERSION_FALLBACK = 5
+PROFILE_SCHEMA_COMPATIBILITY_VERSIONS = (2, 3, 4)
 TK_EVENT_CONFIGURE = "<Configure>"
 TK_EVENT_MOUSEWHEEL = "<MouseWheel>"
 TK_EVENT_CONTROL_MOUSEWHEEL = "<Control-MouseWheel>"
@@ -156,6 +161,41 @@ SCROLLREGION_FIELD_COUNT = 4
 SCROLLREGION_MIN_INDEX = 0
 SCROLLREGION_MAX_INDEX = 2
 SCROLLREGION_MIN_SPAN = 1.0
+INVENTORY_ROW_PREFIX = "inventory:"
+CONTROLLER_LABEL_PREFIX = "controller"
+CONTROLLER_MODEL_DEFAULT = "Xbox Controller"
+CONTROLLER_FIELD_LABEL = "Label"
+CONTROLLER_FIELD_PORT = "USB Port"
+CONTROLLER_FIELD_MODEL = "Model"
+CONTROLLER_FIELD_TAGS = "Tags"
+CONTROLLER_FIELD_COUNT = "Count"
+CONTROLLER_FIELD_START_PORT = "Starting Port"
+CONTROLLER_DIALOG_WIDTH = 320
+CONTROLLER_DIALOG_PAD = 10
+CONTROLLER_DIALOG_ROW_PAD = 6
+CONTROLLER_COUNT_DEFAULT = 1
+CONTROLLER_PORT_DEFAULT = 0
+CONTROLLER_MANUFACTURER_DEFAULT = 1
+CONTROLLER_DEVICE_TYPE_DEFAULT = 1
+LIST_SCOPE_PROFILE = "Current Profile"
+LIST_SCOPE_FULL = "Full Config"
+MSG_CONTROLLER_DUPLICATE_LABEL = "Controller label '{}' already exists."
+MSG_CONTROLLER_LABEL_REQUIRED = "Controller label is required."
+MSG_CONTROLLER_DUPLICATE_PORT = "Xbox controller USB port {} already exists."
+MSG_CONTROLLER_ALREADY_IN_PROFILE = "Xbox controller '{}' is already in the current profile."
+MSG_CONTROLLER_INVALID_COUNT = "Controller count must be at least 1."
+MSG_CONTROLLER_INVALID_PORT = "USB port must be 0 or greater."
+MSG_CONTROLLER_SELECTION_REQUIRED = "Select an Xbox controller in the list."
+MSG_INVENTORY_DROP_UNSUPPORTED = "This device cannot be placed on the topology canvas."
+MSG_INVENTORY_EDIT_UNSUPPORTED = "Drag CAN or DIO inventory devices onto the canvas to add them to the current profile."
+MSG_CONTROLLER_DELETE_CONFIRM = "Delete Xbox controller '{}' from the system config?"
+MSG_CONTROLLER_DELETE_REFERENCED = (
+    "Xbox controller '{label}' is referenced by other profiles:\n\n"
+    "{profiles}\n\n"
+    "Delete it from the entire system config anyway?"
+)
+MSG_CONTROLLER_ADD_NONE = "No Xbox controllers were added."
+DETAIL_INTERFACE_USB = "USB"
 MSG_INVALID_DIO_CHANNEL = "Invalid DIO channel for {}."
 MSG_GENERIC_DEVICE_VENDOR_TYPE_REQUIRED = (
     "Generic device '{}' requires vendor and device type."
@@ -479,6 +519,8 @@ KEY_BRIDGE_GROUPS = (
 KEY_BRIDGE_TESTS = (
     profile_consts.KEY_BRIDGE_TESTS if profile_consts is not None else "tests"
 )
+KEY_DEVICES = profile_consts.KEY_DEVICES if profile_consts is not None else "devices"
+KEY_PROFILES = profile_consts.KEY_PROFILES if profile_consts is not None else "profiles"
 KEY_BRIDGE_SELECTED_DEVICE = (
     profile_consts.KEY_BRIDGE_SELECTED_DEVICE
     if profile_consts is not None
@@ -489,8 +531,17 @@ KEY_LABEL = profile_consts.KEY_LABEL if profile_consts is not None else "label"
 KEY_OBJECT_TYPE = (
     profile_consts.KEY_OBJECT_TYPE if profile_consts is not None else "objectType"
 )
+KEY_TYPE = profile_consts.KEY_TYPE if profile_consts is not None else "type"
+KEY_TAGS = profile_consts.KEY_TAGS if profile_consts is not None else "tags"
+KEY_MANUFACTURER = (
+    profile_consts.KEY_MANUFACTURER if profile_consts is not None else "manufacturer"
+)
+KEY_INVERT = profile_consts.KEY_INVERT if profile_consts is not None else "invert"
 KEY_VENDOR = profile_consts.KEY_VENDOR if profile_consts is not None else "vendor"
 KEY_MODEL = profile_consts.KEY_MODEL if profile_consts is not None else "model"
+TYPE_XBOX_CONTROLLER = (
+    profile_consts.TYPE_XBOX_CONTROLLER if profile_consts is not None else "xboxController"
+)
 KEY_INTERFACE = (
     profile_consts.KEY_INTERFACE if profile_consts is not None else "interface"
 )
@@ -671,6 +722,12 @@ class TopologyEditor(tk.Tk):
         self._next_key = 1
         self._device_registry: Dict[str, Dict[str, object]] = {}
         self._device_registry_list: List[Dict[str, object]] = []
+        self._non_topology_profile_labels: List[str] = []
+        self._pending_global_device_deletions: set[str] = set()
+        self._selected_inventory_label: Optional[str] = None
+        self._list_drag_item: Optional[str] = None
+        self._list_drag_start: Optional[Tuple[int, int]] = None
+        self._list_dragging = False
         self._selected_key: Optional[int] = None
         self._drag_state: Optional[Tuple[int, float, float]] = None
         self._drag_free_y: Dict[int, float] = {}
@@ -759,6 +816,7 @@ class TopologyEditor(tk.Tk):
         self._tag_filter_fn: Optional[object] = None
         self._tag_filter_var = tk.StringVar(value="Filter: All")
         self._tag_filter_button: Optional[ttk.Button] = None
+        self._list_scope_var = tk.StringVar(value=LIST_SCOPE_PROFILE)
         self._connection_filter_vars = {
             key: tk.BooleanVar(value=True) for key in TOPOLOGY_FILTERS_ORDER
         }
@@ -791,6 +849,18 @@ class TopologyEditor(tk.Tk):
         splitter.add(right, weight=4)
 
         ttk.Label(left, text="Nodes").pack(anchor="w")
+        list_scope_row = ttk.Frame(left)
+        list_scope_row.pack(fill="x", pady=(2, 2))
+        ttk.Label(list_scope_row, text="List Scope").pack(side="left")
+        self._list_scope_combo = ttk.Combobox(
+            list_scope_row,
+            textvariable=self._list_scope_var,
+            values=(LIST_SCOPE_PROFILE, LIST_SCOPE_FULL),
+            state="readonly",
+            width=16,
+        )
+        self._list_scope_combo.pack(side="right")
+        self._list_scope_combo.bind("<<ComboboxSelected>>", self._on_list_scope_changed)
         tag_filter = ttk.Frame(left)
         tag_filter.pack(fill="x", pady=(2, 4))
         ttk.Label(tag_filter, textvariable=self._tag_filter_var).pack(side="left", anchor="w")
@@ -839,6 +909,9 @@ class TopologyEditor(tk.Tk):
         self.node_list.bind("<<TreeviewSelect>>", self._on_list_select)
         self.node_list.bind("<Double-1>", self._on_list_edit_start)
         self.node_list.bind("<F2>", self._on_list_edit_start)
+        self.node_list.bind("<ButtonPress-1>", self._on_list_press, add="+")
+        self.node_list.bind("<B1-Motion>", self._on_list_drag, add="+")
+        self.bind_all("<ButtonRelease-1>", self._on_global_left_release, add="+")
 
         bottom_shell = ttk.Frame(left)
         bottom_shell.pack(fill=tk.X, side=tk.BOTTOM, pady=LEFT_BOTTOM_PACK_PAD_Y)
@@ -1006,6 +1079,7 @@ class TopologyEditor(tk.Tk):
         menu.add_cascade(label="File", menu=file_menu)
 
         profiles_menu = tk.Menu(menu, tearoff=False)
+        profiles_menu.add_command(label="New Blank Profile...", command=self._new_blank_profile)
         profiles_menu.add_command(label="Import Profile...", command=self._import_profile)
         profiles_menu.add_command(label="Export Profile...", command=self._export_profile)
         profiles_menu.add_separator()
@@ -1019,6 +1093,10 @@ class TopologyEditor(tk.Tk):
         edit_menu.add_separator()
         edit_menu.add_command(label=MENU_LABEL_ADD_DEVICE, command=self._on_add)
         edit_menu.add_command(label=MENU_LABEL_ADD_DIO_DEVICE, command=self._on_add_dio_device)
+        edit_menu.add_command(
+            label=MENU_LABEL_ADD_XBOX_CONTROLLER,
+            command=self._on_add_xbox_controller,
+        )
         edit_menu.add_command(label="Add CANnect Inject", command=self._add_cannect_inject)
         edit_menu.add_command(label="Add CANnect Direct", command=self._add_cannect_direct)
         edit_menu.add_command(label=MENU_LABEL_ADD_ANALYZER, command=self._add_analyzer_node)
@@ -1306,6 +1384,106 @@ class TopologyEditor(tk.Tk):
         self.detail_vars["terminator"].set(term_text)
         self.detail_vars["scale"].set(f"{node.scale:.2f}")
         self.detail_vars["tags"].set(self._tags_to_string(node.tags) or "--")
+
+    def _inventory_entry_for_label(self, label: str) -> Optional[Dict[str, object]]:
+        """
+        NAME
+            _inventory_entry_for_label - Look up one device registry entry by label.
+        """
+        label_text = str(label).strip()
+        if not label_text:
+            return None
+        entry = self._device_registry.get(label_text)
+        if isinstance(entry, dict):
+            return entry
+        return None
+
+    def _active_profile_labels(self) -> set[str]:
+        """
+        NAME
+            _active_profile_labels - Return all labels currently in the active profile.
+        """
+        labels = {
+            (node.label or TEXT_EMPTY).strip()
+            for node in self._device_nodes()
+            if (node.label or TEXT_EMPTY).strip()
+        }
+        labels.update(
+            label
+            for label in list(self.__dict__.get("_non_topology_profile_labels", []) or [])
+            if str(label).strip()
+        )
+        return labels
+
+    def _inventory_row_id(self, label: str) -> str:
+        """
+        NAME
+            _inventory_row_id - Build the Treeview row id for an inventory label.
+        """
+        return f"{INVENTORY_ROW_PREFIX}{label}"
+
+    def _inventory_label_from_row_id(self, row_id: str) -> str:
+        """
+        NAME
+            _inventory_label_from_row_id - Extract the inventory label from a Treeview row id.
+        """
+        if not row_id.startswith(INVENTORY_ROW_PREFIX):
+            return TEXT_EMPTY
+        return row_id[len(INVENTORY_ROW_PREFIX):]
+
+    def _is_xbox_controller_entry(self, entry: Dict[str, object]) -> bool:
+        """
+        NAME
+            _is_xbox_controller_entry - Return true for USB xbox controller entries.
+        """
+        interface = str(entry.get(KEY_INTERFACE) or entry.get(KEY_INTERFACE_LEGACY) or TEXT_EMPTY).strip()
+        controller_type = str(entry.get(KEY_TYPE, TEXT_EMPTY)).strip()
+        return interface.upper() == DETAIL_INTERFACE_USB and controller_type == profile_consts.TYPE_XBOX_CONTROLLER
+
+    def _is_topology_capable_inventory_entry(self, entry: Dict[str, object]) -> bool:
+        """
+        NAME
+            _is_topology_capable_inventory_entry - Return true for CAN/DIO entries that can appear on the canvas.
+        """
+        return self._is_can_device_entry(entry) or self._is_dio_device_entry(entry)
+
+    def _inventory_details_node(self, label: str) -> Optional[Node]:
+        """
+        NAME
+            _inventory_details_node - Build a details-only Node view for one inventory label.
+        """
+        entry = self._inventory_entry_for_label(label)
+        if not isinstance(entry, dict):
+            return None
+        interface = str(entry.get(KEY_INTERFACE) or entry.get(KEY_INTERFACE_LEGACY) or TEXT_EMPTY).strip()
+        device_type = str(entry.get(KEY_TYPE, TEXT_EMPTY)).strip()
+        model = str(entry.get(KEY_MODEL, TEXT_EMPTY)).strip()
+        dio_value = entry.get(KEY_ID)
+        node_interface = interface or INTERFACE_CAN
+        node_can_id = CAN_ID_DIAGRAM_DEFAULT
+        node_dio = None
+        if node_interface.upper() == INTERFACE_DIO:
+            node_interface = INTERFACE_DIO
+            node_dio = int(dio_value) if isinstance(dio_value, int) else None
+        elif node_interface.upper() == DETAIL_INTERFACE_USB:
+            node_interface = DETAIL_INTERFACE_USB
+        else:
+            node_interface = INTERFACE_CAN
+            node_can_id = int(dio_value) if isinstance(dio_value, int) else CAN_ID_DIAGRAM_DEFAULT
+        return Node(
+            key=CAN_ID_DIAGRAM_DEFAULT,
+            category=GENERIC_CATEGORY,
+            label=str(entry.get(KEY_LABEL, TEXT_EMPTY)).strip(),
+            can_id=node_can_id,
+            interface=node_interface,
+            vendor=TEXT_EMPTY,
+            device_type=device_type,
+            motor=model,
+            dio=node_dio,
+            invert=bool(entry.get(KEY_INVERT)) if isinstance(entry.get(KEY_INVERT), bool) else None,
+            scale=1.0,
+            tags=self._normalize_tags(entry.get(KEY_TAGS, [])),
+        )
 
     def _clear_node_details_fields(self) -> None:
         """
@@ -1779,6 +1957,26 @@ class TopologyEditor(tk.Tk):
                     store_payload = None
         if store_payload is not None:
             data = store_payload
+            # ConfigSchemaStore may still synthesize an empty profiles payload from a
+            # legacy canonical path that is absent in this repo layout. If that
+            # happens, fall back to the actual requested file instead of prompting
+            # for repair on valid deploy-backed configs.
+            data_version = data.get("data_version")
+            default_profile = data.get("default_profile")
+            if (
+                path.exists()
+                and (
+                    not isinstance(data_version, str)
+                    or not data_version.strip()
+                    or not isinstance(default_profile, str)
+                    or not default_profile.strip()
+                )
+            ):
+                try:
+                    data = read_json(path)
+                except Exception as exc:
+                    messagebox.showerror("Error", f"Failed to open file: {exc}")
+                    return None
         else:
             try:
                 data = read_json(path)
@@ -1789,7 +1987,7 @@ class TopologyEditor(tk.Tk):
             messagebox.showerror("Error", "Profiles JSON root must be an object.")
             return None
         schema_version = data.get("schema_version")
-        if schema_version is not None and schema_version not in (self._expected_schema_version(), 3, 2):
+        if schema_version is not None and schema_version not in self._accepted_schema_versions():
             proceed = messagebox.askyesno(
                 "Schema Mismatch",
                 "Profile schema_version mismatch. Open anyway to repair?",
@@ -2145,6 +2343,98 @@ class TopologyEditor(tk.Tk):
             confirm_discard=True,
         )
 
+    def _blank_profile_payload(self) -> Dict[str, object]:
+        """
+        NAME
+            _blank_profile_payload - Build a blank profile object.
+        """
+        return {KEY_DEVICES: []}
+
+    def _blank_topology_entry(self) -> Dict[str, object]:
+        """
+        NAME
+            _blank_topology_entry - Build a blank topology entry for a new profile.
+        """
+        return {
+            KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+            KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+            KEY_TOPOLOGY_NODES: [],
+            KEY_TOPOLOGY_EDGES: [],
+            KEY_TOPOLOGY_VIEW: {
+                "busOffsets": [0.0],
+                "busCount": 1,
+                "busSpacing": self._bus_spacing,
+                "busLefts": [],
+                "busRights": [],
+                "busConnectors": [],
+                KEY_DIAGRAM_BUS_CONNECTOR_SIDES: [],
+                "panY": 0.0,
+                "zoom": 1.0,
+                KEY_DIAGRAM_ETHERNET_LINKS: [],
+                "canLinks": [],
+                "deviceLinks": [],
+                KEY_TOPOLOGY_FILTERS: sorted(self._active_connection_filters()),
+                "callouts": [],
+            },
+        }
+
+    def _new_blank_profile(self) -> None:
+        """
+        NAME
+            _new_blank_profile - Create a new blank profile in the current config file.
+        """
+        target_path = Path(self._profile_source_path) if self._profile_source_path else self._default_profiles_path()
+        if not target_path.exists():
+            messagebox.showerror("Missing", f"No profiles file found at {target_path}.")
+            return
+        new_name = simpledialog.askstring("New Blank Profile", "Profile name:")
+        if new_name is None:
+            return
+        new_name = new_name.strip()
+        if not new_name:
+            messagebox.showerror("Error", "Profile name is required.")
+            return
+        data = self._load_profiles_payload(target_path)
+        if data is None:
+            return
+        profiles = data.get(KEY_PROFILES)
+        if not isinstance(profiles, dict):
+            profiles = {}
+        if new_name in profiles:
+            messagebox.showerror("Error", "That profile name already exists.")
+            return
+        if not self._confirm_discard():
+            return
+        topology = data.get(KEY_TOPOLOGY)
+        if not isinstance(topology, dict):
+            topology = {
+                KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {},
+            }
+        topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+        if not isinstance(topology_profiles, dict):
+            topology_profiles = {}
+        self._backup_profiles_file(target_path)
+        profiles[new_name] = self._blank_profile_payload()
+        topology_profiles[new_name] = self._blank_topology_entry()
+        data[KEY_PROFILES] = profiles
+        data[KEY_TOPOLOGY] = {
+            KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+            KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+            KEY_TOPOLOGY_PROFILES: topology_profiles,
+        }
+        if not self._write_profiles_payload(target_path, data, include_extras=True):
+            return
+        self._refresh_profile_choices(keep_selection=False)
+        self._load_profile_from_path(
+            str(target_path),
+            ask_profile=False,
+            confirm_discard=False,
+            selected_name=new_name,
+        )
+        messagebox.showinfo("Created", f"Created blank profile '{new_name}'.")
+
     def _load_profile_from_path(
         self,
         path: str,
@@ -2195,6 +2485,9 @@ class TopologyEditor(tk.Tk):
         if confirm_discard and not self._confirm_discard():
             return
         self._nodes = self._nodes_from_profile(profile)
+        self._sync_non_topology_profile_labels(profile)
+        self._pending_global_device_deletions = set()
+        self._selected_inventory_label = None
         self._next_callout = 1
         self._callout_scale_var.set("--")
         self._layout_width = 0.0
@@ -2328,7 +2621,17 @@ class TopologyEditor(tk.Tk):
 
     @staticmethod
     def _expected_schema_version() -> int:
-        return 4
+        if profile_consts is not None and hasattr(profile_consts, "PROFILE_SCHEMA_VERSION"):
+            return int(profile_consts.PROFILE_SCHEMA_VERSION)
+        return PROFILE_SCHEMA_VERSION_FALLBACK
+
+    @classmethod
+    def _accepted_schema_versions(cls) -> Tuple[int, ...]:
+        versions = [cls._expected_schema_version()]
+        for value in PROFILE_SCHEMA_COMPATIBILITY_VERSIONS:
+            if value not in versions:
+                versions.append(value)
+        return tuple(versions)
 
     @staticmethod
     def _compute_data_hash(payload: Dict[str, object]) -> str:
@@ -2846,6 +3149,22 @@ class TopologyEditor(tk.Tk):
             if not replace:
                 return
 
+        if self._pending_global_device_deletions:
+            pending = {
+                label.strip()
+                for label in self._pending_global_device_deletions
+                if label.strip()
+            }
+            for entry_profile in profiles.values():
+                if not isinstance(entry_profile, dict):
+                    continue
+                devices = entry_profile.get(KEY_DEVICES)
+                if not isinstance(devices, list):
+                    continue
+                entry_profile[KEY_DEVICES] = [
+                    label for label in devices if str(label).strip() not in pending
+                ]
+
         profiles[profile_name] = self._profile_from_nodes()
         data["profiles"] = profiles
         topology_profiles[profile_name] = self._topology_snapshot()
@@ -2860,6 +3179,7 @@ class TopologyEditor(tk.Tk):
         self._default_profile_name = default_name if isinstance(default_name, str) else None
         if not self._write_profiles_payload(path, data, include_extras=True):
             return
+        self._pending_global_device_deletions = set()
         self._dirty = False
         if update_source:
             self._profile_source_path = str(path)
@@ -2923,16 +3243,48 @@ class TopologyEditor(tk.Tk):
         RETURNS
             Dict compatible with bringup_system.json.
         """
-        return self._profile_from_nodes_list(self._profile_device_nodes())
+        return self._profile_from_nodes_list(self._profile_device_nodes(), include_non_topology=True)
 
-    def _profile_from_nodes_list(self, nodes: List[Node]) -> Dict[str, object]:
+    def _profile_from_nodes_list(
+        self,
+        nodes: List[Node],
+        include_non_topology: bool = False,
+    ) -> Dict[str, object]:
         """
         NAME
             _profile_from_nodes_list - Build a bringup profile from a node list.
         """
         nodes = [n for n in nodes if self._is_registry_device_node(n)]
         labels = [n.label for n in nodes if n.node_type == NODE_TYPE_DEVICE]
+        if include_non_topology:
+            for label in list(self.__dict__.get("_non_topology_profile_labels", []) or []):
+                if label and label not in labels:
+                    labels.append(label)
         return {"devices": labels}
+
+    def _sync_non_topology_profile_labels(self, profile: Dict[str, object]) -> None:
+        """
+        NAME
+            _sync_non_topology_profile_labels - Preserve active-profile labels without canvas nodes.
+        """
+        devices = profile.get(KEY_DEVICES)
+        if not isinstance(devices, list):
+            self._non_topology_profile_labels = []
+            return
+        node_labels = {
+            (node.label or TEXT_EMPTY).strip()
+            for node in self._nodes
+            if node.node_type == NODE_TYPE_DEVICE and (node.label or TEXT_EMPTY).strip()
+        }
+        extras: List[str] = []
+        seen: set[str] = set()
+        for label in devices:
+            label_text = str(label).strip()
+            if not label_text or label_text in seen or label_text in node_labels:
+                continue
+            seen.add(label_text)
+            extras.append(label_text)
+        self._non_topology_profile_labels = extras
 
     def _node_to_entry(self, node: Node) -> Dict[str, object]:
         """
@@ -4152,11 +4504,11 @@ class TopologyEditor(tk.Tk):
             with open(path, "r", encoding="utf-8") as handle:
                 data = json.load(handle)
             schema_version = data.get("schema_version")
-            if schema_version != self._expected_schema_version():
+            if schema_version not in self._accepted_schema_versions():
                 messagebox.showerror(
                     "Invalid",
                     "Profile schema_version mismatch "
-                    f"(expected {self._expected_schema_version()}, got {schema_version}).",
+                    f"(supported {self._accepted_schema_versions()}, got {schema_version}).",
                 )
                 return
             data_version = data.get("data_version")
@@ -5389,6 +5741,360 @@ class TopologyEditor(tk.Tk):
         self._redraw_canvas()
         self._select_node(node.key)
 
+    def _controller_label_for_port(self, port: int) -> str:
+        """
+        NAME
+            _controller_label_for_port - Build the default controller label for a USB port.
+        """
+        return f"{CONTROLLER_LABEL_PREFIX}{port}"
+
+    def _controller_port_in_use(self, port: int, exclude_label: str = TEXT_EMPTY) -> bool:
+        """
+        NAME
+            _controller_port_in_use - Return true when a USB port is already claimed.
+        """
+        exclude_norm = exclude_label.strip().lower()
+        for entry in self._device_registry_list:
+            if not isinstance(entry, dict) or not self._is_xbox_controller_entry(entry):
+                continue
+            label = str(entry.get(KEY_LABEL, TEXT_EMPTY)).strip().lower()
+            if exclude_norm and label == exclude_norm:
+                continue
+            if entry.get(KEY_ID) == port:
+                return True
+        return False
+
+    def _matching_xbox_controller_entry(self, label: str, port: int) -> Optional[Dict[str, object]]:
+        """
+        NAME
+            _matching_xbox_controller_entry - Find a registry Xbox controller with exact label and port.
+        """
+        entry = self._inventory_entry_for_label(label)
+        if not isinstance(entry, dict) or not self._is_xbox_controller_entry(entry):
+            return None
+        if entry.get(KEY_ID) != port:
+            return None
+        return entry
+
+    def _prompt_xbox_controller_dialog(
+        self,
+        title: str,
+        count_default: int,
+        start_port_default: int,
+        label_default: str = TEXT_EMPTY,
+        model_default: str = CONTROLLER_MODEL_DEFAULT,
+        tags_default: str = TEXT_EMPTY,
+        edit_mode: bool = False,
+    ) -> Optional[Dict[str, object]]:
+        """
+        NAME
+            _prompt_xbox_controller_dialog - Collect Xbox controller dialog fields.
+        """
+        dialog = tk.Toplevel(self)
+        dialog.title(title)
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+
+        count_var = tk.StringVar(value=str(count_default))
+        port_var = tk.StringVar(value=str(start_port_default))
+        label_var = tk.StringVar(value=label_default)
+        model_var = tk.StringVar(value=model_default)
+        tags_var = tk.StringVar(value=tags_default)
+        result: Dict[str, object] = {}
+
+        frame = ttk.Frame(dialog, padding=CONTROLLER_DIALOG_PAD)
+        frame.grid(row=0, column=0, sticky="nsew")
+        row = 0
+        if edit_mode:
+            fields = [
+                (CONTROLLER_FIELD_LABEL, label_var),
+                (CONTROLLER_FIELD_PORT, port_var),
+                (CONTROLLER_FIELD_MODEL, model_var),
+                (CONTROLLER_FIELD_TAGS, tags_var),
+            ]
+        else:
+            fields = [
+                (CONTROLLER_FIELD_COUNT, count_var),
+                (CONTROLLER_FIELD_START_PORT, port_var),
+            ]
+        for field_label, variable in fields:
+            ttk.Label(frame, text=f"{field_label}:").grid(
+                row=row,
+                column=0,
+                sticky="w",
+                padx=(0, CONTROLLER_DIALOG_PAD),
+                pady=(0, CONTROLLER_DIALOG_ROW_PAD),
+            )
+            entry = ttk.Entry(frame, textvariable=variable, width=CONTROLLER_DIALOG_WIDTH // 10)
+            entry.grid(row=row, column=1, sticky="ew", pady=(0, CONTROLLER_DIALOG_ROW_PAD))
+            if row == 0:
+                entry.focus_set()
+                entry.selection_range(0, "end")
+            row += 1
+
+        def _cancel() -> None:
+            dialog.destroy()
+
+        def _ok() -> None:
+            if edit_mode:
+                try:
+                    port_value = int(port_var.get().strip())
+                except ValueError:
+                    messagebox.showerror(title, MSG_CONTROLLER_INVALID_PORT)
+                    return
+                if port_value < CONTROLLER_PORT_DEFAULT:
+                    messagebox.showerror(title, MSG_CONTROLLER_INVALID_PORT)
+                    return
+                label_value = label_var.get().strip()
+                if not label_value:
+                    messagebox.showerror(title, MSG_CONTROLLER_LABEL_REQUIRED)
+                    return
+                result.update(
+                    {
+                        KEY_LABEL: label_value,
+                        KEY_ID: port_value,
+                        KEY_MODEL: model_var.get().strip() or CONTROLLER_MODEL_DEFAULT,
+                        KEY_TAGS: self._normalize_tags(tags_var.get()),
+                    }
+                )
+            else:
+                try:
+                    count_value = int(count_var.get().strip())
+                except ValueError:
+                    messagebox.showerror(title, MSG_CONTROLLER_INVALID_COUNT)
+                    return
+                try:
+                    port_value = int(port_var.get().strip())
+                except ValueError:
+                    messagebox.showerror(title, MSG_CONTROLLER_INVALID_PORT)
+                    return
+                if count_value < CONTROLLER_COUNT_DEFAULT:
+                    messagebox.showerror(title, MSG_CONTROLLER_INVALID_COUNT)
+                    return
+                if port_value < CONTROLLER_PORT_DEFAULT:
+                    messagebox.showerror(title, MSG_CONTROLLER_INVALID_PORT)
+                    return
+                result.update(
+                    {
+                        CONTROLLER_FIELD_COUNT: count_value,
+                        CONTROLLER_FIELD_START_PORT: port_value,
+                    }
+                )
+            dialog.destroy()
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=row, column=0, columnspan=2, sticky="e", pady=(CONTROLLER_DIALOG_PAD, 0))
+        ttk.Button(buttons, text="Cancel", command=_cancel).pack(side="right", padx=4)
+        ttk.Button(buttons, text="OK", command=_ok).pack(side="right")
+
+        self.wait_window(dialog)
+        if not result:
+            return None
+        return result
+
+    def _new_xbox_controller_entry(self, label: str, port: int) -> Dict[str, object]:
+        """
+        NAME
+            _new_xbox_controller_entry - Build a canonical Xbox controller registry entry.
+        """
+        return {
+            KEY_LABEL: label,
+            KEY_INTERFACE: profile_consts.INTERFACE_USB if profile_consts is not None else DETAIL_INTERFACE_USB,
+            KEY_ID: port,
+            KEY_MANUFACTURER: CONTROLLER_MANUFACTURER_DEFAULT,
+            KEY_DEVICE_TYPE: CONTROLLER_DEVICE_TYPE_DEFAULT,
+            KEY_MODEL: CONTROLLER_MODEL_DEFAULT,
+            KEY_TYPE: profile_consts.TYPE_XBOX_CONTROLLER if profile_consts is not None else TYPE_XBOX_CONTROLLER,
+        }
+
+    def _on_add_xbox_controller(self) -> None:
+        """
+        NAME
+            _on_add_xbox_controller - Add one or more Xbox controllers to the active profile.
+        """
+        result = self._prompt_xbox_controller_dialog(
+            DIALOG_TITLE_ADD_XBOX_CONTROLLER,
+            CONTROLLER_COUNT_DEFAULT,
+            CONTROLLER_PORT_DEFAULT,
+            edit_mode=False,
+        )
+        if not isinstance(result, dict):
+            return
+        count = int(result.get(CONTROLLER_FIELD_COUNT, CONTROLLER_COUNT_DEFAULT))
+        start_port = int(result.get(CONTROLLER_FIELD_START_PORT, CONTROLLER_PORT_DEFAULT))
+        new_entries: List[Dict[str, object]] = []
+        existing_labels_to_add: List[str] = []
+        seen_labels: set[str] = set()
+        seen_ports: set[int] = set()
+        for offset in range(count):
+            port = start_port + offset
+            label = self._controller_label_for_port(port)
+            exact_existing = self._matching_xbox_controller_entry(label, port)
+            if exact_existing is not None:
+                if label in self._non_topology_profile_labels:
+                    messagebox.showinfo(
+                        DIALOG_TITLE_ADD_XBOX_CONTROLLER,
+                        MSG_CONTROLLER_ALREADY_IN_PROFILE.format(label),
+                    )
+                    return
+                existing_labels_to_add.append(label)
+                seen_labels.add(label)
+                seen_ports.add(port)
+                continue
+            if label in self._device_registry or label in seen_labels:
+                messagebox.showerror(DIALOG_TITLE_ADD_XBOX_CONTROLLER, MSG_CONTROLLER_DUPLICATE_LABEL.format(label))
+                return
+            if self._controller_port_in_use(port) or port in seen_ports:
+                messagebox.showerror(DIALOG_TITLE_ADD_XBOX_CONTROLLER, MSG_CONTROLLER_DUPLICATE_PORT.format(port))
+                return
+            seen_labels.add(label)
+            seen_ports.add(port)
+            new_entries.append(self._new_xbox_controller_entry(label, port))
+        if not new_entries and not existing_labels_to_add:
+            messagebox.showinfo(DIALOG_TITLE_ADD_XBOX_CONTROLLER, MSG_CONTROLLER_ADD_NONE)
+            return
+        for label in existing_labels_to_add:
+            if label not in self._non_topology_profile_labels:
+                self._non_topology_profile_labels.append(label)
+        for entry in new_entries:
+            label = str(entry.get(KEY_LABEL, TEXT_EMPTY)).strip()
+            self._device_registry_list.append(entry)
+            self._device_registry[label] = entry
+            if label not in self._non_topology_profile_labels:
+                self._non_topology_profile_labels.append(label)
+        self._dirty = True
+        self._refresh_list()
+        if new_entries:
+            self._selected_inventory_label = str(new_entries[0].get(KEY_LABEL, TEXT_EMPTY)).strip()
+        else:
+            self._selected_inventory_label = existing_labels_to_add[0]
+        self._selected_nodes = set()
+        self._selected_buses = set()
+        self._sync_selection_state()
+
+    def _edit_selected_inventory_item(self) -> bool:
+        """
+        NAME
+            _edit_selected_inventory_item - Edit the selected non-topology inventory item.
+        """
+        label = str(self._selected_inventory_label or TEXT_EMPTY).strip()
+        entry = self._inventory_entry_for_label(label)
+        if not isinstance(entry, dict) or not self._is_xbox_controller_entry(entry):
+            return False
+        result = self._prompt_xbox_controller_dialog(
+            DIALOG_TITLE_EDIT_XBOX_CONTROLLER,
+            CONTROLLER_COUNT_DEFAULT,
+            int(entry.get(KEY_ID, CONTROLLER_PORT_DEFAULT))
+            if isinstance(entry.get(KEY_ID), int)
+            else CONTROLLER_PORT_DEFAULT,
+            label_default=label,
+            model_default=str(entry.get(KEY_MODEL, CONTROLLER_MODEL_DEFAULT)).strip() or CONTROLLER_MODEL_DEFAULT,
+            tags_default=self._tags_to_string(self._normalize_tags(entry.get(KEY_TAGS, []))),
+            edit_mode=True,
+        )
+        if not isinstance(result, dict):
+            return True
+        new_label = str(result.get(KEY_LABEL, TEXT_EMPTY)).strip()
+        new_port = int(result.get(KEY_ID, CONTROLLER_PORT_DEFAULT))
+        if new_label != label and new_label in self._device_registry:
+            messagebox.showerror(DIALOG_TITLE_EDIT_XBOX_CONTROLLER, MSG_CONTROLLER_DUPLICATE_LABEL.format(new_label))
+            return True
+        if self._controller_port_in_use(new_port, exclude_label=label):
+            messagebox.showerror(DIALOG_TITLE_EDIT_XBOX_CONTROLLER, MSG_CONTROLLER_DUPLICATE_PORT.format(new_port))
+            return True
+        if new_label != label:
+            self._rename_registry_label(label, new_label)
+            self._update_bridge_config_label_refs(label, new_label)
+            self._non_topology_profile_labels = [
+                new_label if existing == label else existing
+                for existing in self._non_topology_profile_labels
+            ]
+            if label in self._pending_global_device_deletions:
+                self._pending_global_device_deletions.discard(label)
+                self._pending_global_device_deletions.add(new_label)
+            entry = self._inventory_entry_for_label(new_label) or entry
+        entry[KEY_LABEL] = new_label
+        entry[KEY_ID] = new_port
+        entry[KEY_MODEL] = str(result.get(KEY_MODEL, CONTROLLER_MODEL_DEFAULT)).strip() or CONTROLLER_MODEL_DEFAULT
+        entry[KEY_TAGS] = list(result.get(KEY_TAGS, []))
+        self._selected_inventory_label = new_label
+        self._dirty = True
+        self._refresh_list()
+        self._sync_selection_state()
+        return True
+
+    def _profile_references_for_label(self, label: str) -> List[str]:
+        """
+        NAME
+            _profile_references_for_label - Return profile names that reference a device label.
+        """
+        source_path = Path(self._profile_source_path) if self._profile_source_path else self._default_profiles_path()
+        if not source_path.exists():
+            return []
+        try:
+            data = read_json(source_path)
+        except Exception:
+            return []
+        profiles = data.get(KEY_PROFILES)
+        if not isinstance(profiles, dict):
+            return []
+        label_text = str(label).strip()
+        refs: List[str] = []
+        for profile_name, profile in profiles.items():
+            if not isinstance(profile, dict):
+                continue
+            devices = profile.get(KEY_DEVICES)
+            if not isinstance(devices, list):
+                continue
+            if any(str(item).strip() == label_text for item in devices):
+                refs.append(str(profile_name))
+        return refs
+
+    def _remove_registry_entry_by_label(self, label: str) -> None:
+        """
+        NAME
+            _remove_registry_entry_by_label - Remove one device registry entry by label.
+        """
+        label_text = str(label).strip()
+        if not label_text:
+            return
+        self._device_registry.pop(label_text, None)
+        self._device_registry_list = [
+            entry
+            for entry in self._device_registry_list
+            if str(entry.get(KEY_LABEL, TEXT_EMPTY)).strip() != label_text
+        ]
+
+    def _remove_selected_inventory_item(self) -> bool:
+        """
+        NAME
+            _remove_selected_inventory_item - Remove the selected inventory item from the active profile.
+        """
+        label = str(self._selected_inventory_label or TEXT_EMPTY).strip()
+        entry = self._inventory_entry_for_label(label)
+        if not isinstance(entry, dict) or not self._is_xbox_controller_entry(entry):
+            return False
+        if label not in self._non_topology_profile_labels:
+            messagebox.showinfo("Remove", f"'{label}' is not in the current profile.")
+            return True
+        proceed = messagebox.askyesno(
+            "Remove",
+            f"Remove '{label}' from the current profile?",
+        )
+        if not proceed:
+            return True
+        self._non_topology_profile_labels = [
+            existing for existing in self._non_topology_profile_labels if existing != label
+        ]
+        self._prune_current_profile_bridge_config_label(label)
+        self._selected_inventory_label = None
+        self._dirty = True
+        self._refresh_list()
+        self._update_details_panel(None)
+        self._update_selection_overlays()
+        return True
+
     def _next_analyzer_label(self) -> str:
         """
         NAME
@@ -6414,9 +7120,7 @@ class TopologyEditor(tk.Tk):
         node.profile_visible = bool(data.get("profile_visible"))
         node.tags = self._normalize_tags(data.get("tags", []))
         if old_label and new_label and old_label != new_label:
-            self._rename_registry_label(old_label, new_label)
-            self._update_bridge_config_label_refs(old_label, new_label)
-            self._update_callout_target_labels(old_label, new_label)
+            self._apply_node_label_change(node, old_label, new_label)
         self._prune_attachment_links()
         self._prune_power_links()
         self._prune_dio_wiring_links()
@@ -6501,6 +7205,11 @@ class TopologyEditor(tk.Tk):
         NAME
             _on_edit_selected - Edit the selected node or callout.
         """
+        if self._selected_inventory_label and not self._selected_nodes and not self._selected_buses:
+            if self._edit_selected_inventory_item():
+                return
+            messagebox.showinfo("Edit", MSG_INVENTORY_EDIT_UNSUPPORTED)
+            return
         if self._selected_buses:
             messagebox.showinfo("Edit", "Bus segments are not editable.")
             return
@@ -6518,6 +7227,11 @@ class TopologyEditor(tk.Tk):
         NAME
             _on_remove_selected - Remove selected nodes and callouts.
         """
+        if self._selected_inventory_label and not self._selected_nodes and not self._selected_buses:
+            if self._remove_selected_inventory_item():
+                return
+            messagebox.showinfo("Remove", MSG_INVENTORY_EDIT_UNSUPPORTED)
+            return
         if self._selected_buses and not self._selected_nodes:
             if not self._remove_selected_buses():
                 return
@@ -6540,7 +7254,7 @@ class TopologyEditor(tk.Tk):
         self._nodes = [n for n in self._nodes if n.key not in self._selected_nodes]
         self._clear_selection()
         for label in removed_labels:
-            self._prune_bridge_config_label(label)
+            self._prune_current_profile_bridge_config_label(label)
         self._prune_attachment_links()
         self._prune_power_links()
         self._prune_dio_wiring_links()
@@ -6744,6 +7458,11 @@ class TopologyEditor(tk.Tk):
         if self._tag_filter_fn is not None:
             nodes = [n for n in nodes if self._tag_filter_fn(n)]
         nodes = sort_nodes(nodes, self._list_sort_var.get())
+        node_labels = {
+            (node.label or TEXT_EMPTY).strip()
+            for node in nodes
+            if (node.label or TEXT_EMPTY).strip()
+        }
         for node in nodes:
             can_id = "" if not isinstance(node.can_id, int) or node.can_id < 0 else str(node.can_id)
             groups = SEP_COMMA_SPACE.join(node_groups.get(node.label, []))
@@ -6754,6 +7473,51 @@ class TopologyEditor(tk.Tk):
                 iid=str(node.key),
                 values=(can_id, node.category, node.label, groups, tags),
             )
+        if self._list_scope_var.get() == LIST_SCOPE_FULL:
+            registry_source = {
+                str(label).strip()
+                for label in self._device_registry.keys()
+                if str(label).strip()
+            }
+        else:
+            registry_source = {
+                str(label).strip()
+                for label in list(self.__dict__.get("_non_topology_profile_labels", []) or [])
+                if str(label).strip()
+            }
+        registry_labels = sorted(label for label in registry_source if label not in node_labels)
+        for label in registry_labels:
+            entry = self._inventory_entry_for_label(label)
+            if isinstance(entry, dict):
+                can_id = TEXT_EMPTY
+                if self._is_can_device_entry(entry):
+                    category = self._category_for_device(entry)
+                    entry_id = entry.get("id")
+                    if isinstance(entry_id, int) and entry_id >= 0:
+                        can_id = str(entry_id)
+                elif self._is_dio_device_entry(entry):
+                    category = GENERIC_CATEGORY
+                else:
+                    category = str(entry.get(KEY_TYPE, GENERIC_CATEGORY)).strip() or GENERIC_CATEGORY
+                tags = self._tags_to_string(self._normalize_tags(entry.get(KEY_TAGS, [])))
+            else:
+                can_id = TEXT_EMPTY
+                category = GENERIC_CATEGORY
+                tags = TEXT_EMPTY
+            groups = SEP_COMMA_SPACE.join(node_groups.get(label, []))
+            self.node_list.insert(
+                TEXT_EMPTY,
+                "end",
+                iid=self._inventory_row_id(label),
+                values=(can_id, category, label, groups, tags),
+            )
+
+    def _on_list_scope_changed(self, _event: tk.Event) -> None:
+        """
+        NAME
+            _on_list_scope_changed - Refresh the left list when scope changes.
+        """
+        self._refresh_list()
 
     def _node_groups_by_label(self) -> Dict[str, List[str]]:
         """
@@ -7294,6 +8058,22 @@ class TopologyEditor(tk.Tk):
         selection = self.node_list.selection()
         if not selection:
             return
+        inventory_labels = [
+            item[len(INVENTORY_ROW_PREFIX):]
+            for item in selection
+            if item.startswith(INVENTORY_ROW_PREFIX)
+        ]
+        if inventory_labels:
+            self._selected_inventory_label = inventory_labels[0]
+            self._selected_nodes = set()
+            self._selected_buses = set()
+            self._selected_key = None
+            self._clear_callout_details_fields()
+            self._update_details_panel(
+                self._inventory_details_node(self._selected_inventory_label)
+            )
+            self._update_selection_overlays()
+            return
         selected_keys: set[int] = set()
         for item in selection:
             try:
@@ -7302,9 +8082,105 @@ class TopologyEditor(tk.Tk):
                 continue
         if not selected_keys:
             return
+        self._selected_inventory_label = None
         self._selected_nodes = selected_keys
         self._selected_buses = set()
         self._sync_selection_state()
+
+    def _on_list_press(self, event: tk.Event) -> None:
+        """
+        NAME
+            _on_list_press - Record the pressed inventory row for a potential drag.
+        """
+        row_id = self.node_list.identify_row(event.y)
+        self._list_drag_item = row_id if row_id.startswith(INVENTORY_ROW_PREFIX) else None
+        self._list_drag_start = (int(event.x), int(event.y)) if self._list_drag_item else None
+        self._list_dragging = False
+
+    def _on_list_drag(self, event: tk.Event) -> None:
+        """
+        NAME
+            _on_list_drag - Promote an inventory press into a drag once motion is clear.
+        """
+        if not self._list_drag_item or self._list_drag_start is None:
+            return
+        start_x, start_y = self._list_drag_start
+        if self._drag_threshold_exceeded(float(event.x - start_x), float(event.y - start_y)):
+            self._list_dragging = True
+
+    def _on_global_left_release(self, _event: tk.Event) -> None:
+        """
+        NAME
+            _on_global_left_release - Complete an inventory-to-canvas drag drop when active.
+        """
+        if not self._list_drag_item:
+            return
+        row_id = self._list_drag_item
+        dragging = bool(self._list_dragging)
+        self._list_drag_item = None
+        self._list_drag_start = None
+        self._list_dragging = False
+        if not dragging:
+            return
+        label = self._inventory_label_from_row_id(row_id)
+        if not label:
+            return
+        pointer_x = int(self.winfo_pointerx())
+        pointer_y = int(self.winfo_pointery())
+        canvas_left = int(self.canvas.winfo_rootx())
+        canvas_top = int(self.canvas.winfo_rooty())
+        canvas_right = canvas_left + int(self.canvas.winfo_width())
+        canvas_bottom = canvas_top + int(self.canvas.winfo_height())
+        if not (canvas_left <= pointer_x <= canvas_right and canvas_top <= pointer_y <= canvas_bottom):
+            return
+        local_x = pointer_x - canvas_left
+        local_y = pointer_y - canvas_top
+        canvas_x = float(self.canvas.canvasx(local_x))
+        canvas_y = float(self.canvas.canvasy(local_y))
+        self._add_inventory_label_to_canvas(label, canvas_x, canvas_y)
+
+    def _add_inventory_label_to_canvas(self, label: str, cx: float, cy: float) -> None:
+        """
+        NAME
+            _add_inventory_label_to_canvas - Add a registry device into the active profile at a canvas point.
+        """
+        entry = self._inventory_entry_for_label(label)
+        if not isinstance(entry, dict):
+            return
+        if not self._is_topology_capable_inventory_entry(entry):
+            messagebox.showinfo("Add to Profile", MSG_INVENTORY_DROP_UNSUPPORTED)
+            return
+        existing = next((node for node in self._device_nodes() if node.label == label), None)
+        if existing is not None:
+            self._select_node(existing.key)
+            return
+        node = self._node_from_device_def(entry)
+        if node is None:
+            messagebox.showinfo("Add to Profile", MSG_INVENTORY_DROP_UNSUPPORTED)
+            return
+        scale = max(self._zoom, 0.01)
+        bus_index, row = self._nearest_bus_and_row(cy)
+        node.x = max(float(cx) / scale, 0.0)
+        node.bus_index = bus_index
+        node.row = row
+        node.scale = 1.0
+        node.profile_visible = True
+        self._push_undo()
+        self._nodes.append(node)
+        self._layout_width = max(self._layout_width, node.x + 200)
+        self._non_topology_profile_labels = [
+            existing_label
+            for existing_label in self._non_topology_profile_labels
+            if existing_label != label
+        ]
+        self._prune_attachment_links()
+        self._prune_power_links()
+        self._prune_dio_wiring_links()
+        self._ensure_dio_wiring_links()
+        self._refresh_list()
+        self._mark_neighbors_stale()
+        self._redraw_canvas()
+        self._select_node(node.key)
 
     def _select_node(self, key: int) -> None:
         """
@@ -7458,6 +8334,34 @@ class TopologyEditor(tk.Tk):
             max_x = max(seg_left + 20.0, seg_right - 20.0)
             node.x = min(max(node.x, min_x), max_x)
 
+    def _clamp_node_x_to_current_bus_bounds(self, node: Node, candidate_x: float) -> float:
+        """
+        NAME
+            _clamp_node_x_to_current_bus_bounds - Clamp a dragged node to the currently visible bus bounds.
+        """
+
+        if not self._should_clamp_node_to_bus(node):
+            return candidate_x
+        bus_index = min(max(node.bus_index, 0), max(len(self._bus_offsets) - 1, 0))
+        draw_state = self.__dict__.get("_draw_state", {}) or {}
+        bus_lefts = list(draw_state.get("bus_lefts", self._bus_lefts))
+        bus_rights = list(draw_state.get("bus_rights", self._bus_rights))
+        if bus_index >= len(bus_lefts) or bus_index >= len(bus_rights):
+            eff_lefts, eff_rights = self._effective_bus_bounds()
+            bus_lefts = list(eff_lefts)
+            bus_rights = list(eff_rights)
+        if bus_index >= len(bus_lefts) or bus_index >= len(bus_rights):
+            return candidate_x
+        seg_left = min(float(bus_lefts[bus_index]), float(bus_rights[bus_index]))
+        seg_right = max(float(bus_lefts[bus_index]), float(bus_rights[bus_index]))
+        node_scale = max(0.6, min(2.0, float(getattr(node, "scale", 1.0))))
+        node_box_w, _node_box_h = self._node_box_dims(node, 1.0)
+        half_w = (node_box_w * node_scale) / 2.0
+        pad = max(20.0, half_w + 10.0)
+        min_x = min(seg_left + pad, seg_right - pad)
+        max_x = max(seg_left + pad, seg_right - pad)
+        return min(max(candidate_x, min_x), max_x)
+
     def _node_box_y(self, node: Node, bus_y: float, box_h: float, scale: float) -> Tuple[float, float]:
         """
         NAME
@@ -7502,6 +8406,48 @@ class TopologyEditor(tk.Tk):
             return
         entry[KEY_LABEL] = new
         self._device_registry[new] = entry
+
+    def _should_split_device_on_rename(self, node_key: int, old_label: str) -> bool:
+        """
+        NAME
+            _should_split_device_on_rename - Treat a node rename as a new device when the old label is still in use.
+        """
+
+        old = str(old_label or TEXT_EMPTY).strip()
+        if not old:
+            return False
+        old_lower = old.lower()
+        if any(
+            n.key != node_key
+            and n.node_type == NODE_TYPE_DEVICE
+            and str(n.label or TEXT_EMPTY).strip().lower() == old_lower
+            for n in self._nodes
+        ):
+            return True
+        if any(str(label).strip().lower() == old_lower for label in self._non_topology_profile_labels):
+            return True
+        references = [
+            profile_name
+            for profile_name in self._profile_references_for_label(old)
+            if profile_name != self._profile_name
+        ]
+        return bool(references)
+
+    def _apply_node_label_change(self, node: Node, old_label: str, new_label: str) -> None:
+        """
+        NAME
+            _apply_node_label_change - Apply rename side effects for a node edit.
+        """
+
+        old = str(old_label or TEXT_EMPTY).strip()
+        new = str(new_label or TEXT_EMPTY).strip()
+        if not old or not new or old == new:
+            return
+        if self._should_split_device_on_rename(node.key, old):
+            return
+        self._rename_registry_label(old, new)
+        self._update_bridge_config_label_refs(old, new)
+        self._update_callout_target_labels(old, new)
 
     def _update_bridge_config_label_refs(self, old: str, new: str) -> int:
         """
@@ -7640,6 +8586,29 @@ class TopologyEditor(tk.Tk):
             if not isinstance(entry, dict):
                 continue
             changed += self._prune_bridge_config_entry_label(entry, label, label_lower)
+        if changed > COUNT_ZERO:
+            self._root_extras[KEY_BRIDGE_CONFIG] = config
+        return changed
+
+    def _prune_current_profile_bridge_config_label(self, label: str) -> int:
+        """
+        NAME
+            _prune_current_profile_bridge_config_label - Remove label refs from the active profile only.
+        """
+
+        if not label:
+            return COUNT_ZERO
+        config = self._root_extras.get(KEY_BRIDGE_CONFIG)
+        if not isinstance(config, dict):
+            return COUNT_ZERO
+        by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
+        if not isinstance(by_profile, dict):
+            return COUNT_ZERO
+        profile_name = str(self._profile_name or TEXT_EMPTY).strip()
+        entry = by_profile.get(profile_name)
+        if not isinstance(entry, dict):
+            return COUNT_ZERO
+        changed = self._prune_bridge_config_entry_label(entry, label, label.lower())
         if changed > COUNT_ZERO:
             self._root_extras[KEY_BRIDGE_CONFIG] = config
         return changed
@@ -7835,6 +8804,7 @@ class TopologyEditor(tk.Tk):
         """
         if self._selected_nodes == {key} and not self._selected_buses:
             return
+        self._selected_inventory_label = None
         self._selected_nodes = {key}
         self._selected_buses = set()
         self._sync_selection_state()
@@ -7844,8 +8814,9 @@ class TopologyEditor(tk.Tk):
         NAME
             _clear_selection - Clear all current selections.
         """
-        if not self._selected_nodes and not self._selected_buses:
+        if not self._selected_nodes and not self._selected_buses and not self._selected_inventory_label:
             return
+        self._selected_inventory_label = None
         self._selected_nodes = set()
         self._selected_buses = set()
         self._sync_selection_state()
@@ -8804,6 +9775,7 @@ class TopologyEditor(tk.Tk):
         NAME
             _select_all_nodes - Select all nodes (devices + callouts), no buses.
         """
+        self._selected_inventory_label = None
         self._selected_nodes = {n.key for n in self._nodes}
         self._selected_buses = set()
         self._sync_selection_state()
@@ -8873,6 +9845,7 @@ class TopologyEditor(tk.Tk):
         NAME
             _toggle_node_selection - Toggle a node in the multi-selection set.
         """
+        self._selected_inventory_label = None
         if key in self._selected_nodes:
             self._selected_nodes.remove(key)
         else:
@@ -8884,6 +9857,7 @@ class TopologyEditor(tk.Tk):
         NAME
             _toggle_bus_selection - Toggle a bus segment in the multi-selection set.
         """
+        self._selected_inventory_label = None
         if index in self._selected_buses:
             self._selected_buses.remove(index)
         else:
@@ -8899,6 +9873,27 @@ class TopologyEditor(tk.Tk):
             return
         self._syncing_selection = True
         try:
+            if self._selected_inventory_label and not self._selected_nodes and not self._selected_buses:
+                self._selected_key = None
+                row_id = f"{INVENTORY_ROW_PREFIX}{self._selected_inventory_label}"
+                self._suppress_list_select = True
+                try:
+                    current = self.node_list.selection()
+                    desired = (row_id,)
+                    if current != desired:
+                        for item in current:
+                            self.node_list.selection_remove(item)
+                        if self.node_list.exists(row_id):
+                            self.node_list.selection_add(row_id)
+                            self.node_list.see(row_id)
+                finally:
+                    self._suppress_list_select = False
+                self._clear_callout_details_fields()
+                self._update_details_panel(
+                    self._inventory_details_node(self._selected_inventory_label)
+                )
+                self._update_selection_overlays()
+                return
             selected_nodes = list(self._selected_nodes)
             if len(selected_nodes) == 1 and not self._selected_buses:
                 self._selected_key = selected_nodes[0]
@@ -10490,6 +11485,7 @@ class TopologyEditor(tk.Tk):
                     )
                     return
                 self._selected_buses = {bus_index}
+                self._selected_inventory_label = None
                 self._selected_nodes = set()
                 self._sync_selection_state()
                 self._push_undo()
@@ -10564,6 +11560,7 @@ class TopologyEditor(tk.Tk):
                     candidate_x, guide_x = self._apply_smart_guides(
                         anchor_node, candidate_x, self._selected_nodes
                     )
+                    candidate_x = self._clamp_node_x_to_current_bus_bounds(anchor_node, candidate_x)
                     dx_unscaled = candidate_x - anchor_start_x
                     self._guide_x = guide_x
                     self._guide_bus = anchor_node.bus_index if guide_x is not None else None
@@ -10724,6 +11721,7 @@ class TopologyEditor(tk.Tk):
         if self._snap_to_grid_var.get():
             candidate_x = self._snap_value(candidate_x)
         candidate_x, guide_x = self._apply_smart_guides(node, candidate_x, self._selected_nodes)
+        candidate_x = self._clamp_node_x_to_current_bus_bounds(node, candidate_x)
         node.x = candidate_x
         self._guide_x = guide_x
         self._guide_bus = node.bus_index if guide_x is not None else None

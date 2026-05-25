@@ -118,6 +118,8 @@ public class BridgeUiCommandHandler {
   private static final String CMD_UI_POLL_LOG = "uiPollLog";
   private static final String CMD_ACTIVE_ADD = "activeAdd";
   private static final String CMD_ACTIVE_NEXT = "activeNext";
+  private static final String CMD_MANUAL_DEVICE_DUTY_SET = "manualDeviceDutySet";
+  private static final String CMD_MANUAL_DEVICE_DUTY_CLEAR = "manualDeviceDutyClear";
   private static final String GROUP_ACTIVE = "active-group";
   private static final String TEXT_GROUP_SKIPPED_MEMBERS_HEADER = "Skipped unsupported members:\n";
   private static final String JSON_KEY_WARNINGS = "warnings";
@@ -232,6 +234,8 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_PROFILES_APPLY_MISSING_HASH = "profilesApply requires registryHash.";
   private static final String TEXT_PROFILES_APPLY_MISSING_BYTES = "profilesApply requires registryBytes.";
   private static final double SPEED_ZERO = 0.0;
+  private static final double DUTY_MIN = -1.0;
+  private static final double DUTY_MAX = 1.0;
   private static final String TEXT_PROFILES_APPLY_HASH_MISMATCH = "registryHash mismatch.";
   private static final String TEXT_PROFILES_APPLY_HASH_UNAVAILABLE = "registryHash unavailable.";
   private static final String TEXT_PROFILES_APPLY_BYTES_MISMATCH = "registryBytes mismatch.";
@@ -774,6 +778,16 @@ public class BridgeUiCommandHandler {
       @Override
       public BridgeGroupManager.SelectedState getBridgeSelected() {
         return bridgeSelected();
+      }
+
+      @Override
+      public boolean applyManualDeviceDuty(String deviceName, double duty) {
+        return BridgeUiCommandHandler.this.applyManualDeviceDuty(deviceName, duty);
+      }
+
+      @Override
+      public boolean clearManualDeviceDuty(String deviceName) {
+        return BridgeUiCommandHandler.this.clearManualDeviceDuty(deviceName);
       }
     });
 
@@ -1759,6 +1773,9 @@ public class BridgeUiCommandHandler {
       return result;
     }
     uiIngressPolicy.applyPreExecution(ingress, isTcp);
+    if (shouldBypassRobotLocalExecutor(ingress)) {
+      return executeUiCommandSwitch(ingress, cmdTs, isTcp);
+    }
     RobotLocalDispatchResult dispatchResult =
         robotLocalExecutor.submit(
             new RobotLocalCommandRequest(
@@ -1771,6 +1788,33 @@ public class BridgeUiCommandHandler {
                 cmdTs,
                 isTcp));
     return toBridgeUiResult(dispatchResult);
+  }
+
+  /**
+   * NAME
+   *   shouldBypassRobotLocalExecutor - Route protocol/session commands around active-command gating.
+   *
+   * DESCRIPTION
+   *   Session/protocol commands must remain available even when a long-running
+   *   robot-local command is active. They do not represent the active robot
+   *   actuation slot and therefore must dispatch directly to the UI command
+   *   families instead of entering the single-active-command executor.
+   */
+  private boolean shouldBypassRobotLocalExecutor(BridgeUiIngressPolicy.Ingress ingress) {
+    if (ingress == null || ingress.name == null || ingress.name.isBlank()) {
+      return false;
+    }
+    switch (ingress.name) {
+      case "uiPing":
+      case "uiHandshake":
+      case "uiDisconnect":
+      case "uiMonitorEnable":
+      case "uiMonitorDisable":
+      case "uiPollLog":
+        return true;
+      default:
+        return false;
+    }
   }
 
   private RobotLocalDispatchMode dispatchModeForUiCommand(String name) {
@@ -2159,6 +2203,7 @@ public class BridgeUiCommandHandler {
       case "groupRunTest":
       case "groupEnable":
       case "groupMemberEnable":
+      case CMD_MANUAL_DEVICE_DUTY_SET:
         return true;
       case "selectedModeSet": {
         Boolean enabled = parseUiArgBoolean(args, "enabled");
@@ -2180,6 +2225,7 @@ public class BridgeUiCommandHandler {
     switch (name) {
       case "groupDisable":
       case "groupMemberDisable":
+      case CMD_MANUAL_DEVICE_DUTY_CLEAR:
         return true;
       case "selectedModeSet": {
         Boolean enabled = parseUiArgBoolean(args, "enabled");
@@ -2623,6 +2669,8 @@ public class BridgeUiCommandHandler {
       case "groupDisable":
       case "selectedDeviceSet":
       case "selectedModeSet":
+      case CMD_MANUAL_DEVICE_DUTY_SET:
+      case CMD_MANUAL_DEVICE_DUTY_CLEAR:
       case CMD_PROFILE_ACTIVATE:
       case CMD_PROFILES_RELOAD:
       case CMD_PROFILES_APPLY:
@@ -2678,6 +2726,61 @@ public class BridgeUiCommandHandler {
     } else {
       result.outText = text != null ? text : "";
     }
+  }
+
+  /**
+   * NAME
+   *   applyManualDeviceDuty - Apply direct manual duty to one selected device.
+   *
+   * PARAMETERS
+   *   deviceName - Target device label.
+   *   duty - Requested duty in [-1, 1].
+   *
+   * RETURNS
+   *   True when the target device accepted the duty request.
+   */
+  private boolean applyManualDeviceDuty(String deviceName, double duty) {
+    if (core() == null || deviceName == null || deviceName.isBlank()) {
+      return false;
+    }
+    String target = deviceName.trim();
+    String previous = bridgeSelected().device != null ? bridgeSelected().device.trim() : TEXT_EMPTY;
+    double clamped = Math.max(DUTY_MIN, Math.min(DUTY_MAX, duty));
+    if (!previous.isBlank() && !previous.equals(target)) {
+      core().setDutyByDeviceLabel(previous, SPEED_ZERO);
+    }
+    boolean ok = core().setDutyByDeviceLabel(target, clamped);
+    if (!ok) {
+      return false;
+    }
+    bridgeSelected().device = target;
+    bridgeSelected().enabled = true;
+    return true;
+  }
+
+  /**
+   * NAME
+   *   clearManualDeviceDuty - Stop direct manual duty for the selected device.
+   *
+   * PARAMETERS
+   *   deviceName - Optional explicit device label to stop.
+   *
+   * RETURNS
+   *   True when the manual-duty state is cleared.
+   */
+  private boolean clearManualDeviceDuty(String deviceName) {
+    if (core() == null) {
+      return false;
+    }
+    String target = deviceName != null && !deviceName.isBlank()
+        ? deviceName.trim()
+        : bridgeSelected().device != null ? bridgeSelected().device.trim() : TEXT_EMPTY;
+    if (!target.isBlank()) {
+      core().setDutyByDeviceLabel(target, SPEED_ZERO);
+    }
+    bridgeSelected().enabled = false;
+    bridgeSelected().device = TEXT_EMPTY;
+    return true;
   }
 
   /**

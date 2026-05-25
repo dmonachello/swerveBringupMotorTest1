@@ -32,6 +32,8 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
   private static final String CMD_GROUP_RUN_TEST = "groupRunTest";
   private static final String CMD_SELECTED_DEVICE_SET = "selectedDeviceSet";
   private static final String CMD_SELECTED_MODE_SET = "selectedModeSet";
+  private static final String CMD_MANUAL_DEVICE_DUTY_SET = "manualDeviceDutySet";
+  private static final String CMD_MANUAL_DEVICE_DUTY_CLEAR = "manualDeviceDutyClear";
 
   private static final String JSON_KEY_JSON = "json";
 
@@ -58,7 +60,9 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       CMD_GROUP_DISABLE,
       CMD_GROUP_RUN_TEST,
       CMD_SELECTED_DEVICE_SET,
-      CMD_SELECTED_MODE_SET);
+      CMD_SELECTED_MODE_SET,
+      CMD_MANUAL_DEVICE_DUTY_SET,
+      CMD_MANUAL_DEVICE_DUTY_CLEAR);
 
   /**
    * NAME
@@ -116,6 +120,10 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
     void runSelectedBringupTest();
 
     BridgeGroupManager.SelectedState getBridgeSelected();
+
+    boolean applyManualDeviceDuty(String deviceName, double duty);
+
+    boolean clearManualDeviceDuty(String deviceName);
   }
 
   private final Dependencies dependencies;
@@ -307,6 +315,39 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
         }
         selected.enabled = enabled;
         result.message = "Selected mode " + (enabled ? "on" : "off") + ".";
+        result.outText = result.message;
+        break;
+      }
+      case CMD_MANUAL_DEVICE_DUTY_SET: {
+        String deviceName = dependencies.parseUiArgString(args, "name");
+        Double duty = dependencies.parseUiArgDouble(args, "duty");
+        if (deviceName == null || duty == null) {
+          result.ok = false;
+          result.message = "manualDeviceDutySet requires args.name and args.duty.";
+          break;
+        }
+        if (dependencies.findDeviceEntryByLabel(deviceName) == null) {
+          result.ok = false;
+          result.message = "Unknown device: " + deviceName;
+          break;
+        }
+        if (!dependencies.applyManualDeviceDuty(deviceName, duty)) {
+          result.ok = false;
+          result.message = "Manual duty apply failed: " + deviceName;
+          break;
+        }
+        result.message = "Manual duty applied: " + deviceName;
+        result.outText = result.message;
+        break;
+      }
+      case CMD_MANUAL_DEVICE_DUTY_CLEAR: {
+        String deviceName = dependencies.parseUiArgString(args, "name");
+        if (!dependencies.clearManualDeviceDuty(deviceName)) {
+          result.ok = false;
+          result.message = "Manual duty clear failed.";
+          break;
+        }
+        result.message = "Manual duty cleared.";
         result.outText = result.message;
         break;
       }

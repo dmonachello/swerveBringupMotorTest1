@@ -41,9 +41,9 @@ Each feature entry includes:
 - **Surface:** robot runtime, Bringup UI, Bridge CLI.
 - **How to access:**
   - UI: `Add Motor`
-  - CLI: `add next`
+  - CLI: `instantiate next motor`
 - **When to use it:** first hardware verification, one-motor-at-a-time bringup, partial robot wiring.
-- **Do not confuse with:** `Add All Motors` / `add all`.
+- **Do not confuse with:** `Add All Motors` / `instantiate all devices`.
 - **Dependencies:** active profile selected on the robot.
 - **Current limitations:** this path is motor-oriented, not a fully general â€œany device type one at a timeâ€ mechanism.
 
@@ -53,9 +53,9 @@ Each feature entry includes:
 - **Surface:** robot runtime, Bringup UI, Bridge CLI.
 - **How to access:**
   - UI: `Add All Motors`
-  - CLI: `add all`
+  - CLI: `instantiate all devices`
 - **When to use it:** after staged verification, when the hardware is already trusted.
-- **Do not confuse with:** staged `add next`.
+- **Do not confuse with:** staged `instantiate next motor`.
 - **Dependencies:** active profile selected on the robot.
 - **Current limitations:** higher risk during early bringup because many devices become active at once.
 
@@ -104,7 +104,7 @@ Each feature entry includes:
 - **When to use it:** automated or repeatable diagnostics, encoder-confirmed motions, button-gated procedures, safety-checked test flows.
 - **Do not confuse with:** simple group analog bindings.
 - **Dependencies:** required devices must be defined in the active profile and available at runtime.
-- **Current limitations:** authoring and host-side discovery still split across `bridgeConfig.byProfile.<profile>.tests` and top-level `dslTests`.
+- **Current limitations:** authoring and host-side discovery still split across embedded per-profile test sections and top-level `dslTests`.
 
 ### Joystick Test Type
 
@@ -159,7 +159,7 @@ Each feature entry includes:
 
 - **Purpose:** control which devices inside a group actually respond.
 - **Surface:** robot runtime, Bridge CLI, config.
-- **How to access:** `member "<device>" enable|disable|toggle`
+- **How to access:** `member enable "<label>"`, `member disable "<label>"`, `member toggle "<label>"`
 - **When to use it:** staged one-motor-at-a-time bringup while keeping the broader group binding intact.
 - **Do not confuse with:** test enable/disable.
 - **Dependencies:** device must already be a member of the group.
@@ -199,6 +199,7 @@ Each feature entry includes:
 - **How to access:** `data/bringup_system.json` as canonical source.
 - **When to use it:** nearly all configuration work.
 - **Do not confuse with:** derived deploy copy.
+- **Current limitations:** checked-in deploy copies may still be edited directly during active development, but canonical schema and shared-object rules still apply.
 
 ### Derived Deploy Config
 
@@ -241,8 +242,9 @@ Each feature entry includes:
 
 - **Purpose:** store named device collections under each profile.
 - **Surface:** topology editor, CLI, robot runtime, live topology.
-- **How to access:** `bridgeConfig.byProfile.<profile>.groups`
+- **How to access:** per-profile group metadata in `bringup_system.json`
 - **When to use it:** recurring logical sets such as `krakens`, `neos`, `driveTrain`.
+- **Current limitations:** members are label-based shared objects; runtime actions apply only to members whose object type supports the requested function.
 
 ### Show Groups
 
@@ -342,7 +344,7 @@ Each feature entry includes:
 
 ### Group Overlays In Live UI
 
-- **Purpose:** visualize `bridgeConfig` groups as dashed boxes and labels.
+- **Purpose:** visualize `bridgeConfig` groups as solid outline boxes and labels.
 - **Surface:** Bringup UI live topology views.
 - **How to access:** `Show Groups` toggle.
 
@@ -383,12 +385,23 @@ Each feature entry includes:
 - **Purpose:** create and visualize CLI/runtime groups from the diagram.
 - **Surface:** topology editor.
 - **How to access:** `Groups` menu, group overlay interactions.
+- **Current limitations:** group membership is label-based and may include devices plus infrastructure nodes.
 
 ### Viewport Controls
 
 - **Purpose:** inspect large diagrams comfortably.
 - **Surface:** topology editor.
 - **How to access:** fit-to-window, scroll-wheel zoom, middle-mouse pan, zoom reset.
+- **Current limitations:** plain click must not move viewport state; zoom and fit behavior are governed by the GUI interaction stability contract.
+
+### GUI Interaction Stability Contract
+
+- **Purpose:** keep click, drag, zoom, pan, redraw, and pane layout behavior stable and predictable.
+- **Surface:** topology editor, Bringup UI.
+- **How to access:** implemented as the governing behavior contract in `FEATURE_SPEC_GUI_INTERACTION_AND_VIEWPORT_STABILITY.md`.
+- **When to use it:** any time GUI work changes viewport, selection, drag, splitter, redraw, or panel layout behavior.
+- **Do not confuse with:** visual styling guidance; this is a screen-behavior contract.
+- **Dependencies:** automated viewport/redraw checks plus manual GUI retest.
 
 ### Connection Filters
 
@@ -468,9 +481,9 @@ Each feature entry includes:
 - **Group binding:** live manual control path
 - **DSL test:** scripted test program
 
-### `add next` vs group enable
+### `instantiate next motor` vs group enable
 
-- `add next` creates devices in profile order
+- `instantiate next motor` creates devices in profile order
 - group member `enable` decides which created devices respond
 - enabled group members can force creation, so staged bringup requires disabling not-yet-approved members
 
@@ -486,4 +499,5 @@ Any new user-visible capability should update:
 - this catalog
 - `docs/FEATURE_MATRIX.md`
 - `docs/WORKFLOWS.md` when the capability changes how a task is performed
+- `docs/FEATURE_SPEC_GUI_INTERACTION_AND_VIEWPORT_STABILITY.md` when the capability changes GUI screen behavior
 

@@ -18,10 +18,13 @@ class BridgeUiGroupCommandsTest {
   private static final String CMD_GROUP_DELETE = "groupDelete";
   private static final String CMD_SHOW_DEVICE = "showDevice";
   private static final String CMD_SHOW_GROUPS = "showGroups";
+  private static final String CMD_MANUAL_DEVICE_DUTY_SET = "manualDeviceDutySet";
+  private static final String CMD_MANUAL_DEVICE_DUTY_CLEAR = "manualDeviceDutyClear";
 
   private static final String KEY_NAME = "name";
   private static final String KEY_CONFIRM = "confirm";
   private static final String KEY_JSON = "json";
+  private static final String KEY_DUTY = "duty";
 
   private static final String MSG_SHOW_GROUP_REQUIRES = "showGroup requires args.name.";
   private static final String MSG_GROUP_NOT_FOUND_PREFIX = "Group not found: ";
@@ -33,6 +36,13 @@ class BridgeUiGroupCommandsTest {
 
   private static final String GROUP_ALPHA = "alpha";
   private static final String DEVICE_MOTOR_1 = "motor1";
+  private static final int DUTY_TEST_ID = 3;
+  private static final int DUTY_TEST_MFG = 5;
+  private static final int DUTY_TEST_DEVICE_TYPE = 2;
+  private static final String DUTY_TEST_VENDOR = "REV";
+  private static final String DUTY_TEST_TYPE = "neo";
+  private static final String DUTY_TEST_MOTOR = "NEO";
+  private static final double DUTY_HALF = 0.5;
 
   @Test
   void showGroupRequiresName() {
@@ -138,6 +148,52 @@ class BridgeUiGroupCommandsTest {
     assertTrue(deps.applyShowCalled);
     assertTrue(deps.lastWantsJson);
     assertEquals(deps.expectedGroupsText, deps.lastShowText);
+  }
+
+  @Test
+  void manualDeviceDutySetActivatesSelectedDevice() {
+    TestDeps deps = new TestDeps();
+    deps.deviceByLabel.put(
+        DEVICE_MOTOR_1,
+        new BringupUtil.DeviceEntry(
+            DUTY_TEST_ID,
+            DUTY_TEST_MFG,
+            DUTY_TEST_DEVICE_TYPE,
+            DUTY_TEST_VENDOR,
+            DUTY_TEST_TYPE,
+            DEVICE_MOTOR_1,
+            DUTY_TEST_MOTOR,
+            null,
+            null,
+            null));
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_NAME, DEVICE_MOTOR_1);
+    args.addProperty(KEY_DUTY, DUTY_HALF);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_MANUAL_DEVICE_DUTY_SET, args), 0.0, true);
+
+    assertTrue(result.ok);
+    assertEquals(DEVICE_MOTOR_1, deps.selected.device);
+    assertTrue(deps.selected.enabled);
+  }
+
+  @Test
+  void manualDeviceDutyClearDisablesSelectedDevice() {
+    TestDeps deps = new TestDeps();
+    deps.selected.device = DEVICE_MOTOR_1;
+    deps.selected.enabled = true;
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_NAME, DEVICE_MOTOR_1);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_MANUAL_DEVICE_DUTY_CLEAR, args), 0.0, true);
+
+    assertTrue(result.ok);
+    assertEquals(EMPTY, deps.selected.device);
+    assertFalse(deps.selected.enabled);
   }
 
   private static BridgeUiIngressPolicy.Ingress ingress(String name, JsonObject args) {
@@ -304,6 +360,20 @@ class BridgeUiGroupCommandsTest {
     @Override
     public BridgeGroupManager.SelectedState getBridgeSelected() {
       return selected;
+    }
+
+    @Override
+    public boolean applyManualDeviceDuty(String deviceName, double duty) {
+      selected.device = deviceName;
+      selected.enabled = true;
+      return duty >= -1.0 && duty <= 1.0;
+    }
+
+    @Override
+    public boolean clearManualDeviceDuty(String deviceName) {
+      selected.device = "";
+      selected.enabled = false;
+      return true;
     }
   }
 }

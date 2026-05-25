@@ -17,6 +17,7 @@ NOTES
 """
 
 import json
+import importlib
 import time
 import tkinter as tk
 import uuid
@@ -37,7 +38,6 @@ from .bridge_ops import (
     ui_poll_log,
     ui_ping,
 )
-from .generated.robot_local_commands_generated import COMMANDS_BY_NAME, HOST_UI_SECTIONS
 from .bridge_session import BridgeEvent, BridgeSession
 from tools.common.json_io import read_json, write_json
 from tools.common.nt_labels import encode_label_for_nt
@@ -99,6 +99,26 @@ LIVE_SOURCE_TCP = "tcp"
 LIVE_SOURCE_FILE = "file"
 LIVE_CLOCK_FORMAT = "%H:%M:%S"
 LIVE_CLOCK_LABEL = "Clock:"
+DEVICE_TYPE_MOTOR = "2"
+MANUAL_DUTY_CMD_SET = "manualDeviceDutySet"
+MANUAL_DUTY_CMD_CLEAR = "manualDeviceDutyClear"
+MANUAL_DUTY_ARG_NAME = "name"
+MANUAL_DUTY_ARG_DUTY = "duty"
+MANUAL_DUTY_MIN = -1.0
+MANUAL_DUTY_MAX = 1.0
+MANUAL_DUTY_DEFAULT = 0.0
+MANUAL_DUTY_POPUP_TITLE = "Manual Motor Speed"
+MANUAL_DUTY_POPUP_OFFSET_X = 12
+MANUAL_DUTY_POPUP_OFFSET_Y = 12
+MANUAL_DUTY_POPUP_SIZE = "280x120"
+MANUAL_DUTY_SCALE_LENGTH = 220
+MANUAL_DUTY_SEND_MIN_INTERVAL_SEC = 0.05
+MANUAL_DUTY_STATUS_FMT = "Manual motor duty active: {label} = {duty:.2f}"
+MANUAL_DUTY_STOPPED_FMT = "Manual motor duty cleared: {label}"
+MANUAL_DUTY_BLOCKED_TEXT = "Manual motor control blocked: not connected."
+MANUAL_DUTY_BUSY_TEXT = "Manual motor control blocked: command in flight."
+MANUAL_DUTY_NO_LABEL = ""
+MANUAL_DUTY_VALUE_FMT = "{value:.2f}"
 TEST_NAME_EMPTY = ""
 VERSION_APP_NAME = APP_BRINGUP_UI_NAME
 VERSION_TITLE = VERSION_HEADER
@@ -143,6 +163,68 @@ VIS_PAD_TABLE = (8, 0, 8, 8)
 VIS_PAD_LEFT = (8, 0)
 VIS_COL_DEVICE_WIDTH = 240
 VIS_COL_SOURCE_WIDTH = 72
+GENERATED_MODULE_NAME = "tools.can_nt.generated.robot_local_commands_generated"
+GENERATED_INVENTORY_PATH = repo_root() / "tools" / "can_nt" / "generated" / "robot_local_command_inventory.json"
+INVENTORY_KEY_COMMANDS = "commands"
+INVENTORY_KEY_SHOW_IN_HOST_UI = "showInHostUi"
+INVENTORY_KEY_UI_SECTION = "uiSection"
+INVENTORY_KEY_NAME = "name"
+
+
+def _build_host_ui_sections_from_inventory(commands: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    NAME
+        _build_host_ui_sections_from_inventory - Build host UI sections from command inventory rows.
+    """
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for row in commands:
+        if not isinstance(row, dict):
+            continue
+        if not bool(row.get(INVENTORY_KEY_SHOW_IN_HOST_UI)):
+            continue
+        section = str(row.get(INVENTORY_KEY_UI_SECTION, NT_VALUE_EMPTY)).strip()
+        if not section:
+            continue
+        grouped.setdefault(section, []).append(dict(row))
+    sections: List[Dict[str, Any]] = []
+    for section, items in grouped.items():
+        items.sort(key=lambda row: str(row.get(INVENTORY_KEY_NAME, NT_VALUE_EMPTY)))
+        sections.append({"section": section, "commands": items})
+    return sections
+
+
+def _load_generated_command_metadata() -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    NAME
+        _load_generated_command_metadata - Load host UI command metadata with JSON fallback.
+    """
+    try:
+        generated = importlib.import_module(GENERATED_MODULE_NAME)
+        commands_by_name = getattr(generated, "COMMANDS_BY_NAME", {})
+        host_ui_sections = getattr(generated, "HOST_UI_SECTIONS", [])
+        if isinstance(commands_by_name, dict) and isinstance(host_ui_sections, list):
+            return commands_by_name, host_ui_sections
+    except Exception:
+        pass
+    try:
+        payload = read_json(GENERATED_INVENTORY_PATH)
+    except Exception:
+        return {}, []
+    commands = payload.get(INVENTORY_KEY_COMMANDS)
+    if not isinstance(commands, list):
+        return {}, []
+    commands_by_name: Dict[str, Dict[str, Any]] = {}
+    for row in commands:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get(INVENTORY_KEY_NAME, NT_VALUE_EMPTY)).strip()
+        if not name:
+            continue
+        commands_by_name[name] = row
+    return commands_by_name, _build_host_ui_sections_from_inventory(commands)
+
+
+COMMANDS_BY_NAME, HOST_UI_SECTIONS = _load_generated_command_metadata()
 
 
 def _load_profiles() -> List[str]:
@@ -364,6 +446,15 @@ class BringupControlUI(tk.Tk):
         self._poll_interval_idle = 1.0
         self._live_view: Optional[LiveTopologyView] = None
         self._visibility_live_view: Optional[LiveTopologyView] = None
+        self._manual_duty_popup: Optional[tk.Toplevel] = None
+        self._manual_duty_var = tk.DoubleVar(value=MANUAL_DUTY_DEFAULT)
+        self._manual_duty_value_var = tk.StringVar(
+            value=MANUAL_DUTY_VALUE_FMT.format(value=MANUAL_DUTY_DEFAULT)
+        )
+        self._manual_duty_label = MANUAL_DUTY_NO_LABEL
+        self._manual_duty_last_sent_value: Optional[float] = None
+        self._manual_duty_last_sent_at = 0.0
+        self._manual_duty_pending_after: Optional[str] = None
         self._profile_devices: Dict[str, Dict[str, Any]] = {}
         self._ui_command_prefs = _load_ui_command_prefs()
         self._ui_pref_vars: Dict[str, tk.BooleanVar] = {}
@@ -576,7 +667,12 @@ class BringupControlUI(tk.Tk):
         )
 
         profile_name = self._profile_box.get() if hasattr(self, "_profile_box") else ""
-        self._live_view = LiveTopologyView(parent, profile_name)
+        self._live_view = LiveTopologyView(
+            parent,
+            profile_name,
+            on_node_right_click=self._on_live_node_right_click,
+            on_left_click=self._on_live_view_left_click,
+        )
         self._live_view.set_show_groups(self._live_groups_var.get())
         self._live_view.set_visibility_enabled(self._visibility_enabled_var.get())
         self._live_view.pack(fill="both", expand=True, padx=8, pady=(0, 8))
@@ -597,7 +693,12 @@ class BringupControlUI(tk.Tk):
         body.add(topology_frame, weight=3)
 
         profile_name = self._profile_box.get() if hasattr(self, "_profile_box") else ""
-        self._visibility_live_view = LiveTopologyView(topology_frame, profile_name)
+        self._visibility_live_view = LiveTopologyView(
+            topology_frame,
+            profile_name,
+            on_node_right_click=self._on_live_node_right_click,
+            on_left_click=self._on_live_view_left_click,
+        )
         self._visibility_live_view.set_show_groups(self._live_groups_var.get())
         self._visibility_live_view.set_visibility_enabled(True)
         self._visibility_live_view.pack(fill="both", expand=True)
@@ -678,6 +779,193 @@ class BringupControlUI(tk.Tk):
         if self._visibility_live_view is not None:
             views.append(self._visibility_live_view)
         return views
+
+    def _is_manual_motor_node(self, node: object) -> bool:
+        """
+        NAME
+            _is_manual_motor_node - Return whether the live node is a motor-like device.
+        """
+        if node is None:
+            return False
+        device_type = str(getattr(node, "device_type", NT_VALUE_EMPTY)).strip()
+        return device_type == DEVICE_TYPE_MOTOR
+
+    def _on_live_node_right_click(self, node: object, event: tk.Event) -> None:
+        """
+        NAME
+            _on_live_node_right_click - Open the manual motor popup for a motor node.
+        """
+        if not self._is_manual_motor_node(node):
+            return
+        if not self._tcp_connected:
+            self._append_output(MANUAL_DUTY_BLOCKED_TEXT)
+            return
+        if self._tracker.is_pending():
+            self._append_output(MANUAL_DUTY_BUSY_TEXT)
+            return
+        label = str(getattr(node, DEVICE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+        if not label:
+            label = str(getattr(node, "label", NT_VALUE_EMPTY)).strip()
+        if not label:
+            return
+        self._open_manual_duty_popup(label, int(event.x_root), int(event.y_root))
+
+    def _on_live_view_left_click(self, _node: object, _event: tk.Event) -> None:
+        """
+        NAME
+            _on_live_view_left_click - Stop manual motor duty on the next live-view left click.
+        """
+        if self._manual_duty_popup is not None:
+            self._close_manual_duty_popup(stop_motor=True)
+
+    def _open_manual_duty_popup(self, label: str, x_root: int, y_root: int) -> None:
+        """
+        NAME
+            _open_manual_duty_popup - Show a popup slider for manual motor duty.
+        """
+        self._close_manual_duty_popup(stop_motor=True)
+        popup = tk.Toplevel(self)
+        popup.title(MANUAL_DUTY_POPUP_TITLE)
+        popup.transient(self)
+        popup.resizable(False, False)
+        popup.geometry(
+            f"{MANUAL_DUTY_POPUP_SIZE}+{x_root + MANUAL_DUTY_POPUP_OFFSET_X}+{y_root + MANUAL_DUTY_POPUP_OFFSET_Y}"
+        )
+        popup.protocol("WM_DELETE_WINDOW", lambda: self._close_manual_duty_popup(stop_motor=True))
+        body = ttk.Frame(popup, padding=8)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text=label).pack(anchor="w")
+        scale = ttk.Scale(
+            body,
+            from_=MANUAL_DUTY_MIN,
+            to=MANUAL_DUTY_MAX,
+            variable=self._manual_duty_var,
+            orient="horizontal",
+            length=MANUAL_DUTY_SCALE_LENGTH,
+            command=self._on_manual_duty_slider_changed,
+        )
+        scale.pack(fill="x", pady=(8, 4))
+        ttk.Label(body, textvariable=self._manual_duty_value_var).pack(anchor="center")
+        self._manual_duty_popup = popup
+        self._manual_duty_label = label
+        self._manual_duty_var.set(MANUAL_DUTY_DEFAULT)
+        self._manual_duty_value_var.set(
+            MANUAL_DUTY_VALUE_FMT.format(value=MANUAL_DUTY_DEFAULT)
+        )
+        self._manual_duty_last_sent_value = None
+        self._manual_duty_last_sent_at = 0.0
+        self._manual_duty_pending_after = None
+        scale.focus_set()
+
+    def _close_manual_duty_popup(self, stop_motor: bool) -> None:
+        """
+        NAME
+            _close_manual_duty_popup - Destroy the manual-duty popup and optionally stop the motor.
+        """
+        if self._manual_duty_pending_after is not None:
+            try:
+                self.after_cancel(self._manual_duty_pending_after)
+            except Exception:
+                pass
+            self._manual_duty_pending_after = None
+        label = self._manual_duty_label
+        popup = self._manual_duty_popup
+        self._manual_duty_popup = None
+        self._manual_duty_label = MANUAL_DUTY_NO_LABEL
+        self._manual_duty_last_sent_value = None
+        self._manual_duty_last_sent_at = 0.0
+        self._manual_duty_var.set(MANUAL_DUTY_DEFAULT)
+        self._manual_duty_value_var.set(
+            MANUAL_DUTY_VALUE_FMT.format(value=MANUAL_DUTY_DEFAULT)
+        )
+        if popup is not None:
+            try:
+                popup.destroy()
+            except Exception:
+                pass
+        if stop_motor and label:
+            self._send_manual_duty_clear(label)
+
+    def _schedule_manual_duty_send(self) -> None:
+        """
+        NAME
+            _schedule_manual_duty_send - Schedule a throttled manual-duty send.
+        """
+        if self._manual_duty_pending_after is not None:
+            return
+        delay_ms = int(MANUAL_DUTY_SEND_MIN_INTERVAL_SEC * 1000.0)
+        self._manual_duty_pending_after = self.after(
+            delay_ms,
+            self._flush_manual_duty_send,
+        )
+
+    def _on_manual_duty_slider_changed(self, value: str) -> None:
+        """
+        NAME
+            _on_manual_duty_slider_changed - Track popup slider changes and send throttled motor commands.
+        """
+        try:
+            duty = float(value)
+        except Exception:
+            duty = MANUAL_DUTY_DEFAULT
+        duty = max(MANUAL_DUTY_MIN, min(MANUAL_DUTY_MAX, duty))
+        self._manual_duty_value_var.set(MANUAL_DUTY_VALUE_FMT.format(value=duty))
+        now = time.time()
+        if (now - self._manual_duty_last_sent_at) >= MANUAL_DUTY_SEND_MIN_INTERVAL_SEC:
+            self._flush_manual_duty_send()
+            return
+        self._schedule_manual_duty_send()
+
+    def _flush_manual_duty_send(self) -> None:
+        """
+        NAME
+            _flush_manual_duty_send - Send the current popup duty to the robot.
+        """
+        self._manual_duty_pending_after = None
+        if not self._manual_duty_label or not self._tcp_connected:
+            return
+        if self._tracker.is_pending():
+            self._schedule_manual_duty_send()
+            return
+        duty = max(
+            MANUAL_DUTY_MIN,
+            min(MANUAL_DUTY_MAX, float(self._manual_duty_var.get())),
+        )
+        if self._manual_duty_last_sent_value is not None:
+            if abs(duty - self._manual_duty_last_sent_value) < 1e-6:
+                return
+        seq = self._send_tcp_command(
+            MANUAL_DUTY_CMD_SET,
+            {
+                MANUAL_DUTY_ARG_NAME: self._manual_duty_label,
+                MANUAL_DUTY_ARG_DUTY: duty,
+            },
+        )
+        if seq is None:
+            return
+        self._manual_duty_last_sent_value = duty
+        self._manual_duty_last_sent_at = time.time()
+        self._append_output(
+            MANUAL_DUTY_STATUS_FMT.format(
+                label=self._manual_duty_label,
+                duty=duty,
+            )
+        )
+
+    def _send_manual_duty_clear(self, label: str) -> None:
+        """
+        NAME
+            _send_manual_duty_clear - Stop the active manual-duty motor.
+        """
+        if not label or not self._tcp_connected:
+            return
+        seq = self._send_tcp_command(
+            MANUAL_DUTY_CMD_CLEAR,
+            {MANUAL_DUTY_ARG_NAME: label},
+        )
+        if seq is None:
+            return
+        self._append_output(MANUAL_DUTY_STOPPED_FMT.format(label=label))
 
     def _poll_presence_overrides(self) -> None:
         """
@@ -1966,6 +2254,7 @@ class BringupControlUI(tk.Tk):
             name = event.name
             text = event.text
             json_payload = event.json_text
+            data = None
             ts = timestamp_hms()
             header = f"{ts} OUT {seq} {name}".rstrip()
             self._append_output(header)
@@ -2088,6 +2377,7 @@ class BringupControlUI(tk.Tk):
         NAME
             _handle_close - Handle UI close and notify caller.
         """
+        self._close_manual_duty_popup(stop_motor=True)
         self.release_lock()
         if self._on_close:
             self._on_close()

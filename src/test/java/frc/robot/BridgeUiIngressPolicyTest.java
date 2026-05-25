@@ -128,6 +128,17 @@ class BridgeUiIngressPolicyTest {
   }
 
   @Test
+  void allowsStopCommandWithoutHandshake() {
+    TestDeps deps = new TestDeps();
+    BridgeUiIngressPolicy policy = new BridgeUiIngressPolicy(deps);
+
+    BridgeUiIngressPolicy.Ingress ingress = policy.parseIngress(CMD_STOP, "{}", "clientA");
+    BridgeUiIngressPolicy.ValidationFailure failure = policy.validateIngress(ingress, true);
+
+    assertNull(failure);
+  }
+
+  @Test
   void allowsDisabledRobotForShowTestsCommand() {
     TestDeps deps = new TestDeps();
     deps.robotEnabled = false;

@@ -14,7 +14,7 @@ DESCRIPTION
 
 from dataclasses import dataclass
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import tkinter as tk
 from tkinter import ttk
@@ -225,6 +225,9 @@ class LiveNode:
     y: Optional[float] = None
     free_y: Optional[float] = None
     interface: str = INTERFACE_CAN
+
+
+RIGHT_CLICK_BUTTON = "<Button-3>"
 
 
 def _load_profiles_payload() -> Tuple[Optional[Dict[str, object]], str]:
@@ -476,7 +479,13 @@ class LiveTopologyView(ttk.Frame):
         LiveTopologyView - Read-only topology canvas with live overlays.
     """
 
-    def __init__(self, parent: tk.Widget, profile_name: str) -> None:
+    def __init__(
+        self,
+        parent: tk.Widget,
+        profile_name: str,
+        on_node_right_click: Optional[Callable[[LiveNode, tk.Event], None]] = None,
+        on_left_click: Optional[Callable[[Optional[LiveNode], tk.Event], None]] = None,
+    ) -> None:
         super().__init__(parent)
         self._profile_name = profile_name
         self._nodes: List[LiveNode] = []
@@ -507,6 +516,8 @@ class LiveTopologyView(ttk.Frame):
         self._bridge_groups: List[Dict[str, object]] = []
         self._show_groups = True
         self._runtime_fingerprint: Optional[Tuple[object, ...]] = None
+        self._on_node_right_click_cb = on_node_right_click
+        self._on_left_click_cb = on_left_click
         self._connection_filter_vars = {
             key: tk.BooleanVar(value=True) for key in CONNECTION_FILTERS_ORDER
         }
@@ -544,6 +555,7 @@ class LiveTopologyView(ttk.Frame):
         self._canvas.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
         self._canvas.bind("<Configure>", self._redraw)
         self._canvas.bind("<Button-1>", self._on_canvas_click)
+        self._canvas.bind(RIGHT_CLICK_BUTTON, self._on_canvas_right_click)
         self._canvas.bind("<ButtonPress-2>", self._on_canvas_pan_press)
         self._canvas.bind("<B2-Motion>", self._on_canvas_pan_drag)
         self._canvas.bind("<ButtonRelease-2>", self._on_canvas_pan_release)
@@ -898,14 +910,38 @@ class LiveTopologyView(ttk.Frame):
         """
         x = self._canvas.canvasx(event.x)
         y = self._canvas.canvasy(event.y)
+        selected_node: Optional[LiveNode] = None
         for key, bounds in self._node_bounds.items():
             x0, y0, x1, y1 = bounds
             if x0 <= x <= x1 and y0 <= y <= y1:
-                self._selected_node = next((n for n in self._nodes if n.key == key), None)
+                selected_node = next((n for n in self._nodes if n.key == key), None)
+                self._selected_node = selected_node
                 self._update_details()
+                break
+        if selected_node is None:
+            self._selected_node = None
+            self._update_details()
+        if callable(self._on_left_click_cb):
+            self._on_left_click_cb(self._selected_node, event)
+
+    def _on_canvas_right_click(self, event: tk.Event) -> None:
+        """
+        NAME
+            _on_canvas_right_click - Route right-clicks on nodes to the owner callback.
+        """
+        x = self._canvas.canvasx(event.x)
+        y = self._canvas.canvasy(event.y)
+        for key, bounds in self._node_bounds.items():
+            x0, y0, x1, y1 = bounds
+            if x0 <= x <= x1 and y0 <= y <= y1:
+                node = next((n for n in self._nodes if n.key == key), None)
+                if node is None:
+                    return
+                self._selected_node = node
+                self._update_details()
+                if callable(self._on_node_right_click_cb):
+                    self._on_node_right_click_cb(node, event)
                 return
-        self._selected_node = None
-        self._update_details()
 
     def _on_mousewheel_zoom(self, event: tk.Event) -> None:
         """
