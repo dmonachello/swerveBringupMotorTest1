@@ -81,6 +81,20 @@ Purpose: Describe how data moves between parts.
 - `schema_version` (4), `data_version` (`YYYY-MM-DD_HHMMSS`), and `data_hash` must be present and consistent across copies.
 - Profiles reference devices by label only; device identity lives in the devices table.
 
+## Config Structure
+Purpose: explain how one system config file relates devices to profiles.
+
+- One `bringup_system.json` system config file can contain multiple profiles.
+- The system config file defines the shared device inventory once in `devices[]`.
+- Each profile then includes the subset of those device labels it wants in `profiles.<name>.devices[]`.
+
+Plain language:
+
+- `defined` means the loaded system config knows the device exists
+- `in profile` means the currently selected profile chooses to use that device
+
+A device can be defined in the loaded system config but absent from the current profile.
+
 ## File Map (By Surface)
 Purpose: Clarify which files each surface reads/writes and how often they change.
 

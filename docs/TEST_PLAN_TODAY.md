@@ -1,304 +1,58 @@
-# Test Plan (Today)
+# Test Plan Today - May 23, 2026
 
 ## Purpose
-Validate the new storage layers (JsonStore + Schema Store) and their CLI/UI integrations with explicit commands.
 
-## Group and Targeting V1 Update (April 20, 2026)
+Provide the current operator-facing regression plan for this workspace.
 
-Purpose: add required checks for finalized group and target semantics.
+For the full current-system plan, use:
 
-- Enforce case-insensitive exact name matching.
-- Enforce one shared namespace for devices and groups.
-- Verify `active` is reserved, visible, non-persistent, and reset on save/commit.
-- Verify set semantics for members (duplicate add warn/no-op, missing remove warn/no-op).
-- Verify delete protections for referenced groups/devices.
-- Verify non-interactive copy to existing named group fails with no mutation.
+- [TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md](./TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md)
 
-## Preconditions
-- Repo root: `%USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1`
-- Python available on PATH.
-- Use `--no-can --no-nt` for local CLI testing.
+This file is the short daily entrypoint.
 
-## Testing Notes Workflow
-Purpose: keep multiple test passes clean while preserving prior results.
+## Today’s Gate
 
-- Add new notes under `SID_COMMENT:` during a fresh pass.
-- After each pass, replace `SID_COMMENT:` with `TESTING_RESULTS:` to archive the run.
-- Leave `TESTING_RESULTS:` blocks in place; only `SID_COMMENT:` should be reused for the next pass.
+Run these in order from the repo root:
 
----
-
-## Updates (Findings + Fixes)
-Purpose: capture what was learned and corrected during this test pass.
-
-TESTING_RESULTS:
-- A6 requires NT: `diagnose motor` fails in local-only mode; use `--rio` with NT enabled.
-- UI requires NT: `--ui --no-nt` is invalid; run UI with `--rio <ip>`.
-- Live topology view: `python -m tools.can_topology.live_topology_view` exits (no entrypoint). Removed from today’s plan.
-- Topology editor DIO behavior:
-  - DIO devices render on a DIO rail (off the CAN bus).
-  - DIO wire anchors top-center of roboRIO to top-center of the DIO box.
-  - Attachment links use actual box bounds for consistent endpoints.
-  - DIO missing attachment/wire warns on save (no longer invalid).
-  - DIO drag no longer jumps at drag start or release.
-  - DIO layout persistence fixed with `dioFreeYMode` and migration on load.
-- Legend: link semantics added (attachment, DIO wire, CAN bus).
-- Label rename:
-  - CLI `rename device` auto-updates references and prints INFO summary.
-  - Topology editor shows a rename confirmation and updates references on accept.
-
----
-
-## A) CLI Tests (Explicit Commands)
-
-### A1) Start the CLI (local only)
-```
-cd %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1
-python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
+```powershell
+python tools\common\tests\test_schema_store_profiles.py
+python tools\common\tests\test_device_catalog.py
+python tools\can_nt\tests\test_bridge_cli_visibility.py
+python tools\can_nt\tests\test_bridge_cli_robot_test_dsl_cli.py
+.\gradlew.bat test
+python tools\can_nt\scripts\bridge_cli_v1_group_targeting_regression.py
+python tools\can_nt\scripts\bridge_cli_group_targeting_4m2g3t_regression.py
 ```
 
 Expected:
-- CLI prompt appears.
-- No crash.
 
-### A2) Validate local config (Schema Store path)
-Commands:
-```
-configure terminal
-validate config
-end
-```
+- all commands succeed
+- zero regression failures are reported
 
-Expected:
-- `OK: Config is valid.` or explicit error list with locations.
+## Focus Areas
 
-TESTING_RESULTS:
-Observed: Local CLI config mode enters successfully.
+Today’s plan specifically covers:
 
-bridge-profile-home_031226> configure terminal
-SUCCESS [EXECUTOR.SUCCESS]
-DETAIL: Success.
-bridge(config-profile-home_031226)# validate config
-OK: Config is valid.
-SUCCESS [CONFIG.VALID]
-DETAIL: Config valid.
-bridge(config-profile-home_031226)#
+- unified global bindings schema
+- `bringup_bindings.json` root `schema_version: 5`
+- deploy-owned config under `src/main/deploy/`
+- removal of legacy local interactive test authoring
+- DSL import/validate/show workflow
+- robot-local command modularization compatibility
 
+## Current Rules To Check
 
-### A3) Validate bindings (Schema Store path)
-Commands:
-```
-configure terminal
-bindings validate
-end
-```
+- `bringup_system.json` and `bringup_bindings.json` are the active config sources
+- deleted `data\` config ownership is not referenced by current workflows
+- global axis mappings live in `bindings[]` with `input: "axis"` and `mode: "analog"`
+- top-level `axes[]` is no longer current
+- `bindings axis ...` is no longer current CLI syntax
+- `test create`, `type`, `inputSource`, and similar legacy interactive local test authoring commands are no longer current
 
-Expected:
-- `OK: Config is valid.` or a bindings-specific error list.
+## If Manual Follow-Up Is Needed
 
-TESTING_RESULTS:
-Observed: Bindings validation reports OK (both spellings tested).
+Use the detailed procedures in:
 
-bridge(config-profile-home_031226)# bindings validate
-OK: Config is valid.
-SUCCESS [CONFIG.VALID]
-DETAIL: Config valid.
-bridge(config-profile-home_031226)# validate bindings
-OK: Config is valid.
-SUCCESS [CONFIG.VALID]
-DETAIL: Config valid.
-bridge(config-profile-home_031226)#
-
-
-### A4) Validate CAN mappings (Schema Store path)
-Commands:
-```
-configure terminal
-can-mappings validate
-end
-```
-
-TESTING_RESULTS:
-Observed: CAN mappings validation reports OK and show works.
-
-bridge(config-profile-home_031226)# can-mappings validate
-OK: Config is valid.
-SUCCESS [CONFIG.VALID]
-DETAIL: Config valid.
-bridge(config-profile-home_031226)# vali can-mappings
-OK: Config is valid.
-SUCCESS [CONFIG.VALID]
-DETAIL: Config valid.
-bridge(config-profile-home_031226)# show can-mappings
-SOURCE: local
-Local CAN mappings:
-  manufacturers:
-    0=Broadcast
-    1=NI
-    2=LuminaryMicro
-    3=DEKA
-    4=CTRE
-    5=REV
-    6=Grapple
-    7=MindSensors
-    8=TeamUse
-    9=KauaiLabs
-    10=Copperforge
-    11=PlayingWithFusion
-    12=Studica
-    13=TheThriftyBot
-    14=ReduxRobotics
-    15=AndyMark
-    16=VividHosting
-    17=VertosRobotics
-    18=SWYFTRobotics
-    19=LumynLabs
-    20=BrushlandLabs
-  device-types:
-    0=BroadcastMessages
-    1=RobotController
-    2=MotorController
-    3=RelayController
-    4=GyroSensor
-    5=Accelerometer
-    6=DistanceSensor
-    7=Encoder
-    8=PowerDistributionModule
-    9=PneumaticsController
-    10=Miscellaneous
-    11=IOBreakout
-    12=ServoController
-    13=ColorSensor
-    31=FirmwareUpdate
-SUCCESS [EXECUTOR.SUCCESS]
-DETAIL: Success.
-bridge(config-profile-home_031226)#
-
-
-
-Expected:
-- `OK: Config is valid.` or a mappings-specific error list.
-
-### A5) Show dirty state
-Commands:
-```
-show config dirty
-```
-
-Expected:
-- `Local dirty state:` block prints all dirty flags.
-
-TESTING_RESULTS:
-Observed: Dirty state is clean after validation-only operations.
-
-bridge(config-profile-home_031226)# show config dirty
-SOURCE: local
-Local dirty state:
-  bindings=false
-  can-mappings=false
-  groups=false
-  profiles=false
-  tests=false
-  (clean)
-SUCCESS [EXECUTOR.SUCCESS]
-DETAIL: Success.
-bridge(config-profile-home_031226)#
-
-
-### A6) Diagnose motor (runtime-state required)
-Note:
-- This step requires a live NetworkTables connection to the roboRIO.
-- Do not use `--no-nt` for this step; restart the CLI with NT enabled.
-
-Commands:
-```
-python tools\can_nt\can_nt_bridge.py --cli --no-can --rio 172.22.11.2
-connect
-diagnose motor "Drive Motor (id 2)"
-```
-
-Expected:
-- Prints a `Likely causes:` block with ranked causes.
-- If telemetry is missing, prints `UNKNOWN` and a `Missing fields:` list.
-
----
-
-TESTING_RESULTS:
-Observed: Startup prints a warning before `connect` runs.
-Explanation: The CLI loads local config first and only connects after you issue `connect`, so the warning is expected until then.
-
-%USERPROFILE%\swerveBringupMotorTest1-main>python tools\can_nt\can_nt_bridge.py --cli --no-can --rio 172.22.11.2
-Version
-can_nt_bridge: 0.1.1
-git: status_codes-2026-04-02-dirty
-git-sha: b04255a
-git-branch: status_codes
-git-dirty: dirty
-build-time: 2026-04-02T14:10:52-04:00
-Profiles data_version: 2026-04-03_001836
-Profiles data_hash: 77d4dadc64d7656ab13d7cfed6d8242254785e990645cf342d28a2090c744374
-Version
-bridge_cli: 0.3.0
-git: status_codes-2026-04-02-dirty
-git-sha: b04255a
-git-branch: status_codes
-git-dirty: dirty
-build-time: 2026-04-02T14:10:52-04:00
-Loaded 0 group(s) for profile home_031226 from %USERPROFILE%\swerveBringupMotorTest1-main\data\bringup_system.json.
-WARNING: Robot not connected; local config loaded only.
-Loaded default profiles: %USERPROFILE%\swerveBringupMotorTest1-main\data\bringup_system.json
-Loaded bindings: %USERPROFILE%\swerveBringupMotorTest1-main\src\main\deploy\bringup_bindings.json
-Loaded CAN mappings: %USERPROFILE%\swerveBringupMotorTest1-main\src\main\deploy\can_mappings.json
-bridge-profile-home_031226>
-
-
-## B) UI Tests
-
-### B1) Bridge UI loads tests from store
-Command:
-```
-cd %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1
-python tools\can_nt\can_nt_bridge.py --ui --no-can --rio 172.22.11.2
-```
-
-Expected:
-- Test list populates.
-- Tests are loaded from `bringup_system.json` (`bridgeConfig.byProfile.<profile>.tests`).
-  - Canonical: `data/bringup_system.json`
-  - Fallback: `src/main/deploy/bringup_system.json`
-
-TESTING_RESULTS:
-Observed: UI launches when started with NT enabled (`--rio <ip>`), and the test list populates.
-
-%USERPROFILE%\swerveBringupMotorTest1-main>
-
-## C) Topology Editor Tests
-
-### C1) Open default profile path (store-backed)
-Command:
-```
-cd %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1
-python -m tools.can_topology.can_top_editor
-```
-
-Actions:
-- File ? Open Profile
-- Select `data\bringup_system.json`
-
-Expected:
-- Loads without error.
-- devices table and profiles populate.
-
----
-
-## D) Regression Compile Checks
-Command:
-```
-cd %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1
-python -m py_compile tools\config\json_store.py tools\config\schema_store.py tools\config\config_store.py tools\can_nt\bridge_cli.py tools\can_nt\bringup_ui.py tools\can_topology\live_topology_view.py tools\can_topology\can_top_editor.py
-```
-
-Expected:
-- No syntax errors.
-
-
+- [TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md](./TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md)
+- [TEST_PLAN_BINDINGS_FUNCTIONALITY.md](./TEST_PLAN_BINDINGS_FUNCTIONALITY.md)
+- [TESTING_WINDOWS_OFFLINE.md](./TESTING_WINDOWS_OFFLINE.md)

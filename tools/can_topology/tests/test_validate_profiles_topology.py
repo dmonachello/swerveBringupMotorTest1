@@ -15,7 +15,7 @@ class ValidateProfilesTopologyTests(unittest.TestCase):
 
     def _base_payload(self) -> dict:
         payload = {
-            "schema_version": 4,
+            "schema_version": 5,
             "data_version": "2026-05-09_topology_test",
             "data_hash": "",
             "default_profile": "demo",
@@ -84,6 +84,16 @@ class ValidateProfilesTopologyTests(unittest.TestCase):
 
     def test_accepts_valid_topology_graph(self) -> None:
         errors, warnings = self._validate(self._base_payload())
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+
+    def test_accepts_object_type_without_legacy_node_type(self) -> None:
+        payload = self._base_payload()
+        for node in payload["topology"]["profiles"]["demo"]["nodes"]:
+            node["objectType"] = node.pop("nodeType")
+
+        errors, warnings = self._validate(payload)
+
         self.assertEqual(errors, [])
         self.assertEqual(warnings, [])
 

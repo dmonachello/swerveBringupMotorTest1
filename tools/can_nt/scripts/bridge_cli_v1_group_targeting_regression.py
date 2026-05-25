@@ -60,10 +60,10 @@ CMD_GROUP_CLEAR_INTAKE = "group clear intake"
 CMD_GROUP_CLEAR_INTAKE_V2 = "group clear intake_v2"
 CMD_GROUP_RENAME_INTAKE_INTAKE_V2 = "group rename intake intake_v2"
 CMD_GROUP_INTAKE_V2 = "group intake_v2"
-CMD_ADD_NEXT = "add next"
-CMD_ADD_NEXT_GROUP_ACTIVE = "add next group active"
-CMD_ADD_ALL_GROUP_INTAKE = "add all group intake"
-CMD_ADD_ALL_GROUP_INTAKE_V2 = "add all group intake_v2"
+CMD_MEMBER_ASSIGN_NEXT = "member assign next"
+CMD_GROUP_MEMBER_ASSIGN_NEXT_ACTIVE = "group member assign next active"
+CMD_GROUP_MEMBER_ASSIGN_ALL_INTAKE = "group member assign all intake"
+CMD_GROUP_MEMBER_ASSIGN_ALL_INTAKE_V2 = "group member assign all intake_v2"
 CMD_COPY_GROUP_INTAKE_ACTIVE = "copy group intake active"
 CMD_COPY_GROUP_INTAKE_SHOOTER = "copy group intake shooter"
 CMD_COPY_GROUP_INTAKE_V2_ACTIVE = "copy group intake_v2 active"
@@ -78,13 +78,17 @@ CMD_DEVICE_ID_25 = "id 25"
 CMD_DEVICE_ID_26 = "id 26"
 CMD_SHOW_DEVICE_MOTOR1_JSON = "show device motor1 --json --pretty"
 CMD_SHOW_DEVICE_REGISTRY_MOTOR1 = "show device registry motor1"
-CMD_ADD_DEVICE_MOTOR1 = "add device motor1"
-CMD_REMOVE_DEVICE_MOTOR1 = "remove device motor1"
+CMD_MEMBER_ASSIGN_MOTOR1 = "member assign motor1"
+CMD_MEMBER_REMOVE_MOTOR1 = "member remove motor1"
+CMD_LOAD_SOURCES = "load sources"
 CMD_SAVE_LOCAL_CONFIG_PREFIX = "save bridge-config "
 FLAG_FORCE = " --force"
 EXPECTED_CONFIG_RELATIVE_PATH = Path(
     "tests/regression/expected/group_targeting_local_expected_config.json"
 )
+DEPLOY_CONFIG_RELATIVE_PATH = Path("src/main/deploy/bringup_system.json")
+DEPLOY_BINDINGS_RELATIVE_PATH = Path("src/main/deploy/bringup_bindings.json")
+DEPLOY_CAN_MAPPINGS_RELATIVE_PATH = Path("src/main/deploy/can_mappings.json")
 
 KEY_SCHEMA_VERSION = "schemaVersion"
 KEY_GENERATED_AT = "generatedAt"
@@ -97,6 +101,7 @@ KEY_ENABLED = "enabled"
 KEY_MEMBERS = "members"
 KEY_BINDINGS = "bindings"
 KEY_DEVICE = "device"
+KEY_LABEL = "label"
 KEY_SELECTED_DEVICE = "selectedDevice"
 KEY_TESTS = "tests"
 
@@ -104,13 +109,14 @@ TEXT_EXPECTED_CONFIG_MISSING = "expected config fixture missing"
 TEXT_EXPECTED_CONFIG_LOAD_FAILED = "expected config fixture load failed"
 TEXT_ACTUAL_CONFIG_LOAD_FAILED = "actual saved config load failed"
 
-MSG_WARNING_DUPLICATE = "WARNING: device already in group"
-MSG_WARNING_MISSING = "WARNING: device not in group"
-MSG_ERROR_NO_DEVICE_NEXT = "ERROR: no device available for add next."
+MSG_WARNING_DUPLICATE = "WARNING: label already in group"
+MSG_WARNING_MISSING = "WARNING: label not in group"
+MSG_ERROR_NO_DEVICE_NEXT = "ERROR: no device available for member assign next."
 MSG_ERROR_COPY_NON_INTERACTIVE = "ERROR: non-interactive copy to existing group"
 MSG_ERROR_COPY_SAME_SOURCE_DEST = "ERROR: source and destination are the same"
 MSG_JSON_LABEL_MOTOR1 = '"label": "motor1"'
 MSG_HINT_SHOW = "HINT: show <target>"
+MSG_EXECUTOR_FAILED = "ERROR [EXECUTOR.FAILED]"
 
 OUTCOME_PASS = "PASS"
 OUTCOME_FAIL = "FAIL"
@@ -186,13 +192,29 @@ def _expect_not_code(label: str, actual_code: int, forbidden_codes: Iterable[int
     return CheckResult(label=label, ok=ok, details=detail)
 
 
+def _expect_not_contains(label: str, output: str, forbidden: str) -> CheckResult:
+    """
+    NAME
+        _expect_not_contains - Validate forbidden substring is absent from output.
+    """
+    ok = forbidden not in output
+    detail = f"absent={forbidden!r}"
+    if not ok:
+        detail = detail + f" output={output.strip()}"
+    return CheckResult(label=label, ok=ok, details=detail)
+
+
 def _new_cli() -> BridgeCli:
     """
     NAME
         _new_cli - Construct a disconnected batch BridgeCli for local tests.
     """
     session = BridgeSession(RIO_HOST_LOOPBACK, TCP_PORT_DUMMY, auto_handshake=False)
-    return BridgeCli(session, batch=True)
+    cli = BridgeCli(session, batch=True)
+    cli._local_root_path = str(REPO_ROOT / DEPLOY_CONFIG_RELATIVE_PATH)
+    cli._bindings_path = str(REPO_ROOT / DEPLOY_BINDINGS_RELATIVE_PATH)
+    cli._can_mappings_path = str(REPO_ROOT / DEPLOY_CAN_MAPPINGS_RELATIVE_PATH)
+    return cli
 
 
 def _load_json_file(path: Path) -> Tuple[bool, object]:
@@ -237,11 +259,11 @@ def _normalize_group_payload(payload: object) -> object:
                 continue
             normalized_members.append(
                 {
-                    KEY_DEVICE: str(member.get(KEY_DEVICE, "")).strip(),
+                    KEY_LABEL: str(member.get(KEY_LABEL, member.get(KEY_DEVICE, ""))).strip(),
                     KEY_ENABLED: bool(member.get(KEY_ENABLED, True)),
                 }
             )
-        normalized_members.sort(key=lambda value: value.get(KEY_DEVICE, ""))
+        normalized_members.sort(key=lambda value: value.get(KEY_LABEL, ""))
         normalized_groups.append(
             {
                 KEY_NAME: str(item.get(KEY_NAME, "")).strip(),
@@ -278,9 +300,9 @@ def _run_regression() -> List[CheckResult]:
     code, out = _run_command(cli, CMD_CONFIGURE_TERMINAL)
     results.append(_expect_code("enter config", code, STATUS_OK_CODES, out))
 
-    code, out = _run_command(cli, CMD_ADD_NEXT)
-    results.append(_expect_code("add next without devices fails", code, (SS__CONFIG__INVALID,), out))
-    results.append(_expect_contains("add next missing device message", out, MSG_ERROR_NO_DEVICE_NEXT))
+    code, out = _run_command(cli, CMD_MEMBER_ASSIGN_NEXT)
+    results.append(_expect_code("member assign next without devices fails", code, (SS__CONFIG__INVALID,), out))
+    results.append(_expect_contains("member assign next missing device message", out, MSG_ERROR_NO_DEVICE_NEXT))
 
     code, out = _run_command(cli, CMD_GROUP_CREATE_INTAKE)
     results.append(_expect_code("create intake", code, STATUS_OK_CODES, out))
@@ -307,7 +329,7 @@ def _run_regression() -> List[CheckResult]:
     code, out = _run_command(cli, CMD_GROUP_INTAKE)
     results.append(_expect_code("enter intake context", code, STATUS_OK_CODES, out))
 
-    code, out = _run_command(cli, CMD_ADD_DEVICE_MOTOR1)
+    code, out = _run_command(cli, CMD_MEMBER_ASSIGN_MOTOR1)
     results.append(_expect_code("add undefined member fails", code, (SS__CONFIG__INVALID, SS__DEVICE__NOT_DEFINED), out))
 
     code, out = _run_command(cli, CMD_EXIT)
@@ -352,17 +374,17 @@ def _run_regression() -> List[CheckResult]:
     code, out = _run_command(cli, CMD_GROUP_INTAKE)
     results.append(_expect_code("re-enter intake", code, STATUS_OK_CODES, out))
 
-    code, out = _run_command(cli, CMD_ADD_DEVICE_MOTOR1)
+    code, out = _run_command(cli, CMD_MEMBER_ASSIGN_MOTOR1)
     results.append(_expect_code("add motor1 member", code, STATUS_OK_CODES, out))
 
-    code, out = _run_command(cli, CMD_ADD_DEVICE_MOTOR1)
+    code, out = _run_command(cli, CMD_MEMBER_ASSIGN_MOTOR1)
     results.append(_expect_code("duplicate member no-op", code, STATUS_OK_CODES, out))
     results.append(_expect_contains("duplicate warning", out, MSG_WARNING_DUPLICATE))
 
-    code, out = _run_command(cli, CMD_REMOVE_DEVICE_MOTOR1)
+    code, out = _run_command(cli, CMD_MEMBER_REMOVE_MOTOR1)
     results.append(_expect_code("remove existing member", code, STATUS_OK_CODES, out))
 
-    code, out = _run_command(cli, CMD_REMOVE_DEVICE_MOTOR1)
+    code, out = _run_command(cli, CMD_MEMBER_REMOVE_MOTOR1)
     results.append(_expect_code("remove missing member no-op", code, STATUS_OK_CODES, out))
     results.append(_expect_contains("missing warning", out, MSG_WARNING_MISSING))
 
@@ -387,7 +409,7 @@ def _run_regression() -> List[CheckResult]:
     code, out = _run_command(cli, CMD_EXIT)
     results.append(_expect_code("exit intake_v2 context", code, STATUS_OK_CODES, out))
 
-    code, out = _run_command(cli, CMD_ADD_ALL_GROUP_INTAKE_V2)
+    code, out = _run_command(cli, CMD_GROUP_MEMBER_ASSIGN_ALL_INTAKE_V2)
     results.append(_expect_code("add all into intake_v2", code, STATUS_OK_CODES, out))
 
     code, out = _run_command(cli, CMD_COPY_GROUP_ACTIVE_ACTIVE)
@@ -410,7 +432,7 @@ def _run_regression() -> List[CheckResult]:
     code, out = _run_command(cli, CMD_GROUP_CLEAR_INTAKE_V2)
     results.append(_expect_code("clear intake", code, STATUS_OK_CODES, out))
 
-    code, out = _run_command(cli, CMD_ADD_NEXT_GROUP_ACTIVE)
+    code, out = _run_command(cli, CMD_GROUP_MEMBER_ASSIGN_NEXT_ACTIVE)
     results.append(_expect_code("add next active", code, STATUS_OK_CODES, out))
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -465,6 +487,10 @@ def _run_regression() -> List[CheckResult]:
                         details=compare_details,
                     )
                 )
+
+    code, out = _run_command(cli, CMD_LOAD_SOURCES)
+    results.append(_expect_code("load sources succeeds with tests source present", code, STATUS_OK_CODES, out))
+    results.append(_expect_not_contains("load sources no executor failure", out, MSG_EXECUTOR_FAILED))
 
     return results
 

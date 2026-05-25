@@ -342,15 +342,20 @@ Notes:
 
 ## CLI Commands
 
+Historical note:
+
+- The interactive local authoring flow described below was superseded by DSL file import/export/validate.
+- Current supported host-side authoring uses `test import`, `test export`, `test validate`, normalized `show` output, and `tools/can_nt/scripts/dsl_tests_config_tool.py`.
+
 ### Core Flow
 
 1. `configure terminal`
 2. `test set <name>` (selects or creates the set)
-3. `test create <name>` (enters test mode)
-4. `test <name>` (existing tests only)
-5. `type joystick|button|composite|deadbandSweep|deviceAction`
-6. `device add <device label>`
-7. joystick only:
+3. historical: `test create <name>` (removed)
+4. historical: `test <name>` (removed as a live local editor)
+5. historical: `type joystick|button|composite|deadbandSweep|deviceAction`
+6. historical: `device add <device label>`
+7. historical joystick only:
 
    * `inputSource <controller>.<inputId>`
    * `deadband <value>`
@@ -421,11 +426,12 @@ Examples:
 
 ## Editing Behavior
 
-* `test create <name>` creates a new test
-* `test <name>` enters edit mode
-* Changes apply to in-memory model
-* `end` exits edit mode without saving
-* `save config` persists all changes (tests are stored in `bringup_system.json`).
+Current behavior:
+
+* edit DSL source files
+* `test import <name> <path>` updates the stored test
+* `test export <name> <path>` retrieves the stored source
+* `test validate` checks the DSL-backed store
 
 ---
 

@@ -1,4 +1,4 @@
-﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+SPEC_STATUS: PARTIALLY_IMPLEMENTED
 
 Purpose: Single reference for the Bridge CLI feature, including requirements, restrictions, design, and implementation notes.
 
@@ -363,9 +363,10 @@ Config:
 - `show <...>` (same targets as exec)
 - `write tests <path>`
 - `test set <name>`
-- `test create <name>`
 - `test delete <name>`
-- `test <name>` (edit existing)
+- `test import <name> <path> [set <set_name>]`
+- `test export <name> <path>`
+- `test validate [<name>] [--json] [--pretty]`
 
 Show Output Notes:
 
@@ -383,11 +384,11 @@ Group:
 - `show members`
 - `show binding`
 - `show <target> [--json] [--pretty]`
-- `add device <device>`
-- `no device <device>`
-- `member <device> enable`
-- `member <device> disable`
-- `member <device> toggle`
+- `member assign <device>`
+- `member remove <device>`
+- `member enable <label>`
+- `member disable <label>`
+- `member toggle <label>`
 - `bind list`
 - `bind explain <binding>`
 - `bind test <binding>`
@@ -413,48 +414,14 @@ Device:
 
 Test:
 
-- `show`
-- `type joystick`
-- `type button`
-- `type composite`
-- `type deadbandSweep`
-- `type deviceAction`
-- `device add <name>`
-- `no device <name>`
-- `inputSource <controller>.<inputId>`
-- `deadband <value>`
-- `duty <value>`
-- `action toggle_led|set_color`
-- `color #RRGGBB`
-- `pattern solid`
-- `brightness <value>`
-- `duration <seconds>`
-- `rotation limit <value>`
-- `rotation encoderKey <label|internal>`
-- `rotation encoderSource <internal|sparkmax_alt|external>`
-- `rotation encoderMotorIndex <index>`
-- `rotation encoderCountsPerRev <value>`
-- `time timeout <seconds>`
-- `time onTimeout <pass|fail>`
-- `hold onRelease <pass|fail>`
-- `limitswitch onHit <pass|fail>`
-- `limitswitch id <id>`
-- `deadbandSweep startDuty <value>`
-- `deadbandSweep maxDuty <value>`
-- `deadbandSweep stepDuty <value>`
-- `deadbandSweep stepHoldSec <value>`
-- `deadbandSweep motionThresholdRot <value>`
-- `deadbandSweep requiredSamples <value>`
-- `deadbandSweep encoderKey <label|internal>`
-- `deadbandSweep encoderSource <internal|sparkmax_alt|external>`
-- `deadbandSweep encoderMotorIndex <index>`
-- `deadbandSweep encoderCountsPerRev <value>`
-- `enabled true|false|on|off`
-- `termination hold`
-- `termination time <seconds>`
-- `termination rotation <value>`
-- `termination limitswitch [id]`
-- `write tests <path>`
+- legacy local interactive test-mode editing is removed
+- current workflow uses:
+  - `test import <name> <path> [set <set_name>]`
+  - `test export <name> <path>`
+  - `test validate [<name>] [--json] [--pretty]`
+  - `show test <name>`
+  - `show test <name> normalized --json --pretty`
+  - `tools/can_nt/scripts/dsl_tests_config_tool.py`
 
 ## Control Identifiers
 
@@ -528,9 +495,9 @@ Purpose: Control participation without changing membership.
 
 Commands:
 
-- `member <device> enable`
-- `member <device> disable`
-- `member <device> toggle`
+- `member enable <label>`
+- `member disable <label>`
+- `member toggle <label>`
 
 ## Selected Device Mode
 
@@ -660,8 +627,8 @@ Example:
             "name": "swerve_drive",
             "enabled": true,
             "members": [
-              {"device": "FL_DRIVE", "enabled": true},
-              {"device": "FR_DRIVE", "enabled": true}
+              {"label": "FL_DRIVE", "enabled": true},
+              {"label": "FR_DRIVE", "enabled": true}
             ],
             "bindings": [
               {"input": "controller0.leftY", "kind": "analog"}
@@ -722,11 +689,11 @@ Config:
 
 Group:
 
-- `add device <device>` -> `groupAddDevice` `{group, device, conflictPolicy, forceMove}`
-- `no device <device>` -> `groupRemoveDevice` `{group, device}`
-- `member <device> enable` -> `groupMemberEnable` `{group, device}`
-- `member <device> disable` -> `groupMemberDisable` `{group, device}`
-- `member <device> toggle` -> `groupMemberToggle` `{group, device}`
+- `member assign <device>` -> `groupAddDevice` `{group, device, conflictPolicy, forceMove}`
+- `member remove <device>` -> `groupRemoveDevice` `{group, device}`
+- `member enable <label>` -> `groupMemberEnable` `{group, device}`
+- `member disable <label>` -> `groupMemberDisable` `{group, device}`
+- `member toggle <label>` -> `groupMemberToggle` `{group, device}`
 - `bind <input> analog` -> `groupBind` `{group, input, kind:"analog"}`
 - `bind <input> hold <value>` -> `groupBind` `{group, input, kind:"hold", value}`
 - `bind <input> toggle <value>` -> `groupBind` `{group, input, kind:"toggle", value}`
@@ -780,7 +747,7 @@ Interactive:
 bridge> show groups
 bridge> configure terminal
 bridge(config)# group swerve_drive
-bridge(config-group-swerve_drive)# add device FL_DRIVE
+bridge(config-group-swerve_drive)# member assign FL_DRIVE
 bridge(config-group-swerve_drive)# bind controller0.leftY analog
 bridge(config-group-swerve_drive)# enable
 bridge(config-group-swerve_drive)# exit
@@ -799,8 +766,8 @@ Script:
 ```
 configure terminal
 group swerve_drive
-add device FL_DRIVE
-add device FR_DRIVE
+member assign FL_DRIVE
+member assign FR_DRIVE
 bind controller0.leftY analog
 enable
 end
@@ -1034,6 +1001,8 @@ Purpose: Document the steps to update the CLI grammar and regenerate code.
 5. Commit updated generated files:
    - `tools/can_nt/bridge_cli_grammar_gen.py`
    - `tools/can_nt/bridge_cli_constants_gen.py`
+
+
 
 
 

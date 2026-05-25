@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 import time
@@ -100,6 +101,8 @@ MSG_SET_PORT_BUSY = "Port {} is already used by another device."
 PROMPT_PORT = "Port (1-{}):"
 BUS_CONNECT_DEFAULT = True
 BUS_CONNECT_DISABLED = False
+BUS_CONNECT_SIDE_LEFT = "left"
+BUS_CONNECT_SIDE_RIGHT = "right"
 PROMPT_BUS_INDEX = "Bus index (0-{}):"
 PROMPT_BUS_TITLE = "Select Bus Segment"
 PROMPT_CANNECT_TITLE = "Select CANnect Node"
@@ -141,6 +144,10 @@ TK_EVENT_MIDDLE_BUTTON_PRESS = "<ButtonPress-2>"
 TK_EVENT_MIDDLE_BUTTON_DRAG = "<B2-Motion>"
 TK_EVENT_MIDDLE_BUTTON_RELEASE = "<ButtonRelease-2>"
 TK_BBOX_ALL = "all"
+CLICK_DRAG_THRESHOLD_PX = 6.0
+GUI_INTERACTION_DEBUG_ENV = "SID_GUI_INTERACTION_DEBUG"
+GUI_INTERACTION_DEBUG_LOGDIR = "logs"
+GUI_INTERACTION_DEBUG_LOG = "gui_interaction_debug.log"
 MOUSEWHEEL_UP_NUM = 4
 MOUSEWHEEL_DOWN_NUM = 5
 ZOOM_WHEEL_STEP = 0.1
@@ -191,6 +198,7 @@ KEY_TOPOLOGY_EDGES = "edges"
 KEY_TOPOLOGY_VERSION = "version"
 KEY_TOPOLOGY_SOURCE = "source"
 KEY_TOPOLOGY_LAYOUT = "layout"
+KEY_TOPOLOGY_OBJECT_TYPE = "objectType"
 KEY_TOPOLOGY_NODE_TYPE = "nodeType"
 KEY_TOPOLOGY_DEVICE_REF = "deviceRef"
 KEY_TOPOLOGY_EDGE_ID = "id"
@@ -292,7 +300,10 @@ ATTACH_LINE_COLOR = "#7a5d00"
 WIRE_LINE_COLOR = "#1f6feb"
 POWER_LINE_COLOR = "#c05000"
 LINK_LINE_WIDTH = 2
-LINK_DASH = (6, 4)
+ATTACH_LINK_DASH = (10, 4)
+DIO_WIRE_DASH = (2, 3)
+ETHERNET_BACKBONE_DASH = (8, 4)
+ETHERNET_DEVICE_DASH = (6, 2, 1, 2)
 DIO_RAIL_OFFSET = 120.0
 COUNT_ZERO = 0
 COUNT_ONE = 1
@@ -318,6 +329,7 @@ KEY_DIAGRAM_BUS_OFFSETS = "busOffsets"
 KEY_DIAGRAM_BUS_LEFTS = "busLefts"
 KEY_DIAGRAM_BUS_RIGHTS = "busRights"
 KEY_DIAGRAM_BUS_CONNECTORS = "busConnectors"
+KEY_DIAGRAM_BUS_CONNECTOR_SIDES = "busConnectorSides"
 KEY_DIAGRAM_NODES = "nodes"
 KEY_DIAGRAM_CALLOUTS = "callouts"
 KEY_DIAGRAM_ETHERNET_LINKS = "ethernetLinks"
@@ -328,6 +340,7 @@ DIAGRAM_CONTENT_LIST_KEYS = (
     KEY_DIAGRAM_BUS_LEFTS,
     KEY_DIAGRAM_BUS_RIGHTS,
     KEY_DIAGRAM_BUS_CONNECTORS,
+    KEY_DIAGRAM_BUS_CONNECTOR_SIDES,
     KEY_DIAGRAM_NODES,
     KEY_DIAGRAM_CALLOUTS,
     KEY_DIAGRAM_ETHERNET_LINKS,
@@ -473,6 +486,9 @@ KEY_BRIDGE_SELECTED_DEVICE = (
 )
 KEY_DEVICE = profile_consts.KEY_DEVICE if profile_consts is not None else "device"
 KEY_LABEL = profile_consts.KEY_LABEL if profile_consts is not None else "label"
+KEY_OBJECT_TYPE = (
+    profile_consts.KEY_OBJECT_TYPE if profile_consts is not None else "objectType"
+)
 KEY_VENDOR = profile_consts.KEY_VENDOR if profile_consts is not None else "vendor"
 KEY_MODEL = profile_consts.KEY_MODEL if profile_consts is not None else "model"
 KEY_INTERFACE = (
@@ -492,6 +508,35 @@ KEY_TEST_DEADBAND_SWEEP = "deadbandSweep"
 KEY_TEST_LIMIT_SWITCH = "limitSwitch"
 KEY_TEST_LIMIT_SWITCH_ID = "id"
 ENCODER_KEY_INTERNAL = "internal"
+
+
+def bridge_group_member_label(member: Dict[str, object]) -> str:
+    """
+    NAME
+        bridge_group_member_label - Read one bridge group member label.
+    """
+    if profile_consts is not None and hasattr(profile_consts, "get_group_member_label"):
+        return str(profile_consts.get_group_member_label(member)).strip()
+    value = member.get(KEY_LABEL)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    legacy = member.get(KEY_DEVICE)
+    if isinstance(legacy, str) and legacy.strip():
+        return legacy.strip()
+    return TEXT_EMPTY
+
+
+def make_bridge_group_member(label: str, enabled: bool = True) -> Dict[str, object]:
+    """
+    NAME
+        make_bridge_group_member - Build a canonical bridge group member entry.
+    """
+    if profile_consts is not None and hasattr(profile_consts, "make_group_member"):
+        return dict(profile_consts.make_group_member(label, enabled))
+    return {
+        KEY_LABEL: str(label).strip(),
+        KEY_SELECTED_ENABLED: bool(enabled),
+    }
 
 try:
     from tools.config.schema_store import ConfigSchemaStore
@@ -630,6 +675,7 @@ class TopologyEditor(tk.Tk):
         self._drag_state: Optional[Tuple[int, float, float]] = None
         self._drag_free_y: Dict[int, float] = {}
         self._group_overlay_regions: List[Dict[str, object]] = []
+        self._bus_connector_regions: List[Dict[str, object]] = []
         self._ethernet_links: List[Tuple[int, int]] = []
         self._can_bus_links: List[Dict[str, int]] = []
         self._cannect_device_links: List[Dict[str, int]] = []
@@ -669,8 +715,10 @@ class TopologyEditor(tk.Tk):
         self._pending_cannect_direct: Optional[int] = None
         self._pending_bus_island: bool = False
         self._bus_connectors: List[bool] = []
-        self._bus_drag: Optional[Tuple[int, float, float]] = None
+        self._bus_connector_sides: List[str] = []
+        self._bus_drag: Optional[Tuple[int, float, float, float, float]] = None
         self._bus_resize: Optional[Tuple[int, str, float, float, float]] = None
+        self._bus_connector_drag: Optional[Tuple[int, str]] = None
         self._undo_stack: List[Dict[str, object]] = []
         self._undo_limit = 20
         self._drag_undo_pending = False
@@ -682,6 +730,7 @@ class TopologyEditor(tk.Tk):
         self._selected_buses: set[int] = set()
         self._selection_rect: Optional[int] = None
         self._selection_start: Optional[Tuple[float, float]] = None
+        self._selection_overlay_ids: List[int] = []
         self._node_bounds: Dict[int, Tuple[float, float, float, float]] = {}
         self._bus_ys: List[float] = []
         self._dragging_active = False
@@ -692,9 +741,13 @@ class TopologyEditor(tk.Tk):
         self._details_layout_shift = False
         self._last_canvas_height: Optional[int] = None
         self._pending_fit_to_window = False
+        self._preserve_left_after_configure: Optional[float] = None
+        self._preserve_top_after_configure: Optional[float] = None
+        self._view_scrollregion_x_override: Optional[Tuple[float, float]] = None
         self._suppress_list_select = False
         self._syncing_selection = False
         self._zoom = 1.0
+        self._debug_redraw_count = 0
         self._draw_state = {"bus_ys": [], "y_shift": 0.0, "scale": 1.0}
         self._snap_to_grid_var = tk.BooleanVar(value=False)
         self._smart_guides_var = tk.BooleanVar(value=False)
@@ -923,6 +976,7 @@ class TopologyEditor(tk.Tk):
         self.canvas.bind("<Down>", lambda e: self._nudge_selection("down", e))
 
         self._build_details_panel(right)
+        self._set_details_dock_visible(bool(self._show_details_dock_var.get()))
         self._set_tag_filter(self._tag_filter)
 
     def _build_menu(self) -> None:
@@ -1068,6 +1122,12 @@ class TopologyEditor(tk.Tk):
             variable=self._show_group_overlays_var,
             command=self._redraw_canvas,
         )
+        self._show_details_dock_var = tk.BooleanVar(value=False)
+        view_menu.add_checkbutton(
+            label="Show Details Dock",
+            variable=self._show_details_dock_var,
+            command=lambda: self._set_details_dock_visible(bool(self._show_details_dock_var.get())),
+        )
         view_menu.add_checkbutton(label="Snap to Grid", variable=self._snap_to_grid_var)
         view_menu.add_checkbutton(label="Smart Guides", variable=self._smart_guides_var)
         grid_menu = tk.Menu(view_menu, tearoff=False)
@@ -1091,7 +1151,8 @@ class TopologyEditor(tk.Tk):
         NAME
             _build_details_panel - Create the selected-node details area.
         """
-        panel = ttk.LabelFrame(parent, text="Node Details", padding=8)
+        self._details_dock_container = ttk.Frame(parent)
+        panel = ttk.LabelFrame(self._details_dock_container, text="Node Details", padding=8)
         self._node_details_panel = panel
 
         self.detail_vars = {
@@ -1149,7 +1210,7 @@ class TopologyEditor(tk.Tk):
             row=status_row, column=0, columnspan=2, sticky="w", pady=(6, 0)
         )
 
-        callout_panel = ttk.LabelFrame(parent, text="Callout Details", padding=8)
+        callout_panel = ttk.LabelFrame(self._details_dock_container, text="Callout Details", padding=8)
         self._callout_details_panel = callout_panel
         ttk.Label(callout_panel, text="Scale:").grid(row=0, column=0, sticky="w", padx=(0, 6))
         ttk.Label(callout_panel, textvariable=self._callout_scale_var).grid(
@@ -1179,8 +1240,25 @@ class TopologyEditor(tk.Tk):
             ttk.Label(callout_panel, textvariable=self._callout_debug_vars[key]).grid(
                 row=idx, column=1, sticky="w"
             )
-        self._node_details_panel.pack_forget()
-        self._callout_details_panel.pack_forget()
+        self._node_details_panel.pack(fill="x", pady=(8, 0))
+        self._callout_details_panel.pack(fill="x", pady=(8, 0))
+
+    def _set_details_dock_visible(self, visible: bool) -> None:
+        """
+        NAME
+            _set_details_dock_visible - Show or hide the explicit details dock.
+        """
+        container = getattr(self, "_details_dock_container", None)
+        if container is None:
+            return
+        try:
+            mapped = bool(container.winfo_manager())
+        except Exception:
+            mapped = False
+        if visible and not mapped:
+            container.pack(fill="x", side="bottom")
+        elif not visible and mapped:
+            container.pack_forget()
 
     def _update_details_panel(self, node: Optional[Node]) -> None:
         """
@@ -1189,13 +1267,8 @@ class TopologyEditor(tk.Tk):
         """
         self._refresh_terminator_status()
         if node is None:
-            for key in self.detail_vars:
-                self.detail_vars[key].set("--")
-            self._callout_scale_var.set("--")
-            for key in self._callout_debug_vars:
-                self._callout_debug_vars[key].set("--")
-            if hasattr(self, "_node_details_panel"):
-                self._preserve_canvas_view(self._node_details_panel.pack_forget)
+            self._clear_node_details_fields()
+            self._clear_callout_details_fields()
             return
         if node.node_type == "callout":
             return
@@ -1234,6 +1307,23 @@ class TopologyEditor(tk.Tk):
         self.detail_vars["scale"].set(f"{node.scale:.2f}")
         self.detail_vars["tags"].set(self._tags_to_string(node.tags) or "--")
 
+    def _clear_node_details_fields(self) -> None:
+        """
+        NAME
+            _clear_node_details_fields - Reset node detail values in place.
+        """
+        for key in self.detail_vars:
+            self.detail_vars[key].set("--")
+
+    def _clear_callout_details_fields(self) -> None:
+        """
+        NAME
+            _clear_callout_details_fields - Reset callout detail values in place.
+        """
+        self._callout_scale_var.set("--")
+        for key in self._callout_debug_vars:
+            self._callout_debug_vars[key].set("--")
+
     def _update_callout_details(self, callout: Node) -> None:
         """
         NAME
@@ -1256,8 +1346,6 @@ class TopologyEditor(tk.Tk):
                 n.key == callout.callout_target_node_key for n in self._device_nodes()
             )
         self._callout_debug_vars["target_exists"].set("yes" if exists else "no")
-        if hasattr(self, "_node_details_panel"):
-            self._preserve_canvas_view(lambda: self._node_details_panel.pack(fill="x", pady=(8, 0)))
 
     def _terminator_count(self, nodes: Optional[List[Node]] = None) -> int:
         """
@@ -1316,24 +1404,79 @@ class TopologyEditor(tk.Tk):
         NAME
             _preserve_canvas_view - Run an action without shifting canvas view.
         """
-        xview_getter = getattr(self.canvas, "xview", None)
-        yview_getter = getattr(self.canvas, "yview", None)
-        xview = xview_getter() if callable(xview_getter) else None
-        yview = yview_getter() if callable(yview_getter) else None
+        try:
+            left = float(self.canvas.canvasx(0))
+        except Exception:
+            left = None
+        try:
+            top = float(self.canvas.canvasy(0))
+        except Exception:
+            top = None
         action()
-        self.update_idletasks()
-        if (
-            isinstance(xview, tuple)
-            and len(xview) == 2
-            and hasattr(self.canvas, "xview_moveto")
-        ):
-            self.canvas.xview_moveto(float(xview[0]))
-        if (
-            isinstance(yview, tuple)
-            and len(yview) == 2
-            and hasattr(self.canvas, "yview_moveto")
-        ):
-            self.canvas.yview_moveto(float(yview[0]))
+        try:
+            self.update_idletasks()
+        except Exception:
+            pass
+        self._preserve_left_after_configure = left
+        self._preserve_top_after_configure = top
+        if left is not None:
+            self._set_canvas_xview_left(left)
+        if top is not None:
+            self._set_canvas_yview_top(top)
+
+    def _gui_debug_enabled(self) -> bool:
+        """
+        NAME
+            _gui_debug_enabled - Return True when GUI interaction logging is enabled.
+        """
+        raw = str(os.environ.get(GUI_INTERACTION_DEBUG_ENV, TEXT_EMPTY)).strip().lower()
+        return raw in {"1", "true", "yes", "on"}
+
+    def _gui_debug_log(self, event_name: str, **fields: object) -> None:
+        """
+        NAME
+            _gui_debug_log - Append one GUI interaction trace line.
+        """
+        if not self._gui_debug_enabled():
+            return
+        try:
+            left = float(self.canvas.canvasx(0))
+        except Exception:
+            left = float("nan")
+        try:
+            top = float(self.canvas.canvasy(0))
+        except Exception:
+            top = float("nan")
+        try:
+            xview = tuple(self.canvas.xview())
+        except Exception:
+            xview = ()
+        try:
+            yview = tuple(self.canvas.yview())
+        except Exception:
+            yview = ()
+        try:
+            scrollregion = str(self.canvas.cget("scrollregion"))
+        except Exception:
+            scrollregion = TEXT_EMPTY
+        parts = [
+            f"event={event_name}",
+            f"redraw={self._debug_redraw_count}",
+            f"left={left:.3f}",
+            f"top={top:.3f}",
+            f"xview={xview}",
+            f"yview={yview}",
+            f"scrollregion={scrollregion!r}",
+            f"canvas_w={self.canvas.winfo_width()}",
+            f"canvas_h={self.canvas.winfo_height()}",
+        ]
+        for key, value in fields.items():
+            parts.append(f"{key}={value!r}")
+        log_dir = Path(__file__).resolve().parent / GUI_INTERACTION_DEBUG_LOGDIR
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / GUI_INTERACTION_DEBUG_LOG
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(" ".join(parts) + "\n")
 
     def _has_neighbor_metadata(self) -> bool:
         """
@@ -1551,10 +1694,6 @@ class TopologyEditor(tk.Tk):
         
         self._refresh_list()
         self._update_details_panel(None)
-        if hasattr(self, "_node_details_panel"):
-            self._node_details_panel.pack_forget()
-        if hasattr(self, "_callout_details_panel"):
-            self._callout_details_panel.pack_forget()
         self._redraw_canvas()
         self._refresh_neighbor_status()
 
@@ -1577,11 +1716,8 @@ class TopologyEditor(tk.Tk):
         self._neighbors_dirty = False
         self._next_key = 1
         self._selected_key = None
-        self._callout_scale_var.set("--")
-        if hasattr(self, "_node_details_panel"):
-            self._preserve_canvas_view(self._node_details_panel.pack_forget)
-        if hasattr(self, "_callout_details_panel"):
-            self._preserve_canvas_view(self._callout_details_panel.pack_forget)
+        self._clear_node_details_fields()
+        self._clear_callout_details_fields()
         self._layout_width = 0.0
         self._pan_y = 0.0
         self._zoom = 1.0
@@ -2061,10 +2197,6 @@ class TopologyEditor(tk.Tk):
         self._nodes = self._nodes_from_profile(profile)
         self._next_callout = 1
         self._callout_scale_var.set("--")
-        if hasattr(self, "_node_details_panel"):
-            self._preserve_canvas_view(self._node_details_panel.pack_forget)
-        if hasattr(self, "_callout_details_panel"):
-            self._preserve_canvas_view(self._callout_details_panel.pack_forget)
         self._layout_width = 0.0
         self._pan_y = 0.0
         self._zoom = 1.0
@@ -2170,6 +2302,7 @@ class TopologyEditor(tk.Tk):
         self._refresh_default_checkbox()
         self._refresh_neighbor_status()
         self.update_idletasks()
+        self._view_scrollregion_x_override = None
         self.canvas.xview_moveto(0.0)
         self.canvas.yview_moveto(0.0)
 
@@ -3588,18 +3721,21 @@ class TopologyEditor(tk.Tk):
                 topology_nodes.append(
                     {
                         KEY_NODE_KEY: node.key,
+                        KEY_TOPOLOGY_OBJECT_TYPE: TOPOLOGY_NODE_DEVICE,
                         KEY_TOPOLOGY_NODE_TYPE: TOPOLOGY_NODE_DEVICE,
                         KEY_TOPOLOGY_DEVICE_REF: node.label,
                         KEY_TOPOLOGY_LAYOUT: layout,
                     }
                 )
                 continue
+            object_type = self._topology_node_type_for_editor_node(node)
             topology_nodes.append(
                 {
                     KEY_NODE_KEY: node.key,
                     KEY_LABEL: node.label,
                     KEY_CATEGORY: node.category,
-                    KEY_TOPOLOGY_NODE_TYPE: self._topology_node_type_for_editor_node(node),
+                    KEY_TOPOLOGY_OBJECT_TYPE: object_type,
+                    KEY_TOPOLOGY_NODE_TYPE: object_type,
                     KEY_VENDOR: node.vendor,
                     KEY_MODEL: node.motor,
                     KEY_TOPOLOGY_LAYOUT: layout,
@@ -3627,6 +3763,7 @@ class TopologyEditor(tk.Tk):
             for node in nodes_list
             if node.node_type == "callout"
         ]
+        self._ensure_bus_connector_sides(len(self._bus_offsets))
         return {
             KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
             KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
@@ -3639,6 +3776,7 @@ class TopologyEditor(tk.Tk):
                 "busLefts": list(self._bus_lefts),
                 "busRights": list(self._bus_rights),
                 "busConnectors": list(self._bus_connectors),
+                KEY_DIAGRAM_BUS_CONNECTOR_SIDES: list(self._bus_connector_sides),
                 "panY": self._pan_y,
                 "zoom": self._zoom,
                 KEY_DIAGRAM_ETHERNET_LINKS: [{"a": a, "b": b} for a, b in self._ethernet_links],
@@ -3841,7 +3979,11 @@ class TopologyEditor(tk.Tk):
             for entry in legacy_nodes:
                 if not isinstance(entry, dict):
                     continue
-                node_type = str(entry.get(KEY_TOPOLOGY_NODE_TYPE, "device")).strip()
+                node_type = str(
+                    entry.get(KEY_TOPOLOGY_OBJECT_TYPE)
+                    or entry.get(KEY_TOPOLOGY_NODE_TYPE)
+                    or "device"
+                ).strip()
                 if node_type == "callout":
                     nodes.append(
                         Node(
@@ -3948,15 +4090,18 @@ class TopologyEditor(tk.Tk):
         devices = [n for n in self._nodes if n.node_type != "callout"]
         bus_count = max((n.bus_index for n in devices), default=0) + 1
         self._ensure_bus_connectors(max(1, bus_count))
+        self._ensure_bus_connector_sides(max(1, bus_count))
         snapshot = {
             "busCount": max(1, bus_count),
             "busSpacing": float(self._bus_spacing),
             "panY": 0.0,
             "zoom": 1.0,
             "busConnectors": list(self._bus_connectors),
+            KEY_DIAGRAM_BUS_CONNECTOR_SIDES: list(self._bus_connector_sides),
             KEY_DIO_FREEY_MODE: DIO_FREEY_MODE_RAIL,
             "nodes": [
                 {
+                    "objectType": n.node_type,
                     "nodeType": n.node_type,
                     "key": n.key,
                     "category": n.category,
@@ -4087,6 +4232,7 @@ class TopologyEditor(tk.Tk):
             if node.node_type == "callout":
                 nodes.append(
                     {
+                        "objectType": "callout",
                         "nodeType": "callout",
                         "key": node.key,
                         "text": node.callout_text,
@@ -4110,6 +4256,7 @@ class TopologyEditor(tk.Tk):
             else:
                 nodes.append(
                     {
+                        "objectType": node.node_type,
                         "nodeType": node.node_type,
                         "key": node.key,
                         "category": node.category,
@@ -4125,6 +4272,7 @@ class TopologyEditor(tk.Tk):
                         "profileVisible": getattr(node, "profile_visible", True),
                     }
                 )
+        self._ensure_bus_connector_sides(len(self._bus_offsets))
         return {
             "busOffsets": list(self._bus_offsets),
             "busCount": len(self._bus_offsets),
@@ -4132,6 +4280,7 @@ class TopologyEditor(tk.Tk):
             "busLefts": list(self._bus_lefts),
             "busRights": list(self._bus_rights),
             "busConnectors": list(self._bus_connectors),
+            KEY_DIAGRAM_BUS_CONNECTOR_SIDES: list(self._bus_connector_sides),
             "panY": self._pan_y,
             "zoom": self._zoom,
             KEY_DIO_FREEY_MODE: DIO_FREEY_MODE_RAIL,
@@ -4174,6 +4323,12 @@ class TopologyEditor(tk.Tk):
         else:
             self._bus_connectors = []
         self._ensure_bus_connectors(len(self._bus_offsets))
+        bus_connector_sides = diagram.get(KEY_DIAGRAM_BUS_CONNECTOR_SIDES)
+        if isinstance(bus_connector_sides, list):
+            self._bus_connector_sides = list(bus_connector_sides)
+        else:
+            self._bus_connector_sides = []
+        self._ensure_bus_connector_sides(len(self._bus_offsets))
         pan_y = diagram.get("panY")
         if isinstance(pan_y, (int, float)):
             self._pan_y = float(pan_y)
@@ -4197,7 +4352,12 @@ class TopologyEditor(tk.Tk):
             for entry in nodes:
                 if not isinstance(entry, dict):
                     continue
-                node_type = entry.get("nodeType") or entry.get("node_type") or "device"
+                node_type = (
+                    entry.get(KEY_OBJECT_TYPE)
+                    or entry.get("nodeType")
+                    or entry.get("node_type")
+                    or "device"
+                )
                 if node_type == "callout" or ("text" in entry and "targetType" in entry):
                     key = entry.get("key")
                     if isinstance(key, int):
@@ -4236,7 +4396,12 @@ class TopologyEditor(tk.Tk):
             for entry in nodes:
                 if not isinstance(entry, dict):
                     continue
-                node_type = entry.get("nodeType") or entry.get("node_type") or "device"
+                node_type = (
+                    entry.get(KEY_OBJECT_TYPE)
+                    or entry.get("nodeType")
+                    or entry.get("node_type")
+                    or "device"
+                )
                 profile_visible = entry.get("profileVisible", True)
                 if node_type == "callout" or ("text" in entry and "targetType" in entry):
                     callout_y = float(entry.get("y", entry.get("callout_y", 0.0)))
@@ -4649,6 +4814,12 @@ class TopologyEditor(tk.Tk):
         else:
             self._bus_connectors = []
         self._ensure_bus_connectors(len(self._bus_offsets))
+        bus_connector_sides = view_dict.get(KEY_DIAGRAM_BUS_CONNECTOR_SIDES)
+        if isinstance(bus_connector_sides, list):
+            self._bus_connector_sides = list(bus_connector_sides)
+        else:
+            self._bus_connector_sides = []
+        self._ensure_bus_connector_sides(len(self._bus_offsets))
         pan_y = view_dict.get("panY")
         if isinstance(pan_y, (int, float)):
             self._pan_y = float(pan_y)
@@ -4728,7 +4899,11 @@ class TopologyEditor(tk.Tk):
                 layout_dict = layout if isinstance(layout, dict) else {}
                 if not isinstance(key, int):
                     continue
-                node_type = str(entry.get(KEY_TOPOLOGY_NODE_TYPE, EMPTY_STRING)).strip()
+                node_type = str(
+                    entry.get(KEY_TOPOLOGY_OBJECT_TYPE)
+                    or entry.get(KEY_TOPOLOGY_NODE_TYPE)
+                    or EMPTY_STRING
+                ).strip()
                 if node_type == TOPOLOGY_NODE_DEVICE:
                     device_ref_text = str(entry.get(KEY_TOPOLOGY_DEVICE_REF, EMPTY_STRING)).strip()
                     device_ref = device_ref_text.lower()
@@ -4899,7 +5074,11 @@ class TopologyEditor(tk.Tk):
         category = str(entry.get(KEY_CATEGORY, EMPTY_STRING)).strip()
         if category:
             return category
-        node_type = str(entry.get(KEY_TOPOLOGY_NODE_TYPE, EMPTY_STRING)).strip()
+        node_type = str(
+            entry.get(KEY_TOPOLOGY_OBJECT_TYPE)
+            or entry.get(KEY_TOPOLOGY_NODE_TYPE)
+            or EMPTY_STRING
+        ).strip()
         if node_type == TOPOLOGY_NODE_ANALYZER:
             return DIAGRAM_CATEGORY_ANALYZER
         if node_type == TOPOLOGY_NODE_JUNCTION:
@@ -6367,8 +6546,6 @@ class TopologyEditor(tk.Tk):
         self._prune_dio_wiring_links()
         self._refresh_list()
         self._update_details_panel(None)
-        if hasattr(self, "_callout_details_panel"):
-            self._preserve_canvas_view(self._callout_details_panel.pack_forget)
         self._mark_neighbors_stale()
         self._redraw_canvas()
 
@@ -6429,13 +6606,17 @@ class TopologyEditor(tk.Tk):
             surviving = [i for i in range(len(self._bus_offsets) + len(indices)) if i not in indices]
             index_map = {old: new for new, old in enumerate(surviving)}
             new_connectors: List[bool] = []
+            new_connector_sides: List[str] = []
             for old_idx in range(len(self._bus_connectors)):
                 a = old_idx
                 b = old_idx + BUS_INDEX_FLOOR
                 if a in index_map and b in index_map and index_map[b] == index_map[a] + BUS_INDEX_FLOOR:
                     new_connectors.append(self._bus_connectors[old_idx])
+                    new_connector_sides.append(self._bus_connector_side(old_idx))
             self._bus_connectors = new_connectors
+            self._bus_connector_sides = new_connector_sides
         self._ensure_bus_connectors(len(self._bus_offsets))
+        self._ensure_bus_connector_sides(len(self._bus_offsets))
         def _shift_index(old: int) -> int:
             return old - sum(1 for removed in indices if removed < old)
         for node in device_nodes:
@@ -6577,7 +6758,7 @@ class TopologyEditor(tk.Tk):
     def _node_groups_by_label(self) -> Dict[str, List[str]]:
         """
         NAME
-            _node_groups_by_label - Return bridge group names keyed by device label.
+            _node_groups_by_label - Return bridge group names keyed by object label.
         """
         groups_by_label: Dict[str, List[str]] = {}
         for group in self._bridge_groups():
@@ -6592,7 +6773,7 @@ class TopologyEditor(tk.Tk):
             for member in members:
                 label = TEXT_EMPTY
                 if isinstance(member, dict):
-                    label = str(member.get(KEY_DEVICE, TEXT_EMPTY)).strip()
+                    label = bridge_group_member_label(member)
                 elif isinstance(member, str):
                     label = member.strip()
                 if not label:
@@ -7360,9 +7541,10 @@ class TopologyEditor(tk.Tk):
                 continue
             for idx, member in enumerate(list(members)):
                 if isinstance(member, dict):
-                    name = str(member.get(KEY_DEVICE, TEXT_EMPTY)).strip()
+                    name = bridge_group_member_label(member)
                     if name.lower() == old_lower:
-                        member[KEY_DEVICE] = new
+                        member[KEY_LABEL] = new
+                        member.pop(KEY_DEVICE, None)
                         changed += COUNT_ONE
                 elif isinstance(member, str):
                     if member.strip().lower() == old_lower:
@@ -7487,8 +7669,7 @@ class TopologyEditor(tk.Tk):
                         (isinstance(member, str) and member.strip().lower() == label_lower)
                         or (
                             isinstance(member, dict)
-                            and str(member.get(KEY_DEVICE, TEXT_EMPTY)).strip().lower()
-                            == label_lower
+                            and bridge_group_member_label(member).lower() == label_lower
                         )
                     )
                 ]
@@ -7652,6 +7833,8 @@ class TopologyEditor(tk.Tk):
         NAME
             _set_single_node_selection - Select one node and clear other selections.
         """
+        if self._selected_nodes == {key} and not self._selected_buses:
+            return
         self._selected_nodes = {key}
         self._selected_buses = set()
         self._sync_selection_state()
@@ -7661,6 +7844,8 @@ class TopologyEditor(tk.Tk):
         NAME
             _clear_selection - Clear all current selections.
         """
+        if not self._selected_nodes and not self._selected_buses:
+            return
         self._selected_nodes = set()
         self._selected_buses = set()
         self._sync_selection_state()
@@ -8046,11 +8231,11 @@ class TopologyEditor(tk.Tk):
     def _create_group_from_selection(self) -> None:
         """
         NAME
-            _create_group_from_selection - Create/update a group from selected devices.
+            _create_group_from_selection - Create/update a group from selected nodes.
         """
-        selected = [n for n in self._nodes if n.key in self._selected_nodes and n.node_type == "device"]
+        selected = [n for n in self._nodes if n.key in self._selected_nodes]
         if not selected:
-            messagebox.showinfo("Create Group", "Select one or more device nodes.")
+            messagebox.showinfo("Create Group", "Select one or more nodes.")
             return
         name = simpledialog.askstring("Create Group", "Group name:")
         if not name:
@@ -8076,13 +8261,14 @@ class TopologyEditor(tk.Tk):
         else:
             target = {"name": name, "enabled": True, "members": [], "bindings": []}
             groups.append(target)
-        members = [{"device": n.label, "enabled": True} for n in selected]
+        members = [make_bridge_group_member(n.label, True) for n in selected]
         target["members"] = members
         if "bindings" not in target:
             target["bindings"] = []
         if "enabled" not in target:
             target["enabled"] = True
         self._dirty = True
+        self._refresh_list()
         self._redraw_canvas()
 
     def _remove_bridge_group(self) -> None:
@@ -8127,6 +8313,7 @@ class TopologyEditor(tk.Tk):
             return
         entry[KEY_BRIDGE_GROUPS] = new_groups
         self._dirty = True
+        self._refresh_list()
         self._redraw_canvas()
 
     def _auto_layout_readable(self) -> None:
@@ -8653,10 +8840,18 @@ class TopologyEditor(tk.Tk):
         NAME
             _on_canvas_configure - Handle canvas resize events.
         """
+        self._gui_debug_log("canvas_configure.before")
         self._redraw_canvas()
+        if self._preserve_left_after_configure is not None:
+            self._set_canvas_xview_left(self._preserve_left_after_configure)
+            self._preserve_left_after_configure = None
+        if self._preserve_top_after_configure is not None:
+            self._set_canvas_yview_top(self._preserve_top_after_configure)
+            self._preserve_top_after_configure = None
         if self._pending_fit_to_window:
             self._pending_fit_to_window = False
             self.after_idle(self._fit_to_window)
+        self._gui_debug_log("canvas_configure.after")
 
     def _save_shortcut(self) -> None:
         """
@@ -8703,58 +8898,132 @@ class TopologyEditor(tk.Tk):
         if self._syncing_selection:
             return
         self._syncing_selection = True
-        selected_nodes = list(self._selected_nodes)
-        if len(selected_nodes) == 1 and not self._selected_buses:
-            self._selected_key = selected_nodes[0]
-            self._suppress_list_select = True
-            try:
-                current = self.node_list.selection()
-                desired = (str(self._selected_key),)
-                if current != desired:
-                    for item in current:
-                        self.node_list.selection_remove(item)
-                    if self.node_list.exists(str(self._selected_key)):
-                        self.node_list.selection_add(str(self._selected_key))
-                        self.node_list.see(str(self._selected_key))
-            finally:
-                self._suppress_list_select = False
-            node = self._get_selected_node()
-            if node is not None and node.node_type == "callout":
-                self._update_callout_details(node)
-                if hasattr(self, "_callout_details_panel"):
-                    self._details_layout_shift = True
-                    self._preserve_canvas_view(
-                        lambda: self._callout_details_panel.pack(fill="x", pady=(8, 0))
-                    )
-                if hasattr(self, "_node_details_panel"):
-                    self._details_layout_shift = True
-                    self._preserve_canvas_view(self._node_details_panel.pack_forget)
+        try:
+            selected_nodes = list(self._selected_nodes)
+            if len(selected_nodes) == 1 and not self._selected_buses:
+                self._selected_key = selected_nodes[0]
+                self._suppress_list_select = True
+                try:
+                    current = self.node_list.selection()
+                    desired = (str(self._selected_key),)
+                    if current != desired:
+                        for item in current:
+                            self.node_list.selection_remove(item)
+                        if self.node_list.exists(str(self._selected_key)):
+                            self.node_list.selection_add(str(self._selected_key))
+                            self.node_list.see(str(self._selected_key))
+                finally:
+                    self._suppress_list_select = False
+                node = self._get_selected_node()
+                if node is not None and node.node_type == "callout":
+                    self._update_callout_details(node)
+                    self._clear_node_details_fields()
+                else:
+                    self._clear_callout_details_fields()
+                    self._update_details_panel(self._get_selected_node())
             else:
-                if hasattr(self, "_callout_details_panel"):
-                    self._details_layout_shift = True
-                    self._preserve_canvas_view(self._callout_details_panel.pack_forget)
-                self._callout_scale_var.set("?")
-                self._update_details_panel(self._get_selected_node())
-        else:
-            self._selected_key = None
-            self._suppress_list_select = True
+                self._selected_key = None
+                self._suppress_list_select = True
+                try:
+                    current = set(self.node_list.selection())
+                    desired = {str(k) for k in self._selected_nodes if self.node_list.exists(str(k))}
+                    for item in current - desired:
+                        self.node_list.selection_remove(item)
+                    for item in desired - current:
+                        self.node_list.selection_add(item)
+                finally:
+                    self._suppress_list_select = False
+                self._update_details_panel(None)
+            self._update_selection_overlays()
+        finally:
+            self._syncing_selection = False
+
+    def _clear_selection_overlays(self) -> None:
+        """
+        NAME
+            _clear_selection_overlays - Remove transient selection highlight items.
+        """
+        for item_id in list(self.__dict__.get("_selection_overlay_ids", []) or []):
             try:
-                current = set(self.node_list.selection())
-                desired = {str(k) for k in self._selected_nodes if self.node_list.exists(str(k))}
-                for item in current - desired:
-                    self.node_list.selection_remove(item)
-                for item in desired - current:
-                    self.node_list.selection_add(item)
-            finally:
-                self._suppress_list_select = False
-            if hasattr(self, "_node_details_panel"):
-                self._details_layout_shift = True
-                self._preserve_canvas_view(self._node_details_panel.pack_forget)
-            if hasattr(self, "_callout_details_panel"):
-                self._details_layout_shift = True
-                self._preserve_canvas_view(self._callout_details_panel.pack_forget)
-        self._redraw_canvas()
-        self._syncing_selection = False
+                self.canvas.delete(item_id)
+            except Exception:
+                pass
+        self._selection_overlay_ids = []
+
+    def _update_selection_overlays(self) -> None:
+        """
+        NAME
+            _update_selection_overlays - Draw selection highlights without rebuilding the scene.
+        """
+        self._clear_selection_overlays()
+        overlay_ids: List[int] = []
+        selection_color = "#1f6feb"
+        for key in sorted(self._selected_nodes):
+            bounds = self._node_bounds.get(key)
+            if not bounds:
+                continue
+            x0, y0, x1, y1 = bounds
+            overlay_ids.append(
+                self.canvas.create_rectangle(
+                    x0 - 4.0,
+                    y0 - 4.0,
+                    x1 + 4.0,
+                    y1 + 4.0,
+                    outline=selection_color,
+                    width=2,
+                )
+            )
+        draw_state = dict(self.__dict__.get("_draw_state", {}) or {})
+        bus_ys = list(draw_state.get("bus_ys", []) or [])
+        eff_lefts = list(draw_state.get("bus_lefts", []) or [])
+        eff_rights = list(draw_state.get("bus_rights", []) or [])
+        for idx in sorted(self._selected_buses):
+            if idx < 0 or idx >= len(bus_ys):
+                continue
+            bus_y = float(bus_ys[idx])
+            seg_left = (
+                float(eff_lefts[idx]) * self._zoom
+                if idx < len(eff_lefts)
+                else 0.0
+            )
+            seg_right = (
+                float(eff_rights[idx]) * self._zoom
+                if idx < len(eff_rights)
+                else seg_left
+            )
+            if idx % 2 == 0:
+                start_x, end_x = seg_left, seg_right
+            else:
+                start_x, end_x = seg_right, seg_left
+            overlay_ids.append(
+                self.canvas.create_line(
+                    start_x,
+                    bus_y,
+                    end_x,
+                    bus_y,
+                    width=5,
+                    fill=selection_color,
+                )
+            )
+        self._selection_overlay_ids = overlay_ids
+
+    def _find_node_key_at(self, cx: float, cy: float) -> Optional[int]:
+        """
+        NAME
+            _find_node_key_at - Resolve the topmost node key under a canvas point.
+        """
+        items = self.canvas.find_overlapping(cx, cy, cx, cy)
+        if not items:
+            return None
+        for item in reversed(items):
+            try:
+                tags = self.canvas.gettags(item)
+            except Exception:
+                continue
+            key = self._tag_to_key(tags)
+            if key is not None:
+                return key
+        return None
 
     def _shift_held(self, event: tk.Event) -> bool:
         """
@@ -8826,6 +9095,8 @@ class TopologyEditor(tk.Tk):
         NAME
             _redraw_canvas - Repaint the bus line and node boxes.
         """
+        self._debug_redraw_count = int(self.__dict__.get("_debug_redraw_count", 0)) + 1
+        self._gui_debug_log("redraw.begin")
         self.canvas.delete("all")
         self._node_bounds = {}
         self._bus_ys = []
@@ -8852,6 +9123,7 @@ class TopologyEditor(tk.Tk):
                 eff_lefts[idx + 1] = shared
         min_left = min(eff_lefts, default=40.0)
         max_right = max(eff_rights, default=max_node_x + 200.0)
+        x_shift = 0.0
         total_width = max(
             width,
             int((self._layout_width or max_right) * scale),
@@ -8884,18 +9156,51 @@ class TopologyEditor(tk.Tk):
             max_y = max(max_y, y1)
         margin = 20.0
         total_height = max(height, int(max_y - min_y + margin * 2))
-        self.canvas.configure(scrollregion=(0, min_y - margin, total_width, max_y + margin))
+        scrollregion_min_x = 0.0
+        scrollregion_max_x = float(total_width)
+        override = self.__dict__.get("_view_scrollregion_x_override")
+        if (
+            isinstance(override, tuple)
+            and len(override) == SCROLLREGION_FIELD_COUNT - 2
+        ):
+            try:
+                override_min_x = float(override[0])
+                override_max_x = float(override[1])
+            except (TypeError, ValueError):
+                override_min_x = scrollregion_min_x
+                override_max_x = scrollregion_max_x
+            else:
+                scrollregion_min_x = min(scrollregion_min_x, override_min_x)
+                scrollregion_max_x = max(scrollregion_max_x, override_max_x)
+        if bool(self.__dict__.get("_dragging_active", False)):
+            try:
+                raw_region = self.canvas.cget("scrollregion")
+            except Exception:
+                raw_region = TEXT_EMPTY
+            parts = str(raw_region).split()
+            if len(parts) == SCROLLREGION_FIELD_COUNT:
+                try:
+                    current_region = [float(part) for part in parts]
+                except ValueError:
+                    current_region = []
+                if len(current_region) == SCROLLREGION_FIELD_COUNT:
+                    scrollregion_min_x = min(scrollregion_min_x, current_region[SCROLLREGION_MIN_INDEX])
+                    scrollregion_max_x = max(scrollregion_max_x, current_region[SCROLLREGION_MAX_INDEX])
+        self.canvas.configure(
+            scrollregion=(scrollregion_min_x, min_y - margin, scrollregion_max_x, max_y + margin)
+        )
         self._draw_state = {
             "bus_ys": bus_ys,
             "scale": scale,
             "bus_lefts": eff_lefts,
             "bus_rights": eff_rights,
+            KEY_DIAGRAM_BUS_CONNECTOR_SIDES: list(self.__dict__.get("_bus_connector_sides", []) or []),
         }
         show_can = self._connection_filter_allows(TOPOLOGY_FILTER_CAN)
         show_dio = self._connection_filter_allows(TOPOLOGY_FILTER_DIO)
         show_virtual = self._connection_filter_allows(TOPOLOGY_FILTER_VIRTUAL)
-        x_left = min_left * scale
-        x_right = max_right * scale
+        x_left = (min_left - x_shift) * scale
+        x_right = (max_right - x_shift) * scale
         turn_radius = max(8.0, 18 * scale)
         self._bus_ys = list(bus_ys)
         dup_keys: set[Tuple[str, str, int]] = set()
@@ -8916,7 +9221,7 @@ class TopologyEditor(tk.Tk):
             bus_ys=bus_ys,
             base_y=base_y,
             scale=scale,
-            x_shift=0.0,
+            x_shift=x_shift,
             eff_lefts=eff_lefts,
             eff_rights=eff_rights,
             show_can=show_can,
@@ -8928,6 +9233,7 @@ class TopologyEditor(tk.Tk):
             selected_bus_indices=self._selected_buses,
             drag_free_y=self._drag_free_y,
             bus_connectors=self._bus_connectors,
+            bus_connector_sides=list(self.__dict__.get("_bus_connector_sides", []) or []),
             bus_lefts=eff_lefts,
             bus_rights=eff_rights,
             min_x=min_left,
@@ -8963,7 +9269,9 @@ class TopologyEditor(tk.Tk):
         self._node_bounds = rendered["node_bounds"]
         node_centers = rendered["node_centers"]
         self._group_overlay_regions = rendered["group_overlay_regions"]
+        self._bus_connector_regions = rendered.get("bus_connector_regions", [])
         self._render_scene = rendered
+        self._clear_selection_overlays()
         if self._show_warn_badges_var.get():
             for node in self._device_nodes():
                 bounds = self._node_bounds.get(node.key)
@@ -8987,7 +9295,7 @@ class TopologyEditor(tk.Tk):
                 for badge_id in badge:
                     self.canvas.addtag_withtag(f"node_{node.key}", badge_id)
         for callout in self._callout_nodes():
-            cx = callout.x * scale
+            cx = (callout.x - x_shift) * scale
             bus_index = min(max(callout.bus_index, 0), max(len(bus_ys) - 1, 0))
             bus_y = bus_ys[bus_index] if bus_ys else base_y
             box_w, box_h = self._node_box_dims(callout, scale)
@@ -9083,7 +9391,7 @@ class TopologyEditor(tk.Tk):
             self._draw_group_overlays()
 
         if self._guide_x is not None and self._smart_guides_var.get():
-            guide_x = self._guide_x * scale
+            guide_x = (self._guide_x - x_shift) * scale
             self.canvas.create_line(
                 guide_x,
                 min_y - margin,
@@ -9093,8 +9401,24 @@ class TopologyEditor(tk.Tk):
                 dash=(4, 4),
                 width=1,
             )
+        self._update_selection_overlays()
+        self._gui_debug_log(
+            "redraw.end",
+            total_width=total_width,
+            min_left=min_left,
+            max_right=max_right,
+            min_y=min_y,
+            max_y=max_y,
+        )
 
         # Legend is optional via View -> Legend.
+
+    def _redraw_canvas_preserve_view(self) -> None:
+        """
+        NAME
+            _redraw_canvas_preserve_view - Rebuild the scene without moving the viewport.
+        """
+        self._preserve_canvas_view(self._redraw_canvas)
 
     def _draw_group_overlays(self) -> None:
         """
@@ -9137,30 +9461,14 @@ class TopologyEditor(tk.Tk):
             for member in members:
                 label = TEXT_EMPTY
                 if isinstance(member, dict):
-                    label = str(member.get(KEY_DEVICE, TEXT_EMPTY)).strip()
+                    label = bridge_group_member_label(member)
                 elif isinstance(member, str):
                     label = member.strip()
                 if label:
                     labels.add(label)
         if not labels:
             return set()
-        member_keys = {node.key for node in self._device_nodes() if node.label in labels}
-        if not member_keys:
-            return set()
-        changed = True
-        while changed:
-            changed = False
-            for link in self._cannect_device_links:
-                node_key = link.get("node")
-                device_key = link.get("device")
-                if not isinstance(node_key, int) or not isinstance(device_key, int):
-                    continue
-                if node_key in member_keys or device_key in member_keys:
-                    before = len(member_keys)
-                    member_keys.add(node_key)
-                    member_keys.add(device_key)
-                    changed = changed or len(member_keys) != before
-        return member_keys
+        return {node.key for node in self._nodes if node.label in labels}
 
     def _group_overlay_hit_test(self, cx: float, cy: float) -> Optional[str]:
         """
@@ -9193,6 +9501,23 @@ class TopologyEditor(tk.Tk):
             on_bottom = abs(cy - y1) <= border_tol and x0 - border_tol <= cx <= x1 + border_tol
             if on_left or on_right or on_top or on_bottom:
                 return str(region.get("name", TEXT_EMPTY)).strip() or None
+        return None
+
+    def _bus_connector_hit_test(self, cx: float, cy: float) -> Optional[int]:
+        """
+        NAME
+            _bus_connector_hit_test - Return the connector index when a wrap connector is clicked.
+        """
+        regions = list(self.__dict__.get("_bus_connector_regions", []) or [])
+        for region in regions:
+            bounds = region.get("bounds")
+            if not isinstance(bounds, tuple) or len(bounds) != 4:
+                continue
+            x0, y0, x1, y1 = [float(value) for value in bounds]
+            if x0 <= cx <= x1 and y0 <= cy <= y1:
+                index = region.get("index")
+                if isinstance(index, int):
+                    return index
         return None
 
     def _shape_kind_for_node(self, node: Node) -> str:
@@ -9311,8 +9636,9 @@ class TopologyEditor(tk.Tk):
             ("NI", "NI"),
         ]
         link_items = [
-            ("Attachment (logical)", ATTACH_LINE_COLOR, LINK_DASH),
-            ("DIO wire (roboRIO)", WIRE_LINE_COLOR, LINK_DASH),
+            ("Attachment (logical)", ATTACH_LINE_COLOR, ATTACH_LINK_DASH),
+            ("DIO wire (roboRIO)", WIRE_LINE_COLOR, DIO_WIRE_DASH),
+            ("Ethernet device link", "#1c6ba8", ETHERNET_DEVICE_DASH),
             ("CAN bus (physical)", BUS_LINE_COLOR, None),
         ]
         height = (
@@ -9553,8 +9879,9 @@ class TopologyEditor(tk.Tk):
                 cy += line_h
             cy += 6
             link_items = [
-                ("Attachment (logical)", ATTACH_LINE_COLOR, LINK_DASH),
-                ("DIO wire (roboRIO)", WIRE_LINE_COLOR, LINK_DASH),
+                ("Attachment (logical)", ATTACH_LINE_COLOR, ATTACH_LINK_DASH),
+                ("DIO wire (roboRIO)", WIRE_LINE_COLOR, DIO_WIRE_DASH),
+                ("Ethernet device link", "#1c6ba8", ETHERNET_DEVICE_DASH),
                 ("CAN bus (physical)", BUS_LINE_COLOR, None),
             ]
             for label, color, dash in link_items:
@@ -9675,7 +10002,7 @@ class TopologyEditor(tk.Tk):
                 "\n"
                 "- Use Groups -> Create Group from Selection... after multi-selecting nodes.\n"
                 "- Groups are stored under bridgeConfig.byProfile.<profile>.groups in bringup_system.json.\n"
-                "- View -> Show Group Overlays toggles dashed group boxes.\n"
+                "- View -> Show Group Overlays toggles colored group outline boxes.\n"
             ),
             HELP_DIO_TITLE: HELP_DIO_BODY,
             "Bus Segments": (
@@ -10011,6 +10338,7 @@ class TopologyEditor(tk.Tk):
             return
         region[SCROLLREGION_MIN_INDEX] = new_min_x
         region[SCROLLREGION_MAX_INDEX] = new_max_x
+        self._view_scrollregion_x_override = (new_min_x, new_max_x)
         self.canvas.configure(scrollregion=tuple(region))
         fraction = (current_left - new_min_x) / new_span
         self.canvas.xview_moveto(max(0.0, min(1.0, fraction)))
@@ -10040,9 +10368,62 @@ class TopologyEditor(tk.Tk):
         if new_min_x != old_min_x or new_max_x != old_max_x:
             region[SCROLLREGION_MIN_INDEX] = new_min_x
             region[SCROLLREGION_MAX_INDEX] = new_max_x
+            self._view_scrollregion_x_override = (new_min_x, new_max_x)
             self.canvas.configure(scrollregion=tuple(region))
         fraction = (desired_left - new_min_x) / new_span
         self.canvas.xview_moveto(max(0.0, min(1.0, fraction)))
+        self._gui_debug_log(
+            "set_xview_left",
+            desired_left=desired_left,
+            new_min_x=new_min_x,
+            new_max_x=new_max_x,
+            fraction=fraction,
+        )
+
+    def _set_canvas_yview_top(self, desired_top: float) -> None:
+        """
+        NAME
+            _set_canvas_yview_top - Position the canvas viewport at a Y coordinate.
+        """
+        try:
+            raw_region = self.canvas.cget("scrollregion")
+        except Exception:
+            return
+        parts = str(raw_region).split()
+        if len(parts) != SCROLLREGION_FIELD_COUNT:
+            return
+        try:
+            region = [float(part) for part in parts]
+        except ValueError:
+            return
+        height = max(float(self.canvas.winfo_height()), SCROLLREGION_MIN_SPAN)
+        y_min_index = SCROLLREGION_MIN_INDEX + BUS_INDEX_FLOOR
+        y_max_index = SCROLLREGION_MAX_INDEX + BUS_INDEX_FLOOR
+        old_min_y = region[y_min_index]
+        old_max_y = region[y_max_index]
+        new_min_y = min(old_min_y, desired_top)
+        new_max_y = max(old_max_y, desired_top + height)
+        new_span = max(new_max_y - new_min_y, SCROLLREGION_MIN_SPAN)
+        if new_min_y != old_min_y or new_max_y != old_max_y:
+            region[y_min_index] = new_min_y
+            region[y_max_index] = new_max_y
+            self.canvas.configure(scrollregion=tuple(region))
+        fraction = (desired_top - new_min_y) / new_span
+        self.canvas.yview_moveto(max(0.0, min(1.0, fraction)))
+        self._gui_debug_log(
+            "set_yview_top",
+            desired_top=desired_top,
+            new_min_y=new_min_y,
+            new_max_y=new_max_y,
+            fraction=fraction,
+        )
+
+    def _drag_threshold_exceeded(self, dx: float, dy: float) -> bool:
+        """
+        NAME
+            _drag_threshold_exceeded - Return True once pointer motion is clearly a drag.
+        """
+        return abs(dx) >= CLICK_DRAG_THRESHOLD_PX or abs(dy) >= CLICK_DRAG_THRESHOLD_PX
 
     def _on_canvas_press(self, event: tk.Event) -> None:
         """
@@ -10051,6 +10432,7 @@ class TopologyEditor(tk.Tk):
         """
         cx = self.canvas.canvasx(event.x)
         cy = self.canvas.canvasy(event.y)
+        self._gui_debug_log("press", event_x=event.x, event_y=event.y, cx=cx, cy=cy)
         self.canvas.focus_set()
         self._clear_guides()
         if self._selection_rect is not None:
@@ -10061,10 +10443,22 @@ class TopologyEditor(tk.Tk):
             self._add_bus_at(cy)
             self._add_bus_mode = False
             return
-        items = self.canvas.find_overlapping(cx, cy, cx, cy)
-        item = items[-1] if items else None
-        tags = self.canvas.gettags(item) if item else ()
-        key = self._tag_to_key(tags)
+        connector_index = self._bus_connector_hit_test(cx, cy)
+        if connector_index is not None and not self._shift_held(event):
+            self._push_undo()
+            self._drag_undo_pending = True
+            self._bus_connector_drag = (connector_index, self._bus_connector_side(connector_index), cx)
+            return
+        group_name = self._group_overlay_hit_test(cx, cy)
+        if group_name and not self._shift_held(event):
+            member_keys = self._group_member_keys_by_name(group_name)
+            if member_keys:
+                self._selected_nodes = set(member_keys)
+                self._selected_buses = set()
+                self._sync_selection_state()
+                self._start_multi_drag(cx, cy)
+                return
+        key = self._find_node_key_at(cx, cy)
         total_selected = len(self._selected_nodes)
         if self._shift_held(event):
             if key is not None:
@@ -10080,15 +10474,6 @@ class TopologyEditor(tk.Tk):
             )
             return
         if key is None:
-            group_name = self._group_overlay_hit_test(cx, cy)
-            if group_name:
-                member_keys = self._group_member_keys_by_name(group_name)
-                if member_keys:
-                    self._selected_nodes = set(member_keys)
-                    self._selected_buses = set()
-                    self._sync_selection_state()
-                    self._start_multi_drag(cx, cy)
-                    return
             # Check if we clicked near a bus line to drag it.
             bus_index = self._bus_hit_test(cy)
             if bus_index is not None:
@@ -10110,15 +10495,19 @@ class TopologyEditor(tk.Tk):
                 self._push_undo()
                 bus_ys = list(self._draw_state.get("bus_ys", []))
                 bus_y = bus_ys[bus_index] if bus_ys else cy
-                self._bus_drag = (bus_index, bus_y, self._bus_offsets[bus_index])
+                self._bus_drag = (bus_index, bus_y, self._bus_offsets[bus_index], cx, cy)
             else:
+                if not self._selected_nodes and not self._selected_buses:
+                    return
                 self._clear_selection()
                 return
             return
         if key in self._selected_nodes and total_selected > 1:
             self._start_multi_drag(cx, cy)
         else:
-            self._set_single_node_selection(key)
+            already_single_selected = key in self._selected_nodes and total_selected == 1 and not self._selected_buses
+            if not already_single_selected:
+                self._set_single_node_selection(key)
             node = next((n for n in self._nodes if n.key == key), None)
             if ENABLE_CANNECT_CLUSTER_DRAG and node is not None and self._is_swyft_node(node):
                 self._push_undo()
@@ -10136,10 +10525,18 @@ class TopologyEditor(tk.Tk):
         """
         cx = self.canvas.canvasx(event.x)
         cy = self.canvas.canvasy(event.y)
-        if not self._dragging_active:
-            self._dragging_active = True
-            if hasattr(self, "_node_details_panel"):
-                self._preserve_canvas_view(self._node_details_panel.pack_forget)
+        self._gui_debug_log(
+            "drag",
+            event_x=event.x,
+            event_y=event.y,
+            cx=cx,
+            cy=cy,
+            drag_state=self._drag_state,
+            multi_drag=bool(self._multi_drag),
+            bus_drag=self._bus_drag,
+            bus_resize=self._bus_resize,
+            bus_connector_drag=self._bus_connector_drag,
+        )
         if self._selection_start is not None and self._selection_rect is not None:
             x0, y0 = self._selection_start
             self.canvas.coords(self._selection_rect, x0, y0, cx, cy)
@@ -10148,6 +10545,10 @@ class TopologyEditor(tk.Tk):
             start_cx, start_cy = self._multi_drag.get("start", (cx, cy))
             dx = cx - start_cx
             dy = cy - start_cy
+            if not self._dragging_active and not self._drag_threshold_exceeded(dx, dy):
+                return
+            if not self._dragging_active:
+                self._dragging_active = True
             scale = max(self._zoom, 0.01)
             nodes_start = self._multi_drag.get("nodes", {})
             base_y = max(self.canvas.winfo_height(), 1) * 0.5 + self._pan_y
@@ -10182,6 +10583,8 @@ class TopologyEditor(tk.Tk):
             self._redraw_canvas()
             return
         if self._pan_drag is not None:
+            if not self._dragging_active:
+                self._dragging_active = True
             start_y, start_pan = self._pan_drag
             dy = cy - start_y
             height = max(self.canvas.winfo_height(), 1)
@@ -10191,31 +10594,60 @@ class TopologyEditor(tk.Tk):
             self._redraw_canvas()
             return
         if self._bus_drag is not None:
-            bus_index, start_bus_y, start_offset = self._bus_drag
+            bus_index, start_bus_y, start_offset, start_cx, start_cy = self._bus_drag
+            if not self._dragging_active and not self._drag_threshold_exceeded(cx - start_cx, cy - start_cy):
+                return
+            if not self._dragging_active:
+                self._dragging_active = True
             scale = max(self._zoom, 0.01)
             dy_canvas = cy - start_bus_y
             delta = dy_canvas / scale
             self._bus_offsets[bus_index] = start_offset + delta
             self._redraw_canvas()
             return
+        if self._bus_connector_drag is not None:
+            connector_index, start_side, start_cx = self._bus_connector_drag
+            scale = max(self._zoom, 0.01)
+            drag_dx = cx - start_cx
+            if not self._dragging_active and abs(drag_dx) < CLICK_DRAG_THRESHOLD_PX:
+                return
+            if not self._dragging_active:
+                self._dragging_active = True
+            drag_threshold = max(18.0, 12.0 * scale)
+            desired_side = start_side
+            if drag_dx <= -drag_threshold:
+                desired_side = BUS_CONNECT_SIDE_LEFT
+            elif drag_dx >= drag_threshold:
+                desired_side = BUS_CONNECT_SIDE_RIGHT
+            if desired_side != self._bus_connector_side(connector_index):
+                self._set_bus_connector_side(connector_index, desired_side)
+                self._clamp_nodes_to_bus_bounds({connector_index, connector_index + 1})
+                self._dirty = True
+                self._redraw_canvas()
+            return
         if self._bus_resize is not None:
             bus_index, end, start_left, start_right, start_cx = self._bus_resize
+            if not self._dragging_active and abs(cx - start_cx) < CLICK_DRAG_THRESHOLD_PX:
+                return
+            if not self._dragging_active:
+                self._dragging_active = True
             scale = max(self._zoom, 0.01)
             dx = (cx - start_cx) / scale
             left = start_left
             right = start_right
             min_len = 120.0
 
-            is_even = bus_index % 2 == 0
-            connector_with_next = (end == "right" and is_even) or (end == "left" and not is_even)
-            connector_with_prev = (end == "left" and is_even) or (end == "right" and not is_even)
-            if self._bus_connectors:
-                if bus_index < len(self._bus_connectors):
-                    if not self._bus_connectors[bus_index]:
-                        connector_with_next = False
-                if bus_index - BUS_INDEX_FLOOR >= 0 and bus_index - BUS_INDEX_FLOOR < len(self._bus_connectors):
-                    if not self._bus_connectors[bus_index - BUS_INDEX_FLOOR]:
-                        connector_with_prev = False
+            connector_with_next = (
+                bus_index < len(self._bus_connectors)
+                and self._bus_connectors[bus_index]
+                and end == self._bus_connector_side(bus_index)
+            )
+            connector_with_prev = (
+                bus_index - BUS_INDEX_FLOOR >= 0
+                and bus_index - BUS_INDEX_FLOOR < len(self._bus_connectors)
+                and self._bus_connectors[bus_index - BUS_INDEX_FLOOR]
+                and end == self._bus_connector_side(bus_index - BUS_INDEX_FLOOR)
+            )
 
             new_pos = (start_left + dx) if end == "left" else (start_right + dx)
             min_allowed = float("-inf")
@@ -10231,20 +10663,18 @@ class TopologyEditor(tk.Tk):
             if connector_with_next and bus_index + 1 < len(self._bus_offsets):
                 next_left = self._bus_lefts[bus_index + 1]
                 next_right = self._bus_rights[bus_index + 1]
-                if (bus_index + 1) % 2 == 0:
-                    # Next segment starts on the left.
-                    max_allowed = min(max_allowed, next_right - min_len)
-                else:
-                    # Next segment starts on the right.
+                next_side = self._bus_connector_side(bus_index)
+                if next_side == BUS_CONNECT_SIDE_RIGHT:
                     min_allowed = max(min_allowed, next_left + min_len)
+                else:
+                    max_allowed = min(max_allowed, next_right - min_len)
             if connector_with_prev and bus_index - 1 >= 0:
                 prev_left = self._bus_lefts[bus_index - 1]
                 prev_right = self._bus_rights[bus_index - 1]
-                if (bus_index - 1) % 2 == 0:
-                    # Previous segment ends on the right.
+                prev_side = self._bus_connector_side(bus_index - BUS_INDEX_FLOOR)
+                if prev_side == BUS_CONNECT_SIDE_RIGHT:
                     min_allowed = max(min_allowed, prev_left + min_len)
                 else:
-                    # Previous segment ends on the left.
                     max_allowed = min(max_allowed, prev_right - min_len)
 
             if min_allowed != float("-inf") or max_allowed != float("inf"):
@@ -10259,13 +10689,13 @@ class TopologyEditor(tk.Tk):
             resized_bus_indices = {bus_index}
             if connector_with_next and bus_index + 1 < len(self._bus_offsets):
                 resized_bus_indices.add(bus_index + 1)
-                if (bus_index + 1) % 2 == 0:
-                    self._bus_lefts[bus_index + 1] = new_pos
-                else:
+                if self._bus_connector_side(bus_index) == BUS_CONNECT_SIDE_RIGHT:
                     self._bus_rights[bus_index + 1] = new_pos
+                else:
+                    self._bus_lefts[bus_index + 1] = new_pos
             if connector_with_prev and bus_index - 1 >= 0:
                 resized_bus_indices.add(bus_index - 1)
-                if (bus_index - 1) % 2 == 0:
+                if self._bus_connector_side(bus_index - BUS_INDEX_FLOOR) == BUS_CONNECT_SIDE_RIGHT:
                     self._bus_rights[bus_index - 1] = new_pos
                 else:
                     self._bus_lefts[bus_index - 1] = new_pos
@@ -10280,6 +10710,10 @@ class TopologyEditor(tk.Tk):
         if not self._drag_state:
             return
         key, last_x, last_y = self._drag_state
+        if not self._dragging_active and not self._drag_threshold_exceeded(cx - last_x, cy - last_y):
+            return
+        if not self._dragging_active:
+            self._dragging_active = True
         node = next((n for n in self._nodes if n.key == key), None)
         if node is None:
             return
@@ -10308,6 +10742,15 @@ class TopologyEditor(tk.Tk):
         NAME
             _on_canvas_release - End drag operation.
         """
+        self._gui_debug_log(
+            "release.begin",
+            drag_state=self._drag_state,
+            multi_drag=bool(self._multi_drag),
+            bus_drag=self._bus_drag,
+            bus_resize=self._bus_resize,
+            bus_connector_drag=self._bus_connector_drag,
+            dragging_active=self._dragging_active,
+        )
         if self._selection_rect is not None:
             x0, y0, x1, y1 = self.canvas.coords(self._selection_rect)
             self.canvas.delete(self._selection_rect)
@@ -10317,7 +10760,13 @@ class TopologyEditor(tk.Tk):
             return
         layout_dragged = bool(
             self._dragging_active
-            and (self._drag_state is not None or self._multi_drag is not None or self._bus_drag is not None or self._bus_resize is not None)
+            and (
+                self._drag_state is not None
+                or self._multi_drag is not None
+                or self._bus_drag is not None
+                or self._bus_resize is not None
+                or self._bus_connector_drag is not None
+            )
         )
         if self._bus_drag is not None:
             if not self._bus_connectors or all(self._bus_connectors):
@@ -10344,17 +10793,19 @@ class TopologyEditor(tk.Tk):
         self._pan_drag = None
         self._bus_drag = None
         self._bus_resize = None
+        self._bus_connector_drag = None
         self._multi_drag = None
         self._drag_undo_pending = False
         self._dragging_active = False
         self._clear_guides()
-        if self._selected_key is not None:
+        if layout_dragged and self._selected_key is not None:
             self._update_details_panel(self._get_selected_node())
         if layout_dragged:
             self._mark_neighbors_stale()
-        self._redraw_canvas()
+            self._redraw_canvas()
         if dragged_key is not None:
             self._maybe_link_dragged_device_to_cannect(dragged_key)
+        self._gui_debug_log("release.end", layout_dragged=layout_dragged, dragged_key=dragged_key)
 
     def _on_add_bus(self) -> None:
         """
@@ -10385,6 +10836,7 @@ class TopologyEditor(tk.Tk):
         old_bus_count = len(self._bus_offsets)
         if not self._bus_connectors and old_bus_count > BUS_INDEX_FLOOR:
             self._bus_connectors = [BUS_CONNECT_DEFAULT] * (old_bus_count - BUS_INDEX_FLOOR)
+        self._ensure_bus_connector_sides(old_bus_count)
         # Preserve insertion order; do not sort so existing buses don't shift.
         if offset not in self._bus_offsets:
             insert_at = None
@@ -10403,8 +10855,15 @@ class TopologyEditor(tk.Tk):
             if old_bus_count > CANNECT_PORT_ZERO:
                 if insert_at >= old_bus_count:
                     self._bus_connectors.append(BUS_CONNECT_DEFAULT)
+                    self._bus_connector_sides.append(
+                        self._default_bus_connector_side(len(self._bus_connectors) - BUS_INDEX_FLOOR)
+                    )
                 else:
                     self._bus_connectors.insert(insert_at, BUS_CONNECT_DEFAULT)
+                    self._bus_connector_sides.insert(
+                        insert_at,
+                        self._default_bus_connector_side(insert_at),
+                    )
             max_node_x = max((n.x for n in self._nodes), default=0.0)
             default_right = max(max_node_x + 200.0, 400.0)
             default_left = 40.0
@@ -10435,6 +10894,14 @@ class TopologyEditor(tk.Tk):
                     self._bus_connectors[new_index - BUS_INDEX_FLOOR] = BUS_CONNECT_DISABLED
                 if new_index < len(self._bus_connectors):
                     self._bus_connectors[new_index] = BUS_CONNECT_DISABLED
+            self._ensure_bus_connector_sides(len(self._bus_offsets))
+            if old_bus_count > CANNECT_PORT_ZERO:
+                pivot = max(min(new_index - BUS_INDEX_FLOOR, len(self._bus_connectors) - BUS_INDEX_FLOOR), 0)
+                if 0 <= pivot < len(self._bus_connectors):
+                    self._set_bus_connector_side(
+                        pivot,
+                        self._default_bus_connector_side(pivot),
+                    )
             effective_cannect_direct = (
                 self._pending_cannect_direct
                 if self._pending_cannect_direct is not None
@@ -10545,8 +11012,6 @@ class TopologyEditor(tk.Tk):
         self._nodes = [n for n in self._nodes if n.key != node.key]
         self._selected_key = None
         self._callout_scale_var.set("?")
-        if hasattr(self, "_callout_details_panel"):
-            self._preserve_canvas_view(self._callout_details_panel.pack_forget)
         self._redraw_canvas()
 
     def _on_copy(self) -> None:
@@ -11132,7 +11597,7 @@ class TopologyEditor(tk.Tk):
                 members = group.get("members", []) or []
                 bounds_list = []
                 for member in members:
-                    label = member.get("device") if isinstance(member, dict) else member
+                    label = bridge_group_member_label(member) if isinstance(member, dict) else member
                     if not isinstance(label, str):
                         continue
                     bounds = label_bounds.get(label.strip())
@@ -11148,16 +11613,8 @@ class TopologyEditor(tk.Tk):
                 rx0, ry0 = _to_pdf(x0, y0)
                 rx1, ry1 = _to_pdf(x1, y1)
                 c.setStrokeColor(_pdf_color(color))
-                c.setLineWidth(2 * fit_scale)
-                try:
-                    c.setDash(6 * fit_scale, 4 * fit_scale)
-                except Exception:
-                    pass
+                c.setLineWidth(3 * fit_scale)
                 c.rect(min(rx0, rx1), min(ry0, ry1), abs(rx1 - rx0), abs(ry1 - ry0), fill=0, stroke=1)
-                try:
-                    c.setDash()
-                except Exception:
-                    pass
                 label_font = max(10, int(12 * scale * fit_scale))
                 label_pad_x = max(6.0, 6.0 * scale)
                 label_h = max(18.0, 18.0 * scale)
@@ -11196,8 +11653,9 @@ class TopologyEditor(tk.Tk):
                 c.line(x0, y0, x1, y1)
                 if idx + 1 < len(bus_ys):
                     next_y = bus_ys[idx + 1]
-                    connector_x = end_x
-                    offset = turn_radius if idx % 2 == 0 else -turn_radius
+                    side = self._bus_connector_side(idx)
+                    connector_x = seg_right if side == BUS_CONNECT_SIDE_RIGHT else seg_left
+                    offset = turn_radius if side == BUS_CONNECT_SIDE_RIGHT else -turn_radius
                     path_obj = c.beginPath()
                     p0 = _to_pdf(connector_x, bus_y)
                     p1 = _to_pdf(connector_x + offset, bus_y + turn_radius)
@@ -11435,7 +11893,7 @@ class TopologyEditor(tk.Tk):
                 c.setStrokeColor(_pdf_color(ATTACH_LINE_COLOR))
                 c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
                 try:
-                    c.setDash(LINK_DASH[0] * fit_scale, LINK_DASH[1] * fit_scale)
+                    c.setDash(ATTACH_LINK_DASH[0] * fit_scale, ATTACH_LINK_DASH[1] * fit_scale)
                 except Exception:
                     pass
                 c.line(p0[0], p0[1], p1[0], p1[1])
@@ -11464,7 +11922,7 @@ class TopologyEditor(tk.Tk):
                 c.setStrokeColor(_pdf_color(WIRE_LINE_COLOR))
                 c.setLineWidth(LINK_LINE_WIDTH * fit_scale)
                 try:
-                    c.setDash(LINK_DASH[0] * fit_scale, LINK_DASH[1] * fit_scale)
+                    c.setDash(DIO_WIRE_DASH[0] * fit_scale, DIO_WIRE_DASH[1] * fit_scale)
                 except Exception:
                     pass
                 c.line(p0[0], p0[1], p1[0], p1[1])
@@ -11495,7 +11953,12 @@ class TopologyEditor(tk.Tk):
                 c.setStrokeColor(_pdf_color("#1c6ba8"))
                 c.setLineWidth(2 * fit_scale)
                 try:
-                    c.setDash(6 * fit_scale, 4 * fit_scale)
+                    c.setDash(
+                        ETHERNET_DEVICE_DASH[0] * fit_scale,
+                        ETHERNET_DEVICE_DASH[1] * fit_scale,
+                        ETHERNET_DEVICE_DASH[2] * fit_scale,
+                        ETHERNET_DEVICE_DASH[3] * fit_scale,
+                    )
                 except Exception:
                     pass
                 c.line(p0[0], p0[1], p1[0], p1[1])
@@ -11995,6 +12458,111 @@ class TopologyEditor(tk.Tk):
         elif len(self._bus_connectors) > desired:
             self._bus_connectors = self._bus_connectors[:desired]
 
+    def _default_bus_connector_side(self, connector_index: int) -> str:
+        """
+        NAME
+            _default_bus_connector_side - Return the legacy inferred side for one join.
+        """
+        return BUS_CONNECT_SIDE_RIGHT if connector_index % 2 == 0 else BUS_CONNECT_SIDE_LEFT
+
+    def _normalize_bus_connector_side(self, value: object, connector_index: int) -> str:
+        """
+        NAME
+            _normalize_bus_connector_side - Normalize a stored join side token.
+        """
+        text = str(value).strip().lower() if isinstance(value, str) else EMPTY_STRING
+        if text == BUS_CONNECT_SIDE_LEFT:
+            return BUS_CONNECT_SIDE_LEFT
+        if text == BUS_CONNECT_SIDE_RIGHT:
+            return BUS_CONNECT_SIDE_RIGHT
+        return self._default_bus_connector_side(connector_index)
+
+    def _ensure_bus_connector_sides(self, bus_count: int) -> None:
+        """
+        NAME
+            _ensure_bus_connector_sides - Ensure join side metadata matches bus count.
+        """
+        desired = max(bus_count - BUS_INDEX_FLOOR, CANNECT_PORT_ZERO)
+        if desired <= 0:
+            self._bus_connector_sides = []
+            return
+        current_sides = list(self.__dict__.get("_bus_connector_sides", []) or [])
+        normalized = [
+            self._normalize_bus_connector_side(
+                current_sides[idx] if idx < len(current_sides) else EMPTY_STRING,
+                idx,
+            )
+            for idx in range(desired)
+        ]
+        self._bus_connector_sides = normalized
+
+    def _bus_connector_side(self, connector_index: int) -> str:
+        """
+        NAME
+            _bus_connector_side - Return the effective side for a join between adjacent buses.
+        """
+        current_sides = list(self.__dict__.get("_bus_connector_sides", []) or [])
+        if 0 <= connector_index < len(current_sides):
+            return self._normalize_bus_connector_side(current_sides[connector_index], connector_index)
+        return self._default_bus_connector_side(connector_index)
+
+    @staticmethod
+    def _opposite_bus_connector_side(side: str) -> str:
+        """
+        NAME
+            _opposite_bus_connector_side - Return the other legal join side token.
+        """
+        return BUS_CONNECT_SIDE_LEFT if side == BUS_CONNECT_SIDE_RIGHT else BUS_CONNECT_SIDE_RIGHT
+
+    def _align_join_geometry(self, connector_index: int) -> None:
+        """
+        NAME
+            _align_join_geometry - Align adjacent segment endpoints on the stored join side.
+        """
+        if connector_index < 0 or connector_index + 1 >= len(self._bus_offsets):
+            return
+        side = self._bus_connector_side(connector_index)
+        if side == BUS_CONNECT_SIDE_RIGHT:
+            shared_x = max(
+                self._bus_rights[connector_index],
+                self._bus_rights[connector_index + 1],
+            )
+            self._bus_rights[connector_index] = shared_x
+            self._bus_rights[connector_index + 1] = shared_x
+            return
+        shared_x = min(
+            self._bus_lefts[connector_index],
+            self._bus_lefts[connector_index + 1],
+        )
+        self._bus_lefts[connector_index] = shared_x
+        self._bus_lefts[connector_index + 1] = shared_x
+
+    def _set_bus_connector_side(self, connector_index: int, side: str) -> None:
+        """
+        NAME
+            _set_bus_connector_side - Set one join side and propagate alternating sides through its component.
+        """
+        if connector_index < 0 or connector_index >= len(self._bus_connectors):
+            return
+        normalized_side = self._normalize_bus_connector_side(side, connector_index)
+        self._ensure_bus_connector_sides(len(self._bus_offsets))
+        start = connector_index
+        while start - 1 >= 0 and self._bus_connectors[start - 1]:
+            start -= 1
+        end = connector_index
+        while end + 1 < len(self._bus_connectors) and self._bus_connectors[end + 1]:
+            end += 1
+        current_side = normalized_side
+        for idx in range(connector_index, start - 1, -1):
+            self._bus_connector_sides[idx] = current_side
+            current_side = self._opposite_bus_connector_side(current_side)
+        current_side = self._opposite_bus_connector_side(normalized_side)
+        for idx in range(connector_index + 1, end + 1):
+            self._bus_connector_sides[idx] = current_side
+            current_side = self._opposite_bus_connector_side(current_side)
+        for idx in range(start, end + 1):
+            self._align_join_geometry(idx)
+
     def _truncate_to_width(self, text: str, font: tkfont.Font, max_w: float) -> str:
         """
         NAME
@@ -12043,28 +12611,50 @@ class TopologyEditor(tk.Tk):
             delta = -ZOOM_WHEEL_STEP
         else:
             return "break"
-        self._zoom_step(delta)
+        anchor_x = float(getattr(event, "x", max(self.canvas.winfo_width(), 1) / 2.0))
+        anchor_y = float(getattr(event, "y", max(self.canvas.winfo_height(), 1) / 2.0))
+        self._zoom_step(delta, anchor_x=anchor_x, anchor_y=anchor_y)
         return "break"
 
-    def _zoom_step(self, delta: float) -> None:
+    def _zoom_step(
+        self,
+        delta: float,
+        anchor_x: Optional[float] = None,
+        anchor_y: Optional[float] = None,
+    ) -> None:
         """
         NAME
             _zoom_step - Apply a zoom increment within bounds.
         """
-        self._zoom = max(0.1, min(2.0, self._zoom + delta))
+        old_zoom = max(self._zoom, 0.01)
+        new_zoom = max(0.1, min(2.0, self._zoom + delta))
+        if abs(new_zoom - self._zoom) < 1e-9:
+            return
+        view_width = max(float(self.canvas.winfo_width()), 1.0)
+        view_height = max(float(self.canvas.winfo_height()), 1.0)
+        anchor_px_x = view_width / 2.0 if anchor_x is None else float(anchor_x)
+        anchor_px_y = view_height / 2.0 if anchor_y is None else float(anchor_y)
+        anchor_canvas_x = float(self.canvas.canvasx(anchor_px_x))
+        anchor_canvas_y = float(self.canvas.canvasy(anchor_px_y))
+        base_y_before = view_height * 0.5 + self._pan_y
+        anchor_world_x = anchor_canvas_x / old_zoom
+        anchor_world_offset_y = (anchor_canvas_y - base_y_before) / old_zoom
+        self._zoom = new_zoom
         self._dirty = True
         self._zoom_label_var.set(f"Zoom: {int(self._zoom * 100)}%")
         self._redraw_canvas()
+        base_y_after = view_height * 0.5 + self._pan_y
+        desired_top = base_y_after + anchor_world_offset_y * self._zoom - anchor_px_y
+        desired_left = anchor_world_x * self._zoom - anchor_px_x
+        self._set_canvas_xview_left(desired_left)
+        self._set_canvas_yview_top(desired_top)
 
     def _zoom_reset(self) -> None:
         """
         NAME
             _zoom_reset - Reset zoom to 100%.
         """
-        self._zoom = 1.0
-        self._dirty = True
-        self._zoom_label_var.set("Zoom: 100%")
-        self._redraw_canvas()
+        self._zoom_step(1.0 - self._zoom)
 
     def _fit_to_window(self) -> None:
         """

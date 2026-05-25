@@ -375,7 +375,7 @@ Example pattern:
 ```text
 configure terminal
 profile <active-profile>
-test create <test-name>
+SID_COMMENT: legacy local interactive test authoring was removed; replace wizard output with DSL file creation plus `test import`.
 type <test-family>
 device add "<label-1>"
 device add "<label-2>"

@@ -210,9 +210,9 @@ Expected:
 ### Step 8: Populate groups
 
 ```text
-add device motor1 group intake
-add device motor2 group intake
-add all group shooter
+group member assign intake motor1
+group member assign intake motor2
+group member assign all shooter
 ```
 
 Expected:
@@ -350,4 +350,5 @@ All criteria must pass:
 - If save blocks on validation, use `--force` for procedure-only verification and log failures.
 - If group context fails unexpectedly, verify group exists in current local state.
 - If runtime tests do not actuate, confirm selected test and enabled state.
+
 

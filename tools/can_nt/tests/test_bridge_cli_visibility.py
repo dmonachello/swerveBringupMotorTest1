@@ -51,6 +51,7 @@ from tools.can_nt.bridge_cli import (
     KEY_SIGNALS,
     KEY_SOURCE_PATH,
     KEY_TESTS,
+    SOURCE_NAME_TESTS,
     KEY_TOPOLOGY,
     KEY_VISIBILITY,
     KEY_TOPOLOGY_PROFILES,
@@ -251,8 +252,32 @@ class BridgeCliVisibilityTests(unittest.TestCase):
             result = cli._save_unified_config(str(path), skip_validation=True)
 
         self.assertEqual(result.code, SS__CONFIG__SAVED)
-        self.assertEqual(cli._last_saved_path, str(path))
-        self.assertTrue(bool(cli._last_saved_hash))
+
+    def test_reload_source_tests_refreshes_model_from_local_profile_config(self) -> None:
+        cli = self._build_cli()
+        cli._local_config[KEY_BRIDGE_BY_PROFILE][PROFILE_NAME][KEY_TESTS] = {
+            "defaultSet": "demo_set",
+            "testSets": {
+                "demo_set": [
+                    {
+                        "name": "Spin Motor",
+                        "enabled": True,
+                        "motorLabels": ["motor1"],
+                        "type": "fixed",
+                    }
+                ]
+            },
+        }
+        cli._tests_model = None
+        cli._tests_profile = None
+        cli._tests_dirty = True
+
+        result = cli._reload_source(SOURCE_NAME_TESTS, "src/main/deploy/bringup_system.json")
+
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertIsNotNone(cli._tests_model)
+        self.assertEqual(cli._tests_profile, PROFILE_NAME)
+        self.assertFalse(cli._tests_dirty)
 
     def test_save_profiles_does_not_mirror_when_canonical_matches_deploy(self) -> None:
         cli = self._build_cli()
@@ -279,7 +304,6 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         cli._bindings_payload = {
             "controllers": [{"name": "driver0", "type": "XBOX", "port": 0}],
             "bindings": [],
-            "axes": [],
         }
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -344,8 +368,8 @@ class BridgeCliVisibilityTests(unittest.TestCase):
                                 "name": "drive",
                                 KEY_ENABLED: True,
                                 "members": [
-                                    {KEY_DEVICE: "good", KEY_ENABLED: True},
-                                    {KEY_DEVICE: "missing", KEY_ENABLED: True},
+                                    {KEY_LABEL: "good", KEY_ENABLED: True},
+                                    {KEY_LABEL: "missing", KEY_ENABLED: True},
                                 ],
                             }
                         ],
@@ -375,7 +399,7 @@ class BridgeCliVisibilityTests(unittest.TestCase):
             ["good"],
         )
         members = cli._local_config[KEY_BRIDGE_BY_PROFILE][PROFILE_NAME][KEY_GROUPS][0]["members"]
-        self.assertEqual(members, [{KEY_DEVICE: "good", KEY_ENABLED: True}])
+        self.assertEqual(members, [{KEY_LABEL: "good", KEY_ENABLED: True}])
 
     def test_auto_merge_default_profiles_recovers_from_bad_json(self) -> None:
         cli = BridgeCli(_FakeSession(), batch=True)
@@ -451,9 +475,9 @@ class BridgeCliVisibilityTests(unittest.TestCase):
     def test_exec_bindings_show_works(self) -> None:
         cli = self._build_cli()
         cli._bindings_payload = {
+            "schema_version": 5,
             "controllers": [{"name": "driver", "type": "XBOX", "port": 0}],
             "bindings": [],
-            "axes": [],
         }
 
         output = io.StringIO()
@@ -475,7 +499,6 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         cli._bindings_payload = {
             "controllers": [{"name": "driver", "type": "XBOX", "port": 0}],
             "bindings": [],
-            "axes": [],
         }
 
         output = io.StringIO()
@@ -506,7 +529,6 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         cli._bindings_payload = {
             "controllers": [{"name": "driver", "type": "XBOX", "port": 0}],
             "bindings": [],
-            "axes": [],
         }
 
         result = cli._exec_command(["bindings", "no", "controller", "driver"])
@@ -519,7 +541,6 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         cli._bindings_payload = {
             "controllers": [{"name": "driver", "type": "XBOX", "port": 0}],
             "bindings": [],
-            "axes": [],
         }
 
         result = cli._exec_command(["bindings", "controller", "no", "driver"])
@@ -532,7 +553,6 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         cli._bindings_payload = {
             "controllers": [{"name": "driver", "type": "XBOX", "port": 0}],
             "bindings": [],
-            "axes": [],
         }
 
         output = io.StringIO()
@@ -547,9 +567,9 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         cli = self._build_cli()
         parser = BridgeCliParser()
         cli._bindings_payload = {
+            "schema_version": 5,
             "controllers": [],
             "bindings": [],
-            "axes": [],
         }
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -557,6 +577,7 @@ class BridgeCliVisibilityTests(unittest.TestCase):
             load_path = temp_path / "bindings_load.json"
             save_path = temp_path / "bindings_save.json"
             load_payload = {
+                "schema_version": 5,
                 "controllers": [{"name": "xbox1", "type": "XBOX", "port": 2}],
                 "bindings": [
                     {
@@ -565,13 +586,13 @@ class BridgeCliVisibilityTests(unittest.TestCase):
                         "input": "button",
                         "id": "B",
                         "mode": "pressed",
-                    }
-                ],
-                "axes": [
+                    },
                     {
                         "command": "turn",
                         "controller": "xbox1",
+                        "input": "axis",
                         "id": "rightX",
+                        "mode": "analog",
                         "invert": False,
                         "deadband": 0.15,
                     }
@@ -583,20 +604,19 @@ class BridgeCliVisibilityTests(unittest.TestCase):
                 ("bindings show", "Local bindings config:"),
                 ("bindings show controllers", "controllers:"),
                 ("bindings show bindings", "bindings:"),
-                ("bindings show axes", "axes:"),
                 ("bindings show --all --json --pretty", "\"controllers\": []"),
                 ("bindings controller add xbox0 xbox 0", None),
                 ("bindings controller set xbox0 port 1", None),
                 ("bindings controller rename xbox0 driver0", None),
                 ("bindings binding add stop driver0 button A pressed", None),
                 ("bindings binding set 1 mode released", None),
-                ("bindings axis add drive driver0 leftY invert on deadband 0.12", None),
-                ("bindings axis set 1 deadband 0.2", None),
+                ("bindings binding add drive driver0 axis leftY analog invert on deadband 0.12", None),
+                ("bindings binding set 2 deadband 0.2", None),
                 (f"bindings save {save_path}", "Wrote bindings to"),
                 (f"bindings validate {save_path}", "OK: Config is valid."),
                 ("bindings validate", "OK: Config is valid."),
                 ("bindings binding delete 1", None),
-                ("bindings axis delete 1", None),
+                ("bindings binding delete 1", None),
                 ("bindings no controller driver0", None),
                 (f"bindings load {load_path}", "Loaded bindings:"),
                 ("bindings validate", "OK: Config is valid."),
@@ -625,6 +645,7 @@ class BridgeCliVisibilityTests(unittest.TestCase):
             self.assertEqual(
                 saved_payload,
                 {
+                    "schema_version": 5,
                     "controllers": [{"name": "driver0", "type": "xbox", "port": 1}],
                     "bindings": [
                         {
@@ -633,17 +654,18 @@ class BridgeCliVisibilityTests(unittest.TestCase):
                             "input": "button",
                             "id": "A",
                             "mode": "released",
-                        }
-                    ],
-                    "axes": [
+                        },
                         {
                             "command": "drive",
                             "controller": "driver0",
+                            "input": "axis",
                             "id": "leftY",
+                            "mode": "analog",
                             "invert": True,
                             "deadband": 0.2,
                         }
                     ],
+                    "inputAliases": {},
                 },
             )
 
@@ -666,14 +688,13 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         cli._bindings_payload = {
             "controllers": [{"name": "controller0", "type": "XBOX", "port": 0}],
             "bindings": [],
-            "axes": [],
         }
         cli._local_root_payload[KEY_DEVICES] = [{"label": "motor1", "type": "motor"}]  # type: ignore[index]
         cli._local_config[KEY_BRIDGE_BY_PROFILE][PROFILE_NAME][KEY_GROUPS] = [  # type: ignore[index]
             {
                 "name": "motion",
                 "enabled": True,
-                "members": [{"device": "motor1", "enabled": True}],
+                "members": [{"label": "motor1", "enabled": True}],
                 "bindings": [{"input": "controller0.leftY", "kind": "analog"}],
             }
         ]
@@ -699,7 +720,6 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         cli._bindings_payload = {
             "controllers": [],
             "bindings": [],
-            "axes": [],
         }
         cli._local_config[KEY_BRIDGE_BY_PROFILE][PROFILE_NAME][KEY_GROUPS] = [  # type: ignore[index]
             {
@@ -724,13 +744,12 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         cli._bindings_payload = {
             "controllers": [{"name": "controller0", "type": "XBOX", "port": 0}],
             "bindings": [],
-            "axes": [],
         }
         cli._local_config[KEY_BRIDGE_BY_PROFILE][PROFILE_NAME][KEY_GROUPS] = [  # type: ignore[index]
             {
                 "name": "motion",
                 "enabled": True,
-                "members": [{"device": "motor1", "enabled": True}],
+                "members": [{"label": "motor1", "enabled": True}],
                 "bindings": [{"input": "controller0.leftY", "kind": "analog"}],
             }
         ]
@@ -771,7 +790,7 @@ class BridgeCliVisibilityTests(unittest.TestCase):
 
     def test_bindings_show_robot_is_rejected(self) -> None:
         cli = self._build_cli()
-        cli._bindings_payload = {"controllers": [], "bindings": [], "axes": []}
+        cli._bindings_payload = {"controllers": [], "bindings": []}
 
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
@@ -785,7 +804,6 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         cli._bindings_payload = {
             "controllers": [{"name": "driver0", "type": "XBOX", "port": 0}],
             "bindings": [],
-            "axes": [],
         }
 
         output = io.StringIO()
@@ -800,12 +818,11 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         cli._bindings_payload = {
             "controllers": [{"name": "driver0", "type": "XBOX", "port": 0}],
             "bindings": [],
-            "axes": [],
         }
 
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
-            result = cli._execute_line("bindings axis add drive driver0 leftY invert on deadband 9.9")
+            result = cli._execute_line("bindings binding add drive driver0 axis leftY analog invert on deadband 9.9")
 
         self.assertNotEqual(result.code, SS__NORMAL)
         self.assertIn("deadband must be 0.0 to 1.0", output.getvalue())
@@ -823,7 +840,6 @@ class BridgeCliVisibilityTests(unittest.TestCase):
                     "mode": "pressed",
                 }
             ],
-            "axes": [],
         }
 
         output = io.StringIO()
@@ -831,11 +847,11 @@ class BridgeCliVisibilityTests(unittest.TestCase):
             result = cli._execute_line("bindings no controller driver0")
 
         self.assertNotEqual(result.code, SS__NORMAL)
-        self.assertIn("controller is referenced by bindings or axes", output.getvalue())
+        self.assertIn("controller is referenced by bindings", output.getvalue())
 
     def test_bindings_load_malformed_json_is_rejected(self) -> None:
         cli = self._build_cli()
-        cli._bindings_payload = {"controllers": [], "bindings": [], "axes": []}
+        cli._bindings_payload = {"controllers": [], "bindings": []}
 
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "broken_bindings.json"
@@ -850,7 +866,7 @@ class BridgeCliVisibilityTests(unittest.TestCase):
 
     def test_bindings_edit_marks_dirty_and_show_dirty_reports_it(self) -> None:
         cli = self._build_cli()
-        cli._bindings_payload = {"controllers": [], "bindings": [], "axes": []}
+        cli._bindings_payload = {"controllers": [], "bindings": []}
 
         edit_result = cli._execute_line("bindings controller add driver0 XBOX 0")
         dirty_output = io.StringIO()
@@ -866,7 +882,6 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         cli._bindings_payload = {
             "controllers": [{"name": "driver0", "type": "XBOX", "port": 0}],
             "bindings": [],
-            "axes": [],
         }
         cli._local_config[KEY_BRIDGE_BY_PROFILE][PROFILE_NAME][KEY_GROUPS] = [  # type: ignore[index]
             {

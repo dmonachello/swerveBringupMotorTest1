@@ -19,6 +19,12 @@ Key points:
 - Device references are label-based.
 - Group configuration is stored under `bridgeConfig.byProfile.<profile>.groups`.
 
+Important distinction:
+
+- the config file may define more devices than the current profile uses
+- groups work with device labels that are already part of the current profile
+- group membership is not the same thing as device instantiation
+
 ## Why Groups Exist
 
 **Purpose**
@@ -27,6 +33,12 @@ Separate device ownership/control intent from the full profile device catalog.
 
 Profiles answer: "What devices exist?"
 Groups answer: "Which devices are being controlled together right now?"
+
+More precisely:
+
+- the shared device inventory answers: "What devices are defined in this config file?"
+- the active profile answers: "Which of those devices belong to this robot/profile?"
+- groups answer: "Which profile devices are targeted together?"
 
 This supports:
 
@@ -67,18 +79,23 @@ Implication:
 
 - `active add` may fail if the next ready device is already owned by `defaultGroup`.
 
-## `add all` vs `active add`
+## `instantiate all devices` vs `active add`
 
 **Purpose**
 
 Separate device instantiation from active working-set selection.
 
-- `add all`
+- `instantiate all devices`
   - Instantiates all configured devices for runtime use.
   - Does not populate `active-group`.
 - `active add`
   - Adds the next ready device to `active-group`.
   - One device per call.
+
+These are different actions:
+
+- instantiation changes runtime lifecycle state
+- active-group add changes group membership
 
 ## Running Tests By Group
 
@@ -110,7 +127,7 @@ Give a minimal sequence that avoids common confusion.
 
 ```text
 connect
-add all
+instantiate all devices
 active show --json --pretty
 active add
 active show --json --pretty
@@ -129,8 +146,9 @@ If `active add` reports "already in group", either:
 Map common symptoms to cause quickly.
 
 - `show devices` lists devices but `active-group` is empty
-  - Expected after `add all`; run `active add`.
+  - Expected after `instantiate all devices`; run `active add`.
 - `active add` says already in another group
   - Membership conflict due to single-group ownership.
 - Test does not run in TUI/CLI after safety event
   - Clear stop latch, re-enable test, and retry.
+

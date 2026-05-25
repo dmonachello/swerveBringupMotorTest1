@@ -13,6 +13,16 @@ DESCRIPTION
 
 from typing import Dict, Iterable, List, Tuple
 
+from tools.common.profile_constants import get_group_member_label
+
+ETHERNET_LINK_DASH = (8, 4)
+CAN_TRUNK_LINK_DASH = (2, 2)
+CANNNECT_DEVICE_LINK_DASH = (8, 3, 2, 3)
+GROUP_OVERLAY_WIDTH = 3
+ATTACHMENT_LINK_DASH = (10, 4)
+DIO_LINK_DASH = (2, 3)
+ETHERNET_VIRTUAL_LINK_DASH = (6, 2, 1, 2)
+
 
 def draw_canvas_shape_for_kind(
     canvas,
@@ -111,6 +121,9 @@ def draw_links(
     *,
     ethernet_ports: Dict[int, Dict[str, Tuple[float, float]]] | None = None,
     can_ports: Dict[int, Dict[int, Tuple[float, float]]] | None = None,
+    ethernet_dash=ETHERNET_LINK_DASH,
+    can_trunk_dash=CAN_TRUNK_LINK_DASH,
+    cannect_device_dash=CANNNECT_DEVICE_LINK_DASH,
 ) -> None:
     """
     NAME
@@ -129,7 +142,7 @@ def draw_links(
                 ax, ay = a_ports.get("out", a_ports.get("in", (ax, ay)))
             if b_ports:
                 bx, by = b_ports.get("in", b_ports.get("out", (bx, by)))
-            canvas.create_line(ax, ay, bx, by, width=2, fill="#2563eb", dash=(4, 3))
+            canvas.create_line(ax, ay, bx, by, width=2, fill="#2563eb", dash=ethernet_dash)
     for link in can_links:
         node_key = link.get("node")
         bus_index = link.get("bus", 0)
@@ -148,7 +161,7 @@ def draw_links(
             if bounds is not None:
                 x0, y0, x1, y1 = bounds
                 start_y = y1 if ny < by else y0
-        canvas.create_line(nx, start_y, nx, by, width=2, fill="#2563eb", dash=(2, 2))
+        canvas.create_line(nx, start_y, nx, by, width=2, fill="#2563eb", dash=can_trunk_dash)
     linked_nodes = {int(link.get("node")) for link in can_links if "node" in link}
     for entry in cannect_nodes:
         node_key = entry.get("node")
@@ -172,7 +185,7 @@ def draw_links(
         if bounds is not None:
             x0, y0, x1, y1 = bounds
             start_y = y1 if ny < by else y0
-        canvas.create_line(nx, start_y, nx, by, width=2, fill="#2563eb", dash=(2, 2))
+        canvas.create_line(nx, start_y, nx, by, width=2, fill="#2563eb", dash=can_trunk_dash)
     for link in device_links:
         node_key = link.get("node")
         device_key = link.get("device")
@@ -189,7 +202,7 @@ def draw_links(
             dx0, dy0, dx1, _dy1 = bounds
             dx = (dx0 + dx1) / 2.0
             dy = dy0
-        canvas.create_line(nx, ny, dx, dy, width=2, fill="#0f766e", dash=(3, 2))
+        canvas.create_line(nx, ny, dx, dy, width=2, fill="#0f766e", dash=cannect_device_dash)
 
 
 def draw_group_overlays(
@@ -208,6 +221,11 @@ def draw_group_overlays(
     palette = ["#1f6feb", "#f97316", "#16a34a", "#a855f7", "#0ea5e9", "#e11d48"]
     pad = 10.0
     overlays: List[Dict[str, object]] = []
+    occupied_label_bounds: List[Tuple[float, float, float, float]] = []
+
+    def _bounds_overlap(a: Tuple[float, float, float, float], b: Tuple[float, float, float, float]) -> bool:
+        return not (a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1])
+
     for idx, group in enumerate(groups):
         if not isinstance(group, dict):
             continue
@@ -218,7 +236,7 @@ def draw_group_overlays(
         bounds_list = []
         for member in members:
             if isinstance(member, dict):
-                label = member.get("device")
+                label = get_group_member_label(member)
             else:
                 label = member
             if not isinstance(label, str):
@@ -239,8 +257,7 @@ def draw_group_overlays(
             x1,
             y1,
             outline=color,
-            width=2,
-            dash=(6, 4),
+            width=GROUP_OVERLAY_WIDTH,
         )
         canvas.tag_lower(rect)
         label_font_px = max(10, int(12 * zoom))
@@ -249,9 +266,14 @@ def draw_group_overlays(
         label_w = max(36.0, len(name) * max(7.5, 8.5 * zoom))
         label_h = max(18.0, 18.0 * zoom)
         label_x0 = x0 + 4.0
+        label_x1 = label_x0 + label_w
         label_y1 = y0 - 4.0
         label_y0 = label_y1 - label_h
-        label_x1 = label_x0 + label_w
+        proposed_bounds = (label_x0, label_y0, label_x1, label_y1)
+        while any(_bounds_overlap(proposed_bounds, existing) for existing in occupied_label_bounds):
+            label_y1 = label_y0 - 4.0
+            label_y0 = label_y1 - label_h
+            proposed_bounds = (label_x0, label_y0, label_x1, label_y1)
         label_bg = canvas.create_rectangle(
             label_x0,
             label_y0,
@@ -279,6 +301,7 @@ def draw_group_overlays(
                 "label_bounds": (label_x0, label_y0, label_x1, label_y1),
             }
         )
+        occupied_label_bounds.append((label_x0, label_y0, label_x1, label_y1))
     return overlays
 
 
@@ -287,6 +310,7 @@ def draw_bus_segments(
     bus_ys,
     bus_lefts,
     bus_rights,
+    bus_connector_sides,
     *,
     scale: float,
     min_x: float,
@@ -315,8 +339,13 @@ def draw_bus_segments(
         canvas.create_line(start_x, bus_y, end_x, bus_y, width=4, fill="#444444")
         if idx + 1 < len(bus_list):
             next_y = bus_list[idx + 1]
-            connector_x = end_x
-            offset = turn_radius if idx % 2 == 0 else -turn_radius
+            side = (
+                str(bus_connector_sides[idx]).strip().lower()
+                if idx < len(bus_connector_sides)
+                else ("right" if idx % 2 == 0 else "left")
+            )
+            connector_x = seg_right if side == "right" else seg_left
+            offset = turn_radius if side == "right" else -turn_radius
             canvas.create_line(
                 connector_x,
                 bus_y,
@@ -352,6 +381,7 @@ def render_topology_canvas_common(
     selected_bus_indices,
     drag_free_y,
     bus_connectors,
+    bus_connector_sides,
     bus_lefts,
     bus_rights,
     min_x: float,
@@ -395,7 +425,9 @@ def render_topology_canvas_common(
     attach_line_color: str = "#7a5d00",
     dio_line_color: str = "#1f6feb",
     link_line_width: int = 2,
-    link_dash=(6, 4),
+    attach_link_dash=ATTACHMENT_LINK_DASH,
+    dio_link_dash=DIO_LINK_DASH,
+    ethernet_virtual_dash=ETHERNET_VIRTUAL_LINK_DASH,
 ):
     """
     NAME
@@ -415,11 +447,12 @@ def render_topology_canvas_common(
     selected_bus_indices = set(selected_bus_indices or set())
     linked_devices = set(linked_devices or set())
     drag_free_y = dict(drag_free_y or {})
+    bus_connector_regions: List[Dict[str, object]] = []
     if show_can:
         turn_radius = max(8.0, 18 * scale)
         for idx, bus_y in enumerate(bus_ys_list):
-            bus_color = "#1f6feb" if idx in selected_bus_indices else "#444444"
-            bus_width = 5 if idx in selected_bus_indices else 4
+            bus_color = "#444444"
+            bus_width = 4
             seg_left = eff_lefts[idx] * scale if idx < len(eff_lefts) else min_x * scale
             seg_right = eff_rights[idx] * scale if idx < len(eff_rights) else max_x * scale
             if idx % 2 == 0:
@@ -432,8 +465,13 @@ def render_topology_canvas_common(
                     continue
                 if bus_connectors or len(bus_ys_list) > 1:
                     next_y = bus_ys_list[idx + 1]
-                    connector_x = end_x
-                    offset = turn_radius if idx % 2 == 0 else -turn_radius
+                    side = (
+                        str(bus_connector_sides[idx]).strip().lower()
+                        if idx < len(bus_connector_sides)
+                        else ("right" if idx % 2 == 0 else "left")
+                    )
+                    connector_x = seg_right if side == "right" else seg_left
+                    offset = turn_radius if side == "right" else -turn_radius
                     canvas.create_line(
                         connector_x,
                         bus_y,
@@ -447,6 +485,31 @@ def render_topology_canvas_common(
                         fill="#444444",
                         smooth=True,
                         splinesteps=12,
+                    )
+                    mid_x = connector_x + offset
+                    mid_y = (bus_y + next_y) * 0.5
+                    handle_half = max(6.0, turn_radius * 0.35)
+                    canvas.create_rectangle(
+                        mid_x - handle_half,
+                        mid_y - handle_half,
+                        mid_x + handle_half,
+                        mid_y + handle_half,
+                        fill="#ffffff",
+                        outline=bus_color,
+                        width=max(2, bus_width - 1),
+                    )
+                    pad = max(18.0, turn_radius)
+                    bus_connector_regions.append(
+                        {
+                            "index": idx,
+                            "side": side,
+                            "bounds": (
+                                min(connector_x, connector_x + offset, mid_x - handle_half) - pad,
+                                min(bus_y, next_y, mid_y - handle_half) - pad,
+                                max(connector_x, connector_x + offset, mid_x + handle_half) + pad,
+                                max(bus_y, next_y, mid_y + handle_half) + pad,
+                            ),
+                        }
                     )
     node_bounds: Dict[int, Tuple[float, float, float, float]] = {}
     node_centers: Dict[int, Tuple[float, float]] = {}
@@ -507,7 +570,7 @@ def render_topology_canvas_common(
                     if getattr(node, "key", None) not in linked_devices and allow_trunk and not is_dio_node_fn(node) and show_can:
                         canvas.create_line(node_x, y1, node_x, bus_y, width=2, fill="#444444")
         fill = fill_color_fn(node)
-        outline = selected_outline_color if getattr(node, "key", None) in selected_node_keys else outline_color_fn(node)
+        outline = outline_color_fn(node)
         shape_ids = draw_canvas_shape_for_kind(
             canvas,
             x0,
@@ -624,6 +687,9 @@ def render_topology_canvas_common(
             filtered_cannect_nodes,
             ethernet_ports=ethernet_ports,
             can_ports=can_ports,
+            ethernet_dash=ETHERNET_LINK_DASH,
+            can_trunk_dash=CAN_TRUNK_LINK_DASH,
+            cannect_device_dash=CANNNECT_DEVICE_LINK_DASH,
         )
     if show_power:
         for a_key, b_key in power_links:
@@ -642,7 +708,15 @@ def render_topology_canvas_common(
             attach_bounds = node_bounds.get(attach_key)
             hx, hy = ((host_bounds[0] + host_bounds[2]) / 2.0, (host_bounds[1] + host_bounds[3]) / 2.0) if host_bounds else node_centers[host_key]
             ax, ay = ((attach_bounds[0] + attach_bounds[2]) / 2.0, (attach_bounds[1] + attach_bounds[3]) / 2.0) if attach_bounds else node_centers[attach_key]
-            canvas.create_line(hx, hy, ax, ay, width=link_line_width, fill=attach_line_color, dash=link_dash)
+            canvas.create_line(
+                hx,
+                hy,
+                ax,
+                ay,
+                width=link_line_width,
+                fill=attach_line_color,
+                dash=attach_link_dash,
+            )
         for a, b in ethernet_links:
             if a not in ethernet_ports or b not in ethernet_ports or a not in node_centers or b not in node_centers:
                 continue
@@ -653,7 +727,15 @@ def render_topology_canvas_common(
             pa = ports_a["in"] if ("in" in ports_a and "out" in ports_a and bx < ax) else (ports_a.get("out") or ports_a.get("in"))
             pb = ports_b["in"] if ("in" in ports_b and "out" in ports_b and ax < bx) else (ports_b.get("out") or ports_b.get("in"))
             if pa and pb:
-                canvas.create_line(pa[0], pa[1], pb[0], pb[1], width=2, fill="#1c6ba8", dash=(6, 4))
+                canvas.create_line(
+                    pa[0],
+                    pa[1],
+                    pb[0],
+                    pb[1],
+                    width=2,
+                    fill="#1c6ba8",
+                    dash=ethernet_virtual_dash,
+                )
     if show_dio:
         for robo_key, dev_key in dio_links:
             if robo_key not in node_centers or dev_key not in node_centers:
@@ -662,11 +744,20 @@ def render_topology_canvas_common(
             dev_bounds = node_bounds.get(dev_key)
             rx, ry = ((robo_bounds[0] + robo_bounds[2]) / 2.0, robo_bounds[1]) if robo_bounds else node_centers[robo_key]
             dx, dy = ((dev_bounds[0] + dev_bounds[2]) / 2.0, dev_bounds[1]) if dev_bounds else node_centers[dev_key]
-            canvas.create_line(rx, ry, dx, dy, width=link_line_width, fill=dio_line_color, dash=link_dash)
+            canvas.create_line(
+                rx,
+                ry,
+                dx,
+                dy,
+                width=link_line_width,
+                fill=dio_line_color,
+                dash=dio_link_dash,
+            )
     return {
         "node_bounds": node_bounds,
         "node_centers": node_centers,
         "group_overlay_regions": group_regions,
+        "bus_connector_regions": bus_connector_regions,
         "ethernet_ports": ethernet_ports,
         "can_ports": can_ports,
     }

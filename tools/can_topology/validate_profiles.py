@@ -52,6 +52,7 @@ from tools.common.profile_constants import (
     KEY_TOPOLOGY_NODES,
     KEY_TOPOLOGY_EDGES,
     KEY_NODE_KEY,
+    KEY_OBJECT_TYPE,
     KEY_NODE_TYPE,
     KEY_DEVICE_REF,
     KEY_FROM_NODE,
@@ -72,6 +73,7 @@ from tools.common.profile_constants import (
     EDGE_TYPE_VIRTUAL,
     PROFILE_SCHEMA_VERSION,
     get_device_interface,
+    get_object_type,
 )
 from tools.common.profile_io import compute_profiles_hash
 
@@ -458,7 +460,12 @@ def validate_topology(
                     errors.append(msg)
                     reporter.fail(msg)
                 node_keys.add(node_key)
-            if node.get(KEY_NODE_TYPE) != NODE_TYPE_DEVICE:
+            object_type = get_object_type(node)
+            if KEY_OBJECT_TYPE not in node and object_type:
+                node[KEY_OBJECT_TYPE] = object_type
+            if KEY_NODE_TYPE not in node and object_type:
+                node[KEY_NODE_TYPE] = object_type
+            if object_type != NODE_TYPE_DEVICE:
                 continue
             device_ref = node.get(KEY_DEVICE_REF)
             if not isinstance(device_ref, str) or not device_ref.strip():

@@ -33,6 +33,18 @@ Examples:
 - Robot-facing:
   `connect`, `tests select`, `tests toggle`, `tests run`, `profiles activate`
 
+Config model:
+
+- one `bringup_system.json` system config file may contain multiple profiles
+- `devices[]` is the shared device inventory
+- each profile includes a subset of those device labels
+
+Terminology:
+
+- `defined` is not the same as `in profile`
+- `in profile` is not the same as `instantiated`
+- `instantiated` is not the same as `group member`
+
 ## How To Read The CLI
 
 Purpose: Give a simple mental model before diving into commands.
@@ -203,10 +215,13 @@ Main commands:
 - `profiles ...`
 - `group <name>`
 - `no group <name>`
-- `add device <name> [group <name>]`
-- `remove device <name> [group <name>]`
-- `add next`
-- `add all`
+- `member assign <name>`
+- `member remove <name>`
+- `group member assign <group> <name>`
+- `group member remove <group> <name>`
+- `member assign next`
+- `instantiate next motor`
+- `instantiate all devices`
 - `selected-device <device>`
 - `selected-mode on|off`
 - `device <name>`
@@ -215,11 +230,11 @@ Main commands:
 
 Inside group mode:
 
-- `add device <name>`
-- `no device <name>`
-- `member <device> enable`
-- `member <device> disable`
-- `member <device> toggle`
+- `member assign <name>`
+- `member remove <name>`
+- `member enable <name>`
+- `member disable <name>`
+- `member toggle <name>`
 - `enable`
 - `disable`
 - `clear`
@@ -230,9 +245,9 @@ Typical workflow:
 configure terminal
 profile robot_2026_swerve
 group motion
-add device "frontLeft Drive Motor"
-add device "frontRight Drive Motor"
-member "frontLeft Drive Motor" enable
+member assign "frontLeft Drive Motor"
+member assign "frontRight Drive Motor"
+member enable "frontLeft Drive Motor"
 end
 show groups
 show devices
@@ -330,12 +345,11 @@ This area has both host-side and robot-side surfaces.
 
 ### Host-Side Test Authoring
 
-Purpose: Create and edit test definitions in local configuration.
+Purpose: Create and validate DSL-backed test definitions in local configuration.
 
 Main commands:
 
 - `test set <name>`
-- `test create <name>`
 - `test delete <name>`
 - `test import <name> <path>`
 - `test export <name> <path>`
@@ -344,22 +358,11 @@ Main commands:
 - `show test <name>`
 - `show test sets`
 
-Inside test edit mode, commands define the test:
+Notes:
 
-- `type ...`
-- `device ...`
-- `input-source ...`
-- `deadband ...`
-- `duty ...`
-- `termination ...`
-- `rotation ...`
-- `hold ...`
-- `limitswitch ...`
-- `action ...`
-- `color ...`
-- `pattern ...`
-- `brightness ...`
-- `duration ...`
+- Legacy local interactive test authoring was removed.
+- Use DSL source files plus `test import`, `test export`, `test validate`, and normalized `show` output.
+- Use `tools/can_nt/scripts/dsl_tests_config_tool.py` for helper workflows around import/export/validate.
 
 ### Robot-Side Test Execution
 
@@ -522,8 +525,8 @@ Purpose: Provide a quick lookup from command to functional area.
 - `device ...`
 - `selected-device`
 - `selected-mode`
-- `add next`
-- `add all`
+- `instantiate next motor`
+- `instantiate all devices`
 - `member ...`
 
 ### Bindings
@@ -580,7 +583,7 @@ configure terminal
 merge config src/main/deploy/bringup_system.json
 profile robot_2026_swerve
 group motion
-add device "frontLeft Drive Motor"
+member assign "frontLeft Drive Motor"
 bind controller0.leftY analog
 show binding
 end
@@ -603,11 +606,11 @@ bindings save src/main/deploy/bringup_bindings.json
 
 ```text
 configure terminal
-test create "Right Drive Test"
-show tests
+test import RightDriveTest tools/can_nt/logs/RightDriveTest.dsl set default
+test validate RightDriveTest --json --pretty
 end
 connect
-tests select "Right Drive Test"
+tests select "RightDriveTest"
 tests toggle
 tests run
 ```
@@ -668,3 +671,4 @@ Purpose: Record a few stable rules that apply across all areas.
 - TCP is the main command channel for robot-facing CLI actions.
 - When in doubt, ask first:
   is this command editing host state, or commanding robot state?
+

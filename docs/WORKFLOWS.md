@@ -27,11 +27,11 @@ Move one motor safely and confirm the command path works.
 
 Use:
 
-- `add next`
+- `instantiate next motor`
 - one group binding
 - one enabled group member
 
-Do not start with `add all` unless the hardware is already trusted.
+Do not start with `instantiate all devices` unless the hardware is already trusted.
 
 ### Steps
 
@@ -60,7 +60,7 @@ show group neos
 5. Add the next motor:
 
 ```text
-add next
+instantiate next motor
 ```
 
 6. Enable only the motor you intend to move.
@@ -93,7 +93,7 @@ Use the print-ready runbook:
 - `krakens` group bound to `leftDrive`
 - `neos` group bound to `rightDrive`
 - all group members disabled first
-- `add next` used in profile order
+- `instantiate next motor` used in profile order
 - one drive motor and one angle motor enabled at a time
 
 ### Why this path
@@ -121,7 +121,7 @@ connect
 2. Instantiate devices:
 
 ```text
-add all
+instantiate all devices
 ```
 
 3. Show tests:
@@ -312,7 +312,7 @@ python tools/can_nt/scripts/run_regressions.py --suite local --no-history
 
 Use:
 
-- `add next`
+- `instantiate next motor`
 - group bindings
 - member enable / disable
 
@@ -344,3 +344,4 @@ Use:
 - [FEATURE_CATALOG.md](c:/Users/dmona/swerveBringupMotorTest1-main/docs/FEATURE_CATALOG.md)
 - [FEATURE_MATRIX.md](c:/Users/dmona/swerveBringupMotorTest1-main/docs/FEATURE_MATRIX.md)
 - [ROBOT_2026_SWERVE_CLUB_TEST_SEQUENCE.md](c:/Users/dmona/swerveBringupMotorTest1-main/docs/ROBOT_2026_SWERVE_CLUB_TEST_SEQUENCE.md)
+

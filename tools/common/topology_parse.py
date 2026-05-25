@@ -48,6 +48,7 @@ from tools.common.profile_constants import (
     KEY_LINK_PORT,
     KEY_MODEL,
     KEY_NODE_KEY,
+    KEY_OBJECT_TYPE,
     KEY_NODE_TYPE,
     KEY_TO_NODE,
     KEY_TO_PORT,
@@ -61,6 +62,7 @@ from tools.common.profile_constants import (
     LAYOUT_KEY_X,
     LAYOUT_KEY_Y,
     NODE_TYPE_DEVICE,
+    get_object_type,
 )
 
 EMPTY_STRING = ""
@@ -158,7 +160,10 @@ def topology_node_lookup(
         layout_dict = layout if isinstance(layout, dict) else {}
         resolved_entry = dict(entry)
         resolved_entry[KEY_LAYOUT] = layout_dict
-        if entry.get(KEY_NODE_TYPE) == NODE_TYPE_DEVICE:
+        object_type = get_object_type(entry)
+        resolved_entry[KEY_OBJECT_TYPE] = object_type
+        resolved_entry.setdefault(KEY_NODE_TYPE, object_type)
+        if object_type == NODE_TYPE_DEVICE:
             device_ref = str(entry.get(KEY_DEVICE_REF, EMPTY_STRING)).strip()
             if device_ref:
                 device = registry.get(device_ref.lower())
@@ -250,7 +255,8 @@ def parse_diagram_nodes(diagram: Dict[str, object]) -> List[Dict[str, object]]:
         layout_dict = layout if isinstance(layout, dict) else {}
         compat = {
             KEY_NODE_KEY: entry.get(KEY_NODE_KEY),
-            KEY_NODE_TYPE: entry.get(KEY_NODE_TYPE),
+            KEY_OBJECT_TYPE: get_object_type(entry),
+            KEY_NODE_TYPE: get_object_type(entry),
             KEY_BUS: layout_dict.get(KEY_BUS, 0),
             LAYOUT_KEY_ROW: layout_dict.get(LAYOUT_KEY_ROW, 0),
             LAYOUT_KEY_X: layout_dict.get(LAYOUT_KEY_X, 0.0),
@@ -258,7 +264,7 @@ def parse_diagram_nodes(diagram: Dict[str, object]) -> List[Dict[str, object]]:
         if LAYOUT_KEY_Y in layout_dict:
             compat[KEY_FREE_Y] = layout_dict.get(LAYOUT_KEY_Y)
             compat[KEY_FREE_Y_RELATIVE] = bool(layout_dict.get(LAYOUT_KEY_Y_RELATIVE, False))
-        if entry.get(KEY_NODE_TYPE) == NODE_TYPE_DEVICE:
+        if get_object_type(entry) == NODE_TYPE_DEVICE:
             compat[KEY_LABEL] = str(entry.get(KEY_DEVICE_REF, EMPTY_STRING)).strip()
         else:
             compat[KEY_LABEL] = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()

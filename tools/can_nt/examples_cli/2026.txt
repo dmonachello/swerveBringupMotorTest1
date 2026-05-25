@@ -1,4 +1,4 @@
-﻿# Robot 2026 bridgeConfig recreation (from 2186_2026_robot.json)
+# Robot 2026 bridgeConfig recreation (from 2186_2026_robot.json)
 configure terminal
 
 # Devices
@@ -64,28 +64,29 @@ exit
 
 # Groups
 group swerve_front_left
-add device Drive Motor (swerve-front-left)
-add device Angle Motor (swerve-front-left)
-add device Encoder (CANCoder) (swerve-front-left)
+member assign Drive Motor (swerve-front-left)
+member assign Angle Motor (swerve-front-left)
+member assign Encoder (CANCoder) (swerve-front-left)
 exit
 
 group swerve_front_right
-add device Drive Motor (swerve-front-right)
-add device Angle Motor (swerve-front-right)
-add device Encoder (CANCoder) (swerve-front-right)
+member assign Drive Motor (swerve-front-right)
+member assign Angle Motor (swerve-front-right)
+member assign Encoder (CANCoder) (swerve-front-right)
 exit
 
 group swerve_back_left
-add device Drive Motor (swerve-back-left)
-add device Angle Motor (swerve-back-left)
-add device Encoder (CANCoder) (swerve-back-left)
+member assign Drive Motor (swerve-back-left)
+member assign Angle Motor (swerve-back-left)
+member assign Encoder (CANCoder) (swerve-back-left)
 exit
 
 group swerve_back_right
-add device Drive Motor (swerve-back-right)
-add device Angle Motor (swerve-back-right)
-add device Encoder (CANCoder) (swerve-back-right)
+member assign Drive Motor (swerve-back-right)
+member assign Angle Motor (swerve-back-right)
+member assign Encoder (CANCoder) (swerve-back-right)
 exit
 
 end
 exit
+

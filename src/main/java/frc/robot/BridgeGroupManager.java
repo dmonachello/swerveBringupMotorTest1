@@ -12,9 +12,9 @@ import frc.robot.input.InputAliasResolver;
  *   BridgeGroupManager - Runtime group/binding manager for bridge CLI/GUI.
  *
  * DESCRIPTION
- *   Holds group membership, bindings, and per-member enable state. Applies
- *   binding outputs to devices via BringupCore without persisting state on
- *   the robot.
+ *   Holds group membership, bindings, and per-member enable state. Group
+ *   membership is label-based over the shared object set. Runtime actions
+ *   apply only to members whose labels resolve to supported device functions.
  */
 public final class BridgeGroupManager {
   private static final String EMPTY_STRING = "";
@@ -55,14 +55,14 @@ public final class BridgeGroupManager {
 
   /**
    * NAME
-   *   MemberState - Per-device membership state.
+   *   MemberState - Per-label membership state.
    */
   public static final class MemberState {
-    public final String device;
+    public final String label;
     public boolean enabled;
 
-    public MemberState(String device, boolean enabled) {
-      this.device = device;
+    public MemberState(String label, boolean enabled) {
+      this.label = label;
       this.enabled = enabled;
     }
   }
@@ -94,12 +94,14 @@ public final class BridgeGroupManager {
     public boolean enabled;
     public final Map<String, MemberState> members;
     public final List<Binding> bindings;
+    public final List<String> lastSkippedMembers;
 
     public Group(String name) {
       this.name = name;
       this.enabled = true;
       this.members = new LinkedHashMap<>();
       this.bindings = new ArrayList<>();
+      this.lastSkippedMembers = new ArrayList<>();
     }
   }
 
@@ -166,7 +168,6 @@ public final class BridgeGroupManager {
   }
 
   private final Map<String, Group> groups = new LinkedHashMap<>();
-  private final Map<String, String> deviceToGroup = new LinkedHashMap<>();
   private final EdgeTrigger edge = new EdgeTrigger();
   private Map<String, String> inputAliases = new LinkedHashMap<>();
 
@@ -187,22 +188,21 @@ public final class BridgeGroupManager {
    */
   public void clear() {
     groups.clear();
-    deviceToGroup.clear();
     edge.reset();
   }
 
   /**
    * NAME
-   *   syncGroupMembers - Replace group membership with a device list.
+   *   syncGroupMembers - Replace group membership with a label list.
    *
    * DESCRIPTION
    *   Ensures the group exists, clears its membership, and repopulates it
-   *   with the provided device labels. Devices already assigned to another
+   *   with the provided labels. Labels already assigned to another
    *   group are left untouched to preserve explicit group assignments.
    *
    * PARAMETERS
    *   groupName - Group name to sync.
-   *   devices - Device labels to include.
+   *   devices - Member labels to include.
    */
   public void syncGroupMembers(String groupName, List<String> devices) {
     String key = normalize(groupName);
@@ -214,9 +214,6 @@ public final class BridgeGroupManager {
       group = new Group(groupName);
       groups.put(key, group);
     }
-    for (MemberState member : group.members.values()) {
-      deviceToGroup.remove(normalize(member.device));
-    }
     group.members.clear();
     if (devices == null || devices.isEmpty()) {
       return;
@@ -226,10 +223,6 @@ public final class BridgeGroupManager {
       if (deviceKey.isEmpty()) {
         continue;
       }
-      if (deviceToGroup.containsKey(deviceKey)) {
-        continue;
-      }
-      deviceToGroup.put(deviceKey, group.name);
       group.members.put(deviceKey, new MemberState(device, true));
     }
   }
@@ -292,7 +285,7 @@ public final class BridgeGroupManager {
 
   /**
    * NAME
-   *   getDeviceGroup - Return the group owning a device.
+   *   getDeviceGroup - Return the group owning a member label.
    *
    * PARAMETERS
    *   device - Device label.
@@ -301,7 +294,16 @@ public final class BridgeGroupManager {
    *   Group name or null when unassigned.
    */
   public String getDeviceGroup(String device) {
-    return deviceToGroup.get(normalize(device));
+    String deviceKey = normalize(device);
+    if (deviceKey.isEmpty()) {
+      return null;
+    }
+    for (Group group : groups.values()) {
+      if (group != null && group.members.containsKey(deviceKey)) {
+        return group.name;
+      }
+    }
+    return null;
   }
 
   /**
@@ -339,9 +341,6 @@ public final class BridgeGroupManager {
     if (removed == null) {
       return false;
     }
-    for (MemberState member : removed.members.values()) {
-      deviceToGroup.remove(normalize(member.device));
-    }
     return true;
   }
 
@@ -367,7 +366,7 @@ public final class BridgeGroupManager {
 
   /**
    * NAME
-   *   addDevice - Add a device to a group with optional move.
+   *   addMember - Add a labeled member to a group with optional move.
    *
    * PARAMETERS
    *   groupName - Target group name.
@@ -377,7 +376,7 @@ public final class BridgeGroupManager {
    * RETURNS
    *   True when added or moved successfully.
    */
-  public boolean addDevice(String groupName, String device, boolean forceMove) {
+  public boolean addMember(String groupName, String device, boolean forceMove) {
     Group group = groups.get(normalize(groupName));
     if (group == null) {
       return false;
@@ -386,24 +385,20 @@ public final class BridgeGroupManager {
     if (deviceKey.isEmpty()) {
       return false;
     }
-    String existing = deviceToGroup.get(deviceKey);
-    if (existing != null && !normalize(existing).equals(normalize(groupName))) {
-      if (!forceMove) {
-        return false;
-      }
-      Group other = groups.get(normalize(existing));
-      if (other != null) {
-        other.members.remove(deviceKey);
-      }
+    if (group.members.containsKey(deviceKey)) {
+      return true;
     }
-    deviceToGroup.put(deviceKey, group.name);
     group.members.put(deviceKey, new MemberState(device, true));
     return true;
   }
 
+  public boolean addDevice(String groupName, String device, boolean forceMove) {
+    return addMember(groupName, device, forceMove);
+  }
+
   /**
    * NAME
-   *   removeDevice - Remove a device from a group.
+   *   removeDevice - Remove a member label from a group.
    *
    * PARAMETERS
    *   groupName - Group name.
@@ -419,13 +414,12 @@ public final class BridgeGroupManager {
     }
     String deviceKey = normalize(device);
     group.members.remove(deviceKey);
-    deviceToGroup.remove(deviceKey);
     return true;
   }
 
   /**
    * NAME
-   *   setMemberEnabled - Enable or disable a member device.
+   *   setMemberEnabled - Enable or disable a member label.
    *
    * PARAMETERS
    *   groupName - Group name.
@@ -523,7 +517,8 @@ public final class BridgeGroupManager {
    *   selected - Selected device override state.
    *
    * SIDE EFFECTS
-   *   Sends duty-cycle commands to member devices.
+   *   Sends duty-cycle commands to supported member devices and records labels
+   *   skipped because they do not resolve to runtime-capable devices.
    */
   public void applyBindings(InputSnapshot input, BringupCore core, SelectedState selected) {
     if (input == null || core == null) {
@@ -533,6 +528,7 @@ public final class BridgeGroupManager {
       return;
     }
     for (Group group : groups.values()) {
+      group.lastSkippedMembers.clear();
       if (!group.enabled) {
         continue;
       }
@@ -544,10 +540,12 @@ public final class BridgeGroupManager {
         if (!member.enabled) {
           continue;
         }
-        if (selected != null && selected.enabled && sameKey(selected.device, member.device)) {
+        if (selected != null && selected.enabled && sameKey(selected.device, member.label)) {
           continue;
         }
-        core.setDutyByDeviceLabel(member.device, output);
+        if (!core.setDutyByDeviceLabel(member.label, output)) {
+          group.lastSkippedMembers.add(member.label);
+        }
       }
     }
   }

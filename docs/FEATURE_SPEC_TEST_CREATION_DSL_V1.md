@@ -253,6 +253,11 @@ Using `position_actual` or `position_delta` on a device that does not support po
 
 ## Test Structure
 
+Historical note:
+
+- The interactive `test create` / `device add` / `input bind` command shape below is preserved as a historical design record.
+- Current implementation uses DSL source text plus `test import` / `test export` / `test validate`.
+
 A test is defined using:
 
 ```text

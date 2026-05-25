@@ -32,6 +32,23 @@ These must come from JSON files:
 - controller bindings
 - controller definitions
 
+## Config Structure Assumption
+
+Purpose: state the config model the robot runtime consumes.
+
+- `bringup_system.json` may contain multiple profiles.
+- `bringup_system.json` is the system config file, and only one system config file is loaded at a time.
+- `devices[]` is the shared device inventory for that loaded system config.
+- `profiles.<name>.devices[]` selects which device labels belong to each profile.
+
+So the robot runtime distinguishes:
+
+- a device that is defined in config
+- a device that is included in the active profile
+- a device that is instantiated at runtime
+
+Those are separate states.
+
 ## What Remains In Code
 
 ### Safe Startup Behavior
@@ -58,6 +75,11 @@ Behavior:
 - expose snapshots and report data
 - clear faults
 - apply commanded outputs
+
+Important distinction:
+
+- the runtime does not instantiate every device defined in `devices[]`
+- it instantiates the devices selected by the active profile
 
 The runtime engine is hardcoded.
 

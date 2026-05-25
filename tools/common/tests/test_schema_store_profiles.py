@@ -13,7 +13,7 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
 
     def _base_payload(self) -> dict:
         return {
-            "schema_version": 4,
+            "schema_version": 5,
             "data_version": "test",
             "data_hash": "test",
             "default_profile": "demo",
@@ -49,6 +49,15 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
     def _validate(self, payload: dict):
         store = ConfigSchemaStore()
         store._db.set_payload(DOC_PROFILES, payload)
+        store._db.set_payload(
+            DOC_BINDINGS,
+            {
+                "schema_version": 5,
+                "controllers": [],
+                "bindings": [],
+                "inputAliases": {},
+            },
+        )
         return store.validate(strict=True)
 
     def test_dio_device_uses_id_not_dio(self) -> None:
@@ -122,6 +131,26 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
         messages = [issue.message for issue in result.errors()]
         self.assertIn("Profile demo topology node 7: deviceRef not found: missing", messages)
 
+    def test_topology_validation_accepts_object_type_without_legacy_node_type(self) -> None:
+        payload = self._base_payload()
+        payload["topology"] = {
+            "profiles": {
+                "demo": {
+                    "nodes": [
+                        {
+                            "key": 7,
+                            "objectType": "device",
+                            "deviceRef": "lmtSw0",
+                        }
+                    ]
+                }
+            }
+        }
+
+        result = self._validate(payload)
+
+        self.assertTrue(result.ok(), [issue.message for issue in result.errors()])
+
     def test_profile_devices_type_error_names_profile(self) -> None:
         payload = self._base_payload()
         payload["profiles"]["demo"]["devices"] = "lmtSw0"
@@ -153,8 +182,8 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
                             "name": "drive",
                             "enabled": True,
                             "members": [
-                                {"device": "lmtSw0", "enabled": True},
-                                {"device": "missing", "enabled": True},
+                                {"label": "lmtSw0", "enabled": True},
+                                {"label": "missing", "enabled": True},
                             ],
                         }
                     ],
@@ -169,7 +198,7 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
         self.assertEqual([device["label"] for device in sanitized["devices"]], ["lmtSw0"])
         self.assertEqual(sanitized["profiles"]["demo"]["devices"], ["lmtSw0"])
         members = sanitized["bridgeConfig"]["byProfile"]["demo"]["groups"][0]["members"]
-        self.assertEqual(members, [{"device": "lmtSw0", "enabled": True}])
+        self.assertEqual(members, [{"label": "lmtSw0", "enabled": True}])
         self.assertEqual(
             sanitized["bridgeConfig"]["byProfile"]["demo"]["selectedDevice"],
             {"device": "", "enabled": False},
@@ -200,19 +229,21 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
                     "id": "B",
                     "mode": "press",
                 },
-            ],
-            "axes": [
                 {
                     "command": "leftDrive",
                     "controller": "driver",
+                    "input": "axis",
                     "id": "leftY",
+                    "mode": "analog",
                     "invert": False,
                     "deadband": 0.1,
                 },
                 {
                     "command": "badAxis",
                     "controller": "missing",
+                    "input": "axis",
                     "id": "rightY",
+                    "mode": "analog",
                     "invert": False,
                     "deadband": 0.1,
                 },
@@ -223,16 +254,59 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
 
         self.assertTrue(changed)
         self.assertEqual(len(sanitized["controllers"]), 1)
-        self.assertEqual(len(sanitized["bindings"]), 1)
-        self.assertEqual(len(sanitized["axes"]), 1)
+        self.assertEqual(len(sanitized["bindings"]), 2)
         self.assertIn("Dropped invalid controller 'bad'", "\n".join(warnings))
+
+    def test_group_members_accept_topology_infrastructure_labels(self) -> None:
+        payload = self._base_payload()
+        payload["topology"] = {
+            "profiles": {
+                "demo": {
+                    "nodes": [
+                        {
+                            "key": 1,
+                            "objectType": "device",
+                            "deviceRef": "lmtSw0",
+                        },
+                        {
+                            "key": 2,
+                            "objectType": "junction",
+                            "label": "cannect 3",
+                        },
+                    ]
+                }
+            }
+        }
+        payload["bridgeConfig"] = {
+            "schemaVersion": 2,
+            "generatedAt": None,
+            "byProfile": {
+                "demo": {
+                    "groups": [
+                        {
+                            "name": "mixed",
+                            "enabled": True,
+                            "members": [
+                                {"label": "lmtSw0", "enabled": True},
+                                {"label": "cannect 3", "enabled": True},
+                            ],
+                        }
+                    ],
+                    "selectedDevice": {"device": "", "enabled": False},
+                }
+            },
+        }
+
+        result = self._validate(payload)
+
+        self.assertTrue(result.ok(), [issue.message for issue in result.errors()])
 
     def test_bindings_validation_accepts_profile_owned_controller_names(self) -> None:
         store = ConfigSchemaStore()
         store._db.set_payload(
             DOC_PROFILES,
             {
-                "schema_version": 4,
+                "schema_version": 5,
                 "data_version": "test",
                 "data_hash": "test",
                 "default_profile": "demo",
@@ -256,6 +330,7 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
         store._db.set_payload(
             DOC_BINDINGS,
             {
+                "schema_version": 5,
                 "controllers": [{"name": "controller0", "type": "XBOX", "port": 0}],
                 "bindings": [
                     {
@@ -264,13 +339,13 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
                         "input": "button",
                         "id": "A",
                         "mode": "hold",
-                    }
-                ],
-                "axes": [
+                    },
                     {
                         "command": "rightDrive",
                         "controller": "controller1",
+                        "input": "axis",
                         "id": "rightY",
+                        "mode": "analog",
                         "invert": False,
                         "deadband": 0.1,
                     }
@@ -287,7 +362,7 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
         store._db.set_payload(
             DOC_PROFILES,
             {
-                "schema_version": 4,
+                "schema_version": 5,
                 "data_version": "test",
                 "data_hash": "test",
                 "default_profile": "demo",
@@ -317,13 +392,13 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
                     "input": "button",
                     "id": "A",
                     "mode": "hold",
-                }
-            ],
-            "axes": [
+                },
                 {
                     "command": "rightDrive",
                     "controller": "controller1",
+                    "input": "axis",
                     "id": "rightY",
+                    "mode": "analog",
                     "invert": False,
                     "deadband": 0.1,
                 }
@@ -334,8 +409,7 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
 
         self.assertFalse(changed)
         self.assertEqual(warnings, [])
-        self.assertEqual(len(sanitized["bindings"]), 1)
-        self.assertEqual(len(sanitized["axes"]), 1)
+        self.assertEqual(len(sanitized["bindings"]), 2)
 
 
 if __name__ == "__main__":

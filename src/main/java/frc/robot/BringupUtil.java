@@ -60,6 +60,7 @@ public final class BringupUtil {
   private static final String KEY_DSL_TESTS = "dslTests";
   private static final String KEY_DSL_TEST_SET = "dslTestSet";
   private static final String KEY_INPUT_ALIASES = "inputAliases";
+  private static final String KEY_LABEL = "label";
   private static final String KEY_DEVICE = "device";
   private static final String KEY_ENABLED = "enabled";
   private static final String KEY_INPUT = "input";
@@ -156,7 +157,7 @@ public final class BringupUtil {
       "Warning: unknown CAN profile '%s'. Using default.";
   private static final String MESSAGE_DEFAULT_PROFILE_MISSING =
       "Warning: default CAN profile missing. Entering empty safe mode.";
-  private static final int PROFILE_SCHEMA_VERSION = 4;
+  private static final int PROFILE_SCHEMA_VERSION = 5;
   private static final String MOTOR_SPECS_FILE = "motor_specs.json";
   private static final String CAN_MAPPINGS_FILE = "can_mappings.json";
   private static final String INTERFACE_CAN = "CAN";
@@ -198,6 +199,14 @@ public final class BringupUtil {
   private static final int INDEX_ZERO = 0;
   private static final long PROFILE_CONFIG_GENERATION_INITIAL = 0L;
   private static final long PROFILE_CONFIG_GENERATION_INCREMENT = 1L;
+
+  /**
+   * NAME
+   *   getProfileSchemaVersion - Return the shared bringup schema version.
+   */
+  public static int getProfileSchemaVersion() {
+    return PROFILE_SCHEMA_VERSION;
+  }
 
   // JSON parser for bringup_system.json.
   private static final Gson GSON = new Gson();
@@ -1539,11 +1548,11 @@ public final class BringupUtil {
    *   BridgeProfileMemberConfig - Immutable group member snapshot.
    */
   public static final class BridgeProfileMemberConfig {
-    public final String device;
+    public final String label;
     public final boolean enabled;
 
-    public BridgeProfileMemberConfig(String device, boolean enabled) {
-      this.device = safeText(device);
+    public BridgeProfileMemberConfig(String label, boolean enabled) {
+      this.label = safeText(label);
       this.enabled = enabled;
     }
   }
@@ -1902,9 +1911,9 @@ public final class BringupUtil {
               continue;
             }
             if (memberElement.isJsonPrimitive()) {
-              String device = safeText(memberElement.getAsString());
-              if (!device.isBlank()) {
-                members.add(new BridgeProfileMemberConfig(device, true));
+              String label = safeText(memberElement.getAsString());
+              if (!label.isBlank()) {
+                members.add(new BridgeProfileMemberConfig(label, true));
               }
               continue;
             }
@@ -1912,12 +1921,15 @@ public final class BringupUtil {
               continue;
             }
             JsonObject member = memberElement.getAsJsonObject();
-            String device = safeText(readJsonString(member, KEY_DEVICE));
-            if (device.isBlank()) {
+            String label = safeText(readJsonString(member, KEY_LABEL));
+            if (label.isBlank()) {
+              label = safeText(readJsonString(member, KEY_DEVICE));
+            }
+            if (label.isBlank()) {
               continue;
             }
             members.add(
-                new BridgeProfileMemberConfig(device, readJsonBoolean(member, KEY_ENABLED, true)));
+                new BridgeProfileMemberConfig(label, readJsonBoolean(member, KEY_ENABLED, true)));
           }
         }
         List<BridgeProfileBindingConfig> bindings = new ArrayList<>();

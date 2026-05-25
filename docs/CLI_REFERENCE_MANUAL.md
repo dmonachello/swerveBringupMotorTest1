@@ -140,9 +140,10 @@ Common mappings:
 - `tests save`
 - `write tests <path>`
 - `test set <name>`
-- `test create <name>`
+- `test import <name> <path> [set <set_name>]`
 - `test delete <name>`
-- `test <name>`
+- `test export <name> <path>`
+- `test validate [<name>] [--json] [--pretty]`
 
 ### Group Mode (`bridge(config-...-group-...)#`)
 
@@ -150,11 +151,11 @@ Common mappings:
 - `show members`
 - `show binding`
 - `show <target> [robot|local|both] [--json] [--pretty]`
-- `add device <device>`
-- `no device <device>`
-- `member <device> enable`
-- `member <device> disable`
-- `member <device> toggle`
+- `member assign <device>`
+- `member remove <device>`
+- `member enable <label>`
+- `member disable <label>`
+- `member toggle <label>`
 - `bind list`
 - `bind explain <binding>`
 - `bind test <binding>`
@@ -178,50 +179,15 @@ Common mappings:
 - `no <field>`
 - `write tests <path>`
 
-### Test Mode (`bridge(config-test-...)#`)
+### Test Authoring Notes
 
-- `show`
-- `type joystick`
-- `type button`
-- `type composite`
-- `type deadbandSweep`
-- `type deviceAction`
-- `device add <name>`
-- `no device <name>`
-- `inputSource <controller>.<inputId>`
-- `deadband <value>`
-- `duty <value>`
-- `action toggle_led|set_color`
-- `color #RRGGBB`
-- `pattern solid`
-- `brightness <value>`
-- `duration <seconds>`
-- `rotation limit <value>`
-- `rotation encoderKey <label|internal>`
-- `rotation encoderSource <internal|sparkmax_alt|external>`
-- `rotation encoderMotorIndex <index>`
-- `rotation encoderCountsPerRev <value>`
-- `time timeout <seconds>`
-- `time onTimeout <pass|fail>`
-- `hold onRelease <pass|fail>`
-- `limitswitch onHit <pass|fail>`
-- `limitswitch id <id>`
-- `deadbandSweep startDuty <value>`
-- `deadbandSweep maxDuty <value>`
-- `deadbandSweep stepDuty <value>`
-- `deadbandSweep stepHoldSec <value>`
-- `deadbandSweep motionThresholdRot <value>`
-- `deadbandSweep requiredSamples <value>`
-- `deadbandSweep encoderKey <label|internal>`
-- `deadbandSweep encoderSource <internal|sparkmax_alt|external>`
-- `deadbandSweep encoderMotorIndex <index>`
-- `deadbandSweep encoderCountsPerRev <value>`
-- `enabled true|false|on|off`
-- `termination hold`
-- `termination time <seconds>`
-- `termination rotation <value>`
-- `termination limitswitch [id]`
-- `write tests <path>`
+- Legacy local interactive test-mode editing is removed.
+- Current workflow uses DSL source files plus:
+  - `test import <name> <path> [set <set_name>]`
+  - `test export <name> <path>`
+  - `test validate [<name>] [--json] [--pretty]`
+  - `show test <name>`
+  - `show test <name> normalized --json --pretty`
 
 ## Command Details
 
@@ -2037,7 +2003,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`save profiles data/bringup_system.json`
+`save profiles src/main/deploy/bringup_system.json`
 
 EXAMPLE OUTPUT
 Saved.
@@ -3407,7 +3373,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`save config data/bringup_system.json`
+`save config src/main/deploy/bringup_system.json`
 
 EXAMPLE OUTPUT
 Wrote tests.
@@ -3457,7 +3423,7 @@ Active test set: <name>
 
 NAME
 
-test create <name> - Create a new test and enter test edit mode.
+test create <name> - Removed legacy local interactive test authoring command.
 
 SYNOPSIS
 
@@ -3465,7 +3431,7 @@ test create <name>
 
 DESCRIPTION
 
-Create a new test and enter test edit mode. This command is valid in Config Mode (`bridge(config-...)#`).
+This legacy command is removed. Use `test import <name> <path> [set <set_name>]` with a DSL source file instead.
 
 PARAMETERS
 
@@ -3489,10 +3455,10 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`test create motorPulse`
+`test import motorPulse tools/can_nt/logs/motorPulse.dsl set default`
 
 EXAMPLE OUTPUT
-Test created.
+Test imported.
 
 ### test delete <name>
 
@@ -3733,15 +3699,15 @@ EXAMPLE OUTPUT
 SOURCE: local
 {...json...}
 
-### add device <device>
+### member assign <device>
 
 NAME
 
-add device <device> - Add a device to the current group.
+member assign <device> - Add a device to the current group.
 
 SYNOPSIS
 
-add device <device>
+member assign <device>
 
 DESCRIPTION
 
@@ -3769,20 +3735,20 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`add device <device>`
+`member assign <device>`
 
 EXAMPLE OUTPUT
 Device added.
 
-### no device <device>
+### member remove <device>
 
 NAME
 
-no device <device> - Remove a device from the current group.
+member remove <device> - Remove a device from the current group.
 
 SYNOPSIS
 
-no device <device>
+member remove <device>
 
 DESCRIPTION
 
@@ -3810,20 +3776,20 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`no device <device>`
+`member remove <device>`
 
 EXAMPLE OUTPUT
 Device removed.
 
-### member <device> enable
+### member enable <label>
 
 NAME
 
-member <device> enable - Enable, disable, or toggle a group member.
+member enable <label> - Enable, disable, or toggle a group member.
 
 SYNOPSIS
 
-member <device> enable
+member enable <label>
 
 DESCRIPTION
 
@@ -3851,20 +3817,20 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`member <device> enable`
+`member enable <label>`
 
 EXAMPLE OUTPUT
 Member updated.
 
-### member <device> disable
+### member disable <label>
 
 NAME
 
-member <device> disable - Enable, disable, or toggle a group member.
+member disable <label> - Enable, disable, or toggle a group member.
 
 SYNOPSIS
 
-member <device> disable
+member disable <label>
 
 DESCRIPTION
 
@@ -3892,20 +3858,20 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`member <device> disable`
+`member disable <label>`
 
 EXAMPLE OUTPUT
 Member updated.
 
-### member <device> toggle
+### member toggle <label>
 
 NAME
 
-member <device> toggle - Enable, disable, or toggle a group member.
+member toggle <label> - Enable, disable, or toggle a group member.
 
 SYNOPSIS
 
-member <device> toggle
+member toggle <label>
 
 DESCRIPTION
 
@@ -3933,7 +3899,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`member <device> toggle`
+`member toggle <label>`
 
 EXAMPLE OUTPUT
 Member updated.
@@ -4376,7 +4342,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`save config data/bringup_system.json`
+`save config src/main/deploy/bringup_system.json`
 
 EXAMPLE OUTPUT
 Wrote tests.
@@ -4581,7 +4547,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`save config data/bringup_system.json`
+`save config src/main/deploy/bringup_system.json`
 
 EXAMPLE OUTPUT
 Wrote tests.
@@ -4628,7 +4594,7 @@ SOURCE: local
 
 NAME
 
-type joystick - Set the test type for the current test.
+type joystick - Removed legacy local interactive test-mode command.
 
 SYNOPSIS
 
@@ -4636,7 +4602,7 @@ type joystick
 
 DESCRIPTION
 
-Set the test type for the current test. This command is valid in Test Mode (`bridge(config-test-...)#`).
+This legacy command is removed. Express joystick behavior in DSL source, then import it with `test import`.
 
 RETURNS
 
@@ -4656,10 +4622,10 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`type joystick`
+`set "SPARKMAX/NEO 25".output = controller0.leftY deadband 0.12 scaled 0.25 default 0.0`
 
 EXAMPLE OUTPUT
-Test type set.
+Valid DSL source line.
 
 ### type button
 
@@ -4850,15 +4816,15 @@ EXAMPLE
 EXAMPLE OUTPUT
 Device updated.
 
-### no device <name>
+### member remove <name>
 
 NAME
 
-no device <name> - Remove a device from the current group.
+member remove <name> - Remove a device from the current group.
 
 SYNOPSIS
 
-no device <name>
+member remove <name>
 
 DESCRIPTION
 
@@ -4886,7 +4852,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`no device <name>`
+`member remove <name>`
 
 EXAMPLE OUTPUT
 Device removed.
@@ -6258,7 +6224,7 @@ You can suffix the command with `?` to see valid next arguments. Device referenc
 
 EXAMPLE
 
-`save config data/bringup_system.json`
+`save config src/main/deploy/bringup_system.json`
 
 EXAMPLE OUTPUT
 Wrote tests.
@@ -6366,9 +6332,10 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `tests save`
 - `write tests <path>`
 - `test set <name>`
-- `test create <name>`
 - `test delete <name>`
-- `test <name>`
+- `test import <name> <path> [set <set_name>]`
+- `test export <name> <path>`
+- `test validate [<name>] [--json] [--pretty]`
 
 ### Group Mode (`bridge(config-...-group-...)#`)
 
@@ -6376,11 +6343,11 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `show members`
 - `show binding`
 - `show <target> [robot|local|both] [--json] [--pretty]`
-- `add device <device>`
-- `no device <device>`
-- `member <device> enable`
-- `member <device> disable`
-- `member <device> toggle`
+- `member assign <device>`
+- `member remove <device>`
+- `member enable <label>`
+- `member disable <label>`
+- `member toggle <label>`
 - `bind list`
 - `bind explain <binding>`
 - `bind test <binding>`
@@ -6404,17 +6371,15 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `no <field>`
 - `write tests <path>`
 
-### Test Mode (`bridge(config-test-...)#`)
+### Test Authoring Notes
 
-- `show`
-- `type joystick`
-- `type button`
-- `type composite`
-- `type deadbandSweep`
-- `type deviceAction`
-- `device add <name>`
-- `no device <name>`
-- `inputSource <controller>.<inputId>`
+- Legacy local interactive test-mode editing is removed.
+- Current workflow uses DSL source files plus:
+  - `test import <name> <path> [set <set_name>]`
+  - `test export <name> <path>`
+  - `test validate [<name>] [--json] [--pretty]`
+  - `show test <name>`
+  - `show test <name> normalized --json --pretty`
 - `deadband <value>`
 - `duty <value>`
 - `action toggle_led|set_color`
@@ -6448,4 +6413,6 @@ Purpose: Enumerate every supported command by mode. Every command may be suffixe
 - `termination rotation <value>`
 - `termination limitswitch [id]`
 - `write tests <path>`
+
+
 

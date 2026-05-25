@@ -1,10 +1,11 @@
-﻿configure terminal
+configure terminal
 device testMotor
 device testMotor set type sparkmax
 group testGroup
-add device testMotor
+member assign testMotor
 bind trigger analog
 show groups --json
 show devices --json
 end
 exit
+

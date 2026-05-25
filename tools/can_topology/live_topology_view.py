@@ -39,6 +39,7 @@ from tools.common.profile_constants import (
     KEY_LAYOUT,
     KEY_MANUFACTURER,
     KEY_MODEL,
+    KEY_OBJECT_TYPE,
     KEY_NODE_TYPE,
     KEY_PROFILES,
     KEY_PROFILE_DEVICES,
@@ -47,6 +48,7 @@ from tools.common.profile_constants import (
     LAYOUT_KEY_Y,
     NODE_TYPE_ANALYZER,
     NODE_TYPE_JUNCTION,
+    get_object_type,
 )
 from tools.config.schema_store import ConfigSchemaStore
 from tools.common.topology_render import (
@@ -116,6 +118,7 @@ SWYFT_POWER_LABEL_Y = 10.0
 SWYFT_FONT_BASE_PX = 7
 POWER_LINE_COLOR = "#c05000"
 ATTACH_LINE_COLOR = "#7a5d00"
+VIEW_KEY_BUS_CONNECTOR_SIDES = "busConnectorSides"
 WIRE_LINE_COLOR = "#1f6feb"
 LINK_LINE_WIDTH = 2
 LINK_DASH = (6, 4)
@@ -385,7 +388,7 @@ def _diagram_nodes(
     for entry in parse_diagram_nodes(diagram):
         if not isinstance(entry, dict):
             continue
-        raw_node_type = str(entry.get(KEY_NODE_TYPE) or "device")
+        raw_node_type = get_object_type(entry) or "device"
         node_type = raw_node_type
         if raw_node_type in (NODE_TYPE_JUNCTION, NODE_TYPE_ANALYZER):
             node_type = LEGACY_NODE_TYPE_DIAGRAM
@@ -623,6 +626,11 @@ class LiveTopologyView(ttk.Frame):
             self._bus_offsets = [float(v) for v in (view_meta.get("busOffsets") or [0.0])]
             self._bus_lefts = [float(v) for v in (view_meta.get("busLefts") or [])]
             self._bus_rights = [float(v) for v in (view_meta.get("busRights") or [])]
+            self._bus_connector_sides = [
+                str(v).strip().lower()
+                for v in (view_meta.get(VIEW_KEY_BUS_CONNECTOR_SIDES) or [])
+                if isinstance(v, str)
+            ]
             self._pan_y = float(view_meta.get("panY") or 0.0)
             self._zoom = float(view_meta.get("zoom") or 1.0)
             self._ethernet_links, self._can_links, self._device_links = parse_diagram_links(meta)
@@ -1200,6 +1208,7 @@ class LiveTopologyView(ttk.Frame):
             selected_bus_indices=set(),
             drag_free_y={},
             bus_connectors=[],
+            bus_connector_sides=getattr(self, "_bus_connector_sides", []),
             bus_lefts=eff_lefts,
             bus_rights=eff_rights,
             min_x=min_x,

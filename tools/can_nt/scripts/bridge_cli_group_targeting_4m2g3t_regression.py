@@ -51,6 +51,7 @@ KEY_GROUPS = "groups"
 KEY_NAME = "name"
 KEY_MEMBERS = "members"
 KEY_DEVICE = "device"
+KEY_LABEL = "label"
 KEY_TESTS = "tests"
 KEY_TEST_SETS = "testSets"
 KEY_DEFAULT = "default"
@@ -77,10 +78,10 @@ CMD_ID_24 = "id 24"
 
 CMD_GROUP_CREATE_DRIVE = "group create drive"
 CMD_GROUP_CREATE_AUX = "group create aux"
-CMD_ADD_DEVICE_MOTOR1 = "add device motor1"
-CMD_ADD_DEVICE_MOTOR2 = "add device motor2"
-CMD_ADD_DEVICE_MOTOR3 = "add device motor3"
-CMD_ADD_DEVICE_MOTOR4 = "add device motor4"
+CMD_MEMBER_ASSIGN_MOTOR1 = "member assign motor1"
+CMD_MEMBER_ASSIGN_MOTOR2 = "member assign motor2"
+CMD_MEMBER_ASSIGN_MOTOR3 = "member assign motor3"
+CMD_MEMBER_ASSIGN_MOTOR4 = "member assign motor4"
 
 CMD_TEST_IMPORT_PREFIX = "test import "
 CMD_SET_DEFAULT = " set default"
@@ -163,7 +164,7 @@ def _build_actual_summary(saved_local_config: Dict[str, object]) -> Dict[str, ob
         for member in members:
             if not isinstance(member, dict):
                 continue
-            label = str(member.get(KEY_DEVICE, "")).strip()
+            label = str(member.get(KEY_LABEL, member.get(KEY_DEVICE, ""))).strip()
             if label:
                 labels.append(label)
         groups_map[group_name] = sorted(labels)
@@ -212,12 +213,12 @@ def _run_regression() -> List[CheckResult]:
         ("set motor4 id", CMD_ID_24, STATUS_OK_CODES),
         ("exit motor4", CMD_EXIT, STATUS_OK_CODES),
         ("create drive group", CMD_GROUP_CREATE_DRIVE, STATUS_OK_CODES),
-        ("add motor1 to drive", CMD_ADD_DEVICE_MOTOR1, STATUS_OK_CODES),
-        ("add motor2 to drive", CMD_ADD_DEVICE_MOTOR2, STATUS_OK_CODES),
+        ("add motor1 to drive", CMD_MEMBER_ASSIGN_MOTOR1, STATUS_OK_CODES),
+        ("add motor2 to drive", CMD_MEMBER_ASSIGN_MOTOR2, STATUS_OK_CODES),
         ("exit drive group", CMD_EXIT, STATUS_OK_CODES),
         ("create aux group", CMD_GROUP_CREATE_AUX, STATUS_OK_CODES),
-        ("add motor3 to aux", CMD_ADD_DEVICE_MOTOR3, STATUS_OK_CODES),
-        ("add motor4 to aux", CMD_ADD_DEVICE_MOTOR4, STATUS_OK_CODES),
+        ("add motor3 to aux", CMD_MEMBER_ASSIGN_MOTOR3, STATUS_OK_CODES),
+        ("add motor4 to aux", CMD_MEMBER_ASSIGN_MOTOR4, STATUS_OK_CODES),
         ("exit aux group", CMD_EXIT, STATUS_OK_CODES),
     ]
 

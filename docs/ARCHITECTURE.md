@@ -59,6 +59,21 @@ Contracts across the boundary:
 - TCP protocol details (wire framing, schemas, and examples): `docs/TCP_UI_PROTOCOL.md`.
 - NetworkTables: diagnostics/state only under `bringup/diag/...`.
 - JSON config: `bringup_system.json` is the shared input (profiles + devices table + diagram + tests under bridgeConfig).
+- `bringup_system.json` is the system config file. Multiple config files may exist on disk, but the system loads one system config file at a time.
+
+## Config Structure Model
+Purpose: make the shared inventory versus per-profile subset model explicit.
+
+- One system config file can contain multiple profiles.
+- The system config file defines the shared device inventory once in `devices[]`.
+- Each profile selects which of those device labels it uses in `profiles.<name>.devices[]`.
+
+Terminology:
+
+- `defined` means a device exists in the shared inventory
+- `in profile` means the current profile includes that device from the shared inventory
+
+These are different states.
 
 ## Safety Rules (Client/Server)
 Purpose: keep networked control safe and deterministic.
@@ -284,7 +299,7 @@ Purpose: vendor grouping centralizes shared logic across device types.
 
 - Owns lists of device wrappers for the vendor.
 - Adds shared helpers (spec lookup, health notes, low-current checks).
-- Exposes operations: add next, add all, set duty, stop, snapshot.
+- Exposes operations: instantiate next motor, instantiate all devices, set duty, stop, snapshot.
 - All manufacturer groups implement `ManufacturerGroup`.
 
 Examples:
@@ -332,6 +347,12 @@ Purpose: JSON inputs define behavior and runtime configuration.
 - Tests are stored inside `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
 - `motor_specs.json`: motor current specs for health checks.
 - `can_mappings.json`: manufacturer/device type names for CAN decoding.
+
+Important distinction:
+
+- a device may be defined in `devices[]` without being included in the active profile
+- a device may be in the active profile without being instantiated yet at runtime
+- a device may be instantiated without being selected or grouped
 
 ## PC Tools (clients)
 Purpose: PC-side tools cover CAN capture, operator surfaces, and offline analysis.

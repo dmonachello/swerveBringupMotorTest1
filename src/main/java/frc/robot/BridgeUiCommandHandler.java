@@ -75,6 +75,7 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_TYPE = "type";
   private static final String JSON_KEY_ID = "id";
   private static final String JSON_KEY_DEVICE = "device";
+  private static final String JSON_KEY_SKIPPED_MEMBERS = "skippedMembers";
   private static final String JSON_KEY_ENABLED = "enabled";
   private static final String JSON_KEY_INSTANTIATED = "instantiated";
   private static final String JSON_KEY_PRESENCE_CONF = "presenceConfidence";
@@ -118,6 +119,7 @@ public class BridgeUiCommandHandler {
   private static final String CMD_ACTIVE_ADD = "activeAdd";
   private static final String CMD_ACTIVE_NEXT = "activeNext";
   private static final String GROUP_ACTIVE = "active-group";
+  private static final String TEXT_GROUP_SKIPPED_MEMBERS_HEADER = "Skipped unsupported members:\n";
   private static final String JSON_KEY_WARNINGS = "warnings";
   private static final String JSON_KEY_GROUP = "group";
   private static final String WARNING_WRAPPED = "WARNING: device list wrapped to first entry.";
@@ -1915,13 +1917,13 @@ public class BridgeUiCommandHandler {
     }
     if (!group.members.isEmpty()) {
       BridgeGroupManager.MemberState primary = group.members.values().iterator().next();
-      if (primary != null && primary.device != null && !primary.device.isBlank()) {
-        var device = core() != null ? core().findDeviceByLabel(primary.device) : null;
+      if (primary != null && primary.label != null && !primary.label.isBlank()) {
+        var device = core() != null ? core().findDeviceByLabel(primary.label) : null;
         if (device != null) {
           device.stop();
           device.deactivate();
         }
-        bridgeGroups().removeDevice(GROUP_ACTIVE, primary.device);
+        bridgeGroups().removeDevice(GROUP_ACTIVE, primary.label);
       }
     }
     List<String> warnings = new ArrayList<>();
@@ -2859,8 +2861,16 @@ public class BridgeUiCommandHandler {
       sb.append("  (none)\n");
     } else {
       for (BridgeGroupManager.MemberState member : group.members.values()) {
-        sb.append("  ").append(member.device)
+        sb.append("  ").append(member.label)
             .append(" [").append(member.enabled ? "enabled" : "disabled").append("]\n");
+      }
+    }
+    if (!group.lastSkippedMembers.isEmpty()) {
+      sb.append(TEXT_GROUP_SKIPPED_MEMBERS_HEADER);
+      for (String label : group.lastSkippedMembers) {
+        if (label != null && !label.isBlank()) {
+          sb.append("  ").append(label).append('\n');
+        }
       }
     }
     sb.append("Bindings:\n");
@@ -2893,11 +2903,22 @@ public class BridgeUiCommandHandler {
     JsonArray members = new JsonArray();
     for (BridgeGroupManager.MemberState member : group.members.values()) {
       JsonObject m = new JsonObject();
-      m.addProperty("device", member.device);
+      m.addProperty(JSON_KEY_LABEL, member.label);
       m.addProperty("enabled", member.enabled);
       members.add(m);
     }
     g.add("members", members);
+    if (!group.lastSkippedMembers.isEmpty()) {
+      JsonArray skipped = new JsonArray();
+      for (String label : group.lastSkippedMembers) {
+        if (label != null && !label.isBlank()) {
+          skipped.add(label);
+        }
+      }
+      if (!skipped.isEmpty()) {
+        g.add(JSON_KEY_SKIPPED_MEMBERS, skipped);
+      }
+    }
     JsonArray bindings = new JsonArray();
     for (BridgeGroupManager.Binding binding : group.bindings) {
       JsonObject b = new JsonObject();

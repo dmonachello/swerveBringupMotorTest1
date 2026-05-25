@@ -33,7 +33,7 @@ profile home_tests_033026
 Purpose: ensure you are not editing leftover in-memory tests from a previous session or file.
 
 ```text
-load config data/bringup_system.json --merge
+load config src/main/deploy/bringup_system.json --merge
 tests clear
 ```
 
@@ -53,7 +53,7 @@ set id 26
 set model "REV NEO"
 set type motor
 exit
-save config data/bringup_system.json
+save config src/main/deploy/bringup_system.json
 ```
 
 4) Refresh the Active Profile (so tests can see new devices)
@@ -68,16 +68,25 @@ profile home_tests_033026
 test set clean_033026
 ```
 
-6) Create the FeederSpin Test (includes device!)
+6) Import the FeederSpin Test
 
 ```text
-test create FeederSpin
-type button
-device add "Feeder Motor"
-inputSource controller0.A
-duty 0.2
-termination time 2.0
-exit
+test import FeederSpin tools/can_nt/logs/FeederSpin.dsl set clean_033026
+test validate FeederSpin --json --pretty
+end
+```
+
+Create `tools\can_nt\logs\FeederSpin.dsl` with:
+
+```text
+test "FeederSpin"
+device "Feeder Motor"
+device "controller0"
+
+main:
+    set "Feeder Motor".output = 0.2
+    abort controller0.B
+    until timer.elapsed >= 2.0
 ```
 
 7) Verify
@@ -85,6 +94,7 @@ exit
 ```text
 show tests
 show test FeederSpin
+show test FeederSpin normalized --json --pretty
 ```
 Screenshot: `show tests` output listing multiple test sets and the active set.
 ```text
@@ -98,15 +108,18 @@ Active test set: clean_033026
 SUCCESS [EXECUTOR.SUCCESS]
 DETAIL: Success.
 
-bridge(config-profile-home_tests_033026)# show test FeederSpin
-Test: FeederSpin
-  type: button
-  enabled: False
-  devices: Feeder Motor
-  inputSource: controller0.A
-  duty: 0.2
-  termination: hold=False time=2.0 rotation=None
-  time: {'timeoutSec': 2.0, 'onTimeout': 'fail'}
+bridge(config-profile-home_tests_033026)# show test FeederSpin normalized --json --pretty
+{
+  "name": "FeederSpin",
+  "devices": [
+    {
+      "name": "Feeder Motor"
+    },
+    {
+      "name": "controller0"
+    }
+  ]
+}
 SUCCESS [EXECUTOR.SUCCESS]
 DETAIL: Success.
 bridge(config-profile-home_tests_033026)#
@@ -116,7 +129,7 @@ bridge(config-profile-home_tests_033026)#
 8) Save Unified Config
 
 ```text
-save config data/bringup_system.json
+save config src/main/deploy/bringup_system.json
 ```
 
 ## Notes
@@ -127,7 +140,7 @@ save config data/bringup_system.json
 - `save config` writes `bringup_system.json` with profiles + bridgeConfig.byProfile (groups + tests).
 - Commands are case-insensitive (`inputSource`, `inputsource`, `InputSource` all work).
 - To delete a device:
-  - `no device "<label>"` from config/profile mode, or
+  - `member remove "<label>"` from config/profile mode, or
   - `device "<label>"` then `delete` from device mode.
 - If both profiles and tests are dirty, you can use `save all` to persist everything with the current file paths.
 
@@ -188,4 +201,5 @@ Expected:
 - `inputSource: controller0.A`
 - `duty: 0.2`
 - `time: {'timeoutSec': 2.0, 'onTimeout': 'pass'}`
+
 

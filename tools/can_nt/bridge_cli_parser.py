@@ -66,8 +66,11 @@ CMD_CONFIGURE = "configure"
 CMD_PROFILE = "profile"
 CMD_PROFILES = "profiles"
 CMD_DEVICE = "device"
+CMD_DEVICES = "devices"
 CMD_GROUP = "group"
+CMD_MEMBER = "member"
 CMD_NO = "no"
+CMD_ASSIGN = "assign"
 CMD_DEFAULT = "default"
 CMD_CREATE = "create"
 CMD_DELETE = "delete"
@@ -90,6 +93,9 @@ CMD_LIST = "list"
 CMD_EXPLAIN = "explain"
 CMD_FILE = "file"
 CMD_NEXT = "next"
+CMD_REMOVE = "remove"
+CMD_INSTANTIATE = "instantiate"
+CMD_MOTOR = "motor"
 FLAG_FORCE = "--force"
 FLAG_INSTALL_ROBOT = "--install-robot"
 FLAG_REPAIR = "--repair"
@@ -259,6 +265,8 @@ class BridgeCliParser:
                 return self._handle_configure_terminal
             if cmd == SPEC.cmd_show.lower():
                 return self._handle_show_command
+            if cmd == CMD_INSTANTIATE:
+                return self._handle_instantiate_command
             if cmd == SPEC.cmd_profile.lower():
                 return self._handle_profile
             if cmd == SPEC.cmd_add.lower():
@@ -275,12 +283,16 @@ class BridgeCliParser:
                 return self._handle_topology_command
             if cmd == SPEC.cmd_group.lower():
                 return self._handle_group_command
+            if cmd == CMD_MEMBER:
+                return self._handle_group_member
             if cmd == SPEC.cmd_no.lower():
                 return self._handle_config_no
             if cmd == SPEC.cmd_profile.lower():
                 return self._handle_profile
             if cmd == SPEC.cmd_profiles.lower():
                 return self._handle_profiles_command
+            if cmd == CMD_INSTANTIATE:
+                return self._handle_instantiate_command
             if cmd == SPEC.cmd_add.lower():
                 return self._handle_add_command
             if cmd == CMD_CLEAR:
@@ -1680,19 +1692,21 @@ class BridgeCliParser:
         pretty = bool(SPEC.bool_false)
         for tok in tokens:
             lower = tok.lower()
-            if lower == SPEC.show_flags[SPEC.count_zero]:
+            if lower == "--json":
                 json_output = bool(SPEC.bool_true)
                 continue
-            if lower == SPEC.show_flags[SPEC.count_one]:
+            if lower == "--pretty":
                 pretty = bool(SPEC.bool_true)
                 continue
-            if lower in (SPEC.show_flags[SPEC.count_two], SPEC.show_flags[SPEC.count_three]):
+            if lower == "--grouped":
+                continue
+            if lower in (SPEC.show_source_robot, "--robot"):
                 source = SPEC.show_source_robot
                 continue
-            if lower in (SPEC.show_flags[SPEC.count_four], SPEC.show_flags[SPEC.count_five]):
+            if lower in (SPEC.show_source_local, "--local"):
                 source = SPEC.show_source_local
                 continue
-            if lower in (SPEC.show_flags[SPEC.count_six], SPEC.show_flags[SPEC.count_six + 1]):
+            if lower in (SPEC.show_source_both, "--both"):
                 source = SPEC.show_source_both
                 continue
             cleaned.append(tok)
@@ -1782,12 +1796,36 @@ class BridgeCliParser:
         self._parse_show(tokens[SPEC.count_one :], allow_empty=bool(SPEC.disallow_empty))
 
     def _handle_add_command(self, tokens: List[str]) -> None:
-        if len(tokens) < SPEC.count_two:
+        if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() == CMD_DEVICE:
+            if len(tokens) >= SPEC.count_five and tokens[SPEC.count_three].lower() == CMD_GROUP:
+                canonical = f"{CMD_GROUP} {CMD_MEMBER} {CMD_ASSIGN} {tokens[SPEC.count_four]} {tokens[SPEC.count_two]}"
+            else:
+                canonical = f"{CMD_MEMBER} {CMD_ASSIGN} {tokens[SPEC.count_two] if len(tokens) >= SPEC.count_three else '<device>'}"
+            raise CliParseError(f"Command '{' '.join(tokens)}' was removed. Use '{canonical}'.")
+        if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() in (CMD_NEXT, CMD_ALL):
+            if len(tokens) >= SPEC.count_four and tokens[SPEC.count_two].lower() == CMD_GROUP:
+                canonical = f"{CMD_GROUP} {CMD_MEMBER} {CMD_ASSIGN} {tokens[SPEC.count_one].lower()} {tokens[SPEC.count_three]}"
+                raise CliParseError(f"Command '{' '.join(tokens)}' was removed. Use '{canonical}'.")
+            canonical = (
+                f"{CMD_INSTANTIATE} {CMD_NEXT} {CMD_MOTOR}"
+                if tokens[SPEC.count_one].lower() == CMD_NEXT
+                else f"{CMD_INSTANTIATE} {CMD_ALL} {CMD_DEVICES}"
+            )
+            raise CliParseError(f"Command '{' '.join(tokens)}' was removed. Use '{canonical}'.")
+        raise CliParseError(SPEC.msg_parse_error)
+
+    def _handle_instantiate_command(self, tokens: List[str]) -> None:
+        if len(tokens) < SPEC.count_three:
             raise CliParseError(SPEC.msg_parse_error)
-        target = tokens[SPEC.count_one].lower()
-        if target not in (CMD_NEXT, CMD_ALL):
-            raise CliParseError(SPEC.msg_parse_error)
-        self._reject_extra(tokens, SPEC.count_two, LABEL_ADD)
+        action = tokens[SPEC.count_one].lower()
+        target = tokens[SPEC.count_two].lower()
+        if action == CMD_NEXT and target == CMD_MOTOR:
+            self._reject_extra(tokens, SPEC.count_three, CMD_INSTANTIATE)
+            return
+        if action == CMD_ALL and target == CMD_DEVICES:
+            self._reject_extra(tokens, SPEC.count_three, CMD_INSTANTIATE)
+            return
+        raise CliParseError(SPEC.msg_parse_error)
 
     def _handle_clear_command(self, tokens: List[str]) -> None:
         """
@@ -1808,6 +1846,19 @@ class BridgeCliParser:
             raise CliParseError(SPEC.msg_parse_error)
 
     def _handle_group_command(self, tokens: List[str]) -> None:
+        if len(tokens) >= SPEC.count_two and tokens[SPEC.count_one].lower() == CMD_MEMBER:
+            if len(tokens) < SPEC.count_four:
+                raise CliParseError(SPEC.msg_member)
+            action = tokens[SPEC.count_two].lower()
+            if action not in (CMD_ASSIGN, CMD_REMOVE, CMD_ENABLE, CMD_DISABLE, CMD_TOGGLE):
+                raise CliParseError(SPEC.msg_member_action)
+            if action == CMD_ASSIGN and tokens[SPEC.count_three].lower() in (CMD_ALL, CMD_NEXT):
+                self._require(tokens, SPEC.count_five, SPEC.msg_member)
+                self._reject_extra(tokens, SPEC.count_five, SPEC.label_member)
+                return
+            self._require(tokens, SPEC.count_five, SPEC.msg_member)
+            self._reject_extra(tokens, SPEC.count_five, SPEC.label_member)
+            return
         self._require(tokens, SPEC.count_two, SPEC.msg_group_name)
         self._reject_extra(tokens, SPEC.count_two, SPEC.label_group)
 
@@ -2118,10 +2169,11 @@ class BridgeCliParser:
         self._parse_show(tokens[SPEC.count_one :], allow_empty=bool(SPEC.disallow_empty))
 
     def _handle_group_add(self, tokens: List[str]) -> None:
-        if len(tokens) < SPEC.count_two or tokens[SPEC.count_one].lower() != SPEC.cmd_device:
-            raise CliParseError(SPEC.msg_unknown_cmd_fmt % tokens[SPEC.count_zero])
-        self._require(tokens, SPEC.count_three, SPEC.msg_add_device)
-        self._reject_extra(tokens, SPEC.count_three, SPEC.label_add_device)
+        if len(tokens) >= SPEC.count_three and tokens[SPEC.count_one].lower() == SPEC.cmd_device:
+            raise CliParseError(
+                f"Command '{' '.join(tokens)}' was removed. Use '{CMD_MEMBER} {CMD_ASSIGN} {tokens[SPEC.count_two]}'."
+            )
+        raise CliParseError(SPEC.msg_unknown_cmd_fmt % tokens[SPEC.count_zero])
 
     def _handle_group_no(self, tokens: List[str]) -> None:
         if len(tokens) < SPEC.count_two:
@@ -2132,13 +2184,20 @@ class BridgeCliParser:
         if tokens[SPEC.count_one].lower() != SPEC.cmd_device:
             raise CliParseError(SPEC.msg_unknown_cmd_fmt % tokens[SPEC.count_zero])
         self._require(tokens, SPEC.count_three, SPEC.msg_no_device)
-        self._reject_extra(tokens, SPEC.count_three, SPEC.label_no_device)
+        raise CliParseError(
+            f"Command '{' '.join(tokens)}' was removed. Use '{CMD_MEMBER} {CMD_REMOVE} {tokens[SPEC.count_two]}'."
+        )
 
     def _handle_group_member(self, tokens: List[str]) -> None:
         self._require(tokens, SPEC.count_three, SPEC.msg_member)
-        if tokens[SPEC.count_two].lower() not in (SPEC.cmd_enable, SPEC.cmd_disable, SPEC.cmd_toggle):
-            raise CliParseError(SPEC.msg_member_action)
-        self._reject_extra(tokens, SPEC.count_three, SPEC.label_member)
+        action = tokens[SPEC.count_one].lower()
+        if action in (CMD_ASSIGN, CMD_REMOVE, CMD_ENABLE, CMD_DISABLE, CMD_TOGGLE):
+            self._reject_extra(tokens, SPEC.count_three, SPEC.label_member)
+            return
+        if tokens[SPEC.count_two].lower() in (SPEC.cmd_enable, SPEC.cmd_disable, SPEC.cmd_toggle):
+            canonical = f"{CMD_MEMBER} {tokens[SPEC.count_two].lower()} {tokens[SPEC.count_one]}"
+            raise CliParseError(f"Command '{' '.join(tokens)}' was removed. Use '{canonical}'.")
+        raise CliParseError(SPEC.msg_member_action)
 
     def _handle_group_bind(self, tokens: List[str]) -> None:
         if len(tokens) >= SPEC.count_two:

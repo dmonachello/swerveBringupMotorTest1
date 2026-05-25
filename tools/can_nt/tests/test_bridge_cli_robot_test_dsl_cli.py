@@ -36,7 +36,7 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
         cli = BridgeCli(_FakeSession(connected=connected), batch=True)
         cli._modes = [CliMode(MODE_CONFIG)]
         cli._local_root_payload = {
-            "schema_version": 4,
+            "schema_version": 5,
             "default_profile": "dsl_demo_050426",
             "profiles": {
                 "dsl_demo_050426": {
@@ -178,23 +178,23 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
             self.assertEqual(main_statement["scale"], 0.25)
             self.assertEqual(main_statement["defaultLiteral"]["value"], 0.0)
 
-    def test_config_mode_add_all_uses_robot_path_when_not_in_group_context(self) -> None:
+    def test_config_mode_instantiate_all_uses_robot_path_when_not_in_group_context(self) -> None:
         cli = self._build_cli(connected=True)
         cli._wait_for_seq = lambda seq: object()
         cli._event_failed = lambda event, label: False
 
-        result = cli._execute_line("add all")
+        result = cli._execute_line("instantiate all devices")
 
         self.assertEqual(result.code, SS__NORMAL)
         self.assertEqual(cli._session.sent_commands, [("addAll", {})])
 
-    def test_group_context_add_all_keeps_local_group_membership_behavior(self) -> None:
+    def test_group_context_member_assign_all_keeps_local_group_membership_behavior(self) -> None:
         cli = self._build_cli()
         create_result = cli._create_local_group("diag")
         self.assertEqual(create_result.code, SS__NORMAL)
         cli._modes.append(CliMode("group", group="diag"))
 
-        result = cli._execute_line("add all")
+        result = cli._execute_line("member assign all")
 
         self.assertEqual(result.code, SS__NORMAL)
         self.assertEqual(cli._session.sent_commands, [])
@@ -203,12 +203,12 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
             ["FALCON 9", "SPARKMAX/NEO 25", "lmtSw0"],
         )
 
-    def test_config_mode_add_all_group_name_keeps_local_group_membership_behavior(self) -> None:
+    def test_config_mode_group_member_assign_all_keeps_local_group_membership_behavior(self) -> None:
         cli = self._build_cli()
         create_result = cli._create_local_group("diag")
         self.assertEqual(create_result.code, SS__NORMAL)
 
-        result = cli._execute_line("add all group diag")
+        result = cli._execute_line("group member assign all diag")
 
         self.assertEqual(result.code, SS__NORMAL)
         self.assertEqual(cli._session.sent_commands, [])
@@ -216,6 +216,19 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
             cli._list_target_group_members("diag"),
             ["FALCON 9", "SPARKMAX/NEO 25", "lmtSw0"],
         )
+
+    def test_legacy_add_all_is_rejected(self) -> None:
+        cli = self._build_cli(connected=True)
+        cli._wait_for_seq = lambda seq: object()
+        cli._event_failed = lambda event, label: False
+        output = io.StringIO()
+
+        with contextlib.redirect_stdout(output):
+            result = cli._execute_line("add all")
+
+        self.assertNotEqual(result.code, SS__NORMAL)
+        self.assertIn("was removed", output.getvalue())
+        self.assertEqual(cli._session.sent_commands, [])
 
     def test_tests_run_wait_dispatches_and_waits_for_summary(self) -> None:
         cli = self._build_cli(connected=True)

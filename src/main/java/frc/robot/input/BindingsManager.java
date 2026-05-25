@@ -1,11 +1,12 @@
 package frc.robot.input;
 
-import frc.robot.BringupPrinter;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.XboxController;
 import frc.robot.EdgeTrigger;
+import frc.robot.BringupPrinter;
+import frc.robot.BringupUtil;
 import frc.robot.commands.local.RobotLocalCommandRegistry;
 import java.io.IOException;
 import java.io.Reader;
@@ -33,16 +34,18 @@ import java.util.Set;
 public final class BindingsManager {
   private static final String BINDINGS_FILE = "bringup_bindings.json";
   private static final String JSON_KEY_INPUT_ALIASES = "inputAliases";
+  private static final String JSON_KEY_SCHEMA_VERSION = "schema_version";
   private static final String MESSAGE_BINDINGS_CONFIG_MISSING_FORMAT =
       "Warning: bindings config not found: %s. Robot will run with no controller bindings.";
   private static final String MESSAGE_BINDINGS_CONFIG_EMPTY_FORMAT =
       "Warning: bindings config root was empty: %s. Robot will run with no controller bindings.";
   private static final String MESSAGE_BINDINGS_CONFIG_INVALID_FORMAT =
       "Warning: failed to load bindings config %s: %s. Robot will run with no controller bindings.";
+  private static final String MESSAGE_BINDINGS_SCHEMA_VERSION_FORMAT =
+      "Warning: bindings config schema_version mismatch in %s: expected %d, got %s. Robot will run with no controller bindings.";
   private static final Gson GSON = new Gson();
 
   private final List<BindingSpec> bindings = new ArrayList<>();
-  private final List<AxisSpec> axes = new ArrayList<>();
   private Map<String, String> inputAliases = new HashMap<>();
 
   /**
@@ -94,12 +97,23 @@ public final class BindingsManager {
       if (controller == null) {
         continue;
       }
-      boolean active = isActive(controller, spec);
-      String key = "bind_" + i + "_" + spec.command;
-      boolean pressed = edge.pressed(key, active);
       if (isBindingSuppressed(spec, overrides, aliases)) {
         continue;
       }
+      if (spec.isAxisKind()) {
+        double value = readAxis(controller, spec.id);
+        if (spec.invert) {
+          value = -value;
+        }
+        if (Math.abs(value) < spec.deadband) {
+          value = 0.0;
+        }
+        state.axes.put(spec.command, value);
+        continue;
+      }
+      boolean active = isActive(controller, spec);
+      String key = "bind_" + i + "_" + spec.command;
+      boolean pressed = edge.pressed(key, active);
       boolean hold = active;
       if (spec.isHoldMode()) {
         state.holds.put(spec.command, hold);
@@ -111,24 +125,6 @@ public final class BindingsManager {
           state.pressed.put(spec.command, true);
         }
       }
-    }
-
-    for (AxisSpec spec : axes) {
-      XboxController controller = resolveController(spec.controller, controllers);
-      if (controller == null) {
-        continue;
-      }
-      if (isAxisSuppressed(spec, overrides, aliases)) {
-        continue;
-      }
-      double value = readAxis(controller, spec.id);
-      if (spec.invert) {
-        value = -value;
-      }
-      if (Math.abs(value) < spec.deadband) {
-        value = 0.0;
-      }
-      state.axes.put(spec.command, value);
     }
     return state;
   }
@@ -148,6 +144,9 @@ public final class BindingsManager {
   public List<String> describeBindings() {
     List<String> lines = new ArrayList<>();
     for (BindingSpec spec : bindings) {
+      if (spec == null || spec.isAxisKind()) {
+        continue;
+      }
       String mode = spec.mode != null ? spec.mode : "edge";
       lines.add(spec.command + ": " + spec.controller + " " + spec.input + " " + spec.id + " (" + mode + ")");
     }
@@ -160,7 +159,10 @@ public final class BindingsManager {
    */
   public List<String> describeAxes() {
     List<String> lines = new ArrayList<>();
-    for (AxisSpec spec : axes) {
+    for (BindingSpec spec : bindings) {
+      if (spec == null || !spec.isAxisKind()) {
+        continue;
+      }
       lines.add(spec.command + ": " + spec.controller + " axis " + spec.id + " (invert=" + spec.invert + ", deadband=" + spec.deadband + ")");
     }
     return lines;
@@ -209,24 +211,6 @@ public final class BindingsManager {
     return overrides.contains(canonical);
   }
 
-  private boolean isAxisSuppressed(
-      AxisSpec spec,
-      Set<String> overrides,
-      Map<String, String> aliases) {
-    if (spec == null || overrides == null || overrides.isEmpty()) {
-      return false;
-    }
-    String aliasKey = InputAliasResolver.axisAliasKey(spec.controller, spec.id);
-    if (aliasKey.isBlank()) {
-      return false;
-    }
-    String canonical = InputAliasResolver.resolve(aliasKey, aliases);
-    if (canonical.isBlank()) {
-      return false;
-    }
-    return overrides.contains(canonical);
-  }
-
   private void loadBindings() {
     clearLoadedBindings();
     Path path = resolvePath();
@@ -240,11 +224,17 @@ public final class BindingsManager {
         loadEmptyBindings(String.format(MESSAGE_BINDINGS_CONFIG_EMPTY_FORMAT, path));
         return;
       }
+      if (!hasExpectedSchemaVersion(root.schemaVersion)) {
+        loadEmptyBindings(
+            String.format(
+                MESSAGE_BINDINGS_SCHEMA_VERSION_FORMAT,
+                path,
+                BringupUtil.getProfileSchemaVersion(),
+                String.valueOf(root.schemaVersion)));
+        return;
+      }
       if (root.bindings != null) {
         bindings.addAll(root.bindings);
-      }
-      if (root.axes != null) {
-        axes.addAll(root.axes);
       }
       if (root.inputAliases != null) {
         inputAliases = new HashMap<>(root.inputAliases);
@@ -262,7 +252,6 @@ public final class BindingsManager {
 
   private void clearLoadedBindings() {
     bindings.clear();
-    axes.clear();
     inputAliases = new HashMap<>();
   }
 
@@ -290,8 +279,8 @@ public final class BindingsManager {
         BringupPrinter.enqueue("Warning: duplicate binding for command '" + entry.getKey() + "'.");
       }
     }
-    for (AxisSpec axis : axes) {
-      if (axis == null || axis.command == null) {
+    for (BindingSpec axis : bindings) {
+      if (axis == null || axis.command == null || !axis.isAxisKind()) {
         continue;
       }
       String command = axis.command.trim();
@@ -299,6 +288,10 @@ public final class BindingsManager {
         BringupPrinter.enqueue("Warning: unknown axis command '" + command + "'.");
       }
     }
+  }
+
+  private boolean hasExpectedSchemaVersion(Integer schemaVersion) {
+    return schemaVersion != null && schemaVersion == BringupUtil.getProfileSchemaVersion();
   }
 
   private boolean isActive(XboxController controller, BindingSpec spec) {
@@ -315,6 +308,9 @@ public final class BindingsManager {
     }
     if (InputAliasResolver.INPUT_KIND_COMBO.equals(input)) {
       return isComboPressed(controller, id);
+    }
+    if (InputAliasResolver.INPUT_KIND_AXIS.equals(input)) {
+      return false;
     }
     return false;
   }
@@ -442,8 +438,9 @@ public final class BindingsManager {
   }
 
   private static final class BindingRoot {
+    @com.google.gson.annotations.SerializedName(JSON_KEY_SCHEMA_VERSION)
+    Integer schemaVersion;
     List<BindingSpec> bindings = Collections.emptyList();
-    List<AxisSpec> axes = Collections.emptyList();
     @com.google.gson.annotations.SerializedName(JSON_KEY_INPUT_ALIASES)
     Map<String, String> inputAliases = Collections.emptyMap();
   }
@@ -458,22 +455,16 @@ public final class BindingsManager {
     String input;
     String id;
     String mode;
+    boolean invert = false;
+    double deadband = 0.0;
 
     boolean isHoldMode() {
       return mode != null && mode.trim().equalsIgnoreCase("hold");
     }
-  }
 
-  /**
-   * NAME
-   *   AxisSpec - JSON axis specification.
-   */
-  public static final class AxisSpec {
-    String command;
-    String controller;
-    String id;
-    boolean invert = false;
-    double deadband = 0.0;
+    boolean isAxisKind() {
+      return input != null && input.trim().equalsIgnoreCase(InputAliasResolver.INPUT_KIND_AXIS);
+    }
   }
 
 }

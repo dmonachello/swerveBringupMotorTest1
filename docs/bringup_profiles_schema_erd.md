@@ -55,6 +55,7 @@ erDiagram
     }
 
     NODE {
+        string objectType
         string nodeType
         string category
         string label
@@ -93,8 +94,10 @@ erDiagram
 
 Notes:
 - This ERD is a conceptual mapping of JSON objects to relational entities.
-- Root schema_version is 4.
+- Root schema_version is 5.
 - Profiles only store device labels; identity fields live in the devices table.
 - `DEVICE_DEFINITION.id` is the single interface-local identifier field across CAN, DIO, USB, and similar interfaces.
-- Topology `NODE` records for `nodeType=device` resolve device identity by `label` and do not store a duplicated hardware id.
+- Topology `NODE` records use `objectType` as the canonical shared kind field. `nodeType` remains a mirrored compatibility field.
+- Topology `NODE` records for `objectType=device` resolve device identity by `label` and do not store a duplicated hardware id.
+- Bridge group members are stored by shared object `label`, not by a device-only field.
 - Optional JSON fields are shown without nullable markers to keep the ERD compact.

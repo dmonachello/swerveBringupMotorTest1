@@ -51,6 +51,8 @@ from tools.can_nt.bridge_cli_constants import CLI_PARSER_CONST
 from tools.can_nt.bridge_cli_constants_gen import SPEC as PARSER_SPEC
 from tools.can_nt.can_profiles import get_default_profile
 from tools.can_nt.bridge_ops import (
+    add_all_devices,
+    add_next_motor,
     connect,
     disconnect,
     local_show_data,
@@ -220,6 +222,7 @@ from tools.common.profile_constants import (
     KEY_KIND,
     KEY_VALUE,
     KEY_GENERATED_AT_MS,
+    KEY_GROUPED,
     KEY_SOURCES,
     KEY_SOURCES_NAME,
     KEY_SOURCES_PATH,
@@ -239,6 +242,7 @@ from tools.common.profile_constants import (
     KEY_TESTS_REQUIRED_DEVICES,
     KEY_VERSION,
     KEY_ID,
+    KEY_INPUT_ALIASES,
     KEY_INTERFACE,
     KEY_INVERT,
     KEY_LABEL,
@@ -281,12 +285,15 @@ from tools.common.profile_constants import (
     KEY_LAYOUT,
     KEY_EDGE_TYPE,
     KEY_EDGE_ID,
+    KEY_TOPOLOGY_VIEW,
     KEY_TOPOLOGY,
     KEY_TOPOLOGY_PROFILES,
     KEY_TOPOLOGY_VERSION,
     KEY_TOPOLOGY_SOURCE,
     KEY_TOPOLOGY_NODES,
     KEY_TOPOLOGY_EDGES,
+    KEY_ETHERNET_LINKS,
+    KEY_DEVICE_LINKS,
     KEY_FROM_NODE,
     KEY_FROM_PORT,
     KEY_TO_NODE,
@@ -294,7 +301,12 @@ from tools.common.profile_constants import (
     NEIGHBOR_PORT_LEFT,
     NEIGHBOR_PORT_RIGHT,
     NODE_TYPE_DEVICE,
+    NODE_TYPE_JUNCTION,
+    KEY_LINK_DEVICE,
     get_device_interface,
+    get_group_member_label,
+    get_object_type,
+    make_group_member,
 )
 from tools.can_topology.validate_profiles import Reporter, validate_profiles
 from tools.common.robot_test_dsl import (
@@ -566,7 +578,9 @@ CMD_PATTERN = "pattern"
 CMD_BRIGHTNESS = "brightness"
 CMD_DURATION = "duration"
 CMD_ADD = "add"
+CMD_ASSIGN = "assign"
 CMD_NEXT = "next"
+CMD_INSTANTIATE = "instantiate"
 CMD_RESET = "reset"
 CMD_ZERO_CONFIG = "zero-config"
 CMD_ACTIVE_SHORT = "active"
@@ -578,6 +592,7 @@ CMD_TOGGLE = PARSER_SPEC.cmd_toggle
 CMD_RUN = PARSER_SPEC.cmd_run
 CMD_NO = "no"
 CMD_REMOVE = "remove"
+CMD_MEMBER = "member"
 CMD_RENAME = "rename"
 CMD_VALIDATE = "validate"
 CMD_VAL = "val"
@@ -599,6 +614,8 @@ CMD_MANUAL_STOP = "manual_stop"
 CMD_ROLE = "role"
 CMD_DEADBAND_SWEEP = "deadbandsweep"
 CMD_ENABLED = "enabled"
+CMD_ENABLE = "enable"
+CMD_DISABLE = "disable"
 CMD_EXIT = "exit"
 CMD_END = "end"
 CMD_QUIT = "quit"
@@ -616,8 +633,8 @@ TARGET_KIND_GROUP = "group"
 TARGET_KIND_DEVICE = "device"
 TARGET_KIND_TEST = "test"
 CMD_COPY = "copy"
-WARN_DUPLICATE_MEMBER = "WARNING: device already in group: {device}"
-WARN_MISSING_MEMBER = "WARNING: device not in group: {device}"
+WARN_DUPLICATE_MEMBER = "WARNING: label already in group: {device}"
+WARN_MISSING_MEMBER = "WARNING: label not in group: {device}"
 WARN_LOCAL_GROUP_CLEARED = "WARNING: Robot not connected; local group cleared."
 ERR_RESERVED_ACTIVE_DELETE = "ERROR: group \"active\" cannot be deleted."
 ERR_RESERVED_ACTIVE_RENAME = "ERROR: group \"active\" cannot be renamed."
@@ -630,7 +647,12 @@ ERR_GROUP_NOT_FOUND_FMT = "ERROR: group \"{name}\" not found."
 ERR_DEVICE_NOT_FOUND_FMT = "ERROR: device \"{name}\" not found."
 ERR_SOURCE_DEST_SAME = "ERROR: source and destination are the same."
 ERR_COPY_NON_INTERACTIVE = "ERROR: non-interactive copy to existing group requires failure by policy."
-ERR_NO_DEVICES_AVAILABLE = "ERROR: no device available for add next."
+ERR_NO_DEVICES_AVAILABLE_INSTANTIATE = "ERROR: no device available for instantiate next motor."
+ERR_NO_DEVICES_AVAILABLE_MEMBER_ASSIGN = "ERROR: no device available for member assign next."
+MESSAGE_ERR_MEMBER_ACTION = "ERROR: member requires assign/remove/enable/disable/toggle."
+MESSAGE_ERR_INSTANTIATE_USAGE = (
+    "ERROR: instantiate requires `instantiate next motor` or `instantiate all devices`."
+)
 ERR_GROUP_NAME_REQUIRED = "ERROR: group name required."
 CMD_DEVICE_USAGE = "device-usage"
 CMD_SHOW_ALL = "show-all"
@@ -685,6 +707,7 @@ FLAG_DOT = "--dot"
 FLAG_FORCE = "--force"
 FLAG_INSTALL_ROBOT = "--install-robot"
 FLAG_REPAIR = "--repair"
+FLAG_GROUPED = "--grouped"
 TOKEN_EQUALS = "="
 BOOLEAN_TRUE = "true"
 BOOLEAN_FALSE = "false"
@@ -700,6 +723,8 @@ FLAG_YES = "--yes"
 FLAG_CLEAR_MEMORY = "--clear-memory"
 QUESTION_MARK = "?"
 SUGGESTION_SEPARATOR = " | "
+TOPOLOGY_LABEL_ROBORIO = "roborio"
+TOPOLOGY_LABEL_INJECT = "inject"
 MESSAGE_NEXT_ARGS_PREFIX = "Next args: "
 MESSAGE_NEXT_ARGS_NONE = "Next args: (none)"
 HELP_INDENT = "  "
@@ -762,6 +787,7 @@ PROFILE_EXPORT_CMD_SET = "set"
 PROFILE_EXPORT_CMD_GROUP = "group"
 PROFILE_EXPORT_CMD_ADD = "add"
 PROFILE_EXPORT_CMD_MEMBER = "member"
+PROFILE_EXPORT_CMD_ASSIGN = "assign"
 PROFILE_EXPORT_CMD_DISABLE = "disable"
 PROFILE_EXPORT_CMD_BIND = "bind"
 PROFILE_EXPORT_CMD_SELECTED_DEVICE = "selected-device"
@@ -924,7 +950,6 @@ KEY_TOPICS = "topics"
 KEY_CONTROLLERS = "controllers"
 KEY_BINDINGS = "bindings"
 KEY_GLOBAL_BINDINGS = "globalBindings"
-KEY_AXES = "axes"
 KEY_COMMAND = "command"
 KEY_CONTROLLER = "controller"
 KEY_INPUT = "input"
@@ -956,6 +981,27 @@ SHOW_CONFIG_DIRTY = "dirty"
 KEY_PROFILE_INFO = "profile"
 KEY_DIAGRAM = "diagram"
 KEY_DIAGRAM_PROFILES = "profiles"
+KEY_DIAGRAM_NODES = "nodes"
+
+
+def _group_member_label(member: object) -> str:
+    """
+    NAME
+        _group_member_label - Return canonical group member label text.
+    """
+    if isinstance(member, dict):
+        return get_group_member_label(member)
+    if isinstance(member, str):
+        return member.strip()
+    return EMPTY_STRING
+
+
+def _group_member_entry(label: str, enabled: bool = True) -> Dict[str, object]:
+    """
+    NAME
+        _group_member_entry - Build canonical group member payload entry.
+    """
+    return make_group_member(label, enabled)
 KEY_ACTIVE = "active"
 KEY_DEFAULT = "default"
 KEY_AVAILABLE = "available"
@@ -1023,6 +1069,7 @@ SHOW_SOURCE_ROBOT = "robot"
 SHOW_SOURCE_LOCAL = "local"
 SHOW_SOURCE_BOTH = "both"
 SHOW_FLAG_ALL = "--all"
+SHOW_FLAG_GROUPED = FLAG_GROUPED
 SHOW_SOURCE_FLAGS = {
     SHOW_SOURCE_ROBOT,
     SHOW_SOURCE_LOCAL,
@@ -1083,6 +1130,12 @@ KEY_COMPONENT_COUNT = "componentCount"
 KEY_ACTIVE_GROUP = "activeGroup"
 KEY_ACTIVE_TEST_SET = "activeTestSet"
 KEY_PRESENT = "present"
+KEY_VIEW_BUS_OFFSETS = "busOffsets"
+KEY_VIEW_BUS_COUNT = "busCount"
+KEY_VIEW_BUS_CONNECTORS = "busConnectors"
+KEY_VIEW_BUS_CONNECTOR_SIDES = "busConnectorSides"
+KEY_LAYOUT_BUS = "bus"
+KEY_LAYOUT_X = "x"
 KEY_WARNING_COUNT = "warningCount"
 KEY_FAULT_COUNT = "faultCount"
 KEY_LAST_SEEN_MS = "lastSeenMs"
@@ -1128,6 +1181,13 @@ MESSAGE_TOPOLOGY_NODES_HEADER = "Nodes:"
 MESSAGE_TOPOLOGY_EDGES_HEADER = "Edges:"
 MESSAGE_TOPOLOGY_NEIGHBORS_HEADER = "Neighbors:"
 MESSAGE_TOPOLOGY_NONE = "  (none)"
+MESSAGE_TOPOLOGY_CAN_BUS_HEADER = "CAN Bus"
+MESSAGE_TOPOLOGY_BACKBONE_HEADER = "  SWYFT Backbone:"
+MESSAGE_TOPOLOGY_GROUP_HEADER_FMT = "  {name}:"
+MESSAGE_TOPOLOGY_CAN_LINE_FMT = "  {from_label} -> {to_label}"
+MESSAGE_TOPOLOGY_CAN_GROUP_LINE_FMT = "    {from_label} -> {to_label}{suffix}"
+MESSAGE_TOPOLOGY_CAN_DUPLICATE_SUFFIX_FMT = " [listed multiple times: {groups}]"
+MESSAGE_TOPOLOGY_FALLBACK_TEXT = "INFO: showing raw topology because a single CAN device path could not be derived."
 MESSAGE_ERR_PRETTY_REQUIRES_JSON = "ERROR: --pretty requires --json."
 MESSAGE_ERR_LOCAL_CONFIG_MISSING = "ERROR: Local config not loaded. Use merge/import config <bringup_system.json>."
 MESSAGE_ERR_LOCAL_DEVICE_NOT_FOUND = "ERROR: Local device not found."
@@ -1210,10 +1270,10 @@ MESSAGE_REGISTRY_TOPOLOGY_NEIGHBOR_FMT = (
 )
 MESSAGE_MAPPINGS_READ_FAIL = "WARNING: Failed to read CAN mappings: {path}"
 MESSAGE_ERR_BINDINGS_SUBCOMMAND = (
-    "ERROR: bindings <show|controller|binding|axis|load|save|validate>"
+    "ERROR: bindings <show|controller|binding|load|save|validate>"
 )
 MESSAGE_ERR_BINDINGS_SHOW = (
-    "ERROR: bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]"
+    "ERROR: bindings show [controllers|bindings] [--all] [--json] [--pretty]"
 )
 MESSAGE_ERR_BINDINGS_CONTROLLER_ADD = "ERROR: bindings controller add <controller> <type> <port>"
 MESSAGE_ERR_BINDINGS_CONTROLLER_SET = "ERROR: bindings controller set <controller> <field> <value>"
@@ -1222,23 +1282,21 @@ MESSAGE_ERR_BINDINGS_CONTROLLER_DELETE = "ERROR: bindings no controller <control
 MESSAGE_ERR_BINDINGS_CONTROLLER_PORT = "ERROR: controller port must be an integer."
 MESSAGE_ERR_BINDINGS_CONTROLLER_EXISTS = "ERROR: controller already exists."
 MESSAGE_ERR_BINDINGS_CONTROLLER_NOT_FOUND = "ERROR: controller not found."
-MESSAGE_ERR_BINDINGS_CONTROLLER_IN_USE = "ERROR: controller is referenced by bindings or axes."
+MESSAGE_ERR_BINDINGS_CONTROLLER_IN_USE = "ERROR: controller is referenced by bindings."
 MESSAGE_ERR_BINDINGS_BINDING_ADD = (
-    "ERROR: bindings binding add <command> <controller> <input> <id> <mode>"
+    "ERROR: bindings binding add <command> <controller> <input> <id> <mode> [invert <on|off> deadband <value>]"
 )
 MESSAGE_ERR_BINDINGS_BINDING_SET = "ERROR: bindings binding set <index> <field> <value>"
 MESSAGE_ERR_BINDINGS_BINDING_DELETE = "ERROR: bindings binding delete <index>"
 MESSAGE_ERR_BINDINGS_BINDING_INDEX = "ERROR: binding index out of range."
-MESSAGE_ERR_BINDINGS_AXIS_ADD = (
-    "ERROR: bindings axis add <command> <controller> <id> invert <on|off> deadband <value>"
-)
-MESSAGE_ERR_BINDINGS_AXIS_SET = "ERROR: bindings axis set <index> <field> <value>"
-MESSAGE_ERR_BINDINGS_AXIS_DELETE = "ERROR: bindings axis delete <index>"
-MESSAGE_ERR_BINDINGS_AXIS_INDEX = "ERROR: axis index out of range."
 MESSAGE_ERR_BINDINGS_FIELD_UNKNOWN = "ERROR: bindings field not supported."
 MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED = "ERROR: controller not found: {name}"
 MESSAGE_ERR_BINDINGS_INVERT = "ERROR: invert must be on/off."
 MESSAGE_ERR_BINDINGS_DEADBAND = "ERROR: deadband must be 0.0 to 1.0."
+MESSAGE_ERR_BINDINGS_INPUT_KIND = "ERROR: input must be button, dpad, combo, or axis."
+MESSAGE_ERR_BINDINGS_AXIS_MODE = "ERROR: axis bindings must use mode analog."
+MESSAGE_ERR_BINDINGS_AXIS_FIELDS = "ERROR: axis bindings require invert <on|off> deadband <value>."
+MESSAGE_ERR_BINDINGS_NON_AXIS_EXTRA = "ERROR: only axis bindings may define invert/deadband."
 MESSAGE_ERR_BINDINGS_LOAD = "ERROR: Failed to read bindings: {path}"
 MESSAGE_ERR_BINDINGS_WRITE = "ERROR: Failed to write bindings: {path}: {error}"
 MESSAGE_ERR_BINDINGS_VALIDATE = "ERROR: bindings validation failed: {message}"
@@ -1248,16 +1306,12 @@ MESSAGE_INFO_BINDINGS_MIRRORED = "Mirrored bindings to {path}."
 MESSAGE_BINDINGS_HEADER = "Local bindings config:"
 MESSAGE_BINDINGS_CONTROLLERS_HEADER = "  controllers:"
 MESSAGE_BINDINGS_BINDINGS_HEADER = "  bindings:"
-MESSAGE_BINDINGS_AXES_HEADER = "  axes:"
 MESSAGE_BINDINGS_GLOBAL_HEADER = "Global bindings:"
 MESSAGE_BINDINGS_GLOBAL_UNAVAILABLE = "  (global bindings not loaded)"
 MESSAGE_BINDINGS_NONE = "  (none)"
 MESSAGE_BINDINGS_CONTROLLER_FMT = "    {name} type={type} port={port}"
 MESSAGE_BINDINGS_BINDING_FMT = (
     "    [{index}] command={command} controller={controller} input={input} id={id} mode={mode}"
-)
-MESSAGE_BINDINGS_AXIS_FMT = (
-    "    [{index}] command={command} controller={controller} id={id} invert={invert} deadband={deadband}"
 )
 MESSAGE_ERR_MAPPINGS_SUBCOMMAND = (
     "ERROR: can-mappings <show|manufacturer|device-type|load|save|validate>"
@@ -1895,17 +1949,18 @@ LIMIT_SWITCH_DEFAULT = {
 DEVICE_JOIN_SEPARATOR = ", "
 
 BINDINGS_EMPTY_PAYLOAD = {
+    KEY_SCHEMA_VERSION: PROFILE_SCHEMA_VERSION,
     KEY_CONTROLLERS: [],
     KEY_BINDINGS: [],
-    KEY_AXES: [],
+    KEY_INPUT_ALIASES: {},
 }
 BINDINGS_SHOW_CONTROLLERS = "controllers"
 BINDINGS_SHOW_BINDINGS = "bindings"
-BINDINGS_SHOW_AXES = "axes"
-BINDINGS_SHOW_TARGETS = {BINDINGS_SHOW_CONTROLLERS, BINDINGS_SHOW_BINDINGS, BINDINGS_SHOW_AXES}
+BINDINGS_SHOW_TARGETS = {BINDINGS_SHOW_CONTROLLERS, BINDINGS_SHOW_BINDINGS}
 BINDINGS_CONTROLLER_FIELDS = {FIELD_TYPE, KEY_PORT, KEY_NAME}
-BINDINGS_BINDING_FIELDS = {KEY_COMMAND, KEY_CONTROLLER, KEY_INPUT, KEY_ID, KEY_MODE}
-BINDINGS_AXIS_FIELDS = {KEY_COMMAND, KEY_CONTROLLER, KEY_ID, KEY_INVERT, KEY_DEADBAND}
+BINDINGS_BINDING_FIELDS = {KEY_COMMAND, KEY_CONTROLLER, KEY_INPUT, KEY_ID, KEY_MODE, KEY_INVERT, KEY_DEADBAND}
+BINDINGS_INPUT_KINDS = {"button", "dpad", "combo", "axis"}
+BINDINGS_AXIS_MODE = "analog"
 
 MAPPINGS_SHOW_MANUFACTURERS = "manufacturers"
 MAPPINGS_SHOW_DEVICE_TYPES = "device-types"
@@ -2165,9 +2220,10 @@ class BridgeCli:
         self._can_mappings: Optional[Dict[str, Dict[str, str]]] = None
         self._can_mappings_path: Optional[Path] = None
         self._can_mappings_dirty: bool = False
-        self._bindings_payload: Optional[Dict[str, object]] = None
+        self._bindings_payload: Optional[Dict[str, object]] = deepcopy(BINDINGS_EMPTY_PAYLOAD)
         self._bindings_path: Optional[Path] = None
         self._bindings_dirty: bool = False
+        self._store.set_bindings_payload(self._bindings_payload)
         self._version_printed = False
         self._keepalive_stop = threading.Event()
         self._keepalive_thread: Optional[threading.Thread] = None
@@ -2902,6 +2958,36 @@ class BridgeCli:
                 labels.add(name.lower())
         return labels
 
+    def _profile_object_labels(self, profile_name: str) -> set[str]:
+        """
+        NAME
+            _profile_object_labels - Return all known object labels for a profile.
+        """
+        labels = set(self._profile_device_labels(profile_name))
+        topology_profile = topology_profile_from_payload(self._local_root_payload, profile_name)
+        if isinstance(topology_profile, dict):
+            for node in topology_nodes(topology_profile):
+                if not isinstance(node, dict):
+                    continue
+                if get_object_type(node) == NODE_TYPE_DEVICE:
+                    value = str(node.get(KEY_DEVICE_REF, EMPTY_STRING)).strip()
+                else:
+                    value = str(node.get(KEY_LABEL, EMPTY_STRING)).strip()
+                if value:
+                    labels.add(value.lower())
+        diagram_root = self._local_root_payload.get(KEY_DIAGRAM) if isinstance(self._local_root_payload, dict) else None
+        diagram_profiles = diagram_root.get(KEY_DIAGRAM_PROFILES) if isinstance(diagram_root, dict) else None
+        diagram_profile = diagram_profiles.get(profile_name) if isinstance(diagram_profiles, dict) else None
+        nodes = diagram_profile.get(KEY_DIAGRAM_NODES) if isinstance(diagram_profile, dict) else None
+        if isinstance(nodes, list):
+            for node in nodes:
+                if not isinstance(node, dict):
+                    continue
+                value = str(node.get(KEY_LABEL, EMPTY_STRING)).strip()
+                if value:
+                    labels.add(value.lower())
+        return labels
+
     def _local_groups(self, profile_name: str, create: bool = False) -> List[Dict[str, object]]:
         """
         NAME
@@ -3258,7 +3344,7 @@ class BridgeCli:
         """
         members_payload = []
         for device in self._active_group_members:
-            members_payload.append({KEY_DEVICE: device, KEY_ENABLED: True})
+            members_payload.append(_group_member_entry(device, True))
         return {
             KEY_NAME: GROUP_NAME_ACTIVE,
             KEY_ENABLED: True,
@@ -3361,7 +3447,7 @@ class BridgeCli:
         labels: List[str] = []
         for member in members:
             if isinstance(member, dict):
-                label = str(member.get(KEY_DEVICE, EMPTY_STRING)).strip()
+                label = _group_member_label(member)
             else:
                 label = str(member).strip()
             if label:
@@ -3391,7 +3477,7 @@ class BridgeCli:
         if group is None:
             print(ERR_GROUP_NOT_FOUND_FMT.format(name=group_name))
             return StatusResult(code=SS__GROUP__NOT_FOUND)
-        group[KEY_MEMBERS] = [{KEY_DEVICE: label, KEY_ENABLED: True} for label in normalized]
+        group[KEY_MEMBERS] = [_group_member_entry(label, True) for label in normalized]
         self._mark_groups_dirty()
         return StatusResult(code=SS__NORMAL)
 
@@ -5186,29 +5272,119 @@ class BridgeCli:
         print("ERROR: active requires add/next/show.")
         return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
 
+    def _dispatch_instantiate_command(
+        self,
+        action: str,
+    ) -> StatusResult:
+        """
+        NAME
+            _dispatch_instantiate_command - Execute runtime instantiation commands.
+        """
+        if not self._session.is_connected():
+            print("ERROR: Robot source unavailable (not connected).")
+            return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE)
+        if action == CMD_NEXT:
+            seq = add_next_motor(self._session)
+            label = f"{CMD_INSTANTIATE} {CMD_NEXT} {CMD_MOTOR}"
+        else:
+            seq = add_all_devices(self._session)
+            label = f"{CMD_INSTANTIATE} {CMD_ALL} {CMD_DEVICES}"
+        event = self._wait_for_seq(seq)
+        if self._event_failed(event, label):
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        return StatusResult(code=SS__NORMAL)
+
+    def _handle_member_membership_action(
+        self,
+        target_name: str,
+        action: str,
+        subject: str,
+    ) -> StatusResult:
+        """
+        NAME
+            _handle_member_membership_action - Apply one local group membership edit.
+        """
+        if action == CMD_ASSIGN:
+            return self._add_local_group_member(target_name, subject)
+        if action == CMD_REMOVE:
+            return self._remove_local_group_member(target_name, subject)
+        return self._set_local_member_enabled(target_name, subject, action)
+
+    def _handle_member_assign_selector(
+        self,
+        target_name: str,
+        selector: str,
+    ) -> StatusResult:
+        """
+        NAME
+            _handle_member_assign_selector - Apply member assign all/next.
+        """
+        if selector == CMD_ALL:
+            labels = self._device_sequence_labels()
+            members = self._list_target_group_members(target_name)
+            if members is None:
+                print(ERR_GROUP_NOT_FOUND_FMT.format(name=target_name))
+                return StatusResult(code=SS__GROUP__NOT_FOUND)
+            seen = {label.lower() for label in members}
+            for label in labels:
+                key = label.lower()
+                if key in seen:
+                    print(WARN_DUPLICATE_MEMBER.format(device=label))
+                    continue
+                members.append(label)
+                seen.add(key)
+            return self._write_target_group_members(target_name, members)
+        next_label = self._next_device_label()
+        if not next_label:
+            print(ERR_NO_DEVICES_AVAILABLE_MEMBER_ASSIGN)
+            return StatusResult(code=SS__CONFIG__INVALID)
+        return self._add_local_group_member(target_name, next_label)
+
     def _handle_group_targeting_command(self, line: str) -> Optional[StatusResult]:
         """
         NAME
             _handle_group_targeting_command - Handle V1 group/targeting commands before parser.
         """
-        mode = self._modes[-1].name
-        if mode not in (MODE_CONFIG, CMD_GROUP):
-            return None
         try:
             tokens = self._split_command(line)
         except Exception:
             return None
         if not tokens:
             return None
+        mode = self._modes[-1].name
         normalized = [token.lower() for token in tokens]
         cmd = normalized[COUNT_ZERO]
-        if cmd not in (CMD_GROUP, CMD_NO, CMD_COPY, CMD_ADD, CMD_REMOVE):
-            return None
-        if cmd == CMD_ADD and normalized[COUNT_ONE:COUNT_TWO] not in (
-            [CMD_DEVICE],
-            [CMD_ALL],
-            [CMD_NEXT],
+
+        if cmd == CMD_INSTANTIATE:
+            if mode not in (MODE_EXEC, MODE_CONFIG):
+                return None
+            if len(tokens) == COUNT_THREE and normalized[COUNT_ONE] == CMD_NEXT and normalized[COUNT_TWO] == CMD_MOTOR:
+                return self._dispatch_instantiate_command(CMD_NEXT)
+            if len(tokens) == COUNT_THREE and normalized[COUNT_ONE] == CMD_ALL and normalized[COUNT_TWO] == CMD_DEVICES:
+                return self._dispatch_instantiate_command(CMD_ALL)
+            print(MESSAGE_ERR_INSTANTIATE_USAGE)
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+
+        if (
+            cmd == CMD_ADD
+            and mode in (MODE_EXEC, MODE_CONFIG)
+            and len(tokens) == COUNT_TWO
+            and normalized[COUNT_ONE] in (CMD_NEXT, CMD_ALL)
+            and mode != MODE_GROUP
         ):
+            canonical = (
+                f"{CMD_INSTANTIATE} {CMD_NEXT} {CMD_MOTOR}"
+                if normalized[COUNT_ONE] == CMD_NEXT
+                else f"{CMD_INSTANTIATE} {CMD_ALL} {CMD_DEVICES}"
+            )
+            print(MESSAGE_ERR_ALIAS_REMOVED.format(alias=" ".join(tokens), canonical=canonical))
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+
+        if mode not in (MODE_CONFIG, CMD_GROUP):
+            return None
+        if cmd not in (CMD_GROUP, CMD_NO, CMD_COPY, CMD_ADD, CMD_REMOVE, CMD_MEMBER):
+            return None
+        if cmd == CMD_ADD and normalized[COUNT_ONE:COUNT_TWO] not in ([CMD_DEVICE], [CMD_ALL], [CMD_NEXT]):
             return None
         if cmd == CMD_REMOVE and normalized[COUNT_ONE:COUNT_TWO] != [CMD_DEVICE]:
             return None
@@ -5227,6 +5403,29 @@ class BridgeCli:
         explicit_group: Optional[str] = None
         if len(tokens) >= COUNT_FOUR and normalized[-2] == CMD_GROUP:
             explicit_group = tokens[-1]
+
+        if cmd == CMD_GROUP and len(tokens) >= COUNT_FIVE and normalized[COUNT_ONE] == CMD_MEMBER:
+            action = normalized[COUNT_TWO]
+            if action not in (CMD_ASSIGN, CMD_REMOVE, CMD_ENABLE, CMD_DISABLE, CMD_TOGGLE):
+                print(MESSAGE_ERR_MEMBER_ACTION)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            if action == CMD_ASSIGN and normalized[COUNT_THREE] in (CMD_ALL, CMD_NEXT):
+                return self._handle_member_assign_selector(tokens[4], normalized[COUNT_THREE])
+            return self._handle_member_membership_action(tokens[3], action, tokens[4])
+
+        if cmd == CMD_MEMBER and len(tokens) >= COUNT_THREE:
+            if normalized[COUNT_ONE] in (CMD_ASSIGN, CMD_REMOVE, CMD_ENABLE, CMD_DISABLE, CMD_TOGGLE):
+                action = normalized[COUNT_ONE]
+                target_name = self._target_group_name(None)
+                if action == CMD_ASSIGN and normalized[COUNT_TWO] in (CMD_ALL, CMD_NEXT):
+                    return self._handle_member_assign_selector(target_name, normalized[COUNT_TWO])
+                return self._handle_member_membership_action(target_name, action, tokens[2])
+            if normalized[COUNT_TWO] in (CMD_ENABLE, CMD_DISABLE, CMD_TOGGLE):
+                canonical = f"{CMD_MEMBER} {normalized[COUNT_TWO]} {tokens[1]}"
+                print(MESSAGE_ERR_ALIAS_REMOVED.format(alias=" ".join(tokens), canonical=canonical))
+                return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+            print(MESSAGE_ERR_MEMBER_ACTION)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
 
         if cmd == CMD_GROUP and len(tokens) == COUNT_THREE and normalized[1] == CMD_CREATE:
             result = self._create_local_group(tokens[2])
@@ -5260,14 +5459,26 @@ class BridgeCli:
                 target_name = explicit_group
             else:
                 target_name = self._target_group_name(None)
-            return self._add_local_group_member(target_name, tokens[2])
+            canonical = (
+                f"{CMD_GROUP} {CMD_MEMBER} {CMD_ASSIGN} {target_name} {tokens[2]}"
+                if explicit_group is not None
+                else f"{CMD_MEMBER} {CMD_ASSIGN} {tokens[2]}"
+            )
+            print(MESSAGE_ERR_ALIAS_REMOVED.format(alias=" ".join(tokens), canonical=canonical))
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
 
         if cmd == CMD_REMOVE and len(tokens) >= COUNT_THREE and normalized[1] == CMD_DEVICE:
             if explicit_group is not None:
                 target_name = explicit_group
             else:
                 target_name = self._target_group_name(None)
-            return self._remove_local_group_member(target_name, tokens[2])
+            canonical = (
+                f"{CMD_GROUP} {CMD_MEMBER} {CMD_REMOVE} {target_name} {tokens[2]}"
+                if explicit_group is not None
+                else f"{CMD_MEMBER} {CMD_REMOVE} {tokens[2]}"
+            )
+            print(MESSAGE_ERR_ALIAS_REMOVED.format(alias=" ".join(tokens), canonical=canonical))
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
 
         if (
             cmd == CMD_NO
@@ -5279,7 +5490,13 @@ class BridgeCli:
                 target_name = explicit_group
             else:
                 target_name = self._target_group_name(None)
-            return self._remove_local_group_member(target_name, tokens[2])
+            canonical = (
+                f"{CMD_GROUP} {CMD_MEMBER} {CMD_REMOVE} {target_name} {tokens[2]}"
+                if explicit_group is not None
+                else f"{CMD_MEMBER} {CMD_REMOVE} {tokens[2]}"
+            )
+            print(MESSAGE_ERR_ALIAS_REMOVED.format(alias=" ".join(tokens), canonical=canonical))
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
 
         if (
             cmd == CMD_ADD
@@ -5288,28 +5505,23 @@ class BridgeCli:
             and (mode == CMD_GROUP or explicit_group is not None)
         ):
             target_name = self._target_group_name(explicit_group)
-            labels = self._device_sequence_labels()
-            members = self._list_target_group_members(target_name)
-            if members is None:
-                print(ERR_GROUP_NOT_FOUND_FMT.format(name=target_name))
-                return StatusResult(code=SS__GROUP__NOT_FOUND)
-            seen = {label.lower() for label in members}
-            for label in labels:
-                key = label.lower()
-                if key in seen:
-                    print(WARN_DUPLICATE_MEMBER.format(device=label))
-                    continue
-                members.append(label)
-                seen.add(key)
-            return self._write_target_group_members(target_name, members)
+            canonical = (
+                f"{CMD_GROUP} {CMD_MEMBER} {CMD_ASSIGN} {CMD_ALL} {target_name}"
+                if explicit_group is not None
+                else f"{CMD_MEMBER} {CMD_ASSIGN} {CMD_ALL}"
+            )
+            print(MESSAGE_ERR_ALIAS_REMOVED.format(alias=" ".join(tokens), canonical=canonical))
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
 
         if cmd == CMD_ADD and len(tokens) >= COUNT_TWO and normalized[1] == CMD_NEXT:
             target_name = self._target_group_name(explicit_group)
-            next_label = self._next_device_label()
-            if not next_label:
-                print(ERR_NO_DEVICES_AVAILABLE)
-                return StatusResult(code=SS__CONFIG__INVALID)
-            return self._add_local_group_member(target_name, next_label)
+            canonical = (
+                f"{CMD_GROUP} {CMD_MEMBER} {CMD_ASSIGN} {CMD_NEXT} {target_name}"
+                if explicit_group is not None
+                else f"{CMD_MEMBER} {CMD_ASSIGN} {CMD_NEXT}"
+            )
+            print(MESSAGE_ERR_ALIAS_REMOVED.format(alias=" ".join(tokens), canonical=canonical))
+            return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
 
         return None
 
@@ -5580,19 +5792,25 @@ class BridgeCli:
         if sub == CMD_BINDING and len(tokens) >= 5 and tokens[COUNT_TWO] == CMD_SET:
             field = tokens[COUNT_FOUR]
             if field == KEY_INPUT:
-                return sorted(BUTTON_INPUTS)
+                return sorted(BINDINGS_INPUT_KINDS)
             if field == KEY_ID:
-                return sorted(BUTTON_INPUTS)
+                return sorted(AXIS_INPUTS | BUTTON_INPUTS)
             if field == KEY_MODE:
-                return ["edge", "hold"]
-        if sub == CMD_AXIS and len(tokens) >= 5 and tokens[COUNT_TWO] == CMD_SET:
-            field = tokens[COUNT_FOUR]
-            if field == KEY_ID:
-                return sorted(AXIS_INPUTS)
+                return ["analog", "edge", "hold", "toggle"]
             if field == KEY_DEADBAND:
                 return [self._format_range("deadband", DEADBAND_MIN, DEADBAND_MAX)]
             if field == KEY_INVERT:
                 return ["true", "false"]
+        if sub == CMD_BINDING and len(tokens) >= 6 and tokens[COUNT_TWO] == CMD_ADD:
+            input_kind = tokens[COUNT_FOUR]
+            if input_kind == "axis":
+                return ["analog", KEY_INVERT, KEY_DEADBAND]
+            if tokens[-1] == KEY_MODE:
+                return ["analog", "edge", "hold", "toggle"]
+            if tokens[-1] == KEY_INVERT:
+                return ["true", "false"]
+            if tokens[-1] == KEY_DEADBAND:
+                return [self._format_range("deadband", DEADBAND_MIN, DEADBAND_MAX)]
         return None
 
     def _mappings_value_help(self, tokens: List[str]) -> Optional[List[str]]:
@@ -5894,20 +6112,18 @@ class BridgeCli:
             _suggest_bindings_args - Suggest bindings subcommands.
         """
         if not tokens:
-            return [CMD_SHOW, CMD_CONTROLLER, CMD_BINDING, CMD_AXIS, CMD_LOAD, CMD_SAVE, CMD_VALIDATE]
+            return [CMD_SHOW, CMD_CONTROLLER, CMD_BINDING, CMD_LOAD, CMD_SAVE, CMD_VALIDATE]
         sub = tokens[COUNT_ZERO].lower()
         if sub == CMD_SHOW and len(tokens) == COUNT_ONE:
-            return [SHOW_FLAG_ALL, FLAG_JSON, FLAG_PRETTY, BINDINGS_SHOW_CONTROLLERS, BINDINGS_SHOW_BINDINGS, BINDINGS_SHOW_AXES]
+            return [SHOW_FLAG_ALL, FLAG_JSON, FLAG_PRETTY, BINDINGS_SHOW_CONTROLLERS, BINDINGS_SHOW_BINDINGS]
         if sub == CMD_SHOW and len(tokens) == COUNT_TWO:
             target = tokens[COUNT_ONE].lower()
             if target in BINDINGS_SHOW_TARGETS:
                 return [SHOW_FLAG_ALL, FLAG_JSON, FLAG_PRETTY]
-            return [SHOW_FLAG_ALL, FLAG_JSON, FLAG_PRETTY, BINDINGS_SHOW_CONTROLLERS, BINDINGS_SHOW_BINDINGS, BINDINGS_SHOW_AXES]
+            return [SHOW_FLAG_ALL, FLAG_JSON, FLAG_PRETTY, BINDINGS_SHOW_CONTROLLERS, BINDINGS_SHOW_BINDINGS]
         if sub == CMD_CONTROLLER and len(tokens) == COUNT_ONE:
             return [CMD_ADD, CMD_SET, CMD_RENAME, CMD_NO]
         if sub == CMD_BINDING and len(tokens) == COUNT_ONE:
-            return [CMD_ADD, CMD_SET, CMD_DELETE]
-        if sub == CMD_AXIS and len(tokens) == COUNT_ONE:
             return [CMD_ADD, CMD_SET, CMD_DELETE]
         if sub in (CMD_LOAD, CMD_SAVE, CMD_VALIDATE) and len(tokens) == COUNT_ONE:
             return [PLACEHOLDER_PATH]
@@ -6201,7 +6417,7 @@ class BridgeCli:
         root = self._dsl_require_local_root()
         if root is None:
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens[COUNT_ONE:])
+        source, cleaned, json_output, pretty, _grouped, ok = self._parse_show_flags(tokens[COUNT_ONE:])
         if not ok:
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         explicit_source = any(
@@ -6339,7 +6555,7 @@ class BridgeCli:
             print(MESSAGE_DSL_TEST_EXPORTED.format(name=test_name))
             return StatusResult(code=SS__NORMAL)
         if sub == CMD_VALIDATE:
-            source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens[COUNT_TWO:])
+            source, cleaned, json_output, pretty, _grouped, ok = self._parse_show_flags(tokens[COUNT_TWO:])
             _ = source
             if not ok:
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
@@ -6589,9 +6805,10 @@ class BridgeCli:
             print(MESSAGE_ERR_BINDINGS_LOAD.format(path=path))
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         payload = {
+            KEY_SCHEMA_VERSION: PROFILE_SCHEMA_VERSION,
             KEY_CONTROLLERS: self._bindings_payload.get(KEY_CONTROLLERS, []),
             KEY_BINDINGS: self._bindings_payload.get(KEY_BINDINGS, []),
-            KEY_AXES: self._bindings_payload.get(KEY_AXES, []),
+            KEY_INPUT_ALIASES: self._bindings_payload.get(KEY_INPUT_ALIASES, {}),
         }
         ok, error = self._atomic_write_json(
             path,
@@ -6648,13 +6865,12 @@ class BridgeCli:
             print(MESSAGE_ERR_BINDINGS_SHOW_LOCAL_ONLY)
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
         tokens = [token for token in tokens if token.lower() != SHOW_FLAG_ALL]
-        _source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens)
+        _source, cleaned, json_output, pretty, _grouped, ok = self._parse_show_flags(tokens)
         if not ok:
             return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
         target = cleaned[COUNT_ZERO].lower() if cleaned else EMPTY_STRING
         controllers = self._bindings_payload.get(KEY_CONTROLLERS, [])
         bindings = self._bindings_payload.get(KEY_BINDINGS, [])
-        axes = self._bindings_payload.get(KEY_AXES, [])
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             if target == BINDINGS_SHOW_CONTROLLERS:
@@ -6662,9 +6878,6 @@ class BridgeCli:
                 return StatusResult(code=SS__NORMAL)
             if target == BINDINGS_SHOW_BINDINGS:
                 print(self._dump_json({KEY_BINDINGS: bindings}, pretty))
-                return StatusResult(code=SS__NORMAL)
-            if target == BINDINGS_SHOW_AXES:
-                print(self._dump_json({KEY_AXES: axes}, pretty))
                 return StatusResult(code=SS__NORMAL)
             print(self._dump_json(self._bindings_payload, pretty))
             return StatusResult(code=SS__NORMAL)
@@ -6680,11 +6893,8 @@ class BridgeCli:
         if target in (EMPTY_STRING, BINDINGS_SHOW_BINDINGS):
             print(MESSAGE_BINDINGS_BINDINGS_HEADER)
             self._print_bindings_entries(bindings)
-            if target == BINDINGS_SHOW_BINDINGS:
-                return StatusResult(code=SS__NORMAL)
-        if target in (EMPTY_STRING, BINDINGS_SHOW_AXES):
-            print(MESSAGE_BINDINGS_AXES_HEADER)
-            self._print_bindings_axes(axes)
+        if target == BINDINGS_SHOW_BINDINGS:
+            return StatusResult(code=SS__NORMAL)
         return StatusResult(code=SS__NORMAL)
 
     def _print_bindings_controllers(self, controllers: object) -> None:
@@ -6707,34 +6917,17 @@ class BridgeCli:
         for idx, entry in enumerate(bindings, start=COUNT_ONE):
             if not isinstance(entry, dict):
                 continue
-            print(
-                MESSAGE_BINDINGS_BINDING_FMT.format(
-                    index=idx,
-                    command=entry.get(KEY_COMMAND),
-                    controller=entry.get(KEY_CONTROLLER),
-                    input=entry.get(KEY_INPUT),
-                    id=entry.get(KEY_ID),
-                    mode=entry.get(KEY_MODE),
-                )
+            line = MESSAGE_BINDINGS_BINDING_FMT.format(
+                index=idx,
+                command=entry.get(KEY_COMMAND),
+                controller=entry.get(KEY_CONTROLLER),
+                input=entry.get(KEY_INPUT),
+                id=entry.get(KEY_ID),
+                mode=entry.get(KEY_MODE),
             )
-
-    def _print_bindings_axes(self, axes: object) -> None:
-        if not isinstance(axes, list) or not axes:
-            print(MESSAGE_BINDINGS_NONE)
-            return
-        for idx, entry in enumerate(axes, start=COUNT_ONE):
-            if not isinstance(entry, dict):
-                continue
-            print(
-                MESSAGE_BINDINGS_AXIS_FMT.format(
-                    index=idx,
-                    command=entry.get(KEY_COMMAND),
-                    controller=entry.get(KEY_CONTROLLER),
-                    id=entry.get(KEY_ID),
-                    invert=entry.get(KEY_INVERT),
-                    deadband=entry.get(KEY_DEADBAND),
-                )
-            )
+            if self._binding_entry_is_axis(entry):
+                line += f" invert={entry.get(KEY_INVERT)} deadband={entry.get(KEY_DEADBAND)}"
+            print(line)
 
     def _bindings_controller_command(self, tokens: List[str]) -> StatusResult:
         """
@@ -6826,7 +7019,7 @@ class BridgeCli:
     def _bindings_binding_command(self, tokens: List[str]) -> StatusResult:
         """
         NAME
-            _bindings_binding_command - Edit button binding entries.
+            _bindings_binding_command - Edit unified binding entries.
         """
 
         if not tokens:
@@ -6838,16 +7031,47 @@ class BridgeCli:
             if len(tokens) < COUNT_SIX:
                 print(MESSAGE_ERR_BINDINGS_BINDING_ADD)
                 return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            input_kind = tokens[COUNT_THREE]
+            if input_kind not in BINDINGS_INPUT_KINDS:
+                print(MESSAGE_ERR_BINDINGS_INPUT_KIND)
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             entry = {
                 KEY_COMMAND: tokens[COUNT_ONE],
                 KEY_CONTROLLER: tokens[COUNT_TWO],
-                KEY_INPUT: tokens[COUNT_THREE],
+                KEY_INPUT: input_kind,
                 KEY_ID: tokens[COUNT_FOUR],
                 KEY_MODE: tokens[COUNT_FIVE],
             }
             if not self._bindings_controller_exists(entry[KEY_CONTROLLER]):
                 print(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=entry[KEY_CONTROLLER]))
                 return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
+            if self._binding_entry_is_axis(entry):
+                if len(tokens) != COUNT_TEN:
+                    print(MESSAGE_ERR_BINDINGS_AXIS_FIELDS)
+                    return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+                if str(entry[KEY_MODE]).strip() != BINDINGS_AXIS_MODE:
+                    print(MESSAGE_ERR_BINDINGS_AXIS_MODE)
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+                if tokens[COUNT_SIX].lower() != KEY_INVERT or tokens[COUNT_EIGHT].lower() != KEY_DEADBAND:
+                    print(MESSAGE_ERR_BINDINGS_AXIS_FIELDS)
+                    return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
+                invert = self._parse_bool(tokens[COUNT_SEVEN])
+                if invert is None:
+                    print(MESSAGE_ERR_BINDINGS_INVERT)
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+                try:
+                    deadband = float(tokens[COUNT_NINE])
+                except ValueError:
+                    print(MESSAGE_ERR_BINDINGS_DEADBAND)
+                    return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
+                if deadband < DEADBAND_MIN or deadband > DEADBAND_MAX:
+                    print(MESSAGE_ERR_BINDINGS_DEADBAND)
+                    return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
+                entry[KEY_INVERT] = invert
+                entry[KEY_DEADBAND] = deadband
+            elif len(tokens) != COUNT_SIX:
+                print(MESSAGE_ERR_BINDINGS_NON_AXIS_EXTRA)
+                return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
             bindings.append(entry)
             self._bindings_payload[KEY_BINDINGS] = bindings
             self._mark_bindings_dirty()
@@ -6871,7 +7095,40 @@ class BridgeCli:
             if field == KEY_CONTROLLER and not self._bindings_controller_exists(value):
                 print(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=value))
                 return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
-            entry[field] = value
+            if field == KEY_INPUT:
+                if value not in BINDINGS_INPUT_KINDS:
+                    print(MESSAGE_ERR_BINDINGS_INPUT_KIND)
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+                entry[field] = value
+            elif field == KEY_MODE:
+                if self._binding_entry_is_axis(entry) and value != BINDINGS_AXIS_MODE:
+                    print(MESSAGE_ERR_BINDINGS_AXIS_MODE)
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+                entry[field] = value
+            elif field == KEY_INVERT:
+                if not self._binding_entry_is_axis(entry):
+                    print(MESSAGE_ERR_BINDINGS_NON_AXIS_EXTRA)
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+                parsed = self._parse_bool(value)
+                if parsed is None:
+                    print(MESSAGE_ERR_BINDINGS_INVERT)
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+                entry[field] = parsed
+            elif field == KEY_DEADBAND:
+                if not self._binding_entry_is_axis(entry):
+                    print(MESSAGE_ERR_BINDINGS_NON_AXIS_EXTRA)
+                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+                try:
+                    deadband = float(value)
+                except ValueError:
+                    print(MESSAGE_ERR_BINDINGS_DEADBAND)
+                    return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
+                if deadband < DEADBAND_MIN or deadband > DEADBAND_MAX:
+                    print(MESSAGE_ERR_BINDINGS_DEADBAND)
+                    return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
+                entry[field] = deadband
+            else:
+                entry[field] = value
             self._mark_bindings_dirty()
             return StatusResult(code=SS__NORMAL)
         if action == CMD_DELETE:
@@ -6886,117 +7143,6 @@ class BridgeCli:
                 print(MESSAGE_ERR_BINDINGS_BINDING_INDEX)
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             bindings.remove(entry)
-            self._mark_bindings_dirty()
-            return StatusResult(code=SS__NORMAL)
-        print(MESSAGE_ERR_BINDINGS_SUBCOMMAND)
-        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
-
-    def _bindings_axis_command(self, tokens: List[str]) -> StatusResult:
-        """
-        NAME
-            _bindings_axis_command - Edit axis binding entries.
-        """
-
-        if not tokens:
-            print(MESSAGE_ERR_BINDINGS_AXIS_SET)
-            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-        action = tokens[COUNT_ZERO].lower()
-        axes = self._bindings_payload.get(KEY_AXES, []) if self._bindings_payload else []
-        if action == CMD_ADD:
-            if len(tokens) < COUNT_EIGHT:
-                print(MESSAGE_ERR_BINDINGS_AXIS_ADD)
-                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-            if tokens[COUNT_FOUR].lower() != KEY_INVERT:
-                print(MESSAGE_ERR_BINDINGS_AXIS_ADD)
-                return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
-            if tokens[COUNT_SIX].lower() != KEY_DEADBAND:
-                print(MESSAGE_ERR_BINDINGS_AXIS_ADD)
-                return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
-            invert = self._parse_bool(tokens[COUNT_FIVE])
-            if invert is None:
-                print(MESSAGE_ERR_BINDINGS_INVERT)
-                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            try:
-                deadband = float(tokens[COUNT_SEVEN])
-            except ValueError:
-                print(MESSAGE_ERR_BINDINGS_DEADBAND)
-                return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
-            if deadband < DEADBAND_MIN or deadband > DEADBAND_MAX:
-                print(MESSAGE_ERR_BINDINGS_DEADBAND)
-                return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
-            controller = tokens[COUNT_TWO]
-            if not self._bindings_controller_exists(controller):
-                print(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=controller))
-                return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
-            entry = {
-                KEY_COMMAND: tokens[COUNT_ONE],
-                KEY_CONTROLLER: controller,
-                KEY_ID: tokens[COUNT_THREE],
-                KEY_INVERT: invert,
-                KEY_DEADBAND: deadband,
-            }
-            axes.append(entry)
-            self._bindings_payload[KEY_AXES] = axes
-            self._mark_bindings_dirty()
-            return StatusResult(code=SS__NORMAL)
-        if action == CMD_SET:
-            if len(tokens) < COUNT_FOUR:
-                print(MESSAGE_ERR_BINDINGS_AXIS_SET)
-                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-            index = self._parse_index(tokens[COUNT_ONE], MESSAGE_ERR_BINDINGS_AXIS_INDEX)
-            if index is None:
-                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            entry = self._bindings_entry_at(axes, index)
-            if entry is None:
-                print(MESSAGE_ERR_BINDINGS_AXIS_INDEX)
-                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            field = tokens[COUNT_TWO]
-            value = " ".join(tokens[COUNT_THREE:]).strip()
-            if field not in BINDINGS_AXIS_FIELDS:
-                print(MESSAGE_ERR_BINDINGS_FIELD_UNKNOWN)
-                return StatusResult(code=SS__INPUT_BINDING__INVALID)
-            if field == KEY_CONTROLLER:
-                if not self._bindings_controller_exists(value):
-                    print(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=value))
-                    return StatusResult(code=SS__INPUT_BINDING__NOT_FOUND)
-                entry[field] = value
-                self._mark_bindings_dirty()
-                return StatusResult(code=SS__NORMAL)
-            if field == KEY_INVERT:
-                parsed = self._parse_bool(value)
-                if parsed is None:
-                    print(MESSAGE_ERR_BINDINGS_INVERT)
-                    return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-                entry[field] = parsed
-                self._mark_bindings_dirty()
-                return StatusResult(code=SS__NORMAL)
-            if field == KEY_DEADBAND:
-                try:
-                    deadband = float(value)
-                except ValueError:
-                    print(MESSAGE_ERR_BINDINGS_DEADBAND)
-                    return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
-                if deadband < DEADBAND_MIN or deadband > DEADBAND_MAX:
-                    print(MESSAGE_ERR_BINDINGS_DEADBAND)
-                    return StatusResult(code=SS__CLI_VALIDATOR__OUT_OF_RANGE)
-                entry[field] = deadband
-                self._mark_bindings_dirty()
-                return StatusResult(code=SS__NORMAL)
-            entry[field] = value
-            self._mark_bindings_dirty()
-            return StatusResult(code=SS__NORMAL)
-        if action == CMD_DELETE:
-            if len(tokens) < COUNT_TWO:
-                print(MESSAGE_ERR_BINDINGS_AXIS_DELETE)
-                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
-            index = self._parse_index(tokens[COUNT_ONE], MESSAGE_ERR_BINDINGS_AXIS_INDEX)
-            if index is None:
-                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            entry = self._bindings_entry_at(axes, index)
-            if entry is None:
-                print(MESSAGE_ERR_BINDINGS_AXIS_INDEX)
-                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            axes.remove(entry)
             self._mark_bindings_dirty()
             return StatusResult(code=SS__NORMAL)
         print(MESSAGE_ERR_BINDINGS_SUBCOMMAND)
@@ -7038,7 +7184,6 @@ class BridgeCli:
         errors: List[str] = []
         controllers = payload.get(KEY_CONTROLLERS, [])
         bindings = payload.get(KEY_BINDINGS, [])
-        axes = payload.get(KEY_AXES, [])
         controller_names: set[str] = set()
         if isinstance(controllers, list):
             for entry in controllers:
@@ -7060,35 +7205,8 @@ class BridgeCli:
                 if not isinstance(entry, dict):
                     errors.append(MESSAGE_ERR_BINDINGS_BINDING_SET)
                     continue
-                controller = str(entry.get(KEY_CONTROLLER, "")).strip()
-                for field in BINDINGS_BINDING_FIELDS:
-                    value = entry.get(field)
-                    if value is None or str(value).strip() == EMPTY_STRING:
-                        errors.append(MESSAGE_ERR_BINDINGS_BINDING_SET)
-                        break
-                if controller and controller not in controller_names:
-                    errors.append(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=controller))
-        if isinstance(axes, list):
-            for entry in axes:
-                if not isinstance(entry, dict):
-                    errors.append(MESSAGE_ERR_BINDINGS_AXIS_SET)
-                    continue
-                controller = str(entry.get(KEY_CONTROLLER, "")).strip()
-                for field in BINDINGS_AXIS_FIELDS:
-                    if entry.get(field) is None:
-                        errors.append(MESSAGE_ERR_BINDINGS_AXIS_SET)
-                        break
-                invert = entry.get(KEY_INVERT)
-                if not isinstance(invert, bool):
-                    errors.append(MESSAGE_ERR_BINDINGS_INVERT)
-                deadband = entry.get(KEY_DEADBAND)
-                if not isinstance(deadband, (int, float)):
-                    errors.append(MESSAGE_ERR_BINDINGS_DEADBAND)
-                else:
-                    if deadband < DEADBAND_MIN or deadband > DEADBAND_MAX:
-                        errors.append(MESSAGE_ERR_BINDINGS_DEADBAND)
-                if controller and controller not in controller_names:
-                    errors.append(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=controller))
+                entry_errors = self._validate_binding_entry(entry, controller_names)
+                errors.extend(entry_errors)
         return errors
 
     def _bindings_find_controller(
@@ -7126,9 +7244,6 @@ class BridgeCli:
         for entry in self._bindings_payload.get(KEY_BINDINGS, []):
             if isinstance(entry, dict) and str(entry.get(KEY_CONTROLLER, "")).strip() == name:
                 return True
-        for entry in self._bindings_payload.get(KEY_AXES, []):
-            if isinstance(entry, dict) and str(entry.get(KEY_CONTROLLER, "")).strip() == name:
-                return True
         return False
 
     def _bindings_rename_controller(self, old: str, new: str) -> StatusResult:
@@ -7151,9 +7266,6 @@ class BridgeCli:
         for binding in self._bindings_payload.get(KEY_BINDINGS, []):
             if isinstance(binding, dict) and binding.get(KEY_CONTROLLER) == old:
                 binding[KEY_CONTROLLER] = new
-        for axis in self._bindings_payload.get(KEY_AXES, []):
-            if isinstance(axis, dict) and axis.get(KEY_CONTROLLER) == old:
-                axis[KEY_CONTROLLER] = new
         self._mark_bindings_dirty()
         return StatusResult(code=SS__NORMAL)
 
@@ -7168,6 +7280,51 @@ class BridgeCli:
         if index < COUNT_ONE or index > len(entries):
             return None
         return entries[index - COUNT_ONE]
+
+    def _binding_entry_is_axis(self, entry: Dict[str, object]) -> bool:
+        """
+        NAME
+            _binding_entry_is_axis - Return True when a binding entry is an axis row.
+        """
+
+        return str(entry.get(KEY_INPUT, EMPTY_STRING)).strip() == "axis"
+
+    def _validate_binding_entry(
+        self,
+        entry: Dict[str, object],
+        controller_names: set[str],
+    ) -> List[str]:
+        """
+        NAME
+            _validate_binding_entry - Validate one unified binding entry.
+        """
+
+        errors: List[str] = []
+        command = str(entry.get(KEY_COMMAND, EMPTY_STRING)).strip()
+        controller = str(entry.get(KEY_CONTROLLER, EMPTY_STRING)).strip()
+        input_kind = str(entry.get(KEY_INPUT, EMPTY_STRING)).strip()
+        input_id = str(entry.get(KEY_ID, EMPTY_STRING)).strip()
+        mode = str(entry.get(KEY_MODE, EMPTY_STRING)).strip()
+        if not command or not controller or not input_kind or not input_id or not mode:
+            return [MESSAGE_ERR_BINDINGS_BINDING_SET]
+        if controller not in controller_names:
+            errors.append(MESSAGE_ERR_BINDINGS_CONTROLLER_REQUIRED.format(name=controller))
+        if input_kind not in BINDINGS_INPUT_KINDS:
+            errors.append(MESSAGE_ERR_BINDINGS_INPUT_KIND)
+            return errors
+        if self._binding_entry_is_axis(entry):
+            if mode != BINDINGS_AXIS_MODE:
+                errors.append(MESSAGE_ERR_BINDINGS_AXIS_MODE)
+            invert = entry.get(KEY_INVERT)
+            if not isinstance(invert, bool):
+                errors.append(MESSAGE_ERR_BINDINGS_INVERT)
+            deadband = entry.get(KEY_DEADBAND)
+            if not isinstance(deadband, (int, float)) or deadband < DEADBAND_MIN or deadband > DEADBAND_MAX:
+                errors.append(MESSAGE_ERR_BINDINGS_DEADBAND)
+        else:
+            if KEY_INVERT in entry or KEY_DEADBAND in entry:
+                errors.append(MESSAGE_ERR_BINDINGS_NON_AXIS_EXTRA)
+        return errors
 
     def _parse_index(self, raw: str, error_message: str) -> Optional[int]:
         """
@@ -7274,7 +7431,7 @@ class BridgeCli:
         if any(token.lower() in SHOW_SOURCE_FLAGS for token in tokens):
             print(MESSAGE_ERR_MAPPINGS_SHOW_LOCAL_ONLY)
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-        _source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens)
+        _source, cleaned, json_output, pretty, _grouped, ok = self._parse_show_flags(tokens)
         if not ok:
             return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
         target = cleaned[COUNT_ZERO].lower() if cleaned else EMPTY_STRING
@@ -8209,7 +8366,7 @@ class BridgeCli:
         """
 
         self._ensure_tests_loaded()
-        source, cleaned, json_output, pretty, ok = self._parse_show_flags(tokens[1:])
+        source, cleaned, json_output, pretty, _grouped, ok = self._parse_show_flags(tokens[1:])
         if not ok:
             return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
         target = cleaned[0].lower() if cleaned else EMPTY_STRING
@@ -9060,8 +9217,6 @@ class BridgeCli:
             return self._coerce_status(self._bindings_controller_command(tokens[COUNT_TWO:]))
         if sub == CMD_BINDING:
             return self._coerce_status(self._bindings_binding_command(tokens[COUNT_TWO:]))
-        if sub == CMD_AXIS:
-            return self._coerce_status(self._bindings_axis_command(tokens[COUNT_TWO:]))
         if sub == CMD_LOAD:
             if len(tokens) < COUNT_THREE:
                 print(MESSAGE_ERR_BINDINGS_LOAD.format(path=EMPTY_STRING))
@@ -9166,13 +9321,13 @@ class BridgeCli:
             event = self._wait_for_seq(seq)
             if self._handle_add_device_conflict(event, group, device_label):
                 return StatusResult(code=SS__GROUP__BINDING_INVALID)
-            if self._event_failed(event, "add device"):
+            if self._event_failed(event, "member assign"):
                 return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
             return StatusResult(code=SS__NORMAL)
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "device":
             seq = group_remove_device(self._session, group, tokens[2])
             event = self._wait_for_seq(seq)
-            if self._event_failed(event, "remove device"):
+            if self._event_failed(event, "member remove"):
                 return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
             return StatusResult(code=SS__NORMAL)
         if cmd == "member" and len(tokens) >= 3:
@@ -9284,7 +9439,7 @@ class BridgeCli:
             print(MESSAGE_ERR_SHOW_REQUIRES_TARGET)
             return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         has_source_flag = any(token.lower() in SHOW_SOURCE_FLAGS for token in tokens)
-        source, tokens, json_output, pretty, ok = self._parse_show_flags(tokens)
+        source, tokens, json_output, pretty, grouped, ok = self._parse_show_flags(tokens)
         if not ok:
             return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
         if not tokens:
@@ -9341,7 +9496,7 @@ class BridgeCli:
                     return result
                 return StatusResult(code=SS__NORMAL)
         if source == SHOW_SOURCE_BOTH:
-            local_result = self._show_local(target, tokens, json_output, pretty)
+            local_result = self._show_local(target, tokens, json_output, pretty, grouped)
             robot_result = self._show_robot(target, tokens, json_output, pretty)
             if self._batch and (not local_result.ok() or not robot_result.ok()):
                 return StatusResult(code=SS__EXECUTOR__FAILED)
@@ -9351,7 +9506,7 @@ class BridgeCli:
                 return robot_result
             return StatusResult(code=SS__NORMAL)
         if source == SHOW_SOURCE_LOCAL:
-            result = self._show_local(target, tokens, json_output, pretty)
+            result = self._show_local(target, tokens, json_output, pretty, grouped)
             if not result.ok():
                 return result
             return StatusResult(code=SS__NORMAL)
@@ -10698,10 +10853,7 @@ class BridgeCli:
                 continue
             members = group.get(KEY_MEMBERS, []) or []
             for member in members:
-                if isinstance(member, dict):
-                    member_name = str(member.get(KEY_DEVICE, EMPTY_STRING)).strip()
-                else:
-                    member_name = str(member).strip()
+                member_name = _group_member_label(member)
                 if not member_name:
                     continue
                 if member_name.lower() == target:
@@ -10954,11 +11106,11 @@ class BridgeCli:
             return
         print(
             "Common: help, exit, end, quit, ping, echo, sleep, messages\n"
-            "Exec: show, diagnose, connect, disconnect, configure terminal, add all, clear stop-latch, tests\n"
-            "Config: profile, group, device, add all, clear stop-latch, bindings, can-mappings, tests, no group, selected-device, selected-mode, merge/import/export/save/load\n"
-            "Group: show, add device, no device, member, bind, no bind, enable, disable, run test\n"
+            "Exec: show, diagnose, connect, disconnect, configure terminal, instantiate all devices, clear stop-latch, tests\n"
+            "Config: profile, group, device, instantiate all devices, clear stop-latch, bindings, can-mappings, tests, no group, selected-device, selected-mode, merge/import/export/save/load\n"
+            "Group: show, member assign/remove/enable/disable/toggle, bind, no bind, enable, disable, run test\n"
             "Device: show, set, no\n"
-            "Tips: help show | help add all | help clear stop-latch | help batch | help json"
+            "Tips: help show | help instantiate all devices | help clear stop-latch | help batch | help json"
         )
 
     def _help_topic_map(self) -> Dict[str, str]:
@@ -10971,7 +11123,14 @@ class BridgeCli:
             "configure terminal": "configure terminal\n  Enter config mode.",
             "connect": "connect\n  Open TCP connection and perform handshake.",
             "disconnect": "disconnect\n  Close TCP connection.",
-            "add all": "add all\n  Instantiate all configured robot devices for the active profile.",
+            "instantiate all devices": (
+                "instantiate all devices\n"
+                "  Instantiate all configured robot devices for the active profile."
+            ),
+            "instantiate next motor": (
+                "instantiate next motor\n"
+                "  Instantiate the next configured motor for the active profile."
+            ),
             "clear stop-latch": (
                 "clear stop-latch\n"
                 "  Clear the robot safety stop latch through the runtime command path.\n"
@@ -11131,17 +11290,14 @@ class BridgeCli:
             "validate can-mappings": "validate can-mappings [path]\n  Validate CAN mappings payload.",
             "validate script": "validate script <path>\n  Lint a CLI script without executing it.",
             "bindings": (
-                "bindings show [controllers|bindings|axes] [--all] [--json] [--pretty]\n"
+                "bindings show [controllers|bindings] [--all] [--json] [--pretty]\n"
                 "bindings controller add <controller> <type> <port>\n"
                 "bindings controller set <controller> <field> <value>\n"
                 "bindings controller rename <old> <new>\n"
                 "bindings no controller <controller>\n"
-                "bindings binding add <command> <controller> <input> <id> <mode>\n"
+                "bindings binding add <command> <controller> <input> <id> <mode> [invert <on|off> deadband <value>]\n"
                 "bindings binding set <index> <field> <value>\n"
                 "bindings binding delete <index>\n"
-                "bindings axis add <command> <controller> <id> invert <on|off> deadband <value>\n"
-                "bindings axis set <index> <field> <value>\n"
-                "bindings axis delete <index>\n"
                 "bindings load <path>\n"
                 "bindings save <path>\n"
                 "bindings validate [path]"
@@ -11160,12 +11316,30 @@ class BridgeCli:
                 "tests templates\n"
                 "tests clear"
             ),
-            "add device": (
-                "add device <device>\n"
-                "  Add device to current group (device must exist in local config)."
+            "member assign": (
+                "member assign <device>\n"
+                "member assign all\n"
+                "member assign next\n"
+                "  Assign device labels to the current group."
             ),
-            "no device": "no device <device>\n  Remove device from current group.",
-            "member": "member <device> <enable|disable|toggle>\n  Control per-member enable state.",
+            "member remove": "member remove <device>\n  Remove a device label from the current group.",
+            "member enable": "member enable <label>\n  Enable one current-group member.",
+            "member disable": "member disable <label>\n  Disable one current-group member.",
+            "member toggle": "member toggle <label>\n  Toggle one current-group member.",
+            "group member": (
+                "group member assign <group> <label>\n"
+                "group member remove <group> <label>\n"
+                "group member enable <group> <label>\n"
+                "group member disable <group> <label>\n"
+                "group member toggle <group> <label>\n"
+                "group member assign all <group>\n"
+                "group member assign next <group>\n"
+                "  Edit group membership from config mode without entering group context."
+            ),
+            "member": (
+                "member assign|remove|enable|disable|toggle <device>\n"
+                "  Edit current-group membership or per-member enabled state."
+            ),
             "bind": (
                 "bind list\n"
                 "bind explain <binding>\n"
@@ -11210,7 +11384,7 @@ class BridgeCli:
         elif mode == MODE_GROUP:
             entries = [
                 f"{CMD_SHOW}",
-                f"{CMD_ADD} {CMD_DEVICE} {PLACEHOLDER_DEVICE}",
+                f"{CMD_MEMBER} {CMD_ASSIGN} {PLACEHOLDER_DEVICE}",
                 f"{CMD_RUN} {CMD_TEST} {PLACEHOLDER_TEST}",
             ]
         elif mode == MODE_DEVICE:
@@ -11225,8 +11399,8 @@ class BridgeCli:
                 CMD_CONFIGURE,
                 CMD_CONNECT,
                 CMD_DISCONNECT,
-                f"{CMD_ADD} {CMD_NEXT}",
-                f"{CMD_ADD} {CMD_ALL}",
+                f"{CMD_INSTANTIATE} {CMD_NEXT} {CMD_MOTOR}",
+                f"{CMD_INSTANTIATE} {CMD_ALL} {CMD_DEVICES}",
                 f"{CMD_RUN} {CMD_TEST} {PLACEHOLDER_TEST}",
             ]
         lines = [MESSAGE_HELP_QUICK_HEADER]
@@ -11238,11 +11412,12 @@ class BridgeCli:
         lines.append(HELP_INDENT + MESSAGE_HELP_QUICK_ALIASES)
         return SEP_NEWLINE.join(lines)
 
-    def _parse_show_flags(self, tokens: List[str]) -> tuple[str, List[str], bool, bool, bool]:
+    def _parse_show_flags(self, tokens: List[str]) -> tuple[str, List[str], bool, bool, bool, bool]:
         source = EMPTY_STRING
         cleaned: List[str] = []
         json_output = False
         pretty = False
+        grouped = False
         for tok in tokens:
             lower = tok.lower()
             if lower in ("--json",):
@@ -11250,6 +11425,9 @@ class BridgeCli:
                 continue
             if lower in ("--pretty",):
                 pretty = True
+                continue
+            if lower == SHOW_FLAG_GROUPED:
+                grouped = True
                 continue
             if lower in (SHOW_SOURCE_ROBOT, "--robot"):
                 source = SHOW_SOURCE_ROBOT
@@ -11265,8 +11443,8 @@ class BridgeCli:
             source = SHOW_SOURCE_ROBOT if self._session.is_connected() else SHOW_SOURCE_LOCAL
         if pretty and not json_output:
             print(MESSAGE_ERR_PRETTY_REQUIRES_JSON)
-            return source, cleaned, False, False, False
-        return source, cleaned, json_output, pretty, True
+            return source, cleaned, False, False, grouped, False
+        return source, cleaned, json_output, pretty, grouped, True
 
     @staticmethod
     def _dump_json(payload: object, pretty: bool) -> str:
@@ -11819,7 +11997,12 @@ class BridgeCli:
         return ROBOT_COMMAND_TIMEOUT_SEC
 
     def _show_local(
-        self, target: str, tokens: List[str], json_output: bool, pretty: bool
+        self,
+        target: str,
+        tokens: List[str],
+        json_output: bool,
+        pretty: bool,
+        grouped: bool,
     ) -> StatusResult:
         if target == SHOW_TARGET_VERSION:
             return self._show_local_version(json_output, pretty)
@@ -11871,7 +12054,7 @@ class BridgeCli:
             name = tokens[1] if len(tokens) >= 2 else ""
             return self._show_local_registry_device(name, json_output, pretty)
         if target == SHOW_TARGET_TOPOLOGY:
-            return self._show_local_topology(tokens, json_output, pretty)
+            return self._show_local_topology(tokens, json_output, pretty, grouped)
         if target == SHOW_TARGET_NEIGHBORS:
             return self._show_local_neighbors(tokens, json_output, pretty)
         profile = self._active_profile_name()
@@ -11999,12 +12182,8 @@ class BridgeCli:
             lines.append(TEXT_GROUP_MEMBERS_HEADER)
             if members:
                 for member in members:
-                    if isinstance(member, dict):
-                        device = str(member.get(KEY_DEVICE, EMPTY_STRING)).strip()
-                        enabled = bool(member.get(KEY_ENABLED, True))
-                    else:
-                        device = str(member).strip()
-                        enabled = True
+                    device = _group_member_label(member)
+                    enabled = bool(member.get(KEY_ENABLED, True)) if isinstance(member, dict) else True
                     if device:
                         state = TEXT_ENABLED if enabled else TEXT_DISABLED
                         lines.append(f"  {device} [{state}]")
@@ -12131,7 +12310,6 @@ class BridgeCli:
                 else:
                     controllers = global_payload.get(KEY_CONTROLLERS, [])
                     bindings = global_payload.get(KEY_BINDINGS, [])
-                    axes = global_payload.get(KEY_AXES, [])
                     lines.append(MESSAGE_BINDINGS_CONTROLLERS_HEADER)
                     if not isinstance(controllers, list) or not controllers:
                         lines.append(MESSAGE_BINDINGS_NONE)
@@ -12155,33 +12333,17 @@ class BridgeCli:
                         for idx, entry in enumerate(bindings, start=COUNT_ONE):
                             if not isinstance(entry, dict):
                                 continue
-                            lines.append(
-                                MESSAGE_BINDINGS_BINDING_FMT.format(
-                                    index=idx,
-                                    command=entry.get(KEY_COMMAND),
-                                    controller=entry.get(KEY_CONTROLLER),
-                                    input=entry.get(KEY_INPUT),
-                                    id=entry.get(KEY_ID),
-                                    mode=entry.get(KEY_MODE),
-                                )
+                            line = MESSAGE_BINDINGS_BINDING_FMT.format(
+                                index=idx,
+                                command=entry.get(KEY_COMMAND),
+                                controller=entry.get(KEY_CONTROLLER),
+                                input=entry.get(KEY_INPUT),
+                                id=entry.get(KEY_ID),
+                                mode=entry.get(KEY_MODE),
                             )
-                    lines.append(MESSAGE_BINDINGS_AXES_HEADER)
-                    if not isinstance(axes, list) or not axes:
-                        lines.append(MESSAGE_BINDINGS_NONE)
-                    else:
-                        for idx, entry in enumerate(axes, start=COUNT_ONE):
-                            if not isinstance(entry, dict):
-                                continue
-                            lines.append(
-                                MESSAGE_BINDINGS_AXIS_FMT.format(
-                                    index=idx,
-                                    command=entry.get(KEY_COMMAND),
-                                    controller=entry.get(KEY_CONTROLLER),
-                                    id=entry.get(KEY_ID),
-                                    invert=entry.get(KEY_INVERT),
-                                    deadband=entry.get(KEY_DEADBAND),
-                                )
-                            )
+                            if self._binding_entry_is_axis(entry):
+                                line += f" invert={entry.get(KEY_INVERT)} deadband={entry.get(KEY_DEADBAND)}"
+                            lines.append(line)
                 payload_json = dict(payload)
                 payload_json[KEY_GLOBAL_BINDINGS] = (
                     {
@@ -12189,9 +12351,6 @@ class BridgeCli:
                         if isinstance(global_payload, dict)
                         else [],
                         KEY_BINDINGS: global_payload.get(KEY_BINDINGS, [])
-                        if isinstance(global_payload, dict)
-                        else [],
-                        KEY_AXES: global_payload.get(KEY_AXES, [])
                         if isinstance(global_payload, dict)
                         else [],
                     }
@@ -12924,14 +13083,11 @@ class BridgeCli:
             return StatusResult(code=SS__DEVICE__NOT_DEFINED)
         members = group.get("members", [])
         for member in members:
-            if isinstance(member, dict):
-                name = str(member.get("device", "")).strip()
-            else:
-                name = str(member).strip()
+            name = _group_member_label(member)
             if name.lower() == device.lower():
                 print(WARN_DUPLICATE_MEMBER.format(device=device))
                 return StatusResult(code=SS__NORMAL)
-        members.append({"device": device, "enabled": True})
+        members.append(_group_member_entry(device, True))
         group["members"] = members
         self._mark_groups_dirty()
         return StatusResult(code=SS__NORMAL)
@@ -12957,10 +13113,7 @@ class BridgeCli:
         kept = []
         removed = False
         for member in members:
-            if isinstance(member, dict):
-                name = str(member.get("device", "")).strip()
-            else:
-                name = str(member).strip()
+            name = _group_member_label(member)
             if name.lower() == device.lower():
                 removed = True
                 continue
@@ -12983,7 +13136,7 @@ class BridgeCli:
         members = group.get("members", [])
         for member in members:
             if isinstance(member, dict):
-                name = str(member.get("device", "")).strip()
+                name = _group_member_label(member)
                 if name.lower() == device.lower():
                     enabled = bool(member.get("enabled", True))
                     if action == "enable":
@@ -12997,10 +13150,10 @@ class BridgeCli:
             elif isinstance(member, str):
                 if member.strip().lower() == device.lower():
                     members.remove(member)
-                    members.append({"device": member, "enabled": action != "disable"})
+                    members.append(_group_member_entry(member, action != "disable"))
                     self._mark_groups_dirty()
                     return StatusResult(code=SS__NORMAL)
-        print("ERROR: Device not in local group.")
+        print("ERROR: Label not in local group.")
         return StatusResult(code=SS__GROUP__MEMBER_MISSING)
 
     def _add_local_binding(self, group_name: str, tokens: List[str]) -> StatusResult:
@@ -13175,14 +13328,9 @@ class BridgeCli:
                     continue
                 to_remove = []
                 for member in members:
-                    if isinstance(member, dict):
-                        dev_name = str(member.get(KEY_DEVICE, "")).strip()
-                        if dev_name.lower() == name.strip().lower():
-                            to_remove.append(member)
-                    else:
-                        dev_name = str(member).strip()
-                        if dev_name.lower() == name.strip().lower():
-                            to_remove.append(member)
+                    dev_name = _group_member_label(member)
+                    if dev_name.lower() == name.strip().lower():
+                        to_remove.append(member)
                 for member in to_remove:
                     members.remove(member)
                     changed = True
@@ -13325,9 +13473,10 @@ class BridgeCli:
                     continue
                 for member in group.get("members", []) or []:
                     if isinstance(member, dict):
-                        name = str(member.get(KEY_DEVICE, "")).strip()
+                        name = _group_member_label(member)
                         if name.lower() == old.lower():
-                            member[KEY_DEVICE] = new
+                            member[KEY_LABEL] = new
+                            member.pop(KEY_DEVICE, None)
                             changed = True
                             groups_changed += COUNT_ONE
                     elif isinstance(member, str):
@@ -13813,7 +13962,597 @@ class BridgeCli:
         """
         return self._local_registry_by_label()
 
-    def _show_local_topology(self, tokens: List[str], json_output: bool, pretty: bool) -> StatusResult:
+    def _topology_raw_text_lines(
+        self,
+        payload: Dict[str, object],
+        node_map: Dict[int, Dict[str, object]],
+        profile_name: str,
+        subtarget: str,
+    ) -> List[str]:
+        """
+        NAME
+            _topology_raw_text_lines - Format the raw node/edge topology text view.
+        """
+        lines = [MESSAGE_SOURCE_LOCAL, MESSAGE_TOPOLOGY_HEADER, f"  profile: {profile_name}"]
+        lines.append(MESSAGE_TOPOLOGY_NODES_HEADER)
+        nodes_list = payload.get(KEY_TOPOLOGY_NODES, [])
+        if isinstance(nodes_list, list) and nodes_list:
+            for raw in nodes_list:
+                if not isinstance(raw, dict):
+                    continue
+                key = raw.get(KEY_NODE_KEY, EMPTY_STRING)
+                label = self._topology_node_label(node_map.get(key, raw) if isinstance(key, int) else raw)
+                node_type = raw.get(KEY_NODE_TYPE, EMPTY_STRING)
+                lines.append(f"  {key}: {label} [{node_type}]")
+        else:
+            lines.append(MESSAGE_TOPOLOGY_NONE)
+        if subtarget in (EMPTY_STRING, CMD_EDGES):
+            lines.append(MESSAGE_TOPOLOGY_EDGES_HEADER)
+            edges_list = payload.get(KEY_TOPOLOGY_EDGES, [])
+            if isinstance(edges_list, list) and edges_list:
+                for edge in edges_list:
+                    if not isinstance(edge, dict):
+                        continue
+                    from_key = edge.get(KEY_FROM_NODE, EMPTY_STRING)
+                    to_key = edge.get(KEY_TO_NODE, EMPTY_STRING)
+                    from_label = self._topology_node_label(node_map.get(from_key, {})) if isinstance(from_key, int) else EMPTY_STRING
+                    to_label = self._topology_node_label(node_map.get(to_key, {})) if isinstance(to_key, int) else EMPTY_STRING
+                    lines.append(
+                        f"  {edge.get(KEY_EDGE_ID, EMPTY_STRING)}: "
+                        f"{from_label}.{edge.get(KEY_FROM_PORT, EMPTY_STRING)} -> "
+                        f"{to_label}.{edge.get(KEY_TO_PORT, EMPTY_STRING)} "
+                        f"[{edge.get(KEY_EDGE_TYPE, EMPTY_STRING)}]"
+                    )
+            else:
+                lines.append(MESSAGE_TOPOLOGY_NONE)
+        return lines
+
+    def _topology_can_device_edges(
+        self,
+        topology_profile: Dict[str, object],
+        node_map: Dict[int, Dict[str, object]],
+    ) -> List[Tuple[str, str]]:
+        """
+        NAME
+            _topology_can_device_edges - Collapse CAN trunk edges into device-to-device hops.
+        """
+        full_adj: Dict[int, set[int]] = {}
+        for edge in topology_edges(topology_profile):
+            if not isinstance(edge, dict):
+                continue
+            if edge.get(KEY_EDGE_TYPE) != EDGE_TYPE_CAN_TRUNK:
+                continue
+            from_node = edge.get(KEY_FROM_NODE)
+            to_node = edge.get(KEY_TO_NODE)
+            if not isinstance(from_node, int) or not isinstance(to_node, int):
+                continue
+            full_adj.setdefault(from_node, set()).add(to_node)
+            full_adj.setdefault(to_node, set()).add(from_node)
+        if not full_adj:
+            return []
+
+        device_keys = []
+        for key, node in node_map.items():
+            if key not in full_adj:
+                continue
+            if not isinstance(node, dict) or node.get(KEY_NODE_TYPE) != NODE_TYPE_DEVICE:
+                continue
+            label = self._topology_node_label(node).strip()
+            if label:
+                device_keys.append(key)
+        if len(device_keys) < COUNT_TWO:
+            return []
+
+        reduced: Dict[int, set[int]] = {key: set() for key in device_keys}
+        for origin in device_keys:
+            queue: deque[Tuple[int, int]] = deque()
+            seen = {origin}
+            for neighbor in sorted(full_adj.get(origin, set())):
+                queue.append((neighbor, origin))
+                seen.add(neighbor)
+            while queue:
+                current, parent = queue.popleft()
+                node = node_map.get(current, {})
+                if current != origin and isinstance(node, dict) and node.get(KEY_NODE_TYPE) == NODE_TYPE_DEVICE:
+                    reduced.setdefault(origin, set()).add(current)
+                    reduced.setdefault(current, set()).add(origin)
+                    continue
+                for neighbor in sorted(full_adj.get(current, set())):
+                    if neighbor == parent or neighbor in seen:
+                        continue
+                    seen.add(neighbor)
+                    queue.append((neighbor, current))
+
+        if any(len(neighbors) > COUNT_TWO for neighbors in reduced.values()):
+            return []
+
+        edge_total = sum(len(neighbors) for neighbors in reduced.values()) // COUNT_TWO
+        if edge_total <= 0:
+            return []
+
+        def _label(key: int) -> str:
+            return self._topology_node_label(node_map.get(key, {})).strip()
+
+        endpoints = [key for key, neighbors in reduced.items() if len(neighbors) <= COUNT_ONE]
+        start = None
+        for key in endpoints:
+            if _label(key).strip().lower() == TOPOLOGY_LABEL_ROBORIO:
+                start = key
+                break
+        if start is None and endpoints:
+            start = sorted(endpoints, key=lambda value: _label(value).lower())[COUNT_ZERO]
+        if start is None:
+            start = sorted(device_keys, key=lambda value: _label(value).lower())[COUNT_ZERO]
+
+        walked: List[Tuple[str, str]] = []
+        visited_edges: set[Tuple[int, int]] = set()
+        current = start
+        previous = None
+        while True:
+            next_key = None
+            for neighbor in sorted(reduced.get(current, set()), key=lambda value: _label(value).lower()):
+                edge_key = (min(current, neighbor), max(current, neighbor))
+                if edge_key in visited_edges:
+                    continue
+                if previous is not None and neighbor == previous:
+                    next_key = neighbor
+                    continue
+                next_key = neighbor
+                break
+            if next_key is None:
+                break
+            edge_key = (min(current, next_key), max(current, next_key))
+            visited_edges.add(edge_key)
+            walked.append((_label(current), _label(next_key)))
+            previous, current = current, next_key
+
+        if len(visited_edges) != edge_total:
+            return []
+        return [(from_label, to_label) for from_label, to_label in walked if from_label and to_label]
+
+    def _topology_group_memberships(self, profile_name: str) -> Dict[str, List[str]]:
+        """
+        NAME
+            _topology_group_memberships - Map device labels to display group names.
+        """
+        memberships: Dict[str, List[str]] = {}
+        for group in self._local_groups(profile_name, create=False):
+            if not isinstance(group, dict):
+                continue
+            name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
+            if not name or self._is_active_group(name):
+                continue
+            members = group.get(KEY_MEMBERS, []) or []
+            for member in members:
+                label = _group_member_label(member)
+                if not label:
+                    continue
+                key = label.lower()
+                names = memberships.setdefault(key, [])
+                if name not in names:
+                    names.append(name)
+        return memberships
+
+    @staticmethod
+    def _topology_view_dict(topology_profile: Dict[str, object]) -> Dict[str, object]:
+        """
+        NAME
+            _topology_view_dict - Return the optional topology view metadata block.
+        """
+        view = topology_profile.get(KEY_TOPOLOGY_VIEW)
+        return view if isinstance(view, dict) else {}
+
+    def _topology_can_view_path_edges(
+        self,
+        topology_profile: Dict[str, object],
+        node_map: Dict[int, Dict[str, object]],
+        profile_name: str,
+    ) -> List[Tuple[str, str]]:
+        """
+        NAME
+            _topology_can_view_path_edges - Derive one logical CAN path from wrapped bus-segment layout.
+        """
+        view = self._topology_view_dict(topology_profile)
+        bus_offsets = view.get(KEY_VIEW_BUS_OFFSETS)
+        bus_count = view.get(KEY_VIEW_BUS_COUNT)
+        if isinstance(bus_offsets, list):
+            logical_bus_count = len([item for item in bus_offsets if isinstance(item, (int, float))])
+        elif isinstance(bus_count, int):
+            logical_bus_count = bus_count
+        else:
+            logical_bus_count = COUNT_ZERO
+        if logical_bus_count <= COUNT_ONE:
+            return []
+        connectors = view.get(KEY_VIEW_BUS_CONNECTORS)
+        if isinstance(connectors, list) and connectors:
+            normalized = [bool(item) for item in connectors]
+            if not all(normalized[: max(logical_bus_count - COUNT_ONE, COUNT_ZERO)]):
+                return []
+        connector_sides_raw = view.get(KEY_VIEW_BUS_CONNECTOR_SIDES)
+        connector_sides = (
+            [
+                str(item).strip().lower()
+                for item in connector_sides_raw
+                if isinstance(item, str)
+            ]
+            if isinstance(connector_sides_raw, list)
+            else []
+        )
+
+        can_device_labels: set[str] = set()
+        if isinstance(self._local_root_payload, dict):
+            for entry in self._local_root_payload.get(KEY_DEVICES, []) or []:
+                if not isinstance(entry, dict):
+                    continue
+                if str(entry.get(KEY_INTERFACE, EMPTY_STRING)).strip().upper() != INTERFACE_CAN:
+                    continue
+                label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+                if label:
+                    can_device_labels.add(label.lower())
+        if not can_device_labels:
+            return []
+
+        region_memberships = self._topology_group_memberships(profile_name)
+        region_names = {
+            "frontleft",
+            "frontright",
+            "backleft",
+            "backright",
+        }
+
+        by_bus: Dict[int, List[Tuple[float, str]]] = {}
+        for key, node in node_map.items():
+            if not isinstance(node, dict) or node.get(KEY_NODE_TYPE) != NODE_TYPE_DEVICE:
+                continue
+            label = self._topology_node_label(node).strip()
+            if label.lower() not in can_device_labels:
+                continue
+            layout = node.get(KEY_LAYOUT)
+            if not label or not isinstance(layout, dict):
+                continue
+            bus_index = layout.get(KEY_LAYOUT_BUS)
+            x_value = layout.get(KEY_LAYOUT_X)
+            if not isinstance(bus_index, int) or not isinstance(x_value, (int, float)):
+                continue
+            by_bus.setdefault(bus_index, []).append((float(x_value), label))
+        if not by_bus:
+            return []
+
+        ordered_labels: List[str] = []
+        for bus_index in range(logical_bus_count):
+            entries = by_bus.get(bus_index, [])
+            if not entries:
+                continue
+            if bus_index == COUNT_ZERO:
+                first_side = (
+                    connector_sides[COUNT_ZERO]
+                    if connector_sides
+                    else (NEIGHBOR_PORT_RIGHT if logical_bus_count > COUNT_ONE else NEIGHBOR_PORT_LEFT)
+                )
+                reverse = first_side == NEIGHBOR_PORT_LEFT
+            else:
+                prev_side = (
+                    connector_sides[bus_index - COUNT_ONE]
+                    if bus_index - COUNT_ONE < len(connector_sides)
+                    else (NEIGHBOR_PORT_RIGHT if (bus_index - COUNT_ONE) % COUNT_TWO == COUNT_ZERO else NEIGHBOR_PORT_LEFT)
+                )
+                reverse = prev_side == NEIGHBOR_PORT_RIGHT
+            if bus_index + COUNT_ONE < logical_bus_count:
+                next_side = (
+                    connector_sides[bus_index]
+                    if bus_index < len(connector_sides)
+                    else (NEIGHBOR_PORT_RIGHT if bus_index % COUNT_TWO == COUNT_ZERO else NEIGHBOR_PORT_LEFT)
+                )
+                current_end_side = NEIGHBOR_PORT_LEFT if reverse else NEIGHBOR_PORT_RIGHT
+                if current_end_side != next_side:
+                    return []
+            buckets: Dict[str, List[Tuple[float, str]]] = {}
+            bucket_order: List[str] = []
+            for x_value, label in entries:
+                names = region_memberships.get(label.lower(), [])
+                region_key = EMPTY_STRING
+                for name in names:
+                    if name.strip().lower() in region_names:
+                        region_key = name.strip()
+                        break
+                bucket_key = region_key or label
+                if bucket_key not in buckets:
+                    bucket_order.append(bucket_key)
+                buckets.setdefault(bucket_key, []).append((x_value, label))
+            ordered_bucket_keys = sorted(
+                bucket_order,
+                key=lambda bucket: sum(item[0] for item in buckets[bucket]) / max(len(buckets[bucket]), COUNT_ONE),
+                reverse=reverse,
+            )
+            for bucket_key in ordered_bucket_keys:
+                for _x_value, label in sorted(buckets[bucket_key], key=lambda item: item[0]):
+                    if not ordered_labels or ordered_labels[-1] != label:
+                        ordered_labels.append(label)
+        if len(ordered_labels) < COUNT_TWO:
+            return []
+        return [
+            (ordered_labels[idx], ordered_labels[idx + COUNT_ONE])
+            for idx in range(len(ordered_labels) - COUNT_ONE)
+        ]
+
+    def _topology_swyft_device_links(
+        self,
+        topology_profile: Dict[str, object],
+        node_map: Dict[int, Dict[str, object]],
+    ) -> List[Tuple[str, str, int]]:
+        """
+        NAME
+            _topology_swyft_device_links - Return SWYFT junction-to-device attachments.
+        """
+        view = self._topology_view_dict(topology_profile)
+        raw_links = view.get(KEY_DEVICE_LINKS)
+        if not isinstance(raw_links, list):
+            return []
+        rows: List[Tuple[str, str, int]] = []
+        for entry in raw_links:
+            if not isinstance(entry, dict):
+                continue
+            node_key = entry.get(KEY_LINK_NODE)
+            device_key = entry.get(KEY_LINK_DEVICE)
+            port = entry.get(KEY_LINK_PORT, COUNT_ONE)
+            if not isinstance(node_key, int) or not isinstance(device_key, int):
+                continue
+            if not isinstance(port, int):
+                port = COUNT_ONE
+            node = node_map.get(node_key, {})
+            device = node_map.get(device_key, {})
+            if not isinstance(node, dict) or not isinstance(device, dict):
+                continue
+            if node.get(KEY_NODE_TYPE) != NODE_TYPE_JUNCTION or device.get(KEY_NODE_TYPE) != NODE_TYPE_DEVICE:
+                continue
+            node_label = self._topology_node_label(node).strip()
+            device_label = self._topology_node_label(device).strip()
+            if node_label and device_label:
+                rows.append((node_label, device_label, port))
+        rows.sort(key=lambda item: (item[COUNT_ZERO].lower(), item[2], item[COUNT_ONE].lower()))
+        return rows
+
+    def _topology_swyft_backbone_links(
+        self,
+        topology_profile: Dict[str, object],
+        node_map: Dict[int, Dict[str, object]],
+    ) -> List[Tuple[str, str]]:
+        """
+        NAME
+            _topology_swyft_backbone_links - Return ordered SWYFT backbone links.
+        """
+        view = self._topology_view_dict(topology_profile)
+        raw_links = view.get(KEY_ETHERNET_LINKS)
+        if not isinstance(raw_links, list):
+            return []
+        adjacency: Dict[int, set[int]] = {}
+        for entry in raw_links:
+            if not isinstance(entry, dict):
+                continue
+            a = entry.get(KEY_LINK_A)
+            b = entry.get(KEY_LINK_B)
+            if not isinstance(a, int) or not isinstance(b, int):
+                continue
+            adjacency.setdefault(a, set()).add(b)
+            adjacency.setdefault(b, set()).add(a)
+        if not adjacency:
+            return []
+
+        def _label(key: int) -> str:
+            return self._topology_node_label(node_map.get(key, {})).strip()
+
+        start = None
+        for key in adjacency.keys():
+            if _label(key).lower() == TOPOLOGY_LABEL_INJECT:
+                start = key
+                break
+        if start is None:
+            start = sorted(adjacency.keys(), key=lambda value: _label(value).lower())[COUNT_ZERO]
+
+        seen = {start}
+        queue: deque[int] = deque([start])
+        ordered: List[Tuple[str, str]] = []
+        while queue:
+            current = queue.popleft()
+            for neighbor in sorted(adjacency.get(current, set()), key=lambda value: _label(value).lower()):
+                if neighbor in seen:
+                    continue
+                seen.add(neighbor)
+                queue.append(neighbor)
+                from_label = _label(current)
+                to_label = _label(neighbor)
+                if from_label and to_label:
+                    ordered.append((from_label, to_label))
+        return ordered
+
+    def _topology_grouped_swyft_lines(
+        self,
+        backbone_links: List[Tuple[str, str]],
+        device_links: List[Tuple[str, str, int]],
+        profile_name: str,
+    ) -> List[str]:
+        """
+        NAME
+            _topology_grouped_swyft_lines - Format SWYFT topology using group headers.
+        """
+        memberships = self._topology_group_memberships(profile_name)
+        group_order = [
+            str(group.get(KEY_NAME, EMPTY_STRING)).strip()
+            for group in self._local_groups(profile_name, create=False)
+            if isinstance(group, dict) and str(group.get(KEY_NAME, EMPTY_STRING)).strip() and not self._is_active_group(str(group.get(KEY_NAME, EMPTY_STRING)).strip())
+        ]
+        lines = [MESSAGE_SOURCE_LOCAL, MESSAGE_TOPOLOGY_CAN_BUS_HEADER]
+        if backbone_links:
+            lines.append(MESSAGE_TOPOLOGY_BACKBONE_HEADER)
+            for from_label, to_label in backbone_links:
+                lines.append(
+                    MESSAGE_TOPOLOGY_CAN_GROUP_LINE_FMT.format(
+                        from_label=from_label,
+                        to_label=to_label,
+                        suffix=EMPTY_STRING,
+                    )
+                )
+        grouped_lines: Dict[str, List[str]] = {}
+        for swyft_label, device_label, _port in device_links:
+            names = memberships.get(device_label.lower(), [])
+            if not names:
+                continue
+            suffix = EMPTY_STRING
+            if len(names) > COUNT_ONE:
+                suffix = MESSAGE_TOPOLOGY_CAN_DUPLICATE_SUFFIX_FMT.format(
+                    groups=SEP_COMMA_SPACE.join(name for name in names)
+                )
+            for name in names:
+                grouped_lines.setdefault(name, []).append(
+                    MESSAGE_TOPOLOGY_CAN_GROUP_LINE_FMT.format(
+                        from_label=swyft_label,
+                        to_label=device_label,
+                        suffix=suffix,
+                    )
+                )
+        wrote_any = bool(backbone_links)
+        for name in group_order:
+            entries = grouped_lines.get(name, [])
+            if not entries:
+                continue
+            if wrote_any:
+                lines.append(EMPTY_STRING)
+            lines.append(MESSAGE_TOPOLOGY_GROUP_HEADER_FMT.format(name=name))
+            lines.extend(entries)
+            wrote_any = True
+        return lines
+
+    def _topology_swyft_can_bus_lines(
+        self,
+        topology_profile: Dict[str, object],
+        node_map: Dict[int, Dict[str, object]],
+        profile_name: str,
+        grouped: bool,
+    ) -> List[str]:
+        """
+        NAME
+            _topology_swyft_can_bus_lines - Format topology text from SWYFT view metadata.
+        """
+        device_links = self._topology_swyft_device_links(topology_profile, node_map)
+        if not device_links:
+            return []
+        backbone_links = self._topology_swyft_backbone_links(topology_profile, node_map)
+        if grouped:
+            return self._topology_grouped_swyft_lines(backbone_links, device_links, profile_name)
+        lines = [MESSAGE_SOURCE_LOCAL, MESSAGE_TOPOLOGY_CAN_BUS_HEADER]
+        if backbone_links:
+            lines.append(MESSAGE_TOPOLOGY_BACKBONE_HEADER)
+            for from_label, to_label in backbone_links:
+                lines.append(
+                    MESSAGE_TOPOLOGY_CAN_GROUP_LINE_FMT.format(
+                        from_label=from_label,
+                        to_label=to_label,
+                        suffix=EMPTY_STRING,
+                    )
+                )
+            lines.append(EMPTY_STRING)
+        current_source = EMPTY_STRING
+        for swyft_label, device_label, _port in device_links:
+            if swyft_label != current_source:
+                if current_source:
+                    lines.append(EMPTY_STRING)
+                lines.append(MESSAGE_TOPOLOGY_GROUP_HEADER_FMT.format(name=swyft_label))
+                current_source = swyft_label
+            lines.append(
+                MESSAGE_TOPOLOGY_CAN_GROUP_LINE_FMT.format(
+                    from_label=swyft_label,
+                    to_label=device_label,
+                    suffix=EMPTY_STRING,
+                )
+            )
+        return lines
+
+    def _topology_grouped_can_bus_lines(
+        self,
+        can_edges: List[Tuple[str, str]],
+        profile_name: str,
+    ) -> List[str]:
+        """
+        NAME
+            _topology_grouped_can_bus_lines - Format CAN path lines with optional group duplication.
+        """
+        memberships = self._topology_group_memberships(profile_name)
+        group_order = [
+            str(group.get(KEY_NAME, EMPTY_STRING)).strip()
+            for group in self._local_groups(profile_name, create=False)
+            if isinstance(group, dict) and str(group.get(KEY_NAME, EMPTY_STRING)).strip() and not self._is_active_group(str(group.get(KEY_NAME, EMPTY_STRING)).strip())
+        ]
+        standalone: List[str] = []
+        grouped_lines: Dict[str, List[str]] = {}
+        for from_label, to_label in can_edges:
+            names = memberships.get(from_label.lower(), [])
+            if not names:
+                standalone.append(
+                    MESSAGE_TOPOLOGY_CAN_LINE_FMT.format(from_label=from_label, to_label=to_label)
+                )
+                continue
+            suffix = EMPTY_STRING
+            if len(names) > COUNT_ONE:
+                suffix = MESSAGE_TOPOLOGY_CAN_DUPLICATE_SUFFIX_FMT.format(
+                    groups=SEP_COMMA_SPACE.join(name for name in names)
+                )
+            for name in names:
+                grouped_lines.setdefault(name, []).append(
+                    MESSAGE_TOPOLOGY_CAN_GROUP_LINE_FMT.format(
+                        from_label=from_label,
+                        to_label=to_label,
+                        suffix=suffix,
+                    )
+                )
+        lines = [MESSAGE_SOURCE_LOCAL, MESSAGE_TOPOLOGY_CAN_BUS_HEADER]
+        lines.extend(standalone if standalone else [])
+        wrote_any = bool(standalone)
+        for name in group_order:
+            entries = grouped_lines.get(name, [])
+            if not entries:
+                continue
+            if wrote_any:
+                lines.append(EMPTY_STRING)
+            lines.append(MESSAGE_TOPOLOGY_GROUP_HEADER_FMT.format(name=name))
+            lines.extend(entries)
+            wrote_any = True
+        return lines
+
+    def _topology_can_bus_lines(
+        self,
+        topology_profile: Dict[str, object],
+        node_map: Dict[int, Dict[str, object]],
+        profile_name: str,
+        grouped: bool,
+    ) -> List[str]:
+        """
+        NAME
+            _topology_can_bus_lines - Format the operator-facing CAN bus path view.
+        """
+        swyft_lines = self._topology_swyft_can_bus_lines(topology_profile, node_map, profile_name, grouped)
+        if swyft_lines:
+            return swyft_lines
+        can_edges = self._topology_can_view_path_edges(topology_profile, node_map, profile_name)
+        if not can_edges:
+            can_edges = self._topology_can_device_edges(topology_profile, node_map)
+        if not can_edges:
+            return []
+        if grouped:
+            return self._topology_grouped_can_bus_lines(can_edges, profile_name)
+        lines = [MESSAGE_SOURCE_LOCAL, MESSAGE_TOPOLOGY_CAN_BUS_HEADER]
+        for from_label, to_label in can_edges:
+            lines.append(
+                MESSAGE_TOPOLOGY_CAN_LINE_FMT.format(from_label=from_label, to_label=to_label)
+            )
+        return lines
+
+    def _show_local_topology(
+        self,
+        tokens: List[str],
+        json_output: bool,
+        pretty: bool,
+        grouped: bool,
+    ) -> StatusResult:
         """
         NAME
             _show_local_topology - Show topology nodes/edges for the active profile.
@@ -13874,42 +14613,20 @@ class BridgeCli:
             payload = {KEY_PROFILE: profile_name, KEY_TOPOLOGY_EDGES: topology_edges(topology_profile)}
         elif subtarget == CMD_NODES:
             payload = {KEY_PROFILE: profile_name, KEY_TOPOLOGY_NODES: topology_nodes(topology_profile)}
+        if grouped:
+            payload[KEY_GROUPED] = True
         if json_output:
             print(MESSAGE_SOURCE_LOCAL)
             print(self._dump_json(payload, pretty))
             return StatusResult(code=SS__NORMAL)
-        lines = [MESSAGE_SOURCE_LOCAL, MESSAGE_TOPOLOGY_HEADER, f"  profile: {profile_name}"]
-        lines.append(MESSAGE_TOPOLOGY_NODES_HEADER)
-        nodes_list = payload.get(KEY_TOPOLOGY_NODES, [])
-        if isinstance(nodes_list, list) and nodes_list:
-            for raw in nodes_list:
-                if not isinstance(raw, dict):
-                    continue
-                key = raw.get(KEY_NODE_KEY, EMPTY_STRING)
-                label = self._topology_node_label(node_map.get(key, raw) if isinstance(key, int) else raw)
-                node_type = raw.get(KEY_NODE_TYPE, EMPTY_STRING)
-                lines.append(f"  {key}: {label} [{node_type}]")
+        lines: List[str]
+        if subtarget == EMPTY_STRING:
+            lines = self._topology_can_bus_lines(topology_profile, node_map, profile_name, grouped)
+            if not lines:
+                lines = self._topology_raw_text_lines(payload, node_map, profile_name, subtarget)
+                lines.insert(COUNT_ONE, MESSAGE_TOPOLOGY_FALLBACK_TEXT)
         else:
-            lines.append(MESSAGE_TOPOLOGY_NONE)
-        if subtarget in (EMPTY_STRING, CMD_EDGES):
-            lines.append(MESSAGE_TOPOLOGY_EDGES_HEADER)
-            edges_list = payload.get(KEY_TOPOLOGY_EDGES, [])
-            if isinstance(edges_list, list) and edges_list:
-                for edge in edges_list:
-                    if not isinstance(edge, dict):
-                        continue
-                    from_key = edge.get(KEY_FROM_NODE, EMPTY_STRING)
-                    to_key = edge.get(KEY_TO_NODE, EMPTY_STRING)
-                    from_label = self._topology_node_label(node_map.get(from_key, {})) if isinstance(from_key, int) else EMPTY_STRING
-                    to_label = self._topology_node_label(node_map.get(to_key, {})) if isinstance(to_key, int) else EMPTY_STRING
-                    lines.append(
-                        f"  {edge.get(KEY_EDGE_ID, EMPTY_STRING)}: "
-                        f"{from_label}.{edge.get(KEY_FROM_PORT, EMPTY_STRING)} -> "
-                        f"{to_label}.{edge.get(KEY_TO_PORT, EMPTY_STRING)} "
-                        f"[{edge.get(KEY_EDGE_TYPE, EMPTY_STRING)}]"
-                    )
-            else:
-                lines.append(MESSAGE_TOPOLOGY_NONE)
+            lines = self._topology_raw_text_lines(payload, node_map, profile_name, subtarget)
         print("\n".join(lines))
         return StatusResult(code=SS__NORMAL)
 
@@ -15036,17 +15753,13 @@ class BridgeCli:
                     lines.append(f"group {name}")
                     members = group.get("members", []) or []
                     for member in members:
-                        if isinstance(member, dict):
-                            device = str(member.get(KEY_DEVICE, "")).strip()
-                            enabled = bool(member.get("enabled", True))
-                        else:
-                            device = str(member).strip()
-                            enabled = True
+                        device = _group_member_label(member)
+                        enabled = bool(member.get("enabled", True)) if isinstance(member, dict) else True
                         if not device:
                             continue
-                        lines.append(f'add device "{device}"')
+                        lines.append(f'member assign "{device}"')
                         if not enabled:
-                            lines.append(f'member "{device}" disable')
+                            lines.append(f'member disable "{device}"')
                     bindings = group.get(KEY_BRIDGE_BINDINGS, []) or []
                     for binding in bindings:
                         if not isinstance(binding, dict):
@@ -15631,7 +16344,7 @@ class BridgeCli:
                 mode = str(entry.get(KEY_MODE, EMPTY_STRING)).strip()
                 if not command or not controller or not input_name or not input_id or not mode:
                     continue
-                lines.append(
+                line = (
                     CMD_BINDINGS
                     + PROFILE_EXPORT_PATH_SEPARATOR
                     + CMD_BINDING
@@ -15648,42 +16361,22 @@ class BridgeCli:
                     + PROFILE_EXPORT_PATH_SEPARATOR
                     + self._quote_if_needed(mode)
                 )
-        axes = payload.get(KEY_AXES, [])
-        if isinstance(axes, list):
-            for entry in axes:
-                if not isinstance(entry, dict):
-                    continue
-                command = str(entry.get(KEY_COMMAND, EMPTY_STRING)).strip()
-                controller = str(entry.get(KEY_CONTROLLER, EMPTY_STRING)).strip()
-                axis_id = str(entry.get(KEY_ID, EMPTY_STRING)).strip()
-                invert = entry.get(KEY_INVERT)
-                deadband = entry.get(KEY_DEADBAND)
-                if not command or not controller or not axis_id:
-                    continue
-                invert_token = PROFILE_EXPORT_CMD_ON if bool(invert) else PROFILE_EXPORT_CMD_OFF
-                if deadband is None:
-                    continue
-                lines.append(
-                    CMD_BINDINGS
-                    + PROFILE_EXPORT_PATH_SEPARATOR
-                    + CMD_AXIS
-                    + PROFILE_EXPORT_PATH_SEPARATOR
-                    + CMD_ADD
-                    + PROFILE_EXPORT_PATH_SEPARATOR
-                    + self._quote_if_needed(command)
-                    + PROFILE_EXPORT_PATH_SEPARATOR
-                    + self._quote_if_needed(controller)
-                    + PROFILE_EXPORT_PATH_SEPARATOR
-                    + self._quote_if_needed(axis_id)
-                    + PROFILE_EXPORT_PATH_SEPARATOR
-                    + KEY_INVERT
-                    + PROFILE_EXPORT_PATH_SEPARATOR
-                    + invert_token
-                    + PROFILE_EXPORT_PATH_SEPARATOR
-                    + KEY_DEADBAND
-                    + PROFILE_EXPORT_PATH_SEPARATOR
-                    + self._format_cli_value(deadband)
-                )
+                if input_name == "axis":
+                    invert_token = PROFILE_EXPORT_CMD_ON if bool(entry.get(KEY_INVERT)) else PROFILE_EXPORT_CMD_OFF
+                    deadband = entry.get(KEY_DEADBAND)
+                    if deadband is None:
+                        continue
+                    line += (
+                        PROFILE_EXPORT_PATH_SEPARATOR
+                        + KEY_INVERT
+                        + PROFILE_EXPORT_PATH_SEPARATOR
+                        + invert_token
+                        + PROFILE_EXPORT_PATH_SEPARATOR
+                        + KEY_DEADBAND
+                        + PROFILE_EXPORT_PATH_SEPARATOR
+                        + self._format_cli_value(deadband)
+                    )
+                lines.append(line)
         return lines
 
     def _profile_export_can_mappings_lines(self) -> List[str]:
@@ -15792,7 +16485,7 @@ class BridgeCli:
                 device_name = EMPTY_STRING
                 enabled = True
                 if isinstance(member, dict):
-                    device_name = str(member.get(KEY_DEVICE, EMPTY_STRING)).strip()
+                    device_name = _group_member_label(member)
                     enabled = bool(member.get(CMD_ENABLED, True))
                 else:
                     device_name = str(member).strip()
@@ -15800,9 +16493,9 @@ class BridgeCli:
                     continue
                 device_token = self._quote_if_needed(device_name)
                 lines.append(
-                    PROFILE_EXPORT_CMD_ADD
+                    PROFILE_EXPORT_CMD_MEMBER
                     + PROFILE_EXPORT_PATH_SEPARATOR
-                    + PROFILE_EXPORT_CMD_DEVICE_SUB
+                    + PROFILE_EXPORT_CMD_ASSIGN
                     + PROFILE_EXPORT_PATH_SEPARATOR
                     + device_token
                 )
@@ -15810,9 +16503,9 @@ class BridgeCli:
                     lines.append(
                         PROFILE_EXPORT_CMD_MEMBER
                         + PROFILE_EXPORT_PATH_SEPARATOR
-                        + device_token
-                        + PROFILE_EXPORT_PATH_SEPARATOR
                         + PROFILE_EXPORT_CMD_MEMBER_DISABLE
+                        + PROFILE_EXPORT_PATH_SEPARATOR
+                        + device_token
                     )
             bindings = group.get(KEY_BRIDGE_BINDINGS, []) or []
             for binding in bindings:
@@ -16275,7 +16968,26 @@ class BridgeCli:
             if cmd == "add" and len(tokens) >= 3 and tokens[1].lower() == "device":
                 device = tokens[2].strip().lower()
                 if known_devices and device not in known_devices:
-                    return f"Device '{tokens[2]}' not defined before add device."
+                    return f"Device '{tokens[2]}' not defined before member assign."
+            if cmd == CMD_MEMBER and len(tokens) >= COUNT_THREE:
+                if tokens[1].lower() == CMD_ASSIGN and tokens[2].lower() not in (CMD_ALL, CMD_NEXT):
+                    device = tokens[2].strip().lower()
+                    if known_devices and device not in known_devices:
+                        return f"Device '{tokens[2]}' not defined before member assign."
+                if (
+                    len(tokens) >= COUNT_THREE
+                    and tokens[COUNT_TWO].lower() in (CMD_ENABLE, CMD_DISABLE, CMD_TOGGLE)
+                ):
+                    device = tokens[1].strip().lower()
+                    if known_devices and device not in known_devices:
+                        return f"Device '{tokens[1]}' not defined before member update."
+            if cmd == CMD_GROUP and len(tokens) >= COUNT_FIVE and tokens[1].lower() == CMD_MEMBER:
+                action = tokens[2].lower()
+                if action == CMD_ASSIGN and tokens[3].lower() in (CMD_ALL, CMD_NEXT):
+                    continue
+                device = tokens[4].strip().lower()
+                if known_devices and device not in known_devices:
+                    return f"Label '{tokens[4]}' not defined before group member command."
         return None
 
     @staticmethod
@@ -16310,10 +17022,7 @@ class BridgeCli:
                     continue
                 group_name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
                 for member in group.get("members", []) or []:
-                    if isinstance(member, dict):
-                        dev_name = str(member.get(KEY_DEVICE, "")).strip()
-                    else:
-                        dev_name = str(member).strip()
+                    dev_name = _group_member_label(member)
                     if dev_name.lower() == name.strip().lower():
                         return group_name
         return None
@@ -16400,7 +17109,7 @@ class BridgeCli:
         if self._local_root_payload is not None:
             profile = self._active_profile_name()
             if profile:
-                return name.strip().lower() in self._profile_device_labels(profile)
+                return name.strip().lower() in self._profile_object_labels(profile)
         return False
 
     def _ensure_local_config(self) -> None:
@@ -16722,6 +17431,12 @@ class BridgeCli:
             return self._load_bindings_from_path(Path(path))
         if name == SOURCE_NAME_CAN_MAPPINGS:
             return self._load_can_mappings_from_path(Path(path))
+        if name == SOURCE_NAME_TESTS:
+            self._tests_model = None
+            self._tests_profile = None
+            self._ensure_tests_loaded()
+            self._tests_dirty = False
+            return StatusResult(code=SS__NORMAL)
         return StatusResult(code=SS__EXECUTOR__FAILED)
 
     def _save_sources(self, force: bool = False) -> StatusResult:

@@ -281,6 +281,40 @@ class LiveTopologyViewTests(unittest.TestCase):
         self.assertEqual(cannect.node_type, "diagram")
         self.assertEqual(cannect.free_y, 200.0)
 
+    def test_diagram_nodes_accept_object_type_without_legacy_node_type(self) -> None:
+        registry = {
+            "roborio": {
+                "label": "roborio",
+                "deviceInterface": "CAN",
+                "manufacturer": 1,
+                "deviceType": 1,
+                "id": 0,
+            }
+        }
+        diagram = {
+            "nodes": [
+                {
+                    "key": 1,
+                    "objectType": "device",
+                    "deviceRef": "roborio",
+                    "layout": {"bus": 0, "row": 0, "x": 0.0},
+                },
+                {
+                    "key": 2,
+                    "objectType": "junction",
+                    "label": "cannect 3",
+                    "category": "cannect_direct",
+                    "layout": {"bus": 0, "row": 0, "x": 100.0},
+                },
+            ]
+        }
+
+        nodes, _meta = live_view_module._diagram_nodes(diagram, registry)
+
+        self.assertEqual([node.label for node in nodes], ["roborio", "cannect 3"])
+        self.assertEqual(nodes[0].node_type, "device")
+        self.assertEqual(nodes[1].node_type, "diagram")
+
     def test_reload_profile_preserves_canonical_layout_y_in_live_nodes(self) -> None:
         view = self._make_view()
 

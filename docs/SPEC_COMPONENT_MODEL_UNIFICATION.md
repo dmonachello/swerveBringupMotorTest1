@@ -326,6 +326,7 @@ No duplicated data may exist between the common part and the typed part.
 {
   "common": {
     "key": 19,
+    "objectType": "infrastructure",
     "nodeType": "infrastructure",
     "label": "cannect 2",
     "layout": {
@@ -348,6 +349,7 @@ Device example:
 {
   "common": {
     "key": 3,
+    "objectType": "device",
     "nodeType": "device",
     "label": "frontLeft Encoder",
     "layout": {
@@ -368,11 +370,11 @@ Device example:
 Required fields:
 
 - `key`
-- `nodeType`
+- `objectType`
 - `label`
 - `layout`
 
-#### `nodeType`
+#### `objectType`
 
 Allowed values:
 
@@ -381,7 +383,9 @@ Allowed values:
 
 No other top-level node kinds are allowed in the canonical model.
 
-Subtyping belongs in the typed payload, not in `nodeType`.
+`nodeType` may exist as a mirrored compatibility field during transition.
+
+Subtyping belongs in the typed payload, not in `objectType`.
 
 ### Device Part
 

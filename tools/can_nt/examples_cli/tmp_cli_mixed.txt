@@ -1,4 +1,4 @@
-﻿# Good: enter config, define device, enter device mode, set fields
+# Good: enter config, define device, enter device mode, set fields
 configure terminal
 device leftMotor
 set vendor rev
@@ -10,8 +10,8 @@ exit
 
 # Good: group config
 group drive
-add device leftMotor
-add device rightMotor
+member assign leftMotor
+member assign rightMotor
 bind trigger analog
 show groups --json
 show devices --json
@@ -26,3 +26,4 @@ bind
 # Good: show status in exec mode
 show status
 exit
+

@@ -55,6 +55,7 @@ from tools.common.profile_constants import (
     KEY_MANUFACTURER,
     KEY_MODEL,
     KEY_NODE_KEY,
+    KEY_OBJECT_TYPE,
     KEY_NOTES,
     KEY_INPUT_ALIASES,
     KEY_PROFILE_DEVICES,
@@ -81,6 +82,9 @@ from tools.common.profile_constants import (
     PROFILE_SCHEMA_VERSION,
     TYPE_XBOX_CONTROLLER,
     get_device_interface,
+    get_group_member_label,
+    get_object_type,
+    make_group_member,
 )
 from tools.common.test_authoring import (
     TestAuthoringModel,
@@ -88,6 +92,7 @@ from tools.common.test_authoring import (
     model_to_payload,
     validate_model,
 )
+from tools.common.test_authoring.validator import AXIS_INPUTS, BUTTON_INPUTS
 from tools.config.json_store import JsonStore
 
 
@@ -96,7 +101,6 @@ KEY_TEST_SETS = "test_sets"
 KEY_DEFAULT_TEST_SET = "default_test_set"
 KEY_CONTROLLERS = "controllers"
 KEY_BINDINGS = "bindings"
-KEY_AXES = "axes"
 KEY_MANUFACTURERS = "manufacturers"
 KEY_DEVICE_TYPES = "device_types"
 KEY_MEMBERS = "members"
@@ -110,10 +114,16 @@ KEY_MODE = "mode"
 KEY_TYPE = "type"
 KEY_PORT = "port"
 KEY_DEADBAND = "deadband"
+INPUT_KIND_BUTTON = "button"
+INPUT_KIND_DPAD = "dpad"
+INPUT_KIND_COMBO = "combo"
+INPUT_KIND_AXIS = "axis"
+MODE_ANALOG = "analog"
+DPAD_INPUTS = {"UP", "RIGHT", "DOWN", "LEFT"}
 BINDINGS_EMPTY_PAYLOAD = {
+    KEY_SCHEMA_VERSION: PROFILE_SCHEMA_VERSION,
     KEY_CONTROLLERS: list(),
     KEY_BINDINGS: list(),
-    KEY_AXES: list(),
     KEY_INPUT_ALIASES: dict(),
 }
 
@@ -170,9 +180,15 @@ MESSAGE_BINDINGS_CONTROLLER_REQUIRED = "Controller name not found: {name}"
 MESSAGE_BINDINGS_CONTROLLER_PORT = "Controller port must be int."
 MESSAGE_BINDINGS_CONTROLLER_FIELDS = "Controller entry missing required fields."
 MESSAGE_BINDINGS_BINDING_FIELDS = "Binding entry missing required fields."
-MESSAGE_BINDINGS_AXIS_FIELDS = "Axis entry missing required fields."
 MESSAGE_BINDINGS_INVERT_TYPE = "Axis invert must be bool."
 MESSAGE_BINDINGS_DEADBAND_RANGE = "Axis deadband must be 0.0 to 1.0."
+MESSAGE_BINDINGS_INPUT_KIND = "Binding input kind is invalid."
+MESSAGE_BINDINGS_AXIS_MODE = "Axis bindings must use mode=analog."
+MESSAGE_BINDINGS_AXIS_FIELDS = "Axis binding entry missing required fields."
+MESSAGE_BINDINGS_AXIS_EXTRAS = "Axis bindings require invert and deadband."
+MESSAGE_BINDINGS_NON_AXIS_EXTRAS = "Only axis bindings may define invert or deadband."
+MESSAGE_BINDINGS_ID_INVALID = "Binding id is invalid for input kind."
+MESSAGE_BINDINGS_SCHEMA_VERSION = "schema_version mismatch: expected {expected}, got {found}"
 MESSAGE_MAPPINGS_KEY_TYPE = "Mapping id must be numeric string."
 MESSAGE_MAPPINGS_VALUE_TYPE = "Mapping value must be non-empty string."
 MESSAGE_TEST_ISSUE = "{name}: {message}"
@@ -203,7 +219,7 @@ ALLOWED_ROOT_KEYS = {
     KEY_TOPOLOGY,
 }
 ALLOWED_TESTS_KEYS = {KEY_DEFAULT_TEST_SET, KEY_TEST_SETS, KEY_TESTS}
-ALLOWED_BINDINGS_KEYS = {KEY_CONTROLLERS, KEY_BINDINGS, KEY_AXES, KEY_INPUT_ALIASES}
+ALLOWED_BINDINGS_KEYS = {KEY_SCHEMA_VERSION, KEY_CONTROLLERS, KEY_BINDINGS, KEY_INPUT_ALIASES}
 ALLOWED_MAPPINGS_KEYS = {KEY_MANUFACTURERS, KEY_DEVICE_TYPES}
 ALLOWED_DEVICE_KEYS = {
     KEY_LABEL,
@@ -226,7 +242,7 @@ ALLOWED_DEVICE_KEYS = {
     KEY_ATTACHMENTS,
 }
 ALLOWED_GROUP_KEYS = {KEY_NAME, KEY_ENABLED, KEY_MEMBERS, KEY_BINDINGS}
-ALLOWED_MEMBER_KEYS = {KEY_DEVICE, KEY_ENABLED}
+ALLOWED_MEMBER_KEYS = {KEY_LABEL, KEY_DEVICE, KEY_ENABLED}
 
 COUNT_ZERO = 0
 COUNT_ONE = 1
@@ -283,7 +299,7 @@ MESSAGE_SALVAGE_BINDINGS_CONTROLLER_DROPPED = (
     "Dropped invalid controller '{name}': {reason}"
 )
 MESSAGE_SALVAGE_BINDINGS_BINDING_DROPPED = "Dropped invalid binding at index {index}: {reason}"
-MESSAGE_SALVAGE_BINDINGS_AXIS_DROPPED = "Dropped invalid axis at index {index}: {reason}"
+MESSAGE_SALVAGE_BINDINGS_AXIS_DROPPED = "Dropped invalid binding at index {index}: {reason}"
 MESSAGE_SALVAGE_MAPPINGS_ENTRY_DROPPED = (
     "Dropped invalid {section} mapping '{key}': {reason}"
 )
@@ -923,10 +939,11 @@ class ConfigSchemaStore:
                 entry = dict()
                 changed = BOOL_TRUE
             profile_entry = dict(entry)
+            valid_object_labels = self._profile_object_label_set_from_payload(sanitized, profile_name)
             profile_entry[KEY_BRIDGE_GROUPS], groups_changed, group_warnings = self._sanitize_groups_payload(
                 profile_name,
                 profile_entry.get(KEY_BRIDGE_GROUPS),
-                {label.casefold() for label in valid_profiles.get(profile_name, {}).get(KEY_PROFILE_DEVICES, []) if isinstance(label, str)},
+                valid_object_labels,
             )
             if groups_changed:
                 changed = BOOL_TRUE
@@ -1013,7 +1030,6 @@ class ConfigSchemaStore:
             return sanitized, warnings, BOOL_TRUE
         controllers_in = payload.get(KEY_CONTROLLERS)
         bindings_in = payload.get(KEY_BINDINGS)
-        axes_in = payload.get(KEY_AXES)
         aliases_in = payload.get(KEY_INPUT_ALIASES)
         if not isinstance(controllers_in, list):
             controllers_in = list()
@@ -1021,8 +1037,7 @@ class ConfigSchemaStore:
         if not isinstance(bindings_in, list):
             bindings_in = list()
             changed = BOOL_TRUE
-        if not isinstance(axes_in, list):
-            axes_in = list()
+        if "axes" in payload:
             changed = BOOL_TRUE
         valid_controllers: List[Dict[str, object]] = list()
         known_controller_names: Set[str] = {
@@ -1058,98 +1073,28 @@ class ConfigSchemaStore:
             known_controller_names.add(folded)
             valid_controllers.append({KEY_NAME: name, KEY_TYPE: ctrl_type, KEY_PORT: port})
         valid_bindings: List[Dict[str, object]] = list()
+        sanitized[KEY_CONTROLLERS] = valid_controllers
         for index, entry in enumerate(bindings_in):
             if not isinstance(entry, dict):
                 changed = BOOL_TRUE
                 continue
-            command = entry.get(KEY_COMMAND)
-            controller = entry.get(KEY_CONTROLLER)
-            input_name = entry.get(KEY_INPUT)
-            binding_id = entry.get(KEY_ID_STR)
-            mode = entry.get(KEY_MODE)
-            if not all(isinstance(value, str) and str(value).strip() for value in (command, controller, input_name, binding_id, mode)):
-                warnings.append(
-                    MESSAGE_SALVAGE_BINDINGS_BINDING_DROPPED.format(
-                        index=index, reason=MESSAGE_BINDINGS_BINDING_FIELDS
-                    )
-                )
-                changed = BOOL_TRUE
-                continue
-            if str(controller).casefold() not in known_controller_names:
+            normalized, reason = self._sanitize_binding_entry(entry, known_controller_names)
+            if normalized is None:
                 warnings.append(
                     MESSAGE_SALVAGE_BINDINGS_BINDING_DROPPED.format(
                         index=index,
-                        reason=MESSAGE_BINDINGS_CONTROLLER_REQUIRED.format(name=controller),
+                        reason=reason,
                     )
                 )
                 changed = BOOL_TRUE
                 continue
-            valid_bindings.append(
-                {
-                    KEY_COMMAND: str(command).strip(),
-                    KEY_CONTROLLER: str(controller).strip(),
-                    KEY_INPUT: str(input_name).strip(),
-                    KEY_ID_STR: str(binding_id).strip(),
-                    KEY_MODE: str(mode).strip(),
-                }
-            )
-        valid_axes: List[Dict[str, object]] = list()
-        for index, entry in enumerate(axes_in):
-            if not isinstance(entry, dict):
-                changed = BOOL_TRUE
-                continue
-            command = entry.get(KEY_COMMAND)
-            controller = entry.get(KEY_CONTROLLER)
-            axis_id = entry.get(KEY_ID_STR)
-            invert = entry.get(KEY_INVERT)
-            deadband = entry.get(KEY_DEADBAND)
-            if not all(isinstance(value, str) and str(value).strip() for value in (command, controller, axis_id)):
-                warnings.append(
-                    MESSAGE_SALVAGE_BINDINGS_AXIS_DROPPED.format(
-                        index=index, reason=MESSAGE_BINDINGS_AXIS_FIELDS
-                    )
-                )
-                changed = BOOL_TRUE
-                continue
-            if str(controller).casefold() not in known_controller_names:
-                warnings.append(
-                    MESSAGE_SALVAGE_BINDINGS_AXIS_DROPPED.format(
-                        index=index,
-                        reason=MESSAGE_BINDINGS_CONTROLLER_REQUIRED.format(name=controller),
-                    )
-                )
-                changed = BOOL_TRUE
-                continue
-            if not isinstance(invert, bool):
-                warnings.append(
-                    MESSAGE_SALVAGE_BINDINGS_AXIS_DROPPED.format(
-                        index=index, reason=MESSAGE_BINDINGS_INVERT_TYPE
-                    )
-                )
-                changed = BOOL_TRUE
-                continue
-            if not isinstance(deadband, (int, float)) or deadband < DEADBAND_MIN or deadband > DEADBAND_MAX:
-                warnings.append(
-                    MESSAGE_SALVAGE_BINDINGS_AXIS_DROPPED.format(
-                        index=index, reason=MESSAGE_BINDINGS_DEADBAND_RANGE
-                    )
-                )
-                changed = BOOL_TRUE
-                continue
-            valid_axes.append(
-                {
-                    KEY_COMMAND: str(command).strip(),
-                    KEY_CONTROLLER: str(controller).strip(),
-                    KEY_ID_STR: str(axis_id).strip(),
-                    KEY_INVERT: invert,
-                    KEY_DEADBAND: float(deadband),
-                }
-            )
-        sanitized[KEY_CONTROLLERS] = valid_controllers
+            valid_bindings.append(normalized)
         sanitized[KEY_BINDINGS] = valid_bindings
-        sanitized[KEY_AXES] = valid_axes
         sanitized[KEY_INPUT_ALIASES] = aliases_in if isinstance(aliases_in, dict) else dict()
         if not isinstance(aliases_in, dict) and aliases_in is not None:
+            changed = BOOL_TRUE
+        if sanitized.get(KEY_SCHEMA_VERSION) != PROFILE_SCHEMA_VERSION:
+            sanitized[KEY_SCHEMA_VERSION] = PROFILE_SCHEMA_VERSION
             changed = BOOL_TRUE
         return sanitized, warnings, changed
 
@@ -1309,8 +1254,8 @@ class ConfigSchemaStore:
                 if not isinstance(member, dict):
                     changed = BOOL_TRUE
                     continue
-                label = member.get(KEY_DEVICE)
-                if not isinstance(label, str) or label.casefold() not in valid_labels:
+                label = get_group_member_label(member)
+                if not label or label.casefold() not in valid_labels:
                     warnings.append(
                         MESSAGE_SALVAGE_GROUP_MEMBER_DROPPED.format(
                             label=str(label or EMPTY_STRING),
@@ -1320,12 +1265,7 @@ class ConfigSchemaStore:
                     )
                     changed = BOOL_TRUE
                     continue
-                kept_members.append(
-                    {
-                        KEY_DEVICE: label,
-                        KEY_ENABLED: bool(member.get(KEY_ENABLED)),
-                    }
-                )
+                kept_members.append(make_group_member(label, bool(member.get(KEY_ENABLED))))
             groups.append(
                 {
                     KEY_NAME: name,
@@ -1389,7 +1329,7 @@ class ConfigSchemaStore:
                     changed = BOOL_TRUE
                     continue
                 node_key = node.get(KEY_NODE_KEY)
-                node_type = node.get(KEY_NODE_TYPE)
+                node_type = get_object_type(node)
                 if node_type == NODE_TYPE_DEVICE:
                     device_ref = node.get(KEY_DEVICE_REF)
                     if not isinstance(device_ref, str) or device_ref not in valid_device_names:
@@ -1401,7 +1341,11 @@ class ConfigSchemaStore:
                         )
                         changed = BOOL_TRUE
                         continue
-                kept_nodes.append(dict(node))
+                kept_node = dict(node)
+                if node_type:
+                    kept_node[KEY_OBJECT_TYPE] = node_type
+                    kept_node[KEY_NODE_TYPE] = node_type
+                kept_nodes.append(kept_node)
                 kept_keys.add(node_key)
             edges = entry.get(KEY_TOPOLOGY_EDGES)
             kept_edges: List[Dict[str, object]] = list()
@@ -1468,7 +1412,8 @@ class ConfigSchemaStore:
                 if not isinstance(node, dict):
                     changed = BOOL_TRUE
                     continue
-                if node.get(KEY_NODE_TYPE) == NODE_TYPE_DEVICE:
+                node_type = get_object_type(node)
+                if node_type == NODE_TYPE_DEVICE:
                     label = node.get(KEY_LABEL)
                     if not isinstance(label, str) or label not in valid_device_names:
                         warnings.append(
@@ -1478,7 +1423,11 @@ class ConfigSchemaStore:
                         )
                         changed = BOOL_TRUE
                         continue
-                kept_nodes.append(dict(node))
+                kept_node = dict(node)
+                if node_type:
+                    kept_node[KEY_OBJECT_TYPE] = node_type
+                    kept_node[KEY_NODE_TYPE] = node_type
+                kept_nodes.append(kept_node)
             kept_entry = dict(entry)
             kept_entry[KEY_DIAGRAM_NODES] = kept_nodes
             kept_profiles[profile_name] = kept_entry
@@ -1582,7 +1531,7 @@ class ConfigSchemaStore:
         if deploy_payload:
             merged.update(deploy_payload)
         if root_payload:
-            for key in (KEY_CONTROLLERS, KEY_BINDINGS, KEY_AXES):
+            for key in (KEY_CONTROLLERS, KEY_BINDINGS, KEY_INPUT_ALIASES):
                 if key in root_payload and key in deploy_payload:
                     warnings.append(
                         MESSAGE_MERGE_WARNING.format(
@@ -1736,12 +1685,16 @@ class ConfigSchemaStore:
                 )
             if not isinstance(entry, dict):
                 continue
+            object_catalog = {
+                label: object()
+                for label in self._profile_object_label_set_from_payload(payload, profile_name)
+            }
             groups = entry.get(KEY_BRIDGE_GROUPS)
             if isinstance(groups, list):
                 for group in groups:
                     if isinstance(group, dict):
                         self._check_unknown_keys(group, ALLOWED_GROUP_KEYS, LOCATION_PROFILES, issues, strict)
-                        self._validate_group_entry(group, catalog, issues, strict)
+                        self._validate_group_entry(group, object_catalog, issues, strict)
             selected = entry.get(KEY_BRIDGE_SELECTED_DEVICE)
             if isinstance(selected, dict):
                 device_label = selected.get(KEY_DEVICE)
@@ -1797,10 +1750,20 @@ class ConfigSchemaStore:
         """
 
         payload = self._db.get_payload(DOC_BINDINGS)
-        if not isinstance(payload, dict):
-            self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_TYPE_INVALID.format(key=KEY_BINDINGS), SEVERITY_ERROR)
-            return
+        if not isinstance(payload, dict) or not payload:
+            payload = dict(BINDINGS_EMPTY_PAYLOAD)
         self._check_unknown_keys(payload, ALLOWED_BINDINGS_KEYS, LOCATION_BINDINGS, issues, strict)
+        schema_version = payload.get(KEY_SCHEMA_VERSION)
+        if schema_version != PROFILE_SCHEMA_VERSION:
+            self._append_issue(
+                issues,
+                LOCATION_BINDINGS,
+                MESSAGE_BINDINGS_SCHEMA_VERSION.format(
+                    expected=PROFILE_SCHEMA_VERSION,
+                    found=schema_version,
+                ),
+                SEVERITY_ERROR,
+            )
         controllers = payload.get(KEY_CONTROLLERS)
         if controllers is None:
             controllers = list()
@@ -1834,52 +1797,14 @@ class ConfigSchemaStore:
             if not isinstance(entry, dict):
                 self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_BINDINGS_BINDING_FIELDS, SEVERITY_ERROR)
                 continue
-            if not self._binding_has_fields(entry):
-                self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_BINDINGS_BINDING_FIELDS, SEVERITY_ERROR)
-                continue
-            controller_name = entry.get(KEY_CONTROLLER)
-            if controller_name not in controller_names:
+            reason = self._binding_validation_error(entry, controller_names)
+            if reason is not None:
                 self._append_issue(
                     issues,
                     LOCATION_BINDINGS,
-                    MESSAGE_BINDINGS_CONTROLLER_REQUIRED.format(name=controller_name),
+                    reason,
                     SEVERITY_ERROR,
                 )
-        axes = payload.get(KEY_AXES)
-        if axes is None:
-            axes = list()
-        if not isinstance(axes, list):
-            self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_TYPE_INVALID.format(key=KEY_AXES), SEVERITY_ERROR)
-            axes = list()
-        for entry in axes:
-            if not isinstance(entry, dict):
-                self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_BINDINGS_AXIS_FIELDS, SEVERITY_ERROR)
-                continue
-            if not self._axis_has_fields(entry):
-                self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_BINDINGS_AXIS_FIELDS, SEVERITY_ERROR)
-                continue
-            controller_name = entry.get(KEY_CONTROLLER)
-            if controller_name not in controller_names:
-                self._append_issue(
-                    issues,
-                    LOCATION_BINDINGS,
-                    MESSAGE_BINDINGS_CONTROLLER_REQUIRED.format(name=controller_name),
-                    SEVERITY_ERROR,
-                )
-            invert = entry.get(KEY_INVERT)
-            if invert is not None and not isinstance(invert, bool):
-                self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_BINDINGS_INVERT_TYPE, SEVERITY_ERROR)
-            deadband = entry.get(KEY_DEADBAND)
-            if deadband is not None:
-                if not isinstance(deadband, (int, float)):
-                    self._append_issue(
-                        issues,
-                        LOCATION_BINDINGS,
-                        MESSAGE_TYPE_INVALID.format(key=KEY_DEADBAND),
-                        SEVERITY_ERROR,
-                    )
-                elif deadband < DEADBAND_MIN or deadband > DEADBAND_MAX:
-                    self._append_issue(issues, LOCATION_BINDINGS, MESSAGE_BINDINGS_DEADBAND_RANGE, SEVERITY_ERROR)
 
     def _validate_mappings(self, issues: List[ValidationIssue], strict: bool) -> None:
         """
@@ -1918,18 +1843,90 @@ class ConfigSchemaStore:
                 return False
         return True
 
-    def _axis_has_fields(self, entry: Dict[str, object]) -> bool:
+    def _sanitize_binding_entry(
+        self,
+        entry: Dict[str, object],
+        known_controller_names: Set[str],
+    ) -> Tuple[Optional[Dict[str, object]], str]:
         """
         NAME
-            _axis_has_fields - Check required axis fields.
+            _sanitize_binding_entry - Normalize one unified binding entry.
         """
 
-        required = (KEY_COMMAND, KEY_CONTROLLER, KEY_ID_STR)
-        for key in required:
-            value = entry.get(key)
-            if value is None or value == EMPTY_STRING:
-                return False
-        return True
+        command = entry.get(KEY_COMMAND)
+        controller = entry.get(KEY_CONTROLLER)
+        input_name = entry.get(KEY_INPUT)
+        binding_id = entry.get(KEY_ID_STR)
+        mode = entry.get(KEY_MODE)
+        if not all(isinstance(value, str) and str(value).strip() for value in (command, controller, input_name, binding_id, mode)):
+            return None, MESSAGE_BINDINGS_BINDING_FIELDS
+        controller_text = str(controller).strip()
+        if controller_text.casefold() not in known_controller_names:
+            return None, MESSAGE_BINDINGS_CONTROLLER_REQUIRED.format(name=controller)
+        normalized: Dict[str, object] = {
+            KEY_COMMAND: str(command).strip(),
+            KEY_CONTROLLER: controller_text,
+            KEY_INPUT: str(input_name).strip(),
+            KEY_ID_STR: str(binding_id).strip(),
+            KEY_MODE: str(mode).strip(),
+        }
+        invert = entry.get(KEY_INVERT)
+        deadband = entry.get(KEY_DEADBAND)
+        input_kind = str(input_name).strip()
+        if input_kind == INPUT_KIND_AXIS:
+            if not isinstance(invert, bool):
+                return None, MESSAGE_BINDINGS_INVERT_TYPE
+            if not isinstance(deadband, (int, float)) or deadband < DEADBAND_MIN or deadband > DEADBAND_MAX:
+                return None, MESSAGE_BINDINGS_DEADBAND_RANGE
+            normalized[KEY_INVERT] = invert
+            normalized[KEY_DEADBAND] = float(deadband)
+        return normalized, EMPTY_STRING
+
+    def _binding_validation_error(
+        self,
+        entry: Dict[str, object],
+        controller_names: Set[str],
+    ) -> Optional[str]:
+        """
+        NAME
+            _binding_validation_error - Validate one unified binding entry.
+        """
+
+        if not self._binding_has_fields(entry):
+            return MESSAGE_BINDINGS_BINDING_FIELDS
+        input_kind = str(entry.get(KEY_INPUT, EMPTY_STRING)).strip()
+        binding_id = str(entry.get(KEY_ID_STR, EMPTY_STRING)).strip()
+        controller_name = entry.get(KEY_CONTROLLER)
+        if controller_name not in controller_names:
+            return MESSAGE_BINDINGS_CONTROLLER_REQUIRED.format(name=controller_name)
+        if input_kind not in {INPUT_KIND_BUTTON, INPUT_KIND_DPAD, INPUT_KIND_COMBO, INPUT_KIND_AXIS}:
+            return MESSAGE_BINDINGS_INPUT_KIND
+        if input_kind == INPUT_KIND_BUTTON and binding_id not in BUTTON_INPUTS:
+            return MESSAGE_BINDINGS_ID_INVALID
+        if input_kind == INPUT_KIND_DPAD and binding_id not in DPAD_INPUTS:
+            return MESSAGE_BINDINGS_ID_INVALID
+        if input_kind == INPUT_KIND_COMBO:
+            combo_parts = [part.strip() for part in binding_id.split("+") if part.strip()]
+            if not combo_parts or any(part not in BUTTON_INPUTS for part in combo_parts):
+                return MESSAGE_BINDINGS_ID_INVALID
+        if input_kind == INPUT_KIND_AXIS and binding_id not in AXIS_INPUTS:
+            return MESSAGE_BINDINGS_ID_INVALID
+        invert = entry.get(KEY_INVERT)
+        deadband = entry.get(KEY_DEADBAND)
+        mode = str(entry.get(KEY_MODE, EMPTY_STRING)).strip()
+        if input_kind == INPUT_KIND_AXIS:
+            if mode != MODE_ANALOG:
+                return MESSAGE_BINDINGS_AXIS_MODE
+            if not isinstance(invert, bool):
+                return MESSAGE_BINDINGS_INVERT_TYPE
+            if not isinstance(deadband, (int, float)):
+                return MESSAGE_TYPE_INVALID.format(key=KEY_DEADBAND)
+            if deadband < DEADBAND_MIN or deadband > DEADBAND_MAX:
+                return MESSAGE_BINDINGS_DEADBAND_RANGE
+            return None
+        if invert is not None or deadband is not None:
+            return MESSAGE_BINDINGS_NON_AXIS_EXTRAS
+        return None
 
     def _format_test_issue(self, issue: object) -> str:
         """
@@ -2022,6 +2019,65 @@ class ConfigSchemaStore:
             catalog[clean] = entry
         return catalog, duplicates
 
+    def _profile_object_label_set_from_payload(
+        self, payload: Dict[str, object], profile_name: str
+    ) -> Set[str]:
+        """
+        NAME
+            _profile_object_label_set_from_payload - Build object-label set for one profile.
+
+        DESCRIPTION
+            Includes profile device labels plus labeled topology and diagram
+            objects for the same profile. Device topology nodes contribute
+            their deviceRef label so groups can reference one shared label set.
+        """
+
+        labels: Set[str] = set()
+        profiles = payload.get(KEY_PROFILES)
+        if isinstance(profiles, dict):
+            profile = profiles.get(profile_name)
+            if isinstance(profile, dict):
+                device_labels = profile.get(KEY_PROFILE_DEVICES)
+                if isinstance(device_labels, list):
+                    for label in device_labels:
+                        if isinstance(label, str) and label.strip():
+                            labels.add(label.strip().casefold())
+        topology = payload.get(KEY_TOPOLOGY)
+        if isinstance(topology, dict):
+            topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+            topology_profile = topology_profiles.get(profile_name) if isinstance(topology_profiles, dict) else None
+            if isinstance(topology_profile, dict):
+                nodes = topology_profile.get(KEY_TOPOLOGY_NODES)
+                if isinstance(nodes, list):
+                    for node in nodes:
+                        if not isinstance(node, dict):
+                            continue
+                        label_text = EMPTY_STRING
+                        if get_object_type(node) == NODE_TYPE_DEVICE:
+                            value = node.get(KEY_DEVICE_REF)
+                            if isinstance(value, str):
+                                label_text = value.strip()
+                        else:
+                            value = node.get(KEY_LABEL)
+                            if isinstance(value, str):
+                                label_text = value.strip()
+                        if label_text:
+                            labels.add(label_text.casefold())
+        diagram = payload.get(KEY_DIAGRAM)
+        if isinstance(diagram, dict):
+            diagram_profiles = diagram.get(KEY_DIAGRAM_PROFILES)
+            diagram_profile = diagram_profiles.get(profile_name) if isinstance(diagram_profiles, dict) else None
+            if isinstance(diagram_profile, dict):
+                nodes = diagram_profile.get(KEY_DIAGRAM_NODES)
+                if isinstance(nodes, list):
+                    for node in nodes:
+                        if not isinstance(node, dict):
+                            continue
+                        value = node.get(KEY_LABEL)
+                        if isinstance(value, str) and value.strip():
+                            labels.add(value.strip().casefold())
+        return labels
+
     def _validate_diagram_profile(
         self,
         diagram_profile: Dict[str, object],
@@ -2041,7 +2097,8 @@ class ConfigSchemaStore:
         for node in nodes:
             if not isinstance(node, dict):
                 continue
-            if node.get(KEY_NODE_TYPE) != NODE_TYPE_DEVICE:
+            node_type = get_object_type(node)
+            if node_type != NODE_TYPE_DEVICE:
                 continue
             node_key = node.get(KEY_NODE_KEY, "?")
             label = node.get(KEY_LABEL)
@@ -2099,7 +2156,8 @@ class ConfigSchemaStore:
         for node in nodes:
             if not isinstance(node, dict):
                 continue
-            if node.get(KEY_NODE_TYPE) != NODE_TYPE_DEVICE:
+            node_type = get_object_type(node)
+            if node_type != NODE_TYPE_DEVICE:
                 continue
             node_key = node.get(KEY_NODE_KEY, "?")
             device_ref = node.get(KEY_DEVICE_REF)
@@ -2286,10 +2344,11 @@ class ConfigSchemaStore:
         for member in members:
             if isinstance(member, dict):
                 self._check_unknown_keys(member, ALLOWED_MEMBER_KEYS, LOCATION_PROFILES, issues, strict)
-                label = member.get(KEY_DEVICE)
+                label = get_group_member_label(member)
             else:
                 label = member
-            if label not in catalog:
+            catalog_keys = {str(name).strip().casefold() for name in catalog.keys()}
+            if not isinstance(label, str) or label.strip().casefold() not in catalog_keys:
                 self._append_issue(
                     issues,
                     LOCATION_PROFILES,

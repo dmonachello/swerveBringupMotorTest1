@@ -19,6 +19,7 @@
   "show_flags": [
     "--json",
     "--pretty",
+    "--grouped",
     "robot",
     "--robot",
     "local",

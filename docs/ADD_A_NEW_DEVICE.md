@@ -190,7 +190,7 @@ File: `data/bringup_system.json`
           "name": "motors",
           "enabled": true,
           "members": [
-            { "device": "NovaDrive X1 21", "enabled": true }
+            { "label": "NovaDrive X1 21", "enabled": true }
           ],
           "bindings": []
         }

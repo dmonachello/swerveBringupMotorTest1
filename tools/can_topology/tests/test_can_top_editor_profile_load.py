@@ -6,11 +6,12 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import tools.can_topology.can_top_editor as can_top_editor
 from tools.can_topology.can_top_editor import TopologyEditor
 from tools.can_topology.can_top_models import GENERIC_CATEGORY, INTERFACE_CAN, INTERFACE_DIO, Node
-from tools.common.topology_draw import draw_group_overlays
+from tools.common.topology_draw import GROUP_OVERLAY_WIDTH, draw_group_overlays, draw_links
 from tools.config.schema_store import ConfigSchemaStore, DOC_PROFILES
 
 
@@ -68,6 +69,7 @@ class _CanvasStub:
         self.scrollregion = "0 0 1000 500"
         self.lines: list[dict[str, object]] = []
         self.texts: list[dict[str, object]] = []
+        self.rectangles: list[dict[str, object]] = []
         self._next_item_id = 1
 
     def winfo_width(self) -> int:
@@ -97,6 +99,7 @@ class _CanvasStub:
     def create_rectangle(self, *_args: object, **_kwargs: object) -> int:
         item_id = self._next_item_id
         self._next_item_id += 1
+        self.rectangles.append({"args": _args, "kwargs": _kwargs})
         return item_id
 
     def create_polygon(self, *_args: object, **_kwargs: object) -> int:
@@ -163,9 +166,13 @@ class _WheelEventStub:
         _WheelEventStub - Minimal mouse-wheel event stand-in.
     """
 
-    def __init__(self, delta: int = 0, num: int | None = None) -> None:
+    def __init__(
+        self, delta: int = 0, num: int | None = None, x: int = 0, y: int = 0
+    ) -> None:
         self.delta = delta
         self.num = num
+        self.x = x
+        self.y = y
 
 
 class _PointerEventStub:
@@ -177,6 +184,15 @@ class _PointerEventStub:
     def __init__(self, x: int, y: int) -> None:
         self.x = x
         self.y = y
+
+
+class _ReleaseEventStub:
+    """
+    NAME
+        _ReleaseEventStub - Minimal mouse-release event stand-in.
+    """
+
+    pass
 
 
 class _ComboStub:
@@ -205,8 +221,11 @@ class _PanelStub:
         _PanelStub - Minimal details panel stand-in.
     """
 
+    def __init__(self) -> None:
+        self.pack_forget_calls = 0
+
     def pack_forget(self) -> None:
-        pass
+        self.pack_forget_calls += 1
 
 
 class _MessageBoxStub:
@@ -334,7 +353,12 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
     def test_minimal_topology_snapshot_is_layout_content(self) -> None:
         self.assertTrue(
             TopologyEditor._topology_has_saved_content(
-                {"nodes": [{"key": 1, "nodeType": "device", "deviceRef": "motor1"}], "edges": []}
+                {
+                    "nodes": [
+                        {"key": 1, "objectType": "device", "nodeType": "device", "deviceRef": "motor1"}
+                    ],
+                    "edges": [],
+                }
             )
         )
 
@@ -408,6 +432,11 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         editor._tag_filter_fn = None
         editor._list_sort_var = _StringVarStub()
         editor._list_sort_var.set("can_id")
+        editor._bus_offsets = [0.0]
+        editor._bus_lefts = [40.0]
+        editor._bus_rights = [520.0]
+        editor._bus_connectors = []
+        editor._bus_connector_sides = []
         editor._bus_spacing = 160.0
         editor._layout_width = 0.0
         editor._pan_y = 0.0
@@ -419,6 +448,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         editor._neighbors_dirty = False
         editor._pending_fit_to_window = False
         editor._drag_free_y = {}
+        editor._bus_connector_regions = []
         editor._syncing_selection = False
         editor._refresh_list = lambda: None
         editor._update_details_panel = lambda _node: None
@@ -433,6 +463,50 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         editor.state = lambda *_args: None
         editor.update_idletasks = lambda: None
         return editor
+
+    def test_canvas_release_without_drag_does_not_redraw(self) -> None:
+        editor = self._headless_editor("robot_2026_swerve")
+        redraw_calls: list[str] = []
+        mark_neighbors_calls: list[str] = []
+        maybe_link_calls: list[object] = []
+        editor._selection_rect = None
+        editor._selection_start = None
+        editor._dragging_active = False
+        editor._drag_state = None
+        editor._pan_drag = None
+        editor._bus_drag = None
+        editor._bus_resize = None
+        editor._bus_connector_drag = None
+        editor._multi_drag = None
+        editor._drag_undo_pending = False
+        editor._drag_free_y = {}
+        editor._selected_key = None
+        editor._clear_guides = lambda: None
+        editor._mark_neighbors_stale = lambda: mark_neighbors_calls.append("mark")
+        editor._maybe_link_dragged_device_to_cannect = (
+            lambda key: maybe_link_calls.append(key)
+        )
+        editor._redraw_canvas = lambda: redraw_calls.append("redraw")
+
+        editor._on_canvas_release(_ReleaseEventStub())
+
+        self.assertEqual([], redraw_calls)
+        self.assertEqual([], mark_neighbors_calls)
+        self.assertEqual([], maybe_link_calls)
+
+    def test_zoom_step_preserves_anchor_point(self) -> None:
+        editor = self._headless_editor("robot_2026_swerve")
+        editor.canvas = _CanvasStub(width=1000, height=500)
+        editor._zoom = 1.0
+        editor._pan_y = 0.0
+        editor._zoom_label_var = _StringVarStub()
+        editor._redraw_canvas = lambda: None
+
+        editor._zoom_step(0.1, anchor_x=250.0, anchor_y=125.0)
+
+        self.assertEqual(editor._zoom, 1.1)
+        self.assertIsNotNone(editor.canvas.xview_value)
+        self.assertIsNotNone(editor.canvas.yview_value)
 
     def test_robot_2026_swerve_save_restart_roundtrip_retains_values(self) -> None:
         profile_name = "robot_2026_swerve"
@@ -716,6 +790,25 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         self.assertEqual(callouts[0]["freeY"], 210.0)
         self.assertTrue(callouts[0]["freeYRelative"])
 
+    def test_set_bus_connector_side_updates_saved_view_metadata(self) -> None:
+        editor = self._headless_editor("bus_connector_side")
+        editor._bus_offsets = [0.0, 160.0]
+        editor._bus_lefts = [40.0, 60.0]
+        editor._bus_rights = [420.0, 440.0]
+        editor._bus_connectors = [True]
+        editor._bus_connector_sides = []
+
+        editor._ensure_bus_connector_sides(len(editor._bus_offsets))
+        self.assertEqual(editor._bus_connector_side(0), "right")
+
+        editor._set_bus_connector_side(0, "left")
+        snapshot = editor._topology_snapshot()
+        view = snapshot["view"]
+
+        self.assertEqual(editor._bus_connector_side(0), "left")
+        self.assertEqual(view["busConnectorSides"], ["left"])
+        self.assertEqual(editor._bus_lefts[0], editor._bus_lefts[1])
+
     def test_validate_nodes_names_generic_device_missing_vendor_type(self) -> None:
         editor = self._headless_editor("generic_validation")
         editor._nodes = [
@@ -815,7 +908,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
                         "groups": [
                             {
                                 "name": "leftModule",
-                                "members": [{"device": "frontLeft Drive Motor", "enabled": True}],
+                                "members": [{"label": "frontLeft Drive Motor", "enabled": True}],
                             },
                             {
                                 "name": "rightModule",
@@ -824,8 +917,8 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
                             {
                                 "name": "drive",
                                 "members": [
-                                    {"device": "frontLeft Drive Motor", "enabled": True},
-                                    {"device": "frontRight Drive Motor", "enabled": True},
+                                    {"label": "frontLeft Drive Motor", "enabled": True},
+                                    {"label": "frontRight Drive Motor", "enabled": True},
                                 ],
                             },
                         ]
@@ -840,12 +933,96 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         self.assertEqual(groups["frontLeft Drive Motor"], ["leftModule", "drive"])
         self.assertEqual(groups["frontRight Drive Motor"], ["rightModule", "drive"])
 
+    def test_create_group_from_selection_refreshes_list(self) -> None:
+        editor = self._headless_editor("group_create_refresh")
+        editor._nodes = [
+            Node(
+                key=1,
+                category="devices",
+                label="frontLeft Drive Motor",
+                can_id=2,
+                x=0.0,
+            )
+        ]
+        editor._selected_nodes = {1}
+        calls: list[str] = []
+        editor._refresh_list = lambda: calls.append("refresh")
+        editor._redraw_canvas = lambda: calls.append("redraw")
+
+        with patch.object(can_top_editor.simpledialog, "askstring", return_value="Front Left"):
+            editor._create_group_from_selection()
+
+        self.assertEqual(calls, ["refresh", "redraw"])
+        groups = editor._bridge_groups()
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["name"], "Front Left")
+
+    def test_create_group_from_selection_includes_infrastructure_nodes(self) -> None:
+        editor = self._headless_editor("group_create_infra")
+        editor._nodes = [
+            Node(
+                key=0,
+                category="cannect_direct",
+                label="cannect 3",
+                can_id=-1,
+                node_type="diagram",
+                interface=INTERFACE_CAN,
+                x=60.0,
+            ),
+            Node(
+                key=1,
+                category="devices",
+                label="frontLeft Drive Motor",
+                can_id=2,
+                x=0.0,
+            ),
+        ]
+        editor._selected_nodes = {0, 1}
+        editor._refresh_list = lambda: None
+        editor._redraw_canvas = lambda: None
+
+        with patch.object(can_top_editor.simpledialog, "askstring", return_value="Front Left"):
+            editor._create_group_from_selection()
+
+        members = editor._bridge_groups()[0]["members"]
+        self.assertEqual(
+            members,
+            [
+                {"label": "cannect 3", "enabled": True},
+                {"label": "frontLeft Drive Motor", "enabled": True},
+            ],
+        )
+
+    def test_remove_group_refreshes_list(self) -> None:
+        editor = self._headless_editor("group_remove_refresh")
+        editor._root_extras = {
+            "bridgeConfig": {
+                "byProfile": {
+                    "group_remove_refresh": {
+                        "groups": [
+                            {"name": "Front Left", "members": [{"label": "frontLeft Drive Motor", "enabled": True}]}
+                        ]
+                    }
+                }
+            }
+        }
+        editor._profile_name = "group_remove_refresh"
+        calls: list[str] = []
+        editor._refresh_list = lambda: calls.append("refresh")
+        editor._redraw_canvas = lambda: calls.append("redraw")
+
+        with patch.object(can_top_editor.simpledialog, "askstring", return_value="Front Left"):
+            editor._remove_bridge_group()
+
+        self.assertEqual(calls, ["refresh", "redraw"])
+        self.assertEqual(editor._bridge_groups(), [])
+
     def test_group_overlay_label_bounds_are_above_group_box(self) -> None:
         canvas = _CanvasStub()
         overlays = draw_group_overlays(
             canvas,
             {"drive": (100.0, 200.0, 180.0, 240.0)},
-            [{"name": "leftModule", "members": [{"device": "drive"}]}],
+            [{"name": "leftModule", "members": [{"label": "drive"}]}],
             zoom=1.0,
         )
 
@@ -853,6 +1030,58 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         bounds = overlays[0]["bounds"]
         label_bounds = overlays[0]["label_bounds"]
         self.assertLess(label_bounds[3], bounds[1])
+
+    def test_group_overlay_uses_solid_outline_style(self) -> None:
+        canvas = _CanvasStub()
+
+        draw_group_overlays(
+            canvas,
+            {"drive": (100.0, 200.0, 180.0, 240.0)},
+            [{"name": "leftModule", "members": [{"label": "drive"}]}],
+            zoom=1.0,
+        )
+
+        outline_rect = canvas.rectangles[0]
+        self.assertEqual(outline_rect["kwargs"].get("width"), GROUP_OVERLAY_WIDTH)
+        self.assertNotIn("dash", outline_rect["kwargs"])
+
+    def test_group_overlay_stacks_overlapping_labels(self) -> None:
+        canvas = _CanvasStub()
+
+        overlays = draw_group_overlays(
+            canvas,
+            {
+                "leftA": (100.0, 200.0, 180.0, 240.0),
+                "leftB": (110.0, 202.0, 190.0, 242.0),
+            },
+            [
+                {"name": "krakens", "members": [{"label": "leftA"}]},
+                {"name": "neos", "members": [{"label": "leftB"}]},
+            ],
+            zoom=1.0,
+        )
+
+        first_label = overlays[0]["label_bounds"]
+        second_label = overlays[1]["label_bounds"]
+        self.assertLess(second_label[3], first_label[1])
+
+    def test_draw_links_uses_distinct_dash_patterns_by_link_family(self) -> None:
+        canvas = _CanvasStub()
+
+        draw_links(
+            canvas,
+            {1: (100.0, 100.0), 2: (200.0, 100.0)},
+            {1: (80.0, 80.0, 120.0, 120.0), 2: (180.0, 80.0, 220.0, 120.0)},
+            [40.0],
+            [(1, 2)],
+            [{"node": 1, "bus": 0, "port": 1}],
+            [{"node": 1, "device": 2, "port": 1}],
+            [],
+        )
+
+        self.assertEqual(canvas.lines[0]["kwargs"].get("dash"), (8, 4))
+        self.assertEqual(canvas.lines[1]["kwargs"].get("dash"), (2, 2))
+        self.assertEqual(canvas.lines[2]["kwargs"].get("dash"), (8, 3, 2, 3))
 
     def test_group_overlay_press_selects_and_starts_group_drag(self) -> None:
         editor = self._headless_editor("group_drag")
@@ -896,8 +1125,8 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
                             {
                                 "name": "frontLeft",
                                 "members": [
-                                    {"device": "frontLeft Drive Motor", "enabled": True},
-                                    {"device": "frontLeft Angle Motor", "enabled": True},
+                                    {"label": "frontLeft Drive Motor", "enabled": True},
+                                    {"label": "frontLeft Angle Motor", "enabled": True},
                                 ],
                             }
                         ]
@@ -935,9 +1164,123 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
         editor._on_canvas_press(_PointerEventStub(60, 60))
 
-        self.assertEqual(editor._selected_nodes, {0, 1, 2})
+        self.assertEqual(editor._selected_nodes, {1, 2})
         self.assertIsNotNone(editor._multi_drag)
-        self.assertEqual(editor._multi_drag.get("anchor"), 0)
+        self.assertEqual(editor._multi_drag.get("anchor"), 1)
+
+    def test_group_selection_includes_explicit_infrastructure_member_only(self) -> None:
+        editor = self._headless_editor("group_drag_infra_explicit")
+        editor._nodes = [
+            Node(
+                key=0,
+                category="cannect_direct",
+                label="cannect 3",
+                can_id=-1,
+                node_type="diagram",
+                interface=INTERFACE_CAN,
+                x=60.0,
+                row=1,
+                bus_index=0,
+                profile_visible=False,
+            ),
+            Node(
+                key=1,
+                category="krakens",
+                label="frontLeft Drive Motor",
+                can_id=2,
+                interface=INTERFACE_CAN,
+                x=100.0,
+                free_y=100.0,
+            ),
+        ]
+        editor._root_extras = {
+            "bridgeConfig": {
+                "byProfile": {
+                    "group_drag_infra_explicit": {
+                        "groups": [
+                            {
+                                "name": "frontLeft",
+                                "members": [
+                                    {"label": "cannect 3", "enabled": True},
+                                    {"label": "frontLeft Drive Motor", "enabled": True},
+                                ],
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+
+        member_keys = editor._group_member_keys_by_name("frontLeft")
+
+        self.assertEqual(member_keys, {0, 1})
+
+    def test_group_overlay_label_click_takes_precedence_over_underlying_node(self) -> None:
+        editor = self._headless_editor("group_drag_priority")
+        editor._nodes = [
+            Node(
+                key=1,
+                category="krakens",
+                label="frontLeft Drive Motor",
+                can_id=2,
+                interface=INTERFACE_CAN,
+                x=100.0,
+                free_y=100.0,
+            ),
+            Node(
+                key=2,
+                category="neos",
+                label="frontLeft Angle Motor",
+                can_id=1,
+                interface=INTERFACE_CAN,
+                x=200.0,
+                free_y=100.0,
+            ),
+        ]
+        editor._root_extras = {
+            "bridgeConfig": {
+                "byProfile": {
+                    "group_drag_priority": {
+                        "groups": [
+                            {
+                                "name": "krakens",
+                                "members": [
+                                    {"label": "frontLeft Drive Motor", "enabled": True},
+                                    {"label": "frontLeft Angle Motor", "enabled": True},
+                                ],
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+        editor._selected_nodes = set()
+        editor._selected_buses = set()
+        editor._clear_guides = lambda: None
+        editor._selection_rect = None
+        editor._selection_start = None
+        editor._add_bus_mode = False
+        editor._shift_held = TopologyEditor._shift_held.__get__(editor, TopologyEditor)
+        editor._sync_selection_state = lambda: None
+        editor._push_undo = lambda: None
+        editor._bus_hit_test = lambda _cy: None
+        editor._group_overlay_regions = [
+            {
+                "name": "krakens",
+                "bounds": (50.0, 50.0, 260.0, 180.0),
+                "label_bounds": (56.0, 56.0, 130.0, 76.0),
+            }
+        ]
+        editor._bus_offsets = [0.0]
+        editor._box_h = 34
+        editor.canvas = _CanvasStub()
+        editor.canvas.find_overlapping = lambda *_args: (99,)
+        editor.canvas.gettags = lambda _item: ("node_1",)
+
+        editor._on_canvas_press(_PointerEventStub(60, 60))
+
+        self.assertEqual(editor._selected_nodes, {1, 2})
+        self.assertIsNotNone(editor._multi_drag)
 
     def test_schema_v4_label_list_profile_loads_registry_devices(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)
@@ -1061,9 +1404,27 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         self.assertEqual(
             topology["nodes"],
             [
-                {"key": 1, "nodeType": "device", "deviceRef": "roborio", "layout": {"bus": 0, "row": 0, "x": 10.0}},
-                {"key": 2, "nodeType": "device", "deviceRef": "motor1", "layout": {"bus": 0, "row": 0, "x": 30.0}},
-                {"key": 3, "nodeType": "device", "deviceRef": "lsw1", "layout": {"bus": 0, "row": 1, "x": 50.0}},
+                {
+                    "key": 1,
+                    "objectType": "device",
+                    "nodeType": "device",
+                    "deviceRef": "roborio",
+                    "layout": {"bus": 0, "row": 0, "x": 10.0},
+                },
+                {
+                    "key": 2,
+                    "objectType": "device",
+                    "nodeType": "device",
+                    "deviceRef": "motor1",
+                    "layout": {"bus": 0, "row": 0, "x": 30.0},
+                },
+                {
+                    "key": 3,
+                    "objectType": "device",
+                    "nodeType": "device",
+                    "deviceRef": "lsw1",
+                    "layout": {"bus": 0, "row": 1, "x": 50.0},
+                },
             ],
         )
         self.assertEqual(
@@ -1191,8 +1552,52 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
         topology = editor._topology_snapshot()
 
+        self.assertEqual(topology["nodes"][0]["objectType"], "device")
         self.assertEqual(topology["nodes"][0]["nodeType"], "device")
         self.assertEqual(topology["nodes"][0]["deviceRef"], "driveMotor")
+
+    def test_apply_topology_snapshot_accepts_object_type_without_legacy_node_type(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor._nodes = [
+            Node(key=10, category="roborio", label="roborio", can_id=0, x=0.0, bus_index=0),
+            Node(key=11, category="pdp", label="PDP", can_id=1, x=20.0, bus_index=0),
+        ]
+        editor._connection_filter_vars = {
+            "can": _BoolVarStub(True),
+            "power": _BoolVarStub(True),
+            "dio": _BoolVarStub(True),
+            "pwm": _BoolVarStub(True),
+            "analog": _BoolVarStub(True),
+            "virtual": _BoolVarStub(True),
+        }
+        editor._ensure_bus_connectors = lambda _count: None
+        editor._editor_category_for_topology_node = lambda entry: "devices"
+        editor._normalize_tags = lambda value: []
+        editor._mark_neighbors_current = lambda: None
+        editor._prune_attachment_links = lambda: False
+        editor._prune_power_links = lambda: False
+        editor._prune_dio_wiring_links = lambda: False
+        editor._ensure_dio_wiring_links = lambda: False
+        editor._rebuild_attachment_links_from_registry = lambda: None
+        editor._restore_missing_cannect_bus_links = lambda: None
+        editor._restore_legacy_cannect_free_y_mode = lambda: None
+        editor._fix_cannect_conflicts = lambda notify=False: None
+        editor._apply_cannect_free_float = lambda: None
+        editor._resolve_overlaps = lambda: None
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+
+        editor._apply_topology_snapshot(
+            {
+                "nodes": [
+                    {"key": 1, "objectType": "device", "deviceRef": "roborio", "layout": {"bus": 0, "row": 0, "x": 0.0}},
+                    {"key": 2, "objectType": "device", "deviceRef": "PDP", "layout": {"bus": 0, "row": 0, "x": 20.0}},
+                ],
+                "edges": [],
+                "view": {},
+            }
+        )
+
+        self.assertEqual([node.key for node in editor._nodes], [1, 2])
 
     def test_generated_profile_payload_validates_after_registry_update(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)
@@ -1230,7 +1635,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         editor._sync_attachment_links_to_registry = lambda: None
         editor._apply_node_updates_to_registry()
         payload = {
-            "schema_version": 4,
+            "schema_version": 5,
             "data_version": "test",
             "data_hash": "test",
             "default_profile": "demo",
@@ -1611,25 +2016,31 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
     def test_mouse_wheel_zooms_without_ctrl_modifier(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)
-        deltas: list[float] = []
-        editor._zoom_step = lambda delta: deltas.append(delta)
+        calls: list[tuple[float, float, float]] = []
+        editor.canvas = _CanvasStub(width=1000, height=500)
+        editor._zoom_step = lambda delta, anchor_x=None, anchor_y=None: calls.append(
+            (delta, float(anchor_x), float(anchor_y))
+        )
 
-        result = editor._on_zoom_wheel(_WheelEventStub(delta=120))
+        result = editor._on_zoom_wheel(_WheelEventStub(delta=120, x=123, y=234))
 
         self.assertEqual(result, "break")
-        self.assertEqual(deltas, [0.1])
+        self.assertEqual(calls, [(0.1, 123.0, 234.0)])
 
     def test_linux_mouse_wheel_buttons_zoom(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)
-        deltas: list[float] = []
-        editor._zoom_step = lambda delta: deltas.append(delta)
+        calls: list[tuple[float, float, float]] = []
+        editor.canvas = _CanvasStub(width=1000, height=500)
+        editor._zoom_step = lambda delta, anchor_x=None, anchor_y=None: calls.append(
+            (delta, float(anchor_x), float(anchor_y))
+        )
 
-        result_up = editor._on_zoom_wheel(_WheelEventStub(num=4))
-        result_down = editor._on_zoom_wheel(_WheelEventStub(num=5))
+        result_up = editor._on_zoom_wheel(_WheelEventStub(num=4, x=111, y=222))
+        result_down = editor._on_zoom_wheel(_WheelEventStub(num=5, x=333, y=444))
 
         self.assertEqual(result_up, "break")
         self.assertEqual(result_down, "break")
-        self.assertEqual(deltas, [0.1, -0.1])
+        self.assertEqual(calls, [(0.1, 111.0, 222.0), (-0.1, 333.0, 444.0)])
 
     def test_middle_mouse_drag_pans_canvas(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)
@@ -1689,10 +2100,86 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         self.assertEqual(clear_calls, [True])
         self.assertEqual(editor._selected_nodes, set())
 
+    def test_empty_canvas_click_with_no_selection_is_no_op(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor.canvas = _CanvasStub()
+        editor._clear_guides = lambda: None
+        editor._selection_rect = None
+        editor._selection_start = None
+        editor._add_bus_mode = False
+        editor._selected_nodes = set()
+        editor._selected_buses = set()
+        editor._bus_hit_test = lambda _cy: None
+        editor._pan_drag = None
+        editor._tag_to_key = TopologyEditor._tag_to_key
+        editor._shift_held = TopologyEditor._shift_held.__get__(editor, TopologyEditor)
+        clear_calls: list[bool] = []
+        editor._clear_selection = lambda: clear_calls.append(True)
+
+        editor._on_canvas_press(_PointerEventStub(20, 30))
+
+        self.assertEqual(clear_calls, [])
+
+    def test_clicking_already_selected_single_node_does_not_reselect(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor.canvas = _CanvasStub()
+        editor._clear_guides = lambda: None
+        editor._selection_rect = None
+        editor._selection_start = None
+        editor._add_bus_mode = False
+        editor._selected_nodes = {7}
+        editor._selected_buses = set()
+        editor._bus_hit_test = lambda _cy: None
+        editor._pan_drag = None
+        editor._shift_held = TopologyEditor._shift_held.__get__(editor, TopologyEditor)
+        editor._tag_to_key = lambda _tags: 7
+        editor.canvas.find_overlapping = lambda *_args: (1,)
+        editor.canvas.gettags = lambda _item: ("node_7",)
+        editor._nodes = [Node(key=7, category="krakens", label="motor7", can_id=7)]
+        selection_calls: list[int] = []
+        editor._set_single_node_selection = lambda key: selection_calls.append(key)
+        editor._is_swyft_node = lambda _node: False
+        editor._push_undo = lambda: None
+        editor._drag_undo_pending = False
+
+        editor._on_canvas_press(_PointerEventStub(20, 30))
+
+        self.assertEqual(selection_calls, [])
+        self.assertEqual(editor._drag_state, (7, 20.0, 30.0))
+
+    def test_drag_start_does_not_hide_node_details_panel(self) -> None:
+        editor = self._headless_editor("robot_2026_swerve")
+        panel = _PanelStub()
+        editor._node_details_panel = panel
+        editor._dragging_active = False
+        editor._selection_start = None
+        editor._selection_rect = None
+        editor._multi_drag = None
+        editor._pan_drag = None
+        editor._bus_drag = None
+        editor._bus_resize = None
+        editor._bus_connector_drag = None
+        editor._drag_state = (7, 20.0, 30.0)
+        editor._nodes = [Node(key=7, category="krakens", label="motor7", can_id=7, x=100.0)]
+        editor._selected_nodes = {7}
+        editor._guide_x = None
+        editor._guide_bus = None
+        editor._snap_to_grid_var = _BoolVarStub(False)
+        editor._apply_smart_guides = lambda node, x, _selected: (x, None)
+        editor._is_dio_node = lambda _node: False
+        editor._redraw_canvas = lambda: None
+
+        editor._on_canvas_drag(_PointerEventStub(30, 30))
+
+        self.assertEqual(panel.pack_forget_calls, 0)
+        self.assertTrue(editor._dragging_active)
+
     def test_preserve_canvas_view_restores_view_after_layout_change(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)
         editor.canvas = _CanvasStub()
         editor.update_idletasks = lambda: None
+        start_left = editor.canvas.canvasx(0.0)
+        start_top = editor.canvas.canvasy(0.0)
 
         def shift_view() -> None:
             editor.canvas.xview_range = (0.45, 0.95)
@@ -1700,8 +2187,8 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
         editor._preserve_canvas_view(shift_view)
 
-        self.assertEqual(editor.canvas.xview_value, 0.2)
-        self.assertEqual(editor.canvas.yview_value, 0.3)
+        self.assertAlmostEqual(editor.canvas.canvasx(0.0), start_left)
+        self.assertAlmostEqual(editor.canvas.canvasy(0.0), start_top)
 
     def test_fit_to_window_then_empty_click_preserves_view_and_clears_selection(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)
@@ -1751,6 +2238,8 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         editor._fit_to_window()
         fit_xview = editor.canvas.xview_value
         fit_yview = editor.canvas.yview_value
+        fit_left = editor.canvas.canvasx(0.0)
+        fit_top = editor.canvas.canvasy(0.0)
         editor.canvas.xview_range = (fit_xview, min(1.0, fit_xview + 0.5))
         editor.canvas.yview_range = (fit_yview, min(1.0, fit_yview + 0.5))
 
@@ -1769,8 +2258,8 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         editor._on_canvas_press(_PointerEventStub(20, 30))
 
         self.assertEqual(editor._selected_nodes, set())
-        self.assertEqual(editor.canvas.xview_value, fit_xview)
-        self.assertEqual(editor.canvas.yview_value, fit_yview)
+        self.assertAlmostEqual(editor.canvas.canvasx(0.0), fit_left)
+        self.assertAlmostEqual(editor.canvas.canvasy(0.0), fit_top)
 
     def test_apply_topology_snapshot_restores_attachment_links(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)

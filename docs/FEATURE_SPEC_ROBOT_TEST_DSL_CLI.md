@@ -342,7 +342,7 @@ Warnings:
 
 The following old local authoring patterns are removed:
 
-- `test create ...`
+- historical: `test create ...` (removed)
 - `type composite`
 - `device add ...` in test edit mode
 - `command ...`

@@ -442,12 +442,12 @@ public class RobotV2 extends TimedRobot {
       }
       bridgeGroups().createGroup(group.name);
       for (BringupUtil.BridgeProfileMemberConfig member : group.members) {
-        if (member == null || member.device == null || member.device.isBlank()) {
+        if (member == null || member.label == null || member.label.isBlank()) {
           continue;
         }
-        bridgeGroups().addDevice(group.name, member.device, true);
+        bridgeGroups().addMember(group.name, member.label, true);
         if (!member.enabled) {
-          bridgeGroups().setMemberEnabled(group.name, member.device, false);
+          bridgeGroups().setMemberEnabled(group.name, member.label, false);
         }
       }
       for (BringupUtil.BridgeProfileBindingConfig binding : group.bindings) {

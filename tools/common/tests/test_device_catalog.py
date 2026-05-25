@@ -22,7 +22,7 @@ class DeviceCatalogControllerNamesTests(unittest.TestCase):
             profiles_path.write_text(
                 json.dumps(
                     {
-                        "schema_version": 4,
+                        "schema_version": 5,
                         "data_version": "test",
                         "data_hash": "test",
                         "default_profile": "demo",

@@ -14,7 +14,7 @@ DESCRIPTION
 
 from typing import Dict
 
-PROFILE_SCHEMA_VERSION = 4
+PROFILE_SCHEMA_VERSION = 5
 BRIDGE_CONFIG_SCHEMA_VERSION = 2
 
 KEY_SCHEMA_VERSION = "schema_version"
@@ -63,6 +63,7 @@ KEY_LINK_NEIGHBOR_PORT = "neighborPort"
 KEY_LINK_DEVICE = "device"
 KEY_DEVICE_LINKS = "deviceLinks"
 KEY_NODE_KEY = "key"
+KEY_OBJECT_TYPE = "objectType"
 KEY_NODE_TYPE = "nodeType"
 KEY_DEVICE_REF = "deviceRef"
 KEY_CATEGORY = "category"
@@ -73,6 +74,7 @@ KEY_FROM_PORT = "fromPort"
 KEY_TO_NODE = "toNode"
 KEY_TO_PORT = "toPort"
 KEY_EDGE_TYPE = "edgeType"
+KEY_GROUPED = "grouped"
 NEIGHBOR_PORT_LEFT = "left"
 NEIGHBOR_PORT_RIGHT = "right"
 NEIGHBOR_PORT_NEXT = "next"
@@ -177,3 +179,56 @@ def get_device_interface(entry: Dict[str, object]) -> object:
     if value is not None:
         return value
     return entry.get(KEY_INTERFACE_LEGACY)
+
+
+def get_object_type(entry: Dict[str, object]) -> str:
+    """
+    NAME
+        get_object_type - Read the canonical object type with compatibility fallback.
+
+    DESCRIPTION
+        The canonical JSON key is objectType. For compatibility with existing
+        topology and diagram payloads, accept the legacy key 'nodeType' when
+        objectType is absent.
+    """
+    value = entry.get(KEY_OBJECT_TYPE)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    legacy = entry.get(KEY_NODE_TYPE)
+    if isinstance(legacy, str) and legacy.strip():
+        return legacy.strip()
+    return ""
+
+
+def get_group_member_label(entry: Dict[str, object]) -> str:
+    """
+    NAME
+        get_group_member_label - Read a group member label with compatibility fallback.
+
+    DESCRIPTION
+        The canonical JSON key for group members is label. For compatibility
+        with older bridge group payloads, accept the legacy key 'device' when
+        label is absent.
+    """
+    value = entry.get(KEY_LABEL)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    legacy = entry.get(KEY_DEVICE)
+    if isinstance(legacy, str) and legacy.strip():
+        return legacy.strip()
+    return ""
+
+
+def make_group_member(label: str, enabled: bool = True) -> Dict[str, object]:
+    """
+    NAME
+        make_group_member - Build a canonical group member entry.
+
+    DESCRIPTION
+        Group membership is persisted by shared object label. Runtime behavior
+        is resolved later from the label against the object registry.
+    """
+    return {
+        KEY_LABEL: str(label).strip(),
+        KEY_ENABLED: bool(enabled),
+    }

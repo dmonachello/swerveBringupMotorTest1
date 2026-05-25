@@ -17,10 +17,27 @@
         "backRight Encoder",
         "roborio",
         "pdh",
-        "lmtSw0",
-        "controller0"
-      ],
-      "dslTestSet": "robot_2026_swerve"
+        "lmtSw0"
+      ]
+    },
+    "2026_no_swyfts": {
+      "devices": [
+        "frontLeft Drive Motor",
+        "frontLeft Angle Motor",
+        "frontLeft Encoder",
+        "frontRight Drive Motor",
+        "frontRight Angle Motor",
+        "frontRight Encoder",
+        "backLeft Drive Motor",
+        "backLeft Angle Motor",
+        "backLeft Encoder",
+        "backRight Drive Motor",
+        "backRight Angle Motor",
+        "backRight Encoder",
+        "roborio",
+        "pdh",
+        "lmtSw0"
+      ]
     }
   },
   "devices": [
@@ -171,11 +188,20 @@
       "deviceType": 1,
       "model": "Xbox Controller",
       "type": "xboxController"
+    },
+    {
+      "label": "controller1",
+      "deviceInterface": "USB",
+      "deviceType": 1,
+      "id": 1,
+      "manufacturer": 1,
+      "model": "Xbox Controller",
+      "type": "xboxController"
     }
   ],
-  "data_version": "2026-05-16_171140",
-  "data_hash": "13e298288d1508db5f94ff6a0444da43a6312594189faa2038d89c3dce58fe91",
-  "default_profile": "robot_2026_swerve",
+  "data_version": "2026-05-25_134322",
+  "data_hash": "0b7031905bba7fe4fdaaad30b79332262d0ffdc237afe75091c157a1e7251eb6",
+  "default_profile": "2026_no_swyfts",
   "bridgeConfig": {
     "schemaVersion": 2,
     "generatedAt": null,
@@ -187,51 +213,51 @@
             "enabled": true,
             "members": [
               {
-                "device": "frontLeft Drive Motor",
+                "label": "frontLeft Drive Motor",
                 "enabled": true
               },
               {
-                "device": "frontLeft Angle Motor",
+                "label": "frontLeft Angle Motor",
                 "enabled": true
               },
               {
-                "device": "frontLeft Encoder",
+                "label": "frontLeft Encoder",
                 "enabled": true
               },
               {
-                "device": "frontRight Drive Motor",
+                "label": "frontRight Drive Motor",
                 "enabled": true
               },
               {
-                "device": "frontRight Angle Motor",
+                "label": "frontRight Angle Motor",
                 "enabled": true
               },
               {
-                "device": "frontRight Encoder",
+                "label": "frontRight Encoder",
                 "enabled": true
               },
               {
-                "device": "backLeft Drive Motor",
+                "label": "backLeft Drive Motor",
                 "enabled": true
               },
               {
-                "device": "backLeft Angle Motor",
+                "label": "backLeft Angle Motor",
                 "enabled": true
               },
               {
-                "device": "backLeft Encoder",
+                "label": "backLeft Encoder",
                 "enabled": true
               },
               {
-                "device": "backRight Drive Motor",
+                "label": "backRight Drive Motor",
                 "enabled": true
               },
               {
-                "device": "backRight Angle Motor",
+                "label": "backRight Angle Motor",
                 "enabled": true
               },
               {
-                "device": "backRight Encoder",
+                "label": "backRight Encoder",
                 "enabled": true
               }
             ],
@@ -242,19 +268,19 @@
             "enabled": true,
             "members": [
               {
-                "device": "frontLeft Drive Motor",
+                "label": "frontLeft Drive Motor",
                 "enabled": false
               },
               {
-                "device": "frontRight Drive Motor",
+                "label": "frontRight Drive Motor",
                 "enabled": false
               },
               {
-                "device": "backLeft Drive Motor",
+                "label": "backLeft Drive Motor",
                 "enabled": false
               },
               {
-                "device": "backRight Drive Motor",
+                "label": "backRight Drive Motor",
                 "enabled": false
               }
             ],
@@ -270,19 +296,19 @@
             "enabled": true,
             "members": [
               {
-                "device": "frontLeft Angle Motor",
+                "label": "frontLeft Angle Motor",
                 "enabled": false
               },
               {
-                "device": "frontRight Angle Motor",
+                "label": "frontRight Angle Motor",
                 "enabled": false
               },
               {
-                "device": "backLeft Angle Motor",
+                "label": "backLeft Angle Motor",
                 "enabled": false
               },
               {
-                "device": "backRight Angle Motor",
+                "label": "backRight Angle Motor",
                 "enabled": false
               }
             ],
@@ -292,6 +318,98 @@
                 "kind": "analog"
               }
             ]
+          },
+          {
+            "name": "frontLeft",
+            "enabled": true,
+            "members": [
+              {
+                "label": "frontLeft Drive Motor",
+                "enabled": true
+              },
+              {
+                "label": "frontLeft Angle Motor",
+                "enabled": true
+              },
+              {
+                "label": "frontLeft Encoder",
+                "enabled": true
+              },
+              {
+                "label": "cannect 3",
+                "enabled": true
+              }
+            ],
+            "bindings": []
+          },
+          {
+            "name": "frontRight",
+            "enabled": true,
+            "members": [
+              {
+                "label": "frontRight Drive Motor",
+                "enabled": true
+              },
+              {
+                "label": "frontRight Angle Motor",
+                "enabled": true
+              },
+              {
+                "label": "frontRight Encoder",
+                "enabled": true
+              },
+              {
+                "label": "cannect 4",
+                "enabled": true
+              }
+            ],
+            "bindings": []
+          },
+          {
+            "name": "backLeft",
+            "enabled": true,
+            "members": [
+              {
+                "label": "backLeft Drive Motor",
+                "enabled": true
+              },
+              {
+                "label": "backLeft Angle Motor",
+                "enabled": true
+              },
+              {
+                "label": "backLeft Encoder",
+                "enabled": true
+              },
+              {
+                "label": "cannect 2",
+                "enabled": true
+              }
+            ],
+            "bindings": []
+          },
+          {
+            "name": "backRight",
+            "enabled": true,
+            "members": [
+              {
+                "label": "backRight Drive Motor",
+                "enabled": true
+              },
+              {
+                "label": "backRight Angle Motor",
+                "enabled": true
+              },
+              {
+                "label": "backRight Encoder",
+                "enabled": true
+              },
+              {
+                "label": "CANnect 1",
+                "enabled": true
+              }
+            ],
+            "bindings": []
           }
         ],
         "selectedDevice": {
@@ -331,6 +449,262 @@
             ]
           }
         }
+      },
+      "2026_no_swyfts": {
+        "groups": [
+          {
+            "name": "driveTrain",
+            "enabled": true,
+            "members": [
+              {
+                "label": "frontLeft Drive Motor",
+                "enabled": true
+              },
+              {
+                "label": "frontLeft Angle Motor",
+                "enabled": true
+              },
+              {
+                "label": "frontLeft Encoder",
+                "enabled": true
+              },
+              {
+                "label": "frontRight Drive Motor",
+                "enabled": true
+              },
+              {
+                "label": "frontRight Angle Motor",
+                "enabled": true
+              },
+              {
+                "label": "frontRight Encoder",
+                "enabled": true
+              },
+              {
+                "label": "backLeft Drive Motor",
+                "enabled": true
+              },
+              {
+                "label": "backLeft Angle Motor",
+                "enabled": true
+              },
+              {
+                "label": "backLeft Encoder",
+                "enabled": true
+              },
+              {
+                "label": "backRight Drive Motor",
+                "enabled": true
+              },
+              {
+                "label": "backRight Angle Motor",
+                "enabled": true
+              },
+              {
+                "label": "backRight Encoder",
+                "enabled": true
+              }
+            ],
+            "bindings": []
+          },
+          {
+            "name": "krakens",
+            "enabled": true,
+            "members": [
+              {
+                "label": "frontLeft Drive Motor",
+                "enabled": false
+              },
+              {
+                "label": "frontRight Drive Motor",
+                "enabled": false
+              },
+              {
+                "label": "backLeft Drive Motor",
+                "enabled": false
+              },
+              {
+                "label": "backRight Drive Motor",
+                "enabled": false
+              }
+            ],
+            "bindings": [
+              {
+                "input": "leftDrive",
+                "kind": "analog"
+              }
+            ]
+          },
+          {
+            "name": "neos",
+            "enabled": true,
+            "members": [
+              {
+                "label": "frontLeft Angle Motor",
+                "enabled": false
+              },
+              {
+                "label": "frontRight Angle Motor",
+                "enabled": false
+              },
+              {
+                "label": "backLeft Angle Motor",
+                "enabled": false
+              },
+              {
+                "label": "backRight Angle Motor",
+                "enabled": false
+              }
+            ],
+            "bindings": [
+              {
+                "input": "rightDrive",
+                "kind": "analog"
+              }
+            ]
+          },
+          {
+            "name": "frontLeft",
+            "enabled": true,
+            "members": [
+              {
+                "label": "frontLeft Drive Motor",
+                "enabled": true
+              },
+              {
+                "label": "frontLeft Angle Motor",
+                "enabled": true
+              },
+              {
+                "label": "frontLeft Encoder",
+                "enabled": true
+              }
+            ],
+            "bindings": []
+          },
+          {
+            "name": "frontRight",
+            "enabled": true,
+            "members": [
+              {
+                "label": "frontRight Drive Motor",
+                "enabled": true
+              },
+              {
+                "label": "frontRight Angle Motor",
+                "enabled": true
+              },
+              {
+                "label": "frontRight Encoder",
+                "enabled": true
+              }
+            ],
+            "bindings": []
+          },
+          {
+            "name": "backLeft",
+            "enabled": true,
+            "members": [
+              {
+                "label": "backLeft Drive Motor",
+                "enabled": true
+              },
+              {
+                "label": "backLeft Angle Motor",
+                "enabled": true
+              },
+              {
+                "label": "backLeft Encoder",
+                "enabled": true
+              }
+            ],
+            "bindings": []
+          },
+          {
+            "name": "backRight",
+            "enabled": true,
+            "members": [
+              {
+                "label": "backRight Drive Motor",
+                "enabled": true
+              },
+              {
+                "label": "backRight Angle Motor",
+                "enabled": true
+              },
+              {
+                "label": "backRight Encoder",
+                "enabled": true
+              }
+            ],
+            "bindings": []
+          }
+        ],
+        "selectedDevice": {
+          "device": "",
+          "enabled": false
+        },
+        "tests": {
+          "default_test_set": "2026_no_swyfts",
+          "test_sets": {
+            "robot_2026_swerve": [
+              {
+                "name": "Swerve Krakens Left Joystick",
+                "enabled": true,
+                "motorLabels": [
+                  "frontLeft Drive Motor",
+                  "frontRight Drive Motor",
+                  "backLeft Drive Motor",
+                  "backRight Drive Motor"
+                ],
+                "type": "joystick",
+                "inputSource": "controller0.leftY",
+                "deadband": 0.12
+              },
+              {
+                "name": "Swerve NEOs Right Joystick",
+                "enabled": true,
+                "motorLabels": [
+                  "frontLeft Angle Motor",
+                  "frontRight Angle Motor",
+                  "backLeft Angle Motor",
+                  "backRight Angle Motor"
+                ],
+                "type": "joystick",
+                "inputSource": "controller0.rightY",
+                "deadband": 0.12
+              }
+            ],
+            "2026_no_swyfts": [
+              {
+                "name": "Swerve Krakens Left Joystick",
+                "enabled": true,
+                "motorLabels": [
+                  "frontLeft Drive Motor",
+                  "frontRight Drive Motor",
+                  "backLeft Drive Motor",
+                  "backRight Drive Motor"
+                ],
+                "type": "joystick",
+                "inputSource": "controller0.leftY",
+                "deadband": 0.12
+              },
+              {
+                "name": "Swerve NEOs Right Joystick",
+                "enabled": true,
+                "motorLabels": [
+                  "frontLeft Angle Motor",
+                  "frontRight Angle Motor",
+                  "backLeft Angle Motor",
+                  "backRight Angle Motor"
+                ],
+                "type": "joystick",
+                "inputSource": "controller0.rightY",
+                "deadband": 0.12
+              }
+            ]
+          }
+        }
       }
     }
   },
@@ -339,6 +713,11 @@
     "defaultSet": "robot_2026_swerve",
     "testSets": {
       "robot_2026_swerve": [
+        "Swerve Krakens Left Joystick",
+        "Swerve NEOs Right Joystick",
+        "Swerve NEOs Right Joystick Until B"
+      ],
+      "2026_no_swyfts": [
         "Swerve Krakens Left Joystick",
         "Swerve NEOs Right Joystick",
         "Swerve NEOs Right Joystick Until B"
@@ -891,196 +1270,212 @@
         "nodes": [
           {
             "key": 3,
+            "objectType": "device",
             "nodeType": "device",
             "deviceRef": "frontLeft Drive Motor",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 93.78917200035471,
-              "y": 57.54138499118162,
+              "x": 236.9790798089534,
+              "y": 263.4215022375192,
               "yRelative": false
             }
           },
           {
             "key": 4,
+            "objectType": "device",
             "nodeType": "device",
             "deviceRef": "frontLeft Angle Motor",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 258.41364633305875,
-              "y": 60.02784718105283,
+              "x": 399.6732144097972,
+              "y": 264.7858037264532,
               "yRelative": false
             }
           },
           {
             "key": 5,
+            "objectType": "device",
             "nodeType": "device",
             "deviceRef": "frontLeft Encoder",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 416.81386169558675,
-              "y": 64.99626067710447,
+              "x": 551.2265252684641,
+              "y": 259.045578649254,
               "yRelative": false
             }
           },
           {
             "key": 6,
+            "objectType": "device",
             "nodeType": "device",
             "deviceRef": "frontRight Drive Motor",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 591.937065648567,
-              "y": 65.20432054144837,
+              "x": 863.7359693162764,
+              "y": 130.64006759477434,
               "yRelative": false
             }
           },
           {
             "key": 7,
+            "objectType": "device",
             "nodeType": "device",
             "deviceRef": "frontRight Angle Motor",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 746.0356964780434,
-              "y": 64.91155263458536,
+              "x": 1019.1989016346869,
+              "y": 125.12231873525664,
               "yRelative": false
             }
           },
           {
             "key": 8,
+            "objectType": "device",
             "nodeType": "device",
             "deviceRef": "frontRight Encoder",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 897.2640577519443,
-              "y": 62.72011379342254,
+              "x": 1166.0513393203228,
+              "y": 116.3669945116961,
               "yRelative": false
             }
           },
           {
             "key": 9,
+            "objectType": "device",
             "nodeType": "device",
             "deviceRef": "backLeft Drive Motor",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 111.56589136923523,
-              "y": 470.2707730217912,
+              "x": 229.00280324319183,
+              "y": 495.9497020515211,
               "yRelative": false
             }
           },
           {
             "key": 10,
+            "objectType": "device",
             "nodeType": "device",
             "deviceRef": "backLeft Angle Motor",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 261.56589136923526,
-              "y": 472.72749556959246,
+              "x": 392.13057400798743,
+              "y": 495.9497020515211,
               "yRelative": false
             }
           },
           {
             "key": 11,
+            "objectType": "device",
             "nodeType": "device",
             "deviceRef": "backLeft Encoder",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 411.56589136923526,
-              "y": 475.18421811739375,
+              "x": 550.8824211845179,
+              "y": 485.0098930808582,
               "yRelative": false
             }
           },
           {
             "key": 12,
+            "objectType": "device",
             "nodeType": "device",
             "deviceRef": "backRight Drive Motor",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 596.8959475717021,
-              "y": 477.640940665195,
+              "x": 840.8935062604052,
+              "y": 547.9042070516175,
               "yRelative": false
             }
           },
           {
             "key": 13,
+            "objectType": "device",
             "nodeType": "device",
             "deviceRef": "backRight Angle Motor",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 753.3630409394563,
-              "y": 478.86930193909564,
+              "x": 993.8114560214912,
+              "y": 543.1018118537655,
               "yRelative": false
             }
           },
           {
             "key": 14,
+            "objectType": "device",
             "nodeType": "device",
             "deviceRef": "backRight Encoder",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 904.6692024657967,
-              "y": 478.86930193909564,
+              "x": 1139.5133326856653,
+              "y": 533.6586181687638,
               "yRelative": false
             }
           },
           {
             "key": 34,
+            "objectType": "device",
             "nodeType": "device",
             "deviceRef": "roborio",
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 74.35379479239774,
-              "y": -68.28311219495697,
+              "x": 135.65116914653316,
+              "y": -67.8268156181102,
               "yRelative": true
             }
           },
           {
             "key": 18,
+            "objectType": "device",
             "nodeType": "device",
             "deviceRef": "pdh",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1167.3996371333114,
-              "y": 49.63957009950292,
+              "x": 1415.5286144612378,
+              "y": 49.748631592975244,
               "yRelative": true
             }
           },
           {
             "key": 35,
+            "objectType": "device",
             "nodeType": "device",
             "deviceRef": "lmtSw0",
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 173.99098256247217,
-              "y": -18.660194903198544,
+              "x": 301.4665474480155,
+              "y": -97.02640116160781,
               "yRelative": true
             }
           },
           {
             "key": 16,
-            "label": "CANnect Direct",
+            "label": "CANnect 1",
             "category": "cannect_direct",
+            "objectType": "junction",
             "nodeType": "junction",
             "vendor": "SWYFT",
             "model": "",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 750.9666530025316,
-              "y": 383.06638020185903,
+              "x": 990.3210871875002,
+              "y": 426.5132530722693,
               "yRelative": false
             }
           },
@@ -1088,29 +1483,31 @@
             "key": 17,
             "label": "inject",
             "category": "cannect_inject",
+            "objectType": "junction",
             "nodeType": "junction",
             "vendor": "SWYFT",
             "model": "",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1100.8345890607604,
-              "y": 382.1379650761637,
-              "yRelative": false
+              "x": 1355.1053727581896,
+              "y": 133.81739286609002,
+              "yRelative": true
             }
           },
           {
             "key": 19,
             "label": "cannect 2",
             "category": "cannect_direct",
+            "objectType": "junction",
             "nodeType": "junction",
             "vendor": "SWYFT",
             "model": "Wiring",
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 224.07155048020635,
-              "y": 379.4760575759854,
+              "x": 340.6848020489645,
+              "y": 374.0953713707164,
               "yRelative": false
             }
           },
@@ -1118,14 +1515,15 @@
             "key": 20,
             "label": "cannect 3",
             "category": "cannect_direct",
+            "objectType": "junction",
             "nodeType": "junction",
             "vendor": "SWYFT",
             "model": "Wiring",
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 259.2029499942213,
-              "y": 186.04220468284757,
+              "x": 390.30827381670895,
+              "y": 162.79035392210903,
               "yRelative": false
             }
           },
@@ -1133,14 +1531,15 @@
             "key": 21,
             "label": "cannect 4",
             "category": "cannect_direct",
+            "objectType": "junction",
             "nodeType": "junction",
             "vendor": "SWYFT",
             "model": "Wiring",
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 753.7690828775711,
-              "y": 193.05177208487964,
+              "x": 1025.8383071371484,
+              "y": 232.47690114129142,
               "yRelative": false
             }
           }
@@ -1150,21 +1549,21 @@
             "id": "edge_1",
             "fromNode": 34,
             "fromPort": "right",
-            "toNode": 3,
-            "toPort": "left",
-            "edgeType": "can_trunk"
-          },
-          {
-            "id": "edge_2",
-            "fromNode": 3,
-            "fromPort": "right",
             "toNode": 9,
             "toPort": "left",
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_3",
+            "id": "edge_2",
             "fromNode": 9,
+            "fromPort": "right",
+            "toNode": 3,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_3",
+            "fromNode": 3,
             "fromPort": "right",
             "toNode": 19,
             "toPort": "left",
@@ -1174,20 +1573,12 @@
             "id": "edge_4",
             "fromNode": 19,
             "fromPort": "right",
-            "toNode": 4,
-            "toPort": "left",
-            "edgeType": "can_trunk"
-          },
-          {
-            "id": "edge_5",
-            "fromNode": 4,
-            "fromPort": "right",
             "toNode": 20,
             "toPort": "left",
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_6",
+            "id": "edge_5",
             "fromNode": 20,
             "fromPort": "right",
             "toNode": 10,
@@ -1195,8 +1586,16 @@
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_7",
+            "id": "edge_6",
             "fromNode": 10,
+            "fromPort": "right",
+            "toNode": 4,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_7",
+            "fromNode": 4,
             "fromPort": "right",
             "toNode": 11,
             "toPort": "left",
@@ -1214,36 +1613,28 @@
             "id": "edge_9",
             "fromNode": 5,
             "fromPort": "right",
-            "toNode": 6,
-            "toPort": "left",
-            "edgeType": "can_trunk"
-          },
-          {
-            "id": "edge_10",
-            "fromNode": 6,
-            "fromPort": "right",
             "toNode": 12,
             "toPort": "left",
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_11",
+            "id": "edge_10",
             "fromNode": 12,
             "fromPort": "right",
-            "toNode": 7,
+            "toNode": 6,
             "toPort": "left",
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_12",
-            "fromNode": 7,
+            "id": "edge_11",
+            "fromNode": 6,
             "fromPort": "right",
             "toNode": 16,
             "toPort": "left",
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_13",
+            "id": "edge_12",
             "fromNode": 16,
             "fromPort": "right",
             "toNode": 13,
@@ -1251,8 +1642,16 @@
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_14",
+            "id": "edge_13",
             "fromNode": 13,
+            "fromPort": "right",
+            "toNode": 7,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_14",
+            "fromNode": 7,
             "fromPort": "right",
             "toNode": 21,
             "toPort": "left",
@@ -1262,21 +1661,21 @@
             "id": "edge_15",
             "fromNode": 21,
             "fromPort": "right",
-            "toNode": 8,
-            "toPort": "left",
-            "edgeType": "can_trunk"
-          },
-          {
-            "id": "edge_16",
-            "fromNode": 8,
-            "fromPort": "right",
             "toNode": 14,
             "toPort": "left",
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_17",
+            "id": "edge_16",
             "fromNode": 14,
+            "fromPort": "right",
+            "toNode": 8,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_17",
+            "fromNode": 8,
             "fromPort": "right",
             "toNode": 17,
             "toPort": "left",
@@ -1413,7 +1812,7 @@
         ],
         "view": {
           "busOffsets": [
-            -234.80859819716682
+            -53.22870827575842
           ],
           "busCount": 1,
           "busSpacing": 160.0,
@@ -1421,11 +1820,11 @@
             40.0
           ],
           "busRights": [
-            1287.3996371333114
+            1530.124918190166
           ],
           "busConnectors": [],
           "panY": -58.84402399667054,
-          "zoom": 0.8140927439242125,
+          "zoom": 0.9140927439242125,
           "ethernetLinks": [
             {
               "a": 16,
@@ -1511,7 +1910,452 @@
             "analog",
             "can",
             "dio",
-            "power",
+            "pwm",
+            "virtual"
+          ],
+          "callouts": []
+        }
+      },
+      "2026_no_swyfts": {
+        "version": 1,
+        "source": "local",
+        "nodes": [
+          {
+            "key": 3,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "frontLeft Drive Motor",
+            "layout": {
+              "bus": 1,
+              "row": 1,
+              "x": 487.4897955298602,
+              "y": 186.29211453219227,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 4,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "frontLeft Angle Motor",
+            "layout": {
+              "bus": 1,
+              "row": 1,
+              "x": 681.3724427294899,
+              "y": 168.07896619388134,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 5,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "frontLeft Encoder",
+            "layout": {
+              "bus": 1,
+              "row": 1,
+              "x": 831.8317726910906,
+              "y": 195.4284886205387,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 6,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "frontRight Drive Motor",
+            "layout": {
+              "bus": 1,
+              "row": 1,
+              "x": 1209.8405478074283,
+              "y": 195.532609307234,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 7,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "frontRight Angle Motor",
+            "layout": {
+              "bus": 1,
+              "row": 1,
+              "x": 1365.3034801258386,
+              "y": 184.54495596238485,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 8,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "frontRight Encoder",
+            "layout": {
+              "bus": 1,
+              "row": 1,
+              "x": 1515.3034801258386,
+              "y": 181.25953622415574,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 9,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "backLeft Drive Motor",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 795.6936455264881,
+              "y": -70.72218445834235,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 10,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "backLeft Angle Motor",
+            "layout": {
+              "bus": 0,
+              "row": 1,
+              "x": 958.7526420956461,
+              "y": 111.08651543572796,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 11,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "backLeft Encoder",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 1114.2913207766153,
+              "y": -69.62820356127602,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 12,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "backRight Drive Motor",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 1583.8681671693673,
+              "y": -118.08335161676084,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 13,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "backRight Angle Motor",
+            "layout": {
+              "bus": 0,
+              "row": 1,
+              "x": 1739.0781999831654,
+              "y": 79.89789530757103,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 14,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "backRight Encoder",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 1813.817838280868,
+              "y": -114.17582700641219,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 34,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "roborio",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 109.60100507754214,
+              "y": -188.41879460303662,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 18,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "pdh",
+            "layout": {
+              "bus": 1,
+              "row": 1,
+              "x": 53.920015235121625,
+              "y": 90.68090565844074,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 35,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "lmtSw0",
+            "layout": {
+              "bus": 1,
+              "row": 0,
+              "x": 296.89802933292606,
+              "y": -78.6765832153352,
+              "yRelative": true
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "edge_1",
+            "fromNode": 34,
+            "fromPort": "right",
+            "toNode": 9,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_2",
+            "fromNode": 9,
+            "fromPort": "right",
+            "toNode": 10,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_3",
+            "fromNode": 10,
+            "fromPort": "right",
+            "toNode": 11,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_4",
+            "fromNode": 11,
+            "fromPort": "right",
+            "toNode": 12,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_5",
+            "fromNode": 12,
+            "fromPort": "right",
+            "toNode": 13,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_6",
+            "fromNode": 13,
+            "fromPort": "right",
+            "toNode": 14,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_7",
+            "fromNode": 18,
+            "fromPort": "right",
+            "toNode": 3,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_8",
+            "fromNode": 3,
+            "fromPort": "right",
+            "toNode": 4,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_9",
+            "fromNode": 4,
+            "fromPort": "right",
+            "toNode": 5,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_10",
+            "fromNode": 5,
+            "fromPort": "right",
+            "toNode": 6,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_11",
+            "fromNode": 6,
+            "fromPort": "right",
+            "toNode": 7,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_12",
+            "fromNode": 7,
+            "fromPort": "right",
+            "toNode": 8,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_13",
+            "fromNode": 34,
+            "fromPort": "dio",
+            "toNode": 35,
+            "toPort": "dio",
+            "edgeType": "dio"
+          },
+          {
+            "id": "edge_14",
+            "fromNode": 12,
+            "fromPort": "power",
+            "toNode": 18,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_15",
+            "fromNode": 13,
+            "fromPort": "power",
+            "toNode": 18,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_16",
+            "fromNode": 14,
+            "fromPort": "power",
+            "toNode": 18,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_17",
+            "fromNode": 8,
+            "fromPort": "power",
+            "toNode": 18,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_18",
+            "fromNode": 11,
+            "fromPort": "power",
+            "toNode": 18,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_19",
+            "fromNode": 5,
+            "fromPort": "power",
+            "toNode": 18,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_20",
+            "fromNode": 7,
+            "fromPort": "power",
+            "toNode": 18,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_21",
+            "fromNode": 6,
+            "fromPort": "power",
+            "toNode": 18,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_22",
+            "fromNode": 4,
+            "fromPort": "power",
+            "toNode": 18,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_23",
+            "fromNode": 3,
+            "fromPort": "power",
+            "toNode": 18,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_24",
+            "fromNode": 10,
+            "fromPort": "power",
+            "toNode": 18,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_25",
+            "fromNode": 9,
+            "fromPort": "power",
+            "toNode": 18,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_26",
+            "fromNode": 3,
+            "fromPort": "attachment",
+            "toNode": 35,
+            "toPort": "attachment",
+            "edgeType": "virtual"
+          }
+        ],
+        "view": {
+          "busOffsets": [
+            -89.33007787894613,
+            300.78976539202665
+          ],
+          "busCount": 2,
+          "busSpacing": 160.0,
+          "busLefts": [
+            -9.229140367983227,
+            -9.229140367983227
+          ],
+          "busRights": [
+            2209.265498727926,
+            2209.265498727926
+          ],
+          "busConnectors": [
+            true
+          ],
+          "busConnectorSides": [
+            "right"
+          ],
+          "panY": -112.29106148500472,
+          "zoom": 0.727490160937983,
+          "ethernetLinks": [],
+          "canLinks": [],
+          "deviceLinks": [],
+          "connectionFilters": [
+            "analog",
+            "can",
+            "dio",
             "pwm",
             "virtual"
           ],

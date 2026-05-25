@@ -12,7 +12,7 @@ device progression during bringup.
 **Actuation Contract (Important)**
 Purpose: Prevent unexpected movement during bringup.
 
-- `add all` and `add next` instantiate devices only; they do not start motor motion.
+- `instantiate all devices` and `instantiate next motor` instantiate devices only; they do not start motor motion.
 - Motion occurs only while an explicit test is running (`run test ...` / `run all tests`).
 - If no test is active, commands that would directly actuate outputs are blocked.
 
@@ -140,42 +140,38 @@ Expected response: `SOURCE: local` and a profile payload that includes `SPARKMAX
 Why this works: in profile‑backed configs, entering `device "<label>"` automatically ensures the label is
 present in the active profile’s device list.
 
-1. Create a per‑motor button test:
+1. Import a per-motor button test:
 
 ```text
-test create neo25_button
-type button
-device add "SPARKMAX/NEO 25"
-inputSource controller0.A
-duty 0.25
-time timeout 2.0
-time onTimeout pass
-show
-exit
-
+test import neo25_button tools/can_nt/logs/neo25_button.dsl set default
+test validate neo25_button --json --pretty
+end
+show test neo25_button
+show test neo25_button normalized --json --pretty
 ```
 
-Expected response: After `test create`, prompt changes to `bridge(config-test-...)#`. `show` prints the test summary.
-Use `exit` to return to config mode. Do **not** use `end` here, because `end` returns to exec mode and later
-config commands may fail to parse. `exit` may warn: `WARNING: Unsaved changes in: profiles, tests.`
-
-1. Create a composite “all motors” test:
+Create `tools\can_nt\logs\neo25_button.dsl` with:
 
 ```text
-test create all_motors
-type composite
-device add "SPARKMAX/NEO 25"
-inputSource controller0.X
-duty 0.25
-time timeout 2.0
-time onTimeout pass
-show
-exit
+test "neo25_button"
+device "SPARKMAX/NEO 25"
+device "controller0"
 
+main:
+    set "SPARKMAX/NEO 25".output = 0.25
+    until timer.elapsed >= 2.0
 ```
 
-Expected response: Same as above, with the composite test summary printed by `show`. Use `exit` (not `end`)
-to stay in config mode. `exit` may warn: `WARNING: Unsaved changes in: profiles, tests.`
+1. Import an “all motors” test:
+
+```text
+test import all_motors tools/can_nt/logs/all_motors.dsl set default
+test validate all_motors --json --pretty
+end
+show test all_motors normalized --json --pretty
+```
+
+Expected response: Same as above, with normalized imported test output available through `show test ... normalized --json --pretty`.
 
 1. Save the unified config locally (do not save legacy test files):
 
@@ -317,7 +313,7 @@ Purpose: Run tests via the CLI.
 Driver Station: Enabled (teleop).
 
 ```text
-add all
+instantiate all devices
 active show --json
 active add
 active show
@@ -329,7 +325,7 @@ run test all_motors
 
 Expected response:
 
-- `add all` acknowledges device instantiation.
+- `instantiate all devices` acknowledges device instantiation.
 - `active show` prints the runtime `active-group` contents.
 - `active add` grows `active-group` with the next ready device.
 - `active next` rotates to the next ready device (wrap warning appears when list wraps).
@@ -358,7 +354,7 @@ exit
 5. Refresh runtime active-group membership:
 
 ```text
-add all
+instantiate all devices
 active add
 active show
 ```
@@ -391,7 +387,7 @@ Purpose: Confirm the system is consistent after each cycle.
 1. `data\bringup_system.json` matches `src\main\deploy\bringup_system.json`.
 2. `config push` succeeds and reports `active=home_042126V1`.
 3. `show devices robot` includes the new device.
-4. `add all` does not cause motor motion before a test starts.
+4. `instantiate all devices` does not cause motor motion before a test starts.
 5. `active show`, `active add`, and `active next` update/print `active-group` as expected.
 6. Both `neo25_button` and `all_motors` execute without safety stops.
 
@@ -431,7 +427,7 @@ Expected: `SOURCE: robot` payloads with active profile and devices.
 ### A3) Instantiate and inspect active-group
 
 ```text
-add all
+instantiate all devices
 active show --json
 active add
 active show
@@ -441,7 +437,7 @@ active show
 
 Expected:
 
-- `add all` instantiates devices only (no motion by itself).
+- `instantiate all devices` instantiates devices only (no motion by itself).
 - `active add` adds the next ready device to `active-group`.
 - `active next` rotates to the next ready device.
 - Wrap emits warning: `WARNING: device list wrapped to first entry.`
@@ -486,7 +482,7 @@ Purpose: Provide a short bringup cycle checklist for repeated iterations.
    - `show runtime-state robot --json --pretty`.
 
 6. Runtime selection and test execution:
-   - `add all`.
+   - `instantiate all devices`.
    - `active show --json`.
    - `active add` (grow active-group) and `active next` (rotate active focus).
    - `run test <test_name>` (or use controller binding).
@@ -520,7 +516,7 @@ end
 show devices robot --json --pretty
 show runtime-state robot --json --pretty
 
-add all
+instantiate all devices
 active show --json
 active add
 active show
@@ -542,4 +538,5 @@ Non-interactive reset option:
 ```text
 reset zero-config --yes
 ```
+
 

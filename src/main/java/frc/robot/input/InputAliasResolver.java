@@ -65,6 +65,7 @@ public final class InputAliasResolver {
   public static final String INPUT_KIND_BUTTON = "button";
   public static final String INPUT_KIND_DPAD = "dpad";
   public static final String INPUT_KIND_COMBO = "combo";
+  public static final String INPUT_KIND_AXIS = "axis";
 
   public static final String AXIS_ID_LEFT_X = "leftX";
   public static final String AXIS_ID_LEFT_Y = "leftY";
@@ -194,6 +195,12 @@ public final class InputAliasResolver {
     }
     if (kind.equals(INPUT_KIND_DPAD)) {
       return controllerKey + SEP + SEG_DPAD + SEP + normalize(inputId);
+    }
+    if (kind.equals(INPUT_KIND_AXIS)) {
+      String axisSuffix = axisAliasSuffix(inputId);
+      if (!axisSuffix.isBlank()) {
+        return controllerKey + SEP + axisSuffix;
+      }
     }
     return EMPTY_STRING;
   }

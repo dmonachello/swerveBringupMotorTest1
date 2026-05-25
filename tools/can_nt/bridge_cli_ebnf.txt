@@ -24,7 +24,8 @@ exec           = show_exec
                | "configure" ws "terminal"
                | "connect"
                | "disconnect"
-               | "add" ws ("next" | "all")
+               | "instantiate" ws "next" ws "motor"
+               | "instantiate" ws "all" ws "devices"
                | "clear" ws ("stop-latch" | "safety-latch")
                | "reset" ws "zero-config" [ ws ("--yes" | "--clear-memory") ] [ ws ("--yes" | "--clear-memory") ]
                | "active" ws ("add" | "next" | ("show" [ ws "--json" ]))
@@ -81,7 +82,7 @@ show_target    = "status"
 
 show_source    = "robot" | "local" | "both" ;
 show_flags     = show_flag { ws show_flag } ;
-show_flag      = show_source | "--json" | "--pretty" | "--all" ;
+show_flag      = show_source | "--json" | "--pretty" | "--all" | "--grouped" ;
 
 config         = "group" ws name
                | "group" ws "create" ws name
@@ -90,10 +91,20 @@ config         = "group" ws name
                | "group" ws "clear" [ ws name ]
                | "no" ws "group" ws name
                | "no" ws "device" ws name
-               | "remove" ws "device" ws name [ ws "group" ws name ]
-               | "add" ws "device" ws name [ ws "group" ws name ]
-               | "add" ws "all" [ ws "group" ws name ]
-               | "add" ws "next" [ ws "group" ws name ]
+               | "group" ws "member" ws ("assign" ws name ws name
+                                         | "remove" ws name ws name
+                                         | "enable" ws name ws name
+                                         | "disable" ws name ws name
+                                         | "toggle" ws name ws name
+                                         | "assign" ws ("all" | "next") ws name)
+               | "member" ws ("assign" ws name
+                               | "remove" ws name
+                               | "enable" ws name
+                               | "disable" ws name
+                               | "toggle" ws name
+                               | "assign" ws ("all" | "next"))
+               | "instantiate" ws "next" ws "motor"
+               | "instantiate" ws "all" ws "devices"
                | "clear" ws ("stop-latch" | "safety-latch")
                | "copy" ws "group" ws name ws name
                | "profile" ws name
@@ -138,7 +149,6 @@ config         = "group" ws name
                | "profiles" ws "export" ws path
                | "profiles" ws "push" ws path [ ws "--activate" ws name ]
                | "config" ws "push" ws path [ ws "--activate" ws name ]
-               | "add" ws ("next" | "all")
                | "run" ws "test" [ ws name ]
                | "topology" ws "neighbor-ports" ws "set" ws name ws name ws name ws name
                | "topology" ws "neighbor-ports" ws "delete" ws name ws name
@@ -163,7 +173,7 @@ config         = "group" ws name
 
 diagnose       = "diagnose" ws name ws name ;
 
-bindings_args  = "show" [ ws ("controllers" | "bindings" | "axes") ] [ ws show_flags ]
+bindings_args  = "show" [ ws ("controllers" | "bindings") ] [ ws show_flags ]
                | "clear"
                 | "controller" ws ("add" ws name ws name ws number
                                     | "set" ws name ws field ws value_text
@@ -171,12 +181,9 @@ bindings_args  = "show" [ ws ("controllers" | "bindings" | "axes") ] [ ws show_f
                                     | "list"
                                     | "no" ws name)
                | "no" ws "controller" ws name
-               | "binding" ws ("add" ws name ws name ws name ws name ws name
+               | "binding" ws ("add" ws name ws name ws name ws name ws name [ ws "invert" ws ("on" | "off") ws "deadband" ws number ]
                                 | "set" ws number ws field ws value_text
                                 | "delete" ws number)
-               | "axis" ws ("add" ws name ws name ws name ws "invert" ws ("on" | "off") ws "deadband" ws number
-                             | "set" ws number ws field ws value_text
-                             | "delete" ws number)
                | "load" ws path
                | "save" ws path
                | "validate" [ ws path ] ;
@@ -211,13 +218,13 @@ group          = "show"
                | "show" ws "members"
                | "show" ws "binding"
                | "show" ws show_target [ ws show_flags ]
-               | "add" ws "device" ws name
-               | "remove" ws "device" ws name
-               | "no" ws "device" ws name
-               | "add" ws "all"
-               | "add" ws "next"
+               | "member" ws ("assign" ws name
+                               | "remove" ws name
+                               | "enable" ws name
+                               | "disable" ws name
+                               | "toggle" ws name
+                               | "assign" ws ("all" | "next"))
                | "clear"
-               | "member" ws name ws ("enable" | "disable" | "toggle")
                | "bind" ws "list"
                | "bind" ws "explain" ws input
                | "bind" ws "test" ws input

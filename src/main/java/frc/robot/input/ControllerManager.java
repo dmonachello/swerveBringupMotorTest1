@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.XboxController;
+import frc.robot.BringupUtil;
 import frc.robot.BringupPrinter;
 import java.io.IOException;
 import java.io.Reader;
@@ -29,10 +30,13 @@ public final class ControllerManager {
   private static final String CONTROLLERS_FILE = "bringup_controllers.json";
   private static final String BINDINGS_FILE = "bringup_bindings.json";
   private static final String DEFAULT_CONTROLLER_PREFIX = "controller";
+  private static final String JSON_KEY_SCHEMA_VERSION = "schema_version";
   private static final String MESSAGE_NO_CONTROLLER_CONFIG =
       "Warning: no controller configuration loaded; robot will run with no configured Xbox controllers.";
   private static final String MESSAGE_INVALID_CONTROLLER_CONFIG_FORMAT =
       "Warning: failed to load controller config %s: %s";
+  private static final String MESSAGE_BINDINGS_SCHEMA_VERSION_FORMAT =
+      "Warning: failed to load controller config %s: schema_version mismatch: expected %d, got %s";
   private static final String MESSAGE_DROPPED_CONTROLLER_SPEC_FORMAT =
       "Warning: dropped invalid controller spec from %s at index %d: %s";
   private static final Gson GSON = new Gson();
@@ -136,6 +140,15 @@ public final class ControllerManager {
       if (root == null || root.controllers == null || root.controllers.isEmpty()) {
         return Collections.emptyList();
       }
+      if (!hasExpectedSchemaVersion(root.schemaVersion)) {
+        BringupPrinter.enqueue(
+            String.format(
+                MESSAGE_BINDINGS_SCHEMA_VERSION_FORMAT,
+                path,
+                BringupUtil.getProfileSchemaVersion(),
+                String.valueOf(root.schemaVersion)));
+        return Collections.emptyList();
+      }
       return sanitizeSpecs(root.controllers, path.toString());
     } catch (IOException | JsonParseException ex) {
       BringupPrinter.enqueue(String.format(
@@ -215,6 +228,10 @@ public final class ControllerManager {
     }
   }
 
+  private boolean hasExpectedSchemaVersion(Integer schemaVersion) {
+    return schemaVersion != null && schemaVersion == BringupUtil.getProfileSchemaVersion();
+  }
+
   /**
    * NAME
    *   resolvePath - Resolve deploy path with dev fallback.
@@ -248,6 +265,8 @@ public final class ControllerManager {
    *   BindingRoot - JSON root for bindings file.
    */
   private static final class BindingRoot {
+    @com.google.gson.annotations.SerializedName(JSON_KEY_SCHEMA_VERSION)
+    Integer schemaVersion;
     List<ControllerSpec> controllers = Collections.emptyList();
   }
 }

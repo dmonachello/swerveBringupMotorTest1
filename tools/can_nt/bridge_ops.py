@@ -42,6 +42,8 @@ from tools.common.profile_constants import (
     KEY_BRIDGE_TESTS,
     KEY_BUS,
     KEY_DEFAULT_PROFILE,
+    KEY_OBJECT_TYPE,
+    KEY_DEVICE_REF,
     KEY_DEVICES,
     KEY_DEVICE,
     KEY_ENABLED,
@@ -87,6 +89,7 @@ from tools.common.profile_constants import (
     KEY_NAME,
     KEY_ESTOPPED,
     KEY_MODE,
+    NODE_TYPE_DEVICE,
     INTERFACE_ANALOG,
     INTERFACE_CAN,
     INTERFACE_DIO,
@@ -94,6 +97,9 @@ from tools.common.profile_constants import (
     INTERFACE_PWM,
     INTERFACE_USB,
     get_device_interface,
+    get_group_member_label,
+    get_object_type,
+    make_group_member,
 )
 from tools.common.profile_io import validate_profiles_schema
 
@@ -138,6 +144,32 @@ MSG_DEVICE_DEF_INTERFACE_REQUIRED = "interface required"
 MSG_DEVICE_DEF_INTERFACE_INVALID = "interface invalid"
 MSG_DEVICE_DEF_MANUFACTURER_REQUIRED = "manufacturer required"
 MSG_DEVICE_DEF_DEVICE_TYPE_REQUIRED = "deviceType required"
+KEY_DIAGRAM = "diagram"
+KEY_DIAGRAM_PROFILES = "profiles"
+KEY_DIAGRAM_NODES = "nodes"
+KEY_TOPOLOGY = "topology"
+KEY_TOPOLOGY_PROFILES = "profiles"
+KEY_TOPOLOGY_NODES = "nodes"
+
+
+def _group_member_label(member: object) -> str:
+    """
+    NAME
+        _group_member_label - Return canonical group member label text.
+    """
+    if isinstance(member, dict):
+        return get_group_member_label(member)
+    if isinstance(member, str):
+        return member.strip()
+    return ""
+
+
+def _group_member_entry(label: str, enabled: bool = True) -> Dict[str, object]:
+    """
+    NAME
+        _group_member_entry - Build canonical group member payload entry.
+    """
+    return make_group_member(label, enabled)
 MSG_DEVICE_DEF_ID_REQUIRED = "id required"
 MSG_DEVICE_DEF_INVERT_REQUIRED = "invert required"
 MSG_DEVICE_DEF_PWM_REQUIRED = "pwm required"
@@ -795,14 +827,10 @@ def local_show_data(
             return (False, "Local group not found.", {})
         members_payload = []
         for member in match.get(KEY_MEMBERS, []) or []:
-            if isinstance(member, dict):
-                device_name = str(member.get(KEY_DEVICE, EMPTY_STRING)).strip()
-                enabled = bool(member.get(KEY_ENABLED, True))
-            else:
-                device_name = str(member).strip()
-                enabled = True
+            device_name = _group_member_label(member)
+            enabled = bool(member.get(KEY_ENABLED, True)) if isinstance(member, dict) else True
             if device_name:
-                members_payload.append({KEY_DEVICE: device_name, KEY_ENABLED: enabled})
+                members_payload.append(_group_member_entry(device_name, enabled))
         bindings_payload = []
         for binding in match.get(KEY_BRIDGE_BINDINGS, []) or []:
             if not isinstance(binding, dict):
@@ -895,14 +923,10 @@ def local_show_data(
                 KEY_BRIDGE_BINDINGS: [],
             }
             for member in group.get(KEY_MEMBERS, []) or []:
-                if isinstance(member, dict):
-                    device_name = str(member.get(KEY_DEVICE, EMPTY_STRING)).strip()
-                    enabled = bool(member.get(KEY_ENABLED, True))
-                else:
-                    device_name = str(member).strip()
-                    enabled = True
+                device_name = _group_member_label(member)
+                enabled = bool(member.get(KEY_ENABLED, True)) if isinstance(member, dict) else True
                 if device_name:
-                    group_payload[KEY_MEMBERS].append({KEY_DEVICE: device_name, KEY_ENABLED: enabled})
+                    group_payload[KEY_MEMBERS].append(_group_member_entry(device_name, enabled))
             for binding in group.get(KEY_BRIDGE_BINDINGS, []) or []:
                 if not isinstance(binding, dict):
                     continue
@@ -1226,14 +1250,14 @@ def _normalize_bridge_config(
             members: List[Dict[str, Any]] = []
             for member in group.get("members", []) or []:
                 if isinstance(member, str):
-                    members.append({KEY_DEVICE: member, "enabled": True})
+                    members.append(_group_member_entry(member, True))
                     continue
                 if not isinstance(member, dict):
                     continue
-                device = str(member.get(KEY_DEVICE, "")).strip()
+                device = _group_member_label(member)
                 if not device:
                     continue
-                members.append({KEY_DEVICE: device, "enabled": bool(member.get("enabled", True))})
+                members.append(_group_member_entry(device, bool(member.get("enabled", True))))
             bindings: List[Dict[str, Any]] = []
             for binding in group.get(KEY_BRIDGE_BINDINGS, []) or []:
                 if not isinstance(binding, dict):
@@ -1437,7 +1461,7 @@ def _find_missing_device_refs(config: Dict[str, Any], root_payload: Dict[str, An
     for profile_name, entry in by_profile.items():
         if not isinstance(entry, dict) or not isinstance(profile_name, str):
             continue
-        known = _profile_device_label_set(root_payload, profile_name)
+        known = _profile_object_label_set(root_payload, profile_name)
         if known is None:
             continue
         groups = entry.get(KEY_BRIDGE_GROUPS)
@@ -1447,10 +1471,7 @@ def _find_missing_device_refs(config: Dict[str, Any], root_payload: Dict[str, An
             if not isinstance(group, dict):
                 continue
             for member in group.get("members", []) or []:
-                if isinstance(member, dict):
-                    name = str(member.get(KEY_DEVICE, "")).strip()
-                else:
-                    name = str(member).strip()
+                name = _group_member_label(member)
                 if name and name.lower() not in known:
                     missing.append(name)
     return missing
@@ -1636,10 +1657,7 @@ def _describe_missing_device_refs(
             if not group_name:
                 continue
             for member in group.get("members", []) or []:
-                if isinstance(member, dict):
-                    name = str(member.get(KEY_DEVICE, "")).strip()
-                else:
-                    name = str(member).strip()
+                name = _group_member_label(member)
                 if not name:
                     continue
                 if name.strip().lower() in missing_set:
@@ -1677,6 +1695,48 @@ def _profile_device_label_set(
     if not isinstance(labels, list):
         return None
     return {str(label).strip().lower() for label in labels if isinstance(label, str) and label}
+
+
+def _profile_object_label_set(
+    root_payload: Dict[str, Any], profile_name: str
+) -> Optional[set[str]]:
+    """
+    NAME
+        _profile_object_label_set - Build full object label set for a profile.
+    """
+    labels = _profile_device_label_set(root_payload, profile_name)
+    if labels is None:
+        return None
+    topology = root_payload.get(KEY_TOPOLOGY)
+    if isinstance(topology, dict):
+        topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+        topology_profile = topology_profiles.get(profile_name) if isinstance(topology_profiles, dict) else None
+        if isinstance(topology_profile, dict):
+            nodes = topology_profile.get(KEY_TOPOLOGY_NODES)
+            if isinstance(nodes, list):
+                for node in nodes:
+                    if not isinstance(node, dict):
+                        continue
+                    if get_object_type(node) == NODE_TYPE_DEVICE:
+                        value = node.get(KEY_DEVICE_REF)
+                    else:
+                        value = node.get(KEY_LABEL)
+                    if isinstance(value, str) and value.strip():
+                        labels.add(value.strip().lower())
+    diagram = root_payload.get(KEY_DIAGRAM)
+    if isinstance(diagram, dict):
+        diagram_profiles = diagram.get(KEY_DIAGRAM_PROFILES)
+        diagram_profile = diagram_profiles.get(profile_name) if isinstance(diagram_profiles, dict) else None
+        if isinstance(diagram_profile, dict):
+            nodes = diagram_profile.get(KEY_DIAGRAM_NODES)
+            if isinstance(nodes, list):
+                for node in nodes:
+                    if not isinstance(node, dict):
+                        continue
+                    value = node.get(KEY_LABEL)
+                    if isinstance(value, str) and value.strip():
+                        labels.add(value.strip().lower())
+    return labels
 
 
 def _find_duplicate_profile_labels(

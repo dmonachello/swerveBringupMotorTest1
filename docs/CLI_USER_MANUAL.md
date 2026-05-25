@@ -26,6 +26,19 @@ Purpose: Explain the few ideas you must remember.
 - `show config local-raw` shows the raw bridgeConfig data.
 - Groups deep-dive: see [GROUPS_GUIDE.md](./GROUPS_GUIDE.md).
 
+Config model:
+
+- one `bringup_system.json` system config file can contain multiple profiles
+- `devices[]` defines the shared device inventory once
+- `profiles.<name>.devices[]` selects which of those devices belong to each profile
+
+Keep these states separate:
+
+- `defined`: the device exists in the loaded system config shared inventory
+- `in profile`: the active profile includes that device
+- `instantiated`: the runtime created the live device object
+- `grouped`: the device label is a member of a group
+
 ## Quick Start (Local-Only, No Robot)
 
 Purpose: Get a minimal group edited and saved quickly.
@@ -36,9 +49,9 @@ python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
 configure terminal
 profile home_030226
 group motors
-add device "SPARKMAX/NEO 25"
-add device "SPARKMAX/NEO550 7"
-add device "FALCON 9"
+member assign "SPARKMAX/NEO 25"
+member assign "SPARKMAX/NEO550 7"
+member assign "FALCON 9"
 exit
 save profiles src/main/deploy/bringup_system.json
 end
@@ -258,9 +271,9 @@ Create a group:
 configure terminal
 profile home_030226
 group swerve_front_left
-add device "Drive Motor (swerve-front-left)"
-add device "Angle Motor (swerve-front-left)"
-add device "Encoder (CANCoder) (swerve-front-left)"
+member assign "Drive Motor (swerve-front-left)"
+member assign "Angle Motor (swerve-front-left)"
+member assign "Encoder (CANCoder) (swerve-front-left)"
 bind controller0.leftY analog
 bind list
 bind explain 1
@@ -278,8 +291,8 @@ Modify a group:
 configure terminal
 profile home_030226
 group swerve_front_left
-no device "Encoder (CANCoder) (swerve-front-left)"
-member "Drive Motor (swerve-front-left)" disable
+member remove "Encoder (CANCoder) (swerve-front-left)"
+member disable "Drive Motor (swerve-front-left)"
 bind controller0.leftY analog
 exit
 ```
@@ -304,40 +317,38 @@ Purpose: Explain what each save command does.
 
 Use `show config dirty` before you exit to avoid losing work.
 
-## Test Authoring (No JSON)
+## Test Authoring (DSL Import Workflow)
 
-Purpose: Create tests without editing JSON directly.
+Purpose: Create tests without editing JSON directly by importing Robot Test DSL source.
+
+Legacy local interactive test authoring was removed. Do not use `test create`, `type`, `device add`, `inputSource`, or `deadband` as a live edit workflow.
 
 Create a test:
 ```
 configure terminal
-test set default
-test create MotorPulse
-type button
-device add "FALCON 9"
-inputSource controller0.A
-duty 0.2
-termination time 1.5
+test import MotorPulse tools/can_nt/logs/MotorPulse.dsl set default
+test validate MotorPulse --json --pretty
 end
-save config src/main/deploy/bringup_system.json
-```
-
-Inspect tests:
-```
-show tests
 show test MotorPulse
+show test MotorPulse normalized --json --pretty
 ```
 
-Limit switch termination:
+Example DSL file:
 ```
-termination limitswitch
-limitswitch onHit pass
-limitswitch id limitA
+test "MotorPulse"
+device "FALCON 9"
+device "controller0"
+
+main:
+    set "FALCON 9".output = 0.2
+    abort controller0.B
+    until timer.elapsed >= 1.5
 ```
 
 Notes:
 
-- Validation rejects invalid `onHit` values and empty ids.
+- Validation rejects malformed DSL and profile/device/controller mismatches.
+- Use `tools/can_nt/scripts/dsl_tests_config_tool.py` for import/export/validate helper workflows.
 - Use `show test <name>` to infer CLI commands from current settings.
 - Use `tests templates` to list available templates.
 - Use `tests load template <name>` to load a template into the editor.
@@ -511,4 +522,5 @@ Purpose: Where to find deeper specs.
 - Full command list: `docs/BRIDGE_CLI_FULL_SPEC.md`
 - Test authoring tutorial: `docs/CLI_TEST_AUTHORING_USER_GUIDE.md`
 - Profiles schema: `docs/bringup_profiles_schema.md`
+
 

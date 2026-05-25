@@ -1,4 +1,4 @@
-﻿SPEC_STATUS: PARTIALLY_IMPLEMENTED
+SPEC_STATUS: PARTIALLY_IMPLEMENTED
 
 # Bridge CLI Feature Specification
 
@@ -288,9 +288,12 @@ No prompting allowed in batch mode.
 - `tests save`
 - `write tests <path>`
 - `test set <name>`
-- `test create <name>`
 - `test delete <name>`
-- `test <name>`
+- `test import <name> <path> [set <set_name>]`
+- `test export <name> <path>`
+- `test validate [<name>] [--json] [--pretty]`
+
+Legacy local interactive test editing commands such as `test create`, `test <name>`, `type ...`, `device add ...`, `inputSource ...`, and `deadband ...` are removed and must not be documented as current behavior.
 
 ### Group Config Mode Commands
 
@@ -300,11 +303,11 @@ No prompting allowed in batch mode.
 - `bind list`
 - `bind explain <binding>`
 - `bind test <binding>`
-- `add device <device>`
-- `no device <device>`
-- `member <device> enable`
-- `member <device> disable`
-- `member <device> toggle`
+- `member assign <device>`
+- `member remove <device>`
+- `member enable <label>`
+- `member disable <label>`
+- `member toggle <label>`
 - `bind <input> analog`
 - `bind <input> hold <value>`
 - `bind <input> toggle <value>`
@@ -330,7 +333,7 @@ Purpose: Point to the canonical grammar and highlight subcommand parsing for com
 - `show devices` (local) lists the full profile-derived device inventory, not only group members.
 - `show device` returns the full device definition from bringup_system.json (local only).
 - `show device-group` returns the deviceâ€™s group membership/usage info.
-- CLI auto-imports `data/bringup_system.json` on startup when present (replaces groups).
+- CLI auto-imports `src/main/deploy/bringup_system.json` on startup when present (replaces groups).
 - merge config is only allowed when the incoming profiles hash matches the loaded profiles; otherwise use import config.
 
 ## Control Identifiers
@@ -415,9 +418,9 @@ Never allow multiple group membership.
 
 Commands:
 
-- `member <device> enable`
-- `member <device> disable`
-- `member <device> toggle`
+- `member enable <label>`
+- `member disable <label>`
+- `member toggle <label>`
 
 Effects:
 
@@ -495,8 +498,8 @@ Bad:
 ```text
 configure terminal
 group swerve_drive
-add device FL_DRIVE
-add device FR_DRIVE
+member assign FL_DRIVE
+member assign FR_DRIVE
 bind controller0.leftY analog
 enable
 end
@@ -589,8 +592,8 @@ Example Session
 bridge> show groups
 bridge> configure terminal
 bridge(config)# group swerve_drive
-bridge(config-group-swerve_drive)# add device FL_DRIVE
-bridge(config-group-swerve_drive)# member FR_DRIVE disable
+bridge(config-group-swerve_drive)# member assign FL_DRIVE
+bridge(config-group-swerve_drive)# member disable FR_DRIVE
 bridge(config-group-swerve_drive)# bind controller0.leftY analog
 bridge(config-group-swerve_drive)# enable
 bridge(config-group-swerve_drive)# exit
@@ -612,4 +615,6 @@ avoids prompts in batch mode
 uses structured output for automation
 
 remains simple, predictable, and operator-friendly
+
+
 

@@ -1,7 +1,7 @@
 # CLI Test Authoring User Guide
 
 ## Purpose
-Provide a step-by-step, no-JSON workflow for creating and editing bringup tests using the Bridge CLI.
+Provide a step-by-step, no-JSON workflow for creating and editing bringup tests using Robot Test DSL import/export/validate through the Bridge CLI.
 
 ## Group and Targeting V1 Update (April 20, 2026)
 
@@ -22,20 +22,19 @@ Purpose: ensure the CLI can resolve devices and save tests correctly.
 
 Checklist:
 1. Use a working copy of the repo on Windows.
-2. Confirm `data/bringup_system.json` matches the profile you want to use.
+2. Confirm `src/main/deploy/bringup_system.json` matches the profile you want to use.
 3. Confirm `src/main/deploy/bringup_bindings.json` defines controller names you want to reference.
 4. Decide which test set under `test_sets` you will edit or create.
-5. Decide where to save the updated unified config (usually `data/bringup_system.json`).
+5. Decide where to save the updated unified config (usually `src/main/deploy/bringup_system.json`).
 6. If you are testing a new device label, add it to the active profile first (see “Add a Device to the Active Profile” below).
 
 ## Core Concepts
 Purpose: explain the minimum mental model for authoring.
 
 Key ideas:
-1. The CLI edits an in-memory model, not JSON directly.
+1. The CLI imports and validates DSL-backed tests against the in-memory config model.
 2. Tests are persisted inside `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`.
-3. Use `save config <path>` to write a unified `bringup_system.json` (profiles + bridgeConfig.byProfile).
-3. Devices are chosen from `data/bringup_system.json`.
+3. Devices are chosen from `src/main/deploy/bringup_system.json`.
 4. Test names are unique within a test set.
 5. Inputs use a unified `inputSource` format: `controllerName.inputId`.
 6. `show workspace` reveals which tests file is loaded and whether it is dirty.
@@ -47,8 +46,8 @@ Purpose: show how the CLI indicates context.
 Prompts:
 - `bringup>` is normal mode.
 - `bringup(config)#` is config mode.
-- `bringup(config-test-<name>)#` is test edit mode.
-TBD Screenshot: CLI showing the three prompt modes side-by-side (exec, config, and config-test) with short example commands.
+- Test authoring does not use a live local `config-test` edit mode anymore.
+- Use DSL source files plus `test import` and `show test ... normalized`.
 
 ## Command Syntax Notation
 Purpose: explain required vs optional parameters in examples.
@@ -91,7 +90,7 @@ Purpose: bind tests to device labels from the active profile.
 
 Rules:
 1. Devices are referenced by their label from `bringup_system.json`.
-2. The CLI resolves labels from `data/bringup_system.json`.
+2. The CLI resolves labels from `src/main/deploy/bringup_system.json`.
 3. Duplicate device adds are rejected with a warning.
 4. Duplicate labels in the active profile are errors.
 5. A device must exist in the active profile with required fields (CAN: `deviceInterface`, `manufacturer`, `deviceType`, `id`) before tests can reference it.
@@ -118,6 +117,7 @@ Examples:
 Notes:
 - Controller names come from `bringup_bindings.json`.
 - Default controller names are `controller0` through `controller5` when omitted in bindings.
+- In the current workflow, this input form is expressed inside DSL source or normalized output, not as a live local `inputSource` edit command.
 
 ## Add a Device to the Active Profile
 Purpose: ensure a new device label is usable in tests.
@@ -134,37 +134,54 @@ set id 26
 set model "REV NEO"
 set type motor
 exit
-save profiles data/bringup_system.json
+save profiles src/main/deploy/bringup_system.json
 ```
 
 Notes:
 - Use numeric manufacturer/deviceType IDs (REV=5, MotorController=2).
-- If this step is skipped, `device add "Feeder Motor"` in test mode will fail with “device label not found in active profile.”
+- If this step is skipped, imported DSL tests that reference `"Feeder Motor"` will fail validation because the label is not present in the active profile.
+
+## Current Workflow
+
+Purpose: explain the supported workflow before listing examples.
+
+Legacy local interactive test authoring was removed.
+
+The current supported workflow is:
+
+1. Write or edit a `.dsl` source file.
+2. Import it with `test import`.
+3. Validate it with `test validate`.
+4. Inspect it with `show test <name>` and `show test <name> normalized`.
+
+Use `tools/can_nt/scripts/dsl_tests_config_tool.py` for import/export/validate helper workflows.
+
+Do not use the following removed workflow as if it were current:
+
+- `test create <name>`
+- `test <name>` as a live local editor
+- `type ...`
+- `device add ...`
+- `inputSource ...`
+- `deadband ...`
+- `duty ...`
+- `termination ...`
 
 ## Test Types
-Purpose: choose the correct type for the behavior you want.
 
-Joystick tests:
-- Use joystick axes for live control.
-- Required fields: `type joystick`, `device add`, `inputSource`, `deadband`.
+Purpose: choose the correct DSL pattern for the behavior you want.
 
-Button tests:
-- Apply fixed duty while active.
-- Required fields: `type button`, `device add`, `inputSource`, `duty`, and at least one `termination`.
-- `type composite` is accepted and behaves the same as `type button` in JSON output.
+Joystick-like tests:
+- Use `set <device>.<signal> = controller.input deadband ... scaled ... default ...`.
+
+Button-like tests:
+- Use fixed-value `set` statements with `abort`, `require`, `success`, and `until` conditions.
 
 Deadband sweep tests:
-- Sweep duty to find motion thresholds.
-- Required fields: `type deadbandSweep`, `device add`, and deadband sweep fields.
-- `inputSource` is not used for deadband sweep tests.
+- Use the dedicated DSL/runtime support documented in the DSL guides and normalized output.
 
 Device action tests:
-- `type deviceAction`
-- `action toggle_led | set_color`
-- `color #RRGGBB` (required for `set_color`)
-- `pattern solid` (only supported value in v1)
-- `brightness <0.0-1.0>`
-- `duration <seconds>` (optional; 0 or omitted means immediate)
+- Use DSL plus the supported device signal/action model exposed by the current runtime.
 
 Deadband sweep fields:
 - `deadbandSweep startDuty <value>`
@@ -217,63 +234,72 @@ Notes:
 - The optional id is stored in JSON but is not used by the robot runtime yet.
 - Validation enforces `onHit` values (`pass` or `fail`) and non-empty ids when provided.
 
-## Quick Start (Create a Joystick Test)
-Purpose: create a simple joystick-driven test in a few commands.
+## Quick Start (Import a Joystick-Style Test)
 
-Steps:
-1. Start the bridge with CLI enabled.
-2. Enter config mode: `configure terminal`
-3. Choose a test set: `test set default`
-4. Create a test (enters test mode): `test create DriveFrontLeft`
-5. Set type: `type joystick`
-6. Add devices: `device add SPARKMAX/NEO 25`
-7. Set input: `inputSource controller0.leftY`
-8. Set deadband: `deadband 0.12`
-9. Exit test mode: `end`
-10. Save: `save config data/bringup_system.json`
+Purpose: create a simple joystick-driven test using the supported DSL import workflow.
 
-Expected:
-- No parse errors.
-- Prompt changes to `bringup(config-test-DriveFrontLeft)#` while editing.
-- `data/bringup_system.json` is updated (tests live under `bridgeConfig.byProfile.<profile>.tests`).
+Create a file such as `tools\can_nt\logs\DriveFrontLeft.dsl`:
 
-## Quick Start (Create a Button Test)
-Purpose: create a fixed-duty test with termination rules.
+```text
+test "DriveFrontLeft"
+device "SPARKMAX/NEO 25"
+device "controller0"
 
-Steps:
-1. Enter config mode: `configure terminal`
-2. Choose a test set: `test set default`
-3. Create a test (enters test mode): `test create IntakePulse`
-4. Set type: `type button`
-5. Add devices: `device add FALCON 9`
-6. Set input: `inputSource controller1.A`
-7. Set duty: `duty 0.2`
-8. Add termination: `termination time 1.5`
-9. Add termination: `termination hold`
-10. Exit test mode: `end`
-11. Save: `save config data/bringup_system.json`
+main:
+    set "SPARKMAX/NEO 25".output = controller0.leftY deadband 0.12 scaled 0.25 default 0.0
+    until timer.elapsed >= 3.0
+```
 
-Expected:
-- The test runs when the bound button is pressed.
-- The test ends when any termination condition is met.
+Then run:
+
+```text
+configure terminal
+test import DriveFrontLeft tools/can_nt/logs/DriveFrontLeft.dsl set default
+test validate DriveFrontLeft --json --pretty
+end
+show test DriveFrontLeft
+show test DriveFrontLeft normalized --json --pretty
+```
+
+## Quick Start (Import a Button-Style Test)
+
+Purpose: create a fixed-duty test with termination rules using DSL import.
+
+Create a file such as `tools\can_nt\logs\IntakePulse.dsl`:
+
+```text
+test "IntakePulse"
+device "FALCON 9"
+device "controller1"
+
+main:
+    set "FALCON 9".output = 0.2
+    abort controller1.B
+    until timer.elapsed >= 1.5
+```
+
+Then run:
+
+```text
+configure terminal
+test import IntakePulse tools/can_nt/logs/IntakePulse.dsl set default
+test validate IntakePulse --json --pretty
+end
+show test IntakePulse normalized --json --pretty
+```
 
 ## Editing Existing Tests
-Purpose: update a test without writing JSON.
+
+Purpose: update a test by editing DSL source and re-importing it.
 
 Steps:
-1. `configure terminal`
-2. `test set <name>`
-3. `test <existingName>` (existing tests only)
-4. Change fields as needed.
-5. `end`
-6. `save config data/bringup_system.json`
-
-Notes:
-- Use `show tests` to list all tests in the active set.
-- Use `show test <name>` to inspect a specific test.
-
-Overwrite behavior:
-- Only `test create <name>` can overwrite. The CLI warns and prompts before replacing an existing test.
+1. `test export <existingName> <path>`
+2. Edit the exported `.dsl` file.
+3. `configure terminal`
+4. `test import <existingName> <path> set <set_name>`
+5. `test validate <existingName> --json --pretty`
+6. `end`
+7. `show test <existingName> normalized --json --pretty`
 
 ## Validation and Errors
 Purpose: show what stops a save.
@@ -291,71 +317,65 @@ Warnings:
 ## Saving Output
 Purpose: persist tests in the deployable unified config.
 
-Command:
-- `save config <path>`
+Commands:
+- `test import <name> <path> [set <set_name>]`
+- `test export <name> <path>`
+- `test validate [<name>] [--json] [--pretty]`
 
 Notes:
-- `save config` must be run from `bringup(config)#` or `bringup(config-profile-...)#`.
-- If you are in `bringup(config-test-<name>)#`, run `end` or `exit` first.
-- Output is an updated `bringup_system.json` with tests stored under `bridgeConfig.byProfile.<profile>.tests`.
-- After saving, run `python -m tools.validate_sync` so `src/main/deploy/bringup_system.json` stays in sync.
+- Test content is persisted through the DSL-backed store in `bringup_system.json`.
+- After config changes, run `python -m tools.validate_sync` so `src/main/deploy/bringup_system.json` stays in sync.
 
 ## Example: CANdle LED Tests
 Purpose: create deviceAction tests for a CANdle LED controller.
 
 Toggle LED:
-```
-configure terminal
-test set default
-test create CandleToggle
-test CandleToggle
-type deviceAction
-device add "candle"
-action toggle_led
-enabled true
-end
-save config data/bringup_system.json
+```text
+test "CandleToggle"
+device "candle"
+
+main:
+    until timer.elapsed >= 0.1
 ```
 
 Set solid color:
+```text
+test "CandleBlue"
+device "candle"
+
+main:
+    until timer.elapsed >= 2.0
 ```
+
+Import flow:
+
+```text
 configure terminal
-test set default
-test create CandleBlue
-test CandleBlue
-type deviceAction
-device add "candle"
-action set_color
-color #0080FF
-pattern solid
-brightness 0.7
-duration 2.0
-enabled true
+test import CandleToggle tools/can_nt/logs/CandleToggle.dsl set default
+test import CandleBlue tools/can_nt/logs/CandleBlue.dsl set default
+test validate CandleToggle --json --pretty
+test validate CandleBlue --json --pretty
 end
-save config data/bringup_system.json
 ```
 
 ## Example Session (Full)
-Purpose: show a complete authoring flow.
 
-```
+Purpose: show a complete supported import/validate/show flow.
+
+```text
 bringup> configure terminal
-bringup(config)# test set default
-bringup(config)# test create IntakePulse
-bringup(config-test-IntakePulse)# type button
-bringup(config-test-IntakePulse)# device add FALCON 9
-bringup(config-test-IntakePulse)# inputSource controller1.A
-bringup(config-test-IntakePulse)# duty 0.2
-bringup(config-test-IntakePulse)# termination time 1.5
-bringup(config-test-IntakePulse)# end
-bringup(config)# save config data/bringup_system.json
+bringup(config)# test import IntakePulse tools/can_nt/logs/IntakePulse.dsl set default
+bringup(config)# test validate IntakePulse --json --pretty
+bringup(config)# end
+bringup> show test IntakePulse
+bringup> show test IntakePulse normalized --json --pretty
 ```
 
 ## Troubleshooting
 Purpose: resolve common issues quickly.
 
 Issues:
-1. Unknown device label. Check `data/bringup_system.json` for the device label.
+1. Unknown device label. Check `src/main/deploy/bringup_system.json` for the device label.
 2. Invalid command in this mode. Confirm the prompt matches the mode you expect.
 3. Save blocked by validation. Use `show test <name>` and correct missing fields.
 4. Tests not seen on robot. Run `python -m tools.validate_sync` and deploy the updated `src/main/deploy/bringup_system.json`.

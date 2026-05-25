@@ -1,143 +1,141 @@
-Purpose: Full test plan for the Bridge CLI feature and other changes added since Saturday.
+# Bridge CLI And Recent Changes Test Plan
 
-## Group and Targeting V1 Update (April 20, 2026)
+## Purpose
 
-Purpose: align Bridge CLI test coverage with finalized group/targeting behavior.
+Provide a current regression checklist for the recent CLI-facing changes.
 
-- Name matching is exact and case-insensitive.
-- Device names and group names share one global namespace.
-- `active` is reserved, always present, non-persistent, and reset on save/commit.
-- Group members are a set (duplicate add warns/no-op, missing remove warns/no-op).
-- `show groups` includes `active`, and `show group active` is required coverage.
-- `group delete active` must fail.
-- `device delete` must fail when referenced by any group or test.
-- `group delete` must fail when referenced by tests.
-- Non-interactive copy into existing named groups must fail with no mutation.
+This document is current for:
 
-## Scope
-Purpose: List what this test plan covers.
+- deploy-owned config
+- unified global bindings schema
+- schema version `5`
+- DSL import-based local test authoring
 
-- Bridge CLI (interactive + batch).
-- Shared Bridge session/ops layers.
-- Robot-side UI/TCP handler refactor.
-- Profile validation rule updates (full CAN ID vs numeric CAN ID).
-- Direct script execution for select tools (no `-m`).
+## Current Preconditions
 
-## Preconditions
-Purpose: Capture required environment and safety checks.
+- repo root is the working directory
+- `src/main/deploy/bringup_system.json` exists
+- `src/main/deploy/bringup_bindings.json` exists
+- no current workflow depends on `data\bringup_system.json`
 
-- PC has Python 3.10+.
-- Repo root is the current working directory.
-- roboRIO running bringup code (for on-robot tests).
-- CANable not required for CLI-only tests (use `--no-can`).
+## Offline Current-State Checks
 
-## Offline Tests (no roboRIO)
-Purpose: Validate CLI parsing, profiles, and tooling without the robot.
+### 1. CLI visibility + bindings
 
-1) Validate profiles schema + CAN ID rules
-   - `python tools\can_topology\validate_profiles.py --path data\bringup_system.json --verbose`
-   - Expect: schema/hash checks pass; numeric ID collisions show WARN; full CAN ID collisions show FAIL.
+Run:
 
-2) Visualize profiles
-   - `python tools\visualize_profiles.py --input data\bringup_system.json --output docs\bringup_system_diagram.html`
-   - Expect: HTML generated with per-profile diagrams.
+```powershell
+python tools\can_nt\tests\test_bridge_cli_visibility.py
+```
 
-3) Dump CAN config from profile (no CAN, no robot)
-   - `python tools\can_nt\can_nt_bridge.py --profile demo_club --dump-can-config tools\can_nt\can_nt_config.json --no-can`
-   - Expect: JSON file written, schema intact.
+Expected:
 
-4) CLI parser smoke (no robot)
-   - `python tools\can_nt\can_nt_bridge.py --batch --script tools\can_nt\scripts\bridge_cli_smoke.txt --no-can --list-keys`
-   - Expect: command parsing succeeds; no robot errors; list-keys prints.
+- test succeeds
 
-## On-Robot Tests (CLI)
-Purpose: Validate end-to-end TCP UI path + robot-side behavior.
+### 2. DSL CLI behavior
 
-### A) Interactive CLI
-1) Launch:
-   - `python tools\can_nt\can_nt_bridge.py --cli --rio 172.22.11.2 --no-can`
-2) Run show commands:
-   - `show status`
-   - `show groups`
-   - Expect: ACK + OUT, text output.
-3) Configure group:
-   - `configure terminal`
-   - `group swerve_drive`
-   - `add device FL_DRIVE`
-   - `bind controller0.leftY analog`
-   - `enable`
-   - `end`
-4) Verify:
-   - `show group swerve_drive`
-   - Expect: members + bindings reflect changes.
+Run:
 
-### B) Batch CLI
-1) Run smoke script:
-   - `python tools\can_nt\can_nt_bridge.py --batch --script tools\can_nt\scripts\bridge_cli_smoke.txt --no-can --rio 172.22.11.2`
-2) Expect:
-   - ACK/OUT for each command.
-   - No prompts in batch.
+```powershell
+python tools\can_nt\tests\test_bridge_cli_robot_test_dsl_cli.py
+```
 
-### C) Conflict Policy
-1) Start CLI with error policy:
-   - `python tools\can_nt\can_nt_bridge.py --cli --no-can --rio 172.22.11.2 --conflict-policy error`
-2) Add a device to two groups:
-   - Expect: warning + prompt; default "no" cancels.
-3) Batch with move policy:
-   - `python tools\can_nt\can_nt_bridge.py --batch --script tools\can_nt\scripts\setup.txt --no-can --rio 172.22.11.2 --conflict-policy move`
-   - Expect: devices auto-move (no prompts).
+Expected:
 
-## On-Robot Tests (GUI + TCP)
-Purpose: Ensure GUI still works with shared session + handler refactor.
+- test succeeds
 
-1) Launch UI:
-   - `python tools\can_nt\can_nt_bridge.py --ui --rio 172.22.11.2`
-2) Run basic actions:
-   - Add Motor, Add All, Print State.
-   - Expect: ACK + OUT; robot responds.
-3) UI handshake lock:
-   - Open second UI instance.
-   - Expect: lock error on second client.
-4) Release lock:
-   - Use "Release UI Lock" in first UI.
-   - Second UI should now succeed.
+### 3. Local group targeting regressions
 
-## Script Execution Modes
-Purpose: Ensure tools run both with and without `-m`.
+Run:
 
-1) Direct script execution:
-   - `python tools\can_nt\can_nt_bridge.py --help`
-   - `python tools\can_topology\validate_profiles.py --help`
-   - `python tools\can_topology\can_table_import.py --help`
-   - `python tools\visualize_profiles.py --help`
-2) Module execution:
-   - `python -m tools.can_nt.can_nt_bridge --help`
-   - `python -m tools.can_topology.validate_profiles --help`
-3) Expect: no import errors in either mode.
+```powershell
+python tools\can_nt\scripts\bridge_cli_v1_group_targeting_regression.py
+python tools\can_nt\scripts\bridge_cli_group_targeting_4m2g3t_regression.py
+```
 
-## Regression Checks
-Purpose: Confirm existing behavior is unchanged when CLI/groups are unused.
+Expected:
 
-- Run `python tools\can_nt\can_nt_bridge.py --rio 172.22.11.2` (normal mode).
-- Verify CAN summary output unchanged.
-- Ensure existing NT keys under `bringup/diag/*` are unchanged.
+- both scripts pass
 
-## Exit Criteria
-Purpose: Define when tests are complete.
+### 4. Java regression
 
-- All offline tests pass.
-- CLI interactive + batch pass on robot.
-- GUI still operates with TCP UI channel.
-- No regressions in CAN tool output or NT keys.
+Run:
 
-## Tradeoffs
-Purpose: Record known test limitations.
+```powershell
+.\gradlew.bat test
+```
 
-- Offline tests do not exercise TCP UI path.
-- Full CLI validation requires a running roboRIO.
+Expected:
 
-## Future Extensions
-Purpose: Track next testing improvements.
+- Java tests pass
 
-- Add a mock TCP UI server for offline CLI testing.
-- Add automated smoke tests in CI for schema validation.
+## Manual CLI Checks
+
+### 1. Start local-only CLI
+
+```powershell
+python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
+```
+
+### 2. Confirm current config ownership
+
+At the CLI:
+
+```text
+show workspace
+```
+
+Expected:
+
+- paths point to `src/main/deploy/...`
+- no deleted `data\` config path is treated as active
+
+### 3. Confirm current bindings schema
+
+At the CLI:
+
+```text
+bindings validate
+bindings show --all --json --pretty
+```
+
+Expected:
+
+- validation succeeds
+- output includes `schema_version`
+- output does not rely on top-level `axes[]`
+
+### 4. Confirm current local test authoring path
+
+Create a temporary DSL file and import it:
+
+```text
+configure terminal
+test import MyTest1 temp_test.dsl set default
+test validate MyTest1 --json --pretty
+end
+show test MyTest1 normalized --json --pretty
+```
+
+Expected:
+
+- import succeeds
+- validation succeeds
+- normalized output matches DSL semantics
+
+No longer current:
+
+- `test create`
+- `type`
+- `inputSource`
+- `deadband` as interactive local test-edit commands
+
+## Connected Optional Checks
+
+If a roboRIO is available:
+
+- connect with CLI or UI
+- run non-motion profile/test visibility checks
+- confirm no stop-latch or profile-selection regression
+
+Use [TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md](./TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md) for the full connected procedure.

@@ -37,6 +37,9 @@ Purpose: keep the workflow safe, repeatable, and easy to debug.
   - `python -m tools.validate_sync`
 - Profiles reference devices by label only.
 - The devices table owns CAN identity fields.
+- One system config file can contain multiple profiles.
+- The system config file defines the shared device inventory once.
+- Each profile selects the subset of device labels it uses.
 - Host context and robot context are different:
   - host context = what you are editing locally
   - robot context = what the roboRIO is actively using
