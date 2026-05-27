@@ -23,7 +23,6 @@ class ChangelogGuardTests(unittest.TestCase):
             "src/main/deploy/bringup_system.json",
             "docs/examples/sample.dsl",
             "tests/regression/expected/runner_baselines/local.expected.json",
-            "data/bringup_system.json",
         ]
 
         major = major_change_paths(paths)

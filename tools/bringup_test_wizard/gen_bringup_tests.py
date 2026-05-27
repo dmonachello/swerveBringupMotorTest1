@@ -17,7 +17,7 @@ DESCRIPTION
     the robot's primary input.
 
 SIDE EFFECTS
-    Reads and writes bringup_system.json and the deploy copy.
+    Reads and writes the deploy-owned bringup_system.json file.
 """
 
 import argparse

@@ -1,6 +1,6 @@
 # Bringup System Schema Diagram
 
-Purpose: Visualize the structure of `data/bringup_system.json` without showing live data.
+Purpose: Visualize the structure of `src/main/deploy/bringup_system.json` without showing live data.
 
 ```mermaid
 classDiagram

@@ -73,6 +73,10 @@ public final class BringupCore {
   private static final String MESSAGE_TEST_BLOCKED_NO_DEVICES = "test blocked (no devices instantiated).";
   private static final String MESSAGE_TEST_BLOCKED_DEVICES =
       "test blocked (device(s) not instantiated): ";
+  private static final String WARNING_SET_DUTY_FAILED_PREFIX =
+      "Warning: failed to set duty for device ";
+  private static final String WARNING_DETAIL_OPEN = " (";
+  private static final String WARNING_DETAIL_CLOSE = ").";
 
   private List<ManufacturerGroup> manufacturerGroups = ManufacturerRegistry.buildGroups();
   private Map<String, ManufacturerGroup> manufacturerByVendor =
@@ -282,9 +286,24 @@ public final class BringupCore {
     if (device == null) {
       return false;
     }
-    device.ensureCreated();
-    device.setDuty(duty);
-    return true;
+    try {
+      device.ensureCreated();
+      if (!device.isCreated()) {
+        return false;
+      }
+      device.setDuty(duty);
+      return true;
+    } catch (RuntimeException ex) {
+      String key = "setDuty:" + device.getCanId();
+      String message =
+          WARNING_SET_DUTY_FAILED_PREFIX
+              + device.getLabel()
+              + WARNING_DETAIL_OPEN
+              + ex.getMessage()
+              + WARNING_DETAIL_CLOSE;
+      logWarningThrottled(key, message);
+      return false;
+    }
   }
 
   /**
@@ -2925,16 +2944,16 @@ public final class BringupCore {
    *   forceStopAllMotorOutputs - Ensure all motor devices receive a stop command.
    *
    * DESCRIPTION
-   *   Instantiates each configured motor device, issues a stop, and closes it.
-   *   This is a safety backstop for controllers that retain the last command.
+   *   Stops and closes already-created motor devices during reset. This avoids
+   *   allocating fresh vendor handles during a safety/reset path.
    *
    * SIDE EFFECTS
-   *   Allocates vendor device objects and sends stop commands.
+   *   Sends stop commands and may close existing vendor device objects.
    */
   private void forceStopAllMotorOutputs() {
     StopCounts counts = new StopCounts();
     for (ManufacturerGroup group : manufacturerGroups) {
-      forceStopAllMotorOutputs(group, counts, true, true);
+      forceStopAllMotorOutputs(group, counts, false, true);
     }
     if (counts.stopped > 0) {
       String message =

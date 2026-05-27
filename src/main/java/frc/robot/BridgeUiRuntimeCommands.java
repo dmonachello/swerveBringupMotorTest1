@@ -25,6 +25,8 @@ final class BridgeUiRuntimeCommands implements BridgeUiCommandDispatcher.Command
 
   private static final String MESSAGE_PROFILE_INACTIVE_ADD =
       "Profile inactive. Use profileActivate before adding motors.";
+  private static final String MESSAGE_PROFILE_STAGE_FAILED_PREFIX =
+      "Failed to stage selected profile for incremental bringup: ";
   private static final String MESSAGE_ADD_ALL =
       "Instantiated all configured devices. Use active add to populate active-group.";
   private static final String MESSAGE_CLEAR_FAULTS = "Cleared device faults (current + sticky).";
@@ -40,13 +42,9 @@ final class BridgeUiRuntimeCommands implements BridgeUiCommandDispatcher.Command
    *   Dependencies - Narrow dependency contract for runtime commands.
    */
   interface Dependencies {
-    void prepareActivationForSelectedProfile();
-
-    void activateSelectedProfile();
+    String stageSelectedProfileForBringup();
 
     boolean isProfileActive();
-
-    void runProfileActivateAction();
 
     void addNextMotorCommand();
 
@@ -89,7 +87,7 @@ final class BridgeUiRuntimeCommands implements BridgeUiCommandDispatcher.Command
     String commandName = ingress.name;
     switch (commandName) {
       case CMD_ADD_MOTOR:
-        ensureActiveProfile(result);
+        ensureBringupProfileStaged(result);
         if (!result.ok) {
           break;
         }
@@ -97,7 +95,7 @@ final class BridgeUiRuntimeCommands implements BridgeUiCommandDispatcher.Command
         result.message = "Add motor.";
         break;
       case CMD_ADD_ALL:
-        ensureActiveProfile(result);
+        ensureBringupProfileStaged(result);
         if (!result.ok) {
           break;
         }
@@ -135,18 +133,15 @@ final class BridgeUiRuntimeCommands implements BridgeUiCommandDispatcher.Command
     return result;
   }
 
-  private void ensureActiveProfile(BridgeUiCommandResult result) {
+  private void ensureBringupProfileStaged(BridgeUiCommandResult result) {
     if (!dependencies.isProfileActive()) {
-      dependencies.prepareActivationForSelectedProfile();
-      dependencies.activateSelectedProfile();
-      if (dependencies.isProfileActive()) {
-        dependencies.runProfileActivateAction();
+      String error = dependencies.stageSelectedProfileForBringup();
+      if (error != null && !error.isBlank()) {
+        result.ok = false;
+        result.message = MESSAGE_PROFILE_STAGE_FAILED_PREFIX + error;
+        result.outText = result.message;
+        return;
       }
-    }
-    if (!dependencies.isProfileActive()) {
-      result.ok = false;
-      result.message = MESSAGE_PROFILE_INACTIVE_ADD;
-      result.outText = result.message;
     }
   }
 }

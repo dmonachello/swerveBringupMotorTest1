@@ -50,25 +50,36 @@ class BridgeUiIngressPolicyTest {
   }
 
   @Test
-  void requiresHandshakeForNormalCommandWhenUnlocked() {
+  void requiresHandshakeForTcpCommandWhenUnlocked() {
     TestDeps deps = new TestDeps();
     BridgeUiIngressPolicy policy = new BridgeUiIngressPolicy(deps);
 
     BridgeUiIngressPolicy.Ingress ingress = policy.parseIngress(CMD_SHOW_STATUS, "{}", "clientA");
-    BridgeUiIngressPolicy.ValidationFailure failure = policy.validateIngress(ingress, false);
+    BridgeUiIngressPolicy.ValidationFailure failure = policy.validateIngress(ingress, true);
 
     assertNotNull(failure);
     assertEquals(MSG_HANDSHAKE_REQUIRED, failure.message);
   }
 
   @Test
-  void blocksDifferentClientWhenSessionLocked() {
+  void allowsRestCommandWithoutTcpHandshakeLock() {
+    TestDeps deps = new TestDeps();
+    BridgeUiIngressPolicy policy = new BridgeUiIngressPolicy(deps);
+
+    BridgeUiIngressPolicy.Ingress ingress = policy.parseIngress(CMD_SHOW_STATUS, "{}", "clientA");
+    BridgeUiIngressPolicy.ValidationFailure failure = policy.validateIngress(ingress, false);
+
+    assertNull(failure);
+  }
+
+  @Test
+  void blocksDifferentClientWhenTcpSessionLocked() {
     TestDeps deps = new TestDeps();
     deps.activeUiClientId = "clientA";
     BridgeUiIngressPolicy policy = new BridgeUiIngressPolicy(deps);
 
     BridgeUiIngressPolicy.Ingress ingress = policy.parseIngress(CMD_UI_HANDSHAKE, "{}", "clientB");
-    BridgeUiIngressPolicy.ValidationFailure failure = policy.validateIngress(ingress, false);
+    BridgeUiIngressPolicy.ValidationFailure failure = policy.validateIngress(ingress, true);
 
     assertNotNull(failure);
     assertEquals(MSG_LOCK_CONFLICT, failure.message);

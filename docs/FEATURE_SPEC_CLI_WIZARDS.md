@@ -452,7 +452,7 @@ Shell:
 CLI:
   configure terminal
   save sources
-  config push data\bringup_system.json --activate <active-profile>
+  config push src\main\deploy\bringup_system.json --activate <active-profile>
   end
 ```
 
@@ -537,7 +537,7 @@ Example:
 
 ```text
 ERROR: Wizard execution stopped.
-Failed command: config push data\bringup_system.json --activate demo_board
+Failed command: config push src\main\deploy\bringup_system.json --activate demo_board
 Fix: resolve the reported push error, then re-run `wizard sync` or execute the saved batch manually.
 ```
 

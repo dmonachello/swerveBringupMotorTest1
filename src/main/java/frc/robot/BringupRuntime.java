@@ -321,6 +321,17 @@ public final class BringupRuntime {
 
   /**
    * NAME
+   *   stageSelectedProfileForBringup - Load selected-profile device configs for incremental bringup.
+   *
+   * RETURNS
+   *   Empty string on success, or an error message when staging fails.
+   */
+  public String stageSelectedProfileForBringup() {
+    return BringupUtil.stageSelectedProfileForBringup();
+  }
+
+  /**
+   * NAME
    *   applyAndActivateRegistry - Apply registry JSON and fully activate runtime.
    *
    * PARAMETERS
@@ -359,6 +370,28 @@ public final class BringupRuntime {
     if (BringupUtil.isProfileActive()) {
       resetAndInstantiateForProfile(reason);
     }
+  }
+
+  /**
+   * NAME
+   *   deactivateActiveProfile - Stop runtime-owned state and clear active runtime profile.
+   *
+   * PARAMETERS
+   *   reason - Reset reason label.
+   */
+  public void deactivateActiveProfile(String reason) {
+    if (core != null) {
+      core.resetState(reason);
+    }
+    BringupUtil.deactivateActiveProfile();
+    replaceCore();
+    bridgeGroups.clear();
+    bridgeSelected.device = TEXT_EMPTY;
+    bridgeSelected.enabled = false;
+    if (diagnostics != null) {
+      diagnostics.resetState();
+    }
+    BringupUtil.validateCanIds(BringupUtil.getSelectedDevicesSorted());
   }
 
   private void replaceCore() {

@@ -6,7 +6,6 @@ package frc.robot.commands.local;
  */
 public enum RobotLocalDispatchStatus {
   ACCEPTED,
-  QUEUED,
   REJECTED,
   INTERRUPTED_AND_ACCEPTED
 }

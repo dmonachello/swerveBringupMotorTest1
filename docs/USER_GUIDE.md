@@ -26,7 +26,7 @@ Purpose: Passively observe CAN traffic and publish bus diagnostics.
 - Hard rule: read-only on CAN (no frame transmit).
 - Can emit PCAPNG captures and inventory JSON for offline analysis.
 - Optional Bringup Control UI: run with `--ui` (or `tools\can_nt\run_can_nt.cmd --ui`).
-  - Uses TCP (port 5809 default) for command transport; set with `--ui-tcp-port`.
+  - Uses the robot REST command server (port 5805 default); set with `--ui-rest-port`.
 - The UI includes a Help menu with tabbed, scrollable command reference and tooltips.
 
 ### Bringup Control UI
@@ -162,7 +162,7 @@ Purpose: Independently verify bus traffic.
 - Passively capture and publish CAN diagnostics to NetworkTables.
 - Optionally save PCAPNG and inventory JSON for later diffing.
 - Optional: add `--ui` for the Bringup Control UI and use Help -> Help for command details.
-  - Commands use TCP; NetworkTables still provides state/diagnostics visibility.
+  - Commands use REST; NetworkTables still provides state/diagnostics visibility.
 
 ### 4) Troubleshoot Issues
 Purpose: Isolate wiring, configuration, and device problems.

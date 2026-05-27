@@ -13,6 +13,8 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
 
   private static final String CMD_SELECT_PROFILE = "selectProfile";
   private static final String CMD_PROFILE_ACTIVATE = "profileActivate";
+  private static final String CMD_RUNTIME_ACTIVATE = "runtimeActivate";
+  private static final String CMD_RUNTIME_DEACTIVATE = "runtimeDeactivate";
   private static final String CMD_PROFILES_RELOAD = "profilesReload";
   private static final String CMD_PROFILE_TOGGLE = "profileToggle";
   private static final String CMD_PROFILES_APPLY = "profilesApply";
@@ -23,11 +25,17 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
   private static final String ARG_JSON = "json";
   private static final String JSON_KEY_PROFILE = "profile";
   private static final String JSON_KEY_ACTIVE = "active";
+  private static final String JSON_KEY_SELECTED = "selected";
+  private static final String JSON_KEY_ACTIVE_RUNTIME = "activeRuntime";
+  private static final String JSON_KEY_RUNTIME_ACTIVE = "runtimeActive";
   private static final String JSON_KEY_DEFAULT = "default";
   private static final String JSON_KEY_AVAILABLE = "available";
   private static final String JSON_KEY_PROFILE_DEVICES = "profile_devices";
   private static final String TEXT_PROFILE_HEADER = "Profile:";
   private static final String TEXT_PROFILE_ACTIVE_FMT = "  active=%s";
+  private static final String TEXT_PROFILE_SELECTED_FMT = "  selected=%s";
+  private static final String TEXT_PROFILE_ACTIVE_RUNTIME_FMT = "  activeRuntime=%s";
+  private static final String TEXT_PROFILE_RUNTIME_ACTIVE_FMT = "  runtimeActive=%s";
   private static final String TEXT_PROFILE_DEFAULT_FMT = "  default=%s";
   private static final String TEXT_PROFILE_AVAILABLE_FMT = "  available=%d";
   private static final String TEXT_PROFILE_NAME_FMT = "  name=%s";
@@ -36,6 +44,7 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
 
   private static final String TEXT_PROFILE_ACTIVATE_OK = "Profile activated: %s";
   private static final String TEXT_PROFILE_ACTIVATE_FAIL = "Profile activation failed.";
+  private static final String TEXT_RUNTIME_DEACTIVATE_OK = "Runtime deactivated.";
   private static final String TEXT_PROFILES_RELOAD_OK = "Profiles reloaded.";
   private static final String TEXT_PROFILES_RELOAD_FAILED = "Profiles reload failed: %s";
   private static final String MESSAGE_PROFILE_NOT_FOUND = "Profile not found.";
@@ -48,6 +57,8 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
   private static final Set<String> COMMANDS = Set.of(
       CMD_SELECT_PROFILE,
       CMD_PROFILE_ACTIVATE,
+      CMD_RUNTIME_ACTIVATE,
+      CMD_RUNTIME_DEACTIVATE,
       CMD_PROFILES_RELOAD,
       CMD_PROFILE_TOGGLE,
       CMD_PROFILES_APPLY,
@@ -67,13 +78,21 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
 
     void activateSelectedProfile();
 
+    void deactivateActiveProfile();
+
     boolean isProfileActive();
 
     String getActiveCanProfileLabel();
 
+    String getSelectedCanProfileLabel();
+
+    String getActiveRuntimeProfileLabel();
+
     String reloadProfilesFromJson();
 
     void runProfileActivateAction();
+
+    void runProfileDeactivateAction();
 
     void runProfileToggleAction();
 
@@ -116,7 +135,11 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
         executeSelectProfile(args, result);
         break;
       case CMD_PROFILE_ACTIVATE:
+      case CMD_RUNTIME_ACTIVATE:
         executeProfileActivate(args, result);
+        break;
+      case CMD_RUNTIME_DEACTIVATE:
+        executeRuntimeDeactivate(result);
         break;
       case CMD_PROFILES_RELOAD:
         executeProfilesReload(result);
@@ -151,7 +174,7 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
       return;
     }
     dependencies.selectCanProfile(profileName.trim());
-    result.message = MESSAGE_SELECTED_PROFILE_PREFIX + dependencies.getActiveCanProfileLabel();
+    result.message = MESSAGE_SELECTED_PROFILE_PREFIX + dependencies.getSelectedCanProfileLabel();
     result.outText = result.message;
   }
 
@@ -183,6 +206,13 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
     }
     dependencies.runProfileActivateAction();
     result.message = TEXT_PROFILES_RELOAD_OK;
+    result.outText = result.message;
+  }
+
+  private void executeRuntimeDeactivate(BridgeUiCommandResult result) {
+    dependencies.deactivateActiveProfile();
+    dependencies.runProfileDeactivateAction();
+    result.message = TEXT_RUNTIME_DEACTIVATE_OK;
     result.outText = result.message;
   }
 
@@ -224,6 +254,15 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
         TEXT_PROFILE_ACTIVE_FMT,
         dependencies.getActiveCanProfileLabel())).append('\n');
     sb.append(String.format(
+        TEXT_PROFILE_SELECTED_FMT,
+        dependencies.getSelectedCanProfileLabel())).append('\n');
+    sb.append(String.format(
+        TEXT_PROFILE_ACTIVE_RUNTIME_FMT,
+        dependencies.getActiveRuntimeProfileLabel())).append('\n');
+    sb.append(String.format(
+        TEXT_PROFILE_RUNTIME_ACTIVE_FMT,
+        dependencies.isProfileActive())).append('\n');
+    sb.append(String.format(
         TEXT_PROFILE_DEFAULT_FMT,
         dependencies.getDefaultCanProfile())).append('\n');
     sb.append(String.format(TEXT_PROFILE_AVAILABLE_FMT, names.size()));
@@ -233,6 +272,9 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
   private JsonObject buildProfilesJson(List<String> names) {
     JsonObject info = new JsonObject();
     info.addProperty(JSON_KEY_ACTIVE, dependencies.getActiveCanProfileLabel());
+    info.addProperty(JSON_KEY_SELECTED, dependencies.getSelectedCanProfileLabel());
+    info.addProperty(JSON_KEY_ACTIVE_RUNTIME, dependencies.getActiveRuntimeProfileLabel());
+    info.addProperty(JSON_KEY_RUNTIME_ACTIVE, dependencies.isProfileActive());
     info.addProperty(JSON_KEY_DEFAULT, dependencies.getDefaultCanProfile());
     JsonArray available = new JsonArray();
     for (String name : names) {

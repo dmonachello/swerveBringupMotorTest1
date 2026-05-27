@@ -43,7 +43,7 @@ CLI-only changes in:
 
 ## Terminology
 
-- Profiles file: `data/bringup_system.json` (canonical).
+- Profiles file: `src/main/deploy/bringup_system.json`.
 - Tests source: `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests` (canonical).
   - `bringup_tests.json` is a legacy import/export format only.
 - Active profile: currently selected profile in CLI.
@@ -115,7 +115,7 @@ Behavior:
 
 - Saves all dirty sections using their current source paths.
 - If a path is unknown, prints a single-line fix:
-  - â€œNo config destination set. Fix: `save config data/bringup_system.json`â€
+  - â€œNo config destination set. Fix: `save config src/main/deploy/bringup_system.json`â€
 - No prompts in batch mode.
 - Optional `save all --prompt` to confirm per-section in interactive mode.
 
@@ -245,9 +245,9 @@ set deviceType ?
 ### show workspace (text)
 
 ```
-Profiles: data/bringup_system.json (loaded, dirty)
+Profiles: src/main/deploy/bringup_system.json (loaded, dirty)
 Active profile: example_default
-Tests: data/bringup_system.json (loaded, clean)
+Tests: src/main/deploy/bringup_system.json (loaded, clean)
 Active set: default (default=default)
 Bindings: src/main/deploy/bringup_bindings.json (loaded, clean)
 Mappings: src/main/deploy/can_mappings.json (loaded, clean)
@@ -265,8 +265,8 @@ Fix: add device "pdp" or remove "PDP" from profile devices.
 ### save all (missing tests path)
 
 ```
-ERROR: No config destination set. Fix: save config data/bringup_system.json
-Saved profiles to data/bringup_system.json.
+ERROR: No config destination set. Fix: save config src/main/deploy/bringup_system.json
+Saved profiles to src/main/deploy/bringup_system.json.
 ```
 
 ## Error Handling

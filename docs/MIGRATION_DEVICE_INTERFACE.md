@@ -10,7 +10,7 @@ Purpose: Get the repo back to a clean, validated state with `deviceInterface` ev
 
    ```powershell
    cd %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1
-   python -m tools.migrate_device_interface_key --path data\bringup_system.json
+   python -m tools.migrate_device_interface_key --path src\main\deploy\bringup_system.json
    ```
 
 2. Validate + stamp + sync canonical ? deploy.
@@ -22,7 +22,7 @@ Purpose: Get the repo back to a clean, validated state with `deviceInterface` ev
 3. Confirm the legacy key is gone (optional).
 
    ```powershell
-   rg -n "\"interface\"" data\bringup_system.json
+   rg -n "\"interface\"" src\main\deploy\bringup_system.json
    ```
 
 If `validate_sync` still reports `Unknown key: interface`, re-run step 1 and then step 2.
@@ -63,7 +63,7 @@ Purpose: Convert existing config files to the canonical key.
 
 ```powershell
 cd %USERPROFILE%\swerveBringupMotorTest\swerveBringupMotorTest1
-python -m tools.migrate_device_interface_key --path data\bringup_system.json
+python -m tools.migrate_device_interface_key --path src\main\deploy\bringup_system.json
 ```
 
 Notes:
@@ -80,7 +80,7 @@ python -m tools.validate_sync
 ### Step 3: Confirm legacy key is gone (optional)
 
 ```powershell
-rg -n "\"interface\"" data\bringup_system.json
+rg -n "\"interface\"" src\main\deploy\bringup_system.json
 ```
 
 ## Migration Tool Reference
@@ -90,13 +90,13 @@ Purpose: Document the supported command-line flags.
 ### Dry run (no write)
 
 ```powershell
-python -m tools.migrate_device_interface_key --path data\bringup_system.json --no-write
+python -m tools.migrate_device_interface_key --path src\main\deploy\bringup_system.json --no-write
 ```
 
 ### Keep the legacy key (not recommended)
 
 ```powershell
-python -m tools.migrate_device_interface_key --path data\bringup_system.json --keep-legacy
+python -m tools.migrate_device_interface_key --path src\main\deploy\bringup_system.json --keep-legacy
 ```
 
 ## Validation Expectations

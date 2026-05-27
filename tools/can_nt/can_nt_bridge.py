@@ -527,7 +527,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 "sessionId": ui_table.getEntry(NT_UI_STATE_SESSION).getString(EMPTY_STRING),
             }
 
-        session = BridgeSession(args.rio, args.ui_tcp_port, nt_state_reader=_read_nt_state)
+        session = BridgeSession(args.rio, args.ui_rest_port, nt_state_reader=_read_nt_state)
         cli = BridgeCli(
             session,
             batch=bool(args.batch),
@@ -1334,7 +1334,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 "sessionId": ui_table.getEntry(NT_UI_STATE_SESSION).getString(EMPTY_STRING),
             }
 
-        session = BridgeSession(args.rio, args.ui_tcp_port, nt_state_reader=_read_nt_state)
+        session = BridgeSession(args.rio, args.ui_rest_port, nt_state_reader=_read_nt_state)
         cli = BridgeCli(
             session,
             batch=bool(args.batch),
@@ -1408,7 +1408,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             tests_table=tests_table,
             diag_table=diag_table,
             rio_host=args.rio,
-            tcp_port=args.ui_tcp_port,
+            tcp_port=args.ui_rest_port,
             is_connected=_nt_is_connected,
             on_close=on_close,
             visibility_provider=visibility_provider,

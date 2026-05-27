@@ -147,15 +147,17 @@ final class BridgeUiIngressPolicy {
     if (!ingress.hasClient) {
       return new ValidationFailure(TEXT_UI_MISSING_CLIENT_ID);
     }
-    if (ingress.locked && !ingress.client.equals(activeClientId)) {
-      return new ValidationFailure(TEXT_UI_LOCKED_BY_OTHER_CLIENT);
-    }
-    if (!ingress.locked
-        && !ingress.isHandshake
-        && !ingress.isDisconnect
-        && !ingress.isPing
-        && !CMD_STOP.equals(ingress.name)) {
-      return new ValidationFailure(TEXT_UI_HANDSHAKE_REQUIRED);
+    if (isTcp) {
+      if (ingress.locked && !ingress.client.equals(activeClientId)) {
+        return new ValidationFailure(TEXT_UI_LOCKED_BY_OTHER_CLIENT);
+      }
+      if (!ingress.locked
+          && !ingress.isHandshake
+          && !ingress.isDisconnect
+          && !ingress.isPing
+          && !CMD_STOP.equals(ingress.name)) {
+        return new ValidationFailure(TEXT_UI_HANDSHAKE_REQUIRED);
+      }
     }
     if (isTcp && dependencies.isTcpStartCommand(ingress.name, ingress.args) && dependencies.stopLatchActive()) {
       String reason = dependencies.stopLatchReason();

@@ -589,7 +589,7 @@ public final class DslBringupTest implements BringupTest {
     String deviceType = resolveDeviceType(deviceName);
     Object deviceSignal = device.readDslSignal(signalName);
     if (deviceSignal instanceof Number numberValue
-        && DslSignalRegistry.SIGNAL_POSITION.equals(signalName)
+        && isDeltaPositionSignal(signalName)
         && (DslSignalRegistry.DEVICE_TYPE_MOTOR.equals(deviceType)
             || DslSignalRegistry.DEVICE_TYPE_ENCODER_EXTERNAL.equals(deviceType))) {
       Double start = startPositions.get(deviceName);
@@ -597,6 +597,11 @@ public final class DslBringupTest implements BringupTest {
       return start != null ? position - start.doubleValue() : position;
     }
     return deviceSignal;
+  }
+
+  private boolean isDeltaPositionSignal(String signalName) {
+    return DslSignalRegistry.SIGNAL_POSITION.equals(signalName)
+        || DslSignalRegistry.SIGNAL_POSITION_DELTA.equals(signalName);
   }
 
   private boolean isRequiredHardwareDeviceName(String deviceName) {

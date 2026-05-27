@@ -35,7 +35,7 @@ Purpose: Centralized repo path resolution.
 Use for shared file locations so tools stay aligned.
 
 Examples:
-- `profiles_canonical_path()` -> `data/bringup_system.json`
+- `profiles_canonical_path()` -> `src/main/deploy/bringup_system.json`
 - `profiles_deploy_path()` -> `src/main/deploy/bringup_system.json`
 - `can_mappings_path()` -> `src/main/deploy/can_mappings.json`
 - `logs_dir()` -> `tools/can_nt/logs`

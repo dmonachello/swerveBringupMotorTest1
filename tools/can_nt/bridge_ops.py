@@ -273,7 +273,7 @@ def _send(session: BridgeSession, name: str, args: Optional[Dict[str, Any]] = No
 def connect(session: BridgeSession) -> bool:
     """
     NAME
-        connect - Ensure the TCP session is connected.
+        connect - Ensure the REST session is connected.
     """
     return session.connect()
 
@@ -281,7 +281,7 @@ def connect(session: BridgeSession) -> bool:
 def disconnect(session: BridgeSession) -> None:
     """
     NAME
-        disconnect - Close the TCP session.
+        disconnect - Close the REST session.
     """
     session.disconnect()
 
@@ -310,6 +310,25 @@ def profile_activate(session: BridgeSession, profile_name: str) -> Optional[int]
         profile_activate - Activate a profile on the robot.
     """
     return _send(session, "profileActivate", {KEY_NAME: profile_name})
+
+
+def runtime_activate(session: BridgeSession, profile_name: str = "") -> Optional[int]:
+    """
+    NAME
+        runtime_activate - Activate the selected or named runtime profile on the robot.
+    """
+    args: Dict[str, Any] = {}
+    if isinstance(profile_name, str) and profile_name.strip():
+        args[KEY_NAME] = profile_name.strip()
+    return _send(session, "runtimeActivate", args)
+
+
+def runtime_deactivate(session: BridgeSession) -> Optional[int]:
+    """
+    NAME
+        runtime_deactivate - Deactivate the active runtime profile on the robot.
+    """
+    return _send(session, "runtimeDeactivate", {})
 
 
 def profiles_reload(session: BridgeSession) -> Optional[int]:

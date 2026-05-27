@@ -5,7 +5,7 @@ NAME
     migrate_device_interface_key.py - Migrate bringup_system.json device key interface -> deviceInterface.
 
 SYNOPSIS
-    python -m tools.migrate_device_interface_key --path data/bringup_system.json
+    python -m tools.migrate_device_interface_key --path src/main/deploy/bringup_system.json
 
 DESCRIPTION
     Updates device registry entries in bringup_system.json to use the canonical
@@ -56,7 +56,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         ARG_PATH,
         required=True,
-        help="Path to bringup_system.json (canonical).",
+        help="Path to bringup_system.json.",
     )
     parser.add_argument(
         ARG_NO_WRITE,

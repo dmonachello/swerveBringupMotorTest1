@@ -109,10 +109,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Launch the bringup control UI alongside the sniffer.",
     )
     parser.add_argument(
-        "--ui-tcp-port",
+        "--ui-rest-port",
         type=int,
-        default=5809,
-        help="TCP port for the bringup UI command channel (default: 5809).",
+        default=5805,
+        help="REST port for the bringup robot command server (default: 5805).",
     )
     parser.add_argument(
         "--ui-only",

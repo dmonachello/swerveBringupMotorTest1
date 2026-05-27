@@ -196,7 +196,7 @@ Each feature entry includes:
 
 - **Purpose:** store profiles, device registry, bridge config, topology, and DSL tests in one file.
 - **Surface:** topology editor, CLI, robot runtime, validation tools.
-- **How to access:** `data/bringup_system.json` as canonical source.
+- **How to access:** `src/main/deploy/bringup_system.json`.
 - **When to use it:** nearly all configuration work.
 - **Do not confuse with:** derived deploy copy.
 - **Current limitations:** checked-in deploy copies may still be edited directly during active development, but canonical schema and shared-object rules still apply.
@@ -487,10 +487,10 @@ Each feature entry includes:
 - group member `enable` decides which created devices respond
 - enabled group members can force creation, so staged bringup requires disabling not-yet-approved members
 
-### Canonical config vs deploy copy
+### Single Config File
 
-- canonical authoring source: `data/bringup_system.json`
-- derived robot copy: `src/main/deploy/bringup_system.json`
+- shared host and roboRIO config file: `src/main/deploy/bringup_system.json`
+- the current workflow uses one repo-owned config file rather than separate authoring and deploy copies
 
 ## Future Maintenance Rule
 

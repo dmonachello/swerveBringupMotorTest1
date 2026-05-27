@@ -100,6 +100,8 @@ from tools.can_nt.bridge_ops import (
     ui_ping,
     parse_json_arg,
     profile_activate,
+    runtime_activate,
+    runtime_deactivate,
     profiles_reload,
     run_all_tests,
     run_test,
@@ -317,6 +319,7 @@ from tools.common.robot_test_dsl import (
     source_hash as robot_test_dsl_source_hash,
     store_from_payload as robot_test_dsl_store_from_payload,
     store_to_payload as robot_test_dsl_store_to_payload,
+    validate_entry as validate_robot_test_dsl_entry,
     validate_store as validate_robot_test_dsl_store,
 )
 from tools.common.test_authoring import (
@@ -544,6 +547,8 @@ CMD_TEST = "test"
 CMD_TESTS = "tests"
 CMD_CREATE = "create"
 CMD_IMPORT = "import"
+CMD_CLEANUP = "cleanup"
+CMD_STALE = "stale"
 CMD_EXPORT = "export"
 CMD_DELETE = "delete"
 CMD_SET = "set"
@@ -567,6 +572,7 @@ CMD_CONFIG = "config"
 CMD_LOCAL_RAW = "local-raw"
 CMD_DIRTY = "dirty"
 CMD_PROFILES = "profiles"
+CMD_RUNTIME = "runtime"
 CMD_PROFILE = "profile"
 CMD_PROF = "prof"
 CMD_CONFIGURE = "configure"
@@ -676,6 +682,8 @@ CMD_INIT = PARSER_SPEC.cmd_init
 CMD_ACTIVATE = PARSER_SPEC.cmd_activate
 CMD_ACTIVATE_PROFILE = PARSER_SPEC.cmd_activate_profile
 CMD_PROFILES_RELOAD = "profilesReload"
+CMD_RUNTIME_ACTIVATE = "runtimeActivate"
+CMD_RUNTIME_DEACTIVATE = "runtimeDeactivate"
 CMD_SAVE_BRIDGE_CONFIG = "bridge-config"
 CMD_SAVE_RUNTIME_GROUPS = "runtime-groups"
 CMD_VALIDATE_ALL = PARSER_SPEC.cmd_validate_all
@@ -1070,6 +1078,9 @@ SHOW_SOURCE_LOCAL = "local"
 SHOW_SOURCE_BOTH = "both"
 SHOW_FLAG_ALL = "--all"
 SHOW_FLAG_GROUPED = FLAG_GROUPED
+KEY_SCOPE = "scope"
+KEY_IN_PROFILE = "inProfile"
+SCOPE_CONFIG = "config"
 SHOW_SOURCE_FLAGS = {
     SHOW_SOURCE_ROBOT,
     SHOW_SOURCE_LOCAL,
@@ -1095,7 +1106,7 @@ MESSAGE_ERR_TEST_SHOW_LOCAL_ONLY = (
     "ERROR: show test <name> is local-only; remove robot/local/both."
 )
 MESSAGE_ERR_SHOW_TESTS_ROBOT_ONLY = (
-    "ERROR: show tests robot requires an active TCP connection."
+    "ERROR: show tests robot requires an active REST session."
 )
 LOCAL_ONLY_SHOW_TARGETS = (
     SHOW_TARGET_MESSAGE_LEVEL,
@@ -1116,6 +1127,8 @@ LOCAL_ONLY_SHOW_TARGETS = (
     CMD_TEST,
 )
 KEY_INSTANTIATED = "instantiated"
+KEY_OK = "ok"
+KEY_MESSAGE = "message"
 KEY_REASON = "reason"
 KEY_STATUS = "status"
 KEY_RUNTIME = "runtime"
@@ -1456,7 +1469,11 @@ MESSAGE_HINT_PROFILE = (
 MESSAGE_HINT_PROFILES = (
     "profiles init | profiles push <path> [--activate <profile>] | profiles reload | profiles activate <profile>"
 )
+MESSAGE_HINT_RUNTIME = "runtime activate [<profile>] | runtime deactivate"
 MESSAGE_ERR_PROFILES_ACTIVATE = "ERROR: profiles activate requires a profile name."
+MESSAGE_ERR_RUNTIME_ACTION = "ERROR: runtime requires activate [<profile>] or deactivate."
+MESSAGE_ERR_RUNTIME_ACTIVATE_SEND = "ERROR: Failed to send runtime activate."
+MESSAGE_ERR_RUNTIME_DEACTIVATE_SEND = "ERROR: Failed to send runtime deactivate."
 MESSAGE_ERR_PROFILES_ACTIVATE_SEND = "ERROR: Failed to send profile activate command."
 MESSAGE_ERR_PROFILES_RELOAD_SEND = "ERROR: Failed to send profiles reload command."
 MESSAGE_INFO_PROFILES_RELOAD = "Profiles reloaded on robot."
@@ -1601,7 +1618,13 @@ TEXT_DEVICE_PREFIX = "Device "
 TEXT_DEVICE_ENTRY = "label={label} vendor={vendor} type={type} id={id}"
 TEXT_DEVICES_HEADER = "Devices:"
 TEXT_DEVICES_NONE = "Devices: (none)"
+TEXT_DEVICES_ALL_HEADER = "Devices (full config inventory):"
+TEXT_DEVICES_ALL_NONE = "Devices (full config inventory): (none)"
 TEXT_DEVICES_LIST_PREFIX = "  "
+TEXT_DEVICE_REGISTRY_ENTRY = (
+    "label={label} interface={interface} vendor={vendor} type={type} id={id} "
+    "model={model} inProfile={in_profile}"
+)
 TEXT_TESTS_HEADER = "=== Bringup Tests ==="
 TEXT_TESTS_FOOTER = "====================="
 TEXT_TESTS_ACTIVE_SET = "Active set: {active} (default: {default})"
@@ -1733,15 +1756,22 @@ HELP_PROFILE_DEFAULT_TEXT = (
 )
 HELP_TOPIC_PROFILES_PUSH = "profiles push"
 HELP_PROFILES_PUSH_TEXT = (
-    "profiles push <path> [--activate <profile>]\n  Push profiles/devices registry to robot (TCP only).\n"
+    "profiles push <path> [--activate <profile>]\n  Push profiles/devices registry to the robot REST server.\n"
     "profiles reload\n  Reload bringup_system.json on the robot (drops in-memory profiles).\n"
-    "profiles activate <profile>\n  Activate an already-loaded profile on the robot (no reload)."
+    "profiles activate <profile>\n  Compatibility alias for runtime activate <profile>."
 )
 HELP_TOPIC_PROFILES_RELOAD = "profiles reload"
 HELP_PROFILES_RELOAD_TEXT = (
     "profiles reload\n"
     "  Reload bringup_system.json on the robot (drops in-memory profiles).\n"
-    "  Use profiles activate to apply a profile after reload."
+    "  Use runtime activate to apply the selected profile after reload."
+)
+HELP_TOPIC_RUNTIME = "runtime"
+HELP_RUNTIME_TEXT = (
+    "runtime activate [<profile>]\n"
+    "  Activate the selected profile runtime, or select and activate <profile>.\n"
+    "runtime deactivate\n"
+    "  Deactivate the active runtime without changing the selected profile."
 )
 HELP_TOPIC_PROFILES_INIT = "profiles init"
 HELP_PROFILES_INIT_TEXT = (
@@ -1754,12 +1784,14 @@ HELP_PROFILES_EXPORT_TEXT = (
 )
 HELP_TOPIC_CONFIG_PUSH = "config push"
 HELP_CONFIG_PUSH_TEXT = (
-    "config push <path> [--activate <profile>]\n  Push registry then import groups/bindings."
+    "config push <path> [--activate <profile>]\n"
+    "  Push registry then import groups/bindings.\n"
+    "  By default this updates selection/config only; use --activate for explicit runtime activation."
 )
 HELP_TOPIC_RESET_ZERO_CONFIG = "reset zero-config"
 HELP_RESET_ZERO_CONFIG_TEXT = (
     "reset zero-config [--yes] [--clear-memory]\n"
-    "  Delete data/bringup_system.json and src/main/deploy/bringup_system.json.\n"
+    "  Delete src/main/deploy/bringup_system.json.\n"
     "  Prompts for y/N unless --yes is provided.\n"
     "  Use --clear-memory to also clear in-memory local config/tests/groups."
 )
@@ -1979,7 +2011,7 @@ MESSAGE_ERROR_LEGACY_TEST_AUTHORING_REMOVED = (
     "ERROR: legacy local test authoring was removed. "
     "Use tools/can_nt/scripts/dsl_tests_config_tool.py for DSL import/export/validate."
 )
-MESSAGE_ERROR_DSL_CLI_USAGE = "ERROR: test import|export|validate|delete|set ..."
+MESSAGE_ERROR_DSL_CLI_USAGE = "ERROR: test import|export|validate|delete|cleanup|set ..."
 MESSAGE_ERROR_DSL_SHOW_USAGE = "ERROR: show tests | show test <name> [normalized] | show test sets"
 MESSAGE_ERROR_DSL_PROFILE_REQUIRED = "ERROR: active profile required."
 MESSAGE_ERROR_DSL_CONFIG_REQUIRED = "ERROR: local bringup_system.json must be loaded first (merge/import config)."
@@ -1995,6 +2027,11 @@ MESSAGE_DSL_SET_DEFAULT = "Default test set: {name}"
 MESSAGE_DSL_SET_MEMBER_ADDED = "Added test {test} to set {name}"
 MESSAGE_DSL_SET_MEMBER_REMOVED = "Removed test {test} from set {name}"
 MESSAGE_DSL_TEST_EXPORTED = "Exported DSL test: {name}"
+MESSAGE_DSL_TESTS_CLEANED = "Removed stale DSL tests: {names}"
+MESSAGE_DSL_TESTS_CLEAN_NONE = "No stale DSL tests found."
+MESSAGE_DSL_VALIDATION_LINE_FMT = "line {line}: {text}"
+MESSAGE_DSL_VALIDATION_FIELD_FMT = "field {field}"
+DSL_VALIDATION_META_FIELDS = {"source", "normalized", "sourceHash", "devices", "testSets"}
 ROBOT_TEST_DSL_SIGNALS_PATH = repo_root() / "tools" / "common" / "generated" / "robot_test_dsl_signals.json"
 MESSAGE_ERROR_WITH_TEXT = "ERROR: {message}"
 MESSAGE_ERROR_WITH_TEST = "ERROR: {message} ({test})"
@@ -2311,7 +2348,7 @@ class BridgeCli:
                     self._warn("WARNING: Command failed; staying in CLI.")
                     continue
         finally:
-            self._stop_keepalive()
+            self._shutdown_session()
 
     def _build_prompt_session(self) -> Optional[PromptSession]:
         """
@@ -2344,7 +2381,7 @@ class BridgeCli:
             _start_keepalive - Start the background UI keepalive loop.
 
         DESCRIPTION
-            Sends periodic uiPing messages to prevent TCP keepalive timeouts.
+            Sends periodic uiPing messages to prevent REST session timeout.
         """
         if self._keepalive_thread is not None and self._keepalive_thread.is_alive():
             return
@@ -2377,7 +2414,7 @@ class BridgeCli:
             _keepalive_loop - Background uiPing loop for CLI sessions.
 
         DESCRIPTION
-            Periodically sends uiPing while the TCP session is connected.
+            Periodically sends uiPing while the REST session is connected.
         """
         last_ping = KEEPALIVE_LAST_INIT
         was_connected: Optional[bool] = None
@@ -2450,7 +2487,20 @@ class BridgeCli:
                     return result.exit_code()
             return StatusResult(code=SS__NORMAL).exit_code()
         finally:
-            self._stop_keepalive()
+            self._shutdown_session()
+
+    def _shutdown_session(self) -> None:
+        """
+        NAME
+            _shutdown_session - Stop keepalive and release the owned REST session.
+
+        DESCRIPTION
+            Mirrors the explicit `disconnect` command during CLI process exit so
+            a terminated CLI does not leave the robot-side control session owned
+            until timeout or manual reset.
+        """
+        self._stop_keepalive()
+        disconnect(self._session)
 
     def _print_version_banner(self) -> None:
         """
@@ -5528,7 +5578,7 @@ class BridgeCli:
     def _handle_reset_zero_config_command(self, line: str) -> Optional[StatusResult]:
         """
         NAME
-            _handle_reset_zero_config_command - Delete canonical/deploy unified config files.
+            _handle_reset_zero_config_command - Delete the deploy-owned unified config file.
 
         DESCRIPTION
             Handles exec-mode shorthand `reset zero-config [--yes]` before parser
@@ -6262,10 +6312,12 @@ class BridgeCli:
             _suggest_test_config_args - Suggest config-mode test subcommands.
         """
         if not tokens:
-            return [CMD_SET, CMD_CREATE, CMD_DELETE, PLACEHOLDER_TEST]
+            return [CMD_SET, CMD_CREATE, CMD_DELETE, CMD_CLEANUP, PLACEHOLDER_TEST]
         sub = tokens[COUNT_ZERO].lower()
         if sub in (CMD_SET, CMD_CREATE, CMD_DELETE) and len(tokens) == COUNT_ONE:
             return [PLACEHOLDER_TEST]
+        if sub == CMD_CLEANUP and len(tokens) == COUNT_ONE:
+            return [CMD_STALE]
         return []
 
     def _is_test_authoring_command(self, tokens: List[str]) -> bool:
@@ -6395,7 +6447,87 @@ class BridgeCli:
             self._dsl_signal_catalog(),
         )
 
-    def _dsl_print_validation(self, result, json_output: bool, pretty: bool) -> None:
+    def _dsl_cleanup_stale_tests(self, store: RobotTestDslStore, profile_name: str) -> List[str]:
+        """
+        NAME
+            _dsl_cleanup_stale_tests - Remove DSL tests that do not validate for the active profile.
+        """
+        device_catalog = self._dsl_device_catalog(profile_name)
+        signal_catalog = self._dsl_signal_catalog()
+        removed: List[str] = []
+        for test_name in sorted(list(store.tests_by_name.keys())):
+            entry = store.tests_by_name.get(test_name)
+            if not isinstance(entry, RobotTestDslEntry):
+                continue
+            result = validate_robot_test_dsl_entry(test_name, entry, device_catalog, signal_catalog)
+            if result.ok():
+                continue
+            del store.tests_by_name[test_name]
+            removed.append(test_name)
+            for set_names in store.test_sets.values():
+                while test_name in set_names:
+                    set_names.remove(test_name)
+        return removed
+
+    @staticmethod
+    def _dsl_issue_line_excerpt(entry: RobotTestDslEntry, field: str) -> Optional[str]:
+        """
+        NAME
+            _dsl_issue_line_excerpt - Resolve a field or statement to a source line excerpt.
+        """
+        if not isinstance(field, str):
+            return None
+        field_text = field.strip()
+        if not field_text or field_text in DSL_VALIDATION_META_FIELDS:
+            return None
+        for line_number, source_line in enumerate(entry.source.splitlines(), start=1):
+            line_text = source_line.strip()
+            if not line_text:
+                continue
+            if line_text == field_text or field_text in line_text:
+                return MESSAGE_DSL_VALIDATION_LINE_FMT.format(line=line_number, text=line_text)
+        return MESSAGE_DSL_VALIDATION_FIELD_FMT.format(field=field_text)
+
+    def _dsl_issue_detail(
+        self,
+        issue,
+        entries_override: Optional[Dict[str, RobotTestDslEntry]] = None,
+    ) -> str:
+        """
+        NAME
+            _dsl_issue_detail - Render a location detail suffix for one DSL validation issue.
+        """
+        field = getattr(issue, "field", None)
+        if not isinstance(field, str) or not field.strip():
+            return EMPTY_STRING
+        entry: Optional[RobotTestDslEntry] = None
+        test_name = getattr(issue, "test_name", None)
+        if isinstance(entries_override, dict) and isinstance(test_name, str):
+            candidate = entries_override.get(test_name)
+            if isinstance(candidate, RobotTestDslEntry):
+                entry = candidate
+        if entry is None:
+            store = self._dsl_store()
+            if isinstance(test_name, str):
+                candidate = store.tests_by_name.get(test_name)
+                if isinstance(candidate, RobotTestDslEntry):
+                    entry = candidate
+        if entry is None:
+            if field.strip() in DSL_VALIDATION_META_FIELDS:
+                return EMPTY_STRING
+            return f" ({MESSAGE_DSL_VALIDATION_FIELD_FMT.format(field=field.strip())})"
+        excerpt = self._dsl_issue_line_excerpt(entry, field)
+        if not excerpt:
+            return EMPTY_STRING
+        return f" ({excerpt})"
+
+    def _dsl_print_validation(
+        self,
+        result,
+        json_output: bool,
+        pretty: bool,
+        entries_override: Optional[Dict[str, RobotTestDslEntry]] = None,
+    ) -> None:
         payload = {
             "errors": [issue.__dict__ for issue in result.errors],
             "warnings": [issue.__dict__ for issue in result.warnings],
@@ -6408,10 +6540,10 @@ class BridgeCli:
             return
         for issue in result.errors:
             prefix = issue.test_name or "-"
-            print(f"ERROR: {prefix}: {issue.message}")
+            print(f"ERROR: {prefix}: {issue.message}{self._dsl_issue_detail(issue, entries_override)}")
         for issue in result.warnings:
             prefix = issue.test_name or "-"
-            print(f"WARNING: {prefix}: {issue.message}")
+            print(f"WARNING: {prefix}: {issue.message}{self._dsl_issue_detail(issue, entries_override)}")
 
     def _dsl_show_command(self, tokens: List[str]) -> StatusResult:
         root = self._dsl_require_local_root()
@@ -6518,12 +6650,22 @@ class BridgeCli:
             except Exception as exc:
                 print(f"ERROR: {exc}")
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            store.tests_by_name[test_name] = RobotTestDslEntry(
+            entry = RobotTestDslEntry(
                 name=test_name,
                 source=source,
                 normalized=normalized,
                 source_hash=robot_test_dsl_source_hash(source),
             )
+            result = validate_robot_test_dsl_entry(
+                test_name,
+                entry,
+                self._dsl_device_catalog(profile_name),
+                self._dsl_signal_catalog(),
+            )
+            if not result.ok():
+                self._dsl_print_validation(result, False, False, entries_override={test_name: entry})
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            store.tests_by_name[test_name] = entry
             names = list(store.test_sets.get(set_name, []))
             if test_name not in names:
                 names.append(test_name)
@@ -6535,10 +6677,6 @@ class BridgeCli:
                 profile = profiles.get(profile_name)
                 if isinstance(profile, dict):
                     profile[KEY_DSL_TEST_SET] = set_name
-            result = self._dsl_validate_store(store, profile_name)
-            if not result.ok():
-                self._dsl_print_validation(result, False, False)
-                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
             self._dsl_write_store(store)
             print(MESSAGE_DSL_TEST_IMPORTED.format(name=test_name))
             return StatusResult(code=SS__NORMAL)
@@ -6640,6 +6778,17 @@ class BridgeCli:
                 return StatusResult(code=SS__NORMAL)
             print("ERROR: test set create|delete|add|remove|default ...")
             return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+        if sub == CMD_CLEANUP:
+            if len(tokens) < 3 or tokens[2].lower() != CMD_STALE:
+                print(f"ERROR: {CMD_TEST} {CMD_CLEANUP} {CMD_STALE}")
+                return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+            removed = self._dsl_cleanup_stale_tests(store, profile_name)
+            self._dsl_write_store(store)
+            if removed:
+                print(MESSAGE_DSL_TESTS_CLEANED.format(names=SEP_COMMA_SPACE.join(removed)))
+            else:
+                print(MESSAGE_DSL_TESTS_CLEAN_NONE)
+            return StatusResult(code=SS__NORMAL)
         print(MESSAGE_ERROR_DSL_CLI_USAGE)
         return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
 
@@ -8754,6 +8903,8 @@ class BridgeCli:
             return StatusResult(code=SS__NORMAL)
         if cmd == CMD_BINDINGS:
             return self._config_bindings_command(tokens)
+        if cmd == CMD_RUNTIME:
+            return self._runtime_command(tokens)
         if cmd == "show":
             return self._coerce_status(self._handle_show(tokens[1:]))
         print(f"ERROR: Unknown command: {' '.join(tokens)}")
@@ -8814,6 +8965,8 @@ class BridgeCli:
 
     def _config_command(self, tokens: List[str]) -> StatusResult:
         cmd = tokens[0].lower()
+        if cmd == CMD_RUNTIME:
+            return self._runtime_command(tokens)
         if cmd == CMD_BINDINGS:
             return self._config_bindings_command(tokens)
         if cmd == CMD_CAN_MAPPINGS:
@@ -10019,8 +10172,6 @@ class BridgeCli:
             ARG_REGISTRY_HASH: registry_hash,
             ARG_REGISTRY_BYTES: registry_bytes,
         }
-        if activate_profile:
-            args[ARG_ACTIVATE_PROFILE] = activate_profile
         print(MESSAGE_PUSH_STAGE.format(stage="config sent to robot", status=MATCH_STATE_YES))
         seq = self._session.send_command(CMD_PROFILES_APPLY, args)
         if seq is None:
@@ -10041,6 +10192,10 @@ class BridgeCli:
         self._record_last_push(path, registry_hash, activate_profile or self._active_profile_name() or EMPTY_STRING)
         self._sync_store_from_local()
         print(MESSAGE_INFO_PROFILES_PUSH_LOCAL.format(path=path))
+        if activate_profile:
+            activation_result = self._runtime_activate(activate_profile)
+            if not activation_result.ok():
+                return activation_result
         return StatusResult(code=SS__NORMAL)
 
     def _profiles_reload(self) -> StatusResult:
@@ -10066,18 +10221,60 @@ class BridgeCli:
         NAME
             _profiles_activate - Activate an already-loaded profile on the robot.
         """
-        if not profile_name:
-            print(MESSAGE_ERR_PROFILES_ACTIVATE)
+        return self._runtime_activate(profile_name)
+
+    def _runtime_command(self, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _runtime_command - Dispatch explicit runtime activate/deactivate commands.
+        """
+        if len(tokens) < COUNT_TWO:
+            print(MESSAGE_ERR_RUNTIME_ACTION)
             return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        action = tokens[COUNT_ONE].lower()
+        if action == CMD_ACTIVATE_PROFILE:
+            profile_name = tokens[COUNT_TWO] if len(tokens) >= COUNT_THREE else EMPTY_STRING
+            return self._runtime_activate(profile_name)
+        if action == CMD_DISABLE:
+            return self._runtime_deactivate()
+        if action == "deactivate":
+            return self._runtime_deactivate()
+        print(MESSAGE_ERR_RUNTIME_ACTION)
+        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+
+    def _runtime_activate(self, profile_name: str = EMPTY_STRING) -> StatusResult:
+        """
+        NAME
+            _runtime_activate - Activate the selected or named runtime profile on the robot.
+        """
+        if not profile_name:
+            profile_name = EMPTY_STRING
         if not self._session.is_connected():
             return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
-        seq = profile_activate(self._session, profile_name)
+        seq = runtime_activate(self._session, profile_name)
         if seq is None:
-            print(MESSAGE_ERR_PROFILES_ACTIVATE_SEND)
+            print(MESSAGE_ERR_RUNTIME_ACTIVATE_SEND)
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
-        self._proto_mark_cmd_sent(CMD_PROFILE_ACTIVATE, now=time.time())
+        self._proto_mark_cmd_sent(CMD_RUNTIME_ACTIVATE, now=time.time())
         event = self._wait_for_seq(seq, timeout_sec=ROBOT_LONG_COMMAND_TIMEOUT_SEC)
-        if self._event_failed(event, CMD_PROFILE_ACTIVATE):
+        if self._event_failed(event, CMD_RUNTIME_ACTIVATE):
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        return StatusResult(code=SS__NORMAL)
+
+    def _runtime_deactivate(self) -> StatusResult:
+        """
+        NAME
+            _runtime_deactivate - Deactivate the active runtime profile on the robot.
+        """
+        if not self._session.is_connected():
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+        seq = runtime_deactivate(self._session)
+        if seq is None:
+            print(MESSAGE_ERR_RUNTIME_DEACTIVATE_SEND)
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        self._proto_mark_cmd_sent(CMD_RUNTIME_DEACTIVATE, now=time.time())
+        event = self._wait_for_seq(seq, timeout_sec=ROBOT_LONG_COMMAND_TIMEOUT_SEC)
+        if self._event_failed(event, CMD_RUNTIME_DEACTIVATE):
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         return StatusResult(code=SS__NORMAL)
 
@@ -10264,6 +10461,9 @@ class BridgeCli:
             print(f"ACK {event.seq} {event.name} {event.status} {msg}".rstrip())
             return
         if event.type == EVENT_TYPE_OUT:
+            if event.name == CMD_UI_PING:
+                self._proto_mark_keepalive_out(event.seq, now=time.time())
+                return
             source = self._show_label_seq.pop(event.seq, "")
             if source:
                 print(f"SOURCE: {source}")
@@ -10290,8 +10490,6 @@ class BridgeCli:
                         print(event.json_text.rstrip())
                 else:
                     print(event.json_text.rstrip())
-            if event.name == CMD_UI_PING:
-                self._proto_mark_keepalive_out(event.seq, now=time.time())
             return
 
     def _confirm(self, prompt: str) -> bool:
@@ -10692,7 +10890,7 @@ class BridgeCli:
         keepalive = proto.get(PROTO_KEY_KEEPALIVE, {}) if isinstance(proto, dict) else {}
         print("Protocol:")
         print(
-            "  TCP: connected={connected} attempts={attempts} ok={ok} fail={fail} "
+            "  REST: connected={connected} attempts={attempts} ok={ok} fail={fail} "
             "lastConnectAt={last_connect} lastDisconnectAt={last_disconnect}".format(
                 connected=tcp.get(PROTO_KEY_CONNECTED, False),
                 attempts=tcp.get(PROTO_KEY_CONNECT_ATTEMPTS, COUNT_ZERO),
@@ -11121,8 +11319,8 @@ class BridgeCli:
         return {
             "show": HELP_SHOW_TEXT,
             "configure terminal": "configure terminal\n  Enter config mode.",
-            "connect": "connect\n  Open TCP connection and perform handshake.",
-            "disconnect": "disconnect\n  Close TCP connection.",
+            "connect": "connect\n  Open REST session and perform handshake.",
+            "disconnect": "disconnect\n  Close REST session.",
             "instantiate all devices": (
                 "instantiate all devices\n"
                 "  Instantiate all configured robot devices for the active profile."
@@ -11263,6 +11461,7 @@ class BridgeCli:
             HELP_TOPIC_PROFILES_INIT: HELP_PROFILES_INIT_TEXT,
             HELP_TOPIC_PROFILES_EXPORT: HELP_PROFILES_EXPORT_TEXT,
             HELP_TOPIC_PROFILES_RELOAD: HELP_PROFILES_RELOAD_TEXT,
+            HELP_TOPIC_RUNTIME: HELP_RUNTIME_TEXT,
             HELP_TOPIC_CONFIG_PUSH: HELP_CONFIG_PUSH_TEXT,
             HELP_TOPIC_RESET_ZERO_CONFIG: HELP_RESET_ZERO_CONFIG_TEXT,
             HELP_TOPIC_RECOVER: HELP_RECOVER_TEXT,
@@ -11685,6 +11884,115 @@ class BridgeCli:
             return []
         return [str(label).strip() for label in labels if isinstance(label, str) and str(label).strip()]
 
+    def _registry_manufacturer_display(self, entry: Dict[str, object]) -> str:
+        """
+        NAME
+            _registry_manufacturer_display - Resolve display text for one registry manufacturer.
+        """
+        value = entry.get(KEY_MANUFACTURER)
+        if isinstance(value, int):
+            mappings = self._load_can_mappings()
+            manufacturers = mappings.get(KEY_MANUFACTURERS, {}) if isinstance(mappings, dict) else {}
+            mapped = manufacturers.get(str(value), EMPTY_STRING) if isinstance(manufacturers, dict) else EMPTY_STRING
+            if isinstance(mapped, str) and mapped.strip():
+                return mapped.strip()
+            return str(value)
+        text = str(value or EMPTY_STRING).strip()
+        return text
+
+    def _registry_device_type_display(self, entry: Dict[str, object]) -> str:
+        """
+        NAME
+            _registry_device_type_display - Resolve display text for one registry device type.
+        """
+        value = entry.get(KEY_DEVICE_TYPE)
+        if isinstance(value, int):
+            mappings = self._load_can_mappings()
+            device_types = mappings.get(KEY_DEVICE_TYPES, {}) if isinstance(mappings, dict) else {}
+            mapped = device_types.get(str(value), EMPTY_STRING) if isinstance(device_types, dict) else EMPTY_STRING
+            if isinstance(mapped, str) and mapped.strip():
+                return mapped.strip()
+            return str(value)
+        text = str(entry.get(KEY_TYPE, value or EMPTY_STRING)).strip()
+        return text
+
+    def _registry_show_device_entry(
+        self,
+        entry: Dict[str, object],
+        active_labels: set[str],
+    ) -> Dict[str, object]:
+        """
+        NAME
+            _registry_show_device_entry - Build one config-wide show devices row from the shared registry.
+        """
+        label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+        interface_value = str(entry.get(KEY_INTERFACE, EMPTY_STRING)).strip()
+        row: Dict[str, object] = {
+            KEY_LABEL: label,
+            KEY_INTERFACE: interface_value,
+            KEY_VENDOR: self._registry_manufacturer_display(entry),
+            KEY_TYPE: self._registry_device_type_display(entry),
+            KEY_ID: entry.get(KEY_ID, COUNT_ZERO),
+            KEY_MODEL: str(entry.get(KEY_MODEL, EMPTY_STRING)).strip(),
+            KEY_IN_PROFILE: label.lower() in active_labels,
+        }
+        return row
+
+    def _show_local_registry_devices(self, json_output: bool, pretty: bool) -> StatusResult:
+        """
+        NAME
+            _show_local_registry_devices - Show the full shared device inventory from the loaded config.
+        """
+        if not isinstance(self._local_root_payload, dict):
+            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
+            return StatusResult(code=SS__CONFIG__NOT_LOADED)
+        devices = self._local_root_payload.get(KEY_DEVICES)
+        rows: List[Dict[str, object]] = []
+        active_labels = {label.lower() for label in self._active_profile_labels()}
+        active_order = {label.lower(): index for index, label in enumerate(self._active_profile_labels())}
+        if isinstance(devices, list):
+            for entry in devices:
+                if not isinstance(entry, dict):
+                    continue
+                label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
+                if not label:
+                    continue
+                rows.append(self._registry_show_device_entry(entry, active_labels))
+        rows.sort(
+            key=lambda item: (
+                not bool(item.get(KEY_IN_PROFILE, False)),
+                active_order.get(str(item.get(KEY_LABEL, EMPTY_STRING)).strip().lower(), COUNT_ZERO),
+                str(item.get(KEY_LABEL, EMPTY_STRING)).strip().lower(),
+            )
+        )
+        payload = {
+            KEY_PROFILE: self._active_profile_name() or EMPTY_STRING,
+            KEY_SCOPE: SCOPE_CONFIG,
+            KEY_DEVICES: rows,
+        }
+        print(MESSAGE_SOURCE_LOCAL)
+        if json_output:
+            print(self._dump_json(payload, pretty))
+            return StatusResult(code=SS__NORMAL)
+        if not rows:
+            print(TEXT_DEVICES_ALL_NONE)
+            return StatusResult(code=SS__NORMAL)
+        print(TEXT_DEVICES_ALL_HEADER)
+        for row in rows:
+            print(
+                TEXT_DEVICES_LIST_PREFIX
+                + TEXT_DEVICE_REGISTRY_ENTRY.format(
+                    label=row.get(KEY_LABEL, EMPTY_STRING),
+                    interface=row.get(KEY_INTERFACE, EMPTY_STRING),
+                    vendor=row.get(KEY_VENDOR, EMPTY_STRING),
+                    type=row.get(KEY_TYPE, EMPTY_STRING),
+                    id=row.get(KEY_ID, COUNT_ZERO),
+                    model=row.get(KEY_MODEL, EMPTY_STRING) or STRING_NONE,
+                    in_profile=MATCH_STATE_YES if bool(row.get(KEY_IN_PROFILE, False)) else MATCH_STATE_NO,
+                )
+            )
+        return StatusResult(code=SS__NORMAL)
+
     def _show_active_local(self, json_output: bool, pretty: bool) -> StatusResult:
         """
         NAME
@@ -12053,6 +12361,10 @@ class BridgeCli:
         if target == SHOW_TARGET_DEVICE:
             name = tokens[1] if len(tokens) >= 2 else ""
             return self._show_local_registry_device(name, json_output, pretty)
+        if target == SHOW_TARGET_DEVICES:
+            show_all = any(tok.lower() == SHOW_FLAG_ALL for tok in tokens[1:])
+            if show_all:
+                return self._show_local_registry_devices(json_output, pretty)
         if target == SHOW_TARGET_TOPOLOGY:
             return self._show_local_topology(tokens, json_output, pretty, grouped)
         if target == SHOW_TARGET_NEIGHBORS:
@@ -17844,7 +18156,7 @@ else:
 
 
 DEFAULT_DIRECT_RIO_HOST = "172.22.11.2"
-DEFAULT_DIRECT_UI_TCP_PORT = 5809
+DEFAULT_DIRECT_UI_REST_PORT = 5805
 
 
 def _build_direct_parser() -> argparse.ArgumentParser:
@@ -17853,12 +18165,12 @@ def _build_direct_parser() -> argparse.ArgumentParser:
         _build_direct_parser - Build argparse parser for direct bridge_cli.py execution.
     """
     parser = argparse.ArgumentParser(description="Bridge CLI (direct mode).")
-    parser.add_argument("--rio", default=DEFAULT_DIRECT_RIO_HOST, help="Robot host/IP for TCP UI session.")
+    parser.add_argument("--rio", default=DEFAULT_DIRECT_RIO_HOST, help="Robot host/IP for REST command session.")
     parser.add_argument(
-        "--ui-tcp-port",
+        "--ui-rest-port",
         type=int,
-        default=DEFAULT_DIRECT_UI_TCP_PORT,
-        help="TCP port for robot UI command channel.",
+        default=DEFAULT_DIRECT_UI_REST_PORT,
+        help="REST port for robot command server.",
     )
     parser.add_argument("--batch", action="store_true", help="Run non-interactive batch script mode.")
     parser.add_argument("--script", default="", help="Path to batch script when --batch is set.")
@@ -17881,7 +18193,7 @@ def _run_direct_cli(argv: List[str]) -> int:
     if args.batch and not args.script:
         print("ERROR: --batch requires --script <file>.")
         return EXIT_CODE_ERROR
-    session = BridgeSession(args.rio, int(args.ui_tcp_port))
+    session = BridgeSession(args.rio, int(args.ui_rest_port))
     cli = BridgeCli(
         session,
         batch=bool(args.batch),

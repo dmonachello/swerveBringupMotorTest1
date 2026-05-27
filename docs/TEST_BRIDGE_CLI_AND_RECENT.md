@@ -16,7 +16,7 @@ This document is current for:
 - repo root is the working directory
 - `src/main/deploy/bringup_system.json` exists
 - `src/main/deploy/bringup_bindings.json` exists
-- no current workflow depends on `data\bringup_system.json`
+- no current workflow depends on a separate `data\` copy of `bringup_system.json`
 
 ## Offline Current-State Checks
 

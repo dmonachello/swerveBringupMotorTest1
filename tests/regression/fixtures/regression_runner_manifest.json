@@ -131,14 +131,16 @@
       "label": "robot-non-motion",
       "mode": "connected",
       "features": [
-        "robot tcp ui",
+        "robot rest command server",
         "connected non-motion workflow"
       ],
       "argv": [
         "{python}",
         "{repo}/tools/can_nt/scripts/bridge_cli_robot_non_motion_regression.py",
         "--rio",
-        "{rio}"
+        "{rio}",
+        "--ui-rest-port",
+        "{ui_rest_port}"
       ]
     }
   },

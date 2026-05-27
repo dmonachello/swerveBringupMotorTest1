@@ -50,6 +50,8 @@ public class Robot extends TimedRobot {
   private final BringupCommandRouter.GenericCmdHandler genericCmdHandler =
       new GenericCmdHandlerImpl();
   private final BringupCommandRouter.AddMotorHandler addMotorHandler = new AddMotorHandlerImpl();
+  private static final String MESSAGE_SELECTED_PROFILE_STAGE_FAILED_PREFIX =
+      "Failed to stage selected profile for incremental bringup: ";
 
   /**
    * NAME
@@ -166,19 +168,31 @@ public class Robot extends TimedRobot {
 
   /**
    * NAME
+   *   stageSelectedProfileForIncrementalBringup - Prepare selected-profile device configs without activation.
+   *
+   * RETURNS
+   *   True on success.
+   */
+  private boolean stageSelectedProfileForIncrementalBringup() {
+    String error = BringupUtil.stageSelectedProfileForBringup();
+    if (error != null && !error.isBlank()) {
+      BringupPrinter.enqueue(MESSAGE_SELECTED_PROFILE_STAGE_FAILED_PREFIX + error);
+      return false;
+    }
+    validateCanIds();
+    return true;
+  }
+
+  /**
+   * NAME
    *   AddAllHandlerImpl - Activate profile before add-all.
    */
   private final class AddAllHandlerImpl implements BringupCommandRouter.AddAllHandler {
     @Override
     public void handleAddAll(boolean addAllNow) {
       if (addAllNow && !BringupUtil.isProfileActive()) {
-        BringupUtil.prepareActivationForSelectedProfile();
-        BringupUtil.activateSelectedProfile();
-        if (BringupUtil.isProfileActive()) {
-          core.resetState("profileActivate");
-          core = new BringupCore();
-          validateCanIds();
-          printProfileInfo();
+        if (!stageSelectedProfileForIncrementalBringup()) {
+          return;
         }
       }
       if (core != null) {
@@ -195,13 +209,8 @@ public class Robot extends TimedRobot {
     @Override
     public void handleAddMotor(boolean addMotorNow) {
       if (addMotorNow && !BringupUtil.isProfileActive()) {
-        BringupUtil.prepareActivationForSelectedProfile();
-        BringupUtil.activateSelectedProfile();
-        if (BringupUtil.isProfileActive()) {
-          core.resetState("profileActivate");
-          core = new BringupCore();
-          validateCanIds();
-          printProfileInfo();
+        if (!stageSelectedProfileForIncrementalBringup()) {
+          return;
         }
       }
       if (core != null) {
@@ -218,13 +227,8 @@ public class Robot extends TimedRobot {
     @Override
     public void handleGenericCmd(boolean genericCmdNow) {
       if (genericCmdNow && !BringupUtil.isProfileActive()) {
-        BringupUtil.prepareActivationForSelectedProfile();
-        BringupUtil.activateSelectedProfile();
-        if (BringupUtil.isProfileActive()) {
-          core.resetState("profileActivate");
-          core = new BringupCore();
-          validateCanIds();
-          printProfileInfo();
+        if (!stageSelectedProfileForIncrementalBringup()) {
+          return;
         }
       }
       if (core != null) {

@@ -56,7 +56,7 @@ Purpose: Avoid accidental scope creep.
 Purpose: Provide precise language for the rest of the spec.
 
 - Host context:
-  - The CLI's current local working state loaded from disk (typically `data/bringup_system.json`).
+  - The CLI's current local working state loaded from disk (typically `src/main/deploy/bringup_system.json`).
   - Includes: local active profile name, test authoring active set, dirty flags, file paths.
 - Robot context:
   - The robot's runtime state over TCP (active bringup profile, selected test name/index, runAllActive, etc.).

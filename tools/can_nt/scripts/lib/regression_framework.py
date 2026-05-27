@@ -45,7 +45,7 @@ SUITE_ROBOT_NON_MOTION = "robot-non-motion"
 SUITE_ALL = "all"
 
 FLAG_RIO = "--rio"
-FLAG_UI_TCP_PORT = "--ui-tcp-port"
+FLAG_UI_REST_PORT = "--ui-rest-port"
 
 TEXT_MODE_LOCAL = "local"
 TEXT_MODE_CONNECTED = "connected"
@@ -131,7 +131,7 @@ TOKEN_PYTHON = "{python}"
 TOKEN_GRADLEW = "{gradlew}"
 TOKEN_REPO = "{repo}"
 TOKEN_RIO = "{rio}"
-TOKEN_UI_TCP_PORT = "{ui_tcp_port}"
+TOKEN_UI_REST_PORT = "{ui_rest_port}"
 
 STATUS_MATCH = "match"
 STATUS_REGRESSION = "regression"
@@ -236,7 +236,7 @@ def build_suite_commands(
     suite_name: str,
     rio: Optional[str] = None,
     include_robot: bool = False,
-    ui_tcp_port: Optional[int] = None,
+    ui_rest_port: Optional[int] = None,
 ) -> List[RegressionCommand]:
     """
     NAME
@@ -249,7 +249,7 @@ def build_suite_commands(
             command_ids.extend(_suite_command_ids(manifest, SUITE_ROBOT_NON_MOTION))
     else:
         command_ids = list(_suite_command_ids(manifest, suite_name))
-    context = _manifest_context(rio=rio, ui_tcp_port=ui_tcp_port)
+    context = _manifest_context(rio=rio, ui_rest_port=ui_rest_port)
     return [_build_command_from_manifest(manifest, command_id, context) for command_id in command_ids]
 
 
@@ -872,13 +872,13 @@ def _history_file_timestamp(timestamp: str) -> str:
     return timestamp.replace(":", "").replace("-", "").replace("T", "_").replace("Z", "")
 
 
-def _manifest_context(rio: Optional[str], ui_tcp_port: Optional[int]) -> Dict[str, Optional[str]]:
+def _manifest_context(rio: Optional[str], ui_rest_port: Optional[int]) -> Dict[str, Optional[str]]:
     return {
         TOKEN_PYTHON: sys.executable,
         TOKEN_GRADLEW: str(REPO_ROOT / GRADLEW_WINDOWS),
         TOKEN_REPO: str(REPO_ROOT),
         TOKEN_RIO: rio,
-        TOKEN_UI_TCP_PORT: None if ui_tcp_port is None else str(ui_tcp_port),
+        TOKEN_UI_REST_PORT: None if ui_rest_port is None else str(ui_rest_port),
     }
 
 
@@ -910,8 +910,8 @@ def _build_command_from_manifest(
     if not isinstance(argv_raw, list) or not argv_raw:
         raise ValueError(f"command has no argv: {command_id}")
     argv = [_resolve_manifest_token(str(token), context, command_id) for token in argv_raw]
-    if FLAG_UI_TCP_PORT in argv and context.get(TOKEN_UI_TCP_PORT) is None:
-        flag_index = argv.index(FLAG_UI_TCP_PORT)
+    if FLAG_UI_REST_PORT in argv and context.get(TOKEN_UI_REST_PORT) is None:
+        flag_index = argv.index(FLAG_UI_REST_PORT)
         argv = argv[:flag_index]
     label = str(entry.get(KEY_LABEL, command_id)).strip()
     mode = str(entry.get(KEY_MODE, TEXT_MODE_LOCAL)).strip() or TEXT_MODE_LOCAL
@@ -930,8 +930,8 @@ def _build_command_from_manifest(
 def _resolve_manifest_token(token: str, context: Mapping[str, Optional[str]], command_id: str) -> str:
     if token == TOKEN_RIO and not context.get(TOKEN_RIO):
         raise ValueError(f"command {command_id} requires {FLAG_RIO}")
-    if token == TOKEN_UI_TCP_PORT and not context.get(TOKEN_UI_TCP_PORT):
-        return FLAG_UI_TCP_PORT
+    if token == TOKEN_UI_REST_PORT and not context.get(TOKEN_UI_REST_PORT):
+        return FLAG_UI_REST_PORT
     resolved = token
     for key, value in context.items():
         if value is not None:

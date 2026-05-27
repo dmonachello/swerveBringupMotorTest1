@@ -25,7 +25,7 @@ from .model import (
 )
 from .compiler import compile_source, compile_store_sources
 from .serializer import store_from_payload, store_to_payload, source_hash
-from .validator import ValidationIssue, ValidationResult, validate_store
+from .validator import ValidationIssue, ValidationResult, validate_entry, validate_store
 
 __all__ = [
     "DSL_SCHEMA_VERSION",
@@ -49,5 +49,6 @@ __all__ = [
     "source_hash",
     "ValidationIssue",
     "ValidationResult",
+    "validate_entry",
     "validate_store",
 ]

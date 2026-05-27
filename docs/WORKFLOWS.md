@@ -209,13 +209,13 @@ python -m tools.can_topology.can_top_editor
 
 ```text
 python -m tools.validate_sync --warnings
-python tools/can_topology/validate_profiles.py --path data/bringup_system.json --verbose
+python tools/can_topology/validate_profiles.py --path src/main/deploy/bringup_system.json --verbose
 ```
 
 ### Notes
 
-- canonical source is `data/bringup_system.json`
-- deploy copy is derived and should be kept in sync
+- config source is `src/main/deploy/bringup_system.json`
+- the deploy-owned `src/main/deploy/bringup_system.json` file is the shared config source
 - use the topology editor for topology-aware work instead of hand-editing layout sections
 
 ## Config Push To Robot
@@ -237,7 +237,7 @@ python -m tools.validate_sync --warnings
 ```text
 python tools\can_nt\bridge_cli.py --rio 172.22.11.2
 connect
-profiles push data\bringup_system.json --activate robot_2026_swerve
+profiles push src\main\deploy\bringup_system.json --activate robot_2026_swerve
 ```
 
 ### Notes
@@ -289,7 +289,7 @@ Run:
 
 ```text
 python -m tools.validate_sync --warnings
-python tools/can_topology/validate_profiles.py --path data/bringup_system.json --verbose
+python tools/can_topology/validate_profiles.py --path src/main/deploy/bringup_system.json --verbose
 python tools/can_nt/scripts/run_regressions.py --suite topology --no-history
 python tools/can_nt/scripts/run_regressions.py --suite cross-surface --no-history
 ```

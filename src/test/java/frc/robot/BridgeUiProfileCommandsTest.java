@@ -13,6 +13,9 @@ class BridgeUiProfileCommandsTest {
 
   private static final String CMD_SELECT_PROFILE = "selectProfile";
   private static final String CMD_PROFILE_ACTIVATE = "profileActivate";
+  private static final String CMD_RUNTIME_ACTIVATE = "runtimeActivate";
+  private static final String CMD_RUNTIME_DEACTIVATE = "runtimeDeactivate";
+  private static final String CMD_SHOW_PROFILES = "showProfiles";
   private static final String CMD_SHOW_PROFILE = "showProfile";
 
   @Test
@@ -43,6 +46,7 @@ class BridgeUiProfileCommandsTest {
     ProfileDeps deps = new ProfileDeps();
     deps.nextName = "alpha";
     deps.profileActive = true;
+    deps.activeRuntimeProfile = "alpha";
     BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
     BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
         CMD_PROFILE_ACTIVATE,
@@ -62,6 +66,111 @@ class BridgeUiProfileCommandsTest {
     assertTrue(result.ok);
     assertTrue(deps.activateActionRan);
     assertTrue(result.message.startsWith("Profile activated:"));
+  }
+
+  @Test
+  void runtimeActivateSuccessRunsActivateAction() {
+    ProfileDeps deps = new ProfileDeps();
+    deps.profileActive = true;
+    deps.activeRuntimeProfile = "beta";
+    deps.nextName = "beta";
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_RUNTIME_ACTIVATE,
+        new JsonObject(),
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(deps.activateActionRan);
+    assertTrue(result.message.startsWith("Profile activated:"));
+  }
+
+  @Test
+  void runtimeDeactivateRunsDeactivateAction() {
+    ProfileDeps deps = new ProfileDeps();
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_RUNTIME_DEACTIVATE,
+        new JsonObject(),
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(deps.deactivateCalled);
+    assertTrue(deps.deactivateActionRan);
+    assertEquals("Runtime deactivated.", result.message);
+  }
+
+  @Test
+  void selectProfileReportsSelectedProfileNotActiveProfile() {
+    ProfileDeps deps = new ProfileDeps();
+    deps.nextName = "beta";
+    deps.selectedProfileLabel = "beta";
+    deps.activeProfileLabel = "alpha";
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_SELECT_PROFILE,
+        new JsonObject(),
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertTrue(result.ok);
+    assertEquals("Selected profile: beta", result.message);
+  }
+
+  @Test
+  void showProfilesJsonIncludesSelectedAndRuntimeState() {
+    ProfileDeps deps = new ProfileDeps();
+    deps.selectedProfileLabel = "beta";
+    deps.activeProfileLabel = "beta (inactive)";
+    deps.profileActive = false;
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_SHOW_PROFILES,
+        new JsonObject(),
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(result.outJson.contains("\"selected\":\"beta\""));
+    assertTrue(result.outJson.contains("\"runtimeActive\":false"));
   }
 
   @Test
@@ -93,6 +202,11 @@ class BridgeUiProfileCommandsTest {
     private String nextName;
     private boolean profileActive;
     private boolean activateActionRan;
+    private boolean deactivateActionRan;
+    private boolean deactivateCalled;
+    private String activeRuntimeProfile = "";
+    private String selectedProfileLabel = "alpha";
+    private String activeProfileLabel = "alpha";
 
     @Override
     public String parseUiArgString(JsonObject args, String key) {
@@ -109,13 +223,28 @@ class BridgeUiProfileCommandsTest {
     public void activateSelectedProfile() {}
 
     @Override
+    public void deactivateActiveProfile() {
+      deactivateCalled = true;
+    }
+
+    @Override
     public boolean isProfileActive() {
       return profileActive;
     }
 
     @Override
     public String getActiveCanProfileLabel() {
-      return "alpha";
+      return activeProfileLabel;
+    }
+
+    @Override
+    public String getSelectedCanProfileLabel() {
+      return selectedProfileLabel;
+    }
+
+    @Override
+    public String getActiveRuntimeProfileLabel() {
+      return activeRuntimeProfile;
     }
 
     @Override
@@ -126,6 +255,11 @@ class BridgeUiProfileCommandsTest {
     @Override
     public void runProfileActivateAction() {
       activateActionRan = true;
+    }
+
+    @Override
+    public void runProfileDeactivateAction() {
+      deactivateActionRan = true;
     }
 
     @Override

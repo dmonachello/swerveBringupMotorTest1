@@ -21,7 +21,6 @@ public final class RobotLocalCommandRegistry {
   private static final String JSON_KEY_INVOCATION_KIND = "invocationKind";
   private static final String JSON_KEY_CONTROLLER_ALLOWED = "controllerAllowed";
   private static final String JSON_KEY_HOST_UI_ALLOWED = "hostUiAllowed";
-  private static final String JSON_KEY_QUEUEABLE = "queueable";
   private static final String JSON_KEY_AUTO_STOP_ON_SOURCE_LOSS = "autoStopOnSourceLoss";
   private static final String JSON_KEY_SHOW_IN_HOST_UI = "showInHostUi";
   private static final String JSON_KEY_UI_SECTION = "uiSection";
@@ -72,6 +71,8 @@ public final class RobotLocalCommandRegistry {
   public static final String COMMAND_SHOW_TESTS = "showTests";
   public static final String COMMAND_SELECT_PROFILE = "selectProfile";
   public static final String COMMAND_PROFILE_ACTIVATE = "profileActivate";
+  public static final String COMMAND_RUNTIME_ACTIVATE = "runtimeActivate";
+  public static final String COMMAND_RUNTIME_DEACTIVATE = "runtimeDeactivate";
   public static final String COMMAND_PROFILES_RELOAD = "profilesReload";
   public static final String COMMAND_PROFILES_APPLY = "profilesApply";
   public static final String COMMAND_SHOW_PROFILES = "showProfiles";
@@ -146,7 +147,6 @@ public final class RobotLocalCommandRegistry {
       row.addProperty(JSON_KEY_INVOCATION_KIND, definition.invocationKind().name());
       row.addProperty(JSON_KEY_CONTROLLER_ALLOWED, definition.controllerAllowed());
       row.addProperty(JSON_KEY_HOST_UI_ALLOWED, definition.hostUiAllowed());
-      row.addProperty(JSON_KEY_QUEUEABLE, definition.queueable());
       row.addProperty(JSON_KEY_AUTO_STOP_ON_SOURCE_LOSS, definition.autoStopOnSourceLoss());
       row.addProperty(JSON_KEY_SHOW_IN_HOST_UI, definition.showInHostUi());
       row.addProperty(JSON_KEY_UI_SECTION, definition.uiSection());
@@ -205,7 +205,6 @@ public final class RobotLocalCommandRegistry {
         false,
         true,
         false,
-        false,
         true,
         UI_SECTION_SYSTEM,
         "Clear Stop Latch",
@@ -242,7 +241,6 @@ public final class RobotLocalCommandRegistry {
         RobotLocalInvocationKind.REMOTE,
         false,
         true,
-        false,
         false,
         true,
         UI_SECTION_SYSTEM,
@@ -282,6 +280,8 @@ public final class RobotLocalCommandRegistry {
 
     register(rows, profileDefinition(COMMAND_SELECT_PROFILE, "Select Profile", "Select a profile by name.", legacyUiGroup));
     register(rows, profileDefinition(COMMAND_PROFILE_ACTIVATE, "Activate Profile", "Activate the selected profile.", legacyUiGroup));
+    register(rows, profileDefinition(COMMAND_RUNTIME_ACTIVATE, "Runtime Activate", "Activate the selected profile runtime.", legacyUiGroup));
+    register(rows, profileDefinition(COMMAND_RUNTIME_DEACTIVATE, "Runtime Deactivate", "Deactivate the active runtime profile.", legacyUiGroup));
     register(rows, profileDefinition(COMMAND_PROFILES_RELOAD, "Reload Profiles", "Reload bringup_system.json on the robot.", legacyUiGroup));
     register(rows, profileDefinition(COMMAND_PROFILES_APPLY, "Apply Profiles", "Apply uploaded registry JSON on the robot.", legacyUiGroup));
     register(rows, profileDefinition(COMMAND_SHOW_PROFILES, "Show Profiles", "Show available profiles.", legacyUiGroup));
@@ -341,7 +341,6 @@ public final class RobotLocalCommandRegistry {
         true,
         hostUiAllowed,
         false,
-        false,
         showInUi,
         showInUi ? uiSection : "",
         label,
@@ -362,7 +361,6 @@ public final class RobotLocalCommandRegistry {
         true,
         true,
         false,
-        false,
         true,
         UI_SECTION_REPORTS,
         label,
@@ -382,7 +380,6 @@ public final class RobotLocalCommandRegistry {
         RobotLocalInvocationKind.BUTTON,
         true,
         true,
-        false,
         false,
         true,
         UI_SECTION_REPORTS,
@@ -405,7 +402,6 @@ public final class RobotLocalCommandRegistry {
         invocationKind,
         true,
         true,
-        false,
         COMMAND_RUN_TEST.equals(wireName),
         showInUi,
         UI_SECTION_TESTS,
@@ -426,7 +422,6 @@ public final class RobotLocalCommandRegistry {
         RobotLocalInvocationKind.REMOTE,
         false,
         true,
-        false,
         false,
         false,
         UI_SECTION_PROFILES,
@@ -450,7 +445,6 @@ public final class RobotLocalCommandRegistry {
         false,
         true,
         false,
-        false,
         showInUi,
         UI_SECTION_SESSION,
         label,
@@ -472,7 +466,6 @@ public final class RobotLocalCommandRegistry {
         false,
         true,
         false,
-        false,
         showInUi,
         UI_SECTION_GROUPS,
         label,
@@ -487,7 +480,6 @@ public final class RobotLocalCommandRegistry {
         RobotLocalCommandGroup.RUNTIME,
         RobotLocalInvocationKind.AXIS_VALUE,
         true,
-        false,
         false,
         false,
         false,

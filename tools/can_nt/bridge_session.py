@@ -2,33 +2,35 @@ from __future__ import annotations
 
 """
 NAME
-    bridge_session.py - Shared TCP bridge session for GUI and CLI.
+    bridge_session.py - Shared REST bridge session for GUI and CLI.
 
 SYNOPSIS
     from tools.can_nt.bridge_session import BridgeSession
 
 DESCRIPTION
-    Centralizes TCP connect/send/receive, ACK/OUT parsing, and runtime state
-    snapshots for the bridge UI and CLI front ends.
+    Centralizes REST session connect/send/poll behavior and exposes a
+    compatibility event stream so existing CLI/UI code can share one command
+    transport layer without reimplementing command lifecycle handling in each
+    surface.
 """
 
 import datetime
 import json
-import queue
-import socket
-import threading
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 import uuid
+from collections import deque
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional
 
-from tools.common.runtime_constants import THREAD_NAME_TCP_READER
 
 @dataclass
 class BridgeEvent:
     """
     NAME
-        BridgeEvent - Parsed ACK/OUT event from the TCP bridge.
+        BridgeEvent - Parsed ACK/OUT event from the bridge transport.
 
     DESCRIPTION
         Carries a parsed payload plus the raw data for callers that need it.
@@ -53,22 +55,95 @@ SECONDS_PER_MINUTE = 60
 HANDSHAKE_TIMEOUT_SEC_DEFAULT = 3.5
 TRACE_CMD_UI_PING = "uiPing"
 TRACE_CMD_UI_POLL_LOG = "uiPollLog"
+HTTP_METHOD_GET = "GET"
+HTTP_METHOD_POST = "POST"
+HTTP_CONTENT_TYPE = "application/json"
+HTTP_HEADER_CONTENT_TYPE = "Content-Type"
+HTTP_HEADER_ACCEPT = "Accept"
+HTTP_ACCEPT_JSON = "application/json"
+REST_PATH_HEALTH = "/health"
+REST_PATH_SESSION = "/session"
+REST_PATH_SESSION_CONNECT = "/session/connect"
+REST_PATH_SESSION_DISCONNECT = "/session/disconnect"
+REST_PATH_SESSION_RESET = "/session/reset"
+REST_PATH_SESSION_PING = "/session/ping"
+REST_PATH_COMMANDS = "/commands"
+REST_PATH_LOGS = "/logs"
+REST_PATH_MONITOR_ENABLE = "/monitor/enable"
+REST_PATH_MONITOR_DISABLE = "/monitor/disable"
+REST_QUERY_AFTER = "after"
+REST_QUERY_CLIENT_ID = "clientId"
+REST_JSON_CLIENT_ID = "clientId"
+REST_JSON_REQUEST_ID = "requestId"
+REST_JSON_NAME = "name"
+REST_JSON_ARGS = "args"
+REST_JSON_COMMAND_ID = "commandId"
+REST_JSON_STATUS = "status"
+REST_JSON_MESSAGE = "message"
+REST_JSON_SESSION_ID = "sessionId"
+REST_JSON_NEXT_SEQUENCE = "nextSequence"
+REST_JSON_CHUNKS = "chunks"
+REST_JSON_TEXT = "text"
+REST_JSON_LOGS = "logs"
+REST_JSON_SEQUENCE = "sequence"
+REST_JSON_CONNECTED = "connected"
+REST_STATUS_FINISHED = "FINISHED"
+REST_STATUS_FAILED = "FAILED"
+REST_STATUS_STOPPED = "STOPPED"
+REST_STATUS_REJECTED = "REJECTED"
+REST_STATUS_UNKNOWN = "UNKNOWN"
+REST_STATUS_RUNNING = "RUNNING"
+REST_STATUS_ACCEPTED = "ACCEPTED"
+EVENT_TYPE_ACK = "ack"
+EVENT_TYPE_OUT = "out"
+EVENT_STATUS_OK = "ok"
+EVENT_STATUS_ERROR = "error"
+COMMAND_UI_HANDSHAKE = "uiHandshake"
+COMMAND_UI_DISCONNECT = "uiDisconnect"
+COMMAND_UI_PING = "uiPing"
+COMMAND_UI_POLL_LOG = "uiPollLog"
+COMMAND_UI_MONITOR_ENABLE = "uiMonitorEnable"
+COMMAND_UI_MONITOR_DISABLE = "uiMonitorDisable"
+COMMAND_STOP = "stopCommand"
+SESSION_COMMANDS = {
+    COMMAND_UI_HANDSHAKE,
+    COMMAND_UI_DISCONNECT,
+    COMMAND_UI_PING,
+    COMMAND_UI_POLL_LOG,
+    COMMAND_UI_MONITOR_ENABLE,
+    COMMAND_UI_MONITOR_DISABLE,
+}
+REST_PORT_DEFAULT = 5805
+REST_TIMEOUT_CONNECT_SEC = 0.5
+REST_TIMEOUT_COMMAND_SEC = 3.5
+LOG_TIMEOUT_SEC = 2.0
+EMPTY_STRING = ""
+VALUE_ZERO = 0
+VALUE_ONE = 1
+JSON_INDENT_NONE = None
+TRACE_PREFIX_SEND = "REST SEND "
+TRACE_PREFIX_RECV = "REST RECV "
+TRACE_PREFIX_FAIL = "REST FAIL "
+MESSAGE_CONNECT_FAILED = "REST connect failed."
+MESSAGE_HANDSHAKE_FAILED = "REST session connect failed."
+MESSAGE_OWNER_REQUIRED = "Owning control client required."
+MESSAGE_METHOD_NOT_ALLOWED = "Method not allowed."
 
 
 def _local_timezone_args() -> Dict[str, Any]:
     """
     NAME
-        _local_timezone_args - Build timezone args for uiHandshake.
+        _local_timezone_args - Build timezone args for session connect metadata.
     """
     now = datetime.datetime.now(datetime.timezone.utc).astimezone()
     offset = now.utcoffset()
-    offset_min = 0
+    offset_min = VALUE_ZERO
     if offset is not None:
         offset_min = int(offset.total_seconds() / SECONDS_PER_MINUTE)
     tzinfo = now.tzinfo
-    tz_id = ""
+    tz_id = EMPTY_STRING
     if tzinfo is not None:
-        tz_id = getattr(tzinfo, "key", "") or getattr(tzinfo, "zone", "") or ""
+        tz_id = getattr(tzinfo, "key", EMPTY_STRING) or getattr(tzinfo, "zone", EMPTY_STRING) or EMPTY_STRING
     args = {TIMEZONE_ARG_OFFSET_MIN: offset_min}
     if tz_id:
         args[TIMEZONE_ARG_ID] = tz_id
@@ -80,38 +155,24 @@ def _trace_should_log_name(name: str) -> bool:
     NAME
         _trace_should_log_name - Suppress noisy keepalive command names from raw traces.
     """
-    value = (name or "").strip()
+    value = (name or EMPTY_STRING).strip()
     return value not in (TRACE_CMD_UI_PING, TRACE_CMD_UI_POLL_LOG)
 
 
-class TcpCommandClient:
+class RestHttpClient:
     """
     NAME
-        TcpCommandClient - Line-delimited JSON TCP client for UI commands.
+        RestHttpClient - Minimal JSON HTTP client for robot REST endpoints.
     """
 
     def __init__(self, host: str, port: int) -> None:
-        self._host = host
-        self._port = port
-        self._sock: Optional[socket.socket] = None
-        self._reader: Optional[threading.Thread] = None
-        self._queue: "queue.Queue[Dict[str, Any]]" = queue.Queue()
-        self._connected = False
-        self._lock = threading.Lock()
+        self._base_url = f"http://{host}:{port}"
         self._trace_logger: Optional[callable] = None
 
     def set_trace_logger(self, logger: Optional[callable]) -> None:
-        """
-        NAME
-            set_trace_logger - Install a best-effort raw TCP trace logger.
-        """
         self._trace_logger = logger
 
     def _trace(self, message: str) -> None:
-        """
-        NAME
-            _trace - Emit a raw TCP trace message when enabled.
-        """
         logger = self._trace_logger
         if not callable(logger):
             return
@@ -120,241 +181,161 @@ class TcpCommandClient:
         except Exception:
             return
 
-    def is_connected(self) -> bool:
-        """
-        NAME
-            is_connected - Return whether the TCP socket is connected.
-        """
-        return self._connected
-
-    def connect(self, timeout: float = 0.5) -> bool:
-        """
-        NAME
-            connect - Attempt to connect to the TCP server.
-        """
-        if self._connected:
-            return True
+    def request(
+        self,
+        method: str,
+        path: str,
+        payload: Optional[Dict[str, Any]] = None,
+        timeout: float = REST_TIMEOUT_COMMAND_SEC,
+        query: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        url = self._base_url + path
+        if query:
+            url += "?" + urllib.parse.urlencode(query)
+        data: Optional[bytes] = None
+        if payload is not None:
+            body = json.dumps(payload)
+            data = body.encode("utf-8")
+            self._trace(TRACE_PREFIX_SEND + method + " " + url + " " + body)
+        else:
+            self._trace(TRACE_PREFIX_SEND + method + " " + url)
+        request = urllib.request.Request(url, data=data, method=method)
+        request.add_header(HTTP_HEADER_ACCEPT, HTTP_ACCEPT_JSON)
+        if payload is not None:
+            request.add_header(HTTP_HEADER_CONTENT_TYPE, HTTP_CONTENT_TYPE)
         try:
-            sock = socket.create_connection((self._host, self._port), timeout=timeout)
-            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            sock.settimeout(None)
-            self._sock = sock
-            self._connected = True
-            self._trace(f"TCP CONNECT OK host={self._host} port={self._port}")
-            self._reader = threading.Thread(
-                target=self._read_loop,
-                name=THREAD_NAME_TCP_READER,
-                daemon=True,
-            )
-            self._reader.start()
-            return True
-        except Exception:
-            self._connected = False
-            self._sock = None
-            self._trace(f"TCP CONNECT FAIL host={self._host} port={self._port}")
-            return False
-
-    def close(self) -> None:
-        """
-        NAME
-            close - Close the TCP connection.
-        """
-        with self._lock:
-            if self._sock is not None:
-                try:
-                    self._sock.shutdown(socket.SHUT_RDWR)
-                except Exception:
-                    pass
-                try:
-                    self._sock.close()
-                except Exception:
-                    pass
-            self._sock = None
-            self._connected = False
-
-    def send(self, payload: Dict[str, Any]) -> bool:
-        """
-        NAME
-            send - Send a JSON command payload to the server.
-        """
-        if not self._connected or self._sock is None:
-            return False
-        line = json.dumps(payload)
-        if _trace_should_log_name(str(payload.get("name", ""))):
-            self._trace(f"TCP SEND RAW {line}")
-        data = (line + "\n").encode("utf-8")
-        with self._lock:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                text = response.read().decode("utf-8")
+                self._trace(TRACE_PREFIX_RECV + str(response.status) + " " + text)
+                parsed = json.loads(text) if text else {}
+                if not isinstance(parsed, dict):
+                    parsed = {}
+                parsed["_http_status"] = int(response.status)
+                return parsed
+        except urllib.error.HTTPError as ex:
+            text = ex.read().decode("utf-8")
+            self._trace(TRACE_PREFIX_FAIL + str(ex.code) + " " + text)
             try:
-                self._sock.sendall(data)
-                return True
+                parsed = json.loads(text) if text else {}
             except Exception:
-                self._connected = False
-                self._trace("TCP SEND FAIL socket write failed")
-                return False
+                parsed = {}
+            if not isinstance(parsed, dict):
+                parsed = {}
+            parsed["_http_status"] = int(ex.code)
+            return parsed
+        except Exception as ex:
+            self._trace(TRACE_PREFIX_FAIL + repr(ex))
+            return {"_http_status": VALUE_ZERO, REST_JSON_MESSAGE: str(ex), "ok": False}
 
-    def poll(self) -> List[Dict[str, Any]]:
-        """
-        NAME
-            poll - Drain queued responses.
-        """
-        items: List[Dict[str, Any]] = []
-        while True:
-            try:
-                items.append(self._queue.get_nowait())
-            except queue.Empty:
-                break
-        return items
 
-    def _read_loop(self) -> None:
-        """
-        NAME
-            _read_loop - Background reader for JSON lines.
-        """
-        sock = self._sock
-        if sock is None:
-            return
-        try:
-            with sock.makefile("r", encoding="utf-8") as reader:
-                for line in reader:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        payload = json.loads(line)
-                        if isinstance(payload, dict):
-                            if _trace_should_log_name(str(payload.get("name", ""))):
-                                self._trace(f"TCP RECV RAW {line}")
-                            self._queue.put(payload)
-                    except Exception:
-                        self._trace(f"TCP RECV RAW {line}")
-                        continue
-        except Exception:
-            pass
-        finally:
-            self._connected = False
-            with self._lock:
-                if self._sock is sock:
-                    try:
-                        self._sock.close()
-                    except Exception:
-                        pass
-                    self._sock = None
+@dataclass
+class PendingCommand:
+    """
+    NAME
+        PendingCommand - In-flight REST command awaiting terminal output.
+    """
+
+    seq: int
+    name: str
+    command_id: int
 
 
 class BridgeSession:
     """
     NAME
-        BridgeSession - Shared TCP session for bridge commands.
+        BridgeSession - Shared REST session for bridge commands.
 
     DESCRIPTION
-        Owns TCP connect/send/receive and maintains a merged runtime state
-        snapshot from TCP responses and optional NT state.
+        Owns robot REST session establishment, command submission, command
+        status/output polling, and a compatibility ACK/OUT event stream used by
+        existing CLI/UI callers.
     """
 
     def __init__(
         self,
         rio_host: str,
-        tcp_port: int,
+        rest_port: int,
         nt_state_reader: Optional[callable] = None,
         auto_handshake: bool = True,
     ) -> None:
         self._rio_host = rio_host
-        self._tcp_port = tcp_port
-        self._tcp = TcpCommandClient(rio_host, tcp_port)
+        self._rest_port = int(rest_port) if int(rest_port) > VALUE_ZERO else REST_PORT_DEFAULT
+        self._http = RestHttpClient(rio_host, self._rest_port)
         self._client_id = str(uuid.uuid4())
-        self._seq = 0
+        self._seq = VALUE_ZERO
         self._handshake_done = False
-        self._last_handshake_error = ""
-        self._session_id = ""
+        self._last_handshake_error = EMPTY_STRING
+        self._session_id = EMPTY_STRING
         self._last_state: Dict[str, Any] = {}
         self._nt_state_reader = nt_state_reader
-        self._last_connect_attempt = 0.0
         self._auto_handshake = auto_handshake
+        self._connected = False
+        self._event_queue: Deque[BridgeEvent] = deque()
+        self._last_log_sequence = VALUE_ZERO
+        self._pending_by_seq: Dict[int, PendingCommand] = {}
 
     def is_connected(self) -> bool:
         """
         NAME
-            is_connected - Return TCP connection status.
+            is_connected - Return REST server reachability status.
         """
-        return self._tcp.is_connected()
+        return self._connected
 
     def handshake_done(self) -> bool:
-        """
-        NAME
-            handshake_done - Return whether uiHandshake completed.
-        """
         return self._handshake_done
 
     def last_handshake_error(self) -> str:
-        """
-        NAME
-            last_handshake_error - Return the most recent handshake failure detail.
-        """
         return self._last_handshake_error
 
     def session_id(self) -> str:
-        """
-        NAME
-            session_id - Return the current UI session ID.
-        """
         return self._session_id
 
     def set_trace_logger(self, logger: Optional[callable]) -> None:
-        """
-        NAME
-            set_trace_logger - Install a best-effort raw TCP trace logger.
-        """
-        self._tcp.set_trace_logger(logger)
+        self._http.set_trace_logger(logger)
 
     def connect(self) -> bool:
         """
         NAME
-            connect - Connect to the TCP UI server.
+            connect - Probe REST health endpoint.
         """
-        now = time.time()
-        if not self._tcp.is_connected() and (now - self._last_connect_attempt) > 0.5:
-            self._last_connect_attempt = now
-            self._tcp.connect()
-        return self._tcp.is_connected()
+        response = self._http.request(HTTP_METHOD_GET, REST_PATH_HEALTH, timeout=REST_TIMEOUT_CONNECT_SEC)
+        self._connected = response.get("_http_status") == 200
+        return self._connected
 
     def disconnect(self) -> None:
         """
         NAME
-            disconnect - Close the TCP connection.
+            disconnect - Release the REST control session if owned.
         """
-        self._tcp.close()
+        if self._handshake_done:
+            self._http.request(
+                HTTP_METHOD_POST,
+                REST_PATH_SESSION_DISCONNECT,
+                payload={REST_JSON_CLIENT_ID: self._client_id},
+                timeout=REST_TIMEOUT_CONNECT_SEC,
+            )
+        self._connected = False
         self.reset_handshake()
 
     def reset_handshake(self) -> None:
-        """
-        NAME
-            reset_handshake - Clear the stored handshake state.
-        """
         self._handshake_done = False
-        self._last_handshake_error = ""
-        self._session_id = ""
+        self._last_handshake_error = EMPTY_STRING
+        self._session_id = EMPTY_STRING
+        self._pending_by_seq.clear()
 
     def mark_handshake_done(
         self,
         session_id: Optional[str] = None,
         min_next_seq: Optional[int] = None,
     ) -> None:
-        """
-        NAME
-            mark_handshake_done - Record a successful handshake.
-        """
         self._handshake_done = True
         if session_id:
             self._session_id = session_id
-        if isinstance(min_next_seq, int) and min_next_seq > 0:
-            self._seq = max(self._seq, min_next_seq - 1)
+        if isinstance(min_next_seq, int) and min_next_seq > VALUE_ZERO:
+            self._seq = max(self._seq, min_next_seq - VALUE_ONE)
 
     def set_client_id(self, client_id: str) -> None:
-        """
-        NAME
-            set_client_id - Override the clientId used in commands.
-        """
-        cid = (client_id or "").strip()
+        cid = (client_id or EMPTY_STRING).strip()
         if cid:
             self._client_id = cid
 
@@ -365,104 +346,82 @@ class BridgeSession:
     ) -> bool:
         """
         NAME
-            ensure_handshake - Send uiHandshake if required and wait for ACK/OUT.
+            ensure_handshake - Acquire the REST control session.
         """
         if self._handshake_done and not reset:
-            self._last_handshake_error = ""
+            self._last_handshake_error = EMPTY_STRING
             return True
         if not self.connect():
-            self._last_handshake_error = "TCP connect failed."
+            self._last_handshake_error = MESSAGE_CONNECT_FAILED
             return False
-        seq = self._next_seq()
-        args = {"reset": bool(reset)}
-        args.update(_local_timezone_args())
-        payload = {
-            "type": "cmd",
-            "seq": seq,
-            "name": "uiHandshake",
-            "args": args,
-            "ts": time.time(),
-            "clientId": self._client_id,
-        }
-        if not self._tcp.send(payload):
-            self._last_handshake_error = "Failed to send uiHandshake."
-            return False
-        deadline = time.time() + timeout_sec
-        seen_ack = False
-        ack_status = ""
-        ack_message = ""
-        while time.time() < deadline:
-            for event in self._drain_events():
-                if event.seq != seq:
-                    continue
-                if event.type == "ack":
-                    seen_ack = True
-                    ack_status = event.status or ""
-                    ack_message = event.message or ""
-                if event.type == "out":
-                    self._handshake_done = True
-                    self._last_handshake_error = ""
-                    self._session_id = event.session_id or self._session_id
-                    payload_json = _parse_json_text(event.json_text)
-                    min_next = None
-                    if isinstance(payload_json, dict):
-                        min_next = payload_json.get("minNextSeq")
-                    if isinstance(min_next, int) and min_next > 0:
-                        self._seq = max(self._seq, min_next - 1)
-                    return True
-            if seen_ack:
-                time.sleep(0.01)
-            else:
-                time.sleep(0.02)
-        if seen_ack:
-            if ack_status and ack_status.lower() == "error":
-                self._last_handshake_error = (
-                    f"uiHandshake ACK error: {ack_message or 'no message'}."
-                )
-            else:
-                self._last_handshake_error = (
-                    f"uiHandshake ACK received but no OUT within {timeout_sec:.1f}s."
-                )
-        else:
-            self._last_handshake_error = (
-                f"uiHandshake timed out waiting for ACK/OUT within {timeout_sec:.1f}s."
+        if reset:
+            self._http.request(
+                HTTP_METHOD_POST,
+                REST_PATH_SESSION_RESET,
+                payload={},
+                timeout=timeout_sec,
             )
-        return False
+        payload: Dict[str, Any] = {REST_JSON_CLIENT_ID: self._client_id}
+        payload.update(_local_timezone_args())
+        response = self._http.request(
+            HTTP_METHOD_POST,
+            REST_PATH_SESSION_CONNECT,
+            payload=payload,
+            timeout=timeout_sec,
+        )
+        if response.get("_http_status") != 200 or not bool(response.get("ok")):
+            self._last_handshake_error = str(response.get(REST_JSON_MESSAGE, MESSAGE_HANDSHAKE_FAILED))
+            self._connected = False
+            return False
+        self._connected = True
+        self._handshake_done = True
+        self._last_handshake_error = EMPTY_STRING
+        self._session_id = str(response.get(REST_JSON_SESSION_ID, EMPTY_STRING))
+        return True
 
     def send_command(self, name: str, args: Optional[Dict[str, Any]] = None) -> Optional[int]:
         """
         NAME
-            send_command - Send a command after ensuring handshake.
+            send_command - Submit a REST command and enqueue compatibility events.
         """
-        cmd_name = str(name)
-        if self._auto_handshake and cmd_name not in ("uiHandshake", "uiDisconnect"):
+        command_name = str(name or EMPTY_STRING).strip()
+        command_args = dict(args or {})
+        if self._auto_handshake and command_name not in (COMMAND_UI_HANDSHAKE, COMMAND_UI_DISCONNECT):
             if not self.ensure_handshake():
                 return None
         seq = self._next_seq()
-        payload = {
-            "type": "cmd",
-            "seq": seq,
-            "name": cmd_name,
-            "args": args or {},
-            "ts": time.time(),
-            "clientId": self._client_id,
-        }
-        if not self._tcp.send(payload):
-            return None
+        if command_name == COMMAND_UI_HANDSHAKE:
+            self._handle_handshake_command(seq, command_args)
+            return seq
+        if command_name == COMMAND_UI_DISCONNECT:
+            self._handle_disconnect_command(seq)
+            return seq
+        if command_name == COMMAND_UI_PING:
+            self._handle_ping_command(seq)
+            return seq
+        if command_name == COMMAND_UI_POLL_LOG:
+            self._handle_poll_log_command(seq)
+            return seq
+        if command_name == COMMAND_UI_MONITOR_ENABLE:
+            self._handle_monitor_command(seq, True)
+            return seq
+        if command_name == COMMAND_UI_MONITOR_DISABLE:
+            self._handle_monitor_command(seq, False)
+            return seq
+        self._handle_robot_command(seq, command_name, command_args)
         return seq
 
     def poll_events(self) -> List[BridgeEvent]:
         """
         NAME
-            poll_events - Drain and parse inbound TCP events.
+            poll_events - Drain queued compatibility events and poll pending commands.
         """
-        return self._drain_events()
+        self._poll_pending_commands()
+        events = list(self._event_queue)
+        self._event_queue.clear()
+        return events
 
     def get_state_snapshot(self) -> Dict[str, Any]:
-        """
-        NAME
-            get_state_snapshot - Return merged TCP + NT state.
-        """
         state = dict(self._last_state or {})
         if self._nt_state_reader is not None:
             try:
@@ -474,19 +433,223 @@ class BridgeSession:
         return state
 
     def _next_seq(self) -> int:
-        self._seq += 1
+        self._seq += VALUE_ONE
         return self._seq
 
-    def _drain_events(self) -> List[BridgeEvent]:
-        events: List[BridgeEvent] = []
-        for payload in self._tcp.poll():
-            event = _parse_event(payload)
-            if event is None:
+    def _handle_handshake_command(self, seq: int, args: Dict[str, Any]) -> None:
+        reset = bool(args.get("reset", False))
+        ok = self.ensure_handshake(reset=reset)
+        status = EVENT_STATUS_OK if ok else EVENT_STATUS_ERROR
+        message = "UI handshake OK." if ok else (self._last_handshake_error or MESSAGE_HANDSHAKE_FAILED)
+        self._enqueue_ack(seq, COMMAND_UI_HANDSHAKE, status, message)
+        payload = {
+            REST_JSON_SESSION_ID: self._session_id,
+            "minNextSeq": self._seq + VALUE_ONE,
+            "protocolVersion": VALUE_ONE,
+        }
+        self._enqueue_out(seq, COMMAND_UI_HANDSHAKE, status, message, EMPTY_STRING, json.dumps(payload))
+
+    def _handle_disconnect_command(self, seq: int) -> None:
+        response = self._http.request(
+            HTTP_METHOD_POST,
+            REST_PATH_SESSION_DISCONNECT,
+            payload={REST_JSON_CLIENT_ID: self._client_id},
+            timeout=REST_TIMEOUT_CONNECT_SEC,
+        )
+        ok = response.get("_http_status") == 200 and bool(response.get("ok"))
+        status = EVENT_STATUS_OK if ok else EVENT_STATUS_ERROR
+        message = str(response.get(REST_JSON_MESSAGE, EMPTY_STRING))
+        self._enqueue_ack(seq, COMMAND_UI_DISCONNECT, status, message)
+        self._enqueue_out(seq, COMMAND_UI_DISCONNECT, status, message, message, EMPTY_STRING)
+        self._connected = False
+        self.reset_handshake()
+
+    def _handle_ping_command(self, seq: int) -> None:
+        response = self._http.request(
+            HTTP_METHOD_POST,
+            REST_PATH_SESSION_PING,
+            payload={REST_JSON_CLIENT_ID: self._client_id},
+            timeout=REST_TIMEOUT_CONNECT_SEC,
+        )
+        ok = response.get("_http_status") == 200 and bool(response.get("ok"))
+        status = EVENT_STATUS_OK if ok else EVENT_STATUS_ERROR
+        message = str(response.get(REST_JSON_MESSAGE, EMPTY_STRING))
+        self._enqueue_ack(seq, COMMAND_UI_PING, status, message)
+        self._enqueue_out(seq, COMMAND_UI_PING, status, message, message, EMPTY_STRING)
+
+    def _handle_poll_log_command(self, seq: int) -> None:
+        response = self._http.request(
+            HTTP_METHOD_GET,
+            REST_PATH_LOGS,
+            timeout=LOG_TIMEOUT_SEC,
+            query={REST_QUERY_AFTER: self._last_log_sequence},
+        )
+        ok = response.get("_http_status") == 200 and bool(response.get("ok"))
+        status = EVENT_STATUS_OK if ok else EVENT_STATUS_ERROR
+        message = str(response.get(REST_JSON_MESSAGE, EMPTY_STRING))
+        self._enqueue_ack(seq, COMMAND_UI_POLL_LOG, status, message)
+        lines: List[str] = []
+        if ok:
+            logs = response.get(REST_JSON_LOGS)
+            if isinstance(logs, list):
+                for row in logs:
+                    if isinstance(row, dict):
+                        text = str(row.get(REST_JSON_TEXT, EMPTY_STRING))
+                        if text:
+                            lines.append(text)
+            next_sequence = response.get(REST_JSON_NEXT_SEQUENCE)
+            if isinstance(next_sequence, int):
+                self._last_log_sequence = next_sequence
+        self._enqueue_out(seq, COMMAND_UI_POLL_LOG, status, message, "\n".join(lines), EMPTY_STRING)
+
+    def _handle_monitor_command(self, seq: int, enabled: bool) -> None:
+        path = REST_PATH_MONITOR_ENABLE if enabled else REST_PATH_MONITOR_DISABLE
+        name = COMMAND_UI_MONITOR_ENABLE if enabled else COMMAND_UI_MONITOR_DISABLE
+        response = self._http.request(
+            HTTP_METHOD_POST,
+            path,
+            payload={REST_JSON_CLIENT_ID: self._client_id},
+            timeout=REST_TIMEOUT_COMMAND_SEC,
+        )
+        ok = response.get("_http_status") == 200 and bool(response.get("ok"))
+        status = EVENT_STATUS_OK if ok else EVENT_STATUS_ERROR
+        message = str(response.get(REST_JSON_MESSAGE, EMPTY_STRING))
+        self._enqueue_ack(seq, name, status, message)
+        self._enqueue_out(seq, name, status, message, message, EMPTY_STRING)
+
+    def _handle_robot_command(self, seq: int, name: str, args: Dict[str, Any]) -> None:
+        request_id = f"{self._client_id}-{seq}"
+        payload = {
+            REST_JSON_CLIENT_ID: self._client_id,
+            REST_JSON_REQUEST_ID: request_id,
+            REST_JSON_NAME: name,
+            REST_JSON_ARGS: args,
+        }
+        response = self._http.request(
+            HTTP_METHOD_POST,
+            REST_PATH_COMMANDS,
+            payload=payload,
+            timeout=REST_TIMEOUT_COMMAND_SEC,
+        )
+        http_status = int(response.get("_http_status", VALUE_ZERO))
+        ok = http_status in (200, 202) and bool(response.get("ok"))
+        ack_status = EVENT_STATUS_OK if ok else EVENT_STATUS_ERROR
+        message = str(response.get(REST_JSON_MESSAGE, EMPTY_STRING))
+        self._enqueue_ack(seq, name, ack_status, message)
+        command_id = response.get(REST_JSON_COMMAND_ID)
+        if not isinstance(command_id, int):
+            self._enqueue_out(seq, name, ack_status, message, message, EMPTY_STRING)
+            return
+        command_status = str(response.get(REST_JSON_STATUS, EMPTY_STRING)).upper()
+        if command_status in (REST_STATUS_FINISHED, REST_STATUS_FAILED, REST_STATUS_STOPPED, REST_STATUS_REJECTED, REST_STATUS_UNKNOWN):
+            self._enqueue_terminal_command_output(seq, name, command_id, ack_status, message)
+            return
+        self._pending_by_seq[seq] = PendingCommand(seq=seq, name=name, command_id=command_id)
+
+    def _poll_pending_commands(self) -> None:
+        for seq, pending in list(self._pending_by_seq.items()):
+            response = self._http.request(
+                HTTP_METHOD_GET,
+                f"{REST_PATH_COMMANDS}/{pending.command_id}",
+                timeout=REST_TIMEOUT_COMMAND_SEC,
+                query={REST_QUERY_CLIENT_ID: self._client_id},
+            )
+            http_status = int(response.get("_http_status", VALUE_ZERO))
+            if http_status == VALUE_ZERO:
                 continue
-            if event.state:
-                self._last_state = dict(event.state)
-            events.append(event)
-        return events
+            command_status = str(response.get(REST_JSON_STATUS, EMPTY_STRING)).upper()
+            if command_status not in (
+                REST_STATUS_FINISHED,
+                REST_STATUS_FAILED,
+                REST_STATUS_STOPPED,
+                REST_STATUS_REJECTED,
+                REST_STATUS_UNKNOWN,
+            ):
+                continue
+            ack_status = EVENT_STATUS_OK if command_status == REST_STATUS_FINISHED else EVENT_STATUS_ERROR
+            message = str(response.get(REST_JSON_MESSAGE, EMPTY_STRING))
+            self._enqueue_terminal_command_output(seq, pending.name, pending.command_id, ack_status, message)
+            self._pending_by_seq.pop(seq, None)
+
+    def _enqueue_terminal_command_output(
+        self,
+        seq: int,
+        name: str,
+        command_id: int,
+        status: str,
+        message: str,
+    ) -> None:
+        output = self._http.request(
+            HTTP_METHOD_GET,
+            f"{REST_PATH_COMMANDS}/{command_id}/output",
+            timeout=REST_TIMEOUT_COMMAND_SEC,
+            query={REST_QUERY_CLIENT_ID: self._client_id},
+        )
+        text, json_text = self._extract_output_payload(output)
+        if not text and not json_text:
+            text = message
+        self._enqueue_out(seq, name, status, message, text, json_text)
+
+    def _extract_output_payload(self, output: Dict[str, Any]) -> tuple[str, str]:
+        chunks = output.get(REST_JSON_CHUNKS)
+        if not isinstance(chunks, list) or not chunks:
+            return EMPTY_STRING, EMPTY_STRING
+        texts: List[str] = []
+        json_text = EMPTY_STRING
+        for row in chunks:
+            if not isinstance(row, dict):
+                continue
+            chunk_text = str(row.get(REST_JSON_TEXT, EMPTY_STRING))
+            if not chunk_text:
+                continue
+            parsed = _parse_json_text(chunk_text)
+            if parsed is not None and json_text == EMPTY_STRING:
+                json_text = chunk_text
+            else:
+                texts.append(chunk_text)
+        return "\n".join(texts), json_text
+
+    def _enqueue_ack(self, seq: int, name: str, status: str, message: str) -> None:
+        self._event_queue.append(
+            BridgeEvent(
+                type=EVENT_TYPE_ACK,
+                seq=seq,
+                name=name,
+                status=status,
+                message=message,
+                text=EMPTY_STRING,
+                json_text=EMPTY_STRING,
+                ts=time.time(),
+                session_id=self._session_id,
+                state=self.get_state_snapshot(),
+                raw={REST_JSON_STATUS: status, REST_JSON_MESSAGE: message},
+            )
+        )
+
+    def _enqueue_out(
+        self,
+        seq: int,
+        name: str,
+        status: str,
+        message: str,
+        text: str,
+        json_text: str,
+    ) -> None:
+        self._event_queue.append(
+            BridgeEvent(
+                type=EVENT_TYPE_OUT,
+                seq=seq,
+                name=name,
+                status=status,
+                message=message,
+                text=text,
+                json_text=json_text,
+                ts=time.time(),
+                session_id=self._session_id,
+                state=self.get_state_snapshot(),
+                raw={REST_JSON_STATUS: status, REST_JSON_MESSAGE: message},
+            )
+        )
 
 
 def _parse_json_text(text: str) -> Optional[Any]:
@@ -500,36 +663,3 @@ def _parse_json_text(text: str) -> Optional[Any]:
         return json.loads(text)
     except Exception:
         return None
-
-
-def _parse_event(payload: Dict[str, Any]) -> Optional[BridgeEvent]:
-    """
-    NAME
-        _parse_event - Convert a raw payload into a BridgeEvent.
-    """
-    etype = str(payload.get("type", "")).lower()
-    if etype not in ("ack", "out"):
-        return None
-    seq = int(payload.get("seq", -1))
-    name = str(payload.get("name", ""))
-    status = str(payload.get("status", ""))
-    message = str(payload.get("message", ""))
-    text = str(payload.get("text", ""))
-    json_text = str(payload.get("json", ""))
-    ts = float(payload.get("ts", 0.0))
-    session_id = str(payload.get("sessionId", ""))
-    state = payload.get("state")
-    state_dict = state if isinstance(state, dict) else {}
-    return BridgeEvent(
-        type=etype,
-        seq=seq,
-        name=name,
-        status=status,
-        message=message,
-        text=text,
-        json_text=json_text,
-        ts=ts,
-        session_id=session_id,
-        state=state_dict,
-        raw=payload,
-    )

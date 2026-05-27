@@ -128,7 +128,7 @@ Then reference that motor model in your profile entry (see Step 8).
 ## Step 8: Add devices table Entries + Profile Labels
 Purpose: define device identity and include it in a profile.
 Update:
-- `data/bringup_system.json` (sync to `src/main/deploy/bringup_system.json`)
+- `src/main/deploy/bringup_system.json`
 
 Add a device entry to the devices table and reference it by label in the profile.
 Example device entry:

@@ -10,7 +10,6 @@ public final class RobotLocalCommandDefinition {
   private final RobotLocalInvocationKind invocationKind;
   private final boolean controllerAllowed;
   private final boolean hostUiAllowed;
-  private final boolean queueable;
   private final boolean autoStopOnSourceLoss;
   private final boolean showInHostUi;
   private final String uiSection;
@@ -25,7 +24,6 @@ public final class RobotLocalCommandDefinition {
       RobotLocalInvocationKind invocationKind,
       boolean controllerAllowed,
       boolean hostUiAllowed,
-      boolean queueable,
       boolean autoStopOnSourceLoss,
       boolean showInHostUi,
       String uiSection,
@@ -38,7 +36,6 @@ public final class RobotLocalCommandDefinition {
     this.invocationKind = invocationKind;
     this.controllerAllowed = controllerAllowed;
     this.hostUiAllowed = hostUiAllowed;
-    this.queueable = queueable;
     this.autoStopOnSourceLoss = autoStopOnSourceLoss;
     this.showInHostUi = showInHostUi;
     this.uiSection = uiSection;
@@ -66,10 +63,6 @@ public final class RobotLocalCommandDefinition {
 
   public boolean hostUiAllowed() {
     return hostUiAllowed;
-  }
-
-  public boolean queueable() {
-    return queueable;
   }
 
   public boolean autoStopOnSourceLoss() {

@@ -30,10 +30,17 @@ public final class DslSignalRegistry {
   public static final String VALUE_TYPE_BOOLEAN = "boolean";
   public static final String VALUE_TYPE_NUMBER = "number";
   public static final String SIGNAL_OUTPUT = "output";
+  public static final String SIGNAL_OUTPUT_PERCENT_CMD = "output_percent_cmd";
+  public static final String SIGNAL_OUTPUT_PERCENT_APPLIED = "output_percent_applied";
   public static final String SIGNAL_CURRENT = "current";
+  public static final String SIGNAL_CURRENT_ACTUAL = "current_actual";
   public static final String SIGNAL_TEMPERATURE = "temperature";
+  public static final String SIGNAL_TEMPERATURE_ACTUAL = "temperature_actual";
   public static final String SIGNAL_VELOCITY = "velocity";
+  public static final String SIGNAL_VELOCITY_ACTUAL = "velocity_actual";
   public static final String SIGNAL_POSITION = "position";
+  public static final String SIGNAL_POSITION_ACTUAL = "position_actual";
+  public static final String SIGNAL_POSITION_DELTA = "position_delta";
   public static final String SIGNAL_FAULTS = "faults";
   public static final String SIGNAL_PRESSED = "pressed";
   public static final String SIGNAL_ELAPSED = "elapsed";

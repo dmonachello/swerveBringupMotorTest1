@@ -2,17 +2,17 @@ from __future__ import annotations
 
 """
 NAME
-    sync_profiles.py - Copy canonical bringup_system.json into deploy.
+    sync_profiles.py - Validate and rewrite the deploy-owned bringup_system.json.
 
 SYNOPSIS
     python tools\\sync_profiles.py [--source PATH] [--dest PATH]
 
 DESCRIPTION
-    Copies the canonical bringup system JSON (stored under data/) into
-    the roboRIO deploy folder so the Java code can load it on the robot.
+    Validates the deploy-owned bringup system JSON, refreshes the version/hash
+    fields, and rewrites the file in place.
 
 PARAMETERS
-    --source: Path to canonical bringup_system.json (default: data/bringup_system.json).
+    --source: Path to bringup_system.json (default: src/main/deploy/bringup_system.json).
     --dest: Path to deploy bringup_system.json (default: src/main/deploy/bringup_system.json).
 
 SIDE EFFECTS
@@ -35,7 +35,7 @@ from tools.common.profile_constants import (
 from tools.common.profile_io import compute_profiles_hash, validate_profiles_schema
 from tools.common.time_utils import timestamp_version
 
-DEFAULT_SOURCE = str(Path("data") / "bringup_system.json")
+DEFAULT_SOURCE = str(Path("src") / "main" / "deploy" / "bringup_system.json")
 DEFAULT_DEST = str(Path("src") / "main" / "deploy" / "bringup_system.json")
 
 MSG_ERR_SOURCE_MISSING = "ERROR: source file not found: {path}"
@@ -49,7 +49,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--source",
         default=DEFAULT_SOURCE,
-        help="Canonical bringup_system.json path",
+        help="Source bringup_system.json path",
     )
     parser.add_argument(
         "--dest",

@@ -244,7 +244,7 @@ class _TreeviewStub:
     """
 
     def __init__(self) -> None:
-        self.columns = ("can_id", "type", "label", "group", "tags")
+        self.columns = ("can_id", "type", "label", "group", "tags", "profiles")
         self.items: dict[str, tuple[object, ...]] = {}
         self.selected: list[str] = []
 
@@ -1064,6 +1064,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         editor._refresh_list = TopologyEditor._refresh_list.__get__(editor, TopologyEditor)
         editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
         editor._node_groups_by_label = TopologyEditor._node_groups_by_label.__get__(editor, TopologyEditor)
+        editor._profiles_by_label = TopologyEditor._profiles_by_label.__get__(editor, TopologyEditor)
         editor._tags_to_string = TopologyEditor._tags_to_string.__get__(editor, TopologyEditor)
         editor._normalize_tags = TopologyEditor._normalize_tags.__get__(editor, TopologyEditor)
         editor._inventory_entry_for_label = TopologyEditor._inventory_entry_for_label.__get__(editor, TopologyEditor)
@@ -1099,6 +1100,10 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
             entry["label"]: entry for entry in editor._device_registry_list
         }
         editor._list_scope_var.set("Full Config")
+        editor._profile_source_path = ""
+        editor._profile_name = "inventory_scope"
+        editor._default_profiles_path = lambda: Path("does_not_exist.json")
+        editor._non_topology_profile_labels = []
 
         editor._refresh_list()
 
@@ -1108,6 +1113,120 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
             editor.node_list.items["inventory:backLeft Drive Motor"][0],
             "5",
         )
+        self.assertEqual(
+            editor.node_list.items["1"][5],
+            "inventory_scope",
+        )
+        self.assertEqual(
+            editor.node_list.items["inventory:backLeft Drive Motor"][5],
+            "",
+        )
+
+    def test_refresh_list_full_config_shows_profiles_column_for_shared_inventory(self) -> None:
+        editor = self._headless_editor("inventory_profiles_column")
+        editor._refresh_list = TopologyEditor._refresh_list.__get__(editor, TopologyEditor)
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._node_groups_by_label = TopologyEditor._node_groups_by_label.__get__(editor, TopologyEditor)
+        editor._profiles_by_label = TopologyEditor._profiles_by_label.__get__(editor, TopologyEditor)
+        editor._topology_inventory_entries = TopologyEditor._topology_inventory_entries.__get__(editor, TopologyEditor)
+        editor._full_config_inventory_entries = TopologyEditor._full_config_inventory_entries.__get__(
+            editor, TopologyEditor
+        )
+        editor._tags_to_string = TopologyEditor._tags_to_string.__get__(editor, TopologyEditor)
+        editor._normalize_tags = TopologyEditor._normalize_tags.__get__(editor, TopologyEditor)
+        editor._inventory_entry_for_label = TopologyEditor._inventory_entry_for_label.__get__(editor, TopologyEditor)
+        editor._destroy_inline_editor = lambda: None
+        editor._nodes = []
+        editor._device_registry_list = [
+            {
+                "label": "Motor 25",
+                "deviceInterface": "CAN",
+                "id": 25,
+                "manufacturer": 5,
+                "deviceType": 2,
+                "model": "REV NEO",
+            }
+        ]
+        editor._device_registry = {"Motor 25": editor._device_registry_list[0]}
+        editor._list_scope_var.set("Full Config")
+        editor._profile_name = "current_profile"
+        editor._non_topology_profile_labels = []
+        editor._profile_source_path = ""
+        editor._default_profiles_path = lambda: Path("does_not_exist.json")
+        original_read_json = can_top_editor.read_json
+        can_top_editor.read_json = lambda _path: {
+            "profiles": {
+                "current_profile": {"devices": []},
+                "alpha": {"devices": ["Motor 25"]},
+                "beta": {"devices": ["Motor 25"]},
+            }
+        }
+        try:
+            editor._profile_source_path = str(Path(__file__))
+            editor._refresh_list()
+        finally:
+            can_top_editor.read_json = original_read_json
+
+        self.assertEqual(
+            editor.node_list.items["inventory:Motor 25"][5],
+            "alpha, beta",
+        )
+
+    def test_refresh_list_full_config_includes_topology_only_nodes_from_other_profiles(self) -> None:
+        editor = self._headless_editor("inventory_topology_only")
+        editor._refresh_list = TopologyEditor._refresh_list.__get__(editor, TopologyEditor)
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._node_groups_by_label = TopologyEditor._node_groups_by_label.__get__(editor, TopologyEditor)
+        editor._profiles_by_label = TopologyEditor._profiles_by_label.__get__(editor, TopologyEditor)
+        editor._topology_inventory_entries = TopologyEditor._topology_inventory_entries.__get__(editor, TopologyEditor)
+        editor._full_config_inventory_entries = TopologyEditor._full_config_inventory_entries.__get__(
+            editor, TopologyEditor
+        )
+        editor._tags_to_string = TopologyEditor._tags_to_string.__get__(editor, TopologyEditor)
+        editor._normalize_tags = TopologyEditor._normalize_tags.__get__(editor, TopologyEditor)
+        editor._inventory_entry_for_label = TopologyEditor._inventory_entry_for_label.__get__(editor, TopologyEditor)
+        editor._destroy_inline_editor = lambda: None
+        editor._nodes = []
+        editor._device_registry_list = []
+        editor._device_registry = {}
+        editor._list_scope_var.set("Full Config")
+        payload = {
+            "profiles": {
+                "inventory_topology_only": {"devices": []},
+                "beta": {"devices": []},
+            },
+            "topology": {
+                "version": 1,
+                "source": "local",
+                "profiles": {
+                    "beta": {
+                        "nodes": [
+                            {
+                                "key": 10,
+                                "objectType": "diagram",
+                                "nodeType": "diagram",
+                                "category": "cannect_direct",
+                                "label": "cannect 3",
+                                "profileVisible": False,
+                                "layout": {"bus": 0, "row": 0, "x": 20.0},
+                            }
+                        ],
+                        "edges": [],
+                        "view": {},
+                    }
+                },
+            },
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir) / "bringup_system.json"
+            temp_path.write_text(json.dumps(payload), encoding="utf-8")
+            editor._profile_source_path = str(temp_path)
+            editor._default_profiles_path = lambda: temp_path
+            editor._refresh_list()
+
+        self.assertIn("inventory:cannect 3", editor.node_list.items)
+        self.assertEqual(editor.node_list.items["inventory:cannect 3"][1], "cannect_direct")
+        self.assertEqual(editor.node_list.items["inventory:cannect 3"][5], "beta")
 
     def test_refresh_list_current_profile_scope_hides_out_of_profile_registry_rows(self) -> None:
         editor = self._headless_editor("inventory_scope_profile")
@@ -1318,6 +1437,66 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         self.assertEqual(
             editor._root_extras["bridgeConfig"]["byProfile"]["other_profile"]["groups"][0]["members"],
             [{"label": "controller0", "enabled": True}],
+        )
+
+    def test_remove_selected_inventory_can_device_deletes_from_shared_config(self) -> None:
+        original_messagebox = can_top_editor.messagebox
+        can_top_editor.messagebox = _MessageBoxStub
+        try:
+            editor = self._headless_editor("inventory_global_remove")
+            editor._device_registry_list = [
+                {
+                    "label": "Motor 25",
+                    "deviceInterface": "CAN",
+                    "manufacturer": 5,
+                    "deviceType": 2,
+                    "id": 25,
+                    "model": "REV NEO",
+                    "type": "motor",
+                }
+            ]
+            editor._device_registry = {"Motor 25": editor._device_registry_list[0]}
+            editor._non_topology_profile_labels = []
+            editor._selected_inventory_label = "Motor 25"
+            editor._root_extras = {
+                "bridgeConfig": {
+                    "byProfile": {
+                        "inventory_global_remove": {
+                            "groups": [],
+                        },
+                        "other_profile": {
+                            "groups": [
+                                {
+                                    "name": "spares",
+                                    "members": [{"label": "Motor 25", "enabled": True}],
+                                }
+                            ]
+                        },
+                    }
+                }
+            }
+            editor._inventory_entry_for_label = TopologyEditor._inventory_entry_for_label.__get__(editor, TopologyEditor)
+            editor._is_xbox_controller_entry = TopologyEditor._is_xbox_controller_entry.__get__(editor, TopologyEditor)
+            editor._delete_inventory_entry_globally = TopologyEditor._delete_inventory_entry_globally.__get__(editor, TopologyEditor)
+            editor._remove_registry_entry_by_label = TopologyEditor._remove_registry_entry_by_label.__get__(editor, TopologyEditor)
+            editor._profile_references_for_label = lambda _label: ["other_profile"]
+            editor._prune_bridge_config_label = TopologyEditor._prune_bridge_config_label.__get__(editor, TopologyEditor)
+            editor._prune_bridge_config_entry_label = TopologyEditor._prune_bridge_config_entry_label.__get__(editor, TopologyEditor)
+            editor._refresh_list = lambda: None
+            editor._update_details_panel = lambda _node: None
+            editor._update_selection_overlays = lambda: None
+
+            result = TopologyEditor._remove_selected_inventory_item(editor)
+        finally:
+            can_top_editor.messagebox = original_messagebox
+
+        self.assertTrue(result)
+        self.assertNotIn("Motor 25", editor._device_registry)
+        self.assertEqual(editor._device_registry_list, [])
+        self.assertEqual(editor._pending_global_device_deletions, {"Motor 25"})
+        self.assertEqual(
+            editor._root_extras["bridgeConfig"]["byProfile"]["other_profile"]["groups"][0]["members"],
+            [],
         )
 
     def test_remove_selected_node_only_prunes_current_profile_bridge_refs(self) -> None:
@@ -2024,6 +2203,47 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         self.assertEqual(entries["limit0"]["id"], 0)
         self.assertNotIn("dio", entries["limit0"])
 
+    def test_validate_nodes_rejects_can_device_missing_required_registry_fields(self) -> None:
+        editor = self._headless_editor("missing_can_registry_fields")
+        editor._nodes = [
+            Node(
+                key=1,
+                category="falcons",
+                label="Falcon 9",
+                can_id=9,
+                interface=INTERFACE_CAN,
+                vendor="",
+                device_type="",
+                motor="CTRE Falcon 500",
+            ),
+        ]
+
+        validation_error = editor._validate_nodes()
+
+        self.assertEqual(
+            validation_error,
+            "Device 'Falcon 9' missing CAN fields: id/manufacturer/deviceType.",
+        )
+
+    def test_validate_nodes_accepts_generic_motor_controller_type_from_editor_dropdown(self) -> None:
+        editor = self._headless_editor("generic_motor_controller_type")
+        editor._nodes = [
+            Node(
+                key=1,
+                category="neos",
+                label="SPARKMAX/NEO 25",
+                can_id=25,
+                interface=INTERFACE_CAN,
+                vendor="REV",
+                device_type="MotorController",
+                motor="REV NEO",
+            ),
+        ]
+
+        validation_error = editor._validate_nodes()
+
+        self.assertIsNone(validation_error)
+
     def test_new_profile_topology_snapshot_uses_device_ref_before_registry_exists(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)
         editor._device_registry = {}
@@ -2075,6 +2295,31 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         self.assertEqual(topology["nodes"][0]["objectType"], "device")
         self.assertEqual(topology["nodes"][0]["nodeType"], "device")
         self.assertEqual(topology["nodes"][0]["deviceRef"], "driveMotor")
+
+    def test_prune_topology_entry_device_refs_removes_deleted_nodes_edges_and_callouts(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        topology_entry = {
+            "nodes": [
+                {"key": 1, "nodeType": "device", "deviceRef": "Motor 25"},
+                {"key": 2, "nodeType": "device", "deviceRef": "Other Motor"},
+                {"key": 3, "nodeType": "callout", "targetNodeKey": 1},
+            ],
+            "edges": [
+                {"fromNode": 1, "toNode": 2},
+                {"fromNode": 2, "toNode": 2},
+            ],
+        }
+
+        TopologyEditor._prune_topology_entry_device_refs(editor, topology_entry, {"Motor 25"})
+
+        self.assertEqual(
+            topology_entry["nodes"],
+            [{"key": 2, "nodeType": "device", "deviceRef": "Other Motor"}],
+        )
+        self.assertEqual(
+            topology_entry["edges"],
+            [{"fromNode": 2, "toNode": 2}],
+        )
 
     def test_apply_topology_snapshot_accepts_object_type_without_legacy_node_type(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)

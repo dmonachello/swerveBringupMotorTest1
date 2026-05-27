@@ -69,7 +69,7 @@ These are not current and should not be used as primary test procedures:
 - local interactive `test create` / `type` / `inputSource` authoring
 - top-level global `axes[]` bindings schema
 - `bindings axis ...` commands
-- deleted `data\bringup_system.json` ownership workflows
+- deleted separate `data\` ownership workflows for `bringup_system.json`
 
 ## Current Recommendation
 

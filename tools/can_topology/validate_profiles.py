@@ -77,7 +77,7 @@ from tools.common.profile_constants import (
 )
 from tools.common.profile_io import compute_profiles_hash
 
-DEFAULT_PATH = str(Path("data") / "bringup_system.json")
+DEFAULT_PATH = str(Path("src") / "main" / "deploy" / "bringup_system.json")
 
 MSG_ERR_FILE_MISSING = "File not found: {path}"
 MSG_ERR_JSON_PARSE = "Failed to parse JSON: {error}"

@@ -51,6 +51,17 @@
         "pdh",
         "lmtSw0"
       ]
+    },
+    "test_minimal_25_9": {
+      "devices": [
+        "roborio",
+        "pdh",
+        "SPARKMAX/NEO 25",
+        "lmtSw0",
+        "FALCON 9",
+        "controller0"
+      ],
+      "dslTestSet": "default"
     }
   },
   "devices": [
@@ -61,7 +72,10 @@
       "manufacturer": 4,
       "deviceType": 2,
       "model": "CTRE Kraken X60",
-      "type": "motor"
+      "type": "motor",
+      "attachments": [
+        "lmtSw0"
+      ]
     },
     {
       "label": "frontLeft Angle Motor",
@@ -213,18 +227,35 @@
       "label": "Motor 25",
       "deviceInterface": "CAN",
       "terminator": false,
-      "attachments": [
-        "lmtSw0"
-      ],
       "id": 25,
       "manufacturer": 5,
       "deviceType": 2,
       "model": "REV NEO",
       "type": "motor"
+    },
+    {
+      "label": "FALCON 9",
+      "deviceInterface": "CAN",
+      "terminator": false,
+      "id": 9,
+      "manufacturer": 4,
+      "deviceType": 2,
+      "model": "Falcon 500",
+      "type": "motor"
+    },
+    {
+      "label": "SPARKMAX/NEO 25",
+      "deviceInterface": "CAN",
+      "id": 25,
+      "manufacturer": 5,
+      "deviceType": 2,
+      "model": "REV NEO",
+      "type": "motor",
+      "terminator": false
     }
   ],
-  "data_version": "2026-05-25_190031",
-  "data_hash": "3995d50970b1564651b8e489d72b0ec4b52b1716a94844eed4c1bf79e6dbf08a",
+  "data_version": "2026-05-27_151624",
+  "data_hash": "6e0000d3b4d5f561f8982c521e8621492744d74236a1d7b143ac47aad386e0c6",
   "default_profile": "2026_no_swyfts",
   "bridgeConfig": {
     "schemaVersion": 2,
@@ -743,6 +774,38 @@
           "device": "",
           "enabled": false
         }
+      },
+      "test_minimal_25_9": {
+        "groups": [
+          {
+            "name": "motors",
+            "enabled": true,
+            "members": [
+              {
+                "label": "SPARKMAX/NEO 25",
+                "enabled": true
+              },
+              {
+                "label": "FALCON 9",
+                "enabled": true
+              }
+            ],
+            "bindings": [
+              {
+                "input": "controller0.rightY",
+                "kind": "analog"
+              }
+            ]
+          }
+        ],
+        "selectedDevice": {
+          "device": "",
+          "enabled": false
+        },
+        "tests": {
+          "default_test_set": "default",
+          "test_sets": {}
+        }
       }
     }
   },
@@ -753,18 +816,29 @@
       "robot_2026_swerve": [
         "Swerve Krakens Left Joystick",
         "Swerve NEOs Right Joystick",
-        "Swerve NEOs Right Joystick Until B"
+        "Swerve NEOs Right Joystick Until B",
+        "spark25_leftY"
       ],
       "2026_no_swyfts": [
         "Swerve Krakens Left Joystick",
         "Swerve NEOs Right Joystick",
         "Swerve NEOs Right Joystick Until B"
+      ],
+      "default": [
+        "spark25_leftY",
+        "falcon9_leftY",
+        "spark25_to_limit",
+        "falcon9_to_limit",
+        "motors_to_limit"
+      ],
+      "mini_25_9": [
+        "spark25_leftY"
       ]
     },
     "testsByName": {
       "Swerve Krakens Left Joystick": {
-        "source": "test \"Swerve Krakens Left Joystick\"\ndevice \"frontLeft Drive Motor\"\ndevice \"frontRight Drive Motor\"\ndevice \"backLeft Drive Motor\"\ndevice \"backRight Drive Motor\"\ndevice \"controller0\"\n\nunsafe-exit \"frontLeft Drive Motor\".output\nunsafe-exit \"frontRight Drive Motor\".output\nunsafe-exit \"backLeft Drive Motor\".output\nunsafe-exit \"backRight Drive Motor\".output\n\nmain:\n    set \"frontLeft Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0\n    set \"frontRight Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0\n    set \"backLeft Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0\n    set \"backRight Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0\n    abort controller0.B\n",
-        "sourceHash": "75d7c7136aa514bf559facb375f724cbd0b0767a6b4f06c35cc2055f43061760",
+        "source": "test \"Swerve Krakens Left Joystick\"\ndevice \"frontLeft Drive Motor\"\ndevice \"frontRight Drive Motor\"\ndevice \"backLeft Drive Motor\"\ndevice \"backRight Drive Motor\"\ndevice \"controller0\"\n\nunsafe-exit \"frontLeft Drive Motor\".output_percent_cmd\nunsafe-exit \"frontRight Drive Motor\".output_percent_cmd\nunsafe-exit \"backLeft Drive Motor\".output_percent_cmd\nunsafe-exit \"backRight Drive Motor\".output_percent_cmd\n\nmain:\n    set \"frontLeft Drive Motor\".output_percent_cmd = controller0.leftY deadband 0.12 scaled 0.20 default 0.0\n    set \"frontRight Drive Motor\".output_percent_cmd = controller0.leftY deadband 0.12 scaled 0.20 default 0.0\n    set \"backLeft Drive Motor\".output_percent_cmd = controller0.leftY deadband 0.12 scaled 0.20 default 0.0\n    set \"backRight Drive Motor\".output_percent_cmd = controller0.leftY deadband 0.12 scaled 0.20 default 0.0\n    abort controller0.B\n",
+        "sourceHash": "167c36441c3c505f8ba0c9411469f5e94ceea5a1ab29c661a38394eee3de9299",
         "normalized": {
           "name": "Swerve Krakens Left Joystick",
           "devices": [
@@ -784,44 +858,7 @@
               "name": "controller0"
             }
           ],
-          "unsafeExit": [
-            {
-              "id": "unsafe_exit_1",
-              "text": "unsafe-exit \"frontLeft Drive Motor\".output",
-              "target": {
-                "device": "frontLeft Drive Motor",
-                "signal": "output",
-                "text": "frontLeft Drive Motor.output"
-              }
-            },
-            {
-              "id": "unsafe_exit_2",
-              "text": "unsafe-exit \"frontRight Drive Motor\".output",
-              "target": {
-                "device": "frontRight Drive Motor",
-                "signal": "output",
-                "text": "frontRight Drive Motor.output"
-              }
-            },
-            {
-              "id": "unsafe_exit_3",
-              "text": "unsafe-exit \"backLeft Drive Motor\".output",
-              "target": {
-                "device": "backLeft Drive Motor",
-                "signal": "output",
-                "text": "backLeft Drive Motor.output"
-              }
-            },
-            {
-              "id": "unsafe_exit_4",
-              "text": "unsafe-exit \"backRight Drive Motor\".output",
-              "target": {
-                "device": "backRight Drive Motor",
-                "signal": "output",
-                "text": "backRight Drive Motor.output"
-              }
-            }
-          ],
+          "unsafeExit": [],
           "init": {
             "sets": [],
             "clears": [],
@@ -833,12 +870,12 @@
           "main": {
             "sets": [
               {
-                "id": "set_1",
-                "text": "set \"frontLeft Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0",
+                "id": "",
+                "text": "set \"frontLeft Drive Motor\".output_percent_cmd = controller0.leftY deadband 0.12 scaled 0.20 default 0.0",
                 "target": {
                   "device": "frontLeft Drive Motor",
-                  "signal": "output",
-                  "text": "frontLeft Drive Motor.output"
+                  "signal": "output_percent_cmd",
+                  "text": "frontLeft Drive Motor.output_percent_cmd"
                 },
                 "source": {
                   "device": "controller0",
@@ -846,19 +883,15 @@
                   "text": "controller0.leftY"
                 },
                 "deadband": 0.12,
-                "scale": 0.2,
-                "defaultLiteral": {
-                  "value": 0.0,
-                  "valueType": "number"
-                }
+                "scale": 0.2
               },
               {
-                "id": "set_2",
-                "text": "set \"frontRight Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0",
+                "id": "",
+                "text": "set \"frontRight Drive Motor\".output_percent_cmd = controller0.leftY deadband 0.12 scaled 0.20 default 0.0",
                 "target": {
                   "device": "frontRight Drive Motor",
-                  "signal": "output",
-                  "text": "frontRight Drive Motor.output"
+                  "signal": "output_percent_cmd",
+                  "text": "frontRight Drive Motor.output_percent_cmd"
                 },
                 "source": {
                   "device": "controller0",
@@ -866,19 +899,15 @@
                   "text": "controller0.leftY"
                 },
                 "deadband": 0.12,
-                "scale": 0.2,
-                "defaultLiteral": {
-                  "value": 0.0,
-                  "valueType": "number"
-                }
+                "scale": 0.2
               },
               {
-                "id": "set_3",
-                "text": "set \"backLeft Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0",
+                "id": "",
+                "text": "set \"backLeft Drive Motor\".output_percent_cmd = controller0.leftY deadband 0.12 scaled 0.20 default 0.0",
                 "target": {
                   "device": "backLeft Drive Motor",
-                  "signal": "output",
-                  "text": "backLeft Drive Motor.output"
+                  "signal": "output_percent_cmd",
+                  "text": "backLeft Drive Motor.output_percent_cmd"
                 },
                 "source": {
                   "device": "controller0",
@@ -886,19 +915,15 @@
                   "text": "controller0.leftY"
                 },
                 "deadband": 0.12,
-                "scale": 0.2,
-                "defaultLiteral": {
-                  "value": 0.0,
-                  "valueType": "number"
-                }
+                "scale": 0.2
               },
               {
-                "id": "set_4",
-                "text": "set \"backRight Drive Motor\".output = controller0.leftY deadband 0.12 scaled 0.20 default 0.0",
+                "id": "",
+                "text": "set \"backRight Drive Motor\".output_percent_cmd = controller0.leftY deadband 0.12 scaled 0.20 default 0.0",
                 "target": {
                   "device": "backRight Drive Motor",
-                  "signal": "output",
-                  "text": "backRight Drive Motor.output"
+                  "signal": "output_percent_cmd",
+                  "text": "backRight Drive Motor.output_percent_cmd"
                 },
                 "source": {
                   "device": "controller0",
@@ -906,17 +931,13 @@
                   "text": "controller0.leftY"
                 },
                 "deadband": 0.12,
-                "scale": 0.2,
-                "defaultLiteral": {
-                  "value": 0.0,
-                  "valueType": "number"
-                }
+                "scale": 0.2
               }
             ],
             "clears": [],
             "aborts": [
               {
-                "id": "abort_1",
+                "id": "",
                 "kind": "abort",
                 "text": "abort controller0.B",
                 "reference": {
@@ -941,8 +962,8 @@
         }
       },
       "Swerve NEOs Right Joystick": {
-        "source": "test \"Swerve NEOs Right Joystick\"\ndevice \"frontLeft Angle Motor\"\ndevice \"frontRight Angle Motor\"\ndevice \"backLeft Angle Motor\"\ndevice \"backRight Angle Motor\"\ndevice \"controller0\"\n\nunsafe-exit \"frontLeft Angle Motor\".output\nunsafe-exit \"frontRight Angle Motor\".output\nunsafe-exit \"backLeft Angle Motor\".output\nunsafe-exit \"backRight Angle Motor\".output\n\nmain:\n    set \"frontLeft Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"frontRight Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"backLeft Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"backRight Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    abort controller0.B\n",
-        "sourceHash": "75df498447b126b8c4c36bca8879acf16a1135b5beb69f715386816631a9c09d",
+        "source": "test \"Swerve NEOs Right Joystick\"\ndevice \"frontLeft Angle Motor\"\ndevice \"frontRight Angle Motor\"\ndevice \"backLeft Angle Motor\"\ndevice \"backRight Angle Motor\"\ndevice \"controller0\"\n\nunsafe-exit \"frontLeft Angle Motor\".output_percent_cmd\nunsafe-exit \"frontRight Angle Motor\".output_percent_cmd\nunsafe-exit \"backLeft Angle Motor\".output_percent_cmd\nunsafe-exit \"backRight Angle Motor\".output_percent_cmd\n\nmain:\n    set \"frontLeft Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"frontRight Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"backLeft Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"backRight Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    abort controller0.B\n",
+        "sourceHash": "f93d8ec8eba682d06c5556c2fe8e0553302fabba45b65b8b9b11b11cabaf4bea",
         "normalized": {
           "name": "Swerve NEOs Right Joystick",
           "devices": [
@@ -962,44 +983,7 @@
               "name": "controller0"
             }
           ],
-          "unsafeExit": [
-            {
-              "id": "unsafe_exit_1",
-              "text": "unsafe-exit \"frontLeft Angle Motor\".output",
-              "target": {
-                "device": "frontLeft Angle Motor",
-                "signal": "output",
-                "text": "frontLeft Angle Motor.output"
-              }
-            },
-            {
-              "id": "unsafe_exit_2",
-              "text": "unsafe-exit \"frontRight Angle Motor\".output",
-              "target": {
-                "device": "frontRight Angle Motor",
-                "signal": "output",
-                "text": "frontRight Angle Motor.output"
-              }
-            },
-            {
-              "id": "unsafe_exit_3",
-              "text": "unsafe-exit \"backLeft Angle Motor\".output",
-              "target": {
-                "device": "backLeft Angle Motor",
-                "signal": "output",
-                "text": "backLeft Angle Motor.output"
-              }
-            },
-            {
-              "id": "unsafe_exit_4",
-              "text": "unsafe-exit \"backRight Angle Motor\".output",
-              "target": {
-                "device": "backRight Angle Motor",
-                "signal": "output",
-                "text": "backRight Angle Motor.output"
-              }
-            }
-          ],
+          "unsafeExit": [],
           "init": {
             "sets": [],
             "clears": [],
@@ -1011,12 +995,12 @@
           "main": {
             "sets": [
               {
-                "id": "set_1",
-                "text": "set \"frontLeft Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "id": "",
+                "text": "set \"frontLeft Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
                 "target": {
                   "device": "frontLeft Angle Motor",
-                  "signal": "output",
-                  "text": "frontLeft Angle Motor.output"
+                  "signal": "output_percent_cmd",
+                  "text": "frontLeft Angle Motor.output_percent_cmd"
                 },
                 "source": {
                   "device": "controller0",
@@ -1024,19 +1008,15 @@
                   "text": "controller0.rightY"
                 },
                 "deadband": 0.12,
-                "scale": 0.2,
-                "defaultLiteral": {
-                  "value": 0.0,
-                  "valueType": "number"
-                }
+                "scale": 0.2
               },
               {
-                "id": "set_2",
-                "text": "set \"frontRight Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "id": "",
+                "text": "set \"frontRight Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
                 "target": {
                   "device": "frontRight Angle Motor",
-                  "signal": "output",
-                  "text": "frontRight Angle Motor.output"
+                  "signal": "output_percent_cmd",
+                  "text": "frontRight Angle Motor.output_percent_cmd"
                 },
                 "source": {
                   "device": "controller0",
@@ -1044,19 +1024,15 @@
                   "text": "controller0.rightY"
                 },
                 "deadband": 0.12,
-                "scale": 0.2,
-                "defaultLiteral": {
-                  "value": 0.0,
-                  "valueType": "number"
-                }
+                "scale": 0.2
               },
               {
-                "id": "set_3",
-                "text": "set \"backLeft Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "id": "",
+                "text": "set \"backLeft Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
                 "target": {
                   "device": "backLeft Angle Motor",
-                  "signal": "output",
-                  "text": "backLeft Angle Motor.output"
+                  "signal": "output_percent_cmd",
+                  "text": "backLeft Angle Motor.output_percent_cmd"
                 },
                 "source": {
                   "device": "controller0",
@@ -1064,19 +1040,15 @@
                   "text": "controller0.rightY"
                 },
                 "deadband": 0.12,
-                "scale": 0.2,
-                "defaultLiteral": {
-                  "value": 0.0,
-                  "valueType": "number"
-                }
+                "scale": 0.2
               },
               {
-                "id": "set_4",
-                "text": "set \"backRight Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "id": "",
+                "text": "set \"backRight Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
                 "target": {
                   "device": "backRight Angle Motor",
-                  "signal": "output",
-                  "text": "backRight Angle Motor.output"
+                  "signal": "output_percent_cmd",
+                  "text": "backRight Angle Motor.output_percent_cmd"
                 },
                 "source": {
                   "device": "controller0",
@@ -1084,17 +1056,13 @@
                   "text": "controller0.rightY"
                 },
                 "deadband": 0.12,
-                "scale": 0.2,
-                "defaultLiteral": {
-                  "value": 0.0,
-                  "valueType": "number"
-                }
+                "scale": 0.2
               }
             ],
             "clears": [],
             "aborts": [
               {
-                "id": "abort_1",
+                "id": "",
                 "kind": "abort",
                 "text": "abort controller0.B",
                 "reference": {
@@ -1119,8 +1087,8 @@
         }
       },
       "Swerve NEOs Right Joystick Until B": {
-        "source": "test \"Swerve NEOs Right Joystick Until B\"\ndevice \"frontLeft Angle Motor\"\ndevice \"frontRight Angle Motor\"\ndevice \"backLeft Angle Motor\"\ndevice \"backRight Angle Motor\"\ndevice \"controller0\"\n\nunsafe-exit \"frontLeft Angle Motor\".output\nunsafe-exit \"frontRight Angle Motor\".output\nunsafe-exit \"backLeft Angle Motor\".output\nunsafe-exit \"backRight Angle Motor\".output\n\nmain:\n    set \"frontLeft Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"frontRight Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"backLeft Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"backRight Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    until controller0.B\n",
-        "sourceHash": "33ae9d7fe6c870630db1ae56ceadd621df9acdc6f07552a4e17258fec6192275",
+        "source": "test \"Swerve NEOs Right Joystick Until B\"\ndevice \"frontLeft Angle Motor\"\ndevice \"frontRight Angle Motor\"\ndevice \"backLeft Angle Motor\"\ndevice \"backRight Angle Motor\"\ndevice \"controller0\"\n\nunsafe-exit \"frontLeft Angle Motor\".output_percent_cmd\nunsafe-exit \"frontRight Angle Motor\".output_percent_cmd\nunsafe-exit \"backLeft Angle Motor\".output_percent_cmd\nunsafe-exit \"backRight Angle Motor\".output_percent_cmd\n\nmain:\n    set \"frontLeft Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"frontRight Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"backLeft Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"backRight Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    until controller0.B\n",
+        "sourceHash": "cbb1e4a2d3f790c3c6044948df12411ad087bc4c002e6ff403a49c06705a3d5e",
         "normalized": {
           "name": "Swerve NEOs Right Joystick Until B",
           "devices": [
@@ -1140,44 +1108,269 @@
               "name": "controller0"
             }
           ],
-          "unsafeExit": [
-            {
-              "id": "unsafe_exit_1",
-              "text": "unsafe-exit \"frontLeft Angle Motor\".output",
-              "target": {
-                "device": "frontLeft Angle Motor",
-                "signal": "output",
-                "text": "frontLeft Angle Motor.output"
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "",
+                "text": "set \"frontLeft Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "frontLeft Angle Motor",
+                  "signal": "output_percent_cmd",
+                  "text": "frontLeft Angle Motor.output_percent_cmd"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "rightY",
+                  "text": "controller0.rightY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2
+              },
+              {
+                "id": "",
+                "text": "set \"frontRight Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "frontRight Angle Motor",
+                  "signal": "output_percent_cmd",
+                  "text": "frontRight Angle Motor.output_percent_cmd"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "rightY",
+                  "text": "controller0.rightY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2
+              },
+              {
+                "id": "",
+                "text": "set \"backLeft Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "backLeft Angle Motor",
+                  "signal": "output_percent_cmd",
+                  "text": "backLeft Angle Motor.output_percent_cmd"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "rightY",
+                  "text": "controller0.rightY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2
+              },
+              {
+                "id": "",
+                "text": "set \"backRight Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "target": {
+                  "device": "backRight Angle Motor",
+                  "signal": "output_percent_cmd",
+                  "text": "backRight Angle Motor.output_percent_cmd"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "rightY",
+                  "text": "controller0.rightY"
+                },
+                "deadband": 0.12,
+                "scale": 0.2
               }
+            ],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [
+              {
+                "id": "",
+                "kind": "until",
+                "text": "until controller0.B",
+                "reference": {
+                  "device": "controller0",
+                  "signal": "B",
+                  "text": "controller0.B"
+                }
+              }
+            ],
+            "requires": []
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        }
+      },
+      "spark25_leftY": {
+        "source": "test \"spark25_leftY\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"controller0\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\n\tuntil timer.elapsed >= 10.0\n\n\n",
+        "sourceHash": "4889393b2f08b76ca2aebc6288a30b898f7eb5959245777661ff25b0aeaff385",
+        "normalized": {
+          "name": "spark25_leftY",
+          "devices": [
+            {
+              "name": "SPARKMAX/NEO 25"
             },
             {
-              "id": "unsafe_exit_2",
-              "text": "unsafe-exit \"frontRight Angle Motor\".output",
-              "target": {
-                "device": "frontRight Angle Motor",
-                "signal": "output",
-                "text": "frontRight Angle Motor.output"
-              }
-            },
-            {
-              "id": "unsafe_exit_3",
-              "text": "unsafe-exit \"backLeft Angle Motor\".output",
-              "target": {
-                "device": "backLeft Angle Motor",
-                "signal": "output",
-                "text": "backLeft Angle Motor.output"
-              }
-            },
-            {
-              "id": "unsafe_exit_4",
-              "text": "unsafe-exit \"backRight Angle Motor\".output",
-              "target": {
-                "device": "backRight Angle Motor",
-                "signal": "output",
-                "text": "backRight Angle Motor.output"
-              }
+              "name": "controller0"
             }
           ],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "",
+                "text": "set \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0",
+                "target": {
+                  "device": "SPARKMAX/NEO 25",
+                  "signal": "output_percent_cmd",
+                  "text": "SPARKMAX/NEO 25.output_percent_cmd"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "leftY",
+                  "text": "controller0.leftY"
+                },
+                "deadband": 0.08,
+                "scale": 0.25
+              }
+            ],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [
+              {
+                "id": "",
+                "kind": "until",
+                "text": "until timer.elapsed >= 10.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "operator": ">=",
+                "literal": {
+                  "value": 10.0,
+                  "valueType": ""
+                }
+              }
+            ],
+            "requires": []
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        }
+      },
+      "falcon9_leftY": {
+        "source": "test \"falcon9_leftY\"\n\ndevice \"FALCON 9\"\ndevice \"controller0\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\n\tuntil timer.elapsed >= 10.0\n\n\n",
+        "sourceHash": "0eb7c6441804d9a32dba93752144641ea6ffbd36f9366b9ba5ac544b3e6e6b12",
+        "normalized": {
+          "name": "falcon9_leftY",
+          "devices": [
+            {
+              "name": "FALCON 9"
+            },
+            {
+              "name": "controller0"
+            }
+          ],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "",
+                "text": "set \"FALCON 9\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0",
+                "target": {
+                  "device": "FALCON 9",
+                  "signal": "output_percent_cmd",
+                  "text": "FALCON 9.output_percent_cmd"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "leftY",
+                  "text": "controller0.leftY"
+                },
+                "deadband": 0.08,
+                "scale": 0.25
+              }
+            ],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [
+              {
+                "id": "",
+                "kind": "until",
+                "text": "until timer.elapsed >= 10.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "operator": ">=",
+                "literal": {
+                  "value": 10.0,
+                  "valueType": ""
+                }
+              }
+            ],
+            "requires": []
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        }
+      },
+      "spark25_to_limit": {
+        "source": "test \"spark25_to_limit\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = 0.20\n\n\n\tabort \"SPARKMAX/NEO 25\".current_actual > 40\n\n\tsuccess lmtSw0.pressed\n\n\n\n",
+        "sourceHash": "68794a77d267695aabf691ff235455cf57abb8a83e1081a8fa6130f7c3e5134f",
+        "normalized": {
+          "name": "spark25_to_limit",
+          "devices": [
+            {
+              "name": "SPARKMAX/NEO 25"
+            },
+            {
+              "name": "lmtSw0"
+            }
+          ],
+          "unsafeExit": [],
           "init": {
             "sets": [],
             "clears": [],
@@ -1190,100 +1383,242 @@
             "sets": [
               {
                 "id": "set_1",
-                "text": "set \"frontLeft Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
+                "text": "set \"SPARKMAX/NEO 25\".output_percent_cmd = 0.20",
                 "target": {
-                  "device": "frontLeft Angle Motor",
-                  "signal": "output",
-                  "text": "frontLeft Angle Motor.output"
+                  "device": "SPARKMAX/NEO 25",
+                  "signal": "output_percent_cmd",
+                  "text": "SPARKMAX/NEO 25.output_percent_cmd"
                 },
-                "source": {
-                  "device": "controller0",
-                  "signal": "rightY",
-                  "text": "controller0.rightY"
-                },
-                "deadband": 0.12,
-                "scale": 0.2,
-                "defaultLiteral": {
-                  "value": 0.0,
-                  "valueType": "number"
-                }
-              },
-              {
-                "id": "set_2",
-                "text": "set \"frontRight Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
-                "target": {
-                  "device": "frontRight Angle Motor",
-                  "signal": "output",
-                  "text": "frontRight Angle Motor.output"
-                },
-                "source": {
-                  "device": "controller0",
-                  "signal": "rightY",
-                  "text": "controller0.rightY"
-                },
-                "deadband": 0.12,
-                "scale": 0.2,
-                "defaultLiteral": {
-                  "value": 0.0,
-                  "valueType": "number"
-                }
-              },
-              {
-                "id": "set_3",
-                "text": "set \"backLeft Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
-                "target": {
-                  "device": "backLeft Angle Motor",
-                  "signal": "output",
-                  "text": "backLeft Angle Motor.output"
-                },
-                "source": {
-                  "device": "controller0",
-                  "signal": "rightY",
-                  "text": "controller0.rightY"
-                },
-                "deadband": 0.12,
-                "scale": 0.2,
-                "defaultLiteral": {
-                  "value": 0.0,
-                  "valueType": "number"
-                }
-              },
-              {
-                "id": "set_4",
-                "text": "set \"backRight Angle Motor\".output = controller0.rightY deadband 0.12 scaled 0.20 default 0.0",
-                "target": {
-                  "device": "backRight Angle Motor",
-                  "signal": "output",
-                  "text": "backRight Angle Motor.output"
-                },
-                "source": {
-                  "device": "controller0",
-                  "signal": "rightY",
-                  "text": "controller0.rightY"
-                },
-                "deadband": 0.12,
-                "scale": 0.2,
-                "defaultLiteral": {
-                  "value": 0.0,
+                "literal": {
+                  "value": 0.2,
                   "valueType": "number"
                 }
               }
             ],
             "clears": [],
-            "aborts": [],
-            "successes": [],
-            "untils": [
+            "aborts": [
               {
-                "id": "until_1",
-                "kind": "until",
-                "text": "until controller0.B",
+                "id": "abort_1",
+                "kind": "abort",
+                "text": "abort \"SPARKMAX/NEO 25\".current_actual > 40",
                 "reference": {
-                  "device": "controller0",
-                  "signal": "B",
-                  "text": "controller0.B"
+                  "device": "SPARKMAX/NEO 25",
+                  "signal": "current_actual",
+                  "text": "SPARKMAX/NEO 25.current_actual"
+                },
+                "operator": ">",
+                "literal": {
+                  "value": 40,
+                  "valueType": "number"
                 }
               }
             ],
+            "successes": [
+              {
+                "id": "success_1",
+                "kind": "success",
+                "text": "success lmtSw0.pressed",
+                "reference": {
+                  "device": "lmtSw0",
+                  "signal": "pressed",
+                  "text": "lmtSw0.pressed"
+                }
+              }
+            ],
+            "untils": [],
+            "requires": []
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        }
+      },
+      "falcon9_to_limit": {
+        "source": "test \"falcon9_to_limit\"\n\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = 0.20\n\n\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed\n\n\n\n",
+        "sourceHash": "42f07decbf66d269b7cff20047e2e4fc9068b0bd821b51537be1b6beb5101e7c",
+        "normalized": {
+          "name": "falcon9_to_limit",
+          "devices": [
+            {
+              "name": "FALCON 9"
+            },
+            {
+              "name": "lmtSw0"
+            }
+          ],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "set_1",
+                "text": "set \"FALCON 9\".output_percent_cmd = 0.20",
+                "target": {
+                  "device": "FALCON 9",
+                  "signal": "output_percent_cmd",
+                  "text": "FALCON 9.output_percent_cmd"
+                },
+                "literal": {
+                  "value": 0.2,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "clears": [],
+            "aborts": [
+              {
+                "id": "abort_1",
+                "kind": "abort",
+                "text": "abort \"FALCON 9\".current_actual > 40",
+                "reference": {
+                  "device": "FALCON 9",
+                  "signal": "current_actual",
+                  "text": "FALCON 9.current_actual"
+                },
+                "operator": ">",
+                "literal": {
+                  "value": 40,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "successes": [
+              {
+                "id": "success_1",
+                "kind": "success",
+                "text": "success lmtSw0.pressed",
+                "reference": {
+                  "device": "lmtSw0",
+                  "signal": "pressed",
+                  "text": "lmtSw0.pressed"
+                }
+              }
+            ],
+            "untils": [],
+            "requires": []
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        }
+      },
+      "motors_to_limit": {
+        "source": "test \"motors_to_limit\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = 0.15\n\tset \"FALCON 9\".output_percent_cmd = 0.15\n\n\tabort \"SPARKMAX/NEO 25\".current_actual > 40\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed\n\n\n\n\n",
+        "sourceHash": "48bfa03e1d2bf5f58ff51b4395f32e8c6dc2d94c00df3c5ed7bd51804ce79312",
+        "normalized": {
+          "name": "motors_to_limit",
+          "devices": [
+            {
+              "name": "SPARKMAX/NEO 25"
+            },
+            {
+              "name": "FALCON 9"
+            },
+            {
+              "name": "lmtSw0"
+            }
+          ],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "set_1",
+                "text": "set \"SPARKMAX/NEO 25\".output_percent_cmd = 0.15",
+                "target": {
+                  "device": "SPARKMAX/NEO 25",
+                  "signal": "output_percent_cmd",
+                  "text": "SPARKMAX/NEO 25.output_percent_cmd"
+                },
+                "literal": {
+                  "value": 0.15,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "set_2",
+                "text": "set \"FALCON 9\".output_percent_cmd = 0.15",
+                "target": {
+                  "device": "FALCON 9",
+                  "signal": "output_percent_cmd",
+                  "text": "FALCON 9.output_percent_cmd"
+                },
+                "literal": {
+                  "value": 0.15,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "clears": [],
+            "aborts": [
+              {
+                "id": "abort_1",
+                "kind": "abort",
+                "text": "abort \"SPARKMAX/NEO 25\".current_actual > 40",
+                "reference": {
+                  "device": "SPARKMAX/NEO 25",
+                  "signal": "current_actual",
+                  "text": "SPARKMAX/NEO 25.current_actual"
+                },
+                "operator": ">",
+                "literal": {
+                  "value": 40,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "abort_2",
+                "kind": "abort",
+                "text": "abort \"FALCON 9\".current_actual > 40",
+                "reference": {
+                  "device": "FALCON 9",
+                  "signal": "current_actual",
+                  "text": "FALCON 9.current_actual"
+                },
+                "operator": ">",
+                "literal": {
+                  "value": 40,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "successes": [
+              {
+                "id": "success_1",
+                "kind": "success",
+                "text": "success lmtSw0.pressed",
+                "reference": {
+                  "device": "lmtSw0",
+                  "signal": "pressed",
+                  "text": "lmtSw0.pressed"
+                }
+              }
+            ],
+            "untils": [],
             "requires": []
           },
           "close": {
@@ -1379,7 +1714,7 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1166.0513393203228,
+              "x": 1169.198901634687,
               "y": 116.3669945116961,
               "yRelative": false
             }
@@ -1457,7 +1792,7 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 1139.5133326856653,
+              "x": 1143.8114560214913,
               "y": 533.6586181687638,
               "yRelative": false
             }
@@ -1529,8 +1864,8 @@
               "bus": 0,
               "row": 1,
               "x": 1355.1053727581896,
-              "y": 133.81739286609002,
-              "yRelative": true
+              "y": 80.5886845903316,
+              "yRelative": false
             }
           },
           {
@@ -1858,9 +2193,10 @@
             40.0
           ],
           "busRights": [
-            1530.124918190166
+            1535.5286144612378
           ],
           "busConnectors": [],
+          "busConnectorSides": [],
           "panY": -58.84402399667054,
           "zoom": 0.9140927439242125,
           "ethernetLinks": [
@@ -2553,6 +2889,124 @@
           "busConnectorSides": [],
           "panY": 0.0,
           "zoom": 1.0,
+          "ethernetLinks": [],
+          "canLinks": [],
+          "deviceLinks": [],
+          "connectionFilters": [
+            "analog",
+            "can",
+            "dio",
+            "power",
+            "pwm",
+            "virtual"
+          ],
+          "callouts": []
+        }
+      },
+      "test_minimal_25_9": {
+        "version": 1,
+        "source": "local",
+        "nodes": [
+          {
+            "key": 1,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "roborio",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 100.0,
+              "y": -76.0,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 2,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "pdh",
+            "layout": {
+              "bus": 0,
+              "row": 1,
+              "x": 615.0,
+              "y": 63.0,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 4,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "SPARKMAX/NEO 25",
+            "layout": {
+              "bus": 0,
+              "row": 1,
+              "x": 270.4893048128344,
+              "y": 75.91443850267379,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 5,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "lmtSw0",
+            "layout": {
+              "bus": 0,
+              "row": 1,
+              "x": 76.0,
+              "y": 84.0,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 6,
+            "objectType": "device",
+            "nodeType": "device",
+            "deviceRef": "FALCON 9",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 460.64973262032055,
+              "y": -51.096256684491976,
+              "yRelative": true
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "edge_1",
+            "fromNode": 1,
+            "fromPort": "dio",
+            "toNode": 5,
+            "toPort": "dio",
+            "edgeType": "dio"
+          },
+          {
+            "id": "edge_2",
+            "fromNode": 4,
+            "fromPort": "attachment",
+            "toNode": 5,
+            "toPort": "attachment",
+            "edgeType": "virtual"
+          }
+        ],
+        "view": {
+          "busOffsets": [
+            0.0
+          ],
+          "busCount": 1,
+          "busSpacing": 160.0,
+          "busLefts": [
+            -4.0
+          ],
+          "busRights": [
+            735.0
+          ],
+          "busConnectors": [],
+          "busConnectorSides": [],
+          "panY": -0.0,
+          "zoom": 1.36996336996337,
           "ethernetLinks": [],
           "canLinks": [],
           "deviceLinks": [],

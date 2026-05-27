@@ -65,8 +65,7 @@ Purpose: Define the JSON structures written by the editor.
 
 ### bringup_system.json
 Purpose: Stable device configuration consumed by robot and PC tools.
-- Canonical location: `data/bringup_system.json`.
-- RoboRIO deploy copy: `src/main/deploy/bringup_system.json` (synced from `data/`).
+- Location: `src/main/deploy/bringup_system.json`.
 - Root fields:
 - `schema_version` (int, 5)
 - `data_version` (string)
@@ -142,7 +141,7 @@ Purpose: Capture UI structure.
 
 ## Contracts
 Purpose: Declare stable API contracts.
-- `bringup_system.json` is the single source of truth; deploy copies must be synced from `data/`.
+- `bringup_system.json` is the single source of truth.
 - Diagram metadata is editor-only and must not be consumed by robot/PC tools.
 - Tags are optional and must not break existing tools when absent.
 - Ordinary interaction must not change pane geometry unless the user explicitly drags a splitter or opens/closes a major section.

@@ -22,7 +22,7 @@ Define a centralized in-memory config database with JSON import/export and valid
 Purpose: List files governed by the store.
 
 Included:
-- `data/bringup_system.json`
+- `src/main/deploy/bringup_system.json`
 - Legacy tests export/import (optional): `bringup_tests.json` (repo root, when present)
 - Legacy tests export/import (optional): `src/main/deploy/bringup_tests.json` (when present)
 - `bringup_bindings.json` (repo root, when present)
@@ -146,7 +146,7 @@ result = store.validate(strict=False)
 
 Save tests:
 ```
-store.save_profiles("data/bringup_system.json")
+store.save_profiles("src/main/deploy/bringup_system.json")
 ```
 
 ## Tradeoffs

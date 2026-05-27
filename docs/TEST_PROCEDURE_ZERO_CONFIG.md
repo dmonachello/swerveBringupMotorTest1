@@ -35,8 +35,7 @@ Purpose: Ensure a clean starting state.
 
 - `src\main\deploy\can_mappings.json` exists.
 - `src\main\deploy\bringup_bindings.json` exists.
-- The canonical file `data\bringup_system.json` does not exist (we create it from scratch).
-- The deploy copy `src\main\deploy\bringup_system.json` does not exist (it will be generated).
+- The file `src\main\deploy\bringup_system.json` does not exist (we create it from scratch).
 
 **Zero-Config CLI Command (Recommended)**
 Purpose: Perform the zero-config delete with one guarded CLI command.
@@ -62,7 +61,6 @@ exit
 Purpose: Delete existing config so the CLI creates a new one.
 
 ```powershell
-del .\data\bringup_system.json
 del .\src\main\deploy\bringup_system.json
 
 ```
@@ -76,7 +74,6 @@ reset zero-config
 Optional: Verify the host files are gone.
 
 ```powershell
-dir .\data\bringup_system.json
 dir .\src\main\deploy\bringup_system.json
 
 ```
@@ -176,7 +173,7 @@ Expected response: Same as above, with normalized imported test output available
 1. Save the unified config locally (do not save legacy test files):
 
 ```text
-save config data\bringup_system.json
+save config src\main\deploy\bringup_system.json
 end
 
 ```
@@ -187,18 +184,18 @@ If you see a warning about mismatched sources or a prompt to overwrite, re-run t
 Optional: Verify the host files were created.
 
 ```powershell
-dir .\data\bringup_system.json
+dir .\src\main\deploy\bringup_system.json
 
 ```
 
 Example output:
 
 ```text
-%USERPROFILE%\swerveBringupMotorTest1>dir .\data\bringup_system.json
+%USERPROFILE%\swerveBringupMotorTest1>dir .\src\main\deploy\bringup_system.json
  Volume in drive C is Windows
  Volume Serial Number is CED6-04AC
 
- Directory of %USERPROFILE%\swerveBringupMotorTest1\data
+ Directory of %USERPROFILE%\swerveBringupMotorTest1\src\main\deploy
 
 04/06/2026  03:19 PM             7,333 bringup_system.json
                1 File(s)          7,333 bytes
@@ -221,13 +218,13 @@ python -m tools.can_topology.can_top_editor
 
 Expected response: The editor opens with no CLI output unless an error occurs.
 
-1. File → Open → `data\bringup_system.json`.
+1. File → Open → `src\main\deploy\bringup_system.json`.
 2. Move the motor node slightly as a visible change.
-3. File → Save to Deploy (this writes canonical + deploy).
+3. File → Save to Deploy.
 4. Close the editor.
 
-**Phase 3: Sync Canonical to Deploy**
-Purpose: Keep canonical and deploy copies identical.
+**Phase 3: Refresh And Validate The Deploy-Owned Config**
+Purpose: Validate and refresh the single deploy-owned config file.
 If you used the topology editor **Save to Deploy** in Phase 2, you can skip this step.
 
 ```powershell
@@ -245,7 +242,7 @@ dir .\src\main\deploy\bringup_system.json
 ```
 
 **Phase 4: Connect, Push, Activate**
-Purpose: Push the canonical config to the robot and activate it.
+Purpose: Push the current config to the robot and activate it.
 Driver Station: Disabled (or robot not enabled).
 Note: If running the CLI on the Driver Station causes conflicts, run the CLI from another PC by SSH’ing into the host.
 See `docs\SPEC_SSH_DRIVER_STATION_CLI.md` for the recommended workflow.
@@ -265,7 +262,7 @@ Expected response: Version banner, then `bridge>` prompt.
 ```text
 connect
 configure terminal
-config push data\bringup_system.json --activate home_042126V1
+config push src\main\deploy\bringup_system.json --activate home_042126V1
 end
 
 ```
@@ -373,7 +370,7 @@ dio 0
 invert true
 end
 profile device add "lmtSw0"
-save config data\bringup_system.json
+save config src\main\deploy\bringup_system.json
 end
 
 ```
@@ -384,7 +381,7 @@ If you see an overwrite warning, re-run with `--force`.
 **Acceptance Checks**
 Purpose: Confirm the system is consistent after each cycle.
 
-1. `data\bringup_system.json` matches `src\main\deploy\bringup_system.json`.
+1. `src\main\deploy\bringup_system.json` is the current saved config.
 2. `config push` succeeds and reports `active=home_042126V1`.
 3. `show devices robot` includes the new device.
 4. `instantiate all devices` does not cause motor motion before a test starts.
@@ -397,7 +394,7 @@ Purpose: Confirm the system is consistent after each cycle.
 
 Purpose: Provide a compact, copy-friendly command runbook aligned to the current zero-config and active-group flow.
 
-Assumption: `data\bringup_system.json` already exists and contains profile `home_042126V1`.
+Assumption: `src\main\deploy\bringup_system.json` already exists and contains profile `home_042126V1`.
 
 ### A1) Start CLI and connect
 
@@ -409,7 +406,7 @@ python tools\can_nt\can_nt_bridge.py --cli --rio 172.22.11.2
 ```text
 connect
 configure terminal
-config push data\bringup_system.json --activate home_042126V1
+config push src\main\deploy\bringup_system.json --activate home_042126V1
 end
 ```
 
@@ -468,14 +465,14 @@ Purpose: Provide a short bringup cycle checklist for repeated iterations.
 2. Build/update config locally:
    - Start offline CLI: `python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt`.
    - Enter config mode, update profile/devices/tests.
-   - Save: `save config data\bringup_system.json`, then `end`.
+   - Save: `save config src\main\deploy\bringup_system.json`, then `end`.
 
-3. Sync canonical to deploy:
+3. Refresh the deploy-owned config file:
    - Run `python -m tools.sync_profiles`.
 
 4. Push and activate on robot:
    - Start online CLI: `python tools\can_nt\can_nt_bridge.py --cli --rio <robot-ip>`.
-   - `connect` → `configure terminal` → `config push data\bringup_system.json --activate <profile>` → `end`.
+   - `connect` → `configure terminal` → `config push src\main\deploy\bringup_system.json --activate <profile>` → `end`.
 
 5. Verify robot state:
    - `show devices robot --json --pretty`.
@@ -510,7 +507,7 @@ Then at `bridge>`:
 ```text
 connect
 configure terminal
-config push data\bringup_system.json --activate home_042126V1
+config push src\main\deploy\bringup_system.json --activate home_042126V1
 end
 
 show devices robot --json --pretty

@@ -2,6 +2,32 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-05-27
+
+### Improved - 2026-05-27
+
+- Changed startup/runtime behavior so boot now loads config and selects the
+  profile without implicitly activating runtime, while adding explicit
+  `runtime activate` and `runtime deactivate` command paths through the robot
+  REST server and CLI.
+- Changed `config push` and `profiles push` so push is selection-only by
+  default, and `--activate` now acts as an explicit convenience wrapper over
+  the same shared runtime-activation path instead of silently relying on a
+  separate activation behavior.
+- Changed `addMotor` and `addAll` so they remain explicit incremental bringup
+  commands that stage the selected profile without marking the full runtime
+  active.
+- Added `show devices local --all` so the CLI can display the full shared
+  `devices[]` inventory in formatted text or JSON, including whether each
+  device is part of the active profile, instead of forcing operators to inspect
+  raw config JSON.
+- Changed `test import` to validate only the candidate DSL test being added
+  against the active profile, instead of failing on unrelated stale tests that
+  still exist elsewhere in the shared `dslTests` store.
+- Added `test cleanup stale` to remove DSL tests from the shared store when
+  they no longer validate for the active profile, and to prune those removed
+  test names from all DSL test sets in the config.
+
 ## 2026-05-22
 
 ### Added - 2026-05-22

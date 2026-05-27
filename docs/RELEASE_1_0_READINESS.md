@@ -169,7 +169,7 @@ A feature maturity table such as:
 Purpose: prevent confusion between canonical, deploy, and runtime state.
 
 This project has an intentionally strong config model, but it is still easy for users to confuse:
-- `data/bringup_system.json`.
+- `src/main/deploy/bringup_system.json`.
 - `src/main/deploy/bringup_system.json`.
 - Host-selected profile.
 - Robot-active profile.

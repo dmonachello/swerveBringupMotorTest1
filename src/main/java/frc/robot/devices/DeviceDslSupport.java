@@ -26,13 +26,13 @@ public final class DeviceDslSupport {
     if (device == null || signalName == null) {
       return null;
     }
-    if (DslSignalRegistry.SIGNAL_POSITION.equals(signalName)) {
+    if (isMotorPositionSignal(signalName)) {
       return device.getPositionRotations();
     }
     DeviceSnapshot snapshot = device.snapshot();
     RevMotorAttachment rev = snapshot.getAttachment(RevMotorAttachment.class);
     CtreMotorAttachment ctre = snapshot.getAttachment(CtreMotorAttachment.class);
-    if (DslSignalRegistry.SIGNAL_CURRENT.equals(signalName)) {
+    if (isMotorCurrentSignal(signalName)) {
       if (rev != null) {
         return rev.motorCurrentA;
       }
@@ -40,7 +40,7 @@ public final class DeviceDslSupport {
         return ctre.motorCurrentA;
       }
     }
-    if (DslSignalRegistry.SIGNAL_TEMPERATURE.equals(signalName)) {
+    if (isMotorTemperatureSignal(signalName)) {
       if (rev != null) {
         return rev.tempC;
       }
@@ -48,12 +48,26 @@ public final class DeviceDslSupport {
         return ctre.tempC;
       }
     }
-    if (DslSignalRegistry.SIGNAL_VELOCITY.equals(signalName)) {
+    if (isMotorVelocitySignal(signalName)) {
       if (rev != null) {
         return rev.velRpm;
       }
       if (ctre != null) {
         return ctre.velRpm;
+      }
+    }
+    if (DslSignalRegistry.SIGNAL_OUTPUT_PERCENT_CMD.equals(signalName)) {
+      if (rev != null) {
+        return rev.cmdDuty;
+      }
+      return null;
+    }
+    if (DslSignalRegistry.SIGNAL_OUTPUT_PERCENT_APPLIED.equals(signalName)) {
+      if (rev != null) {
+        return rev.appliedDuty;
+      }
+      if (ctre != null) {
+        return ctre.appliedDuty;
       }
     }
     return null;
@@ -77,7 +91,7 @@ public final class DeviceDslSupport {
   public static Object readEncoderSignal(DeviceUnit device, String signalName) {
     if (device == null
         || signalName == null
-        || !DslSignalRegistry.SIGNAL_POSITION.equals(signalName)) {
+        || !isEncoderPositionSignal(signalName)) {
       return null;
     }
     return device.getPositionRotations();
@@ -86,7 +100,7 @@ public final class DeviceDslSupport {
   public static boolean writeMotorSignal(DeviceUnit device, String signalName, double value) {
     if (device == null
         || signalName == null
-        || !DslSignalRegistry.SIGNAL_OUTPUT.equals(signalName)) {
+        || !isMotorOutputSignal(signalName)) {
       return false;
     }
     device.setDuty(value);
@@ -107,9 +121,41 @@ public final class DeviceDslSupport {
     if (signalName == null) {
       return false;
     }
-    if (DslSignalRegistry.SIGNAL_OUTPUT.equals(signalName)) {
+    if (isMotorOutputSignal(signalName)) {
       return value >= MOTOR_OUTPUT_MIN && value <= MOTOR_OUTPUT_MAX;
     }
     return true;
+  }
+
+  private static boolean isMotorOutputSignal(String signalName) {
+    return DslSignalRegistry.SIGNAL_OUTPUT.equals(signalName)
+        || DslSignalRegistry.SIGNAL_OUTPUT_PERCENT_CMD.equals(signalName);
+  }
+
+  private static boolean isMotorCurrentSignal(String signalName) {
+    return DslSignalRegistry.SIGNAL_CURRENT.equals(signalName)
+        || DslSignalRegistry.SIGNAL_CURRENT_ACTUAL.equals(signalName);
+  }
+
+  private static boolean isMotorTemperatureSignal(String signalName) {
+    return DslSignalRegistry.SIGNAL_TEMPERATURE.equals(signalName)
+        || DslSignalRegistry.SIGNAL_TEMPERATURE_ACTUAL.equals(signalName);
+  }
+
+  private static boolean isMotorVelocitySignal(String signalName) {
+    return DslSignalRegistry.SIGNAL_VELOCITY.equals(signalName)
+        || DslSignalRegistry.SIGNAL_VELOCITY_ACTUAL.equals(signalName);
+  }
+
+  private static boolean isMotorPositionSignal(String signalName) {
+    return DslSignalRegistry.SIGNAL_POSITION.equals(signalName)
+        || DslSignalRegistry.SIGNAL_POSITION_ACTUAL.equals(signalName)
+        || DslSignalRegistry.SIGNAL_POSITION_DELTA.equals(signalName);
+  }
+
+  private static boolean isEncoderPositionSignal(String signalName) {
+    return DslSignalRegistry.SIGNAL_POSITION.equals(signalName)
+        || DslSignalRegistry.SIGNAL_POSITION_ACTUAL.equals(signalName)
+        || DslSignalRegistry.SIGNAL_POSITION_DELTA.equals(signalName);
   }
 }

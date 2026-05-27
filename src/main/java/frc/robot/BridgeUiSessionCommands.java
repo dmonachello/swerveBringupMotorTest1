@@ -57,7 +57,7 @@ final class BridgeUiSessionCommands implements BridgeUiCommandDispatcher.Command
 
     void setUiProtocolMonitorEnabled(boolean enabled);
 
-    NetworkTable getUiTcpTable();
+    NetworkTable getUiProtocolTable();
 
     ZoneId resolveRemoteCommandZone(JsonObject args);
 
@@ -68,8 +68,6 @@ final class BridgeUiSessionCommands implements BridgeUiCommandDispatcher.Command
     void setUiSessionId(String sessionId);
 
     long getLastUiSeq();
-
-    long getLastTcpSeq();
 
     int getUiProtocolVersion();
 
@@ -113,8 +111,8 @@ final class BridgeUiSessionCommands implements BridgeUiCommandDispatcher.Command
         break;
       case CMD_UI_MONITOR_DISABLE:
         dependencies.setUiProtocolMonitorEnabled(false);
-        dependencies.getUiTcpTable().getEntry(KEY_ENABLED).setBoolean(false);
-        dependencies.getUiTcpTable().getEntry(KEY_CONNECTED).setBoolean(false);
+        dependencies.getUiProtocolTable().getEntry(KEY_ENABLED).setBoolean(false);
+        dependencies.getUiProtocolTable().getEntry(KEY_CONNECTED).setBoolean(false);
         result.message = MESSAGE_MONITOR_DISABLED;
         break;
       case CMD_UI_POLL_LOG:
@@ -143,7 +141,7 @@ final class BridgeUiSessionCommands implements BridgeUiCommandDispatcher.Command
     if (reset) {
       dependencies.setUiSessionId(UUID.randomUUID().toString());
     }
-    long baseSeq = Math.max(dependencies.getLastUiSeq(), dependencies.getLastTcpSeq());
+    long baseSeq = dependencies.getLastUiSeq();
     JsonObject payload = new JsonObject();
     payload.addProperty(KEY_SESSION_ID, dependencies.getUiSessionId());
     payload.addProperty(KEY_LAST_ACK_SEQ, baseSeq);
@@ -159,7 +157,7 @@ final class BridgeUiSessionCommands implements BridgeUiCommandDispatcher.Command
       dependencies.setActiveUiClientId(null);
       result.message = MESSAGE_UI_LOCK_RELEASED;
       if (dependencies.isUiProtocolMonitorEnabled()) {
-        dependencies.getUiTcpTable().getEntry(KEY_CONNECTED).setBoolean(false);
+        dependencies.getUiProtocolTable().getEntry(KEY_CONNECTED).setBoolean(false);
       }
       return;
     }

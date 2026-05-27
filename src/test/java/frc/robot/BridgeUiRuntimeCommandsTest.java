@@ -10,43 +10,56 @@ import org.junit.jupiter.api.Test;
 class BridgeUiRuntimeCommandsTest {
 
   private static final String CMD_ADD_MOTOR = "addMotor";
+  private static final String CMD_ADD_ALL = "addAll";
   private static final String CMD_CLEAR_STOP_LATCH = "clearStopLatch";
   private static final String CMD_TOGGLE_DASHBOARD = "toggleDashboard";
 
-  private static final String MSG_PROFILE_INACTIVE =
-      "Profile inactive. Use profileActivate before adding motors.";
+  private static final String MSG_STAGE_FAILED =
+      "Failed to stage selected profile for incremental bringup: stageFailed";
   private static final String MSG_STOP_LATCH_CLEARED = "Stop latch cleared.";
   private static final String MSG_STOP_LATCH_NOT_ACTIVE = "Stop latch not active.";
 
   @Test
-  void addMotorUsesAutoActivationPathBeforeFailure() {
+  void addMotorStagesSelectedProfileInsteadOfActivatingRuntime() {
     TestDeps deps = new TestDeps();
     deps.profileActive = false;
-    deps.profileActivatesOnRequest = false;
-    BridgeUiRuntimeCommands commands = new BridgeUiRuntimeCommands(deps);
-
-    BridgeUiCommandResult result = commands.execute(ingress(CMD_ADD_MOTOR), 0.0, false);
-
-    assertFalse(result.ok);
-    assertEquals(MSG_PROFILE_INACTIVE, result.message);
-    assertEquals(1, deps.prepareActivationCalls);
-    assertEquals(1, deps.activateCalls);
-    assertEquals(0, deps.addNextMotorCalls);
-  }
-
-  @Test
-  void addMotorSucceedsWhenActivationMakesProfileActive() {
-    TestDeps deps = new TestDeps();
-    deps.profileActive = false;
-    deps.profileActivatesOnRequest = true;
     BridgeUiRuntimeCommands commands = new BridgeUiRuntimeCommands(deps);
 
     BridgeUiCommandResult result = commands.execute(ingress(CMD_ADD_MOTOR), 0.0, false);
 
     assertTrue(result.ok);
     assertEquals("Add motor.", result.message);
+    assertEquals(1, deps.stageBringupCalls);
     assertEquals(1, deps.addNextMotorCalls);
-    assertEquals(1, deps.runProfileActivateActionCalls);
+    assertEquals(0, deps.addAllDevicesCalls);
+  }
+
+  @Test
+  void addAllStagesSelectedProfileInsteadOfActivatingRuntime() {
+    TestDeps deps = new TestDeps();
+    deps.profileActive = false;
+    BridgeUiRuntimeCommands commands = new BridgeUiRuntimeCommands(deps);
+
+    BridgeUiCommandResult result = commands.execute(ingress(CMD_ADD_ALL), 0.0, false);
+
+    assertTrue(result.ok);
+    assertEquals("Instantiated all configured devices. Use active add to populate active-group.", result.message);
+    assertEquals(1, deps.stageBringupCalls);
+    assertEquals(1, deps.addAllDevicesCalls);
+  }
+
+  @Test
+  void addMotorReturnsStageFailureWhenSelectedProfileCannotBePrepared() {
+    TestDeps deps = new TestDeps();
+    deps.profileActive = false;
+    deps.stageBringupError = "stageFailed";
+    BridgeUiRuntimeCommands commands = new BridgeUiRuntimeCommands(deps);
+
+    BridgeUiCommandResult result = commands.execute(ingress(CMD_ADD_MOTOR), 0.0, false);
+
+    assertFalse(result.ok);
+    assertEquals(MSG_STAGE_FAILED, result.message);
+    assertEquals(0, deps.addNextMotorCalls);
   }
 
   @Test
@@ -93,11 +106,10 @@ class BridgeUiRuntimeCommandsTest {
 
   private static final class TestDeps implements BridgeUiRuntimeCommands.Dependencies {
     private boolean profileActive;
-    private boolean profileActivatesOnRequest;
-    private int prepareActivationCalls;
-    private int activateCalls;
-    private int runProfileActivateActionCalls;
+    private String stageBringupError = "";
+    private int stageBringupCalls;
     private int addNextMotorCalls;
+    private int addAllDevicesCalls;
 
     private boolean dashboardEnabled;
     private int applyDashboardStateCalls;
@@ -105,16 +117,9 @@ class BridgeUiRuntimeCommandsTest {
     private boolean clearStopLatchResult;
 
     @Override
-    public void prepareActivationForSelectedProfile() {
-      prepareActivationCalls += 1;
-    }
-
-    @Override
-    public void activateSelectedProfile() {
-      activateCalls += 1;
-      if (profileActivatesOnRequest) {
-        profileActive = true;
-      }
+    public String stageSelectedProfileForBringup() {
+      stageBringupCalls += 1;
+      return stageBringupError;
     }
 
     @Override
@@ -123,17 +128,14 @@ class BridgeUiRuntimeCommandsTest {
     }
 
     @Override
-    public void runProfileActivateAction() {
-      runProfileActivateActionCalls += 1;
-    }
-
-    @Override
     public void addNextMotorCommand() {
       addNextMotorCalls += 1;
     }
 
     @Override
-    public void addAllDevicesCommand() {}
+    public void addAllDevicesCommand() {
+      addAllDevicesCalls += 1;
+    }
 
     @Override
     public void setDashboardUpdatesEnabled(boolean enabled) {

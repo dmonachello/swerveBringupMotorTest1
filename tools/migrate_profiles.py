@@ -5,7 +5,7 @@ NAME
     migrate_profiles.py - Migrate bringup_system.json to schema v3.
 
 SYNOPSIS
-    python tools\\migrate_profiles.py --source data\\bringup_system.json --dest data\\bringup_system.json
+    python tools\\migrate_profiles.py --source src\\main\\deploy\\bringup_system.json --dest src\\main\\deploy\\bringup_system.json
 
 DESCRIPTION
     Normalizes bringup_system.json so device labels are unique within each

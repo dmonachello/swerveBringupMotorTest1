@@ -142,6 +142,7 @@ Common mappings:
 - `test set <name>`
 - `test import <name> <path> [set <set_name>]`
 - `test delete <name>`
+- `test cleanup stale`
 - `test export <name> <path>`
 - `test validate [<name>] [--json] [--pretty]`
 
@@ -184,6 +185,7 @@ Common mappings:
 - Legacy local interactive test-mode editing is removed.
 - Current workflow uses DSL source files plus:
   - `test import <name> <path> [set <set_name>]`
+  - `test cleanup stale`
   - `test export <name> <path>`
   - `test validate [<name>] [--json] [--pretty]`
   - `show test <name>`
@@ -549,15 +551,15 @@ Local group motors (profile home_030226):
     SPARKMAX/NEO550 7 (enabled)
     FALCON 9 (enabled)
 
-### show devices [robot|local|both] [--json] [--pretty]
+### show devices [robot|local|both] [--all] [--json] [--pretty]
 
 NAME
 
-show devices [robot|local|both] [--json] [--pretty] - Display the requested information.
+show devices [robot|local|both] [--all] [--json] [--pretty] - Display the requested information.
 
 SYNOPSIS
 
-show devices [robot|local|both] [--json] [--pretty]
+show devices [robot|local|both] [--all] [--json] [--pretty]
 
 DESCRIPTION
 
@@ -577,11 +579,11 @@ Reports invalid syntax, missing entities, or validation failures when applicable
 
 NOTES
 
-You can suffix the command with `?` to see valid next arguments. Device references use labels.
+You can suffix the command with `?` to see valid next arguments. Device references use labels. `show devices local --all` shows the full shared `devices[]` inventory from the loaded config with `inProfile` markers.
 
 EXAMPLE
 
-`show devices [robot|local|both] [--json] [--pretty]`
+`show devices [robot|local|both] [--all] [--json] [--pretty]`
 
 EXAMPLE OUTPUT
 SOURCE: local

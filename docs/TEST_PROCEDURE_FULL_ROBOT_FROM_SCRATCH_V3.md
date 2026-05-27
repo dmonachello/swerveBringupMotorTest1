@@ -63,7 +63,7 @@ Create timestamped backups of local config artifacts before destructive reset st
 
 Minimum backup targets:
 
-- `data\bringup_system.json`
+- `src\main\deploy\bringup_system.json`
 - `src\main\deploy\bringup_bindings.json`
 - `src\main\deploy\can_mappings.json`
 
@@ -90,7 +90,7 @@ reset zero-config --yes --clear-memory
 
 Expected:
 
-- canonical/deploy unified config files are removed or reported missing
+- the deploy-owned unified config file is removed or reported missing
 
 ### Step 1C: Verify empty baseline
 

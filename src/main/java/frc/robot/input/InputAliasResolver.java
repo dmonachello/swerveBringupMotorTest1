@@ -15,6 +15,7 @@ import java.util.Set;
  *   provides helpers to translate controller binding specs into alias keys.
  */
 public final class InputAliasResolver {
+  private static final int MAX_DEFAULT_CONTROLLER_INDEX = 5;
   public static final String KEY_DRIVER_A = "driver.a";
   public static final String KEY_DRIVER_B = "driver.b";
   public static final String KEY_DRIVER_X = "driver.x";
@@ -62,6 +63,8 @@ public final class InputAliasResolver {
   public static final String KEY_UI_BUTTON_1 = "ui.button1";
   public static final String KEY_UI_BUTTON_2 = "ui.button2";
 
+  public static final String KEY_CONTROLLER_PREFIX = "controller";
+
   public static final String INPUT_KIND_BUTTON = "button";
   public static final String INPUT_KIND_DPAD = "dpad";
   public static final String INPUT_KIND_COMBO = "combo";
@@ -81,6 +84,18 @@ public final class InputAliasResolver {
   private static final String SEG_TRIGGER = "trigger";
   private static final String SEG_X = "x";
   private static final String SEG_Y = "y";
+  private static final String SEG_UP = "up";
+  private static final String SEG_DOWN = "down";
+  private static final String SEG_A = "a";
+  private static final String SEG_B = "b";
+  private static final String SEG_LB = "lb";
+  private static final String SEG_RB = "rb";
+  private static final String SEG_BACK = "back";
+  private static final String SEG_START = "start";
+  private static final String SEG_LS = "ls";
+  private static final String SEG_RS = "rs";
+  private static final String SEG_OPERATOR = "operator";
+  private static final String SEG_DRIVER = "driver";
   private static final String EMPTY_STRING = "";
 
   private InputAliasResolver() {}
@@ -98,13 +113,13 @@ public final class InputAliasResolver {
     }
     String key = normalize(input);
     if (aliases == null || aliases.isEmpty()) {
-      return key;
+      return normalizeResolvedKey(key);
     }
     String target = aliases.get(key);
     if (target == null || target.isBlank()) {
-      return key;
+      return normalizeResolvedKey(key);
     }
-    return normalize(target);
+    return normalizeResolvedKey(target);
   }
 
   /**
@@ -133,7 +148,7 @@ public final class InputAliasResolver {
     if (key == null || key.isBlank()) {
       return false;
     }
-    String norm = normalize(key);
+    String norm = normalizeResolvedKey(key);
     return norm.equals(KEY_DRIVER_A)
         || norm.equals(KEY_DRIVER_B)
         || norm.equals(KEY_DRIVER_X)
@@ -174,6 +189,7 @@ public final class InputAliasResolver {
         || norm.equals(KEY_OPERATOR_RIGHT_Y)
         || norm.equals(KEY_OPERATOR_LEFT_TRIGGER)
         || norm.equals(KEY_OPERATOR_RIGHT_TRIGGER)
+        || isControllerCanonical(norm)
         || norm.equals(KEY_UI_SLIDER_1)
         || norm.equals(KEY_UI_SLIDER_2)
         || norm.equals(KEY_UI_BUTTON_1)
@@ -238,6 +254,123 @@ public final class InputAliasResolver {
     }
     if (AXIS_ID_RIGHT_TRIGGER.equals(axisId)) {
       return SEG_RIGHT + SEP + SEG_TRIGGER;
+    }
+    return EMPTY_STRING;
+  }
+
+  private static String normalizeResolvedKey(String key) {
+    String norm = normalize(key);
+    if (norm.isBlank()) {
+      return EMPTY_STRING;
+    }
+    String builtin = resolveBuiltInRoleAlias(norm);
+    if (!builtin.isBlank()) {
+      return builtin;
+    }
+    String controller = normalizeControllerCanonical(norm);
+    if (!controller.isBlank()) {
+      return controller;
+    }
+    return norm;
+  }
+
+  private static String resolveBuiltInRoleAlias(String key) {
+    if (key.startsWith(SEG_DRIVER + SEP)) {
+      return controllerSuffixToCanonical(0, key.substring((SEG_DRIVER + SEP).length()));
+    }
+    if (key.startsWith(SEG_OPERATOR + SEP)) {
+      return controllerSuffixToCanonical(1, key.substring((SEG_OPERATOR + SEP).length()));
+    }
+    return EMPTY_STRING;
+  }
+
+  private static String normalizeControllerCanonical(String key) {
+    if (!key.startsWith(KEY_CONTROLLER_PREFIX)) {
+      return EMPTY_STRING;
+    }
+    int sep = key.indexOf(SEP);
+    if (sep <= KEY_CONTROLLER_PREFIX.length()) {
+      return EMPTY_STRING;
+    }
+    String indexText = key.substring(KEY_CONTROLLER_PREFIX.length(), sep);
+    int index;
+    try {
+      index = Integer.parseInt(indexText);
+    } catch (NumberFormatException ex) {
+      return EMPTY_STRING;
+    }
+    if (index < 0 || index > MAX_DEFAULT_CONTROLLER_INDEX) {
+      return EMPTY_STRING;
+    }
+    return controllerSuffixToCanonical(index, key.substring(sep + 1));
+  }
+
+  private static boolean isControllerCanonical(String key) {
+    return !normalizeControllerCanonical(key).isBlank();
+  }
+
+  private static String controllerSuffixToCanonical(int controllerIndex, String suffix) {
+    String norm = normalize(suffix);
+    String prefix = KEY_CONTROLLER_PREFIX + controllerIndex + SEP;
+    if (norm.equals(SEG_A)) {
+      return prefix + SEG_A;
+    }
+    if (norm.equals(SEG_B)) {
+      return prefix + SEG_B;
+    }
+    if (norm.equals(SEG_X)) {
+      return prefix + SEG_X;
+    }
+    if (norm.equals(SEG_Y)) {
+      return prefix + SEG_Y;
+    }
+    if (norm.equals(SEG_LB)) {
+      return prefix + SEG_LB;
+    }
+    if (norm.equals(SEG_RB)) {
+      return prefix + SEG_RB;
+    }
+    if (norm.equals(SEG_BACK)) {
+      return prefix + SEG_BACK;
+    }
+    if (norm.equals(SEG_START)) {
+      return prefix + SEG_START;
+    }
+    if (norm.equals(SEG_LS)) {
+      return prefix + SEG_LS;
+    }
+    if (norm.equals(SEG_RS)) {
+      return prefix + SEG_RS;
+    }
+    if (norm.equals("leftx") || norm.equals(SEG_LEFT + SEP + SEG_X)) {
+      return prefix + SEG_LEFT + SEP + SEG_X;
+    }
+    if (norm.equals("lefty") || norm.equals(SEG_LEFT + SEP + SEG_Y)) {
+      return prefix + SEG_LEFT + SEP + SEG_Y;
+    }
+    if (norm.equals("rightx") || norm.equals(SEG_RIGHT + SEP + SEG_X)) {
+      return prefix + SEG_RIGHT + SEP + SEG_X;
+    }
+    if (norm.equals("righty") || norm.equals(SEG_RIGHT + SEP + SEG_Y)) {
+      return prefix + SEG_RIGHT + SEP + SEG_Y;
+    }
+    if (norm.equals("lefttrigger") || norm.equals(SEG_LEFT + SEP + SEG_TRIGGER)) {
+      return prefix + SEG_LEFT + SEP + SEG_TRIGGER;
+    }
+    if (norm.equals("righttrigger") || norm.equals(SEG_RIGHT + SEP + SEG_TRIGGER)) {
+      return prefix + SEG_RIGHT + SEP + SEG_TRIGGER;
+    }
+    if (norm.equals("dpadup") || norm.equals(SEG_DPAD + SEP + SEG_UP)) {
+      return prefix + SEG_DPAD + SEP + SEG_UP;
+    }
+    if (norm.equals("dpadright") || norm.equals(SEG_DPAD + SEP + SEG_RIGHT)) {
+      return prefix + SEG_DPAD + SEP + SEG_RIGHT;
+    }
+    if (norm.equals("dpaddown") || norm.equals(SEG_DPAD + SEP + SEG_DOWN)) {
+      return prefix + SEG_DPAD + SEP + SEG_DOWN;
+    }
+    if (norm.equals("dpadleft") || norm.equals(SEG_DPAD + SEP + SEG_LEFT)) {
+      return prefix + SEG_DPAD + SEP + SEG_LEFT;
     }
     return EMPTY_STRING;
   }

@@ -9,8 +9,8 @@ SYNOPSIS
 
 DESCRIPTION
     Provides a Windows-friendly Tk UI that mirrors bringup commands with
-    labeled on-screen buttons. Commands are sent over NetworkTables under
-    bringup/ui, and output is displayed in a single scrolling panel.
+    labeled on-screen buttons. Commands are sent through the shared REST-backed
+    BridgeSession layer, and output is displayed in a single scrolling panel.
 
 NOTES
     All UI command sends must go through tools.can_nt.bridge_ops wrappers.
@@ -95,7 +95,7 @@ PRESENCE_FILE_KEY_OVERRIDES_BLOCK = "overrides"
 PRESENCE_TIME_NONE = 0.0
 PRESENCE_TIMELINE_MIN_STEP = 1.0
 PRESENCE_TIMELINE_DEFAULT_STEP = 2.0
-LIVE_SOURCE_TCP = "tcp"
+LIVE_SOURCE_REST = "rest"
 LIVE_SOURCE_FILE = "file"
 LIVE_CLOCK_FORMAT = "%H:%M:%S"
 LIVE_CLOCK_LABEL = "Clock:"
@@ -418,9 +418,10 @@ class BringupControlUI(tk.Tk):
         self._max_retries = 1
         self._state_stale_sec = 2.0
         self._state_stale = False
+        self._auto_connect_enabled = True
         self._tracker = CommandTracker(timeout_sec=self._timeout_sec, max_retries=self._max_retries)
         self._live_enabled_var = tk.BooleanVar(value=False)
-        self._live_source_var = tk.StringVar(value=LIVE_SOURCE_TCP)
+        self._live_source_var = tk.StringVar(value=LIVE_SOURCE_REST)
         self._live_rate_var = tk.StringVar(value="5")
         self._live_groups_var = tk.BooleanVar(value=True)
         self._live_clock_var = tk.StringVar(value=NT_VALUE_EMPTY)
@@ -634,8 +635,8 @@ class BringupControlUI(tk.Tk):
         source_menu = ttk.OptionMenu(
             controls,
             self._live_source_var,
-            LIVE_SOURCE_TCP,
-            LIVE_SOURCE_TCP,
+            LIVE_SOURCE_REST,
+            LIVE_SOURCE_REST,
             LIVE_SOURCE_FILE,
         )
         source_menu.pack(side="left")
@@ -719,7 +720,7 @@ class BringupControlUI(tk.Tk):
         scrollbar.pack(side=VIS_PACK_SIDE_RIGHT, fill=VIS_FILL_Y)
         self._visibility_table.configure(yscrollcommand=scrollbar.set)
         if self._visibility_provider is None:
-            self._visibility_table.insert(VIS_TREE_END, VIS_TREE_END, values=[VIS_EMPTY_MESSAGE])
+            self._visibility_table.insert(VIS_TREE_ROOT, VIS_TREE_END, values=[VIS_EMPTY_MESSAGE])
 
     def _on_profile_selected(self, _event=None) -> None:
         """
@@ -1484,7 +1485,7 @@ class BringupControlUI(tk.Tk):
             "",
             "Profile Dropdown:",
             "  Selecting a profile updates the live topology view.",
-            "  If TCP is connected, it also selects that profile on the robot",
+            "  If the REST session is connected, it also selects that profile on the robot",
             "  (no activation; Add Motor/Add All still required).",
             "",
             "Add Motor:",
@@ -1683,7 +1684,7 @@ class BringupControlUI(tk.Tk):
             "  Show live device presence and telemetry on the topology diagram.",
             "",
             "Enable Live Overlay:",
-            "  Starts polling runtime state from the roboRIO TCP UI channel.",
+            "  Starts polling runtime state from the roboRIO REST command server.",
             "  Live overlay is read-only and does not send commands.",
             "",
             "Show Groups:",
@@ -1691,12 +1692,12 @@ class BringupControlUI(tk.Tk):
             "  Useful for visualizing CLI groups in the live view.",
             "",
             "Source:",
-            "  - tcp: Fetch runtime state from the roboRIO (default).",
+            "  - tcp: Fetch runtime state from the roboRIO REST server (default).",
             "  - file: Replay a saved JSON snapshot for offline testing.",
             "",
             "Rate:",
             "  Updates per second (default 5 Hz).",
-            "  Higher rates add more TCP traffic; keep it modest.",
+            "  Higher rates add more REST traffic; keep it modest.",
         ]
         return "\n".join(lines)
 
@@ -1823,7 +1824,7 @@ class BringupControlUI(tk.Tk):
     def _send_tcp_command(self, name: str, args: Optional[Dict[str, Any]]) -> Optional[int]:
         """
         NAME
-            _send_tcp_command - Send a command over the TCP protocol.
+            _send_tcp_command - Send a command over the REST-backed session.
         """
         if not self._tcp_connected:
             return None
@@ -1838,6 +1839,9 @@ class BringupControlUI(tk.Tk):
         NAME
             _send_handshake - Send a UI handshake command.
         """
+        self._auto_connect_enabled = True
+        if not self._tcp_connected:
+            self._tcp_connected = connect(self._session)
         if not self._tcp_connected:
             return
         if self._tracker.is_pending() and not force:
@@ -1865,6 +1869,7 @@ class BringupControlUI(tk.Tk):
         NAME
             _send_disconnect - Release the UI lock on the robot.
         """
+        self._auto_connect_enabled = False
         if not self._tcp_connected:
             return
         if self._tracker.is_pending() and not force:
@@ -1986,15 +1991,15 @@ class BringupControlUI(tk.Tk):
     def _poll_nt(self) -> None:
         """
         NAME
-            _poll_nt - Poll TCP/NT inputs and update output log.
+            _poll_nt - Poll REST/NT inputs and update output log.
         """
         self._live_clock_var.set(time.strftime(LIVE_CLOCK_FORMAT))
         now = time.time()
-        if not self._tcp_connected:
+        if not self._tcp_connected and self._auto_connect_enabled:
             if (now - self._last_connect_attempt) > 1.0:
                 self._last_connect_attempt = now
                 self._tcp_connected = connect(self._session)
-        else:
+        elif self._tcp_connected and self._auto_connect_enabled:
             self._tcp_connected = connect(self._session)
         if self._tcp_connected:
             self._handshake_done = self._session.handshake_done()
@@ -2003,15 +2008,15 @@ class BringupControlUI(tk.Tk):
                 self._notify_ui_failure(
                     "tcp",
                     False,
-                    "TCP disconnected.",
-                    "TCP reconnected.",
+                    "REST session disconnected.",
+                    "REST session reconnected.",
                 )
             else:
                 self._notify_ui_failure(
                     "tcp",
                     True,
-                    "TCP disconnected.",
-                    "TCP reconnected.",
+                    "REST session disconnected.",
+                    "REST session reconnected.",
                 )
             self._prev_tcp_connected = self._tcp_connected
         if not self._tcp_connected:
@@ -2081,9 +2086,9 @@ class BringupControlUI(tk.Tk):
         self._state_stale = stale_state
         nt_label = "NT OK" if nt_connected else "NT Disconnected"
         label = (
-            f"TCP Connected ({nt_label}, rio={self._rio_host})"
+            f"REST Connected ({nt_label}, rio={self._rio_host})"
             if self._tcp_connected
-            else f"TCP Disconnected ({nt_label}, rio={self._rio_host})"
+            else f"REST Disconnected ({nt_label}, rio={self._rio_host})"
         )
         self._status_label.configure(
             text=label,
@@ -2192,7 +2197,7 @@ class BringupControlUI(tk.Tk):
     def _handle_tcp_response(self, event: BridgeEvent) -> None:
         """
         NAME
-            _handle_tcp_response - Handle an inbound TCP response payload.
+            _handle_tcp_response - Handle an inbound REST-session response payload.
         """
         msg_type = event.type
         name = event.name.strip()
@@ -2282,6 +2287,11 @@ class BringupControlUI(tk.Tk):
                 self._handshake_done = True
                 self._handshake_inflight = False
                 self._retry_last_command()
+            elif name == "uiDisconnect":
+                self._tcp_connected = False
+                self._handshake_done = False
+                self._handshake_inflight = False
+                self._session.reset_handshake()
         if msg_type in ("ack", "out"):
             self._tracker.handle_event(event)
 

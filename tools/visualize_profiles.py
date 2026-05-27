@@ -58,7 +58,7 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Visualize bringup profiles.")
     add_input_arg(
         parser,
-        default=str(Path("data") / "bringup_system.json"),
+        default=str(Path("src") / "main" / "deploy" / "bringup_system.json"),
         help_text="Path to bringup_system.json",
     )
     add_output_arg(

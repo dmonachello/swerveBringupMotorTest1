@@ -66,7 +66,7 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
 
     String buildNetworkDiagnosticsReportIfReady();
 
-    String appendUiTcpStats(String report);
+    String appendUiSessionStats(String report);
 
     String buildCanDiagnosticsReportIfReady();
 
@@ -191,7 +191,7 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
     }
     String report = dependencies.buildNetworkDiagnosticsReportIfReady();
     if (report != null) {
-      report = dependencies.appendUiTcpStats(report);
+      report = dependencies.appendUiSessionStats(report);
       dependencies.requestTextReport(report, 4);
       result.outText = report;
       return;

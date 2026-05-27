@@ -142,7 +142,7 @@ Example:
 ## B2) Add Device to Devices Table (Windows)
 Purpose: Define the device once and reference it by label everywhere.
 
-File: `data/bringup_system.json`
+File: `src/main/deploy/bringup_system.json`
 
 Example device entry (motor):
 ```json
@@ -162,7 +162,7 @@ Example device entry (motor):
 ## B3) Add Device to a Profile (Windows)
 Purpose: Activate the device in a profile.
 
-File: `data/bringup_system.json`
+File: `src/main/deploy/bringup_system.json`
 
 ```json
 "profiles": {
@@ -179,7 +179,7 @@ File: `data/bringup_system.json`
 ## B4) Optional: Add to a Group (Windows)
 Purpose: Expose the device in a CLI/UI group.
 
-File: `data/bringup_system.json`
+File: `src/main/deploy/bringup_system.json`
 
 ```json
 "bridgeConfig": {
@@ -205,7 +205,7 @@ File: `data/bringup_system.json`
 ## B5) Optional: Add to Tests (Windows)
 Purpose: Use the device in bringup tests.
 
-File: `data/bringup_system.json` (under `bridgeConfig.byProfile.<profile>.tests`)
+File: `src/main/deploy/bringup_system.json` (under `bridgeConfig.byProfile.<profile>.tests`)
 
 ```json
 {

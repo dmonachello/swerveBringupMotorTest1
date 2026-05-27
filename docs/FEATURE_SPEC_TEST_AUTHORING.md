@@ -135,7 +135,7 @@ The model is the single source of truth and is used by:
 
 ## Device Source (Windows)
 
-* Use `data/bringup_system.json` as the canonical source for device labels and mappings.
+* Use `src/main/deploy/bringup_system.json` as the source for device labels and mappings.
 * The active profile determines the available device list.
 
 ---
@@ -309,7 +309,7 @@ Warnings (do not block save):
 ## File Output
 
 * Save locally as `bringup_system.json` (tests embedded under `bridgeConfig.byProfile.<profile>.tests`)
-* Default location: `data/bringup_system.json` (then sync to deploy)
+* Default location: `src/main/deploy/bringup_system.json`
 * New test name: appended to the selected test set without prompt
 * Existing test name: warn and prompt before overwrite (UI and CLI)
 
@@ -320,7 +320,7 @@ Warnings (do not block save):
 Purpose: move from `motorKeys` to label-only identifiers without ambiguity.
 
 Steps:
-1. Update `data/bringup_system.json` to ensure all device labels are unique.
+1. Update `src/main/deploy/bringup_system.json` to ensure all device labels are unique.
 2. Update existing tests to use `motorLabels` only.
 3. Deploy the updated `bringup_system.json` (tests embedded under `bridgeConfig.byProfile.<profile>.tests`).
 4. Reject any remaining `motorKeys` entries; only `motorLabels` are supported.

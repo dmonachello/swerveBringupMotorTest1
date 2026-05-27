@@ -25,10 +25,12 @@ TYPE_LIMIT_SWITCH = "limitSwitch"
 TYPE_ENCODER_EXTERNAL = "encoderExternal"
 TYPE_XBOX_CONTROLLER = "xboxController"
 SIGNAL_OUTPUT = "output"
+SIGNAL_OUTPUT_PERCENT_CMD = "output_percent_cmd"
 SIGNAL_CATEGORY_BOOLEAN = "boolean"
 SIGNAL_CATEGORY_NUMBER = "number"
 VALUE_RANGE_BY_SIGNAL = {
     (TYPE_MOTOR, SIGNAL_OUTPUT): (-1.0, 1.0),
+    (TYPE_MOTOR, SIGNAL_OUTPUT_PERCENT_CMD): (-1.0, 1.0),
 }
 
 
@@ -71,6 +73,21 @@ def validate_store(
                         field="testSets",
                     )
                 )
+    return result
+
+
+def validate_entry(
+    name: str,
+    entry: RobotTestDslEntry,
+    device_catalog: Dict[str, Dict[str, object]],
+    signal_catalog: Dict[str, Dict[str, object]],
+) -> ValidationResult:
+    """
+    NAME
+        validate_entry - Validate one DSL test entry against the current device and signal catalogs.
+    """
+    result = ValidationResult()
+    _validate_entry(result, name, entry, device_catalog, signal_catalog)
     return result
 
 

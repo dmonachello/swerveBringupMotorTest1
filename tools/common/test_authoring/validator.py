@@ -210,17 +210,25 @@ DSL_COMPARISON_OPERATORS = {
     CONDITION_OPERATOR_NE,
 }
 DSL_NUMERIC_SIGNALS = {
+    "current",
     "velocity_actual",
     "current_actual",
+    "temperature",
+    "temperature_actual",
+    "velocity",
+    "position",
     "position_actual",
     "position_delta",
     "elapsed",
+    "output",
     "output_percent_cmd",
+    "output_percent_applied",
 }
 DSL_BOOLEAN_SIGNALS = {
     "pressed",
 }
 DSL_COMMAND_SIGNALS = {
+    "output",
     "output_percent_cmd",
 }
 DSL_TIMER_SIGNALS = {
@@ -732,7 +740,7 @@ def _device_supports_signal(device_kind: str, signal_name: str) -> bool:
     if device_kind == TYPE_LIMIT_SWITCH:
         return signal_name in DSL_BOOLEAN_SIGNALS
     if device_kind == TYPE_ENCODER_EXTERNAL:
-        return signal_name in {"position_actual", "position_delta"}
+        return signal_name in {"position", "position_actual", "position_delta"}
     return False
 
 

@@ -32,14 +32,20 @@ from tools.can_nt.bridge_cli import (
     KEY_DATA_VERSION,
     KEY_DEFAULT_PROFILE,
     KEY_DEVICE,
+    KEY_DEVICE_TYPE,
     KEY_DEVICES,
     KEY_ENABLED,
     KEY_GLOBAL_BINDINGS,
     KEY_GROUPS,
+    KEY_ID,
+    KEY_IN_PROFILE,
+    KEY_INTERFACE,
     KEY_LAST_MODIFIED_AT,
     KEY_LAST_PUSHED,
     KEY_LAST_SAVED,
     KEY_LABEL,
+    KEY_MANUFACTURER,
+    KEY_MODEL,
     KEY_PROFILE,
     KEY_PROFILES,
     KEY_PROFILE_DEVICES,
@@ -49,6 +55,7 @@ from tools.can_nt.bridge_cli import (
     KEY_SCHEMA_VERSION,
     KEY_SELECTED_DEVICE,
     KEY_SIGNALS,
+    KEY_SCOPE,
     KEY_SOURCE_PATH,
     KEY_TESTS,
     SOURCE_NAME_TESTS,
@@ -73,6 +80,7 @@ EMPTY_STRING = ""
 class _FakeSession:
     def __init__(self, connected: bool = False) -> None:
         self.connected = connected
+        self.disconnect_called = False
 
     def is_connected(self) -> bool:
         return self.connected
@@ -88,6 +96,10 @@ class _FakeSession:
 
     def send_command(self, _name: str, _args: dict | None = None):
         return None
+
+    def disconnect(self) -> None:
+        self.disconnect_called = True
+        self.connected = False
 
 
 class _FakeVisibilityProvider:
@@ -218,6 +230,14 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         )
         self.assertEqual(provenance[KEY_LAST_PUSHED][KEY_AT], 3.0)
 
+    def test_shutdown_session_disconnects_owned_session(self) -> None:
+        session = _FakeSession(connected=True)
+        cli = BridgeCli(session, batch=True)
+
+        cli._shutdown_session()
+
+        self.assertTrue(session.disconnect_called)
+
     def test_save_without_target_uses_save_all(self) -> None:
         cli = self._build_cli()
         calls: list[tuple[bool, bool]] = []
@@ -333,6 +353,40 @@ class BridgeCliVisibilityTests(unittest.TestCase):
 
         self.assertEqual(result.code, SS__NORMAL)
 
+    def test_show_devices_all_json_returns_full_shared_inventory(self) -> None:
+        cli = self._build_cli()
+        cli._local_root_payload[KEY_DEVICES] = [  # type: ignore[index]
+            {
+                KEY_LABEL: "motor1",
+                KEY_INTERFACE: "CAN",
+                KEY_MANUFACTURER: 5,
+                KEY_DEVICE_TYPE: 2,
+                KEY_ID: 1,
+                KEY_MODEL: "REV NEO",
+            },
+            {
+                KEY_LABEL: "controller0",
+                KEY_INTERFACE: "USB",
+                KEY_ID: 0,
+                KEY_MODEL: "Xbox Controller",
+                "type": "xboxController",
+            },
+        ]
+        cli._local_root_payload[KEY_PROFILES][PROFILE_NAME][KEY_PROFILE_DEVICES] = ["motor1"]  # type: ignore[index]
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = cli._handle_show(["devices", "local", "--all", "--json"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        payload = json.loads(output.getvalue().splitlines()[-1])
+        self.assertEqual(payload[KEY_SCOPE], "config")
+        by_label = {entry[KEY_LABEL]: entry for entry in payload[KEY_DEVICES]}
+        self.assertTrue(by_label["motor1"][KEY_IN_PROFILE])
+        self.assertFalse(by_label["controller0"][KEY_IN_PROFILE])
+        self.assertEqual(by_label["motor1"][KEY_MODEL], "REV NEO")
+        self.assertEqual(by_label["controller0"][KEY_INTERFACE], "USB")
+
     def test_load_profiles_from_path_salvages_partial_config(self) -> None:
         cli = BridgeCli(_FakeSession(), batch=True)
         payload = {
@@ -440,6 +494,39 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         self.assertEqual(parser.parse("show signal motor1", mode="exec").tokens, ["show", "signal", "motor1"])
         self.assertEqual(parser.parse("tiu on", mode="exec").tokens, ["tiu", "on"])
 
+    def test_parser_accepts_runtime_commands(self) -> None:
+        parser = BridgeCliParser()
+
+        self.assertEqual(parser.parse("runtime activate", mode="exec").tokens, ["runtime", "activate"])
+        self.assertEqual(
+            parser.parse("runtime activate demo", mode="config").tokens,
+            ["runtime", "activate", "demo"],
+        )
+        self.assertEqual(
+            parser.parse("runtime deactivate", mode="exec").tokens,
+            ["runtime", "deactivate"],
+        )
+
+    def test_runtime_activate_uses_runtime_command_path(self) -> None:
+        cli = self._build_cli(connected=True)
+        cli._wait_for_seq = lambda seq, timeout_sec=None: object()  # type: ignore[method-assign]
+        cli._event_failed = lambda event, command_name: False  # type: ignore[method-assign]
+
+        with patch("tools.can_nt.bridge_cli.runtime_activate", return_value=7):
+            result = cli._runtime_activate("demo")
+
+        self.assertEqual(result.code, SS__NORMAL)
+
+    def test_runtime_deactivate_uses_runtime_command_path(self) -> None:
+        cli = self._build_cli(connected=True)
+        cli._wait_for_seq = lambda seq, timeout_sec=None: object()  # type: ignore[method-assign]
+        cli._event_failed = lambda event, command_name: False  # type: ignore[method-assign]
+
+        with patch("tools.can_nt.bridge_cli.runtime_deactivate", return_value=8):
+            result = cli._runtime_deactivate()
+
+        self.assertEqual(result.code, SS__NORMAL)
+
     def test_show_signals_lists_supported_signals(self) -> None:
         cli = self._build_cli()
         cli._local_root_payload[KEY_DEVICES] = [  # type: ignore[index]
@@ -457,6 +544,9 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         by_label = {entry["label"]: entry for entry in payload[KEY_DEVICES]}
         self.assertTrue(any(item["name"] == "leftY" for item in by_label["controller0"][KEY_SIGNALS]))
         self.assertTrue(any(item["name"] == "output" for item in by_label["motor1"][KEY_SIGNALS]))
+        self.assertTrue(any(item["name"] == "output_percent_cmd" for item in by_label["motor1"][KEY_SIGNALS]))
+        self.assertTrue(any(item["name"] == "current_actual" for item in by_label["motor1"][KEY_SIGNALS]))
+        self.assertTrue(any(item["name"] == "position_delta" for item in by_label["motor1"][KEY_SIGNALS]))
 
     def test_show_signal_device_reports_one_device_signals(self) -> None:
         cli = self._build_cli()
@@ -471,6 +561,9 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         self.assertEqual(payload["label"], "motor1")
         self.assertEqual(payload["type"], "motor")
         self.assertTrue(any(item["name"] == "current" for item in payload[KEY_SIGNALS]))
+        self.assertTrue(any(item["name"] == "current_actual" for item in payload[KEY_SIGNALS]))
+        self.assertTrue(any(item["name"] == "velocity_actual" for item in payload[KEY_SIGNALS]))
+        self.assertTrue(any(item["name"] == "position_actual" for item in payload[KEY_SIGNALS]))
 
     def test_exec_bindings_show_works(self) -> None:
         cli = self._build_cli()

@@ -89,7 +89,7 @@ class BridgeUiSessionCommandsTest {
     }
 
     @Override
-    public NetworkTable getUiTcpTable() {
+    public NetworkTable getUiProtocolTable() {
       return NetworkTableInstance.getDefault().getTable("testSessionCommands");
     }
 
@@ -113,11 +113,6 @@ class BridgeUiSessionCommandsTest {
 
     @Override
     public long getLastUiSeq() {
-      return 0;
-    }
-
-    @Override
-    public long getLastTcpSeq() {
       return 0;
     }
 

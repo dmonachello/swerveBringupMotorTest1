@@ -1,7 +1,9 @@
 package frc.robot.commands.local;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Test;
@@ -10,6 +12,8 @@ class RobotLocalCommandExecutorTest {
 
   private static final String CMD_SHOW_DEVICES = "showDevices";
   private static final String CMD_PROFILES_APPLY = "profilesApply";
+  private static final String CMD_RUN_TEST = "runTest";
+  private static final String MESSAGE_ACTIVE_BUSY = "Another command is already active.";
 
   @Test
   void immediateCompleteCommandClearsActiveSlotBeforeNextSubmit() {
@@ -26,6 +30,26 @@ class RobotLocalCommandExecutorTest {
     assertNull(executor.activeCommandName());
   }
 
+  @Test
+  void secondImmediateCommandIsRejectedWhileLongRunningCommandIsActive() {
+    HostStub host = new HostStub();
+    host.activeTestRunning = true;
+    RobotLocalCommandExecutor executor = new RobotLocalCommandExecutor(host);
+
+    RobotLocalDispatchResult first =
+        executor.submit(controllerRequest(CMD_RUN_TEST));
+    assertEquals(RobotLocalDispatchStatus.ACCEPTED, first.status());
+    assertEquals(CMD_RUN_TEST, executor.activeCommandName());
+    assertTrue(first.executionResult().ok());
+
+    RobotLocalDispatchResult second =
+        executor.submit(request(CMD_SHOW_DEVICES));
+    assertEquals(RobotLocalDispatchStatus.REJECTED, second.status());
+    assertEquals(MESSAGE_ACTIVE_BUSY, second.message());
+    assertFalse(second.executionResult().ok());
+    assertEquals(CMD_RUN_TEST, executor.activeCommandName());
+  }
+
   private static RobotLocalCommandRequest request(String name) {
     return new RobotLocalCommandRequest(
         name,
@@ -38,7 +62,21 @@ class RobotLocalCommandExecutorTest {
         true);
   }
 
+  private static RobotLocalCommandRequest controllerRequest(String name) {
+    return new RobotLocalCommandRequest(
+        name,
+        RobotLocalCommandSource.CONTROLLER,
+        RobotLocalDispatchMode.IMMEDIATE,
+        new JsonObject(),
+        RobotLocalNoopValueProvider.INSTANCE,
+        "",
+        0.0,
+        false);
+  }
+
   private static final class HostStub implements RobotLocalCommandHost {
+    private boolean activeTestRunning;
+
     @Override
     public boolean ensureActiveProfile(String reason) {
       return true;
@@ -121,7 +159,7 @@ class RobotLocalCommandExecutorTest {
 
     @Override
     public boolean isActiveTestRunning() {
-      return false;
+      return activeTestRunning;
     }
 
     @Override

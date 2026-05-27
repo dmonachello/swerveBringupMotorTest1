@@ -59,10 +59,10 @@ Purpose: These must be fixed before any alpha tag is meaningful.
       - Test wizard/template -> validate -> robot load.
     - Provide a single validate+sync gate command that teams run every time after
       edits:
-      - Validates canonical `data/bringup_system.json` (schema + semantic
+      - Validates `src/main/deploy/bringup_system.json` (schema + semantic
         references).
       - Stamps `data_version`/`data_hash` when needed.
-      - Writes deploy copy `src/main/deploy/bringup_system.json`.
+      - Rewrites the deploy-owned `src/main/deploy/bringup_system.json`.
 
 1. Fix PC tool startup crash (done):
 
@@ -121,7 +121,7 @@ Purpose: Treat NT paths as an API contract between Java and Python.
 
 Purpose: Ensure hardware configuration is easy, safe, and repeatable.
 
-- `data/bringup_system.json` is canonical.
+- `src/main/deploy/bringup_system.json` is the single config file.
 - Deploy copy (`src/main/deploy/bringup_system.json`) must be kept in sync using
   `python -m tools.validate_sync` (recommended).
 - Legacy sync tool: `python tools/sync_profiles.py`.
@@ -196,7 +196,7 @@ Purpose: Validate core tooling without requiring robot hardware.
   - `--list-keys` works.
   - `--dump-nt <path>` writes JSON.
 - Profile validation:
-  - Validate canonical `data/bringup_system.json`.
+  - Validate `src/main/deploy/bringup_system.json`.
   - Validate deploy copy `src/main/deploy/bringup_system.json`.
 - Authoring workflows (offline):
   - Create a new minimal profile via the intended tool path and validate it.

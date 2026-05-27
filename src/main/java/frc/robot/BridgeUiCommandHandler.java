@@ -29,7 +29,6 @@ import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
 import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
 import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 import frc.robot.tests.BringupTestRegistry;
-import frc.robot.ui.TcpUiServer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.DateTimeException;
@@ -43,31 +42,41 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * NAME
- *   BridgeUiCommandHandler - UI/TCP command handler for bringup controls.
+ *   BridgeUiCommandHandler - UI command handler for bringup controls.
  *
  * DESCRIPTION
  *   Owns UI protocol state, command execution, and NetworkTables publishing
  *   for the bringup UI/CLI surfaces.
  */
 public class BridgeUiCommandHandler {
+  public static final class RestCommandResult {
+    public final boolean ok;
+    public final String message;
+    public final String outText;
+    public final String outJson;
+    public final boolean running;
+
+    private RestCommandResult(
+        boolean ok,
+        String message,
+        String outText,
+        String outJson,
+        boolean running) {
+      this.ok = ok;
+      this.message = message;
+      this.outText = outText;
+      this.outJson = outJson;
+      this.running = running;
+    }
+  }
 
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
   private static final int UI_PROTOCOL_VERSION = 1;
-  private static final long TCP_CMD_TIMEOUT_MS = 2000;
-  private static final long TCP_PROFILE_APPLY_TIMEOUT_MS = 15000;
-  private static final long TCP_RUNTIME_STATE_TIMEOUT_MS = 15000;
-  private static final long TCP_LEASE_TIMEOUT_MS = 750;
-  private static final long TCP_TIMEOUT_STOP_COOLDOWN_MS = 5000;
-  private static final long TCP_KEEPALIVE_INTERVAL_MS = 1000;
-  private static final long TCP_KEEPALIVE_MISSES = 5;
   private static final int UI_LOG_MAX_LINES = 200;
   private static final int VERSION_TEXT_BUILDER_SIZE = 128;
   private static final String JSON_KEY_LABEL = "label";
@@ -139,6 +148,8 @@ public class BridgeUiCommandHandler {
   private static final String MESSAGE_PROFILE_INACTIVE_ADD =
       "Cannot add devices: profile is not active.";
   private static final String CMD_PROFILE_ACTIVATE = "profileActivate";
+  private static final String CMD_RUNTIME_ACTIVATE = "runtimeActivate";
+  private static final String CMD_RUNTIME_DEACTIVATE = "runtimeDeactivate";
   private static final String CMD_PROFILES_RELOAD = "profilesReload";
   private static final String TEXT_SAFETY_LATCH = "  safetyLatch=";
   private static final String TEXT_REASON_PREFIX = " reason=";
@@ -151,6 +162,9 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_POST_APPLY = "postApplyCheck";
   private static final String JSON_KEY_OVERALL_OK = "overallOk";
   private static final String JSON_KEY_ACTIVE_PROFILE = "activeProfile";
+  private static final String JSON_KEY_SELECTED_PROFILE = "selectedProfile";
+  private static final String JSON_KEY_ACTIVE_RUNTIME_PROFILE = "activeRuntimeProfile";
+  private static final String JSON_KEY_RUNTIME_ACTIVE = "runtimeActive";
   private static final String JSON_KEY_ACTIVATED = "activated";
   private static final String JSON_KEY_EXPECTED_HASH = "expectedHash";
   private static final String JSON_KEY_COMPUTED_HASH = "computedHash";
@@ -229,7 +243,6 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_PROFILES_RELOAD_FAILED = "Profiles reload failed: %s";
   private static final String TEXT_PROFILES_APPLY_OK = "Profiles applied.";
   private static final String TEXT_PROFILES_APPLY_FAILED = "Profiles apply failed.";
-  private static final String TEXT_PROFILES_APPLY_NOT_SUPPORTED = "profilesApply only supported over TCP.";
   private static final String TEXT_PROFILES_APPLY_MISSING_REGISTRY = "profilesApply requires registryJson.";
   private static final String TEXT_PROFILES_APPLY_MISSING_HASH = "profilesApply requires registryHash.";
   private static final String TEXT_PROFILES_APPLY_MISSING_BYTES = "profilesApply requires registryBytes.";
@@ -244,20 +257,6 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_PROFILES_APPLY_DEVICES = " devices=";
   private static final String TEXT_PROFILES_APPLY_PROFILES = " profiles=";
   private static final String TEXT_PROFILES_APPLY_ACTIVE = " active=";
-  private static final String TEXT_TCP_UI_CONNECT = "TCP UI connect:";
-  private static final String TEXT_TCP_UI_DISCONNECT = "TCP UI disconnect.";
-  private static final String TEXT_TCP_UI_REMOTE_UNKNOWN = "(unknown)";
-  private static final String TEXT_TCP_UI_REMOTE_PREFIX = " remote=";
-  private static final String TEXT_TCP_UI_CMD_RECEIVED = "TCP UI recv:";
-  private static final String TEXT_TCP_UI_CMD_TIMEOUT = "TCP UI timeout:";
-  private static final String TEXT_TCP_UI_CMD_FAILED = "TCP UI failed:";
-  private static final String TEXT_TCP_UI_RESPOND = "TCP UI respond:";
-  private static final String TEXT_TCP_UI_SEQ_PREFIX = " seq=";
-  private static final String TEXT_TCP_UI_NAME_PREFIX = " name=";
-  private static final String TEXT_TCP_UI_CLIENT_PREFIX = " client=";
-  private static final String TEXT_TCP_UI_STATUS_PREFIX = " status=";
-  private static final String TEXT_TCP_UI_MESSAGE_PREFIX = " message=";
-  private static final String TEXT_TCP_UI_OUT_JSON_PREFIX = " outJson=";
   private static final String TEXT_ACK_OK = "ok";
   private static final String TEXT_ACK_ERROR = "error";
   private static final String TEXT_BOOL_TRUE = "true";
@@ -280,7 +279,7 @@ public class BridgeUiCommandHandler {
   private final BindingsManager bindings;
   private final NetworkTable testsTable;
   private final NetworkTable uiTable;
-  private final NetworkTable uiTcpTable;
+  private final NetworkTable uiProtocolTable;
   private final BridgeUiIngressPolicy uiIngressPolicy;
   private final BridgeUiCommandDispatcher uiCommandDispatcher;
   private final BridgeUiCommandExecutor uiExecuteFacade;
@@ -291,6 +290,7 @@ public class BridgeUiCommandHandler {
   private final BridgeUiOutputFacade uiOutputFacade;
   private final Runnable profileToggleAction;
   private final Runnable profileActivateAction;
+  private final Runnable profileDeactivateAction;
   private Map<String, String> inputAliases = new HashMap<>();
 
   private boolean dashboardUpdatesEnabled = false;
@@ -300,22 +300,9 @@ public class BridgeUiCommandHandler {
   private long lastUiAckMs = 0L;
   private String uiSessionId = UUID.randomUUID().toString();
   private String activeUiClientId = null;
-  private long lastTcpSeq = -1;
-  private long lastTcpCommandMs = 0L;
-  private boolean tcpConnected = false;
-  private long lastTcpKeepaliveMs = 0L;
-  private java.net.Socket tcpSocket;
-  private long lastTcpTimeoutStopMs = 0L;
   private boolean stopLatchActive = false;
   private String stopLatchReason = "";
   private boolean lastXboxConnected = false;
-  private final Map<String, Long> lastTcpSeqByClient = new HashMap<>();
-  private final Map<String, LastTcpResponse> lastTcpResponseByClient = new HashMap<>();
-  private long tcpCommandsProcessed = 0L;
-  private long tcpCommandTimeouts = 0L;
-  private long tcpDuplicateAcked = 0L;
-  private long tcpDuplicateDropped = 0L;
-  private final ConcurrentLinkedQueue<TcpPendingCommand> tcpCommandQueue = new ConcurrentLinkedQueue<>();
   private final ConcurrentLinkedQueue<String> uiLogQueue = new ConcurrentLinkedQueue<>();
   private final AtomicInteger uiLogCount = new AtomicInteger(0);
   private boolean uiProtocolMonitorEnabled = false;
@@ -333,14 +320,18 @@ public class BridgeUiCommandHandler {
       BindingsManager bindings,
       NetworkTable testsTable,
       NetworkTable uiTable,
-      NetworkTable uiTcpTable,
+      NetworkTable uiProtocolTable,
       Runnable profileToggleAction,
-      Runnable profileActivateAction) {
+      Runnable profileActivateAction,
+      Runnable profileDeactivateAction) {
     this.runtime = runtime;
     this.bindings = bindings;
     this.testsTable = testsTable;
     this.uiTable = uiTable;
-    this.uiTcpTable = uiTcpTable;
+    this.uiProtocolTable = uiProtocolTable;
+    this.profileToggleAction = profileToggleAction;
+    this.profileActivateAction = profileActivateAction;
+    this.profileDeactivateAction = profileDeactivateAction;
     this.uiIngressPolicy =
         new BridgeUiIngressPolicy(
             new BridgeUiIngressPolicy.Dependencies() {
@@ -421,8 +412,8 @@ public class BridgeUiCommandHandler {
       }
 
       @Override
-      public NetworkTable getUiTcpTable() {
-        return uiTcpTable;
+      public NetworkTable getUiProtocolTable() {
+        return uiProtocolTable;
       }
 
       @Override
@@ -448,11 +439,6 @@ public class BridgeUiCommandHandler {
       @Override
       public long getLastUiSeq() {
         return lastUiSeq;
-      }
-
-      @Override
-      public long getLastTcpSeq() {
-        return lastTcpSeq;
       }
 
       @Override
@@ -489,6 +475,11 @@ public class BridgeUiCommandHandler {
           }
 
           @Override
+          public void deactivateActiveProfile() {
+            runtime.deactivateActiveProfile(CMD_RUNTIME_DEACTIVATE);
+          }
+
+          @Override
           public boolean isProfileActive() {
             return BringupUtil.isProfileActive();
           }
@@ -496,6 +487,16 @@ public class BridgeUiCommandHandler {
           @Override
           public String getActiveCanProfileLabel() {
             return BringupUtil.getActiveCanProfileLabel();
+          }
+
+          @Override
+          public String getSelectedCanProfileLabel() {
+            return BringupUtil.getSelectedCanProfileLabel();
+          }
+
+          @Override
+          public String getActiveRuntimeProfileLabel() {
+            return BringupUtil.getActiveRuntimeProfileLabel();
           }
 
           @Override
@@ -507,6 +508,13 @@ public class BridgeUiCommandHandler {
           public void runProfileActivateAction() {
             if (profileActivateAction != null) {
               profileActivateAction.run();
+            }
+          }
+
+          @Override
+          public void runProfileDeactivateAction() {
+            if (BridgeUiCommandHandler.this.profileDeactivateAction != null) {
+              BridgeUiCommandHandler.this.profileDeactivateAction.run();
             }
           }
 
@@ -838,8 +846,8 @@ public class BridgeUiCommandHandler {
       }
 
       @Override
-      public String appendUiTcpStats(String report) {
-        return BridgeUiCommandHandler.this.appendUiTcpStats(report);
+      public String appendUiSessionStats(String report) {
+        return BridgeUiCommandHandler.this.appendUiSessionStats(report);
       }
 
       @Override
@@ -920,25 +928,13 @@ public class BridgeUiCommandHandler {
 
     BridgeUiRuntimeCommands runtimeCommands = new BridgeUiRuntimeCommands(new BridgeUiRuntimeCommands.Dependencies() {
       @Override
-      public void prepareActivationForSelectedProfile() {
-        BringupUtil.prepareActivationForSelectedProfile();
-      }
-
-      @Override
-      public void activateSelectedProfile() {
-        runtime.activateSelectedProfile(TEXT_PROFILE_ACTIVATE_RESET_REASON);
+      public String stageSelectedProfileForBringup() {
+        return runtime.stageSelectedProfileForBringup();
       }
 
       @Override
       public boolean isProfileActive() {
         return BringupUtil.isProfileActive();
-      }
-
-      @Override
-      public void runProfileActivateAction() {
-        if (profileActivateAction != null) {
-          profileActivateAction.run();
-        }
       }
 
       @Override
@@ -1077,7 +1073,7 @@ public class BridgeUiCommandHandler {
             if (report == null) {
               report = "Network diagnostics rate-limited; try again shortly.";
             } else {
-              report = appendUiTcpStats(report);
+              report = appendUiSessionStats(report);
             }
             runtime.requestTextReport(report, 4);
           }
@@ -1209,9 +1205,7 @@ public class BridgeUiCommandHandler {
     this.robotLocalExecutor = new RobotLocalCommandExecutor(robotLocalHost);
     this.controllerValueProvider = new RobotLocalControllerValueProvider();
     this.controllerGateway = new RobotLocalControllerGateway(robotLocalExecutor, controllerValueProvider);
-    this.uiOutputFacade = new BridgeUiOutputFacade(uiTable, uiTcpTable, UI_PROTOCOL_VERSION);
-    this.profileToggleAction = profileToggleAction;
-    this.profileActivateAction = profileActivateAction;
+    this.uiOutputFacade = new BridgeUiOutputFacade(uiTable, UI_PROTOCOL_VERSION);
   }
 
   /**
@@ -1320,6 +1314,53 @@ public class BridgeUiCommandHandler {
     return robotLocalExecutor.isActiveCommand(commandName);
   }
 
+  public RestCommandResult executeRestCommand(String name, String argsJson, String clientId) {
+    double commandTimestamp = System.currentTimeMillis() / 1000.0;
+    BridgeUiIngressPolicy.Ingress ingress = uiIngressPolicy.parseIngress(name, argsJson, clientId);
+    BridgeUiIngressPolicy.ValidationFailure failure = uiIngressPolicy.validateIngress(ingress, false);
+    if (failure != null) {
+      return new RestCommandResult(
+          false,
+          failure.message,
+          failure.message,
+          TEXT_EMPTY,
+          false);
+    }
+    uiIngressPolicy.applyPreExecution(ingress, false);
+    if (shouldBypassRobotLocalExecutor(ingress)) {
+      BridgeUiCommandResult bypassResult = executeUiCommandSwitch(ingress, commandTimestamp, false);
+      return new RestCommandResult(
+          bypassResult.ok,
+          bypassResult.message,
+          bypassResult.outText,
+          bypassResult.outJson,
+          false);
+    }
+    RobotLocalDispatchResult dispatchResult =
+        robotLocalExecutor.submit(
+            new RobotLocalCommandRequest(
+                name,
+                RobotLocalCommandSource.HOST_UI,
+                dispatchModeForUiCommand(name),
+                ingress.args,
+                RobotLocalNoopValueProvider.INSTANCE,
+                clientId,
+                commandTimestamp,
+                false));
+    BridgeUiCommandResult result = toBridgeUiResult(dispatchResult);
+    boolean running =
+        dispatchResult != null
+            && dispatchResult.executionResult() != null
+            && dispatchResult.executionResult().state()
+                == frc.robot.commands.local.RobotLocalExecutionState.RUNNING;
+    return new RestCommandResult(
+        result.ok,
+        result.message,
+        result.outText,
+        result.outJson,
+        running);
+  }
+
   public void handleUiCommands() {
     long seq = (long) uiTable.getEntry("cmd/seq").getInteger(-1);
     if (seq <= lastUiSeq) {
@@ -1333,164 +1374,6 @@ public class BridgeUiCommandHandler {
     BridgeUiCommandResult result = executeUnifiedUiCommand(name, argsJson, cmdTs, clientId, false);
     publishUiAck(seq, result.ok, result.message, name, cmdTs);
     publishUiOut(seq, name, result.outText, cmdTs, result.outJson);
-  }
-
-  /**
-   * NAME
-   *   handleTcpUiCommand - Handle a TCP UI command and build responses.
-   */
-  public TcpUiServer.UiResponse handleTcpUiCommand(TcpUiServer.UiCommand command) {
-    if (command == null) {
-      return null;
-    }
-    if (shouldLogTcpCommand(command)) {
-      BringupPrinter.enqueue(formatTcpCommandLog(TEXT_TCP_UI_CMD_RECEIVED, command));
-    }
-    TcpPendingCommand pending = new TcpPendingCommand(command);
-    tcpCommandQueue.add(pending);
-    try {
-      return pending.future.get(tcpCommandTimeoutMs(command), TimeUnit.MILLISECONDS);
-    } catch (TimeoutException ex) {
-      pending.cancelled = true;
-      tcpCommandTimeouts++;
-      BridgeUiCommandResult result = new BridgeUiCommandResult();
-      result.ok = false;
-      result.message = "Robot loop timeout.";
-      result.outText = result.message;
-      BringupPrinter.enqueue(formatTcpResultLog(TEXT_TCP_UI_CMD_TIMEOUT, command, result));
-      return buildTcpResponse(command, result);
-    } catch (Exception ex) {
-      pending.cancelled = true;
-      BridgeUiCommandResult result = new BridgeUiCommandResult();
-      result.ok = false;
-      result.message = "UI command failed: " + ex.getMessage();
-      result.outText = result.message;
-      BringupPrinter.enqueue(formatTcpResultLog(TEXT_TCP_UI_CMD_FAILED, command, result));
-      return buildTcpResponse(command, result);
-    }
-  }
-
-  /**
-   * NAME
-   *   tcpCommandTimeoutMs - Select TCP wait timeout for queued robot-loop commands.
-   *
-   * DESCRIPTION
-   *   Most UI commands are expected to finish in one or two robot cycles. A
-   *   profile apply is intentionally heavier because it validates, persists,
-   *   activates, and instantiates a complete runtime configuration.
-   *
-   * PARAMETERS
-   *   command - TCP command envelope.
-   *
-   * RETURNS
-   *   Timeout in milliseconds for the caller waiting on the command result.
-   */
-  private long tcpCommandTimeoutMs(TcpUiServer.UiCommand command) {
-    if (command != null && CMD_PROFILES_APPLY.equals(command.name)) {
-      return TCP_PROFILE_APPLY_TIMEOUT_MS;
-    }
-    if (command != null && CMD_SHOW_RUNTIME_STATE.equals(command.name)) {
-      return TCP_RUNTIME_STATE_TIMEOUT_MS;
-    }
-    return TCP_CMD_TIMEOUT_MS;
-  }
-
-  /**
-   * NAME
-   *   onTcpConnect - Handle TCP UI client connect events.
-   */
-  public void onTcpConnect(java.net.Socket socket) {
-    tcpConnected = true;
-    tcpSocket = socket;
-    lastTcpKeepaliveMs = System.currentTimeMillis();
-    BringupPrinter.enqueue(formatTcpSocketLog(TEXT_TCP_UI_CONNECT, socket));
-    if (uiProtocolMonitorEnabled) {
-      uiTcpTable.getEntry("connected").setBoolean(true);
-      if (socket != null && socket.getRemoteSocketAddress() != null) {
-        uiTcpTable.getEntry("remote").setString(socket.getRemoteSocketAddress().toString());
-      }
-    }
-  }
-
-  /**
-   * NAME
-   *   onTcpDisconnect - Handle TCP UI client disconnect events.
-   */
-  public void onTcpDisconnect() {
-    activeUiClientId = null;
-    tcpConnected = false;
-    tcpSocket = null;
-    lastTcpKeepaliveMs = 0L;
-    BringupPrinter.enqueue(TEXT_TCP_UI_DISCONNECT);
-    setStopLatch("tcpDisconnect");
-    applySafetyStop("tcpDisconnect");
-    if (uiProtocolMonitorEnabled) {
-      uiTcpTable.getEntry("connected").setBoolean(false);
-    }
-  }
-
-  /**
-   * NAME
-   *   processTcpCommands - Drain queued TCP commands on the main loop.
-   */
-  public void processTcpCommands() {
-    TcpPendingCommand pending;
-    while ((pending = tcpCommandQueue.poll()) != null) {
-      TcpUiServer.UiCommand command = pending.command;
-      if (command == null || pending.cancelled) {
-        continue;
-      }
-      String cmdName = command.name != null ? command.name : "";
-      String cmdClient = command.clientId != null ? command.clientId : "";
-      if (!cmdClient.isBlank()) {
-        Long lastSeq = lastTcpSeqByClient.get(cmdClient);
-        if (lastSeq != null && command.seq <= lastSeq) {
-          LastTcpResponse lastResponse = lastTcpResponseByClient.get(cmdClient);
-          if (lastResponse != null && lastResponse.seq == command.seq) {
-            tcpDuplicateAcked++;
-            pending.future.complete(lastResponse.response);
-          } else {
-            tcpDuplicateDropped++;
-          }
-          continue;
-        }
-        lastTcpSeqByClient.put(cmdClient, command.seq);
-      }
-      if (!"uiPing".equals(cmdName) && !"uiPollLog".equals(cmdName)) {
-        String cmdInfo = formatRemoteCommandTimestamp()
-            + String.format(TEXT_REMOTE_CMD_DETAIL_FMT, cmdName, command.seq, cmdClient);
-        BringupPrinter.enqueue(cmdInfo);
-      }
-      lastTcpSeq = command.seq;
-      lastTcpCommandMs = System.currentTimeMillis();
-      lastTcpKeepaliveMs = lastTcpCommandMs;
-      BridgeUiCommandResult result = executeUnifiedUiCommand(
-          cmdName,
-          command.argsJson,
-          command.ts,
-          cmdClient,
-          true);
-      TcpUiServer.UiResponse response = buildTcpResponse(command, result);
-      if (!cmdClient.isBlank()) {
-        lastTcpResponseByClient.put(cmdClient, new LastTcpResponse(command.seq, response));
-      }
-      tcpCommandsProcessed++;
-      pending.future.complete(response);
-    }
-  }
-
-  /**
-   * NAME
-   *   LastTcpResponse - Cache of last response per TCP client.
-   */
-  private static final class LastTcpResponse {
-    private final long seq;
-    private final TcpUiServer.UiResponse response;
-
-    private LastTcpResponse(long seq, TcpUiServer.UiResponse response) {
-      this.seq = seq;
-      this.response = response;
-    }
   }
 
   /**
@@ -1559,8 +1442,6 @@ public class BridgeUiCommandHandler {
       applySafetyStop("xboxDisconnected");
     }
     lastXboxConnected = connected;
-    checkTcpKeepalive();
-    checkTcpTimeout();
   }
 
   /**
@@ -1606,126 +1487,6 @@ public class BridgeUiCommandHandler {
     String label = reason != null && !reason.isBlank() ? reason : "uiClear";
     BringupPrinter.enqueue("Safety: stop latch cleared (" + label + ").");
     return true;
-  }
-
-  /**
-   * NAME
-   *   buildTcpResponse - Build ACK/OUT payloads for TCP responses.
-   */
-  private TcpUiServer.UiResponse buildTcpResponse(TcpUiServer.UiCommand command, BridgeUiCommandResult result) {
-    JsonObject state = buildUiStateJson();
-    JsonObject ack = new JsonObject();
-    ack.addProperty("type", "ack");
-    ack.addProperty("seq", command.seq);
-    ack.addProperty("name", command.name != null ? command.name : "");
-    ack.addProperty("status", StatusRuntime.ackLabel(result.ok));
-    ack.addProperty(JSON_KEY_CODE, result.code);
-    ack.addProperty(JSON_KEY_CODE_TEXT, StatusRuntime.messageFor(result.code));
-    ack.addProperty("message", result.message != null ? result.message : "");
-    ack.addProperty("ts", command.ts);
-    ack.addProperty("sessionId", uiSessionId);
-    ack.add("state", state);
-
-    JsonObject out = new JsonObject();
-    out.addProperty("type", "out");
-    out.addProperty("seq", command.seq);
-    out.addProperty("name", command.name != null ? command.name : "");
-    out.addProperty("text", result.outText != null ? result.outText : "");
-    out.addProperty("ts", command.ts);
-    out.addProperty("sessionId", uiSessionId);
-    if (result.outJson != null && !result.outJson.isBlank()) {
-      out.addProperty("json", result.outJson);
-    }
-    out.add("state", state);
-
-    if (uiProtocolMonitorEnabled) {
-      publishUiTcpMonitor(command.seq, command.name, command.clientId, result);
-    }
-
-    if (shouldLogTcpCommand(command) || (result != null && !result.ok)) {
-      BringupPrinter.enqueue(formatTcpResultLog(TEXT_TCP_UI_RESPOND, command, result));
-    }
-    return new TcpUiServer.UiResponse(ack.toString(), out.toString());
-  }
-
-  /**
-   * NAME
-   *   shouldLogTcpCommand - Decide whether a TCP command should be printed.
-   */
-  private boolean shouldLogTcpCommand(TcpUiServer.UiCommand command) {
-    if (command == null) {
-      return false;
-    }
-    String name = command.name != null ? command.name : TEXT_EMPTY;
-    return !CMD_UI_PING.equals(name) && !CMD_UI_POLL_LOG.equals(name);
-  }
-
-  /**
-   * NAME
-   *   formatTcpSocketLog - Build a concise TCP socket lifecycle log line.
-   */
-  private String formatTcpSocketLog(String prefix, java.net.Socket socket) {
-    String remote = TEXT_TCP_UI_REMOTE_UNKNOWN;
-    if (socket != null && socket.getRemoteSocketAddress() != null) {
-      remote = socket.getRemoteSocketAddress().toString();
-    }
-    return prefix + TEXT_TCP_UI_REMOTE_PREFIX + remote;
-  }
-
-  /**
-   * NAME
-   *   formatTcpCommandLog - Build a concise TCP command receipt log line.
-   */
-  private String formatTcpCommandLog(String prefix, TcpUiServer.UiCommand command) {
-    StringBuilder sb = new StringBuilder(128);
-    sb.append(prefix);
-    if (command == null) {
-      return sb.toString();
-    }
-    sb.append(TEXT_TCP_UI_SEQ_PREFIX).append(command.seq);
-    sb.append(TEXT_TCP_UI_NAME_PREFIX).append(command.name != null ? command.name : TEXT_EMPTY);
-    sb.append(TEXT_TCP_UI_CLIENT_PREFIX).append(command.clientId != null ? command.clientId : TEXT_EMPTY);
-    return sb.toString();
-  }
-
-  /**
-   * NAME
-   *   formatTcpResultLog - Build a concise TCP result emission log line.
-   */
-  private String formatTcpResultLog(
-      String prefix,
-      TcpUiServer.UiCommand command,
-      BridgeUiCommandResult result) {
-    StringBuilder sb = new StringBuilder(192);
-    sb.append(prefix);
-    if (command != null) {
-      sb.append(TEXT_TCP_UI_SEQ_PREFIX).append(command.seq);
-      sb.append(TEXT_TCP_UI_NAME_PREFIX).append(command.name != null ? command.name : TEXT_EMPTY);
-      sb.append(TEXT_TCP_UI_CLIENT_PREFIX).append(command.clientId != null ? command.clientId : TEXT_EMPTY);
-    }
-    if (result != null) {
-      sb.append(TEXT_TCP_UI_STATUS_PREFIX).append(result.ok ? TEXT_ACK_OK : TEXT_ACK_ERROR);
-      sb.append(TEXT_TCP_UI_MESSAGE_PREFIX).append(result.message != null ? result.message : TEXT_EMPTY);
-      sb.append(TEXT_TCP_UI_OUT_JSON_PREFIX)
-          .append(result.outJson != null && !result.outJson.isBlank() ? TEXT_BOOL_TRUE : TEXT_BOOL_FALSE);
-    }
-    return sb.toString();
-  }
-
-  /**
-   * NAME
-   *   TcpPendingCommand - Pending TCP command for the main loop.
-   */
-  private static final class TcpPendingCommand {
-    private final TcpUiServer.UiCommand command;
-    private final CompletableFuture<TcpUiServer.UiResponse> future;
-    private volatile boolean cancelled;
-
-    private TcpPendingCommand(TcpUiServer.UiCommand command) {
-      this.command = command;
-      this.future = new CompletableFuture<>();
-      this.cancelled = false;
-    }
   }
 
   /**
@@ -2101,68 +1862,6 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
-   *   checkTcpTimeout - Apply safety stop when TCP commands stall.
-   */
-  private void checkTcpTimeout() {
-    if (!tcpConnected || activeUiClientId == null || activeUiClientId.isBlank()) {
-      return;
-    }
-    if (lastTcpKeepaliveMs > 0) {
-      return;
-    }
-    if (lastTcpCommandMs <= 0) {
-      return;
-    }
-    long now = System.currentTimeMillis();
-    if ((now - lastTcpCommandMs) <= TCP_LEASE_TIMEOUT_MS) {
-      return;
-    }
-    setStopLatch("tcpTimeout");
-    if ((now - lastTcpTimeoutStopMs) >= TCP_TIMEOUT_STOP_COOLDOWN_MS) {
-      lastTcpTimeoutStopMs = now;
-      applySafetyStop("tcpTimeout");
-    }
-  }
-
-  /**
-   * NAME
-   *   checkTcpKeepalive - Enforce keepalive liveness for TCP clients.
-   */
-  private void checkTcpKeepalive() {
-    if (!tcpConnected) {
-      return;
-    }
-    if (lastTcpKeepaliveMs <= 0) {
-      return;
-    }
-    long now = System.currentTimeMillis();
-    long timeoutMs = TCP_KEEPALIVE_INTERVAL_MS * TCP_KEEPALIVE_MISSES;
-    if ((now - lastTcpKeepaliveMs) <= timeoutMs) {
-      return;
-    }
-    forceTcpDisconnect("tcpKeepaliveTimeout");
-  }
-
-  private void forceTcpDisconnect(String reason) {
-    if (tcpSocket != null) {
-      try {
-        tcpSocket.close();
-      } catch (Exception ignored) {
-      }
-    }
-    tcpSocket = null;
-    tcpConnected = false;
-    activeUiClientId = null;
-    lastTcpKeepaliveMs = 0L;
-    setStopLatch(reason);
-    applySafetyStop(reason);
-    if (uiProtocolMonitorEnabled) {
-      uiTcpTable.getEntry("connected").setBoolean(false);
-    }
-  }
-
-  /**
-   * NAME
    *   setStopLatch - Enable the safety stop latch.
    */
   private void setStopLatch(String reason) {
@@ -2191,7 +1890,7 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
-   *   isTcpStartCommand - Check if a TCP command starts or enables activity.
+   *   isTcpStartCommand - Check if a legacy transport stop-latch command starts activity.
    */
   private boolean isTcpStartCommand(String name, JsonObject args) {
     if (name == null) {
@@ -2216,7 +1915,7 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
-   *   isTcpStopCommand - Check if a TCP command disables or stops activity.
+   *   isTcpStopCommand - Check if a legacy transport stop-latch command stops activity.
    */
   private boolean isTcpStopCommand(String name, JsonObject args) {
     if (name == null) {
@@ -2238,21 +1937,6 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
-   *   buildUiStateJson - Build a small state payload for UI responses.
-   */
-  private JsonObject buildUiStateJson() {
-    JsonObject state = new JsonObject();
-    state.addProperty("enabled", DriverStation.isEnabled());
-    state.addProperty("estopped", DriverStation.isEStopped());
-    state.addProperty("mode", DriverStation.isAutonomous() ? "auto"
-        : DriverStation.isTeleop() ? "teleop"
-        : DriverStation.isTest() ? "test" : "disabled");
-    state.add(JSON_KEY_SAFETY_LATCH, buildSafetyLatchJson());
-    return state;
-  }
-
-  /**
-   * NAME
    *   buildSafetyLatchJson - Build safety latch state for UI and CLI status.
    */
   private JsonObject buildSafetyLatchJson() {
@@ -2260,21 +1944,6 @@ public class BridgeUiCommandHandler {
     latch.addProperty(JSON_KEY_ACTIVE, stopLatchActive);
     latch.addProperty(JSON_KEY_REASON, stopLatchReason != null ? stopLatchReason : TEXT_EMPTY);
     return latch;
-  }
-
-  /**
-   * NAME
-   *   publishUiTcpMonitor - Publish TCP protocol monitor entries to NT.
-   */
-  private void publishUiTcpMonitor(long seq, String name, String clientId, BridgeUiCommandResult result) {
-    uiOutputFacade.publishUiTcpMonitor(
-        seq,
-        name,
-        clientId,
-        uiProtocolMonitorEnabled,
-        result.ok,
-        result.code,
-        result.message);
   }
 
   /**
@@ -2442,7 +2111,7 @@ public class BridgeUiCommandHandler {
    * PARAMETERS
    *   result - Mutable command result container.
    *   args - Parsed args JSON.
-   *   isTcp - True when invoked over TCP.
+   *   isTcp - Legacy transport flag; REST and NT pass false.
    */
   private void applyProfilesApplyCommand(BridgeUiCommandResult result, JsonObject args, boolean isTcp) {
     if (result == null) {
@@ -2456,9 +2125,7 @@ public class BridgeUiCommandHandler {
     String activateProfile = parseUiArgString(args, ARG_ACTIVATE_PROFILE);
     transfer.expectedHash = registryHash != null ? registryHash : TEXT_EMPTY;
     transfer.expectedBytes = registryBytes != null ? registryBytes : BringupUtil.REGISTRY_BYTES_UNKNOWN;
-    if (!isTcp) {
-      transfer.message = TEXT_PROFILES_APPLY_NOT_SUPPORTED;
-    } else if (registryJson == null || registryJson.isBlank()) {
+    if (registryJson == null || registryJson.isBlank()) {
       transfer.message = TEXT_PROFILES_APPLY_MISSING_REGISTRY;
     } else if (registryHash == null || registryHash.isBlank()) {
       transfer.message = TEXT_PROFILES_APPLY_MISSING_HASH;
@@ -2792,6 +2459,10 @@ public class BridgeUiCommandHandler {
     sb.append("Bridge status:\n");
     sb.append("  build=").append(BringupCore.getBuildMarker()).append('\n');
     sb.append("  profile=").append(BringupUtil.getActiveCanProfileLabel()).append('\n');
+    sb.append("  selectedProfile=").append(BringupUtil.getSelectedCanProfileLabel()).append('\n');
+    sb.append("  activeRuntimeProfile=")
+        .append(formatProfileValue(BringupUtil.getActiveRuntimeProfileLabel())).append('\n');
+    sb.append("  runtimeActive=").append(BringupUtil.isProfileActive()).append('\n');
     sb.append("  enabled=").append(DriverStation.isEnabled()).append('\n');
     sb.append("  estopped=").append(DriverStation.isEStopped()).append('\n');
     sb.append("  mode=").append(DriverStation.isAutonomous() ? "auto"
@@ -2819,6 +2490,9 @@ public class BridgeUiCommandHandler {
     JsonObject root = new JsonObject();
     root.addProperty("build", BringupCore.getBuildMarker());
     root.addProperty("profile", BringupUtil.getActiveCanProfileLabel());
+    root.addProperty(JSON_KEY_SELECTED_PROFILE, BringupUtil.getSelectedCanProfileLabel());
+    root.addProperty(JSON_KEY_ACTIVE_RUNTIME_PROFILE, BringupUtil.getActiveRuntimeProfileLabel());
+    root.addProperty(JSON_KEY_RUNTIME_ACTIVE, BringupUtil.isProfileActive());
     root.addProperty("enabled", DriverStation.isEnabled());
     root.addProperty("estopped", DriverStation.isEStopped());
     root.addProperty("mode", DriverStation.isAutonomous() ? "auto"
@@ -3123,7 +2797,7 @@ public class BridgeUiCommandHandler {
    * NAME
    *   buildDevicesJson - Build JSON list of active devices.
    */
-  private JsonObject buildDevicesJson() {
+  public JsonObject buildDevicesJson() {
     JsonObject root = new JsonObject();
     JsonArray array = new JsonArray();
     List<BringupUtil.DeviceEntry> devices = BringupUtil.isProfileActive()
@@ -3199,13 +2873,16 @@ public class BridgeUiCommandHandler {
    * NAME
    *   buildRuntimeStateJson - Build runtime-state JSON blob.
    */
-  private JsonObject buildRuntimeStateJson() {
+  public JsonObject buildRuntimeStateJson() {
     JsonObject root = new JsonObject();
     root.addProperty("schemaVersion", 1);
     long nowMs = System.currentTimeMillis();
     root.addProperty("generatedAtMs", nowMs);
     root.addProperty("build", BringupCore.getBuildMarker());
     root.addProperty("profile", BringupUtil.getActiveCanProfileLabel());
+    root.addProperty(JSON_KEY_SELECTED_PROFILE, BringupUtil.getSelectedCanProfileLabel());
+    root.addProperty(JSON_KEY_ACTIVE_RUNTIME_PROFILE, BringupUtil.getActiveRuntimeProfileLabel());
+    root.addProperty(JSON_KEY_RUNTIME_ACTIVE, BringupUtil.isProfileActive());
     root.addProperty("enabled", DriverStation.isEnabled());
     root.addProperty("estopped", DriverStation.isEStopped());
     root.addProperty("mode", DriverStation.isAutonomous() ? "auto"
@@ -3726,26 +3403,36 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
-   *   appendUiTcpStats - Append UI/TCP stats to an existing report.
+   *   appendUiSessionStats - Append UI session stats to an existing report.
    *
    * PARAMETERS
    *   report - Base report text.
    *
    * RETURNS
-   *   Report with a UI/TCP stats block appended.
+   *   Report with a UI session stats block appended.
    */
-  private String appendUiTcpStats(String report) {
+  private String appendUiSessionStats(String report) {
     StringBuilder sb = new StringBuilder(256);
     sb.append(report == null ? "" : report.trim());
     if (sb.length() > 0) {
       sb.append('\n');
     }
-    sb.append("UI/TCP stats (since boot):\n");
-    sb.append("  commandsProcessed=").append(tcpCommandsProcessed)
-        .append(" timeouts=").append(tcpCommandTimeouts)
-        .append(" dupAcked=").append(tcpDuplicateAcked)
-        .append(" dupDropped=").append(tcpDuplicateDropped);
+    sb.append("UI session stats:\n");
+    sb.append("  sessionId=").append(uiSessionId != null ? uiSessionId : TEXT_EMPTY)
+        .append(" activeClientId=").append(activeUiClientId != null ? activeUiClientId : TEXT_EMPTY)
+        .append(" monitorEnabled=").append(uiProtocolMonitorEnabled);
     return sb.toString();
+  }
+
+  /**
+   * NAME
+   *   formatProfileValue - Render empty profile state values consistently.
+   */
+  private String formatProfileValue(String value) {
+    if (value == null || value.isBlank()) {
+      return TEXT_NONE;
+    }
+    return value;
   }
 
   /**

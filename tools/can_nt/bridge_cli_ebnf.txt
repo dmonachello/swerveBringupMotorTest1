@@ -24,6 +24,7 @@ exec           = show_exec
                | "configure" ws "terminal"
                | "connect"
                | "disconnect"
+               | "runtime" ws ("activate" [ ws name ] | "deactivate")
                | "instantiate" ws "next" ws "motor"
                | "instantiate" ws "all" ws "devices"
                | "clear" ws ("stop-latch" | "safety-latch")
@@ -146,6 +147,7 @@ config         = "group" ws name
                | "profiles" ws "init"
                | "profiles" ws "reload"
                | "profiles" ws "activate" ws name
+               | "runtime" ws ("activate" [ ws name ] | "deactivate")
                | "profiles" ws "export" ws path
                | "profiles" ws "push" ws path [ ws "--activate" ws name ]
                | "config" ws "push" ws path [ ws "--activate" ws name ]
@@ -165,6 +167,7 @@ config         = "group" ws name
                            | "validate" [ ws name ] [ ws "--json" ] [ ws "--pretty" ]
                            | "validate" [ ws "--json" ] [ ws "--pretty" ] [ ws name ]
                            | "delete" ws name
+                           | "cleanup" ws "stale"
                            | "set" ws ("create" ws name
                                       | "delete" ws name
                                       | "add" ws name ws name

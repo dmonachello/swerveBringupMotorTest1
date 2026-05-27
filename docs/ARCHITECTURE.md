@@ -8,7 +8,7 @@ Purpose: the system is a client/server architecture with a robot-side server and
 - Robot-side WPILib Java bringup harness runs motors/sensors and produces local health + reports (server).
 - PC-side Python tool passively listens on the CAN bus and publishes diagnostics to NetworkTables.
 - The robot consumes PC diagnostics via NetworkTables under `bringup/diag/...` and must fail soft if the PC tool is absent.
-- Operator commands and report output now flow over the TCP command channel; NetworkTables remains for state/diagnostics visibility only.
+- Operator commands and report output now flow over the robot REST command server; NetworkTables remains for state/diagnostics visibility only.
 - The PC tool also includes console monitoring, capture utilities, and offline analysis helpers.
 - The topology editor and live topology view are part of the PC-side solution and share the same profile JSON contract.
 - See OPERATOR_SURFACES.md for a focused view of CLI/GUI/topology surface responsibilities.
@@ -24,14 +24,14 @@ Key roles:
 - Robot server (roboRIO, Java): creates devices, runs tests, commands outputs, and reports local health using vendor APIs.
 - PC tool (Windows PC, Python): listens to CAN traffic via CANable, publishes diagnostics to NetworkTables, and records evidence (PCAP, inventory, diffs).
 - PC tool (Windows PC, Python): listens to the roboRIO TCP console stream (NetConsole) to extract warnings/errors.
-- PC operator surfaces: CLI, Bringup Control UI (TCP command channel), and live topology view (clients).
+- PC operator surfaces: CLI, Bringup Control UI (REST command channel), and live topology view (clients).
 - PC topology tooling: topology editor that authors `bringup_system.json` and diagram metadata.
 - Xbox controller input: local client interface feeding the robot server.
 
 Data sources and trust boundaries:
 - Robot-local telemetry comes only from vendor APIs on the roboRIO.
 - CAN-bus telemetry comes only from the PC tool via NetworkTables.
-- TCP command/output is a control/log channel, not a telemetry source.
+- REST command/output is a control/log channel, not a telemetry source.
 - The two telemetry sources are kept distinct in reporting and APIs.
 
 Host vs Robot Context
@@ -39,7 +39,7 @@ Purpose: prevent confusion between host-local editing context and robot runtime 
 
 - Host context: PC-side tools and operator surfaces selecting an "active profile" for local editing and inspection.
 - Robot context: the roboRIO runtime "active profile" and selected test used for actuation.
-- Rule: host context MUST NOT change robot context unless an explicit TCP robot command is executed (for example `profiles activate <name>`).
+- Rule: host context MUST NOT change robot context unless an explicit robot REST command is executed (for example `profiles activate <name>`).
 
 ## Client/Server Boundary
 Purpose: define the ownership and responsibilities across the robot server and PC clients.
@@ -47,16 +47,16 @@ Purpose: define the ownership and responsibilities across the robot server and P
 Server (robot):
 - Owns all actuation, device creation, and test execution.
 - Owns authoritative local telemetry and safety checks.
-- Hosts the TCP command server for UI/CLI clients.
+- Hosts the REST command server for UI/CLI clients.
 
 Clients (PC tools + local Xbox):
-- PC tools act as TCP clients for commands and logs.
+- PC tools act as REST clients for commands and logs.
 - PC tools act as NT publishers for CAN-derived diagnostics.
 - Xbox controller is a local client feeding the server loop.
 
 Contracts across the boundary:
-- TCP command protocol: command/ACK/OUT exchange for UI/CLI.
-- TCP protocol details (wire framing, schemas, and examples): `docs/TCP_UI_PROTOCOL.md`.
+- REST command protocol: session + command lifecycle endpoints for UI/CLI.
+- REST transport details and migration planning: `docs/FEATURE_SPEC_BRINGUP_PORT_FROM_REST_COMMAND_CHANNEL_POC.md`.
 - NetworkTables: diagnostics/state only under `bringup/diag/...`.
 - JSON config: `bringup_system.json` is the shared input (profiles + devices table + diagram + tests under bridgeConfig).
 - `bringup_system.json` is the system config file. Multiple config files may exist on disk, but the system loads one system config file at a time.
@@ -80,15 +80,15 @@ Purpose: keep networked control safe and deterministic.
 
 - The robot is the server and owns all actuation authority.
 - PC tools are clients; Xbox is a local client with highest priority.
-- Both Xbox and TCP clients can be active at the same time.
+- Both Xbox and REST clients can be active at the same time.
 - Xbox always wins on conflicts.
 - A stop/disable/abort command sets a stop latch.
-- The stop latch can be set by TCP or Xbox, but only Xbox can clear it.
-- When the stop latch is set, TCP start/enable/run commands are rejected.
-- TCP connection loss triggers a safe stop and sets the stop latch.
+- The stop latch can be set by REST clients or Xbox, but only Xbox can clear it.
+- When the stop latch is set, REST start/enable/run commands are rejected.
+- REST session disconnect or timeout triggers a safe stop and sets the stop latch.
 - Xbox disconnect triggers a safe stop and sets the stop latch.
 - Driver Station enable/disable/E-stop overrides all client commands.
-- NetworkTables is diagnostics/state only; TCP is command/log output only.
+- NetworkTables is diagnostics/state only; REST is command/log output only.
 
 Control flow summary:
 1. Operators author profiles and diagram metadata with the topology editor.
@@ -96,11 +96,11 @@ Control flow summary:
 3. Robot server instantiates devices and runs tests inside the 20ms loop.
 4. PC tool listens on CAN, classifies frames, and publishes `bringup/diag/...` keys.
 5. Robot server reads PC diagnostics separately and fails soft if the PC tool is absent.
-6. Operator clients (UI/CLI) issue TCP commands and consume log output; NT remains for state/diagnostics visibility only.
+6. Operator clients (UI/CLI) issue REST commands and consume log output; NT remains for state/diagnostics visibility only.
 7. Xbox controller acts as a local client feeding commands into the server loop.
 
 Outputs:
-- Console reports with throttled, chunked printing (emitted over TCP for UI/CLI and to local console).
+- Console reports with throttled, chunked printing (emitted over REST for UI/CLI and to local console).
 - Console report tables are fixed-width, right-justified, and dot-padded; values truncate to column width.
 - Robot JSON report (`bringup_report.json`).
 - PC evidence artifacts (PCAP/PCAPNG, inventory JSON, inventory diffs).
@@ -150,7 +150,7 @@ Responsibilities:
 Examples:
 - roboRIO + Xbox controller.
 - CANable over COM/slcan.
-- TCP UI socket.
+- REST command socket.
 - NetworkTables transport.
 
 ### 2) Adapter and Protocol Layer
@@ -262,7 +262,7 @@ Rule:
 Purpose: define the stable contracts that constrain both implementations and operator expectations.
 
 Includes:
-- TCP UI protocol.
+- REST command protocol.
 - NetworkTables contract.
 - Config/profile schema.
 - Status code catalog.
@@ -359,9 +359,9 @@ Purpose: PC-side tools cover CAN capture, operator surfaces, and offline analysi
 
 - `tools/can_nt/can_nt_bridge.py` listens on CANable (SLCAN) and publishes `bringup/diag` keys.
 - `tools/can_nt/can_console_monitor.py` listens to the roboRIO NetConsole TCP stream and publishes console-derived warning/error counters.
-- `tools/can_nt/bridge_cli.py` provides a command-line interface for TCP UI commands and log polling.
-- `tools/can_nt/bringup_ui.py` provides a Windows-friendly GUI that mirrors bringup commands and log output over TCP. Its robot-local button inventory is generated from the Java command registry; NT remains state/diag only.
-- `tools/can_nt/bridge_session.py` centralizes TCP command/session behavior for GUI and CLI.
+- `tools/can_nt/bridge_cli.py` provides a command-line interface for REST commands and log polling.
+- `tools/can_nt/bringup_ui.py` provides a Windows-friendly GUI that mirrors bringup commands and log output over REST. Its robot-local button inventory is generated from the Java command registry; NT remains state/diag only.
+- `tools/can_nt/bridge_session.py` centralizes REST command/session behavior for GUI and CLI.
 - PC tool output includes PCAP/PCAPNG capture, inventory JSON, and diffs.
 - Live Wireshark capture uses a Windows named pipe (`\\.\pipe\FRC_CAN`) via `--pcap-pipe`.
   - Details live in `tools/can_nt/README_CAN_NT.md` and the Wireshark section in `README.md`.
@@ -408,7 +408,7 @@ Purpose: document the one-time startup sequence and core object construction.
 Purpose: profiles, bindings, and tests load in a predictable order.
 
 1. Robot starts (`Robot` or `RobotV2`) and applies the active CAN profile:
-   - `bringup_system.json` is loaded via `BringupUtil` (deploy copy; data is canonical).
+   - `bringup_system.json` is loaded via `BringupUtil` from `src/main/deploy/bringup_system.json`.
    - `default_profile` is selected unless `--bringup-profile=...` is provided.
 2. Tests are loaded from `bringup_system.json`:
    - Source: `bridgeConfig.byProfile.<profile>.tests`.
@@ -478,10 +478,10 @@ Purpose: profiles and diagram metadata are authored offline and consumed at runt
 2. The editor writes `bringup_system.json` with profile data and diagram metadata.
 3. Robot and CAN bridge consume profiles; diagram metadata is editor/UI-only.
 
-### J) Operator Command Channel (TCP)
+### J) Operator Command Channel (REST)
 Purpose: operator clients send commands without blocking the 20ms loop.
 
-1. UI/CLI sends TCP commands to the robot bringup server.
+1. UI/CLI sends REST commands to the robot bringup server.
 2. The robot server responds with ACK/OUT events; UI/CLI render outputs.
 3. NetworkTables remains the channel for diagnostics and state visibility only.
 
@@ -491,7 +491,7 @@ Purpose: stable interfaces are identified to prevent uncoordinated changes.
 - NetworkTables keys under `bringup/diag/...` (robot and PC tool must stay in sync).
 - JSON schema for `bringup_system.json` (including bridgeConfig tests).
 - Report output fields in `bringup_report.json`.
-- TCP command protocol (UI/CLI) and log output formats.
+- REST command protocol (UI/CLI) and log output formats.
 
 ## Data Integrity Rules
 Purpose: define how runtime and offline tools enforce profile integrity.

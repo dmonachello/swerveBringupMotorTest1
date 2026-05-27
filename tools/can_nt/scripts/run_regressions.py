@@ -48,7 +48,7 @@ from tools.can_nt.scripts.lib.regression_framework import (
 ARG_SUITE = "--suite"
 ARG_INCLUDE_ROBOT = "--include-robot"
 ARG_RIO = "--rio"
-ARG_UI_TCP_PORT = "--ui-tcp-port"
+ARG_UI_REST_PORT = "--ui-rest-port"
 ARG_VERBOSE = "--verbose"
 ARG_REFRESH_EXPECTED = "--refresh-expected"
 ARG_JSON_OUT = "--json-out"
@@ -57,7 +57,7 @@ ARG_NO_HISTORY = "--no-history"
 HELP_SUITE = "Regression suite to run."
 HELP_INCLUDE_ROBOT = "Include robot-connected non-motion suite when using --suite all."
 HELP_RIO = "roboRIO host/IP for robot-connected non-motion regressions."
-HELP_UI_TCP_PORT = "Optional TCP UI port for robot-connected non-motion regressions."
+HELP_UI_REST_PORT = "Optional REST command port for robot-connected non-motion regressions."
 HELP_VERBOSE = "Print stdout and stderr for passing commands."
 HELP_REFRESH_EXPECTED = "Refresh the stored expected baseline for the selected suite."
 HELP_JSON_OUT = "Write a machine-readable JSON report to the given path."
@@ -93,7 +93,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(ARG_INCLUDE_ROBOT, action="store_true", help=HELP_INCLUDE_ROBOT)
     parser.add_argument(ARG_RIO, help=HELP_RIO)
-    parser.add_argument(ARG_UI_TCP_PORT, type=int, help=HELP_UI_TCP_PORT)
+    parser.add_argument(ARG_UI_REST_PORT, type=int, help=HELP_UI_REST_PORT)
     parser.add_argument(ARG_VERBOSE, action="store_true", help=HELP_VERBOSE)
     parser.add_argument(ARG_REFRESH_EXPECTED, action="store_true", help=HELP_REFRESH_EXPECTED)
     parser.add_argument(ARG_JSON_OUT, help=HELP_JSON_OUT)
@@ -137,7 +137,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             suite_name=str(args.suite),
             rio=args.rio,
             include_robot=bool(args.include_robot),
-            ui_tcp_port=args.ui_tcp_port,
+            ui_rest_port=args.ui_rest_port,
         )
     except ValueError as ex:
         print(f"ERROR: {ex}")

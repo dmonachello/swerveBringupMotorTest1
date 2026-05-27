@@ -31,8 +31,8 @@ Do not start with full-system tests if you have not yet verified the basic hardw
 
 Purpose: keep the workflow safe, repeatable, and easy to debug.
 
-- Canonical config lives in `data/bringup_system.json`.
-- Deploy copy lives in `src/main/deploy/bringup_system.json`.
+- Config lives in `src/main/deploy/bringup_system.json`.
+- The shared host and roboRIO config file lives in `src/main/deploy/bringup_system.json`.
 - Run the validate+sync gate after edits:
   - `python -m tools.validate_sync`
 - Profiles reference devices by label only.
@@ -119,7 +119,7 @@ Purpose: create the smallest useful starting point.
 
 Preferred path:
 - Open the topology editor.
-- Load or create the intended profile in `data/bringup_system.json`.
+- Load or create the intended profile in `src/main/deploy/bringup_system.json`.
 - Start with only the devices you are actually ready to verify.
 - Keep labels unique and descriptive.
 
@@ -201,7 +201,7 @@ Expected outcomes:
 - canonical config validates
 - semantic references validate
 - `data_version` and `data_hash` are correct
-- deploy copy is written to `src/main/deploy/bringup_system.json`
+- the deploy-owned `src/main/deploy/bringup_system.json` file is written
 
 Do not skip this step.
 
@@ -455,7 +455,7 @@ Do not:
 Purpose: provide a compact repeatable checklist for each iteration.
 
 Per component:
-1. Add/update the device in `data/bringup_system.json`
+1. Add/update the device in `src/main/deploy/bringup_system.json`
 2. Add/update focused test(s)
 3. Run:
    - `python -m tools.validate_sync`

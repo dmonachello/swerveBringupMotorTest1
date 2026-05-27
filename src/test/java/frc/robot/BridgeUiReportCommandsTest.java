@@ -163,8 +163,8 @@ class BridgeUiReportCommandsTest {
     }
 
     @Override
-    public String appendUiTcpStats(String report) {
-      return report + "+tcp";
+    public String appendUiSessionStats(String report) {
+      return report + "+session";
     }
 
     @Override

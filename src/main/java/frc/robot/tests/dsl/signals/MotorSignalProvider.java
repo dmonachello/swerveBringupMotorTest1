@@ -22,7 +22,19 @@ public final class MotorSignalProvider implements DslDeviceSignalProvider {
         new DslSignalMeta(
             DslSignalRegistry.VALUE_TYPE_NUMBER, false, true, false, 0.0, false, true));
     signals.put(
+        DslSignalRegistry.SIGNAL_OUTPUT_PERCENT_CMD,
+        new DslSignalMeta(
+            DslSignalRegistry.VALUE_TYPE_NUMBER, true, true, false, null, true, true));
+    signals.put(
+        DslSignalRegistry.SIGNAL_OUTPUT_PERCENT_APPLIED,
+        new DslSignalMeta(
+            DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
+    signals.put(
         DslSignalRegistry.SIGNAL_CURRENT,
+        new DslSignalMeta(
+            DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
+    signals.put(
+        DslSignalRegistry.SIGNAL_CURRENT_ACTUAL,
         new DslSignalMeta(
             DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
     signals.put(
@@ -30,11 +42,27 @@ public final class MotorSignalProvider implements DslDeviceSignalProvider {
         new DslSignalMeta(
             DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
     signals.put(
+        DslSignalRegistry.SIGNAL_TEMPERATURE_ACTUAL,
+        new DslSignalMeta(
+            DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
+    signals.put(
         DslSignalRegistry.SIGNAL_VELOCITY,
         new DslSignalMeta(
             DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
     signals.put(
+        DslSignalRegistry.SIGNAL_VELOCITY_ACTUAL,
+        new DslSignalMeta(
+            DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
+    signals.put(
         DslSignalRegistry.SIGNAL_POSITION,
+        new DslSignalMeta(
+            DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
+    signals.put(
+        DslSignalRegistry.SIGNAL_POSITION_ACTUAL,
+        new DslSignalMeta(
+            DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
+    signals.put(
+        DslSignalRegistry.SIGNAL_POSITION_DELTA,
         new DslSignalMeta(
             DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
     signals.put(

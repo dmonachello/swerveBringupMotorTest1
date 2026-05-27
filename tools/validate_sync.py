@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """
 NAME
-    validate_sync.py - Validate and sync bringup_system.json (canonical -> deploy).
+    validate_sync.py - Validate and stamp the deploy-owned bringup_system.json.
 
 SYNOPSIS
     python -m tools.validate_sync [--lenient] [--no-stamp] [--validate-deploy] [--no-write]
@@ -10,8 +10,8 @@ SYNOPSIS
 DESCRIPTION
     Provides a single "validate + sync" gate for device configuration and tests.
 
-    Validates the canonical unified config:
-      data/bringup_system.json
+    Validates the unified config:
+      src/main/deploy/bringup_system.json
 
     Validation covers:
     - Schema version and required root fields.
@@ -22,9 +22,8 @@ DESCRIPTION
     - data_version
     - data_hash
 
-    Then writes both:
-    - data/bringup_system.json (canonical)
-    - src/main/deploy/bringup_system.json (deploy copy)
+    Then writes:
+    - src/main/deploy/bringup_system.json
 
 SIDE EFFECTS
     Writes JSON files when --no-write is not set.
@@ -88,7 +87,7 @@ def _parse_args() -> argparse.Namespace:
     """
 
     parser = argparse.ArgumentParser(
-        description="Validate and sync bringup_system.json (canonical -> deploy)."
+        description="Validate and stamp the deploy-owned bringup_system.json."
     )
     parser.add_argument(
         ARG_LENIENT,

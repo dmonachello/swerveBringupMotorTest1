@@ -101,7 +101,7 @@ The runner also normalizes `JAVA_HOME` automatically if the shell points it at
 For `robot-non-motion`, you also need:
 
 - a reachable roboRIO
-- the TCP UI endpoint available
+- the REST command endpoint available
 - the roboRIO host or IP address
 
 Example:
@@ -171,7 +171,7 @@ Purpose: enforce the major-change changelog update policy.
 
 ### 6.7 `robot-non-motion`
 
-Purpose: run the connected robot TCP/UI regression without commanding motion.
+Purpose: run the connected robot REST/UI regression without commanding motion.
 
 ### 6.8 `all`
 
@@ -272,9 +272,9 @@ and for:
 --suite all --include-robot
 ```
 
-### 9.4 `--ui-tcp-port`
+### 9.4 `--ui-rest-port`
 
-Optional connected-suite override for the robot TCP UI port.
+Optional connected-suite override for the robot REST command port.
 
 ### 9.5 `--verbose`
 
@@ -549,7 +549,7 @@ Check:
 
 - the roboRIO host/IP is correct
 - the robot is reachable
-- the TCP UI path is available
+- the REST command path is available
 
 ### 17.2 Java Tests Fail Due to Environment
 

@@ -647,7 +647,7 @@ Recommended workflow:
 CLI flow:
 
 ```text
-merge config data\bringup_system.json
+merge config src\main\deploy\bringup_system.json
 configure terminal
 profile dsl_demo_050426
 test import spin_up_motor1 temp_test.dsl set default

@@ -18,6 +18,7 @@ import frc.robot.input.InputAliasResolver;
  */
 public final class BridgeGroupManager {
   private static final String EMPTY_STRING = "";
+  private static final int MAX_CONTROLLER_COUNT = 6;
   /**
    * NAME
    *   BindingKind - Supported binding behavior.
@@ -119,52 +120,47 @@ public final class BridgeGroupManager {
    *   InputSnapshot - Controller input snapshot for binding evaluation.
    */
   public static final class InputSnapshot {
-    public double driverLeftY;
-    public double driverRightY;
-    public boolean driverA;
-    public boolean driverB;
-    public boolean driverX;
-    public boolean driverY;
-    public boolean driverLb;
-    public boolean driverRb;
-    public boolean driverBack;
-    public boolean driverStart;
-    public boolean driverLs;
-    public boolean driverRs;
-    public boolean driverDpadUp;
-    public boolean driverDpadRight;
-    public boolean driverDpadDown;
-    public boolean driverDpadLeft;
-    public double driverLeftX;
-    public double driverRightX;
-    public double driverLeftTrigger;
-    public double driverRightTrigger;
-
-    public double operatorLeftY;
-    public double operatorRightY;
-    public boolean operatorA;
-    public boolean operatorB;
-    public boolean operatorX;
-    public boolean operatorY;
-    public boolean operatorLb;
-    public boolean operatorRb;
-    public boolean operatorBack;
-    public boolean operatorStart;
-    public boolean operatorLs;
-    public boolean operatorRs;
-    public boolean operatorDpadUp;
-    public boolean operatorDpadRight;
-    public boolean operatorDpadDown;
-    public boolean operatorDpadLeft;
-    public double operatorLeftX;
-    public double operatorRightX;
-    public double operatorLeftTrigger;
-    public double operatorRightTrigger;
+    public final ControllerState[] controllers = createControllers();
 
     public double uiSlider1;
     public double uiSlider2;
     public boolean uiButton1;
     public boolean uiButton2;
+
+    private static ControllerState[] createControllers() {
+      ControllerState[] states = new ControllerState[MAX_CONTROLLER_COUNT];
+      for (int index = 0; index < MAX_CONTROLLER_COUNT; index++) {
+        states[index] = new ControllerState();
+      }
+      return states;
+    }
+  }
+
+  /**
+   * NAME
+   *   ControllerState - Per-controller input values keyed by USB port index.
+   */
+  public static final class ControllerState {
+    public double leftY;
+    public double rightY;
+    public boolean a;
+    public boolean b;
+    public boolean x;
+    public boolean y;
+    public boolean lb;
+    public boolean rb;
+    public boolean back;
+    public boolean start;
+    public boolean ls;
+    public boolean rs;
+    public boolean dpadUp;
+    public boolean dpadRight;
+    public boolean dpadDown;
+    public boolean dpadLeft;
+    public double leftX;
+    public double rightX;
+    public double leftTrigger;
+    public double rightTrigger;
   }
 
   private final Map<String, Group> groups = new LinkedHashMap<>();
@@ -596,125 +592,9 @@ public final class BridgeGroupManager {
    */
   private double resolveInput(String input, InputSnapshot snapshot) {
     String key = InputAliasResolver.resolve(input, inputAliases);
-    if (key.equals(InputAliasResolver.KEY_DRIVER_LEFT_Y)) {
-      return snapshot.driverLeftY;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_RIGHT_Y)) {
-      return snapshot.driverRightY;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_LEFT_X)) {
-      return snapshot.driverLeftX;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_RIGHT_X)) {
-      return snapshot.driverRightX;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_LEFT_TRIGGER)) {
-      return snapshot.driverLeftTrigger;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_RIGHT_TRIGGER)) {
-      return snapshot.driverRightTrigger;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_A)) {
-      return snapshot.driverA ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_B)) {
-      return snapshot.driverB ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_X)) {
-      return snapshot.driverX ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_Y)) {
-      return snapshot.driverY ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_LB)) {
-      return snapshot.driverLb ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_RB)) {
-      return snapshot.driverRb ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_BACK)) {
-      return snapshot.driverBack ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_START)) {
-      return snapshot.driverStart ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_LS)) {
-      return snapshot.driverLs ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_RS)) {
-      return snapshot.driverRs ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_DPAD_UP)) {
-      return snapshot.driverDpadUp ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_DPAD_RIGHT)) {
-      return snapshot.driverDpadRight ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_DPAD_DOWN)) {
-      return snapshot.driverDpadDown ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_DRIVER_DPAD_LEFT)) {
-      return snapshot.driverDpadLeft ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_LEFT_Y)) {
-      return snapshot.operatorLeftY;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_RIGHT_Y)) {
-      return snapshot.operatorRightY;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_LEFT_X)) {
-      return snapshot.operatorLeftX;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_RIGHT_X)) {
-      return snapshot.operatorRightX;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_LEFT_TRIGGER)) {
-      return snapshot.operatorLeftTrigger;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_RIGHT_TRIGGER)) {
-      return snapshot.operatorRightTrigger;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_A)) {
-      return snapshot.operatorA ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_B)) {
-      return snapshot.operatorB ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_X)) {
-      return snapshot.operatorX ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_Y)) {
-      return snapshot.operatorY ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_LB)) {
-      return snapshot.operatorLb ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_RB)) {
-      return snapshot.operatorRb ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_BACK)) {
-      return snapshot.operatorBack ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_START)) {
-      return snapshot.operatorStart ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_LS)) {
-      return snapshot.operatorLs ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_RS)) {
-      return snapshot.operatorRs ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_DPAD_UP)) {
-      return snapshot.operatorDpadUp ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_DPAD_RIGHT)) {
-      return snapshot.operatorDpadRight ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_DPAD_DOWN)) {
-      return snapshot.operatorDpadDown ? 1.0 : 0.0;
-    }
-    if (key.equals(InputAliasResolver.KEY_OPERATOR_DPAD_LEFT)) {
-      return snapshot.operatorDpadLeft ? 1.0 : 0.0;
+    double controllerValue = resolveControllerInput(key, snapshot);
+    if (!Double.isNaN(controllerValue)) {
+      return controllerValue;
     }
     if (key.equals(InputAliasResolver.KEY_UI_SLIDER_1)) {
       return snapshot.uiSlider1;
@@ -729,6 +609,89 @@ public final class BridgeGroupManager {
       return snapshot.uiButton2 ? 1.0 : 0.0;
     }
     return 0.0;
+  }
+
+  private double resolveControllerInput(String key, InputSnapshot snapshot) {
+    if (key == null || snapshot == null || !key.startsWith(InputAliasResolver.KEY_CONTROLLER_PREFIX)) {
+      return Double.NaN;
+    }
+    int firstSep = key.indexOf('.');
+    if (firstSep <= InputAliasResolver.KEY_CONTROLLER_PREFIX.length()) {
+      return Double.NaN;
+    }
+    int controllerIndex;
+    try {
+      controllerIndex = Integer.parseInt(
+          key.substring(InputAliasResolver.KEY_CONTROLLER_PREFIX.length(), firstSep));
+    } catch (NumberFormatException ex) {
+      return Double.NaN;
+    }
+    if (controllerIndex < 0 || controllerIndex >= snapshot.controllers.length) {
+      return Double.NaN;
+    }
+    ControllerState state = snapshot.controllers[controllerIndex];
+    String suffix = key.substring(firstSep + 1);
+    if (sameKey(suffix, "left.y")) {
+      return state.leftY;
+    }
+    if (sameKey(suffix, "right.y")) {
+      return state.rightY;
+    }
+    if (sameKey(suffix, "left.x")) {
+      return state.leftX;
+    }
+    if (sameKey(suffix, "right.x")) {
+      return state.rightX;
+    }
+    if (sameKey(suffix, "left.trigger")) {
+      return state.leftTrigger;
+    }
+    if (sameKey(suffix, "right.trigger")) {
+      return state.rightTrigger;
+    }
+    if (sameKey(suffix, "a")) {
+      return state.a ? 1.0 : 0.0;
+    }
+    if (sameKey(suffix, "b")) {
+      return state.b ? 1.0 : 0.0;
+    }
+    if (sameKey(suffix, "x")) {
+      return state.x ? 1.0 : 0.0;
+    }
+    if (sameKey(suffix, "y")) {
+      return state.y ? 1.0 : 0.0;
+    }
+    if (sameKey(suffix, "lb")) {
+      return state.lb ? 1.0 : 0.0;
+    }
+    if (sameKey(suffix, "rb")) {
+      return state.rb ? 1.0 : 0.0;
+    }
+    if (sameKey(suffix, "back")) {
+      return state.back ? 1.0 : 0.0;
+    }
+    if (sameKey(suffix, "start")) {
+      return state.start ? 1.0 : 0.0;
+    }
+    if (sameKey(suffix, "ls")) {
+      return state.ls ? 1.0 : 0.0;
+    }
+    if (sameKey(suffix, "rs")) {
+      return state.rs ? 1.0 : 0.0;
+    }
+    if (sameKey(suffix, "dpad.up")) {
+      return state.dpadUp ? 1.0 : 0.0;
+    }
+    if (sameKey(suffix, "dpad.right")) {
+      return state.dpadRight ? 1.0 : 0.0;
+    }
+    if (sameKey(suffix, "dpad.down")) {
+      return state.dpadDown ? 1.0 : 0.0;
+    }
+    if (sameKey(suffix, "dpad.left")) {
+      return state.dpadLeft ? 1.0 : 0.0;
+    }
+    return Double.NaN;
   }
 
   private static double clamp(double value, double min, double max) {

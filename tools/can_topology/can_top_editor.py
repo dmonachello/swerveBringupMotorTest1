@@ -194,12 +194,19 @@ MSG_CONTROLLER_DELETE_REFERENCED = (
     "{profiles}\n\n"
     "Delete it from the entire system config anyway?"
 )
+MSG_INVENTORY_DELETE_CONFIRM = "Delete '{}' from the system config?"
+MSG_INVENTORY_DELETE_REFERENCED = (
+    "Device '{label}' is referenced by profiles:\n\n"
+    "{profiles}\n\n"
+    "Delete it from the entire system config anyway?"
+)
 MSG_CONTROLLER_ADD_NONE = "No Xbox controllers were added."
 DETAIL_INTERFACE_USB = "USB"
 MSG_INVALID_DIO_CHANNEL = "Invalid DIO channel for {}."
 MSG_GENERIC_DEVICE_VENDOR_TYPE_REQUIRED = (
     "Generic device '{}' requires vendor and device type."
 )
+MSG_DEVICE_CAN_FIELDS_REQUIRED = "Device '{}' missing CAN fields: id/manufacturer/deviceType."
 MSG_MISSING_DIO_TYPE = "Missing DIO device type for {}."
 MSG_INVALID_DIO_TYPE = "Invalid DIO device type for {}."
 MSG_ATTACH_SELECT = "Select exactly two nodes (one DIO device and one host device)."
@@ -887,7 +894,7 @@ class TopologyEditor(tk.Tk):
         list_frame.pack(fill="both", expand=True, pady=(4, 6))
         self.node_list = ttk.Treeview(
             list_frame,
-            columns=("can_id", "type", "label", "group", "tags"),
+            columns=("can_id", "type", "label", "group", "tags", "profiles"),
             show="headings",
             height=12,
             selectmode="extended",
@@ -897,11 +904,13 @@ class TopologyEditor(tk.Tk):
         self.node_list.heading("label", text="Label")
         self.node_list.heading("group", text="Group")
         self.node_list.heading("tags", text="Tags")
+        self.node_list.heading("profiles", text="Profiles")
         self.node_list.column("can_id", width=60, anchor="center")
         self.node_list.column("type", width=80, anchor="w")
         self.node_list.column("label", width=150, anchor="w")
         self.node_list.column("group", width=120, anchor="w")
         self.node_list.column("tags", width=100, anchor="w")
+        self.node_list.column("profiles", width=160, anchor="w")
         self.node_list.pack(side="left", fill="both", expand=True)
         node_scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.node_list.yview)
         node_scroll.pack(side="right", fill="y")
@@ -2736,7 +2745,7 @@ class TopologyEditor(tk.Tk):
     def _canonical_profiles_path() -> Path:
         if profiles_canonical_path is not None:
             return profiles_canonical_path()
-        return Path(__file__).resolve().parents[2] / "data" / "bringup_system.json"
+        return Path(__file__).resolve().parents[2] / "src" / "main" / "deploy" / "bringup_system.json"
 
     @staticmethod
     def _deploy_profiles_path() -> Path:
@@ -3164,6 +3173,10 @@ class TopologyEditor(tk.Tk):
                 entry_profile[KEY_DEVICES] = [
                     label for label in devices if str(label).strip() not in pending
                 ]
+            for topology_entry in topology_profiles.values():
+                if not isinstance(topology_entry, dict):
+                    continue
+                self._prune_topology_entry_device_refs(topology_entry, pending)
 
         profiles[profile_name] = self._profile_from_nodes()
         data["profiles"] = profiles
@@ -3187,6 +3200,54 @@ class TopologyEditor(tk.Tk):
         self._refresh_profile_choices(keep_selection=False)
         self._refresh_default_checkbox()
         messagebox.showinfo("Saved", f"Updated {path} with profile '{profile_name}'.")
+
+    def _prune_topology_entry_device_refs(
+        self,
+        topology_entry: Dict[str, object],
+        pending: set[str],
+    ) -> None:
+        """
+        NAME
+            _prune_topology_entry_device_refs - Remove deleted device refs from one saved topology profile.
+        """
+        nodes = topology_entry.get(KEY_TOPOLOGY_NODES)
+        if not isinstance(nodes, list) or not pending:
+            return
+        pending_lower = {label.lower() for label in pending}
+        removed_keys: set[int] = set()
+        kept_nodes: List[Dict[str, object]] = []
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            node_type = str(node.get("nodeType", node.get("objectType", TEXT_EMPTY))).strip().lower()
+            if node_type == NODE_TYPE_DEVICE:
+                device_ref = str(node.get(KEY_TOPOLOGY_DEVICE_REF, TEXT_EMPTY)).strip()
+                if device_ref.lower() in pending_lower:
+                    node_key = node.get("key")
+                    if isinstance(node_key, int):
+                        removed_keys.add(node_key)
+                    continue
+            kept_nodes.append(node)
+        if removed_keys:
+            kept_nodes = [
+                node
+                for node in kept_nodes
+                if not (
+                    isinstance(node, dict)
+                    and str(node.get("nodeType", TEXT_EMPTY)).strip().lower() == NODE_TYPE_CALLOUT
+                    and node.get("targetNodeKey") in removed_keys
+                )
+            ]
+        topology_entry[KEY_TOPOLOGY_NODES] = kept_nodes
+        edges = topology_entry.get(KEY_TOPOLOGY_EDGES)
+        if isinstance(edges, list) and removed_keys:
+            topology_entry[KEY_TOPOLOGY_EDGES] = [
+                edge
+                for edge in edges
+                if isinstance(edge, dict)
+                and edge.get("fromNode") not in removed_keys
+                and edge.get("toNode") not in removed_keys
+            ]
 
     def _validate_nodes(self, nodes: Optional[List[Node]] = None) -> Optional[str]:
         """
@@ -3217,6 +3278,9 @@ class TopologyEditor(tk.Tk):
             else:
                 if not self._is_valid_can_id(node.can_id):
                     return f"Invalid CAN ID {node.can_id} for {node.label}."
+                generated_entry = self._device_entry_from_node(node)
+                if "manufacturer" not in generated_entry or "deviceType" not in generated_entry:
+                    return MSG_DEVICE_CAN_FIELDS_REQUIRED.format(node.label)
             strict_key = self._dup_key_for_node(node)
             if strict_key is not None:
                 vendor, dev_type, can_id = strict_key
@@ -3919,7 +3983,8 @@ class TopologyEditor(tk.Tk):
                 entry["tags"] = list(node.tags)
             return entry
         manufacturer = self._manufacturer_id_from_vendor(node.vendor)
-        device_type = self._device_type_id_from_name(node.device_type)
+        device_type_name = str(node.device_type or TEXT_EMPTY).strip()
+        device_type = self._device_type_id_from_name(device_type_name)
         entry = {
             KEY_LABEL: node.label,
             KEY_INTERFACE: profile_consts.INTERFACE_CAN if profile_consts is not None else INTERFACE_CAN,
@@ -3934,8 +3999,8 @@ class TopologyEditor(tk.Tk):
             entry["model"] = node.motor
         if node.device_type and not node.motor:
             entry["model"] = node.device_type
-        if node.device_type and node.device_type.strip():
-            entry["type"] = self._device_def_type_from_device_name(node.device_type)
+        if device_type_name:
+            entry["type"] = self._device_def_type_from_device_name(device_type_name)
         if node.tags:
             entry["tags"] = list(node.tags)
         if node.terminator is not None:
@@ -4000,6 +4065,16 @@ class TopologyEditor(tk.Tk):
         key = name.strip().upper()
         if not key:
             return None
+        if "MOTORCONTROLLER" in key:
+            return DEVTYPE_MOTOR
+        if "ENCODER" == key or "ENCODEREXTERNAL" in key:
+            return DEVTYPE_ENCODER
+        if "GYROSENSOR" in key:
+            return DEVTYPE_GYRO
+        if "POWERDISTRIBUTIONMODULE" in key:
+            return DEVTYPE_POWER
+        if "MISCELLANEOUS" in key:
+            return DEVTYPE_MISC
         if "NEO" in key or "FLEX" in key or "KRAKEN" in key or "FALCON" in key:
             return DEVTYPE_MOTOR
         if "CANCODER" in key or "ENCODER" in key:
@@ -4018,6 +4093,14 @@ class TopologyEditor(tk.Tk):
         key = name.strip().upper()
         if not key:
             return ""
+        if "MOTORCONTROLLER" in key:
+            return profile_consts.TYPE_MOTOR if profile_consts is not None else "motor"
+        if "ENCODER" == key or "ENCODEREXTERNAL" in key:
+            return (
+                profile_consts.TYPE_ENCODER_EXTERNAL
+                if profile_consts is not None
+                else "encoderExternal"
+            )
         if "NEO" in key or "FLEX" in key or "KRAKEN" in key or "FALCON" in key:
             return profile_consts.TYPE_MOTOR if profile_consts is not None else "motor"
         if "CANCODER" in key or "ENCODER" in key:
@@ -6051,6 +6134,165 @@ class TopologyEditor(tk.Tk):
                 refs.append(str(profile_name))
         return refs
 
+    def _profiles_by_label(self) -> Dict[str, List[str]]:
+        """
+        NAME
+            _profiles_by_label - Return profile memberships keyed by device label.
+        """
+        memberships: Dict[str, List[str]] = {}
+        source_path = Path(self._profile_source_path) if self._profile_source_path else self._default_profiles_path()
+        data: Dict[str, object] = {}
+        if source_path.exists():
+            try:
+                loaded = read_json(source_path)
+                if isinstance(loaded, dict):
+                    data = loaded
+            except Exception:
+                data = {}
+        profiles = data.get(KEY_PROFILES)
+        if isinstance(profiles, dict):
+            for profile_name, profile in profiles.items():
+                if not isinstance(profile, dict):
+                    continue
+                devices = profile.get(KEY_DEVICES)
+                if not isinstance(devices, list):
+                    continue
+                clean_name = str(profile_name).strip()
+                if not clean_name:
+                    continue
+                for label in devices:
+                    label_text = str(label).strip()
+                    if not label_text:
+                        continue
+                    memberships.setdefault(label_text, [])
+                    if clean_name not in memberships[label_text]:
+                        memberships[label_text].append(clean_name)
+        topology_root = data.get(KEY_TOPOLOGY)
+        if isinstance(topology_root, dict):
+            topology_profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
+            if isinstance(topology_profiles, dict):
+                for profile_name, topology_entry in topology_profiles.items():
+                    clean_name = str(profile_name).strip()
+                    if not clean_name:
+                        continue
+                    for label_text, _entry in self._topology_inventory_entries(topology_entry).items():
+                        memberships.setdefault(label_text, [])
+                        if clean_name not in memberships[label_text]:
+                            memberships[label_text].append(clean_name)
+        current_profile = str(self._profile_name or TEXT_EMPTY).strip()
+        if current_profile:
+            current_labels = {
+                (node.label or TEXT_EMPTY).strip()
+                for node in self._profile_device_nodes()
+                if (node.label or TEXT_EMPTY).strip()
+            }
+            current_labels.update(
+                label.strip()
+                for label in list(self.__dict__.get("_non_topology_profile_labels", []) or [])
+                if str(label).strip()
+            )
+            for label_text, profile_names in memberships.items():
+                if current_profile in profile_names and label_text not in current_labels:
+                    memberships[label_text] = [
+                        profile_name for profile_name in profile_names if profile_name != current_profile
+                    ]
+            for label_text in current_labels:
+                memberships.setdefault(label_text, [])
+                if current_profile not in memberships[label_text]:
+                    memberships[label_text].append(current_profile)
+        return {
+            label: sorted(profile_names)
+            for label, profile_names in memberships.items()
+            if profile_names
+        }
+
+    def _topology_inventory_entries(self, topology_entry: object) -> Dict[str, Dict[str, object]]:
+        """
+        NAME
+            _topology_inventory_entries - Extract label-keyed inventory metadata from one topology entry.
+        """
+        if not isinstance(topology_entry, dict):
+            return {}
+        topology_nodes = topology_entry.get(KEY_TOPOLOGY_NODES)
+        if not isinstance(topology_nodes, list):
+            return {}
+        entries: Dict[str, Dict[str, object]] = {}
+        for node in topology_nodes:
+            if not isinstance(node, dict):
+                continue
+            node_type = str(
+                node.get(KEY_TOPOLOGY_OBJECT_TYPE)
+                or node.get(KEY_TOPOLOGY_NODE_TYPE)
+                or EMPTY_STRING
+            ).strip().lower()
+            if node_type == NODE_TYPE_CALLOUT:
+                continue
+            label_text = str(
+                node.get(KEY_TOPOLOGY_DEVICE_REF)
+                or node.get(KEY_LABEL)
+                or EMPTY_STRING
+            ).strip()
+            if not label_text:
+                continue
+            entry = entries.setdefault(label_text, {KEY_LABEL: label_text})
+            category_text = str(node.get(KEY_CATEGORY, EMPTY_STRING)).strip()
+            if not category_text:
+                inferred = self._infrastructure_category_from_label(label_text)
+                if inferred:
+                    category_text = inferred
+            if category_text and not str(entry.get(KEY_CATEGORY, EMPTY_STRING)).strip():
+                entry[KEY_CATEGORY] = category_text
+            node_id = node.get(KEY_ID)
+            if isinstance(node_id, int) and node_id >= 0 and not isinstance(entry.get(KEY_ID), int):
+                entry[KEY_ID] = node_id
+            tags = self._normalize_tags(node.get(KEY_TAGS, []))
+            if tags and not entry.get(KEY_TAGS):
+                entry[KEY_TAGS] = tags
+        return entries
+
+    def _full_config_inventory_entries(self) -> Dict[str, Dict[str, object]]:
+        """
+        NAME
+            _full_config_inventory_entries - Return all known config objects keyed by label.
+        """
+        entries: Dict[str, Dict[str, object]] = {}
+        for label, entry in self._device_registry.items():
+            label_text = str(label).strip()
+            if not label_text or not isinstance(entry, dict):
+                continue
+            entries[label_text] = dict(entry)
+        source_path = Path(self._profile_source_path) if self._profile_source_path else self._default_profiles_path()
+        if not source_path.exists():
+            return entries
+        try:
+            loaded = read_json(source_path)
+        except Exception:
+            return entries
+        if not isinstance(loaded, dict):
+            return entries
+        topology_root = loaded.get(KEY_TOPOLOGY)
+        if not isinstance(topology_root, dict):
+            return entries
+        topology_profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
+        if not isinstance(topology_profiles, dict):
+            return entries
+        for topology_entry in topology_profiles.values():
+            for label_text, entry in self._topology_inventory_entries(topology_entry).items():
+                existing = entries.get(label_text)
+                if isinstance(existing, dict):
+                    if (
+                        not str(existing.get(KEY_CATEGORY, EMPTY_STRING)).strip()
+                        and str(entry.get(KEY_CATEGORY, EMPTY_STRING)).strip()
+                    ):
+                        existing[KEY_CATEGORY] = entry.get(KEY_CATEGORY)
+                    if not isinstance(existing.get(KEY_ID), int) and isinstance(entry.get(KEY_ID), int):
+                        existing[KEY_ID] = entry.get(KEY_ID)
+                    if not existing.get(KEY_TAGS) and entry.get(KEY_TAGS):
+                        existing[KEY_TAGS] = entry.get(KEY_TAGS)
+                    continue
+                entries[label_text] = dict(entry)
+        return entries
+
     def _remove_registry_entry_by_label(self, label: str) -> None:
         """
         NAME
@@ -6073,8 +6315,10 @@ class TopologyEditor(tk.Tk):
         """
         label = str(self._selected_inventory_label or TEXT_EMPTY).strip()
         entry = self._inventory_entry_for_label(label)
-        if not isinstance(entry, dict) or not self._is_xbox_controller_entry(entry):
+        if not isinstance(entry, dict):
             return False
+        if not self._is_xbox_controller_entry(entry):
+            return self._delete_inventory_entry_globally(label)
         if label not in self._non_topology_profile_labels:
             messagebox.showinfo("Remove", f"'{label}' is not in the current profile.")
             return True
@@ -6088,6 +6332,43 @@ class TopologyEditor(tk.Tk):
             existing for existing in self._non_topology_profile_labels if existing != label
         ]
         self._prune_current_profile_bridge_config_label(label)
+        self._selected_inventory_label = None
+        self._dirty = True
+        self._refresh_list()
+        self._update_details_panel(None)
+        self._update_selection_overlays()
+        return True
+
+    def _delete_inventory_entry_globally(self, label: str) -> bool:
+        """
+        NAME
+            _delete_inventory_entry_globally - Remove one inventory-only device from the shared config.
+        """
+        label_text = str(label).strip()
+        if not label_text:
+            return False
+        refs = [name for name in self._profile_references_for_label(label_text) if str(name).strip()]
+        if refs:
+            proceed = messagebox.askyesno(
+                "Remove",
+                MSG_INVENTORY_DELETE_REFERENCED.format(
+                    label=label_text,
+                    profiles=NEWLINE.join(refs),
+                ),
+            )
+        else:
+            proceed = messagebox.askyesno(
+                "Remove",
+                MSG_INVENTORY_DELETE_CONFIRM.format(label_text),
+            )
+        if not proceed:
+            return True
+        self._remove_registry_entry_by_label(label_text)
+        self._pending_global_device_deletions.add(label_text)
+        self._non_topology_profile_labels = [
+            existing for existing in self._non_topology_profile_labels if existing != label_text
+        ]
+        self._prune_bridge_config_label(label_text)
         self._selected_inventory_label = None
         self._dirty = True
         self._refresh_list()
@@ -7454,6 +7735,7 @@ class TopologyEditor(tk.Tk):
         for item in self.node_list.get_children():
             self.node_list.delete(item)
         node_groups = self._node_groups_by_label()
+        profiles_by_label = self._profiles_by_label() if self._list_scope_var.get() == LIST_SCOPE_FULL else {}
         nodes = list(self._device_nodes())
         if self._tag_filter_fn is not None:
             nodes = [n for n in nodes if self._tag_filter_fn(n)]
@@ -7467,19 +7749,18 @@ class TopologyEditor(tk.Tk):
             can_id = "" if not isinstance(node.can_id, int) or node.can_id < 0 else str(node.can_id)
             groups = SEP_COMMA_SPACE.join(node_groups.get(node.label, []))
             tags = self._tags_to_string(node.tags)
+            profiles = SEP_COMMA_SPACE.join(profiles_by_label.get(node.label, []))
             self.node_list.insert(
                 "",
                 "end",
                 iid=str(node.key),
-                values=(can_id, node.category, node.label, groups, tags),
+                values=(can_id, node.category, node.label, groups, tags, profiles),
             )
         if self._list_scope_var.get() == LIST_SCOPE_FULL:
-            registry_source = {
-                str(label).strip()
-                for label in self._device_registry.keys()
-                if str(label).strip()
-            }
+            full_inventory_entries = self._full_config_inventory_entries()
+            registry_source = set(full_inventory_entries.keys())
         else:
+            full_inventory_entries = {}
             registry_source = {
                 str(label).strip()
                 for label in list(self.__dict__.get("_non_topology_profile_labels", []) or [])
@@ -7487,7 +7768,11 @@ class TopologyEditor(tk.Tk):
             }
         registry_labels = sorted(label for label in registry_source if label not in node_labels)
         for label in registry_labels:
-            entry = self._inventory_entry_for_label(label)
+            entry = (
+                full_inventory_entries.get(label)
+                if self._list_scope_var.get() == LIST_SCOPE_FULL
+                else self._inventory_entry_for_label(label)
+            )
             if isinstance(entry, dict):
                 can_id = TEXT_EMPTY
                 if self._is_can_device_entry(entry):
@@ -7498,18 +7783,22 @@ class TopologyEditor(tk.Tk):
                 elif self._is_dio_device_entry(entry):
                     category = GENERIC_CATEGORY
                 else:
-                    category = str(entry.get(KEY_TYPE, GENERIC_CATEGORY)).strip() or GENERIC_CATEGORY
+                    category = (
+                        str(entry.get(KEY_CATEGORY) or entry.get(KEY_TYPE) or GENERIC_CATEGORY).strip()
+                        or GENERIC_CATEGORY
+                    )
                 tags = self._tags_to_string(self._normalize_tags(entry.get(KEY_TAGS, [])))
             else:
                 can_id = TEXT_EMPTY
                 category = GENERIC_CATEGORY
                 tags = TEXT_EMPTY
             groups = SEP_COMMA_SPACE.join(node_groups.get(label, []))
+            profiles = SEP_COMMA_SPACE.join(profiles_by_label.get(label, []))
             self.node_list.insert(
                 TEXT_EMPTY,
                 "end",
                 iid=self._inventory_row_id(label),
-                values=(can_id, category, label, groups, tags),
+                values=(can_id, category, label, groups, tags, profiles),
             )
 
     def _on_list_scope_changed(self, _event: tk.Event) -> None:
@@ -11010,7 +11299,7 @@ class TopologyEditor(tk.Tk):
             "Profiles & Export": (
                 "Purpose: Save or export diagram data.\n"
                 "\n"
-                "- Save to Deploy writes to data/bringup_system.json and syncs to src/main/deploy.\n"
+                "- Save to Deploy writes to src/main/deploy/bringup_system.json.\n"
                 "- Save Profile As... exports a single profile JSON.\n"
                 "- Export PDF requires reportlab.\n"
             ),

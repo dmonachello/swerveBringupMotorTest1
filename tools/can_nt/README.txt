@@ -6,15 +6,15 @@ What this is
 - Publishes device presence/age/count to NetworkTables under /bringup/diag/...
 - Optionally publishes a CAN arbitration-ID summary (as JSON)
 - Optionally writes a Wireshark-readable capture (.pcapng preferred)
-- Optional Bridge CLI for TCP command/control (no CAN access required)
+- Optional Bridge CLI for REST command/control (no CAN access required)
 
 Folder contents
 - can_nt_bridge.py        Main program (run this)
-- can_profiles.py         Profile device tables loaded from data/bringup_system.json (canonical)
+- can_profiles.py         Profile device tables loaded from src/main/deploy/bringup_system.json
 - can_analyzer.py         Tracks arbitration IDs: rates, stale/missing, changing bytes
 - can_logging.py          PCAP/PCAPNG logging wrapper
 - can_nt_publish.py       NetworkTables publishing helpers
-- bridge_cli.py           TCP CLI front end for robot UI commands
+- bridge_cli.py           REST CLI front end for robot UI commands
 - run_can_robot.bat       Convenience runner (robot profile)
 - run_can_demo.bat        Convenience runner (demo_club profile)
 - install_deps.bat        Installs Python dependencies via pip
@@ -75,7 +75,7 @@ Robot run with capture:
   python -m tools.can_nt.can_nt_bridge --profile robot --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --publish-can-summary --pcap tools\can_nt\logs\robot_run.pcapng
 Robot run with live Wireshark pipe:
   python -m tools.can_nt.can_nt_bridge --profile robot --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --publish-can-summary --pcap-pipe FRC_CAN
-Bridge CLI (TCP only, no CAN required):
+Bridge CLI (REST only, no CAN required):
   python -m tools.can_nt.can_nt_bridge --cli --no-can --rio 172.22.11.2
 
 Dump observed arbitration IDs and exit:

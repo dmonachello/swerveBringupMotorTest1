@@ -34,7 +34,7 @@ Purpose: Convert existing profiles to schema v4.
 3) Sync to deploy:
    python -m tools.validate_sync
 4) Validate:
-   python tools\can_topology\validate_profiles.py --path data\bringup_system.json --strict
+   python tools\can_topology\validate_profiles.py --path src\main\deploy\bringup_system.json --strict
 
 Compatibility
 Purpose: Explain how tools consume schema v4.

@@ -8,7 +8,7 @@ import frc.robot.status.generated.StatusMessagesGenerated;
  *   StatusRuntime - Shared VMS-style status helpers for Java command paths.
  *
  * DESCRIPTION
- *   Provides consistent status labels and status-code selection for UI/TCP
+ *   Provides consistent status labels and status-code selection for UI/host
  *   acknowledgements while preserving existing legacy string fields.
  */
 public final class StatusRuntime {

@@ -2,19 +2,17 @@ package frc.robot.commands.local;
 
 /**
  * NAME
- *   RobotLocalCommandExecutor - Single-active-command executor with one queue slot.
+ *   RobotLocalCommandExecutor - Single-active-command executor with no queue.
  */
 public final class RobotLocalCommandExecutor {
   private static final String MESSAGE_UNKNOWN_COMMAND_PREFIX = "Unknown command: ";
   private static final String MESSAGE_COMMAND_NOT_ALLOWED_PREFIX = "Command source not allowed: ";
-  private static final String MESSAGE_QUEUE_FULL = "Queued command slot already occupied.";
   private static final String MESSAGE_ACTIVE_BUSY = "Another command is already active.";
   private static final String REASON_PREEMPTED = "preempted";
   private static final String REASON_SOURCE_LOSS = "sourceLoss";
 
   private final RobotLocalCommandHost host;
   private ActiveCommand active;
-  private ActiveCommand queued;
 
   public RobotLocalCommandExecutor(RobotLocalCommandHost host) {
     this.host = host;
@@ -47,7 +45,6 @@ public final class RobotLocalCommandExecutor {
       RobotLocalExecutionResult executionResult = runActiveOnce(active);
       if (isTerminal(executionResult)) {
         active = null;
-        startQueuedIfPresent();
       }
       return RobotLocalDispatchResult.accepted(
           RobotLocalDispatchStatus.ACCEPTED,
@@ -61,37 +58,23 @@ public final class RobotLocalCommandExecutor {
       RobotLocalExecutionResult executionResult = runActiveOnce(active);
       if (isTerminal(executionResult)) {
         active = null;
-        startQueuedIfPresent();
       }
       return RobotLocalDispatchResult.accepted(
           RobotLocalDispatchStatus.INTERRUPTED_AND_ACCEPTED,
           executionResult.message(),
           executionResult);
     }
-
-    if (request.dispatchMode() == RobotLocalDispatchMode.QUEUE && definition.queueable()) {
-      if (queued != null) {
-        return RobotLocalDispatchResult.rejected(MESSAGE_QUEUE_FULL);
-      }
-      queued = candidate;
-      return RobotLocalDispatchResult.accepted(
-          RobotLocalDispatchStatus.QUEUED,
-          definition.wireName() + " queued.",
-          RobotLocalExecutionResult.running(definition.wireName() + " queued."));
-    }
     return RobotLocalDispatchResult.rejected(MESSAGE_ACTIVE_BUSY);
   }
 
   public void step() {
     if (active == null) {
-      startQueuedIfPresent();
       return;
     }
     if (active.definition.autoStopOnSourceLoss()
         && !active.request.valueProvider().isCommandActive(active.definition.wireName())) {
       interruptActive(active.definition, active.request, false, RobotLocalCommandSource.CONTROLLER);
       active = null;
-      startQueuedIfPresent();
       return;
     }
     RobotLocalExecutionResult result = runActiveOnce(active);
@@ -100,7 +83,6 @@ public final class RobotLocalCommandExecutor {
         || result.state() == RobotLocalExecutionState.INTERRUPTED
         || result.state() == RobotLocalExecutionState.REJECTED) {
       active = null;
-      startQueuedIfPresent();
     }
   }
 
@@ -170,15 +152,6 @@ public final class RobotLocalCommandExecutor {
             : REASON_PREEMPTED),
         latchSafety);
     active = null;
-  }
-
-  private void startQueuedIfPresent() {
-    if (queued == null) {
-      return;
-    }
-    active = queued;
-    queued = null;
-    runActiveOnce(active);
   }
 
   private static final class ActiveCommand {

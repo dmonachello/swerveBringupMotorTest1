@@ -41,7 +41,7 @@ Shared Layers
 Purpose: Define the shared modules used by multiple surfaces.
 
 BridgeSession
-Purpose: Centralize TCP connection, ACK/OUT parsing, and runtime state snapshot.
+Purpose: Centralize REST session ownership, ACK/OUT compatibility parsing, and runtime state snapshot.
 - Used by: CLI and GUI.
 
 bridge_ops
@@ -59,13 +59,13 @@ Data Ownership
 Purpose: Specify who owns which data.
 - devices table + profiles + diagram: owned by topology editor or manual JSON edits.
 - Per-profile bridge metadata (groups, bindings, selected device): shared between topology editor, CLI, and runtime tools.
-- Runtime state: owned by robot (TCP UI) and published to NT for dashboards.
+- Runtime state: owned by robot (REST command server) and published to NT for dashboards.
 
 Host vs Robot Context
 Purpose: Prevent "active profile" confusion across surfaces.
 - Host context: local editing/inspection state (which profile the CLI/topology editor is operating on).
 - Robot context: runtime state on the roboRIO (which profile is active and which test is selected/running).
-- Rule: host context MUST NOT change robot context unless an explicit TCP robot command is executed (e.g., `profiles activate`, `tests select/run`).
+- Rule: host context MUST NOT change robot context unless an explicit robot REST command is executed (e.g., `profiles activate`, `tests select/run`).
 - Show commands support `[robot|local|both]` for many targets; `show workspace` is host-only.
 
 File Map (By Surface)

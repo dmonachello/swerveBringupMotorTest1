@@ -16,8 +16,8 @@ DESCRIPTION
     location for tests.
 
 SIDE EFFECTS
-    Reads template files, prompts on stdin, writes bringup_system.json and its
-    deploy copy.
+    Reads template files, prompts on stdin, and writes the deploy-owned
+    bringup_system.json file.
 """
 
 import argparse

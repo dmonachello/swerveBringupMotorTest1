@@ -8,7 +8,7 @@ import frc.robot.status.StatusRuntime;
  *   BridgeUiOutputFacade - Publish Bridge UI command outputs to NetworkTables.
  *
  * DESCRIPTION
- *   Centralizes UI ACK/OUT/TCP monitor publication for BridgeUiCommandHandler so
+ *   Centralizes UI ACK/OUT publication for BridgeUiCommandHandler so
  *   output-side contract logic is isolated behind a stable facade boundary.
  */
 public final class BridgeUiOutputFacade {
@@ -35,49 +35,16 @@ public final class BridgeUiOutputFacade {
   private static final String NT_KEY_STATE_PROTOCOL_VERSION = "state/protocolVersion";
   private static final String NT_KEY_STATE_ACTIVE_CLIENT = "state/activeClientId";
 
-  private static final String NT_KEY_TCP_ENABLED = "enabled";
-  private static final String NT_KEY_TCP_CONNECTED = "connected";
-  private static final String NT_KEY_TCP_LAST_SEQ = "lastSeq";
-  private static final String NT_KEY_TCP_LAST_NAME = "lastName";
-  private static final String NT_KEY_TCP_LAST_STATUS = "lastStatus";
-  private static final String NT_KEY_TCP_LAST_CODE = "lastCode";
-  private static final String NT_KEY_TCP_LAST_MESSAGE = "lastMessage";
-  private static final String NT_KEY_TCP_ACTIVE_CLIENT = "activeClientId";
-
   private final NetworkTable uiTable;
-  private final NetworkTable uiTcpTable;
   private final int uiProtocolVersion;
 
   /**
    * NAME
    *   BridgeUiOutputFacade - Build output publisher facade for UI command surfaces.
    */
-  public BridgeUiOutputFacade(NetworkTable uiTable, NetworkTable uiTcpTable, int uiProtocolVersion) {
+  public BridgeUiOutputFacade(NetworkTable uiTable, int uiProtocolVersion) {
     this.uiTable = uiTable;
-    this.uiTcpTable = uiTcpTable;
     this.uiProtocolVersion = uiProtocolVersion;
-  }
-
-  /**
-   * NAME
-   *   publishUiTcpMonitor - Publish TCP monitor fields for the last command.
-   */
-  public void publishUiTcpMonitor(
-      long seq,
-      String name,
-      String clientId,
-      boolean monitorEnabled,
-      boolean ok,
-      int code,
-      String message) {
-    uiTcpTable.getEntry(NT_KEY_TCP_ENABLED).setBoolean(monitorEnabled);
-    uiTcpTable.getEntry(NT_KEY_TCP_CONNECTED).setBoolean(true);
-    uiTcpTable.getEntry(NT_KEY_TCP_LAST_SEQ).setInteger(seq);
-    uiTcpTable.getEntry(NT_KEY_TCP_LAST_NAME).setString(coalesce(name));
-    uiTcpTable.getEntry(NT_KEY_TCP_LAST_STATUS).setString(StatusRuntime.ackLabel(ok));
-    uiTcpTable.getEntry(NT_KEY_TCP_LAST_CODE).setInteger(code);
-    uiTcpTable.getEntry(NT_KEY_TCP_LAST_MESSAGE).setString(coalesce(message));
-    uiTcpTable.getEntry(NT_KEY_TCP_ACTIVE_CLIENT).setString(coalesce(clientId));
   }
 
   /**

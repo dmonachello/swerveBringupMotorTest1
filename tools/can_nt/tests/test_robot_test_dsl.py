@@ -117,6 +117,49 @@ class RobotTestDslTests(unittest.TestCase):
         )
         self.assertTrue(result.ok(), [issue.message for issue in result.errors])
 
+    def test_validate_store_accepts_qualified_motor_signal_names(self) -> None:
+        source = '\n'.join(
+            [
+                'test "spin"',
+                'device "motor1"',
+                'device "controller0"',
+                "main:",
+                "  set motor1.output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0",
+                "  until timer.elapsed >= 3.0",
+                "  require motor1.velocity_actual > 1000",
+                "  abort motor1.current_actual > 35",
+            ]
+        )
+        store = RobotTestDslStore(
+            tests_by_name={
+                "spin": RobotTestDslEntry(
+                    name="spin",
+                    source=source,
+                    normalized=compile_source("spin", source),
+                    source_hash=source_hash(source),
+                )
+            },
+            test_sets={"default": ["spin"]},
+            default_set="default",
+        )
+        result = validate_store(
+            store,
+            device_catalog={"motor1": {"type": "motor"}, "controller0": {"type": "xboxController"}},
+            signal_catalog={
+                "motor": {
+                    "output_percent_cmd": {"writable": True, "safeValue": 0.0, "valueType": "number"},
+                    "velocity_actual": {"writable": False, "readable": True, "valueType": "number"},
+                    "current_actual": {"writable": False, "readable": True, "valueType": "number"},
+                    "faults": {"clearable": True, "valueType": "boolean", "writable": False},
+                },
+                "xboxController": {
+                    "leftY": {"writable": False, "readable": True, "valueType": "number"},
+                },
+                "TestTimer": {"elapsed": {"writable": False, "valueType": "number"}},
+            },
+        )
+        self.assertTrue(result.ok(), [issue.message for issue in result.errors])
+
     def test_validate_store_rejects_motor_source_signal_set(self) -> None:
         source = '\n'.join(
             [

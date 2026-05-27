@@ -6,6 +6,5 @@ package frc.robot.commands.local;
  */
 public enum RobotLocalDispatchMode {
   IMMEDIATE,
-  QUEUE,
   INTERRUPT
 }

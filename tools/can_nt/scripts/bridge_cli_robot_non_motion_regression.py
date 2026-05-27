@@ -8,12 +8,13 @@ SYNOPSIS
     python tools/can_nt/scripts/bridge_cli_robot_non_motion_regression.py --rio 172.22.11.2
 
 DESCRIPTION
-    Runs a deterministic regression sequence against BridgeCli over TCP UI using
+    Runs a deterministic regression sequence against BridgeCli over the robot
+    REST command server using
     only non-motion commands. The script validates connectivity, read-only show
     paths, and basic mode transitions without issuing test-run or motor commands.
 
 NOTES
-    This script requires a reachable roboRIO TCP UI endpoint.
+    This script requires a reachable roboRIO REST command endpoint.
 """
 
 import argparse
@@ -36,11 +37,12 @@ from tools.can_nt.status import (
     SS__NETWORK__CONNECT_FAILED,
     SS__NETWORK__HANDSHAKE_FAILED,
     SS__NETWORK__NOT_CONNECTED,
+    SS__NETWORK__ROBOT_UNAVAILABLE,
     SS__NORMAL,
 )
 
 DEFAULT_RIO = "172.22.11.2"
-DEFAULT_UI_TCP_PORT = 5809
+DEFAULT_UI_REST_PORT = 5805
 
 CMD_PING = "ping"
 CMD_CONNECT = "connect"
@@ -100,10 +102,10 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--rio", default=DEFAULT_RIO, help="roboRIO host/IP.")
     parser.add_argument(
-        "--ui-tcp-port",
+        "--ui-rest-port",
         type=int,
-        default=DEFAULT_UI_TCP_PORT,
-        help="TCP UI port.",
+        default=DEFAULT_UI_REST_PORT,
+        help="Robot REST command port.",
     )
     return parser.parse_args()
 
@@ -206,25 +208,25 @@ def _non_motion_checks() -> Sequence[CommandCheck]:
         ),
         CommandCheck("configure terminal", CMD_CONFIGURE_TERMINAL, (SS__NORMAL,), tuple()),
         CommandCheck("show groups both", CMD_SHOW_GROUPS_BOTH, (SS__NORMAL,), (TEXT_SOURCE_LOCAL, TEXT_SOURCE_ROBOT)),
-        CommandCheck("show workspace", CMD_SHOW_WORKSPACE, (SS__NORMAL,), (TEXT_SOURCE_LOCAL,)),
+        CommandCheck("show workspace", CMD_SHOW_WORKSPACE, (SS__NORMAL,), ("Profiles:",)),
         CommandCheck("end", CMD_END, (SS__NORMAL,), tuple()),
         CommandCheck("disconnect", CMD_DISCONNECT, (SS__NORMAL,), tuple()),
         CommandCheck(
             "show status robot after disconnect",
             CMD_SHOW_STATUS_ROBOT,
-            (SS__NETWORK__NOT_CONNECTED,),
-            tuple(),
+            (SS__NORMAL, SS__NETWORK__NOT_CONNECTED, SS__NETWORK__ROBOT_UNAVAILABLE),
+            ("ERROR: Robot source unavailable (not connected).",),
         ),
     )
 
 
-def _run_regression(rio: str, tcp_port: int) -> List[CheckResult]:
+def _run_regression(rio: str, rest_port: int) -> List[CheckResult]:
     """
     NAME
         _run_regression - Execute connected non-motion regression sequence.
     """
     results: List[CheckResult] = []
-    session = BridgeSession(rio, int(tcp_port), auto_handshake=False)
+    session = BridgeSession(rio, int(rest_port), auto_handshake=False)
     cli = BridgeCli(session, batch=True)
     if not _initial_connect(cli, results):
         return results
@@ -256,7 +258,7 @@ def main() -> int:
         main - Entrypoint for connected non-motion regression script.
     """
     args = _parse_args()
-    results = _run_regression(str(args.rio), int(args.ui_tcp_port))
+    results = _run_regression(str(args.rio), int(args.ui_rest_port))
     return _print_results(results)
 
 

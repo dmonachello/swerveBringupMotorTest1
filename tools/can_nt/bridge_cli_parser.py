@@ -59,12 +59,18 @@ SHOW_TARGET_TOPOLOGY = "topology"
 SHOW_TARGET_NEIGHBORS = "neighbors"
 SHOW_TARGET_DEVICE_USAGE = "device-usage"
 SHOW_TARGET_BINDING_USAGE = "binding-usage"
+SHOW_TARGET_ACTIVE = "active"
+SHOW_TARGET_INSTANTIATED = "instantiated"
+SHOW_TARGET_FAULTS = "faults"
+SHOW_TARGET_SIGNALS = "signals"
+SHOW_TARGET_SIGNAL = "signal"
 CMD_CONFIG = "config"
 CMD_SHOW = "show"
 CMD_LS = "ls"
 CMD_CONFIGURE = "configure"
 CMD_PROFILE = "profile"
 CMD_PROFILES = "profiles"
+CMD_RUNTIME = "runtime"
 CMD_DEVICE = "device"
 CMD_DEVICES = "devices"
 CMD_GROUP = "group"
@@ -223,6 +229,15 @@ class BridgeCliParser:
         self._show_flags = set(SPEC.show_flags)
         self._show_targets = set(SPEC.show_targets)
         self._show_targets.add(SHOW_TARGET_NEIGHBORS)
+        self._show_targets.update(
+            {
+                SHOW_TARGET_ACTIVE,
+                SHOW_TARGET_INSTANTIATED,
+                SHOW_TARGET_FAULTS,
+                SHOW_TARGET_SIGNALS,
+                SHOW_TARGET_SIGNAL,
+            }
+        )
         self._bind_kinds = set(SPEC.bind_kinds)
         self._modes = set(SPEC.modes)
         self._mode = SPEC.modes[SPEC.idx_exec]
@@ -234,6 +249,8 @@ class BridgeCliParser:
             SPEC.modes[SPEC.idx_test]: set(SPEC.mode_test_cmds),
         }
         self._mode_cmds[SPEC.modes[SPEC.idx_config]].add(CMD_TOPOLOGY)
+        self._mode_cmds[SPEC.modes[SPEC.idx_exec]].add(CMD_RUNTIME)
+        self._mode_cmds[SPEC.modes[SPEC.idx_config]].add(CMD_RUNTIME)
         self._dispatch = self._build_dispatch()
         self._grammar = CliGrammarModel.from_ebnf(EBNF_PATH)
 
@@ -275,6 +292,8 @@ class BridgeCliParser:
                 return self._handle_clear_command
             if cmd == SPEC.cmd_run.lower():
                 return self._handle_run_command
+            if cmd == CMD_RUNTIME:
+                return self._handle_runtime_command
             return None
         if mode == SPEC.modes[SPEC.idx_config]:
             if cmd == SPEC.cmd_show.lower():
@@ -299,6 +318,8 @@ class BridgeCliParser:
                 return self._handle_clear_command
             if cmd == SPEC.cmd_run.lower():
                 return self._handle_run_command
+            if cmd == CMD_RUNTIME:
+                return self._handle_runtime_command
             if cmd == SPEC.cmd_selected_device.lower():
                 return self._handle_selected_device
             if cmd == SPEC.cmd_selected_mode.lower():
@@ -1946,6 +1967,18 @@ class BridgeCliParser:
                 self._reject_extra(tokens, SPEC.count_three, SPEC.cmd_push)
             return
         self._reject_extra(tokens, SPEC.count_three, SPEC.cmd_push)
+
+    def _handle_runtime_command(self, tokens: List[str]) -> None:
+        if len(tokens) < SPEC.count_two:
+            raise CliParseError("runtime requires activate [<profile>] or deactivate")
+        action = tokens[SPEC.count_one].lower()
+        if action == SPEC.cmd_activate_profile:
+            self._reject_extra(tokens, SPEC.count_three if len(tokens) >= SPEC.count_three else SPEC.count_two, CMD_RUNTIME)
+            return
+        if action == "deactivate":
+            self._reject_extra(tokens, SPEC.count_two, CMD_RUNTIME)
+            return
+        raise CliParseError("runtime requires activate [<profile>] or deactivate")
 
     def _handle_config_command(self, tokens: List[str]) -> None:
         if len(tokens) < SPEC.count_three or tokens[SPEC.count_one].lower() != SPEC.cmd_push:

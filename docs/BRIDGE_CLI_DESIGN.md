@@ -152,7 +152,7 @@ Show sources:
 
 - `show <...> robot|local|both` selects data source.
 - Default is `robot` when connected, otherwise `local`.
-- Local source reads `bridgeConfig.byProfile` from `data/bringup_system.json` plus profile-derived devices.
+- Local source reads `bridgeConfig.byProfile` from `src/main/deploy/bringup_system.json` plus profile-derived devices.
 - Each show output is prefixed with `SOURCE: robot|local`.
 - `show group` text output includes members and bindings.
 - `show devices` (local) lists the full profile-derived device inventory, not only group members.

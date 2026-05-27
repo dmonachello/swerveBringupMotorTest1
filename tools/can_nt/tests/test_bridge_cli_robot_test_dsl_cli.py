@@ -10,6 +10,12 @@ from unittest.mock import patch
 from tools.can_nt.bridge_cli import BridgeCli, CliMode, MODE_CONFIG
 from tools.can_nt.bridge_session import BridgeEvent
 from tools.can_nt.status import SS__NORMAL, StatusResult
+from tools.common.robot_test_dsl import (
+    RobotTestDslEntry,
+    RobotTestDslStore,
+    compile_source as compile_robot_test_dsl_source,
+    store_to_payload as robot_test_dsl_store_to_payload,
+)
 
 
 class _FakeSession:
@@ -177,6 +183,138 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
             self.assertEqual(main_statement["deadband"], 0.08)
             self.assertEqual(main_statement["scale"], 0.25)
             self.assertEqual(main_statement["defaultLiteral"]["value"], 0.0)
+
+    def test_import_accepts_qualified_motor_signal_names(self) -> None:
+        cli = self._build_cli(include_controller=True)
+        source = (
+            'test "qualified_signals"\n'
+            'device "FALCON 9"\n'
+            'device "controller0"\n\n'
+            "main:\n"
+            '    set "FALCON 9".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n'
+            '    abort "FALCON 9".current_actual > 35\n'
+            '    require "FALCON 9".velocity_actual > 1000\n'
+            "    until timer.elapsed >= 3.0\n"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = Path(temp_dir) / "qualified_signals.dsl"
+            source_path.write_text(source, encoding="utf-8")
+
+            result = cli._dsl_test_command(["test", "import", "qualified_signals", str(source_path)])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        entry = cli._local_root_payload["dslTests"]["testsByName"]["qualified_signals"]
+        main_statement = entry["normalized"]["main"]["sets"][0]
+        self.assertEqual(main_statement["target"]["signal"], "output_percent_cmd")
+        self.assertEqual(
+            entry["normalized"]["main"]["aborts"][0]["reference"]["signal"],
+            "current_actual",
+        )
+        self.assertEqual(
+            entry["normalized"]["main"]["requires"][0]["reference"]["signal"],
+            "velocity_actual",
+        )
+
+    def test_import_validates_new_test_without_blocking_on_unrelated_invalid_store_entries(self) -> None:
+        cli = self._build_cli(include_controller=True)
+        cli._local_root_payload["dslTests"] = {
+            "schemaVersion": 1,
+            "defaultSet": "legacy",
+            "testSets": {"legacy": ["bad_old_test"]},
+            "testsByName": {
+                "bad_old_test": {
+                    "name": "bad_old_test",
+                    "source": 'test "bad_old_test"\ndevice "Missing Device"\n\nmain:\n    abort timer.elapsed >= 1.0\n',
+                    "normalized": {
+                        "name": "bad_old_test",
+                        "devices": [{"name": "Missing Device"}],
+                        "unsafeExit": [],
+                        "init": {"sets": [], "clears": [], "aborts": [], "successes": [], "untils": [], "requires": []},
+                        "main": {"sets": [], "clears": [], "aborts": [{"reference": {"device": "timer", "signal": "elapsed"}, "operator": ">=", "literal": {"valueType": "number", "value": 1.0}, "kind": "abort", "text": "abort timer.elapsed >= 1.0"}], "successes": [], "untils": [], "requires": []},
+                        "close": {"sets": [], "clears": [], "aborts": [], "successes": [], "untils": [], "requires": []},
+                    },
+                    "sourceHash": "",
+                }
+            },
+        }
+        source = (
+            'test "spark25_leftY"\n'
+            'device "SPARKMAX/NEO 25"\n'
+            'device "controller0"\n\n'
+            "main:\n"
+            '    set "SPARKMAX/NEO 25".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n'
+            "    until timer.elapsed >= 10.0\n"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = Path(temp_dir) / "spark25_leftY.dsl"
+            source_path.write_text(source, encoding="utf-8")
+
+            result = cli._dsl_test_command(["test", "import", "spark25_leftY", str(source_path), "set", "default"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertIn("spark25_leftY", cli._local_root_payload["dslTests"]["testsByName"])
+        self.assertIn("bad_old_test", cli._local_root_payload["dslTests"]["testsByName"])
+
+    def test_import_validation_prints_statement_context_for_unknown_signal(self) -> None:
+        cli = self._build_cli(include_controller=True)
+        source = (
+            'test "falcon9_leftY"\n'
+            'device "FALCON 9"\n'
+            'device "controller0"\n\n'
+            "main:\n"
+            '    set "FALCON 9".output = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n'
+            "    until timer.elasped >= 10.0\n"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = Path(temp_dir) / "falcon9_leftY.dsl"
+            source_path.write_text(source, encoding="utf-8")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = cli._dsl_test_command(["test", "import", "falcon9_leftY", str(source_path), "set", "default"])
+
+        self.assertNotEqual(result.code, SS__NORMAL)
+        text = output.getvalue()
+        self.assertIn("unknown signal", text)
+        self.assertIn("line 7: until timer.elasped >= 10.0", text)
+
+    def test_cleanup_stale_removes_invalid_tests_for_active_profile(self) -> None:
+        cli = self._build_cli(include_controller=True)
+        bad_source = 'test "bad_old_test"\ndevice "Missing Device"\n\nmain:\n    abort timer.elapsed >= 1.0\n'
+        good_source = (
+            'test "good_test"\n'
+            'device "SPARKMAX/NEO 25"\n'
+            'device "controller0"\n\n'
+            "main:\n"
+            '    set "SPARKMAX/NEO 25".output = controller0.leftY scaled 0.25 default 0.0\n'
+            "    until timer.elapsed >= 1.0\n"
+        )
+        cli._local_root_payload["dslTests"] = robot_test_dsl_store_to_payload(
+            RobotTestDslStore(
+                tests_by_name={
+                    "bad_old_test": RobotTestDslEntry(
+                        name="bad_old_test",
+                        source=bad_source,
+                        normalized=compile_robot_test_dsl_source("bad_old_test", bad_source),
+                        source_hash="",
+                    ),
+                    "good_test": RobotTestDslEntry(
+                        name="good_test",
+                        source=good_source,
+                        normalized=compile_robot_test_dsl_source("good_test", good_source),
+                        source_hash="",
+                    ),
+                },
+                test_sets={"legacy": ["bad_old_test", "good_test"]},
+                default_set="legacy",
+            )
+        )
+
+        result = cli._dsl_test_command(["test", "cleanup", "stale"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertNotIn("bad_old_test", cli._local_root_payload["dslTests"]["testsByName"])
+        self.assertIn("good_test", cli._local_root_payload["dslTests"]["testsByName"])
+        self.assertEqual(cli._local_root_payload["dslTests"]["testSets"]["legacy"], ["good_test"])
 
     def test_config_mode_instantiate_all_uses_robot_path_when_not_in_group_context(self) -> None:
         cli = self._build_cli(connected=True)

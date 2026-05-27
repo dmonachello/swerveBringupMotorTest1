@@ -70,7 +70,7 @@ BRIDGE CLI
         help batch
 
     Notes:
-    - CLI uses the TCP UI channel (port 5809 by default).
+    - CLI uses the robot REST command server (port 5805 by default).
     - CLI does not require CAN access; use --no-can when running CLI only.
     - add device requires the label to exist in the active profile.
     - device set supports vendor, role, notes, bus, tags, limits.
@@ -81,7 +81,7 @@ BRIDGE CLI
     - show devices (local) lists the full profile-derived device inventory, not only group members.
     - show version prints the bridge_cli version; add --robot to query the roboRIO.
     - Windows EOF uses Ctrl+Z then Enter (Ctrl+D on POSIX shells).
-    - Tables push uses TCP only: `profiles push` / `config push` (no NT apply).
+    - Tables push uses the REST command server: `profiles push` / `config push` (no NT apply).
     - Tables push applies in-memory on the robot and does not persist to disk.
 
     Tables push (config mode):
@@ -177,37 +177,31 @@ REAL-TIME NOTES (WHY OUTPUT IS THROTTLED)
     Expect longer reports to stream over multiple cycles rather than printing all at once.
 
 UI COMMAND PROTOCOL
-    Purpose: Define the TCP command/ack/output flow between the PC UI and the roboRIO.
+    Purpose: Define the REST session and command/output flow between the PC UI and the roboRIO.
 
     Transport:
-    - TCP, line-delimited JSON over port 5809 by default (set with --ui-tcp-port).
+    - HTTP/JSON over port 5805 by default (set with --ui-rest-port).
     - NetworkTables remains in use for state/diagnostics visibility.
 
-    TCP command payload (PC -> roboRIO):
-    - type = "cmd"
-    - seq (int, monotonic)
-    - name (string)
-    - args (object, optional)
-    - ts (double, seconds)
-    - clientId (string, required; unique per UI instance)
+    Session/control endpoints:
+    - `GET /health`
+    - `GET /session`
+    - `POST /session/connect`
+    - `POST /session/disconnect`
+    - `POST /session/reset`
+    - `POST /session/ping`
 
-    TCP ack payload (roboRIO -> PC):
-    - type = "ack"
-    - seq (int)
-    - name (string)
-    - status ("ok" or "error")
-    - message (string)
-    - ts (double, echo cmd/ts)
-    - sessionId (string)
-    - state (object: enabled/estopped/mode)
+    Command endpoints:
+    - `POST /commands`
+    - `GET /commands/{id}`
+    - `GET /commands/{id}/output`
+    - `POST /commands/{id}/stop`
 
-    TCP out payload (roboRIO -> PC):
-    - type = "out"
-    - seq (int)
-    - name (string)
-    - text (string)
-    - ts (double, echo cmd/ts)
-    - json (string, optional structured payload)
+    Auxiliary endpoints:
+    - `GET /logs?after=<seq>`
+    - `POST /monitor/enable`
+    - `POST /monitor/disable`
+    - `GET /inventory/commands`
     - sessionId (string)
     - state (object: enabled/estopped/mode)
 
@@ -216,7 +210,7 @@ UI COMMAND PROTOCOL
     - bringup/ui/state/estopped (bool)
     - bringup/ui/state/mode (string)
     - bringup/ui/state/lastAckMs (double)
-    - bringup/ui_tcp/enabled (bool, when protocol monitor is enabled)
+    - bringup/ui_tcp/enabled (bool, compatibility subtree name for protocol monitor state)
     - bringup/ui_tcp/connected (bool)
     - bringup/ui_tcp/lastSeq (int)
     - bringup/ui_tcp/lastName (string)
@@ -231,7 +225,7 @@ UI COMMAND PROTOCOL
     UI gating (half-duplex):
     - UI allows only one outstanding command at a time.
     - UI enforces a tight timeout and will retry the last command once after recovery.
-    - UI blocks commands when TCP is disconnected.
+    - UI blocks commands when the REST session is disconnected.
     - To switch PCs, the active UI must send uiDisconnect or the robot must reboot.
 
     Notes:
@@ -246,6 +240,7 @@ UI COMMAND PROTOCOL
     - uiDisconnect releases the active client lock (same clientId only).
     - If state/lastAckMs goes stale, the UI reports \"Robot state stale (code not running?)\".
     - uiMonitorEnable / uiMonitorDisable toggle NT protocol monitoring under bringup/ui_tcp.
+    - The subtree name is legacy compatibility only; the active command transport is REST.
 
 UI HELP
     Purpose: Describe the in-app Help content for the Bringup Control UI.
@@ -259,7 +254,7 @@ LIVE TOPOLOGY OVERLAY
     - Open the Live Topology tab.
     - Enable Live Overlay to begin polling runtime state.
     - Show Groups toggles bridgeConfig.byProfile group boxes/labels in the live view.
-    - Source = tcp uses the UI TCP channel; Source = file loads a JSON snapshot manually.
+    - Source = rest uses the robot REST command/state channel; Source = file loads a JSON snapshot manually.
     - Use Load File... to pick a snapshot, then Reload File to refresh it.
     - Update rate defaults to 5 Hz; adjust in the Live Topology controls.
     - Sample snapshot: tools\can_nt\samples\sample_runtime_state.json

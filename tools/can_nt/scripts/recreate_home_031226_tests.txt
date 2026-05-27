@@ -100,4 +100,4 @@ device add "FALCON 9"
 inputSource controller0.leftY
 deadband 0.12
 exit
-save profiles data/bringup_system.json
+save profiles src/main/deploy/bringup_system.json

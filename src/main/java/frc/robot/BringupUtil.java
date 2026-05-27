@@ -157,6 +157,11 @@ public final class BringupUtil {
       "Warning: unknown CAN profile '%s'. Using default.";
   private static final String MESSAGE_DEFAULT_PROFILE_MISSING =
       "Warning: default CAN profile missing. Entering empty safe mode.";
+  private static final String TEXT_PROFILE_INACTIVE_SUFFIX = " (inactive)";
+  private static final String MESSAGE_SELECTED_PROFILE_STAGE_FAILED =
+      "selected profile stage failed";
+  private static final String MESSAGE_SELECTED_PROFILE_STAGE_UNKNOWN =
+      "selected profile not found: %s";
   private static final int PROFILE_SCHEMA_VERSION = 5;
   private static final String MOTOR_SPECS_FILE = "motor_specs.json";
   private static final String CAN_MAPPINGS_FILE = "can_mappings.json";
@@ -414,12 +419,9 @@ public final class BringupUtil {
 
   public static String getActiveCanProfileLabel() {
     // Label currently matches profile name, but can diverge later.
-    String label = activeProfileApplied ? activeProfile : selectedProfile;
-    if (label == null || label.isBlank()) {
-      label = defaultProfile;
-    }
+    String label = activeProfileApplied ? activeProfile : getSelectedCanProfileLabel();
     if (!activeProfileApplied) {
-      return label + " (inactive)";
+      return label + TEXT_PROFILE_INACTIVE_SUFFIX;
     }
     return label;
   }
@@ -438,6 +440,32 @@ public final class BringupUtil {
    */
   public static String getSelectedCanProfile() {
     return selectedProfile;
+  }
+
+  /**
+   * NAME
+   *   getSelectedCanProfileLabel - Return the selected profile label with default fallback.
+   */
+  public static String getSelectedCanProfileLabel() {
+    String label = selectedProfile;
+    if (label == null || label.isBlank()) {
+      label = defaultProfile;
+    }
+    return label == null ? NT_LABEL_EMPTY : label;
+  }
+
+  /**
+   * NAME
+   *   getActiveRuntimeProfileLabel - Return the active runtime profile label.
+   *
+   * RETURNS
+   *   Active runtime profile name, or empty string when runtime is inactive.
+   */
+  public static String getActiveRuntimeProfileLabel() {
+    if (!activeProfileApplied) {
+      return NT_LABEL_EMPTY;
+    }
+    return activeProfile == null ? NT_LABEL_EMPTY : activeProfile;
   }
 
   /**
@@ -588,6 +616,48 @@ public final class BringupUtil {
     ROBORIO_CAN_ID = DISABLED_CAN_ID;
     activeProfileApplied = false;
     bumpActiveProfileGeneration();
+  }
+
+  /**
+   * NAME
+   *   stageSelectedProfileForBringup - Load selected profile device configs without full activation.
+   *
+   * RETURNS
+   *   Empty string on success, or an error message when staging fails.
+   *
+   * SIDE EFFECTS
+   *   Rebuilds runtime device configs and active-device inventory from the
+   *   selected profile while keeping the runtime profile inactive.
+   */
+  public static String stageSelectedProfileForBringup() {
+    String resolved = selectedProfile;
+    if (resolved == null || resolved.isBlank()) {
+      resolved = defaultProfile;
+    }
+    if (resolved == null || resolved.isBlank()) {
+      return MESSAGE_SELECTED_PROFILE_STAGE_FAILED;
+    }
+    ProfileConfig config = profiles.get(resolved);
+    if (config == null) {
+      return String.format(MESSAGE_SELECTED_PROFILE_STAGE_UNKNOWN, resolved);
+    }
+    try {
+      validateProfileCanIdsStrict(resolved, config);
+      validateProfileLabelsStrict(resolved, config);
+    } catch (JsonParseException ex) {
+      return ex.getMessage();
+    }
+    List<DeviceDefinition> profileDevices = resolveProfileDevices(config);
+    buildDeviceConfigs(profileDevices);
+    PDH_CAN_ID = resolveSingletonIdByMfgType(profileDevices, MFG_REV_ID, DEVTYPE_POWER_ID);
+    PDP_CAN_ID = resolveSingletonIdByMfgType(profileDevices, MFG_CTRE_ID, DEVTYPE_POWER_ID);
+    PIGEON_CAN_ID = resolveSingletonIdByMfgType(profileDevices, MFG_CTRE_ID, DEVTYPE_GYRO_ID);
+    ROBORIO_CAN_ID = resolveSingletonIdByMfgType(profileDevices, MFG_NI_ID, DEVTYPE_ROBORIO_ID);
+    selectedProfile = resolved;
+    activeProfile = NT_LABEL_EMPTY;
+    activeProfileApplied = false;
+    bumpActiveProfileGeneration();
+    return NT_LABEL_EMPTY;
   }
 
   /**
