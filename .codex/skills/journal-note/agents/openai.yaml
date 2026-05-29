@@ -1,0 +1,4 @@
+version: 1
+display_name: Journal Note
+short_description: Create short dated journal notes in this repo.
+default_prompt: Create or update a short dated note under notes/journal using the repo's existing bullet-note style.

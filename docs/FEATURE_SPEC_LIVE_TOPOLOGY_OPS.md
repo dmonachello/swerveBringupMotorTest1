@@ -73,7 +73,9 @@ Phase 1: Live Overlay (Read-Only)
 - Tooltips/side panel show telemetry and status.
 - Data source is TCP runtime-state only (NT remains for dashboards).
 - Offline test path uses a runtime-state JSON file (manual reload in UI).
-- Update cadence is configurable; default 5 Hz.
+- Update cadence is configurable; default 2 Hz.
+- Routine UI polling should prefer a light snapshot path over a full diagnostic snapshot path.
+- Light polling should prefer cheaper telemetry fields and avoid optional noisy reads when possible.
 - Presence uses presenceConfidence (0.0-1.0) plus lastSeen timestamp.
 - Faults are deferred to Phase 2 (explicit requirement).
 - Group overlays (bridgeConfig.byProfile) can be toggled on/off in the live view.
@@ -109,6 +111,7 @@ Tradeoffs
 Purpose: Record known tradeoffs.
 - Live overlay requires consistent label mapping; incorrect labels reduce accuracy.
 - Read-only first reduces risk but delays "wow" operations.
+- Lighter polling reduces console noise and runtime overhead, but it may omit some deep diagnostic fields from the routine overlay path.
 
 Future Extensions
 Purpose: Track safe next steps.

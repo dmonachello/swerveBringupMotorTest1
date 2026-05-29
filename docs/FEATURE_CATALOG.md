@@ -43,21 +43,58 @@ Each feature entry includes:
   - UI: `Add Motor`
   - CLI: `instantiate next motor`
 - **When to use it:** first hardware verification, one-motor-at-a-time bringup, partial robot wiring.
-- **Do not confuse with:** `Add All Motors` / `instantiate all devices`.
-- **Dependencies:** active profile selected on the robot.
+- **Do not confuse with:** `Runtime Activate` or `Add All Motors` / `instantiate all devices`.
+- **Dependencies:** selected profile on the robot; full runtime activation is not required.
 - **Current limitations:** this path is motor-oriented, not a fully general â€œany device type one at a timeâ€ mechanism.
 
 ### Bulk Device Instantiation
 
-- **Purpose:** instantiate the full active-profile device set quickly.
+- **Purpose:** instantiate the full selected-profile device set quickly without implying full runtime activation semantics.
 - **Surface:** robot runtime, Bringup UI, Bridge CLI.
 - **How to access:**
   - UI: `Add All Motors`
   - CLI: `instantiate all devices`
 - **When to use it:** after staged verification, when the hardware is already trusted.
-- **Do not confuse with:** staged `instantiate next motor`.
-- **Dependencies:** active profile selected on the robot.
+- **Do not confuse with:** staged `instantiate next motor` or explicit `Runtime Activate`.
+- **Dependencies:** selected profile on the robot; full runtime activation is not required.
 - **Current limitations:** higher risk during early bringup because many devices become active at once.
+
+### Explicit Runtime Activation
+
+- **Purpose:** make the selected profile become the active runtime profile through an intentional operator action.
+- **Surface:** robot runtime, Bringup UI, Bridge CLI, REST.
+- **How to access:**
+  - UI: `Runtime Activate`
+  - CLI: `runtime activate [<profile>]`
+  - REST: `POST /commands` with `name: "runtimeActivate"`
+- **When to use it:** after selecting the intended profile and before runtime-dependent operations such as manual motor control or scripted test execution.
+- **Do not confuse with:** `Add Motor`, `Add All Motors`, or profile selection.
+- **Dependencies:** a selected profile must exist; activation is explicit and never automatic by default.
+- **Current limitations:** selection and activation are distinct states, so operator surfaces must show both clearly.
+
+### Explicit Runtime Deactivation
+
+- **Purpose:** shut down the active runtime cleanly without clearing the selected profile.
+- **Surface:** robot runtime, Bringup UI, Bridge CLI, REST.
+- **How to access:**
+  - UI: `Runtime Deactivate`
+  - CLI: `runtime deactivate`
+  - REST: `POST /commands` with `name: "runtimeDeactivate"`
+- **When to use it:** end of session, before profile changes, or when returning the robot to an inactive bringup state.
+- **Do not confuse with:** disconnecting the host tool or clearing local config.
+- **Dependencies:** no profile selection change is required; it operates on active runtime only.
+
+### UI Config Sync
+
+- **Purpose:** keep the Bringup Control UI aligned with the robot’s canonical config without returning to CLI.
+- **Surface:** Bringup UI, REST.
+- **How to access:**
+  - UI: `Push Config`
+  - UI: `Download Current Config`
+- **When to use it:** CLI-to-UI handoff, UI-first testing flow, robot/config drift recovery.
+- **Do not confuse with:** profile selection or runtime activation.
+- **Dependencies:** REST session connected to the robot.
+- **Current limitations:** this is config synchronization, not full UI config authoring.
 
 ### Selected Test Execution
 

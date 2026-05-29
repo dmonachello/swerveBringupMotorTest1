@@ -25,6 +25,7 @@ That means the robot attempts to bring up the selected default profile immediate
 ## Goals
 
 - Boot must stop after config load and profile selection.
+- Boot must default to no selected profile unless an explicit preference restores auto-selection.
 - Runtime activation must require an explicit command.
 - The selected profile must be changeable before any runtime activation.
 - The selected profile and the active runtime profile must be modeled separately.
@@ -66,7 +67,7 @@ Boot performs:
 After Phase 1:
 
 - config is loaded
-- selected profile is known
+- selected profile is either `none` or explicitly restored by preference
 - no runtime profile is active yet
 - no bringup devices are instantiated yet
 
@@ -96,6 +97,7 @@ The system must expose these distinct concepts.
 ### Selected Profile
 
 - the profile currently chosen by the operator or host
+- may be `none`
 - safe to change without affecting hardware
 
 ### Active Runtime Profile
@@ -114,9 +116,25 @@ The system must expose these distinct concepts.
 On robot boot:
 
 - load config
-- resolve selected/default profile
+- leave selected profile as `none` by default
 - do not activate runtime
 - do not instantiate devices
+
+### Startup Selection Preference
+
+Default startup behavior must be:
+
+- selected profile = `none`
+
+An optional preference may restore the older selection-only startup behavior:
+
+- `Auto-select default profile on startup`
+
+If that preference is enabled:
+
+- startup may select the configured default profile
+- runtime must still remain inactive
+- no devices may be instantiated
 
 ### Profile Selection
 
@@ -126,6 +144,12 @@ Selecting a profile:
 - does not instantiate devices
 - does not clear and rebuild runtime
 - does not stop or start devices by itself
+
+If no profile is selected:
+
+- runtime activation must fail clearly
+- config-push and runtime-dependent flows that require a target profile must fail clearly with a message equivalent to:
+  - `No profile selected.`
 
 ### Runtime Activation
 
@@ -215,6 +239,8 @@ The UI must show:
 - active runtime profile
 - whether runtime is active
 
+The UI must support a visible `(none)` startup selection state by default.
+
 The UI must not assume profile selection implies activation.
 
 The UI must offer an explicit activation action.
@@ -244,7 +270,7 @@ Locked command contract:
 
 - `config push <path>`
   - loads config
-  - updates selected profile when applicable
+  - must not silently auto-select a default profile unless explicitly requested by operator action or preference-controlled surface behavior
   - does not instantiate runtime
 - `config push <path> --activate <profile>`
   - is allowed as an explicit convenience wrapper
@@ -266,6 +292,10 @@ The system should report all three profile-related states clearly:
 - config selected profile
 - active runtime profile
 - runtime active or inactive
+
+When no profile is selected, surfaces should explicitly report:
+
+- selected profile = `none`
 
 Examples of surfaces that should reflect this:
 
@@ -348,8 +378,9 @@ Implementation planning must account for:
 
 ## Acceptance Criteria
 
-- Boot loads config and selects a profile without instantiating devices.
+- Boot loads config and leaves selected profile as `none` by default without instantiating devices.
 - After boot, runtime state is inactive until an explicit activation command is issued.
+- If the startup auto-select preference is enabled, boot may select the configured default profile but must still remain inactive.
 - The operator can change selected profile multiple times before the first activation.
 - After activation, the active runtime profile matches the selected profile at activation time.
 - Changing selected profile while runtime is active does not auto-rebuild runtime.
@@ -359,6 +390,7 @@ Implementation planning must account for:
 ## Tradeoffs
 
 - This adds one more explicit step for operators who want immediate bringup.
+- A `(none)` default startup selection adds one more explicit profile-pick step, but it removes ambiguity about stale or cross-robot default profiles.
 - It reduces accidental hardware allocation and makes recovery behavior more predictable.
 - It makes the state model more explicit but also slightly more complex, because selected and active profiles may differ temporarily.
 
@@ -367,3 +399,4 @@ Implementation planning must account for:
 - add a dedicated runtime deactivate command
 - add a staged activation dry-run that validates without instantiating hardware
 - allow host tools to warn when selected and active runtime profiles differ
+- allow per-surface preferences for restoring default-profile auto-selection while keeping runtime inactive

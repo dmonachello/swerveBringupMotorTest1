@@ -20,6 +20,7 @@ public final class CtreMotorAttachment extends DeviceAttachment {
   public String faultStatus = "";
   public String stickyStatus = "";
   public Double busV;
+  public Double cmdDuty;
   public Double appliedDuty;
   public Double appliedV;
   public Double motorCurrentA;

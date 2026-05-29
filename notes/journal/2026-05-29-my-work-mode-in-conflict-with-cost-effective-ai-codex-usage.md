@@ -1,0 +1,11 @@
+
+- I am using Codex to do and remember almost everything, more like a personal assistant than just a coding tool.
+- This is productive, but it is probably not a cost-effective use of credits.
+- There are many tasks I could do myself, especially low-cognition operational work like git handling, routine status checks, and simple command repetition.
+- I keep offloading those tasks because it is easier to tell Codex to do them, and it usually does them well.
+- The issue is probably not laziness by itself. It is more that convenience is winning over cost discipline.
+- A better split would be:
+  - use Codex for reasoning-heavy, cross-file, error-prone, or memory-intensive work
+  - do simple operational chores myself when they are fast and low-risk
+- The real risk is turning Codex into my default working memory and execution layer even when the task does not need premium reasoning.
+- I should watch for places where I am using Codex for leverage versus using Codex for convenience.

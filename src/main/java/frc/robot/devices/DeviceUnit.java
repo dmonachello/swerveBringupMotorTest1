@@ -1,6 +1,7 @@
 package frc.robot.devices;
 
 import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.diag.snapshots.SnapshotDetail;
 import frc.robot.registry.HasRegistrationHeader;
 
 /**
@@ -70,6 +71,23 @@ public interface DeviceUnit extends HasRegistrationHeader {
    * A populated device snapshot for the report pipeline.
    */
   DeviceSnapshot snapshot();
+
+  /**
+   * NAME
+   *   snapshot
+   *
+   * SYNOPSIS
+   *   Capture a diagnostic snapshot with an explicit detail/cost target.
+   *
+   * PARAMETERS
+   *   detail - desired snapshot detail level.
+   *
+   * RETURNS
+   *   A populated device snapshot for the requested detail level.
+   */
+  default DeviceSnapshot snapshot(SnapshotDetail detail) {
+    return snapshot();
+  }
 
   /**
    * NAME

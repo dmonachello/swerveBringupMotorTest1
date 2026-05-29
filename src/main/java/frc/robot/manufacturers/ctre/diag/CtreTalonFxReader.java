@@ -38,7 +38,11 @@ public final class CtreTalonFxReader {
    * SIDE EFFECTS
    * Refreshes Phoenix status signals.
    */
-  public static DeviceSnapshot read(TalonFX device, String deviceType, int canId) {
+  public static DeviceSnapshot read(
+      TalonFX device,
+      String deviceType,
+      int canId,
+      Double commandedDuty) {
     DeviceSnapshot snap = new DeviceSnapshot();
     snap.vendor = "CTRE";
     snap.deviceType = deviceType;
@@ -71,6 +75,7 @@ public final class CtreTalonFxReader {
     ctre.stickyStatus = String.valueOf(stickySignal.getStatus());
 
     ctre.busV = supplyVoltage.getValue().in(Units.Volts);
+    ctre.cmdDuty = commandedDuty;
     ctre.appliedDuty = dutyCycle.getValue();
     ctre.motorCurrentA = supplyCurrent.getValue().in(Units.Amps);
     ctre.tempC = deviceTemp.getValue().in(Units.Celsius);

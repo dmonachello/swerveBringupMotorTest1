@@ -14,12 +14,13 @@ DESCRIPTION
 """
 
 import json
+import hashlib
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from tools.can_nt.bridge_session import BridgeSession, _local_timezone_args
+from tools.can_nt.bridge_session import BridgeEvent, BridgeSession, _local_timezone_args
 from tools.can_nt.status import (
     StatusResult,
     SS__CONFIG__INVALID,
@@ -102,6 +103,8 @@ from tools.common.profile_constants import (
     make_group_member,
 )
 from tools.common.profile_io import validate_profiles_schema
+from tools.common.profile_io import compute_profiles_hash
+from tools.common.profile_constants import PROFILE_SCHEMA_VERSION, KEY_SCHEMA_VERSION, KEY_DATA_VERSION, KEY_DATA_HASH
 
 CONFIG_SCHEMA_VERSION = BRIDGE_CONFIG_SCHEMA_VERSION
 SEP_COMMA_SPACE = ", "
@@ -230,6 +233,26 @@ DEVICE_REQUIRED_PWM = (KEY_PWM,)
 DEVICE_REQUIRED_ANALOG = (KEY_ANALOG,)
 DEVICE_REQUIRED_INTERNAL = tuple()
 DEVICE_REQUIRED_USB = (KEY_ID,)
+ENCODING_UTF8 = "utf-8"
+PUSH_TIMEOUT_SEC = 10.0
+PUSH_EVENT_SLEEP_SEC = 0.02
+MSG_PUSH_PATH_REQUIRED = "Config path required."
+MSG_PUSH_READ_FAILED = "Failed to read config file: {path}"
+MSG_PUSH_PARSE_FAILED = "Failed to parse config file: {detail}"
+MSG_PUSH_PARSE_ROOT = "Config root must be a JSON object."
+MSG_PUSH_DATA_VERSION = "Config data_version is required."
+MSG_PUSH_DATA_HASH = "Config data_hash is required."
+MSG_PUSH_DATA_HASH_MISMATCH = "Config data_hash does not match computed profiles hash."
+MSG_PUSH_DEVICES_MISSING = "Config devices[] is required."
+MSG_PUSH_PROFILES_EMPTY = "Config profiles[] is required."
+MSG_PUSH_PROFILE_UNKNOWN = "Selected profile not found in config: {profile}"
+MSG_PUSH_SEND_FAILED = "Failed to send profilesApply."
+MSG_PUSH_TIMEOUT = "Timed out waiting for robot command output."
+MSG_PUSH_APPLY_FAILED = "Robot rejected config push."
+MSG_PUSH_GROUP_QUERY_FAILED = "Failed to fetch robot groups."
+MSG_PUSH_OK = "Config pushed to robot."
+MSG_DOWNLOAD_WRITE_FAILED = "Failed to write config file: {path}"
+MSG_DOWNLOAD_FETCH_FAILED = "Failed to fetch current config from robot."
 
 
 @dataclass(frozen=True)
@@ -1050,6 +1073,207 @@ def save_config(session: BridgeSession, path: str, profile_name: Optional[str]) 
     except Exception as exc:
         return StatusResult(code=SS__CONFIG__INVALID, message=f"Failed to write {path}: {exc}")
     return StatusResult(code=SS__CONFIG__SAVED, message=f"Wrote bridgeConfig to {path}.")
+
+
+def _wait_for_command_event(
+    session: BridgeSession,
+    seq: Optional[int],
+    timeout_sec: float = PUSH_TIMEOUT_SEC,
+) -> Optional[BridgeEvent]:
+    """
+    NAME
+        _wait_for_command_event - Wait for the terminal OUT event for one command sequence.
+    """
+    if seq is None:
+        return None
+    deadline = time.time() + timeout_sec
+    while time.time() < deadline:
+        events = session.poll_events()
+        if not events:
+            time.sleep(PUSH_EVENT_SLEEP_SEC)
+            continue
+        for event in events:
+            if event.seq == seq and event.type == "out":
+                return event
+    return None
+
+
+def _event_succeeded(event: Optional[BridgeEvent]) -> bool:
+    """
+    NAME
+        _event_succeeded - Return whether a command OUT event completed successfully.
+    """
+    return event is not None and str(event.status).strip().lower() == "ok"
+
+
+def _read_registry_raw(path: str) -> Tuple[bool, str, str, Optional[Dict[str, Any]]]:
+    """
+    NAME
+        _read_registry_raw - Load raw bringup_system.json text and parse it.
+    """
+    if not path:
+        return (False, MSG_PUSH_PATH_REQUIRED, EMPTY_STRING, None)
+    source_path = Path(path)
+    try:
+        raw = source_path.read_text(encoding=ENCODING_UTF8)
+    except Exception:
+        return (False, MSG_PUSH_READ_FAILED.format(path=path), EMPTY_STRING, None)
+    try:
+        payload = json.loads(raw)
+    except Exception as exc:
+        return (False, MSG_PUSH_PARSE_FAILED.format(detail=exc), raw, None)
+    if not isinstance(payload, dict):
+        return (False, MSG_PUSH_PARSE_ROOT, raw, None)
+    return (True, EMPTY_STRING, raw, payload)
+
+
+def _hash_raw_registry(raw: str) -> str:
+    """
+    NAME
+        _hash_raw_registry - Compute SHA-256 for raw registry JSON text.
+    """
+    return hashlib.sha256(raw.encode(ENCODING_UTF8)).hexdigest()
+
+
+def _validate_registry_payload(
+    payload: Dict[str, Any],
+    profile_name: str,
+) -> Tuple[bool, str]:
+    """
+    NAME
+        _validate_registry_payload - Validate the bringup_system.json payload for UI push.
+    """
+    ok, message = validate_profiles_schema(payload, PROFILE_SCHEMA_VERSION)
+    if not ok:
+        return (False, message)
+    data_version = payload.get(KEY_DATA_VERSION)
+    if not isinstance(data_version, str) or not data_version.strip():
+        return (False, MSG_PUSH_DATA_VERSION)
+    data_hash = payload.get(KEY_DATA_HASH)
+    if not isinstance(data_hash, str) or not data_hash.strip():
+        return (False, MSG_PUSH_DATA_HASH)
+    if data_hash != compute_profiles_hash(payload):
+        return (False, MSG_PUSH_DATA_HASH_MISMATCH)
+    devices_raw = payload.get(KEY_DEVICES)
+    if not isinstance(devices_raw, list) or not devices_raw:
+        return (False, MSG_PUSH_DEVICES_MISSING)
+    profiles = payload.get(KEY_PROFILES)
+    if not isinstance(profiles, dict) or not profiles:
+        return (False, MSG_PUSH_PROFILES_EMPTY)
+    if profile_name and profile_name not in profiles:
+        return (False, MSG_PUSH_PROFILE_UNKNOWN.format(profile=profile_name))
+    return (True, MSG_OK)
+
+
+def _clear_existing_groups_remote(session: BridgeSession) -> Tuple[bool, str]:
+    """
+    NAME
+        _clear_existing_groups_remote - Delete all current runtime groups on the robot.
+    """
+    groups_payload = _fetch_runtime_json_command(session, "showGroups")
+    groups = groups_payload.get("groups") if isinstance(groups_payload, dict) else None
+    if not isinstance(groups, list):
+        return (False, MSG_PUSH_GROUP_QUERY_FAILED)
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
+        if not name:
+            continue
+        event = _wait_for_command_event(session, group_delete(session, name, confirm=True))
+        if not _event_succeeded(event):
+            return (False, event.message if event is not None else MSG_PUSH_TIMEOUT)
+    return (True, MSG_OK)
+
+
+def _fetch_runtime_json_command(
+    session: BridgeSession,
+    command_name: str,
+) -> Optional[Dict[str, Any]]:
+    """
+    NAME
+        _fetch_runtime_json_command - Fetch one JSON show-command payload from the robot.
+    """
+    seq = send_command(session, command_name, {"json": True})
+    event = _wait_for_command_event(session, seq)
+    if not _event_succeeded(event):
+        return None
+    return parse_json_arg(event.json_text) if event is not None else None
+
+
+def push_config(
+    session: BridgeSession,
+    path: str,
+    profile_name: str,
+    conflict_policy: str = "error",
+) -> StatusResult:
+    """
+    NAME
+        push_config - Push a full bringup_system.json payload plus profile groups to the robot.
+    """
+    if not profile_name:
+        return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED, message=MSG_PROFILE_REQUIRED)
+    ok, error, raw, payload = _read_registry_raw(path)
+    if not ok or payload is None:
+        return StatusResult(code=SS__CONFIG__INVALID, message=error or MSG_PUSH_PARSE_ROOT)
+    valid, message = _validate_registry_payload(payload, profile_name)
+    if not valid:
+        return StatusResult(code=SS__CONFIG__INVALID, message=message)
+    registry_hash = _hash_raw_registry(raw)
+    registry_bytes = len(raw.encode(ENCODING_UTF8))
+    args = {
+        "registryJson": raw,
+        "registryHash": registry_hash,
+        "registryBytes": registry_bytes,
+    }
+    event = _wait_for_command_event(session, send_command(session, "profilesApply", args))
+    if event is None:
+        return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE, message=MSG_PUSH_TIMEOUT)
+    apply_payload = parse_json_arg(event.json_text) if event.json_text else None
+    if not _event_succeeded(event):
+        return StatusResult(code=SS__CONFIG__INVALID, message=event.message or MSG_PUSH_APPLY_FAILED)
+    select_event = _wait_for_command_event(
+        session, send_command(session, "selectProfile", {KEY_NAME: profile_name})
+    )
+    if not _event_succeeded(select_event):
+        return StatusResult(
+            code=SS__NETWORK__ROBOT_UNAVAILABLE,
+            message=(select_event.message if select_event is not None else MSG_PUSH_TIMEOUT),
+        )
+    cleared, clear_message = _clear_existing_groups_remote(session)
+    if not cleared:
+        return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE, message=clear_message)
+    plan = import_config(path, conflict_policy, profile_name)
+    if not plan.ok:
+        return StatusResult(code=SS__CONFIG__INVALID, message=plan.message)
+    for command in plan.commands:
+        event = _wait_for_command_event(session, send_command(session, command.name, command.args))
+        if not _event_succeeded(event):
+            return StatusResult(
+                code=SS__NETWORK__ROBOT_UNAVAILABLE,
+                message=(event.message if event is not None else MSG_PUSH_TIMEOUT),
+            )
+    return StatusResult(
+        code=SS__CONFIG__SAVED,
+        message=MSG_PUSH_OK if not isinstance(apply_payload, dict) else str(apply_payload.get("message", MSG_PUSH_OK)),
+    )
+
+
+def download_current_config(session: BridgeSession, path: str) -> StatusResult:
+    """
+    NAME
+        download_current_config - Download the robot's current bringup_system.json to disk.
+    """
+    if not path:
+        return StatusResult(code=SS__CONFIG__INVALID, message=MSG_PUSH_PATH_REQUIRED)
+    payload = session.fetch_current_config()
+    if not isinstance(payload, dict):
+        return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE, message=MSG_DOWNLOAD_FETCH_FAILED)
+    try:
+        write_json(Path(path), payload, indent=2, trailing_newline=True)
+    except Exception:
+        return StatusResult(code=SS__CONFIG__INVALID, message=MSG_DOWNLOAD_WRITE_FAILED.format(path=path))
+    return StatusResult(code=SS__CONFIG__SAVED, message=f"Wrote current robot config to {path}.")
 
 
 def group_add_device(

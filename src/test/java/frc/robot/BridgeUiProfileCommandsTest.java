@@ -96,6 +96,30 @@ class BridgeUiProfileCommandsTest {
   }
 
   @Test
+  void runtimeActivateFailsClearlyWhenNoProfileIsSelected() {
+    ProfileDeps deps = new ProfileDeps();
+    deps.selectedProfileLabel = "(none)";
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_RUNTIME_ACTIVATE,
+        new JsonObject(),
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertFalse(result.ok);
+    assertEquals("No profile selected.", result.message);
+  }
+
+  @Test
   void runtimeDeactivateRunsDeactivateAction() {
     ProfileDeps deps = new ProfileDeps();
     BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);

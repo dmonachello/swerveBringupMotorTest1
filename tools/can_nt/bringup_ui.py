@@ -28,7 +28,11 @@ from typing import Callable, Dict, List, Optional, Tuple, Any
 from .bridge_cmd_tracker import CommandTracker
 from .bridge_ops import (
     connect,
+    download_current_config,
     disconnect,
+    push_config,
+    runtime_activate,
+    runtime_deactivate,
     send_command,
     show_runtime_state,
     select_test_by_name,
@@ -54,6 +58,7 @@ from tools.common.app_versions import (
 )
 from tools.common.build_info import build_lines
 from .can_profiles import get_profile, get_profiles_load_error, list_profiles, reload_profiles
+from .can_profiles import get_default_profile
 from tools.config.schema_store import ConfigSchemaStore
 from tools.can_topology.live_topology_view import LiveTopologyView
 from tools.can_nt.visibility_constants import (
@@ -99,6 +104,25 @@ LIVE_SOURCE_REST = "rest"
 LIVE_SOURCE_FILE = "file"
 LIVE_CLOCK_FORMAT = "%H:%M:%S"
 LIVE_CLOCK_LABEL = "Clock:"
+PROFILE_NONE = "(none)"
+DEFAULT_RUNTIME_STATE_RATE_HZ = 2.0
+DEFAULT_RUNTIME_STATE_RATE_TEXT = "2"
+BUTTON_RUNTIME_ACTIVATE = "Runtime Activate"
+BUTTON_RUNTIME_DEACTIVATE = "Runtime Deactivate"
+BUTTON_PUSH_CONFIG = "Push Config"
+BUTTON_DOWNLOAD_CONFIG = "Download Current Config"
+BUTTON_SHOW_RUNTIME_STATE = "Show Runtime State"
+OUTPUT_NOT_CONNECTED = "Not connected: command blocked."
+OUTPUT_BUSY = "Busy: wait for current command to finish."
+OUTPUT_NO_PROFILE = "No profile selected."
+OUTPUT_PUSH_CANCELLED = "Config push cancelled."
+OUTPUT_DOWNLOAD_CANCELLED = "Config download cancelled."
+OUTPUT_PUSH_START_FMT = "PUSH {path} profile={profile}"
+OUTPUT_DOWNLOAD_START_FMT = "DOWNLOAD {path}"
+OUTPUT_RUNTIME_ACTIVATE_FMT = "CMD runtimeActivate \"{profile}\""
+OUTPUT_RUNTIME_DEACTIVATE = "CMD runtimeDeactivate"
+DOWNLOAD_FILENAME = "bringup_system.downloaded.json"
+CONFIG_FILE_TYPES = (("JSON files", "*.json"), ("All files", "*.*"))
 DEVICE_TYPE_MOTOR = "2"
 MANUAL_DUTY_CMD_SET = "manualDeviceDutySet"
 MANUAL_DUTY_CMD_CLEAR = "manualDeviceDutyClear"
@@ -113,6 +137,7 @@ MANUAL_DUTY_POPUP_OFFSET_Y = 12
 MANUAL_DUTY_POPUP_SIZE = "280x120"
 MANUAL_DUTY_SCALE_LENGTH = 220
 MANUAL_DUTY_SEND_MIN_INTERVAL_SEC = 0.05
+MANUAL_DUTY_SEND_MIN_INTERVAL_LIVE_SEC = 0.20
 MANUAL_DUTY_STATUS_FMT = "Manual motor duty active: {label} = {duty:.2f}"
 MANUAL_DUTY_STOPPED_FMT = "Manual motor duty cleared: {label}"
 MANUAL_DUTY_BLOCKED_TEXT = "Manual motor control blocked: not connected."
@@ -133,6 +158,7 @@ UI_PREFS_SUBDIR = "ui"
 UI_PREFS_FILE = "bringup_ui_command_prefs.json"
 UI_PREFS_KEY_COMMANDS = "commands"
 UI_PREFS_KEY_VISIBLE = "visible"
+UI_PREFS_KEY_AUTO_SELECT_DEFAULT_PROFILE = "autoSelectDefaultProfileOnStartup"
 
 # Constants (visibility UI).
 VIS_TAB_LABEL = "Visibility"
@@ -169,6 +195,8 @@ INVENTORY_KEY_COMMANDS = "commands"
 INVENTORY_KEY_SHOW_IN_HOST_UI = "showInHostUi"
 INVENTORY_KEY_UI_SECTION = "uiSection"
 INVENTORY_KEY_NAME = "name"
+KEY_NAME = "name"
+CMD_SHOW_RUNTIME_STATE = "showRuntimeState"
 
 
 def _build_host_ui_sections_from_inventory(commands: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -254,6 +282,8 @@ def _load_tests(profile_name: str) -> List[str]:
     NAME
         _load_tests - Load test names for a profile.
     """
+    if not profile_name or profile_name == PROFILE_NONE:
+        return []
     store_names = _load_tests_from_store(profile_name)
     if store_names is not None:
         return store_names
@@ -264,6 +294,42 @@ def _load_tests(profile_name: str) -> List[str]:
     except Exception:
         pass
     return []
+
+
+def _normalize_profile_name(profile_name: object) -> str:
+    """
+    NAME
+        _normalize_profile_name - Return a trimmed profile name or PROFILE_NONE.
+    """
+    if not isinstance(profile_name, str):
+        return PROFILE_NONE
+    name = profile_name.strip()
+    if not name or name == PROFILE_NONE:
+        return PROFILE_NONE
+    return name
+
+
+def _selectable_profiles() -> List[str]:
+    """
+    NAME
+        _selectable_profiles - Return the UI profile list including the empty selection.
+    """
+    return [PROFILE_NONE] + (_load_profiles() or [])
+
+
+def _startup_selected_profile(profile_names: List[str], auto_select_default: bool) -> str:
+    """
+    NAME
+        _startup_selected_profile - Resolve the startup-selected profile for the UI.
+    """
+    default_profile = get_default_profile()
+    if (
+        auto_select_default
+        and isinstance(default_profile, str)
+        and default_profile in profile_names
+    ):
+        return default_profile
+    return PROFILE_NONE
 
 
 def _load_tests_from_store(profile_name: str) -> Optional[List[str]]:
@@ -296,10 +362,10 @@ def _ui_prefs_path() -> Path:
     return repo_root() / UI_PREFS_DIR / UI_PREFS_SUBDIR / UI_PREFS_FILE
 
 
-def _load_ui_command_prefs() -> Dict[str, bool]:
+def _load_ui_prefs_payload() -> Dict[str, Any]:
     """
     NAME
-        _load_ui_command_prefs - Load per-command visibility preferences.
+        _load_ui_prefs_payload - Load raw UI preferences payload.
     """
     path = _ui_prefs_path()
     if not path.exists():
@@ -308,6 +374,15 @@ def _load_ui_command_prefs() -> Dict[str, bool]:
         payload = read_json(path)
     except Exception:
         return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _load_ui_command_prefs() -> Dict[str, bool]:
+    """
+    NAME
+        _load_ui_command_prefs - Load per-command visibility preferences.
+    """
+    payload = _load_ui_prefs_payload()
     commands = payload.get(UI_PREFS_KEY_COMMANDS, {})
     if not isinstance(commands, dict):
         return {}
@@ -316,6 +391,15 @@ def _load_ui_command_prefs() -> Dict[str, bool]:
         if isinstance(name, str):
             result[name] = bool(value)
     return result
+
+
+def _load_ui_auto_select_default_pref() -> bool:
+    """
+    NAME
+        _load_ui_auto_select_default_pref - Return whether startup should auto-select the default profile.
+    """
+    payload = _load_ui_prefs_payload()
+    return bool(payload.get(UI_PREFS_KEY_AUTO_SELECT_DEFAULT_PROFILE, False))
 
 
 def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
@@ -422,17 +506,19 @@ class BringupControlUI(tk.Tk):
         self._tracker = CommandTracker(timeout_sec=self._timeout_sec, max_retries=self._max_retries)
         self._live_enabled_var = tk.BooleanVar(value=False)
         self._live_source_var = tk.StringVar(value=LIVE_SOURCE_REST)
-        self._live_rate_var = tk.StringVar(value="5")
+        self._live_rate_var = tk.StringVar(value=DEFAULT_RUNTIME_STATE_RATE_TEXT)
         self._live_groups_var = tk.BooleanVar(value=True)
         self._live_clock_var = tk.StringVar(value=NT_VALUE_EMPTY)
         self._live_rate_min = 0.2
         self._live_rate_max = 20.0
-        self._runtime_state_hz = 5.0
+        self._runtime_state_hz = DEFAULT_RUNTIME_STATE_RATE_HZ
         self._runtime_state_interval = 1.0 / self._runtime_state_hz
         self._runtime_state_last_poll = 0.0
         self._runtime_state_pending_seq: Optional[int] = None
         self._runtime_state_pending_at = 0.0
         self._runtime_state_timeout_sec = 0.6
+        self._runtime_active_known: Optional[bool] = None
+        self._robot_enabled_known = True
         self._runtime_state_path: Optional[str] = None
         self._runtime_state_path_mtime: Optional[float] = None
         self._presence_overrides_file: Dict[str, str] = {}
@@ -458,10 +544,11 @@ class BringupControlUI(tk.Tk):
         self._manual_duty_pending_after: Optional[str] = None
         self._profile_devices: Dict[str, Dict[str, Any]] = {}
         self._ui_command_prefs = _load_ui_command_prefs()
+        self._ui_auto_select_default_profile = _load_ui_auto_select_default_pref()
         self._ui_pref_vars: Dict[str, tk.BooleanVar] = {}
         self._build_menu()
         self._build_ui()
-        self._refresh_profile_devices()
+        self._apply_profile_selection(self._profile_box.get(), reload_views=True)
         self._poll_nt()
         self.protocol("WM_DELETE_WINDOW", self._handle_close)
 
@@ -485,6 +572,15 @@ class BringupControlUI(tk.Tk):
         """
         menubar = tk.Menu(self)
         prefs_menu = tk.Menu(menubar, tearoff=False)
+        self._auto_select_default_profile_var = tk.BooleanVar(
+            value=self._ui_auto_select_default_profile
+        )
+        prefs_menu.add_checkbutton(
+            label="Auto-select default profile on startup",
+            variable=self._auto_select_default_profile_var,
+            command=self._set_auto_select_default_profile_pref,
+        )
+        prefs_menu.add_separator()
         for _section, items in _action_sections():
             for _label, command in items:
                 if not command:
@@ -519,9 +615,12 @@ class BringupControlUI(tk.Tk):
             side="left"
         )
 
-        profiles = _load_profiles() or ["(none)"]
-        active_profile = profiles[0]
-        tests = _load_tests(active_profile) or ["(none)"]
+        profile_names = _load_profiles() or []
+        profiles = _selectable_profiles()
+        active_profile = _startup_selected_profile(
+            profile_names, self._ui_auto_select_default_profile
+        )
+        tests = _load_tests(active_profile) or [PROFILE_NONE]
 
         profile_box = ttk.Combobox(header, values=profiles, state="readonly", width=18)
         profile_box.set(active_profile)
@@ -532,6 +631,21 @@ class BringupControlUI(tk.Tk):
         ttk.Button(header, text="Refresh", command=self._refresh_profiles).pack(
             side="left", padx=(6, 0)
         )
+        ttk.Button(
+            header, text=BUTTON_PUSH_CONFIG, command=self._push_config_from_ui
+        ).pack(side="left", padx=(10, 0))
+        ttk.Button(
+            header, text=BUTTON_DOWNLOAD_CONFIG, command=self._download_current_config_from_ui
+        ).pack(side="left", padx=(6, 0))
+        ttk.Button(
+            header, text=BUTTON_RUNTIME_ACTIVATE, command=self._runtime_activate_from_ui
+        ).pack(side="left", padx=(10, 0))
+        ttk.Button(
+            header, text=BUTTON_RUNTIME_DEACTIVATE, command=self._runtime_deactivate_from_ui
+        ).pack(side="left", padx=(6, 0))
+        ttk.Button(
+            header, text=BUTTON_SHOW_RUNTIME_STATE, command=self._show_runtime_state_from_ui
+        ).pack(side="left", padx=(6, 0))
 
         test_box = ttk.Combobox(header, values=tests, state="readonly", width=26)
         test_box.set(tests[0])
@@ -727,15 +841,13 @@ class BringupControlUI(tk.Tk):
         NAME
             _on_profile_selected - Update live topology view when profile changes.
         """
-        name = self._profile_box.get().strip() if hasattr(self, "_profile_box") else ""
-        self._refresh_profile_devices()
-        self._refresh_tests_for_profile(name)
-        if name:
-            for live_view in self._iter_live_views():
-                live_view.reload_profile(name)
-        if not name or name == self._last_selected_profile:
+        name = self._selected_profile_name()
+        self._apply_profile_selection(name, reload_views=True)
+        if name == self._last_selected_profile:
             return
         self._last_selected_profile = name
+        if name == PROFILE_NONE:
+            return
         if not self._tcp_connected or not self._handshake_done:
             return
         if self._tracker.is_pending():
@@ -745,13 +857,40 @@ class BringupControlUI(tk.Tk):
             self._last_sent_seq = seq
             self._tracker.start("selectProfile", {"name": name}, seq, now=time.time())
 
-    def _refresh_profile_devices(self) -> None:
+    def _selected_profile_name(self) -> str:
+        """
+        NAME
+            _selected_profile_name - Return the current UI-selected profile or PROFILE_NONE.
+        """
+        if not hasattr(self, "_profile_box"):
+            return PROFILE_NONE
+        return _normalize_profile_name(self._profile_box.get())
+
+    def _apply_profile_selection(self, profile_name: object, reload_views: bool) -> None:
+        """
+        NAME
+            _apply_profile_selection - Apply profile-selection side effects inside the UI.
+
+        DESCRIPTION
+            Centralizes all local UI updates that depend on the selected profile:
+            profile-device mapping, tests dropdown contents, and live-topology reloads.
+            This keeps PROFILE_NONE handling in one place instead of repeating it
+            across startup, refresh, and selection callbacks.
+        """
+        name = _normalize_profile_name(profile_name)
+        self._refresh_profile_devices(name)
+        self._refresh_tests_for_profile(name)
+        if reload_views:
+            for live_view in self._iter_live_views():
+                live_view.reload_profile(name)
+
+    def _refresh_profile_devices(self, profile_name: object) -> None:
         """
         NAME
             _refresh_profile_devices - Refresh label->device mapping for the profile.
         """
-        name = self._profile_box.get().strip() if hasattr(self, "_profile_box") else ""
-        if not name:
+        name = _normalize_profile_name(profile_name)
+        if name == PROFILE_NONE:
             self._profile_devices = {}
             return
         try:
@@ -809,6 +948,7 @@ class BringupControlUI(tk.Tk):
             label = str(getattr(node, "label", NT_VALUE_EMPTY)).strip()
         if not label:
             return
+        self._request_runtime_state_refresh()
         self._open_manual_duty_popup(label, int(event.x_root), int(event.y_root))
 
     def _on_live_view_left_click(self, _node: object, _event: tk.Event) -> None:
@@ -816,6 +956,7 @@ class BringupControlUI(tk.Tk):
         NAME
             _on_live_view_left_click - Stop manual motor duty on the next live-view left click.
         """
+        self._request_runtime_state_refresh()
         if self._manual_duty_popup is not None:
             self._close_manual_duty_popup(stop_motor=True)
 
@@ -894,7 +1035,7 @@ class BringupControlUI(tk.Tk):
         """
         if self._manual_duty_pending_after is not None:
             return
-        delay_ms = int(MANUAL_DUTY_SEND_MIN_INTERVAL_SEC * 1000.0)
+        delay_ms = int(self._manual_duty_send_interval_sec() * 1000.0)
         self._manual_duty_pending_after = self.after(
             delay_ms,
             self._flush_manual_duty_send,
@@ -912,10 +1053,19 @@ class BringupControlUI(tk.Tk):
         duty = max(MANUAL_DUTY_MIN, min(MANUAL_DUTY_MAX, duty))
         self._manual_duty_value_var.set(MANUAL_DUTY_VALUE_FMT.format(value=duty))
         now = time.time()
-        if (now - self._manual_duty_last_sent_at) >= MANUAL_DUTY_SEND_MIN_INTERVAL_SEC:
+        if (now - self._manual_duty_last_sent_at) >= self._manual_duty_send_interval_sec():
             self._flush_manual_duty_send()
             return
         self._schedule_manual_duty_send()
+
+    def _manual_duty_send_interval_sec(self) -> float:
+        """
+        NAME
+            _manual_duty_send_interval_sec - Return the current throttle interval for manual duty sends.
+        """
+        if self._live_enabled_var.get() and self._live_source_var.get() == LIVE_SOURCE_REST:
+            return MANUAL_DUTY_SEND_MIN_INTERVAL_LIVE_SEC
+        return MANUAL_DUTY_SEND_MIN_INTERVAL_SEC
 
     def _flush_manual_duty_send(self) -> None:
         """
@@ -923,10 +1073,10 @@ class BringupControlUI(tk.Tk):
             _flush_manual_duty_send - Send the current popup duty to the robot.
         """
         self._manual_duty_pending_after = None
-        if not self._manual_duty_label or not self._tcp_connected:
+        if not self._manual_duty_label:
             return
-        if self._tracker.is_pending():
-            self._schedule_manual_duty_send()
+        if not self._tcp_connected:
+            self._append_output(MANUAL_DUTY_BLOCKED_TEXT)
             return
         duty = max(
             MANUAL_DUTY_MIN,
@@ -1316,6 +1466,8 @@ class BringupControlUI(tk.Tk):
         NAME
             _command_visible - Return whether a generated UI command should be shown.
         """
+        if command == CMD_SHOW_RUNTIME_STATE:
+            return True
         metadata = COMMANDS_BY_NAME.get(command, {})
         return self._ui_command_prefs.get(command, bool(metadata.get("showInHostUi", True)))
 
@@ -1335,7 +1487,13 @@ class BringupControlUI(tk.Tk):
         """
         path = _ui_prefs_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        write_json(path, {UI_PREFS_KEY_COMMANDS: self._ui_command_prefs})
+        write_json(
+            path,
+            {
+                UI_PREFS_KEY_COMMANDS: self._ui_command_prefs,
+                UI_PREFS_KEY_AUTO_SELECT_DEFAULT_PROFILE: self._ui_auto_select_default_profile,
+            },
+        )
 
     def _render_action_buttons(self) -> None:
         """
@@ -1474,7 +1632,7 @@ class BringupControlUI(tk.Tk):
         """
         lines = [
             "Purpose:",
-            "  Manage which device profile is active and which motors are added.",
+            "  Manage selected profile, config sync, runtime activation, and incremental bringup.",
             "",
             "Toggle Profile:",
             "  Switches to the next profile defined in bringup_system.json.",
@@ -1486,17 +1644,33 @@ class BringupControlUI(tk.Tk):
             "Profile Dropdown:",
             "  Selecting a profile updates the live topology view.",
             "  If the REST session is connected, it also selects that profile on the robot",
-            "  (no activation; Add Motor/Add All still required).",
+            "  (selection only; never activates runtime by itself).",
+            "",
+            "Push Config:",
+            "  Sends the selected bringup_system.json file to the robot over REST.",
+            "  This updates robot config and selects the currently chosen profile.",
+            "  It does not activate runtime by default.",
+            "",
+            "Download Current Config:",
+            "  Fetches the robot's current bringup_system.json over REST and saves it locally.",
+            "  Use this to re-anchor the host UI to the robot's current config.",
+            "",
+            "Runtime Activate:",
+            "  Explicitly activates the selected profile runtime on the robot.",
+            "  This is the only UI action that should activate runtime.",
+            "",
+            "Runtime Deactivate:",
+            "  Explicitly deactivates the active runtime on the robot.",
             "",
             "Add Motor:",
-            "  Adds the next motor from the active profile to the bringup list.",
+            "  Adds the next motor from the selected profile to the incremental bringup list.",
             "  The bringup list is the set of devices that tests and reports use.",
             "  Use this to step through devices one at a time and confirm behavior.",
             "  If the same motor is already added, it will be skipped.",
             "  Output: ACK + OUT showing the device label and ID that was added.",
             "",
             "Add All Motors:",
-            "  Adds every motor from the active profile to the bringup list.",
+            "  Adds every motor from the selected profile to the bringup list.",
             "  This is convenient but can start many devices at once during tests.",
             "  Prefer Add Motor for first bringup or when hardware is unverified.",
             "  Output: ACK + OUT listing all added devices (may stream in batches).",
@@ -1511,17 +1685,26 @@ class BringupControlUI(tk.Tk):
         NAME
             _refresh_profiles - Reload profile names from bringup_system.json.
         """
-        profiles = _load_profiles() or ["(none)"]
-        current = self._profile_box.get()
+        profile_names = _load_profiles() or []
+        profiles = _selectable_profiles()
+        current = self._selected_profile_name()
         self._profile_box["values"] = profiles
         if current in profiles:
             self._profile_box.set(current)
         else:
-            self._profile_box.set(profiles[0])
-        self._last_selected_profile = self._profile_box.get()
-        self._refresh_tests_for_profile(self._profile_box.get())
-        for live_view in self._iter_live_views():
-            live_view.reload_profile(self._profile_box.get())
+            self._profile_box.set(
+                _startup_selected_profile(profile_names, self._ui_auto_select_default_profile)
+            )
+        self._last_selected_profile = self._selected_profile_name()
+        self._apply_profile_selection(self._selected_profile_name(), reload_views=True)
+
+    def _set_auto_select_default_profile_pref(self) -> None:
+        """
+        NAME
+            _set_auto_select_default_profile_pref - Persist startup auto-select preference.
+        """
+        self._ui_auto_select_default_profile = bool(self._auto_select_default_profile_var.get())
+        self._save_ui_command_prefs()
 
     def _refresh_tests_for_profile(self, profile_name: str) -> None:
         """
@@ -1530,8 +1713,8 @@ class BringupControlUI(tk.Tk):
         """
         if not hasattr(self, "_test_box"):
             return
-        name = profile_name.strip() if isinstance(profile_name, str) else ""
-        tests = _load_tests(name) or ["(none)"]
+        name = _normalize_profile_name(profile_name)
+        tests = _load_tests(name) or [PROFILE_NONE]
         self._test_box["values"] = tests
         if tests:
             self._test_box.set(tests[0])
@@ -1834,6 +2017,25 @@ class BringupControlUI(tk.Tk):
             self._tcp_connected = False
         return seq
 
+    def _request_runtime_state_refresh(self) -> None:
+        """
+        NAME
+            _request_runtime_state_refresh - Force the next runtime-state poll and issue it immediately when possible.
+        """
+        self._runtime_state_backoff = 1.0
+        self._runtime_state_idle_count = 0
+        self._runtime_state_pause_until = None
+        self._runtime_state_last_poll = 0.0
+        self._runtime_state_pending_seq = None
+        if not self._tcp_connected or not self._handshake_done:
+            return
+        if self._tracker.is_pending() or self._log_poll_inflight:
+            return
+        seq = show_runtime_state(self._session, json_output=True)
+        if seq is not None:
+            self._runtime_state_pending_seq = int(seq)
+            self._runtime_state_pending_at = time.time()
+
     def _send_handshake(self, reset: bool, force: bool = False, log: bool = True) -> None:
         """
         NAME
@@ -1988,6 +2190,163 @@ class BringupControlUI(tk.Tk):
             self._last_sent_seq = seq
             self._tracker.start("selectTestByName", {"name": name}, seq, now=time.time())
 
+    def _selected_real_profile(self) -> str:
+        """
+        NAME
+            _selected_real_profile - Return the selected profile or empty string when none is selected.
+        """
+        name = self._selected_profile_name()
+        return "" if name == PROFILE_NONE else name
+
+    def _default_profiles_path(self) -> Path:
+        """
+        NAME
+            _default_profiles_path - Return the canonical bringup_system.json path.
+        """
+        service = ConfigLifecycleService()
+        return service.default_paths().canonical_profiles_path
+
+    def _config_dialog_start(self) -> Tuple[Path, str]:
+        """
+        NAME
+            _config_dialog_start - Return initial directory and filename for config dialogs.
+        """
+        path = self._default_profiles_path()
+        return (path.parent, path.name)
+
+    def _run_blocking_status_operation(
+        self,
+        start_line: str,
+        operation: Callable[[], object],
+    ) -> object:
+        """
+        NAME
+            _run_blocking_status_operation - Run a blocking host-side operation with simple UI status output.
+        """
+        self._append_output(f"{timestamp_hms()} {start_line}")
+        self.update_idletasks()
+        return operation()
+
+    def _runtime_activate_from_ui(self) -> None:
+        """
+        NAME
+            _runtime_activate_from_ui - Explicitly activate the selected runtime profile.
+        """
+        if not self._tcp_connected:
+            self._append_output(OUTPUT_NOT_CONNECTED)
+            return
+        if self._tracker.is_pending():
+            self._append_output(OUTPUT_BUSY)
+            return
+        profile_name = self._selected_real_profile()
+        if not profile_name:
+            self._append_output(OUTPUT_NO_PROFILE)
+            return
+        args = {KEY_NAME: profile_name}
+        self._append_output(
+            f"{timestamp_hms()} {OUTPUT_RUNTIME_ACTIVATE_FMT.format(profile=profile_name)}"
+        )
+        self._last_cmd = ("runtimeActivate", args)
+        seq = runtime_activate(self._session, profile_name)
+        if seq is not None:
+            self._last_sent_seq = seq
+            self._tracker.start("runtimeActivate", args, seq, now=time.time())
+
+    def _runtime_deactivate_from_ui(self) -> None:
+        """
+        NAME
+            _runtime_deactivate_from_ui - Explicitly deactivate the active runtime profile.
+        """
+        if not self._tcp_connected:
+            self._append_output(OUTPUT_NOT_CONNECTED)
+            return
+        if self._tracker.is_pending():
+            self._append_output(OUTPUT_BUSY)
+            return
+        self._append_output(f"{timestamp_hms()} {OUTPUT_RUNTIME_DEACTIVATE}")
+        self._last_cmd = ("runtimeDeactivate", {})
+        seq = runtime_deactivate(self._session)
+        if seq is not None:
+            self._last_sent_seq = seq
+            self._tracker.start("runtimeDeactivate", {}, seq, now=time.time())
+
+    def _show_runtime_state_from_ui(self) -> None:
+        """
+        NAME
+            _show_runtime_state_from_ui - Request the runtime-state payload through the top-bar control.
+        """
+        self._on_action(CMD_SHOW_RUNTIME_STATE)
+
+    def _push_config_from_ui(self) -> None:
+        """
+        NAME
+            _push_config_from_ui - Push a full bringup_system.json payload from the UI.
+        """
+        if not self._tcp_connected:
+            self._append_output(OUTPUT_NOT_CONNECTED)
+            return
+        if self._tracker.is_pending():
+            self._append_output(OUTPUT_BUSY)
+            return
+        profile_name = self._selected_real_profile()
+        if not profile_name:
+            self._append_output(OUTPUT_NO_PROFILE)
+            return
+        initial_dir, initial_file = self._config_dialog_start()
+        selected = filedialog.askopenfilename(
+            title=BUTTON_PUSH_CONFIG,
+            initialdir=str(initial_dir),
+            initialfile=initial_file,
+            filetypes=CONFIG_FILE_TYPES,
+        )
+        if not selected:
+            self._append_output(OUTPUT_PUSH_CANCELLED)
+            return
+
+        def _operation() -> object:
+            return push_config(self._session, selected, profile_name)
+
+        result = self._run_blocking_status_operation(
+            OUTPUT_PUSH_START_FMT.format(path=selected, profile=profile_name),
+            _operation,
+        )
+        message = getattr(result, "message", "") if result is not None else ""
+        self._append_output(message or "Config push finished.")
+        self._refresh_profiles()
+
+    def _download_current_config_from_ui(self) -> None:
+        """
+        NAME
+            _download_current_config_from_ui - Download the robot's current config to disk.
+        """
+        if not self._tcp_connected:
+            self._append_output(OUTPUT_NOT_CONNECTED)
+            return
+        if self._tracker.is_pending():
+            self._append_output(OUTPUT_BUSY)
+            return
+        initial_dir, _initial_file = self._config_dialog_start()
+        selected = filedialog.asksaveasfilename(
+            title=BUTTON_DOWNLOAD_CONFIG,
+            initialdir=str(initial_dir),
+            initialfile=DOWNLOAD_FILENAME,
+            filetypes=CONFIG_FILE_TYPES,
+            defaultextension=".json",
+        )
+        if not selected:
+            self._append_output(OUTPUT_DOWNLOAD_CANCELLED)
+            return
+
+        def _operation() -> object:
+            return download_current_config(self._session, selected)
+
+        result = self._run_blocking_status_operation(
+            OUTPUT_DOWNLOAD_START_FMT.format(path=selected),
+            _operation,
+        )
+        message = getattr(result, "message", "") if result is not None else ""
+        self._append_output(message or "Config download finished.")
+
     def _poll_nt(self) -> None:
         """
         NAME
@@ -2046,6 +2405,9 @@ class BringupControlUI(tk.Tk):
             mode = "disabled"
             last_ack_ms = 0.0
             nt_connected = False
+        if self._robot_enabled_known and not enabled:
+            self._runtime_active_known = False
+        self._robot_enabled_known = enabled
         if self._tests_table is not None:
             selected_name = self._tests_table.getEntry("selectedName").getString("")
             if not selected_name:
@@ -2103,6 +2465,7 @@ class BringupControlUI(tk.Tk):
                 self._pending_label.configure(text="Robot Disabled")
             elif mode:
                 self._pending_label.configure(text=f"Robot: {mode}")
+        self._apply_live_runtime_notice_from_nt_state(enabled, estopped, stale_state)
         if (
             self._tcp_connected
             and not stale_state
@@ -2187,12 +2550,37 @@ class BringupControlUI(tk.Tk):
             self._runtime_state_backoff = 1.0
             self._runtime_state_idle_count = 0
             self._runtime_state_pause_until = None
+            runtime_active = payload.get("runtimeActive")
+            if isinstance(runtime_active, bool):
+                self._runtime_active_known = runtime_active
             return
         self._runtime_state_idle_count += 1
         if self._runtime_state_idle_count >= 3:
             self._runtime_state_backoff = min(8.0, self._runtime_state_backoff * 2.0)
             self._runtime_state_idle_count = 0
             self._runtime_state_pause_until = time.time() + self._runtime_state_idle_pause_sec
+
+    def _apply_live_runtime_notice_from_nt_state(
+        self,
+        enabled: bool,
+        estopped: bool,
+        stale_state: bool,
+    ) -> None:
+        """
+        NAME
+            _apply_live_runtime_notice_from_nt_state - Surface DS/NT state directly in Live Topology.
+        """
+        for live_view in self._iter_live_views():
+            if stale_state:
+                live_view.set_runtime_state_notice("Robot state stale (code not running?)", "warn")
+            elif estopped:
+                live_view.set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
+            elif self._runtime_active_known is False:
+                live_view.set_runtime_state_notice("Runtime inactive. Click Runtime Activate.", "warn")
+            elif not enabled:
+                live_view.set_runtime_state_notice("Robot disabled. Enable teleop to run motors.", "info")
+            else:
+                live_view.clear_runtime_state_notice()
 
     def _handle_tcp_response(self, event: BridgeEvent) -> None:
         """
@@ -2253,6 +2641,7 @@ class BringupControlUI(tk.Tk):
             ts = timestamp_hms()
             header = f"{ts} ACK {seq} {name} {status} {message}".rstrip()
             self._append_output(header)
+            self._apply_live_runtime_notice_from_ack(name, status, message)
             self._last_ack_seq = seq
         elif msg_type == "out":
             seq = int(event.seq)
@@ -2294,6 +2683,45 @@ class BringupControlUI(tk.Tk):
                 self._session.reset_handshake()
         if msg_type in ("ack", "out"):
             self._tracker.handle_event(event)
+            command_lower = str(event.name or "").strip().lower()
+            if command_lower in {
+                "runtimeactivate",
+                "runtimedeactivate",
+                "manualdevicedutyset",
+                "manualdevicedutyclear",
+            }:
+                self.after_idle(self._request_runtime_state_refresh)
+
+    def _apply_live_runtime_notice_from_ack(
+        self,
+        name: str,
+        status: str,
+        message: str,
+    ) -> None:
+        """
+        NAME
+            _apply_live_runtime_notice_from_ack - Surface critical runtime/manual-run failures in Live Topology.
+        """
+        command = str(name or "").strip().lower()
+        state = str(status or "").strip().lower()
+        detail = str(message or "").strip()
+        if state == "error":
+            if "runtime inactive" in detail.lower():
+                self._runtime_active_known = False
+                for live_view in self._iter_live_views():
+                    live_view.set_runtime_notice(detail, "warn")
+                return
+            if "robot disabled" in detail.lower() or "e-stop" in detail.lower():
+                for live_view in self._iter_live_views():
+                    live_view.set_runtime_notice(detail, "error")
+                return
+        if command == MANUAL_DUTY_CMD_SET.lower() and state == "ok":
+            for live_view in self._iter_live_views():
+                live_view.clear_runtime_notice()
+        if command == "runtimeactivate" and state == "ok":
+            self._runtime_active_known = True
+        elif command == "runtimedeactivate" and state == "ok":
+            self._runtime_active_known = False
 
     def _update_action_enabled(self) -> None:
         """

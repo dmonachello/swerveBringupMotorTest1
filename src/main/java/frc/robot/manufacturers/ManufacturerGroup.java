@@ -1,6 +1,7 @@
 package frc.robot.manufacturers;
 
 import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.diag.snapshots.SnapshotDetail;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.registry.RegistrationHeader;
 import java.util.List;
@@ -141,4 +142,22 @@ public interface ManufacturerGroup {
    * Snapshot list for all known devices.
    */
   List<DeviceSnapshot> captureSnapshots(double nowSec);
+
+  /**
+   * NAME
+   *   captureSnapshots
+   *
+   * SYNOPSIS
+   *   Capture snapshots with an explicit detail/cost target.
+   *
+   * PARAMETERS
+   *   nowSec - current time in seconds for timestamping.
+   *   detail - desired snapshot detail level.
+   *
+   * RETURNS
+   *   Snapshot list for all known devices.
+   */
+  default List<DeviceSnapshot> captureSnapshots(double nowSec, SnapshotDetail detail) {
+    return captureSnapshots(nowSec);
+  }
 }

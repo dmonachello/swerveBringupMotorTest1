@@ -92,8 +92,9 @@ python -m tools.can_nt.can_nt_bridge --ui --no-can --rio 172.22.11.2
 
 - In this plan:
   - topology editor is the primary authoring tool for profile, device, canvas, and group membership definition
-- CLI is used for DSL test import and validation, runtime group binding, robot push, explicit runtime activation/deactivation, and command-driven runtime checks
+- CLI is used for DSL test import and validation, runtime group binding, robot push, and command-driven runtime checks
   - Bringup Control UI is used for direct live motor actuation checks from the UI
+  - Bringup Control UI is also used for explicit runtime activation/deactivation and optional config push/download
 
 - If Driver Station is being used during robot-connected steps, the CLI is run from an SSH session into the Driver Station PC rather than directly from the Driver Station keyboard.
 
@@ -961,46 +962,36 @@ Expected:
 - `activeRuntimeProfile` is empty or `(none)`
 - `runtimeActive` is `false`
 
-### Step 4.5: Explicitly activate the runtime
+### Step 4.5: Stop using the CLI for activation
 
-In the CLI:
-
-```text
-runtime activate test_minimal_25_9
-```
+After `config push` succeeds, do not use the CLI to activate runtime in this phase.
 
 Expected:
 
-- activation succeeds
-- active runtime profile becomes `test_minimal_25_9`
-- runtime is now active
+- the selected robot profile is already `test_minimal_25_9`
+- runtime is still inactive
+- the remaining activation handoff will be done from the Bringup Control UI
 
 Note:
 
 - `config push src/main/deploy/bringup_system.json --activate test_minimal_25_9` remains a supported convenience wrapper
-- this plan uses the explicit two-step flow so selection and runtime activation are validated separately
+- this plan intentionally avoids that shortcut so selection, push, and activation remain visibly separate actions
 
-### Step 4.6: Confirm robot device/runtime state
+### Step 4.6: Confirm robot selection state before switching to the UI
 
 In the CLI:
 
 ```text
-show devices robot --json --pretty
 show runtime-state robot --json --pretty
 show tests robot --json --pretty
 ```
 
 Expected:
 
-- robot device inventory includes the roboRIO
-- robot device inventory includes the PDH
-- robot device inventory includes `lmtSw0`
-- robot device inventory includes the Spark MAX `25`
-- robot device inventory includes the Falcon `9`
 - runtime-state responds successfully
 - `selectedProfile` is `test_minimal_25_9`
-- `activeRuntimeProfile` is `test_minimal_25_9`
-- `runtimeActive` is `true`
+- `activeRuntimeProfile` is empty or `(none)`
+- `runtimeActive` is `false`
 - tests list includes:
   - `spark25_leftY`
   - `spark25_move_25_rotations`
@@ -1211,23 +1202,79 @@ In the Bringup Control UI:
 
 1. Verify the robot profile field
 2. Use the normal connect/handshake flow if needed
-3. Open the `Live Topology` tab
-4. Set source to:
+3. Verify the profile dropdown is not silently activating anything
+4. Open the `Live Topology` tab
+5. Set source to:
 
 ```text
 rest
 ```
 
-5. Enable live overlay if required
+6. Enable live overlay if required
 
 Expected:
 
 - live topology loads
 - Spark MAX `25` node is visible
 - Falcon `9` node is visible
-- the UI is attached to the active robot session cleanly before any manual motor actuation is attempted
+- the UI is attached to the robot session cleanly before any manual motor actuation is attempted
+- the UI still shows runtime inactive until the operator explicitly activates it
 
-### Step 4A.3: Run the Spark motor from the UI
+### Step 4A.3: Optionally refresh UI config from the robot
+
+In the Bringup Control UI:
+
+1. Click:
+
+```text
+Download Current Config
+```
+
+Expected:
+
+- the host/UI config model reloads from the robot canonical config
+- profile/test/group views refresh cleanly
+- selected profile remains `test_minimal_25_9`
+- runtime is still inactive after download
+
+### Step 4A.4: Explicitly activate runtime from the UI
+
+In the Bringup Control UI:
+
+1. Confirm the selected profile is:
+
+```text
+test_minimal_25_9
+```
+
+2. Click:
+
+```text
+Runtime Activate
+```
+
+Expected:
+
+- activation succeeds
+- the UI shows runtime active
+- active runtime profile becomes `test_minimal_25_9`
+- the UI made runtime active only because of the explicit button press
+
+### Step 4A.5: Verify live runtime telemetry after UI activation
+
+In the Bringup Control UI:
+
+1. Keep `Enable Live Overlay` on
+2. Select each motor node once
+
+Expected:
+
+- selection pane begins updating from robot runtime-state
+- routine live updates occur at the default `2 Hz` overlay rate unless the operator changes it
+- selection pane shows best-effort robot-local telemetry without requiring a CAN sniffer
+- live overlay polling remains lighter than full diagnostic polling
+
+### Step 4A.6: Run the Spark motor from the UI
 
 In the `Live Topology` tab:
 
@@ -1242,7 +1289,7 @@ Expected:
 - Falcon `9` does not move during this step
 - left-click clears the manual duty and stops the Spark motor
 
-### Step 4A.4: Run the Falcon motor from the UI
+### Step 4A.7: Run the Falcon motor from the UI
 
 In the `Live Topology` tab:
 
@@ -1257,7 +1304,7 @@ Expected:
 - Spark MAX `25` does not move during this step
 - left-click clears the manual duty and stops the Falcon motor
 
-### Step 4A.5: Close or disconnect the UI cleanly
+### Step 4A.8: Close or disconnect the UI cleanly
 
 In the Bringup Control UI:
 
@@ -1686,7 +1733,18 @@ Expected:
 
 ### Step 7.3: Reactivate runtime after restart
 
-In the CLI:
+Preferred UI path:
+
+1. Open the Bringup Control UI
+2. Click:
+
+```text
+Runtime Activate
+```
+
+3. Verify runtime state from the UI or CLI
+
+CLI fallback:
 
 ```text
 runtime activate test_minimal_25_9
@@ -1743,6 +1801,10 @@ Capture all of the following:
 - screenshot of topology editor canvas with roboRIO, PDH, `lmtSw0`, Spark `25`, and Falcon `9`
 - screenshot of topology editor group creation result for `motors`
 - screenshot of Bringup Control UI live topology showing both motor nodes
+- screenshot of Bringup Control UI runtime controls showing:
+  - selected profile
+  - active runtime profile
+  - runtime active state
 - screenshot or saved output of:
 
 ```text
@@ -1786,6 +1848,8 @@ show group motors robot --json --pretty
   - both stopped
 - notes for UI manual Spark motor run
 - notes for UI manual Falcon motor run
+- note whether `Download Current Config` refreshed the UI model correctly
+- note whether `Runtime Activate` from the UI succeeded without returning to CLI
 - note whether direct REST calls succeeded without using CLI or UI
 - note that profile, devices, and group membership were defined in the topology editor first, with CLI used only for binding/test/import/push/runtime steps
 - note whether robot-connected CLI steps were run:
@@ -1809,6 +1873,8 @@ This test plan passes only if:
 - all limit-terminated DSL tests import and validate successfully
 - config push succeeds without implicit runtime activation
 - explicit runtime activation succeeds
+- Bringup Control UI can activate runtime explicitly after config push
+- Bringup Control UI can download current config without activating runtime
 - robot reports the expected devices and tests
 - direct REST health, inventory, command status, and command output calls succeed without CLI or UI
 - Bringup Control UI live topology can manually run Spark `25`

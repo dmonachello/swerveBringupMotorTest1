@@ -47,6 +47,7 @@ public class RobotV2 extends TimedRobot {
       "Actuation blocked: no active test.";
   private static final String REASON_PROFILE_ACTIVATE = "profileActivate";
   private static final String REASON_RUNTIME_DEACTIVATE = "runtimeDeactivate";
+  private static final String REASON_DISABLED_RUNTIME_DEACTIVATE = "disabledInit";
   private static final String TEXT_EMPTY = "";
   private static final int POV_UP = 0;
   private static final int POV_RIGHT = 90;
@@ -148,12 +149,11 @@ public class RobotV2 extends TimedRobot {
    *   teleopInit - Teleop mode entry hook.
    *
    * DESCRIPTION
-   *   Resets bringup state and diagnostic counters for a fresh teleop run.
+   *   Stops outputs and resets diagnostic counters for a fresh teleop run.
    */
   @Override
   public void teleopInit() {
-    // Reset state whenever teleop is entered.
-    core().resetState("teleopInit");
+    core().safetyStop("teleopInit");
     if (diagnostics() != null) {
       diagnostics().resetState();
     }
@@ -165,15 +165,20 @@ public class RobotV2 extends TimedRobot {
    *   disabledInit - Disabled mode entry hook.
    *
    * DESCRIPTION
-   *   Disables tests and clears state to avoid stale outputs while disabled.
+   *   Performs a full runtime deactivation so leaving Disabled always requires
+   *   an explicit Runtime Activate before bringup motion can resume.
    */
   @Override
   public void disabledInit() {
-    // Keep behavior symmetric in disabled and teleop to avoid stale state.
-    core().disableAllBringupTests(true);
-    core().resetState("disabledInit");
-    if (diagnostics() != null) {
-      diagnostics().resetState();
+    if (BringupUtil.isProfileActive()) {
+      runtime.deactivateActiveProfile(REASON_DISABLED_RUNTIME_DEACTIVATE);
+      handleProfileDeactivate();
+    } else {
+      core().disableAllBringupTests(true);
+      core().safetyStop(REASON_DISABLED_RUNTIME_DEACTIVATE);
+      if (diagnostics() != null) {
+        diagnostics().resetState();
+      }
     }
     edge.reset();
   }
@@ -617,6 +622,11 @@ public class RobotV2 extends TimedRobot {
     @Override
     public com.google.gson.JsonObject buildRuntimeStateJson() {
       return uiHandler != null ? uiHandler.buildRuntimeStateJson() : new com.google.gson.JsonObject();
+    }
+
+    @Override
+    public com.google.gson.JsonObject buildCurrentConfigJson() {
+      return BringupUtil.readCurrentProfilesJson();
     }
 
     @Override

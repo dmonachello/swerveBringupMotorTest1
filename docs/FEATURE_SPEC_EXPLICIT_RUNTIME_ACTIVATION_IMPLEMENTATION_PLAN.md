@@ -13,6 +13,7 @@ This is a planning document only. It defines the migration shape and execution o
 Change bringup startup and operator surfaces so that:
 
 - boot performs config load and profile selection only
+- boot leaves selected profile as `none` by default
 - bringup runtime remains inactive after boot
 - profile selection is cheap and non-hardware-affecting
 - runtime activation is explicit and shared across CLI, REST, UI, and local controller-owned logic
@@ -69,6 +70,7 @@ Conclusion:
 - the conceptual split already exists in the core utility layer
 - the main problem is not missing primitives
 - the main problem is that startup and some surfaces still collapse selection and activation into one flow
+- startup default-selection behavior also needs to change from implicit default-profile selection to `(none)` by default
 
 ### Surface Entry Points
 
@@ -149,18 +151,28 @@ Target:
 ### Changes
 
 - remove startup activation call from `RobotV2.robotInit()`
+- change startup selected-profile behavior from implicit default-profile selection to `none` by default
 - preserve:
   - config load
-  - selected/default profile resolution
+  - profile inventory load
   - REST server startup
   - UI/session initialization
+
+Add optional preference support for:
+
+- `Auto-select default profile on startup`
+
+with:
+
+- disabled by default
+- selection-only behavior when enabled
 
 ### Expected End State
 
 After boot:
 
 - config loaded: yes
-- selected profile: yes
+- selected profile: none by default
 - active runtime profile: none
 - runtime active: no
 - devices instantiated: no
@@ -333,7 +345,7 @@ This is preferable to relying only on resets and side effects.
 Minimum required:
 
 1. Boot robot and confirm:
-   - selected profile is shown
+   - selected profile is `none` by default
    - runtime is inactive
    - no bringup devices are instantiated yet
 2. Change selected profile twice before activation.
@@ -352,12 +364,14 @@ Minimum required:
 ## Risks
 
 - some current code paths may rely on active runtime being present during or immediately after boot
+- some current code paths may assume a default profile is always selected at boot
 - some reports may currently derive “active profile” text from `getActiveCanProfileLabel()` and need disambiguation
 - connected test and actuation flows may need careful soft-failure handling to avoid regression in operator experience
 
 ## Definition Of Done
 
 - robot no longer activates bringup runtime at boot
+- robot boots with selected profile = `none` by default unless a preference explicitly restores startup auto-selection
 - selected profile and active runtime profile are distinct and visible
 - runtime activation is explicit across all operator surfaces
 - CLI activation/deactivation commands exist

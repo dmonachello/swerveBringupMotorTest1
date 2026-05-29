@@ -60,6 +60,9 @@ public final class DeviceDslSupport {
       if (rev != null) {
         return rev.cmdDuty;
       }
+      if (ctre != null) {
+        return ctre.cmdDuty;
+      }
       return null;
     }
     if (DslSignalRegistry.SIGNAL_OUTPUT_PERCENT_APPLIED.equals(signalName)) {

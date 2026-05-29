@@ -57,6 +57,7 @@ public final class BringupRestServer {
   private static final String PATH_LOGS = "/logs";
   private static final String PATH_MONITOR_ENABLE = "/monitor/enable";
   private static final String PATH_MONITOR_DISABLE = "/monitor/disable";
+  private static final String PATH_CONFIG_CURRENT = "/config/current";
   private static final String PATH_INVENTORY_COMMANDS = "/inventory/commands";
   private static final String JSON_KEY_OK = "ok";
   private static final String JSON_KEY_MESSAGE = "message";
@@ -86,6 +87,7 @@ public final class BringupRestServer {
   private static final String JSON_KEY_PORT = "port";
   private static final String JSON_KEY_ACTIVE_COMMAND = "activeCommand";
   private static final String JSON_KEY_COMMANDS = "commands";
+  private static final String JSON_KEY_CONFIG = "config";
   private static final String JSON_KEY_AFTER = "after";
   private static final String JSON_KEY_RESET = "reset";
   private static final String JSON_KEY_TIMESTAMP_MS = "timestampMs";
@@ -116,6 +118,8 @@ public final class BringupRestServer {
   private static final String MESSAGE_PING = "Session ping OK.";
   private static final String MESSAGE_MONITOR_ENABLED = "Monitor enabled.";
   private static final String MESSAGE_MONITOR_DISABLED = "Monitor disabled.";
+  private static final String MESSAGE_CONFIG_FETCHED = "Config fetched.";
+  private static final String MESSAGE_CONFIG_UNAVAILABLE = "Current config unavailable.";
   private static final String MESSAGE_STOPPED = "Command stopped.";
   private static final String MESSAGE_ALREADY_TERMINAL = "Command already terminal.";
   private static final String MESSAGE_FINISHED = "Command finished.";
@@ -155,6 +159,7 @@ public final class BringupRestServer {
   public interface RestCallbacks {
     JsonObject buildDevicesJson();
     JsonObject buildRuntimeStateJson();
+    JsonObject buildCurrentConfigJson();
     frc.robot.BridgeUiCommandHandler.RestCommandResult executeCommand(
         String name,
         String argsJson,
@@ -221,6 +226,7 @@ public final class BringupRestServer {
     created.createContext(PATH_LOGS, new RootHandler());
     created.createContext(PATH_MONITOR_ENABLE, new RootHandler());
     created.createContext(PATH_MONITOR_DISABLE, new RootHandler());
+    created.createContext(PATH_CONFIG_CURRENT, new RootHandler());
     created.createContext(PATH_INVENTORY_COMMANDS, new RootHandler());
     created.start();
     server = created;
@@ -327,6 +333,10 @@ public final class BringupRestServer {
     }
     if (PATH_MONITOR_DISABLE.equals(path)) {
       handleMonitorToggle(exchange, false);
+      return;
+    }
+    if (PATH_CONFIG_CURRENT.equals(path)) {
+      handleCurrentConfig(exchange);
       return;
     }
     if (PATH_INVENTORY_COMMANDS.equals(path)) {
@@ -712,6 +722,33 @@ public final class BringupRestServer {
     }
     JsonObject body = baseEnvelope(true, MESSAGE_FINISHED);
     body.add(JSON_KEY_COMMANDS, RobotLocalCommandRegistry.buildInventoryJson().get(JSON_KEY_COMMANDS));
+    sendJson(exchange, HTTP_OK, body);
+  }
+
+  private void handleCurrentConfig(HttpExchange exchange) throws IOException {
+    if (!METHOD_GET.equals(exchange.getRequestMethod())) {
+      sendMethodNotAllowed(exchange);
+      return;
+    }
+    String clientId = queryValue(exchange.getRequestURI(), JSON_KEY_CLIENT_ID);
+    if (clientId == null) {
+      sendJson(exchange, HTTP_BAD_REQUEST, baseEnvelope(false, MESSAGE_CLIENT_REQUIRED));
+      return;
+    }
+    synchronized (stateLock) {
+      if (!isOwnerClient(clientId)) {
+        sendJson(exchange, HTTP_FORBIDDEN, baseEnvelope(false, MESSAGE_OWNER_REQUIRED));
+        return;
+      }
+      sessionLastActivityMs = nowMs();
+    }
+    JsonObject config = callbacks.buildCurrentConfigJson();
+    if (config == null) {
+      sendJson(exchange, HTTP_INTERNAL_ERROR, baseEnvelope(false, MESSAGE_CONFIG_UNAVAILABLE));
+      return;
+    }
+    JsonObject body = baseEnvelope(true, MESSAGE_CONFIG_FETCHED);
+    body.add(JSON_KEY_CONFIG, config);
     sendJson(exchange, HTTP_OK, body);
   }
 

@@ -71,6 +71,7 @@ REST_PATH_COMMANDS = "/commands"
 REST_PATH_LOGS = "/logs"
 REST_PATH_MONITOR_ENABLE = "/monitor/enable"
 REST_PATH_MONITOR_DISABLE = "/monitor/disable"
+REST_PATH_CONFIG_CURRENT = "/config/current"
 REST_QUERY_AFTER = "after"
 REST_QUERY_CLIENT_ID = "clientId"
 REST_JSON_CLIENT_ID = "clientId"
@@ -516,6 +517,24 @@ class BridgeSession:
         message = str(response.get(REST_JSON_MESSAGE, EMPTY_STRING))
         self._enqueue_ack(seq, name, status, message)
         self._enqueue_out(seq, name, status, message, message, EMPTY_STRING)
+
+    def fetch_current_config(self) -> Optional[Dict[str, Any]]:
+        """
+        NAME
+            fetch_current_config - Fetch the robot's current bringup_system.json payload.
+        """
+        if self._auto_handshake and not self.ensure_handshake():
+            return None
+        response = self._http.request(
+            HTTP_METHOD_GET,
+            REST_PATH_CONFIG_CURRENT,
+            timeout=REST_TIMEOUT_COMMAND_SEC,
+            query={REST_QUERY_CLIENT_ID: self._client_id},
+        )
+        if response.get("_http_status") != 200 or not bool(response.get("ok")):
+            return None
+        payload = response.get("config")
+        return payload if isinstance(payload, dict) else None
 
     def _handle_robot_command(self, seq: int, name: str, args: Dict[str, Any]) -> None:
         request_id = f"{self._client_id}-{seq}"

@@ -23,6 +23,7 @@ import frc.robot.commands.local.RobotLocalNoopValueProvider;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.InputAliasResolver;
 import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.diag.snapshots.SnapshotDetail;
 import frc.robot.status.StatusRuntime;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
@@ -786,6 +787,21 @@ public class BridgeUiCommandHandler {
       @Override
       public BridgeGroupManager.SelectedState getBridgeSelected() {
         return bridgeSelected();
+      }
+
+      @Override
+      public boolean isRuntimeActive() {
+        return BringupUtil.isProfileActive();
+      }
+
+      @Override
+      public boolean isRobotEnabled() {
+        return DriverStation.isEnabled();
+      }
+
+      @Override
+      public boolean isRobotEStopped() {
+        return DriverStation.isEStopped();
       }
 
       @Override
@@ -1572,6 +1588,18 @@ public class BridgeUiCommandHandler {
       case "uiMonitorEnable":
       case "uiMonitorDisable":
       case "uiPollLog":
+      case "selectProfile":
+      case "profileActivate":
+      case "runtimeActivate":
+      case "runtimeDeactivate":
+      case "profilesReload":
+      case "profilesApply":
+      case "showProfiles":
+      case "showProfile":
+      case "showRuntimeState":
+      case "showStatus":
+      case "showState":
+      case "showDevices":
         return true;
       default:
         return false;
@@ -2339,6 +2367,8 @@ public class BridgeUiCommandHandler {
       case CMD_MANUAL_DEVICE_DUTY_SET:
       case CMD_MANUAL_DEVICE_DUTY_CLEAR:
       case CMD_PROFILE_ACTIVATE:
+      case CMD_RUNTIME_ACTIVATE:
+      case CMD_RUNTIME_DEACTIVATE:
       case CMD_PROFILES_RELOAD:
       case CMD_PROFILES_APPLY:
         return true;
@@ -3076,7 +3106,9 @@ public class BridgeUiCommandHandler {
    *   buildRuntimeStateDevices - Build device entries with live telemetry.
    */
   private JsonArray buildRuntimeStateDevices(long nowMs) {
-    List<DeviceSnapshot> snapshots = core() != null ? core().captureSnapshots() : new ArrayList<>();
+    List<DeviceSnapshot> snapshots = core() != null
+        ? core().captureSnapshots(SnapshotDetail.LIGHT)
+        : new ArrayList<>();
     Map<String, DeviceSnapshot> byLabel = new HashMap<>();
     Map<Integer, DeviceSnapshot> byId = new HashMap<>();
     for (DeviceSnapshot snap : snapshots) {
@@ -3084,16 +3116,24 @@ public class BridgeUiCommandHandler {
         continue;
       }
       if (snap.label != null && !snap.label.isBlank()) {
-        byLabel.put(snap.label.trim().toLowerCase(), snap);
+        String labelKey = snap.label.trim().toLowerCase();
+        DeviceSnapshot existing = byLabel.get(labelKey);
+        byLabel.put(labelKey, choosePreferredSnapshot(existing, snap));
       }
       if (snap.canId >= 0) {
-        byId.put(snap.canId, snap);
+        DeviceSnapshot existing = byId.get(snap.canId);
+        byId.put(snap.canId, choosePreferredSnapshot(existing, snap));
       }
     }
 
     JsonArray array = new JsonArray();
+    java.util.HashSet<String> emitted = new java.util.HashSet<>();
     for (BringupUtil.DeviceEntry entry : BringupUtil.getActiveDevicesSorted()) {
       if (entry == null) {
+        continue;
+      }
+      String entryKey = runtimeStateDeviceKey(entry);
+      if (!emitted.add(entryKey)) {
         continue;
       }
       JsonObject obj = new JsonObject();
@@ -3144,6 +3184,9 @@ public class BridgeUiCommandHandler {
           if (ctre.motorCurrentA != null) {
             obj.addProperty(JSON_KEY_MOTOR_CURRENT_A, ctre.motorCurrentA);
           }
+          if (ctre.cmdDuty != null) {
+            obj.addProperty(JSON_KEY_CMD_DUTY, ctre.cmdDuty);
+          }
           if (ctre.appliedDuty != null) {
             obj.addProperty(JSON_KEY_APPLIED_DUTY, ctre.appliedDuty);
           }
@@ -3169,6 +3212,57 @@ public class BridgeUiCommandHandler {
       array.add(obj);
     }
     return array;
+  }
+
+  /**
+   * NAME
+   *   choosePreferredSnapshot - Prefer the richer/live snapshot when duplicates exist.
+   */
+  private DeviceSnapshot choosePreferredSnapshot(DeviceSnapshot first, DeviceSnapshot second) {
+    if (first == null) {
+      return second;
+    }
+    if (second == null) {
+      return first;
+    }
+    int firstScore = snapshotScore(first);
+    int secondScore = snapshotScore(second);
+    return secondScore >= firstScore ? second : first;
+  }
+
+  /**
+   * NAME
+   *   snapshotScore - Rank snapshots so present snapshots with telemetry win.
+   */
+  private int snapshotScore(DeviceSnapshot snapshot) {
+    if (snapshot == null) {
+      return Integer.MIN_VALUE;
+    }
+    int score = 0;
+    if (snapshot.present) {
+      score += 100;
+    }
+    if (snapshot.attachments != null) {
+      score += snapshot.attachments.size() * 10;
+    }
+    if (snapshot.note == null || snapshot.note.isBlank()) {
+      score += 1;
+    }
+    return score;
+  }
+
+  /**
+   * NAME
+   *   runtimeStateDeviceKey - Build a stable dedupe key for runtime-state devices.
+   */
+  private String runtimeStateDeviceKey(BringupUtil.DeviceEntry entry) {
+    if (entry == null) {
+      return "";
+    }
+    String label = entry.label != null ? entry.label.trim().toLowerCase() : "";
+    String vendor = entry.vendor != null ? entry.vendor.trim().toLowerCase() : "";
+    String type = entry.type != null ? entry.type.trim().toLowerCase() : "";
+    return label + "|" + vendor + "|" + type + "|" + entry.id;
   }
 
   /**

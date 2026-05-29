@@ -289,6 +289,7 @@ public final class ReportTextBuilder {
         specNote +
         formatLimitSummary(limits) +
         " busV=" + formatDouble(ctre != null ? ctre.busV : null, 2) + "V" +
+        " cmdDuty=" + formatDouble(ctre != null ? ctre.cmdDuty : null, 2) + "dc" +
         " appliedDuty=" + formatDouble(ctre != null ? ctre.appliedDuty : null, 2) + "dc" +
         " appliedV=" + formatDouble(ctre != null ? ctre.appliedV : null, 2) + "V" +
         " motorCurrentA=" + formatDouble(ctre != null ? ctre.motorCurrentA : null, 4) + "A" +

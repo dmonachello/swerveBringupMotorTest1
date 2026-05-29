@@ -1,7 +1,9 @@
 package frc.robot.devices.rev;
 
+import frc.robot.BringupUtil;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.diag.snapshots.SnapshotDetail;
 import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
 import frc.robot.manufacturers.rev.util.PdhStatusReader;
 import frc.robot.registry.RegistrationHeader;
@@ -73,8 +75,18 @@ public final class RevPdhDevice implements DeviceUnit {
 
   @Override
   public void ensureCreated() {
-    if (reader == null) {
+    if (reader != null) {
+      BringupUtil.claimDeviceInstance(this);
+      return;
+    }
+    if (!BringupUtil.claimDeviceInstance(this)) {
+      return;
+    }
+    try {
       reader = new PdhStatusReader(canId);
+    } catch (RuntimeException ex) {
+      BringupUtil.releaseDeviceInstance(this);
+      throw ex;
     }
   }
 
@@ -84,6 +96,7 @@ public final class RevPdhDevice implements DeviceUnit {
       reader.close();
       reader = null;
     }
+    BringupUtil.releaseDeviceInstance(this);
   }
 
   @Override
@@ -95,6 +108,11 @@ public final class RevPdhDevice implements DeviceUnit {
 
   @Override
   public DeviceSnapshot snapshot() {
+    return snapshot(SnapshotDetail.FULL);
+  }
+
+  @Override
+  public DeviceSnapshot snapshot(SnapshotDetail detail) {
     DeviceSnapshot snap = baseSnapshot();
     if (reader == null) {
       snap.present = false;
@@ -102,7 +120,8 @@ public final class RevPdhDevice implements DeviceUnit {
       return snap;
     }
     try {
-      PdhStatusAttachment status = reader.snapshot();
+      PdhStatusAttachment status =
+          detail == SnapshotDetail.LIGHT ? reader.snapshotLight() : reader.snapshot();
       snap.present = true;
       snap.addAttachment(status);
     } catch (RuntimeException ex) {

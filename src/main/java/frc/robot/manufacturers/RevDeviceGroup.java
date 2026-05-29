@@ -12,6 +12,7 @@ import frc.robot.devices.rev.RevSparkMaxNeo550Device;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.diag.snapshots.MotorSpecAttachment;
+import frc.robot.diag.snapshots.SnapshotDetail;
 import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 import frc.robot.registry.RegistrationHeader;
 import java.util.ArrayList;
@@ -275,11 +276,30 @@ public final class RevDeviceGroup implements ManufacturerGroup {
    */
   @Override
   public List<DeviceSnapshot> captureSnapshots(double nowSec) {
+    return captureSnapshots(nowSec, SnapshotDetail.FULL);
+  }
+
+  /**
+   * NAME
+   * captureSnapshots
+   *
+   * SYNOPSIS
+   * Capture snapshots for all REV devices with a caller-selected detail level.
+   *
+   * PARAMETERS
+   * nowSec - current time in seconds for timestamping.
+   * detail - requested snapshot detail level.
+   *
+   * RETURNS
+   * List of device snapshots.
+   */
+  @Override
+  public List<DeviceSnapshot> captureSnapshots(double nowSec, SnapshotDetail detail) {
     List<DeviceSnapshot> devices = new ArrayList<>();
     for (DeviceTypeBucket bucket : buckets) {
       List<DeviceUnit> bucketDevices = bucket.getDevices();
       for (int i = 0; i < bucketDevices.size(); i++) {
-        devices.add(snapshotDevice(bucket, i, nowSec));
+        devices.add(snapshotDevice(bucket, i, nowSec, detail));
       }
     }
     return devices;
@@ -331,7 +351,7 @@ public final class RevDeviceGroup implements ManufacturerGroup {
       List<DeviceUnit> bucketDevices = bucket.getDevices();
       for (int i = 0; i < bucketDevices.size(); i++) {
         DeviceUnit device = bucketDevices.get(i);
-        DeviceSnapshot snap = snapshotDevice(bucket, i, nowSec);
+        DeviceSnapshot snap = snapshotDevice(bucket, i, nowSec, SnapshotDetail.FULL);
         if (!snap.present) {
           sb.append(bucket.getRegistration().displayName())
               .append(" index ").append(i)
@@ -411,9 +431,10 @@ public final class RevDeviceGroup implements ManufacturerGroup {
    * RETURNS
    * A populated device snapshot.
    */
-  private DeviceSnapshot snapshotDevice(DeviceTypeBucket bucket, int index, double nowSec) {
+  private DeviceSnapshot snapshotDevice(
+      DeviceTypeBucket bucket, int index, double nowSec, SnapshotDetail detail) {
     DeviceUnit device = bucket.getDevices().get(index);
-    DeviceSnapshot snap = device.snapshot();
+    DeviceSnapshot snap = device.snapshot(detail);
     if (bucket.getRegistration().role() == DeviceRole.MOTOR) {
       fillSpecForRev(snap, device.getLabel(), device.getMotorModelOverride());
       if (snap.present) {

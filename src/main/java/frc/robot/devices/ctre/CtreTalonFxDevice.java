@@ -37,6 +37,7 @@ public final class CtreTalonFxDevice implements DeviceUnit {
   private final BringupUtil.LimitConfig limitConfig;
   private final java.util.List<DigitalInput> limitInputs = new java.util.ArrayList<>();
   private TalonFX device;
+  private Double lastCmdDuty = 0.0;
 
   /**
    * NAME
@@ -173,7 +174,9 @@ public final class CtreTalonFxDevice implements DeviceUnit {
   @Override
   public void setDuty(double duty) {
     if (device != null) {
-      device.set(applyLimit(duty));
+      double limitedDuty = applyLimit(duty);
+      device.set(limitedDuty);
+      lastCmdDuty = limitedDuty;
     }
   }
 
@@ -188,6 +191,7 @@ public final class CtreTalonFxDevice implements DeviceUnit {
   public void stop() {
     if (device != null) {
       device.stopMotor();
+      lastCmdDuty = 0.0;
     }
   }
 
@@ -238,7 +242,7 @@ public final class CtreTalonFxDevice implements DeviceUnit {
       addLimitAttachment(snap);
       return snap;
     }
-    DeviceSnapshot snap = CtreTalonFxReader.read(device, deviceType, canId);
+    DeviceSnapshot snap = CtreTalonFxReader.read(device, deviceType, canId, lastCmdDuty);
     snap.label = label;
     addLimitAttachment(snap);
     return snap;

@@ -36,6 +36,12 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
   private static final String CMD_MANUAL_DEVICE_DUTY_CLEAR = "manualDeviceDutyClear";
 
   private static final String JSON_KEY_JSON = "json";
+  private static final String MESSAGE_RUNTIME_ACTIVATE_REQUIRED =
+      "Runtime inactive. Click Runtime Activate.";
+  private static final String MESSAGE_MANUAL_DUTY_DISABLED =
+      "Manual duty blocked: robot disabled.";
+  private static final String MESSAGE_MANUAL_DUTY_DISABLED_ESTOP =
+      "Manual duty blocked: robot disabled (E-Stop).";
 
   private static final Set<String> COMMANDS = Set.of(
       CMD_SHOW_GROUPS,
@@ -120,6 +126,12 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
     void runSelectedBringupTest();
 
     BridgeGroupManager.SelectedState getBridgeSelected();
+
+    boolean isRuntimeActive();
+
+    boolean isRobotEnabled();
+
+    boolean isRobotEStopped();
 
     boolean applyManualDeviceDuty(String deviceName, double duty);
 
@@ -329,6 +341,18 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
         if (dependencies.findDeviceEntryByLabel(deviceName) == null) {
           result.ok = false;
           result.message = "Unknown device: " + deviceName;
+          break;
+        }
+        if (!dependencies.isRuntimeActive()) {
+          result.ok = false;
+          result.message = MESSAGE_RUNTIME_ACTIVATE_REQUIRED;
+          break;
+        }
+        if (!dependencies.isRobotEnabled()) {
+          result.ok = false;
+          result.message = dependencies.isRobotEStopped()
+              ? MESSAGE_MANUAL_DUTY_DISABLED_ESTOP
+              : MESSAGE_MANUAL_DUTY_DISABLED;
           break;
         }
         if (!dependencies.applyManualDeviceDuty(deviceName, duty)) {

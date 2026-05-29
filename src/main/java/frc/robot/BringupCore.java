@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import edu.wpi.first.wpilibj.Timer;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.diag.snapshots.SnapshotDetail;
 import frc.robot.diag.snapshots.EncoderAttachment;
 import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.diag.snapshots.MotorSpecAttachment;
@@ -70,7 +71,8 @@ public final class BringupCore {
   private static final String MESSAGE_TEST_SKIPPED = "Test skipped: ";
   private static final String MESSAGE_TEST_ABORTED = "Test aborted: ";
   private static final String MESSAGE_PROFILE_RUNTIME_RELOADED = "Profile runtime reloaded.";
-  private static final String MESSAGE_TEST_BLOCKED_NO_DEVICES = "test blocked (no devices instantiated).";
+  private static final String MESSAGE_TEST_BLOCKED_NO_DEVICES =
+      "test blocked (no devices instantiated; click Runtime Activate if runtime is inactive).";
   private static final String MESSAGE_TEST_BLOCKED_DEVICES =
       "test blocked (device(s) not instantiated): ";
   private static final String WARNING_SET_DUTY_FAILED_PREFIX =
@@ -282,15 +284,11 @@ public final class BringupCore {
    *   True when a matching device is found and updated.
    */
   public boolean setDutyByDeviceLabel(String label, double duty) {
-    DeviceUnit device = findDeviceByLabel(label);
+    DeviceUnit device = findCreatedDeviceByLabel(label);
     if (device == null) {
       return false;
     }
     try {
-      device.ensureCreated();
-      if (!device.isCreated()) {
-        return false;
-      }
       device.setDuty(duty);
       return true;
     } catch (RuntimeException ex) {
@@ -340,6 +338,31 @@ public final class BringupCore {
       }
     }
     return null;
+  }
+
+  /**
+   * NAME
+   *   findCreatedDeviceByLabel - Find an already-instantiated device by label.
+   *
+   * PARAMETERS
+   *   label - Device label from bringup_system.json.
+   *
+   * RETURNS
+   *   Created DeviceUnit instance, or null when the label is missing or not
+   *   currently instantiated.
+   *
+   * NOTES
+   *   Manual duty and runtime group output should target the live instantiated
+   *   runtime device rather than trying to create a fresh vendor object on the
+   *   fly. This avoids duplicate-allocation failures in vendor libraries such
+   *   as REVLib.
+   */
+  private DeviceUnit findCreatedDeviceByLabel(String label) {
+    DeviceUnit device = findDeviceByLabel(label);
+    if (device == null || !device.isCreated()) {
+      return null;
+    }
+    return device;
   }
 
   /**
@@ -1736,6 +1759,7 @@ public final class BringupCore {
           .append(BringupHealthFormat.formatMotorSpecNote(spec, ctre.motorCurrentA))
           .append(BringupHealthFormat.formatLimitSummary(limits))
           .append(" busV=").append(String.format("%.2f", BringupHealthFormat.safeDouble(ctre.busV))).append("V")
+          .append(" cmdDuty=").append(String.format("%.2f", BringupHealthFormat.safeDouble(ctre.cmdDuty))).append("dc")
           .append(" appliedDuty=").append(String.format("%.2f", BringupHealthFormat.safeDouble(ctre.appliedDuty))).append("dc")
           .append(" appliedV=").append(String.format("%.2f", BringupHealthFormat.safeDouble(ctre.appliedV))).append("V")
           .append(" motorCurrentA=").append(String.format("%.4f", BringupHealthFormat.safeDouble(ctre.motorCurrentA))).append("A")
@@ -2794,10 +2818,24 @@ public final class BringupCore {
    *   List of DeviceSnapshot objects for report generation.
    */
   public List<DeviceSnapshot> captureSnapshots() {
+    return captureSnapshots(SnapshotDetail.FULL);
+  }
+
+  /**
+   * NAME
+   *   captureSnapshots - Capture local device snapshots at a requested detail level.
+   *
+   * PARAMETERS
+   *   detail - requested snapshot detail/cost level.
+   *
+   * RETURNS
+   *   List of DeviceSnapshot objects for report generation.
+   */
+  public List<DeviceSnapshot> captureSnapshots(SnapshotDetail detail) {
     List<DeviceSnapshot> devices = new ArrayList<>();
     double nowSec = Timer.getFPGATimestamp();
     for (ManufacturerGroup group : manufacturerGroups) {
-      devices.addAll(group.captureSnapshots(nowSec));
+      devices.addAll(group.captureSnapshots(nowSec, detail));
     }
     return devices;
   }

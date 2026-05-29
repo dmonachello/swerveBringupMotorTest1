@@ -62,6 +62,20 @@ public final class PdhStatusReader implements AutoCloseable {
 
   /**
    * NAME
+   *   snapshotLight - Capture a lower-cost PDH status attachment.
+   *
+   * DESCRIPTION
+   *   Avoids WPILib PDH getter calls during high-frequency live runtime
+   *   polling. On some robots these getters emit HAL console noise before
+   *   callers can catch failures, so the light path intentionally returns an
+   *   empty attachment and leaves detailed PDH telemetry to full snapshots.
+   */
+  public PdhStatusAttachment snapshotLight() {
+    return new PdhStatusAttachment();
+  }
+
+  /**
+   * NAME
    *   clearStickyFaults - Clear sticky PDH faults.
    */
   public void clearStickyFaults() {

@@ -83,6 +83,8 @@ BRIDGE CLI
     - Windows EOF uses Ctrl+Z then Enter (Ctrl+D on POSIX shells).
     - Tables push uses the REST command server: `profiles push` / `config push` (no NT apply).
     - Tables push applies in-memory on the robot and does not persist to disk.
+    - `config push <path>` is selection-only by default.
+    - `config push <path> --activate <profile>` is an explicit convenience wrapper over the same runtime activation path.
 
     Tables push (config mode):
         profiles push <path> [--activate <profile>]
@@ -248,6 +250,22 @@ UI HELP
     - Tabs include Overview, Profiles, Reports, Tests, System, and Troubleshooting.
     - Each tab is scrollable for long descriptions.
     - Command buttons show short hover tooltips for quick reminders.
+    - Runtime activation is always explicit in the UI; it is never triggered by profile selection, startup, reconnect, or config push.
+
+UI PROFILE STARTUP
+    Purpose: Clarify selected-profile behavior before runtime activation.
+    - The UI profile dropdown starts at `(none)` by default.
+    - Optional preference: `Auto-select default profile on startup`.
+    - That preference is off by default.
+    - Even when enabled, it is selection-only and never activates runtime.
+
+UI RUNTIME AND CONFIG CONTROLS
+    Purpose: Describe the explicit control actions in the Bringup Control UI.
+    - `Runtime Activate` activates the currently selected profile through the REST command path.
+    - `Runtime Deactivate` deactivates current runtime through the REST command path.
+    - `Push Config` sends the host config to the robot through the same staged apply path as CLI.
+    - `Download Current Config` fetches the robot canonical config through `GET /config/current`.
+    - `Add Motor` and `Add All Motors` remain incremental bringup tools; they are not substitutes for runtime activation.
 
 LIVE TOPOLOGY OVERLAY
     Purpose: Show live device presence and telemetry in the Bringup Control UI.
@@ -256,7 +274,9 @@ LIVE TOPOLOGY OVERLAY
     - Show Groups toggles bridgeConfig.byProfile group boxes/labels in the live view.
     - Source = rest uses the robot REST command/state channel; Source = file loads a JSON snapshot manually.
     - Use Load File... to pick a snapshot, then Reload File to refresh it.
-    - Update rate defaults to 5 Hz; adjust in the Live Topology controls.
+    - Update rate defaults to 2 Hz; adjust in the Live Topology controls.
+    - REST live overlay polling uses a lighter runtime-state snapshot path than full diagnostics polling.
+    - Light polling prefers cheaper telemetry fields and avoids noisier optional REV reads when possible.
     - Sample snapshot: tools\can_nt\samples\sample_runtime_state.json
     - Color legend:
         - Green: presenceConfidence >= 0.5 or lastSeen is recent (<~2s).

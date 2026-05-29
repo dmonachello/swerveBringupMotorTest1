@@ -38,6 +38,7 @@ public final class BringupRestServerTest {
   private static final String TEXT_OUTPUT = "output";
   private static final String TEXT_CHUNKS = "chunks";
   private static final String TEXT_NEXT_SEQUENCE = "nextSequence";
+  private static final String TEXT_CONFIG = "config";
   private static final String STATUS_FINISHED = "FINISHED";
   private static final int HTTP_OK = 200;
   private static final int HTTP_ACCEPTED = 202;
@@ -105,6 +106,12 @@ public final class BringupRestServerTest {
     JsonObject logsJson = GSON.fromJson(logsResponse.body(), JsonObject.class);
     assertTrue(logsJson.getAsJsonArray("logs").size() > 0);
     assertTrue(logsJson.get(TEXT_NEXT_SEQUENCE).getAsLong() > 0L);
+
+    HttpResponse<String> configResponse =
+        client.send(get("/config/current?clientId=" + CLIENT_A), HttpResponse.BodyHandlers.ofString());
+    assertEquals(HTTP_OK, configResponse.statusCode());
+    JsonObject configJson = GSON.fromJson(configResponse.body(), JsonObject.class);
+    assertTrue(configJson.getAsJsonObject(TEXT_CONFIG).has("schema_version"));
   }
 
   private HttpRequest post(String path, JsonObject body) {
@@ -138,6 +145,14 @@ public final class BringupRestServerTest {
     public JsonObject buildRuntimeStateJson() {
       JsonObject root = new JsonObject();
       root.addProperty(TEXT_STATUS, STATUS_FINISHED);
+      return root;
+    }
+
+    @Override
+    public JsonObject buildCurrentConfigJson() {
+      JsonObject root = new JsonObject();
+      root.addProperty("schema_version", 1);
+      root.addProperty("defaultProfile", "test");
       return root;
     }
 

@@ -101,6 +101,12 @@ PRESENCE_CONF_NONE = "NONE"
 PRESENCE_COLOR_HIGH = "#2f7a2f"
 PRESENCE_COLOR_LOW = "#f59e0b"
 PRESENCE_COLOR_NONE = "#dc2626"
+NOTICE_COLOR_INFO_BG = "#eff6ff"
+NOTICE_COLOR_INFO_FG = "#1d4ed8"
+NOTICE_COLOR_WARN_BG = "#fff7ed"
+NOTICE_COLOR_WARN_FG = "#c2410c"
+NOTICE_COLOR_ERROR_BG = "#fef2f2"
+NOTICE_COLOR_ERROR_FG = "#b91c1c"
 PRESENCE_STALE_MS = 2000
 PRESENCE_MIN_CONF = 0.05
 PRESENCE_HIGH_CONF = 0.5
@@ -516,6 +522,10 @@ class LiveTopologyView(ttk.Frame):
         self._bridge_groups: List[Dict[str, object]] = []
         self._show_groups = True
         self._runtime_fingerprint: Optional[Tuple[object, ...]] = None
+        self._runtime_state_notice_text = EMPTY_STRING
+        self._runtime_state_notice_level = "info"
+        self._runtime_event_notice_text = EMPTY_STRING
+        self._runtime_event_notice_level = "warn"
         self._on_node_right_click_cb = on_node_right_click
         self._on_left_click_cb = on_left_click
         self._connection_filter_vars = {
@@ -529,6 +539,18 @@ class LiveTopologyView(ttk.Frame):
         )
         self._status_label = ttk.Label(header, text="Profile: --")
         self._status_label.pack(side="left", padx=(12, 0))
+        self._notice_label = tk.Label(
+            self,
+            text=EMPTY_STRING,
+            anchor="w",
+            justify="left",
+            padx=8,
+            pady=4,
+            bg=NOTICE_COLOR_INFO_BG,
+            fg=NOTICE_COLOR_INFO_FG,
+        )
+        self._notice_label.pack(fill="x", padx=8, pady=(6, 0))
+        self._notice_label.pack_forget()
         filter_frame = ttk.Frame(header)
         filter_frame.pack(side="right")
         ttk.Button(filter_frame, text="All", command=self._enable_all_connection_filters).pack(side="left")
@@ -833,7 +855,19 @@ class LiveTopologyView(ttk.Frame):
         mapped: Dict[str, Dict[str, object]] = {}
         selected_label = None
         selected_enabled: Optional[bool] = None
+        runtime_active: Optional[bool] = None
+        robot_enabled: Optional[bool] = None
+        robot_estopped: Optional[bool] = None
         if isinstance(payload, dict):
+            active_raw = payload.get("runtimeActive")
+            if isinstance(active_raw, bool):
+                runtime_active = active_raw
+            enabled_raw = payload.get("enabled")
+            if isinstance(enabled_raw, bool):
+                robot_enabled = enabled_raw
+            estopped_raw = payload.get("estopped")
+            if isinstance(estopped_raw, bool):
+                robot_estopped = estopped_raw
             devices = payload.get("devices") if isinstance(payload.get("devices"), list) else []
             for device in devices:
                 if not isinstance(device, dict):
@@ -899,9 +933,97 @@ class LiveTopologyView(ttk.Frame):
         self._runtime_state = mapped
         self._selected_label = selected_label
         self._selected_enabled = selected_enabled
+        self._apply_runtime_notice_from_state(runtime_active, robot_enabled, robot_estopped)
         self._update_details()
         self._redraw()
         return True
+
+    def set_runtime_notice(self, text: str, level: str = "warn") -> None:
+        """
+        NAME
+            set_runtime_notice - Display an operator-facing live-topology notice.
+        """
+        message = str(text).strip()
+        if not message:
+            self.clear_runtime_notice()
+            return
+        self._runtime_event_notice_text = message
+        self._runtime_event_notice_level = level if level in {"info", "warn", "error"} else "warn"
+        self._refresh_runtime_notice()
+
+    def set_runtime_state_notice(self, text: str, level: str = "warn") -> None:
+        """
+        NAME
+            set_runtime_state_notice - Display a persistent state-derived live-topology notice.
+        """
+        message = str(text).strip()
+        self._runtime_state_notice_text = message
+        self._runtime_state_notice_level = level if level in {"info", "warn", "error"} else "warn"
+        self._refresh_runtime_notice()
+
+    def clear_runtime_state_notice(self) -> None:
+        """
+        NAME
+            clear_runtime_state_notice - Clear the persistent state-derived notice.
+        """
+        self._runtime_state_notice_text = EMPTY_STRING
+        self._refresh_runtime_notice()
+
+    def clear_runtime_notice(self) -> None:
+        """
+        NAME
+            clear_runtime_notice - Hide the event-driven live-topology notice banner.
+        """
+        self._runtime_event_notice_text = EMPTY_STRING
+        self._refresh_runtime_notice()
+
+    def _refresh_runtime_notice(self) -> None:
+        """
+        NAME
+            _refresh_runtime_notice - Render the highest-priority live-topology notice.
+        """
+        if self._runtime_state_notice_text:
+            message = self._runtime_state_notice_text
+            level = self._runtime_state_notice_level
+        elif self._runtime_event_notice_text:
+            message = self._runtime_event_notice_text
+            level = self._runtime_event_notice_level
+        else:
+            self._notice_label.configure(text=EMPTY_STRING)
+            self._notice_label.pack_forget()
+            return
+        if level == "error":
+            bg = NOTICE_COLOR_ERROR_BG
+            fg = NOTICE_COLOR_ERROR_FG
+        elif level == "warn":
+            bg = NOTICE_COLOR_WARN_BG
+            fg = NOTICE_COLOR_WARN_FG
+        else:
+            bg = NOTICE_COLOR_INFO_BG
+            fg = NOTICE_COLOR_INFO_FG
+        self._notice_label.configure(text=message, bg=bg, fg=fg)
+        self._notice_label.pack(fill="x", padx=8, pady=(6, 0))
+
+    def _apply_runtime_notice_from_state(
+        self,
+        runtime_active: Optional[bool],
+        robot_enabled: Optional[bool],
+        robot_estopped: Optional[bool],
+    ) -> None:
+        """
+        NAME
+            _apply_runtime_notice_from_state - Derive a live-topology notice from runtime state.
+        """
+        if robot_estopped is True:
+            self.set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
+            return
+        if runtime_active is False:
+            self.set_runtime_state_notice("Runtime inactive. Click Runtime Activate.", "warn")
+            return
+        if robot_enabled is False:
+            self.set_runtime_state_notice("Robot disabled. Enable teleop to run motors.", "info")
+            return
+        self.clear_runtime_state_notice()
 
     def _on_canvas_click(self, event: tk.Event) -> None:
         """

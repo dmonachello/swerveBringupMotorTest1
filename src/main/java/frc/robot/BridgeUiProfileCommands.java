@@ -44,6 +44,7 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
 
   private static final String TEXT_PROFILE_ACTIVATE_OK = "Profile activated: %s";
   private static final String TEXT_PROFILE_ACTIVATE_FAIL = "Profile activation failed.";
+  private static final String TEXT_NONE = "(none)";
   private static final String TEXT_RUNTIME_DEACTIVATE_OK = "Runtime deactivated.";
   private static final String TEXT_PROFILES_RELOAD_OK = "Profiles reloaded.";
   private static final String TEXT_PROFILES_RELOAD_FAILED = "Profiles reload failed: %s";
@@ -53,6 +54,7 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
   private static final String MESSAGE_SHOW_PROFILE_REQUIRED = "showProfile requires args.name.";
   private static final String MESSAGE_SELECTED_PROFILE_PREFIX = "Selected profile: ";
   private static final String MESSAGE_PROFILE_SELECTED = "Profile selected.";
+  private static final String MESSAGE_NO_PROFILE_SELECTED = "No profile selected.";
 
   private static final Set<String> COMMANDS = Set.of(
       CMD_SELECT_PROFILE,
@@ -182,6 +184,12 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
     String profileName = dependencies.parseUiArgString(args, ARG_NAME);
     if (profileName != null && !profileName.isBlank()) {
       dependencies.selectCanProfile(profileName.trim());
+    }
+    if (TEXT_NONE.equals(dependencies.getSelectedCanProfileLabel())) {
+      result.ok = false;
+      result.message = MESSAGE_NO_PROFILE_SELECTED;
+      result.outText = result.message;
+      return;
     }
     dependencies.prepareActivationForSelectedProfile();
     dependencies.activateSelectedProfile();

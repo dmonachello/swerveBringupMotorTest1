@@ -11,6 +11,7 @@ import frc.robot.devices.DeviceUnit;
 import frc.robot.manufacturers.rev.diag.RevSparkMaxReader;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.LimitsAttachment;
+import frc.robot.diag.snapshots.SnapshotDetail;
 import frc.robot.registry.RegistrationHeader;
 import edu.wpi.first.wpilibj.DigitalInput;
 
@@ -278,6 +279,11 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
    */
   @Override
   public DeviceSnapshot snapshot() {
+    return snapshot(SnapshotDetail.FULL);
+  }
+
+  @Override
+  public DeviceSnapshot snapshot(SnapshotDetail detail) {
     if (device == null) {
       DeviceSnapshot snap = new DeviceSnapshot();
       snap.vendor = "REV";
@@ -289,7 +295,7 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
       addLimitAttachment(snap);
       return snap;
     }
-    DeviceSnapshot snap = RevSparkMaxReader.read(device, canId);
+    DeviceSnapshot snap = RevSparkMaxReader.read(device, canId, detail);
     snap.deviceType = getDeviceType();
     snap.label = label;
     addLimitAttachment(snap);

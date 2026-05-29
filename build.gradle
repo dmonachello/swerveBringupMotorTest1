@@ -9,6 +9,8 @@ java {
 }
 
 def ROBOT_MAIN_CLASS = "frc.robot.Main"
+def BUILD_INFO_SCRIPT = "tools/update_build_info.py"
+def PYTHON_EXE = "python"
 
 // Define my targets (RoboRIO) and artifacts (deployable files)
 // This is added by GradleRIO's backing project DeployUtils.
@@ -81,6 +83,12 @@ test {
     systemProperty 'junit.jupiter.extensions.autodetection.enabled', 'true'
 }
 
+tasks.register('updateBuildInfo', Exec) {
+    group = 'build setup'
+    description = 'Refresh generated build metadata from git before compiling or deploying.'
+    commandLine PYTHON_EXE, BUILD_INFO_SCRIPT
+}
+
 // Simulation configuration (e.g. environment variables).
 wpi.sim.addGui().defaultEnabled = true
 wpi.sim.addDriverstation()
@@ -104,6 +112,7 @@ wpi.java.configureTestTasks(test)
 
 // Configure string concat to always inline compile
 tasks.withType(JavaCompile) {
+    dependsOn tasks.named('updateBuildInfo')
     options.compilerArgs.add '-XDstringConcat=inline'
 }
 

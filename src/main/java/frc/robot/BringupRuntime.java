@@ -365,6 +365,16 @@ public final class BringupRuntime {
    *   reason - Reset reason label.
    */
   public void activateSelectedProfile(String reason) {
+    String selectedProfile = BringupUtil.getSelectedCanProfile();
+    String activeProfile = BringupUtil.getActiveRuntimeProfileLabel();
+    if (
+        BringupUtil.isProfileActive()
+            && selectedProfile != null
+            && !selectedProfile.isBlank()
+            && selectedProfile.equals(activeProfile)
+    ) {
+      return;
+    }
     BringupUtil.prepareActivationForSelectedProfile();
     BringupUtil.activateSelectedProfile();
     if (BringupUtil.isProfileActive()) {

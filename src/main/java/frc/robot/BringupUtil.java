@@ -115,13 +115,13 @@ public final class BringupUtil {
   private static final String MESSAGE_REGISTRY_DEVICE_LABEL_MISSING =
       "device label missing";
   private static final String MESSAGE_REGISTRY_PERSIST_FAILED =
-      "Failed to persist bringup_system.json to deploy: %s";
+      "Failed to persist bringup_system.json to runtime path: %s";
   private static final String MESSAGE_REGISTRY_PERSIST_FAILED_BOTH =
-      "Failed to persist bringup_system.json to deploy: %s; fallback: %s";
+      "Failed to persist bringup_system.json to runtime path: %s; fallback: %s";
   private static final String MESSAGE_REGISTRY_PERSIST_FALLBACK =
-      "Warning: failed to persist bringup_system.json to deploy (%s). Wrote to %s instead.";
+      "Warning: failed to persist bringup_system.json to runtime path (%s). Wrote to %s instead.";
   private static final String MESSAGE_REGISTRY_PERSIST_PATH_MISSING =
-      "Deploy path unavailable; cannot persist bringup_system.json.";
+      "Runtime path unavailable; cannot persist bringup_system.json.";
   private static final boolean REGISTRY_PERSIST_ON_APPLY = true;
   private static final boolean REGISTRY_PERSIST_FALLBACK_ON_FAIL = true;
   private static final String MESSAGE_REGISTRY_DEVICE_LABEL_DUP =
@@ -158,6 +158,8 @@ public final class BringupUtil {
   private static final String MESSAGE_DEFAULT_PROFILE_MISSING =
       "Warning: default CAN profile missing. Entering empty safe mode.";
   private static final String TEXT_PROFILE_INACTIVE_SUFFIX = " (inactive)";
+  private static final String TEXT_NONE = "(none)";
+  private static final String MESSAGE_NO_PROFILE_SELECTED = "No profile selected.";
   private static final String MESSAGE_SELECTED_PROFILE_STAGE_FAILED =
       "selected profile stage failed";
   private static final String MESSAGE_SELECTED_PROFILE_STAGE_UNKNOWN =
@@ -204,6 +206,10 @@ public final class BringupUtil {
   private static final int INDEX_ZERO = 0;
   private static final long PROFILE_CONFIG_GENERATION_INITIAL = 0L;
   private static final long PROFILE_CONFIG_GENERATION_INCREMENT = 1L;
+  private static final String PROP_AUTO_SELECT_DEFAULT_PROFILE =
+      "bringup.autoSelectDefaultProfile";
+  private static final String ENV_AUTO_SELECT_DEFAULT_PROFILE =
+      "BRINGUP_AUTO_SELECT_DEFAULT_PROFILE";
 
   /**
    * NAME
@@ -389,12 +395,12 @@ public final class BringupUtil {
    */
   public static void selectCanProfile(String profileName) {
     if (profileName == null || profileName.isBlank()) {
-      selectedProfile = defaultProfile;
+      selectedProfile = NT_LABEL_EMPTY;
       return;
     }
     if (!profiles.containsKey(profileName)) {
-      BringupPrinter.enqueue("Warning: unknown CAN profile '" + profileName + "'. Using default.");
-      selectedProfile = defaultProfile;
+      BringupPrinter.enqueue("Warning: unknown CAN profile '" + profileName + "'.");
+      selectedProfile = NT_LABEL_EMPTY;
       return;
     }
     selectedProfile = profileName;
@@ -449,9 +455,9 @@ public final class BringupUtil {
   public static String getSelectedCanProfileLabel() {
     String label = selectedProfile;
     if (label == null || label.isBlank()) {
-      label = defaultProfile;
+      return TEXT_NONE;
     }
-    return label == null ? NT_LABEL_EMPTY : label;
+    return label;
   }
 
   /**
@@ -570,7 +576,6 @@ public final class BringupUtil {
    */
   public static void activateSelectedProfile() {
     if (selectedProfile == null || selectedProfile.isBlank()) {
-      setActiveCanProfile(defaultProfile);
       return;
     }
     setActiveCanProfile(selectedProfile);
@@ -632,10 +637,7 @@ public final class BringupUtil {
   public static String stageSelectedProfileForBringup() {
     String resolved = selectedProfile;
     if (resolved == null || resolved.isBlank()) {
-      resolved = defaultProfile;
-    }
-    if (resolved == null || resolved.isBlank()) {
-      return MESSAGE_SELECTED_PROFILE_STAGE_FAILED;
+      return MESSAGE_NO_PROFILE_SELECTED;
     }
     ProfileConfig config = profiles.get(resolved);
     if (config == null) {
@@ -757,6 +759,27 @@ public final class BringupUtil {
    */
   public static Path getProfilePath() {
     return resolveProfilePath();
+  }
+
+  /**
+   * NAME
+   *   readCurrentProfilesJson - Read the current bringup_system.json payload from disk.
+   *
+   * RETURNS
+   *   Parsed JSON object for the currently resolved profile path, or null on read/parse failure.
+   */
+  public static JsonObject readCurrentProfilesJson() {
+    Path path = resolveProfilePath();
+    if (path == null) {
+      return null;
+    }
+    try {
+      String rawJson = Files.readString(path, StandardCharsets.UTF_8);
+      JsonElement parsed = JsonParser.parseString(rawJson);
+      return parsed != null && parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
+    } catch (IOException | JsonParseException ex) {
+      return null;
+    }
   }
 
   private static String resolveProfileNameOrActive(String profileName) {
@@ -1297,6 +1320,18 @@ public final class BringupUtil {
     }
   }
 
+  private static boolean autoSelectDefaultProfileOnStartup() {
+    String prop = System.getProperty(PROP_AUTO_SELECT_DEFAULT_PROFILE);
+    if (prop != null && !prop.isBlank()) {
+      return Boolean.parseBoolean(prop.trim());
+    }
+    String env = System.getenv(ENV_AUTO_SELECT_DEFAULT_PROFILE);
+    if (env != null && !env.isBlank()) {
+      return Boolean.parseBoolean(env.trim());
+    }
+    return false;
+  }
+
   private static String extractProfileFromCommand() {
     // Parse --bringup-profile=... from the Java command line.
     String command = System.getProperty("sun.java.command");
@@ -1384,7 +1419,7 @@ public final class BringupUtil {
         BringupPrinter.enqueue(MESSAGE_REGISTRY_DEFAULT_PROFILE_MISSING);
         defaultProfile = profileOrder.isEmpty() ? NT_LABEL_EMPTY : profileOrder.get(INDEX_ZERO);
       }
-      selectedProfile = defaultProfile;
+      selectedProfile = autoSelectDefaultProfileOnStartup() ? defaultProfile : NT_LABEL_EMPTY;
       activeProfile = NT_LABEL_EMPTY;
       activeProfileApplied = false;
       bumpActiveProfileGeneration();
@@ -1436,6 +1471,14 @@ public final class BringupUtil {
       if (Files.exists(legacyDeploy)) {
         return legacyDeploy;
       }
+      Path runtimePath = Filesystem.getOperatingDirectory().toPath().resolve(DEFAULT_PROFILE_FILE);
+      if (Files.exists(runtimePath)) {
+        return runtimePath;
+      }
+      Path legacyRuntime = Filesystem.getOperatingDirectory().toPath().resolve(LEGACY_PROFILE_FILE);
+      if (Files.exists(legacyRuntime)) {
+        return legacyRuntime;
+      }
     } catch (Exception ex) {
       // Fall through to local dev path.
     }
@@ -1462,14 +1505,14 @@ public final class BringupUtil {
 
   /**
    * NAME
-   *   resolveProfilePersistPath - Resolve the profile JSON deploy path for writes.
+   *   resolveProfilePersistPath - Resolve the profile JSON runtime path for writes.
    *
    * RETURNS
-   *   Deploy path for bringup_system.json when available, otherwise a local path.
+   *   Runtime-owned path for bringup_system.json when available, otherwise a local path.
    */
   private static Path resolveProfilePersistPath() {
     try {
-      return Filesystem.getDeployDirectory().toPath().resolve(DEFAULT_PROFILE_FILE);
+      return Filesystem.getOperatingDirectory().toPath().resolve(DEFAULT_PROFILE_FILE);
     } catch (Exception ex) {
       return Paths.get(DEFAULT_PROFILE_FILE);
     }
@@ -1480,11 +1523,11 @@ public final class BringupUtil {
    *   resolveProfilePersistFallbackPath - Resolve fallback path for profile JSON writes.
    *
    * RETURNS
-   *   Operating directory path for bringup_system.json when available.
+   *   Deploy path for bringup_system.json when available.
    */
   private static Path resolveProfilePersistFallbackPath() {
     try {
-      return Filesystem.getOperatingDirectory().toPath().resolve(DEFAULT_PROFILE_FILE);
+      return Filesystem.getDeployDirectory().toPath().resolve(DEFAULT_PROFILE_FILE);
     } catch (Exception ex) {
       return Paths.get(DEFAULT_PROFILE_FILE);
     }
@@ -2089,11 +2132,11 @@ public final class BringupUtil {
       }
       defaultProfile = nextDefault;
       if (selectedProfile == null || selectedProfile.isBlank() || !profiles.containsKey(selectedProfile)) {
-        selectedProfile = defaultProfile;
+        selectedProfile = autoSelectDefaultProfileOnStartup() ? defaultProfile : NT_LABEL_EMPTY;
       }
       if ((activateProfile == null || activateProfile.isBlank())
           && (activeProfile == null || activeProfile.isBlank() || !profiles.containsKey(activeProfile))) {
-        activeProfile = selectedProfile;
+        activeProfile = NT_LABEL_EMPTY;
         activeProfileApplied = false;
       }
       DEVICE_REGISTRY.clear();

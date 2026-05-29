@@ -373,6 +373,7 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
               .append(BringupHealthFormat.formatMotorSpecNote(spec, ctre != null ? ctre.motorCurrentA : null))
               .append(BringupHealthFormat.formatLimitSummary(limits))
               .append(" busV=").append(String.format("%.2f", BringupHealthFormat.safeDouble(ctre != null ? ctre.busV : null))).append("V")
+              .append(" cmdDuty=").append(String.format("%.2f", BringupHealthFormat.safeDouble(ctre != null ? ctre.cmdDuty : null))).append("dc")
               .append(" appliedDuty=").append(String.format("%.2f", BringupHealthFormat.safeDouble(ctre != null ? ctre.appliedDuty : null))).append("dc")
               .append(" appliedV=").append(String.format("%.2f", BringupHealthFormat.safeDouble(ctre != null ? ctre.appliedV : null))).append("V")
               .append(" motorCurrentA=").append(String.format("%.4f", BringupHealthFormat.safeDouble(ctre != null ? ctre.motorCurrentA : null))).append("A")
