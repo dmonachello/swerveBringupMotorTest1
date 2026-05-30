@@ -263,6 +263,8 @@ UI RUNTIME AND CONFIG CONTROLS
     Purpose: Describe the explicit control actions in the Bringup Control UI.
     - `Runtime Activate` activates the currently selected profile through the REST command path.
     - `Runtime Deactivate` deactivates current runtime through the REST command path.
+    - Driver Station `Disable` also deactivates current runtime and frees runtime-owned resources.
+    - After any Driver Station `Disable`, the operator must click `Runtime Activate` again before motion tests can resume.
     - `Push Config` sends the host config to the robot through the same staged apply path as CLI.
     - `Download Current Config` fetches the robot canonical config through `GET /config/current`.
     - `Add Motor` and `Add All Motors` remain incremental bringup tools; they are not substitutes for runtime activation.
@@ -277,6 +279,11 @@ LIVE TOPOLOGY OVERLAY
     - Update rate defaults to 2 Hz; adjust in the Live Topology controls.
     - REST live overlay polling uses a lighter runtime-state snapshot path than full diagnostics polling.
     - Light polling prefers cheaper telemetry fields and avoids noisier optional REV reads when possible.
+    - The Live Topology view also shows a visible warning banner for operator-blocking states such as:
+        - runtime inactive
+        - robot disabled
+        - robot E-Stop
+    - Driver Station / E-Stop banner state is shown even when `Enable Live Overlay` is off.
     - Sample snapshot: tools\can_nt\samples\sample_runtime_state.json
     - Color legend:
         - Green: presenceConfidence >= 0.5 or lastSeen is recent (<~2s).

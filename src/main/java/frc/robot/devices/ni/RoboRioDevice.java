@@ -1,5 +1,6 @@
 package frc.robot.devices.ni;
 
+import frc.robot.devices.DeviceLifecycleOwnership;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.registry.RegistrationHeader;
@@ -91,5 +92,10 @@ public final class RoboRioDevice implements DeviceUnit {
     snap.present = created;
     snap.note = NOTE_VIRTUAL;
     return snap;
+  }
+
+  @Override
+  public DeviceLifecycleOwnership getLifecycleOwnership() {
+    return DeviceLifecycleOwnership.APP_OWNED_SINGLETON_SERVICE;
   }
 }

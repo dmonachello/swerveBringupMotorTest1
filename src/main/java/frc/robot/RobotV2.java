@@ -48,6 +48,8 @@ public class RobotV2 extends TimedRobot {
   private static final String REASON_PROFILE_ACTIVATE = "profileActivate";
   private static final String REASON_RUNTIME_DEACTIVATE = "runtimeDeactivate";
   private static final String REASON_DISABLED_RUNTIME_DEACTIVATE = "disabledInit";
+  private static final String MESSAGE_DISABLED_RUNTIME_STABLE =
+      "Disabled: runtime deactivated, outputs stopped, hardware released. Runtime Activate required before motion resumes.";
   private static final String TEXT_EMPTY = "";
   private static final int POV_UP = 0;
   private static final int POV_RIGHT = 90;
@@ -174,12 +176,12 @@ public class RobotV2 extends TimedRobot {
       runtime.deactivateActiveProfile(REASON_DISABLED_RUNTIME_DEACTIVATE);
       handleProfileDeactivate();
     } else {
-      core().disableAllBringupTests(true);
       core().safetyStop(REASON_DISABLED_RUNTIME_DEACTIVATE);
       if (diagnostics() != null) {
         diagnostics().resetState();
       }
     }
+    BringupPrinter.enqueue(MESSAGE_DISABLED_RUNTIME_STABLE);
     edge.reset();
   }
 
@@ -192,6 +194,9 @@ public class RobotV2 extends TimedRobot {
    */
   @Override
   public void robotPeriodic() {
+    if (runtime != null) {
+      runtime.sampleTelemetry(System.currentTimeMillis());
+    }
     // Sample and publish CAN health every loop.
     if (diagnostics() != null) {
       diagnostics().update();

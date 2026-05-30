@@ -1259,6 +1259,7 @@ Expected:
 - the UI shows runtime active
 - active runtime profile becomes `test_minimal_25_9`
 - the UI made runtime active only because of the explicit button press
+- Driver Station `Disable` later tears this runtime back down; a fresh `Runtime Activate` is required before the next motion run
 
 ### Step 4A.5: Verify live runtime telemetry after UI activation
 
@@ -1273,6 +1274,7 @@ Expected:
 - routine live updates occur at the default `2 Hz` overlay rate unless the operator changes it
 - selection pane shows best-effort robot-local telemetry without requiring a CAN sniffer
 - live overlay polling remains lighter than full diagnostic polling
+- Live Topology shows a visible warning banner when runtime is inactive, the robot is disabled, or the robot is e-stopped
 
 ### Step 4A.6: Run the Spark motor from the UI
 
@@ -1288,6 +1290,8 @@ Expected:
 - Spark MAX `25` moves when the slider is moved
 - Falcon `9` does not move during this step
 - left-click clears the manual duty and stops the Spark motor
+- if runtime is inactive, Live Topology shows `Runtime inactive. Click Runtime Activate.`
+- if the robot is disabled or e-stopped, Live Topology shows the corresponding blocking warning without needing the Output tab
 
 ### Step 4A.7: Run the Falcon motor from the UI
 

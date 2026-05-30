@@ -324,10 +324,13 @@ The wording must distinguish:
 - `Push Config` uses the same staged config-apply path as CLI.
 - Runtime activation only occurs from an explicit `Runtime Activate` button press.
 - Runtime activation never occurs automatically from selection, push, startup, reconnect, or tab/view changes.
+- Driver Station `Disable` deactivates current runtime and frees runtime-owned resources.
+- After Driver Station `Disable`, the next motion attempt requires a fresh explicit `Runtime Activate`.
 - The UI starts with selected profile = `(none)` by default unless the startup auto-select preference is explicitly enabled.
 - After CLI `config push`, the operator can switch to the UI and complete runtime activation there without returning to CLI.
 - The operator can also complete the full config push and runtime activation flow entirely from the UI.
 - The UI clearly shows selected profile, active runtime profile, and runtime active state.
+- `Live Topology` visibly surfaces operator-blocking state such as runtime inactive, robot disabled, and robot E-Stop without requiring the `Output` tab.
 - `Add Motor` and `Add All` remain available as separate incremental bringup actions.
 - Right-click manual motor test can be reached through a UI-only path after config push and UI runtime activation.
 

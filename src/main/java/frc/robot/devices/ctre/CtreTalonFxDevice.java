@@ -8,7 +8,10 @@ import frc.robot.manufacturers.ctre.diag.CtreTalonFxReader;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.registry.RegistrationHeader;
+import frc.robot.telemetry.SampledSignalNames;
+import frc.robot.telemetry.SampledSignalRegistration;
 import edu.wpi.first.wpilibj.DigitalInput;
+import java.util.List;
 
 /**
  * NAME
@@ -22,6 +25,8 @@ import edu.wpi.first.wpilibj.DigitalInput;
  * motors using Phoenix 6.
  */
 public final class CtreTalonFxDevice implements DeviceUnit {
+  private static final long CURRENT_WINDOW_MS = 500L;
+  private static final double CURRENT_NONZERO_THRESHOLD_A = 0.05;
   public static final RegistrationHeader HEADER = new RegistrationHeader(
       "TalonFX",
       "CTRE",
@@ -246,6 +251,19 @@ public final class CtreTalonFxDevice implements DeviceUnit {
     snap.label = label;
     addLimitAttachment(snap);
     return snap;
+  }
+
+  @Override
+  public List<SampledSignalRegistration> getSampledSignalRegistrations() {
+    return List.of(
+        new SampledSignalRegistration(
+            SampledSignalNames.CURRENT_ACTUAL,
+            CURRENT_WINDOW_MS,
+            CURRENT_NONZERO_THRESHOLD_A,
+            () ->
+                device != null
+                    ? device.getSupplyCurrent().getValue().in(Units.Amps)
+                    : null));
   }
 
   /**

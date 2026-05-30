@@ -3,6 +3,9 @@ package frc.robot.devices;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.SnapshotDetail;
 import frc.robot.registry.HasRegistrationHeader;
+import frc.robot.telemetry.SampledSignalRegistration;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * NAME
@@ -59,6 +62,20 @@ public interface DeviceUnit extends HasRegistrationHeader {
    * Sends vendor-specific fault clear commands.
    */
   void clearFaults();
+
+  /**
+   * NAME
+   * getLifecycleOwnership
+   *
+   * SYNOPSIS
+   * Declare whether the device is runtime-owned or app-singleton-backed.
+   *
+   * RETURNS
+   * Ownership model used by shared lifecycle code and diagnostics.
+   */
+  default DeviceLifecycleOwnership getLifecycleOwnership() {
+    return DeviceLifecycleOwnership.RUNTIME_OWNED_RECREATABLE;
+  }
 
   /**
    * NAME
@@ -137,6 +154,21 @@ public interface DeviceUnit extends HasRegistrationHeader {
 
   default String getMotorModelOverride() {
     return null;
+  }
+
+  /**
+   * NAME
+   * getSampledSignalRegistrations
+   *
+   * SYNOPSIS
+   * Return robot-side sampled telemetry registrations exposed by this device.
+   *
+   * RETURNS
+   * A list of sampled-signal registrations, or an empty list when the device
+   * does not provide robot-side rolling sampled telemetry.
+   */
+  default List<SampledSignalRegistration> getSampledSignalRegistrations() {
+    return Collections.emptyList();
   }
 
   // Optional hooks for non-motor devices (no-op by default).

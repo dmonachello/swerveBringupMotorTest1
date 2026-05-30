@@ -363,6 +363,21 @@ class BridgeUiGroupCommandsTest {
     }
 
     @Override
+    public boolean isRuntimeActive() {
+      return true;
+    }
+
+    @Override
+    public boolean isRobotEnabled() {
+      return true;
+    }
+
+    @Override
+    public boolean isRobotEStopped() {
+      return false;
+    }
+
+    @Override
     public boolean applyManualDeviceDuty(String deviceName, double duty) {
       selected.device = deviceName;
       selected.enabled = true;

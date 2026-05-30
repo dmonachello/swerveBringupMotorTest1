@@ -13,7 +13,10 @@ import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.diag.snapshots.SnapshotDetail;
 import frc.robot.registry.RegistrationHeader;
+import frc.robot.telemetry.SampledSignalNames;
+import frc.robot.telemetry.SampledSignalRegistration;
 import edu.wpi.first.wpilibj.DigitalInput;
+import java.util.List;
 
 /**
  * NAME
@@ -27,6 +30,8 @@ import edu.wpi.first.wpilibj.DigitalInput;
  * alternate encoder access for Spark Max devices.
  */
 public final class RevSparkMaxNeo550Device implements DeviceUnit {
+  private static final long CURRENT_WINDOW_MS = 500L;
+  private static final double CURRENT_NONZERO_THRESHOLD_A = 0.05;
   public static final RegistrationHeader HEADER = new RegistrationHeader(
       "SparkMax NEO 550",
       "REV",
@@ -300,6 +305,16 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     snap.label = label;
     addLimitAttachment(snap);
     return snap;
+  }
+
+  @Override
+  public List<SampledSignalRegistration> getSampledSignalRegistrations() {
+    return List.of(
+        new SampledSignalRegistration(
+            SampledSignalNames.CURRENT_ACTUAL,
+            CURRENT_WINDOW_MS,
+            CURRENT_NONZERO_THRESHOLD_A,
+            () -> device != null ? device.getOutputCurrent() : null));
   }
 
   /**

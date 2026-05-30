@@ -10,6 +10,7 @@ import frc.robot.diag.snapshots.SnapshotDetail;
 import frc.robot.diag.snapshots.EncoderAttachment;
 import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.diag.snapshots.MotorSpecAttachment;
+import frc.robot.diag.snapshots.SampledSignalsAttachment;
 import frc.robot.manufacturers.DeviceAddResult;
 import frc.robot.manufacturers.DeviceRole;
 import frc.robot.manufacturers.DeviceTypeBucket;
@@ -18,6 +19,8 @@ import frc.robot.manufacturers.ManufacturerRegistry;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.manufacturers.microsoft.XboxControllerDevice;
 import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
+import frc.robot.telemetry.SampledSignalSummary;
+import frc.robot.telemetry.SampledTelemetrySampler;
 import frc.robot.tests.BringupTest;
 import frc.robot.tests.BringupTestContext;
 import frc.robot.tests.BringupTestRegistry;
@@ -79,6 +82,7 @@ public final class BringupCore {
       "Warning: failed to set duty for device ";
   private static final String WARNING_DETAIL_OPEN = " (";
   private static final String WARNING_DETAIL_CLOSE = ").";
+  private static final int DEVICE_KEY_INITIAL_BUILDER_CAPACITY = 96;
 
   private List<ManufacturerGroup> manufacturerGroups = ManufacturerRegistry.buildGroups();
   private Map<String, ManufacturerGroup> manufacturerByVendor =
@@ -115,6 +119,7 @@ public final class BringupCore {
   private static final double WARNING_COOLDOWN_SEC = 1.0;
   private static final double SAFETY_COOLDOWN_SEC = 5.0;
   private BringupTestContext testContext;
+  private final SampledTelemetrySampler sampledTelemetry;
 
   /**
    * NAME
@@ -123,7 +128,8 @@ public final class BringupCore {
    * SIDE EFFECTS
    *   Loads bringup tests and initializes device groups.
    */
-  public BringupCore() {
+  public BringupCore(SampledTelemetrySampler sampledTelemetry) {
+    this.sampledTelemetry = sampledTelemetry;
     testContext = new BringupTestContext(manufacturerGroups);
     syncProfileRuntimeFromRegistry();
   }
@@ -470,7 +476,7 @@ public final class BringupCore {
     for (ManufacturerGroup group : manufacturerGroups) {
       group.closeAll();
     }
-    BringupUtil.clearDeviceInstanceRegistry();
+    BringupUtil.clearRuntimeOwnedDeviceInstanceRegistry();
     resetLowCurrentTimers();
 
     nextMotorGroupIndex = 0;
@@ -934,7 +940,7 @@ public final class BringupCore {
       group.stopAll();
       group.closeAll();
     }
-    BringupUtil.clearDeviceInstanceRegistry();
+    BringupUtil.clearRuntimeOwnedDeviceInstanceRegistry();
     manufacturerGroups = ManufacturerRegistry.buildGroups();
     manufacturerByVendor = ManufacturerRegistry.indexByVendor(manufacturerGroups);
     testContext = new BringupTestContext(manufacturerGroups);
@@ -1849,27 +1855,7 @@ public final class BringupCore {
    */
   private DeviceSnapshot snapshotDevice(DeviceTypeBucket bucket, int index, double nowSec) {
     DeviceUnit device = bucket.getDevices().get(index);
-    DeviceSnapshot snap = device.snapshot();
-    if (bucket.getRegistration().role() == DeviceRole.MOTOR) {
-      fillSpecForMotor(snap, device.getLabel(), device.getMotorModelOverride());
-      if (VENDOR_REV.equalsIgnoreCase(bucket.getRegistration().vendor()) && snap.present) {
-        RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
-        if (rev != null) {
-          rev.healthNote = buildRevHealthNote(
-              rev.lastError,
-              BringupHealthFormat.safeDouble(rev.busV));
-          if (bucket.tracksLowCurrent()) {
-            rev.lowCurrentNote = buildLowCurrentNote(
-                bucket.getLowCurrentStartSec(),
-                index,
-                nowSec,
-                BringupHealthFormat.safeDouble(rev.appliedV),
-                BringupHealthFormat.safeDouble(rev.motorCurrentA));
-          }
-        }
-      }
-    }
-    return snap;
+    return enrichSnapshot(device.snapshot(), device, bucket, index, nowSec);
   }
 
   /**
@@ -2837,7 +2823,209 @@ public final class BringupCore {
     for (ManufacturerGroup group : manufacturerGroups) {
       devices.addAll(group.captureSnapshots(nowSec, detail));
     }
+    attachSampledTelemetry(devices);
     return devices;
+  }
+
+  /**
+   * NAME
+   *   captureSnapshotForLabel - Capture a single device snapshot by label.
+   *
+   * PARAMETERS
+   *   label - device label from the active profile.
+   *   detail - requested snapshot detail level.
+   *
+   * RETURNS
+   *   Enriched snapshot for the matching device, or null when no such device
+   *   exists in the current runtime configuration.
+   */
+  public DeviceSnapshot captureSnapshotForLabel(String label, SnapshotDetail detail) {
+    if (label == null || label.isBlank()) {
+      return null;
+    }
+    double nowSec = Timer.getFPGATimestamp();
+    String needle = label.trim();
+    for (ManufacturerGroup group : manufacturerGroups) {
+      if (group == null) {
+        continue;
+      }
+      for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
+        if (bucket == null) {
+          continue;
+        }
+        List<DeviceUnit> devices = bucket.getDevices();
+        for (int i = 0; i < devices.size(); i++) {
+          DeviceUnit device = devices.get(i);
+          if (device == null || device.getLabel() == null) {
+            continue;
+          }
+          if (!needle.equalsIgnoreCase(device.getLabel())) {
+            continue;
+          }
+          DeviceSnapshot snapshot = enrichSnapshot(device.snapshot(detail), device, bucket, i, nowSec);
+          attachSampledTelemetry(java.util.Collections.singletonList(snapshot));
+          return snapshot;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * NAME
+   *   getAllDevices - Return all known configured device wrappers in the current core.
+   *
+   * RETURNS
+   *   Flat list of all device wrappers across manufacturer groups.
+   */
+  public List<DeviceUnit> getAllDevices() {
+    List<DeviceUnit> devices = new ArrayList<>();
+    for (ManufacturerGroup group : manufacturerGroups) {
+      if (group == null) {
+        continue;
+      }
+      for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
+        if (bucket == null) {
+          continue;
+        }
+        devices.addAll(bucket.getDevices());
+      }
+    }
+    return devices;
+  }
+
+  /**
+   * NAME
+   *   hasCreatedDevices - Return whether any runtime devices are instantiated.
+   *
+   * RETURNS
+   *   True when at least one device is currently created in local vendor APIs.
+   */
+  public boolean hasCreatedDevices() {
+    return hasInstantiatedDevices();
+  }
+
+  /**
+   * NAME
+   *   hasAllActiveDevicesCreated - Return whether every active-profile device wrapper is created.
+   *
+   * RETURNS
+   *   True when each configured active device can be resolved in the current
+   *   core and reports an instantiated vendor/app wrapper.
+   */
+  public boolean hasAllActiveDevicesCreated() {
+    List<BringupUtil.DeviceEntry> activeDevices = BringupUtil.getActiveDevicesSorted();
+    if (activeDevices.isEmpty()) {
+      return true;
+    }
+    for (BringupUtil.DeviceEntry entry : activeDevices) {
+      if (entry == null || entry.label == null || entry.label.isBlank()) {
+        return false;
+      }
+      DeviceUnit device = findDeviceByLabel(entry.label);
+      if (device == null || !device.isCreated()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private void attachSampledTelemetry(List<DeviceSnapshot> snapshots) {
+    if (sampledTelemetry == null || snapshots == null || snapshots.isEmpty()) {
+      return;
+    }
+    Map<String, DeviceUnit> byKey = new HashMap<>();
+    for (DeviceUnit device : getAllDevices()) {
+      if (device == null) {
+        continue;
+      }
+      byKey.put(buildDeviceKey(device), device);
+    }
+    for (DeviceSnapshot snapshot : snapshots) {
+      if (snapshot == null) {
+        continue;
+      }
+      DeviceUnit device = byKey.get(buildDeviceKey(snapshot));
+      if (device == null) {
+        continue;
+      }
+      Map<String, SampledSignalSummary> summaries = sampledTelemetry.getDeviceSummaries(device);
+      if (summaries.isEmpty()) {
+        continue;
+      }
+      SampledSignalsAttachment sampled = new SampledSignalsAttachment();
+      sampled.signals.addAll(summaries.values());
+      snapshot.addAttachment(sampled);
+    }
+  }
+
+  private String buildDeviceKey(DeviceUnit device) {
+    StringBuilder sb = new StringBuilder(DEVICE_KEY_INITIAL_BUILDER_CAPACITY);
+    sb.append(device.getHeader() != null ? device.getHeader().vendor() : "");
+    sb.append('|');
+    sb.append(device.getDeviceType() != null ? device.getDeviceType() : "");
+    sb.append('|');
+    sb.append(device.getCanId());
+    sb.append('|');
+    sb.append(device.getLabel() != null ? device.getLabel() : "");
+    return sb.toString();
+  }
+
+  private String buildDeviceKey(DeviceSnapshot snapshot) {
+    StringBuilder sb = new StringBuilder(DEVICE_KEY_INITIAL_BUILDER_CAPACITY);
+    sb.append(snapshot.vendor != null ? snapshot.vendor : "");
+    sb.append('|');
+    sb.append(snapshot.deviceType != null ? snapshot.deviceType : "");
+    sb.append('|');
+    sb.append(snapshot.canId);
+    sb.append('|');
+    sb.append(snapshot.label != null ? snapshot.label : "");
+    return sb.toString();
+  }
+
+  /**
+   * NAME
+   *   enrichSnapshot - Apply shared motor-spec and health-note enrichment.
+   *
+   * PARAMETERS
+   *   snap - raw device snapshot.
+   *   device - device wrapper that produced the snapshot.
+   *   bucket - bucket containing the device.
+   *   index - bucket-local device index.
+   *   nowSec - current FPGA time in seconds.
+   *
+   * RETURNS
+   *   The same snapshot instance after shared enrichment.
+   */
+  private DeviceSnapshot enrichSnapshot(
+      DeviceSnapshot snap,
+      DeviceUnit device,
+      DeviceTypeBucket bucket,
+      int index,
+      double nowSec) {
+    if (snap == null || device == null || bucket == null) {
+      return snap;
+    }
+    if (bucket.getRegistration().role() == DeviceRole.MOTOR) {
+      fillSpecForMotor(snap, device.getLabel(), device.getMotorModelOverride());
+      if (VENDOR_REV.equalsIgnoreCase(bucket.getRegistration().vendor()) && snap.present) {
+        RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
+        if (rev != null) {
+          rev.healthNote = buildRevHealthNote(
+              rev.lastError,
+              BringupHealthFormat.safeDouble(rev.busV));
+          if (bucket.tracksLowCurrent()) {
+            rev.lowCurrentNote = buildLowCurrentNote(
+                bucket.getLowCurrentStartSec(),
+                index,
+                nowSec,
+                BringupHealthFormat.safeDouble(rev.appliedV),
+                BringupHealthFormat.safeDouble(rev.motorCurrentA));
+          }
+        }
+      }
+    }
+    return snap;
   }
 
   /**

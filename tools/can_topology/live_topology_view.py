@@ -108,6 +108,9 @@ NOTICE_COLOR_WARN_FG = "#c2410c"
 NOTICE_COLOR_ERROR_BG = "#fef2f2"
 NOTICE_COLOR_ERROR_FG = "#b91c1c"
 PRESENCE_STALE_MS = 2000
+RECENT_SEEN_NOW_MS = 100
+RECENT_SEEN_MS_SWITCH = 1000
+RECENT_SEEN_SEC_SWITCH = 10000
 PRESENCE_MIN_CONF = 0.05
 PRESENCE_HIGH_CONF = 0.5
 EMPTY_STRING = ""
@@ -208,6 +211,78 @@ NODE_ROW_MOD = 2
 NODE_ROW_EVEN = 0
 NODE_ROW_ODD = 1
 NODE_CAN_ID_DEFAULT = -1
+ATTACHMENT_KEY_TYPE = "type"
+ATTACHMENT_TYPE_REV_MOTOR = "revMotor"
+ATTACHMENT_TYPE_CTRE_MOTOR = "ctreMotor"
+RUNTIME_KEY_MOTOR_CURRENT_A = "motorCurrentA"
+RUNTIME_KEY_CURRENT_INSTANT_A = "currentInstantA"
+RUNTIME_KEY_CURRENT_AVG_A = "currentAvgA"
+RUNTIME_KEY_CURRENT_PEAK_A = "currentPeakA"
+RUNTIME_KEY_CURRENT_NONZERO_RATIO = "currentNonzeroRatio"
+RUNTIME_KEY_CURRENT_SAMPLE_COUNT = "currentSampleCount"
+RUNTIME_CURRENT_DISPLAY_MIN_A = 0.05
+
+
+def _runtime_device_field(device: Dict[str, object], key: str) -> object:
+    """
+    NAME
+        _runtime_device_field - Read a runtime-state field from top-level or motor attachments.
+    """
+    if not isinstance(device, dict) or not key:
+        return None
+    value = device.get(key)
+    if value is not None:
+        return value
+    attachments = device.get("attachments")
+    if not isinstance(attachments, list):
+        return None
+    for attachment in attachments:
+        if not isinstance(attachment, dict):
+            continue
+        attachment_type = str(attachment.get(ATTACHMENT_KEY_TYPE, "")).strip()
+        if attachment_type not in (ATTACHMENT_TYPE_REV_MOTOR, ATTACHMENT_TYPE_CTRE_MOTOR):
+            continue
+        value = attachment.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def _runtime_display_current_a(device: Dict[str, object]) -> object:
+    """
+    NAME
+        _runtime_display_current_a - Choose the most useful current value for display.
+    """
+    avg_value = _runtime_device_field(device, RUNTIME_KEY_CURRENT_AVG_A)
+    peak_value = _runtime_device_field(device, RUNTIME_KEY_CURRENT_PEAK_A)
+    instant = _runtime_device_field(device, RUNTIME_KEY_CURRENT_INSTANT_A)
+    raw_motor_current = _runtime_device_field(device, RUNTIME_KEY_MOTOR_CURRENT_A)
+    if isinstance(avg_value, (int, float)) and float(avg_value) > RUNTIME_CURRENT_DISPLAY_MIN_A:
+        return avg_value
+    if isinstance(peak_value, (int, float)) and float(peak_value) > RUNTIME_CURRENT_DISPLAY_MIN_A:
+        return peak_value
+    if isinstance(instant, (int, float)) and float(instant) > RUNTIME_CURRENT_DISPLAY_MIN_A:
+        return instant
+    if isinstance(raw_motor_current, (int, float)) and float(raw_motor_current) > RUNTIME_CURRENT_DISPLAY_MIN_A:
+        return raw_motor_current
+    return instant
+
+
+def _format_last_seen(last_seen_ms: object, now_ms: int) -> str:
+    """
+    NAME
+        _format_last_seen - Render last-seen timestamps as useful recency text.
+    """
+    if not isinstance(last_seen_ms, (int, float)):
+        return "--"
+    age_ms = max(0, now_ms - int(last_seen_ms))
+    if age_ms <= RECENT_SEEN_NOW_MS:
+        return "now"
+    if age_ms < RECENT_SEEN_MS_SWITCH:
+        return f"{age_ms} ms ago"
+    if age_ms < RECENT_SEEN_SEC_SWITCH:
+        return f"{age_ms / 1000.0:.1f} s ago"
+    return f"{age_ms / 1000.0:.0f} s ago"
 
 
 @dataclass
@@ -544,10 +619,11 @@ class LiveTopologyView(ttk.Frame):
             text=EMPTY_STRING,
             anchor="w",
             justify="left",
-            padx=8,
-            pady=4,
+            padx=10,
+            pady=6,
             bg=NOTICE_COLOR_INFO_BG,
             fg=NOTICE_COLOR_INFO_FG,
+            font=("Segoe UI", 14, "bold"),
         )
         self._notice_label.pack(fill="x", padx=8, pady=(6, 0))
         self._notice_label.pack_forget()
@@ -593,6 +669,10 @@ class LiveTopologyView(ttk.Frame):
             "presence": tk.StringVar(value="--"),
             "last_seen": tk.StringVar(value="--"),
             "current_a": tk.StringVar(value="--"),
+            "current_avg_a": tk.StringVar(value="--"),
+            "current_peak_a": tk.StringVar(value="--"),
+            "current_nonzero": tk.StringVar(value="--"),
+            "current_samples": tk.StringVar(value="--"),
             "cmd_duty": tk.StringVar(value="--"),
             "applied_duty": tk.StringVar(value="--"),
             "temp_c": tk.StringVar(value="--"),
@@ -604,6 +684,10 @@ class LiveTopologyView(ttk.Frame):
             ("Presence", "presence"),
             ("Last Seen", "last_seen"),
             ("Current (A)", "current_a"),
+            ("Current Avg (A)", "current_avg_a"),
+            ("Current Peak (A)", "current_peak_a"),
+            ("Current Nonzero", "current_nonzero"),
+            ("Current Window Samples", "current_samples"),
             ("Cmd Duty", "cmd_duty"),
             ("Applied Duty", "applied_duty"),
             ("Temp (C)", "temp_c"),
@@ -898,16 +982,16 @@ class LiveTopologyView(ttk.Frame):
             last_seen = device.get("lastSeenMs")
             if presence_bucket is None and isinstance(last_seen, (int, float)):
                 last_seen_bucket = int(float(last_seen) // 1000)
-            current_a = device.get("motorCurrentA")
+            current_a = _runtime_display_current_a(device)
             if isinstance(current_a, (int, float)):
                 current_a = round(float(current_a), 1)
-            cmd_duty = device.get("cmdDuty")
+            cmd_duty = _runtime_device_field(device, "cmdDuty")
             if isinstance(cmd_duty, (int, float)):
                 cmd_duty = round(float(cmd_duty), 2)
-            applied_duty = device.get("appliedDuty")
+            applied_duty = _runtime_device_field(device, "appliedDuty")
             if isinstance(applied_duty, (int, float)):
                 applied_duty = round(float(applied_duty), 2)
-            temp_c = device.get("tempC")
+            temp_c = _runtime_device_field(device, "tempC")
             if isinstance(temp_c, (int, float)):
                 temp_c = round(float(temp_c), 1)
             fingerprint_items.append(
@@ -926,6 +1010,9 @@ class LiveTopologyView(ttk.Frame):
             tuple(fingerprint_items),
             selected_label,
             selected_enabled,
+            runtime_active,
+            robot_enabled,
+            robot_estopped,
         )
         if fingerprint == self._runtime_fingerprint:
             return False
@@ -1219,20 +1306,43 @@ class LiveTopologyView(ttk.Frame):
         self._detail_vars["can_id"].set(str(node.can_id) if node.can_id >= 0 else "--")
         live = self._runtime_state.get(node.label.lower())
         if live:
+            now_ms = int(time.time() * 1000)
             presence = live.get("presenceConfidence")
             last_seen = live.get("lastSeenMs")
-            current_a = live.get("motorCurrentA")
-            cmd_duty = live.get("cmdDuty")
-            applied_duty = live.get("appliedDuty")
-            temp_c = live.get("tempC")
+            current_a = _runtime_display_current_a(live)
+            current_avg_a = _runtime_device_field(live, RUNTIME_KEY_CURRENT_AVG_A)
+            current_peak_a = _runtime_device_field(live, RUNTIME_KEY_CURRENT_PEAK_A)
+            current_nonzero = _runtime_device_field(live, RUNTIME_KEY_CURRENT_NONZERO_RATIO)
+            current_samples = _runtime_device_field(live, RUNTIME_KEY_CURRENT_SAMPLE_COUNT)
+            cmd_duty = _runtime_device_field(live, "cmdDuty")
+            applied_duty = _runtime_device_field(live, "appliedDuty")
+            temp_c = _runtime_device_field(live, "tempC")
             self._detail_vars["presence"].set(
                 f"{float(presence):.2f}" if isinstance(presence, (int, float)) else "--"
             )
-            self._detail_vars["last_seen"].set(
-                str(int(last_seen)) if isinstance(last_seen, (int, float)) else "--"
-            )
+            self._detail_vars["last_seen"].set(_format_last_seen(last_seen, now_ms))
             self._detail_vars["current_a"].set(
                 f"{float(current_a):.2f}" if isinstance(current_a, (int, float)) else "--"
+            )
+            self._detail_vars["current_avg_a"].set(
+                f"{float(current_avg_a):.2f}"
+                if isinstance(current_avg_a, (int, float))
+                else "--"
+            )
+            self._detail_vars["current_peak_a"].set(
+                f"{float(current_peak_a):.2f}"
+                if isinstance(current_peak_a, (int, float))
+                else "--"
+            )
+            self._detail_vars["current_nonzero"].set(
+                f"{float(current_nonzero):.2f}"
+                if isinstance(current_nonzero, (int, float))
+                else "--"
+            )
+            self._detail_vars["current_samples"].set(
+                str(int(current_samples))
+                if isinstance(current_samples, (int, float))
+                else "--"
             )
             self._detail_vars["cmd_duty"].set(
                 f"{float(cmd_duty):.2f}" if isinstance(cmd_duty, (int, float)) else "--"
@@ -1247,6 +1357,10 @@ class LiveTopologyView(ttk.Frame):
             self._detail_vars["presence"].set("--")
             self._detail_vars["last_seen"].set("--")
             self._detail_vars["current_a"].set("--")
+            self._detail_vars["current_avg_a"].set("--")
+            self._detail_vars["current_peak_a"].set("--")
+            self._detail_vars["current_nonzero"].set("--")
+            self._detail_vars["current_samples"].set("--")
             self._detail_vars["cmd_duty"].set("--")
             self._detail_vars["applied_duty"].set("--")
             self._detail_vars["temp_c"].set("--")

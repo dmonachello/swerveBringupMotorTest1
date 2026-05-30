@@ -18,6 +18,7 @@ import com.revrobotics.util.StatusLogger;
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.GenericHID;
+import frc.robot.devices.DeviceLifecycleOwnership;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.registry.RegistrationHeader;
 import java.io.IOException;
@@ -36,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * NAME
@@ -149,6 +151,8 @@ public final class BringupUtil {
   private static final String MESSAGE_UNKNOWN_CAN_IDENTITY =
       "Warning: unable to map device to CAN identity (label=%s, id=%s).";
   private static final String MESSAGE_RELOAD_FAILED = "profiles reload failed";
+  private static final String MESSAGE_APP_SINGLETON_TYPE_MISMATCH =
+      "App singleton service type mismatch for %s/%s/%s";
   private static final String MESSAGE_SAFE_MODE_APPLIED =
       "Warning: no valid bringup profiles loaded. Entering empty safe mode.";
   private static final String MESSAGE_REGISTRY_DEFAULT_PROFILE_MISSING =
@@ -238,6 +242,8 @@ public final class BringupUtil {
   private static final Map<DeviceKey, List<DeviceConfig>> DEVICE_CONFIGS = new LinkedHashMap<>();
   private static final Map<String, DeviceDefinition> DEVICE_REGISTRY = new LinkedHashMap<>();
   private static final Map<DeviceInstanceKey, Object> DEVICE_INSTANCE_REGISTRY = new LinkedHashMap<>();
+  private static final Map<DeviceInstanceKey, Object> APP_SINGLETON_SERVICE_REGISTRY =
+      new LinkedHashMap<>();
   private static long activeProfileGeneration = PROFILE_CONFIG_GENERATION_INITIAL;
 
   // Currently active profile name.
@@ -892,6 +898,78 @@ public final class BringupUtil {
    */
   public static synchronized void clearDeviceInstanceRegistry() {
     DEVICE_INSTANCE_REGISTRY.clear();
+  }
+
+  /**
+   * NAME
+   *   clearRuntimeOwnedDeviceInstanceRegistry - Clear claims for runtime-owned devices only.
+   *
+   * DESCRIPTION
+   *   App-owned singleton-service devices do not participate in the runtime
+   *   claim registry. This method preserves that future separation by removing
+   *   only claims owned by runtime-recreatable devices.
+   */
+  public static synchronized void clearRuntimeOwnedDeviceInstanceRegistry() {
+    DEVICE_INSTANCE_REGISTRY.entrySet().removeIf(
+        entry -> isRuntimeOwnedDeviceInstance(entry.getValue()));
+  }
+
+  /**
+   * NAME
+   *   acquireAppSingletonService - Create or reuse an app-lifetime singleton.
+   *
+   * PARAMETERS
+   *   device - Device wrapper requesting the singleton-backed service.
+   *   serviceClass - Expected singleton implementation type.
+   *   factory - Factory used only for the first allocation.
+   *
+   * RETURNS
+   *   Existing or newly created singleton service instance.
+   *
+   * ERRORS
+   *   Throws IllegalStateException if the stored singleton type does not match
+   *   the requested type for the same vendor/type/id key.
+   */
+  public static synchronized <T> T acquireAppSingletonService(
+      DeviceUnit device,
+      Class<T> serviceClass,
+      Supplier<T> factory) {
+    if (device == null || serviceClass == null || factory == null) {
+      return null;
+    }
+    RegistrationHeader header = device.getHeader();
+    String vendor = header != null ? header.vendor() : "";
+    String type = header != null ? header.deviceType() : device.getDeviceType();
+    int id = device.getCanId();
+    DeviceInstanceKey key = new DeviceInstanceKey(vendor, type, id);
+    Object existing = APP_SINGLETON_SERVICE_REGISTRY.get(key);
+    if (existing == null) {
+      T created = factory.get();
+      APP_SINGLETON_SERVICE_REGISTRY.put(key, created);
+      return created;
+    }
+    if (!serviceClass.isInstance(existing)) {
+      throw new IllegalStateException(
+          String.format(MESSAGE_APP_SINGLETON_TYPE_MISMATCH, safeText(vendor), safeText(type), id));
+    }
+    return serviceClass.cast(existing);
+  }
+
+  /**
+   * NAME
+   *   isRuntimeOwnedDeviceInstance - Report whether an instance claim is runtime-owned.
+   *
+   * PARAMETERS
+   *   instance - Claimed object from the device instance registry.
+   *
+   * RETURNS
+   *   True when the claim belongs to a runtime-owned recreatable device.
+   */
+  public static boolean isRuntimeOwnedDeviceInstance(Object instance) {
+    if (!(instance instanceof DeviceUnit device)) {
+      return true;
+    }
+    return device.getLifecycleOwnership() == DeviceLifecycleOwnership.RUNTIME_OWNED_RECREATABLE;
   }
 
   /**

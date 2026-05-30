@@ -2540,6 +2540,9 @@ class BringupControlUI(tk.Tk):
         NAME
             _apply_runtime_state_payload - Apply live runtime-state JSON.
         """
+        runtime_active = payload.get("runtimeActive")
+        if isinstance(runtime_active, bool):
+            self._runtime_active_known = runtime_active
         live_views = self._iter_live_views()
         if not live_views:
             return
@@ -2550,9 +2553,6 @@ class BringupControlUI(tk.Tk):
             self._runtime_state_backoff = 1.0
             self._runtime_state_idle_count = 0
             self._runtime_state_pause_until = None
-            runtime_active = payload.get("runtimeActive")
-            if isinstance(runtime_active, bool):
-                self._runtime_active_known = runtime_active
             return
         self._runtime_state_idle_count += 1
         if self._runtime_state_idle_count >= 3:

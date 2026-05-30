@@ -1,5 +1,7 @@
 package frc.robot.devices.ctre;
 
+import frc.robot.BringupUtil;
+import frc.robot.devices.DeviceLifecycleOwnership;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
@@ -11,8 +13,8 @@ import frc.robot.registry.RegistrationHeader;
  *   CtrePdpDevice - DeviceUnit wrapper for CTRE PDP status.
  *
  * DESCRIPTION
- *   Owns the WPILib PowerDistribution allocation through the same lifecycle
- *   used by motor and sensor devices.
+ *   Attaches to an app-owned singleton PowerDistribution reader so runtime
+ *   teardown can detach wrappers without reallocating the PDP in-process.
  */
 public final class CtrePdpDevice implements DeviceUnit {
   public static final RegistrationHeader HEADER = new RegistrationHeader(
@@ -73,17 +75,15 @@ public final class CtrePdpDevice implements DeviceUnit {
 
   @Override
   public void ensureCreated() {
-    if (reader == null) {
-      reader = new PdpStatusReader(canId);
+    if (reader != null) {
+      return;
     }
+    reader = BringupUtil.acquireAppSingletonService(this, PdpStatusReader.class, () -> new PdpStatusReader(canId));
   }
 
   @Override
   public void close() {
-    if (reader != null) {
-      reader.close();
-      reader = null;
-    }
+    reader = null;
   }
 
   @Override
@@ -119,5 +119,10 @@ public final class CtrePdpDevice implements DeviceUnit {
     snap.canId = canId;
     snap.label = label;
     return snap;
+  }
+
+  @Override
+  public DeviceLifecycleOwnership getLifecycleOwnership() {
+    return DeviceLifecycleOwnership.APP_OWNED_SINGLETON_SERVICE;
   }
 }

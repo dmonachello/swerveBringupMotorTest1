@@ -1,6 +1,10 @@
 package frc.robot;
 
 import edu.wpi.first.networktables.NetworkTable;
+import frc.robot.telemetry.SampledTelemetrySampler;
+import java.util.Collections;
+import java.util.List;
+import frc.robot.devices.DeviceUnit;
 
 /**
  * NAME
@@ -20,6 +24,7 @@ public final class BringupRuntime {
   private final BridgeGroupManager bridgeGroups = new BridgeGroupManager();
   private final BridgeGroupManager.SelectedState bridgeSelected =
       new BridgeGroupManager.SelectedState();
+  private final SampledTelemetrySampler sampledTelemetry = new SampledTelemetrySampler();
 
   private BringupCore core;
   private DiagnosticsReporter diagnostics;
@@ -64,6 +69,14 @@ public final class BringupRuntime {
 
   /**
    * NAME
+   *   getSampledTelemetry - Return the shared sampled-telemetry service.
+   */
+  public SampledTelemetrySampler getSampledTelemetry() {
+    return sampledTelemetry;
+  }
+
+  /**
+   * NAME
    *   getBridgeGroups - Return shared bridge group state.
    */
   public BridgeGroupManager getBridgeGroups() {
@@ -90,12 +103,72 @@ public final class BringupRuntime {
 
   /**
    * NAME
+   *   isRuntimeDeclaredActive - Return whether profile metadata marks runtime active.
+   *
+   * RETURNS
+   *   True when BringupUtil currently marks an active runtime profile.
+   */
+  public boolean isRuntimeDeclaredActive() {
+    return BringupUtil.isProfileActive();
+  }
+
+  /**
+   * NAME
+   *   isRuntimeReady - Return whether runtime is active and usable for actuation.
+   *
+   * RETURNS
+   *   True when runtime metadata is active and the current core has realized
+   *   the active profile into instantiated devices for every configured active
+   *   device. Profiles with zero active devices are treated as ready once
+   *   activated.
+   */
+  public boolean isRuntimeReady() {
+    if (!BringupUtil.isProfileActive()) {
+      return false;
+    }
+    if (BringupUtil.getActiveDevicesSorted().isEmpty()) {
+      return true;
+    }
+    return core != null && core.hasAllActiveDevicesCreated();
+  }
+
+  /**
+   * NAME
+   *   isSelectedProfileRuntimeReady - Return whether the selected profile is already active and usable.
+   *
+   * RETURNS
+   *   True when the selected profile matches the active runtime profile and the
+   *   runtime is ready for use.
+   */
+  public boolean isSelectedProfileRuntimeReady() {
+    String selectedProfile = BringupUtil.getSelectedCanProfile();
+    String activeProfile = BringupUtil.getActiveRuntimeProfileLabel();
+    if (selectedProfile == null || selectedProfile.isBlank()) {
+      return false;
+    }
+    if (!selectedProfile.equals(activeProfile)) {
+      return false;
+    }
+    return isRuntimeReady();
+  }
+
+  /**
+   * NAME
    *   updateDiagnostics - Update diagnostics publishers.
    */
   public void updateDiagnostics() {
     if (diagnostics != null) {
       diagnostics.update();
     }
+  }
+
+  /**
+   * NAME
+   *   sampleTelemetry - Advance robot-side sampled telemetry for active devices.
+   */
+  public void sampleTelemetry(long nowMs) {
+    List<DeviceUnit> devices = core != null ? core.getAllDevices() : Collections.emptyList();
+    sampledTelemetry.sampleDevices(devices, nowMs);
   }
 
   /**
@@ -291,6 +364,7 @@ public final class BringupRuntime {
     if (core != null) {
       core.resetState(reason);
     }
+    sampledTelemetry.clearAll();
     replaceCore();
     bridgeGroups.clear();
     bridgeSelected.device = TEXT_EMPTY;
@@ -365,14 +439,7 @@ public final class BringupRuntime {
    *   reason - Reset reason label.
    */
   public void activateSelectedProfile(String reason) {
-    String selectedProfile = BringupUtil.getSelectedCanProfile();
-    String activeProfile = BringupUtil.getActiveRuntimeProfileLabel();
-    if (
-        BringupUtil.isProfileActive()
-            && selectedProfile != null
-            && !selectedProfile.isBlank()
-            && selectedProfile.equals(activeProfile)
-    ) {
+    if (isSelectedProfileRuntimeReady()) {
       return;
     }
     BringupUtil.prepareActivationForSelectedProfile();
@@ -380,6 +447,23 @@ public final class BringupRuntime {
     if (BringupUtil.isProfileActive()) {
       resetAndInstantiateForProfile(reason);
     }
+  }
+
+  /**
+   * NAME
+   *   ensureSelectedProfileRuntime - Activate selected profile when runtime is not ready.
+   *
+   * PARAMETERS
+   *   reason - Reset reason label.
+   *
+   * RETURNS
+   *   True when the selected profile ends in a ready runtime state.
+   */
+  public boolean ensureSelectedProfileRuntime(String reason) {
+    if (!isSelectedProfileRuntimeReady()) {
+      activateSelectedProfile(reason);
+    }
+    return isSelectedProfileRuntimeReady();
   }
 
   /**
@@ -394,6 +478,7 @@ public final class BringupRuntime {
       core.resetState(reason);
     }
     BringupUtil.deactivateActiveProfile();
+    sampledTelemetry.clearAll();
     replaceCore();
     bridgeGroups.clear();
     bridgeSelected.device = TEXT_EMPTY;
@@ -405,7 +490,7 @@ public final class BringupRuntime {
   }
 
   private void replaceCore() {
-    core = new BringupCore();
+    core = new BringupCore(sampledTelemetry);
     core.setRunTestBindingLabel(runTestBindingLabel);
     if (diagnostics == null) {
       diagnostics = new DiagnosticsReporter(core, canHealth, diagTable);

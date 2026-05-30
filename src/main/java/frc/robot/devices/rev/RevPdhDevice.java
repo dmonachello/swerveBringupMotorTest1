@@ -1,6 +1,7 @@
 package frc.robot.devices.rev;
 
 import frc.robot.BringupUtil;
+import frc.robot.devices.DeviceLifecycleOwnership;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.SnapshotDetail;
@@ -13,8 +14,8 @@ import frc.robot.registry.RegistrationHeader;
  *   RevPdhDevice - DeviceUnit wrapper for REV PDH status.
  *
  * DESCRIPTION
- *   Owns the WPILib PowerDistribution allocation through the same lifecycle
- *   used by motor and sensor devices.
+ *   Attaches to an app-owned singleton PowerDistribution reader so runtime
+ *   teardown can detach wrappers without reallocating the PDH in-process.
  */
 public final class RevPdhDevice implements DeviceUnit {
   public static final RegistrationHeader HEADER = new RegistrationHeader(
@@ -76,27 +77,14 @@ public final class RevPdhDevice implements DeviceUnit {
   @Override
   public void ensureCreated() {
     if (reader != null) {
-      BringupUtil.claimDeviceInstance(this);
       return;
     }
-    if (!BringupUtil.claimDeviceInstance(this)) {
-      return;
-    }
-    try {
-      reader = new PdhStatusReader(canId);
-    } catch (RuntimeException ex) {
-      BringupUtil.releaseDeviceInstance(this);
-      throw ex;
-    }
+    reader = BringupUtil.acquireAppSingletonService(this, PdhStatusReader.class, () -> new PdhStatusReader(canId));
   }
 
   @Override
   public void close() {
-    if (reader != null) {
-      reader.close();
-      reader = null;
-    }
-    BringupUtil.releaseDeviceInstance(this);
+    reader = null;
   }
 
   @Override
@@ -138,5 +126,10 @@ public final class RevPdhDevice implements DeviceUnit {
     snap.canId = canId;
     snap.label = label;
     return snap;
+  }
+
+  @Override
+  public DeviceLifecycleOwnership getLifecycleOwnership() {
+    return DeviceLifecycleOwnership.APP_OWNED_SINGLETON_SERVICE;
   }
 }

@@ -7,6 +7,7 @@ import frc.robot.commands.local.RobotLocalAxisCommandId;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.ControllerManager;
 import frc.robot.manufacturers.microsoft.XboxControllerDevice;
+import frc.robot.telemetry.SampledTelemetrySampler;
 import frc.robot.tests.BringupTestRegistry;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -42,6 +43,7 @@ public class Robot extends TimedRobot {
   private final java.util.Map<String, XboxController> controllerMap = controllers.getXboxControllers();
   private final XboxController controller0 = controllerMap.get("controller0");
   private final BindingsManager bindings = new BindingsManager();
+  private final SampledTelemetrySampler sampledTelemetry = new SampledTelemetrySampler();
   // Local bringup behaviors for device creation and health.
   private BringupCore core;
   // Edge-detect state for one-shot actions.
@@ -64,11 +66,18 @@ public class Robot extends TimedRobot {
   public void robotInit() {
     // Load profile before devices are created.
     BringupUtil.applyProfileFromArgs();
-    core = new BringupCore();
+    core = new BringupCore(sampledTelemetry);
     printStartupInfo();
     validateCanIds();
     CameraServer.startAutomaticCapture();
 
+  }
+
+  @Override
+  public void robotPeriodic() {
+    if (core != null) {
+      sampledTelemetry.sampleDevices(core.getAllDevices(), System.currentTimeMillis());
+    }
   }
 
   /**

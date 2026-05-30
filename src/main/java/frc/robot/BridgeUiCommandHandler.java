@@ -20,6 +20,7 @@ import frc.robot.commands.local.RobotLocalDispatchMode;
 import frc.robot.commands.local.RobotLocalDispatchResult;
 import frc.robot.commands.local.RobotLocalExecutionResult;
 import frc.robot.commands.local.RobotLocalNoopValueProvider;
+import frc.robot.diag.snapshots.SampledSignalsAttachment;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.InputAliasResolver;
 import frc.robot.diag.snapshots.DeviceSnapshot;
@@ -29,6 +30,8 @@ import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
 import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
 import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
+import frc.robot.telemetry.SampledSignalNames;
+import frc.robot.telemetry.SampledSignalSummary;
 import frc.robot.tests.BringupTestRegistry;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -98,6 +101,17 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_TEMP_C = "tempC";
   private static final String JSON_KEY_VEL_RPM = "velRpm";
   private static final String JSON_KEY_BUS_V = "busV";
+  private static final String JSON_KEY_LAST_ERROR = "lastError";
+  private static final String JSON_KEY_FAULTS_RAW = "faultsRaw";
+  private static final String JSON_KEY_STICKY_FAULTS_RAW = "stickyFaultsRaw";
+  private static final String JSON_KEY_WARNINGS_RAW = "warningsRaw";
+  private static final String JSON_KEY_STICKY_WARNINGS_RAW = "stickyWarningsRaw";
+  private static final String JSON_KEY_IS_FOLLOWER = "isFollower";
+  private static final String JSON_KEY_CURRENT_INSTANT_A = "currentInstantA";
+  private static final String JSON_KEY_CURRENT_AVG_A = "currentAvgA";
+  private static final String JSON_KEY_CURRENT_PEAK_A = "currentPeakA";
+  private static final String JSON_KEY_CURRENT_NONZERO_RATIO = "currentNonzeroRatio";
+  private static final String JSON_KEY_CURRENT_SAMPLE_COUNT = "currentSampleCount";
   private static final String JSON_KEY_TOTAL_CURRENT_A = "totalCurrentA";
   private static final String JSON_KEY_SWITCHABLE_ENABLED = "switchableEnabled";
   private static final String JSON_KEY_BROWNOUT = "brownout";
@@ -482,7 +496,7 @@ public class BridgeUiCommandHandler {
 
           @Override
           public boolean isProfileActive() {
-            return BringupUtil.isProfileActive();
+            return runtime.isRuntimeReady();
           }
 
           @Override
@@ -791,7 +805,7 @@ public class BridgeUiCommandHandler {
 
       @Override
       public boolean isRuntimeActive() {
-        return BringupUtil.isProfileActive();
+        return runtime.isRuntimeReady();
       }
 
       @Override
@@ -950,7 +964,7 @@ public class BridgeUiCommandHandler {
 
       @Override
       public boolean isProfileActive() {
-        return BringupUtil.isProfileActive();
+        return runtime.isRuntimeReady();
       }
 
       @Override
@@ -1018,14 +1032,12 @@ public class BridgeUiCommandHandler {
         new RobotLocalCommandHost() {
           @Override
           public boolean ensureActiveProfile(String reason) {
-            if (!BringupUtil.isProfileActive()) {
-              BringupUtil.prepareActivationForSelectedProfile();
-              runtime.activateSelectedProfile(reason);
-              if (BringupUtil.isProfileActive() && profileActivateAction != null) {
-                profileActivateAction.run();
-              }
+            boolean wasReady = runtime.isSelectedProfileRuntimeReady();
+            boolean ready = runtime.ensureSelectedProfileRuntime(reason);
+            if (!wasReady && ready && profileActivateAction != null) {
+              profileActivateAction.run();
             }
-            return BringupUtil.isProfileActive();
+            return ready;
           }
 
           @Override
@@ -2492,7 +2504,7 @@ public class BridgeUiCommandHandler {
     sb.append("  selectedProfile=").append(BringupUtil.getSelectedCanProfileLabel()).append('\n');
     sb.append("  activeRuntimeProfile=")
         .append(formatProfileValue(BringupUtil.getActiveRuntimeProfileLabel())).append('\n');
-    sb.append("  runtimeActive=").append(BringupUtil.isProfileActive()).append('\n');
+    sb.append("  runtimeActive=").append(runtime.isRuntimeReady()).append('\n');
     sb.append("  enabled=").append(DriverStation.isEnabled()).append('\n');
     sb.append("  estopped=").append(DriverStation.isEStopped()).append('\n');
     sb.append("  mode=").append(DriverStation.isAutonomous() ? "auto"
@@ -2522,7 +2534,7 @@ public class BridgeUiCommandHandler {
     root.addProperty("profile", BringupUtil.getActiveCanProfileLabel());
     root.addProperty(JSON_KEY_SELECTED_PROFILE, BringupUtil.getSelectedCanProfileLabel());
     root.addProperty(JSON_KEY_ACTIVE_RUNTIME_PROFILE, BringupUtil.getActiveRuntimeProfileLabel());
-    root.addProperty(JSON_KEY_RUNTIME_ACTIVE, BringupUtil.isProfileActive());
+    root.addProperty(JSON_KEY_RUNTIME_ACTIVE, runtime.isRuntimeReady());
     root.addProperty("enabled", DriverStation.isEnabled());
     root.addProperty("estopped", DriverStation.isEStopped());
     root.addProperty("mode", DriverStation.isAutonomous() ? "auto"
@@ -2912,7 +2924,7 @@ public class BridgeUiCommandHandler {
     root.addProperty("profile", BringupUtil.getActiveCanProfileLabel());
     root.addProperty(JSON_KEY_SELECTED_PROFILE, BringupUtil.getSelectedCanProfileLabel());
     root.addProperty(JSON_KEY_ACTIVE_RUNTIME_PROFILE, BringupUtil.getActiveRuntimeProfileLabel());
-    root.addProperty(JSON_KEY_RUNTIME_ACTIVE, BringupUtil.isProfileActive());
+    root.addProperty(JSON_KEY_RUNTIME_ACTIVE, runtime.isRuntimeReady());
     root.addProperty("enabled", DriverStation.isEnabled());
     root.addProperty("estopped", DriverStation.isEStopped());
     root.addProperty("mode", DriverStation.isAutonomous() ? "auto"
@@ -3106,6 +3118,9 @@ public class BridgeUiCommandHandler {
    *   buildRuntimeStateDevices - Build device entries with live telemetry.
    */
   private JsonArray buildRuntimeStateDevices(long nowMs) {
+    String selectedLabel = bridgeSelected().device != null
+        ? bridgeSelected().device.trim().toLowerCase()
+        : TEXT_EMPTY;
     List<DeviceSnapshot> snapshots = core() != null
         ? core().captureSnapshots(SnapshotDetail.LIGHT)
         : new ArrayList<>();
@@ -3123,6 +3138,23 @@ public class BridgeUiCommandHandler {
       if (snap.canId >= 0) {
         DeviceSnapshot existing = byId.get(snap.canId);
         byId.put(snap.canId, choosePreferredSnapshot(existing, snap));
+      }
+    }
+    if (!selectedLabel.isBlank() && core() != null) {
+      DeviceSnapshot selectedSnapshot =
+          core().captureSnapshotForLabel(bridgeSelected().device, SnapshotDetail.FULL);
+      if (selectedSnapshot != null
+          && selectedSnapshot.label != null
+          && !selectedSnapshot.label.isBlank()) {
+        String labelKey = selectedSnapshot.label.trim().toLowerCase();
+        DeviceSnapshot existing = byLabel.get(labelKey);
+        byLabel.put(labelKey, choosePreferredSnapshot(existing, selectedSnapshot));
+        if (selectedSnapshot.canId >= 0) {
+          DeviceSnapshot existingById = byId.get(selectedSnapshot.canId);
+          byId.put(
+              selectedSnapshot.canId,
+              choosePreferredSnapshot(existingById, selectedSnapshot));
+        }
       }
     }
 
@@ -3158,8 +3190,12 @@ public class BridgeUiCommandHandler {
         if (snap.attachments != null && !snap.attachments.isEmpty()) {
           obj.add(JSON_KEY_ATTACHMENTS, GSON.toJsonTree(snap.attachments));
         }
+        applySampledSignalFields(obj, snap.getAttachment(SampledSignalsAttachment.class));
         RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
         if (rev != null) {
+          if (rev.busV != null) {
+            obj.addProperty(JSON_KEY_BUS_V, rev.busV);
+          }
           if (rev.motorCurrentA != null) {
             obj.addProperty(JSON_KEY_MOTOR_CURRENT_A, rev.motorCurrentA);
           }
@@ -3178,6 +3214,14 @@ public class BridgeUiCommandHandler {
           if (rev.tempC != null) {
             obj.addProperty(JSON_KEY_TEMP_C, rev.tempC);
           }
+          if (rev.lastError != null && !rev.lastError.isBlank()) {
+            obj.addProperty(JSON_KEY_LAST_ERROR, rev.lastError);
+          }
+          obj.addProperty(JSON_KEY_FAULTS_RAW, rev.faultsRaw);
+          obj.addProperty(JSON_KEY_STICKY_FAULTS_RAW, rev.stickyFaultsRaw);
+          obj.addProperty(JSON_KEY_WARNINGS_RAW, rev.warningsRaw);
+          obj.addProperty(JSON_KEY_STICKY_WARNINGS_RAW, rev.stickyWarningsRaw);
+          obj.addProperty(JSON_KEY_IS_FOLLOWER, rev.follower);
         }
         CtreMotorAttachment ctre = snap.getAttachment(CtreMotorAttachment.class);
         if (ctre != null) {
@@ -3212,6 +3256,56 @@ public class BridgeUiCommandHandler {
       array.add(obj);
     }
     return array;
+  }
+
+  /**
+   * NAME
+   *   applySampledSignalFields - Flatten generic sampled telemetry into runtime-state fields.
+   */
+  private void applySampledSignalFields(JsonObject obj, SampledSignalsAttachment sampled) {
+    if (obj == null || sampled == null || sampled.signals == null) {
+      return;
+    }
+    SampledSignalSummary current = findSampledSignal(sampled, SampledSignalNames.CURRENT_ACTUAL);
+    if (current == null) {
+      return;
+    }
+    if (current.instantValue != null) {
+      obj.addProperty(JSON_KEY_CURRENT_INSTANT_A, current.instantValue);
+    }
+    if (current.avgValue != null) {
+      obj.addProperty(JSON_KEY_CURRENT_AVG_A, current.avgValue);
+    }
+    if (current.peakValue != null) {
+      obj.addProperty(JSON_KEY_CURRENT_PEAK_A, current.peakValue);
+    }
+    if (current.nonzeroRatio != null) {
+      obj.addProperty(JSON_KEY_CURRENT_NONZERO_RATIO, current.nonzeroRatio);
+    }
+    if (current.sampleCount != null) {
+      obj.addProperty(JSON_KEY_CURRENT_SAMPLE_COUNT, current.sampleCount);
+    }
+  }
+
+  /**
+   * NAME
+   *   findSampledSignal - Locate a sampled-signal summary by canonical name.
+   */
+  private SampledSignalSummary findSampledSignal(
+      SampledSignalsAttachment sampled,
+      String signalName) {
+    if (sampled == null || sampled.signals == null || signalName == null || signalName.isBlank()) {
+      return null;
+    }
+    for (SampledSignalSummary summary : sampled.signals) {
+      if (summary == null || summary.signalName == null) {
+        continue;
+      }
+      if (signalName.equals(summary.signalName)) {
+        return summary;
+      }
+    }
+    return null;
   }
 
   /**

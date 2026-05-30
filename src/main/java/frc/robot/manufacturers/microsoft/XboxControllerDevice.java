@@ -1,5 +1,6 @@
 package frc.robot.manufacturers.microsoft;
 
+import frc.robot.devices.DeviceLifecycleOwnership;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.registry.RegistrationHeader;
@@ -233,5 +234,10 @@ public final class XboxControllerDevice implements DeviceUnit {
         || SIGNAL_D_RIGHT.equals(signalName)
         || SIGNAL_D_DOWN.equals(signalName)
         || SIGNAL_D_LEFT.equals(signalName);
+  }
+
+  @Override
+  public DeviceLifecycleOwnership getLifecycleOwnership() {
+    return DeviceLifecycleOwnership.APP_OWNED_SINGLETON_SERVICE;
   }
 }
