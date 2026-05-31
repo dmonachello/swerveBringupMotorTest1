@@ -12,6 +12,10 @@ import json
 from .compiler import CompileError, compile_source
 from .model import (
     BUILTIN_TIMER_NAME,
+    CONDITION_MODE_BARE,
+    CONDITION_MODE_BETWEEN,
+    CONDITION_MODE_COMPARISON,
+    CONDITION_MODE_OUTSIDE,
     RobotTestDslEntry,
     RobotTestDslNormalized,
     RobotTestDslStore,
@@ -28,6 +32,7 @@ SIGNAL_OUTPUT = "output"
 SIGNAL_OUTPUT_PERCENT_CMD = "output_percent_cmd"
 SIGNAL_CATEGORY_BOOLEAN = "boolean"
 SIGNAL_CATEGORY_NUMBER = "number"
+MIN_STABLE_SECONDS_EXCLUSIVE = 0.0
 VALUE_RANGE_BY_SIGNAL = {
     (TYPE_MOTOR, SIGNAL_OUTPUT): (-1.0, 1.0),
     (TYPE_MOTOR, SIGNAL_OUTPUT_PERCENT_CMD): (-1.0, 1.0),
@@ -175,7 +180,8 @@ def _validate_phase(
             if signal_meta is None:
                 result.errors.append(ValidationIssue("unknown signal", test_name=test_name, field=condition.text))
                 continue
-            if condition.operator is None and signal_meta.get("valueType") != SIGNAL_CATEGORY_BOOLEAN:
+            _validate_condition_shape(result, test_name, condition, signal_meta)
+            if condition.mode == CONDITION_MODE_BARE and signal_meta.get("valueType") != SIGNAL_CATEGORY_BOOLEAN:
                 result.errors.append(ValidationIssue("bare non-boolean condition reference", test_name=test_name, field=condition.text))
 
 
@@ -252,6 +258,33 @@ def _validate_reference_declared(
         return
     if device_name not in declared_devices:
         result.errors.append(ValidationIssue("undeclared device reference", test_name=test_name, field=field))
+
+
+def _validate_condition_shape(
+    result: ValidationResult,
+    test_name: str,
+    condition,
+    signal_meta: Dict[str, object],
+) -> None:
+    value_type = signal_meta.get("valueType")
+    if condition.stable_seconds is not None and condition.stable_seconds <= MIN_STABLE_SECONDS_EXCLUSIVE:
+        result.errors.append(ValidationIssue("stable seconds must be > 0", test_name=test_name, field=condition.text))
+    if condition.mode == CONDITION_MODE_COMPARISON:
+        if condition.literal is None:
+            result.errors.append(ValidationIssue("comparison condition missing literal", test_name=test_name, field=condition.text))
+    elif condition.mode in (CONDITION_MODE_BETWEEN, CONDITION_MODE_OUTSIDE):
+        if value_type != SIGNAL_CATEGORY_NUMBER:
+            result.errors.append(ValidationIssue("range condition requires numeric signal", test_name=test_name, field=condition.text))
+        if condition.low_literal is None or condition.high_literal is None:
+            result.errors.append(ValidationIssue("range condition missing bounds", test_name=test_name, field=condition.text))
+            return
+        if condition.low_literal.value_type != SIGNAL_CATEGORY_NUMBER or condition.high_literal.value_type != SIGNAL_CATEGORY_NUMBER:
+            result.errors.append(ValidationIssue("range bounds must be numeric", test_name=test_name, field=condition.text))
+            return
+        if float(condition.low_literal.value) > float(condition.high_literal.value):
+            result.errors.append(ValidationIssue("range low must be <= high", test_name=test_name, field=condition.text))
+    elif condition.mode != CONDITION_MODE_BARE:
+        result.errors.append(ValidationIssue("unknown condition mode", test_name=test_name, field=condition.text))
 
 
 def _validate_signal_writeable(

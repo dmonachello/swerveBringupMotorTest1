@@ -299,12 +299,15 @@ This is the current controller path.
 
 This is the current host-UI path.
 
-1. The Java registry row exposes `showInHostUi` and other UI metadata.
-2. `generate_robot_local_command_artifacts.py` emits the generated JSON and Python metadata.
-3. `bringup_ui.py` builds UI sections from `HOST_UI_SECTIONS`.
-4. The UI sends the same command name over TCP.
-5. `BridgeUiCommandHandler` adapts the TCP request into a `RobotLocalCommandRequest`.
-6. The same `RobotLocalCommandExecutor` and command implementation run the command.
+1. The Java registry row exposes `showInHostUi` and other UI metadata for robot-backed actions.
+2. `generate_robot_local_command_artifacts.py` emits the generated JSON and Python metadata for those robot-backed actions.
+3. `tools/can_nt/host_ui_actions.py` defines host-local UI actions that are not robot commands.
+4. `bringup_ui.py` merges the robot metadata and host-local metadata into one action model and builds UI sections from that merged view.
+5. For robot-backed actions, the UI sends the same command name over TCP.
+6. `BridgeUiCommandHandler` adapts the TCP request into a `RobotLocalCommandRequest`.
+7. The same `RobotLocalCommandExecutor` and command implementation run the command.
+
+Host-local actions stay inside the desktop UI process. They share the same render and preference pipeline, but they do not go through the robot command registry.
 
 ## Common Mistakes
 

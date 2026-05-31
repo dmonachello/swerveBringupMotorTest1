@@ -61,8 +61,15 @@ public final class DslModels {
     public String kind = "";
     public String text = "";
     public DslReference reference = new DslReference();
+    public String mode = "";
     public String operator;
     public DslLiteral literal;
+    @SerializedName("lowLiteral")
+    public DslLiteral lowLiteral;
+    @SerializedName("highLiteral")
+    public DslLiteral highLiteral;
+    @SerializedName("stableSeconds")
+    public Double stableSeconds;
   }
 
   public static final class DslSetStatement {

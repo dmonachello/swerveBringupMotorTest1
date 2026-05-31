@@ -29,8 +29,25 @@ public final class DslBringupTest implements BringupTest {
   private static final String PHASE_INIT = "init";
   private static final String PHASE_MAIN = "main";
   private static final String PHASE_CLOSE = "close";
+  private static final String CONDITION_MODE_BARE = "bare";
+  private static final String CONDITION_MODE_COMPARISON = "comparison";
+  private static final String CONDITION_MODE_BETWEEN = "between";
+  private static final String CONDITION_MODE_OUTSIDE = "outside";
+  private static final String OPERATOR_GT = ">";
+  private static final String OPERATOR_GTE = ">=";
+  private static final String OPERATOR_LT = "<";
+  private static final String OPERATOR_LTE = "<=";
+  private static final String OPERATOR_EQ = "==";
+  private static final String OPERATOR_NEQ = "!=";
+  private static final String DETAIL_KEY_CONDITIONS = "conditions";
+  private static final String DETAIL_KEY_RAW = "raw";
+  private static final String DETAIL_KEY_EFFECTIVE = "effective";
+  private static final String DETAIL_KEY_STABLE_ELAPSED_SEC = "stableElapsedSec";
+  private static final String DETAIL_KEY_STABLE_TARGET_SEC = "stableTargetSec";
+  private static final String DETAIL_KEY_STABLE_SATISFIED = "stableSatisfied";
   private static final double WARNING_COOLDOWN_SEC = 1.0;
   private static final double SAFE_STOP_OUTPUT = 0.0;
+  private static final double DEFAULT_SIGNAL_SET_FALLBACK = 0.0;
   private final DslNormalizedTest test;
   private final Map<String, DeviceUnit> devices = new LinkedHashMap<>();
   private final Map<String, String> declaredDeviceTypes = new LinkedHashMap<>();
@@ -40,6 +57,12 @@ public final class DslBringupTest implements BringupTest {
   private final Map<String, Double> warningLastSec = new HashMap<>();
   private final Map<String, Boolean> fallbackActiveBySetId = new LinkedHashMap<>();
   private final Map<String, Double> lastResolvedSetValues = new LinkedHashMap<>();
+  private final Map<String, Boolean> conditionLastRawValues = new LinkedHashMap<>();
+  private final Map<String, Boolean> conditionRawValues = new LinkedHashMap<>();
+  private final Map<String, Boolean> conditionEffectiveValues = new LinkedHashMap<>();
+  private final Map<String, Double> conditionStableStartSec = new LinkedHashMap<>();
+  private final Map<String, Double> conditionStableElapsedSec = new LinkedHashMap<>();
+  private final Map<String, Boolean> conditionStableSatisfied = new LinkedHashMap<>();
   private final Set<String> fallbackActiveThisTick = new HashSet<>();
   private BringupTestResult result = BringupTestResult.NOT_RUN;
   private String status = "";
@@ -111,6 +134,12 @@ public final class DslBringupTest implements BringupTest {
     warningLastSec.clear();
     fallbackActiveBySetId.clear();
     lastResolvedSetValues.clear();
+    conditionLastRawValues.clear();
+    conditionRawValues.clear();
+    conditionEffectiveValues.clear();
+    conditionStableStartSec.clear();
+    conditionStableElapsedSec.clear();
+    conditionStableSatisfied.clear();
     fallbackActiveThisTick.clear();
     finalized = false;
     startSec = nowSec;
@@ -164,14 +193,16 @@ public final class DslBringupTest implements BringupTest {
       return;
     }
     Map<String, Object> samples = sampleAll(context, nowSec);
+    Map<String, Boolean> conditionValues = evaluateAllConditions(samples, nowSec);
     for (DslCondition require : test.main.requires) {
-      if (!Boolean.TRUE.equals(requireSatisfied.get(require.id)) && evaluateCondition(require, samples, nowSec)) {
+      if (!Boolean.TRUE.equals(requireSatisfied.get(require.id))
+          && Boolean.TRUE.equals(conditionValues.get(require.id))) {
         requireSatisfied.put(require.id, true);
         requireSatisfiedAt.put(require.id, nowSec - startSec);
       }
     }
     for (DslCondition condition : test.main.aborts) {
-      if (evaluateCondition(condition, samples, nowSec)) {
+      if (Boolean.TRUE.equals(conditionValues.get(condition.id))) {
         status = "abort " + condition.id + ": " + condition.text;
         result = BringupTestResult.FAIL;
         stop(context);
@@ -179,7 +210,7 @@ public final class DslBringupTest implements BringupTest {
       }
     }
     for (DslCondition condition : test.main.successes) {
-      if (evaluateCondition(condition, samples, nowSec)) {
+      if (Boolean.TRUE.equals(conditionValues.get(condition.id))) {
         status = "success " + condition.id + ": " + condition.text;
         result = BringupTestResult.PASS;
         stop(context);
@@ -187,7 +218,7 @@ public final class DslBringupTest implements BringupTest {
       }
     }
     for (DslCondition condition : test.main.untils) {
-      if (evaluateCondition(condition, samples, nowSec)) {
+      if (Boolean.TRUE.equals(conditionValues.get(condition.id))) {
         boolean allSatisfied = true;
         for (Boolean value : requireSatisfied.values()) {
           if (!Boolean.TRUE.equals(value)) {
@@ -236,6 +267,7 @@ public final class DslBringupTest implements BringupTest {
     details.put("lastSamples", new LinkedHashMap<>(lastSampleValues));
     details.put("lastResolvedSets", new LinkedHashMap<>(lastResolvedSetValues));
     details.put("signalSetFallbacks", buildSignalSetFallbackDetails());
+    details.put(DETAIL_KEY_CONDITIONS, buildConditionDetails());
     details.put("unsafeExit", buildUnsafeExitDetails());
     return details;
   }
@@ -256,6 +288,34 @@ public final class DslBringupTest implements BringupTest {
       row.put("satisfied", satisfied);
       row.put("satisfiedAtSec", requireSatisfiedAt.get(condition.id));
       row.put("sampleValue", lastSampleValues.get(condition.reference.text));
+      if (condition.stableSeconds != null) {
+        row.put(DETAIL_KEY_RAW, conditionRawValues.get(condition.id));
+        row.put(DETAIL_KEY_STABLE_ELAPSED_SEC, conditionStableElapsedSec.get(condition.id));
+        row.put(DETAIL_KEY_STABLE_TARGET_SEC, condition.stableSeconds);
+        row.put(DETAIL_KEY_STABLE_SATISFIED, conditionStableSatisfied.get(condition.id));
+      }
+      rows.add(row);
+    }
+    return rows;
+  }
+
+  private List<Map<String, Object>> buildConditionDetails() {
+    List<Map<String, Object>> rows = new ArrayList<>();
+    for (DslCondition condition : allConditions()) {
+      if (condition == null || condition.stableSeconds == null) {
+        continue;
+      }
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("id", condition.id);
+      row.put("text", condition.text);
+      row.put(DETAIL_KEY_RAW, conditionRawValues.get(condition.id));
+      row.put(DETAIL_KEY_EFFECTIVE, conditionEffectiveValues.get(condition.id));
+      row.put(DETAIL_KEY_STABLE_ELAPSED_SEC, conditionStableElapsedSec.get(condition.id));
+      row.put(DETAIL_KEY_STABLE_TARGET_SEC, condition.stableSeconds);
+      row.put(DETAIL_KEY_STABLE_SATISFIED, conditionStableSatisfied.get(condition.id));
+      if ("require".equals(condition.kind)) {
+        row.put("latchedSatisfied", requireSatisfied.get(condition.id));
+      }
       rows.add(row);
     }
     return rows;
@@ -392,7 +452,7 @@ public final class DslBringupTest implements BringupTest {
       lastResolvedSetValues.put(statement.id, value);
       return ResolvedSetValue.write(value);
     }
-    if (statement.source == null || statement.scale == null || statement.defaultLiteral == null) {
+    if (statement.source == null || statement.scale == null) {
       status = "Signal set incomplete: " + statement.text;
       result = BringupTestResult.FAIL;
       return ResolvedSetValue.fail();
@@ -420,12 +480,13 @@ public final class DslBringupTest implements BringupTest {
     if (PHASE_CLOSE.equals(phaseName)) {
       return ResolvedSetValue.skip();
     }
-    if (!(statement.defaultLiteral.value instanceof Number defaultNumber)) {
+    Double fallbackValue = resolveSignalSetDefaultValue(statement);
+    if (fallbackValue == null) {
       status = "Signal set default is not numeric: " + statement.text;
       result = BringupTestResult.FAIL;
       return ResolvedSetValue.fail();
     }
-    double fallback = defaultNumber.doubleValue();
+    double fallback = fallbackValue.doubleValue();
     if (!isTargetValueInRange(statement.target.device, statement.target.signal, fallback)) {
       status = "Signal set default out of range: " + statement.text;
       result = BringupTestResult.FAIL;
@@ -434,6 +495,16 @@ public final class DslBringupTest implements BringupTest {
     lastResolvedSetValues.put(statement.id, fallback);
     markFallbackWarning(statement, fallback, nowSec);
     return ResolvedSetValue.write(fallback);
+  }
+
+  private Double resolveSignalSetDefaultValue(DslSetStatement statement) {
+    if (statement.defaultLiteral == null) {
+      return DEFAULT_SIGNAL_SET_FALLBACK;
+    }
+    if (!(statement.defaultLiteral.value instanceof Number defaultNumber)) {
+      return null;
+    }
+    return defaultNumber.doubleValue();
   }
 
   private ResolvedSetValue handleOutOfRange(
@@ -542,40 +613,114 @@ public final class DslBringupTest implements BringupTest {
     return all;
   }
 
+  private Map<String, Boolean> evaluateAllConditions(Map<String, Object> samples, double nowSec) {
+    Map<String, Boolean> results = new LinkedHashMap<>();
+    for (DslCondition condition : allConditions()) {
+      if (condition == null) {
+        continue;
+      }
+      boolean effectiveValue = evaluateCondition(condition, samples, nowSec);
+      results.put(condition.id, effectiveValue);
+    }
+    return results;
+  }
+
   private boolean evaluateCondition(DslCondition condition, Map<String, Object> samples, double nowSec) {
+    boolean rawValue = evaluateRawCondition(condition, samples);
+    conditionRawValues.put(condition.id, rawValue);
+    boolean effectiveValue = updateStableFilter(condition, rawValue, nowSec);
+    conditionEffectiveValues.put(condition.id, effectiveValue);
+    conditionLastRawValues.put(condition.id, rawValue);
+    return effectiveValue;
+  }
+
+  private boolean evaluateRawCondition(DslCondition condition, Map<String, Object> samples) {
     Object left = samples.get(condition.reference.text);
-    if (condition.operator == null || condition.operator.isBlank()) {
+    String mode = resolveConditionMode(condition);
+    if (CONDITION_MODE_BARE.equals(mode)) {
       return Boolean.TRUE.equals(left);
+    }
+    if (CONDITION_MODE_BETWEEN.equals(mode) || CONDITION_MODE_OUTSIDE.equals(mode)) {
+      return evaluateRangeCondition(condition, left, CONDITION_MODE_OUTSIDE.equals(mode));
     }
     Object right = condition.literal != null ? condition.literal.value : null;
     if (left instanceof Number leftNumber && right instanceof Number rightNumber) {
       double a = leftNumber.doubleValue();
       double b = rightNumber.doubleValue();
       return switch (condition.operator) {
-        case ">" -> a > b;
-        case ">=" -> a >= b;
-        case "<" -> a < b;
-        case "<=" -> a <= b;
-        case "==" -> Double.compare(a, b) == 0;
-        case "!=" -> Double.compare(a, b) != 0;
+        case OPERATOR_GT -> a > b;
+        case OPERATOR_GTE -> a >= b;
+        case OPERATOR_LT -> a < b;
+        case OPERATOR_LTE -> a <= b;
+        case OPERATOR_EQ -> Double.compare(a, b) == 0;
+        case OPERATOR_NEQ -> Double.compare(a, b) != 0;
         default -> false;
       };
     }
     if (left instanceof Boolean leftBool && right instanceof Boolean rightBool) {
       return switch (condition.operator) {
-        case "==" -> leftBool == rightBool;
-        case "!=" -> leftBool != rightBool;
+        case OPERATOR_EQ -> leftBool == rightBool;
+        case OPERATOR_NEQ -> leftBool != rightBool;
         default -> false;
       };
     }
     if (left != null && right != null) {
       return switch (condition.operator) {
-        case "==" -> left.toString().equals(right.toString());
-        case "!=" -> !left.toString().equals(right.toString());
+        case OPERATOR_EQ -> left.toString().equals(right.toString());
+        case OPERATOR_NEQ -> !left.toString().equals(right.toString());
         default -> false;
       };
     }
     return false;
+  }
+
+  private String resolveConditionMode(DslCondition condition) {
+    if (condition.mode != null && !condition.mode.isBlank()) {
+      return condition.mode;
+    }
+    if (condition.operator != null && !condition.operator.isBlank()) {
+      return CONDITION_MODE_COMPARISON;
+    }
+    if (condition.lowLiteral != null || condition.highLiteral != null) {
+      return CONDITION_MODE_BETWEEN;
+    }
+    return CONDITION_MODE_BARE;
+  }
+
+  private boolean evaluateRangeCondition(DslCondition condition, Object left, boolean outsideMode) {
+    Object lowValue = condition.lowLiteral != null ? condition.lowLiteral.value : null;
+    Object highValue = condition.highLiteral != null ? condition.highLiteral.value : null;
+    if (!(left instanceof Number leftNumber)
+        || !(lowValue instanceof Number lowNumber)
+        || !(highValue instanceof Number highNumber)) {
+      return false;
+    }
+    double sample = leftNumber.doubleValue();
+    double low = lowNumber.doubleValue();
+    double high = highNumber.doubleValue();
+    boolean inside = sample >= low && sample <= high;
+    return outsideMode ? !inside : inside;
+  }
+
+  private boolean updateStableFilter(DslCondition condition, boolean rawValue, double nowSec) {
+    if (condition.stableSeconds == null) {
+      return rawValue;
+    }
+    if (!rawValue) {
+      conditionStableStartSec.remove(condition.id);
+      conditionStableElapsedSec.put(condition.id, 0.0);
+      conditionStableSatisfied.put(condition.id, false);
+      return false;
+    }
+    boolean previousRaw = Boolean.TRUE.equals(conditionLastRawValues.get(condition.id));
+    Double previousStart = conditionStableStartSec.get(condition.id);
+    double stableStart = previousRaw && previousStart != null ? previousStart.doubleValue() : nowSec;
+    double stableElapsed = nowSec - stableStart;
+    boolean stableSatisfied = stableElapsed >= condition.stableSeconds.doubleValue();
+    conditionStableStartSec.put(condition.id, stableStart);
+    conditionStableElapsedSec.put(condition.id, stableElapsed);
+    conditionStableSatisfied.put(condition.id, stableSatisfied);
+    return stableSatisfied;
   }
 
   private Object readSignalValue(BringupTestContext context, String deviceName, String signalName, double nowSec) {

@@ -52,6 +52,15 @@ final class RobotLocalReportCommandGroup {
         "Printed tests overview.");
   }
 
+  RobotLocalCommand printSelectedTestSource() {
+    return new RobotLocalHostVoidCommand(
+        false,
+        "",
+        "",
+        "printSelectedTestSource",
+        "Printed selected test source.");
+  }
+
   RobotLocalCommand printNextTest() {
     return new RobotLocalHostVoidCommand(
         false,

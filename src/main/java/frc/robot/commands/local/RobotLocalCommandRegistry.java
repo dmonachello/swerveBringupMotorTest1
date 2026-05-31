@@ -58,6 +58,7 @@ public final class RobotLocalCommandRegistry {
   public static final String COMMAND_DUMP_REPORT = "dumpReport";
   public static final String COMMAND_PRINT_TESTS_INFO = "printTestsInfo";
   public static final String COMMAND_PRINT_TESTS_OVERVIEW = "printTestsOverview";
+  public static final String COMMAND_PRINT_SELECTED_TEST_SOURCE = "printSelectedTestSource";
   public static final String COMMAND_PRINT_NEXT_TEST = "printNextTest";
   public static final String COMMAND_SHOW_STATUS = "showStatus";
   public static final String COMMAND_SHOW_VERSION = "showVersion";
@@ -260,6 +261,7 @@ public final class RobotLocalCommandRegistry {
     register(rows, reportDefinition(COMMAND_PRINT_BINDINGS, "Bindings", "Print controller bindings and UI mappings.", reportGroup.printBindings()));
     register(rows, reportDefinition(COMMAND_PRINT_TESTS_INFO, "Tests Info", "Print current test selection details.", reportGroup.printTestsInfo()));
     register(rows, reportDefinition(COMMAND_PRINT_TESTS_OVERVIEW, "Tests Overview", "Print enabled/selected tests.", reportGroup.printTestsOverview()));
+    register(rows, reportDefinition(COMMAND_PRINT_SELECTED_TEST_SOURCE, "Test Source", "Print the stored DSL source for the selected test.", reportGroup.printSelectedTestSource()));
     register(rows, reportDefinition(COMMAND_PRINT_NEXT_TEST, "Print Next", "Print the selected test contract/report.", reportGroup.printNextTest()));
     register(rows, reportDefinition(COMMAND_PRINT_NT_DIAG, "NT Diagnostics", "Print NetworkTables diagnostics report.", reportGroup.printNtDiagnostics()));
     register(rows, reportDefinition(COMMAND_PRINT_CAN_DIAG, "CAN Bus", "Print CAN diagnostics report.", reportGroup.printCanDiagnostics()));

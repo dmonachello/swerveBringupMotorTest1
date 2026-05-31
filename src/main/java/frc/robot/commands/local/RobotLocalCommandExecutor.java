@@ -10,6 +10,9 @@ public final class RobotLocalCommandExecutor {
   private static final String MESSAGE_ACTIVE_BUSY = "Another command is already active.";
   private static final String REASON_PREEMPTED = "preempted";
   private static final String REASON_SOURCE_LOSS = "sourceLoss";
+  private static final String MESSAGE_CONTROLLER_HOLD_RELEASED = "controller hold released";
+  private static final String MESSAGE_UI_RUN_COMMAND_ENDED = "UI run command ended";
+  private static final String MESSAGE_HOLD_RELEASED = "hold released";
 
   private final RobotLocalCommandHost host;
   private ActiveCommand active;
@@ -73,7 +76,7 @@ public final class RobotLocalCommandExecutor {
     }
     if (active.definition.autoStopOnSourceLoss()
         && !active.request.valueProvider().isCommandActive(active.definition.wireName())) {
-      interruptActive(active.definition, active.request, false, RobotLocalCommandSource.CONTROLLER);
+      interruptActive(active.definition, active.request, false, active.request.source());
       active = null;
       return;
     }
@@ -147,11 +150,22 @@ public final class RobotLocalCommandExecutor {
         params,
         latchSafety ? active.definition.wireName() : REASON_PREEMPTED);
     host.applyCommandStop(
-        latchSafety ? active.definition.wireName() : (source == RobotLocalCommandSource.CONTROLLER
-            ? REASON_SOURCE_LOSS
-            : REASON_PREEMPTED),
+        latchSafety
+            ? active.definition.wireName()
+            : resolveOperatorStopReason(source),
         latchSafety);
     active = null;
+  }
+
+  private String resolveOperatorStopReason(RobotLocalCommandSource source) {
+    if (source == null) {
+      return REASON_PREEMPTED;
+    }
+    return switch (source) {
+      case CONTROLLER -> MESSAGE_CONTROLLER_HOLD_RELEASED;
+      case HOST_UI -> MESSAGE_UI_RUN_COMMAND_ENDED;
+      default -> MESSAGE_HOLD_RELEASED;
+    };
   }
 
   private static final class ActiveCommand {

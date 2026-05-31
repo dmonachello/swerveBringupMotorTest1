@@ -329,6 +329,7 @@ class BridgeUiProfileCommandsTest {
           1,
           5,
           2,
+          "CAN",
           "REV",
           "motor",
           "driveA",

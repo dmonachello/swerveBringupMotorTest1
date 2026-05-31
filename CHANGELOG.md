@@ -2,6 +2,21 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-05-31
+
+### Added - 2026-05-31
+
+- Added Robot Test DSL condition stability support with `stable <seconds>` and
+  numeric range conditions with `between` and `outside` across the shared DSL
+  compiler, CLI import/validation path, normalized payload, and robot runtime.
+
+### Improved - 2026-05-31
+
+- Updated profile summary reporting so device addresses are now labeled by
+  interface instead of being reported generically as CAN IDs. CAN devices show
+  `CAN IDs`, DIO devices show `DIO channels`, and Xbox controllers show
+  `USB ports`.
+
 ## 2026-05-27
 
 ### Improved - 2026-05-27

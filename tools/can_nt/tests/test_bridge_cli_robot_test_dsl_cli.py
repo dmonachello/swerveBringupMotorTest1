@@ -215,6 +215,36 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
             "velocity_actual",
         )
 
+    def test_import_accepts_stable_and_range_conditions(self) -> None:
+        cli = self._build_cli(include_controller=True)
+        source = (
+            'test "stable_range"\n'
+            'device "FALCON 9"\n'
+            'device "controller0"\n\n'
+            "main:\n"
+            '    abort "FALCON 9".current_actual outside 0 35 stable 0.2\n'
+            '    require "FALCON 9".velocity_actual between 100 200 stable 0.1\n'
+            "    success controller0.A stable 0.15\n"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = Path(temp_dir) / "stable_range.dsl"
+            source_path.write_text(source, encoding="utf-8")
+
+            result = cli._dsl_test_command(["test", "import", "stable_range", str(source_path)])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        entry = cli._local_root_payload["dslTests"]["testsByName"]["stable_range"]
+        abort_condition = entry["normalized"]["main"]["aborts"][0]
+        require_condition = entry["normalized"]["main"]["requires"][0]
+        success_condition = entry["normalized"]["main"]["successes"][0]
+        self.assertEqual("outside", abort_condition["mode"])
+        self.assertEqual(0.2, abort_condition["stableSeconds"])
+        self.assertEqual("between", require_condition["mode"])
+        self.assertEqual(100, require_condition["lowLiteral"]["value"])
+        self.assertEqual(200, require_condition["highLiteral"]["value"])
+        self.assertEqual("bare", success_condition["mode"])
+        self.assertEqual(0.15, success_condition["stableSeconds"])
+
     def test_import_validates_new_test_without_blocking_on_unrelated_invalid_store_entries(self) -> None:
         cli = self._build_cli(include_controller=True)
         cli._local_root_payload["dslTests"] = {

@@ -6,6 +6,9 @@ package frc.robot.commands.local;
  */
 final class RobotLocalTestCommandGroup implements RobotLocalCommand {
   private static final String REASON_RUN_TEST = "xboxRun";
+  private static final String REASON_RUN_ALL_TESTS = "runAllTests";
+  private static final String MESSAGE_TEST_RUNTIME_NOT_READY =
+      "Active profile runtime is not ready for tests. Use Runtime Activate.";
 
   @Override
   public RobotLocalExecutionResult init(RobotLocalCommandParams params) {
@@ -13,6 +16,9 @@ final class RobotLocalTestCommandGroup implements RobotLocalCommand {
     RobotLocalCommandHost host = params.host();
     switch (wireName) {
       case RobotLocalCommandRegistry.COMMAND_RUN_TEST:
+        if (!host.ensureActiveProfile(REASON_RUN_TEST)) {
+          return RobotLocalExecutionResult.failed(MESSAGE_TEST_RUNTIME_NOT_READY);
+        }
         host.clearStopLatch(REASON_RUN_TEST);
         RobotLocalExecutionResult runResult = host.runSelectedTest();
         if (params.request().source() == RobotLocalCommandSource.HOST_UI) {
@@ -20,6 +26,9 @@ final class RobotLocalTestCommandGroup implements RobotLocalCommand {
         }
         return RobotLocalExecutionResult.running(runResult.message());
       case RobotLocalCommandRegistry.COMMAND_RUN_ALL_TESTS:
+        if (!host.ensureActiveProfile(REASON_RUN_ALL_TESTS)) {
+          return RobotLocalExecutionResult.failed(MESSAGE_TEST_RUNTIME_NOT_READY);
+        }
         host.clearStopLatch(REASON_RUN_TEST);
         return host.runAllTests();
       default:

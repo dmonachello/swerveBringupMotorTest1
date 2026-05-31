@@ -10,6 +10,10 @@ from typing import Dict, List, Optional, Tuple
 import re
 
 from .model import (
+    CONDITION_MODE_BARE,
+    CONDITION_MODE_BETWEEN,
+    CONDITION_MODE_COMPARISON,
+    CONDITION_MODE_OUTSIDE,
     RobotTestDslClearStatement,
     RobotTestDslCondition,
     RobotTestDslDeviceRef,
@@ -37,7 +41,11 @@ STMT_UNTIL = "until"
 STMT_REQUIRE = "require"
 STMT_UNSAFE_EXIT = "unsafe-exit"
 OPERATORS = ("==", "!=", "<=", ">=", "<", ">")
+KEYWORD_STABLE = "stable"
+KEYWORD_BETWEEN = "between"
+KEYWORD_OUTSIDE = "outside"
 PHASE_MARKERS = {PHASE_INIT, PHASE_MAIN, PHASE_CLOSE}
+LITERAL_TYPE_NUMBER = "number"
 RE_STRING = re.compile(r'^"([^"\n]+)"$')
 RE_REF = re.compile(r'^(?P<device>"[^"\n]+"|[A-Za-z][A-Za-z0-9_\-]*)\.(?P<signal>[A-Za-z][A-Za-z0-9_\-]*)$')
 RE_TEST = re.compile(r'^test\s+"([^"\n]+)"\s*$')
@@ -51,6 +59,11 @@ RE_SET_SIGNAL = re.compile(
 )
 RE_CLEAR = re.compile(r'^clear\s+(.+?)\s*$')
 RE_KEYWORD_EXPR = re.compile(r'^(abort|success|until|require)\s+(.+?)\s*$')
+RE_STABLE_SUFFIX = re.compile(r'^(?P<base>.+?)\s+stable\s+(?P<seconds>.+?)\s*$')
+RE_RANGE_EXPR = re.compile(
+    r'^(?P<ref>"[^"\n]+"|[A-Za-z][A-Za-z0-9_\-]*\.[A-Za-z][A-Za-z0-9_\-]*|"[^"\n]+"'
+    r'\.[A-Za-z][A-Za-z0-9_\-]*)\s+(?P<mode>between|outside)\s+(?P<low>\S+)\s+(?P<high>\S+)\s*$'
+)
 
 
 @dataclass
@@ -133,10 +146,10 @@ def compile_source(name: str, source: str) -> RobotTestDslNormalized:
                 source = _parse_reference(signal_match.group("source"), line_number)
                 deadband = signal_match.group("deadband")
                 deadband_literal = _parse_literal(deadband) if deadband is not None else None
-                if deadband_literal is not None and deadband_literal.value_type != "number":
+                if deadband_literal is not None and deadband_literal.value_type != LITERAL_TYPE_NUMBER:
                     raise CompileError("deadband value must be numeric", line_number)
                 scale_literal = _parse_literal(signal_match.group("scale"))
-                if scale_literal.value_type != "number":
+                if scale_literal.value_type != LITERAL_TYPE_NUMBER:
                     raise CompileError("scaled value must be numeric", line_number)
                 default_literal = _parse_literal(signal_match.group("default"))
                 statement = RobotTestDslSetStatement(
@@ -261,6 +274,25 @@ def _parse_condition(
     line_number: int,
 ) -> RobotTestDslCondition:
     stripped = text.strip()
+    stable_seconds = _parse_stable_seconds(stripped, line_number)
+    if stable_seconds is not None:
+        stable_match = RE_STABLE_SUFFIX.match(stripped)
+        stripped = stable_match.group("base").strip() if stable_match is not None else stripped
+    range_match = RE_RANGE_EXPR.match(stripped)
+    if range_match:
+        reference = _parse_reference(range_match.group("ref"), line_number)
+        low_literal = _parse_literal(range_match.group("low"))
+        high_literal = _parse_literal(range_match.group("high"))
+        return RobotTestDslCondition(
+            condition_id=condition_id,
+            kind=kind,
+            text=full_text,
+            reference=reference,
+            mode=range_match.group("mode"),
+            low_literal=low_literal,
+            high_literal=high_literal,
+            stable_seconds=stable_seconds,
+        )
     for operator in OPERATORS:
         index = stripped.find(f" {operator} ")
         if index > 0:
@@ -273,8 +305,10 @@ def _parse_condition(
                 kind=kind,
                 text=full_text,
                 reference=reference,
+                mode=CONDITION_MODE_COMPARISON,
                 operator=operator,
                 literal=literal,
+                stable_seconds=stable_seconds,
             )
     reference = _parse_reference(stripped, line_number)
     return RobotTestDslCondition(
@@ -282,4 +316,16 @@ def _parse_condition(
         kind=kind,
         text=full_text,
         reference=reference,
+        mode=CONDITION_MODE_BARE,
+        stable_seconds=stable_seconds,
     )
+
+
+def _parse_stable_seconds(text: str, line_number: int) -> Optional[float]:
+    stable_match = RE_STABLE_SUFFIX.match(text)
+    if stable_match is None:
+        return None
+    seconds_literal = _parse_literal(stable_match.group("seconds"))
+    if seconds_literal.value_type != LITERAL_TYPE_NUMBER:
+        raise CompileError("stable seconds must be numeric", line_number)
+    return float(seconds_literal.value)

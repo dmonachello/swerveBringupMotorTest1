@@ -43,6 +43,12 @@ from .bridge_ops import (
     ui_ping,
 )
 from .bridge_session import BridgeEvent, BridgeSession
+from .host_ui_actions import (
+    ACTION_KIND_HOST_LOCAL,
+    ACTION_SOURCE_HOST,
+    HOST_ACTION_RECONNECT_UI_SESSION,
+    HOST_UI_ACTIONS,
+)
 from tools.common.json_io import read_json, write_json
 from tools.common.nt_labels import encode_label_for_nt
 from tools.common.paths import repo_root, tests_deploy_path
@@ -172,6 +178,12 @@ VIS_SUMMARY_FMT = "Sources: {sources} | Devices: {devices} | All: {all} | Some: 
 VIS_EMPTY_MESSAGE = "Visibility provider not available."
 VIS_REFRESH_SEC = 0.5
 VIS_SOURCE_COUNT_UNKNOWN = "--"
+NOTICE_COLOR_INFO_BG = "#eff6ff"
+NOTICE_COLOR_INFO_FG = "#1d4ed8"
+NOTICE_COLOR_WARN_BG = "#fff7ed"
+NOTICE_COLOR_WARN_FG = "#c2410c"
+NOTICE_COLOR_ERROR_BG = "#fef2f2"
+NOTICE_COLOR_ERROR_FG = "#b91c1c"
 VIS_TREE_SHOW = "headings"
 VIS_TREE_END = "end"
 VIS_TREE_ROOT = ""
@@ -195,8 +207,46 @@ INVENTORY_KEY_COMMANDS = "commands"
 INVENTORY_KEY_SHOW_IN_HOST_UI = "showInHostUi"
 INVENTORY_KEY_UI_SECTION = "uiSection"
 INVENTORY_KEY_NAME = "name"
+INVENTORY_KEY_UI_LABEL = "uiLabel"
+INVENTORY_KEY_UI_DESCRIPTION = "uiDescription"
+INVENTORY_KEY_UI_ARGS_JSON = "uiArgsJson"
+INVENTORY_KEY_ACTION_KIND = "actionKind"
+INVENTORY_KEY_SOURCE = "source"
 KEY_NAME = "name"
 CMD_SHOW_RUNTIME_STATE = "showRuntimeState"
+ACTION_KIND_REMOTE_COMMAND = "remoteCommand"
+ACTION_SOURCE_ROBOT = "robot"
+
+
+def _normalize_host_action_row(row: Dict[str, Any], default_source: str, default_kind: str) -> Dict[str, Any]:
+    """
+    NAME
+        _normalize_host_action_row - Normalize a host UI action row to the merged action schema.
+    """
+    normalized = dict(row)
+    normalized[INVENTORY_KEY_NAME] = str(row.get(INVENTORY_KEY_NAME, NT_VALUE_EMPTY)).strip()
+    normalized[INVENTORY_KEY_UI_SECTION] = str(
+        row.get(INVENTORY_KEY_UI_SECTION, NT_VALUE_EMPTY)
+    ).strip()
+    normalized[INVENTORY_KEY_UI_LABEL] = str(
+        row.get(INVENTORY_KEY_UI_LABEL, normalized[INVENTORY_KEY_NAME])
+    ).strip()
+    normalized[INVENTORY_KEY_UI_DESCRIPTION] = str(
+        row.get(INVENTORY_KEY_UI_DESCRIPTION, NT_VALUE_EMPTY)
+    ).strip()
+    normalized[INVENTORY_KEY_UI_ARGS_JSON] = str(
+        row.get(INVENTORY_KEY_UI_ARGS_JSON, NT_VALUE_EMPTY)
+    ).strip()
+    normalized[INVENTORY_KEY_SHOW_IN_HOST_UI] = bool(
+        row.get(INVENTORY_KEY_SHOW_IN_HOST_UI, True)
+    )
+    normalized[INVENTORY_KEY_ACTION_KIND] = str(
+        row.get(INVENTORY_KEY_ACTION_KIND, default_kind)
+    ).strip() or default_kind
+    normalized[INVENTORY_KEY_SOURCE] = str(
+        row.get(INVENTORY_KEY_SOURCE, default_source)
+    ).strip() or default_source
+    return normalized
 
 
 def _build_host_ui_sections_from_inventory(commands: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -221,38 +271,60 @@ def _build_host_ui_sections_from_inventory(commands: List[Dict[str, Any]]) -> Li
     return sections
 
 
+def _merge_host_ui_actions(
+    robot_actions: List[Dict[str, Any]], host_actions: List[Dict[str, Any]]
+) -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    NAME
+        _merge_host_ui_actions - Merge robot and host action metadata into one UI action model.
+    """
+    merged_actions = [
+        _normalize_host_action_row(row, ACTION_SOURCE_ROBOT, ACTION_KIND_REMOTE_COMMAND)
+        for row in robot_actions
+        if isinstance(row, dict)
+    ]
+    merged_actions.extend(
+        _normalize_host_action_row(row, ACTION_SOURCE_HOST, ACTION_KIND_HOST_LOCAL)
+        for row in host_actions
+        if isinstance(row, dict)
+    )
+    actions_by_name: Dict[str, Dict[str, Any]] = {}
+    for row in merged_actions:
+        name = str(row.get(INVENTORY_KEY_NAME, NT_VALUE_EMPTY)).strip()
+        if not name:
+            continue
+        actions_by_name[name] = row
+    return actions_by_name, _build_host_ui_sections_from_inventory(merged_actions)
+
+
 def _load_generated_command_metadata() -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
     """
     NAME
-        _load_generated_command_metadata - Load host UI command metadata with JSON fallback.
+        _load_generated_command_metadata - Load merged robot and host UI action metadata.
     """
+    robot_actions: List[Dict[str, Any]] = []
     try:
         generated = importlib.import_module(GENERATED_MODULE_NAME)
         commands_by_name = getattr(generated, "COMMANDS_BY_NAME", {})
-        host_ui_sections = getattr(generated, "HOST_UI_SECTIONS", [])
-        if isinstance(commands_by_name, dict) and isinstance(host_ui_sections, list):
-            return commands_by_name, host_ui_sections
+        if isinstance(commands_by_name, dict):
+            robot_actions = [
+                dict(row) for row in commands_by_name.values() if isinstance(row, dict)
+            ]
+            return _merge_host_ui_actions(robot_actions, HOST_UI_ACTIONS)
     except Exception:
         pass
     try:
         payload = read_json(GENERATED_INVENTORY_PATH)
     except Exception:
-        return {}, []
+        return _merge_host_ui_actions([], HOST_UI_ACTIONS)
     commands = payload.get(INVENTORY_KEY_COMMANDS)
     if not isinstance(commands, list):
-        return {}, []
-    commands_by_name: Dict[str, Dict[str, Any]] = {}
-    for row in commands:
-        if not isinstance(row, dict):
-            continue
-        name = str(row.get(INVENTORY_KEY_NAME, NT_VALUE_EMPTY)).strip()
-        if not name:
-            continue
-        commands_by_name[name] = row
-    return commands_by_name, _build_host_ui_sections_from_inventory(commands)
+        return _merge_host_ui_actions([], HOST_UI_ACTIONS)
+    robot_actions = [dict(row) for row in commands if isinstance(row, dict)]
+    return _merge_host_ui_actions(robot_actions, HOST_UI_ACTIONS)
 
 
-COMMANDS_BY_NAME, HOST_UI_SECTIONS = _load_generated_command_metadata()
+ACTIONS_BY_NAME, HOST_UI_SECTIONS = _load_generated_command_metadata()
 
 
 def _load_profiles() -> List[str]:
@@ -417,6 +489,12 @@ def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
         for row in commands:
             if not isinstance(row, dict):
                 continue
+            action_kind = str(
+                row.get(INVENTORY_KEY_ACTION_KIND, ACTION_KIND_REMOTE_COMMAND)
+            ).strip()
+            host_ui_allowed = bool(row.get("hostUiAllowed", True))
+            if action_kind == ACTION_KIND_REMOTE_COMMAND and not host_ui_allowed:
+                continue
             label = str(row.get("uiLabel", row.get("name", ""))).strip()
             command = str(row.get("name", "")).strip()
             if not label or not command:
@@ -519,6 +597,10 @@ class BringupControlUI(tk.Tk):
         self._runtime_state_timeout_sec = 0.6
         self._runtime_active_known: Optional[bool] = None
         self._robot_enabled_known = True
+        self._runtime_state_notice_text = NT_VALUE_EMPTY
+        self._runtime_state_notice_level = "warn"
+        self._runtime_event_notice_text = NT_VALUE_EMPTY
+        self._runtime_event_notice_level = "warn"
         self._runtime_state_path: Optional[str] = None
         self._runtime_state_path_mtime: Optional[float] = None
         self._presence_overrides_file: Dict[str, str] = {}
@@ -585,7 +667,7 @@ class BringupControlUI(tk.Tk):
             for _label, command in items:
                 if not command:
                     continue
-                metadata = COMMANDS_BY_NAME.get(command, {})
+                metadata = ACTIONS_BY_NAME.get(command, {})
                 label = str(metadata.get("uiLabel", command))
                 default_visible = bool(metadata.get("showInHostUi", True))
                 visible = self._ui_command_prefs.get(command, default_visible)
@@ -687,6 +769,7 @@ class BringupControlUI(tk.Tk):
         actions_canvas.create_window((0, 0), window=action_panel, anchor="nw")
 
         self._action_buttons: List[ttk.Button] = []
+        self._action_buttons_by_command: Dict[str, ttk.Button] = {}
         self._reset_button: Optional[ttk.Button] = None
         self._actions_canvas = actions_canvas
         self._action_panel = action_panel
@@ -707,11 +790,21 @@ class BringupControlUI(tk.Tk):
         ttk.Button(output_header, text="Clear Output", command=self._clear_output).pack(
             side="right"
         )
-        self._output = tk.Text(output_panel, height=10, wrap="word", state="disabled")
+        output_body = ttk.Frame(output_panel)
+        output_body.pack(fill="both", expand=True)
+        self._output = tk.Text(output_body, height=10, wrap="word", state="disabled")
         self._output.pack(side="left", fill="both", expand=True)
-        scroll = ttk.Scrollbar(output_panel, command=self._output.yview)
+        scroll = ttk.Scrollbar(output_body, command=self._output.yview)
         scroll.pack(side="right", fill="y")
         self._output.configure(yscrollcommand=scroll.set)
+        self._output_notice_label = tk.Label(
+            output_panel,
+            text=NT_VALUE_EMPTY,
+            anchor="w",
+            padx=8,
+            pady=4,
+        )
+        self._output_notice_label.pack_forget()
 
         live_panel = ttk.Frame(notebook)
         notebook.add(live_panel, text="Live Topology")
@@ -1468,7 +1561,14 @@ class BringupControlUI(tk.Tk):
         """
         if command == CMD_SHOW_RUNTIME_STATE:
             return True
-        metadata = COMMANDS_BY_NAME.get(command, {})
+        metadata = ACTIONS_BY_NAME.get(command, {})
+        action_kind = str(
+            metadata.get(INVENTORY_KEY_ACTION_KIND, ACTION_KIND_REMOTE_COMMAND)
+        ).strip()
+        if action_kind == ACTION_KIND_REMOTE_COMMAND and not bool(
+            metadata.get("hostUiAllowed", True)
+        ):
+            return False
         return self._ui_command_prefs.get(command, bool(metadata.get("showInHostUi", True)))
 
     def _set_command_visibility(self, command: str, visible: bool) -> None:
@@ -1506,6 +1606,7 @@ class BringupControlUI(tk.Tk):
         for child in panel.winfo_children():
             child.destroy()
         self._action_buttons = []
+        self._action_buttons_by_command = {}
         self._reset_button = None
         for section, items in _action_sections():
             visible_items = [
@@ -1525,6 +1626,7 @@ class BringupControlUI(tk.Tk):
                     command=(lambda c=command: self._on_action(c)),
                 )
                 self._action_buttons.append(btn)
+                self._action_buttons_by_command[command] = btn
                 self._attach_tooltip(btn, self._tooltip_text(command))
                 btn.pack(fill="x", pady=2)
         canvas = getattr(self, "_actions_canvas", None)
@@ -1538,7 +1640,7 @@ class BringupControlUI(tk.Tk):
         NAME
             _tooltip_text - Return a short tooltip for a command.
         """
-        metadata = COMMANDS_BY_NAME.get(command, {})
+        metadata = ACTIONS_BY_NAME.get(command, {})
         return str(metadata.get("uiDescription", "")).strip()
 
     def _show_help(self) -> None:
@@ -2108,6 +2210,36 @@ class BringupControlUI(tk.Tk):
             self._last_sent_seq = seq
             self._tracker.start(label, args, seq, now=time.time())
 
+    def _reconnect_ui_session(self) -> None:
+        """
+        NAME
+            _reconnect_ui_session - Reconnect the REST session and issue a normal UI handshake.
+        """
+        self._handshake_done = False
+        self._handshake_inflight = False
+        self._last_handshake_attempt = 0.0
+        self._session.reset_handshake()
+        self._send_handshake(reset=False, force=True, log=True)
+
+    def _dispatch_host_local_action(self, command: str) -> bool:
+        """
+        NAME
+            _dispatch_host_local_action - Execute a host-local UI action.
+        """
+        if command == HOST_ACTION_RECONNECT_UI_SESSION:
+            self._reconnect_ui_session()
+            return True
+        return False
+
+    def _host_local_action_enabled(self, command: str) -> bool:
+        """
+        NAME
+            _host_local_action_enabled - Return whether a host-local UI action should be enabled.
+        """
+        if command == HOST_ACTION_RECONNECT_UI_SESSION:
+            return not self._tracker.is_pending() and not self._tcp_connected
+        return not self._tracker.is_pending()
+
     def _retry_last_command(self) -> None:
         """
         NAME
@@ -2133,8 +2265,12 @@ class BringupControlUI(tk.Tk):
         """
         if not command:
             return
-        metadata = COMMANDS_BY_NAME.get(command, {})
-        args_json = str(metadata.get("uiArgsJson", "")).strip()
+        metadata = ACTIONS_BY_NAME.get(command, {})
+        action_kind = str(metadata.get(INVENTORY_KEY_ACTION_KIND, ACTION_KIND_REMOTE_COMMAND))
+        if action_kind == ACTION_KIND_HOST_LOCAL:
+            self._dispatch_host_local_action(command)
+            return
+        args_json = str(metadata.get(INVENTORY_KEY_UI_ARGS_JSON, "")).strip()
         args = json.loads(args_json) if args_json else None
         if command == "uiHandshake":
             reset = bool(args.get("reset")) if isinstance(args, dict) else False
@@ -2535,6 +2671,76 @@ class BringupControlUI(tk.Tk):
             if (now - self._runtime_state_pending_at) > self._runtime_state_timeout_sec:
                 self._runtime_state_pending_seq = None
 
+    def _set_runtime_state_notice(self, text: str, level: str = "warn") -> None:
+        """
+        NAME
+            _set_runtime_state_notice - Store persistent next-step guidance from runtime state.
+        """
+        message = str(text).strip()
+        self._runtime_state_notice_text = message
+        self._runtime_state_notice_level = (
+            level if level in {"info", "warn", "error"} else "warn"
+        )
+        self._refresh_output_runtime_notice()
+
+    def _clear_runtime_state_notice(self) -> None:
+        """
+        NAME
+            _clear_runtime_state_notice - Clear persistent runtime-state guidance.
+        """
+        self._runtime_state_notice_text = NT_VALUE_EMPTY
+        self._refresh_output_runtime_notice()
+
+    def _set_runtime_event_notice(self, text: str, level: str = "warn") -> None:
+        """
+        NAME
+            _set_runtime_event_notice - Store transient operator guidance from command results.
+        """
+        message = str(text).strip()
+        self._runtime_event_notice_text = message
+        self._runtime_event_notice_level = (
+            level if level in {"info", "warn", "error"} else "warn"
+        )
+        self._refresh_output_runtime_notice()
+
+    def _clear_runtime_event_notice(self) -> None:
+        """
+        NAME
+            _clear_runtime_event_notice - Clear transient operator guidance.
+        """
+        self._runtime_event_notice_text = NT_VALUE_EMPTY
+        self._refresh_output_runtime_notice()
+
+    def _refresh_output_runtime_notice(self) -> None:
+        """
+        NAME
+            _refresh_output_runtime_notice - Render the highest-priority next-step notice under Output.
+        """
+        label = getattr(self, "_output_notice_label", None)
+        if label is None:
+            return
+        if self._runtime_state_notice_text:
+            message = self._runtime_state_notice_text
+            level = self._runtime_state_notice_level
+        elif self._runtime_event_notice_text:
+            message = self._runtime_event_notice_text
+            level = self._runtime_event_notice_level
+        else:
+            label.configure(text=NT_VALUE_EMPTY)
+            label.pack_forget()
+            return
+        if level == "error":
+            bg = NOTICE_COLOR_ERROR_BG
+            fg = NOTICE_COLOR_ERROR_FG
+        elif level == "warn":
+            bg = NOTICE_COLOR_WARN_BG
+            fg = NOTICE_COLOR_WARN_FG
+        else:
+            bg = NOTICE_COLOR_INFO_BG
+            fg = NOTICE_COLOR_INFO_FG
+        label.configure(text=message, bg=bg, fg=fg)
+        label.pack(fill="x", padx=8, pady=(6, 8))
+
     def _apply_runtime_state_payload(self, payload: Dict[str, Any]) -> None:
         """
         NAME
@@ -2570,6 +2776,22 @@ class BringupControlUI(tk.Tk):
         NAME
             _apply_live_runtime_notice_from_nt_state - Surface DS/NT state directly in Live Topology.
         """
+        if stale_state:
+            self._set_runtime_state_notice(
+                "Robot state stale (code not running?)", "warn"
+            )
+        elif estopped:
+            self._set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
+        elif self._runtime_active_known is False:
+            self._set_runtime_state_notice(
+                "Runtime inactive. Click Runtime Activate.", "warn"
+            )
+        elif not enabled:
+            self._set_runtime_state_notice(
+                "Robot disabled. Enable teleop to run motors.", "info"
+            )
+        else:
+            self._clear_runtime_state_notice()
         for live_view in self._iter_live_views():
             if stale_state:
                 live_view.set_runtime_state_notice("Robot state stale (code not running?)", "warn")
@@ -2708,20 +2930,25 @@ class BringupControlUI(tk.Tk):
         if state == "error":
             if "runtime inactive" in detail.lower():
                 self._runtime_active_known = False
+                self._set_runtime_event_notice(detail, "warn")
                 for live_view in self._iter_live_views():
                     live_view.set_runtime_notice(detail, "warn")
                 return
             if "robot disabled" in detail.lower() or "e-stop" in detail.lower():
+                self._set_runtime_event_notice(detail, "error")
                 for live_view in self._iter_live_views():
                     live_view.set_runtime_notice(detail, "error")
                 return
         if command == MANUAL_DUTY_CMD_SET.lower() and state == "ok":
+            self._clear_runtime_event_notice()
             for live_view in self._iter_live_views():
                 live_view.clear_runtime_notice()
         if command == "runtimeactivate" and state == "ok":
             self._runtime_active_known = True
+            self._clear_runtime_event_notice()
         elif command == "runtimedeactivate" and state == "ok":
             self._runtime_active_known = False
+            self._clear_runtime_event_notice()
 
     def _update_action_enabled(self) -> None:
         """
@@ -2737,6 +2964,14 @@ class BringupControlUI(tk.Tk):
         state = "normal" if allow else "disabled"
         for btn in getattr(self, "_action_buttons", []):
             btn.state(["!disabled"] if allow else ["disabled"])
+        for command, btn in getattr(self, "_action_buttons_by_command", {}).items():
+            metadata = ACTIONS_BY_NAME.get(command, {})
+            action_kind = str(metadata.get(INVENTORY_KEY_ACTION_KIND, ACTION_KIND_REMOTE_COMMAND))
+            if action_kind != ACTION_KIND_HOST_LOCAL:
+                continue
+            btn.state(
+                ["!disabled"] if self._host_local_action_enabled(command) else ["disabled"]
+            )
         if hasattr(self, "_test_box"):
             self._test_box.configure(state=state)
         if self._reset_button is not None:

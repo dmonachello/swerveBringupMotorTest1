@@ -14,6 +14,10 @@ DEFAULT_TEST_SET = "default"
 BUILTIN_TIMER_NAME = "timer"
 
 DslScalar = Union[bool, float, int, str]
+CONDITION_MODE_COMPARISON = "comparison"
+CONDITION_MODE_BARE = "bare"
+CONDITION_MODE_BETWEEN = "between"
+CONDITION_MODE_OUTSIDE = "outside"
 
 
 @dataclass
@@ -35,8 +39,12 @@ class RobotTestDslCondition:
     kind: str
     text: str
     reference: RobotTestDslReference
+    mode: str = CONDITION_MODE_BARE
     operator: Optional[str] = None
     literal: Optional[RobotTestDslLiteral] = None
+    low_literal: Optional[RobotTestDslLiteral] = None
+    high_literal: Optional[RobotTestDslLiteral] = None
+    stable_seconds: Optional[float] = None
 
 
 @dataclass

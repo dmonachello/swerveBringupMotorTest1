@@ -85,6 +85,21 @@ public final class BringupTestRegistry {
     return false;
   }
 
+  public static String getStoredSource(String testName) {
+    if (testName == null || testName.isBlank()) {
+      return "";
+    }
+    DslModels.DslTestsRoot root = loadRoot();
+    if (root == null || root.testsByName == null || root.testsByName.isEmpty()) {
+      return "";
+    }
+    DslModels.DslTestEntry entry = root.testsByName.get(testName);
+    if (entry == null || entry.source == null) {
+      return "";
+    }
+    return entry.source;
+  }
+
   private static DslModels.DslTestsRoot loadRoot() {
     JsonObject root = BringupUtil.readDslTestsRoot();
     if (root == null) {

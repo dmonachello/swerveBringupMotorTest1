@@ -396,27 +396,37 @@ public class Robot extends TimedRobot {
     }
     Map<String, List<Integer>> groups = new java.util.LinkedHashMap<>();
     for (BringupUtil.DeviceEntry entry : devices) {
-      if (entry == null || !BringupUtil.isEnabledCanId(entry.id)) {
+      if (entry == null) {
         continue;
       }
       String vendor = entry.vendor != null ? entry.vendor.trim() : "";
       String type = entry.type != null ? entry.type.trim() : "";
-      String key = (vendor.isEmpty() ? "UNKNOWN" : vendor) + " " + (type.isEmpty() ? "Device" : type);
+      String addressLabel = BringupUtil.summaryAddressLabelForInterface(entry.deviceInterface);
+      String key =
+          (vendor.isEmpty() ? "UNKNOWN" : vendor)
+              + " "
+              + (type.isEmpty() ? "Device" : type)
+              + " "
+              + addressLabel;
+      String deviceInterface = entry.deviceInterface != null ? entry.deviceInterface.trim() : "";
+      if (deviceInterface.isBlank() || !BringupUtil.isEnabledDeviceAddress(entry.id)) {
+        continue;
+      }
       groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(entry.id);
     }
     for (Map.Entry<String, List<Integer>> entry : groups.entrySet()) {
-      List<Integer> ids = entry.getValue();
-      if (ids.isEmpty()) {
+      List<Integer> addresses = entry.getValue();
+      if (addresses.isEmpty()) {
         continue;
       }
       StringBuilder line = new StringBuilder();
-      for (int i = 0; i < ids.size(); i++) {
+      for (int i = 0; i < addresses.size(); i++) {
         if (i > 0) {
           line.append(", ");
         }
-        line.append(ids.get(i));
+        line.append(addresses.get(i));
       }
-      appendLine(sb, entry.getKey() + " CAN IDs: " + line);
+      appendLine(sb, entry.getKey() + ": " + line);
     }
   }
 

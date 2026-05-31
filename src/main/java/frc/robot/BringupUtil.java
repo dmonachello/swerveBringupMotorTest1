@@ -173,7 +173,24 @@ public final class BringupUtil {
   private static final String CAN_MAPPINGS_FILE = "can_mappings.json";
   private static final String INTERFACE_CAN = "CAN";
   private static final String INTERFACE_DIO = "DIO";
+  private static final String INTERFACE_PWM = "PWM";
+  private static final String INTERFACE_ANALOG = "ANALOG";
+  private static final String INTERFACE_INTERNAL = "INTERNAL";
   private static final String INTERFACE_USB = "USB";
+  private static final String TEXT_ADDRESS_CAN = "CAN";
+  private static final String TEXT_ADDRESS_DIO_CHANNEL = "DIO channel";
+  private static final String TEXT_ADDRESS_PWM_CHANNEL = "PWM channel";
+  private static final String TEXT_ADDRESS_ANALOG_CHANNEL = "Analog channel";
+  private static final String TEXT_ADDRESS_USB_PORT = "USB port";
+  private static final String TEXT_ADDRESS_INTERNAL_ID = "Internal ID";
+  private static final String TEXT_ADDRESS_ADDRESS = "address";
+  private static final String TEXT_SUMMARY_CAN_IDS = "CAN IDs";
+  private static final String TEXT_SUMMARY_DIO_CHANNELS = "DIO channels";
+  private static final String TEXT_SUMMARY_PWM_CHANNELS = "PWM channels";
+  private static final String TEXT_SUMMARY_ANALOG_CHANNELS = "Analog channels";
+  private static final String TEXT_SUMMARY_USB_PORTS = "USB ports";
+  private static final String TEXT_SUMMARY_INTERNAL_IDS = "Internal IDs";
+  private static final String TEXT_SUMMARY_ADDRESSES = "addresses";
   private static final String DEVICE_TYPE_MOTOR = "motor";
   private static final String DEVICE_TYPE_LIMIT_SWITCH = "limitSwitch";
   private static final String DEVICE_TYPE_ENCODER_EXTERNAL = "encoderExternal";
@@ -1357,6 +1374,90 @@ public final class BringupUtil {
   public static boolean isEnabledCanId(int id) {
     // Convention: -1 means "disabled" in JSON and code.
     return id != DISABLED_CAN_ID;
+  }
+
+  /**
+   * NAME
+   *   isEnabledDeviceAddress - Check whether an interface-specific address is enabled.
+   */
+  public static boolean isEnabledDeviceAddress(int address) {
+    return address != DISABLED_CAN_ID;
+  }
+
+  /**
+   * NAME
+   *   summaryAddressLabelForInterface - Return the summary label for an interface address.
+   */
+  public static String summaryAddressLabelForInterface(String deviceInterface) {
+    String value = safeText(deviceInterface);
+    if (INTERFACE_CAN.equalsIgnoreCase(value)) {
+      return TEXT_SUMMARY_CAN_IDS;
+    }
+    if (INTERFACE_DIO.equalsIgnoreCase(value)) {
+      return TEXT_SUMMARY_DIO_CHANNELS;
+    }
+    if (INTERFACE_PWM.equalsIgnoreCase(value)) {
+      return TEXT_SUMMARY_PWM_CHANNELS;
+    }
+    if (INTERFACE_ANALOG.equalsIgnoreCase(value)) {
+      return TEXT_SUMMARY_ANALOG_CHANNELS;
+    }
+    if (INTERFACE_USB.equalsIgnoreCase(value)) {
+      return TEXT_SUMMARY_USB_PORTS;
+    }
+    if (INTERFACE_INTERNAL.equalsIgnoreCase(value)) {
+      return TEXT_SUMMARY_INTERNAL_IDS;
+    }
+    return TEXT_SUMMARY_ADDRESSES;
+  }
+
+  /**
+   * NAME
+   *   creationAddressTextForLabel - Format an interface-specific address for device creation logs.
+   */
+  public static String creationAddressTextForLabel(String label, int address) {
+    String deviceInterface = deviceInterfaceForLabel(label);
+    String addressLabel = creationAddressLabelForInterface(deviceInterface);
+    return addressLabel + " " + address;
+  }
+
+  private static String deviceInterfaceForLabel(String label) {
+    String lookup = normalizeKey(label);
+    if (lookup.isEmpty()) {
+      return "";
+    }
+    for (DeviceEntry entry : ACTIVE_DEVICES) {
+      if (entry == null) {
+        continue;
+      }
+      if (lookup.equals(normalizeKey(entry.label))) {
+        return safeText(entry.deviceInterface);
+      }
+    }
+    return "";
+  }
+
+  private static String creationAddressLabelForInterface(String deviceInterface) {
+    String value = safeText(deviceInterface);
+    if (INTERFACE_CAN.equalsIgnoreCase(value)) {
+      return TEXT_ADDRESS_CAN;
+    }
+    if (INTERFACE_DIO.equalsIgnoreCase(value)) {
+      return TEXT_ADDRESS_DIO_CHANNEL;
+    }
+    if (INTERFACE_PWM.equalsIgnoreCase(value)) {
+      return TEXT_ADDRESS_PWM_CHANNEL;
+    }
+    if (INTERFACE_ANALOG.equalsIgnoreCase(value)) {
+      return TEXT_ADDRESS_ANALOG_CHANNEL;
+    }
+    if (INTERFACE_USB.equalsIgnoreCase(value)) {
+      return TEXT_ADDRESS_USB_PORT;
+    }
+    if (INTERFACE_INTERNAL.equalsIgnoreCase(value)) {
+      return TEXT_ADDRESS_INTERNAL_ID;
+    }
+    return TEXT_ADDRESS_ADDRESS;
   }
 
   /**
@@ -2557,6 +2658,7 @@ public final class BringupUtil {
   private static DeviceEntry buildDeviceEntry(DeviceDefinition def) {
     String label = safeText(def.label);
     int canId = def.id != null ? def.id : DISABLED_CAN_ID;
+    String deviceInterface = safeText(def.deviceInterface);
     String vendor = resolveVendorName(def);
     String type = resolveDeviceTypeLabel(def);
     String motor = resolveMotorModel(def);
@@ -2567,6 +2669,7 @@ public final class BringupUtil {
         canId,
         manufacturer,
         deviceType,
+        deviceInterface,
         vendor,
         type,
         label,
@@ -3244,6 +3347,7 @@ public final class BringupUtil {
     public final int id;
     public final int manufacturer;
     public final int deviceType;
+    public final String deviceInterface;
     public final String vendor;
     public final String type;
     public final String label;
@@ -3256,6 +3360,7 @@ public final class BringupUtil {
         int id,
         int manufacturer,
         int deviceType,
+        String deviceInterface,
         String vendor,
         String type,
         String label,
@@ -3266,6 +3371,7 @@ public final class BringupUtil {
       this.id = id;
       this.manufacturer = manufacturer;
       this.deviceType = deviceType;
+      this.deviceInterface = deviceInterface;
       this.vendor = vendor;
       this.type = type;
       this.label = label;

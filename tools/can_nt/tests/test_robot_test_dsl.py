@@ -299,6 +299,134 @@ class RobotTestDslTests(unittest.TestCase):
         self.assertFalse(result.ok())
         self.assertTrue(any("set literal must be numeric" in issue.message for issue in result.errors))
 
+    def test_compile_condition_stable_and_range_forms(self) -> None:
+        normalized = compile_source(
+            "stable_range",
+            '\n'.join(
+                [
+                    'test "stable_range"',
+                    'device "encoder1"',
+                    'device "controller0"',
+                    "main:",
+                    "  require encoder1.position between 10 20 stable 0.1",
+                    "  abort encoder1.position outside 0 30 stable 0.05",
+                    "  success controller0.A stable 0.15",
+                ]
+            ),
+        )
+        require_condition = normalized.main.requires[0]
+        abort_condition = normalized.main.aborts[0]
+        success_condition = normalized.main.successes[0]
+        self.assertEqual("between", require_condition.mode)
+        self.assertEqual(10, require_condition.low_literal.value)
+        self.assertEqual(20, require_condition.high_literal.value)
+        self.assertEqual(0.1, require_condition.stable_seconds)
+        self.assertEqual("outside", abort_condition.mode)
+        self.assertEqual(0.05, abort_condition.stable_seconds)
+        self.assertEqual("bare", success_condition.mode)
+        self.assertEqual(0.15, success_condition.stable_seconds)
+
+    def test_store_payload_round_trip_preserves_condition_extensions(self) -> None:
+        source = '\n'.join(
+            [
+                'test "condition_extensions"',
+                'device "encoder1"',
+                "main:",
+                "  require encoder1.position between 10 20 stable 0.1",
+            ]
+        )
+        normalized = compile_source("condition_extensions", source)
+        store = RobotTestDslStore(
+            tests_by_name={
+                "condition_extensions": RobotTestDslEntry(
+                    name="condition_extensions",
+                    source=source,
+                    normalized=normalized,
+                    source_hash=source_hash(source),
+                )
+            },
+            test_sets={"default": ["condition_extensions"]},
+            default_set="default",
+        )
+        payload = store_to_payload(store)
+        condition = payload["testsByName"]["condition_extensions"]["normalized"]["main"]["requires"][0]
+        self.assertEqual("between", condition["mode"])
+        self.assertEqual(10, condition["lowLiteral"]["value"])
+        self.assertEqual(20, condition["highLiteral"]["value"])
+        self.assertEqual(0.1, condition["stableSeconds"])
+
+    def test_validate_store_rejects_non_positive_stable_seconds(self) -> None:
+        source = '\n'.join(
+            [
+                'test "bad_stable"',
+                'device "controller0"',
+                "main:",
+                "  success controller0.A stable 0",
+            ]
+        )
+        store = RobotTestDslStore(
+            tests_by_name={
+                "bad_stable": RobotTestDslEntry(
+                    name="bad_stable",
+                    source=source,
+                    normalized=compile_source("bad_stable", source),
+                    source_hash=source_hash(source),
+                )
+            },
+            test_sets={"default": ["bad_stable"]},
+            default_set="default",
+        )
+        result = validate_store(
+            store,
+            device_catalog={"controller0": {"type": "xboxController"}},
+            signal_catalog={
+                "xboxController": {
+                    "A": {"writable": False, "readable": True, "valueType": "boolean"},
+                }
+            },
+        )
+        self.assertFalse(result.ok())
+        self.assertTrue(any("stable seconds must be > 0" in issue.message for issue in result.errors))
+
+    def test_validate_store_rejects_invalid_range_usage(self) -> None:
+        source = '\n'.join(
+            [
+                'test "bad_range"',
+                'device "encoder1"',
+                'device "controller0"',
+                "main:",
+                "  require encoder1.position between 20 10 stable 0.1",
+                "  abort controller0.A outside 0 1",
+            ]
+        )
+        store = RobotTestDslStore(
+            tests_by_name={
+                "bad_range": RobotTestDslEntry(
+                    name="bad_range",
+                    source=source,
+                    normalized=compile_source("bad_range", source),
+                    source_hash=source_hash(source),
+                )
+            },
+            test_sets={"default": ["bad_range"]},
+            default_set="default",
+        )
+        result = validate_store(
+            store,
+            device_catalog={"encoder1": {"type": "encoderExternal"}, "controller0": {"type": "xboxController"}},
+            signal_catalog={
+                "encoderExternal": {
+                    "position": {"writable": False, "readable": True, "valueType": "number"},
+                },
+                "xboxController": {
+                    "A": {"writable": False, "readable": True, "valueType": "boolean"},
+                },
+            },
+        )
+        self.assertFalse(result.ok())
+        self.assertTrue(any("range low must be <= high" in issue.message for issue in result.errors))
+        self.assertTrue(any("range condition requires numeric signal" in issue.message for issue in result.errors))
+
 
 if __name__ == "__main__":
     unittest.main()

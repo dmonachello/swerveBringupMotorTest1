@@ -278,7 +278,10 @@ device.signal < literal
 device.signal <= literal
 device.signal == literal
 device.signal != literal
+device.signal between literal literal
+device.signal outside literal literal
 device.signal
+<condition> stable number
 ```
 
 Rules:
@@ -286,6 +289,9 @@ Rules:
 - bare `device.signal` is valid only for boolean signals
 - bare boolean reference means `device.signal == true`
 - bare non-boolean reference is a validation error
+- `between` is inclusive at both endpoints
+- `outside` excludes both endpoints
+- `stable` is an optional condition suffix that delays condition truth until the raw condition has remained continuously true for the authored duration
 - compound expressions are not supported
 - arithmetic expressions are not supported
 - `and` and `or` are not supported
@@ -296,10 +302,12 @@ During `main`, the engine performs this order every tick:
 
 1. apply all `main` `set` statements
 2. sample every signal referenced by conditions
-3. update and latch `require`
-4. evaluate `abort`
-5. evaluate `success`
-6. evaluate `until`
+3. evaluate raw conditions
+4. update `stable` filters
+5. update and latch `require`
+6. evaluate `abort`
+7. evaluate `success`
+8. evaluate `until`
 
 Priority is therefore:
 
@@ -390,6 +398,7 @@ Rules:
 The detailed signal catalog lives in:
 
 - [USER_GUIDE_ROBOT_TEST_DSL.md](./USER_GUIDE_ROBOT_TEST_DSL.md)
+- [FEATURE_SPEC_DSL_CONDITION_STABILITY_AND_RANGE_OPERATORS.md](./FEATURE_SPEC_DSL_CONDITION_STABILITY_AND_RANGE_OPERATORS.md)
 - [SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md](./SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md)
 - [tools/common/generated/robot_test_dsl_signals.json](../tools/common/generated/robot_test_dsl_signals.json)
 
@@ -449,8 +458,12 @@ until_stmt        = "until" condition ;
 success_stmt      = "success" condition ;
 require_stmt      = "require" condition ;
 
-condition         = reference comparison_op literal
+condition         = base_condition [ stable_clause ] ;
+base_condition    = reference comparison_op literal
+                  | reference "between" number number
+                  | reference "outside" number number
                   | reference ;
+stable_clause     = "stable" number ;
 
 reference         = device_name "." signal_name ;
 
@@ -481,6 +494,9 @@ Typical validation errors include:
 - unknown device
 - unknown signal
 - bare non-boolean condition
+- non-positive stable duration
+- `between` or `outside` on a non-numeric signal
+- range low bound greater than high bound
 - invalid clear target
 - `set` to read-only signal
 - invalid `unsafe-exit` target
@@ -514,5 +530,6 @@ require = evidence that must have happened
 And remember:
 
 - `require` means at least once before normal stop
+- `stable` modifies condition truth; it does not block the runtime loop
 - `main set` means continuous ownership
 - source line order inside a phase does not define tick order

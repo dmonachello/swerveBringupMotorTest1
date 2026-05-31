@@ -39,7 +39,7 @@ final class RobotLocalHostVoidCommand implements RobotLocalCommand {
       return RobotLocalExecutionResult.failed(inactiveProfileMessage);
     }
     try {
-      Method method = host.getClass().getMethod(hostMethodName);
+      Method method = RobotLocalCommandHost.class.getMethod(hostMethodName);
       method.invoke(host);
       return RobotLocalExecutionResult.complete(successMessage);
     } catch (NoSuchMethodException

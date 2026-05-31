@@ -224,6 +224,8 @@ Reports invalid syntax, missing entities, or validation failures when applicable
 NOTES
 
 You can suffix the command with `?` to see valid next arguments. Device references use labels.
+Profile summaries and related runtime profile printouts use interface-specific
+address labels such as `CAN IDs`, `DIO channels`, and `USB ports`.
 
 EXAMPLE
 

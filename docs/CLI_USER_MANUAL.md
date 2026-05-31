@@ -165,6 +165,14 @@ Common show commands:
 - `show signal <name>`
 - `diagnose motor <label>`
 
+Profile summary address labels are interface-specific:
+
+- CAN devices are shown as `CAN IDs`
+- DIO devices are shown as `DIO channels`
+- USB devices are shown as `USB ports`
+
+Do not read every profile summary address as a CAN identifier.
+
 ## Workspace View
 
 Purpose: See loaded files, active profile/set, and dirty flags.

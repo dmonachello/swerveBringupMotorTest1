@@ -11,9 +11,14 @@ import org.junit.jupiter.api.Test;
 class RobotLocalCommandExecutorTest {
 
   private static final String CMD_SHOW_DEVICES = "showDevices";
+  private static final String CMD_PRINT_TESTS_OVERVIEW = "printTestsOverview";
   private static final String CMD_PROFILES_APPLY = "profilesApply";
   private static final String CMD_RUN_TEST = "runTest";
   private static final String MESSAGE_ACTIVE_BUSY = "Another command is already active.";
+  private static final String MESSAGE_CONTROLLER_HOLD_RELEASED = "controller hold released";
+  private static final String MESSAGE_UI_RUN_COMMAND_ENDED = "UI run command ended";
+  private static final String MESSAGE_TEST_RUNTIME_NOT_READY =
+      "Active profile runtime is not ready for tests. Use Runtime Activate.";
 
   @Test
   void immediateCompleteCommandClearsActiveSlotBeforeNextSubmit() {
@@ -50,6 +55,84 @@ class RobotLocalCommandExecutorTest {
     assertEquals(CMD_RUN_TEST, executor.activeCommandName());
   }
 
+  @Test
+  void hostVoidCommandUsesPublicInterfaceMethodForNonPublicHostImplementation() {
+    PrivateHostStub host = new PrivateHostStub();
+    RobotLocalCommandExecutor executor = new RobotLocalCommandExecutor(host);
+
+    RobotLocalDispatchResult result = executor.submit(request(CMD_PRINT_TESTS_OVERVIEW));
+
+    assertEquals(RobotLocalDispatchStatus.ACCEPTED, result.status());
+    assertTrue(result.executionResult().ok());
+    assertTrue(host.printTestsOverviewCalled);
+  }
+
+  @Test
+  void runTestEnsuresActiveProfileBeforeStarting() {
+    HostStub host = new HostStub();
+    RobotLocalCommandExecutor executor = new RobotLocalCommandExecutor(host);
+
+    RobotLocalDispatchResult result = executor.submit(request(CMD_RUN_TEST));
+
+    assertEquals(RobotLocalDispatchStatus.ACCEPTED, result.status());
+    assertTrue(result.executionResult().ok());
+    assertTrue(host.ensureActiveProfileCalled);
+    assertTrue(host.runSelectedTestCalled);
+  }
+
+  @Test
+  void runTestFailsFastWhenActiveProfileCannotBeEnsured() {
+    HostStub host = new HostStub();
+    host.ensureActiveProfileResult = false;
+    RobotLocalCommandExecutor executor = new RobotLocalCommandExecutor(host);
+
+    RobotLocalDispatchResult result = executor.submit(request(CMD_RUN_TEST));
+
+    assertEquals(RobotLocalDispatchStatus.ACCEPTED, result.status());
+    assertFalse(result.executionResult().ok());
+    assertEquals(MESSAGE_TEST_RUNTIME_NOT_READY, result.executionResult().message());
+    assertTrue(host.ensureActiveProfileCalled);
+    assertFalse(host.runSelectedTestCalled);
+  }
+
+  @Test
+  void controllerSourceLossUsesControllerHoldReleasedReason() {
+    HostStub host = new HostStub();
+    host.activeTestRunning = true;
+    host.runSelectedTestResult = RobotLocalExecutionResult.running("runTest active.");
+    RobotLocalCommandExecutor executor = new RobotLocalCommandExecutor(host);
+
+    RobotLocalDispatchResult result = executor.submit(controllerRequest(CMD_RUN_TEST));
+
+    assertEquals(RobotLocalDispatchStatus.ACCEPTED, result.status());
+    executor.step();
+    assertEquals(MESSAGE_CONTROLLER_HOLD_RELEASED, host.lastApplyCommandStopReason);
+  }
+
+  @Test
+  void hostUiSourceLossUsesUiRunCommandEndedReason() {
+    HostStub host = new HostStub();
+    host.activeTestRunning = true;
+    host.runSelectedTestResult = RobotLocalExecutionResult.running("runTest active.");
+    RobotLocalCommandExecutor executor = new RobotLocalCommandExecutor(host);
+
+    RobotLocalDispatchResult result =
+        executor.submit(
+            new RobotLocalCommandRequest(
+                CMD_RUN_TEST,
+                RobotLocalCommandSource.HOST_UI,
+                RobotLocalDispatchMode.IMMEDIATE,
+                new JsonObject(),
+                RobotLocalNoopValueProvider.INSTANCE,
+                "clientA",
+                0.0,
+                true));
+
+    assertEquals(RobotLocalDispatchStatus.ACCEPTED, result.status());
+    executor.step();
+    assertEquals(MESSAGE_UI_RUN_COMMAND_ENDED, host.lastApplyCommandStopReason);
+  }
+
   private static RobotLocalCommandRequest request(String name) {
     return new RobotLocalCommandRequest(
         name,
@@ -74,12 +157,19 @@ class RobotLocalCommandExecutorTest {
         false);
   }
 
-  private static final class HostStub implements RobotLocalCommandHost {
+  private static class HostStub implements RobotLocalCommandHost {
     private boolean activeTestRunning;
+    private boolean ensureActiveProfileResult = true;
+    private boolean ensureActiveProfileCalled;
+    private boolean runSelectedTestCalled;
+    private RobotLocalExecutionResult runSelectedTestResult =
+        RobotLocalExecutionResult.complete("runSelectedTest");
+    private String lastApplyCommandStopReason;
 
     @Override
     public boolean ensureActiveProfile(String reason) {
-      return true;
+      ensureActiveProfileCalled = true;
+      return ensureActiveProfileResult;
     }
 
     @Override
@@ -128,6 +218,9 @@ class RobotLocalCommandExecutorTest {
     public void printTestsOverview() {}
 
     @Override
+    public void printSelectedTestSource() {}
+
+    @Override
     public void printNextTest() {}
 
     @Override
@@ -149,7 +242,8 @@ class RobotLocalCommandExecutorTest {
 
     @Override
     public RobotLocalExecutionResult runSelectedTest() {
-      return RobotLocalExecutionResult.complete("runSelectedTest");
+      runSelectedTestCalled = true;
+      return runSelectedTestResult;
     }
 
     @Override
@@ -171,7 +265,9 @@ class RobotLocalCommandExecutorTest {
     }
 
     @Override
-    public void applyCommandStop(String reason, boolean latchSafety) {}
+    public void applyCommandStop(String reason, boolean latchSafety) {
+      lastApplyCommandStopReason = reason;
+    }
 
     @Override
     public RobotLocalExecutionResult executeLegacyUiCommand(
@@ -181,6 +277,15 @@ class RobotLocalCommandExecutorTest {
         double timestampSec,
         boolean isTcp) {
       return RobotLocalExecutionResult.complete(commandName);
+    }
+  }
+
+  private static final class PrivateHostStub extends HostStub {
+    private boolean printTestsOverviewCalled;
+
+    @Override
+    public void printTestsOverview() {
+      printTestsOverviewCalled = true;
     }
   }
 }

@@ -286,6 +286,10 @@ Exec:
 - `show profiles [local]` (profile names from bringup_system.json)
 - `show profile [local]` (active/default profile summary)
 - `show profile <name> [local]` (device labels for a profile)
+
+Profile summaries use interface-specific address labels such as `CAN IDs`,
+`DIO channels`, and `USB ports`. They do not assume every device address is a
+CAN ID.
 - `show topology [local]` (diagram nodes for the active profile)
 - `show topology neighbors [local]` (neighbor ports for the active profile)
 - `show visibility [local]` (multi-analyzer visibility matrix)

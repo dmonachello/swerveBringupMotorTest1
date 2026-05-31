@@ -9,6 +9,10 @@ import hashlib
 from typing import Any, Dict, List
 
 from .model import (
+    CONDITION_MODE_BARE,
+    CONDITION_MODE_BETWEEN,
+    CONDITION_MODE_COMPARISON,
+    CONDITION_MODE_OUTSIDE,
     DEFAULT_TEST_SET,
     DSL_SCHEMA_VERSION,
     RobotTestDslClearStatement,
@@ -32,6 +36,12 @@ KEY_DEFAULT_SET = "defaultSet"
 KEY_SOURCE = "source"
 KEY_NORMALIZED = "normalized"
 KEY_SOURCE_HASH = "sourceHash"
+KEY_MODE = "mode"
+KEY_OPERATOR = "operator"
+KEY_LITERAL = "literal"
+KEY_LOW_LITERAL = "lowLiteral"
+KEY_HIGH_LITERAL = "highLiteral"
+KEY_STABLE_SECONDS = "stableSeconds"
 
 
 def source_hash(source: str) -> str:
@@ -155,14 +165,23 @@ def _literal_to_payload(literal: RobotTestDslLiteral) -> Dict[str, Any]:
 
 
 def _condition_from_payload(payload: Dict[str, Any]) -> RobotTestDslCondition:
-    literal = payload.get("literal")
+    literal = payload.get(KEY_LITERAL)
+    low_literal = payload.get(KEY_LOW_LITERAL)
+    high_literal = payload.get(KEY_HIGH_LITERAL)
+    stable_seconds = payload.get(KEY_STABLE_SECONDS)
+    operator = str(payload.get(KEY_OPERATOR)) if payload.get(KEY_OPERATOR) is not None else None
+    mode = _infer_condition_mode(payload, operator)
     return RobotTestDslCondition(
         condition_id=str(payload.get("id", "")),
         kind=str(payload.get("kind", "")),
         text=str(payload.get("text", "")),
         reference=_reference_from_payload(payload.get("reference", {})),
-        operator=str(payload.get("operator")) if payload.get("operator") is not None else None,
+        mode=mode,
+        operator=operator,
         literal=_literal_from_payload(literal) if isinstance(literal, dict) else None,
+        low_literal=_literal_from_payload(low_literal) if isinstance(low_literal, dict) else None,
+        high_literal=_literal_from_payload(high_literal) if isinstance(high_literal, dict) else None,
+        stable_seconds=float(stable_seconds) if isinstance(stable_seconds, (int, float)) else None,
     )
 
 
@@ -173,11 +192,30 @@ def _condition_to_payload(condition: RobotTestDslCondition) -> Dict[str, Any]:
         "text": condition.text,
         "reference": _reference_to_payload(condition.reference),
     }
+    if condition.mode:
+        data[KEY_MODE] = condition.mode
     if condition.operator is not None:
-        data["operator"] = condition.operator
+        data[KEY_OPERATOR] = condition.operator
     if condition.literal is not None:
-        data["literal"] = _literal_to_payload(condition.literal)
+        data[KEY_LITERAL] = _literal_to_payload(condition.literal)
+    if condition.low_literal is not None:
+        data[KEY_LOW_LITERAL] = _literal_to_payload(condition.low_literal)
+    if condition.high_literal is not None:
+        data[KEY_HIGH_LITERAL] = _literal_to_payload(condition.high_literal)
+    if condition.stable_seconds is not None:
+        data[KEY_STABLE_SECONDS] = condition.stable_seconds
     return data
+
+
+def _infer_condition_mode(payload: Dict[str, Any], operator: str | None) -> str:
+    explicit_mode = payload.get(KEY_MODE)
+    if isinstance(explicit_mode, str) and explicit_mode:
+        return explicit_mode
+    if operator is not None:
+        return CONDITION_MODE_COMPARISON
+    if isinstance(payload.get(KEY_LOW_LITERAL), dict) or isinstance(payload.get(KEY_HIGH_LITERAL), dict):
+        return str(payload.get(KEY_MODE, CONDITION_MODE_BETWEEN))
+    return CONDITION_MODE_BARE
 
 
 def _set_from_payload(payload: Dict[str, Any]) -> RobotTestDslSetStatement:

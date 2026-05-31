@@ -143,6 +143,25 @@ class DslBringupTestTest {
   }
 
   @Test
+  void dslSignalSetWithoutStoredDefaultLiteralStillUsesLiveAxisValue() {
+    seedConfiguredDeviceType(CONTROLLER_LABEL, CONTROLLER_TYPE);
+    RecordingDevice motor = new RecordingDevice();
+    BringupTestContext context = combinedContext(motor, new XboxControllerDevice(0, CONTROLLER_LABEL));
+    XboxControllerDevice.setControllerInputs(Map.of(CONTROLLER_LABEL, Map.of(SIGNAL_LEFT_Y, 0.8)));
+    DslModels.DslNormalizedTest normalized = buildSignalSetMainTest(0.25, 0.0, false);
+    normalized.main.sets.get(0).defaultLiteral = null;
+    DslBringupTest test = new DslBringupTest(normalized);
+
+    assertTrue(test.start(context, START_SEC));
+    test.update(context, UPDATE_SEC);
+    test.update(context, 11.1);
+
+    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(2, motor.dutyWrites);
+    assertEquals(0.2, motor.lastDuty, 0.0001);
+  }
+
+  @Test
   void dslSignalSetRequiredDevicesIncludeControllerInputs() {
     seedConfiguredDeviceType(CONTROLLER_LABEL, CONTROLLER_TYPE);
     seedConfiguredDeviceType(MOTOR_LABEL, DSL_MOTOR_TYPE);
@@ -256,6 +275,61 @@ class DslBringupTestTest {
     assertFalse(test.start(context, START_SEC));
     assertEquals(BringupTestResult.FAIL, test.getResult());
     assertEquals("Unsupported clear DSL target at runtime: motor-a.faults", test.getStatus());
+  }
+
+  @Test
+  void dslStableRequireLatchesOnlyAfterContinuousDuration() {
+    SignalRecordingDevice motor = new SignalRecordingDevice();
+    motor.setSignal("velocity", 150.0);
+    DslBringupTest test = new DslBringupTest(buildStableRequireTest());
+    BringupTestContext context = context(motor);
+
+    assertTrue(test.start(context, START_SEC));
+    test.update(context, START_SEC + 0.05);
+    assertEquals(BringupTestResult.RUNNING, test.getResult());
+
+    test.update(context, START_SEC + 0.12);
+    test.update(context, START_SEC + 0.30);
+
+    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertTrue(test.buildRunDetails().toString().contains("stableSatisfied=true"));
+    assertTrue(test.buildRunDetails().toString().contains("latchedSatisfied=true"));
+  }
+
+  @Test
+  void dslStableAbortIgnoresBriefSpikeButFailsSustainedSpike() {
+    SignalRecordingDevice motor = new SignalRecordingDevice();
+    DslBringupTest test = new DslBringupTest(buildStableAbortTest());
+    BringupTestContext context = context(motor);
+
+    assertTrue(test.start(context, START_SEC));
+    motor.setSignal("current", 45.0);
+    test.update(context, START_SEC + 0.05);
+    motor.setSignal("current", 0.0);
+    test.update(context, START_SEC + 0.08);
+    assertEquals(BringupTestResult.RUNNING, test.getResult());
+
+    motor.setSignal("current", 45.0);
+    test.update(context, START_SEC + 0.20);
+    test.update(context, START_SEC + 0.36);
+
+    assertEquals(BringupTestResult.FAIL, test.getResult());
+    assertEquals("abort abort_1: abort motor-a.current > 40 stable 0.1", test.getStatus());
+  }
+
+  @Test
+  void dslRangeConditionsSupportBetweenAndOutside() {
+    SignalRecordingDevice motor = new SignalRecordingDevice();
+    motor.setSignal("current", 15.0);
+    DslBringupTest test = new DslBringupTest(buildRangeConditionTest());
+    BringupTestContext context = context(motor);
+
+    assertTrue(test.start(context, START_SEC));
+    test.update(context, START_SEC + 0.12);
+    motor.setSignal("current", 25.0);
+    test.update(context, START_SEC + 0.20);
+
+    assertEquals(BringupTestResult.PASS, test.getResult());
   }
 
   private static DslModels.DslNormalizedTest buildTest() {
@@ -383,6 +457,96 @@ class DslBringupTestTest {
     clear.text = "clear motor-a.faults";
     clear.target = reference(MOTOR_LABEL, SIGNAL_FAULTS);
     test.init.clears.add(clear);
+    return test;
+  }
+
+  private static DslModels.DslNormalizedTest buildStableRequireTest() {
+    DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
+    test.name = "stable_require";
+    DslModels.DslDeviceRef motor = new DslModels.DslDeviceRef();
+    motor.name = MOTOR_LABEL;
+    test.devices.add(motor);
+
+    DslModels.DslCondition require = new DslModels.DslCondition();
+    require.id = "require_1";
+    require.kind = "require";
+    require.text = "require motor-a.velocity > 100 stable 0.1";
+    require.reference = reference(MOTOR_LABEL, "velocity");
+    require.mode = "comparison";
+    require.operator = ">";
+    require.literal = numberLiteral(100.0);
+    require.stableSeconds = 0.1;
+    test.main.requires.add(require);
+
+    DslModels.DslCondition until = new DslModels.DslCondition();
+    until.id = "until_1";
+    until.kind = "until";
+    until.text = "timer.elapsed >= 0.25";
+    until.reference = reference("timer", "elapsed");
+    until.mode = "comparison";
+    until.operator = ">=";
+    until.literal = numberLiteral(0.25);
+    test.main.untils.add(until);
+    return test;
+  }
+
+  private static DslModels.DslNormalizedTest buildStableAbortTest() {
+    DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
+    test.name = "stable_abort";
+    DslModels.DslDeviceRef motor = new DslModels.DslDeviceRef();
+    motor.name = MOTOR_LABEL;
+    test.devices.add(motor);
+
+    DslModels.DslCondition abort = new DslModels.DslCondition();
+    abort.id = "abort_1";
+    abort.kind = "abort";
+    abort.text = "abort motor-a.current > 40 stable 0.1";
+    abort.reference = reference(MOTOR_LABEL, "current");
+    abort.mode = "comparison";
+    abort.operator = ">";
+    abort.literal = numberLiteral(40.0);
+    abort.stableSeconds = 0.1;
+    test.main.aborts.add(abort);
+
+    DslModels.DslCondition until = new DslModels.DslCondition();
+    until.id = "until_1";
+    until.kind = "until";
+    until.text = "timer.elapsed >= 1.0";
+    until.reference = reference("timer", "elapsed");
+    until.mode = "comparison";
+    until.operator = ">=";
+    until.literal = numberLiteral(1.0);
+    test.main.untils.add(until);
+    return test;
+  }
+
+  private static DslModels.DslNormalizedTest buildRangeConditionTest() {
+    DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
+    test.name = "range_conditions";
+    DslModels.DslDeviceRef motor = new DslModels.DslDeviceRef();
+    motor.name = MOTOR_LABEL;
+    test.devices.add(motor);
+
+    DslModels.DslCondition require = new DslModels.DslCondition();
+    require.id = "require_1";
+    require.kind = "require";
+    require.text = "require motor-a.current between 10 20 stable 0.1";
+    require.reference = reference(MOTOR_LABEL, "current");
+    require.mode = "between";
+    require.lowLiteral = numberLiteral(10.0);
+    require.highLiteral = numberLiteral(20.0);
+    require.stableSeconds = 0.1;
+    test.main.requires.add(require);
+
+    DslModels.DslCondition success = new DslModels.DslCondition();
+    success.id = "success_1";
+    success.kind = "success";
+    success.text = "success motor-a.current outside 0 20";
+    success.reference = reference(MOTOR_LABEL, "current");
+    success.mode = "outside";
+    success.lowLiteral = numberLiteral(0.0);
+    success.highLiteral = numberLiteral(20.0);
+    test.main.successes.add(success);
     return test;
   }
 
@@ -545,6 +709,19 @@ class DslBringupTestTest {
     @Override
     public boolean clearDslSignal(String signalName) {
       return false;
+    }
+  }
+
+  private static final class SignalRecordingDevice extends RecordingDevice {
+    private final Map<String, Object> signals = new LinkedHashMap<>();
+
+    private void setSignal(String signalName, Object value) {
+      signals.put(signalName, value);
+    }
+
+    @Override
+    public Object readDslSignal(String signalName) {
+      return signals.get(signalName);
     }
   }
 

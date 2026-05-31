@@ -16,6 +16,7 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
   private static final String CMD_PRINT_INPUTS = "printInputs";
   private static final String CMD_PRINT_BINDINGS = "printBindings";
   private static final String CMD_PRINT_PROFILE_DEVICES = "printProfileDevices";
+  private static final String CMD_PRINT_SELECTED_TEST_SOURCE = "printSelectedTestSource";
   private static final String CMD_PRINT_NT_DIAG = "printNTdiag";
   private static final String CMD_PRINT_CAN_DIAG = "printCANdiag";
   private static final String CMD_DUMP_REPORT = "dumpReport";
@@ -36,6 +37,7 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
       CMD_PRINT_INPUTS,
       CMD_PRINT_BINDINGS,
       CMD_PRINT_PROFILE_DEVICES,
+      CMD_PRINT_SELECTED_TEST_SOURCE,
       CMD_PRINT_NT_DIAG,
       CMD_PRINT_CAN_DIAG,
       CMD_DUMP_REPORT,
@@ -63,6 +65,8 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
     String printBindings();
 
     String printProfileDevices();
+
+    String buildSelectedTestSourceReportText();
 
     String buildNetworkDiagnosticsReportIfReady();
 
@@ -147,6 +151,9 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
         break;
       case CMD_PRINT_PROFILE_DEVICES:
         result.outText = dependencies.printProfileDevices();
+        break;
+      case CMD_PRINT_SELECTED_TEST_SOURCE:
+        result.outText = emitReport(dependencies.buildSelectedTestSourceReportText(), 4);
         break;
       case CMD_PRINT_NT_DIAG:
         executePrintNtDiag(result);

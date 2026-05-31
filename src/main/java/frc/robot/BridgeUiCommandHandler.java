@@ -19,7 +19,9 @@ import frc.robot.commands.local.RobotLocalCommandSource;
 import frc.robot.commands.local.RobotLocalDispatchMode;
 import frc.robot.commands.local.RobotLocalDispatchResult;
 import frc.robot.commands.local.RobotLocalExecutionResult;
+import frc.robot.commands.local.RobotLocalHostUiValueProvider;
 import frc.robot.commands.local.RobotLocalNoopValueProvider;
+import frc.robot.commands.local.RobotLocalValueProvider;
 import frc.robot.diag.snapshots.SampledSignalsAttachment;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.InputAliasResolver;
@@ -871,6 +873,11 @@ public class BridgeUiCommandHandler {
       }
 
       @Override
+      public String buildSelectedTestSourceReportText() {
+        return core().buildSelectedTestSourceReportText();
+      }
+
+      @Override
       public String buildNetworkDiagnosticsReportIfReady() {
         return diagnostics().buildNetworkDiagnosticsReportIfReady();
       }
@@ -1135,6 +1142,11 @@ public class BridgeUiCommandHandler {
           }
 
           @Override
+          public void printSelectedTestSource() {
+            BridgeUiCommandHandler.this.printSelectedTestSource();
+          }
+
+          @Override
           public void printNextTest() {
             runtime.printNextTestReport();
           }
@@ -1371,7 +1383,7 @@ public class BridgeUiCommandHandler {
                 RobotLocalCommandSource.HOST_UI,
                 dispatchModeForUiCommand(name),
                 ingress.args,
-                RobotLocalNoopValueProvider.INSTANCE,
+                uiValueProviderForCommand(name),
                 clientId,
                 commandTimestamp,
                 false));
@@ -1572,11 +1584,31 @@ public class BridgeUiCommandHandler {
                 RobotLocalCommandSource.HOST_UI,
                 dispatchModeForUiCommand(name),
                 ingress.args,
-                RobotLocalNoopValueProvider.INSTANCE,
+                uiValueProviderForCommand(name),
                 clientId,
                 cmdTs,
                 isTcp));
     return toBridgeUiResult(dispatchResult);
+  }
+
+  /**
+   * NAME
+   *   uiValueProviderForCommand - Resolve the source-state provider for host UI commands.
+   *
+   * PARAMETERS
+   *   name - Wire command name.
+   *
+   * RETURNS
+   *   Host-UI hold provider for HOLD commands, otherwise the no-op provider.
+   */
+  private RobotLocalValueProvider uiValueProviderForCommand(String name) {
+    frc.robot.commands.local.RobotLocalCommandDefinition definition =
+        RobotLocalCommandRegistry.definition(name);
+    if (definition != null
+        && definition.invocationKind() == frc.robot.commands.local.RobotLocalInvocationKind.HOLD) {
+      return RobotLocalHostUiValueProvider.INSTANCE;
+    }
+    return RobotLocalNoopValueProvider.INSTANCE;
   }
 
   /**
@@ -1612,6 +1644,15 @@ public class BridgeUiCommandHandler {
       case "showStatus":
       case "showState":
       case "showDevices":
+      case "toggleTest":
+      case "selectTestPrev":
+      case "selectTestNext":
+      case "printSelectedTestSource":
+      case "printNextTest":
+      case "printTestsInfo":
+      case "printTestsOverview":
+      case "selectTestByName":
+      case "showTests":
         return true;
       default:
         return false;
@@ -3665,27 +3706,37 @@ public class BridgeUiCommandHandler {
     }
     Map<String, List<Integer>> groups = new java.util.LinkedHashMap<>();
     for (BringupUtil.DeviceEntry entry : devices) {
-      if (entry == null || !BringupUtil.isEnabledCanId(entry.id)) {
+      if (entry == null) {
         continue;
       }
       String vendor = entry.vendor != null ? entry.vendor.trim() : "";
       String type = entry.type != null ? entry.type.trim() : "";
-      String key = (vendor.isEmpty() ? "UNKNOWN" : vendor) + " " + (type.isEmpty() ? "Device" : type);
+      String addressLabel = BringupUtil.summaryAddressLabelForInterface(entry.deviceInterface);
+      String key =
+          (vendor.isEmpty() ? "UNKNOWN" : vendor)
+              + " "
+              + (type.isEmpty() ? "Device" : type)
+              + " "
+              + addressLabel;
+      String deviceInterface = entry.deviceInterface != null ? entry.deviceInterface.trim() : "";
+      if (deviceInterface.isBlank() || !BringupUtil.isEnabledDeviceAddress(entry.id)) {
+        continue;
+      }
       groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(entry.id);
     }
     for (Map.Entry<String, List<Integer>> entry : groups.entrySet()) {
-      List<Integer> ids = entry.getValue();
-      if (ids.isEmpty()) {
+      List<Integer> addresses = entry.getValue();
+      if (addresses.isEmpty()) {
         continue;
       }
       StringBuilder line = new StringBuilder();
-      for (int i = 0; i < ids.size(); i++) {
+      for (int i = 0; i < addresses.size(); i++) {
         if (i > 0) {
           line.append(", ");
         }
-        line.append(ids.get(i));
+        line.append(addresses.get(i));
       }
-      ReportTextUtil.appendLine(sb, entry.getKey() + " CAN IDs: " + line);
+      ReportTextUtil.appendLine(sb, entry.getKey() + ": " + line);
     }
   }
 
@@ -3763,6 +3814,22 @@ public class BridgeUiCommandHandler {
     String text = core().formatTestsOverview(overview);
     runtime.requestTextReport(text, 6);
     publishTestsOverview(overview);
+    return text;
+  }
+
+  /**
+   * NAME
+   *   printSelectedTestSource - Emit the stored DSL source for the selected test.
+   *
+   * RETURNS
+   *   Full selected-test source report text.
+   *
+   * SIDE EFFECTS
+   *   Enqueues a text report for throttled console output.
+   */
+  public String printSelectedTestSource() {
+    String text = core().buildSelectedTestSourceReportText();
+    runtime.requestTextReport(text, 4);
     return text;
   }
 

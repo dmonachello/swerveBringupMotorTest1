@@ -159,6 +159,7 @@ class BridgeUiGroupCommandsTest {
             DUTY_TEST_ID,
             DUTY_TEST_MFG,
             DUTY_TEST_DEVICE_TYPE,
+            "CAN",
             DUTY_TEST_VENDOR,
             DUTY_TEST_TYPE,
             DEVICE_MOTOR_1,

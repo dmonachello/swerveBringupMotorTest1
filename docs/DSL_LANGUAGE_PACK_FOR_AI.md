@@ -12,6 +12,7 @@ Canonical sources behind this pack:
 
 - [ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md](./ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md)
 - [USER_GUIDE_ROBOT_TEST_DSL.md](./USER_GUIDE_ROBOT_TEST_DSL.md)
+- [FEATURE_SPEC_DSL_CONDITION_STABILITY_AND_RANGE_OPERATORS.md](./FEATURE_SPEC_DSL_CONDITION_STABILITY_AND_RANGE_OPERATORS.md)
 - [SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md](./SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md)
 - [tools/common/generated/robot_test_dsl_signals.json](../tools/common/generated/robot_test_dsl_signals.json)
 
@@ -99,13 +100,19 @@ device.signal < literal
 device.signal <= literal
 device.signal == literal
 device.signal != literal
+device.signal between low high
+device.signal outside low high
 device.signal
+<condition> stable seconds
 ```
 
 Important rules:
 
 - bare `device.signal` is only valid for boolean signals
 - bare boolean reference means `device.signal == true`
+- `between` is inclusive at both ends
+- `outside` excludes both endpoints
+- `stable` delays truth until the raw condition has remained continuously true for the authored duration
 - compound expressions are not supported
 - `and`, `or`, nested expressions, and function calls are not supported
 
@@ -115,10 +122,12 @@ Inside `main`, the current runtime does this every tick:
 
 1. apply all `set`
 2. sample all condition signals
-3. latch `require`
-4. evaluate `abort`
-5. evaluate `success`
-6. evaluate `until`
+3. evaluate raw conditions
+4. update `stable` filters
+5. latch `require`
+6. evaluate `abort`
+7. evaluate `success`
+8. evaluate `until`
 
 Priority is:
 
@@ -178,6 +187,14 @@ It does not mean:
 
 - velocity must stay above `1000`
 - velocity is checked only on the final tick
+
+With:
+
+```text
+require "FALCON 9".velocity > 1000 stable 0.1
+```
+
+the condition must remain continuously true for `0.1` seconds before the latch is satisfied.
 
 ### 8.2 `main set` means continuous ownership
 
@@ -345,6 +362,18 @@ main:
     require "FALCON 9".velocity > 100
 ```
 
+Stable range check:
+
+```text
+test "encoder_window"
+device "encoder1"
+
+main:
+    require encoder1.position between 100 120 stable 0.1
+    abort encoder1.position outside 90 130 stable 0.05
+    until timer.elapsed >= 2.0
+```
+
 Controller-driven smoke test:
 
 ```text
@@ -377,7 +406,9 @@ If another model is asked to interpret or generate this DSL, tell it:
 
 - use `ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md` as the runtime truth
 - use `USER_GUIDE_ROBOT_TEST_DSL.md` for examples and authoring rules
+- use `FEATURE_SPEC_DSL_CONDITION_STABILITY_AND_RANGE_OPERATORS.md` for rationale and extended examples
 - use `tools/common/generated/robot_test_dsl_signals.json` for the exact signal catalog
 - treat `require` as latched evidence
+- treat `stable` as a condition suffix, not as a blocking wait
 - treat `main set` as continuous command ownership
 - do not invent unsupported compound expressions or staged syntax

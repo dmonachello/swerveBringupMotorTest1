@@ -16,6 +16,7 @@ Use this document for:
 Use the execution spec for authoritative runtime semantics:
 
 - [ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md](./ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md)
+- [FEATURE_SPEC_DSL_CONDITION_STABILITY_AND_RANGE_OPERATORS.md](./FEATURE_SPEC_DSL_CONDITION_STABILITY_AND_RANGE_OPERATORS.md)
 
 ## 2. Writing Model
 
@@ -395,13 +396,19 @@ device.signal < value
 device.signal <= value
 device.signal == value
 device.signal != value
+device.signal between low high
+device.signal outside low high
 device.signal
+<condition> stable seconds
 ```
 
 Bare form rules:
 
 - valid only for boolean signals
 - equivalent to `device.signal == true`
+- `between` is inclusive at both endpoints
+- `outside` excludes both endpoints
+- `stable` is an optional condition suffix that requires the raw condition to remain continuously true for the authored duration before it counts as true
 
 Examples:
 
@@ -409,6 +416,8 @@ Examples:
 "FALCON 9".velocity > 1000
 "FALCON 9".current > 1.0
 "FALCON 9".temperature >= 80
+encoder1.position between 100 120
+"FALCON 9".current outside 0 40 stable 0.25
 lmtSw0.pressed
 controller0.A
 timer.elapsed >= 3.0
@@ -428,10 +437,12 @@ Inside `main`, the runtime does this every tick:
 
 1. apply all `set`
 2. sample condition signals
-3. latch `require`
-4. evaluate `abort`
-5. evaluate `success`
-6. evaluate `until`
+3. evaluate raw conditions
+4. update `stable` filters
+5. latch `require`
+6. evaluate `abort`
+7. evaluate `success`
+8. evaluate `until`
 
 Priority is:
 
@@ -599,6 +610,31 @@ main:
     abort timer.elapsed >= 10.0
 ```
 
+### 12.7 Debounced limit switch
+
+```text
+test "run_to_limit_debounced"
+device "FALCON 9"
+device "lmtSw0"
+
+main:
+    set "FALCON 9".output = 0.2
+    abort "FALCON 9".current outside 0 40 stable 0.15
+    success lmtSw0.pressed stable 0.05
+```
+
+### 12.8 Stable encoder window
+
+```text
+test "encoder_window"
+device "encoder1"
+
+main:
+    require encoder1.position between 100 120 stable 0.1
+    abort encoder1.position outside 90 130 stable 0.05
+    until timer.elapsed >= 2.0
+```
+
 ## 13. Common Mistakes
 
 ### 13.1 Treating the file like a script
@@ -688,6 +724,21 @@ Use an explicit comparison:
 ```text
 require "FALCON 9".velocity > 100
 ```
+
+### 13.8 Reading `stable` like a blocking delay
+
+Wrong assumption:
+
+```text
+success controller0.A stable 0.1
+```
+
+means the test pauses for `0.1` seconds and then checks the button.
+
+Actual meaning:
+
+- the button condition is still evaluated every tick
+- the condition becomes true only after it has remained continuously true for `0.1` seconds
 
 ## 14. Recommended Starting Pattern
 

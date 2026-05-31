@@ -201,7 +201,7 @@
       "label": "lmtSw0",
       "deviceInterface": "DIO",
       "id": 0,
-      "invert": false,
+      "invert": true,
       "type": "limitSwitch"
     },
     {
@@ -254,8 +254,8 @@
       "terminator": false
     }
   ],
-  "data_version": "2026-05-29_134850",
-  "data_hash": "85cabef3ed4976b2e63eecaa0d7f6aaa56edd26d93589a343f5f1d7d062d716d",
+  "data_version": "2026-05-31_150255",
+  "data_hash": "645e18b5cf796711eb1ab52a2bdd341c20109db2a42a24fe3f92f168a286cc85",
   "default_profile": "2026_no_swyfts",
   "bridgeConfig": {
     "schemaVersion": 2,
@@ -944,7 +944,8 @@
                   "device": "controller0",
                   "signal": "B",
                   "text": "controller0.B"
-                }
+                },
+                "mode": "bare"
               }
             ],
             "successes": [],
@@ -1069,7 +1070,8 @@
                   "device": "controller0",
                   "signal": "B",
                   "text": "controller0.B"
-                }
+                },
+                "mode": "bare"
               }
             ],
             "successes": [],
@@ -1196,7 +1198,8 @@
                   "device": "controller0",
                   "signal": "B",
                   "text": "controller0.B"
-                }
+                },
+                "mode": "bare"
               }
             ],
             "requires": []
@@ -1212,8 +1215,8 @@
         }
       },
       "spark25_leftY": {
-        "source": "test \"spark25_leftY\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"controller0\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\n\tuntil timer.elapsed >= 10.0\n\n\n",
-        "sourceHash": "4889393b2f08b76ca2aebc6288a30b898f7eb5959245777661ff25b0aeaff385",
+        "source": "test \"spark25_leftY\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"controller0\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\n\tuntil timer.elapsed >= 10.0\n\n",
+        "sourceHash": "054251b14d343f48e07e822cd84d2509800d13e6dbd179ce3fdcdbfba6dfe0ba",
         "normalized": {
           "name": "spark25_leftY",
           "devices": [
@@ -1236,7 +1239,7 @@
           "main": {
             "sets": [
               {
-                "id": "",
+                "id": "set_1",
                 "text": "set \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0",
                 "target": {
                   "device": "SPARKMAX/NEO 25",
@@ -1249,7 +1252,11 @@
                   "text": "controller0.leftY"
                 },
                 "deadband": 0.08,
-                "scale": 0.25
+                "scale": 0.25,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
               }
             ],
             "clears": [],
@@ -1257,7 +1264,7 @@
             "successes": [],
             "untils": [
               {
-                "id": "",
+                "id": "until_1",
                 "kind": "until",
                 "text": "until timer.elapsed >= 10.0",
                 "reference": {
@@ -1265,10 +1272,11 @@
                   "signal": "elapsed",
                   "text": "timer.elapsed"
                 },
+                "mode": "comparison",
                 "operator": ">=",
                 "literal": {
                   "value": 10.0,
-                  "valueType": ""
+                  "valueType": "number"
                 }
               }
             ],
@@ -1285,8 +1293,8 @@
         }
       },
       "falcon9_leftY": {
-        "source": "test \"falcon9_leftY\"\n\ndevice \"FALCON 9\"\ndevice \"controller0\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\n\tuntil timer.elapsed >= 10.0\n\n\n",
-        "sourceHash": "0eb7c6441804d9a32dba93752144641ea6ffbd36f9366b9ba5ac544b3e6e6b12",
+        "source": "test \"falcon9_leftY\"\n\ndevice \"FALCON 9\"\ndevice \"controller0\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\n\tuntil timer.elapsed >= 10.0\n\n",
+        "sourceHash": "59c25b007e301d41fbf58d8aa0429018dac3a945eb0bb6e5a914d305d9048283",
         "normalized": {
           "name": "falcon9_leftY",
           "devices": [
@@ -1309,7 +1317,7 @@
           "main": {
             "sets": [
               {
-                "id": "",
+                "id": "set_1",
                 "text": "set \"FALCON 9\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0",
                 "target": {
                   "device": "FALCON 9",
@@ -1322,7 +1330,11 @@
                   "text": "controller0.leftY"
                 },
                 "deadband": 0.08,
-                "scale": 0.25
+                "scale": 0.25,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
               }
             ],
             "clears": [],
@@ -1330,7 +1342,7 @@
             "successes": [],
             "untils": [
               {
-                "id": "",
+                "id": "until_1",
                 "kind": "until",
                 "text": "until timer.elapsed >= 10.0",
                 "reference": {
@@ -1338,10 +1350,11 @@
                   "signal": "elapsed",
                   "text": "timer.elapsed"
                 },
+                "mode": "comparison",
                 "operator": ">=",
                 "literal": {
                   "value": 10.0,
-                  "valueType": ""
+                  "valueType": "number"
                 }
               }
             ],
@@ -1358,8 +1371,8 @@
         }
       },
       "spark25_to_limit": {
-        "source": "test \"spark25_to_limit\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = 0.20\n\n\n\tabort \"SPARKMAX/NEO 25\".current_actual > 40\n\n\tsuccess lmtSw0.pressed\n\n\n\n",
-        "sourceHash": "68794a77d267695aabf691ff235455cf57abb8a83e1081a8fa6130f7c3e5134f",
+        "source": "test \"spark25_to_limit\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = 0.20\n\n\n\tabort \"SPARKMAX/NEO 25\".current_actual > 40\n\n\tsuccess lmtSw0.pressed stable 0.050\n\n\n\n",
+        "sourceHash": "bc30a8d48018671a714ff4d40c7aba383d079bb237fc50371f6f392aacc69a19",
         "normalized": {
           "name": "spark25_to_limit",
           "devices": [
@@ -1406,6 +1419,7 @@
                   "signal": "current_actual",
                   "text": "SPARKMAX/NEO 25.current_actual"
                 },
+                "mode": "comparison",
                 "operator": ">",
                 "literal": {
                   "value": 40,
@@ -1417,12 +1431,14 @@
               {
                 "id": "success_1",
                 "kind": "success",
-                "text": "success lmtSw0.pressed",
+                "text": "success lmtSw0.pressed stable 0.050",
                 "reference": {
                   "device": "lmtSw0",
                   "signal": "pressed",
                   "text": "lmtSw0.pressed"
-                }
+                },
+                "mode": "bare",
+                "stableSeconds": 0.05
               }
             ],
             "untils": [],
@@ -1439,8 +1455,8 @@
         }
       },
       "falcon9_to_limit": {
-        "source": "test \"falcon9_to_limit\"\n\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = 0.20\n\n\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed\n\n\n\n",
-        "sourceHash": "42f07decbf66d269b7cff20047e2e4fc9068b0bd821b51537be1b6beb5101e7c",
+        "source": "test \"falcon9_to_limit\"\n\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = 0.20\n\n\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed stable 0.050\n\n\n\n",
+        "sourceHash": "fc6f2f2501bac5b96407f804e7e54c0ddfeb23c861843a4b619b76607925f736",
         "normalized": {
           "name": "falcon9_to_limit",
           "devices": [
@@ -1487,6 +1503,7 @@
                   "signal": "current_actual",
                   "text": "FALCON 9.current_actual"
                 },
+                "mode": "comparison",
                 "operator": ">",
                 "literal": {
                   "value": 40,
@@ -1498,12 +1515,14 @@
               {
                 "id": "success_1",
                 "kind": "success",
-                "text": "success lmtSw0.pressed",
+                "text": "success lmtSw0.pressed stable 0.050",
                 "reference": {
                   "device": "lmtSw0",
                   "signal": "pressed",
                   "text": "lmtSw0.pressed"
-                }
+                },
+                "mode": "bare",
+                "stableSeconds": 0.05
               }
             ],
             "untils": [],
@@ -1520,8 +1539,8 @@
         }
       },
       "motors_to_limit": {
-        "source": "test \"motors_to_limit\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = 0.15\n\tset \"FALCON 9\".output_percent_cmd = 0.15\n\n\tabort \"SPARKMAX/NEO 25\".current_actual > 40\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed\n\n\n\n\n",
-        "sourceHash": "48bfa03e1d2bf5f58ff51b4395f32e8c6dc2d94c00df3c5ed7bd51804ce79312",
+        "source": "test \"motors_to_limit\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = 0.15\n\tset \"FALCON 9\".output_percent_cmd = 0.15\n\n\tabort \"SPARKMAX/NEO 25\".current_actual > 40\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed stable 0.050\n\n\n\n\n",
+        "sourceHash": "46eb308a1f6d2ea5e06443d7c4e8684fe5e01d1095b65f41987975e02331d3f9",
         "normalized": {
           "name": "motors_to_limit",
           "devices": [
@@ -1584,6 +1603,7 @@
                   "signal": "current_actual",
                   "text": "SPARKMAX/NEO 25.current_actual"
                 },
+                "mode": "comparison",
                 "operator": ">",
                 "literal": {
                   "value": 40,
@@ -1599,6 +1619,7 @@
                   "signal": "current_actual",
                   "text": "FALCON 9.current_actual"
                 },
+                "mode": "comparison",
                 "operator": ">",
                 "literal": {
                   "value": 40,
@@ -1610,12 +1631,14 @@
               {
                 "id": "success_1",
                 "kind": "success",
-                "text": "success lmtSw0.pressed",
+                "text": "success lmtSw0.pressed stable 0.050",
                 "reference": {
                   "device": "lmtSw0",
                   "signal": "pressed",
                   "text": "lmtSw0.pressed"
-                }
+                },
+                "mode": "bare",
+                "stableSeconds": 0.05
               }
             ],
             "untils": [],

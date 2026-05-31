@@ -1,5 +1,6 @@
 package frc.robot.manufacturers;
 
+import frc.robot.BringupUtil;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.BringupPrinter;
 import java.util.List;
@@ -114,7 +115,7 @@ public final class DeviceTypeBucket {
       BringupPrinter.enqueue(
           "Device created: " + registration.displayName() +
           " index " + index +
-          " CAN " + device.getCanId());
+          " " + BringupUtil.creationAddressTextForLabel(device.getLabel(), device.getCanId()));
       nextIndex++;
       return new DeviceAddResult(device, index, registration);
     }
@@ -143,7 +144,7 @@ public final class DeviceTypeBucket {
       BringupPrinter.enqueue(
           "Device created: " + registration.displayName() +
           " index " + i +
-          " CAN " + device.getCanId());
+          " " + BringupUtil.creationAddressTextForLabel(device.getLabel(), device.getCanId()));
     }
     nextIndex = devices.size();
   }

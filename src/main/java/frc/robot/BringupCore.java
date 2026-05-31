@@ -579,16 +579,17 @@ public final class BringupCore {
    */
   public void selectNextBringupTest() {
     syncProfileRuntimeFromRegistry();
-    if (selectableTests.isEmpty()) {
+    if (bringupTests.isEmpty()) {
       BringupPrinter.enqueue("No enabled bringup tests.");
       return;
     }
-    if (selectedTestIndex < 0) {
-      selectedTestIndex = 0;
-    } else {
-      selectedTestIndex = (selectedTestIndex + 1) % selectableTests.size();
+    int nextIndex = findNextSelectableTestIndex(selectedTestIndex, true);
+    if (nextIndex < 0) {
+      BringupPrinter.enqueue("No enabled bringup tests.");
+      return;
     }
-    BringupTest test = selectableTests.get(selectedTestIndex);
+    selectedTestIndex = nextIndex;
+    BringupTest test = bringupTests.get(selectedTestIndex);
     BringupPrinter.enqueue("Selected test: " + test.getName());
   }
 
@@ -598,16 +599,17 @@ public final class BringupCore {
    */
   public void selectPrevBringupTest() {
     syncProfileRuntimeFromRegistry();
-    if (selectableTests.isEmpty()) {
+    if (bringupTests.isEmpty()) {
       BringupPrinter.enqueue("No enabled bringup tests.");
       return;
     }
-    if (selectedTestIndex < 0) {
-      selectedTestIndex = selectableTests.size() - 1;
-    } else {
-      selectedTestIndex = (selectedTestIndex - 1 + selectableTests.size()) % selectableTests.size();
+    int nextIndex = findNextSelectableTestIndex(selectedTestIndex, false);
+    if (nextIndex < 0) {
+      BringupPrinter.enqueue("No enabled bringup tests.");
+      return;
     }
-    BringupTest test = selectableTests.get(selectedTestIndex);
+    selectedTestIndex = nextIndex;
+    BringupTest test = bringupTests.get(selectedTestIndex);
     BringupPrinter.enqueue("Selected test: " + test.getName());
   }
 
@@ -1008,13 +1010,39 @@ public final class BringupCore {
    *   Selected BringupTest or null if none are available.
    */
   private BringupTest getSelectedBringupTest() {
-    if (selectableTests.isEmpty() || selectedTestIndex < 0) {
+    if (bringupTests.isEmpty() || selectedTestIndex < 0) {
       return null;
     }
-    if (selectedTestIndex >= selectableTests.size()) {
-      selectedTestIndex = 0;
+    if (selectedTestIndex >= bringupTests.size()) {
+      selectedTestIndex = findNextSelectableTestIndex(-1, true);
     }
-    return selectableTests.get(selectedTestIndex);
+    if (selectedTestIndex < 0 || selectedTestIndex >= bringupTests.size()) {
+      return null;
+    }
+    BringupTest test = bringupTests.get(selectedTestIndex);
+    return test != null && test.isEnabled() ? test : null;
+  }
+
+  private int findNextSelectableTestIndex(int currentIndex, boolean forward) {
+    if (bringupTests.isEmpty()) {
+      return -1;
+    }
+    int size = bringupTests.size();
+    int startIndex = currentIndex;
+    if (startIndex < 0 || startIndex >= size) {
+      startIndex = forward ? -1 : 0;
+    }
+    for (int attempt = 0; attempt < size; attempt++) {
+      int candidate =
+          forward
+              ? (startIndex + 1 + attempt) % size
+              : Math.floorMod(startIndex - 1 - attempt, size);
+      BringupTest test = bringupTests.get(candidate);
+      if (test != null && test.isEnabled()) {
+        return candidate;
+      }
+    }
+    return -1;
   }
 
   /**
@@ -1700,6 +1728,35 @@ public final class BringupCore {
     appendTestDetails(lines, runAllNext);
 
     return buildTextFromLines("=== Bringup Next Test ===", lines, "==========================");
+  }
+
+  /**
+   * NAME
+   *   buildSelectedTestSourceReportText - Build a report containing the stored DSL source for the selected test.
+   *
+   * RETURNS
+   *   Multiline DSL source report for the currently selected test.
+   */
+  public String buildSelectedTestSourceReportText() {
+    List<String> lines = new ArrayList<>();
+    BringupTest selected = getSelectedBringupTest();
+    if (selected == null) {
+      lines.add("Selected test: (none)");
+      lines.add("Source: unavailable");
+      return buildTextFromLines("=== Bringup Test Source ===", lines, "===========================");
+    }
+    String testName = selected.getName();
+    lines.add("Selected test: " + testName);
+    String source = BringupTestRegistry.getStoredSource(testName);
+    if (source == null || source.isBlank()) {
+      lines.add("Source: unavailable");
+      return buildTextFromLines("=== Bringup Test Source ===", lines, "===========================");
+    }
+    lines.add("---");
+    for (String line : source.split("\\R", -1)) {
+      lines.add(line);
+    }
+    return buildTextFromLines("=== Bringup Test Source ===", lines, "===========================");
   }
 
   /**

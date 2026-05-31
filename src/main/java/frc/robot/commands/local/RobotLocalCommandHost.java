@@ -37,6 +37,8 @@ public interface RobotLocalCommandHost {
 
   void printTestsOverview();
 
+  void printSelectedTestSource();
+
   void printNextTest();
 
   void printInputs();
