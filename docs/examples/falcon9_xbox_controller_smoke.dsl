@@ -1,4 +1,3 @@
-# Note: deadband support used in this example was implemented with pi.
 test "falcon9_xbox_controller_smoke"
 device "FALCON 9"
 device "controller0"

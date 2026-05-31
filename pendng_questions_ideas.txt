@@ -1,0 +1,21 @@
+I see this when we read a profile or activate it?
+
+=== Profile Updated ===
+Build: bringup-core-state-v3
+CAN profile: test_minimal_25_9 (inactive)
+CTRE FALCON CAN IDs: 9
+Microsoft xboxController CAN IDs: 0
+NI limitSwitch CAN IDs: 0
+NI roboRIO CAN IDs: 0
+REV NEO CAN IDs: 25
+REV PDH CAN IDs: 1
+========================
+
+this line - NI limitSwitch CAN IDs: 0
+
+That device does not use a CAN ID. It uses a DIO as it is defined as such.
+
+---
+does the idea that everything that runs on the robot is DSL conflict with having a REST server on the robot?
+
+---
