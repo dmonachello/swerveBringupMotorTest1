@@ -9,12 +9,17 @@ import io
 import unittest
 from contextlib import redirect_stdout
 
+from tools.can_nt.bridge_cli_ast import BridgeCliAstExecutor
 from tools.can_nt.bridge_cli import BridgeCli
 from tools.can_nt.bridge_cli_parser import BridgeCliParser
 from tools.can_nt.status import SS__CONFIG__VALID, SS__NORMAL
+from tools.common.test_authoring import TestAuthoringModel
+from tools.config.schema_store import ConfigSchemaStore
 from tools.common.profile_constants import (
+    EDGE_TYPE_CAN_TAP,
     KEY_BRIDGE_BY_PROFILE,
     KEY_BRIDGE_GROUPS,
+    KEY_BUS,
     KEY_DEVICE_LINKS,
     EDGE_TYPE_CAN_TRUNK,
     KEY_DEVICES,
@@ -28,6 +33,7 @@ from tools.common.profile_constants import (
     KEY_FROM_NODE,
     KEY_FROM_PORT,
     KEY_ID,
+    KEY_INPUT_ALIASES,
     KEY_INTERFACE,
     KEY_INVERT,
     KEY_LABEL,
@@ -40,8 +46,11 @@ from tools.common.profile_constants import (
     KEY_MANUFACTURER,
     KEY_MEMBERS,
     KEY_NAME,
+    KEY_NEIGHBOR_PORTS,
+    KEY_NODE_CLASS,
     KEY_NODE_KEY,
     KEY_NODE_TYPE,
+    KEY_OBJECT_TYPE,
     KEY_PROFILE,
     KEY_PROFILES,
     KEY_SCHEMA_VERSION,
@@ -75,7 +84,14 @@ TOPOLOGY_SET = "topology neighbor-ports set A right B left"
 TOPOLOGY_DELETE = "topology neighbor-ports delete A right"
 TOPOLOGY_AUTO = "topology neighbor-auto node A"
 VALIDATE_TOPOLOGY = "validate topology"
+VALIDATE_TOPOLOGY_VERBOSE = "validate topology --verbose"
+VALIDATE_PROFILES_VERBOSE = "validate profiles --verbose"
+VALIDATE_BINDINGS_VERBOSE = "validate bindings --verbose"
+VALIDATE_ALL_VERBOSE = "validate all --verbose"
 NODE_TYPE_DEVICE = "device"
+NODE_TYPE_ANALYZER = "analyzer"
+NODE_CLASS_DEVICE = "device"
+NODE_CLASS_INFRASTRUCTURE = "infrastructure"
 INTERFACE_CAN = "CAN"
 INTERFACE_DIO = "DIO"
 RIGHT = "right"
@@ -120,7 +136,6 @@ def _build_root_payload() -> dict[str, object]:
                 KEY_INTERFACE: INTERFACE_DIO,
                 KEY_ID: 0,
                 KEY_INVERT: False,
-                KEY_ENABLED: True,
             },
         ],
         KEY_PROFILES: {
@@ -191,8 +206,29 @@ def _build_cli() -> BridgeCli:
         },
     }
     cli._profiles_dirty = False
+    cli._groups_dirty = False
+    cli._tests_dirty = False
+    cli._bindings_dirty = False
+    cli._can_mappings_dirty = False
     cli._groups_profile = PROFILE_NAME
     cli._active_group_members = []
+    cli._bindings_payload = {
+        KEY_SCHEMA_VERSION: PROFILE_SCHEMA_VERSION,
+        "controllers": [],
+        "bindings": [],
+        KEY_INPUT_ALIASES: {},
+    }
+    cli._can_mappings = {
+        "manufacturers": {},
+        "device_types": {},
+    }
+    cli._tests_model = TestAuthoringModel()
+    cli._tests_device_catalog = {}
+    cli._tests_profile = PROFILE_NAME
+    cli._store = ConfigSchemaStore()
+    cli._store.set_profiles_payload(cli._local_root_payload)
+    cli._store.set_bindings_payload(cli._bindings_payload)
+    cli._store.set_mappings_payload(cli._can_mappings)
     cli._batch = False
     cli._session = type(
         "_Session",
@@ -215,11 +251,32 @@ class BridgeCliTopologyShowTests(unittest.TestCase):
         topology = cli._local_device_topology(DEVICE_B)
 
         self.assertEqual(topology[KEY_NODE_KEY], 2)
+        self.assertEqual(topology[KEY_LABEL], DEVICE_B)
+        self.assertEqual(topology[KEY_OBJECT_TYPE], NODE_TYPE_DEVICE)
+        self.assertEqual(topology[KEY_NODE_CLASS], NODE_CLASS_DEVICE)
         self.assertEqual(
             topology["neighborLinks"],
             [
-                {"key": 1, "label": DEVICE_A, "bus": 0, "row": 0, "x": 10.0},
-                {"key": 3, "label": DEVICE_C, "bus": 0, "row": 0, "x": 30.0},
+                {
+                    "key": 1,
+                    "label": DEVICE_A,
+                    "bus": 0,
+                    "row": 0,
+                    "x": 10.0,
+                    KEY_OBJECT_TYPE: NODE_TYPE_DEVICE,
+                    KEY_NODE_TYPE: NODE_TYPE_DEVICE,
+                    KEY_NODE_CLASS: NODE_CLASS_DEVICE,
+                },
+                {
+                    "key": 3,
+                    "label": DEVICE_C,
+                    "bus": 0,
+                    "row": 0,
+                    "x": 30.0,
+                    KEY_OBJECT_TYPE: NODE_TYPE_DEVICE,
+                    KEY_NODE_TYPE: NODE_TYPE_DEVICE,
+                    KEY_NODE_CLASS: NODE_CLASS_DEVICE,
+                },
             ],
         )
         self.assertEqual(
@@ -231,6 +288,9 @@ class BridgeCliTopologyShowTests(unittest.TestCase):
                     "bus": 0,
                     "row": 0,
                     "x": 10.0,
+                    KEY_OBJECT_TYPE: NODE_TYPE_DEVICE,
+                    KEY_NODE_TYPE: NODE_TYPE_DEVICE,
+                    KEY_NODE_CLASS: NODE_CLASS_DEVICE,
                     KEY_LINK_PORT: LEFT,
                     KEY_LINK_NEIGHBOR_PORT: RIGHT,
                     KEY_EDGE_TYPE: EDGE_TYPE_CAN_TRUNK,
@@ -242,6 +302,9 @@ class BridgeCliTopologyShowTests(unittest.TestCase):
                     "bus": 0,
                     "row": 0,
                     "x": 30.0,
+                    KEY_OBJECT_TYPE: NODE_TYPE_DEVICE,
+                    KEY_NODE_TYPE: NODE_TYPE_DEVICE,
+                    KEY_NODE_CLASS: NODE_CLASS_DEVICE,
                     KEY_LINK_PORT: RIGHT,
                     KEY_LINK_NEIGHBOR_PORT: LEFT,
                     KEY_EDGE_TYPE: EDGE_TYPE_CAN_TRUNK,
@@ -249,6 +312,89 @@ class BridgeCliTopologyShowTests(unittest.TestCase):
                 },
             ],
         )
+
+    def test_local_device_topology_treats_analyzer_as_first_class_graph_node(self) -> None:
+        cli = _build_cli()
+        topology_profile = cli._local_root_payload[KEY_TOPOLOGY][KEY_TOPOLOGY_PROFILES][PROFILE_NAME]
+        topology_profile[KEY_TOPOLOGY_NODES] = [
+            {KEY_NODE_KEY: 1, KEY_NODE_TYPE: NODE_TYPE_DEVICE, KEY_DEVICE_REF: DEVICE_A, KEY_LAYOUT: {"bus": 0, "row": 0, "x": 10.0}},
+            {KEY_NODE_KEY: 7, KEY_NODE_TYPE: NODE_TYPE_ANALYZER, KEY_LABEL: "can analyzer 1", KEY_LAYOUT: {"bus": 0, "row": 0, "x": 20.0}},
+            {KEY_NODE_KEY: 2, KEY_NODE_TYPE: NODE_TYPE_DEVICE, KEY_DEVICE_REF: DEVICE_B, KEY_LAYOUT: {"bus": 0, "row": 0, "x": 30.0}},
+        ]
+        topology_profile[KEY_TOPOLOGY_EDGES] = [
+            {
+                KEY_EDGE_ID: "edge_1",
+                KEY_FROM_NODE: 1,
+                KEY_FROM_PORT: RIGHT,
+                KEY_TO_NODE: 7,
+                KEY_TO_PORT: LEFT,
+                KEY_EDGE_TYPE: EDGE_TYPE_CAN_TAP,
+            },
+            {
+                KEY_EDGE_ID: "edge_2",
+                KEY_FROM_NODE: 7,
+                KEY_FROM_PORT: RIGHT,
+                KEY_TO_NODE: 2,
+                KEY_TO_PORT: LEFT,
+                KEY_EDGE_TYPE: EDGE_TYPE_CAN_TAP,
+            },
+        ]
+
+        topology = cli._local_device_topology("can analyzer 1")
+
+        self.assertEqual(topology[KEY_LABEL], "can analyzer 1")
+        self.assertEqual(topology[KEY_OBJECT_TYPE], NODE_TYPE_ANALYZER)
+        self.assertEqual(topology[KEY_NODE_CLASS], NODE_CLASS_INFRASTRUCTURE)
+        self.assertEqual(
+            topology[KEY_NEIGHBOR_PORTS],
+            [
+                {
+                    KEY_NODE_KEY: 1,
+                    KEY_LABEL: DEVICE_A,
+                    KEY_BUS: 0,
+                    "row": 0,
+                    "x": 10.0,
+                    KEY_OBJECT_TYPE: NODE_TYPE_DEVICE,
+                    KEY_NODE_TYPE: NODE_TYPE_DEVICE,
+                    KEY_NODE_CLASS: NODE_CLASS_DEVICE,
+                    KEY_LINK_PORT: LEFT,
+                    KEY_LINK_NEIGHBOR_PORT: RIGHT,
+                    KEY_EDGE_TYPE: EDGE_TYPE_CAN_TAP,
+                    KEY_EDGE_ID: "edge_1",
+                },
+                {
+                    KEY_NODE_KEY: 2,
+                    KEY_LABEL: DEVICE_B,
+                    KEY_BUS: 0,
+                    "row": 0,
+                    "x": 30.0,
+                    KEY_OBJECT_TYPE: NODE_TYPE_DEVICE,
+                    KEY_NODE_TYPE: NODE_TYPE_DEVICE,
+                    KEY_NODE_CLASS: NODE_CLASS_DEVICE,
+                    KEY_LINK_PORT: RIGHT,
+                    KEY_LINK_NEIGHBOR_PORT: LEFT,
+                    KEY_EDGE_TYPE: EDGE_TYPE_CAN_TAP,
+                    KEY_EDGE_ID: "edge_2",
+                },
+            ],
+        )
+
+    def test_show_topology_local_json_resolves_node_class_for_infrastructure_nodes(self) -> None:
+        cli = _build_cli()
+        topology_profile = cli._local_root_payload[KEY_TOPOLOGY][KEY_TOPOLOGY_PROFILES][PROFILE_NAME]
+        topology_profile[KEY_TOPOLOGY_NODES].append(
+            {KEY_NODE_KEY: 7, KEY_NODE_TYPE: NODE_TYPE_ANALYZER, KEY_LABEL: "can analyzer 1", KEY_LAYOUT: {"bus": 0, "row": 0, "x": 25.0}}
+        )
+        stream = io.StringIO()
+
+        with redirect_stdout(stream):
+            result = cli._handle_show(["topology", "local", "--json", "--pretty"])
+
+        output = stream.getvalue()
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertIn(f'"{KEY_NODE_CLASS}": "{NODE_CLASS_DEVICE}"', output)
+        self.assertIn(f'"{KEY_NODE_CLASS}": "{NODE_CLASS_INFRASTRUCTURE}"', output)
+        self.assertIn(f'"{KEY_OBJECT_TYPE}": "{NODE_TYPE_ANALYZER}"', output)
 
     def test_parser_accepts_topology_show_commands(self) -> None:
         parser = BridgeCliParser()
@@ -547,6 +693,71 @@ class BridgeCliTopologyShowTests(unittest.TestCase):
 
         self.assertEqual(result.code, SS__CONFIG__VALID)
         self.assertIn("OK: topology is valid.", stream.getvalue())
+
+    def test_validate_topology_ast_command_succeeds_for_valid_payload(self) -> None:
+        cli = _build_cli()
+        ast = BridgeCliParser().parse(VALIDATE_TOPOLOGY, mode="config").ast
+        stream = io.StringIO()
+
+        with redirect_stdout(stream):
+            result = BridgeCliAstExecutor(cli).execute(ast)
+
+        self.assertEqual(result.code, SS__CONFIG__VALID)
+        self.assertIn("OK: topology is valid.", stream.getvalue())
+
+    def test_validate_topology_verbose_reports_checks(self) -> None:
+        cli = _build_cli()
+        ast = BridgeCliParser().parse(VALIDATE_TOPOLOGY_VERBOSE, mode="config").ast
+        stream = io.StringIO()
+
+        with redirect_stdout(stream):
+            result = BridgeCliAstExecutor(cli).execute(ast)
+
+        output = stream.getvalue()
+        self.assertEqual(result.code, SS__CONFIG__VALID)
+        self.assertIn("PASS: Root 'schema_version' matches expected version.", output)
+        self.assertIn("PASS: Root 'data_hash' matches computed value.", output)
+        self.assertIn("OK: topology is valid.", output)
+
+    def test_validate_profiles_verbose_ast_command_succeeds(self) -> None:
+        cli = _build_cli()
+        ast = BridgeCliParser().parse(VALIDATE_PROFILES_VERBOSE, mode="config").ast
+        stream = io.StringIO()
+
+        with redirect_stdout(stream):
+            result = BridgeCliAstExecutor(cli).execute(ast)
+
+        output = stream.getvalue()
+        self.assertEqual(result.code, SS__CONFIG__VALID)
+        self.assertIn("PASS: profiles payload is valid.", output)
+        self.assertIn("OK: Config is valid.", output)
+
+    def test_validate_bindings_verbose_ast_command_succeeds(self) -> None:
+        cli = _build_cli()
+        ast = BridgeCliParser().parse(VALIDATE_BINDINGS_VERBOSE, mode="config").ast
+        stream = io.StringIO()
+
+        with redirect_stdout(stream):
+            result = BridgeCliAstExecutor(cli).execute(ast)
+
+        output = stream.getvalue()
+        self.assertEqual(result.code, SS__CONFIG__VALID)
+        self.assertIn("PASS: bindings payload is valid.", output)
+        self.assertIn("OK: Config is valid.", output)
+
+    def test_validate_all_verbose_ast_command_succeeds(self) -> None:
+        cli = _build_cli()
+        ast = BridgeCliParser().parse(VALIDATE_ALL_VERBOSE, mode="config").ast
+        stream = io.StringIO()
+
+        with redirect_stdout(stream):
+            result = BridgeCliAstExecutor(cli).execute(ast)
+
+        output = stream.getvalue()
+        self.assertEqual(result.code, SS__CONFIG__VALID)
+        self.assertIn("Validate all:", output)
+        self.assertIn("PASS: profiles payload is valid.", output)
+        self.assertIn("PASS: bindings payload is valid.", output)
 
     def test_topology_neighbor_auto_reuses_existing_can_edge_ids(self) -> None:
         cli = _build_cli()

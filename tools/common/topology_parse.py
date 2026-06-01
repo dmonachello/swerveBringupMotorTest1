@@ -47,6 +47,7 @@ from tools.common.profile_constants import (
     KEY_LINK_NODE,
     KEY_LINK_PORT,
     KEY_MODEL,
+    KEY_NODE_CLASS,
     KEY_NODE_KEY,
     KEY_OBJECT_TYPE,
     KEY_NODE_TYPE,
@@ -61,7 +62,9 @@ from tools.common.profile_constants import (
     LAYOUT_KEY_ROW,
     LAYOUT_KEY_X,
     LAYOUT_KEY_Y,
+    NODE_CLASS_INFRASTRUCTURE,
     NODE_TYPE_DEVICE,
+    get_node_class,
     get_object_type,
 )
 
@@ -163,14 +166,17 @@ def topology_node_lookup(
         object_type = get_object_type(entry)
         resolved_entry[KEY_OBJECT_TYPE] = object_type
         resolved_entry.setdefault(KEY_NODE_TYPE, object_type)
+        resolved_entry[KEY_NODE_CLASS] = get_node_class(entry)
         if object_type == NODE_TYPE_DEVICE:
             device_ref = str(entry.get(KEY_DEVICE_REF, EMPTY_STRING)).strip()
             if device_ref:
+                resolved_entry[KEY_LABEL] = device_ref
                 device = registry.get(device_ref.lower())
                 if isinstance(device, dict):
-                    resolved_entry[KEY_LABEL] = device_ref
                     resolved_entry[KEY_VENDOR] = device.get(KEY_VENDOR, EMPTY_STRING)
                     resolved_entry[KEY_MODEL] = device.get(KEY_MODEL, EMPTY_STRING)
+        elif resolved_entry[KEY_NODE_CLASS] == NODE_CLASS_INFRASTRUCTURE:
+            resolved_entry[KEY_LABEL] = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip()
         resolved[key] = resolved_entry
     return resolved
 
@@ -257,6 +263,7 @@ def parse_diagram_nodes(diagram: Dict[str, object]) -> List[Dict[str, object]]:
             KEY_NODE_KEY: entry.get(KEY_NODE_KEY),
             KEY_OBJECT_TYPE: get_object_type(entry),
             KEY_NODE_TYPE: get_object_type(entry),
+            KEY_NODE_CLASS: get_node_class(entry),
             KEY_BUS: layout_dict.get(KEY_BUS, 0),
             LAYOUT_KEY_ROW: layout_dict.get(LAYOUT_KEY_ROW, 0),
             LAYOUT_KEY_X: layout_dict.get(LAYOUT_KEY_X, 0.0),

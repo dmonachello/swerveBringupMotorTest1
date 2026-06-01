@@ -251,6 +251,7 @@ from tools.common.profile_constants import (
     KEY_LIMITS,
     KEY_MANUFACTURER,
     KEY_MODEL,
+    KEY_NODE_CLASS,
     KEY_NOTES,
     KEY_PWM,
     KEY_ANALOG,
@@ -283,6 +284,7 @@ from tools.common.profile_constants import (
     KEY_LINK_NEIGHBOR_PORT,
     KEY_NODE_KEY,
     KEY_NODE_TYPE,
+    KEY_OBJECT_TYPE,
     KEY_DEVICE_REF,
     KEY_LAYOUT,
     KEY_EDGE_TYPE,
@@ -307,6 +309,7 @@ from tools.common.profile_constants import (
     KEY_LINK_DEVICE,
     get_device_interface,
     get_group_member_label,
+    get_node_class,
     get_object_type,
     make_group_member,
 )
@@ -715,6 +718,7 @@ FLAG_DOT = "--dot"
 FLAG_FORCE = "--force"
 FLAG_INSTALL_ROBOT = "--install-robot"
 FLAG_REPAIR = "--repair"
+FLAG_VERBOSE = "--verbose"
 FLAG_GROUPED = "--grouped"
 TOKEN_EQUALS = "="
 BOOLEAN_TRUE = "true"
@@ -3746,6 +3750,29 @@ class BridgeCli:
             message = f"profile {profile_name}:\n{message}"
         return (False, message)
 
+    def validate_profiles_only_verbose(self, profile_name: Optional[str] = None) -> tuple[bool, str]:
+        """
+        NAME
+            validate_profiles_only_verbose - Validate profiles payload and emit detailed issues.
+        """
+        self._sync_store_from_local()
+        result = self._store.validate_profiles_only(strict=True, profile_name=profile_name)
+        errors = result.errors()
+        warnings = result.warnings()
+        if not errors and not warnings:
+            print("PASS: profiles payload is valid.")
+            if profile_name:
+                print(f"INFO: active profile scope = {profile_name}")
+            return (True, MESSAGE_VALIDATE_OK)
+        for issue in errors:
+            print(f"FAIL: {issue.message}")
+        for issue in warnings:
+            print(f"WARN: {issue.message}")
+        message = self._format_store_errors(errors)
+        if profile_name:
+            message = f"profile {profile_name}:\n{message}"
+        return (not errors, message if errors else MESSAGE_VALIDATE_OK)
+
     def validate_profiles_robot(self) -> tuple[bool, str]:
         """
         NAME
@@ -3826,6 +3853,39 @@ class BridgeCli:
         )
         return (False, message)
 
+    def validate_tests_only_verbose(self, active_set: Optional[str] = None) -> tuple[bool, str]:
+        """
+        NAME
+            validate_tests_only_verbose - Validate tests and emit detailed issues and warnings.
+        """
+        self._ensure_tests_loaded()
+        model = self._tests_model or TestAuthoringModel()
+        if active_set:
+            test_set = model.test_sets.get(active_set)
+            if test_set is None:
+                return (False, f"Test set not found: {active_set}")
+            model = TestAuthoringModel(default_test_set=active_set, test_sets={active_set: test_set})
+        profile_name = self._tests_profile or self._active_profile_name()
+        controller_names = load_controller_names()
+        result = validate_model(
+            model,
+            profile_name=profile_name,
+            controller_names=controller_names,
+            device_catalog=self._tests_device_catalog,
+        )
+        if result.ok():
+            print("PASS: tests are valid.")
+            for issue in result.warnings:
+                print(f"WARN: {issue.message}")
+            return (True, MESSAGE_VALIDATE_OK)
+        for issue in result.errors:
+            label = issue.test_name or GLOBAL_LABEL
+            print(f"FAIL: {label}: {issue.message}")
+        for issue in result.warnings:
+            label = issue.test_name or GLOBAL_LABEL
+            print(f"WARN: {label}: {issue.message}")
+        return self.validate_tests_only(active_set=active_set)
+
     def validate_bindings_only(self, path: Optional[str]) -> tuple[bool, str]:
         """
         NAME
@@ -3845,6 +3905,32 @@ class BridgeCli:
             return (False, message)
         return (True, MESSAGE_VALIDATE_OK)
 
+    def validate_bindings_only_verbose(self, path: Optional[str]) -> tuple[bool, str]:
+        """
+        NAME
+            validate_bindings_only_verbose - Validate bindings and emit detailed issues.
+        """
+        payload = self._bindings_payload
+        if path:
+            try:
+                payload = read_json(Path(path))
+            except Exception:
+                return (False, MESSAGE_VALIDATE_BINDINGS_LOAD.format(path=path))
+        self._store.set_bindings_payload(payload or {})
+        result = self._store.validate_bindings_only(strict=True)
+        errors = [issue for issue in result.errors() if issue.location == LOCATION_BINDINGS]
+        warnings = [issue for issue in result.warnings() if issue.location == LOCATION_BINDINGS]
+        if not errors and not warnings:
+            print("PASS: bindings payload is valid.")
+            return (True, MESSAGE_VALIDATE_OK)
+        for issue in errors:
+            print(f"FAIL: {issue.message}")
+        for issue in warnings:
+            print(f"WARN: {issue.message}")
+        if errors:
+            return (False, self._format_store_errors(errors))
+        return (True, MESSAGE_VALIDATE_OK)
+
     def validate_mappings_only(self, path: Optional[str]) -> tuple[bool, str]:
         """
         NAME
@@ -3862,6 +3948,32 @@ class BridgeCli:
         if errors:
             message = self._format_store_errors(errors)
             return (False, message)
+        return (True, MESSAGE_VALIDATE_OK)
+
+    def validate_mappings_only_verbose(self, path: Optional[str]) -> tuple[bool, str]:
+        """
+        NAME
+            validate_mappings_only_verbose - Validate mappings and emit detailed issues.
+        """
+        payload = self._can_mappings
+        if path:
+            try:
+                payload = read_json(Path(path))
+            except Exception:
+                return (False, MESSAGE_VALIDATE_MAPPINGS_LOAD.format(path=path))
+        self._store.set_mappings_payload(payload or {})
+        result = self._store.validate_mappings_only(strict=True)
+        errors = [issue for issue in result.errors() if issue.location == LOCATION_MAPPINGS]
+        warnings = [issue for issue in result.warnings() if issue.location == LOCATION_MAPPINGS]
+        if not errors and not warnings:
+            print("PASS: can-mappings payload is valid.")
+            return (True, MESSAGE_VALIDATE_OK)
+        for issue in errors:
+            print(f"FAIL: {issue.message}")
+        for issue in warnings:
+            print(f"WARN: {issue.message}")
+        if errors:
+            return (False, self._format_store_errors(errors))
         return (True, MESSAGE_VALIDATE_OK)
 
     def lint_script(self, path: str) -> tuple[bool, List[str]]:
@@ -3915,7 +4027,7 @@ class BridgeCli:
                     continue
         return (not errors, errors)
 
-    def validate_all(self) -> tuple[bool, List[tuple[str, bool, str]]]:
+    def validate_all(self, verbose: bool = False) -> tuple[bool, List[tuple[str, bool, str]]]:
         """
         NAME
             validate_all - Run all local validations and return per-step results.
@@ -3932,20 +4044,30 @@ class BridgeCli:
             message = MESSAGE_ERR_LOCAL_CONFIG_MISSING
         results.append((VALIDATE_ALL_CONFIG, ok, message))
 
-        ok, message = self.validate_profiles_only()
+        ok, message = (
+            self.validate_profiles_only_verbose() if verbose else self.validate_profiles_only()
+        )
         results.append((VALIDATE_ALL_PROFILES_LOCAL, ok, message))
 
         if self._session.is_connected():
             ok, message = self.validate_profiles_robot()
             results.append((VALIDATE_ALL_PROFILES_ROBOT, ok, message))
 
-        ok, message = self.validate_tests_only(active_set=None)
+        ok, message = (
+            self.validate_tests_only_verbose(active_set=None)
+            if verbose
+            else self.validate_tests_only(active_set=None)
+        )
         results.append((VALIDATE_ALL_TESTS, ok, message))
 
-        ok, message = self.validate_bindings_only(None)
+        ok, message = (
+            self.validate_bindings_only_verbose(None) if verbose else self.validate_bindings_only(None)
+        )
         results.append((VALIDATE_ALL_BINDINGS, ok, message))
 
-        ok, message = self.validate_mappings_only(None)
+        ok, message = (
+            self.validate_mappings_only_verbose(None) if verbose else self.validate_mappings_only(None)
+        )
         results.append((VALIDATE_ALL_MAPPINGS, ok, message))
 
         all_ok = all(item[1] for item in results)
@@ -6250,15 +6372,17 @@ class BridgeCli:
                 CMD_TOPOLOGY,
             ]
         if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() == CMD_CONFIG:
-            return [PLACEHOLDER_PATH, CMD_VALIDATE_ALL]
+            return [PLACEHOLDER_PATH, CMD_VALIDATE_ALL, FLAG_VERBOSE]
         if len(tokens) == COUNT_TWO and tokens[COUNT_ZERO].lower() == CMD_CONFIG:
-            return [CMD_VALIDATE_ALL]
+            return [CMD_VALIDATE_ALL, FLAG_VERBOSE]
         if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() == CMD_PROFILES:
-            return [CMD_ROBOT, CMD_LOCAL, CMD_ACTIVE]
+            return [CMD_ROBOT, CMD_LOCAL, CMD_ACTIVE, FLAG_VERBOSE]
         if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() == CMD_TESTS:
-            return [CMD_ACTIVE_SET]
+            return [CMD_ACTIVE_SET, FLAG_VERBOSE]
         if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() in (CMD_BINDINGS, CMD_CAN_MAPPINGS):
-            return [PLACEHOLDER_PATH]
+            return [PLACEHOLDER_PATH, FLAG_VERBOSE]
+        if len(tokens) == COUNT_ONE and tokens[COUNT_ZERO].lower() in (CMD_ALL, CMD_FILE, CMD_TOPOLOGY, CMD_SCRIPT):
+            return [FLAG_VERBOSE]
         return []
 
     def _suggest_save_args(self, tokens: List[str]) -> List[str]:
@@ -9202,20 +9326,21 @@ class BridgeCli:
         if cmd == CMD_VALIDATE and len(tokens) >= 2:
             target = tokens[1].lower()
             use_all = tokens[-1].lower() == CMD_VALIDATE_ALL if tokens else False
+            verbose = self._flag_present(tokens, FLAG_VERBOSE)
             path = ""
             if len(tokens) >= 3:
                 candidate = tokens[2]
-                if candidate.lower() != CMD_VALIDATE_ALL:
+                if candidate.lower() not in (CMD_VALIDATE_ALL, FLAG_VERBOSE):
                     path = candidate
             if target == CMD_FILE:
                 if not path or path.lower() == FLAG_REPAIR:
                     print(MESSAGE_VALIDATE_FILE_PATH_REQUIRED)
                     return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
                 repair = self._flag_present(tokens, FLAG_REPAIR)
-                return self._validate_file(path, repair)
+                return self._validate_file(path, repair, verbose=verbose)
             if target == CMD_CONFIG:
                 if path:
-                    if use_all:
+                    if use_all or verbose:
                         ok, message, _config = validate_config_file_all(path)
                     else:
                         ok, message, _config = validate_config_file(path)
@@ -9223,13 +9348,15 @@ class BridgeCli:
                     if not self._local_config:
                         print("ERROR: Local config not loaded. Use merge/import config <path> first.")
                         return StatusResult(code=SS__CONFIG__NOT_LOADED)
-                    if use_all:
+                    if use_all or verbose:
                         ok, message = validate_config_data_all(self._local_config, self._local_root_payload)
                     else:
                         self._sync_store_from_local()
                         result = self._store.validate_profiles_only(strict=True)
                         ok = result.ok()
                         message = self._format_store_errors(result.errors())
+                if verbose and message:
+                    print(message)
                 if ok:
                     print(MESSAGE_OK_CONFIG_VALID)
                     return StatusResult(code=SS__CONFIG__VALID)
@@ -9247,9 +9374,17 @@ class BridgeCli:
                     if not profile_name:
                         print(MESSAGE_ERR_PROFILE_REQUIRED)
                         return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
-                    ok, message = self.validate_profiles_only(profile_name=profile_name)
+                    ok, message = (
+                        self.validate_profiles_only_verbose(profile_name=profile_name)
+                        if verbose
+                        else self.validate_profiles_only(profile_name=profile_name)
+                    )
                 else:
-                    ok, message = self.validate_profiles_only()
+                    ok, message = (
+                        self.validate_profiles_only_verbose() if verbose else self.validate_profiles_only()
+                    )
+                if verbose and use_robot and message:
+                    print(message)
                 if ok:
                     print(MESSAGE_OK_CONFIG_VALID)
                     return StatusResult(code=SS__CONFIG__VALID)
@@ -9263,23 +9398,35 @@ class BridgeCli:
                         self._ensure_tests_loaded()
                     model = self._tests_model or TestAuthoringModel()
                     active_set = self._tests_active_set or model.default_test_set
-                ok, message = self.validate_tests_only(active_set=active_set)
+                ok, message = (
+                    self.validate_tests_only_verbose(active_set=active_set)
+                    if verbose
+                    else self.validate_tests_only(active_set=active_set)
+                )
                 if ok:
                     print(MESSAGE_OK_CONFIG_VALID)
                     return StatusResult(code=SS__CONFIG__VALID)
                 print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
                 return StatusResult(code=SS__CONFIG__INVALID)
             if target == CMD_TOPOLOGY:
-                return self._validate_topology()
+                return self._validate_topology(verbose=verbose)
             if target == CMD_BINDINGS:
-                ok, message = self.validate_bindings_only(path or None)
+                ok, message = (
+                    self.validate_bindings_only_verbose(path or None)
+                    if verbose
+                    else self.validate_bindings_only(path or None)
+                )
                 if ok:
                     print(MESSAGE_OK_CONFIG_VALID)
                     return StatusResult(code=SS__CONFIG__VALID)
                 print(MESSAGE_ERR_CONFIG_VALIDATE.format(message=message))
                 return StatusResult(code=SS__CONFIG__INVALID)
             if target == CMD_CAN_MAPPINGS:
-                ok, message = self.validate_mappings_only(path or None)
+                ok, message = (
+                    self.validate_mappings_only_verbose(path or None)
+                    if verbose
+                    else self.validate_mappings_only(path or None)
+                )
                 if ok:
                     print(MESSAGE_OK_CONFIG_VALID)
                     return StatusResult(code=SS__CONFIG__VALID)
@@ -9289,6 +9436,8 @@ class BridgeCli:
                 if not path:
                     print(MESSAGE_VALIDATE_SCRIPT_PATH_REQUIRED)
                     return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+                if verbose:
+                    print(f"INFO: validating script {path}")
                 ok, issues = self.lint_script(path)
                 if ok:
                     print(MESSAGE_VALIDATE_SCRIPT_OK)
@@ -14885,7 +15034,7 @@ class BridgeCli:
         node_map = topology_node_lookup(topology_profile, registry)
         payload: Dict[str, object] = {
             KEY_PROFILE: profile_name,
-            KEY_TOPOLOGY_NODES: topology_nodes(topology_profile),
+            KEY_TOPOLOGY_NODES: [node_map[key] for key in sorted(node_map.keys())],
             KEY_TOPOLOGY_EDGES: topology_edges(topology_profile),
         }
         if subtarget == CMD_NEIGHBORS:
@@ -14984,7 +15133,7 @@ class BridgeCli:
         print("\n".join(lines))
         return StatusResult(code=SS__NORMAL)
 
-    def _validate_topology(self) -> StatusResult:
+    def _validate_topology(self, verbose: bool = False) -> StatusResult:
         """
         NAME
             _validate_topology - Validate the current local topology payload.
@@ -14992,7 +15141,7 @@ class BridgeCli:
         if not isinstance(self._local_root_payload, dict):
             print(MESSAGE_ERR_LOCAL_CONFIG_MISSING)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        reporter = Reporter(False)
+        reporter = Reporter(bool(verbose))
         errors, warnings = validate_profiles(self._local_root_payload, reporter)
         if errors:
             for message in errors:
@@ -15275,7 +15424,7 @@ class BridgeCli:
     def _local_device_topology(self, label: str) -> Dict[str, object]:
         """
         NAME
-            _local_device_topology - Return topology graph details for a device label.
+            _local_device_topology - Return topology graph details for a topology node label.
         """
         if not isinstance(self._local_root_payload, dict):
             return {}
@@ -15303,10 +15452,13 @@ class BridgeCli:
         layout_dict = layout if isinstance(layout, dict) else {}
         topology: Dict[str, object] = {
             KEY_NODE_KEY: node_key,
+            KEY_LABEL: self._topology_node_label(target_node),
             KEY_BUS: layout_dict.get(KEY_BUS),
             "row": layout_dict.get("row"),
             "x": layout_dict.get("x"),
+            KEY_OBJECT_TYPE: target_node.get(KEY_OBJECT_TYPE, get_object_type(target_node)),
             KEY_NODE_TYPE: target_node.get(KEY_NODE_TYPE),
+            KEY_NODE_CLASS: target_node.get(KEY_NODE_CLASS, get_node_class(target_node)),
         }
         neighbor_links = self._device_neighbor_links(topology_profile, node_key, node_by_key)
         neighbor_ports = self._device_neighbor_ports(topology_profile, node_key, node_by_key)
@@ -15393,6 +15545,9 @@ class BridgeCli:
             KEY_BUS: layout_dict.get(KEY_BUS),
             "row": layout_dict.get("row"),
             "x": layout_dict.get("x"),
+            KEY_OBJECT_TYPE: node.get(KEY_OBJECT_TYPE, get_object_type(node)),
+            KEY_NODE_TYPE: node.get(KEY_NODE_TYPE, get_object_type(node)),
+            KEY_NODE_CLASS: node.get(KEY_NODE_CLASS, get_node_class(node)),
         }
 
     def _topology_node_label(self, node: Dict[str, object]) -> str:
@@ -15410,7 +15565,7 @@ class BridgeCli:
             _format_device_topology_lines - Format topology metadata for text show.
         """
         lines = [MESSAGE_REGISTRY_TOPOLOGY_HEADER]
-        for key in (KEY_NODE_KEY, KEY_BUS, "row", "x"):
+        for key in (KEY_LABEL, KEY_NODE_KEY, KEY_OBJECT_TYPE, KEY_NODE_CLASS, KEY_BUS, "row", "x"):
             if key in topology:
                 lines.append(
                     MESSAGE_REGISTRY_TOPOLOGY_FIELD_FMT.format(
@@ -17992,7 +18147,7 @@ class BridgeCli:
         self._append_audit_log(AUDIT_ACTION_RECOVER, SOURCE_NAME_CAN_MAPPINGS, snapshot_path, valid)
         return True
 
-    def _validate_file(self, path: str, repair: bool) -> StatusResult:
+    def _validate_file(self, path: str, repair: bool, verbose: bool = False) -> StatusResult:
         """
         NAME
             _validate_file - Validate or repair a profiles file on disk.
@@ -18000,6 +18155,10 @@ class BridgeCli:
         if not path:
             print(MESSAGE_VALIDATE_FILE_PATH_REQUIRED)
             return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        if verbose:
+            print(f"INFO: validating file {path}")
+            if repair:
+                print("INFO: repair mode enabled")
         source_path = Path(path)
         try:
             payload = read_json(source_path)

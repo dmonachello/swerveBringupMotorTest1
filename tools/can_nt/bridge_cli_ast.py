@@ -23,6 +23,7 @@ KIND_GROUP_BIND_LIST = "group_bind_list"
 KIND_GROUP_BIND_EXPLAIN = "group_bind_explain"
 KIND_GROUP_BIND_TEST = "group_bind_test"
 FLAG_FORCE = "--force"
+FLAG_VERBOSE = "--verbose"
 FLAG_INSTALL_ROBOT = "--install-robot"
 FLAG_REPAIR = "--repair"
 MESSAGE_VALIDATE_ALL_HEADER = "Validate all:"
@@ -578,17 +579,22 @@ class BridgeCliAstExecutor:
 
     def _ast_config_validate(self, ast: CommandAst) -> Optional[StatusResult]:
         target = ast.field or SPEC.empty_str
+        path_arg = ast.path if ast.path and ast.path.lower() != FLAG_VERBOSE else SPEC.empty_str
         if target == CMD_FILE:
             repair = any(token.lower() == FLAG_REPAIR for token in ast.tokens)
-            return self._cli._validate_file(ast.path, repair)
+            verbose = any(token.lower() == FLAG_VERBOSE for token in ast.tokens)
+            return self._cli._validate_file(path_arg, repair, verbose=verbose)
         if target == CMD_ALL:
-            ok, results = self._cli.validate_all()
+            verbose = any(token.lower() == FLAG_VERBOSE for token in ast.tokens)
+            ok, results = self._cli.validate_all(verbose=verbose)
             print(MESSAGE_VALIDATE_ALL_HEADER)
             for label, item_ok, message in results:
                 if item_ok:
                     print(MESSAGE_VALIDATE_ALL_ITEM_OK.format(label=label))
                 else:
                     print(MESSAGE_VALIDATE_ALL_ITEM_ERR.format(label=label, message=message))
+                if verbose and message and message != AST_EXEC_SPEC["msg_ok_config"]:
+                    print(message)
             if ok:
                 print(MESSAGE_VALIDATE_ALL_SUMMARY_OK)
                 return StatusResult(code=SS__CONFIG__VALID)
@@ -596,31 +602,54 @@ class BridgeCliAstExecutor:
             print(MESSAGE_VALIDATE_ALL_SUMMARY_ERR.format(count=len(failures)))
             return StatusResult(code=SS__CONFIG__INVALID)
         all_issues = ast.value == SPEC.cmd_validate_all
+        verbose = any(token.lower() == FLAG_VERBOSE for token in ast.tokens)
         if target == SPEC.cmd_config:
-            if ast.path:
-                if all_issues:
-                    ok, message, _config = self._cli.validate_config_file_all(ast.path)
+            if path_arg:
+                if all_issues or verbose:
+                    ok, message, _config = self._cli.validate_config_file_all(path_arg)
                 else:
-                    ok, message, _config = self._cli.validate_config_file(ast.path)
+                    ok, message, _config = self._cli.validate_config_file(path_arg)
             else:
                 if not self._cli._local_config:
                     print(AST_EXEC_SPEC["msg_err_local_missing"])
                     return StatusResult(code=SS__CONFIG__NOT_LOADED)
-                if all_issues:
+                if all_issues or verbose:
                     ok, message = self._cli.validate_config_data_all(self._cli._local_config)
                 else:
                     ok, message = self._cli.validate_config_data(self._cli._local_config)
+            if verbose and message:
+                print(message)
         elif target == "profiles":
             if ast.value == SPEC.show_source_robot:
                 ok, message = self._cli.validate_profiles_robot()
             else:
-                ok, message = self._cli.validate_profiles_only()
+                ok, message = (
+                    self._cli.validate_profiles_only_verbose()
+                    if verbose
+                    else self._cli.validate_profiles_only()
+                )
+            if verbose and ast.value == SPEC.show_source_robot and message:
+                print(message)
         elif target == SPEC.cmd_tests:
-            ok, message = self._cli.validate_tests_only()
+            ok, message = (
+                self._cli.validate_tests_only_verbose()
+                if verbose
+                else self._cli.validate_tests_only()
+            )
+        elif target == "topology":
+            return self._cli._validate_topology(verbose=verbose)
         elif target == SPEC.cmd_bindings:
-            ok, message = self._cli.validate_bindings_only(ast.path)
+            ok, message = (
+                self._cli.validate_bindings_only_verbose(path_arg or None)
+                if verbose
+                else self._cli.validate_bindings_only(path_arg or None)
+            )
         elif target == SPEC.cmd_can_mappings:
-            ok, message = self._cli.validate_mappings_only(ast.path)
+            ok, message = (
+                self._cli.validate_mappings_only_verbose(path_arg or None)
+                if verbose
+                else self._cli.validate_mappings_only(path_arg or None)
+            )
         else:
             print(AST_EXEC_SPEC["msg_err_unknown_cmd"])
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
@@ -630,8 +659,8 @@ class BridgeCliAstExecutor:
             print(AST_EXEC_SPEC["msg_ok_config"])
             return StatusResult(code=SS__CONFIG__VALID)
         print(AST_EXEC_SPEC["msg_err_fmt"] % message)
-        if target == SPEC.cmd_config and ast.path:
-            self._cli._maybe_hint_validate_profile(ast.path)
+        if target == SPEC.cmd_config and path_arg:
+            self._cli._maybe_hint_validate_profile(path_arg)
         return StatusResult(code=SS__CONFIG__INVALID)
 
     def _ast_config_bindings(self, ast: CommandAst) -> Optional[int]:

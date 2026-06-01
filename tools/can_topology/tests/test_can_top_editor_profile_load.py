@@ -2107,6 +2107,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
                     "key": 1,
                     "objectType": "device",
                     "nodeType": "device",
+                    "nodeClass": "device",
                     "deviceRef": "roborio",
                     "layout": {"bus": 0, "row": 0, "x": 10.0},
                 },
@@ -2114,6 +2115,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
                     "key": 2,
                     "objectType": "device",
                     "nodeType": "device",
+                    "nodeClass": "device",
                     "deviceRef": "motor1",
                     "layout": {"bus": 0, "row": 0, "x": 30.0},
                 },
@@ -2121,6 +2123,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
                     "key": 3,
                     "objectType": "device",
                     "nodeType": "device",
+                    "nodeClass": "device",
                     "deviceRef": "lsw1",
                     "layout": {"bus": 0, "row": 1, "x": 50.0},
                 },
@@ -2294,6 +2297,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
         self.assertEqual(topology["nodes"][0]["objectType"], "device")
         self.assertEqual(topology["nodes"][0]["nodeType"], "device")
+        self.assertEqual(topology["nodes"][0]["nodeClass"], "device")
         self.assertEqual(topology["nodes"][0]["deviceRef"], "driveMotor")
 
     def test_prune_topology_entry_device_refs_removes_deleted_nodes_edges_and_callouts(self) -> None:

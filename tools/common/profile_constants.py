@@ -65,6 +65,7 @@ KEY_DEVICE_LINKS = "deviceLinks"
 KEY_NODE_KEY = "key"
 KEY_OBJECT_TYPE = "objectType"
 KEY_NODE_TYPE = "nodeType"
+KEY_NODE_CLASS = "nodeClass"
 KEY_DEVICE_REF = "deviceRef"
 KEY_CATEGORY = "category"
 KEY_LAYOUT = "layout"
@@ -85,6 +86,8 @@ NODE_TYPE_JUNCTION = "junction"
 NODE_TYPE_ANALYZER = "analyzer"
 NODE_TYPE_POWER = "power"
 NODE_TYPE_VIRTUAL = "virtual"
+NODE_CLASS_DEVICE = "device"
+NODE_CLASS_INFRASTRUCTURE = "infrastructure"
 LAYOUT_KEY_ROW = "row"
 LAYOUT_KEY_X = "x"
 LAYOUT_KEY_Y = "y"
@@ -198,6 +201,22 @@ def get_object_type(entry: Dict[str, object]) -> str:
     if isinstance(legacy, str) and legacy.strip():
         return legacy.strip()
     return ""
+
+
+def get_node_class(entry: Dict[str, object]) -> str:
+    """
+    NAME
+        get_node_class - Classify a topology node as a device or infrastructure node.
+
+    DESCRIPTION
+        Topology graph participants share one node contract. Runtime device
+        identity remains limited to device nodes, while analyzer, junction,
+        power, and virtual nodes are classified as infrastructure.
+    """
+    value = entry.get(KEY_NODE_CLASS)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return NODE_CLASS_DEVICE if get_object_type(entry) == NODE_TYPE_DEVICE else NODE_CLASS_INFRASTRUCTURE
 
 
 def get_group_member_label(entry: Dict[str, object]) -> str:

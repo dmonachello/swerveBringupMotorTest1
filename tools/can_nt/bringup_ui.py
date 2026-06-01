@@ -22,7 +22,7 @@ import time
 import tkinter as tk
 import uuid
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Callable, Dict, List, Optional, Tuple, Any
 
 from .bridge_cmd_tracker import CommandTracker
@@ -55,6 +55,7 @@ from tools.common.paths import repo_root, tests_deploy_path
 from tools.common.tests_domain import collect_available_tests
 from tools.common.config_lifecycle import ConfigLifecycleService
 from tools.common.profiles import list_profile_names
+from tools.common.profile_constants import KEY_DEVICE_TYPE, KEY_ID, KEY_LABEL as PROFILE_KEY_LABEL, KEY_MANUFACTURER
 from tools.common.time_utils import timestamp_hms
 from tools.common.app_versions import (
     APP_BRINGUP_UI_NAME,
@@ -70,9 +71,25 @@ from tools.can_topology.live_topology_view import LiveTopologyView
 from tools.can_nt.visibility_constants import (
     VIS_KEY_DEVICES,
     VIS_KEY_DEVICES_SHOWN,
+    VIS_KEY_API_CLASS,
+    VIS_KEY_API_INDEX,
+    VIS_KEY_ARB_HEX,
+    VIS_KEY_DATA_PAGE,
+    VIS_KEY_FRAMES_PER_SEC,
     VIS_KEY_ID,
-    VIS_KEY_KEY,
+    VIS_KEY_IDENTITY,
     VIS_KEY_LABEL,
+    VIS_KEY_LAST_SEEN_MS,
+    VIS_KEY_METRICS,
+    VIS_KEY_MSG_COUNT,
+    VIS_KEY_PF,
+    VIS_KEY_PGN,
+    VIS_KEY_PRIORITY,
+    VIS_KEY_PS,
+    VIS_KEY_RAW_IDS,
+    VIS_KEY_RESERVED,
+    VIS_KEY_SA,
+    VIS_KEY_SEPARATOR,
     VIS_KEY_SOURCES,
     VIS_KEY_SOURCES_COUNT,
     VIS_KEY_VISIBLE_ALL,
@@ -81,6 +98,7 @@ from tools.can_nt.visibility_constants import (
     VIS_KEY_VISIBILITY,
     VIS_MS_PER_SEC,
     VIS_SCOPE_BOTH,
+    VIS_SCOPE_EXPECTED,
 )
 
 # Constants (NetworkTables paths and presence values).
@@ -97,6 +115,9 @@ PRESENCE_VALUES = {
 
 # Constants (device dict keys).
 DEVICE_KEY_LABEL = "label"
+DEVICE_KEY_MFG = KEY_MANUFACTURER
+DEVICE_KEY_TYPE = KEY_DEVICE_TYPE
+DEVICE_KEY_ID = KEY_ID
 
 # Constants (file-based presence overrides).
 PRESENCE_FILE_KEY_OVERRIDES = "presenceOverrides"
@@ -165,25 +186,97 @@ UI_PREFS_FILE = "bringup_ui_command_prefs.json"
 UI_PREFS_KEY_COMMANDS = "commands"
 UI_PREFS_KEY_VISIBLE = "visible"
 UI_PREFS_KEY_AUTO_SELECT_DEFAULT_PROFILE = "autoSelectDefaultProfileOnStartup"
+UI_PREFS_KEY_SHOW_VISIBILITY_TAB = "showVisibilityTab"
 
 # Constants (visibility UI).
 VIS_TAB_LABEL = "Visibility"
 VIS_COL_DEVICE = "Device"
+VIS_COL_IDENTITY = "Identity"
+VIS_COL_LAST_SEEN = "Last Seen"
+VIS_COL_PACKETS = "Packets"
+VIS_COL_RATE = "Rate"
 VIS_COL_VISIBLE = "Visible"
 VIS_VALUE_YES = "Y"
 VIS_VALUE_NO = "N"
 VIS_VALUE_UNKNOWN = "?"
 VIS_MODE_LABEL = "Visibility Mode"
 VIS_SUMMARY_FMT = "Sources: {sources} | Devices: {devices} | All: {all} | Some: {some} | None: {none}"
+VIS_PANEL_SCOPE = VIS_SCOPE_BOTH
 VIS_EMPTY_MESSAGE = "Visibility provider not available."
+VIS_LAST_SEEN_UNKNOWN = "--"
 VIS_REFRESH_SEC = 0.5
 VIS_SOURCE_COUNT_UNKNOWN = "--"
+VIS_UNEXPECTED_KEY = "unexpected"
+VIS_ROW_META_LABEL = "label"
+VIS_ROW_META_UNEXPECTED = "unexpected"
+VIS_ROW_META_RAW_IDS = "rawIds"
+VIS_RENAME_DIALOG_TITLE = "Rename Discovered Device"
+VIS_RENAME_EMPTY_TEXT = "Device label cannot be empty."
+VIS_RENAME_DUPLICATE_TEXT = "Device label already exists."
+VIS_RENAME_FAILED_TEXT = "Rename failed."
+VIS_RENAME_PROMPT_FMT = "Rename discovered device {label}:"
+VIS_RENAME_SUCCESS_FMT = "Renamed discovered device: {old_label} -> {new_label}"
+VIS_DEFINED_SECTION_LABEL = "Defined Nodes"
+VIS_UNRECOGNIZED_SECTION_LABEL = "Unrecognized Nodes"
+VIS_CTRE_RAW_SECTION_LABEL = "CTRE Raw Decode"
+VIS_PACKETS_UNKNOWN = "--"
+VIS_RATE_UNKNOWN = "--"
+VIS_RATE_FMT = "{value:.1f}/s"
+VIS_TABLE_SPLIT_ORIENT = "vertical"
+VIS_RAW_EMPTY_MESSAGE = "Select a CTRE row to inspect contributing raw IDs."
+VIS_RAW_COL_ARB = "Arb ID"
+VIS_RAW_COL_PACKETS = "Packets"
+VIS_RAW_COL_RATE = "Rate"
+VIS_RAW_COL_PRIORITY = "Pri"
+VIS_RAW_COL_RESERVED = "R"
+VIS_RAW_COL_DATA_PAGE = "DP"
+VIS_RAW_COL_API_CLASS = "ApiC"
+VIS_RAW_COL_API_INDEX = "ApiI"
+VIS_RAW_COL_PF = "PF"
+VIS_RAW_COL_PS = "PS"
+VIS_RAW_COL_SA = "SA"
+VIS_RAW_COL_PGN = "PGN"
 NOTICE_COLOR_INFO_BG = "#eff6ff"
 NOTICE_COLOR_INFO_FG = "#1d4ed8"
 NOTICE_COLOR_WARN_BG = "#fff7ed"
 NOTICE_COLOR_WARN_FG = "#c2410c"
 NOTICE_COLOR_ERROR_BG = "#fef2f2"
 NOTICE_COLOR_ERROR_FG = "#b91c1c"
+COLOR_KEY_TITLE = "Live Topology Color Key"
+COLOR_KEY_GEOMETRY = "420x360"
+COLOR_KEY_MIN_WIDTH = 360
+COLOR_KEY_MIN_HEIGHT = 300
+COLOR_SWATCH_WIDTH = 3
+COLOR_SWATCH_RELIEF = "solid"
+COLOR_SWATCH_BORDER = 1
+COLOR_KEY_SECTION_PRESENCE = "Presence Mode"
+COLOR_KEY_SECTION_VISIBILITY = "Visibility Mode"
+COLOR_KEY_SECTION_ANALYZER = "Analyzer Node"
+COLOR_KEY_PRESENCE_HIGH = "#2f7a2f"
+COLOR_KEY_PRESENCE_LOW = "#f59e0b"
+COLOR_KEY_PRESENCE_NONE = "#dc2626"
+COLOR_KEY_VIS_ALL = "#16a34a"
+COLOR_KEY_VIS_SOME = "#f59e0b"
+COLOR_KEY_VIS_NONE = "#dc2626"
+COLOR_KEY_VIS_UNKNOWN = "#9ca3af"
+COLOR_KEY_ANALYZER_OK = "#16a34a"
+COLOR_KEY_ANALYZER_UNKNOWN = "#9ca3af"
+COLOR_KEY_TEXT_PRESENCE_HIGH = "Green: high confidence or recently seen."
+COLOR_KEY_TEXT_PRESENCE_LOW = "Amber: low confidence or stale (> 2s since last seen / last update)."
+COLOR_KEY_TEXT_PRESENCE_NONE = "Red: explicit missing / none."
+COLOR_KEY_TEXT_VIS_ALL = "Green: visible on all available sources."
+COLOR_KEY_TEXT_VIS_SOME = "Amber: visible on some but not all sources."
+COLOR_KEY_TEXT_VIS_NONE = "Red: visible on no available sources."
+COLOR_KEY_TEXT_VIS_UNKNOWN = "Gray: unknown or source unavailable."
+COLOR_KEY_TEXT_ANALYZER_OK = "Green: analyzer source is available."
+COLOR_KEY_TEXT_ANALYZER_UNKNOWN = "Gray: analyzer source unavailable."
+COLOR_KEY_TEXT_TIME_NOTE = (
+    "Time factor: Presence mode turns stale at about 2.0 s without a fresh last-seen update. "
+    "The Visibility table Last Seen column shows the same recency in age form."
+)
+COLOR_KEY_SECTION_PAD = (10, 8)
+COLOR_KEY_ROW_PADY = 2
+COLOR_KEY_ROW_PADX = 8
 VIS_TREE_SHOW = "headings"
 VIS_TREE_END = "end"
 VIS_TREE_ROOT = ""
@@ -200,7 +293,17 @@ VIS_PAD_HEADER = (8, 8, 8, 4)
 VIS_PAD_TABLE = (8, 0, 8, 8)
 VIS_PAD_LEFT = (8, 0)
 VIS_COL_DEVICE_WIDTH = 240
+VIS_COL_IDENTITY_WIDTH = 110
+VIS_COL_LAST_SEEN_WIDTH = 90
+VIS_COL_PACKETS_WIDTH = 80
+VIS_COL_RATE_WIDTH = 80
 VIS_COL_SOURCE_WIDTH = 72
+VIS_RAW_COL_ARB_WIDTH = 96
+VIS_RAW_COL_PACKETS_WIDTH = 72
+VIS_RAW_COL_RATE_WIDTH = 72
+VIS_RAW_COL_SMALL_WIDTH = 42
+VIS_RAW_COL_API_WIDTH = 46
+VIS_RAW_COL_PGN_WIDTH = 84
 GENERATED_MODULE_NAME = "tools.can_nt.generated.robot_local_commands_generated"
 GENERATED_INVENTORY_PATH = repo_root() / "tools" / "can_nt" / "generated" / "robot_local_command_inventory.json"
 INVENTORY_KEY_COMMANDS = "commands"
@@ -474,6 +577,15 @@ def _load_ui_auto_select_default_pref() -> bool:
     return bool(payload.get(UI_PREFS_KEY_AUTO_SELECT_DEFAULT_PROFILE, False))
 
 
+def _load_ui_show_visibility_tab_pref() -> bool:
+    """
+    NAME
+        _load_ui_show_visibility_tab_pref - Return whether the Visibility tab should be shown.
+    """
+    payload = _load_ui_prefs_payload()
+    return bool(payload.get(UI_PREFS_KEY_SHOW_VISIBILITY_TAB, True))
+
+
 def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
     """
     NAME
@@ -503,6 +615,35 @@ def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
         if items:
             sections.append((title, items))
     return sections
+
+
+def _build_visibility_expected_devices(devices: List[Dict[str, Any]]) -> List[Tuple[str, str]]:
+    """
+    NAME
+        _build_visibility_expected_devices - Build label-first visibility expectations for one profile.
+    """
+    expected: List[Tuple[str, str]] = []
+    for device in devices:
+        if not isinstance(device, dict):
+            continue
+        label = str(device.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+        if not label:
+            continue
+        try:
+            manufacturer = int(device.get(DEVICE_KEY_MFG))
+            device_type = int(device.get(DEVICE_KEY_TYPE))
+            device_id = int(device.get(DEVICE_KEY_ID))
+        except Exception:
+            continue
+        identity_key = (
+            str(manufacturer)
+            + VIS_KEY_SEPARATOR
+            + str(device_type)
+            + VIS_KEY_SEPARATOR
+            + str(device_id)
+        )
+        expected.append((label, identity_key))
+    return expected
 
 
 class BringupControlUI(tk.Tk):
@@ -550,6 +691,11 @@ class BringupControlUI(tk.Tk):
         self._visibility_sources: List[Dict[str, object]] = []
         self._visibility_columns: List[str] = []
         self._visibility_table: Optional[ttk.Treeview] = None
+        self._visibility_unrecognized_table: Optional[ttk.Treeview] = None
+        self._visibility_ctre_raw_table: Optional[ttk.Treeview] = None
+        self._visibility_row_meta: Dict[str, Dict[str, object]] = {}
+        self._visibility_selected_label = NT_VALUE_EMPTY
+        self._visibility_selected_unexpected = False
         self._visibility_summary_var = tk.StringVar(value=VIS_SOURCE_COUNT_UNKNOWN)
         self._visibility_enabled_var = tk.BooleanVar(value=False)
         self._last_selected_test = None
@@ -627,6 +773,7 @@ class BringupControlUI(tk.Tk):
         self._profile_devices: Dict[str, Dict[str, Any]] = {}
         self._ui_command_prefs = _load_ui_command_prefs()
         self._ui_auto_select_default_profile = _load_ui_auto_select_default_pref()
+        self._ui_show_visibility_tab = _load_ui_show_visibility_tab_pref()
         self._ui_pref_vars: Dict[str, tk.BooleanVar] = {}
         self._build_menu()
         self._build_ui()
@@ -662,6 +809,12 @@ class BringupControlUI(tk.Tk):
             variable=self._auto_select_default_profile_var,
             command=self._set_auto_select_default_profile_pref,
         )
+        self._show_visibility_tab_var = tk.BooleanVar(value=self._ui_show_visibility_tab)
+        prefs_menu.add_checkbutton(
+            label="Show Visibility Tab",
+            variable=self._show_visibility_tab_var,
+            command=self._set_show_visibility_tab_pref,
+        )
         prefs_menu.add_separator()
         for _section, items in _action_sections():
             for _label, command in items:
@@ -680,6 +833,7 @@ class BringupControlUI(tk.Tk):
                 )
         help_menu = tk.Menu(menubar, tearoff=False)
         help_menu.add_command(label="Help", command=self._show_help)
+        help_menu.add_command(label="Color Key", command=self._toggle_color_key_window)
         help_menu.add_separator()
         help_menu.add_command(label="About", command=self._show_about)
         menubar.add_cascade(label="Preferences", menu=prefs_menu)
@@ -783,6 +937,7 @@ class BringupControlUI(tk.Tk):
 
         notebook = ttk.Notebook(right)
         notebook.pack(fill="both", expand=True)
+        self._right_notebook = notebook
         output_panel = ttk.Frame(notebook)
         notebook.add(output_panel, text="Output")
         output_header = ttk.Frame(output_panel)
@@ -811,8 +966,9 @@ class BringupControlUI(tk.Tk):
         self._build_live_panel(live_panel)
 
         visibility_panel = ttk.Frame(notebook)
-        notebook.add(visibility_panel, text=VIS_TAB_LABEL)
+        self._visibility_panel = visibility_panel
         self._build_visibility_panel(visibility_panel)
+        self._apply_visibility_tab_pref()
 
     def _build_live_panel(self, parent: tk.Widget) -> None:
         """
@@ -911,23 +1067,103 @@ class BringupControlUI(tk.Tk):
         self._visibility_live_view.set_visibility_enabled(True)
         self._visibility_live_view.pack(fill="both", expand=True)
 
-        table_frame = ttk.Frame(body, padding=VIS_PAD_TABLE)
-        body.add(table_frame, weight=2)
-        self._visibility_table = ttk.Treeview(
-            table_frame,
+        table_panel = ttk.Panedwindow(body, orient=VIS_TABLE_SPLIT_ORIENT)
+        body.add(table_panel, weight=2)
+
+        defined_frame = ttk.LabelFrame(table_panel, text=VIS_DEFINED_SECTION_LABEL, padding=VIS_PAD_TABLE)
+        table_panel.add(defined_frame, weight=3)
+        self._visibility_table = self._build_visibility_table_widget(defined_frame)
+        self._visibility_table.bind("<<TreeviewSelect>>", self._on_visibility_row_selected)
+
+        unrecognized_frame = ttk.LabelFrame(
+            table_panel,
+            text=VIS_UNRECOGNIZED_SECTION_LABEL,
+            padding=VIS_PAD_TABLE,
+        )
+        table_panel.add(unrecognized_frame, weight=2)
+        self._visibility_unrecognized_table = self._build_visibility_table_widget(unrecognized_frame)
+        self._visibility_unrecognized_table.bind("<Double-1>", self._on_visibility_row_double_click)
+        self._visibility_unrecognized_table.bind("<<TreeviewSelect>>", self._on_visibility_row_selected)
+
+        ctre_raw_frame = ttk.LabelFrame(
+            table_panel,
+            text=VIS_CTRE_RAW_SECTION_LABEL,
+            padding=VIS_PAD_TABLE,
+        )
+        table_panel.add(ctre_raw_frame, weight=2)
+        self._visibility_ctre_raw_table = self._build_visibility_ctre_raw_table_widget(ctre_raw_frame)
+
+        if self._visibility_provider is None:
+            self._visibility_table.insert(VIS_TREE_ROOT, VIS_TREE_END, values=[VIS_EMPTY_MESSAGE])
+        elif self._visibility_ctre_raw_table is not None:
+            self._visibility_ctre_raw_table.insert(VIS_TREE_ROOT, VIS_TREE_END, values=[VIS_RAW_EMPTY_MESSAGE])
+
+    def _build_visibility_table_widget(self, parent: tk.Widget) -> ttk.Treeview:
+        """
+        NAME
+            _build_visibility_table_widget - Build one visibility table with shared columns and scrolling.
+        """
+        table = ttk.Treeview(
+            parent,
             columns=(),
             show=VIS_TREE_SHOW,
         )
-        self._visibility_table.pack(side=VIS_PACK_SIDE_LEFT, fill=VIS_FILL_BOTH, expand=True)
+        table.pack(side=VIS_PACK_SIDE_LEFT, fill=VIS_FILL_BOTH, expand=True)
         scrollbar = ttk.Scrollbar(
-            table_frame,
+            parent,
             orient=VIS_SCROLLBAR_ORIENT,
-            command=self._visibility_table.yview,
+            command=table.yview,
         )
         scrollbar.pack(side=VIS_PACK_SIDE_RIGHT, fill=VIS_FILL_Y)
-        self._visibility_table.configure(yscrollcommand=scrollbar.set)
-        if self._visibility_provider is None:
-            self._visibility_table.insert(VIS_TREE_ROOT, VIS_TREE_END, values=[VIS_EMPTY_MESSAGE])
+        table.configure(yscrollcommand=scrollbar.set)
+        return table
+
+    def _build_visibility_ctre_raw_table_widget(self, parent: tk.Widget) -> ttk.Treeview:
+        """
+        NAME
+            _build_visibility_ctre_raw_table_widget - Build the CTRE raw decode table and scrollbar.
+        """
+        table = ttk.Treeview(
+            parent,
+            columns=(
+                VIS_RAW_COL_ARB,
+                VIS_RAW_COL_PACKETS,
+                VIS_RAW_COL_RATE,
+                VIS_RAW_COL_API_CLASS,
+                VIS_RAW_COL_API_INDEX,
+                VIS_RAW_COL_PRIORITY,
+                VIS_RAW_COL_RESERVED,
+                VIS_RAW_COL_DATA_PAGE,
+                VIS_RAW_COL_PF,
+                VIS_RAW_COL_PS,
+                VIS_RAW_COL_SA,
+                VIS_RAW_COL_PGN,
+            ),
+            show=VIS_TREE_SHOW,
+        )
+        table.pack(side=VIS_PACK_SIDE_LEFT, fill=VIS_FILL_BOTH, expand=True)
+        scrollbar = ttk.Scrollbar(
+            parent,
+            orient=VIS_SCROLLBAR_ORIENT,
+            command=table.yview,
+        )
+        scrollbar.pack(side=VIS_PACK_SIDE_RIGHT, fill=VIS_FILL_Y)
+        table.configure(yscrollcommand=scrollbar.set)
+        table.heading(VIS_RAW_COL_ARB, text=VIS_RAW_COL_ARB, anchor=VIS_TREE_ANCHOR_CENTER)
+        table.column(VIS_RAW_COL_ARB, width=VIS_RAW_COL_ARB_WIDTH, anchor=VIS_TREE_ANCHOR_CENTER, stretch=False)
+        table.heading(VIS_RAW_COL_PACKETS, text=VIS_RAW_COL_PACKETS, anchor=VIS_TREE_ANCHOR_CENTER)
+        table.column(VIS_RAW_COL_PACKETS, width=VIS_RAW_COL_PACKETS_WIDTH, anchor=VIS_TREE_ANCHOR_CENTER, stretch=False)
+        table.heading(VIS_RAW_COL_RATE, text=VIS_RAW_COL_RATE, anchor=VIS_TREE_ANCHOR_CENTER)
+        table.column(VIS_RAW_COL_RATE, width=VIS_RAW_COL_RATE_WIDTH, anchor=VIS_TREE_ANCHOR_CENTER, stretch=False)
+        for col in (VIS_RAW_COL_API_CLASS, VIS_RAW_COL_API_INDEX):
+            table.heading(col, text=col, anchor=VIS_TREE_ANCHOR_CENTER)
+            table.column(col, width=VIS_RAW_COL_API_WIDTH, anchor=VIS_TREE_ANCHOR_CENTER, stretch=False)
+        for col in (VIS_RAW_COL_PRIORITY, VIS_RAW_COL_RESERVED, VIS_RAW_COL_DATA_PAGE, VIS_RAW_COL_PF, VIS_RAW_COL_PS, VIS_RAW_COL_SA):
+            table.heading(col, text=col, anchor=VIS_TREE_ANCHOR_CENTER)
+            table.column(col, width=VIS_RAW_COL_SMALL_WIDTH, anchor=VIS_TREE_ANCHOR_CENTER, stretch=False)
+        table.heading(VIS_RAW_COL_PGN, text=VIS_RAW_COL_PGN, anchor=VIS_TREE_ANCHOR_CENTER)
+        table.column(VIS_RAW_COL_PGN, width=VIS_RAW_COL_PGN_WIDTH, anchor=VIS_TREE_ANCHOR_CENTER, stretch=False)
+        return table
 
     def _on_profile_selected(self, _event=None) -> None:
         """
@@ -985,11 +1221,15 @@ class BringupControlUI(tk.Tk):
         name = _normalize_profile_name(profile_name)
         if name == PROFILE_NONE:
             self._profile_devices = {}
+            if self._visibility_provider is not None:
+                self._visibility_provider.set_expected_devices([])
             return
         try:
             devices, _expected = get_profile(name)
         except Exception:
             self._profile_devices = {}
+            if self._visibility_provider is not None:
+                self._visibility_provider.set_expected_devices([])
             return
         mapping: Dict[str, Dict[str, Any]] = {}
         for device in devices:
@@ -1000,6 +1240,11 @@ class BringupControlUI(tk.Tk):
                 continue
             mapping[label.lower()] = device
         self._profile_devices = mapping
+        if self._visibility_provider is not None:
+            self._visibility_provider.set_expected_devices(
+                _build_visibility_expected_devices(devices)
+            )
+            self._visibility_last_update = 0.0
 
     def _iter_live_views(self) -> List[LiveTopologyView]:
         """
@@ -1271,8 +1516,8 @@ class BringupControlUI(tk.Tk):
         self._visibility_last_update = now
         now_ms = int(now * VIS_MS_PER_SEC)
         try:
-            snapshot = self._visibility_provider.snapshot(VIS_SCOPE_BOTH, now_ms)
-            summary = self._visibility_provider.summary(VIS_SCOPE_BOTH, now_ms)
+            snapshot = self._visibility_provider.snapshot(VIS_PANEL_SCOPE, now_ms)
+            summary = self._visibility_provider.summary(VIS_PANEL_SCOPE, now_ms)
         except Exception:
             return
         self._apply_visibility_snapshot(snapshot, summary)
@@ -1282,7 +1527,11 @@ class BringupControlUI(tk.Tk):
         NAME
             _apply_visibility_snapshot - Apply visibility snapshot to UI.
         """
-        if self._visibility_table is None:
+        if (
+            self._visibility_table is None
+            or self._visibility_unrecognized_table is None
+            or self._visibility_ctre_raw_table is None
+        ):
             return
         sources = snapshot.get(VIS_KEY_SOURCES)
         devices = snapshot.get(VIS_KEY_DEVICES)
@@ -1301,45 +1550,367 @@ class BringupControlUI(tk.Tk):
             source_labels[src_id] = label
         if source_ids != self._visibility_columns:
             self._visibility_columns = list(source_ids)
-            columns = [VIS_COL_DEVICE] + source_ids
-            self._visibility_table[VIS_TREE_COLUMNS] = columns
-            self._visibility_table.heading(VIS_COL_DEVICE, text=VIS_COL_DEVICE, anchor=VIS_TREE_ANCHOR_W)
-            self._visibility_table.column(
-                VIS_COL_DEVICE,
-                width=VIS_COL_DEVICE_WIDTH,
-                anchor=VIS_TREE_ANCHOR_W,
+            self._configure_visibility_table_columns(self._visibility_table, source_ids, source_labels)
+            self._configure_visibility_table_columns(
+                self._visibility_unrecognized_table,
+                source_ids,
+                source_labels,
             )
-            for src_id in source_ids:
-                label = source_labels.get(src_id, src_id)
-                self._visibility_table.heading(src_id, text=label, anchor=VIS_TREE_ANCHOR_CENTER)
-                self._visibility_table.column(
-                    src_id,
-                    width=VIS_COL_SOURCE_WIDTH,
-                    anchor=VIS_TREE_ANCHOR_CENTER,
-                    stretch=True,
-                )
         for row in self._visibility_table.get_children():
             self._visibility_table.delete(row)
+        for row in self._visibility_unrecognized_table.get_children():
+            self._visibility_unrecognized_table.delete(row)
+        for row in self._visibility_ctre_raw_table.get_children():
+            self._visibility_ctre_raw_table.delete(row)
+        self._visibility_ctre_raw_table.insert(VIS_TREE_ROOT, VIS_TREE_END, values=[VIS_RAW_EMPTY_MESSAGE])
+        self._visibility_row_meta = {}
+        selected_defined_item = NT_VALUE_EMPTY
+        selected_unrecognized_item = NT_VALUE_EMPTY
+        profile_labels = set(self._profile_devices.keys())
+        shown_devices = 0
+        shown_all = 0
+        shown_some = 0
+        shown_none = 0
         for device in devices:
             if not isinstance(device, dict):
                 continue
             label = str(device.get(VIS_KEY_LABEL, NT_VALUE_EMPTY)).strip()
-            key = str(device.get(VIS_KEY_KEY, NT_VALUE_EMPTY)).strip()
-            device_name = label or key
+            device_name = label
+            unexpected = bool(device.get(VIS_UNEXPECTED_KEY, False))
+            if profile_labels and label.strip().lower() not in profile_labels:
+                if not unexpected:
+                    continue
             visibility = device.get(VIS_KEY_VISIBILITY) if isinstance(device.get(VIS_KEY_VISIBILITY), dict) else {}
-            values: List[str] = [device_name]
+            metrics = device.get(VIS_KEY_METRICS) if isinstance(device.get(VIS_KEY_METRICS), dict) else {}
+            raw_ids = device.get(VIS_KEY_RAW_IDS) if isinstance(device.get(VIS_KEY_RAW_IDS), list) else []
+            values: List[str] = [
+                device_name,
+                self._format_visibility_identity(device),
+                self._format_visibility_last_seen(metrics),
+                self._format_visibility_packet_count(metrics),
+                self._format_visibility_packet_rate(metrics),
+            ]
+            visible_true_count = 0
+            visible_false_count = 0
             for src_id in source_ids:
                 value = visibility.get(src_id)
                 if value is True:
                     values.append(VIS_VALUE_YES)
+                    visible_true_count += 1
                 elif value is False:
                     values.append(VIS_VALUE_NO)
+                    visible_false_count += 1
                 else:
                     values.append(VIS_VALUE_UNKNOWN)
-            self._visibility_table.insert(VIS_TREE_ROOT, VIS_TREE_END, values=values)
-        self._update_visibility_summary(summary)
+            target_table = (
+                self._visibility_unrecognized_table
+                if unexpected and label.strip().lower() not in profile_labels
+                else self._visibility_table
+            )
+            item_id = target_table.insert(VIS_TREE_ROOT, VIS_TREE_END, values=values)
+            self._visibility_row_meta[item_id] = {
+                VIS_ROW_META_LABEL: label,
+                VIS_ROW_META_UNEXPECTED: unexpected,
+                VIS_ROW_META_RAW_IDS: raw_ids,
+            }
+            if label == self._visibility_selected_label:
+                if unexpected == self._visibility_selected_unexpected:
+                    if target_table is self._visibility_unrecognized_table:
+                        selected_unrecognized_item = item_id
+                    else:
+                        selected_defined_item = item_id
+            shown_devices += 1
+            if source_ids and visible_true_count == len(source_ids):
+                shown_all += 1
+            elif visible_true_count > 0:
+                shown_some += 1
+            else:
+                shown_none += 1
+        scoped_summary = {
+            VIS_KEY_SOURCES_COUNT: len(source_ids),
+            VIS_KEY_DEVICES_SHOWN: shown_devices,
+            VIS_KEY_VISIBLE_ALL: shown_all,
+            VIS_KEY_VISIBLE_SOME: shown_some,
+            VIS_KEY_VISIBLE_NONE: shown_none,
+        }
+        if selected_defined_item:
+            self._visibility_table.selection_set(selected_defined_item)
+            self._visibility_table.focus(selected_defined_item)
+            self._visibility_table.see(selected_defined_item)
+            meta = self._visibility_row_meta.get(selected_defined_item, {})
+            raw_ids = meta.get(VIS_ROW_META_RAW_IDS, [])
+            self._populate_ctre_raw_table(raw_ids if isinstance(raw_ids, list) else [])
+        elif selected_unrecognized_item:
+            self._visibility_unrecognized_table.selection_set(selected_unrecognized_item)
+            self._visibility_unrecognized_table.focus(selected_unrecognized_item)
+            self._visibility_unrecognized_table.see(selected_unrecognized_item)
+            meta = self._visibility_row_meta.get(selected_unrecognized_item, {})
+            raw_ids = meta.get(VIS_ROW_META_RAW_IDS, [])
+            self._populate_ctre_raw_table(raw_ids if isinstance(raw_ids, list) else [])
+        else:
+            self._populate_ctre_raw_table([])
+        self._update_visibility_summary(scoped_summary)
         for live_view in self._iter_live_views():
             live_view.set_visibility_snapshot(snapshot)
+
+    def _configure_visibility_table_columns(
+        self,
+        table: ttk.Treeview,
+        source_ids: List[str],
+        source_labels: Dict[str, str],
+    ) -> None:
+        """
+        NAME
+            _configure_visibility_table_columns - Apply the shared visibility table column layout.
+        """
+        columns = [VIS_COL_DEVICE, VIS_COL_IDENTITY, VIS_COL_LAST_SEEN, VIS_COL_PACKETS, VIS_COL_RATE] + source_ids
+        table[VIS_TREE_COLUMNS] = columns
+        table.heading(VIS_COL_DEVICE, text=VIS_COL_DEVICE, anchor=VIS_TREE_ANCHOR_W)
+        table.column(
+            VIS_COL_DEVICE,
+            width=VIS_COL_DEVICE_WIDTH,
+            anchor=VIS_TREE_ANCHOR_W,
+        )
+        table.heading(VIS_COL_IDENTITY, text=VIS_COL_IDENTITY, anchor=VIS_TREE_ANCHOR_CENTER)
+        table.column(
+            VIS_COL_IDENTITY,
+            width=VIS_COL_IDENTITY_WIDTH,
+            anchor=VIS_TREE_ANCHOR_CENTER,
+            stretch=False,
+        )
+        table.heading(VIS_COL_LAST_SEEN, text=VIS_COL_LAST_SEEN, anchor=VIS_TREE_ANCHOR_CENTER)
+        table.column(
+            VIS_COL_LAST_SEEN,
+            width=VIS_COL_LAST_SEEN_WIDTH,
+            anchor=VIS_TREE_ANCHOR_CENTER,
+            stretch=False,
+        )
+        table.heading(VIS_COL_PACKETS, text=VIS_COL_PACKETS, anchor=VIS_TREE_ANCHOR_CENTER)
+        table.column(
+            VIS_COL_PACKETS,
+            width=VIS_COL_PACKETS_WIDTH,
+            anchor=VIS_TREE_ANCHOR_CENTER,
+            stretch=False,
+        )
+        table.heading(VIS_COL_RATE, text=VIS_COL_RATE, anchor=VIS_TREE_ANCHOR_CENTER)
+        table.column(
+            VIS_COL_RATE,
+            width=VIS_COL_RATE_WIDTH,
+            anchor=VIS_TREE_ANCHOR_CENTER,
+            stretch=False,
+        )
+        for src_id in source_ids:
+            label = source_labels.get(src_id, src_id)
+            table.heading(src_id, text=label, anchor=VIS_TREE_ANCHOR_CENTER)
+            table.column(
+                src_id,
+                width=VIS_COL_SOURCE_WIDTH,
+                anchor=VIS_TREE_ANCHOR_CENTER,
+                stretch=True,
+            )
+
+    def _format_visibility_last_seen(self, metrics: Dict[str, object]) -> str:
+        """
+        NAME
+            _format_visibility_last_seen - Format the most recent per-device visibility timestamp.
+        """
+        latest_ms: Optional[int] = None
+        for entry in metrics.values():
+            if not isinstance(entry, dict):
+                continue
+            last_seen = entry.get(VIS_KEY_LAST_SEEN_MS)
+            if isinstance(last_seen, (int, float)):
+                value = int(last_seen)
+                latest_ms = value if latest_ms is None else max(latest_ms, value)
+        if latest_ms is None or latest_ms <= 0:
+            return VIS_LAST_SEEN_UNKNOWN
+        age_sec = max(0.0, (time.time() * VIS_MS_PER_SEC - latest_ms) / VIS_MS_PER_SEC)
+        if age_sec < 1.0:
+            return f"{age_sec:.1f}s"
+        if age_sec < 60.0:
+            return f"{age_sec:.0f}s"
+        if age_sec < 3600.0:
+            return f"{age_sec / 60.0:.1f}m"
+        return f"{age_sec / 3600.0:.1f}h"
+
+    def _format_visibility_identity(self, device: Dict[str, object]) -> str:
+        """
+        NAME
+            _format_visibility_identity - Format the passive identity key for one visibility row.
+        """
+        identity = device.get(VIS_KEY_IDENTITY)
+        if isinstance(identity, str) and identity.strip():
+            return identity.strip()
+        return VIS_LAST_SEEN_UNKNOWN
+
+    def _format_visibility_packet_count(self, metrics: Dict[str, object]) -> str:
+        """
+        NAME
+            _format_visibility_packet_count - Format the aggregate packet count across sources.
+        """
+        total = 0
+        seen_any = False
+        for entry in metrics.values():
+            if not isinstance(entry, dict):
+                continue
+            msg_count = entry.get(VIS_KEY_MSG_COUNT)
+            if isinstance(msg_count, (int, float)):
+                total += int(msg_count)
+                seen_any = True
+        if not seen_any:
+            return VIS_PACKETS_UNKNOWN
+        return str(total)
+
+    def _format_visibility_packet_rate(self, metrics: Dict[str, object]) -> str:
+        """
+        NAME
+            _format_visibility_packet_rate - Format the aggregate frames-per-second rate across sources.
+        """
+        total = 0.0
+        seen_any = False
+        for entry in metrics.values():
+            if not isinstance(entry, dict):
+                continue
+            rate = entry.get(VIS_KEY_FRAMES_PER_SEC)
+            if isinstance(rate, (int, float)):
+                total += float(rate)
+                seen_any = True
+        if not seen_any:
+            return VIS_RATE_UNKNOWN
+        return VIS_RATE_FMT.format(value=total)
+
+    def _format_visibility_rate_value(self, value: object) -> str:
+        """
+        NAME
+            _format_visibility_rate_value - Format one scalar frames-per-second value.
+        """
+        if not isinstance(value, (int, float)):
+            return VIS_RATE_UNKNOWN
+        return VIS_RATE_FMT.format(value=float(value))
+
+    def _format_visibility_small_int(self, value: object) -> str:
+        """
+        NAME
+            _format_visibility_small_int - Format one compact integer field for the raw decode table.
+        """
+        if not isinstance(value, (int, float)):
+            return VIS_LAST_SEEN_UNKNOWN
+        return str(int(value))
+
+    def _format_visibility_hex_byte(self, value: object) -> str:
+        """
+        NAME
+            _format_visibility_hex_byte - Format one 8-bit field as hex.
+        """
+        if not isinstance(value, (int, float)):
+            return VIS_LAST_SEEN_UNKNOWN
+        return f"0x{int(value) & 0xFF:02X}"
+
+    def _format_visibility_hex_pgn(self, value: object) -> str:
+        """
+        NAME
+            _format_visibility_hex_pgn - Format one candidate PGN value as hex.
+        """
+        if not isinstance(value, (int, float)):
+            return VIS_LAST_SEEN_UNKNOWN
+        return f"0x{int(value) & 0x3FFFF:05X}"
+
+    def _on_visibility_row_double_click(self, _event: tk.Event) -> None:
+        """
+        NAME
+            _on_visibility_row_double_click - Prompt to rename a discovered unexpected visibility row.
+        """
+        widget = _event.widget
+        if not isinstance(widget, ttk.Treeview) or self._visibility_provider is None:
+            return
+        selection = widget.selection()
+        if not selection:
+            return
+        meta = self._visibility_row_meta.get(selection[0], {})
+        if not bool(meta.get(VIS_ROW_META_UNEXPECTED, False)):
+            return
+        old_label = str(meta.get(VIS_ROW_META_LABEL, NT_VALUE_EMPTY)).strip()
+        if not old_label:
+            return
+        new_label = simpledialog.askstring(
+            VIS_RENAME_DIALOG_TITLE,
+            VIS_RENAME_PROMPT_FMT.format(label=old_label),
+            parent=self,
+            initialvalue=old_label,
+        )
+        if new_label is None:
+            return
+        clean_label = new_label.strip()
+        if not clean_label:
+            messagebox.showerror(VIS_RENAME_DIALOG_TITLE, VIS_RENAME_EMPTY_TEXT, parent=self)
+            return
+        if clean_label.lower() in self._profile_devices:
+            messagebox.showerror(VIS_RENAME_DIALOG_TITLE, VIS_RENAME_DUPLICATE_TEXT, parent=self)
+            return
+        if not self._visibility_provider.rename_discovered_label(old_label, clean_label):
+            messagebox.showerror(VIS_RENAME_DIALOG_TITLE, VIS_RENAME_FAILED_TEXT, parent=self)
+            return
+        self._append_output(
+            VIS_RENAME_SUCCESS_FMT.format(old_label=old_label, new_label=clean_label)
+        )
+        self._visibility_last_update = 0.0
+        self._poll_visibility_snapshot(time.time())
+
+    def _on_visibility_row_selected(self, event: tk.Event) -> None:
+        """
+        NAME
+            _on_visibility_row_selected - Update the CTRE raw decode panel from the selected visibility row.
+        """
+        widget = event.widget
+        if not isinstance(widget, ttk.Treeview):
+            return
+        selection = widget.selection()
+        if not selection:
+            return
+        meta = self._visibility_row_meta.get(selection[0], {})
+        self._visibility_selected_label = str(
+            meta.get(VIS_ROW_META_LABEL, NT_VALUE_EMPTY)
+        ).strip()
+        self._visibility_selected_unexpected = bool(
+            meta.get(VIS_ROW_META_UNEXPECTED, False)
+        )
+        raw_ids = meta.get(VIS_ROW_META_RAW_IDS, [])
+        self._populate_ctre_raw_table(raw_ids if isinstance(raw_ids, list) else [])
+
+    def _populate_ctre_raw_table(self, raw_ids: List[Dict[str, object]]) -> None:
+        """
+        NAME
+            _populate_ctre_raw_table - Render candidate J1939-style CTRE raw-ID rows for the selected visibility item.
+        """
+        if self._visibility_ctre_raw_table is None:
+            return
+        for row in self._visibility_ctre_raw_table.get_children():
+            self._visibility_ctre_raw_table.delete(row)
+        rows_written = 0
+        for raw in raw_ids:
+            if not isinstance(raw, dict):
+                continue
+            arb_hex = str(raw.get(VIS_KEY_ARB_HEX, NT_VALUE_EMPTY)).strip()
+            if not arb_hex:
+                continue
+            values = [
+                arb_hex,
+                str(int(raw.get(VIS_KEY_MSG_COUNT, 0))) if isinstance(raw.get(VIS_KEY_MSG_COUNT), (int, float)) else VIS_PACKETS_UNKNOWN,
+                self._format_visibility_rate_value(raw.get(VIS_KEY_FRAMES_PER_SEC)),
+                self._format_visibility_small_int(raw.get(VIS_KEY_API_CLASS)),
+                self._format_visibility_small_int(raw.get(VIS_KEY_API_INDEX)),
+                self._format_visibility_small_int(raw.get(VIS_KEY_PRIORITY)),
+                self._format_visibility_small_int(raw.get(VIS_KEY_RESERVED)),
+                self._format_visibility_small_int(raw.get(VIS_KEY_DATA_PAGE)),
+                self._format_visibility_hex_byte(raw.get(VIS_KEY_PF)),
+                self._format_visibility_hex_byte(raw.get(VIS_KEY_PS)),
+                self._format_visibility_hex_byte(raw.get(VIS_KEY_SA)),
+                self._format_visibility_hex_pgn(raw.get(VIS_KEY_PGN)),
+            ]
+            self._visibility_ctre_raw_table.insert(VIS_TREE_ROOT, VIS_TREE_END, values=values)
+            rows_written += 1
+        if rows_written == 0:
+            self._visibility_ctre_raw_table.insert(VIS_TREE_ROOT, VIS_TREE_END, values=[VIS_RAW_EMPTY_MESSAGE])
 
     def _update_visibility_summary(self, summary: Dict[str, object]) -> None:
         """
@@ -1580,6 +2151,33 @@ class BringupControlUI(tk.Tk):
         self._save_ui_command_prefs()
         self._render_action_buttons()
 
+    def _set_show_visibility_tab_pref(self) -> None:
+        """
+        NAME
+            _set_show_visibility_tab_pref - Persist the Visibility-tab preference and apply it.
+        """
+        self._ui_show_visibility_tab = bool(self._show_visibility_tab_var.get())
+        self._save_ui_command_prefs()
+        self._apply_visibility_tab_pref()
+
+    def _apply_visibility_tab_pref(self) -> None:
+        """
+        NAME
+            _apply_visibility_tab_pref - Show or hide the Visibility tab from the right notebook.
+        """
+        notebook = getattr(self, "_right_notebook", None)
+        panel = getattr(self, "_visibility_panel", None)
+        if notebook is None or panel is None:
+            return
+        tab_visible = bool(self._ui_show_visibility_tab)
+        current_tabs = notebook.tabs()
+        panel_id = str(panel)
+        is_present = panel_id in current_tabs
+        if tab_visible and not is_present:
+            notebook.add(panel, text=VIS_TAB_LABEL)
+        elif not tab_visible and is_present:
+            notebook.forget(panel)
+
     def _save_ui_command_prefs(self) -> None:
         """
         NAME
@@ -1592,6 +2190,7 @@ class BringupControlUI(tk.Tk):
             {
                 UI_PREFS_KEY_COMMANDS: self._ui_command_prefs,
                 UI_PREFS_KEY_AUTO_SELECT_DEFAULT_PROFILE: self._ui_auto_select_default_profile,
+                UI_PREFS_KEY_SHOW_VISIBILITY_TAB: self._ui_show_visibility_tab,
             },
         )
 
@@ -1667,6 +2266,89 @@ class BringupControlUI(tk.Tk):
         lines = [ABOUT_NAME, version_line, BUILD_TITLE, *build_lines(), ABOUT_DESCRIPTION, ABOUT_LAUNCH]
         body = ABOUT_SEPARATOR.join([line for line in lines if line])
         messagebox.showinfo(ABOUT_TITLE, body)
+
+    def _toggle_color_key_window(self) -> None:
+        """
+        NAME
+            _toggle_color_key_window - Open or close the live-topology color legend.
+        """
+        if hasattr(self, "_color_key_window") and self._color_key_window.winfo_exists():
+            self._color_key_window.destroy()
+            return
+        self._color_key_window = self._build_color_key_window()
+        self._color_key_window.lift()
+        self._color_key_window.focus_set()
+
+    def _build_color_key_window(self) -> tk.Toplevel:
+        """
+        NAME
+            _build_color_key_window - Build the live-topology color legend window.
+        """
+        window = tk.Toplevel(self)
+        window.title(COLOR_KEY_TITLE)
+        window.geometry(COLOR_KEY_GEOMETRY)
+        window.minsize(COLOR_KEY_MIN_WIDTH, COLOR_KEY_MIN_HEIGHT)
+        window.protocol("WM_DELETE_WINDOW", window.destroy)
+
+        body = ttk.Frame(window, padding=10)
+        body.pack(fill="both", expand=True)
+
+        self._add_color_key_section(
+            body,
+            COLOR_KEY_SECTION_PRESENCE,
+            [
+                (COLOR_KEY_PRESENCE_HIGH, COLOR_KEY_TEXT_PRESENCE_HIGH),
+                (COLOR_KEY_PRESENCE_LOW, COLOR_KEY_TEXT_PRESENCE_LOW),
+                (COLOR_KEY_PRESENCE_NONE, COLOR_KEY_TEXT_PRESENCE_NONE),
+            ],
+        )
+        self._add_color_key_section(
+            body,
+            COLOR_KEY_SECTION_VISIBILITY,
+            [
+                (COLOR_KEY_VIS_ALL, COLOR_KEY_TEXT_VIS_ALL),
+                (COLOR_KEY_VIS_SOME, COLOR_KEY_TEXT_VIS_SOME),
+                (COLOR_KEY_VIS_NONE, COLOR_KEY_TEXT_VIS_NONE),
+                (COLOR_KEY_VIS_UNKNOWN, COLOR_KEY_TEXT_VIS_UNKNOWN),
+            ],
+        )
+        self._add_color_key_section(
+            body,
+            COLOR_KEY_SECTION_ANALYZER,
+            [
+                (COLOR_KEY_ANALYZER_OK, COLOR_KEY_TEXT_ANALYZER_OK),
+                (COLOR_KEY_ANALYZER_UNKNOWN, COLOR_KEY_TEXT_ANALYZER_UNKNOWN),
+            ],
+        )
+        ttk.Label(body, text=COLOR_KEY_TEXT_TIME_NOTE, wraplength=360, justify="left").pack(
+            anchor="w", pady=(4, 0)
+        )
+        return window
+
+    def _add_color_key_section(
+        self,
+        parent: tk.Widget,
+        title: str,
+        rows: List[Tuple[str, str]],
+    ) -> None:
+        """
+        NAME
+            _add_color_key_section - Add one titled section to the color legend window.
+        """
+        frame = ttk.LabelFrame(parent, text=title, padding=COLOR_KEY_SECTION_PAD)
+        frame.pack(fill="x", pady=(0, 8))
+        for color, text in rows:
+            row = ttk.Frame(frame)
+            row.pack(fill="x", pady=COLOR_KEY_ROW_PADY)
+            tk.Label(
+                row,
+                text="   ",
+                bg=color,
+                width=COLOR_SWATCH_WIDTH,
+                relief=COLOR_SWATCH_RELIEF,
+                bd=COLOR_SWATCH_BORDER,
+            ).pack(side="left", padx=(0, COLOR_KEY_ROW_PADX))
+            ttk.Label(row, text=text, wraplength=300, justify="left").pack(side="left", fill="x", expand=True)
 
     def _build_help_window(self) -> tk.Toplevel:
         """

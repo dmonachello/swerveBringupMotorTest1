@@ -39,15 +39,16 @@ from tools.common.profile_constants import (
     KEY_LAYOUT,
     KEY_MANUFACTURER,
     KEY_MODEL,
+    KEY_NODE_CLASS,
     KEY_OBJECT_TYPE,
     KEY_NODE_TYPE,
     KEY_PROFILES,
     KEY_PROFILE_DEVICES,
     KEY_TOPOLOGY_VIEW,
     get_device_interface,
+    get_node_class,
     LAYOUT_KEY_Y,
-    NODE_TYPE_ANALYZER,
-    NODE_TYPE_JUNCTION,
+    NODE_CLASS_INFRASTRUCTURE,
     get_object_type,
 )
 from tools.config.schema_store import ConfigSchemaStore
@@ -303,6 +304,7 @@ class LiveNode:
     vendor: str = ""
     device_type: str = ""
     node_type: str = "device"
+    node_class: str = "device"
     y: Optional[float] = None
     free_y: Optional[float] = None
     interface: str = INTERFACE_CAN
@@ -473,8 +475,9 @@ def _diagram_nodes(
         if not isinstance(entry, dict):
             continue
         raw_node_type = get_object_type(entry) or "device"
+        node_class = str(entry.get(KEY_NODE_CLASS) or get_node_class(entry)).strip() or "device"
         node_type = raw_node_type
-        if raw_node_type in (NODE_TYPE_JUNCTION, NODE_TYPE_ANALYZER):
+        if node_class == NODE_CLASS_INFRASTRUCTURE:
             node_type = LEGACY_NODE_TYPE_DIAGRAM
         if entry.get("profileVisible") is False and node_type != "diagram":
             continue
@@ -495,6 +498,7 @@ def _diagram_nodes(
                     x=float(entry.get("x") or 0.0),
                     scale=float(entry.get("scale") or 1.0),
                     node_type=LEGACY_NODE_TYPE_CALLOUT,
+                    node_class="callout",
                     y=float(entry.get("y")) if isinstance(entry.get("y"), (int, float)) else None,
                 )
             )
@@ -544,6 +548,7 @@ def _diagram_nodes(
                 x=float(entry.get("x") or 0.0),
                 scale=float(entry.get("scale") or 1.0),
                 node_type=node_type,
+                node_class=node_class,
                 free_y=free_y,
                 vendor=vendor,
                 device_type=device_type,

@@ -277,8 +277,10 @@ class LiveTopologyViewTests(unittest.TestCase):
         self.assertEqual(encoder.vendor, "CTRE")
         self.assertEqual(encoder.device_type, "7")
         self.assertEqual(encoder.free_y, 84.0)
+        self.assertEqual(encoder.node_class, "device")
         self.assertEqual(cannect.category, "cannect_direct")
         self.assertEqual(cannect.node_type, "diagram")
+        self.assertEqual(cannect.node_class, "infrastructure")
         self.assertEqual(cannect.free_y, 200.0)
 
     def test_diagram_nodes_accept_object_type_without_legacy_node_type(self) -> None:
@@ -313,7 +315,9 @@ class LiveTopologyViewTests(unittest.TestCase):
 
         self.assertEqual([node.label for node in nodes], ["roborio", "cannect 3"])
         self.assertEqual(nodes[0].node_type, "device")
+        self.assertEqual(nodes[0].node_class, "device")
         self.assertEqual(nodes[1].node_type, "diagram")
+        self.assertEqual(nodes[1].node_class, "infrastructure")
 
     def test_reload_profile_preserves_canonical_layout_y_in_live_nodes(self) -> None:
         view = self._make_view()

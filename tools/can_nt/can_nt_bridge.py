@@ -217,7 +217,6 @@ DEVICE_KEY_ID = KEY_ID
 DEVICE_KEY_PREFER_STATUS = "prefer_status"
 
 # Constants (unknown label handling).
-UNKNOWN_LABEL_PREFIX = "UNPROFILED_DEVICE_"
 CONSOLE_UNKNOWN_LABEL_PREFIX = "UNPROFILED_CONSOLE_"
 EMPTY_STRING = ""
 
@@ -362,7 +361,7 @@ def _build_visibility_expected(devices: List[Dict[str, Any]]) -> List[Tuple[str,
         devices: Profile device entries (CAN only).
 
     RETURNS
-        List of (key, label) tuples.
+        List of (label, identity_key) tuples.
     """
     expected: List[Tuple[str, str]] = []
     for spec in devices:
@@ -376,7 +375,7 @@ def _build_visibility_expected(devices: List[Dict[str, Any]]) -> List[Tuple[str,
         except Exception:
             continue
         key = _visibility_key_from_ids(mfg, dtype, did)
-        expected.append((key, label))
+        expected.append((label, key))
     return expected
 
 
@@ -559,8 +558,6 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     devices, expected_ids = get_profile(args.profile)
     can_to_label, id_to_labels = _build_device_maps(devices)
-    unknown_labels: Dict[Tuple[int, int, int], str] = {}
-    unknown_label_counter = 0
     seen_can_keys: set[Tuple[int, int, int]] = set()
     seen_labels: set[str] = set()
     console_unknown_labels: Dict[int, str] = {}
@@ -902,15 +899,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         NAME
             _resolve_device_label - Resolve a label for a CAN device key.
         """
-        nonlocal unknown_label_counter
         label = can_to_label.get(key)
-        if not label:
-            label = unknown_labels.get(key)
-            if not label:
-                unknown_label_counter += 1
-                label = f"{UNKNOWN_LABEL_PREFIX}{unknown_label_counter}"
-                unknown_labels[key] = label
-        return label
+        identity_key = _visibility_key_from_ids(key[0], key[1], key[2])
+        return visibility_provider.resolve_label(identity_key, label)
 
     def _handle_frame_item(item: FrameItem) -> None:
         """
@@ -1043,7 +1034,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             _run_sniffer - Run the CAN sniffer loop until stopped.
         """
         nonlocal stop_requested, last_publish, last_summary, startup_summary_done
-        nonlocal unknown_label_counter, console_unknown_counter
+        nonlocal console_unknown_counter
         try:
             _start_source_threads()
             while True:
@@ -1085,8 +1076,6 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     new_can_to_label, new_id_to_labels = _build_device_maps(devices)
                     can_to_label.update(new_can_to_label)
                     id_to_labels.update(new_id_to_labels)
-                    unknown_labels.clear()
-                    unknown_label_counter = 0
                     seen_can_keys.clear()
                     seen_labels.clear()
                     console_unknown_labels.clear()

@@ -16,21 +16,35 @@ from dataclasses import dataclass, field
 import threading
 from typing import Dict, List, Optional, Tuple, Iterable
 
+from tools.can_nt.can_frc_defs import decode_frc_ext_id_full
 from tools.can_nt.can_nt_publish import decode_frc_ext_id
 from tools.can_nt.visibility_constants import (
     VIS_KEY_AGE_MS,
+    VIS_KEY_API_CLASS,
+    VIS_KEY_API_INDEX,
+    VIS_KEY_ARB_HEX,
+    VIS_KEY_ARB_ID,
     VIS_KEY_ARB_PREFIX,
     VIS_KEY_AVAILABLE,
+    VIS_KEY_DATA_PAGE,
     VIS_KEY_DEVICE,
     VIS_KEY_DEVICES,
     VIS_KEY_DEVICES_SHOWN,
     VIS_KEY_FRAMES_PER_SEC,
     VIS_KEY_ID,
+    VIS_KEY_IDENTITY,
     VIS_KEY_KEY,
     VIS_KEY_LABEL,
     VIS_KEY_LAST_SEEN_MS,
     VIS_KEY_METRICS,
     VIS_KEY_MSG_COUNT,
+    VIS_KEY_PF,
+    VIS_KEY_PGN,
+    VIS_KEY_PRIORITY,
+    VIS_KEY_PS,
+    VIS_KEY_RAW_IDS,
+    VIS_KEY_RESERVED,
+    VIS_KEY_SA,
     VIS_KEY_SCOPE,
     VIS_KEY_SEPARATOR,
     VIS_KEY_SOURCE,
@@ -82,6 +96,23 @@ class MetricState:
     """
 
     last_seen_ms: int = VIS_INT_ZERO
+    first_seen_ms: int = VIS_INT_ZERO
+    msg_count: int = VIS_INT_ZERO
+    frames_per_sec: float = VIS_FLOAT_ZERO
+    last_tick_ms: int = VIS_INT_ZERO
+    last_tick_count: int = VIS_INT_ZERO
+
+
+@dataclass
+class RawIdState:
+    """
+    NAME
+        RawIdState - Per-arbitration-ID rolling metrics for one visibility device row.
+    """
+
+    arb_id: int
+    last_seen_ms: int = VIS_INT_ZERO
+    first_seen_ms: int = VIS_INT_ZERO
     msg_count: int = VIS_INT_ZERO
     frames_per_sec: float = VIS_FLOAT_ZERO
     last_tick_ms: int = VIS_INT_ZERO
@@ -97,9 +128,17 @@ class DeviceState:
 
     key: str
     label: str = VIS_EMPTY_STRING
+    identity_key: str = VIS_EMPTY_STRING
+    expected: bool = False
     unexpected: bool = False
     last_seen_ms: int = VIS_INT_ZERO
     metrics: Dict[str, MetricState] = field(default_factory=dict)
+    raw_ids: Dict[int, RawIdState] = field(default_factory=dict)
+
+
+DISCOVERED_LABEL_PREFIX = "UNPROFILED_DEVICE_"
+DISCOVERED_LABEL_START = 1
+DISCOVERED_LABEL_STEP = 1
 
 
 def _device_key_from_ids(mfg: int, dtype: int, device_id: int) -> str:
@@ -131,7 +170,9 @@ class VisibilityProvider:
         self._sources: Dict[str, SourceInfo] = {}
         self._source_order: List[str] = []
         self._devices: Dict[str, DeviceState] = {}
-        self._expected_keys: Dict[str, str] = {}
+        self._identity_to_label: Dict[str, str] = {}
+        self._expected_labels: Dict[str, str] = {}
+        self._next_discovered_label = DISCOVERED_LABEL_START
         self._timeout_ms = int(timeout_ms)
         self._observed_retention_ms = int(observed_retention_ms)
         self._lock = threading.Lock()
@@ -154,18 +195,41 @@ class VisibilityProvider:
             set_expected_devices - Replace expected device keys and labels.
 
         PARAMETERS
-            devices: Iterable of (key, label) tuples.
+            devices: Iterable of (label, identity_key) tuples.
         """
         with self._lock:
-            self._expected_keys = {}
-            for key, label in devices:
-                self._expected_keys[key] = label
-                state = self._devices.get(key)
+            for state in self._devices.values():
+                state.expected = False
+            self._expected_labels = {}
+            for label, identity_key in devices:
+                clean_label = str(label).strip()
+                if not clean_label:
+                    continue
+                label_key = clean_label.lower()
+                clean_identity = str(identity_key).strip()
+                existing_label_key = self._identity_to_label.get(clean_identity) if clean_identity else None
+                if existing_label_key and existing_label_key != label_key:
+                    self._relabel_state(existing_label_key, clean_label)
+                state = self._devices.get(label_key)
                 if state is None:
-                    self._devices[key] = DeviceState(key=key, label=label, unexpected=False)
+                    state = DeviceState(
+                        key=label_key,
+                        label=clean_label,
+                        identity_key=clean_identity,
+                        expected=True,
+                        unexpected=False,
+                    )
+                    self._devices[label_key] = state
                 else:
-                    state.label = label or state.label
+                    state.key = label_key
+                    state.label = clean_label
+                    if clean_identity:
+                        state.identity_key = clean_identity
+                    state.expected = True
                     state.unexpected = False
+                self._expected_labels[label_key] = clean_label
+                if clean_identity:
+                    self._identity_to_label[clean_identity] = label_key
 
     def set_source_available(self, source_id: str, available: bool, ts_ms: int) -> None:
         """
@@ -208,23 +272,114 @@ class VisibilityProvider:
                     key = _device_key_from_arb(arb_id)
             if not key:
                 return
-            state = self._devices.get(key)
-            if state is None:
-                state = DeviceState(key=key, label=label or VIS_EMPTY_STRING, unexpected=True)
-                self._devices[key] = state
-            if label:
-                state.label = label
-            if key in self._expected_keys:
-                state.unexpected = False
-                if not state.label:
-                    state.label = self._expected_keys.get(key, VIS_EMPTY_STRING)
+            state = self._state_for_identity(key, label)
             metric = state.metrics.get(source_id)
             if metric is None:
                 metric = MetricState()
                 state.metrics[source_id] = metric
+            if metric.first_seen_ms <= VIS_INT_ZERO:
+                metric.first_seen_ms = ts_ms
             metric.last_seen_ms = ts_ms
             metric.msg_count += VIS_INT_ONE
             state.last_seen_ms = max(state.last_seen_ms, ts_ms)
+            raw_state = state.raw_ids.get(arb_id)
+            if raw_state is None:
+                raw_state = RawIdState(arb_id=arb_id)
+                state.raw_ids[arb_id] = raw_state
+            if raw_state.first_seen_ms <= VIS_INT_ZERO:
+                raw_state.first_seen_ms = ts_ms
+            raw_state.last_seen_ms = ts_ms
+            raw_state.msg_count += VIS_INT_ONE
+
+    def resolve_label(self, identity_key: str, suggested_label: Optional[str] = None) -> str:
+        """
+        NAME
+            resolve_label - Return the canonical label for an observed identity.
+
+        DESCRIPTION
+            Expected configured devices resolve to their configured labels.
+            Unconfigured observed identities are assigned stable temporary labels.
+        """
+        with self._lock:
+            state = self._state_for_identity(identity_key, suggested_label)
+            return state.label
+
+    def rename_discovered_label(self, old_label: str, new_label: str) -> bool:
+        """
+        NAME
+            rename_discovered_label - Rename one discovered unexpected device label.
+        """
+        with self._lock:
+            old_key = str(old_label).strip().lower()
+            new_clean = str(new_label).strip()
+            new_key = new_clean.lower()
+            if not old_key or not new_clean or old_key == new_key:
+                return False
+            state = self._devices.get(old_key)
+            if state is None or state.expected:
+                return False
+            if new_key in self._devices:
+                return False
+            self._relabel_state(old_key, new_clean)
+            return True
+
+    def _state_for_identity(self, identity_key: str, suggested_label: Optional[str]) -> DeviceState:
+        """
+        NAME
+            _state_for_identity - Resolve or create the state tracked for one observed identity.
+        """
+        label_key = self._identity_to_label.get(identity_key)
+        if label_key:
+            state = self._devices.get(label_key)
+            if state is not None:
+                return state
+        clean_label = str(suggested_label or VIS_EMPTY_STRING).strip()
+        candidate_key = clean_label.lower() if clean_label else VIS_EMPTY_STRING
+        if candidate_key and candidate_key in self._devices:
+            state = self._devices[candidate_key]
+            self._identity_to_label[identity_key] = candidate_key
+            return state
+        if not clean_label:
+            clean_label = self._allocate_discovered_label()
+            candidate_key = clean_label.lower()
+        state = DeviceState(
+            key=candidate_key,
+            label=clean_label,
+            identity_key=identity_key,
+            expected=False,
+            unexpected=True,
+        )
+        self._devices[candidate_key] = state
+        self._identity_to_label[identity_key] = candidate_key
+        return state
+
+    def _allocate_discovered_label(self) -> str:
+        """
+        NAME
+            _allocate_discovered_label - Generate the next unique temporary discovered-device label.
+        """
+        while True:
+            label = f"{DISCOVERED_LABEL_PREFIX}{self._next_discovered_label}"
+            self._next_discovered_label += DISCOVERED_LABEL_STEP
+            if label.lower() not in self._devices:
+                return label
+
+    def _relabel_state(self, old_label_key: str, new_label: str) -> None:
+        """
+        NAME
+            _relabel_state - Move a tracked device state to a new canonical label.
+        """
+        state = self._devices.pop(old_label_key)
+        new_key = new_label.lower()
+        state.key = new_key
+        state.label = new_label
+        self._devices[new_key] = state
+        if old_label_key in self._expected_labels:
+            self._expected_labels.pop(old_label_key, None)
+            self._expected_labels[new_key] = new_label
+        for identity_key, label_key in list(self._identity_to_label.items()):
+            if label_key == old_label_key:
+                self._identity_to_label[identity_key] = new_key
 
     def tick(self, now_ms: int) -> None:
         """
@@ -234,29 +389,39 @@ class VisibilityProvider:
         with self._lock:
             for state in self._devices.values():
                 for _source_id, metric in state.metrics.items():
-                    if metric.last_tick_ms <= VIS_INT_ZERO:
-                        metric.last_tick_ms = now_ms
-                        metric.last_tick_count = metric.msg_count
+                    if metric.first_seen_ms <= VIS_INT_ZERO:
                         continue
-                    elapsed_ms = now_ms - metric.last_tick_ms
+                    elapsed_ms = now_ms - metric.first_seen_ms
                     if elapsed_ms <= VIS_INT_ZERO:
                         continue
-                    delta = metric.msg_count - metric.last_tick_count
-                    metric.frames_per_sec = float(delta) / (float(elapsed_ms) / VIS_MS_PER_SEC)
+                    metric.frames_per_sec = float(metric.msg_count) / (
+                        float(elapsed_ms) / VIS_MS_PER_SEC
+                    )
                     metric.last_tick_ms = now_ms
                     metric.last_tick_count = metric.msg_count
+                for raw_state in state.raw_ids.values():
+                    if raw_state.first_seen_ms <= VIS_INT_ZERO:
+                        continue
+                    elapsed_ms = now_ms - raw_state.first_seen_ms
+                    if elapsed_ms <= VIS_INT_ZERO:
+                        continue
+                    raw_state.frames_per_sec = float(raw_state.msg_count) / (
+                        float(elapsed_ms) / VIS_MS_PER_SEC
+                    )
+                    raw_state.last_tick_ms = now_ms
+                    raw_state.last_tick_count = raw_state.msg_count
 
     def _device_in_scope(self, state: DeviceState, scope: str, now_ms: int) -> bool:
         if scope == VIS_SCOPE_EXPECTED:
-            return state.key in self._expected_keys
+            return state.expected
         if scope == VIS_SCOPE_OBSERVED:
-            if state.key in self._expected_keys:
+            if state.expected:
                 return False
             if state.last_seen_ms <= VIS_INT_ZERO:
                 return False
             return (now_ms - state.last_seen_ms) <= self._observed_retention_ms
         if scope == VIS_SCOPE_BOTH:
-            if state.key in self._expected_keys:
+            if state.expected:
                 return True
             if state.last_seen_ms <= VIS_INT_ZERO:
                 return False
@@ -314,11 +479,13 @@ class VisibilityProvider:
                     }
                 devices_out.append(
                     {
-                        VIS_KEY_KEY: state.key,
+                        VIS_KEY_KEY: state.label,
                         VIS_KEY_LABEL: state.label,
+                        VIS_KEY_IDENTITY: state.identity_key,
                         VIS_KEY_VISIBILITY: visibility,
                         VIS_KEY_METRICS: metrics_out,
                         VIS_KEY_UNEXPECTED: bool(state.unexpected),
+                        VIS_KEY_RAW_IDS: self._raw_id_snapshot(state, now_ms),
                     }
                 )
         return {
@@ -339,8 +506,8 @@ class VisibilityProvider:
         sel_lower = selector.strip().lower()
         with self._lock:
             state = None
-            for key, entry in self._devices.items():
-                if key.lower() == sel_lower or entry.label.strip().lower() == sel_lower:
+            for entry in self._devices.values():
+                if entry.label.strip().lower() == sel_lower or entry.key == sel_lower:
                     state = entry
                     break
             if state is None:
@@ -390,9 +557,62 @@ class VisibilityProvider:
                     }
                 )
         return {
-            VIS_KEY_DEVICE: {VIS_KEY_KEY: state.key, VIS_KEY_LABEL: state.label},
+            VIS_KEY_DEVICE: {
+                VIS_KEY_KEY: state.label,
+                VIS_KEY_LABEL: state.label,
+                VIS_KEY_IDENTITY: state.identity_key,
+            },
             VIS_KEY_SOURCES: sources_out,
+            VIS_KEY_RAW_IDS: self._raw_id_snapshot(state, now_ms),
         }
+
+    def _raw_id_snapshot(self, state: DeviceState, now_ms: int) -> List[Dict[str, object]]:
+        """
+        NAME
+            _raw_id_snapshot - Return sorted raw arbitration-ID stats for one device row.
+        """
+        rows: List[Dict[str, object]] = []
+        for arb_id, raw_state in sorted(
+            state.raw_ids.items(),
+            key=lambda item: (-item[1].msg_count, item[0]),
+        ):
+            _mfg, _dtype, api_class, api_index, _did = decode_frc_ext_id_full(arb_id)
+            rows.append(
+                {
+                    VIS_KEY_ARB_ID: arb_id,
+                    VIS_KEY_ARB_HEX: VIS_HEX_PREFIX + format(arb_id, "08X"),
+                    VIS_KEY_MSG_COUNT: raw_state.msg_count,
+                    VIS_KEY_FRAMES_PER_SEC: raw_state.frames_per_sec,
+                    VIS_KEY_LAST_SEEN_MS: raw_state.last_seen_ms,
+                    VIS_KEY_API_CLASS: api_class,
+                    VIS_KEY_API_INDEX: api_index,
+                    VIS_KEY_PRIORITY: (arb_id >> 26) & 0x7,
+                    VIS_KEY_RESERVED: (arb_id >> 25) & 0x1,
+                    VIS_KEY_DATA_PAGE: (arb_id >> 24) & 0x1,
+                    VIS_KEY_PF: (arb_id >> 16) & 0xFF,
+                    VIS_KEY_PS: (arb_id >> 8) & 0xFF,
+                    VIS_KEY_SA: arb_id & 0xFF,
+                    VIS_KEY_PGN: self._candidate_pgn(arb_id),
+                    VIS_KEY_AGE_MS: max(VIS_INT_ZERO, now_ms - raw_state.last_seen_ms)
+                    if raw_state.last_seen_ms > VIS_INT_ZERO
+                    else None,
+                }
+            )
+        return rows
+
+    def _candidate_pgn(self, arb_id: int) -> int:
+        """
+        NAME
+            _candidate_pgn - Compute a candidate J1939 PGN from a raw 29-bit arbitration ID.
+        """
+        reserved = (arb_id >> 25) & 0x1
+        data_page = (arb_id >> 24) & 0x1
+        pf = (arb_id >> 16) & 0xFF
+        ps = (arb_id >> 8) & 0xFF
+        base = (reserved << 17) | (data_page << 16) | (pf << 8)
+        if pf < 240:
+            return base
+        return base | ps
 
     def summary(self, scope: str, now_ms: int) -> Dict[str, object]:
         """

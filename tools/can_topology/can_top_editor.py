@@ -247,6 +247,7 @@ KEY_TOPOLOGY_SOURCE = "source"
 KEY_TOPOLOGY_LAYOUT = "layout"
 KEY_TOPOLOGY_OBJECT_TYPE = "objectType"
 KEY_TOPOLOGY_NODE_TYPE = "nodeType"
+KEY_TOPOLOGY_NODE_CLASS = "nodeClass"
 KEY_TOPOLOGY_DEVICE_REF = "deviceRef"
 KEY_TOPOLOGY_EDGE_ID = "id"
 KEY_TOPOLOGY_EDGE_TYPE = "edgeType"
@@ -274,6 +275,8 @@ TOPOLOGY_NODE_JUNCTION = "junction"
 TOPOLOGY_NODE_ANALYZER = "analyzer"
 TOPOLOGY_NODE_POWER = "power"
 TOPOLOGY_NODE_VIRTUAL = "virtual"
+TOPOLOGY_NODE_CLASS_DEVICE = "device"
+TOPOLOGY_NODE_CLASS_INFRASTRUCTURE = "infrastructure"
 TOPOLOGY_EDGE_CAN_TRUNK = "can_trunk"
 TOPOLOGY_EDGE_CAN_DROP = "can_drop"
 TOPOLOGY_EDGE_CAN_TAP = "can_tap"
@@ -538,6 +541,9 @@ KEY_LABEL = profile_consts.KEY_LABEL if profile_consts is not None else "label"
 KEY_OBJECT_TYPE = (
     profile_consts.KEY_OBJECT_TYPE if profile_consts is not None else "objectType"
 )
+KEY_NODE_CLASS = (
+    profile_consts.KEY_NODE_CLASS if profile_consts is not None else "nodeClass"
+)
 KEY_TYPE = profile_consts.KEY_TYPE if profile_consts is not None else "type"
 KEY_TAGS = profile_consts.KEY_TAGS if profile_consts is not None else "tags"
 KEY_MANUFACTURER = (
@@ -582,6 +588,20 @@ def bridge_group_member_label(member: Dict[str, object]) -> str:
     if isinstance(legacy, str) and legacy.strip():
         return legacy.strip()
     return TEXT_EMPTY
+
+
+def topology_node_class_from_entry(entry: Dict[str, object]) -> str:
+    """
+    NAME
+        topology_node_class_from_entry - Resolve nodeClass with shared compatibility fallback.
+    """
+    if profile_consts is not None and hasattr(profile_consts, "get_node_class"):
+        return str(profile_consts.get_node_class(entry)).strip()
+    value = entry.get(KEY_NODE_CLASS)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    object_type = str(entry.get(KEY_OBJECT_TYPE) or entry.get(KEY_TOPOLOGY_NODE_TYPE) or TEXT_EMPTY).strip()
+    return TOPOLOGY_NODE_CLASS_DEVICE if object_type == TOPOLOGY_NODE_DEVICE else TOPOLOGY_NODE_CLASS_INFRASTRUCTURE
 
 
 def make_bridge_group_member(label: str, enabled: bool = True) -> Dict[str, object]:
@@ -4158,6 +4178,7 @@ class TopologyEditor(tk.Tk):
                         KEY_NODE_KEY: node.key,
                         KEY_TOPOLOGY_OBJECT_TYPE: TOPOLOGY_NODE_DEVICE,
                         KEY_TOPOLOGY_NODE_TYPE: TOPOLOGY_NODE_DEVICE,
+                        KEY_TOPOLOGY_NODE_CLASS: TOPOLOGY_NODE_CLASS_DEVICE,
                         KEY_TOPOLOGY_DEVICE_REF: node.label,
                         KEY_TOPOLOGY_LAYOUT: layout,
                     }
@@ -4171,6 +4192,7 @@ class TopologyEditor(tk.Tk):
                     KEY_CATEGORY: node.category,
                     KEY_TOPOLOGY_OBJECT_TYPE: object_type,
                     KEY_TOPOLOGY_NODE_TYPE: object_type,
+                    KEY_TOPOLOGY_NODE_CLASS: TOPOLOGY_NODE_CLASS_INFRASTRUCTURE,
                     KEY_VENDOR: node.vendor,
                     KEY_MODEL: node.motor,
                     KEY_TOPOLOGY_LAYOUT: layout,
@@ -4232,6 +4254,19 @@ class TopologyEditor(tk.Tk):
         if node.category in (DIAGRAM_CATEGORY_CANNECT_DIRECT, DIAGRAM_CATEGORY_CANNECT_INJECT):
             return TOPOLOGY_NODE_JUNCTION
         return TOPOLOGY_NODE_VIRTUAL
+
+    def _topology_node_class_for_editor_node(self, node: Node) -> str:
+        """
+        NAME
+            _topology_node_class_for_editor_node - Classify one editor node using the shared graph split.
+        """
+        if node.node_type == NODE_TYPE_CALLOUT:
+            return "callout"
+        return (
+            TOPOLOGY_NODE_CLASS_INFRASTRUCTURE
+            if self._is_infrastructure_category(node.category or EMPTY_STRING)
+            else TOPOLOGY_NODE_CLASS_DEVICE
+        )
 
     def _active_connection_filters(self) -> set[str]:
         """
@@ -4538,6 +4573,7 @@ class TopologyEditor(tk.Tk):
                 {
                     "objectType": n.node_type,
                     "nodeType": n.node_type,
+                    "nodeClass": self._topology_node_class_for_editor_node(n),
                     "key": n.key,
                     "category": n.category,
                     "label": n.label,
@@ -4669,6 +4705,7 @@ class TopologyEditor(tk.Tk):
                     {
                         "objectType": "callout",
                         "nodeType": "callout",
+                        "nodeClass": "callout",
                         "key": node.key,
                         "text": node.callout_text,
                         "targetType": node.callout_target_type,
@@ -4693,6 +4730,7 @@ class TopologyEditor(tk.Tk):
                     {
                         "objectType": node.node_type,
                         "nodeType": node.node_type,
+                        "nodeClass": self._topology_node_class_for_editor_node(node),
                         "key": node.key,
                         "category": node.category,
                         "label": node.label,
@@ -10827,9 +10865,7 @@ class TopologyEditor(tk.Tk):
         NAME
             _is_infrastructure_node - Identify topology-only infrastructure nodes.
         """
-        if node.node_type == NODE_TYPE_CALLOUT:
-            return False
-        return self._is_infrastructure_category(node.category or EMPTY_STRING)
+        return self._topology_node_class_for_editor_node(node) == TOPOLOGY_NODE_CLASS_INFRASTRUCTURE
 
     def _is_registry_device_node(self, node: Node) -> bool:
         """

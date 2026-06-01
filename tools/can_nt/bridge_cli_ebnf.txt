@@ -134,15 +134,15 @@ config         = "group" ws name
                | "rename" ws name ws name
                | "device" ws name
                | "device" ws name ws "set" ws device_field ws value_or_text
-               | ("validate" | "val") ws "all"
-               | "validate" ws "config" [ ws path ] [ ws "--all" ]
-               | ("validate" | "val") ws "file" ws path [ ws "--repair" ]
-               | ("validate" | "val") ws "profiles" [ ws ("robot" | "local") ] [ ws "--active" ]
-               | ("validate" | "val") ws "tests" [ ws "--active-set" ]
-               | ("validate" | "val") ws "topology"
-               | ("validate" | "val") ws "bindings" [ ws path ]
-               | ("validate" | "val") ws "can-mappings" [ ws path ]
-               | ("validate" | "val") ws "script" ws path
+               | ("validate" | "val") ws "all" [ ws "--verbose" ]
+               | "validate" ws "config" [ ws path ] [ ws "--all" ] [ ws "--verbose" ]
+               | ("validate" | "val") ws "file" ws path [ ws "--repair" ] [ ws "--verbose" ]
+               | ("validate" | "val") ws "profiles" [ ws ("robot" | "local") ] [ ws "--active" ] [ ws "--verbose" ]
+               | ("validate" | "val") ws "tests" [ ws "--active-set" ] [ ws "--verbose" ]
+               | ("validate" | "val") ws "topology" [ ws "--verbose" ]
+               | ("validate" | "val") ws "bindings" [ ws path ] [ ws "--verbose" ]
+               | ("validate" | "val") ws "can-mappings" [ ws path ] [ ws "--verbose" ]
+               | ("validate" | "val") ws "script" ws path [ ws "--verbose" ]
                | "recover" ws ("list" | "last-good" | "from" ws name)
                | "profiles" ws "init"
                | "profiles" ws "reload"
